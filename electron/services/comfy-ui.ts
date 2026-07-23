@@ -47,7 +47,7 @@ async function uploadImage(baseUrl: string, filePath: string): Promise<string> {
 export async function submitTask(
   task: QueueTask,
   settings: Settings
-): Promise<string> {
+): Promise<{ promptId: string; clientId: string }> {
   if (!task.workflowPath) {
     throw new Error("任务没有配置 ComfyUI API 工作流 JSON");
   }
@@ -59,47 +59,113 @@ export async function submitTask(
   ]);
   const source = JSON.parse(sourceText) as unknown;
   const prompt = renderWorkflow(source, task, { inputImage, endImage });
+  const clientId = `local-video-studio-${crypto.randomUUID()}`;
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, client_id: `local-video-studio-${process.pid}` })
+    body: JSON.stringify({ prompt, client_id: clientId })
   });
   if (!result.prompt_id) throw new Error("ComfyUI 未返回 Prompt ID");
-  return result.prompt_id;
+  return { promptId: result.prompt_id, clientId };
+}
+
+interface ComfySocketMessage {
+  type?: string;
+  data?: {
+    prompt_id?: string;
+    value?: number;
+    max?: number;
+    node?: string | null;
+    exception_message?: string;
+  };
+}
+
+function socketUrl(httpUrl: string, clientId: string): string {
+  const url = new URL(httpUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/ws`;
+  url.search = new URLSearchParams({ clientId }).toString();
+  return url.toString();
+}
+
+async function socketMessageText(data: unknown): Promise<string> {
+  if (typeof data === "string") return data;
+  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
+  if (data instanceof Blob) return data.text();
+  return "";
 }
 
 export async function waitForTask(
   promptId: string,
+  clientId: string,
   settings: Settings,
   signal: AbortSignal,
   onProgress: (value: number) => void
 ): Promise<unknown> {
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
-  let syntheticProgress = 3;
-  while (!signal.aborted) {
-    const history = await jsonRequest<Record<string, unknown>>(
-      `${baseUrl}/history/${encodeURIComponent(promptId)}`,
-      { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
-    );
-    if (promptId in history) {
-      onProgress(100);
-      return history[promptId];
-    }
-    syntheticProgress = Math.min(94, syntheticProgress + 2);
-    onProgress(syntheticProgress);
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(resolve, 2_000);
-      signal.addEventListener(
-        "abort",
-        () => {
-          clearTimeout(timeout);
-          reject(signal.reason);
-        },
-        { once: true }
-      );
+  let socket: WebSocket | undefined;
+  let hasRealProgress = false;
+  let executionError = "";
+  try {
+    socket = new WebSocket(socketUrl(baseUrl, clientId));
+    socket.addEventListener("message", async (event) => {
+      try {
+        const text = await socketMessageText(event.data);
+        if (!text) return;
+        const message = JSON.parse(text) as ComfySocketMessage;
+        if (message.data?.prompt_id && message.data.prompt_id !== promptId) return;
+        if (
+          message.type === "progress" &&
+          typeof message.data?.value === "number" &&
+          typeof message.data.max === "number" &&
+          message.data.max > 0
+        ) {
+          hasRealProgress = true;
+          onProgress(Math.min(99, Math.max(0, (message.data.value / message.data.max) * 100)));
+        }
+        if (message.type === "execution_error") {
+          executionError =
+            message.data?.exception_message || "ComfyUI 工作流执行失败";
+        }
+      } catch {
+        // Binary preview frames and unknown extension messages are ignored.
+      }
     });
+  } catch {
+    socket = undefined;
   }
-  throw signal.reason;
+  let syntheticProgress = 3;
+  try {
+    while (!signal.aborted) {
+      if (executionError) throw new Error(executionError);
+      const history = await jsonRequest<Record<string, unknown>>(
+        `${baseUrl}/history/${encodeURIComponent(promptId)}`,
+        { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
+      );
+      if (promptId in history) {
+        onProgress(100);
+        return history[promptId];
+      }
+      if (!hasRealProgress) {
+        syntheticProgress = Math.min(94, syntheticProgress + 2);
+        onProgress(syntheticProgress);
+      }
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(resolve, 2_000);
+        signal.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timeout);
+            reject(signal.reason);
+          },
+          { once: true }
+        );
+      });
+    }
+    throw signal.reason;
+  } finally {
+    socket?.close();
+  }
 }
 
 export async function interrupt(settings: Settings): Promise<void> {
