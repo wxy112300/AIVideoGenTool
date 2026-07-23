@@ -1,0 +1,40 @@
+<style>
+  #upscale-page {
+    min-height: 520px;
+    display: grid;
+    place-items: center;
+    color: var(--foreground);
+  }
+  #upscale-page .launcher {
+    display: grid;
+    gap: 12px;
+    text-align: center;
+  }
+</style>
+
+<div id="upscale-page">
+  <div class="launcher">
+    <h2>提升分辨率</h2>
+    <span class="text-muted">弹窗关闭后会回到原页面。</span>
+    <button class="btn btn-primary" id="open-upscale-demo" type="button">打开提升设置</button>
+    <a class="btn btn-ghost" href="./history-detail.html">返回视频详情</a>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const openButton = document.getElementById('open-upscale-demo');
+  const openDialog = () => {
+    globalThis.UpscaleDialog.open({
+      trigger: openButton,
+      title: '人物迎着微风回眸',
+      filename: 'SUL2-人物迎着微风回眸-20260724-143205.mp4',
+      sourceWidth: 832,
+      sourceHeight: 480,
+      duration: 5.2
+    });
+  };
+  openButton.addEventListener('click', openDialog);
+  openDialog();
+});
+</script>

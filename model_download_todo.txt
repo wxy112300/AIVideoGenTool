@@ -1,0 +1,53 @@
+第一批：优先下载
+这批完成后，就能测试“Wan 2.2 原版 + 通用无审查 LoRA”。
+1. Wan 2.2 14B high-noise 主模型
+下载：
+https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/blob/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+放到：
+C:\Users\Alice\Documents\ComfyUI\models\unet\wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors
+
+3. Wan 专用无审查文本编码器
+推荐下载 FP8 版：
+https://huggingface.co/NSFW-API/NSFW-Wan-UMT5-XXL/blob/main/nsfw_wan_umt5-xxl_fp8_scaled.safetensors
+nsfw_wan_umt5-xxl_fp8_scaled.safetensors
+放到：
+C:\Users\Alice\Documents\ComfyUI\models\text_encoders\nsfw_wan_umt5-xxl_fp8_scaled.safetensors
+
+第二批：Wan 2.2 Remix I2V v3
+这是我最建议测试的完整无审查合并模型。你的4090建议选择Q5_K_M，不要同时下载FP8和GGUF。
+High
+https://huggingface.co/BigDannyPt/Wan-2.2-Remix-GGUF/blob/main/I2V/v3.0/High/wan22RemixT2VI2V_i2vHighV30-Q5_K_M.gguf
+wan22RemixT2VI2V_i2vHighV30-Q5_K_M.gguf
+放到：
+C:\Users\Alice\Documents\ComfyUI\models\unet\wan22RemixT2VI2V_i2vHighV30-Q5_K_M.gguf
+Low
+https://huggingface.co/BigDannyPt/Wan-2.2-Remix-GGUF/blob/main/I2V/v3.0/Low/wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf
+wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf
+放到：
+C:\Users\Alice\Documents\ComfyUI\models\unet\wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf
+
+第三批：SmoothMix Wan 2.2 I2V
+同样建议Q5_K_M。它与Remix是独立模型，不要把Remix High和SmoothMix Low混在一起。
+High
+https://huggingface.co/Bedovyy/smoothMixWan22-I2V-GGUF/blob/main/HighNoise/smoothMixWan22I2VT2V_i2vHigh-Q5_K_M.gguf
+smoothMixWan22I2VT2V_i2vHigh-Q5_K_M.gguf
+放到：
+C:\Users\Alice\Documents\ComfyUI\models\unet\smoothMixWan22I2VT2V_i2vHigh-Q5_K_M.gguf
+Low
+https://huggingface.co/Bedovyy/smoothMixWan22-I2V-GGUF/blob/main/LowNoise/smoothMixWan22I2VT2V_i2vLow-Q5_K_M.gguf
+smoothMixWan22I2VT2V_i2vLow-Q5_K_M.gguf
+放到：
+C:\Users\Alice\Documents\ComfyUI\models\unet\smoothMixWan22I2VT2V_i2vLow-Q5_K_M.gguf
+第四批：DaSiWa SynthSeduction v9
+这是后续可选的专门模型。仓库需要登录Hugging Face并同意访问条款。为4090选择Q4版本更稳妥。
+打开DaSiWa下载目录
+https://huggingface.co/darksidewalker/DaSiWa-WAN2.2-I2V/tree/main/Distilled/GGUF/v09
+下载这两个：
+DasiwaWAN22I2V14BSynthseduction_q4High.gguf
+DasiwaWAN22I2V14BSynthseduction_q4Low.gguf
+都放到：
+C:\Users\Alice\Documents\ComfyUI\models\unet\
+最终路径：
+C:\Users\Alice\Documents\ComfyUI\models\unet\DasiwaWAN22I2V14BSynthseduction_q4High.gguf
+C:\Users\Alice\Documents\ComfyUI\models\unet\DasiwaWAN22I2V14BSynthseduction_q4Low.gguf

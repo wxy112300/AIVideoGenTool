@@ -1,0 +1,587 @@
+<style>
+  #history-detail * { box-sizing: border-box; }
+  #history-detail {
+    color: var(--foreground);
+    display: grid;
+    gap: 18px;
+  }
+  #history-detail .bar,
+  #history-detail .brand,
+  #history-detail .nav,
+  #history-detail .backline,
+  #history-detail .title-line,
+  #history-detail .hero-actions,
+  #history-detail .file-actions,
+  #history-detail .badges,
+  #history-detail .section-head,
+  #history-detail .upscale-actions,
+  #history-detail .material-row,
+  #history-detail .status-line {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+  #history-detail .bar,
+  #history-detail .backline,
+  #history-detail .section-head,
+  #history-detail .status-line {
+    justify-content: space-between;
+  }
+  #history-detail .brand { font-weight: 500; }
+  #history-detail .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.65fr) minmax(260px, .72fr);
+    gap: 16px;
+    align-items: start;
+  }
+  #history-detail .player-column {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+  }
+  #history-detail .player {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    background:
+      radial-gradient(circle at 64% 28%, color-mix(in srgb, var(--viz-series-1) 34%, transparent), transparent 34%),
+      linear-gradient(145deg, var(--muted), color-mix(in srgb, var(--viz-series-2) 22%, var(--muted)));
+  }
+  #history-detail .player video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  #history-detail .player-fallback {
+    display: grid;
+    place-items: center;
+    gap: 9px;
+    color: var(--muted-foreground);
+  }
+  #history-detail .version-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  #history-detail .version-list {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  #history-detail .summary,
+  #history-detail .record,
+  #history-detail .copy-block,
+  #history-detail .material-copy {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+  }
+  #history-detail .summary {
+    align-self: stretch;
+  }
+  #history-detail .title-line {
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  #history-detail .title-copy {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+  #history-detail .filename {
+    overflow-wrap: anywhere;
+  }
+  #history-detail .hero-actions {
+    margin-top: auto;
+  }
+  #history-detail .file-actions {
+    align-items: stretch;
+  }
+  #history-detail .file-actions .btn {
+    flex: 1;
+  }
+  #history-detail .hero-actions .btn-primary {
+    flex: 1;
+  }
+  #history-detail .upscale {
+    display: grid;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  #history-detail .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+  #history-detail .record.full {
+    grid-column: 1 / -1;
+  }
+  #history-detail dl {
+    display: grid;
+    grid-template-columns: minmax(112px, .68fr) minmax(0, 1.32fr);
+    gap: 9px 14px;
+    margin: 0;
+  }
+  #history-detail dt {
+    color: var(--muted-foreground);
+  }
+  #history-detail dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  #history-detail .prompt {
+    margin: 0;
+    white-space: pre-wrap;
+  }
+  #history-detail .material-thumb {
+    width: 130px;
+    aspect-ratio: 16 / 9;
+    display: grid;
+    place-items: center;
+    flex: 0 0 130px;
+    background: var(--muted);
+    color: var(--muted-foreground);
+    overflow: hidden;
+  }
+  #history-detail .material-copy code {
+    overflow-wrap: anywhere;
+  }
+  #history-detail .notice {
+    min-height: 20px;
+  }
+  @media (max-width: 700px) {
+    #history-detail .hero { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    #history-detail .nav {
+      width: 100%;
+      justify-content: space-between;
+    }
+    #history-detail .detail-grid { grid-template-columns: 1fr; }
+    #history-detail .record.full { grid-column: auto; }
+    #history-detail dl { grid-template-columns: 1fr; gap: 3px; }
+    #history-detail dd { margin-bottom: 7px; }
+    #history-detail .material-row { align-items: flex-start; }
+  }
+</style>
+
+<div id="history-detail">
+  <header class="bar">
+    <div class="brand"><i data-lucide="clapperboard" aria-hidden="true"></i><span>Local Video Studio</span></div>
+    <nav class="nav" aria-label="主导航">
+      <a class="btn btn-ghost" href="./create.html">创建</a>
+      <a class="btn btn-ghost" href="./queue.html">队列 <span class="viz-badge">5</span></a>
+      <a class="btn btn-ghost" href="./history.html" aria-current="page">历史</a>
+      <a class="btn btn-ghost" href="./settings.html">设置</a>
+    </nav>
+  </header>
+
+  <div class="backline">
+    <a class="btn btn-ghost" href="./history.html"><i data-lucide="arrow-left" aria-hidden="true"></i>返回历史</a>
+    <span class="text-small text-muted">任务记录为生成时的只读快照</span>
+  </div>
+
+  <section class="hero">
+    <div class="player-column">
+      <div class="card player">
+        <div class="player-fallback"><i data-lucide="play-circle" aria-hidden="true"></i><span>视频播放器</span></div>
+        <video id="detail-video" controls muted playsinline preload="metadata"></video>
+      </div>
+      <div class="card version-toolbar">
+        <div class="version-list" id="version-list" aria-label="视频版本"></div>
+        <span class="text-small text-muted" id="version-note">当前为原始生成版本</span>
+      </div>
+    </div>
+
+    <aside class="card summary">
+      <div class="title-copy">
+        <div class="title-line">
+          <h2 id="detail-title">人物迎着微风回眸</h2>
+          <span class="viz-badge">已完成</span>
+        </div>
+        <code class="filename text-small" id="detail-filename">SUL2-人物迎着微风回眸-20260724-143205.mp4</code>
+      </div>
+      <div class="badges">
+        <span class="viz-badge" id="summary-model">Sulphur 2</span>
+        <span class="text-small" id="summary-output">480p · 5秒 · 24fps</span>
+      </div>
+      <div class="status-line">
+        <span class="text-muted">完成于</span>
+        <span id="summary-completed">今天 14:36</span>
+      </div>
+      <div class="status-line">
+        <span class="text-muted">总耗时</span>
+        <span id="summary-time">4分18秒</span>
+      </div>
+
+      <div class="hero-actions">
+        <a class="btn" href="./create.html"><i data-lucide="pencil" aria-hidden="true"></i>在创建页调整</a>
+        <button class="btn btn-primary" id="enqueue-copy" type="button"><i data-lucide="list-plus" aria-hidden="true"></i>加入队列</button>
+      </div>
+
+      <div class="file-actions">
+        <button class="btn btn-ghost" id="copy-file" type="button"><i data-lucide="copy" aria-hidden="true"></i>复制文件</button>
+        <button class="btn btn-ghost" id="reveal-file" type="button"><i data-lucide="folder-search" aria-hidden="true"></i>打开所在目录</button>
+      </div>
+
+      <div class="upscale">
+        <strong>提升清晰度</strong>
+        <span class="text-small text-muted">选择目标尺寸、提升模型并查看4090耗时预估。</span>
+        <button class="btn" id="open-upscale" type="button"><i data-lucide="maximize-2" aria-hidden="true"></i>提升分辨率…</button>
+      </div>
+      <div class="notice text-small text-muted" id="action-notice" aria-live="polite"></div>
+    </aside>
+  </section>
+
+  <div class="detail-grid">
+    <section class="card record full">
+      <div class="section-head">
+        <h2>提示词</h2>
+        <span class="viz-badge">扩写版本 2 / 3</span>
+      </div>
+      <div class="copy-block">
+        <span class="text-small text-muted">实际送入模型的提示词</span>
+        <p class="prompt" id="detail-prompt">人物身份和面部特征保持一致。人物自然地看向镜头，头发被微风轻柔吹动，衣物产生细微的二次运动。摄影机稳定地缓慢推近，背景景深自然变化，真实光照，动作连续流畅，避免突然变形和镜头抖动。</p>
+      </div>
+      <div class="copy-block">
+        <span class="text-small text-muted">负面提示词</span>
+        <p class="prompt" id="negative-prompt">blurry, low quality, distorted face, extra limbs, sudden motion, camera shake, text, watermark</p>
+      </div>
+    </section>
+
+    <section class="card record">
+      <div class="section-head"><h2>原始生成参数</h2><i data-lucide="box" aria-hidden="true"></i></div>
+      <dl>
+        <dt>模型</dt><dd id="parameter-model">Sulphur 2 FP8</dd>
+        <dt>Checkpoint</dt><dd><code id="parameter-checkpoint">sulphur2_i2v_fp8_e4m3fn.safetensors</code></dd>
+        <dt>采样器</dt><dd id="parameter-sampler">euler</dd>
+        <dt>调度器</dt><dd id="parameter-scheduler">simple</dd>
+        <dt>采样步数</dt><dd id="parameter-steps">20</dd>
+        <dt>CFG</dt><dd id="parameter-cfg">1.0</dd>
+        <dt>Seed</dt><dd><code id="parameter-seed">2847319065</code></dd>
+        <dt>Denoise</dt><dd>1.00</dd>
+        <dt>精度 / 卸载</dt><dd>FP8 · 保守显存模式</dd>
+      </dl>
+    </section>
+
+    <section class="card record">
+      <div class="section-head"><h2>视频输出</h2><i data-lucide="film" aria-hidden="true"></i></div>
+      <dl>
+        <dt>分辨率</dt><dd id="output-resolution">832 × 480</dd>
+        <dt>画面比例</dt><dd id="output-ratio">原图 · 16:9</dd>
+        <dt>时长</dt><dd id="output-duration">5.2 秒</dd>
+        <dt>帧率</dt><dd>24 fps</dd>
+        <dt>帧数</dt><dd id="output-frames">125</dd>
+        <dt>编码</dt><dd>H.264 · CRF 18</dd>
+        <dt>文件大小</dt><dd>6.8 MB</dd>
+        <dt>输出目录</dt><dd><code>outputs\history\2026-07-24</code></dd>
+      </dl>
+    </section>
+
+    <section class="card record">
+      <div class="section-head"><h2>输入素材</h2><i data-lucide="image" aria-hidden="true"></i></div>
+      <div class="material-row">
+        <div class="material-thumb"><i data-lucide="image" aria-hidden="true"></i></div>
+        <div class="material-copy">
+          <strong>首帧图片</strong>
+          <code class="text-small" id="source-file">portrait-window-03.png</code>
+          <span class="text-small text-muted" id="source-size">1536 × 2048 · 已按原图比例裁切</span>
+        </div>
+      </div>
+      <dl>
+        <dt>尾帧</dt><dd>未使用</dd>
+        <dt>提示词模型</dt><dd>LM Studio · Qwen3 8B Q4_K_M</dd>
+        <dt>扩写模板</dt><dd>i2v-cinematic-zh · v3</dd>
+      </dl>
+    </section>
+
+    <section class="card record">
+      <div class="section-head"><h2>运行记录</h2><i data-lucide="gauge" aria-hidden="true"></i></div>
+      <dl>
+        <dt>任务编号</dt><dd><code id="task-id">VID-20260724-1042</code></dd>
+        <dt>模型加载</dt><dd>1分03秒</dd>
+        <dt>采样</dt><dd>2分52秒</dd>
+        <dt>解码与编码</dt><dd>23秒</dd>
+        <dt>峰值显存</dt><dd>21.6 GB / 24 GB</dd>
+        <dt>工作流版本</dt><dd><code>i2v-sulphur2-v4.2</code></dd>
+        <dt>ComfyUI 队列号</dt><dd><code>prompt-8f31c2</code></dd>
+        <dt>完成状态</dt><dd>正常完成</dd>
+      </dl>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById('history-detail');
+  const records = {
+    'sul-wind': {
+      title: '人物迎着微风回眸',
+      filename: 'SUL2-人物迎着微风回眸-20260724-143205.mp4',
+      model: 'Sulphur 2',
+      modelDetail: 'Sulphur 2 FP8',
+      checkpoint: 'sulphur2_i2v_fp8_e4m3fn.safetensors',
+      output: '480p · 5秒 · 24fps',
+      resolution: '832 × 480',
+      ratio: '原图 · 16:9',
+      duration: '5.2 秒',
+      frames: '125',
+      completed: '今天 14:36',
+      total: '4分18秒',
+      seed: '2847319065',
+      task: 'VID-20260724-1042',
+      source: 'portrait-window-03.png',
+      sourceSize: '1536 × 2048 · 已按原图比例裁切',
+      prompt: '人物身份和面部特征保持一致。人物自然地看向镜头，头发被微风轻柔吹动，衣物产生细微的二次运动。摄影机稳定地缓慢推近，背景景深自然变化，真实光照，动作连续流畅，避免突然变形和镜头抖动。'
+    },
+    'wan-city': {
+      title: '城市夜景中的慢速转身',
+      filename: 'WAN22-5B-城市夜景慢速转身-20260724-141102.mp4',
+      model: 'Wan 2.2 5B',
+      modelDetail: 'Wan 2.2 I2V 5B FP8',
+      checkpoint: 'wan2.2_i2v_5B_fp8_scaled.safetensors',
+      output: '540p · 6秒 · 24fps',
+      resolution: '960 × 544',
+      ratio: '16:9',
+      duration: '6.4 秒',
+      frames: '153',
+      completed: '今天 14:15',
+      total: '3分42秒',
+      seed: '1760294438',
+      task: 'VID-20260724-1041',
+      source: 'neon-portrait.png',
+      sourceSize: '1920 × 1080 · 16:9',
+      prompt: '人物在霓虹灯下缓慢转身，摄影机轻微环绕，背景灯光自然闪烁。保持身份、服装和面部一致，运动具有真实惯性，避免画面抖动与结构变形。'
+    },
+    'sul-window': {
+      title: '窗边回眸长镜头',
+      filename: 'SUL2-窗边回眸长镜头-20260724-132718.mp4',
+      model: 'Sulphur 2',
+      modelDetail: 'Sulphur 2 FP8',
+      checkpoint: 'sulphur2_i2v_fp8_e4m3fn.safetensors',
+      output: '480p · 12秒 · 24fps',
+      resolution: '832 × 480',
+      ratio: '原图 · 16:9',
+      duration: '11.8 秒',
+      frames: '283',
+      completed: '今天 13:37',
+      total: '9分06秒',
+      seed: '398721455',
+      task: 'VID-20260724-1040',
+      source: 'window-lookback.png',
+      sourceSize: '1920 × 1080 · 16:9',
+      prompt: '人物从窗外缓慢转回视线，窗帘随风自然飘动。摄影机从中景平滑推进到近景，保持面部、发型和服装一致，运动连续，光影变化自然。'
+    },
+    'hun-beach': {
+      title: '海边全身跟随镜头',
+      filename: 'HUN15-海边全身跟随镜头-20260724-125502.mp4',
+      model: 'Hunyuan 1.5',
+      modelDetail: 'HunyuanVideo 1.5 I2V 720p',
+      checkpoint: 'hunyuanvideo_1.5_i2v_720p_fp8.safetensors',
+      output: '720p · 8秒 · 24fps',
+      resolution: '720 × 1280',
+      ratio: '9:16',
+      duration: '8.1 秒',
+      frames: '194',
+      completed: '今天 13:10',
+      total: '15分24秒',
+      seed: '902174663',
+      task: 'VID-20260724-1039',
+      source: 'beach-fullbody.jpg',
+      sourceSize: '1080 × 1920 · 9:16',
+      prompt: '人物沿海岸缓慢行走，衣物和头发随海风摆动，摄影机保持全身构图并平行跟随。步态自然，脚部接触稳定，背景海浪连续运动。'
+    },
+    'wan-cafe': {
+      title: '咖啡馆中的细微表情',
+      filename: 'WAN22-5B-咖啡馆细微表情-20260724-121912.mp4',
+      model: 'Wan 2.2 5B',
+      modelDetail: 'Wan 2.2 I2V 5B FP8',
+      checkpoint: 'wan2.2_i2v_5B_fp8_scaled.safetensors',
+      output: '540p · 7秒 · 24fps',
+      resolution: '544 × 544',
+      ratio: '1:1',
+      duration: '7.0 秒',
+      frames: '168',
+      completed: '今天 12:24',
+      total: '4分39秒',
+      seed: '661420837',
+      task: 'VID-20260724-1038',
+      source: 'cafe-smile-square.png',
+      sourceSize: '1024 × 1024 · 1:1',
+      prompt: '人物轻轻微笑并自然眨眼，手指产生克制的小幅动作。摄影机保持固定，背景人群呈柔和连续动态，面部结构与光线保持稳定。'
+    },
+    'sul-valley': {
+      title: '山谷中的电影感横移',
+      filename: 'SUL2-山谷电影感横移-20260724-114008.mp4',
+      model: 'Sulphur 2',
+      modelDetail: 'Sulphur 2 FP8',
+      checkpoint: 'sulphur2_i2v_fp8_e4m3fn.safetensors',
+      output: '480p · 10秒 · 24fps',
+      resolution: '1120 × 480',
+      ratio: '21:9',
+      duration: '9.6 秒',
+      frames: '230',
+      completed: '今天 11:52',
+      total: '7分51秒',
+      seed: '1483267092',
+      task: 'VID-20260724-1037',
+      source: 'valley-wide.png',
+      sourceSize: '2560 × 1080 · 21:9',
+      prompt: '摄影机沿山谷平稳横向移动，近景植被产生明显视差，远处云层缓慢变化。保持自然地貌结构，电影感光照，镜头速度均匀且没有跳帧。'
+    }
+  };
+
+  const id = new URLSearchParams(window.location.search).get('id') || 'sul-wind';
+  const record = records[id] || records['sul-wind'];
+  function originalVersion() {
+    const height = Number((record.resolution.match(/\d+$/) || ['480'])[0]);
+    return {
+      id: 'original',
+      label: `原始 ${height}p`,
+      filename: record.filename,
+      resolution: record.resolution,
+      output: record.output,
+      model: record.model,
+      completed: record.completed,
+      total: record.total,
+      note: 'AI生成原始版本'
+    };
+  }
+  const versionGroups = {
+    'sul-wind': [
+      originalVersion(),
+      {
+        id: 'hd720',
+        label: 'HD 720p',
+        filename: 'SUL2-人物迎着微风回眸-20260724-143205-720p.mp4',
+        resolution: '1248 × 720',
+        output: '720p · 5秒 · 24fps',
+        model: 'SeedVR2 3B',
+        completed: '今天 14:48',
+        total: '5分12秒',
+        note: '由原始480p提升 · SeedVR2 3B'
+      },
+      {
+        id: '4k',
+        label: '4K',
+        filename: 'SUL2-人物迎着微风回眸-20260724-143205-4K.mp4',
+        resolution: '3744 × 2160',
+        output: '4K · 5秒 · 24fps',
+        model: 'SeedVR2 3B',
+        completed: '今天 15:02',
+        total: '13分40秒',
+        note: '由720p版本继续提升 · SeedVR2 3B'
+      }
+    ],
+    'wan-city': [
+      originalVersion(),
+      {
+        id: 'hd1080',
+        label: 'HD 1080p',
+        filename: 'WAN22-5B-城市夜景慢速转身-20260724-141102-1080p.mp4',
+        resolution: '1904 × 1080',
+        output: '1080p · 6秒 · 24fps',
+        model: 'FlashVSR',
+        completed: '今天 14:29',
+        total: '8分06秒',
+        note: '由原始540p提升 · FlashVSR'
+      }
+    ]
+  };
+  const versions = versionGroups[id] || [originalVersion()];
+  let currentVersion = versions[versions.length - 1];
+  const values = {
+    'detail-title': record.title,
+    'parameter-model': record.modelDetail,
+    'parameter-checkpoint': record.checkpoint,
+    'parameter-seed': record.seed,
+    'output-ratio': record.ratio,
+    'output-duration': record.duration,
+    'output-frames': record.frames,
+    'source-file': record.source,
+    'source-size': record.sourceSize,
+    'task-id': record.task,
+    'detail-prompt': record.prompt
+  };
+  Object.entries(values).forEach(([elementId, value]) => {
+    root.querySelector(`#${elementId}`).textContent = value;
+  });
+
+  const video = root.querySelector('#detail-video');
+  const notice = root.querySelector('#action-notice');
+  const versionList = root.querySelector('#version-list');
+
+  function selectVersion(version) {
+    currentVersion = version;
+    root.querySelector('#detail-filename').textContent = version.filename;
+    root.querySelector('#summary-model').textContent = version.model;
+    root.querySelector('#summary-output').textContent = version.output;
+    root.querySelector('#summary-completed').textContent = version.completed;
+    root.querySelector('#summary-time').textContent = version.total;
+    root.querySelector('#output-resolution').textContent = version.resolution;
+    root.querySelector('#version-note').textContent = version.note;
+    video.src = `./media/${version.filename}`;
+    versionList.querySelectorAll('[data-version]').forEach(button => {
+      const selected = button.dataset.version === version.id;
+      button.setAttribute('aria-pressed', String(selected));
+      button.classList.toggle('btn-ghost', !selected);
+    });
+  }
+
+  versions.forEach(version => {
+    const button = document.createElement('button');
+    button.className = 'btn btn-ghost';
+    button.type = 'button';
+    button.dataset.version = version.id;
+    button.textContent = version.label;
+    button.addEventListener('click', () => selectVersion(version));
+    versionList.appendChild(button);
+  });
+  selectVersion(currentVersion);
+
+  root.querySelector('#enqueue-copy').addEventListener('click', event => {
+    event.currentTarget.disabled = true;
+    notice.textContent = `已加入队列 · ${record.title}`;
+    window.setTimeout(() => {
+      event.currentTarget.disabled = false;
+      notice.textContent = '';
+    }, 1800);
+  });
+
+  root.querySelector('#copy-file').addEventListener('click', () => {
+    notice.textContent = `已复制文件 · ${currentVersion.filename}`;
+  });
+
+  root.querySelector('#reveal-file').addEventListener('click', () => {
+    notice.textContent = `已打开所在目录并选中 · ${currentVersion.filename}`;
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const upscaleButton = root.querySelector('#open-upscale');
+    upscaleButton.addEventListener('click', () => {
+      const [sourceWidth, sourceHeight] = currentVersion.resolution.split('×').map(value => Number(value.trim()));
+      globalThis.UpscaleDialog.open({
+        trigger: upscaleButton,
+        title: record.title,
+        filename: currentVersion.filename,
+        sourceWidth,
+        sourceHeight,
+        duration: Number.parseFloat(record.duration),
+        onSubmit(task) {
+          notice.textContent = `已加入提升任务 · ${task.targetHeight === 2160 ? '4K' : `${task.targetHeight}p`} · ${task.modelName}`;
+        }
+      });
+    });
+  });
+})();
+</script>

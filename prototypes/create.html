@@ -1,0 +1,638 @@
+<style>
+  #create-history * { box-sizing: border-box; }
+  #create-history {
+    color: var(--foreground);
+    display: grid;
+    gap: 20px;
+  }
+  #create-history .bar,
+  #create-history .brand,
+  #create-history .nav,
+  #create-history .section-head,
+  #create-history .prompt-tools,
+  #create-history .history-tools,
+  #create-history .duration-head,
+  #create-history .duration-row,
+  #create-history .submit-row,
+  #create-history .estimate {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  #create-history .bar,
+  #create-history .section-head,
+  #create-history .duration-head,
+  #create-history .submit-row {
+    justify-content: space-between;
+  }
+  #create-history .brand { font-weight: 500; }
+  #create-history .stage,
+  #create-history .composer,
+  #create-history .settings,
+  #create-history .advanced {
+    display: grid;
+    gap: 14px;
+  }
+  #create-history .media-stage {
+    min-height: 310px;
+    display: grid;
+    place-items: center;
+  }
+  #create-history .media-stage.paired {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  #create-history .media-card {
+    width: 100%;
+    max-height: 450px;
+    aspect-ratio: var(--ratio, 16 / 9);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+  #create-history .media-card.portrait { width: min(68%, 390px); }
+  #create-history .paired .media-card { width: 100%; }
+  #create-history .media-empty,
+  #create-history .media-loaded {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 10px;
+    text-align: center;
+  }
+  #create-history .media-loaded { position: relative; }
+  #create-history .media-loaded img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  #create-history .replace {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+  }
+  #create-history textarea {
+    min-height: 120px;
+    resize: vertical;
+  }
+  #create-history .settings {
+    grid-template-columns: minmax(180px, 1.25fr) minmax(125px, .8fr) minmax(175px, 1fr);
+    align-items: end;
+  }
+  #create-history .resolution {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  #create-history .resolution .btn { width: 100%; }
+  #create-history .duration {
+    display: grid;
+    gap: 8px;
+  }
+  #create-history .duration-row { flex-wrap: nowrap; }
+  #create-history .duration-row .form-range {
+    min-width: 90px;
+    flex: 1;
+  }
+  #create-history .duration-number {
+    width: 78px;
+    flex: 0 0 78px;
+  }
+  #create-history .advanced {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: end;
+  }
+  #create-history .submit-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #create-history .hidden { display: none; }
+  @media (max-width: 680px) {
+    #create-history .settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #create-history .duration { grid-column: 1 / -1; }
+  }
+  @media (max-width: 520px) {
+    #create-history .nav { width: 100%; justify-content: space-between; }
+    #create-history .media-stage.paired,
+    #create-history .settings,
+    #create-history .advanced { grid-template-columns: 1fr; }
+    #create-history .duration { grid-column: auto; }
+    #create-history .submit-actions { width: 100%; }
+    #create-history .submit-actions .btn-primary { flex: 1; }
+  }
+</style>
+
+<div id="create-history">
+  <header class="bar">
+    <div class="brand"><i data-lucide="clapperboard" aria-hidden="true"></i><span>Local Video Studio</span></div>
+    <nav class="nav" aria-label="主导航">
+      <a class="btn btn-ghost" href="./create.html" aria-current="page">创建</a>
+      <a class="btn btn-ghost" href="./queue.html">队列 <span class="viz-badge">12</span></a>
+      <a class="btn btn-ghost" href="./history.html">历史</a>
+      <a class="btn btn-ghost" href="./settings.html">设置</a>
+    </nav>
+  </header>
+
+  <section class="stage" aria-labelledby="reference-heading">
+    <div class="section-head">
+      <div class="prompt-tools">
+        <h2 id="reference-heading">参考画面</h2>
+        <span class="viz-badge" id="ratio-badge">等待图片</span>
+      </div>
+      <div class="prompt-tools">
+        <button class="btn" id="single" type="button" aria-pressed="true">单张 / 首帧</button>
+        <button class="btn btn-ghost" id="pair" type="button" aria-pressed="false">添加尾帧</button>
+      </div>
+    </div>
+
+    <div class="media-stage" id="media-stage">
+      <div class="card media-card" id="start-card">
+        <div class="media-empty" id="start-empty">
+          <i data-lucide="image-plus" aria-hidden="true"></i>
+          <strong>拖入参考图片</strong>
+          <span class="text-muted">画布会自动适配图片比例</span>
+          <label class="btn" for="start-file">选择图片</label>
+          <input class="sr-only" id="start-file" type="file" accept="image/*">
+        </div>
+        <div class="media-loaded hidden" id="start-loaded">
+          <img id="start-image" alt="参考图片">
+          <div class="replace">
+            <label class="btn" for="start-file">更换</label>
+            <button class="btn btn-ghost" id="remove-start" type="button">移除</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card media-card hidden" id="end-card">
+        <div class="media-empty" id="end-empty">
+          <i data-lucide="image-plus" aria-hidden="true"></i>
+          <strong>添加尾帧</strong>
+          <span class="text-muted">视频将自然过渡到目标画面</span>
+          <label class="btn" for="end-file">选择尾帧</label>
+          <input class="sr-only" id="end-file" type="file" accept="image/*">
+        </div>
+        <div class="media-loaded hidden" id="end-loaded">
+          <img id="end-image" alt="尾帧图片">
+          <div class="replace">
+            <label class="btn" for="end-file">更换</label>
+            <button class="btn btn-ghost" id="remove-end" type="button">移除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card composer" aria-labelledby="prompt-heading">
+    <div class="section-head">
+      <div>
+        <h2 id="prompt-heading">描述这个镜头如何运动</h2>
+        <span class="text-muted">每次扩写都会自动保留为一个新版本</span>
+      </div>
+      <div class="prompt-tools">
+        <div class="history-tools" aria-label="提示词版本历史">
+          <button class="btn btn-ghost" id="previous-version" type="button" aria-label="上一个提示词版本" data-tooltip="上一个版本" disabled>
+            <i data-lucide="chevron-left" aria-hidden="true"></i>
+          </button>
+          <span class="viz-badge" id="version-label">1 / 1 · 原始</span>
+          <button class="btn btn-ghost" id="next-version" type="button" aria-label="下一个提示词版本" data-tooltip="下一个版本" disabled>
+            <i data-lucide="chevron-right" aria-hidden="true"></i>
+          </button>
+        </div>
+        <button class="btn" id="enhance" type="button">
+          <i data-lucide="sparkles" aria-hidden="true"></i>
+          本地扩写
+        </button>
+      </div>
+    </div>
+
+    <label class="sr-only" for="prompt">视频提示词</label>
+    <textarea class="form-control" id="prompt">人物自然地看向镜头，头发被微风吹动，镜头缓慢推近，动作真实流畅。</textarea>
+
+    <div class="settings">
+      <label class="form-label" for="model">模型
+        <select class="form-select" id="model">
+          <option value="sulphur">Sulphur 2 FP8 · 无审查</option>
+          <option value="wan5">Wan 2.2 5B · 快速草稿</option>
+          <option value="hunyuan">HunyuanVideo 1.5 · 质量</option>
+          <option value="wan14" disabled>Wan 2.2 14B + NSFW LoRA · 等待文件</option>
+          <option value="remix" disabled>Wan 2.2 Remix v3 · 等待文件</option>
+        </select>
+      </label>
+
+      <label class="form-label" for="ratio">画面比例
+        <select class="form-select" id="ratio">
+          <option value="source" id="source-option">原图</option>
+          <option value="16:9">16:9 横屏</option>
+          <option value="9:16">9:16 竖屏</option>
+          <option value="1:1">1:1 方形</option>
+          <option value="4:3">4:3</option>
+        </select>
+      </label>
+
+      <div>
+        <label class="form-label">草稿清晰度</label>
+        <div class="resolution">
+          <button class="btn" type="button" data-resolution="480" aria-pressed="true">480p</button>
+          <button class="btn btn-ghost" type="button" data-resolution="540" aria-pressed="false">540p</button>
+          <button class="btn btn-ghost" type="button" data-resolution="720" aria-pressed="false">720p</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="duration">
+      <div class="duration-head">
+        <label class="form-label" for="duration-range">视频时长</label>
+        <span><strong id="duration-value">5</strong> 秒</span>
+      </div>
+      <div class="duration-row">
+        <span class="text-small text-muted">1s</span>
+        <input class="form-range" id="duration-range" type="range" min="1" max="30" value="5">
+        <span class="text-small text-muted">30s</span>
+        <label class="sr-only" for="duration-number">手动输入秒数</label>
+        <input class="form-control duration-number" id="duration-number" type="number" min="1" max="60" value="5">
+      </div>
+      <span class="text-small text-muted hidden" id="long-note">超过10秒时会自动拆分为连续片段，仍作为一个任务管理。</span>
+    </div>
+
+    <button class="btn btn-ghost" id="advanced-toggle" type="button" aria-expanded="false">
+      <i data-lucide="sliders-horizontal" aria-hidden="true"></i>更多控制
+    </button>
+    <div class="advanced hidden" id="advanced">
+      <label class="form-label" for="motion">动作幅度
+        <select class="form-select" id="motion"><option>自然</option><option>轻微</option><option>强烈</option></select>
+      </label>
+      <label class="form-label" for="seed">随机种子
+        <input class="form-control" id="seed" type="number" placeholder="随机">
+      </label>
+      <div class="form-check form-switch">
+        <input class="form-check-input" id="keep-seed" type="checkbox">
+        <label class="form-check-label" for="keep-seed">复制时保留种子</label>
+      </div>
+    </div>
+
+    <div class="submit-row">
+      <div class="estimate">
+        <i data-lucide="clock-3" aria-hidden="true"></i>
+        <div>
+          <strong id="estimate">预计 3–5 分钟</strong>
+          <div class="text-small text-muted" id="estimate-detail">Sulphur 2 · 原图 · 480p · 5秒</div>
+        </div>
+      </div>
+      <div class="submit-actions">
+        <span class="text-small text-muted" id="submit-status">自动保存</span>
+        <button class="btn btn-ghost" id="clear-draft" type="button">
+          <i data-lucide="trash-2" aria-hidden="true"></i>清空
+        </button>
+        <button class="btn btn-primary" id="enqueue" type="button">
+          <i data-lucide="list-plus" aria-hidden="true"></i>加入队列
+        </button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById('create-history');
+  const stage = root.querySelector('#media-stage');
+  const startCard = root.querySelector('#start-card');
+  const endCard = root.querySelector('#end-card');
+  const ratioBadge = root.querySelector('#ratio-badge');
+  const ratioSelect = root.querySelector('#ratio');
+  const sourceOption = root.querySelector('#source-option');
+  let sourceRatio = 16 / 9;
+  let sourceLabel = '原图';
+  let paired = false;
+  let resolution = 480;
+
+  function setRatio(card, ratio) {
+    card.style.setProperty('--ratio', String(ratio));
+    card.classList.toggle('portrait', !paired && ratio < .9);
+  }
+
+  function friendlyRatio(width, height) {
+    const known = [[16,9],[9,16],[4,3],[3,4],[1,1],[3,2],[2,3],[21,9]];
+    const actual = width / height;
+    let best = known[0];
+    let delta = Infinity;
+    known.forEach(value => {
+      const current = Math.abs(actual - value[0] / value[1]);
+      if (current < delta) { best = value; delta = current; }
+    });
+    return delta < .04 ? `${best[0]}:${best[1]}` : `${width}×${height}`;
+  }
+
+  function setMode(value) {
+    paired = value;
+    root.querySelector('#single').setAttribute('aria-pressed', String(!value));
+    root.querySelector('#pair').setAttribute('aria-pressed', String(value));
+    root.querySelector('#single').classList.toggle('btn-ghost', value);
+    root.querySelector('#pair').classList.toggle('btn-ghost', !value);
+    endCard.classList.toggle('hidden', !value);
+    stage.classList.toggle('paired', value);
+    startCard.classList.remove('portrait');
+    if (!value) setRatio(startCard, sourceRatio);
+    updateEstimate();
+  }
+  root.querySelector('#single').addEventListener('click', () => setMode(false));
+  root.querySelector('#pair').addEventListener('click', () => setMode(true));
+
+  function bindImage(prefix, card, primary) {
+    const input = root.querySelector(`#${prefix}-file`);
+    const empty = root.querySelector(`#${prefix}-empty`);
+    const loaded = root.querySelector(`#${prefix}-loaded`);
+    const image = root.querySelector(`#${prefix}-image`);
+    function load(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      const url = URL.createObjectURL(file);
+      image.onload = () => {
+        const ratio = image.naturalWidth / image.naturalHeight;
+        if (primary) {
+          sourceRatio = ratio;
+          sourceLabel = friendlyRatio(image.naturalWidth, image.naturalHeight);
+          ratioBadge.textContent = `${image.naturalWidth} × ${image.naturalHeight} · ${sourceLabel}`;
+          sourceOption.textContent = `原图 · ${sourceLabel}`;
+        }
+        setRatio(card, ratio);
+        URL.revokeObjectURL(url);
+        updateEstimate();
+      };
+      image.src = url;
+      empty.classList.add('hidden');
+      loaded.classList.remove('hidden');
+    }
+    input.addEventListener('change', () => load(input.files && input.files[0]));
+    card.addEventListener('dragover', event => event.preventDefault());
+    card.addEventListener('drop', event => {
+      event.preventDefault();
+      load(event.dataTransfer.files && event.dataTransfer.files[0]);
+    });
+    root.querySelector(`#remove-${prefix}`).addEventListener('click', () => {
+      input.value = '';
+      image.removeAttribute('src');
+      loaded.classList.add('hidden');
+      empty.classList.remove('hidden');
+      if (primary) {
+        sourceRatio = 16 / 9;
+        sourceLabel = '原图';
+        ratioBadge.textContent = '等待图片';
+        sourceOption.textContent = '原图';
+        setRatio(startCard, sourceRatio);
+      }
+      updateEstimate();
+    });
+  }
+  bindImage('start', startCard, true);
+  bindImage('end', endCard, false);
+
+  const prompt = root.querySelector('#prompt');
+  const previous = root.querySelector('#previous-version');
+  const next = root.querySelector('#next-version');
+  const versionLabel = root.querySelector('#version-label');
+  const initialText = prompt.value;
+  const versions = [{ text: initialText, label: '原始', source: initialText }];
+  let versionIndex = 0;
+  let expansionCount = 0;
+  let navigating = false;
+  let editingVersion = false;
+
+  function showVersion(index) {
+    versionIndex = Math.max(0, Math.min(versions.length - 1, index));
+    navigating = true;
+    prompt.value = versions[versionIndex].text;
+    navigating = false;
+    editingVersion = versions[versionIndex].label === '手动编辑';
+    versionLabel.textContent = `${versionIndex + 1} / ${versions.length} · ${versions[versionIndex].label}`;
+    previous.disabled = versionIndex === 0;
+    next.disabled = versionIndex === versions.length - 1;
+  }
+
+  previous.addEventListener('click', () => showVersion(versionIndex - 1));
+  next.addEventListener('click', () => showVersion(versionIndex + 1));
+
+  prompt.addEventListener('input', () => {
+    if (navigating) return;
+    if (!editingVersion) {
+      versions.push({
+        text: prompt.value,
+        label: '手动编辑',
+        source: prompt.value
+      });
+      versionIndex = versions.length - 1;
+      editingVersion = true;
+    } else {
+      versions[versionIndex].text = prompt.value;
+      versions[versionIndex].source = prompt.value;
+    }
+    showVersion(versionIndex);
+    prompt.focus();
+  });
+
+  const variations = [
+    '人物身份和面部特征保持一致。微风轻柔带动头发与衣物，镜头稳定地缓慢推近，背景景深产生自然变化。真实光照，连续运动，避免突然变形和镜头抖动。',
+    '保持主体构图和原始外观。人物先轻微抬眼，再自然看向镜头；头发随柔和气流摆动。摄影机以极慢速度前移并略微向左环绕，动作细腻，具有真实惯性。',
+    '画面从安静状态自然启动。人物呼吸和表情变化克制，衣物与发梢产生细微二次运动。镜头平滑推进，焦点逐渐从背景转移到双眼，电影感光线，运动连贯。'
+  ];
+  root.querySelector('#enhance').addEventListener('click', event => {
+    const button = event.currentTarget;
+    const current = versions[versionIndex];
+    const source = current.label.startsWith('扩写') ? current.source : prompt.value.trim();
+    button.disabled = true;
+    versionLabel.textContent = '本地扩写中…';
+    window.setTimeout(() => {
+      expansionCount += 1;
+      const suffix = variations[(expansionCount - 1) % variations.length];
+      versions.push({
+        text: `${source} ${suffix}`,
+        label: `扩写 ${expansionCount}`,
+        source
+      });
+      editingVersion = false;
+      showVersion(versions.length - 1);
+      button.disabled = false;
+    }, 600);
+  });
+
+  const durationRange = root.querySelector('#duration-range');
+  const durationNumber = root.querySelector('#duration-number');
+  function setDuration(value) {
+    const seconds = Math.max(1, Math.min(60, Number(value) || 1));
+    durationNumber.value = seconds;
+    durationRange.value = Math.min(30, seconds);
+    root.querySelector('#duration-value').textContent = seconds;
+    root.querySelector('#long-note').classList.toggle('hidden', seconds <= 10);
+    updateEstimate();
+  }
+  durationRange.addEventListener('input', () => setDuration(durationRange.value));
+  durationNumber.addEventListener('input', () => setDuration(durationNumber.value));
+
+  root.querySelectorAll('[data-resolution]').forEach(button => {
+    button.addEventListener('click', () => {
+      resolution = Number(button.dataset.resolution);
+      root.querySelectorAll('[data-resolution]').forEach(item => {
+        const selected = item === button;
+        item.setAttribute('aria-pressed', String(selected));
+        item.classList.toggle('btn-ghost', !selected);
+      });
+      updateEstimate();
+    });
+  });
+
+  const model = root.querySelector('#model');
+  const rates = { sulphur:42, wan5:24, hunyuan:54, wan14:68, remix:64 };
+  const names = { sulphur:'Sulphur 2', wan5:'Wan 2.2 5B', hunyuan:'HunyuanVideo 1.5', wan14:'Wan 2.2 14B', remix:'Wan 2.2 Remix v3' };
+  function formatTime(seconds) {
+    if (seconds < 90) return `${Math.max(10, Math.round(seconds / 10) * 10)}秒`;
+    if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))}分钟`;
+    return `${(seconds / 3600).toFixed(1)}小时`;
+  }
+  function updateEstimate() {
+    const duration = Number(durationNumber.value) || 5;
+    const factor = resolution === 480 ? 1 : resolution === 540 ? 1.35 : 2.4;
+    const center = 35 + duration * rates[model.value] * factor * (paired ? 1.12 : 1) * (duration > 10 ? 1.18 : 1);
+    root.querySelector('#estimate').textContent = `预计 ${formatTime(center * .78)}–${formatTime(center * 1.25)}`;
+    const ratio = ratioSelect.value === 'source' ? sourceLabel : ratioSelect.value;
+    root.querySelector('#estimate-detail').textContent = `${names[model.value]} · ${ratio} · ${resolution}p · ${duration}秒`;
+  }
+  model.addEventListener('change', updateEstimate);
+  ratioSelect.addEventListener('change', updateEstimate);
+
+  root.querySelector('#advanced-toggle').addEventListener('click', event => {
+    const expanded = event.currentTarget.getAttribute('aria-expanded') === 'true';
+    event.currentTarget.setAttribute('aria-expanded', String(!expanded));
+    root.querySelector('#advanced').classList.toggle('hidden', expanded);
+  });
+
+  const modelCodes = {
+    sulphur: 'SUL2',
+    wan5: 'WAN22-5B',
+    hunyuan: 'HUN15',
+    wan14: 'WAN22-14B',
+    remix: 'REMIX3'
+  };
+  const issuedFilenames = new Map();
+
+  function compactPrompt(text) {
+    const cleaned = text
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+      .replace(/[，。！？、；：,.!?;()[\]{}"'“”‘’]/g, ' ')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^[.\-\s]+|[.\-\s]+$/g, '');
+    return Array.from(cleaned || 'video').slice(0, 16).join('');
+  }
+
+  function localTimestamp(date = new Date()) {
+    const pad = value => String(value).padStart(2, '0');
+    return [
+      date.getFullYear(),
+      pad(date.getMonth() + 1),
+      pad(date.getDate())
+    ].join('') + '-' + [
+      pad(date.getHours()),
+      pad(date.getMinutes()),
+      pad(date.getSeconds())
+    ].join('');
+  }
+
+  function createOutputFilename() {
+    const base = `${modelCodes[model.value]}-${compactPrompt(prompt.value)}-${localTimestamp()}`;
+    const count = (issuedFilenames.get(base) || 0) + 1;
+    issuedFilenames.set(base, count);
+    return `${base}${count > 1 ? `-${String(count).padStart(2, '0')}` : ''}.mp4`;
+  }
+
+  root.querySelector('#enqueue').addEventListener('click', event => {
+    const button = event.currentTarget;
+    const status = root.querySelector('#submit-status');
+    const outputFilename = createOutputFilename();
+    button.innerHTML = '<i data-lucide="check" aria-hidden="true"></i>已加入队列';
+    button.disabled = true;
+    status.textContent = `已加入队列 · ${outputFilename}`;
+    if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+    window.setTimeout(() => {
+      button.innerHTML = '<i data-lucide="list-plus" aria-hidden="true"></i>加入队列';
+      button.disabled = false;
+      status.textContent = '自动保存';
+      if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+    }, 1600);
+  });
+
+  const clearButton = root.querySelector('#clear-draft');
+  let clearArmed = false;
+  let clearTimer;
+
+  function resetUpload(prefix) {
+    const input = root.querySelector(`#${prefix}-file`);
+    const image = root.querySelector(`#${prefix}-image`);
+    input.value = '';
+    image.removeAttribute('src');
+    root.querySelector(`#${prefix}-loaded`).classList.add('hidden');
+    root.querySelector(`#${prefix}-empty`).classList.remove('hidden');
+  }
+
+  function resetDraft() {
+    resetUpload('start');
+    resetUpload('end');
+    sourceRatio = 16 / 9;
+    sourceLabel = '原图';
+    ratioBadge.textContent = '等待图片';
+    sourceOption.textContent = '原图';
+    setMode(false);
+    setRatio(startCard, sourceRatio);
+    setRatio(endCard, sourceRatio);
+
+    versions.splice(0, versions.length, { text: '', label: '新建', source: '' });
+    expansionCount = 0;
+    editingVersion = false;
+    showVersion(0);
+
+    model.value = 'sulphur';
+    ratioSelect.value = 'source';
+    resolution = 480;
+    root.querySelectorAll('[data-resolution]').forEach(item => {
+      const selected = item.dataset.resolution === '480';
+      item.setAttribute('aria-pressed', String(selected));
+      item.classList.toggle('btn-ghost', !selected);
+    });
+    setDuration(5);
+    root.querySelector('#motion').selectedIndex = 0;
+    root.querySelector('#seed').value = '';
+    root.querySelector('#keep-seed').checked = false;
+    root.querySelector('#advanced').classList.add('hidden');
+    root.querySelector('#advanced-toggle').setAttribute('aria-expanded', 'false');
+    root.querySelector('#submit-status').textContent = '已清空，可以创建新任务';
+    prompt.focus();
+    updateEstimate();
+  }
+
+  clearButton.addEventListener('click', () => {
+    if (!clearArmed) {
+      clearArmed = true;
+      clearButton.innerHTML = '<i data-lucide="alert-circle" aria-hidden="true"></i>确认清空';
+      if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+      clearTimer = window.setTimeout(() => {
+        clearArmed = false;
+        clearButton.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i>清空';
+        if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+      }, 3000);
+      return;
+    }
+    window.clearTimeout(clearTimer);
+    clearArmed = false;
+    clearButton.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i>清空';
+    if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+    resetDraft();
+  });
+
+  updateEstimate();
+})();
+</script>
