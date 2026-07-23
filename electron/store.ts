@@ -19,15 +19,20 @@ export class JsonStore {
         draft: { ...createDefaultState().draft, ...saved.draft },
         settings: { ...createDefaultState().settings, ...saved.settings },
         queueRunning: false,
-        queue: (saved.queue ?? []).map((task) =>
-          task.status === "running"
+        queue: (saved.queue ?? []).map((task) => ({
+          ...task,
+          keepSeedOnCopy: task.keepSeedOnCopy ?? false,
+          ...(task.status === "running"
             ? {
-                ...task,
                 status: "waiting" as const,
                 error: "应用上次退出时任务仍在运行，已恢复为等待状态。"
               }
-            : task
-        )
+            : {})
+        })),
+        history: (saved.history ?? []).map((asset) => ({
+          ...asset,
+          files: asset.files ?? []
+        }))
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
