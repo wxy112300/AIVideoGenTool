@@ -18,14 +18,14 @@
 | 类型和测试 | TypeScript 7 + Vitest 4 | 是 | 扩充队列与工作流测试 |
 | 状态持久化 | 原子替换 JSON | 是（基础版） | 数据量增大后迁移 SQLite；视频和图片只保存路径 |
 | 本地提示词扩写 | LM Studio OpenAI 兼容 `/v1/chat/completions` | 是 | 启动本地服务器、加载模型、实测模板 |
-| ComfyUI 连接 | `/system_stats`、`/upload/image`、`/prompt`、`/history/{id}`、`/interrupt` | 是（轮询版） | 用真实工作流实测；后续改 WebSocket 获取真实节点进度 |
+| ComfyUI 连接 | HTTP API + WebSocket，history 轮询兜底 | 是 | 用真实工作流验证 `progress/execution_error` 消息和输出结构 |
 | I2V 模型适配 | API 工作流 JSON + 占位符替换 | 框架已完成 | 为每个模型导出和验证工作流 |
 | 视频编码 | ComfyUI 工作流输出节点 | 依赖工作流 | 确认 VideoHelperSuite/模型节点依赖和编码器 |
 | 安全取消/部分视频 | 调用 `/interrupt` | 仅中止 | 需要工作流按片段/帧落盘，并用 FFmpeg 合成已完成帧 |
-| 历史 | 保存成功任务快照和 ComfyUI outputs | 基础版 | 从 outputs 解析真实文件路径、缩略图和版本组 |
+| 历史 | 保存任务快照、解析 outputs、详情和 Explorer 定位 | 基础版 | 实测视频节点输出结构、缩略图和版本组 |
 | 分辨率提升 | 尚未接真实后端 | 否 | 为 SeedVR2/FlashVSR/Real-ESRGAN 分别做工作流配置 |
 | 模型扫描 | 尚未实现 | 否 | 调用 ComfyUI object info 或扫描模型目录，建立组件清单 |
-| Windows 文件操作 | 本地图片/工作流选择已实现 | 部分 | 增加复制真实文件、Explorer `/select,`、目录选择 |
+| Windows 文件操作 | 图片/工作流/目录选择、Explorer 定位 | 部分 | 增加复制真实文件到剪贴板 |
 | 安装包 | 尚未配置 | 否 | 功能稳定后接 Electron Forge 或 Builder，生成 Windows 安装包 |
 
 ## 3. 必需软件
