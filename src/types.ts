@@ -53,9 +53,18 @@ export interface QueueTask {
   duration: number;
   motion: Draft["motion"];
   seed: number;
+  keepSeedOnCopy: boolean;
   comfyPromptId?: string;
   progress?: number;
   error?: string;
+}
+
+export interface HistoryFile {
+  filename: string;
+  subfolder: string;
+  type: string;
+  format?: string;
+  absolutePath?: string;
 }
 
 export interface HistoryAsset {
@@ -71,6 +80,7 @@ export interface HistoryAsset {
   seed: number;
   comfyPromptId: string;
   comfyOutputs: unknown;
+  files: HistoryFile[];
 }
 
 export interface AppState {
@@ -100,7 +110,9 @@ export interface AppApi {
   saveSettings(settings: Settings): Promise<AppState>;
   pickImage(): Promise<string | null>;
   pickWorkflow(): Promise<string | null>;
+  pickDirectory(): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
+  showItemInFolder(path: string): Promise<boolean>;
   enhancePrompt(request: EnhanceRequest): Promise<string>;
   testConnection(kind: ConnectionKind, settings: Settings): Promise<ConnectionResult>;
   enqueue(draft: Draft): Promise<AppState>;
@@ -108,6 +120,10 @@ export interface AppApi {
   startQueue(): Promise<AppState>;
   pauseQueue(): Promise<AppState>;
   cancelTask(taskId: string): Promise<AppState>;
+  moveTask(taskId: string, direction: -1 | 1): Promise<AppState>;
+  optimizeQueue(): Promise<AppState>;
+  duplicateTask(taskId: string): Promise<AppState>;
+  retryTask(taskId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;
 }
 
