@@ -1,0 +1,1469 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Local Video Studio · 队列</title>
+  <style>
+:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cpath d='M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z'/%3E%3C/svg%3E");
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html > body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive > .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align="right"]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align="center"]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget > :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls > .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls > .form-label > :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type="file"] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type="file"]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type="file"]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type="color"] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type="checkbox"]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: "";
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type="radio"]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: "";
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed="true"],
+    [aria-selected="true"],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed="true"], [aria-selected="true"], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget > svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+    html { background: var(--background); }
+    body {
+      margin: 0;
+      padding: clamp(14px, 3vw, 30px);
+      background: var(--background);
+      color: var(--foreground);
+    }
+    body > div[id] {
+      width: min(100%, 1180px);
+      margin-inline: auto;
+    }
+    a.btn { text-decoration: none; }
+    .nav a.btn[aria-current="page"] {
+      color: var(--primary-foreground);
+      background: var(--primary);
+    }
+  </style>
+</head>
+<body>
+<style>
+  #video-queue * { box-sizing: border-box; }
+  #video-queue {
+    color: var(--foreground);
+    display: grid;
+    gap: 18px;
+  }
+  #video-queue .bar,
+  #video-queue .brand,
+  #video-queue .nav,
+  #video-queue .queue-head,
+  #video-queue .head-actions,
+  #video-queue .section-head,
+  #video-queue .job-meta,
+  #video-queue .job-actions,
+  #video-queue .running-head,
+  #video-queue .progress-meta,
+  #video-queue .persist,
+  #video-queue .editor-actions {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+  #video-queue .bar,
+  #video-queue .queue-head,
+  #video-queue .section-head,
+  #video-queue .running-head,
+  #video-queue .progress-meta {
+    justify-content: space-between;
+  }
+  #video-queue .brand { font-weight: 500; }
+  #video-queue .queue-title,
+  #video-queue .queue-list,
+  #video-queue .running-card,
+  #video-queue .job-copy,
+  #video-queue .issue-copy,
+  #video-queue .editor {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+  }
+  #video-queue .summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  #video-queue .queue-item,
+  #video-queue .issue-item {
+    display: grid;
+    grid-template-columns: 28px 112px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+  }
+  #video-queue .issue-item {
+    grid-template-columns: 112px minmax(0, 1fr) auto;
+  }
+  #video-queue .running-layout {
+    display: grid;
+    grid-template-columns: 160px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+  }
+  #video-queue .thumb {
+    aspect-ratio: 16 / 9;
+    display: grid;
+    place-items: center;
+    background: var(--muted);
+    color: var(--muted-foreground);
+    overflow: hidden;
+  }
+  #video-queue .drag {
+    display: grid;
+    place-items: center;
+    color: var(--muted-foreground);
+    cursor: grab;
+  }
+  #video-queue .job-title {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #video-queue .prompt {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  #video-queue .job-actions {
+    justify-content: flex-end;
+  }
+  #video-queue .progress-track {
+    height: 7px;
+    background: var(--muted);
+    overflow: hidden;
+  }
+  #video-queue .progress-fill {
+    height: 100%;
+    width: 18%;
+    background: var(--primary);
+    transition: width .25s ease;
+  }
+  #video-queue .editor-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 190px;
+    gap: 12px;
+  }
+  #video-queue .editor textarea {
+    min-height: 96px;
+    resize: vertical;
+  }
+  #video-queue .hidden { display: none; }
+  @media (max-width: 690px) {
+    #video-queue .queue-item,
+    #video-queue .issue-item {
+      grid-template-columns: 24px 92px minmax(0, 1fr);
+    }
+    #video-queue .issue-item { grid-template-columns: 92px minmax(0, 1fr); }
+    #video-queue .queue-item .job-actions,
+    #video-queue .issue-item .job-actions {
+      grid-column: 2 / -1;
+      justify-content: flex-start;
+    }
+    #video-queue .issue-item .job-actions { grid-column: 1 / -1; }
+  }
+  @media (max-width: 520px) {
+    #video-queue .nav { width: 100%; justify-content: space-between; }
+    #video-queue .summary,
+    #video-queue .running-layout,
+    #video-queue .editor-grid { grid-template-columns: 1fr; }
+    #video-queue .queue-item,
+    #video-queue .issue-item {
+      grid-template-columns: 24px minmax(0, 1fr);
+    }
+    #video-queue .queue-item .thumb,
+    #video-queue .issue-item .thumb { display: none; }
+    #video-queue .queue-item .job-actions { grid-column: 2; }
+    #video-queue .issue-item .job-actions { grid-column: 1 / -1; }
+  }
+</style>
+
+<div id="video-queue">
+  <header class="bar">
+    <div class="brand"><i data-lucide="clapperboard" aria-hidden="true"></i><span>Local Video Studio</span></div>
+    <nav class="nav" aria-label="主导航">
+      <a class="btn btn-ghost" href="./create.html">创建</a>
+      <a class="btn btn-ghost" href="./queue.html" aria-current="page">队列 <span class="viz-badge" id="nav-count">5</span></a>
+      <a class="btn btn-ghost" href="./history.html">历史</a>
+      <a class="btn btn-ghost" href="./settings.html">设置</a>
+    </nav>
+  </header>
+
+  <section class="queue-head">
+    <div class="queue-title">
+      <div class="persist">
+        <h2>生成队列</h2>
+        <span class="viz-badge" id="queue-state">已暂停</span>
+      </div>
+      <span class="text-muted">队列和任务快照已保存，关闭界面后不会丢失。</span>
+    </div>
+    <div class="head-actions">
+      <button class="btn" id="optimize" type="button">
+        <i data-lucide="wand-sparkles" aria-hidden="true"></i>优化顺序
+      </button>
+      <button class="btn btn-primary" id="start-queue" type="button">
+        <i data-lucide="play" aria-hidden="true"></i>开始队列
+      </button>
+    </div>
+  </section>
+
+  <div class="summary">
+    <div class="card viz-stat">
+      <span class="text-muted">等待任务</span>
+      <span class="viz-stat-value" id="waiting-count">5</span>
+      <span class="text-small" id="waiting-context">尚未开始</span>
+    </div>
+    <div class="card viz-stat">
+      <span class="text-muted">预计剩余</span>
+      <span class="viz-stat-value" id="total-estimate">38–52 分钟</span>
+      <span class="text-small">根据当前配置估算</span>
+    </div>
+    <div class="card viz-stat">
+      <span class="text-muted">模型切换</span>
+      <span class="viz-stat-value" id="switch-count">4 次</span>
+      <span class="text-small" id="switch-context">可优化为 2 次</span>
+    </div>
+  </div>
+
+  <section class="card running-card hidden" id="running-card" aria-labelledby="running-heading">
+    <div class="running-head">
+      <div class="job-meta">
+        <span class="viz-badge" id="running-badge">正在生成</span>
+        <strong id="running-heading">当前任务</strong>
+      </div>
+      <button class="btn btn-ghost" id="cancel-running" type="button">取消任务</button>
+    </div>
+    <div class="running-layout">
+      <div class="thumb"><i data-lucide="image" aria-hidden="true"></i></div>
+      <div class="job-copy">
+        <div class="job-title" id="running-title">—</div>
+        <div class="text-muted prompt" id="running-prompt">—</div>
+        <div class="job-meta" id="running-meta"></div>
+        <div class="progress-track" aria-label="当前任务进度"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="progress-meta">
+          <span class="text-small" id="progress-label">准备模型…</span>
+          <span class="text-small text-muted" id="running-remaining">预计剩余 —</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="queue-list" aria-labelledby="pending-heading">
+    <div class="section-head">
+      <div class="job-meta">
+        <h2 id="pending-heading">接下来</h2>
+        <span class="text-muted" id="pending-note">拖动或使用箭头调整顺序</span>
+      </div>
+      <span class="text-small text-muted">完成后自动移入历史</span>
+    </div>
+
+    <div class="queue-list" id="pending-list">
+      <article class="card queue-item" data-id="Q-1042" data-model="sulphur" data-min="4" data-max="6">
+        <span class="drag" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>
+        <div class="thumb"><span>01</span></div>
+        <div class="job-copy">
+          <div class="job-title">微风中的人物特写</div>
+          <div class="text-muted prompt">人物自然看向镜头，头发被微风吹动，镜头缓慢推近，真实光照。</div>
+          <div class="job-meta"><span class="viz-badge">Sulphur 2</span><span class="text-small">原图 · 480p · 5秒</span><span class="text-small text-muted">约4–6分钟</span></div>
+        </div>
+        <div class="job-actions">
+          <button class="btn btn-ghost move-up" type="button" aria-label="向上移动" data-tooltip="向上移动"><i data-lucide="arrow-up" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost move-down" type="button" aria-label="向下移动" data-tooltip="向下移动"><i data-lucide="arrow-down" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost duplicate" type="button" aria-label="复制任务" data-tooltip="复制任务"><i data-lucide="copy" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost cancel-job" type="button" aria-label="取消任务" data-tooltip="取消任务"><i data-lucide="x" aria-hidden="true"></i></button>
+        </div>
+      </article>
+
+      <article class="card queue-item" data-id="Q-1043" data-model="wan5" data-min="3" data-max="5">
+        <span class="drag" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>
+        <div class="thumb"><span>02</span></div>
+        <div class="job-copy">
+          <div class="job-title">城市夜景中的慢速转身</div>
+          <div class="text-muted prompt">人物在霓虹灯下缓慢转身，摄影机轻微环绕，背景灯光自然闪烁。</div>
+          <div class="job-meta"><span class="viz-badge">Wan 2.2 5B</span><span class="text-small">16:9 · 540p · 6秒</span><span class="text-small text-muted">约3–5分钟</span></div>
+        </div>
+        <div class="job-actions">
+          <button class="btn btn-ghost move-up" type="button" aria-label="向上移动" data-tooltip="向上移动"><i data-lucide="arrow-up" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost move-down" type="button" aria-label="向下移动" data-tooltip="向下移动"><i data-lucide="arrow-down" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost duplicate" type="button" aria-label="复制任务" data-tooltip="复制任务"><i data-lucide="copy" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost cancel-job" type="button" aria-label="取消任务" data-tooltip="取消任务"><i data-lucide="x" aria-hidden="true"></i></button>
+        </div>
+      </article>
+
+      <article class="card queue-item" data-id="Q-1044" data-model="sulphur" data-min="8" data-max="12">
+        <span class="drag" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>
+        <div class="thumb"><span>03</span></div>
+        <div class="job-copy">
+          <div class="job-title">窗边回眸长镜头</div>
+          <div class="text-muted prompt">人物从窗外转回视线，窗帘缓慢飘动，镜头从中景平滑推至近景。</div>
+          <div class="job-meta"><span class="viz-badge">Sulphur 2</span><span class="text-small">原图 · 480p · 12秒</span><span class="text-small text-muted">约8–12分钟</span></div>
+        </div>
+        <div class="job-actions">
+          <button class="btn btn-ghost move-up" type="button" aria-label="向上移动" data-tooltip="向上移动"><i data-lucide="arrow-up" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost move-down" type="button" aria-label="向下移动" data-tooltip="向下移动"><i data-lucide="arrow-down" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost duplicate" type="button" aria-label="复制任务" data-tooltip="复制任务"><i data-lucide="copy" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost cancel-job" type="button" aria-label="取消任务" data-tooltip="取消任务"><i data-lucide="x" aria-hidden="true"></i></button>
+        </div>
+      </article>
+
+      <article class="card queue-item" data-id="Q-1045" data-model="hunyuan" data-min="13" data-max="18">
+        <span class="drag" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>
+        <div class="thumb"><span>04</span></div>
+        <div class="job-copy">
+          <div class="job-title">海边全身镜头</div>
+          <div class="text-muted prompt">人物沿海岸缓慢行走，衣物随海风摆动，摄影机平行跟随并保持主体稳定。</div>
+          <div class="job-meta"><span class="viz-badge">Hunyuan 1.5</span><span class="text-small">9:16 · 720p · 8秒</span><span class="text-small text-muted">约13–18分钟</span></div>
+        </div>
+        <div class="job-actions">
+          <button class="btn btn-ghost move-up" type="button" aria-label="向上移动" data-tooltip="向上移动"><i data-lucide="arrow-up" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost move-down" type="button" aria-label="向下移动" data-tooltip="向下移动"><i data-lucide="arrow-down" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost duplicate" type="button" aria-label="复制任务" data-tooltip="复制任务"><i data-lucide="copy" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost cancel-job" type="button" aria-label="取消任务" data-tooltip="取消任务"><i data-lucide="x" aria-hidden="true"></i></button>
+        </div>
+      </article>
+
+      <article class="card queue-item" data-id="Q-1046" data-model="wan5" data-min="4" data-max="6">
+        <span class="drag" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>
+        <div class="thumb"><span>05</span></div>
+        <div class="job-copy">
+          <div class="job-title">咖啡馆中的细微表情</div>
+          <div class="text-muted prompt">人物轻轻微笑并眨眼，手指自然移动，镜头固定，背景人群保持柔和动态。</div>
+          <div class="job-meta"><span class="viz-badge">Wan 2.2 5B</span><span class="text-small">原图 · 540p · 7秒</span><span class="text-small text-muted">约4–6分钟</span></div>
+        </div>
+        <div class="job-actions">
+          <button class="btn btn-ghost move-up" type="button" aria-label="向上移动" data-tooltip="向上移动"><i data-lucide="arrow-up" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost move-down" type="button" aria-label="向下移动" data-tooltip="向下移动"><i data-lucide="arrow-down" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost duplicate" type="button" aria-label="复制任务" data-tooltip="复制任务"><i data-lucide="copy" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost cancel-job" type="button" aria-label="取消任务" data-tooltip="取消任务"><i data-lucide="x" aria-hidden="true"></i></button>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="queue-list" aria-labelledby="attention-heading">
+    <div class="section-head">
+      <div class="job-meta"><h2 id="attention-heading">需处理</h2><span class="viz-badge" id="attention-count">2</span></div>
+      <span class="text-small text-muted">失败和取消的任务会保留</span>
+    </div>
+    <div class="queue-list" id="attention-list">
+      <article class="card issue-item" id="failed-job">
+        <div class="thumb"><i data-lucide="triangle-alert" aria-hidden="true"></i></div>
+        <div class="issue-copy">
+          <div class="job-title">高分辨率人物镜头</div>
+          <div class="text-destructive">失败：显存峰值超出安全余量</div>
+          <div class="job-meta"><span class="viz-badge">Sulphur 2</span><span class="text-small">720p · 10秒</span><span class="text-small text-muted">保留于今天 14:32</span></div>
+        </div>
+        <div class="job-actions">
+          <button class="btn" id="edit-failed" type="button">编辑后重试</button>
+          <button class="btn btn-ghost duplicate-issue" type="button"><i data-lucide="copy" aria-hidden="true"></i>复制</button>
+        </div>
+      </article>
+
+      <article class="card issue-item" id="cancelled-job">
+        <div class="thumb"><i data-lucide="circle-slash" aria-hidden="true"></i></div>
+        <div class="issue-copy">
+          <div class="job-title">室内固定镜头</div>
+          <div class="text-muted">已取消，参数和图片仍然保留</div>
+          <div class="job-meta"><span class="viz-badge">Wan 2.2 5B</span><span class="text-small">480p · 5秒</span></div>
+        </div>
+        <div class="job-actions">
+          <button class="btn duplicate-issue" type="button"><i data-lucide="copy" aria-hidden="true"></i>复制到队列</button>
+          <button class="btn btn-ghost remove-issue" type="button">移除</button>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="card editor hidden" id="retry-editor" aria-labelledby="retry-heading">
+    <div class="section-head">
+      <div><h2 id="retry-heading">调整后重试</h2><span class="text-muted">原失败任务会继续保留，重试会创建新任务。</span></div>
+      <button class="btn btn-ghost" id="close-editor" type="button">关闭</button>
+    </div>
+    <div class="editor-grid">
+      <label class="form-label" for="retry-prompt">提示词
+        <textarea class="form-control" id="retry-prompt">人物缓慢抬头，镜头平稳推进，保持面部和身体结构稳定。</textarea>
+      </label>
+      <label class="form-label" for="retry-resolution">草稿清晰度
+        <select class="form-select" id="retry-resolution"><option>480p · 推荐</option><option>540p</option><option>720p</option></select>
+      </label>
+    </div>
+    <div class="editor-actions">
+      <button class="btn btn-primary" id="submit-retry" type="button"><i data-lucide="rotate-cw" aria-hidden="true"></i>加入队列重试</button>
+      <span class="text-small text-muted">显存策略将自动改为更保守的设置</span>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById('video-queue');
+  const pending = root.querySelector('#pending-list');
+  const runningCard = root.querySelector('#running-card');
+  const startButton = root.querySelector('#start-queue');
+  const state = root.querySelector('#queue-state');
+  let running = false;
+  let copyNumber = 1;
+
+  function jobs() {
+    return Array.from(pending.querySelectorAll('.queue-item'));
+  }
+
+  function modelSwitches(items) {
+    if (items.length < 2) return 0;
+    let count = 0;
+    for (let i = 1; i < items.length; i += 1) {
+      if (items[i].dataset.model !== items[i - 1].dataset.model) count += 1;
+    }
+    return count;
+  }
+
+  function updateSummary() {
+    const items = jobs();
+    const min = items.reduce((sum, item) => sum + Number(item.dataset.min || 0), 0);
+    const max = items.reduce((sum, item) => sum + Number(item.dataset.max || 0), 0);
+    root.querySelector('#waiting-count').textContent = items.length;
+    root.querySelector('#nav-count').textContent = items.length;
+    root.querySelector('#total-estimate').textContent = items.length ? `${min}–${max} 分钟` : '—';
+    root.querySelector('#switch-count').textContent = `${modelSwitches(items)} 次`;
+    root.querySelector('#waiting-context').textContent = running ? '后台持续处理' : '尚未开始';
+  }
+
+  function refreshIcons() {
+    if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+  }
+
+  function readUpscaleTasks() {
+    try {
+      return JSON.parse(localStorage.getItem('aivideo.upscaleQueue') || '[]');
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function writeUpscaleTasks(tasks) {
+    try {
+      localStorage.setItem('aivideo.upscaleQueue', JSON.stringify(tasks));
+    } catch (_) {}
+  }
+
+  function appendUpscaleTask(task) {
+    let item = pending.querySelector(`[data-upscale-id="${task.id}"]`);
+    const low = Math.max(1, Math.round(task.estimateMinutes * .82));
+    const high = Math.max(low + 1, Math.round(task.estimateMinutes * 1.24));
+    if (!item) {
+      item = document.createElement('article');
+      item.className = 'card queue-item';
+      item.dataset.upscaleId = task.id;
+      item.innerHTML = `
+        <span class="drag" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>
+        <div class="thumb"><i data-lucide="maximize-2" aria-hidden="true"></i></div>
+        <div class="job-copy">
+          <div class="job-title"></div>
+          <div class="text-muted prompt"></div>
+          <div class="job-meta"></div>
+        </div>
+        <div class="job-actions">
+          <button class="btn btn-ghost move-up" type="button" aria-label="向上移动" data-tooltip="向上移动"><i data-lucide="arrow-up" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost move-down" type="button" aria-label="向下移动" data-tooltip="向下移动"><i data-lucide="arrow-down" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost edit-upscale" type="button"><i data-lucide="pencil" aria-hidden="true"></i>编辑</button>
+          <button class="btn btn-ghost duplicate" type="button" aria-label="复制任务" data-tooltip="复制任务"><i data-lucide="copy" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost cancel-job" type="button" aria-label="取消任务" data-tooltip="取消任务"><i data-lucide="x" aria-hidden="true"></i></button>
+        </div>
+      `;
+      pending.appendChild(item);
+    }
+    item.dataset.model = 'upscale';
+    item.dataset.min = String(low);
+    item.dataset.max = String(high);
+    item.querySelector('.job-title').textContent = `${task.title} · 提升到 ${task.targetHeight === 2160 ? '4K' : `${task.targetHeight}p`}`;
+    item.querySelector('.prompt').textContent = `${task.sourceFilename} → ${task.outputFilename}`;
+    item.querySelector('.job-meta').innerHTML =
+      `<span class="viz-badge">分辨率提升</span><span class="text-small">${task.modelName}</span><span class="text-small">${task.targetWidth} × ${task.targetHeight}</span><span class="text-small text-muted">约${low}–${high}分钟</span>`;
+    refreshIcons();
+    updateSummary();
+  }
+
+  function startNext() {
+    const first = jobs()[0];
+    if (!first) {
+      running = false;
+      state.textContent = '队列已完成';
+      startButton.innerHTML = '<i data-lucide="play" aria-hidden="true"></i>开始队列';
+      runningCard.classList.add('hidden');
+      refreshIcons();
+      updateSummary();
+      return;
+    }
+    runningCard.classList.remove('hidden');
+    root.querySelector('#running-title').textContent = first.querySelector('.job-title').textContent;
+    root.querySelector('#running-prompt').textContent = first.querySelector('.prompt').textContent;
+    root.querySelector('#running-meta').innerHTML = first.querySelector('.job-meta').innerHTML;
+    root.querySelector('#running-remaining').textContent = `预计剩余 ${first.dataset.min}–${first.dataset.max}分钟`;
+    root.querySelector('#progress-label').textContent = '加载模型与编码器…';
+    root.querySelector('#progress-fill').style.width = '18%';
+    first.remove();
+    updateSummary();
+  }
+
+  startButton.addEventListener('click', () => {
+    running = !running;
+    if (running) {
+      state.textContent = '持续运行中';
+      startButton.innerHTML = '<i data-lucide="pause" aria-hidden="true"></i>暂停队列';
+      if (runningCard.classList.contains('hidden')) startNext();
+    } else {
+      state.textContent = '将在当前任务后暂停';
+      startButton.innerHTML = '<i data-lucide="play" aria-hidden="true"></i>继续队列';
+      root.querySelector('#running-badge').textContent = '完成后暂停';
+    }
+    refreshIcons();
+    updateSummary();
+  });
+
+  root.querySelector('#cancel-running').addEventListener('click', () => {
+    const attentionList = root.querySelector('#attention-list');
+    const cancelled = document.createElement('article');
+    cancelled.className = 'card issue-item';
+    cancelled.innerHTML = `
+      <div class="thumb"><i data-lucide="play-circle" aria-hidden="true"></i></div>
+      <div class="issue-copy">
+        <div class="job-title">${root.querySelector('#running-title').textContent}</div>
+        <div class="text-muted">已取消 · 已生成部分已安全解码并保留为可播放片段</div>
+        <div class="job-meta">
+          <span class="viz-badge">已取消</span>
+          <span class="text-small">保留至当前生成进度</span>
+          <span class="text-small text-muted">参数和输入图片仍然保留</span>
+        </div>
+      </div>
+      <div class="job-actions">
+        <button class="btn preview-partial" type="button"><i data-lucide="play" aria-hidden="true"></i>预览片段</button>
+        <button class="btn btn-ghost duplicate-issue" type="button"><i data-lucide="copy" aria-hidden="true"></i>复制到队列</button>
+        <button class="btn btn-ghost remove-issue" type="button">移除</button>
+      </div>
+    `;
+    attentionList.prepend(cancelled);
+    root.querySelector('#attention-count').textContent = root.querySelectorAll('.issue-item').length;
+    runningCard.classList.add('hidden');
+    root.querySelector('#running-badge').textContent = '正在生成';
+    refreshIcons();
+    if (running) startNext();
+  });
+
+  root.querySelector('#optimize').addEventListener('click', event => {
+    const order = { sulphur: 0, wan5: 1, hunyuan: 2, wan14: 3, remix: 4, upscale: 5 };
+    jobs().sort((a, b) => order[a.dataset.model] - order[b.dataset.model]).forEach(item => pending.appendChild(item));
+    root.querySelector('#pending-note').textContent = '已按模型和资源签名分组';
+    root.querySelector('#switch-context').textContent = '已减少重复装载';
+    event.currentTarget.innerHTML = '<i data-lucide="check" aria-hidden="true"></i>已优化';
+    refreshIcons();
+    updateSummary();
+  });
+
+  pending.addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    const item = button.closest('.queue-item');
+    if (button.classList.contains('edit-upscale')) {
+      const task = readUpscaleTasks().find(candidate => candidate.id === item.dataset.upscaleId);
+      if (task) {
+        globalThis.UpscaleDialog.open({
+          ...task,
+          taskId: task.id,
+          trigger: button,
+          filename: task.sourceFilename,
+          onSubmit: appendUpscaleTask
+        });
+      }
+      return;
+    }
+    if (button.classList.contains('move-up') && item.previousElementSibling) {
+      pending.insertBefore(item, item.previousElementSibling);
+    }
+    if (button.classList.contains('move-down') && item.nextElementSibling) {
+      pending.insertBefore(item.nextElementSibling, item);
+    }
+    if (button.classList.contains('duplicate')) {
+      const clone = item.cloneNode(true);
+      copyNumber += 1;
+      clone.querySelector('.job-title').textContent += ` · 副本 ${copyNumber}`;
+      pending.appendChild(clone);
+      refreshIcons();
+    }
+    if (button.classList.contains('cancel-job')) {
+      if (item.dataset.upscaleId) {
+        writeUpscaleTasks(readUpscaleTasks().filter(task => task.id !== item.dataset.upscaleId));
+      }
+      item.remove();
+    }
+    root.querySelector('#pending-note').textContent = '顺序已保存';
+    updateSummary();
+  });
+
+  root.querySelector('#edit-failed').addEventListener('click', () => {
+    root.querySelector('#retry-editor').classList.remove('hidden');
+    root.querySelector('#retry-prompt').focus();
+  });
+  root.querySelector('#close-editor').addEventListener('click', () => root.querySelector('#retry-editor').classList.add('hidden'));
+
+  root.querySelector('#submit-retry').addEventListener('click', () => {
+    const template = jobs()[0];
+    if (!template) return;
+    const clone = template.cloneNode(true);
+    clone.dataset.id = 'Q-retry';
+    clone.dataset.model = 'sulphur';
+    clone.dataset.min = '5';
+    clone.dataset.max = '7';
+    clone.querySelector('.job-title').textContent = '高分辨率人物镜头 · 重试';
+    clone.querySelector('.prompt').textContent = root.querySelector('#retry-prompt').value;
+    clone.querySelector('.job-meta').innerHTML = '<span class="viz-badge">Sulphur 2</span><span class="text-small">480p · 10秒</span><span class="text-small text-muted">保守显存模式</span>';
+    pending.appendChild(clone);
+    root.querySelector('#retry-editor').classList.add('hidden');
+    refreshIcons();
+    updateSummary();
+  });
+
+  root.querySelector('#attention-list').addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    if (button.classList.contains('preview-partial')) {
+      button.innerHTML = '<i data-lucide="pause" aria-hidden="true"></i>正在预览';
+      refreshIcons();
+      window.setTimeout(() => {
+        button.innerHTML = '<i data-lucide="play" aria-hidden="true"></i>预览片段';
+        refreshIcons();
+      }, 1400);
+      return;
+    }
+    if (button.classList.contains('duplicate-issue')) {
+    const template = jobs()[0];
+    if (!template) return;
+    const clone = template.cloneNode(true);
+    clone.querySelector('.job-title').textContent = `${button.closest('.issue-item').querySelector('.job-title').textContent} · 副本`;
+    pending.appendChild(clone);
+    refreshIcons();
+    updateSummary();
+    }
+    if (button.classList.contains('remove-issue')) {
+      button.closest('.issue-item').remove();
+      root.querySelector('#attention-count').textContent = root.querySelectorAll('.issue-item').length;
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    let upscaleTasks = readUpscaleTasks();
+    if (!upscaleTasks.length) {
+      upscaleTasks = [{
+        id: 'UP-DEMO-01',
+        type: 'upscale',
+        title: '人物迎着微风回眸',
+        sourceFilename: 'SUL2-人物迎着微风回眸-20260724-143205.mp4',
+        outputFilename: 'SUL2-人物迎着微风回眸-20260724-143205-1080p.mp4',
+        sourceWidth: 832,
+        sourceHeight: 480,
+        targetWidth: 1872,
+        targetHeight: 1080,
+        duration: 5.2,
+        model: 'seedvr2',
+        modelName: 'SeedVR2 3B',
+        tileMode: 'auto',
+        faceRestore: false,
+        estimateMinutes: 8
+      }];
+      writeUpscaleTasks(upscaleTasks);
+    }
+    upscaleTasks.forEach(appendUpscaleTask);
+  });
+
+  updateSummary();
+})();
+</script>
+
+  <script src="./upscale-dialog.js"></script>
+  <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"></script>
+  <script>
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  </script>
+</body>
+</html>

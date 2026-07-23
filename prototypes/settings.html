@@ -1,0 +1,456 @@
+<style>
+  #studio-settings * { box-sizing: border-box; }
+  #studio-settings {
+    color: var(--foreground);
+    display: grid;
+    gap: 18px;
+  }
+  #studio-settings .bar,
+  #studio-settings .brand,
+  #studio-settings .nav,
+  #studio-settings .settings-head,
+  #studio-settings .head-copy,
+  #studio-settings .section-head,
+  #studio-settings .section-title,
+  #studio-settings .path-row,
+  #studio-settings .connection-row,
+  #studio-settings .model-head,
+  #studio-settings .model-title,
+  #studio-settings .model-meta,
+  #studio-settings .save-bar,
+  #studio-settings .save-state,
+  #studio-settings .panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+  #studio-settings .bar,
+  #studio-settings .settings-head,
+  #studio-settings .section-head,
+  #studio-settings .model-head,
+  #studio-settings .save-bar {
+    justify-content: space-between;
+  }
+  #studio-settings .brand { font-weight: 500; }
+  #studio-settings .settings-layout {
+    display: grid;
+    grid-template-columns: 190px minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+  }
+  #studio-settings .settings-nav {
+    display: grid;
+    gap: 6px;
+    position: sticky;
+    top: 14px;
+  }
+  #studio-settings .settings-nav .btn {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  #studio-settings .settings-content,
+  #studio-settings .settings-panel,
+  #studio-settings .section-copy,
+  #studio-settings .model-list,
+  #studio-settings .model-card,
+  #studio-settings .model-copy,
+  #studio-settings .field-stack {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+  }
+  #studio-settings .settings-panel {
+    gap: 14px;
+  }
+  #studio-settings .settings-panel.hidden { display: none; }
+  #studio-settings .path-grid,
+  #studio-settings .profile-grid,
+  #studio-settings .prompt-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  #studio-settings .path-row {
+    flex-wrap: nowrap;
+  }
+  #studio-settings .path-row .form-control {
+    min-width: 0;
+    flex: 1;
+  }
+  #studio-settings .connection-row {
+    align-items: flex-end;
+  }
+  #studio-settings .connection-row > label {
+    flex: 1 1 260px;
+  }
+  #studio-settings .model-card {
+    gap: 10px;
+  }
+  #studio-settings .model-copy {
+    gap: 4px;
+  }
+  #studio-settings .model-title {
+    align-items: baseline;
+  }
+  #studio-settings .model-meta {
+    color: var(--muted-foreground);
+  }
+  #studio-settings .model-file {
+    overflow-wrap: anywhere;
+  }
+  #studio-settings .model-config {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    align-items: end;
+  }
+  #studio-settings .status-ok { color: var(--foreground); }
+  #studio-settings .status-warning { color: var(--destructive); }
+  #studio-settings .save-bar {
+    position: sticky;
+    bottom: 12px;
+    z-index: 4;
+  }
+  #studio-settings .save-state {
+    min-width: 0;
+  }
+  #studio-settings .scan-result {
+    min-height: 20px;
+  }
+  @media (max-width: 760px) {
+    #studio-settings .settings-layout {
+      grid-template-columns: 1fr;
+    }
+    #studio-settings .settings-nav {
+      position: static;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 560px) {
+    #studio-settings .nav {
+      width: 100%;
+      justify-content: space-between;
+    }
+    #studio-settings .path-grid,
+    #studio-settings .profile-grid,
+    #studio-settings .prompt-grid,
+    #studio-settings .model-config {
+      grid-template-columns: 1fr;
+    }
+    #studio-settings .path-row {
+      flex-wrap: wrap;
+    }
+    #studio-settings .path-row .btn {
+      width: 100%;
+    }
+    #studio-settings .save-bar {
+      align-items: stretch;
+    }
+  }
+</style>
+
+<div id="studio-settings">
+  <header class="bar">
+    <div class="brand"><i data-lucide="clapperboard" aria-hidden="true"></i><span>Local Video Studio</span></div>
+    <nav class="nav" aria-label="主导航">
+      <a class="btn btn-ghost" href="./create.html">创建</a>
+      <a class="btn btn-ghost" href="./queue.html">队列 <span class="viz-badge">6</span></a>
+      <a class="btn btn-ghost" href="./history.html">历史</a>
+      <a class="btn btn-ghost" href="./settings.html" aria-current="page">设置</a>
+    </nav>
+  </header>
+
+  <section class="settings-head">
+    <div class="head-copy">
+      <div>
+        <h2>设置</h2>
+        <span class="text-muted">模型扫描、4090运行预设和本地服务集中配置。</span>
+      </div>
+      <span class="viz-badge"><i data-lucide="monitor-check" aria-hidden="true"></i>RTX 4090 · 24 GB</span>
+    </div>
+    <button class="btn" id="scan-all" type="button"><i data-lucide="scan-search" aria-hidden="true"></i>重新扫描模型</button>
+  </section>
+
+  <div class="settings-layout">
+    <nav class="settings-nav" aria-label="设置分类">
+      <button class="btn btn-ghost" type="button" data-panel="system"><i data-lucide="hard-drive" aria-hidden="true"></i>系统与路径</button>
+      <button class="btn" type="button" data-panel="video" aria-pressed="true"><i data-lucide="boxes" aria-hidden="true"></i>视频模型</button>
+      <button class="btn btn-ghost" type="button" data-panel="prompt"><i data-lucide="sparkles" aria-hidden="true"></i>提示词扩写</button>
+      <button class="btn btn-ghost" type="button" data-panel="upscale"><i data-lucide="maximize-2" aria-hidden="true"></i>分辨率提升</button>
+    </nav>
+
+    <main class="settings-content">
+      <section class="settings-panel hidden" data-panel-content="system">
+        <div class="card section-copy">
+          <div class="section-head">
+            <div class="section-title"><h2>ComfyUI连接</h2><span class="viz-badge" id="comfy-status">等待测试</span></div>
+            <button class="btn" id="test-comfy" type="button">测试连接</button>
+          </div>
+          <div class="connection-row">
+            <label class="form-label" for="comfy-url">服务地址
+              <input class="form-control dirty-control" id="comfy-url" value="http://127.0.0.1:8188">
+            </label>
+          </div>
+        </div>
+
+        <div class="card section-copy">
+          <div class="section-head"><h2>文件路径</h2><span class="text-small text-muted">启动时自动验证</span></div>
+          <div class="path-grid">
+            <label class="form-label">ComfyUI模型目录
+              <span class="path-row"><input class="form-control dirty-control" value="C:\Users\Alice\Documents\ComfyUI\models"><button class="btn browse-path" type="button">浏览</button></span>
+            </label>
+            <label class="form-label">视频输出目录
+              <span class="path-row"><input class="form-control dirty-control" value="I:\Project\AIVideoGenTool\outputs"><button class="btn browse-path" type="button">浏览</button></span>
+            </label>
+            <label class="form-label">任务数据库
+              <span class="path-row"><input class="form-control dirty-control" value="I:\Project\AIVideoGenTool\data\studio.db"><button class="btn browse-path" type="button">浏览</button></span>
+            </label>
+            <label class="form-label">LM Studio模型目录
+              <span class="path-row"><input class="form-control dirty-control" value="自动检测"><button class="btn browse-path" type="button">定位</button></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card section-copy">
+          <div class="section-head"><h2>RTX 4090运行策略</h2><span class="viz-badge">推荐预设</span></div>
+          <div class="profile-grid">
+            <label class="form-label" for="vram-reserve">显存安全余量
+              <select class="form-select dirty-control" id="vram-reserve"><option>2 GB · 推荐</option><option>1 GB · 更快</option><option>4 GB · 保守</option></select>
+            </label>
+            <label class="form-label" for="concurrency">同时运行任务
+              <select class="form-select dirty-control" id="concurrency"><option>1 · 推荐</option><option disabled>2 · 可能爆显存</option></select>
+            </label>
+            <div class="form-check form-switch">
+              <input class="form-check-input dirty-control" id="auto-offload" type="checkbox" checked>
+              <label class="form-check-label" for="auto-offload">自动CPU卸载与分块</label>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input dirty-control" id="safe-cancel" type="checkbox" checked>
+              <label class="form-check-label" for="safe-cancel">取消时保留可播放片段</label>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input dirty-control" id="optimize-queue" type="checkbox" checked>
+              <label class="form-check-label" for="optimize-queue">允许一键优化模型顺序</label>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input dirty-control" id="persist-queue" type="checkbox" checked>
+              <label class="form-check-label" for="persist-queue">持久保存队列和历史</label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-panel" data-panel-content="video">
+        <div class="card section-copy">
+          <div class="section-head">
+            <div><h2>视频模型</h2><span class="text-muted">启用后会出现在创建页的模型选择中。</span></div>
+            <label class="form-label" for="default-video-model">默认模型
+              <select class="form-select dirty-control" id="default-video-model">
+                <option>Sulphur 2 FP8</option>
+                <option>Wan 2.2 I2V 5B</option>
+                <option>HunyuanVideo 1.5</option>
+              </select>
+            </label>
+          </div>
+          <div class="scan-result text-small text-muted" id="scan-result">上次扫描：今天 10:42 · 找到3个可运行模型，2个待补齐</div>
+        </div>
+
+        <div class="model-list">
+          <article class="card model-card">
+            <div class="model-head">
+              <div class="model-copy">
+                <div class="model-title"><strong>Sulphur 2 FP8</strong><span class="viz-badge">无审查 · 优先</span></div>
+                <code class="model-file text-small">checkpoints\sulphur2_i2v_fp8_e4m3fn.safetensors</code>
+              </div>
+              <div class="form-check form-switch"><input class="form-check-input dirty-control" id="enable-sulphur" type="checkbox" checked><label class="form-check-label" for="enable-sulphur">启用</label></div>
+            </div>
+            <div class="model-meta"><span class="status-ok">组件完整</span><span>预计峰值 20–22 GB</span><span>推荐草稿 480p · 5–8秒</span></div>
+            <div class="model-config">
+              <label class="form-label">精度<select class="form-select dirty-control"><option>FP8 · 推荐</option><option>BF16 · 可能超出显存</option></select></label>
+              <label class="form-label">显存模式<select class="form-select dirty-control"><option>保守卸载</option><option>自动</option></select></label>
+              <label class="form-label">默认步数<input class="form-control dirty-control" type="number" value="20"></label>
+            </div>
+          </article>
+
+          <article class="card model-card">
+            <div class="model-head">
+              <div class="model-copy">
+                <div class="model-title"><strong>Wan 2.2 I2V 5B</strong><span class="viz-badge">快速草稿</span></div>
+                <code class="model-file text-small">diffusion_models\wan2.2_i2v_5B_fp8_scaled.safetensors</code>
+              </div>
+              <div class="form-check form-switch"><input class="form-check-input dirty-control" id="enable-wan5" type="checkbox" checked><label class="form-check-label" for="enable-wan5">启用</label></div>
+            </div>
+            <div class="model-meta"><span class="status-ok">组件完整</span><span>预计峰值 14–18 GB</span><span>推荐草稿 480p/540p · 5–10秒</span></div>
+            <div class="model-config">
+              <label class="form-label">精度<select class="form-select dirty-control"><option>FP8 · 推荐</option><option>BF16</option></select></label>
+              <label class="form-label">显存模式<select class="form-select dirty-control"><option>自动</option><option>保守卸载</option></select></label>
+              <label class="form-label">默认步数<input class="form-control dirty-control" type="number" value="24"></label>
+            </div>
+          </article>
+
+          <article class="card model-card">
+            <div class="model-head">
+              <div class="model-copy">
+                <div class="model-title"><strong>HunyuanVideo 1.5 I2V</strong><span class="viz-badge">质量</span></div>
+                <code class="model-file text-small">checkpoints\hunyuanvideo_1.5_i2v_720p_fp8.safetensors</code>
+              </div>
+              <div class="form-check form-switch"><input class="form-check-input dirty-control" id="enable-hunyuan" type="checkbox" checked><label class="form-check-label" for="enable-hunyuan">启用</label></div>
+            </div>
+            <div class="model-meta"><span class="status-ok">组件完整</span><span>预计峰值 21–23 GB</span><span>自动启用VAE分块和CPU卸载</span></div>
+            <div class="model-config">
+              <label class="form-label">精度<select class="form-select dirty-control"><option>FP8 + BF16混合</option></select></label>
+              <label class="form-label">显存模式<select class="form-select dirty-control"><option>强制保守</option></select></label>
+              <label class="form-label">默认步数<input class="form-control dirty-control" type="number" value="30"></label>
+            </div>
+          </article>
+
+          <article class="card model-card">
+            <div class="model-head">
+              <div class="model-copy">
+                <div class="model-title"><strong>Wan 2.2 I2V 14B + NSFW LoRA</strong><span class="viz-badge">待补齐</span></div>
+                <code class="model-file text-small">diffusion_models\wan2.2_i2v_14B_*.safetensors</code>
+              </div>
+              <div class="form-check form-switch"><input class="form-check-input dirty-control" id="enable-wan14" type="checkbox" disabled><label class="form-check-label" for="enable-wan14">不可启用</label></div>
+            </div>
+            <div class="model-meta"><span class="status-warning">缺少高噪声阶段文件</span><span>补齐后使用FP8分块预设</span><button class="btn btn-ghost locate-missing" type="button">查看缺失文件</button></div>
+          </article>
+
+          <article class="card model-card">
+            <div class="model-head">
+              <div class="model-copy">
+                <div class="model-title"><strong>Wan 2.2 Remix v3</strong><span class="viz-badge">待补齐</span></div>
+                <code class="model-file text-small">loras\wan2.2_remix_v3.safetensors</code>
+              </div>
+              <div class="form-check form-switch"><input class="form-check-input dirty-control" id="enable-remix" type="checkbox" disabled><label class="form-check-label" for="enable-remix">不可启用</label></div>
+            </div>
+            <div class="model-meta"><span class="status-warning">基础模型或LoRA未完整匹配</span><span>扫描完成后自动解锁</span><button class="btn btn-ghost locate-missing" type="button">查看缺失文件</button></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="settings-panel hidden" data-panel-content="prompt">
+        <div class="card section-copy">
+          <div class="section-head">
+            <div class="section-title"><h2>LM Studio</h2><span class="viz-badge" id="lm-status">等待测试</span></div>
+            <button class="btn" id="test-lm" type="button">测试并读取模型</button>
+          </div>
+          <div class="prompt-grid">
+            <label class="form-label">API地址<input class="form-control dirty-control" id="lm-url" value="http://127.0.0.1:1234/v1"></label>
+            <label class="form-label">扩写模型<select class="form-select dirty-control" id="prompt-model"><option>Qwen3 8B Q4_K_M · 已加载</option><option>自动使用LM Studio当前模型</option></select></label>
+            <label class="form-label">扩写语言<select class="form-select dirty-control"><option>跟随输入语言</option><option>中文</option><option>英文</option></select></label>
+            <label class="form-label">创造性<select class="form-select dirty-control"><option>平衡 · 0.7</option><option>克制 · 0.3</option><option>丰富 · 1.0</option></select></label>
+          </div>
+        </div>
+        <div class="card section-copy">
+          <div class="section-head"><h2>提示词版本</h2><span class="text-small text-muted">创建页使用</span></div>
+          <div class="profile-grid">
+            <div class="form-check form-switch"><input class="form-check-input dirty-control" id="keep-prompt-history" type="checkbox" checked><label class="form-check-label" for="keep-prompt-history">保留每次扩写版本</label></div>
+            <div class="form-check form-switch"><input class="form-check-input dirty-control" id="model-template" type="checkbox" checked><label class="form-check-label" for="model-template">按视频模型套用专用模板</label></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-panel hidden" data-panel-content="upscale">
+        <div class="card section-copy">
+          <div class="section-head">
+            <div><h2>提升模型</h2><span class="text-muted">决定详情页弹窗中可选择的模型。</span></div>
+            <label class="form-label">默认模型<select class="form-select dirty-control"><option>SeedVR2 3B</option><option>FlashVSR</option><option>Real-ESRGAN x4plus</option></select></label>
+          </div>
+        </div>
+        <div class="model-list">
+          <article class="card model-card">
+            <div class="model-head"><div class="model-copy"><div class="model-title"><strong>SeedVR2 3B</strong><span class="viz-badge">推荐</span></div><span class="text-small text-muted">视频一致性最好，适合人物与真实画面。</span></div><div class="form-check form-switch"><input class="form-check-input dirty-control" id="enable-seedvr" type="checkbox" checked><label class="form-check-label" for="enable-seedvr">启用</label></div></div>
+            <div class="model-meta"><span class="status-ok">组件完整</span><span>预计峰值18–23 GB</span><span>支持720p–4K</span></div>
+          </article>
+          <article class="card model-card">
+            <div class="model-head"><div class="model-copy"><div class="model-title"><strong>FlashVSR</strong><span class="viz-badge">平衡</span></div><span class="text-small text-muted">质量、速度和时间一致性的平衡选择。</span></div><div class="form-check form-switch"><input class="form-check-input dirty-control" id="enable-flashvsr" type="checkbox" checked><label class="form-check-label" for="enable-flashvsr">启用</label></div></div>
+            <div class="model-meta"><span class="status-ok">组件完整</span><span>预计峰值14–19 GB</span><span>支持720p–4K</span></div>
+          </article>
+          <article class="card model-card">
+            <div class="model-head"><div class="model-copy"><div class="model-title"><strong>Real-ESRGAN x4plus</strong><span class="viz-badge">快速</span></div><span class="text-small text-muted">占用较低，适合快速检查和非人像内容。</span></div><div class="form-check form-switch"><input class="form-check-input dirty-control" id="enable-esrgan" type="checkbox" checked><label class="form-check-label" for="enable-esrgan">启用</label></div></div>
+            <div class="model-meta"><span class="status-ok">组件完整</span><span>预计峰值6–9 GB</span><span>支持720p–4K</span></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="card save-bar">
+    <div class="save-state"><i data-lucide="check-circle-2" aria-hidden="true"></i><span id="save-state">设置已保存</span></div>
+    <div class="panel-actions"><button class="btn btn-ghost" id="discard-settings" type="button" disabled>放弃更改</button><button class="btn btn-primary" id="save-settings" type="button" disabled>保存设置</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById('studio-settings');
+  const saveButton = root.querySelector('#save-settings');
+  const discardButton = root.querySelector('#discard-settings');
+  const saveState = root.querySelector('#save-state');
+
+  function showPanel(name) {
+    root.querySelectorAll('[data-panel-content]').forEach(panel => {
+      panel.classList.toggle('hidden', panel.dataset.panelContent !== name);
+    });
+    root.querySelectorAll('[data-panel]').forEach(button => {
+      const selected = button.dataset.panel === name;
+      button.setAttribute('aria-pressed', String(selected));
+      button.classList.toggle('btn-ghost', !selected);
+    });
+  }
+  root.querySelectorAll('[data-panel]').forEach(button => {
+    button.addEventListener('click', () => showPanel(button.dataset.panel));
+  });
+
+  function markDirty() {
+    saveState.textContent = '有未保存的更改';
+    saveButton.disabled = false;
+    discardButton.disabled = false;
+  }
+  root.querySelectorAll('.dirty-control').forEach(control => {
+    control.addEventListener('input', markDirty);
+    control.addEventListener('change', markDirty);
+  });
+
+  saveButton.addEventListener('click', () => {
+    saveState.textContent = '设置已保存并将在下一项任务生效';
+    saveButton.disabled = true;
+    discardButton.disabled = true;
+  });
+  discardButton.addEventListener('click', () => {
+    saveState.textContent = '已放弃本次更改';
+    saveButton.disabled = true;
+    discardButton.disabled = true;
+  });
+
+  root.querySelector('#scan-all').addEventListener('click', event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = '正在扫描模型目录…';
+    window.setTimeout(() => {
+      button.disabled = false;
+      button.innerHTML = '<i data-lucide="check" aria-hidden="true"></i>扫描完成';
+      root.querySelector('#scan-result').textContent = '刚刚扫描 · 找到3个可运行模型，2个待补齐，未发现重复文件';
+      globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+    }, 900);
+  });
+
+  root.querySelector('#test-comfy').addEventListener('click', () => {
+    root.querySelector('#comfy-status').textContent = '已连接 · 8188';
+  });
+  root.querySelector('#test-lm').addEventListener('click', () => {
+    root.querySelector('#lm-status').textContent = '已连接 · Qwen3 8B';
+  });
+  root.querySelectorAll('.browse-path').forEach(button => {
+    button.addEventListener('click', () => {
+      saveState.textContent = '原生目录选择器将在应用中打开';
+    });
+  });
+  root.querySelectorAll('.locate-missing').forEach(button => {
+    button.addEventListener('click', () => {
+      button.textContent = '缺失清单已展开';
+    });
+  });
+})();
+</script>

@@ -1,0 +1,1466 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Local Video Studio · 创建</title>
+  <style>
+:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cpath d='M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z'/%3E%3C/svg%3E");
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html > body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive > .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align="right"]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align="center"]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget > :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls > .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls > .form-label > :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type="file"] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type="file"]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type="file"]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type="color"] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type="checkbox"]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: "";
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type="radio"]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: "";
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed="true"],
+    [aria-selected="true"],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed="true"], [aria-selected="true"], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget > svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+    html { background: var(--background); }
+    body {
+      margin: 0;
+      padding: clamp(14px, 3vw, 30px);
+      background: var(--background);
+      color: var(--foreground);
+    }
+    body > div[id] {
+      width: min(100%, 1180px);
+      margin-inline: auto;
+    }
+    a.btn { text-decoration: none; }
+    .nav a.btn[aria-current="page"] {
+      color: var(--primary-foreground);
+      background: var(--primary);
+    }
+  </style>
+</head>
+<body>
+<style>
+  #create-history * { box-sizing: border-box; }
+  #create-history {
+    color: var(--foreground);
+    display: grid;
+    gap: 20px;
+  }
+  #create-history .bar,
+  #create-history .brand,
+  #create-history .nav,
+  #create-history .section-head,
+  #create-history .prompt-tools,
+  #create-history .history-tools,
+  #create-history .duration-head,
+  #create-history .duration-row,
+  #create-history .submit-row,
+  #create-history .estimate {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  #create-history .bar,
+  #create-history .section-head,
+  #create-history .duration-head,
+  #create-history .submit-row {
+    justify-content: space-between;
+  }
+  #create-history .brand { font-weight: 500; }
+  #create-history .stage,
+  #create-history .composer,
+  #create-history .settings,
+  #create-history .advanced {
+    display: grid;
+    gap: 14px;
+  }
+  #create-history .media-stage {
+    min-height: 310px;
+    display: grid;
+    place-items: center;
+  }
+  #create-history .media-stage.paired {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  #create-history .media-card {
+    width: 100%;
+    max-height: 450px;
+    aspect-ratio: var(--ratio, 16 / 9);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+  #create-history .media-card.portrait { width: min(68%, 390px); }
+  #create-history .paired .media-card { width: 100%; }
+  #create-history .media-empty,
+  #create-history .media-loaded {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 10px;
+    text-align: center;
+  }
+  #create-history .media-loaded { position: relative; }
+  #create-history .media-loaded img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  #create-history .replace {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+  }
+  #create-history textarea {
+    min-height: 120px;
+    resize: vertical;
+  }
+  #create-history .settings {
+    grid-template-columns: minmax(180px, 1.25fr) minmax(125px, .8fr) minmax(175px, 1fr);
+    align-items: end;
+  }
+  #create-history .resolution {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  #create-history .resolution .btn { width: 100%; }
+  #create-history .duration {
+    display: grid;
+    gap: 8px;
+  }
+  #create-history .duration-row { flex-wrap: nowrap; }
+  #create-history .duration-row .form-range {
+    min-width: 90px;
+    flex: 1;
+  }
+  #create-history .duration-number {
+    width: 78px;
+    flex: 0 0 78px;
+  }
+  #create-history .advanced {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: end;
+  }
+  #create-history .submit-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #create-history .hidden { display: none; }
+  @media (max-width: 680px) {
+    #create-history .settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #create-history .duration { grid-column: 1 / -1; }
+  }
+  @media (max-width: 520px) {
+    #create-history .nav { width: 100%; justify-content: space-between; }
+    #create-history .media-stage.paired,
+    #create-history .settings,
+    #create-history .advanced { grid-template-columns: 1fr; }
+    #create-history .duration { grid-column: auto; }
+    #create-history .submit-actions { width: 100%; }
+    #create-history .submit-actions .btn-primary { flex: 1; }
+  }
+</style>
+
+<div id="create-history">
+  <header class="bar">
+    <div class="brand"><i data-lucide="clapperboard" aria-hidden="true"></i><span>Local Video Studio</span></div>
+    <nav class="nav" aria-label="主导航">
+      <a class="btn btn-ghost" href="./create.html" aria-current="page">创建</a>
+      <a class="btn btn-ghost" href="./queue.html">队列 <span class="viz-badge">12</span></a>
+      <a class="btn btn-ghost" href="./history.html">历史</a>
+      <a class="btn btn-ghost" href="./settings.html">设置</a>
+    </nav>
+  </header>
+
+  <section class="stage" aria-labelledby="reference-heading">
+    <div class="section-head">
+      <div class="prompt-tools">
+        <h2 id="reference-heading">参考画面</h2>
+        <span class="viz-badge" id="ratio-badge">等待图片</span>
+      </div>
+      <div class="prompt-tools">
+        <button class="btn" id="single" type="button" aria-pressed="true">单张 / 首帧</button>
+        <button class="btn btn-ghost" id="pair" type="button" aria-pressed="false">添加尾帧</button>
+      </div>
+    </div>
+
+    <div class="media-stage" id="media-stage">
+      <div class="card media-card" id="start-card">
+        <div class="media-empty" id="start-empty">
+          <i data-lucide="image-plus" aria-hidden="true"></i>
+          <strong>拖入参考图片</strong>
+          <span class="text-muted">画布会自动适配图片比例</span>
+          <label class="btn" for="start-file">选择图片</label>
+          <input class="sr-only" id="start-file" type="file" accept="image/*">
+        </div>
+        <div class="media-loaded hidden" id="start-loaded">
+          <img id="start-image" alt="参考图片">
+          <div class="replace">
+            <label class="btn" for="start-file">更换</label>
+            <button class="btn btn-ghost" id="remove-start" type="button">移除</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card media-card hidden" id="end-card">
+        <div class="media-empty" id="end-empty">
+          <i data-lucide="image-plus" aria-hidden="true"></i>
+          <strong>添加尾帧</strong>
+          <span class="text-muted">视频将自然过渡到目标画面</span>
+          <label class="btn" for="end-file">选择尾帧</label>
+          <input class="sr-only" id="end-file" type="file" accept="image/*">
+        </div>
+        <div class="media-loaded hidden" id="end-loaded">
+          <img id="end-image" alt="尾帧图片">
+          <div class="replace">
+            <label class="btn" for="end-file">更换</label>
+            <button class="btn btn-ghost" id="remove-end" type="button">移除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card composer" aria-labelledby="prompt-heading">
+    <div class="section-head">
+      <div>
+        <h2 id="prompt-heading">描述这个镜头如何运动</h2>
+        <span class="text-muted">每次扩写都会自动保留为一个新版本</span>
+      </div>
+      <div class="prompt-tools">
+        <div class="history-tools" aria-label="提示词版本历史">
+          <button class="btn btn-ghost" id="previous-version" type="button" aria-label="上一个提示词版本" data-tooltip="上一个版本" disabled>
+            <i data-lucide="chevron-left" aria-hidden="true"></i>
+          </button>
+          <span class="viz-badge" id="version-label">1 / 1 · 原始</span>
+          <button class="btn btn-ghost" id="next-version" type="button" aria-label="下一个提示词版本" data-tooltip="下一个版本" disabled>
+            <i data-lucide="chevron-right" aria-hidden="true"></i>
+          </button>
+        </div>
+        <button class="btn" id="enhance" type="button">
+          <i data-lucide="sparkles" aria-hidden="true"></i>
+          本地扩写
+        </button>
+      </div>
+    </div>
+
+    <label class="sr-only" for="prompt">视频提示词</label>
+    <textarea class="form-control" id="prompt">人物自然地看向镜头，头发被微风吹动，镜头缓慢推近，动作真实流畅。</textarea>
+
+    <div class="settings">
+      <label class="form-label" for="model">模型
+        <select class="form-select" id="model">
+          <option value="sulphur">Sulphur 2 FP8 · 无审查</option>
+          <option value="wan5">Wan 2.2 5B · 快速草稿</option>
+          <option value="hunyuan">HunyuanVideo 1.5 · 质量</option>
+          <option value="wan14" disabled>Wan 2.2 14B + NSFW LoRA · 等待文件</option>
+          <option value="remix" disabled>Wan 2.2 Remix v3 · 等待文件</option>
+        </select>
+      </label>
+
+      <label class="form-label" for="ratio">画面比例
+        <select class="form-select" id="ratio">
+          <option value="source" id="source-option">原图</option>
+          <option value="16:9">16:9 横屏</option>
+          <option value="9:16">9:16 竖屏</option>
+          <option value="1:1">1:1 方形</option>
+          <option value="4:3">4:3</option>
+        </select>
+      </label>
+
+      <div>
+        <label class="form-label">草稿清晰度</label>
+        <div class="resolution">
+          <button class="btn" type="button" data-resolution="480" aria-pressed="true">480p</button>
+          <button class="btn btn-ghost" type="button" data-resolution="540" aria-pressed="false">540p</button>
+          <button class="btn btn-ghost" type="button" data-resolution="720" aria-pressed="false">720p</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="duration">
+      <div class="duration-head">
+        <label class="form-label" for="duration-range">视频时长</label>
+        <span><strong id="duration-value">5</strong> 秒</span>
+      </div>
+      <div class="duration-row">
+        <span class="text-small text-muted">1s</span>
+        <input class="form-range" id="duration-range" type="range" min="1" max="30" value="5">
+        <span class="text-small text-muted">30s</span>
+        <label class="sr-only" for="duration-number">手动输入秒数</label>
+        <input class="form-control duration-number" id="duration-number" type="number" min="1" max="60" value="5">
+      </div>
+      <span class="text-small text-muted hidden" id="long-note">超过10秒时会自动拆分为连续片段，仍作为一个任务管理。</span>
+    </div>
+
+    <button class="btn btn-ghost" id="advanced-toggle" type="button" aria-expanded="false">
+      <i data-lucide="sliders-horizontal" aria-hidden="true"></i>更多控制
+    </button>
+    <div class="advanced hidden" id="advanced">
+      <label class="form-label" for="motion">动作幅度
+        <select class="form-select" id="motion"><option>自然</option><option>轻微</option><option>强烈</option></select>
+      </label>
+      <label class="form-label" for="seed">随机种子
+        <input class="form-control" id="seed" type="number" placeholder="随机">
+      </label>
+      <div class="form-check form-switch">
+        <input class="form-check-input" id="keep-seed" type="checkbox">
+        <label class="form-check-label" for="keep-seed">复制时保留种子</label>
+      </div>
+    </div>
+
+    <div class="submit-row">
+      <div class="estimate">
+        <i data-lucide="clock-3" aria-hidden="true"></i>
+        <div>
+          <strong id="estimate">预计 3–5 分钟</strong>
+          <div class="text-small text-muted" id="estimate-detail">Sulphur 2 · 原图 · 480p · 5秒</div>
+        </div>
+      </div>
+      <div class="submit-actions">
+        <span class="text-small text-muted" id="submit-status">自动保存</span>
+        <button class="btn btn-ghost" id="clear-draft" type="button">
+          <i data-lucide="trash-2" aria-hidden="true"></i>清空
+        </button>
+        <button class="btn btn-primary" id="enqueue" type="button">
+          <i data-lucide="list-plus" aria-hidden="true"></i>加入队列
+        </button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById('create-history');
+  const stage = root.querySelector('#media-stage');
+  const startCard = root.querySelector('#start-card');
+  const endCard = root.querySelector('#end-card');
+  const ratioBadge = root.querySelector('#ratio-badge');
+  const ratioSelect = root.querySelector('#ratio');
+  const sourceOption = root.querySelector('#source-option');
+  let sourceRatio = 16 / 9;
+  let sourceLabel = '原图';
+  let paired = false;
+  let resolution = 480;
+
+  function setRatio(card, ratio) {
+    card.style.setProperty('--ratio', String(ratio));
+    card.classList.toggle('portrait', !paired && ratio < .9);
+  }
+
+  function friendlyRatio(width, height) {
+    const known = [[16,9],[9,16],[4,3],[3,4],[1,1],[3,2],[2,3],[21,9]];
+    const actual = width / height;
+    let best = known[0];
+    let delta = Infinity;
+    known.forEach(value => {
+      const current = Math.abs(actual - value[0] / value[1]);
+      if (current < delta) { best = value; delta = current; }
+    });
+    return delta < .04 ? `${best[0]}:${best[1]}` : `${width}×${height}`;
+  }
+
+  function setMode(value) {
+    paired = value;
+    root.querySelector('#single').setAttribute('aria-pressed', String(!value));
+    root.querySelector('#pair').setAttribute('aria-pressed', String(value));
+    root.querySelector('#single').classList.toggle('btn-ghost', value);
+    root.querySelector('#pair').classList.toggle('btn-ghost', !value);
+    endCard.classList.toggle('hidden', !value);
+    stage.classList.toggle('paired', value);
+    startCard.classList.remove('portrait');
+    if (!value) setRatio(startCard, sourceRatio);
+    updateEstimate();
+  }
+  root.querySelector('#single').addEventListener('click', () => setMode(false));
+  root.querySelector('#pair').addEventListener('click', () => setMode(true));
+
+  function bindImage(prefix, card, primary) {
+    const input = root.querySelector(`#${prefix}-file`);
+    const empty = root.querySelector(`#${prefix}-empty`);
+    const loaded = root.querySelector(`#${prefix}-loaded`);
+    const image = root.querySelector(`#${prefix}-image`);
+    function load(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      const url = URL.createObjectURL(file);
+      image.onload = () => {
+        const ratio = image.naturalWidth / image.naturalHeight;
+        if (primary) {
+          sourceRatio = ratio;
+          sourceLabel = friendlyRatio(image.naturalWidth, image.naturalHeight);
+          ratioBadge.textContent = `${image.naturalWidth} × ${image.naturalHeight} · ${sourceLabel}`;
+          sourceOption.textContent = `原图 · ${sourceLabel}`;
+        }
+        setRatio(card, ratio);
+        URL.revokeObjectURL(url);
+        updateEstimate();
+      };
+      image.src = url;
+      empty.classList.add('hidden');
+      loaded.classList.remove('hidden');
+    }
+    input.addEventListener('change', () => load(input.files && input.files[0]));
+    card.addEventListener('dragover', event => event.preventDefault());
+    card.addEventListener('drop', event => {
+      event.preventDefault();
+      load(event.dataTransfer.files && event.dataTransfer.files[0]);
+    });
+    root.querySelector(`#remove-${prefix}`).addEventListener('click', () => {
+      input.value = '';
+      image.removeAttribute('src');
+      loaded.classList.add('hidden');
+      empty.classList.remove('hidden');
+      if (primary) {
+        sourceRatio = 16 / 9;
+        sourceLabel = '原图';
+        ratioBadge.textContent = '等待图片';
+        sourceOption.textContent = '原图';
+        setRatio(startCard, sourceRatio);
+      }
+      updateEstimate();
+    });
+  }
+  bindImage('start', startCard, true);
+  bindImage('end', endCard, false);
+
+  const prompt = root.querySelector('#prompt');
+  const previous = root.querySelector('#previous-version');
+  const next = root.querySelector('#next-version');
+  const versionLabel = root.querySelector('#version-label');
+  const initialText = prompt.value;
+  const versions = [{ text: initialText, label: '原始', source: initialText }];
+  let versionIndex = 0;
+  let expansionCount = 0;
+  let navigating = false;
+  let editingVersion = false;
+
+  function showVersion(index) {
+    versionIndex = Math.max(0, Math.min(versions.length - 1, index));
+    navigating = true;
+    prompt.value = versions[versionIndex].text;
+    navigating = false;
+    editingVersion = versions[versionIndex].label === '手动编辑';
+    versionLabel.textContent = `${versionIndex + 1} / ${versions.length} · ${versions[versionIndex].label}`;
+    previous.disabled = versionIndex === 0;
+    next.disabled = versionIndex === versions.length - 1;
+  }
+
+  previous.addEventListener('click', () => showVersion(versionIndex - 1));
+  next.addEventListener('click', () => showVersion(versionIndex + 1));
+
+  prompt.addEventListener('input', () => {
+    if (navigating) return;
+    if (!editingVersion) {
+      versions.push({
+        text: prompt.value,
+        label: '手动编辑',
+        source: prompt.value
+      });
+      versionIndex = versions.length - 1;
+      editingVersion = true;
+    } else {
+      versions[versionIndex].text = prompt.value;
+      versions[versionIndex].source = prompt.value;
+    }
+    showVersion(versionIndex);
+    prompt.focus();
+  });
+
+  const variations = [
+    '人物身份和面部特征保持一致。微风轻柔带动头发与衣物，镜头稳定地缓慢推近，背景景深产生自然变化。真实光照，连续运动，避免突然变形和镜头抖动。',
+    '保持主体构图和原始外观。人物先轻微抬眼，再自然看向镜头；头发随柔和气流摆动。摄影机以极慢速度前移并略微向左环绕，动作细腻，具有真实惯性。',
+    '画面从安静状态自然启动。人物呼吸和表情变化克制，衣物与发梢产生细微二次运动。镜头平滑推进，焦点逐渐从背景转移到双眼，电影感光线，运动连贯。'
+  ];
+  root.querySelector('#enhance').addEventListener('click', event => {
+    const button = event.currentTarget;
+    const current = versions[versionIndex];
+    const source = current.label.startsWith('扩写') ? current.source : prompt.value.trim();
+    button.disabled = true;
+    versionLabel.textContent = '本地扩写中…';
+    window.setTimeout(() => {
+      expansionCount += 1;
+      const suffix = variations[(expansionCount - 1) % variations.length];
+      versions.push({
+        text: `${source} ${suffix}`,
+        label: `扩写 ${expansionCount}`,
+        source
+      });
+      editingVersion = false;
+      showVersion(versions.length - 1);
+      button.disabled = false;
+    }, 600);
+  });
+
+  const durationRange = root.querySelector('#duration-range');
+  const durationNumber = root.querySelector('#duration-number');
+  function setDuration(value) {
+    const seconds = Math.max(1, Math.min(60, Number(value) || 1));
+    durationNumber.value = seconds;
+    durationRange.value = Math.min(30, seconds);
+    root.querySelector('#duration-value').textContent = seconds;
+    root.querySelector('#long-note').classList.toggle('hidden', seconds <= 10);
+    updateEstimate();
+  }
+  durationRange.addEventListener('input', () => setDuration(durationRange.value));
+  durationNumber.addEventListener('input', () => setDuration(durationNumber.value));
+
+  root.querySelectorAll('[data-resolution]').forEach(button => {
+    button.addEventListener('click', () => {
+      resolution = Number(button.dataset.resolution);
+      root.querySelectorAll('[data-resolution]').forEach(item => {
+        const selected = item === button;
+        item.setAttribute('aria-pressed', String(selected));
+        item.classList.toggle('btn-ghost', !selected);
+      });
+      updateEstimate();
+    });
+  });
+
+  const model = root.querySelector('#model');
+  const rates = { sulphur:42, wan5:24, hunyuan:54, wan14:68, remix:64 };
+  const names = { sulphur:'Sulphur 2', wan5:'Wan 2.2 5B', hunyuan:'HunyuanVideo 1.5', wan14:'Wan 2.2 14B', remix:'Wan 2.2 Remix v3' };
+  function formatTime(seconds) {
+    if (seconds < 90) return `${Math.max(10, Math.round(seconds / 10) * 10)}秒`;
+    if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))}分钟`;
+    return `${(seconds / 3600).toFixed(1)}小时`;
+  }
+  function updateEstimate() {
+    const duration = Number(durationNumber.value) || 5;
+    const factor = resolution === 480 ? 1 : resolution === 540 ? 1.35 : 2.4;
+    const center = 35 + duration * rates[model.value] * factor * (paired ? 1.12 : 1) * (duration > 10 ? 1.18 : 1);
+    root.querySelector('#estimate').textContent = `预计 ${formatTime(center * .78)}–${formatTime(center * 1.25)}`;
+    const ratio = ratioSelect.value === 'source' ? sourceLabel : ratioSelect.value;
+    root.querySelector('#estimate-detail').textContent = `${names[model.value]} · ${ratio} · ${resolution}p · ${duration}秒`;
+  }
+  model.addEventListener('change', updateEstimate);
+  ratioSelect.addEventListener('change', updateEstimate);
+
+  root.querySelector('#advanced-toggle').addEventListener('click', event => {
+    const expanded = event.currentTarget.getAttribute('aria-expanded') === 'true';
+    event.currentTarget.setAttribute('aria-expanded', String(!expanded));
+    root.querySelector('#advanced').classList.toggle('hidden', expanded);
+  });
+
+  const modelCodes = {
+    sulphur: 'SUL2',
+    wan5: 'WAN22-5B',
+    hunyuan: 'HUN15',
+    wan14: 'WAN22-14B',
+    remix: 'REMIX3'
+  };
+  const issuedFilenames = new Map();
+
+  function compactPrompt(text) {
+    const cleaned = text
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+      .replace(/[，。！？、；：,.!?;()[\]{}"'“”‘’]/g, ' ')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^[.\-\s]+|[.\-\s]+$/g, '');
+    return Array.from(cleaned || 'video').slice(0, 16).join('');
+  }
+
+  function localTimestamp(date = new Date()) {
+    const pad = value => String(value).padStart(2, '0');
+    return [
+      date.getFullYear(),
+      pad(date.getMonth() + 1),
+      pad(date.getDate())
+    ].join('') + '-' + [
+      pad(date.getHours()),
+      pad(date.getMinutes()),
+      pad(date.getSeconds())
+    ].join('');
+  }
+
+  function createOutputFilename() {
+    const base = `${modelCodes[model.value]}-${compactPrompt(prompt.value)}-${localTimestamp()}`;
+    const count = (issuedFilenames.get(base) || 0) + 1;
+    issuedFilenames.set(base, count);
+    return `${base}${count > 1 ? `-${String(count).padStart(2, '0')}` : ''}.mp4`;
+  }
+
+  root.querySelector('#enqueue').addEventListener('click', event => {
+    const button = event.currentTarget;
+    const status = root.querySelector('#submit-status');
+    const outputFilename = createOutputFilename();
+    button.innerHTML = '<i data-lucide="check" aria-hidden="true"></i>已加入队列';
+    button.disabled = true;
+    status.textContent = `已加入队列 · ${outputFilename}`;
+    if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+    window.setTimeout(() => {
+      button.innerHTML = '<i data-lucide="list-plus" aria-hidden="true"></i>加入队列';
+      button.disabled = false;
+      status.textContent = '自动保存';
+      if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+    }, 1600);
+  });
+
+  const clearButton = root.querySelector('#clear-draft');
+  let clearArmed = false;
+  let clearTimer;
+
+  function resetUpload(prefix) {
+    const input = root.querySelector(`#${prefix}-file`);
+    const image = root.querySelector(`#${prefix}-image`);
+    input.value = '';
+    image.removeAttribute('src');
+    root.querySelector(`#${prefix}-loaded`).classList.add('hidden');
+    root.querySelector(`#${prefix}-empty`).classList.remove('hidden');
+  }
+
+  function resetDraft() {
+    resetUpload('start');
+    resetUpload('end');
+    sourceRatio = 16 / 9;
+    sourceLabel = '原图';
+    ratioBadge.textContent = '等待图片';
+    sourceOption.textContent = '原图';
+    setMode(false);
+    setRatio(startCard, sourceRatio);
+    setRatio(endCard, sourceRatio);
+
+    versions.splice(0, versions.length, { text: '', label: '新建', source: '' });
+    expansionCount = 0;
+    editingVersion = false;
+    showVersion(0);
+
+    model.value = 'sulphur';
+    ratioSelect.value = 'source';
+    resolution = 480;
+    root.querySelectorAll('[data-resolution]').forEach(item => {
+      const selected = item.dataset.resolution === '480';
+      item.setAttribute('aria-pressed', String(selected));
+      item.classList.toggle('btn-ghost', !selected);
+    });
+    setDuration(5);
+    root.querySelector('#motion').selectedIndex = 0;
+    root.querySelector('#seed').value = '';
+    root.querySelector('#keep-seed').checked = false;
+    root.querySelector('#advanced').classList.add('hidden');
+    root.querySelector('#advanced-toggle').setAttribute('aria-expanded', 'false');
+    root.querySelector('#submit-status').textContent = '已清空，可以创建新任务';
+    prompt.focus();
+    updateEstimate();
+  }
+
+  clearButton.addEventListener('click', () => {
+    if (!clearArmed) {
+      clearArmed = true;
+      clearButton.innerHTML = '<i data-lucide="alert-circle" aria-hidden="true"></i>确认清空';
+      if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+      clearTimer = window.setTimeout(() => {
+        clearArmed = false;
+        clearButton.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i>清空';
+        if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+      }, 3000);
+      return;
+    }
+    window.clearTimeout(clearTimer);
+    clearArmed = false;
+    clearButton.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i>清空';
+    if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+    resetDraft();
+  });
+
+  updateEstimate();
+})();
+</script>
+
+  <script src="./upscale-dialog.js"></script>
+  <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"></script>
+  <script>
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+# Runtime data and generated media
+outputs/
+data/
+logs/
+temp/
+*.mp4
+*.webm
+*.mov
+*.partial
+
+# Local models and caches
+models/
+node_modules/
+.cache/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local secrets and environment
+.env
+.env.*
+!.env.example
