@@ -7,13 +7,14 @@ import type {
 } from "./types";
 import { createDefaultDraft } from "./core/defaults";
 
-type Page = "create" | "queue" | "history" | "settings";
+type Page = "create" | "queue" | "history" | "history-detail" | "settings";
 
 const appElement = document.querySelector<HTMLDivElement>("#app")!;
 let state: AppState;
 let page: Page = "create";
 let draftSaveTimer: number | undefined;
 let flashMessage = "";
+let selectedHistoryAssetId = "";
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "")
@@ -53,7 +54,7 @@ function shell(content: string): string {
           <span class="brand-mark">▶</span><span>Local Video Studio</span>
         </button>
         <nav aria-label="主导航">
-          ${(["create", "queue", "history", "settings"] as Page[])
+          ${(["create", "queue", "history", "settings"] as Array<Exclude<Page, "history-detail">>)
             .map((item) => {
               const labels = { create: "创建", queue: "队列", history: "历史", settings: "设置" };
               const badge = item === "queue" && state.queue.length
@@ -148,6 +149,7 @@ function createPage(): string {
         <label>随机 Seed
           <input id="seed" type="number" placeholder="留空则随机" value="${draft.seed ?? ""}">
         </label>
+        <label class="checkbox-field"><input id="keep-seed" type="checkbox" ${draft.keepSeedOnCopy ? "checked" : ""}><span>复制任务时保留 Seed</span></label>
       </div>
       <div class="workflow-field">
         <div><strong>ComfyUI API 工作流</strong><p class="muted">${draft.workflowPath ? escapeHtml(draft.workflowPath) : "为当前模型选择从 ComfyUI 导出的 API 格式 JSON"}</p></div>
@@ -165,9 +167,7 @@ function queuePage(): string {
   return `
     <section class="page-heading">
       <div><h1>生成队列</h1><p>${state.queue.length} 项任务 · ${state.queueRunning ? "正在持续执行" : "当前已暂停"}</p></div>
-      <button class="primary" id="${state.queueRunning ? "pause-queue" : "start-queue"}">
-        ${state.queueRunning ? "暂停队列" : "开始队列"}
-      </button>
+      <div class="button-row"><button class="secondary" id="optimize-queue" ${state.queue.filter((task) => task.status === "waiting").length < 2 ? "disabled" : ""}>按模型优化顺序</button><button class="primary" id="${state.queueRunning ? "pause-queue" : "start-queue"}">${state.queueRunning ? "暂停队列" : "开始队列"}</button></div>
     </section>
     ${running ? `<section class="panel now-running">
       <div class="section-heading"><div><span class="eyebrow">正在生成</span><h2>${escapeHtml(running.outputFilename)}</h2></div><strong>${Math.round(running.progress ?? 0)}%</strong></div>
@@ -186,6 +186,9 @@ function queuePage(): string {
               ${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ""}
             </div>
             <div class="task-actions">
+              ${task.status === "waiting" ? `<div class="button-row"><button class="icon-button" data-move="${task.id}" data-direction="-1" title="上移">↑</button><button class="icon-button" data-move="${task.id}" data-direction="1" title="下移">↓</button></div>` : ""}
+              <button class="secondary" data-duplicate="${task.id}">复制</button>
+              ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary" data-retry="${task.id}">重试</button>` : ""}
               ${task.status === "running" ? `<button class="danger secondary" data-cancel="${task.id}">安全中止</button>` : ""}
               ${task.status !== "running" ? `<button class="ghost danger" data-remove="${task.id}">移除</button>` : ""}
             </div>
@@ -204,10 +207,35 @@ function historyPage(): string {
       ${state.history.length === 0
         ? `<div class="empty panel"><h2>还没有完成的视频</h2><p>队列完成后，结果会自动出现在这里。</p></div>`
         : state.history.map((asset) => `
-          <article class="history-card panel">
+          <article class="history-card panel" data-history="${asset.id}" tabindex="0">
             <div class="video-placeholder">▶</div>
             <div class="history-copy"><h3>${escapeHtml(asset.title)}</h3><code>${escapeHtml(asset.outputFilename)}</code><p>${escapeHtml(asset.prompt)}</p><div class="task-meta"><span>${escapeHtml(modelName(asset.modelId))}</span><span>${asset.resolution}p</span><span>${asset.duration}秒</span><span>Seed ${asset.seed}</span></div></div>
           </article>`).join("")}
+    </section>`;
+}
+
+function historyDetailPage(): string {
+  const asset = state.history.find((item) => item.id === selectedHistoryAssetId);
+  if (!asset) {
+    page = "history";
+    return historyPage();
+  }
+  return `
+    <section class="page-heading"><div><button class="ghost back-button" data-page="history">← 返回历史</button><h1>${escapeHtml(asset.title)}</h1><p>${escapeHtml(asset.outputFilename)}</p></div></section>
+    <section class="panel history-detail">
+      <div class="video-placeholder large">▶</div>
+      <div class="detail-grid">
+        <div><span class="muted">提示词</span><p>${escapeHtml(asset.prompt)}</p></div>
+        <div><span class="muted">生成参数</span><p>${escapeHtml(modelName(asset.modelId))} · ${asset.resolution}p · ${asset.duration}秒 · Seed ${asset.seed}</p></div>
+        <div><span class="muted">ComfyUI Prompt ID</span><p><code>${escapeHtml(asset.comfyPromptId)}</code></p></div>
+      </div>
+      <h2>输出文件</h2>
+      <div class="output-files">
+        ${asset.files.length === 0
+          ? `<p class="muted">ComfyUI 返回中没有识别到文件。需要在本地保存一份 history 响应，用于补充该工作流的输出结构。</p>`
+          : asset.files.map((file) => `<div class="output-file"><div><strong>${escapeHtml(file.filename)}</strong><p class="muted">${escapeHtml(file.subfolder || ".")} · ${escapeHtml(file.type)}</p></div>${file.absolutePath ? `<button class="secondary" data-show-file="${escapeHtml(file.absolutePath)}">在 Explorer 中显示</button>` : `<span class="muted">请先在设置中填写 ComfyUI 输出目录</span>`}</div>`).join("")}
+      </div>
+      <details><summary>原始 ComfyUI 输出快照</summary><pre>${escapeHtml(JSON.stringify(asset.comfyOutputs, null, 2))}</pre></details>
     </section>`;
 }
 
@@ -226,7 +254,7 @@ function settingsPage(): string {
         </label>
         <label>LM Studio 模型 ID<input id="lm-model" value="${escapeHtml(settings.lmStudioModel)}" placeholder="留空使用 local-model"></label>
         <label>ComfyUI 模型目录<input id="model-directory" value="${escapeHtml(settings.modelDirectory)}"></label>
-        <label>视频输出目录<input id="output-directory" value="${escapeHtml(settings.outputDirectory)}" placeholder="由工作流输出节点决定"></label>
+        <label>ComfyUI 输出目录<div class="input-action"><input id="output-directory" value="${escapeHtml(settings.outputDirectory)}" placeholder="例如 C:\\ComfyUI\\output"><button class="secondary" id="pick-output-directory">选择</button></div></label>
       </div>
       <h2>提示词扩写</h2>
       <label>系统模板<textarea id="prompt-template" rows="5">${escapeHtml(settings.promptSystemTemplate)}</textarea></label>
@@ -244,6 +272,7 @@ function render(): void {
     page === "create" ? createPage() :
     page === "queue" ? queuePage() :
     page === "history" ? historyPage() :
+    page === "history-detail" ? historyDetailPage() :
     settingsPage();
   appElement.innerHTML = shell(content);
   bindShell();
@@ -252,6 +281,7 @@ function render(): void {
     void imagePreview(state.draft.startImagePath, "start-preview");
     void imagePreview(state.draft.endImagePath, "end-preview");
   } else if (page === "queue") bindQueue();
+  else if (page === "history" || page === "history-detail") bindHistory();
   else if (page === "settings") bindSettings();
 }
 
@@ -379,6 +409,9 @@ function bindCreate(): void {
       patchDraft(patch);
     });
   }
+  document.querySelector("#keep-seed")?.addEventListener("change", (event) => {
+    patchDraft({ keepSeedOnCopy: (event.target as HTMLInputElement).checked });
+  });
   const range = document.querySelector<HTMLInputElement>("#duration");
   const number = document.querySelector<HTMLInputElement>("#duration-number");
   const updateDuration = (value: string) => {
@@ -413,6 +446,10 @@ function bindQueue(): void {
     state = await window.studio.pauseQueue();
     render();
   });
+  document.querySelector("#optimize-queue")?.addEventListener("click", async () => {
+    state = await window.studio.optimizeQueue();
+    showMessage("等待任务已按模型和工作流重新分组。");
+  });
   document.querySelectorAll<HTMLElement>("[data-remove]").forEach((button) => {
     button.addEventListener("click", async () => {
       state = await window.studio.removeTask(button.dataset.remove!);
@@ -423,6 +460,47 @@ function bindQueue(): void {
     button.addEventListener("click", async () => {
       state = await window.studio.cancelTask(button.dataset.cancel!);
       render();
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-move]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state = await window.studio.moveTask(
+        button.dataset.move!,
+        Number(button.dataset.direction) as -1 | 1
+      );
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-duplicate]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state = await window.studio.duplicateTask(button.dataset.duplicate!);
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-retry]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      state = await window.studio.retryTask(button.dataset.retry!);
+      render();
+    });
+  });
+}
+
+function bindHistory(): void {
+  document.querySelectorAll<HTMLElement>("[data-history]").forEach((card) => {
+    const open = () => {
+      selectedHistoryAssetId = card.dataset.history!;
+      page = "history-detail";
+      render();
+    };
+    card.addEventListener("click", open);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") open();
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-show-file]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const shown = await window.studio.showItemInFolder(button.dataset.showFile!);
+      if (!shown) showMessage("文件不存在或当前路径还没有在本机生成。");
     });
   });
 }
@@ -455,6 +533,11 @@ function bindSettings(): void {
       resultElement.className = `connection-result ${result.ok ? "success" : "error"}`;
       resultElement.textContent = result.message;
     });
+  });
+  document.querySelector("#pick-output-directory")?.addEventListener("click", async () => {
+    const directory = await window.studio.pickDirectory();
+    const input = document.querySelector<HTMLInputElement>("#output-directory");
+    if (directory && input) input.value = directory;
   });
 }
 
