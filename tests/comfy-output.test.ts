@@ -1,0 +1,48 @@
+import { describe, expect, it } from "vitest";
+import {
+  attachAbsoluteOutputPaths,
+  extractComfyOutputFiles
+} from "../src/core/comfy-output";
+
+describe("ComfyUI output parsing", () => {
+  it("extracts and deduplicates common media collections", () => {
+    const response = {
+      outputs: {
+        "42": {
+          images: [
+            { filename: "cover.png", subfolder: "studio", type: "output" }
+          ],
+          gifs: [
+            {
+              filename: "result.mp4",
+              subfolder: "studio",
+              type: "output",
+              format: "video/h264-mp4"
+            }
+          ]
+        },
+        "43": {
+          files: [
+            {
+              filename: "result.mp4",
+              subfolder: "studio",
+              type: "output"
+            }
+          ]
+        }
+      },
+      unrelated: { filename: "should-not-be-collected.txt" }
+    };
+    const files = extractComfyOutputFiles(response);
+    expect(files.map((file) => file.filename)).toEqual(["cover.png", "result.mp4"]);
+  });
+
+  it("attaches paths relative to the configured ComfyUI output directory", () => {
+    const [file] = attachAbsoluteOutputPaths(
+      [{ filename: "result.mp4", subfolder: "studio", type: "output" }],
+      "C:\\ComfyUI\\output"
+    );
+    expect(file?.absolutePath).toContain("studio");
+    expect(file?.absolutePath).toContain("result.mp4");
+  });
+});
