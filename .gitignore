@@ -13,6 +13,10 @@ models/
 node_modules/
 .cache/
 
+# Build and test outputs
+dist/
+coverage/
+
 # Editor and OS files
 .vscode/
 .idea/
