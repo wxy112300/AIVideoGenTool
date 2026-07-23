@@ -11,7 +11,11 @@
 - 草稿、提示词版本、队列和历史的本地持久化。
 - LM Studio OpenAI 兼容 API 提示词扩写。
 - ComfyUI 图片上传、API workflow 提交、完成轮询和任务中止。
+- ComfyUI WebSocket 真实节点进度与执行错误监听，并以 history 轮询作为兼容兜底。
 - 工作流占位符注入，允许每个视频模型使用独立 JSON。
+- API workflow 格式与必需占位符校验。
+- 队列上移/下移、复制、重试和按模型/工作流优化顺序。
+- ComfyUI 输出文件解析、历史详情快照和 Explorer 文件定位。
 - Windows PowerShell 环境检查与初始化。
 
 模型专属工作流、WebSocket 真实进度、安全取消后的部分视频合成、完整历史版本和分辨率提升仍需在带有 ComfyUI/RTX 4090 的本地机器继续实现和验证。
@@ -40,6 +44,7 @@ npm run dev
 - `docs/PRODUCT_REQUIREMENTS.md`：完整产品需求与验收标准。
 - `docs/DEPENDENCIES_AND_SETUP.md`：模块依赖、必需软件和初始化步骤。
 - `docs/LOCAL_CODEX_HANDOFF.md`：本地 ComfyUI 环境的后续接手任务。
+- `docs/CLOUD_IMPLEMENTATION_STATUS.md`：云端已完成部分和必须本机完成的边界。
 - `prototypes/`：已确认的交互原型，正式实现应继续以它为视觉与交互参考。
 
 ## ComfyUI 工作流
