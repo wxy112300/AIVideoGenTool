@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,15 @@ import type {
   Settings
 } from "../src/types.js";
 import { createOutputFilename } from "../src/core/filename.js";
+import {
+  attachAbsoluteOutputPaths,
+  extractComfyOutputFiles
+} from "../src/core/comfy-output.js";
+import {
+  moveWaitingTask,
+  optimizeWaitingTasks
+} from "../src/core/queue.js";
+import { validateApiWorkflow } from "../src/core/workflow.js";
 import { JsonStore } from "./store.js";
 import { enhancePrompt, testLmStudio } from "./services/lm-studio.js";
 import {
@@ -88,6 +97,7 @@ function queueTaskFromDraft(draft: Draft, state: AppState): QueueTask {
     duration: draft.duration,
     motion: draft.motion,
     seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
+    keepSeedOnCopy: draft.keepSeedOnCopy,
     progress: 0
   };
 }
@@ -111,10 +121,11 @@ async function executeQueue(): Promise<void> {
     activeController = new AbortController();
     try {
       await updateTask(task.id, { status: "running", progress: 1, error: undefined });
-      const promptId = await submitTask(task, store.get().settings);
+      const { promptId, clientId } = await submitTask(task, store.get().settings);
       await updateTask(task.id, { comfyPromptId: promptId, progress: 3 });
       const result = await waitForTask(
         promptId,
+        clientId,
         store.get().settings,
         activeController.signal,
         (progress) => void updateTask(task.id, { progress })
@@ -133,7 +144,11 @@ async function executeQueue(): Promise<void> {
         prompt: completedTask.prompt,
         seed: completedTask.seed,
         comfyPromptId: promptId,
-        comfyOutputs: result
+        comfyOutputs: result,
+        files: attachAbsoluteOutputPaths(
+          extractComfyOutputFiles(result),
+          store.get().settings.outputDirectory
+        )
       };
       const next = await store.update((state) => {
         state.queue = state.queue.filter((item) => item.id !== task.id);
@@ -190,12 +205,21 @@ function registerIpc(): void {
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
+  ipcMain.handle("file:pick-directory", async () => {
+    const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
   ipcMain.handle("file:read-image", async (_event, filename: string) => {
     if (!filename) return null;
     const extension = path.extname(filename).slice(1).toLowerCase();
     const mime = extension === "jpg" || extension === "jpeg" ? "image/jpeg" : `image/${extension}`;
     const content = await fs.readFile(filename);
     return `data:${mime};base64,${content.toString("base64")}`;
+  });
+  ipcMain.handle("file:show-in-folder", async (_event, filename: string) => {
+    if (!filename || !(await fs.stat(filename).catch(() => null))) return false;
+    shell.showItemInFolder(filename);
+    return true;
   });
   ipcMain.handle(
     "prompt:enhance",
@@ -223,6 +247,18 @@ function registerIpc(): void {
     if (!draft.startImagePath) throw new Error("请先选择首帧图片");
     if (!promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择该模型的 ComfyUI API 工作流");
+    let workflow: unknown;
+    try {
+      workflow = JSON.parse(await fs.readFile(draft.workflowPath, "utf8"));
+    } catch (error) {
+      throw new Error(
+        `无法读取工作流 JSON：${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    const validation = validateApiWorkflow(workflow);
+    if (!validation.valid) {
+      throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
+    }
     const next = await store.update((state) => {
       state.queue.push(queueTaskFromDraft(draft, state));
       state.draft = draft;
@@ -242,12 +278,6 @@ function registerIpc(): void {
   ipcMain.handle("queue:start", async () => {
     const next = await store.update((state) => {
       state.queueRunning = true;
-      for (const task of state.queue) {
-        if (task.status === "failed" || task.status === "cancelled") {
-          task.status = "waiting";
-          task.progress = 0;
-        }
-      }
     });
     sendState(next);
     if (!queueWorker) {
@@ -276,6 +306,65 @@ function registerIpc(): void {
       status: "cancelled",
       error: "任务在开始前被取消"
     });
+  });
+  ipcMain.handle(
+    "queue:move",
+    async (_event, taskId: string, direction: -1 | 1) => {
+      const next = await store.update((state) => {
+        state.queue = moveWaitingTask(state.queue, taskId, direction);
+      });
+      sendState(next);
+      return next;
+    }
+  );
+  ipcMain.handle("queue:optimize", async () => {
+    const next = await store.update((state) => {
+      state.queue = optimizeWaitingTasks(state.queue);
+    });
+    sendState(next);
+    return next;
+  });
+  ipcMain.handle("queue:duplicate", async (_event, taskId: string) => {
+    const next = await store.update((state) => {
+      const source = state.queue.find((task) => task.id === taskId);
+      if (!source) return;
+      const now = new Date().toISOString();
+      const names = [
+        ...state.queue.map((task) => task.outputFilename),
+        ...state.history.map((asset) => asset.outputFilename)
+      ];
+      state.queue.push({
+        ...source,
+        id: crypto.randomUUID(),
+        status: "waiting",
+        createdAt: now,
+        updatedAt: now,
+        outputFilename: createOutputFilename(source.modelId, source.prompt, names),
+        seed: source.keepSeedOnCopy
+          ? source.seed
+          : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
+        comfyPromptId: undefined,
+        progress: 0,
+        error: undefined
+      });
+    });
+    sendState(next);
+    return next;
+  });
+  ipcMain.handle("queue:retry", async (_event, taskId: string) => {
+    const next = await store.update((state) => {
+      const task = state.queue.find((item) => item.id === taskId);
+      if (!task || (task.status !== "failed" && task.status !== "cancelled")) return;
+      Object.assign(task, {
+        status: "waiting",
+        updatedAt: new Date().toISOString(),
+        comfyPromptId: undefined,
+        progress: 0,
+        error: undefined
+      });
+    });
+    sendState(next);
+    return next;
   });
 }
 
