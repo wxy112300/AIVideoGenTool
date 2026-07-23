@@ -9,6 +9,14 @@ export interface WorkflowContext {
   fps: number;
 }
 
+export interface WorkflowValidation {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  placeholders: string[];
+  nodeCount: number;
+}
+
 const ratios: Record<string, [number, number]> = {
   "16:9": [16, 9],
   "9:16": [9, 16],
@@ -64,4 +72,61 @@ export function renderWorkflow(
   };
 
   return visit(source);
+}
+
+export function validateApiWorkflow(source: unknown): WorkflowValidation {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const placeholders = new Set<string>();
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return {
+      valid: false,
+      errors: ["工作流根节点必须是 ComfyUI API 格式的对象"],
+      warnings,
+      placeholders: [],
+      nodeCount: 0
+    };
+  }
+
+  const entries = Object.entries(source as Record<string, unknown>);
+  if (Array.isArray((source as Record<string, unknown>).nodes)) {
+    errors.push("检测到普通 UI workflow；请使用 Export Workflow (API) 导出");
+  }
+  if (entries.length === 0) errors.push("工作流没有节点");
+  for (const [nodeId, value] of entries) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      errors.push(`节点 ${nodeId} 不是对象`);
+      continue;
+    }
+    const node = value as Record<string, unknown>;
+    if (typeof node.class_type !== "string" || !node.class_type) {
+      errors.push(`节点 ${nodeId} 缺少 class_type；可能导出了普通 UI workflow`);
+    }
+    if (!node.inputs || typeof node.inputs !== "object" || Array.isArray(node.inputs)) {
+      errors.push(`节点 ${nodeId} 缺少 inputs`);
+    }
+  }
+
+  const serialized = JSON.stringify(source);
+  for (const match of serialized.matchAll(/\{\{([A-Z_]+)\}\}/g)) {
+    if (match[1]) placeholders.add(match[1]);
+  }
+  if (!placeholders.has("PROMPT")) {
+    errors.push("缺少 {{PROMPT}}，GUI 无法注入当前提示词");
+  }
+  if (!placeholders.has("INPUT_IMAGE")) {
+    errors.push("缺少 {{INPUT_IMAGE}}，GUI 无法注入首帧");
+  }
+  if (!placeholders.has("SEED")) warnings.push("缺少 {{SEED}}，任务 Seed 不会传入工作流");
+  if (!placeholders.has("OUTPUT_FILENAME")) {
+    warnings.push("缺少 {{OUTPUT_FILENAME}}，ComfyUI 将自行决定输出文件名");
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    placeholders: [...placeholders].sort(),
+    nodeCount: entries.length
+  };
 }
