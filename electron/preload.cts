@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AppApi,
   Draft,
@@ -12,6 +12,7 @@ const api: AppApi = {
   saveDraft: (draft: Draft) => ipcRenderer.invoke("draft:save", draft),
   saveSettings: (settings: Settings) => ipcRenderer.invoke("settings:save", settings),
   pickImage: () => ipcRenderer.invoke("file:pick-image"),
+  getDroppedFilePath: (file) => webUtils.getPathForFile(file),
   pickWorkflow: () => ipcRenderer.invoke("file:pick-workflow"),
   getBundledWorkflow: (modelId: string) =>
     ipcRenderer.invoke("workflow:get-bundled", modelId),

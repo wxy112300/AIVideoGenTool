@@ -768,6 +768,67 @@ main { padding-top: 0; }
   inset: 0;
 }
 
+.media-slot {
+  position: relative;
+  min-width: 0;
+}
+
+.image-remove {
+  position: absolute;
+  z-index: 5;
+  top: 10px;
+  right: 10px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 143, 145, .35);
+  border-radius: 9px;
+  color: #ffc0c1;
+  background: rgba(13, 15, 20, .82);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .28);
+  backdrop-filter: blur(10px);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.image-remove span {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.image-remove:hover {
+  border-color: rgba(255, 143, 145, .7);
+  color: #fff;
+  background: rgba(127, 43, 48, .88);
+}
+
+.drop-zone.drag-over {
+  border-color: #8ab4ff;
+  background: rgba(49, 82, 134, .26);
+  box-shadow:
+    inset 0 0 0 2px rgba(138, 180, 255, .22),
+    0 0 0 4px rgba(101, 151, 255, .1);
+}
+
+.drop-zone.drag-over::after {
+  content: attr(data-drop-label);
+  position: absolute;
+  z-index: 4;
+  inset: 12px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(180, 207, 255, .82);
+  border-radius: 10px;
+  color: #f4f8ff;
+  background: rgba(19, 35, 59, .88);
+  backdrop-filter: blur(8px);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: .02em;
+}
+
 .submit-row {
   position: sticky;
   z-index: 4;

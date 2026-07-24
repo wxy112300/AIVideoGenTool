@@ -234,6 +234,7 @@ export interface AppApi {
   saveDraft(draft: Draft): Promise<AppState>;
   saveSettings(settings: Settings): Promise<AppState>;
   pickImage(): Promise<string | null>;
+  getDroppedFilePath(file: File): string;
   pickWorkflow(): Promise<string | null>;
   getBundledWorkflow(modelId: string): Promise<BundledWorkflow | null>;
   getPerformanceMetrics(settings: Settings): Promise<PerformanceMetrics>;

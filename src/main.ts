@@ -48,6 +48,13 @@ const taskPreviews: Record<string, string> = {};
 let performanceMetrics: PerformanceMetrics | null = null;
 let performancePolling = false;
 
+window.addEventListener("dragover", (event) => {
+  if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
+});
+window.addEventListener("drop", (event) => {
+  if (event.dataTransfer?.files.length) event.preventDefault();
+});
+
 const escapeHtml = (value: unknown) =>
   String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -195,13 +202,19 @@ function createPage(): string {
         <button class="secondary" id="toggle-end">${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>
       </div>
       <div class="media-grid ${draft.endImagePath ? "paired" : ""}">
-        <button class="drop-zone ${draft.startImagePath ? "has-image" : ""}" id="pick-start">
-          ${draft.startImagePath
-            ? `<img id="start-preview" alt="首帧预览"><span class="image-label">更换首帧</span>`
-            : `<span class="drop-icon">＋</span><strong>选择首帧图片</strong><span>PNG、JPG、WEBP</span>`}
-        </button>
+        <div class="media-slot">
+          <button class="drop-zone ${draft.startImagePath ? "has-image" : ""}" id="pick-start" data-drop-frame="start" data-drop-label="${draft.startImagePath ? "松开以替换首帧" : "松开以添加首帧"}">
+            ${draft.startImagePath
+              ? `<img id="start-preview" alt="首帧预览"><span class="image-label">点击或拖入替换</span>`
+              : `<span class="drop-icon">＋</span><strong>选择或拖入首帧</strong><span>PNG、JPG、WEBP、BMP</span>`}
+          </button>
+          ${draft.startImagePath ? `<button class="image-remove" data-clear-frame="start" aria-label="删除首帧" title="删除首帧">×<span>删除</span></button>` : ""}
+        </div>
         ${draft.endImagePath
-          ? `<button class="drop-zone has-image" id="pick-end"><img id="end-preview" alt="尾帧预览"><span class="image-label">更换尾帧</span></button>`
+          ? `<div class="media-slot">
+              <button class="drop-zone has-image" id="pick-end" data-drop-frame="end" data-drop-label="松开以替换尾帧"><img id="end-preview" alt="尾帧预览"><span class="image-label">点击或拖入替换</span></button>
+              <button class="image-remove" data-clear-frame="end" aria-label="删除尾帧" title="删除尾帧">×<span>删除</span></button>
+            </div>`
           : ""}
       </div>
       </section>
@@ -828,6 +841,54 @@ function patchDraft(patch: Partial<Draft>): void {
   scheduleDraftSave();
 }
 
+function bindFrameDrop(
+  selector: string,
+  field: "startImagePath" | "endImagePath"
+): void {
+  const zone = document.querySelector<HTMLElement>(selector);
+  if (!zone) return;
+  const clearDragState = () => zone.classList.remove("drag-over");
+  zone.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    zone.classList.add("drag-over");
+  });
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    zone.classList.add("drag-over");
+  });
+  zone.addEventListener("dragleave", (event) => {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && zone.contains(nextTarget)) return;
+    clearDragState();
+  });
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    clearDragState();
+    const file = event.dataTransfer?.files.item(0);
+    if (!file) return;
+    const isSupported =
+      file.type.startsWith("image/") ||
+      /\.(png|jpe?g|webp|bmp)$/i.test(file.name);
+    if (!isSupported) {
+      showMessage("请拖入 PNG、JPG、WEBP 或 BMP 图片");
+      return;
+    }
+    try {
+      const filename = window.studio.getDroppedFilePath(file);
+      if (!filename) {
+        showMessage("无法读取拖入图片的本地路径");
+        return;
+      }
+      patchDraft({ [field]: filename });
+      render();
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : "无法读取拖入的图片");
+    }
+  });
+}
+
 function bindCreate(): void {
   document.querySelector("#pick-start")?.addEventListener("click", async () => {
     const filename = await window.studio.pickImage();
@@ -854,6 +915,20 @@ function bindCreate(): void {
       patchDraft({ endImagePath: filename });
       render();
     }
+  });
+  bindFrameDrop("#pick-start", "startImagePath");
+  bindFrameDrop("#pick-end", "endImagePath");
+  document.querySelectorAll<HTMLElement>("[data-clear-frame]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const field =
+        button.dataset.clearFrame === "end"
+          ? "endImagePath"
+          : "startImagePath";
+      patchDraft({ [field]: "" });
+      render();
+    });
   });
   document.querySelector("#pick-workflow")?.addEventListener("click", async () => {
     const filename = await window.studio.pickWorkflow();
