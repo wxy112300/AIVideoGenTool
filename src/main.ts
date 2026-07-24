@@ -25,6 +25,7 @@ let draftSaveInFlight = 0;
 let draftDirty = false;
 let flashMessage = "";
 let selectedHistoryAssetId = "";
+let historyScrollPosition = 0;
 let historyLayout: "masonry" | "album" = "masonry";
 let historyCoverMode: "random" | "first" = "random";
 let environmentScan: EnvironmentScanResult | null = null;
@@ -139,7 +140,9 @@ function shell(content: string): string {
               const badge = item === "queue" && state.queue.length
                 ? `<span class="badge">${state.queue.length}</span>`
                 : "";
-              return `<button class="nav-button ${page === item ? "active" : ""}" data-page="${item}">${labels[item]}${badge}</button>`;
+              const active =
+                page === item || (item === "history" && page === "history-detail");
+              return `<button class="nav-button ${active ? "active" : ""}" data-page="${item}">${labels[item]}${badge}</button>`;
             })
             .join("")}
         </nav>
@@ -742,9 +745,18 @@ function showMessage(message: string): void {
 function bindShell(): void {
   document.querySelectorAll<HTMLElement>("[data-page]").forEach((button) => {
     button.addEventListener("click", () => {
-      page = button.dataset.page as Page;
+      const nextPage = button.dataset.page as Page;
+      const restoreHistory =
+        page === "history-detail" && nextPage === "history";
+      page = nextPage;
       flashMessage = "";
       render();
+      window.requestAnimationFrame(() => {
+        window.scrollTo({
+          top: restoreHistory ? historyScrollPosition : 0,
+          behavior: "auto"
+        });
+      });
     });
   });
 }
@@ -1025,9 +1037,11 @@ function bindHistory(): void {
   document.querySelectorAll<HTMLElement>("[data-history]").forEach((card) => {
     const open = (event?: Event) => {
       if ((event?.target as HTMLElement | null)?.closest("button")) return;
+      historyScrollPosition = window.scrollY;
       selectedHistoryAssetId = card.dataset.history!;
       page = "history-detail";
       render();
+      window.scrollTo({ top: 0, behavior: "auto" });
     };
     card.addEventListener("click", (event) => open(event));
     card.addEventListener("keydown", (event) => {
@@ -1036,9 +1050,11 @@ function bindHistory(): void {
   });
   document.querySelectorAll<HTMLElement>("[data-open-history]").forEach((button) => {
     button.addEventListener("click", () => {
+      historyScrollPosition = window.scrollY;
       selectedHistoryAssetId = button.dataset.openHistory!;
       page = "history-detail";
       render();
+      window.scrollTo({ top: 0, behavior: "auto" });
     });
   });
   document.querySelector("[data-copy-prompt]")?.addEventListener("click", async () => {
