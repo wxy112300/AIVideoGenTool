@@ -6,6 +6,8 @@ export const defaultPrompt =
 export function createDefaultDraft(): Draft {
   return {
     startImagePath: "",
+    sourceWidth: 0,
+    sourceHeight: 0,
     endImagePath: "",
     promptVersions: [
       {
@@ -33,6 +35,8 @@ export function createClearedDraft(current: Draft): Draft {
   return {
     ...current,
     startImagePath: "",
+    sourceWidth: 0,
+    sourceHeight: 0,
     endImagePath: "",
     promptVersions: [
       {
@@ -62,6 +66,10 @@ export function createDefaultSettings(): Settings {
     promptLanguage: "auto",
     promptCreativity: 0.7,
     defaultUpscaleModel: "seedvr2",
+    upscaleTileMode: "auto",
+    upscaleFaceRestore: false,
+    seedVr2Model: "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+    realEsrganModel: "RealESRGAN_x4plus.safetensors",
     proxyEnabled: false,
     proxyUrl: "http://127.0.0.1:7890",
     promptSystemTemplate:
@@ -71,7 +79,7 @@ export function createDefaultSettings(): Settings {
 
 export function createDefaultState(): AppState {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     draft: createDefaultDraft(),
     settings: createDefaultSettings(),
     queue: [],

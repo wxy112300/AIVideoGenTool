@@ -14,6 +14,8 @@ export interface PromptVersion {
 
 export interface Draft {
   startImagePath: string;
+  sourceWidth: number;
+  sourceHeight: number;
   endImagePath: string;
   promptVersions: PromptVersion[];
   activePromptVersion: number;
@@ -44,28 +46,25 @@ export interface Settings {
   promptLanguage: "auto" | "zh" | "en";
   promptCreativity: number;
   defaultUpscaleModel: string;
+  upscaleTileMode: "auto" | "safe" | "fast";
+  upscaleFaceRestore: boolean;
+  seedVr2Model: string;
+  realEsrganModel: string;
   proxyEnabled: boolean;
   proxyUrl: string;
 }
 
-export interface QueueTask {
+interface QueueTaskBase {
   id: string;
+  taskType: "generation" | "upscale";
   status: TaskStatus;
   createdAt: string;
   updatedAt: string;
   outputFilename: string;
-  prompt: string;
-  promptVersion: number;
-  startImagePath: string;
-  endImagePath: string;
   modelId: string;
   workflowPath: string;
-  ratio: Draft["ratio"];
-  resolution: Draft["resolution"];
   duration: number;
-  fps: Draft["fps"];
-  frameInterpolation: Draft["frameInterpolation"];
-  motion: Draft["motion"];
+  fps: number;
   seed: number;
   keepSeedOnCopy: boolean;
   comfyPromptId?: string;
@@ -75,12 +74,78 @@ export interface QueueTask {
   error?: string;
 }
 
+export interface GenerationQueueTask extends QueueTaskBase {
+  taskType: "generation";
+  prompt: string;
+  promptVersion: number;
+  startImagePath: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  endImagePath: string;
+  ratio: Draft["ratio"];
+  resolution: Draft["resolution"];
+  fps: Draft["fps"];
+  frameInterpolation: Draft["frameInterpolation"];
+  motion: Draft["motion"];
+}
+
+export interface UpscaleQueueTask extends QueueTaskBase {
+  taskType: "upscale";
+  sourceAssetId: string;
+  sourceVersionId: string;
+  sourceFilePath: string;
+  sourceFilename: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  targetWidth: number;
+  targetHeight: 720 | 1080 | 1440 | 2160;
+  tileMode: "auto" | "safe" | "fast";
+  faceRestore: boolean;
+}
+
+export type QueueTask = GenerationQueueTask | UpscaleQueueTask;
+
+export interface UpscaleRequest {
+  sourceAssetId: string;
+  sourceVersionId: string;
+  sourceFilePath: string;
+  sourceFilename: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  duration: number;
+  fps: number;
+  targetHeight: UpscaleQueueTask["targetHeight"];
+  modelId: "seedvr2" | "flashvsr" | "realesrgan";
+  tileMode: UpscaleQueueTask["tileMode"];
+  faceRestore: boolean;
+}
+
 export interface HistoryFile {
   filename: string;
   subfolder: string;
   type: string;
   format?: string;
   absolutePath?: string;
+}
+
+export interface AssetVersion {
+  id: string;
+  kind: "original" | "upscale";
+  createdAt: string;
+  outputFilename: string;
+  modelId: string;
+  width: number;
+  height: number;
+  duration: number;
+  fps: number;
+  seed?: number;
+  workflowPath: string;
+  comfyPromptId: string;
+  comfyOutputs: unknown;
+  files: HistoryFile[];
+  tileMode?: UpscaleQueueTask["tileMode"];
+  faceRestore?: boolean;
+  startedAt?: string;
 }
 
 export interface HistoryAsset {
@@ -104,10 +169,13 @@ export interface HistoryAsset {
   comfyPromptId: string;
   comfyOutputs: unknown;
   files: HistoryFile[];
+  updatedAt: string;
+  defaultVersionId?: string;
+  versions: AssetVersion[];
 }
 
 export interface AppState {
-  schemaVersion: 1;
+  schemaVersion: 2;
   draft: Draft;
   settings: Settings;
   queue: QueueTask[];
@@ -160,7 +228,7 @@ export interface ModelComponentStatus {
 export interface ModelScanProfile {
   id: string;
   name: string;
-  category: "video" | "upscale";
+  category: "video" | "upscale" | "interpolation";
   badge: string;
   description: string;
   vram: string;
@@ -213,6 +281,11 @@ export interface BundledWorkflow {
   modelId: string;
   label: string;
   path: string;
+  supportsEndImage: boolean;
+}
+
+export interface WorkflowCapabilities {
+  supportsEndImage: boolean;
 }
 
 export interface PerformanceMetrics {
@@ -239,6 +312,7 @@ export interface AppApi {
   pickImage(): Promise<string | null>;
   getDroppedFilePath(file: File): string;
   pickWorkflow(): Promise<string | null>;
+  inspectWorkflow(path: string): Promise<WorkflowCapabilities>;
   getBundledWorkflow(modelId: string): Promise<BundledWorkflow | null>;
   getPerformanceMetrics(settings: Settings): Promise<PerformanceMetrics>;
   pickDirectory(): Promise<string | null>;
@@ -265,6 +339,8 @@ export interface AppApi {
     settings: Settings
   ): Promise<ConnectionResult>;
   enqueue(draft: Draft): Promise<AppState>;
+  enqueueUpscale(request: UpscaleRequest): Promise<AppState>;
+  updateUpscaleTask(taskId: string, patch: Pick<UpscaleQueueTask, "targetWidth" | "targetHeight" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">): Promise<AppState>;
   removeTask(taskId: string): Promise<AppState>;
   startQueue(): Promise<AppState>;
   pauseQueue(): Promise<AppState>;

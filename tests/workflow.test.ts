@@ -7,7 +7,8 @@ import {
   missingWorkflowNodeTypes,
   outputFrameCountForTask,
   renderWorkflow,
-  validateApiWorkflow
+  validateApiWorkflow,
+  workflowSupportsEndImage
 } from "../src/core/workflow";
 
 const task: QueueTask = {
@@ -19,6 +20,8 @@ const task: QueueTask = {
   prompt: "人物自然转身",
   promptVersion: 1,
   startImagePath: "start.png",
+  sourceWidth: 0,
+  sourceHeight: 0,
   endImagePath: "",
   modelId: "sulphur2",
   workflowPath: "workflow.json",
@@ -55,6 +58,30 @@ describe("renderWorkflow", () => {
     expect(result["1"]!.inputs.filename_prefix).toBe("studio/test");
     expect(result["1"]!.inputs.untouched).toBe("{{UNKNOWN}}");
   });
+
+  it("detects end-frame support from the workflow token", () => {
+    expect(
+      workflowSupportsEndImage({
+        "1": { class_type: "LoadImage", inputs: { image: "{{END_IMAGE}}" } }
+      })
+    ).toBe(true);
+    expect(workflowSupportsEndImage({ "1": { inputs: {} } })).toBe(false);
+  });
+
+  it("preserves the source image aspect ratio when requested", () => {
+    const rendered = renderWorkflow(
+      {
+        "1": {
+          class_type: "Example",
+          inputs: { width: "{{WIDTH}}", height: "{{HEIGHT}}" }
+        }
+      },
+      { ...task, ratio: "source", sourceWidth: 1000, sourceHeight: 1000 }
+    ) as Record<string, { inputs: Record<string, unknown> }>;
+
+    expect(rendered["1"]?.inputs.width).toBe(480);
+    expect(rendered["1"]?.inputs.height).toBe(480);
+  });
 });
 
 describe("Wan 2.2 workflow compatibility", () => {
@@ -64,7 +91,7 @@ describe("Wan 2.2 workflow compatibility", () => {
     expect(frameCountForTask({ ...task, modelId: "wan22_remix" }, 24)).toBe(121);
     expect(frameCountForTask({ ...task, modelId: "wan22_smoothmix" }, 24)).toBe(121);
     expect(frameCountForTask({ ...task, modelId: "wan22_dasiwa" }, 24)).toBe(121);
-    expect(frameCountForTask(task, 24)).toBe(120);
+    expect(frameCountForTask({ ...task, modelId: "other" }, 24)).toBe(120);
   });
 
   it("generates fewer source frames and trims RIFE output to the exact target", () => {
@@ -160,9 +187,64 @@ describe("Wan 2.2 workflow compatibility", () => {
   });
 });
 
+describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
+  it("uses 8n+1 frames for direct and interpolated generation", () => {
+    expect(frameCountForTask(task, 24)).toBe(121);
+    expect(
+      generationFrameCountForTask({ ...task, frameInterpolation: "rife2x" })
+    ).toBe(65);
+  });
+
+  it("renders the official LTX 2.3 assets and two-stage dimensions", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/sulphur2_ltx23_i2v_api.json", import.meta.url),
+        "utf8"
+      )
+    );
+    const rendered = renderWorkflow(source, task, {
+      inputImage: "uploaded/start.png"
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(rendered["44"]?.inputs.ckpt_name).toBe(
+      "sulphur_dev_fp8mixed.safetensors"
+    );
+    expect(rendered["5"]?.inputs.text_encoder).toBe(
+      "gemma_3_12B_it_fp4_mixed.safetensors"
+    );
+    expect(rendered["21"]?.inputs.width).toBe(432);
+    expect(rendered["21"]?.inputs.height).toBe(240);
+    expect(rendered["21"]?.inputs.length).toBe(121);
+    expect(rendered["67"]?.inputs.image).toBe("uploaded/start.png");
+    expect(JSON.stringify(rendered)).not.toContain("{{");
+  });
+});
+
 describe("HunyuanVideo 1.5 workflow compatibility", () => {
   it("rounds Hunyuan video length to the required 4n+1 frame count", () => {
     expect(frameCountForTask({ ...task, modelId: "hunyuan15" }, 24)).toBe(121);
+    expect(frameCountForTask({ ...task, modelId: "hunyuan15_sr" }, 24)).toBe(121);
+  });
+
+  it("renders 720p generation and 1080p SR dimensions", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/hunyuan15_sr_i2v_api.json", import.meta.url),
+        "utf8"
+      )
+    );
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "hunyuan15_sr",
+      resolution: 720
+    }) as Record<string, { inputs: Record<string, unknown> }>;
+
+    expect(rendered["9"]?.inputs.width).toBe(1280);
+    expect(rendered["9"]?.inputs.height).toBe(720);
+    expect(rendered["21"]?.inputs.width).toBe(1920);
+    expect(rendered["21"]?.inputs.height).toBe(1080);
+    expect(validateApiWorkflow(source).valid).toBe(true);
   });
 });
 

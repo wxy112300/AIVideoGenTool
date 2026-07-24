@@ -8,7 +8,10 @@ export function historyVideoPaths(
   outputDirectory: string
 ): string[] {
   const results = new Set<string>();
-  for (const file of asset.files) {
+  const files = asset.versions?.length
+    ? asset.versions.flatMap((version) => version.files)
+    : asset.files;
+  for (const file of files) {
     if (!videoExtensions.has(path.extname(file.filename).toLowerCase())) continue;
     const filename =
       file.absolutePath ||

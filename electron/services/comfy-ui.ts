@@ -3,8 +3,10 @@ import path from "node:path";
 import type { QueueTask, Settings } from "../../src/types.js";
 import {
   missingWorkflowNodeTypes,
-  renderWorkflow
+  renderWorkflow,
+  workflowSupportsEndImage
 } from "../../src/core/workflow.js";
+import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -32,10 +34,11 @@ export async function testComfyUi(settings: Settings): Promise<string> {
   return `已连接 · ${Object.keys(stats).length > 0 ? "服务状态正常" : "8188"}`;
 }
 
-async function uploadImage(
+async function uploadInput(
   baseUrl: string,
   filePath: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  label: string
 ): Promise<string> {
   if (!filePath) return "";
   const bytes = await fs.readFile(filePath, { signal });
@@ -48,7 +51,7 @@ async function uploadImage(
     body: form,
     signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)])
   });
-  if (!response.ok) throw new Error(`上传参考图失败：HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`上传${label}失败：HTTP ${response.status}`);
   const result = (await response.json()) as { name?: string; subfolder?: string };
   if (!result.name) throw new Error("ComfyUI 上传接口未返回文件名");
   return result.subfolder ? `${result.subfolder}/${result.name}` : result.name;
@@ -67,16 +70,37 @@ export async function submitTask(
     throw new Error("任务没有配置 ComfyUI API 工作流 JSON");
   }
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
-  const [sourceText, objectInfo] = await Promise.all([
-    fs.readFile(task.workflowPath, { encoding: "utf8", signal }),
-    jsonRequest<Record<string, unknown>>(`${baseUrl}/object_info`, { signal })
-  ]);
-  const source = JSON.parse(sourceText) as unknown;
-  const [inputImage, endImage] = await Promise.all([
-    uploadImage(baseUrl, task.startImagePath, signal),
-    uploadImage(baseUrl, task.endImagePath, signal)
-  ]);
-  const prompt = renderWorkflow(source, task, { inputImage, endImage });
+  const objectInfo = await jsonRequest<Record<string, unknown>>(
+    `${baseUrl}/object_info`,
+    { signal }
+  );
+  let prompt: unknown;
+  if (task.taskType === "generation") {
+    const sourceText = await fs.readFile(task.workflowPath, {
+      encoding: "utf8",
+      signal
+    });
+    const source = JSON.parse(sourceText) as unknown;
+    const supportsEndImage = workflowSupportsEndImage(source);
+    const [inputImage, endImage] = await Promise.all([
+      uploadInput(baseUrl, task.startImagePath, signal, "首帧"),
+      supportsEndImage
+        ? uploadInput(baseUrl, task.endImagePath, signal, "尾帧")
+        : Promise.resolve("")
+    ]);
+    prompt = renderWorkflow(source, task, { inputImage, endImage });
+  } else {
+    const sourceVideo = await uploadInput(
+      baseUrl,
+      task.sourceFilePath,
+      signal,
+      "源视频"
+    );
+    prompt = renderUpscaleWorkflow(task, sourceVideo, {
+      seedVr2: settings.seedVr2Model,
+      realEsrgan: settings.realEsrganModel
+    });
+  }
   const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
   if (missingNodes.length) {
     throw new Error(

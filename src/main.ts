@@ -1,6 +1,7 @@
 import "./style.css";
 import type {
   AppState,
+  AssetVersion,
   BundledWorkflow,
   Draft,
   EnvironmentScanResult,
@@ -11,8 +12,13 @@ import type {
   PromptVersion,
   QueueTask,
   Settings
+  ,WorkflowCapabilities
 } from "./types";
 import { createClearedDraft } from "./core/defaults";
+import {
+  createUpscaleFilename,
+  upscaleDimensions
+} from "./core/upscale";
 
 type Page = "create" | "queue" | "history" | "history-detail" | "settings";
 
@@ -25,6 +31,15 @@ let draftSaveInFlight = 0;
 let draftDirty = false;
 let flashMessage = "";
 let selectedHistoryAssetId = "";
+let selectedHistoryVersionId = "";
+let upscaleDialog: {
+  taskId?: string;
+  assetId: string;
+  versionId: string;
+  targetHeight: 720 | 1080 | 1440 | 2160;
+  modelId: "seedvr2" | "flashvsr" | "realesrgan";
+  tileMode: "auto" | "safe" | "fast";
+} | null = null;
 let historyScrollPosition = 0;
 let historyLayout: "masonry" | "album" = "masonry";
 let historyCoverMode: "random" | "first" = "random";
@@ -49,6 +64,7 @@ let pendingConfirmation:
   | null = null;
 let confirmationBusy = false;
 const bundledWorkflows: Record<string, BundledWorkflow> = {};
+const workflowCapabilities: Record<string, WorkflowCapabilities> = {};
 const taskPreviews: Record<string, string> = {};
 let performanceMetrics: PerformanceMetrics | null = null;
 let performancePolling = false;
@@ -88,10 +104,14 @@ function modelName(id: string): string {
       sulphur2: "Sulphur 2 FP8",
       wan22_5b: "Wan 2.2 I2V 5B",
       hunyuan15: "HunyuanVideo 1.5",
+      hunyuan15_sr: "HunyuanVideo 1.5 1080p",
       wan22_14b_nsfw: "Wan 2.2 I2V 14B + NSFW",
       wan22_remix: "Wan 2.2 Remix v3",
       wan22_smoothmix: "Wan 2.2 SmoothMix I2V",
       wan22_dasiwa: "DaSiWa SynthSeduction v9"
+      ,seedvr2: "SeedVR2"
+      ,flashvsr: "FlashVSR"
+      ,realesrgan: "Real-ESRGAN x4plus"
     }[id] ?? id
   );
 }
@@ -137,16 +157,29 @@ function interpolationEstimate(draft: Draft): {
   return { multiplier, generatedFrames, outputFrames };
 }
 
-function historyVideoIndex(asset: AppState["history"][number]): number {
+function versionVideoIndex(version: AssetVersion): number {
   const videoPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
-  return asset.files.findIndex((file) => videoPattern.test(file.filename));
+  return version.files.findIndex((file) => videoPattern.test(file.filename));
 }
 
-function historyMediaUrl(asset: AppState["history"][number]): string {
-  const index = historyVideoIndex(asset);
+function preferredVersion(asset: AppState["history"][number]): AssetVersion {
+  return asset.versions.find((version) => version.id === asset.defaultVersionId) ??
+    [...asset.versions].sort((left, right) => right.height - left.height)[0]!;
+}
+
+function currentHistoryVersion(asset: AppState["history"][number]): AssetVersion {
+  return asset.versions.find((version) => version.id === selectedHistoryVersionId) ??
+    preferredVersion(asset);
+}
+
+function historyMediaUrl(
+  asset: AppState["history"][number],
+  version = preferredVersion(asset)
+): string {
+  const index = versionVideoIndex(version);
   return index < 0
     ? ""
-    : `studio-media://history/${encodeURIComponent(asset.id)}/${index}`;
+    : `studio-media://history/${encodeURIComponent(asset.id)}/${encodeURIComponent(version.id)}/${index}`;
 }
 
 function historyAspectRatio(ratio: AppState["history"][number]["ratio"]): string {
@@ -225,6 +258,52 @@ function confirmationDialog(): string {
     </div>`;
 }
 
+function upscaleDialogHtml(): string {
+  if (!upscaleDialog) return "";
+  const asset = state.history.find((item) => item.id === upscaleDialog?.assetId);
+  const version = asset?.versions.find((item) => item.id === upscaleDialog?.versionId);
+  if (!asset || !version) return "";
+  const [targetWidth, targetHeight] = upscaleDimensions(
+    version.width,
+    version.height,
+    upscaleDialog.targetHeight
+  );
+  const supportedIds = new Set(["seedvr2", "flashvsr", "realesrgan"]);
+  const profiles = environmentScan?.modelProfiles.filter(
+    (profile) => profile.category === "upscale" && supportedIds.has(profile.id)
+  ) ?? [
+    { id: "seedvr2", name: "SeedVR2", available: true },
+    { id: "flashvsr", name: "FlashVSR", available: true },
+    { id: "realesrgan", name: "Real-ESRGAN x4plus", available: true }
+  ];
+  const outputFilename = createUpscaleFilename(
+    version.outputFilename,
+    targetHeight
+  );
+  return `
+    <div class="dialog-backdrop upscale-backdrop" id="upscale-backdrop">
+      <section class="upscale-dialog" role="dialog" aria-modal="true" aria-labelledby="upscale-title">
+        <div class="upscale-dialog-head">
+          <div><span class="eyebrow">创建后处理任务</span><h2 id="upscale-title">提升分辨率</h2></div>
+          <button class="dialog-close" id="close-upscale" aria-label="关闭">×</button>
+        </div>
+        <div class="upscale-dialog-body">
+          <div class="upscale-source"><div><strong>${escapeHtml(asset.title)}</strong><code>${escapeHtml(version.outputFilename)}</code></div><span>${version.width} × ${version.height} · ${formatVideoDuration(version.duration)}</span></div>
+          <div><label>目标分辨率</label><div class="upscale-resolution">
+            ${([720, 1080, 1440, 2160] as const).map((height) => `<button class="${height === targetHeight ? "primary" : "secondary"}" data-upscale-height="${height}" ${height <= version.height ? "disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
+          </div></div>
+          <div class="settings-grid two">
+            <label>提升模型<select id="upscale-model">${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === upscaleDialog?.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
+            <label>显存策略<select id="upscale-tile"><option value="auto" ${upscaleDialog.tileMode === "auto" ? "selected" : ""}>自动 · 推荐</option><option value="safe" ${upscaleDialog.tileMode === "safe" ? "selected" : ""}>保守 · 分块与卸载</option><option value="fast" ${upscaleDialog.tileMode === "fast" ? "selected" : ""}>速度优先</option></select></label>
+          </div>
+          <label class="switch-field disabled"><input type="checkbox" disabled><span>人脸细节修复 · 等待独立修复模型接入</span></label>
+          <div class="upscale-output"><div><span>预计输出</span><strong>${targetWidth} × ${targetHeight}</strong><code>${escapeHtml(outputFilename)}</code></div><span>${upscaleDialog.modelId === "realesrgan" ? "预计峰值 6–9 GB" : upscaleDialog.modelId === "flashvsr" ? "预计峰值 14–19 GB" : "预计峰值 18–23 GB"}</span></div>
+        </div>
+        <div class="dialog-actions"><button class="secondary" id="cancel-upscale">取消</button><button class="primary" id="enqueue-upscale">${upscaleDialog.taskId ? "保存更改" : "加入队列"}</button></div>
+      </section>
+    </div>`;
+}
+
 function shell(content: string): string {
   return `
     <div class="app-shell">
@@ -249,7 +328,8 @@ function shell(content: string): string {
       ${flashMessage ? `<div class="flash" role="status">${escapeHtml(flashMessage)}</div>` : ""}
       <main>${content}</main>
     </div>
-    ${confirmationDialog()}`;
+    ${confirmationDialog()}
+    ${upscaleDialogHtml()}`;
 }
 
 async function imagePreview(filename: string, targetId: string): Promise<void> {
@@ -263,6 +343,16 @@ async function imagePreview(filename: string, targetId: string): Promise<void> {
         "--image-ratio",
         `${image.naturalWidth} / ${image.naturalHeight}`
       );
+      if (
+        targetId === "start-preview" &&
+        (state.draft.sourceWidth !== image.naturalWidth ||
+          state.draft.sourceHeight !== image.naturalHeight)
+      ) {
+        patchDraft({
+          sourceWidth: image.naturalWidth,
+          sourceHeight: image.naturalHeight
+        });
+      }
     }, { once: true });
     image.src = dataUrl;
   }
@@ -272,6 +362,8 @@ function createPage(): string {
   const draft = state.draft;
   const prompt = activePrompt();
   const interpolation = interpolationEstimate(draft);
+  const supportsEndImage =
+    workflowCapabilities[draft.workflowPath]?.supportsEndImage === true;
   return `
     <section class="page-heading">
       <div><h1>创建视频</h1><p>导入参考画面，调整提示词，然后加入本地生成队列。</p></div>
@@ -280,8 +372,8 @@ function createPage(): string {
     <div class="create-workspace">
       <section class="panel media-panel">
       <div class="section-heading">
-        <div><h2>参考画面</h2><span class="muted">支持单张首帧和可选尾帧</span></div>
-        <button class="secondary" id="toggle-end">${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>
+        <div><h2>参考画面</h2><span class="muted">${supportsEndImage ? "当前工作流支持首帧和尾帧" : "当前工作流仅支持首帧"}</span></div>
+        <button class="secondary" id="toggle-end" ${!supportsEndImage && !draft.endImagePath ? "disabled" : ""}>${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>
       </div>
       <div class="media-grid ${draft.endImagePath ? "paired" : ""}">
         <div class="media-slot">
@@ -402,6 +494,12 @@ function queuePage(): string {
 }
 
 function queueTaskCard(task: QueueTask): string {
+  const description = task.taskType === "generation"
+    ? task.prompt
+    : `${task.sourceFilename} → ${task.outputFilename}`;
+  const metadata = task.taskType === "generation"
+    ? `<span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span><span>Seed ${task.seed}</span>`
+    : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.targetWidth} × ${task.targetHeight}</span><span>${task.tileMode === "safe" ? "保守显存" : task.tileMode === "fast" ? "速度优先" : "自动显存"}</span>`;
   if (task.status === "running") {
     const preview = taskPreviews[task.id] ?? "";
     return `
@@ -418,8 +516,8 @@ function queueTaskCard(task: QueueTask): string {
           <div class="running-copy">
             <span class="eyebrow">当前步骤 · <span id="running-stage">${escapeHtml(task.stage ?? "准备中")}</span></span>
             <div class="progress"><span id="running-progress-bar" style="width:${task.progress ?? 0}%"></span></div>
-            <p>${escapeHtml(task.prompt)}</p>
-            <div class="task-meta"><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span><span id="running-elapsed">${elapsedText(task.startedAt)}</span></div>
+            <p>${escapeHtml(description)}</p>
+            <div class="task-meta">${metadata}<span id="running-elapsed">${elapsedText(task.startedAt)}</span></div>
             <div class="running-controls">
               <button class="secondary" id="${state.queueRunning ? "pause-queue" : "start-queue"}">${state.queueRunning ? "本条完成后暂停" : "继续执行后续任务"}</button>
               <button class="danger secondary" data-cancel="${task.id}">取消当前任务</button>
@@ -433,12 +531,13 @@ function queueTaskCard(task: QueueTask): string {
     <article class="task-card panel ${task.status}">
       <div class="task-main">
         <div><span class="status ${task.status}">${statusLabel(task.status)}</span><h3>${escapeHtml(task.outputFilename)}</h3></div>
-        <p>${escapeHtml(task.prompt)}</p>
-        <div class="task-meta"><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span><span>Seed ${task.seed}</span></div>
+        <p>${escapeHtml(description)}</p>
+        <div class="task-meta">${metadata}</div>
         ${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ""}
       </div>
       <div class="task-actions">
         ${task.status === "waiting" ? `<div class="button-row"><button class="icon-button" data-move="${task.id}" data-direction="-1" title="上移">↑</button><button class="icon-button" data-move="${task.id}" data-direction="1" title="下移">↓</button></div>` : ""}
+        ${task.status === "waiting" && task.taskType === "upscale" ? `<button class="secondary" data-edit-upscale-task="${task.id}">编辑</button>` : ""}
         <button class="secondary" data-duplicate="${task.id}">复制</button>
         ${task.status === "failed" || task.status === "cancelled" ? `<button class="primary" data-retry="${task.id}">重试并启动</button>` : ""}
         <button class="ghost danger" data-remove="${task.id}">移除</button>
@@ -452,28 +551,30 @@ function statusLabel(status: string): string {
 
 function historyPage(): string {
   const cards = state.history.map((asset) => {
-    const mediaUrl = historyMediaUrl(asset);
+    const version = preferredVersion(asset);
+    const videoIndex = versionVideoIndex(version);
+    const mediaUrl = historyMediaUrl(asset, version);
     const coverTime = historyCoverMode === "first"
       ? 0
       : Math.min(Math.max(asset.duration * 0.38, 0), Math.max(asset.duration - 0.1, 0));
     return `
       <article class="history-gallery-item panel" data-history="${asset.id}" tabindex="0" title="右键查看更多操作">
-        <div class="history-media" style="--media-ratio:${historyAspectRatio(asset.ratio)}" data-history-media data-cover-time="${coverTime}">
+        <div class="history-media" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-time="${coverTime}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="metadata" src="${mediaUrl}"></video>`
             : `<div class="history-media-fallback"><span>▶</span><small>找不到视频文件</small></div>`}
           <div class="history-media-badges">
             <span class="media-chip">${historyCoverMode === "first" ? "第一帧" : `封面 ${formatVideoDuration(coverTime)}`}</span>
-            <span class="media-chip">${asset.resolution}p</span>
+            <span class="media-chip">${version.height === 2160 ? "4K" : `${version.height}p`}</span>
             <span class="media-chip">${formatVideoDuration(asset.duration)}</span>
           </div>
           ${mediaUrl ? `<span class="history-preview-state">▶ 正在预览</span><div class="history-preview-progress"><i></i></div>` : ""}
         </div>
         <div class="history-gallery-copy">
           <h3>${escapeHtml(asset.title)}</h3>
-          <code>${escapeHtml(asset.files[historyVideoIndex(asset)]?.filename ?? asset.outputFilename)}</code>
-          <div class="history-item-meta"><span class="model-badge">${escapeHtml(modelName(asset.modelId))}</span><span>原始 ${asset.resolution}p</span><span>${frameRateSummary(asset.fps ?? 24, asset.frameInterpolation)}</span></div>
-          <div class="history-item-actions"><span>${formatHistoryTime(asset.createdAt)}</span><button class="ghost" data-open-history="${asset.id}">查看详情</button></div>
+          <code>${escapeHtml(version.files[videoIndex]?.filename ?? version.outputFilename)}</code>
+          <div class="history-item-meta"><span class="model-badge">${escapeHtml(modelName(version.modelId))}</span><span>最高 ${version.height === 2160 ? "4K" : `${version.height}p`}</span><span>${asset.versions.length} 个版本</span></div>
+          <div class="history-item-actions"><span>${formatHistoryTime(asset.updatedAt)}</span><button class="ghost" data-open-history="${asset.id}">查看详情</button></div>
         </div>
       </article>`;
   }).join("");
@@ -498,13 +599,15 @@ function historyDetailPage(): string {
     page = "history";
     return historyPage();
   }
-  const videoIndex = historyVideoIndex(asset);
-  const mediaUrl = historyMediaUrl(asset);
-  const videoFile = videoIndex >= 0 ? asset.files[videoIndex] : undefined;
-  const completedAt = formatHistoryTime(asset.createdAt);
-  const fps = asset.fps ?? 24;
-  const elapsedSeconds = asset.startedAt
-    ? Math.max(0, (new Date(asset.createdAt).getTime() - new Date(asset.startedAt).getTime()) / 1000)
+  const version = currentHistoryVersion(asset);
+  selectedHistoryVersionId = version.id;
+  const videoIndex = versionVideoIndex(version);
+  const mediaUrl = historyMediaUrl(asset, version);
+  const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
+  const completedAt = formatHistoryTime(version.createdAt);
+  const fps = version.fps;
+  const elapsedSeconds = version.startedAt
+    ? Math.max(0, (new Date(version.createdAt).getTime() - new Date(version.startedAt).getTime()) / 1000)
     : null;
   return `
     <div class="history-detail-back"><button class="ghost" data-page="history">← 返回历史</button><span>任务记录为生成时的只读快照</span></div>
@@ -515,15 +618,15 @@ function historyDetailPage(): string {
             ? `<video controls playsinline preload="metadata" src="${mediaUrl}"></video>`
             : `<div class="history-media-fallback"><span>▶</span><strong>视频文件不可用</strong><small>请检查输出目录或在下方定位文件。</small></div>`}
         </div>
-        <div class="panel version-toolbar"><span class="model-badge">原始 ${asset.resolution}p</span><span>当前为原始生成版本</span></div>
+        <div class="panel version-toolbar"><div class="version-switcher">${asset.versions.map((item) => `<button class="${item.id === version.id ? "primary" : "ghost"}" data-version-id="${item.id}">${item.kind === "original" ? "原始" : modelName(item.modelId)} ${item.height === 2160 ? "4K" : `${item.height}p`}</button>`).join("")}</div><span>${asset.versions.length} 个版本</span></div>
       </div>
       <aside class="panel history-summary">
         <div><div class="history-title-line"><h1>${escapeHtml(asset.title)}</h1><span class="status running">已完成</span></div><code>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code></div>
-        <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(asset.modelId))}</span><span>${asset.resolution}p · ${asset.duration}秒 · ${frameRateSummary(fps, asset.frameInterpolation)}</span></div>
+        <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(version.modelId))}</span><span>${version.width} × ${version.height} · ${version.duration}秒 · ${fps} FPS</span></div>
         <div class="history-summary-row"><span>完成于</span><strong>${completedAt}</strong></div>
         <div class="history-summary-row"><span>总耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : `${Math.round(elapsedSeconds)} 秒`}</strong></div>
         <div class="history-summary-actions"><button class="secondary" data-edit-history="${asset.id}">在创建页调整</button>${videoFile?.absolutePath ? `<button class="secondary" data-show-file="${escapeHtml(videoFile.absolutePath)}">打开所在目录</button>` : ""}<button class="ghost danger history-delete-button" data-delete-history="${asset.id}">删除视频和记录</button></div>
-        <div class="history-upscale"><strong>提升清晰度</strong><span>放大版本会作为同一作品的新版本显示。</span><button class="secondary" disabled>提升分辨率（待接入）</button></div>
+        <div class="history-upscale"><strong>提升清晰度</strong><span>完成后会作为同一作品的新版本显示。</span><button class="secondary" data-open-upscale ${videoFile?.absolutePath && version.height < 2160 ? "" : "disabled"}>${version.height >= 2160 ? "当前已是 4K" : "提升分辨率…"}</button></div>
       </aside>
     </section>
     <section class="history-record-grid">
@@ -533,20 +636,20 @@ function historyDetailPage(): string {
       </article>
       <article class="panel history-record">
         <h2>原始生成参数</h2>
-        <dl><dt>模型</dt><dd>${escapeHtml(modelName(asset.modelId))}</dd><dt>Seed</dt><dd><code>${asset.seed}</code></dd><dt>工作流</dt><dd><code>${escapeHtml(asset.workflowPath ?? "旧记录未保存")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(asset.comfyPromptId)}</code></dd></dl>
+        <dl><dt>模型</dt><dd>${escapeHtml(modelName(version.modelId))}</dd><dt>Seed</dt><dd><code>${version.seed ?? "不适用"}</code></dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "旧记录未保存")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId)}</code></dd></dl>
       </article>
       <article class="panel history-record">
         <h2>视频输出</h2>
-        <dl><dt>分辨率</dt><dd>${asset.resolution}p</dd><dt>画面比例</dt><dd>${escapeHtml(asset.ratio ?? "旧记录未保存")}</dd><dt>时长</dt><dd>${asset.duration} 秒</dd><dt>成片帧率</dt><dd>${fps} FPS</dd><dt>插帧</dt><dd>${asset.frameInterpolation && asset.frameInterpolation !== "off" ? `RIFE ${interpolationMultiplier(asset.frameInterpolation)}×` : "关闭"}</dd><dt>成片帧数</dt><dd>${Math.round(asset.duration * fps)}</dd><dt>输出目录</dt><dd><code>${escapeHtml(videoFile?.absolutePath ?? state.settings.outputDirectory)}</code></dd></dl>
+        <dl><dt>分辨率</dt><dd>${version.width} × ${version.height}</dd><dt>版本类型</dt><dd>${version.kind === "original" ? "原始生成" : "分辨率提升"}</dd><dt>时长</dt><dd>${version.duration} 秒</dd><dt>成片帧率</dt><dd>${fps} FPS</dd><dt>成片帧数</dt><dd>${Math.round(version.duration * fps)}</dd><dt>输出目录</dt><dd><code>${escapeHtml(videoFile?.absolutePath ?? state.settings.outputDirectory)}</code></dd></dl>
       </article>
       <article class="panel history-record full">
-        <div class="history-record-heading"><h2>输出文件</h2><span>${asset.files.length} 个</span></div>
+        <div class="history-record-heading"><h2>输出文件</h2><span>${version.files.length} 个</span></div>
       <div class="output-files">
-        ${asset.files.length === 0
+        ${version.files.length === 0
           ? `<p class="muted">ComfyUI 返回中没有识别到文件。需要在本地保存一份 history 响应，用于补充该工作流的输出结构。</p>`
-          : asset.files.map((file) => `<div class="output-file"><div><strong>${escapeHtml(file.filename)}</strong><p class="muted">${escapeHtml(file.subfolder || ".")} · ${escapeHtml(file.type)}</p></div>${file.absolutePath ? `<button class="secondary" data-show-file="${escapeHtml(file.absolutePath)}">在 Explorer 中显示</button>` : `<span class="muted">请先在设置中填写 ComfyUI 输出目录</span>`}</div>`).join("")}
+          : version.files.map((file) => `<div class="output-file"><div><strong>${escapeHtml(file.filename)}</strong><p class="muted">${escapeHtml(file.subfolder || ".")} · ${escapeHtml(file.type)}</p></div>${file.absolutePath ? `<button class="secondary" data-show-file="${escapeHtml(file.absolutePath)}">在 Explorer 中显示</button>` : `<span class="muted">请先在设置中填写 ComfyUI 输出目录</span>`}</div>`).join("")}
       </div>
-        <details><summary>原始 ComfyUI 输出快照</summary><pre>${escapeHtml(JSON.stringify(asset.comfyOutputs, null, 2))}</pre></details>
+        <details><summary>原始 ComfyUI 输出快照</summary><pre>${escapeHtml(JSON.stringify(version.comfyOutputs, null, 2))}</pre></details>
       </article>
     </section>`;
 }
@@ -729,7 +832,7 @@ function settingsPage(): string {
           <label>显存安全余量<select id="vram-reserve"><option value="1" ${settings.vramReserveGb === 1 ? "selected" : ""}>1 GB · 更快</option><option value="2" ${settings.vramReserveGb === 2 ? "selected" : ""}>2 GB · 推荐</option><option value="4" ${settings.vramReserveGb === 4 ? "selected" : ""}>4 GB · 保守</option></select></label>
           <label>同时运行任务<select disabled><option>1 · 推荐</option><option>2 · 可能爆显存</option></select></label>
           <label class="switch-field"><input id="auto-offload" type="checkbox" ${settings.autoOffload ? "checked" : ""}><span>自动 CPU 卸载与分块</span></label>
-          <label class="switch-field"><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span>取消时保留可播放片段</span></label>
+          <label class="switch-field"><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span>安全取消（保留 ComfyUI 服务与模型缓存）</span></label>
           <label class="switch-field"><input id="optimize-queue-setting" type="checkbox" ${settings.optimizeQueue ? "checked" : ""}><span>允许一键优化模型顺序</span></label>
           <label class="switch-field"><input type="checkbox" checked disabled><span>持久保存队列和历史</span></label>
         </div>
@@ -783,6 +886,12 @@ function settingsPage(): string {
           <label class="compact-label">默认模型<select id="default-upscale-model">${upscaleProfiles.map((profile) => `<option value="${profile.id}" ${settings.defaultUpscaleModel === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
         </div>
         <div class="scan-result">${environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${upscaleAvailable} 个可运行模型，${upscaleProfiles.length - upscaleAvailable} 个待补齐` : "等待首次扫描"}</div>
+        <div class="settings-grid two">
+          <label>默认显存策略<select id="upscale-tile-mode"><option value="auto" ${settings.upscaleTileMode === "auto" ? "selected" : ""}>自动 · 推荐</option><option value="safe" ${settings.upscaleTileMode === "safe" ? "selected" : ""}>保守 · 分块与卸载</option><option value="fast" ${settings.upscaleTileMode === "fast" ? "selected" : ""}>速度优先</option></select></label>
+          <label>SeedVR2 权重<input id="seedvr2-model" value="${escapeHtml(settings.seedVr2Model)}"></label>
+          <label>Real-ESRGAN 权重<input id="realesrgan-model" value="${escapeHtml(settings.realEsrganModel)}"></label>
+          <label class="switch-field disabled"><input id="upscale-face-restore" type="checkbox" disabled ${settings.upscaleFaceRestore ? "checked" : ""}><span>人脸修复 · 等待独立模型</span></label>
+        </div>
       </section>
       <div class="model-profile-list">${upscaleProfiles.length ? upscaleProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无模型扫描结果</div>`}</div>
     </section>`;
@@ -851,6 +960,7 @@ function render(): void {
     settingsPage();
   appElement.innerHTML = shell(content);
   bindShell();
+  bindUpscaleDialog();
   if (page === "create") {
     bindCreate();
     void imagePreview(state.draft.startImagePath, "start-preview");
@@ -893,6 +1003,8 @@ function closeHistoryContextMenu(): void {
 function openHistoryDetail(assetId: string): void {
   historyScrollPosition = window.scrollY;
   selectedHistoryAssetId = assetId;
+  const asset = state.history.find((item) => item.id === assetId);
+  selectedHistoryVersionId = asset ? preferredVersion(asset).id : "";
   page = "history-detail";
   render();
   window.scrollTo({ top: 0, behavior: "auto" });
@@ -916,6 +1028,8 @@ async function editHistoryAsset(assetId: string): Promise<void> {
     modelId: asset.modelId,
     workflowPath: asset.workflowPath ?? state.draft.workflowPath,
     startImagePath: asset.startImagePath ?? state.draft.startImagePath,
+    sourceWidth: 0,
+    sourceHeight: 0,
     endImagePath: asset.endImagePath ?? "",
     ratio: asset.ratio ?? state.draft.ratio,
     resolution: ([480, 540, 720].includes(asset.resolution)
@@ -951,8 +1065,9 @@ function openHistoryContextMenu(
   closeHistoryContextMenu();
   const asset = state.history.find((item) => item.id === assetId);
   if (!asset) return;
-  const videoIndex = historyVideoIndex(asset);
-  const videoFile = videoIndex >= 0 ? asset.files[videoIndex] : undefined;
+  const version = preferredVersion(asset);
+  const videoIndex = versionVideoIndex(version);
+  const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
   const absolutePath = videoFile?.absolutePath ?? "";
   const menu = document.createElement("section");
   menu.className = "history-context-menu";
@@ -1202,7 +1317,12 @@ function bindFrameDrop(
         showMessage("无法读取拖入图片的本地路径");
         return;
       }
-      patchDraft({ [field]: filename });
+      patchDraft({
+        [field]: filename,
+        ...(field === "startImagePath"
+          ? { sourceWidth: 0, sourceHeight: 0 }
+          : {})
+      });
       render();
     } catch (error) {
       showMessage(error instanceof Error ? error.message : "无法读取拖入的图片");
@@ -1214,7 +1334,7 @@ function bindCreate(): void {
   document.querySelector("#pick-start")?.addEventListener("click", async () => {
     const filename = await window.studio.pickImage();
     if (filename) {
-      patchDraft({ startImagePath: filename });
+      patchDraft({ startImagePath: filename, sourceWidth: 0, sourceHeight: 0 });
       render();
     }
   });
@@ -1247,13 +1367,19 @@ function bindCreate(): void {
         button.dataset.clearFrame === "end"
           ? "endImagePath"
           : "startImagePath";
-      patchDraft({ [field]: "" });
+      patchDraft({
+        [field]: "",
+        ...(field === "startImagePath"
+          ? { sourceWidth: 0, sourceHeight: 0 }
+          : {})
+      });
       render();
     });
   });
   document.querySelector("#pick-workflow")?.addEventListener("click", async () => {
     const filename = await window.studio.pickWorkflow();
     if (filename) {
+      workflowCapabilities[filename] = await window.studio.inspectWorkflow(filename);
       patchDraft({ workflowPath: filename });
       render();
     }
@@ -1312,8 +1438,14 @@ function bindCreate(): void {
           bundledWorkflows[value] ??
           (await window.studio.getBundledWorkflow(value));
         if (bundled) bundledWorkflows[value] = bundled;
+        if (bundled) {
+          workflowCapabilities[bundled.path] = {
+            supportsEndImage: bundled.supportsEndImage
+          };
+        }
         patchDraft({
           modelId: value,
+          ...(!bundled?.supportsEndImage ? { endImagePath: "" } : {}),
           workflowPath:
             bundled?.path ??
             (state.draft.workflowPath === oldBundledPath
@@ -1410,6 +1542,99 @@ function bindQueue(): void {
       render();
     });
   });
+  document.querySelectorAll<HTMLElement>("[data-edit-upscale-task]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const task = state.queue.find((item) => item.id === button.dataset.editUpscaleTask);
+      if (!task || task.taskType !== "upscale") return;
+      upscaleDialog = {
+        taskId: task.id,
+        assetId: task.sourceAssetId,
+        versionId: task.sourceVersionId,
+        targetHeight: task.targetHeight,
+        modelId: task.modelId as typeof upscaleDialog extends { modelId: infer Model } ? Model : never,
+        tileMode: task.tileMode
+      };
+      render();
+    });
+  });
+}
+
+function bindUpscaleDialog(): void {
+  const closeUpscale = () => {
+    upscaleDialog = null;
+    render();
+  };
+  document.querySelector("#close-upscale")?.addEventListener("click", closeUpscale);
+  document.querySelector("#cancel-upscale")?.addEventListener("click", closeUpscale);
+  document.querySelector("#upscale-backdrop")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) closeUpscale();
+  });
+  document.querySelectorAll<HTMLElement>("[data-upscale-height]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!upscaleDialog) return;
+      upscaleDialog.targetHeight = Number(button.dataset.upscaleHeight) as typeof upscaleDialog.targetHeight;
+      render();
+    });
+  });
+  document.querySelector("#upscale-model")?.addEventListener("change", (event) => {
+    if (!upscaleDialog) return;
+    upscaleDialog.modelId = (event.currentTarget as HTMLSelectElement).value as typeof upscaleDialog.modelId;
+    render();
+  });
+  document.querySelector("#upscale-tile")?.addEventListener("change", (event) => {
+    if (!upscaleDialog) return;
+    upscaleDialog.tileMode = (event.currentTarget as HTMLSelectElement).value as typeof upscaleDialog.tileMode;
+    render();
+  });
+  document.querySelector("#enqueue-upscale")?.addEventListener("click", async () => {
+    if (!upscaleDialog) return;
+    const dialogState = upscaleDialog;
+    const asset = state.history.find((item) => item.id === dialogState.assetId);
+    const version = asset?.versions.find((item) => item.id === dialogState.versionId);
+    const fileIndex = version ? versionVideoIndex(version) : -1;
+    const sourceFile = fileIndex >= 0 ? version?.files[fileIndex] : undefined;
+    if (!asset || !version || !sourceFile?.absolutePath) {
+      showMessage("源视频文件不可用，无法创建提升任务。");
+      return;
+    }
+    try {
+      if (dialogState.taskId) {
+        const [targetWidth, targetHeight] = upscaleDimensions(
+          version.width,
+          version.height,
+          dialogState.targetHeight
+        );
+        state = await window.studio.updateUpscaleTask(dialogState.taskId, {
+          targetWidth,
+          targetHeight,
+          modelId: dialogState.modelId,
+          workflowPath: `builtin:upscale/${dialogState.modelId}`,
+          tileMode: dialogState.tileMode,
+          faceRestore: false,
+          outputFilename: createUpscaleFilename(sourceFile.filename, targetHeight)
+        });
+      } else {
+        state = await window.studio.enqueueUpscale({
+          sourceAssetId: asset.id,
+          sourceVersionId: version.id,
+          sourceFilePath: sourceFile.absolutePath,
+          sourceFilename: sourceFile.filename,
+          sourceWidth: version.width,
+          sourceHeight: version.height,
+          duration: version.duration,
+          fps: version.fps,
+          targetHeight: dialogState.targetHeight,
+          modelId: dialogState.modelId,
+          tileMode: dialogState.tileMode,
+          faceRestore: false
+        });
+      }
+      upscaleDialog = null;
+      showMessage(dialogState.taskId ? "提升任务已更新。" : "分辨率提升任务已加入队列。");
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : String(error));
+    }
+  });
 }
 
 function bindHistory(): void {
@@ -1473,11 +1698,7 @@ function bindHistory(): void {
     });
     const open = (event?: Event) => {
       if ((event?.target as HTMLElement | null)?.closest("button")) return;
-      historyScrollPosition = window.scrollY;
-      selectedHistoryAssetId = card.dataset.history!;
-      page = "history-detail";
-      render();
-      window.scrollTo({ top: 0, behavior: "auto" });
+      openHistoryDetail(card.dataset.history!);
     };
     card.addEventListener("click", (event) => open(event));
     card.addEventListener("keydown", (event) => {
@@ -1488,6 +1709,34 @@ function bindHistory(): void {
     button.addEventListener("click", () => {
       openHistoryDetail(button.dataset.openHistory!);
     });
+  });
+  document.querySelectorAll<HTMLElement>("[data-version-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedHistoryVersionId = button.dataset.versionId!;
+      render();
+    });
+  });
+  document.querySelector("[data-open-upscale]")?.addEventListener("click", () => {
+    const asset = state.history.find((item) => item.id === selectedHistoryAssetId);
+    if (!asset) return;
+    const version = currentHistoryVersion(asset);
+    const targetHeight = ([720, 1080, 1440, 2160] as const).find(
+      (height) => height > version.height
+    );
+    if (!targetHeight) return;
+    const configuredModel = state.settings.defaultUpscaleModel;
+    upscaleDialog = {
+      assetId: asset.id,
+      versionId: version.id,
+      targetHeight,
+      modelId: (["seedvr2", "flashvsr", "realesrgan"] as const).includes(
+        configuredModel as "seedvr2" | "flashvsr" | "realesrgan"
+      )
+        ? configuredModel as "seedvr2" | "flashvsr" | "realesrgan"
+        : "seedvr2",
+      tileMode: state.settings.upscaleTileMode
+    };
+    render();
   });
   document.querySelectorAll<HTMLElement>("[data-delete-history]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1533,6 +1782,10 @@ function formSettings(): Settings {
     promptLanguage: value("prompt-language", base.promptLanguage) as Settings["promptLanguage"],
     promptCreativity: Number(value("prompt-creativity", String(base.promptCreativity))),
     defaultUpscaleModel: value("default-upscale-model", base.defaultUpscaleModel),
+    upscaleTileMode: value("upscale-tile-mode", base.upscaleTileMode) as Settings["upscaleTileMode"],
+    upscaleFaceRestore: checked("upscale-face-restore", base.upscaleFaceRestore),
+    seedVr2Model: value("seedvr2-model", base.seedVr2Model),
+    realEsrganModel: value("realesrgan-model", base.realEsrganModel),
     proxyEnabled: checked("proxy-enabled", base.proxyEnabled),
     proxyUrl: value("proxy-url", base.proxyUrl)
   };
@@ -1840,6 +2093,9 @@ void window.studio.getState().then((initialState) => {
     environmentScan = scan;
     if (bundled) {
       bundledWorkflows[bundled.modelId] = bundled;
+      workflowCapabilities[bundled.path] = {
+        supportsEndImage: bundled.supportsEndImage
+      };
       if (!state.draft.workflowPath) {
         patchDraft({ workflowPath: bundled.path });
       }

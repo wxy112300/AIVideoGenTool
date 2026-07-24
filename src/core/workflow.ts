@@ -1,4 +1,4 @@
-import type { QueueTask } from "../types.js";
+import type { GenerationQueueTask } from "../types.js";
 
 export interface WorkflowContext {
   inputImage: string;
@@ -17,33 +17,42 @@ export interface WorkflowValidation {
   nodeCount: number;
 }
 
-export function frameCountForTask(task: QueueTask, fps: number): number {
-  const requested = Math.max(1, Math.round(task.duration * fps));
-  if (!task.modelId.startsWith("wan22_") && task.modelId !== "hunyuan15") {
-    return requested;
-  }
-  return Math.max(1, Math.round((requested - 1) / 4) * 4 + 1);
+export function workflowSupportsEndImage(source: unknown): boolean {
+  return JSON.stringify(source).includes("{{END_IMAGE}}");
 }
 
-export function frameInterpolationMultiplier(task: QueueTask): 1 | 2 | 4 {
+function frameIntervalForModel(modelId: string): 1 | 4 | 8 {
+  if (modelId === "sulphur2") return 8;
+  if (modelId.startsWith("wan22_") || modelId.startsWith("hunyuan15")) return 4;
+  return 1;
+}
+
+export function frameCountForTask(task: GenerationQueueTask, fps: number): number {
+  const requested = Math.max(1, Math.round(task.duration * fps));
+  const interval = frameIntervalForModel(task.modelId);
+  return Math.max(1, Math.round((requested - 1) / interval) * interval + 1);
+}
+
+export function frameInterpolationMultiplier(task: GenerationQueueTask): 1 | 2 | 4 {
   if (task.frameInterpolation === "rife2x") return 2;
   if (task.frameInterpolation === "rife4x") return 4;
   return 1;
 }
 
-export function outputFrameCountForTask(task: QueueTask): number {
+export function outputFrameCountForTask(task: GenerationQueueTask): number {
   return Math.max(1, Math.round(task.duration * task.fps));
 }
 
-export function generationFrameCountForTask(task: QueueTask): number {
+export function generationFrameCountForTask(task: GenerationQueueTask): number {
   const multiplier = frameInterpolationMultiplier(task);
   if (multiplier === 1) return frameCountForTask(task, task.fps);
   const requiredSourceFrames =
     Math.ceil((outputFrameCountForTask(task) - 1) / multiplier) + 1;
-  if (!task.modelId.startsWith("wan22_") && task.modelId !== "hunyuan15") {
-    return requiredSourceFrames;
-  }
-  return Math.max(1, Math.ceil((requiredSourceFrames - 1) / 4) * 4 + 1);
+  const interval = frameIntervalForModel(task.modelId);
+  return Math.max(
+    1,
+    Math.ceil((requiredSourceFrames - 1) / interval) * interval + 1
+  );
 }
 
 const wan14ModelAssets: Record<
@@ -107,19 +116,34 @@ const ratios: Record<string, [number, number]> = {
   source: [16, 9]
 };
 
-export function outputDimensions(task: QueueTask): [number, number] {
-  const [rw, rh] = ratios[task.ratio] ?? ratios.source!;
+function baseGenerationDimensions(task: GenerationQueueTask): [number, number] {
+  const [rw, rh] =
+    task.ratio === "source" && task.sourceWidth > 0 && task.sourceHeight > 0
+      ? [task.sourceWidth, task.sourceHeight]
+      : ratios[task.ratio] ?? ratios.source!;
   const height = Math.max(64, Math.round(task.resolution / 16) * 16);
   const width = Math.max(64, Math.round((height * rw) / rh / 16) * 16);
   return [width, height];
 }
 
+export function outputDimensions(task: GenerationQueueTask): [number, number] {
+  const [width, height] = baseGenerationDimensions(task);
+  if (task.modelId !== "hunyuan15_sr") return [width, height];
+  return [
+    Math.max(64, Math.round((width * 1.5) / 8) * 8),
+    Math.max(64, Math.round((height * 1.5) / 8) * 8)
+  ];
+}
+
 export function renderWorkflow(
   source: unknown,
-  task: QueueTask,
+  task: GenerationQueueTask,
   context: Partial<WorkflowContext> = {}
 ): unknown {
   const [width, height] = outputDimensions(task);
+  const [baseWidth, baseHeight] = baseGenerationDimensions(task);
+  const outputWidth = context.width ?? width;
+  const outputHeight = context.height ?? height;
   const fps = context.fps ?? task.fps ?? 8;
   const modelAssets = wan14ModelAssets[task.modelId];
   const interpolationMultiplier = frameInterpolationMultiplier(task);
@@ -129,8 +153,10 @@ export function renderWorkflow(
     SEED: task.seed,
     INPUT_IMAGE: context.inputImage ?? "",
     END_IMAGE: context.endImage ?? "",
-    WIDTH: context.width ?? width,
-    HEIGHT: context.height ?? height,
+    WIDTH: outputWidth,
+    HEIGHT: outputHeight,
+    BASE_WIDTH: baseWidth,
+    BASE_HEIGHT: baseHeight,
     DURATION: task.duration,
     FPS: fps,
     SOURCE_FPS: fps / interpolationMultiplier,
@@ -140,7 +166,14 @@ export function renderWorkflow(
     HIGH_MODEL: modelAssets?.high ?? "",
     LOW_MODEL: modelAssets?.low ?? "",
     TEXT_ENCODER: modelAssets?.textEncoder ?? "",
-    VAE_MODEL: modelAssets?.vae ?? ""
+    VAE_MODEL: modelAssets?.vae ?? "",
+    HALF_WIDTH: Math.max(16, Math.round(outputWidth / 2 / 16) * 16),
+    HALF_HEIGHT: Math.max(16, Math.round(outputHeight / 2 / 16) * 16),
+    SULPHUR_MODEL: "sulphur_dev_fp8mixed.safetensors",
+    LTX_TEXT_ENCODER: "gemma_3_12B_it_fp4_mixed.safetensors",
+    LTX_DISTILL_LORA:
+      "ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors",
+    LTX_UPSCALER: "ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
   };
 
   const visit = (value: unknown): unknown => {

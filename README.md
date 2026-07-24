@@ -17,15 +17,16 @@
 - 队列上移/下移、复制、重试和按模型/工作流优化顺序。
 - ComfyUI 输出文件解析、历史详情快照和 Explorer 文件定位。
 - Windows 环境扫描、自定义节点安装/修复、下载代理和 ComfyUI 启动/重启。
-- Wan 2.2 5B、HunyuanVideo 1.5、Wan 14B、Remix、SmoothMix、DaSiWa
-  内置工作流。
+- Sulphur 2 / LTX 2.3、Wan 2.2 5B/14B、HunyuanVideo 1.5、
+  Hunyuan 1080p 双阶段 SR、Remix、SmoothMix、DaSiWa 内置工作流。
 - RIFE 2×/4× Frame Interpolation，区分模型帧数与成片目标 FPS。
 - 扩散模型卸载、VAE 分块、再次卸载、插帧和精确裁帧的显存安全管线。
-- 队列性能监测、实时预览、历史视频播放、右键菜单和视频/记录同步删除。
+- SeedVR2、FlashVSR、Real-ESRGAN 视频分辨率提升任务。
+- 原始视频与多个提升版本归入同一历史作品，可切换默认版本。
+- 队列性能监测、实时预览、历史视频播放、右键菜单和版本化文件删除。
 - 应用退出时清理自身开发进程并中止当前大模型计算。
 
-安全取消后的部分视频、真实 Upscale 后端、历史作品版本组、长视频分段、
-Sulphur 2 和 Windows 安装包仍未完成。最新、最完整的交接状态见
+取消后编码部分视频、长视频分段和 Windows 安装包仍未完成。最新、最完整的交接状态见
 [`docs/LOCAL_CODEX_HANDOFF.md`](docs/LOCAL_CODEX_HANDOFF.md)。
 
 ## 快速开始
@@ -63,9 +64,12 @@ npm run dev
 {{PROMPT}} {{NEGATIVE_PROMPT}} {{SEED}}
 {{INPUT_IMAGE}} {{END_IMAGE}}
 {{WIDTH}} {{HEIGHT}} {{DURATION}}
+{{BASE_WIDTH}} {{BASE_HEIGHT}} {{HALF_WIDTH}} {{HALF_HEIGHT}}
 {{SOURCE_FPS}} {{FPS}} {{FRAMES}} {{OUTPUT_FRAMES}}
 {{HIGH_MODEL}} {{LOW_MODEL}} {{TEXT_ENCODER}} {{VAE_MODEL}}
 {{OUTPUT_FILENAME}}
 ```
 
-应用会在提交 `/prompt` 前递归替换它们。详细方法见 `docs/DEPENDENCIES_AND_SETUP.md`。
+应用会在提交 `/prompt` 前递归替换它们。内置工作流目前仅支持首帧；只有实际包含
+`{{END_IMAGE}}` 的自定义 API 工作流才会启用尾帧。详细方法见
+`docs/DEPENDENCIES_AND_SETUP.md`。

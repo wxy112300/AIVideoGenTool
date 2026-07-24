@@ -1,6 +1,13 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { AppState } from "../src/types.js";
+import type {
+  AppState,
+  AssetVersion,
+  Draft,
+  GenerationQueueTask,
+  HistoryAsset,
+  QueueTask
+} from "../src/types.js";
 import { createDefaultState } from "../src/core/defaults.js";
 
 export function migrateLegacyComfyUrl(value: string): string {
@@ -13,6 +20,84 @@ export function migrateLegacyComfyUrl(value: string): string {
     : value;
 }
 
+type LegacyQueueTask = Omit<GenerationQueueTask, "taskType"> & {
+  taskType?: "generation";
+};
+
+type LegacyHistoryAsset = Omit<HistoryAsset, "updatedAt" | "versions"> & {
+  updatedAt?: string;
+  versions?: AssetVersion[];
+};
+
+function legacyDimensions(asset: LegacyHistoryAsset): [number, number] {
+  const ratios: Record<string, [number, number]> = {
+    "16:9": [16, 9],
+    "9:16": [9, 16],
+    "1:1": [1, 1],
+    "4:3": [4, 3],
+    source: [16, 9]
+  };
+  const [ratioWidth, ratioHeight] = ratios[asset.ratio ?? "source"] ?? [16, 9];
+  const height = Math.max(16, Math.round(asset.resolution / 16) * 16);
+  return [Math.max(16, Math.round(height * ratioWidth / ratioHeight / 16) * 16), height];
+}
+
+function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
+  if (task.taskType === "upscale") return task;
+  return {
+    ...task,
+    taskType: "generation",
+    sourceWidth: task.sourceWidth ?? 0,
+    sourceHeight: task.sourceHeight ?? 0,
+    fps: (task.fps ?? 24) as Draft["fps"],
+    frameInterpolation: task.frameInterpolation ?? "off",
+    keepSeedOnCopy: task.keepSeedOnCopy ?? false,
+    ...(task.status === "running"
+      ? {
+          status: "waiting" as const,
+          error: "应用上次退出时任务仍在运行，已恢复为等待状态。"
+        }
+      : {})
+  };
+}
+
+function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryAsset {
+  const files = asset.files ?? [];
+  if (asset.versions?.length) {
+    return {
+      ...asset,
+      files,
+      updatedAt: asset.updatedAt ?? asset.createdAt,
+      versions: asset.versions
+    };
+  }
+  const [width, height] = legacyDimensions(asset);
+  const version: AssetVersion = {
+    id: crypto.randomUUID(),
+    kind: "original",
+    createdAt: asset.createdAt,
+    outputFilename: asset.outputFilename,
+    modelId: asset.modelId,
+    width,
+    height,
+    duration: asset.duration,
+    fps: asset.fps ?? 24,
+    seed: asset.seed,
+    workflowPath: asset.workflowPath ?? "",
+    comfyPromptId: asset.comfyPromptId,
+    comfyOutputs: asset.comfyOutputs,
+    files,
+    startedAt: asset.startedAt
+  };
+  return {
+    ...asset,
+    files,
+    updatedAt: asset.updatedAt ?? asset.createdAt,
+    defaultVersionId: version.id,
+    versions: [version]
+  };
+}
+
 export class JsonStore {
   private state: AppState = createDefaultState();
   private writeChain: Promise<void> = Promise.resolve();
@@ -22,29 +107,19 @@ export class JsonStore {
   async load(): Promise<AppState> {
     try {
       const raw = await fs.readFile(this.filename, "utf8");
-      const saved = JSON.parse(raw) as Partial<AppState>;
+      const saved = JSON.parse(raw) as Partial<Omit<AppState, "queue" | "history">> & {
+        queue?: Array<QueueTask | LegacyQueueTask>;
+        history?: Array<HistoryAsset | LegacyHistoryAsset>;
+      };
       this.state = {
         ...createDefaultState(),
         ...saved,
         draft: { ...createDefaultState().draft, ...saved.draft },
         settings: { ...createDefaultState().settings, ...saved.settings },
         queueRunning: false,
-        queue: (saved.queue ?? []).map((task) => ({
-          ...task,
-          fps: task.fps ?? 24,
-          frameInterpolation: task.frameInterpolation ?? "off",
-          keepSeedOnCopy: task.keepSeedOnCopy ?? false,
-          ...(task.status === "running"
-            ? {
-                status: "waiting" as const,
-                error: "应用上次退出时任务仍在运行，已恢复为等待状态。"
-              }
-            : {})
-        })),
-        history: (saved.history ?? []).map((asset) => ({
-          ...asset,
-          files: asset.files ?? []
-        }))
+        schemaVersion: 2,
+        queue: (saved.queue ?? []).map(migrateQueueTask),
+        history: (saved.history ?? []).map(migrateHistoryAsset)
       };
       let needsPersist = false;
       if (

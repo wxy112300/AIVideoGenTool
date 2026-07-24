@@ -14,6 +14,8 @@ const api: AppApi = {
   pickImage: () => ipcRenderer.invoke("file:pick-image"),
   getDroppedFilePath: (file) => webUtils.getPathForFile(file),
   pickWorkflow: () => ipcRenderer.invoke("file:pick-workflow"),
+  inspectWorkflow: (path: string) =>
+    ipcRenderer.invoke("workflow:inspect", path),
   getBundledWorkflow: (modelId: string) =>
     ipcRenderer.invoke("workflow:get-bundled", modelId),
   getPerformanceMetrics: (settings: Settings) =>
@@ -37,6 +39,9 @@ const api: AppApi = {
   installCustomNode: (nodeId, settings) =>
     ipcRenderer.invoke("custom-node:install", nodeId, settings),
   enqueue: (draft: Draft) => ipcRenderer.invoke("queue:enqueue", draft),
+  enqueueUpscale: (request) => ipcRenderer.invoke("queue:enqueue-upscale", request),
+  updateUpscaleTask: (taskId, patch) =>
+    ipcRenderer.invoke("queue:update-upscale", taskId, patch),
   removeTask: (taskId: string) => ipcRenderer.invoke("queue:remove", taskId),
   startQueue: () => ipcRenderer.invoke("queue:start"),
   pauseQueue: () => ipcRenderer.invoke("queue:pause"),

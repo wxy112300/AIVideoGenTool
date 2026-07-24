@@ -13,15 +13,19 @@ import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type {
   AppState,
+  AssetVersion,
   BundledWorkflow,
   ConnectionKind,
   Draft,
   EnhanceRequest,
   EnvironmentIssue,
+  GenerationQueueTask,
   HistoryAsset,
   LocalServiceKind,
   QueueTask,
-  Settings
+  Settings,
+  UpscaleQueueTask,
+  UpscaleRequest
 } from "../src/types.js";
 import { createOutputFilename } from "../src/core/filename.js";
 import { historyVideoPaths } from "../src/core/history-delete.js";
@@ -33,7 +37,15 @@ import {
   moveWaitingTask,
   optimizeWaitingTasks
 } from "../src/core/queue.js";
-import { validateApiWorkflow } from "../src/core/workflow.js";
+import {
+  outputDimensions,
+  validateApiWorkflow,
+  workflowSupportsEndImage
+} from "../src/core/workflow.js";
+import {
+  uniqueUpscaleFilename,
+  upscaleDimensions
+} from "../src/core/upscale.js";
 import { JsonStore } from "./store.js";
 import { enhancePrompt, testLmStudio } from "./services/lm-studio.js";
 import {
@@ -89,14 +101,17 @@ function registerMediaProtocol(): void {
     try {
       const url = new URL(request.url);
       if (url.hostname !== "history") return new Response("Not found", { status: 404 });
-      const [assetId, fileIndexText] = url.pathname.split("/").filter(Boolean);
+      const [assetId, versionId, fileIndexText] = url.pathname.split("/").filter(Boolean);
       const fileIndex = Number(fileIndexText);
       const asset = store
         .get()
         .history.find((item) => item.id === decodeURIComponent(assetId ?? ""));
+      const version = asset?.versions.find(
+        (item) => item.id === decodeURIComponent(versionId ?? "")
+      );
       const filename =
         Number.isInteger(fileIndex) && fileIndex >= 0
-          ? asset?.files[fileIndex]?.absolutePath
+          ? version?.files[fileIndex]?.absolutePath
           : undefined;
       const stat = filename ? await fs.stat(filename).catch(() => null) : null;
       if (!filename || !stat?.isFile()) {
@@ -138,6 +153,10 @@ function registerMediaProtocol(): void {
 
 async function bundledWorkflowFor(modelId: string): Promise<BundledWorkflow | null> {
   const definitions: Record<string, { filename: string; label: string }> = {
+    sulphur2: {
+      filename: "sulphur2_ltx23_i2v_api.json",
+      label: "内置 · Sulphur 2 / LTX 2.3 图生视频"
+    },
     wan22_5b: {
       filename: "wan22_5b_i2v_api.json",
       label: "内置 · Wan 2.2 5B 图生视频"
@@ -145,6 +164,10 @@ async function bundledWorkflowFor(modelId: string): Promise<BundledWorkflow | nu
     hunyuan15: {
       filename: "hunyuan15_i2v_api.json",
       label: "内置 · HunyuanVideo 1.5 图生视频"
+    },
+    hunyuan15_sr: {
+      filename: "hunyuan15_sr_i2v_api.json",
+      label: "内置 · HunyuanVideo 1.5 双阶段 1080p 图生视频"
     },
     wan22_14b_nsfw: {
       filename: "wan22_14b_i2v_api.json",
@@ -173,10 +196,12 @@ async function bundledWorkflowFor(modelId: string): Promise<BundledWorkflow | nu
   ];
   for (const candidate of candidates) {
     if (await fs.stat(candidate).catch(() => null)) {
+      const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
       return {
         modelId,
         label,
-        path: candidate
+        path: candidate,
+        supportsEndImage: workflowSupportsEndImage(source)
       };
     }
   }
@@ -338,7 +363,7 @@ function promptOf(draft: Draft): string {
   ).trim();
 }
 
-function queueTaskFromDraft(draft: Draft, state: AppState): QueueTask {
+function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask {
   const now = new Date().toISOString();
   const prompt = promptOf(draft);
   const names = [
@@ -347,6 +372,7 @@ function queueTaskFromDraft(draft: Draft, state: AppState): QueueTask {
   ];
   return {
     id: crypto.randomUUID(),
+    taskType: "generation",
     status: "waiting",
     createdAt: now,
     updatedAt: now,
@@ -354,6 +380,8 @@ function queueTaskFromDraft(draft: Draft, state: AppState): QueueTask {
     prompt,
     promptVersion: draft.activePromptVersion + 1,
     startImagePath: draft.startImagePath,
+    sourceWidth: draft.sourceWidth,
+    sourceHeight: draft.sourceHeight,
     endImagePath: draft.endImagePath,
     modelId: draft.modelId,
     workflowPath: draft.workflowPath,
@@ -365,6 +393,56 @@ function queueTaskFromDraft(draft: Draft, state: AppState): QueueTask {
     motion: draft.motion,
     seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
+    progress: 0
+  };
+}
+
+function outputNames(state: AppState): string[] {
+  return [
+    ...state.queue.map((item) => item.outputFilename),
+    ...state.history.flatMap((asset) =>
+      asset.versions.map((version) => version.outputFilename)
+    )
+  ];
+}
+
+function upscaleTaskFromRequest(
+  request: UpscaleRequest,
+  state: AppState
+): UpscaleQueueTask {
+  const now = new Date().toISOString();
+  const [targetWidth, targetHeight] = upscaleDimensions(
+    request.sourceWidth,
+    request.sourceHeight,
+    request.targetHeight
+  );
+  return {
+    id: crypto.randomUUID(),
+    taskType: "upscale",
+    status: "waiting",
+    createdAt: now,
+    updatedAt: now,
+    outputFilename: uniqueUpscaleFilename(
+      request.sourceFilename,
+      targetHeight,
+      outputNames(state)
+    ),
+    modelId: request.modelId,
+    workflowPath: `builtin:upscale/${request.modelId}`,
+    duration: request.duration,
+    fps: request.fps,
+    seed: Math.floor(Math.random() * 0xffffffff),
+    keepSeedOnCopy: true,
+    sourceAssetId: request.sourceAssetId,
+    sourceVersionId: request.sourceVersionId,
+    sourceFilePath: request.sourceFilePath,
+    sourceFilename: request.sourceFilename,
+    sourceWidth: request.sourceWidth,
+    sourceHeight: request.sourceHeight,
+    targetWidth,
+    targetHeight,
+    tileMode: request.tileMode,
+    faceRestore: request.faceRestore,
     progress: 0
   };
 }
@@ -466,33 +544,90 @@ async function executeQueue(): Promise<void> {
       );
       const completedTask = store.get().queue.find((item) => item.id === task.id);
       if (!completedTask) continue;
-      const asset: HistoryAsset = {
-        id: crypto.randomUUID(),
-        taskId: completedTask.id,
-        title: completedTask.prompt.slice(0, 28) || "未命名视频",
-        outputFilename: completedTask.outputFilename,
-        createdAt: new Date().toISOString(),
-        modelId: completedTask.modelId,
-        duration: completedTask.duration,
-        resolution: completedTask.resolution,
-        fps: completedTask.fps,
-        frameInterpolation: completedTask.frameInterpolation,
-        ratio: completedTask.ratio,
-        prompt: completedTask.prompt,
-        seed: completedTask.seed,
-        startImagePath: completedTask.startImagePath,
-        endImagePath: completedTask.endImagePath,
-        workflowPath: completedTask.workflowPath,
-        startedAt: completedTask.startedAt,
-        comfyPromptId: promptId,
-        comfyOutputs: result,
-        files: attachAbsoluteOutputPaths(
-          extractComfyOutputFiles(result),
-          store.get().settings.outputDirectory
-        )
-      };
+      const completedAt = new Date().toISOString();
+      const files = attachAbsoluteOutputPaths(
+        extractComfyOutputFiles(result),
+        store.get().settings.outputDirectory
+      );
       const next = await store.update((state) => {
         state.queue = state.queue.filter((item) => item.id !== task.id);
+        if (completedTask.taskType === "generation") {
+          const [width, height] = outputDimensions(completedTask);
+          const version: AssetVersion = {
+            id: crypto.randomUUID(),
+            kind: "original",
+            createdAt: completedAt,
+            outputFilename: completedTask.outputFilename,
+            modelId: completedTask.modelId,
+            width,
+            height,
+            duration: completedTask.duration,
+            fps: completedTask.fps,
+            seed: completedTask.seed,
+            workflowPath: completedTask.workflowPath,
+            comfyPromptId: promptId,
+            comfyOutputs: result,
+            files,
+            startedAt: completedTask.startedAt
+          };
+          const asset: HistoryAsset = {
+            id: crypto.randomUUID(),
+            taskId: completedTask.id,
+            title: completedTask.prompt.slice(0, 28) || "未命名视频",
+            outputFilename: completedTask.outputFilename,
+            createdAt: completedAt,
+            updatedAt: completedAt,
+            modelId: completedTask.modelId,
+            duration: completedTask.duration,
+            resolution: completedTask.resolution,
+            fps: completedTask.fps,
+            frameInterpolation: completedTask.frameInterpolation,
+            ratio: completedTask.ratio,
+            prompt: completedTask.prompt,
+            seed: completedTask.seed,
+            startImagePath: completedTask.startImagePath,
+            endImagePath: completedTask.endImagePath,
+            workflowPath: completedTask.workflowPath,
+            startedAt: completedTask.startedAt,
+            comfyPromptId: promptId,
+            comfyOutputs: result,
+            files,
+            defaultVersionId: version.id,
+            versions: [version]
+          };
+          state.history.unshift(asset);
+          return;
+        }
+        const assetIndex = state.history.findIndex(
+          (asset) => asset.id === completedTask.sourceAssetId
+        );
+        if (assetIndex < 0) {
+          throw new Error("源作品已不存在，无法保存提升版本");
+        }
+        const asset = state.history[assetIndex]!;
+        const version: AssetVersion = {
+          id: crypto.randomUUID(),
+          kind: "upscale",
+          createdAt: completedAt,
+          outputFilename: completedTask.outputFilename,
+          modelId: completedTask.modelId,
+          width: completedTask.targetWidth,
+          height: completedTask.targetHeight,
+          duration: completedTask.duration,
+          fps: completedTask.fps,
+          seed: completedTask.seed,
+          workflowPath: completedTask.workflowPath,
+          comfyPromptId: promptId,
+          comfyOutputs: result,
+          files,
+          tileMode: completedTask.tileMode,
+          faceRestore: completedTask.faceRestore,
+          startedAt: completedTask.startedAt
+        };
+        asset.versions.push(version);
+        asset.updatedAt = completedAt;
+        asset.defaultVersionId = version.id;
+        state.history.splice(assetIndex, 1);
         state.history.unshift(asset);
       });
       sendState(next);
@@ -511,7 +646,7 @@ async function executeQueue(): Promise<void> {
       const failedState = await updateTask(task.id, {
         status: aborted ? "cancelled" : "failed",
         error: aborted
-          ? "任务已中止。部分帧保留依赖所用工作流的安全取消节点。"
+          ? "任务已中止，ComfyUI 已停止当前采样。"
           : error instanceof Error
             ? error.message
             : String(error)
@@ -566,6 +701,10 @@ function registerIpc(): void {
       filters: [{ name: "ComfyUI API 工作流", extensions: ["json"] }]
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+  ipcMain.handle("workflow:inspect", async (_event, workflowPath: string) => {
+    const source = JSON.parse(await fs.readFile(workflowPath, "utf8")) as unknown;
+    return { supportsEndImage: workflowSupportsEndImage(source) };
   });
   ipcMain.handle("workflow:get-bundled", (_event, modelId: string) =>
     bundledWorkflowFor(modelId)
@@ -661,6 +800,14 @@ function registerIpc(): void {
     if (!validation.valid) {
       throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
     }
+    if (
+      draft.endImagePath &&
+      !workflowSupportsEndImage(workflow)
+    ) {
+      throw new Error(
+        "当前工作流不支持尾帧。请选择包含 {{END_IMAGE}} 占位符的自定义 API 工作流，或移除尾帧。"
+      );
+    }
     const next = await store.update((state) => {
       state.queue.push(queueTaskFromDraft(draft, state));
       state.draft = draft;
@@ -668,6 +815,32 @@ function registerIpc(): void {
     sendState(next);
     return next;
   });
+  ipcMain.handle("queue:enqueue-upscale", async (_event, request: UpscaleRequest) => {
+    const current = store.get();
+    const asset = current.history.find((item) => item.id === request.sourceAssetId);
+    const version = asset?.versions.find((item) => item.id === request.sourceVersionId);
+    if (!asset || !version) throw new Error("源作品或版本已不存在");
+    if (!request.sourceFilePath || !(await fs.stat(request.sourceFilePath).catch(() => null))) {
+      throw new Error("源视频文件不存在，无法加入提升队列");
+    }
+    const next = await store.update((state) => {
+      state.queue.push(upscaleTaskFromRequest(request, state));
+    });
+    sendState(next);
+    return next;
+  });
+  ipcMain.handle(
+    "queue:update-upscale",
+    async (_event, taskId: string, patch: Pick<UpscaleQueueTask, "targetWidth" | "targetHeight" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">) => {
+      const next = await store.update((state) => {
+        const task = state.queue.find((item) => item.id === taskId);
+        if (!task || task.taskType !== "upscale" || task.status !== "waiting") return;
+        Object.assign(task, patch, { updatedAt: new Date().toISOString() });
+      });
+      sendState(next);
+      return next;
+    }
+  );
   ipcMain.handle("queue:remove", async (_event, taskId: string) => {
     const next = await store.update((state) => {
       state.queue = state.queue.filter(
@@ -700,13 +873,16 @@ function registerIpc(): void {
     const task = store.get().queue.find((item) => item.id === taskId);
     if (!task) return store.get();
     if (task.status === "running") {
+      const settings = store.get().settings;
       const next = await store.update((state) => {
         state.queueRunning = false;
       });
       sendState(next);
       activeController?.abort(new Error("用户取消任务"));
-      await interrupt(store.get().settings).catch(() => undefined);
-      void restartLocalService("comfy", store.get().settings);
+      await interrupt(settings).catch(() => undefined);
+      if (!settings.safeCancel) {
+        void restartLocalService("comfy", settings);
+      }
       return next;
     }
     return updateTask(taskId, {
@@ -740,13 +916,16 @@ function registerIpc(): void {
         ...state.queue.map((task) => task.outputFilename),
         ...state.history.map((asset) => asset.outputFilename)
       ];
+      const outputFilename = source.taskType === "generation"
+        ? createOutputFilename(source.modelId, source.prompt, names)
+        : uniqueUpscaleFilename(source.sourceFilename, source.targetHeight, names);
       state.queue.push({
         ...source,
         id: crypto.randomUUID(),
         status: "waiting",
         createdAt: now,
         updatedAt: now,
-        outputFilename: createOutputFilename(source.modelId, source.prompt, names),
+        outputFilename,
         seed: source.keepSeedOnCopy
           ? source.seed
           : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),

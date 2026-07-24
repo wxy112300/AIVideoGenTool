@@ -193,7 +193,7 @@ export function buildComfyDesktopCandidates(
 interface ModelProfileDefinition {
   id: string;
   name: string;
-  category: "video" | "upscale";
+  category: "video" | "upscale" | "interpolation";
   badge: string;
   description: string;
   vram: string;
@@ -208,9 +208,27 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
   "sulphur2:Sulphur 2 主模型": {
     sourceLabel: "SulphurAI / Sulphur-2-base",
     downloadUrl: "https://huggingface.co/SulphurAI/Sulphur-2-base/tree/main",
-    targetSubdirectory: "diffusion_models",
+    targetSubdirectory: "checkpoints",
     recommendedFilename: "sulphur_dev_fp8mixed.safetensors",
-    notes: "4090 推荐 FP8 mixed 版本；下载模型文件，不要只下载仓库说明文件。"
+    notes: "Sulphur 2 是 LTX 2.3 完整 checkpoint；内置工作流使用 CheckpointLoaderSimple，必须放在 models/checkpoints。4090 推荐 FP8 mixed。"
+  },
+  "sulphur2:Gemma 3 文本编码器": {
+    sourceLabel: "Comfy-Org / ltx-2",
+    downloadUrl: "https://huggingface.co/Comfy-Org/ltx-2/tree/main/split_files/text_encoders",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "gemma_3_12B_it_fp4_mixed.safetensors"
+  },
+  "sulphur2:LTX 2.3 蒸馏 LoRA": {
+    sourceLabel: "SulphurAI / Sulphur-2-base",
+    downloadUrl: "https://huggingface.co/SulphurAI/Sulphur-2-base/tree/main/distill_loras",
+    targetSubdirectory: "loras",
+    recommendedFilename: "ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors"
+  },
+  "sulphur2:LTX 2.3 Latent Upscaler": {
+    sourceLabel: "Lightricks / LTX-2.3",
+    downloadUrl: "https://huggingface.co/Lightricks/LTX-2.3/tree/main",
+    targetSubdirectory: "latent_upscale_models",
+    recommendedFilename: "ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
   },
   "wan22_5b:Wan 2.2 5B 扩散模型": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
@@ -362,15 +380,16 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     recommendedFilename: "wan_2.1_vae.safetensors"
   },
   "seedvr2:SeedVR2 主模型": {
-    sourceLabel: "Comfy-Org / SeedVR2",
-    downloadUrl: "https://huggingface.co/Comfy-Org/SeedVR2/tree/main/split_files/diffusion_models",
-    targetSubdirectory: "diffusion_models",
-    recommendedFilename: "seedvr2_3b_fp8_e4m3fn.safetensors"
+    sourceLabel: "numz / SeedVR2_comfyUI",
+    downloadUrl: "https://huggingface.co/numz/SeedVR2_comfyUI/tree/main",
+    targetSubdirectory: "SEEDVR2",
+    recommendedFilename: "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+    notes: "当前项目安装的 SeedVR2 节点固定从 models/SEEDVR2 读取权重。"
   },
   "seedvr2:SeedVR2 VAE": {
-    sourceLabel: "Comfy-Org / SeedVR2",
-    downloadUrl: "https://huggingface.co/Comfy-Org/SeedVR2/tree/main/split_files/vae",
-    targetSubdirectory: "vae",
+    sourceLabel: "numz / SeedVR2_comfyUI",
+    downloadUrl: "https://huggingface.co/numz/SeedVR2_comfyUI/tree/main",
+    targetSubdirectory: "SEEDVR2",
     recommendedFilename: "ema_vae_fp16.safetensors"
   },
   "flashvsr:FlashVSR 模型": {
@@ -378,7 +397,44 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     downloadUrl: "https://huggingface.co/1038lab/FlashVSR/tree/main",
     targetSubdirectory: "FlashVSR",
     recommendedFilename: "FlashVSR1_1.safetensors",
-    notes: "该工作流还可能需要同页的 VAE、LQ projection、TCDecoder 与 Prompt 权重，建议按仓库说明一并下载。"
+    notes: "FlashVSR 的 5 个权重必须放在同一个 models/FlashVSR 目录。"
+  },
+  "flashvsr:Wan 2.1 VAE": {
+    sourceLabel: "1038lab / FlashVSR",
+    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/tree/main",
+    targetSubdirectory: "FlashVSR",
+    recommendedFilename: "Wan2.1_VAE.safetensors"
+  },
+  "flashvsr:LQ Projection": {
+    sourceLabel: "1038lab / FlashVSR",
+    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/tree/main",
+    targetSubdirectory: "FlashVSR",
+    recommendedFilename: "LQ_proj_in.safetensors"
+  },
+  "flashvsr:TCDecoder": {
+    sourceLabel: "1038lab / FlashVSR",
+    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/tree/main",
+    targetSubdirectory: "FlashVSR",
+    recommendedFilename: "TCDecoder.safetensors"
+  },
+  "flashvsr:Prompt Embedding": {
+    sourceLabel: "1038lab / FlashVSR",
+    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/tree/main",
+    targetSubdirectory: "FlashVSR",
+    recommendedFilename: "Prompt.safetensors"
+  },
+  "hunyuan15_sr:Hunyuan 1080p SR 模型": {
+    sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
+    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/diffusion_models",
+    targetSubdirectory: "diffusion_models",
+    recommendedFilename: "hunyuanvideo1.5_1080p_sr_distilled_fp16.safetensors"
+  },
+  "hunyuan15_sr:Hunyuan 1080p Latent Upsampler": {
+    sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
+    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/latent_upscale_models",
+    targetSubdirectory: "latent_upscale_models",
+    recommendedFilename: "hunyuanvideo15_latent_upsampler_1080p.safetensors",
+    notes: "该后端只适用于 HunyuanVideo 1.5 的 latent 双阶段 SR，不是通用视频放大模型。"
   },
   "realesrgan:Real-ESRGAN x4 模型": {
     sourceLabel: "Real-ESRGAN 官方 Releases",
@@ -406,8 +462,23 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     components: [
       {
         label: "Sulphur 2 主模型",
-        expected: "文件名包含 sulphur2 / sulphur-2",
-        patterns: [/sulphur[-_. ]?2.*\.(safetensors|gguf|ckpt)$/i]
+        expected: "checkpoints/sulphur_dev_fp8mixed.safetensors",
+        patterns: [/checkpoints\/sulphur_(?:dev|distil).*\.(safetensors|ckpt)$/i]
+      },
+      {
+        label: "Gemma 3 文本编码器",
+        expected: "text_encoders/gemma_3_12B_it_fp4_mixed.safetensors",
+        patterns: [/text_encoders\/gemma_3_12b_it_fp4_mixed\.safetensors$/i]
+      },
+      {
+        label: "LTX 2.3 蒸馏 LoRA",
+        expected: "loras/ltx-2.3-22b-distilled-lora-1.1*",
+        patterns: [/loras\/ltx-2\.3-22b-distilled-lora-1\.1.*\.safetensors$/i]
+      },
+      {
+        label: "LTX 2.3 Latent Upscaler",
+        expected: "latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.0.safetensors",
+        patterns: [/latent_upscale_models\/ltx-2\.3-spatial-upscaler-x2-1\.0\.safetensors$/i]
       }
     ]
   },
@@ -602,7 +673,7 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
       {
         label: "SeedVR2 主模型",
         expected: "SEEDVR2/seedvr2_ema_3b 或 7b",
-        patterns: [/seedvr2\/.*seedvr2_ema_(?:3b|7b).*\.(safetensors|pt)$/i]
+        patterns: [/(?:^|\/)seedvr2\/.*seedvr2_ema_(?:3b|7b).*\.(safetensors|pt)$/i]
       },
       {
         label: "SeedVR2 VAE",
@@ -621,8 +692,73 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     components: [
       {
         label: "FlashVSR 模型",
-        expected: "文件名包含 flashvsr",
-        patterns: [/flash[-_. ]?vsr.*\.(safetensors|pth|pt|ckpt)$/i]
+        expected: "FlashVSR/FlashVSR1_1.safetensors",
+        patterns: [/flashvsr\/flashvsr1_1\.safetensors$/i]
+      },
+      {
+        label: "Wan 2.1 VAE",
+        expected: "FlashVSR/Wan2.1_VAE.safetensors",
+        patterns: [/flashvsr\/wan2\.1_vae\.safetensors$/i]
+      },
+      {
+        label: "LQ Projection",
+        expected: "FlashVSR/LQ_proj_in.safetensors",
+        patterns: [/flashvsr\/lq_proj_in\.safetensors$/i]
+      },
+      {
+        label: "TCDecoder",
+        expected: "FlashVSR/TCDecoder.safetensors",
+        patterns: [/flashvsr\/tcdecoder\.safetensors$/i]
+      },
+      {
+        label: "Prompt Embedding",
+        expected: "FlashVSR/Prompt.safetensors",
+        patterns: [/flashvsr\/prompt\.safetensors$/i]
+      }
+    ]
+  },
+  {
+    id: "hunyuan15_sr",
+    name: "HunyuanVideo 1.5 I2V + 1080p SR",
+    category: "video",
+    badge: "双阶段 1080p",
+    description: "先生成 720p latent，再使用官方 8 步 SR 分支输出 1080p。",
+    vram: "双阶段工作流 · 4090 需模型间卸载",
+    components: [
+      {
+        label: "HunyuanVideo 1.5 I2V 模型",
+        expected: "hunyuanvideo1.5_*i2v*",
+        patterns: [/hunyuanvideo1\.?5.*i2v.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "HunyuanVideo 1.5 VAE",
+        expected: "vae/hunyuanvideo15_vae*",
+        patterns: [/vae\/.*hunyuanvideo1?5.*vae.*\.(safetensors|pt|ckpt)$/i]
+      },
+      {
+        label: "Qwen 2.5 VL 7B 文本编码器",
+        expected: "text_encoders/qwen_2.5_vl_7b*",
+        patterns: [/text_encoders\/.*qwen[_ .-]?2\.?5[_ .-]?vl[_ .-]?7b.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "ByT5 文本编码器",
+        expected: "text_encoders/byt5_small_glyphxl*",
+        patterns: [/text_encoders\/.*byt5[_ .-]?small[_ .-]?glyphxl.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "SigCLIP 视觉编码器",
+        expected: "clip_vision/sigclip_vision_patch14_384*",
+        patterns: [/clip_vision\/.*sigclip[_ .-]?vision[_ .-]?patch14[_ .-]?384.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "Hunyuan 1080p SR 模型",
+        expected: "diffusion_models/hunyuanvideo1.5_1080p_sr*",
+        patterns: [/(?:diffusion_models|unet)\/hunyuanvideo1\.5_1080p_sr.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "Hunyuan 1080p Latent Upsampler",
+        expected: "latent_upscale_models/hunyuanvideo15_latent_upsampler_1080p*",
+        patterns: [/latent_upscale_models\/hunyuanvideo15_latent_upsampler_1080p.*\.safetensors$/i]
       }
     ]
   },
@@ -644,7 +780,7 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
   {
     id: "rife",
     name: "RIFE Frame Interpolation",
-    category: "upscale",
+    category: "interpolation",
     badge: "插帧",
     description: "将较少的生成帧插值到目标 FPS，降低视频大模型和 VAE 的总体压力。",
     vram: "BF16 · 单帧批次 · 逐帧清缓存",
@@ -672,7 +808,9 @@ export function evaluateModelProfiles(modelFiles: string[]): ModelScanProfile[] 
         found: matches.length > 0,
         expected: component.expected,
         matches,
-        installGuide: installGuides[`${profile.id}:${component.label}`]
+        installGuide:
+          installGuides[`${profile.id}:${component.label}`] ??
+          installGuides[`hunyuan15:${component.label}`]
       };
     });
     return {

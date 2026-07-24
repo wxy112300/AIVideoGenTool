@@ -24,7 +24,7 @@
 - 在扩散模型、VAE、插帧和后处理之间主动释放显存，优先保证 RTX 4090
   24GB 不会因为上一阶段残留而爆显存。
 - 输出可播放的视频，并让历史记录、详情页和真实文件保持一致。
-- 后续把超分辨率结果作为同一作品的版本，而不是重复的历史卡片。
+- 把超分辨率结果作为同一作品的版本，而不是重复的历史卡片。
 
 帧率的产品语义已经明确拆分：
 
@@ -88,6 +88,7 @@
 - 删除会二次确认，并同时删除视频文件与历史记录。
 - 详情页也可删除视频和记录。
 - 输出目录可在设置页指定；历史记录的实际文件路径会随任务保存。
+- 原始视频和 Upscale 结果按作品归组，详情页可切换版本和默认版本。
 
 ### 2.5 设置与环境
 
@@ -113,6 +114,8 @@
 |---|---|---|---|
 | `wan22_5b` | Wan 2.2 I2V 5B | `workflows/wan22_5b_i2v_api.json` | 4090 上完成过 1–3 秒真实生成 |
 | `hunyuan15` | HunyuanVideo 1.5 I2V | `workflows/hunyuan15_i2v_api.json` | API 节点与工作流校验通过；仍需完整生成基准 |
+| `hunyuan15_sr` | HunyuanVideo 1.5 I2V + 1080p SR | `workflows/hunyuan15_sr_i2v_api.json` | 官方 20 步 720p + 8 步 SR 分支；服务端解析与首阶段执行验证通过 |
+| `sulphur2` | Sulphur 2 FP8 | `workflows/sulphur2_ltx23_i2v_api.json` | 37 个节点与本机 ComfyUI 0.18.2 签名校验通过；本机尚缺 Sulphur 权重 |
 | `wan22_14b_nsfw` | Wan 2.2 I2V 14B + NSFW | `workflows/wan22_14b_i2v_api.json` | 完整组件识别和 `/prompt` 校验通过 |
 | `wan22_remix` | Wan 2.2 Remix v3 | `workflows/wan22_14b_gguf_i2v_api.json` | 完整组件识别和 `/prompt` 校验通过 |
 | `wan22_smoothmix` | Wan 2.2 SmoothMix I2V | 同上 | 完整组件识别；共享 GGUF 工作流 |
@@ -123,9 +126,20 @@ Wan 14B 使用 High/Low 双阶段 20 步采样，并使用
 `UnetLoaderGGUFAdvanced`：本机同时安装了 FantasyTalking 的同名
 `UnetLoaderGGUF`，后者返回 `WANVIDEOMODEL`，会和标准采样器产生类型冲突。
 
-`sulphur2` 仍只有环境扫描配置，没有可用权重和内置工作流，不应视为已接入。
+Sulphur 2 使用完整 `sulphur_dev_fp8mixed.safetensors`、Gemma 3 文本编码器、
+官方 distill LoRA 和 LTX 2.3 latent x2 upscaler。官方明确说明完整 Sulphur 模型
+不能再叠加 Sulphur LoRA；内置图只叠加 distill LoRA。
 
-### 2.7 显存安全与 Frame Interpolation
+### 2.7 分辨率提升与作品版本
+
+- SeedVR2、FlashVSR、Real-ESRGAN 已成为正式队列任务，不再是禁用按钮。
+- Real-ESRGAN 已用 64×64、2 帧视频真实跑通上传、模型放大、精确缩放和 H.264 输出。
+- SeedVR2 与 FlashVSR 的节点类型和输入签名已用本机 `/object_info` 校验。
+- FlashVSR 必须五个权重齐全才可用；本机目前只有主模型，因此保持禁用。
+- Hunyuan 1080p SR 需要第一阶段 latent、文本和首帧条件，属于生成模型变体，
+  不出现在通用视频放大弹窗中。
+
+### 2.8 显存安全与 Frame Interpolation
 
 当前插帧顺序：
 
@@ -149,11 +163,11 @@ Wan 14B 使用 High/Low 双阶段 20 步采样，并使用
   扩散模型和 VAE 会在插帧前卸载。后续若仍需要压低常驻显存，可修改上游
   RIFE 节点增加显式移回 CPU/清空模块缓存。
 
-### 2.8 测试状态
+### 2.9 测试状态
 
 交接时：
 
-- `npm test -- --run`：7 个测试文件，32 项测试通过。
+- `npm test -- --run`：8 个测试文件，46 项测试通过。
 - `npm run build`：TypeScript、renderer production build 和 Electron
   TypeScript build 通过。
 - 工作树干净，最新改动已推送到 `origin/main`。
@@ -197,9 +211,10 @@ Wan Remix v3 High/Low Q5_K_M
 SmoothMix High/Low Q5_K_M
 DaSiWa v9 High/Low Q4
 HunyuanVideo 1.5 720p I2V
-HunyuanVideo 1.5 1080p SR（尚未接入）
+HunyuanVideo 1.5 1080p SR（双阶段工作流已接入）
 Hunyuan 1.5 VAE、Qwen 2.5 VL、ByT5、SigCLIP
-SeedVR2 / FlashVSR / Real-ESRGAN 相关文件（后端尚未接入 GUI）
+SeedVR2 / FlashVSR / Real-ESRGAN 相关文件（后端已接入；FlashVSR 缺四个配套权重）
+LTX 2.3 checkpoint、Gemma 3、distill LoRA、latent x2 upscaler（Sulphur 主模型尚未下载）
 ```
 
 RIFE 权重：
@@ -322,7 +337,7 @@ npm run build
 - `src/main.ts`：创建、队列、历史、详情和设置页面交互。
 - `src/style.css`：正式应用样式。
 - `workflows/`：内置 API workflows。
-- `tests/`：32 项无 GPU 回归测试。
+- `tests/`：46 项无 GPU 回归测试。
 
 ## 8. 工作流占位符
 

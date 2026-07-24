@@ -116,8 +116,53 @@ describe("ComfyUI environment candidates", () => {
     ]);
     const rife = profiles.find((profile) => profile.id === "rife");
 
-    expect(rife?.category).toBe("upscale");
+    expect(rife?.category).toBe("interpolation");
     expect(rife?.available).toBe(true);
+  });
+
+  it("requires all five FlashVSR weights", () => {
+    const incomplete = evaluateModelProfiles([
+      "FlashVSR\\FlashVSR1_1.safetensors"
+    ]);
+    const complete = evaluateModelProfiles([
+      "FlashVSR\\FlashVSR1_1.safetensors",
+      "FlashVSR\\Wan2.1_VAE.safetensors",
+      "FlashVSR\\LQ_proj_in.safetensors",
+      "FlashVSR\\TCDecoder.safetensors",
+      "FlashVSR\\Prompt.safetensors"
+    ]);
+
+    expect(incomplete.find((profile) => profile.id === "flashvsr")?.available).toBe(false);
+    expect(complete.find((profile) => profile.id === "flashvsr")?.available).toBe(true);
+  });
+
+  it("requires the complete Sulphur 2 / LTX 2.3 runtime set", () => {
+    const incomplete = evaluateModelProfiles([
+      "checkpoints\\sulphur_dev_fp8mixed.safetensors"
+    ]);
+    const complete = evaluateModelProfiles([
+      "checkpoints\\sulphur_dev_fp8mixed.safetensors",
+      "text_encoders\\gemma_3_12B_it_fp4_mixed.safetensors",
+      "loras\\ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors",
+      "latent_upscale_models\\ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
+    ]);
+
+    expect(incomplete.find((profile) => profile.id === "sulphur2")?.available).toBe(false);
+    expect(complete.find((profile) => profile.id === "sulphur2")?.available).toBe(true);
+  });
+
+  it("reports the Hunyuan 1080p SR pair", () => {
+    const profiles = evaluateModelProfiles([
+      "unet\\hunyuanvideo1.5_720p_i2v_fp16.safetensors",
+      "vae\\hunyuanvideo15_vae_fp16.safetensors",
+      "text_encoders\\qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "text_encoders\\byt5_small_glyphxl_fp16.safetensors",
+      "clip_vision\\sigclip_vision_patch14_384.safetensors",
+      "unet\\hunyuanvideo1.5_1080p_sr_distilled_fp16.safetensors",
+      "latent_upscale_models\\hunyuanvideo15_latent_upsampler_1080p.safetensors"
+    ]);
+
+    expect(profiles.find((profile) => profile.id === "hunyuan15_sr")?.available).toBe(true);
   });
 
   it("provides a complete install guide for every component that can be missing", () => {
