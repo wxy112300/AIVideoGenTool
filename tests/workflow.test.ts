@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import type { QueueTask } from "../src/types";
 import {
   frameCountForTask,
+  generationFrameCountForTask,
   missingWorkflowNodeTypes,
+  outputFrameCountForTask,
   renderWorkflow,
   validateApiWorkflow
 } from "../src/core/workflow";
@@ -24,6 +26,7 @@ const task: QueueTask = {
   resolution: 480,
   duration: 5,
   fps: 24,
+  frameInterpolation: "off",
   motion: "natural",
   seed: 42,
   keepSeedOnCopy: false
@@ -62,6 +65,45 @@ describe("Wan 2.2 workflow compatibility", () => {
     expect(frameCountForTask({ ...task, modelId: "wan22_smoothmix" }, 24)).toBe(121);
     expect(frameCountForTask({ ...task, modelId: "wan22_dasiwa" }, 24)).toBe(121);
     expect(frameCountForTask(task, 24)).toBe(120);
+  });
+
+  it("generates fewer source frames and trims RIFE output to the exact target", () => {
+    const interpolatedTask: QueueTask = {
+      ...task,
+      modelId: "wan22_14b_nsfw",
+      frameInterpolation: "rife2x"
+    };
+    const rendered = renderWorkflow(
+      {
+        "1": {
+          class_type: "CreateVideo",
+          inputs: { images: ["9", 0], fps: "{{FPS}}" }
+        }
+      },
+      interpolatedTask
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(generationFrameCountForTask(interpolatedTask)).toBe(61);
+    expect(outputFrameCountForTask(interpolatedTask)).toBe(120);
+    expect(rendered["2"]?.class_type).toBe("VRAM_Debug");
+    expect(rendered["2"]?.inputs.image_pass).toEqual(["9", 0]);
+    expect(rendered["3"]?.class_type).toBe("RIFE VFI");
+    expect(rendered["3"]?.inputs.multiplier).toBe(2);
+    expect(rendered["3"]?.inputs.clear_cache_after_n_frames).toBe(1);
+    expect(rendered["3"]?.inputs.batch_size).toBe(1);
+    expect(rendered["4"]?.class_type).toBe("ImageFromBatch");
+    expect(rendered["4"]?.inputs.length).toBe(120);
+    expect(rendered["1"]?.inputs.images).toEqual(["4", 0]);
+  });
+
+  it("uses the minimum Wan-compatible source frame count for RIFE 4x", () => {
+    expect(
+      generationFrameCountForTask({
+        ...task,
+        modelId: "wan22_remix",
+        frameInterpolation: "rife4x"
+      })
+    ).toBe(33);
   });
 
   it("renders the downloaded Wan 14B asset names into both workflow variants", () => {

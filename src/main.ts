@@ -96,17 +96,45 @@ function modelName(id: string): string {
   );
 }
 
-function fpsDescription(modelId: string, fps: number): string {
-  if (fps === 8) return " · 诊断模式";
-  if (fps === 24) {
-    return modelId === "hunyuan15"
-      ? " · Hunyuan 原生推荐"
-      : modelId.startsWith("wan22_")
-        ? " · Wan 输出推荐"
-        : " · 视频原生推荐";
+function interpolationMultiplier(
+  value: Draft["frameInterpolation"] | undefined
+): 1 | 2 | 4 {
+  if (value === "rife2x") return 2;
+  if (value === "rife4x") return 4;
+  return 1;
+}
+
+function frameRateSummary(
+  fps: number,
+  interpolation: Draft["frameInterpolation"] | undefined
+): string {
+  const multiplier = interpolationMultiplier(interpolation);
+  return multiplier === 1
+    ? `${fps} FPS`
+    : `${fps / multiplier} → ${fps} FPS · RIFE ${multiplier}×`;
+}
+
+function interpolationEstimate(draft: Draft): {
+  multiplier: 1 | 2 | 4;
+  generatedFrames: number;
+  outputFrames: number;
+} {
+  const multiplier = interpolationMultiplier(draft.frameInterpolation);
+  const outputFrames = Math.max(1, Math.round(draft.duration * draft.fps));
+  if (multiplier === 1) {
+    const generatedFrames =
+      draft.modelId.startsWith("wan22_") || draft.modelId === "hunyuan15"
+        ? Math.max(1, Math.round((outputFrames - 1) / 4) * 4 + 1)
+        : outputFrames;
+    return { multiplier, generatedFrames, outputFrames: generatedFrames };
   }
-  if (fps === 30) return " · 计算量最高";
-  return "";
+  const requiredSourceFrames =
+    Math.ceil((outputFrames - 1) / multiplier) + 1;
+  const generatedFrames =
+    draft.modelId.startsWith("wan22_") || draft.modelId === "hunyuan15"
+      ? Math.max(1, Math.ceil((requiredSourceFrames - 1) / 4) * 4 + 1)
+      : requiredSourceFrames;
+  return { multiplier, generatedFrames, outputFrames };
 }
 
 function historyVideoIndex(asset: AppState["history"][number]): number {
@@ -243,6 +271,7 @@ async function imagePreview(filename: string, targetId: string): Promise<void> {
 function createPage(): string {
   const draft = state.draft;
   const prompt = activePrompt();
+  const interpolation = interpolationEstimate(draft);
   return `
     <section class="page-heading">
       <div><h1>创建视频</h1><p>导入参考画面，调整提示词，然后加入本地生成队列。</p></div>
@@ -307,13 +336,24 @@ function createPage(): string {
         <label>时长
           <div class="inline-field"><input id="duration" type="range" min="1" max="30" value="${draft.duration}"><input id="duration-number" type="number" min="1" max="60" value="${draft.duration}"><span>秒</span></div>
         </label>
-        <label>每秒帧数（FPS）
+        <label>目标帧率
           <select id="fps">
             ${[8, 12, 16, 24, 25, 30].map((value) =>
-              `<option value="${value}" ${draft.fps === value ? "selected" : ""}>${value} FPS${fpsDescription(draft.modelId, value)}</option>`
+              `<option value="${value}" ${draft.fps === value ? "selected" : ""}>${value} FPS</option>`
             ).join("")}
           </select>
         </label>
+        <label>Frame Interpolation
+          <select id="frame-interpolation">
+            <option value="off" ${draft.frameInterpolation === "off" ? "selected" : ""}>关闭 · 模型直接生成</option>
+            <option value="rife2x" ${draft.frameInterpolation === "rife2x" ? "selected" : ""}>RIFE 2×</option>
+            <option value="rife4x" ${draft.frameInterpolation === "rife4x" ? "selected" : ""}>RIFE 4×</option>
+          </select>
+        </label>
+        <div class="interpolation-summary ${interpolation.multiplier === 1 ? "disabled" : ""}">
+          <div><strong>${interpolation.multiplier === 1 ? "未启用插帧" : `生成约 ${draft.fps / interpolation.multiplier} FPS，再插值到 ${draft.fps} FPS`}</strong><span>${interpolation.generatedFrames} 个模型帧 → ${interpolation.outputFrames} 个成片帧</span></div>
+          <p>${interpolation.multiplier === 1 ? "目标帧率将直接增加大模型和 VAE 的计算量。" : "扩散模型和 VAE 会在 RIFE 前主动卸载；RIFE 使用 BF16、单帧批次并逐帧清理缓存。"}</p>
+        </div>
         <label>动作幅度
           <select id="motion">
             <option value="subtle" ${draft.motion === "subtle" ? "selected" : ""}>轻微</option>
@@ -379,7 +419,7 @@ function queueTaskCard(task: QueueTask): string {
             <span class="eyebrow">当前步骤 · <span id="running-stage">${escapeHtml(task.stage ?? "准备中")}</span></span>
             <div class="progress"><span id="running-progress-bar" style="width:${task.progress ?? 0}%"></span></div>
             <p>${escapeHtml(task.prompt)}</p>
-            <div class="task-meta"><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${task.fps} FPS</span><span id="running-elapsed">${elapsedText(task.startedAt)}</span></div>
+            <div class="task-meta"><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span><span id="running-elapsed">${elapsedText(task.startedAt)}</span></div>
             <div class="running-controls">
               <button class="secondary" id="${state.queueRunning ? "pause-queue" : "start-queue"}">${state.queueRunning ? "本条完成后暂停" : "继续执行后续任务"}</button>
               <button class="danger secondary" data-cancel="${task.id}">取消当前任务</button>
@@ -394,7 +434,7 @@ function queueTaskCard(task: QueueTask): string {
       <div class="task-main">
         <div><span class="status ${task.status}">${statusLabel(task.status)}</span><h3>${escapeHtml(task.outputFilename)}</h3></div>
         <p>${escapeHtml(task.prompt)}</p>
-        <div class="task-meta"><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${task.fps} FPS</span><span>Seed ${task.seed}</span></div>
+        <div class="task-meta"><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span><span>Seed ${task.seed}</span></div>
         ${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ""}
       </div>
       <div class="task-actions">
@@ -432,7 +472,7 @@ function historyPage(): string {
         <div class="history-gallery-copy">
           <h3>${escapeHtml(asset.title)}</h3>
           <code>${escapeHtml(asset.files[historyVideoIndex(asset)]?.filename ?? asset.outputFilename)}</code>
-          <div class="history-item-meta"><span class="model-badge">${escapeHtml(modelName(asset.modelId))}</span><span>原始 ${asset.resolution}p</span><span>${asset.fps ?? 24} FPS</span></div>
+          <div class="history-item-meta"><span class="model-badge">${escapeHtml(modelName(asset.modelId))}</span><span>原始 ${asset.resolution}p</span><span>${frameRateSummary(asset.fps ?? 24, asset.frameInterpolation)}</span></div>
           <div class="history-item-actions"><span>${formatHistoryTime(asset.createdAt)}</span><button class="ghost" data-open-history="${asset.id}">查看详情</button></div>
         </div>
       </article>`;
@@ -479,7 +519,7 @@ function historyDetailPage(): string {
       </div>
       <aside class="panel history-summary">
         <div><div class="history-title-line"><h1>${escapeHtml(asset.title)}</h1><span class="status running">已完成</span></div><code>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code></div>
-        <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(asset.modelId))}</span><span>${asset.resolution}p · ${asset.duration}秒 · ${fps} FPS</span></div>
+        <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(asset.modelId))}</span><span>${asset.resolution}p · ${asset.duration}秒 · ${frameRateSummary(fps, asset.frameInterpolation)}</span></div>
         <div class="history-summary-row"><span>完成于</span><strong>${completedAt}</strong></div>
         <div class="history-summary-row"><span>总耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : `${Math.round(elapsedSeconds)} 秒`}</strong></div>
         <div class="history-summary-actions"><button class="secondary" data-edit-history="${asset.id}">在创建页调整</button>${videoFile?.absolutePath ? `<button class="secondary" data-show-file="${escapeHtml(videoFile.absolutePath)}">打开所在目录</button>` : ""}<button class="ghost danger history-delete-button" data-delete-history="${asset.id}">删除视频和记录</button></div>
@@ -497,7 +537,7 @@ function historyDetailPage(): string {
       </article>
       <article class="panel history-record">
         <h2>视频输出</h2>
-        <dl><dt>分辨率</dt><dd>${asset.resolution}p</dd><dt>画面比例</dt><dd>${escapeHtml(asset.ratio ?? "旧记录未保存")}</dd><dt>时长</dt><dd>${asset.duration} 秒</dd><dt>帧率</dt><dd>${fps} FPS</dd><dt>帧数</dt><dd>${Math.round(asset.duration * fps)}</dd><dt>输出目录</dt><dd><code>${escapeHtml(videoFile?.absolutePath ?? state.settings.outputDirectory)}</code></dd></dl>
+        <dl><dt>分辨率</dt><dd>${asset.resolution}p</dd><dt>画面比例</dt><dd>${escapeHtml(asset.ratio ?? "旧记录未保存")}</dd><dt>时长</dt><dd>${asset.duration} 秒</dd><dt>成片帧率</dt><dd>${fps} FPS</dd><dt>插帧</dt><dd>${asset.frameInterpolation && asset.frameInterpolation !== "off" ? `RIFE ${interpolationMultiplier(asset.frameInterpolation)}×` : "关闭"}</dd><dt>成片帧数</dt><dd>${Math.round(asset.duration * fps)}</dd><dt>输出目录</dt><dd><code>${escapeHtml(videoFile?.absolutePath ?? state.settings.outputDirectory)}</code></dd></dl>
       </article>
       <article class="panel history-record full">
         <div class="history-record-heading"><h2>输出文件</h2><span>${asset.files.length} 个</span></div>
@@ -732,7 +772,7 @@ function settingsPage(): string {
       </section>
       <section class="panel settings-section">
         <h2>工作流占位符</h2><p class="muted">ComfyUI API JSON 提交前会递归替换：</p>
-        <div class="token-list">${["PROMPT", "NEGATIVE_PROMPT", "SEED", "INPUT_IMAGE", "END_IMAGE", "WIDTH", "HEIGHT", "DURATION", "FPS", "FRAMES", "OUTPUT_FILENAME"].map((token) => `<code>{{${token}}}</code>`).join("")}</div>
+        <div class="token-list">${["PROMPT", "NEGATIVE_PROMPT", "SEED", "INPUT_IMAGE", "END_IMAGE", "WIDTH", "HEIGHT", "DURATION", "SOURCE_FPS", "FPS", "FRAMES", "OUTPUT_FRAMES", "OUTPUT_FILENAME"].map((token) => `<code>{{${token}}}</code>`).join("")}</div>
       </section>
     </section>`;
 
@@ -885,6 +925,7 @@ async function editHistoryAsset(assetId: string): Promise<void> {
     fps: ([8, 12, 16, 24, 25, 30].includes(asset.fps ?? 24)
       ? asset.fps ?? 24
       : 24) as Draft["fps"],
+    frameInterpolation: asset.frameInterpolation ?? "off",
     seed: asset.seed,
     promptVersions: [
       ...state.draft.promptVersions,
@@ -1262,7 +1303,7 @@ function bindCreate(): void {
       showMessage(error instanceof Error ? error.message : String(error));
     }
   });
-  for (const id of ["model", "ratio", "resolution", "fps", "motion", "seed"]) {
+  for (const id of ["model", "ratio", "resolution", "fps", "frame-interpolation", "motion", "seed"]) {
     document.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
       const value = (event.target as HTMLInputElement | HTMLSelectElement).value;
       if (id === "model") {
@@ -1286,9 +1327,11 @@ function bindCreate(): void {
         id === "ratio" ? { ratio: value as Draft["ratio"] } :
         id === "resolution" ? { resolution: Number(value) as Draft["resolution"] } :
         id === "fps" ? { fps: Number(value) as Draft["fps"] } :
+        id === "frame-interpolation" ? { frameInterpolation: value as Draft["frameInterpolation"] } :
         id === "motion" ? { motion: value as Draft["motion"] } :
         { seed: value ? Number(value) : null };
       patchDraft(patch);
+      if (id === "fps" || id === "frame-interpolation") render();
     });
   }
   document.querySelector("#keep-seed")?.addEventListener("change", (event) => {
@@ -1304,6 +1347,8 @@ function bindCreate(): void {
   };
   range?.addEventListener("input", () => updateDuration(range.value));
   number?.addEventListener("input", () => updateDuration(number.value));
+  range?.addEventListener("change", render);
+  number?.addEventListener("change", render);
   document.querySelector("#clear-draft")?.addEventListener("click", () => {
     pendingConfirmation = { kind: "clear-draft" };
     confirmationBusy = false;

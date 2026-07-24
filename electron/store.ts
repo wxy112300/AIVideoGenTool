@@ -32,6 +32,7 @@ export class JsonStore {
         queue: (saved.queue ?? []).map((task) => ({
           ...task,
           fps: task.fps ?? 24,
+          frameInterpolation: task.frameInterpolation ?? "off",
           keepSeedOnCopy: task.keepSeedOnCopy ?? false,
           ...(task.status === "running"
             ? {

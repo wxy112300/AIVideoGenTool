@@ -72,17 +72,17 @@ export async function submitTask(
     jsonRequest<Record<string, unknown>>(`${baseUrl}/object_info`, { signal })
   ]);
   const source = JSON.parse(sourceText) as unknown;
-  const missingNodes = missingWorkflowNodeTypes(source, objectInfo);
-  if (missingNodes.length) {
-    throw new Error(
-      `当前 ComfyUI 缺少工作流节点：${missingNodes.join("、")}。请在设置页安装对应节点后重启服务。`
-    );
-  }
   const [inputImage, endImage] = await Promise.all([
     uploadImage(baseUrl, task.startImagePath, signal),
     uploadImage(baseUrl, task.endImagePath, signal)
   ]);
   const prompt = renderWorkflow(source, task, { inputImage, endImage });
+  const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
+  if (missingNodes.length) {
+    throw new Error(
+      `当前 ComfyUI 缺少工作流节点：${missingNodes.join("、")}。请在设置页安装对应节点后重启服务。`
+    );
+  }
   const clientId = `local-video-studio-${crypto.randomUUID()}`;
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
     method: "POST",
@@ -149,9 +149,13 @@ function nodeStage(classType: string | undefined): {
   if (!classType) return { progress: 2, label: "准备工作流" };
   if (classType.includes("Loader")) return { progress: 5, label: "加载模型" };
   if (classType === "CLIPTextEncode") return { progress: 10, label: "编码提示词" };
-  if (classType === "KSampler") return { progress: 15, label: "扩散采样" };
+  if (classType === "KSampler" || classType === "KSamplerAdvanced") {
+    return { progress: 15, label: "扩散采样" };
+  }
   if (classType === "VRAM_Debug") return { progress: 91, label: "卸载扩散模型并释放显存" };
   if (classType.includes("VAEDecode")) return { progress: 92, label: "分块 VAE 解码" };
+  if (classType === "RIFE VFI") return { progress: 95, label: "RIFE 视频插帧" };
+  if (classType === "ImageFromBatch") return { progress: 96, label: "裁剪到目标帧数" };
   if (classType === "CreateVideo") return { progress: 97, label: "生成视频帧" };
   if (classType === "SaveVideo") return { progress: 99, label: "编码并保存" };
   return { progress: 12, label: classType };

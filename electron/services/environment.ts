@@ -385,6 +385,13 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     downloadUrl: "https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0",
     targetSubdirectory: "upscale_models",
     recommendedFilename: "RealESRGAN_x4plus.pth"
+  },
+  "rife:RIFE 4.7 插帧模型": {
+    sourceLabel: "ComfyUI Frame Interpolation / RIFE",
+    downloadUrl: "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation/releases/download/models/rife47.pth",
+    targetSubdirectory: "custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife",
+    recommendedFilename: "rife47.pth",
+    notes: "节点首次使用时也会自动下载；网络受限时请先在系统设置开启代理，再由本工具重启 ComfyUI。"
   }
 };
 
@@ -631,6 +638,21 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
         label: "Real-ESRGAN x4 模型",
         expected: "upscale_models/RealESRGAN*x4*",
         patterns: [/upscale_models\/.*realesrgan.*x4.*\.(safetensors|pth|pt)$/i]
+      }
+    ]
+  },
+  {
+    id: "rife",
+    name: "RIFE Frame Interpolation",
+    category: "upscale",
+    badge: "插帧",
+    description: "将较少的生成帧插值到目标 FPS，降低视频大模型和 VAE 的总体压力。",
+    vram: "BF16 · 单帧批次 · 逐帧清缓存",
+    components: [
+      {
+        label: "RIFE 4.7 插帧模型",
+        expected: "ComfyUI-Frame-Interpolation/ckpts/rife/rife47.pth",
+        patterns: [/frame_interpolation\/rife47\.pth$/i]
       }
     ]
   }
@@ -1094,11 +1116,13 @@ function localEndpoint(rawUrl: string, fallbackPort: number): {
 async function launchDetached(
   executable: string,
   args: string[],
-  cwd?: string
+  cwd?: string,
+  env: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(executable, args, {
       cwd,
+      env,
       detached: true,
       stdio: "ignore",
       windowsHide: true
@@ -1200,7 +1224,7 @@ async function startComfyUi(settings: Settings): Promise<string> {
       `sqlite:///${path.join(comfyRoot, "user", "comfyui.db").replaceAll("\\", "/")}`
     );
   }
-  await launchDetached(python, args, sourceRoot);
+  await launchDetached(python, args, sourceRoot, downloadEnvironment(settings));
   return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
 }
 
@@ -1549,9 +1573,23 @@ export async function scanEnvironment(
   ]);
   const modelDirectory = comfyRoot ? path.join(comfyRoot, "models") : "";
   const outputDirectory = comfyRoot ? path.join(comfyRoot, "output") : "";
-  const modelProfiles = evaluateModelProfiles(
-    await listModelFiles(modelDirectory)
-  );
+  const modelFiles = await listModelFiles(modelDirectory);
+  if (
+    comfyRoot &&
+    await exists(
+      path.join(
+        comfyRoot,
+        "custom_nodes",
+        "ComfyUI-Frame-Interpolation",
+        "ckpts",
+        "rife",
+        "rife47.pth"
+      )
+    )
+  ) {
+    modelFiles.push("frame_interpolation/rife47.pth");
+  }
+  const modelProfiles = evaluateModelProfiles(modelFiles);
   const customNodes = await scanCustomNodes(comfyRoot);
   const issues = await scanEnvironmentIssues(comfyRoot);
   const comfyItem: EnvironmentItem = comfyRoot || comfyInstallation

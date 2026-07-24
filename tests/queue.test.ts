@@ -23,6 +23,7 @@ function task(
     resolution: 480,
     duration: 5,
     fps: 24,
+    frameInterpolation: "off",
     motion: "natural",
     seed: 1,
     keepSeedOnCopy: false

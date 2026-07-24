@@ -110,6 +110,16 @@ describe("ComfyUI environment candidates", () => {
     expect(complete.find((profile) => profile.id === "wan22_remix")?.available).toBe(true);
   });
 
+  it("reports the RIFE interpolation checkpoint separately from video models", () => {
+    const profiles = evaluateModelProfiles([
+      "frame_interpolation\\rife47.pth"
+    ]);
+    const rife = profiles.find((profile) => profile.id === "rife");
+
+    expect(rife?.category).toBe("upscale");
+    expect(rife?.available).toBe(true);
+  });
+
   it("provides a complete install guide for every component that can be missing", () => {
     const profiles = evaluateModelProfiles([]);
     const components = profiles.flatMap((profile) => profile.components);

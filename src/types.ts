@@ -23,6 +23,7 @@ export interface Draft {
   resolution: 480 | 540 | 720;
   duration: number;
   fps: 8 | 12 | 16 | 24 | 25 | 30;
+  frameInterpolation: "off" | "rife2x" | "rife4x";
   motion: "subtle" | "natural" | "strong";
   seed: number | null;
   keepSeedOnCopy: boolean;
@@ -63,6 +64,7 @@ export interface QueueTask {
   resolution: Draft["resolution"];
   duration: number;
   fps: Draft["fps"];
+  frameInterpolation: Draft["frameInterpolation"];
   motion: Draft["motion"];
   seed: number;
   keepSeedOnCopy: boolean;
@@ -91,6 +93,7 @@ export interface HistoryAsset {
   duration: number;
   resolution: number;
   fps?: number;
+  frameInterpolation?: Draft["frameInterpolation"];
   ratio?: Draft["ratio"];
   prompt: string;
   seed: number;

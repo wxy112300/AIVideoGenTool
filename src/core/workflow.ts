@@ -25,6 +25,27 @@ export function frameCountForTask(task: QueueTask, fps: number): number {
   return Math.max(1, Math.round((requested - 1) / 4) * 4 + 1);
 }
 
+export function frameInterpolationMultiplier(task: QueueTask): 1 | 2 | 4 {
+  if (task.frameInterpolation === "rife2x") return 2;
+  if (task.frameInterpolation === "rife4x") return 4;
+  return 1;
+}
+
+export function outputFrameCountForTask(task: QueueTask): number {
+  return Math.max(1, Math.round(task.duration * task.fps));
+}
+
+export function generationFrameCountForTask(task: QueueTask): number {
+  const multiplier = frameInterpolationMultiplier(task);
+  if (multiplier === 1) return frameCountForTask(task, task.fps);
+  const requiredSourceFrames =
+    Math.ceil((outputFrameCountForTask(task) - 1) / multiplier) + 1;
+  if (!task.modelId.startsWith("wan22_") && task.modelId !== "hunyuan15") {
+    return requiredSourceFrames;
+  }
+  return Math.max(1, Math.ceil((requiredSourceFrames - 1) / 4) * 4 + 1);
+}
+
 const wan14ModelAssets: Record<
   string,
   { high: string; low: string; textEncoder: string; vae: string }
@@ -101,6 +122,7 @@ export function renderWorkflow(
   const [width, height] = outputDimensions(task);
   const fps = context.fps ?? task.fps ?? 8;
   const modelAssets = wan14ModelAssets[task.modelId];
+  const interpolationMultiplier = frameInterpolationMultiplier(task);
   const tokens: Record<string, string | number> = {
     PROMPT: task.prompt,
     NEGATIVE_PROMPT: "",
@@ -111,7 +133,9 @@ export function renderWorkflow(
     HEIGHT: context.height ?? height,
     DURATION: task.duration,
     FPS: fps,
-    FRAMES: context.frames ?? frameCountForTask(task, fps),
+    SOURCE_FPS: fps / interpolationMultiplier,
+    FRAMES: context.frames ?? generationFrameCountForTask(task),
+    OUTPUT_FRAMES: outputFrameCountForTask(task),
     OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, ""),
     HIGH_MODEL: modelAssets?.high ?? "",
     LOW_MODEL: modelAssets?.low ?? "",
@@ -137,7 +161,67 @@ export function renderWorkflow(
     );
   };
 
-  return visit(source);
+  const rendered = visit(source);
+  if (
+    interpolationMultiplier === 1 ||
+    !rendered ||
+    typeof rendered !== "object" ||
+    Array.isArray(rendered)
+  ) {
+    return rendered;
+  }
+
+  const workflow = rendered as Record<
+    string,
+    { class_type?: string; inputs?: Record<string, unknown> }
+  >;
+  let nextNodeId =
+    Math.max(
+      0,
+      ...Object.keys(workflow).map((id) => Number.parseInt(id, 10) || 0)
+    ) + 1;
+  for (const node of Object.values(workflow)) {
+    if (node.class_type !== "CreateVideo" || !node.inputs) continue;
+    const decodedImages = node.inputs.images;
+    if (!Array.isArray(decodedImages)) continue;
+    const unloadId = String(nextNodeId++);
+    const interpolateId = String(nextNodeId++);
+    const trimId = String(nextNodeId++);
+    workflow[unloadId] = {
+      class_type: "VRAM_Debug",
+      inputs: {
+        empty_cache: true,
+        gc_collect: true,
+        unload_all_models: true,
+        image_pass: decodedImages
+      }
+    };
+    workflow[interpolateId] = {
+      class_type: "RIFE VFI",
+      inputs: {
+        ckpt_name: "rife47.pth",
+        frames: [unloadId, 1],
+        clear_cache_after_n_frames: 1,
+        multiplier: interpolationMultiplier,
+        fast_mode: true,
+        ensemble: false,
+        scale_factor: 1,
+        dtype: "bfloat16",
+        torch_compile: false,
+        batch_size: 1
+      }
+    };
+    workflow[trimId] = {
+      class_type: "ImageFromBatch",
+      inputs: {
+        image: [interpolateId, 0],
+        batch_index: 0,
+        length: outputFrameCountForTask(task)
+      }
+    };
+    node.inputs.images = [trimId, 0];
+  }
+  return workflow;
 }
 
 export function validateApiWorkflow(source: unknown): WorkflowValidation {

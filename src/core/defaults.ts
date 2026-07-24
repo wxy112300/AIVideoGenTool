@@ -22,6 +22,7 @@ export function createDefaultDraft(): Draft {
     resolution: 480,
     duration: 5,
     fps: 24,
+    frameInterpolation: "off",
     motion: "natural",
     seed: null,
     keepSeedOnCopy: false
