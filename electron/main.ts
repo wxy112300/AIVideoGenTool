@@ -137,8 +137,19 @@ function registerMediaProtocol(): void {
 }
 
 async function bundledWorkflowFor(modelId: string): Promise<BundledWorkflow | null> {
-  if (modelId !== "wan22_5b") return null;
-  const filename = "wan22_5b_i2v_api.json";
+  const definitions: Record<string, { filename: string; label: string }> = {
+    wan22_5b: {
+      filename: "wan22_5b_i2v_api.json",
+      label: "内置 · Wan 2.2 5B 图生视频"
+    },
+    hunyuan15: {
+      filename: "hunyuan15_i2v_api.json",
+      label: "内置 · HunyuanVideo 1.5 图生视频"
+    }
+  };
+  const definition = definitions[modelId];
+  if (!definition) return null;
+  const { filename, label } = definition;
   const candidates = [
     path.join(app.getAppPath(), "workflows", filename),
     path.join(process.resourcesPath, "workflows", filename),
@@ -148,7 +159,7 @@ async function bundledWorkflowFor(modelId: string): Promise<BundledWorkflow | nu
     if (await fs.stat(candidate).catch(() => null)) {
       return {
         modelId,
-        label: "内置 · Wan 2.2 5B 图生视频",
+        label,
         path: candidate
       };
     }

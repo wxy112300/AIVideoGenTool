@@ -90,6 +90,19 @@ function modelName(id: string): string {
   );
 }
 
+function fpsDescription(modelId: string, fps: number): string {
+  if (fps === 8) return " · 诊断模式";
+  if (fps === 24) {
+    return modelId === "hunyuan15"
+      ? " · Hunyuan 原生推荐"
+      : modelId === "wan22_5b"
+        ? " · Wan 原生推荐"
+        : " · 视频原生推荐";
+  }
+  if (fps === 30) return " · 计算量最高";
+  return "";
+}
+
 function historyVideoIndex(asset: AppState["history"][number]): number {
   const videoPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
   return asset.files.findIndex((file) => videoPattern.test(file.filename));
@@ -291,7 +304,7 @@ function createPage(): string {
         <label>每秒帧数（FPS）
           <select id="fps">
             ${[8, 12, 16, 24, 25, 30].map((value) =>
-              `<option value="${value}" ${draft.fps === value ? "selected" : ""}>${value} FPS${value === 8 ? " · 诊断模式" : value === 24 ? " · Wan 原生推荐" : value === 30 ? " · 压力最高" : ""}</option>`
+              `<option value="${value}" ${draft.fps === value ? "selected" : ""}>${value} FPS${fpsDescription(draft.modelId, value)}</option>`
             ).join("")}
           </select>
         </label>

@@ -19,7 +19,7 @@ export interface WorkflowValidation {
 
 export function frameCountForTask(task: QueueTask, fps: number): number {
   const requested = Math.max(1, Math.round(task.duration * fps));
-  if (task.modelId !== "wan22_5b") return requested;
+  if (!["wan22_5b", "hunyuan15"].includes(task.modelId)) return requested;
   return Math.max(1, Math.round((requested - 1) / 4) * 4 + 1);
 }
 

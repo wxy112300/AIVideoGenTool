@@ -60,6 +60,26 @@ describe("ComfyUI environment candidates", () => {
     expect(profiles.find((profile) => profile.id === "sulphur2")?.available).toBe(false);
   });
 
+  it("requires the official HunyuanVideo 1.5 dual text and vision encoders", () => {
+    const complete = evaluateModelProfiles([
+      "unet\\hunyuanvideo1.5_720p_i2v_fp16.safetensors",
+      "vae\\hunyuanvideo15_vae_fp16.safetensors",
+      "text_encoders\\qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "text_encoders\\byt5_small_glyphxl_fp16.safetensors",
+      "clip_vision\\sigclip_vision_patch14_384.safetensors"
+    ]);
+    const incorrectQwen = evaluateModelProfiles([
+      "unet\\hunyuanvideo1.5_720p_i2v_fp16.safetensors",
+      "vae\\hunyuanvideo15_vae_fp16.safetensors",
+      "text_encoders\\qwen_3_4b.safetensors",
+      "text_encoders\\byt5_small_glyphxl_fp16.safetensors",
+      "clip_vision\\sigclip_vision_patch14_384.safetensors"
+    ]);
+
+    expect(complete.find((profile) => profile.id === "hunyuan15")?.available).toBe(true);
+    expect(incorrectQwen.find((profile) => profile.id === "hunyuan15")?.available).toBe(false);
+  });
+
   it("provides a complete install guide for every component that can be missing", () => {
     const profiles = evaluateModelProfiles([]);
     const components = profiles.flatMap((profile) => profile.components);

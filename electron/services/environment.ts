@@ -234,7 +234,8 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
     downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/diffusion_models",
     targetSubdirectory: "diffusion_models",
-    recommendedFilename: "hunyuanvideo1.5_720p_i2v_distilled_fp8_scaled.safetensors"
+    recommendedFilename: "hunyuanvideo1.5_720p_i2v_fp16.safetensors",
+    notes: "内置工作流按官方 720p I2V FP16 权重配置；已放在 models/unet 中的同名文件也会被扫描到。"
   },
   "hunyuan15:HunyuanVideo 1.5 VAE": {
     sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
@@ -242,12 +243,24 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     targetSubdirectory: "vae",
     recommendedFilename: "hunyuanvideo15_vae_fp16.safetensors"
   },
-  "hunyuan15:Qwen 3 4B 文本编码器": {
+  "hunyuan15:Qwen 2.5 VL 7B 文本编码器": {
     sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
     downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/text_encoders",
     targetSubdirectory: "text_encoders",
-    recommendedFilename: "qwen_3_4b_fp8_scaled.safetensors",
+    recommendedFilename: "qwen_2.5_vl_7b_fp8_scaled.safetensors",
     notes: "下载页如有多个精度版本，4090 优先选择 FP8 scaled。"
+  },
+  "hunyuan15:ByT5 文本编码器": {
+    sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
+    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/text_encoders",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "byt5_small_glyphxl_fp16.safetensors"
+  },
+  "hunyuan15:SigCLIP 视觉编码器": {
+    sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
+    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/clip_vision",
+    targetSubdirectory: "clip_vision",
+    recommendedFilename: "sigclip_vision_patch14_384.safetensors"
   },
   "wan22_14b_nsfw:14B 高噪声模型": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
@@ -372,9 +385,19 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
         patterns: [/vae\/.*hunyuanvideo1?5.*vae.*\.(safetensors|pt|ckpt)$/i]
       },
       {
-        label: "Qwen 3 4B 文本编码器",
-        expected: "text_encoders/qwen_3_4b*",
-        patterns: [/text_encoders\/.*qwen[_ .-]?3[_ .-]?4b.*\.(safetensors|gguf)$/i]
+        label: "Qwen 2.5 VL 7B 文本编码器",
+        expected: "text_encoders/qwen_2.5_vl_7b*",
+        patterns: [/text_encoders\/.*qwen[_ .-]?2\.?5[_ .-]?vl[_ .-]?7b.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "ByT5 文本编码器",
+        expected: "text_encoders/byt5_small_glyphxl*",
+        patterns: [/text_encoders\/.*byt5[_ .-]?small[_ .-]?glyphxl.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "SigCLIP 视觉编码器",
+        expected: "clip_vision/sigclip_vision_patch14_384*",
+        patterns: [/clip_vision\/.*sigclip[_ .-]?vision[_ .-]?patch14[_ .-]?384.*\.(safetensors|gguf)$/i]
       }
     ]
   },

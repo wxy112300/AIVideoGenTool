@@ -72,6 +72,12 @@ describe("Wan 2.2 workflow compatibility", () => {
   });
 });
 
+describe("HunyuanVideo 1.5 workflow compatibility", () => {
+  it("rounds Hunyuan video length to the required 4n+1 frame count", () => {
+    expect(frameCountForTask({ ...task, modelId: "hunyuan15" }, 24)).toBe(121);
+  });
+});
+
 describe("validateApiWorkflow", () => {
   it("accepts API-format nodes with required GUI placeholders", () => {
     const result = validateApiWorkflow({
