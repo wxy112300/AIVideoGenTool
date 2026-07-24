@@ -20,7 +20,7 @@
   "31": { "class_type": "LTXVConditioning", "inputs": { "frame_rate": "{{SOURCE_FPS}}", "positive": ["30", 0], "negative": ["41", 0] } },
   "32": { "class_type": "LTXVConcatAVLatent", "inputs": { "video_latent": ["22", 0], "audio_latent": ["33", 0] } },
   "33": { "class_type": "LTXVEmptyLatentAudio", "inputs": { "frames_number": "{{FRAMES}}", "frame_rate": "{{SOURCE_FPS}}", "batch_size": 1, "audio_vae": ["4", 0] } },
-  "35": { "class_type": "LTXVSeparateAVLatent", "inputs": { "av_latent": ["9", 0] } },
+  "35": { "class_type": "LTXVSeparateAVLatent", "inputs": { "av_latent": ["74", 0] } },
   "36": { "class_type": "SamplerCustomAdvanced", "inputs": { "noise": ["1", 0], "guider": ["8", 0], "sampler": ["6", 0], "sigmas": ["7", 0], "latent_image": ["3", 0] } },
   "37": { "class_type": "LTXVSeparateAVLatent", "inputs": { "av_latent": ["36", 0] } },
   "38": { "class_type": "CreateVideo", "inputs": { "fps": "{{FPS}}", "images": ["73", 0], "audio": ["23", 0] } },
@@ -35,5 +35,6 @@
   "67": { "class_type": "LoadImage", "inputs": { "image": "{{INPUT_IMAGE}}" } },
   "68": { "class_type": "ImageScale", "inputs": { "image": ["67", 0], "upscale_method": "lanczos", "width": "{{WIDTH}}", "height": "{{HEIGHT}}", "crop": "center" } },
   "70": { "class_type": "ImageScale", "inputs": { "image": ["15", 0], "upscale_method": "lanczos", "width": "{{HALF_WIDTH}}", "height": "{{HALF_HEIGHT}}", "crop": "center" } },
-  "73": { "class_type": "VAEDecode", "inputs": { "samples": ["37", 0], "vae": ["44", 2] } }
+  "73": { "class_type": "VAEDecode", "inputs": { "samples": ["37", 0], "vae": ["44", 2] } },
+  "74": { "class_type": "VRAM_Debug", "inputs": { "empty_cache": true, "gc_collect": true, "unload_all_models": true, "any_input": ["9", 0] } }
 }

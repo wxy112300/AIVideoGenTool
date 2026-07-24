@@ -598,6 +598,8 @@ select { padding-inline: 12px; }
 .interpolation-summary p { margin: 0; line-height: 1.55; }
 .interpolation-summary.disabled { border-color: rgba(56,65,78,.62); background: #10141a; }
 .interpolation-summary.disabled strong { color: #c5ccd6; }
+.interpolation-summary.unsafe { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); background: color-mix(in srgb, var(--danger) 9%, #10141a); }
+.interpolation-summary.unsafe strong, .interpolation-summary.unsafe p { color: #ff9a9d; }
 .inline-field { min-height: 42px; }
 .inline-field input[type="range"] { accent-color: var(--primary); }
 .checkbox-field, .switch-field { color: #c9d0da; background: #11161d; }

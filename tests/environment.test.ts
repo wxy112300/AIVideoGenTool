@@ -3,10 +3,62 @@ import {
   buildComfyCandidates,
   buildComfyDesktopCandidates,
   evaluateModelProfiles,
-  normalizeProxyUrl
+  normalizeProxyUrl,
+  patchVideoHelperBatchCompatibility,
+  videoHelperBatchCompatible
 } from "../electron/services/environment.js";
 
 describe("ComfyUI environment candidates", () => {
+  it("detects VideoHelperSuite builds that support six-value ComfyUI queues", () => {
+    const oldUtils = [
+      "    (_, _, prompt, extra_data, outputs_to_execute) = next(iter(currently_running.values()))",
+      "    prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute))",
+      "    (run_number, _, prompt, _, _) = next(iter(prompt_queue.currently_running.values()))"
+    ].join("\n");
+    const oldNodes = [
+      "class BatchManager:",
+      "    def reset(self):",
+      "        self.close_inputs()",
+      "    def update_batch(self, frames_per_batch, prompt=None, unique_id=None):",
+      "        if unique_id is not None and prompt is not None:",
+      "            requeue = prompt[unique_id]['inputs'].get('requeue', 0)",
+      "        if requeue == 0:",
+      "            self.reset()",
+      "            self.unique_id = unique_id",
+      "        else:",
+      "            print('next batch')"
+    ].join("\r\n");
+    const oldLoadVideo = [
+      "    if meta_batch is not None:",
+      "        if 'frames' in format:",
+      "        gen = itertools.islice(gen, meta_batch.frames_per_batch)"
+    ].join("\r\n");
+    expect(
+      videoHelperBatchCompatible(oldUtils, oldNodes, oldLoadVideo)
+    ).toBe(false);
+    const patched = patchVideoHelperBatchCompatibility(
+      oldUtils,
+      oldNodes,
+      oldLoadVideo
+    );
+    expect(
+      videoHelperBatchCompatible(
+        patched.utilsSource,
+        patched.nodesSource,
+        patched.loadVideoSource
+      )
+    ).toBe(true);
+    expect(patched.nodesSource).toContain(
+      "batch_manager_states[unique_id] = self"
+    );
+    expect(patched.nodesSource).toContain(
+      "self = batch_manager_states[unique_id]"
+    );
+    expect(patched.nodesSource).toContain(
+      "previous = batch_manager_states.pop(unique_id, None)"
+    );
+  });
+
   it("uses the current home directory instead of a hard-coded username", () => {
     const candidates = buildComfyCandidates({
       homeDirectory: "C:\\Users\\CurrentUser",

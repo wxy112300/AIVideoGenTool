@@ -4,7 +4,9 @@ import type { QueueTask } from "../src/types";
 import {
   frameCountForTask,
   generationFrameCountForTask,
+  generationSafetyForTask,
   missingWorkflowNodeTypes,
+  outputDimensions,
   outputFrameCountForTask,
   renderWorkflow,
   validateApiWorkflow,
@@ -81,6 +83,88 @@ describe("renderWorkflow", () => {
 
     expect(rendered["1"]?.inputs.width).toBe(480);
     expect(rendered["1"]?.inputs.height).toBe(480);
+  });
+
+  it("bounds extremely wide source ratios to the 720p memory envelope", () => {
+    expect(
+      outputDimensions({
+        ...task,
+        ratio: "source",
+        sourceWidth: 10_000,
+        sourceHeight: 1_000,
+        resolution: 720
+      })
+    ).toEqual([1280, 128]);
+  });
+
+  it("injects unload barriers before and after tiled VAE decoding", () => {
+    const rendered = renderWorkflow(
+      {
+        "1": {
+          class_type: "VAEDecode",
+          inputs: { samples: ["9", 0], vae: ["8", 0] }
+        },
+        "2": {
+          class_type: "CreateVideo",
+          inputs: { images: ["1", 0], fps: "{{FPS}}" }
+        }
+      },
+      { ...task, frameInterpolation: "off" }
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(rendered["1"]?.class_type).toBe("VAEDecodeTiled");
+    expect(rendered["1"]?.inputs).toMatchObject({
+      samples: ["3", 0],
+      tile_size: 256,
+      temporal_size: 16
+    });
+    expect(rendered["3"]?.inputs.any_input).toEqual(["9", 0]);
+    expect(rendered["4"]?.inputs.image_pass).toEqual(["1", 0]);
+    expect(rendered["2"]?.inputs.images).toEqual(["4", 1]);
+  });
+});
+
+describe("generation VRAM safety", () => {
+  it("allows at most 49 direct frames for Wan 5B", () => {
+    const safety = generationSafetyForTask({
+      ...task,
+      modelId: "wan22_5b",
+      duration: 2
+    });
+    expect(safety).toMatchObject({
+      safe: true,
+      generatedFrames: 49,
+      maxGeneratedFrames: 49
+    });
+  });
+
+  it("requires interpolation when a heavy model exceeds 25 source frames", () => {
+    expect(
+      generationSafetyForTask({
+        ...task,
+        modelId: "wan22_14b_nsfw",
+        duration: 2
+      }).safe
+    ).toBe(false);
+    expect(
+      generationSafetyForTask({
+        ...task,
+        modelId: "wan22_14b_nsfw",
+        duration: 2,
+        frameInterpolation: "rife2x"
+      })
+    ).toMatchObject({ safe: true, generatedFrames: 25 });
+  });
+
+  it("rejects segments longer than two seconds even with interpolation", () => {
+    const safety = generationSafetyForTask({
+      ...task,
+      modelId: "wan22_5b",
+      duration: 3,
+      frameInterpolation: "rife4x"
+    });
+    expect(safety.safe).toBe(false);
+    expect(safety.message).toContain("最长 2 秒");
   });
 });
 
@@ -217,6 +301,13 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     expect(rendered["21"]?.inputs.height).toBe(240);
     expect(rendered["21"]?.inputs.length).toBe(121);
     expect(rendered["67"]?.inputs.image).toBe("uploaded/start.png");
+    expect(rendered["74"]?.class_type).toBe("VRAM_Debug");
+    expect(rendered["35"]?.inputs.av_latent).toEqual(["74", 0]);
+    expect(rendered["73"]?.class_type).toBe("VAEDecodeTiled");
+    const preDecodeId = String(
+      (rendered["73"]?.inputs.samples as unknown[])[0]
+    );
+    expect(rendered[preDecodeId]?.class_type).toBe("VRAM_Debug");
     expect(JSON.stringify(rendered)).not.toContain("{{");
   });
 });

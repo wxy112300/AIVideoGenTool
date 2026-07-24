@@ -4,7 +4,7 @@
 
 当前分支：`main`
 
-交接基线提交：`9dc4cf9 Add VRAM-safe RIFE frame interpolation`
+交接基线：本文所在 `main` 最新提交
 
 本文是换机或更换 agent 后继续开发的首要入口。长期产品目标仍以
 `docs/PRODUCT_REQUIREMENTS.md` 为准；本文只描述已经落地的能力、真实验证边界、
@@ -68,8 +68,10 @@
   - CPU、内存、GPU、显存和温度。
   - 当前任务取消按钮。
 - ComfyUI HTTP 上传、`/prompt`、WebSocket 进度、history 轮询兜底和
-  `/interrupt` 已接通。
-- 连续 3 分钟没有节点进展时按卡死处理，停止队列并重启 ComfyUI 释放显存。
+  `/interrupt`、`/free` 已接通。
+- 只有真实节点执行、采样进度、预览或终态才刷新活动时间；普通 WebSocket
+  状态广播不会掩盖卡死。连续 3 分钟没有真实进展时停止队列并重启 ComfyUI。
+- OOM、卡死或显存释放失败会暂停后续队列；取消会清空模型与缓存显存。
 - 应用重启时，遗留的 `running` 任务恢复为 `waiting`。
 
 注意：这里的“暂停”是本条完成后停止继续队列，不是暂停并恢复 CUDA 采样。
@@ -133,13 +135,26 @@ Sulphur 2 使用完整 `sulphur_dev_fp8mixed.safetensors`、Gemma 3 文本编码
 ### 2.7 分辨率提升与作品版本
 
 - SeedVR2、FlashVSR、Real-ESRGAN 已成为正式队列任务，不再是禁用按钮。
-- Real-ESRGAN 已用 64×64、2 帧视频真实跑通上传、模型放大、精确缩放和 H.264 输出。
+- Real-ESRGAN 每批 1 帧；SeedVR2 每批 5 帧且内部 batch 为 1；FlashVSR 每批
+  16 帧并启用 Low VRAM。每批在后处理前通过 `VRAM_Debug` 卸载模型。
+- Real-ESRGAN 已用 64×64、3 帧输入真实跑通 3 次 meta-batch；产品等待链只在
+  最终批完成后返回成功，输出经 ffprobe 验证为 128×128、24 FPS、3 帧。
+- 应用会修复并锁定 VideoHelperSuite 1.7.9 的 ComfyUI 0.18 队列元组与跨
+  requeue BatchManager 状态兼容层；旧节点备份放在 `ComfyUI/node-backups`，
+  不会作为重复自定义节点加载。
 - SeedVR2 与 FlashVSR 的节点类型和输入签名已用本机 `/object_info` 校验。
 - FlashVSR 必须五个权重齐全才可用；本机目前只有主模型，因此保持禁用。
 - Hunyuan 1080p SR 需要第一阶段 latent、文本和首帧条件，属于生成模型变体，
   不出现在通用视频放大弹窗中。
 
 ### 2.8 显存安全与 Frame Interpolation
+
+- 所有生成入口硬限制为最多 2 秒；Wan 5B 最多 49 个模型帧，14B/Hunyuan/
+  Sulphur 等重模型最多 25 个模型帧，超出预算的组合不能入队。
+- ComfyUI 由应用以 `--lowvram --reserve-vram 4 --cache-none` 启动，并关闭异步
+  offload 和 pinned memory；默认策略宁可降低速度，也不以系统卡死换吞吐量。
+- 所有视频 VAE 解码都强制 tiled；Sulphur 低分辨率阶段结束后会先卸载，再进入
+  高分辨率阶段。
 
 当前插帧顺序：
 
@@ -165,12 +180,12 @@ Sulphur 2 使用完整 `sulphur_dev_fp8mixed.safetensors`、Gemma 3 文本编码
 
 ### 2.9 测试状态
 
-交接时：
+提交前要求：
 
-- `npm test -- --run`：8 个测试文件，46 项测试通过。
-- `npm run build`：TypeScript、renderer production build 和 Electron
-  TypeScript build 通过。
-- 工作树干净，最新改动已推送到 `origin/main`。
+- `npm test -- --run` 全部通过。
+- `npm run build` 的 TypeScript、renderer production build 和 Electron
+  TypeScript build 全部通过。
+- 8 个生成工作流和 3 个 Upscale 工作流应继续通过本机 `/object_info` 节点签名校验。
 
 ## 3. 当前机器环境（不会随 Git 仓库迁移）
 
@@ -276,7 +291,7 @@ npm run build
 
 1. **真实模型基准**
    - Hunyuan 1.5、Wan 14B 原版、Remix、SmoothMix、DaSiWa 尚未分别完成
-     1 秒/3 秒/5 秒真实生成和峰值显存记录。
+  1 秒/2 秒真实生成和峰值显存记录；不要绕过 2 秒硬上限做单任务长测。
    - 需要保存耗时、采样阶段、VAE、RIFE、编码和 `nvidia-smi` 数据。
 2. **RIFE 多帧端到端测试**
    - 分别测试 24 FPS + 2×、24 FPS + 4×、25 FPS + 2×、30 FPS + 2×。
@@ -292,22 +307,17 @@ npm run build
 
 ### P1：核心产品仍缺
 
-1. **分辨率提升真正接入**
-   - SeedVR2、FlashVSR、Real-ESRGAN 目前只有环境扫描/原型，详情页按钮仍禁用。
-   - Hunyuan 1080p SR 权重已存在但未连接。
-2. **作品版本组**
-   - 原始视频和 720p/1080p/4K 提升结果还不能归并为同一作品。
-3. **完整可复现记录**
+1. **完整可复现记录**
    - 尚未保存 Steps、CFG、Sampler、Scheduler、VAE 参数、每阶段耗时和峰值显存
      的不可变快照。
-4. **真正暂停当前采样**
+2. **真正暂停当前采样**
    - 当前只能“本条完成后暂停队列”，没有挂起/恢复正在运行的 CUDA 任务。
-5. **长视频策略**
-   - 30–60 秒仍会一次生成，没有分段生成、重叠帧、续写和拼接。
-6. **首尾帧**
+3. **长视频策略**
+  - 当前单任务硬限制为 2 秒；超过 2 秒需要分段生成、重叠帧、续写和拼接。
+4. **首尾帧**
    - 数据结构保留 `endImagePath`，但内置工作流没有完成统一的首尾帧生成体验。
-7. **Sulphur 2**
-   - 只有扫描配置；缺模型、工作流和真实测试。
+5. **缺权重模型的真实测试**
+  - Sulphur 2 和 FlashVSR 已接工作流与环境扫描，但本机权重不完整，尚未真实执行。
 
 ### P2：工程化与体验
 
@@ -324,10 +334,10 @@ npm run build
 1. 新机完成 `npm ci`、测试和构建。
 2. 在设置页扫描环境，先解决所有红色必需项。
 3. 用 Wan 5B 跑 1 秒/480p/关闭插帧，确认基础链路。
-4. 用 Wan 5B 跑 1 秒/24 FPS/RIFE 2×，确认迁移后的 RIFE 权重。
+4. 用 Wan 5B 跑 2 秒/24 FPS/RIFE 2×，确认迁移后的 RIFE 权重和最大安全片段。
 5. 按 14B 原版 → Remix → SmoothMix → DaSiWa → Hunyuan 顺序做最小生成。
 6. 把真实结果补成 benchmark/fixture。
-7. 开始实现 P0 的“安全取消部分视频”，再做 Upscale 和作品版本组。
+7. 开始实现 P0 的“安全取消部分视频”，再做超过 2 秒的分段生成与拼接。
 
 ## 7. 关键代码
 
@@ -336,6 +346,7 @@ npm run build
 - `electron/services/environment.ts`：路径、模型、节点、代理、服务启动与修复。
 - `electron/store.ts`：原子 JSON 持久化和旧状态迁移。
 - `src/core/workflow.ts`：模型资源映射、帧数、RIFE 动态节点和占位符。
+- `src/core/upscale.ts`：三种 Upscale 工作流、分批大小和批间显存卸载。
 - `src/main.ts`：创建、队列、历史、详情和设置页面交互。
 - `src/style.css`：正式应用样式。
 - `workflows/`：内置 API workflows。

@@ -20,7 +20,7 @@
 | 本地提示词扩写 | LM Studio OpenAI 兼容 `/v1/chat/completions` | 是 | 启动本地服务器、加载模型、实测模板 |
 | ComfyUI 连接 | HTTP API + WebSocket，history 轮询兜底 | 是 | 用真实工作流验证 `progress/execution_error` 消息和输出结构 |
 | I2V 模型适配 | API 工作流 JSON + 占位符替换 | Sulphur/Wan/Hunyuan 八组模型已接入 | 新模型继续按独立资源映射和真实 `/prompt` 校验接入 |
-| 视频编码 | ComfyUI 工作流输出节点 | 依赖工作流 | 确认 VideoHelperSuite/模型节点依赖和编码器 |
+| 视频编码 | ComfyUI 工作流输出节点 | 依赖工作流 | VideoHelperSuite 1.7.9 由应用修复 ComfyUI 0.18 meta-batch 兼容层 |
 | 安全取消/部分视频 | 调用 `/interrupt` | 安全中止已接；部分视频未接 | 需要工作流按片段/帧落盘，并用 FFmpeg 合成已完成帧 |
 | 历史 | 保存任务快照、解析 outputs、详情和 Explorer 定位 | 作品版本组已接 | 后续增加路径重定位与导入 |
 | Frame Interpolation | RIFE 2×/4× | 是 | 新机复制/下载 `rife47.pth` 并测试多帧画质 |
@@ -163,7 +163,9 @@ npm run dev
 3. 只替换提示词、首帧、Seed、尺寸和输出名前缀。
 4. 在本工具设置页测试 ComfyUI 与 LM Studio。
 5. 建立 1 秒、480p 的最小任务，检查上传、提交、历史返回。
-6. 再测试 5 秒和 720p，并记录峰值显存、耗时和实际输出节点。
-7. 最后做取消、断线恢复、连续队列和模型切换。
+6. 再测试 2 秒和 720p，并记录峰值显存、耗时和实际输出节点；2 秒是当前硬上限。
+7. 用 3 帧短视频验证 Real-ESRGAN 分 3 批执行且输出仍为 3 帧，再验证 SeedVR2/
+  FlashVSR 的保守批大小。
+8. 最后做取消、断线恢复、连续队列和模型切换。
 
-不要直接从 30–60 秒任务开始验证；长视频拆分、连续性与安全取消是独立功能，需要模型级设计。
+不要绕过限制直接提交 30–60 秒任务；长视频拆分、连续性与安全取消是独立功能，需要模型级设计。

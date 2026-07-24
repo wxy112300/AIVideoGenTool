@@ -38,6 +38,7 @@ import {
   optimizeWaitingTasks
 } from "../src/core/queue.js";
 import {
+  generationSafetyForTask,
   outputDimensions,
   validateApiWorkflow,
   workflowSupportsEndImage
@@ -56,6 +57,7 @@ import {
   startLocalService
 } from "./services/environment.js";
 import {
+  freeMemory,
   interrupt,
   submitTask,
   TaskStalledError,
@@ -236,7 +238,10 @@ async function interruptForExit(waitForWorker: boolean): Promise<{
   sendState(next);
   activeController?.abort(new Error("应用退出，任务已中止"));
   const interruptPromise = interrupt(settings).then(
-    () => true,
+    async () => {
+      await freeMemory(settings).catch(() => undefined);
+      return true;
+    },
     () => false
   );
   const interrupted = waitForWorker
@@ -441,7 +446,7 @@ function upscaleTaskFromRequest(
     sourceHeight: request.sourceHeight,
     targetWidth,
     targetHeight,
-    tileMode: request.tileMode,
+    tileMode: "safe",
     faceRestore: request.faceRestore,
     progress: 0
   };
@@ -507,6 +512,10 @@ async function executeQueue(): Promise<void> {
     if (!task) break;
     activeController = new AbortController();
     try {
+      if (task.taskType === "generation") {
+        const safety = generationSafetyForTask(task);
+        if (!safety.safe) throw new Error(safety.message);
+      }
       await updateTask(task.id, {
         status: "running",
         progress: 1,
@@ -634,10 +643,21 @@ async function executeQueue(): Promise<void> {
     } catch (error) {
       const aborted = activeController.signal.aborted;
       const stalled = error instanceof TaskStalledError;
+      const memoryFailure =
+        error instanceof Error &&
+        /out of memory|cuda error|cuda.*alloc|allocation.*failed|显存不足/i.test(
+          error.message
+        );
+      let requiresRestart = stalled || memoryFailure;
       if (!aborted) {
         await interrupt(store.get().settings).catch(() => undefined);
+        const memoryFreed = await freeMemory(store.get().settings).then(
+          () => true,
+          () => false
+        );
+        requiresRestart ||= !memoryFreed;
       }
-      if (stalled) {
+      if (requiresRestart) {
         const stopped = await store.update((state) => {
           state.queueRunning = false;
         });
@@ -651,7 +671,7 @@ async function executeQueue(): Promise<void> {
             ? error.message
             : String(error)
       });
-      if (stalled) {
+      if (requiresRestart) {
         const recovery = await restartLocalService(
           "comfy",
           failedState.settings
@@ -788,6 +808,8 @@ function registerIpc(): void {
     if (!draft.startImagePath) throw new Error("请先选择首帧图片");
     if (!promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择该模型的 ComfyUI API 工作流");
+    const safety = generationSafetyForTask(draft);
+    if (!safety.safe) throw new Error(safety.message);
     let workflow: unknown;
     try {
       workflow = JSON.parse(await fs.readFile(draft.workflowPath, "utf8"));
@@ -835,7 +857,10 @@ function registerIpc(): void {
       const next = await store.update((state) => {
         const task = state.queue.find((item) => item.id === taskId);
         if (!task || task.taskType !== "upscale" || task.status !== "waiting") return;
-        Object.assign(task, patch, { updatedAt: new Date().toISOString() });
+        Object.assign(task, patch, {
+          tileMode: "safe",
+          updatedAt: new Date().toISOString()
+        });
       });
       sendState(next);
       return next;
@@ -880,7 +905,11 @@ function registerIpc(): void {
       sendState(next);
       activeController?.abort(new Error("用户取消任务"));
       await interrupt(settings).catch(() => undefined);
-      if (!settings.safeCancel) {
+      const memoryFreed = await freeMemory(settings).then(
+        () => true,
+        () => false
+      );
+      if (!settings.safeCancel || !memoryFreed) {
         void restartLocalService("comfy", settings);
       }
       return next;

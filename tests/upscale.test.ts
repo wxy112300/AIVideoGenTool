@@ -59,6 +59,11 @@ describe("upscale workflows", () => {
     expect(workflow["4"]?.class_type).toBe("ImageUpscaleWithModel");
     expect(workflow["5"]?.inputs).toMatchObject({ width: 1872, height: 1080 });
     expect(workflow["6"]?.inputs.audio).toEqual(["1", 2]);
+    expect(workflow["7"]?.inputs.frames_per_batch).toBe(1);
+    expect(workflow["1"]?.inputs.meta_batch).toEqual(["7", 0]);
+    expect(workflow["6"]?.inputs.meta_batch).toEqual(["7", 0]);
+    expect(workflow["8"]?.inputs.image_pass).toEqual(["5", 0]);
+    expect(workflow["6"]?.inputs.images).toEqual(["8", 1]);
   });
 
   it("builds a VRAM-safe SeedVR2 workflow", () => {
@@ -73,14 +78,26 @@ describe("upscale workflows", () => {
     });
   });
 
-  it("builds a FlashVSR workflow using the selected memory preset", () => {
+  it("always builds FlashVSR with the low-VRAM preset", () => {
     const flashTask = { ...task("flashvsr"), tileMode: "fast" as const };
     const workflow = renderUpscaleWorkflow(flashTask, "source.mp4", models);
     expect(workflow["4"]?.class_type).toBe("AILab_FlashVSR");
     expect(workflow["4"]?.inputs).toMatchObject({
-      preset: "Fast (2x Speed)",
+      preset: "Long Video (Low VRAM)",
       scale: 2,
       unload_model: true
     });
+    expect(workflow["7"]?.inputs.frames_per_batch).toBe(16);
+  });
+
+  it("forces SeedVR2 block swap even when an old task requested fast mode", () => {
+    const seedTask = { ...task("seedvr2"), tileMode: "fast" as const };
+    const workflow = renderUpscaleWorkflow(seedTask, "source.mp4", models);
+    expect(workflow["4"]?.inputs).toMatchObject({
+      batch_size: 1,
+      preserve_vram: true,
+      block_swap_config: ["3", 0]
+    });
+    expect(workflow["7"]?.inputs.frames_per_batch).toBe(5);
   });
 });

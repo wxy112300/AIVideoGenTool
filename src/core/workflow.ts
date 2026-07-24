@@ -17,6 +17,14 @@ export interface WorkflowValidation {
   nodeCount: number;
 }
 
+export interface GenerationSafety {
+  safe: boolean;
+  generatedFrames: number;
+  maxGeneratedFrames: number;
+  maxDurationSeconds: number;
+  message: string;
+}
+
 export function workflowSupportsEndImage(source: unknown): boolean {
   return JSON.stringify(source).includes("{{END_IMAGE}}");
 }
@@ -27,23 +35,35 @@ function frameIntervalForModel(modelId: string): 1 | 4 | 8 {
   return 1;
 }
 
-export function frameCountForTask(task: GenerationQueueTask, fps: number): number {
+export function frameCountForTask(
+  task: Pick<GenerationQueueTask, "modelId" | "duration">,
+  fps: number
+): number {
   const requested = Math.max(1, Math.round(task.duration * fps));
   const interval = frameIntervalForModel(task.modelId);
   return Math.max(1, Math.round((requested - 1) / interval) * interval + 1);
 }
 
-export function frameInterpolationMultiplier(task: GenerationQueueTask): 1 | 2 | 4 {
+export function frameInterpolationMultiplier(
+  task: Pick<GenerationQueueTask, "frameInterpolation">
+): 1 | 2 | 4 {
   if (task.frameInterpolation === "rife2x") return 2;
   if (task.frameInterpolation === "rife4x") return 4;
   return 1;
 }
 
-export function outputFrameCountForTask(task: GenerationQueueTask): number {
+export function outputFrameCountForTask(
+  task: Pick<GenerationQueueTask, "duration" | "fps">
+): number {
   return Math.max(1, Math.round(task.duration * task.fps));
 }
 
-export function generationFrameCountForTask(task: GenerationQueueTask): number {
+export function generationFrameCountForTask(
+  task: Pick<
+    GenerationQueueTask,
+    "modelId" | "duration" | "fps" | "frameInterpolation"
+  >
+): number {
   const multiplier = frameInterpolationMultiplier(task);
   if (multiplier === 1) return frameCountForTask(task, task.fps);
   const requiredSourceFrames =
@@ -53,6 +73,56 @@ export function generationFrameCountForTask(task: GenerationQueueTask): number {
     1,
     Math.ceil((requiredSourceFrames - 1) / interval) * interval + 1
   );
+}
+
+export function generationSafetyForTask(
+  task: Pick<
+    GenerationQueueTask,
+    "modelId" | "duration" | "fps" | "frameInterpolation"
+  >
+): GenerationSafety {
+  const maxDurationSeconds = 2;
+  const maxGeneratedFrames = task.modelId === "wan22_5b" ? 49 : 25;
+  if (
+    !Number.isFinite(task.duration) ||
+    !Number.isFinite(task.fps) ||
+    task.duration <= 0 ||
+    task.fps <= 0
+  ) {
+    return {
+      safe: false,
+      generatedFrames: 0,
+      maxGeneratedFrames,
+      maxDurationSeconds,
+      message: "时长和帧率必须是大于 0 的有效数字。"
+    };
+  }
+  const generatedFrames = generationFrameCountForTask(task);
+  if (task.duration > maxDurationSeconds) {
+    return {
+      safe: false,
+      generatedFrames,
+      maxGeneratedFrames,
+      maxDurationSeconds,
+      message: `为防止显存失控，单段最长 ${maxDurationSeconds} 秒；长视频分段尚未实现。`
+    };
+  }
+  if (generatedFrames > maxGeneratedFrames) {
+    return {
+      safe: false,
+      generatedFrames,
+      maxGeneratedFrames,
+      maxDurationSeconds,
+      message: `当前组合需要生成 ${generatedFrames} 帧，${task.modelId === "wan22_5b" ? "Wan 5B" : "当前重模型"}的安全上限是 ${maxGeneratedFrames} 帧。请降低目标 FPS 或启用 RIFE。`
+    };
+  }
+  return {
+    safe: true,
+    generatedFrames,
+    maxGeneratedFrames,
+    maxDurationSeconds,
+    message: `显存安全预算：${generatedFrames}/${maxGeneratedFrames} 个模型帧。`
+  };
 }
 
 const wan14ModelAssets: Record<
@@ -123,7 +193,15 @@ function baseGenerationDimensions(task: GenerationQueueTask): [number, number] {
       : ratios[task.ratio] ?? ratios.source!;
   const height = Math.max(64, Math.round(task.resolution / 16) * 16);
   const width = Math.max(64, Math.round((height * rw) / rh / 16) * 16);
-  return [width, height];
+  const maxWidth = Math.max(
+    64,
+    Math.round((task.resolution * 16) / 9 / 16) * 16
+  );
+  if (width <= maxWidth) return [width, height];
+  return [
+    maxWidth,
+    Math.max(64, Math.round((height * maxWidth) / width / 16) * 16)
+  ];
 }
 
 export function outputDimensions(task: GenerationQueueTask): [number, number] {
@@ -196,7 +274,6 @@ export function renderWorkflow(
 
   const rendered = visit(source);
   if (
-    interpolationMultiplier === 1 ||
     !rendered ||
     typeof rendered !== "object" ||
     Array.isArray(rendered)
@@ -213,27 +290,67 @@ export function renderWorkflow(
       0,
       ...Object.keys(workflow).map((id) => Number.parseInt(id, 10) || 0)
     ) + 1;
+  const isUnloadConnection = (value: unknown): boolean => {
+    if (!Array.isArray(value) || typeof value[0] !== "string") return false;
+    const upstream = workflow[value[0]];
+    return (
+      upstream?.class_type === "VRAM_Debug" &&
+      upstream.inputs?.unload_all_models === true
+    );
+  };
+
   for (const node of Object.values(workflow)) {
-    if (node.class_type !== "CreateVideo" || !node.inputs) continue;
-    const decodedImages = node.inputs.images;
-    if (!Array.isArray(decodedImages)) continue;
+    if (!node.inputs || !node.class_type?.includes("VAEDecode")) continue;
+    if (node.class_type === "VAEDecode") {
+      node.class_type = "VAEDecodeTiled";
+      Object.assign(node.inputs, {
+        tile_size: 256,
+        overlap: 32,
+        temporal_size: 16,
+        temporal_overlap: 4
+      });
+    }
+    const samples = node.inputs.samples;
+    if (!Array.isArray(samples) || isUnloadConnection(samples)) continue;
     const unloadId = String(nextNodeId++);
-    const interpolateId = String(nextNodeId++);
-    const trimId = String(nextNodeId++);
     workflow[unloadId] = {
       class_type: "VRAM_Debug",
       inputs: {
         empty_cache: true,
         gc_collect: true,
         unload_all_models: true,
-        image_pass: decodedImages
+        any_input: samples
       }
     };
+    node.inputs.samples = [unloadId, 0];
+  }
+
+  for (const node of Object.values(workflow)) {
+    if (node.class_type !== "CreateVideo" || !node.inputs) continue;
+    let decodedImages = node.inputs.images;
+    if (!Array.isArray(decodedImages)) continue;
+    if (!isUnloadConnection(decodedImages)) {
+      const unloadId = String(nextNodeId++);
+      workflow[unloadId] = {
+        class_type: "VRAM_Debug",
+        inputs: {
+          empty_cache: true,
+          gc_collect: true,
+          unload_all_models: true,
+          image_pass: decodedImages
+        }
+      };
+      decodedImages = [unloadId, 1];
+      node.inputs.images = decodedImages;
+    }
+    if (interpolationMultiplier === 1) continue;
+    const interpolateId = String(nextNodeId++);
+    const trimId = String(nextNodeId++);
     workflow[interpolateId] = {
       class_type: "RIFE VFI",
       inputs: {
         ckpt_name: "rife47.pth",
-        frames: [unloadId, 1],
+        frames: decodedImages,
         clear_cache_after_n_frames: 1,
         multiplier: interpolationMultiplier,
         fast_mode: true,

@@ -60,7 +60,8 @@ function loadVideoNode(sourceVideo: string): ApiNode {
       frame_load_cap: 0,
       skip_first_frames: 0,
       select_every_nth: 1,
-      format: "AnimateDiff"
+      format: "AnimateDiff",
+      meta_batch: ["7", 0]
     }
   };
 }
@@ -82,14 +83,15 @@ function combineVideoNode(task: UpscaleQueueTask): ApiNode {
   return {
     class_type: "VHS_VideoCombine",
     inputs: {
-      images: ["5", 0],
+      images: ["8", 1],
       frame_rate: task.fps,
       loop_count: 0,
       filename_prefix: task.outputFilename.replace(/\.mp4$/i, ""),
       format: "video/h264-mp4",
       pingpong: false,
       save_output: true,
-      audio: ["1", 2]
+      audio: ["1", 2],
+      meta_batch: ["7", 0]
     }
   };
 }
@@ -105,7 +107,14 @@ export function renderUpscaleWorkflow(
       class_type: "VHS_VideoInfoSource",
       inputs: { video_info: ["1", 3] }
     },
-    "6": combineVideoNode(task)
+    "6": combineVideoNode(task),
+    "7": {
+      class_type: "VHS_BatchManager",
+      inputs: {
+        frames_per_batch:
+          task.modelId === "realesrgan" ? 1 : task.modelId === "seedvr2" ? 5 : 16
+      }
+    }
   };
 
   if (task.modelId === "realesrgan") {
@@ -118,18 +127,16 @@ export function renderUpscaleWorkflow(
       inputs: { upscale_model: ["3", 0], image: ["1", 0] }
     };
   } else if (task.modelId === "seedvr2") {
-    if (task.tileMode === "safe") {
-      workflow["3"] = {
-        class_type: "SeedVR2BlockSwap",
-        inputs: {
-          blocks_to_swap: 20,
-          use_non_blocking: true,
-          offload_io_components: true,
-          cache_model: false,
-          enable_debug: false
-        }
-      };
-    }
+    workflow["3"] = {
+      class_type: "SeedVR2BlockSwap",
+      inputs: {
+        blocks_to_swap: 20,
+        use_non_blocking: true,
+        offload_io_components: true,
+        cache_model: false,
+        enable_debug: false
+      }
+    };
     workflow["4"] = {
       class_type: "SeedVR2",
       inputs: {
@@ -137,9 +144,9 @@ export function renderUpscaleWorkflow(
         model: models.seedVr2,
         seed: task.seed,
         new_resolution: task.targetHeight,
-        batch_size: task.tileMode === "fast" ? 9 : task.tileMode === "safe" ? 1 : 5,
-        preserve_vram: task.tileMode !== "fast",
-        ...(task.tileMode === "safe" ? { block_swap_config: ["3", 0] } : {})
+        batch_size: 1,
+        preserve_vram: true,
+        block_swap_config: ["3", 0]
       }
     };
   } else if (task.modelId === "flashvsr") {
@@ -147,11 +154,7 @@ export function renderUpscaleWorkflow(
       class_type: "AILab_FlashVSR",
       inputs: {
         frames: ["1", 0],
-        preset: task.tileMode === "safe"
-          ? "Long Video (Low VRAM)"
-          : task.tileMode === "fast"
-            ? "Fast (2x Speed)"
-            : "Balanced (2x Quality)",
+        preset: "Long Video (Low VRAM)",
         scale: task.targetHeight >= task.sourceHeight * 3 ? 4 : 2,
         unload_model: true,
         seed: Math.max(1, task.seed),
@@ -163,5 +166,14 @@ export function renderUpscaleWorkflow(
   }
 
   workflow["5"] = exactScaleNode(["4", 0], task);
+  workflow["8"] = {
+    class_type: "VRAM_Debug",
+    inputs: {
+      empty_cache: true,
+      gc_collect: true,
+      unload_all_models: true,
+      image_pass: ["5", 0]
+    }
+  };
   return workflow;
 }

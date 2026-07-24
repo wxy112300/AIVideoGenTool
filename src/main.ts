@@ -16,6 +16,12 @@ import type {
 } from "./types";
 import { createClearedDraft } from "./core/defaults";
 import {
+  frameInterpolationMultiplier,
+  generationFrameCountForTask,
+  generationSafetyForTask,
+  outputFrameCountForTask
+} from "./core/workflow";
+import {
   createUpscaleFilename,
   upscaleDimensions
 } from "./core/upscale";
@@ -139,22 +145,11 @@ function interpolationEstimate(draft: Draft): {
   generatedFrames: number;
   outputFrames: number;
 } {
-  const multiplier = interpolationMultiplier(draft.frameInterpolation);
-  const outputFrames = Math.max(1, Math.round(draft.duration * draft.fps));
-  if (multiplier === 1) {
-    const generatedFrames =
-      draft.modelId.startsWith("wan22_") || draft.modelId === "hunyuan15"
-        ? Math.max(1, Math.round((outputFrames - 1) / 4) * 4 + 1)
-        : outputFrames;
-    return { multiplier, generatedFrames, outputFrames: generatedFrames };
-  }
-  const requiredSourceFrames =
-    Math.ceil((outputFrames - 1) / multiplier) + 1;
-  const generatedFrames =
-    draft.modelId.startsWith("wan22_") || draft.modelId === "hunyuan15"
-      ? Math.max(1, Math.ceil((requiredSourceFrames - 1) / 4) * 4 + 1)
-      : requiredSourceFrames;
-  return { multiplier, generatedFrames, outputFrames };
+  return {
+    multiplier: frameInterpolationMultiplier(draft),
+    generatedFrames: generationFrameCountForTask(draft),
+    outputFrames: outputFrameCountForTask(draft)
+  };
 }
 
 function versionVideoIndex(version: AssetVersion): number {
@@ -294,7 +289,7 @@ function upscaleDialogHtml(): string {
           </div></div>
           <div class="settings-grid two">
             <label>提升模型<select id="upscale-model">${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === upscaleDialog?.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
-            <label>显存策略<select id="upscale-tile"><option value="auto" ${upscaleDialog.tileMode === "auto" ? "selected" : ""}>自动 · 推荐</option><option value="safe" ${upscaleDialog.tileMode === "safe" ? "selected" : ""}>保守 · 分块与卸载</option><option value="fast" ${upscaleDialog.tileMode === "fast" ? "selected" : ""}>速度优先</option></select></label>
+            <label>显存策略<select id="upscale-tile" disabled><option value="safe" selected>保守 · 分批与每批卸载</option></select></label>
           </div>
           <label class="switch-field disabled"><input type="checkbox" disabled><span>人脸细节修复 · 等待独立修复模型接入</span></label>
           <div class="upscale-output"><div><span>预计输出</span><strong>${targetWidth} × ${targetHeight}</strong><code>${escapeHtml(outputFilename)}</code></div><span>${upscaleDialog.modelId === "realesrgan" ? "预计峰值 6–9 GB" : upscaleDialog.modelId === "flashvsr" ? "预计峰值 14–19 GB" : "预计峰值 18–23 GB"}</span></div>
@@ -362,6 +357,7 @@ function createPage(): string {
   const draft = state.draft;
   const prompt = activePrompt();
   const interpolation = interpolationEstimate(draft);
+  const safety = generationSafetyForTask(draft);
   const supportsEndImage =
     workflowCapabilities[draft.workflowPath]?.supportsEndImage === true;
   return `
@@ -426,7 +422,7 @@ function createPage(): string {
           </select>
         </label>
         <label>时长
-          <div class="inline-field"><input id="duration" type="range" min="1" max="30" value="${draft.duration}"><input id="duration-number" type="number" min="1" max="60" value="${draft.duration}"><span>秒</span></div>
+          <div class="inline-field"><input id="duration" type="range" min="1" max="${safety.maxDurationSeconds}" value="${draft.duration}"><input id="duration-number" type="number" min="1" max="${safety.maxDurationSeconds}" value="${draft.duration}"><span>秒</span></div>
         </label>
         <label>目标帧率
           <select id="fps">
@@ -442,9 +438,9 @@ function createPage(): string {
             <option value="rife4x" ${draft.frameInterpolation === "rife4x" ? "selected" : ""}>RIFE 4×</option>
           </select>
         </label>
-        <div class="interpolation-summary ${interpolation.multiplier === 1 ? "disabled" : ""}">
-          <div><strong>${interpolation.multiplier === 1 ? "未启用插帧" : `生成约 ${draft.fps / interpolation.multiplier} FPS，再插值到 ${draft.fps} FPS`}</strong><span>${interpolation.generatedFrames} 个模型帧 → ${interpolation.outputFrames} 个成片帧</span></div>
-          <p>${interpolation.multiplier === 1 ? "目标帧率将直接增加大模型和 VAE 的计算量。" : "扩散模型和 VAE 会在 RIFE 前主动卸载；RIFE 使用 BF16、单帧批次并逐帧清理缓存。"}</p>
+        <div class="interpolation-summary ${!safety.safe ? "unsafe" : interpolation.multiplier === 1 ? "disabled" : ""}">
+          <div><strong>${!safety.safe ? "配置超过显存安全预算" : interpolation.multiplier === 1 ? "未启用插帧" : `生成约 ${draft.fps / interpolation.multiplier} FPS，再插值到 ${draft.fps} FPS`}</strong><span>${interpolation.generatedFrames}/${safety.maxGeneratedFrames} 个模型帧 → ${interpolation.outputFrames} 个成片帧</span></div>
+          <p>${escapeHtml(safety.message)} ${safety.safe && interpolation.multiplier !== 1 ? "扩散模型和 VAE 会在 RIFE 前主动卸载；RIFE 使用 BF16、单帧批次。" : ""}</p>
         </div>
         <label>动作幅度
           <select id="motion">
@@ -464,7 +460,7 @@ function createPage(): string {
       </div>
       <div class="submit-row">
         <button class="ghost danger" id="clear-draft">清空</button>
-        <button class="primary" id="enqueue">加入队列</button>
+        <button class="primary" id="enqueue" ${safety.safe ? "" : "disabled"} title="${safety.safe ? "加入本地生成队列" : escapeHtml(safety.message)}">加入队列</button>
       </div>
       </section>
     </div>`;
@@ -499,7 +495,7 @@ function queueTaskCard(task: QueueTask): string {
     : `${task.sourceFilename} → ${task.outputFilename}`;
   const metadata = task.taskType === "generation"
     ? `<span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span><span>Seed ${task.seed}</span>`
-    : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.targetWidth} × ${task.targetHeight}</span><span>${task.tileMode === "safe" ? "保守显存" : task.tileMode === "fast" ? "速度优先" : "自动显存"}</span>`;
+    : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.targetWidth} × ${task.targetHeight}</span><span>分批处理 · 每批卸载</span>`;
   if (task.status === "running") {
     const preview = taskPreviews[task.id] ?? "";
     return `
@@ -829,10 +825,10 @@ function settingsPage(): string {
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>RTX 4090 运行策略</h2><span class="muted">${gpu?.ok ? escapeHtml(gpu.detail) : "未检测到 NVIDIA GPU"}</span></div><span class="model-badge">推荐预设</span></div>
         <div class="settings-grid two">
-          <label>显存安全余量<select id="vram-reserve"><option value="1" ${settings.vramReserveGb === 1 ? "selected" : ""}>1 GB · 更快</option><option value="2" ${settings.vramReserveGb === 2 ? "selected" : ""}>2 GB · 推荐</option><option value="4" ${settings.vramReserveGb === 4 ? "selected" : ""}>4 GB · 保守</option></select></label>
+          <label>显存安全余量<select id="vram-reserve" disabled><option value="4" selected>4 GB · 强制保守</option></select></label>
           <label>同时运行任务<select disabled><option>1 · 推荐</option><option>2 · 可能爆显存</option></select></label>
-          <label class="switch-field"><input id="auto-offload" type="checkbox" ${settings.autoOffload ? "checked" : ""}><span>自动 CPU 卸载与分块</span></label>
-          <label class="switch-field"><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span>安全取消（保留 ComfyUI 服务与模型缓存）</span></label>
+          <label class="switch-field disabled"><input id="auto-offload" type="checkbox" checked disabled><span>强制 CPU 卸载、分块与低显存模式</span></label>
+          <label class="switch-field"><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span>安全取消（保留服务并主动释放模型）</span></label>
           <label class="switch-field"><input id="optimize-queue-setting" type="checkbox" ${settings.optimizeQueue ? "checked" : ""}><span>允许一键优化模型顺序</span></label>
           <label class="switch-field"><input type="checkbox" checked disabled><span>持久保存队列和历史</span></label>
         </div>
@@ -887,7 +883,7 @@ function settingsPage(): string {
         </div>
         <div class="scan-result">${environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${upscaleAvailable} 个可运行模型，${upscaleProfiles.length - upscaleAvailable} 个待补齐` : "等待首次扫描"}</div>
         <div class="settings-grid two">
-          <label>默认显存策略<select id="upscale-tile-mode"><option value="auto" ${settings.upscaleTileMode === "auto" ? "selected" : ""}>自动 · 推荐</option><option value="safe" ${settings.upscaleTileMode === "safe" ? "selected" : ""}>保守 · 分块与卸载</option><option value="fast" ${settings.upscaleTileMode === "fast" ? "selected" : ""}>速度优先</option></select></label>
+          <label>默认显存策略<select id="upscale-tile-mode" disabled><option value="safe" selected>保守 · 分批与每批卸载</option></select></label>
           <label>SeedVR2 权重<input id="seedvr2-model" value="${escapeHtml(settings.seedVr2Model)}"></label>
           <label>Real-ESRGAN 权重<input id="realesrgan-model" value="${escapeHtml(settings.realEsrganModel)}"></label>
           <label class="switch-field disabled"><input id="upscale-face-restore" type="checkbox" disabled ${settings.upscaleFaceRestore ? "checked" : ""}><span>人脸修复 · 等待独立模型</span></label>
@@ -1472,9 +1468,10 @@ function bindCreate(): void {
   const range = document.querySelector<HTMLInputElement>("#duration");
   const number = document.querySelector<HTMLInputElement>("#duration-number");
   const updateDuration = (value: string) => {
-    const duration = Math.max(1, Math.min(60, Number(value) || 1));
+    const maxDuration = generationSafetyForTask(state.draft).maxDurationSeconds;
+    const duration = Math.max(1, Math.min(maxDuration, Number(value) || 1));
     patchDraft({ duration });
-    if (range) range.value = String(Math.min(30, duration));
+    if (range) range.value = String(duration);
     if (number) number.value = String(duration);
   };
   range?.addEventListener("input", () => updateDuration(range.value));
@@ -1552,7 +1549,7 @@ function bindQueue(): void {
         versionId: task.sourceVersionId,
         targetHeight: task.targetHeight,
         modelId: task.modelId as typeof upscaleDialog extends { modelId: infer Model } ? Model : never,
-        tileMode: task.tileMode
+        tileMode: "safe"
       };
       render();
     });

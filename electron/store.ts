@@ -9,6 +9,7 @@ import type {
   QueueTask
 } from "../src/types.js";
 import { createDefaultState } from "../src/core/defaults.js";
+import { generationSafetyForTask } from "../src/core/workflow.js";
 
 export function migrateLegacyComfyUrl(value: string): string {
   const normalized = value.trim().replace(/\/+$/, "").toLowerCase();
@@ -134,6 +135,26 @@ export class JsonStore {
       );
       if (migratedComfyUrl !== this.state.settings.comfyUrl) {
         this.state.settings.comfyUrl = migratedComfyUrl;
+        needsPersist = true;
+      }
+      if (!generationSafetyForTask(this.state.draft).safe) {
+        Object.assign(this.state.draft, {
+          duration: 2,
+          fps: 24,
+          frameInterpolation: "rife2x" as const
+        });
+        needsPersist = true;
+      }
+      if (this.state.settings.upscaleTileMode !== "safe") {
+        this.state.settings.upscaleTileMode = "safe";
+        needsPersist = true;
+      }
+      if (this.state.settings.vramReserveGb < 4) {
+        this.state.settings.vramReserveGb = 4;
+        needsPersist = true;
+      }
+      if (!this.state.settings.autoOffload) {
+        this.state.settings.autoOffload = true;
         needsPersist = true;
       }
       if (needsPersist) await this.persist();

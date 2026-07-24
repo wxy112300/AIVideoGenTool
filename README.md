@@ -20,13 +20,17 @@
 - Sulphur 2 / LTX 2.3、Wan 2.2 5B/14B、HunyuanVideo 1.5、
   Hunyuan 1080p 双阶段 SR、Remix、SmoothMix、DaSiWa 内置工作流。
 - RIFE 2×/4× Frame Interpolation，区分模型帧数与成片目标 FPS。
-- 扩散模型卸载、VAE 分块、再次卸载、插帧和精确裁帧的显存安全管线。
-- SeedVR2、FlashVSR、Real-ESRGAN 视频分辨率提升任务。
+- 生成任务硬限制为最多 2 秒，并按模型限制模型帧数和极端宽高比。
+- ComfyUI 强制低显存启动、预留 4 GB 显存、扩散模型卸载、VAE 分块、
+  再次卸载、插帧和精确裁帧的显存安全管线。
+- SeedVR2、FlashVSR、Real-ESRGAN 视频分辨率提升任务；分别按 5、16、1 帧分批，
+  批间卸载模型，避免整段视频同时进入显存。
+- 取消、OOM、卡死或显存释放失败时停止后续队列；中断任务会主动卸载模型并释放显存。
 - 原始视频与多个提升版本归入同一历史作品，可切换默认版本。
 - 队列性能监测、实时预览、历史视频播放、右键菜单和版本化文件删除。
 - 应用退出时清理自身开发进程并中止当前大模型计算。
 
-取消后编码部分视频、长视频分段和 Windows 安装包仍未完成。最新、最完整的交接状态见
+取消后编码部分视频、超过 2 秒的长视频分段和 Windows 安装包仍未完成。最新、最完整的交接状态见
 [`docs/LOCAL_CODEX_HANDOFF.md`](docs/LOCAL_CODEX_HANDOFF.md)。
 
 ## 快速开始

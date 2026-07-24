@@ -202,6 +202,29 @@ function completedHistoryEntry(value: unknown): boolean {
   );
 }
 
+export function historyEntryClientId(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const prompt = (value as { prompt?: unknown }).prompt;
+  if (!Array.isArray(prompt) || !prompt[3] || typeof prompt[3] !== "object") {
+    return "";
+  }
+  const clientId = (prompt[3] as { client_id?: unknown }).client_id;
+  return typeof clientId === "string" ? clientId : "";
+}
+
+export function historyEntryHasUnfinishedBatch(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const outputs = (value as { outputs?: unknown }).outputs;
+  if (!outputs || typeof outputs !== "object" || Array.isArray(outputs)) {
+    return false;
+  }
+  return Object.values(outputs).some((output) => {
+    if (!output || typeof output !== "object" || Array.isArray(output)) return false;
+    const unfinished = (output as { unfinished_batch?: unknown }).unfinished_batch;
+    return Array.isArray(unfinished) && unfinished.includes(true);
+  });
+}
+
 function historyFailure(value: unknown): string {
   if (!value || typeof value !== "object") return "";
   const status = (value as { status?: unknown }).status;
@@ -241,8 +264,14 @@ export async function waitForTask(
           return;
         }
         const message = JSON.parse(text) as ComfySocketMessage;
-        if (message.data?.prompt_id && message.data.prompt_id !== promptId) return;
-        lastActivityAt = Date.now();
+        if (
+          message.type === "executing" ||
+          message.type === "progress" ||
+          message.type === "execution_error" ||
+          message.type === "execution_interrupted"
+        ) {
+          lastActivityAt = Date.now();
+        }
         if (message.type === "executing" && typeof message.data?.node === "string") {
           const stage = nodeStage(nodeTypes[message.data.node]);
           onProgress(stage.progress, stage.label);
@@ -276,17 +305,34 @@ export async function waitForTask(
       if (Date.now() - lastActivityAt > 3 * 60_000) {
         throw new TaskStalledError();
       }
-      const history = await jsonRequest<Record<string, unknown>>(
-        `${baseUrl}/history/${encodeURIComponent(promptId)}`,
-        { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
-      );
-      if (promptId in history) {
-        const entry = history[promptId];
-        if (completedHistoryEntry(entry)) {
-          onProgress(100, "已完成");
-          return entry;
+      let history: Record<string, unknown>;
+      try {
+        history = await jsonRequest<Record<string, unknown>>(
+          `${baseUrl}/history?max_items=200`,
+          { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
+        );
+      } catch (error) {
+        if (signal.aborted) throw signal.reason;
+        if (Date.now() - lastActivityAt > 3 * 60_000) {
+          throw new TaskStalledError();
         }
-        throw new Error(historyFailure(entry));
+        await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
+        continue;
+      }
+      const entries = Object.values(history).filter(
+        (entry) => historyEntryClientId(entry) === clientId
+      );
+      for (const entry of entries) {
+        const failure = historyFailure(entry);
+        if (failure) throw new Error(failure);
+      }
+      const completed = entries.find(
+        (entry) =>
+          completedHistoryEntry(entry) && !historyEntryHasUnfinishedBatch(entry)
+      );
+      if (completed) {
+        onProgress(100, "已完成");
+        return completed;
       }
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(resolve, 2_000);
@@ -312,4 +358,14 @@ export async function interrupt(settings: Settings): Promise<void> {
     signal: AbortSignal.timeout(10_000)
   });
   if (!response.ok) throw new Error(`中止任务失败：HTTP ${response.status}`);
+}
+
+export async function freeMemory(settings: Settings): Promise<void> {
+  const response = await fetch(`${cleanBaseUrl(settings.comfyUrl)}/free`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ unload_models: true, free_memory: true }),
+    signal: AbortSignal.timeout(10_000)
+  });
+  if (!response.ok) throw new Error(`释放显存失败：HTTP ${response.status}`);
 }
