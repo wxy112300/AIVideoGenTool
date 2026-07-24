@@ -17,6 +17,35 @@ export interface WorkflowValidation {
   nodeCount: number;
 }
 
+export function frameCountForTask(task: QueueTask, fps: number): number {
+  const requested = Math.max(1, Math.round(task.duration * fps));
+  if (task.modelId !== "wan22_5b") return requested;
+  return Math.max(1, Math.round((requested - 1) / 4) * 4 + 1);
+}
+
+export function missingWorkflowNodeTypes(
+  source: unknown,
+  objectInfo: unknown
+): string[] {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return [];
+  if (!objectInfo || typeof objectInfo !== "object" || Array.isArray(objectInfo)) {
+    return [];
+  }
+  const available = new Set(Object.keys(objectInfo as Record<string, unknown>));
+  return [
+    ...new Set(
+      Object.values(source as Record<string, unknown>)
+        .map((node) =>
+          node && typeof node === "object" && !Array.isArray(node)
+            ? (node as Record<string, unknown>).class_type
+            : undefined
+        )
+        .filter((value): value is string => typeof value === "string")
+        .filter((value) => !available.has(value))
+    )
+  ].sort();
+}
+
 const ratios: Record<string, [number, number]> = {
   "16:9": [16, 9],
   "9:16": [9, 16],
@@ -49,7 +78,7 @@ export function renderWorkflow(
     HEIGHT: context.height ?? height,
     DURATION: task.duration,
     FPS: fps,
-    FRAMES: context.frames ?? Math.max(1, Math.round(task.duration * fps)),
+    FRAMES: context.frames ?? frameCountForTask(task, fps),
     OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, "")
   };
 

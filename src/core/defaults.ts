@@ -16,7 +16,7 @@ export function createDefaultDraft(): Draft {
       }
     ],
     activePromptVersion: 0,
-    modelId: "sulphur2",
+    modelId: "wan22_5b",
     workflowPath: "",
     ratio: "source",
     resolution: 480,
@@ -24,6 +24,24 @@ export function createDefaultDraft(): Draft {
     motion: "natural",
     seed: null,
     keepSeedOnCopy: false
+  };
+}
+
+export function createClearedDraft(current: Draft): Draft {
+  return {
+    ...current,
+    startImagePath: "",
+    endImagePath: "",
+    promptVersions: [
+      {
+        id: crypto.randomUUID(),
+        label: "新建",
+        text: "",
+        createdAt: new Date().toISOString()
+      }
+    ],
+    activePromptVersion: 0,
+    seed: null
   };
 }
 

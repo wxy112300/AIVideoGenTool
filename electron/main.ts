@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   AppState,
+  BundledWorkflow,
   ConnectionKind,
   Draft,
   EnhanceRequest,
@@ -44,6 +45,26 @@ let mainWindow: BrowserWindow | null = null;
 let store: JsonStore;
 let queueWorker: Promise<void> | null = null;
 let activeController: AbortController | null = null;
+
+async function bundledWorkflowFor(modelId: string): Promise<BundledWorkflow | null> {
+  if (modelId !== "wan22_5b") return null;
+  const filename = "wan22_5b_i2v_api.json";
+  const candidates = [
+    path.join(app.getAppPath(), "workflows", filename),
+    path.join(process.resourcesPath, "workflows", filename),
+    path.resolve(currentDirectory, "..", "..", "..", "workflows", filename)
+  ];
+  for (const candidate of candidates) {
+    if (await fs.stat(candidate).catch(() => null)) {
+      return {
+        modelId,
+        label: "内置 · Wan 2.2 5B 图生视频",
+        path: candidate
+      };
+    }
+  }
+  return null;
+}
 
 function sendState(state = store.get()): void {
   mainWindow?.webContents.send("state:changed", state);
@@ -217,6 +238,9 @@ function registerIpc(): void {
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
+  ipcMain.handle("workflow:get-bundled", (_event, modelId: string) =>
+    bundledWorkflowFor(modelId)
+  );
   ipcMain.handle("file:pick-directory", async () => {
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
     return result.canceled ? null : (result.filePaths[0] ?? null);

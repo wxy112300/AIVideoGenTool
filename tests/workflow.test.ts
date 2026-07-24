@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { QueueTask } from "../src/types";
-import { renderWorkflow, validateApiWorkflow } from "../src/core/workflow";
+import {
+  frameCountForTask,
+  missingWorkflowNodeTypes,
+  renderWorkflow,
+  validateApiWorkflow
+} from "../src/core/workflow";
 
 const task: QueueTask = {
   id: "task-1",
@@ -44,6 +49,25 @@ describe("renderWorkflow", () => {
     expect(result["1"]!.inputs.seed).toBe(42);
     expect(result["1"]!.inputs.filename_prefix).toBe("studio/test");
     expect(result["1"]!.inputs.untouched).toBe("{{UNKNOWN}}");
+  });
+});
+
+describe("Wan 2.2 workflow compatibility", () => {
+  it("rounds Wan 5B video length to the required 4n+1 frame count", () => {
+    expect(frameCountForTask({ ...task, modelId: "wan22_5b" }, 24)).toBe(121);
+    expect(frameCountForTask(task, 24)).toBe(120);
+  });
+
+  it("reports node types missing from the connected ComfyUI", () => {
+    expect(
+      missingWorkflowNodeTypes(
+        {
+          "1": { class_type: "LoadImage", inputs: {} },
+          "2": { class_type: "MissingVideoNode", inputs: {} }
+        },
+        { LoadImage: {} }
+      )
+    ).toEqual(["MissingVideoNode"]);
   });
 });
 

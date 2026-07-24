@@ -13,6 +13,8 @@ const api: AppApi = {
   saveSettings: (settings: Settings) => ipcRenderer.invoke("settings:save", settings),
   pickImage: () => ipcRenderer.invoke("file:pick-image"),
   pickWorkflow: () => ipcRenderer.invoke("file:pick-workflow"),
+  getBundledWorkflow: (modelId: string) =>
+    ipcRenderer.invoke("workflow:get-bundled", modelId),
   pickDirectory: () => ipcRenderer.invoke("file:pick-directory"),
   readImage: (path: string) => ipcRenderer.invoke("file:read-image", path),
   showItemInFolder: (path: string) => ipcRenderer.invoke("file:show-in-folder", path),

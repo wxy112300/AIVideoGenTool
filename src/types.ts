@@ -196,12 +196,19 @@ export interface EnhanceRequest {
   modelId: string;
 }
 
+export interface BundledWorkflow {
+  modelId: string;
+  label: string;
+  path: string;
+}
+
 export interface AppApi {
   getState(): Promise<AppState>;
   saveDraft(draft: Draft): Promise<AppState>;
   saveSettings(settings: Settings): Promise<AppState>;
   pickImage(): Promise<string | null>;
   pickWorkflow(): Promise<string | null>;
+  getBundledWorkflow(modelId: string): Promise<BundledWorkflow | null>;
   pickDirectory(): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
   showItemInFolder(path: string): Promise<boolean>;

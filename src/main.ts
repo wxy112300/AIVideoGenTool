@@ -1,6 +1,7 @@
 import "./style.css";
 import type {
   AppState,
+  BundledWorkflow,
   Draft,
   EnvironmentScanResult,
   LocalServiceKind,
@@ -9,7 +10,7 @@ import type {
   PromptVersion,
   Settings
 } from "./types";
-import { createDefaultDraft } from "./core/defaults";
+import { createClearedDraft } from "./core/defaults";
 
 type Page = "create" | "queue" | "history" | "history-detail" | "settings";
 
@@ -17,6 +18,9 @@ const appElement = document.querySelector<HTMLDivElement>("#app")!;
 let state: AppState;
 let page: Page = "create";
 let draftSaveTimer: number | undefined;
+let draftRevision = 0;
+let draftSaveInFlight = 0;
+let draftDirty = false;
 let flashMessage = "";
 let selectedHistoryAssetId = "";
 let environmentScan: EnvironmentScanResult | null = null;
@@ -34,6 +38,7 @@ let selectedInstallGuide: {
   profileName: string;
   component: ModelComponentStatus;
 } | null = null;
+const bundledWorkflows: Record<string, BundledWorkflow> = {};
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "")
@@ -63,6 +68,25 @@ function modelName(id: string): string {
       hunyuan15: "HunyuanVideo 1.5"
     }[id] ?? id
   );
+}
+
+function createModelOptions(draft: Draft): string {
+  const scanned = environmentScan?.modelProfiles.filter(
+    (profile) => profile.category === "video"
+  );
+  const profiles = scanned?.length
+    ? scanned
+    : [
+        { id: "sulphur2", name: "Sulphur 2 FP8", available: true },
+        { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: true },
+        { id: "hunyuan15", name: "HunyuanVideo 1.5", available: true }
+      ];
+  return profiles
+    .map(
+      (profile) =>
+        `<option value="${escapeHtml(profile.id)}" ${draft.modelId === profile.id ? "selected" : ""} ${!profile.available && draft.modelId !== profile.id ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`
+    )
+    .join("");
 }
 
 function shell(content: string): string {
@@ -137,9 +161,7 @@ function createPage(): string {
       <div class="settings-grid">
         <label>模型
           <select id="model">
-            <option value="sulphur2" ${draft.modelId === "sulphur2" ? "selected" : ""}>Sulphur 2 FP8</option>
-            <option value="wan22_5b" ${draft.modelId === "wan22_5b" ? "selected" : ""}>Wan 2.2 I2V 5B</option>
-            <option value="hunyuan15" ${draft.modelId === "hunyuan15" ? "selected" : ""}>HunyuanVideo 1.5</option>
+            ${createModelOptions(draft)}
           </select>
         </label>
         <label>画面比例
@@ -172,8 +194,8 @@ function createPage(): string {
         <label class="checkbox-field"><input id="keep-seed" type="checkbox" ${draft.keepSeedOnCopy ? "checked" : ""}><span>复制任务时保留 Seed</span></label>
       </div>
       <div class="workflow-field">
-        <div><strong>ComfyUI API 工作流</strong><p class="muted">${draft.workflowPath ? escapeHtml(draft.workflowPath) : "为当前模型选择从 ComfyUI 导出的 API 格式 JSON"}</p></div>
-        <button class="secondary" id="pick-workflow">选择 JSON</button>
+        <div><strong>ComfyUI API 工作流</strong><p class="muted">${draft.workflowPath ? escapeHtml(bundledWorkflows[draft.modelId]?.path === draft.workflowPath ? bundledWorkflows[draft.modelId]!.label : draft.workflowPath) : "为当前模型选择从 ComfyUI 导出的 API 格式 JSON"}</p></div>
+        <button class="secondary" id="pick-workflow">${draft.workflowPath ? "更换 JSON" : "选择 JSON"}</button>
       </div>
       <div class="submit-row">
         <button class="ghost danger" id="clear-draft">清空</button>
@@ -591,12 +613,24 @@ function bindShell(): void {
 function scheduleDraftSave(): void {
   window.clearTimeout(draftSaveTimer);
   draftSaveTimer = window.setTimeout(async () => {
-    state = await window.studio.saveDraft(state.draft);
+    const revision = draftRevision;
+    const draftToSave = state.draft;
+    draftSaveInFlight += 1;
+    try {
+      const savedState = await window.studio.saveDraft(draftToSave);
+      const localDraft = state.draft;
+      state = { ...savedState, draft: localDraft };
+      if (revision === draftRevision) draftDirty = false;
+    } finally {
+      draftSaveInFlight -= 1;
+    }
   }, 350);
 }
 
 function patchDraft(patch: Partial<Draft>): void {
   state.draft = { ...state.draft, ...patch };
+  draftRevision += 1;
+  draftDirty = true;
   scheduleDraftSave();
 }
 
@@ -680,10 +714,26 @@ function bindCreate(): void {
     }
   });
   for (const id of ["model", "ratio", "resolution", "motion", "seed"]) {
-    document.querySelector(`#${id}`)?.addEventListener("change", (event) => {
+    document.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
       const value = (event.target as HTMLInputElement | HTMLSelectElement).value;
+      if (id === "model") {
+        const oldBundledPath = bundledWorkflows[state.draft.modelId]?.path;
+        const bundled =
+          bundledWorkflows[value] ??
+          (await window.studio.getBundledWorkflow(value));
+        if (bundled) bundledWorkflows[value] = bundled;
+        patchDraft({
+          modelId: value,
+          workflowPath:
+            bundled?.path ??
+            (state.draft.workflowPath === oldBundledPath
+              ? ""
+              : state.draft.workflowPath)
+        });
+        render();
+        return;
+      }
       const patch =
-        id === "model" ? { modelId: value } :
         id === "ratio" ? { ratio: value as Draft["ratio"] } :
         id === "resolution" ? { resolution: Number(value) as Draft["resolution"] } :
         id === "motion" ? { motion: value as Draft["motion"] } :
@@ -706,7 +756,10 @@ function bindCreate(): void {
   number?.addEventListener("input", () => updateDuration(number.value));
   document.querySelector("#clear-draft")?.addEventListener("click", async () => {
     if (!window.confirm("确定清空当前草稿吗？此操作会移除图片和提示词版本。")) return;
-    state = await window.studio.saveDraft(createDefaultDraft());
+    window.clearTimeout(draftSaveTimer);
+    draftRevision += 1;
+    draftDirty = false;
+    state = await window.studio.saveDraft(createClearedDraft(state.draft));
     render();
   });
   document.querySelector("#enqueue")?.addEventListener("click", async () => {
@@ -1022,11 +1075,39 @@ function bindSettings(): void {
 }
 
 window.studio.onStateChanged((nextState) => {
-  state = nextState;
+  const localDraft = state?.draft;
+  state = {
+    ...nextState,
+    draft:
+      localDraft && (draftDirty || draftSaveInFlight > 0)
+        ? localDraft
+        : nextState.draft
+  };
+  const activeElement = document.activeElement;
+  const isEditing =
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    activeElement instanceof HTMLSelectElement;
+  if (isEditing || draftSaveInFlight > 0) return;
   render();
 });
 
 void window.studio.getState().then((initialState) => {
   state = initialState;
   render();
+  void Promise.all([
+    window.studio.getBundledWorkflow(state.draft.modelId),
+    window.studio.scanEnvironment(state.settings)
+  ]).then(([bundled, scan]) => {
+    environmentScan = scan;
+    if (bundled) {
+      bundledWorkflows[bundled.modelId] = bundled;
+      if (!state.draft.workflowPath) {
+        patchDraft({ workflowPath: bundled.path });
+      }
+    }
+    render();
+  }).catch(() => {
+    // 创建页仍可手动选择工作流；详细扫描错误可在设置页重试查看。
+  });
 });

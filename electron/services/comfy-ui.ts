@@ -1,7 +1,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { QueueTask, Settings } from "../../src/types.js";
-import { renderWorkflow } from "../../src/core/workflow.js";
+import {
+  missingWorkflowNodeTypes,
+  renderWorkflow
+} from "../../src/core/workflow.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -52,12 +55,21 @@ export async function submitTask(
     throw new Error("任务没有配置 ComfyUI API 工作流 JSON");
   }
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
-  const [sourceText, inputImage, endImage] = await Promise.all([
+  const [sourceText, objectInfo] = await Promise.all([
     fs.readFile(task.workflowPath, "utf8"),
+    jsonRequest<Record<string, unknown>>(`${baseUrl}/object_info`)
+  ]);
+  const source = JSON.parse(sourceText) as unknown;
+  const missingNodes = missingWorkflowNodeTypes(source, objectInfo);
+  if (missingNodes.length) {
+    throw new Error(
+      `当前 ComfyUI 缺少工作流节点：${missingNodes.join("、")}。请在设置页安装对应节点后重启服务。`
+    );
+  }
+  const [inputImage, endImage] = await Promise.all([
     uploadImage(baseUrl, task.startImagePath),
     uploadImage(baseUrl, task.endImagePath)
   ]);
-  const source = JSON.parse(sourceText) as unknown;
   const prompt = renderWorkflow(source, task, { inputImage, endImage });
   const clientId = `local-video-studio-${crypto.randomUUID()}`;
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
