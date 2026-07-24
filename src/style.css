@@ -120,7 +120,9 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .history-view-tools { justify-content: flex-end; }
 .history-view-tools label { min-width: 130px; }
 .history-view-tools select { height: 38px; }
-.history-gallery.masonry, .history-gallery.album { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; align-items: start; }
+.history-gallery.masonry, .history-gallery.album { display: grid; gap: 15px; align-items: start; }
+.history-gallery.masonry { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.history-gallery.album { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .history-gallery-item { min-width: 0; display: grid; gap: 0; margin: 0; overflow: hidden; cursor: pointer; }
 .history-gallery-item:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
 .history-media { position: relative; width: 100%; aspect-ratio: var(--media-ratio, 16 / 9); overflow: hidden; background: radial-gradient(circle at 68% 25%, rgba(83, 142, 218, .34), transparent 35%), linear-gradient(145deg, #242a34, #111317); }
@@ -332,12 +334,14 @@ pre { max-height: 360px; overflow: auto; padding: 14px; border-radius: 10px; bac
   .create-workspace { grid-template-columns: 1fr; }
   .create-workspace > .media-panel { position: static; }
   .drop-zone { min-height: 310px; }
+  .history-gallery.album { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {
   .settings-grid, .settings-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .environment-grid { grid-template-columns: 1fr; }
-  .history-gallery.masonry, .history-gallery.album { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-gallery.masonry { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-gallery.album { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .history-detail-hero { grid-template-columns: 1fr; }
   .settings-layout { grid-template-columns: 1fr; }
   .settings-sidebar { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -362,7 +366,8 @@ pre { max-height: 360px; overflow: auto; padding: 14px; border-radius: 10px; bac
   .performance-grid { grid-template-columns: 1fr 1fr; }
   .history-heading { align-items: flex-start; flex-direction: column; }
   .history-view-tools { width: 100%; justify-content: space-between; }
-  .history-gallery.masonry, .history-gallery.album { columns: initial; display: grid; grid-template-columns: 1fr; }
+  .history-gallery.masonry { grid-template-columns: 1fr; }
+  .history-gallery.album { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .history-record-grid { grid-template-columns: 1fr; }
   .history-record.full { grid-column: auto; }
 }
@@ -701,7 +706,8 @@ pre { border: 1px solid #292f39; background: #0c0f14; font-size: 11px; line-heig
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .settings-tab { justify-content: center; }
-  .history-gallery.masonry, .history-gallery.album { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-gallery.masonry { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-gallery.album { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -916,6 +922,40 @@ main { padding-top: 0; }
   gap: 14px;
 }
 
+.history-gallery.album {
+  gap: 12px;
+}
+
+.history-gallery.album .history-gallery-copy {
+  gap: 7px;
+  padding: 11px 12px 10px;
+}
+
+.history-gallery.album .history-gallery-copy h3 {
+  font-size: 13px;
+}
+
+.history-gallery.album .history-gallery-copy code,
+.history-gallery.album .history-media-badges .media-chip:first-child {
+  display: none;
+}
+
+.history-gallery.album .history-item-meta {
+  gap: 5px 8px;
+  font-size: 10px;
+}
+
+.history-gallery.album .history-item-actions {
+  padding-top: 3px;
+  font-size: 10px;
+}
+
+.history-gallery.album .history-item-actions button {
+  min-height: 27px;
+  padding: 4px 6px;
+  font-size: 10px;
+}
+
 .history-gallery-item {
   margin: 0;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .14);
@@ -1061,6 +1101,10 @@ main { padding-top: 0; }
 }
 
 @media (max-width: 520px) {
+  .history-gallery.album {
+    grid-template-columns: 1fr;
+  }
+
   .confirm-dialog {
     grid-template-columns: 1fr;
     padding: 19px;
