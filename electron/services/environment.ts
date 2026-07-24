@@ -1454,10 +1454,7 @@ export async function scanEnvironment(
     "/system_stats"
   );
   const detectedComfyBaseUrl =
-    reachableComfyBaseUrl ||
-    (comfyInstallation?.type === "desktop"
-      ? desktopComfyBaseUrl
-      : configuredComfyBaseUrl);
+    reachableComfyBaseUrl || configuredComfyBaseUrl;
   const comfyHealthUrl = `${detectedComfyBaseUrl}/system_stats`;
   const lmStudioUrl = `${settings.lmStudioUrl.replace(/\/+$/, "")}/models`;
   const items = await Promise.all([
