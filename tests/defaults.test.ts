@@ -3,7 +3,9 @@ import { createClearedDraft, createDefaultDraft } from "../src/core/defaults";
 
 describe("draft defaults", () => {
   it("keeps the starter prompt for a new install", () => {
-    expect(createDefaultDraft().promptVersions[0]?.text).not.toBe("");
+    const draft = createDefaultDraft();
+    expect(draft.promptVersions[0]?.text).not.toBe("");
+    expect(draft.fps).toBe(8);
   });
 
   it("clears user content while retaining the selected generation setup", () => {
@@ -24,5 +26,6 @@ describe("draft defaults", () => {
     expect(cleared.seed).toBeNull();
     expect(cleared.modelId).toBe("wan22_5b");
     expect(cleared.workflowPath).toBe("wan.json");
+    expect(cleared.fps).toBe(current.fps);
   });
 });

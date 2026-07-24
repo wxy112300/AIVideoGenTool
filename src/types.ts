@@ -22,6 +22,7 @@ export interface Draft {
   ratio: "source" | "16:9" | "9:16" | "1:1" | "4:3";
   resolution: 480 | 540 | 720;
   duration: number;
+  fps: 8 | 12 | 16 | 24;
   motion: "subtle" | "natural" | "strong";
   seed: number | null;
   keepSeedOnCopy: boolean;
@@ -61,11 +62,14 @@ export interface QueueTask {
   ratio: Draft["ratio"];
   resolution: Draft["resolution"];
   duration: number;
+  fps: Draft["fps"];
   motion: Draft["motion"];
   seed: number;
   keepSeedOnCopy: boolean;
   comfyPromptId?: string;
   progress?: number;
+  stage?: string;
+  startedAt?: string;
   error?: string;
 }
 
@@ -202,6 +206,23 @@ export interface BundledWorkflow {
   path: string;
 }
 
+export interface PerformanceMetrics {
+  sampledAt: string;
+  cpuPercent: number;
+  memoryUsedBytes: number;
+  memoryTotalBytes: number;
+  gpuPercent: number | null;
+  vramUsedBytes: number | null;
+  vramTotalBytes: number | null;
+  gpuTemperature: number | null;
+  comfyConnected: boolean;
+}
+
+export interface TaskPreview {
+  taskId: string;
+  dataUrl: string;
+}
+
 export interface AppApi {
   getState(): Promise<AppState>;
   saveDraft(draft: Draft): Promise<AppState>;
@@ -209,6 +230,7 @@ export interface AppApi {
   pickImage(): Promise<string | null>;
   pickWorkflow(): Promise<string | null>;
   getBundledWorkflow(modelId: string): Promise<BundledWorkflow | null>;
+  getPerformanceMetrics(settings: Settings): Promise<PerformanceMetrics>;
   pickDirectory(): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
   showItemInFolder(path: string): Promise<boolean>;
@@ -242,6 +264,7 @@ export interface AppApi {
   duplicateTask(taskId: string): Promise<AppState>;
   retryTask(taskId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;
+  onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
 }
 
 declare global {

@@ -39,6 +39,7 @@ import {
   testComfyUi,
   waitForTask
 } from "./services/comfy-ui.js";
+import { getPerformanceMetrics } from "./services/performance.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 let mainWindow: BrowserWindow | null = null;
@@ -128,6 +129,7 @@ function queueTaskFromDraft(draft: Draft, state: AppState): QueueTask {
     ratio: draft.ratio,
     resolution: draft.resolution,
     duration: draft.duration,
+    fps: draft.fps,
     motion: draft.motion,
     seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
@@ -153,15 +155,34 @@ async function executeQueue(): Promise<void> {
     if (!task) break;
     activeController = new AbortController();
     try {
-      await updateTask(task.id, { status: "running", progress: 1, error: undefined });
-      const { promptId, clientId } = await submitTask(task, store.get().settings);
-      await updateTask(task.id, { comfyPromptId: promptId, progress: 3 });
+      await updateTask(task.id, {
+        status: "running",
+        progress: 1,
+        stage: "提交工作流",
+        startedAt: new Date().toISOString(),
+        error: undefined
+      });
+      const { promptId, clientId, nodeTypes } = await submitTask(
+        task,
+        store.get().settings
+      );
+      await updateTask(task.id, {
+        comfyPromptId: promptId,
+        progress: 2,
+        stage: "等待 ComfyUI"
+      });
       const result = await waitForTask(
         promptId,
         clientId,
+        nodeTypes,
         store.get().settings,
         activeController.signal,
-        (progress) => void updateTask(task.id, { progress })
+        (progress, stage) => void updateTask(task.id, { progress, stage }),
+        (dataUrl) =>
+          mainWindow?.webContents.send("task:preview", {
+            taskId: task.id,
+            dataUrl
+          })
       );
       const completedTask = store.get().queue.find((item) => item.id === task.id);
       if (!completedTask) continue;
@@ -190,6 +211,9 @@ async function executeQueue(): Promise<void> {
       sendState(next);
     } catch (error) {
       const aborted = activeController.signal.aborted;
+      if (!aborted) {
+        await interrupt(store.get().settings).catch(() => undefined);
+      }
       await updateTask(task.id, {
         status: aborted ? "cancelled" : "failed",
         error: aborted
@@ -240,6 +264,9 @@ function registerIpc(): void {
   });
   ipcMain.handle("workflow:get-bundled", (_event, modelId: string) =>
     bundledWorkflowFor(modelId)
+  );
+  ipcMain.handle("performance:get", (_event, settings: Settings) =>
+    getPerformanceMetrics(settings)
   );
   ipcMain.handle("file:pick-directory", async () => {
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });

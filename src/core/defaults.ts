@@ -21,6 +21,7 @@ export function createDefaultDraft(): Draft {
     ratio: "source",
     resolution: 480,
     duration: 5,
+    fps: 8,
     motion: "natural",
     seed: null,
     keepSeedOnCopy: false

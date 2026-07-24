@@ -67,7 +67,7 @@ export function renderWorkflow(
   context: Partial<WorkflowContext> = {}
 ): unknown {
   const [width, height] = outputDimensions(task);
-  const fps = context.fps ?? 24;
+  const fps = context.fps ?? task.fps ?? 8;
   const tokens: Record<string, string | number> = {
     PROMPT: task.prompt,
     NEGATIVE_PROMPT: "",

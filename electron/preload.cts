@@ -15,6 +15,8 @@ const api: AppApi = {
   pickWorkflow: () => ipcRenderer.invoke("file:pick-workflow"),
   getBundledWorkflow: (modelId: string) =>
     ipcRenderer.invoke("workflow:get-bundled", modelId),
+  getPerformanceMetrics: (settings: Settings) =>
+    ipcRenderer.invoke("performance:get", settings),
   pickDirectory: () => ipcRenderer.invoke("file:pick-directory"),
   readImage: (path: string) => ipcRenderer.invoke("file:read-image", path),
   showItemInFolder: (path: string) => ipcRenderer.invoke("file:show-in-folder", path),
@@ -48,6 +50,12 @@ const api: AppApi = {
       callback(state as Parameters<typeof callback>[0]);
     ipcRenderer.on("state:changed", listener);
     return () => ipcRenderer.removeListener("state:changed", listener);
+  },
+  onTaskPreview: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, preview: unknown) =>
+      callback(preview as Parameters<typeof callback>[0]);
+    ipcRenderer.on("task:preview", listener);
+    return () => ipcRenderer.removeListener("task:preview", listener);
   }
 };
 

@@ -7,6 +7,7 @@ import type {
   LocalServiceKind,
   ModelComponentStatus,
   ModelScanProfile,
+  PerformanceMetrics,
   PromptVersion,
   Settings
 } from "./types";
@@ -39,6 +40,9 @@ let selectedInstallGuide: {
   component: ModelComponentStatus;
 } | null = null;
 const bundledWorkflows: Record<string, BundledWorkflow> = {};
+const taskPreviews: Record<string, string> = {};
+let performanceMetrics: PerformanceMetrics | null = null;
+let performancePolling = false;
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "")
@@ -181,6 +185,13 @@ function createPage(): string {
         <label>时长
           <div class="inline-field"><input id="duration" type="range" min="1" max="30" value="${draft.duration}"><input id="duration-number" type="number" min="1" max="60" value="${draft.duration}"><span>秒</span></div>
         </label>
+        <label>每秒帧数（FPS）
+          <select id="fps">
+            ${[8, 12, 16, 24].map((value) =>
+              `<option value="${value}" ${draft.fps === value ? "selected" : ""}>${value} FPS${value === 8 ? " · 快速预览" : value === 24 ? " · 最慢" : ""}</option>`
+            ).join("")}
+          </select>
+        </label>
         <label>动作幅度
           <select id="motion">
             <option value="subtle" ${draft.motion === "subtle" ? "selected" : ""}>轻微</option>
@@ -207,32 +218,49 @@ function createPage(): string {
 
 function queuePage(): string {
   const running = state.queue.find((task) => task.status === "running");
+  const listedTasks = state.queue.filter((task) => task.status !== "running");
+  const preview = running ? taskPreviews[running.id] : "";
   return `
     <section class="page-heading">
       <div><h1>生成队列</h1><p>${state.queue.length} 项任务 · ${state.queueRunning ? "正在持续执行" : "当前已暂停"}</p></div>
       <div class="button-row"><button class="secondary" id="optimize-queue" ${state.queue.filter((task) => task.status === "waiting").length < 2 ? "disabled" : ""}>按模型优化顺序</button><button class="primary" id="${state.queueRunning ? "pause-queue" : "start-queue"}">${state.queueRunning ? "暂停队列" : "开始队列"}</button></div>
     </section>
+    <section class="performance-grid" aria-label="性能监测">
+      ${performanceCard("CPU", "metric-cpu", performanceMetrics?.cpuPercent, "%")}
+      ${performanceCard("系统内存", "metric-memory", performanceMetrics ? performanceMetrics.memoryUsedBytes / performanceMetrics.memoryTotalBytes * 100 : null, "%", performanceMetrics ? `${formatBytes(performanceMetrics.memoryUsedBytes)} / ${formatBytes(performanceMetrics.memoryTotalBytes)}` : "")}
+      ${performanceCard("GPU", "metric-gpu", performanceMetrics?.gpuPercent, "%", performanceMetrics?.gpuTemperature != null ? `${performanceMetrics.gpuTemperature}°C` : "")}
+      ${performanceCard("显存", "metric-vram", performanceMetrics?.vramUsedBytes != null && performanceMetrics.vramTotalBytes ? performanceMetrics.vramUsedBytes / performanceMetrics.vramTotalBytes * 100 : null, "%", performanceMetrics?.vramUsedBytes != null && performanceMetrics.vramTotalBytes != null ? `${formatBytes(performanceMetrics.vramUsedBytes)} / ${formatBytes(performanceMetrics.vramTotalBytes)}` : "")}
+    </section>
     ${running ? `<section class="panel now-running">
-      <div class="section-heading"><div><span class="eyebrow">正在生成</span><h2>${escapeHtml(running.outputFilename)}</h2></div><strong>${Math.round(running.progress ?? 0)}%</strong></div>
-      <div class="progress"><span style="width:${running.progress ?? 0}%"></span></div>
-      <p class="muted">${escapeHtml(running.prompt)}</p>
+      <div class="running-layout">
+        <div class="live-preview">
+          <img id="live-preview-image" alt="ComfyUI 实时预览" src="${preview ? escapeHtml(preview) : ""}" style="${preview ? "" : "display:none"}">
+          <div id="live-preview-empty" style="${preview ? "display:none" : ""}"><span>◫</span><strong>等待 ComfyUI 预览帧</strong><small>部分节点只会在采样过程中发送预览</small></div>
+        </div>
+        <div class="running-copy">
+          <div class="section-heading"><div><span class="eyebrow">正在生成 · <span id="running-stage">${escapeHtml(running.stage ?? "准备中")}</span></span><h2>${escapeHtml(running.outputFilename)}</h2></div><strong id="running-progress-label">${Math.round(running.progress ?? 0)}%</strong></div>
+          <div class="progress"><span id="running-progress-bar" style="width:${running.progress ?? 0}%"></span></div>
+          <p>${escapeHtml(running.prompt)}</p>
+          <div class="task-meta"><span>${escapeHtml(modelName(running.modelId))}</span><span>${running.resolution}p</span><span>${running.duration}秒</span><span>${running.fps} FPS</span><span id="running-elapsed">${elapsedText(running.startedAt)}</span></div>
+          <button class="danger secondary" data-cancel="${running.id}">安全中止</button>
+        </div>
+      </div>
     </section>` : ""}
     <section class="task-list">
       ${state.queue.length === 0
         ? `<div class="empty panel"><h2>队列还是空的</h2><p>从创建页加入一个任务后，就可以在这里运行。</p><button class="secondary" data-page="create">去创建</button></div>`
-        : state.queue.map((task) => `
+        : listedTasks.map((task) => `
           <article class="task-card panel ${task.status}">
             <div class="task-main">
               <div><span class="status ${task.status}">${statusLabel(task.status)}</span><h3>${escapeHtml(task.outputFilename)}</h3></div>
               <p>${escapeHtml(task.prompt)}</p>
-              <div class="task-meta"><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>Seed ${task.seed}</span></div>
+              <div class="task-meta"><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${task.fps} FPS</span><span>Seed ${task.seed}</span></div>
               ${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ""}
             </div>
             <div class="task-actions">
               ${task.status === "waiting" ? `<div class="button-row"><button class="icon-button" data-move="${task.id}" data-direction="-1" title="上移">↑</button><button class="icon-button" data-move="${task.id}" data-direction="1" title="下移">↓</button></div>` : ""}
               <button class="secondary" data-duplicate="${task.id}">复制</button>
               ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary" data-retry="${task.id}">重试</button>` : ""}
-              ${task.status === "running" ? `<button class="danger secondary" data-cancel="${task.id}">安全中止</button>` : ""}
               ${task.status !== "running" ? `<button class="ghost danger" data-remove="${task.id}">移除</button>` : ""}
             </div>
           </article>`).join("")}
@@ -627,6 +655,28 @@ function scheduleDraftSave(): void {
   }, 350);
 }
 
+function formatBytes(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+function elapsedText(startedAt?: string): string {
+  if (!startedAt) return "等待计时";
+  const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `已运行 ${minutes > 0 ? `${minutes}分` : ""}${seconds % 60}秒`;
+}
+
+function performanceCard(
+  label: string,
+  id: string,
+  value: number | null | undefined,
+  suffix: string,
+  detail = ""
+): string {
+  const normalized = value == null ? 0 : Math.max(0, Math.min(100, value));
+  return `<article class="panel performance-card"><span>${label}</span><strong id="${id}">${value == null ? "—" : `${Math.round(value)}${suffix}`}</strong><small id="${id}-detail">${escapeHtml(detail)}</small><div class="metric-bar"><i id="${id}-bar" style="width:${normalized}%"></i></div></article>`;
+}
+
 function patchDraft(patch: Partial<Draft>): void {
   state.draft = { ...state.draft, ...patch };
   draftRevision += 1;
@@ -713,7 +763,7 @@ function bindCreate(): void {
       showMessage(error instanceof Error ? error.message : String(error));
     }
   });
-  for (const id of ["model", "ratio", "resolution", "motion", "seed"]) {
+  for (const id of ["model", "ratio", "resolution", "fps", "motion", "seed"]) {
     document.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
       const value = (event.target as HTMLInputElement | HTMLSelectElement).value;
       if (id === "model") {
@@ -736,6 +786,7 @@ function bindCreate(): void {
       const patch =
         id === "ratio" ? { ratio: value as Draft["ratio"] } :
         id === "resolution" ? { resolution: Number(value) as Draft["resolution"] } :
+        id === "fps" ? { fps: Number(value) as Draft["fps"] } :
         id === "motion" ? { motion: value as Draft["motion"] } :
         { seed: value ? Number(value) : null };
       patchDraft(patch);
@@ -1092,9 +1143,76 @@ window.studio.onStateChanged((nextState) => {
   render();
 });
 
+window.studio.onTaskPreview((preview) => {
+  taskPreviews[preview.taskId] = preview.dataUrl;
+  const running = state.queue.find((task) => task.status === "running");
+  if (page !== "queue" || running?.id !== preview.taskId) return;
+  const image = document.querySelector<HTMLImageElement>("#live-preview-image");
+  const empty = document.querySelector<HTMLElement>("#live-preview-empty");
+  if (image) {
+    image.src = preview.dataUrl;
+    image.style.display = "";
+  }
+  if (empty) empty.style.display = "none";
+});
+
+function setMetric(
+  id: string,
+  value: number | null,
+  detail = ""
+): void {
+  const label = document.querySelector<HTMLElement>(`#${id}`);
+  const detailElement = document.querySelector<HTMLElement>(`#${id}-detail`);
+  const bar = document.querySelector<HTMLElement>(`#${id}-bar`);
+  if (label) label.textContent = value == null ? "—" : `${Math.round(value)}%`;
+  if (detailElement) detailElement.textContent = detail;
+  if (bar) bar.style.width = `${value == null ? 0 : Math.max(0, Math.min(100, value))}%`;
+}
+
+async function refreshPerformanceMetrics(): Promise<void> {
+  if (performancePolling) return;
+  performancePolling = true;
+  try {
+    performanceMetrics = await window.studio.getPerformanceMetrics(state.settings);
+    if (page !== "queue") return;
+    setMetric("metric-cpu", performanceMetrics.cpuPercent);
+    setMetric(
+      "metric-memory",
+      performanceMetrics.memoryUsedBytes / performanceMetrics.memoryTotalBytes * 100,
+      `${formatBytes(performanceMetrics.memoryUsedBytes)} / ${formatBytes(performanceMetrics.memoryTotalBytes)}`
+    );
+    setMetric(
+      "metric-gpu",
+      performanceMetrics.gpuPercent,
+      performanceMetrics.gpuTemperature == null
+        ? ""
+        : `${performanceMetrics.gpuTemperature}°C`
+    );
+    setMetric(
+      "metric-vram",
+      performanceMetrics.vramUsedBytes != null && performanceMetrics.vramTotalBytes
+        ? performanceMetrics.vramUsedBytes / performanceMetrics.vramTotalBytes * 100
+        : null,
+      performanceMetrics.vramUsedBytes != null && performanceMetrics.vramTotalBytes != null
+        ? `${formatBytes(performanceMetrics.vramUsedBytes)} / ${formatBytes(performanceMetrics.vramTotalBytes)}`
+        : ""
+    );
+  } finally {
+    performancePolling = false;
+  }
+}
+
+window.setInterval(() => {
+  void refreshPerformanceMetrics();
+  const running = state?.queue.find((task) => task.status === "running");
+  const elapsed = document.querySelector<HTMLElement>("#running-elapsed");
+  if (elapsed && running) elapsed.textContent = elapsedText(running.startedAt);
+}, 2_000);
+
 void window.studio.getState().then((initialState) => {
   state = initialState;
   render();
+  void refreshPerformanceMetrics();
   void Promise.all([
     window.studio.getBundledWorkflow(state.draft.modelId),
     window.studio.scanEnvironment(state.settings)

@@ -22,6 +22,7 @@ const task: QueueTask = {
   ratio: "16:9",
   resolution: 480,
   duration: 5,
+  fps: 24,
   motion: "natural",
   seed: 42,
   keepSeedOnCopy: false

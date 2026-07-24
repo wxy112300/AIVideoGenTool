@@ -50,7 +50,11 @@ async function uploadImage(baseUrl: string, filePath: string): Promise<string> {
 export async function submitTask(
   task: QueueTask,
   settings: Settings
-): Promise<{ promptId: string; clientId: string }> {
+): Promise<{
+  promptId: string;
+  clientId: string;
+  nodeTypes: Record<string, string>;
+}> {
   if (!task.workflowPath) {
     throw new Error("任务没有配置 ComfyUI API 工作流 JSON");
   }
@@ -78,7 +82,16 @@ export async function submitTask(
     body: JSON.stringify({ prompt, client_id: clientId })
   });
   if (!result.prompt_id) throw new Error("ComfyUI 未返回 Prompt ID");
-  return { promptId: result.prompt_id, clientId };
+  const nodeTypes = Object.fromEntries(
+    Object.entries(prompt as Record<string, unknown>).flatMap(([id, value]) => {
+      const classType =
+        value && typeof value === "object" && !Array.isArray(value)
+          ? (value as Record<string, unknown>).class_type
+          : undefined;
+      return typeof classType === "string" ? [[id, classType]] : [];
+    })
+  );
+  return { promptId: result.prompt_id, clientId, nodeTypes };
 }
 
 interface ComfySocketMessage {
@@ -102,65 +115,105 @@ function socketUrl(httpUrl: string, clientId: string): string {
 
 async function socketMessageText(data: unknown): Promise<string> {
   if (typeof data === "string") return data;
-  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
-  if (data instanceof Blob) return data.text();
   return "";
+}
+
+async function previewDataUrl(data: unknown): Promise<string | null> {
+  const buffer =
+    data instanceof ArrayBuffer
+      ? data
+      : data instanceof Blob
+        ? await data.arrayBuffer()
+        : null;
+  if (!buffer || buffer.byteLength <= 8) return null;
+  const view = new DataView(buffer);
+  if (view.getUint32(0, false) !== 1) return null;
+  const imageType = view.getUint32(4, false);
+  const mime = imageType === 2 ? "image/png" : "image/jpeg";
+  return `data:${mime};base64,${Buffer.from(buffer.slice(8)).toString("base64")}`;
+}
+
+function nodeStage(classType: string | undefined): {
+  progress: number;
+  label: string;
+} {
+  if (!classType) return { progress: 2, label: "准备工作流" };
+  if (classType.includes("Loader")) return { progress: 5, label: "加载模型" };
+  if (classType === "CLIPTextEncode") return { progress: 10, label: "编码提示词" };
+  if (classType === "KSampler") return { progress: 15, label: "扩散采样" };
+  if (classType.includes("VAEDecode")) return { progress: 92, label: "分块 VAE 解码" };
+  if (classType === "CreateVideo") return { progress: 97, label: "生成视频帧" };
+  if (classType === "SaveVideo") return { progress: 99, label: "编码并保存" };
+  return { progress: 12, label: classType };
 }
 
 export async function waitForTask(
   promptId: string,
   clientId: string,
+  nodeTypes: Record<string, string>,
   settings: Settings,
   signal: AbortSignal,
-  onProgress: (value: number) => void
+  onProgress: (value: number, stage: string) => void,
+  onPreview: (dataUrl: string) => void
 ): Promise<unknown> {
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   let socket: WebSocket | undefined;
-  let hasRealProgress = false;
   let executionError = "";
+  let lastActivityAt = Date.now();
   try {
     socket = new WebSocket(socketUrl(baseUrl, clientId));
+    socket.binaryType = "arraybuffer";
     socket.addEventListener("message", async (event) => {
       try {
         const text = await socketMessageText(event.data);
-        if (!text) return;
+        if (!text) {
+          const preview = await previewDataUrl(event.data);
+          if (preview) {
+            lastActivityAt = Date.now();
+            onPreview(preview);
+          }
+          return;
+        }
         const message = JSON.parse(text) as ComfySocketMessage;
         if (message.data?.prompt_id && message.data.prompt_id !== promptId) return;
+        lastActivityAt = Date.now();
+        if (message.type === "executing" && typeof message.data?.node === "string") {
+          const stage = nodeStage(nodeTypes[message.data.node]);
+          onProgress(stage.progress, stage.label);
+        }
         if (
           message.type === "progress" &&
           typeof message.data?.value === "number" &&
           typeof message.data.max === "number" &&
           message.data.max > 0
         ) {
-          hasRealProgress = true;
-          onProgress(Math.min(99, Math.max(0, (message.data.value / message.data.max) * 100)));
+          const step = Math.min(1, Math.max(0, message.data.value / message.data.max));
+          onProgress(15 + step * 75, `扩散采样 ${message.data.value}/${message.data.max}`);
         }
         if (message.type === "execution_error") {
           executionError =
             message.data?.exception_message || "ComfyUI 工作流执行失败";
         }
       } catch {
-        // Binary preview frames and unknown extension messages are ignored.
+        // Unknown extension messages are ignored.
       }
     });
   } catch {
     socket = undefined;
   }
-  let syntheticProgress = 3;
   try {
     while (!signal.aborted) {
       if (executionError) throw new Error(executionError);
+      if (Date.now() - lastActivityAt > 10 * 60_000) {
+        throw new Error("任务已连续 10 分钟没有任何进展，已判定为卡死并尝试中止。");
+      }
       const history = await jsonRequest<Record<string, unknown>>(
         `${baseUrl}/history/${encodeURIComponent(promptId)}`,
         { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
       );
       if (promptId in history) {
-        onProgress(100);
+        onProgress(100, "已完成");
         return history[promptId];
-      }
-      if (!hasRealProgress) {
-        syntheticProgress = Math.min(94, syntheticProgress + 2);
-        onProgress(syntheticProgress);
       }
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(resolve, 2_000);
