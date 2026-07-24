@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "outDir": "dist/electron",
+    "rootDir": ".",
+    "types": ["node", "electron"]
+  },
+  "include": ["electron/**/*", "src/types.ts", "src/core/**/*.ts"]
+}
