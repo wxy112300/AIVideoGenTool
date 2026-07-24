@@ -1019,7 +1019,9 @@ async function startComfyUi(settings: Settings): Promise<string> {
     endpoint.host,
     "--port",
     String(endpoint.port),
-    "--disable-auto-launch"
+    "--disable-auto-launch",
+    "--preview-method",
+    "auto"
   ];
   if (comfyRoot && comfyRoot !== sourceRoot) {
     args.push(
