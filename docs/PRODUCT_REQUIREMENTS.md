@@ -302,7 +302,10 @@
 - 分辨率提升弹窗及队列编辑。
 - 模型和系统设置。
 
-当前交互使用示例数据，尚未连接真实ComfyUI、LM Studio、SQLite、Windows剪贴板或Explorer。正式实现时必须以本地扫描结果和实际运行测试替换示例状态及耗时。
+`prototypes/` 中的交互仍使用示例数据；正式 Electron 应用已经连接真实
+ComfyUI、LM Studio、Windows 文件选择和 Explorer，并使用原子 JSON 持久化。
+SQLite、作品版本组和真实 Upscale 后端仍未完成。当前实现与验证边界以
+`docs/LOCAL_CODEX_HANDOFF.md` 为准。
 
 ## 13. 第一阶段验收标准
 

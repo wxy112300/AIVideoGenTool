@@ -19,12 +19,13 @@
 | 状态持久化 | 原子替换 JSON | 是（基础版） | 数据量增大后迁移 SQLite；视频和图片只保存路径 |
 | 本地提示词扩写 | LM Studio OpenAI 兼容 `/v1/chat/completions` | 是 | 启动本地服务器、加载模型、实测模板 |
 | ComfyUI 连接 | HTTP API + WebSocket，history 轮询兜底 | 是 | 用真实工作流验证 `progress/execution_error` 消息和输出结构 |
-| I2V 模型适配 | API 工作流 JSON + 占位符替换 | 框架已完成 | 为每个模型导出和验证工作流 |
+| I2V 模型适配 | API 工作流 JSON + 占位符替换 | Wan/Hunyuan 六组模型已接入 | 新模型继续按独立资源映射和真实 `/prompt` 校验接入 |
 | 视频编码 | ComfyUI 工作流输出节点 | 依赖工作流 | 确认 VideoHelperSuite/模型节点依赖和编码器 |
 | 安全取消/部分视频 | 调用 `/interrupt` | 仅中止 | 需要工作流按片段/帧落盘，并用 FFmpeg 合成已完成帧 |
 | 历史 | 保存任务快照、解析 outputs、详情和 Explorer 定位 | 基础版 | 实测视频节点输出结构、缩略图和版本组 |
+| Frame Interpolation | RIFE 2×/4× | 是 | 新机复制/下载 `rife47.pth` 并测试多帧画质 |
 | 分辨率提升 | 尚未接真实后端 | 否 | 为 SeedVR2/FlashVSR/Real-ESRGAN 分别做工作流配置 |
-| 模型扫描 | 尚未实现 | 否 | 调用 ComfyUI object info 或扫描模型目录，建立组件清单 |
+| 模型扫描 | 文件、组件、自定义节点和服务扫描 | 是 | 后续增加组件版本锁定和生成前 dry-run |
 | Windows 文件操作 | 图片/工作流/目录选择、Explorer 定位 | 部分 | 增加复制真实文件到剪贴板 |
 | 安装包 | 尚未配置 | 否 | 功能稳定后接 Electron Forge 或 Builder，生成 Windows 安装包 |
 
@@ -130,7 +131,13 @@ npm run dev
 - `{{INPUT_IMAGE}}`
 - `{{END_IMAGE}}`
 - `{{WIDTH}}` / `{{HEIGHT}}`
-- `{{DURATION}}` / `{{FPS}}` / `{{FRAMES}}`
+- `{{DURATION}}`
+- `{{SOURCE_FPS}}`：插帧前名义帧率
+- `{{FPS}}`：成片目标帧率
+- `{{FRAMES}}`：视频模型实际生成帧数
+- `{{OUTPUT_FRAMES}}`：插帧后精确裁剪帧数
+- `{{HIGH_MODEL}}` / `{{LOW_MODEL}}`
+- `{{TEXT_ENCODER}}` / `{{VAE_MODEL}}`
 - `{{OUTPUT_FILENAME}}`
 
 单独占据整个字符串的数值占位符会保持 number 类型；嵌入普通字符串时会转为文字。
