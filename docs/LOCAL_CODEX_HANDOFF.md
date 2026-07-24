@@ -1,6 +1,6 @@
 # Local Video Studio 当前交接基线
 
-更新时间：2026-07-24
+更新时间：2026-07-25
 
 当前分支：`main`
 
@@ -112,9 +112,12 @@
 
 ### 2.6 已接入的视频模型
 
+新增模型进入下表前，必须完成 [2.9 新模型接入的显存门禁](#29-新模型接入的显存门禁)，
+并把实测能力和未验证边界写入“当前验证”列。
+
 | 模型 ID | UI 名称 | 内置工作流 | 当前验证 |
 |---|---|---|---|
-| `wan22_5b` | Wan 2.2 I2V 5B | `workflows/wan22_5b_i2v_api.json` | 4090 上完成过 1–3 秒真实生成 |
+| `wan22_5b` | Wan 2.2 I2V 5B | `workflows/wan22_5b_i2v_api.json` | 4090 上完成 720p、5 秒、121 帧正式基准 |
 | `hunyuan15` | HunyuanVideo 1.5 I2V | `workflows/hunyuan15_i2v_api.json` | API 节点与工作流校验通过；仍需完整生成基准 |
 | `hunyuan15_sr` | HunyuanVideo 1.5 I2V + 1080p SR | `workflows/hunyuan15_sr_i2v_api.json` | 官方 20 步 720p + 8 步 SR 分支；服务端解析与首阶段执行验证通过 |
 | `sulphur2` | Sulphur 2 FP8 | `workflows/sulphur2_ltx23_i2v_api.json` | 37 个节点与本机 ComfyUI 0.18.2 签名校验通过；本机尚缺 Sulphur 权重 |
@@ -190,7 +193,61 @@ Sulphur 2 使用完整 `sulphur_dev_fp8mixed.safetensors`、Gemma 3 文本编码
   扩散模型和 VAE 会在插帧前卸载。后续若仍需要压低常驻显存，可修改上游
   RIFE 节点增加显式移回 CPU/清空模块缓存。
 
-### 2.9 测试状态
+### 2.9 新模型接入的显存门禁
+
+以后接入任何新视频生成或视频增强模型，都必须先完成下面的检查。不要再次用
+统一的“最多几秒”代替模型级显存设计：时长不是主要资源维度，模型实际生成帧数、
+分辨率、latent 尺寸、权重精度、同时驻留的模型阶段和 VAE/后处理峰值才是。
+
+1. **先确认上游基线，不凭印象设限制**
+   - 查官方仓库、模型卡和维护活跃的上游实现，记录推荐分辨率、模型帧数、FPS、
+     默认 steps、最低 VRAM、offload/quantization 参数和原生长视频能力。
+   - 明确哪些结论来自原始 BF16/FP16 模型，哪些来自本项目实际使用的 FP8、GGUF、
+     蒸馏或量化版本；不能把原始 80 GB 要求直接套到 FP8/GGUF 工作流。
+2. **按资源阶段拆工作流**
+   - 列出文本编码器、DiT/UNet、多个 expert、ControlNet、VAE、SR、插帧和编码阶段。
+   - 在产生大权重的阶段结束处卸载该阶段模型。多 expert 模型必须检查专家切换边界，
+     双阶段生成必须检查低分辨率到高分辨率/SR 的边界。
+   - 不要在管线末尾用统一清理掩盖前一阶段的驻留问题；哪个阶段加载模型，哪个阶段
+     负责在最后一个消费者之后释放它。
+3. **建立独立的 model frame profile**
+   - profile 以模型实际帧数和模型要求的 `4n+1`、`8n+1` 等时间约束为核心，同时
+     记录已验证分辨率和工作流版本；输出秒数只作为产品分段边界。
+   - 未实测模型先采用有官方依据的保守帧数，完成基准后再提高。禁止为了“绝不 OOM”
+     随意回退到 1–2 秒，也禁止因为一次 smoke test 成功就直接开放超长单次采样。
+   - RIFE 只减少模型需要生成的帧数，不改变输出目标帧数；长视频还应评估原生续写、
+     context window、重叠分段和拼接，而不是只提高单次模型帧数。
+4. **分别处理权重峰值、activation 峰值和 VAE 峰值**
+   - FP8/GGUF、CPU/block/group offload 主要解决权重驻留；attention backend、分辨率
+     和模型帧数主要影响 sampling activation；tiled VAE 只解决 encode/decode 峰值。
+   - 不得把“已经 tiled VAE”写成 DiT sampling 不会 OOM 的证据，也不得把 GGUF
+     文件大小直接等同于运行时峰值。
+5. **保留 ComfyUI 的有效内存管理能力**
+   - 默认保留 DynamicVRAM、async offload 和 pinned memory。除非有该模型的复现证据，
+     不得全局加入 `--lowvram`、`--disable-async-offload` 或
+     `--disable-pinned-memory`。
+   - 修改启动参数后必须重启应用管理的 ComfyUI，并同时检查实际 Python 命令行和启动
+     日志；只看 TypeScript 配置不算验证。日志至少应确认 allocator、VRAM state、
+     DynamicVRAM、async offload、pinned memory 和 reserve 值。
+6. **用分层实测决定开放边界**
+   - 依次完成 `/object_info` 节点签名、`/prompt` 解析、1 秒/480p smoke test、官方或
+     推荐基线、RIFE/后处理、取消/OOM/stall 恢复和连续模型切换。
+   - 正式基准固定输入、seed、分辨率、模型帧数、steps 和工作流版本，记录采样、VAE、
+     后处理、总耗时、峰值 VRAM、峰值系统 RAM、输出路径及 Prompt ID，并用 `ffprobe`
+     验证分辨率、FPS、时长和精确帧数。
+   - 峰值采集失败就明确标记缺失并重测；空闲显存、结束后显存和单次截图都不能冒充
+     峰值。一次成功只证明该组合可运行，不自动证明更高分辨率或更多帧安全。
+7. **安全机制与能力 profile 分离**
+   - OOM/stall interrupt、`/free`、服务重启和暂停后续队列始终保留，它们是故障恢复，
+     不是降低模型能力的理由。
+   - 每个新 profile 都要增加无 GPU 边界测试；每个阶段卸载都要增加工作流连线断言；
+     实测结论和未验证边界同步写回本文及 `docs/DEPENDENCIES_AND_SETUP.md`。
+
+出现以下信号时应停止继续叠加限制并重新检查架构：同一限制影响所有模型、需要用
+任意秒数或显存阈值猜测安全性、VAE tiling 被用来解释采样峰值、修改源码后运行中的
+ComfyUI 仍带旧参数、或一次修复需要在管线末尾追加多个特殊清理节点。
+
+### 2.10 测试状态
 
 提交前要求：
 
