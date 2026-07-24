@@ -11,9 +11,12 @@ function cleanBaseUrl(url: string): string {
 }
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
+  const timeout = AbortSignal.timeout(15_000);
   const response = await fetch(url, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(15_000)
+    signal: init?.signal
+      ? AbortSignal.any([init.signal, timeout])
+      : timeout
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
@@ -29,9 +32,13 @@ export async function testComfyUi(settings: Settings): Promise<string> {
   return `已连接 · ${Object.keys(stats).length > 0 ? "服务状态正常" : "8188"}`;
 }
 
-async function uploadImage(baseUrl: string, filePath: string): Promise<string> {
+async function uploadImage(
+  baseUrl: string,
+  filePath: string,
+  signal: AbortSignal
+): Promise<string> {
   if (!filePath) return "";
-  const bytes = await fs.readFile(filePath);
+  const bytes = await fs.readFile(filePath, { signal });
   const form = new FormData();
   form.set("image", new Blob([bytes]), path.basename(filePath));
   form.set("type", "input");
@@ -39,7 +46,7 @@ async function uploadImage(baseUrl: string, filePath: string): Promise<string> {
   const response = await fetch(`${baseUrl}/upload/image`, {
     method: "POST",
     body: form,
-    signal: AbortSignal.timeout(60_000)
+    signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)])
   });
   if (!response.ok) throw new Error(`上传参考图失败：HTTP ${response.status}`);
   const result = (await response.json()) as { name?: string; subfolder?: string };
@@ -49,7 +56,8 @@ async function uploadImage(baseUrl: string, filePath: string): Promise<string> {
 
 export async function submitTask(
   task: QueueTask,
-  settings: Settings
+  settings: Settings,
+  signal: AbortSignal
 ): Promise<{
   promptId: string;
   clientId: string;
@@ -60,8 +68,8 @@ export async function submitTask(
   }
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const [sourceText, objectInfo] = await Promise.all([
-    fs.readFile(task.workflowPath, "utf8"),
-    jsonRequest<Record<string, unknown>>(`${baseUrl}/object_info`)
+    fs.readFile(task.workflowPath, { encoding: "utf8", signal }),
+    jsonRequest<Record<string, unknown>>(`${baseUrl}/object_info`, { signal })
   ]);
   const source = JSON.parse(sourceText) as unknown;
   const missingNodes = missingWorkflowNodeTypes(source, objectInfo);
@@ -71,15 +79,16 @@ export async function submitTask(
     );
   }
   const [inputImage, endImage] = await Promise.all([
-    uploadImage(baseUrl, task.startImagePath),
-    uploadImage(baseUrl, task.endImagePath)
+    uploadImage(baseUrl, task.startImagePath, signal),
+    uploadImage(baseUrl, task.endImagePath, signal)
   ]);
   const prompt = renderWorkflow(source, task, { inputImage, endImage });
   const clientId = `local-video-studio-${crypto.randomUUID()}`;
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, client_id: clientId })
+    body: JSON.stringify({ prompt, client_id: clientId }),
+    signal
   });
   if (!result.prompt_id) throw new Error("ComfyUI 未返回 Prompt ID");
   const nodeTypes = Object.fromEntries(

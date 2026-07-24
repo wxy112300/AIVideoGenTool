@@ -57,6 +57,8 @@ let mainWindow: BrowserWindow | null = null;
 let store: JsonStore;
 let queueWorker: Promise<void> | null = null;
 let activeController: AbortController | null = null;
+let allowWindowClose = false;
+let closeFlowRunning = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 protocol.registerSchemesAsPrivileged([
@@ -158,7 +160,114 @@ function sendState(state = store.get()): void {
   mainWindow?.webContents.send("state:changed", state);
 }
 
+async function waitWithTimeout(
+  promise: Promise<unknown> | null,
+  timeoutMs: number
+): Promise<boolean> {
+  if (!promise) return true;
+  return Promise.race([
+    promise.then(() => true, () => true),
+    new Promise<boolean>((resolve) =>
+      setTimeout(() => resolve(false), timeoutMs)
+    )
+  ]);
+}
+
+async function interruptForExit(waitForWorker: boolean): Promise<{
+  interrupted: boolean;
+  workerSettled: boolean;
+}> {
+  const settings = store.get().settings;
+  const next = await store.update((state) => {
+    state.queueRunning = false;
+  });
+  sendState(next);
+  activeController?.abort(new Error("应用退出，任务已中止"));
+  const interruptPromise = interrupt(settings).then(
+    () => true,
+    () => false
+  );
+  const interrupted = waitForWorker
+    ? await interruptPromise
+    : await Promise.race([
+        interruptPromise,
+        new Promise<boolean>((resolve) =>
+          setTimeout(() => resolve(false), 2_500)
+        )
+      ]);
+  const workerSettled = waitForWorker
+    ? await waitWithTimeout(queueWorker, 15_000)
+    : false;
+  return { interrupted, workerSettled };
+}
+
+async function finishWindowClose(): Promise<void> {
+  allowWindowClose = true;
+  mainWindow?.destroy();
+  if (process.platform !== "darwin") app.quit();
+}
+
+async function handleWindowClose(): Promise<void> {
+  if (!mainWindow || closeFlowRunning) return;
+  const runningTask = store
+    .get()
+    .queue.find((task) => task.status === "running");
+  if (!runningTask && !activeController) {
+    await finishWindowClose();
+    return;
+  }
+  closeFlowRunning = true;
+  try {
+    const choice = await dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      title: "任务仍在运行",
+      message: "当前视频还在生成，是否结束任务并退出？",
+      detail:
+        "“结束任务并退出”会中断当前 ComfyUI 计算并等待任务状态保存。“强制退出”仍会尝试中断计算，但不会等待完整清理。ComfyUI 服务本身不会关闭。",
+      buttons: ["取消退出", "结束任务并退出", "强制退出"],
+      defaultId: 1,
+      cancelId: 0,
+      noLink: true
+    });
+    if (choice.response === 0) return;
+    mainWindow.setTitle("正在结束任务并退出…");
+    if (choice.response === 2) {
+      await interruptForExit(false);
+      await finishWindowClose();
+      return;
+    }
+    const result = await interruptForExit(true);
+    if (!result.interrupted || !result.workerSettled) {
+      const fallback = await dialog.showMessageBox(mainWindow, {
+        type: "warning",
+        title: "任务清理尚未完成",
+        message: "没有收到完整的任务中止确认。",
+        detail:
+          "可以继续等待，或强制退出。强制退出前会再次尝试通知 ComfyUI 中断当前计算。",
+        buttons: ["继续等待", "强制退出", "取消退出"],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true
+      });
+      if (fallback.response === 2) return;
+      if (fallback.response === 0) {
+        const retried = await interruptForExit(true);
+        if (!retried.interrupted || !retried.workerSettled) return;
+      } else {
+        await interruptForExit(false);
+      }
+    }
+    await finishWindowClose();
+  } finally {
+    closeFlowRunning = false;
+    if (!allowWindowClose && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitle("Local Video Studio");
+    }
+  }
+}
+
 function createWindow(): void {
+  allowWindowClose = false;
   mainWindow = new BrowserWindow({
     title: "Local Video Studio",
     width: 1280,
@@ -175,6 +284,14 @@ function createWindow(): void {
     }
   });
   mainWindow.setMenuBarVisibility(false);
+  mainWindow.on("close", (event) => {
+    if (allowWindowClose) return;
+    event.preventDefault();
+    void handleWindowClose();
+  });
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 
   const developmentUrl = process.env.VITE_DEV_SERVER_URL;
   if (developmentUrl) {
@@ -298,7 +415,8 @@ async function executeQueue(): Promise<void> {
       });
       const { promptId, clientId, nodeTypes } = await submitTask(
         task,
-        store.get().settings
+        store.get().settings,
+        activeController.signal
       );
       await updateTask(task.id, {
         comfyPromptId: promptId,
