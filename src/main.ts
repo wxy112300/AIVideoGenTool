@@ -87,7 +87,11 @@ function modelName(id: string): string {
     {
       sulphur2: "Sulphur 2 FP8",
       wan22_5b: "Wan 2.2 I2V 5B",
-      hunyuan15: "HunyuanVideo 1.5"
+      hunyuan15: "HunyuanVideo 1.5",
+      wan22_14b_nsfw: "Wan 2.2 I2V 14B + NSFW",
+      wan22_remix: "Wan 2.2 Remix v3",
+      wan22_smoothmix: "Wan 2.2 SmoothMix I2V",
+      wan22_dasiwa: "DaSiWa SynthSeduction v9"
     }[id] ?? id
   );
 }

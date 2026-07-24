@@ -298,6 +298,56 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     targetSubdirectory: "unet",
     recommendedFilename: "wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf"
   },
+  "wan22_smoothmix:SmoothMix High": {
+    sourceLabel: "Bedovyy / smoothMixWan22-I2V-GGUF",
+    downloadUrl: "https://huggingface.co/Bedovyy/smoothMixWan22-I2V-GGUF/tree/main/HighNoise",
+    targetSubdirectory: "unet",
+    recommendedFilename: "smoothMixWan22I2VT2V_i2vHigh-Q5_K_M.gguf"
+  },
+  "wan22_smoothmix:SmoothMix Low": {
+    sourceLabel: "Bedovyy / smoothMixWan22-I2V-GGUF",
+    downloadUrl: "https://huggingface.co/Bedovyy/smoothMixWan22-I2V-GGUF/tree/main/LowNoise",
+    targetSubdirectory: "unet",
+    recommendedFilename: "smoothMixWan22I2VT2V_i2vLow-Q5_K_M.gguf"
+  },
+  "wan22_smoothmix:UMT5 文本编码器": {
+    sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/text_encoders",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+  },
+  "wan22_smoothmix:Wan VAE": {
+    sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae",
+    targetSubdirectory: "vae",
+    recommendedFilename: "wan2.2_vae.safetensors"
+  },
+  "wan22_dasiwa:DaSiWa v9 High": {
+    sourceLabel: "darksidewalker / DaSiWa-WAN2.2-I2V",
+    downloadUrl: "https://huggingface.co/darksidewalker/DaSiWa-WAN2.2-I2V/tree/main/Distilled/GGUF/v09",
+    targetSubdirectory: "unet",
+    recommendedFilename: "DasiwaWAN22I2V14BSynthseduction_q4High.gguf",
+    notes: "该仓库可能要求登录 Hugging Face 并同意访问条款。"
+  },
+  "wan22_dasiwa:DaSiWa v9 Low": {
+    sourceLabel: "darksidewalker / DaSiWa-WAN2.2-I2V",
+    downloadUrl: "https://huggingface.co/darksidewalker/DaSiWa-WAN2.2-I2V/tree/main/Distilled/GGUF/v09",
+    targetSubdirectory: "unet",
+    recommendedFilename: "DasiwaWAN22I2V14BSynthseduction_q4Low.gguf",
+    notes: "High 与 Low 必须使用同一 v9、同一量化等级。"
+  },
+  "wan22_dasiwa:UMT5 文本编码器": {
+    sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/text_encoders",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+  },
+  "wan22_dasiwa:Wan VAE": {
+    sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae",
+    targetSubdirectory: "vae",
+    recommendedFilename: "wan2.2_vae.safetensors"
+  },
   "seedvr2:SeedVR2 主模型": {
     sourceLabel: "Comfy-Org / SeedVR2",
     downloadUrl: "https://huggingface.co/Comfy-Org/SeedVR2/tree/main/split_files/diffusion_models",
@@ -448,6 +498,66 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
         label: "Remix v3 Low",
         expected: "wan22Remix*Low*V30*",
         patterns: [/wan22remix.*low.*v?3(?:\.0|0)?.*\.(safetensors|gguf)$/i]
+      }
+    ]
+  },
+  {
+    id: "wan22_smoothmix",
+    name: "Wan 2.2 SmoothMix I2V",
+    category: "video",
+    badge: "写实合并模型",
+    description: "SmoothMix High/Low 两阶段模型，偏写实人物与自然运动。",
+    vram: "推荐 Q5_K_M · 约 20–23 GB",
+    components: [
+      {
+        label: "SmoothMix High",
+        expected: "smoothMixWan22*High*Q5_K_M",
+        patterns: [/smoothmixwan22.*high.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "SmoothMix Low",
+        expected: "smoothMixWan22*Low*Q5_K_M",
+        patterns: [/smoothmixwan22.*low.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "UMT5 文本编码器",
+        expected: "text_encoders/*umt5*",
+        patterns: [/text_encoders\/.*umt5.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "Wan VAE",
+        expected: "vae/wan*vae*",
+        patterns: [/vae\/.*wan.*vae.*\.(safetensors|pt|ckpt)$/i]
+      }
+    ]
+  },
+  {
+    id: "wan22_dasiwa",
+    name: "DaSiWa SynthSeduction v9",
+    category: "video",
+    badge: "专用合并模型",
+    description: "DaSiWa v9 High/Low 成对工作；4090 使用 Q4 版本更保守。",
+    vram: "Q4 · 约 19–22 GB",
+    components: [
+      {
+        label: "DaSiWa v9 High",
+        expected: "Dasiwa*Synthseduction*q4High",
+        patterns: [/dasiwa.*synthseduction.*high.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "DaSiWa v9 Low",
+        expected: "Dasiwa*Synthseduction*q4Low",
+        patterns: [/dasiwa.*synthseduction.*low.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "UMT5 文本编码器",
+        expected: "text_encoders/*umt5*",
+        patterns: [/text_encoders\/.*umt5.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "Wan VAE",
+        expected: "vae/wan*vae*",
+        patterns: [/vae\/.*wan.*vae.*\.(safetensors|pt|ckpt)$/i]
       }
     ]
   },

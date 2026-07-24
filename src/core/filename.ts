@@ -3,7 +3,11 @@ const modelCodes: Record<string, string> = {
   wan22_5b: "WAN22-5B",
   hunyuan15: "HUN15",
   wan22_14b: "WAN22-14B",
-  remix3: "REMIX3"
+  wan22_14b_nsfw: "WAN22-14B-NSFW",
+  remix3: "REMIX3",
+  wan22_remix: "REMIX3",
+  wan22_smoothmix: "SMOOTHMIX",
+  wan22_dasiwa: "DASIWA9"
 };
 
 export function compactPrompt(text: string): string {

@@ -80,6 +80,20 @@ describe("ComfyUI environment candidates", () => {
     expect(incorrectQwen.find((profile) => profile.id === "hunyuan15")?.available).toBe(false);
   });
 
+  it("detects the downloaded SmoothMix and DaSiWa High/Low model pairs", () => {
+    const profiles = evaluateModelProfiles([
+      "unet\\smoothMixWan22I2VT2V_i2vHigh-Q5_K_M.gguf",
+      "unet\\smoothMixWan22I2VT2V_i2vLow-Q5_K_M.gguf",
+      "unet\\DasiwaWAN22I2V14BSynthseduction_q4High.gguf",
+      "unet\\DasiwaWAN22I2V14BSynthseduction_q4Low.gguf",
+      "text_encoders\\umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "vae\\wan2.2_vae.safetensors"
+    ]);
+
+    expect(profiles.find((profile) => profile.id === "wan22_smoothmix")?.available).toBe(true);
+    expect(profiles.find((profile) => profile.id === "wan22_dasiwa")?.available).toBe(true);
+  });
+
   it("provides a complete install guide for every component that can be missing", () => {
     const profiles = evaluateModelProfiles([]);
     const components = profiles.flatMap((profile) => profile.components);
