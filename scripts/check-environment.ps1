@@ -1,9 +1,15 @@
 [CmdletBinding()]
 param(
-  [string]$ComfyRoot = "C:\Users\Alice\Documents\ComfyUI",
+  [string]$ComfyRoot = "",
   [string]$ComfyUrl = "http://127.0.0.1:8188",
   [string]$LmStudioUrl = "http://127.0.0.1:1234/v1"
 )
+
+$ComfyRoot = if ($ComfyRoot) {
+  $ComfyRoot
+} else {
+  Join-Path ([Environment]::GetFolderPath("MyDocuments")) "ComfyUI"
+}
 
 $checks = [System.Collections.Generic.List[object]]::new()
 
@@ -32,6 +38,12 @@ function Get-CommandVersion {
   }
 }
 
+function Get-ValueOrFallback {
+  param($Value, [string]$Fallback)
+  if ($null -ne $Value -and "$Value".Length -gt 0) { return $Value }
+  return $Fallback
+}
+
 $nodeVersion = Get-CommandVersion "node"
 $npmVersion = Get-CommandVersion "npm"
 $gitVersion = Get-CommandVersion "git"
@@ -39,11 +51,11 @@ $ffmpegVersion = Get-CommandVersion "ffmpeg" @("-version")
 $gpuInfo = Get-CommandVersion "nvidia-smi" @("--query-gpu=name,driver_version,memory.total", "--format=csv,noheader")
 
 $nodeMajor = if ($nodeVersion -match "v(\d+)") { [int]$Matches[1] } else { 0 }
-Add-Check "Node.js 22+" ($nodeMajor -ge 22) ($nodeVersion ?? "not found") $true
-Add-Check "npm" ([bool]$npmVersion) ($npmVersion ?? "not found") $true
-Add-Check "Git" ([bool]$gitVersion) ($gitVersion ?? "not found")
-Add-Check "FFmpeg" ([bool]$ffmpegVersion) ($ffmpegVersion ?? "not found; needed for partial-video and post-processing")
-Add-Check "NVIDIA GPU" ([bool]$gpuInfo) ($gpuInfo ?? "nvidia-smi not found; GPU execution is handled by ComfyUI")
+Add-Check "Node.js 22+" ($nodeMajor -ge 22) (Get-ValueOrFallback $nodeVersion "not found") $true
+Add-Check "npm" ([bool]$npmVersion) (Get-ValueOrFallback $npmVersion "not found") $true
+Add-Check "Git" ([bool]$gitVersion) (Get-ValueOrFallback $gitVersion "not found")
+Add-Check "FFmpeg" ([bool]$ffmpegVersion) (Get-ValueOrFallback $ffmpegVersion "not found; needed for partial-video and post-processing")
+Add-Check "NVIDIA GPU" ([bool]$gpuInfo) (Get-ValueOrFallback $gpuInfo "nvidia-smi not found; GPU execution is handled by ComfyUI")
 
 $portablePython = Join-Path (Split-Path $ComfyRoot -Parent) "python_embeded\python.exe"
 $desktopPython = Join-Path $ComfyRoot ".venv\Scripts\python.exe"
@@ -53,7 +65,7 @@ $pythonPath =
   elseif (Test-Path $desktopPython) { $desktopPython }
   elseif ($pythonCommand) { $pythonCommand.Source }
   else { $null }
-Add-Check "ComfyUI Python" ([bool]$pythonPath) ($pythonPath ?? "not found; Portable/Desktop may manage Python elsewhere")
+Add-Check "ComfyUI Python" ([bool]$pythonPath) (Get-ValueOrFallback $pythonPath "not found; Portable/Desktop may manage Python elsewhere")
 
 $modelPath = Join-Path $ComfyRoot "models"
 Add-Check "ComfyUI models" (Test-Path $modelPath) $modelPath
@@ -72,7 +84,7 @@ $lmStudioCandidates = @(
   (Join-Path $env:LOCALAPPDATA "LM-Studio\LM Studio.exe")
 )
 $lmStudioExe = $lmStudioCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-Add-Check "LM Studio app" ([bool]$lmStudioExe) ($lmStudioExe ?? "standard install path not found")
+Add-Check "LM Studio app" ([bool]$lmStudioExe) (Get-ValueOrFallback $lmStudioExe "standard install path not found")
 
 try {
   $stats = Invoke-RestMethod -Uri "$($ComfyUrl.TrimEnd('/'))/system_stats" -TimeoutSec 4

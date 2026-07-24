@@ -3,6 +3,7 @@ import type {
   AppApi,
   Draft,
   EnhanceRequest,
+  EnvironmentIssue,
   Settings
 } from "../src/types.js";
 
@@ -15,10 +16,21 @@ const api: AppApi = {
   pickDirectory: () => ipcRenderer.invoke("file:pick-directory"),
   readImage: (path: string) => ipcRenderer.invoke("file:read-image", path),
   showItemInFolder: (path: string) => ipcRenderer.invoke("file:show-in-folder", path),
+  openExternal: (url: string) => ipcRenderer.invoke("shell:open-external", url),
   enhancePrompt: (request: EnhanceRequest) =>
     ipcRenderer.invoke("prompt:enhance", request),
   testConnection: (kind, settings) =>
     ipcRenderer.invoke("connection:test", kind, settings),
+  scanEnvironment: (settings: Settings) =>
+    ipcRenderer.invoke("environment:scan", settings),
+  startLocalService: (kind, settings) =>
+    ipcRenderer.invoke("service:start", kind, settings),
+  restartLocalService: (kind, settings) =>
+    ipcRenderer.invoke("service:restart", kind, settings),
+  repairEnvironmentIssue: (issueId: EnvironmentIssue["id"], settings) =>
+    ipcRenderer.invoke("environment:repair", issueId, settings),
+  installCustomNode: (nodeId, settings) =>
+    ipcRenderer.invoke("custom-node:install", nodeId, settings),
   enqueue: (draft: Draft) => ipcRenderer.invoke("queue:enqueue", draft),
   removeTask: (taskId: string) => ipcRenderer.invoke("queue:remove", taskId),
   startQueue: () => ipcRenderer.invoke("queue:start"),

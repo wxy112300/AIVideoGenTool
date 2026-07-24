@@ -6,8 +6,32 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectDirectory = path.dirname(scriptDirectory);
 const prototypeDirectory = path.join(projectDirectory, 'prototypes');
 const outputDirectory = path.join(prototypeDirectory, 'preview');
-const baseStylesheetPath =
-  'C:\\Users\\Alice\\.codex\\plugins\\cache\\openai-bundled\\visualize\\1.0.14\\skills\\visualize\\assets\\visualize.css';
+const userHome = process.env.USERPROFILE ?? process.env.HOME ?? '';
+const visualizeRoot = path.join(
+  userHome,
+  '.codex',
+  'plugins',
+  'cache',
+  'openai-bundled',
+  'visualize'
+);
+const visualizeVersion = fs
+  .readdirSync(visualizeRoot, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
+  .at(-1);
+if (!visualizeVersion) {
+  throw new Error(`No Visualize plugin version found under ${visualizeRoot}`);
+}
+const baseStylesheetPath = path.join(
+  visualizeRoot,
+  visualizeVersion,
+  'skills',
+  'visualize',
+  'assets',
+  'visualize.css'
+);
 
 const pages = [
   ['create.html', '创建'],

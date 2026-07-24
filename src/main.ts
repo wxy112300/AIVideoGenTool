@@ -2,6 +2,10 @@ import "./style.css";
 import type {
   AppState,
   Draft,
+  EnvironmentScanResult,
+  LocalServiceKind,
+  ModelComponentStatus,
+  ModelScanProfile,
   PromptVersion,
   Settings
 } from "./types";
@@ -15,6 +19,21 @@ let page: Page = "create";
 let draftSaveTimer: number | undefined;
 let flashMessage = "";
 let selectedHistoryAssetId = "";
+let environmentScan: EnvironmentScanResult | null = null;
+let environmentScanning = false;
+let serviceStarting: LocalServiceKind | null = null;
+let serviceRestarting: LocalServiceKind | null = null;
+let serviceStatusMessage = "";
+let environmentRepairing = "";
+let environmentRepairLogs: Record<string, string> = {};
+let customNodeInstalling = "";
+let customNodeLogs: Record<string, string> = {};
+let settingsDraft: Settings | null = null;
+let settingsTab: "system" | "video" | "nodes" | "prompt" | "upscale" = "system";
+let selectedInstallGuide: {
+  profileName: string;
+  component: ModelComponentStatus;
+} | null = null;
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "")
@@ -85,7 +104,8 @@ function createPage(): string {
       <div><h1>创建视频</h1><p>导入参考画面，调整提示词，然后加入本地生成队列。</p></div>
       <span class="save-state">自动保存</span>
     </section>
-    <section class="panel media-panel">
+    <div class="create-workspace">
+      <section class="panel media-panel">
       <div class="section-heading">
         <div><h2>参考画面</h2><span class="muted">支持单张首帧和可选尾帧</span></div>
         <button class="secondary" id="toggle-end">${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>
@@ -100,8 +120,8 @@ function createPage(): string {
           ? `<button class="drop-zone has-image" id="pick-end"><img id="end-preview" alt="尾帧预览"><span class="image-label">更换尾帧</span></button>`
           : ""}
       </div>
-    </section>
-    <section class="panel composer">
+      </section>
+      <section class="panel composer">
       <div class="section-heading">
         <div>
           <h2>提示词</h2>
@@ -159,7 +179,8 @@ function createPage(): string {
         <button class="ghost danger" id="clear-draft">清空</button>
         <button class="primary" id="enqueue">加入队列</button>
       </div>
-    </section>`;
+      </section>
+    </div>`;
 }
 
 function queuePage(): string {
@@ -239,32 +260,293 @@ function historyDetailPage(): string {
     </section>`;
 }
 
-function settingsPage(): string {
-  const settings = state.settings;
+function modelScanCard(profile: ModelScanProfile): string {
+  const missingCount = profile.components.filter((component) => !component.found).length;
   return `
-    <section class="page-heading"><div><h1>设置</h1><p>连接本地服务并配置默认目录。</p></div><button class="primary" id="save-settings">保存设置</button></section>
-    <section class="panel settings-page">
-      <h2>服务连接</h2>
-      <div class="settings-grid two">
-        <label>ComfyUI 地址
-          <div class="input-action"><input id="comfy-url" value="${escapeHtml(settings.comfyUrl)}"><button class="secondary" data-test="comfy">测试</button></div>
-        </label>
-        <label>LM Studio OpenAI API 地址
-          <div class="input-action"><input id="lm-url" value="${escapeHtml(settings.lmStudioUrl)}"><button class="secondary" data-test="lmstudio">测试</button></div>
-        </label>
-        <label>LM Studio 模型 ID<input id="lm-model" value="${escapeHtml(settings.lmStudioModel)}" placeholder="留空使用 local-model"></label>
-        <label>ComfyUI 模型目录<input id="model-directory" value="${escapeHtml(settings.modelDirectory)}"></label>
-        <label>ComfyUI 输出目录<div class="input-action"><input id="output-directory" value="${escapeHtml(settings.outputDirectory)}" placeholder="例如 C:\\ComfyUI\\output"><button class="secondary" id="pick-output-directory">选择</button></div></label>
+    <article class="panel model-profile ${profile.available ? "available" : "missing"}">
+      <div class="model-profile-head">
+        <div>
+          <div class="model-title"><h3>${escapeHtml(profile.name)}</h3><span class="model-badge">${escapeHtml(profile.badge)}</span></div>
+          <p class="muted">${escapeHtml(profile.description)}</p>
+        </div>
+        <span class="model-availability ${profile.available ? "available" : "missing"}">${profile.available ? "✓ 可用" : `缺少 ${missingCount} 项`}</span>
       </div>
-      <h2>提示词扩写</h2>
-      <label>系统模板<textarea id="prompt-template" rows="5">${escapeHtml(settings.promptSystemTemplate)}</textarea></label>
-      <div id="connection-result" class="connection-result muted">尚未测试连接</div>
-    </section>
-    <section class="panel token-help">
-      <h2>工作流占位符</h2>
-      <p>在 ComfyUI 导出的 API JSON 中可使用以下占位符，提交任务时会递归替换：</p>
-      <div class="token-list">${["PROMPT", "NEGATIVE_PROMPT", "SEED", "INPUT_IMAGE", "END_IMAGE", "WIDTH", "HEIGHT", "DURATION", "FPS", "FRAMES", "OUTPUT_FILENAME"].map((token) => `<code>{{${token}}}</code>`).join("")}</div>
+      <div class="model-meta-line"><span>${escapeHtml(profile.vram)}</span><span>${profile.available ? "组件完整，可用于配置" : "补齐所有必需组件后才能启用"}</span></div>
+      <div class="component-list">
+        ${profile.components.map((component, componentIndex) => `
+          <div class="component-row ${component.found ? "found" : "missing"}">
+            <span class="component-state">${component.found ? "✓" : "!"}</span>
+            <div><strong>${escapeHtml(component.label)}</strong>
+              ${component.found
+                ? `<code title="${escapeHtml(component.matches.join("\n"))}">${escapeHtml(component.matches.join(" · "))}</code>`
+                : `<span>缺失：${escapeHtml(component.expected)}</span>`}
+            </div>
+            ${component.found ? "" : `<button class="component-info" data-install-profile="${escapeHtml(profile.id)}" data-install-component="${componentIndex}" aria-label="查看 ${escapeHtml(component.label)} 的下载和安装说明" title="查看下载和安装说明">i</button>`}
+          </div>`).join("")}
+      </div>
+    </article>`;
+}
+
+function installGuideDialog(): string {
+  if (!selectedInstallGuide) return "";
+  const { profileName, component } = selectedInstallGuide;
+  const guide = component.installGuide;
+  if (!guide) {
+    return `
+      <div class="dialog-backdrop" id="install-guide-backdrop">
+        <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title">
+          <div class="install-guide-head">
+            <div><span class="eyebrow">${escapeHtml(profileName)}</span><h2 id="install-guide-title">${escapeHtml(component.label)}</h2></div>
+            <button class="dialog-close" id="close-install-guide" aria-label="关闭">×</button>
+          </div>
+          <div class="install-note"><strong>扫描数据需要刷新</strong><p>当前结果来自更新前的主进程。请关闭并重新启动应用，然后重新扫描环境。</p></div>
+          <div class="dialog-actions"><button class="primary" id="dismiss-install-guide">知道了</button></div>
+        </section>
+      </div>`;
+  }
+  const configuredModelDirectory =
+    environmentScan?.modelDirectory ||
+    settingsDraft?.modelDirectory ||
+    state.settings.modelDirectory ||
+    "ComfyUI\\models";
+  const targetDirectory = `${configuredModelDirectory.replace(/[\\/]+$/, "")}\\${guide.targetSubdirectory}`;
+  return `
+    <div class="dialog-backdrop" id="install-guide-backdrop">
+      <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title">
+        <div class="install-guide-head">
+          <div><span class="eyebrow">${escapeHtml(profileName)}</span><h2 id="install-guide-title">${escapeHtml(component.label)}</h2></div>
+          <button class="dialog-close" id="close-install-guide" aria-label="关闭">×</button>
+        </div>
+        <p class="muted">下载完成后，将文件放入下面的目录，再回到设置页重新扫描。</p>
+        <div class="install-guide-fields">
+          <div><span>下载来源</span><strong>${escapeHtml(guide.sourceLabel)}</strong></div>
+          <div><span>推荐文件</span><code>${escapeHtml(guide.recommendedFilename)}</code></div>
+          <div class="install-target"><span>应放目录</span><code>${escapeHtml(targetDirectory)}</code></div>
+        </div>
+        ${guide.notes ? `<div class="install-note"><strong>注意</strong><p>${escapeHtml(guide.notes)}</p></div>` : ""}
+        <div class="dialog-actions">
+          <button class="secondary" id="dismiss-install-guide">关闭</button>
+          <button class="primary" id="open-install-download">打开下载页面 ↗</button>
+        </div>
+      </section>
+    </div>`;
+}
+
+function environmentOverview(): string {
+  if (!environmentScan) {
+    return `<div class="environment-empty">${environmentScanning ? `<span class="scan-spinner"></span><div><strong>正在扫描本机环境与模型目录…</strong><p>检查命令、GPU、本地服务及所有模型组件。</p></div>` : `<div><strong>尚未扫描</strong><p>点击右上角“重新扫描”检查当前电脑。</p></div>`}</div>`;
+  }
+  return `
+    <div class="environment-summary">
+      <div><span class="muted">当前用户目录</span><code title="${escapeHtml(environmentScan.userHome)}">${escapeHtml(environmentScan.userHome)}</code></div>
+      <span class="scan-time">扫描于 ${new Date(environmentScan.scannedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
+    </div>
+    <div class="environment-grid">
+      ${environmentScan.items.map((item) => `
+        <article class="environment-item ${item.ok ? "available" : "missing"}">
+          <span class="environment-state">${item.ok ? "✓" : "!"}</span>
+          <div>
+            <div class="environment-item-heading">
+              <div class="environment-name"><strong>${escapeHtml(item.label)}</strong>${item.optional ? `<span class="optional-tag">可选</span>` : ""}</div>
+              ${item.id === "comfyui-api"
+                ? item.ok
+                  ? `<button class="service-start secondary" data-restart-service="comfy" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${serviceRestarting === "comfy" ? "重启中…最多等待 2 分钟" : "重启服务"}</button>`
+                  : `<button class="service-start" data-start-service="comfy" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${serviceStarting === "comfy" ? "启动中…最多等待 2 分钟" : "一键启动"}</button>`
+                : !item.ok && item.id === "lmstudio-api"
+                  ? `<button class="service-start" data-start-service="lmstudio" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${serviceStarting === "lmstudio" ? "启动中…" : "一键启动"}</button>`
+                  : ""}
+            </div>
+            <p>${escapeHtml(item.detail)}</p>
+            ${item.path ? `<code title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</code>` : ""}
+          </div>
+        </article>`).join("")}
+    </div>
+    ${serviceStatusMessage ? `<div class="service-status ${serviceStarting || serviceRestarting ? "working" : ""}">${escapeHtml(serviceStatusMessage)}</div>` : ""}
+    ${environmentScan.comfyRoot || environmentScan.comfyInstallDirectory ? `
+      <div class="detected-path">
+        <div><span class="eyebrow">检测到 ComfyUI ${
+          environmentScan.comfyInstallType === "desktop" ? "桌面版" :
+          environmentScan.comfyInstallType === "portable" ? "便携版" :
+          environmentScan.comfyInstallType === "manual" ? "手动安装" : "数据目录"
+        }</span>
+        <strong>${escapeHtml(environmentScan.comfyInstallDirectory || environmentScan.comfyRoot)}</strong>
+        <p class="muted">核心源码：${escapeHtml(environmentScan.comfySourceDirectory || "未找到")}<br>数据目录：${escapeHtml(environmentScan.comfyRoot || "等待初始化")}<br>服务：${escapeHtml(environmentScan.comfyUrl)}<br>模型：${escapeHtml(environmentScan.modelDirectory || "等待初始化")}<br>输出：${escapeHtml(environmentScan.outputDirectory || "等待初始化")}</p></div>
+        <button class="secondary" id="use-scanned-comfy">采用这些路径</button>
+      </div>` : ""}`;
+}
+
+function environmentIssuesPanel(): string {
+  const issues = environmentScan?.issues ?? [];
+  if (!issues.length) return "";
+  return `
+    <section class="panel settings-section environment-issues">
+      <div class="section-heading"><div><h2>检测到的问题</h2><span class="muted">修复操作只针对已识别的问题，并保留执行日志或备份。</span></div><span class="model-badge">${issues.length} 项</span></div>
+      <div class="issue-list">
+        ${issues.map((issue) => `
+          <article class="issue-card ${issue.severity}">
+            <div>
+              <strong>${escapeHtml(issue.label)}</strong>
+              <p class="muted">${escapeHtml(issue.detail)}</p>
+              ${environmentRepairLogs[issue.id] ? `<details class="node-log" open><summary>修复日志</summary><pre>${escapeHtml(environmentRepairLogs[issue.id])}</pre></details>` : ""}
+            </div>
+            ${issue.repairable ? `<button class="primary" data-repair-issue="${escapeHtml(issue.id)}" ${environmentRepairing ? "disabled" : ""}>${environmentRepairing === issue.id ? "修复中…" : escapeHtml(issue.repairLabel)}</button>` : ""}
+          </article>`).join("")}
+      </div>
     </section>`;
+}
+
+function settingsPage(): string {
+  const settings = settingsDraft ?? state.settings;
+  const profiles = environmentScan?.modelProfiles ?? [];
+  const videoProfiles = profiles.filter((profile) => profile.category === "video");
+  const upscaleProfiles = profiles.filter((profile) => profile.category === "upscale");
+  const videoAvailable = videoProfiles.filter((profile) => profile.available).length;
+  const upscaleAvailable = upscaleProfiles.filter((profile) => profile.available).length;
+  const gpu = environmentScan?.items.find((item) => item.id === "nvidia");
+
+  const systemPanel = `
+    <section class="settings-panel">
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>本机环境</h2><span class="muted">必需组件、可选工具和本地服务状态</span></div></div>
+        ${environmentOverview()}
+      </section>
+      ${environmentIssuesPanel()}
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>ComfyUI 连接</h2><span class="muted">连接运行中的 ComfyUI API</span></div><button class="secondary" data-test="comfy">测试连接</button></div>
+        <label>服务地址<input id="comfy-url" value="${escapeHtml(settings.comfyUrl)}"></label>
+        <div id="connection-result" class="connection-result muted">尚未单独测试连接</div>
+      </section>
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>文件路径</h2><span class="muted">扫描结果可以一键写入，也可以手动定位</span></div></div>
+        <div class="settings-grid two">
+          <label>ComfyUI 模型目录<div class="input-action"><input id="model-directory" value="${escapeHtml(settings.modelDirectory)}" placeholder="扫描或选择 models 目录"><button class="secondary" id="pick-model-directory">选择</button></div></label>
+          <label>视频输出目录<div class="input-action"><input id="output-directory" value="${escapeHtml(settings.outputDirectory)}" placeholder="扫描或选择 output 目录"><button class="secondary" id="pick-output-directory">选择</button></div></label>
+        </div>
+      </section>
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>下载代理</h2><span class="muted">用于自动下载缺失的节点、Python 依赖和工作流；不会影响 ComfyUI 本地连接。</span></div><span class="model-badge">${settings.proxyEnabled ? "已开启" : "已关闭"}</span></div>
+        <div class="settings-grid two">
+          <label class="switch-field"><input id="proxy-enabled" type="checkbox" ${settings.proxyEnabled ? "checked" : ""}><span>启用下载代理</span></label>
+          <label>代理地址<input id="proxy-url" value="${escapeHtml(settings.proxyUrl)}" placeholder="http://127.0.0.1:7890"></label>
+        </div>
+        <p class="muted proxy-hint">默认关闭。开启后 Git 和 pip 下载使用此地址；可填写 <code>127.0.0.1:7890</code> 或完整代理 URL。</p>
+      </section>
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>RTX 4090 运行策略</h2><span class="muted">${gpu?.ok ? escapeHtml(gpu.detail) : "未检测到 NVIDIA GPU"}</span></div><span class="model-badge">推荐预设</span></div>
+        <div class="settings-grid two">
+          <label>显存安全余量<select id="vram-reserve"><option value="1" ${settings.vramReserveGb === 1 ? "selected" : ""}>1 GB · 更快</option><option value="2" ${settings.vramReserveGb === 2 ? "selected" : ""}>2 GB · 推荐</option><option value="4" ${settings.vramReserveGb === 4 ? "selected" : ""}>4 GB · 保守</option></select></label>
+          <label>同时运行任务<select disabled><option>1 · 推荐</option><option>2 · 可能爆显存</option></select></label>
+          <label class="switch-field"><input id="auto-offload" type="checkbox" ${settings.autoOffload ? "checked" : ""}><span>自动 CPU 卸载与分块</span></label>
+          <label class="switch-field"><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span>取消时保留可播放片段</span></label>
+          <label class="switch-field"><input id="optimize-queue-setting" type="checkbox" ${settings.optimizeQueue ? "checked" : ""}><span>允许一键优化模型顺序</span></label>
+          <label class="switch-field"><input type="checkbox" checked disabled><span>持久保存队列和历史</span></label>
+        </div>
+      </section>
+    </section>`;
+
+  const videoPanel = `
+    <section class="settings-panel">
+      <section class="panel settings-section">
+        <div class="section-heading">
+          <div><h2>视频模型</h2><span class="muted">根据真实文件组件判断是否可用，不仅检查单个 checkpoint 名称。</span></div>
+          <label class="compact-label">默认模型<select id="default-video-model">
+            ${(videoProfiles.length ? videoProfiles : [
+              { id: "sulphur2", name: "Sulphur 2 FP8", available: false },
+              { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: false },
+              { id: "hunyuan15", name: "HunyuanVideo 1.5 I2V", available: false }
+            ]).map((profile) => `<option value="${profile.id}" ${settings.defaultVideoModel === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}
+          </select></label>
+        </div>
+        <div class="scan-result">${environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${videoAvailable} 个可运行模型，${videoProfiles.length - videoAvailable} 个待补齐` : "等待首次扫描"}</div>
+      </section>
+      <div class="model-profile-list">${videoProfiles.length ? videoProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无模型扫描结果</div>`}</div>
+    </section>`;
+
+  const promptPanel = `
+    <section class="settings-panel">
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>LM Studio</h2><span class="muted">本地提示词扩写服务</span></div><button class="secondary" data-test="lmstudio">测试并读取模型</button></div>
+        <div class="settings-grid two">
+          <label>OpenAI API 地址<input id="lm-url" value="${escapeHtml(settings.lmStudioUrl)}"></label>
+          <label>模型 ID<input id="lm-model" value="${escapeHtml(settings.lmStudioModel)}" placeholder="留空使用当前加载模型"></label>
+          <label>扩写语言<select id="prompt-language"><option value="auto" ${settings.promptLanguage === "auto" ? "selected" : ""}>跟随输入语言</option><option value="zh" ${settings.promptLanguage === "zh" ? "selected" : ""}>中文</option><option value="en" ${settings.promptLanguage === "en" ? "selected" : ""}>英文</option></select></label>
+          <label>创造性<select id="prompt-creativity"><option value="0.3" ${settings.promptCreativity === 0.3 ? "selected" : ""}>克制 · 0.3</option><option value="0.7" ${settings.promptCreativity === 0.7 ? "selected" : ""}>平衡 · 0.7</option><option value="1" ${settings.promptCreativity === 1 ? "selected" : ""}>丰富 · 1.0</option></select></label>
+        </div>
+        <div id="connection-result" class="connection-result muted">尚未单独测试连接</div>
+      </section>
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>提示词模板</h2><span class="muted">创建页的“本地扩写”使用</span></div></div>
+        <label>系统模板<textarea id="prompt-template" rows="7">${escapeHtml(settings.promptSystemTemplate)}</textarea></label>
+      </section>
+      <section class="panel settings-section">
+        <h2>工作流占位符</h2><p class="muted">ComfyUI API JSON 提交前会递归替换：</p>
+        <div class="token-list">${["PROMPT", "NEGATIVE_PROMPT", "SEED", "INPUT_IMAGE", "END_IMAGE", "WIDTH", "HEIGHT", "DURATION", "FPS", "FRAMES", "OUTPUT_FILENAME"].map((token) => `<code>{{${token}}}</code>`).join("")}</div>
+      </section>
+    </section>`;
+
+  const upscalePanel = `
+    <section class="settings-panel">
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>分辨率提升模型</h2><span class="muted">只有组件完整的模型才能进入后续提升工作流。</span></div>
+          <label class="compact-label">默认模型<select id="default-upscale-model">${upscaleProfiles.map((profile) => `<option value="${profile.id}" ${settings.defaultUpscaleModel === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
+        </div>
+        <div class="scan-result">${environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${upscaleAvailable} 个可运行模型，${upscaleProfiles.length - upscaleAvailable} 个待补齐` : "等待首次扫描"}</div>
+      </section>
+      <div class="model-profile-list">${upscaleProfiles.length ? upscaleProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无模型扫描结果</div>`}</div>
+    </section>`;
+
+  const nodeInstalled = environmentScan?.customNodes.filter(
+    (node) => node.installed && !node.loadError
+  ).length ?? 0;
+  const nodePanel = `
+    <section class="settings-panel">
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>节点与工作流依赖</h2><span class="muted">换电脑后按项目清单复现 ComfyUI 节点环境</span></div><span class="model-badge">${nodeInstalled}/${environmentScan?.customNodes.length ?? 0} 可用</span></div>
+        <div class="scan-result">安装只使用项目内置仓库清单；完成后重启 ComfyUI，再重新扫描。</div>
+      </section>
+      <div class="model-profile-list">
+        ${(environmentScan?.customNodes ?? []).map((node) => `
+          <article class="panel custom-node-card ${node.installed && !node.loadError ? "available" : "missing"}">
+            <div class="custom-node-copy">
+              <div class="model-title"><h3>${escapeHtml(node.name)}</h3><span class="model-badge">${node.required ? "项目必需" : "可选"}</span></div>
+              <p>${escapeHtml(node.purpose)}</p>
+              <code>${escapeHtml(node.directory || node.repositoryUrl)}</code>
+              ${node.loadError ? `<span class="node-error">${escapeHtml(node.loadError)}</span>` : ""}
+              ${customNodeLogs[node.id] ? `<details class="node-log" open><summary>安装日志</summary><pre>${escapeHtml(customNodeLogs[node.id])}</pre></details>` : ""}
+            </div>
+            <div class="custom-node-actions">
+              <span class="model-availability ${node.installed && !node.loadError ? "available" : "missing"}">${node.installed && !node.loadError ? "✓ 已加载" : node.loadError ? "加载失败" : "未安装"}</span>
+              ${node.installed && !node.loadError ? "" : `<button class="primary" data-install-node="${escapeHtml(node.id)}" ${customNodeInstalling ? "disabled" : ""}>${customNodeInstalling === node.id ? "处理中…" : node.installed ? "修复/更新" : "安装"}</button>`}
+            </div>
+          </article>`).join("") || `<div class="panel environment-empty">等待环境扫描结果</div>`}
+      </div>
+    </section>`;
+
+  const activePanel =
+    settingsTab === "system" ? systemPanel :
+    settingsTab === "video" ? videoPanel :
+    settingsTab === "nodes" ? nodePanel :
+    settingsTab === "prompt" ? promptPanel :
+    upscalePanel;
+
+  return `
+    <section class="page-heading settings-heading">
+      <div><div class="heading-line"><h1>设置</h1>${gpu?.ok ? `<span class="model-badge">${escapeHtml(gpu.detail.split(",").slice(0, 1).join(""))}</span>` : ""}</div><p>模型扫描、4090 运行预设和本地服务集中配置。</p></div>
+      <div class="button-row"><button class="secondary" id="scan-environment" ${environmentScanning ? "disabled" : ""}>${environmentScanning ? "扫描中…" : "重新扫描全部"}</button><button class="primary" id="save-settings">保存设置</button></div>
+    </section>
+    <div class="settings-layout">
+      <nav class="settings-sidebar" aria-label="设置分类">
+        ${([
+          ["system", "◫", "系统与路径"],
+          ["video", "▦", "视频模型"],
+          ["nodes", "◇", "节点与工作流"],
+          ["prompt", "✦", "提示词扩写"],
+          ["upscale", "↗", "分辨率提升"]
+        ] as const).map(([id, icon, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeInstalled}/${environmentScan.customNodes.length}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
+      </nav>
+      <div class="settings-content">${activePanel}</div>
+    </div>
+    ${installGuideDialog()}`;
 }
 
 function render(): void {
@@ -506,20 +788,195 @@ function bindHistory(): void {
 }
 
 function formSettings(): Settings {
-  const value = (id: string) => document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`#${id}`)?.value.trim() ?? "";
+  const base = settingsDraft ?? state.settings;
+  const value = (id: string, fallback: string) =>
+    document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`)?.value.trim() ?? fallback;
+  const checked = (id: string, fallback: boolean) =>
+    document.querySelector<HTMLInputElement>(`#${id}`)?.checked ?? fallback;
   return {
-    comfyUrl: value("comfy-url"),
-    lmStudioUrl: value("lm-url"),
-    lmStudioModel: value("lm-model"),
-    modelDirectory: value("model-directory"),
-    outputDirectory: value("output-directory"),
-    promptSystemTemplate: value("prompt-template")
+    comfyUrl: value("comfy-url", base.comfyUrl),
+    lmStudioUrl: value("lm-url", base.lmStudioUrl),
+    lmStudioModel: value("lm-model", base.lmStudioModel),
+    modelDirectory: value("model-directory", base.modelDirectory),
+    outputDirectory: value("output-directory", base.outputDirectory),
+    promptSystemTemplate: value("prompt-template", base.promptSystemTemplate),
+    defaultVideoModel: value("default-video-model", base.defaultVideoModel),
+    vramReserveGb: Number(value("vram-reserve", String(base.vramReserveGb))),
+    autoOffload: checked("auto-offload", base.autoOffload),
+    safeCancel: checked("safe-cancel", base.safeCancel),
+    optimizeQueue: checked("optimize-queue-setting", base.optimizeQueue),
+    promptLanguage: value("prompt-language", base.promptLanguage) as Settings["promptLanguage"],
+    promptCreativity: Number(value("prompt-creativity", String(base.promptCreativity))),
+    defaultUpscaleModel: value("default-upscale-model", base.defaultUpscaleModel),
+    proxyEnabled: checked("proxy-enabled", base.proxyEnabled),
+    proxyUrl: value("proxy-url", base.proxyUrl)
   };
 }
 
+async function runEnvironmentScan(settings: Settings): Promise<void> {
+  environmentScanning = true;
+  render();
+  try {
+    environmentScan = await window.studio.scanEnvironment(settings);
+  } catch (error) {
+    showMessage(`环境扫描失败：${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    environmentScanning = false;
+    render();
+  }
+}
+
 function bindSettings(): void {
+  if (!environmentScan && !environmentScanning) {
+    void runEnvironmentScan(settingsDraft ?? state.settings);
+    return;
+  }
+  document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(".settings-content input, .settings-content textarea, .settings-content select").forEach((input) => {
+    const update = () => {
+      settingsDraft = formSettings();
+    };
+    input.addEventListener("input", update);
+    input.addEventListener("change", update);
+  });
+  document.querySelector<HTMLInputElement>("#proxy-enabled")?.addEventListener("change", () => {
+    settingsDraft = formSettings();
+    render();
+  });
+  document.querySelectorAll<HTMLElement>("[data-settings-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      settingsDraft = formSettings();
+      settingsTab = button.dataset.settingsTab as typeof settingsTab;
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-install-profile]").forEach((button) => {
+    button.addEventListener("click", () => {
+      settingsDraft = formSettings();
+      const profile = environmentScan?.modelProfiles.find(
+        (item) => item.id === button.dataset.installProfile
+      );
+      const component = profile?.components[Number(button.dataset.installComponent)];
+      if (!profile || !component) return;
+      selectedInstallGuide = { profileName: profile.name, component };
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-start-service]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const kind = button.dataset.startService as LocalServiceKind;
+      settingsDraft = formSettings();
+      serviceStarting = kind;
+      serviceStatusMessage = kind === "comfy"
+        ? "正在启动 ComfyUI 后端并检测接口，首次加载节点可能需要 1–2 分钟…"
+        : "正在启动 LM Studio…";
+      render();
+      try {
+        const result = await window.studio.startLocalService(kind, settingsDraft);
+        serviceStarting = null;
+        serviceStatusMessage = result.message;
+        environmentScan = await window.studio.scanEnvironment(settingsDraft);
+        showMessage(result.message);
+      } catch (error) {
+        serviceStarting = null;
+        serviceStatusMessage = `启动失败：${error instanceof Error ? error.message : String(error)}`;
+        showMessage(serviceStatusMessage);
+      }
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-restart-service]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const kind = button.dataset.restartService as LocalServiceKind;
+      settingsDraft = formSettings();
+      serviceRestarting = kind;
+      serviceStatusMessage = "正在停止并重新启动 ComfyUI，节点加载期间会持续检测，最多等待 2 分钟…";
+      render();
+      try {
+        const result = await window.studio.restartLocalService(kind, settingsDraft);
+        serviceRestarting = null;
+        serviceStatusMessage = result.message;
+        environmentScan = await window.studio.scanEnvironment(settingsDraft);
+        showMessage(result.message);
+      } catch (error) {
+        serviceRestarting = null;
+        serviceStatusMessage = `重启失败：${error instanceof Error ? error.message : String(error)}`;
+        showMessage(serviceStatusMessage);
+      }
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-repair-issue]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const issueId = button.dataset.repairIssue as NonNullable<EnvironmentScanResult["issues"]>[number]["id"];
+      const currentSettings = formSettings();
+      settingsDraft = currentSettings;
+      environmentRepairing = issueId;
+      render();
+      try {
+        const result = await window.studio.repairEnvironmentIssue(issueId, currentSettings);
+        environmentRepairLogs = {
+          ...environmentRepairLogs,
+          [issueId]: result.log || result.message
+        };
+        environmentRepairing = "";
+        environmentScan = await window.studio.scanEnvironment(currentSettings);
+        showMessage(result.message);
+      } catch (error) {
+        environmentRepairing = "";
+        const message = error instanceof Error ? error.message : String(error);
+        environmentRepairLogs = { ...environmentRepairLogs, [issueId]: message };
+        showMessage(`自动修复失败：${message}`);
+      }
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-install-node]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const nodeId = button.dataset.installNode!;
+      const currentSettings = formSettings();
+      settingsDraft = currentSettings;
+      customNodeInstalling = nodeId;
+      render();
+      try {
+        const result = await window.studio.installCustomNode(nodeId, currentSettings);
+        customNodeLogs = {
+          ...customNodeLogs,
+          [nodeId]: result.log || result.message
+        };
+        customNodeInstalling = "";
+        environmentScan = await window.studio.scanEnvironment(currentSettings);
+        showMessage(result.message);
+      } catch (error) {
+        customNodeInstalling = "";
+        const message = error instanceof Error ? error.message : String(error);
+        customNodeLogs = { ...customNodeLogs, [nodeId]: message };
+        showMessage(`节点安装失败：${message}`);
+      }
+    });
+  });
+  const closeInstallGuide = () => {
+    selectedInstallGuide = null;
+    render();
+  };
+  document.querySelector("#close-install-guide")?.addEventListener("click", closeInstallGuide);
+  document.querySelector("#dismiss-install-guide")?.addEventListener("click", closeInstallGuide);
+  document.querySelector("#install-guide-backdrop")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) closeInstallGuide();
+  });
+  document.querySelector("#open-install-download")?.addEventListener("click", async () => {
+    if (!selectedInstallGuide) return;
+    const opened = await window.studio.openExternal(
+      selectedInstallGuide.component.installGuide.downloadUrl
+    );
+    if (!opened) showMessage("下载页面无法打开，请检查链接或系统浏览器设置。");
+  });
+  document.querySelector("#scan-environment")?.addEventListener("click", () => {
+    settingsDraft = formSettings();
+    void runEnvironmentScan(settingsDraft);
+  });
   document.querySelector("#save-settings")?.addEventListener("click", async () => {
     state = await window.studio.saveSettings(formSettings());
+    settingsDraft = null;
     showMessage("设置已保存，将对下一项尚未开始的任务生效。");
   });
   document.querySelectorAll<HTMLElement>("[data-test]").forEach((button) => {
@@ -534,10 +991,33 @@ function bindSettings(): void {
       resultElement.textContent = result.message;
     });
   });
+  document.querySelector("#use-scanned-comfy")?.addEventListener("click", async () => {
+    if (!environmentScan?.comfyRoot) return;
+    const nextSettings = {
+      ...formSettings(),
+      comfyUrl: environmentScan.comfyUrl,
+      modelDirectory: environmentScan.modelDirectory,
+      outputDirectory: environmentScan.outputDirectory
+    };
+    state = await window.studio.saveSettings(nextSettings);
+    settingsDraft = null;
+    showMessage("已采用扫描到的 ComfyUI 模型和输出目录。");
+  });
+  document.querySelector("#pick-model-directory")?.addEventListener("click", async () => {
+    const directory = await window.studio.pickDirectory();
+    const input = document.querySelector<HTMLInputElement>("#model-directory");
+    if (directory && input) {
+      input.value = directory;
+      settingsDraft = formSettings();
+    }
+  });
   document.querySelector("#pick-output-directory")?.addEventListener("click", async () => {
     const directory = await window.studio.pickDirectory();
     const input = document.querySelector<HTMLInputElement>("#output-directory");
-    if (directory && input) input.value = directory;
+    if (directory && input) {
+      input.value = directory;
+      settingsDraft = formSettings();
+    }
   });
 }
 

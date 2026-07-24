@@ -1,12 +1,15 @@
 [CmdletBinding()]
 param(
   [switch]$SkipBuild,
-  [string]$ComfyRoot = "C:\Users\Alice\Documents\ComfyUI"
+  [string]$ComfyRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Set-Location $projectRoot
+if (-not $ComfyRoot) {
+  $ComfyRoot = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "ComfyUI"
+}
 
 Write-Host "1/3 Checking the local environment..."
 & (Join-Path $PSScriptRoot "check-environment.ps1") -ComfyRoot $ComfyRoot

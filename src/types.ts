@@ -34,6 +34,16 @@ export interface Settings {
   outputDirectory: string;
   modelDirectory: string;
   promptSystemTemplate: string;
+  defaultVideoModel: string;
+  vramReserveGb: number;
+  autoOffload: boolean;
+  safeCancel: boolean;
+  optimizeQueue: boolean;
+  promptLanguage: "auto" | "zh" | "en";
+  promptCreativity: number;
+  defaultUpscaleModel: string;
+  proxyEnabled: boolean;
+  proxyUrl: string;
 }
 
 export interface QueueTask {
@@ -93,10 +103,92 @@ export interface AppState {
 }
 
 export type ConnectionKind = "comfy" | "lmstudio";
+export type LocalServiceKind = "comfy" | "lmstudio";
 
 export interface ConnectionResult {
   ok: boolean;
   message: string;
+  log?: string;
+}
+
+export type EnvironmentItemId =
+  | "node"
+  | "git"
+  | "ffmpeg"
+  | "nvidia"
+  | "comfyui"
+  | "comfyui-api"
+  | "lmstudio"
+  | "lmstudio-api";
+
+export interface EnvironmentItem {
+  id: EnvironmentItemId;
+  label: string;
+  ok: boolean;
+  detail: string;
+  path?: string;
+  optional?: boolean;
+}
+
+export interface ModelComponentStatus {
+  label: string;
+  found: boolean;
+  expected: string;
+  matches: string[];
+  installGuide: {
+    sourceLabel: string;
+    downloadUrl: string;
+    targetSubdirectory: string;
+    recommendedFilename: string;
+    notes?: string;
+  };
+}
+
+export interface ModelScanProfile {
+  id: string;
+  name: string;
+  category: "video" | "upscale";
+  badge: string;
+  description: string;
+  vram: string;
+  available: boolean;
+  components: ModelComponentStatus[];
+}
+
+export interface CustomNodeStatus {
+  id: string;
+  name: string;
+  purpose: string;
+  repositoryUrl: string;
+  installed: boolean;
+  loadError: string;
+  directory: string;
+  required: boolean;
+}
+
+export interface EnvironmentIssue {
+  id: "fantasytalking-unicodeescape" | "comfy-database";
+  label: string;
+  detail: string;
+  severity: "error" | "warning";
+  repairable: boolean;
+  repairLabel: string;
+}
+
+export interface EnvironmentScanResult {
+  scannedAt: string;
+  userHome: string;
+  comfyRoot: string;
+  comfyUrl: string;
+  comfyInstallDirectory: string;
+  comfySourceDirectory: string;
+  comfyInstallType: "desktop" | "manual" | "portable" | "";
+  modelDirectory: string;
+  outputDirectory: string;
+  items: EnvironmentItem[];
+  modelProfiles: ModelScanProfile[];
+  customNodes: CustomNodeStatus[];
+  issues: EnvironmentIssue[];
 }
 
 export interface EnhanceRequest {
@@ -113,8 +205,26 @@ export interface AppApi {
   pickDirectory(): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
   showItemInFolder(path: string): Promise<boolean>;
+  openExternal(url: string): Promise<boolean>;
   enhancePrompt(request: EnhanceRequest): Promise<string>;
   testConnection(kind: ConnectionKind, settings: Settings): Promise<ConnectionResult>;
+  scanEnvironment(settings: Settings): Promise<EnvironmentScanResult>;
+  startLocalService(
+    kind: LocalServiceKind,
+    settings: Settings
+  ): Promise<ConnectionResult>;
+  restartLocalService(
+    kind: LocalServiceKind,
+    settings: Settings
+  ): Promise<ConnectionResult>;
+  repairEnvironmentIssue(
+    issueId: EnvironmentIssue["id"],
+    settings: Settings
+  ): Promise<ConnectionResult>;
+  installCustomNode(
+    nodeId: string,
+    settings: Settings
+  ): Promise<ConnectionResult>;
   enqueue(draft: Draft): Promise<AppState>;
   removeTask(taskId: string): Promise<AppState>;
   startQueue(): Promise<AppState>;

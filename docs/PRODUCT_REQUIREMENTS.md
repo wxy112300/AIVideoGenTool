@@ -9,7 +9,7 @@
 ## 2. 已知运行环境
 
 - GPU：NVIDIA RTX 4090，24GB VRAM。
-- ComfyUI 模型目录：`C:\Users\Alice\Documents\ComfyUI\models`。
+- ComfyUI 模型目录：启动时从当前用户目录扫描，常见位置为 `%USERPROFILE%\Documents\ComfyUI\models`。
 - 本地 LLM 服务：LM Studio。
 - 主要任务：Image-to-Video，支持单张参考图或首尾帧。
 - 已关注的视频模型：Sulphur 2、Wan 2.2、HunyuanVideo 1.5及相关无审查版本。

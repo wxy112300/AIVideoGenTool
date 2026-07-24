@@ -34,6 +34,13 @@ export class JsonStore {
           files: asset.files ?? []
         }))
       };
+      if (
+        this.state.settings.modelDirectory.toLowerCase() ===
+        "c:\\users\\alice\\documents\\comfyui\\models"
+      ) {
+        this.state.settings.modelDirectory = "";
+        await this.persist();
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         await this.backupCorruptFile();

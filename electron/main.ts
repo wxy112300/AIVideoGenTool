@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +7,9 @@ import type {
   ConnectionKind,
   Draft,
   EnhanceRequest,
+  EnvironmentIssue,
   HistoryAsset,
+  LocalServiceKind,
   QueueTask,
   Settings
 } from "../src/types.js";
@@ -23,6 +25,13 @@ import {
 import { validateApiWorkflow } from "../src/core/workflow.js";
 import { JsonStore } from "./store.js";
 import { enhancePrompt, testLmStudio } from "./services/lm-studio.js";
+import {
+  installCustomNode,
+  repairEnvironmentIssue,
+  restartLocalService,
+  scanEnvironment,
+  startLocalService
+} from "./services/environment.js";
 import {
   interrupt,
   submitTask,
@@ -42,11 +51,13 @@ function sendState(state = store.get()): void {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
+    title: "Local Video Studio",
     width: 1280,
     height: 860,
     minWidth: 820,
     minHeight: 620,
     backgroundColor: "#181818",
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(currentDirectory, "preload.cjs"),
       contextIsolation: true,
@@ -54,6 +65,7 @@ function createWindow(): void {
       sandbox: true
     }
   });
+  mainWindow.setMenuBarVisibility(false);
 
   const developmentUrl = process.env.VITE_DEV_SERVER_URL;
   if (developmentUrl) {
@@ -221,6 +233,16 @@ function registerIpc(): void {
     shell.showItemInFolder(filename);
     return true;
   });
+  ipcMain.handle("shell:open-external", async (_event, value: string) => {
+    try {
+      const url = new URL(value);
+      if (url.protocol !== "https:") return false;
+      await shell.openExternal(url.toString());
+      return true;
+    } catch {
+      return false;
+    }
+  });
   ipcMain.handle(
     "prompt:enhance",
     (_event, request: EnhanceRequest) =>
@@ -242,6 +264,30 @@ function registerIpc(): void {
         };
       }
     }
+  );
+  ipcMain.handle(
+    "environment:scan",
+    (_event, settings: Settings) => scanEnvironment(settings)
+  );
+  ipcMain.handle(
+    "service:start",
+    (_event, kind: LocalServiceKind, settings: Settings) =>
+      startLocalService(kind, settings)
+  );
+  ipcMain.handle(
+    "service:restart",
+    (_event, kind: LocalServiceKind, settings: Settings) =>
+      restartLocalService(kind, settings)
+  );
+  ipcMain.handle(
+    "environment:repair",
+    (_event, issueId: EnvironmentIssue["id"], settings: Settings) =>
+      repairEnvironmentIssue(issueId, settings)
+  );
+  ipcMain.handle(
+    "custom-node:install",
+    (_event, nodeId: string, settings: Settings) =>
+      installCustomNode(nodeId, settings)
   );
   ipcMain.handle("queue:enqueue", async (_event, draft: Draft) => {
     if (!draft.startImagePath) throw new Error("请先选择首帧图片");
@@ -369,6 +415,7 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
   store = new JsonStore(path.join(app.getPath("userData"), "studio-state.json"));
   await store.load();
   registerIpc();
