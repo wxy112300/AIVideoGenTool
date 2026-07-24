@@ -21,7 +21,7 @@ export class JsonStore {
         queueRunning: false,
         queue: (saved.queue ?? []).map((task) => ({
           ...task,
-          fps: task.fps ?? 8,
+          fps: task.fps ?? 24,
           keepSeedOnCopy: task.keepSeedOnCopy ?? false,
           ...(task.status === "running"
             ? {

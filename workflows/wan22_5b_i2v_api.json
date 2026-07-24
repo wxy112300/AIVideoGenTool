@@ -104,7 +104,7 @@
     "class_type": "VAEDecodeTiled",
     "inputs": {
       "samples": [
-        "9",
+        "13",
         0
       ],
       "vae": [
@@ -115,6 +115,18 @@
       "overlap": 32,
       "temporal_size": 16,
       "temporal_overlap": 4
+    }
+  },
+  "13": {
+    "class_type": "VRAM_Debug",
+    "inputs": {
+      "empty_cache": true,
+      "gc_collect": true,
+      "unload_all_models": true,
+      "any_input": [
+        "9",
+        0
+      ]
     }
   },
   "11": {

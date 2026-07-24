@@ -141,6 +141,7 @@ function nodeStage(classType: string | undefined): {
   if (classType.includes("Loader")) return { progress: 5, label: "加载模型" };
   if (classType === "CLIPTextEncode") return { progress: 10, label: "编码提示词" };
   if (classType === "KSampler") return { progress: 15, label: "扩散采样" };
+  if (classType === "VRAM_Debug") return { progress: 91, label: "卸载扩散模型并释放显存" };
   if (classType.includes("VAEDecode")) return { progress: 92, label: "分块 VAE 解码" };
   if (classType === "CreateVideo") return { progress: 97, label: "生成视频帧" };
   if (classType === "SaveVideo") return { progress: 99, label: "编码并保存" };

@@ -188,8 +188,8 @@ function createPage(): string {
         </label>
         <label>每秒帧数（FPS）
           <select id="fps">
-            ${[8, 12, 16, 24].map((value) =>
-              `<option value="${value}" ${draft.fps === value ? "selected" : ""}>${value} FPS${value === 8 ? " · 快速预览" : value === 24 ? " · 最慢" : ""}</option>`
+            ${[8, 12, 16, 24, 25, 30].map((value) =>
+              `<option value="${value}" ${draft.fps === value ? "selected" : ""}>${value} FPS${value === 8 ? " · 诊断模式" : value === 24 ? " · Wan 原生推荐" : value === 30 ? " · 压力最高" : ""}</option>`
             ).join("")}
           </select>
         </label>

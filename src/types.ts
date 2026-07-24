@@ -22,7 +22,7 @@ export interface Draft {
   ratio: "source" | "16:9" | "9:16" | "1:1" | "4:3";
   resolution: 480 | 540 | 720;
   duration: number;
-  fps: 8 | 12 | 16 | 24;
+  fps: 8 | 12 | 16 | 24 | 25 | 30;
   motion: "subtle" | "natural" | "strong";
   seed: number | null;
   keepSeedOnCopy: boolean;

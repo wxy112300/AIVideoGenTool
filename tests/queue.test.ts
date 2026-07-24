@@ -22,7 +22,7 @@ function task(
     ratio: "16:9",
     resolution: 480,
     duration: 5,
-    fps: 8,
+    fps: 24,
     motion: "natural",
     seed: 1,
     keepSeedOnCopy: false

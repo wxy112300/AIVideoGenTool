@@ -5,7 +5,7 @@ describe("draft defaults", () => {
   it("keeps the starter prompt for a new install", () => {
     const draft = createDefaultDraft();
     expect(draft.promptVersions[0]?.text).not.toBe("");
-    expect(draft.fps).toBe(8);
+    expect(draft.fps).toBe(24);
   });
 
   it("clears user content while retaining the selected generation setup", () => {

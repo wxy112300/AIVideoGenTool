@@ -57,10 +57,19 @@ const customNodeCatalog = [
   {
     id: "kjnodes",
     name: "ComfyUI-KJNodes",
-    purpose: "常用视频、图像和工作流辅助节点",
+    purpose: "采样后主动卸载模型，为 Wan 分块 VAE 解码释放显存",
     repositoryUrl: "https://github.com/kijai/ComfyUI-KJNodes.git",
     directoryName: "comfyui-kjnodes",
     aliases: ["comfyui-kjnodes"],
+    required: true
+  },
+  {
+    id: "frame-interpolation",
+    name: "ComfyUI Frame Interpolation",
+    purpose: "使用 RIFE/FILM 将快速模式生成帧插值到 24 或 30 FPS",
+    repositoryUrl: "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",
+    directoryName: "ComfyUI-Frame-Interpolation",
+    aliases: ["comfyui-frame-interpolation"],
     required: false
   }
 ] as const;
