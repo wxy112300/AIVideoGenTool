@@ -52,6 +52,8 @@ const bundledWorkflows: Record<string, BundledWorkflow> = {};
 const taskPreviews: Record<string, string> = {};
 let performanceMetrics: PerformanceMetrics | null = null;
 let performancePolling = false;
+let historyContextMenuElement: HTMLElement | null = null;
+let historyContextMenuEvents: AbortController | null = null;
 
 window.addEventListener("dragover", (event) => {
   if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
@@ -411,7 +413,7 @@ function historyPage(): string {
       ? 0
       : Math.min(Math.max(asset.duration * 0.38, 0), Math.max(asset.duration - 0.1, 0));
     return `
-      <article class="history-gallery-item panel" data-history="${asset.id}" tabindex="0" title="右键可删除此视频">
+      <article class="history-gallery-item panel" data-history="${asset.id}" tabindex="0" title="右键查看更多操作">
         <div class="history-media" style="--media-ratio:${historyAspectRatio(asset.ratio)}" data-history-media data-cover-time="${coverTime}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="metadata" src="${mediaUrl}"></video>`
@@ -801,6 +803,7 @@ function settingsPage(): string {
 }
 
 function render(): void {
+  closeHistoryContextMenu();
   const content =
     page === "create" ? createPage() :
     page === "queue" ? queuePage() :
@@ -839,6 +842,148 @@ function requestHistoryDeletion(assetId: string): void {
   };
   confirmationBusy = false;
   render();
+}
+
+function closeHistoryContextMenu(): void {
+  historyContextMenuEvents?.abort();
+  historyContextMenuEvents = null;
+  historyContextMenuElement?.remove();
+  historyContextMenuElement = null;
+}
+
+function openHistoryDetail(assetId: string): void {
+  historyScrollPosition = window.scrollY;
+  selectedHistoryAssetId = assetId;
+  page = "history-detail";
+  render();
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+async function copyHistoryText(value: string, successMessage: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(value);
+    showMessage(successMessage);
+  } catch {
+    showMessage("复制失败，请检查系统剪贴板权限。");
+  }
+}
+
+async function editHistoryAsset(assetId: string): Promise<void> {
+  const asset = state.history.find((item) => item.id === assetId);
+  if (!asset) return;
+  const now = new Date().toISOString();
+  const draft: Draft = {
+    ...state.draft,
+    modelId: asset.modelId,
+    workflowPath: asset.workflowPath ?? state.draft.workflowPath,
+    startImagePath: asset.startImagePath ?? state.draft.startImagePath,
+    endImagePath: asset.endImagePath ?? "",
+    ratio: asset.ratio ?? state.draft.ratio,
+    resolution: ([480, 540, 720].includes(asset.resolution)
+      ? asset.resolution
+      : state.draft.resolution) as Draft["resolution"],
+    duration: asset.duration,
+    fps: ([8, 12, 16, 24, 25, 30].includes(asset.fps ?? 24)
+      ? asset.fps ?? 24
+      : 24) as Draft["fps"],
+    seed: asset.seed,
+    promptVersions: [
+      ...state.draft.promptVersions,
+      {
+        id: crypto.randomUUID(),
+        label: "从历史调整",
+        text: asset.prompt,
+        createdAt: now
+      }
+    ],
+    activePromptVersion: state.draft.promptVersions.length
+  };
+  state = await window.studio.saveDraft(draft);
+  page = "create";
+  render();
+}
+
+function openHistoryContextMenu(
+  assetId: string,
+  clientX: number,
+  clientY: number
+): void {
+  closeHistoryContextMenu();
+  const asset = state.history.find((item) => item.id === assetId);
+  if (!asset) return;
+  const videoIndex = historyVideoIndex(asset);
+  const videoFile = videoIndex >= 0 ? asset.files[videoIndex] : undefined;
+  const absolutePath = videoFile?.absolutePath ?? "";
+  const menu = document.createElement("section");
+  menu.className = "history-context-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", `${asset.title} 快捷操作`);
+  menu.innerHTML = `
+    <div class="history-context-heading">
+      <strong>${escapeHtml(asset.title)}</strong>
+      <span>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</span>
+    </div>
+    <button role="menuitem" data-history-action="detail"><span class="context-icon">↗</span><span><strong>查看详情</strong><small>播放视频并查看生成参数</small></span><kbd>Enter</kbd></button>
+    <button role="menuitem" data-history-action="edit"><span class="context-icon">✦</span><span><strong>使用此参数再创建</strong><small>带入提示词、模型和 Seed</small></span></button>
+    <div class="history-context-separator" role="separator"></div>
+    <button role="menuitem" data-history-action="copy-path" ${absolutePath ? "" : "disabled"}><span class="context-icon">⧉</span><span><strong>复制文件路径</strong><small>${absolutePath ? "复制完整视频文件路径" : "当前记录没有可用文件"}</small></span></button>
+    <button role="menuitem" data-history-action="show-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">▱</span><span><strong>打开所在目录</strong><small>在 Explorer 中定位视频</small></span></button>
+    <button role="menuitem" data-history-action="copy-prompt"><span class="context-icon">¶</span><span><strong>复制提示词</strong><small>复制实际送入模型的文本</small></span></button>
+    <div class="history-context-separator" role="separator"></div>
+    <button class="danger" role="menuitem" data-history-action="delete"><span class="context-icon">×</span><span><strong>删除视频和记录</strong><small>操作前仍会要求确认</small></span></button>`;
+  menu.style.left = `${clientX}px`;
+  menu.style.top = `${clientY}px`;
+  document.body.append(menu);
+  historyContextMenuElement = menu;
+  const events = new AbortController();
+  historyContextMenuEvents = events;
+
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(clientX, window.innerWidth - rect.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(clientY, window.innerHeight - rect.height - 8))}px`;
+  menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+
+  menu.addEventListener("contextmenu", (event) => event.preventDefault());
+  menu.addEventListener("click", async (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+      "[data-history-action]"
+    );
+    if (!button || button.disabled) return;
+    const action = button.dataset.historyAction;
+    closeHistoryContextMenu();
+    if (action === "detail") openHistoryDetail(assetId);
+    else if (action === "edit") await editHistoryAsset(assetId);
+    else if (action === "copy-path") {
+      await copyHistoryText(absolutePath, "视频文件路径已复制。");
+    } else if (action === "show-file") {
+      const shown = await window.studio.showItemInFolder(absolutePath);
+      if (!shown) showMessage("视频文件不存在或已经被移动。");
+    } else if (action === "copy-prompt") {
+      await copyHistoryText(asset.prompt, "提示词已复制。");
+    } else if (action === "delete") {
+      requestHistoryDeletion(assetId);
+    }
+  });
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (!menu.contains(event.target as Node)) closeHistoryContextMenu();
+    },
+    { capture: true, signal: events.signal }
+  );
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Escape") closeHistoryContextMenu();
+    },
+    { signal: events.signal }
+  );
+  window.addEventListener("blur", closeHistoryContextMenu, { signal: events.signal });
+  window.addEventListener("resize", closeHistoryContextMenu, { signal: events.signal });
+  window.addEventListener("scroll", closeHistoryContextMenu, {
+    capture: true,
+    signal: events.signal
+  });
 }
 
 function releaseHistoryVideo(assetId: string): void {
@@ -1276,7 +1421,11 @@ function bindHistory(): void {
   document.querySelectorAll<HTMLElement>("[data-history]").forEach((card) => {
     card.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      requestHistoryDeletion(card.dataset.history!);
+      openHistoryContextMenu(
+        card.dataset.history!,
+        event.clientX,
+        event.clientY
+      );
     });
     const open = (event?: Event) => {
       if ((event?.target as HTMLElement | null)?.closest("button")) return;
@@ -1293,11 +1442,7 @@ function bindHistory(): void {
   });
   document.querySelectorAll<HTMLElement>("[data-open-history]").forEach((button) => {
     button.addEventListener("click", () => {
-      historyScrollPosition = window.scrollY;
-      selectedHistoryAssetId = button.dataset.openHistory!;
-      page = "history-detail";
-      render();
-      window.scrollTo({ top: 0, behavior: "auto" });
+      openHistoryDetail(button.dataset.openHistory!);
     });
   });
   document.querySelectorAll<HTMLElement>("[data-delete-history]").forEach((button) => {
@@ -1308,43 +1453,11 @@ function bindHistory(): void {
   document.querySelector("[data-copy-prompt]")?.addEventListener("click", async () => {
     const asset = state.history.find((item) => item.id === selectedHistoryAssetId);
     if (!asset) return;
-    await navigator.clipboard.writeText(asset.prompt);
-    showMessage("提示词已复制。");
+    await copyHistoryText(asset.prompt, "提示词已复制。");
   });
   document.querySelectorAll<HTMLElement>("[data-edit-history]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const asset = state.history.find((item) => item.id === button.dataset.editHistory);
-      if (!asset) return;
-      const now = new Date().toISOString();
-      const draft: Draft = {
-        ...state.draft,
-        modelId: asset.modelId,
-        workflowPath: asset.workflowPath ?? state.draft.workflowPath,
-        startImagePath: asset.startImagePath ?? state.draft.startImagePath,
-        endImagePath: asset.endImagePath ?? "",
-        ratio: asset.ratio ?? state.draft.ratio,
-        resolution: ([480, 540, 720].includes(asset.resolution)
-          ? asset.resolution
-          : state.draft.resolution) as Draft["resolution"],
-        duration: asset.duration,
-        fps: ([8, 12, 16, 24, 25, 30].includes(asset.fps ?? 24)
-          ? asset.fps ?? 24
-          : 24) as Draft["fps"],
-        seed: asset.seed,
-        promptVersions: [
-          ...state.draft.promptVersions,
-          {
-            id: crypto.randomUUID(),
-            label: "从历史调整",
-            text: asset.prompt,
-            createdAt: now
-          }
-        ],
-        activePromptVersion: state.draft.promptVersions.length
-      };
-      state = await window.studio.saveDraft(draft);
-      page = "create";
-      render();
+    button.addEventListener("click", () => {
+      void editHistoryAsset(button.dataset.editHistory!);
     });
   });
   document.querySelectorAll<HTMLElement>("[data-show-file]").forEach((button) => {
