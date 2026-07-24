@@ -46,6 +46,18 @@ let mainWindow: BrowserWindow | null = null;
 let store: JsonStore;
 let queueWorker: Promise<void> | null = null;
 let activeController: AbortController | null = null;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
+
+app.on("second-instance", () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
 
 async function bundledWorkflowFor(modelId: string): Promise<BundledWorkflow | null> {
   if (modelId !== "wan22_5b") return null;
@@ -149,6 +161,48 @@ async function updateTask(
   return next;
 }
 
+function isLocalComfyUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return (
+      hostname === "127.0.0.1" ||
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      hostname === "[::1]"
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function ensureComfyUiReady(taskId: string): Promise<void> {
+  const settings = store.get().settings;
+  try {
+    await testComfyUi(settings);
+    return;
+  } catch (connectionError) {
+    if (!isLocalComfyUrl(settings.comfyUrl)) {
+      throw new Error(
+        `无法连接 ComfyUI（${settings.comfyUrl}）：${
+          connectionError instanceof Error
+            ? connectionError.message
+            : String(connectionError)
+        }`
+      );
+    }
+  }
+
+  await updateTask(taskId, {
+    progress: 1,
+    stage: "正在启动 ComfyUI，等待服务就绪"
+  });
+  const started = await startLocalService("comfy", settings);
+  if (!started.ok) {
+    throw new Error(`ComfyUI 自动启动失败：${started.message}`);
+  }
+  await testComfyUi(settings);
+}
+
 async function executeQueue(): Promise<void> {
   while (store.get().queueRunning) {
     const task = store.get().queue.find((item) => item.status === "waiting");
@@ -161,6 +215,11 @@ async function executeQueue(): Promise<void> {
         stage: "提交工作流",
         startedAt: new Date().toISOString(),
         error: undefined
+      });
+      await ensureComfyUiReady(task.id);
+      await updateTask(task.id, {
+        progress: 1,
+        stage: "提交工作流"
       });
       const { promptId, clientId, nodeTypes } = await submitTask(
         task,
@@ -459,13 +518,20 @@ function registerIpc(): void {
         progress: 0,
         error: undefined
       });
+      state.queueRunning = true;
     });
     sendState(next);
+    if (!queueWorker) {
+      queueWorker = executeQueue().finally(() => {
+        queueWorker = null;
+      });
+    }
     return next;
   });
 }
 
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) return;
   Menu.setApplicationMenu(null);
   store = new JsonStore(path.join(app.getPath("userData"), "studio-state.json"));
   await store.load();

@@ -279,7 +279,7 @@ function queueTaskCard(task: QueueTask): string {
       <div class="task-actions">
         ${task.status === "waiting" ? `<div class="button-row"><button class="icon-button" data-move="${task.id}" data-direction="-1" title="上移">↑</button><button class="icon-button" data-move="${task.id}" data-direction="1" title="下移">↓</button></div>` : ""}
         <button class="secondary" data-duplicate="${task.id}">复制</button>
-        ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary" data-retry="${task.id}">重试</button>` : ""}
+        ${task.status === "failed" || task.status === "cancelled" ? `<button class="primary" data-retry="${task.id}">重试并启动</button>` : ""}
         <button class="ghost danger" data-remove="${task.id}">移除</button>
       </div>
     </article>`;
