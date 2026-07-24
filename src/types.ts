@@ -270,6 +270,7 @@ export interface AppApi {
   optimizeQueue(): Promise<AppState>;
   duplicateTask(taskId: string): Promise<AppState>;
   retryTask(taskId: string): Promise<AppState>;
+  deleteHistoryAsset(assetId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
 }

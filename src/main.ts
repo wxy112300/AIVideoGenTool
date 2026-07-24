@@ -43,6 +43,11 @@ let selectedInstallGuide: {
   profileName: string;
   component: ModelComponentStatus;
 } | null = null;
+let pendingConfirmation:
+  | { kind: "clear-draft" }
+  | { kind: "delete-history"; assetId: string; title: string }
+  | null = null;
+let confirmationBusy = false;
 const bundledWorkflows: Record<string, BundledWorkflow> = {};
 const taskPreviews: Record<string, string> = {};
 let performanceMetrics: PerformanceMetrics | null = null;
@@ -145,6 +150,34 @@ function createModelOptions(draft: Draft): string {
     .join("");
 }
 
+function confirmationDialog(): string {
+  if (!pendingConfirmation) return "";
+  const request = pendingConfirmation;
+  const deleting = request.kind === "delete-history";
+  const title = request.kind === "delete-history"
+    ? `删除“${request.title}”？`
+    : "清空当前草稿？";
+  const description = deleting
+    ? "关联的视频文件会从磁盘永久删除，历史记录也会一并移除。"
+    : "首帧、尾帧和所有提示词版本都会清空；模型与输出设置会保留。";
+  return `
+    <div class="dialog-backdrop confirm-backdrop" id="confirm-backdrop">
+      <section class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" tabindex="-1">
+        <div class="confirm-icon" aria-hidden="true">!</div>
+        <div class="confirm-copy">
+          <span class="eyebrow">此操作无法撤销</span>
+          <h2 id="confirm-title">${escapeHtml(title)}</h2>
+          <p id="confirm-description">${escapeHtml(description)}</p>
+          ${deleting ? `<div class="confirm-warning">只删除本条记录关联的视频，不会删除参考图片、工作流或整个输出目录。</div>` : ""}
+        </div>
+        <div class="dialog-actions">
+          <button class="secondary" id="cancel-confirmation" ${confirmationBusy ? "disabled" : ""}>取消</button>
+          <button class="primary destructive" id="accept-confirmation" ${confirmationBusy ? "disabled" : ""}>${confirmationBusy ? "处理中…" : deleting ? "删除视频和记录" : "清空草稿"}</button>
+        </div>
+      </section>
+    </div>`;
+}
+
 function shell(content: string): string {
   return `
     <div class="app-shell">
@@ -168,7 +201,8 @@ function shell(content: string): string {
       </header>
       ${flashMessage ? `<div class="flash" role="status">${escapeHtml(flashMessage)}</div>` : ""}
       <main>${content}</main>
-    </div>`;
+    </div>
+    ${confirmationDialog()}`;
 }
 
 async function imagePreview(filename: string, targetId: string): Promise<void> {
@@ -364,7 +398,7 @@ function historyPage(): string {
       ? 0
       : Math.min(Math.max(asset.duration * 0.38, 0), Math.max(asset.duration - 0.1, 0));
     return `
-      <article class="history-gallery-item panel" data-history="${asset.id}" tabindex="0">
+      <article class="history-gallery-item panel" data-history="${asset.id}" tabindex="0" title="右键可删除此视频">
         <div class="history-media" style="--media-ratio:${historyAspectRatio(asset.ratio)}" data-history-media data-cover-time="${coverTime}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="metadata" src="${mediaUrl}"></video>`
@@ -429,7 +463,7 @@ function historyDetailPage(): string {
         <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(asset.modelId))}</span><span>${asset.resolution}p · ${asset.duration}秒 · ${fps} FPS</span></div>
         <div class="history-summary-row"><span>完成于</span><strong>${completedAt}</strong></div>
         <div class="history-summary-row"><span>总耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : `${Math.round(elapsedSeconds)} 秒`}</strong></div>
-        <div class="history-summary-actions"><button class="secondary" data-edit-history="${asset.id}">在创建页调整</button>${videoFile?.absolutePath ? `<button class="secondary" data-show-file="${escapeHtml(videoFile.absolutePath)}">打开所在目录</button>` : ""}</div>
+        <div class="history-summary-actions"><button class="secondary" data-edit-history="${asset.id}">在创建页调整</button>${videoFile?.absolutePath ? `<button class="secondary" data-show-file="${escapeHtml(videoFile.absolutePath)}">打开所在目录</button>` : ""}<button class="ghost danger history-delete-button" data-delete-history="${asset.id}">删除视频和记录</button></div>
         <div class="history-upscale"><strong>提升清晰度</strong><span>放大版本会作为同一作品的新版本显示。</span><button class="secondary" disabled>提升分辨率（待接入）</button></div>
       </aside>
     </section>
@@ -776,6 +810,88 @@ function showMessage(message: string): void {
   }, 3500);
 }
 
+function requestHistoryDeletion(assetId: string): void {
+  const asset = state.history.find((item) => item.id === assetId);
+  if (!asset) return;
+  pendingConfirmation = {
+    kind: "delete-history",
+    assetId,
+    title: asset.title
+  };
+  confirmationBusy = false;
+  render();
+}
+
+function releaseHistoryVideo(assetId: string): void {
+  const cards = [...document.querySelectorAll<HTMLElement>("[data-history]")];
+  const card = cards.find((item) => item.dataset.history === assetId);
+  const videos =
+    page === "history-detail" && selectedHistoryAssetId === assetId
+      ? document.querySelectorAll<HTMLVideoElement>(".history-player video")
+      : card?.querySelectorAll<HTMLVideoElement>("video") ?? [];
+  videos.forEach((video) => {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  });
+}
+
+async function acceptConfirmation(): Promise<void> {
+  if (!pendingConfirmation || confirmationBusy) return;
+  const request = pendingConfirmation;
+  confirmationBusy = true;
+  const acceptButton = document.querySelector<HTMLButtonElement>("#accept-confirmation");
+  const cancelButton = document.querySelector<HTMLButtonElement>("#cancel-confirmation");
+  if (acceptButton) {
+    acceptButton.disabled = true;
+    acceptButton.textContent = "处理中…";
+  }
+  if (cancelButton) cancelButton.disabled = true;
+  try {
+    if (request.kind === "clear-draft") {
+      window.clearTimeout(draftSaveTimer);
+      draftRevision += 1;
+      draftDirty = false;
+      state = await window.studio.saveDraft(createClearedDraft(state.draft));
+    } else {
+      releaseHistoryVideo(request.assetId);
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()))
+      );
+      state = await window.studio.deleteHistoryAsset(request.assetId);
+      selectedHistoryAssetId = "";
+      if (page === "history-detail") page = "history";
+    }
+    pendingConfirmation = null;
+    confirmationBusy = false;
+    render();
+  } catch (error) {
+    confirmationBusy = false;
+    showMessage(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function bindConfirmationDialog(): void {
+  if (!pendingConfirmation) return;
+  const close = () => {
+    if (confirmationBusy) return;
+    pendingConfirmation = null;
+    render();
+  };
+  document.querySelector("#cancel-confirmation")?.addEventListener("click", close);
+  document.querySelector("#accept-confirmation")?.addEventListener("click", () => {
+    void acceptConfirmation();
+  });
+  document.querySelector("#confirm-backdrop")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) close();
+  });
+  const dialog = document.querySelector<HTMLElement>(".confirm-dialog");
+  dialog?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") close();
+  });
+  dialog?.focus();
+}
+
 function bindShell(): void {
   document.querySelectorAll<HTMLElement>("[data-page]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -793,6 +909,7 @@ function bindShell(): void {
       });
     });
   });
+  bindConfirmationDialog();
 }
 
 function scheduleDraftSave(): void {
@@ -1024,12 +1141,9 @@ function bindCreate(): void {
   };
   range?.addEventListener("input", () => updateDuration(range.value));
   number?.addEventListener("input", () => updateDuration(number.value));
-  document.querySelector("#clear-draft")?.addEventListener("click", async () => {
-    if (!window.confirm("确定清空当前草稿吗？此操作会移除图片和提示词版本。")) return;
-    window.clearTimeout(draftSaveTimer);
-    draftRevision += 1;
-    draftDirty = false;
-    state = await window.studio.saveDraft(createClearedDraft(state.draft));
+  document.querySelector("#clear-draft")?.addEventListener("click", () => {
+    pendingConfirmation = { kind: "clear-draft" };
+    confirmationBusy = false;
     render();
   });
   document.querySelector("#enqueue")?.addEventListener("click", async () => {
@@ -1141,6 +1255,10 @@ function bindHistory(): void {
     });
   });
   document.querySelectorAll<HTMLElement>("[data-history]").forEach((card) => {
+    card.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      requestHistoryDeletion(card.dataset.history!);
+    });
     const open = (event?: Event) => {
       if ((event?.target as HTMLElement | null)?.closest("button")) return;
       historyScrollPosition = window.scrollY;
@@ -1161,6 +1279,11 @@ function bindHistory(): void {
       page = "history-detail";
       render();
       window.scrollTo({ top: 0, behavior: "auto" });
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-delete-history]").forEach((button) => {
+    button.addEventListener("click", () => {
+      requestHistoryDeletion(button.dataset.deleteHistory!);
     });
   });
   document.querySelector("[data-copy-prompt]")?.addEventListener("click", async () => {

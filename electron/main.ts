@@ -24,6 +24,7 @@ import type {
   Settings
 } from "../src/types.js";
 import { createOutputFilename } from "../src/core/filename.js";
+import { historyVideoPaths } from "../src/core/history-delete.js";
 import {
   attachAbsoluteOutputPaths,
   extractComfyOutputFiles
@@ -629,6 +630,28 @@ function registerIpc(): void {
         queueWorker = null;
       });
     }
+    return next;
+  });
+  ipcMain.handle("history:delete", async (_event, assetId: string) => {
+    const current = store.get();
+    const asset = current.history.find((item) => item.id === assetId);
+    if (!asset) return current;
+    for (const filename of historyVideoPaths(asset, current.settings.outputDirectory)) {
+      try {
+        await fs.unlink(filename);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw new Error(
+          `无法删除视频文件 ${path.basename(filename)}：${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+    const next = await store.update((state) => {
+      state.history = state.history.filter((item) => item.id !== assetId);
+    });
+    sendState(next);
     return next;
   });
 }

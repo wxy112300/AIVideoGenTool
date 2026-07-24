@@ -46,6 +46,8 @@ const api: AppApi = {
   optimizeQueue: () => ipcRenderer.invoke("queue:optimize"),
   duplicateTask: (taskId: string) => ipcRenderer.invoke("queue:duplicate", taskId),
   retryTask: (taskId: string) => ipcRenderer.invoke("queue:retry", taskId),
+  deleteHistoryAsset: (assetId: string) =>
+    ipcRenderer.invoke("history:delete", assetId),
   onStateChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, state: unknown) =>
       callback(state as Parameters<typeof callback>[0]);
