@@ -90,6 +90,18 @@ function historyMediaUrl(asset: AppState["history"][number]): string {
     : `studio-media://history/${encodeURIComponent(asset.id)}/${index}`;
 }
 
+function historyAspectRatio(ratio: AppState["history"][number]["ratio"]): string {
+  return (
+    {
+      "16:9": "16 / 9",
+      "9:16": "9 / 16",
+      "1:1": "1 / 1",
+      "4:3": "4 / 3",
+      source: "16 / 9"
+    }[ratio ?? "source"] ?? "16 / 9"
+  );
+}
+
 function formatVideoDuration(seconds: number): string {
   const rounded = Math.max(0, Math.round(seconds));
   const minutes = Math.floor(rounded / 60);
@@ -156,7 +168,16 @@ async function imagePreview(filename: string, targetId: string): Promise<void> {
   if (!filename) return;
   const dataUrl = await window.studio.readImage(filename);
   const image = document.querySelector<HTMLImageElement>(`#${targetId}`);
-  if (image && dataUrl) image.src = dataUrl;
+  if (image && dataUrl) {
+    image.addEventListener("load", () => {
+      if (!image.naturalWidth || !image.naturalHeight) return;
+      image.closest<HTMLElement>(".drop-zone")?.style.setProperty(
+        "--image-ratio",
+        `${image.naturalWidth} / ${image.naturalHeight}`
+      );
+    }, { once: true });
+    image.src = dataUrl;
+  }
 }
 
 function createPage(): string {
@@ -331,7 +352,7 @@ function historyPage(): string {
       : Math.min(Math.max(asset.duration * 0.38, 0), Math.max(asset.duration - 0.1, 0));
     return `
       <article class="history-gallery-item panel" data-history="${asset.id}" tabindex="0">
-        <div class="history-media" data-history-media data-cover-time="${coverTime}">
+        <div class="history-media" style="--media-ratio:${historyAspectRatio(asset.ratio)}" data-history-media data-cover-time="${coverTime}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="metadata" src="${mediaUrl}"></video>`
             : `<div class="history-media-fallback"><span>▶</span><small>找不到视频文件</small></div>`}
@@ -352,9 +373,9 @@ function historyPage(): string {
   }).join("");
   return `
     <section class="history-heading">
-      <div><div class="heading-line"><h1>历史作品</h1><span class="badge">${state.history.length} 个视频 · 最新优先</span></div><p>移动到视频上直接预览；移开后立即暂停并回到封面帧。</p></div>
+      <div><div class="heading-line"><h1>历史作品</h1><span class="badge">${state.history.length} 个视频</span></div></div>
       <div class="history-view-tools">
-        <label>默认封面<select id="history-cover-mode"><option value="random" ${historyCoverMode === "random" ? "selected" : ""}>随机帧</option><option value="first" ${historyCoverMode === "first" ? "selected" : ""}>第一帧</option></select></label>
+        <label>封面<select id="history-cover-mode"><option value="random" ${historyCoverMode === "random" ? "selected" : ""}>随机帧</option><option value="first" ${historyCoverMode === "first" ? "selected" : ""}>第一帧</option></select></label>
         <div class="button-row"><button class="${historyLayout === "masonry" ? "secondary" : "ghost"}" data-history-layout="masonry">瀑布流</button><button class="${historyLayout === "album" ? "secondary" : "ghost"}" data-history-layout="album">相册</button></div>
       </div>
     </section>
@@ -1017,7 +1038,17 @@ function bindHistory(): void {
         // Some codecs do not expose a seekable range until more data is buffered.
       }
     };
-    video.addEventListener("loadedmetadata", seekCover, { once: true });
+    const prepareVideo = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        media.style.setProperty(
+          "--media-ratio",
+          `${video.videoWidth} / ${video.videoHeight}`
+        );
+      }
+      seekCover();
+    };
+    if (video.readyState >= 1) prepareVideo();
+    else video.addEventListener("loadedmetadata", prepareVideo, { once: true });
     video.addEventListener("timeupdate", () => {
       const fill = media.querySelector<HTMLElement>(".history-preview-progress i");
       if (fill && Number.isFinite(video.duration) && video.duration > 0) {

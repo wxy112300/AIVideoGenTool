@@ -125,9 +125,7 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .history-gallery-item { display: grid; gap: 0; margin: 0 0 15px; break-inside: avoid; overflow: hidden; cursor: pointer; }
 .history-gallery.album .history-gallery-item { margin: 0; }
 .history-gallery-item:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
-.history-media { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: radial-gradient(circle at 68% 25%, rgba(83, 142, 218, .34), transparent 35%), linear-gradient(145deg, #242a34, #111317); }
-.history-gallery.masonry .history-gallery-item:nth-child(3n + 2) .history-media { aspect-ratio: 4 / 3; }
-.history-gallery.masonry .history-gallery-item:nth-child(3n + 3) .history-media { aspect-ratio: 3 / 2; }
+.history-media { position: relative; width: 100%; aspect-ratio: var(--media-ratio, 16 / 9); overflow: hidden; background: radial-gradient(circle at 68% 25%, rgba(83, 142, 218, .34), transparent 35%), linear-gradient(145deg, #242a34, #111317); }
 .history-media video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #090a0c; }
 .history-media-fallback { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 7px; color: var(--muted); }
 .history-media-fallback span { color: var(--primary); font-size: 32px; }
@@ -675,4 +673,173 @@ pre { border: 1px solid #292f39; background: #0c0f14; font-size: 11px; line-heig
   .media-panel, .composer, .environment-panel, .settings-page, .token-help { padding: 18px; }
   .drop-zone { min-height: 290px; }
   .history-view-tools { align-items: flex-end; }
+}
+
+/* Desktop density refinement: favor working space over decorative page chrome. */
+h1 {
+  font-size: clamp(20px, 1.65vw, 23px);
+  line-height: 1.2;
+}
+
+main { padding-top: 0; }
+
+.page-heading,
+.history-heading {
+  min-height: 68px;
+  margin-bottom: 14px;
+  padding: 11px 2px 10px;
+}
+
+.page-heading > div:first-child {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 11px;
+  flex-wrap: wrap;
+}
+
+.page-heading h1,
+.history-heading h1 {
+  margin: 0;
+}
+
+.page-heading p {
+  margin: 0;
+  color: #8792a2;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.history-heading {
+  min-height: 72px;
+  gap: 16px;
+}
+
+.history-heading > div:first-child {
+  min-width: 0;
+}
+
+.history-heading p {
+  display: none;
+}
+
+.heading-line {
+  gap: 8px;
+}
+
+.heading-line .badge {
+  margin-left: 0;
+}
+
+.create-workspace {
+  gap: 18px;
+}
+
+.create-workspace > .media-panel {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.create-workspace > .media-panel .section-heading {
+  min-height: 40px;
+  margin-bottom: 10px;
+  padding-inline: 2px;
+}
+
+.composer {
+  padding: 20px;
+}
+
+.drop-zone {
+  min-height: 310px;
+  border-radius: 13px;
+}
+
+.drop-zone.has-image {
+  min-height: 0;
+  aspect-ratio: var(--image-ratio, 16 / 9);
+}
+
+.drop-zone.has-image img {
+  position: absolute;
+  inset: 0;
+}
+
+.submit-row {
+  position: sticky;
+  z-index: 4;
+  bottom: 0;
+  margin-inline: -4px;
+  padding: 12px 4px 4px;
+  background: linear-gradient(180deg, transparent, rgba(17, 21, 28, .96) 28%);
+}
+
+.history-view-tools {
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.history-view-tools label {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.history-view-tools select {
+  width: 112px;
+  min-width: 112px;
+}
+
+.history-view-tools .button-row {
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(57, 66, 80, .62);
+  border-radius: 11px;
+  background: rgba(17, 21, 28, .72);
+}
+
+.history-view-tools .button-row button {
+  min-height: 34px;
+  padding: 6px 11px;
+}
+
+.history-gallery.masonry {
+  column-gap: 14px;
+}
+
+.history-gallery-item {
+  margin-bottom: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .14);
+}
+
+@media (max-width: 900px) {
+  .page-heading,
+  .history-heading {
+    min-height: 64px;
+  }
+}
+
+@media (max-width: 760px) {
+  .page-heading,
+  .history-heading {
+    align-items: stretch;
+    padding-block: 13px;
+  }
+
+  .page-heading > div:first-child {
+    display: block;
+  }
+
+  .page-heading p {
+    margin-top: 4px;
+  }
+
+  .history-view-tools {
+    align-items: center;
+  }
 }
