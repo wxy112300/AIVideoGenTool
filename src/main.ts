@@ -25,6 +25,8 @@ let draftSaveInFlight = 0;
 let draftDirty = false;
 let flashMessage = "";
 let selectedHistoryAssetId = "";
+let historyLayout: "masonry" | "album" = "masonry";
+let historyCoverMode: "random" | "first" = "random";
 let environmentScan: EnvironmentScanResult | null = null;
 let environmentScanning = false;
 let serviceStarting: LocalServiceKind | null = null;
@@ -73,6 +75,35 @@ function modelName(id: string): string {
       hunyuan15: "HunyuanVideo 1.5"
     }[id] ?? id
   );
+}
+
+function historyVideoIndex(asset: AppState["history"][number]): number {
+  const videoPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
+  return asset.files.findIndex((file) => videoPattern.test(file.filename));
+}
+
+function historyMediaUrl(asset: AppState["history"][number]): string {
+  const index = historyVideoIndex(asset);
+  return index < 0
+    ? ""
+    : `studio-media://history/${encodeURIComponent(asset.id)}/${index}`;
+}
+
+function formatVideoDuration(seconds: number): string {
+  const rounded = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(rounded / 60);
+  return `${String(minutes).padStart(2, "0")}:${String(rounded % 60).padStart(2, "0")}`;
+}
+
+function formatHistoryTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function createModelOptions(draft: Draft): string {
@@ -290,16 +321,44 @@ function statusLabel(status: string): string {
 }
 
 function historyPage(): string {
+  const cards = state.history.map((asset) => {
+    const mediaUrl = historyMediaUrl(asset);
+    const coverTime = historyCoverMode === "first"
+      ? 0
+      : Math.min(Math.max(asset.duration * 0.38, 0), Math.max(asset.duration - 0.1, 0));
+    return `
+      <article class="history-gallery-item panel" data-history="${asset.id}" tabindex="0">
+        <div class="history-media" data-history-media data-cover-time="${coverTime}">
+          ${mediaUrl
+            ? `<video muted loop playsinline preload="metadata" src="${mediaUrl}"></video>`
+            : `<div class="history-media-fallback"><span>▶</span><small>找不到视频文件</small></div>`}
+          <div class="history-media-badges">
+            <span class="media-chip">${historyCoverMode === "first" ? "第一帧" : `封面 ${formatVideoDuration(coverTime)}`}</span>
+            <span class="media-chip">${asset.resolution}p</span>
+            <span class="media-chip">${formatVideoDuration(asset.duration)}</span>
+          </div>
+          ${mediaUrl ? `<span class="history-preview-state">▶ 正在预览</span><div class="history-preview-progress"><i></i></div>` : ""}
+        </div>
+        <div class="history-gallery-copy">
+          <h3>${escapeHtml(asset.title)}</h3>
+          <code>${escapeHtml(asset.files[historyVideoIndex(asset)]?.filename ?? asset.outputFilename)}</code>
+          <div class="history-item-meta"><span class="model-badge">${escapeHtml(modelName(asset.modelId))}</span><span>原始 ${asset.resolution}p</span><span>${asset.fps ?? 24} FPS</span></div>
+          <div class="history-item-actions"><span>${formatHistoryTime(asset.createdAt)}</span><button class="ghost" data-open-history="${asset.id}">查看详情</button></div>
+        </div>
+      </article>`;
+  }).join("");
   return `
-    <section class="page-heading"><div><h1>历史作品</h1><p>成功完成的视频会保留完整的生成快照。</p></div></section>
-    <section class="history-grid">
+    <section class="history-heading">
+      <div><div class="heading-line"><h1>历史作品</h1><span class="badge">${state.history.length} 个视频 · 最新优先</span></div><p>移动到视频上直接预览；移开后立即暂停并回到封面帧。</p></div>
+      <div class="history-view-tools">
+        <label>默认封面<select id="history-cover-mode"><option value="random" ${historyCoverMode === "random" ? "selected" : ""}>随机帧</option><option value="first" ${historyCoverMode === "first" ? "selected" : ""}>第一帧</option></select></label>
+        <div class="button-row"><button class="${historyLayout === "masonry" ? "secondary" : "ghost"}" data-history-layout="masonry">瀑布流</button><button class="${historyLayout === "album" ? "secondary" : "ghost"}" data-history-layout="album">相册</button></div>
+      </div>
+    </section>
+    <section class="history-gallery ${historyLayout}">
       ${state.history.length === 0
         ? `<div class="empty panel"><h2>还没有完成的视频</h2><p>队列完成后，结果会自动出现在这里。</p></div>`
-        : state.history.map((asset) => `
-          <article class="history-card panel" data-history="${asset.id}" tabindex="0">
-            <div class="video-placeholder">▶</div>
-            <div class="history-copy"><h3>${escapeHtml(asset.title)}</h3><code>${escapeHtml(asset.outputFilename)}</code><p>${escapeHtml(asset.prompt)}</p><div class="task-meta"><span>${escapeHtml(modelName(asset.modelId))}</span><span>${asset.resolution}p</span><span>${asset.duration}秒</span><span>Seed ${asset.seed}</span></div></div>
-          </article>`).join("")}
+        : cards}
     </section>`;
 }
 
@@ -309,22 +368,56 @@ function historyDetailPage(): string {
     page = "history";
     return historyPage();
   }
+  const videoIndex = historyVideoIndex(asset);
+  const mediaUrl = historyMediaUrl(asset);
+  const videoFile = videoIndex >= 0 ? asset.files[videoIndex] : undefined;
+  const completedAt = formatHistoryTime(asset.createdAt);
+  const fps = asset.fps ?? 24;
+  const elapsedSeconds = asset.startedAt
+    ? Math.max(0, (new Date(asset.createdAt).getTime() - new Date(asset.startedAt).getTime()) / 1000)
+    : null;
   return `
-    <section class="page-heading"><div><button class="ghost back-button" data-page="history">← 返回历史</button><h1>${escapeHtml(asset.title)}</h1><p>${escapeHtml(asset.outputFilename)}</p></div></section>
-    <section class="panel history-detail">
-      <div class="video-placeholder large">▶</div>
-      <div class="detail-grid">
-        <div><span class="muted">提示词</span><p>${escapeHtml(asset.prompt)}</p></div>
-        <div><span class="muted">生成参数</span><p>${escapeHtml(modelName(asset.modelId))} · ${asset.resolution}p · ${asset.duration}秒 · Seed ${asset.seed}</p></div>
-        <div><span class="muted">ComfyUI Prompt ID</span><p><code>${escapeHtml(asset.comfyPromptId)}</code></p></div>
+    <div class="history-detail-back"><button class="ghost" data-page="history">← 返回历史</button><span>任务记录为生成时的只读快照</span></div>
+    <section class="history-detail-hero">
+      <div class="history-player-column">
+        <div class="panel history-player">
+          ${mediaUrl
+            ? `<video controls playsinline preload="metadata" src="${mediaUrl}"></video>`
+            : `<div class="history-media-fallback"><span>▶</span><strong>视频文件不可用</strong><small>请检查输出目录或在下方定位文件。</small></div>`}
+        </div>
+        <div class="panel version-toolbar"><span class="model-badge">原始 ${asset.resolution}p</span><span>当前为原始生成版本</span></div>
       </div>
-      <h2>输出文件</h2>
+      <aside class="panel history-summary">
+        <div><div class="history-title-line"><h1>${escapeHtml(asset.title)}</h1><span class="status running">已完成</span></div><code>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code></div>
+        <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(asset.modelId))}</span><span>${asset.resolution}p · ${asset.duration}秒 · ${fps} FPS</span></div>
+        <div class="history-summary-row"><span>完成于</span><strong>${completedAt}</strong></div>
+        <div class="history-summary-row"><span>总耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : `${Math.round(elapsedSeconds)} 秒`}</strong></div>
+        <div class="history-summary-actions"><button class="secondary" data-edit-history="${asset.id}">在创建页调整</button>${videoFile?.absolutePath ? `<button class="secondary" data-show-file="${escapeHtml(videoFile.absolutePath)}">打开所在目录</button>` : ""}</div>
+        <div class="history-upscale"><strong>提升清晰度</strong><span>放大版本会作为同一作品的新版本显示。</span><button class="secondary" disabled>提升分辨率（待接入）</button></div>
+      </aside>
+    </section>
+    <section class="history-record-grid">
+      <article class="panel history-record full">
+        <div class="history-record-heading"><h2>提示词</h2><button class="ghost" data-copy-prompt>复制提示词</button></div>
+        <span class="muted">实际送入模型的提示词</span><p class="history-prompt">${escapeHtml(asset.prompt)}</p>
+      </article>
+      <article class="panel history-record">
+        <h2>原始生成参数</h2>
+        <dl><dt>模型</dt><dd>${escapeHtml(modelName(asset.modelId))}</dd><dt>Seed</dt><dd><code>${asset.seed}</code></dd><dt>工作流</dt><dd><code>${escapeHtml(asset.workflowPath ?? "旧记录未保存")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(asset.comfyPromptId)}</code></dd></dl>
+      </article>
+      <article class="panel history-record">
+        <h2>视频输出</h2>
+        <dl><dt>分辨率</dt><dd>${asset.resolution}p</dd><dt>画面比例</dt><dd>${escapeHtml(asset.ratio ?? "旧记录未保存")}</dd><dt>时长</dt><dd>${asset.duration} 秒</dd><dt>帧率</dt><dd>${fps} FPS</dd><dt>帧数</dt><dd>${Math.round(asset.duration * fps)}</dd><dt>输出目录</dt><dd><code>${escapeHtml(videoFile?.absolutePath ?? state.settings.outputDirectory)}</code></dd></dl>
+      </article>
+      <article class="panel history-record full">
+        <div class="history-record-heading"><h2>输出文件</h2><span>${asset.files.length} 个</span></div>
       <div class="output-files">
         ${asset.files.length === 0
           ? `<p class="muted">ComfyUI 返回中没有识别到文件。需要在本地保存一份 history 响应，用于补充该工作流的输出结构。</p>`
           : asset.files.map((file) => `<div class="output-file"><div><strong>${escapeHtml(file.filename)}</strong><p class="muted">${escapeHtml(file.subfolder || ".")} · ${escapeHtml(file.type)}</p></div>${file.absolutePath ? `<button class="secondary" data-show-file="${escapeHtml(file.absolutePath)}">在 Explorer 中显示</button>` : `<span class="muted">请先在设置中填写 ComfyUI 输出目录</span>`}</div>`).join("")}
       </div>
-      <details><summary>原始 ComfyUI 输出快照</summary><pre>${escapeHtml(JSON.stringify(asset.comfyOutputs, null, 2))}</pre></details>
+        <details><summary>原始 ComfyUI 输出快照</summary><pre>${escapeHtml(JSON.stringify(asset.comfyOutputs, null, 2))}</pre></details>
+      </article>
     </section>`;
 }
 
@@ -890,15 +983,104 @@ function bindQueue(): void {
 }
 
 function bindHistory(): void {
+  document.querySelector("#history-cover-mode")?.addEventListener("change", (event) => {
+    historyCoverMode = (event.currentTarget as HTMLSelectElement).value as typeof historyCoverMode;
+    render();
+  });
+  document.querySelectorAll<HTMLElement>("[data-history-layout]").forEach((button) => {
+    button.addEventListener("click", () => {
+      historyLayout = button.dataset.historyLayout as typeof historyLayout;
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-history-media]").forEach((media) => {
+    const video = media.querySelector<HTMLVideoElement>("video");
+    if (!video) return;
+    const coverTime = Number(media.dataset.coverTime) || 0;
+    const seekCover = () => {
+      if (video.readyState < 1) return;
+      try {
+        video.currentTime = Math.min(coverTime, Math.max(0, video.duration - 0.05));
+      } catch {
+        // Some codecs do not expose a seekable range until more data is buffered.
+      }
+    };
+    video.addEventListener("loadedmetadata", seekCover, { once: true });
+    video.addEventListener("timeupdate", () => {
+      const fill = media.querySelector<HTMLElement>(".history-preview-progress i");
+      if (fill && Number.isFinite(video.duration) && video.duration > 0) {
+        fill.style.width = `${Math.min(100, video.currentTime / video.duration * 100)}%`;
+      }
+    });
+    media.addEventListener("mouseenter", () => {
+      media.classList.add("playing");
+      void video.play().catch(() => undefined);
+    });
+    media.addEventListener("mouseleave", () => {
+      media.classList.remove("playing");
+      video.pause();
+      seekCover();
+    });
+  });
   document.querySelectorAll<HTMLElement>("[data-history]").forEach((card) => {
-    const open = () => {
+    const open = (event?: Event) => {
+      if ((event?.target as HTMLElement | null)?.closest("button")) return;
       selectedHistoryAssetId = card.dataset.history!;
       page = "history-detail";
       render();
     };
-    card.addEventListener("click", open);
+    card.addEventListener("click", (event) => open(event));
     card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") open();
+      if (event.key === "Enter" || event.key === " ") open(event);
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-open-history]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedHistoryAssetId = button.dataset.openHistory!;
+      page = "history-detail";
+      render();
+    });
+  });
+  document.querySelector("[data-copy-prompt]")?.addEventListener("click", async () => {
+    const asset = state.history.find((item) => item.id === selectedHistoryAssetId);
+    if (!asset) return;
+    await navigator.clipboard.writeText(asset.prompt);
+    showMessage("提示词已复制。");
+  });
+  document.querySelectorAll<HTMLElement>("[data-edit-history]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const asset = state.history.find((item) => item.id === button.dataset.editHistory);
+      if (!asset) return;
+      const now = new Date().toISOString();
+      const draft: Draft = {
+        ...state.draft,
+        modelId: asset.modelId,
+        workflowPath: asset.workflowPath ?? state.draft.workflowPath,
+        startImagePath: asset.startImagePath ?? state.draft.startImagePath,
+        endImagePath: asset.endImagePath ?? "",
+        ratio: asset.ratio ?? state.draft.ratio,
+        resolution: ([480, 540, 720].includes(asset.resolution)
+          ? asset.resolution
+          : state.draft.resolution) as Draft["resolution"],
+        duration: asset.duration,
+        fps: ([8, 12, 16, 24, 25, 30].includes(asset.fps ?? 24)
+          ? asset.fps ?? 24
+          : 24) as Draft["fps"],
+        seed: asset.seed,
+        promptVersions: [
+          ...state.draft.promptVersions,
+          {
+            id: crypto.randomUUID(),
+            label: "从历史调整",
+            text: asset.prompt,
+            createdAt: now
+          }
+        ],
+        activePromptVersion: state.draft.promptVersions.length
+      };
+      state = await window.studio.saveDraft(draft);
+      page = "create";
+      render();
     });
   });
   document.querySelectorAll<HTMLElement>("[data-show-file]").forEach((button) => {

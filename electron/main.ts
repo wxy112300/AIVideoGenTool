@@ -1,6 +1,15 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
-import { promises as fs } from "node:fs";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  protocol,
+  shell
+} from "electron";
+import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type {
   AppState,
@@ -48,6 +57,18 @@ let queueWorker: Promise<void> | null = null;
 let activeController: AbortController | null = null;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "studio-media",
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true,
+      supportFetchAPI: true
+    }
+  }
+]);
+
 if (!hasSingleInstanceLock) {
   app.quit();
 }
@@ -58,6 +79,58 @@ app.on("second-instance", () => {
   mainWindow.show();
   mainWindow.focus();
 });
+
+function registerMediaProtocol(): void {
+  protocol.handle("studio-media", async (request) => {
+    try {
+      const url = new URL(request.url);
+      if (url.hostname !== "history") return new Response("Not found", { status: 404 });
+      const [assetId, fileIndexText] = url.pathname.split("/").filter(Boolean);
+      const fileIndex = Number(fileIndexText);
+      const asset = store
+        .get()
+        .history.find((item) => item.id === decodeURIComponent(assetId ?? ""));
+      const filename =
+        Number.isInteger(fileIndex) && fileIndex >= 0
+          ? asset?.files[fileIndex]?.absolutePath
+          : undefined;
+      const stat = filename ? await fs.stat(filename).catch(() => null) : null;
+      if (!filename || !stat?.isFile()) {
+        return new Response("Media file not found", { status: 404 });
+      }
+      const contentType = new Map([
+        [".mp4", "video/mp4"],
+        [".m4v", "video/mp4"],
+        [".webm", "video/webm"],
+        [".mov", "video/quicktime"],
+        [".mkv", "video/x-matroska"]
+      ]).get(path.extname(filename).toLowerCase()) ?? "application/octet-stream";
+      const range = request.headers.get("range");
+      const match = range?.match(/^bytes=(\d*)-(\d*)$/);
+      const requestedStart = match?.[1] ? Number(match[1]) : 0;
+      const requestedEnd = match?.[2] ? Number(match[2]) : stat.size - 1;
+      const start = Math.min(Math.max(0, requestedStart), Math.max(0, stat.size - 1));
+      const end = Math.min(Math.max(start, requestedEnd), stat.size - 1);
+      const partial = Boolean(match);
+      const headers = new Headers({
+        "Accept-Ranges": "bytes",
+        "Content-Type": contentType,
+        "Content-Length": String(end - start + 1)
+      });
+      if (partial) headers.set("Content-Range", `bytes ${start}-${end}/${stat.size}`);
+      if (request.method === "HEAD") {
+        return new Response(null, { status: partial ? 206 : 200, headers });
+      }
+      const stream = Readable.toWeb(createReadStream(filename, { start, end }));
+      return new Response(stream as BodyInit, {
+        status: partial ? 206 : 200,
+        headers
+      });
+    } catch {
+      return new Response("Unable to open media", { status: 500 });
+    }
+  });
+}
 
 async function bundledWorkflowFor(modelId: string): Promise<BundledWorkflow | null> {
   if (modelId !== "wan22_5b") return null;
@@ -254,8 +327,14 @@ async function executeQueue(): Promise<void> {
         modelId: completedTask.modelId,
         duration: completedTask.duration,
         resolution: completedTask.resolution,
+        fps: completedTask.fps,
+        ratio: completedTask.ratio,
         prompt: completedTask.prompt,
         seed: completedTask.seed,
+        startImagePath: completedTask.startImagePath,
+        endImagePath: completedTask.endImagePath,
+        workflowPath: completedTask.workflowPath,
+        startedAt: completedTask.startedAt,
         comfyPromptId: promptId,
         comfyOutputs: result,
         files: attachAbsoluteOutputPaths(
@@ -535,6 +614,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   store = new JsonStore(path.join(app.getPath("userData"), "studio-state.json"));
   await store.load();
+  registerMediaProtocol();
   registerIpc();
   createWindow();
   app.on("activate", () => {

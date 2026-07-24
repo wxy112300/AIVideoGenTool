@@ -90,8 +90,14 @@ export interface HistoryAsset {
   modelId: string;
   duration: number;
   resolution: number;
+  fps?: number;
+  ratio?: Draft["ratio"];
   prompt: string;
   seed: number;
+  startImagePath?: string;
+  endImagePath?: string;
+  workflowPath?: string;
+  startedAt?: string;
   comfyPromptId: string;
   comfyOutputs: unknown;
   files: HistoryFile[];

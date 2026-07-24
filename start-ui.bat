@@ -47,10 +47,20 @@ if not exist "node_modules\electron\dist\electron.exe" (
 )
 
 echo [INFO] Starting Local Video Studio...
-echo [INFO] Keep this window open while developing. Press Ctrl+C to stop.
+echo [INFO] Building the latest local version...
 echo.
 
-call npm.cmd run dev
+call npm.cmd run build
+if errorlevel 1 (
+  echo.
+  echo [ERROR] Local Video Studio build failed.
+  pause
+  exit /b 1
+)
+
+echo.
+echo [INFO] Launching desktop application. Closing the app will stop this launcher.
+call npm.cmd start
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (
