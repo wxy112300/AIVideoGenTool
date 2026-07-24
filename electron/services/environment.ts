@@ -1021,7 +1021,12 @@ async function startComfyUi(settings: Settings): Promise<string> {
     String(endpoint.port),
     "--disable-auto-launch",
     "--preview-method",
-    "auto"
+    "auto",
+    "--cache-none",
+    "--disable-async-offload",
+    "--disable-pinned-memory",
+    "--reserve-vram",
+    String(Math.max(0.5, settings.vramReserveGb || 2))
   ];
   if (comfyRoot && comfyRoot !== sourceRoot) {
     args.push(

@@ -148,6 +148,34 @@ function nodeStage(classType: string | undefined): {
   return { progress: 12, label: classType };
 }
 
+export class TaskStalledError extends Error {
+  constructor() {
+    super("任务连续 3 分钟没有任何进展，已停止队列并重启 ComfyUI 释放显存。");
+    this.name = "TaskStalledError";
+  }
+}
+
+function completedHistoryEntry(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const status = (value as { status?: unknown }).status;
+  if (!status || typeof status !== "object") return false;
+  return (
+    (status as { completed?: unknown }).completed === true &&
+    (status as { status_str?: unknown }).status_str === "success"
+  );
+}
+
+function historyFailure(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const status = (value as { status?: unknown }).status;
+  if (!status || typeof status !== "object") return "";
+  const statusString = (status as { status_str?: unknown }).status_str;
+  if (statusString === "success") return "";
+  return typeof statusString === "string"
+    ? `ComfyUI 任务结束：${statusString}`
+    : "ComfyUI 任务未成功完成";
+}
+
 export async function waitForTask(
   promptId: string,
   clientId: string,
@@ -195,6 +223,9 @@ export async function waitForTask(
           executionError =
             message.data?.exception_message || "ComfyUI 工作流执行失败";
         }
+        if (message.type === "execution_interrupted") {
+          executionError = "ComfyUI 任务已中止";
+        }
       } catch {
         // Unknown extension messages are ignored.
       }
@@ -205,16 +236,20 @@ export async function waitForTask(
   try {
     while (!signal.aborted) {
       if (executionError) throw new Error(executionError);
-      if (Date.now() - lastActivityAt > 10 * 60_000) {
-        throw new Error("任务已连续 10 分钟没有任何进展，已判定为卡死并尝试中止。");
+      if (Date.now() - lastActivityAt > 3 * 60_000) {
+        throw new TaskStalledError();
       }
       const history = await jsonRequest<Record<string, unknown>>(
         `${baseUrl}/history/${encodeURIComponent(promptId)}`,
         { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
       );
       if (promptId in history) {
-        onProgress(100, "已完成");
-        return history[promptId];
+        const entry = history[promptId];
+        if (completedHistoryEntry(entry)) {
+          onProgress(100, "已完成");
+          return entry;
+        }
+        throw new Error(historyFailure(entry));
       }
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(resolve, 2_000);

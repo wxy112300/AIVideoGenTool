@@ -3,7 +3,7 @@
     "class_type": "UNETLoader",
     "inputs": {
       "unet_name": "wan2.2_ti2v_5B_fp16.safetensors",
-      "weight_dtype": "default"
+      "weight_dtype": "fp8_e4m3fn"
     }
   },
   "2": {

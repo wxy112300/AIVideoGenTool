@@ -45,6 +45,7 @@ import {
 import {
   interrupt,
   submitTask,
+  TaskStalledError,
   testComfyUi,
   waitForTask
 } from "./services/comfy-ui.js";
@@ -349,10 +350,17 @@ async function executeQueue(): Promise<void> {
       sendState(next);
     } catch (error) {
       const aborted = activeController.signal.aborted;
+      const stalled = error instanceof TaskStalledError;
       if (!aborted) {
         await interrupt(store.get().settings).catch(() => undefined);
       }
-      await updateTask(task.id, {
+      if (stalled) {
+        const stopped = await store.update((state) => {
+          state.queueRunning = false;
+        });
+        sendState(stopped);
+      }
+      const failedState = await updateTask(task.id, {
         status: aborted ? "cancelled" : "failed",
         error: aborted
           ? "任务已中止。部分帧保留依赖所用工作流的安全取消节点。"
@@ -360,6 +368,17 @@ async function executeQueue(): Promise<void> {
             ? error.message
             : String(error)
       });
+      if (stalled) {
+        const recovery = await restartLocalService(
+          "comfy",
+          failedState.settings
+        );
+        await updateTask(task.id, {
+          error: `${error instanceof Error ? error.message : String(error)} ${
+            recovery.ok ? "ComfyUI 已恢复就绪。" : `自动恢复失败：${recovery.message}`
+          }`
+        });
+      }
     } finally {
       activeController = null;
     }
@@ -533,9 +552,14 @@ function registerIpc(): void {
     const task = store.get().queue.find((item) => item.id === taskId);
     if (!task) return store.get();
     if (task.status === "running") {
+      const next = await store.update((state) => {
+        state.queueRunning = false;
+      });
+      sendState(next);
       activeController?.abort(new Error("用户取消任务"));
       await interrupt(store.get().settings).catch(() => undefined);
-      return store.get();
+      void restartLocalService("comfy", store.get().settings);
+      return next;
     }
     return updateTask(taskId, {
       status: "cancelled",
