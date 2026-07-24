@@ -51,6 +51,8 @@ Electron 官方 Windows 教程明确提示桌面开发不要在 WSL 中执行，
   - Portable 自带独立 `python_embeded`，通常不需要把 Conda 或 Python 加到系统 PATH。
   - Desktop 已包含 ComfyUI Manager。
 - LM Studio，加载一个适合中文扩写的小模型并启动 Local Server。
+  - 安装在 D 盘或自定义目录时，可在“设置 → 本机环境”的 LM Studio 扫描卡片
+    直接选择安装目录；也可在“设置 → 提示词 → LM Studio”中修改并持久保存。
 - FFmpeg：基础提交不是硬依赖；“安全取消后输出可播放的部分视频”和独立后处理需要它。
 
 官方参考：

@@ -1332,31 +1332,72 @@ async function firstReachableServiceBase(
   return uniqueBases[checks.findIndex(Boolean)] ?? "";
 }
 
-async function lmStudioItem(): Promise<EnvironmentItem> {
+export function buildLmStudioCandidates(options: {
+  homeDirectory: string;
+  localAppData: string;
+  installDirectory?: string;
+  driveRoots?: string[];
+}): string[] {
+  const configured = options.installDirectory?.trim() ?? "";
+  const roots = options.driveRoots ?? ["C:\\", "D:\\"];
+  return [
+    ...(configured
+      ? [
+          configured,
+          path.join(configured, "LM Studio.exe"),
+          path.join(configured, "LM Studio", "LM Studio.exe"),
+          path.join(configured, "LM-Studio", "LM Studio.exe")
+        ]
+      : []),
+    path.join(options.localAppData, "Programs", "LM Studio", "LM Studio.exe"),
+    path.join(options.localAppData, "LM-Studio", "LM Studio.exe"),
+    ...roots.flatMap((root) => [
+      path.join(root, "Program Files", "LM Studio", "LM Studio.exe"),
+      path.join(root, "Program Files", "LM-Studio", "LM Studio.exe"),
+      path.join(root, "LM Studio", "LM Studio.exe")
+    ])
+  ].filter((candidate, index, candidates) => {
+    if (path.extname(candidate).toLowerCase() !== ".exe") return false;
+    return candidates.findIndex(
+      (value) => value.toLowerCase() === candidate.toLowerCase()
+    ) === index;
+  });
+}
+
+async function findLmStudioInstallation(settings: Settings): Promise<string> {
   const homeDirectory = os.homedir();
   const localAppData =
     process.env.LOCALAPPDATA ?? path.join(homeDirectory, "AppData", "Local");
-  const candidates = [
-    path.join(localAppData, "Programs", "LM Studio", "LM Studio.exe"),
-    path.join(localAppData, "LM-Studio", "LM Studio.exe")
-  ];
+  const candidates = buildLmStudioCandidates({
+    homeDirectory,
+    localAppData,
+    installDirectory: settings.lmStudioInstallDirectory
+  });
   for (const candidate of candidates) {
-    if (await exists(candidate)) {
-      return {
-        id: "lmstudio",
-        label: "LM Studio",
-        ok: true,
-        detail: "已安装",
-        path: candidate,
-        optional: true
-      };
-    }
+    if (await exists(candidate)) return candidate;
+  }
+  return "";
+}
+
+async function lmStudioItem(settings: Settings): Promise<EnvironmentItem> {
+  const installation = await findLmStudioInstallation(settings);
+  if (installation) {
+    return {
+      id: "lmstudio",
+      label: "LM Studio",
+      ok: true,
+      detail: "已找到 LM Studio.exe",
+      path: installation,
+      optional: true
+    };
   }
   return {
     id: "lmstudio",
     label: "LM Studio",
     ok: false,
-    detail: "标准安装目录中未找到",
+    detail: settings.lmStudioInstallDirectory
+      ? "手动设置的目录中没有找到 LM Studio.exe"
+      : "常见安装目录中未找到，请点击选择目录",
     optional: true
   };
 }
@@ -1556,11 +1597,14 @@ async function stopComfyUi(settings: Settings): Promise<void> {
   }
 }
 
-async function findLmStudioCli(): Promise<string> {
+async function findLmStudioCli(settings: Settings): Promise<string> {
   const homeDirectory = os.homedir();
+  const configured = settings.lmStudioInstallDirectory.trim();
   const candidates = [
     await findExecutable("lms.exe"),
-    path.join(homeDirectory, ".lmstudio", "bin", "lms.exe")
+    path.join(homeDirectory, ".lmstudio", "bin", "lms.exe"),
+    configured ? path.join(configured, "lms.exe") : "",
+    configured ? path.join(configured, "bin", "lms.exe") : ""
   ].filter(Boolean);
   for (const candidate of candidates) {
     if (await exists(candidate)) return candidate;
@@ -1573,7 +1617,7 @@ async function startLmStudio(settings: Settings): Promise<string> {
   if (!endpoint) {
     throw new Error("一键启动只支持本机 LM Studio 地址（localhost 或 127.0.0.1）。");
   }
-  const executable = await findLmStudioCli();
+  const executable = await findLmStudioCli(settings);
   if (!executable) {
     throw new Error(
       "没有找到 LM Studio 的 lms 命令。请先安装并至少启动一次 LM Studio。"
@@ -1975,7 +2019,7 @@ export async function scanEnvironment(
     nvidiaItem(),
     Promise.resolve(comfyItem),
     localServiceItem("comfyui-api", "ComfyUI 服务", comfyHealthUrl),
-    lmStudioItem(),
+    lmStudioItem(settings),
     localServiceItem("lmstudio-api", "LM Studio 服务", lmStudioUrl)
   ]);
 

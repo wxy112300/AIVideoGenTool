@@ -742,6 +742,8 @@ function environmentOverview(): string {
                 ? item.ok
                   ? `<button class="service-start secondary" data-restart-service="comfy" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${serviceRestarting === "comfy" ? "重启中…最多等待 2 分钟" : "重启服务"}</button>`
                   : `<button class="service-start" data-start-service="comfy" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${serviceStarting === "comfy" ? "启动中…最多等待 2 分钟" : "一键启动"}</button>`
+                : !item.ok && item.id === "lmstudio"
+                  ? `<button class="service-start secondary" data-pick-lm-install>选择目录</button>`
                 : !item.ok && item.id === "lmstudio-api"
                   ? `<button class="service-start" data-start-service="lmstudio" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${serviceStarting === "lmstudio" ? "启动中…" : "一键启动"}</button>`
                   : ""}
@@ -858,6 +860,7 @@ function settingsPage(): string {
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>LM Studio</h2><span class="muted">本地提示词扩写服务</span></div><button class="secondary" data-test="lmstudio">测试并读取模型</button></div>
         <div class="settings-grid two">
+          <label>安装目录<div class="input-action"><input id="lm-install-directory" value="${escapeHtml(settings.lmStudioInstallDirectory)}" placeholder="例如 D:\\Apps\\LM Studio"><button class="secondary" data-pick-lm-install>选择</button></div></label>
           <label>OpenAI API 地址<input id="lm-url" value="${escapeHtml(settings.lmStudioUrl)}"></label>
           <label>模型 ID<input id="lm-model" value="${escapeHtml(settings.lmStudioModel)}" placeholder="留空使用当前加载模型"></label>
           <label>扩写语言<select id="prompt-language"><option value="auto" ${settings.promptLanguage === "auto" ? "selected" : ""}>跟随输入语言</option><option value="zh" ${settings.promptLanguage === "zh" ? "selected" : ""}>中文</option><option value="en" ${settings.promptLanguage === "en" ? "selected" : ""}>英文</option></select></label>
@@ -1768,6 +1771,10 @@ function formSettings(): Settings {
     comfyUrl: value("comfy-url", base.comfyUrl),
     lmStudioUrl: value("lm-url", base.lmStudioUrl),
     lmStudioModel: value("lm-model", base.lmStudioModel),
+    lmStudioInstallDirectory: value(
+      "lm-install-directory",
+      base.lmStudioInstallDirectory
+    ),
     modelDirectory: value("model-directory", base.modelDirectory),
     outputDirectory: value("output-directory", base.outputDirectory),
     promptSystemTemplate: value("prompt-template", base.promptSystemTemplate),
@@ -1992,6 +1999,21 @@ function bindSettings(): void {
       input.value = directory;
       settingsDraft = formSettings();
     }
+  });
+  document.querySelectorAll<HTMLElement>("[data-pick-lm-install]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const directory = await window.studio.pickDirectory();
+      if (!directory) return;
+      const input = document.querySelector<HTMLInputElement>("#lm-install-directory");
+      if (input) input.value = directory;
+      state = await window.studio.saveSettings({
+        ...formSettings(),
+        lmStudioInstallDirectory: directory
+      });
+      settingsDraft = null;
+      await runEnvironmentScan(state.settings);
+      showMessage("已保存 LM Studio 安装目录并重新扫描。");
+    });
   });
 }
 

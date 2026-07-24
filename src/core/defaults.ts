@@ -56,6 +56,7 @@ export function createDefaultSettings(): Settings {
     comfyUrl: "http://127.0.0.1:8188",
     lmStudioUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
+    lmStudioInstallDirectory: "",
     outputDirectory: "",
     modelDirectory: "",
     defaultVideoModel: "wan22_5b",

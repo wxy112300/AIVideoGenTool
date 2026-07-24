@@ -35,6 +35,7 @@ export interface Settings {
   comfyUrl: string;
   lmStudioUrl: string;
   lmStudioModel: string;
+  lmStudioInstallDirectory: string;
   outputDirectory: string;
   modelDirectory: string;
   promptSystemTemplate: string;

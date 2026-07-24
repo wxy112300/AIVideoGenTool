@@ -14,6 +14,7 @@ describe("draft defaults", () => {
     expect(draft.fps).toBe(24);
     expect(draft.frameInterpolation).toBe("off");
     expect(createDefaultSettings().vramReserveGb).toBe(2);
+    expect(createDefaultSettings().lmStudioInstallDirectory).toBe("");
   });
 
   it("uses 8188 as the ComfyUI default and migrates only the legacy 8000 default", () => {

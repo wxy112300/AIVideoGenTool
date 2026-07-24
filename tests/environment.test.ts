@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildComfyCandidates,
   buildComfyDesktopCandidates,
+  buildLmStudioCandidates,
   comfyUiMemoryArgs,
   evaluateModelProfiles,
   normalizeProxyUrl,
@@ -10,6 +11,20 @@ import {
 } from "../electron/services/environment.js";
 
 describe("ComfyUI environment candidates", () => {
+  it("finds LM Studio from a manually selected non-system drive", () => {
+    const candidates = buildLmStudioCandidates({
+      homeDirectory: "C:\\Users\\CurrentUser",
+      localAppData: "C:\\Users\\CurrentUser\\AppData\\Local",
+      installDirectory: "D:\\Apps\\LM Studio",
+      driveRoots: ["C:\\", "D:\\"]
+    });
+
+    expect(candidates).toContain("D:\\Apps\\LM Studio\\LM Studio.exe");
+    expect(candidates).toContain(
+      "D:\\Program Files\\LM Studio\\LM Studio.exe"
+    );
+  });
+
   it("keeps DynamicVRAM async offload and pinned memory enabled", () => {
     const args = comfyUiMemoryArgs({ vramReserveGb: 2 });
 
