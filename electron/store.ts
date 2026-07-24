@@ -139,7 +139,7 @@ export class JsonStore {
       }
       if (!generationSafetyForTask(this.state.draft).safe) {
         Object.assign(this.state.draft, {
-          duration: 2,
+          duration: 5,
           fps: 24,
           frameInterpolation: "rife2x" as const
         });
@@ -149,8 +149,12 @@ export class JsonStore {
         this.state.settings.upscaleTileMode = "safe";
         needsPersist = true;
       }
-      if (this.state.settings.vramReserveGb < 4) {
-        this.state.settings.vramReserveGb = 4;
+      if (
+        !Number.isFinite(this.state.settings.vramReserveGb) ||
+        this.state.settings.vramReserveGb < 0.5 ||
+        this.state.settings.vramReserveGb === 4
+      ) {
+        this.state.settings.vramReserveGb = 2;
         needsPersist = true;
       }
       if (!this.state.settings.autoOffload) {

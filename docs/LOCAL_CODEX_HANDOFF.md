@@ -149,10 +149,15 @@ Sulphur 2 使用完整 `sulphur_dev_fp8mixed.safetensors`、Gemma 3 文本编码
 
 ### 2.8 显存安全与 Frame Interpolation
 
-- 所有生成入口硬限制为最多 2 秒；Wan 5B 最多 49 个模型帧，14B/Hunyuan/
-  Sulphur 等重模型最多 25 个模型帧，超出预算的组合不能入队。
-- ComfyUI 由应用以 `--lowvram --reserve-vram 4 --cache-none` 启动，并关闭异步
-  offload 和 pinned memory；默认策略宁可降低速度，也不以系统卡死换吞吐量。
+- 新任务默认 5 秒、24 FPS、关闭插帧。单段输出最多 10 秒，超出需要续写或分段。
+- Wan 5B、Hunyuan 1.5、Sulphur 2 当前预算为 121 个模型帧；Wan 14B FP8/GGUF
+  在真实基准完成前采用 81 帧预算。限制按实际模型帧计算，不再按秒数一刀切。
+- ComfyUI 由应用以 `--reserve-vram 2 --cache-none` 启动；保留 ComfyUI 0.18.2
+  DynamicVRAM 默认启用的双流 async offload 和 pinned memory，不再强制 `--lowvram`。
+- 本机日志确认 PyTorch 2.8、RTX 4090 24 GB、63.8 GB RAM、DynamicVRAM 和
+  comfy-aimdo 0.4.10 均可用。
+- Wan 14B 高噪声专家完成后先通过 `VRAM_Debug` 卸载，再加载低噪声专家；
+  第二次卸载仍位于低噪声采样和 tiled VAE 之间。
 - 所有视频 VAE 解码都强制 tiled；Sulphur 低分辨率阶段结束后会先卸载，再进入
   高分辨率阶段。
 
@@ -169,11 +174,18 @@ Sulphur 2 使用完整 `sulphur_dev_fp8mixed.safetensors`、Gemma 3 文本编码
 ```
 
 - Wan/Hunyuan 的生成帧数满足 `4n+1`。
+- Sulphur/LTX 的生成帧数满足 `8n+1`。
 - 插帧后帧数精确裁到 `round(duration × target FPS)`。
+- 10 秒、24 FPS、RIFE 2× 只需生成 121 个模型帧，因此属于当前 Wan 5B、
+  Hunyuan 和 Sulphur profile；Wan 14B 暂不开放该组合。
 - RIFE 4.7 权重已纳入设置页环境扫描。
 - 本机 RIFE 单帧执行成功，耗时约 0.45 秒。
-- 完整 Wan 5B + 动态插帧 workflow 已通过 ComfyUI `/prompt` 校验；
-  为避免重复跑大模型，校验后主动中止，尚未形成多帧性能基准。
+- Wan 5B 已在新启动策略下完成 1280×720、121 帧、24 FPS、20 steps 的正式基准：
+  ComfyUI history 显示执行 255.3 秒，`ffprobe` 验证 H.264、5.0417 秒、121 帧。
+- 该次采样 runner 在结果回传时被终端中止，峰值 VRAM/RAM 没有可靠保存；输出和
+  history 均成功，但仍需用相同 seed/输入补测峰值，不能以空闲显存冒充峰值。
+- 完整 Wan 5B + 动态插帧 workflow 已通过 ComfyUI `/prompt` 校验；10 秒 RIFE 2×
+  的 121→240 帧端到端性能基准仍待完成。
 - RIFE 节点会在 ComfyUI Python 进程中缓存一个较小模型；主要的 5B/14B
   扩散模型和 VAE 会在插帧前卸载。后续若仍需要压低常驻显存，可修改上游
   RIFE 节点增加显式移回 CPU/清空模块缓存。
@@ -291,7 +303,7 @@ npm run build
 
 1. **真实模型基准**
    - Hunyuan 1.5、Wan 14B 原版、Remix、SmoothMix、DaSiWa 尚未分别完成
-  1 秒/2 秒真实生成和峰值显存记录；不要绕过 2 秒硬上限做单任务长测。
+  81/121 帧真实生成和峰值显存记录；未实测模型不要提高对应 frame profile。
    - 需要保存耗时、采样阶段、VAE、RIFE、编码和 `nvidia-smi` 数据。
 2. **RIFE 多帧端到端测试**
    - 分别测试 24 FPS + 2×、24 FPS + 4×、25 FPS + 2×、30 FPS + 2×。
@@ -313,7 +325,7 @@ npm run build
 2. **真正暂停当前采样**
    - 当前只能“本条完成后暂停队列”，没有挂起/恢复正在运行的 CUDA 任务。
 3. **长视频策略**
-  - 当前单任务硬限制为 2 秒；超过 2 秒需要分段生成、重叠帧、续写和拼接。
+  - 当前单段输出上限为 10 秒；超过 10 秒需要分段生成、重叠帧、续写和拼接。
 4. **首尾帧**
    - 数据结构保留 `endImagePath`，但内置工作流没有完成统一的首尾帧生成体验。
 5. **缺权重模型的真实测试**
@@ -334,10 +346,11 @@ npm run build
 1. 新机完成 `npm ci`、测试和构建。
 2. 在设置页扫描环境，先解决所有红色必需项。
 3. 用 Wan 5B 跑 1 秒/480p/关闭插帧，确认基础链路。
-4. 用 Wan 5B 跑 2 秒/24 FPS/RIFE 2×，确认迁移后的 RIFE 权重和最大安全片段。
-5. 按 14B 原版 → Remix → SmoothMix → DaSiWa → Hunyuan 顺序做最小生成。
-6. 把真实结果补成 benchmark/fixture。
-7. 开始实现 P0 的“安全取消部分视频”，再做超过 2 秒的分段生成与拼接。
+4. 用 Wan 5B 跑 5 秒/720p/121 帧，记录 DynamicVRAM、采样和 tiled VAE 峰值。
+5. 用 Wan 5B 跑 10 秒/24 FPS/RIFE 2×，确认 121 模型帧到 240 成片帧。
+6. 按 14B 原版 81 帧 → Remix → SmoothMix → DaSiWa → Hunyuan 121 帧顺序测试。
+7. 把真实结果补成 benchmark/fixture，再按结果提高或收紧单模型 profile。
+8. 开始实现 P0 的“安全取消部分视频”，再做超过 10 秒的续写、分段与拼接。
 
 ## 7. 关键代码
 
@@ -350,7 +363,7 @@ npm run build
 - `src/main.ts`：创建、队列、历史、详情和设置页面交互。
 - `src/style.css`：正式应用样式。
 - `workflows/`：内置 API workflows。
-- `tests/`：46 项无 GPU 回归测试。
+- `tests/`：Vitest 无 GPU 回归测试；测试数量会随功能增加，不在交接文档中固定。
 
 ## 8. 工作流占位符
 

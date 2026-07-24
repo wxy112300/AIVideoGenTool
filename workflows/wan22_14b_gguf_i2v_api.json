@@ -154,12 +154,24 @@
         1
       ],
       "latent_image": [
-        "10",
+        "17",
         0
       ],
       "start_at_step": 10,
       "end_at_step": 20,
       "return_with_leftover_noise": "disable"
+    }
+  },
+  "17": {
+    "class_type": "VRAM_Debug",
+    "inputs": {
+      "empty_cache": true,
+      "gc_collect": true,
+      "unload_all_models": true,
+      "any_input": [
+        "10",
+        0
+      ]
     }
   },
   "13": {

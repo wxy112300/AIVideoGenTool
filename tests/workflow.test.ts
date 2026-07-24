@@ -125,46 +125,63 @@ describe("renderWorkflow", () => {
 });
 
 describe("generation VRAM safety", () => {
-  it("allows at most 49 direct frames for Wan 5B", () => {
+  it("allows the official 121-frame Wan 5B baseline", () => {
     const safety = generationSafetyForTask({
       ...task,
       modelId: "wan22_5b",
-      duration: 2
+      duration: 5,
+      frameInterpolation: "off"
     });
     expect(safety).toMatchObject({
       safe: true,
-      generatedFrames: 49,
-      maxGeneratedFrames: 49
+      generatedFrames: 121,
+      maxGeneratedFrames: 121,
+      maxDurationSeconds: 10
     });
   });
 
-  it("requires interpolation when a heavy model exceeds 25 source frames", () => {
+  it("keeps Wan 14B at the initial 81-frame validation profile", () => {
     expect(
       generationSafetyForTask({
         ...task,
         modelId: "wan22_14b_nsfw",
-        duration: 2
+        duration: 5,
+        fps: 24,
+        frameInterpolation: "off"
       }).safe
     ).toBe(false);
     expect(
       generationSafetyForTask({
         ...task,
         modelId: "wan22_14b_nsfw",
-        duration: 2,
-        frameInterpolation: "rife2x"
+        duration: 5,
+        fps: 16,
+        frameInterpolation: "off"
       })
-    ).toMatchObject({ safe: true, generatedFrames: 25 });
+    ).toMatchObject({ safe: true, generatedFrames: 81, maxGeneratedFrames: 81 });
   });
 
-  it("rejects segments longer than two seconds even with interpolation", () => {
+  it("allows ten-second output when RIFE keeps generation within 121 frames", () => {
     const safety = generationSafetyForTask({
       ...task,
       modelId: "wan22_5b",
-      duration: 3,
+      duration: 10,
+      fps: 24,
+      frameInterpolation: "rife2x"
+    });
+    expect(safety).toMatchObject({ safe: true, generatedFrames: 121 });
+  });
+
+  it("rejects output beyond the ten-second single-segment profile", () => {
+    const safety = generationSafetyForTask({
+      ...task,
+      modelId: "wan22_5b",
+      duration: 11,
+      fps: 24,
       frameInterpolation: "rife4x"
     });
     expect(safety.safe).toBe(false);
-    expect(safety.message).toContain("最长 2 秒");
+    expect(safety.message).toContain("最长 10 秒");
   });
 });
 
@@ -249,6 +266,9 @@ describe("Wan 2.2 workflow compatibility", () => {
       "nsfw_wan_umt5-xxl_fp8_scaled.safetensors"
     );
     expect(standard["4"]?.inputs.vae_name).toBe("wan_2.1_vae.safetensors");
+    expect(standard["17"]?.class_type).toBe("VRAM_Debug");
+    expect(standard["17"]?.inputs.any_input).toEqual(["10", 0]);
+    expect(standard["12"]?.inputs.latent_image).toEqual(["17", 0]);
     expect(gguf["1"]?.class_type).toBe("UnetLoaderGGUFAdvanced");
     expect(gguf["1"]?.inputs.unet_name).toBe(
       "wan22RemixT2VI2V_i2vHighV30-Q5_K_M.gguf"
@@ -256,6 +276,8 @@ describe("Wan 2.2 workflow compatibility", () => {
     expect(gguf["2"]?.inputs.unet_name).toBe(
       "wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf"
     );
+    expect(gguf["17"]?.class_type).toBe("VRAM_Debug");
+    expect(gguf["12"]?.inputs.latent_image).toEqual(["17", 0]);
   });
 
   it("reports node types missing from the connected ComfyUI", () => {

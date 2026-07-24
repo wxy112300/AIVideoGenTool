@@ -825,9 +825,9 @@ function settingsPage(): string {
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>RTX 4090 运行策略</h2><span class="muted">${gpu?.ok ? escapeHtml(gpu.detail) : "未检测到 NVIDIA GPU"}</span></div><span class="model-badge">推荐预设</span></div>
         <div class="settings-grid two">
-          <label>显存安全余量<select id="vram-reserve" disabled><option value="4" selected>4 GB · 强制保守</option></select></label>
+          <label>显存安全余量<select id="vram-reserve" disabled><option value="${settings.vramReserveGb}" selected>${settings.vramReserveGb} GB · DynamicVRAM</option></select></label>
           <label>同时运行任务<select disabled><option>1 · 推荐</option><option>2 · 可能爆显存</option></select></label>
-          <label class="switch-field disabled"><input id="auto-offload" type="checkbox" checked disabled><span>强制 CPU 卸载、分块与低显存模式</span></label>
+          <label class="switch-field disabled"><input id="auto-offload" type="checkbox" checked disabled><span>DynamicVRAM、异步 CPU 卸载与分块 VAE</span></label>
           <label class="switch-field"><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span>安全取消（保留服务并主动释放模型）</span></label>
           <label class="switch-field"><input id="optimize-queue-setting" type="checkbox" ${settings.optimizeQueue ? "checked" : ""}><span>允许一键优化模型顺序</span></label>
           <label class="switch-field"><input type="checkbox" checked disabled><span>持久保存队列和历史</span></label>

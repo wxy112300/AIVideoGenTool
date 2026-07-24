@@ -1422,6 +1422,19 @@ async function waitForService(
   return false;
 }
 
+export function comfyUiMemoryArgs(
+  settings: Pick<Settings, "vramReserveGb">
+): string[] {
+  const configuredReserve = Number.isFinite(settings.vramReserveGb)
+    ? settings.vramReserveGb
+    : 2;
+  return [
+    "--cache-none",
+    "--reserve-vram",
+    String(Math.max(0.5, configuredReserve))
+  ];
+}
+
 async function startComfyUi(settings: Settings): Promise<string> {
   const endpoint = localEndpoint(settings.comfyUrl, 8188);
   if (!endpoint) {
@@ -1470,12 +1483,7 @@ async function startComfyUi(settings: Settings): Promise<string> {
     "--disable-auto-launch",
     "--preview-method",
     "auto",
-    "--cache-none",
-    "--lowvram",
-    "--disable-async-offload",
-    "--disable-pinned-memory",
-    "--reserve-vram",
-    String(Math.max(0.5, settings.vramReserveGb || 2))
+    ...comfyUiMemoryArgs(settings)
   ];
   if (comfyRoot && comfyRoot !== sourceRoot) {
     args.push(

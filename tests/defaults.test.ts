@@ -10,7 +10,10 @@ describe("draft defaults", () => {
   it("keeps the starter prompt for a new install", () => {
     const draft = createDefaultDraft();
     expect(draft.promptVersions[0]?.text).not.toBe("");
+    expect(draft.duration).toBe(5);
     expect(draft.fps).toBe(24);
+    expect(draft.frameInterpolation).toBe("off");
+    expect(createDefaultSettings().vramReserveGb).toBe(2);
   });
 
   it("uses 8188 as the ComfyUI default and migrates only the legacy 8000 default", () => {

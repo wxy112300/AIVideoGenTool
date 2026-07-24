@@ -156,6 +156,45 @@ npm run dev
 单独占据整个字符串的数值占位符会保持 number 类型；嵌入普通字符串时会转为文字。
 `{{END_IMAGE}}` 还是工作流能力标志：没有该占位符时，应用不会上传或静默忽略尾帧。
 
+### 5.1 RTX 4090 24 GB 生成基线
+
+24 GB 不按“只能生成几秒”的低显存设备处理。应用以模型实际生成帧数约束显存，
+输出时长只是第二层边界：
+
+| 模型 | 当前验证预算 | 推荐首测 | 主要显存策略 |
+|---|---:|---|---|
+| Wan 2.2 TI2V-5B | 121 帧 | 已实测 720p、121 帧、24 FPS | FP8 运行权重、FP8 T5、DynamicVRAM、tiled VAE |
+| Wan 2.2 14B FP8/GGUF | 81 帧 | 480p 后再测 720p | 高/低噪声专家间卸载、FP8 或 Q4/Q5、按层反量化 |
+| HunyuanVideo 1.5 | 121 帧 | 720p、121 帧、24 FPS | 模型 CPU offload、FP8 文本编码器、tiled VAE |
+| Sulphur 2 / LTX 2.3 | 121 帧 | 低分辨率首阶段、121 帧 | FP8 checkpoint、DynamicVRAM、阶段卸载、latent x2 |
+
+默认输出为 5 秒。10 秒可以用 RIFE 2× 将 121 个模型帧插值到 24 FPS 成片；
+也可以使用模型原生续写/长视频工作流。不要把单次 241 帧采样默认视为已验证能力。
+
+上游参考：
+
+- Wan 2.2 官方仓库（TI2V-5B 明确支持 24 GB RTX 4090、5 秒 720p@24 FPS）：
+  https://github.com/Wan-Video/Wan2.2
+- HunyuanVideo 1.5（最低 14 GB with offload，默认 121 帧，CPU offload 与 VAE tiling）：
+  https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5
+- LTX-2 / LTX-Video（FP8、CPU offload、VAE tiling、视频续写与长视频）：
+  https://github.com/Lightricks/LTX-2
+- ComfyUI 内存管理和 DynamicVRAM：
+  https://github.com/Comfy-Org/ComfyUI
+- ComfyUI-GGUF 按层反量化实现：
+  https://github.com/city96/ComfyUI-GGUF
+- WanVideoWrapper block swap 参考实现：
+  https://github.com/kijai/ComfyUI-WanVideoWrapper
+
+应用启动 ComfyUI 时保留其默认 async offload 和 pinned memory，不强制
+`--lowvram`，并以 `--reserve-vram 2 --cache-none` 启动。DynamicVRAM 不可用时，
+ComfyUI 自身会回退到 legacy ModelPatcher 的 smart partial loading。
+
+本机首次正式基准使用 Wan 5B、1280×720、121 模型帧、24 FPS、20 steps、关闭
+RIFE，总执行时间 255.3 秒。`ffprobe` 验证输出为 H.264、5.0417 秒、121 帧。
+本次采样进程在结果回传时被终端中止，峰值 VRAM/RAM 数据没有可靠保存，后续应
+重复同一 seed 和输入补齐峰值，不用空闲时的显存数值代替峰值。
+
 ## 6. 推荐的本地验证顺序
 
 1. 在 ComfyUI 中手动运行某模型的原始工作流。
@@ -163,9 +202,12 @@ npm run dev
 3. 只替换提示词、首帧、Seed、尺寸和输出名前缀。
 4. 在本工具设置页测试 ComfyUI 与 LM Studio。
 5. 建立 1 秒、480p 的最小任务，检查上传、提交、历史返回。
-6. 再测试 2 秒和 720p，并记录峰值显存、耗时和实际输出节点；2 秒是当前硬上限。
-7. 用 3 帧短视频验证 Real-ESRGAN 分 3 批执行且输出仍为 3 帧，再验证 SeedVR2/
+6. 用 Wan 5B 测试 5 秒、720p、121 模型帧，并记录采样、VAE、编码各阶段的
+  峰值 VRAM、系统 RAM、耗时和输出节点。
+7. 再按 Wan 14B 81 帧、Hunyuan 121 帧、Sulphur 121 帧逐个建立真实基准；
+  不要一次开放尚未实测的模型帧数。
+8. 用 3 帧短视频验证 Real-ESRGAN 分 3 批执行且输出仍为 3 帧，再验证 SeedVR2/
   FlashVSR 的保守批大小。
-8. 最后做取消、断线恢复、连续队列和模型切换。
+9. 最后做取消、断线恢复、连续队列和模型切换。
 
-不要绕过限制直接提交 30–60 秒任务；长视频拆分、连续性与安全取消是独立功能，需要模型级设计。
+不要直接提交 30–60 秒单次采样；超过 10 秒应使用续写、重叠分段或模型原生长视频工作流。

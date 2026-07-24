@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildComfyCandidates,
   buildComfyDesktopCandidates,
+  comfyUiMemoryArgs,
   evaluateModelProfiles,
   normalizeProxyUrl,
   patchVideoHelperBatchCompatibility,
@@ -9,6 +10,15 @@ import {
 } from "../electron/services/environment.js";
 
 describe("ComfyUI environment candidates", () => {
+  it("keeps DynamicVRAM async offload and pinned memory enabled", () => {
+    const args = comfyUiMemoryArgs({ vramReserveGb: 2 });
+
+    expect(args).toEqual(["--cache-none", "--reserve-vram", "2"]);
+    expect(args).not.toContain("--lowvram");
+    expect(args).not.toContain("--disable-async-offload");
+    expect(args).not.toContain("--disable-pinned-memory");
+  });
+
   it("detects VideoHelperSuite builds that support six-value ComfyUI queues", () => {
     const oldUtils = [
       "    (_, _, prompt, extra_data, outputs_to_execute) = next(iter(currently_running.values()))",

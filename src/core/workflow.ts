@@ -25,6 +25,50 @@ export interface GenerationSafety {
   message: string;
 }
 
+interface GenerationSafetyProfile {
+  label: string;
+  maxGeneratedFrames: number;
+  maxDurationSeconds: number;
+}
+
+function generationSafetyProfileForModel(
+  modelId: string
+): GenerationSafetyProfile {
+  if (modelId === "wan22_5b") {
+    return {
+      label: "Wan 2.2 TI2V-5B",
+      maxGeneratedFrames: 121,
+      maxDurationSeconds: 10
+    };
+  }
+  if (modelId.startsWith("wan22_")) {
+    return {
+      label: "Wan 2.2 14B",
+      maxGeneratedFrames: 81,
+      maxDurationSeconds: 10
+    };
+  }
+  if (modelId.startsWith("hunyuan15")) {
+    return {
+      label: "HunyuanVideo 1.5",
+      maxGeneratedFrames: 121,
+      maxDurationSeconds: 10
+    };
+  }
+  if (modelId === "sulphur2") {
+    return {
+      label: "Sulphur 2 / LTX 2.3",
+      maxGeneratedFrames: 121,
+      maxDurationSeconds: 10
+    };
+  }
+  return {
+    label: "当前模型",
+    maxGeneratedFrames: 81,
+    maxDurationSeconds: 10
+  };
+}
+
 export function workflowSupportsEndImage(source: unknown): boolean {
   return JSON.stringify(source).includes("{{END_IMAGE}}");
 }
@@ -81,8 +125,8 @@ export function generationSafetyForTask(
     "modelId" | "duration" | "fps" | "frameInterpolation"
   >
 ): GenerationSafety {
-  const maxDurationSeconds = 2;
-  const maxGeneratedFrames = task.modelId === "wan22_5b" ? 49 : 25;
+  const profile = generationSafetyProfileForModel(task.modelId);
+  const { maxDurationSeconds, maxGeneratedFrames } = profile;
   if (
     !Number.isFinite(task.duration) ||
     !Number.isFinite(task.fps) ||
@@ -104,7 +148,7 @@ export function generationSafetyForTask(
       generatedFrames,
       maxGeneratedFrames,
       maxDurationSeconds,
-      message: `为防止显存失控，单段最长 ${maxDurationSeconds} 秒；长视频分段尚未实现。`
+      message: `当前单段输出最长 ${maxDurationSeconds} 秒；更长视频需要插帧、续写或分段生成。`
     };
   }
   if (generatedFrames > maxGeneratedFrames) {
@@ -113,7 +157,7 @@ export function generationSafetyForTask(
       generatedFrames,
       maxGeneratedFrames,
       maxDurationSeconds,
-      message: `当前组合需要生成 ${generatedFrames} 帧，${task.modelId === "wan22_5b" ? "Wan 5B" : "当前重模型"}的安全上限是 ${maxGeneratedFrames} 帧。请降低目标 FPS 或启用 RIFE。`
+      message: `当前组合需要生成 ${generatedFrames} 个模型帧，${profile.label} 的当前验证预算是 ${maxGeneratedFrames} 帧。请降低输出 FPS、启用 RIFE，或等待更高帧数实测通过。`
     };
   }
   return {
@@ -121,7 +165,7 @@ export function generationSafetyForTask(
     generatedFrames,
     maxGeneratedFrames,
     maxDurationSeconds,
-    message: `显存安全预算：${generatedFrames}/${maxGeneratedFrames} 个模型帧。`
+    message: `${profile.label} 模型帧预算：${generatedFrames}/${maxGeneratedFrames}。`
   };
 }
 
