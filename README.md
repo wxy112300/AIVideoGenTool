@@ -31,6 +31,16 @@
 
 ## 快速开始
 
+Windows 可直接双击 `start-ui.bat`；脚本会在首次启动时安装 npm 依赖，随后构建并启动应用。
+需要通过本机代理加速初始化时，双击 `start-ui-proxy.bat`，或显式传入 HTTP 代理地址：
+
+```bat
+start-ui-proxy.bat http://127.0.0.1:7890
+```
+
+不传参数时可在提示中输入地址，直接回车则使用 `http://127.0.0.1:7890`。代理只对本次启动及其
+npm、Electron、Git、pip、ComfyUI 子进程生效，不修改 Windows 或 npm 的持久配置；本地服务保持直连。
+
 Windows PowerShell：
 
 ```powershell

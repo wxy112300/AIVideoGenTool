@@ -87,6 +87,17 @@ Set-ExecutionPolicy -Scope Process Bypass
 4. 尝试连接 ComfyUI `8188` 和 LM Studio `1234`。
 5. 安装 npm 依赖、运行测试并构建。
 
+也可以直接双击仓库根目录的 `start-ui.bat` 完成依赖安装、构建和启动。网络较慢且已有本机
+HTTP 代理时，使用代理版入口：
+
+```bat
+start-ui-proxy.bat http://127.0.0.1:7890
+```
+
+代理地址按“命令行参数 → `LOCAL_VIDEO_STUDIO_PROXY` 环境变量 → 交互输入”的顺序选择；交互输入
+直接回车时默认使用 `http://127.0.0.1:7890`。该脚本设置标准 HTTP/HTTPS、npm、Electron 和 pip
+代理变量，并让 localhost/127.0.0.1 绕过代理。所有变量只在当前启动进程树中生效，不会污染系统配置。
+
 手动命令：
 
 ```powershell

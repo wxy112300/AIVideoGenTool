@@ -240,6 +240,8 @@ npm run build
 .\start-ui.bat
 ```
 
+需要代理完成首次依赖安装时，使用 `.\start-ui-proxy.bat http://127.0.0.1:7890`；不传地址会交互询问。
+
 推荐 Windows 10/11、Node.js 22 或 24 LTS、Git、FFmpeg 和 NVIDIA 驱动。
 不要在 WSL 中运行 Electron/ComfyUI 桌面联调。
 
