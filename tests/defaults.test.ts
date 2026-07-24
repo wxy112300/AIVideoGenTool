@@ -1,11 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { createClearedDraft, createDefaultDraft } from "../src/core/defaults";
+import {
+  createClearedDraft,
+  createDefaultDraft,
+  createDefaultSettings
+} from "../src/core/defaults";
+import { migrateLegacyComfyUrl } from "../electron/store";
 
 describe("draft defaults", () => {
   it("keeps the starter prompt for a new install", () => {
     const draft = createDefaultDraft();
     expect(draft.promptVersions[0]?.text).not.toBe("");
     expect(draft.fps).toBe(24);
+  });
+
+  it("uses 8188 as the ComfyUI default and migrates only the legacy 8000 default", () => {
+    expect(createDefaultSettings().comfyUrl).toBe("http://127.0.0.1:8188");
+    expect(migrateLegacyComfyUrl("http://127.0.0.1:8000")).toBe(
+      "http://127.0.0.1:8188"
+    );
+    expect(migrateLegacyComfyUrl("http://127.0.0.1:18188")).toBe(
+      "http://127.0.0.1:18188"
+    );
   });
 
   it("clears user content while retaining the selected generation setup", () => {

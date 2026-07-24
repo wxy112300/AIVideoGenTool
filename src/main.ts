@@ -664,13 +664,8 @@ function settingsPage(): string {
       ${environmentIssuesPanel()}
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>ComfyUI 连接</h2><span class="muted">连接运行中的 ComfyUI API</span></div><button class="secondary" data-test="comfy">测试连接</button></div>
-        <label>服务地址（端口可修改）
-          <div class="input-action">
-            <input id="comfy-url" value="${escapeHtml(settings.comfyUrl)}" placeholder="http://127.0.0.1:8188">
-            <button class="secondary" id="use-comfy-8188" type="button">改用 8188</button>
-          </div>
-        </label>
-        <p class="muted proxy-hint">推荐使用 <code>8188</code> 或其他空闲端口。一键启动与重启会把这里的端口传给 ComfyUI；已经独立启动的 Desktop 实例需要先退出，再由本工具启动。</p>
+        <label>服务地址<input id="comfy-url" value="${escapeHtml(settings.comfyUrl)}" placeholder="http://127.0.0.1:8188"></label>
+        <p class="muted proxy-hint">默认使用 <code>http://127.0.0.1:8188</code>。一键启动与重启会直接让 ComfyUI 监听此地址。</p>
         <div id="connection-result" class="connection-result muted">尚未单独测试连接</div>
       </section>
       <section class="panel settings-section">
@@ -1659,25 +1654,6 @@ function bindSettings(): void {
     settingsDraft = formSettings();
     void runEnvironmentScan(settingsDraft);
   });
-  document.querySelector("#use-comfy-8188")?.addEventListener("click", () => {
-    const input = document.querySelector<HTMLInputElement>("#comfy-url");
-    if (!input) return;
-    try {
-      const current = new URL(input.value || "http://127.0.0.1:8188");
-      current.protocol = "http:";
-      current.hostname = ["localhost", "127.0.0.1", "[::1]"].includes(current.hostname)
-        ? current.hostname
-        : "127.0.0.1";
-      current.port = "8188";
-      current.pathname = "";
-      current.search = "";
-      current.hash = "";
-      input.value = current.toString().replace(/\/$/, "");
-    } catch {
-      input.value = "http://127.0.0.1:8188";
-    }
-    settingsDraft = formSettings();
-  });
   document.querySelector("#save-settings")?.addEventListener("click", async () => {
     state = await window.studio.saveSettings(formSettings());
     settingsDraft = null;
@@ -1699,7 +1675,6 @@ function bindSettings(): void {
     if (!environmentScan?.comfyRoot) return;
     const nextSettings = {
       ...formSettings(),
-      comfyUrl: environmentScan.comfyUrl,
       modelDirectory: environmentScan.modelDirectory,
       outputDirectory: environmentScan.outputDirectory
     };

@@ -3,6 +3,16 @@ import path from "node:path";
 import type { AppState } from "../src/types.js";
 import { createDefaultState } from "../src/core/defaults.js";
 
+export function migrateLegacyComfyUrl(value: string): string {
+  const normalized = value.trim().replace(/\/+$/, "").toLowerCase();
+  return [
+    "http://127.0.0.1:8000",
+    "http://localhost:8000"
+  ].includes(normalized)
+    ? "http://127.0.0.1:8188"
+    : value;
+}
+
 export class JsonStore {
   private state: AppState = createDefaultState();
   private writeChain: Promise<void> = Promise.resolve();
@@ -35,13 +45,22 @@ export class JsonStore {
           files: asset.files ?? []
         }))
       };
+      let needsPersist = false;
       if (
         this.state.settings.modelDirectory.toLowerCase() ===
         "c:\\users\\alice\\documents\\comfyui\\models"
       ) {
         this.state.settings.modelDirectory = "";
-        await this.persist();
+        needsPersist = true;
       }
+      const migratedComfyUrl = migrateLegacyComfyUrl(
+        this.state.settings.comfyUrl
+      );
+      if (migratedComfyUrl !== this.state.settings.comfyUrl) {
+        this.state.settings.comfyUrl = migratedComfyUrl;
+        needsPersist = true;
+      }
+      if (needsPersist) await this.persist();
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         await this.backupCorruptFile();
