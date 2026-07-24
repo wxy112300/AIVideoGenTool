@@ -87,11 +87,27 @@ describe("ComfyUI environment candidates", () => {
       "unet\\DasiwaWAN22I2V14BSynthseduction_q4High.gguf",
       "unet\\DasiwaWAN22I2V14BSynthseduction_q4Low.gguf",
       "text_encoders\\umt5_xxl_fp8_e4m3fn_scaled.safetensors",
-      "vae\\wan2.2_vae.safetensors"
+      "vae\\wan_2.1_vae.safetensors"
     ]);
 
     expect(profiles.find((profile) => profile.id === "wan22_smoothmix")?.available).toBe(true);
     expect(profiles.find((profile) => profile.id === "wan22_dasiwa")?.available).toBe(true);
+  });
+
+  it("requires shared UMT5 and Wan 2.1 VAE assets before Remix is runnable", () => {
+    const incomplete = evaluateModelProfiles([
+      "unet\\wan22RemixT2VI2V_i2vHighV30-Q5_K_M.gguf",
+      "unet\\wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf"
+    ]);
+    const complete = evaluateModelProfiles([
+      "unet\\wan22RemixT2VI2V_i2vHighV30-Q5_K_M.gguf",
+      "unet\\wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf",
+      "text_encoders\\umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "vae\\wan_2.1_vae.safetensors"
+    ]);
+
+    expect(incomplete.find((profile) => profile.id === "wan22_remix")?.available).toBe(false);
+    expect(complete.find((profile) => profile.id === "wan22_remix")?.available).toBe(true);
   });
 
   it("provides a complete install guide for every component that can be missing", () => {

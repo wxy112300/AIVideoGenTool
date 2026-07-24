@@ -284,7 +284,8 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
     downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae",
     targetSubdirectory: "vae",
-    recommendedFilename: "wan2.2_vae.safetensors"
+    recommendedFilename: "wan_2.1_vae.safetensors",
+    notes: "Wan 2.2 14B I2V 官方工作流使用 Wan 2.1 VAE；不要与 5B 工作流的 wan2.2_vae 混用。"
   },
   "wan22_remix:Remix v3 High": {
     sourceLabel: "BigDannyPt / Wan-2.2-Remix-GGUF",
@@ -297,6 +298,18 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     downloadUrl: "https://huggingface.co/BigDannyPt/Wan-2.2-Remix-GGUF/tree/main/I2V/v3.0/Low",
     targetSubdirectory: "unet",
     recommendedFilename: "wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf"
+  },
+  "wan22_remix:UMT5 文本编码器": {
+    sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/text_encoders",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+  },
+  "wan22_remix:Wan VAE": {
+    sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae",
+    targetSubdirectory: "vae",
+    recommendedFilename: "wan_2.1_vae.safetensors"
   },
   "wan22_smoothmix:SmoothMix High": {
     sourceLabel: "Bedovyy / smoothMixWan22-I2V-GGUF",
@@ -320,7 +333,7 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
     downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae",
     targetSubdirectory: "vae",
-    recommendedFilename: "wan2.2_vae.safetensors"
+    recommendedFilename: "wan_2.1_vae.safetensors"
   },
   "wan22_dasiwa:DaSiWa v9 High": {
     sourceLabel: "darksidewalker / DaSiWa-WAN2.2-I2V",
@@ -346,7 +359,7 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
     downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae",
     targetSubdirectory: "vae",
-    recommendedFilename: "wan2.2_vae.safetensors"
+    recommendedFilename: "wan_2.1_vae.safetensors"
   },
   "seedvr2:SeedVR2 主模型": {
     sourceLabel: "Comfy-Org / SeedVR2",
@@ -476,8 +489,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
       },
       {
         label: "Wan VAE",
-        expected: "vae/wan*vae*",
-        patterns: [/vae\/.*wan.*vae.*\.(safetensors|pt|ckpt)$/i]
+        expected: "vae/wan_2.1_vae*",
+        patterns: [/vae\/.*wan[_ .-]?2\.?1[_ .-]?vae.*\.(safetensors|pt|ckpt)$/i]
       }
     ]
   },
@@ -498,6 +511,16 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
         label: "Remix v3 Low",
         expected: "wan22Remix*Low*V30*",
         patterns: [/wan22remix.*low.*v?3(?:\.0|0)?.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "UMT5 文本编码器",
+        expected: "text_encoders/*umt5*",
+        patterns: [/text_encoders\/.*umt5.*\.(safetensors|gguf)$/i]
+      },
+      {
+        label: "Wan VAE",
+        expected: "vae/wan_2.1_vae*",
+        patterns: [/vae\/.*wan[_ .-]?2\.?1[_ .-]?vae.*\.(safetensors|pt|ckpt)$/i]
       }
     ]
   },
@@ -526,8 +549,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
       },
       {
         label: "Wan VAE",
-        expected: "vae/wan*vae*",
-        patterns: [/vae\/.*wan.*vae.*\.(safetensors|pt|ckpt)$/i]
+        expected: "vae/wan_2.1_vae*",
+        patterns: [/vae\/.*wan[_ .-]?2\.?1[_ .-]?vae.*\.(safetensors|pt|ckpt)$/i]
       }
     ]
   },
@@ -556,8 +579,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
       },
       {
         label: "Wan VAE",
-        expected: "vae/wan*vae*",
-        patterns: [/vae\/.*wan.*vae.*\.(safetensors|pt|ckpt)$/i]
+        expected: "vae/wan_2.1_vae*",
+        patterns: [/vae\/.*wan[_ .-]?2\.?1[_ .-]?vae.*\.(safetensors|pt|ckpt)$/i]
       }
     ]
   },

@@ -19,9 +19,41 @@ export interface WorkflowValidation {
 
 export function frameCountForTask(task: QueueTask, fps: number): number {
   const requested = Math.max(1, Math.round(task.duration * fps));
-  if (!["wan22_5b", "hunyuan15"].includes(task.modelId)) return requested;
+  if (!task.modelId.startsWith("wan22_") && task.modelId !== "hunyuan15") {
+    return requested;
+  }
   return Math.max(1, Math.round((requested - 1) / 4) * 4 + 1);
 }
+
+const wan14ModelAssets: Record<
+  string,
+  { high: string; low: string; textEncoder: string; vae: string }
+> = {
+  wan22_14b_nsfw: {
+    high: "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+    low: "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+    textEncoder: "nsfw_wan_umt5-xxl_fp8_scaled.safetensors",
+    vae: "wan_2.1_vae.safetensors"
+  },
+  wan22_remix: {
+    high: "wan22RemixT2VI2V_i2vHighV30-Q5_K_M.gguf",
+    low: "wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf",
+    textEncoder: "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+    vae: "wan_2.1_vae.safetensors"
+  },
+  wan22_smoothmix: {
+    high: "smoothMixWan22I2VT2V_i2vHigh-Q5_K_M.gguf",
+    low: "smoothMixWan22I2VT2V_i2vLow-Q5_K_M.gguf",
+    textEncoder: "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+    vae: "wan_2.1_vae.safetensors"
+  },
+  wan22_dasiwa: {
+    high: "DasiwaWAN22I2V14BSynthseduction_q4High.gguf",
+    low: "DasiwaWAN22I2V14BSynthseduction_q4Low.gguf",
+    textEncoder: "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+    vae: "wan_2.1_vae.safetensors"
+  }
+};
 
 export function missingWorkflowNodeTypes(
   source: unknown,
@@ -68,6 +100,7 @@ export function renderWorkflow(
 ): unknown {
   const [width, height] = outputDimensions(task);
   const fps = context.fps ?? task.fps ?? 8;
+  const modelAssets = wan14ModelAssets[task.modelId];
   const tokens: Record<string, string | number> = {
     PROMPT: task.prompt,
     NEGATIVE_PROMPT: "",
@@ -79,7 +112,11 @@ export function renderWorkflow(
     DURATION: task.duration,
     FPS: fps,
     FRAMES: context.frames ?? frameCountForTask(task, fps),
-    OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, "")
+    OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, ""),
+    HIGH_MODEL: modelAssets?.high ?? "",
+    LOW_MODEL: modelAssets?.low ?? "",
+    TEXT_ENCODER: modelAssets?.textEncoder ?? "",
+    VAE_MODEL: modelAssets?.vae ?? ""
   };
 
   const visit = (value: unknown): unknown => {

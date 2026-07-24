@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { QueueTask } from "../src/types";
 import {
@@ -54,9 +55,54 @@ describe("renderWorkflow", () => {
 });
 
 describe("Wan 2.2 workflow compatibility", () => {
-  it("rounds Wan 5B video length to the required 4n+1 frame count", () => {
+  it("rounds every built-in Wan video length to the required 4n+1 frame count", () => {
     expect(frameCountForTask({ ...task, modelId: "wan22_5b" }, 24)).toBe(121);
+    expect(frameCountForTask({ ...task, modelId: "wan22_14b_nsfw" }, 24)).toBe(121);
+    expect(frameCountForTask({ ...task, modelId: "wan22_remix" }, 24)).toBe(121);
+    expect(frameCountForTask({ ...task, modelId: "wan22_smoothmix" }, 24)).toBe(121);
+    expect(frameCountForTask({ ...task, modelId: "wan22_dasiwa" }, 24)).toBe(121);
     expect(frameCountForTask(task, 24)).toBe(120);
+  });
+
+  it("renders the downloaded Wan 14B asset names into both workflow variants", () => {
+    const standardSource = JSON.parse(
+      readFileSync(
+        new URL("../workflows/wan22_14b_i2v_api.json", import.meta.url),
+        "utf8"
+      )
+    );
+    const ggufSource = JSON.parse(
+      readFileSync(
+        new URL("../workflows/wan22_14b_gguf_i2v_api.json", import.meta.url),
+        "utf8"
+      )
+    );
+    const standard = renderWorkflow(standardSource, {
+      ...task,
+      modelId: "wan22_14b_nsfw"
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    const gguf = renderWorkflow(ggufSource, {
+      ...task,
+      modelId: "wan22_remix"
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(validateApiWorkflow(standardSource).valid).toBe(true);
+    expect(validateApiWorkflow(ggufSource).valid).toBe(true);
+    expect(standard["1"]?.class_type).toBe("UNETLoader");
+    expect(standard["1"]?.inputs.unet_name).toBe(
+      "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"
+    );
+    expect(standard["3"]?.inputs.clip_name).toBe(
+      "nsfw_wan_umt5-xxl_fp8_scaled.safetensors"
+    );
+    expect(standard["4"]?.inputs.vae_name).toBe("wan_2.1_vae.safetensors");
+    expect(gguf["1"]?.class_type).toBe("UnetLoaderGGUFAdvanced");
+    expect(gguf["1"]?.inputs.unet_name).toBe(
+      "wan22RemixT2VI2V_i2vHighV30-Q5_K_M.gguf"
+    );
+    expect(gguf["2"]?.inputs.unet_name).toBe(
+      "wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf"
+    );
   });
 
   it("reports node types missing from the connected ComfyUI", () => {

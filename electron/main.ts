@@ -145,6 +145,22 @@ async function bundledWorkflowFor(modelId: string): Promise<BundledWorkflow | nu
     hunyuan15: {
       filename: "hunyuan15_i2v_api.json",
       label: "内置 · HunyuanVideo 1.5 图生视频"
+    },
+    wan22_14b_nsfw: {
+      filename: "wan22_14b_i2v_api.json",
+      label: "内置 · Wan 2.2 I2V 14B + NSFW"
+    },
+    wan22_remix: {
+      filename: "wan22_14b_gguf_i2v_api.json",
+      label: "内置 · Wan 2.2 Remix v3"
+    },
+    wan22_smoothmix: {
+      filename: "wan22_14b_gguf_i2v_api.json",
+      label: "内置 · Wan 2.2 SmoothMix I2V"
+    },
+    wan22_dasiwa: {
+      filename: "wan22_14b_gguf_i2v_api.json",
+      label: "内置 · DaSiWa SynthSeduction v9"
     }
   };
   const definition = definitions[modelId];

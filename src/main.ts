@@ -101,8 +101,8 @@ function fpsDescription(modelId: string, fps: number): string {
   if (fps === 24) {
     return modelId === "hunyuan15"
       ? " · Hunyuan 原生推荐"
-      : modelId === "wan22_5b"
-        ? " · Wan 原生推荐"
+      : modelId.startsWith("wan22_")
+        ? " · Wan 输出推荐"
         : " · 视频原生推荐";
   }
   if (fps === 30) return " · 计算量最高";
