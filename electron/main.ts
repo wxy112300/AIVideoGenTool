@@ -19,6 +19,7 @@ import type {
   Draft,
   EnhanceRequest,
   EnvironmentIssue,
+  ExtensionQueueTask,
   GenerationQueueTask,
   HistoryAsset,
   LocalServiceKind,
@@ -38,6 +39,9 @@ import {
   optimizeWaitingTasks
 } from "../src/core/queue.js";
 import {
+  extensionOutputDimensions,
+  extensionSafetyForTask,
+  extensionWorkflowSafetyErrors,
   generationSafetyForTask,
   outputDimensions,
   validateApiWorkflow,
@@ -65,6 +69,12 @@ import {
   waitForTask
 } from "./services/comfy-ui.js";
 import { getPerformanceMetrics } from "./services/performance.js";
+import { finalizeExtensionOutput } from "./services/extension-media.js";
+import {
+  startAdaptiveVramWatchdog,
+  VramWatchdogError,
+  type VramWatchdogMonitor
+} from "./services/vram-watchdog.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 let mainWindow: BrowserWindow | null = null;
@@ -102,19 +112,25 @@ function registerMediaProtocol(): void {
   protocol.handle("studio-media", async (request) => {
     try {
       const url = new URL(request.url);
-      if (url.hostname !== "history") return new Response("Not found", { status: 404 });
-      const [assetId, versionId, fileIndexText] = url.pathname.split("/").filter(Boolean);
-      const fileIndex = Number(fileIndexText);
-      const asset = store
-        .get()
-        .history.find((item) => item.id === decodeURIComponent(assetId ?? ""));
-      const version = asset?.versions.find(
-        (item) => item.id === decodeURIComponent(versionId ?? "")
-      );
-      const filename =
-        Number.isInteger(fileIndex) && fileIndex >= 0
-          ? version?.files[fileIndex]?.absolutePath
-          : undefined;
+      let filename: string | undefined;
+      if (url.hostname === "draft" && url.pathname === "/video") {
+        filename = store.get().draft.sourceVideoPath;
+      } else if (url.hostname === "history") {
+        const [assetId, versionId, fileIndexText] = url.pathname.split("/").filter(Boolean);
+        const fileIndex = Number(fileIndexText);
+        const asset = store
+          .get()
+          .history.find((item) => item.id === decodeURIComponent(assetId ?? ""));
+        const version = asset?.versions.find(
+          (item) => item.id === decodeURIComponent(versionId ?? "")
+        );
+        filename =
+          Number.isInteger(fileIndex) && fileIndex >= 0
+            ? version?.files[fileIndex]?.absolutePath
+            : undefined;
+      } else {
+        return new Response("Not found", { status: 404 });
+      }
       const stat = filename ? await fs.stat(filename).catch(() => null) : null;
       if (!filename || !stat?.isFile()) {
         return new Response("Media file not found", { status: 404 });
@@ -128,10 +144,34 @@ function registerMediaProtocol(): void {
       ]).get(path.extname(filename).toLowerCase()) ?? "application/octet-stream";
       const range = request.headers.get("range");
       const match = range?.match(/^bytes=(\d*)-(\d*)$/);
-      const requestedStart = match?.[1] ? Number(match[1]) : 0;
-      const requestedEnd = match?.[2] ? Number(match[2]) : stat.size - 1;
-      const start = Math.min(Math.max(0, requestedStart), Math.max(0, stat.size - 1));
-      const end = Math.min(Math.max(start, requestedEnd), stat.size - 1);
+      if (range && (!match || (!match[1] && !match[2]))) {
+        return new Response("Invalid range", {
+          status: 416,
+          headers: { "Content-Range": `bytes */${stat.size}` }
+        });
+      }
+      let start = 0;
+      let end = stat.size - 1;
+      if (match?.[1]) {
+        start = Number(match[1]);
+        end = match[2] ? Number(match[2]) : stat.size - 1;
+      } else if (match?.[2]) {
+        const suffixLength = Number(match[2]);
+        start = Math.max(0, stat.size - suffixLength);
+      }
+      if (
+        !Number.isSafeInteger(start) ||
+        !Number.isSafeInteger(end) ||
+        start < 0 ||
+        end < start ||
+        start >= stat.size
+      ) {
+        return new Response("Range not satisfiable", {
+          status: 416,
+          headers: { "Content-Range": `bytes */${stat.size}` }
+        });
+      }
+      end = Math.min(end, stat.size - 1);
       const partial = Boolean(match);
       const headers = new Headers({
         "Accept-Ranges": "bytes",
@@ -153,11 +193,42 @@ function registerMediaProtocol(): void {
   });
 }
 
-async function bundledWorkflowFor(modelId: string): Promise<BundledWorkflow | null> {
+async function bundledWorkflowFor(
+  modelId: string,
+  inputMode: Draft["inputMode"] = "image"
+): Promise<BundledWorkflow | null> {
+  const ltxProfile = store.get().settings.ltxExtensionModelProfile;
+  const ltxVariant = ltxProfile === "q2_distilled" ? "q2" : "dev";
+  const ltxProfileLabel = {
+    q2_distilled: "Q2_K distilled · 8GB 兼容",
+    q3_k_m: "Q3_K_M dev · 均衡",
+    q4_k_m: "Q4_K_M dev · 质量"
+  }[ltxProfile];
+  if (inputMode === "video") {
+    if (modelId !== "sulphur2") return null;
+    const filename = `sulphur2_ltx23_extend_gguf_${ltxVariant}_api.json`;
+    const candidates = [
+      path.join(app.getAppPath(), "workflows", filename),
+      path.join(process.resourcesPath, "workflows", filename),
+      path.resolve(currentDirectory, "..", "..", "..", "workflows", filename)
+    ];
+    for (const candidate of candidates) {
+      if (!(await fs.stat(candidate).catch(() => null))) continue;
+      const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
+      return {
+        modelId,
+        label: `内置 · Sulphur 2 原生续写 · ${ltxProfileLabel}`,
+        path: candidate,
+        supportsEndImage: false,
+        supportsVideoExtension: extensionWorkflowSafetyErrors(source).length === 0
+      };
+    }
+    return null;
+  }
   const definitions: Record<string, { filename: string; label: string }> = {
     sulphur2: {
-      filename: "sulphur2_ltx23_i2v_api.json",
-      label: "内置 · Sulphur 2 / LTX 2.3 图生视频"
+      filename: `sulphur2_ltx23_i2v_gguf_${ltxVariant}_api.json`,
+      label: `内置 · Sulphur 2 图生视频 · ${ltxProfileLabel}`
     },
     wan22_5b: {
       filename: "wan22_5b_i2v_api.json",
@@ -203,7 +274,8 @@ async function bundledWorkflowFor(modelId: string): Promise<BundledWorkflow | nu
         modelId,
         label,
         path: candidate,
-        supportsEndImage: workflowSupportsEndImage(source)
+        supportsEndImage: workflowSupportsEndImage(source),
+        supportsVideoExtension: extensionWorkflowSafetyErrors(source).length === 0
       };
     }
   }
@@ -396,8 +468,57 @@ function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask 
     fps: draft.fps,
     frameInterpolation: draft.frameInterpolation,
     motion: draft.motion,
+    ...(draft.modelId === "sulphur2"
+      ? { modelProfile: state.settings.ltxExtensionModelProfile }
+      : {}),
     seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
+    progress: 0
+  };
+}
+
+function extensionTaskFromDraft(
+  draft: Draft,
+  state: AppState
+): ExtensionQueueTask {
+  const now = new Date().toISOString();
+  const prompt = promptOf(draft);
+  const settings = state.settings;
+  return {
+    id: crypto.randomUUID(),
+    taskType: "extension",
+    status: "waiting",
+    createdAt: now,
+    updatedAt: now,
+    outputFilename: createOutputFilename(
+      draft.modelId,
+      prompt,
+      outputNames(state)
+    ),
+    prompt,
+    promptVersion: draft.activePromptVersion + 1,
+    sourceVideoPath: draft.sourceVideoPath,
+    sourceVideoDuration: draft.sourceVideoDuration,
+    trimStartSeconds: draft.trimStartSeconds,
+    trimEndSeconds: draft.trimEndSeconds,
+    sourceAssetId: draft.sourceAssetId,
+    sourceVersionId: draft.sourceVersionId,
+    sourceWidth: draft.sourceWidth,
+    sourceHeight: draft.sourceHeight,
+    modelId: draft.modelId,
+    workflowPath: draft.workflowPath,
+    ratio: "source",
+    resolution: settings.ltxExtensionResolution,
+    duration: draft.duration,
+    fps: draft.fps,
+    frameInterpolation: draft.frameInterpolation,
+    motion: draft.motion,
+    modelProfile: settings.ltxExtensionModelProfile,
+    seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
+    keepSeedOnCopy: draft.keepSeedOnCopy,
+    maxGeneratedFrames: settings.ltxExtensionFrames,
+    overlapFrames: settings.ltxExtensionOverlapFrames,
+    unloadBetweenStages: settings.ltxExtensionUnloadBetweenStages,
     progress: 0
   };
 }
@@ -511,9 +632,13 @@ async function executeQueue(): Promise<void> {
     const task = store.get().queue.find((item) => item.status === "waiting");
     if (!task) break;
     activeController = new AbortController();
+    let vramWatchdog: VramWatchdogMonitor | undefined;
     try {
       if (task.taskType === "generation") {
         const safety = generationSafetyForTask(task);
+        if (!safety.safe) throw new Error(safety.message);
+      } else if (task.taskType === "extension") {
+        const safety = extensionSafetyForTask(task);
         if (!safety.safe) throw new Error(safety.message);
       }
       await updateTask(task.id, {
@@ -528,6 +653,7 @@ async function executeQueue(): Promise<void> {
         progress: 1,
         stage: "提交工作流"
       });
+      vramWatchdog = startAdaptiveVramWatchdog(activeController);
       const { promptId, clientId, nodeTypes } = await submitTask(
         task,
         store.get().settings,
@@ -543,6 +669,9 @@ async function executeQueue(): Promise<void> {
         clientId,
         nodeTypes,
         store.get().settings,
+        task.taskType === "extension"
+          ? store.get().settings.ltxExtensionTimeoutMinutes
+          : 3,
         activeController.signal,
         (progress, stage) => void updateTask(task.id, { progress, stage }),
         (dataUrl) =>
@@ -558,6 +687,23 @@ async function executeQueue(): Promise<void> {
         extractComfyOutputFiles(result),
         store.get().settings.outputDirectory
       );
+      if (completedTask.taskType === "extension") {
+        const outputVideo = files.find(
+          (file) => file.absolutePath && /\.(mp4|webm|mov|m4v|mkv)$/i.test(file.filename)
+        );
+        if (!outputVideo?.absolutePath) {
+          throw new Error("续写工作流没有返回可供 FFmpeg 拼接的视频文件");
+        }
+        await updateTask(task.id, {
+          progress: 99,
+          stage: "去除重叠帧并拼接成片"
+        });
+        await finalizeExtensionOutput(
+          completedTask,
+          outputVideo.absolutePath,
+          activeController.signal
+        );
+      }
       const next = await store.update((state) => {
         state.queue = state.queue.filter((item) => item.id !== task.id);
         if (completedTask.taskType === "generation") {
@@ -607,6 +753,59 @@ async function executeQueue(): Promise<void> {
           state.history.unshift(asset);
           return;
         }
+        if (completedTask.taskType === "extension") {
+          const [width, height] = extensionOutputDimensions(completedTask);
+          const totalDuration =
+            completedTask.trimEndSeconds - completedTask.trimStartSeconds +
+            completedTask.duration;
+          const version: AssetVersion = {
+            id: crypto.randomUUID(),
+            kind: "original",
+            createdAt: completedAt,
+            outputFilename: completedTask.outputFilename,
+            modelId: completedTask.modelId,
+            width,
+            height,
+            duration: totalDuration,
+            fps: completedTask.fps,
+            seed: completedTask.seed,
+            workflowPath: completedTask.workflowPath,
+            comfyPromptId: promptId,
+            comfyOutputs: result,
+            files,
+            startedAt: completedTask.startedAt
+          };
+          const asset: HistoryAsset = {
+            id: crypto.randomUUID(),
+            taskId: completedTask.id,
+            title: completedTask.prompt.slice(0, 28) || "视频续写",
+            outputFilename: completedTask.outputFilename,
+            createdAt: completedAt,
+            updatedAt: completedAt,
+            modelId: completedTask.modelId,
+            duration: totalDuration,
+            resolution: height,
+            fps: completedTask.fps,
+            frameInterpolation: completedTask.frameInterpolation,
+            ratio: "source",
+            prompt: completedTask.prompt,
+            seed: completedTask.seed,
+            sourceAssetId: completedTask.sourceAssetId,
+            sourceVersionId: completedTask.sourceVersionId,
+            sourceVideoPath: completedTask.sourceVideoPath,
+            trimStartSeconds: completedTask.trimStartSeconds,
+            trimEndSeconds: completedTask.trimEndSeconds,
+            workflowPath: completedTask.workflowPath,
+            startedAt: completedTask.startedAt,
+            comfyPromptId: promptId,
+            comfyOutputs: result,
+            files,
+            defaultVersionId: version.id,
+            versions: [version]
+          };
+          state.history.unshift(asset);
+          return;
+        }
         const assetIndex = state.history.findIndex(
           (asset) => asset.id === completedTask.sourceAssetId
         );
@@ -642,6 +841,8 @@ async function executeQueue(): Promise<void> {
       sendState(next);
     } catch (error) {
       const aborted = activeController.signal.aborted;
+      const abortReason = activeController.signal.reason;
+      const vramPressure = abortReason instanceof VramWatchdogError;
       const stalled = error instanceof TaskStalledError;
       const memoryFailure =
         error instanceof Error &&
@@ -649,7 +850,7 @@ async function executeQueue(): Promise<void> {
           error.message
         );
       let requiresRestart = stalled || memoryFailure;
-      if (!aborted) {
+      if (!aborted || vramPressure) {
         await interrupt(store.get().settings).catch(() => undefined);
         const memoryFreed = await freeMemory(store.get().settings).then(
           () => true,
@@ -657,7 +858,7 @@ async function executeQueue(): Promise<void> {
         );
         requiresRestart ||= !memoryFreed;
       }
-      if (requiresRestart) {
+      if (requiresRestart || vramPressure) {
         const stopped = await store.update((state) => {
           state.queueRunning = false;
         });
@@ -666,7 +867,9 @@ async function executeQueue(): Promise<void> {
       const failedState = await updateTask(task.id, {
         status: aborted ? "cancelled" : "failed",
         error: aborted
-          ? "任务已中止，ComfyUI 已停止当前采样。"
+          ? vramPressure
+            ? abortReason.message
+            : "任务已中止，ComfyUI 已停止当前采样。"
           : error instanceof Error
             ? error.message
             : String(error)
@@ -683,6 +886,7 @@ async function executeQueue(): Promise<void> {
         });
       }
     } finally {
+      vramWatchdog?.stop();
       activeController = null;
     }
   }
@@ -715,6 +919,13 @@ function registerIpc(): void {
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
+  ipcMain.handle("file:pick-video", async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [{ name: "视频", extensions: ["mp4", "webm", "mov", "m4v", "mkv"] }]
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
   ipcMain.handle("file:pick-workflow", async () => {
     const result = await dialog.showOpenDialog({
       properties: ["openFile"],
@@ -724,10 +935,13 @@ function registerIpc(): void {
   });
   ipcMain.handle("workflow:inspect", async (_event, workflowPath: string) => {
     const source = JSON.parse(await fs.readFile(workflowPath, "utf8")) as unknown;
-    return { supportsEndImage: workflowSupportsEndImage(source) };
+    return {
+      supportsEndImage: workflowSupportsEndImage(source),
+      supportsVideoExtension: extensionWorkflowSafetyErrors(source).length === 0
+    };
   });
-  ipcMain.handle("workflow:get-bundled", (_event, modelId: string) =>
-    bundledWorkflowFor(modelId)
+  ipcMain.handle("workflow:get-bundled", (_event, modelId: string, inputMode?: Draft["inputMode"]) =>
+    bundledWorkflowFor(modelId, inputMode)
   );
   ipcMain.handle("performance:get", (_event, settings: Settings) =>
     getPerformanceMetrics(settings)
@@ -805,6 +1019,9 @@ function registerIpc(): void {
       installCustomNode(nodeId, settings)
   );
   ipcMain.handle("queue:enqueue", async (_event, draft: Draft) => {
+    if (draft.inputMode !== "image") {
+      throw new Error("视频续写必须使用独立的 extension 队列任务");
+    }
     if (!draft.startImagePath) throw new Error("请先选择首帧图片");
     if (!promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择该模型的 ComfyUI API 工作流");
@@ -832,6 +1049,42 @@ function registerIpc(): void {
     }
     const next = await store.update((state) => {
       state.queue.push(queueTaskFromDraft(draft, state));
+      state.draft = draft;
+    });
+    sendState(next);
+    return next;
+  });
+  ipcMain.handle("queue:enqueue-extension", async (_event, draft: Draft) => {
+    if (draft.inputMode !== "video") {
+      throw new Error("只有视频输入模式可以创建 extension 队列任务");
+    }
+    if (!promptOf(draft)) throw new Error("提示词不能为空");
+    if (!draft.workflowPath) throw new Error("请先选择视频续写 API 工作流");
+    if (!(await fs.stat(draft.sourceVideoPath).catch(() => null))) {
+      throw new Error("源视频文件不存在，无法加入续写队列");
+    }
+    let workflow: unknown;
+    try {
+      workflow = JSON.parse(await fs.readFile(draft.workflowPath, "utf8"));
+    } catch (error) {
+      throw new Error(
+        `无法读取续写工作流 JSON：${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    const validation = validateApiWorkflow(workflow);
+    if (!validation.valid) {
+      throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
+    }
+    const workflowSafetyErrors = extensionWorkflowSafetyErrors(workflow);
+    if (workflowSafetyErrors.length) {
+      throw new Error(`续写工作流不符合原生续写低显存契约：${workflowSafetyErrors.join("；")}`);
+    }
+    const current = store.get();
+    const task = extensionTaskFromDraft(draft, current);
+    const safety = extensionSafetyForTask(task);
+    if (!safety.safe) throw new Error(safety.message);
+    const next = await store.update((state) => {
+      state.queue.push(task);
       state.draft = draft;
     });
     sendState(next);
@@ -945,7 +1198,7 @@ function registerIpc(): void {
         ...state.queue.map((task) => task.outputFilename),
         ...state.history.map((asset) => asset.outputFilename)
       ];
-      const outputFilename = source.taskType === "generation"
+      const outputFilename = source.taskType === "generation" || source.taskType === "extension"
         ? createOutputFilename(source.modelId, source.prompt, names)
         : uniqueUpscaleFilename(source.sourceFilename, source.targetHeight, names);
       state.queue.push({

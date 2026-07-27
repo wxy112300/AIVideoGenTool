@@ -12,12 +12,13 @@ const api: AppApi = {
   saveDraft: (draft: Draft) => ipcRenderer.invoke("draft:save", draft),
   saveSettings: (settings: Settings) => ipcRenderer.invoke("settings:save", settings),
   pickImage: () => ipcRenderer.invoke("file:pick-image"),
+  pickVideo: () => ipcRenderer.invoke("file:pick-video"),
   getDroppedFilePath: (file) => webUtils.getPathForFile(file),
   pickWorkflow: () => ipcRenderer.invoke("file:pick-workflow"),
   inspectWorkflow: (path: string) =>
     ipcRenderer.invoke("workflow:inspect", path),
-  getBundledWorkflow: (modelId: string) =>
-    ipcRenderer.invoke("workflow:get-bundled", modelId),
+  getBundledWorkflow: (modelId: string, inputMode?: Draft["inputMode"]) =>
+    ipcRenderer.invoke("workflow:get-bundled", modelId, inputMode),
   getPerformanceMetrics: (settings: Settings) =>
     ipcRenderer.invoke("performance:get", settings),
   pickDirectory: () => ipcRenderer.invoke("file:pick-directory"),
@@ -39,6 +40,8 @@ const api: AppApi = {
   installCustomNode: (nodeId, settings) =>
     ipcRenderer.invoke("custom-node:install", nodeId, settings),
   enqueue: (draft: Draft) => ipcRenderer.invoke("queue:enqueue", draft),
+  enqueueExtension: (draft: Draft) =>
+    ipcRenderer.invoke("queue:enqueue-extension", draft),
   enqueueUpscale: (request) => ipcRenderer.invoke("queue:enqueue-upscale", request),
   updateUpscaleTask: (taskId, patch) =>
     ipcRenderer.invoke("queue:update-upscale", taskId, patch),

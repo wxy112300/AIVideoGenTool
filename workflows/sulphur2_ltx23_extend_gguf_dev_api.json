@@ -1,0 +1,21 @@
+{
+  "1": { "class_type": "VHS_LoadVideoFFmpeg", "inputs": { "video": "{{SOURCE_VIDEO}}", "force_rate": "{{SOURCE_FPS}}", "custom_width": "{{WIDTH}}", "custom_height": "{{HEIGHT}}", "frame_load_cap": "{{OVERLAP_FRAMES}}", "start_time": 0, "format": "None" } },
+  "2": { "class_type": "VAEEncodeTiled", "inputs": { "pixels": ["1", 0], "vae": ["18", 0], "tile_size": 256, "overlap": 64, "temporal_size": 16, "temporal_overlap": 4 } },
+  "3": { "class_type": "DualCLIPLoader", "inputs": { "clip_name1": "{{LTX_TEXT_ENCODER}}", "clip_name2": "{{LTX_TEXT_CONNECTOR}}", "type": "ltxv", "device": "cpu" } },
+  "4": { "class_type": "CLIPTextEncode", "inputs": { "text": "{{PROMPT}}", "clip": ["3", 0] } },
+  "5": { "class_type": "CLIPTextEncode", "inputs": { "text": "{{NEGATIVE_PROMPT}}", "clip": ["3", 0] } },
+  "6": { "class_type": "LTXVConditioning", "inputs": { "positive": ["4", 0], "negative": ["5", 0], "frame_rate": "{{SOURCE_FPS}}" } },
+  "7": { "class_type": "UnetLoaderGGUFAdvanced", "inputs": { "unet_name": "{{SULPHUR_GGUF}}", "dequant_dtype": "default", "patch_dtype": "default", "patch_on_device": false } },
+  "8": { "class_type": "LoraLoaderModelOnly", "inputs": { "model": ["7", 0], "lora_name": "{{LTX_DISTILL_LORA}}", "strength_model": 0.7 } },
+  "9": { "class_type": "CFGGuider", "inputs": { "model": ["8", 0], "positive": ["6", 0], "negative": ["6", 1], "cfg": 1 } },
+  "10": { "class_type": "RandomNoise", "inputs": { "noise_seed": "{{SEED}}" } },
+  "11": { "class_type": "KSamplerSelect", "inputs": { "sampler_name": "euler_ancestral_cfg_pp" } },
+  "12": { "class_type": "LTXVScheduler", "inputs": { "steps": 8, "max_shift": 4, "base_shift": 1.5, "stretch": true, "terminal": 0.1, "latent": ["2", 0] } },
+  "13": { "class_type": "VRAM_Debug", "inputs": { "empty_cache": true, "gc_collect": true, "unload_all_models": true, "any_input": ["2", 0] } },
+  "14": { "class_type": "LTXVExtendSampler", "inputs": { "model": ["8", 0], "vae": ["18", 0], "latents": ["13", 0], "num_new_frames": "{{EXTENSION_FRAMES}}", "frame_overlap": "{{OVERLAP_FRAMES}}", "guider": ["9", 0], "sampler": ["11", 0], "sigmas": ["12", 0], "noise": ["10", 0], "strength": 0.5 } },
+  "15": { "class_type": "VRAM_Debug", "inputs": { "empty_cache": true, "gc_collect": true, "unload_all_models": true, "any_input": ["14", 0] } },
+  "16": { "class_type": "LTXVSpatioTemporalTiledVAEDecode", "inputs": { "vae": ["18", 0], "latents": ["15", 0], "spatial_tiles": 4, "spatial_overlap": 1, "temporal_tile_length": 8, "temporal_overlap": 1, "last_frame_fix": false, "working_device": "cpu", "working_dtype": "float32" } },
+  "17": { "class_type": "CreateVideo", "inputs": { "images": ["16", 0], "fps": "{{FPS}}" } },
+  "18": { "class_type": "VAELoader", "inputs": { "vae_name": "{{LTX_VIDEO_VAE}}" } },
+  "19": { "class_type": "SaveVideo", "inputs": { "video": ["17", 0], "filename_prefix": "{{OUTPUT_FILENAME}}", "format": "mp4", "codec": "h264" } }
+}

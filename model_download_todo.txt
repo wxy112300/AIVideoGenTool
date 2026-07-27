@@ -1,3 +1,57 @@
+Sulphur 2 / LTX 2.3：先在设置中选择一个 GGUF 档位
+默认推荐 Q3_K_M。Q2、Q3、Q4 三选一，不要全部下载。
+
+Q2_K distilled（约 7.93 GB，8GB 兼容，不需要 distill LoRA）
+https://huggingface.co/szwagros/sulphur-2-gguf/blob/main/sulphur-2-distilled-Q2_K.gguf
+放到：
+%USERPROFILE%\Documents\ComfyUI\models\unet\sulphur-2-distilled-Q2_K.gguf
+
+Q3_K_M dev（约 11.13 GB，默认推荐，需要 distill LoRA）
+https://huggingface.co/vantagewithai/Sulphur-2-Base-GGUF/blob/main/sulphur_dev-Q3_K_M.gguf
+放到：
+%USERPROFILE%\Documents\ComfyUI\models\unet\sulphur_dev-Q3_K_M.gguf
+
+Q4_K_M dev（约 14.30 GB，质量档，需要 distill LoRA）
+https://huggingface.co/vantagewithai/Sulphur-2-Base-GGUF/blob/main/sulphur_dev-Q4_K_M.gguf
+放到：
+%USERPROFILE%\Documents\ComfyUI\models\unet\sulphur_dev-Q4_K_M.gguf
+
+下面这些是三个档位共用的分离组件：
+
+Gemma 3 文本编码器
+https://huggingface.co/Comfy-Org/ltx-2/blob/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors
+放到：
+%USERPROFILE%\Documents\ComfyUI\models\text_encoders\gemma_3_12B_it_fp4_mixed.safetensors
+
+LTX 2.3 文本连接器
+https://huggingface.co/vantagewithai/LTX-2.3-Split/blob/main/text_encoder/ltx-2-3-22b-text_encoder.safetensors
+放到：
+%USERPROFILE%\Documents\ComfyUI\models\text_encoders\ltx-2-3-22b-text_encoder.safetensors
+
+LTX 2.3 视频 VAE
+https://huggingface.co/vantagewithai/LTX-2.3-Split/blob/main/vae/ltx-2-3-22b-VAE.safetensors
+放到：
+%USERPROFILE%\Documents\ComfyUI\models\vae\ltx-2-3-22b-VAE.safetensors
+
+LTX 2.3 音频 VAE
+https://huggingface.co/vantagewithai/LTX-2.3-Split/blob/main/audio_vae/ltx-2-3-22b-audio_vae.safetensors
+放到：
+%USERPROFILE%\Documents\ComfyUI\models\checkpoints\ltx-2-3-22b-audio_vae.safetensors
+注意：它必须由 ComfyUI-LTXVideo 的 LowVRAMAudioVAELoader 读取，不能放在 models\vae 交给通用 VAELoader。
+
+LTX 2.3 latent x2 upscaler
+https://huggingface.co/Lightricks/LTX-2.3/blob/main/ltx-2.3-spatial-upscaler-x2-1.0.safetensors
+放到：
+%USERPROFILE%\Documents\ComfyUI\models\latent_upscale_models\ltx-2.3-spatial-upscaler-x2-1.0.safetensors
+
+仅 Q3/Q4 需要 Sulphur distill LoRA：
+https://huggingface.co/SulphurAI/Sulphur-2-base/tree/main/distill_loras
+下载：ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors
+放到：
+%USERPROFILE%\Documents\ComfyUI\models\loras\ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors
+
+注意：8GB 兼容依赖 CPU offload、充足的系统内存和页面文件，并不代表全部组件同时驻留在 8GB 显存。
+
 第一批：优先下载
 这批完成后，就能测试“Wan 2.2 原版 + 通用无审查 LoRA”。
 1. Wan 2.2 14B high-noise 主模型

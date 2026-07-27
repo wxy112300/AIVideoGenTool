@@ -9,6 +9,7 @@ function task(
 ): QueueTask {
   return {
     id,
+    taskType: "generation",
     status,
     createdAt: id,
     updatedAt: id,

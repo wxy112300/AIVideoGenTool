@@ -13,10 +13,17 @@ export interface PromptVersion {
 }
 
 export interface Draft {
+  inputMode: "image" | "video";
   startImagePath: string;
   sourceWidth: number;
   sourceHeight: number;
   endImagePath: string;
+  sourceVideoPath: string;
+  sourceVideoDuration: number;
+  trimStartSeconds: number;
+  trimEndSeconds: number;
+  sourceAssetId?: string;
+  sourceVersionId?: string;
   promptVersions: PromptVersion[];
   activePromptVersion: number;
   modelId: string;
@@ -31,6 +38,11 @@ export interface Draft {
   keepSeedOnCopy: boolean;
 }
 
+export type LtxExtensionModelProfile =
+  | "q2_distilled"
+  | "q3_k_m"
+  | "q4_k_m";
+
 export interface Settings {
   comfyUrl: string;
   lmStudioUrl: string;
@@ -42,6 +54,12 @@ export interface Settings {
   defaultVideoModel: string;
   vramReserveGb: number;
   autoOffload: boolean;
+  ltxExtensionModelProfile: LtxExtensionModelProfile;
+  ltxExtensionResolution: 360 | 480;
+  ltxExtensionFrames: 49 | 65;
+  ltxExtensionOverlapFrames: 16;
+  ltxExtensionUnloadBetweenStages: true;
+  ltxExtensionTimeoutMinutes: 10 | 20 | 30;
   safeCancel: boolean;
   optimizeQueue: boolean;
   promptLanguage: "auto" | "zh" | "en";
@@ -57,7 +75,7 @@ export interface Settings {
 
 interface QueueTaskBase {
   id: string;
-  taskType: "generation" | "upscale";
+  taskType: "generation" | "extension" | "upscale";
   status: TaskStatus;
   createdAt: string;
   updatedAt: string;
@@ -88,6 +106,7 @@ export interface GenerationQueueTask extends QueueTaskBase {
   fps: Draft["fps"];
   frameInterpolation: Draft["frameInterpolation"];
   motion: Draft["motion"];
+  modelProfile?: LtxExtensionModelProfile;
 }
 
 export interface UpscaleQueueTask extends QueueTaskBase {
@@ -104,7 +123,30 @@ export interface UpscaleQueueTask extends QueueTaskBase {
   faceRestore: boolean;
 }
 
-export type QueueTask = GenerationQueueTask | UpscaleQueueTask;
+export interface ExtensionQueueTask extends QueueTaskBase {
+  taskType: "extension";
+  prompt: string;
+  promptVersion: number;
+  sourceVideoPath: string;
+  sourceVideoDuration: number;
+  trimStartSeconds: number;
+  trimEndSeconds: number;
+  sourceAssetId?: string;
+  sourceVersionId?: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  ratio: Draft["ratio"];
+  resolution: 360 | 480;
+  fps: Draft["fps"];
+  frameInterpolation: Draft["frameInterpolation"];
+  motion: Draft["motion"];
+  modelProfile: LtxExtensionModelProfile;
+  maxGeneratedFrames: 49 | 65;
+  overlapFrames: 16;
+  unloadBetweenStages: true;
+}
+
+export type QueueTask = GenerationQueueTask | ExtensionQueueTask | UpscaleQueueTask;
 
 export interface UpscaleRequest {
   sourceAssetId: string;
@@ -165,6 +207,11 @@ export interface HistoryAsset {
   seed: number;
   startImagePath?: string;
   endImagePath?: string;
+  sourceAssetId?: string;
+  sourceVersionId?: string;
+  sourceVideoPath?: string;
+  trimStartSeconds?: number;
+  trimEndSeconds?: number;
   workflowPath?: string;
   startedAt?: string;
   comfyPromptId: string;
@@ -283,10 +330,12 @@ export interface BundledWorkflow {
   label: string;
   path: string;
   supportsEndImage: boolean;
+  supportsVideoExtension: boolean;
 }
 
 export interface WorkflowCapabilities {
   supportsEndImage: boolean;
+  supportsVideoExtension: boolean;
 }
 
 export interface PerformanceMetrics {
@@ -311,10 +360,14 @@ export interface AppApi {
   saveDraft(draft: Draft): Promise<AppState>;
   saveSettings(settings: Settings): Promise<AppState>;
   pickImage(): Promise<string | null>;
+  pickVideo(): Promise<string | null>;
   getDroppedFilePath(file: File): string;
   pickWorkflow(): Promise<string | null>;
   inspectWorkflow(path: string): Promise<WorkflowCapabilities>;
-  getBundledWorkflow(modelId: string): Promise<BundledWorkflow | null>;
+  getBundledWorkflow(
+    modelId: string,
+    inputMode?: Draft["inputMode"]
+  ): Promise<BundledWorkflow | null>;
   getPerformanceMetrics(settings: Settings): Promise<PerformanceMetrics>;
   pickDirectory(): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
@@ -340,6 +393,7 @@ export interface AppApi {
     settings: Settings
   ): Promise<ConnectionResult>;
   enqueue(draft: Draft): Promise<AppState>;
+  enqueueExtension(draft: Draft): Promise<AppState>;
   enqueueUpscale(request: UpscaleRequest): Promise<AppState>;
   updateUpscaleTask(taskId: string, patch: Pick<UpscaleQueueTask, "targetWidth" | "targetHeight" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">): Promise<AppState>;
   removeTask(taskId: string): Promise<AppState>;

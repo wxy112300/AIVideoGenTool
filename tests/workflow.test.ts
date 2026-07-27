@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import type { QueueTask } from "../src/types";
+import type { ExtensionQueueTask, QueueTask } from "../src/types";
 import {
+  extensionWorkflowSafetyErrors,
+  extensionSafetyForTask,
   frameCountForTask,
   generationFrameCountForTask,
   generationSafetyForTask,
@@ -10,11 +12,13 @@ import {
   outputFrameCountForTask,
   renderWorkflow,
   validateApiWorkflow,
-  workflowSupportsEndImage
+  workflowSupportsEndImage,
+  workflowSupportsVideoExtension
 } from "../src/core/workflow";
 
 const task: QueueTask = {
   id: "task-1",
+  taskType: "generation",
   status: "waiting",
   createdAt: "2026-07-24T00:00:00.000Z",
   updatedAt: "2026-07-24T00:00:00.000Z",
@@ -35,6 +39,37 @@ const task: QueueTask = {
   motion: "natural",
   seed: 42,
   keepSeedOnCopy: false
+};
+
+const extensionTask: ExtensionQueueTask = {
+  id: "extension-1",
+  taskType: "extension",
+  status: "waiting",
+  createdAt: "2026-07-27T00:00:00.000Z",
+  updatedAt: "2026-07-27T00:00:00.000Z",
+  outputFilename: "extended.mp4",
+  prompt: "人物继续向前走",
+  promptVersion: 1,
+  sourceVideoPath: "source.mp4",
+  sourceVideoDuration: 10,
+  trimStartSeconds: 1,
+  trimEndSeconds: 6,
+  sourceWidth: 1920,
+  sourceHeight: 1080,
+  modelId: "sulphur2",
+  workflowPath: "extend.json",
+  ratio: "source",
+  resolution: 360,
+  duration: 5,
+  fps: 24,
+  frameInterpolation: "rife4x",
+  motion: "natural",
+  modelProfile: "q3_k_m",
+  seed: 42,
+  keepSeedOnCopy: false,
+  maxGeneratedFrames: 49,
+  overlapFrames: 16,
+  unloadBetweenStages: true
 };
 
 describe("renderWorkflow", () => {
@@ -68,6 +103,124 @@ describe("renderWorkflow", () => {
       })
     ).toBe(true);
     expect(workflowSupportsEndImage({ "1": { inputs: {} } })).toBe(false);
+  });
+
+  it("requires the complete video extension placeholder contract", () => {
+    expect(
+      workflowSupportsVideoExtension({
+        "1": {
+          inputs: {
+            video: "{{SOURCE_VIDEO}}",
+            frames: "{{EXTENSION_FRAMES}}",
+            overlap: "{{OVERLAP_FRAMES}}"
+          }
+        }
+      })
+    ).toBe(true);
+    expect(
+      workflowSupportsVideoExtension({
+        "1": { inputs: { video: "{{SOURCE_VIDEO}}", overlap: "{{OVERLAP_FRAMES}}" } }
+      })
+    ).toBe(false);
+    expect(
+      workflowSupportsVideoExtension({
+        metadata: {
+          note: "{{SOURCE_VIDEO}} {{EXTENSION_FRAMES}} {{OVERLAP_FRAMES}}"
+        },
+        "1": { inputs: { image: "{{INPUT_IMAGE}}" } }
+      })
+    ).toBe(false);
+  });
+
+  it("accepts the legacy low-VRAM checkpoint extension structure", () => {
+    const source = {
+      "1": {
+        class_type: "LTXVExtendSampler",
+        inputs: {
+          video: "{{SOURCE_VIDEO}}",
+          frames: "{{EXTENSION_FRAMES}}",
+          overlap: "{{OVERLAP_FRAMES}}"
+        }
+      },
+      "2": { class_type: "LowVRAMCheckpointLoader", inputs: {} },
+      "3": { class_type: "VRAM_Debug", inputs: {} },
+      "4": { class_type: "VAEDecodeTiled", inputs: {} }
+    };
+    expect(extensionWorkflowSafetyErrors(source)).toEqual([]);
+    expect(extensionWorkflowSafetyErrors({ ...source, "2": undefined })).toContain(
+      "缺少 LowVRAMCheckpointLoader 或 UnetLoaderGGUFAdvanced"
+    );
+  });
+
+  it("requires a conservative split-component GGUF extension structure", () => {
+    const source = {
+      "1": {
+        class_type: "LTXVExtendSampler",
+        inputs: {
+          video: "{{SOURCE_VIDEO}}",
+          frames: "{{EXTENSION_FRAMES}}",
+          overlap: "{{OVERLAP_FRAMES}}"
+        }
+      },
+      "2": {
+        class_type: "UnetLoaderGGUFAdvanced",
+        inputs: { patch_on_device: false }
+      },
+      "3": { class_type: "DualCLIPLoader", inputs: {} },
+      "4": { class_type: "VAELoader", inputs: {} },
+      "5": { class_type: "VRAM_Debug", inputs: {} },
+      "6": { class_type: "VAEDecodeTiled", inputs: {} }
+    };
+    expect(extensionWorkflowSafetyErrors(source)).toEqual([]);
+    expect(
+      extensionWorkflowSafetyErrors({
+        ...source,
+        "2": {
+          class_type: "UnetLoaderGGUFAdvanced",
+          inputs: { patch_on_device: true }
+        }
+      })
+    ).toContain("GGUF loader 必须关闭 patch_on_device");
+  });
+
+  it("renders typed video extension inputs", () => {
+    const result = renderWorkflow(
+      {
+        "1": {
+          class_type: "ExtensionExample",
+          inputs: {
+            video: "{{SOURCE_VIDEO}}",
+            start: "{{TRIM_START}}",
+            end: "{{TRIM_END}}",
+            frames: "{{EXTENSION_FRAMES}}",
+            overlap: "{{OVERLAP_FRAMES}}",
+            unload: "{{UNLOAD_BETWEEN_STAGES}}"
+          }
+        }
+      },
+      extensionTask,
+      { sourceVideo: "uploaded/source.mp4" }
+    ) as Record<string, { inputs: Record<string, unknown> }>;
+
+    expect(result["1"]!.inputs).toMatchObject({
+      video: "uploaded/source.mp4",
+      start: 1,
+      end: 6,
+      frames: 33,
+      overlap: 16,
+      unload: true
+    });
+  });
+
+  it("enforces the 24GB extension frame budget", () => {
+    expect(extensionSafetyForTask(extensionTask).safe).toBe(true);
+    const unsafe = extensionSafetyForTask({
+      ...extensionTask,
+      frameInterpolation: "off"
+    });
+    expect(unsafe.safe).toBe(false);
+    expect(unsafe.generatedFrames).toBe(121);
+    expect(unsafe.maxGeneratedFrames).toBe(49);
   });
 
   it("preserves the source image aspect ratio when requested", () => {
@@ -301,10 +454,13 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     ).toBe(65);
   });
 
-  it("renders the official LTX 2.3 assets and two-stage dimensions", () => {
+  it("renders the Q3 GGUF split assets and two-stage dimensions", () => {
     const source = JSON.parse(
       readFileSync(
-        new URL("../workflows/sulphur2_ltx23_i2v_api.json", import.meta.url),
+        new URL(
+          "../workflows/sulphur2_ltx23_i2v_gguf_dev_api.json",
+          import.meta.url
+        ),
         "utf8"
       )
     );
@@ -313,11 +469,20 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
 
     expect(validateApiWorkflow(source).valid).toBe(true);
-    expect(rendered["44"]?.inputs.ckpt_name).toBe(
-      "sulphur_dev_fp8mixed.safetensors"
-    );
-    expect(rendered["5"]?.inputs.text_encoder).toBe(
+    expect(rendered["44"]?.inputs.unet_name).toBe("sulphur_dev-Q3_K_M.gguf");
+    expect(rendered["44"]?.inputs.patch_on_device).toBe(false);
+    expect(rendered["5"]?.inputs.clip_name1).toBe(
       "gemma_3_12B_it_fp4_mixed.safetensors"
+    );
+    expect(rendered["5"]?.inputs.clip_name2).toBe(
+      "ltx-2-3-22b-text_encoder.safetensors"
+    );
+    expect(rendered["4"]?.class_type).toBe("LowVRAMAudioVAELoader");
+    expect(rendered["4"]?.inputs.ckpt_name).toBe(
+      "ltx-2-3-22b-audio_vae.safetensors"
+    );
+    expect(rendered["75"]?.inputs.vae_name).toBe(
+      "ltx-2-3-22b-VAE.safetensors"
     );
     expect(rendered["21"]?.inputs.width).toBe(432);
     expect(rendered["21"]?.inputs.height).toBe(240);
@@ -326,10 +491,83 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     expect(rendered["74"]?.class_type).toBe("VRAM_Debug");
     expect(rendered["35"]?.inputs.av_latent).toEqual(["74", 0]);
     expect(rendered["73"]?.class_type).toBe("VAEDecodeTiled");
-    const preDecodeId = String(
-      (rendered["73"]?.inputs.samples as unknown[])[0]
+    expect(JSON.stringify(rendered)).not.toContain("{{");
+  });
+
+  it("renders the bundled Q3 native extension graph", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL(
+          "../workflows/sulphur2_ltx23_extend_gguf_dev_api.json",
+          import.meta.url
+        ),
+        "utf8"
+      )
     );
-    expect(rendered[preDecodeId]?.class_type).toBe("VRAM_Debug");
+    const rendered = renderWorkflow(source, extensionTask, {
+      sourceVideo: "uploaded/context.mp4"
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(extensionWorkflowSafetyErrors(source)).toEqual([]);
+    expect(rendered["1"]?.inputs.video).toBe("uploaded/context.mp4");
+    expect(rendered["1"]?.inputs.custom_width).toBe(640);
+    expect(rendered["1"]?.inputs.custom_height).toBe(352);
+    expect(rendered["7"]?.class_type).toBe("UnetLoaderGGUFAdvanced");
+    expect(rendered["7"]?.inputs.unet_name).toBe("sulphur_dev-Q3_K_M.gguf");
+    expect(rendered["7"]?.inputs.patch_on_device).toBe(false);
+    expect(rendered["3"]?.class_type).toBe("DualCLIPLoader");
+    expect(rendered["18"]?.class_type).toBe("VAELoader");
+    expect(rendered["14"]?.inputs.num_new_frames).toBe(33);
+    expect(rendered["14"]?.inputs.frame_overlap).toBe(16);
+    expect(rendered["16"]?.inputs.working_device).toBe("cpu");
+    expect(JSON.stringify(rendered)).not.toContain("{{");
+  });
+
+  it("renders the distilled Q2 graph without a distill LoRA", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL(
+          "../workflows/sulphur2_ltx23_extend_gguf_q2_api.json",
+          import.meta.url
+        ),
+        "utf8"
+      )
+    );
+    const rendered = renderWorkflow(
+      source,
+      { ...extensionTask, modelProfile: "q2_distilled" },
+      { sourceVideo: "uploaded/context.mp4" }
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(extensionWorkflowSafetyErrors(source)).toEqual([]);
+    expect(rendered["7"]?.inputs.unet_name).toBe(
+      "sulphur-2-distilled-Q2_K.gguf"
+    );
+    expect(Object.values(rendered).some(
+      (node) => node.class_type === "LoraLoaderModelOnly"
+    )).toBe(false);
+    expect(JSON.stringify(rendered)).not.toContain("{{");
+  });
+
+  it("renders the Q4 transformer through the shared dev graph", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL(
+          "../workflows/sulphur2_ltx23_extend_gguf_dev_api.json",
+          import.meta.url
+        ),
+        "utf8"
+      )
+    );
+    const rendered = renderWorkflow(
+      source,
+      { ...extensionTask, modelProfile: "q4_k_m" },
+      { sourceVideo: "uploaded/context.mp4" }
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(rendered["7"]?.inputs.unet_name).toBe("sulphur_dev-Q4_K_M.gguf");
+    expect(rendered["8"]?.class_type).toBe("LoraLoaderModelOnly");
     expect(JSON.stringify(rendered)).not.toContain("{{");
   });
 });

@@ -37,6 +37,15 @@ const customNodeCatalog = [
     required: true
   },
   {
+    id: "ltx-video",
+    name: "ComfyUI-LTXVideo",
+    purpose: "Sulphur 2 原生视频续写、低显存加载与分阶段卸载",
+    repositoryUrl: "https://github.com/Lightricks/ComfyUI-LTXVideo.git",
+    directoryName: "ComfyUI-LTXVideo",
+    aliases: ["comfyui-ltxvideo"],
+    required: false
+  },
+  {
     id: "seedvr2",
     name: "SeedVR2 Video Upscaler",
     purpose: "SeedVR2 视频超分工作流",
@@ -205,18 +214,51 @@ interface ModelProfileDefinition {
 }
 
 const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
-  "sulphur2:Sulphur 2 主模型": {
-    sourceLabel: "SulphurAI / Sulphur-2-base",
-    downloadUrl: "https://huggingface.co/SulphurAI/Sulphur-2-base/tree/main",
-    targetSubdirectory: "checkpoints",
-    recommendedFilename: "sulphur_dev_fp8mixed.safetensors",
-    notes: "Sulphur 2 是 LTX 2.3 完整 checkpoint；内置工作流使用 CheckpointLoaderSimple，必须放在 models/checkpoints。4090 推荐 FP8 mixed。"
+  "sulphur2:Sulphur 2 Q2_K distilled GGUF": {
+    sourceLabel: "szwagros / sulphur-2-gguf",
+    downloadUrl: "https://huggingface.co/szwagros/sulphur-2-gguf/tree/main",
+    targetSubdirectory: "unet",
+    recommendedFilename: "sulphur-2-distilled-Q2_K.gguf",
+    notes: "约 7.93 GB 的 8GB 兼容档。依赖 CPU offload、足够的系统内存和页面文件；质量低于 Q3/Q4。"
+  },
+  "sulphur2:Sulphur 2 Q3_K_M dev GGUF": {
+    sourceLabel: "vantagewithai / Sulphur-2-Base-GGUF",
+    downloadUrl: "https://huggingface.co/vantagewithai/Sulphur-2-Base-GGUF/tree/main",
+    targetSubdirectory: "unet",
+    recommendedFilename: "sulphur_dev-Q3_K_M.gguf",
+    notes: "约 11.13 GB，作为 24GB 显卡的默认均衡档。"
+  },
+  "sulphur2:Sulphur 2 Q4_K_M dev GGUF": {
+    sourceLabel: "vantagewithai / Sulphur-2-Base-GGUF",
+    downloadUrl: "https://huggingface.co/vantagewithai/Sulphur-2-Base-GGUF/tree/main",
+    targetSubdirectory: "unet",
+    recommendedFilename: "sulphur_dev-Q4_K_M.gguf",
+    notes: "约 14.30 GB 的质量档。运行前应关闭占用显存的其他程序。"
   },
   "sulphur2:Gemma 3 文本编码器": {
     sourceLabel: "Comfy-Org / ltx-2",
     downloadUrl: "https://huggingface.co/Comfy-Org/ltx-2/tree/main/split_files/text_encoders",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "gemma_3_12B_it_fp4_mixed.safetensors"
+  },
+  "sulphur2:LTX 2.3 文本连接器": {
+    sourceLabel: "vantagewithai / LTX-2.3-Split",
+    downloadUrl: "https://huggingface.co/vantagewithai/LTX-2.3-Split/tree/main/text_encoder",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "ltx-2-3-22b-text_encoder.safetensors"
+  },
+  "sulphur2:LTX 2.3 视频 VAE": {
+    sourceLabel: "vantagewithai / LTX-2.3-Split",
+    downloadUrl: "https://huggingface.co/vantagewithai/LTX-2.3-Split/tree/main/vae",
+    targetSubdirectory: "vae",
+    recommendedFilename: "ltx-2-3-22b-VAE.safetensors"
+  },
+  "sulphur2:LTX 2.3 音频 VAE": {
+    sourceLabel: "vantagewithai / LTX-2.3-Split",
+    downloadUrl: "https://huggingface.co/vantagewithai/LTX-2.3-Split/tree/main/audio_vae",
+    targetSubdirectory: "checkpoints",
+    recommendedFilename: "ltx-2-3-22b-audio_vae.safetensors",
+    notes: "必须放在 models/checkpoints，由 ComfyUI-LTXVideo 的 LowVRAMAudioVAELoader 读取；通用 VAELoader 无法识别音频 VAE。"
   },
   "sulphur2:LTX 2.3 蒸馏 LoRA": {
     sourceLabel: "SulphurAI / Sulphur-2-base",
@@ -451,36 +493,73 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
   }
 };
 
+function sulphurComponentsFor(
+  modelProfile: Settings["ltxExtensionModelProfile"]
+): ModelProfileDefinition["components"] {
+  const transformer = {
+    q2_distilled: {
+      label: "Sulphur 2 Q2_K distilled GGUF",
+      expected: "unet/sulphur-2-distilled-Q2_K.gguf",
+      patterns: [/unet\/sulphur-2-distilled-q2_k\.gguf$/i]
+    },
+    q3_k_m: {
+      label: "Sulphur 2 Q3_K_M dev GGUF",
+      expected: "unet/sulphur_dev-Q3_K_M.gguf",
+      patterns: [/unet\/sulphur_dev-q3_k_m\.gguf$/i]
+    },
+    q4_k_m: {
+      label: "Sulphur 2 Q4_K_M dev GGUF",
+      expected: "unet/sulphur_dev-Q4_K_M.gguf",
+      patterns: [/unet\/sulphur_dev-q4_k_m\.gguf$/i]
+    }
+  }[modelProfile];
+  const components: ModelProfileDefinition["components"] = [
+    transformer,
+    {
+      label: "Gemma 3 文本编码器",
+      expected: "text_encoders/gemma_3_12B_it_fp4_mixed.safetensors",
+      patterns: [/text_encoders\/gemma_3_12b_it_fp4_mixed\.safetensors$/i]
+    },
+    {
+      label: "LTX 2.3 文本连接器",
+      expected: "text_encoders/ltx-2-3-22b-text_encoder.safetensors",
+      patterns: [/text_encoders\/ltx-2-3-22b-text_encoder\.safetensors$/i]
+    },
+    {
+      label: "LTX 2.3 视频 VAE",
+      expected: "vae/ltx-2-3-22b-VAE.safetensors",
+      patterns: [/vae\/ltx-2-3-22b-vae\.safetensors$/i]
+    },
+    {
+      label: "LTX 2.3 音频 VAE",
+      expected: "checkpoints/ltx-2-3-22b-audio_vae.safetensors",
+      patterns: [/checkpoints\/ltx-2-3-22b-audio_vae\.safetensors$/i]
+    }
+  ];
+  if (modelProfile !== "q2_distilled") {
+    components.push({
+      label: "LTX 2.3 蒸馏 LoRA",
+      expected: "loras/ltx-2.3-22b-distilled-lora-1.1*",
+      patterns: [/loras\/ltx-2\.3-22b-distilled-lora-1\.1.*\.safetensors$/i]
+    });
+  }
+  components.push({
+    label: "LTX 2.3 Latent Upscaler",
+    expected: "latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.0.safetensors",
+    patterns: [/latent_upscale_models\/ltx-2\.3-spatial-upscaler-x2-1\.0\.safetensors$/i]
+  });
+  return components;
+}
+
 const modelProfileDefinitions: ModelProfileDefinition[] = [
   {
     id: "sulphur2",
-    name: "Sulphur 2 FP8",
+    name: "Sulphur 2 GGUF",
     category: "video",
-    badge: "无审查 · 优先",
-    description: "优先面向真实人物与无审查 I2V 工作流。",
-    vram: "预计峰值 20–22 GB",
-    components: [
-      {
-        label: "Sulphur 2 主模型",
-        expected: "checkpoints/sulphur_dev_fp8mixed.safetensors",
-        patterns: [/checkpoints\/sulphur_(?:dev|distil).*\.(safetensors|ckpt)$/i]
-      },
-      {
-        label: "Gemma 3 文本编码器",
-        expected: "text_encoders/gemma_3_12B_it_fp4_mixed.safetensors",
-        patterns: [/text_encoders\/gemma_3_12b_it_fp4_mixed\.safetensors$/i]
-      },
-      {
-        label: "LTX 2.3 蒸馏 LoRA",
-        expected: "loras/ltx-2.3-22b-distilled-lora-1.1*",
-        patterns: [/loras\/ltx-2\.3-22b-distilled-lora-1\.1.*\.safetensors$/i]
-      },
-      {
-        label: "LTX 2.3 Latent Upscaler",
-        expected: "latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.0.safetensors",
-        patterns: [/latent_upscale_models\/ltx-2\.3-spatial-upscaler-x2-1\.0\.safetensors$/i]
-      }
-    ]
+    badge: "GGUF · 低显存",
+    description: "I2V 与原生 Extend 共用分离式 GGUF 部署。",
+    vram: "Q3 默认 · CPU offload · 独立 VAE",
+    components: sulphurComponentsFor("q3_k_m")
   },
   {
     id: "wan22_5b",
@@ -794,11 +873,21 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
   }
 ];
 
-export function evaluateModelProfiles(modelFiles: string[]): ModelScanProfile[] {
+export function evaluateModelProfiles(
+  modelFiles: string[],
+  ltxModelProfile: Settings["ltxExtensionModelProfile"] = "q3_k_m"
+): ModelScanProfile[] {
   const normalizedFiles = modelFiles.map((filename) =>
     filename.replaceAll("\\", "/")
   );
-  return modelProfileDefinitions.map((profile) => {
+  return modelProfileDefinitions.map((baseProfile) => {
+    const profile = baseProfile.id === "sulphur2"
+      ? {
+          ...baseProfile,
+          name: `Sulphur 2 ${ltxModelProfile.replaceAll("_", " ").toUpperCase()}`,
+          components: sulphurComponentsFor(ltxModelProfile)
+        }
+      : baseProfile;
     const components = profile.components.map((component) => {
       const matches = normalizedFiles.filter((filename) =>
         component.patterns.some((pattern) => pattern.test(filename))
@@ -1973,7 +2062,10 @@ export async function scanEnvironment(
   ) {
     modelFiles.push("frame_interpolation/rife47.pth");
   }
-  const modelProfiles = evaluateModelProfiles(modelFiles);
+  const modelProfiles = evaluateModelProfiles(
+    modelFiles,
+    settings.ltxExtensionModelProfile
+  );
   const customNodes = await scanCustomNodes(comfyRoot);
   const issues = await scanEnvironmentIssues(comfyRoot);
   const comfyItem: EnvironmentItem = comfyRoot || comfyInstallation

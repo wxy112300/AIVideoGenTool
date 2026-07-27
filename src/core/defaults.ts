@@ -5,10 +5,15 @@ export const defaultPrompt =
 
 export function createDefaultDraft(): Draft {
   return {
+    inputMode: "image",
     startImagePath: "",
     sourceWidth: 0,
     sourceHeight: 0,
     endImagePath: "",
+    sourceVideoPath: "",
+    sourceVideoDuration: 0,
+    trimStartSeconds: 0,
+    trimEndSeconds: 0,
     promptVersions: [
       {
         id: crypto.randomUUID(),
@@ -34,10 +39,17 @@ export function createDefaultDraft(): Draft {
 export function createClearedDraft(current: Draft): Draft {
   return {
     ...current,
+    inputMode: "image",
     startImagePath: "",
     sourceWidth: 0,
     sourceHeight: 0,
     endImagePath: "",
+    sourceVideoPath: "",
+    sourceVideoDuration: 0,
+    trimStartSeconds: 0,
+    trimEndSeconds: 0,
+    sourceAssetId: undefined,
+    sourceVersionId: undefined,
     promptVersions: [
       {
         id: crypto.randomUUID(),
@@ -62,6 +74,12 @@ export function createDefaultSettings(): Settings {
     defaultVideoModel: "wan22_5b",
     vramReserveGb: 2,
     autoOffload: true,
+    ltxExtensionModelProfile: "q3_k_m",
+    ltxExtensionResolution: 360,
+    ltxExtensionFrames: 49,
+    ltxExtensionOverlapFrames: 16,
+    ltxExtensionUnloadBetweenStages: true,
+    ltxExtensionTimeoutMinutes: 20,
     safeCancel: true,
     optimizeQueue: true,
     promptLanguage: "auto",

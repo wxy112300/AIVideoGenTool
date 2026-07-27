@@ -1,8 +1,9 @@
-import type { GenerationQueueTask } from "../types.js";
+import type { ExtensionQueueTask, GenerationQueueTask } from "../types.js";
 
 export interface WorkflowContext {
   inputImage: string;
   endImage: string;
+  sourceVideo: string;
   width: number;
   height: number;
   frames: number;
@@ -23,6 +24,10 @@ export interface GenerationSafety {
   maxGeneratedFrames: number;
   maxDurationSeconds: number;
   message: string;
+}
+
+export interface ExtensionSafety extends GenerationSafety {
+  minimumContextSeconds: number;
 }
 
 interface GenerationSafetyProfile {
@@ -71,6 +76,79 @@ function generationSafetyProfileForModel(
 
 export function workflowSupportsEndImage(source: unknown): boolean {
   return JSON.stringify(source).includes("{{END_IMAGE}}");
+}
+
+export function workflowSupportsVideoExtension(source: unknown): boolean {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return false;
+  const inputValues = Object.values(source as Record<string, unknown>).flatMap(
+    (node) => {
+      if (!node || typeof node !== "object" || Array.isArray(node)) return [];
+      const inputs = (node as Record<string, unknown>).inputs;
+      return inputs && typeof inputs === "object" && !Array.isArray(inputs)
+        ? Object.values(inputs as Record<string, unknown>)
+        : [];
+    }
+  );
+  const serializedInputs = JSON.stringify(inputValues);
+  return ["{{SOURCE_VIDEO}}", "{{EXTENSION_FRAMES}}", "{{OVERLAP_FRAMES}}"].every(
+    (placeholder) => serializedInputs.includes(placeholder)
+  );
+}
+
+export function extensionWorkflowSafetyErrors(source: unknown): string[] {
+  const errors: string[] = [];
+  if (!workflowSupportsVideoExtension(source)) {
+    errors.push("缺少 SOURCE_VIDEO、EXTENSION_FRAMES 或 OVERLAP_FRAMES 输入占位符");
+  }
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return errors.length ? errors : ["工作流根节点不是 API 对象"];
+  }
+  const nodes = Object.values(source as Record<string, unknown>).filter(
+    (node): node is Record<string, unknown> =>
+      Boolean(node) && typeof node === "object" && !Array.isArray(node)
+  );
+  const classTypes = nodes.flatMap(
+    (node) => {
+      const classType = node.class_type;
+      return typeof classType === "string" ? [classType] : [];
+    }
+  );
+  if (!classTypes.some((value) =>
+    value === "LTXVExtendSampler" || value === "LTXVLoopingSampler"
+  )) {
+    errors.push("缺少官方 LTXVExtendSampler 或 LTXVLoopingSampler");
+  }
+  const usesCheckpointLoader = classTypes.includes("LowVRAMCheckpointLoader");
+  const ggufLoader = nodes.find(
+    (node) => node.class_type === "UnetLoaderGGUFAdvanced"
+  );
+  if (!usesCheckpointLoader && !ggufLoader) {
+    errors.push("缺少 LowVRAMCheckpointLoader 或 UnetLoaderGGUFAdvanced");
+  }
+  if (ggufLoader) {
+    const inputs = ggufLoader.inputs;
+    const patchOnDevice = inputs && typeof inputs === "object" && !Array.isArray(inputs)
+      ? (inputs as Record<string, unknown>).patch_on_device
+      : undefined;
+    if (patchOnDevice !== false) {
+      errors.push("GGUF loader 必须关闭 patch_on_device");
+    }
+    if (!classTypes.includes("DualCLIPLoader")) {
+      errors.push("GGUF 工作流缺少独立 DualCLIPLoader");
+    }
+    if (!classTypes.includes("VAELoader")) {
+      errors.push("GGUF 工作流缺少独立 VAELoader");
+    }
+  }
+  if (!classTypes.includes("VRAM_Debug")) {
+    errors.push("缺少采样后的 VRAM_Debug 显式卸载节点");
+  }
+  if (!classTypes.some((value) =>
+    value === "VAEDecodeTiled" || value.includes("TiledVAEDecode")
+  )) {
+    errors.push("缺少 tiled VAE decode");
+  }
+  return errors;
 }
 
 function frameIntervalForModel(modelId: string): 1 | 4 | 8 {
@@ -169,6 +247,85 @@ export function generationSafetyForTask(
   };
 }
 
+export function extensionSafetyForTask(
+  task: Pick<
+    ExtensionQueueTask,
+    | "modelId"
+    | "duration"
+    | "fps"
+    | "frameInterpolation"
+    | "sourceVideoPath"
+    | "sourceVideoDuration"
+    | "trimStartSeconds"
+    | "trimEndSeconds"
+    | "maxGeneratedFrames"
+    | "overlapFrames"
+    | "resolution"
+    | "unloadBetweenStages"
+  >
+): ExtensionSafety {
+  const multiplier = frameInterpolationMultiplier(task);
+  const sourceFps = task.fps / multiplier;
+  const maxDurationSeconds = Math.max(
+    1,
+    Math.floor(((task.maxGeneratedFrames - 1) * multiplier + 1) / task.fps)
+  );
+  const minimumContextSeconds = task.overlapFrames / sourceFps;
+  const generatedFrames = generationFrameCountForTask(task);
+  const result = (safe: boolean, message: string): ExtensionSafety => ({
+    safe,
+    generatedFrames,
+    maxGeneratedFrames: task.maxGeneratedFrames,
+    maxDurationSeconds,
+    minimumContextSeconds,
+    message
+  });
+  if (task.modelId !== "sulphur2") {
+    return result(false, "当前只允许 Sulphur 2 使用原生视频续写任务。");
+  }
+  if (!task.sourceVideoPath || task.sourceVideoDuration <= 0) {
+    return result(false, "请先选择可读取的源视频。");
+  }
+  if (
+    !Number.isFinite(task.trimStartSeconds) ||
+    !Number.isFinite(task.trimEndSeconds) ||
+    task.trimStartSeconds < 0 ||
+    task.trimEndSeconds > task.sourceVideoDuration ||
+    task.trimEndSeconds <= task.trimStartSeconds
+  ) {
+    return result(false, "视频裁剪范围无效。");
+  }
+  if (task.trimEndSeconds - task.trimStartSeconds < minimumContextSeconds) {
+    return result(
+      false,
+      `至少保留 ${minimumContextSeconds.toFixed(1)} 秒，才能提供 ${task.overlapFrames} 帧续写上下文。`
+    );
+  }
+  if (![360, 480].includes(task.resolution)) {
+    return result(false, "Sulphur 2 续写只允许 360p 或 480p 基准分辨率。");
+  }
+  if (!task.unloadBetweenStages) {
+    return result(false, "Sulphur 2 续写必须开启阶段间模型卸载。");
+  }
+  if (generatedFrames > task.maxGeneratedFrames) {
+    return result(
+      false,
+      `当前组合需要 ${generatedFrames} 个模型帧，24GB 预设上限为 ${task.maxGeneratedFrames} 帧。请缩短新增时长或启用 RIFE。`
+    );
+  }
+  return result(
+    true,
+    `GGUF 续写预算：${generatedFrames}/${task.maxGeneratedFrames} 模型帧，${task.overlapFrames} 帧上下文。`
+  );
+}
+
+export function extensionContextDuration(
+  task: Pick<ExtensionQueueTask, "fps" | "frameInterpolation" | "overlapFrames">
+): number {
+  return task.overlapFrames /
+    (task.fps / frameInterpolationMultiplier(task));
+}
+
 const wan14ModelAssets: Record<
   string,
   { high: string; low: string; textEncoder: string; vae: string }
@@ -198,6 +355,21 @@ const wan14ModelAssets: Record<
     vae: "wan_2.1_vae.safetensors"
   }
 };
+
+const sulphurModelAssets = {
+  q2_distilled: {
+    transformer: "sulphur-2-distilled-Q2_K.gguf",
+    distilled: true
+  },
+  q3_k_m: {
+    transformer: "sulphur_dev-Q3_K_M.gguf",
+    distilled: false
+  },
+  q4_k_m: {
+    transformer: "sulphur_dev-Q4_K_M.gguf",
+    distilled: false
+  }
+} as const;
 
 export function missingWorkflowNodeTypes(
   source: unknown,
@@ -230,7 +402,12 @@ const ratios: Record<string, [number, number]> = {
   source: [16, 9]
 };
 
-function baseGenerationDimensions(task: GenerationQueueTask): [number, number] {
+type DimensionTask = Pick<
+  GenerationQueueTask | ExtensionQueueTask,
+  "ratio" | "resolution" | "sourceWidth" | "sourceHeight"
+>;
+
+function baseGenerationDimensions(task: DimensionTask): [number, number] {
   const [rw, rh] =
     task.ratio === "source" && task.sourceWidth > 0 && task.sourceHeight > 0
       ? [task.sourceWidth, task.sourceHeight]
@@ -257,24 +434,45 @@ export function outputDimensions(task: GenerationQueueTask): [number, number] {
   ];
 }
 
+export function extensionOutputDimensions(
+  task: ExtensionQueueTask
+): [number, number] {
+  return baseGenerationDimensions(task);
+}
+
 export function renderWorkflow(
   source: unknown,
-  task: GenerationQueueTask,
+  task: GenerationQueueTask | ExtensionQueueTask,
   context: Partial<WorkflowContext> = {}
 ): unknown {
-  const [width, height] = outputDimensions(task);
+  const [width, height] = task.taskType === "extension"
+    ? extensionOutputDimensions(task)
+    : outputDimensions(task);
   const [baseWidth, baseHeight] = baseGenerationDimensions(task);
   const outputWidth = context.width ?? width;
   const outputHeight = context.height ?? height;
   const fps = context.fps ?? task.fps ?? 8;
   const modelAssets = wan14ModelAssets[task.modelId];
+  const sulphurAssets = sulphurModelAssets[
+    task.modelProfile ?? "q3_k_m"
+  ];
   const interpolationMultiplier = frameInterpolationMultiplier(task);
-  const tokens: Record<string, string | number> = {
+  const tokens: Record<string, string | number | boolean> = {
     PROMPT: task.prompt,
     NEGATIVE_PROMPT: "",
     SEED: task.seed,
     INPUT_IMAGE: context.inputImage ?? "",
     END_IMAGE: context.endImage ?? "",
+    SOURCE_VIDEO: context.sourceVideo ?? "",
+    TRIM_START: task.taskType === "extension" ? task.trimStartSeconds : 0,
+    TRIM_END: task.taskType === "extension" ? task.trimEndSeconds : 0,
+    EXTENSION_FRAMES: task.taskType === "extension"
+      ? generationFrameCountForTask(task)
+      : 0,
+    OVERLAP_FRAMES: task.taskType === "extension" ? task.overlapFrames : 0,
+    UNLOAD_BETWEEN_STAGES: task.taskType === "extension"
+      ? task.unloadBetweenStages
+      : true,
     WIDTH: outputWidth,
     HEIGHT: outputHeight,
     BASE_WIDTH: baseWidth,
@@ -291,8 +489,11 @@ export function renderWorkflow(
     VAE_MODEL: modelAssets?.vae ?? "",
     HALF_WIDTH: Math.max(16, Math.round(outputWidth / 2 / 16) * 16),
     HALF_HEIGHT: Math.max(16, Math.round(outputHeight / 2 / 16) * 16),
-    SULPHUR_MODEL: "sulphur_dev_fp8mixed.safetensors",
+    SULPHUR_GGUF: sulphurAssets.transformer,
     LTX_TEXT_ENCODER: "gemma_3_12B_it_fp4_mixed.safetensors",
+    LTX_TEXT_CONNECTOR: "ltx-2-3-22b-text_encoder.safetensors",
+    LTX_VIDEO_VAE: "ltx-2-3-22b-VAE.safetensors",
+    LTX_AUDIO_VAE: "ltx-2-3-22b-audio_vae.safetensors",
     LTX_DISTILL_LORA:
       "ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors",
     LTX_UPSCALER: "ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
@@ -410,7 +611,10 @@ export function renderWorkflow(
       inputs: {
         image: [interpolateId, 0],
         batch_index: 0,
-        length: outputFrameCountForTask(task)
+        length: task.taskType === "extension"
+          ? task.overlapFrames * interpolationMultiplier +
+            outputFrameCountForTask(task)
+          : outputFrameCountForTask(task)
       }
     };
     node.inputs.images = [trimId, 0];
@@ -458,8 +662,8 @@ export function validateApiWorkflow(source: unknown): WorkflowValidation {
   if (!placeholders.has("PROMPT")) {
     errors.push("缺少 {{PROMPT}}，GUI 无法注入当前提示词");
   }
-  if (!placeholders.has("INPUT_IMAGE")) {
-    errors.push("缺少 {{INPUT_IMAGE}}，GUI 无法注入首帧");
+  if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO")) {
+    errors.push("缺少 {{INPUT_IMAGE}} 或 {{SOURCE_VIDEO}}，GUI 无法注入输入媒体");
   }
   if (!placeholders.has("SEED")) warnings.push("缺少 {{SEED}}，任务 Seed 不会传入工作流");
   if (!placeholders.has("OUTPUT_FILENAME")) {

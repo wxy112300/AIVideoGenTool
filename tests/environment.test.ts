@@ -213,19 +213,39 @@ describe("ComfyUI environment candidates", () => {
     expect(complete.find((profile) => profile.id === "flashvsr")?.available).toBe(true);
   });
 
-  it("requires the complete Sulphur 2 / LTX 2.3 runtime set", () => {
+  it("requires the selected Sulphur 2 GGUF split-component runtime set", () => {
     const incomplete = evaluateModelProfiles([
       "checkpoints\\sulphur_dev_fp8mixed.safetensors"
     ]);
     const complete = evaluateModelProfiles([
-      "checkpoints\\sulphur_dev_fp8mixed.safetensors",
+      "unet\\sulphur_dev-Q3_K_M.gguf",
       "text_encoders\\gemma_3_12B_it_fp4_mixed.safetensors",
+      "text_encoders\\ltx-2-3-22b-text_encoder.safetensors",
+      "vae\\ltx-2-3-22b-VAE.safetensors",
+      "checkpoints\\ltx-2-3-22b-audio_vae.safetensors",
       "loras\\ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors",
       "latent_upscale_models\\ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
     ]);
 
     expect(incomplete.find((profile) => profile.id === "sulphur2")?.available).toBe(false);
     expect(complete.find((profile) => profile.id === "sulphur2")?.available).toBe(true);
+  });
+
+  it("does not require a distill LoRA for the distilled Q2 deployment", () => {
+    const profiles = evaluateModelProfiles([
+      "unet\\sulphur-2-distilled-Q2_K.gguf",
+      "text_encoders\\gemma_3_12B_it_fp4_mixed.safetensors",
+      "text_encoders\\ltx-2-3-22b-text_encoder.safetensors",
+      "vae\\ltx-2-3-22b-VAE.safetensors",
+      "checkpoints\\ltx-2-3-22b-audio_vae.safetensors",
+      "latent_upscale_models\\ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
+    ], "q2_distilled");
+
+    expect(profiles.find((profile) => profile.id === "sulphur2")?.available).toBe(true);
+    expect(
+      profiles.find((profile) => profile.id === "sulphur2")?.components
+        .some((component) => component.label.includes("LoRA"))
+    ).toBe(false);
   });
 
   it("reports the Hunyuan 1080p SR pair", () => {

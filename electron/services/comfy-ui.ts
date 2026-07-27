@@ -7,6 +7,7 @@ import {
   workflowSupportsEndImage
 } from "../../src/core/workflow.js";
 import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
+import { prepareExtensionContext } from "./extension-media.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -75,20 +76,35 @@ export async function submitTask(
     { signal }
   );
   let prompt: unknown;
-  if (task.taskType === "generation") {
+  if (task.taskType === "generation" || task.taskType === "extension") {
     const sourceText = await fs.readFile(task.workflowPath, {
       encoding: "utf8",
       signal
     });
     const source = JSON.parse(sourceText) as unknown;
-    const supportsEndImage = workflowSupportsEndImage(source);
-    const [inputImage, endImage] = await Promise.all([
-      uploadInput(baseUrl, task.startImagePath, signal, "首帧"),
-      supportsEndImage
-        ? uploadInput(baseUrl, task.endImagePath, signal, "尾帧")
-        : Promise.resolve("")
-    ]);
-    prompt = renderWorkflow(source, task, { inputImage, endImage });
+    if (task.taskType === "extension") {
+      const prepared = await prepareExtensionContext(task, signal);
+      try {
+        const sourceVideo = await uploadInput(
+          baseUrl,
+          prepared.filePath,
+          signal,
+          "续写上下文"
+        );
+        prompt = renderWorkflow(source, task, { sourceVideo });
+      } finally {
+        await prepared.cleanup();
+      }
+    } else {
+      const supportsEndImage = workflowSupportsEndImage(source);
+      const [inputImage, endImage] = await Promise.all([
+        uploadInput(baseUrl, task.startImagePath, signal, "首帧"),
+        supportsEndImage
+          ? uploadInput(baseUrl, task.endImagePath, signal, "尾帧")
+          : Promise.resolve("")
+      ]);
+      prompt = renderWorkflow(source, task, { inputImage, endImage });
+    }
   } else {
     const sourceVideo = await uploadInput(
       baseUrl,
@@ -176,6 +192,9 @@ function nodeStage(classType: string | undefined): {
   if (classType === "KSampler" || classType === "KSamplerAdvanced") {
     return { progress: 15, label: "扩散采样" };
   }
+  if (classType === "LTXVExtendSampler" || classType === "LTXVLoopingSampler") {
+    return { progress: 15, label: "LTX 视频续写" };
+  }
   if (classType === "VRAM_Debug") return { progress: 91, label: "卸载扩散模型并释放显存" };
   if (classType.includes("VAEDecode")) return { progress: 92, label: "分块 VAE 解码" };
   if (classType === "RIFE VFI") return { progress: 95, label: "RIFE 视频插帧" };
@@ -186,8 +205,8 @@ function nodeStage(classType: string | undefined): {
 }
 
 export class TaskStalledError extends Error {
-  constructor() {
-    super("任务连续 3 分钟没有任何进展，已停止队列并重启 ComfyUI 释放显存。");
+  constructor(minutes: number, reason = "未上报节点进展") {
+    super(`任务连续 ${minutes} 分钟${reason}，已停止队列并重启 ComfyUI 释放显存。`);
     this.name = "TaskStalledError";
   }
 }
@@ -241,6 +260,7 @@ export async function waitForTask(
   clientId: string,
   nodeTypes: Record<string, string>,
   settings: Settings,
+  activityTimeoutMinutes: number,
   signal: AbortSignal,
   onProgress: (value: number, stage: string) => void,
   onPreview: (dataUrl: string) => void
@@ -249,6 +269,8 @@ export async function waitForTask(
   let socket: WebSocket | undefined;
   let executionError = "";
   let lastActivityAt = Date.now();
+  let lastServiceResponseAt = Date.now();
+  const activityTimeoutMs = activityTimeoutMinutes * 60_000;
   try {
     socket = new WebSocket(socketUrl(baseUrl, clientId));
     socket.binaryType = "arraybuffer";
@@ -302,8 +324,11 @@ export async function waitForTask(
   try {
     while (!signal.aborted) {
       if (executionError) throw new Error(executionError);
-      if (Date.now() - lastActivityAt > 3 * 60_000) {
-        throw new TaskStalledError();
+      if (Date.now() - lastServiceResponseAt > 3 * 60_000) {
+        throw new TaskStalledError(3, "无法连接 ComfyUI");
+      }
+      if (Date.now() - lastActivityAt > activityTimeoutMs) {
+        throw new TaskStalledError(activityTimeoutMinutes);
       }
       let history: Record<string, unknown>;
       try {
@@ -311,10 +336,11 @@ export async function waitForTask(
           `${baseUrl}/history?max_items=200`,
           { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
         );
+        lastServiceResponseAt = Date.now();
       } catch (error) {
         if (signal.aborted) throw signal.reason;
-        if (Date.now() - lastActivityAt > 3 * 60_000) {
-          throw new TaskStalledError();
+        if (Date.now() - lastServiceResponseAt > 3 * 60_000) {
+          throw new TaskStalledError(3, "无法连接 ComfyUI");
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
         continue;

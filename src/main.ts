@@ -16,6 +16,7 @@ import type {
 } from "./types";
 import { createClearedDraft } from "./core/defaults";
 import {
+  extensionSafetyForTask,
   frameInterpolationMultiplier,
   generationFrameCountForTask,
   generationSafetyForTask,
@@ -70,6 +71,8 @@ let pendingConfirmation:
   | null = null;
 let confirmationBusy = false;
 const bundledWorkflows: Record<string, BundledWorkflow> = {};
+const bundledWorkflowKey = (modelId: string, inputMode: Draft["inputMode"]) =>
+  `${modelId}:${inputMode}`;
 const workflowCapabilities: Record<string, WorkflowCapabilities> = {};
 const taskPreviews: Record<string, string> = {};
 let performanceMetrics: PerformanceMetrics | null = null;
@@ -107,7 +110,7 @@ function activePrompt(draft = state.draft): PromptVersion {
 function modelName(id: string): string {
   return (
     {
-      sulphur2: "Sulphur 2 FP8",
+      sulphur2: "Sulphur 2 GGUF",
       wan22_5b: "Wan 2.2 I2V 5B",
       hunyuan15: "HunyuanVideo 1.5",
       hunyuan15_sr: "HunyuanVideo 1.5 1080p",
@@ -150,6 +153,16 @@ function interpolationEstimate(draft: Draft): {
     generatedFrames: generationFrameCountForTask(draft),
     outputFrames: outputFrameCountForTask(draft)
   };
+}
+
+function extensionSafetyForDraft(draft: Draft, settings: Settings) {
+  return extensionSafetyForTask({
+    ...draft,
+    resolution: settings.ltxExtensionResolution,
+    maxGeneratedFrames: settings.ltxExtensionFrames,
+    overlapFrames: settings.ltxExtensionOverlapFrames,
+    unloadBetweenStages: settings.ltxExtensionUnloadBetweenStages
+  });
 }
 
 function versionVideoIndex(version: AssetVersion): number {
@@ -206,6 +219,13 @@ function formatHistoryTime(value: string): string {
   }).format(date);
 }
 
+function formatTrimTime(seconds: number): string {
+  const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+  const minutes = Math.floor(safe / 60);
+  const remainder = (safe % 60).toFixed(1).padStart(4, "0");
+  return `${String(minutes).padStart(2, "0")}:${remainder}`;
+}
+
 function createModelOptions(draft: Draft): string {
   const scanned = environmentScan?.modelProfiles.filter(
     (profile) => profile.category === "video"
@@ -213,15 +233,26 @@ function createModelOptions(draft: Draft): string {
   const profiles = scanned?.length
     ? scanned
     : [
-        { id: "sulphur2", name: "Sulphur 2 FP8", available: true },
+      { id: "sulphur2", name: "Sulphur 2 GGUF", available: true },
         { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: true },
         { id: "hunyuan15", name: "HunyuanVideo 1.5", available: true }
       ];
   return profiles
-    .map(
-      (profile) =>
-        `<option value="${escapeHtml(profile.id)}" ${draft.modelId === profile.id ? "selected" : ""} ${!profile.available && draft.modelId !== profile.id ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`
-    )
+    .map((profile) => {
+      const selected = draft.modelId === profile.id;
+      const supportsVideoExtension = selected
+        ? workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true
+        : bundledWorkflows[bundledWorkflowKey(profile.id, draft.inputMode)]
+            ?.supportsVideoExtension === true;
+      const unavailable = !profile.available ||
+        (draft.inputMode === "video" && !supportsVideoExtension);
+      const suffix = !profile.available
+        ? " · 缺组件"
+        : draft.inputMode === "video" && !supportsVideoExtension
+          ? " · 未通过原生续写检查"
+          : "";
+      return `<option value="${escapeHtml(profile.id)}" ${selected ? "selected" : ""} ${unavailable ? "disabled" : ""}>${escapeHtml(profile.name)}${suffix}</option>`;
+    })
     .join("");
 }
 
@@ -355,23 +386,74 @@ async function imagePreview(filename: string, targetId: string): Promise<void> {
 
 function createPage(): string {
   const draft = state.draft;
+  const extending = draft.inputMode === "video";
   const prompt = activePrompt();
   const interpolation = interpolationEstimate(draft);
-  const safety = generationSafetyForTask(draft);
+  const safety = extending
+    ? extensionSafetyForDraft(draft, state.settings)
+    : generationSafetyForTask(draft);
   const supportsEndImage =
     workflowCapabilities[draft.workflowPath]?.supportsEndImage === true;
+  const supportsVideoExtension =
+    workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true;
+  const selectedModelProfile = environmentScan?.modelProfiles.find(
+    (profile) => profile.id === draft.modelId
+  );
+  const trimDuration = Math.max(0, draft.trimEndSeconds - draft.trimStartSeconds);
+  const trimStartPercent = draft.sourceVideoDuration > 0
+    ? draft.trimStartSeconds / draft.sourceVideoDuration * 100
+    : 0;
+  const trimEndPercent = draft.sourceVideoDuration > 0
+    ? draft.trimEndSeconds / draft.sourceVideoDuration * 100
+    : 100;
+  const videoReady = Boolean(draft.sourceVideoPath && draft.sourceVideoDuration > 0);
+  const enqueueDisabled = extending
+    ? !videoReady || trimDuration <= 0 || !supportsVideoExtension || !safety.safe
+    : !safety.safe;
   return `
     <section class="page-heading">
-      <div><h1>创建视频</h1><p>导入参考画面，调整提示词，然后加入本地生成队列。</p></div>
+      <div><h1>创建视频</h1><p>${extending ? "裁出要保留的视频片段，并从末帧继续生成。" : "导入参考画面，调整提示词，然后加入本地生成队列。"}</p></div>
       <span class="save-state">自动保存</span>
     </section>
+    <div class="input-mode-switch" role="group" aria-label="创建模式">
+      <button class="${extending ? "ghost" : "secondary active"}" data-input-mode="image" aria-pressed="${!extending}">图片生成</button>
+      <button class="${extending ? "secondary active" : "ghost"}" data-input-mode="video" aria-pressed="${extending}">视频续写</button>
+    </div>
     <div class="create-workspace">
       <section class="panel media-panel">
       <div class="section-heading">
-        <div><h2>参考画面</h2><span class="muted">${supportsEndImage ? "当前工作流支持首帧和尾帧" : "当前工作流仅支持首帧"}</span></div>
-        <button class="secondary" id="toggle-end" ${!supportsEndImage && !draft.endImagePath ? "disabled" : ""}>${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>
+        <div><h2>${extending ? "输入视频" : "参考画面"}</h2><span class="muted">${extending ? "选择保留范围，续写将从范围末帧开始" : supportsEndImage ? "当前工作流支持首帧和尾帧" : "当前工作流仅支持首帧"}</span></div>
+        ${extending
+          ? draft.sourceVideoPath ? `<button class="secondary" id="remove-video">移除视频</button>` : ""
+          : `<button class="secondary" id="toggle-end" ${!supportsEndImage && !draft.endImagePath ? "disabled" : ""}>${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>`}
       </div>
-      <div class="media-grid ${draft.endImagePath ? "paired" : ""}">
+      ${extending
+        ? draft.sourceVideoPath
+          ? `<div class="video-editor">
+              <video id="source-video" src="studio-media://draft/video?source=${encodeURIComponent(draft.sourceVideoPath)}" controls muted playsinline preload="metadata"></video>
+              ${videoReady
+                ? `<div class="trim-panel">
+                    <div class="trim-heading"><strong>裁剪保留范围</strong><span><output id="trim-start-output">${formatTrimTime(draft.trimStartSeconds)}</output> — <output id="trim-end-output">${formatTrimTime(draft.trimEndSeconds)}</output></span></div>
+                    <div class="trim-editor" id="trim-editor" style="--trim-start:${trimStartPercent}%;--trim-end:${trimEndPercent}%">
+                      <div class="trim-filmstrip" aria-hidden="true">${Array.from({ length: 8 }, () => "<i></i>").join("")}</div>
+                      <div class="trim-dim trim-dim-start"></div><div class="trim-dim trim-dim-end"></div><div class="trim-selection"></div>
+                      <input class="trim-range" id="trim-start" type="range" min="0" max="${draft.sourceVideoDuration}" step="0.1" value="${draft.trimStartSeconds}" aria-label="裁剪起点" aria-valuetext="${formatTrimTime(draft.trimStartSeconds)}">
+                      <input class="trim-range" id="trim-end" type="range" min="0" max="${draft.sourceVideoDuration}" step="0.1" value="${draft.trimEndSeconds}" aria-label="裁剪终点" aria-valuetext="${formatTrimTime(draft.trimEndSeconds)}">
+                    </div>
+                    <div class="trim-summary" aria-live="polite">
+                      <span>保留<strong id="trim-kept">${trimDuration.toFixed(1)} 秒</strong></span>
+                      <span>裁掉<strong id="trim-discarded">${Math.max(0, draft.sourceVideoDuration - trimDuration).toFixed(1)} 秒</strong></span>
+                      <span>新增<strong id="trim-added">${draft.duration.toFixed(1)} 秒</strong></span>
+                      <span>预计成片<strong id="trim-total">约 ${(trimDuration + draft.duration).toFixed(1)} 秒</strong></span>
+                    </div>
+                    <p class="trim-help">视频保持暂停；拖动左右手柄时预览对应画面。</p>
+                  </div>`
+                : `<p class="video-loading">正在读取视频时长和画面尺寸…</p>`}
+            </div>`
+          : `<button class="drop-zone video-drop-zone" id="pick-video" data-drop-video data-drop-label="松开以添加视频">
+              <span class="drop-icon">＋</span><strong>选择或拖入视频</strong><span>MP4、WebM、MOV、M4V、MKV</span>
+            </button>`
+        : `<div class="media-grid ${draft.endImagePath ? "paired" : ""}">
         <div class="media-slot">
           <button class="drop-zone ${draft.startImagePath ? "has-image" : ""}" id="pick-start" data-drop-frame="start" data-drop-label="${draft.startImagePath ? "松开以替换首帧" : "松开以添加首帧"}">
             ${draft.startImagePath
@@ -386,12 +468,12 @@ function createPage(): string {
               <button class="image-remove" data-clear-frame="end" aria-label="删除尾帧" title="删除尾帧">×<span>删除</span></button>
             </div>`
           : ""}
-      </div>
+          </div>`}
       </section>
       <section class="panel composer">
       <div class="section-heading">
         <div>
-          <h2>提示词</h2>
+          <h2>${extending ? "描述接下来发生什么" : "提示词"}</h2>
           <span class="muted">${draft.activePromptVersion + 1} / ${draft.promptVersions.length} · ${escapeHtml(prompt.label)}</span>
         </div>
         <div class="button-row">
@@ -408,20 +490,22 @@ function createPage(): string {
           </select>
         </label>
         <label>画面比例
-          <select id="ratio">
+          <select id="ratio" ${extending ? "disabled" : ""}>
             ${["source", "16:9", "9:16", "1:1", "4:3"].map((ratio) =>
-              `<option value="${ratio}" ${draft.ratio === ratio ? "selected" : ""}>${ratio === "source" ? "原图（未读取时按 16:9）" : ratio}</option>`
+              `<option value="${ratio}" ${draft.ratio === ratio ? "selected" : ""}>${ratio === "source" ? extending ? "跟随输入视频" : "原图（未读取时按 16:9）" : ratio}</option>`
             ).join("")}
           </select>
         </label>
         <label>清晰度
-          <select id="resolution">
-            ${[480, 540, 720].map((value) =>
-              `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p</option>`
-            ).join("")}
+          <select id="resolution" ${extending ? "disabled" : ""}>
+            ${extending
+              ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p · GGUF 保守预设</option>`
+              : [480, 540, 720].map((value) =>
+                  `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p</option>`
+                ).join("")}
           </select>
         </label>
-        <label>时长
+        <label>${extending ? "新增时长" : "时长"}
           <div class="inline-field"><input id="duration" type="range" min="1" max="${safety.maxDurationSeconds}" value="${draft.duration}"><input id="duration-number" type="number" min="1" max="${safety.maxDurationSeconds}" value="${draft.duration}"><span>秒</span></div>
         </label>
         <label>目标帧率
@@ -455,12 +539,12 @@ function createPage(): string {
         <label class="checkbox-field"><input id="keep-seed" type="checkbox" ${draft.keepSeedOnCopy ? "checked" : ""}><span>复制任务时保留 Seed</span></label>
       </div>
       <div class="workflow-field">
-        <div><strong>ComfyUI API 工作流</strong><p class="muted">${draft.workflowPath ? escapeHtml(bundledWorkflows[draft.modelId]?.path === draft.workflowPath ? bundledWorkflows[draft.modelId]!.label : draft.workflowPath) : "为当前模型选择从 ComfyUI 导出的 API 格式 JSON"}</p></div>
+        <div><strong>ComfyUI API 工作流</strong><p class="muted">${extending && !supportsVideoExtension ? `${selectedModelProfile?.available ? `${modelName(draft.modelId)} 模型组件已安装完整；` : "模型组件尚未安装完整；"}当前工作流未通过原生续写安全检查。` : draft.workflowPath ? escapeHtml(Object.values(bundledWorkflows).find((workflow) => workflow.path === draft.workflowPath)?.label ?? draft.workflowPath) : "为当前模型选择从 ComfyUI 导出的 API 格式 JSON"}</p></div>
         <button class="secondary" id="pick-workflow">${draft.workflowPath ? "更换 JSON" : "选择 JSON"}</button>
       </div>
       <div class="submit-row">
         <button class="ghost danger" id="clear-draft">清空</button>
-        <button class="primary" id="enqueue" ${safety.safe ? "" : "disabled"} title="${safety.safe ? "加入本地生成队列" : escapeHtml(safety.message)}">加入队列</button>
+        <button class="primary" id="enqueue" ${enqueueDisabled ? "disabled" : ""} title="${extending ? supportsVideoExtension ? "加入视频续写队列" : "模型已安装，但专用视频续写工作流尚未接入" : safety.safe ? "加入本地生成队列" : escapeHtml(safety.message)}">加入队列</button>
       </div>
       </section>
     </div>`;
@@ -492,10 +576,14 @@ function queuePage(): string {
 function queueTaskCard(task: QueueTask): string {
   const description = task.taskType === "generation"
     ? task.prompt
-    : `${task.sourceFilename} → ${task.outputFilename}`;
+    : task.taskType === "extension"
+      ? `${task.prompt} · 保留 ${task.trimStartSeconds.toFixed(1)}–${task.trimEndSeconds.toFixed(1)} 秒`
+      : `${task.sourceFilename} → ${task.outputFilename}`;
   const metadata = task.taskType === "generation"
     ? `<span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span><span>Seed ${task.seed}</span>`
-    : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.targetWidth} × ${task.targetHeight}</span><span>分批处理 · 每批卸载</span>`;
+    : task.taskType === "extension"
+      ? `<span>视频续写</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>最多 ${task.maxGeneratedFrames} 模型帧</span><span>${task.overlapFrames} 帧上下文</span>`
+      : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.targetWidth} × ${task.targetHeight}</span><span>分批处理 · 每批卸载</span>`;
   if (task.status === "running") {
     const preview = taskPreviews[task.id] ?? "";
     return `
@@ -621,7 +709,7 @@ function historyDetailPage(): string {
         <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(version.modelId))}</span><span>${version.width} × ${version.height} · ${version.duration}秒 · ${fps} FPS</span></div>
         <div class="history-summary-row"><span>完成于</span><strong>${completedAt}</strong></div>
         <div class="history-summary-row"><span>总耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : `${Math.round(elapsedSeconds)} 秒`}</strong></div>
-        <div class="history-summary-actions"><button class="secondary" data-edit-history="${asset.id}">在创建页调整</button>${videoFile?.absolutePath ? `<button class="secondary" data-show-file="${escapeHtml(videoFile.absolutePath)}">打开所在目录</button>` : ""}<button class="ghost danger history-delete-button" data-delete-history="${asset.id}">删除视频和记录</button></div>
+        <div class="history-summary-actions"><button class="secondary" data-edit-history="${asset.id}">在创建页调整</button>${videoFile?.absolutePath ? `<button class="secondary" data-continue-history="${asset.id}" data-source-version="${version.id}">继续创作</button><button class="secondary" data-show-file="${escapeHtml(videoFile.absolutePath)}">打开所在目录</button>` : ""}<button class="ghost danger history-delete-button" data-delete-history="${asset.id}">删除视频和记录</button></div>
         <div class="history-upscale"><strong>提升清晰度</strong><span>完成后会作为同一作品的新版本显示。</span><button class="secondary" data-open-upscale ${videoFile?.absolutePath && version.height < 2160 ? "" : "disabled"}>${version.height >= 2160 ? "当前已是 4K" : "提升分辨率…"}</button></div>
       </aside>
     </section>
@@ -844,13 +932,25 @@ function settingsPage(): string {
           <div><h2>视频模型</h2><span class="muted">根据真实文件组件判断是否可用，不仅检查单个 checkpoint 名称。</span></div>
           <label class="compact-label">默认模型<select id="default-video-model">
             ${(videoProfiles.length ? videoProfiles : [
-              { id: "sulphur2", name: "Sulphur 2 FP8", available: false },
+              { id: "sulphur2", name: "Sulphur 2 GGUF", available: false },
               { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: false },
               { id: "hunyuan15", name: "HunyuanVideo 1.5 I2V", available: false }
             ]).map((profile) => `<option value="${profile.id}" ${settings.defaultVideoModel === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}
           </select></label>
         </div>
         <div class="scan-result">${environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${videoAvailable} 个可运行模型，${videoProfiles.length - videoAvailable} 个待补齐` : "等待首次扫描"}</div>
+      </section>
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>Sulphur 2 部署</h2><span class="muted">同一档位同时决定普通 I2V、原生 Extend、模型扫描和新任务快照。</span></div><span class="model-badge">分离式 GGUF</span></div>
+        <div class="settings-grid two">
+          <label>Transformer 量化档<select id="ltx-extension-model-profile"><option value="q2_distilled" ${settings.ltxExtensionModelProfile === "q2_distilled" ? "selected" : ""}>Q2_K distilled · 7.93 GB · 8GB 兼容</option><option value="q3_k_m" ${settings.ltxExtensionModelProfile === "q3_k_m" ? "selected" : ""}>Q3_K_M dev · 11.13 GB · 推荐</option><option value="q4_k_m" ${settings.ltxExtensionModelProfile === "q4_k_m" ? "selected" : ""}>Q4_K_M dev · 14.30 GB · 质量</option></select></label>
+          <label>基准分辨率<select id="ltx-extension-resolution"><option value="360" ${settings.ltxExtensionResolution === 360 ? "selected" : ""}>360p · 推荐</option><option value="480" ${settings.ltxExtensionResolution === 480 ? "selected" : ""}>480p · 较慢</option></select></label>
+          <label>每段新增模型帧<select id="ltx-extension-frames"><option value="49" ${settings.ltxExtensionFrames === 49 ? "selected" : ""}>49 帧 · 推荐</option><option value="65" ${settings.ltxExtensionFrames === 65 ? "selected" : ""}>65 帧 · 较长</option></select></label>
+          <label>上下文重叠<select id="ltx-extension-overlap" disabled><option value="16" selected>16 帧 · 官方最低安全值</option></select></label>
+          <label>单节点等待上限<select id="ltx-extension-timeout"><option value="10" ${settings.ltxExtensionTimeoutMinutes === 10 ? "selected" : ""}>10 分钟 · 快速止损</option><option value="20" ${settings.ltxExtensionTimeoutMinutes === 20 ? "selected" : ""}>20 分钟 · 推荐</option><option value="30" ${settings.ltxExtensionTimeoutMinutes === 30 ? "selected" : ""}>30 分钟 · 极慢设备</option></select></label>
+          <label class="switch-field disabled"><input id="ltx-extension-unload" type="checkbox" checked disabled><span>采样、解码与编码阶段间强制卸载</span></label>
+        </div>
+        <p class="muted proxy-hint">Q2 使用 distilled 模型且不加载 LoRA；Q3/Q4 使用 dev 模型和 distill LoRA。三档均要求 Gemma 3、LTX 文本连接器、独立视频/音频 VAE 与 latent upscaler，并强制单任务、<code>patch_on_device=false</code>、<code>--cache-none</code>、CPU offload 和分块解码。8GB 兼容仍要求充足的系统内存与页面文件。</p>
       </section>
       <div class="model-profile-list">${videoProfiles.length ? videoProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无模型扫描结果</div>`}</div>
     </section>`;
@@ -874,7 +974,7 @@ function settingsPage(): string {
       </section>
       <section class="panel settings-section">
         <h2>工作流占位符</h2><p class="muted">ComfyUI API JSON 提交前会递归替换：</p>
-        <div class="token-list">${["PROMPT", "NEGATIVE_PROMPT", "SEED", "INPUT_IMAGE", "END_IMAGE", "WIDTH", "HEIGHT", "DURATION", "SOURCE_FPS", "FPS", "FRAMES", "OUTPUT_FRAMES", "OUTPUT_FILENAME"].map((token) => `<code>{{${token}}}</code>`).join("")}</div>
+        <div class="token-list">${["PROMPT", "NEGATIVE_PROMPT", "SEED", "INPUT_IMAGE", "END_IMAGE", "SOURCE_VIDEO", "TRIM_START", "TRIM_END", "EXTENSION_FRAMES", "OVERLAP_FRAMES", "UNLOAD_BETWEEN_STAGES", "WIDTH", "HEIGHT", "DURATION", "SOURCE_FPS", "FPS", "FRAMES", "OUTPUT_FRAMES", "OUTPUT_FILENAME"].map((token) => `<code>{{${token}}}</code>`).join("")}</div>
       </section>
     </section>`;
 
@@ -1051,7 +1151,7 @@ async function editHistoryAsset(assetId: string): Promise<void> {
     ],
     activePromptVersion: state.draft.promptVersions.length
   };
-  state = await window.studio.saveDraft(draft);
+  await saveDraftImmediately(draft);
   page = "create";
   render();
 }
@@ -1247,6 +1347,13 @@ function scheduleDraftSave(): void {
   }, 350);
 }
 
+async function saveDraftImmediately(draft: Draft): Promise<void> {
+  window.clearTimeout(draftSaveTimer);
+  draftRevision += 1;
+  draftDirty = false;
+  state = await window.studio.saveDraft(draft);
+}
+
 function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
@@ -1329,7 +1436,183 @@ function bindFrameDrop(
   });
 }
 
+async function selectDraftVideo(
+  filename: string,
+  source?: {
+    assetId: string;
+    versionId: string;
+    duration: number;
+    width: number;
+    height: number;
+  }
+): Promise<void> {
+  const draft: Draft = {
+    ...state.draft,
+    inputMode: "video",
+    sourceVideoPath: filename,
+    sourceVideoDuration: source?.duration ?? 0,
+    trimStartSeconds: 0,
+    trimEndSeconds: source?.duration ?? 0,
+    sourceAssetId: source?.assetId,
+    sourceVersionId: source?.versionId,
+    sourceWidth: source?.width ?? 0,
+    sourceHeight: source?.height ?? 0,
+    ratio: "source"
+  };
+  await saveDraftImmediately(draft);
+  render();
+}
+
+function bindVideoDrop(): void {
+  const zone = document.querySelector<HTMLElement>("[data-drop-video]");
+  if (!zone) return;
+  const clearDragState = () => zone.classList.remove("drag-over");
+  zone.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    zone.classList.add("drag-over");
+  });
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    zone.classList.add("drag-over");
+  });
+  zone.addEventListener("dragleave", clearDragState);
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    clearDragState();
+    const file = event.dataTransfer?.files.item(0);
+    if (!file) return;
+    if (!file.type.startsWith("video/") && !/\.(mp4|webm|mov|m4v|mkv)$/i.test(file.name)) {
+      showMessage("请拖入 MP4、WebM、MOV、M4V 或 MKV 视频");
+      return;
+    }
+    const filename = window.studio.getDroppedFilePath(file);
+    if (!filename) {
+      showMessage("无法读取拖入视频的本地路径");
+      return;
+    }
+    void selectDraftVideo(filename).catch((error) =>
+      showMessage(error instanceof Error ? error.message : "无法读取拖入的视频")
+    );
+  });
+}
+
+function bindVideoTrim(): void {
+  const video = document.querySelector<HTMLVideoElement>("#source-video");
+  if (!video) return;
+  video.addEventListener("loadedmetadata", () => {
+    video.pause();
+    if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+    const durationChanged = Math.abs(state.draft.sourceVideoDuration - video.duration) > 0.05;
+    const dimensionsChanged = state.draft.sourceWidth !== video.videoWidth ||
+      state.draft.sourceHeight !== video.videoHeight;
+    if (!durationChanged && !dimensionsChanged) return;
+    const trimStartSeconds = durationChanged
+      ? Math.min(state.draft.trimStartSeconds, Math.max(0, video.duration - 0.1))
+      : state.draft.trimStartSeconds;
+    const trimEndSeconds = durationChanged
+      ? state.draft.trimEndSeconds <= 0 || state.draft.trimEndSeconds > video.duration
+        ? video.duration
+        : Math.max(trimStartSeconds + 0.1, state.draft.trimEndSeconds)
+      : state.draft.trimEndSeconds;
+    patchDraft({
+      sourceVideoDuration: video.duration,
+      trimStartSeconds,
+      trimEndSeconds,
+      sourceWidth: video.videoWidth,
+      sourceHeight: video.videoHeight
+    });
+    render();
+  });
+  video.addEventListener("play", () => {
+    const start = state.draft.trimStartSeconds;
+    const end = state.draft.trimEndSeconds;
+    if (video.currentTime < start || video.currentTime >= end) video.currentTime = start;
+  });
+  video.addEventListener("timeupdate", () => {
+    if (video.currentTime < state.draft.trimEndSeconds) return;
+    video.pause();
+    video.currentTime = state.draft.trimEndSeconds;
+  });
+
+  const startInput = document.querySelector<HTMLInputElement>("#trim-start");
+  const endInput = document.querySelector<HTMLInputElement>("#trim-end");
+  const editor = document.querySelector<HTMLElement>("#trim-editor");
+  if (!startInput || !endInput || !editor) return;
+  const updateTrim = (active: "start" | "end") => {
+    const duration = state.draft.sourceVideoDuration;
+    const minimumClip = Math.min(0.1, duration);
+    let start = Number(startInput.value);
+    let end = Number(endInput.value);
+    if (active === "start") start = Math.min(start, end - minimumClip);
+    else end = Math.max(end, start + minimumClip);
+    start = Math.max(0, start);
+    end = Math.min(duration, end);
+    startInput.value = String(start);
+    endInput.value = String(end);
+    const kept = end - start;
+    editor.style.setProperty("--trim-start", `${start / duration * 100}%`);
+    editor.style.setProperty("--trim-end", `${end / duration * 100}%`);
+    startInput.setAttribute("aria-valuetext", formatTrimTime(start));
+    endInput.setAttribute("aria-valuetext", formatTrimTime(end));
+    document.querySelector("#trim-start-output")!.textContent = formatTrimTime(start);
+    document.querySelector("#trim-end-output")!.textContent = formatTrimTime(end);
+    document.querySelector("#trim-kept")!.textContent = `${kept.toFixed(1)} 秒`;
+    document.querySelector("#trim-discarded")!.textContent = `${Math.max(0, duration - kept).toFixed(1)} 秒`;
+    document.querySelector("#trim-total")!.textContent = `约 ${(kept + state.draft.duration).toFixed(1)} 秒`;
+    video.pause();
+    video.currentTime = active === "start" ? start : end;
+    patchDraft({ trimStartSeconds: start, trimEndSeconds: end });
+  };
+  startInput.addEventListener("input", () => updateTrim("start"));
+  endInput.addEventListener("input", () => updateTrim("end"));
+}
+
 function bindCreate(): void {
+  document.querySelectorAll<HTMLElement>("[data-input-mode]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const inputMode = button.dataset.inputMode === "video" ? "video" : "image";
+      const modelId = inputMode === "video" ? "sulphur2" : state.draft.modelId;
+      const key = bundledWorkflowKey(modelId, inputMode);
+      const bundled = bundledWorkflows[key] ??
+        (await window.studio.getBundledWorkflow(modelId, inputMode));
+      if (bundled) {
+        bundledWorkflows[key] = bundled;
+        workflowCapabilities[bundled.path] = {
+          supportsEndImage: bundled.supportsEndImage,
+          supportsVideoExtension: bundled.supportsVideoExtension
+        };
+      }
+      patchDraft({
+        inputMode,
+        modelId,
+        workflowPath: bundled?.path ?? "",
+        ...(inputMode === "video"
+          ? { ratio: "source" as const }
+          : {})
+      });
+      render();
+    });
+  });
+  document.querySelector("#pick-video")?.addEventListener("click", async () => {
+    const filename = await window.studio.pickVideo();
+    if (filename) await selectDraftVideo(filename);
+  });
+  document.querySelector("#remove-video")?.addEventListener("click", () => {
+    patchDraft({
+      sourceVideoPath: "",
+      sourceVideoDuration: 0,
+      trimStartSeconds: 0,
+      trimEndSeconds: 0,
+      sourceAssetId: undefined,
+      sourceVersionId: undefined,
+      sourceWidth: 0,
+      sourceHeight: 0
+    });
+    render();
+  });
+  bindVideoDrop();
+  bindVideoTrim();
   document.querySelector("#pick-start")?.addEventListener("click", async () => {
     const filename = await window.studio.pickImage();
     if (filename) {
@@ -1432,14 +1715,17 @@ function bindCreate(): void {
     document.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
       const value = (event.target as HTMLInputElement | HTMLSelectElement).value;
       if (id === "model") {
-        const oldBundledPath = bundledWorkflows[state.draft.modelId]?.path;
+        const oldKey = bundledWorkflowKey(state.draft.modelId, state.draft.inputMode);
+        const nextKey = bundledWorkflowKey(value, state.draft.inputMode);
+        const oldBundledPath = bundledWorkflows[oldKey]?.path;
         const bundled =
-          bundledWorkflows[value] ??
-          (await window.studio.getBundledWorkflow(value));
-        if (bundled) bundledWorkflows[value] = bundled;
+          bundledWorkflows[nextKey] ??
+          (await window.studio.getBundledWorkflow(value, state.draft.inputMode));
+        if (bundled) bundledWorkflows[nextKey] = bundled;
         if (bundled) {
           workflowCapabilities[bundled.path] = {
-            supportsEndImage: bundled.supportsEndImage
+            supportsEndImage: bundled.supportsEndImage,
+            supportsVideoExtension: bundled.supportsVideoExtension
           };
         }
         patchDraft({
@@ -1476,6 +1762,11 @@ function bindCreate(): void {
     patchDraft({ duration });
     if (range) range.value = String(duration);
     if (number) number.value = String(duration);
+    const added = document.querySelector("#trim-added");
+    const total = document.querySelector("#trim-total");
+    const kept = state.draft.trimEndSeconds - state.draft.trimStartSeconds;
+    if (added) added.textContent = `${duration.toFixed(1)} 秒`;
+    if (total) total.textContent = `约 ${(kept + duration).toFixed(1)} 秒`;
   };
   range?.addEventListener("input", () => updateDuration(range.value));
   number?.addEventListener("input", () => updateDuration(number.value));
@@ -1488,6 +1779,11 @@ function bindCreate(): void {
   });
   document.querySelector("#enqueue")?.addEventListener("click", async () => {
     try {
+      if (state.draft.inputMode === "video") {
+        state = await window.studio.enqueueExtension(state.draft);
+        showMessage(`已加入续写队列：${state.queue.at(-1)?.outputFilename ?? ""}`);
+        return;
+      }
       state = await window.studio.enqueue(state.draft);
       showMessage(`已加入队列：${state.queue.at(-1)?.outputFilename ?? ""}`);
     } catch (error) {
@@ -1753,6 +2049,35 @@ function bindHistory(): void {
       void editHistoryAsset(button.dataset.editHistory!);
     });
   });
+  document.querySelectorAll<HTMLElement>("[data-continue-history]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const asset = state.history.find(
+        (item) => item.id === button.dataset.continueHistory
+      );
+      const version = asset?.versions.find(
+        (item) => item.id === button.dataset.sourceVersion
+      );
+      const videoIndex = version ? versionVideoIndex(version) : -1;
+      const filename = videoIndex >= 0 ? version?.files[videoIndex]?.absolutePath : undefined;
+      if (!asset || !version || !filename) {
+        showMessage("当前视频版本的本地文件不可用。");
+        return;
+      }
+      try {
+        await selectDraftVideo(filename, {
+          assetId: asset.id,
+          versionId: version.id,
+          duration: version.duration,
+          width: version.width,
+          height: version.height
+        });
+        page = "create";
+        render();
+      } catch (error) {
+        showMessage(error instanceof Error ? error.message : "无法继续创作");
+      }
+    });
+  });
   document.querySelectorAll<HTMLElement>("[data-show-file]").forEach((button) => {
     button.addEventListener("click", async () => {
       const shown = await window.studio.showItemInFolder(button.dataset.showFile!);
@@ -1781,6 +2106,15 @@ function formSettings(): Settings {
     defaultVideoModel: value("default-video-model", base.defaultVideoModel),
     vramReserveGb: Number(value("vram-reserve", String(base.vramReserveGb))),
     autoOffload: checked("auto-offload", base.autoOffload),
+    ltxExtensionModelProfile: value(
+      "ltx-extension-model-profile",
+      base.ltxExtensionModelProfile
+    ) as Settings["ltxExtensionModelProfile"],
+    ltxExtensionResolution: Number(value("ltx-extension-resolution", String(base.ltxExtensionResolution))) as Settings["ltxExtensionResolution"],
+    ltxExtensionFrames: Number(value("ltx-extension-frames", String(base.ltxExtensionFrames))) as Settings["ltxExtensionFrames"],
+    ltxExtensionOverlapFrames: 16,
+    ltxExtensionUnloadBetweenStages: true,
+    ltxExtensionTimeoutMinutes: Number(value("ltx-extension-timeout", String(base.ltxExtensionTimeoutMinutes))) as Settings["ltxExtensionTimeoutMinutes"],
     safeCancel: checked("safe-cancel", base.safeCancel),
     optimizeQueue: checked("optimize-queue-setting", base.optimizeQueue),
     promptLanguage: value("prompt-language", base.promptLanguage) as Settings["promptLanguage"],
@@ -1957,8 +2291,29 @@ function bindSettings(): void {
     void runEnvironmentScan(settingsDraft);
   });
   document.querySelector("#save-settings")?.addEventListener("click", async () => {
+    const previousProfile = state.settings.ltxExtensionModelProfile;
     state = await window.studio.saveSettings(formSettings());
     settingsDraft = null;
+    if (state.settings.ltxExtensionModelProfile !== previousProfile) {
+      delete bundledWorkflows[bundledWorkflowKey("sulphur2", "image")];
+      delete bundledWorkflows[bundledWorkflowKey("sulphur2", "video")];
+      if (state.draft.modelId === "sulphur2") {
+        const bundled = await window.studio.getBundledWorkflow(
+          "sulphur2",
+          state.draft.inputMode
+        );
+        if (bundled) {
+          bundledWorkflows[
+            bundledWorkflowKey("sulphur2", state.draft.inputMode)
+          ] = bundled;
+          state = await window.studio.saveDraft({
+            ...state.draft,
+            workflowPath: bundled.path
+          });
+        }
+      }
+      await runEnvironmentScan(state.settings);
+    }
     showMessage("设置已保存，将对下一项尚未开始的任务生效。");
   });
   document.querySelectorAll<HTMLElement>("[data-test]").forEach((button) => {
@@ -2106,14 +2461,15 @@ void window.studio.getState().then((initialState) => {
   render();
   void refreshPerformanceMetrics();
   void Promise.all([
-    window.studio.getBundledWorkflow(state.draft.modelId),
+    window.studio.getBundledWorkflow(state.draft.modelId, state.draft.inputMode),
     window.studio.scanEnvironment(state.settings)
   ]).then(([bundled, scan]) => {
     environmentScan = scan;
     if (bundled) {
-      bundledWorkflows[bundled.modelId] = bundled;
+      bundledWorkflows[bundledWorkflowKey(bundled.modelId, state.draft.inputMode)] = bundled;
       workflowCapabilities[bundled.path] = {
-        supportsEndImage: bundled.supportsEndImage
+        supportsEndImage: bundled.supportsEndImage,
+        supportsVideoExtension: bundled.supportsVideoExtension
       };
       if (!state.draft.workflowPath) {
         patchDraft({ workflowPath: bundled.path });

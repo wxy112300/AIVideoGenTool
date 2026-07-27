@@ -120,7 +120,7 @@
 | `wan22_5b` | Wan 2.2 I2V 5B | `workflows/wan22_5b_i2v_api.json` | 4090 上完成 720p、5 秒、121 帧正式基准 |
 | `hunyuan15` | HunyuanVideo 1.5 I2V | `workflows/hunyuan15_i2v_api.json` | API 节点与工作流校验通过；仍需完整生成基准 |
 | `hunyuan15_sr` | HunyuanVideo 1.5 I2V + 1080p SR | `workflows/hunyuan15_sr_i2v_api.json` | 官方 20 步 720p + 8 步 SR 分支；服务端解析与首阶段执行验证通过 |
-| `sulphur2` | Sulphur 2 FP8 | `workflows/sulphur2_ltx23_i2v_api.json` | 37 个节点与本机 ComfyUI 0.18.2 签名校验通过；本机尚缺 Sulphur 权重 |
+| `sulphur2` | Sulphur 2 GGUF | Q2: `workflows/sulphur2_ltx23_i2v_gguf_q2_api.json` / `workflows/sulphur2_ltx23_extend_gguf_q2_api.json`; Q3/Q4: 对应 `*_gguf_dev_api.json` | 四个图已通过本机 ComfyUI 节点 schema；FP8 Extend 实测导致严重桌面卡顿，GGUF 尚未运行重型 benchmark |
 | `wan22_14b_nsfw` | Wan 2.2 I2V 14B + NSFW | `workflows/wan22_14b_i2v_api.json` | 完整组件识别和 `/prompt` 校验通过 |
 | `wan22_remix` | Wan 2.2 Remix v3 | `workflows/wan22_14b_gguf_i2v_api.json` | 完整组件识别和 `/prompt` 校验通过 |
 | `wan22_smoothmix` | Wan 2.2 SmoothMix I2V | 同上 | 完整组件识别；共享 GGUF 工作流 |
@@ -131,9 +131,10 @@ Wan 14B 使用 High/Low 双阶段 20 步采样，并使用
 `UnetLoaderGGUFAdvanced`：本机同时安装了 FantasyTalking 的同名
 `UnetLoaderGGUF`，后者返回 `WANVIDEOMODEL`，会和标准采样器产生类型冲突。
 
-Sulphur 2 使用完整 `sulphur_dev_fp8mixed.safetensors`、Gemma 3 文本编码器、
-官方 distill LoRA 和 LTX 2.3 latent x2 upscaler。官方明确说明完整 Sulphur 模型
-不能再叠加 Sulphur LoRA；内置图只叠加 distill LoRA。
+Sulphur 2 使用设置选择的 Q2/Q3/Q4 GGUF transformer、Gemma 3、LTX text connector、
+独立视频/音频 VAE 和 latent x2 upscaler。Q2 是 distilled transformer，不叠加 LoRA；
+Q3/Q4 是 dev transformer，内置图叠加 distill LoRA。I2V、Extend、环境扫描和任务快照
+必须使用同一个档位。
 
 ### 2.7 分辨率提升与作品版本
 
@@ -298,7 +299,7 @@ HunyuanVideo 1.5 720p I2V
 HunyuanVideo 1.5 1080p SR（双阶段工作流已接入）
 Hunyuan 1.5 VAE、Qwen 2.5 VL、ByT5、SigCLIP
 SeedVR2 / FlashVSR / Real-ESRGAN 相关文件（后端已接入；FlashVSR 缺四个配套权重）
-LTX 2.3 checkpoint、Gemma 3、distill LoRA、latent x2 upscaler（Sulphur 主模型尚未下载）
+Sulphur 2 / LTX 2.3 旧 FP8 checkpoint 与配套组件（保留但不再由内置图选择）；Q2/Q3/Q4 GGUF 与 split connector/VAE 按所选档位补齐
 ```
 
 RIFE 权重：
@@ -385,8 +386,10 @@ npm run build
   - 当前单段输出上限为 10 秒；超过 10 秒需要分段生成、重叠帧、续写和拼接。
 4. **首尾帧**
    - 数据结构保留 `endImagePath`，但内置工作流没有完成统一的首尾帧生成体验。
-5. **缺权重模型的真实测试**
-  - Sulphur 2 和 FlashVSR 已接工作流与环境扫描，但本机权重不完整，尚未真实执行。
+5. **已接模型的真实测试**
+  - Sulphur 2 原生 Extend 已完整接入；旧 FP8 图进入采样后约占 23.4/24.6 GB 显存并造成严重桌面卡顿，已退出生产路由。
+  - 四个 GGUF 图已通过 JSON、静态安全契约和本机 ComfyUI 节点 schema，尚未下载完整档位并运行重型 benchmark。
+  - FlashVSR 仍缺配套权重，尚未真实执行。
 
 ### P2：工程化与体验
 
@@ -406,8 +409,8 @@ npm run build
 4. 用 Wan 5B 跑 5 秒/720p/121 帧，记录 DynamicVRAM、采样和 tiled VAE 峰值。
 5. 用 Wan 5B 跑 10 秒/24 FPS/RIFE 2×，确认 121 模型帧到 240 成片帧。
 6. 按 14B 原版 81 帧 → Remix → SmoothMix → DaSiWa → Hunyuan 121 帧顺序测试。
-7. 把真实结果补成 benchmark/fixture，再按结果提高或收紧单模型 profile。
-8. 开始实现 P0 的“安全取消部分视频”，再做超过 10 秒的续写、分段与拼接。
+7. 按设置中选择的 Sulphur 档位补齐 GGUF 与 split 组件；只有用户明确许可后才运行 360p/49 帧 benchmark。
+8. 把真实结果补成 benchmark/fixture，再按结果提高或收紧单模型 profile。
 
 ## 7. 关键代码
 

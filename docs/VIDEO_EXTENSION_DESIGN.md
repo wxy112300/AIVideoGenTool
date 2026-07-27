@@ -40,19 +40,41 @@
 
 | 模型路径 | 当前仓库能力 | 视频续写模式 |
 | --- | --- | --- |
-| Sulphur 2 / LTX 2.3 | LTX 生态支持视频条件和重叠帧 extension，但仓库仍需接入并验证专用工作流 | capability 验证通过后启用 |
+| Sulphur 2 / LTX 2.3 | 已接入官方 Extend sampler 与 Q2/Q3/Q4 分离式 GGUF 图 | capability 与所选档位的组件验证通过后启用 |
 | Wan 2.2 5B | 当前内置图为 I2V | 禁用 |
 | Wan 2.2 14B / GGUF | 当前内置图为 I2V；社区扩展不属于当前受控依赖 | 禁用 |
 | HunyuanVideo 1.5 | 当前内置图为 I2V | 禁用 |
 
 不能因为模型支持 I2V，就把“提取续写点单帧后重新生成”包装成原生 Extend。需要这种能力时，应另行设计“从画面创建”操作，而不是降低视频续写模式的语义。
 
+29.2 GB FP8 mixed checkpoint 已在本机真实进入 `LTXVExtendSampler`，但占用约 23.4/24.6 GB 显存并造成桌面严重卡顿，因此不再作为内置部署路径。当前使用 `UnetLoaderGGUFAdvanced` 加载 transformer，Gemma 3 与 LTX connector 由 `DualCLIPLoader` 独立加载，视频和音频 VAE 也独立加载。官方 `Lightricks/ComfyUI-LTXVideo` custom node 已通过项目安装器安装并成功加载。
+
+设置中的模型档位同时控制 I2V、Extend、环境扫描和新任务快照：
+
+| 档位 | Transformer | 用途 | Distill LoRA |
+| --- | --- | --- | --- |
+| `q2_distilled` | `sulphur-2-distilled-Q2_K.gguf`，约 7.93 GB | 8GB 兼容，质量最低 | 不加载 |
+| `q3_k_m` | `sulphur_dev-Q3_K_M.gguf`，约 11.13 GB | 默认均衡档 | 加载 |
+| `q4_k_m` | `sulphur_dev-Q4_K_M.gguf`，约 14.30 GB | 质量档 | 加载 |
+
+“8GB 兼容”依赖 CPU offload、mmap、足够的系统内存和页面文件，不表示所有权重同时驻留在 8GB 显存。360p/49 帧仍是首个实测配置；未经用户明确许可不启动重型 inference benchmark。
+
 正式实现中，模型是否可选必须同时满足：
 
-- 模型组件扫描完整；
-- 对应 extension workflow 存在；
-- workflow capability 声明 `supportsVideoExtension`；
-- 当前机器通过该模型的显存与输出验证。
+- FFmpeg worker 按原始 `trimStart/trimEnd` 精确抽取保留段，只把裁剪终点前的 overlap 上下文交给 ComfyUI；
+- API 节点输入包含 `{{SOURCE_VIDEO}}`、`{{EXTENSION_FRAMES}}`、`{{OVERLAP_FRAMES}}`；
+- 使用官方 `LTXVExtendSampler` 或 `LTXVLoopingSampler`；
+- transformer 通过返回标准 `MODEL` 的 `UnetLoaderGGUFAdvanced` 加载，且 `patch_on_device=false`；
+- Gemma 3 与 LTX text connector 通过 `DualCLIPLoader(type=ltxv)` 加载；
+- 视频 VAE 使用独立 `VAELoader`；I2V 音频 VAE 使用 `LowVRAMAudioVAELoader`，文件放在 `models/checkpoints`；
+- Q2 distilled 图不得叠加 distill LoRA，Q3/Q4 dev 图必须叠加；
+- 采样后存在显式 `VRAM_Debug` 卸载节点；
+- 解码使用 tiled VAE；
+- 任务保存量化档位、360p/480p、49/65 模型帧、16 帧 overlap 和阶段卸载的不可变设置快照；
+- 模型组件和 `ComfyUI-LTXVideo` 扫描完整；
+- 当前机器通过该配置的显存与输出验证。
+
+仅包含三个输入占位符只能证明数据契约完整，不能证明工作流符合原生续写低显存契约，因此不会在创建页标记为可用。
 
 ## 4. 创建页交互
 
@@ -139,7 +161,7 @@ Extension worker 负责：
 3. 精确生成 `[trimStart, trimEnd]` 的保留片段。
 4. 按模型要求提取尾部多帧或短视频上下文。
 5. 将上下文规范化到 extension workflow 支持的分辨率和帧率。
-6. 按模型级 24 GB 显存 profile 提交 ComfyUI。
+6. 按任务快照中的 Q2/Q3/Q4 模型档位提交 ComfyUI。
 7. 去除上下文重叠帧并拼接新片段。
 8. 统一编码、像素格式和音频策略。
 9. 校验输出可解码、时长和帧数后，写入新的历史作品。

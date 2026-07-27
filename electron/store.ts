@@ -45,6 +45,12 @@ function legacyDimensions(asset: LegacyHistoryAsset): [number, number] {
 
 function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
   if (task.taskType === "upscale") return task;
+  if (task.taskType === "extension") {
+    return {
+      ...task,
+      modelProfile: task.modelProfile ?? "q3_k_m"
+    };
+  }
   return {
     ...task,
     taskType: "generation",
@@ -159,6 +165,34 @@ export class JsonStore {
       }
       if (!this.state.settings.autoOffload) {
         this.state.settings.autoOffload = true;
+        needsPersist = true;
+      }
+      if (
+        !["q2_distilled", "q3_k_m", "q4_k_m"].includes(
+          this.state.settings.ltxExtensionModelProfile
+        )
+      ) {
+        this.state.settings.ltxExtensionModelProfile = "q3_k_m";
+        needsPersist = true;
+      }
+      if (![360, 480].includes(this.state.settings.ltxExtensionResolution)) {
+        this.state.settings.ltxExtensionResolution = 360;
+        needsPersist = true;
+      }
+      if (![49, 65].includes(this.state.settings.ltxExtensionFrames)) {
+        this.state.settings.ltxExtensionFrames = 49;
+        needsPersist = true;
+      }
+      if (this.state.settings.ltxExtensionOverlapFrames !== 16) {
+        this.state.settings.ltxExtensionOverlapFrames = 16;
+        needsPersist = true;
+      }
+      if (!this.state.settings.ltxExtensionUnloadBetweenStages) {
+        this.state.settings.ltxExtensionUnloadBetweenStages = true;
+        needsPersist = true;
+      }
+      if (![10, 20, 30].includes(this.state.settings.ltxExtensionTimeoutMinutes)) {
+        this.state.settings.ltxExtensionTimeoutMinutes = 20;
         needsPersist = true;
       }
       if (needsPersist) await this.persist();

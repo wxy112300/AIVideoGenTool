@@ -168,7 +168,7 @@ npm run dev
 | Wan 2.2 TI2V-5B | 121 帧 | 已实测 720p、121 帧、24 FPS | FP8 运行权重、FP8 T5、DynamicVRAM、tiled VAE |
 | Wan 2.2 14B FP8/GGUF | 81 帧 | 480p 后再测 720p | 高/低噪声专家间卸载、FP8 或 Q4/Q5、按层反量化 |
 | HunyuanVideo 1.5 | 121 帧 | 720p、121 帧、24 FPS | 模型 CPU offload、FP8 文本编码器、tiled VAE |
-| Sulphur 2 / LTX 2.3 | 121 帧 | 低分辨率首阶段、121 帧 | FP8 checkpoint、DynamicVRAM、阶段卸载、latent x2 |
+| Sulphur 2 / LTX 2.3 | 121 帧 | 360p/49 帧原生 Extend 后再扩大 | Q2/Q3/Q4 GGUF、split text/VAE、CPU offload、阶段卸载、latent x2 |
 
 默认输出为 5 秒。10 秒可以用 RIFE 2× 将 121 个模型帧插值到 24 FPS 成片；
 也可以使用模型原生续写/长视频工作流。不要把单次 241 帧采样默认视为已验证能力。
