@@ -288,14 +288,16 @@ describe("renderWorkflow", () => {
     expect(rendered["1"]?.inputs).toMatchObject({
       samples: ["3", 0],
       tile_size: 256,
-      temporal_size: 16
+      overlap: 64,
+      temporal_size: 64,
+      temporal_overlap: 16
     });
     expect(rendered["3"]?.inputs.any_input).toEqual(["9", 0]);
     expect(rendered["4"]?.inputs.image_pass).toEqual(["1", 0]);
     expect(rendered["2"]?.inputs.images).toEqual(["4", 1]);
   });
 
-  it("uses larger temporal VAE tiles when at least 20 GB VRAM is available", () => {
+  it("disables temporal VAE splitting when at least 20 GB VRAM is available", () => {
     const rendered = renderWorkflow(
       {
         "1": {
@@ -308,8 +310,65 @@ describe("renderWorkflow", () => {
     ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
 
     expect(rendered["1"]?.class_type).toBe("VAEDecodeTiled");
-    expect(rendered["1"]?.inputs.temporal_size).toBe(64);
+    expect(rendered["1"]?.inputs.tile_size).toBe(512);
+    expect(rendered["1"]?.inputs.overlap).toBe(64);
+    expect(rendered["1"]?.inputs.temporal_size).toBe(4096);
     expect(rendered["1"]?.inputs.temporal_overlap).toBe(16);
+  });
+
+  it("overrides temporal tiling already embedded in Wan and Hunyuan workflows", () => {
+    const rendered = renderWorkflow(
+      {
+        "1": {
+          class_type: "VAEDecodeTiled",
+          inputs: {
+            samples: ["9", 0],
+            vae: ["8", 0],
+            tile_size: 256,
+            overlap: 32,
+            temporal_size: 16,
+            temporal_overlap: 4
+          }
+        }
+      },
+      task,
+      { vramTotalBytes: 24 * 1024 ** 3 }
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(rendered["1"]?.inputs).toMatchObject({
+      samples: ["2", 0],
+      tile_size: 512,
+      overlap: 64,
+      temporal_size: 4096,
+      temporal_overlap: 16
+    });
+    expect(rendered["2"]?.inputs.any_input).toEqual(["9", 0]);
+  });
+
+  it("disables temporal splitting in the native LTX tiled decoder on a 4090", () => {
+    const rendered = renderWorkflow(
+      {
+        "1": {
+          class_type: "LTXVSpatioTemporalTiledVAEDecode",
+          inputs: {
+            latents: ["9", 0],
+            vae: ["8", 0],
+            spatial_tiles: 4,
+            temporal_tile_length: 8,
+            temporal_overlap: 1
+          }
+        }
+      },
+      extensionTask,
+      { vramTotalBytes: 24 * 1024 ** 3 }
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(rendered["1"]?.inputs).toMatchObject({
+      latents: ["2", 0],
+      temporal_tile_length: 1000,
+      temporal_overlap: 4
+    });
+    expect(rendered["2"]?.inputs.any_input).toEqual(["9", 0]);
   });
 });
 

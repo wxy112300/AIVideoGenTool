@@ -569,6 +569,21 @@ export function renderWorkflow(
     { class_type?: string; inputs?: Record<string, unknown> }
   >;
   const highVramDecode = (context.vramTotalBytes ?? 0) >= 20 * 1024 ** 3;
+  const tiledDecodeInputs = highVramDecode
+    ? {
+        // Keep spatial tiling, but make the temporal tile larger than every
+        // supported clip so the VAE sees the whole sequence at once.
+        tile_size: 512,
+        overlap: 64,
+        temporal_size: 4096,
+        temporal_overlap: 16
+      }
+    : {
+        tile_size: 256,
+        overlap: 64,
+        temporal_size: 64,
+        temporal_overlap: 16
+      };
   let nextNodeId =
     Math.max(
       0,
@@ -585,16 +600,28 @@ export function renderWorkflow(
 
   for (const node of Object.values(workflow)) {
     if (!node.inputs || !node.class_type?.includes("VAEDecode")) continue;
-    if (node.class_type === "VAEDecode") {
-      node.class_type = "VAEDecodeTiled";
+    let latentInputKey: "samples" | "latents";
+    if (node.class_type === "LTXVSpatioTemporalTiledVAEDecode") {
       Object.assign(node.inputs, {
-        tile_size: 256,
-        overlap: 32,
-        temporal_size: highVramDecode ? 64 : 16,
-        temporal_overlap: highVramDecode ? 16 : 4
+        // This node counts latent frames. 1000 therefore disables temporal
+        // splitting for our bounded generation/extension clips.
+        temporal_tile_length: highVramDecode ? 1000 : 32,
+        temporal_overlap: 4
       });
+      latentInputKey = "latents";
+    } else if (
+      node.class_type === "VAEDecode" ||
+      node.class_type === "VAEDecodeTiled"
+    ) {
+      if (node.class_type === "VAEDecode") {
+        node.class_type = "VAEDecodeTiled";
+      }
+      Object.assign(node.inputs, tiledDecodeInputs);
+      latentInputKey = "samples";
+    } else {
+      continue;
     }
-    const samples = node.inputs.samples;
+    const samples = node.inputs[latentInputKey];
     if (!Array.isArray(samples) || isUnloadConnection(samples)) continue;
     const unloadId = String(nextNodeId++);
     workflow[unloadId] = {
@@ -606,7 +633,7 @@ export function renderWorkflow(
         any_input: samples
       }
     };
-    node.inputs.samples = [unloadId, 0];
+    node.inputs[latentInputKey] = [unloadId, 0];
   }
 
   for (const node of Object.values(workflow)) {
