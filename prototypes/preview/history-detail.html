@@ -1046,6 +1046,7 @@ svg {
 
       <div class="hero-actions">
         <a class="btn" href="./create.html"><i data-lucide="pencil" aria-hidden="true"></i>在创建页调整</a>
+        <a class="btn" id="continue-create" href="./create.html?mode=extend"><i data-lucide="forward" aria-hidden="true"></i>继续创作</a>
         <button class="btn btn-primary" id="enqueue-copy" type="button"><i data-lucide="list-plus" aria-hidden="true"></i>加入队列</button>
       </div>
 
@@ -1351,6 +1352,11 @@ svg {
     root.querySelector('#output-resolution').textContent = version.resolution;
     root.querySelector('#version-note').textContent = version.note;
     video.src = `./media/${version.filename}`;
+    const continueUrl = new URL('./create.html', window.location.href);
+    continueUrl.searchParams.set('mode', 'extend');
+    continueUrl.searchParams.set('source', version.filename);
+    continueUrl.searchParams.set('duration', String(Number.parseFloat(record.duration)));
+    root.querySelector('#continue-create').href = continueUrl.href;
     versionList.querySelectorAll('[data-version]').forEach(button => {
       const selected = button.dataset.version === version.id;
       button.setAttribute('aria-pressed', String(selected));
