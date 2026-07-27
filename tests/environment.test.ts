@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildComfyCandidates,
   buildComfyDesktopCandidates,
@@ -7,8 +7,32 @@ import {
   evaluateModelProfiles,
   normalizeProxyUrl,
   patchVideoHelperBatchCompatibility,
+  renameWithRetry,
   videoHelperBatchCompatible
 } from "../electron/services/environment.js";
+
+describe("Windows directory replacement", () => {
+  it("retries a transient EPERM before promoting the replacement directory", async () => {
+    const error = Object.assign(new Error("temporarily locked"), { code: "EPERM" });
+    const rename = vi
+      .fn<(source: string, destination: string) => Promise<void>>()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce();
+    const waits: number[] = [];
+
+    await renameWithRetry("replacement", "target", {
+      attempts: 3,
+      retryDelayMs: 25,
+      rename,
+      wait: async (milliseconds) => {
+        waits.push(milliseconds);
+      }
+    });
+
+    expect(rename).toHaveBeenCalledTimes(2);
+    expect(waits).toEqual([25]);
+  });
+});
 
 describe("ComfyUI environment candidates", () => {
   it("finds LM Studio from a manually selected non-system drive", () => {

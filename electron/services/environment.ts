@@ -919,6 +919,45 @@ async function exists(filename: string): Promise<boolean> {
   return Boolean(await fs.stat(filename).catch(() => null));
 }
 
+const RETRYABLE_RENAME_ERRORS = new Set(["EACCES", "EBUSY", "ENOTEMPTY", "EPERM"]);
+
+interface RenameRetryOptions {
+  attempts?: number;
+  retryDelayMs?: number;
+  rename?: (source: string, destination: string) => Promise<void>;
+  wait?: (milliseconds: number) => Promise<void>;
+}
+
+function retryableRenameError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    RETRYABLE_RENAME_ERRORS.has((error as NodeJS.ErrnoException).code ?? "")
+  );
+}
+
+export async function renameWithRetry(
+  source: string,
+  destination: string,
+  options: RenameRetryOptions = {}
+): Promise<void> {
+  const attempts = Math.max(1, options.attempts ?? 8);
+  const retryDelayMs = Math.max(0, options.retryDelayMs ?? 150);
+  const rename = options.rename ?? fs.rename;
+  const wait =
+    options.wait ??
+    ((milliseconds: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await rename(source, destination);
+      return;
+    } catch (error) {
+      if (!retryableRenameError(error) || attempt === attempts) throw error;
+      await wait(retryDelayMs * attempt);
+    }
+  }
+}
+
 async function listModelFiles(modelDirectory: string): Promise<string[]> {
   if (!modelDirectory || !(await exists(modelDirectory))) return [];
   const files: string[] = [];
@@ -1038,6 +1077,43 @@ export function videoHelperBatchCompatible(
     loadVideoSource.includes(
       "itertools.islice(gen, int(meta_batch.frames_per_batch))"
     )
+  );
+}
+
+async function prepareVideoHelperSuite(
+  targetDirectory: string,
+  installLog: string[]
+): Promise<void> {
+  const utilsPath = path.join(targetDirectory, "videohelpersuite", "utils.py");
+  const nodesPath = path.join(targetDirectory, "videohelpersuite", "nodes.py");
+  const loadVideoPath = path.join(
+    targetDirectory,
+    "videohelpersuite",
+    "load_video_nodes.py"
+  );
+  const [utilsSource, nodesSource, loadVideoSource] = await Promise.all([
+    fs.readFile(utilsPath, "utf8"),
+    fs.readFile(nodesPath, "utf8"),
+    fs.readFile(loadVideoPath, "utf8")
+  ]);
+  const patched = patchVideoHelperBatchCompatibility(
+    utilsSource,
+    nodesSource,
+    loadVideoSource
+  );
+  await Promise.all([
+    fs.writeFile(utilsPath, patched.utilsSource, "utf8"),
+    fs.writeFile(nodesPath, patched.nodesSource, "utf8"),
+    fs.writeFile(loadVideoPath, patched.loadVideoSource, "utf8")
+  ]);
+  await fs.rm(path.join(targetDirectory, ".git"), {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 200
+  });
+  installLog.push(
+    "已应用并锁定当前 ComfyUI 分批队列兼容层；后续更新由本应用备份替换"
   );
 }
 
@@ -1903,6 +1979,7 @@ export async function installCustomNode(
     const git = await findExecutable("git.exe");
     if (!git) throw new Error("缺少 Git，无法下载节点包。");
     await fs.mkdir(customNodesDirectory, { recursive: true });
+    let videoHelperPrepared = false;
 
     if (await exists(targetDirectory)) {
       if (await exists(path.join(targetDirectory, ".git"))) {
@@ -1934,17 +2011,48 @@ export async function installCustomNode(
             }
           );
           installLog.push(`${gitResult.stdout}${gitResult.stderr}`.trim() || "Git：克隆完成");
+          if (definition.id === "video-helper-suite") {
+            await prepareVideoHelperSuite(replacementDirectory, installLog);
+            videoHelperPrepared = true;
+          }
           await fs.mkdir(backupRoot, { recursive: true });
-          await fs.rename(targetDirectory, backupDirectory);
+          await renameWithRetry(targetDirectory, backupDirectory);
           try {
-            await fs.rename(replacementDirectory, targetDirectory);
+            try {
+              await renameWithRetry(replacementDirectory, targetDirectory);
+            } catch (error) {
+              if (!retryableRenameError(error)) throw error;
+              installLog.push(
+                "Windows 持续占用新目录，自动改用文件复制完成替换"
+              );
+              await fs.cp(replacementDirectory, targetDirectory, {
+                recursive: true,
+                force: false,
+                errorOnExist: true
+              });
+            }
           } catch (error) {
-            await fs.rename(backupDirectory, targetDirectory).catch(() => undefined);
+            await fs
+              .rm(targetDirectory, {
+                recursive: true,
+                force: true,
+                maxRetries: 5,
+                retryDelay: 200
+              })
+              .catch(() => undefined);
+            await renameWithRetry(backupDirectory, targetDirectory).catch(
+              () => undefined
+            );
             throw error;
           }
           installLog.push(`旧目录已备份：${backupDirectory}`);
         } finally {
-          await fs.rm(replacementDirectory, { recursive: true, force: true });
+          await fs.rm(replacementDirectory, {
+            recursive: true,
+            force: true,
+            maxRetries: 5,
+            retryDelay: 200
+          });
         }
       }
     } else {
@@ -1962,36 +2070,8 @@ export async function installCustomNode(
       installLog.push(`${gitResult.stdout}${gitResult.stderr}`.trim() || "Git：克隆完成");
     }
 
-    if (definition.id === "video-helper-suite") {
-      const utilsPath = path.join(targetDirectory, "videohelpersuite", "utils.py");
-      const nodesPath = path.join(targetDirectory, "videohelpersuite", "nodes.py");
-      const loadVideoPath = path.join(
-        targetDirectory,
-        "videohelpersuite",
-        "load_video_nodes.py"
-      );
-      const [utilsSource, nodesSource, loadVideoSource] = await Promise.all([
-        fs.readFile(utilsPath, "utf8"),
-        fs.readFile(nodesPath, "utf8"),
-        fs.readFile(loadVideoPath, "utf8")
-      ]);
-      const patched = patchVideoHelperBatchCompatibility(
-        utilsSource,
-        nodesSource,
-        loadVideoSource
-      );
-      await Promise.all([
-        fs.writeFile(utilsPath, patched.utilsSource, "utf8"),
-        fs.writeFile(nodesPath, patched.nodesSource, "utf8"),
-        fs.writeFile(loadVideoPath, patched.loadVideoSource, "utf8")
-      ]);
-      await fs.rm(path.join(targetDirectory, ".git"), {
-        recursive: true,
-        force: true
-      });
-      installLog.push(
-        "已应用并锁定当前 ComfyUI 分批队列兼容层；后续更新由本应用备份替换"
-      );
+    if (definition.id === "video-helper-suite" && !videoHelperPrepared) {
+      await prepareVideoHelperSuite(targetDirectory, installLog);
     }
 
     const requirements = path.join(targetDirectory, "requirements.txt");
