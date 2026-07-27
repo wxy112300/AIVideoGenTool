@@ -9,6 +9,7 @@ import type {
   ModelComponentStatus,
   ModelScanProfile,
   PerformanceMetrics,
+  PromptEnhanceMode,
   PromptVersion,
   QueueTask,
   Settings
@@ -20,6 +21,7 @@ import {
   frameInterpolationMultiplier,
   generationFrameCountForTask,
   generationSafetyForTask,
+  outputDimensions,
   outputFrameCountForTask
 } from "./core/workflow";
 import {
@@ -79,6 +81,7 @@ let performanceMetrics: PerformanceMetrics | null = null;
 let performancePolling = false;
 let historyContextMenuElement: HTMLElement | null = null;
 let historyContextMenuEvents: AbortController | null = null;
+let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
 
 window.addEventListener("dragover", (event) => {
   if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
@@ -479,6 +482,10 @@ function createPage(): string {
         <div class="button-row">
           <button class="icon-button" id="prompt-prev" ${draft.activePromptVersion === 0 ? "disabled" : ""}>←</button>
           <button class="icon-button" id="prompt-next" ${draft.activePromptVersion >= draft.promptVersions.length - 1 ? "disabled" : ""}>→</button>
+          <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="扩写方式" title="选择提示词扩写方式">
+            <option value="sulphur-native" ${promptEnhanceMode === "sulphur-native" ? "selected" : ""}>Sulphur 原生增强（推荐）</option>
+            <option value="faithful" ${promptEnhanceMode === "faithful" ? "selected" : ""}>忠实扩写（需 Instruct 模型）</option>
+          </select>
           <button class="secondary" id="enhance-prompt">✨ 本地扩写</button>
         </div>
       </div>
@@ -500,9 +507,17 @@ function createPage(): string {
           <select id="resolution" ${extending ? "disabled" : ""}>
             ${extending
               ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p · GGUF 保守预设</option>`
-              : [480, 540, 720].map((value) =>
-                  `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p</option>`
-                ).join("")}
+              : ([480, 540, 720] as const).map((value) => {
+                  const [width, height] = outputDimensions({
+                    ...draft,
+                    resolution: value
+                  });
+                  const recommended =
+                    draft.modelId === "sulphur2" &&
+                    value === 720 &&
+                    (performanceMetrics?.vramTotalBytes ?? 0) >= 20 * 1024 ** 3;
+                  return `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p · ${width}×${height}${recommended ? " · 24GB 推荐" : ""}</option>`;
+                }).join("")}
           </select>
         </label>
         <label>${extending ? "新增时长" : "时长"}
@@ -1692,6 +1707,9 @@ function bindCreate(): void {
     patchDraft({ activePromptVersion: Math.min(state.draft.promptVersions.length - 1, state.draft.activePromptVersion + 1) });
     render();
   });
+  document.querySelector("#prompt-enhance-mode")?.addEventListener("change", (event) => {
+    promptEnhanceMode = (event.currentTarget as HTMLSelectElement).value as PromptEnhanceMode;
+  });
   document.querySelector("#enhance-prompt")?.addEventListener("click", async (event) => {
     const button = event.currentTarget as HTMLButtonElement;
     button.disabled = true;
@@ -1699,7 +1717,9 @@ function bindCreate(): void {
     try {
       const text = await window.studio.enhancePrompt({
         prompt: activePrompt().text,
-        modelId: state.draft.modelId
+        modelId: state.draft.modelId,
+        mode: promptEnhanceMode,
+        imagePath: state.draft.startImagePath || undefined
       });
       const versions = [
         ...state.draft.promptVersions.slice(0, state.draft.activePromptVersion + 1),

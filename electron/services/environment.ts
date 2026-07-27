@@ -1080,6 +1080,52 @@ export function videoHelperBatchCompatible(
   );
 }
 
+export function patchLtxAudioVaeCompatibility(source: string): string {
+  if (!source.includes("audio_vae = AudioVAE(sd, metadata)")) return source;
+  const patched = source
+    .replace(
+      "from comfy.ldm.lightricks.vae.audio_vae import AudioVAE",
+      "from comfy.sd import VAE"
+    )
+    .replace(
+      "        audio_vae = AudioVAE(sd, metadata)",
+      [
+        "        sd_audio = comfy.utils.state_dict_prefix_replace(",
+        '            dict(sd), {"audio_vae.": "autoencoder.", "vocoder.": "vocoder."}, filter_keys=True',
+        "        )",
+        "        audio_vae = VAE(sd=sd_audio, metadata=metadata)",
+        "        audio_vae.throw_exception_if_invalid()"
+      ].join("\n")
+    );
+  if (!ltxAudioVaeCompatible(patched)) {
+    throw new Error(
+      "ComfyUI-LTXVideo 源码结构与 AudioVAE 兼容补丁不匹配，已停止修改以避免损坏节点。"
+    );
+  }
+  return patched;
+}
+
+export function ltxAudioVaeCompatible(source: string): boolean {
+  return !source.includes("AudioVAE(sd, metadata)");
+}
+
+async function prepareLtxVideo(
+  targetDirectory: string,
+  installLog: string[]
+): Promise<void> {
+  const loaderPath = path.join(targetDirectory, "low_vram_loaders.py");
+  const source = await fs.readFile(loaderPath, "utf8");
+  const patched = patchLtxAudioVaeCompatibility(source);
+  if (patched !== source) {
+    await fs.writeFile(loaderPath, patched, "utf8");
+    installLog.push(
+      "已应用 ComfyUI 0.22+ AudioVAE 加载兼容层（comfy.sd.VAE wrapper）"
+    );
+  } else {
+    installLog.push("AudioVAE 加载接口已兼容当前 ComfyUI");
+  }
+}
+
 async function prepareVideoHelperSuite(
   targetDirectory: string,
   installLog: string[]
@@ -1157,27 +1203,32 @@ async function scanCustomNodes(comfyRoot: string): Promise<CustomNodeStatus[]> {
           .find((line) => line.includes(`Cannot import ${directory} module`))
           ?.replace(/^.*?Cannot import /, "Cannot import ")
       : "";
-    const compatibilityError =
-      definition.id === "video-helper-suite" && directory
-        ? await Promise.all([
-            fs.readFile(path.join(directory, "videohelpersuite", "utils.py"), "utf8"),
-            fs.readFile(path.join(directory, "videohelpersuite", "nodes.py"), "utf8"),
-            fs.readFile(
-              path.join(directory, "videohelpersuite", "load_video_nodes.py"),
-              "utf8"
-            )
-          ])
-            .then(([utilsSource, nodesSource, loadVideoSource]) =>
-              videoHelperBatchCompatible(
-                utilsSource,
-                nodesSource,
-                loadVideoSource
-              )
-                ? ""
-                : "版本过旧：不兼容当前 ComfyUI 的分批视频队列，请更新节点"
-            )
-            .catch(() => "无法读取 VideoHelperSuite 版本文件")
-        : "";
+    let compatibilityError = "";
+    if (definition.id === "video-helper-suite" && directory) {
+      compatibilityError = await Promise.all([
+        fs.readFile(path.join(directory, "videohelpersuite", "utils.py"), "utf8"),
+        fs.readFile(path.join(directory, "videohelpersuite", "nodes.py"), "utf8"),
+        fs.readFile(
+          path.join(directory, "videohelpersuite", "load_video_nodes.py"),
+          "utf8"
+        )
+      ])
+        .then(([utilsSource, nodesSource, loadVideoSource]) =>
+          videoHelperBatchCompatible(utilsSource, nodesSource, loadVideoSource)
+            ? ""
+            : "版本过旧：不兼容当前 ComfyUI 的分批视频队列，请更新节点"
+        )
+        .catch(() => "无法读取 VideoHelperSuite 版本文件");
+    } else if (definition.id === "ltx-video" && directory) {
+      compatibilityError = await fs
+        .readFile(path.join(directory, "low_vram_loaders.py"), "utf8")
+        .then((source) =>
+          ltxAudioVaeCompatible(source)
+            ? ""
+            : "AudioVAE 加载接口过旧：不兼容当前 ComfyUI，请修复/更新节点"
+        )
+        .catch(() => "无法读取 ComfyUI-LTXVideo 版本文件");
+    }
     return {
       id: definition.id,
       name: definition.name,
@@ -1641,6 +1692,25 @@ export function comfyUiMemoryArgs(
   ];
 }
 
+export async function resolveComfyOutputDirectory(
+  settings: Settings
+): Promise<string> {
+  const comfyRoot = await findComfyRoot(settings);
+  return comfyRoot ? path.join(comfyRoot, "output") : "";
+}
+
+export function comfyUiBundledFrontendArgs(
+  sourceRoot: string,
+  bundledFrontendAvailable: boolean
+): string[] {
+  return bundledFrontendAvailable
+    ? [
+        "--front-end-root",
+        path.join(sourceRoot, "web_custom_versions", "desktop_app")
+      ]
+    : [];
+}
+
 async function startComfyUi(settings: Settings): Promise<string> {
   const endpoint = localEndpoint(settings.comfyUrl, 8188);
   if (!endpoint) {
@@ -1679,6 +1749,12 @@ async function startComfyUi(settings: Settings): Promise<string> {
     throw new Error("找到了 ComfyUI main.py，但没有找到可用的 Python 运行环境。");
   }
 
+  const bundledFrontend = path.join(
+    sourceRoot,
+    "web_custom_versions",
+    "desktop_app",
+    "index.html"
+  );
   const args = [
     "-s",
     mainPy,
@@ -1691,6 +1767,9 @@ async function startComfyUi(settings: Settings): Promise<string> {
     "auto",
     ...comfyUiMemoryArgs(settings)
   ];
+  args.push(
+    ...comfyUiBundledFrontendArgs(sourceRoot, await exists(bundledFrontend))
+  );
   if (comfyRoot && comfyRoot !== sourceRoot) {
     args.push(
       "--base-directory",
@@ -2072,6 +2151,9 @@ export async function installCustomNode(
 
     if (definition.id === "video-helper-suite" && !videoHelperPrepared) {
       await prepareVideoHelperSuite(targetDirectory, installLog);
+    }
+    if (definition.id === "ltx-video") {
+      await prepareLtxVideo(targetDirectory, installLog);
     }
 
     const requirements = path.join(targetDirectory, "requirements.txt");

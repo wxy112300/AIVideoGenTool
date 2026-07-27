@@ -11,6 +11,63 @@ import type {
 import { createDefaultState } from "../src/core/defaults.js";
 import { generationSafetyForTask } from "../src/core/workflow.js";
 
+interface ReplaceStateFileOptions {
+  attempts?: number;
+  retryDelayMs?: number;
+  rename?: typeof fs.rename;
+  copyFile?: typeof fs.copyFile;
+  remove?: typeof fs.rm;
+  wait?: (milliseconds: number) => Promise<void>;
+}
+
+function retryableStateFileError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "EPERM" || code === "EACCES" || code === "EBUSY";
+}
+
+export async function replaceStateFile(
+  temporary: string,
+  destination: string,
+  options: ReplaceStateFileOptions = {}
+): Promise<void> {
+  const attempts = Math.max(1, options.attempts ?? 8);
+  const retryDelayMs = Math.max(0, options.retryDelayMs ?? 40);
+  const rename = options.rename ?? fs.rename;
+  const copyFile = options.copyFile ?? fs.copyFile;
+  const remove = options.remove ?? fs.rm;
+  const wait =
+    options.wait ??
+    ((milliseconds: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await rename(temporary, destination);
+      return;
+    } catch (error) {
+      if (!retryableStateFileError(error)) throw error;
+      lastError = error;
+      if (attempt < attempts) await wait(retryDelayMs * attempt);
+    }
+  }
+
+  // Antivirus scanners and indexers can deny an atomic replacement on Windows
+  // while still allowing the completed temporary file to be copied over it.
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await copyFile(temporary, destination);
+      await remove(temporary, { force: true });
+      return;
+    } catch (error) {
+      if (!retryableStateFileError(error)) throw error;
+      lastError = error;
+      if (attempt < attempts) await wait(retryDelayMs * attempt);
+    }
+  }
+  throw lastError;
+}
+
 export function migrateLegacyComfyUrl(value: string): string {
   const normalized = value.trim().replace(/\/+$/, "").toLowerCase();
   return [
@@ -128,7 +185,7 @@ export class JsonStore {
         queue: (saved.queue ?? []).map(migrateQueueTask),
         history: (saved.history ?? []).map(migrateHistoryAsset)
       };
-      let needsPersist = false;
+      let needsPersist = saved.queueRunning === true;
       if (
         this.state.settings.modelDirectory.toLowerCase() ===
         "c:\\users\\alice\\documents\\comfyui\\models"
@@ -221,13 +278,14 @@ export class JsonStore {
   }
 
   private async persist(): Promise<void> {
-    this.writeChain = this.writeChain.then(async () => {
+    const write = this.writeChain.catch(() => undefined).then(async () => {
       await fs.mkdir(path.dirname(this.filename), { recursive: true });
       const temporary = `${this.filename}.${process.pid}.tmp`;
       await fs.writeFile(temporary, JSON.stringify(this.state, null, 2), "utf8");
-      await fs.rename(temporary, this.filename);
+      await replaceStateFile(temporary, this.filename);
     });
-    return this.writeChain;
+    this.writeChain = write;
+    return write;
   }
 
   private async backupCorruptFile(): Promise<void> {

@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildComfyCandidates,
   buildComfyDesktopCandidates,
+  comfyUiBundledFrontendArgs,
   buildLmStudioCandidates,
   comfyUiMemoryArgs,
   evaluateModelProfiles,
+  ltxAudioVaeCompatible,
   normalizeProxyUrl,
+  patchLtxAudioVaeCompatibility,
   patchVideoHelperBatchCompatibility,
   renameWithRetry,
   videoHelperBatchCompatible
@@ -35,6 +38,19 @@ describe("Windows directory replacement", () => {
 });
 
 describe("ComfyUI environment candidates", () => {
+  it("uses the frontend bundled with ComfyUI Desktop", () => {
+    expect(
+      comfyUiBundledFrontendArgs(
+        "D:\\Program Files\\ComfyUI\\resources\\ComfyUI",
+        true
+      )
+    ).toEqual([
+      "--front-end-root",
+      "D:\\Program Files\\ComfyUI\\resources\\ComfyUI\\web_custom_versions\\desktop_app"
+    ]);
+    expect(comfyUiBundledFrontendArgs("D:\\ComfyUI", false)).toEqual([]);
+  });
+
   it("finds LM Studio from a manually selected non-system drive", () => {
     const candidates = buildLmStudioCandidates({
       homeDirectory: "C:\\Users\\CurrentUser",
@@ -106,6 +122,25 @@ describe("ComfyUI environment candidates", () => {
     expect(patched.nodesSource).toContain(
       "previous = batch_manager_states.pop(unique_id, None)"
     );
+  });
+
+  it("patches the legacy LTX AudioVAE constructor for ComfyUI 0.22+", () => {
+    const legacy = [
+      "import comfy.utils",
+      "from comfy.ldm.lightricks.vae.audio_vae import AudioVAE",
+      "class LowVRAMAudioVAELoader:",
+      "    def load_audio_vae_sequentially(self, ckpt_name):",
+      "        sd, metadata = comfy.utils.load_torch_file(ckpt_name, return_metadata=True)",
+      "        audio_vae = AudioVAE(sd, metadata)",
+      "        return (audio_vae,)"
+    ].join("\n");
+
+    expect(ltxAudioVaeCompatible(legacy)).toBe(false);
+    const patched = patchLtxAudioVaeCompatibility(legacy);
+    expect(ltxAudioVaeCompatible(patched)).toBe(true);
+    expect(patched).toContain("from comfy.sd import VAE");
+    expect(patched).toContain("state_dict_prefix_replace");
+    expect(patched).toContain("audio_vae.throw_exception_if_invalid()");
   });
 
   it("uses the current home directory instead of a hard-coded username", () => {

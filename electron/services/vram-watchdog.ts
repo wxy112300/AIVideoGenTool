@@ -8,13 +8,6 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-export class VramWatchdogError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "VramWatchdogError";
-  }
-}
-
 export interface VramWatchdogMonitor {
   stop(): void;
   peakUsedMiB(): number;
@@ -63,11 +56,6 @@ export function startAdaptiveVramWatchdog(
           ? utilization
           : null
       );
-      if (pressure.shouldAbort && !controller.signal.aborted) {
-        controller.abort(
-          new VramWatchdogError(`显存保护已停止任务：${pressure.reason}`)
-        );
-      }
     } catch {
       // Monitoring is best-effort on systems without nvidia-smi.
     } finally {

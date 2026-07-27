@@ -320,9 +320,13 @@ export interface EnvironmentScanResult {
   issues: EnvironmentIssue[];
 }
 
+export type PromptEnhanceMode = "faithful" | "sulphur-native";
+
 export interface EnhanceRequest {
   prompt: string;
   modelId: string;
+  mode?: PromptEnhanceMode;
+  imagePath?: string;
 }
 
 export interface BundledWorkflow {

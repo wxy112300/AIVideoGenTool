@@ -61,6 +61,7 @@ nav { display: flex; gap: 5px; }
 .drop-icon { font-size: 32px; color: var(--primary); }
 .image-label { position: absolute; bottom: 12px; padding: 7px 11px; border-radius: 9px; color: white; background: rgba(0,0,0,.68); }
 .button-row, .inline-field, .input-action, .task-meta, .token-list { display: flex; align-items: center; gap: 8px; }
+.prompt-enhance-mode { width: auto; min-width: 132px; }
 textarea, input, select { width: 100%; border: 1px solid var(--border); border-radius: 10px; outline: none; color: inherit; background: #141619; }
 textarea, input { padding: 11px 12px; }
 select { height: 42px; padding: 0 10px; }

@@ -71,9 +71,22 @@ export async function submitTask(
     throw new Error("任务没有配置 ComfyUI API 工作流 JSON");
   }
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
-  const objectInfo = await jsonRequest<Record<string, unknown>>(
-    `${baseUrl}/object_info`,
-    { signal }
+  const [objectInfo, systemStats] = await Promise.all([
+    jsonRequest<Record<string, unknown>>(
+      `${baseUrl}/object_info`,
+      { signal }
+    ),
+    jsonRequest<{
+      devices?: Array<{ vram_total?: number }>;
+    }>(`${baseUrl}/system_stats`, { signal }).catch(() => ({
+      devices: []
+    }))
+  ]);
+  const vramTotalBytes = Math.max(
+    0,
+    ...(systemStats.devices ?? []).map((device) =>
+      typeof device.vram_total === "number" ? device.vram_total : 0
+    )
   );
   let prompt: unknown;
   if (task.taskType === "generation" || task.taskType === "extension") {
@@ -91,7 +104,10 @@ export async function submitTask(
           signal,
           "续写上下文"
         );
-        prompt = renderWorkflow(source, task, { sourceVideo });
+        prompt = renderWorkflow(source, task, {
+          sourceVideo,
+          vramTotalBytes
+        });
       } finally {
         await prepared.cleanup();
       }
@@ -103,7 +119,11 @@ export async function submitTask(
           ? uploadInput(baseUrl, task.endImagePath, signal, "尾帧")
           : Promise.resolve("")
       ]);
-      prompt = renderWorkflow(source, task, { inputImage, endImage });
+      prompt = renderWorkflow(source, task, {
+        inputImage,
+        endImage,
+        vramTotalBytes
+      });
     }
   } else {
     const sourceVideo = await uploadInput(
@@ -151,6 +171,7 @@ interface ComfySocketMessage {
     max?: number;
     node?: string | null;
     exception_message?: string;
+    output?: unknown;
   };
 }
 
@@ -180,6 +201,48 @@ async function previewDataUrl(data: unknown): Promise<string | null> {
   const imageType = view.getUint32(4, false);
   const mime = imageType === 2 ? "image/png" : "image/jpeg";
   return `data:${mime};base64,${Buffer.from(buffer.slice(8)).toString("base64")}`;
+}
+
+export async function executedPreviewDataUrl(
+  baseUrl: string,
+  value: unknown,
+  fetcher: typeof fetch = fetch
+): Promise<string | null> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const output = (value as { output?: unknown }).output;
+  if (!output || typeof output !== "object" || Array.isArray(output)) return null;
+  const images = (output as { images?: unknown }).images;
+  if (!Array.isArray(images)) return null;
+  const image = images.find(
+    (item) =>
+      item &&
+      typeof item === "object" &&
+      !Array.isArray(item) &&
+      typeof (item as { filename?: unknown }).filename === "string"
+  ) as
+    | { filename: string; subfolder?: unknown; type?: unknown }
+    | undefined;
+  if (!image) return null;
+
+  const query = new URLSearchParams({
+    filename: image.filename,
+    subfolder: typeof image.subfolder === "string" ? image.subfolder : "",
+    type: typeof image.type === "string" ? image.type : "temp"
+  });
+  const response = await fetcher(`${cleanBaseUrl(baseUrl)}/view?${query}`, {
+    signal: AbortSignal.timeout(15_000)
+  });
+  if (!response.ok) return null;
+  const bytes = await response.arrayBuffer();
+  if (!bytes.byteLength) return null;
+  const contentType = response.headers.get("content-type");
+  const mime =
+    contentType?.startsWith("image/")
+      ? contentType.split(";")[0]!
+      : /\.png$/i.test(image.filename)
+        ? "image/png"
+        : "image/jpeg";
+  return `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
 }
 
 function nodeStage(classType: string | undefined): {
@@ -244,12 +307,28 @@ export function historyEntryHasUnfinishedBatch(value: unknown): boolean {
   });
 }
 
-function historyFailure(value: unknown): string {
+export function historyFailure(value: unknown): string {
   if (!value || typeof value !== "object") return "";
   const status = (value as { status?: unknown }).status;
   if (!status || typeof status !== "object") return "";
   const statusString = (status as { status_str?: unknown }).status_str;
   if (statusString === "success") return "";
+  const messages = (status as { messages?: unknown }).messages;
+  if (Array.isArray(messages)) {
+    for (const message of [...messages].reverse()) {
+      if (!Array.isArray(message) || message[0] !== "execution_error") continue;
+      const details = message[1];
+      if (!details || typeof details !== "object") continue;
+      const exceptionMessage = (details as { exception_message?: unknown })
+        .exception_message;
+      const exceptionType = (details as { exception_type?: unknown })
+        .exception_type;
+      const text = [exceptionType, exceptionMessage]
+        .filter((item): item is string => typeof item === "string" && Boolean(item))
+        .join(": ");
+      if (text) return text;
+    }
+  }
   return typeof statusString === "string"
     ? `ComfyUI 任务结束：${statusString}`
     : "ComfyUI 任务未成功完成";
@@ -287,8 +366,15 @@ export async function waitForTask(
         }
         const message = JSON.parse(text) as ComfySocketMessage;
         if (
+          message.data?.prompt_id &&
+          message.data.prompt_id !== promptId
+        ) {
+          return;
+        }
+        if (
           message.type === "executing" ||
           message.type === "progress" ||
+          message.type === "executed" ||
           message.type === "execution_error" ||
           message.type === "execution_interrupted"
         ) {
@@ -313,6 +399,13 @@ export async function waitForTask(
         }
         if (message.type === "execution_interrupted") {
           executionError = "ComfyUI 任务已中止";
+        }
+        if (message.type === "executed") {
+          const preview = await executedPreviewDataUrl(
+            baseUrl,
+            message.data
+          );
+          if (preview) onPreview(preview);
         }
       } catch {
         // Unknown extension messages are ignored.

@@ -18,15 +18,15 @@ describe("adaptive VRAM watchdog", () => {
     expect(stable.shouldAbort).toBe(false);
   });
 
-  it("aborts below the hard reserve even without growth", () => {
+  it("reports pressure below the hard reserve without aborting", () => {
     const pressure = evaluateVramPressure({}, sample(23_864, 0));
 
     expect(pressure.remainingMiB).toBe(700);
-    expect(pressure.shouldAbort).toBe(true);
+    expect(pressure.shouldAbort).toBe(false);
     expect(pressure.reason).toContain("硬安全线");
   });
 
-  it("raises the reserve while allocations are still growing", () => {
+  it("tracks a predictive reserve without aborting during allocation growth", () => {
     let state: VramWatchdogState = {};
     state = evaluateVramPressure(state, sample(20_000, 0, 23_500)).state;
     const growing = evaluateVramPressure(
@@ -36,7 +36,7 @@ describe("adaptive VRAM watchdog", () => {
 
     expect(growing.growthMiBPerSecond).toBe(1_000);
     expect(growing.requiredReserveMiB).toBe(2_768);
-    expect(growing.shouldAbort).toBe(true);
+    expect(growing.shouldAbort).toBe(false);
     expect(growing.reason).toContain("动态安全线");
   });
 
@@ -54,7 +54,7 @@ describe("adaptive VRAM watchdog", () => {
     expect(pressure.requiredReserveMiB).toBe(768);
   });
 
-  it("accepts the Q3 smoke peak but stops if the same growth continues", () => {
+  it("never stops the Q3 model-loading peak", () => {
     const observedUsedMiB = [
       7_618, 9_428, 11_218, 12_919, 14_496, 15_970, 17_310, 18_458,
       19_132, 21_183, 21_180, 21_191
@@ -73,6 +73,7 @@ describe("adaptive VRAM watchdog", () => {
       sample(22_983, observedUsedMiB.length * 2_000)
     );
     expect(continuedGrowth.remainingMiB).toBe(1_581);
-    expect(continuedGrowth.shouldAbort).toBe(true);
+    expect(continuedGrowth.shouldAbort).toBe(false);
+    expect(continuedGrowth.reason).toContain("动态安全线");
   });
 });

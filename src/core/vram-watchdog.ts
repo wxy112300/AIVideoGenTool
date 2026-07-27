@@ -71,7 +71,7 @@ export function evaluateVramPressure(
       ? Math.min(maxTrendReserveMiB, growthMiBPerSecond * predictionSeconds)
       : 0;
   const requiredReserveMiB = hardReserveMiB + trendReserveMiB;
-  const shouldAbort =
+  const pressureExceeded =
     Number.isFinite(remainingMiB) && remainingMiB < requiredReserveMiB;
 
   return {
@@ -82,8 +82,10 @@ export function evaluateVramPressure(
     remainingMiB,
     requiredReserveMiB,
     growthMiBPerSecond,
-    shouldAbort,
-    reason: shouldAbort
+    // VRAM sampling is telemetry only. Real CUDA OOM errors and sustained
+    // ComfyUI inactivity are handled by the task runner.
+    shouldAbort: false,
+    reason: pressureExceeded
       ? trendReserveMiB > 0
         ? `显存仍以 ${Math.round(growthMiBPerSecond)} MiB/s 增长，剩余 ${Math.round(remainingMiB)} MiB 低于动态安全线 ${Math.round(requiredReserveMiB)} MiB`
         : `剩余显存 ${Math.round(remainingMiB)} MiB 低于硬安全线 ${Math.round(hardReserveMiB)} MiB`

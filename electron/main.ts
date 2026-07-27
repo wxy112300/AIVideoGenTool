@@ -52,10 +52,15 @@ import {
   upscaleDimensions
 } from "../src/core/upscale.js";
 import { JsonStore } from "./store.js";
-import { enhancePrompt, testLmStudio } from "./services/lm-studio.js";
+import {
+  enhancePrompt,
+  testLmStudio,
+  unloadLmStudioModels
+} from "./services/lm-studio.js";
 import {
   installCustomNode,
   repairEnvironmentIssue,
+  resolveComfyOutputDirectory,
   restartLocalService,
   scanEnvironment,
   startLocalService
@@ -72,7 +77,6 @@ import { getPerformanceMetrics } from "./services/performance.js";
 import { finalizeExtensionOutput } from "./services/extension-media.js";
 import {
   startAdaptiveVramWatchdog,
-  VramWatchdogError,
   type VramWatchdogMonitor
 } from "./services/vram-watchdog.js";
 
@@ -284,6 +288,73 @@ async function bundledWorkflowFor(
 
 function sendState(state = store.get()): void {
   mainWindow?.webContents.send("state:changed", state);
+}
+
+const videoOutputPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
+
+async function resolveTaskOutputDirectory(): Promise<string> {
+  const configured = store.get().settings.outputDirectory.trim();
+  const detected = await resolveComfyOutputDirectory(store.get().settings);
+  const resolved = detected || configured;
+  if (!resolved) return "";
+
+  await store.update((state) => {
+    if (state.settings.outputDirectory !== resolved) {
+      state.settings.outputDirectory = resolved;
+    }
+  });
+  return resolved;
+}
+
+async function requireExistingVideoOutput(
+  result: unknown
+): Promise<ReturnType<typeof extractComfyOutputFiles>> {
+  const outputDirectory = await resolveTaskOutputDirectory();
+  if (!outputDirectory) {
+    throw new Error(
+      "ComfyUI 已返回完成状态，但无法确定输出目录。请在设置中确认 ComfyUI 目录后重试。"
+    );
+  }
+
+  const files = attachAbsoluteOutputPaths(
+    extractComfyOutputFiles(result),
+    outputDirectory
+  );
+  const videoFiles = files.filter(
+    (file) => file.absolutePath && videoOutputPattern.test(file.filename)
+  );
+  for (const file of videoFiles) {
+    try {
+      const stat = await fs.stat(file.absolutePath!);
+      if (stat.isFile() && stat.size > 0) return files;
+    } catch {
+      // Try any other video returned by the workflow before reporting failure.
+    }
+  }
+
+  const returnedNames = files.map((file) => file.filename).join("、");
+  throw new Error(
+    returnedNames
+      ? `ComfyUI 已返回完成状态，但输出视频不存在或为空：${returnedNames}`
+      : "ComfyUI 已返回完成状态，但工作流没有返回任何视频文件。任务不会写入历史。"
+  );
+}
+
+async function restoreHistoryOutputPaths(): Promise<void> {
+  const outputDirectory = await resolveTaskOutputDirectory();
+  if (!outputDirectory) return;
+
+  await store.update((state) => {
+    for (const asset of state.history) {
+      asset.files = attachAbsoluteOutputPaths(asset.files, outputDirectory);
+      for (const version of asset.versions) {
+        version.files = attachAbsoluteOutputPaths(
+          version.files,
+          outputDirectory
+        );
+      }
+    }
+  });
 }
 
 async function waitWithTimeout(
@@ -628,6 +699,7 @@ async function ensureComfyUiReady(taskId: string): Promise<void> {
 }
 
 async function executeQueue(): Promise<void> {
+  let lmStudioReleased = false;
   while (store.get().queueRunning) {
     const task = store.get().queue.find((item) => item.status === "waiting");
     if (!task) break;
@@ -648,6 +720,20 @@ async function executeQueue(): Promise<void> {
         startedAt: new Date().toISOString(),
         error: undefined
       });
+      if (!lmStudioReleased) {
+        await updateTask(task.id, {
+          progress: 1,
+          stage: "卸载提示词模型并释放显存"
+        });
+        const unloaded = await unloadLmStudioModels(store.get().settings);
+        lmStudioReleased = true;
+        if (unloaded > 0) {
+          await updateTask(task.id, {
+            progress: 1,
+            stage: `已卸载 ${unloaded} 个 LM Studio 模型`
+          });
+        }
+      }
       await ensureComfyUiReady(task.id);
       await updateTask(task.id, {
         progress: 1,
@@ -671,7 +757,7 @@ async function executeQueue(): Promise<void> {
         store.get().settings,
         task.taskType === "extension"
           ? store.get().settings.ltxExtensionTimeoutMinutes
-          : 3,
+          : 10,
         activeController.signal,
         (progress, stage) => void updateTask(task.id, { progress, stage }),
         (dataUrl) =>
@@ -683,13 +769,10 @@ async function executeQueue(): Promise<void> {
       const completedTask = store.get().queue.find((item) => item.id === task.id);
       if (!completedTask) continue;
       const completedAt = new Date().toISOString();
-      const files = attachAbsoluteOutputPaths(
-        extractComfyOutputFiles(result),
-        store.get().settings.outputDirectory
-      );
+      const files = await requireExistingVideoOutput(result);
       if (completedTask.taskType === "extension") {
         const outputVideo = files.find(
-          (file) => file.absolutePath && /\.(mp4|webm|mov|m4v|mkv)$/i.test(file.filename)
+          (file) => file.absolutePath && videoOutputPattern.test(file.filename)
         );
         if (!outputVideo?.absolutePath) {
           throw new Error("续写工作流没有返回可供 FFmpeg 拼接的视频文件");
@@ -841,24 +924,18 @@ async function executeQueue(): Promise<void> {
       sendState(next);
     } catch (error) {
       const aborted = activeController.signal.aborted;
-      const abortReason = activeController.signal.reason;
-      const vramPressure = abortReason instanceof VramWatchdogError;
       const stalled = error instanceof TaskStalledError;
       const memoryFailure =
         error instanceof Error &&
-        /out of memory|cuda error|cuda.*alloc|allocation.*failed|显存不足/i.test(
+        /out of memory|cuda error|cuda.*alloc|allocation.*failed|cublas_status_alloc_failed|显存不足/i.test(
           error.message
         );
-      let requiresRestart = stalled || memoryFailure;
-      if (!aborted || vramPressure) {
+      const requiresRestart = stalled || memoryFailure;
+      if (!aborted) {
         await interrupt(store.get().settings).catch(() => undefined);
-        const memoryFreed = await freeMemory(store.get().settings).then(
-          () => true,
-          () => false
-        );
-        requiresRestart ||= !memoryFreed;
+        await freeMemory(store.get().settings).catch(() => undefined);
       }
-      if (requiresRestart || vramPressure) {
+      if (requiresRestart) {
         const stopped = await store.update((state) => {
           state.queueRunning = false;
         });
@@ -867,9 +944,7 @@ async function executeQueue(): Promise<void> {
       const failedState = await updateTask(task.id, {
         status: aborted ? "cancelled" : "failed",
         error: aborted
-          ? vramPressure
-            ? abortReason.message
-            : "任务已中止，ComfyUI 已停止当前采样。"
+          ? "任务已中止，ComfyUI 已停止当前采样。"
           : error instanceof Error
             ? error.message
             : String(error)
@@ -1269,6 +1344,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   store = new JsonStore(path.join(app.getPath("userData"), "studio-state.json"));
   await store.load();
+  await restoreHistoryOutputPaths();
   registerMediaProtocol();
   registerIpc();
   createWindow();

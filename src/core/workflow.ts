@@ -8,6 +8,7 @@ export interface WorkflowContext {
   height: number;
   frames: number;
   fps: number;
+  vramTotalBytes: number;
 }
 
 export interface WorkflowValidation {
@@ -412,6 +413,39 @@ function baseGenerationDimensions(task: DimensionTask): [number, number] {
     task.ratio === "source" && task.sourceWidth > 0 && task.sourceHeight > 0
       ? [task.sourceWidth, task.sourceHeight]
       : ratios[task.ratio] ?? ratios.source!;
+  const shortEdge = Math.max(64, Math.floor(task.resolution / 16) * 16);
+  const maxLongEdge = Math.max(
+    64,
+    Math.floor((task.resolution * 16) / 9 / 16) * 16
+  );
+  if (rw >= rh) {
+    const width = Math.max(
+      64,
+      Math.round((shortEdge * rw) / rh / 16) * 16
+    );
+    if (width <= maxLongEdge) return [width, shortEdge];
+    return [
+      maxLongEdge,
+      Math.max(64, Math.round((maxLongEdge * rh) / rw / 16) * 16)
+    ];
+  }
+
+  const height = Math.max(
+    64,
+    Math.round((shortEdge * rh) / rw / 16) * 16
+  );
+  if (height <= maxLongEdge) return [shortEdge, height];
+  return [
+    Math.max(64, Math.round((maxLongEdge * rw) / rh / 16) * 16),
+    maxLongEdge
+  ];
+}
+
+function legacyVideoDimensions(task: DimensionTask): [number, number] {
+  const [rw, rh] =
+    task.ratio === "source" && task.sourceWidth > 0 && task.sourceHeight > 0
+      ? [task.sourceWidth, task.sourceHeight]
+      : ratios[task.ratio] ?? ratios.source!;
   const height = Math.max(64, Math.round(task.resolution / 16) * 16);
   const width = Math.max(64, Math.round((height * rw) / rh / 16) * 16);
   const maxWidth = Math.max(
@@ -425,7 +459,9 @@ function baseGenerationDimensions(task: DimensionTask): [number, number] {
   ];
 }
 
-export function outputDimensions(task: GenerationQueueTask): [number, number] {
+export function outputDimensions(
+  task: DimensionTask & Pick<GenerationQueueTask, "modelId">
+): [number, number] {
   const [width, height] = baseGenerationDimensions(task);
   if (task.modelId !== "hunyuan15_sr") return [width, height];
   return [
@@ -437,7 +473,7 @@ export function outputDimensions(task: GenerationQueueTask): [number, number] {
 export function extensionOutputDimensions(
   task: ExtensionQueueTask
 ): [number, number] {
-  return baseGenerationDimensions(task);
+  return legacyVideoDimensions(task);
 }
 
 export function renderWorkflow(
@@ -448,7 +484,9 @@ export function renderWorkflow(
   const [width, height] = task.taskType === "extension"
     ? extensionOutputDimensions(task)
     : outputDimensions(task);
-  const [baseWidth, baseHeight] = baseGenerationDimensions(task);
+  const [baseWidth, baseHeight] = task.taskType === "extension"
+    ? extensionOutputDimensions(task)
+    : baseGenerationDimensions(task);
   const outputWidth = context.width ?? width;
   const outputHeight = context.height ?? height;
   const fps = context.fps ?? task.fps ?? 8;
@@ -530,6 +568,7 @@ export function renderWorkflow(
     string,
     { class_type?: string; inputs?: Record<string, unknown> }
   >;
+  const highVramDecode = (context.vramTotalBytes ?? 0) >= 20 * 1024 ** 3;
   let nextNodeId =
     Math.max(
       0,
@@ -551,8 +590,8 @@ export function renderWorkflow(
       Object.assign(node.inputs, {
         tile_size: 256,
         overlap: 32,
-        temporal_size: 16,
-        temporal_overlap: 4
+        temporal_size: highVramDecode ? 64 : 16,
+        temporal_overlap: highVramDecode ? 16 : 4
       });
     }
     const samples = node.inputs.samples;
@@ -587,6 +626,30 @@ export function renderWorkflow(
       };
       decodedImages = [unloadId, 1];
       node.inputs.images = decodedImages;
+    }
+    if (
+      task.taskType === "generation" &&
+      task.modelId === "sulphur2"
+    ) {
+      const previewFrameId = String(nextNodeId++);
+      const previewOutputId = String(nextNodeId++);
+      workflow[previewFrameId] = {
+        class_type: "ImageFromBatch",
+        inputs: {
+          image: decodedImages,
+          batch_index: Math.max(
+            0,
+            Math.floor((context.frames ?? generationFrameCountForTask(task)) / 2)
+          ),
+          length: 1
+        }
+      };
+      workflow[previewOutputId] = {
+        class_type: "PreviewImage",
+        inputs: {
+          images: [previewFrameId, 0]
+        }
+      };
     }
     if (interpolationMultiplier === 1) continue;
     const interpolateId = String(nextNodeId++);

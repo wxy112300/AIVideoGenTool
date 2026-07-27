@@ -238,6 +238,25 @@ describe("renderWorkflow", () => {
     expect(rendered["1"]?.inputs.height).toBe(480);
   });
 
+  it("treats the selected resolution as the short edge for portrait input", () => {
+    expect(
+      outputDimensions({
+        ...task,
+        ratio: "source",
+        sourceWidth: 896,
+        sourceHeight: 1344,
+        resolution: 480
+      })
+    ).toEqual([480, 720]);
+    expect(
+      outputDimensions({
+        ...task,
+        ratio: "9:16",
+        resolution: 480
+      })
+    ).toEqual([480, 848]);
+  });
+
   it("bounds extremely wide source ratios to the 720p memory envelope", () => {
     expect(
       outputDimensions({
@@ -274,6 +293,23 @@ describe("renderWorkflow", () => {
     expect(rendered["3"]?.inputs.any_input).toEqual(["9", 0]);
     expect(rendered["4"]?.inputs.image_pass).toEqual(["1", 0]);
     expect(rendered["2"]?.inputs.images).toEqual(["4", 1]);
+  });
+
+  it("uses larger temporal VAE tiles when at least 20 GB VRAM is available", () => {
+    const rendered = renderWorkflow(
+      {
+        "1": {
+          class_type: "VAEDecode",
+          inputs: { samples: ["9", 0], vae: ["8", 0] }
+        }
+      },
+      task,
+      { vramTotalBytes: 24 * 1024 ** 3 }
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(rendered["1"]?.class_type).toBe("VAEDecodeTiled");
+    expect(rendered["1"]?.inputs.temporal_size).toBe(64);
+    expect(rendered["1"]?.inputs.temporal_overlap).toBe(16);
   });
 });
 
@@ -491,6 +527,11 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     expect(rendered["74"]?.class_type).toBe("VRAM_Debug");
     expect(rendered["35"]?.inputs.av_latent).toEqual(["74", 0]);
     expect(rendered["73"]?.class_type).toBe("VAEDecodeTiled");
+    expect(
+      Object.values(rendered).some(
+        (node) => node.class_type === "PreviewImage"
+      )
+    ).toBe(true);
     expect(JSON.stringify(rendered)).not.toContain("{{");
   });
 
