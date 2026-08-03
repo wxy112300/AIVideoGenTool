@@ -147,6 +147,24 @@ H3 要求 `17n+5` 帧：5 秒是 124 帧，官方约 15 秒上限是 362 帧。�
 像素。采样完成后先卸载扩散模型，再分块解码视频 VAE，卸载后再解码音频 VAE，
 避免扩散模型与两个 VAE 同时驻留显存。
 
+官方本地模板默认使用 0.4MP、5 秒、20 步、`res_multistep` sampler 与 `simple`
+scheduler；16:9 对应 864×480。应用在选择 H3 时恢复这组默认值，并向 RTX 4090
+开放到 1344×768（约 0.98MP）× 15 秒。这个最大组合属于重负载档，不代表固定耗时
+或绝不发生 OOM；任务仍会采用 DynamicVRAM、阶段卸载和 tiled VAE。MiniMax 官网的
+“2K”依赖 H3 的 in-context regeneration；在官方本地 2K 再生成工作流与对应资源明确
+发布前，不把直接扩大基础 latent 冒充成官方 2K 模式。
+
+H3 的 5 秒 480p/540p 默认档在 24GB 显存上保留整段时域 VAE 解码，减少分块接缝；
+超过 124 帧或高于 960×544 时自动改用 256 像素空间 tile、64 帧时域 tile 和 16 帧
+重叠。最大档因此优先保证可完成性，代价是解码更慢，并仍可能受到驱动、其他 GPU
+程序和 ComfyUI 内存策略影响。
+
+当前 FL2VA API 工作流同时支持首帧和可选尾帧。没有尾帧时渲染器会删除空的可选
+`LoadImage` 节点；存在尾帧时使用 `MiniMaxH3ImageToVideo.last_frame` 做原生首尾帧
+过渡。创建页提供 H3 镜头/声音提示结构，鼓励把多镜头、对白、环境声、音效和音乐
+写进同一个提示词。Reference-to-Video、视频动作参考和音频参考属于另一套 Ref2VA
+权重与更高参考 token 开销，不与当前只要求 I2V 的轻量流程混装。
+
 必须从 ComfyUI 导出 **API 格式**工作流，而不是普通 UI workflow。官方说明中，API 工作流是以节点 ID 为 key，并含 `class_type` 与 `inputs` 的 JSON 对象：
 
 - https://docs.comfy.org/development/core-concepts/workflow

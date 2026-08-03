@@ -224,7 +224,7 @@ export function generationSafetyForTask(
   task: Pick<
     GenerationQueueTask,
     "modelId" | "duration" | "fps" | "frameInterpolation"
-  >
+  > & Partial<Pick<GenerationQueueTask, "resolution">>
 ): GenerationSafety {
   const profile = generationSafetyProfileForModel(task.modelId);
   const { maxDurationSeconds, maxGeneratedFrames } = profile;
@@ -262,11 +262,12 @@ export function generationSafetyForTask(
     };
   }
   if (task.modelId === "minimax_h3_fl2va") {
-    const guidance = task.duration <= 5
-      ? "当前属于 RTX 4090 的稳妥起步范围。"
-      : task.duration <= 10
-        ? "已超过保守档；4090 可以尝试，建议先用 480p/540p，并预留更长采样和解码时间。"
-        : "接近官方约 15 秒上限；允许生成但显存与耗时风险较高，建议使用 480p、关闭其他 GPU 程序，并避免同时排多个长任务。";
+    const resolution = task.resolution ?? 480;
+    const guidance = task.duration <= 5 && resolution <= 540
+      ? "官方本地模板默认档，属于 RTX 4090 的稳妥起步范围。"
+      : task.duration <= 10 && resolution <= 720
+        ? "4090 可尝试的均衡档；请预留更长采样和解码时间。"
+        : "4090 重负载档；允许生成但显存与耗时风险较高，请关闭其他 GPU 程序，并避免同时排多个长任务。";
     return {
       safe: true,
       generatedFrames,
@@ -495,16 +496,33 @@ function legacyVideoDimensions(task: DimensionTask): [number, number] {
   ];
 }
 
+function miniMaxH3Dimensions(task: DimensionTask): [number, number] {
+  const [rw, rh] =
+    task.ratio === "source" && task.sourceWidth > 0 && task.sourceHeight > 0
+      ? [task.sourceWidth, task.sourceHeight]
+      : ratios[task.ratio] ?? ratios.source!;
+  const ratio = rw / rh;
+  let width = ratio >= 1 ? task.resolution * ratio : task.resolution;
+  let height = ratio >= 1 ? task.resolution : task.resolution / ratio;
+  const maxPixels = 768 * 1344;
+  if (width * height > maxPixels) {
+    const scale = Math.sqrt(maxPixels / (width * height));
+    width *= scale;
+    height *= scale;
+  }
+  return [
+    Math.max(32, Math.round(width / 32) * 32),
+    Math.max(32, Math.round(height / 32) * 32)
+  ];
+}
+
 export function outputDimensions(
   task: DimensionTask & Pick<GenerationQueueTask, "modelId">
 ): [number, number] {
-  const [width, height] = baseGenerationDimensions(task);
   if (task.modelId === "minimax_h3_fl2va") {
-    return [
-      Math.max(64, Math.round(width / 32) * 32),
-      Math.max(64, Math.round(height / 32) * 32)
-    ];
+    return miniMaxH3Dimensions(task);
   }
+  const [width, height] = baseGenerationDimensions(task);
   if (task.modelId !== "hunyuan15_sr") return [width, height];
   return [
     Math.max(64, Math.round((width * 1.5) / 8) * 8),
@@ -610,7 +628,37 @@ export function renderWorkflow(
     string,
     { class_type?: string; inputs?: Record<string, unknown> }
   >;
-  const highVramDecode = (context.vramTotalBytes ?? 0) >= 20 * 1024 ** 3;
+  const emptyImageNodeIds = new Set(
+    Object.entries(workflow)
+      .filter(([, node]) =>
+        node.class_type === "LoadImage" && node.inputs?.image === ""
+      )
+      .map(([id]) => id)
+  );
+  for (const nodeId of emptyImageNodeIds) delete workflow[nodeId];
+  if (emptyImageNodeIds.size) {
+    for (const node of Object.values(workflow)) {
+      if (!node.inputs) continue;
+      for (const [inputName, input] of Object.entries(node.inputs)) {
+        if (
+          Array.isArray(input) &&
+          typeof input[0] === "string" &&
+          emptyImageNodeIds.has(input[0])
+        ) {
+          delete node.inputs[inputName];
+        }
+      }
+    }
+  }
+  const h3HeavyDecode =
+    task.taskType === "generation" &&
+    task.modelId === "minimax_h3_fl2va" &&
+    (
+      generationFrameCountForTask(task) > 124 ||
+      outputWidth * outputHeight > 960 * 544
+    );
+  const highVramDecode =
+    (context.vramTotalBytes ?? 0) >= 20 * 1024 ** 3 && !h3HeavyDecode;
   const tiledDecodeInputs = highVramDecode
     ? {
         // Keep spatial tiling, but make the temporal tile larger than every

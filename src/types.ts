@@ -29,7 +29,7 @@ export interface Draft {
   modelId: string;
   workflowPath: string;
   ratio: "source" | "16:9" | "9:16" | "1:1" | "4:3";
-  resolution: 480 | 540 | 720;
+  resolution: 480 | 540 | 720 | 768;
   duration: number;
   fps: 8 | 12 | 16 | 24 | 25 | 30;
   frameInterpolation: "off" | "rife2x" | "rife4x";

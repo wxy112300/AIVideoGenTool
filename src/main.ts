@@ -242,6 +242,7 @@ function createModelOptions(draft: Draft): string {
   const profiles = scanned?.length
     ? scanned
     : [
+        { id: "minimax_h3_fl2va", name: "MiniMax H3 Image to Video", available: true, integrated: true },
       { id: "sulphur2", name: "Sulphur 2 GGUF", available: true, integrated: true },
         { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: true, integrated: true },
         { id: "hunyuan15", name: "HunyuanVideo 1.5", available: true, integrated: true }
@@ -398,6 +399,7 @@ async function imagePreview(filename: string, targetId: string): Promise<void> {
 
 function createPage(): string {
   const draft = state.draft;
+  const isMiniMaxH3 = draft.modelId === "minimax_h3_fl2va";
   const extending = draft.inputMode === "video";
   const prompt = activePrompt();
   const interpolation = interpolationEstimate(draft);
@@ -499,6 +501,10 @@ function createPage(): string {
         </div>
       </div>
       <textarea id="prompt-input" rows="6">${escapeHtml(prompt.text)}</textarea>
+      ${isMiniMaxH3 ? `<div class="h3-capability-note">
+        <div><strong>H3 原生音视频提示</strong><span>建议按“整体画面 → SHOT 1/2/3 → Audio”组织；Audio 中可同时写对白、环境声、音效和音乐。</span></div>
+        <button class="secondary" id="h3-prompt-template">套用镜头/声音结构</button>
+      </div>` : ""}
       <div class="settings-grid">
         <label>模型
           <select id="model">
@@ -516,7 +522,7 @@ function createPage(): string {
           <select id="resolution" ${extending ? "disabled" : ""}>
             ${extending
               ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p · GGUF 保守预设</option>`
-              : ([480, 540, 720] as const).map((value) => {
+              : (isMiniMaxH3 ? [480, 540, 720, 768] as const : [480, 540, 720] as const).map((value) => {
                   const [width, height] = outputDimensions({
                     ...draft,
                     resolution: value
@@ -525,7 +531,14 @@ function createPage(): string {
                     draft.modelId === "sulphur2" &&
                     value === 720 &&
                     (performanceMetrics?.vramTotalBytes ?? 0) >= 20 * 1024 ** 3;
-                  return `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p · ${width}×${height}${recommended ? " · 24GB 推荐" : ""}</option>`;
+                  const h3Label = isMiniMaxH3
+                    ? value === 480
+                      ? " · 官方默认/4090 推荐"
+                      : value === 768
+                        ? " · 4090 最大开放档"
+                        : ""
+                    : "";
+                  return `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p · ${width}×${height}${recommended ? " · 24GB 推荐" : ""}${h3Label}</option>`;
                 }).join("")}
           </select>
         </label>
@@ -547,15 +560,17 @@ function createPage(): string {
               <option value="rife4x" ${draft.frameInterpolation === "rife4x" ? "selected" : ""}>RIFE 4×</option>`}
           </select>
         </label>
-        <div class="interpolation-summary ${!safety.safe ? "unsafe" : interpolation.multiplier === 1 ? "disabled" : ""}">
-          <div><strong>${!safety.safe ? "配置超过显存安全预算" : interpolation.multiplier === 1 ? "未启用插帧" : `生成约 ${draft.fps / interpolation.multiplier} FPS，再插值到 ${draft.fps} FPS`}</strong><span>${interpolation.generatedFrames}/${safety.maxGeneratedFrames} 个模型帧 → ${interpolation.outputFrames} 个成片帧</span></div>
+        <div class="interpolation-summary ${!safety.safe ? "unsafe" : isMiniMaxH3 && (draft.duration > 10 || draft.resolution >= 768) ? "caution" : interpolation.multiplier === 1 ? "disabled" : ""}">
+          <div><strong>${!safety.safe ? "配置超过显存安全预算" : isMiniMaxH3 ? "H3 原生 24 FPS · 同步立体声音频" : interpolation.multiplier === 1 ? "未启用插帧" : `生成约 ${draft.fps / interpolation.multiplier} FPS，再插值到 ${draft.fps} FPS`}</strong><span>${interpolation.generatedFrames}/${safety.maxGeneratedFrames} 个模型帧 → ${interpolation.outputFrames} 个成片帧</span></div>
           <p>${escapeHtml(safety.message)} ${safety.safe && interpolation.multiplier !== 1 ? "扩散模型和 VAE 会在 RIFE 前主动卸载；RIFE 使用 BF16、单帧批次。" : ""}</p>
         </div>
         <label>动作幅度
-          <select id="motion">
-            <option value="subtle" ${draft.motion === "subtle" ? "selected" : ""}>轻微</option>
-            <option value="natural" ${draft.motion === "natural" ? "selected" : ""}>自然</option>
-            <option value="strong" ${draft.motion === "strong" ? "selected" : ""}>强烈</option>
+          <select id="motion" ${isMiniMaxH3 ? "disabled" : ""}>
+            ${isMiniMaxH3
+              ? `<option value="natural" selected>由镜头提示词控制</option>`
+              : `<option value="subtle" ${draft.motion === "subtle" ? "selected" : ""}>轻微</option>
+                <option value="natural" ${draft.motion === "natural" ? "selected" : ""}>自然</option>
+                <option value="strong" ${draft.motion === "strong" ? "selected" : ""}>强烈</option>`}
           </select>
         </label>
         <label>随机 Seed
@@ -1263,7 +1278,7 @@ async function editHistoryAsset(assetId: string): Promise<void> {
     sourceHeight: 0,
     endImagePath: asset.endImagePath ?? "",
     ratio: asset.ratio ?? state.draft.ratio,
-    resolution: ([480, 540, 720].includes(asset.resolution)
+    resolution: ([480, 540, 720, 768].includes(asset.resolution)
       ? asset.resolution
       : state.draft.resolution) as Draft["resolution"],
     duration: asset.duration,
@@ -1868,7 +1883,14 @@ function bindCreate(): void {
         patchDraft({
           modelId: value,
           ...(value === "minimax_h3_fl2va"
-            ? { fps: 24 as const, frameInterpolation: "off" as const }
+            ? {
+                ratio: "source" as const,
+                resolution: 480 as const,
+                duration: 5,
+                fps: 24 as const,
+                frameInterpolation: "off" as const,
+                motion: "natural" as const
+              }
             : {}),
           ...(!bundled?.supportsEndImage ? { endImagePath: "" } : {}),
           workflowPath:
@@ -2386,6 +2408,26 @@ function bindSettings(): void {
       comfyUpdating = false;
       render();
     }
+  });
+  document.querySelector("#h3-prompt-template")?.addEventListener("click", () => {
+    const current = activePrompt().text.trim();
+    const text = [
+      `整体画面：${current || "描述主体、环境、视觉风格、光线与需要保留的画面元素。"}`,
+      "SHOT 1：描述开场动作、构图和镜头运动。",
+      "SHOT 2：描述后续动作、景别变化或自然转场。",
+      "Audio：描述对白、环境声、音效和音乐；不需要的声音请明确写出。"
+    ].join("\n");
+    const versions = [
+      ...state.draft.promptVersions.slice(0, state.draft.activePromptVersion + 1),
+      {
+        id: crypto.randomUUID(),
+        label: "H3 镜头/声音结构",
+        text,
+        createdAt: new Date().toISOString()
+      }
+    ];
+    patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
+    render();
   });
   document.querySelector<HTMLButtonElement>("#repair-h3-core")?.addEventListener("click", async () => {
     const currentSettings = formSettings();

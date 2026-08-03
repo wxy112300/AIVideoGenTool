@@ -602,6 +602,22 @@ select { padding-inline: 12px; }
 .interpolation-summary.disabled strong { color: #c5ccd6; }
 .interpolation-summary.unsafe { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); background: color-mix(in srgb, var(--danger) 9%, #10141a); }
 .interpolation-summary.unsafe strong, .interpolation-summary.unsafe p { color: #ff9a9d; }
+.interpolation-summary.caution { border-color: rgba(237, 177, 77, .5); background: rgba(113, 76, 20, .13); }
+.interpolation-summary.caution strong, .interpolation-summary.caution p { color: #f1c77e; }
+.h3-capability-note {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(105, 164, 255, .24);
+  border-radius: 12px;
+  background: rgba(49, 111, 215, .08);
+}
+.h3-capability-note > div { display: flex; flex-direction: column; gap: 4px; }
+.h3-capability-note strong { color: #dbe9ff; font-size: 13px; }
+.h3-capability-note span:not(.model-badge) { color: #9cabc0; font-size: 11px; line-height: 1.55; }
 .inline-field { min-height: 42px; }
 .inline-field input[type="range"] { accent-color: var(--primary); }
 .checkbox-field, .switch-field { color: #c9d0da; background: #11161d; }

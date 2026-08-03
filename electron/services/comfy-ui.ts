@@ -115,7 +115,7 @@ export async function submitTask(
       const supportsEndImage = workflowSupportsEndImage(source);
       const [inputImage, endImage] = await Promise.all([
         uploadInput(baseUrl, task.startImagePath, signal, "首帧"),
-        supportsEndImage
+        supportsEndImage && task.endImagePath
           ? uploadInput(baseUrl, task.endImagePath, signal, "尾帧")
           : Promise.resolve("")
       ]);

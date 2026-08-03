@@ -93,6 +93,7 @@ describe("renderWorkflow", () => {
     }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
 
     expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(workflowSupportsEndImage(source)).toBe(true);
     expect(rendered["6"]?.inputs).toMatchObject({
       width: 864,
       height: 480,
@@ -111,6 +112,36 @@ describe("renderWorkflow", () => {
       images: ["14", 1],
       audio: ["15", 0],
       fps: 24
+    });
+    expect(rendered["18"]).toBeUndefined();
+    expect(rendered["6"]?.inputs.last_frame).toBeUndefined();
+
+    const withLastFrame = renderWorkflow(source, h3Task, {
+      inputImage: "first.png",
+      endImage: "last.png",
+      vramTotalBytes: 24 * 1024 ** 3
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(withLastFrame["18"]?.inputs.image).toBe("last.png");
+    expect(withLastFrame["6"]?.inputs.last_frame).toEqual(["18", 0]);
+
+    const heavyTask: QueueTask = {
+      ...h3Task,
+      duration: 15,
+      resolution: 768
+    };
+    const heavy = renderWorkflow(source, heavyTask, {
+      inputImage: "first.png",
+      vramTotalBytes: 24 * 1024 ** 3
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(heavy["6"]?.inputs).toMatchObject({
+      width: 1344,
+      height: 768,
+      length: 362
+    });
+    expect(heavy["13"]?.inputs).toMatchObject({
+      tile_size: 256,
+      temporal_size: 64,
+      temporal_overlap: 16
     });
   });
 
@@ -447,6 +478,12 @@ describe("generation VRAM safety", () => {
       resolution: 480,
       ratio: "16:9"
     })).toEqual([864, 480]);
+    expect(outputDimensions({
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      resolution: 768,
+      ratio: "16:9"
+    })).toEqual([1344, 768]);
   });
 
   it("allows the official 121-frame Wan 5B baseline", () => {
