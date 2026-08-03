@@ -414,7 +414,7 @@ describe("renderWorkflow", () => {
 });
 
 describe("generation VRAM safety", () => {
-  it("keeps MiniMax H3 on the official 17n+5 frame grid and 5-second 4090 profile", () => {
+  it("keeps MiniMax H3 on the official 17n+5 grid through its roughly 15-second range", () => {
     const h3Task = {
       ...task,
       modelId: "minimax_h3_fl2va",
@@ -426,10 +426,18 @@ describe("generation VRAM safety", () => {
     expect(generationSafetyForTask(h3Task)).toMatchObject({
       safe: true,
       generatedFrames: 124,
-      maxGeneratedFrames: 124,
-      maxDurationSeconds: 5
+      maxGeneratedFrames: 362,
+      maxDurationSeconds: 15
     });
-    expect(generationSafetyForTask({ ...h3Task, duration: 6 }).safe).toBe(false);
+    expect(generationSafetyForTask({ ...h3Task, duration: 10 })).toMatchObject({
+      safe: true,
+      generatedFrames: 243
+    });
+    expect(generationSafetyForTask({ ...h3Task, duration: 15 })).toMatchObject({
+      safe: true,
+      generatedFrames: 362
+    });
+    expect(generationSafetyForTask({ ...h3Task, duration: 16 }).safe).toBe(false);
   });
 
   it("aligns MiniMax H3 dimensions to the required 32-pixel grid", () => {

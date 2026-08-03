@@ -118,6 +118,7 @@ function activePrompt(draft = state.draft): PromptVersion {
 function modelName(id: string): string {
   return (
     {
+      minimax_h3_fl2va: "MiniMax H3 FL2VA",
       sulphur2: "Sulphur 2 GGUF",
       wan22_5b: "Wan 2.2 I2V 5B",
       hunyuan15: "HunyuanVideo 1.5",

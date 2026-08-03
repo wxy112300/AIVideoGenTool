@@ -43,8 +43,8 @@ function generationSafetyProfileForModel(
   if (modelId === "minimax_h3_fl2va") {
     return {
       label: "MiniMax H3 FL2VA",
-      maxGeneratedFrames: 124,
-      maxDurationSeconds: 5
+      maxGeneratedFrames: 362,
+      maxDurationSeconds: 15
     };
   }
   if (modelId === "wan22_5b") {
@@ -259,6 +259,20 @@ export function generationSafetyForTask(
       maxGeneratedFrames,
       maxDurationSeconds,
       message: `当前组合需要生成 ${generatedFrames} 个模型帧，${profile.label} 的当前验证预算是 ${maxGeneratedFrames} 帧。请降低输出 FPS、启用 RIFE，或等待更高帧数实测通过。`
+    };
+  }
+  if (task.modelId === "minimax_h3_fl2va") {
+    const guidance = task.duration <= 5
+      ? "当前属于 RTX 4090 的稳妥起步范围。"
+      : task.duration <= 10
+        ? "已超过保守档；4090 可以尝试，建议先用 480p/540p，并预留更长采样和解码时间。"
+        : "接近官方约 15 秒上限；允许生成但显存与耗时风险较高，建议使用 480p、关闭其他 GPU 程序，并避免同时排多个长任务。";
+    return {
+      safe: true,
+      generatedFrames,
+      maxGeneratedFrames,
+      maxDurationSeconds,
+      message: `${profile.label} 官方帧范围：${generatedFrames}/${maxGeneratedFrames}。${guidance}`
     };
   }
   return {
