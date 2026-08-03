@@ -165,6 +165,19 @@ H3 的 5 秒 480p/540p 默认档在 24GB 显存上保留整段时域 VAE 解码�
 写进同一个提示词。Reference-to-Video、视频动作参考和音频参考属于另一套 Ref2VA
 权重与更高参考 token 开销，不与当前只要求 I2V 的轻量流程混装。
 
+### MiniMax H3 结尾帧接续
+
+视频 Extend 页面同时支持 Sulphur 2 原生 latent overlap 和 MiniMax H3 结尾帧接续。
+H3 模式由 FFmpeg 在用户保留范围的终点提取一张对齐目标画布的边界帧，作为 FL2VA
+首帧生成 1–15 秒新片段；生成后裁掉首个重复边界帧，将原视频保留片段与新片段统一
+编码到 H.264/AAC，并保留 H3 生成的原生立体声音轨。H3 慢任务等待上限独立提高到
+90 分钟，仍响应安全取消。
+
+这不是 H3 原生 latent Extend：它没有把旧视频时序 latent 或速度轨迹送入模型，因此
+拼接点可能出现动作重新起步、镜头速度变化或声音边界。界面明确标为“结尾帧接续”；
+未来接入 Ref2VA 后可用旧视频作为动作/风格参考改善连续性，但仍不能冒充严格的 latent
+续写。
+
 必须从 ComfyUI 导出 **API 格式**工作流，而不是普通 UI workflow。官方说明中，API 工作流是以节点 ID 为 key，并含 `class_type` 与 `inputs` 的 JSON 对象：
 
 - https://docs.comfy.org/development/core-concepts/workflow

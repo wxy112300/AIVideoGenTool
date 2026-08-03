@@ -137,12 +137,12 @@ export interface ExtensionQueueTask extends QueueTaskBase {
   sourceWidth: number;
   sourceHeight: number;
   ratio: Draft["ratio"];
-  resolution: 360 | 480;
+  resolution: 360 | 480 | 540 | 720 | 768;
   fps: Draft["fps"];
   frameInterpolation: Draft["frameInterpolation"];
   motion: Draft["motion"];
   modelProfile: LtxExtensionModelProfile;
-  maxGeneratedFrames: 49 | 65;
+  maxGeneratedFrames: 49 | 65 | 362;
   overlapFrames: 16;
   unloadBetweenStages: true;
 }

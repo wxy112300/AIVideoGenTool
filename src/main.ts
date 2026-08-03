@@ -167,8 +167,12 @@ function interpolationEstimate(draft: Draft): {
 function extensionSafetyForDraft(draft: Draft, settings: Settings) {
   return extensionSafetyForTask({
     ...draft,
-    resolution: settings.ltxExtensionResolution,
-    maxGeneratedFrames: settings.ltxExtensionFrames,
+    resolution: draft.modelId === "minimax_h3_fl2va"
+      ? draft.resolution
+      : settings.ltxExtensionResolution,
+    maxGeneratedFrames: draft.modelId === "minimax_h3_fl2va"
+      ? 362
+      : settings.ltxExtensionFrames,
     overlapFrames: settings.ltxExtensionOverlapFrames,
     unloadBetweenStages: settings.ltxExtensionUnloadBetweenStages
   });
@@ -250,10 +254,13 @@ function createModelOptions(draft: Draft): string {
   return profiles
     .map((profile) => {
       const selected = draft.modelId === profile.id;
-      const supportsVideoExtension = selected
-        ? workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true
-        : bundledWorkflows[bundledWorkflowKey(profile.id, draft.inputMode)]
-            ?.supportsVideoExtension === true;
+      const supportsVideoExtension =
+        draft.inputMode === "video" && profile.id === "minimax_h3_fl2va"
+          ? true
+          : selected
+            ? workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true
+            : bundledWorkflows[bundledWorkflowKey(profile.id, draft.inputMode)]
+                ?.supportsVideoExtension === true;
       const unavailable = !profile.available ||
         profile.integrated === false ||
         (draft.inputMode === "video" && !supportsVideoExtension);
@@ -262,7 +269,7 @@ function createModelOptions(draft: Draft): string {
         : profile.integrated === false
           ? " · 已扫描，工作流待接入"
         : draft.inputMode === "video" && !supportsVideoExtension
-          ? " · 未通过原生续写检查"
+          ? " · 未通过续写检查"
           : "";
       return `<option value="${escapeHtml(profile.id)}" ${selected ? "selected" : ""} ${unavailable ? "disabled" : ""}>${escapeHtml(profile.name)}${suffix}</option>`;
     })
@@ -501,7 +508,11 @@ function createPage(): string {
         </div>
       </div>
       <textarea id="prompt-input" rows="6">${escapeHtml(prompt.text)}</textarea>
-      ${isMiniMaxH3 ? `<div class="h3-capability-note">
+      ${extending && isMiniMaxH3 ? `<div class="h3-extension-note">
+        <strong>H3 结尾帧接续</strong>
+        <span>从保留片段的最后一帧生成新段并保留 H3 原生音轨；它不是 latent overlap 原生续写，边界动作可能发生变化。</span>
+      </div>` : ""}
+      ${isMiniMaxH3 && !extending ? `<div class="h3-capability-note">
         <div><strong>H3 原生音视频提示</strong><span>建议按“整体画面 → SHOT 1/2/3 → Audio”组织；Audio 中可同时写对白、环境声、音效和音乐。</span></div>
         <button class="secondary" id="h3-prompt-template">套用镜头/声音结构</button>
       </div>` : ""}
@@ -519,8 +530,8 @@ function createPage(): string {
           </select>
         </label>
         <label>清晰度
-          <select id="resolution" ${extending ? "disabled" : ""}>
-            ${extending
+          <select id="resolution" ${extending && !isMiniMaxH3 ? "disabled" : ""}>
+            ${extending && !isMiniMaxH3
               ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p · GGUF 保守预设</option>`
               : (isMiniMaxH3 ? [480, 540, 720, 768] as const : [480, 540, 720] as const).map((value) => {
                   const [width, height] = outputDimensions({
@@ -1719,7 +1730,11 @@ function bindCreate(): void {
   document.querySelectorAll<HTMLElement>("[data-input-mode]").forEach((button) => {
     button.addEventListener("click", async () => {
       const inputMode = button.dataset.inputMode === "video" ? "video" : "image";
-      const modelId = inputMode === "video" ? "sulphur2" : state.draft.modelId;
+      const modelId = inputMode === "video"
+        ? state.draft.modelId === "minimax_h3_fl2va"
+          ? "minimax_h3_fl2va"
+          : "sulphur2"
+        : state.draft.modelId;
       const key = bundledWorkflowKey(modelId, inputMode);
       const bundled = bundledWorkflows[key] ??
         (await window.studio.getBundledWorkflow(modelId, inputMode));

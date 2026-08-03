@@ -200,6 +200,23 @@ export function outputFrameCountForTask(
   return Math.max(1, Math.round(task.duration * task.fps));
 }
 
+export function workflowSupportsH3BoundaryExtension(source: unknown): boolean {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return false;
+  const nodes = Object.values(source as Record<string, unknown>).filter(
+    (node): node is Record<string, unknown> =>
+      Boolean(node) && typeof node === "object" && !Array.isArray(node)
+  );
+  const classTypes = new Set(
+    nodes.flatMap((node) =>
+      typeof node.class_type === "string" ? [node.class_type] : []
+    )
+  );
+  return JSON.stringify(source).includes("{{INPUT_IMAGE}}") &&
+    classTypes.has("MiniMaxH3ImageToVideo") &&
+    classTypes.has("CreateVideo") &&
+    classTypes.has("SaveVideo");
+}
+
 export function generationFrameCountForTask(
   task: Pick<
     GenerationQueueTask,
@@ -224,7 +241,7 @@ export function generationSafetyForTask(
   task: Pick<
     GenerationQueueTask,
     "modelId" | "duration" | "fps" | "frameInterpolation"
-  > & Partial<Pick<GenerationQueueTask, "resolution">>
+  > & { resolution?: number }
 ): GenerationSafety {
   const profile = generationSafetyProfileForModel(task.modelId);
   const { maxDurationSeconds, maxGeneratedFrames } = profile;
@@ -302,6 +319,33 @@ export function extensionSafetyForTask(
     | "unloadBetweenStages"
   >
 ): ExtensionSafety {
+  if (task.modelId === "minimax_h3_fl2va") {
+    const generationSafety = generationSafetyForTask(task);
+    const minimumContextSeconds = 1 / 24;
+    const result = (safe: boolean, message: string): ExtensionSafety => ({
+      ...generationSafety,
+      safe,
+      minimumContextSeconds,
+      message
+    });
+    if (!task.sourceVideoPath || task.sourceVideoDuration <= 0) {
+      return result(false, "请先选择可读取的源视频。");
+    }
+    if (
+      !Number.isFinite(task.trimStartSeconds) ||
+      !Number.isFinite(task.trimEndSeconds) ||
+      task.trimStartSeconds < 0 ||
+      task.trimEndSeconds > task.sourceVideoDuration ||
+      task.trimEndSeconds <= task.trimStartSeconds
+    ) {
+      return result(false, "视频裁剪范围无效。");
+    }
+    if (!generationSafety.safe) return result(false, generationSafety.message);
+    return result(
+      true,
+      `H3 结尾帧接续：生成 ${generationSafety.generatedFrames}/${generationSafety.maxGeneratedFrames} 帧新片段；它不是 latent overlap 原生续写。${generationSafety.message}`
+    );
+  }
   const multiplier = frameInterpolationMultiplier(task);
   const sourceFps = task.fps / multiplier;
   const maxDurationSeconds = Math.max(
@@ -533,6 +577,9 @@ export function outputDimensions(
 export function extensionOutputDimensions(
   task: ExtensionQueueTask
 ): [number, number] {
+  if (task.modelId === "minimax_h3_fl2va") {
+    return miniMaxH3Dimensions(task);
+  }
   return legacyVideoDimensions(task);
 }
 
@@ -651,7 +698,6 @@ export function renderWorkflow(
     }
   }
   const h3HeavyDecode =
-    task.taskType === "generation" &&
     task.modelId === "minimax_h3_fl2va" &&
     (
       generationFrameCountForTask(task) > 124 ||

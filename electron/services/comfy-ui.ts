@@ -7,7 +7,10 @@ import {
   workflowSupportsEndImage
 } from "../../src/core/workflow.js";
 import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
-import { prepareExtensionContext } from "./extension-media.js";
+import {
+  prepareExtensionContext,
+  prepareH3BoundaryFrame
+} from "./extension-media.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -96,16 +99,21 @@ export async function submitTask(
     });
     const source = JSON.parse(sourceText) as unknown;
     if (task.taskType === "extension") {
-      const prepared = await prepareExtensionContext(task, signal);
+      const h3Boundary = task.modelId === "minimax_h3_fl2va";
+      const prepared = h3Boundary
+        ? await prepareH3BoundaryFrame(task, signal)
+        : await prepareExtensionContext(task, signal);
       try {
-        const sourceVideo = await uploadInput(
+        const uploadedInput = await uploadInput(
           baseUrl,
           prepared.filePath,
           signal,
-          "续写上下文"
+          h3Boundary ? "H3 接续边界帧" : "续写上下文"
         );
         prompt = renderWorkflow(source, task, {
-          sourceVideo,
+          ...(h3Boundary
+            ? { inputImage: uploadedInput }
+            : { sourceVideo: uploadedInput }),
           vramTotalBytes
         });
       } finally {

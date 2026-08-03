@@ -90,6 +90,39 @@ export async function prepareExtensionContext(
   };
 }
 
+export async function prepareH3BoundaryFrame(
+  task: ExtensionQueueTask,
+  signal: AbortSignal
+): Promise<{ filePath: string; cleanup(): Promise<void> }> {
+  const directory = temporaryDirectory(task.id);
+  await fs.rm(directory, { recursive: true, force: true });
+  await fs.mkdir(directory, { recursive: true });
+  const filePath = path.join(directory, "h3-boundary.png");
+  const [width, height] = extensionOutputDimensions(task);
+  const frameTime = Math.max(
+    task.trimStartSeconds,
+    task.trimEndSeconds - 1 / 24
+  );
+  await run("ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-ss", String(frameTime),
+    "-i", task.sourceVideoPath,
+    "-frames:v", "1",
+    "-vf", [
+      `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+      `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`,
+      "setsar=1"
+    ].join(","),
+    filePath
+  ], signal);
+  const stat = await fs.stat(filePath);
+  if (stat.size <= 0) throw new Error("FFmpeg 没有提取出可用的 H3 接续边界帧");
+  return {
+    filePath,
+    cleanup: () => fs.rm(directory, { recursive: true, force: true })
+  };
+}
+
 async function hasAudioStream(filename: string, signal: AbortSignal): Promise<boolean> {
   try {
     const output = await run("ffprobe", [
@@ -130,6 +163,7 @@ export async function finalizeExtensionOutput(
   const [width, height] = extensionOutputDimensions(task);
   const filter = scaleFilter(width, height, task.fps);
   const sourceHasAudio = await hasAudioStream(task.sourceVideoPath, signal);
+  const generatedHasAudio = await hasAudioStream(generatedPath, signal);
 
   try {
     const retainedArgs = [
@@ -153,17 +187,29 @@ export async function finalizeExtensionOutput(
     );
     await run("ffmpeg", retainedArgs, signal);
 
-    await run("ffmpeg", [
+    const continuationArgs = [
       "-hide_banner", "-loglevel", "error", "-y",
-      "-ss", String(contextDuration),
-      "-i", generatedPath,
-      "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
-      "-map", "0:v:0", "-map", "1:a:0",
+      "-ss", String(
+        task.modelId === "minimax_h3_fl2va" ? 1 / 24 : contextDuration
+      ),
+      "-i", generatedPath
+    ];
+    if (!generatedHasAudio) {
+      continuationArgs.push(
+        "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"
+      );
+    }
+    if (task.modelId === "minimax_h3_fl2va") {
+      continuationArgs.push("-t", String(task.duration));
+    }
+    continuationArgs.push(
+      "-map", "0:v:0", "-map", generatedHasAudio ? "0:a:0" : "1:a:0",
       "-vf", filter,
       "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-ar", "48000", "-ac", "2",
       "-shortest", continuationPath
-    ], signal);
+    );
+    await run("ffmpeg", continuationArgs, signal);
 
     await fs.writeFile(
       concatPath,

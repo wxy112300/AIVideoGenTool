@@ -4,6 +4,7 @@ import type { ExtensionQueueTask, QueueTask } from "../src/types";
 import {
   extensionWorkflowSafetyErrors,
   extensionSafetyForTask,
+  extensionOutputDimensions,
   frameCountForTask,
   generationFrameCountForTask,
   generationSafetyForTask,
@@ -13,6 +14,7 @@ import {
   renderWorkflow,
   validateApiWorkflow,
   workflowSupportsEndImage,
+  workflowSupportsH3BoundaryExtension,
   workflowSupportsVideoExtension
 } from "../src/core/workflow";
 
@@ -471,6 +473,26 @@ describe("generation VRAM safety", () => {
     expect(generationSafetyForTask({ ...h3Task, duration: 16 }).safe).toBe(false);
   });
 
+  it("allows H3 boundary-frame extension through the trained 15-second range", () => {
+    const h3Extension: ExtensionQueueTask = {
+      ...extensionTask,
+      modelId: "minimax_h3_fl2va",
+      resolution: 768,
+      duration: 15,
+      fps: 24,
+      frameInterpolation: "off",
+      maxGeneratedFrames: 362
+    };
+    expect(extensionSafetyForTask(h3Extension)).toMatchObject({
+      safe: true,
+      generatedFrames: 362,
+      maxDurationSeconds: 15,
+      minimumContextSeconds: 1 / 24
+    });
+    expect(extensionOutputDimensions(h3Extension)).toEqual([1344, 768]);
+    expect(extensionSafetyForTask({ ...h3Extension, duration: 16 }).safe).toBe(false);
+  });
+
   it("aligns MiniMax H3 dimensions to the required 32-pixel grid", () => {
     expect(outputDimensions({
       ...task,
@@ -735,6 +757,38 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     expect(rendered["14"]?.inputs.frame_overlap).toBe(16);
     expect(rendered["16"]?.inputs.working_device).toBe("cpu");
     expect(JSON.stringify(rendered)).not.toContain("{{");
+  });
+
+  it("renders the H3 I2V graph as a boundary-frame extension", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url),
+        "utf8"
+      )
+    );
+    const h3Extension: ExtensionQueueTask = {
+      ...extensionTask,
+      modelId: "minimax_h3_fl2va",
+      resolution: 480,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off",
+      maxGeneratedFrames: 362
+    };
+    const rendered = renderWorkflow(source, h3Extension, {
+      inputImage: "uploaded/boundary.png",
+      vramTotalBytes: 24 * 1024 ** 3
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(workflowSupportsH3BoundaryExtension(source)).toBe(true);
+    expect(rendered["5"]?.inputs.image).toBe("uploaded/boundary.png");
+    expect(rendered["6"]?.inputs).toMatchObject({
+      width: 864,
+      height: 480,
+      length: 124,
+      first_frame: ["5", 0]
+    });
+    expect(rendered["18"]).toBeUndefined();
   });
 
   it("renders the distilled Q2 graph without a distill LoRA", () => {
