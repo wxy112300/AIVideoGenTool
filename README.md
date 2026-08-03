@@ -1,82 +1,97 @@
-# AIVideoGenTool / Local Video Studio
+# Local Video Studio
 
-面向本地 ComfyUI 的 Image-to-Video Windows 桌面工作台。目标是把参考图、提示词扩写、模型工作流、持久队列和生成历史整合为一个不要求用户直接操作节点图的 GUI。
+一个面向 Windows 和本地 ComfyUI 的视频生成桌面工作台。
 
-## 当前实现
+Local Video Studio 把参考图、提示词、视频模型、任务队列和生成历史整理到统一的 GUI 中，让用户不必频繁编辑 ComfyUI 节点图，也能完成图生视频、视频续写、插帧和超分辨率处理。
 
-当前版本已经包含：
+> [!IMPORTANT]
+> 项目仍处于早期开发阶段，目前以 Windows、NVIDIA GPU 和本地 ComfyUI 为主要运行环境。模型权重、ComfyUI 和第三方节点不会包含在仓库中。
 
-- Electron + TypeScript + Vite 桌面应用。
-- 创建、队列、历史、设置四个页面。
-- 草稿、提示词版本、队列和历史的本地持久化。
-- LM Studio OpenAI 兼容 API 提示词扩写。
-- ComfyUI 图片上传、API workflow 提交、完成轮询和任务中止。
-- ComfyUI WebSocket 真实节点进度与执行错误监听，并以 history 轮询作为兼容兜底。
-- 工作流占位符注入，允许每个视频模型使用独立 JSON。
-- API workflow 格式与必需占位符校验。
-- 队列上移/下移、复制、重试和按模型/工作流优化顺序。
-- ComfyUI 输出文件解析、历史详情快照和 Explorer 文件定位。
-- Windows 环境扫描、自定义节点安装/修复、下载代理和 ComfyUI 启动/重启。
-- Sulphur 2 / LTX 2.3、Wan 2.2 5B/14B、HunyuanVideo 1.5、
-  Hunyuan 1080p 双阶段 SR、Remix、SmoothMix、DaSiWa 内置工作流。
-- RIFE 2×/4× Frame Interpolation，区分模型帧数与成片目标 FPS。
-- 新任务默认生成 5 秒；单段输出最多 10 秒，并按模型采用 81/121 个模型帧的
-  24 GB 验证预算。RIFE 可在不增加模型帧的情况下扩展成片时长和帧率。
-- ComfyUI 使用 DynamicVRAM、默认异步 CPU offload、pinned memory、2 GB 显存余量、
-  扩散阶段卸载、VAE 分块、插帧和精确裁帧的显存安全管线。
-- Wan 14B 在高噪声和低噪声专家之间显式卸载，避免两套专家权重同时驻留 GPU。
-- RTX 4090 24 GB 已实测 Wan 5B 在新策略下生成 1280×720、121 帧、24 FPS 视频；
-  总执行 255.3 秒，`ffprobe` 验证成片为 H.264、5.0417 秒、精确 121 帧。
-- SeedVR2、FlashVSR、Real-ESRGAN 视频分辨率提升任务；分别按 5、16、1 帧分批，
-  批间卸载模型，避免整段视频同时进入显存。
-- 取消、OOM、卡死或显存释放失败时停止后续队列；中断任务会主动卸载模型并释放显存。
-- 原始视频与多个提升版本归入同一历史作品，可切换默认版本。
-- 队列性能监测、实时预览、历史视频播放、右键菜单和版本化文件删除。
-- 应用退出时清理自身开发进程并中止当前大模型计算。
+## 主要功能
 
-取消后编码部分视频、超过 10 秒的长视频续写/分段和 Windows 安装包仍未完成。最新、最完整的交接状态见
-[`docs/LOCAL_CODEX_HANDOFF.md`](docs/LOCAL_CODEX_HANDOFF.md)。
+- **统一创作界面**：拖入首帧或首尾帧，设置提示词、模型、时长、分辨率、帧率和随机种子。
+- **本地任务队列**：持久化等待任务，展示当前节点、进度、预览、耗时以及 CPU、内存和显存占用。
+- **生成历史**：直接播放输出视频，查看任务参数和不同版本，并支持复制文件、打开目录和删除文件。
+- **环境检查**：扫描常见目录和 Comfy Desktop 安装记录，识别多个 ComfyUI 实例、核心版本、模型和自定义节点。
+- **服务管理**：连接已有 ComfyUI，也可以从应用内启动、重启和更新所选安装；默认接口为 `http://127.0.0.1:8188`。
+- **低显存保护**：按工作流启用模型卸载、CPU offload、分块 VAE 解码和单任务执行，降低长视频处理时的显存峰值。
+- **提示词扩写**：可选连接本地 LM Studio 的 OpenAI 兼容接口，不依赖云端模型。
+- **下载代理**：可为依赖、节点和工作流下载单独配置 HTTP 代理，默认关闭。
+
+## 已接入的工作流
+
+| 类型 | 模型或工具 | 当前能力 |
+| --- | --- | --- |
+| 图生视频 | MiniMax H3 FL2VA | 首帧或首尾帧、原生 24 FPS 音视频、结构化镜头与声音提示词 |
+| 图生视频 / 续写 | Sulphur 2 / LTX 2.3 | GGUF 低显存配置、原生 overlap 视频续写 |
+| 图生视频 | Wan 2.2 | 5B、14B 及 Remix、SmoothMix 等内置配置 |
+| 图生视频 | HunyuanVideo 1.5 | 标准 I2V 和双阶段 1080p SR |
+| 帧插值 | RIFE | 2× / 4× 插帧，将模型生成帧率与成片目标帧率分开 |
+| 视频超分 | SeedVR2、FlashVSR、Real-ESRGAN | 分批处理和批次间模型卸载 |
+
+MiniMax H3 的“续写”目前采用**边界帧接续**：提取原视频最后一帧作为下一段的首帧，并保留 H3 原生音轨。它不是 latent overlap，因此片段边界的动作连续性可能弱于 Sulphur 2 / LTX 2.3 的原生续写。
+
+不同工作流对 ComfyUI 版本、节点、权重目录和显存的要求不同。设置页会按当前选择的 ComfyUI 实例给出检测结果、下载地址和目标目录；更完整的依赖说明见 [依赖与环境配置](docs/DEPENDENCIES_AND_SETUP.md)。
 
 ## 快速开始
 
-Windows 可直接双击 `start-ui.bat`；脚本会在首次启动时安装 npm 依赖，随后构建并启动应用。
-需要通过本机代理加速初始化时，双击 `start-ui-proxy.bat`，或显式传入 HTTP 代理地址：
+### 运行要求
+
+- Windows 10 或 Windows 11
+- [Node.js](https://nodejs.org/) 22 LTS 或更高版本
+- 一个可用的本地 [ComfyUI](https://github.com/Comfy-Org/ComfyUI) 安装
+- FFmpeg（视频续写、精确裁帧和部分媒体处理需要）
+- 推荐使用 NVIDIA GPU；大型视频模型通常需要较大的显存和系统内存
+
+### 1. 获取代码
+
+```powershell
+git clone https://github.com/wxy112300/AIVideoGenTool.git
+cd AIVideoGenTool
+```
+
+### 2. 启动应用
+
+双击 `start-ui.bat`。首次启动会安装 npm 依赖，随后构建并打开桌面应用。
+
+也可以在终端中运行：
+
+```powershell
+npm.cmd ci
+npm.cmd run dev
+```
+
+如果首次安装依赖时需要代理，可以双击 `start-ui-proxy.bat`，或传入代理地址：
 
 ```bat
 start-ui-proxy.bat http://127.0.0.1:7890
 ```
 
-不传参数时可在提示中输入地址，直接回车则使用 `http://127.0.0.1:7890`。代理只对本次启动及其
-npm、Electron、Git、pip、ComfyUI 子进程生效，不修改 Windows 或 npm 的持久配置；本地服务保持直连。
+该代理只作用于本次启动及其子进程，不会修改 Windows 的全局代理设置，本地服务地址仍然直连。
 
-Windows PowerShell：
+### 3. 配置 ComfyUI
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\setup.ps1
-npm run dev
-```
+首次打开后进入“设置”：
 
-也可以手动执行：
+1. 扫描并选择要使用的 ComfyUI 安装；也可以手动选择目录。
+2. 确认服务地址，默认是 `http://127.0.0.1:8188`。
+3. 启动或连接 ComfyUI，然后重新扫描核心节点、自定义节点和模型。
+4. 根据缺失项旁的说明下载权重，或使用可用的一键安装/修复操作。
+5. 确认输出目录后，回到“创建”页面提交第一个任务。
 
-```powershell
-npm install
-npm test
-npm run build
-npm run dev
-```
+应用支持普通源码安装和 Comfy Desktop。发现多个实例时不会静默切换，实际扫描、启动和更新均以设置中选中的目录为准。
 
-## 文档
+## 数据与隐私
 
-- `docs/PRODUCT_REQUIREMENTS.md`：完整产品需求与验收标准。
-- `docs/DEPENDENCIES_AND_SETUP.md`：模块依赖、必需软件和初始化步骤。
-- `docs/LOCAL_CODEX_HANDOFF.md`：本地 ComfyUI 环境的后续接手任务。
-- `docs/CLOUD_IMPLEMENTATION_STATUS.md`：项目早期云端/本机边界的历史记录。
-- `prototypes/`：已确认的交互原型，正式实现应继续以它为视觉与交互参考。
+- 提示词、任务队列、历史记录和设置保存在 Electron 的本地用户数据目录中。
+- 视频默认使用所选 ComfyUI 的输出目录，也可以在设置中指定其他目录。
+- 删除历史作品时，可同时删除记录和关联的视频文件；执行前会要求确认。
+- 推理和 LM Studio 提示词扩写均在本机进行。只有在下载依赖或用户主动配置外部服务时才会产生对应的网络请求。
+- 模型文件和生成媒体已被 `.gitignore` 排除，不应提交到仓库。
 
-## ComfyUI 工作流
+## 自定义 ComfyUI 工作流
 
-从 ComfyUI 导出 API 格式 JSON 后，可使用以下占位符：
+`workflows/` 中保存的是 ComfyUI **API 格式**工作流。应用会在提交任务前递归替换占位符，常用字段包括：
 
 ```text
 {{PROMPT}} {{NEGATIVE_PROMPT}} {{SEED}}
@@ -88,6 +103,48 @@ npm run dev
 {{OUTPUT_FILENAME}}
 ```
 
-应用会在提交 `/prompt` 前递归替换它们。内置工作流目前仅支持首帧；只有实际包含
-`{{END_IMAGE}}` 的自定义 API 工作流才会启用尾帧。详细方法见
-`docs/DEPENDENCIES_AND_SETUP.md`。
+工作流必须由 ComfyUI 以 API 格式导出，并包含对应模型所需的节点和占位符。具体约束和验证顺序见 [依赖与环境配置](docs/DEPENDENCIES_AND_SETUP.md)。
+
+## 开发
+
+```powershell
+npm.cmd ci
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+npm.cmd run dev
+```
+
+主要目录：
+
+```text
+electron/    Electron 主进程、持久化和本地服务集成
+src/         渲染界面、状态类型和工作流转换逻辑
+workflows/   内置 ComfyUI API 工作流
+tests/       单元测试
+docs/        产品、环境和工作流设计文档
+prototypes/  早期界面与交互原型
+```
+
+## 当前限制
+
+- 当前优先支持 Windows；尚未提供正式安装包和自动更新渠道。
+- 可运行的分辨率、时长和速度由模型、量化版本、显存、系统内存及 ComfyUI 环境共同决定。
+- 环境修复覆盖已知依赖，但无法保证自动修复任意第三方节点或被手动修改过的 Python 环境。
+- H3 边界帧接续属于实验性能力，不等同于模型原生的长视频上下文续写。
+- 运行中取消会优先中止 ComfyUI 任务并释放模型；由应用启动的进程会随应用退出，独立启动的 ComfyUI 服务不会被强制关闭。
+
+## 参与贡献
+
+欢迎提交 Issue 和 Pull Request。报告问题时，请尽量附上：
+
+- Local Video Studio 的提交版本
+- ComfyUI 安装类型、核心版本和服务地址
+- 使用的模型、工作流、分辨率、帧数和 GPU 型号
+- 设置页检测结果及相关日志（请先移除用户名、访问令牌和私人媒体路径）
+
+产品范围与交互要求见 [产品需求文档](docs/PRODUCT_REQUIREMENTS.md)，视频续写的设计边界见 [视频续写设计](docs/VIDEO_EXTENSION_DESIGN.md)。
+
+## 许可证
+
+仓库目前尚未添加开源许可证。在 `LICENSE` 文件明确之前，代码公开可见不代表已授权复制、修改或再分发。正式公开发布前，请由项目维护者选择并添加合适的许可证。
