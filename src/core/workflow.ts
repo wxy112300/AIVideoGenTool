@@ -40,6 +40,13 @@ interface GenerationSafetyProfile {
 function generationSafetyProfileForModel(
   modelId: string
 ): GenerationSafetyProfile {
+  if (modelId === "minimax_h3_fl2va") {
+    return {
+      label: "MiniMax H3 FL2VA",
+      maxGeneratedFrames: 124,
+      maxDurationSeconds: 5
+    };
+  }
   if (modelId === "wan22_5b") {
     return {
       label: "Wan 2.2 TI2V-5B",
@@ -152,7 +159,8 @@ export function extensionWorkflowSafetyErrors(source: unknown): string[] {
   return errors;
 }
 
-function frameIntervalForModel(modelId: string): 1 | 4 | 8 {
+function frameIntervalForModel(modelId: string): 1 | 4 | 8 | 17 {
+  if (modelId === "minimax_h3_fl2va") return 17;
   if (modelId === "sulphur2") return 8;
   if (modelId.startsWith("wan22_") || modelId.startsWith("hunyuan15")) return 4;
   return 1;
@@ -162,6 +170,10 @@ export function frameCountForTask(
   task: Pick<GenerationQueueTask, "modelId" | "duration">,
   fps: number
 ): number {
+  if (task.modelId === "minimax_h3_fl2va") {
+    const requested = Math.max(5, Math.round(task.duration * 24));
+    return requested + ((5 - (requested % 17) + 17) % 17);
+  }
   const requested = Math.max(1, Math.round(task.duration * fps));
   const interval = frameIntervalForModel(task.modelId);
   return Math.max(1, Math.round((requested - 1) / interval) * interval + 1);
@@ -176,8 +188,15 @@ export function frameInterpolationMultiplier(
 }
 
 export function outputFrameCountForTask(
-  task: Pick<GenerationQueueTask, "duration" | "fps">
+  task: Pick<GenerationQueueTask, "duration" | "fps"> &
+    Partial<Pick<GenerationQueueTask, "modelId">>
 ): number {
+  if (task.modelId === "minimax_h3_fl2va") {
+    return frameCountForTask(
+      { modelId: task.modelId, duration: task.duration },
+      24
+    );
+  }
   return Math.max(1, Math.round(task.duration * task.fps));
 }
 
@@ -187,6 +206,9 @@ export function generationFrameCountForTask(
     "modelId" | "duration" | "fps" | "frameInterpolation"
   >
 ): number {
+  if (task.modelId === "minimax_h3_fl2va") {
+    return frameCountForTask(task, 24);
+  }
   const multiplier = frameInterpolationMultiplier(task);
   if (multiplier === 1) return frameCountForTask(task, task.fps);
   const requiredSourceFrames =
@@ -463,6 +485,12 @@ export function outputDimensions(
   task: DimensionTask & Pick<GenerationQueueTask, "modelId">
 ): [number, number] {
   const [width, height] = baseGenerationDimensions(task);
+  if (task.modelId === "minimax_h3_fl2va") {
+    return [
+      Math.max(64, Math.round(width / 32) * 32),
+      Math.max(64, Math.round(height / 32) * 32)
+    ];
+  }
   if (task.modelId !== "hunyuan15_sr") return [width, height];
   return [
     Math.max(64, Math.round((width * 1.5) / 8) * 8),

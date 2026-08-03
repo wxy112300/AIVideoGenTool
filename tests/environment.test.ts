@@ -2,12 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildComfyCandidates,
   buildComfyDesktopCandidates,
+  buildComfyDesktopSourceCandidates,
   comfyUiBundledFrontendArgs,
   buildLmStudioCandidates,
   comfyUiMemoryArgs,
   evaluateModelProfiles,
+  evaluateMiniMaxH3CoreSupport,
   ltxAudioVaeCompatible,
   normalizeProxyUrl,
+  parseComfyDesktop2Registry,
   patchLtxAudioVaeCompatibility,
   patchVideoHelperBatchCompatibility,
   renameWithRetry,
@@ -180,6 +183,58 @@ describe("ComfyUI environment candidates", () => {
     );
     expect(candidates).toContain("C:\\Program Files\\ComfyUI\\ComfyUI.exe");
     expect(candidates).toContain("D:\\Program Files\\ComfyUI\\ComfyUI.exe");
+    expect(candidates).toContain(
+      "D:\\Program Files\\ComfyUI\\Comfy Desktop\\Comfy Desktop.exe"
+    );
+    expect(candidates.indexOf(
+      "D:\\Program Files\\ComfyUI\\Comfy Desktop\\Comfy Desktop.exe"
+    )).toBeLessThan(candidates.indexOf("D:\\Program Files\\ComfyUI\\ComfyUI.exe"));
+  });
+
+  it("maps the modern Desktop launcher to its shared parent core directory", () => {
+    expect(buildComfyDesktopSourceCandidates(
+      "D:\\Program Files\\ComfyUI\\Comfy Desktop\\Comfy Desktop.exe"
+    )).toEqual([
+      "D:\\Program Files\\ComfyUI\\Comfy Desktop\\resources\\ComfyUI",
+      "D:\\Program Files\\ComfyUI\\resources\\ComfyUI"
+    ]);
+  });
+
+  it("reads Desktop 2 managed instances instead of treating the launcher as the core", () => {
+    const entries = parseComfyDesktop2Registry(JSON.stringify([
+      {
+        id: "inst-1",
+        name: "ComfyUI",
+        sourceId: "standalone",
+        installPath: "D:\\Comfy-Desktop\\ComfyUI-Installs\\ComfyUI",
+        status: "installed",
+        comfyVersion: { baseTag: "v0.30.1", commit: "0764232429b8" }
+      },
+      {
+        id: "cloud",
+        name: "Comfy Cloud",
+        sourceId: "cloud",
+        installPath: "",
+        status: "installed"
+      }
+    ]));
+
+    expect(entries[0]?.installPath).toBe(
+      "D:\\Comfy-Desktop\\ComfyUI-Installs\\ComfyUI"
+    );
+    expect(entries[0]?.comfyVersion?.baseTag).toBe("v0.30.1");
+  });
+
+  it("keeps a manually selected ComfyUI installation ahead of automatic candidates", () => {
+    const candidates = buildComfyCandidates({
+      homeDirectory: "C:\\Users\\CurrentUser",
+      localAppData: "C:\\Users\\CurrentUser\\AppData\\Local",
+      installDirectory: "D:\\AI\\ChosenComfyUI",
+      modelDirectory: "E:\\OtherComfyUI\\models",
+      driveRoots: ["C:\\", "D:\\"]
+    });
+
+    expect(candidates[0]).toBe("D:\\AI\\ChosenComfyUI");
   });
 
   it("reports model profiles from their required component files", () => {
@@ -194,6 +249,32 @@ describe("ComfyUI environment candidates", () => {
     expect(profiles.find((profile) => profile.id === "wan22_5b")?.available).toBe(true);
     expect(profiles.find((profile) => profile.id === "seedvr2")?.available).toBe(true);
     expect(profiles.find((profile) => profile.id === "sulphur2")?.available).toBe(false);
+  });
+
+  it("requires the official MiniMax H3 FL2VA, Qwen3-VL and both VAE files", () => {
+    const profiles = evaluateModelProfiles([
+      "diffusion_models\\minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "text_encoders\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "vae\\minimax_h3_video_vae_fp16.safetensors",
+      "vae\\minimax_h3_audio_vae_fp32.safetensors"
+    ]);
+    const fl2va = profiles.find((profile) => profile.id === "minimax_h3_fl2va");
+
+    expect(fl2va?.available).toBe(true);
+    expect(fl2va?.integrated).toBe(true);
+    expect(profiles.some((profile) => profile.id === "minimax_h3_ref2va")).toBe(false);
+  });
+
+  it("treats MiniMax H3 support as a core-node capability", () => {
+    const complete = evaluateMiniMaxH3CoreSupport({
+      EmptyMiniMaxH3LatentAV: {},
+      MiniMaxH3ImageToVideo: {},
+      MiniMaxH3SigmaShift: {}
+    });
+    const incomplete = evaluateMiniMaxH3CoreSupport({});
+
+    expect(complete.every((node) => node.available)).toBe(true);
+    expect(incomplete.filter((node) => !node.available)).toHaveLength(1);
   });
 
   it("requires the official HunyuanVideo 1.5 dual text and vision encoders", () => {

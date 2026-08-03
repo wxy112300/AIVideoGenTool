@@ -57,10 +57,15 @@ let environmentScanning = false;
 let serviceStarting: LocalServiceKind | null = null;
 let serviceRestarting: LocalServiceKind | null = null;
 let serviceStatusMessage = "";
+let comfyUpdating = false;
+let comfyUpdateLog = "";
 let environmentRepairing = "";
 let environmentRepairLogs: Record<string, string> = {};
 let customNodeInstalling = "";
 let customNodeLogs: Record<string, string> = {};
+let workflowDependencyInstalling = "";
+let workflowDependencyLogs: Record<string, string> = {};
+let coreDependencyRepairing = false;
 let settingsDraft: Settings | null = null;
 let settingsTab: "system" | "video" | "nodes" | "prompt" | "upscale" = "system";
 let selectedInstallGuide: {
@@ -236,9 +241,9 @@ function createModelOptions(draft: Draft): string {
   const profiles = scanned?.length
     ? scanned
     : [
-      { id: "sulphur2", name: "Sulphur 2 GGUF", available: true },
-        { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: true },
-        { id: "hunyuan15", name: "HunyuanVideo 1.5", available: true }
+      { id: "sulphur2", name: "Sulphur 2 GGUF", available: true, integrated: true },
+        { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: true, integrated: true },
+        { id: "hunyuan15", name: "HunyuanVideo 1.5", available: true, integrated: true }
       ];
   return profiles
     .map((profile) => {
@@ -248,9 +253,12 @@ function createModelOptions(draft: Draft): string {
         : bundledWorkflows[bundledWorkflowKey(profile.id, draft.inputMode)]
             ?.supportsVideoExtension === true;
       const unavailable = !profile.available ||
+        profile.integrated === false ||
         (draft.inputMode === "video" && !supportsVideoExtension);
       const suffix = !profile.available
         ? " · 缺组件"
+        : profile.integrated === false
+          ? " · 已扫描，工作流待接入"
         : draft.inputMode === "video" && !supportsVideoExtension
           ? " · 未通过原生续写检查"
           : "";
@@ -524,17 +532,18 @@ function createPage(): string {
           <div class="inline-field"><input id="duration" type="range" min="1" max="${safety.maxDurationSeconds}" value="${draft.duration}"><input id="duration-number" type="number" min="1" max="${safety.maxDurationSeconds}" value="${draft.duration}"><span>秒</span></div>
         </label>
         <label>目标帧率
-          <select id="fps">
-            ${[8, 12, 16, 24, 25, 30].map((value) =>
+          <select id="fps" ${draft.modelId === "minimax_h3_fl2va" ? "disabled" : ""}>
+            ${(draft.modelId === "minimax_h3_fl2va" ? [24] : [8, 12, 16, 24, 25, 30]).map((value) =>
               `<option value="${value}" ${draft.fps === value ? "selected" : ""}>${value} FPS</option>`
             ).join("")}
           </select>
         </label>
         <label>Frame Interpolation
-          <select id="frame-interpolation">
+          <select id="frame-interpolation" ${draft.modelId === "minimax_h3_fl2va" ? "disabled" : ""}>
             <option value="off" ${draft.frameInterpolation === "off" ? "selected" : ""}>关闭 · 模型直接生成</option>
-            <option value="rife2x" ${draft.frameInterpolation === "rife2x" ? "selected" : ""}>RIFE 2×</option>
-            <option value="rife4x" ${draft.frameInterpolation === "rife4x" ? "selected" : ""}>RIFE 4×</option>
+            ${draft.modelId === "minimax_h3_fl2va" ? "" : `
+              <option value="rife2x" ${draft.frameInterpolation === "rife2x" ? "selected" : ""}>RIFE 2×</option>
+              <option value="rife4x" ${draft.frameInterpolation === "rife4x" ? "selected" : ""}>RIFE 4×</option>`}
           </select>
         </label>
         <div class="interpolation-summary ${!safety.safe ? "unsafe" : interpolation.multiplier === 1 ? "disabled" : ""}">
@@ -762,9 +771,9 @@ function modelScanCard(profile: ModelScanProfile): string {
           <div class="model-title"><h3>${escapeHtml(profile.name)}</h3><span class="model-badge">${escapeHtml(profile.badge)}</span></div>
           <p class="muted">${escapeHtml(profile.description)}</p>
         </div>
-        <span class="model-availability ${profile.available ? "available" : "missing"}">${profile.available ? "✓ 可用" : `缺少 ${missingCount} 项`}</span>
+        <span class="model-availability ${profile.available ? "available" : "missing"}">${profile.available ? profile.integrated ? "✓ 可用" : "✓ 组件完整" : `缺少 ${missingCount} 项`}</span>
       </div>
-      <div class="model-meta-line"><span>${escapeHtml(profile.vram)}</span><span>${profile.available ? "组件完整，可用于配置" : "补齐所有必需组件后才能启用"}</span></div>
+      <div class="model-meta-line"><span>${escapeHtml(profile.vram)}</span><span>${profile.available ? profile.integrated ? "组件完整，可用于配置" : "依赖已完整；生成工作流将在下一阶段接入" : "补齐所有必需组件后才能启用"}</span></div>
       <div class="component-list">
         ${profile.components.map((component, componentIndex) => `
           <div class="component-row ${component.found ? "found" : "missing"}">
@@ -890,14 +899,58 @@ function environmentIssuesPanel(): string {
     </section>`;
 }
 
+function comfyCompatibilityPanel(): string {
+  const compatibility = environmentScan?.comfyCompatibility;
+  if (!compatibility) return "";
+  const selectedInstallation = environmentScan?.comfyInstallations.find(
+    (installation) => installation.selected
+  ) ?? environmentScan?.comfyInstallations[0];
+  const versionLabel = compatibility.version
+    ? `v${compatibility.version}`
+    : "版本号未知";
+  const ready = Boolean(compatibility.version || compatibility.revision || compatibility.checkedFrom);
+  const versionMismatch = compatibility.checkedFrom === "api" &&
+    Boolean(selectedInstallation?.version) &&
+    Boolean(compatibility.version) &&
+    selectedInstallation?.version !== compatibility.version;
+  return `
+    <section class="panel settings-section comfy-compatibility ${ready ? "available" : "missing"}">
+      <div class="section-heading">
+        <div>
+          <h2>ComfyUI 核心版本</h2>
+          <span class="muted">显示当前选择或当前已连接服务的核心信息</span>
+        </div>
+        <div class="compatibility-actions">
+          <span class="model-availability ${ready ? "available" : "missing"}">${ready ? "✓ 已识别" : "等待启动服务"}</span>
+          <button class="primary" id="update-comfyui" ${comfyUpdating || compatibility.updateMode === "unsupported" ? "disabled" : ""}>${comfyUpdating ? "正在处理…" : compatibility.updateMode === "desktop" ? "打开官方更新器" : "手动更新 ComfyUI"}</button>
+        </div>
+      </div>
+      <div class="compatibility-version">
+        <div><span>Desktop 应用</span><strong>${escapeHtml(selectedInstallation?.desktopVersion ? `v${selectedInstallation.desktopVersion}` : selectedInstallation?.type === "desktop" ? "未读取到应用版本" : "不适用")}</strong></div>
+        <div><span>所选目录本地核心</span><strong>${escapeHtml(selectedInstallation?.version ? `v${selectedInstallation.version}` : "未找到本地版本文件")}</strong></div>
+        <div><span>当前连接服务核心</span><strong>${escapeHtml(compatibility.checkedFrom === "api" ? versionLabel : "服务未连接")}</strong></div>
+        <div><span>核心提交</span><code>${escapeHtml(compatibility.revision || "未知")}</code></div>
+        <div><span>检测来源</span><strong>${compatibility.checkedFrom === "api" ? "运行中服务 /object_info" : compatibility.checkedFrom === "source" ? "本地核心源码" : "等待启动服务"}</strong></div>
+      </div>
+      ${versionMismatch ? `<div class="service-status warning">当前连接服务是核心 ${escapeHtml(versionLabel)}，但所选目录的本地核心是 v${escapeHtml(selectedInstallation?.version ?? "未知")}；你可能连接到了另一个正在运行的 ComfyUI 实例。重启服务前请确认端口和安装目录。</div>` : ""}
+      <p class="muted">${escapeHtml(compatibility.updateHint)}</p>
+      ${comfyUpdateLog ? `<details class="node-log" open><summary>更新日志</summary><pre>${escapeHtml(comfyUpdateLog)}</pre></details>` : ""}
+    </section>`;
+}
+
 function settingsPage(): string {
   const settings = settingsDraft ?? state.settings;
   const profiles = environmentScan?.modelProfiles ?? [];
   const videoProfiles = profiles.filter((profile) => profile.category === "video");
   const upscaleProfiles = profiles.filter((profile) => profile.category === "upscale");
-  const videoAvailable = videoProfiles.filter((profile) => profile.available).length;
+  const videoAvailable = videoProfiles.filter(
+    (profile) => profile.available && profile.integrated
+  ).length;
   const upscaleAvailable = upscaleProfiles.filter((profile) => profile.available).length;
   const gpu = environmentScan?.items.find((item) => item.id === "nvidia");
+  const comfyInstallations = environmentScan?.comfyInstallations ?? [];
+  const effectiveComfyInstallDirectory =
+    environmentScan?.comfyInstallDirectory || settings.comfyInstallDirectory;
 
   const systemPanel = `
     <section class="settings-panel">
@@ -905,7 +958,34 @@ function settingsPage(): string {
         <div class="section-heading"><div><h2>本机环境</h2><span class="muted">必需组件、可选工具和本地服务状态</span></div></div>
         ${environmentOverview()}
       </section>
+      ${comfyCompatibilityPanel()}
       ${environmentIssuesPanel()}
+      <section class="panel settings-section">
+        <div class="section-heading">
+          <div><h2>ComfyUI 安装实例</h2><span class="muted">选择一键启动、更新和离线版本检测使用的安装；不会自动改写你的选择</span></div>
+          ${comfyInstallations.length > 1 ? `<span class="model-availability missing">发现 ${comfyInstallations.length} 个安装</span>` : `<span class="model-badge">${comfyInstallations.length ? "已发现" : "未发现"}</span>`}
+        </div>
+        <label>当前安装目录
+          <div class="input-action"><input id="comfy-install-directory" value="${escapeHtml(effectiveComfyInstallDirectory)}" placeholder="留空时自动选择扫描结果"><button class="secondary" id="pick-comfy-install-directory">选择目录</button></div>
+        </label>
+        ${comfyInstallations.length ? `<div class="comfy-installation-list">
+          ${comfyInstallations.map((installation) => {
+            const active = settings.comfyInstallDirectory
+              ? installation.selected || installation.directory.toLowerCase() === settings.comfyInstallDirectory.toLowerCase()
+              : installation === comfyInstallations[0];
+            const typeLabel = installation.type === "desktop" ? "Desktop" : installation.type === "portable" ? "便携版" : "源码版";
+            const versionParts = [
+              installation.desktopVersion ? `Desktop v${installation.desktopVersion}` : "",
+              installation.version ? `核心 v${installation.version}` : ""
+            ].filter(Boolean);
+            const version = versionParts.join(" · ") || "版本元数据未读取到";
+            return `<article class="comfy-installation ${active ? "active" : ""}">
+              <div><div class="model-title"><strong>${escapeHtml(typeLabel)}</strong><span class="model-badge">${escapeHtml(version)}</span></div><code title="${escapeHtml(installation.directory)}">${escapeHtml(installation.directory)}</code>${installation.revision ? `<span class="muted">提交 ${escapeHtml(installation.revision)}</span>` : ""}</div>
+              <button class="secondary" data-select-comfy-install="${escapeHtml(installation.directory)}" ${active ? "disabled" : ""}>${active ? "当前使用" : "使用此版本"}</button>
+            </article>`;
+          }).join("")}
+        </div>` : `<p class="muted proxy-hint">没有在常见位置找到安装。可手动选择包含 ComfyUI.exe、Comfy Desktop.exe 或 main.py 的目录。</p>`}
+      </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>ComfyUI 连接</h2><span class="muted">连接运行中的 ComfyUI API</span></div><button class="secondary" data-test="comfy">测试连接</button></div>
         <label>服务地址<input id="comfy-url" value="${escapeHtml(settings.comfyUrl)}" placeholder="http://127.0.0.1:8188"></label>
@@ -947,13 +1027,13 @@ function settingsPage(): string {
           <div><h2>视频模型</h2><span class="muted">根据真实文件组件判断是否可用，不仅检查单个 checkpoint 名称。</span></div>
           <label class="compact-label">默认模型<select id="default-video-model">
             ${(videoProfiles.length ? videoProfiles : [
-              { id: "sulphur2", name: "Sulphur 2 GGUF", available: false },
-              { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: false },
-              { id: "hunyuan15", name: "HunyuanVideo 1.5 I2V", available: false }
-            ]).map((profile) => `<option value="${profile.id}" ${settings.defaultVideoModel === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}
+              { id: "sulphur2", name: "Sulphur 2 GGUF", available: false, integrated: true },
+              { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: false, integrated: true },
+              { id: "hunyuan15", name: "HunyuanVideo 1.5 I2V", available: false, integrated: true }
+            ]).map((profile) => `<option value="${profile.id}" ${settings.defaultVideoModel === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escapeHtml(profile.name)}${!profile.available ? " · 缺组件" : profile.integrated === false ? " · 工作流待接入" : ""}</option>`).join("")}
           </select></label>
         </div>
-        <div class="scan-result">${environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${videoAvailable} 个可运行模型，${videoProfiles.length - videoAvailable} 个待补齐` : "等待首次扫描"}</div>
+        <div class="scan-result">${environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${videoAvailable} 个已接入可运行模型，${videoProfiles.length - videoAvailable} 个缺组件或等待工作流接入` : "等待首次扫描"}</div>
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>Sulphur 2 部署</h2><span class="muted">同一档位同时决定普通 I2V、原生 Extend、模型扫描和新任务快照。</span></div><span class="model-badge">分离式 GGUF</span></div>
@@ -1013,13 +1093,49 @@ function settingsPage(): string {
   const nodeInstalled = environmentScan?.customNodes.filter(
     (node) => node.installed && !node.loadError
   ).length ?? 0;
+  const h3CoreNodes = environmentScan?.comfyCompatibility.coreNodes ?? [];
+  const h3CoreKnown = environmentScan?.comfyCompatibility.checkedFrom !== "";
+  const h3CoreReady = h3CoreNodes.length > 0 && h3CoreNodes.every((node) => node.available);
+  const workflowDependencies = environmentScan?.workflowDependencies ?? [];
+  const nodeDependencyAvailable = nodeInstalled + (h3CoreReady ? 1 : 0) +
+    workflowDependencies.filter((workflow) => workflow.installed).length;
+  const nodeDependencyTotal = (environmentScan?.customNodes.length ?? 0) + 1 +
+    workflowDependencies.length;
   const nodePanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>节点与工作流依赖</h2><span class="muted">换电脑后按项目清单复现 ComfyUI 节点环境</span></div><span class="model-badge">${nodeInstalled}/${environmentScan?.customNodes.length ?? 0} 可用</span></div>
+        <div class="section-heading"><div><h2>节点与工作流依赖</h2><span class="muted">换电脑后按项目清单复现 ComfyUI 节点环境</span></div><span class="model-badge">${nodeDependencyAvailable}/${nodeDependencyTotal} 可用</span></div>
         <div class="scan-result">安装只使用项目内置仓库清单；完成后重启 ComfyUI，再重新扫描。</div>
       </section>
       <div class="model-profile-list">
+        <article class="panel custom-node-card ${h3CoreReady ? "available" : "missing"}">
+          <div class="custom-node-copy">
+            <div class="model-title"><h3>MiniMax H3 I2V 核心节点</h3><span class="model-badge">ComfyUI 核心</span></div>
+            <p>这些节点随 ComfyUI 核心提供，不应安装成第三方 custom node；缺失时更新所选 ComfyUI 核心并重启复检。</p>
+            <div class="component-list">
+              ${h3CoreNodes.map((node) => `<div class="component-row ${node.available ? "found" : "missing"}"><span class="component-state">${node.available ? "✓" : "!"}</span><div><strong>${escapeHtml(node.label)}</strong><code>${escapeHtml(node.id)}</code></div></div>`).join("") || `<div class="component-row missing"><span class="component-state">!</span><div><strong>等待扫描核心节点</strong></div></div>`}
+            </div>
+            <span class="muted">最低参考提交 <code>${escapeHtml(environmentScan?.comfyCompatibility.h3MinimumRevision ?? "")}</code></span>
+            ${comfyUpdateLog ? `<details class="node-log" open><summary>核心处理日志</summary><pre>${escapeHtml(comfyUpdateLog)}</pre></details>` : ""}
+          </div>
+          <div class="custom-node-actions">
+            <span class="model-availability ${h3CoreReady ? "available" : "missing"}">${h3CoreReady ? "✓ 已加载" : h3CoreKnown ? "核心缺失" : "尚未启动检测"}</span>
+            ${h3CoreReady ? "" : `<button class="primary" id="repair-h3-core" ${coreDependencyRepairing ? "disabled" : ""}>${coreDependencyRepairing ? "处理中…" : h3CoreKnown ? "一键补齐/更新" : "启动并检测"}</button>`}
+          </div>
+        </article>
+        ${workflowDependencies.map((workflow) => `
+          <article class="panel custom-node-card ${workflow.installed ? "available" : "missing"}">
+            <div class="custom-node-copy">
+              <div class="model-title"><h3>${escapeHtml(workflow.name)}</h3><span class="model-badge">官方工作流</span></div>
+              <p>${escapeHtml(workflow.purpose)}</p>
+              <code>${escapeHtml(workflow.path || workflow.sourceUrl)}</code>
+              ${workflowDependencyLogs[workflow.id] ? `<details class="node-log" open><summary>安装日志</summary><pre>${escapeHtml(workflowDependencyLogs[workflow.id])}</pre></details>` : ""}
+            </div>
+            <div class="custom-node-actions">
+              <span class="model-availability ${workflow.installed ? "available" : "missing"}">${workflow.installed ? "✓ 已安装" : "未安装"}</span>
+              <button class="primary" data-install-workflow="${escapeHtml(workflow.id)}" ${workflowDependencyInstalling ? "disabled" : ""}>${workflowDependencyInstalling === workflow.id ? "安装中…" : workflow.installed ? "重新安装" : "一键安装"}</button>
+            </div>
+          </article>`).join("")}
         ${(environmentScan?.customNodes ?? []).map((node) => `
           <article class="panel custom-node-card ${node.installed && !node.loadError ? "available" : "missing"}">
             <div class="custom-node-copy">
@@ -1057,7 +1173,7 @@ function settingsPage(): string {
           ["nodes", "◇", "节点与工作流"],
           ["prompt", "✦", "提示词扩写"],
           ["upscale", "↗", "分辨率提升"]
-        ] as const).map(([id, icon, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeInstalled}/${environmentScan.customNodes.length}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
+        ] as const).map(([id, icon, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
       </nav>
       <div class="settings-content">${activePanel}</div>
     </div>
@@ -1750,6 +1866,9 @@ function bindCreate(): void {
         }
         patchDraft({
           modelId: value,
+          ...(value === "minimax_h3_fl2va"
+            ? { fps: 24 as const, frameInterpolation: "off" as const }
+            : {}),
           ...(!bundled?.supportsEndImage ? { endImagePath: "" } : {}),
           workflowPath:
             bundled?.path ??
@@ -2114,6 +2233,10 @@ function formSettings(): Settings {
     document.querySelector<HTMLInputElement>(`#${id}`)?.checked ?? fallback;
   return {
     comfyUrl: value("comfy-url", base.comfyUrl),
+    comfyInstallDirectory: value(
+      "comfy-install-directory",
+      base.comfyInstallDirectory
+    ),
     lmStudioUrl: value("lm-url", base.lmStudioUrl),
     lmStudioModel: value("lm-model", base.lmStudioModel),
     lmStudioInstallDirectory: value(
@@ -2241,6 +2364,65 @@ function bindSettings(): void {
       render();
     });
   });
+  document.querySelector<HTMLButtonElement>("#update-comfyui")?.addEventListener("click", async () => {
+    const currentSettings = formSettings();
+    settingsDraft = currentSettings;
+    comfyUpdating = true;
+    comfyUpdateLog = "";
+    render();
+    try {
+      const result = await window.studio.updateComfyUi(currentSettings);
+      comfyUpdateLog = result.log || result.message;
+      showMessage(result.message);
+      if (result.ok && environmentScan?.comfyCompatibility.updateMode === "git") {
+        serviceStatusMessage = "更新完成。重启 ComfyUI 后会重新检测 H3 核心节点。";
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      comfyUpdateLog = message;
+      showMessage(`ComfyUI 更新失败：${message}`);
+    } finally {
+      comfyUpdating = false;
+      render();
+    }
+  });
+  document.querySelector<HTMLButtonElement>("#repair-h3-core")?.addEventListener("click", async () => {
+    const currentSettings = formSettings();
+    settingsDraft = currentSettings;
+    coreDependencyRepairing = true;
+    comfyUpdateLog = "";
+    render();
+    try {
+      if (!environmentScan?.comfyCompatibility.checkedFrom) {
+        const started = await window.studio.startLocalService("comfy", currentSettings);
+        comfyUpdateLog = started.message;
+        environmentScan = await window.studio.scanEnvironment(currentSettings);
+        if (environmentScan.comfyCompatibility.h3CoreSupported) {
+          showMessage("ComfyUI 已启动，MiniMax H3 I2V 核心节点已加载。");
+          return;
+        }
+      }
+      const updateMode = environmentScan?.comfyCompatibility.updateMode;
+      const result = await window.studio.updateComfyUi(currentSettings);
+      comfyUpdateLog = [comfyUpdateLog, result.log || result.message]
+        .filter(Boolean)
+        .join("\n\n");
+      if (!result.ok) throw new Error(result.message);
+      if (updateMode === "git") {
+        const restarted = await window.studio.restartLocalService("comfy", currentSettings);
+        comfyUpdateLog += `\n\n${restarted.message}`;
+        environmentScan = await window.studio.scanEnvironment(currentSettings);
+      }
+      showMessage(result.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      comfyUpdateLog = [comfyUpdateLog, message].filter(Boolean).join("\n\n");
+      showMessage(`核心节点处理失败：${message}`);
+    } finally {
+      coreDependencyRepairing = false;
+      render();
+    }
+  });
   document.querySelectorAll<HTMLButtonElement>("[data-repair-issue]").forEach((button) => {
     button.addEventListener("click", async () => {
       const issueId = button.dataset.repairIssue as NonNullable<EnvironmentScanResult["issues"]>[number]["id"];
@@ -2287,6 +2469,38 @@ function bindSettings(): void {
         const message = error instanceof Error ? error.message : String(error);
         customNodeLogs = { ...customNodeLogs, [nodeId]: message };
         showMessage(`节点安装失败：${message}`);
+      }
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-install-workflow]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const workflowId = button.dataset.installWorkflow as "minimax_h3_i2v";
+      const currentSettings = formSettings();
+      settingsDraft = currentSettings;
+      workflowDependencyInstalling = workflowId;
+      render();
+      try {
+        const result = await window.studio.installWorkflowDependency(
+          workflowId,
+          currentSettings
+        );
+        workflowDependencyLogs = {
+          ...workflowDependencyLogs,
+          [workflowId]: result.log || result.message
+        };
+        if (!result.ok) throw new Error(result.message);
+        environmentScan = await window.studio.scanEnvironment(currentSettings);
+        showMessage(result.message);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        workflowDependencyLogs = {
+          ...workflowDependencyLogs,
+          [workflowId]: workflowDependencyLogs[workflowId] || message
+        };
+        showMessage(`工作流安装失败：${message}`);
+      } finally {
+        workflowDependencyInstalling = "";
+        render();
       }
     });
   });
@@ -2352,12 +2566,32 @@ function bindSettings(): void {
     if (!environmentScan?.comfyRoot) return;
     const nextSettings = {
       ...formSettings(),
+      comfyInstallDirectory:
+        environmentScan.comfyInstallDirectory || formSettings().comfyInstallDirectory,
       modelDirectory: environmentScan.modelDirectory,
       outputDirectory: environmentScan.outputDirectory
     };
     state = await window.studio.saveSettings(nextSettings);
     settingsDraft = null;
     showMessage("已采用扫描到的 ComfyUI 模型和输出目录。");
+  });
+  document.querySelector("#pick-comfy-install-directory")?.addEventListener("click", async () => {
+    const directory = await window.studio.pickDirectory();
+    const input = document.querySelector<HTMLInputElement>("#comfy-install-directory");
+    if (!directory || !input) return;
+    input.value = directory;
+    settingsDraft = formSettings();
+    await runEnvironmentScan(settingsDraft);
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-select-comfy-install]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const directory = button.dataset.selectComfyInstall;
+      const input = document.querySelector<HTMLInputElement>("#comfy-install-directory");
+      if (!directory || !input) return;
+      input.value = directory;
+      settingsDraft = formSettings();
+      await runEnvironmentScan(settingsDraft);
+    });
   });
   document.querySelector("#pick-model-directory")?.addEventListener("click", async () => {
     const directory = await window.studio.pickDirectory();

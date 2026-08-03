@@ -19,11 +19,12 @@
 | 状态持久化 | 原子替换 JSON | 是（基础版） | 数据量增大后迁移 SQLite；视频和图片只保存路径 |
 | 本地提示词扩写 | LM Studio OpenAI 兼容 `/v1/chat/completions` | 是 | 启动本地服务器、加载模型、实测模板 |
 | ComfyUI 连接 | HTTP API + WebSocket，history 轮询兜底 | 是 | 用真实工作流验证 `progress/execution_error` 消息和输出结构 |
-| I2V 模型适配 | API 工作流 JSON + 占位符替换 | Sulphur/Wan/Hunyuan 八组模型已接入 | 新模型继续按独立资源映射和真实 `/prompt` 校验接入 |
+| I2V 模型适配 | API 工作流 JSON + 占位符替换 | MiniMax H3 FL2VA、Sulphur、Wan、Hunyuan 已接入 | 新模型继续按独立资源映射和真实 `/prompt` 校验接入 |
 | 视频编码 | ComfyUI 工作流输出节点 | 依赖工作流 | VideoHelperSuite 1.7.9 由应用修复 ComfyUI 0.18 meta-batch 兼容层 |
 | 安全取消/部分视频 | 调用 `/interrupt` | 安全中止已接；部分视频未接 | 需要工作流按片段/帧落盘，并用 FFmpeg 合成已完成帧 |
 | 历史 | 保存任务快照、解析 outputs、详情和 Explorer 定位 | 作品版本组已接 | 后续增加路径重定位与导入 |
 | Frame Interpolation | RIFE 2×/4× | 是 | 新机复制/下载 `rife47.pth` 并测试多帧画质 |
+| MiniMax H3 I2V | ComfyUI 核心节点 + 官方 FL2VA INT8 权重 + 内置 API 工作流 | 是 | 只接图生视频；不接纯文本与 Ref2VA；首版按 4090 限制为 5 秒 |
 | 分辨率提升 | SeedVR2 / FlashVSR / Real-ESRGAN | 是 | 新环境需按设置页补齐节点与权重；Hunyuan SR 属于生成管线第二阶段 |
 | 模型扫描 | 文件、组件、自定义节点和服务扫描 | 是 | 后续增加组件版本锁定和生成前 dry-run |
 | Windows 文件操作 | 图片/工作流/目录选择、Explorer 定位 | 部分 | 增加复制真实文件到剪贴板 |
@@ -110,6 +111,39 @@ npm run dev
 ```
 
 ## 5. ComfyUI 工作流准备
+
+### MiniMax H3 版本与依赖
+
+MiniMax H3 在 ComfyUI 核心提交 `57500fc5` 首次加入。官方教程曾提前写成
+“0.30.0 或更高”，但实际应优先检测 `/object_info` 中是否存在以下核心节点，
+而不是只比较版本号：
+
+- `MiniMaxH3ImageToVideo`
+
+截图中的 `0.29.2 + 44 commits (f72b688)` 已包含最低 H3 提交。H3 不需要额外
+第三方节点；模型设置只扫描 Image-to-Video 使用的 FL2VA 权重、Qwen3-VL 32B
+编码器、视频 VAE 和音频 VAE，不扫描或接入纯文本与 Ref2VA 流程。H3 依赖显示在
+“节点与工作流”分类中，不混入 ComfyUI 安装管理。
+
+ComfyUI 系统设置会列出扫描到的全部 Desktop、便携版和源码安装。同机存在多个
+版本时会提示，并允许手动选择安装目录；一键启动、更新和离线版本检测都以保存的
+选择为准。留空才采用自动扫描的第一项。Desktop 2 必须读取
+`%APPDATA%/Comfy Desktop/installations.json`：`Comfy Desktop.exe` 只是启动器，真正
+实例由其中的 `installPath` 指向，核心通常位于 `installPath/ComfyUI`。启动器目录不得
+作为 Desktop 2 核心目录。Desktop 应用版本、本地实例核心版本和当前 API 服务版本
+分别显示；若 API 与所选实例不同，设置页会提示可能连接到了另一个实例。Desktop
+更新按钮打开官方更新器；Git 安装只有在工作区干净时才执行 `pull --ff-only`。
+
+H3 I2V 必需的核心节点和官方 UI 工作流归入“节点与工作流”分类。核心节点随 ComfyUI
+发布，缺失时按钮执行核心更新/启动复检，不会伪装成第三方 custom node；官方 I2V
+工作流可一键下载到 `user/default/workflows/video_minimax_h3_i2v.json`，下载遵循代理
+设置。视频模型分类只负责检查 FL2VA、文本编码器和双 VAE 权重。应用同时内置
+`workflows/minimax_h3_i2v_api.json` 用于实际排队生成，参数遵循官方 FL2VA 工作流：
+`res_multistep`、`simple` scheduler、20 步和原生 24 FPS 音视频输出。
+
+RTX 4090 首版安全档限制为 5 秒（124 帧，H3 要求 `17n+5` 帧）且关闭 RIFE；输出
+尺寸对齐 32 像素。采样完成后先卸载扩散模型，再分块解码视频 VAE，卸载后再解码
+音频 VAE，避免扩散模型与两个 VAE 同时驻留显存。更长片段要在真实 4090 压测后再放开。
 
 必须从 ComfyUI 导出 **API 格式**工作流，而不是普通 UI workflow。官方说明中，API 工作流是以节点 ID 为 key，并含 `class_type` 与 `inputs` 的 JSON 对象：
 

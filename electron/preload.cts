@@ -35,10 +35,14 @@ const api: AppApi = {
     ipcRenderer.invoke("service:start", kind, settings),
   restartLocalService: (kind, settings) =>
     ipcRenderer.invoke("service:restart", kind, settings),
+  updateComfyUi: (settings) =>
+    ipcRenderer.invoke("comfyui:update", settings),
   repairEnvironmentIssue: (issueId: EnvironmentIssue["id"], settings) =>
     ipcRenderer.invoke("environment:repair", issueId, settings),
   installCustomNode: (nodeId, settings) =>
     ipcRenderer.invoke("custom-node:install", nodeId, settings),
+  installWorkflowDependency: (workflowId, settings) =>
+    ipcRenderer.invoke("workflow-dependency:install", workflowId, settings),
   enqueue: (draft: Draft) => ipcRenderer.invoke("queue:enqueue", draft),
   enqueueExtension: (draft: Draft) =>
     ipcRenderer.invoke("queue:enqueue-extension", draft),

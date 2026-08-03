@@ -45,6 +45,7 @@ export type LtxExtensionModelProfile =
 
 export interface Settings {
   comfyUrl: string;
+  comfyInstallDirectory: string;
   lmStudioUrl: string;
   lmStudioModel: string;
   lmStudioInstallDirectory: string;
@@ -259,6 +260,43 @@ export interface EnvironmentItem {
   optional?: boolean;
 }
 
+export interface ComfyUiCoreNodeStatus {
+  id: string;
+  label: string;
+  available: boolean;
+}
+
+export interface ComfyUiCompatibility {
+  version: string;
+  revision: string;
+  h3MinimumRevision: string;
+  h3CoreSupported: boolean;
+  coreNodes: ComfyUiCoreNodeStatus[];
+  checkedFrom: "api" | "source" | "";
+  updateMode: "desktop" | "git" | "unsupported";
+  updateHint: string;
+}
+
+export interface ComfyUiInstallationSummary {
+  type: "desktop" | "manual" | "portable";
+  directory: string;
+  sourceDirectory: string;
+  executable: string;
+  desktopVersion: string;
+  version: string;
+  revision: string;
+  selected: boolean;
+}
+
+export interface WorkflowDependencyStatus {
+  id: "minimax_h3_i2v";
+  name: string;
+  purpose: string;
+  installed: boolean;
+  path: string;
+  sourceUrl: string;
+}
+
 export interface ModelComponentStatus {
   label: string;
   found: boolean;
@@ -281,6 +319,7 @@ export interface ModelScanProfile {
   description: string;
   vram: string;
   available: boolean;
+  integrated: boolean;
   components: ModelComponentStatus[];
 }
 
@@ -312,11 +351,14 @@ export interface EnvironmentScanResult {
   comfyInstallDirectory: string;
   comfySourceDirectory: string;
   comfyInstallType: "desktop" | "manual" | "portable" | "";
+  comfyInstallations: ComfyUiInstallationSummary[];
   modelDirectory: string;
   outputDirectory: string;
+  comfyCompatibility: ComfyUiCompatibility;
   items: EnvironmentItem[];
   modelProfiles: ModelScanProfile[];
   customNodes: CustomNodeStatus[];
+  workflowDependencies: WorkflowDependencyStatus[];
   issues: EnvironmentIssue[];
 }
 
@@ -388,12 +430,17 @@ export interface AppApi {
     kind: LocalServiceKind,
     settings: Settings
   ): Promise<ConnectionResult>;
+  updateComfyUi(settings: Settings): Promise<ConnectionResult>;
   repairEnvironmentIssue(
     issueId: EnvironmentIssue["id"],
     settings: Settings
   ): Promise<ConnectionResult>;
   installCustomNode(
     nodeId: string,
+    settings: Settings
+  ): Promise<ConnectionResult>;
+  installWorkflowDependency(
+    workflowId: WorkflowDependencyStatus["id"],
     settings: Settings
   ): Promise<ConnectionResult>;
   enqueue(draft: Draft): Promise<AppState>;

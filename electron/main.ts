@@ -59,11 +59,13 @@ import {
 } from "./services/lm-studio.js";
 import {
   installCustomNode,
+  installWorkflowDependency,
   repairEnvironmentIssue,
   resolveComfyOutputDirectory,
   restartLocalService,
   scanEnvironment,
-  startLocalService
+  startLocalService,
+  updateComfyUi
 } from "./services/environment.js";
 import {
   freeMemory,
@@ -230,6 +232,10 @@ async function bundledWorkflowFor(
     return null;
   }
   const definitions: Record<string, { filename: string; label: string }> = {
+    minimax_h3_fl2va: {
+      filename: "minimax_h3_i2v_api.json",
+      label: "内置 · MiniMax H3 FL2VA · 原生 24 FPS 音视频"
+    },
     sulphur2: {
       filename: `sulphur2_ltx23_i2v_gguf_${ltxVariant}_api.json`,
       label: `内置 · Sulphur 2 图生视频 · ${ltxProfileLabel}`
@@ -1084,6 +1090,10 @@ function registerIpc(): void {
       restartLocalService(kind, settings)
   );
   ipcMain.handle(
+    "comfyui:update",
+    (_event, settings: Settings) => updateComfyUi(settings)
+  );
+  ipcMain.handle(
     "environment:repair",
     (_event, issueId: EnvironmentIssue["id"], settings: Settings) =>
       repairEnvironmentIssue(issueId, settings)
@@ -1092,6 +1102,11 @@ function registerIpc(): void {
     "custom-node:install",
     (_event, nodeId: string, settings: Settings) =>
       installCustomNode(nodeId, settings)
+  );
+  ipcMain.handle(
+    "workflow-dependency:install",
+    (_event, workflowId, settings: Settings) =>
+      installWorkflowDependency(workflowId, settings)
   );
   ipcMain.handle("queue:enqueue", async (_event, draft: Draft) => {
     if (draft.inputMode !== "image") {

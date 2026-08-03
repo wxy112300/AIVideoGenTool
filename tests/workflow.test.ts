@@ -73,6 +73,47 @@ const extensionTask: ExtensionQueueTask = {
 };
 
 describe("renderWorkflow", () => {
+  it("renders the bundled MiniMax H3 I2V graph with staged model and VAE unloading", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as unknown;
+    const h3Task: QueueTask = {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    };
+    const rendered = renderWorkflow(source, h3Task, {
+      inputImage: "input.png",
+      vramTotalBytes: 24 * 1024 ** 3
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(rendered["6"]?.inputs).toMatchObject({
+      width: 864,
+      height: 480,
+      length: 124,
+      first_frame: ["5", 0]
+    });
+    expect(rendered["8"]?.inputs).toMatchObject({
+      scheduler: "simple",
+      steps: 20,
+      denoise: 1
+    });
+    expect(rendered["13"]?.class_type).toBe("VAEDecodeTiled");
+    expect(rendered["13"]?.inputs.samples).toEqual(["12", 0]);
+    expect(rendered["15"]?.inputs.samples).toEqual(["14", 0]);
+    expect(rendered["16"]?.inputs).toMatchObject({
+      images: ["14", 1],
+      audio: ["15", 0],
+      fps: 24
+    });
+  });
+
   it("replaces nested values while preserving numeric token types", () => {
     const result = renderWorkflow(
       {
@@ -373,6 +414,33 @@ describe("renderWorkflow", () => {
 });
 
 describe("generation VRAM safety", () => {
+  it("keeps MiniMax H3 on the official 17n+5 frame grid and 5-second 4090 profile", () => {
+    const h3Task = {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      fps: 24 as const,
+      frameInterpolation: "off" as const
+    };
+    expect(frameCountForTask({ ...h3Task, duration: 1 }, 24)).toBe(39);
+    expect(frameCountForTask({ ...h3Task, duration: 3 }, 24)).toBe(73);
+    expect(generationSafetyForTask(h3Task)).toMatchObject({
+      safe: true,
+      generatedFrames: 124,
+      maxGeneratedFrames: 124,
+      maxDurationSeconds: 5
+    });
+    expect(generationSafetyForTask({ ...h3Task, duration: 6 }).safe).toBe(false);
+  });
+
+  it("aligns MiniMax H3 dimensions to the required 32-pixel grid", () => {
+    expect(outputDimensions({
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      resolution: 480,
+      ratio: "16:9"
+    })).toEqual([864, 480]);
+  });
+
   it("allows the official 121-frame Wan 5B baseline", () => {
     const safety = generationSafetyForTask({
       ...task,

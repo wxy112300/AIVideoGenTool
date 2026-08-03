@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
+  ComfyUiCompatibility,
+  ComfyUiInstallationSummary,
   CustomNodeStatus,
   EnvironmentIssue,
   EnvironmentItem,
@@ -12,10 +14,31 @@ import type {
   LocalServiceKind,
   ModelComponentStatus,
   ModelScanProfile,
-  Settings
+  Settings,
+  WorkflowDependencyStatus
 } from "../../src/types.js";
 
 const execFileAsync = promisify(execFile);
+
+export const MINIMAX_H3_MINIMUM_COMFY_REVISION = "57500fc5";
+const minimaxH3I2vWorkflowUrl =
+  "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/video_minimax_h3_i2v.json";
+
+const minimaxH3CoreNodes = [
+  { id: "MiniMaxH3ImageToVideo", label: "H3 首帧 / 首尾帧图生视频" }
+] as const;
+
+export function evaluateMiniMaxH3CoreSupport(
+  objectInfo: unknown
+): ComfyUiCompatibility["coreNodes"] {
+  const available = objectInfo && typeof objectInfo === "object" && !Array.isArray(objectInfo)
+    ? new Set(Object.keys(objectInfo as Record<string, unknown>))
+    : new Set<string>();
+  return minimaxH3CoreNodes.map((node) => ({
+    ...node,
+    available: available.has(node.id)
+  }));
+}
 
 const customNodeCatalog = [
   {
@@ -88,6 +111,7 @@ interface CandidateContext {
   localAppData: string;
   modelDirectory?: string;
   outputDirectory?: string;
+  installDirectory?: string;
   driveRoots?: string[];
 }
 
@@ -166,6 +190,7 @@ export function buildComfyCandidates(context: CandidateContext): string[] {
   const { homeDirectory, localAppData } = context;
   const driveRoots = context.driveRoots ?? ["C:\\", "D:\\", "E:\\", "F:\\"];
   return uniqueWindowsPaths([
+    rootFromConfiguredDirectory(context.installDirectory),
     rootFromConfiguredDirectory(context.modelDirectory),
     rootFromConfiguredDirectory(context.outputDirectory),
     path.join(homeDirectory, "Documents", "ComfyUI"),
@@ -189,6 +214,12 @@ export function buildComfyDesktopCandidates(
   const programFiles = context.programFiles ?? "C:\\Program Files";
   const driveRoots = context.driveRoots ?? ["C:\\", "D:\\"];
   return uniqueWindowsPaths([
+    path.join(context.localAppData, "Programs", "ComfyUI", "Comfy Desktop", "Comfy Desktop.exe"),
+    path.join(context.localAppData, "ComfyUI", "Comfy Desktop", "Comfy Desktop.exe"),
+    path.join(programFiles, "ComfyUI", "Comfy Desktop", "Comfy Desktop.exe"),
+    ...driveRoots.map((root) =>
+      path.join(root, "Program Files", "ComfyUI", "Comfy Desktop", "Comfy Desktop.exe")
+    ),
     path.join(context.localAppData, "Programs", "ComfyUI", "ComfyUI.exe"),
     path.join(context.localAppData, "ComfyUI", "ComfyUI.exe"),
     path.join(programFiles, "ComfyUI", "ComfyUI.exe"),
@@ -206,6 +237,7 @@ interface ModelProfileDefinition {
   badge: string;
   description: string;
   vram: string;
+  integrated?: boolean;
   components: Array<{
     label: string;
     expected: string;
@@ -214,6 +246,33 @@ interface ModelProfileDefinition {
 }
 
 const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
+  "minimax_h3_fl2va:MiniMax H3 FL2VA INT8 模型": {
+    sourceLabel: "Comfy-Org / MiniMax-H3",
+    downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    targetSubdirectory: "diffusion_models",
+    recommendedFilename: "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    notes: "图生视频和首尾帧共用此模型。4090 使用官方 pruned INT8 ConvRot 版本；本工具不接入纯文本和 Reference-to-Video 流程。"
+  },
+  "minimax_h3_fl2va:Qwen3-VL 32B H3 文本编码器": {
+    sourceLabel: "Comfy-Org / MiniMax-H3",
+    downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    notes: "官方低显存工作流使用 NVFP4 AWQ。RTX 4090 可运行，但没有 RTX 50 系列的原生 FP4 加速。"
+  },
+  "minimax_h3_fl2va:MiniMax H3 视频 VAE": {
+    sourceLabel: "Comfy-Org / MiniMax-H3",
+    downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+    targetSubdirectory: "vae",
+    recommendedFilename: "minimax_h3_video_vae_fp16.safetensors"
+  },
+  "minimax_h3_fl2va:MiniMax H3 音频 VAE": {
+    sourceLabel: "Comfy-Org / MiniMax-H3",
+    downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+    targetSubdirectory: "vae",
+    recommendedFilename: "minimax_h3_audio_vae_fp32.safetensors",
+    notes: "H3 原生立体声音频必须使用此 VAE；与视频 VAE 一起放在 models/vae。"
+  },
   "sulphur2:Sulphur 2 Q2_K distilled GGUF": {
     sourceLabel: "szwagros / sulphur-2-gguf",
     downloadUrl: "https://huggingface.co/szwagros/sulphur-2-gguf/tree/main",
@@ -552,6 +611,37 @@ function sulphurComponentsFor(
 }
 
 const modelProfileDefinitions: ModelProfileDefinition[] = [
+  {
+    id: "minimax_h3_fl2va",
+    name: "MiniMax H3 Image to Video",
+    category: "video",
+    badge: "原生音视频",
+    description: "只接入首帧或首尾帧图生视频，原生 24 FPS 同步立体声音频；不提供纯文本流程。",
+    vram: "4090：pruned INT8 · DynamicVRAM",
+    integrated: true,
+    components: [
+      {
+        label: "MiniMax H3 FL2VA INT8 模型",
+        expected: "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        patterns: [/(?:diffusion_models|unet)\/minimax_h3_fl2va_pruned_int8_convrot\.safetensors$/i]
+      },
+      {
+        label: "Qwen3-VL 32B H3 文本编码器",
+        expected: "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        patterns: [/text_encoders\/qwen3vl_32b_minimax_h3_nvfp4_awq\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 视频 VAE",
+        expected: "vae/minimax_h3_video_vae_fp16.safetensors",
+        patterns: [/vae\/minimax_h3_video_vae_fp16\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 音频 VAE",
+        expected: "vae/minimax_h3_audio_vae_fp32.safetensors",
+        patterns: [/vae\/minimax_h3_audio_vae_fp32\.safetensors$/i]
+      }
+    ]
+  },
   {
     id: "sulphur2",
     name: "Sulphur 2 GGUF",
@@ -899,6 +989,7 @@ export function evaluateModelProfiles(
         matches,
         installGuide:
           installGuides[`${profile.id}:${component.label}`] ??
+          installGuides[`minimax_h3_fl2va:${component.label}`] ??
           installGuides[`hunyuan15:${component.label}`]
       };
     });
@@ -910,6 +1001,7 @@ export function evaluateModelProfiles(
       description: profile.description,
       vram: profile.vram,
       available: components.every((component) => component.found),
+      integrated: profile.integrated !== false,
       components
     };
   });
@@ -1355,6 +1447,7 @@ async function findComfyRoot(settings: Settings): Promise<string> {
     ...buildComfyCandidates({
       homeDirectory,
       localAppData,
+      installDirectory: settings.comfyInstallDirectory,
       modelDirectory: settings.modelDirectory,
       outputDirectory: settings.outputDirectory
     }),
@@ -1366,72 +1459,354 @@ async function findComfyRoot(settings: Settings): Promise<string> {
   return "";
 }
 
-async function findComfyDesktopExecutable(): Promise<string> {
+type ComfyInstallation = Omit<
+  ComfyUiInstallationSummary,
+  "desktopVersion" | "version" | "revision" | "selected"
+>;
+
+export function buildComfyDesktopSourceCandidates(executable: string): string[] {
+  const directory = path.dirname(executable);
+  return uniqueWindowsPaths([
+    path.join(directory, "resources", "ComfyUI"),
+    path.join(path.dirname(directory), "resources", "ComfyUI")
+  ]);
+}
+
+async function readWindowsProductVersion(executable: string): Promise<string> {
+  if (!executable || !(await exists(executable))) return "";
+  try {
+    const { stdout } = await execFileAsync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "(Get-Item -LiteralPath ([Environment]::GetEnvironmentVariable('AIVIDEO_COMFY_EXE'))).VersionInfo.ProductVersion"
+      ],
+      {
+        encoding: "utf8",
+        timeout: 5000,
+        windowsHide: true,
+        env: { ...process.env, AIVIDEO_COMFY_EXE: executable }
+      }
+    );
+    return stdout.trim();
+  } catch {
+    return "";
+  }
+}
+
+async function desktopInstallation(executable: string): Promise<ComfyInstallation> {
+  const directory = path.dirname(executable);
+  const sourceCandidates = buildComfyDesktopSourceCandidates(executable);
+  const sourceDirectory = (await Promise.all(
+    sourceCandidates.map(async (candidate) =>
+      (await exists(path.join(candidate, "main.py"))) ? candidate : ""
+    )
+  )).find(Boolean) ?? "";
+  return { type: "desktop", directory, sourceDirectory, executable };
+}
+
+interface ComfyDesktop2RegistryEntry {
+  id: string;
+  name: string;
+  installPath: string;
+  status: string;
+  sourceId: string;
+  comfyVersion?: { commit?: string; baseTag?: string; commitsAhead?: number };
+}
+
+export function parseComfyDesktop2Registry(source: string): ComfyDesktop2RegistryEntry[] {
+  try {
+    const parsed = JSON.parse(source) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is ComfyDesktop2RegistryEntry => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+      const record = entry as Record<string, unknown>;
+      return typeof record.id === "string" &&
+        typeof record.name === "string" &&
+        typeof record.installPath === "string" &&
+        typeof record.status === "string" &&
+        typeof record.sourceId === "string";
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function desktop2ManagedInstallations(
+  executable: string
+): Promise<Array<{ installation: ComfyInstallation; revision: string }>> {
+  const appData = process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
+  const registryPath = path.join(appData, "Comfy Desktop", "installations.json");
+  const entries = parseComfyDesktop2Registry(
+    await fs.readFile(registryPath, "utf8").catch(() => "")
+  );
+  const results: Array<{ installation: ComfyInstallation; revision: string }> = [];
+  for (const entry of entries) {
+    if (entry.sourceId === "cloud" || entry.status !== "installed") continue;
+    const directory = path.resolve(entry.installPath);
+    const sourceCandidates = [path.join(directory, "ComfyUI"), directory];
+    const sourceDirectory = (await Promise.all(sourceCandidates.map(async (candidate) =>
+      (await exists(path.join(candidate, "main.py"))) ? candidate : ""
+    ))).find(Boolean) ?? "";
+    if (!sourceDirectory) continue;
+    results.push({
+      installation: {
+        type: "desktop",
+        directory,
+        sourceDirectory,
+        executable
+      },
+      revision: entry.comfyVersion?.commit?.slice(0, 8) ?? ""
+    });
+  }
+  return results;
+}
+
+async function installationFromDirectory(directory: string | undefined): Promise<ComfyInstallation | null> {
+  if (!directory?.trim()) return null;
+  const selected = path.resolve(directory.trim());
+  const desktopExecutables = [
+    path.join(selected, "Comfy Desktop", "Comfy Desktop.exe"),
+    path.join(selected, "Comfy Desktop.exe"),
+    path.join(selected, "ComfyUI.exe")
+  ];
+  for (const executable of desktopExecutables) {
+    if (await exists(executable)) return desktopInstallation(executable);
+  }
+  const sourceCandidates = [
+    selected,
+    path.join(selected, "ComfyUI"),
+    path.join(selected, "resources", "ComfyUI")
+  ];
+  for (const sourceDirectory of sourceCandidates) {
+    if (!(await exists(path.join(sourceDirectory, "main.py")))) continue;
+    const portablePython = path.join(
+      path.dirname(sourceDirectory),
+      "python_embeded",
+      "python.exe"
+    );
+    const portable = await exists(portablePython);
+    return {
+      type: portable ? "portable" : "manual",
+      directory: sourceDirectory,
+      sourceDirectory,
+      executable: portable ? portablePython : ""
+    };
+  }
+  return null;
+}
+
+async function discoverComfyInstallations(
+  settings: Settings
+): Promise<ComfyUiInstallationSummary[]> {
   const homeDirectory = os.homedir();
   const localAppData =
     process.env.LOCALAPPDATA ?? path.join(homeDirectory, "AppData", "Local");
   const programFiles = process.env.ProgramFiles ?? "C:\\Program Files";
-  const candidates = buildComfyDesktopCandidates({
+  const desktopExecutables = buildComfyDesktopCandidates({
     homeDirectory,
     localAppData,
     programFiles,
     driveRoots: ["C:\\", "D:\\"]
   });
-  for (const candidate of candidates) {
-    if (await exists(candidate)) return candidate;
+  const existingDesktopExecutables = (
+    await Promise.all(desktopExecutables.map(async (executable) => ({
+      executable,
+      exists: await exists(executable)
+    })))
+  ).filter((candidate) => candidate.exists).map((candidate) => candidate.executable);
+  const modernDesktopExecutable = existingDesktopExecutables.find(
+    (executable) => path.basename(executable).toLowerCase() === "comfy desktop.exe"
+  ) ?? "";
+  const managed = modernDesktopExecutable
+    ? await desktop2ManagedInstallations(modernDesktopExecutable)
+    : [];
+  const configuredPath = settings.comfyInstallDirectory?.trim()
+    ? path.resolve(settings.comfyInstallDirectory.trim()).toLowerCase()
+    : "";
+  const managedMatch = managed.find(({ installation }) =>
+    installation.directory.toLowerCase() === configuredPath ||
+    installation.sourceDirectory.toLowerCase() === configuredPath
+  ) ?? (
+    configuredPath && modernDesktopExecutable &&
+    path.dirname(modernDesktopExecutable).toLowerCase() === configuredPath
+      ? managed[0]
+      : undefined
+  );
+  const configured = managedMatch?.installation ??
+    await installationFromDirectory(settings.comfyInstallDirectory);
+  const installations: ComfyInstallation[] = configured ? [configured] : [];
+  installations.push(...managed.map((item) => item.installation));
+
+  for (const executable of existingDesktopExecutables) {
+    if (managed.length && executable.toLowerCase() === modernDesktopExecutable.toLowerCase()) {
+      continue;
+    }
+    installations.push(await desktopInstallation(executable));
+  }
+  const sourceCandidates = uniqueWindowsPaths([
+    ...buildComfyCandidates({
+      homeDirectory,
+      localAppData,
+      installDirectory: settings.comfyInstallDirectory,
+      modelDirectory: settings.modelDirectory,
+      outputDirectory: settings.outputDirectory,
+      driveRoots: ["C:\\", "D:\\"]
+    }),
+    ...(await discoverNamedComfyDirectories(homeDirectory))
+  ]);
+  for (const candidate of sourceCandidates) {
+    const installation = await installationFromDirectory(candidate);
+    if (installation) installations.push(installation);
+  }
+
+  const selectedKey = configured?.directory.toLowerCase() ?? "";
+  const seen = new Set<string>();
+  const unique = installations.filter((installation) => {
+    const key = `${installation.type}:${installation.directory.toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return Promise.all(unique.map(async (installation) => ({
+    ...installation,
+    desktopVersion: installation.type === "desktop"
+      ? await readWindowsProductVersion(installation.executable)
+      : "",
+    version: await readComfySourceVersion(installation.sourceDirectory),
+    revision: managed.find(({ installation: candidate }) =>
+      candidate.directory.toLowerCase() === installation.directory.toLowerCase()
+    )?.revision || await readComfyGitRevision(installation.sourceDirectory),
+    selected: Boolean(selectedKey) && installation.directory.toLowerCase() === selectedKey
+  })));
+}
+
+async function findComfyInstallation(settings: Settings): Promise<ComfyInstallation | null> {
+  const installations = await discoverComfyInstallations(settings);
+  const selected = installations.find((installation) => installation.selected);
+  const installation = selected ?? installations[0];
+  if (!installation) return null;
+  const {
+    desktopVersion: _desktopVersion,
+    version: _version,
+    revision: _revision,
+    selected: _selected,
+    ...result
+  } = installation;
+  return result;
+}
+
+function readStatsString(value: unknown, keys: string[]): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
   return "";
 }
 
-interface ComfyInstallation {
-  type: "desktop" | "manual" | "portable";
-  directory: string;
-  sourceDirectory: string;
-  executable: string;
+async function readComfySourceVersion(sourceDirectory: string): Promise<string> {
+  if (!sourceDirectory) return "";
+  const source = await fs.readFile(
+    path.join(sourceDirectory, "comfyui_version.py"),
+    "utf8"
+  ).catch(() => "");
+  return source.match(/__version__\s*=\s*["']([^"']+)["']/)?.[1] ?? "";
 }
 
-async function findComfyInstallation(
-  settings: Settings
-): Promise<ComfyInstallation | null> {
-  const desktopExecutable = await findComfyDesktopExecutable();
-  if (desktopExecutable) {
-    const directory = path.dirname(desktopExecutable);
-    const sourceDirectory = path.join(directory, "resources", "ComfyUI");
-    return {
-      type: "desktop",
-      directory,
-      sourceDirectory: (await exists(path.join(sourceDirectory, "main.py")))
-        ? sourceDirectory
-        : "",
-      executable: desktopExecutable
-    };
+async function readComfyGitRevision(sourceDirectory: string): Promise<string> {
+  if (!sourceDirectory || !(await exists(path.join(sourceDirectory, ".git")))) {
+    return "";
+  }
+  try {
+    const git = await findExecutable("git.exe");
+    if (!git) return "";
+    const { stdout } = await execFileAsync(
+      git,
+      ["-C", sourceDirectory, "rev-parse", "--short=8", "HEAD"],
+      { encoding: "utf8", timeout: 5000, windowsHide: true }
+    );
+    return stdout.trim();
+  } catch {
+    return "";
+  }
+}
+
+async function inspectComfyCompatibility(
+  baseUrl: string,
+  installation: ComfyInstallation | null
+): Promise<ComfyUiCompatibility> {
+  const sourceDirectory = installation?.sourceDirectory ?? "";
+  let version = "";
+  let revision = "";
+  let objectInfo: unknown = null;
+  let checkedFrom: ComfyUiCompatibility["checkedFrom"] = "";
+  const [statsResult, objectInfoResult] = await Promise.allSettled([
+      fetch(`${baseUrl}/system_stats`, { signal: AbortSignal.timeout(3500) }),
+      fetch(`${baseUrl}/object_info`, { signal: AbortSignal.timeout(8000) })
+  ]);
+  if (statsResult.status === "fulfilled") {
+    const statsResponse = statsResult.value;
+    if (statsResponse.ok) {
+      const stats = await statsResponse.json() as Record<string, unknown>;
+      const system = stats.system;
+      version = readStatsString(system, ["comfyui_version", "version"]);
+      revision = readStatsString(system, [
+        "comfyui_revision",
+        "git_revision",
+        "commit_hash"
+      ]).slice(0, 8);
+    }
+  }
+  if (objectInfoResult.status === "fulfilled") {
+    const objectInfoResponse = objectInfoResult.value;
+    if (objectInfoResponse.ok) {
+      objectInfo = await objectInfoResponse.json();
+      checkedFrom = "api";
+    }
   }
 
-  const homeDirectory = os.homedir();
-  const localAppData =
-    process.env.LOCALAPPDATA ?? path.join(homeDirectory, "AppData", "Local");
-  const candidates = buildComfyCandidates({
-    homeDirectory,
-    localAppData,
-    modelDirectory: settings.modelDirectory,
-    outputDirectory: settings.outputDirectory,
-    driveRoots: ["C:\\", "D:\\"]
-  });
-  for (const candidate of candidates) {
-    if (!(await exists(path.join(candidate, "main.py")))) continue;
-    const portablePython = path.join(
-      path.dirname(candidate),
-      "python_embeded",
-      "python.exe"
-    );
-    return {
-      type: (await exists(portablePython)) ? "portable" : "manual",
-      directory: candidate,
-      sourceDirectory: candidate,
-      executable: (await exists(portablePython)) ? portablePython : ""
-    };
+  if (!version) version = await readComfySourceVersion(sourceDirectory);
+  if (!revision) revision = await readComfyGitRevision(sourceDirectory);
+  if (!objectInfo && sourceDirectory) {
+    const source = await fs.readFile(
+      path.join(sourceDirectory, "comfy_extras", "nodes_minimax_h3.py"),
+      "utf8"
+    ).catch(() => "");
+    if (source) {
+      objectInfo = Object.fromEntries(
+        minimaxH3CoreNodes
+          .filter((node) => source.includes(`node_id="${node.id}"`))
+          .map((node) => [node.id, {}])
+      );
+      checkedFrom = "source";
+    }
   }
-  return null;
+  const coreNodes = evaluateMiniMaxH3CoreSupport(objectInfo);
+  const h3CoreSupported = coreNodes.every((node) => node.available);
+  const updateMode: ComfyUiCompatibility["updateMode"] = installation?.type === "desktop"
+    ? "desktop"
+    : sourceDirectory && await exists(path.join(sourceDirectory, ".git"))
+      ? "git"
+      : "unsupported";
+  const updateHint = checkedFrom === "api"
+    ? "版本信息来自当前已连接的服务；更新后需要重启该服务再复检。"
+    : sourceDirectory
+      ? "版本信息来自所选安装的本地核心源码。"
+      : "此 Desktop 安装未暴露核心源码；启动服务后将通过 API 读取实际版本。";
+  return {
+    version,
+    revision,
+    h3MinimumRevision: MINIMAX_H3_MINIMUM_COMFY_REVISION,
+    h3CoreSupported,
+    coreNodes,
+    checkedFrom,
+    updateMode,
+    updateHint
+  };
 }
 
 async function findExecutable(command: string): Promise<string> {
@@ -1718,6 +2093,15 @@ async function startComfyUi(settings: Settings): Promise<string> {
   }
   const comfyRoot = await findComfyRoot(settings);
   const installation = await findComfyInstallation(settings);
+  if (installation?.type === "desktop" && !installation.sourceDirectory) {
+    await launchDetached(
+      installation.executable,
+      [],
+      installation.directory,
+      downloadEnvironment(settings)
+    );
+    return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
+  }
   const sourceRoot = installation?.sourceDirectory || comfyRoot;
   if (!sourceRoot) throw new Error("没有找到 ComfyUI 核心程序目录。");
 
@@ -1926,6 +2310,76 @@ export async function restartLocalService(
     return {
       ok: false,
       message: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+export async function updateComfyUi(
+  settings: Settings
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  const installation = await findComfyInstallation(settings);
+  if (!installation) {
+    return { ok: false, message: "没有找到可更新的 ComfyUI 安装。" };
+  }
+  if (installation.type === "desktop") {
+    try {
+      await launchDetached(installation.executable, []);
+      return {
+        ok: true,
+        message: "已打开 ComfyUI Desktop。请在服务器配置的更新页面确认 Update Now，完成后重启服务并重新扫描。",
+        log: "Desktop 安装由官方更新器维护，本工具不会直接覆盖 Program Files 中的核心文件。"
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: `无法打开 ComfyUI Desktop：${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+
+  const sourceDirectory = installation.sourceDirectory;
+  if (!sourceDirectory || !(await exists(path.join(sourceDirectory, ".git")))) {
+    return {
+      ok: false,
+      message: "当前安装没有 Git 元数据，无法安全地原地更新；请使用 ComfyUI 官方安装器。"
+    };
+  }
+  const git = await findExecutable("git.exe");
+  if (!git) return { ok: false, message: "没有找到 Git，无法更新 ComfyUI。" };
+  try {
+    const status = await execFileAsync(
+      git,
+      ["-C", sourceDirectory, "status", "--porcelain"],
+      { encoding: "utf8", timeout: 10_000, windowsHide: true }
+    );
+    if (status.stdout.trim()) {
+      return {
+        ok: false,
+        message: "ComfyUI 源码目录存在未提交修改，为避免覆盖修改，本次更新已取消。",
+        log: status.stdout.trim()
+      };
+    }
+    const result = await execFileAsync(
+      git,
+      ["-C", sourceDirectory, "pull", "--ff-only"],
+      {
+        encoding: "utf8",
+        timeout: 180_000,
+        windowsHide: true,
+        env: downloadEnvironment(settings)
+      }
+    );
+    return {
+      ok: true,
+      message: "ComfyUI 源码已快进更新。请重启 ComfyUI 后重新扫描环境。",
+      log: `${result.stdout}${result.stderr}`.trim()
+    };
+  } catch (error) {
+    const processError = error as Error & { stdout?: string; stderr?: string };
+    return {
+      ok: false,
+      message: `ComfyUI 更新失败：${processError.message}`,
+      log: [processError.stdout, processError.stderr].filter(Boolean).join("\n")
     };
   }
 }
@@ -2198,14 +2652,105 @@ export async function installCustomNode(
   }
 }
 
+function workflowDependenciesFor(comfyRoot: string): WorkflowDependencyStatus[] {
+  const target = comfyRoot
+    ? path.join(comfyRoot, "user", "default", "workflows", "video_minimax_h3_i2v.json")
+    : "";
+  return [{
+    id: "minimax_h3_i2v",
+    name: "MiniMax H3 Image-to-Video 官方工作流",
+    purpose: "安装到 ComfyUI 用户工作流目录，可在 ComfyUI 中打开并导出 API 格式。",
+    installed: false,
+    path: target,
+    sourceUrl: minimaxH3I2vWorkflowUrl
+  }];
+}
+
+async function scanWorkflowDependencies(
+  comfyRoot: string
+): Promise<WorkflowDependencyStatus[]> {
+  return Promise.all(workflowDependenciesFor(comfyRoot).map(async (workflow) => ({
+    ...workflow,
+    installed: Boolean(workflow.path) && await exists(workflow.path)
+  })));
+}
+
+export async function installWorkflowDependency(
+  workflowId: WorkflowDependencyStatus["id"],
+  settings: Settings
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  if (workflowId !== "minimax_h3_i2v") {
+    return { ok: false, message: "未知的工作流依赖，已拒绝安装。" };
+  }
+  const installLog = [proxyLogLabel(settings)];
+  let temporaryFile = "";
+  try {
+    const comfyRoot = await findComfyRoot(settings);
+    if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
+    const workflow = workflowDependenciesFor(comfyRoot)[0];
+    const targetDirectory = path.dirname(workflow.path);
+    await fs.mkdir(targetDirectory, { recursive: true });
+    temporaryFile = path.join(
+      targetDirectory,
+      `.video_minimax_h3_i2v-${crypto.randomUUID()}.download`
+    );
+    const curl = await findExecutable("curl.exe");
+    if (!curl) throw new Error("没有找到 curl，无法下载官方工作流。");
+    const args = ["-fL", "--retry", "2", "--connect-timeout", "20"];
+    if (settings.proxyEnabled) {
+      args.push("--proxy", normalizeProxyUrl(settings.proxyUrl));
+    }
+    args.push(workflow.sourceUrl, "--output", temporaryFile);
+    const result = await execFileAsync(curl, args, {
+      encoding: "utf8",
+      timeout: 120_000,
+      windowsHide: true,
+      env: downloadEnvironment(settings)
+    });
+    installLog.push(`${result.stdout}${result.stderr}`.trim() || "官方工作流下载完成");
+    const source = await fs.readFile(temporaryFile, "utf8");
+    const parsed = JSON.parse(source) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("下载的工作流不是有效 JSON 对象。");
+    }
+    await fs.copyFile(temporaryFile, workflow.path);
+    installLog.push(`已安装：${workflow.path}`);
+    return {
+      ok: true,
+      message: "MiniMax H3 I2V 官方工作流已安装到 ComfyUI。",
+      log: installLog.join("\n\n")
+    };
+  } catch (error) {
+    installLog.push(error instanceof Error ? error.message : String(error));
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+      log: installLog.join("\n\n")
+    };
+  } finally {
+    if (temporaryFile) await fs.rm(temporaryFile, { force: true }).catch(() => undefined);
+  }
+}
+
 export async function scanEnvironment(
   settings: Settings
 ): Promise<EnvironmentScanResult> {
   const userHome = os.homedir();
-  const [comfyRoot, comfyInstallation] = await Promise.all([
+  const [comfyRoot, comfyInstallations] = await Promise.all([
     findComfyRoot(settings),
-    findComfyInstallation(settings)
+    discoverComfyInstallations(settings)
   ]);
+  const comfyInstallationSummary =
+    comfyInstallations.find((installation) => installation.selected) ??
+    comfyInstallations[0];
+  const comfyInstallation: ComfyInstallation | null = comfyInstallationSummary
+    ? {
+        type: comfyInstallationSummary.type,
+        directory: comfyInstallationSummary.directory,
+        sourceDirectory: comfyInstallationSummary.sourceDirectory,
+        executable: comfyInstallationSummary.executable
+      }
+    : null;
   const modelDirectory = comfyRoot ? path.join(comfyRoot, "models") : "";
   const outputDirectory = comfyRoot ? path.join(comfyRoot, "output") : "";
   const modelFiles = await listModelFiles(modelDirectory);
@@ -2228,7 +2773,10 @@ export async function scanEnvironment(
     modelFiles,
     settings.ltxExtensionModelProfile
   );
-  const customNodes = await scanCustomNodes(comfyRoot);
+  const [customNodes, workflowDependencies] = await Promise.all([
+    scanCustomNodes(comfyRoot),
+    scanWorkflowDependencies(comfyRoot)
+  ]);
   const issues = await scanEnvironmentIssues(comfyRoot);
   const comfyItem: EnvironmentItem = comfyRoot || comfyInstallation
     ? {
@@ -2264,6 +2812,10 @@ export async function scanEnvironment(
   );
   const detectedComfyBaseUrl =
     reachableComfyBaseUrl || configuredComfyBaseUrl;
+  const comfyCompatibility = await inspectComfyCompatibility(
+    detectedComfyBaseUrl,
+    comfyInstallation
+  );
   const comfyHealthUrl = `${detectedComfyBaseUrl}/system_stats`;
   const lmStudioUrl = `${settings.lmStudioUrl.replace(/\/+$/, "")}/models`;
   const items = await Promise.all([
@@ -2285,11 +2837,14 @@ export async function scanEnvironment(
     comfyInstallDirectory: comfyInstallation?.directory ?? "",
     comfySourceDirectory: comfyInstallation?.sourceDirectory ?? "",
     comfyInstallType: comfyInstallation?.type ?? "",
+    comfyInstallations,
     modelDirectory,
     outputDirectory,
+    comfyCompatibility,
     items,
     modelProfiles,
     customNodes,
+    workflowDependencies,
     issues
   };
 }
