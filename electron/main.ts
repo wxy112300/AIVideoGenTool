@@ -774,7 +774,15 @@ async function executeQueue(): Promise<void> {
         progress: 1,
         stage: "提交工作流"
       });
-      vramWatchdog = startAdaptiveVramWatchdog(activeController);
+      let lastGpuComputeAt = 0;
+      vramWatchdog = startAdaptiveVramWatchdog(
+        activeController,
+        (_pressure, utilization) => {
+          if (utilization !== null && utilization >= 10) {
+            lastGpuComputeAt = Date.now();
+          }
+        }
+      );
       const { promptId, clientId, nodeTypes } = await submitTask(
         task,
         store.get().settings,
@@ -800,7 +808,8 @@ async function executeQueue(): Promise<void> {
           mainWindow?.webContents.send("task:preview", {
             taskId: task.id,
             dataUrl
-          })
+          }),
+        () => Date.now() - lastGpuComputeAt < 10_000
       );
       const completedTask = store.get().queue.find((item) => item.id === task.id);
       if (!completedTask) continue;

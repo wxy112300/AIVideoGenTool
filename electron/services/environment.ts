@@ -2369,37 +2369,41 @@ async function stopComfyUi(settings: Settings): Promise<void> {
   if (!endpoint) {
     throw new Error("重启只支持本机 ComfyUI 地址（localhost 或 127.0.0.1）。");
   }
-  const healthUrl = `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
-  const response = await fetch(healthUrl, {
-    signal: AbortSignal.timeout(3000)
-  }).catch(() => null);
-  if (!response?.ok) {
-    throw new Error("当前地址没有检测到运行中的 ComfyUI 服务。");
-  }
-  const { stdout } = await execFileAsync("netstat.exe", ["-ano", "-p", "tcp"], {
-    encoding: "utf8",
-    timeout: 5000,
-    windowsHide: true
-  });
-  const pid = listeningPid(stdout, endpoint.port);
-  if (!pid) throw new Error(`无法定位占用端口 ${endpoint.port} 的 ComfyUI 进程。`);
-  await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
-    encoding: "utf8",
-    timeout: 10_000,
-    windowsHide: true
-  });
-  const deadline = Date.now() + 15_000;
+  // An overloaded ComfyUI often stops answering /system_stats while its process
+  // and CUDA allocation are still alive. Port ownership is the authoritative
+  // signal here; requiring HTTP health made automatic recovery unable to kill
+  // exactly the process it was intended to recover.
+  const deadline = Date.now() + 20_000;
+  let portClearSince = 0;
   while (Date.now() < deadline) {
+    const { stdout } = await execFileAsync(
+      "netstat.exe",
+      ["-ano", "-p", "tcp"],
+      { encoding: "utf8", timeout: 5000, windowsHide: true }
+    );
+    const pid = listeningPid(stdout, endpoint.port);
+    if (!pid) {
+      if (!portClearSince) portClearSince = Date.now();
+      // ComfyUI Desktop can briefly re-spawn its worker after the listener is
+      // killed. Require a stable free-port window before starting a replacement.
+      if (Date.now() - portClearSince >= 1_500) return;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      continue;
+    }
+    portClearSince = 0;
     try {
-      const check = await fetch(healthUrl, {
-        signal: AbortSignal.timeout(800)
+      await execFileAsync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
+        encoding: "utf8",
+        timeout: 10_000,
+        windowsHide: true
       });
-      if (!check.ok) return;
     } catch {
-      return;
+      // The process may have exited between netstat and taskkill. Re-check the
+      // port instead of turning that harmless race into a failed restart.
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
+  throw new Error(`端口 ${endpoint.port} 的 ComfyUI 进程仍未退出。`);
 }
 
 async function findLmStudioCli(settings: Settings): Promise<string> {

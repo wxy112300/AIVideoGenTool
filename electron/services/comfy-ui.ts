@@ -350,7 +350,8 @@ export async function waitForTask(
   activityTimeoutMinutes: number,
   signal: AbortSignal,
   onProgress: (value: number, stage: string) => void,
-  onPreview: (dataUrl: string) => void
+  onPreview: (dataUrl: string) => void,
+  isComputeActive: () => boolean = () => false
 ): Promise<unknown> {
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   let socket: WebSocket | undefined;
@@ -358,6 +359,10 @@ export async function waitForTask(
   let lastActivityAt = Date.now();
   let lastServiceResponseAt = Date.now();
   const activityTimeoutMs = activityTimeoutMinutes * 60_000;
+  const serviceSilenceLimit = () =>
+    isComputeActive()
+      ? Math.min(activityTimeoutMs, 20 * 60_000)
+      : 3 * 60_000;
   try {
     socket = new WebSocket(socketUrl(baseUrl, clientId));
     socket.binaryType = "arraybuffer";
@@ -425,7 +430,7 @@ export async function waitForTask(
   try {
     while (!signal.aborted) {
       if (executionError) throw new Error(executionError);
-      if (Date.now() - lastServiceResponseAt > 3 * 60_000) {
+      if (Date.now() - lastServiceResponseAt > serviceSilenceLimit()) {
         throw new TaskStalledError(3, "无法连接 ComfyUI");
       }
       if (Date.now() - lastActivityAt > activityTimeoutMs) {
@@ -440,7 +445,7 @@ export async function waitForTask(
         lastServiceResponseAt = Date.now();
       } catch (error) {
         if (signal.aborted) throw signal.reason;
-        if (Date.now() - lastServiceResponseAt > 3 * 60_000) {
+        if (Date.now() - lastServiceResponseAt > serviceSilenceLimit()) {
           throw new TaskStalledError(3, "无法连接 ComfyUI");
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
