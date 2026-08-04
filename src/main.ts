@@ -512,10 +512,26 @@ function createPage(): string {
         <strong>H3 结尾帧接续</strong>
         <span>从保留片段的最后一帧生成新段并保留 H3 原生音轨；它不是 latent overlap 原生续写，边界动作可能发生变化。</span>
       </div>` : ""}
-      ${isMiniMaxH3 && !extending ? `<div class="h3-capability-note">
-        <div><strong>H3 原生音视频提示</strong><span>建议按“整体画面 → SHOT 1/2/3 → Audio”组织；Audio 中可同时写对白、环境声、音效和音乐。</span></div>
-        <button class="secondary" id="h3-prompt-template">套用镜头/声音结构</button>
-      </div>` : ""}
+      ${isMiniMaxH3 && !extending ? `<details class="h3-prompt-helper">
+        <summary>
+          <span class="h3-helper-heading">
+            <strong>H3 提示词助手 <span class="model-badge">可选</span></strong>
+            <span>普通描述可以直接生成；需要精确控制镜头和原生声音时，再使用分镜格式。</span>
+          </span>
+          <span class="h3-helper-toggle"><span class="when-closed">查看格式</span><span class="when-open">收起说明</span></span>
+        </summary>
+        <div class="h3-helper-body">
+          <div class="h3-prompt-sections">
+            <div><strong>整体画面</strong><span>主体、环境、光线、风格，以及整段视频都要保持的内容。</span></div>
+            <div><strong>SHOT 1、2…</strong><span>按时间描述动作、构图、景别、运镜和镜头之间的转场。</span></div>
+            <div><strong>Audio</strong><span>对白、环境声、音效和音乐；没有某种声音也可以明确写出。</span></div>
+          </div>
+          <div class="h3-helper-actions">
+            <span>点击后会新建一个提示词版本，不会覆盖当前内容。</span>
+            <button class="secondary" id="h3-prompt-template" type="button">创建结构化提示词</button>
+          </div>
+        </div>
+      </details>` : ""}
       <div class="settings-grid">
         <label>模型
           <select id="model">
@@ -2426,23 +2442,26 @@ function bindSettings(): void {
   });
   document.querySelector("#h3-prompt-template")?.addEventListener("click", () => {
     const current = activePrompt().text.trim();
+    const shotCount = state.draft.duration > 10 ? 3 : state.draft.duration > 5 ? 2 : 1;
     const text = [
       `整体画面：${current || "描述主体、环境、视觉风格、光线与需要保留的画面元素。"}`,
-      "SHOT 1：描述开场动作、构图和镜头运动。",
-      "SHOT 2：描述后续动作、景别变化或自然转场。",
+      ...Array.from({ length: shotCount }, (_, index) =>
+        `SHOT ${index + 1}：${index === 0 ? "描述开场动作、构图和镜头运动。" : "描述接下来的动作、景别变化和自然转场。"}`
+      ),
       "Audio：描述对白、环境声、音效和音乐；不需要的声音请明确写出。"
     ].join("\n");
     const versions = [
       ...state.draft.promptVersions.slice(0, state.draft.activePromptVersion + 1),
       {
         id: crypto.randomUUID(),
-        label: "H3 镜头/声音结构",
+        label: "H3 分镜模板",
         text,
         createdAt: new Date().toISOString()
       }
     ];
     patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
     render();
+    showMessage(`已创建包含 ${shotCount} 个镜头的 H3 提示词版本，原内容仍可通过左箭头找回。`);
   });
   document.querySelector<HTMLButtonElement>("#repair-h3-core")?.addEventListener("click", async () => {
     const currentSettings = formSettings();
