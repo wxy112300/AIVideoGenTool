@@ -41,6 +41,7 @@ import {
 import {
   extensionOutputDimensions,
   extensionSafetyForTask,
+  activityTimeoutMinutesForTask,
   extensionWorkflowSafetyErrors,
   generationSafetyForTask,
   outputDimensions,
@@ -59,6 +60,7 @@ import {
   unloadLmStudioModels
 } from "./services/lm-studio.js";
 import {
+  installAttentionAcceleration,
   installCustomNode,
   installWorkflowDependency,
   repairEnvironmentIssue,
@@ -571,6 +573,7 @@ function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask 
       : {}),
     seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
+    attentionMode: state.settings.h3AttentionMode,
     progress: 0
   };
 }
@@ -616,6 +619,7 @@ function extensionTaskFromDraft(
     modelProfile: settings.ltxExtensionModelProfile,
     seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
+    attentionMode: state.settings.h3AttentionMode,
     maxGeneratedFrames: draft.modelId === "minimax_h3_fl2va"
       ? 362
       : settings.ltxExtensionFrames,
@@ -786,11 +790,10 @@ async function executeQueue(): Promise<void> {
         clientId,
         nodeTypes,
         store.get().settings,
-        task.taskType === "extension"
-          ? task.modelId === "minimax_h3_fl2va"
-            ? 90
-            : store.get().settings.ltxExtensionTimeoutMinutes
-          : 10,
+        activityTimeoutMinutesForTask(
+          task,
+          store.get().settings.ltxExtensionTimeoutMinutes
+        ),
         activeController.signal,
         (progress, stage) => void updateTask(task.id, { progress, stage }),
         (dataUrl) =>
@@ -1136,6 +1139,15 @@ function registerIpc(): void {
     "workflow-dependency:install",
     (_event, workflowId, settings: Settings) =>
       installWorkflowDependency(workflowId, settings)
+  );
+  ipcMain.handle(
+    "attention-acceleration:install",
+    (event, settings: Settings) =>
+      installAttentionAcceleration(settings, (message) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send("attention-acceleration:log", message);
+        }
+      })
   );
   ipcMain.handle("queue:enqueue", async (_event, draft: Draft) => {
     if (draft.inputMode !== "image") {

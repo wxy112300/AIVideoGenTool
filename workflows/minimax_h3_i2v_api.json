@@ -57,10 +57,18 @@
       "sampler_name": "res_multistep"
     }
   },
+  "19": {
+    "class_type": "PathchSageAttentionKJ",
+    "inputs": {
+      "model": ["1", 0],
+      "sage_attention": "sageattn_qk_int8_pv_fp16_cuda",
+      "allow_compile": false
+    }
+  },
   "8": {
     "class_type": "BasicScheduler",
     "inputs": {
-      "model": ["1", 0],
+      "model": ["19", 0],
       "scheduler": "simple",
       "steps": 20,
       "denoise": 1
@@ -75,7 +83,7 @@
   "10": {
     "class_type": "BasicGuider",
     "inputs": {
-      "model": ["1", 0],
+      "model": ["19", 0],
       "conditioning": ["6", 0]
     }
   },

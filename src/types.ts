@@ -54,6 +54,7 @@ export interface Settings {
   promptSystemTemplate: string;
   defaultVideoModel: string;
   vramReserveGb: number;
+  h3AttentionMode: "sage" | "pytorch";
   autoOffload: boolean;
   ltxExtensionModelProfile: LtxExtensionModelProfile;
   ltxExtensionResolution: 360 | 480;
@@ -87,6 +88,7 @@ interface QueueTaskBase {
   fps: number;
   seed: number;
   keepSeedOnCopy: boolean;
+  attentionMode?: Settings["h3AttentionMode"];
   comfyPromptId?: string;
   progress?: number;
   stage?: string;
@@ -355,11 +357,30 @@ export interface EnvironmentScanResult {
   modelDirectory: string;
   outputDirectory: string;
   comfyCompatibility: ComfyUiCompatibility;
+  attentionAcceleration: AttentionAccelerationStatus;
   items: EnvironmentItem[];
   modelProfiles: ModelScanProfile[];
   customNodes: CustomNodeStatus[];
   workflowDependencies: WorkflowDependencyStatus[];
   issues: EnvironmentIssue[];
+}
+
+export interface AttentionAccelerationStatus {
+  pythonPath: string;
+  pythonVersion: string;
+  torchVersion: string;
+  cudaVersion: string;
+  gpuName: string;
+  gpuArchitecture: string;
+  sageAttentionVersion: string;
+  tritonVersion: string;
+  kjNodesInstalled: boolean;
+  kjNodesCompatible: boolean;
+  recommendedSageVersion: string;
+  recommendedWheel: string;
+  supported: boolean;
+  ready: boolean;
+  detail: string;
 }
 
 export type PromptEnhanceMode = "faithful" | "sulphur-native";
@@ -443,6 +464,7 @@ export interface AppApi {
     workflowId: WorkflowDependencyStatus["id"],
     settings: Settings
   ): Promise<ConnectionResult>;
+  installAttentionAcceleration(settings: Settings): Promise<ConnectionResult>;
   enqueue(draft: Draft): Promise<AppState>;
   enqueueExtension(draft: Draft): Promise<AppState>;
   enqueueUpscale(request: UpscaleRequest): Promise<AppState>;
@@ -458,6 +480,7 @@ export interface AppApi {
   deleteHistoryAsset(assetId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
+  onAttentionInstallLog(callback: (message: string) => void): () => void;
 }
 
 declare global {

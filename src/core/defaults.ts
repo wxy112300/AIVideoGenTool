@@ -74,6 +74,7 @@ export function createDefaultSettings(): Settings {
     modelDirectory: "",
     defaultVideoModel: "wan22_5b",
     vramReserveGb: 2,
+    h3AttentionMode: "sage",
     autoOffload: true,
     ltxExtensionModelProfile: "q3_k_m",
     ltxExtensionResolution: 360,

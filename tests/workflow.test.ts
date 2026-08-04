@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ExtensionQueueTask, QueueTask } from "../src/types";
 import {
+  activityTimeoutMinutesForTask,
   extensionWorkflowSafetyErrors,
   extensionSafetyForTask,
   extensionOutputDimensions,
@@ -74,6 +75,18 @@ const extensionTask: ExtensionQueueTask = {
   unloadBetweenStages: true
 };
 
+describe("activityTimeoutMinutesForTask", () => {
+  it("allows H3 generation and extension samplers to run without false stalls", () => {
+    expect(activityTimeoutMinutesForTask(task, 30)).toBe(10);
+    expect(activityTimeoutMinutesForTask({ ...task, modelId: "minimax_h3_fl2va" }, 30)).toBe(90);
+    expect(activityTimeoutMinutesForTask({ ...extensionTask, modelId: "minimax_h3_fl2va" }, 30)).toBe(90);
+  });
+
+  it("keeps the configured timeout for other extension models", () => {
+    expect(activityTimeoutMinutesForTask(extensionTask, 45)).toBe(45);
+  });
+});
+
 describe("renderWorkflow", () => {
   it("renders the bundled MiniMax H3 I2V graph with staged model and VAE unloading", () => {
     const source = JSON.parse(
@@ -103,6 +116,7 @@ describe("renderWorkflow", () => {
       first_frame: ["5", 0]
     });
     expect(rendered["8"]?.inputs).toMatchObject({
+      model: ["19", 0],
       scheduler: "simple",
       steps: 20,
       denoise: 1
@@ -117,6 +131,23 @@ describe("renderWorkflow", () => {
     });
     expect(rendered["18"]).toBeUndefined();
     expect(rendered["6"]?.inputs.last_frame).toBeUndefined();
+    expect(rendered["19"]).toMatchObject({
+      class_type: "PathchSageAttentionKJ",
+      inputs: {
+        model: ["1", 0],
+        sage_attention: "sageattn_qk_int8_pv_fp16_cuda",
+        allow_compile: false
+      }
+    });
+
+    const compatible = renderWorkflow(
+      source,
+      { ...h3Task, attentionMode: "pytorch" },
+      { inputImage: "input.png", vramTotalBytes: 24 * 1024 ** 3 }
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(compatible["19"]).toBeUndefined();
+    expect(compatible["8"]?.inputs.model).toEqual(["1", 0]);
+    expect(compatible["10"]?.inputs.model).toEqual(["1", 0]);
 
     const withLastFrame = renderWorkflow(source, h3Task, {
       inputImage: "first.png",

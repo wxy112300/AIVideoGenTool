@@ -1,4 +1,8 @@
-import type { ExtensionQueueTask, GenerationQueueTask } from "../types.js";
+import type {
+  ExtensionQueueTask,
+  GenerationQueueTask,
+  QueueTask
+} from "../types.js";
 
 export interface WorkflowContext {
   inputImage: string;
@@ -300,6 +304,15 @@ export function generationSafetyForTask(
     maxDurationSeconds,
     message: `${profile.label} 模型帧预算：${generatedFrames}/${maxGeneratedFrames}。`
   };
+}
+
+export function activityTimeoutMinutesForTask(
+  task: Pick<QueueTask, "taskType" | "modelId">,
+  ltxExtensionTimeoutMinutes: number
+): number {
+  if (task.modelId === "minimax_h3_fl2va") return 90;
+  if (task.taskType === "extension") return ltxExtensionTimeoutMinutes;
+  return 10;
 }
 
 export function extensionSafetyForTask(
@@ -675,6 +688,29 @@ export function renderWorkflow(
     string,
     { class_type?: string; inputs?: Record<string, unknown> }
   >;
+  if (
+    task.modelId === "minimax_h3_fl2va" &&
+    task.attentionMode === "pytorch"
+  ) {
+    const sageNodeIds = new Set(
+      Object.entries(workflow)
+        .filter(([, node]) => node.class_type === "PathchSageAttentionKJ")
+        .map(([id]) => id)
+    );
+    for (const sageNodeId of sageNodeIds) {
+      const upstreamModel = workflow[sageNodeId]?.inputs?.model;
+      if (!Array.isArray(upstreamModel)) continue;
+      for (const node of Object.values(workflow)) {
+        if (!node.inputs) continue;
+        for (const [name, input] of Object.entries(node.inputs)) {
+          if (Array.isArray(input) && input[0] === sageNodeId) {
+            node.inputs[name] = upstreamModel;
+          }
+        }
+      }
+      delete workflow[sageNodeId];
+    }
+  }
   const emptyImageNodeIds = new Set(
     Object.entries(workflow)
       .filter(([, node]) =>

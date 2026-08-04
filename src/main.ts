@@ -67,8 +67,10 @@ let customNodeLogs: Record<string, string> = {};
 let workflowDependencyInstalling = "";
 let workflowDependencyLogs: Record<string, string> = {};
 let coreDependencyRepairing = false;
+let attentionAccelerationInstalling = false;
+let attentionAccelerationLog = "";
 let settingsDraft: Settings | null = null;
-let settingsTab: "system" | "video" | "nodes" | "prompt" | "upscale" = "system";
+let settingsTab: "system" | "acceleration" | "video" | "nodes" | "prompt" | "upscale" = "system";
 let selectedInstallGuide: {
   profileName: string;
   component: ModelComponentStatus;
@@ -1197,8 +1199,44 @@ function settingsPage(): string {
       </div>
     </section>`;
 
+  const attention = environmentScan?.attentionAcceleration;
+  const accelerationPanel = `
+    <section class="settings-panel">
+      <section class="panel settings-section ${attention?.ready ? "available" : "missing"}">
+        <div class="section-heading">
+          <div><h2>Attention 推理加速</h2><span class="muted">为 H3 安装与当前 ComfyUI Python、PyTorch 和 CUDA 精确匹配的运行库</span></div>
+          <span class="model-availability ${attention?.ready ? "available" : "missing"}">${attention?.ready ? "✓ 已就绪" : attention?.supported ? "待安装/修复" : "环境不支持"}</span>
+        </div>
+        <div class="settings-grid two">
+          <label>H3 Attention 模式
+            <select id="h3-attention-mode">
+              <option value="sage" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>自动加速 · SageAttention CUDA FP16</option>
+              <option value="pytorch" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>兼容模式 · PyTorch Attention</option>
+            </select>
+          </label>
+          <div class="scan-result"><strong>${escapeHtml(attention?.detail ?? "等待环境扫描")}</strong><br><span class="muted">兼容模式会从 H3 工作流中自动移除 SageAttention 节点。</span></div>
+        </div>
+        <div class="environment-grid">
+          <article><span>ComfyUI Python</span><strong>${escapeHtml(attention?.pythonVersion || "未找到")}</strong><code title="${escapeHtml(attention?.pythonPath || "")}">${escapeHtml(attention?.pythonPath || "请先选择安装")}</code></article>
+          <article><span>PyTorch / CUDA</span><strong>${escapeHtml(attention?.torchVersion || "未知")}</strong><code>CUDA ${escapeHtml(attention?.cudaVersion || "未知")} · SM ${escapeHtml(attention?.gpuArchitecture || "未知")}</code></article>
+          <article><span>SageAttention</span><strong>${escapeHtml(attention?.sageAttentionVersion || "未安装")}</strong><code>${escapeHtml(attention?.recommendedWheel || "无匹配 wheel")}</code></article>
+          <article><span>Triton / KJNodes</span><strong>${escapeHtml(attention?.tritonVersion || "未安装")}</strong><code>${attention?.kjNodesCompatible ? "KJNodes 模型级补丁可用" : attention?.kjNodesInstalled ? "KJNodes 需要更新" : "KJNodes 未安装"}</code></article>
+        </div>
+        <div class="button-row">
+          <button class="primary" id="install-attention-acceleration" ${attentionAccelerationInstalling || !attention?.supported ? "disabled" : ""}>${attentionAccelerationInstalling ? "正在补全环境…" : attention?.ready ? "重新安装/修复" : "一键安装并自检"}</button>
+          <span class="muted">安装时会停止当前 ComfyUI；完成后若此前正在运行，会自动重启。</span>
+        </div>
+        ${attentionAccelerationLog ? `<details class="node-log" open><summary>环境安装日志</summary><pre id="attention-install-log">${escapeHtml(attentionAccelerationLog)}</pre></details>` : ""}
+      </section>
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>当前 H3 运行策略</h2><span class="muted">只对 MiniMax H3 的扩散模型应用，不全局影响 Wan、Hunyuan 或其他工作流</span></div></div>
+        <div class="scan-result">UNETLoader → Patch Sage Attention KJ（<code>sageattn_qk_int8_pv_fp16_cuda</code>）→ Scheduler / Guider。首轮关闭 Torch Compile 与 FP8 PV，优先验证稳定性。</div>
+      </section>
+    </section>`;
+
   const activePanel =
     settingsTab === "system" ? systemPanel :
+    settingsTab === "acceleration" ? accelerationPanel :
     settingsTab === "video" ? videoPanel :
     settingsTab === "nodes" ? nodePanel :
     settingsTab === "prompt" ? promptPanel :
@@ -1213,6 +1251,7 @@ function settingsPage(): string {
       <nav class="settings-sidebar" aria-label="设置分类">
         ${([
           ["system", "◫", "系统与路径"],
+          ["acceleration", "⚡", "推理加速"],
           ["video", "▦", "视频模型"],
           ["nodes", "◇", "节点与工作流"],
           ["prompt", "✦", "提示词扩写"],
@@ -2320,6 +2359,10 @@ function formSettings(): Settings {
     promptSystemTemplate: value("prompt-template", base.promptSystemTemplate),
     defaultVideoModel: value("default-video-model", base.defaultVideoModel),
     vramReserveGb: Number(value("vram-reserve", String(base.vramReserveGb))),
+    h3AttentionMode: value(
+      "h3-attention-mode",
+      base.h3AttentionMode
+    ) as Settings["h3AttentionMode"],
     autoOffload: checked("auto-offload", base.autoOffload),
     ltxExtensionModelProfile: value(
       "ltx-extension-model-profile",
@@ -2455,6 +2498,26 @@ function bindSettings(): void {
       showMessage(`ComfyUI 更新失败：${message}`);
     } finally {
       comfyUpdating = false;
+      render();
+    }
+  });
+  document.querySelector<HTMLButtonElement>("#install-attention-acceleration")?.addEventListener("click", async () => {
+    const currentSettings = formSettings();
+    settingsDraft = currentSettings;
+    attentionAccelerationInstalling = true;
+    attentionAccelerationLog = "";
+    render();
+    try {
+      const result = await window.studio.installAttentionAcceleration(currentSettings);
+      attentionAccelerationLog = result.log || attentionAccelerationLog || result.message;
+      environmentScan = await window.studio.scanEnvironment(currentSettings);
+      showMessage(result.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      attentionAccelerationLog = [attentionAccelerationLog, message].filter(Boolean).join("\n");
+      showMessage(`推理加速环境安装失败：${message}`);
+    } finally {
+      attentionAccelerationInstalling = false;
       render();
     }
   });
@@ -2727,6 +2790,18 @@ window.studio.onTaskPreview((preview) => {
     image.style.display = "";
   }
   if (empty) empty.style.display = "none";
+});
+
+window.studio.onAttentionInstallLog((message) => {
+  attentionAccelerationLog = [attentionAccelerationLog, message]
+    .filter(Boolean)
+    .join("\n")
+    .slice(-40_000);
+  const logElement = document.querySelector<HTMLElement>("#attention-install-log");
+  if (logElement) {
+    logElement.textContent = attentionAccelerationLog;
+    logElement.scrollTop = logElement.scrollHeight;
+  }
 });
 
 function setMetric(

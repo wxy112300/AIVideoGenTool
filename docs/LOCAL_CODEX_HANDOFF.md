@@ -1,6 +1,6 @@
 # Local Video Studio 当前交接基线
 
-更新时间：2026-07-25
+更新时间：2026-08-04
 
 当前分支：`main`
 
@@ -109,6 +109,11 @@
 - 可安装/修复自定义节点，并在 UI 中查看安装日志。
 - 已扫描 ComfyUI-GGUF、VideoHelperSuite、KJNodes、Frame Interpolation、
   SeedVR2、FlashVSR 等节点。
+- 新增“推理加速”分类：按所选 ComfyUI 实例识别其独立 Python、Torch、CUDA、
+  GPU SM、SageAttention、Triton 和 KJNodes；支持一键安装、实时日志、CUDA 自检，
+  且只接受 ComfyUI 官方 wheel matrix 中真实存在的组合。
+- H3 可在模型级 SageAttention CUDA FP16 与 PyTorch 兼容模式间切换；不会全局
+  修改其他模型的 Attention。
 
 ### 2.6 已接入的视频模型
 
@@ -118,6 +123,7 @@
 | 模型 ID | UI 名称 | 内置工作流 | 当前验证 |
 |---|---|---|---|
 | `wan22_5b` | Wan 2.2 I2V 5B | `workflows/wan22_5b_i2v_api.json` | 4090 上完成 720p、5 秒、121 帧正式基准 |
+| `minimax_h3_fl2va` | MiniMax H3 FL2VA | `workflows/minimax_h3_i2v_api.json` | 官方 864×480/39 帧图可提交；Sage CUDA 自检通过，但 64GB 机器真实采样发生严重 RAM 换页，尚未完成输出 |
 | `hunyuan15` | HunyuanVideo 1.5 I2V | `workflows/hunyuan15_i2v_api.json` | API 节点与工作流校验通过；仍需完整生成基准 |
 | `hunyuan15_sr` | HunyuanVideo 1.5 I2V + 1080p SR | `workflows/hunyuan15_sr_i2v_api.json` | 官方 20 步 720p + 8 步 SR 分支；服务端解析与首阶段执行验证通过 |
 | `sulphur2` | Sulphur 2 GGUF | Q2: `workflows/sulphur2_ltx23_i2v_gguf_q2_api.json` / `workflows/sulphur2_ltx23_extend_gguf_q2_api.json`; Q3/Q4: 对应 `*_gguf_dev_api.json` | 四个图已通过本机 ComfyUI 节点 schema；FP8 Extend 实测导致严重桌面卡顿，GGUF 尚未运行重型 benchmark |
@@ -265,8 +271,14 @@ ComfyUI 仍带旧参数、或一次修复需要在管线末尾追加多个特殊
 仓库：
 E:\Projects\AIVideoGenTool
 
-ComfyUI Desktop 程序源码：
-D:\Program Files\ComfyUI\resources\ComfyUI
+当前选择的 ComfyUI Desktop 2 实例：
+D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI
+
+当前实例核心源码：
+D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI
+
+当前实例 Python：
+C:\Users\Wuyouwofang\Documents\ComfyUI\.venv\Scripts\python.exe
 
 ComfyUI 当前用户数据根目录：
 C:\Users\Wuyouwofang\Documents\ComfyUI
@@ -300,6 +312,24 @@ HunyuanVideo 1.5 1080p SR（双阶段工作流已接入）
 Hunyuan 1.5 VAE、Qwen 2.5 VL、ByT5、SigCLIP
 SeedVR2 / FlashVSR / Real-ESRGAN 相关文件（后端已接入；FlashVSR 缺四个配套权重）
 Sulphur 2 / LTX 2.3 旧 FP8 checkpoint 与配套组件（保留但不再由内置图选择）；Q2/Q3/Q4 GGUF 与 split connector/VAE 按所选档位补齐
+MiniMax H3 FL2VA INT8 ConvRot、Qwen3-VL 32B NVFP4 AWQ、视频 VAE 与音频 VAE
+```
+
+H3 Attention 环境：
+
+```text
+ComfyUI 0.30.1
+Python 3.12.11
+PyTorch 2.8.0+cu129 / CUDA 12.9
+SageAttention 2.2.0+cu129torch2.8
+triton-windows 3.4.0.post21
+KJNodes PathchSageAttentionKJ 已通过 /object_info 验证
+```
+
+旧 KJNodes 在自动更新前已备份到：
+
+```text
+C:\Users\Wuyouwofang\Documents\ComfyUI\node-backups\comfyui-kjnodes-1785815074202
 ```
 
 RIFE 权重：
@@ -337,11 +367,13 @@ npm run build
 3. 安装设置页列出的自定义节点。
 4. 保证 KJNodes、ComfyUI-GGUF 和 Frame Interpolation 能在 `/object_info`
    中被识别。
-5. 在设置页填写新机器的模型目录和输出目录。
-6. 使用 8188；如果换端口，设置页和 ComfyUI 启动参数必须一致。
-7. 网络不稳定时先开启代理，再点击“重启 ComfyUI”，使代理进入 Python
+5. 在“推理加速”中点击“一键安装并自检”；安装器必须显示所选实例的真实 Python，
+   不能对系统 Python 或另一个 ComfyUI 目录安装。
+6. 在设置页填写新机器的模型目录和输出目录。
+7. 使用 8188；如果换端口，设置页和 ComfyUI 启动参数必须一致。
+8. 网络不稳定时先开启代理，再点击“重启 ComfyUI”，使代理进入 Python
    子进程。
-8. 先跑 1 秒/480p，再逐步增加时长和分辨率。
+9. 先跑 1 秒/480p，再逐步增加时长和分辨率。
 
 ### 4.3 可选迁移本机状态
 
@@ -360,9 +392,13 @@ npm run build
 ### P0：下一个接手者应优先处理
 
 1. **真实模型基准**
-   - Hunyuan 1.5、Wan 14B 原版、Remix、SmoothMix、DaSiWa 尚未分别完成
+   - MiniMax H3、Hunyuan 1.5、Wan 14B 原版、Remix、SmoothMix、DaSiWa 尚未分别完成
   81/121 帧真实生成和峰值显存记录；未实测模型不要提高对应 frame profile。
    - 需要保存耗时、采样阶段、VAE、RIFE、编码和 `nvidia-smi` 数据。
+   - H3 864×480/39 帧在 64GB RAM 机器上进入采样，但 9 分钟没有完成首个可见
+     step；GPU 100%、显存约 22.5GB，系统 RAM 一度只剩约 0.55GB 并发生磁盘换页。
+     Sage FP16 微基准正常，FP8 内核不稳定。下一次先关闭其他高内存程序并监控
+     committed/private bytes；必要时评估 ComfyUI `--fast-disk`，不要盲目更换 sampler。
 2. **RIFE 多帧端到端测试**
    - 分别测试 24 FPS + 2×、24 FPS + 4×、25 FPS + 2×、30 FPS + 2×。
    - 检查快速运动、遮挡和镜头切换的插帧伪影。
@@ -405,12 +441,15 @@ npm run build
 
 1. 新机完成 `npm ci`、测试和构建。
 2. 在设置页扫描环境，先解决所有红色必需项。
-3. 用 Wan 5B 跑 1 秒/480p/关闭插帧，确认基础链路。
-4. 用 Wan 5B 跑 5 秒/720p/121 帧，记录 DynamicVRAM、采样和 tiled VAE 峰值。
-5. 用 Wan 5B 跑 10 秒/24 FPS/RIFE 2×，确认 121 模型帧到 240 成片帧。
-6. 按 14B 原版 81 帧 → Remix → SmoothMix → DaSiWa → Hunyuan 121 帧顺序测试。
-7. 按设置中选择的 Sulphur 档位补齐 GGUF 与 split 组件；只有用户明确许可后才运行 360p/49 帧 benchmark。
-8. 把真实结果补成 benchmark/fixture，再按结果提高或收紧单模型 profile。
+3. 在推理加速页完成 Sage/Triton/KJNodes 一键安装和 CUDA 自检。
+4. 用 Wan 5B 跑 1 秒/480p/关闭插帧，确认基础链路。
+5. 关闭无关高内存程序后重测 H3 864×480/39 帧，同时记录 RAM commit、磁盘换页、
+   单步耗时和显存；仍换页时再单独比较 `--fast-disk`，不要直接扩大时长。
+6. 用 Wan 5B 跑 5 秒/720p/121 帧，记录 DynamicVRAM、采样和 tiled VAE 峰值。
+7. 用 Wan 5B 跑 10 秒/24 FPS/RIFE 2×，确认 121 模型帧到 240 成片帧。
+8. 按 14B 原版 81 帧 → Remix → SmoothMix → DaSiWa → Hunyuan 121 帧顺序测试。
+9. 按设置中选择的 Sulphur 档位补齐 GGUF 与 split 组件；只有用户明确许可后才运行 360p/49 帧 benchmark。
+10. 把真实结果补成 benchmark/fixture，再按结果提高或收紧单模型 profile。
 
 ## 7. 关键代码
 

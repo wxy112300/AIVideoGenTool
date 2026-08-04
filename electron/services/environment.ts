@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
+  AttentionAccelerationStatus,
   ComfyUiCompatibility,
   ComfyUiInstallationSummary,
   CustomNodeStatus,
@@ -23,6 +24,8 @@ const execFileAsync = promisify(execFile);
 export const MINIMAX_H3_MINIMUM_COMFY_REVISION = "57500fc5";
 const minimaxH3I2vWorkflowUrl =
   "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/video_minimax_h3_i2v.json";
+const sageAttentionVersion = "2.2.0";
+const comfyWheelsIndex = "https://comfy-org.github.io/wheels/";
 
 const minimaxH3CoreNodes = [
   { id: "MiniMaxH3ImageToVideo", label: "H3 首帧 / 首尾帧图生视频" }
@@ -1698,6 +1701,191 @@ async function findComfyInstallation(settings: Settings): Promise<ComfyInstallat
   return result;
 }
 
+async function findComfyPython(
+  settings: Settings,
+  comfyRoot = "",
+  installation: ComfyInstallation | null = null
+): Promise<string> {
+  const root = comfyRoot || await findComfyRoot(settings);
+  const selected = installation || await findComfyInstallation(settings);
+  const sourceRoot = selected?.sourceDirectory || root;
+  const candidates = uniqueWindowsPaths([
+    root ? path.join(root, ".venv", "Scripts", "python.exe") : "",
+    sourceRoot ? path.join(sourceRoot, ".venv", "Scripts", "python.exe") : "",
+    sourceRoot ? path.join(path.dirname(sourceRoot), "python_embeded", "python.exe") : "",
+    selected?.executable && selected.type !== "desktop" ? selected.executable : ""
+  ]);
+  for (const candidate of candidates) {
+    if (await exists(candidate)) return candidate;
+  }
+  return await findExecutable("python.exe");
+}
+
+interface AttentionPythonProbe {
+  pythonVersion?: string;
+  torchVersion?: string;
+  cudaVersion?: string;
+  gpuName?: string;
+  gpuArchitecture?: string;
+  sageAttentionVersion?: string;
+  tritonVersion?: string;
+}
+
+export function attentionWheelForProbe(
+  probe: AttentionPythonProbe
+): { version: string; filename: string; url: string } | null {
+  const python = probe.pythonVersion?.match(/^(\d+)\.(\d+)/);
+  const torch = probe.torchVersion?.match(/^(\d+)\.(\d+)/);
+  const cuda = probe.cudaVersion?.match(/^(\d+)\.(\d+)/);
+  if (!python || !torch || !cuda || process.platform !== "win32") return null;
+  const pythonVersion = `${python[1]}.${python[2]}`;
+  const torchVersion = `${torch[1]}.${torch[2]}`;
+  const cudaVersion = `${cuda[1]}.${cuda[2]}`;
+  const officialBuildMatrix: Record<string, readonly string[]> = {
+    "12.4|2.4": ["3.10", "3.11", "3.12"],
+    "12.4|2.5": ["3.10", "3.11", "3.12", "3.13"],
+    "12.4|2.6": ["3.10", "3.11", "3.12", "3.13"],
+    "12.6|2.6": ["3.10", "3.11", "3.12", "3.13"],
+    "12.6|2.7": ["3.10", "3.11", "3.12", "3.13"],
+    "12.6|2.8": ["3.10", "3.11", "3.12", "3.13"],
+    "12.6|2.9": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "12.6|2.10": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "12.6|2.11": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "12.8|2.7": ["3.10", "3.11", "3.12", "3.13"],
+    "12.8|2.8": ["3.10", "3.11", "3.12", "3.13"],
+    "12.8|2.9": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "12.8|2.10": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "12.8|2.11": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "12.9|2.8": ["3.10", "3.11", "3.12", "3.13"],
+    "12.9|2.9": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "12.9|2.10": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "13.0|2.9": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "13.0|2.10": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "13.0|2.11": ["3.10", "3.11", "3.12", "3.13", "3.14"]
+  };
+  if (!officialBuildMatrix[`${cudaVersion}|${torchVersion}`]?.includes(pythonVersion)) {
+    return null;
+  }
+  const cp = `cp${python[1]}${python[2]}`;
+  const cudaTag = `cu${cuda[1]}${cuda[2]}`;
+  // ComfyUI publishes the package local-version tag as e.g. `torch2.8`.
+  // Do not normalize the dot away here: pip normalizes distribution filenames,
+  // but exact version matching still uses the dotted package version.
+  const torchTag = `torch${torch[1]}.${torch[2]}`;
+  const version = `${sageAttentionVersion}+${cudaTag}${torchTag}`;
+  const filename = `sageattention-${version}-${cp}-${cp}-win_amd64.whl`;
+  return {
+    version,
+    filename,
+    // Let pip resolve the asset from ComfyUI's PEP 503 index. Release asset
+    // names are not guaranteed to use the same normalized local-version tag.
+    url: comfyWheelsIndex
+  };
+}
+
+async function inspectAttentionPython(python: string): Promise<AttentionPythonProbe> {
+  if (!python) return {};
+  const script = [
+    "import json, platform, importlib.metadata as md",
+    "def version(name):",
+    "    try: return md.version(name)",
+    "    except md.PackageNotFoundError: return ''",
+    "result={'pythonVersion':platform.python_version(),'sageAttentionVersion':version('sageattention'),'tritonVersion':version('triton-windows') or version('triton')}",
+    "try:",
+    "    import torch",
+    "    result['torchVersion']=torch.__version__",
+    "    result['cudaVersion']=torch.version.cuda or ''",
+    "    if torch.cuda.is_available():",
+    "        result['gpuName']=torch.cuda.get_device_name(0)",
+    "        cap=torch.cuda.get_device_capability(0)",
+    "        result['gpuArchitecture']=f'{cap[0]}.{cap[1]}'",
+    "except Exception as error: result['probeError']=str(error)",
+    "print(json.dumps(result))"
+  ].join("\n");
+  try {
+    const { stdout } = await execFileAsync(python, ["-c", script], {
+      encoding: "utf8",
+      timeout: 30_000,
+      windowsHide: true
+    });
+    return JSON.parse(stdout.trim()) as AttentionPythonProbe;
+  } catch {
+    return {};
+  }
+}
+
+async function kjNodesSupportsModelAttention(comfyRoot: string): Promise<boolean> {
+  if (!comfyRoot) return false;
+  const candidates = [
+    "ComfyUI-KJNodes",
+    "comfyui-kjnodes"
+  ].map((directory) => path.join(
+    comfyRoot,
+    "custom_nodes",
+    directory,
+    "nodes",
+    "model_optimization_nodes.py"
+  ));
+  for (const filename of candidates) {
+    const source = await fs.readFile(filename, "utf8").catch(() => "");
+    if (
+      source.includes("PathchSageAttentionKJ") &&
+      source.includes("optimized_attention_override")
+    ) return true;
+  }
+  return false;
+}
+
+async function inspectAttentionAcceleration(
+  settings: Settings,
+  comfyRoot: string,
+  installation: ComfyInstallation | null
+): Promise<AttentionAccelerationStatus> {
+  const pythonPath = await findComfyPython(settings, comfyRoot, installation);
+  const probe = await inspectAttentionPython(pythonPath);
+  const wheel = attentionWheelForProbe(probe);
+  const kjNodesInstalled = Boolean(comfyRoot) && (
+    await exists(path.join(comfyRoot, "custom_nodes", "ComfyUI-KJNodes")) ||
+    await exists(path.join(comfyRoot, "custom_nodes", "comfyui-kjnodes"))
+  );
+  const kjNodesCompatible = await kjNodesSupportsModelAttention(comfyRoot);
+  const sageReady = Boolean(
+    wheel && probe.sageAttentionVersion?.toLowerCase() === wheel.version.toLowerCase()
+  );
+  const tritonReady = Boolean(probe.tritonVersion);
+  const gpuArchitecture = Number.parseFloat(probe.gpuArchitecture ?? "");
+  const gpuSupported = Number.isFinite(gpuArchitecture) && gpuArchitecture >= 8;
+  const ready = Boolean(
+    pythonPath && wheel && gpuSupported && sageReady && tritonReady && kjNodesCompatible
+  );
+  const missing = [
+    !pythonPath ? "ComfyUI Python" : "",
+    !gpuSupported ? "SM 8.0+ NVIDIA GPU" : "",
+    !wheel ? "匹配的 Windows wheel" : "",
+    !sageReady ? `SageAttention ${sageAttentionVersion}` : "",
+    !tritonReady ? "Triton" : "",
+    !kjNodesCompatible ? "新版 KJNodes 模型级补丁" : ""
+  ].filter(Boolean);
+  return {
+    pythonPath,
+    pythonVersion: probe.pythonVersion ?? "",
+    torchVersion: probe.torchVersion ?? "",
+    cudaVersion: probe.cudaVersion ?? "",
+    gpuName: probe.gpuName ?? "",
+    gpuArchitecture: probe.gpuArchitecture ?? "",
+    sageAttentionVersion: probe.sageAttentionVersion ?? "",
+    tritonVersion: probe.tritonVersion ?? "",
+    kjNodesInstalled,
+    kjNodesCompatible,
+    recommendedSageVersion: wheel?.version ?? "",
+    recommendedWheel: wheel?.filename ?? "",
+    supported: Boolean(pythonPath && wheel && gpuSupported),
+    ready,
+    detail: ready ? "H3 模型级 SageAttention CUDA FP16 已就绪" :
+      missing.length ? `待补齐：${missing.join("、")}` : "无法识别 Attention 运行环境"
+  };
+}
+
 function readStatsString(value: unknown, keys: string[]): string {
   if (!value || typeof value !== "object" || Array.isArray(value)) return "";
   const record = value as Record<string, unknown>;
@@ -2112,23 +2300,7 @@ async function startComfyUi(settings: Settings): Promise<string> {
     );
   }
 
-  const pythonCandidates = [
-    comfyRoot ? path.join(comfyRoot, ".venv", "Scripts", "python.exe") : "",
-    path.join(sourceRoot, ".venv", "Scripts", "python.exe"),
-    path.join(path.dirname(sourceRoot), "python_embeded", "python.exe"),
-    installation?.executable && installation.type !== "desktop"
-      ? installation.executable
-      : "",
-    await findExecutable("python.exe")
-  ];
-  const python = (
-    await Promise.all(
-      pythonCandidates.filter(Boolean).map(async (candidate) => ({
-        candidate,
-        found: await exists(candidate)
-      }))
-    )
-  ).find((item) => item.found)?.candidate;
+  const python = await findComfyPython(settings, comfyRoot, installation);
   if (!python) {
     throw new Error("找到了 ComfyUI main.py，但没有找到可用的 Python 运行环境。");
   }
@@ -2612,10 +2784,8 @@ export async function installCustomNode(
 
     const requirements = path.join(targetDirectory, "requirements.txt");
     if (await exists(requirements)) {
-      const python = path.join(comfyRoot, ".venv", "Scripts", "python.exe");
-      if (!(await exists(python))) {
-        throw new Error("节点已下载，但没有找到 ComfyUI Desktop 的 Python 环境。");
-      }
+      const python = await findComfyPython(settings, comfyRoot);
+      if (!python) throw new Error("节点已下载，但没有找到所选 ComfyUI 的 Python 环境。");
       installLog.push(`安装依赖 ${requirements}`);
       const pipResult = await execFileAsync(
         python,
@@ -2648,6 +2818,206 @@ export async function installCustomNode(
       ok: false,
       message: error instanceof Error ? error.message : String(error),
       log: installLog.join("\n\n")
+    };
+  }
+}
+
+export function tritonRequirementForTorch(torchVersion: string): string {
+  const match = torchVersion.match(/^(\d+)\.(\d+)/);
+  if (!match) throw new Error(`无法识别 PyTorch 版本：${torchVersion || "未知"}`);
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  if (major !== 2 || minor < 4 || minor > 11) {
+    throw new Error(`当前自动安装尚不支持 PyTorch ${torchVersion}`);
+  }
+  const tritonMinor = minor - 4;
+  return `triton-windows>=3.${tritonMinor},<3.${tritonMinor + 1}`;
+}
+
+async function runLoggedProcess(
+  executable: string,
+  args: string[],
+  options: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    timeoutMs?: number;
+    onLog?: (message: string) => void;
+  }
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const output: string[] = [];
+    const child = spawn(executable, args, {
+      cwd: options.cwd,
+      env: options.env,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    const append = (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      output.push(text);
+      for (const line of text.split(/\r?\n/).filter(Boolean)) {
+        options.onLog?.(line);
+      }
+    };
+    child.stdout?.on("data", append);
+    child.stderr?.on("data", append);
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error(`命令运行超过 ${Math.round((options.timeoutMs ?? 900_000) / 60_000)} 分钟`));
+    }, options.timeoutMs ?? 900_000);
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      const text = output.join("").trim();
+      if (code === 0) resolve(text);
+      else reject(Object.assign(new Error(`命令退出，代码 ${code}`), { stdout: text }));
+    });
+  });
+}
+
+export async function installAttentionAcceleration(
+  settings: Settings,
+  onLog?: (message: string) => void
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  const log: string[] = [];
+  const report = (message: string) => {
+    log.push(message);
+    onLog?.(message);
+  };
+  let wasRunning = false;
+  try {
+    report(proxyLogLabel(settings));
+    const comfyRoot = await findComfyRoot(settings);
+    const installation = await findComfyInstallation(settings);
+    if (!comfyRoot || !installation) {
+      throw new Error("请先在设置中选择完整的 ComfyUI 安装和数据目录。");
+    }
+    const python = await findComfyPython(settings, comfyRoot, installation);
+    if (!python) throw new Error("没有找到所选 ComfyUI 的 Python 环境。");
+    const before = await inspectAttentionPython(python);
+    const gpuArchitecture = Number.parseFloat(before.gpuArchitecture ?? "");
+    if (!Number.isFinite(gpuArchitecture) || gpuArchitecture < 8) {
+      throw new Error(
+        `SageAttention 2.2 需要 SM 8.0+ NVIDIA GPU；当前检测结果为 ${before.gpuName || "未知 GPU"} / SM ${before.gpuArchitecture || "未知"}。`
+      );
+    }
+    const wheel = attentionWheelForProbe(before);
+    if (!wheel) {
+      throw new Error(
+        `没有找到适用于 Python ${before.pythonVersion || "未知"} / ` +
+        `PyTorch ${before.torchVersion || "未知"} / CUDA ${before.cudaVersion || "未知"} 的官方 Windows wheel。`
+      );
+    }
+    report(`ComfyUI Python：${python}`);
+    report(`运行时：Python ${before.pythonVersion} · PyTorch ${before.torchVersion} · CUDA ${before.cudaVersion}`);
+    report(`目标：${wheel.filename}`);
+
+    const healthUrl = `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
+    wasRunning = await fetch(healthUrl, {
+      signal: AbortSignal.timeout(2000)
+    }).then((response) => response.ok).catch(() => false);
+    if (wasRunning) {
+      report("正在停止 ComfyUI，避免更新节点和 Python 扩展时文件被占用……");
+      await stopComfyUi(settings);
+      report("ComfyUI 已停止");
+    }
+
+    if (await kjNodesSupportsModelAttention(comfyRoot)) {
+      report("KJNodes 已支持模型级 SageAttention，无需重复更新");
+    } else {
+      report("正在安装或更新 KJNodes 模型级 Attention 补丁……");
+      const kjResult = await installCustomNode("kjnodes", settings);
+      if (kjResult.log) {
+        log.push(kjResult.log);
+        for (const line of kjResult.log.split(/\r?\n/).filter(Boolean)) onLog?.(line);
+      }
+      if (!kjResult.ok) throw new Error(kjResult.message);
+      if (!(await kjNodesSupportsModelAttention(comfyRoot))) {
+        throw new Error("KJNodes 已安装，但没有检测到模型级 SageAttention 节点；请查看安装日志。");
+      }
+    }
+
+    const environment = downloadEnvironment(settings);
+    const commonPipArgs = ["-m", "pip", "install", "--disable-pip-version-check", "--no-input"];
+    const tritonRequirement = tritonRequirementForTorch(before.torchVersion ?? "");
+    report(`正在安装 ${tritonRequirement}……`);
+    await runLoggedProcess(
+      python,
+      [...commonPipArgs, "--upgrade", tritonRequirement],
+      { env: environment, timeoutMs: 900_000, onLog }
+    );
+    report("Triton 安装完成");
+
+    report("正在从 ComfyUI 官方 wheel 仓库安装 SageAttention……");
+    await runLoggedProcess(
+      python,
+      [
+        ...commonPipArgs,
+        "--upgrade",
+        "--extra-index-url",
+        wheel.url,
+        `sageattention==${wheel.version}`
+      ],
+      { env: environment, timeoutMs: 900_000, onLog }
+    );
+    report("SageAttention 安装完成");
+
+    report("正在运行 CUDA Attention 自检……");
+    const selfTest = [
+      "import json, torch",
+      "from sageattention import sageattn_qk_int8_pv_fp16_cuda as sage",
+      "q=torch.randn(1,8,128,64,device='cuda',dtype=torch.float16)",
+      "k=torch.randn_like(q); v=torch.randn_like(q)",
+      "out=sage(q,k,v,tensor_layout='HND',is_causal=False,pv_accum_dtype='fp32')",
+      "torch.cuda.synchronize()",
+      "assert out.shape == q.shape and torch.isfinite(out).all()",
+      "print(json.dumps({'ok':True,'shape':list(out.shape),'dtype':str(out.dtype),'gpu':torch.cuda.get_device_name(0)}))"
+    ].join("\n");
+    const selfTestOutput = await runLoggedProcess(
+      python,
+      ["-c", selfTest],
+      { env: environment, timeoutMs: 180_000, onLog }
+    );
+    report(`CUDA 自检通过：${selfTestOutput}`);
+
+    const after = await inspectAttentionAcceleration(settings, comfyRoot, installation);
+    if (!after.ready) throw new Error(`安装后复检未通过：${after.detail}`);
+    report(`环境复检通过：SageAttention ${after.sageAttentionVersion} · Triton ${after.tritonVersion}`);
+
+    if (wasRunning) {
+      report("正在重新启动 ComfyUI 并加载更新后的节点……");
+      const health = await startComfyUi(settings);
+      if (!(await waitForService(health))) {
+        throw new Error("依赖安装成功，但 ComfyUI 在 2 分钟内没有恢复就绪。");
+      }
+      report("ComfyUI 已重新启动");
+    }
+    return {
+      ok: true,
+      message: "H3 推理加速环境已安装并通过 CUDA 自检。",
+      log: log.join("\n")
+    };
+  } catch (error) {
+    const processError = error as Error & { stdout?: string; stderr?: string };
+    const details = [processError.message, processError.stdout, processError.stderr]
+      .filter(Boolean).join("\n");
+    report(details);
+    if (wasRunning) {
+      try {
+        report("安装未完整结束，正在尝试恢复 ComfyUI……");
+        const health = await startComfyUi(settings);
+        await waitForService(health);
+      } catch (recoveryError) {
+        report(`恢复启动失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
+      }
+    }
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+      log: log.join("\n")
     };
   }
 }
@@ -2773,9 +3143,10 @@ export async function scanEnvironment(
     modelFiles,
     settings.ltxExtensionModelProfile
   );
-  const [customNodes, workflowDependencies] = await Promise.all([
+  const [customNodes, workflowDependencies, attentionAcceleration] = await Promise.all([
     scanCustomNodes(comfyRoot),
-    scanWorkflowDependencies(comfyRoot)
+    scanWorkflowDependencies(comfyRoot),
+    inspectAttentionAcceleration(settings, comfyRoot, comfyInstallation)
   ]);
   const issues = await scanEnvironmentIssues(comfyRoot);
   const comfyItem: EnvironmentItem = comfyRoot || comfyInstallation
@@ -2841,6 +3212,7 @@ export async function scanEnvironment(
     modelDirectory,
     outputDirectory,
     comfyCompatibility,
+    attentionAcceleration,
     items,
     modelProfiles,
     customNodes,

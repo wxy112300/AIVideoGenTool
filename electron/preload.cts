@@ -43,6 +43,8 @@ const api: AppApi = {
     ipcRenderer.invoke("custom-node:install", nodeId, settings),
   installWorkflowDependency: (workflowId, settings) =>
     ipcRenderer.invoke("workflow-dependency:install", workflowId, settings),
+  installAttentionAcceleration: (settings) =>
+    ipcRenderer.invoke("attention-acceleration:install", settings),
   enqueue: (draft: Draft) => ipcRenderer.invoke("queue:enqueue", draft),
   enqueueExtension: (draft: Draft) =>
     ipcRenderer.invoke("queue:enqueue-extension", draft),
@@ -71,6 +73,12 @@ const api: AppApi = {
       callback(preview as Parameters<typeof callback>[0]);
     ipcRenderer.on("task:preview", listener);
     return () => ipcRenderer.removeListener("task:preview", listener);
+  },
+  onAttentionInstallLog: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, message: unknown) =>
+      callback(String(message));
+    ipcRenderer.on("attention-acceleration:log", listener);
+    return () => ipcRenderer.removeListener("attention-acceleration:log", listener);
   }
 };
 

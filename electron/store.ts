@@ -105,7 +105,8 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
   if (task.taskType === "extension") {
     return {
       ...task,
-      modelProfile: task.modelProfile ?? "q3_k_m"
+      modelProfile: task.modelProfile ?? "q3_k_m",
+      attentionMode: task.attentionMode ?? "sage"
     };
   }
   return {
@@ -115,6 +116,7 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
     sourceHeight: task.sourceHeight ?? 0,
     fps: (task.fps ?? 24) as Draft["fps"],
     frameInterpolation: task.frameInterpolation ?? "off",
+    attentionMode: task.attentionMode ?? "sage",
     keepSeedOnCopy: task.keepSeedOnCopy ?? false,
     ...(task.status === "running"
       ? {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  attentionWheelForProbe,
   buildComfyCandidates,
   buildComfyDesktopCandidates,
   buildComfyDesktopSourceCandidates,
@@ -14,8 +15,41 @@ import {
   patchLtxAudioVaeCompatibility,
   patchVideoHelperBatchCompatibility,
   renameWithRetry,
+  tritonRequirementForTorch,
   videoHelperBatchCompatible
 } from "../electron/services/environment.js";
+
+describe("SageAttention environment selection", () => {
+  it("selects the exact official Comfy wheel for the active runtime", () => {
+    expect(attentionWheelForProbe({
+      pythonVersion: "3.12.11",
+      torchVersion: "2.8.0+cu129",
+      cudaVersion: "12.9"
+    })).toMatchObject({
+      version: "2.2.0+cu129torch2.8",
+      filename: "sageattention-2.2.0+cu129torch2.8-cp312-cp312-win_amd64.whl"
+    });
+    expect(tritonRequirementForTorch("2.8.0+cu129")).toBe(
+      "triton-windows>=3.4,<3.5"
+    );
+    expect(tritonRequirementForTorch("2.4.1+cu124")).toBe(
+      "triton-windows>=3.0,<3.1"
+    );
+  });
+
+  it("rejects runtime combinations not published in the official wheel matrix", () => {
+    expect(attentionWheelForProbe({
+      pythonVersion: "3.12.11",
+      torchVersion: "2.7.0+cu129",
+      cudaVersion: "12.9"
+    })).toBeNull();
+    expect(attentionWheelForProbe({
+      pythonVersion: "3.14.0",
+      torchVersion: "2.8.0+cu129",
+      cudaVersion: "12.9"
+    })).toBeNull();
+  });
+});
 
 describe("Windows directory replacement", () => {
   it("retries a transient EPERM before promoting the replacement directory", async () => {

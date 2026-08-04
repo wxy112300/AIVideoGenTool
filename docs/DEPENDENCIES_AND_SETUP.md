@@ -120,8 +120,8 @@ MiniMax H3 在 ComfyUI 核心提交 `57500fc5` 首次加入。官方教程曾提
 
 - `MiniMaxH3ImageToVideo`
 
-截图中的 `0.29.2 + 44 commits (f72b688)` 已包含最低 H3 提交。H3 不需要额外
-第三方节点；模型设置只扫描 Image-to-Video 使用的 FL2VA 权重、Qwen3-VL 32B
+截图中的 `0.29.2 + 44 commits (f72b688)` 已包含最低 H3 提交。H3 的官方基础工作流
+不需要额外第三方节点；模型设置只扫描 Image-to-Video 使用的 FL2VA 权重、Qwen3-VL 32B
 编码器、视频 VAE 和音频 VAE，不扫描或接入纯文本与 Ref2VA 流程。H3 依赖显示在
 “节点与工作流”分类中，不混入 ComfyUI 安装管理。
 
@@ -141,6 +141,33 @@ H3 I2V 必需的核心节点和官方 UI 工作流归入“节点与工作流”
 `workflows/minimax_h3_i2v_api.json` 用于实际排队生成，参数遵循官方 FL2VA 工作流：
 `res_multistep`、`simple` scheduler、20 步和原生 24 FPS 音视频输出。
 
+### MiniMax H3 Attention 加速环境
+
+设置页的“推理加速”是独立分类，不把 Python 扩展伪装成视频模型。它会以用户当前
+选择的 ComfyUI 实例为准，定位 Desktop `.venv`、Portable `python_embeded` 或源码
+`.venv`，读取真实 Python、PyTorch、CUDA、GPU 架构、SageAttention、Triton 和
+KJNodes 状态。点击“一键安装并自检”会：
+
+1. 在当前 ComfyUI Python 中安装与 Torch/CUDA 对应的 `triton-windows`。
+2. 通过 ComfyUI 官方 PEP 503 wheel 索引安装精确版本的 SageAttention 2.2.0；
+   不猜 GitHub Release 文件名，也不污染系统 Python。
+3. 安装或更新 KJNodes；若其已包含模型级 `PathchSageAttentionKJ` 和
+   `optimized_attention_override` 则跳过重复覆盖。
+4. 用小型 CUDA tensor 调用 `sageattn_qk_int8_pv_fp16_cuda`，检查输出 shape、
+   dtype 和有限值，再复扫环境。安装过程和错误实时显示在设置页。
+
+支持判断使用 ComfyUI 官方 wheel build matrix，并要求 NVIDIA SM 8.0 或更高；换机后
+的 Python/Torch/CUDA 组合没有官方 wheel 时会明确显示“不支持”，而不是下载一个
+名称相似但 ABI 不匹配的文件。H3 API workflow 只在 UNET 模型支路插入 KJNodes
+补丁，不全局改变 Wan、Hunyuan 或其他模型；设置可切换到 PyTorch 兼容模式，渲染时
+会移除该节点并恢复原模型连线。
+
+当前 RTX 4090 / Torch 2.8.0+cu129 实测安装结果：SageAttention
+`2.2.0+cu129torch2.8`、Triton Windows `3.4.0.post21`，CUDA FP16 自检通过。
+相同代表性 tensor 的 FP16 Attention 中位耗时约 4–6 ms；FP8 PV CUDA 内核在当前
+组合触发 `unspecified launch failure`，因此不能作为默认。Sage FP16 本身不是本机
+H3 慢任务的瓶颈。
+
 H3 要求 `17n+5` 帧：5 秒是 124 帧，官方约 15 秒上限是 362 帧。应用允许完整
 1–15 秒范围，5 秒以内作为 RTX 4090 稳妥起点；6–10 秒显示中等风险提示，10–15 秒
 显示高风险提示但不阻止排队。H3 固定原生 24 FPS 且关闭 RIFE，输出尺寸对齐 32
@@ -158,6 +185,14 @@ H3 的 5 秒 480p/540p 默认档在 24GB 显存上保留整段时域 VAE 解码�
 超过 124 帧或高于 960×544 时自动改用 256 像素空间 tile、64 帧时域 tile 和 16 帧
 重叠。最大档因此优先保证可完成性，代价是解码更慢，并仍可能受到驱动、其他 GPU
 程序和 ComfyUI 内存策略影响。
+
+2026-08-04 的最短真实 smoke test 使用官方模型、864×480、39 帧、20 步和相同
+sampler/scheduler。任务进入 `SamplerCustomAdvanced` 后 GPU 保持 100%，但约 9 分钟
+仍没有完成第一个可见 step；系统可用 RAM 一度低于 0.6 GB，并出现持续磁盘换页，
+随后强制结束 ComfyUI 进程树。四个官方权重合计约 42.3 GB，而该机器在启动任务前
+只有约 32 GB 可用 RAM；现有证据指向权重/内存换页，而不是错误 sampler、VAE 或
+SageAttention 内核。这个组合尚未达到“4090 已验证可用”标准，继续测试前应关闭
+占用内存的软件，记录页面文件与阶段峰值；不要把此次中止任务写入成功历史。
 
 当前 FL2VA API 工作流同时支持首帧和可选尾帧。没有尾帧时渲染器会删除空的可选
 `LoadImage` 节点；存在尾帧时使用 `MiniMaxH3ImageToVideo.last_frame` 做原生首尾帧
