@@ -1201,36 +1201,35 @@ function settingsPage(): string {
 
   const attention = environmentScan?.attentionAcceleration;
   const accelerationPanel = `
-    <section class="settings-panel">
-      <section class="panel settings-section ${attention?.ready ? "available" : "missing"}">
+    <section class="settings-panel acceleration-panel">
+      <section class="panel settings-section acceleration-overview ${attention?.ready ? "available" : "missing"}">
         <div class="section-heading">
-          <div><h2>Attention 推理加速</h2><span class="muted">为 H3 安装与当前 ComfyUI Python、PyTorch 和 CUDA 精确匹配的运行库</span></div>
+          <div><h2>H3 推理加速</h2><span class="muted">为当前 ComfyUI 环境匹配 Python、PyTorch、CUDA 与 Attention 运行库</span></div>
           <span class="model-availability ${attention?.ready ? "available" : "missing"}">${attention?.ready ? "✓ 已就绪" : attention?.supported ? "待安装/修复" : "环境不支持"}</span>
         </div>
-        <div class="settings-grid two">
-          <label>H3 Attention 模式
+        <div class="acceleration-control-row">
+          <label class="acceleration-mode-field">H3 Attention 模式
             <select id="h3-attention-mode">
               <option value="sage" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>自动加速 · SageAttention CUDA FP16</option>
               <option value="pytorch" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>兼容模式 · PyTorch Attention</option>
             </select>
           </label>
-          <div class="scan-result"><strong>${escapeHtml(attention?.detail ?? "等待环境扫描")}</strong><br><span class="muted">兼容模式会从 H3 工作流中自动移除 SageAttention 节点。</span></div>
+          <div class="acceleration-summary">
+            <span class="acceleration-summary-icon">${attention?.ready ? "✓" : "!"}</span>
+            <div><strong>${escapeHtml(attention?.detail ?? "等待环境扫描")}</strong><span>兼容模式会自动移除 H3 工作流中的 SageAttention 节点。</span></div>
+          </div>
         </div>
-        <div class="environment-grid">
-          <article><span>ComfyUI Python</span><strong>${escapeHtml(attention?.pythonVersion || "未找到")}</strong><code title="${escapeHtml(attention?.pythonPath || "")}">${escapeHtml(attention?.pythonPath || "请先选择安装")}</code></article>
-          <article><span>PyTorch / CUDA</span><strong>${escapeHtml(attention?.torchVersion || "未知")}</strong><code>CUDA ${escapeHtml(attention?.cudaVersion || "未知")} · SM ${escapeHtml(attention?.gpuArchitecture || "未知")}</code></article>
-          <article><span>SageAttention</span><strong>${escapeHtml(attention?.sageAttentionVersion || "未安装")}</strong><code>${escapeHtml(attention?.recommendedWheel || "无匹配 wheel")}</code></article>
-          <article><span>Triton / KJNodes</span><strong>${escapeHtml(attention?.tritonVersion || "未安装")}</strong><code>${attention?.kjNodesCompatible ? "KJNodes 模型级补丁可用" : attention?.kjNodesInstalled ? "KJNodes 需要更新" : "KJNodes 未安装"}</code></article>
+        <div class="attention-runtime-grid">
+          <article class="attention-runtime-card"><span class="runtime-label">ComfyUI Python</span><strong class="runtime-value">${escapeHtml(attention?.pythonVersion || "未找到")}</strong><code class="runtime-detail" title="${escapeHtml(attention?.pythonPath || "")}">${escapeHtml(attention?.pythonPath || "请先选择 ComfyUI 安装目录")}</code></article>
+          <article class="attention-runtime-card"><span class="runtime-label">PyTorch / CUDA</span><strong class="runtime-value">${escapeHtml(attention?.torchVersion || "未知")}</strong><code class="runtime-detail">CUDA ${escapeHtml(attention?.cudaVersion || "未知")} · SM ${escapeHtml(attention?.gpuArchitecture || "未知")}</code></article>
+          <article class="attention-runtime-card"><span class="runtime-label">SageAttention</span><strong class="runtime-value">${escapeHtml(attention?.sageAttentionVersion || "未安装")}</strong><code class="runtime-detail" title="${escapeHtml(attention?.recommendedWheel || "")}">${escapeHtml(attention?.recommendedWheel || "当前环境没有匹配的 wheel")}</code></article>
+          <article class="attention-runtime-card"><span class="runtime-label">Triton / KJNodes</span><strong class="runtime-value">${escapeHtml(attention?.tritonVersion || "未安装")}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? "KJNodes 模型级补丁可用" : attention?.kjNodesInstalled ? "KJNodes 需要更新" : "KJNodes 未安装"}</code></article>
         </div>
-        <div class="button-row">
+        <div class="acceleration-actions">
           <button class="primary" id="install-attention-acceleration" ${attentionAccelerationInstalling || !attention?.supported ? "disabled" : ""}>${attentionAccelerationInstalling ? "正在补全环境…" : attention?.ready ? "重新安装/修复" : "一键安装并自检"}</button>
-          <span class="muted">安装时会停止当前 ComfyUI；完成后若此前正在运行，会自动重启。</span>
+          <div><strong>安装过程会临时停止 ComfyUI</strong><span>环境补全后，若服务此前正在运行，程序会自动将它重启。</span></div>
         </div>
         ${attentionAccelerationLog ? `<details class="node-log" open><summary>环境安装日志</summary><pre id="attention-install-log">${escapeHtml(attentionAccelerationLog)}</pre></details>` : ""}
-      </section>
-      <section class="panel settings-section">
-        <div class="section-heading"><div><h2>当前 H3 运行策略</h2><span class="muted">只对 MiniMax H3 的扩散模型应用，不全局影响 Wan、Hunyuan 或其他工作流</span></div></div>
-        <div class="scan-result">UNETLoader → Patch Sage Attention KJ（<code>sageattn_qk_int8_pv_fp16_cuda</code>）→ Scheduler / Guider。首轮关闭 Torch Compile 与 FP8 PV，优先验证稳定性。</div>
       </section>
     </section>`;
 
