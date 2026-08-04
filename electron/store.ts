@@ -217,9 +217,9 @@ export class JsonStore {
       if (
         !Number.isFinite(this.state.settings.vramReserveGb) ||
         this.state.settings.vramReserveGb < 0.5 ||
-        this.state.settings.vramReserveGb === 4
+        this.state.settings.vramReserveGb > 1
       ) {
-        this.state.settings.vramReserveGb = 2;
+        this.state.settings.vramReserveGb = 1;
         needsPersist = true;
       }
       if (!this.state.settings.autoOffload) {

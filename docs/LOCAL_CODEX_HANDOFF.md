@@ -123,7 +123,7 @@
 | 模型 ID | UI 名称 | 内置工作流 | 当前验证 |
 |---|---|---|---|
 | `wan22_5b` | Wan 2.2 I2V 5B | `workflows/wan22_5b_i2v_api.json` | 4090 上完成 720p、5 秒、121 帧正式基准 |
-| `minimax_h3_fl2va` | MiniMax H3 FL2VA | `workflows/minimax_h3_i2v_api.json` | 官方 864×480/39 帧图可提交；Sage CUDA 自检通过，但 64GB 机器真实采样发生严重 RAM 换页，尚未完成输出 |
+| `minimax_h3_fl2va` | MiniMax H3 FL2VA | `workflows/minimax_h3_i2v_api.json` | RTX 4090 完成 864×480、39帧、24FPS、原生立体声音频；总执行86.505秒 |
 | `hunyuan15` | HunyuanVideo 1.5 I2V | `workflows/hunyuan15_i2v_api.json` | API 节点与工作流校验通过；仍需完整生成基准 |
 | `hunyuan15_sr` | HunyuanVideo 1.5 I2V + 1080p SR | `workflows/hunyuan15_sr_i2v_api.json` | 官方 20 步 720p + 8 步 SR 分支；服务端解析与首阶段执行验证通过 |
 | `sulphur2` | Sulphur 2 GGUF | Q2: `workflows/sulphur2_ltx23_i2v_gguf_q2_api.json` / `workflows/sulphur2_ltx23_extend_gguf_q2_api.json`; Q3/Q4: 对应 `*_gguf_dev_api.json` | 四个图已通过本机 ComfyUI 节点 schema；FP8 Extend 实测导致严重桌面卡顿，GGUF 尚未运行重型 benchmark |
@@ -162,8 +162,9 @@ Q3/Q4 是 dev transformer，内置图叠加 distill LoRA。I2V、Extend、环境
 - 新任务默认 5 秒、24 FPS、关闭插帧。单段输出最多 10 秒，超出需要续写或分段。
 - Wan 5B、Hunyuan 1.5、Sulphur 2 当前预算为 121 个模型帧；Wan 14B FP8/GGUF
   在真实基准完成前采用 81 帧预算。限制按实际模型帧计算，不再按秒数一刀切。
-- ComfyUI 由应用以 `--reserve-vram 2 --cache-none` 启动；保留 ComfyUI 0.18.2
-  DynamicVRAM 默认启用的双流 async offload 和 pinned memory，不再强制 `--lowvram`。
+- ComfyUI 由应用以 `--reserve-vram 1 --cache-none --disable-pinned-memory
+  --disable-async-offload` 启动，不强制 `--lowvram`。这是 Windows RTX 4090 上 H3
+  完整跑通的稳定档；默认异步固定内存卸载会造成超过90GB committed memory和换页。
 - 本机日志确认 PyTorch 2.8、RTX 4090 24 GB、63.8 GB RAM、DynamicVRAM 和
   comfy-aimdo 0.4.10 均可用。
 - Wan 14B 高噪声专家完成后先通过 `VRAM_Debug` 卸载，再加载低噪声专家；
@@ -230,9 +231,9 @@ Q3/Q4 是 dev transformer，内置图叠加 distill LoRA。I2V、Extend、环境
    - 不得把“已经 tiled VAE”写成 DiT sampling 不会 OOM 的证据，也不得把 GGUF
      文件大小直接等同于运行时峰值。
 5. **保留 ComfyUI 的有效内存管理能力**
-   - 默认保留 DynamicVRAM、async offload 和 pinned memory。除非有该模型的复现证据，
-     不得全局加入 `--lowvram`、`--disable-async-offload` 或
-     `--disable-pinned-memory`。
+   - 默认优先保留 DynamicVRAM 的能力；修改 async offload 或 pinned memory 必须有
+     该模型的复现证据。H3 已提供“默认异步路径卡死、同步路径86.505秒完成”的本机
+     对照，因此 Windows 24GB 稳定档明确关闭两者；仍不得无依据加入 `--lowvram`。
    - 修改启动参数后必须重启应用管理的 ComfyUI，并同时检查实际 Python 命令行和启动
      日志；只看 TypeScript 配置不算验证。日志至少应确认 allocator、VRAM state、
      DynamicVRAM、async offload、pinned memory 和 reserve 值。
@@ -395,10 +396,11 @@ npm run build
    - MiniMax H3、Hunyuan 1.5、Wan 14B 原版、Remix、SmoothMix、DaSiWa 尚未分别完成
   81/121 帧真实生成和峰值显存记录；未实测模型不要提高对应 frame profile。
    - 需要保存耗时、采样阶段、VAE、RIFE、编码和 `nvidia-smi` 数据。
-   - H3 864×480/39 帧在 64GB RAM 机器上进入采样，但 9 分钟没有完成首个可见
-     step；GPU 100%、显存约 22.5GB，系统 RAM 一度只剩约 0.55GB 并发生磁盘换页。
-     Sage FP16 微基准正常，FP8 内核不稳定。下一次先关闭其他高内存程序并监控
-     committed/private bytes；必要时评估 ComfyUI `--fast-disk`，不要盲目更换 sampler。
+   - H3 已完成 864×480/39 帧基准：Euler + simple + 20步 + Sage FP16，总执行
+     86.505秒，输出39帧/24FPS/1.625秒并含AAC双声道。官方 res_multistep 与默认
+     pinned/async offload 在本机组合会严重换页；生产图使用已验证配置。
+     Prompt ID：`35c78c1c-d09a-4d53-b935-9736ea98cad3`；输出：
+     `C:\Users\Wuyouwofang\Documents\ComfyUI\output\codex-h3-euler-final-proof_00001_.mp4`。
 2. **RIFE 多帧端到端测试**
    - 分别测试 24 FPS + 2×、24 FPS + 4×、25 FPS + 2×、30 FPS + 2×。
    - 检查快速运动、遮挡和镜头切换的插帧伪影。

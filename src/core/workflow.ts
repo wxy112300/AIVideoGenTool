@@ -785,10 +785,12 @@ export function renderWorkflow(
       node.class_type === "VAEDecode" ||
       node.class_type === "VAEDecodeTiled"
     ) {
-      if (node.class_type === "VAEDecode") {
-        node.class_type = "VAEDecodeTiled";
+      if (task.modelId !== "minimax_h3_fl2va") {
+        if (node.class_type === "VAEDecode") {
+          node.class_type = "VAEDecodeTiled";
+        }
+        Object.assign(node.inputs, tiledDecodeInputs);
       }
-      Object.assign(node.inputs, tiledDecodeInputs);
       latentInputKey = "samples";
     } else {
       continue;

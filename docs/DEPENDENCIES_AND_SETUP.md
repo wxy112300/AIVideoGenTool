@@ -139,7 +139,9 @@ H3 I2V 必需的核心节点和官方 UI 工作流归入“节点与工作流”
 工作流可一键下载到 `user/default/workflows/video_minimax_h3_i2v.json`，下载遵循代理
 设置。视频模型分类只负责检查 FL2VA、文本编码器和双 VAE 权重。应用同时内置
 `workflows/minimax_h3_i2v_api.json` 用于实际排队生成，参数遵循官方 FL2VA 工作流：
-`res_multistep`、`simple` scheduler、20 步和原生 24 FPS 音视频输出。
+官方模板使用 `res_multistep`；本项目在 Windows RTX 4090 实测该路径单步无法及时
+返回，因此生产图使用社区已验证且本机完整跑通的 `euler`、`simple` scheduler、
+20 步和原生 24 FPS 音视频输出。
 
 ### MiniMax H3 Attention 加速环境
 
@@ -175,24 +177,29 @@ H3 要求 `17n+5` 帧：5 秒是 124 帧，官方约 15 秒上限是 362 帧。�
 避免扩散模型与两个 VAE 同时驻留显存。
 
 官方本地模板默认使用 0.4MP、5 秒、20 步、`res_multistep` sampler 与 `simple`
-scheduler；16:9 对应 864×480。应用在选择 H3 时恢复这组默认值，并向 RTX 4090
+scheduler；16:9 对应 864×480。应用保留尺寸、步数和 scheduler，但依据本机完整
+基准把 sampler 改为 `euler`。应用在选择 H3 时恢复这组默认值，并向 RTX 4090
 开放到 1344×768（约 0.98MP）× 15 秒。这个最大组合属于重负载档，不代表固定耗时
 或绝不发生 OOM；任务仍会采用 DynamicVRAM、阶段卸载和 tiled VAE。MiniMax 官网的
 “2K”依赖 H3 的 in-context regeneration；在官方本地 2K 再生成工作流与对应资源明确
 发布前，不把直接扩大基础 latent 冒充成官方 2K 模式。
 
-H3 的 5 秒 480p/540p 默认档在 24GB 显存上保留整段时域 VAE 解码，减少分块接缝；
-超过 124 帧或高于 960×544 时自动改用 256 像素空间 tile、64 帧时域 tile 和 16 帧
-重叠。最大档因此优先保证可完成性，代价是解码更慢，并仍可能受到驱动、其他 GPU
-程序和 ComfyUI 内存策略影响。
+H3 的视频 latent 是 `NestedTensor`，所有档位都保留官方普通 `VAEDecode`；当前核心
+的通用 tiled 节点与该类型不兼容。最大档仍可能受到解码峰值、驱动、其他 GPU 程序
+和 ComfyUI 内存策略影响，不能用其他模型的 tiled VAE 经验推断 H3 一定安全。
 
-2026-08-04 的最短真实 smoke test 使用官方模型、864×480、39 帧、20 步和相同
-sampler/scheduler。任务进入 `SamplerCustomAdvanced` 后 GPU 保持 100%，但约 9 分钟
-仍没有完成第一个可见 step；系统可用 RAM 一度低于 0.6 GB，并出现持续磁盘换页，
-随后强制结束 ComfyUI 进程树。四个官方权重合计约 42.3 GB，而该机器在启动任务前
-只有约 32 GB 可用 RAM；现有证据指向权重/内存换页，而不是错误 sampler、VAE 或
-SageAttention 内核。这个组合尚未达到“4090 已验证可用”标准，继续测试前应关闭
-占用内存的软件，记录页面文件与阶段峰值；不要把此次中止任务写入成功历史。
+2026-08-04 的最终 smoke test 使用官方模型、864×480、39 帧、20 步、Euler 和
+SageAttention，完整生成 H.264 + AAC 立体声音视频，Comfy history 总执行时间
+86.505 秒。`ffprobe` 验证 864×480、24 FPS、39 帧、1.625 秒、AAC 32kHz 双声道。
+此前默认 pinned memory + async offload 会让系统 committed memory 超过 90GB 并
+持续换页，数分钟无法完成首步；改用 `--disable-pinned-memory
+--disable-async-offload --reserve-vram 1` 后采样恢复为每步数秒。因此应用管理的
+ComfyUI 默认采用该 Windows 24GB 稳定档。
+
+H3 的输出是 ComfyUI `NestedTensor`。核心 `VAEDecodeTiled` 当前会在 MiniMax VAE
+路径中对它执行无效的 `Tensor.to(NestedTensor)`，所以 H3 必须保留官方普通
+`VAEDecode`；采样后仍先通过 `VRAM_Debug` 卸载扩散模型。其他模型继续使用 tiled
+VAE，不能把这一兼容例外扩散到所有工作流。
 
 当前 FL2VA API 工作流同时支持首帧和可选尾帧。没有尾帧时渲染器会删除空的可选
 `LoadImage` 节点；存在尾帧时使用 `MiniMaxH3ImageToVideo.last_frame` 做原生首尾帧
@@ -290,9 +297,9 @@ H3 模式由 FFmpeg 在用户保留范围的终点提取一张对齐目标画布
 - WanVideoWrapper block swap 参考实现：
   https://github.com/kijai/ComfyUI-WanVideoWrapper
 
-应用启动 ComfyUI 时保留其默认 async offload 和 pinned memory，不强制
-`--lowvram`，并以 `--reserve-vram 2 --cache-none` 启动。DynamicVRAM 不可用时，
-ComfyUI 自身会回退到 legacy ModelPatcher 的 smart partial loading。
+应用启动 ComfyUI 时不强制 `--lowvram`，使用 `--cache-none --reserve-vram 1
+--disable-pinned-memory --disable-async-offload`。这是当前 Windows 4090 上 H3
+端到端验证通过的稳定档；避免默认异步固定内存卸载导致系统换页卡死。
 
 本机首次正式基准使用 Wan 5B、1280×720、121 模型帧、24 FPS、20 steps、关闭
 RIFE，总执行时间 255.3 秒。`ffprobe` 验证输出为 H.264、5.0417 秒、121 帧。

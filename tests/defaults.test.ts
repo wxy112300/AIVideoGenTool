@@ -17,7 +17,7 @@ describe("draft defaults", () => {
     expect(draft.sourceVideoPath).toBe("");
     expect(draft.trimStartSeconds).toBe(0);
     expect(draft.trimEndSeconds).toBe(0);
-    expect(createDefaultSettings().vramReserveGb).toBe(2);
+    expect(createDefaultSettings().vramReserveGb).toBe(1);
     expect(createDefaultSettings().ltxExtensionModelProfile).toBe("q3_k_m");
     expect(createDefaultSettings().ltxExtensionResolution).toBe(360);
     expect(createDefaultSettings().ltxExtensionFrames).toBe(49);

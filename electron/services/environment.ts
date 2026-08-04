@@ -2247,11 +2247,16 @@ export function comfyUiMemoryArgs(
 ): string[] {
   const configuredReserve = Number.isFinite(settings.vramReserveGb)
     ? settings.vramReserveGb
-    : 2;
+    : 1;
   return [
     "--cache-none",
     "--reserve-vram",
-    String(Math.max(0.5, configuredReserve))
+    String(Math.max(0.5, Math.min(1, configuredReserve))),
+    // On Windows with 24 GB cards, H3's 21 GB transformer plus the 32B
+    // encoder can make pinned/async offload commit over 90 GB and page every
+    // layer. The synchronous path completed the same graph at normal speed.
+    "--disable-pinned-memory",
+    "--disable-async-offload"
   ];
 }
 

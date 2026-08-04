@@ -102,13 +102,17 @@ describe("ComfyUI environment candidates", () => {
     );
   });
 
-  it("keeps DynamicVRAM async offload and pinned memory enabled", () => {
+  it("uses the Windows H3-safe synchronous offload profile", () => {
     const args = comfyUiMemoryArgs({ vramReserveGb: 2 });
 
-    expect(args).toEqual(["--cache-none", "--reserve-vram", "2"]);
+    expect(args).toEqual([
+      "--cache-none",
+      "--reserve-vram",
+      "1",
+      "--disable-pinned-memory",
+      "--disable-async-offload"
+    ]);
     expect(args).not.toContain("--lowvram");
-    expect(args).not.toContain("--disable-async-offload");
-    expect(args).not.toContain("--disable-pinned-memory");
   });
 
   it("detects VideoHelperSuite builds that support six-value ComfyUI queues", () => {

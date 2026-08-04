@@ -121,7 +121,12 @@ describe("renderWorkflow", () => {
       steps: 20,
       denoise: 1
     });
-    expect(rendered["13"]?.class_type).toBe("VAEDecodeTiled");
+    expect(rendered["7"]?.inputs.sampler_name).toBe("euler");
+    // MiniMax H3 emits a NestedTensor. Its official VAEDecode path handles
+    // that type, while core VAEDecodeTiled currently calls Tensor.to() with
+    // the NestedTensor and fails before decoding.
+    expect(rendered["13"]?.class_type).toBe("VAEDecode");
+    expect(rendered["13"]?.inputs).not.toHaveProperty("tile_size");
     expect(rendered["13"]?.inputs.samples).toEqual(["12", 0]);
     expect(rendered["15"]?.inputs.samples).toEqual(["14", 0]);
     expect(rendered["16"]?.inputs).toMatchObject({
@@ -171,11 +176,8 @@ describe("renderWorkflow", () => {
       height: 768,
       length: 362
     });
-    expect(heavy["13"]?.inputs).toMatchObject({
-      tile_size: 256,
-      temporal_size: 64,
-      temporal_overlap: 16
-    });
+    expect(heavy["13"]?.class_type).toBe("VAEDecode");
+    expect(heavy["13"]?.inputs).not.toHaveProperty("temporal_size");
   });
 
   it("replaces nested values while preserving numeric token types", () => {
