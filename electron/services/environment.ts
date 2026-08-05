@@ -295,6 +295,59 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     recommendedFilename: "qwen3vl_32b_minimax_h3_int4_convrot.safetensors",
     notes: "与 INT4 ConvRot FL2VA 扩散模型配套的文本编码器；需要 ComfyUI 0.30.0 或更高版本。"
   },
+  "minimax_h3_ref2va:MiniMax H3 Ref2VA INT8 模型": {
+    sourceLabel: "Comfy-Org / MiniMax-H3",
+    downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    targetSubdirectory: "diffusion_models",
+    recommendedFilename: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    notes: "R2V 多参考模型，和 FL2VA 首帧/首尾帧模型不是同一套权重。4090 可作为 1-2 张图片参考的起步档；参考素材越多，显存和系统内存压力越大。"
+  },
+  "minimax_h3_ref2va_int4:MiniMax H3 Ref2VA INT4 ConvRot 模型": {
+    sourceLabel: "Merserk / MiniMax-H3-INT4-ConvRot",
+    downloadUrl: "https://huggingface.co/Merserk/MiniMax-H3-INT4-ConvRot/resolve/main/minimax_h3_ref2va_pruned_int4_convrot.safetensors",
+    targetSubdirectory: "diffusion_models",
+    recommendedFilename: "minimax_h3_ref2va_pruned_int4_convrot.safetensors",
+    notes: "社区 R2V INT4 ConvRot 转换；12GB 起步，4090 可作为低显存实验档。建议 32GB 以上系统内存和快速 NVMe。R2V 工作流尚未接入。"
+  },
+  "minimax_h3_ref2va:Qwen3-VL 32B H3 文本编码器": {
+    sourceLabel: "Comfy-Org / MiniMax-H3",
+    downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    notes: "R2V 与官方 FL2VA 共用此文本编码器。"
+  },
+  "minimax_h3_ref2va:MiniMax H3 视频 VAE": {
+    sourceLabel: "Comfy-Org / MiniMax-H3",
+    downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+    targetSubdirectory: "vae",
+    recommendedFilename: "minimax_h3_video_vae_fp16.safetensors"
+  },
+  "minimax_h3_ref2va:MiniMax H3 音频 VAE": {
+    sourceLabel: "Comfy-Org / MiniMax-H3",
+    downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+    targetSubdirectory: "vae",
+    recommendedFilename: "minimax_h3_audio_vae_fp32.safetensors",
+    notes: "R2V 原生立体声音频使用此 VAE。"
+  },
+  "minimax_h3_ref2va_int4:Qwen3-VL 32B H3 INT4 文本编码器": {
+    sourceLabel: "Merserk / MiniMax-H3-INT4-ConvRot",
+    downloadUrl: "https://huggingface.co/Merserk/MiniMax-H3-INT4-ConvRot/resolve/main/qwen3vl_32b_minimax_h3_int4_convrot.safetensors",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "qwen3vl_32b_minimax_h3_int4_convrot.safetensors",
+    notes: "R2V INT4 与 FL2VA INT4 共用此文本编码器。"
+  },
+  "minimax_h3_ref2va_int4:MiniMax H3 视频 VAE": {
+    sourceLabel: "Comfy-Org / MiniMax-H3",
+    downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+    targetSubdirectory: "vae",
+    recommendedFilename: "minimax_h3_video_vae_fp16.safetensors"
+  },
+  "minimax_h3_ref2va_int4:MiniMax H3 音频 VAE": {
+    sourceLabel: "Comfy-Org / MiniMax-H3",
+    downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+    targetSubdirectory: "vae",
+    recommendedFilename: "minimax_h3_audio_vae_fp32.safetensors"
+  },
   "sulphur2:Sulphur 2 Q2_K distilled GGUF": {
     sourceLabel: "szwagros / sulphur-2-gguf",
     downloadUrl: "https://huggingface.co/szwagros/sulphur-2-gguf/tree/main",
@@ -635,9 +688,9 @@ function sulphurComponentsFor(
 const modelProfileDefinitions: ModelProfileDefinition[] = [
   {
     id: "minimax_h3_fl2va",
-    name: "MiniMax H3 Image to Video",
+    name: "MiniMax H3 FL2VA · 首帧 / 首尾帧",
     category: "video",
-    badge: "原生音视频",
+    badge: "FL2VA · 原生音视频",
     description: "只接入首帧或首尾帧图生视频，原生 24 FPS 同步立体声音频；不提供纯文本流程。",
     vram: "pruned INT8 · DynamicVRAM",
     integrated: true,
@@ -666,7 +719,7 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
   },
   {
     id: "minimax_h3_fl2va_int4",
-    name: "MiniMax H3 Image to Video · INT4 低显存",
+    name: "MiniMax H3 FL2VA · INT4 低显存",
     category: "video",
     badge: "INT4 · 低显存",
     description: "社区 pruned INT4 ConvRot 档，复用 H3 原生音视频节点；建议 12GB 起步并准备充足系统内存。",
@@ -677,6 +730,68 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
         label: "MiniMax H3 FL2VA INT4 ConvRot 模型",
         expected: "diffusion_models/minimax_h3_fl2va_pruned_int4_convrot.safetensors",
         patterns: [/(?:diffusion_models|unet)\/minimax_h3_fl2va_pruned_int4_convrot\.safetensors$/i]
+      },
+      {
+        label: "Qwen3-VL 32B H3 INT4 文本编码器",
+        expected: "text_encoders/qwen3vl_32b_minimax_h3_int4_convrot.safetensors",
+        patterns: [/text_encoders\/qwen3vl_32b_minimax_h3_int4_convrot\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 视频 VAE",
+        expected: "vae/minimax_h3_video_vae_fp16.safetensors",
+        patterns: [/vae\/minimax_h3_video_vae_fp16\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 音频 VAE",
+        expected: "vae/minimax_h3_audio_vae_fp32.safetensors",
+        patterns: [/vae\/minimax_h3_audio_vae_fp32\.safetensors$/i]
+      }
+    ]
+  },
+  {
+    id: "minimax_h3_ref2va",
+    name: "MiniMax H3 R2V · 多参考 INT8",
+    category: "video",
+    badge: "R2V · 多参考",
+    description: "官方 Ref2VA 多参考档，支持图片、视频和音频参考；当前先加入模型扫描，R2V 工作流待接入。",
+    vram: "pruned INT8 · 4090/24GB 起步 · DynamicVRAM",
+    integrated: false,
+    components: [
+      {
+        label: "MiniMax H3 Ref2VA INT8 模型",
+        expected: "diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        patterns: [/(?:diffusion_models|unet)\/minimax_h3_ref2va_pruned_int8_convrot\.safetensors$/i]
+      },
+      {
+        label: "Qwen3-VL 32B H3 文本编码器",
+        expected: "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        patterns: [/text_encoders\/qwen3vl_32b_minimax_h3_nvfp4_awq\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 视频 VAE",
+        expected: "vae/minimax_h3_video_vae_fp16.safetensors",
+        patterns: [/vae\/minimax_h3_video_vae_fp16\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 音频 VAE",
+        expected: "vae/minimax_h3_audio_vae_fp32.safetensors",
+        patterns: [/vae\/minimax_h3_audio_vae_fp32\.safetensors$/i]
+      }
+    ]
+  },
+  {
+    id: "minimax_h3_ref2va_int4",
+    name: "MiniMax H3 R2V · 多参考 INT4",
+    category: "video",
+    badge: "R2V · INT4 低显存",
+    description: "社区 Ref2VA INT4 ConvRot 档，面向多参考低显存实验；当前先加入模型扫描，R2V 工作流待接入。",
+    vram: "pruned INT4 · 12GB 起步 · 4090 可试 · RAM offload",
+    integrated: false,
+    components: [
+      {
+        label: "MiniMax H3 Ref2VA INT4 ConvRot 模型",
+        expected: "diffusion_models/minimax_h3_ref2va_pruned_int4_convrot.safetensors",
+        patterns: [/(?:diffusion_models|unet)\/minimax_h3_ref2va_pruned_int4_convrot\.safetensors$/i]
       },
       {
         label: "Qwen3-VL 32B H3 INT4 文本编码器",

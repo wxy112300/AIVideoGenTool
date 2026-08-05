@@ -360,7 +360,8 @@ describe("ComfyUI environment candidates", () => {
 
     expect(fl2va?.available).toBe(true);
     expect(fl2va?.integrated).toBe(true);
-    expect(profiles.some((profile) => profile.id === "minimax_h3_ref2va")).toBe(false);
+    expect(profiles.some((profile) => profile.id === "minimax_h3_ref2va")).toBe(true);
+    expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va")?.available).toBe(false);
   });
 
   it("detects the community MiniMax H3 INT4 FL2VA profile independently", () => {
@@ -377,6 +378,28 @@ describe("ComfyUI environment candidates", () => {
     expect(int4?.components[0]?.installGuide.recommendedFilename).toBe(
       "minimax_h3_fl2va_pruned_int4_convrot.safetensors"
     );
+  });
+
+  it("detects official and community R2V profiles without marking them integrated", () => {
+    const profiles = evaluateModelProfiles([
+      "diffusion_models\\minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "diffusion_models\\minimax_h3_ref2va_pruned_int4_convrot.safetensors",
+      "text_encoders\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "text_encoders\\qwen3vl_32b_minimax_h3_int4_convrot.safetensors",
+      "vae\\minimax_h3_video_vae_fp16.safetensors",
+      "vae\\minimax_h3_audio_vae_fp32.safetensors"
+    ]);
+
+    expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va")).toMatchObject({
+      available: true,
+      integrated: false,
+      badge: "R2V · 多参考"
+    });
+    expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va_int4")).toMatchObject({
+      available: true,
+      integrated: false,
+      badge: "R2V · INT4 低显存"
+    });
   });
 
   it("treats MiniMax H3 support as a core-node capability", () => {

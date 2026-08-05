@@ -1516,8 +1516,10 @@ function settingsPage(): string {
           <div><h2>视频模型</h2><span class="muted">根据真实文件组件判断是否可用，不仅检查单个 checkpoint 名称。</span></div>
           <label class="compact-label">默认模型<select id="default-video-model">
             ${(videoProfiles.length ? videoProfiles : [
-              { id: "minimax_h3_fl2va", name: "MiniMax H3 Image to Video", available: true, integrated: true },
-              { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 Image to Video · INT4 低显存", available: true, integrated: true },
+              { id: "minimax_h3_fl2va", name: "MiniMax H3 FL2VA · 首帧 / 首尾帧", available: true, integrated: true },
+              { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 FL2VA · INT4 低显存", available: true, integrated: true },
+              { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考 INT8", available: false, integrated: false },
+              { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: false, integrated: false },
               { id: "sulphur2", name: "Sulphur 2 GGUF", available: false, integrated: true },
               { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: false, integrated: true },
               { id: "hunyuan15", name: "HunyuanVideo 1.5 I2V", available: false, integrated: true }
