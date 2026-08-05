@@ -83,6 +83,11 @@ import {
   createUpscaleFilename,
   upscaleDimensions
 } from "./core/upscale";
+import {
+  promptSnippetFor,
+  promptSnippets
+} from "./core/prompt-suggestions";
+import { checkH3Prompt } from "./core/h3-prompt-check";
 
 type Page = "create" | "queue" | "history" | "history-detail" | "settings";
 
@@ -264,6 +269,35 @@ function modelName(id: string): string {
   );
 }
 
+function promptSnippetOptions(): string {
+  return [...new Set(promptSnippets.map((snippet) => snippet.group))]
+    .map((group) => `<optgroup label="${escapeHtml(group)}">${promptSnippets
+      .filter((snippet) => snippet.group === group)
+      .map((snippet) => `<option value="${escapeHtml(snippet.id)}">${escapeHtml(snippet.label)}</option>`)
+      .join("")}</optgroup>`)
+    .join("");
+}
+
+function h3PromptCheckMarkup(
+  promptText: string,
+  hasEndImage: boolean
+): string {
+  const result = checkH3Prompt(promptText, { hasEndImage });
+  return `<div id="h3-prompt-check" class="h3-prompt-check ${result.valid ? "valid" : "warning"}" aria-live="polite">
+    <div class="h3-prompt-check-heading"><strong>H3 提示词检查</strong><span>${escapeHtml(result.summary)}</span></div>
+    ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}
+  </div>`;
+}
+
+function updateH3PromptCheck(promptText: string, hasEndImage: boolean): void {
+  const element = document.querySelector<HTMLElement>("#h3-prompt-check");
+  if (!element) return;
+  const result = checkH3Prompt(promptText, { hasEndImage });
+  element.className = `h3-prompt-check ${result.valid ? "valid" : "warning"}`;
+  element.innerHTML = `<div class="h3-prompt-check-heading"><strong>H3 提示词检查</strong><span>${escapeHtml(result.summary)}</span></div>
+    ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}`;
+}
+
 function interpolationMultiplier(
   value: Draft["frameInterpolation"] | undefined
 ): 1 | 2 | 4 {
@@ -306,6 +340,27 @@ function extensionSafetyForDraft(draft: Draft, settings: Settings) {
     overlapFrames: settings.ltxExtensionOverlapFrames,
     unloadBetweenStages: settings.ltxExtensionUnloadBetweenStages
   });
+}
+
+function insertPromptSnippet(
+  promptInput: HTMLTextAreaElement,
+  snippet: string
+): void {
+  if (!snippet) return;
+  const start = promptInput.selectionStart;
+  const end = promptInput.selectionEnd;
+  const before = promptInput.value.slice(0, start);
+  const after = promptInput.value.slice(end);
+  const prefix = before && !/\s$/u.test(before) ? "\n" : "";
+  const suffix = after && !/^\s/u.test(after) ? "\n" : "";
+  promptInput.focus();
+  promptInput.setRangeText(
+    `${prefix}${snippet}${suffix}`,
+    start,
+    end,
+    "end"
+  );
+  promptInput.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function versionVideoIndex(version: AssetVersion): number {
@@ -647,7 +702,12 @@ function createPage(): string {
           <button class="secondary button-with-icon" id="enhance-prompt">${icon("sparkles")}本地扩写</button>
         </div>
       </div>
-      <textarea id="prompt-input" rows="6">${escapeHtml(prompt.text)}</textarea>
+      <textarea id="prompt-input" rows="6" spellcheck="true" lang="${/[\u3400-\u9fff]/u.test(prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(prompt.text)}</textarea>
+      <div class="prompt-tool-row">
+        <label class="prompt-snippet-picker"><span>快速插入</span><select id="prompt-snippet"><option value="">选择镜头、动作、声音或对白片段</option>${promptSnippetOptions()}</select></label>
+        <button class="secondary button-with-icon" id="insert-prompt-snippet" type="button" disabled>${icon("plus")}插入</button>
+      </div>
+      ${isMiniMaxH3 ? h3PromptCheckMarkup(prompt.text, Boolean(draft.endImagePath)) : ""}
       ${extending && isMiniMaxH3 ? `<div class="h3-extension-note">
         <strong>H3 结尾帧接续</strong>
         <span>从保留片段的最后一帧生成新段并保留 H3 原生音轨；它不是 latent overlap 原生续写，边界动作可能发生变化。</span>
@@ -656,18 +716,18 @@ function createPage(): string {
         <summary>
           <span class="h3-helper-heading">
             <strong>H3 提示词助手 <span class="model-badge">可选</span></strong>
-            <span>普通描述可以直接生成；需要精确控制镜头和原生声音时，再使用分镜格式。</span>
+            <span>${draft.endImagePath ? "当前为 FL2VA 首尾帧模式。" : "当前为 I2VA 首帧模式。"}模板会使用官方对齐说明和音频字段；准确对白请在模板中保留原文，不要交给扩写器改写。</span>
           </span>
           <span class="h3-helper-toggle"><span class="when-closed">查看格式</span><span class="when-open">收起说明</span>${icon("chevron-down")}</span>
         </summary>
         <div class="h3-helper-body">
           <div class="h3-prompt-sections">
-            <div><strong>整体画面</strong><span>主体、环境、光线、风格，以及整段视频都要保持的内容。</span></div>
-            <div><strong>SHOT 1、2…</strong><span>按时间描述动作、构图、景别、运镜和镜头之间的转场。</span></div>
-            <div><strong>Audio</strong><span>对白、环境声、音效和音乐；没有某种声音也可以明确写出。</span></div>
+            <div><strong>首帧 / 首尾帧对齐</strong><span>自动加入 I2VA 或 FL2VA 的参考图时间说明；首尾帧默认保持一个连续镜头。</span></div>
+            <div><strong>三段主体结构</strong><span>使用 integrated_multimodal_description、overall_soundscape 和 non_diegetic_music。</span></div>
+            <div><strong>对白格式</strong><span>固定说话人 ID，写明语言和音色；准确台词放在 &lt;d&gt;[Chinese] ...&lt;/d&gt; 中。</span></div>
           </div>
           <div class="h3-helper-actions">
-            <span>点击后会新建一个提示词版本，不会覆盖当前内容。</span>
+            <span>模板会使用当前首帧/尾帧状态和 H3 实际帧网格；点击后会新建版本，不会覆盖当前内容。</span>
             <button class="secondary button-with-icon" id="h3-prompt-template" type="button">${icon("list-ordered")}创建结构化提示词</button>
           </div>
         </div>
@@ -2328,6 +2388,18 @@ function bindCreate(): void {
     }
   });
   const promptInput = document.querySelector<HTMLTextAreaElement>("#prompt-input");
+  const promptSnippetSelect = document.querySelector<HTMLSelectElement>("#prompt-snippet");
+  const insertSnippetButton = document.querySelector<HTMLButtonElement>("#insert-prompt-snippet");
+  const updateSnippetButton = () => {
+    if (insertSnippetButton) insertSnippetButton.disabled = !promptSnippetSelect?.value;
+  };
+  promptSnippetSelect?.addEventListener("change", updateSnippetButton);
+  insertSnippetButton?.addEventListener("click", () => {
+    if (!promptInput || !promptSnippetSelect) return;
+    insertPromptSnippet(promptInput, promptSnippetFor(promptSnippetSelect.value));
+    promptSnippetSelect.value = "";
+    updateSnippetButton();
+  });
   promptInput?.addEventListener("input", () => {
     const versions = [...state.draft.promptVersions];
     const current = versions[state.draft.activePromptVersion];
@@ -2344,6 +2416,7 @@ function bindCreate(): void {
       state.draft.activePromptVersion = versions.length - 1;
     }
     patchDraft({ promptVersions: versions, activePromptVersion: state.draft.activePromptVersion });
+    updateH3PromptCheck(promptInput.value, Boolean(state.draft.endImagePath));
   });
   document.querySelector("#prompt-prev")?.addEventListener("click", () => {
     patchDraft({ activePromptVersion: Math.max(0, state.draft.activePromptVersion - 1) });
@@ -2380,7 +2453,8 @@ function bindCreate(): void {
   document.querySelector("#h3-prompt-template")?.addEventListener("click", () => {
     const template = createH3PromptTemplate(
       activePrompt().text,
-      state.draft.duration
+      state.draft.duration,
+      { hasEndImage: Boolean(state.draft.endImagePath) }
     );
     const versions = [
       ...state.draft.promptVersions.slice(0, state.draft.activePromptVersion + 1),
@@ -2392,7 +2466,7 @@ function bindCreate(): void {
       }
     ];
     patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
-    showMessage(`已创建包含 ${template.shotCount} 个镜头的 H3 提示词版本，原内容仍可通过左箭头找回。`);
+    showMessage(`已创建 H3 ${template.mode} 官方结构模板（${template.effectiveDurationSeconds.toFixed(2)} 秒、${template.shotCount} 个连续镜头），原内容仍可通过左箭头找回。`);
   });
   for (const id of ["model", "ratio", "resolution", "fps", "frame-interpolation", "motion", "seed"]) {
     document.querySelector(`#${id}`)?.addEventListener("change", async (event) => {

@@ -5,7 +5,8 @@ import {
   ipcMain,
   Menu,
   protocol,
-  shell
+  shell,
+  type MenuItemConstructorOptions
 } from "electron";
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
@@ -522,10 +523,50 @@ function createWindow(): void {
       preload: path.join(currentDirectory, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      spellcheck: true
     }
   });
   mainWindow.setMenuBarVisibility(false);
+  try {
+    const requestedLanguages = ["en-US", "zh-CN", "zh"];
+    const availableLanguages = mainWindow.webContents.session.availableSpellCheckerLanguages;
+    const spellCheckerLanguages = requestedLanguages.filter((language) =>
+      availableLanguages.includes(language)
+    );
+    if (spellCheckerLanguages.length) {
+      mainWindow.webContents.session.setSpellCheckerLanguages(spellCheckerLanguages);
+    }
+  } catch {}
+  mainWindow.webContents.on("context-menu", (event, params) => {
+    if (!params.isEditable) return;
+    event.preventDefault();
+    const menuItems: MenuItemConstructorOptions[] = [];
+    const suggestions = (params.dictionarySuggestions ?? []).slice(0, 5);
+    if (params.misspelledWord) {
+      if (suggestions.length) {
+        menuItems.push(
+          ...suggestions.map((suggestion) => ({
+            label: suggestion,
+            click: () => mainWindow?.webContents.replaceMisspelling(suggestion)
+          }))
+        );
+      } else {
+        menuItems.push({ label: "没有拼写建议", enabled: false });
+      }
+      menuItems.push({ type: "separator" });
+    }
+    menuItems.push(
+      { label: "撤销", role: "undo", enabled: params.editFlags.canUndo },
+      { label: "重做", role: "redo", enabled: params.editFlags.canRedo },
+      { type: "separator" },
+      { label: "剪切", role: "cut", enabled: params.editFlags.canCut },
+      { label: "复制", role: "copy", enabled: params.editFlags.canCopy },
+      { label: "粘贴", role: "paste", enabled: params.editFlags.canPaste },
+      { label: "全选", role: "selectAll", enabled: params.editFlags.canSelectAll }
+    );
+    Menu.buildFromTemplate(menuItems).popup({ window: mainWindow! });
+  });
   mainWindow.on("close", (event) => {
     if (allowWindowClose) return;
     event.preventDefault();
