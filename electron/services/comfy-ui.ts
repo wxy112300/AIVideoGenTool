@@ -353,15 +353,6 @@ export function progressForNode(
   };
 }
 
-function queueNodeForPrompt(value: unknown, promptId: string): string {
-  if (!Array.isArray(value)) return "";
-  const running = value.find(
-    (entry) => Array.isArray(entry) && entry[1] === promptId
-  );
-  if (!Array.isArray(running) || !Array.isArray(running[4])) return "";
-  return running[4].find((nodeId): nodeId is string => typeof nodeId === "string") ?? "";
-}
-
 export class TaskStalledError extends Error {
   constructor(minutes: number, reason = "未上报节点进展") {
     super(`任务连续 ${minutes} 分钟${reason}，已停止队列并重启 ComfyUI 释放显存。`);
@@ -576,16 +567,11 @@ export async function waitForTask(
         continue;
       }
       try {
-        const queue = await jsonRequest<{ queue_running?: unknown[] }>(
+        await jsonRequest<{ queue_running?: unknown[] }>(
           `${baseUrl}/queue`,
           { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) }
         );
         lastServiceResponseAt = Date.now();
-        const nodeId = queueNodeForPrompt(queue.queue_running, promptId);
-        if (nodeId) {
-          const stage = progressForNode(nodeTypes[nodeId]);
-          reportProgress(stage.progress, stage.label);
-        }
       } catch {
       }
       const entries = Object.values(history).filter(

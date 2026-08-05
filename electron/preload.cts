@@ -37,6 +37,8 @@ const api: AppApi = {
     ipcRenderer.invoke("service:start", kind, settings),
   restartLocalService: (kind, settings) =>
     ipcRenderer.invoke("service:restart", kind, settings),
+  forceStopComfyProcesses: (settings) =>
+    ipcRenderer.invoke("service:force-stop-comfy", settings),
   updateComfyUi: (settings) =>
     ipcRenderer.invoke("comfyui:update", settings),
   repairEnvironmentIssue: (issueId: EnvironmentIssue["id"], settings) =>

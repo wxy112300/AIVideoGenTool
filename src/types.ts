@@ -479,6 +479,7 @@ export interface AppApi {
     kind: LocalServiceKind,
     settings: Settings
   ): Promise<ConnectionResult>;
+  forceStopComfyProcesses(settings: Settings): Promise<ConnectionResult>;
   updateComfyUi(settings: Settings): Promise<ConnectionResult>;
   repairEnvironmentIssue(
     issueId: EnvironmentIssue["id"],

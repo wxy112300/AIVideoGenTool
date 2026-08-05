@@ -65,6 +65,7 @@ import {
   installAttentionAcceleration,
   installCustomNode,
   installWorkflowDependency,
+  forceStopComfyProcesses,
   repairEnvironmentIssue,
   resolveComfyOutputDirectory,
   restartLocalService,
@@ -1040,7 +1041,12 @@ async function executeQueue(): Promise<void> {
       const stalled = error instanceof TaskStalledError;
       const memoryFailure =
         error instanceof Error &&
-        /out of memory|cuda error|cuda.*alloc|allocation.*failed|cublas_status_alloc_failed|显存不足/i.test(
+        /out of memory|cuda error|cuda.*alloc|allocation.*failed|cublas_status_alloc_failed|illegal memory access|cudaErrorIllegalAddress|device-side assertion|显存不足/i.test(
+          error.message
+        );
+      const cudaContextFailure =
+        error instanceof Error &&
+        /illegal memory access|cudaErrorIllegalAddress|device-side assertion/i.test(
           error.message
         );
       const requiresRestart = stalled || memoryFailure;
@@ -1058,6 +1064,8 @@ async function executeQueue(): Promise<void> {
         status: aborted ? "cancelled" : "failed",
         error: aborted
           ? "任务已中止，ComfyUI 已停止当前采样。"
+          : cudaContextFailure
+            ? `${error instanceof Error ? error.message : String(error)} CUDA 上下文已失效，正在重启 ComfyUI。`
           : error instanceof Error
             ? error.message
             : String(error)
@@ -1217,6 +1225,23 @@ function registerIpc(): void {
     "service:start",
     (_event, kind: LocalServiceKind, settings: Settings) =>
       startLocalService(kind, settings)
+  );
+  ipcMain.handle(
+    "service:force-stop-comfy",
+    async (_event, settings: Settings) => {
+      const worker = queueWorker;
+      if (worker) {
+        const stopped = await store.update((state) => {
+          state.queueRunning = false;
+        });
+        sendState(stopped);
+        activeController?.abort(new Error("用户强制终止 ComfyUI"));
+        await interrupt(settings).catch(() => undefined);
+      }
+      const result = await forceStopComfyProcesses(settings);
+      await waitWithTimeout(worker, 15_000);
+      return result;
+    }
   );
   ipcMain.handle(
     "service:restart",

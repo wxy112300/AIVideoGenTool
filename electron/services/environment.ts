@@ -2634,6 +2634,138 @@ function listeningPid(netstatOutput: string, port: number): number | null {
   return null;
 }
 
+async function processIdsForExecutable(executable: string): Promise<number[]> {
+  if (!executable || !(await exists(executable))) return [];
+  const script = [
+    "$target = (Resolve-Path -LiteralPath $env:AIVIDEO_COMFY_EXE).Path.ToLower()",
+    "$ids = Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.ToLower() -eq $target } | Select-Object -ExpandProperty ProcessId",
+    "$ids | ConvertTo-Json -Compress"
+  ].join("; ");
+  try {
+    const { stdout } = await execFileAsync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      {
+        encoding: "utf8",
+        timeout: 10_000,
+        windowsHide: true,
+        env: { ...process.env, AIVIDEO_COMFY_EXE: executable }
+      }
+    );
+    const parsed = JSON.parse(stdout.trim()) as unknown;
+    const values = Array.isArray(parsed) ? parsed : [parsed];
+    return values.filter((value): value is number =>
+      typeof value === "number" && Number.isInteger(value) && value > 0
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function parseComfyProcessIds(output: string): number[] {
+  try {
+    const parsed = JSON.parse(output.trim()) as unknown;
+    const values = Array.isArray(parsed) ? parsed : [parsed];
+    return [...new Set(values.flatMap((value) => {
+      if (typeof value === "number") return [value];
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      const processId = (value as { ProcessId?: unknown; processId?: unknown }).ProcessId ??
+        (value as { processId?: unknown }).processId;
+      return typeof processId === "number" ? [processId] : [];
+    }).filter((value) => Number.isInteger(value) && value > 0))];
+  } catch {
+    return [];
+  }
+}
+
+async function allComfyProcessIds(settings: Settings): Promise<number[]> {
+  const python = await findComfyPython(settings).catch(() => "");
+  const script = [
+    "$python = $env:AIVIDEO_COMFY_PYTHON.ToLower()",
+    "$items = Get-CimInstance Win32_Process | Where-Object {",
+    "  $_.Name -ieq 'ComfyUI.exe' -or",
+    "  ($_.Name -match '^(python|pythonw)(\\.exe)?$' -and (",
+    "    ($python -and $_.ExecutablePath -and $_.ExecutablePath.ToLower() -eq $python -and $_.CommandLine -match '(?i)main\\.py') -or",
+    "    $_.CommandLine -match '(?i)ComfyUI'",
+    "  ))",
+    "} | Select-Object -ExpandProperty ProcessId",
+    "$items | ConvertTo-Json -Compress"
+  ].join(" ");
+  try {
+    const { stdout } = await execFileAsync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      {
+        encoding: "utf8",
+        timeout: 10_000,
+        windowsHide: true,
+        env: { ...process.env, AIVIDEO_COMFY_PYTHON: python }
+      }
+    );
+    return parseComfyProcessIds(stdout);
+  } catch {
+    return [];
+  }
+}
+
+export async function forceStopComfyProcesses(
+  settings: Settings
+): Promise<{ ok: boolean; message: string }> {
+  if (process.platform !== "win32") {
+    return { ok: false, message: "强制终止目前只支持 Windows。" };
+  }
+  const processIds = new Set(await allComfyProcessIds(settings));
+  const endpoint = localEndpoint(settings.comfyUrl, 8188);
+  if (endpoint) {
+    const netstat = await execFileAsync(
+      "netstat.exe",
+      ["-ano", "-p", "tcp"],
+      { encoding: "utf8", timeout: 5000, windowsHide: true }
+    ).catch(() => ({ stdout: "" }));
+    const listening = listeningPid(netstat.stdout, endpoint.port);
+    if (listening) processIds.add(listening);
+  }
+  let taskkillError = "";
+  try {
+    await execFileAsync(
+      "taskkill.exe",
+      ["/IM", "ComfyUI.exe", "/T", "/F"],
+      { encoding: "utf8", timeout: 15_000, windowsHide: true }
+    );
+  } catch (error) {
+    const processError = error as Error & { stderr?: string };
+    taskkillError = processError.stderr || processError.message;
+  }
+  for (const processId of processIds) {
+    await execFileAsync(
+      "taskkill.exe",
+      ["/PID", String(processId), "/T", "/F"],
+      { encoding: "utf8", timeout: 10_000, windowsHide: true }
+    ).catch(() => undefined);
+  }
+  if (!processIds.size && taskkillError && !/not found|no running instance/i.test(taskkillError)) {
+    return { ok: false, message: `强制终止 ComfyUI 失败：${taskkillError}` };
+  }
+  return {
+    ok: true,
+    message: processIds.size
+      ? `已强制终止 ${processIds.size} 个 ComfyUI 进程树。请等待几秒后再重新启动服务。`
+      : "未发现正在运行的 ComfyUI 进程。"
+  };
+}
+
+async function stopOrphanedComfyProcesses(settings: Settings): Promise<void> {
+  const installation = await findComfyInstallation(settings);
+  const processIds = await processIdsForExecutable(installation?.executable ?? "");
+  for (const processId of processIds) {
+    await execFileAsync(
+      "taskkill.exe",
+      ["/PID", String(processId), "/T", "/F"],
+      { encoding: "utf8", timeout: 10_000, windowsHide: true }
+    ).catch(() => undefined);
+  }
+}
+
 async function stopComfyUi(settings: Settings): Promise<void> {
   const endpoint = localEndpoint(settings.comfyUrl, 8188);
   if (!endpoint) {
@@ -2656,7 +2788,10 @@ async function stopComfyUi(settings: Settings): Promise<void> {
       if (!portClearSince) portClearSince = Date.now();
       // ComfyUI Desktop can briefly re-spawn its worker after the listener is
       // killed. Require a stable free-port window before starting a replacement.
-      if (Date.now() - portClearSince >= 1_500) return;
+      if (Date.now() - portClearSince >= 1_500) {
+        await stopOrphanedComfyProcesses(settings);
+        return;
+      }
       await new Promise((resolve) => setTimeout(resolve, 250));
       continue;
     }

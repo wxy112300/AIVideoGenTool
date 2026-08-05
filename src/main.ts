@@ -120,6 +120,7 @@ let environmentScan: EnvironmentScanResult | null = null;
 let environmentScanning = false;
 let serviceStarting: LocalServiceKind | null = null;
 let serviceRestarting: LocalServiceKind | null = null;
+let serviceForceStopping = false;
 let serviceStatusMessage = "";
 let comfyUpdating = false;
 let comfyUpdateLog = "";
@@ -141,6 +142,7 @@ let selectedInstallGuide: {
 let pendingConfirmation:
   | { kind: "clear-draft" }
   | { kind: "delete-history"; assetId: string; title: string }
+  | { kind: "force-stop-comfy" }
   | null = null;
 let confirmationBusy = false;
 const bundledWorkflows: Record<string, BundledWorkflow> = {};
@@ -467,6 +469,12 @@ function formatVideoDuration(seconds: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(rounded % 60).padStart(2, "0")}`;
 }
 
+function formatElapsedDuration(seconds: number): string {
+  const rounded = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(rounded / 60);
+  return `${minutes}分${rounded % 60}秒`;
+}
+
 function formatHistoryTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -537,12 +545,17 @@ function confirmationDialog(): string {
   if (!pendingConfirmation) return "";
   const request = pendingConfirmation;
   const deleting = request.kind === "delete-history";
+  const forceStoppingComfy = request.kind === "force-stop-comfy";
   const title = request.kind === "delete-history"
     ? `删除“${request.title}”？`
-    : "清空当前草稿？";
+    : forceStoppingComfy
+      ? "强制终止所有 ComfyUI 进程？"
+      : "清空当前草稿？";
   const description = deleting
     ? "关联的视频文件会从磁盘永久删除，历史记录也会一并移除。"
-    : "首帧、尾帧和所有提示词版本都会清空；模型与输出设置会保留。";
+    : forceStoppingComfy
+      ? "这会关闭所有识别到的 ComfyUI Desktop/后端进程，立即中断当前任务并释放 CUDA 上下文；不会自动重新启动。"
+      : "首帧、尾帧和所有提示词版本都会清空；模型与输出设置会保留。";
   return `
     <div class="dialog-backdrop confirm-backdrop" id="confirm-backdrop">
       <section class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" tabindex="-1">
@@ -551,11 +564,15 @@ function confirmationDialog(): string {
           <span class="eyebrow">此操作无法撤销</span>
           <h2 id="confirm-title">${escapeHtml(title)}</h2>
           <p id="confirm-description">${escapeHtml(description)}</p>
-          ${deleting ? `<div class="confirm-warning">只删除本条记录关联的视频，不会删除参考图片、工作流或整个输出目录。</div>` : ""}
+          ${deleting
+            ? `<div class="confirm-warning">只删除本条记录关联的视频，不会删除参考图片、工作流或整个输出目录。</div>`
+            : forceStoppingComfy
+              ? `<div class="confirm-warning danger-warning">这是进程级强制操作，会关闭其它 ComfyUI 实例；未保存的 ComfyUI 工作流状态不会保留。</div>`
+              : ""}
         </div>
         <div class="dialog-actions">
           <button class="secondary button-with-icon" id="cancel-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon("x")}取消</button>
-          <button class="primary destructive button-with-icon" id="accept-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon("trash-2")}${confirmationBusy ? "处理中…" : deleting ? "删除视频和记录" : "清空草稿"}</button>
+          <button class="primary destructive button-with-icon" id="accept-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon(forceStoppingComfy ? "ban" : "trash-2")}${confirmationBusy ? "处理中…" : forceStoppingComfy ? "强制终止进程" : deleting ? "删除视频和记录" : "清空草稿"}</button>
         </div>
       </section>
     </div>`;
@@ -1202,7 +1219,7 @@ function historyDetailPage(): string {
         <div><div class="history-title-line"><h1 class="history-detail-title" title="${escapeHtml(detailTitle)}"><span class="history-card-title-track"><span>${escapeHtml(detailTitle)}</span><span aria-hidden="true">${escapeHtml(detailTitle)}</span></span></h1><span class="status running">已完成</span></div><code>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code></div>
         <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(version.modelId))}</span><span>${version.width} × ${version.height} · ${version.duration}秒 · ${fps} FPS</span></div>
         <div class="history-summary-row"><span>完成于</span><strong>${completedAt}</strong></div>
-        <div class="history-summary-row"><span>总耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : `${Math.round(elapsedSeconds)} 秒`}</strong></div>
+        <div class="history-summary-row"><span>总耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : formatElapsedDuration(elapsedSeconds)}</strong></div>
         <div class="history-summary-actions">
           <div class="history-primary-actions">
             <button class="secondary button-with-icon" data-edit-history="${asset.id}" aria-label="在创建页调整" title="在创建页调整">${icon("sliders-horizontal")}调整参数</button>
@@ -1396,12 +1413,12 @@ function environmentOverview(): string {
               <div class="environment-name"><strong>${escapeHtml(item.label)}</strong>${item.optional ? `<span class="optional-tag">可选</span>` : ""}</div>
               ${item.id === "comfyui-api"
                 ? item.ok
-                  ? `<button class="service-start secondary button-with-icon" data-restart-service="comfy" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${icon("refresh-cw")}${serviceRestarting === "comfy" ? "重启中…最多等待 2 分钟" : "重启服务"}</button>`
-                  : `<button class="service-start button-with-icon" data-start-service="comfy" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${icon("play")}${serviceStarting === "comfy" ? "启动中…最多等待 2 分钟" : "一键启动"}</button>`
+                  ? `<button class="service-start secondary button-with-icon" data-restart-service="comfy" ${serviceStarting || serviceRestarting || serviceForceStopping ? "disabled" : ""}>${icon("refresh-cw")}${serviceRestarting === "comfy" ? "重启中…最多等待 2 分钟" : "重启服务"}</button>`
+                  : `<button class="service-start button-with-icon" data-start-service="comfy" ${serviceStarting || serviceRestarting || serviceForceStopping ? "disabled" : ""}>${icon("play")}${serviceStarting === "comfy" ? "启动中…最多等待 2 分钟" : "一键启动"}</button>`
                 : !item.ok && item.id === "lmstudio"
                   ? `<button class="service-start secondary button-with-icon" data-pick-lm-install>${icon("folder-open")}选择目录</button>`
                 : !item.ok && item.id === "lmstudio-api"
-                  ? `<button class="service-start button-with-icon" data-start-service="lmstudio" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${icon("play")}${serviceStarting === "lmstudio" ? "启动中…" : "一键启动"}</button>`
+                  ? `<button class="service-start button-with-icon" data-start-service="lmstudio" ${serviceStarting || serviceRestarting || serviceForceStopping ? "disabled" : ""}>${icon("play")}${serviceStarting === "lmstudio" ? "启动中…" : "一键启动"}</button>`
                   : ""}
             </div>
             <p>${escapeHtml(item.detail)}</p>
@@ -1565,9 +1582,10 @@ function settingsPage(): string {
         </div>` : `<p class="muted proxy-hint">没有在常见位置找到安装。可手动选择包含 ComfyUI.exe、Comfy Desktop.exe 或 main.py 的目录。</p>`}
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>ComfyUI 连接</h2><span class="muted">连接运行中的 ComfyUI API</span></div><button class="secondary button-with-icon" data-test="comfy">${icon("zap")}测试连接</button></div>
+        <div class="section-heading"><div><h2>ComfyUI 连接</h2><span class="muted">连接运行中的 ComfyUI API</span></div><div class="connection-actions"><button class="secondary button-with-icon" data-test="comfy" ${serviceForceStopping ? "disabled" : ""}>${icon("zap")}测试连接</button><button class="primary destructive button-with-icon" id="force-stop-comfy" ${serviceForceStopping || serviceStarting || serviceRestarting ? "disabled" : ""}>${icon(serviceForceStopping ? "refresh-cw" : "ban")}${serviceForceStopping ? "终止中…" : "强制终止所有进程"}</button></div></div>
         <label>服务地址<input id="comfy-url" value="${escapeHtml(settings.comfyUrl)}" placeholder="http://127.0.0.1:8188"></label>
         <p class="muted proxy-hint">默认使用 <code>http://127.0.0.1:8188</code>。一键启动与重启会直接让 ComfyUI 监听此地址。</p>
+        <p class="muted proxy-hint danger-hint">强制终止会关闭所有 ComfyUI Desktop/后端实例，不会自动重启；适用于模型无法卸载或显存未释放的情况。</p>
         <div id="connection-result" class="connection-result muted">尚未单独测试连接</div>
       </section>
       <section class="panel settings-section">
@@ -2035,6 +2053,19 @@ async function acceptConfirmation(): Promise<void> {
       draftRevision += 1;
       draftDirty = false;
       state = await window.studio.saveDraft(createClearedDraft(state.draft));
+    } else if (request.kind === "force-stop-comfy") {
+      serviceForceStopping = true;
+      serviceStatusMessage = "正在强制终止所有 ComfyUI 进程并释放 CUDA 上下文…";
+      const result = await window.studio.forceStopComfyProcesses(formSettings());
+      serviceForceStopping = false;
+      serviceStatusMessage = result.message;
+      environmentScan = await window.studio.scanEnvironment(formSettings());
+      if (!result.ok) throw new Error(result.message);
+      pendingConfirmation = null;
+      confirmationBusy = false;
+      showMessage(result.message);
+      render();
+      return;
     } else {
       releaseHistoryVideo(request.assetId);
       await new Promise<void>((resolve) =>
@@ -2048,6 +2079,7 @@ async function acceptConfirmation(): Promise<void> {
     confirmationBusy = false;
     render();
   } catch (error) {
+    if (request.kind === "force-stop-comfy") serviceForceStopping = false;
     confirmationBusy = false;
     showMessage(error instanceof Error ? error.message : String(error));
   }
@@ -3366,6 +3398,12 @@ function bindSettings(): void {
       }
       render();
     });
+  });
+  document.querySelector<HTMLButtonElement>("#force-stop-comfy")?.addEventListener("click", () => {
+    settingsDraft = formSettings();
+    pendingConfirmation = { kind: "force-stop-comfy" };
+    confirmationBusy = false;
+    render();
   });
   document.querySelector<HTMLButtonElement>("#update-comfyui")?.addEventListener("click", async () => {
     const currentSettings = formSettings();

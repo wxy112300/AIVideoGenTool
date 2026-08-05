@@ -14,6 +14,7 @@ import {
   evaluateMiniMaxH3CoreSupport,
   ltxAudioVaeCompatible,
   normalizeProxyUrl,
+  parseComfyProcessIds,
   parseNvidiaGpuQuery,
   parseComfyDesktop2Registry,
   patchLtxAudioVaeCompatibility,
@@ -63,6 +64,14 @@ describe("VRAM reserve budget", () => {
     expect(availableVramBytesForReserve(8 * 1024 ** 3, 2)).toBe(
       7 * 1024 ** 3
     );
+  });
+});
+
+describe("ComfyUI process discovery", () => {
+  it("parses PowerShell process id output in scalar and array forms", () => {
+    expect(parseComfyProcessIds("[4152, 20512, 4152]")).toEqual([4152, 20512]);
+    expect(parseComfyProcessIds("4152")).toEqual([4152]);
+    expect(parseComfyProcessIds("null")).toEqual([]);
   });
 });
 

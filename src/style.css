@@ -273,6 +273,8 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .input-action input { flex: 1; }
 .input-action button { flex: 0 0 auto; }
 .connection-result { margin-top: 18px; padding: 12px; border-radius: 10px; background: #15171a; }
+.connection-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.danger-hint { color: #d99a91 !important; }
 .connection-result.success { color: var(--success); }
 .connection-result.error { color: var(--danger); }
 .environment-summary { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
