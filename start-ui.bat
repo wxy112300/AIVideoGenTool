@@ -26,15 +26,21 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist "node_modules\.package-lock.json" (
-  echo [INFO] Installing project dependencies...
-  call npm.cmd ci
-  if errorlevel 1 (
-    echo [ERROR] Dependency installation failed.
-    pause
-    exit /b 1
-  )
+if not exist "node_modules\.package-lock.json" goto install_dependencies
+call npm.cmd ls --depth=0 --silent >nul 2>nul
+if errorlevel 1 goto install_dependencies
+goto dependencies_ready
+
+:install_dependencies
+echo [INFO] Installing or repairing project dependencies...
+call npm.cmd ci
+if errorlevel 1 (
+  echo [ERROR] Dependency installation failed.
+  pause
+  exit /b 1
 )
+
+:dependencies_ready
 
 if not exist "node_modules\electron\dist\electron.exe" (
   echo [INFO] Downloading the Electron runtime for first launch...
