@@ -58,6 +58,8 @@ import type {
   BundledWorkflow,
   Draft,
   EnvironmentScanResult,
+  H3ReferenceRole,
+  H3ReferenceSlot,
   LocalServiceKind,
   ModelComponentStatus,
   ModelScanProfile,
@@ -75,7 +77,9 @@ import {
   frameInterpolationMultiplier,
   generationFrameCountForTask,
   generationSafetyForTask,
+  isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
+  isMiniMaxH3R2vModel,
   outputDimensions,
   outputFrameCountForTask
 } from "./core/workflow";
@@ -254,6 +258,8 @@ function modelName(id: string): string {
     {
       minimax_h3_fl2va: "MiniMax H3 FL2VA",
       minimax_h3_fl2va_int4: "MiniMax H3 FL2VA · INT4 低显存",
+      minimax_h3_ref2va: "MiniMax H3 R2V · 多参考",
+      minimax_h3_ref2va_int4: "MiniMax H3 R2V · 多参考 INT4",
       sulphur2: "Sulphur 2 GGUF",
       wan22_5b: "Wan 2.2 I2V 5B",
       hunyuan15: "HunyuanVideo 1.5",
@@ -269,6 +275,56 @@ function modelName(id: string): string {
   );
 }
 
+const h3ReferenceRoleLabels: Record<H3ReferenceRole, string> = {
+  subject: "人物 / 主体",
+  scene: "场景 / 环境",
+  style: "风格 / 服装",
+  motion: "动作 / 姿态",
+  camera: "镜头 / 构图",
+  voice: "声音关联",
+  keyframe: "关键画面",
+  other: "其它参考"
+};
+
+function newH3ReferenceSlot(imagePath = ""): H3ReferenceSlot {
+  return {
+    id: crypto.randomUUID(),
+    imagePath,
+    role: "subject",
+    note: ""
+  };
+}
+
+function h3ReferenceSlotRoleOptions(role: H3ReferenceRole): string {
+  return (Object.entries(h3ReferenceRoleLabels) as Array<[H3ReferenceRole, string]>)
+    .map(([value, label]) => `<option value="${value}" ${value === role ? "selected" : ""}>${label}</option>`)
+    .join("");
+}
+
+function h3ReferenceSlotsMarkup(draft: Draft): string {
+  const slots = draft.h3ReferenceSlots;
+  return `
+    <div class="h3-slot-toolbar">
+      <div><strong>参考 Slots</strong><span>按图片顺序对应提示词中的 &lt;Picture 1&gt;、&lt;Picture 2&gt;…；每张图片可以承担不同角色。</span></div>
+      <button class="secondary button-with-icon" id="add-h3-reference-slot" type="button" ${slots.length >= 9 ? "disabled" : ""}>${icon("plus")}添加 Slot <small>${slots.length}/9</small></button>
+    </div>
+    ${slots.length ? `<div class="h3-reference-grid">${slots.map((slot, index) => `
+      <article class="h3-reference-slot" data-h3-slot="${escapeHtml(slot.id)}">
+        <div class="h3-reference-slot-head">
+          <div><strong>&lt;Picture ${index + 1}&gt;</strong><span>参考图 ${index + 1}</span></div>
+          <div class="h3-reference-slot-actions"><button class="secondary" data-insert-h3-slot="${escapeHtml(slot.id)}" type="button">插入标签</button><button class="icon-button" data-remove-h3-slot="${escapeHtml(slot.id)}" aria-label="移除参考图 ${index + 1}" title="移除参考图">${icon("x")}</button></div>
+        </div>
+        <button class="drop-zone h3-reference-drop ${slot.imagePath ? "has-image" : ""}" id="pick-h3-slot-${escapeHtml(slot.id)}" data-pick-h3-slot="${escapeHtml(slot.id)}" data-drop-h3-slot="${escapeHtml(slot.id)}" data-paste-h3-slot="${escapeHtml(slot.id)}" data-drop-label="${slot.imagePath ? "松开以替换参考图" : "松开以添加参考图"}">
+          ${slot.imagePath
+            ? `<img id="h3-slot-preview-${escapeHtml(slot.id)}" alt="参考图 ${index + 1}预览"><span class="image-label">点击或拖入替换</span>`
+            : `<span class="drop-icon">${icon("image")}</span><strong>添加参考图</strong><span>PNG、JPG、WEBP、BMP</span>`}
+        </button>
+        <label>参考作用<select data-h3-slot-role="${escapeHtml(slot.id)}">${h3ReferenceSlotRoleOptions(slot.role)}</select></label>
+        <label>给提示词的备注<input data-h3-slot-note="${escapeHtml(slot.id)}" value="${escapeHtml(slot.note)}" placeholder="例如：人物外貌、场景布局或动作参考"></label>
+      </article>`).join("")}</div>` : `
+      <div class="h3-slot-empty"><span class="drop-icon">${icon("images")}</span><strong>先添加一张参考图</strong><span>Slot 可以分别定义人物、场景、风格、动作或镜头参考。</span><button class="secondary button-with-icon" id="add-h3-reference-slot-empty" type="button">${icon("plus")}添加第一个 Slot</button></div>`}`;
+}
+
 function promptSnippetOptions(): string {
   return [...new Set(promptSnippets.map((snippet) => snippet.group))]
     .map((group) => `<optgroup label="${escapeHtml(group)}">${promptSnippets
@@ -280,19 +336,24 @@ function promptSnippetOptions(): string {
 
 function h3PromptCheckMarkup(
   promptText: string,
-  hasEndImage: boolean
+  hasEndImage: boolean,
+  mode?: "I2VA" | "FL2VA" | "R2V"
 ): string {
-  const result = checkH3Prompt(promptText, { hasEndImage });
+  const result = checkH3Prompt(promptText, { hasEndImage, mode });
   return `<div id="h3-prompt-check" class="h3-prompt-check ${result.valid ? "valid" : "warning"}" aria-live="polite">
     <div class="h3-prompt-check-heading"><strong>H3 提示词检查</strong><span>${escapeHtml(result.summary)}</span></div>
     ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}
   </div>`;
 }
 
-function updateH3PromptCheck(promptText: string, hasEndImage: boolean): void {
+function updateH3PromptCheck(
+  promptText: string,
+  hasEndImage: boolean,
+  mode?: "I2VA" | "FL2VA" | "R2V"
+): void {
   const element = document.querySelector<HTMLElement>("#h3-prompt-check");
   if (!element) return;
-  const result = checkH3Prompt(promptText, { hasEndImage });
+  const result = checkH3Prompt(promptText, { hasEndImage, mode });
   element.className = `h3-prompt-check ${result.valid ? "valid" : "warning"}`;
   element.innerHTML = `<div class="h3-prompt-check-heading"><strong>H3 提示词检查</strong><span>${escapeHtml(result.summary)}</span></div>
     ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}`;
@@ -331,10 +392,10 @@ function interpolationEstimate(draft: Draft): {
 function extensionSafetyForDraft(draft: Draft, settings: Settings) {
   return extensionSafetyForTask({
     ...draft,
-    resolution: isMiniMaxH3Model(draft.modelId)
+    resolution: isMiniMaxH3Fl2vaModel(draft.modelId)
       ? draft.resolution
       : settings.ltxExtensionResolution,
-    maxGeneratedFrames: isMiniMaxH3Model(draft.modelId)
+    maxGeneratedFrames: isMiniMaxH3Fl2vaModel(draft.modelId)
       ? 362
       : settings.ltxExtensionFrames,
     overlapFrames: settings.ltxExtensionOverlapFrames,
@@ -441,6 +502,8 @@ function createModelOptions(draft: Draft): string {
     : [
         { id: "minimax_h3_fl2va", name: "MiniMax H3 Image to Video", available: true, integrated: true },
       { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 Image to Video · INT4 低显存", available: true, integrated: true },
+        { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考", available: true, integrated: true },
+        { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
       { id: "sulphur2", name: "Sulphur 2 GGUF", available: true, integrated: true },
         { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: true, integrated: true },
         { id: "hunyuan15", name: "HunyuanVideo 1.5", available: true, integrated: true }
@@ -449,7 +512,7 @@ function createModelOptions(draft: Draft): string {
     .map((profile) => {
       const selected = draft.modelId === profile.id;
       const supportsVideoExtension =
-        draft.inputMode === "video" && isMiniMaxH3Model(profile.id)
+        draft.inputMode === "video" && isMiniMaxH3Fl2vaModel(profile.id)
           ? true
           : selected
             ? workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true
@@ -601,6 +664,7 @@ async function imagePreview(filename: string, targetId: string): Promise<void> {
 function createPage(): string {
   const draft = state.draft;
   const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
+  const isR2V = isMiniMaxH3R2vModel(draft.modelId);
   const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
   const extending = draft.inputMode === "video";
   const prompt = activePrompt();
@@ -623,9 +687,13 @@ function createPage(): string {
     ? draft.trimEndSeconds / draft.sourceVideoDuration * 100
     : 100;
   const videoReady = Boolean(draft.sourceVideoPath && draft.sourceVideoDuration > 0);
+  const r2vSlotsReady = !isR2V || (
+    draft.h3ReferenceSlots.length > 0 &&
+    draft.h3ReferenceSlots.every((slot) => Boolean(slot.imagePath))
+  );
   const enqueueDisabled = extending
     ? !videoReady || trimDuration <= 0 || !supportsVideoExtension || !safety.safe
-    : !safety.safe;
+    : !safety.safe || !r2vSlotsReady;
   return `
     <section class="page-heading">
       <div><h1>创建视频</h1><p>${extending ? "裁出要保留的视频片段，并从末帧继续生成。" : "导入参考画面，调整提示词，然后加入本地生成队列。"}</p></div>
@@ -638,10 +706,10 @@ function createPage(): string {
     <div class="create-workspace">
       <section class="panel media-panel">
       <div class="section-heading">
-        <div><h2>${extending ? "输入视频" : "参考画面"}</h2><span class="muted">${extending ? "选择保留范围，续写将从范围末帧开始" : supportsEndImage ? "当前工作流支持首帧和尾帧" : "当前工作流仅支持首帧"}</span></div>
+        <div><h2>${extending ? "输入视频" : isR2V ? "多参考 Slots" : "参考画面"}</h2><span class="muted">${extending ? "选择保留范围，续写将从范围末帧开始" : isR2V ? "把人物、场景、风格、动作和镜头拆成独立参考 Slot" : supportsEndImage ? "当前工作流支持首帧和尾帧" : "当前工作流仅支持首帧"}</span></div>
         ${extending
           ? draft.sourceVideoPath ? `<button class="secondary button-with-icon" id="remove-video">${icon("x")}移除视频</button>` : ""
-          : `<button class="secondary button-with-icon" id="toggle-end" ${!supportsEndImage && !draft.endImagePath ? "disabled" : ""}>${icon(draft.endImagePath ? "x" : "images")}${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>`}
+          : isR2V ? "" : `<button class="secondary button-with-icon" id="toggle-end" ${!supportsEndImage && !draft.endImagePath ? "disabled" : ""}>${icon(draft.endImagePath ? "x" : "images")}${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>`}
       </div>
       ${extending
         ? draft.sourceVideoPath
@@ -669,6 +737,8 @@ function createPage(): string {
             : `<button class="drop-zone video-drop-zone" id="pick-video" data-drop-video data-drop-label="松开以添加视频">
               <span class="drop-icon">${icon("video")}</span><strong>选择或拖入视频</strong><span>MP4、WebM、MOV、M4V、MKV</span>
             </button>`
+        : isR2V
+          ? h3ReferenceSlotsMarkup(draft)
         : `<div class="media-grid ${draft.endImagePath ? "paired" : ""}">
         <div class="media-slot">
           <button class="drop-zone ${draft.startImagePath ? "has-image" : ""}" id="pick-start" data-drop-frame="start" data-paste-frame="start" data-drop-label="${draft.startImagePath ? "松开以替换首帧" : "松开以添加首帧"}">
@@ -707,7 +777,7 @@ function createPage(): string {
         <label class="prompt-snippet-picker"><span>快速插入</span><select id="prompt-snippet"><option value="">选择镜头、动作、声音或对白片段</option>${promptSnippetOptions()}</select></label>
         <button class="secondary button-with-icon" id="insert-prompt-snippet" type="button" disabled>${icon("plus")}插入</button>
       </div>
-      ${isMiniMaxH3 ? h3PromptCheckMarkup(prompt.text, Boolean(draft.endImagePath)) : ""}
+      ${isMiniMaxH3 ? h3PromptCheckMarkup(prompt.text, Boolean(draft.endImagePath), isR2V ? "R2V" : undefined) : ""}
       ${extending && isMiniMaxH3 ? `<div class="h3-extension-note">
         <strong>H3 结尾帧接续</strong>
         <span>从保留片段的最后一帧生成新段并保留 H3 原生音轨；它不是 latent overlap 原生续写，边界动作可能发生变化。</span>
@@ -716,19 +786,19 @@ function createPage(): string {
         <summary>
           <span class="h3-helper-heading">
             <strong>H3 提示词助手 <span class="model-badge">可选</span></strong>
-            <span>${draft.endImagePath ? "当前为 FL2VA 首尾帧模式。" : "当前为 I2VA 首帧模式。"}模板会使用官方对齐说明和音频字段；准确对白请在模板中保留原文，不要交给扩写器改写。</span>
+            <span>${isR2V ? "当前为 R2V 多参考模式。" : draft.endImagePath ? "当前为 FL2VA 首尾帧模式。" : "当前为 I2VA 首帧模式。"}模板会使用官方参考标签和音频字段；准确对白请在模板中保留原文，不要交给扩写器改写。</span>
           </span>
           <span class="h3-helper-toggle"><span class="when-closed">查看格式</span><span class="when-open">收起说明</span>${icon("chevron-down")}</span>
         </summary>
         <div class="h3-helper-body">
           <div class="h3-prompt-sections">
-            <div><strong>首帧 / 首尾帧对齐</strong><span>自动加入 I2VA 或 FL2VA 的参考图时间说明；首尾帧默认保持一个连续镜头。</span></div>
-            <div><strong>三段主体结构</strong><span>使用 integrated_multimodal_description、overall_soundscape 和 non_diegetic_music。</span></div>
-            <div><strong>对白格式</strong><span>固定说话人 ID，写明语言和音色；准确台词放在 &lt;d&gt;[Chinese] ...&lt;/d&gt; 中。</span></div>
+            <div><strong>${isR2V ? "Picture Slot 标签" : "首帧 / 首尾帧对齐"}</strong><span>${isR2V ? "按图片顺序使用 &lt;Picture 1&gt;、&lt;Picture 2&gt;，并在提示词里为每张图指定作用。" : "自动加入 I2VA 或 FL2VA 的参考图时间说明；首尾帧默认保持一个连续镜头。"}</span></div>
+            <div><strong>${isR2V ? "参考作用" : "三段主体结构"}</strong><span>${isR2V ? "人物、场景、风格、动作和镜头可以由不同 Slot 提供。" : "使用 integrated_multimodal_description、overall_soundscape 和 non_diegetic_music。"}</span></div>
+            <div><strong>${isR2V ? "R2V 六段结构" : "对白格式"}</strong><span>${isR2V ? "subject_definitions、summary、retention_analysis、detailed_description 加两段声音字段。" : "固定说话人 ID，写明语言和音色；准确台词放在 &lt;d&gt;[Chinese] ...&lt;/d&gt; 中。"}</span></div>
           </div>
           <div class="h3-helper-actions">
             <span>模板会使用当前首帧/尾帧状态和 H3 实际帧网格；点击后会新建版本，不会覆盖当前内容。</span>
-            <button class="secondary button-with-icon" id="h3-prompt-template" type="button">${icon("list-ordered")}创建结构化提示词</button>
+            <button class="secondary button-with-icon" id="h3-prompt-template" type="button">${icon("list-ordered")}${isR2V ? "创建 R2V 结构模板" : "创建结构化提示词"}</button>
           </div>
         </div>
       </details>` : ""}
@@ -790,9 +860,9 @@ function createPage(): string {
               <option value="rife4x" ${draft.frameInterpolation === "rife4x" ? "selected" : ""}>RIFE 4×</option>`}
           </select>
         </label>
-        <div class="interpolation-summary ${!safety.safe ? "unsafe" : isMiniMaxH3 && (draft.duration > 10 || draft.resolution >= 768) ? "caution" : interpolation.multiplier === 1 ? "disabled" : ""}">
-          <div><strong>${!safety.safe ? "配置超过显存安全预算" : isMiniMaxH3 ? "H3 原生 24 FPS · 同步立体声音频" : interpolation.multiplier === 1 ? "未启用插帧" : `生成约 ${draft.fps / interpolation.multiplier} FPS，再插值到 ${draft.fps} FPS`}</strong><span>${interpolation.generatedFrames}/${safety.maxGeneratedFrames} 个模型帧 → ${interpolation.outputFrames} 个成片帧</span></div>
-          <p>${escapeHtml(safety.message)} ${safety.safe && interpolation.multiplier !== 1 ? "扩散模型和 VAE 会在 RIFE 前主动卸载；RIFE 使用 BF16、单帧批次。" : ""}</p>
+        <div class="interpolation-summary ${!safety.safe || !r2vSlotsReady ? "unsafe" : isMiniMaxH3 && (draft.duration > 10 || draft.resolution >= 768) ? "caution" : interpolation.multiplier === 1 ? "disabled" : ""}">
+          <div><strong>${!r2vSlotsReady ? "请先补齐 R2V 参考 Slot" : !safety.safe ? "配置超过显存安全预算" : isMiniMaxH3 ? "H3 原生 24 FPS · 同步立体声音频" : interpolation.multiplier === 1 ? "未启用插帧" : `生成约 ${draft.fps / interpolation.multiplier} FPS，再插值到 ${draft.fps} FPS`}</strong><span>${interpolation.generatedFrames}/${safety.maxGeneratedFrames} 个模型帧 → ${interpolation.outputFrames} 个成片帧</span></div>
+          <p>${escapeHtml(!r2vSlotsReady ? "R2V 至少需要一张已选择的参考图片；空 Slot 不能提交。" : safety.message)} ${safety.safe && r2vSlotsReady && interpolation.multiplier !== 1 ? "扩散模型和 VAE 会在 RIFE 前主动卸载；RIFE 使用 BF16、单帧批次。" : ""}</p>
         </div>
         <label>动作幅度
           <select id="motion" ${isMiniMaxH3 ? "disabled" : ""}>
@@ -814,7 +884,7 @@ function createPage(): string {
       </div>
       <div class="submit-row">
         <button class="ghost danger button-with-icon" id="clear-draft">${icon("trash-2")}清空</button>
-        <button class="primary button-with-icon" id="enqueue" ${enqueueDisabled ? "disabled" : ""} title="${extending ? supportsVideoExtension ? "加入视频续写队列" : "模型已安装，但专用视频续写工作流尚未接入" : safety.safe ? "加入本地生成队列" : escapeHtml(safety.message)}">${icon("plus")}加入队列</button>
+        <button class="primary button-with-icon" id="enqueue" ${enqueueDisabled ? "disabled" : ""} title="${isR2V ? r2vSlotsReady ? "加入 R2V 多参考生成队列" : "请先补齐 R2V 参考 Slot" : extending ? supportsVideoExtension ? "加入视频续写队列" : "模型已安装，但专用视频续写工作流尚未接入" : safety.safe ? "加入本地生成队列" : escapeHtml(safety.message)}">${icon("plus")}加入队列</button>
       </div>
       </section>
     </div>`;
@@ -1230,6 +1300,12 @@ function restoreHistoryPlayback(snapshot: HistoryPlaybackSnapshot | null): void 
   else video.addEventListener("loadedmetadata", restore, { once: true });
 }
 
+function stopRenderedVideoPlayback(): void {
+  document.querySelectorAll<HTMLVideoElement>("video").forEach((video) => {
+    video.pause();
+  });
+}
+
 function modelScanCard(profile: ModelScanProfile): string {
   const missingCount = profile.components.filter((component) => !component.found).length;
   return `
@@ -1431,12 +1507,23 @@ function settingsPage(): string {
       ? `${gpuDevices[0]!.name} · ${formatBytes(gpuDevices[0]!.vramTotalBytes)}`
       : `${gpuDevices.length} 张 GPU`
     : "GPU 待检测";
+  const reserveVramBytes = Math.max(
+    0,
+    (Number.isFinite(settings.vramReserveGb)
+      ? Math.max(0.5, Math.min(1, settings.vramReserveGb))
+      : 1)
+  ) * 1024 ** 3;
+  const gpuBudgetSummary = gpuDevices.length
+    ? gpuDevices.map((device) =>
+        `${formatBytes(device.vramTotalBytes)} 总显存 - ${formatBytes(reserveVramBytes)} 余量 = ${formatBytes(Math.max(0, device.vramTotalBytes - reserveVramBytes))} 工作预算`
+      ).join("；")
+    : "扫描完成后将按总显存扣除安全余量计算工作预算";
   const gpuCards = gpuDevices.length
-    ? `<div class="attention-runtime-grid">${gpuDevices.map((device) => `
-        <article class="attention-runtime-card">
+    ? `<div class="gpu-device-list">${gpuDevices.map((device) => `
+        <article class="gpu-device-card">
           <span class="runtime-label">GPU ${device.index}</span>
           <strong class="runtime-value">${escapeHtml(device.name)}</strong>
-          <code class="runtime-detail">${formatBytes(device.vramTotalBytes)} 显存 · 驱动 ${escapeHtml(device.driverVersion || "未知")}</code>
+          <code class="runtime-detail">${formatBytes(device.vramTotalBytes)} 总显存 · ${formatBytes(Math.max(0, device.vramTotalBytes - reserveVramBytes))} 工作预算 · 驱动 ${escapeHtml(device.driverVersion || "未知")}</code>
         </article>`).join("")}</div>`
     : `<div class="scan-result">${escapeHtml(gpuSummary)}</div>`;
   const comfyInstallations = environmentScan?.comfyInstallations ?? [];
@@ -1500,7 +1587,10 @@ function settingsPage(): string {
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>GPU 运行策略</h2><span class="muted">${escapeHtml(gpuSummary)}</span></div><span class="model-badge">${escapeHtml(gpuBadge)}</span></div>
-        ${gpuCards}
+        <div class="gpu-hardware-block">
+          <div class="gpu-hardware-heading"><div><strong>已识别硬件</strong><span>来自 nvidia-smi 的实时检测结果</span></div><span class="gpu-budget-label">${escapeHtml(gpuBudgetSummary)}</span></div>
+          ${gpuCards}
+        </div>
         <div class="runtime-policy-grid">
           <label class="policy-select-field"><span>显存安全余量</span><select id="vram-reserve"><option value="0.5" ${settings.vramReserveGb === 0.5 ? "selected" : ""}>0.5 GB · 激进</option><option value="0.75" ${settings.vramReserveGb === 0.75 ? "selected" : ""}>0.75 GB · 平衡</option><option value="1" ${settings.vramReserveGb === 1 ? "selected" : ""}>1 GB · 保守</option></select></label>
           <label class="ios-switch-field"><span class="policy-copy"><strong>安全取消</strong><small>先请求中断，再重启 ComfyUI 释放显存</small></span><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
@@ -1518,8 +1608,8 @@ function settingsPage(): string {
             ${(videoProfiles.length ? videoProfiles : [
               { id: "minimax_h3_fl2va", name: "MiniMax H3 FL2VA · 首帧 / 首尾帧", available: true, integrated: true },
               { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 FL2VA · INT4 低显存", available: true, integrated: true },
-              { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考 INT8", available: false, integrated: false },
-              { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: false, integrated: false },
+              { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考 INT8", available: true, integrated: true },
+              { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
               { id: "sulphur2", name: "Sulphur 2 GGUF", available: false, integrated: true },
               { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: false, integrated: true },
               { id: "hunyuan15", name: "HunyuanVideo 1.5 I2V", available: false, integrated: true }
@@ -1707,6 +1797,7 @@ function settingsPage(): string {
 
 function render(): void {
   const playback = captureHistoryPlayback();
+  stopRenderedVideoPlayback();
   historyMasonryResizeObserver?.disconnect();
   historyMasonryResizeObserver = null;
   historyTitleResizeObserver?.disconnect();
@@ -1726,6 +1817,12 @@ function render(): void {
     bindCreate();
     void imagePreview(state.draft.startImagePath, "start-preview");
     void imagePreview(state.draft.endImagePath, "end-preview");
+    if (isMiniMaxH3R2vModel(state.draft.modelId)) {
+      bindH3ReferenceSlots();
+      for (const slot of state.draft.h3ReferenceSlots) {
+        void imagePreview(slot.imagePath, `h3-slot-preview-${slot.id}`);
+      }
+    }
   } else if (page === "queue") {
     bindQueue();
     void loadQueueInputPreviews();
@@ -2081,6 +2178,25 @@ async function handleClipboardPaste(event: ClipboardEvent): Promise<void> {
     activeElement instanceof HTMLElement
       ? activeElement.closest<HTMLElement>("[data-paste-frame]")
       : null;
+  const focusedH3Slot =
+    activeElement instanceof HTMLElement
+      ? activeElement.closest<HTMLElement>("[data-paste-h3-slot]")
+      : null;
+  const h3SlotId = focusedH3Slot?.dataset.pasteH3Slot;
+  if (h3SlotId && isMiniMaxH3R2vModel(state.draft.modelId)) {
+    try {
+      const filename = await window.studio.saveClipboardImage(
+        await file.arrayBuffer(),
+        file.type
+      );
+      updateH3ReferenceSlot(h3SlotId, { imagePath: filename });
+      render();
+      showMessage("已粘贴为 R2V 参考图。");
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : "无法读取剪贴板图片");
+    }
+    return;
+  }
   const field = focusedPasteTarget?.dataset.pasteFrame === "end"
     ? "endImagePath"
     : "startImagePath";
@@ -2152,6 +2268,112 @@ function bindFrameDrop(
     } catch (error) {
       showMessage(error instanceof Error ? error.message : "无法读取拖入的图片");
     }
+  });
+}
+
+function updateH3ReferenceSlot(
+  slotId: string,
+  patch: Partial<H3ReferenceSlot>
+): void {
+  patchDraft({
+    h3ReferenceSlots: state.draft.h3ReferenceSlots.map((slot) =>
+      slot.id === slotId ? { ...slot, ...patch } : slot
+    )
+  });
+}
+
+function bindH3ReferenceSlots(): void {
+  const addSlot = () => {
+    if (state.draft.h3ReferenceSlots.length >= 9) return;
+    patchDraft({
+      h3ReferenceSlots: [
+        ...state.draft.h3ReferenceSlots,
+        newH3ReferenceSlot()
+      ]
+    });
+    render();
+  };
+  document.querySelector("#add-h3-reference-slot")?.addEventListener("click", addSlot);
+  document.querySelector("#add-h3-reference-slot-empty")?.addEventListener("click", addSlot);
+  document.querySelectorAll<HTMLElement>("[data-remove-h3-slot]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const slotId = button.dataset.removeH3Slot;
+      if (!slotId) return;
+      patchDraft({
+        h3ReferenceSlots: state.draft.h3ReferenceSlots.filter((slot) => slot.id !== slotId)
+      });
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-insert-h3-slot]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const slotId = button.dataset.insertH3Slot;
+      const promptInput = document.querySelector<HTMLTextAreaElement>("#prompt-input");
+      const slotIndex = state.draft.h3ReferenceSlots.findIndex((slot) => slot.id === slotId);
+      if (!promptInput || slotIndex < 0) return;
+      insertPromptSnippet(promptInput, `<Picture ${slotIndex + 1}>`);
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-pick-h3-slot]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      const slotId = button.dataset.pickH3Slot;
+      if (!slotId) return;
+      const filename = await window.studio.pickImage();
+      if (!filename) return;
+      updateH3ReferenceSlot(slotId, { imagePath: filename });
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLSelectElement>("[data-h3-slot-role]").forEach((select) => {
+    select.addEventListener("change", () => {
+      const slotId = select.dataset.h3SlotRole;
+      if (slotId) updateH3ReferenceSlot(slotId, { role: select.value as H3ReferenceRole });
+    });
+  });
+  document.querySelectorAll<HTMLInputElement>("[data-h3-slot-note]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const slotId = input.dataset.h3SlotNote;
+      if (slotId) updateH3ReferenceSlot(slotId, { note: input.value });
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-drop-h3-slot]").forEach((zone) => {
+    const clearDragState = () => zone.classList.remove("drag-over");
+    zone.addEventListener("dragenter", (event) => {
+      event.preventDefault();
+      zone.classList.add("drag-over");
+    });
+    zone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      zone.classList.add("drag-over");
+    });
+    zone.addEventListener("dragleave", (event) => {
+      const nextTarget = event.relatedTarget;
+      if (nextTarget instanceof Node && zone.contains(nextTarget)) return;
+      clearDragState();
+    });
+    zone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      clearDragState();
+      const file = event.dataTransfer?.files.item(0);
+      const slotId = zone.dataset.dropH3Slot;
+      if (!file || !slotId) return;
+      const isSupported = file.type.startsWith("image/") ||
+        /\.(png|jpe?g|webp|bmp)$/i.test(file.name);
+      if (!isSupported) {
+        showMessage("R2V Slot 只支持 PNG、JPG、WEBP 或 BMP 图片");
+        return;
+      }
+      const filename = window.studio.getDroppedFilePath(file);
+      if (!filename) {
+        showMessage("无法读取拖入图片的本地路径");
+        return;
+      }
+      updateH3ReferenceSlot(slotId, { imagePath: filename });
+      render();
+    });
   });
 }
 
@@ -2292,7 +2514,7 @@ function bindCreate(): void {
     button.addEventListener("click", async () => {
       const inputMode = button.dataset.inputMode === "video" ? "video" : "image";
       const modelId = inputMode === "video"
-        ? isMiniMaxH3Model(state.draft.modelId)
+        ? isMiniMaxH3Fl2vaModel(state.draft.modelId)
           ? state.draft.modelId
           : "sulphur2"
         : state.draft.modelId;
@@ -2418,7 +2640,11 @@ function bindCreate(): void {
       state.draft.activePromptVersion = versions.length - 1;
     }
     patchDraft({ promptVersions: versions, activePromptVersion: state.draft.activePromptVersion });
-    updateH3PromptCheck(promptInput.value, Boolean(state.draft.endImagePath));
+    updateH3PromptCheck(
+      promptInput.value,
+      Boolean(state.draft.endImagePath),
+      isMiniMaxH3R2vModel(state.draft.modelId) ? "R2V" : undefined
+    );
   });
   document.querySelector("#prompt-prev")?.addEventListener("click", () => {
     patchDraft({ activePromptVersion: Math.max(0, state.draft.activePromptVersion - 1) });
@@ -2456,7 +2682,16 @@ function bindCreate(): void {
     const template = createH3PromptTemplate(
       activePrompt().text,
       state.draft.duration,
-      { hasEndImage: Boolean(state.draft.endImagePath) }
+      {
+        hasEndImage: Boolean(state.draft.endImagePath),
+        mode: isMiniMaxH3R2vModel(state.draft.modelId)
+          ? "R2V"
+          : undefined,
+        referenceSlots: state.draft.h3ReferenceSlots.map((slot) => ({
+          role: h3ReferenceRoleLabels[slot.role],
+          note: slot.note
+        }))
+      }
     );
     const versions = [
       ...state.draft.promptVersions.slice(0, state.draft.activePromptVersion + 1),
@@ -2468,7 +2703,7 @@ function bindCreate(): void {
       }
     ];
     patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
-    showMessage(`已创建 H3 ${template.mode} 官方结构模板（${template.effectiveDurationSeconds.toFixed(2)} 秒、${template.shotCount} 个连续镜头），原内容仍可通过左箭头找回。`);
+    showMessage(`已创建 H3 ${template.mode} 官方结构模板（${template.effectiveDurationSeconds.toFixed(2)} 秒、${template.shotCount} 个镜头），原内容仍可通过左箭头找回。`);
   });
   for (const id of ["model", "ratio", "resolution", "fps", "frame-interpolation", "motion", "seed"]) {
     document.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
@@ -2477,6 +2712,20 @@ function bindCreate(): void {
         const oldKey = bundledWorkflowKey(state.draft.modelId, state.draft.inputMode);
         const nextKey = bundledWorkflowKey(value, state.draft.inputMode);
         const oldBundledPath = bundledWorkflows[oldKey]?.path;
+        const nextIsR2V = isMiniMaxH3R2vModel(value);
+        const oldWasR2V = isMiniMaxH3R2vModel(state.draft.modelId);
+        const existingSlots = state.draft.h3ReferenceSlots;
+        const slotsForR2V = nextIsR2V && !existingSlots.length
+          ? [state.draft.startImagePath, state.draft.endImagePath]
+              .filter(Boolean)
+              .map((imagePath) => newH3ReferenceSlot(imagePath))
+          : existingSlots;
+        const restoredStartImage = oldWasR2V
+          ? existingSlots[0]?.imagePath ?? ""
+          : state.draft.startImagePath;
+        const restoredEndImage = oldWasR2V
+          ? existingSlots[1]?.imagePath ?? ""
+          : state.draft.endImagePath;
         const bundled =
           bundledWorkflows[nextKey] ??
           (await window.studio.getBundledWorkflow(value, state.draft.inputMode));
@@ -2489,6 +2738,9 @@ function bindCreate(): void {
         }
         patchDraft({
           modelId: value,
+          h3ReferenceSlots: slotsForR2V,
+          startImagePath: nextIsR2V ? "" : restoredStartImage,
+          endImagePath: nextIsR2V ? "" : restoredEndImage,
           ...(isMiniMaxH3Model(value)
             ? {
                 ratio: "source" as const,
@@ -2499,7 +2751,7 @@ function bindCreate(): void {
                 motion: "natural" as const
               }
             : {}),
-          ...(!bundled?.supportsEndImage ? { endImagePath: "" } : {}),
+          ...(!bundled?.supportsEndImage && !nextIsR2V ? { endImagePath: "" } : {}),
           workflowPath:
             bundled?.path ??
             (state.draft.workflowPath === oldBundledPath
@@ -2951,6 +3203,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
         return;
       }
       try {
+        page = "create";
         await selectDraftVideo(filename, {
           assetId: asset.id,
           versionId: version.id,
@@ -2958,8 +3211,6 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
           width: version.width,
           height: version.height
         });
-        page = "create";
-        render();
       } catch (error) {
         showMessage(error instanceof Error ? error.message : "无法继续创作");
       }

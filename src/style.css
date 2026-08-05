@@ -632,6 +632,56 @@ textarea { min-height: 148px; padding: 14px 15px; line-height: 1.7; resize: vert
 .h3-prompt-check-heading span { color: #9cabc0; font-size: 10px; line-height: 1.4; }
 .h3-prompt-check ul { display: grid; gap: 3px; margin: 0; padding-left: 17px; color: #d7b879; font-size: 10px; line-height: 1.45; }
 .h3-prompt-check.valid .h3-prompt-check-heading span { color: #8ed0ae; }
+.h3-slot-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 13px;
+}
+.h3-slot-toolbar > div { min-width: 0; display: grid; gap: 3px; }
+.h3-slot-toolbar strong { color: #dbe9ff; font-size: 13px; }
+.h3-slot-toolbar span { color: #8f9db1; font-size: 11px; line-height: 1.45; }
+.h3-slot-toolbar button { flex: none; }
+.h3-slot-toolbar button small { color: inherit; font-size: 10px; opacity: .7; }
+.h3-reference-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.h3-reference-slot {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(70, 84, 105, .66);
+  border-radius: 12px;
+  background: rgba(11, 16, 23, .52);
+}
+.h3-reference-slot-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.h3-reference-slot-head > div { min-width: 0; display: grid; gap: 2px; }
+.h3-reference-slot-head strong { color: #bcd5ff; font-size: 12px; }
+.h3-reference-slot-head span { color: #7f8ca0; font-size: 10px; }
+.h3-reference-slot-actions { display: flex; align-items: center; gap: 5px; }
+.h3-reference-slot-actions button { min-height: 30px; padding: 5px 8px; font-size: 10px; }
+.h3-reference-slot-actions .icon-button { width: 30px; padding: 0; }
+.h3-reference-drop { min-height: 180px; border-radius: 10px; }
+.h3-reference-drop.has-image { min-height: 180px; }
+.h3-reference-drop .drop-icon { width: 34px; height: 34px; border-radius: 10px; font-size: 20px; }
+.h3-reference-slot label { display: grid; gap: 5px; }
+.h3-reference-slot label > input,
+.h3-reference-slot label > select { min-height: 36px; padding-block: 8px; font-size: 11px; }
+.h3-slot-empty {
+  min-height: 250px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 24px;
+  border: 1px dashed #46566d;
+  border-radius: 13px;
+  color: #9baabd;
+  text-align: center;
+  background: rgba(8, 13, 20, .34);
+}
+.h3-slot-empty strong { color: #dbe9ff; font-size: 13px; }
+.h3-slot-empty > span:not(.drop-icon) { max-width: 340px; font-size: 11px; line-height: 1.5; }
 label { gap: 8px; color: #aeb7c4; font-size: 12px; font-weight: 560; }
 select { padding-inline: 12px; }
 
@@ -1111,6 +1161,9 @@ pre { border: 1px solid #292f39; background: #0c0f14; font-size: 11px; line-heig
 @media (max-width: 760px) {
   .prompt-tool-row { align-items: stretch; flex-direction: column; }
   .prompt-tool-row > button { width: 100%; }
+  .h3-slot-toolbar { align-items: stretch; flex-direction: column; }
+  .h3-slot-toolbar button { width: 100%; }
+  .h3-reference-grid { grid-template-columns: 1fr; }
   .attention-runtime-grid { grid-template-columns: 1fr; }
   .runtime-detail { white-space: normal; overflow-wrap: anywhere; }
   .acceleration-actions { grid-template-columns: 1fr; align-items: stretch; }
@@ -1840,8 +1893,68 @@ main { padding-top: 0; }
 
 .runtime-policy-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.gpu-hardware-block {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 13px 14px;
+  border: 1px solid rgba(55, 66, 82, .72);
+  border-radius: 12px;
+  background: #0f141b;
+}
+
+.gpu-hardware-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.gpu-hardware-heading > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.gpu-hardware-heading strong {
+  color: #dbe5f2;
+  font-size: 12px;
+}
+
+.gpu-hardware-heading span {
+  color: #8694a7;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.gpu-budget-label {
+  max-width: 62%;
+  color: #91b8ed !important;
+  text-align: right;
+}
+
+.gpu-device-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.gpu-device-card {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  border: 1px solid rgba(55, 66, 82, .68);
+  border-radius: 10px;
+  background: #141a22;
+}
+
+.gpu-device-card .runtime-value {
+  font-size: 13px;
 }
 
 .policy-select-field,
@@ -1957,6 +2070,14 @@ main { padding-top: 0; }
 @media (max-width: 760px) {
   .runtime-policy-grid {
     grid-template-columns: 1fr;
+  }
+  .gpu-hardware-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .gpu-budget-label {
+    max-width: none;
+    text-align: left;
   }
 }
 

@@ -12,6 +12,23 @@ export interface PromptVersion {
   createdAt: string;
 }
 
+export type H3ReferenceRole =
+  | "subject"
+  | "scene"
+  | "style"
+  | "motion"
+  | "camera"
+  | "voice"
+  | "keyframe"
+  | "other";
+
+export interface H3ReferenceSlot {
+  id: string;
+  imagePath: string;
+  role: H3ReferenceRole;
+  note: string;
+}
+
 export interface Draft {
   inputMode: "image" | "video";
   startImagePath: string;
@@ -26,6 +43,7 @@ export interface Draft {
   sourceVersionId?: string;
   promptVersions: PromptVersion[];
   activePromptVersion: number;
+  h3ReferenceSlots: H3ReferenceSlot[];
   modelId: string;
   workflowPath: string;
   ratio: "source" | "16:9" | "9:16" | "1:1" | "4:3";
@@ -100,6 +118,7 @@ export interface GenerationQueueTask extends QueueTaskBase {
   taskType: "generation";
   prompt: string;
   promptVersion: number;
+  h3ReferenceSlots?: H3ReferenceSlot[];
   startImagePath: string;
   sourceWidth: number;
   sourceHeight: number;

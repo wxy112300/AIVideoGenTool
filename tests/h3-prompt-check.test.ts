@@ -35,4 +35,21 @@ describe("MiniMax H3 prompt checks", () => {
 
     expect(result.items.map((item) => item.message).join("\n")).toContain("时间戳");
   });
+
+  it("accepts the R2V six-section structure", () => {
+    const result = checkH3Prompt([
+      "subject_definitions:",
+      "<Picture 1> is the subject reference.",
+      "summary:",
+      "[reference generation] The target video uses <Picture 1>.",
+      "retention_analysis:",
+      "<Picture 1>: fully_preserved - preserve the subject.",
+      "detailed_description:",
+      "[Shot 1] The subject moves naturally.",
+      "overall_soundscape: Quiet room tone.",
+      "non_diegetic_music: N/A"
+    ].join("\n"), { mode: "R2V" });
+
+    expect(result).toMatchObject({ mode: "R2V", valid: true, items: [] });
+  });
 });

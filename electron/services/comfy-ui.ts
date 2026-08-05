@@ -4,7 +4,8 @@ import type { QueueTask, Settings } from "../../src/types.js";
 import {
   missingWorkflowNodeTypes,
   renderWorkflow,
-  isMiniMaxH3Model,
+  isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3R2vModel,
   workflowSupportsEndImage
 } from "../../src/core/workflow.js";
 import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
@@ -12,6 +13,7 @@ import {
   prepareExtensionContext,
   prepareH3BoundaryFrame
 } from "./extension-media.js";
+import { availableVramBytesForReserve } from "./environment.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -102,6 +104,10 @@ export async function submitTask(
       typeof device.vram_total === "number" ? device.vram_total : 0
     )
   );
+  const vramAvailableBytes = availableVramBytesForReserve(
+    vramTotalBytes,
+    settings.vramReserveGb
+  );
   let prompt: unknown;
   if (task.taskType === "generation" || task.taskType === "extension") {
     const sourceText = await fs.readFile(task.workflowPath, {
@@ -110,7 +116,7 @@ export async function submitTask(
     });
     const source = JSON.parse(sourceText) as unknown;
     if (task.taskType === "extension") {
-      const h3Boundary = isMiniMaxH3Model(task.modelId);
+      const h3Boundary = isMiniMaxH3Fl2vaModel(task.modelId);
       const prepared = h3Boundary
         ? await prepareH3BoundaryFrame(task, signal)
         : await prepareExtensionContext(task, signal);
@@ -125,11 +131,27 @@ export async function submitTask(
           ...(h3Boundary
             ? { inputImage: uploadedInput }
             : { sourceVideo: uploadedInput }),
-          vramTotalBytes
+          vramTotalBytes,
+          vramAvailableBytes
         });
       } finally {
         await prepared.cleanup();
       }
+    } else if (isMiniMaxH3R2vModel(task.modelId)) {
+      const referenceSlots = task.h3ReferenceSlots ?? [];
+      if (!referenceSlots.length) {
+        throw new Error("R2V 至少需要一张参考图片。请先添加一个 H3 Slot。");
+      }
+      const h3ReferenceImages = await Promise.all(
+        referenceSlots.map((slot, index) =>
+          uploadInput(baseUrl, slot.imagePath, signal, `R2V 参考图 ${index + 1}`)
+        )
+      );
+      prompt = renderWorkflow(source, task, {
+        h3ReferenceImages,
+        vramTotalBytes,
+        vramAvailableBytes
+      });
     } else {
       const supportsEndImage = workflowSupportsEndImage(source);
       const [inputImage, endImage] = await Promise.all([
@@ -141,20 +163,21 @@ export async function submitTask(
       prompt = renderWorkflow(source, task, {
         inputImage,
         endImage,
-        vramTotalBytes
+        vramTotalBytes,
+        vramAvailableBytes
       });
     }
   } else {
-    const sourceVideo = await uploadInput(
-      baseUrl,
-      task.sourceFilePath,
-      signal,
-      "源视频"
-    );
-    prompt = renderUpscaleWorkflow(task, sourceVideo, {
-      seedVr2: settings.seedVr2Model,
-      realEsrgan: settings.realEsrganModel
-    });
+      const sourceVideo = await uploadInput(
+        baseUrl,
+        task.sourceFilePath,
+        signal,
+        "源视频"
+      );
+      prompt = renderUpscaleWorkflow(task, sourceVideo, {
+        seedVr2: settings.seedVr2Model,
+        realEsrgan: settings.realEsrganModel
+      });
   }
   const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
   if (missingNodes.length) {

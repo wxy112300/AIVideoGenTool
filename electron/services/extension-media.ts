@@ -8,7 +8,7 @@ import {
   extensionContextDuration,
   extensionOutputDimensions,
   frameInterpolationMultiplier,
-  isMiniMaxH3Model
+  isMiniMaxH3Fl2vaModel
 } from "../../src/core/workflow.js";
 
 const execFileAsync = promisify(execFile);
@@ -191,7 +191,7 @@ export async function finalizeExtensionOutput(
     const continuationArgs = [
       "-hide_banner", "-loglevel", "error", "-y",
       "-ss", String(
-        isMiniMaxH3Model(task.modelId) ? 1 / 24 : contextDuration
+        isMiniMaxH3Fl2vaModel(task.modelId) ? 1 / 24 : contextDuration
       ),
       "-i", generatedPath
     ];
@@ -200,7 +200,7 @@ export async function finalizeExtensionOutput(
         "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"
       );
     }
-    if (isMiniMaxH3Model(task.modelId)) {
+    if (isMiniMaxH3Fl2vaModel(task.modelId)) {
       continuationArgs.push("-t", String(task.duration));
     }
     continuationArgs.push(

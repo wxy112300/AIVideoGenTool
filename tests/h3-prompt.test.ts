@@ -30,4 +30,22 @@ describe("MiniMax H3 prompt templates", () => {
     expect(template.text).toContain("exact final composition in <Picture 2>");
     expect(template.text).not.toContain("[Shot 2]");
   });
+
+  it("creates the six-section R2V structure with each Picture slot", () => {
+    const template = createH3PromptTemplate("人物在场景中行走", 5, {
+      mode: "R2V",
+      referenceSlots: [
+        { role: "人物 / 主体", note: "角色外貌" },
+        { role: "场景 / 环境", note: "街道布局" }
+      ]
+    });
+
+    expect(template.mode).toBe("R2V");
+    expect(template.text).toContain("subject_definitions:");
+    expect(template.text).toContain("<Picture 1> is a 人物 / 主体 reference: 角色外貌");
+    expect(template.text).toContain("<Picture 2> is a 场景 / 环境 reference: 街道布局");
+    expect(template.text).toContain("retention_analysis:");
+    expect(template.text).toContain("detailed_description:");
+    expect(template.text).not.toContain("integrated_multimodal_description:");
+  });
 });

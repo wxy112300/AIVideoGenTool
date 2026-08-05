@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   attentionWheelForProbe,
+  availableVramBytesForReserve,
   buildComfyCandidates,
   buildComfyDesktopCandidates,
   buildComfyDesktopSourceCandidates,
@@ -51,6 +52,17 @@ describe("SageAttention environment selection", () => {
       torchVersion: "2.8.0+cu129",
       cudaVersion: "12.9"
     })).toBeNull();
+  });
+});
+
+describe("VRAM reserve budget", () => {
+  it("subtracts the clamped reserve from detected total VRAM", () => {
+    expect(availableVramBytesForReserve(24 * 1024 ** 3, 1)).toBe(
+      23 * 1024 ** 3
+    );
+    expect(availableVramBytesForReserve(8 * 1024 ** 3, 2)).toBe(
+      7 * 1024 ** 3
+    );
   });
 });
 
@@ -392,12 +404,12 @@ describe("ComfyUI environment candidates", () => {
 
     expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va")).toMatchObject({
       available: true,
-      integrated: false,
+      integrated: true,
       badge: "R2V · 多参考"
     });
     expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va_int4")).toMatchObject({
       available: true,
-      integrated: false,
+      integrated: true,
       badge: "R2V · INT4 低显存"
     });
   });
@@ -406,12 +418,13 @@ describe("ComfyUI environment candidates", () => {
     const complete = evaluateMiniMaxH3CoreSupport({
       EmptyMiniMaxH3LatentAV: {},
       MiniMaxH3ImageToVideo: {},
+      MiniMaxH3ReferenceToVideo: {},
       MiniMaxH3SigmaShift: {}
     });
     const incomplete = evaluateMiniMaxH3CoreSupport({});
 
     expect(complete.every((node) => node.available)).toBe(true);
-    expect(incomplete.filter((node) => !node.available)).toHaveLength(1);
+    expect(incomplete.filter((node) => !node.available)).toHaveLength(2);
   });
 
   it("requires the official HunyuanVideo 1.5 dual text and vision encoders", () => {

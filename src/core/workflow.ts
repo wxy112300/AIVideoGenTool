@@ -8,11 +8,13 @@ export interface WorkflowContext {
   inputImage: string;
   endImage: string;
   sourceVideo: string;
+  h3ReferenceImages: string[];
   width: number;
   height: number;
   frames: number;
   fps: number;
   vramTotalBytes: number;
+  vramAvailableBytes: number;
 }
 
 export interface WorkflowValidation {
@@ -41,8 +43,16 @@ interface GenerationSafetyProfile {
   maxDurationSeconds: number;
 }
 
-export function isMiniMaxH3Model(modelId: string): boolean {
+export function isMiniMaxH3Fl2vaModel(modelId: string): boolean {
   return modelId === "minimax_h3_fl2va" || modelId === "minimax_h3_fl2va_int4";
+}
+
+export function isMiniMaxH3R2vModel(modelId: string): boolean {
+  return modelId === "minimax_h3_ref2va" || modelId === "minimax_h3_ref2va_int4";
+}
+
+export function isMiniMaxH3Model(modelId: string): boolean {
+  return isMiniMaxH3Fl2vaModel(modelId) || isMiniMaxH3R2vModel(modelId);
 }
 
 function generationSafetyProfileForModel(
@@ -50,7 +60,7 @@ function generationSafetyProfileForModel(
 ): GenerationSafetyProfile {
   if (isMiniMaxH3Model(modelId)) {
     return {
-      label: "MiniMax H3 FL2VA",
+      label: isMiniMaxH3R2vModel(modelId) ? "MiniMax H3 R2V" : "MiniMax H3 FL2VA",
       maxGeneratedFrames: 362,
       maxDurationSeconds: 15
     };
@@ -336,7 +346,7 @@ export function extensionSafetyForTask(
     | "unloadBetweenStages"
   >
 ): ExtensionSafety {
-  if (isMiniMaxH3Model(task.modelId)) {
+  if (isMiniMaxH3Fl2vaModel(task.modelId)) {
     const generationSafety = generationSafetyForTask(task);
     const minimumContextSeconds = 1 / 24;
     const result = (safe: boolean, message: string): ExtensionSafety => ({
@@ -465,6 +475,14 @@ const miniMaxH3ModelAssets: Record<
   },
   minimax_h3_fl2va_int4: {
     diffusionModel: "minimax_h3_fl2va_pruned_int4_convrot.safetensors",
+    textEncoder: "qwen3vl_32b_minimax_h3_int4_convrot.safetensors"
+  },
+  minimax_h3_ref2va: {
+    diffusionModel: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    textEncoder: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+  },
+  minimax_h3_ref2va_int4: {
+    diffusionModel: "minimax_h3_ref2va_pruned_int4_convrot.safetensors",
     textEncoder: "qwen3vl_32b_minimax_h3_int4_convrot.safetensors"
   }
 };
@@ -608,7 +626,7 @@ export function outputDimensions(
 export function extensionOutputDimensions(
   task: ExtensionQueueTask
 ): [number, number] {
-  if (isMiniMaxH3Model(task.modelId)) {
+  if (isMiniMaxH3Fl2vaModel(task.modelId)) {
     return miniMaxH3Dimensions(task);
   }
   return legacyVideoDimensions(task);
@@ -641,6 +659,15 @@ export function renderWorkflow(
     INPUT_IMAGE: context.inputImage ?? "",
     END_IMAGE: context.endImage ?? "",
     SOURCE_VIDEO: context.sourceVideo ?? "",
+    H3_REF_IMAGE_0: context.h3ReferenceImages?.[0] ?? "",
+    H3_REF_IMAGE_1: context.h3ReferenceImages?.[1] ?? "",
+    H3_REF_IMAGE_2: context.h3ReferenceImages?.[2] ?? "",
+    H3_REF_IMAGE_3: context.h3ReferenceImages?.[3] ?? "",
+    H3_REF_IMAGE_4: context.h3ReferenceImages?.[4] ?? "",
+    H3_REF_IMAGE_5: context.h3ReferenceImages?.[5] ?? "",
+    H3_REF_IMAGE_6: context.h3ReferenceImages?.[6] ?? "",
+    H3_REF_IMAGE_7: context.h3ReferenceImages?.[7] ?? "",
+    H3_REF_IMAGE_8: context.h3ReferenceImages?.[8] ?? "",
     TRIM_START: task.taskType === "extension" ? task.trimStartSeconds : 0,
     TRIM_END: task.taskType === "extension" ? task.trimEndSeconds : 0,
     EXTENSION_FRAMES: task.taskType === "extension"
@@ -760,8 +787,9 @@ export function renderWorkflow(
       generationFrameCountForTask(task) > 124 ||
       outputWidth * outputHeight > 960 * 544
     );
+  const availableVramBytes = context.vramAvailableBytes ?? context.vramTotalBytes ?? 0;
   const highVramDecode =
-    (context.vramTotalBytes ?? 0) >= 20 * 1024 ** 3 && !h3HeavyDecode;
+    availableVramBytes >= 20 * 1024 ** 3 && !h3HeavyDecode;
   const tiledDecodeInputs = highVramDecode
     ? {
         // Keep spatial tiling, but make the temporal tile larger than every
@@ -941,13 +969,16 @@ export function validateApiWorkflow(source: unknown): WorkflowValidation {
   }
 
   const serialized = JSON.stringify(source);
-  for (const match of serialized.matchAll(/\{\{([A-Z_]+)\}\}/g)) {
+  for (const match of serialized.matchAll(/\{\{([A-Z0-9_]+)\}\}/g)) {
     if (match[1]) placeholders.add(match[1]);
   }
   if (!placeholders.has("PROMPT")) {
     errors.push("缺少 {{PROMPT}}，GUI 无法注入当前提示词");
   }
-  if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO")) {
+  const hasH3ReferenceImage = [...placeholders].some((token) =>
+    /^H3_REF_IMAGE_\d+$/u.test(token)
+  );
+  if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage) {
     errors.push("缺少 {{INPUT_IMAGE}} 或 {{SOURCE_VIDEO}}，GUI 无法注入输入媒体");
   }
   if (!placeholders.has("SEED")) warnings.push("缺少 {{SEED}}，任务 Seed 不会传入工作流");

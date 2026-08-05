@@ -114,6 +114,7 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
     taskType: "generation",
     sourceWidth: task.sourceWidth ?? 0,
     sourceHeight: task.sourceHeight ?? 0,
+    h3ReferenceSlots: task.h3ReferenceSlots ?? [],
     fps: (task.fps ?? 24) as Draft["fps"],
     frameInterpolation: task.frameInterpolation ?? "off",
     attentionMode: task.attentionMode ?? "sage",

@@ -23,6 +23,7 @@ export function createDefaultDraft(): Draft {
       }
     ],
     activePromptVersion: 0,
+    h3ReferenceSlots: [],
     modelId: "minimax_h3_fl2va",
     workflowPath: "",
     ratio: "source",
@@ -59,6 +60,7 @@ export function createClearedDraft(current: Draft): Draft {
       }
     ],
     activePromptVersion: 0,
+    h3ReferenceSlots: [],
     seed: null
   };
 }

@@ -204,6 +204,35 @@ describe("renderWorkflow", () => {
     expect(rendered["6"]?.inputs.length).toBe(124);
   });
 
+  it("renders R2V image slots into the official reference input names", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_r2v_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_ref2va",
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    }, {
+      h3ReferenceImages: ["subject.png", "scene.png"]
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    const referenceNode = rendered["14"];
+
+    expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(referenceNode?.class_type).toBe("MiniMaxH3ReferenceToVideo");
+    expect(referenceNode?.inputs["ref_images.ref_image_0"]).toEqual(["5", 0]);
+    expect(referenceNode?.inputs["ref_images.ref_image_1"]).toEqual(["6", 0]);
+    expect(referenceNode?.inputs["ref_images.ref_image_2"]).toBeUndefined();
+    expect(rendered["5"]?.inputs.image).toBe("subject.png");
+    expect(rendered["6"]?.inputs.image).toBe("scene.png");
+    expect(rendered["7"]).toBeUndefined();
+    expect(rendered["15"]?.inputs.sampler_name).toBe("res_multistep");
+  });
+
   it("replaces nested values while preserving numeric token types", () => {
     const result = renderWorkflow(
       {

@@ -33,7 +33,8 @@ function formatGpuMemory(bytes: number): string {
 }
 
 const minimaxH3CoreNodes = [
-  { id: "MiniMaxH3ImageToVideo", label: "H3 首帧 / 首尾帧图生视频" }
+  { id: "MiniMaxH3ImageToVideo", label: "H3 FL2VA 首帧 / 首尾帧图生视频" },
+  { id: "MiniMaxH3ReferenceToVideo", label: "H3 R2V 多参考图生视频" }
 ] as const;
 
 export function evaluateMiniMaxH3CoreSupport(
@@ -753,9 +754,9 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "MiniMax H3 R2V · 多参考 INT8",
     category: "video",
     badge: "R2V · 多参考",
-    description: "官方 Ref2VA 多参考档，支持图片、视频和音频参考；当前先加入模型扫描，R2V 工作流待接入。",
+    description: "官方 Ref2VA 多参考档，当前支持最多 9 张图片参考；视频和音频 Slot 将在后续扩展。",
     vram: "pruned INT8 · 4090/24GB 起步 · DynamicVRAM",
-    integrated: false,
+    integrated: true,
     components: [
       {
         label: "MiniMax H3 Ref2VA INT8 模型",
@@ -784,9 +785,9 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "MiniMax H3 R2V · 多参考 INT4",
     category: "video",
     badge: "R2V · INT4 低显存",
-    description: "社区 Ref2VA INT4 ConvRot 档，面向多参考低显存实验；当前先加入模型扫描，R2V 工作流待接入。",
+    description: "社区 Ref2VA INT4 ConvRot 档，支持多张图片参考；视频和音频 Slot 将在后续扩展。",
     vram: "pruned INT4 · 12GB 起步 · 4090 可试 · RAM offload",
-    integrated: false,
+    integrated: true,
     components: [
       {
         label: "MiniMax H3 Ref2VA INT4 ConvRot 模型",
@@ -2461,6 +2462,16 @@ export function comfyUiMemoryArgs(
     "--disable-pinned-memory",
     "--disable-async-offload"
   ];
+}
+
+export function availableVramBytesForReserve(
+  totalBytes: number,
+  reserveGb: number
+): number {
+  const configuredReserve = Number.isFinite(reserveGb)
+    ? Math.max(0.5, Math.min(1, reserveGb))
+    : 1;
+  return Math.max(0, totalBytes - configuredReserve * 1024 ** 3);
 }
 
 export async function resolveComfyOutputDirectory(

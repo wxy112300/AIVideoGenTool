@@ -6,7 +6,7 @@ export interface H3PromptCheckItem {
 }
 
 export interface H3PromptCheckResult {
-  mode: "I2VA" | "FL2VA";
+  mode: "I2VA" | "FL2VA" | "R2V";
   items: H3PromptCheckItem[];
   summary: string;
   valid: boolean;
@@ -14,10 +14,20 @@ export interface H3PromptCheckResult {
 
 export interface H3PromptCheckOptions {
   hasEndImage?: boolean;
+  mode?: "I2VA" | "FL2VA" | "R2V";
 }
 
-const requiredSections = [
+const baseSections = [
   "integrated_multimodal_description:",
+  "overall_soundscape:",
+  "non_diegetic_music:"
+] as const;
+
+const r2vSections = [
+  "subject_definitions:",
+  "summary:",
+  "retention_analysis:",
+  "detailed_description:",
   "overall_soundscape:",
   "non_diegetic_music:"
 ] as const;
@@ -46,8 +56,9 @@ export function checkH3Prompt(
   options: H3PromptCheckOptions = {}
 ): H3PromptCheckResult {
   const prompt = promptText.trim();
-  const mode = options.hasEndImage ? "FL2VA" : "I2VA";
+  const mode = options.mode ?? (options.hasEndImage ? "FL2VA" : "I2VA");
   const items: H3PromptCheckItem[] = [];
+  const requiredSections = mode === "R2V" ? r2vSections : baseSections;
   const missingSections = requiredSections.filter((section) => !prompt.includes(section));
   if (missingSections.length) {
     items.push({
@@ -56,26 +67,35 @@ export function checkH3Prompt(
     });
   }
 
-  const alignmentPhrase = mode === "FL2VA"
-    ? "How the reference pictures align"
-    : "For the target video";
-  if (!prompt.includes(alignmentPhrase)) {
-    items.push({
-      level: "warning",
-      message: `${mode} 尚未检测到官方参考图对齐说明`
-    });
-  }
-  if (mode === "FL2VA" && !prompt.includes("Picture 2")) {
-    items.push({
-      level: "warning",
-      message: "FL2VA 需要在提示词中说明 Picture 2 的结束状态"
-    });
-  }
-  if (mode === "I2VA" && prompt.includes("Picture 2")) {
-    items.push({
-      level: "warning",
-      message: "当前只有首帧，但提示词提到了 Picture 2；请确认是否应该添加尾帧"
-    });
+  if (mode === "R2V") {
+    if (!prompt.includes("<Picture 1>")) {
+      items.push({
+        level: "warning",
+        message: "R2V 至少需要在提示词中引用 <Picture 1>"
+      });
+    }
+  } else {
+    const alignmentPhrase = mode === "FL2VA"
+      ? "How the reference pictures align"
+      : "For the target video";
+    if (!prompt.includes(alignmentPhrase)) {
+      items.push({
+        level: "warning",
+        message: `${mode} 尚未检测到官方参考图对齐说明`
+      });
+    }
+    if (mode === "FL2VA" && !prompt.includes("Picture 2")) {
+      items.push({
+        level: "warning",
+        message: "FL2VA 需要在提示词中说明 Picture 2 的结束状态"
+      });
+    }
+    if (mode === "I2VA" && prompt.includes("Picture 2")) {
+      items.push({
+        level: "warning",
+        message: "当前只有首帧，但提示词提到了 Picture 2；请确认是否应该添加尾帧"
+      });
+    }
   }
 
   if (hasDialogue(prompt)) {
