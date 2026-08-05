@@ -1427,6 +1427,7 @@ function settingsPage(): string {
           <div><h2>视频模型</h2><span class="muted">根据真实文件组件判断是否可用，不仅检查单个 checkpoint 名称。</span></div>
           <label class="compact-label">默认模型<select id="default-video-model">
             ${(videoProfiles.length ? videoProfiles : [
+              { id: "minimax_h3_fl2va", name: "MiniMax H3 Image to Video", available: true, integrated: true },
               { id: "sulphur2", name: "Sulphur 2 GGUF", available: false, integrated: true },
               { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: false, integrated: true },
               { id: "hunyuan15", name: "HunyuanVideo 1.5 I2V", available: false, integrated: true }
@@ -2752,6 +2753,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       seekToRatio(current + (event.key === "ArrowRight" ? 0.05 : -0.05));
     });
     media.addEventListener("mouseenter", () => {
+      seekToRatio(0);
       media.classList.add("playing");
       void video.play().catch(() => undefined);
     });
@@ -3189,8 +3191,14 @@ function bindSettings(): void {
     void runEnvironmentScan(settingsDraft);
   });
   document.querySelector("#save-settings")?.addEventListener("click", async () => {
-    const previousProfile = state.settings.ltxExtensionModelProfile;
-    state = await window.studio.saveSettings(formSettings());
+    const previousSettings = state.settings;
+    const nextSettings = formSettings();
+    const previousProfile = previousSettings.ltxExtensionModelProfile;
+    const pathsChanged = previousSettings.comfyInstallDirectory !== nextSettings.comfyInstallDirectory ||
+      previousSettings.modelDirectory !== nextSettings.modelDirectory ||
+      previousSettings.outputDirectory !== nextSettings.outputDirectory ||
+      previousSettings.lmStudioInstallDirectory !== nextSettings.lmStudioInstallDirectory;
+    state = await window.studio.saveSettings(nextSettings);
     settingsDraft = null;
     if (state.settings.ltxExtensionModelProfile !== previousProfile) {
       delete bundledWorkflows[bundledWorkflowKey("sulphur2", "image")];
@@ -3210,6 +3218,8 @@ function bindSettings(): void {
           });
         }
       }
+    }
+    if (pathsChanged || state.settings.ltxExtensionModelProfile !== previousProfile) {
       await runEnvironmentScan(state.settings);
     }
     showMessage("设置已保存，将对下一项尚未开始的任务生效。");
@@ -3263,6 +3273,7 @@ function bindSettings(): void {
     if (directory && input) {
       input.value = directory;
       settingsDraft = formSettings();
+      void runEnvironmentScan(settingsDraft);
     }
   });
   document.querySelector("#pick-output-directory")?.addEventListener("click", async () => {
@@ -3271,6 +3282,7 @@ function bindSettings(): void {
     if (directory && input) {
       input.value = directory;
       settingsDraft = formSettings();
+      void runEnvironmentScan(settingsDraft);
     }
   });
   document.querySelectorAll<HTMLElement>("[data-pick-lm-install]").forEach((button) => {

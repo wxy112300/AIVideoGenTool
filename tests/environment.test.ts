@@ -4,6 +4,8 @@ import {
   buildComfyCandidates,
   buildComfyDesktopCandidates,
   buildComfyDesktopSourceCandidates,
+  comfyDataDirectories,
+  mergeComfyDesktopSettings,
   comfyUiBundledFrontendArgs,
   buildLmStudioCandidates,
   comfyUiMemoryArgs,
@@ -75,6 +77,41 @@ describe("Windows directory replacement", () => {
 });
 
 describe("ComfyUI environment candidates", () => {
+  it("prefers user-selected model and output directories", () => {
+    expect(comfyDataDirectories({
+      modelDirectory: "E:\\VideoModels",
+      outputDirectory: "F:\\VideoOutput"
+    }, "C:\\Users\\CurrentUser\\Documents\\ComfyUI")).toEqual({
+      modelDirectory: "E:\\VideoModels",
+      outputDirectory: "F:\\VideoOutput"
+    });
+  });
+
+  it("merges selected paths into Comfy Desktop settings", () => {
+    expect(mergeComfyDesktopSettings({
+      modelsDirs: ["D:\\SharedModels"],
+      outputDir: "C:\\OldOutput",
+      cacheDir: "C:\\Cache"
+    }, {
+      modelDirectory: "E:\\VideoModels",
+      outputDirectory: "F:\\VideoOutput"
+    })).toEqual({
+      modelsDirs: ["E:\\VideoModels", "D:\\SharedModels"],
+      outputDir: "F:\\VideoOutput",
+      cacheDir: "C:\\Cache"
+    });
+  });
+
+  it("prefers user-selected model and output directories", () => {
+    expect(comfyDataDirectories({
+      modelDirectory: "E:\\VideoModels",
+      outputDirectory: "F:\\VideoOutput"
+    }, "C:\\Users\\CurrentUser\\Documents\\ComfyUI")).toEqual({
+      modelDirectory: "E:\\VideoModels",
+      outputDirectory: "F:\\VideoOutput"
+    });
+  });
+
   it("uses the frontend bundled with ComfyUI Desktop", () => {
     expect(
       comfyUiBundledFrontendArgs(

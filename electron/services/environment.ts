@@ -2263,8 +2263,57 @@ export function comfyUiMemoryArgs(
 export async function resolveComfyOutputDirectory(
   settings: Settings
 ): Promise<string> {
+  const configured = settings.outputDirectory.trim();
+  if (configured) return path.resolve(configured);
   const comfyRoot = await findComfyRoot(settings);
   return comfyRoot ? path.join(comfyRoot, "output") : "";
+}
+
+export function comfyDataDirectories(
+  settings: Pick<Settings, "modelDirectory" | "outputDirectory">,
+  comfyRoot: string
+): { modelDirectory: string; outputDirectory: string } {
+  return {
+    modelDirectory: settings.modelDirectory.trim()
+      ? path.resolve(settings.modelDirectory)
+      : path.join(comfyRoot, "models"),
+    outputDirectory: settings.outputDirectory.trim()
+      ? path.resolve(settings.outputDirectory)
+      : path.join(comfyRoot, "output")
+  };
+}
+
+export function mergeComfyDesktopSettings(
+  value: unknown,
+  settings: Pick<Settings, "modelDirectory" | "outputDirectory">
+): Record<string, unknown> {
+  const current = value && typeof value === "object" && !Array.isArray(value)
+    ? { ...(value as Record<string, unknown>) }
+    : {};
+  const modelDirectory = settings.modelDirectory.trim();
+  const outputDirectory = settings.outputDirectory.trim();
+  const currentModels = Array.isArray(current.modelsDirs)
+    ? current.modelsDirs.filter((item): item is string => typeof item === "string")
+    : [];
+  return {
+    ...current,
+    ...(modelDirectory
+      ? { modelsDirs: uniqueWindowsPaths([modelDirectory, ...currentModels]) }
+      : {}),
+    ...(outputDirectory ? { outputDir: path.resolve(outputDirectory) } : {})
+  };
+}
+
+async function applyComfyDesktopSettings(settings: Settings): Promise<void> {
+  if (!settings.modelDirectory.trim() && !settings.outputDirectory.trim()) return;
+  const appData = process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
+  const filename = path.join(appData, "Comfy Desktop", "settings.json");
+  const source = await fs.readFile(filename, "utf8").catch(() => "");
+  if (!source) return;
+  const current = JSON.parse(source) as unknown;
+  const next = mergeComfyDesktopSettings(current, settings);
+  if (JSON.stringify(current) === JSON.stringify(next)) return;
+  await fs.writeFile(filename, JSON.stringify(next, null, 2), "utf8");
 }
 
 export function comfyUiBundledFrontendArgs(
@@ -2287,6 +2336,7 @@ async function startComfyUi(settings: Settings): Promise<string> {
   const comfyRoot = await findComfyRoot(settings);
   const installation = await findComfyInstallation(settings);
   if (installation?.type === "desktop" && !installation.sourceDirectory) {
+    await applyComfyDesktopSettings(settings);
     await launchDetached(
       installation.executable,
       [],
@@ -2316,6 +2366,7 @@ async function startComfyUi(settings: Settings): Promise<string> {
     "desktop_app",
     "index.html"
   );
+  const directories = comfyDataDirectories(settings, comfyRoot || sourceRoot);
   const args = [
     "-s",
     mainPy,
@@ -2328,6 +2379,9 @@ async function startComfyUi(settings: Settings): Promise<string> {
     "auto",
     ...comfyUiMemoryArgs(settings)
   ];
+  if (settings.modelDirectory.trim()) {
+    args.push("--models-directory", directories.modelDirectory);
+  }
   args.push(
     ...comfyUiBundledFrontendArgs(sourceRoot, await exists(bundledFrontend))
   );
@@ -2340,12 +2394,14 @@ async function startComfyUi(settings: Settings): Promise<string> {
       "--input-directory",
       path.join(comfyRoot, "input"),
       "--output-directory",
-      path.join(comfyRoot, "output"),
+      directories.outputDirectory,
       "--temp-directory",
       path.join(comfyRoot, "temp"),
       "--database-url",
       `sqlite:///${path.join(comfyRoot, "user", "comfyui.db").replaceAll("\\", "/")}`
     );
+  } else if (settings.outputDirectory.trim()) {
+    args.push("--output-directory", directories.outputDirectory);
   }
   await launchDetached(python, args, sourceRoot, downloadEnvironment(settings));
   return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
@@ -3146,8 +3202,14 @@ export async function scanEnvironment(
         executable: comfyInstallationSummary.executable
       }
     : null;
-  const modelDirectory = comfyRoot ? path.join(comfyRoot, "models") : "";
-  const outputDirectory = comfyRoot ? path.join(comfyRoot, "output") : "";
+  const directories = comfyRoot
+    ? comfyDataDirectories(settings, comfyRoot)
+    : {
+        modelDirectory: settings.modelDirectory.trim(),
+        outputDirectory: settings.outputDirectory.trim()
+      };
+  const modelDirectory = directories.modelDirectory;
+  const outputDirectory = directories.outputDirectory;
   const modelFiles = await listModelFiles(modelDirectory);
   if (
     comfyRoot &&
