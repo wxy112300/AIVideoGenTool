@@ -13,8 +13,10 @@ Local Video Studio 把参考图、提示词、视频模型、任务队列和生�
 - **本地任务队列**：持久化等待任务，展示当前节点、进度、预览、耗时以及 CPU、内存和显存占用。
 - **生成历史**：直接播放输出视频，查看任务参数和不同版本，并支持复制文件、打开目录和删除文件。
 - **环境检查**：扫描常见目录和 Comfy Desktop 安装记录，识别多个 ComfyUI 实例、核心版本、模型和自定义节点。
+- **动态 GPU 检测**：通过 `nvidia-smi` 读取实际 GPU 型号、驱动和总显存；运行预算按“总显存 - 安全余量”计算，不把 4090 写死在配置中。
 - **服务管理**：连接已有 ComfyUI，也可以从应用内启动、重启和更新所选安装；默认接口为 `http://127.0.0.1:8188`。
 - **低显存保护**：按工作流启用模型卸载、CPU offload、分块 VAE 解码和单任务执行，降低长视频处理时的显存峰值。
+- **分阶段任务进度**：总进度条按加载、采样、解码、插帧、封装和保存阶段计算；当前阶段另显示局部步数，例如 `扩散采样 4/20`。
 - **提示词扩写**：可选连接本地 LM Studio 的 OpenAI 兼容接口，不依赖云端模型。
 - **下载代理**：可为依赖、节点和工作流下载单独配置 HTTP 代理，默认关闭。
 
@@ -22,7 +24,10 @@ Local Video Studio 把参考图、提示词、视频模型、任务队列和生�
 
 | 类型 | 模型或工具 | 当前能力 |
 | --- | --- | --- |
-| 图生视频 | MiniMax H3 FL2VA | 首帧或首尾帧、原生 24 FPS 音视频、结构化镜头与声音提示词 |
+| 图生视频 | MiniMax H3 FL2VA INT8 | 首帧或首尾帧、原生 24 FPS 音视频、结构化镜头与声音提示词 |
+| 图生视频 | MiniMax H3 FL2VA INT4 ConvRot | 社区低显存档，首帧或首尾帧，建议 12GB 起步并准备充足系统内存 |
+| 多参考图生视频 | MiniMax H3 R2V INT8 | 最多 9 张图片 Slot，按 `<Picture N>` 分配人物、场景、风格、动作和镜头作用 |
+| 多参考图生视频 | MiniMax H3 R2V INT4 ConvRot | 社区低显存 R2V 图片参考档，适合显存较小的设备实验 |
 | 图生视频 / 续写 | Sulphur 2 / LTX 2.3 | GGUF 低显存配置、原生 overlap 视频续写 |
 | 图生视频 | Wan 2.2 | 5B、14B 及 Remix、SmoothMix 等内置配置 |
 | 图生视频 | HunyuanVideo 1.5 | 标准 I2V 和双阶段 1080p SR |
@@ -32,6 +37,39 @@ Local Video Studio 把参考图、提示词、视频模型、任务队列和生�
 MiniMax H3 的“续写”目前采用**边界帧接续**：提取原视频最后一帧作为下一段的首帧，并保留 H3 原生音轨。它不是 latent overlap，因此片段边界的动作连续性可能弱于 Sulphur 2 / LTX 2.3 的原生续写。
 
 不同工作流对 ComfyUI 版本、节点、权重目录和显存的要求不同。设置页会按当前选择的 ComfyUI 实例给出检测结果、下载地址和目标目录；更完整的依赖说明见 [依赖与环境配置](docs/DEPENDENCIES_AND_SETUP.md)。
+
+### MiniMax H3 模型选择
+
+MiniMax H3 的 FL2VA 和 R2V 使用不同的扩散模型，不能混用：
+
+| 模式 | 扩散模型 | 适用场景 |
+| --- | --- | --- |
+| FL2VA | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` | 首帧、首尾帧和 H3 边界帧续写 |
+| FL2VA INT4 | `minimax_h3_fl2va_pruned_int4_convrot.safetensors` | 低显存首帧/首尾帧实验 |
+| R2V | `minimax_h3_ref2va_pruned_int8_convrot.safetensors` | 多图片参考生成 |
+| R2V INT4 | `minimax_h3_ref2va_pruned_int4_convrot.safetensors` | 低显存多图片参考实验 |
+
+所有 H3 变体还需要对应的 Qwen 文本编码器和官方 VAE：
+
+```text
+ComfyUI/models/diffusion_models/
+	minimax_h3_fl2va_pruned_int8_convrot.safetensors
+	minimax_h3_fl2va_pruned_int4_convrot.safetensors
+	minimax_h3_ref2va_pruned_int8_convrot.safetensors
+	minimax_h3_ref2va_pruned_int4_convrot.safetensors
+
+ComfyUI/models/text_encoders/
+	qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors
+	qwen3vl_32b_minimax_h3_int4_convrot.safetensors
+
+ComfyUI/models/vae/
+	minimax_h3_video_vae_fp16.safetensors
+	minimax_h3_audio_vae_fp32.safetensors
+```
+
+官方和社区权重的下载地址会在“设置 → 视频模型”的组件卡片中显示。RTX 4090 等 24GB 显卡可以优先尝试官方 INT8；12GB 级别设备优先尝试 pruned INT4，但实际速度和成功率仍取决于系统内存、NVMe 和 ComfyUI offload。INT4 是社区转换，不等同于官方质量保证。
+
+R2V 当前在应用内支持图片 Slot：最多 9 张参考图，每张可标注人物、场景、风格、动作、镜头等作用，并在提示词中引用 `<Picture 1>`、`<Picture 2>`。参考视频和独立音频的 Slot 尚未接入应用界面。
 
 ## 快速开始
 
@@ -52,7 +90,7 @@ cd AIVideoGenTool
 
 ### 2. 启动应用
 
-双击 `start-ui.bat`。首次启动会安装 npm 依赖，随后构建并打开桌面应用。
+双击 `start-ui.bat`。首次启动会检查 npm 直接依赖；如果 `lucide` 或其他依赖缺失，会自动执行 `npm ci` 修复，然后构建并打开桌面应用。
 
 也可以在终端中运行：
 
@@ -96,6 +134,7 @@ start-ui-proxy.bat http://127.0.0.1:7890
 ```text
 {{PROMPT}} {{NEGATIVE_PROMPT}} {{SEED}}
 {{INPUT_IMAGE}} {{END_IMAGE}}
+{{H3_REF_IMAGE_0}} ... {{H3_REF_IMAGE_8}}
 {{WIDTH}} {{HEIGHT}} {{DURATION}}
 {{BASE_WIDTH}} {{BASE_HEIGHT}} {{HALF_WIDTH}} {{HALF_HEIGHT}}
 {{SOURCE_FPS}} {{FPS}} {{FRAMES}} {{OUTPUT_FRAMES}}

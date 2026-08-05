@@ -287,26 +287,70 @@ export async function executedPreviewDataUrl(
   return `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
 }
 
-function nodeStage(classType: string | undefined): {
-  progress: number;
+export interface NodeProgressStage {
+  start: number;
+  end: number;
   label: string;
-} {
-  if (!classType) return { progress: 2, label: "准备工作流" };
-  if (classType.includes("Loader")) return { progress: 5, label: "加载模型" };
-  if (classType === "CLIPTextEncode") return { progress: 10, label: "编码提示词" };
-  if (classType === "KSampler" || classType === "KSamplerAdvanced") {
-    return { progress: 15, label: "扩散采样" };
+  tracksSteps: boolean;
+}
+
+export function nodeStage(classType: string | undefined): NodeProgressStage {
+  if (!classType) return { start: 2, end: 4, label: "准备工作流", tracksSteps: false };
+  if (classType.includes("Loader")) {
+    return { start: 4, end: 10, label: "加载模型", tracksSteps: false };
   }
-  if (classType === "LTXVExtendSampler" || classType === "LTXVLoopingSampler") {
-    return { progress: 15, label: "LTX 视频续写" };
+  if (classType === "CLIPTextEncode") {
+    return { start: 10, end: 14, label: "编码提示词", tracksSteps: false };
   }
-  if (classType === "VRAM_Debug") return { progress: 91, label: "卸载扩散模型并释放显存" };
-  if (classType.includes("VAEDecode")) return { progress: 92, label: "分块 VAE 解码" };
-  if (classType === "RIFE VFI") return { progress: 95, label: "RIFE 视频插帧" };
-  if (classType === "ImageFromBatch") return { progress: 96, label: "裁剪到目标帧数" };
-  if (classType === "CreateVideo") return { progress: 97, label: "生成视频帧" };
-  if (classType === "SaveVideo") return { progress: 99, label: "编码并保存" };
-  return { progress: 12, label: classType };
+  if (
+    classType === "KSampler" ||
+    classType === "KSamplerAdvanced" ||
+    classType === "SamplerCustomAdvanced" ||
+    classType === "LTXVExtendSampler" ||
+    classType === "LTXVLoopingSampler"
+  ) {
+    return { start: 14, end: 80, label: "扩散采样", tracksSteps: true };
+  }
+  if (classType === "VRAM_Debug") {
+    return { start: 80, end: 82, label: "卸载扩散模型并释放显存", tracksSteps: false };
+  }
+  if (classType === "VAEDecodeAudio") {
+    return { start: 88, end: 93, label: "解码音频", tracksSteps: true };
+  }
+  if (classType.includes("VAEDecode")) {
+    return { start: 82, end: 88, label: "解码视频", tracksSteps: true };
+  }
+  if (classType === "RIFE VFI") {
+    return { start: 93, end: 96, label: "RIFE 视频插帧", tracksSteps: true };
+  }
+  if (classType === "ImageFromBatch") {
+    return { start: 96, end: 97, label: "裁剪到目标帧数", tracksSteps: true };
+  }
+  if (classType === "CreateVideo") {
+    return { start: 97, end: 98.5, label: "封装音视频", tracksSteps: true };
+  }
+  if (classType === "SaveVideo") {
+    return { start: 98.5, end: 99.5, label: "编码并保存", tracksSteps: true };
+  }
+  return { start: 12, end: 14, label: classType, tracksSteps: false };
+}
+
+export function progressForNode(
+  classType: string | undefined,
+  value?: number,
+  max?: number
+): { progress: number; label: string } {
+  const stage = nodeStage(classType);
+  const hasSteps = stage.tracksSteps &&
+    typeof value === "number" &&
+    typeof max === "number" &&
+    max > 0;
+  if (!hasSteps) return { progress: stage.start, label: stage.label };
+  const ratio = Math.min(1, Math.max(0, value / max));
+  return {
+    progress: Number((stage.start + (stage.end - stage.start) * ratio).toFixed(1)),
+    label: `${stage.label} ${value}/${max}`
+  };
 }
 
 function queueNodeForPrompt(value: unknown, promptId: string): string {
@@ -401,6 +445,25 @@ export async function waitForTask(
   let executionError = "";
   let lastActivityAt = Date.now();
   let lastServiceResponseAt = Date.now();
+  let activeNodeId = "";
+  let lastReportedProgress = 2;
+  let lastReportedStage = "";
+  const reportProgress = (
+    value: number,
+    stage: string,
+    complete = false
+  ): void => {
+    const bounded = complete
+      ? 100
+      : Math.min(99, Math.max(0, value));
+    if (!complete && bounded < lastReportedProgress) return;
+    if (bounded === lastReportedProgress && stage === lastReportedStage) return;
+    lastReportedProgress = complete
+      ? bounded
+      : Math.max(lastReportedProgress, bounded);
+    lastReportedStage = stage;
+    onProgress(lastReportedProgress, stage);
+  };
   const activityTimeoutMs = activityTimeoutMinutes * 60_000;
   const serviceSilenceLimit = () =>
     isComputeActive()
@@ -437,8 +500,9 @@ export async function waitForTask(
           lastActivityAt = Date.now();
         }
         if (message.type === "executing" && typeof message.data?.node === "string") {
-          const stage = nodeStage(nodeTypes[message.data.node]);
-          onProgress(stage.progress, stage.label);
+          activeNodeId = message.data.node;
+          const stage = progressForNode(nodeTypes[activeNodeId]);
+          reportProgress(stage.progress, stage.label);
         }
         if (
           message.type === "progress" &&
@@ -446,8 +510,17 @@ export async function waitForTask(
           typeof message.data.max === "number" &&
           message.data.max > 0
         ) {
-          const step = Math.min(1, Math.max(0, message.data.value / message.data.max));
-          onProgress(15 + step * 75, `扩散采样 ${message.data.value}/${message.data.max}`);
+          const nodeId = typeof message.data.node === "string"
+            ? message.data.node
+            : activeNodeId;
+          if (nodeId) {
+            const stage = progressForNode(
+              nodeTypes[nodeId],
+              message.data.value,
+              message.data.max
+            );
+            reportProgress(stage.progress, stage.label);
+          }
         }
         if (message.type === "execution_error") {
           executionError =
@@ -457,6 +530,14 @@ export async function waitForTask(
           executionError = "ComfyUI 任务已中止";
         }
         if (message.type === "executed") {
+          if (typeof message.data?.node === "string") {
+            const stage = progressForNode(
+              nodeTypes[message.data.node],
+              1,
+              1
+            );
+            reportProgress(stage.progress, `${stage.label} 完成`);
+          }
           const preview = await executedPreviewDataUrl(
             baseUrl,
             message.data
@@ -502,8 +583,8 @@ export async function waitForTask(
         lastServiceResponseAt = Date.now();
         const nodeId = queueNodeForPrompt(queue.queue_running, promptId);
         if (nodeId) {
-          const stage = nodeStage(nodeTypes[nodeId]);
-          onProgress(stage.progress, stage.label);
+          const stage = progressForNode(nodeTypes[nodeId]);
+          reportProgress(stage.progress, stage.label);
         }
       } catch {
       }
@@ -519,7 +600,7 @@ export async function waitForTask(
           completedHistoryEntry(entry) && !historyEntryHasUnfinishedBatch(entry)
       );
       if (completed) {
-        onProgress(100, "已完成");
+        reportProgress(100, "已完成", true);
         return completed;
       }
       await new Promise<void>((resolve, reject) => {

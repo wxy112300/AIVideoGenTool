@@ -999,7 +999,7 @@ function queueTaskCard(task: QueueTask): string {
       <article class="task-card panel running expanded">
         <div class="expanded-task-head">
           <div><span class="status running">正在运行</span><h3>${escapeHtml(task.outputFilename)}</h3></div>
-          <strong id="running-progress-label">${Math.round(task.progress ?? 0)}%</strong>
+          <div class="running-progress-value"><span>总进度</span><strong id="running-progress-label">${Math.round(task.progress ?? 0)}%</strong></div>
         </div>
         <div class="running-layout">
           <div class="live-preview">
@@ -1009,7 +1009,7 @@ function queueTaskCard(task: QueueTask): string {
           </div>
           <div class="running-copy">
             <span class="eyebrow">当前步骤 · <span id="running-stage">${escapeHtml(task.stage ?? "准备中")}</span></span>
-            <div class="progress"><span id="running-progress-bar" style="width:${task.progress ?? 0}%"></span></div>
+            <div class="progress" role="progressbar" aria-label="任务总进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(task.progress ?? 0)}"><span id="running-progress-bar" style="width:${task.progress ?? 0}%"></span></div>
             <p>${escapeHtml(description)}</p>
             <div class="task-meta">${metadata}<span id="running-elapsed">${elapsedText(task.startedAt)}</span></div>
             <div class="running-controls">

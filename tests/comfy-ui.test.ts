@@ -4,8 +4,36 @@ import {
   historyFailure,
   historyEntryClientId,
   historyEntryHasUnfinishedBatch,
+  nodeStage,
+  progressForNode,
   safeComfyUploadFilename
 } from "../electron/services/comfy-ui.js";
+
+describe("ComfyUI task progress", () => {
+  it("maps local sampler progress into the overall sampling range", () => {
+    expect(progressForNode("SamplerCustomAdvanced", 4, 20)).toEqual({
+      progress: 27.2,
+      label: "扩散采样 4/20"
+    });
+  });
+
+  it("keeps encoding and saving in their own narrow end-stage ranges", () => {
+    expect(nodeStage("SaveVideo")).toMatchObject({
+      start: 98.5,
+      end: 99.5,
+      label: "编码并保存"
+    });
+    expect(progressForNode("SaveVideo", 4, 20).progress).toBe(98.7);
+    expect(progressForNode("VAEDecodeAudio", 1, 2).progress).toBe(90.5);
+  });
+
+  it("does not invent a sampling percentage without a node", () => {
+    expect(progressForNode(undefined, 4, 20)).toEqual({
+      progress: 2,
+      label: "准备工作流"
+    });
+  });
+});
 
 describe("ComfyUI input filenames", () => {
   it("replaces unsafe names with an ASCII upload name and preserves extension", () => {

@@ -98,7 +98,9 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .task-card.expanded { display: block; padding: 18px; border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); box-shadow: 0 16px 48px rgba(31, 104, 190, .13); }
 .expanded-task-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 15px; }
 .expanded-task-head h3 { margin: 0; overflow-wrap: anywhere; }
-.expanded-task-head > strong { color: var(--primary); font-size: 20px; }
+.running-progress-value { display: grid; justify-items: end; gap: 2px; flex: none; }
+.running-progress-value > span { color: var(--muted); font-size: 10px; }
+.running-progress-value > strong { color: var(--primary); font-size: 20px; }
 .performance-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
 .performance-card { min-width: 0; padding: 13px 14px; }
 .performance-card > span { color: var(--muted); font-size: 11px; }
@@ -852,7 +854,7 @@ select { padding-inline: 12px; }
 .status.failed, .status.cancelled { background: rgba(255,120,124,.09); }
 .task-card.expanded { padding: 22px; border-color: rgba(116,165,244,.48); box-shadow: 0 20px 56px rgba(33,85,154,.15); }
 .expanded-task-head { margin-bottom: 18px; }
-.expanded-task-head > strong { font-size: 22px; font-weight: 640; }
+.running-progress-value > strong { font-size: 22px; font-weight: 640; }
 .running-layout { gap: 22px; }
 .live-preview { min-height: 270px; border-color: #303948; background: #090c11; }
 .running-copy { padding: 4px 2px; }
