@@ -180,6 +180,30 @@ describe("renderWorkflow", () => {
     expect(heavy["13"]?.inputs).not.toHaveProperty("temporal_size");
   });
 
+  it("renders the INT4 H3 model assets without changing the graph contract", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va_int4",
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    }, { inputImage: "input.png" }) as Record<string, { inputs: Record<string, unknown> }>;
+
+    expect(rendered["1"]?.inputs.unet_name).toBe(
+      "minimax_h3_fl2va_pruned_int4_convrot.safetensors"
+    );
+    expect(rendered["2"]?.inputs.clip_name).toBe(
+      "qwen3vl_32b_minimax_h3_int4_convrot.safetensors"
+    );
+    expect(rendered["6"]?.inputs.length).toBe(124);
+  });
+
   it("replaces nested values while preserving numeric token types", () => {
     const result = renderWorkflow(
       {

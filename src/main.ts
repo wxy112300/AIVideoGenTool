@@ -75,6 +75,7 @@ import {
   frameInterpolationMultiplier,
   generationFrameCountForTask,
   generationSafetyForTask,
+  isMiniMaxH3Model,
   outputDimensions,
   outputFrameCountForTask
 } from "./core/workflow";
@@ -247,6 +248,7 @@ function modelName(id: string): string {
   return (
     {
       minimax_h3_fl2va: "MiniMax H3 FL2VA",
+      minimax_h3_fl2va_int4: "MiniMax H3 FL2VA · INT4 低显存",
       sulphur2: "Sulphur 2 GGUF",
       wan22_5b: "Wan 2.2 I2V 5B",
       hunyuan15: "HunyuanVideo 1.5",
@@ -295,10 +297,10 @@ function interpolationEstimate(draft: Draft): {
 function extensionSafetyForDraft(draft: Draft, settings: Settings) {
   return extensionSafetyForTask({
     ...draft,
-    resolution: draft.modelId === "minimax_h3_fl2va"
+    resolution: isMiniMaxH3Model(draft.modelId)
       ? draft.resolution
       : settings.ltxExtensionResolution,
-    maxGeneratedFrames: draft.modelId === "minimax_h3_fl2va"
+    maxGeneratedFrames: isMiniMaxH3Model(draft.modelId)
       ? 362
       : settings.ltxExtensionFrames,
     overlapFrames: settings.ltxExtensionOverlapFrames,
@@ -369,7 +371,7 @@ function formatTrimTime(seconds: number): string {
 
 function orderVideoProfiles<T extends { id: string }>(profiles: T[]): T[] {
   return [...profiles].sort((left, right) =>
-    Number(right.id === "minimax_h3_fl2va") - Number(left.id === "minimax_h3_fl2va")
+    Number(isMiniMaxH3Model(right.id)) - Number(isMiniMaxH3Model(left.id))
   );
 }
 
@@ -383,6 +385,7 @@ function createModelOptions(draft: Draft): string {
     ? scanned
     : [
         { id: "minimax_h3_fl2va", name: "MiniMax H3 Image to Video", available: true, integrated: true },
+      { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 Image to Video · INT4 低显存", available: true, integrated: true },
       { id: "sulphur2", name: "Sulphur 2 GGUF", available: true, integrated: true },
         { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: true, integrated: true },
         { id: "hunyuan15", name: "HunyuanVideo 1.5", available: true, integrated: true }
@@ -391,7 +394,7 @@ function createModelOptions(draft: Draft): string {
     .map((profile) => {
       const selected = draft.modelId === profile.id;
       const supportsVideoExtension =
-        draft.inputMode === "video" && profile.id === "minimax_h3_fl2va"
+        draft.inputMode === "video" && isMiniMaxH3Model(profile.id)
           ? true
           : selected
             ? workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true
@@ -542,7 +545,8 @@ async function imagePreview(filename: string, targetId: string): Promise<void> {
 
 function createPage(): string {
   const draft = state.draft;
-  const isMiniMaxH3 = draft.modelId === "minimax_h3_fl2va";
+  const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
+  const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
   const extending = draft.inputMode === "video";
   const prompt = activePrompt();
   const interpolation = interpolationEstimate(draft);
@@ -696,12 +700,15 @@ function createPage(): string {
                     (performanceMetrics?.vramTotalBytes ?? 0) >= 20 * 1024 ** 3;
                   const h3Label = isMiniMaxH3
                     ? value === 480
-                      ? " · 官方默认/4090 推荐"
+                      ? " · 低显存起步"
                       : value === 768
-                        ? " · 4090 最大开放档"
+                        ? " · 高显存开放档"
                         : ""
                     : "";
-                  return `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p · ${width}×${height}${recommended ? " · 24GB 推荐" : ""}${h3Label}</option>`;
+                  const vramLabel = recommended && detectedVramTotalBytes > 0
+                    ? ` · ${formatBytes(detectedVramTotalBytes)} 显存推荐`
+                    : "";
+                  return `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p · ${width}×${height}${vramLabel}${h3Label}</option>`;
                 }).join("")}
           </select>
         </label>
@@ -709,16 +716,16 @@ function createPage(): string {
           <div class="inline-field"><input id="duration" type="range" min="1" max="${safety.maxDurationSeconds}" value="${draft.duration}"><input id="duration-number" type="number" min="1" max="${safety.maxDurationSeconds}" value="${draft.duration}"><span>秒</span></div>
         </label>
         <label>目标帧率
-          <select id="fps" ${draft.modelId === "minimax_h3_fl2va" ? "disabled" : ""}>
-            ${(draft.modelId === "minimax_h3_fl2va" ? [24] : [8, 12, 16, 24, 25, 30]).map((value) =>
+          <select id="fps" ${isMiniMaxH3 ? "disabled" : ""}>
+            ${(isMiniMaxH3 ? [24] : [8, 12, 16, 24, 25, 30]).map((value) =>
               `<option value="${value}" ${draft.fps === value ? "selected" : ""}>${value} FPS</option>`
             ).join("")}
           </select>
         </label>
         <label>Frame Interpolation
-          <select id="frame-interpolation" ${draft.modelId === "minimax_h3_fl2va" ? "disabled" : ""}>
+          <select id="frame-interpolation" ${isMiniMaxH3 ? "disabled" : ""}>
             <option value="off" ${draft.frameInterpolation === "off" ? "selected" : ""}>关闭 · 模型直接生成</option>
-            ${draft.modelId === "minimax_h3_fl2va" ? "" : `
+            ${isMiniMaxH3 ? "" : `
               <option value="rife2x" ${draft.frameInterpolation === "rife2x" ? "selected" : ""}>RIFE 2×</option>
               <option value="rife4x" ${draft.frameInterpolation === "rife4x" ? "selected" : ""}>RIFE 4×</option>`}
           </select>
@@ -1351,6 +1358,27 @@ function settingsPage(): string {
   ).length;
   const upscaleAvailable = upscaleProfiles.filter((profile) => profile.available).length;
   const gpu = environmentScan?.items.find((item) => item.id === "nvidia");
+  const gpuDevices = environmentScan?.gpus ?? [];
+  const gpuSummary = gpuDevices.length
+    ? gpuDevices.map((device) => `${device.name} · ${formatBytes(device.vramTotalBytes)}`).join("；")
+    : gpu?.ok
+      ? gpu.detail
+      : environmentScan
+        ? "未检测到 NVIDIA GPU"
+        : "等待扫描真实显卡与显存";
+  const gpuBadge = gpuDevices.length
+    ? gpuDevices.length === 1
+      ? `${gpuDevices[0]!.name} · ${formatBytes(gpuDevices[0]!.vramTotalBytes)}`
+      : `${gpuDevices.length} 张 GPU`
+    : "GPU 待检测";
+  const gpuCards = gpuDevices.length
+    ? `<div class="attention-runtime-grid">${gpuDevices.map((device) => `
+        <article class="attention-runtime-card">
+          <span class="runtime-label">GPU ${device.index}</span>
+          <strong class="runtime-value">${escapeHtml(device.name)}</strong>
+          <code class="runtime-detail">${formatBytes(device.vramTotalBytes)} 显存 · 驱动 ${escapeHtml(device.driverVersion || "未知")}</code>
+        </article>`).join("")}</div>`
+    : `<div class="scan-result">${escapeHtml(gpuSummary)}</div>`;
   const comfyInstallations = environmentScan?.comfyInstallations ?? [];
   const effectiveComfyInstallDirectory =
     environmentScan?.comfyInstallDirectory || settings.comfyInstallDirectory;
@@ -1411,9 +1439,10 @@ function settingsPage(): string {
         <p class="muted proxy-hint">默认关闭。开启后 Git 和 pip 下载使用此地址；可填写 <code>127.0.0.1:7890</code> 或完整代理 URL。</p>
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>RTX 4090 运行策略</h2><span class="muted">${gpu?.ok ? escapeHtml(gpu.detail) : "未检测到 NVIDIA GPU"}</span></div><span class="model-badge">推荐预设</span></div>
+        <div class="section-heading"><div><h2>GPU 运行策略</h2><span class="muted">${escapeHtml(gpuSummary)}</span></div><span class="model-badge">${escapeHtml(gpuBadge)}</span></div>
+        ${gpuCards}
         <div class="runtime-policy-grid">
-          <label class="policy-select-field"><span>显存安全余量</span><select id="vram-reserve"><option value="0.5" ${settings.vramReserveGb === 0.5 ? "selected" : ""}>0.5 GB · 激进</option><option value="0.75" ${settings.vramReserveGb === 0.75 ? "selected" : ""}>0.75 GB · 平衡</option><option value="1" ${settings.vramReserveGb === 1 ? "selected" : ""}>1 GB · 24GB 稳定档</option></select></label>
+          <label class="policy-select-field"><span>显存安全余量</span><select id="vram-reserve"><option value="0.5" ${settings.vramReserveGb === 0.5 ? "selected" : ""}>0.5 GB · 激进</option><option value="0.75" ${settings.vramReserveGb === 0.75 ? "selected" : ""}>0.75 GB · 平衡</option><option value="1" ${settings.vramReserveGb === 1 ? "selected" : ""}>1 GB · 保守</option></select></label>
           <label class="ios-switch-field"><span class="policy-copy"><strong>安全取消</strong><small>先请求中断，再重启 ComfyUI 释放显存</small></span><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
           <label class="ios-switch-field"><span class="policy-copy"><strong>优化队列顺序</strong><small>允许按模型自动整理等待中的任务</small></span><input id="optimize-queue-setting" type="checkbox" ${settings.optimizeQueue ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
         </div>
@@ -1428,6 +1457,7 @@ function settingsPage(): string {
           <label class="compact-label">默认模型<select id="default-video-model">
             ${(videoProfiles.length ? videoProfiles : [
               { id: "minimax_h3_fl2va", name: "MiniMax H3 Image to Video", available: true, integrated: true },
+              { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 Image to Video · INT4 低显存", available: true, integrated: true },
               { id: "sulphur2", name: "Sulphur 2 GGUF", available: false, integrated: true },
               { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: false, integrated: true },
               { id: "hunyuan15", name: "HunyuanVideo 1.5 I2V", available: false, integrated: true }
@@ -1594,7 +1624,7 @@ function settingsPage(): string {
 
   return `
     <section class="page-heading settings-heading">
-      <div><div class="heading-line"><h1>设置</h1>${gpu?.ok ? `<span class="model-badge">${escapeHtml(gpu.detail.split(",").slice(0, 1).join(""))}</span>` : ""}</div><p>模型扫描、4090 运行预设和本地服务集中配置。</p></div>
+      <div><div class="heading-line"><h1>设置</h1>${gpuDevices.length ? `<span class="model-badge">${escapeHtml(gpuBadge)}</span>` : ""}</div><p>模型扫描、GPU 显存检测和本地服务集中配置。</p></div>
       <div class="button-row"><button class="secondary button-with-icon" id="scan-environment" ${environmentScanning ? "disabled" : ""}>${icon(environmentScanning ? "refresh-cw" : "scan-search")}${environmentScanning ? "扫描中…" : "重新扫描全部"}</button><button class="primary button-with-icon" id="save-settings">${icon("save")}保存设置</button></div>
     </section>
     <div class="settings-layout">
@@ -2200,8 +2230,8 @@ function bindCreate(): void {
     button.addEventListener("click", async () => {
       const inputMode = button.dataset.inputMode === "video" ? "video" : "image";
       const modelId = inputMode === "video"
-        ? state.draft.modelId === "minimax_h3_fl2va"
-          ? "minimax_h3_fl2va"
+        ? isMiniMaxH3Model(state.draft.modelId)
+          ? state.draft.modelId
           : "sulphur2"
         : state.draft.modelId;
       const key = bundledWorkflowKey(modelId, inputMode);
@@ -2383,7 +2413,7 @@ function bindCreate(): void {
         }
         patchDraft({
           modelId: value,
-          ...(value === "minimax_h3_fl2va"
+          ...(isMiniMaxH3Model(value)
             ? {
                 ratio: "source" as const,
                 resolution: 480 as const,

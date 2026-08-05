@@ -7,7 +7,8 @@ import type { ExtensionQueueTask } from "../../src/types.js";
 import {
   extensionContextDuration,
   extensionOutputDimensions,
-  frameInterpolationMultiplier
+  frameInterpolationMultiplier,
+  isMiniMaxH3Model
 } from "../../src/core/workflow.js";
 
 const execFileAsync = promisify(execFile);
@@ -190,7 +191,7 @@ export async function finalizeExtensionOutput(
     const continuationArgs = [
       "-hide_banner", "-loglevel", "error", "-y",
       "-ss", String(
-        task.modelId === "minimax_h3_fl2va" ? 1 / 24 : contextDuration
+        isMiniMaxH3Model(task.modelId) ? 1 / 24 : contextDuration
       ),
       "-i", generatedPath
     ];
@@ -199,7 +200,7 @@ export async function finalizeExtensionOutput(
         "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"
       );
     }
-    if (task.modelId === "minimax_h3_fl2va") {
+    if (isMiniMaxH3Model(task.modelId)) {
       continuationArgs.push("-t", String(task.duration));
     }
     continuationArgs.push(

@@ -44,6 +44,7 @@ import {
   activityTimeoutMinutesForTask,
   extensionWorkflowSafetyErrors,
   generationSafetyForTask,
+  isMiniMaxH3Model,
   outputDimensions,
   validateApiWorkflow,
   workflowSupportsEndImage,
@@ -222,7 +223,7 @@ async function bundledWorkflowFor(
     q4_k_m: "Q4_K_M dev · 质量"
   }[ltxProfile];
   if (inputMode === "video") {
-    if (modelId === "minimax_h3_fl2va") {
+    if (isMiniMaxH3Model(modelId)) {
       const filename = "minimax_h3_i2v_api.json";
       const candidates = [
         path.join(app.getAppPath(), "workflows", filename),
@@ -266,6 +267,10 @@ async function bundledWorkflowFor(
     minimax_h3_fl2va: {
       filename: "minimax_h3_i2v_api.json",
       label: "内置 · MiniMax H3 FL2VA · 原生 24 FPS 音视频"
+    },
+    minimax_h3_fl2va_int4: {
+      filename: "minimax_h3_i2v_api.json",
+      label: "内置 · MiniMax H3 FL2VA INT4 · 原生 24 FPS 音视频"
     },
     sulphur2: {
       filename: `sulphur2_ltx23_i2v_gguf_${ltxVariant}_api.json`,
@@ -601,7 +606,7 @@ function extensionTaskFromDraft(
     updatedAt: now,
     outputFilename: createOutputFilename(
       draft.modelId,
-      draft.modelId === "minimax_h3_fl2va"
+      isMiniMaxH3Model(draft.modelId)
         ? draft.resolution
         : settings.ltxExtensionResolution,
       draft.duration,
@@ -620,7 +625,7 @@ function extensionTaskFromDraft(
     modelId: draft.modelId,
     workflowPath: draft.workflowPath,
     ratio: "source",
-    resolution: draft.modelId === "minimax_h3_fl2va"
+    resolution: isMiniMaxH3Model(draft.modelId)
       ? draft.resolution
       : settings.ltxExtensionResolution,
     duration: draft.duration,
@@ -631,7 +636,7 @@ function extensionTaskFromDraft(
     seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
     attentionMode: state.settings.h3AttentionMode,
-    maxGeneratedFrames: draft.modelId === "minimax_h3_fl2va"
+    maxGeneratedFrames: isMiniMaxH3Model(draft.modelId)
       ? 362
       : settings.ltxExtensionFrames,
     overlapFrames: settings.ltxExtensionOverlapFrames,
@@ -835,7 +840,7 @@ async function executeQueue(): Promise<void> {
         }
         await updateTask(task.id, {
           progress: 99,
-          stage: completedTask.modelId === "minimax_h3_fl2va"
+          stage: isMiniMaxH3Model(completedTask.modelId)
             ? "裁掉重复边界帧并合并原生音轨"
             : "去除重叠帧并拼接成片"
         });
@@ -1253,7 +1258,7 @@ function registerIpc(): void {
     if (!validation.valid) {
       throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
     }
-    const workflowSafetyErrors = draft.modelId === "minimax_h3_fl2va"
+    const workflowSafetyErrors = isMiniMaxH3Model(draft.modelId)
       ? workflowSupportsH3BoundaryExtension(workflow)
         ? []
         : ["H3 接续工作流缺少 INPUT_IMAGE、MiniMaxH3ImageToVideo 或视频输出节点"]

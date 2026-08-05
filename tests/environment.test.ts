@@ -13,6 +13,7 @@ import {
   evaluateMiniMaxH3CoreSupport,
   ltxAudioVaeCompatible,
   normalizeProxyUrl,
+  parseNvidiaGpuQuery,
   parseComfyDesktop2Registry,
   patchLtxAudioVaeCompatibility,
   patchVideoHelperBatchCompatibility,
@@ -50,6 +51,28 @@ describe("SageAttention environment selection", () => {
       torchVersion: "2.8.0+cu129",
       cudaVersion: "12.9"
     })).toBeNull();
+  });
+});
+
+describe("NVIDIA GPU discovery", () => {
+  it("parses each GPU name, driver, and total VRAM from nvidia-smi", () => {
+    expect(parseNvidiaGpuQuery([
+      "0, NVIDIA GeForce RTX 4090, 610.88, 24564",
+      "1, NVIDIA RTX A4000, 560.12, 16376"
+    ].join("\n"))).toEqual([
+      {
+        index: 0,
+        name: "NVIDIA GeForce RTX 4090",
+        driverVersion: "610.88",
+        vramTotalBytes: 24564 * 1024 ** 2
+      },
+      {
+        index: 1,
+        name: "NVIDIA RTX A4000",
+        driverVersion: "560.12",
+        vramTotalBytes: 16376 * 1024 ** 2
+      }
+    ]);
   });
 });
 
@@ -338,6 +361,22 @@ describe("ComfyUI environment candidates", () => {
     expect(fl2va?.available).toBe(true);
     expect(fl2va?.integrated).toBe(true);
     expect(profiles.some((profile) => profile.id === "minimax_h3_ref2va")).toBe(false);
+  });
+
+  it("detects the community MiniMax H3 INT4 FL2VA profile independently", () => {
+    const profiles = evaluateModelProfiles([
+      "diffusion_models\\minimax_h3_fl2va_pruned_int4_convrot.safetensors",
+      "text_encoders\\qwen3vl_32b_minimax_h3_int4_convrot.safetensors",
+      "vae\\minimax_h3_video_vae_fp16.safetensors",
+      "vae\\minimax_h3_audio_vae_fp32.safetensors"
+    ]);
+    const int4 = profiles.find((profile) => profile.id === "minimax_h3_fl2va_int4");
+
+    expect(int4?.available).toBe(true);
+    expect(int4?.integrated).toBe(true);
+    expect(int4?.components[0]?.installGuide.recommendedFilename).toBe(
+      "minimax_h3_fl2va_pruned_int4_convrot.safetensors"
+    );
   });
 
   it("treats MiniMax H3 support as a core-node capability", () => {

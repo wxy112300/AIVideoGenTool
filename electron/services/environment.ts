@@ -12,6 +12,7 @@ import type {
   EnvironmentItem,
   EnvironmentItemId,
   EnvironmentScanResult,
+  GpuDeviceInfo,
   LocalServiceKind,
   ModelComponentStatus,
   ModelScanProfile,
@@ -26,6 +27,10 @@ const minimaxH3I2vWorkflowUrl =
   "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/video_minimax_h3_i2v.json";
 const sageAttentionVersion = "2.2.0";
 const comfyWheelsIndex = "https://comfy-org.github.io/wheels/";
+
+function formatGpuMemory(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
 
 const minimaxH3CoreNodes = [
   { id: "MiniMaxH3ImageToVideo", label: "H3 首帧 / 首尾帧图生视频" }
@@ -254,14 +259,14 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
     targetSubdirectory: "diffusion_models",
     recommendedFilename: "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
-    notes: "图生视频和首尾帧共用此模型。4090 使用官方 pruned INT8 ConvRot 版本；本工具不接入纯文本和 Reference-to-Video 流程。"
+    notes: "图生视频和首尾帧共用此模型。使用官方 pruned INT8 ConvRot 版本；可用分辨率和时长取决于实际 GPU、系统内存与卸载策略。"
   },
   "minimax_h3_fl2va:Qwen3-VL 32B H3 文本编码器": {
     sourceLabel: "Comfy-Org / MiniMax-H3",
     downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-    notes: "官方低显存工作流使用 NVFP4 AWQ。RTX 4090 可运行，但没有 RTX 50 系列的原生 FP4 加速。"
+    notes: "官方低显存工作流使用 NVFP4 AWQ；是否适合当前设备取决于 GPU 对量化布局的支持和 ComfyUI 的卸载策略。"
   },
   "minimax_h3_fl2va:MiniMax H3 视频 VAE": {
     sourceLabel: "Comfy-Org / MiniMax-H3",
@@ -275,6 +280,20 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     targetSubdirectory: "vae",
     recommendedFilename: "minimax_h3_audio_vae_fp32.safetensors",
     notes: "H3 原生立体声音频必须使用此 VAE；与视频 VAE 一起放在 models/vae。"
+  },
+  "minimax_h3_fl2va_int4:MiniMax H3 FL2VA INT4 ConvRot 模型": {
+    sourceLabel: "Merserk / MiniMax-H3-INT4-ConvRot",
+    downloadUrl: "https://huggingface.co/Merserk/MiniMax-H3-INT4-ConvRot/resolve/main/minimax_h3_fl2va_pruned_int4_convrot.safetensors",
+    targetSubdirectory: "diffusion_models",
+    recommendedFilename: "minimax_h3_fl2va_pruned_int4_convrot.safetensors",
+    notes: "社区 INT4 ConvRot 转换。12GB 显卡建议使用 pruned 版本，并准备 32GB 以上系统内存和快速 NVMe；不要与 NVFP4 编码器混用。"
+  },
+  "minimax_h3_fl2va_int4:Qwen3-VL 32B H3 INT4 文本编码器": {
+    sourceLabel: "Merserk / MiniMax-H3-INT4-ConvRot",
+    downloadUrl: "https://huggingface.co/Merserk/MiniMax-H3-INT4-ConvRot/resolve/main/qwen3vl_32b_minimax_h3_int4_convrot.safetensors",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "qwen3vl_32b_minimax_h3_int4_convrot.safetensors",
+    notes: "与 INT4 ConvRot FL2VA 扩散模型配套的文本编码器；需要 ComfyUI 0.30.0 或更高版本。"
   },
   "sulphur2:Sulphur 2 Q2_K distilled GGUF": {
     sourceLabel: "szwagros / sulphur-2-gguf",
@@ -620,7 +639,7 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     category: "video",
     badge: "原生音视频",
     description: "只接入首帧或首尾帧图生视频，原生 24 FPS 同步立体声音频；不提供纯文本流程。",
-    vram: "4090：pruned INT8 · DynamicVRAM",
+    vram: "pruned INT8 · DynamicVRAM",
     integrated: true,
     components: [
       {
@@ -632,6 +651,37 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
         label: "Qwen3-VL 32B H3 文本编码器",
         expected: "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
         patterns: [/text_encoders\/qwen3vl_32b_minimax_h3_nvfp4_awq\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 视频 VAE",
+        expected: "vae/minimax_h3_video_vae_fp16.safetensors",
+        patterns: [/vae\/minimax_h3_video_vae_fp16\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 音频 VAE",
+        expected: "vae/minimax_h3_audio_vae_fp32.safetensors",
+        patterns: [/vae\/minimax_h3_audio_vae_fp32\.safetensors$/i]
+      }
+    ]
+  },
+  {
+    id: "minimax_h3_fl2va_int4",
+    name: "MiniMax H3 Image to Video · INT4 低显存",
+    category: "video",
+    badge: "INT4 · 低显存",
+    description: "社区 pruned INT4 ConvRot 档，复用 H3 原生音视频节点；建议 12GB 起步并准备充足系统内存。",
+    vram: "pruned INT4 · 12GB 起步 · RAM offload",
+    integrated: true,
+    components: [
+      {
+        label: "MiniMax H3 FL2VA INT4 ConvRot 模型",
+        expected: "diffusion_models/minimax_h3_fl2va_pruned_int4_convrot.safetensors",
+        patterns: [/(?:diffusion_models|unet)\/minimax_h3_fl2va_pruned_int4_convrot\.safetensors$/i]
+      },
+      {
+        label: "Qwen3-VL 32B H3 INT4 文本编码器",
+        expected: "text_encoders/qwen3vl_32b_minimax_h3_int4_convrot.safetensors",
+        patterns: [/text_encoders\/qwen3vl_32b_minimax_h3_int4_convrot\.safetensors$/i]
       },
       {
         label: "MiniMax H3 视频 VAE",
@@ -2040,39 +2090,77 @@ async function commandItem(
   }
 }
 
-async function nvidiaItem(): Promise<EnvironmentItem> {
+export function parseNvidiaGpuQuery(output: string): GpuDeviceInfo[] {
+  return output.split(/\r?\n/).flatMap((line, lineIndex) => {
+    const fields = line.split(",").map((field) => field.trim());
+    if (fields.length < 4) return [];
+    const [indexText, name, driverVersion, memoryText] = fields;
+    const index = Number.parseInt(indexText ?? "", 10);
+    const memoryMiB = Number.parseFloat(
+      (memoryText ?? "").replace(/[^\d.+-]/g, "")
+    );
+    if (!name || !Number.isFinite(memoryMiB) || memoryMiB <= 0) return [];
+    return [{
+      index: Number.isInteger(index) ? index : lineIndex,
+      name,
+      driverVersion: driverVersion ?? "",
+      vramTotalBytes: Math.round(memoryMiB * 1024 ** 2)
+    }];
+  });
+}
+
+interface NvidiaProbe {
+  item: EnvironmentItem;
+  devices: GpuDeviceInfo[];
+}
+
+async function nvidiaItem(): Promise<NvidiaProbe> {
   const executable = await findExecutable("nvidia-smi.exe");
   if (!executable) {
     return {
-      id: "nvidia",
-      label: "NVIDIA GPU",
-      ok: false,
-      detail: "未找到 nvidia-smi"
+      item: {
+        id: "nvidia",
+        label: "NVIDIA GPU",
+        ok: false,
+        detail: "未找到 nvidia-smi"
+      },
+      devices: []
     };
   }
   try {
     const { stdout } = await execFileAsync(
       executable,
       [
-        "--query-gpu=name,driver_version,memory.total",
-        "--format=csv,noheader"
+        "--query-gpu=index,name,driver_version,memory.total",
+        "--format=csv,noheader,nounits"
       ],
       { encoding: "utf8", timeout: 5000, windowsHide: true }
     );
+    const devices = parseNvidiaGpuQuery(stdout);
     return {
-      id: "nvidia",
-      label: "NVIDIA GPU",
-      ok: true,
-      detail: stdout.trim() || "已检测到 NVIDIA GPU",
-      path: executable
+      item: {
+        id: "nvidia",
+        label: "NVIDIA GPU",
+        ok: true,
+        detail: devices.length
+          ? devices.map((device) =>
+              `GPU ${device.index} · ${device.name} · ${formatGpuMemory(device.vramTotalBytes)} · 驱动 ${device.driverVersion || "未知"}`
+            ).join("；")
+          : stdout.trim() || "已检测到 NVIDIA GPU",
+        path: executable
+      },
+      devices
     };
   } catch {
     return {
-      id: "nvidia",
-      label: "NVIDIA GPU",
-      ok: true,
-      detail: "已找到 nvidia-smi",
-      path: executable
+      item: {
+        id: "nvidia",
+        label: "NVIDIA GPU",
+        ok: true,
+        detail: "已找到 nvidia-smi，但暂时无法读取显卡详情",
+        path: executable
+      },
+      devices: []
     };
   }
 }
@@ -3276,7 +3364,16 @@ export async function scanEnvironment(
   );
   const comfyHealthUrl = `${detectedComfyBaseUrl}/system_stats`;
   const lmStudioUrl = `${settings.lmStudioUrl.replace(/\/+$/, "")}/models`;
-  const items = await Promise.all([
+  const [
+    nodeItem,
+    gitItem,
+    ffmpegItem,
+    nvidiaProbe,
+    comfyEnvironmentItem,
+    comfyApiItem,
+    lmStudioEnvironmentItem,
+    lmStudioApiItem
+  ] = await Promise.all([
     commandItem("node", "Node.js", "node.exe", ["--version"]),
     commandItem("git", "Git", "git.exe", ["--version"], true),
     commandItem("ffmpeg", "FFmpeg", "ffmpeg.exe", ["-version"], true),
@@ -3286,6 +3383,16 @@ export async function scanEnvironment(
     lmStudioItem(settings),
     localServiceItem("lmstudio-api", "LM Studio 服务", lmStudioUrl)
   ]);
+  const items = [
+    nodeItem,
+    gitItem,
+    ffmpegItem,
+    nvidiaProbe.item,
+    comfyEnvironmentItem,
+    comfyApiItem,
+    lmStudioEnvironmentItem,
+    lmStudioApiItem
+  ];
 
   return {
     scannedAt: new Date().toISOString(),
@@ -3296,6 +3403,7 @@ export async function scanEnvironment(
     comfySourceDirectory: comfyInstallation?.sourceDirectory ?? "",
     comfyInstallType: comfyInstallation?.type ?? "",
     comfyInstallations,
+    gpus: nvidiaProbe.devices,
     modelDirectory,
     outputDirectory,
     comfyCompatibility,

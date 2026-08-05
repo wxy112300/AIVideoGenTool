@@ -2,14 +2,14 @@
   "1": {
     "class_type": "UNETLoader",
     "inputs": {
-      "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "unet_name": "{{H3_DIFFUSION_MODEL}}",
       "weight_dtype": "default"
     }
   },
   "2": {
     "class_type": "CLIPLoader",
     "inputs": {
-      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "clip_name": "{{H3_TEXT_ENCODER}}",
       "type": "minimax",
       "device": "default"
     }

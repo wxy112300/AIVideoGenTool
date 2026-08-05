@@ -41,10 +41,14 @@ interface GenerationSafetyProfile {
   maxDurationSeconds: number;
 }
 
+export function isMiniMaxH3Model(modelId: string): boolean {
+  return modelId === "minimax_h3_fl2va" || modelId === "minimax_h3_fl2va_int4";
+}
+
 function generationSafetyProfileForModel(
   modelId: string
 ): GenerationSafetyProfile {
-  if (modelId === "minimax_h3_fl2va") {
+  if (isMiniMaxH3Model(modelId)) {
     return {
       label: "MiniMax H3 FL2VA",
       maxGeneratedFrames: 362,
@@ -164,7 +168,7 @@ export function extensionWorkflowSafetyErrors(source: unknown): string[] {
 }
 
 function frameIntervalForModel(modelId: string): 1 | 4 | 8 | 17 {
-  if (modelId === "minimax_h3_fl2va") return 17;
+  if (isMiniMaxH3Model(modelId)) return 17;
   if (modelId === "sulphur2") return 8;
   if (modelId.startsWith("wan22_") || modelId.startsWith("hunyuan15")) return 4;
   return 1;
@@ -174,7 +178,7 @@ export function frameCountForTask(
   task: Pick<GenerationQueueTask, "modelId" | "duration">,
   fps: number
 ): number {
-  if (task.modelId === "minimax_h3_fl2va") {
+  if (task.modelId && isMiniMaxH3Model(task.modelId)) {
     const requested = Math.max(5, Math.round(task.duration * 24));
     return requested + ((5 - (requested % 17) + 17) % 17);
   }
@@ -195,7 +199,7 @@ export function outputFrameCountForTask(
   task: Pick<GenerationQueueTask, "duration" | "fps"> &
     Partial<Pick<GenerationQueueTask, "modelId">>
 ): number {
-  if (task.modelId === "minimax_h3_fl2va") {
+  if (task.modelId && isMiniMaxH3Model(task.modelId)) {
     return frameCountForTask(
       { modelId: task.modelId, duration: task.duration },
       24
@@ -227,7 +231,7 @@ export function generationFrameCountForTask(
     "modelId" | "duration" | "fps" | "frameInterpolation"
   >
 ): number {
-  if (task.modelId === "minimax_h3_fl2va") {
+  if (isMiniMaxH3Model(task.modelId)) {
     return frameCountForTask(task, 24);
   }
   const multiplier = frameInterpolationMultiplier(task);
@@ -282,13 +286,13 @@ export function generationSafetyForTask(
       message: `当前组合需要生成 ${generatedFrames} 个模型帧，${profile.label} 的当前验证预算是 ${maxGeneratedFrames} 帧。请降低输出 FPS、启用 RIFE，或等待更高帧数实测通过。`
     };
   }
-  if (task.modelId === "minimax_h3_fl2va") {
+  if (isMiniMaxH3Model(task.modelId)) {
     const resolution = task.resolution ?? 480;
     const guidance = task.duration <= 5 && resolution <= 540
-      ? "官方本地模板默认档，属于 RTX 4090 的稳妥起步范围。"
+      ? "官方本地模板默认档，适合作为当前显卡的稳妥起步范围。"
       : task.duration <= 10 && resolution <= 720
-        ? "4090 可尝试的均衡档；请预留更长采样和解码时间。"
-        : "4090 重负载档；允许生成但显存与耗时风险较高，请关闭其他 GPU 程序，并避免同时排多个长任务。";
+        ? "当前显卡可尝试的均衡档；请预留更长采样和解码时间。"
+        : "当前显卡重负载档；允许生成但显存与耗时风险较高，请关闭其他 GPU 程序，并避免同时排多个长任务。";
     return {
       safe: true,
       generatedFrames,
@@ -310,7 +314,7 @@ export function activityTimeoutMinutesForTask(
   task: Pick<QueueTask, "taskType" | "modelId">,
   ltxExtensionTimeoutMinutes: number
 ): number {
-  if (task.modelId === "minimax_h3_fl2va") return 90;
+  if (isMiniMaxH3Model(task.modelId)) return 90;
   if (task.taskType === "extension") return ltxExtensionTimeoutMinutes;
   return 10;
 }
@@ -332,7 +336,7 @@ export function extensionSafetyForTask(
     | "unloadBetweenStages"
   >
 ): ExtensionSafety {
-  if (task.modelId === "minimax_h3_fl2va") {
+  if (isMiniMaxH3Model(task.modelId)) {
     const generationSafety = generationSafetyForTask(task);
     const minimumContextSeconds = 1 / 24;
     const result = (safe: boolean, message: string): ExtensionSafety => ({
@@ -448,6 +452,20 @@ const wan14ModelAssets: Record<
     low: "DasiwaWAN22I2V14BSynthseduction_q4Low.gguf",
     textEncoder: "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
     vae: "wan_2.1_vae.safetensors"
+  }
+};
+
+const miniMaxH3ModelAssets: Record<
+  string,
+  { diffusionModel: string; textEncoder: string }
+> = {
+  minimax_h3_fl2va: {
+    diffusionModel: "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    textEncoder: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+  },
+  minimax_h3_fl2va_int4: {
+    diffusionModel: "minimax_h3_fl2va_pruned_int4_convrot.safetensors",
+    textEncoder: "qwen3vl_32b_minimax_h3_int4_convrot.safetensors"
   }
 };
 
@@ -576,7 +594,7 @@ function miniMaxH3Dimensions(task: DimensionTask): [number, number] {
 export function outputDimensions(
   task: DimensionTask & Pick<GenerationQueueTask, "modelId">
 ): [number, number] {
-  if (task.modelId === "minimax_h3_fl2va") {
+  if (isMiniMaxH3Model(task.modelId)) {
     return miniMaxH3Dimensions(task);
   }
   const [width, height] = baseGenerationDimensions(task);
@@ -590,7 +608,7 @@ export function outputDimensions(
 export function extensionOutputDimensions(
   task: ExtensionQueueTask
 ): [number, number] {
-  if (task.modelId === "minimax_h3_fl2va") {
+  if (isMiniMaxH3Model(task.modelId)) {
     return miniMaxH3Dimensions(task);
   }
   return legacyVideoDimensions(task);
@@ -611,6 +629,7 @@ export function renderWorkflow(
   const outputHeight = context.height ?? height;
   const fps = context.fps ?? task.fps ?? 8;
   const modelAssets = wan14ModelAssets[task.modelId];
+  const h3Assets = miniMaxH3ModelAssets[task.modelId];
   const sulphurAssets = sulphurModelAssets[
     task.modelProfile ?? "q3_k_m"
   ];
@@ -641,6 +660,8 @@ export function renderWorkflow(
     FRAMES: context.frames ?? generationFrameCountForTask(task),
     OUTPUT_FRAMES: outputFrameCountForTask(task),
     OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, ""),
+    H3_DIFFUSION_MODEL: h3Assets?.diffusionModel ?? "",
+    H3_TEXT_ENCODER: h3Assets?.textEncoder ?? "",
     HIGH_MODEL: modelAssets?.high ?? "",
     LOW_MODEL: modelAssets?.low ?? "",
     TEXT_ENCODER: modelAssets?.textEncoder ?? "",
@@ -668,9 +689,9 @@ export function renderWorkflow(
       );
     }
     if (typeof value !== "string") return value;
-    const exact = value.match(/^\{\{([A-Z_]+)\}\}$/);
+    const exact = value.match(/^\{\{([A-Z0-9_]+)\}\}$/);
     if (exact?.[1] && exact[1] in tokens) return tokens[exact[1]];
-    return value.replace(/\{\{([A-Z_]+)\}\}/g, (match, key: string) =>
+    return value.replace(/\{\{([A-Z0-9_]+)\}\}/g, (match, key: string) =>
       key in tokens ? String(tokens[key]) : match
     );
   };
@@ -689,7 +710,7 @@ export function renderWorkflow(
     { class_type?: string; inputs?: Record<string, unknown> }
   >;
   if (
-    task.modelId === "minimax_h3_fl2va" &&
+    isMiniMaxH3Model(task.modelId) &&
     task.attentionMode === "pytorch"
   ) {
     const sageNodeIds = new Set(
@@ -734,7 +755,7 @@ export function renderWorkflow(
     }
   }
   const h3HeavyDecode =
-    task.modelId === "minimax_h3_fl2va" &&
+    isMiniMaxH3Model(task.modelId) &&
     (
       generationFrameCountForTask(task) > 124 ||
       outputWidth * outputHeight > 960 * 544
@@ -785,7 +806,7 @@ export function renderWorkflow(
       node.class_type === "VAEDecode" ||
       node.class_type === "VAEDecodeTiled"
     ) {
-      if (task.modelId !== "minimax_h3_fl2va") {
+      if (!isMiniMaxH3Model(task.modelId)) {
         if (node.class_type === "VAEDecode") {
           node.class_type = "VAEDecodeTiled";
         }

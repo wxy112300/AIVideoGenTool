@@ -262,6 +262,13 @@ export interface EnvironmentItem {
   optional?: boolean;
 }
 
+export interface GpuDeviceInfo {
+  index: number;
+  name: string;
+  driverVersion: string;
+  vramTotalBytes: number;
+}
+
 export interface ComfyUiCoreNodeStatus {
   id: string;
   label: string;
@@ -354,6 +361,7 @@ export interface EnvironmentScanResult {
   comfySourceDirectory: string;
   comfyInstallType: "desktop" | "manual" | "portable" | "";
   comfyInstallations: ComfyUiInstallationSummary[];
+  gpus: GpuDeviceInfo[];
   modelDirectory: string;
   outputDirectory: string;
   comfyCompatibility: ComfyUiCompatibility;

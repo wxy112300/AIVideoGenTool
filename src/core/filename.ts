@@ -1,5 +1,6 @@
 const modelCodes: Record<string, string> = {
   minimax_h3_fl2va: "H3",
+  minimax_h3_fl2va_int4: "H3-INT4",
   sulphur2: "SUL2",
   wan22_5b: "WAN22-5B",
   hunyuan15: "HUN15",

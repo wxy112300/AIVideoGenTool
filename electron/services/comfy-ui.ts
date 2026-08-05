@@ -4,6 +4,7 @@ import type { QueueTask, Settings } from "../../src/types.js";
 import {
   missingWorkflowNodeTypes,
   renderWorkflow,
+  isMiniMaxH3Model,
   workflowSupportsEndImage
 } from "../../src/core/workflow.js";
 import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
@@ -109,7 +110,7 @@ export async function submitTask(
     });
     const source = JSON.parse(sourceText) as unknown;
     if (task.taskType === "extension") {
-      const h3Boundary = task.modelId === "minimax_h3_fl2va";
+      const h3Boundary = isMiniMaxH3Model(task.modelId);
       const prepared = h3Boundary
         ? await prepareH3BoundaryFrame(task, signal)
         : await prepareExtensionContext(task, signal);
