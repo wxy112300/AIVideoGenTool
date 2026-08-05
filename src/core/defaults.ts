@@ -23,7 +23,7 @@ export function createDefaultDraft(): Draft {
       }
     ],
     activePromptVersion: 0,
-    modelId: "wan22_5b",
+    modelId: "minimax_h3_fl2va",
     workflowPath: "",
     ratio: "source",
     resolution: 480,
@@ -72,7 +72,7 @@ export function createDefaultSettings(): Settings {
     lmStudioInstallDirectory: "",
     outputDirectory: "",
     modelDirectory: "",
-    defaultVideoModel: "wan22_5b",
+    defaultVideoModel: "minimax_h3_fl2va",
     vramReserveGb: 1,
     h3AttentionMode: "sage",
     autoOffload: true,

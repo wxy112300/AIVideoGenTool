@@ -38,6 +38,16 @@ export async function testComfyUi(settings: Settings): Promise<string> {
   return `已连接 · ${Object.keys(stats).length > 0 ? "服务状态正常" : "8188"}`;
 }
 
+export function safeComfyUploadFilename(
+  filePath: string,
+  uploadId = crypto.randomUUID()
+): string {
+  const extension = path.extname(filePath).toLowerCase();
+  const safeExtension = /^\.[a-z0-9]{1,8}$/.test(extension) ? extension : ".bin";
+  const safeId = uploadId.replace(/[^a-zA-Z0-9-]/g, "") || "file";
+  return `studio-input-${safeId}${safeExtension}`;
+}
+
 async function uploadInput(
   baseUrl: string,
   filePath: string,
@@ -47,7 +57,7 @@ async function uploadInput(
   if (!filePath) return "";
   const bytes = await fs.readFile(filePath, { signal });
   const form = new FormData();
-  form.set("image", new Blob([bytes]), path.basename(filePath));
+  form.set("image", new Blob([bytes]), safeComfyUploadFilename(filePath));
   form.set("type", "input");
   form.set("overwrite", "false");
   const response = await fetch(`${baseUrl}/upload/image`, {
@@ -275,6 +285,15 @@ function nodeStage(classType: string | undefined): {
   return { progress: 12, label: classType };
 }
 
+function queueNodeForPrompt(value: unknown, promptId: string): string {
+  if (!Array.isArray(value)) return "";
+  const running = value.find(
+    (entry) => Array.isArray(entry) && entry[1] === promptId
+  );
+  if (!Array.isArray(running) || !Array.isArray(running[4])) return "";
+  return running[4].find((nodeId): nodeId is string => typeof nodeId === "string") ?? "";
+}
+
 export class TaskStalledError extends Error {
   constructor(minutes: number, reason = "未上报节点进展") {
     super(`任务连续 ${minutes} 分钟${reason}，已停止队列并重启 ComfyUI 释放显存。`);
@@ -450,6 +469,19 @@ export async function waitForTask(
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
         continue;
+      }
+      try {
+        const queue = await jsonRequest<{ queue_running?: unknown[] }>(
+          `${baseUrl}/queue`,
+          { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) }
+        );
+        lastServiceResponseAt = Date.now();
+        const nodeId = queueNodeForPrompt(queue.queue_running, promptId);
+        if (nodeId) {
+          const stage = nodeStage(nodeTypes[nodeId]);
+          onProgress(stage.progress, stage.label);
+        }
+      } catch {
       }
       const entries = Object.values(history).filter(
         (entry) => historyEntryClientId(entry) === clientId

@@ -8,10 +8,17 @@ describe("output filename", () => {
     );
   });
 
-  it("adds a sequence number for same-second collisions", () => {
+  it("uses model metadata instead of prompt text", () => {
     const date = new Date(2026, 6, 24, 14, 32, 5);
-    const first = createOutputFilename("sulphur2", "人物看向镜头", [], date);
-    const second = createOutputFilename("sulphur2", "人物看向镜头", [first], date);
-    expect(second).toBe("SUL2-人物看向镜头-20260724-143205-02.mp4");
+    const first = createOutputFilename("sulphur2", 480, 5, [], date);
+    expect(first).toBe("SUL2-480p-5s-20260724-143205-v01.mp4");
+    expect(first).not.toContain("人物");
+  });
+
+  it("increments the explicit version for same-second collisions", () => {
+    const date = new Date(2026, 6, 24, 14, 32, 5);
+    const first = createOutputFilename("sulphur2", 480, 5, [], date);
+    const second = createOutputFilename("sulphur2", 480, 5, [first], date);
+    expect(second).toBe("SUL2-480p-5s-20260724-143205-v02.mp4");
   });
 });

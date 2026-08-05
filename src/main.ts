@@ -1,4 +1,57 @@
 import "./style.css";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Ban,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleHelp,
+  Columns3,
+  Copy,
+  Download,
+  ExternalLink,
+  FileText,
+  Film,
+  FolderOpen,
+  Gauge,
+  Grid2X2,
+  Image,
+  Images,
+  Info,
+  LayoutGrid,
+  ListOrdered,
+  Maximize2,
+  MemoryStick,
+  Monitor,
+  MoveDown,
+  MoveUp,
+  PackageOpen,
+  Pause,
+  Play,
+  Plus,
+  Puzzle,
+  RefreshCw,
+  Save,
+  ScanSearch,
+  Server,
+  Settings as SettingsIcon,
+  ShieldAlert,
+  Sparkles,
+  SlidersHorizontal,
+  Trash2,
+  Upload,
+  Video,
+  WandSparkles,
+  Workflow,
+  X,
+  Zap,
+  createIcons
+} from "lucide";
 import type {
   AppState,
   AssetVersion,
@@ -89,13 +142,85 @@ let performanceMetrics: PerformanceMetrics | null = null;
 let performancePolling = false;
 let historyContextMenuElement: HTMLElement | null = null;
 let historyContextMenuEvents: AbortController | null = null;
+let historyMasonryResizeObserver: ResizeObserver | null = null;
+let historyTitleResizeObserver: ResizeObserver | null = null;
 let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
+
+const lucideIconSet = {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Ban,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleHelp,
+  Columns3,
+  Copy,
+  Download,
+  ExternalLink,
+  FileText,
+  Film,
+  FolderOpen,
+  Gauge,
+  Grid2X2,
+  Image,
+  Images,
+  Info,
+  LayoutGrid,
+  ListOrdered,
+  Maximize2,
+  MemoryStick,
+  Monitor,
+  MoveDown,
+  MoveUp,
+  PackageOpen,
+  Pause,
+  Play,
+  Plus,
+  Puzzle,
+  RefreshCw,
+  Save,
+  ScanSearch,
+  Server,
+  Settings: SettingsIcon,
+  ShieldAlert,
+  Sparkles,
+  SlidersHorizontal,
+  Trash2,
+  Upload,
+  Video,
+  WandSparkles,
+  Workflow,
+  X,
+  Zap
+};
+
+function icon(name: string, className = ""): string {
+  return `<i data-lucide="${name}" class="ui-icon ${className}" aria-hidden="true"></i>`;
+}
+
+function renderIcons(root: Element): void {
+  createIcons({
+    icons: lucideIconSet,
+    root,
+    attrs: {
+      "stroke-width": "1.8"
+    }
+  });
+}
 
 window.addEventListener("dragover", (event) => {
   if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
 });
 window.addEventListener("drop", (event) => {
   if (event.dataTransfer?.files.length) event.preventDefault();
+});
+window.addEventListener("paste", (event) => {
+  void handleClipboardPaste(event);
 });
 
 const escapeHtml = (value: unknown) =>
@@ -242,10 +367,18 @@ function formatTrimTime(seconds: number): string {
   return `${String(minutes).padStart(2, "0")}:${remainder}`;
 }
 
-function createModelOptions(draft: Draft): string {
-  const scanned = environmentScan?.modelProfiles.filter(
-    (profile) => profile.category === "video"
+function orderVideoProfiles<T extends { id: string }>(profiles: T[]): T[] {
+  return [...profiles].sort((left, right) =>
+    Number(right.id === "minimax_h3_fl2va") - Number(left.id === "minimax_h3_fl2va")
   );
+}
+
+function createModelOptions(draft: Draft): string {
+  const scanned = environmentScan
+    ? orderVideoProfiles(
+        environmentScan.modelProfiles.filter((profile) => profile.category === "video")
+      )
+    : undefined;
   const profiles = scanned?.length
     ? scanned
     : [
@@ -292,7 +425,7 @@ function confirmationDialog(): string {
   return `
     <div class="dialog-backdrop confirm-backdrop" id="confirm-backdrop">
       <section class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" tabindex="-1">
-        <div class="confirm-icon" aria-hidden="true">!</div>
+        <div class="confirm-icon" aria-hidden="true">${icon("alert-triangle")}</div>
         <div class="confirm-copy">
           <span class="eyebrow">此操作无法撤销</span>
           <h2 id="confirm-title">${escapeHtml(title)}</h2>
@@ -300,8 +433,8 @@ function confirmationDialog(): string {
           ${deleting ? `<div class="confirm-warning">只删除本条记录关联的视频，不会删除参考图片、工作流或整个输出目录。</div>` : ""}
         </div>
         <div class="dialog-actions">
-          <button class="secondary" id="cancel-confirmation" ${confirmationBusy ? "disabled" : ""}>取消</button>
-          <button class="primary destructive" id="accept-confirmation" ${confirmationBusy ? "disabled" : ""}>${confirmationBusy ? "处理中…" : deleting ? "删除视频和记录" : "清空草稿"}</button>
+          <button class="secondary button-with-icon" id="cancel-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon("x")}取消</button>
+          <button class="primary destructive button-with-icon" id="accept-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon("trash-2")}${confirmationBusy ? "处理中…" : deleting ? "删除视频和记录" : "清空草稿"}</button>
         </div>
       </section>
     </div>`;
@@ -334,7 +467,7 @@ function upscaleDialogHtml(): string {
       <section class="upscale-dialog" role="dialog" aria-modal="true" aria-labelledby="upscale-title">
         <div class="upscale-dialog-head">
           <div><span class="eyebrow">创建后处理任务</span><h2 id="upscale-title">提升分辨率</h2></div>
-          <button class="dialog-close" id="close-upscale" aria-label="关闭">×</button>
+          <button class="dialog-close" id="close-upscale" aria-label="关闭">${icon("x")}</button>
         </div>
         <div class="upscale-dialog-body">
           <div class="upscale-source"><div><strong>${escapeHtml(asset.title)}</strong><code>${escapeHtml(version.outputFilename)}</code></div><span>${version.width} × ${version.height} · ${formatVideoDuration(version.duration)}</span></div>
@@ -348,7 +481,7 @@ function upscaleDialogHtml(): string {
           <label class="switch-field disabled"><input type="checkbox" disabled><span>人脸细节修复 · 等待独立修复模型接入</span></label>
           <div class="upscale-output"><div><span>预计输出</span><strong>${targetWidth} × ${targetHeight}</strong><code>${escapeHtml(outputFilename)}</code></div><span>${upscaleDialog.modelId === "realesrgan" ? "预计峰值 6–9 GB" : upscaleDialog.modelId === "flashvsr" ? "预计峰值 14–19 GB" : "预计峰值 18–23 GB"}</span></div>
         </div>
-        <div class="dialog-actions"><button class="secondary" id="cancel-upscale">取消</button><button class="primary" id="enqueue-upscale">${upscaleDialog.taskId ? "保存更改" : "加入队列"}</button></div>
+        <div class="dialog-actions"><button class="secondary button-with-icon" id="cancel-upscale">${icon("x")}取消</button><button class="primary button-with-icon" id="enqueue-upscale">${icon(upscaleDialog.taskId ? "save" : "plus")}${upscaleDialog.taskId ? "保存更改" : "加入队列"}</button></div>
       </section>
     </div>`;
 }
@@ -358,7 +491,7 @@ function shell(content: string): string {
     <div class="app-shell">
       <header class="topbar">
         <button class="brand" data-page="create" aria-label="返回创建页">
-          <span class="brand-mark">▶</span><span>Local Video Studio</span>
+          <span class="brand-mark">${icon("play")}</span><span>Local Video Studio</span>
         </button>
         <nav aria-label="主导航">
           ${(["create", "queue", "history", "settings"] as Array<Exclude<Page, "history-detail">>)
@@ -440,16 +573,16 @@ function createPage(): string {
       <span class="save-state">自动保存</span>
     </section>
     <div class="input-mode-switch" role="group" aria-label="创建模式">
-      <button class="${extending ? "ghost" : "secondary active"}" data-input-mode="image" aria-pressed="${!extending}">图片生成</button>
-      <button class="${extending ? "secondary active" : "ghost"}" data-input-mode="video" aria-pressed="${extending}">视频续写</button>
+      <button class="${extending ? "ghost" : "secondary active"} button-with-icon" data-input-mode="image" aria-pressed="${!extending}">${icon("image")}图片生成</button>
+      <button class="${extending ? "secondary active" : "ghost"} button-with-icon" data-input-mode="video" aria-pressed="${extending}">${icon("video")}视频续写</button>
     </div>
     <div class="create-workspace">
       <section class="panel media-panel">
       <div class="section-heading">
         <div><h2>${extending ? "输入视频" : "参考画面"}</h2><span class="muted">${extending ? "选择保留范围，续写将从范围末帧开始" : supportsEndImage ? "当前工作流支持首帧和尾帧" : "当前工作流仅支持首帧"}</span></div>
         ${extending
-          ? draft.sourceVideoPath ? `<button class="secondary" id="remove-video">移除视频</button>` : ""
-          : `<button class="secondary" id="toggle-end" ${!supportsEndImage && !draft.endImagePath ? "disabled" : ""}>${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>`}
+          ? draft.sourceVideoPath ? `<button class="secondary button-with-icon" id="remove-video">${icon("x")}移除视频</button>` : ""
+          : `<button class="secondary button-with-icon" id="toggle-end" ${!supportsEndImage && !draft.endImagePath ? "disabled" : ""}>${icon(draft.endImagePath ? "x" : "images")}${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>`}
       </div>
       ${extending
         ? draft.sourceVideoPath
@@ -474,22 +607,22 @@ function createPage(): string {
                   </div>`
                 : `<p class="video-loading">正在读取视频时长和画面尺寸…</p>`}
             </div>`
-          : `<button class="drop-zone video-drop-zone" id="pick-video" data-drop-video data-drop-label="松开以添加视频">
-              <span class="drop-icon">＋</span><strong>选择或拖入视频</strong><span>MP4、WebM、MOV、M4V、MKV</span>
+            : `<button class="drop-zone video-drop-zone" id="pick-video" data-drop-video data-drop-label="松开以添加视频">
+              <span class="drop-icon">${icon("video")}</span><strong>选择或拖入视频</strong><span>MP4、WebM、MOV、M4V、MKV</span>
             </button>`
         : `<div class="media-grid ${draft.endImagePath ? "paired" : ""}">
         <div class="media-slot">
-          <button class="drop-zone ${draft.startImagePath ? "has-image" : ""}" id="pick-start" data-drop-frame="start" data-drop-label="${draft.startImagePath ? "松开以替换首帧" : "松开以添加首帧"}">
+          <button class="drop-zone ${draft.startImagePath ? "has-image" : ""}" id="pick-start" data-drop-frame="start" data-paste-frame="start" data-drop-label="${draft.startImagePath ? "松开以替换首帧" : "松开以添加首帧"}">
             ${draft.startImagePath
               ? `<img id="start-preview" alt="首帧预览"><span class="image-label">点击或拖入替换</span>`
-              : `<span class="drop-icon">＋</span><strong>选择或拖入首帧</strong><span>PNG、JPG、WEBP、BMP</span>`}
+                : `<span class="drop-icon">${icon("image")}</span><strong>选择或拖入首帧</strong><span>PNG、JPG、WEBP、BMP，也可直接粘贴截图</span>`}
           </button>
-          ${draft.startImagePath ? `<button class="image-remove" data-clear-frame="start" aria-label="删除首帧" title="删除首帧">×<span>删除</span></button>` : ""}
+              ${draft.startImagePath ? `<button class="image-remove button-with-icon" data-clear-frame="start" aria-label="删除首帧" title="删除首帧">${icon("x")}<span>删除</span></button>` : ""}
         </div>
         ${draft.endImagePath
           ? `<div class="media-slot">
-              <button class="drop-zone has-image" id="pick-end" data-drop-frame="end" data-drop-label="松开以替换尾帧"><img id="end-preview" alt="尾帧预览"><span class="image-label">点击或拖入替换</span></button>
-              <button class="image-remove" data-clear-frame="end" aria-label="删除尾帧" title="删除尾帧">×<span>删除</span></button>
+              <button class="drop-zone has-image" id="pick-end" data-drop-frame="end" data-paste-frame="end" data-drop-label="松开以替换尾帧"><img id="end-preview" alt="尾帧预览"><span class="image-label">点击或拖入替换</span></button>
+              <button class="image-remove button-with-icon" data-clear-frame="end" aria-label="删除尾帧" title="删除尾帧">${icon("x")}<span>删除</span></button>
             </div>`
           : ""}
           </div>`}
@@ -501,13 +634,13 @@ function createPage(): string {
           <span class="muted">${draft.activePromptVersion + 1} / ${draft.promptVersions.length} · ${escapeHtml(prompt.label)}</span>
         </div>
         <div class="button-row">
-          <button class="icon-button" id="prompt-prev" ${draft.activePromptVersion === 0 ? "disabled" : ""}>←</button>
-          <button class="icon-button" id="prompt-next" ${draft.activePromptVersion >= draft.promptVersions.length - 1 ? "disabled" : ""}>→</button>
+          <button class="icon-button" id="prompt-prev" aria-label="上一版提示词" title="上一版提示词" ${draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button>
+          <button class="icon-button" id="prompt-next" aria-label="下一版提示词" title="下一版提示词" ${draft.activePromptVersion >= draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button>
           <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="扩写方式" title="选择提示词扩写方式">
             <option value="sulphur-native" ${promptEnhanceMode === "sulphur-native" ? "selected" : ""}>Sulphur 原生增强（推荐）</option>
             <option value="faithful" ${promptEnhanceMode === "faithful" ? "selected" : ""}>忠实扩写（需 Instruct 模型）</option>
           </select>
-          <button class="secondary" id="enhance-prompt">✨ 本地扩写</button>
+          <button class="secondary button-with-icon" id="enhance-prompt">${icon("sparkles")}本地扩写</button>
         </div>
       </div>
       <textarea id="prompt-input" rows="6">${escapeHtml(prompt.text)}</textarea>
@@ -521,7 +654,7 @@ function createPage(): string {
             <strong>H3 提示词助手 <span class="model-badge">可选</span></strong>
             <span>普通描述可以直接生成；需要精确控制镜头和原生声音时，再使用分镜格式。</span>
           </span>
-          <span class="h3-helper-toggle"><span class="when-closed">查看格式</span><span class="when-open">收起说明</span></span>
+          <span class="h3-helper-toggle"><span class="when-closed">查看格式</span><span class="when-open">收起说明</span>${icon("chevron-down")}</span>
         </summary>
         <div class="h3-helper-body">
           <div class="h3-prompt-sections">
@@ -531,7 +664,7 @@ function createPage(): string {
           </div>
           <div class="h3-helper-actions">
             <span>点击后会新建一个提示词版本，不会覆盖当前内容。</span>
-            <button class="secondary" id="h3-prompt-template" type="button">创建结构化提示词</button>
+            <button class="secondary button-with-icon" id="h3-prompt-template" type="button">${icon("list-ordered")}创建结构化提示词</button>
           </div>
         </div>
       </details>` : ""}
@@ -610,11 +743,11 @@ function createPage(): string {
       </div>
       <div class="workflow-field">
         <div><strong>ComfyUI API 工作流</strong><p class="muted">${extending && !supportsVideoExtension ? `${selectedModelProfile?.available ? `${modelName(draft.modelId)} 模型组件已安装完整；` : "模型组件尚未安装完整；"}当前工作流未通过原生续写安全检查。` : draft.workflowPath ? escapeHtml(Object.values(bundledWorkflows).find((workflow) => workflow.path === draft.workflowPath)?.label ?? draft.workflowPath) : "为当前模型选择从 ComfyUI 导出的 API 格式 JSON"}</p></div>
-        <button class="secondary" id="pick-workflow">${draft.workflowPath ? "更换 JSON" : "选择 JSON"}</button>
+        <button class="secondary button-with-icon" id="pick-workflow">${icon("workflow")}${draft.workflowPath ? "更换 JSON" : "选择 JSON"}</button>
       </div>
       <div class="submit-row">
-        <button class="ghost danger" id="clear-draft">清空</button>
-        <button class="primary" id="enqueue" ${enqueueDisabled ? "disabled" : ""} title="${extending ? supportsVideoExtension ? "加入视频续写队列" : "模型已安装，但专用视频续写工作流尚未接入" : safety.safe ? "加入本地生成队列" : escapeHtml(safety.message)}">加入队列</button>
+        <button class="ghost danger button-with-icon" id="clear-draft">${icon("trash-2")}清空</button>
+        <button class="primary button-with-icon" id="enqueue" ${enqueueDisabled ? "disabled" : ""} title="${extending ? supportsVideoExtension ? "加入视频续写队列" : "模型已安装，但专用视频续写工作流尚未接入" : safety.safe ? "加入本地生成队列" : escapeHtml(safety.message)}">${icon("plus")}加入队列</button>
       </div>
       </section>
     </div>`;
@@ -626,8 +759,8 @@ function queuePage(): string {
     <section class="page-heading">
       <div><h1>生成队列</h1><p>${state.queue.length} 项任务 · ${running ? "当前任务已在队列内展开" : state.queueRunning ? "准备执行" : "当前已暂停"}</p></div>
       <div class="button-row">
-        <button class="secondary" id="optimize-queue" ${state.queue.filter((task) => task.status === "waiting").length < 2 ? "disabled" : ""}>按模型优化顺序</button>
-        ${running ? `<span class="queue-mode">${state.queueRunning ? "自动继续后续任务" : "本条完成后暂停"}</span>` : `<button class="primary" id="start-queue" ${state.queue.some((task) => task.status === "waiting") ? "" : "disabled"}>开始队列</button>`}
+        <button class="secondary button-with-icon" id="optimize-queue" ${state.queue.filter((task) => task.status === "waiting").length < 2 ? "disabled" : ""}>${icon("wand-sparkles")}按模型优化顺序</button>
+        ${running ? `<span class="queue-mode">${state.queueRunning ? "自动继续后续任务" : "本条完成后暂停"}</span>` : `<button class="primary button-with-icon" id="start-queue" ${state.queue.some((task) => task.status === "waiting") ? "" : "disabled"}>${icon("play")}开始队列</button>`}
       </div>
     </section>
     <section class="performance-grid" aria-label="性能监测">
@@ -638,9 +771,76 @@ function queuePage(): string {
     </section>
     <section class="task-list">
       ${state.queue.length === 0
-        ? `<div class="empty panel"><h2>队列还是空的</h2><p>从创建页加入一个任务后，就可以在这里运行。</p><button class="secondary" data-page="create">去创建</button></div>`
+        ? `<div class="empty panel"><h2>队列还是空的</h2><p>从创建页加入一个任务后，就可以在这里运行。</p><button class="secondary button-with-icon" data-page="create">${icon("plus")}去创建</button></div>`
         : state.queue.map(queueTaskCard).join("")}
     </section>`;
+}
+
+type QueueTaskInput =
+  | { kind: "image"; path: string }
+  | { kind: "video"; path: string };
+
+function queueTaskInput(task: QueueTask): QueueTaskInput | null {
+  if (task.taskType === "generation" && task.startImagePath) {
+    return { kind: "image", path: task.startImagePath };
+  }
+  if (task.taskType === "extension" && task.sourceVideoPath) {
+    return { kind: "video", path: task.sourceVideoPath };
+  }
+  if (task.taskType === "upscale" && task.sourceFilePath) {
+    return { kind: "video", path: task.sourceFilePath };
+  }
+  return null;
+}
+
+function queueTaskInputUrl(task: QueueTask): string {
+  return queueTaskInput(task)
+    ? `studio-media://queue/${encodeURIComponent(task.id)}`
+    : "";
+}
+
+async function loadQueueInputPreviews(): Promise<void> {
+  const tasks = state.queue.filter(
+    (task) => queueTaskInput(task) !== null
+  );
+  await Promise.all(tasks.map(async (task) => {
+    const input = queueTaskInput(task);
+    if (!input) return;
+    if (input.kind === "video") {
+      document.querySelectorAll<HTMLVideoElement>(
+        `[data-queue-input-video="${task.id}"]`
+      ).forEach((video) => {
+        const revealVideo = () => {
+          try {
+            video.currentTime = 0;
+          } catch {
+            // Some containers expose the first frame only after metadata settles.
+          }
+          video.closest<HTMLElement>("[data-queue-input-preview], .live-preview")
+            ?.querySelector<HTMLElement>("[data-queue-input-empty]")
+            ?.setAttribute("hidden", "");
+        };
+        if (video.readyState >= 2) revealVideo();
+        else video.addEventListener("loadeddata", revealVideo, { once: true });
+      });
+      return;
+    }
+    const image = document.querySelector<HTMLImageElement>(
+      `[data-queue-input-image="${task.id}"]`
+    );
+    if (!image) return;
+    try {
+      const dataUrl = await window.studio.readImage(input.path);
+      if (!dataUrl) return;
+      image.src = dataUrl;
+      image.style.display = "";
+      image.closest<HTMLElement>("[data-queue-input-preview]")
+        ?.querySelector<HTMLElement>("[data-queue-input-empty]")
+        ?.setAttribute("hidden", "");
+    } catch {
+      // The task can remain visible even when its source image was moved.
+    }
+  }));
 }
 
 function queueTaskCard(task: QueueTask): string {
@@ -656,6 +856,8 @@ function queueTaskCard(task: QueueTask): string {
       : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.targetWidth} × ${task.targetHeight}</span><span>分批处理 · 每批卸载</span>`;
   if (task.status === "running") {
     const preview = taskPreviews[task.id] ?? "";
+    const input = queueTaskInput(task);
+    const inputVideoUrl = input?.kind === "video" ? queueTaskInputUrl(task) : "";
     return `
       <article class="task-card panel running expanded">
         <div class="expanded-task-head">
@@ -664,8 +866,9 @@ function queueTaskCard(task: QueueTask): string {
         </div>
         <div class="running-layout">
           <div class="live-preview">
-            <img id="live-preview-image" alt="ComfyUI 实时预览" src="${preview ? escapeHtml(preview) : ""}" style="${preview ? "" : "display:none"}">
-            <div id="live-preview-empty" style="${preview ? "display:none" : ""}"><span>◫</span><strong>等待 ComfyUI 预览帧</strong><small>部分节点只会在采样过程中发送预览</small></div>
+            <img id="live-preview-image" ${input?.kind === "image" ? `data-queue-input-image="${escapeHtml(task.id)}"` : ""} alt="${input ? "用户输入或 ComfyUI 实时预览" : "ComfyUI 实时预览"}" src="${preview ? escapeHtml(preview) : ""}" style="${preview ? "" : "display:none"}">
+            ${inputVideoUrl ? `<video data-queue-input-video="${escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}" style="${preview ? "display:none" : ""}"></video>` : ""}
+            <div id="live-preview-empty" style="${preview || inputVideoUrl ? "display:none" : ""}"><span>${icon(input ? input.kind === "image" ? "image" : "film" : "film")}</span><strong>${input ? "正在读取输入画面" : "等待 ComfyUI 预览帧"}</strong><small>${input ? "ComfyUI 返回实时帧后会自动替换" : "部分节点只会在采样过程中发送预览"}</small></div>
           </div>
           <div class="running-copy">
             <span class="eyebrow">当前步骤 · <span id="running-stage">${escapeHtml(task.stage ?? "准备中")}</span></span>
@@ -673,16 +876,22 @@ function queueTaskCard(task: QueueTask): string {
             <p>${escapeHtml(description)}</p>
             <div class="task-meta">${metadata}<span id="running-elapsed">${elapsedText(task.startedAt)}</span></div>
             <div class="running-controls">
-              <button class="secondary" id="${state.queueRunning ? "pause-queue" : "start-queue"}">${state.queueRunning ? "本条完成后暂停" : "继续执行后续任务"}</button>
-              <button class="danger secondary" data-cancel="${task.id}">取消当前任务</button>
+              <button class="secondary button-with-icon" id="${state.queueRunning ? "pause-queue" : "start-queue"}">${icon(state.queueRunning ? "pause" : "play")}${state.queueRunning ? "本条完成后暂停" : "继续执行后续任务"}</button>
+              <button class="danger secondary button-with-icon" data-cancel="${task.id}">${icon("ban")}取消当前任务</button>
             </div>
             <p class="control-hint">${state.queueRunning ? "暂停不会冻结当前 GPU 计算；当前任务完成后不会启动下一条。" : "当前任务仍会继续运行，后续任务已暂停。"}</p>
           </div>
         </div>
       </article>`;
   }
+  const input = queueTaskInput(task);
+  const inputVideoUrl = input?.kind === "video" ? queueTaskInputUrl(task) : "";
+  const inputPreview = input
+    ? `<div class="task-input-preview" data-queue-input-preview="${escapeHtml(task.id)}">${input.kind === "image" ? `<img data-queue-input-image="${escapeHtml(task.id)}" alt="用户输入图片" style="display:none">` : `<video data-queue-input-video="${escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}"></video>`}<div data-queue-input-empty><span>${icon(input.kind === "image" ? "image" : "film")}</span><small>${input.kind === "image" ? "输入画面" : "源视频"}</small></div></div>`
+    : "";
   return `
-    <article class="task-card panel ${task.status}">
+    <article class="task-card panel ${task.status}${inputPreview ? " task-card-with-preview" : ""}">
+      ${inputPreview}
       <div class="task-main">
         <div><span class="status ${task.status}">${statusLabel(task.status)}</span><h3>${escapeHtml(task.outputFilename)}</h3></div>
         <p>${escapeHtml(description)}</p>
@@ -690,11 +899,11 @@ function queueTaskCard(task: QueueTask): string {
         ${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ""}
       </div>
       <div class="task-actions">
-        ${task.status === "waiting" ? `<div class="button-row"><button class="icon-button" data-move="${task.id}" data-direction="-1" title="上移">↑</button><button class="icon-button" data-move="${task.id}" data-direction="1" title="下移">↓</button></div>` : ""}
-        ${task.status === "waiting" && task.taskType === "upscale" ? `<button class="secondary" data-edit-upscale-task="${task.id}">编辑</button>` : ""}
-        <button class="secondary" data-duplicate="${task.id}">复制</button>
-        ${task.status === "failed" || task.status === "cancelled" ? `<button class="primary" data-retry="${task.id}">重试并启动</button>` : ""}
-        <button class="ghost danger" data-remove="${task.id}">移除</button>
+        ${task.status === "waiting" ? `<div class="button-row"><button class="icon-button" data-move="${task.id}" data-direction="-1" aria-label="上移" title="上移">${icon("move-up")}</button><button class="icon-button" data-move="${task.id}" data-direction="1" aria-label="下移" title="下移">${icon("move-down")}</button></div>` : ""}
+        ${task.status === "waiting" && task.taskType === "upscale" ? `<button class="secondary button-with-icon" data-edit-upscale-task="${task.id}">${icon("sliders-horizontal")}编辑</button>` : ""}
+        <button class="secondary button-with-icon" data-duplicate="${task.id}">${icon("copy")}复制</button>
+        ${task.status === "failed" || task.status === "cancelled" ? `<button class="primary button-with-icon" data-retry="${task.id}">${icon("refresh-cw")}重试并启动</button>` : ""}
+        <button class="ghost danger button-with-icon" data-remove="${task.id}">${icon("trash-2")}移除</button>
       </div>
     </article>`;
 }
@@ -706,6 +915,7 @@ function statusLabel(status: string): string {
 function historyPage(): string {
   const cards = state.history.map((asset) => {
     const version = preferredVersion(asset);
+    const historyTitle = asset.prompt.trim() || asset.title;
     const videoIndex = versionVideoIndex(version);
     const mediaUrl = historyMediaUrl(asset, version);
     const coverTime = historyCoverMode === "first"
@@ -713,22 +923,22 @@ function historyPage(): string {
       : Math.min(Math.max(asset.duration * 0.38, 0), Math.max(asset.duration - 0.1, 0));
     return `
       <article class="history-gallery-item panel" data-history="${asset.id}" tabindex="0" title="右键查看更多操作">
-        <div class="history-media" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-time="${coverTime}">
+        <div class="history-media" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-time="${coverTime}" data-preview-duration="${asset.duration}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="metadata" src="${mediaUrl}"></video>`
-            : `<div class="history-media-fallback"><span>▶</span><small>找不到视频文件</small></div>`}
+            : `<div class="history-media-fallback"><span>${icon("play")}</span><small>找不到视频文件</small></div>`}
           <div class="history-media-badges">
             <span class="media-chip">${historyCoverMode === "first" ? "第一帧" : `封面 ${formatVideoDuration(coverTime)}`}</span>
             <span class="media-chip">${version.height === 2160 ? "4K" : `${version.height}p`}</span>
             <span class="media-chip">${formatVideoDuration(asset.duration)}</span>
           </div>
-          ${mediaUrl ? `<span class="history-preview-state">▶ 正在预览</span><div class="history-preview-progress"><i></i></div>` : ""}
+          ${mediaUrl ? `<span class="history-preview-state">${icon("play")}正在预览</span><button type="button" class="history-preview-progress" role="slider" aria-label="调整预览进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="等待视频加载"><i></i></button>` : ""}
         </div>
         <div class="history-gallery-copy">
-          <h3>${escapeHtml(asset.title)}</h3>
+          <h3 class="history-card-title" title="${escapeHtml(historyTitle)}"><span class="history-card-title-track"><span>${escapeHtml(historyTitle)}</span><span aria-hidden="true">${escapeHtml(historyTitle)}</span></span></h3>
           <code>${escapeHtml(version.files[videoIndex]?.filename ?? version.outputFilename)}</code>
           <div class="history-item-meta"><span class="model-badge">${escapeHtml(modelName(version.modelId))}</span><span>最高 ${version.height === 2160 ? "4K" : `${version.height}p`}</span><span>${asset.versions.length} 个版本</span></div>
-          <div class="history-item-actions"><span>${formatHistoryTime(asset.updatedAt)}</span><button class="ghost" data-open-history="${asset.id}">查看详情</button></div>
+          <div class="history-item-actions"><span>${formatHistoryTime(asset.updatedAt)}</span><button class="ghost button-with-icon" data-open-history="${asset.id}">查看详情${icon("external-link")}</button></div>
         </div>
       </article>`;
   }).join("");
@@ -737,7 +947,7 @@ function historyPage(): string {
       <div><div class="heading-line"><h1>历史作品</h1><span class="badge">${state.history.length} 个视频</span></div></div>
       <div class="history-view-tools">
         <label>封面<select id="history-cover-mode"><option value="random" ${historyCoverMode === "random" ? "selected" : ""}>随机帧</option><option value="first" ${historyCoverMode === "first" ? "selected" : ""}>第一帧</option></select></label>
-        <div class="button-row"><button class="${historyLayout === "masonry" ? "secondary" : "ghost"}" data-history-layout="masonry">瀑布流</button><button class="${historyLayout === "album" ? "secondary" : "ghost"}" data-history-layout="album">相册</button></div>
+        <div class="button-row"><button class="${historyLayout === "masonry" ? "secondary" : "ghost"} button-with-icon" data-history-layout="masonry">${icon("columns-3")}瀑布流</button><button class="${historyLayout === "album" ? "secondary" : "ghost"} button-with-icon" data-history-layout="album">${icon("layout-grid")}相册</button></div>
       </div>
     </section>
     <section class="history-gallery ${historyLayout}">
@@ -745,6 +955,69 @@ function historyPage(): string {
         ? `<div class="empty panel"><h2>还没有完成的视频</h2><p>队列完成后，结果会自动出现在这里。</p></div>`
         : cards}
     </section>`;
+}
+
+function historyMasonryColumnCount(width: number): number {
+  if (width <= 480) return 1;
+  if (width <= 680) return 2;
+  if (width >= 1280) return 4;
+  return 3;
+}
+
+function layoutHistoryMasonry(gallery: HTMLElement): number {
+  const cards = [...gallery.querySelectorAll<HTMLElement>(".history-gallery-item")];
+  if (!cards.length) return 0;
+  const columnCount = historyMasonryColumnCount(gallery.clientWidth);
+  const columns = Array.from({ length: columnCount }, () => {
+    const column = document.createElement("div");
+    column.className = "history-masonry-column";
+    return column;
+  });
+  gallery.style.setProperty("--masonry-columns", String(columnCount));
+  gallery.replaceChildren(...columns);
+  for (const card of cards) {
+    const shortestColumn = columns.reduce((shortest, column) =>
+      column.getBoundingClientRect().height < shortest.getBoundingClientRect().height
+        ? column
+        : shortest
+    );
+    shortestColumn.append(card);
+  }
+  return columnCount;
+}
+
+function bindHistoryMasonry(): void {
+  const gallery = document.querySelector<HTMLElement>(".history-gallery.masonry");
+  if (!gallery) return;
+  let columnCount = layoutHistoryMasonry(gallery);
+  if (typeof ResizeObserver === "undefined") return;
+  historyMasonryResizeObserver = new ResizeObserver(() => {
+    const nextColumnCount = historyMasonryColumnCount(gallery.clientWidth);
+    if (nextColumnCount === columnCount) return;
+    columnCount = layoutHistoryMasonry(gallery);
+  });
+  historyMasonryResizeObserver.observe(gallery);
+}
+
+function bindHistoryTitleMarquees(): void {
+  const titles = [...document.querySelectorAll<HTMLElement>(".history-card-title, .history-detail-title")];
+  if (!titles.length) return;
+  const update = () => {
+    for (const title of titles) {
+      title.classList.remove("is-overflowing");
+      title.style.removeProperty("--marquee-distance");
+      const text = title.querySelector<HTMLElement>(".history-card-title-track > span");
+      if (!text || text.getBoundingClientRect().width <= title.clientWidth) continue;
+      const distance = text.getBoundingClientRect().width + 36;
+      title.style.setProperty("--marquee-distance", `${distance}px`);
+      title.classList.add("is-overflowing");
+    }
+  };
+  window.requestAnimationFrame(update);
+  if (typeof ResizeObserver !== "undefined") {
+    historyTitleResizeObserver = new ResizeObserver(update);
+    titles.forEach((title) => historyTitleResizeObserver?.observe(title));
+  }
 }
 
 function historyDetailPage(): string {
@@ -758,35 +1031,55 @@ function historyDetailPage(): string {
   const videoIndex = versionVideoIndex(version);
   const mediaUrl = historyMediaUrl(asset, version);
   const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
+  const historyIndex = state.history.findIndex((item) => item.id === asset.id);
+  const previousAsset = historyIndex > 0 ? state.history[historyIndex - 1] : undefined;
+  const nextAsset = historyIndex >= 0 ? state.history[historyIndex + 1] : undefined;
+  const detailTitle = asset.prompt.trim() || asset.title;
   const completedAt = formatHistoryTime(version.createdAt);
   const fps = version.fps;
   const elapsedSeconds = version.startedAt
     ? Math.max(0, (new Date(version.createdAt).getTime() - new Date(version.startedAt).getTime()) / 1000)
     : null;
   return `
-    <div class="history-detail-back"><button class="ghost" data-page="history">← 返回历史</button><span>任务记录为生成时的只读快照</span></div>
+    <div class="history-detail-back">
+      <button class="ghost button-with-icon" data-page="history">${icon("arrow-left")}返回历史</button>
+      <div class="history-detail-tools">
+        <span>任务记录为生成时的只读快照</span>
+        <span class="history-detail-position" aria-label="当前历史作品位置">第 ${historyIndex + 1} / 共 ${state.history.length} 个</span>
+        <div class="history-detail-navigation" aria-label="切换历史作品">
+          <button class="ghost button-with-icon" data-history-navigation="-1" ${previousAsset ? "" : "disabled"} title="${previousAsset ? `上一个：${escapeHtml(previousAsset.title)}` : "已经是第一项"}">${icon("arrow-left")}上一个</button>
+          <button class="ghost button-with-icon" data-history-navigation="1" ${nextAsset ? "" : "disabled"} title="${nextAsset ? `下一个：${escapeHtml(nextAsset.title)}` : "已经是最后一项"}">下一个${icon("arrow-right")}</button>
+        </div>
+      </div>
+    </div>
     <section class="history-detail-hero">
       <div class="history-player-column">
         <div class="panel history-player">
           ${mediaUrl
-            ? `<video controls playsinline preload="metadata" src="${mediaUrl}"></video>`
-            : `<div class="history-media-fallback"><span>▶</span><strong>视频文件不可用</strong><small>请检查输出目录或在下方定位文件。</small></div>`}
+            ? `<video controls loop playsinline preload="metadata" src="${mediaUrl}"></video>`
+            : `<div class="history-media-fallback"><span>${icon("play")}</span><strong>视频文件不可用</strong><small>请检查输出目录或在下方定位文件。</small></div>`}
         </div>
         <div class="panel version-toolbar"><div class="version-switcher">${asset.versions.map((item) => `<button class="${item.id === version.id ? "primary" : "ghost"}" data-version-id="${item.id}">${item.kind === "original" ? "原始" : modelName(item.modelId)} ${item.height === 2160 ? "4K" : `${item.height}p`}</button>`).join("")}</div><span>${asset.versions.length} 个版本</span></div>
       </div>
       <aside class="panel history-summary">
-        <div><div class="history-title-line"><h1>${escapeHtml(asset.title)}</h1><span class="status running">已完成</span></div><code>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code></div>
+        <div><div class="history-title-line"><h1 class="history-detail-title" title="${escapeHtml(detailTitle)}"><span class="history-card-title-track"><span>${escapeHtml(detailTitle)}</span><span aria-hidden="true">${escapeHtml(detailTitle)}</span></span></h1><span class="status running">已完成</span></div><code>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code></div>
         <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(version.modelId))}</span><span>${version.width} × ${version.height} · ${version.duration}秒 · ${fps} FPS</span></div>
         <div class="history-summary-row"><span>完成于</span><strong>${completedAt}</strong></div>
         <div class="history-summary-row"><span>总耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : `${Math.round(elapsedSeconds)} 秒`}</strong></div>
-        <div class="history-summary-actions"><button class="secondary" data-edit-history="${asset.id}">在创建页调整</button>${videoFile?.absolutePath ? `<button class="secondary" data-continue-history="${asset.id}" data-source-version="${version.id}">继续创作</button><button class="secondary" data-show-file="${escapeHtml(videoFile.absolutePath)}">打开所在目录</button>` : ""}<button class="ghost danger history-delete-button" data-delete-history="${asset.id}">删除视频和记录</button></div>
-        <div class="history-upscale"><strong>提升清晰度</strong><span>完成后会作为同一作品的新版本显示。</span><button class="secondary" data-open-upscale ${videoFile?.absolutePath && version.height < 2160 ? "" : "disabled"}>${version.height >= 2160 ? "当前已是 4K" : "提升分辨率…"}</button></div>
+        <div class="history-summary-actions">
+          <div class="history-primary-actions">
+            <button class="secondary button-with-icon" data-edit-history="${asset.id}" aria-label="在创建页调整" title="在创建页调整">${icon("sliders-horizontal")}调整参数</button>
+            ${videoFile?.absolutePath ? `<button class="secondary button-with-icon" data-continue-history="${asset.id}" data-source-version="${version.id}" aria-label="继续创作" title="继续创作">${icon("video")}继续创作</button><button class="secondary button-with-icon history-file-action" data-show-file="${escapeHtml(videoFile.absolutePath)}" aria-label="打开所在目录" title="打开所在目录">${icon("folder-open")}定位文件</button>` : ""}
+          </div>
+          <button class="ghost danger history-delete-button button-with-icon" data-delete-history="${asset.id}">${icon("trash-2")}删除视频和记录</button>
+        </div>
+        <div class="history-upscale"><div class="history-upscale-heading"><div><strong>提升清晰度</strong><span>完成后会作为同一作品的新版本显示。</span></div>${icon("maximize-2")}</div><button class="secondary button-with-icon" data-open-upscale ${videoFile?.absolutePath && version.height < 2160 ? "" : "disabled"}>${version.height >= 2160 ? "当前已是 4K" : "提升分辨率…"}</button></div>
       </aside>
     </section>
     <section class="history-record-grid">
       <article class="panel history-record full">
-        <div class="history-record-heading"><h2>提示词</h2><button class="ghost" data-copy-prompt>复制提示词</button></div>
-        <span class="muted">实际送入模型的提示词</span><p class="history-prompt">${escapeHtml(asset.prompt)}</p>
+        <div class="history-record-heading"><h2>提示词</h2><button class="ghost button-with-icon" data-copy-prompt>${icon("copy")}复制提示词</button></div>
+        <span class="muted">实际送入模型的完整提示词</span><div class="history-prompt-scroll" tabindex="0" aria-label="完整提示词"><p class="history-prompt">${escapeHtml(asset.prompt)}</p></div>
       </article>
       <article class="panel history-record">
         <h2>原始生成参数</h2>
@@ -801,11 +1094,73 @@ function historyDetailPage(): string {
       <div class="output-files">
         ${version.files.length === 0
           ? `<p class="muted">ComfyUI 返回中没有识别到文件。需要在本地保存一份 history 响应，用于补充该工作流的输出结构。</p>`
-          : version.files.map((file) => `<div class="output-file"><div><strong>${escapeHtml(file.filename)}</strong><p class="muted">${escapeHtml(file.subfolder || ".")} · ${escapeHtml(file.type)}</p></div>${file.absolutePath ? `<button class="secondary" data-show-file="${escapeHtml(file.absolutePath)}">在 Explorer 中显示</button>` : `<span class="muted">请先在设置中填写 ComfyUI 输出目录</span>`}</div>`).join("")}
+          : version.files.map((file) => `<div class="output-file"><div><strong>${escapeHtml(file.filename)}</strong><p class="muted">${escapeHtml(file.subfolder || ".")} · ${escapeHtml(file.type)}</p></div>${file.absolutePath ? `<button class="secondary button-with-icon" data-show-file="${escapeHtml(file.absolutePath)}">${icon("folder-open")}在 Explorer 中显示</button>` : `<span class="muted">请先在设置中填写 ComfyUI 输出目录</span>`}</div>`).join("")}
       </div>
         <details><summary>原始 ComfyUI 输出快照</summary><pre>${escapeHtml(JSON.stringify(version.comfyOutputs, null, 2))}</pre></details>
       </article>
     </section>`;
+}
+
+function historyStateChanged(
+  previous: AppState["history"] | undefined,
+  next: AppState["history"]
+): boolean {
+  if (!previous || previous.length !== next.length) return true;
+  return next.some((asset, index) => {
+    const previousAsset = previous[index];
+    if (!previousAsset) return true;
+    if (
+      previousAsset.id !== asset.id ||
+      previousAsset.updatedAt !== asset.updatedAt ||
+      previousAsset.defaultVersionId !== asset.defaultVersionId ||
+      previousAsset.versions.length !== asset.versions.length
+    ) {
+      return true;
+    }
+    return asset.versions.some((version, versionIndex) => {
+      const previousVersion = previousAsset.versions[versionIndex];
+      return !previousVersion ||
+        previousVersion.id !== version.id ||
+        previousVersion.createdAt !== version.createdAt ||
+        previousVersion.files.length !== version.files.length;
+    });
+  });
+}
+
+interface HistoryPlaybackSnapshot {
+  currentTime: number;
+  paused: boolean;
+  muted: boolean;
+  playbackRate: number;
+}
+
+function captureHistoryPlayback(): HistoryPlaybackSnapshot | null {
+  if (page !== "history-detail") return null;
+  const video = document.querySelector<HTMLVideoElement>(".history-player video");
+  if (!video) return null;
+  return {
+    currentTime: video.currentTime,
+    paused: video.paused,
+    muted: video.muted,
+    playbackRate: video.playbackRate
+  };
+}
+
+function restoreHistoryPlayback(snapshot: HistoryPlaybackSnapshot | null): void {
+  if (!snapshot) return;
+  const video = document.querySelector<HTMLVideoElement>(".history-player video");
+  if (!video) return;
+  const restore = () => {
+    video.muted = snapshot.muted;
+    video.playbackRate = snapshot.playbackRate;
+    if (Number.isFinite(video.duration)) {
+      video.currentTime = Math.min(snapshot.currentTime, video.duration);
+    }
+    if (snapshot.paused) video.pause();
+    else void video.play().catch(() => undefined);
+  };
+  if (video.readyState >= 1) window.requestAnimationFrame(restore);
+  else video.addEventListener("loadedmetadata", restore, { once: true });
 }
 
 function modelScanCard(profile: ModelScanProfile): string {
@@ -817,19 +1172,19 @@ function modelScanCard(profile: ModelScanProfile): string {
           <div class="model-title"><h3>${escapeHtml(profile.name)}</h3><span class="model-badge">${escapeHtml(profile.badge)}</span></div>
           <p class="muted">${escapeHtml(profile.description)}</p>
         </div>
-        <span class="model-availability ${profile.available ? "available" : "missing"}">${profile.available ? profile.integrated ? "✓ 可用" : "✓ 组件完整" : `缺少 ${missingCount} 项`}</span>
+        <span class="model-availability ${profile.available ? "available" : "missing"}">${profile.available ? `${icon("circle-check")} ${profile.integrated ? "可用" : "组件完整"}` : `${icon("circle-alert")} 缺少 ${missingCount} 项`}</span>
       </div>
       <div class="model-meta-line"><span>${escapeHtml(profile.vram)}</span><span>${profile.available ? profile.integrated ? "组件完整，可用于配置" : "依赖已完整；生成工作流将在下一阶段接入" : "补齐所有必需组件后才能启用"}</span></div>
       <div class="component-list">
         ${profile.components.map((component, componentIndex) => `
           <div class="component-row ${component.found ? "found" : "missing"}">
-            <span class="component-state">${component.found ? "✓" : "!"}</span>
+            <span class="component-state">${icon(component.found ? "circle-check" : "circle-alert")}</span>
             <div><strong>${escapeHtml(component.label)}</strong>
               ${component.found
                 ? `<code title="${escapeHtml(component.matches.join("\n"))}">${escapeHtml(component.matches.join(" · "))}</code>`
                 : `<span>缺失：${escapeHtml(component.expected)}</span>`}
             </div>
-            ${component.found ? "" : `<button class="component-info" data-install-profile="${escapeHtml(profile.id)}" data-install-component="${componentIndex}" aria-label="查看 ${escapeHtml(component.label)} 的下载和安装说明" title="查看下载和安装说明">i</button>`}
+            ${component.found ? "" : `<button class="component-info" data-install-profile="${escapeHtml(profile.id)}" data-install-component="${componentIndex}" aria-label="查看 ${escapeHtml(component.label)} 的下载和安装说明" title="查看下载和安装说明">${icon("info")}</button>`}
           </div>`).join("")}
       </div>
     </article>`;
@@ -845,7 +1200,7 @@ function installGuideDialog(): string {
         <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title">
           <div class="install-guide-head">
             <div><span class="eyebrow">${escapeHtml(profileName)}</span><h2 id="install-guide-title">${escapeHtml(component.label)}</h2></div>
-            <button class="dialog-close" id="close-install-guide" aria-label="关闭">×</button>
+            <button class="dialog-close" id="close-install-guide" aria-label="关闭">${icon("x")}</button>
           </div>
           <div class="install-note"><strong>扫描数据需要刷新</strong><p>当前结果来自更新前的主进程。请关闭并重新启动应用，然后重新扫描环境。</p></div>
           <div class="dialog-actions"><button class="primary" id="dismiss-install-guide">知道了</button></div>
@@ -863,7 +1218,7 @@ function installGuideDialog(): string {
       <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title">
         <div class="install-guide-head">
           <div><span class="eyebrow">${escapeHtml(profileName)}</span><h2 id="install-guide-title">${escapeHtml(component.label)}</h2></div>
-          <button class="dialog-close" id="close-install-guide" aria-label="关闭">×</button>
+            <button class="dialog-close" id="close-install-guide" aria-label="关闭">${icon("x")}</button>
         </div>
         <p class="muted">下载完成后，将文件放入下面的目录，再回到设置页重新扫描。</p>
         <div class="install-guide-fields">
@@ -874,7 +1229,7 @@ function installGuideDialog(): string {
         ${guide.notes ? `<div class="install-note"><strong>注意</strong><p>${escapeHtml(guide.notes)}</p></div>` : ""}
         <div class="dialog-actions">
           <button class="secondary" id="dismiss-install-guide">关闭</button>
-          <button class="primary" id="open-install-download">打开下载页面 ↗</button>
+          <button class="primary button-with-icon" id="open-install-download">打开下载页面${icon("external-link")}</button>
         </div>
       </section>
     </div>`;
@@ -892,18 +1247,18 @@ function environmentOverview(): string {
     <div class="environment-grid">
       ${environmentScan.items.map((item) => `
         <article class="environment-item ${item.ok ? "available" : "missing"}">
-          <span class="environment-state">${item.ok ? "✓" : "!"}</span>
+          <span class="environment-state">${icon(item.ok ? "circle-check" : "circle-alert")}</span>
           <div>
             <div class="environment-item-heading">
               <div class="environment-name"><strong>${escapeHtml(item.label)}</strong>${item.optional ? `<span class="optional-tag">可选</span>` : ""}</div>
               ${item.id === "comfyui-api"
                 ? item.ok
-                  ? `<button class="service-start secondary" data-restart-service="comfy" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${serviceRestarting === "comfy" ? "重启中…最多等待 2 分钟" : "重启服务"}</button>`
-                  : `<button class="service-start" data-start-service="comfy" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${serviceStarting === "comfy" ? "启动中…最多等待 2 分钟" : "一键启动"}</button>`
+                  ? `<button class="service-start secondary button-with-icon" data-restart-service="comfy" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${icon("refresh-cw")}${serviceRestarting === "comfy" ? "重启中…最多等待 2 分钟" : "重启服务"}</button>`
+                  : `<button class="service-start button-with-icon" data-start-service="comfy" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${icon("play")}${serviceStarting === "comfy" ? "启动中…最多等待 2 分钟" : "一键启动"}</button>`
                 : !item.ok && item.id === "lmstudio"
-                  ? `<button class="service-start secondary" data-pick-lm-install>选择目录</button>`
+                  ? `<button class="service-start secondary button-with-icon" data-pick-lm-install>${icon("folder-open")}选择目录</button>`
                 : !item.ok && item.id === "lmstudio-api"
-                  ? `<button class="service-start" data-start-service="lmstudio" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${serviceStarting === "lmstudio" ? "启动中…" : "一键启动"}</button>`
+                  ? `<button class="service-start button-with-icon" data-start-service="lmstudio" ${serviceStarting || serviceRestarting ? "disabled" : ""}>${icon("play")}${serviceStarting === "lmstudio" ? "启动中…" : "一键启动"}</button>`
                   : ""}
             </div>
             <p>${escapeHtml(item.detail)}</p>
@@ -921,7 +1276,7 @@ function environmentOverview(): string {
         }</span>
         <strong>${escapeHtml(environmentScan.comfyInstallDirectory || environmentScan.comfyRoot)}</strong>
         <p class="muted">核心源码：${escapeHtml(environmentScan.comfySourceDirectory || "未找到")}<br>数据目录：${escapeHtml(environmentScan.comfyRoot || "等待初始化")}<br>服务：${escapeHtml(environmentScan.comfyUrl)}<br>模型：${escapeHtml(environmentScan.modelDirectory || "等待初始化")}<br>输出：${escapeHtml(environmentScan.outputDirectory || "等待初始化")}</p></div>
-        <button class="secondary" id="use-scanned-comfy">采用这些路径</button>
+        <button class="secondary button-with-icon" id="use-scanned-comfy">${icon("check")}采用这些路径</button>
       </div>` : ""}`;
 }
 
@@ -939,7 +1294,7 @@ function environmentIssuesPanel(): string {
               <p class="muted">${escapeHtml(issue.detail)}</p>
               ${environmentRepairLogs[issue.id] ? `<details class="node-log" open><summary>修复日志</summary><pre>${escapeHtml(environmentRepairLogs[issue.id])}</pre></details>` : ""}
             </div>
-            ${issue.repairable ? `<button class="primary" data-repair-issue="${escapeHtml(issue.id)}" ${environmentRepairing ? "disabled" : ""}>${environmentRepairing === issue.id ? "修复中…" : escapeHtml(issue.repairLabel)}</button>` : ""}
+            ${issue.repairable ? `<button class="primary button-with-icon" data-repair-issue="${escapeHtml(issue.id)}" ${environmentRepairing ? "disabled" : ""}>${icon(environmentRepairing === issue.id ? "refresh-cw" : "shield-check")}${environmentRepairing === issue.id ? "修复中…" : escapeHtml(issue.repairLabel)}</button>` : ""}
           </article>`).join("")}
       </div>
     </section>`;
@@ -967,8 +1322,8 @@ function comfyCompatibilityPanel(): string {
           <span class="muted">显示当前选择或当前已连接服务的核心信息</span>
         </div>
         <div class="compatibility-actions">
-          <span class="model-availability ${ready ? "available" : "missing"}">${ready ? "✓ 已识别" : "等待启动服务"}</span>
-          <button class="primary" id="update-comfyui" ${comfyUpdating || compatibility.updateMode === "unsupported" ? "disabled" : ""}>${comfyUpdating ? "正在处理…" : compatibility.updateMode === "desktop" ? "打开官方更新器" : "手动更新 ComfyUI"}</button>
+            <span class="model-availability ${ready ? "available" : "missing"}">${ready ? `${icon("circle-check")} 已识别` : `${icon("circle-help")} 等待启动服务`}</span>
+          <button class="primary button-with-icon" id="update-comfyui" ${comfyUpdating || compatibility.updateMode === "unsupported" ? "disabled" : ""}>${icon(comfyUpdating ? "refresh-cw" : "download")}${comfyUpdating ? "正在处理…" : compatibility.updateMode === "desktop" ? "打开官方更新器" : "手动更新 ComfyUI"}</button>
         </div>
       </div>
       <div class="compatibility-version">
@@ -987,7 +1342,9 @@ function comfyCompatibilityPanel(): string {
 function settingsPage(): string {
   const settings = settingsDraft ?? state.settings;
   const profiles = environmentScan?.modelProfiles ?? [];
-  const videoProfiles = profiles.filter((profile) => profile.category === "video");
+  const videoProfiles = orderVideoProfiles(
+    profiles.filter((profile) => profile.category === "video")
+  );
   const upscaleProfiles = profiles.filter((profile) => profile.category === "upscale");
   const videoAvailable = videoProfiles.filter(
     (profile) => profile.available && profile.integrated
@@ -1012,7 +1369,7 @@ function settingsPage(): string {
           ${comfyInstallations.length > 1 ? `<span class="model-availability missing">发现 ${comfyInstallations.length} 个安装</span>` : `<span class="model-badge">${comfyInstallations.length ? "已发现" : "未发现"}</span>`}
         </div>
         <label>当前安装目录
-          <div class="input-action"><input id="comfy-install-directory" value="${escapeHtml(effectiveComfyInstallDirectory)}" placeholder="留空时自动选择扫描结果"><button class="secondary" id="pick-comfy-install-directory">选择目录</button></div>
+          <div class="input-action"><input id="comfy-install-directory" value="${escapeHtml(effectiveComfyInstallDirectory)}" placeholder="留空时自动选择扫描结果"><button class="secondary button-with-icon" id="pick-comfy-install-directory">${icon("folder-open")}选择目录</button></div>
         </label>
         ${comfyInstallations.length ? `<div class="comfy-installation-list">
           ${comfyInstallations.map((installation) => {
@@ -1027,13 +1384,13 @@ function settingsPage(): string {
             const version = versionParts.join(" · ") || "版本元数据未读取到";
             return `<article class="comfy-installation ${active ? "active" : ""}">
               <div><div class="model-title"><strong>${escapeHtml(typeLabel)}</strong><span class="model-badge">${escapeHtml(version)}</span></div><code title="${escapeHtml(installation.directory)}">${escapeHtml(installation.directory)}</code>${installation.revision ? `<span class="muted">提交 ${escapeHtml(installation.revision)}</span>` : ""}</div>
-              <button class="secondary" data-select-comfy-install="${escapeHtml(installation.directory)}" ${active ? "disabled" : ""}>${active ? "当前使用" : "使用此版本"}</button>
+              <button class="secondary button-with-icon" data-select-comfy-install="${escapeHtml(installation.directory)}" ${active ? "disabled" : ""}>${icon(active ? "check" : "play")}${active ? "当前使用" : "使用此版本"}</button>
             </article>`;
           }).join("")}
         </div>` : `<p class="muted proxy-hint">没有在常见位置找到安装。可手动选择包含 ComfyUI.exe、Comfy Desktop.exe 或 main.py 的目录。</p>`}
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>ComfyUI 连接</h2><span class="muted">连接运行中的 ComfyUI API</span></div><button class="secondary" data-test="comfy">测试连接</button></div>
+        <div class="section-heading"><div><h2>ComfyUI 连接</h2><span class="muted">连接运行中的 ComfyUI API</span></div><button class="secondary button-with-icon" data-test="comfy">${icon("zap")}测试连接</button></div>
         <label>服务地址<input id="comfy-url" value="${escapeHtml(settings.comfyUrl)}" placeholder="http://127.0.0.1:8188"></label>
         <p class="muted proxy-hint">默认使用 <code>http://127.0.0.1:8188</code>。一键启动与重启会直接让 ComfyUI 监听此地址。</p>
         <div id="connection-result" class="connection-result muted">尚未单独测试连接</div>
@@ -1041,27 +1398,24 @@ function settingsPage(): string {
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>文件路径</h2><span class="muted">扫描结果可以一键写入，也可以手动定位</span></div></div>
         <div class="settings-grid two">
-          <label>ComfyUI 模型目录<div class="input-action"><input id="model-directory" value="${escapeHtml(settings.modelDirectory)}" placeholder="扫描或选择 models 目录"><button class="secondary" id="pick-model-directory">选择</button></div></label>
-          <label>视频输出目录<div class="input-action"><input id="output-directory" value="${escapeHtml(settings.outputDirectory)}" placeholder="扫描或选择 output 目录"><button class="secondary" id="pick-output-directory">选择</button></div></label>
+          <label>ComfyUI 模型目录<div class="input-action"><input id="model-directory" value="${escapeHtml(settings.modelDirectory)}" placeholder="扫描或选择 models 目录"><button class="secondary button-with-icon" id="pick-model-directory">${icon("folder-open")}选择</button></div></label>
+          <label>视频输出目录<div class="input-action"><input id="output-directory" value="${escapeHtml(settings.outputDirectory)}" placeholder="扫描或选择 output 目录"><button class="secondary button-with-icon" id="pick-output-directory">${icon("folder-open")}选择</button></div></label>
         </div>
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>下载代理</h2><span class="muted">用于自动下载缺失的节点、Python 依赖和工作流；不会影响 ComfyUI 本地连接。</span></div><span class="model-badge">${settings.proxyEnabled ? "已开启" : "已关闭"}</span></div>
         <div class="settings-grid two">
-          <label class="switch-field"><input id="proxy-enabled" type="checkbox" ${settings.proxyEnabled ? "checked" : ""}><span>启用下载代理</span></label>
+          <label class="ios-switch-field"><span class="policy-copy"><strong>启用下载代理</strong><small>Git、pip 和工作流下载使用代理地址</small></span><input id="proxy-enabled" type="checkbox" ${settings.proxyEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
           <label>代理地址<input id="proxy-url" value="${escapeHtml(settings.proxyUrl)}" placeholder="http://127.0.0.1:7890"></label>
         </div>
         <p class="muted proxy-hint">默认关闭。开启后 Git 和 pip 下载使用此地址；可填写 <code>127.0.0.1:7890</code> 或完整代理 URL。</p>
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>RTX 4090 运行策略</h2><span class="muted">${gpu?.ok ? escapeHtml(gpu.detail) : "未检测到 NVIDIA GPU"}</span></div><span class="model-badge">推荐预设</span></div>
-        <div class="settings-grid two">
-          <label>显存安全余量<select id="vram-reserve" disabled><option value="${settings.vramReserveGb}" selected>${settings.vramReserveGb} GB · 24GB 稳定档</option></select></label>
-          <label>同时运行任务<select disabled><option>1 · 推荐</option><option>2 · 可能爆显存</option></select></label>
-          <label class="switch-field disabled"><input id="auto-offload" type="checkbox" checked disabled><span>同步 CPU 卸载（关闭 pinned / async，避免 Windows 换页卡死）</span></label>
-          <label class="switch-field"><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span>安全取消（保留服务并主动释放模型）</span></label>
-          <label class="switch-field"><input id="optimize-queue-setting" type="checkbox" ${settings.optimizeQueue ? "checked" : ""}><span>允许一键优化模型顺序</span></label>
-          <label class="switch-field"><input type="checkbox" checked disabled><span>持久保存队列和历史</span></label>
+        <div class="runtime-policy-grid">
+          <label class="policy-select-field"><span>显存安全余量</span><select id="vram-reserve"><option value="0.5" ${settings.vramReserveGb === 0.5 ? "selected" : ""}>0.5 GB · 激进</option><option value="0.75" ${settings.vramReserveGb === 0.75 ? "selected" : ""}>0.75 GB · 平衡</option><option value="1" ${settings.vramReserveGb === 1 ? "selected" : ""}>1 GB · 24GB 稳定档</option></select></label>
+          <label class="ios-switch-field"><span class="policy-copy"><strong>安全取消</strong><small>先请求中断，再重启 ComfyUI 释放显存</small></span><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+          <label class="ios-switch-field"><span class="policy-copy"><strong>优化队列顺序</strong><small>允许按模型自动整理等待中的任务</small></span><input id="optimize-queue-setting" type="checkbox" ${settings.optimizeQueue ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
         </div>
       </section>
     </section>`;
@@ -1087,9 +1441,7 @@ function settingsPage(): string {
           <label>Transformer 量化档<select id="ltx-extension-model-profile"><option value="q2_distilled" ${settings.ltxExtensionModelProfile === "q2_distilled" ? "selected" : ""}>Q2_K distilled · 7.93 GB · 8GB 兼容</option><option value="q3_k_m" ${settings.ltxExtensionModelProfile === "q3_k_m" ? "selected" : ""}>Q3_K_M dev · 11.13 GB · 推荐</option><option value="q4_k_m" ${settings.ltxExtensionModelProfile === "q4_k_m" ? "selected" : ""}>Q4_K_M dev · 14.30 GB · 质量</option></select></label>
           <label>基准分辨率<select id="ltx-extension-resolution"><option value="360" ${settings.ltxExtensionResolution === 360 ? "selected" : ""}>360p · 推荐</option><option value="480" ${settings.ltxExtensionResolution === 480 ? "selected" : ""}>480p · 较慢</option></select></label>
           <label>每段新增模型帧<select id="ltx-extension-frames"><option value="49" ${settings.ltxExtensionFrames === 49 ? "selected" : ""}>49 帧 · 推荐</option><option value="65" ${settings.ltxExtensionFrames === 65 ? "selected" : ""}>65 帧 · 较长</option></select></label>
-          <label>上下文重叠<select id="ltx-extension-overlap" disabled><option value="16" selected>16 帧 · 官方最低安全值</option></select></label>
           <label>单节点等待上限<select id="ltx-extension-timeout"><option value="10" ${settings.ltxExtensionTimeoutMinutes === 10 ? "selected" : ""}>10 分钟 · 快速止损</option><option value="20" ${settings.ltxExtensionTimeoutMinutes === 20 ? "selected" : ""}>20 分钟 · 推荐</option><option value="30" ${settings.ltxExtensionTimeoutMinutes === 30 ? "selected" : ""}>30 分钟 · 极慢设备</option></select></label>
-          <label class="switch-field disabled"><input id="ltx-extension-unload" type="checkbox" checked disabled><span>采样、解码与编码阶段间强制卸载</span></label>
         </div>
         <p class="muted proxy-hint">Q2 使用 distilled 模型且不加载 LoRA；Q3/Q4 使用 dev 模型和 distill LoRA。三档均要求 Gemma 3、LTX 文本连接器、独立视频/音频 VAE 与 latent upscaler，并强制单任务、<code>patch_on_device=false</code>、<code>--cache-none</code>、CPU offload 和分块解码。8GB 兼容仍要求充足的系统内存与页面文件。</p>
       </section>
@@ -1099,9 +1451,9 @@ function settingsPage(): string {
   const promptPanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>LM Studio</h2><span class="muted">本地提示词扩写服务</span></div><button class="secondary" data-test="lmstudio">测试并读取模型</button></div>
+        <div class="section-heading"><div><h2>LM Studio</h2><span class="muted">本地提示词扩写服务</span></div><button class="secondary button-with-icon" data-test="lmstudio">${icon("zap")}测试并读取模型</button></div>
         <div class="settings-grid two">
-          <label>安装目录<div class="input-action"><input id="lm-install-directory" value="${escapeHtml(settings.lmStudioInstallDirectory)}" placeholder="例如 D:\\Apps\\LM Studio"><button class="secondary" data-pick-lm-install>选择</button></div></label>
+          <label>安装目录<div class="input-action"><input id="lm-install-directory" value="${escapeHtml(settings.lmStudioInstallDirectory)}" placeholder="例如 D:\\Apps\\LM Studio"><button class="secondary button-with-icon" data-pick-lm-install>${icon("folder-open")}选择</button></div></label>
           <label>OpenAI API 地址<input id="lm-url" value="${escapeHtml(settings.lmStudioUrl)}"></label>
           <label>模型 ID<input id="lm-model" value="${escapeHtml(settings.lmStudioModel)}" placeholder="留空使用当前加载模型"></label>
           <label>扩写语言<select id="prompt-language"><option value="auto" ${settings.promptLanguage === "auto" ? "selected" : ""}>跟随输入语言</option><option value="zh" ${settings.promptLanguage === "zh" ? "selected" : ""}>中文</option><option value="en" ${settings.promptLanguage === "en" ? "selected" : ""}>英文</option></select></label>
@@ -1127,10 +1479,8 @@ function settingsPage(): string {
         </div>
         <div class="scan-result">${environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${upscaleAvailable} 个可运行模型，${upscaleProfiles.length - upscaleAvailable} 个待补齐` : "等待首次扫描"}</div>
         <div class="settings-grid two">
-          <label>默认显存策略<select id="upscale-tile-mode" disabled><option value="safe" selected>保守 · 分批与每批卸载</option></select></label>
           <label>SeedVR2 权重<input id="seedvr2-model" value="${escapeHtml(settings.seedVr2Model)}"></label>
           <label>Real-ESRGAN 权重<input id="realesrgan-model" value="${escapeHtml(settings.realEsrganModel)}"></label>
-          <label class="switch-field disabled"><input id="upscale-face-restore" type="checkbox" disabled ${settings.upscaleFaceRestore ? "checked" : ""}><span>人脸修复 · 等待独立模型</span></label>
         </div>
       </section>
       <div class="model-profile-list">${upscaleProfiles.length ? upscaleProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无模型扫描结果</div>`}</div>
@@ -1159,14 +1509,14 @@ function settingsPage(): string {
             <div class="model-title"><h3>MiniMax H3 I2V 核心节点</h3><span class="model-badge">ComfyUI 核心</span></div>
             <p>这些节点随 ComfyUI 核心提供，不应安装成第三方 custom node；缺失时更新所选 ComfyUI 核心并重启复检。</p>
             <div class="component-list">
-              ${h3CoreNodes.map((node) => `<div class="component-row ${node.available ? "found" : "missing"}"><span class="component-state">${node.available ? "✓" : "!"}</span><div><strong>${escapeHtml(node.label)}</strong><code>${escapeHtml(node.id)}</code></div></div>`).join("") || `<div class="component-row missing"><span class="component-state">!</span><div><strong>等待扫描核心节点</strong></div></div>`}
+              ${h3CoreNodes.map((node) => `<div class="component-row ${node.available ? "found" : "missing"}"><span class="component-state">${icon(node.available ? "circle-check" : "circle-alert")}</span><div><strong>${escapeHtml(node.label)}</strong><code>${escapeHtml(node.id)}</code></div></div>`).join("") || `<div class="component-row missing"><span class="component-state">${icon("circle-alert")}</span><div><strong>等待扫描核心节点</strong></div></div>`}
             </div>
             <span class="muted">最低参考提交 <code>${escapeHtml(environmentScan?.comfyCompatibility.h3MinimumRevision ?? "")}</code></span>
             ${comfyUpdateLog ? `<details class="node-log" open><summary>核心处理日志</summary><pre>${escapeHtml(comfyUpdateLog)}</pre></details>` : ""}
           </div>
           <div class="custom-node-actions">
-            <span class="model-availability ${h3CoreReady ? "available" : "missing"}">${h3CoreReady ? "✓ 已加载" : h3CoreKnown ? "核心缺失" : "尚未启动检测"}</span>
-            ${h3CoreReady ? "" : `<button class="primary" id="repair-h3-core" ${coreDependencyRepairing ? "disabled" : ""}>${coreDependencyRepairing ? "处理中…" : h3CoreKnown ? "一键补齐/更新" : "启动并检测"}</button>`}
+            <span class="model-availability ${h3CoreReady ? "available" : "missing"}">${h3CoreReady ? `${icon("circle-check")} 已加载` : h3CoreKnown ? `${icon("circle-alert")} 核心缺失` : `${icon("circle-help")} 尚未启动检测`}</span>
+            ${h3CoreReady ? "" : `<button class="primary button-with-icon" id="repair-h3-core" ${coreDependencyRepairing ? "disabled" : ""}>${icon(coreDependencyRepairing ? "refresh-cw" : "shield-check")}${coreDependencyRepairing ? "处理中…" : h3CoreKnown ? "一键补齐/更新" : "启动并检测"}</button>`}
           </div>
         </article>
         ${workflowDependencies.map((workflow) => `
@@ -1178,8 +1528,8 @@ function settingsPage(): string {
               ${workflowDependencyLogs[workflow.id] ? `<details class="node-log" open><summary>安装日志</summary><pre>${escapeHtml(workflowDependencyLogs[workflow.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${workflow.installed ? "available" : "missing"}">${workflow.installed ? "✓ 已安装" : "未安装"}</span>
-              <button class="primary" data-install-workflow="${escapeHtml(workflow.id)}" ${workflowDependencyInstalling ? "disabled" : ""}>${workflowDependencyInstalling === workflow.id ? "安装中…" : workflow.installed ? "重新安装" : "一键安装"}</button>
+              <span class="model-availability ${workflow.installed ? "available" : "missing"}">${workflow.installed ? `${icon("circle-check")} 已安装` : `${icon("circle-alert")} 未安装`}</span>
+              <button class="primary button-with-icon" data-install-workflow="${escapeHtml(workflow.id)}" ${workflowDependencyInstalling ? "disabled" : ""}>${icon(workflowDependencyInstalling === workflow.id ? "refresh-cw" : "download")}${workflowDependencyInstalling === workflow.id ? "安装中…" : workflow.installed ? "重新安装" : "一键安装"}</button>
             </div>
           </article>`).join("")}
         ${(environmentScan?.customNodes ?? []).map((node) => `
@@ -1192,8 +1542,8 @@ function settingsPage(): string {
               ${customNodeLogs[node.id] ? `<details class="node-log" open><summary>安装日志</summary><pre>${escapeHtml(customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${node.installed && !node.loadError ? "available" : "missing"}">${node.installed && !node.loadError ? "✓ 已加载" : node.loadError ? "加载失败" : "未安装"}</span>
-              ${node.installed && !node.loadError ? "" : `<button class="primary" data-install-node="${escapeHtml(node.id)}" ${customNodeInstalling ? "disabled" : ""}>${customNodeInstalling === node.id ? "处理中…" : node.installed ? "修复/更新" : "安装"}</button>`}
+              <span class="model-availability ${node.installed && !node.loadError ? "available" : "missing"}">${node.installed && !node.loadError ? `${icon("circle-check")} 已加载` : node.loadError ? `${icon("circle-alert")} 加载失败` : `${icon("circle-alert")} 未安装`}</span>
+              ${node.installed && !node.loadError ? "" : `<button class="primary button-with-icon" data-install-node="${escapeHtml(node.id)}" ${customNodeInstalling ? "disabled" : ""}>${icon(customNodeInstalling === node.id ? "refresh-cw" : "download")}${customNodeInstalling === node.id ? "处理中…" : node.installed ? "修复/更新" : "安装"}</button>`}
             </div>
           </article>`).join("") || `<div class="panel environment-empty">等待环境扫描结果</div>`}
       </div>
@@ -1205,7 +1555,7 @@ function settingsPage(): string {
       <section class="panel settings-section acceleration-overview ${attention?.ready ? "available" : "missing"}">
         <div class="section-heading">
           <div><h2>H3 推理加速</h2><span class="muted">为当前 ComfyUI 环境匹配 Python、PyTorch、CUDA 与 Attention 运行库</span></div>
-          <span class="model-availability ${attention?.ready ? "available" : "missing"}">${attention?.ready ? "✓ 已就绪" : attention?.supported ? "待安装/修复" : "环境不支持"}</span>
+          <span class="model-availability ${attention?.ready ? "available" : "missing"}">${attention?.ready ? `${icon("circle-check")} 已就绪` : attention?.supported ? `${icon("circle-alert")} 待安装/修复` : `${icon("circle-alert")} 环境不支持`}</span>
         </div>
         <div class="acceleration-control-row">
           <label class="acceleration-mode-field">H3 Attention 模式
@@ -1215,7 +1565,7 @@ function settingsPage(): string {
             </select>
           </label>
           <div class="acceleration-summary">
-            <span class="acceleration-summary-icon">${attention?.ready ? "✓" : "!"}</span>
+            <span class="acceleration-summary-icon">${icon(attention?.ready ? "circle-check" : "circle-alert")}</span>
             <div><strong>${escapeHtml(attention?.detail ?? "等待环境扫描")}</strong><span>兼容模式会自动移除 H3 工作流中的 SageAttention 节点。</span></div>
           </div>
         </div>
@@ -1226,7 +1576,7 @@ function settingsPage(): string {
           <article class="attention-runtime-card"><span class="runtime-label">Triton / KJNodes</span><strong class="runtime-value">${escapeHtml(attention?.tritonVersion || "未安装")}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? "KJNodes 模型级补丁可用" : attention?.kjNodesInstalled ? "KJNodes 需要更新" : "KJNodes 未安装"}</code></article>
         </div>
         <div class="acceleration-actions">
-          <button class="primary" id="install-attention-acceleration" ${attentionAccelerationInstalling || !attention?.supported ? "disabled" : ""}>${attentionAccelerationInstalling ? "正在补全环境…" : attention?.ready ? "重新安装/修复" : "一键安装并自检"}</button>
+          <button class="primary button-with-icon" id="install-attention-acceleration" ${attentionAccelerationInstalling || !attention?.supported ? "disabled" : ""}>${icon(attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${attentionAccelerationInstalling ? "正在补全环境…" : attention?.ready ? "重新安装/修复" : "一键安装并自检"}</button>
           <div><strong>安装过程会临时停止 ComfyUI</strong><span>环境补全后，若服务此前正在运行，程序会自动将它重启。</span></div>
         </div>
         ${attentionAccelerationLog ? `<details class="node-log" open><summary>环境安装日志</summary><pre id="attention-install-log">${escapeHtml(attentionAccelerationLog)}</pre></details>` : ""}
@@ -1244,18 +1594,18 @@ function settingsPage(): string {
   return `
     <section class="page-heading settings-heading">
       <div><div class="heading-line"><h1>设置</h1>${gpu?.ok ? `<span class="model-badge">${escapeHtml(gpu.detail.split(",").slice(0, 1).join(""))}</span>` : ""}</div><p>模型扫描、4090 运行预设和本地服务集中配置。</p></div>
-      <div class="button-row"><button class="secondary" id="scan-environment" ${environmentScanning ? "disabled" : ""}>${environmentScanning ? "扫描中…" : "重新扫描全部"}</button><button class="primary" id="save-settings">保存设置</button></div>
+      <div class="button-row"><button class="secondary button-with-icon" id="scan-environment" ${environmentScanning ? "disabled" : ""}>${icon(environmentScanning ? "refresh-cw" : "scan-search")}${environmentScanning ? "扫描中…" : "重新扫描全部"}</button><button class="primary button-with-icon" id="save-settings">${icon("save")}保存设置</button></div>
     </section>
     <div class="settings-layout">
       <nav class="settings-sidebar" aria-label="设置分类">
         ${([
-          ["system", "◫", "系统与路径"],
-          ["acceleration", "⚡", "推理加速"],
-          ["video", "▦", "视频模型"],
-          ["nodes", "◇", "节点与工作流"],
-          ["prompt", "✦", "提示词扩写"],
-          ["upscale", "↗", "分辨率提升"]
-        ] as const).map(([id, icon, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
+          ["system", "settings", "系统与路径"],
+          ["acceleration", "zap", "推理加速"],
+          ["video", "images", "视频模型"],
+          ["nodes", "workflow", "节点与工作流"],
+          ["prompt", "sparkles", "提示词扩写"],
+          ["upscale", "maximize-2", "分辨率提升"]
+        ] as const).map(([id, iconName, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
       </nav>
       <div class="settings-content">${activePanel}</div>
     </div>
@@ -1263,6 +1613,11 @@ function settingsPage(): string {
 }
 
 function render(): void {
+  const playback = captureHistoryPlayback();
+  historyMasonryResizeObserver?.disconnect();
+  historyMasonryResizeObserver = null;
+  historyTitleResizeObserver?.disconnect();
+  historyTitleResizeObserver = null;
   closeHistoryContextMenu();
   const content =
     page === "create" ? createPage() :
@@ -1271,15 +1626,20 @@ function render(): void {
     page === "history-detail" ? historyDetailPage() :
     settingsPage();
   appElement.innerHTML = shell(content);
+  renderIcons(appElement);
   bindShell();
   bindUpscaleDialog();
   if (page === "create") {
     bindCreate();
     void imagePreview(state.draft.startImagePath, "start-preview");
     void imagePreview(state.draft.endImagePath, "end-preview");
-  } else if (page === "queue") bindQueue();
-  else if (page === "history" || page === "history-detail") bindHistory();
+  } else if (page === "queue") {
+    bindQueue();
+    void loadQueueInputPreviews();
+  }
+  else if (page === "history" || page === "history-detail") bindHistory(playback);
   else if (page === "settings") bindSettings();
+  restoreHistoryPlayback(playback);
 }
 
 function showMessage(message: string): void {
@@ -1390,17 +1750,18 @@ function openHistoryContextMenu(
       <strong>${escapeHtml(asset.title)}</strong>
       <span>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</span>
     </div>
-    <button role="menuitem" data-history-action="detail"><span class="context-icon">↗</span><span><strong>查看详情</strong><small>播放视频并查看生成参数</small></span><kbd>Enter</kbd></button>
-    <button role="menuitem" data-history-action="edit"><span class="context-icon">✦</span><span><strong>使用此参数再创建</strong><small>带入提示词、模型和 Seed</small></span></button>
+    <button role="menuitem" data-history-action="detail"><span class="context-icon">${icon("external-link")}</span><span><strong>查看详情</strong><small>播放视频并查看生成参数</small></span><kbd>Enter</kbd></button>
+    <button role="menuitem" data-history-action="edit"><span class="context-icon">${icon("sparkles")}</span><span><strong>使用此参数再创建</strong><small>带入提示词、模型和 Seed</small></span></button>
     <div class="history-context-separator" role="separator"></div>
-    <button role="menuitem" data-history-action="copy-path" ${absolutePath ? "" : "disabled"}><span class="context-icon">⧉</span><span><strong>复制文件路径</strong><small>${absolutePath ? "复制完整视频文件路径" : "当前记录没有可用文件"}</small></span></button>
-    <button role="menuitem" data-history-action="show-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">▱</span><span><strong>打开所在目录</strong><small>在 Explorer 中定位视频</small></span></button>
-    <button role="menuitem" data-history-action="copy-prompt"><span class="context-icon">¶</span><span><strong>复制提示词</strong><small>复制实际送入模型的文本</small></span></button>
+    <button role="menuitem" data-history-action="copy-path" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>复制文件路径</strong><small>${absolutePath ? "复制完整视频文件路径" : "当前记录没有可用文件"}</small></span></button>
+    <button role="menuitem" data-history-action="show-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("folder-open")}</span><span><strong>打开所在目录</strong><small>在 Explorer 中定位视频</small></span></button>
+    <button role="menuitem" data-history-action="copy-prompt"><span class="context-icon">${icon("file-text")}</span><span><strong>复制提示词</strong><small>复制实际送入模型的文本</small></span></button>
     <div class="history-context-separator" role="separator"></div>
-    <button class="danger" role="menuitem" data-history-action="delete"><span class="context-icon">×</span><span><strong>删除视频和记录</strong><small>操作前仍会要求确认</small></span></button>`;
+    <button class="danger" role="menuitem" data-history-action="delete"><span class="context-icon">${icon("trash-2")}</span><span><strong>删除视频和记录</strong><small>操作前仍会要求确认</small></span></button>`;
   menu.style.left = `${clientX}px`;
   menu.style.top = `${clientY}px`;
   document.body.append(menu);
+  renderIcons(menu);
   historyContextMenuElement = menu;
   const events = new AbortController();
   historyContextMenuEvents = events;
@@ -1594,6 +1955,58 @@ function patchDraft(patch: Partial<Draft>): void {
   draftRevision += 1;
   draftDirty = true;
   scheduleDraftSave();
+}
+
+async function handleClipboardPaste(event: ClipboardEvent): Promise<void> {
+  if (page !== "create" || !state || state.draft.inputMode !== "image") return;
+  const activeElement = document.activeElement;
+  if (
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    activeElement instanceof HTMLSelectElement ||
+    (activeElement instanceof HTMLElement && activeElement.isContentEditable)
+  ) {
+    return;
+  }
+  const item = [...(event.clipboardData?.items ?? [])].find(
+    (candidate) => candidate.kind === "file" && candidate.type.startsWith("image/")
+  );
+  const file = item?.getAsFile();
+  if (!file) return;
+  const supportedTypes = new Set([
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/bmp"
+  ]);
+  if (!supportedTypes.has(file.type.toLowerCase())) {
+    showMessage("剪贴板图片仅支持 PNG、JPG、WEBP 或 BMP");
+    return;
+  }
+  event.preventDefault();
+  const focusedPasteTarget =
+    activeElement instanceof HTMLElement
+      ? activeElement.closest<HTMLElement>("[data-paste-frame]")
+      : null;
+  const field = focusedPasteTarget?.dataset.pasteFrame === "end"
+    ? "endImagePath"
+    : "startImagePath";
+  try {
+    const filename = await window.studio.saveClipboardImage(
+      await file.arrayBuffer(),
+      file.type
+    );
+    patchDraft({
+      [field]: filename,
+      ...(field === "startImagePath"
+        ? { sourceWidth: 0, sourceHeight: 0 }
+        : {})
+    });
+    render();
+    showMessage(field === "startImagePath" ? "已粘贴为首帧图片。" : "已粘贴为尾帧图片。");
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : "无法读取剪贴板图片");
+  }
 }
 
 function bindFrameDrop(
@@ -2182,7 +2595,22 @@ function bindUpscaleDialog(): void {
   });
 }
 
-function bindHistory(): void {
+function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
+  bindHistoryMasonry();
+  bindHistoryTitleMarquees();
+  const detailVideo = document.querySelector<HTMLVideoElement>('.history-player video');
+  if (detailVideo && !playback) {
+    const startPlayback = () => {
+      detailVideo.loop = true;
+      void detailVideo.play().catch(() => {
+        if (detailVideo.muted) return;
+        detailVideo.muted = true;
+        void detailVideo.play().catch(() => undefined);
+      });
+    };
+    if (detailVideo.readyState >= 2) startPlayback();
+    else detailVideo.addEventListener('canplay', startPlayback, { once: true });
+  }
   document.querySelector("#history-cover-mode")?.addEventListener("change", (event) => {
     historyCoverMode = (event.currentTarget as HTMLSelectElement).value as typeof historyCoverMode;
     render();
@@ -2193,14 +2621,71 @@ function bindHistory(): void {
       render();
     });
   });
+  document.querySelectorAll<HTMLButtonElement>("[data-history-navigation]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const currentIndex = state.history.findIndex(
+        (item) => item.id === selectedHistoryAssetId
+      );
+      const nextIndex = currentIndex + Number(button.dataset.historyNavigation);
+      const nextAsset = state.history[nextIndex];
+      if (!nextAsset) return;
+      openHistoryDetail(nextAsset.id);
+    });
+  });
   document.querySelectorAll<HTMLElement>("[data-history-media]").forEach((media) => {
     const video = media.querySelector<HTMLVideoElement>("video");
     if (!video) return;
+    const progress = media.querySelector<HTMLButtonElement>(".history-preview-progress");
+    const fill = progress?.querySelector<HTMLElement>("i");
+    const fallbackDuration = Number(media.dataset.previewDuration) || 0;
+    let pendingSeekRatio: number | null = null;
+    let seeking = false;
+    let resumeAfterSeek = false;
     const coverTime = Number(media.dataset.coverTime) || 0;
+    const previewDuration = () =>
+      Number.isFinite(video.duration) && video.duration > 0
+        ? video.duration
+        : fallbackDuration;
+    const updatePreviewProgress = () => {
+      if (!progress || !fill) return;
+      const duration = previewDuration();
+      if (!duration) return;
+      const ratio = pendingSeekRatio ?? Math.min(1, Math.max(0, video.currentTime / duration));
+      fill.style.width = `${ratio * 100}%`;
+      progress.setAttribute("aria-valuenow", String(Math.round(ratio * 100)));
+      progress.setAttribute(
+        "aria-valuetext",
+        `${formatVideoDuration(ratio * duration)} / ${formatVideoDuration(duration)}`
+      );
+    };
+    const seekToRatio = (value: number) => {
+      const ratio = Math.min(1, Math.max(0, value));
+      const duration = previewDuration();
+      if (!duration) return;
+      if (video.readyState >= 1 && Number.isFinite(video.duration) && video.duration > 0) {
+        try {
+          video.currentTime = ratio * video.duration;
+          pendingSeekRatio = null;
+        } catch {
+          pendingSeekRatio = ratio;
+        }
+      } else {
+        pendingSeekRatio = ratio;
+      }
+      updatePreviewProgress();
+    };
+    const seekToPointer = (clientX: number) => {
+      if (!progress) return;
+      const bounds = progress.getBoundingClientRect();
+      if (bounds.width <= 0) return;
+      seekToRatio((clientX - bounds.left) / bounds.width);
+    };
     const seekCover = () => {
       if (video.readyState < 1) return;
       try {
         video.currentTime = Math.min(coverTime, Math.max(0, video.duration - 0.05));
+        pendingSeekRatio = null;
+        updatePreviewProgress();
       } catch {
         // Some codecs do not expose a seekable range until more data is buffered.
       }
@@ -2212,21 +2697,66 @@ function bindHistory(): void {
           `${video.videoWidth} / ${video.videoHeight}`
         );
       }
-      seekCover();
+      if (pendingSeekRatio == null) seekCover();
+      else seekToRatio(pendingSeekRatio);
     };
     if (video.readyState >= 1) prepareVideo();
     else video.addEventListener("loadedmetadata", prepareVideo, { once: true });
     video.addEventListener("timeupdate", () => {
-      const fill = media.querySelector<HTMLElement>(".history-preview-progress i");
-      if (fill && Number.isFinite(video.duration) && video.duration > 0) {
-        fill.style.width = `${Math.min(100, video.currentTime / video.duration * 100)}%`;
+      pendingSeekRatio = null;
+      updatePreviewProgress();
+    });
+    progress?.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      seeking = true;
+      resumeAfterSeek = !video.paused;
+      video.pause();
+      media.classList.add("playing");
+      progress.setPointerCapture(event.pointerId);
+      seekToPointer(event.clientX);
+    });
+    progress?.addEventListener("pointermove", (event) => {
+      if (!seeking) return;
+      event.preventDefault();
+      event.stopPropagation();
+      seekToPointer(event.clientX);
+    });
+    const finishSeeking = (event: PointerEvent, commit: boolean) => {
+      if (!seeking) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (commit) seekToPointer(event.clientX);
+      seeking = false;
+      if (progress?.hasPointerCapture(event.pointerId)) {
+        progress.releasePointerCapture(event.pointerId);
       }
+      if (resumeAfterSeek) void video.play().catch(() => undefined);
+      resumeAfterSeek = false;
+    };
+    progress?.addEventListener("pointerup", (event) => finishSeeking(event, true));
+    progress?.addEventListener("pointercancel", (event) => finishSeeking(event, false));
+    progress?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.detail > 0) seekToPointer(event.clientX);
+    });
+    progress?.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      event.stopPropagation();
+      const current = pendingSeekRatio ?? (previewDuration() > 0
+        ? video.currentTime / previewDuration()
+        : 0);
+      seekToRatio(current + (event.key === "ArrowRight" ? 0.05 : -0.05));
     });
     media.addEventListener("mouseenter", () => {
       media.classList.add("playing");
       void video.play().catch(() => undefined);
     });
     media.addEventListener("mouseleave", () => {
+      if (seeking) return;
       media.classList.remove("playing");
       video.pause();
       seekCover();
@@ -2761,6 +3291,8 @@ function bindSettings(): void {
 }
 
 window.studio.onStateChanged((nextState) => {
+  const previousHistory = state?.history;
+  const historyChanged = historyStateChanged(previousHistory, nextState.history);
   const localDraft = state?.draft;
   state = {
     ...nextState,
@@ -2775,6 +3307,7 @@ window.studio.onStateChanged((nextState) => {
     activeElement instanceof HTMLTextAreaElement ||
     activeElement instanceof HTMLSelectElement;
   if (isEditing || draftSaveInFlight > 0) return;
+  if ((page === "history" || page === "history-detail") && !historyChanged) return;
   render();
 });
 
@@ -2788,6 +3321,10 @@ window.studio.onTaskPreview((preview) => {
     image.src = preview.dataUrl;
     image.style.display = "";
   }
+  document.querySelector<HTMLVideoElement>("[data-queue-input-video]")?.style.setProperty(
+    "display",
+    "none"
+  );
   if (empty) empty.style.display = "none";
 });
 

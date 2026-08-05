@@ -40,9 +40,15 @@ describe("upscale dimensions and filenames", () => {
   });
 
   it("replaces an existing quality suffix and avoids collisions", () => {
-    expect(createUpscaleFilename("clip-720p.mp4", 2160)).toBe("clip-4K.mp4");
-    expect(uniqueUpscaleFilename("clip.mp4", 1080, ["clip-1080p.mp4"]))
-      .toBe("clip-1080p-02.mp4");
+    expect(createUpscaleFilename("clip-720p.mp4", 2160)).toBe("clip-4K-v01.mp4");
+    expect(uniqueUpscaleFilename("clip.mp4", 1080, ["clip-1080p-v01.mp4"]))
+      .toBe("clip-1080p-v02.mp4");
+  });
+
+  it("replaces the resolution in a metadata-based source name", () => {
+    expect(
+      createUpscaleFilename("SUL2-480p-5s-20260724-143205-v01.mp4", 1080)
+    ).toBe("SUL2-1080p-5s-20260724-143205-v01.mp4");
   });
 });
 

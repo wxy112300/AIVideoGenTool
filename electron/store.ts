@@ -188,6 +188,10 @@ export class JsonStore {
         history: (saved.history ?? []).map(migrateHistoryAsset)
       };
       let needsPersist = saved.queueRunning === true;
+      if (saved.settings?.defaultVideoModel === "wan22_5b") {
+        this.state.settings.defaultVideoModel = "minimax_h3_fl2va";
+        needsPersist = true;
+      }
       if (
         this.state.settings.modelDirectory.toLowerCase() ===
         "c:\\users\\alice\\documents\\comfyui\\models"

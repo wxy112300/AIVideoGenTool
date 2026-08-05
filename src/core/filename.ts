@@ -1,4 +1,5 @@
 const modelCodes: Record<string, string> = {
+  minimax_h3_fl2va: "H3",
   sulphur2: "SUL2",
   wan22_5b: "WAN22-5B",
   hunyuan15: "HUN15",
@@ -29,16 +30,40 @@ export function timestamp(date = new Date()): string {
   );
 }
 
+function modelCode(modelId: string): string {
+  return (
+    modelCodes[modelId] ??
+    (modelId.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
+      "VIDEO")
+  );
+}
+
+function resolutionTag(value: number): string {
+  return Number.isFinite(value) && value > 0 ? `${Math.round(value)}p` : "AUTO";
+}
+
+function durationTag(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0s";
+  const rounded = Math.round(value * 10) / 10;
+  return `${String(rounded).replace(/\.0$/, "")}s`;
+}
+
+function versionTag(version: number): string {
+  return `v${String(version).padStart(2, "0")}`;
+}
+
 export function createOutputFilename(
   modelId: string,
-  prompt: string,
+  resolution: number,
+  duration: number,
   existingNames: Iterable<string>,
   date = new Date()
 ): string {
-  const base = `${modelCodes[modelId] ?? modelId.toUpperCase()}-${compactPrompt(prompt)}-${timestamp(date)}`;
-  const names = new Set(existingNames);
-  if (!names.has(`${base}.mp4`)) return `${base}.mp4`;
-  let suffix = 2;
-  while (names.has(`${base}-${String(suffix).padStart(2, "0")}.mp4`)) suffix += 1;
-  return `${base}-${String(suffix).padStart(2, "0")}.mp4`;
+  const base = `${modelCode(modelId)}-${resolutionTag(resolution)}-${durationTag(duration)}-${timestamp(date)}`;
+  const names = new Set([...existingNames].map((name) => name.toLowerCase()));
+  let version = 1;
+  while (names.has(`${base}-${versionTag(version)}.mp4`.toLowerCase())) {
+    version += 1;
+  }
+  return `${base}-${versionTag(version)}.mp4`;
 }

@@ -429,6 +429,7 @@ export interface AppApi {
   pickImage(): Promise<string | null>;
   pickVideo(): Promise<string | null>;
   getDroppedFilePath(file: File): string;
+  saveClipboardImage(data: ArrayBuffer, mimeType: string): Promise<string>;
   pickWorkflow(): Promise<string | null>;
   inspectWorkflow(path: string): Promise<WorkflowCapabilities>;
   getBundledWorkflow(

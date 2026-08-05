@@ -2807,6 +2807,22 @@ export async function installCustomNode(
         }
       );
       installLog.push(`${pipResult.stdout}${pipResult.stderr}`.trim() || "pip：依赖已满足");
+      if (definition.id === "seedvr2") {
+        const peftResult = await execFileAsync(
+          python,
+          ["-m", "pip", "install", "--upgrade", "peft==0.20.0"],
+          {
+            encoding: "utf8",
+            timeout: 600_000,
+            windowsHide: true,
+            env: commandEnvironment
+          }
+        );
+        installLog.push(
+          `${peftResult.stdout}${peftResult.stderr}`.trim() ||
+          "SeedVR2：PEFT 兼容版本已确认"
+        );
+      }
     } else {
       installLog.push("未发现 requirements.txt，无需安装额外 Python 依赖");
     }

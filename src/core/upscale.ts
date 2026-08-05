@@ -27,7 +27,13 @@ export function createUpscaleFilename(
   const stem = sourceFilename
     .replace(/\.(mp4|webm|mov|m4v|mkv)$/i, "")
     .replace(/-(?:720p|1080p|1440p|4K)$/i, "");
-  return `${stem}-${suffix}.mp4`;
+  const metadata = stem.match(
+    /^(.*?)-(?:\d+p|4K)-(\d+(?:\.\d+)?s)-(\d{8}-\d{6})(?:-v\d+)?$/i
+  );
+  const base = metadata
+    ? `${metadata[1]}-${suffix}-${metadata[2]}-${metadata[3]}`
+    : `${stem}-${suffix}`;
+  return `${base}-v01.mp4`;
 }
 
 export function uniqueUpscaleFilename(
@@ -40,8 +46,8 @@ export function uniqueUpscaleFilename(
     return base;
   }
   const stem = base.replace(/\.mp4$/i, "");
-  for (let suffix = 2; suffix < 1000; suffix += 1) {
-    const candidate = `${stem}-${String(suffix).padStart(2, "0")}.mp4`;
+  for (let version = 2; version < 1000; version += 1) {
+    const candidate = `${stem.replace(/-v\d+$/i, "")}-v${String(version).padStart(2, "0")}.mp4`;
     if (!existingNames.some((name) => name.toLowerCase() === candidate.toLowerCase())) {
       return candidate;
     }

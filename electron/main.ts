@@ -137,6 +137,14 @@ function registerMediaProtocol(): void {
           Number.isInteger(fileIndex) && fileIndex >= 0
             ? version?.files[fileIndex]?.absolutePath
             : undefined;
+      } else if (url.hostname === "queue") {
+        const taskId = decodeURIComponent(url.pathname.split("/").filter(Boolean)[0] ?? "");
+        const task = store.get().queue.find((item) => item.id === taskId);
+        filename = task?.taskType === "extension"
+          ? task.sourceVideoPath
+          : task?.taskType === "upscale"
+            ? task.sourceFilePath
+            : undefined;
       } else {
         return new Response("Not found", { status: 404 });
       }
@@ -553,7 +561,7 @@ function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask 
     status: "waiting",
     createdAt: now,
     updatedAt: now,
-    outputFilename: createOutputFilename(draft.modelId, prompt, names),
+    outputFilename: createOutputFilename(draft.modelId, draft.resolution, draft.duration, names),
     prompt,
     promptVersion: draft.activePromptVersion + 1,
     startImagePath: draft.startImagePath,
@@ -593,7 +601,10 @@ function extensionTaskFromDraft(
     updatedAt: now,
     outputFilename: createOutputFilename(
       draft.modelId,
-      prompt,
+      draft.modelId === "minimax_h3_fl2va"
+        ? draft.resolution
+        : settings.ltxExtensionResolution,
+      draft.duration,
       outputNames(state)
     ),
     prompt,
@@ -1079,6 +1090,33 @@ function registerIpc(): void {
     const content = await fs.readFile(filename);
     return `data:${mime};base64,${content.toString("base64")}`;
   });
+  ipcMain.handle(
+    "file:save-clipboard-image",
+    async (_event, data: ArrayBuffer, mimeType: string) => {
+      const extensions: Record<string, string> = {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/webp": ".webp",
+        "image/bmp": ".bmp"
+      };
+      const extension = extensions[mimeType.toLowerCase()];
+      if (!extension) throw new Error("剪贴板内容不是支持的图片格式");
+      if (!(data instanceof ArrayBuffer) || data.byteLength === 0) {
+        throw new Error("剪贴板图片为空");
+      }
+      if (data.byteLength > 50 * 1024 * 1024) {
+        throw new Error("剪贴板图片不能超过 50 MB");
+      }
+      const directory = path.join(app.getPath("userData"), "clipboard-inputs");
+      await fs.mkdir(directory, { recursive: true });
+      const filename = path.join(
+        directory,
+        `clipboard-${Date.now()}-${crypto.randomUUID()}${extension}`
+      );
+      await fs.writeFile(filename, new Uint8Array(data));
+      return filename;
+    }
+  );
   ipcMain.handle("file:show-in-folder", async (_event, filename: string) => {
     if (!filename || !(await fs.stat(filename).catch(() => null))) return false;
     shell.showItemInFolder(filename);
@@ -1296,20 +1334,21 @@ function registerIpc(): void {
     if (!task) return store.get();
     if (task.status === "running") {
       const settings = store.get().settings;
+      const worker = queueWorker;
       const next = await store.update((state) => {
         state.queueRunning = false;
       });
       sendState(next);
       activeController?.abort(new Error("用户取消任务"));
-      await interrupt(settings).catch(() => undefined);
-      const memoryFreed = await freeMemory(settings).then(
-        () => true,
-        () => false
-      );
-      if (!settings.safeCancel || !memoryFreed) {
-        void restartLocalService("comfy", settings);
+      if (settings.safeCancel) {
+        await interrupt(settings).catch(() => undefined);
       }
-      return next;
+      await updateTask(taskId, {
+        stage: "任务已取消，正在重启 ComfyUI 以释放显存"
+      });
+      await restartLocalService("comfy", settings);
+      await waitWithTimeout(worker, 15_000);
+      return store.get();
     }
     return updateTask(taskId, {
       status: "cancelled",
@@ -1343,7 +1382,7 @@ function registerIpc(): void {
         ...state.history.map((asset) => asset.outputFilename)
       ];
       const outputFilename = source.taskType === "generation" || source.taskType === "extension"
-        ? createOutputFilename(source.modelId, source.prompt, names)
+        ? createOutputFilename(source.modelId, source.resolution, source.duration, names)
         : uniqueUpscaleFilename(source.sourceFilename, source.targetHeight, names);
       state.queue.push({
         ...source,

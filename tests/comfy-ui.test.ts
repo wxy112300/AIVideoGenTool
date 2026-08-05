@@ -3,8 +3,22 @@ import {
   executedPreviewDataUrl,
   historyFailure,
   historyEntryClientId,
-  historyEntryHasUnfinishedBatch
+  historyEntryHasUnfinishedBatch,
+  safeComfyUploadFilename
 } from "../electron/services/comfy-ui.js";
+
+describe("ComfyUI input filenames", () => {
+  it("replaces unsafe names with an ASCII upload name and preserves extension", () => {
+    expect(
+      safeComfyUploadFilename("D:\\输入 @%\\乱码 图片.PNG", "abc-123")
+    ).toBe("studio-input-abc-123.png");
+  });
+
+  it("uses a safe fallback extension when the source has no usable extension", () => {
+    expect(safeComfyUploadFilename("D:\\输入 @%\\frame", "abc"))
+      .toBe("studio-input-abc.bin");
+  });
+});
 
 describe("ComfyUI result preview", () => {
   it("fetches an image emitted by a PreviewImage node", async () => {

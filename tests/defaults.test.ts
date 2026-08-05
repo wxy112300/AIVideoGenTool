@@ -14,10 +14,12 @@ describe("draft defaults", () => {
     expect(draft.fps).toBe(24);
     expect(draft.frameInterpolation).toBe("off");
     expect(draft.inputMode).toBe("image");
+    expect(draft.modelId).toBe("minimax_h3_fl2va");
     expect(draft.sourceVideoPath).toBe("");
     expect(draft.trimStartSeconds).toBe(0);
     expect(draft.trimEndSeconds).toBe(0);
     expect(createDefaultSettings().vramReserveGb).toBe(1);
+    expect(createDefaultSettings().defaultVideoModel).toBe("minimax_h3_fl2va");
     expect(createDefaultSettings().ltxExtensionModelProfile).toBe("q3_k_m");
     expect(createDefaultSettings().ltxExtensionResolution).toBe(360);
     expect(createDefaultSettings().ltxExtensionFrames).toBe(49);
