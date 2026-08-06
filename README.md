@@ -7,6 +7,50 @@ Local Video Studio 把参考图、提示词、视频模型、任务队列和生�
 > [!IMPORTANT]
 > 项目仍处于早期开发阶段，目前以 Windows、NVIDIA GPU 和本地 ComfyUI 为主要运行环境。模型权重、ComfyUI 和第三方节点不会包含在仓库中。
 
+## 立即启动
+
+### 最简单的方式：Windows
+
+1. 安装 [Node.js 22 LTS 或更高版本](https://nodejs.org/)。
+2. 安装并启动本地 [ComfyUI](https://github.com/Comfy-Org/ComfyUI)。
+3. 克隆仓库后，双击根目录的 `start-ui.bat`。
+
+```powershell
+git clone https://github.com/wxy112300/AIVideoGenTool.git
+cd AIVideoGenTool
+```
+
+`start-ui.bat` 会自动检查依赖、安装缺失的 Electron runtime、执行构建并启动桌面应用。首次打开后进入“设置”，选择 ComfyUI 实例，确认服务地址和模型目录，再回到“创建”页面。
+
+如果 npm 下载需要代理，可以双击 `start-ui-proxy.bat`，或在命令行传入代理地址：
+
+```bat
+start-ui-proxy.bat http://127.0.0.1:7890
+```
+
+### 命令行启动
+
+```powershell
+npm.cmd ci
+npm.cmd run build
+npm.cmd start
+```
+
+开发模式会同时启动 Vite、Electron TypeScript watch 和桌面窗口：
+
+```powershell
+npm.cmd ci
+npm.cmd run dev
+```
+
+### 启动前检查
+
+- Windows 10/11
+- NVIDIA GPU，推荐 24GB 级显存和 64GB 系统内存运行 H3
+- 本地 ComfyUI；应用默认连接 `http://127.0.0.1:8188`
+- FFmpeg（视频续写、精确裁帧和部分媒体处理需要）
+- 模型权重和第三方节点不会随仓库下载，需要在应用“设置”中按扫描结果补齐
+
 ## 主要功能
 
 - **统一创作界面**：拖入首帧或首尾帧，设置提示词、模型、时长、分辨率、帧率和随机种子。
@@ -86,64 +130,16 @@ ComfyUI/models/vae/
 
 Qwen3.5 4B 是质量和显存的平衡主力，Qwen3.5 2B 文件约 4.55GB，适合 12GB 显存或快速迭代，但复杂动作分析和提示词细节能力会低于 4B。两者都由 ComfyUI 原生 `CLIPLoader`、`TextGenerate`、`LoadImage` 和 `ImageBatch` 加载，不需要安装 ComfyUI-GGUF 或其它第三方提示词节点；应用的“节点与工作流依赖”页会检查这些核心节点。之前下载的 GGUF/mmproj、Qwen3.5 9B 或 Qwen3-VL 8B 文件都不是当前配置的必需项。关闭 LM Studio 后，应用会按需启动本地 ComfyUI，执行提示词扩写并把结果保存为新的提示词版本；开始视频任务或退出应用时会释放提示词模型。
 
-R2V 当前在应用内支持混合媒体 Slot：最多 9 张参考图和 3 段参考视频，总数不超过 12 个。每个 Slot 可标注人物、场景、风格、动作、镜头等作用，并在提示词中引用 `<Picture N>` 或 `<Video N>`。参考视频会同时送入画面帧和视频自身音轨；独立音频 Slot 尚未接入应用界面。
+R2V 当前在应用内支持混合媒体 Slot：最多 9 张参考图和 3 段参考视频，总数不超过 12 个。每个 Slot 可标注人物、场景、风格、动作、镜头等作用；提示词会按官方语义区分可复用内容的 `<Subject N>`、具体帧/构图锚点 `<Picture N>` 和参考视频 `<Video N>`。参考视频会同时送入画面帧和视频自身音轨；独立音频 Slot 尚未接入应用界面。
 
 ### MiniMax H3 提示词助手
 
 创建页的 H3 提示词助手包含两种方式：
 
-- **结构化模板**：快速生成 I2VA、FL2VA 或 R2V 的官方字段结构。
+- **结构化模板**：快速生成 T2VA、I2VA、FL2VA、L2VA 或 R2V 的官方字段结构。
 - **结构化构建器**：把镜头运动拆成类型、幅度和速度，并单独填写主体初始状态、连续性锁、身体/视线锁、动作时间线、景别变化、同步声音和最终状态；对白、环境声、背景音乐和屏幕文字位于可选高级字段中。
 
 构建器生成的内容会作为新的提示词版本保存，不会覆盖手写版本。快捷插入还提供参考图连续性、动作起因、镜头路径限制、空间回声、对白和屏幕文字句式。H3 检查器会提示缺少首镜头声明、参考图对齐字段、对白说话人 ID 和后续镜头时间戳等结构问题。
-
-## 快速开始
-
-### 运行要求
-
-- Windows 10 或 Windows 11
-- [Node.js](https://nodejs.org/) 22 LTS 或更高版本
-- 一个可用的本地 [ComfyUI](https://github.com/Comfy-Org/ComfyUI) 安装
-- FFmpeg（视频续写、精确裁帧和部分媒体处理需要）
-- 推荐使用 NVIDIA GPU；大型视频模型通常需要较大的显存和系统内存
-
-### 1. 获取代码
-
-```powershell
-git clone https://github.com/wxy112300/AIVideoGenTool.git
-cd AIVideoGenTool
-```
-
-### 2. 启动应用
-
-双击 `start-ui.bat`。首次启动会检查 npm 直接依赖；如果 `lucide` 或其他依赖缺失，会自动执行 `npm ci` 修复，然后构建并打开桌面应用。
-
-也可以在终端中运行：
-
-```powershell
-npm.cmd ci
-npm.cmd run dev
-```
-
-如果首次安装依赖时需要代理，可以双击 `start-ui-proxy.bat`，或传入代理地址：
-
-```bat
-start-ui-proxy.bat http://127.0.0.1:7890
-```
-
-该代理只作用于本次启动及其子进程，不会修改 Windows 的全局代理设置，本地服务地址仍然直连。
-
-### 3. 配置 ComfyUI
-
-首次打开后进入“设置”：
-
-1. 扫描并选择要使用的 ComfyUI 安装；也可以手动选择目录。
-2. 确认服务地址，默认是 `http://127.0.0.1:8188`。
-3. 启动或连接 ComfyUI，然后重新扫描核心节点、自定义节点和模型。
-4. 根据缺失项旁的说明下载权重，或使用可用的一键安装/修复操作。
-5. 确认输出目录后，回到“创建”页面提交第一个任务。
-
-应用支持普通源码安装和 Comfy Desktop。发现多个实例时不会静默切换，实际扫描、启动和更新均以设置中选中的目录为准。
 
 ## 数据与隐私
 
@@ -212,4 +208,4 @@ prototypes/  早期界面与交互原型
 
 ## 许可证
 
-仓库目前尚未添加开源许可证。在 `LICENSE` 文件明确之前，代码公开可见不代表已授权复制、修改或再分发。正式公开发布前，请由项目维护者选择并添加合适的许可证。
+本项目使用 [MIT License](LICENSE)。模型权重、ComfyUI、第三方节点和各自的模型许可证不包含在本项目许可证授权范围内，请分别遵守其上游许可条款。
