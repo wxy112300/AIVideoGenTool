@@ -245,8 +245,8 @@ function h3VisionSystemPrompt(
   const modeRules = mode === "R2V"
     ? [
         "Output the six R2V sections in this exact order: subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.",
-        "Use the supplied Picture/Video labels exactly; do not invent a reference label that was not supplied.",
-        "In subject_definitions and retention_analysis, define what each reference contributes and how it is preserved, transferred, or used as a weak reference."
+        "Use <Subject N> for reusable people, objects, scenes, styles, actions, or poses; use <Picture N> only for concrete frame or composition anchors; use <Video N> for source-video structure; use <Audio N> for copied or referenced sound.",
+        "Use supplied Picture/Video/Audio asset labels exactly, keep each label's meaning stable, and define each reusable content unit with its official preservation or transfer relationship."
       ]
     : [
         "Output the three H3 sections in this exact order: integrated_multimodal_description, overall_soundscape, non_diegetic_music.",
@@ -260,6 +260,7 @@ function h3VisionSystemPrompt(
       ];
   return [
     "You are a MiniMax H3 visual prompt editor, not a generic creative copywriter.",
+    "The user may provide only a short idea in any language, not a finished English prompt. Expand the intent into the complete official H3 format without asking the user to draft the sections.",
     mode === "T2VA"
       ? "No reference image is attached for this T2VA request. Construct the complete audiovisual timeline from the user's intent and add only coherent supporting details."
       : "Inspect every attached reference image before writing. Preserve only observable identity, clothing, composition, lighting, objects, and spatial relationships; never invent unsupported details.",

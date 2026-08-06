@@ -116,16 +116,30 @@ export function checkH3Prompt(
 
   if (mode === "R2V") {
     const hasImageReference = options.hasImageReference ?? true;
-    if (hasImageReference && !prompt.includes("<Picture 1>")) {
+    if (hasImageReference && !/<(?:Subject|Picture)\s+1>/iu.test(prompt)) {
       items.push({
         level: "warning",
-        message: "R2V 至少需要在提示词中引用 <Picture 1>"
+        message: "R2V 至少需要在提示词中定义或引用 <Subject 1> 或 <Picture 1>"
       });
     }
     if (options.hasVideoReference && !prompt.includes("<Video 1>")) {
       items.push({
         level: "warning",
         message: "当前包含参考视频，建议在提示词中明确引用 <Video 1> 并说明它的作用。"
+      });
+    }
+    const summary = prompt.match(/summary:\s*([\s\S]*?)(?=\n\s*retention_analysis:|$)/iu)?.[1] ?? "";
+    if (!/^\s*\[[^\]]+\]/u.test(summary)) {
+      items.push({
+        level: "warning",
+        message: "R2V summary 应以 [reference generation] 等官方任务类型前缀开头"
+      });
+    }
+    const retention = prompt.match(/retention_analysis:\s*([\s\S]*?)(?=\n\s*detailed_description:|$)/iu)?.[1] ?? "";
+    if (!/(?:fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy|reference)/iu.test(retention)) {
+      items.push({
+        level: "warning",
+        message: "R2V retention_analysis 应使用官方保留关系词"
       });
     }
   } else if (mode === "T2VA") {

@@ -131,11 +131,11 @@ describe("MiniMax H3 prompt checks", () => {
   it("accepts a video-only R2V reference set without requiring Picture 1", () => {
     const result = checkH3Prompt([
       "subject_definitions:",
-      "<Video 1> is the motion reference.",
+      "<Subject 1> is reusable motion content derived from <Video 1>.",
       "summary:",
-      "Use the reference video for movement.",
+      "[reference generation] Use the reference video for movement.",
       "retention_analysis:",
-      "Transfer the motion from <Video 1>.",
+      "<Subject 1>: attribute_transfer - transfer the motion from <Video 1>.",
       "detailed_description:",
       "[Shot 1] The subject follows the reference motion.",
       "overall_soundscape: Natural ambient sound.",

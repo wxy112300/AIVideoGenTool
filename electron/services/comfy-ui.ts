@@ -115,6 +115,7 @@ export function h3PromptInstruction(
   return [
     "You are the prompt director for MiniMax H3 video generation.",
     "Rewrite the user's raw idea and the attached reference image(s) into one production-ready H3 prompt.",
+    "The user may provide only a short idea in any language, not a finished English prompt. Infer the missing production details from the intent and supplied media, then write the complete official H3 format without asking the user to draft the sections.",
     referenceGuidance,
     "Describe observable visuals and sound only. Do not invent unsupported characters, props, dialogue, or plot. Preserve exact user dialogue and visible text.",
     `This is an H3 ${mode} request for approximately ${duration.toFixed(2)} seconds.`,

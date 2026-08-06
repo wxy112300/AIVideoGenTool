@@ -98,13 +98,23 @@ function referenceLines(
   referenceSlots: H3PromptTemplateOptions["referenceSlots"]
 ): string {
   if (!referenceSlots?.length) {
-    return "<Picture 1> is the primary reference image; preserve the visual information that matters to the target shot.";
+    return "Define each supplied <Subject N>, <Picture N>, <Video N>, or <Audio N> according to its actual role; do not invent a label that is not present in the reference map.";
   }
   const counts: Record<"image" | "video", number> = { image: 0, video: 0 };
+  let subjectCount = 0;
   return referenceSlots.map((slot) => {
     const mediaType = slot.mediaType === "video" ? "video" : "image";
     counts[mediaType] += 1;
-    return `<${mediaType === "video" ? "Video" : "Picture"} ${counts[mediaType]}> is a ${slot.role} reference${slot.note ? `: ${slot.note}` : "."}`;
+    const sourceLabel = `<${mediaType === "video" ? "Video" : "Picture"} ${counts[mediaType]}>`;
+    const roleText = slot.role;
+    const noteText = slot.note ? `: ${slot.note}` : "";
+    const isFrameAnchor = /keyframe|first\s+frame|last\s+frame|frame\s+anchor|首帧|尾帧|关键帧|构图锚点/iu
+      .test(`${roleText}${noteText}`);
+    if (isFrameAnchor) {
+      return `${sourceLabel} is a concrete frame or composition anchor: ${roleText}${noteText}.`;
+    }
+    subjectCount += 1;
+    return `<Subject ${subjectCount}> is reusable ${roleText} content derived from ${sourceLabel}${noteText}.`;
   }).join("\n");
 }
 
@@ -202,10 +212,10 @@ export function createH3PromptFromBuilder(
       references,
       "",
       "summary:",
-      `[reference generation] ${subject} Assign each reference picture a clear job in the target shot.`,
+      `[reference generation] ${subject} Assign each defined Subject, Picture, Video, and Audio label a clear job in the target shot.`,
       "",
       "retention_analysis:",
-      `${continuity} State which attributes from each <Picture N> are fully preserved, transferred, or used as a weak reference.`,
+      `${continuity} For each defined <Subject N>, <Picture N>, <Video N>, or <Audio N>, assign an official relation such as fully_preserved, attribute_transfer, weak_reference, fully_copy, or reference.`,
       "",
       "detailed_description:",
       timeline,
@@ -255,13 +265,13 @@ export function createH3PromptTemplate(
       references,
       "",
       "summary:",
-      `[reference generation] The target video uses the reference pictures to guide the subject, scene, style, motion, and camera relationships. ${current || "Describe the target video and assign a clear job to each reference picture."}`,
+      `[reference generation] The target video uses the reference assets to guide the subject, scene, style, motion, camera, and sound relationships. ${current || "Define each reusable Subject and assign a clear job to each Picture, Video, and Audio source."}`,
       "",
       "retention_analysis:",
-      "State which visual attributes from each <Picture N> are fully preserved, transferred, or used as a weak reference.",
+      "For each defined <Subject N>, <Picture N>, <Video N>, or <Audio N>, state whether it is fully_preserved, partially_preserved, attribute_transfer, weak_reference, fully_copy, partially_copy, or reference.",
       "",
       "detailed_description:",
-      "[Shot 1] Live-action, cinematic. Describe the target scene, visible actions, natural camera movement, and exactly where each <Picture N> influences the shot. If a character speaks, use a stable speaker ID such as (S1) and put only the exact words inside <d>[Chinese] ...</d>.",
+      "[Shot 1] Live-action, cinematic. Establish the target scene, visible actions, natural camera movement, and exactly where each defined <Subject N>, <Picture N>, <Video N>, and <Audio N> influences the shot. If a character speaks, use a stable speaker ID such as (S1) and put only the exact words inside <d>[Chinese] ...</d>.",
       "",
       "overall_soundscape:",
       "Natural ambient sound and subtle physical action sounds appropriate to the scene. Do not repeat dialogue or singing here.",

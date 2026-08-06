@@ -107,6 +107,7 @@ describe("native Qwen prompt workflow", () => {
   it("keeps the official reference rules separate from editable presets", () => {
     const baseline = h3OfficialPromptBaseline("R2V");
 
+    expect(baseline).toContain("<Subject N>");
     expect(baseline).toContain("<Picture N>");
     expect(baseline).toContain("<Video N>");
     expect(baseline).toContain("<Audio N>");
@@ -118,6 +119,8 @@ describe("native Qwen prompt workflow", () => {
     expect(baseline).toContain("Overall-soundscape rule");
     expect(baseline).toContain("Non-diegetic-music rule");
     expect(baseline).toContain("Dialogue rule");
+    expect(baseline).toContain("[reference generation]");
+    expect(baseline).toContain("fully_preserved");
     expect(baseline).toContain("subject_definitions, summary, retention_analysis");
   });
 

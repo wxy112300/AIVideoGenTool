@@ -60,7 +60,7 @@ describe("MiniMax H3 prompt templates", () => {
     expect(template.text).not.toContain("[Shot 2]");
   });
 
-  it("creates the six-section R2V structure with each Picture slot", () => {
+  it("creates the six-section R2V structure with Subject definitions", () => {
     const template = createH3PromptTemplate("人物在场景中行走", 5, {
       mode: "R2V",
       referenceSlots: [
@@ -71,8 +71,8 @@ describe("MiniMax H3 prompt templates", () => {
 
     expect(template.mode).toBe("R2V");
     expect(template.text).toContain("subject_definitions:");
-    expect(template.text).toContain("<Picture 1> is a 人物 / 主体 reference: 角色外貌");
-    expect(template.text).toContain("<Picture 2> is a 场景 / 环境 reference: 街道布局");
+    expect(template.text).toContain("<Subject 1> is reusable 人物 / 主体 content derived from <Picture 1>: 角色外貌.");
+    expect(template.text).toContain("<Subject 2> is reusable 场景 / 环境 content derived from <Picture 2>: 街道布局.");
     expect(template.text).toContain("retention_analysis:");
     expect(template.text).toContain("detailed_description:");
     expect(template.text).not.toContain("integrated_multimodal_description:");
@@ -131,7 +131,7 @@ describe("MiniMax H3 prompt templates", () => {
 
     expect(template.text).toContain("subject_definitions:");
     expect(template.text).toContain("detailed_description:");
-    expect(template.text).toContain("<Picture 1> is a 人物 / 主体 reference");
+    expect(template.text).toContain("<Subject 1> is reusable 人物 / 主体 content derived from <Picture 1>");
     expect(template.text).toContain("The camera holds a static shot.");
   });
 
@@ -146,9 +146,9 @@ describe("MiniMax H3 prompt templates", () => {
       ]
     });
 
-    expect(template.text).toContain("<Picture 1> is a 人物 / 主体 reference");
-    expect(template.text).toContain("<Video 1> is a 动作 / 姿态 reference");
-    expect(template.text).toContain("<Picture 2> is a 场景 / 环境 reference");
-    expect(template.text).toContain("<Video 2> is a 镜头 / 构图 reference");
+    expect(template.text).toContain("<Subject 1> is reusable 人物 / 主体 content derived from <Picture 1>");
+    expect(template.text).toContain("<Subject 2> is reusable 动作 / 姿态 content derived from <Video 1>");
+    expect(template.text).toContain("<Subject 3> is reusable 场景 / 环境 content derived from <Picture 2>");
+    expect(template.text).toContain("<Subject 4> is reusable 镜头 / 构图 content derived from <Video 2>");
   });
 });
