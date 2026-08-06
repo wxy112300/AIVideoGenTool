@@ -67,11 +67,17 @@ import type {
   PromptEnhanceMode,
   PromptVersion,
   QueueTask,
-  Settings
+  Settings,
+  TaskPerformanceStats
   ,WorkflowCapabilities
 } from "./types";
 import { createClearedDraft } from "./core/defaults";
-import { createH3PromptTemplate } from "./core/h3-prompt";
+import {
+  createH3PromptFromBuilder,
+  createH3PromptTemplate,
+  type H3CameraMotion,
+  type H3PromptBuilderInput
+} from "./core/h3-prompt";
 import {
   extensionSafetyForTask,
   frameInterpolationMultiplier,
@@ -80,6 +86,7 @@ import {
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
+  normalizeH3Steps,
   outputDimensions,
   outputFrameCountForTask
 } from "./core/workflow";
@@ -157,6 +164,30 @@ let historyContextMenuEvents: AbortController | null = null;
 let historyMasonryResizeObserver: ResizeObserver | null = null;
 let historyTitleResizeObserver: ResizeObserver | null = null;
 let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
+function createDefaultH3PromptBuilder(): H3PromptBuilderInput {
+  return {
+    style: "",
+    subject: "",
+    action: "",
+    continuity: "",
+    physicalLock: "",
+    cameraMotion: "static",
+    cameraAmplitude: "small",
+    cameraSpeed: "slow",
+    framing: "",
+    diegeticSound: "",
+    finalState: "",
+    soundscape: "",
+    music: "N/A",
+    dialogueSpeaker: "S1",
+    dialogueLanguage: "Chinese",
+    dialogueDelivery: "a clear, natural voice",
+    dialogueText: "",
+    onScreenText: ""
+  };
+}
+
+let h3PromptBuilder = createDefaultH3PromptBuilder();
 
 const lucideIconSet = {
   AlertTriangle,
@@ -288,6 +319,88 @@ const h3ReferenceRoleLabels: Record<H3ReferenceRole, string> = {
   other: "其它参考"
 };
 
+const h3CameraMotionLabels: Array<[H3CameraMotion, string]> = [
+  ["static", "固定镜头"],
+  ["push-in", "Push in · 推近"],
+  ["pull-out", "Pull out · 后退"],
+  ["zoom-in", "Zoom in · 变焦推近"],
+  ["zoom-out", "Zoom out · 变焦拉远"],
+  ["pan-left", "Pan left · 向左摇摄"],
+  ["pan-right", "Pan right · 向右摇摄"],
+  ["truck-left", "Truck left · 向左平移"],
+  ["truck-right", "Truck right · 向右平移"],
+  ["tilt-up", "Tilt up · 向上俯仰"],
+  ["tilt-down", "Tilt down · 向下俯仰"],
+  ["pedestal-up", "Pedestal up · 升降向上"],
+  ["pedestal-down", "Pedestal down · 升降向下"],
+  ["tracking", "Tracking · 跟拍"],
+  ["arc", "Arc shot · 弧线环绕"],
+  ["pov", "POV · 主观视角"],
+  ["roll-clockwise", "Roll clockwise · 顺时针旋转"],
+  ["roll-counterclockwise", "Roll counterclockwise · 逆时针旋转"],
+  ["shake-slight", "Slight handheld · 轻微手持"]
+];
+
+function h3BuilderValue(field: keyof H3PromptBuilderInput): string {
+  return escapeHtml(h3PromptBuilder[field]);
+}
+
+function h3BuilderTextField(
+  field: keyof H3PromptBuilderInput,
+  label: string,
+  placeholder: string,
+  rows = 2
+): string {
+  const value = h3BuilderValue(field);
+  return rows > 0
+    ? `<label>${label}<textarea rows="${rows}" data-h3-builder="${field}" placeholder="${escapeHtml(placeholder)}">${value}</textarea></label>`
+    : `<label>${label}<input data-h3-builder="${field}" value="${value}" placeholder="${escapeHtml(placeholder)}"></label>`;
+}
+
+function h3BuilderSelect(
+  field: keyof H3PromptBuilderInput,
+  label: string,
+  options: Array<[string, string]>
+): string {
+  const selected = String(h3PromptBuilder[field]);
+  return `<label>${label}<select data-h3-builder="${field}">${options
+    .map(([value, optionLabel]) => `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(optionLabel)}</option>`)
+    .join("")}</select></label>`;
+}
+
+function h3PromptBuilderMarkup(): string {
+  return `
+    <div class="h3-prompt-builder">
+      <div class="h3-builder-heading"><div><strong>结构化构建器</strong><span>把提示词拆成镜头、动作、连续性和声音决策；生成结果会新建一个版本。</span></div><span class="model-badge">H3 Guide</span></div>
+      <div class="h3-builder-grid">
+        ${h3BuilderTextField("style", "视觉风格", "Live-action, cinematic, 2D animated…", 0)}
+        ${h3BuilderTextField("subject", "主体与初始构图", "谁在什么环境里，以什么姿态和构图开始？")}
+        ${h3BuilderTextField("action", "动作时间线", "先写一个小的自然起因，再写主要动作和可见反应。")}
+        ${h3BuilderTextField("continuity", "参考图与连续性锁", "身份、服装、位置、灯光、背景中哪些必须保持？")}
+        ${h3BuilderTextField("physicalLock", "身体 / 视线锁定", "例如：脚、髋、肩、头和视线保持朝向不变。")}
+        ${h3BuilderSelect("cameraMotion", "镜头运动", h3CameraMotionLabels)}
+        ${h3BuilderSelect("cameraAmplitude", "运动幅度", [["small", "Small amplitude · 小幅度"], ["large", "Large amplitude · 大幅度"]])}
+        ${h3BuilderSelect("cameraSpeed", "运动速度", [["slow", "Slow speed · 慢速"], ["fast", "Fast speed · 快速"]])}
+        ${h3BuilderTextField("framing", "景别变化", "例如：近景 → 半身 → 全身 → 环境广角；写清由什么运动造成变化。")}
+        ${h3BuilderTextField("diegeticSound", "画面同步声音", "动作发生时，哪些可见反应和现场声音同步出现？")}
+        ${h3BuilderTextField("finalState", "最终状态", "动作结束时主体、镜头、环境和画面停在哪里？")}
+      </div>
+      <details class="h3-builder-optional">
+        <summary><strong>声音、对白与屏幕文字</strong><span>可选高级字段</span>${icon("chevron-down")}</summary>
+        <div class="h3-builder-grid optional">
+          ${h3BuilderTextField("soundscape", "整体环境声", "风、脚步、房间底噪、回声；不要重复对白。")}
+          ${h3BuilderTextField("music", "非叙事音乐", "只写观众听到的背景音乐；没有就保留 N/A。")}
+          ${h3BuilderTextField("dialogueSpeaker", "说话人 ID", "S1", 0)}
+          ${h3BuilderTextField("dialogueLanguage", "对白语言", "Chinese / English", 0)}
+          ${h3BuilderTextField("dialogueDelivery", "声音与表达", "a clear, restrained Mandarin voice", 0)}
+          ${h3BuilderTextField("dialogueText", "准确对白", "只填写角色实际说出的原文；留空表示无对白。")}
+          ${h3BuilderTextField("onScreenText", "屏幕文字", "可见招牌、字幕或标签；会原样放入英文双引号。", 0)}
+        </div>
+      </details>
+      <div class="h3-builder-actions"><button class="ghost button-with-icon" id="h3-builder-reset" type="button">${icon("refresh-cw")}重置构建器</button><button class="primary button-with-icon" id="h3-builder-generate" type="button">${icon("wand-sparkles")}生成结构化版本</button></div>
+    </div>`;
+}
+
 function newH3ReferenceSlot(imagePath = ""): H3ReferenceSlot {
   return {
     id: crypto.randomUUID(),
@@ -306,17 +419,13 @@ function h3ReferenceSlotRoleOptions(role: H3ReferenceRole): string {
 function h3ReferenceSlotsMarkup(draft: Draft): string {
   const slots = draft.h3ReferenceSlots;
   return `
-    <div class="h3-slot-toolbar">
-      <div><strong>参考 Slots</strong><span>按图片顺序对应提示词中的 &lt;Picture 1&gt;、&lt;Picture 2&gt;…；每张图片可以承担不同角色。</span></div>
-      <button class="secondary button-with-icon" id="add-h3-reference-slot" type="button" ${slots.length >= 9 ? "disabled" : ""}>${icon("plus")}添加 Slot <small>${slots.length}/9</small></button>
-    </div>
     ${slots.length ? `<div class="h3-reference-grid">${slots.map((slot, index) => `
       <article class="h3-reference-slot" data-h3-slot="${escapeHtml(slot.id)}">
         <div class="h3-reference-slot-head">
           <div><strong>&lt;Picture ${index + 1}&gt;</strong><span>参考图 ${index + 1}</span></div>
           <div class="h3-reference-slot-actions"><button class="secondary" data-insert-h3-slot="${escapeHtml(slot.id)}" type="button">插入标签</button><button class="icon-button" data-remove-h3-slot="${escapeHtml(slot.id)}" aria-label="移除参考图 ${index + 1}" title="移除参考图">${icon("x")}</button></div>
         </div>
-        <button class="drop-zone h3-reference-drop ${slot.imagePath ? "has-image" : ""}" id="pick-h3-slot-${escapeHtml(slot.id)}" data-pick-h3-slot="${escapeHtml(slot.id)}" data-drop-h3-slot="${escapeHtml(slot.id)}" data-paste-h3-slot="${escapeHtml(slot.id)}" data-drop-label="${slot.imagePath ? "松开以替换参考图" : "松开以添加参考图"}">
+        <button class="drop-zone h3-reference-drop ${slot.imagePath ? "has-image" : ""}" id="pick-h3-slot-${escapeHtml(slot.id)}" data-pick-h3-slot="${escapeHtml(slot.id)}" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="${slot.imagePath ? "松开以替换参考图" : "松开以添加参考图"}">
           ${slot.imagePath
             ? `<img id="h3-slot-preview-${escapeHtml(slot.id)}" alt="参考图 ${index + 1}预览"><span class="image-label">点击或拖入替换</span>`
             : `<span class="drop-icon">${icon("image")}</span><strong>添加参考图</strong><span>PNG、JPG、WEBP、BMP</span>`}
@@ -324,7 +433,7 @@ function h3ReferenceSlotsMarkup(draft: Draft): string {
         <label>参考作用<select data-h3-slot-role="${escapeHtml(slot.id)}">${h3ReferenceSlotRoleOptions(slot.role)}</select></label>
         <label>给提示词的备注<input data-h3-slot-note="${escapeHtml(slot.id)}" value="${escapeHtml(slot.note)}" placeholder="例如：人物外貌、场景布局或动作参考"></label>
       </article>`).join("")}</div>` : `
-      <div class="h3-slot-empty"><span class="drop-icon">${icon("images")}</span><strong>先添加一张参考图</strong><span>Slot 可以分别定义人物、场景、风格、动作或镜头参考。</span><button class="secondary button-with-icon" id="add-h3-reference-slot-empty" type="button">${icon("plus")}添加第一个 Slot</button></div>`}`;
+      <div class="h3-slot-empty"><span class="drop-icon">${icon("images")}</span><strong>先添加一张参考图</strong><span>最多 9 张；每张 Slot 可以分别定义人物、场景、风格、动作或镜头参考。</span><button class="secondary button-with-icon" id="add-h3-reference-slot-empty" type="button">${icon("plus")}添加第一个 Slot</button></div>`}`;
 }
 
 function promptSnippetOptions(): string {
@@ -475,6 +584,33 @@ function formatElapsedDuration(seconds: number): string {
   return `${minutes}分${rounded % 60}秒`;
 }
 
+function formatPerformancePercent(value: number | null | undefined): string {
+  return value == null ? "不可用" : `${Math.round(value)}%`;
+}
+
+function formatPerformanceBytes(value: number | null | undefined): string {
+  return value == null ? "不可用" : formatBytes(value);
+}
+
+function performanceStatsMarkup(stats: TaskPerformanceStats | undefined): string {
+  if (!stats) {
+    return `<p class="muted history-performance-empty">旧记录没有保存运行采样摘要。</p>`;
+  }
+  const vramIncrease = stats.vramPeakBytes != null && stats.vramBaselineBytes != null
+    ? Math.max(0, stats.vramPeakBytes - stats.vramBaselineBytes)
+    : null;
+  return `
+    <div class="task-stat-grid">
+      <div class="task-stat"><span>GPU 利用率</span><strong>${formatPerformancePercent(stats.gpuAveragePercent)}</strong><small>峰值 ${formatPerformancePercent(stats.gpuPeakPercent)}</small></div>
+      <div class="task-stat"><span>显存峰值</span><strong>${formatPerformanceBytes(stats.vramPeakBytes)}</strong><small>${formatPerformanceBytes(stats.vramTotalBytes)} · 增加 ${formatPerformanceBytes(vramIncrease)}</small></div>
+      <div class="task-stat"><span>CPU 占用</span><strong>${formatPerformancePercent(stats.cpuAveragePercent)}</strong><small>峰值 ${formatPerformancePercent(stats.cpuPeakPercent)}</small></div>
+      <div class="task-stat"><span>系统内存峰值</span><strong>${formatPerformanceBytes(stats.memoryPeakBytes)}</strong><small>平均 ${formatPerformanceBytes(stats.memoryAverageBytes)} · 总量 ${formatPerformanceBytes(stats.memoryTotalBytes)}</small></div>
+      <div class="task-stat"><span>GPU 温度峰值</span><strong>${stats.gpuTemperaturePeak == null ? "不可用" : `${Math.round(stats.gpuTemperaturePeak)}°C`}</strong><small>任务期间最高温度</small></div>
+      <div class="task-stat"><span>采样摘要</span><strong>${stats.sampleCount} 次</strong><small>GPU 采样 ${stats.gpuSampleCount} 次 · ${stats.durationSeconds.toFixed(1)} 秒</small></div>
+    </div>
+    <p class="muted history-performance-note">只保存任务摘要，不保存原始采样曲线；GPU、显存和系统内存包含同机其他进程的影响。</p>`;
+}
+
 function formatHistoryTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -616,7 +752,7 @@ function upscaleDialogHtml(): string {
             <label>提升模型<select id="upscale-model">${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === upscaleDialog?.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
             <label>显存策略<select id="upscale-tile" disabled><option value="safe" selected>保守 · 分批与每批卸载</option></select></label>
           </div>
-          <label class="switch-field disabled"><input type="checkbox" disabled><span>人脸细节修复 · 等待独立修复模型接入</span></label>
+          <label class="ios-switch-field disabled"><span class="policy-copy"><strong>人脸细节修复</strong><small>等待独立修复模型接入</small></span><input type="checkbox" disabled><span class="ios-switch" aria-hidden="true"></span></label>
           <div class="upscale-output"><div><span>预计输出</span><strong>${targetWidth} × ${targetHeight}</strong><code>${escapeHtml(outputFilename)}</code></div><span>${upscaleDialog.modelId === "realesrgan" ? "预计峰值 6–9 GB" : upscaleDialog.modelId === "flashvsr" ? "预计峰值 14–19 GB" : "预计峰值 18–23 GB"}</span></div>
         </div>
         <div class="dialog-actions"><button class="secondary button-with-icon" id="cancel-upscale">${icon("x")}取消</button><button class="primary button-with-icon" id="enqueue-upscale">${icon(upscaleDialog.taskId ? "save" : "plus")}${upscaleDialog.taskId ? "保存更改" : "加入队列"}</button></div>
@@ -682,6 +818,7 @@ function createPage(): string {
   const draft = state.draft;
   const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
   const isR2V = isMiniMaxH3R2vModel(draft.modelId);
+  const h3Steps = normalizeH3Steps(draft.steps);
   const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
   const extending = draft.inputMode === "video";
   const prompt = activePrompt();
@@ -712,21 +849,25 @@ function createPage(): string {
     ? !videoReady || trimDuration <= 0 || !supportsVideoExtension || !safety.safe
     : !safety.safe || !r2vSlotsReady;
   return `
-    <section class="page-heading">
-      <div><h1>创建视频</h1><p>${extending ? "裁出要保留的视频片段，并从末帧继续生成。" : "导入参考画面，调整提示词，然后加入本地生成队列。"}</p></div>
-      <span class="save-state">自动保存</span>
+    <section class="page-heading create-page-heading">
+      <div class="page-heading-copy"><h1>创建视频</h1><p>${extending ? "裁出要保留的视频片段，并从末帧继续生成。" : "导入参考画面，调整提示词，然后加入本地生成队列。"}</p></div>
+      <div class="create-page-actions">
+        <div class="input-mode-switch" role="group" aria-label="创建模式">
+          <button class="${extending ? "ghost" : "secondary active"} button-with-icon" data-input-mode="image" aria-pressed="${!extending}">${icon("image")}图片生成</button>
+          <button class="${extending ? "secondary active" : "ghost"} button-with-icon" data-input-mode="video" aria-pressed="${extending}">${icon("video")}视频续写</button>
+        </div>
+        <span class="save-state">自动保存</span>
+      </div>
     </section>
-    <div class="input-mode-switch" role="group" aria-label="创建模式">
-      <button class="${extending ? "ghost" : "secondary active"} button-with-icon" data-input-mode="image" aria-pressed="${!extending}">${icon("image")}图片生成</button>
-      <button class="${extending ? "secondary active" : "ghost"} button-with-icon" data-input-mode="video" aria-pressed="${extending}">${icon("video")}视频续写</button>
-    </div>
-    <div class="create-workspace">
+    <div class="create-workspace ${isR2V ? "r2v-workspace" : ""}">
       <section class="panel media-panel">
       <div class="section-heading">
         <div><h2>${extending ? "输入视频" : isR2V ? "多参考 Slots" : "参考画面"}</h2><span class="muted">${extending ? "选择保留范围，续写将从范围末帧开始" : isR2V ? "把人物、场景、风格、动作和镜头拆成独立参考 Slot" : supportsEndImage ? "当前工作流支持首帧和尾帧" : "当前工作流仅支持首帧"}</span></div>
         ${extending
           ? draft.sourceVideoPath ? `<button class="secondary button-with-icon" id="remove-video">${icon("x")}移除视频</button>` : ""
-          : isR2V ? "" : `<button class="secondary button-with-icon" id="toggle-end" ${!supportsEndImage && !draft.endImagePath ? "disabled" : ""}>${icon(draft.endImagePath ? "x" : "images")}${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>`}
+          : isR2V
+            ? draft.h3ReferenceSlots.length < 9 ? `<button class="secondary button-with-icon" id="add-h3-reference-slot" type="button">${icon("plus")}添加 Slot <small>${draft.h3ReferenceSlots.length}/9</small></button>` : ""
+            : `<button class="secondary button-with-icon" id="toggle-end" ${!supportsEndImage && !draft.endImagePath ? "disabled" : ""}>${icon(draft.endImagePath ? "x" : "images")}${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>`}
       </div>
       ${extending
         ? draft.sourceVideoPath
@@ -774,7 +915,7 @@ function createPage(): string {
           </div>`}
       </section>
       <section class="panel composer">
-      <div class="section-heading">
+      <div class="section-heading composer-heading">
         <div>
           <h2>${extending ? "描述接下来发生什么" : "提示词"}</h2>
           <span class="muted">${draft.activePromptVersion + 1} / ${draft.promptVersions.length} · ${escapeHtml(prompt.label)}</span>
@@ -813,26 +954,30 @@ function createPage(): string {
             <div><strong>${isR2V ? "参考作用" : "三段主体结构"}</strong><span>${isR2V ? "人物、场景、风格、动作和镜头可以由不同 Slot 提供。" : "使用 integrated_multimodal_description、overall_soundscape 和 non_diegetic_music。"}</span></div>
             <div><strong>${isR2V ? "R2V 六段结构" : "对白格式"}</strong><span>${isR2V ? "subject_definitions、summary、retention_analysis、detailed_description 加两段声音字段。" : "固定说话人 ID，写明语言和音色；准确台词放在 &lt;d&gt;[Chinese] ...&lt;/d&gt; 中。"}</span></div>
           </div>
+          ${h3PromptBuilderMarkup()}
           <div class="h3-helper-actions">
             <span>模板会使用当前首帧/尾帧状态和 H3 实际帧网格；点击后会新建版本，不会覆盖当前内容。</span>
             <button class="secondary button-with-icon" id="h3-prompt-template" type="button">${icon("list-ordered")}${isR2V ? "创建 R2V 结构模板" : "创建结构化提示词"}</button>
           </div>
         </div>
       </details>` : ""}
-      <div class="settings-grid">
-        <label>模型
+      <div class="composer-settings">
+        <section class="composer-control-group composer-output-group">
+          <div class="composer-group-heading"><div><strong>输出设置</strong><span>模型、画面比例和清晰度</span></div></div>
+          <div class="composer-control-grid composer-output-grid">
+        <label class="settings-field settings-model">模型
           <select id="model">
             ${createModelOptions(draft)}
           </select>
         </label>
-        <label>画面比例
+        <label class="settings-field settings-ratio">画面比例
           <select id="ratio" ${extending ? "disabled" : ""}>
             ${["source", "16:9", "9:16", "1:1", "4:3"].map((ratio) =>
               `<option value="${ratio}" ${draft.ratio === ratio ? "selected" : ""}>${ratio === "source" ? extending ? "跟随输入视频" : "原图（未读取时按 16:9）" : ratio}</option>`
             ).join("")}
           </select>
         </label>
-        <label>清晰度
+        <label class="settings-field settings-resolution">清晰度
           <select id="resolution" ${extending && !isMiniMaxH3 ? "disabled" : ""}>
             ${extending && !isMiniMaxH3
               ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p · GGUF 保守预设</option>`
@@ -859,17 +1004,30 @@ function createPage(): string {
                 }).join("")}
           </select>
         </label>
-        <label>${extending ? "新增时长" : "时长"}
+        ${isMiniMaxH3 ? `<label class="settings-field settings-steps">采样步数（H3）
+          <select id="steps" aria-label="H3 采样步数">
+            <option value="20" ${h3Steps === 20 ? "selected" : ""}>20 · 标准质量（推荐）</option>
+            <option value="16" ${h3Steps === 16 ? "selected" : ""}>16 · 平衡预览</option>
+            <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · 快速预览</option>
+          </select>
+          <small class="field-hint">只影响 H3；其他模型沿用各自工作流设置。</small>
+        </label>` : ""}
+          </div>
+        </section>
+        <section class="composer-control-group composer-motion-group">
+          <div class="composer-group-heading"><div><strong>时间与运动</strong><span>控制片段长度、帧率和运动处理</span></div></div>
+          <div class="composer-control-grid composer-motion-grid">
+        <label class="settings-field settings-duration">${extending ? "新增时长" : "时长"}
           <div class="inline-field"><input id="duration" type="range" min="1" max="${safety.maxDurationSeconds}" value="${draft.duration}"><input id="duration-number" type="number" min="1" max="${safety.maxDurationSeconds}" value="${draft.duration}"><span>秒</span></div>
         </label>
-        <label>目标帧率
+        <label class="settings-field settings-fps">目标帧率
           <select id="fps" ${isMiniMaxH3 ? "disabled" : ""}>
             ${(isMiniMaxH3 ? [24] : [8, 12, 16, 24, 25, 30]).map((value) =>
               `<option value="${value}" ${draft.fps === value ? "selected" : ""}>${value} FPS</option>`
             ).join("")}
           </select>
         </label>
-        <label>Frame Interpolation
+        <label class="settings-field settings-interpolation">Frame Interpolation
           <select id="frame-interpolation" ${isMiniMaxH3 ? "disabled" : ""}>
             <option value="off" ${draft.frameInterpolation === "off" ? "selected" : ""}>关闭 · 模型直接生成</option>
             ${isMiniMaxH3 ? "" : `
@@ -877,11 +1035,7 @@ function createPage(): string {
               <option value="rife4x" ${draft.frameInterpolation === "rife4x" ? "selected" : ""}>RIFE 4×</option>`}
           </select>
         </label>
-        <div class="interpolation-summary ${!safety.safe || !r2vSlotsReady ? "unsafe" : isMiniMaxH3 && (draft.duration > 10 || draft.resolution >= 768) ? "caution" : interpolation.multiplier === 1 ? "disabled" : ""}">
-          <div><strong>${!r2vSlotsReady ? "请先补齐 R2V 参考 Slot" : !safety.safe ? "配置超过显存安全预算" : isMiniMaxH3 ? "H3 原生 24 FPS · 同步立体声音频" : interpolation.multiplier === 1 ? "未启用插帧" : `生成约 ${draft.fps / interpolation.multiplier} FPS，再插值到 ${draft.fps} FPS`}</strong><span>${interpolation.generatedFrames}/${safety.maxGeneratedFrames} 个模型帧 → ${interpolation.outputFrames} 个成片帧</span></div>
-          <p>${escapeHtml(!r2vSlotsReady ? "R2V 至少需要一张已选择的参考图片；空 Slot 不能提交。" : safety.message)} ${safety.safe && r2vSlotsReady && interpolation.multiplier !== 1 ? "扩散模型和 VAE 会在 RIFE 前主动卸载；RIFE 使用 BF16、单帧批次。" : ""}</p>
-        </div>
-        <label>动作幅度
+        <label class="settings-field settings-motion">动作幅度
           <select id="motion" ${isMiniMaxH3 ? "disabled" : ""}>
             ${isMiniMaxH3
               ? `<option value="natural" selected>由镜头提示词控制</option>`
@@ -890,16 +1044,27 @@ function createPage(): string {
                 <option value="strong" ${draft.motion === "strong" ? "selected" : ""}>强烈</option>`}
           </select>
         </label>
-        <label>随机 Seed
+          </div>
+        </section>
+        <section class="composer-control-group composer-seed-group">
+          <div class="composer-group-heading"><div><strong>可复现性</strong><span>控制随机种子和任务复制</span></div></div>
+          <div class="composer-control-grid composer-seed-grid">
+        <label class="settings-field settings-seed">随机 Seed
           <input id="seed" type="number" placeholder="留空则随机" value="${draft.seed ?? ""}">
         </label>
-        <label class="checkbox-field"><input id="keep-seed" type="checkbox" ${draft.keepSeedOnCopy ? "checked" : ""}><span>复制任务时保留 Seed</span></label>
+        <label class="ios-switch-field settings-field settings-keep-seed"><span class="policy-copy"><strong>复制任务时保留 Seed</strong></span><input id="keep-seed" type="checkbox" ${draft.keepSeedOnCopy ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+          </div>
+        </section>
+        <div class="interpolation-summary settings-summary ${!safety.safe || !r2vSlotsReady ? "unsafe" : isMiniMaxH3 && (draft.duration > 10 || draft.resolution >= 768) ? "caution" : interpolation.multiplier === 1 ? "disabled" : ""}">
+          <div><strong>${!r2vSlotsReady ? "请先补齐 R2V 参考 Slot" : !safety.safe ? "配置超过显存安全预算" : isMiniMaxH3 ? "H3 原生 24 FPS · 同步立体声音频" : interpolation.multiplier === 1 ? "未启用插帧" : `生成约 ${draft.fps / interpolation.multiplier} FPS，再插值到 ${draft.fps} FPS`}</strong><span>${interpolation.generatedFrames}/${safety.maxGeneratedFrames} 个模型帧 → ${interpolation.outputFrames} 个成片帧</span></div>
+          <p>${escapeHtml(!r2vSlotsReady ? "R2V 至少需要一张已选择的参考图片；空 Slot 不能提交。" : safety.message)} ${safety.safe && r2vSlotsReady && interpolation.multiplier !== 1 ? "扩散模型和 VAE 会在 RIFE 前主动卸载；RIFE 使用 BF16、单帧批次。" : ""}</p>
+        </div>
       </div>
-      <div class="workflow-field">
+      <div class="workflow-field composer-workflow-field">
         <div><strong>ComfyUI API 工作流</strong><p class="muted">${extending && !supportsVideoExtension ? `${selectedModelProfile?.available ? `${modelName(draft.modelId)} 模型组件已安装完整；` : "模型组件尚未安装完整；"}当前工作流未通过原生续写安全检查。` : draft.workflowPath ? escapeHtml(Object.values(bundledWorkflows).find((workflow) => workflow.path === draft.workflowPath)?.label ?? draft.workflowPath) : "为当前模型选择从 ComfyUI 导出的 API 格式 JSON"}</p></div>
         <button class="secondary button-with-icon" id="pick-workflow">${icon("workflow")}${draft.workflowPath ? "更换 JSON" : "选择 JSON"}</button>
       </div>
-      <div class="submit-row">
+      <div class="submit-row composer-submit-row">
         <button class="ghost danger button-with-icon" id="clear-draft">${icon("trash-2")}清空</button>
         <button class="primary button-with-icon" id="enqueue" ${enqueueDisabled ? "disabled" : ""} title="${isR2V ? r2vSlotsReady ? "加入 R2V 多参考生成队列" : "请先补齐 R2V 参考 Slot" : extending ? supportsVideoExtension ? "加入视频续写队列" : "模型已安装，但专用视频续写工作流尚未接入" : safety.safe ? "加入本地生成队列" : escapeHtml(safety.message)}">${icon("plus")}加入队列</button>
       </div>
@@ -1003,10 +1168,13 @@ function queueTaskCard(task: QueueTask): string {
     : task.taskType === "extension"
       ? `${task.prompt} · 保留 ${task.trimStartSeconds.toFixed(1)}–${task.trimEndSeconds.toFixed(1)} 秒`
       : `${task.sourceFilename} → ${task.outputFilename}`;
+  const h3StepsSummary = isMiniMaxH3Model(task.modelId) && task.taskType !== "upscale"
+    ? `<span>H3 ${normalizeH3Steps(task.steps)} 步</span>`
+    : "";
   const metadata = task.taskType === "generation"
-    ? `<span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span><span>Seed ${task.seed}</span>`
+    ? `<span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span>${h3StepsSummary}<span>Seed ${task.seed}</span>`
     : task.taskType === "extension"
-      ? `<span>视频续写</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>最多 ${task.maxGeneratedFrames} 模型帧</span><span>${task.overlapFrames} 帧上下文</span>`
+      ? `<span>视频续写</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>最多 ${task.maxGeneratedFrames} 模型帧</span><span>${task.overlapFrames} 帧上下文</span>${h3StepsSummary}`
       : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.targetWidth} × ${task.targetHeight}</span><span>分批处理 · 每批卸载</span>`;
   if (task.status === "running") {
     const preview = taskPreviews[task.id] ?? "";
@@ -1054,7 +1222,11 @@ function queueTaskCard(task: QueueTask): string {
       </div>
       <div class="task-actions">
         ${task.status === "waiting" ? `<div class="button-row"><button class="icon-button" data-move="${task.id}" data-direction="-1" aria-label="上移" title="上移">${icon("move-up")}</button><button class="icon-button" data-move="${task.id}" data-direction="1" aria-label="下移" title="下移">${icon("move-down")}</button></div>` : ""}
-        ${task.status === "waiting" && task.taskType === "upscale" ? `<button class="secondary button-with-icon" data-edit-upscale-task="${task.id}">${icon("sliders-horizontal")}编辑</button>` : ""}
+        ${task.status === "waiting" || task.status === "failed" || task.status === "cancelled"
+          ? task.taskType === "upscale"
+            ? `<button class="secondary button-with-icon" data-edit-upscale-task="${task.id}" title="带回提升设置并重新加入队列">${icon("sliders-horizontal")}${task.status === "waiting" ? "编辑" : "编辑并重新加入"}</button>`
+            : `<button class="secondary button-with-icon" data-edit-task="${task.id}" title="带回创建页调整参数并重新加入队列">${icon("sliders-horizontal")}编辑并重新加入</button>`
+          : ""}
         <button class="secondary button-with-icon" data-duplicate="${task.id}">${icon("copy")}复制</button>
         ${task.status === "failed" || task.status === "cancelled" ? `<button class="primary button-with-icon" data-retry="${task.id}">${icon("refresh-cw")}重试并启动</button>` : ""}
         <button class="ghost danger button-with-icon" data-remove="${task.id}">${icon("trash-2")}移除</button>
@@ -1064,6 +1236,62 @@ function queueTaskCard(task: QueueTask): string {
 
 function statusLabel(status: string): string {
   return { waiting: "等待", running: "运行中", completed: "完成", failed: "失败", cancelled: "已取消" }[status] ?? status;
+}
+
+function draftFromQueueTask(task: QueueTask): Draft | null {
+  if (task.taskType === "upscale" || task.status === "running") return null;
+  const now = new Date().toISOString();
+  const resolution = [480, 540, 720, 768].includes(task.resolution)
+    ? task.resolution as Draft["resolution"]
+    : 480;
+  const extension = task.taskType === "extension";
+  return {
+    ...state.draft,
+    inputMode: extension ? "video" : "image",
+    startImagePath: extension ? "" : task.startImagePath,
+    sourceWidth: task.sourceWidth,
+    sourceHeight: task.sourceHeight,
+    endImagePath: extension ? "" : task.endImagePath,
+    sourceVideoPath: extension ? task.sourceVideoPath : "",
+    sourceVideoDuration: extension ? task.sourceVideoDuration : 0,
+    trimStartSeconds: extension ? task.trimStartSeconds : 0,
+    trimEndSeconds: extension ? task.trimEndSeconds : 0,
+    sourceAssetId: extension ? task.sourceAssetId : undefined,
+    sourceVersionId: extension ? task.sourceVersionId : undefined,
+    promptVersions: [{
+      id: crypto.randomUUID(),
+      label: "从队列调整",
+      text: task.prompt,
+      createdAt: now
+    }],
+    activePromptVersion: 0,
+    h3ReferenceSlots: extension ? [] : (task.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
+    modelId: task.modelId,
+    workflowPath: task.workflowPath,
+    ratio: task.ratio,
+    resolution,
+    duration: task.duration,
+    steps: normalizeH3Steps(task.steps),
+    fps: task.fps,
+    frameInterpolation: task.frameInterpolation,
+    motion: task.motion,
+    seed: task.seed,
+    keepSeedOnCopy: task.keepSeedOnCopy
+  };
+}
+
+async function editQueueTask(taskId: string): Promise<void> {
+  const task = state.queue.find((item) => item.id === taskId);
+  const draft = task ? draftFromQueueTask(task) : null;
+  if (!task || !draft) return;
+  try {
+    state = await window.studio.removeTask(taskId);
+    await saveDraftImmediately(draft);
+    page = "create";
+    showMessage("已带回创建页，可调整参数后重新加入队列。");
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : "无法编辑该队列任务");
+  }
 }
 
 function historyPage(): string {
@@ -1191,6 +1419,7 @@ function historyDetailPage(): string {
   const detailTitle = asset.prompt.trim() || asset.title;
   const completedAt = formatHistoryTime(version.createdAt);
   const fps = version.fps;
+  const performanceStats = version.performanceStats;
   const elapsedSeconds = version.startedAt
     ? Math.max(0, (new Date(version.createdAt).getTime() - new Date(version.startedAt).getTime()) / 1000)
     : null;
@@ -1237,11 +1466,15 @@ function historyDetailPage(): string {
       </article>
       <article class="panel history-record">
         <h2>原始生成参数</h2>
-        <dl><dt>模型</dt><dd>${escapeHtml(modelName(version.modelId))}</dd><dt>Seed</dt><dd><code>${version.seed ?? "不适用"}</code></dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "旧记录未保存")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId)}</code></dd></dl>
+        <dl><dt>模型</dt><dd>${escapeHtml(modelName(version.modelId))}</dd><dt>采样步数</dt><dd>${version.steps ?? "工作流默认"}</dd><dt>Seed</dt><dd><code>${version.seed ?? "不适用"}</code></dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "旧记录未保存")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId)}</code></dd></dl>
       </article>
       <article class="panel history-record">
         <h2>视频输出</h2>
         <dl><dt>分辨率</dt><dd>${version.width} × ${version.height}</dd><dt>版本类型</dt><dd>${version.kind === "original" ? "原始生成" : "分辨率提升"}</dd><dt>时长</dt><dd>${version.duration} 秒</dd><dt>成片帧率</dt><dd>${fps} FPS</dd><dt>成片帧数</dt><dd>${Math.round(version.duration * fps)}</dd><dt>输出目录</dt><dd><code>${escapeHtml(videoFile?.absolutePath ?? state.settings.outputDirectory)}</code></dd></dl>
+      </article>
+      <article class="panel history-record full history-performance-record">
+        <div class="history-record-heading"><h2>运行统计</h2><span class="muted">低频采样摘要</span></div>
+        ${performanceStatsMarkup(performanceStats)}
       </article>
       <article class="panel history-record full">
         <div class="history-record-heading"><h2>输出文件</h2><span>${version.files.length} 个</span></div>
@@ -1916,6 +2149,7 @@ async function editHistoryAsset(assetId: string): Promise<void> {
       ? asset.resolution
       : state.draft.resolution) as Draft["resolution"],
     duration: asset.duration,
+    steps: normalizeH3Steps(asset.steps),
     fps: ([8, 12, 16, 24, 25, 30].includes(asset.fps ?? 24)
       ? asset.fps ?? 24
       : 24) as Draft["fps"],
@@ -2210,20 +2444,26 @@ async function handleClipboardPaste(event: ClipboardEvent): Promise<void> {
     activeElement instanceof HTMLElement
       ? activeElement.closest<HTMLElement>("[data-paste-frame]")
       : null;
-  const focusedH3Slot =
-    activeElement instanceof HTMLElement
-      ? activeElement.closest<HTMLElement>("[data-paste-h3-slot]")
-      : null;
-  const h3SlotId = focusedH3Slot?.dataset.pasteH3Slot;
-  if (h3SlotId && isMiniMaxH3R2vModel(state.draft.modelId)) {
+  if (isMiniMaxH3R2vModel(state.draft.modelId)) {
+    const targetSlot = state.draft.h3ReferenceSlots.find(
+      (slot) => !slot.imagePath
+    );
+    if (!targetSlot) {
+      showMessage(
+        state.draft.h3ReferenceSlots.length >= 9
+          ? "R2V 的 9 个 Slot 都已有图片，无法继续粘贴。"
+          : "R2V 当前没有空 Slot，请先添加一个 Slot。"
+      );
+      return;
+    }
     try {
       const filename = await window.studio.saveClipboardImage(
         await file.arrayBuffer(),
         file.type
       );
-      updateH3ReferenceSlot(h3SlotId, { imagePath: filename });
+      updateH3ReferenceSlot(targetSlot.id, { imagePath: filename });
       render();
-      showMessage("已粘贴为 R2V 参考图。");
+      showMessage(`已粘贴到下一个空的 R2V Slot（Picture ${state.draft.h3ReferenceSlots.findIndex((slot) => slot.id === targetSlot.id) + 1}）。`);
     } catch (error) {
       showMessage(error instanceof Error ? error.message : "无法读取剪贴板图片");
     }
@@ -2737,7 +2977,46 @@ function bindCreate(): void {
     patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
     showMessage(`已创建 H3 ${template.mode} 官方结构模板（${template.effectiveDurationSeconds.toFixed(2)} 秒、${template.shotCount} 个镜头），原内容仍可通过左箭头找回。`);
   });
-  for (const id of ["model", "ratio", "resolution", "fps", "frame-interpolation", "motion", "seed"]) {
+  document.querySelectorAll<HTMLElement>("[data-h3-builder]").forEach((field) => {
+    const updateBuilder = (event: Event) => {
+      const key = (event.currentTarget as HTMLElement).dataset.h3Builder as keyof H3PromptBuilderInput | undefined;
+      if (!key) return;
+      const target = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+      h3PromptBuilder = { ...h3PromptBuilder, [key]: target.value } as H3PromptBuilderInput;
+    };
+    field.addEventListener("input", updateBuilder);
+    field.addEventListener("change", updateBuilder);
+  });
+  document.querySelector("#h3-builder-reset")?.addEventListener("click", () => {
+    h3PromptBuilder = createDefaultH3PromptBuilder();
+    render();
+  });
+  document.querySelector("#h3-builder-generate")?.addEventListener("click", () => {
+    const template = createH3PromptFromBuilder(
+      h3PromptBuilder,
+      state.draft.duration,
+      {
+        hasEndImage: Boolean(state.draft.endImagePath),
+        mode: isMiniMaxH3R2vModel(state.draft.modelId) ? "R2V" : undefined,
+        referenceSlots: state.draft.h3ReferenceSlots.map((slot) => ({
+          role: h3ReferenceRoleLabels[slot.role],
+          note: slot.note
+        }))
+      }
+    );
+    const versions = [
+      ...state.draft.promptVersions.slice(0, state.draft.activePromptVersion + 1),
+      {
+        id: crypto.randomUUID(),
+        label: "H3 构建器版本",
+        text: template.text,
+        createdAt: new Date().toISOString()
+      }
+    ];
+    patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
+    showMessage(`已生成 H3 ${template.mode} 结构化提示词（${template.effectiveDurationSeconds.toFixed(2)} 秒），原内容仍可通过左箭头找回。`);
+  });
+  for (const id of ["model", "ratio", "resolution", "steps", "fps", "frame-interpolation", "motion", "seed"]) {
     document.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
       const value = (event.target as HTMLInputElement | HTMLSelectElement).value;
       if (id === "model") {
@@ -2778,6 +3057,7 @@ function bindCreate(): void {
                 ratio: "source" as const,
                 resolution: 480 as const,
                 duration: 5,
+                steps: normalizeH3Steps(state.draft.steps),
                 fps: 24 as const,
                 frameInterpolation: "off" as const,
                 motion: "natural" as const
@@ -2796,6 +3076,7 @@ function bindCreate(): void {
       const patch =
         id === "ratio" ? { ratio: value as Draft["ratio"] } :
         id === "resolution" ? { resolution: Number(value) as Draft["resolution"] } :
+        id === "steps" ? { steps: normalizeH3Steps(Number(value)) } :
         id === "fps" ? { fps: Number(value) as Draft["fps"] } :
         id === "frame-interpolation" ? { frameInterpolation: value as Draft["frameInterpolation"] } :
         id === "motion" ? { motion: value as Draft["motion"] } :
@@ -2885,6 +3166,11 @@ function bindQueue(): void {
       render();
     });
   });
+  document.querySelectorAll<HTMLElement>("[data-edit-task]").forEach((button) => {
+    button.addEventListener("click", () => {
+      void editQueueTask(button.dataset.editTask!);
+    });
+  });
   document.querySelectorAll<HTMLElement>("[data-retry]").forEach((button) => {
     button.addEventListener("click", async () => {
       state = await window.studio.retryTask(button.dataset.retry!);
@@ -2892,18 +3178,26 @@ function bindQueue(): void {
     });
   });
   document.querySelectorAll<HTMLElement>("[data-edit-upscale-task]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const task = state.queue.find((item) => item.id === button.dataset.editUpscaleTask);
       if (!task || task.taskType !== "upscale") return;
-      upscaleDialog = {
-        taskId: task.id,
-        assetId: task.sourceAssetId,
-        versionId: task.sourceVersionId,
-        targetHeight: task.targetHeight,
-        modelId: task.modelId as typeof upscaleDialog extends { modelId: infer Model } ? Model : never,
-        tileMode: "safe"
-      };
-      render();
+      try {
+        const editingWaitingTask = task.status === "waiting";
+        if (!editingWaitingTask) {
+          state = await window.studio.removeTask(task.id);
+        }
+        upscaleDialog = {
+          ...(editingWaitingTask ? { taskId: task.id } : {}),
+          assetId: task.sourceAssetId,
+          versionId: task.sourceVersionId,
+          targetHeight: task.targetHeight,
+          modelId: task.modelId as typeof upscaleDialog extends { modelId: infer Model } ? Model : never,
+          tileMode: "safe"
+        };
+        render();
+      } catch (error) {
+        showMessage(error instanceof Error ? error.message : "无法编辑提升任务");
+      }
     });
   });
 }

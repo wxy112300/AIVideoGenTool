@@ -145,6 +145,18 @@ describe("renderWorkflow", () => {
       }
     });
 
+    const quickPreview = renderWorkflow(source, {
+      ...h3Task,
+      steps: 12
+    }, { inputImage: "input.png" }) as Record<string, { inputs: Record<string, unknown> }>;
+    expect(quickPreview["8"]?.inputs.steps).toBe(12);
+
+    const nonH3 = renderWorkflow(
+      { "1": { class_type: "BasicScheduler", inputs: { steps: 20 } } },
+      { ...task, steps: 12 }
+    ) as Record<string, { inputs: Record<string, unknown> }>;
+    expect(nonH3["1"]?.inputs.steps).toBe(20);
+
     const compatible = renderWorkflow(
       source,
       { ...h3Task, attentionMode: "pytorch" },

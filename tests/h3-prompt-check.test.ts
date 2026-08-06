@@ -36,6 +36,28 @@ describe("MiniMax H3 prompt checks", () => {
     expect(result.items.map((item) => item.message).join("\n")).toContain("时间戳");
   });
 
+  it("rejects non-increasing timestamps for later shots", () => {
+    const result = checkH3Prompt([
+      "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.",
+      "integrated_multimodal_description: [Shot 1] The action begins. [Shot 2] At 00:05.000, the camera cuts. [Shot 3] At 00:03.000, the camera cuts again.",
+      "overall_soundscape: Quiet room tone.",
+      "non_diegetic_music: N/A"
+    ].join("\n"));
+
+    expect(result.items.map((item) => item.message).join("\n")).toContain("递增");
+  });
+
+  it("warns when the main timeline has no first shot declaration", () => {
+    const result = checkH3Prompt([
+      "For the target video, at 0.00 seconds into the target video, <Picture 1> is fully referenced.",
+      "integrated_multimodal_description: The subject moves naturally.",
+      "overall_soundscape: Quiet room tone.",
+      "non_diegetic_music: N/A"
+    ].join("\n"));
+
+    expect(result.items.map((item) => item.message).join("\n")).toContain("[Shot 1]");
+  });
+
   it("accepts the R2V six-section structure", () => {
     const result = checkH3Prompt([
       "subject_definitions:",

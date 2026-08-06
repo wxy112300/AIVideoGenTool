@@ -9,7 +9,7 @@ import type {
   QueueTask
 } from "../src/types.js";
 import { createDefaultState } from "../src/core/defaults.js";
-import { generationSafetyForTask } from "../src/core/workflow.js";
+import { generationSafetyForTask, normalizeH3Steps } from "../src/core/workflow.js";
 
 interface ReplaceStateFileOptions {
   attempts?: number;
@@ -189,6 +189,11 @@ export class JsonStore {
         history: (saved.history ?? []).map(migrateHistoryAsset)
       };
       let needsPersist = saved.queueRunning === true;
+      const normalizedH3Steps = normalizeH3Steps(this.state.draft.steps);
+      if (normalizedH3Steps !== this.state.draft.steps) {
+        this.state.draft.steps = normalizedH3Steps;
+        needsPersist = true;
+      }
       if (saved.settings?.defaultVideoModel === "wan22_5b") {
         this.state.settings.defaultVideoModel = "minimax_h3_fl2va";
         needsPersist = true;

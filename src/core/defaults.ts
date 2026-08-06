@@ -29,6 +29,7 @@ export function createDefaultDraft(): Draft {
     ratio: "source",
     resolution: 480,
     duration: 5,
+    steps: 20,
     fps: 24,
     frameInterpolation: "off",
     motion: "natural",

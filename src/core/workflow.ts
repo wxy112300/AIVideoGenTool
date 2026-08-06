@@ -1,6 +1,7 @@
 import type {
   ExtensionQueueTask,
   GenerationQueueTask,
+  H3StepCount,
   QueueTask
 } from "../types.js";
 
@@ -53,6 +54,10 @@ export function isMiniMaxH3R2vModel(modelId: string): boolean {
 
 export function isMiniMaxH3Model(modelId: string): boolean {
   return isMiniMaxH3Fl2vaModel(modelId) || isMiniMaxH3R2vModel(modelId);
+}
+
+export function normalizeH3Steps(value: unknown): H3StepCount {
+  return value === 12 || value === 16 || value === 20 ? value : 20;
 }
 
 function generationSafetyProfileForModel(
@@ -736,6 +741,13 @@ export function renderWorkflow(
     string,
     { class_type?: string; inputs?: Record<string, unknown> }
   >;
+  if (isMiniMaxH3Model(task.modelId)) {
+    const steps = normalizeH3Steps(task.steps);
+    for (const node of Object.values(workflow)) {
+      if (node.class_type !== "BasicScheduler" || !node.inputs) continue;
+      node.inputs.steps = steps;
+    }
+  }
   if (
     isMiniMaxH3Model(task.modelId) &&
     task.attentionMode === "pytorch"

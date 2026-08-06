@@ -26,6 +26,7 @@ import type {
   LocalServiceKind,
   QueueTask,
   Settings,
+  TaskPerformanceStats,
   UpscaleQueueTask,
   UpscaleRequest
 } from "../src/types.js";
@@ -81,7 +82,11 @@ import {
   testComfyUi,
   waitForTask
 } from "./services/comfy-ui.js";
-import { getPerformanceMetrics } from "./services/performance.js";
+import {
+  getPerformanceMetrics,
+  startTaskPerformanceMonitor,
+  type TaskPerformanceMonitor
+} from "./services/performance.js";
 import { finalizeExtensionOutput } from "./services/extension-media.js";
 import {
   startAdaptiveVramWatchdog,
@@ -629,6 +634,7 @@ function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask 
     ratio: draft.ratio,
     resolution: draft.resolution,
     duration: draft.duration,
+    steps: draft.steps,
     fps: draft.fps,
     frameInterpolation: draft.frameInterpolation,
     motion: draft.motion,
@@ -680,6 +686,7 @@ function extensionTaskFromDraft(
       ? draft.resolution
       : settings.ltxExtensionResolution,
     duration: draft.duration,
+    steps: draft.steps,
     fps: draft.fps,
     frameInterpolation: draft.frameInterpolation,
     motion: draft.motion,
@@ -807,6 +814,8 @@ async function executeQueue(): Promise<void> {
     if (!task) break;
     activeController = new AbortController();
     let vramWatchdog: VramWatchdogMonitor | undefined;
+    let taskPerformanceMonitor: TaskPerformanceMonitor | undefined;
+    let taskPerformanceStats: TaskPerformanceStats | undefined;
     try {
       if (task.taskType === "generation") {
         const safety = generationSafetyForTask(task);
@@ -822,6 +831,7 @@ async function executeQueue(): Promise<void> {
         startedAt: new Date().toISOString(),
         error: undefined
       });
+      taskPerformanceMonitor = startTaskPerformanceMonitor();
       if (!lmStudioReleased) {
         await updateTask(task.id, {
           progress: 1,
@@ -844,7 +854,8 @@ async function executeQueue(): Promise<void> {
       let lastGpuComputeAt = 0;
       vramWatchdog = startAdaptiveVramWatchdog(
         activeController,
-        (_pressure, utilization) => {
+        (_pressure, utilization, sample) => {
+          taskPerformanceMonitor?.recordGpuSample(sample);
           if (utilization !== null && utilization >= 10) {
             lastGpuComputeAt = Date.now();
           }
@@ -901,6 +912,10 @@ async function executeQueue(): Promise<void> {
           activeController.signal
         );
       }
+      if (taskPerformanceMonitor) {
+        taskPerformanceStats = taskPerformanceMonitor.stop();
+        taskPerformanceMonitor = undefined;
+      }
       const next = await store.update((state) => {
         state.queue = state.queue.filter((item) => item.id !== task.id);
         if (completedTask.taskType === "generation") {
@@ -914,8 +929,10 @@ async function executeQueue(): Promise<void> {
             width,
             height,
             duration: completedTask.duration,
+            steps: completedTask.steps,
             fps: completedTask.fps,
             seed: completedTask.seed,
+            performanceStats: taskPerformanceStats,
             workflowPath: completedTask.workflowPath,
             comfyPromptId: promptId,
             comfyOutputs: result,
@@ -932,6 +949,7 @@ async function executeQueue(): Promise<void> {
             modelId: completedTask.modelId,
             duration: completedTask.duration,
             resolution: completedTask.resolution,
+            steps: completedTask.steps,
             fps: completedTask.fps,
             frameInterpolation: completedTask.frameInterpolation,
             ratio: completedTask.ratio,
@@ -964,8 +982,10 @@ async function executeQueue(): Promise<void> {
             width,
             height,
             duration: totalDuration,
+            steps: completedTask.steps,
             fps: completedTask.fps,
             seed: completedTask.seed,
+            performanceStats: taskPerformanceStats,
             workflowPath: completedTask.workflowPath,
             comfyPromptId: promptId,
             comfyOutputs: result,
@@ -982,6 +1002,7 @@ async function executeQueue(): Promise<void> {
             modelId: completedTask.modelId,
             duration: totalDuration,
             resolution: height,
+            steps: completedTask.steps,
             fps: completedTask.fps,
             frameInterpolation: completedTask.frameInterpolation,
             ratio: "source",
@@ -1021,6 +1042,7 @@ async function executeQueue(): Promise<void> {
           duration: completedTask.duration,
           fps: completedTask.fps,
           seed: completedTask.seed,
+            performanceStats: taskPerformanceStats,
           workflowPath: completedTask.workflowPath,
           comfyPromptId: promptId,
           comfyOutputs: result,
@@ -1049,6 +1071,10 @@ async function executeQueue(): Promise<void> {
         /illegal memory access|cudaErrorIllegalAddress|device-side assertion/i.test(
           error.message
         );
+      if (!taskPerformanceStats && taskPerformanceMonitor) {
+        taskPerformanceStats = taskPerformanceMonitor.stop();
+        taskPerformanceMonitor = undefined;
+      }
       const requiresRestart = stalled || memoryFailure;
       if (!aborted) {
         await interrupt(store.get().settings).catch(() => undefined);
@@ -1068,7 +1094,8 @@ async function executeQueue(): Promise<void> {
             ? `${error instanceof Error ? error.message : String(error)} CUDA 上下文已失效，正在重启 ComfyUI。`
           : error instanceof Error
             ? error.message
-            : String(error)
+            : String(error),
+        performanceStats: taskPerformanceStats
       });
       if (requiresRestart) {
         const recovery = await restartLocalService(
@@ -1083,6 +1110,7 @@ async function executeQueue(): Promise<void> {
       }
     } finally {
       vramWatchdog?.stop();
+      taskPerformanceMonitor?.stop();
       activeController = null;
     }
   }

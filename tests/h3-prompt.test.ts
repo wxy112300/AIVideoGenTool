@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createH3PromptTemplate } from "../src/core/h3-prompt.js";
+import {
+  createH3PromptFromBuilder,
+  createH3PromptTemplate
+} from "../src/core/h3-prompt.js";
 
 describe("MiniMax H3 prompt templates", () => {
   it("creates the official I2VA structure for a single reference image", () => {
@@ -47,5 +50,62 @@ describe("MiniMax H3 prompt templates", () => {
     expect(template.text).toContain("retention_analysis:");
     expect(template.text).toContain("detailed_description:");
     expect(template.text).not.toContain("integrated_multimodal_description:");
+  });
+
+  it("turns camera, continuity, dialogue, and screen text decisions into H3 structure", () => {
+    const template = createH3PromptFromBuilder({
+      style: "Live-action, cinematic.",
+      subject: "A cyclist waits at a rainy intersection.",
+      action: "A light breath precedes the cyclist's slow turn toward the crossing signal.",
+      continuity: "Preserve the red rain jacket, bicycle position, wet street reflections, and dusk lighting.",
+      physicalLock: "The hands remain on the handlebars and the gaze follows the signal.",
+      cameraMotion: "pull-out",
+      cameraAmplitude: "large",
+      cameraSpeed: "slow",
+      framing: "The frame progresses from a close portrait to a wide view of the intersection.",
+      diegeticSound: "Rain taps the jacket and the bicycle chain responds to the movement.",
+      finalState: "The cyclist settles at the curb as the signal changes and the rain continues.",
+      soundscape: "Steady rain, distant traffic, and wet tire noise.",
+      music: "N/A",
+      dialogueSpeaker: "S1",
+      dialogueLanguage: "English",
+      dialogueDelivery: "a quiet, natural voice",
+      dialogueText: "Wait for the light.",
+      onScreenText: "WALK"
+    }, 5);
+
+    expect(template.text).toContain("Preserve the red rain jacket");
+    expect(template.text).toContain("large amplitude at slow speed");
+    expect(template.text).toContain("<d>[English] Wait for the light.</d>");
+    expect(template.text).toContain('reads exactly "WALK"');
+    expect(template.text).toContain("The cyclist settles at the curb");
+  });
+
+  it("uses the same builder decisions in the R2V six-section structure", () => {
+    const template = createH3PromptFromBuilder({
+      style: "3D CG.",
+      subject: "A robot stands in a workshop.",
+      action: "The robot raises one hand.",
+      continuity: "Preserve the robot's color and panel layout.",
+      physicalLock: "Keep the torso facing forward.",
+      cameraMotion: "static",
+      cameraAmplitude: "small",
+      cameraSpeed: "slow",
+      framing: "Hold a medium shot.",
+      diegeticSound: "Servo motors click softly.",
+      finalState: "The hand remains raised.",
+      soundscape: "Quiet workshop hum.",
+      music: "N/A",
+      dialogueSpeaker: "S1",
+      dialogueLanguage: "Chinese",
+      dialogueDelivery: "a calm voice",
+      dialogueText: "",
+      onScreenText: ""
+    }, 5, { mode: "R2V", referenceSlots: [{ role: "人物 / 主体" }] });
+
+    expect(template.text).toContain("subject_definitions:");
+    expect(template.text).toContain("detailed_description:");
+    expect(template.text).toContain("<Picture 1> is a 人物 / 主体 reference");
+    expect(template.text).toContain("The camera holds a static shot.");
   });
 });

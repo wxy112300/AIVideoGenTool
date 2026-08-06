@@ -5,6 +5,7 @@ import {
   type VramPressure,
   type VramWatchdogState
 } from "../../src/core/vram-watchdog.js";
+import type { VramSample } from "../../src/core/vram-watchdog.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -15,7 +16,11 @@ export interface VramWatchdogMonitor {
 
 export function startAdaptiveVramWatchdog(
   controller: AbortController,
-  onSample?: (pressure: VramPressure, utilization: number | null) => void
+  onSample?: (
+    pressure: VramPressure,
+    utilization: number | null,
+    sample: VramSample
+  ) => void
 ): VramWatchdogMonitor {
   let checking = false;
   let stopped = false;
@@ -29,7 +34,7 @@ export function startAdaptiveVramWatchdog(
       const { stdout } = await execFileAsync(
         "nvidia-smi",
         [
-          "--query-gpu=memory.used,memory.total,utilization.gpu",
+          "--query-gpu=memory.used,memory.total,utilization.gpu,temperature.gpu",
           "--format=csv,noheader,nounits"
         ],
         { encoding: "utf8", windowsHide: true }
@@ -42,19 +47,25 @@ export function startAdaptiveVramWatchdog(
       if (!values || values.length < 2 || values.slice(0, 2).some(Number.isNaN)) {
         return;
       }
-      const [usedMiB, totalMiB, utilization] = values;
-      peakUsed = Math.max(peakUsed, usedMiB!);
-      const pressure = evaluateVramPressure(state, {
+      const [usedMiB, totalMiB, utilization, temperature] = values;
+      const sample: VramSample = {
         usedMiB: usedMiB!,
         totalMiB: totalMiB!,
-        sampledAtMs: Date.now()
+        sampledAtMs: Date.now(),
+        ...(Number.isFinite(utilization) ? { gpuUtilization: utilization } : {}),
+        ...(Number.isFinite(temperature) ? { gpuTemperatureC: temperature } : {})
+      };
+      peakUsed = Math.max(peakUsed, usedMiB!);
+      const pressure = evaluateVramPressure(state, {
+        ...sample
       });
       state = pressure.state;
       onSample?.(
         pressure,
         utilization !== undefined && Number.isFinite(utilization)
           ? utilization
-          : null
+          : null,
+        sample
       );
     } catch {
       // Monitoring is best-effort on systems without nvidia-smi.

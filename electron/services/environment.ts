@@ -2755,15 +2755,8 @@ export async function forceStopComfyProcesses(
 }
 
 async function stopOrphanedComfyProcesses(settings: Settings): Promise<void> {
-  const installation = await findComfyInstallation(settings);
-  const processIds = await processIdsForExecutable(installation?.executable ?? "");
-  for (const processId of processIds) {
-    await execFileAsync(
-      "taskkill.exe",
-      ["/PID", String(processId), "/T", "/F"],
-      { encoding: "utf8", timeout: 10_000, windowsHide: true }
-    ).catch(() => undefined);
-  }
+  const result = await forceStopComfyProcesses(settings);
+  if (!result.ok) throw new Error(result.message);
 }
 
 async function stopComfyUi(settings: Settings): Promise<void> {

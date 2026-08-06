@@ -2,6 +2,8 @@ export interface VramSample {
   usedMiB: number;
   totalMiB: number;
   sampledAtMs: number;
+  gpuUtilization?: number;
+  gpuTemperatureC?: number;
 }
 
 export interface VramWatchdogState {

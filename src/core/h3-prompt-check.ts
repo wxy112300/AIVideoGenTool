@@ -46,9 +46,15 @@ function checkShotTimestamps(prompt: string): boolean {
     .filter((value) => Number.isInteger(value));
   if (!shotNumbers.some((value) => value >= 2)) return true;
   const shotBlocks = [...prompt.matchAll(/\[Shot\s+(\d+)\][\s\S]*?(?=\[Shot\s+\d+\]|$)/giu)];
-  return shotBlocks
+  const hasTimestamp = shotBlocks
     .filter((match) => Number(match[1]) >= 2)
     .every((match) => /\bAt\s+\d{2}:\d{2}(?:\.\d{3})?/u.test(match[0]));
+  if (!hasTimestamp) return false;
+  const timestamps = shotBlocks
+    .map((match) => match[0].match(/\bAt\s+(\d{2}):(\d{2})(?:\.(\d{3}))?/u))
+    .filter((match): match is RegExpMatchArray => Boolean(match))
+    .map((match) => Number(match[1]) * 60_000 + Number(match[2]) * 1_000 + Number(match[3] ?? 0));
+  return timestamps.every((value, index) => index === 0 || value > timestamps[index - 1]!);
 }
 
 export function checkH3Prompt(
@@ -64,6 +70,14 @@ export function checkH3Prompt(
     items.push({
       level: "warning",
       message: `缺少官方字段：${missingSections.join("、")}`
+    });
+  }
+
+  const timeline = prompt.match(/(?:integrated_multimodal_description:|detailed_description:)[\s\S]*/iu)?.[0] ?? "";
+  if (!/\[Shot\s+1\]/iu.test(timeline)) {
+    items.push({
+      level: "warning",
+      message: "主时间轴建议以 [Shot 1] 开始，先锁定初始画面再描述动作。"
     });
   }
 

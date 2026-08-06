@@ -22,6 +22,8 @@ export type H3ReferenceRole =
   | "keyframe"
   | "other";
 
+export type H3StepCount = 12 | 16 | 20;
+
 export interface H3ReferenceSlot {
   id: string;
   imagePath: string;
@@ -49,6 +51,7 @@ export interface Draft {
   ratio: "source" | "16:9" | "9:16" | "1:1" | "4:3";
   resolution: 480 | 540 | 720 | 768;
   duration: number;
+  steps: H3StepCount;
   fps: 8 | 12 | 16 | 24 | 25 | 30;
   frameInterpolation: "off" | "rife2x" | "rife4x";
   motion: "subtle" | "natural" | "strong";
@@ -103,6 +106,7 @@ interface QueueTaskBase {
   modelId: string;
   workflowPath: string;
   duration: number;
+  steps?: H3StepCount;
   fps: number;
   seed: number;
   keepSeedOnCopy: boolean;
@@ -112,6 +116,7 @@ interface QueueTaskBase {
   stage?: string;
   startedAt?: string;
   error?: string;
+  performanceStats?: TaskPerformanceStats;
 }
 
 export interface GenerationQueueTask extends QueueTaskBase {
@@ -202,8 +207,10 @@ export interface AssetVersion {
   width: number;
   height: number;
   duration: number;
+  steps?: H3StepCount;
   fps: number;
   seed?: number;
+  performanceStats?: TaskPerformanceStats;
   workflowPath: string;
   comfyPromptId: string;
   comfyOutputs: unknown;
@@ -222,6 +229,7 @@ export interface HistoryAsset {
   modelId: string;
   duration: number;
   resolution: number;
+  steps?: H3StepCount;
   fps?: number;
   frameInterpolation?: Draft["frameInterpolation"];
   ratio?: Draft["ratio"];
@@ -442,6 +450,24 @@ export interface PerformanceMetrics {
   vramTotalBytes: number | null;
   gpuTemperature: number | null;
   comfyConnected: boolean;
+}
+
+export interface TaskPerformanceStats {
+  durationSeconds: number;
+  sampleCount: number;
+  gpuSampleCount: number;
+  cpuAveragePercent: number;
+  cpuPeakPercent: number;
+  memoryAverageBytes: number;
+  memoryPeakBytes: number;
+  memoryTotalBytes: number;
+  gpuAveragePercent: number | null;
+  gpuPeakPercent: number | null;
+  gpuTemperaturePeak: number | null;
+  vramBaselineBytes: number | null;
+  vramAverageBytes: number | null;
+  vramPeakBytes: number | null;
+  vramTotalBytes: number | null;
 }
 
 export interface TaskPreview {
