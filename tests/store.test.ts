@@ -83,4 +83,92 @@ describe("queue lock recovery", () => {
       await fs.rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("migrates legacy image reference slots to typed media slots", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.draft.h3ReferenceSlots = [
+      { id: "legacy-slot", imagePath: "subject.png", role: "subject", note: "" }
+    ] as never;
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const store = new JsonStore(filename);
+      const loaded = await store.load();
+      expect(loaded.draft.h3ReferenceSlots).toEqual([
+        {
+          id: "legacy-slot",
+          mediaType: "image",
+          mediaPath: "subject.png",
+          role: "subject",
+          note: ""
+        }
+      ]);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates retired prompt model selections to the 4090 default", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.settings.promptModelId = "qwen/qwen3.5-9b";
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const store = new JsonStore(filename);
+      const loaded = await store.load();
+      expect(loaded.settings.promptModelId).toBe("qwen/qwen3.5-4b");
+      const persisted = JSON.parse(await fs.readFile(filename, "utf8")) as {
+        settings: { promptModelId: string };
+      };
+      expect(persisted.settings.promptModelId).toBe("qwen/qwen3.5-4b");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves the supported low-memory prompt model selection", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.settings.promptModelId = "qwen/qwen3.5-2b";
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const store = new JsonStore(filename);
+      const loaded = await store.load();
+      expect(loaded.settings.promptModelId).toBe("qwen/qwen3.5-2b");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("persists edited H3 prompt presets and fills missing preset defaults", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.settings.h3PromptPresets = {
+      "official-storyboard": "Use a compact three-shot structure.",
+      "reference-faithful": "",
+      "continuous-motion": "",
+      "multi-reference": ""
+    };
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const store = new JsonStore(filename);
+      const loaded = await store.load();
+      expect(loaded.settings.h3PromptPresets["official-storyboard"]).toBe(
+        "Use a compact three-shot structure."
+      );
+      expect(loaded.settings.h3PromptPresets["reference-faithful"]).not.toBe("");
+      expect(loaded.settings.h3PromptPresets["continuous-motion"]).not.toBe("");
+      expect(loaded.settings.h3PromptPresets["multi-reference"]).not.toBe("");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
 });

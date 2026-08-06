@@ -5,6 +5,32 @@ import {
 } from "../src/core/h3-prompt.js";
 
 describe("MiniMax H3 prompt templates", () => {
+  it("creates the official T2VA structure without an image-alignment instruction", () => {
+    const template = createH3PromptTemplate("A baker opens the shop before sunrise", 5, {
+      mode: "T2VA",
+      hasStartImage: false,
+      hasEndImage: false
+    });
+
+    expect(template.mode).toBe("T2VA");
+    expect(template.text.startsWith("integrated_multimodal_description:")).toBe(true);
+    expect(template.text).not.toContain("Picture 1");
+  });
+
+  it("creates the official L2VA structure with the reference on the final frame", () => {
+    const template = createH3PromptTemplate("A glass gradually falls and settles broken", 5, {
+      mode: "L2VA",
+      hasStartImage: false,
+      hasEndImage: true
+    });
+
+    expect(template.mode).toBe("L2VA");
+    expect(template.text).toContain(
+      "<Picture 1> (from [Shot 1]) aligns with the 5.17-second mark"
+    );
+    expect(template.text).toContain("Treat <Picture 1> as the final frame");
+  });
+
   it("creates the official I2VA structure for a single reference image", () => {
     const template = createH3PromptTemplate("一位女性看向镜头", 5);
 
@@ -107,5 +133,22 @@ describe("MiniMax H3 prompt templates", () => {
     expect(template.text).toContain("detailed_description:");
     expect(template.text).toContain("<Picture 1> is a 人物 / 主体 reference");
     expect(template.text).toContain("The camera holds a static shot.");
+  });
+
+  it("numbers mixed R2V Picture and Video references independently", () => {
+    const template = createH3PromptTemplate("人物与视频中的动作保持一致", 5, {
+      mode: "R2V",
+      referenceSlots: [
+        { mediaType: "image", role: "人物 / 主体" },
+        { mediaType: "video", role: "动作 / 姿态" },
+        { mediaType: "image", role: "场景 / 环境" },
+        { mediaType: "video", role: "镜头 / 构图" }
+      ]
+    });
+
+    expect(template.text).toContain("<Picture 1> is a 人物 / 主体 reference");
+    expect(template.text).toContain("<Video 1> is a 动作 / 姿态 reference");
+    expect(template.text).toContain("<Picture 2> is a 场景 / 环境 reference");
+    expect(template.text).toContain("<Video 2> is a 镜头 / 构图 reference");
   });
 });

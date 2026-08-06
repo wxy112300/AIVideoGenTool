@@ -22,11 +22,14 @@ export type H3ReferenceRole =
   | "keyframe"
   | "other";
 
+export type H3ReferenceMediaType = "image" | "video";
+
 export type H3StepCount = 12 | 16 | 20;
 
 export interface H3ReferenceSlot {
   id: string;
-  imagePath: string;
+  mediaType: H3ReferenceMediaType;
+  mediaPath: string;
   role: H3ReferenceRole;
   note: string;
 }
@@ -70,6 +73,10 @@ export interface Settings {
   lmStudioUrl: string;
   lmStudioModel: string;
   lmStudioInstallDirectory: string;
+  promptUseLmStudio: boolean;
+  promptModelId: string;
+  promptModelDirectory: string;
+  h3PromptPresets: Record<H3PromptPreset, string>;
   outputDirectory: string;
   modelDirectory: string;
   promptSystemTemplate: string;
@@ -308,6 +315,8 @@ export interface ComfyUiCompatibility {
   h3MinimumRevision: string;
   h3CoreSupported: boolean;
   coreNodes: ComfyUiCoreNodeStatus[];
+  promptCoreSupported: boolean;
+  promptCoreNodes: ComfyUiCoreNodeStatus[];
   checkedFrom: "api" | "source" | "";
   updateMode: "desktop" | "git" | "unsupported";
   updateHint: string;
@@ -350,7 +359,7 @@ export interface ModelComponentStatus {
 export interface ModelScanProfile {
   id: string;
   name: string;
-  category: "video" | "upscale" | "interpolation";
+  category: "video" | "upscale" | "interpolation" | "prompt";
   badge: string;
   description: string;
   vram: string;
@@ -418,13 +427,26 @@ export interface AttentionAccelerationStatus {
   detail: string;
 }
 
-export type PromptEnhanceMode = "faithful" | "sulphur-native";
+export type PromptEnhanceMode = "faithful" | "sulphur-native" | "h3-vision";
+
+export type H3PromptPreset =
+  | "official-storyboard"
+  | "reference-faithful"
+  | "continuous-motion"
+  | "multi-reference";
+
+export type H3PromptMode = "T2VA" | "I2VA" | "FL2VA" | "L2VA" | "R2V";
 
 export interface EnhanceRequest {
   prompt: string;
   modelId: string;
   mode?: PromptEnhanceMode;
   imagePath?: string;
+  imagePaths?: string[];
+  h3PromptMode?: H3PromptMode;
+  h3PromptPreset?: H3PromptPreset;
+  h3DurationSeconds?: number;
+  referenceContext?: string;
 }
 
 export interface BundledWorkflow {
@@ -495,6 +517,8 @@ export interface AppApi {
   showItemInFolder(path: string): Promise<boolean>;
   openExternal(url: string): Promise<boolean>;
   enhancePrompt(request: EnhanceRequest): Promise<string>;
+  startPromptModel(): Promise<ConnectionResult>;
+  releasePromptModel(): Promise<ConnectionResult>;
   testConnection(kind: ConnectionKind, settings: Settings): Promise<ConnectionResult>;
   scanEnvironment(settings: Settings): Promise<EnvironmentScanResult>;
   startLocalService(

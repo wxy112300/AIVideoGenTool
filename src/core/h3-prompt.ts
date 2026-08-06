@@ -1,14 +1,33 @@
+import type { H3PromptMode } from "../types.js";
+
 export interface H3PromptTemplate {
   text: string;
   shotCount: number;
-  mode: "I2VA" | "FL2VA" | "R2V";
+  mode: H3PromptMode;
   effectiveDurationSeconds: number;
 }
 
 export interface H3PromptTemplateOptions {
   hasEndImage?: boolean;
-  mode?: "I2VA" | "FL2VA" | "R2V";
-  referenceSlots?: Array<{ role: string; note?: string }>;
+  hasStartImage?: boolean;
+  mode?: H3PromptMode;
+  referenceSlots?: Array<{
+    mediaType?: "image" | "video";
+    role: string;
+    note?: string;
+  }>;
+}
+
+export function inferH3PromptMode(
+  hasStartImage: boolean,
+  hasEndImage: boolean,
+  isR2V = false
+): H3PromptMode {
+  if (isR2V) return "R2V";
+  if (hasStartImage && hasEndImage) return "FL2VA";
+  if (hasStartImage) return "I2VA";
+  if (hasEndImage) return "L2VA";
+  return "T2VA";
 }
 
 export type H3CameraMotion =
@@ -67,14 +86,26 @@ function valueOrFallback(value: string, fallback: string): string {
   return value.trim() || fallback;
 }
 
+function promptModeForOptions(options: H3PromptTemplateOptions): H3PromptMode {
+  if (options.mode) return options.mode;
+  return inferH3PromptMode(
+    options.hasStartImage ?? true,
+    options.hasEndImage ?? false
+  );
+}
+
 function referenceLines(
   referenceSlots: H3PromptTemplateOptions["referenceSlots"]
 ): string {
-  return referenceSlots?.length
-    ? referenceSlots.map((slot, index) =>
-        `<Picture ${index + 1}> is a ${slot.role} reference${slot.note ? `: ${slot.note}` : "."}`
-      ).join("\n")
-    : "<Picture 1> is the primary reference image; preserve the visual information that matters to the target shot.";
+  if (!referenceSlots?.length) {
+    return "<Picture 1> is the primary reference image; preserve the visual information that matters to the target shot.";
+  }
+  const counts: Record<"image" | "video", number> = { image: 0, video: 0 };
+  return referenceSlots.map((slot) => {
+    const mediaType = slot.mediaType === "video" ? "video" : "image";
+    counts[mediaType] += 1;
+    return `<${mediaType === "video" ? "Video" : "Picture"} ${counts[mediaType]}> is a ${slot.role} reference${slot.note ? `: ${slot.note}` : "."}`;
+  }).join("\n");
 }
 
 function cameraSentence(input: H3PromptBuilderInput): string {
@@ -116,7 +147,7 @@ export function createH3PromptFromBuilder(
   durationSeconds: number,
   options: H3PromptTemplateOptions = {}
 ): H3PromptTemplate {
-  const mode = options.mode ?? (options.hasEndImage ? "FL2VA" : "I2VA");
+  const mode = promptModeForOptions(options);
   const effectiveDuration = effectiveDurationSeconds(durationSeconds);
   const subject = valueOrFallback(
     builder.subject,
@@ -190,10 +221,13 @@ export function createH3PromptFromBuilder(
 
   const referenceInstruction = mode === "FL2VA"
     ? `How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the ${effectiveDuration.toFixed(2)}-second mark of the target video.`
-    : "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
+    : mode === "L2VA"
+      ? `How the reference pictures align with the target video — <Picture 1> (from [Shot 1]) aligns with the ${effectiveDuration.toFixed(2)}-second mark of the target video.`
+      : mode === "I2VA"
+        ? "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced."
+        : "";
   const text = [
-    referenceInstruction,
-    "",
+    ...(referenceInstruction ? [referenceInstruction, ""] : []),
     "integrated_multimodal_description:",
     timeline,
     "",
@@ -211,7 +245,7 @@ export function createH3PromptTemplate(
   durationSeconds: number,
   options: H3PromptTemplateOptions = {}
 ): H3PromptTemplate {
-  const mode = options.mode ?? (options.hasEndImage ? "FL2VA" : "I2VA");
+  const mode = promptModeForOptions(options);
   const effectiveDuration = effectiveDurationSeconds(durationSeconds);
   const current = currentPrompt.trim();
   if (mode === "R2V") {
@@ -244,13 +278,20 @@ export function createH3PromptTemplate(
   }
   const referenceInstruction = mode === "FL2VA"
     ? `How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the ${effectiveDuration.toFixed(2)}-second mark of the target video.`
-    : "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
+    : mode === "L2VA"
+      ? `How the reference pictures align with the target video — <Picture 1> (from [Shot 1]) aligns with the ${effectiveDuration.toFixed(2)}-second mark of the target video.`
+      : mode === "I2VA"
+        ? "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced."
+        : "";
   const pathInstruction = mode === "FL2VA"
     ? "Describe one continuous path from the first-frame state to the exact final composition in <Picture 2>. Keep the subject identity, scene anchors, and lighting consistent; avoid unrelated cuts."
-    : "Develop the action forward from <Picture 1> while preserving the subject identity, clothing, scene anchors, and lighting.";
+    : mode === "L2VA"
+      ? "Treat <Picture 1> as the final frame, infer a plausible preceding state, and describe how the subject, objects, camera, and scene gradually converge on its final composition."
+      : mode === "I2VA"
+        ? "Develop the action forward from <Picture 1> while preserving the subject identity, clothing, scene anchors, and lighting."
+        : "Construct the complete audiovisual timeline directly from the user's text without an image-alignment instruction; add only details consistent with the user's intent.";
   const text = [
-    referenceInstruction,
-    "",
+    ...(referenceInstruction ? [referenceInstruction, ""] : []),
     "integrated_multimodal_description:",
     `[Shot 1] Live-action, cinematic. ${current || "Describe the subject, environment, visual style, lighting, and important scene anchors."} ${pathInstruction} Describe visible actions, natural camera motion, and synchronized diegetic sound along the timeline. If a character speaks, use a stable speaker ID such as (S1), describe the voice and delivery outside <d>, and put only the exact, untranslated words inside <d>[Chinese] ...</d>. No one speaks in this default template; replace this sentence when dialogue is needed.`,
     "",

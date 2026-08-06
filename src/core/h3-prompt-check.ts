@@ -1,3 +1,5 @@
+import type { H3PromptMode } from "../types.js";
+
 export type H3PromptCheckLevel = "ok" | "warning";
 
 export interface H3PromptCheckItem {
@@ -6,7 +8,7 @@ export interface H3PromptCheckItem {
 }
 
 export interface H3PromptCheckResult {
-  mode: "I2VA" | "FL2VA" | "R2V";
+  mode: H3PromptMode;
   items: H3PromptCheckItem[];
   summary: string;
   valid: boolean;
@@ -14,7 +16,9 @@ export interface H3PromptCheckResult {
 
 export interface H3PromptCheckOptions {
   hasEndImage?: boolean;
-  mode?: "I2VA" | "FL2VA" | "R2V";
+  mode?: H3PromptMode;
+  hasImageReference?: boolean;
+  hasVideoReference?: boolean;
 }
 
 const baseSections = [
@@ -57,6 +61,35 @@ function checkShotTimestamps(prompt: string): boolean {
   return timestamps.every((value, index) => index === 0 || value > timestamps[index - 1]!);
 }
 
+function firstShotHasTimestamp(prompt: string): boolean {
+  const timelineStart = prompt.search(/(?:integrated_multimodal_description:|detailed_description:)/iu);
+  if (timelineStart < 0) return false;
+  const timeline = prompt.slice(timelineStart);
+  const firstShotMarker = /\[Shot\s+1\]/iu.exec(timeline);
+  if (!firstShotMarker || firstShotMarker.index === undefined) return false;
+  const afterMarker = timeline.slice(firstShotMarker.index + firstShotMarker[0].length);
+  const nextShotIndex = afterMarker.search(/\[Shot\s+\d+\]/iu);
+  const firstShot = nextShotIndex >= 0
+    ? afterMarker.slice(0, nextShotIndex)
+    : afterMarker;
+  return /\bAt\s+\d{2}:\d{2}(?:\.\d{3})?/u.test(firstShot);
+}
+
+function startsWithOfficialInstruction(prompt: string, mode: H3PromptMode): boolean {
+  if (mode === "T2VA") return prompt.startsWith("integrated_multimodal_description:");
+  if (mode === "I2VA") return prompt.startsWith("For the target video, at 0.00 seconds");
+  if (mode === "FL2VA" || mode === "L2VA") {
+    return prompt.startsWith("How the reference pictures align with the target video");
+  }
+  return true;
+}
+
+function sentenceCount(section: string): number {
+  const content = section.trim();
+  if (!content || /^N\/A$/iu.test(content)) return 0;
+  return Math.max(1, content.match(/[.!?](?=\s|$)/gu)?.length ?? 1);
+}
+
 export function checkH3Prompt(
   promptText: string,
   options: H3PromptCheckOptions = {}
@@ -82,20 +115,46 @@ export function checkH3Prompt(
   }
 
   if (mode === "R2V") {
-    if (!prompt.includes("<Picture 1>")) {
+    const hasImageReference = options.hasImageReference ?? true;
+    if (hasImageReference && !prompt.includes("<Picture 1>")) {
       items.push({
         level: "warning",
         message: "R2V 至少需要在提示词中引用 <Picture 1>"
       });
     }
+    if (options.hasVideoReference && !prompt.includes("<Video 1>")) {
+      items.push({
+        level: "warning",
+        message: "当前包含参考视频，建议在提示词中明确引用 <Video 1> 并说明它的作用。"
+      });
+    }
+  } else if (mode === "T2VA") {
+    if (prompt.includes("Picture 1") || prompt.includes("How the reference pictures align")) {
+      items.push({
+        level: "warning",
+        message: "T2VA 没有参考图，不应生成 Picture 对齐语句"
+      });
+    }
+    if (!startsWithOfficialInstruction(prompt, mode)) {
+      items.push({
+        level: "warning",
+        message: "T2VA 的第一个官方字段必须直接位于提示词第一行"
+      });
+    }
   } else {
-    const alignmentPhrase = mode === "FL2VA"
-      ? "How the reference pictures align"
-      : "For the target video";
+    const alignmentPhrase = mode === "I2VA"
+      ? "For the target video"
+      : "How the reference pictures align";
     if (!prompt.includes(alignmentPhrase)) {
       items.push({
         level: "warning",
         message: `${mode} 尚未检测到官方参考图对齐说明`
+      });
+    }
+    if (!startsWithOfficialInstruction(prompt, mode)) {
+      items.push({
+        level: "warning",
+        message: `${mode} 的官方参考图对齐说明必须位于提示词第一行`
       });
     }
     if (mode === "FL2VA" && !prompt.includes("Picture 2")) {
@@ -108,6 +167,12 @@ export function checkH3Prompt(
       items.push({
         level: "warning",
         message: "当前只有首帧，但提示词提到了 Picture 2；请确认是否应该添加尾帧"
+      });
+    }
+    if (mode === "L2VA" && !prompt.includes("Picture 1")) {
+      items.push({
+        level: "warning",
+        message: "L2VA 需要在提示词中说明 Picture 1 的最终状态"
       });
     }
   }
@@ -132,11 +197,30 @@ export function checkH3Prompt(
       message: "SHOT 2 及之后的镜头需要递增的 At 00:03.500 时间戳"
     });
   }
+  if (firstShotHasTimestamp(prompt)) {
+    items.push({
+      level: "warning",
+      message: "官方格式要求 [Shot 1] 不添加 At 时间戳"
+    });
+  }
   const soundscape = prompt.match(/overall_soundscape:\s*([\s\S]*?)(?=\n\s*non_diegetic_music:|$)/iu)?.[1] ?? "";
   if (/<d>|\bsays\b|\bdialogue\b/iu.test(soundscape)) {
     items.push({
       level: "warning",
       message: "overall_soundscape 不应重复放对白；对白应写在 integrated_multimodal_description"
+    });
+  }
+  if (sentenceCount(soundscape) > 4) {
+    items.push({
+      level: "warning",
+      message: "overall_soundscape 按官方指南应控制在 1-4 句"
+    });
+  }
+  const music = prompt.match(/non_diegetic_music:\s*([\s\S]*?)(?=\n\s*(?:subject_definitions:|summary:|retention_analysis:|detailed_description:|integrated_multimodal_description:)|$)/iu)?.[1] ?? "";
+  if (sentenceCount(music) > 3) {
+    items.push({
+      level: "warning",
+      message: "non_diegetic_music 按官方指南应控制在 1-3 句"
     });
   }
 

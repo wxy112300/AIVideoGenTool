@@ -2,12 +2,26 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type {
   EnhanceRequest,
+  H3PromptMode,
+  H3PromptPreset,
   PromptEnhanceMode,
   Settings
 } from "../../src/types.js";
+import { defaultH3PromptPresets } from "../../src/core/h3-prompt-presets.js";
+import { h3OfficialPromptBaseline } from "../../src/core/h3-official-spec.js";
+import { inferH3PromptMode } from "../../src/core/h3-prompt.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+function h3PromptModeForRequest(request: EnhanceRequest): H3PromptMode {
+  if (request.h3PromptMode) return request.h3PromptMode;
+  const imageCount = request.imagePaths?.length ?? 0;
+  return inferH3PromptMode(
+    Boolean(request.imagePath || imageCount > 0),
+    imageCount > 1
+  );
 }
 
 interface LmStudioModelList {
@@ -117,6 +131,10 @@ export async function unloadLmStudioModels(
   throw new Error("LM Studio 已接受卸载请求，但模型在 5 秒后仍占用内存");
 }
 
+export async function releasePromptModelRuntime(settings: Settings): Promise<number> {
+  return unloadLmStudioModels(settings);
+}
+
 export function selectLmStudioModel(
   configuredModel: string,
   availableModels: string[],
@@ -127,6 +145,9 @@ export function selectLmStudioModel(
   const generationModels = availableModels.filter(
     (id) => !/(?:^|[-_/])(embed|embedding|rerank)(?:[-_/]|$)/i.test(id)
   );
+  if (mode === "h3-vision") {
+    return generationModels.find((id) => /qwen3(?:\.5|-vl)|qwen.*vision|qwen.*vl|gemma-3/i.test(id)) ?? "";
+  }
   if (mode === "faithful") {
     return generationModels.find((id) => !/sulphur/i.test(id)) ?? "";
   }
@@ -183,26 +204,91 @@ function imageMimeType(filename: string): string {
   }
 }
 
+function h3EffectiveDurationSeconds(seconds: number | undefined): string {
+  const safe = Number.isFinite(seconds) && (seconds ?? 0) > 0 ? seconds! : 5;
+  const requestedFrames = Math.max(5, Math.round(safe * 24));
+  const alignedFrames = requestedFrames + ((5 - (requestedFrames % 17) + 17) % 17);
+  return (alignedFrames / 24).toFixed(2);
+}
+
 async function nativeUserContent(
   prompt: string,
-  imagePath?: string
+  imagePaths: string[] = []
 ): Promise<ChatContent> {
-  if (!imagePath) return prompt;
+  const paths = [...new Set(imagePaths.filter(Boolean))];
+  if (!paths.length) return prompt;
   try {
-    const bytes = await fs.readFile(imagePath);
-    return [
-      { type: "text", text: prompt },
-      {
+    const parts: Array<ChatTextPart | ChatImagePart> = [
+      { type: "text", text: prompt }
+    ];
+    for (const imagePath of paths) {
+      const bytes = await fs.readFile(imagePath);
+      parts.push({
         type: "image_url",
         image_url: {
           url: `data:${imageMimeType(imagePath)};base64,${bytes.toString("base64")}`
         }
-      }
-    ];
+      });
+    }
+    return parts;
   } catch {
     // Text-only enhancement remains useful if the draft image was moved or deleted.
     return prompt;
   }
+}
+
+function h3VisionSystemPrompt(
+  mode: H3PromptMode,
+  preset: H3PromptPreset = "official-storyboard",
+  presetText = defaultH3PromptPresets[preset]
+): string {
+  const modeRules = mode === "R2V"
+    ? [
+        "Output the six R2V sections in this exact order: subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.",
+        "Use the supplied Picture/Video labels exactly; do not invent a reference label that was not supplied.",
+        "In subject_definitions and retention_analysis, define what each reference contributes and how it is preserved, transferred, or used as a weak reference."
+      ]
+    : [
+        "Output the three H3 sections in this exact order: integrated_multimodal_description, overall_soundscape, non_diegetic_music.",
+        mode === "T2VA"
+          ? "Start directly with integrated_multimodal_description; do not add an image-alignment instruction or invent a Picture label."
+          : mode === "FL2VA"
+            ? "Start with the official first/last-frame alignment instruction and describe one continuous path from Picture 1 to Picture 2."
+            : mode === "L2VA"
+              ? "Start with the official last-frame alignment instruction and describe a plausible path that converges on Picture 1 in the final shot."
+              : "Start with the official first-frame alignment instruction and develop the action forward from Picture 1."
+      ];
+  return [
+    "You are a MiniMax H3 visual prompt editor, not a generic creative copywriter.",
+    mode === "T2VA"
+      ? "No reference image is attached for this T2VA request. Construct the complete audiovisual timeline from the user's intent and add only coherent supporting details."
+      : "Inspect every attached reference image before writing. Preserve only observable identity, clothing, composition, lighting, objects, and spatial relationships; never invent unsupported details.",
+    "Rewrite the user's intent into a physically grounded audiovisual timeline. Replace vague words such as natural, dynamic, cinematic, or realistic with observable cause-and-effect: preparation, action, body response, environmental response, camera path, and final settled state.",
+    "Make movement specific but restrained. Keep body parts, gaze, object contact, weight shift, momentum, and camera movement consistent. Do not add unrelated plot, characters, props, or dialogue.",
+    "Write descriptive body text in English. Preserve exact user dialogue and visible text in its original language. Put dialogue only inside <d>[Language] exact words</d> and keep a stable speaker ID outside the tag.",
+    ...modeRules,
+    `Selected H3 preset: ${preset}.\n${presetText.trim() || defaultH3PromptPresets[preset]}`,
+    h3OfficialPromptBaseline(mode),
+    "Return only the final H3 prompt. Do not include analysis, Markdown fences, headings outside the required H3 fields, or an explanation."
+  ].join("\n");
+}
+
+function h3VisionUserPrompt(request: EnhanceRequest): string {
+  const mode = h3PromptModeForRequest(request);
+  const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds);
+  const referenceContext = request.referenceContext?.trim()
+    ? `\nReference map:\n${request.referenceContext.trim()}`
+    : "";
+  return [
+    `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
+    `H3 output preset: ${request.h3PromptPreset ?? "official-storyboard"}.`,
+    mode === "T2VA"
+      ? "No image reference is attached; the following user intent is the source material for the T2VA timeline."
+      : "The attached image(s) are the reference material in the order described below.",
+    referenceContext,
+    "User intent:",
+    request.prompt.trim()
+  ].filter(Boolean).join("\n\n");
 }
 
 export async function buildLmStudioChatRequest(
@@ -211,6 +297,25 @@ export async function buildLmStudioChatRequest(
   model: string
 ): Promise<LmStudioChatRequest> {
   const mode: PromptEnhanceMode = request.mode ?? "sulphur-native";
+  if (mode === "h3-vision") {
+    const imagePaths = request.imagePaths?.length
+      ? request.imagePaths
+      : request.imagePath
+        ? [request.imagePath]
+        : [];
+    return {
+      model,
+      temperature: 0.35,
+      max_tokens: 1800,
+      messages: [
+        { role: "system", content: h3VisionSystemPrompt(h3PromptModeForRequest(request), request.h3PromptPreset, settings.h3PromptPresets[request.h3PromptPreset ?? "official-storyboard"]) },
+        {
+          role: "user",
+          content: await nativeUserContent(h3VisionUserPrompt(request), imagePaths)
+        }
+      ]
+    };
+  }
   if (mode === "sulphur-native") {
     return {
       model,
@@ -219,7 +324,12 @@ export async function buildLmStudioChatRequest(
       messages: [
         {
           role: "user",
-          content: await nativeUserContent(request.prompt, request.imagePath)
+          content: await nativeUserContent(
+            request.prompt,
+            request.imagePaths?.length
+              ? request.imagePaths
+              : request.imagePath ? [request.imagePath] : []
+          )
         }
       ]
     };
@@ -255,6 +365,9 @@ export async function enhancePrompt(
   request: EnhanceRequest,
   settings: Settings
 ): Promise<string> {
+  if (!settings.promptUseLmStudio) {
+    throw new Error("当前已关闭 LM Studio；主应用会通过 ComfyUI 原生 TextGenerate 执行提示词扩写。你仍可以使用 H3 内置模板和结构化构建器。 ");
+  }
   if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
   const mode: PromptEnhanceMode = request.mode ?? "sulphur-native";
   const availableModels = settings.lmStudioModel.trim()
@@ -266,6 +379,11 @@ export async function enhancePrompt(
     mode
   );
   if (!model) {
+    if (mode === "h3-vision") {
+      throw new Error(
+        "H3 视觉优化需要 Qwen3.5、Qwen3-VL 或其它支持图片输入的本地模型；请先在 LM Studio 加载视觉模型。"
+      );
+    }
     if (mode === "faithful") {
       throw new Error(
         "忠实扩写需要普通 Instruct/Chat 语言模型；当前只有 Sulphur 创意增强器。请切换为“Sulphur 原生增强”，或在 LM Studio 中再加载一个 Instruct 模型。"
@@ -273,6 +391,11 @@ export async function enhancePrompt(
     }
     throw new Error(
       "提示词扩写失败：LM Studio 当前未加载生成模型，请在 Developer 页面加载提示词增强或聊天模型。"
+    );
+  }
+  if (mode === "h3-vision" && /sulphur/i.test(model)) {
+    throw new Error(
+      "H3 视觉优化不能使用 Sulphur 模型；请在 LM Studio 中加载 Qwen3.5 或 Qwen3-VL。"
     );
   }
   if (mode === "faithful" && /sulphur/i.test(model)) {
@@ -304,5 +427,9 @@ export async function enhancePrompt(
   };
   const content = body.choices?.[0]?.message?.content?.trim();
   if (!content) throw new Error("LM Studio 没有返回扩写内容");
-  return content;
+  return content
+    .replace(/<think>[\s\S]*?<\/think>/giu, "")
+    .replace(/^```(?:text|markdown)?\s*/iu, "")
+    .replace(/\s*```$/u, "")
+    .trim();
 }

@@ -59,8 +59,8 @@ import {
 import { JsonStore } from "./store.js";
 import {
   enhancePrompt,
-  testLmStudio,
-  unloadLmStudioModels
+  releasePromptModelRuntime,
+  testLmStudio
 } from "./services/lm-studio.js";
 import {
   installAttentionAcceleration,
@@ -76,9 +76,11 @@ import {
 } from "./services/environment.js";
 import {
   freeMemory,
+  enhancePromptWithComfyUi,
   interrupt,
   submitTask,
   TaskStalledError,
+  warmNativePromptModel,
   testComfyUi,
   waitForTask
 } from "./services/comfy-ui.js";
@@ -98,6 +100,8 @@ let mainWindow: BrowserWindow | null = null;
 let store: JsonStore;
 let queueWorker: Promise<void> | null = null;
 let activeController: AbortController | null = null;
+let nativePromptController: AbortController | null = null;
+let nativePromptWorker: Promise<unknown> | null = null;
 let allowWindowClose = false;
 let closeFlowRunning = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -132,6 +136,8 @@ function registerMediaProtocol(): void {
       let filename: string | undefined;
       if (url.hostname === "draft" && url.pathname === "/video") {
         filename = store.get().draft.sourceVideoPath;
+      } else if (url.hostname === "draft" && url.pathname === "/reference-video") {
+        filename = url.searchParams.get("source") ?? undefined;
       } else if (url.hostname === "history") {
         const [assetId, versionId, fileIndexText] = url.pathname.split("/").filter(Boolean);
         const fileIndex = Number(fileIndexText);
@@ -165,7 +171,8 @@ function registerMediaProtocol(): void {
         [".m4v", "video/mp4"],
         [".webm", "video/webm"],
         [".mov", "video/quicktime"],
-        [".mkv", "video/x-matroska"]
+        [".mkv", "video/x-matroska"],
+        [".gif", "image/gif"]
       ]).get(path.extname(filename).toLowerCase()) ?? "application/octet-stream";
       const range = request.headers.get("range");
       const match = range?.match(/^bytes=(\d*)-(\d*)$/);
@@ -432,11 +439,13 @@ async function interruptForExit(waitForWorker: boolean): Promise<{
   workerSettled: boolean;
 }> {
   const settings = store.get().settings;
+  const hadNativePrompt = Boolean(nativePromptWorker);
   const next = await store.update((state) => {
     state.queueRunning = false;
   });
   sendState(next);
   activeController?.abort(new Error("应用退出，任务已中止"));
+  nativePromptController?.abort(new Error("应用退出，提示词扩写已中止"));
   const interruptPromise = interrupt(settings).then(
     async () => {
       await freeMemory(settings).catch(() => undefined);
@@ -455,10 +464,17 @@ async function interruptForExit(waitForWorker: boolean): Promise<{
   const workerSettled = waitForWorker
     ? await waitWithTimeout(queueWorker, 15_000)
     : false;
-  return { interrupted, workerSettled };
+  const promptSettled = waitForWorker
+    ? await waitWithTimeout(nativePromptWorker, 15_000)
+    : false;
+  return {
+    interrupted: interrupted || (hadNativePrompt && promptSettled),
+    workerSettled: workerSettled && promptSettled
+  };
 }
 
 async function finishWindowClose(): Promise<void> {
+  await releasePromptRuntime(store.get().settings);
   allowWindowClose = true;
   mainWindow?.destroy();
   if (process.platform !== "darwin") app.quit();
@@ -469,7 +485,7 @@ async function handleWindowClose(): Promise<void> {
   const runningTask = store
     .get()
     .queue.find((task) => task.status === "running");
-  if (!runningTask && !activeController) {
+  if (!runningTask && !activeController && !queueWorker && !nativePromptWorker) {
     await finishWindowClose();
     return;
   }
@@ -478,7 +494,7 @@ async function handleWindowClose(): Promise<void> {
     const choice = await dialog.showMessageBox(mainWindow, {
       type: "warning",
       title: "任务仍在运行",
-      message: "当前视频还在生成，是否结束任务并退出？",
+      message: "当前视频任务或提示词扩写仍在运行，是否结束并退出？",
       detail:
         "“结束任务并退出”会中断当前 ComfyUI 计算并等待任务状态保存。“强制退出”仍会尝试中断计算，但不会等待完整清理。ComfyUI 服务本身不会关闭。",
       buttons: ["取消退出", "结束任务并退出", "强制退出"],
@@ -807,6 +823,84 @@ async function ensureComfyUiReady(taskId: string): Promise<void> {
   await testComfyUi(settings);
 }
 
+async function ensureComfyUiReadyForPrompt(settings: Settings): Promise<void> {
+  try {
+    await testComfyUi(settings);
+    return;
+  } catch (connectionError) {
+    if (!isLocalComfyUrl(settings.comfyUrl)) {
+      throw new Error(
+        `无法连接 ComfyUI（${settings.comfyUrl}）：${
+          connectionError instanceof Error ? connectionError.message : String(connectionError)
+        }`
+      );
+    }
+  }
+  const started = await startLocalService("comfy", settings);
+  if (!started.ok) throw new Error(`ComfyUI 自动启动失败：${started.message}`);
+  await testComfyUi(settings);
+}
+
+async function validateNativePromptRuntime(settings: Settings): Promise<void> {
+  const scan = await scanEnvironment(settings);
+  const profile = scan.modelProfiles.find(
+    (item) => item.id === settings.promptModelId && item.category === "prompt"
+  );
+  if (!profile?.available) {
+    const missing = profile?.components
+      .filter((component) => !component.found)
+      .map((component) => component.expected)
+      .join("、");
+    throw new Error(
+      `提示词模型尚未就绪${missing ? `，缺少：${missing}` : ""}。请把模型放入 ComfyUI/models/text_encoders 后重新扫描。`
+    );
+  }
+  if (!scan.comfyCompatibility.promptCoreSupported) {
+    const missing = scan.comfyCompatibility.promptCoreNodes
+      .filter((node) => !node.available)
+      .map((node) => node.id)
+      .join("、");
+    throw new Error(
+      `当前 ComfyUI 核心缺少提示词节点：${missing || "TextGenerate"}。请更新 ComfyUI、重启服务后重试。`
+    );
+  }
+}
+
+async function releasePromptRuntime(settings: Settings): Promise<number> {
+  if (settings.promptUseLmStudio) return releasePromptModelRuntime(settings);
+  try {
+    await freeMemory(settings);
+    return 1;
+  } catch {
+    // An offline ComfyUI instance cannot be holding the native prompt model.
+    return 0;
+  }
+}
+
+async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: string }> {
+  const settings = store.get().settings;
+  if (store.get().queueRunning || activeController || queueWorker) {
+    return { ok: false, message: "当前有视频任务正在运行，暂不能释放提示词模型。" };
+  }
+  if (nativePromptWorker) {
+    return { ok: false, message: "当前正在生成提示词，请等待本次扩写完成。" };
+  }
+  if (settings.promptUseLmStudio) {
+    try {
+      const count = await releasePromptModelRuntime(settings);
+      return { ok: true, message: count ? `已释放 ${count} 个 LM Studio 提示词模型。` : "当前没有已加载的 LM Studio 提示词模型。" };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  try {
+    await freeMemory(settings);
+    return { ok: true, message: "已请求 ComfyUI 卸载提示词模型并释放显存。" };
+  } catch {
+    return { ok: true, message: "ComfyUI 当前未运行，无需释放提示词模型。" };
+  }
+}
+
 async function executeQueue(): Promise<void> {
   let lmStudioReleased = false;
   while (store.get().queueRunning) {
@@ -837,12 +931,14 @@ async function executeQueue(): Promise<void> {
           progress: 1,
           stage: "卸载提示词模型并释放显存"
         });
-        const unloaded = await unloadLmStudioModels(store.get().settings);
+        const unloaded = await releasePromptRuntime(store.get().settings);
         lmStudioReleased = true;
         if (unloaded > 0) {
           await updateTask(task.id, {
             progress: 1,
-            stage: `已卸载 ${unloaded} 个 LM Studio 模型`
+            stage: store.get().settings.promptUseLmStudio
+              ? `已卸载 ${unloaded} 个 LM Studio 模型`
+              : "已释放 ComfyUI 提示词模型"
           });
         }
       }
@@ -1223,11 +1319,59 @@ function registerIpc(): void {
       return false;
     }
   });
-  ipcMain.handle(
-    "prompt:enhance",
-    (_event, request: EnhanceRequest) =>
-      enhancePrompt(request, store.get().settings)
-  );
+  ipcMain.handle("prompt:start", async () => {
+    const settings = store.get().settings;
+    if (settings.promptUseLmStudio) {
+      return { ok: false, message: "当前启用了 LM Studio 兼容后端，请先关闭它再启动 ComfyUI 提示词模型。" };
+    }
+    if (store.get().queueRunning || activeController || queueWorker) {
+      return { ok: false, message: "当前有视频任务正在运行，暂不能启动提示词模型。" };
+    }
+    if (nativePromptWorker) {
+      return { ok: false, message: "提示词模型正在启动或使用中。" };
+    }
+    const controller = new AbortController();
+    nativePromptController = controller;
+    const worker = (async () => {
+      await ensureComfyUiReadyForPrompt(settings);
+      await validateNativePromptRuntime(settings);
+      await warmNativePromptModel(settings, controller.signal);
+    })();
+    nativePromptWorker = worker;
+    try {
+      await worker;
+      return { ok: true, message: "Qwen 提示词模型已启动并加载到 ComfyUI。" };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    } finally {
+      if (nativePromptWorker === worker) nativePromptWorker = null;
+      if (nativePromptController === controller) nativePromptController = null;
+    }
+  });
+  ipcMain.handle("prompt:enhance", async (_event, request: EnhanceRequest) => {
+    const settings = store.get().settings;
+    if (settings.promptUseLmStudio) return enhancePrompt(request, settings);
+    if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
+    if (store.get().queueRunning || activeController || queueWorker) {
+      throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
+    }
+    if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
+    const controller = new AbortController();
+    nativePromptController = controller;
+    const worker = (async () => {
+      await ensureComfyUiReadyForPrompt(settings);
+      await validateNativePromptRuntime(settings);
+      return enhancePromptWithComfyUi(request, settings, controller.signal);
+    })();
+    nativePromptWorker = worker;
+    try {
+      return await worker;
+    } finally {
+      if (nativePromptWorker === worker) nativePromptWorker = null;
+      if (nativePromptController === controller) nativePromptController = null;
+    }
+  });
+  ipcMain.handle("prompt:release", () => releasePromptRuntimeForUser());
   ipcMain.handle(
     "connection:test",
     async (_event, kind: ConnectionKind, settings: Settings) => {
@@ -1257,6 +1401,7 @@ function registerIpc(): void {
   ipcMain.handle(
     "service:force-stop-comfy",
     async (_event, settings: Settings) => {
+      nativePromptController?.abort(new Error("ComfyUI 已被强制终止，提示词扩写已中止"));
       const worker = queueWorker;
       if (worker) {
         const stopped = await store.update((state) => {
@@ -1419,6 +1564,9 @@ function registerIpc(): void {
     return next;
   });
   ipcMain.handle("queue:start", async () => {
+    if (nativePromptWorker) {
+      throw new Error("当前正在生成提示词，请等待扩写完成后再开始视频任务。 ");
+    }
     const next = await store.update((state) => {
       state.queueRunning = true;
     });

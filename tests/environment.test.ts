@@ -12,6 +12,7 @@ import {
   comfyUiMemoryArgs,
   evaluateModelProfiles,
   evaluateMiniMaxH3CoreSupport,
+  evaluatePromptCoreSupport,
   ltxAudioVaeCompatible,
   normalizeProxyUrl,
   parseComfyProcessIds,
@@ -370,6 +371,57 @@ describe("ComfyUI environment candidates", () => {
     expect(profiles.find((profile) => profile.id === "sulphur2")?.available).toBe(false);
   });
 
+  it("scans ComfyUI prompt encoders from the standard text_encoders directory", () => {
+    const legacy = evaluateModelProfiles([
+      "prompt_models\\qwen3.5-9b\\Qwen3.5-9B-Q4_K_M.gguf",
+      "prompt_models\\qwen3.5-9b\\mmproj-F16.gguf"
+    ]);
+    const incomplete = evaluateModelProfiles([]);
+    const complete = evaluateModelProfiles([
+      "text_encoders\\qwen3.5_4b_bf16.safetensors"
+    ]);
+    const completeFast = evaluateModelProfiles([
+      "text_encoders\\qwen3.5_2b_bf16.safetensors"
+    ]);
+    const promptProfiles = incomplete.filter((profile) => profile.category === "prompt");
+    const incompleteProfile = incomplete.find((profile) => profile.id === "qwen/qwen3.5-4b");
+    const completeProfile = complete.find((profile) => profile.id === "qwen/qwen3.5-4b");
+    const fastProfile = completeFast.find((profile) => profile.id === "qwen/qwen3.5-2b");
+
+    expect(promptProfiles).toHaveLength(2);
+    expect(promptProfiles[0]?.id).toBe("qwen/qwen3.5-4b");
+    expect(promptProfiles[1]?.id).toBe("qwen/qwen3.5-2b");
+    expect(legacy.find((profile) => profile.id === "qwen/qwen3.5-4b")?.available).toBe(false);
+    expect(incompleteProfile).toMatchObject({
+      category: "prompt",
+      available: false,
+      integrated: false
+    });
+    expect(completeProfile).toMatchObject({
+      category: "prompt",
+      available: true,
+      integrated: false
+    });
+    expect(fastProfile).toMatchObject({
+      category: "prompt",
+      available: true,
+      integrated: false
+    });
+    expect(fastProfile?.components[0]?.installGuide).toMatchObject({
+      downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors?download=true",
+      targetSubdirectory: "text_encoders",
+      recommendedFilename: "qwen3.5_2b_bf16.safetensors"
+    });
+    expect(completeProfile?.components.map((component) => component.matches[0])).toEqual([
+      "text_encoders/qwen3.5_4b_bf16.safetensors"
+    ]);
+    expect(incompleteProfile?.components[0]?.installGuide).toMatchObject({
+      downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_4b_bf16.safetensors?download=true",
+      targetSubdirectory: "text_encoders",
+      recommendedFilename: "qwen3.5_4b_bf16.safetensors"
+    });
+  });
+
   it("requires the official MiniMax H3 FL2VA, Qwen3-VL and both VAE files", () => {
     const profiles = evaluateModelProfiles([
       "diffusion_models\\minimax_h3_fl2va_pruned_int8_convrot.safetensors",
@@ -434,6 +486,26 @@ describe("ComfyUI environment candidates", () => {
 
     expect(complete.every((node) => node.available)).toBe(true);
     expect(incomplete.filter((node) => !node.available)).toHaveLength(2);
+  });
+
+  it("treats Qwen prompt generation as a built-in ComfyUI core capability", () => {
+    const complete = evaluatePromptCoreSupport({
+      CLIPLoader: {},
+      TextGenerate: {},
+      LoadImage: {},
+      ImageBatch: {},
+      PreviewAny: {}
+    });
+    const incomplete = evaluatePromptCoreSupport({
+      CLIPLoader: {},
+      LoadImage: {},
+      ImageBatch: {},
+      PreviewAny: {}
+    });
+
+    expect(complete.every((node) => node.available)).toBe(true);
+    expect(incomplete.find((node) => node.id === "TextGenerate")?.available).toBe(false);
+    expect(incomplete.filter((node) => !node.available)).toHaveLength(1);
   });
 
   it("requires the official HunyuanVideo 1.5 dual text and vision encoders", () => {

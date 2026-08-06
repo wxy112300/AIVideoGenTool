@@ -9,6 +9,7 @@ import type {
   QueueTask
 } from "../src/types.js";
 import { createDefaultState } from "../src/core/defaults.js";
+import { normalizeH3ReferenceSlots } from "../src/core/h3-reference.js";
 import { generationSafetyForTask, normalizeH3Steps } from "../src/core/workflow.js";
 
 interface ReplaceStateFileOptions {
@@ -114,7 +115,7 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
     taskType: "generation",
     sourceWidth: task.sourceWidth ?? 0,
     sourceHeight: task.sourceHeight ?? 0,
-    h3ReferenceSlots: task.h3ReferenceSlots ?? [],
+    h3ReferenceSlots: normalizeH3ReferenceSlots(task.h3ReferenceSlots),
     fps: (task.fps ?? 24) as Draft["fps"],
     frameInterpolation: task.frameInterpolation ?? "off",
     attentionMode: task.attentionMode ?? "sage",
@@ -178,17 +179,36 @@ export class JsonStore {
         queue?: Array<QueueTask | LegacyQueueTask>;
         history?: Array<HistoryAsset | LegacyHistoryAsset>;
       };
+      const defaultState = createDefaultState();
+      const savedPresetText = saved.settings?.h3PromptPresets;
+      const h3PromptPresets = Object.fromEntries(
+        Object.entries(defaultState.settings.h3PromptPresets).map(([id, fallback]) => {
+          const value = savedPresetText?.[id as keyof typeof savedPresetText];
+          return [id, typeof value === "string" && value.trim() ? value : fallback];
+        })
+      ) as typeof defaultState.settings.h3PromptPresets;
       this.state = {
-        ...createDefaultState(),
+        ...defaultState,
         ...saved,
-        draft: { ...createDefaultState().draft, ...saved.draft },
-        settings: { ...createDefaultState().settings, ...saved.settings },
+        draft: { ...defaultState.draft, ...saved.draft },
+        settings: {
+          ...defaultState.settings,
+          ...saved.settings,
+          h3PromptPresets
+        },
         queueRunning: false,
         schemaVersion: 2,
         queue: (saved.queue ?? []).map(migrateQueueTask),
         history: (saved.history ?? []).map(migrateHistoryAsset)
       };
       let needsPersist = saved.queueRunning === true;
+      const normalizedH3ReferenceSlots = normalizeH3ReferenceSlots(
+        this.state.draft.h3ReferenceSlots
+      );
+      if (JSON.stringify(normalizedH3ReferenceSlots) !== JSON.stringify(this.state.draft.h3ReferenceSlots)) {
+        this.state.draft.h3ReferenceSlots = normalizedH3ReferenceSlots;
+        needsPersist = true;
+      }
       const normalizedH3Steps = normalizeH3Steps(this.state.draft.steps);
       if (normalizedH3Steps !== this.state.draft.steps) {
         this.state.draft.steps = normalizedH3Steps;
@@ -196,6 +216,10 @@ export class JsonStore {
       }
       if (saved.settings?.defaultVideoModel === "wan22_5b") {
         this.state.settings.defaultVideoModel = "minimax_h3_fl2va";
+        needsPersist = true;
+      }
+      if (!["qwen/qwen3.5-4b", "qwen/qwen3.5-2b"].includes(this.state.settings.promptModelId)) {
+        this.state.settings.promptModelId = "qwen/qwen3.5-4b";
         needsPersist = true;
       }
       if (

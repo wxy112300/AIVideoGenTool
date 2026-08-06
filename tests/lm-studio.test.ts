@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { promises as fs } from "node:fs";
 import { createDefaultSettings } from "../src/core/defaults.js";
 import {
   buildLmStudioChatRequest,
@@ -41,6 +42,17 @@ describe("LM Studio model selection", () => {
     ).toBe("qwen-instruct");
     expect(selectLmStudioModel("", ["sulphur-2-base"], "faithful")).toBe("");
   });
+
+  it("selects a vision model for H3 visual mode", () => {
+    expect(
+      selectLmStudioModel(
+        "",
+        ["sulphur-2-base", "qwen/qwen3.5-9b", "text-embedding-model"],
+        "h3-vision"
+      )
+    ).toBe("qwen/qwen3.5-9b");
+    expect(selectLmStudioModel("", ["sulphur-2-base"], "h3-vision")).toBe("");
+  });
 });
 
 describe("LM Studio prompt enhancement requests", () => {
@@ -79,6 +91,33 @@ describe("LM Studio prompt enhancement requests", () => {
     expect(body.messages[1]?.role).toBe("user");
     expect(body.messages[1]?.content).toContain("请使用中文输出");
     expect(body.messages[1]?.content).toContain("一个女孩站在窗边");
+  });
+
+  it("sends multiple reference images with H3-specific visual instructions", async () => {
+    const readFile = vi.spyOn(fs, "readFile").mockResolvedValue(Buffer.from("image"));
+    const body = await buildLmStudioChatRequest(
+      {
+        prompt: "人物向镜头走来",
+        modelId: "minimax_h3_fl2va",
+        mode: "h3-vision",
+        h3PromptMode: "FL2VA",
+        h3DurationSeconds: 5,
+        referenceContext: "<Picture 1> = 首帧人物; <Picture 2> = 尾帧构图",
+        imagePaths: ["first.png", "last.png"]
+      },
+      createDefaultSettings(),
+      "qwen/qwen3.5-9b"
+    );
+
+    expect(body.temperature).toBe(0.35);
+    expect(body.messages[0]?.content).toContain("physically grounded audiovisual timeline");
+    expect(body.messages[1]?.content).toEqual([
+      expect.objectContaining({ type: "text" }),
+      expect.objectContaining({ type: "image_url" }),
+      expect.objectContaining({ type: "image_url" })
+    ]);
+    expect(readFile).toHaveBeenCalledTimes(2);
+    readFile.mockRestore();
   });
 });
 

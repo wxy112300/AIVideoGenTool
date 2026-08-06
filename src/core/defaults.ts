@@ -1,4 +1,5 @@
 import type { AppState, Draft, Settings } from "../types.js";
+import { createDefaultH3PromptPresets } from "./h3-prompt-presets.js";
 
 export const defaultPrompt =
   "人物自然地看向镜头，头发被微风吹动，镜头缓慢推近，动作真实流畅。";
@@ -73,6 +74,10 @@ export function createDefaultSettings(): Settings {
     lmStudioUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
     lmStudioInstallDirectory: "",
+    promptUseLmStudio: false,
+    promptModelId: "qwen/qwen3.5-4b",
+    promptModelDirectory: "",
+    h3PromptPresets: createDefaultH3PromptPresets(),
     outputDirectory: "",
     modelDirectory: "",
     defaultVideoModel: "minimax_h3_fl2va",

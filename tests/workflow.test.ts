@@ -245,6 +245,33 @@ describe("renderWorkflow", () => {
     expect(rendered["15"]?.inputs.sampler_name).toBe("res_multistep");
   });
 
+  it("renders mixed R2V image and video references with paired video audio", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_r2v_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_ref2va",
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    }, {
+      h3ReferenceImages: ["subject.png"],
+      h3ReferenceVideos: ["motion.mp4"]
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(rendered["5"]?.inputs.image).toBe("subject.png");
+    expect(rendered["27"]?.class_type).toBe("VHS_LoadVideoFFmpeg");
+    expect(rendered["27"]?.inputs.video).toBe("motion.mp4");
+    expect(rendered["14"]?.inputs["ref_videos.ref_video_0"]).toEqual(["27", 0]);
+    expect(rendered["14"]?.inputs["ref_video_audios.ref_video_audio_0"]).toEqual(["27", 2]);
+    expect(rendered["28"]).toBeUndefined();
+    expect(rendered["29"]).toBeUndefined();
+  });
+
   it("replaces nested values while preserving numeric token types", () => {
     const result = renderWorkflow(
       {

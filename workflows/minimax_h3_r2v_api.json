@@ -80,6 +80,42 @@
       "image": "{{H3_REF_IMAGE_8}}"
     }
   },
+  "27": {
+    "class_type": "VHS_LoadVideoFFmpeg",
+    "inputs": {
+      "video": "{{H3_REF_VIDEO_0}}",
+      "force_rate": 24,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "start_time": 0,
+      "format": "None"
+    }
+  },
+  "28": {
+    "class_type": "VHS_LoadVideoFFmpeg",
+    "inputs": {
+      "video": "{{H3_REF_VIDEO_1}}",
+      "force_rate": 24,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "start_time": 0,
+      "format": "None"
+    }
+  },
+  "29": {
+    "class_type": "VHS_LoadVideoFFmpeg",
+    "inputs": {
+      "video": "{{H3_REF_VIDEO_2}}",
+      "force_rate": 24,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "start_time": 0,
+      "format": "None"
+    }
+  },
   "14": {
     "class_type": "MiniMaxH3ReferenceToVideo",
     "inputs": {
@@ -99,7 +135,13 @@
       "ref_images.ref_image_5": ["10", 0],
       "ref_images.ref_image_6": ["11", 0],
       "ref_images.ref_image_7": ["12", 0],
-      "ref_images.ref_image_8": ["13", 0]
+      "ref_images.ref_image_8": ["13", 0],
+      "ref_videos.ref_video_0": ["27", 0],
+      "ref_video_audios.ref_video_audio_0": ["27", 2],
+      "ref_videos.ref_video_1": ["28", 0],
+      "ref_video_audios.ref_video_audio_1": ["28", 2],
+      "ref_videos.ref_video_2": ["29", 0],
+      "ref_video_audios.ref_video_audio_2": ["29", 2]
     }
   },
   "15": {

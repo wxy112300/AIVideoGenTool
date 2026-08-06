@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   executedPreviewDataUrl,
+  buildNativePromptWorkflow,
+  extractTextGenerateOutput,
+  h3PromptInstruction,
   historyFailure,
   historyEntryClientId,
   historyEntryHasUnfinishedBatch,
@@ -8,6 +11,142 @@ import {
   progressForNode,
   safeComfyUploadFilename
 } from "../electron/services/comfy-ui.js";
+import { h3OfficialPromptBaseline } from "../src/core/h3-official-spec.js";
+
+describe("native Qwen prompt workflow", () => {
+  it("loads the selected ComfyUI encoder and batches multiple H3 references", () => {
+    const workflow = buildNativePromptWorkflow(
+      {
+        prompt: "让人物自然地抬头并看向镜头。",
+        modelId: "minimax_h3_fl2va",
+        mode: "h3-vision",
+        h3PromptMode: "FL2VA",
+        referenceContext: "<Picture 1> = 首帧; <Picture 2> = 尾帧"
+      },
+      ["studio-input-first.png", "studio-input-last.png"],
+      "qwen/qwen3.5-4b"
+    );
+
+    expect(workflow.clip).toMatchObject({
+      class_type: "CLIPLoader",
+      inputs: {
+        clip_name: "qwen3.5_4b_bf16.safetensors",
+        type: "stable_diffusion"
+      }
+    });
+    expect(workflow["image-batch-1"]).toMatchObject({
+      class_type: "ImageBatch",
+      inputs: {
+        image1: ["load-image-0", 0],
+        image2: ["load-image-1", 0]
+      }
+    });
+    expect(workflow["text-generate"]?.inputs.image).toEqual(["image-batch-1", 0]);
+    expect(workflow["text-generate"]?.inputs.sampling_mode).toBe("on");
+    expect(workflow["text-generate"]?.inputs["sampling_mode.temperature"]).toBe(0.35);
+    expect(workflow["text-generate"]?.inputs["sampling_mode.top_k"]).toBe(40);
+    expect(workflow["text-generate"]?.inputs.max_length).toBe(1536);
+    expect(workflow.preview).toMatchObject({
+      class_type: "PreviewAny",
+      inputs: { source: ["text-generate", 0] }
+    });
+    expect(String(workflow["text-generate"]?.inputs.prompt)).toContain("MiniMax H3");
+    expect(String(workflow["text-generate"]?.inputs.prompt)).toContain("<Picture 1>");
+  });
+
+  it("keeps the H3 instruction grounded when no image is supplied", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "一个女孩在雨中慢慢转身。",
+      modelId: "minimax_h3_fl2va"
+    });
+    expect(instruction).toContain("Return only the final English H3 prompt");
+    expect(instruction).toContain("integrated_multimodal_description:");
+    expect(instruction).toContain("overall_soundscape:");
+    expect(instruction).toContain("non_diegetic_music:");
+    expect(instruction).toContain("T2VA task rule");
+    expect(instruction).not.toContain("For the target video, at 0.00 seconds into the target video");
+  });
+
+  it("changes the H3 output contract when the user selects a different preset", () => {
+    const faithful = h3PromptInstruction({
+      prompt: "人物向镜头走来。",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "FL2VA",
+      h3PromptPreset: "reference-faithful"
+    });
+    const continuous = h3PromptInstruction({
+      prompt: "人物向镜头走来。",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "FL2VA",
+      h3PromptPreset: "continuous-motion"
+    });
+
+    expect(faithful).toContain("Prioritize reference fidelity over invention");
+    expect(continuous).toContain("one continuous shot with no cuts");
+    expect(faithful).not.toBe(continuous);
+  });
+
+  it("injects user-edited preset text into the native prompt header", () => {
+    const instruction = h3PromptInstruction(
+      {
+        prompt: "人物抬头。",
+        modelId: "minimax_h3_fl2va",
+        h3PromptMode: "I2VA",
+        h3PromptPreset: "official-storyboard"
+      },
+      {
+        "official-storyboard": "Use three short shots and put the strongest camera beat first."
+      }
+    );
+
+    expect(instruction).toContain("Use three short shots and put the strongest camera beat first.");
+    expect(instruction).toContain("Built-in MiniMax H3 official baseline");
+    expect(instruction).toContain("I2VA task rule");
+  });
+
+  it("keeps the official reference rules separate from editable presets", () => {
+    const baseline = h3OfficialPromptBaseline("R2V");
+
+    expect(baseline).toContain("<Picture N>");
+    expect(baseline).toContain("<Video N>");
+    expect(baseline).toContain("<Audio N>");
+    expect(baseline).toContain("omni-modal audio-visual generator");
+    expect(baseline).toContain("R2V presentation-order rule");
+    expect(baseline).toContain("Timeline rule");
+    expect(baseline).toContain("Shot timing rule");
+    expect(baseline).toContain("<scenetrans>");
+    expect(baseline).toContain("Overall-soundscape rule");
+    expect(baseline).toContain("Non-diegetic-music rule");
+    expect(baseline).toContain("Dialogue rule");
+    expect(baseline).toContain("subject_definitions, summary, retention_analysis");
+  });
+
+  it("uses a short READY warmup prompt for manual model startup", () => {
+    const workflow = buildNativePromptWorkflow(
+      {
+        prompt: "ignored during warmup",
+        modelId: "prompt-runtime-warmup",
+        mode: "faithful"
+      },
+      [],
+      "qwen/qwen3.5-2b",
+      true
+    );
+
+    expect(workflow["text-generate"]?.inputs.prompt).toBe("Reply with READY only.");
+    expect(workflow["text-generate"]?.inputs.max_length).toBe(8);
+  });
+
+  it("extracts TextGenerate string output and removes hidden thinking", () => {
+    expect(extractTextGenerateOutput({
+      outputs: {
+        preview: {
+          text: ["<think>internal reasoning</think>Style: cinematic. The subject turns slowly."]
+        }
+      }
+    })).toBe("Style: cinematic. The subject turns slowly.");
+  });
+});
 
 describe("ComfyUI task progress", () => {
   it("maps local sampler progress into the overall sampling range", () => {

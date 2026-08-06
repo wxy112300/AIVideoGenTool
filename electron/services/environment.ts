@@ -37,13 +37,35 @@ const minimaxH3CoreNodes = [
   { id: "MiniMaxH3ReferenceToVideo", label: "H3 R2V 多参考图生视频" }
 ] as const;
 
+const promptCoreNodes = [
+  { id: "CLIPLoader", label: "CLIPLoader · 加载文本编码器" },
+  { id: "TextGenerate", label: "TextGenerate · 生成提示词" },
+  { id: "LoadImage", label: "LoadImage · 读取参考图" },
+  { id: "ImageBatch", label: "ImageBatch · 合并多张参考图" },
+  { id: "PreviewAny", label: "PreviewAny · 输出提示词文本" }
+] as const;
+
+function availableComfyNodeIds(objectInfo: unknown): Set<string> {
+  return objectInfo && typeof objectInfo === "object" && !Array.isArray(objectInfo)
+    ? new Set(Object.keys(objectInfo as Record<string, unknown>))
+    : new Set<string>();
+}
+
 export function evaluateMiniMaxH3CoreSupport(
   objectInfo: unknown
 ): ComfyUiCompatibility["coreNodes"] {
-  const available = objectInfo && typeof objectInfo === "object" && !Array.isArray(objectInfo)
-    ? new Set(Object.keys(objectInfo as Record<string, unknown>))
-    : new Set<string>();
+  const available = availableComfyNodeIds(objectInfo);
   return minimaxH3CoreNodes.map((node) => ({
+    ...node,
+    available: available.has(node.id)
+  }));
+}
+
+export function evaluatePromptCoreSupport(
+  objectInfo: unknown
+): ComfyUiCompatibility["promptCoreNodes"] {
+  const available = availableComfyNodeIds(objectInfo);
+  return promptCoreNodes.map((node) => ({
     ...node,
     available: available.has(node.id)
   }));
@@ -242,7 +264,7 @@ export function buildComfyDesktopCandidates(
 interface ModelProfileDefinition {
   id: string;
   name: string;
-  category: "video" | "upscale" | "interpolation";
+  category: "video" | "upscale" | "interpolation" | "prompt";
   badge: string;
   description: string;
   vram: string;
@@ -255,6 +277,20 @@ interface ModelProfileDefinition {
 }
 
 const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
+  "qwen/qwen3.5-2b:Qwen3.5 2B ComfyUI 文本编码器": {
+    sourceLabel: "Hugging Face · Comfy-Org/Qwen3.5",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors?download=true",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "qwen3.5_2b_bf16.safetensors",
+    notes: "更快、更省显存的提示词助手备选；仍支持文字和参考图理解，但复杂动作分析与提示词细节能力低于 4B。"
+  },
+  "qwen/qwen3.5-4b:Qwen3.5 4B ComfyUI 文本编码器": {
+    sourceLabel: "Hugging Face · Comfy-Org/Qwen3.5",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_4b_bf16.safetensors?download=true",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "qwen3.5_4b_bf16.safetensors",
+    notes: "4090 推荐的唯一提示词助手模型。它同时支持文字生成和图片/视频理解；官方 ComfyUI TextGenerate 工作流使用此文件。"
+  },
   "minimax_h3_fl2va:MiniMax H3 FL2VA INT8 模型": {
     sourceLabel: "Comfy-Org / MiniMax-H3",
     downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
@@ -687,6 +723,38 @@ function sulphurComponentsFor(
 }
 
 const modelProfileDefinitions: ModelProfileDefinition[] = [
+  {
+    id: "qwen/qwen3.5-4b",
+    name: "Qwen3.5 4B · H3 提示词助手",
+    category: "prompt",
+    badge: "4090 推荐 · BF16",
+    description: "同时处理文字和参考图/视频，并按 H3 提示词规则生成更适合视频生成的描述。",
+    vram: "BF16 · 文件约 9.3 GB",
+    integrated: false,
+    components: [
+      {
+        label: "Qwen3.5 4B ComfyUI 文本编码器",
+        expected: "text_encoders/qwen3.5_4b_bf16.safetensors",
+        patterns: [/text_encoders\/qwen3\.5_4b_bf16\.safetensors$/i]
+      }
+    ]
+  },
+  {
+    id: "qwen/qwen3.5-2b",
+    name: "Qwen3.5 2B · 快速提示词助手",
+    category: "prompt",
+    badge: "低显存 · BF16",
+    description: "更快的文字和参考图理解备选，适合 12GB 显存或需要快速迭代的设备。",
+    vram: "BF16 · 文件约 4.55 GB",
+    integrated: false,
+    components: [
+      {
+        label: "Qwen3.5 2B ComfyUI 文本编码器",
+        expected: "text_encoders/qwen3.5_2b_bf16.safetensors",
+        patterns: [/text_encoders\/qwen3\.5_2b_bf16\.safetensors$/i]
+      }
+    ]
+  },
   {
     id: "minimax_h3_fl2va",
     name: "MiniMax H3 FL2VA · 首帧 / 首尾帧",
@@ -2126,21 +2194,33 @@ async function inspectComfyCompatibility(
   if (!version) version = await readComfySourceVersion(sourceDirectory);
   if (!revision) revision = await readComfyGitRevision(sourceDirectory);
   if (!objectInfo && sourceDirectory) {
-    const source = await fs.readFile(
-      path.join(sourceDirectory, "comfy_extras", "nodes_minimax_h3.py"),
-      "utf8"
-    ).catch(() => "");
-    if (source) {
+    const [h3Source, textgenSource, previewSource, nodesSource] = await Promise.all([
+      fs.readFile(path.join(sourceDirectory, "comfy_extras", "nodes_minimax_h3.py"), "utf8").catch(() => ""),
+      fs.readFile(path.join(sourceDirectory, "comfy_extras", "nodes_textgen.py"), "utf8").catch(() => ""),
+      fs.readFile(path.join(sourceDirectory, "comfy_extras", "nodes_preview_any.py"), "utf8").catch(() => ""),
+      fs.readFile(path.join(sourceDirectory, "nodes.py"), "utf8").catch(() => "")
+    ]);
+    const sourceNodeIds = [
+      ...minimaxH3CoreNodes
+        .filter((node) => h3Source.includes(`node_id="${node.id}"`))
+        .map((node) => node.id),
+      ...(textgenSource.includes('node_id="TextGenerate"') ? ["TextGenerate"] : []),
+      ...(nodesSource.includes("class CLIPLoader") ? ["CLIPLoader"] : []),
+      ...(nodesSource.includes("class LoadImage") ? ["LoadImage"] : []),
+      ...(nodesSource.includes("class ImageBatch") ? ["ImageBatch"] : []),
+      ...(previewSource.includes("class PreviewAny") ? ["PreviewAny"] : [])
+    ];
+    if (sourceNodeIds.length > 0) {
       objectInfo = Object.fromEntries(
-        minimaxH3CoreNodes
-          .filter((node) => source.includes(`node_id="${node.id}"`))
-          .map((node) => [node.id, {}])
+        sourceNodeIds.map((nodeId) => [nodeId, {}])
       );
       checkedFrom = "source";
     }
   }
   const coreNodes = evaluateMiniMaxH3CoreSupport(objectInfo);
   const h3CoreSupported = coreNodes.every((node) => node.available);
+  const promptNodes = evaluatePromptCoreSupport(objectInfo);
+  const promptCoreSupported = promptNodes.every((node) => node.available);
   const updateMode: ComfyUiCompatibility["updateMode"] = installation?.type === "desktop"
     ? "desktop"
     : sourceDirectory && await exists(path.join(sourceDirectory, ".git"))
@@ -2157,6 +2237,8 @@ async function inspectComfyCompatibility(
     h3MinimumRevision: MINIMAX_H3_MINIMUM_COMFY_REVISION,
     h3CoreSupported,
     coreNodes,
+    promptCoreSupported,
+    promptCoreNodes: promptNodes,
     checkedFrom,
     updateMode,
     updateHint

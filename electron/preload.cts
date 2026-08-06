@@ -29,6 +29,8 @@ const api: AppApi = {
   openExternal: (url: string) => ipcRenderer.invoke("shell:open-external", url),
   enhancePrompt: (request: EnhanceRequest) =>
     ipcRenderer.invoke("prompt:enhance", request),
+  startPromptModel: () => ipcRenderer.invoke("prompt:start"),
+  releasePromptModel: () => ipcRenderer.invoke("prompt:release"),
   testConnection: (kind, settings) =>
     ipcRenderer.invoke("connection:test", kind, settings),
   scanEnvironment: (settings: Settings) =>

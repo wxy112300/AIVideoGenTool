@@ -33,9 +33,11 @@ import {
   PackageOpen,
   Pause,
   Play,
+  Power,
   Plus,
   Puzzle,
   RefreshCw,
+  RotateCcw,
   Save,
   ScanSearch,
   Server,
@@ -58,6 +60,9 @@ import type {
   BundledWorkflow,
   Draft,
   EnvironmentScanResult,
+  H3PromptPreset,
+  H3PromptMode,
+  H3ReferenceMediaType,
   H3ReferenceRole,
   H3ReferenceSlot,
   LocalServiceKind,
@@ -72,9 +77,14 @@ import type {
   ,WorkflowCapabilities
 } from "./types";
 import { createClearedDraft } from "./core/defaults";
+import { createDefaultH3PromptPresets } from "./core/h3-prompt-presets";
+import {
+  h3ReferenceSlotCounts
+} from "./core/h3-reference";
 import {
   createH3PromptFromBuilder,
   createH3PromptTemplate,
+  inferH3PromptMode,
   type H3CameraMotion,
   type H3PromptBuilderInput
 } from "./core/h3-prompt";
@@ -164,6 +174,18 @@ let historyContextMenuEvents: AbortController | null = null;
 let historyMasonryResizeObserver: ResizeObserver | null = null;
 let historyTitleResizeObserver: ResizeObserver | null = null;
 let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
+let h3PromptPreset: H3PromptPreset = "official-storyboard";
+let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
+const h3PromptPresetLabels: Record<H3PromptPreset, string> = {
+  "official-storyboard": "完整电影提示词（推荐）",
+  "reference-faithful": "参考图忠实理解",
+  "continuous-motion": "单镜头连贯动作",
+  "multi-reference": "多参考关系编排"
+};
+let promptEnhancing = false;
+let promptStarting = false;
+let promptReleasing = false;
+let promptRuntimeLoaded = false;
 function createDefaultH3PromptBuilder(): H3PromptBuilderInput {
   return {
     style: "",
@@ -223,9 +245,11 @@ const lucideIconSet = {
   PackageOpen,
   Pause,
   Play,
+  Power,
   Plus,
   Puzzle,
   RefreshCw,
+  RotateCcw,
   Save,
   ScanSearch,
   Server,
@@ -401,10 +425,14 @@ function h3PromptBuilderMarkup(): string {
     </div>`;
 }
 
-function newH3ReferenceSlot(imagePath = ""): H3ReferenceSlot {
+function newH3ReferenceSlot(
+  mediaPath = "",
+  mediaType: H3ReferenceMediaType = "image"
+): H3ReferenceSlot {
   return {
     id: crypto.randomUUID(),
-    imagePath,
+    mediaType,
+    mediaPath,
     role: "subject",
     note: ""
   };
@@ -416,24 +444,51 @@ function h3ReferenceSlotRoleOptions(role: H3ReferenceRole): string {
     .join("");
 }
 
+function h3ReferenceTag(slots: H3ReferenceSlot[], slotId: string): string {
+  const index = slots.findIndex((slot) => slot.id === slotId);
+  if (index < 0) return "<Picture 1>";
+  const slot = slots[index]!;
+  const ordinal = slots
+    .slice(0, index + 1)
+    .filter((item) => item.mediaType === slot.mediaType)
+    .length;
+  return `<${slot.mediaType === "video" ? "Video" : "Picture"} ${ordinal}>`;
+}
+
 function h3ReferenceSlotsMarkup(draft: Draft): string {
   const slots = draft.h3ReferenceSlots;
+  const referenceOrdinals = new Map<string, number>();
+  const typeCounts: Record<H3ReferenceMediaType, number> = { image: 0, video: 0 };
+  slots.forEach((slot) => {
+    typeCounts[slot.mediaType] += 1;
+    referenceOrdinals.set(slot.id, typeCounts[slot.mediaType]);
+  });
   return `
     ${slots.length ? `<div class="h3-reference-grid">${slots.map((slot, index) => `
       <article class="h3-reference-slot" data-h3-slot="${escapeHtml(slot.id)}">
         <div class="h3-reference-slot-head">
-          <div><strong>&lt;Picture ${index + 1}&gt;</strong><span>参考图 ${index + 1}</span></div>
-          <div class="h3-reference-slot-actions"><button class="secondary" data-insert-h3-slot="${escapeHtml(slot.id)}" type="button">插入标签</button><button class="icon-button" data-remove-h3-slot="${escapeHtml(slot.id)}" aria-label="移除参考图 ${index + 1}" title="移除参考图">${icon("x")}</button></div>
+          <div><strong>Slot ${index + 1}</strong><span>&lt;${slot.mediaType === "video" ? "Video" : "Picture"} ${referenceOrdinals.get(slot.id)}&gt; · ${slot.mediaType === "video" ? "参考视频" : "参考图片"}</span></div>
+          <div class="h3-reference-slot-actions"><select class="h3-slot-type" data-h3-slot-type="${escapeHtml(slot.id)}" aria-label="Slot ${index + 1} 媒体类型"><option value="image" ${slot.mediaType === "image" ? "selected" : ""}>图片</option><option value="video" ${slot.mediaType === "video" ? "selected" : ""}>视频</option></select><button class="secondary" data-insert-h3-slot="${escapeHtml(slot.id)}" type="button">插入标签</button><button class="icon-button" data-remove-h3-slot="${escapeHtml(slot.id)}" aria-label="移除 Slot ${index + 1}" title="移除 Slot">${icon("x")}</button></div>
         </div>
-        <button class="drop-zone h3-reference-drop ${slot.imagePath ? "has-image" : ""}" id="pick-h3-slot-${escapeHtml(slot.id)}" data-pick-h3-slot="${escapeHtml(slot.id)}" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="${slot.imagePath ? "松开以替换参考图" : "松开以添加参考图"}">
-          ${slot.imagePath
-            ? `<img id="h3-slot-preview-${escapeHtml(slot.id)}" alt="参考图 ${index + 1}预览"><span class="image-label">点击或拖入替换</span>`
-            : `<span class="drop-icon">${icon("image")}</span><strong>添加参考图</strong><span>PNG、JPG、WEBP、BMP</span>`}
-        </button>
+        ${slot.mediaType === "video" && slot.mediaPath
+          ? `<div class="drop-zone h3-reference-drop has-image h3-video-reference" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="松开以替换参考视频">
+              <video controls playsinline preload="metadata" src="studio-media://draft/reference-video?source=${encodeURIComponent(slot.mediaPath)}" aria-label="参考视频 ${referenceOrdinals.get(slot.id)}"></video>
+              <button class="image-remove button-with-icon" data-clear-h3-slot="${escapeHtml(slot.id)}" aria-label="删除参考视频 ${referenceOrdinals.get(slot.id)}" title="删除参考视频">${icon("x")}<span>删除</span></button>
+            </div>`
+          : slot.mediaPath
+            ? `<div class="h3-reference-media-shell">
+                <button class="drop-zone h3-reference-drop has-image" id="pick-h3-slot-${escapeHtml(slot.id)}" data-pick-h3-slot="${escapeHtml(slot.id)}" data-h3-slot-media-type="${slot.mediaType}" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="松开以替换参考图">
+                  <img id="h3-slot-preview-${escapeHtml(slot.id)}" alt="参考图 ${index + 1}预览"><span class="image-label">点击或拖入替换图片</span>
+                </button>
+                <button class="image-remove button-with-icon" data-clear-h3-slot="${escapeHtml(slot.id)}" aria-label="删除参考图片 ${referenceOrdinals.get(slot.id)}" title="删除参考图片">${icon("x")}<span>删除</span></button>
+              </div>`
+            : `<button class="drop-zone h3-reference-drop" id="pick-h3-slot-${escapeHtml(slot.id)}" data-pick-h3-slot="${escapeHtml(slot.id)}" data-h3-slot-media-type="${slot.mediaType}" data-drop-h3-slot="${escapeHtml(slot.id)}" data-drop-label="松开以添加${slot.mediaType === "video" ? "参考视频" : "参考图"}">
+                <span class="drop-icon">${icon(slot.mediaType === "video" ? "video" : "image")}</span><strong>添加${slot.mediaType === "video" ? "参考视频" : "参考图片"}</strong><span>${slot.mediaType === "video" ? "MP4、MOV、WEBM、MKV" : "PNG、JPG、WEBP、BMP"}</span>
+              </button>`}
         <label>参考作用<select data-h3-slot-role="${escapeHtml(slot.id)}">${h3ReferenceSlotRoleOptions(slot.role)}</select></label>
         <label>给提示词的备注<input data-h3-slot-note="${escapeHtml(slot.id)}" value="${escapeHtml(slot.note)}" placeholder="例如：人物外貌、场景布局或动作参考"></label>
       </article>`).join("")}</div>` : `
-      <div class="h3-slot-empty"><span class="drop-icon">${icon("images")}</span><strong>先添加一张参考图</strong><span>最多 9 张；每张 Slot 可以分别定义人物、场景、风格、动作或镜头参考。</span><button class="secondary button-with-icon" id="add-h3-reference-slot-empty" type="button">${icon("plus")}添加第一个 Slot</button></div>`}`;
+      <div class="h3-slot-empty"><span class="drop-icon">${icon("images")}</span><strong>先添加一张参考媒体</strong><span>最多 9 张图片和 3 段视频；视频会同时使用画面与自身音轨。</span><button class="secondary button-with-icon" id="add-h3-reference-slot-empty" type="button">${icon("plus")}添加第一个 Slot</button></div>`}`;
 }
 
 function promptSnippetOptions(): string {
@@ -445,12 +500,26 @@ function promptSnippetOptions(): string {
     .join("");
 }
 
+function h3PromptModeForDraft(draft: Draft): H3PromptMode {
+  return inferH3PromptMode(
+    Boolean(draft.startImagePath),
+    Boolean(draft.endImagePath),
+    isMiniMaxH3R2vModel(draft.modelId)
+  );
+}
+
 function h3PromptCheckMarkup(
   promptText: string,
   hasEndImage: boolean,
-  mode?: "I2VA" | "FL2VA" | "R2V"
+  mode?: H3PromptMode,
+  hasVideoReference = false
 ): string {
-  const result = checkH3Prompt(promptText, { hasEndImage, mode });
+  const result = checkH3Prompt(promptText, {
+    hasEndImage,
+    mode,
+    hasImageReference: state.draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"),
+    hasVideoReference
+  });
   return `<div id="h3-prompt-check" class="h3-prompt-check ${result.valid ? "valid" : "warning"}" aria-live="polite">
     <div class="h3-prompt-check-heading"><strong>H3 提示词检查</strong><span>${escapeHtml(result.summary)}</span></div>
     ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}
@@ -460,11 +529,17 @@ function h3PromptCheckMarkup(
 function updateH3PromptCheck(
   promptText: string,
   hasEndImage: boolean,
-  mode?: "I2VA" | "FL2VA" | "R2V"
+  mode?: H3PromptMode,
+  hasVideoReference = false
 ): void {
   const element = document.querySelector<HTMLElement>("#h3-prompt-check");
   if (!element) return;
-  const result = checkH3Prompt(promptText, { hasEndImage, mode });
+  const result = checkH3Prompt(promptText, {
+    hasEndImage,
+    mode,
+    hasImageReference: state.draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"),
+    hasVideoReference
+  });
   element.className = `h3-prompt-check ${result.valid ? "valid" : "warning"}`;
   element.innerHTML = `<div class="h3-prompt-check-heading"><strong>H3 提示词检查</strong><span>${escapeHtml(result.summary)}</span></div>
     ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}`;
@@ -814,10 +889,62 @@ async function imagePreview(filename: string, targetId: string): Promise<void> {
   }
 }
 
+function promptModelStatus(settings: Settings): { ready: boolean; detail: string } {
+  if (!environmentScan) {
+    return { ready: false, detail: "等待环境扫描确认提示词模型" };
+  }
+  const profile = environmentScan.modelProfiles.find(
+    (item) => item.category === "prompt" && item.id === settings.promptModelId
+  );
+  if (!profile) {
+    return { ready: false, detail: "当前提示词模型未在设置扫描结果中" };
+  }
+  if (!profile.available) {
+    const missing = profile.components
+      .filter((component) => !component.found)
+      .map((component) => component.expected)
+      .join("、");
+    return {
+      ready: false,
+      detail: `模型未配置完整${missing ? `：缺少 ${missing}` : ""}`
+    };
+  }
+  return { ready: true, detail: "启动 ComfyUI 提示词模型" };
+}
+
+function promptRuntimeControlIcon(): string {
+  return promptStarting || promptEnhancing || promptReleasing
+    ? "refresh-cw"
+    : promptRuntimeLoaded
+      ? "power"
+      : "play";
+}
+
+function promptRuntimeControlTitle(settings = state.settings): string {
+  return promptStarting
+    ? "正在启动提示词模型"
+    : promptEnhancing
+    ? "提示词模型正在运行"
+    : promptReleasing
+      ? "正在释放提示词模型"
+      : promptRuntimeLoaded
+        ? "释放 ComfyUI 提示词模型并回收显存"
+        : promptModelStatus(settings).detail;
+}
+
 function createPage(): string {
   const draft = state.draft;
   const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
   const isR2V = isMiniMaxH3R2vModel(draft.modelId);
+  const h3Mode = isMiniMaxH3 ? h3PromptModeForDraft(draft) : undefined;
+  const enhanceMode = isMiniMaxH3
+    ? promptEnhanceMode === "faithful" ? "faithful" : "h3-vision"
+    : promptEnhanceMode === "h3-vision" ? "sulphur-native" : promptEnhanceMode;
+  const promptStatus = promptModelStatus(state.settings);
+  const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
+  const promptAiDisabled = promptRuntimeBusy || (
+    !state.settings.promptUseLmStudio && state.queueRunning
+  );
   const h3Steps = normalizeH3Steps(draft.steps);
   const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
   const extending = draft.inputMode === "video";
@@ -841,9 +968,10 @@ function createPage(): string {
     ? draft.trimEndSeconds / draft.sourceVideoDuration * 100
     : 100;
   const videoReady = Boolean(draft.sourceVideoPath && draft.sourceVideoDuration > 0);
+  const r2vCounts = h3ReferenceSlotCounts(draft.h3ReferenceSlots);
   const r2vSlotsReady = !isR2V || (
     draft.h3ReferenceSlots.length > 0 &&
-    draft.h3ReferenceSlots.every((slot) => Boolean(slot.imagePath))
+    draft.h3ReferenceSlots.every((slot) => Boolean(slot.mediaPath))
   );
   const enqueueDisabled = extending
     ? !videoReady || trimDuration <= 0 || !supportsVideoExtension || !safety.safe
@@ -862,11 +990,11 @@ function createPage(): string {
     <div class="create-workspace ${isR2V ? "r2v-workspace" : ""}">
       <section class="panel media-panel">
       <div class="section-heading">
-        <div><h2>${extending ? "输入视频" : isR2V ? "多参考 Slots" : "参考画面"}</h2><span class="muted">${extending ? "选择保留范围，续写将从范围末帧开始" : isR2V ? "把人物、场景、风格、动作和镜头拆成独立参考 Slot" : supportsEndImage ? "当前工作流支持首帧和尾帧" : "当前工作流仅支持首帧"}</span></div>
+        <div><h2>${extending ? "输入视频" : isR2V ? "多参考 Slots" : "参考画面"}</h2><span class="muted">${extending ? "选择保留范围，续写将从范围末帧开始" : isR2V ? `图片 ${r2vCounts.imageCount}/9 · 视频 ${r2vCounts.videoCount}/3 · 视频会同步使用自身音轨` : supportsEndImage ? "当前工作流支持首帧和尾帧" : "当前工作流仅支持首帧"}</span></div>
         ${extending
           ? draft.sourceVideoPath ? `<button class="secondary button-with-icon" id="remove-video">${icon("x")}移除视频</button>` : ""
           : isR2V
-            ? draft.h3ReferenceSlots.length < 9 ? `<button class="secondary button-with-icon" id="add-h3-reference-slot" type="button">${icon("plus")}添加 Slot <small>${draft.h3ReferenceSlots.length}/9</small></button>` : ""
+            ? r2vCounts.total < 12 ? `<button class="secondary button-with-icon" id="add-h3-reference-slot" type="button">${icon("plus")}添加 Slot <small>${r2vCounts.total}/12</small></button>` : ""
             : `<button class="secondary button-with-icon" id="toggle-end" ${!supportsEndImage && !draft.endImagePath ? "disabled" : ""}>${icon(draft.endImagePath ? "x" : "images")}${draft.endImagePath ? "移除尾帧" : "添加尾帧"}</button>`}
       </div>
       ${extending
@@ -924,10 +1052,16 @@ function createPage(): string {
           <button class="icon-button" id="prompt-prev" aria-label="上一版提示词" title="上一版提示词" ${draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button>
           <button class="icon-button" id="prompt-next" aria-label="下一版提示词" title="下一版提示词" ${draft.activePromptVersion >= draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button>
           <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="扩写方式" title="选择提示词扩写方式">
-            <option value="sulphur-native" ${promptEnhanceMode === "sulphur-native" ? "selected" : ""}>Sulphur 原生增强（推荐）</option>
-            <option value="faithful" ${promptEnhanceMode === "faithful" ? "selected" : ""}>忠实扩写（需 Instruct 模型）</option>
+            ${isMiniMaxH3
+              ? `<option value="official-storyboard" ${h3PromptPreset === "official-storyboard" ? "selected" : ""}>完整电影提示词（推荐）</option>
+                <option value="reference-faithful" ${h3PromptPreset === "reference-faithful" ? "selected" : ""}>参考图忠实理解</option>
+                <option value="continuous-motion" ${h3PromptPreset === "continuous-motion" ? "selected" : ""}>单镜头连贯动作</option>
+                <option value="multi-reference" ${h3PromptPreset === "multi-reference" ? "selected" : ""}>多参考关系编排</option>`
+              : `<option value="sulphur-native" ${enhanceMode === "sulphur-native" ? "selected" : ""}>Sulphur 原生增强（推荐）</option>
+                 <option value="faithful" ${enhanceMode === "faithful" ? "selected" : ""}>忠实扩写（需 Instruct 模型）</option>`}
           </select>
-          <button class="secondary button-with-icon" id="enhance-prompt">${icon("sparkles")}本地扩写</button>
+          ${!state.settings.promptUseLmStudio ? `<button class="icon-button prompt-runtime-button ${promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model-create" ${promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready) ? "disabled" : ""} aria-label="${escapeHtml(promptRuntimeControlTitle())}" title="${escapeHtml(promptRuntimeControlTitle())}" aria-busy="${promptRuntimeBusy}">${icon(promptRuntimeControlIcon())}</button>` : ""}
+          <button class="secondary button-with-icon" id="enhance-prompt" ${promptAiDisabled ? "disabled" : ""} title="${promptAiDisabled && state.queueRunning ? "当前有视频任务运行，暂不能启动提示词模型" : promptAiDisabled ? "正在生成提示词" : state.settings.promptUseLmStudio ? "使用 LM Studio 扩写" : "使用 ComfyUI 原生 Qwen 模型扩写"}">${icon("sparkles")}${promptEnhancing ? "扩写中…" : isMiniMaxH3 ? "优化 H3 提示词" : "本地扩写"}</button>
         </div>
       </div>
       <textarea id="prompt-input" rows="6" spellcheck="true" lang="${/[\u3400-\u9fff]/u.test(prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(prompt.text)}</textarea>
@@ -935,7 +1069,7 @@ function createPage(): string {
         <label class="prompt-snippet-picker"><span>快速插入</span><select id="prompt-snippet"><option value="">选择镜头、动作、声音或对白片段</option>${promptSnippetOptions()}</select></label>
         <button class="secondary button-with-icon" id="insert-prompt-snippet" type="button" disabled>${icon("plus")}插入</button>
       </div>
-      ${isMiniMaxH3 ? h3PromptCheckMarkup(prompt.text, Boolean(draft.endImagePath), isR2V ? "R2V" : undefined) : ""}
+      ${isMiniMaxH3 ? h3PromptCheckMarkup(prompt.text, Boolean(draft.endImagePath), h3Mode, draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video")) : ""}
       ${extending && isMiniMaxH3 ? `<div class="h3-extension-note">
         <strong>H3 结尾帧接续</strong>
         <span>从保留片段的最后一帧生成新段并保留 H3 原生音轨；它不是 latent overlap 原生续写，边界动作可能发生变化。</span>
@@ -944,21 +1078,24 @@ function createPage(): string {
         <summary>
           <span class="h3-helper-heading">
             <strong>H3 提示词助手 <span class="model-badge">可选</span></strong>
-            <span>${isR2V ? "当前为 R2V 多参考模式。" : draft.endImagePath ? "当前为 FL2VA 首尾帧模式。" : "当前为 I2VA 首帧模式。"}模板会使用官方参考标签和音频字段；准确对白请在模板中保留原文，不要交给扩写器改写。</span>
+            <span>${h3Mode === "R2V" ? "R2V 多参考" : h3Mode === "FL2VA" ? "FL2VA 首尾帧" : h3Mode === "L2VA" ? "L2VA 尾帧" : h3Mode === "T2VA" ? "T2VA 纯文本" : "I2VA 首帧"} · 模板、检查和构建器</span>
           </span>
-          <span class="h3-helper-toggle"><span class="when-closed">查看格式</span><span class="when-open">收起说明</span>${icon("chevron-down")}</span>
+          <span class="h3-helper-toggle"><span class="when-closed">打开</span><span class="when-open">收起</span>${icon("chevron-down")}</span>
         </summary>
         <div class="h3-helper-body">
           <div class="h3-prompt-sections">
-            <div><strong>${isR2V ? "Picture Slot 标签" : "首帧 / 首尾帧对齐"}</strong><span>${isR2V ? "按图片顺序使用 &lt;Picture 1&gt;、&lt;Picture 2&gt;，并在提示词里为每张图指定作用。" : "自动加入 I2VA 或 FL2VA 的参考图时间说明；首尾帧默认保持一个连续镜头。"}</span></div>
-            <div><strong>${isR2V ? "参考作用" : "三段主体结构"}</strong><span>${isR2V ? "人物、场景、风格、动作和镜头可以由不同 Slot 提供。" : "使用 integrated_multimodal_description、overall_soundscape 和 non_diegetic_music。"}</span></div>
-            <div><strong>${isR2V ? "R2V 六段结构" : "对白格式"}</strong><span>${isR2V ? "subject_definitions、summary、retention_analysis、detailed_description 加两段声音字段。" : "固定说话人 ID，写明语言和音色；准确台词放在 &lt;d&gt;[Chinese] ...&lt;/d&gt; 中。"}</span></div>
+            <div><strong>${h3Mode === "R2V" ? "参考标签" : h3Mode === "T2VA" ? "文字时间轴" : "参考对齐"}</strong><span>${h3Mode === "R2V" ? "按顺序使用 Picture / Video 标签，并给每个参考分配作用。" : h3Mode === "T2VA" ? "不添加图片对齐句，直接从文字构建完整视听时间轴。" : h3Mode === "L2VA" ? "从合理的前置状态逐步收束到尾帧。" : "按官方格式先锁定首帧或首尾帧，再写连续动作。"}</span></div>
+            <div><strong>时间轴</strong><span>用 [Shot 1] 开始；后续镜头写明确切时间。</span></div>
+            <div><strong>声音与对白</strong><span>对白放入 d 标签；现场声和背景音乐分开描述。</span></div>
           </div>
-          ${h3PromptBuilderMarkup()}
-          <div class="h3-helper-actions">
-            <span>模板会使用当前首帧/尾帧状态和 H3 实际帧网格；点击后会新建版本，不会覆盖当前内容。</span>
-            <button class="secondary button-with-icon" id="h3-prompt-template" type="button">${icon("list-ordered")}${isR2V ? "创建 R2V 结构模板" : "创建结构化提示词"}</button>
+          <div class="h3-helper-actions h3-helper-quick-actions">
+            <span>从模板开始，或打开构建器逐项组合；都会新建版本，不覆盖当前提示词。</span>
+            <button class="secondary button-with-icon" id="h3-prompt-template" type="button">${icon("list-ordered")}使用结构模板</button>
           </div>
+          <details class="h3-builder-disclosure">
+            <summary><span><strong>结构化构建器</strong><small>镜头、动作、连续性、声音和屏幕文字</small></span>${icon("chevron-down")}</summary>
+            ${h3PromptBuilderMarkup()}
+          </details>
         </div>
       </details>` : ""}
       <div class="composer-settings">
@@ -1558,6 +1695,21 @@ function stopRenderedVideoPlayback(): void {
 
 function modelScanCard(profile: ModelScanProfile): string {
   const missingCount = profile.components.filter((component) => !component.found).length;
+  const isPromptProfile = profile.category === "prompt";
+  const readyLabel = isPromptProfile
+    ? "文件完整"
+    : profile.integrated
+      ? "可用"
+      : "组件完整";
+  const metaLabel = profile.available
+    ? isPromptProfile
+      ? "ComfyUI text_encoders 文件完整；可通过原生 TextGenerate 进行本地扩写"
+      : profile.integrated
+        ? "组件完整，可用于配置"
+        : "依赖已完整；生成工作流将在下一阶段接入"
+    : isPromptProfile
+      ? "补齐对应的 ComfyUI text_encoders 文件后才能接入本地扩写"
+      : "补齐所有必需组件后才能启用";
   return `
     <article class="panel model-profile ${profile.available ? "available" : "missing"}">
       <div class="model-profile-head">
@@ -1565,9 +1717,9 @@ function modelScanCard(profile: ModelScanProfile): string {
           <div class="model-title"><h3>${escapeHtml(profile.name)}</h3><span class="model-badge">${escapeHtml(profile.badge)}</span></div>
           <p class="muted">${escapeHtml(profile.description)}</p>
         </div>
-        <span class="model-availability ${profile.available ? "available" : "missing"}">${profile.available ? `${icon("circle-check")} ${profile.integrated ? "可用" : "组件完整"}` : `${icon("circle-alert")} 缺少 ${missingCount} 项`}</span>
+        <span class="model-availability ${profile.available ? "available" : "missing"}">${profile.available ? `${icon("circle-check")} ${readyLabel}` : `${icon("circle-alert")} 缺少 ${missingCount} 项`}</span>
       </div>
-      <div class="model-meta-line"><span>${escapeHtml(profile.vram)}</span><span>${profile.available ? profile.integrated ? "组件完整，可用于配置" : "依赖已完整；生成工作流将在下一阶段接入" : "补齐所有必需组件后才能启用"}</span></div>
+      <div class="model-meta-line"><span>${escapeHtml(profile.vram)}</span><span>${metaLabel}</span></div>
       <div class="component-list">
         ${profile.components.map((component, componentIndex) => `
           <div class="component-row ${component.found ? "found" : "missing"}">
@@ -1605,7 +1757,7 @@ function installGuideDialog(): string {
     settingsDraft?.modelDirectory ||
     state.settings.modelDirectory ||
     "ComfyUI\\models";
-  const targetDirectory = `${configuredModelDirectory.replace(/[\\/]+$/, "")}\\${guide.targetSubdirectory}`;
+  const targetDirectory = `${configuredModelDirectory.replace(/[\\/]+$/, "")}\\${guide.targetSubdirectory.replaceAll("/", "\\")}`;
   return `
     <div class="dialog-backdrop" id="install-guide-backdrop">
       <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title">
@@ -1738,11 +1890,18 @@ function settingsPage(): string {
   const videoProfiles = orderVideoProfiles(
     profiles.filter((profile) => profile.category === "video")
   );
+  const promptProfiles = profiles.filter((profile) => profile.category === "prompt");
   const upscaleProfiles = profiles.filter((profile) => profile.category === "upscale");
+  const promptStatus = promptModelStatus(settings);
+  const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
+  const defaultPromptPresets = createDefaultH3PromptPresets();
+  const selectedH3PresetText = settings.h3PromptPresets[settingsH3PromptPreset] ??
+    defaultPromptPresets[settingsH3PromptPreset];
   const videoAvailable = videoProfiles.filter(
     (profile) => profile.available && profile.integrated
   ).length;
   const upscaleAvailable = upscaleProfiles.filter((profile) => profile.available).length;
+  const promptAvailable = promptProfiles.filter((profile) => profile.available).length;
   const gpu = environmentScan?.items.find((item) => item.id === "nvidia");
   const gpuDevices = environmentScan?.gpus ?? [];
   const gpuSummary = gpuDevices.length
@@ -1885,6 +2044,20 @@ function settingsPage(): string {
   const promptPanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
+        <div class="section-heading"><div><h2>本地提示词模型</h2><span class="muted">与视频模型共用 ComfyUI/models；提示词模型按 ComfyUI 原生约定放在 text_encoders 目录。</span></div><div class="button-row"><span class="model-badge">${settings.promptUseLmStudio ? "兼容后端" : "共享目录"}</span>${!settings.promptUseLmStudio ? `<button class="icon-button prompt-runtime-button ${promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model" ${promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready) ? "disabled" : ""} aria-label="${escapeHtml(promptRuntimeControlTitle(settings))}" title="${escapeHtml(promptRuntimeControlTitle(settings))}" aria-busy="${promptRuntimeBusy}">${icon(promptRuntimeControlIcon())}</button>` : ""}</div></div>
+        <label class="ios-switch-field"><span class="policy-copy"><strong>启用 LM Studio 兼容后端</strong><small>${settings.promptUseLmStudio ? "当前 AI 扩写仍通过 LM Studio API 运行，模型文件由 LM Studio 管理" : "已关闭；扩写请求会通过 ComfyUI 原生 TextGenerate，模板和构建器仍可用"}</small></span><input id="prompt-use-lm" type="checkbox" ${settings.promptUseLmStudio ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+        <label>默认提示词模型<select id="prompt-model-id">${promptProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${settings.promptModelId === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
+        <div class="scan-result">${environmentScanning ? "正在扫描 ComfyUI/models，并检查 text_encoders…" : environmentScan ? `找到 ${promptAvailable} 个完整的 ComfyUI 文本编码器，${promptProfiles.length - promptAvailable} 个待补齐；完整模型可通过 TextGenerate 用于本地扩写` : "等待首次扫描"}</div>
+        <p class="muted proxy-hint">下载说明会列出 Comfy-Org Hugging Face 文件和准确的 text_encoders 目标目录。开始队列前会统一释放当前启用的提示词运行时。</p>
+      </section>
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>扩写预设</h2><span class="muted">预设会把原始文字和参考图整理成完整的 H3 视频提示词，覆盖主体、场景、动作、镜头、声音、对白和连续性。</span></div><button class="secondary button-with-icon" id="restore-h3-prompt-presets">${icon("rotate-ccw")}恢复默认</button></div>
+        <label>当前编辑预设<select id="h3-prompt-preset-setting">${(Object.keys(h3PromptPresetLabels) as H3PromptPreset[]).map((preset) => `<option value="${preset}" ${settingsH3PromptPreset === preset ? "selected" : ""}>${h3PromptPresetLabels[preset]}</option>`).join("")}</select></label>
+        <label>预设规则头<textarea id="h3-prompt-preset-text" rows="7">${escapeHtml(selectedH3PresetText)}</textarea></label>
+        <p class="muted proxy-hint">规则头可自由修改；内置的 H3 官方基线会继续强制参考标签、首尾帧关系、连续性、音频和输出格式。修改后点击设置页顶部“保存设置”，创建页下次扩写立即使用。</p>
+      </section>
+      <div class="model-profile-list">${promptProfiles.length ? promptProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无提示词模型扫描结果</div>`}</div>
+      <section class="panel settings-section">
         <div class="section-heading"><div><h2>LM Studio</h2><span class="muted">本地提示词扩写服务</span></div><button class="secondary button-with-icon" data-test="lmstudio">${icon("zap")}测试并读取模型</button></div>
         <div class="settings-grid two">
           <label>安装目录<div class="input-action"><input id="lm-install-directory" value="${escapeHtml(settings.lmStudioInstallDirectory)}" placeholder="例如 D:\\Apps\\LM Studio"><button class="secondary button-with-icon" data-pick-lm-install>${icon("folder-open")}选择</button></div></label>
@@ -1926,10 +2099,14 @@ function settingsPage(): string {
   const h3CoreNodes = environmentScan?.comfyCompatibility.coreNodes ?? [];
   const h3CoreKnown = environmentScan?.comfyCompatibility.checkedFrom !== "";
   const h3CoreReady = h3CoreNodes.length > 0 && h3CoreNodes.every((node) => node.available);
+  const promptCoreNodes = environmentScan?.comfyCompatibility.promptCoreNodes ?? [];
+  const promptCoreKnown = environmentScan?.comfyCompatibility.checkedFrom !== "";
+  const promptCoreReady = promptCoreNodes.length > 0 && promptCoreNodes.every((node) => node.available);
   const workflowDependencies = environmentScan?.workflowDependencies ?? [];
   const nodeDependencyAvailable = nodeInstalled + (h3CoreReady ? 1 : 0) +
+    (promptCoreReady ? 1 : 0) +
     workflowDependencies.filter((workflow) => workflow.installed).length;
-  const nodeDependencyTotal = (environmentScan?.customNodes.length ?? 0) + 1 +
+  const nodeDependencyTotal = (environmentScan?.customNodes.length ?? 0) + 2 +
     workflowDependencies.length;
   const nodePanel = `
     <section class="settings-panel">
@@ -1951,6 +2128,18 @@ function settingsPage(): string {
           <div class="custom-node-actions">
             <span class="model-availability ${h3CoreReady ? "available" : "missing"}">${h3CoreReady ? `${icon("circle-check")} 已加载` : h3CoreKnown ? `${icon("circle-alert")} 核心缺失` : `${icon("circle-help")} 尚未启动检测`}</span>
             ${h3CoreReady ? "" : `<button class="primary button-with-icon" id="repair-h3-core" ${coreDependencyRepairing ? "disabled" : ""}>${icon(coreDependencyRepairing ? "refresh-cw" : "shield-check")}${coreDependencyRepairing ? "处理中…" : h3CoreKnown ? "一键补齐/更新" : "启动并检测"}</button>`}
+          </div>
+        </article>
+        <article class="panel custom-node-card ${promptCoreReady ? "available" : "missing"}">
+          <div class="custom-node-copy">
+            <div class="model-title"><h3>Qwen 提示词核心节点</h3><span class="model-badge">ComfyUI 核心</span></div>
+            <p>Qwen3.5 2B/4B 使用 ComfyUI 自带的文本生成链路，不需要安装第三方节点；更新 ComfyUI 核心后重新扫描即可。</p>
+            <div class="component-list">
+              ${promptCoreNodes.map((node) => `<div class="component-row ${node.available ? "found" : "missing"}"><span class="component-state">${icon(node.available ? "circle-check" : "circle-alert")}</span><div><strong>${escapeHtml(node.label)}</strong><code>${escapeHtml(node.id)}</code></div></div>`).join("") || `<div class="component-row missing"><span class="component-state">${icon("circle-alert")}</span><div><strong>等待扫描 Qwen 核心节点</strong></div></div>`}
+            </div>
+          </div>
+          <div class="custom-node-actions">
+            <span class="model-availability ${promptCoreReady ? "available" : "missing"}">${promptCoreReady ? `${icon("circle-check")} 已加载` : promptCoreKnown ? `${icon("circle-alert")} 核心缺失` : `${icon("circle-help")} 尚未启动检测`}</span>
           </div>
         </article>
         ${workflowDependencies.map((workflow) => `
@@ -2039,7 +2228,7 @@ function settingsPage(): string {
           ["nodes", "workflow", "节点与工作流"],
           ["prompt", "sparkles", "提示词扩写"],
           ["upscale", "maximize-2", "分辨率提升"]
-        ] as const).map(([id, iconName, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
+        ] as const).map(([id, iconName, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "prompt" && environmentScan ? `<small>${promptAvailable}/${promptProfiles.length}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
       </nav>
       <div class="settings-content">${activePanel}</div>
     </div>
@@ -2071,7 +2260,9 @@ function render(): void {
     if (isMiniMaxH3R2vModel(state.draft.modelId)) {
       bindH3ReferenceSlots();
       for (const slot of state.draft.h3ReferenceSlots) {
-        void imagePreview(slot.imagePath, `h3-slot-preview-${slot.id}`);
+        if (slot.mediaType === "image") {
+          void imagePreview(slot.mediaPath, `h3-slot-preview-${slot.id}`);
+        }
       }
     }
   } else if (page === "queue") {
@@ -2092,6 +2283,47 @@ function showMessage(message: string): void {
       render();
     }
   }, 3500);
+}
+
+async function releasePromptModelFromUi(): Promise<void> {
+  if (promptReleasing) return;
+  promptReleasing = true;
+  render();
+  try {
+    const result = await window.studio.releasePromptModel();
+    if (result.ok) promptRuntimeLoaded = false;
+    showMessage(result.message);
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : String(error));
+  } finally {
+    promptReleasing = false;
+    render();
+  }
+}
+
+async function startPromptModelFromUi(): Promise<void> {
+  if (promptStarting) return;
+  promptStarting = true;
+  render();
+  try {
+    const result = await window.studio.startPromptModel();
+    if (!result.ok) throw new Error(result.message);
+    promptRuntimeLoaded = true;
+    showMessage(result.message);
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : String(error));
+  } finally {
+    promptStarting = false;
+    render();
+  }
+}
+
+async function togglePromptModelFromUi(): Promise<void> {
+  if (promptRuntimeLoaded) {
+    await releasePromptModelFromUi();
+  } else {
+    await startPromptModelFromUi();
+  }
 }
 
 function requestHistoryDeletion(assetId: string): void {
@@ -2446,12 +2678,13 @@ async function handleClipboardPaste(event: ClipboardEvent): Promise<void> {
       : null;
   if (isMiniMaxH3R2vModel(state.draft.modelId)) {
     const targetSlot = state.draft.h3ReferenceSlots.find(
-      (slot) => !slot.imagePath
+      (slot) => slot.mediaType === "image" && !slot.mediaPath
     );
     if (!targetSlot) {
+      const { imageCount } = h3ReferenceSlotCounts(state.draft.h3ReferenceSlots);
       showMessage(
-        state.draft.h3ReferenceSlots.length >= 9
-          ? "R2V 的 9 个 Slot 都已有图片，无法继续粘贴。"
+        imageCount >= 9
+          ? "R2V 的图片 Slot 已满，请添加图片 Slot 后再粘贴。"
           : "R2V 当前没有空 Slot，请先添加一个 Slot。"
       );
       return;
@@ -2461,9 +2694,9 @@ async function handleClipboardPaste(event: ClipboardEvent): Promise<void> {
         await file.arrayBuffer(),
         file.type
       );
-      updateH3ReferenceSlot(targetSlot.id, { imagePath: filename });
+      updateH3ReferenceSlot(targetSlot.id, { mediaPath: filename });
       render();
-      showMessage(`已粘贴到下一个空的 R2V Slot（Picture ${state.draft.h3ReferenceSlots.findIndex((slot) => slot.id === targetSlot.id) + 1}）。`);
+      showMessage(`已粘贴到下一个空的 R2V Slot（${h3ReferenceTag(state.draft.h3ReferenceSlots, targetSlot.id)}）。`);
     } catch (error) {
       showMessage(error instanceof Error ? error.message : "无法读取剪贴板图片");
     }
@@ -2556,11 +2789,15 @@ function updateH3ReferenceSlot(
 
 function bindH3ReferenceSlots(): void {
   const addSlot = () => {
-    if (state.draft.h3ReferenceSlots.length >= 9) return;
+    const counts = h3ReferenceSlotCounts(state.draft.h3ReferenceSlots);
+    if (counts.total >= 12) return;
+    const mediaType: H3ReferenceMediaType = counts.imageCount < 9
+      ? "image"
+      : "video";
     patchDraft({
       h3ReferenceSlots: [
         ...state.draft.h3ReferenceSlots,
-        newH3ReferenceSlot()
+        newH3ReferenceSlot("", mediaType)
       ]
     });
     render();
@@ -2577,13 +2814,50 @@ function bindH3ReferenceSlots(): void {
       render();
     });
   });
+  document.querySelectorAll<HTMLButtonElement>("[data-clear-h3-slot]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const slotId = button.dataset.clearH3Slot;
+      if (!slotId) return;
+      updateH3ReferenceSlot(slotId, { mediaPath: "" });
+      render();
+    });
+  });
   document.querySelectorAll<HTMLButtonElement>("[data-insert-h3-slot]").forEach((button) => {
     button.addEventListener("click", () => {
       const slotId = button.dataset.insertH3Slot;
       const promptInput = document.querySelector<HTMLTextAreaElement>("#prompt-input");
       const slotIndex = state.draft.h3ReferenceSlots.findIndex((slot) => slot.id === slotId);
-      if (!promptInput || slotIndex < 0) return;
-      insertPromptSnippet(promptInput, `<Picture ${slotIndex + 1}>`);
+      if (!promptInput || !slotId || slotIndex < 0) return;
+      insertPromptSnippet(promptInput, h3ReferenceTag(state.draft.h3ReferenceSlots, slotId));
+    });
+  });
+  document.querySelectorAll<HTMLSelectElement>("[data-h3-slot-type]").forEach((select) => {
+    select.addEventListener("change", () => {
+      const slotId = select.dataset.h3SlotType;
+      const nextType = select.value as H3ReferenceMediaType;
+      const currentSlot = state.draft.h3ReferenceSlots.find((slot) => slot.id === slotId);
+      if (!slotId || !currentSlot || currentSlot.mediaType === nextType) return;
+      const counts = h3ReferenceSlotCounts(state.draft.h3ReferenceSlots);
+      if (nextType === "image" && counts.imageCount >= 9) {
+        select.value = currentSlot.mediaType;
+        showMessage("R2V 最多支持 9 个图片 Slot。");
+        return;
+      }
+      if (nextType === "video" && counts.videoCount >= 3) {
+        select.value = currentSlot.mediaType;
+        showMessage("R2V 最多支持 3 个视频 Slot。");
+        return;
+      }
+      if (nextType === "video" && currentSlot.mediaPath) {
+        showMessage("切换为视频后需要重新选择视频文件，当前图片不会自动转换。");
+      }
+      updateH3ReferenceSlot(slotId, {
+        mediaType: nextType,
+        mediaPath: ""
+      });
+      render();
     });
   });
   document.querySelectorAll<HTMLButtonElement>("[data-pick-h3-slot]").forEach((button) => {
@@ -2591,9 +2865,14 @@ function bindH3ReferenceSlots(): void {
       event.preventDefault();
       const slotId = button.dataset.pickH3Slot;
       if (!slotId) return;
-      const filename = await window.studio.pickImage();
+      const mediaType = button.dataset.h3SlotMediaType === "video"
+        ? "video"
+        : "image";
+      const filename = mediaType === "video"
+        ? await window.studio.pickVideo()
+        : await window.studio.pickImage();
       if (!filename) return;
-      updateH3ReferenceSlot(slotId, { imagePath: filename });
+      updateH3ReferenceSlot(slotId, { mediaType, mediaPath: filename });
       render();
     });
   });
@@ -2631,19 +2910,24 @@ function bindH3ReferenceSlots(): void {
       clearDragState();
       const file = event.dataTransfer?.files.item(0);
       const slotId = zone.dataset.dropH3Slot;
-      if (!file || !slotId) return;
-      const isSupported = file.type.startsWith("image/") ||
-        /\.(png|jpe?g|webp|bmp)$/i.test(file.name);
+      const slot = state.draft.h3ReferenceSlots.find((item) => item.id === slotId);
+      if (!file || !slotId || !slot) return;
+      const isVideo = slot.mediaType === "video";
+      const isSupported = isVideo
+        ? file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|mkv|gif)$/i.test(file.name)
+        : file.type.startsWith("image/") || /\.(png|jpe?g|webp|bmp)$/i.test(file.name);
       if (!isSupported) {
-        showMessage("R2V Slot 只支持 PNG、JPG、WEBP 或 BMP 图片");
+        showMessage(isVideo
+          ? "视频 Slot 只支持 MP4、WebM、MOV、M4V、MKV 或 GIF"
+          : "图片 Slot 只支持 PNG、JPG、WEBP 或 BMP 图片");
         return;
       }
       const filename = window.studio.getDroppedFilePath(file);
       if (!filename) {
-        showMessage("无法读取拖入图片的本地路径");
+        showMessage(`无法读取拖入${isVideo ? "视频" : "图片"}的本地路径`);
         return;
       }
-      updateH3ReferenceSlot(slotId, { imagePath: filename });
+      updateH3ReferenceSlot(slotId, { mediaPath: filename });
       render();
     });
   });
@@ -2915,7 +3199,8 @@ function bindCreate(): void {
     updateH3PromptCheck(
       promptInput.value,
       Boolean(state.draft.endImagePath),
-      isMiniMaxH3R2vModel(state.draft.modelId) ? "R2V" : undefined
+      h3PromptModeForDraft(state.draft),
+      state.draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video")
     );
   });
   document.querySelector("#prompt-prev")?.addEventListener("click", () => {
@@ -2927,27 +3212,64 @@ function bindCreate(): void {
     render();
   });
   document.querySelector("#prompt-enhance-mode")?.addEventListener("change", (event) => {
-    promptEnhanceMode = (event.currentTarget as HTMLSelectElement).value as PromptEnhanceMode;
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    if (isMiniMaxH3Model(state.draft.modelId)) {
+      h3PromptPreset = value as H3PromptPreset;
+    } else {
+      promptEnhanceMode = value as PromptEnhanceMode;
+    }
+  });
+  document.querySelector("#release-prompt-model-create")?.addEventListener("click", () => {
+    void togglePromptModelFromUi();
   });
   document.querySelector("#enhance-prompt")?.addEventListener("click", async (event) => {
-    const button = event.currentTarget as HTMLButtonElement;
-    button.disabled = true;
-    button.textContent = "扩写中…";
+    promptEnhancing = true;
+    render();
     try {
+      const isCurrentH3 = isMiniMaxH3Model(state.draft.modelId);
+      const h3Mode = h3PromptModeForDraft(state.draft);
+      const requestMode: PromptEnhanceMode = isCurrentH3
+        ? "h3-vision"
+        : promptEnhanceMode === "h3-vision" ? "sulphur-native" : promptEnhanceMode;
+      const isH3Vision = requestMode === "h3-vision";
+      const h3ImagePaths = isMiniMaxH3R2vModel(state.draft.modelId)
+        ? state.draft.h3ReferenceSlots
+            .filter((slot) => slot.mediaType === "image" && slot.mediaPath)
+            .map((slot) => slot.mediaPath)
+        : [state.draft.startImagePath, state.draft.endImagePath].filter(Boolean);
+      const referenceContext = isMiniMaxH3R2vModel(state.draft.modelId)
+        ? state.draft.h3ReferenceSlots.map((slot) =>
+            `${h3ReferenceTag(state.draft.h3ReferenceSlots, slot.id)} = ${h3ReferenceRoleLabels[slot.role]}${slot.note ? `; ${slot.note}` : ""}`
+          ).join("\n")
+        : h3Mode === "FL2VA"
+          ? "<Picture 1> = 首帧; <Picture 2> = 尾帧"
+          : h3Mode === "I2VA"
+            ? "<Picture 1> = 首帧"
+            : h3Mode === "L2VA"
+              ? "<Picture 1> = 尾帧"
+              : "";
       const text = await window.studio.enhancePrompt({
         prompt: activePrompt().text,
         modelId: state.draft.modelId,
-        mode: promptEnhanceMode,
-        imagePath: state.draft.startImagePath || undefined
+        mode: requestMode,
+        imagePath: state.draft.startImagePath || undefined,
+        imagePaths: isH3Vision ? h3ImagePaths : undefined,
+        h3PromptMode: h3Mode,
+        h3PromptPreset: isCurrentH3 ? h3PromptPreset : undefined,
+        h3DurationSeconds: state.draft.duration,
+        referenceContext: isH3Vision ? referenceContext : undefined
       });
+      if (!state.settings.promptUseLmStudio) promptRuntimeLoaded = true;
       const versions = [
         ...state.draft.promptVersions.slice(0, state.draft.activePromptVersion + 1),
         { id: crypto.randomUUID(), label: `扩写 ${state.draft.promptVersions.filter((item) => item.label.startsWith("扩写")).length + 1}`, text, createdAt: new Date().toISOString() }
       ];
       patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
-      render();
     } catch (error) {
       showMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      promptEnhancing = false;
+      render();
     }
   });
   document.querySelector("#h3-prompt-template")?.addEventListener("click", () => {
@@ -2956,10 +3278,10 @@ function bindCreate(): void {
       state.draft.duration,
       {
         hasEndImage: Boolean(state.draft.endImagePath),
-        mode: isMiniMaxH3R2vModel(state.draft.modelId)
-          ? "R2V"
-          : undefined,
+        hasStartImage: Boolean(state.draft.startImagePath),
+        mode: h3PromptModeForDraft(state.draft),
         referenceSlots: state.draft.h3ReferenceSlots.map((slot) => ({
+          mediaType: slot.mediaType,
           role: h3ReferenceRoleLabels[slot.role],
           note: slot.note
         }))
@@ -2997,8 +3319,10 @@ function bindCreate(): void {
       state.draft.duration,
       {
         hasEndImage: Boolean(state.draft.endImagePath),
-        mode: isMiniMaxH3R2vModel(state.draft.modelId) ? "R2V" : undefined,
+        hasStartImage: Boolean(state.draft.startImagePath),
+        mode: h3PromptModeForDraft(state.draft),
         referenceSlots: state.draft.h3ReferenceSlots.map((slot) => ({
+          mediaType: slot.mediaType,
           role: h3ReferenceRoleLabels[slot.role],
           note: slot.note
         }))
@@ -3032,10 +3356,10 @@ function bindCreate(): void {
               .map((imagePath) => newH3ReferenceSlot(imagePath))
           : existingSlots;
         const restoredStartImage = oldWasR2V
-          ? existingSlots[0]?.imagePath ?? ""
+          ? existingSlots.find((slot) => slot.mediaType === "image")?.mediaPath ?? ""
           : state.draft.startImagePath;
         const restoredEndImage = oldWasR2V
-          ? existingSlots[1]?.imagePath ?? ""
+          ? existingSlots.filter((slot) => slot.mediaType === "image")[1]?.mediaPath ?? ""
           : state.draft.endImagePath;
         const bundled =
           bundledWorkflows[nextKey] ??
@@ -3128,8 +3452,13 @@ function bindCreate(): void {
 
 function bindQueue(): void {
   document.querySelector("#start-queue")?.addEventListener("click", async () => {
-    state = await window.studio.startQueue();
-    render();
+    try {
+      state = await window.studio.startQueue();
+      promptRuntimeLoaded = false;
+      render();
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : String(error));
+    }
   });
   document.querySelector("#pause-queue")?.addEventListener("click", async () => {
     state = await window.studio.pauseQueue();
@@ -3556,6 +3885,13 @@ function formSettings(): Settings {
     document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`)?.value.trim() ?? fallback;
   const checked = (id: string, fallback: boolean) =>
     document.querySelector<HTMLInputElement>(`#${id}`)?.checked ?? fallback;
+  const h3PromptPresets = {
+    ...base.h3PromptPresets,
+    [settingsH3PromptPreset]: value(
+      "h3-prompt-preset-text",
+      base.h3PromptPresets[settingsH3PromptPreset]
+    )
+  };
   return {
     comfyUrl: value("comfy-url", base.comfyUrl),
     comfyInstallDirectory: value(
@@ -3568,6 +3904,10 @@ function formSettings(): Settings {
       "lm-install-directory",
       base.lmStudioInstallDirectory
     ),
+    promptUseLmStudio: checked("prompt-use-lm", base.promptUseLmStudio),
+    promptModelId: value("prompt-model-id", base.promptModelId),
+    promptModelDirectory: base.promptModelDirectory,
+    h3PromptPresets,
     modelDirectory: value("model-directory", base.modelDirectory),
     outputDirectory: value("output-directory", base.outputDirectory),
     promptSystemTemplate: value("prompt-template", base.promptSystemTemplate),
@@ -3625,6 +3965,22 @@ function bindSettings(): void {
     };
     input.addEventListener("input", update);
     input.addEventListener("change", update);
+  });
+  document.querySelector("#release-prompt-model")?.addEventListener("click", () => {
+    void togglePromptModelFromUi();
+  });
+  document.querySelector("#h3-prompt-preset-setting")?.addEventListener("change", (event) => {
+    settingsDraft = formSettings();
+    settingsH3PromptPreset = (event.currentTarget as HTMLSelectElement).value as H3PromptPreset;
+    render();
+  });
+  document.querySelector("#restore-h3-prompt-presets")?.addEventListener("click", () => {
+    settingsDraft = {
+      ...formSettings(),
+      h3PromptPresets: createDefaultH3PromptPresets()
+    };
+    render();
+    showMessage("扩写预设已恢复默认，请保存设置后生效。");
   });
   document.querySelector<HTMLInputElement>("#proxy-enabled")?.addEventListener("change", () => {
     settingsDraft = formSettings();
@@ -4002,6 +4358,9 @@ window.studio.onStateChanged((nextState) => {
         ? localDraft
         : nextState.draft
   };
+  if (nextState.queueRunning || nextState.settings.promptUseLmStudio) {
+    promptRuntimeLoaded = false;
+  }
   const activeElement = document.activeElement;
   const isEditing =
     activeElement instanceof HTMLInputElement ||

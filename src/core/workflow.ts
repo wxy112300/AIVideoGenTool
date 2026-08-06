@@ -10,6 +10,7 @@ export interface WorkflowContext {
   endImage: string;
   sourceVideo: string;
   h3ReferenceImages: string[];
+  h3ReferenceVideos: string[];
   width: number;
   height: number;
   frames: number;
@@ -673,6 +674,9 @@ export function renderWorkflow(
     H3_REF_IMAGE_6: context.h3ReferenceImages?.[6] ?? "",
     H3_REF_IMAGE_7: context.h3ReferenceImages?.[7] ?? "",
     H3_REF_IMAGE_8: context.h3ReferenceImages?.[8] ?? "",
+    H3_REF_VIDEO_0: context.h3ReferenceVideos?.[0] ?? "",
+    H3_REF_VIDEO_1: context.h3ReferenceVideos?.[1] ?? "",
+    H3_REF_VIDEO_2: context.h3ReferenceVideos?.[2] ?? "",
     TRIM_START: task.taskType === "extension" ? task.trimStartSeconds : 0,
     TRIM_END: task.taskType === "extension" ? task.trimEndSeconds : 0,
     EXTENSION_FRAMES: task.taskType === "extension"
@@ -771,22 +775,23 @@ export function renderWorkflow(
       delete workflow[sageNodeId];
     }
   }
-  const emptyImageNodeIds = new Set(
+  const emptyReferenceNodeIds = new Set(
     Object.entries(workflow)
       .filter(([, node]) =>
-        node.class_type === "LoadImage" && node.inputs?.image === ""
+        (node.class_type === "LoadImage" && node.inputs?.image === "") ||
+        (node.class_type === "VHS_LoadVideoFFmpeg" && node.inputs?.video === "")
       )
       .map(([id]) => id)
   );
-  for (const nodeId of emptyImageNodeIds) delete workflow[nodeId];
-  if (emptyImageNodeIds.size) {
+  for (const nodeId of emptyReferenceNodeIds) delete workflow[nodeId];
+  if (emptyReferenceNodeIds.size) {
     for (const node of Object.values(workflow)) {
       if (!node.inputs) continue;
       for (const [inputName, input] of Object.entries(node.inputs)) {
         if (
           Array.isArray(input) &&
           typeof input[0] === "string" &&
-          emptyImageNodeIds.has(input[0])
+          emptyReferenceNodeIds.has(input[0])
         ) {
           delete node.inputs[inputName];
         }
@@ -990,8 +995,11 @@ export function validateApiWorkflow(source: unknown): WorkflowValidation {
   const hasH3ReferenceImage = [...placeholders].some((token) =>
     /^H3_REF_IMAGE_\d+$/u.test(token)
   );
-  if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage) {
-    errors.push("缺少 {{INPUT_IMAGE}} 或 {{SOURCE_VIDEO}}，GUI 无法注入输入媒体");
+  const hasH3ReferenceVideo = [...placeholders].some((token) =>
+    /^H3_REF_VIDEO_\d+$/u.test(token)
+  );
+  if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage && !hasH3ReferenceVideo) {
+    errors.push("缺少 {{INPUT_IMAGE}}、{{SOURCE_VIDEO}} 或 H3 参考媒体占位符，GUI 无法注入输入媒体");
   }
   if (!placeholders.has("SEED")) warnings.push("缺少 {{SEED}}，任务 Seed 不会传入工作流");
   if (!placeholders.has("OUTPUT_FILENAME")) {
