@@ -111,6 +111,8 @@ describe("LM Studio prompt enhancement requests", () => {
 
     expect(body.temperature).toBe(0.35);
     expect(body.messages[0]?.content).toContain("physically grounded audiovisual timeline");
+    expect(body.messages[0]?.content).toContain("User-intent priority");
+    expect(body.messages[0]?.content).toContain("Final user-intent lock");
     expect(body.messages[1]?.content).toEqual([
       expect.objectContaining({ type: "text" }),
       expect.objectContaining({ type: "image_url" }),

@@ -19,6 +19,12 @@ import type {
   Settings,
   WorkflowDependencyStatus
 } from "../../src/types.js";
+import {
+  unconcernedPromptModelFilename,
+  unconcernedPromptMmprojFilename,
+  unconcernedPromptModelId,
+  unconcernedPromptModelSource
+} from "../../src/core/prompt-models.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -265,6 +271,7 @@ interface ModelProfileDefinition {
   id: string;
   name: string;
   category: "video" | "upscale" | "interpolation" | "prompt";
+  managedBy?: "comfyui" | "lmstudio" | "llama-server";
   badge: string;
   description: string;
   vram: string;
@@ -277,6 +284,20 @@ interface ModelProfileDefinition {
 }
 
 const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
+  [`${unconcernedPromptModelId}:Unconcerned Qwen3.5 4B GGUF`]: {
+    sourceLabel: `${unconcernedPromptModelSource} · Q6_K GGUF`,
+    downloadUrl: "https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/resolve/main/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf?download=true",
+    targetSubdirectory: "prompt_models",
+    recommendedFilename: unconcernedPromptModelFilename,
+    notes: "应用自管理 llama-server 使用的主模型；需要同时下载 mmproj 文件。Apache-2.0。"
+  },
+  [`${unconcernedPromptModelId}:Unconcerned Qwen3.5 4B mmproj`]: {
+    sourceLabel: `${unconcernedPromptModelSource} · BF16 vision projector`,
+    downloadUrl: "https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/resolve/main/mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf?download=true",
+    targetSubdirectory: "prompt_models",
+    recommendedFilename: unconcernedPromptMmprojFilename,
+    notes: "图片/视频理解投影文件；必须与同名 GGUF 主模型一起使用。Apache-2.0。"
+  },
   "qwen/qwen3.5-2b:Qwen3.5 2B ComfyUI 文本编码器": {
     sourceLabel: "Hugging Face · Comfy-Org/Qwen3.5",
     downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors?download=true",
@@ -724,9 +745,32 @@ function sulphurComponentsFor(
 
 const modelProfileDefinitions: ModelProfileDefinition[] = [
   {
+    id: unconcernedPromptModelId,
+    name: "Qwen3.5 4B Unconcerned · 应用自管理",
+    category: "prompt",
+    managedBy: "llama-server",
+    badge: "GGUF · 无拒答实验",
+    description: "由应用自己启动 llama-server，使用 Qwen3.5 4B GGUF 与 mmproj 处理文字和参考图；不依赖 LM Studio，也不能通过 ComfyUI TextGenerate 加载。",
+    vram: "Q6_K · GGUF 约 3.5 GB + mmproj",
+    integrated: false,
+    components: [
+      {
+        label: "Unconcerned Qwen3.5 4B GGUF",
+        expected: `prompt_models/${unconcernedPromptModelFilename}`,
+        patterns: [new RegExp(`(?:prompt_models|llama|llm)/${unconcernedPromptModelFilename.replaceAll(".", "\\.")}$`, "i")]
+      },
+      {
+        label: "Unconcerned Qwen3.5 4B mmproj",
+        expected: `prompt_models/${unconcernedPromptMmprojFilename}`,
+        patterns: [new RegExp(`(?:prompt_models|llama|llm)/${unconcernedPromptMmprojFilename.replaceAll(".", "\\.")}$`, "i")]
+      }
+    ]
+  },
+  {
     id: "qwen/qwen3.5-4b",
     name: "Qwen3.5 4B · H3 提示词助手",
     category: "prompt",
+    managedBy: "comfyui",
     badge: "4090 推荐 · BF16",
     description: "同时处理文字和参考图/视频，并按 H3 提示词规则生成更适合视频生成的描述。",
     vram: "BF16 · 文件约 9.3 GB",
@@ -743,6 +787,7 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     id: "qwen/qwen3.5-2b",
     name: "Qwen3.5 2B · 快速提示词助手",
     category: "prompt",
+    managedBy: "comfyui",
     badge: "低显存 · BF16",
     description: "更快的文字和参考图理解备选，适合 12GB 显存或需要快速迭代的设备。",
     vram: "BF16 · 文件约 4.55 GB",
@@ -1234,6 +1279,7 @@ export function evaluateModelProfiles(
       id: profile.id,
       name: profile.name,
       category: profile.category,
+      managedBy: profile.managedBy,
       badge: profile.badge,
       description: profile.description,
       vram: profile.vram,
@@ -3635,6 +3681,13 @@ export async function scanEnvironment(
   const modelDirectory = directories.modelDirectory;
   const outputDirectory = directories.outputDirectory;
   const modelFiles = await listModelFiles(modelDirectory);
+  if (settings.promptModelDirectory.trim()) {
+    const promptDirectory = path.resolve(settings.promptModelDirectory);
+    if (promptDirectory.toLowerCase() !== path.resolve(modelDirectory).toLowerCase()) {
+      const promptFiles = await listModelFiles(promptDirectory);
+      modelFiles.push(...promptFiles.map((filename) => `prompt_models/${filename}`));
+    }
+  }
   if (
     comfyRoot &&
     await exists(

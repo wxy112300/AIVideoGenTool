@@ -1,3 +1,4 @@
+import { countPromptWords, recommendedH3PromptWords } from "./core/prompt-count";
 import "./style.css";
 import {
   AlertTriangle,
@@ -78,6 +79,11 @@ import type {
 } from "./types";
 import { createClearedDraft } from "./core/defaults";
 import { createDefaultH3PromptPresets, h3PromptPresetForMode } from "./core/h3-prompt-presets";
+import {
+  isUnconcernedPromptModel,
+  promptRuntimeForSettings,
+  unconcernedPromptModelId
+} from "./core/prompt-models";
 import {
   h3ReferenceSlotCounts
 } from "./core/h3-reference";
@@ -508,6 +514,27 @@ function h3PromptModeForDraft(draft: Draft): H3PromptMode {
   );
 }
 
+function updatePromptWordCounter(
+  promptText: string,
+  mode?: H3PromptMode,
+  durationSeconds = state.draft.duration
+): void {
+  const counter = document.querySelector<HTMLElement>("#prompt-word-counter");
+  if (!counter) return;
+  const count = countPromptWords(promptText);
+  if (!mode) {
+    counter.className = "prompt-word-counter";
+    counter.textContent = `当前 ${count} 词`;
+    return;
+  }
+  const limit = recommendedH3PromptWords(mode, durationSeconds);
+  const overLimit = count > limit;
+  counter.className = `prompt-word-counter ${overLimit ? "warning" : ""}`;
+  counter.textContent = overLimit
+    ? `当前 ${count} 词 · 已超过建议 ${limit} 词，仍可继续输入`
+    : `当前 ${count} 词 · 建议不超过 ${limit} 词`;
+}
+
 function h3PromptCheckMarkup(
   promptText: string,
   hasEndImage: boolean,
@@ -909,7 +936,12 @@ function promptModelStatus(settings: Settings): { ready: boolean; detail: string
       detail: `模型未配置完整${missing ? `：缺少 ${missing}` : ""}`
     };
   }
-  return { ready: true, detail: "启动 ComfyUI 提示词模型" };
+  return {
+    ready: true,
+    detail: promptRuntimeForSettings(settings) === "llama-server"
+      ? "启动应用自管理 llama-server 提示词模型"
+      : "启动 ComfyUI 提示词模型"
+  };
 }
 
 function promptRuntimeControlIcon(): string {
@@ -928,8 +960,10 @@ function promptRuntimeControlTitle(settings = state.settings): string {
     : promptReleasing
       ? "正在释放提示词模型"
       : promptRuntimeLoaded
-        ? "释放 ComfyUI 提示词模型并回收显存"
-        : promptModelStatus(settings).detail;
+      ? promptRuntimeForSettings(settings) === "llama-server"
+        ? "停止应用自管理 llama-server 并释放显存"
+        : "释放 ComfyUI 提示词模型并回收显存"
+      : promptModelStatus(settings).detail;
 }
 
 function createPage(): string {
@@ -940,14 +974,13 @@ function createPage(): string {
   const activeH3PromptPreset = h3Mode
     ? h3PromptPresetForMode(h3Mode, h3PromptPreset)
     : h3PromptPreset;
+  const promptRuntime = promptRuntimeForSettings(state.settings);
   const enhanceMode = isMiniMaxH3
     ? promptEnhanceMode === "faithful" ? "faithful" : "h3-vision"
     : promptEnhanceMode === "h3-vision" ? "sulphur-native" : promptEnhanceMode;
   const promptStatus = promptModelStatus(state.settings);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
-  const promptAiDisabled = promptRuntimeBusy || (
-    !state.settings.promptUseLmStudio && state.queueRunning
-  );
+  const promptAiDisabled = promptRuntimeBusy || state.queueRunning;
   const h3Steps = normalizeH3Steps(draft.steps);
   const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
   const extending = draft.inputMode === "video";
@@ -1063,11 +1096,14 @@ function createPage(): string {
               : `<option value="sulphur-native" ${enhanceMode === "sulphur-native" ? "selected" : ""}>Sulphur 原生增强（推荐）</option>
                  <option value="faithful" ${enhanceMode === "faithful" ? "selected" : ""}>忠实扩写（需 Instruct 模型）</option>`}
           </select>
-          ${!state.settings.promptUseLmStudio ? `<button class="icon-button prompt-runtime-button ${promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model-create" ${promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready) ? "disabled" : ""} aria-label="${escapeHtml(promptRuntimeControlTitle())}" title="${escapeHtml(promptRuntimeControlTitle())}" aria-busy="${promptRuntimeBusy}">${icon(promptRuntimeControlIcon())}</button>` : ""}
-          <button class="secondary button-with-icon" id="enhance-prompt" ${promptAiDisabled ? "disabled" : ""} title="${promptAiDisabled && state.queueRunning ? "当前有视频任务运行，暂不能启动提示词模型" : promptAiDisabled ? "正在生成提示词" : state.settings.promptUseLmStudio ? "使用 LM Studio 扩写" : "使用 ComfyUI 原生 Qwen 模型扩写"}">${icon("sparkles")}${promptEnhancing ? "扩写中…" : isMiniMaxH3 ? "优化 H3 提示词" : "本地扩写"}</button>
+          <button class="icon-button prompt-runtime-button ${promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model-create" ${promptRuntimeBusy || state.queueRunning || promptRuntime === "lmstudio" || (!promptRuntimeLoaded && !promptStatus.ready) ? "disabled" : ""} aria-label="${escapeHtml(promptRuntimeControlTitle())}" title="${escapeHtml(promptRuntimeControlTitle())}" aria-busy="${promptRuntimeBusy}">${icon(promptRuntimeControlIcon())}</button>
+          <button class="secondary button-with-icon" id="enhance-prompt" ${promptAiDisabled ? "disabled" : ""} title="${promptAiDisabled && state.queueRunning ? "当前有视频任务运行，暂不能启动提示词模型" : promptAiDisabled ? "正在生成提示词" : promptRuntime === "lmstudio" ? "使用 LM Studio 扩写" : promptRuntime === "llama-server" ? "使用应用自管理 Unconcerned 模型扩写" : "使用 ComfyUI 原生 Qwen 模型扩写"}">${icon("sparkles")}${promptEnhancing ? "扩写中…" : isMiniMaxH3 ? "优化 H3 提示词" : "本地扩写"}</button>
         </div>
       </div>
-      <textarea id="prompt-input" rows="6" spellcheck="true" lang="${/[\u3400-\u9fff]/u.test(prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(prompt.text)}</textarea>
+      <div class="prompt-editor-shell">
+        <textarea id="prompt-input" rows="6" spellcheck="true" lang="${/[\u3400-\u9fff]/u.test(prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(prompt.text)}</textarea>
+        <div id="prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div>
+      </div>
       <div class="prompt-tool-row">
         <label class="prompt-snippet-picker"><span>快速插入</span><select id="prompt-snippet"><option value="">选择镜头、动作、声音或对白片段</option>${promptSnippetOptions()}</select></label>
         <button class="secondary button-with-icon" id="insert-prompt-snippet" type="button" disabled>${icon("plus")}插入</button>
@@ -1699,6 +1735,7 @@ function stopRenderedVideoPlayback(): void {
 function modelScanCard(profile: ModelScanProfile): string {
   const missingCount = profile.components.filter((component) => !component.found).length;
   const isPromptProfile = profile.category === "prompt";
+  const isLlamaProfile = profile.managedBy === "llama-server";
   const readyLabel = isPromptProfile
     ? "文件完整"
     : profile.integrated
@@ -1706,12 +1743,16 @@ function modelScanCard(profile: ModelScanProfile): string {
       : "组件完整";
   const metaLabel = profile.available
     ? isPromptProfile
-      ? "ComfyUI text_encoders 文件完整；可通过原生 TextGenerate 进行本地扩写"
+      ? isLlamaProfile
+        ? "GGUF + mmproj 文件完整；由应用自管理 llama-server"
+        : "ComfyUI text_encoders 文件完整；可通过原生 TextGenerate 进行本地扩写"
       : profile.integrated
         ? "组件完整，可用于配置"
         : "依赖已完整；生成工作流将在下一阶段接入"
     : isPromptProfile
-      ? "补齐对应的 ComfyUI text_encoders 文件后才能接入本地扩写"
+      ? isLlamaProfile
+        ? "补齐 GGUF + mmproj，并配置 llama-server.exe 后才能使用"
+        : "补齐对应的 ComfyUI text_encoders 文件后才能接入本地扩写"
       : "补齐所有必需组件后才能启用";
   return `
     <article class="panel model-profile ${profile.available ? "available" : "missing"}">
@@ -1896,6 +1937,7 @@ function settingsPage(): string {
   const promptProfiles = profiles.filter((profile) => profile.category === "prompt");
   const upscaleProfiles = profiles.filter((profile) => profile.category === "upscale");
   const promptStatus = promptModelStatus(settings);
+  const promptRuntime = promptRuntimeForSettings(settings);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
   const defaultPromptPresets = createDefaultH3PromptPresets();
   const selectedH3PresetText = settings.h3PromptPresets[settingsH3PromptPreset] ??
@@ -2047,11 +2089,15 @@ function settingsPage(): string {
   const promptPanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>本地提示词模型</h2><span class="muted">与视频模型共用 ComfyUI/models；提示词模型按 ComfyUI 原生约定放在 text_encoders 目录。</span></div><div class="button-row"><span class="model-badge">${settings.promptUseLmStudio ? "兼容后端" : "共享目录"}</span>${!settings.promptUseLmStudio ? `<button class="icon-button prompt-runtime-button ${promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model" ${promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready) ? "disabled" : ""} aria-label="${escapeHtml(promptRuntimeControlTitle(settings))}" title="${escapeHtml(promptRuntimeControlTitle(settings))}" aria-busy="${promptRuntimeBusy}">${icon(promptRuntimeControlIcon())}</button>` : ""}</div></div>
-        <label class="ios-switch-field"><span class="policy-copy"><strong>启用 LM Studio 兼容后端</strong><small>${settings.promptUseLmStudio ? "当前 AI 扩写仍通过 LM Studio API 运行，模型文件由 LM Studio 管理" : "已关闭；扩写请求会通过 ComfyUI 原生 TextGenerate，模板和构建器仍可用"}</small></span><input id="prompt-use-lm" type="checkbox" ${settings.promptUseLmStudio ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+        <div class="section-heading"><div><h2>本地提示词模型</h2><span class="muted">Qwen3.5 原生模型使用 ComfyUI；Unconcerned GGUF 可由应用自己启动 llama-server，不依赖 LM Studio。</span></div><div class="button-row"><span class="model-badge">${promptRuntime === "lmstudio" ? "LM Studio" : promptRuntime === "llama-server" ? "应用自管理" : "ComfyUI 原生"}</span>${promptRuntime !== "lmstudio" ? `<button class="icon-button prompt-runtime-button ${promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model" ${promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready) ? "disabled" : ""} aria-label="${escapeHtml(promptRuntimeControlTitle(settings))}" title="${escapeHtml(promptRuntimeControlTitle(settings))}" aria-busy="${promptRuntimeBusy}">${icon(promptRuntimeControlIcon())}</button>` : ""}</div></div>
+        <label>提示词运行方式<select id="prompt-runtime"><option value="comfyui" ${promptRuntime === "comfyui" ? "selected" : ""}>ComfyUI 原生 TextGenerate</option><option value="llama-server" ${promptRuntime === "llama-server" ? "selected" : ""}>应用自管理 llama-server（Unconcerned）</option><option value="lmstudio" ${promptRuntime === "lmstudio" ? "selected" : ""}>LM Studio 兼容后端</option></select></label>
         <label>默认提示词模型<select id="prompt-model-id">${promptProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${settings.promptModelId === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
-        <div class="scan-result">${environmentScanning ? "正在扫描 ComfyUI/models，并检查 text_encoders…" : environmentScan ? `找到 ${promptAvailable} 个完整的 ComfyUI 文本编码器，${promptProfiles.length - promptAvailable} 个待补齐；完整模型可通过 TextGenerate 用于本地扩写` : "等待首次扫描"}</div>
-        <p class="muted proxy-hint">下载说明会列出 Comfy-Org Hugging Face 文件和准确的 text_encoders 目标目录。开始队列前会统一释放当前启用的提示词运行时。</p>
+        <div class="settings-grid two">
+          <label>应用提示词模型目录<div class="input-action"><input id="prompt-model-directory" value="${escapeHtml(settings.promptModelDirectory)}" placeholder="留空使用 ComfyUI/models/prompt_models"><button class="secondary button-with-icon" data-pick-prompt-model-directory>${icon("folder-open")}选择</button></div><small>放置 Unconcerned GGUF 和 mmproj；也可使用 ComfyUI/models/prompt_models。</small></label>
+          <label>llama-server.exe 路径<input id="prompt-llama-server-path" value="${escapeHtml(settings.promptLlamaServerPath)}" placeholder="例如 D:\\AI\\llama.cpp\\llama-server.exe"><small>留空时应用会尝试从 PATH 和模型目录查找。</small></label>
+        </div>
+        <div class="scan-result">${environmentScanning ? "正在扫描 ComfyUI/models 和应用提示词模型目录…" : environmentScan ? `找到 ${promptAvailable} 个提示词模型档位；ComfyUI 原生模型与应用自管理 GGUF 分开处理` : "等待首次扫描"}</div>
+        <p class="muted proxy-hint">Unconcerned 使用 Apache-2.0 的 Qwen3.5 GGUF + mmproj；应用只管理自己启动的 llama-server，不会接管 LM Studio。开始队列前或程序退出时会停止应用自管理提示词模型。</p>
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>扩写预设</h2><span class="muted">预设会把原始文字和参考图整理成完整的 H3 视频提示词，覆盖主体、场景、动作、镜头、声音、对白和连续性。</span></div><button class="secondary button-with-icon" id="restore-h3-prompt-presets">${icon("rotate-ccw")}恢复默认</button></div>
@@ -2831,6 +2877,7 @@ function bindH3ReferenceSlots(): void {
     button.addEventListener("click", () => {
       const slotId = button.dataset.insertH3Slot;
       const promptInput = document.querySelector<HTMLTextAreaElement>("#prompt-input");
+        updatePromptWordCounter(promptInput?.value ?? "", isMiniMaxH3Model(state.draft.modelId) ? h3PromptModeForDraft(state.draft) : undefined, state.draft.duration);
       const slotIndex = state.draft.h3ReferenceSlots.findIndex((slot) => slot.id === slotId);
       if (!promptInput || !slotId || slotIndex < 0) return;
       insertPromptSnippet(promptInput, h3ReferenceTag(state.draft.h3ReferenceSlots, slotId));
@@ -3199,6 +3246,7 @@ function bindCreate(): void {
       state.draft.activePromptVersion = versions.length - 1;
     }
     patchDraft({ promptVersions: versions, activePromptVersion: state.draft.activePromptVersion });
+    updatePromptWordCounter(promptInput.value, isMiniMaxH3Model(state.draft.modelId) ? h3PromptModeForDraft(state.draft) : undefined, state.draft.duration);
     updateH3PromptCheck(
       promptInput.value,
       Boolean(state.draft.endImagePath),
@@ -3264,7 +3312,7 @@ function bindCreate(): void {
         h3DurationSeconds: state.draft.duration,
         referenceContext: isH3Vision ? referenceContext : undefined
       });
-      if (!state.settings.promptUseLmStudio) promptRuntimeLoaded = true;
+      if (promptRuntimeForSettings(state.settings) !== "lmstudio") promptRuntimeLoaded = true;
       const versions = [
         ...state.draft.promptVersions.slice(0, state.draft.activePromptVersion + 1),
         { id: crypto.randomUUID(), label: `扩写 ${state.draft.promptVersions.filter((item) => item.label.startsWith("扩写")).length + 1}`, text, createdAt: new Date().toISOString() }
@@ -3909,9 +3957,12 @@ function formSettings(): Settings {
       "lm-install-directory",
       base.lmStudioInstallDirectory
     ),
-    promptUseLmStudio: checked("prompt-use-lm", base.promptUseLmStudio),
+    promptRuntime: value("prompt-runtime", base.promptRuntime) as Settings["promptRuntime"],
+    promptUseLmStudio: value("prompt-runtime", base.promptRuntime) === "lmstudio",
     promptModelId: value("prompt-model-id", base.promptModelId),
-    promptModelDirectory: base.promptModelDirectory,
+    promptModelDirectory: value("prompt-model-directory", base.promptModelDirectory),
+    promptLlamaServerPath: value("prompt-llama-server-path", base.promptLlamaServerPath),
+    promptLlamaPort: base.promptLlamaPort,
     h3PromptPresets,
     modelDirectory: value("model-directory", base.modelDirectory),
     outputDirectory: value("output-directory", base.outputDirectory),
@@ -3970,6 +4021,25 @@ function bindSettings(): void {
     };
     input.addEventListener("input", update);
     input.addEventListener("change", update);
+  });
+  document.querySelector("#prompt-model-id")?.addEventListener("change", (event) => {
+    const modelId = (event.currentTarget as HTMLSelectElement).value;
+    if (isUnconcernedPromptModel(modelId)) {
+      const runtime = document.querySelector<HTMLSelectElement>("#prompt-runtime");
+      if (runtime) runtime.value = "llama-server";
+      settingsDraft = formSettings();
+      showMessage("Unconcerned 模型由应用自管理 llama-server 运行，不依赖 LM Studio。");
+    }
+  });
+  document.querySelector("#prompt-runtime")?.addEventListener("change", (event) => {
+    const runtime = (event.currentTarget as HTMLSelectElement).value;
+    const model = document.querySelector<HTMLSelectElement>("#prompt-model-id");
+    if (runtime === "llama-server" && model && !isUnconcernedPromptModel(model.value)) {
+      model.value = unconcernedPromptModelId;
+    } else if (runtime !== "llama-server" && model && isUnconcernedPromptModel(model.value)) {
+      model.value = "qwen/qwen3.5-4b";
+    }
+    settingsDraft = formSettings();
   });
   document.querySelector("#release-prompt-model")?.addEventListener("click", () => {
     void togglePromptModelFromUi();
@@ -4335,6 +4405,14 @@ function bindSettings(): void {
       void runEnvironmentScan(settingsDraft);
     }
   });
+  document.querySelector("[data-pick-prompt-model-directory]")?.addEventListener("click", async () => {
+    const directory = await window.studio.pickDirectory();
+    const input = document.querySelector<HTMLInputElement>("#prompt-model-directory");
+    if (!directory || !input) return;
+    input.value = directory;
+    settingsDraft = formSettings();
+    void runEnvironmentScan(settingsDraft);
+  });
   document.querySelectorAll<HTMLElement>("[data-pick-lm-install]").forEach((button) => {
     button.addEventListener("click", async () => {
       const directory = await window.studio.pickDirectory();
@@ -4363,7 +4441,7 @@ window.studio.onStateChanged((nextState) => {
         ? localDraft
         : nextState.draft
   };
-  if (nextState.queueRunning || nextState.settings.promptUseLmStudio) {
+  if (nextState.queueRunning || promptRuntimeForSettings(nextState.settings) !== "comfyui") {
     promptRuntimeLoaded = false;
   }
   const activeElement = document.activeElement;

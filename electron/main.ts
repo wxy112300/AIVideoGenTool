@@ -63,6 +63,12 @@ import {
   testLmStudio
 } from "./services/lm-studio.js";
 import {
+  enhancePromptWithLlamaServer,
+  releaseLlamaPromptModel,
+  startLlamaPromptModel
+} from "./services/llama-server.js";
+import { promptRuntimeForSettings } from "../src/core/prompt-models.js";
+import {
   installAttentionAcceleration,
   installCustomNode,
   installWorkflowDependency,
@@ -867,7 +873,9 @@ async function validateNativePromptRuntime(settings: Settings): Promise<void> {
 }
 
 async function releasePromptRuntime(settings: Settings): Promise<number> {
-  if (settings.promptUseLmStudio) return releasePromptModelRuntime(settings);
+  const runtime = promptRuntimeForSettings(settings);
+  if (runtime === "lmstudio") return releasePromptModelRuntime(settings);
+  if (runtime === "llama-server") return releaseLlamaPromptModel();
   try {
     await freeMemory(settings);
     return 1;
@@ -885,13 +893,18 @@ async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: st
   if (nativePromptWorker) {
     return { ok: false, message: "当前正在生成提示词，请等待本次扩写完成。" };
   }
-  if (settings.promptUseLmStudio) {
+  const runtime = promptRuntimeForSettings(settings);
+  if (runtime === "lmstudio") {
     try {
       const count = await releasePromptModelRuntime(settings);
       return { ok: true, message: count ? `已释放 ${count} 个 LM Studio 提示词模型。` : "当前没有已加载的 LM Studio 提示词模型。" };
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
     }
+  }
+  if (runtime === "llama-server") {
+    const count = await releaseLlamaPromptModel();
+    return { ok: true, message: count ? "已停止应用自管理的 llama-server 并释放提示词模型。" : "当前没有运行中的应用自管理提示词模型。" };
   }
   try {
     await freeMemory(settings);
@@ -936,9 +949,11 @@ async function executeQueue(): Promise<void> {
         if (unloaded > 0) {
           await updateTask(task.id, {
             progress: 1,
-            stage: store.get().settings.promptUseLmStudio
+            stage: promptRuntimeForSettings(store.get().settings) === "lmstudio"
               ? `已卸载 ${unloaded} 个 LM Studio 模型`
-              : "已释放 ComfyUI 提示词模型"
+              : promptRuntimeForSettings(store.get().settings) === "llama-server"
+                ? "已停止应用自管理提示词模型"
+                : "已释放 ComfyUI 提示词模型"
           });
         }
       }
@@ -1321,9 +1336,7 @@ function registerIpc(): void {
   });
   ipcMain.handle("prompt:start", async () => {
     const settings = store.get().settings;
-    if (settings.promptUseLmStudio) {
-      return { ok: false, message: "当前启用了 LM Studio 兼容后端，请先关闭它再启动 ComfyUI 提示词模型。" };
-    }
+    const runtime = promptRuntimeForSettings(settings);
     if (store.get().queueRunning || activeController || queueWorker) {
       return { ok: false, message: "当前有视频任务正在运行，暂不能启动提示词模型。" };
     }
@@ -1333,6 +1346,11 @@ function registerIpc(): void {
     const controller = new AbortController();
     nativePromptController = controller;
     const worker = (async () => {
+      if (runtime === "llama-server") {
+        const result = await startLlamaPromptModel(settings);
+        if (!result.ok) throw new Error(result.message);
+        return;
+      }
       await ensureComfyUiReadyForPrompt(settings);
       await validateNativePromptRuntime(settings);
       await warmNativePromptModel(settings, controller.signal);
@@ -1340,7 +1358,12 @@ function registerIpc(): void {
     nativePromptWorker = worker;
     try {
       await worker;
-      return { ok: true, message: "Qwen 提示词模型已启动并加载到 ComfyUI。" };
+      return {
+        ok: true,
+        message: runtime === "llama-server"
+          ? "Unconcerned Qwen3.5 已由应用启动并加载。"
+          : "Qwen 提示词模型已启动并加载到 ComfyUI。"
+      };
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
     } finally {
@@ -1350,7 +1373,25 @@ function registerIpc(): void {
   });
   ipcMain.handle("prompt:enhance", async (_event, request: EnhanceRequest) => {
     const settings = store.get().settings;
-    if (settings.promptUseLmStudio) return enhancePrompt(request, settings);
+    const runtime = promptRuntimeForSettings(settings);
+    if (runtime === "lmstudio") return enhancePrompt(request, settings);
+    if (runtime === "llama-server") {
+      if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
+      if (store.get().queueRunning || activeController || queueWorker) {
+        throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
+      }
+      if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
+      const controller = new AbortController();
+      nativePromptController = controller;
+      const worker = enhancePromptWithLlamaServer(request, settings);
+      nativePromptWorker = worker;
+      try {
+        return await worker;
+      } finally {
+        if (nativePromptWorker === worker) nativePromptWorker = null;
+        if (nativePromptController === controller) nativePromptController = null;
+      }
+    }
     if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
     if (store.get().queueRunning || activeController || queueWorker) {
       throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");

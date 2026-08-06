@@ -10,6 +10,7 @@ import type {
 } from "../src/types.js";
 import { createDefaultState } from "../src/core/defaults.js";
 import { normalizeH3ReferenceSlots } from "../src/core/h3-reference.js";
+import { isUnconcernedPromptModel } from "../src/core/prompt-models.js";
 import { generationSafetyForTask, normalizeH3Steps } from "../src/core/workflow.js";
 
 interface ReplaceStateFileOptions {
@@ -218,7 +219,7 @@ export class JsonStore {
         this.state.settings.defaultVideoModel = "minimax_h3_fl2va";
         needsPersist = true;
       }
-      if (!["qwen/qwen3.5-4b", "qwen/qwen3.5-2b"].includes(this.state.settings.promptModelId)) {
+        if (!["qwen/qwen3.5-4b", "qwen/qwen3.5-2b", "qwen/qwen3.5-4b-unconcerned"].includes(this.state.settings.promptModelId)) {
         this.state.settings.promptModelId = "qwen/qwen3.5-4b";
         needsPersist = true;
       }
@@ -228,6 +229,22 @@ export class JsonStore {
       ) {
         this.state.settings.modelDirectory = "";
         needsPersist = true;
+      }
+      const savedPromptRuntime = saved.settings?.promptRuntime;
+      if (!savedPromptRuntime) {
+        this.state.settings.promptRuntime = this.state.settings.promptUseLmStudio
+          ? "lmstudio"
+          : isUnconcernedPromptModel(this.state.settings.promptModelId)
+            ? "llama-server"
+            : "comfyui";
+        needsPersist = true;
+      }
+      if (isUnconcernedPromptModel(this.state.settings.promptModelId)) {
+        if (this.state.settings.promptRuntime !== "llama-server" || this.state.settings.promptUseLmStudio) {
+          needsPersist = true;
+        }
+        this.state.settings.promptRuntime = "llama-server";
+        this.state.settings.promptUseLmStudio = false;
       }
       const migratedComfyUrl = migrateLegacyComfyUrl(
         this.state.settings.comfyUrl

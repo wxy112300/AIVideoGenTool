@@ -171,4 +171,24 @@ describe("queue lock recovery", () => {
       await fs.rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("preserves the app-managed Unconcerned prompt model during state migration", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.settings.promptModelId = "qwen/qwen3.5-4b-unconcerned";
+    state.settings.promptRuntime = "llama-server";
+    state.settings.promptUseLmStudio = false;
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const store = new JsonStore(filename);
+      const loaded = await store.load();
+      expect(loaded.settings.promptModelId).toBe("qwen/qwen3.5-4b-unconcerned");
+      expect(loaded.settings.promptRuntime).toBe("llama-server");
+      expect(loaded.settings.promptUseLmStudio).toBe(false);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
 });

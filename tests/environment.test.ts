@@ -388,9 +388,13 @@ describe("ComfyUI environment candidates", () => {
     const completeProfile = complete.find((profile) => profile.id === "qwen/qwen3.5-4b");
     const fastProfile = completeFast.find((profile) => profile.id === "qwen/qwen3.5-2b");
 
-    expect(promptProfiles).toHaveLength(2);
-    expect(promptProfiles[0]?.id).toBe("qwen/qwen3.5-4b");
-    expect(promptProfiles[1]?.id).toBe("qwen/qwen3.5-2b");
+    expect(promptProfiles).toHaveLength(3);
+    expect(promptProfiles.map((profile) => profile.id)).toEqual([
+      "qwen/qwen3.5-4b-unconcerned",
+      "qwen/qwen3.5-4b",
+      "qwen/qwen3.5-2b"
+    ]);
+    expect(promptProfiles[0]?.managedBy).toBe("llama-server");
     expect(legacy.find((profile) => profile.id === "qwen/qwen3.5-4b")?.available).toBe(false);
     expect(incompleteProfile).toMatchObject({
       category: "prompt",
@@ -411,6 +415,18 @@ describe("ComfyUI environment candidates", () => {
       downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors?download=true",
       targetSubdirectory: "text_encoders",
       recommendedFilename: "qwen3.5_2b_bf16.safetensors"
+    });
+    const unconcerned = evaluateModelProfiles([
+      "prompt_models\\Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf",
+      "prompt_models\\mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf"
+    ]).find((profile) => profile.id === "qwen/qwen3.5-4b-unconcerned");
+    expect(unconcerned).toMatchObject({
+      managedBy: "llama-server",
+      available: true
+    });
+    expect(unconcerned?.components[0]?.installGuide).toMatchObject({
+      targetSubdirectory: "prompt_models",
+      recommendedFilename: "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf"
     });
     expect(completeProfile?.components.map((component) => component.matches[0])).toEqual([
       "text_encoders/qwen3.5_4b_bf16.safetensors"

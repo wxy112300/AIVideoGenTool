@@ -609,6 +609,28 @@ textarea:focus, input:focus, select:focus {
   box-shadow: 0 0 0 3px rgba(101,151,255,.12);
 }
 textarea { min-height: 148px; padding: 14px 15px; line-height: 1.7; resize: vertical; }
+.prompt-editor-shell {
+  position: relative;
+}
+.prompt-editor-shell textarea {
+  padding-bottom: 34px;
+}
+.prompt-word-counter {
+  position: absolute;
+  right: 11px;
+  bottom: 9px;
+  max-width: calc(100% - 22px);
+  overflow: hidden;
+  color: #8593a5;
+  font-size: 10px;
+  line-height: 1.3;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prompt-word-counter.warning {
+  color: #e4b76b;
+}
 .prompt-tool-row {
   display: flex;
   align-items: end;

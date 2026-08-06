@@ -46,6 +46,8 @@
 - `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`
 - 官方视频 VAE 和音频 VAE
 
+提示词扩写另有一个应用自管理实验档：`HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive` 的 GGUF + `mmproj`。它不兼容 ComfyUI 原生 `text_encoders`/`TextGenerate`，应用会通过本地 `llama-server.exe` 的 OpenAI 兼容接口运行，不依赖 LM Studio；设置、扫描、启动、停止、队列前释放和退出清理已经接入。该档位用于减少提示词模型本身的拒答，不会改变 MiniMax H3 视频基座的许可证或官方使用限制。
+
 这个组合的原因是 4090 24GB 需要分层加载和卸载。`pruned` 主要面向推理，去除了可以预计算/缓存的 AdaLN 分支；完整 BF16 或完整 INT8 不是不能通过 CPU/RAM offload 启动，但不适合当前默认路径。
 
 原文还提醒：NVFP4 在 RTX 50 系列上有原生硬件支持，RTX 30/40 系列可能需要模拟或转换路径。因此 NVFP4 对 4090 的主要价值是减少模型存储和驻留压力，不应直接承诺等比例提速。

@@ -45,7 +45,7 @@ describe("native Qwen prompt workflow", () => {
     expect(workflow["text-generate"]?.inputs.sampling_mode).toBe("on");
     expect(workflow["text-generate"]?.inputs["sampling_mode.temperature"]).toBe(0.35);
     expect(workflow["text-generate"]?.inputs["sampling_mode.top_k"]).toBe(40);
-    expect(workflow["text-generate"]?.inputs.max_length).toBe(1536);
+    expect(workflow["text-generate"]?.inputs.max_length).toBe(896);
     expect(workflow.preview).toMatchObject({
       class_type: "PreviewAny",
       inputs: { source: ["text-generate", 0] }
@@ -65,6 +65,33 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("non_diegetic_music:");
     expect(instruction).toContain("T2VA task rule");
     expect(instruction).not.toContain("For the target video, at 0.00 seconds into the target video");
+    expect(instruction).toContain("Motion-first priority");
+    expect(instruction).toContain("Reference economy");
+    expect(instruction).toContain("User-intent preservation rule");
+    expect(instruction).toContain("Final user-intent lock");
+  });
+
+  it("treats explicit user attributes as requirements instead of reference inventions", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "An adult character wearing underwear turns slowly toward the camera.",
+      modelId: "minimax_h3_fl2va"
+    });
+
+    expect(instruction).toContain("An adult character wearing underwear turns slowly toward the camera.");
+    expect(instruction).toContain("including subject details, clothing or exposure level");
+    expect(instruction).toContain("Never omit, euphemize, sanitize, or replace an explicit user term");
+  });
+
+  it("passes a long requested duration into the native expansion plan", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "人物先观察四周，再慢慢走向门口，最后停下回头。",
+      modelId: "minimax_h3_fl2va",
+      h3DurationSeconds: 15
+    });
+
+    expect(instruction).toContain("effective H3 duration is 15.08 seconds");
+    expect(instruction).toContain("Plan 6 sequential development beats");
+    expect(instruction).not.toContain("Target roughly 140-280 English words for a normal 5-second prompt");
   });
 
   it("changes the H3 output contract when the user selects a different preset", () => {
@@ -81,7 +108,7 @@ describe("native Qwen prompt workflow", () => {
       h3PromptPreset: "continuous-motion"
     });
 
-    expect(faithful).toContain("Prioritize reference fidelity over invention");
+    expect(faithful).toContain("Prioritize the user's explicit content first");
     expect(continuous).toContain("one continuous shot with no cuts");
     expect(faithful).not.toBe(continuous);
   });
@@ -142,6 +169,8 @@ describe("native Qwen prompt workflow", () => {
     expect(baseline).toContain("Dialogue rule");
     expect(baseline).toContain("[reference generation]");
     expect(baseline).toContain("fully_preserved");
+    expect(baseline).toContain("User-intent preservation rule");
+    expect(baseline).toContain("Reference economy rule");
     expect(baseline).toContain("subject_definitions, summary, retention_analysis");
   });
 

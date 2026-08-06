@@ -72,7 +72,7 @@ export interface H3PromptBuilderInput {
   onScreenText: string;
 }
 
-function effectiveDurationSeconds(durationSeconds: number): number {
+export function h3EffectiveDurationSeconds(durationSeconds: number): number {
   const safeDuration = Number.isFinite(durationSeconds) && durationSeconds > 0
     ? durationSeconds
     : 5;
@@ -82,11 +82,42 @@ function effectiveDurationSeconds(durationSeconds: number): number {
   return alignedFrames / 24;
 }
 
+export function h3DurationPlan(
+  mode: H3PromptMode,
+  durationSeconds: number
+): string {
+  const effectiveDuration = h3EffectiveDurationSeconds(durationSeconds);
+  const beatCount = effectiveDuration <= 6
+    ? 3
+    : effectiveDuration <= 9
+      ? 4
+      : effectiveDuration <= 12
+        ? 5
+        : 6;
+  const ranges = Array.from({ length: beatCount }, (_, index) => {
+    const start = effectiveDuration * index / beatCount;
+    const end = index === beatCount - 1
+      ? effectiveDuration
+      : effectiveDuration * (index + 1) / beatCount;
+    return `${start.toFixed(2)}-${end.toFixed(2)}s`;
+  }).join(", ");
+  const pathRule = mode === "FL2VA"
+    ? "Connect the first-frame state to the last-frame state across all beats; do not resolve the action early."
+    : mode === "L2VA"
+      ? "Begin from a plausible preceding state and reserve the final beat for convergence on the last frame."
+      : mode === "I2VA"
+        ? "Begin at the first-frame state and develop new action through the final beat."
+        : mode === "R2V"
+          ? "Use the reference relationships throughout the timeline and make the final beat a clear settled result."
+          : "Build the complete audiovisual progression from opening state to final result.";
+  return `Duration contract: the effective H3 duration is ${effectiveDuration.toFixed(2)} seconds. Do not compress this request into a 5-second event or finish the main action early. Plan ${beatCount} sequential development beats across the full clip (${ranges}); each beat must add a visible, audible, or behavioral change, and the final beat must settle at ${effectiveDuration.toFixed(2)} seconds. ${pathRule}`;
+}
+
 export function h3AlignmentInstruction(
   mode: H3PromptMode,
   durationSeconds: number
 ): string {
-  const effectiveDuration = effectiveDurationSeconds(durationSeconds);
+  const effectiveDuration = h3EffectiveDurationSeconds(durationSeconds);
   if (mode === "I2VA") {
     return "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
   }
@@ -97,6 +128,31 @@ export function h3AlignmentInstruction(
     return `How the reference pictures align with the target video — <Picture 1> (from [Shot 1]) aligns with the ${effectiveDuration.toFixed(2)}-second mark of the target video.`;
   }
   return "";
+}
+
+export function h3PromptSectionSkeleton(
+  mode: H3PromptMode,
+  durationSeconds: number
+): string {
+  const alignment = h3AlignmentInstruction(mode, durationSeconds);
+  const sections = mode === "R2V"
+    ? [
+        "subject_definitions:",
+        "summary:",
+        "retention_analysis:",
+        "detailed_description:",
+        "overall_soundscape:",
+        "non_diegetic_music:"
+      ]
+    : [
+        "integrated_multimodal_description:",
+        "overall_soundscape:",
+        "non_diegetic_music:"
+      ];
+  return [
+    ...(alignment ? [alignment, ""] : []),
+    ...sections
+  ].join("\n");
 }
 
 function stripLeadingH3AlignmentInstructions(promptText: string): string {
@@ -194,7 +250,7 @@ export function createH3PromptFromBuilder(
   options: H3PromptTemplateOptions = {}
 ): H3PromptTemplate {
   const mode = promptModeForOptions(options);
-  const effectiveDuration = effectiveDurationSeconds(durationSeconds);
+  const effectiveDuration = h3EffectiveDurationSeconds(durationSeconds);
   const subject = valueOrFallback(
     builder.subject,
     "Describe the subject, environment, lighting, and initial composition."
@@ -286,7 +342,7 @@ export function createH3PromptTemplate(
   options: H3PromptTemplateOptions = {}
 ): H3PromptTemplate {
   const mode = promptModeForOptions(options);
-  const effectiveDuration = effectiveDurationSeconds(durationSeconds);
+  const effectiveDuration = h3EffectiveDurationSeconds(durationSeconds);
   const current = currentPrompt.trim();
   if (mode === "R2V") {
     const references = referenceLines(options.referenceSlots);

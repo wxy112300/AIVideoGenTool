@@ -2,10 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   createH3PromptFromBuilder,
   createH3PromptTemplate,
+  h3DurationPlan,
   normalizeH3PromptOutput
 } from "../src/core/h3-prompt.js";
 
 describe("MiniMax H3 prompt templates", () => {
+  it("plans a long H3 clip across the full effective duration", () => {
+    const plan = h3DurationPlan("FL2VA", 15);
+
+    expect(plan).toContain("effective H3 duration is 15.08 seconds");
+    expect(plan).toContain("Plan 6 sequential development beats");
+    expect(plan).toContain("final beat must settle at 15.08 seconds");
+    expect(plan).toContain("Connect the first-frame state to the last-frame state");
+  });
+
   it("normalizes model output to the requested H3 alignment mode", () => {
     const i2vaInstruction = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
     const fl2vaInstruction = "How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the 5.17-second mark of the target video.";

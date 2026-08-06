@@ -62,7 +62,7 @@ npm.cmd run dev
 - **低显存保护**：按工作流启用模型卸载、CPU offload、分块 VAE 解码和单任务执行，降低长视频处理时的显存峰值。
 - **分阶段任务进度**：总进度条按加载、采样、解码、插帧、封装和保存阶段计算；当前阶段另显示局部步数，例如 `扩散采样 4/20`。
 - **H3 提示词助手**：除了官方结构模板，还提供结构化构建器，可分别填写参考连续性、动作起因、身体/视线锁定、镜头类型与幅度/速度、景别变化、同步声音、对白和屏幕文字。
-- **提示词扩写**：当前可选连接本地 LM Studio 的 OpenAI 兼容接口；模型文件管理按最终脱离 LM Studio 的方案接入共享 ComfyUI `models` 目录。
+- **提示词扩写**：支持 ComfyUI 原生 TextGenerate、应用自管理 llama-server 和可选 LM Studio 兼容接口；模型文件按各自运行时扫描和管理。
 - **提示词模型扫描**：设置页扫描与视频模型相同的 ComfyUI 模型根目录，按官方 `text_encoders` 文件统计可用性，并用同一个下载说明弹窗展示 Hugging Face 来源、文件名和目标目录；不再单独选择提示词模型目录。
 - **扩写预设**：设置 → 提示词扩写中可编辑完整电影提示词、参考图忠实理解、单镜头连贯动作、多参考关系编排四套规则头，覆盖整个提示词生成策略，保存后下一次扩写生效，也可以一键恢复全部默认。
 - **内置 H3 官方基线**：软件固定保留 H3 的 T2VA、I2VA、FL2VA、L2VA 任务关系，R2V 参考标签顺序，原生音频、动作连续性和结构化输出约束；用户编辑预设不会删除这些底层规则。
@@ -121,14 +121,28 @@ ComfyUI/models/vae/
 
 ### 本地提示词模型
 
-提示词模型和视频模型共用同一个 `ComfyUI/models` 根目录，但提示词模型必须遵循 ComfyUI 原生的 `text_encoders` 目录约定。针对 RTX 4090 和 H3 提示词辅助，主力推荐 Qwen3.5 4B BF16，另提供更快、更省显存的 Qwen3.5 2B BF16 备选。两者都支持文本生成和图片/视频理解，不需要创建 `prompt_models` 子目录，也不需要额外的 GGUF 或 `mmproj` 文件。
+提示词扩写有两条本地路径：ComfyUI 原生 Qwen3.5 2B/4B BF16 放在 `text_encoders`，或应用自管理的 Unconcerned Qwen3.5 GGUF + `mmproj` 放在 `prompt_models`。两条路径都支持文字和参考图/视频理解，但文件格式和运行时完全不同，不能交叉加载。
 
 | 模型 | 下载文件 | 目标目录 |
 | --- | --- | --- |
 | Qwen3.5 4B | [qwen3.5_4b_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_4b_bf16.safetensors?download=true) | `ComfyUI/models/text_encoders/` |
 | Qwen3.5 2B | [qwen3.5_2b_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors?download=true) | `ComfyUI/models/text_encoders/` |
 
-Qwen3.5 4B 是质量和显存的平衡主力，Qwen3.5 2B 文件约 4.55GB，适合 12GB 显存或快速迭代，但复杂动作分析和提示词细节能力会低于 4B。两者都由 ComfyUI 原生 `CLIPLoader`、`TextGenerate`、`LoadImage` 和 `ImageBatch` 加载，不需要安装 ComfyUI-GGUF 或其它第三方提示词节点；应用的“节点与工作流依赖”页会检查这些核心节点。之前下载的 GGUF/mmproj、Qwen3.5 9B 或 Qwen3-VL 8B 文件都不是当前配置的必需项。关闭 LM Studio 后，应用会按需启动本地 ComfyUI，执行提示词扩写并把结果保存为新的提示词版本；开始视频任务或退出应用时会释放提示词模型。
+### 应用自管理 Unconcerned 提示词模型
+
+如果不想依赖 LM Studio，可以在设置 → 提示词扩写中选择“应用自管理 llama-server（Unconcerned）”。当前档位使用 [HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive) 的 Q6_K GGUF 和 BF16 `mmproj`，由应用自己启动和停止本地 `llama-server.exe`，支持参考图/视频输入。
+
+需要准备：
+
+| 文件 | 目标目录 |
+| --- | --- |
+| [Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/resolve/main/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf?download=true) | `ComfyUI/models/prompt_models/` 或设置中的应用提示词模型目录 |
+| [mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/resolve/main/mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf?download=true) | 同上 |
+| [llama.cpp Windows CUDA release](https://github.com/ggml-org/llama.cpp/releases) 中的 `llama-server.exe` | 在设置中填写完整路径，或放入模型目录/系统 `PATH` |
+
+这个档位不使用 ComfyUI `TextGenerate`，也不需要 LM Studio。应用只管理自己启动的 `llama-server` 进程；扩写完成、开始视频队列或退出应用时会停止它并释放显存。模型采用 Apache-2.0，但 `llama.cpp` 和模型文件各自的上游许可证仍需分别遵守。
+
+Qwen3.5 4B 是 ComfyUI 原生路径的质量和显存平衡主力，Qwen3.5 2B 文件约 4.55GB，适合 12GB 显存或快速迭代，但复杂动作分析和提示词细节能力会低于 4B。原生档由 ComfyUI `CLIPLoader`、`TextGenerate`、`LoadImage` 和 `ImageBatch` 加载；Unconcerned 档则由应用自管理 `llama-server` 加载 GGUF + `mmproj`。两条路径不能交叉加载。关闭 LM Studio 后，应用会按需启动所选本地提示词运行时，执行提示词扩写并把结果保存为新的提示词版本；开始视频任务或退出应用时会释放提示词模型。
 
 R2V 当前在应用内支持混合媒体 Slot：最多 9 张参考图和 3 段参考视频，总数不超过 12 个。每个 Slot 可标注人物、场景、风格、动作、镜头等作用；提示词会按官方语义区分可复用内容的 `<Subject N>`、具体帧/构图锚点 `<Picture N>` 和参考视频 `<Video N>`。参考视频会同时送入画面帧和视频自身音轨；独立音频 Slot 尚未接入应用界面。
 
@@ -146,7 +160,7 @@ R2V 当前在应用内支持混合媒体 Slot：最多 9 张参考图和 3 段�
 - 提示词、任务队列、历史记录和设置保存在 Electron 的本地用户数据目录中。
 - 视频默认使用所选 ComfyUI 的输出目录，也可以在设置中指定其他目录。
 - 删除历史作品时，可同时删除记录和关联的视频文件；执行前会要求确认。
-- 推理和 LM Studio 提示词扩写均在本机进行。只有在下载依赖或用户主动配置外部服务时才会产生对应的网络请求。
+- 推理和本地提示词扩写均在本机进行。只有在下载依赖、下载模型、启动可选 LM Studio 或用户主动配置外部服务时才会产生对应的网络请求。
 - 模型文件和生成媒体已被 `.gitignore` 排除，不应提交到仓库。
 
 ## 自定义 ComfyUI 工作流

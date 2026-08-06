@@ -10,6 +10,8 @@ import type {
 import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import { h3OfficialPromptBaseline } from "../../src/core/h3-official-spec.js";
 import {
+  h3DurationPlan,
+  h3EffectiveDurationSeconds as h3EffectiveDurationNumber,
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
@@ -268,15 +270,19 @@ function h3VisionSystemPrompt(
   return [
     "You are a MiniMax H3 visual prompt editor, not a generic creative copywriter.",
     "The user may provide only a short idea in any language, not a finished English prompt. Expand the intent into the complete official H3 format without asking the user to draft the sections.",
+    "User-intent priority: preserve every concrete attribute explicitly supplied by the user, including clothing or exposure level, actions, poses, behavior, atmosphere, camera requests, dialogue, and visible text. Do not omit, euphemize, sanitize, or replace an explicit user term because it is not visible in the reference image.",
+    "Reference economy: the H3 generator already receives the reference image. Use only one or two short anchor phrases for identity, composition, and continuity; do not inventory every visible garment, material, background object, or lighting detail unless it affects the requested motion.",
+    "Motion-first priority: spend most of the detailed description on action onset, cause and effect, micro-movements, gaze, weight shift, object response, atmosphere, camera path, sound, and the final state. Preserve important visual facts without repeating a static image description.",
     mode === "T2VA"
       ? "No reference image is attached for this T2VA request. Construct the complete audiovisual timeline from the user's intent and add only coherent supporting details."
-      : "Inspect every attached reference image before writing. Preserve only observable identity, clothing, composition, lighting, objects, and spatial relationships; never invent unsupported details.",
+      : "Inspect every attached reference image before writing. Preserve only the compact identity and continuity anchors needed for the requested action; never invent unsupported details and never delete an explicit user requirement.",
     "Rewrite the user's intent into a physically grounded audiovisual timeline. Replace vague words such as natural, dynamic, cinematic, or realistic with observable cause-and-effect: preparation, action, body response, environmental response, camera path, and final settled state.",
     "Make movement specific but restrained. Keep body parts, gaze, object contact, weight shift, momentum, and camera movement consistent. Do not add unrelated plot, characters, props, or dialogue.",
     "Write descriptive body text in English. Preserve exact user dialogue and visible text in its original language. Put dialogue only inside <d>[Language] exact words</d> and keep a stable speaker ID outside the tag.",
     ...modeRules,
     `Selected H3 preset: ${effectivePreset}.\n${effectivePresetText.trim() || defaultH3PromptPresets[effectivePreset]}`,
     h3OfficialPromptBaseline(mode),
+    "Final user-intent lock: the explicit attributes in the user's request are authoritative content. Preserve them in the final prompt; use the reference only as a compact continuity anchor.",
     "Return only the final H3 prompt. Do not include analysis, Markdown fences, headings outside the required H3 fields, or an explanation."
   ].join("\n");
 }
@@ -290,6 +296,7 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
     : "";
   return [
     `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
+    h3DurationPlan(mode, Number(duration)),
     `H3 output preset: ${preset}.`,
     mode === "T2VA"
       ? "No image reference is attached; the following user intent is the source material for the T2VA timeline."
@@ -317,7 +324,9 @@ export async function buildLmStudioChatRequest(
     return {
       model,
       temperature: 0.35,
-      max_tokens: 1800,
+      max_tokens: h3Mode === "R2V"
+        ? 1800
+        : Math.min(1800, Math.max(1000, Math.ceil(h3EffectiveDurationNumber(request.h3DurationSeconds ?? 5) / 5.17) * 400)),
       messages: [
         { role: "system", content: h3VisionSystemPrompt(h3Mode, h3Preset, settings.h3PromptPresets[h3Preset]) },
         {

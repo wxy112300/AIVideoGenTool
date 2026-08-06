@@ -9,15 +9,13 @@
 1. GUI 不绑定某个 Python、PyTorch 或 CUDA 版本。
 2. Sulphur 2、Wan 2.2、HunyuanVideo 等模型可以各自维护独立的 ComfyUI API 工作流，不需要在应用代码中硬编码节点编号。
 
-## 2. 模块依赖矩阵
-
 | 模块 | 当前方案 | 是否已接线 | 本地接手时要做的事 |
 |---|---|---:|---|
 | 桌面 GUI | Electron 43 + 原生 TypeScript/HTML/CSS | 是 | 在 Windows 上运行并检查缩放、文件选择和深色界面 |
 | 前端构建 | Vite 8 | 是 | `npm run dev` / `npm run build` |
 | 类型和测试 | TypeScript 7 + Vitest 4 | 是 | 扩充队列与工作流测试 |
 | 状态持久化 | 原子替换 JSON | 是（基础版） | 数据量增大后迁移 SQLite；视频和图片只保存路径 |
-| 本地提示词扩写 | LM Studio OpenAI 兼容 `/v1/chat/completions` | 是 | 启动本地服务器、加载模型、实测模板 |
+| 本地提示词扩写 | ComfyUI 原生 TextGenerate、应用自管理 llama-server 或 LM Studio 兼容 `/v1/chat/completions` | 是 | 按设置选择运行时，启动/释放对应本地提示词模型 |
 | ComfyUI 连接 | HTTP API + WebSocket，history 轮询兜底 | 是 | 用真实工作流验证 `progress/execution_error` 消息和输出结构 |
 | I2V 模型适配 | API 工作流 JSON + 占位符替换 | MiniMax H3 FL2VA、Sulphur、Wan、Hunyuan 已接入 | 新模型继续按独立资源映射和真实 `/prompt` 校验接入 |
 | 视频编码 | ComfyUI 工作流输出节点 | 依赖工作流 | VideoHelperSuite 1.7.9 由应用修复 ComfyUI 0.18 meta-batch 兼容层 |
@@ -34,7 +32,6 @@
 
 ### GUI 开发机
 
-- Windows 10/11 x64。
 - Node.js 22 或 24 LTS；不要使用已 EOL 的 Node 20。
 - npm（随 Node.js 安装）。
 - Git（推荐，脚本不强制）。
@@ -51,7 +48,7 @@ Electron 官方 Windows 教程明确提示桌面开发不要在 WSL 中执行，
   - 已经存在可用 ComfyUI 时，不要为了本工具重复安装另一套。
   - Portable 自带独立 `python_embeded`，通常不需要把 Conda 或 Python 加到系统 PATH。
   - Desktop 已包含 ComfyUI Manager。
-- LM Studio，加载一个适合中文扩写的小模型并启动 Local Server。
+- 可选 LM Studio，加载一个适合中文扩写的小模型并启动 Local Server；也可以完全不安装 LM Studio，使用应用自管理的 llama-server + Qwen3.5 GGUF/mmproj。
   - 安装在 D 盘或自定义目录时，可在“设置 → 本机环境”的 LM Studio 扫描卡片
     直接选择安装目录；也可在“设置 → 提示词 → LM Studio”中修改并持久保存。
 - FFmpeg：基础提交不是硬依赖；“安全取消后输出可播放的部分视频”和独立后处理需要它。
@@ -87,7 +84,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 1. 检查 Node、npm、Git、FFmpeg、`nvidia-smi`。
 2. 查找 ComfyUI 的 Portable Python、Desktop `.venv` 或系统 Python。
 3. 统计常见模型目录是否有文件。
-4. 尝试连接 ComfyUI `8188` 和 LM Studio `1234`。
+4. 尝试连接 ComfyUI `8188` 和可选的 LM Studio `1234`；应用自管理 llama-server 会在提示词扩写时按需启动。
 5. 安装 npm 依赖、运行测试并构建。
 
 也可以直接双击仓库根目录的 `start-ui.bat` 完成依赖安装、构建和启动。网络较慢且已有本机
@@ -311,7 +308,7 @@ RIFE，总执行时间 255.3 秒。`ffprobe` 验证输出为 H.264、5.0417 秒�
 1. 在 ComfyUI 中手动运行某模型的原始工作流。
 2. 用“Export Workflow (API)”导出 JSON。
 3. 只替换提示词、首帧、Seed、尺寸和输出名前缀。
-4. 在本工具设置页测试 ComfyUI 与 LM Studio。
+4. 在本工具设置页测试 ComfyUI、可选 LM Studio 或应用自管理提示词运行时。
 5. 建立 1 秒、480p 的最小任务，检查上传、提交、历史返回。
 6. 用 Wan 5B 测试 5 秒、720p、121 模型帧，并记录采样、VAE、编码各阶段的
   峰值 VRAM、系统 RAM、耗时和输出节点。

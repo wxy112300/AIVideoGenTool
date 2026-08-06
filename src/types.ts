@@ -74,8 +74,11 @@ export interface Settings {
   lmStudioModel: string;
   lmStudioInstallDirectory: string;
   promptUseLmStudio: boolean;
+  promptRuntime: PromptRuntime;
   promptModelId: string;
   promptModelDirectory: string;
+  promptLlamaServerPath: string;
+  promptLlamaPort: number;
   h3PromptPresets: Record<H3PromptPreset, string>;
   outputDirectory: string;
   modelDirectory: string;
@@ -360,6 +363,7 @@ export interface ModelScanProfile {
   id: string;
   name: string;
   category: "video" | "upscale" | "interpolation" | "prompt";
+  managedBy?: "comfyui" | "lmstudio" | "llama-server";
   badge: string;
   description: string;
   vram: string;
@@ -428,6 +432,7 @@ export interface AttentionAccelerationStatus {
 }
 
 export type PromptEnhanceMode = "faithful" | "sulphur-native" | "h3-vision";
+export type PromptRuntime = "comfyui" | "lmstudio" | "llama-server";
 
 export type H3PromptPreset =
   | "official-storyboard"

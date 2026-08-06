@@ -12,22 +12,22 @@ export function h3PromptPresetForMode(
 
 export const defaultH3PromptPresets: Record<H3PromptPreset, string> = {
   "official-storyboard": [
-    "Create a complete production prompt, not a short caption or summary. When reference media is supplied, infer the visible subject, environment, materials, lighting, composition, and visual style from it; for T2VA, build those details coherently from the user's intent.",
+    "Create a focused production prompt, not a caption, but do not rewrite the reference image pixel by pixel. Treat the user's explicit content as authoritative. Use one or two concise visual anchors for the subject and opening composition, then spend the detail budget on what changes.",
     "Respect the selected H3 mode exactly: T2VA starts directly with the three core fields; I2VA develops forward from the first frame; FL2VA connects the first and last frames; L2VA converges on the final frame; R2V uses the six full-reference sections.",
-    "Use the official H3 structured prompt format shown in the scaffold below and keep its section order. Inside integrated_multimodal_description or detailed_description, write a practical storyboard with 2-4 concrete shots only when the mode, duration, and request support cuts.",
-    "Cover the full generation plan: opening state, subject identity and continuity, cause of motion, body mechanics, object and environment response, shot progression, camera path, final state, ambient sound, sound effects, music, exact dialogue, and visible text. Aim for roughly 250-450 English words for a 5-second prompt, scaling with duration.",
-    "Make the result feel like a production-ready director's shot sheet rather than generic adjectives such as cinematic, dynamic, or realistic."
+    "Use the official H3 structured prompt format and keep its section order. For a 5-second I2VA or FL2VA request, prefer one continuous shot unless the user asks for cuts; use multiple shots only when they add necessary new information.",
+    "Cover the action chain: why movement starts, preparation, small body and gaze changes, weight and momentum, object/environment response, camera path, atmosphere, synchronized sound, dialogue, and the final state. Scale the detail to the actual duration plan; do not compress a long request into a 5-second event.",
+    "Make the result feel alive through observable micro-actions and atmosphere, not through generic adjectives or a long list of static clothing and background details."
   ].join("\n"),
   "reference-faithful": [
     "Create a complete H3 prompt with concrete visual, action, camera, audio, dialogue, and continuity details; do not return a short caption.",
-    "Use the same official H3 section names and order as the scaffold. Prioritize reference fidelity over invention: inspect the subject, clothing, pose, geometry, lighting, environment, and composition, then add only details visible in the reference or explicitly requested by the user.",
+    "Use the same official H3 section names and order as the scaffold. Prioritize the user's explicit content first, then retain only identity, pose, composition anchors, and visual facts from the reference that matter to the requested movement or continuity.",
     "Adapt the reference path to the selected mode: first-frame anchor for I2VA, continuous interpolation for FL2VA, final-frame convergence for L2VA, and Subject/Picture/Video/Audio role definitions for R2V.",
-    "Use one or two shots unless the selected mode or user explicitly requires more. Keep camera movement and action physically conservative, preserve identity and scene anchors, and describe what changes over time instead of listing static features. Aim for roughly 220-380 English words for a 5-second T2VA/I2VA/FL2VA/L2VA prompt."
+    "Use one continuous shot by default for I2VA/FL2VA/L2VA. Keep camera movement and action physically conservative, but devote most of the prompt to what changes over time, micro-motion, atmosphere, and sound. Scale the number of sequential beats to the actual duration and reserve the final beat for the ending state."
   ].join("\n"),
   "continuous-motion": [
     "Create a complete H3 prompt with enough concrete detail for the video model to execute the action; do not compress the result into a short sentence.",
     "Use the official H3 section names and order, but write one continuous shot with no cuts or scene changes. Cover the complete causal chain: initial state, preparation, action, body and environment response, camera path, final settled state, synchronized sound, dialogue, and visible text when requested.",
-    "Keep every movement physically connected and chronological. Replace vague adjectives with observable actions, contact, weight shift, gaze, momentum, framing, and audio cues. Aim for roughly 220-380 English words for a 5-second prompt."
+    "Keep every movement physically connected and chronological. Preserve the user's explicit terms, then replace vague adjectives with observable actions, contact, weight shift, gaze, momentum, framing, atmosphere, and audio cues. Follow the dynamic duration plan and do not end the action before the requested clip ends."
   ].join("\n"),
   "multi-reference": [
     "Create a complete H3 R2V-style prompt, not a short caption. Understand the user's intended result and map every supplied reference to a precise job in the final video.",
