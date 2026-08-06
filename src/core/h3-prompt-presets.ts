@@ -1,4 +1,14 @@
 import type { H3PromptPreset } from "../types.js";
+import type { H3PromptMode } from "../types.js";
+
+export function h3PromptPresetForMode(
+  mode: H3PromptMode,
+  requestedPreset: H3PromptPreset = "official-storyboard"
+): H3PromptPreset {
+  return mode === "R2V" || requestedPreset !== "multi-reference"
+    ? requestedPreset
+    : "official-storyboard";
+}
 
 export const defaultH3PromptPresets: Record<H3PromptPreset, string> = {
   "official-storyboard": [

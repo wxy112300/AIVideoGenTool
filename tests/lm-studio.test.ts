@@ -119,6 +119,29 @@ describe("LM Studio prompt enhancement requests", () => {
     expect(readFile).toHaveBeenCalledTimes(2);
     readFile.mockRestore();
   });
+
+  it("does not send a persisted R2V preset to FL2VA", async () => {
+    const settings = createDefaultSettings();
+    settings.h3PromptPresets["multi-reference"] = "R2V SLOT ONLY: emit <slot> labels.";
+
+    const body = await buildLmStudioChatRequest(
+      {
+        prompt: "人物从首帧走到尾帧",
+        modelId: "minimax_h3_fl2va",
+        mode: "h3-vision",
+        h3PromptMode: "FL2VA",
+        h3PromptPreset: "multi-reference",
+        h3DurationSeconds: 5,
+        imagePaths: ["first.png", "last.png"]
+      },
+      settings,
+      "qwen/qwen3.5-9b"
+    );
+
+    expect(body.messages[0]?.content).not.toContain("R2V SLOT ONLY");
+    expect(body.messages[0]?.content).not.toContain("<slot>");
+    expect(body.messages[0]?.content).toContain("FL2VA task rule");
+  });
 });
 
 describe("LM Studio GPU release", () => {

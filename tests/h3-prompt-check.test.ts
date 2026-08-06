@@ -20,6 +20,16 @@ describe("MiniMax H3 prompt checks", () => {
     expect(result).toMatchObject({ mode: "T2VA", valid: true, items: [] });
   });
 
+  it("infers T2VA when no image reference is present", () => {
+    const result = checkH3Prompt([
+      "integrated_multimodal_description: [Shot 1] Live-action, a girl turns in the rain.",
+      "overall_soundscape: Rain falls around her.",
+      "non_diegetic_music: N/A"
+    ].join("\n"), { hasImageReference: false });
+
+    expect(result).toMatchObject({ mode: "T2VA", valid: true, items: [] });
+  });
+
   it("accepts L2VA when the final-frame instruction is first", () => {
     const result = checkH3Prompt([
       "How the reference pictures align with the target video — <Picture 1> (from [Shot 1]) aligns with the 5.17-second mark of the target video.",

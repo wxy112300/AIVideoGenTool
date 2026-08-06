@@ -7,9 +7,12 @@ import type {
   PromptEnhanceMode,
   Settings
 } from "../../src/types.js";
-import { defaultH3PromptPresets } from "../../src/core/h3-prompt-presets.js";
+import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import { h3OfficialPromptBaseline } from "../../src/core/h3-official-spec.js";
-import { inferH3PromptMode } from "../../src/core/h3-prompt.js";
+import {
+  inferH3PromptMode,
+  normalizeH3PromptOutput
+} from "../../src/core/h3-prompt.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -242,6 +245,10 @@ function h3VisionSystemPrompt(
   preset: H3PromptPreset = "official-storyboard",
   presetText = defaultH3PromptPresets[preset]
 ): string {
+  const effectivePreset = h3PromptPresetForMode(mode, preset);
+  const effectivePresetText = effectivePreset === preset
+    ? presetText
+    : defaultH3PromptPresets[effectivePreset];
   const modeRules = mode === "R2V"
     ? [
         "Output the six R2V sections in this exact order: subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.",
@@ -268,7 +275,7 @@ function h3VisionSystemPrompt(
     "Make movement specific but restrained. Keep body parts, gaze, object contact, weight shift, momentum, and camera movement consistent. Do not add unrelated plot, characters, props, or dialogue.",
     "Write descriptive body text in English. Preserve exact user dialogue and visible text in its original language. Put dialogue only inside <d>[Language] exact words</d> and keep a stable speaker ID outside the tag.",
     ...modeRules,
-    `Selected H3 preset: ${preset}.\n${presetText.trim() || defaultH3PromptPresets[preset]}`,
+    `Selected H3 preset: ${effectivePreset}.\n${effectivePresetText.trim() || defaultH3PromptPresets[effectivePreset]}`,
     h3OfficialPromptBaseline(mode),
     "Return only the final H3 prompt. Do not include analysis, Markdown fences, headings outside the required H3 fields, or an explanation."
   ].join("\n");
@@ -276,13 +283,14 @@ function h3VisionSystemPrompt(
 
 function h3VisionUserPrompt(request: EnhanceRequest): string {
   const mode = h3PromptModeForRequest(request);
+  const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds);
   const referenceContext = request.referenceContext?.trim()
     ? `\nReference map:\n${request.referenceContext.trim()}`
     : "";
   return [
     `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
-    `H3 output preset: ${request.h3PromptPreset ?? "official-storyboard"}.`,
+    `H3 output preset: ${preset}.`,
     mode === "T2VA"
       ? "No image reference is attached; the following user intent is the source material for the T2VA timeline."
       : "The attached image(s) are the reference material in the order described below.",
@@ -304,12 +312,14 @@ export async function buildLmStudioChatRequest(
       : request.imagePath
         ? [request.imagePath]
         : [];
+    const h3Mode = h3PromptModeForRequest(request);
+    const h3Preset = h3PromptPresetForMode(h3Mode, request.h3PromptPreset);
     return {
       model,
       temperature: 0.35,
       max_tokens: 1800,
       messages: [
-        { role: "system", content: h3VisionSystemPrompt(h3PromptModeForRequest(request), request.h3PromptPreset, settings.h3PromptPresets[request.h3PromptPreset ?? "official-storyboard"]) },
+        { role: "system", content: h3VisionSystemPrompt(h3Mode, h3Preset, settings.h3PromptPresets[h3Preset]) },
         {
           role: "user",
           content: await nativeUserContent(h3VisionUserPrompt(request), imagePaths)
@@ -428,9 +438,16 @@ export async function enhancePrompt(
   };
   const content = body.choices?.[0]?.message?.content?.trim();
   if (!content) throw new Error("LM Studio 没有返回扩写内容");
-  return content
+  const normalized = content
     .replace(/<think>[\s\S]*?<\/think>/giu, "")
     .replace(/^```(?:text|markdown)?\s*/iu, "")
     .replace(/\s*```$/u, "")
     .trim();
+  if (mode !== "h3-vision") return normalized;
+  const h3Mode = h3PromptModeForRequest(request);
+  return normalizeH3PromptOutput(
+    normalized,
+    h3Mode,
+    request.h3DurationSeconds ?? 5
+  );
 }

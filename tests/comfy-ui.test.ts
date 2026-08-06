@@ -86,6 +86,27 @@ describe("native Qwen prompt workflow", () => {
     expect(faithful).not.toBe(continuous);
   });
 
+  it("does not leak the R2V preset into FL2VA expansion", () => {
+    const instruction = h3PromptInstruction(
+      {
+        prompt: "人物从首帧走到尾帧。",
+        modelId: "minimax_h3_fl2va",
+        h3PromptMode: "FL2VA",
+        h3PromptPreset: "multi-reference"
+      },
+      {
+        "official-storyboard": "Use the first-frame to last-frame path only.",
+        "multi-reference": "R2V SLOT RULE: emit subject_definitions and <slot> labels."
+      }
+    );
+
+    expect(instruction).toContain("Use the first-frame to last-frame path only.");
+    expect(instruction).not.toContain("R2V SLOT RULE");
+    expect(instruction).not.toContain("<slot>");
+    expect(instruction).toContain("FL2VA task rule");
+    expect(instruction).toContain("Non-R2V format exclusion");
+  });
+
   it("injects user-edited preset text into the native prompt header", () => {
     const instruction = h3PromptInstruction(
       {

@@ -77,7 +77,7 @@ import type {
   ,WorkflowCapabilities
 } from "./types";
 import { createClearedDraft } from "./core/defaults";
-import { createDefaultH3PromptPresets } from "./core/h3-prompt-presets";
+import { createDefaultH3PromptPresets, h3PromptPresetForMode } from "./core/h3-prompt-presets";
 import {
   h3ReferenceSlotCounts
 } from "./core/h3-reference";
@@ -937,6 +937,9 @@ function createPage(): string {
   const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
   const isR2V = isMiniMaxH3R2vModel(draft.modelId);
   const h3Mode = isMiniMaxH3 ? h3PromptModeForDraft(draft) : undefined;
+  const activeH3PromptPreset = h3Mode
+    ? h3PromptPresetForMode(h3Mode, h3PromptPreset)
+    : h3PromptPreset;
   const enhanceMode = isMiniMaxH3
     ? promptEnhanceMode === "faithful" ? "faithful" : "h3-vision"
     : promptEnhanceMode === "h3-vision" ? "sulphur-native" : promptEnhanceMode;
@@ -1053,10 +1056,10 @@ function createPage(): string {
           <button class="icon-button" id="prompt-next" aria-label="下一版提示词" title="下一版提示词" ${draft.activePromptVersion >= draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button>
           <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="扩写方式" title="选择提示词扩写方式">
             ${isMiniMaxH3
-              ? `<option value="official-storyboard" ${h3PromptPreset === "official-storyboard" ? "selected" : ""}>完整电影提示词（推荐）</option>
-                <option value="reference-faithful" ${h3PromptPreset === "reference-faithful" ? "selected" : ""}>参考图忠实理解</option>
-                <option value="continuous-motion" ${h3PromptPreset === "continuous-motion" ? "selected" : ""}>单镜头连贯动作</option>
-                <option value="multi-reference" ${h3PromptPreset === "multi-reference" ? "selected" : ""}>多参考关系编排</option>`
+              ? `<option value="official-storyboard" ${activeH3PromptPreset === "official-storyboard" ? "selected" : ""}>完整电影提示词（推荐）</option>
+                <option value="reference-faithful" ${activeH3PromptPreset === "reference-faithful" ? "selected" : ""}>参考图忠实理解</option>
+                <option value="continuous-motion" ${activeH3PromptPreset === "continuous-motion" ? "selected" : ""}>单镜头连贯动作</option>
+                ${isR2V ? `<option value="multi-reference" ${activeH3PromptPreset === "multi-reference" ? "selected" : ""}>多参考关系编排</option>` : ""}`
               : `<option value="sulphur-native" ${enhanceMode === "sulphur-native" ? "selected" : ""}>Sulphur 原生增强（推荐）</option>
                  <option value="faithful" ${enhanceMode === "faithful" ? "selected" : ""}>忠实扩写（需 Instruct 模型）</option>`}
           </select>
@@ -3255,7 +3258,9 @@ function bindCreate(): void {
         imagePath: state.draft.startImagePath || undefined,
         imagePaths: isH3Vision ? h3ImagePaths : undefined,
         h3PromptMode: h3Mode,
-        h3PromptPreset: isCurrentH3 ? h3PromptPreset : undefined,
+        h3PromptPreset: isCurrentH3
+          ? h3PromptPresetForMode(h3Mode, h3PromptPreset)
+          : undefined,
         h3DurationSeconds: state.draft.duration,
         referenceContext: isH3Vision ? referenceContext : undefined
       });

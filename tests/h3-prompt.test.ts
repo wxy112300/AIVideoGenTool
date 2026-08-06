@@ -1,10 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   createH3PromptFromBuilder,
-  createH3PromptTemplate
+  createH3PromptTemplate,
+  normalizeH3PromptOutput
 } from "../src/core/h3-prompt.js";
 
 describe("MiniMax H3 prompt templates", () => {
+  it("normalizes model output to the requested H3 alignment mode", () => {
+    const i2vaInstruction = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
+    const fl2vaInstruction = "How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the 5.17-second mark of the target video.";
+    const body = "integrated_multimodal_description: [Shot 1] The subject moves.";
+
+    expect(normalizeH3PromptOutput(`${i2vaInstruction}\n\n${body}`, "T2VA", 5)).toBe(body);
+    expect(normalizeH3PromptOutput(`${i2vaInstruction}\n\n${body}`, "FL2VA", 5)).toBe(`${fl2vaInstruction}\n\n${body}`);
+    expect(normalizeH3PromptOutput(body, "I2VA", 5)).toBe(`${i2vaInstruction}\n\n${body}`);
+  });
+
   it("creates the official T2VA structure without an image-alignment instruction", () => {
     const template = createH3PromptTemplate("A baker opens the shop before sunrise", 5, {
       mode: "T2VA",

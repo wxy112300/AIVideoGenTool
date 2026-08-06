@@ -30,6 +30,11 @@ export function h3OfficialPromptBaseline(mode: H3PromptMode): string {
               "I2VA task rule: use <Picture 1> as the fully referenced first-frame anchor at 0.00 seconds, not as a generic style hint. Develop the requested action forward while preserving identity, scene anchors, lighting, and composition unless the user explicitly requests a change.",
               "I2VA continuation rule: make the opening state visually specific, then describe how it evolves to the final state. Do not introduce a second keyframe, a new location, or an unrelated subject unless the user asks for it."
             ];
+    const nonR2vExclusions = mode === "R2V"
+      ? []
+      : [
+          "Non-R2V format exclusion: do not output R2V-only structural labels or Slot placeholder markup such as <Subject N>, <Video N>, <Audio N>, subject_definitions, summary, retention_analysis, or detailed_description. Use only the three core fields for this mode. Preserve one of these strings only if the user explicitly requests it as visible on-screen text, never as prompt structure."
+        ];
   return [
     "Built-in MiniMax H3 official baseline. These rules are mandatory and take priority over the editable preset text and any conflicting wording in the raw request.",
     "Public-guide task contract: H3 is an omni-modal audio-visual generator. Write one integrated generation prompt for the supplied H3 mode, combining visual description, motion, camera, dialogue, sound effects, ambience, and music. Audio is generated jointly with video, not added as a post-processing note.",
@@ -55,6 +60,7 @@ export function h3OfficialPromptBaseline(mode: H3PromptMode): string {
     "Reference-mode grounding rule: when reference media is supplied, a detail that is not observable in the references and not requested by the user must remain neutral or be omitted. Do not add an unsupported backstory, emotional motivation, special effect, transition, character, prop, voice, song, or on-screen caption to a reference-based task.",
     "Detail rule: produce a production-ready prompt rather than a caption. For a typical 5-second request, use enough concrete detail for a roughly 220-480 word English prompt, scaling with duration and complexity without repeating the same fact.",
     ...modeRules,
+    ...nonR2vExclusions,
     "Output contract: for T2VA, I2VA, FL2VA, and L2VA, return integrated_multimodal_description, overall_soundscape, and non_diegetic_music in that order. For R2V, return subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, and non_diegetic_music in that order. Use the exact reference labels inside the appropriate sections. The three shared core fields must remain distinct: multimodal description for the timeline, overall_soundscape for full-video ambience and physical sounds, and non_diegetic_music for audience-only score.",
     "Format rule: return only the final English H3 prompt using the required mode-specific sections. Do not return analysis, planning notes, a preface, Markdown fences, a generic negative prompt, or a short caption. Replace every scaffold placeholder with concrete content and never copy the scaffold's placeholder sentence."
   ].join("\n");

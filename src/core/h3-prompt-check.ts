@@ -1,4 +1,5 @@
 import type { H3PromptMode } from "../types.js";
+import { inferH3PromptMode } from "./h3-prompt.js";
 
 export type H3PromptCheckLevel = "ok" | "warning";
 
@@ -95,7 +96,10 @@ export function checkH3Prompt(
   options: H3PromptCheckOptions = {}
 ): H3PromptCheckResult {
   const prompt = promptText.trim();
-  const mode = options.mode ?? (options.hasEndImage ? "FL2VA" : "I2VA");
+  const mode = options.mode ?? inferH3PromptMode(
+    options.hasImageReference ?? true,
+    Boolean(options.hasEndImage)
+  );
   const items: H3PromptCheckItem[] = [];
   const requiredSections = mode === "R2V" ? r2vSections : baseSections;
   const missingSections = requiredSections.filter((section) => !prompt.includes(section));

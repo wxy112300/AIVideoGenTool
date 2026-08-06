@@ -82,6 +82,42 @@ function effectiveDurationSeconds(durationSeconds: number): number {
   return alignedFrames / 24;
 }
 
+export function h3AlignmentInstruction(
+  mode: H3PromptMode,
+  durationSeconds: number
+): string {
+  const effectiveDuration = effectiveDurationSeconds(durationSeconds);
+  if (mode === "I2VA") {
+    return "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
+  }
+  if (mode === "FL2VA") {
+    return `How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the ${effectiveDuration.toFixed(2)}-second mark of the target video.`;
+  }
+  if (mode === "L2VA") {
+    return `How the reference pictures align with the target video — <Picture 1> (from [Shot 1]) aligns with the ${effectiveDuration.toFixed(2)}-second mark of the target video.`;
+  }
+  return "";
+}
+
+function stripLeadingH3AlignmentInstructions(promptText: string): string {
+  let prompt = promptText.trim();
+  prompt = prompt.replace(/^```(?:text|markdown)?\s*/iu, "");
+  prompt = prompt.replace(/\s*```$/u, "").trim();
+  const alignmentLine = /^(?:For the target video, at 0\.00 seconds into the target video, <Picture 1> \(from \[Shot 1\]\) is fully referenced\.|How the reference pictures align with the target video —[^\r\n]+)\s*/iu;
+  return prompt.replace(alignmentLine, "").trim();
+}
+
+export function normalizeH3PromptOutput(
+  promptText: string,
+  mode: H3PromptMode,
+  durationSeconds: number
+): string {
+  const body = stripLeadingH3AlignmentInstructions(promptText);
+  const alignment = h3AlignmentInstruction(mode, durationSeconds);
+  if (!alignment) return body;
+  return `${alignment}\n\n${body}`.trim();
+}
+
 function valueOrFallback(value: string, fallback: string): string {
   return value.trim() || fallback;
 }
@@ -229,13 +265,7 @@ export function createH3PromptFromBuilder(
     return { text, shotCount: 1, mode, effectiveDurationSeconds: effectiveDuration };
   }
 
-  const referenceInstruction = mode === "FL2VA"
-    ? `How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the ${effectiveDuration.toFixed(2)}-second mark of the target video.`
-    : mode === "L2VA"
-      ? `How the reference pictures align with the target video — <Picture 1> (from [Shot 1]) aligns with the ${effectiveDuration.toFixed(2)}-second mark of the target video.`
-      : mode === "I2VA"
-        ? "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced."
-        : "";
+  const referenceInstruction = h3AlignmentInstruction(mode, durationSeconds);
   const text = [
     ...(referenceInstruction ? [referenceInstruction, ""] : []),
     "integrated_multimodal_description:",
@@ -286,13 +316,7 @@ export function createH3PromptTemplate(
       effectiveDurationSeconds: effectiveDuration
     };
   }
-  const referenceInstruction = mode === "FL2VA"
-    ? `How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the ${effectiveDuration.toFixed(2)}-second mark of the target video.`
-    : mode === "L2VA"
-      ? `How the reference pictures align with the target video — <Picture 1> (from [Shot 1]) aligns with the ${effectiveDuration.toFixed(2)}-second mark of the target video.`
-      : mode === "I2VA"
-        ? "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced."
-        : "";
+  const referenceInstruction = h3AlignmentInstruction(mode, durationSeconds);
   const pathInstruction = mode === "FL2VA"
     ? "Describe one continuous path from the first-frame state to the exact final composition in <Picture 2>. Keep the subject identity, scene anchors, and lighting consistent; avoid unrelated cuts."
     : mode === "L2VA"

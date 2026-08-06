@@ -14,8 +14,12 @@ import {
   prepareH3BoundaryFrame
 } from "./extension-media.js";
 import { availableVramBytesForReserve } from "./environment.js";
-import { createH3PromptTemplate, inferH3PromptMode } from "../../src/core/h3-prompt.js";
-import { defaultH3PromptPresets } from "../../src/core/h3-prompt-presets.js";
+import {
+  createH3PromptTemplate,
+  inferH3PromptMode,
+  normalizeH3PromptOutput
+} from "../../src/core/h3-prompt.js";
+import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import { h3OfficialPromptBaseline } from "../../src/core/h3-official-spec.js";
 
 function cleanBaseUrl(url: string): string {
@@ -95,7 +99,7 @@ export function h3PromptInstruction(
     Boolean(request.imagePath || imageCount > 0),
     imageCount > 1
   );
-  const preset: H3PromptPreset = request.h3PromptPreset ?? "official-storyboard";
+  const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const referenceContext = request.referenceContext?.trim() || "No reference-image role labels were provided.";
   const duration = Number.isFinite(request.h3DurationSeconds) && (request.h3DurationSeconds ?? 0) > 0
     ? request.h3DurationSeconds!
@@ -276,7 +280,18 @@ export async function enhancePromptWithComfyUi(
     () => undefined,
     () => undefined
   );
-  return extractTextGenerateOutput(history);
+  const output = extractTextGenerateOutput(history);
+  if (warmup) return output;
+  const imageCount = request.imagePaths?.length ?? 0;
+  const mode = request.h3PromptMode ?? inferH3PromptMode(
+    Boolean(request.imagePath || imageCount > 0),
+    imageCount > 1
+  );
+  return normalizeH3PromptOutput(
+    output,
+    mode,
+    request.h3DurationSeconds ?? 5
+  );
 }
 
 export async function warmNativePromptModel(
