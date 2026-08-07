@@ -1210,18 +1210,19 @@ function upscaleDialogHtml(): string {
   const asset = state.history.find((item) => item.id === upscaleDialog?.assetId);
   const version = asset?.versions.find((item) => item.id === upscaleDialog?.versionId);
   if (!asset || !version) return "";
-  const [targetWidth, targetHeight] = upscaleDimensions(
+  const [targetWidth, outputHeight] = upscaleDimensions(
     version.width,
     version.height,
     upscaleDialog.targetHeight
   );
   const sourceShortEdge = versionShortEdge(version);
+  const selectedTargetHeight = upscaleDialog.targetHeight;
   const estimate = estimateUpscaleResources({
     modelId: upscaleDialog.modelId,
     sourceWidth: version.width,
     sourceHeight: version.height,
     targetWidth,
-    targetHeight,
+    targetHeight: outputHeight,
     duration: version.duration,
     fps: version.fps
   });
@@ -1259,14 +1260,14 @@ function upscaleDialogHtml(): string {
         <div class="upscale-dialog-body">
           <div class="upscale-source"><div><strong>${escapeHtml(asset.title)}</strong><code>${escapeHtml(version.outputFilename)}</code></div><span>${version.width} × ${version.height} · ${formatVideoDuration(version.duration)}</span></div>
           <div><label>目标分辨率</label><div class="upscale-resolution">
-            ${([720, 1080, 1440, 2160] as const).map((height) => `<button class="${height === targetHeight ? "primary" : "secondary"}" data-upscale-height="${height}" ${height <= sourceShortEdge ? "disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
+            ${([720, 1080, 1440, 2160] as const).map((height) => `<button class="${height === selectedTargetHeight ? "primary" : "secondary"}" data-upscale-height="${height}" ${height <= sourceShortEdge ? "disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
           </div></div>
           <div class="settings-grid two">
             <label>提升模型<select id="upscale-model">${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === upscaleDialog?.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
             <label>显存策略<select id="upscale-tile" disabled><option value="safe" selected>保守 · 分批与每批卸载</option></select></label>
           </div>
           <label class="ios-switch-field disabled"><span class="policy-copy"><strong>人脸细节修复</strong><small>等待独立修复模型接入</small></span><input type="checkbox" disabled><span class="ios-switch" aria-hidden="true"></span></label>
-          <div class="upscale-output"><div><span>预计输出</span><strong>${targetWidth} × ${targetHeight}</strong><code>${escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><span>预计峰值 ${estimatedVram}</span><span>预计耗时 ${estimatedTime}</span></div></div>
+          <div class="upscale-output"><div><span>预计输出</span><strong>${targetWidth} × ${outputHeight}</strong><code>${escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><span>预计峰值 ${estimatedVram}</span><span>预计耗时 ${estimatedTime}</span></div></div>
           <p class="upscale-estimate-note ${vramWarning ? "warning" : ""}">按当前模型的保守分批策略估算，共 ${estimate.frameCount} 帧；不含首次加载模型、磁盘读取和最终编码时间。${vramWarning ? `预计峰值可能超过当前 ${formatBytes(detectedVramBytes)} 显存，建议降低目标分辨率或改用更轻模型。` : "实际速度和峰值会受 ComfyUI 版本、后台进程和磁盘速度影响。"}</p>
         </div>
         <div class="dialog-actions"><button class="secondary button-with-icon" id="cancel-upscale">${icon("x")}取消</button><button class="primary button-with-icon" id="enqueue-upscale">${icon(upscaleDialog.taskId ? "save" : "plus")}${upscaleDialog.taskId ? "保存更改" : "加入队列"}</button></div>
@@ -1760,6 +1761,9 @@ function queueTaskCard(task: QueueTask): string {
     : task.taskType === "extension"
       ? `${task.prompt} · 保留 ${task.trimStartSeconds.toFixed(1)}–${task.trimEndSeconds.toFixed(1)} 秒`
       : `${task.sourceFilename} → ${task.outputFilename}`;
+  const upscaleOutput = task.taskType === "upscale"
+    ? upscaleDimensions(task.sourceWidth, task.sourceHeight, task.targetHeight)
+    : null;
   const h3StepsSummary = isMiniMaxH3Model(task.modelId) && task.taskType !== "upscale"
     ? `<span>H3 ${normalizeH3Steps(task.steps)} 步</span>`
     : "";
@@ -1767,7 +1771,7 @@ function queueTaskCard(task: QueueTask): string {
     ? `<span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span>${h3StepsSummary}<span>Seed ${task.seed}</span>`
     : task.taskType === "extension"
       ? `<span>视频续写</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>最多 ${task.maxGeneratedFrames} 模型帧</span><span>${task.overlapFrames} 帧上下文</span>${h3StepsSummary}`
-      : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.targetWidth} × ${task.targetHeight}</span><span>分批处理 · 每批卸载</span>`;
+      : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${upscaleOutput![0]} × ${upscaleOutput![1]}</span><span>分批处理 · 每批卸载</span>`;
   if (task.status === "running") {
     const preview = taskPreviews[task.id] ?? "";
     const input = queueTaskInput(task);

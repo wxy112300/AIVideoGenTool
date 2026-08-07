@@ -126,6 +126,18 @@ describe("upscale workflows", () => {
     expect(workflow["6"]?.inputs.images).toEqual(["8", 1]);
   });
 
+  it("keeps the actual portrait dimensions when the task stores a short-edge target", () => {
+    const portraitTask = {
+      ...task("realesrgan"),
+      sourceWidth: 480,
+      sourceHeight: 864,
+      targetWidth: 720,
+      targetHeight: 720
+    };
+    const workflow = renderUpscaleWorkflow(portraitTask, "source.mp4", models);
+    expect(workflow["5"]?.inputs).toMatchObject({ width: 720, height: 1296 });
+  });
+
   it("builds a VRAM-safe SeedVR2 workflow", () => {
     const seedTask = { ...task("seedvr2"), tileMode: "safe" as const };
     const workflow = renderUpscaleWorkflow(seedTask, "source.mp4", models);
@@ -136,6 +148,30 @@ describe("upscale workflows", () => {
       preserve_vram: true,
       block_swap_config: ["3", 0]
     });
+  });
+
+  it("builds the current modular SeedVR2 workflow when its nodes are available", () => {
+    const workflow = renderUpscaleWorkflow(
+      task("seedvr2"),
+      "source.mp4",
+      models,
+      {
+        SeedVR2VideoUpscaler: {},
+        SeedVR2LoadDiTModel: {},
+        SeedVR2LoadVAEModel: {}
+      }
+    );
+    expect(workflow["3"]?.class_type).toBe("SeedVR2LoadDiTModel");
+    expect(workflow["4"]?.class_type).toBe("SeedVR2LoadVAEModel");
+    expect(workflow["5"]?.inputs).toMatchObject({
+      resolution: 1080,
+      batch_size: 5,
+      dit: ["3", 0],
+      vae: ["4", 0]
+    });
+    expect(workflow["6"]?.class_type).toBe("VHS_VideoCombine");
+    expect(workflow["9"]?.inputs).toMatchObject({ width: 1872, height: 1080 });
+    expect(workflow["8"]?.inputs.image_pass).toEqual(["9", 0]);
   });
 
   it("always builds FlashVSR with the low-VRAM preset", () => {

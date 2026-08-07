@@ -1154,14 +1154,19 @@ async function executeQueue(): Promise<void> {
           throw new Error("源作品已不存在，无法保存提升版本");
         }
         const asset = state.history[assetIndex]!;
+        const [targetWidth, targetHeight] = upscaleDimensions(
+          completedTask.sourceWidth,
+          completedTask.sourceHeight,
+          completedTask.targetHeight
+        );
         const version: AssetVersion = {
           id: crypto.randomUUID(),
           kind: "upscale",
           createdAt: completedAt,
           outputFilename: completedTask.outputFilename,
           modelId: completedTask.modelId,
-          width: completedTask.targetWidth,
-          height: completedTask.targetHeight,
+          width: targetWidth,
+          height: targetHeight,
           duration: completedTask.duration,
           fps: completedTask.fps,
           seed: completedTask.seed,

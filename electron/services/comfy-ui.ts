@@ -422,7 +422,7 @@ export async function submitTask(
       prompt = renderUpscaleWorkflow(task, sourceVideo, {
         seedVr2: settings.seedVr2Model,
         realEsrgan: settings.realEsrganModel
-      });
+      }, objectInfo);
   }
   const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
   if (missingNodes.length) {

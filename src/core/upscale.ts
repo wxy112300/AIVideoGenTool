@@ -188,13 +188,18 @@ function loadVideoNode(sourceVideo: string): ApiNode {
 }
 
 function exactScaleNode(image: unknown, task: UpscaleQueueTask): ApiNode {
+  const [targetWidth, targetHeight] = upscaleDimensions(
+    task.sourceWidth,
+    task.sourceHeight,
+    task.targetHeight
+  );
   return {
     class_type: "ImageScale",
     inputs: {
       image,
       upscale_method: "lanczos",
-      width: task.targetWidth,
-      height: task.targetHeight,
+      width: targetWidth,
+      height: targetHeight,
       crop: "disabled"
     }
   };
@@ -220,9 +225,17 @@ function combineVideoNode(task: UpscaleQueueTask): ApiNode {
 export function renderUpscaleWorkflow(
   task: UpscaleQueueTask,
   sourceVideo: string,
-  models: { seedVr2: string; realEsrgan: string }
+  models: { seedVr2: string; realEsrgan: string },
+  objectInfo?: unknown
 ): Record<string, ApiNode> {
   const sourceShortEdge = Math.max(1, Math.min(task.sourceWidth, task.sourceHeight));
+  const availableNodes = objectInfo && typeof objectInfo === "object" && !Array.isArray(objectInfo)
+    ? new Set(Object.keys(objectInfo as Record<string, unknown>))
+    : new Set<string>();
+  const modernSeedVr2 = task.modelId === "seedvr2" &&
+    availableNodes.has("SeedVR2VideoUpscaler") &&
+    availableNodes.has("SeedVR2LoadDiTModel") &&
+    availableNodes.has("SeedVR2LoadVAEModel");
   const workflow: Record<string, ApiNode> = {
     "1": loadVideoNode(sourceVideo),
     "2": {
@@ -233,8 +246,11 @@ export function renderUpscaleWorkflow(
     "7": {
       class_type: "VHS_BatchManager",
       inputs: {
-        frames_per_batch:
-          task.modelId === "realesrgan" ? 1 : task.modelId === "seedvr2" ? 5 : 16
+        frames_per_batch: task.modelId === "realesrgan"
+          ? 1
+          : task.modelId === "seedvr2"
+            ? 5
+            : 16
       }
     }
   };
@@ -248,6 +264,51 @@ export function renderUpscaleWorkflow(
       class_type: "ImageUpscaleWithModel",
       inputs: { upscale_model: ["3", 0], image: ["1", 0] }
     };
+  } else if (task.modelId === "seedvr2" && modernSeedVr2) {
+    workflow["3"] = {
+      class_type: "SeedVR2LoadDiTModel",
+      inputs: {
+        model: models.seedVr2,
+        device: "cuda:0",
+        blocks_to_swap: 20,
+        swap_io_components: true,
+        offload_device: "cpu",
+        cache_model: false,
+        attention_mode: "sdpa"
+      }
+    };
+    workflow["4"] = {
+      class_type: "SeedVR2LoadVAEModel",
+      inputs: {
+        model: "ema_vae_fp16.safetensors",
+        device: "cuda:0",
+        offload_device: "cpu",
+        cache_model: false,
+        encode_tiled: false,
+        decode_tiled: false
+      }
+    };
+    workflow["5"] = {
+      class_type: "SeedVR2VideoUpscaler",
+      inputs: {
+        image: ["1", 0],
+        dit: ["3", 0],
+        vae: ["4", 0],
+        seed: task.seed,
+        resolution: task.targetHeight,
+        max_resolution: 0,
+        batch_size: 5,
+        uniform_batch_size: false,
+        temporal_overlap: 0,
+        prepend_frames: 0,
+        color_correction: "wavelet",
+        input_noise_scale: 0,
+        latent_noise_scale: 0,
+        offload_device: "cpu",
+        enable_debug: false
+      }
+    };
+    workflow["9"] = exactScaleNode(["5", 0], task);
   } else if (task.modelId === "seedvr2") {
     workflow["3"] = {
       class_type: "SeedVR2BlockSwap",
@@ -287,14 +348,17 @@ export function renderUpscaleWorkflow(
     throw new Error(`不支持的分辨率提升模型：${task.modelId}`);
   }
 
-  workflow["5"] = exactScaleNode(["4", 0], task);
+  if (task.modelId !== "seedvr2" || !modernSeedVr2) {
+    workflow["5"] = exactScaleNode(["4", 0], task);
+  }
+  const finalImageNode = modernSeedVr2 ? ["9", 0] : ["5", 0];
   workflow["8"] = {
     class_type: "VRAM_Debug",
     inputs: {
       empty_cache: true,
       gc_collect: true,
       unload_all_models: true,
-      image_pass: ["5", 0]
+      image_pass: finalImageNode
     }
   };
   return workflow;
