@@ -102,6 +102,7 @@ import {
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
+  isMiniMaxH3TurboModel,
   normalizeH3Steps,
   outputDimensions,
   outputFrameCountForTask
@@ -157,6 +158,8 @@ let coreDependencyRepairing = false;
 let attentionAccelerationInstalling = false;
 let attentionAccelerationLog = "";
 let settingsDraft: Settings | null = null;
+let llamaServerInstalling = false;
+let llamaServerInstallLog = "";
 let settingsTab: "system" | "acceleration" | "video" | "nodes" | "prompt" | "upscale" = "system";
 let selectedInstallGuide: {
   profileName: string;
@@ -321,6 +324,7 @@ function modelName(id: string): string {
     {
       minimax_h3_fl2va: "MiniMax H3 FL2VA",
       minimax_h3_fl2va_int4: "MiniMax H3 FL2VA · INT4 低显存",
+      minimax_h3_fl2va_turbo: "MiniMax H3 Turbo · 首尾帧",
       minimax_h3_ref2va: "MiniMax H3 R2V · 多参考",
       minimax_h3_ref2va_int4: "MiniMax H3 R2V · 多参考 INT4",
       sulphur2: "Sulphur 2 GGUF",
@@ -748,6 +752,7 @@ function createModelOptions(draft: Draft): string {
     : [
         { id: "minimax_h3_fl2va", name: "MiniMax H3 Image to Video", available: true, integrated: true },
       { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 Image to Video · INT4 低显存", available: true, integrated: true },
+        { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 Turbo · 首尾帧", available: true, integrated: true },
         { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考", available: true, integrated: true },
         { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
       { id: "sulphur2", name: "Sulphur 2 GGUF", available: true, integrated: true },
@@ -1182,11 +1187,17 @@ function createPage(): string {
         </label>
         ${isMiniMaxH3 ? `<label class="settings-field settings-steps">采样步数（H3）
           <select id="steps" aria-label="H3 采样步数">
-            <option value="20" ${h3Steps === 20 ? "selected" : ""}>20 · 标准质量（推荐）</option>
-            <option value="16" ${h3Steps === 16 ? "selected" : ""}>16 · 平衡预览</option>
-            <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · 快速预览</option>
+            ${isMiniMaxH3TurboModel(draft.modelId)
+              ? `<option value="4" ${h3Steps === 4 ? "selected" : ""}>4 · 极限加速（实验）</option>
+                <option value="6" ${h3Steps === 6 ? "selected" : ""}>6 · 加速预览</option>
+                <option value="8" ${h3Steps === 8 ? "selected" : ""}>8 · 均衡（推荐）</option>
+                <option value="10" ${h3Steps === 10 ? "selected" : ""}>10 · 质量优先</option>
+                <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · 稳妥预览</option>`
+              : `<option value="20" ${h3Steps === 20 ? "selected" : ""}>20 · 标准质量（推荐）</option>
+                <option value="16" ${h3Steps === 16 ? "selected" : ""}>16 · 平衡预览</option>
+                <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · 快速预览</option>`}
           </select>
-          <small class="field-hint">只影响 H3；其他模型沿用各自工作流设置。</small>
+          <small class="field-hint">${isMiniMaxH3TurboModel(draft.modelId) ? "Turbo 建议从 8 步开始；4 步可能出现音频或动作异常。" : "只影响 H3；其他模型沿用各自工作流设置。"}</small>
         </label>` : ""}
           </div>
         </section>
@@ -1939,6 +1950,7 @@ function settingsPage(): string {
   const promptStatus = promptModelStatus(settings);
   const promptRuntime = promptRuntimeForSettings(settings);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
+  const llamaServer = environmentScan?.llamaServer;
   const defaultPromptPresets = createDefaultH3PromptPresets();
   const selectedH3PresetText = settings.h3PromptPresets[settingsH3PromptPreset] ??
     defaultPromptPresets[settingsH3PromptPreset];
@@ -2063,6 +2075,7 @@ function settingsPage(): string {
             ${(videoProfiles.length ? videoProfiles : [
               { id: "minimax_h3_fl2va", name: "MiniMax H3 FL2VA · 首帧 / 首尾帧", available: true, integrated: true },
               { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 FL2VA · INT4 低显存", available: true, integrated: true },
+              { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 Turbo · 首尾帧", available: true, integrated: true },
               { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考 INT8", available: true, integrated: true },
               { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
               { id: "sulphur2", name: "Sulphur 2 GGUF", available: false, integrated: true },
@@ -2096,6 +2109,18 @@ function settingsPage(): string {
           <label>应用提示词模型目录<div class="input-action"><input id="prompt-model-directory" value="${escapeHtml(settings.promptModelDirectory)}" placeholder="留空使用 ComfyUI/models/prompt_models"><button class="secondary button-with-icon" data-pick-prompt-model-directory>${icon("folder-open")}选择</button></div><small>放置 Unconcerned GGUF 和 mmproj；也可使用 ComfyUI/models/prompt_models。</small></label>
           <label>llama-server.exe 路径<input id="prompt-llama-server-path" value="${escapeHtml(settings.promptLlamaServerPath)}" placeholder="例如 D:\\AI\\llama.cpp\\llama-server.exe"><small>留空时应用会尝试从 PATH 和模型目录查找。</small></label>
         </div>
+        <div class="settings-grid two llama-server-control">
+          <div class="settings-status-card ${llamaServer?.found ? "available" : "missing"}">
+            <span class="runtime-label">llama-server 自动扫描</span>
+            <strong>${llamaServer?.found ? "已找到" : environmentScanning ? "扫描中…" : "未找到"}</strong>
+            <code title="${escapeHtml(llamaServer?.path ?? "")}">${escapeHtml(llamaServer?.path || "可扫描 PATH、prompt_models 和应用管理目录")}</code>
+          </div>
+          <div class="llama-server-actions">
+            <button class="secondary button-with-icon" id="install-llama-server" ${llamaServerInstalling ? "disabled" : ""}>${icon(llamaServerInstalling ? "refresh-cw" : "download")}${llamaServerInstalling ? "正在下载并安装…" : llamaServer?.found ? "安装/更新应用版" : "一键安装 llama-server"}</button>
+            <small>官方 llama.cpp Windows CUDA 运行包；不会下载或移动模型文件。</small>
+          </div>
+        </div>
+        ${llamaServerInstallLog ? `<details class="node-log" open><summary>llama-server 安装日志</summary><pre>${escapeHtml(llamaServerInstallLog)}</pre></details>` : ""}
         <div class="scan-result">${environmentScanning ? "正在扫描 ComfyUI/models 和应用提示词模型目录…" : environmentScan ? `找到 ${promptAvailable} 个提示词模型档位；ComfyUI 原生模型与应用自管理 GGUF 分开处理` : "等待首次扫描"}</div>
         <p class="muted proxy-hint">Unconcerned 使用 Apache-2.0 的 Qwen3.5 GGUF + mmproj；应用只管理自己启动的 llama-server，不会接管 LM Studio。开始队列前或程序退出时会停止应用自管理提示词模型。</p>
       </section>
@@ -2123,7 +2148,7 @@ function settingsPage(): string {
       </section>
       <section class="panel settings-section">
         <h2>工作流占位符</h2><p class="muted">ComfyUI API JSON 提交前会递归替换：</p>
-        <div class="token-list">${["PROMPT", "NEGATIVE_PROMPT", "SEED", "INPUT_IMAGE", "END_IMAGE", "SOURCE_VIDEO", "TRIM_START", "TRIM_END", "EXTENSION_FRAMES", "OVERLAP_FRAMES", "UNLOAD_BETWEEN_STAGES", "WIDTH", "HEIGHT", "DURATION", "SOURCE_FPS", "FPS", "FRAMES", "OUTPUT_FRAMES", "OUTPUT_FILENAME"].map((token) => `<code>{{${token}}}</code>`).join("")}</div>
+        <div class="token-list">${["PROMPT", "NEGATIVE_PROMPT", "SEED", "INPUT_IMAGE", "END_IMAGE", "SOURCE_VIDEO", "TRIM_START", "TRIM_END", "EXTENSION_FRAMES", "OVERLAP_FRAMES", "UNLOAD_BETWEEN_STAGES", "WIDTH", "HEIGHT", "DURATION", "SOURCE_FPS", "FPS", "FRAMES", "OUTPUT_FRAMES", "OUTPUT_FILENAME", "H3_DIFFUSION_MODEL", "H3_TEXT_ENCODER", "H3_TURBO_LORA"].map((token) => `<code>{{${token}}}</code>`).join("")}</div>
       </section>
     </section>`;
 
@@ -3434,7 +3459,9 @@ function bindCreate(): void {
                 ratio: "source" as const,
                 resolution: 480 as const,
                 duration: 5,
-                steps: normalizeH3Steps(state.draft.steps),
+                steps: isMiniMaxH3TurboModel(value)
+                  ? 8 as const
+                  : 20 as const,
                 fps: 24 as const,
                 frameInterpolation: "off" as const,
                 motion: "natural" as const
@@ -4317,7 +4344,9 @@ function bindSettings(): void {
     const pathsChanged = previousSettings.comfyInstallDirectory !== nextSettings.comfyInstallDirectory ||
       previousSettings.modelDirectory !== nextSettings.modelDirectory ||
       previousSettings.outputDirectory !== nextSettings.outputDirectory ||
-      previousSettings.lmStudioInstallDirectory !== nextSettings.lmStudioInstallDirectory;
+      previousSettings.lmStudioInstallDirectory !== nextSettings.lmStudioInstallDirectory ||
+      previousSettings.promptModelDirectory !== nextSettings.promptModelDirectory ||
+      previousSettings.promptLlamaServerPath !== nextSettings.promptLlamaServerPath;
     state = await window.studio.saveSettings(nextSettings);
     settingsDraft = null;
     if (state.settings.ltxExtensionModelProfile !== previousProfile) {
@@ -4343,6 +4372,31 @@ function bindSettings(): void {
       await runEnvironmentScan(state.settings);
     }
     showMessage("设置已保存，将对下一项尚未开始的任务生效。");
+  });
+  document.querySelector<HTMLButtonElement>("#install-llama-server")?.addEventListener("click", async () => {
+    const currentSettings = formSettings();
+    settingsDraft = currentSettings;
+    llamaServerInstalling = true;
+    render();
+    try {
+      const result = await window.studio.installLlamaServer(currentSettings);
+      llamaServerInstallLog = result.log || result.message;
+      if (!result.ok) throw new Error(result.message);
+      state = await window.studio.saveSettings({
+        ...currentSettings,
+        promptLlamaServerPath: result.executablePath || currentSettings.promptLlamaServerPath
+      });
+      settingsDraft = null;
+      environmentScan = await window.studio.scanEnvironment(state.settings);
+      showMessage(result.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      llamaServerInstallLog = `${llamaServerInstallLog}\n${message}`.trim();
+      showMessage(`llama-server 安装失败：${message}`);
+    } finally {
+      llamaServerInstalling = false;
+      render();
+    }
   });
   document.querySelectorAll<HTMLElement>("[data-test]").forEach((button) => {
     button.addEventListener("click", async () => {

@@ -71,6 +71,22 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("Final user-intent lock");
   });
 
+  it("uses a compact user-first contract for the small prompt model", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "微缩的人穿着银色外套，巨人弯腰观察他，然后镜头慢慢推进。",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "I2VA"
+    });
+
+    expect(instruction).toContain("silent four-pass workflow");
+    expect(instruction).toContain("User-word lock");
+    expect(instruction).toContain("Otherwise omit it");
+    expect(instruction).toContain("微缩的人穿着银色外套");
+    expect(instruction).toContain("I2VA");
+    expect(instruction).not.toContain("R2V presentation-order rule");
+    expect(instruction).not.toContain("Overall-soundscape rule");
+  });
+
   it("treats explicit user attributes as requirements instead of reference inventions", () => {
     const instruction = h3PromptInstruction({
       prompt: "An adult character wearing underwear turns slowly toward the camera.",
@@ -148,7 +164,7 @@ describe("native Qwen prompt workflow", () => {
     );
 
     expect(instruction).toContain("Use three short shots and put the strongest camera beat first.");
-    expect(instruction).toContain("Built-in MiniMax H3 official baseline");
+    expect(instruction).toContain("Compact H3 small-model contract");
     expect(instruction).toContain("I2VA task rule");
   });
 

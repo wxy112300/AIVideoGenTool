@@ -1,8 +1,10 @@
 import { promises as fs } from "node:fs";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { ConnectionResult, EnhanceRequest, Settings } from "../../src/types.js";
+import { buildComfyCandidates } from "./environment.js";
 import { buildLmStudioChatRequest } from "./lm-studio.js";
 import {
   inferH3PromptMode,
@@ -53,6 +55,30 @@ async function findFile(root: string, basename: string): Promise<string> {
   return "";
 }
 
+function appManagedLlamaServerDirectory(): string {
+  const localAppData =
+    process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
+  return path.join(localAppData, "Local Video Studio", "llama-server");
+}
+
+function promptModelDirectories(settings: Settings): string[] {
+  const homeDirectory = os.homedir();
+  const localAppData =
+    process.env.LOCALAPPDATA ?? path.join(homeDirectory, "AppData", "Local");
+  const comfyDirectories = buildComfyCandidates({
+    homeDirectory,
+    localAppData,
+    installDirectory: settings.comfyInstallDirectory,
+    modelDirectory: settings.modelDirectory
+  }).map((root) => path.join(root, "models", "prompt_models"));
+  return [...new Set([
+    settings.promptModelDirectory,
+    settings.modelDirectory ? path.join(settings.modelDirectory, "prompt_models") : "",
+    settings.comfyInstallDirectory ? path.join(settings.comfyInstallDirectory, "models", "prompt_models") : "",
+    ...comfyDirectories
+  ].filter(Boolean).map((root) => path.resolve(root)))];
+}
+
 async function resolveServerExecutable(settings: Settings): Promise<string> {
   const candidates = [
     settings.promptLlamaServerPath,
@@ -63,6 +89,12 @@ async function resolveServerExecutable(settings: Settings): Promise<string> {
   for (const candidate of candidates) {
     if (await isFile(candidate)) return path.resolve(candidate);
   }
+  for (const directory of promptModelDirectories(settings)) {
+    const discovered = await findFile(directory, "llama-server.exe");
+    if (discovered) return path.resolve(discovered);
+  }
+  const managed = await findFile(appManagedLlamaServerDirectory(), "llama-server.exe");
+  if (managed) return path.resolve(managed);
   try {
     const result = await execFileAsync(process.platform === "win32" ? "where.exe" : "which", ["llama-server.exe"], {
       windowsHide: true
@@ -74,12 +106,7 @@ async function resolveServerExecutable(settings: Settings): Promise<string> {
 }
 
 async function resolvePromptAssets(settings: Settings): Promise<{ model: string; mmproj: string }> {
-  const roots = [
-    settings.promptModelDirectory,
-    settings.modelDirectory ? path.join(settings.modelDirectory, "prompt_models") : "",
-    settings.comfyInstallDirectory ? path.join(settings.comfyInstallDirectory, "models", "prompt_models") : ""
-  ].filter(Boolean).map((root) => path.resolve(root));
-  for (const root of roots) {
+  for (const root of promptModelDirectories(settings)) {
     const model = await findFile(root, unconcernedPromptModelFilename);
     const mmproj = await findFile(root, unconcernedPromptMmprojFilename);
     if (model && mmproj) return { model, mmproj };

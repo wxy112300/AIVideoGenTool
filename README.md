@@ -96,6 +96,7 @@ MiniMax H3 的 FL2VA 和 R2V 使用不同的扩散模型，不能混用：
 | --- | --- | --- |
 | FL2VA | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` | 首帧、首尾帧和 H3 边界帧续写 |
 | FL2VA INT4 | `minimax_h3_fl2va_pruned_int4_convrot.safetensors` | 低显存首帧/首尾帧实验 |
+| FL2VA Turbo | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` + `minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors` | pruned 首尾帧加速；建议 8-10 步，不提供视频续写 |
 | R2V | `minimax_h3_ref2va_pruned_int8_convrot.safetensors` | 多图片参考生成 |
 | R2V INT4 | `minimax_h3_ref2va_pruned_int4_convrot.safetensors` | 低显存多图片参考实验 |
 
@@ -115,7 +116,12 @@ ComfyUI/models/text_encoders/
 ComfyUI/models/vae/
 	minimax_h3_video_vae_fp16.safetensors
 	minimax_h3_audio_vae_fp32.safetensors
+
+ComfyUI/models/loras/
+	minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors
 ```
+
+Turbo 使用 ComfyUI 核心的 `MiniMaxH3SigmaShift`、`res_multistep` 和 `simple` 调度器，不需要额外安装 Larry 的 Turbo custom node。设置页会检查该核心节点和推荐 LoRA；创建页将 Turbo 作为独立模型显示，只提供首帧/尾帧图片输入。建议先使用 8 步、视频 shift `12`、音频 shift `6`、LoRA strength `1.0` 的配置。4 步属于实验档，可能出现音频失真或动作异常；普通 H3 20 步仍是稳定回退路径。
 
 官方和社区权重的下载地址会在“设置 → 视频模型”的组件卡片中显示。RTX 4090 等 24GB 显卡可以优先尝试官方 INT8；12GB 级别设备优先尝试 pruned INT4，但实际速度和成功率仍取决于系统内存、NVMe 和 ComfyUI offload。INT4 是社区转换，不等同于官方质量保证。
 
@@ -130,7 +136,7 @@ ComfyUI/models/vae/
 
 ### 应用自管理 Unconcerned 提示词模型
 
-如果不想依赖 LM Studio，可以在设置 → 提示词扩写中选择“应用自管理 llama-server（Unconcerned）”。当前档位使用 [HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive) 的 Q6_K GGUF 和 BF16 `mmproj`，由应用自己启动和停止本地 `llama-server.exe`，支持参考图/视频输入。
+如果不想依赖 LM Studio，可以在设置 → 提示词扩写中选择“应用自管理 llama-server（Unconcerned）”。当前档位使用 [HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive) 的 Q6_K GGUF 和 BF16 `mmproj`，由应用自己启动和停止本地 `llama-server.exe`，支持参考图/视频输入。设置页会自动扫描 `PATH`、提示词模型目录和应用管理目录；扫描不到时可以点击“一键安装 llama-server”，应用会下载官方 llama.cpp Windows CUDA 运行包并自动保存可执行文件路径。
 
 需要准备：
 

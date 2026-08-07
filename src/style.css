@@ -741,6 +741,23 @@ select { padding-inline: 12px; }
 .drop-icon { width: 45px; height: 45px; display: grid; place-items: center; border-radius: 14px; background: var(--primary-surface); font-size: 27px; }
 .image-label { bottom: 14px; padding: 8px 12px; border: 1px solid rgba(255,255,255,.12); background: rgba(9,12,17,.78); backdrop-filter: blur(10px); }
 .settings-grid { gap: 16px 14px; margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(56,65,78,.52); }
+.llama-server-control { align-items: stretch; }
+.settings-status-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 13px 14px;
+  border: 1px solid rgba(56,65,78,.72);
+  border-radius: 10px;
+  background: rgba(16,20,26,.72);
+}
+.settings-status-card.available { border-color: rgba(91,194,143,.48); background: rgba(32,104,72,.12); }
+.settings-status-card.missing { border-color: rgba(237,177,77,.42); background: rgba(113,76,20,.1); }
+.settings-status-card strong { color: #dbe9ff; font-size: 13px; }
+.settings-status-card code { overflow-wrap: anywhere; color: #929eae; font-size: 11px; }
+.llama-server-actions { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; justify-content: center; gap: 8px; }
+.llama-server-actions small { color: #929eae; font-size: 11px; line-height: 1.5; }
 .interpolation-summary {
   grid-column: 1 / -1;
   display: grid;

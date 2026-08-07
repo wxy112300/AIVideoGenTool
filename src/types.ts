@@ -24,7 +24,7 @@ export type H3ReferenceRole =
 
 export type H3ReferenceMediaType = "image" | "video";
 
-export type H3StepCount = 12 | 16 | 20;
+export type H3StepCount = 4 | 6 | 8 | 10 | 12 | 16 | 20;
 
 export interface H3ReferenceSlot {
   id: string;
@@ -278,6 +278,14 @@ export interface ConnectionResult {
   ok: boolean;
   message: string;
   log?: string;
+  executablePath?: string;
+}
+
+export interface LlamaServerStatus {
+  found: boolean;
+  path: string;
+  directory: string;
+  source: "configured" | "prompt-models" | "app-managed" | "path" | "";
 }
 
 export type EnvironmentItemId =
@@ -404,6 +412,7 @@ export interface EnvironmentScanResult {
   gpus: GpuDeviceInfo[];
   modelDirectory: string;
   outputDirectory: string;
+  llamaServer: LlamaServerStatus;
   comfyCompatibility: ComfyUiCompatibility;
   attentionAcceleration: AttentionAccelerationStatus;
   items: EnvironmentItem[];
@@ -526,6 +535,7 @@ export interface AppApi {
   releasePromptModel(): Promise<ConnectionResult>;
   testConnection(kind: ConnectionKind, settings: Settings): Promise<ConnectionResult>;
   scanEnvironment(settings: Settings): Promise<EnvironmentScanResult>;
+  installLlamaServer(settings: Settings): Promise<ConnectionResult>;
   startLocalService(
     kind: LocalServiceKind,
     settings: Settings

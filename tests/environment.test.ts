@@ -21,6 +21,7 @@ import {
   patchLtxAudioVaeCompatibility,
   patchVideoHelperBatchCompatibility,
   renameWithRetry,
+  selectLlamaServerReleaseAssets,
   tritonRequirementForTorch,
   videoHelperBatchCompatible
 } from "../electron/services/environment.js";
@@ -449,8 +450,30 @@ describe("ComfyUI environment candidates", () => {
 
     expect(fl2va?.available).toBe(true);
     expect(fl2va?.integrated).toBe(true);
+    expect(profiles.find((profile) => profile.id === "minimax_h3_fl2va_turbo")?.available).toBe(false);
     expect(profiles.some((profile) => profile.id === "minimax_h3_ref2va")).toBe(true);
     expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va")?.available).toBe(false);
+  });
+
+  it("detects the pruned MiniMax H3 Turbo profile only with its recommended LoRA", () => {
+    const profiles = evaluateModelProfiles([
+      "diffusion_models\\minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "text_encoders\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "vae\\minimax_h3_video_vae_fp16.safetensors",
+      "vae\\minimax_h3_audio_vae_fp32.safetensors",
+      "loras\\minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors"
+    ]);
+    const turbo = profiles.find((profile) => profile.id === "minimax_h3_fl2va_turbo");
+
+    expect(turbo).toMatchObject({
+      available: true,
+      integrated: true,
+      badge: "Turbo · pruned 首尾帧"
+    });
+    expect(turbo?.components.at(-1)?.installGuide).toMatchObject({
+      targetSubdirectory: "loras",
+      recommendedFilename: "minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors"
+    });
   });
 
   it("detects the community MiniMax H3 INT4 FL2VA profile independently", () => {
@@ -501,7 +524,7 @@ describe("ComfyUI environment candidates", () => {
     const incomplete = evaluateMiniMaxH3CoreSupport({});
 
     expect(complete.every((node) => node.available)).toBe(true);
-    expect(incomplete.filter((node) => !node.available)).toHaveLength(2);
+    expect(incomplete.filter((node) => !node.available)).toHaveLength(3);
   });
 
   it("treats Qwen prompt generation as a built-in ComfyUI core capability", () => {
@@ -665,6 +688,52 @@ describe("ComfyUI environment candidates", () => {
 });
 
 describe("download proxy settings", () => {
+  it("selects the official Windows CUDA llama-server assets", () => {
+    expect(selectLlamaServerReleaseAssets({
+      assets: [
+        {
+          name: "llama-b10299-bin-win-cuda-13.3-x64.zip",
+          browser_download_url: "https://example.test/13-binary.zip"
+        },
+        {
+          name: "cudart-llama-bin-win-cuda-13.3-x64.zip",
+          browser_download_url: "https://example.test/13-cudart.zip"
+        },
+        {
+          name: "llama-b10299-bin-win-cuda-12.4-x64.zip",
+          browser_download_url: "https://example.test/12-binary.zip"
+        },
+        {
+          name: "cudart-llama-bin-win-cuda-12.4-x64.zip",
+          browser_download_url: "https://example.test/12-cudart.zip"
+        }
+      ]
+    })).toEqual({
+      variant: "12.4",
+      binaryUrl: "https://example.test/12-binary.zip",
+      cudartUrl: "https://example.test/12-cudart.zip"
+    });
+  });
+
+  it("falls back to the official Windows CUDA 13.3 assets", () => {
+    expect(selectLlamaServerReleaseAssets({
+      assets: [
+        {
+          name: "llama-b10299-bin-win-cuda-13.3-x64.zip",
+          browser_download_url: "https://example.test/13-binary.zip"
+        },
+        {
+          name: "cudart-llama-bin-win-cuda-13.3-x64.zip",
+          browser_download_url: "https://example.test/13-cudart.zip"
+        }
+      ]
+    })).toEqual({
+      variant: "13.3",
+      binaryUrl: "https://example.test/13-binary.zip",
+      cudartUrl: "https://example.test/13-cudart.zip"
+    });
+  });
+
   it("normalizes a host and port to an HTTP proxy URL", () => {
     expect(normalizeProxyUrl("127.0.0.1:7890")).toBe("http://127.0.0.1:7890");
   });

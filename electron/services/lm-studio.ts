@@ -8,7 +8,7 @@ import type {
   Settings
 } from "../../src/types.js";
 import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
-import { h3OfficialPromptBaseline } from "../../src/core/h3-official-spec.js";
+import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
 import {
   h3DurationPlan,
   h3EffectiveDurationSeconds as h3EffectiveDurationNumber,
@@ -251,39 +251,11 @@ function h3VisionSystemPrompt(
   const effectivePresetText = effectivePreset === preset
     ? presetText
     : defaultH3PromptPresets[effectivePreset];
-  const modeRules = mode === "R2V"
-    ? [
-        "Output the six R2V sections in this exact order: subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.",
-        "Use <Subject N> for reusable people, objects, scenes, styles, actions, or poses; use <Picture N> only for concrete frame or composition anchors; use <Video N> for source-video structure; use <Audio N> for copied or referenced sound.",
-        "Use supplied Picture/Video/Audio asset labels exactly, keep each label's meaning stable, and define each reusable content unit with its official preservation or transfer relationship."
-      ]
-    : [
-        "Output the three H3 sections in this exact order: integrated_multimodal_description, overall_soundscape, non_diegetic_music.",
-        mode === "T2VA"
-          ? "Start directly with integrated_multimodal_description; do not add an image-alignment instruction or invent a Picture label."
-          : mode === "FL2VA"
-            ? "Start with the official first/last-frame alignment instruction and describe one continuous path from Picture 1 to Picture 2."
-            : mode === "L2VA"
-              ? "Start with the official last-frame alignment instruction and describe a plausible path that converges on Picture 1 in the final shot."
-              : "Start with the official first-frame alignment instruction and develop the action forward from Picture 1."
-      ];
   return [
     "You are a MiniMax H3 visual prompt editor, not a generic creative copywriter.",
-    "The user may provide only a short idea in any language, not a finished English prompt. Expand the intent into the complete official H3 format without asking the user to draft the sections.",
-    "User-intent priority: preserve every concrete attribute explicitly supplied by the user, including clothing or exposure level, actions, poses, behavior, atmosphere, camera requests, dialogue, and visible text. Do not omit, euphemize, sanitize, or replace an explicit user term because it is not visible in the reference image.",
-    "Reference economy: the H3 generator already receives the reference image. Use only one or two short anchor phrases for identity, composition, and continuity; do not inventory every visible garment, material, background object, or lighting detail unless it affects the requested motion.",
-    "Motion-first priority: spend most of the detailed description on action onset, cause and effect, micro-movements, gaze, weight shift, object response, atmosphere, camera path, sound, and the final state. Preserve important visual facts without repeating a static image description.",
-    mode === "T2VA"
-      ? "No reference image is attached for this T2VA request. Construct the complete audiovisual timeline from the user's intent and add only coherent supporting details."
-      : "Inspect every attached reference image before writing. Preserve only the compact identity and continuity anchors needed for the requested action; never invent unsupported details and never delete an explicit user requirement.",
-    "Rewrite the user's intent into a physically grounded audiovisual timeline. Replace vague words such as natural, dynamic, cinematic, or realistic with observable cause-and-effect: preparation, action, body response, environmental response, camera path, and final settled state.",
-    "Make movement specific but restrained. Keep body parts, gaze, object contact, weight shift, momentum, and camera movement consistent. Do not add unrelated plot, characters, props, or dialogue.",
-    "Write descriptive body text in English. Preserve exact user dialogue and visible text in its original language. Put dialogue only inside <d>[Language] exact words</d> and keep a stable speaker ID outside the tag.",
-    ...modeRules,
-    `Selected H3 preset: ${effectivePreset}.\n${effectivePresetText.trim() || defaultH3PromptPresets[effectivePreset]}`,
-    h3OfficialPromptBaseline(mode),
-    "Final user-intent lock: the explicit attributes in the user's request are authoritative content. Preserve them in the final prompt; use the reference only as a compact continuity anchor.",
-    "Return only the final H3 prompt. Do not include analysis, Markdown fences, headings outside the required H3 fields, or an explanation."
+    "The user may provide a short idea in any language. Expand it into the required H3 fields without asking the user to draft the sections.",
+    h3SmallModelPromptContract(mode),
+    `Selected H3 preset (low-priority style hint only): ${effectivePreset}.\n${effectivePresetText.trim() || defaultH3PromptPresets[effectivePreset]}`
   ].join("\n");
 }
 
@@ -291,9 +263,7 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
   const mode = h3PromptModeForRequest(request);
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds);
-  const referenceContext = request.referenceContext?.trim()
-    ? `\nReference map:\n${request.referenceContext.trim()}`
-    : "";
+  const referenceContext = request.referenceContext?.trim();
   return [
     `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
     h3DurationPlan(mode, Number(duration)),
@@ -301,8 +271,8 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
     mode === "T2VA"
       ? "No image reference is attached; the following user intent is the source material for the T2VA timeline."
       : "The attached image(s) are the reference material in the order described below.",
-    referenceContext,
-    "User intent:",
+    ...(referenceContext ? [`Reference map:\n${referenceContext}`] : []),
+    "User request (preserve its concrete words and meaning):",
     request.prompt.trim()
   ].filter(Boolean).join("\n\n");
 }

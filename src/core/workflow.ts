@@ -49,16 +49,25 @@ export function isMiniMaxH3Fl2vaModel(modelId: string): boolean {
   return modelId === "minimax_h3_fl2va" || modelId === "minimax_h3_fl2va_int4";
 }
 
+export function isMiniMaxH3TurboModel(modelId: string): boolean {
+  return modelId === "minimax_h3_fl2va_turbo";
+}
+
 export function isMiniMaxH3R2vModel(modelId: string): boolean {
   return modelId === "minimax_h3_ref2va" || modelId === "minimax_h3_ref2va_int4";
 }
 
 export function isMiniMaxH3Model(modelId: string): boolean {
-  return isMiniMaxH3Fl2vaModel(modelId) || isMiniMaxH3R2vModel(modelId);
+  return isMiniMaxH3Fl2vaModel(modelId) ||
+    isMiniMaxH3TurboModel(modelId) ||
+    isMiniMaxH3R2vModel(modelId);
 }
 
 export function normalizeH3Steps(value: unknown): H3StepCount {
-  return value === 12 || value === 16 || value === 20 ? value : 20;
+  return value === 4 || value === 6 || value === 8 || value === 10 ||
+    value === 12 || value === 16 || value === 20
+    ? value
+    : 20;
 }
 
 function generationSafetyProfileForModel(
@@ -66,7 +75,11 @@ function generationSafetyProfileForModel(
 ): GenerationSafetyProfile {
   if (isMiniMaxH3Model(modelId)) {
     return {
-      label: isMiniMaxH3R2vModel(modelId) ? "MiniMax H3 R2V" : "MiniMax H3 FL2VA",
+      label: isMiniMaxH3R2vModel(modelId)
+        ? "MiniMax H3 R2V"
+        : isMiniMaxH3TurboModel(modelId)
+          ? "MiniMax H3 Turbo FL2VA"
+          : "MiniMax H3 FL2VA",
       maxGeneratedFrames: 362,
       maxDurationSeconds: 15
     };
@@ -473,7 +486,7 @@ const wan14ModelAssets: Record<
 
 const miniMaxH3ModelAssets: Record<
   string,
-  { diffusionModel: string; textEncoder: string }
+  { diffusionModel: string; textEncoder: string; turboLora?: string }
 > = {
   minimax_h3_fl2va: {
     diffusionModel: "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
@@ -482,6 +495,11 @@ const miniMaxH3ModelAssets: Record<
   minimax_h3_fl2va_int4: {
     diffusionModel: "minimax_h3_fl2va_pruned_int4_convrot.safetensors",
     textEncoder: "qwen3vl_32b_minimax_h3_int4_convrot.safetensors"
+  },
+  minimax_h3_fl2va_turbo: {
+    diffusionModel: "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    textEncoder: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    turboLora: "minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors"
   },
   minimax_h3_ref2va: {
     diffusionModel: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
@@ -698,6 +716,7 @@ export function renderWorkflow(
     OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, ""),
     H3_DIFFUSION_MODEL: h3Assets?.diffusionModel ?? "",
     H3_TEXT_ENCODER: h3Assets?.textEncoder ?? "",
+    H3_TURBO_LORA: h3Assets?.turboLora ?? "",
     HIGH_MODEL: modelAssets?.high ?? "",
     LOW_MODEL: modelAssets?.low ?? "",
     TEXT_ENCODER: modelAssets?.textEncoder ?? "",

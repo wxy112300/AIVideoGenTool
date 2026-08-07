@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type {
   AttentionAccelerationStatus,
+  ConnectionResult,
   ComfyUiCompatibility,
   ComfyUiInstallationSummary,
   CustomNodeStatus,
@@ -13,6 +14,7 @@ import type {
   EnvironmentItemId,
   EnvironmentScanResult,
   GpuDeviceInfo,
+  LlamaServerStatus,
   LocalServiceKind,
   ModelComponentStatus,
   ModelScanProfile,
@@ -33,6 +35,9 @@ const minimaxH3I2vWorkflowUrl =
   "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/video_minimax_h3_i2v.json";
 const sageAttentionVersion = "2.2.0";
 const comfyWheelsIndex = "https://comfy-org.github.io/wheels/";
+const llamaServerReleaseApiUrl =
+  "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest";
+const llamaServerCudaVariants = ["12.4", "13.3"] as const;
 
 function formatGpuMemory(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
@@ -40,7 +45,8 @@ function formatGpuMemory(bytes: number): string {
 
 const minimaxH3CoreNodes = [
   { id: "MiniMaxH3ImageToVideo", label: "H3 FL2VA 首帧 / 首尾帧图生视频" },
-  { id: "MiniMaxH3ReferenceToVideo", label: "H3 R2V 多参考图生视频" }
+  { id: "MiniMaxH3ReferenceToVideo", label: "H3 R2V 多参考图生视频" },
+  { id: "MiniMaxH3SigmaShift", label: "H3 Turbo 视频 / 音频 Sigma Shift" }
 ] as const;
 
 const promptCoreNodes = [
@@ -338,6 +344,13 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     targetSubdirectory: "vae",
     recommendedFilename: "minimax_h3_audio_vae_fp32.safetensors",
     notes: "H3 原生立体声音频必须使用此 VAE；与视频 VAE 一起放在 models/vae。"
+  },
+  "minimax_h3_fl2va_turbo:MiniMax H3 Turbo pruned LoRA": {
+    sourceLabel: "drbaph / MiniMax-H3-Turbo-Lora-ComfyUI",
+    downloadUrl: "https://huggingface.co/drbaph/MiniMax-H3-Turbo-Lora-ComfyUI/resolve/main/minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors",
+    targetSubdirectory: "loras",
+    recommendedFilename: "minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors",
+    notes: "首版 Turbo 推荐使用 ckpt500 pruned 转换版；建议 res_multistep、音频 shift 6、8-10 步。4 步属于实验档。"
   },
   "minimax_h3_fl2va_int4:MiniMax H3 FL2VA INT4 ConvRot 模型": {
     sourceLabel: "Merserk / MiniMax-H3-INT4-ConvRot",
@@ -863,6 +876,42 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     ]
   },
   {
+    id: "minimax_h3_fl2va_turbo",
+    name: "MiniMax H3 Turbo · 首尾帧",
+    category: "video",
+    badge: "Turbo · pruned 首尾帧",
+    description: "基于 pruned INT8 FL2VA 的 Turbo 首尾帧模式；使用原生 H3 音视频节点、res_multistep 和 ckpt500 pruned LoRA。仅支持图片生成，不提供视频续写。",
+    vram: "pruned INT8 + Turbo LoRA · 4090 推荐",
+    integrated: true,
+    components: [
+      {
+        label: "MiniMax H3 FL2VA INT8 模型",
+        expected: "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        patterns: [/(?:diffusion_models|unet)\/minimax_h3_fl2va_pruned_int8_convrot\.safetensors$/i]
+      },
+      {
+        label: "Qwen3-VL 32B H3 文本编码器",
+        expected: "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        patterns: [/text_encoders\/qwen3vl_32b_minimax_h3_nvfp4_awq\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 视频 VAE",
+        expected: "vae/minimax_h3_video_vae_fp16.safetensors",
+        patterns: [/vae\/minimax_h3_video_vae_fp16\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 音频 VAE",
+        expected: "vae/minimax_h3_audio_vae_fp32.safetensors",
+        patterns: [/vae\/minimax_h3_audio_vae_fp32\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 Turbo pruned LoRA",
+        expected: "loras/minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors",
+        patterns: [/loras\/minimax_h3_turbo_4step_ckpt500_pruned_comfyui\.safetensors$/i]
+      }
+    ]
+  },
+  {
     id: "minimax_h3_ref2va",
     name: "MiniMax H3 R2V · 多参考 INT8",
     category: "video",
@@ -1347,6 +1396,261 @@ async function listModelFiles(modelDirectory: string): Promise<string[]> {
     }
   }
   return files;
+}
+
+function appManagedLlamaServerDirectory(): string {
+  const localAppData =
+    process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
+  return path.join(localAppData, "Local Video Studio", "llama-server");
+}
+
+async function findFile(root: string, basename: string): Promise<string> {
+  if (!root || !(await exists(root))) return "";
+  const pending = [root];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    const entries = await fs.readdir(current, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      const filename = path.join(current, entry.name);
+      if (entry.isDirectory()) pending.push(filename);
+      else if (entry.isFile() && entry.name.toLowerCase() === basename.toLowerCase()) {
+        return filename;
+      }
+    }
+  }
+  return "";
+}
+
+async function findFileMatching(
+  root: string,
+  predicate: (basename: string) => boolean
+): Promise<string> {
+  if (!root || !(await exists(root))) return "";
+  const pending = [root];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    const entries = await fs.readdir(current, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      const filename = path.join(current, entry.name);
+      if (entry.isDirectory()) pending.push(filename);
+      else if (entry.isFile() && predicate(entry.name)) return filename;
+    }
+  }
+  return "";
+}
+
+function llamaServerStatus(
+  executablePath: string,
+  source: LlamaServerStatus["source"]
+): LlamaServerStatus {
+  return {
+    found: Boolean(executablePath),
+    path: executablePath,
+    directory: executablePath ? path.dirname(executablePath) : "",
+    source
+  };
+}
+
+export async function scanLlamaServer(
+  settings: Pick<Settings, "promptLlamaServerPath" | "promptModelDirectory" | "modelDirectory">,
+  comfyRoot = ""
+): Promise<LlamaServerStatus> {
+  const configured = settings.promptLlamaServerPath.trim();
+  const configuredStat = configured
+    ? await fs.stat(configured).catch(() => null)
+    : null;
+  if (configuredStat?.isFile()) {
+    return llamaServerStatus(path.resolve(configured), "configured");
+  }
+
+  const promptDirectories = [
+    settings.promptModelDirectory.trim(),
+    settings.modelDirectory.trim()
+      ? path.join(settings.modelDirectory.trim(), "prompt_models")
+      : "",
+    comfyRoot ? path.join(comfyRoot, "models", "prompt_models") : ""
+  ].filter(Boolean);
+  for (const directory of promptDirectories) {
+    const executable = await findFile(path.resolve(directory), "llama-server.exe");
+    if (executable) return llamaServerStatus(executable, "prompt-models");
+  }
+
+  const managed = await findFile(appManagedLlamaServerDirectory(), "llama-server.exe");
+  if (managed) return llamaServerStatus(managed, "app-managed");
+
+  const fromPath = await findExecutable("llama-server.exe");
+  return fromPath ? llamaServerStatus(fromPath, "path") : llamaServerStatus("", "");
+}
+
+async function downloadFileWithCurl(
+  url: string,
+  destination: string,
+  settings: Settings
+): Promise<void> {
+  const curl = await findExecutable("curl.exe");
+  if (!curl) throw new Error("没有找到 curl，无法下载 llama-server。请安装 Windows 10/11 自带 curl 或手动下载。" );
+  const args = ["-fL", "--retry", "2", "--connect-timeout", "20", url, "--output", destination];
+  if (settings.proxyEnabled) {
+    args.splice(1, 0, "--proxy", normalizeProxyUrl(settings.proxyUrl));
+  }
+  await execFileAsync(curl, args, {
+    encoding: "utf8",
+    timeout: 600_000,
+    windowsHide: true,
+    env: downloadEnvironment(settings)
+  });
+}
+
+async function expandZipArchive(archive: string, destination: string): Promise<void> {
+  if (process.platform !== "win32") {
+    throw new Error("llama-server 一键安装目前只支持 Windows。" );
+  }
+  const script =
+    "& { param([string]$archive, [string]$destination); Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force }";
+  await execFileAsync("powershell.exe", [
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    script,
+    archive,
+    destination
+  ], {
+    encoding: "utf8",
+    timeout: 300_000,
+    windowsHide: true
+  });
+}
+
+async function copyDirectoryContents(source: string, destination: string): Promise<void> {
+  const entries = await fs.readdir(source, { withFileTypes: true });
+  await fs.mkdir(destination, { recursive: true });
+  for (const entry of entries) {
+    await fs.cp(
+      path.join(source, entry.name),
+      path.join(destination, entry.name),
+      { recursive: true, force: true }
+    );
+  }
+}
+
+interface LlamaReleaseAsset {
+  name?: string;
+  browser_download_url?: string;
+}
+
+export function selectLlamaServerReleaseAssets(
+  release: { assets?: LlamaReleaseAsset[] }
+): { variant: string; binaryUrl: string; cudartUrl: string } | null {
+  const assets = release.assets ?? [];
+  for (const variant of llamaServerCudaVariants) {
+    const binaryAsset = assets.find((asset) =>
+      asset.name?.match(new RegExp(`^llama-b[^/]+-bin-win-cuda-${variant.replace(".", "\\.")}-x64\\.zip$`))
+    );
+    const cudartAsset = assets.find((asset) =>
+      asset.name === `cudart-llama-bin-win-cuda-${variant}-x64.zip`
+    );
+    if (
+      binaryAsset?.browser_download_url &&
+      cudartAsset?.browser_download_url
+    ) {
+      return {
+        variant,
+        binaryUrl: binaryAsset.browser_download_url,
+        cudartUrl: cudartAsset.browser_download_url
+      };
+    }
+  }
+  return null;
+}
+
+export async function installLlamaServer(
+  settings: Settings
+): Promise<ConnectionResult> {
+  if (process.platform !== "win32") {
+    return { ok: false, message: "llama-server 一键安装目前只支持 Windows。" };
+  }
+  const installLog = [proxyLogLabel(settings)];
+  const temporaryRoot = path.join(
+    os.tmpdir(),
+    `local-video-studio-llama-${crypto.randomUUID()}`
+  );
+  let installedDirectory = "";
+  let installationSucceeded = false;
+  try {
+    await fs.mkdir(temporaryRoot, { recursive: true });
+    const releaseJson = path.join(temporaryRoot, "release.json");
+    await downloadFileWithCurl(llamaServerReleaseApiUrl, releaseJson, settings);
+    const release = JSON.parse(await fs.readFile(releaseJson, "utf8")) as {
+      tag_name?: string;
+      assets?: LlamaReleaseAsset[];
+    };
+    const selected = selectLlamaServerReleaseAssets(release);
+    if (!selected) {
+      throw new Error("官方最新版本没有找到 Windows x64 CUDA 12.4/13.3 发布包。" );
+    }
+    installLog.push(`准备安装 llama.cpp ${release.tag_name ?? "latest"} · CUDA ${selected.variant}`);
+    const binaryArchive = path.join(temporaryRoot, "llama-server.zip");
+    const cudartArchive = path.join(temporaryRoot, "cudart.zip");
+    await downloadFileWithCurl(selected.binaryUrl, binaryArchive, settings);
+    await downloadFileWithCurl(selected.cudartUrl, cudartArchive, settings);
+    const binaryExtract = path.join(temporaryRoot, "binary");
+    const cudartExtract = path.join(temporaryRoot, "cudart");
+    await expandZipArchive(binaryArchive, binaryExtract);
+    await expandZipArchive(cudartArchive, cudartExtract);
+    const sourceExecutable = await findFile(binaryExtract, "llama-server.exe");
+    if (!sourceExecutable) throw new Error("下载包中没有找到 llama-server.exe。" );
+    const sourceCudart = await findFileMatching(
+      cudartExtract,
+      (basename) => /^cudart64.*\.dll$/i.test(basename)
+    );
+    const releaseDirectory = (release.tag_name || `latest-${Date.now()}`)
+      .replace(/[^a-zA-Z0-9._-]/g, "_");
+    const targetDirectory = path.join(
+      appManagedLlamaServerDirectory(),
+      `${releaseDirectory}-${crypto.randomUUID()}`
+    );
+    installedDirectory = targetDirectory;
+    await fs.mkdir(targetDirectory, { recursive: true });
+    await copyDirectoryContents(path.dirname(sourceExecutable), targetDirectory);
+    if (sourceCudart) await copyDirectoryContents(path.dirname(sourceCudart), targetDirectory);
+    const installedExecutable = path.join(targetDirectory, "llama-server.exe");
+    if (!(await exists(installedExecutable))) {
+      throw new Error("llama-server.exe 安装后没有出现在目标目录。" );
+    }
+    try {
+      await execFileAsync(installedExecutable, ["--version"], {
+        encoding: "utf8",
+        timeout: 10_000,
+        windowsHide: true
+      });
+    } catch (error) {
+      throw new Error(
+        `llama-server 已解压，但无法启动验证：${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    installLog.push(`已安装：${installedExecutable}`);
+    installationSucceeded = true;
+    return {
+      ok: true,
+      message: "llama-server 已自动安装并完成启动检查。",
+      log: installLog.join("\n\n"),
+      executablePath: installedExecutable
+    };
+  } catch (error) {
+    installLog.push(error instanceof Error ? error.message : String(error));
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+      log: installLog.join("\n\n")
+    };
+  } finally {
+    await fs.rm(temporaryRoot, { recursive: true, force: true }).catch(() => undefined);
+    if (!installationSucceeded && installedDirectory) {
+      await fs.rm(installedDirectory, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
 }
 
 export function patchVideoHelperBatchCompatibility(
@@ -3707,10 +4011,11 @@ export async function scanEnvironment(
     modelFiles,
     settings.ltxExtensionModelProfile
   );
-  const [customNodes, workflowDependencies, attentionAcceleration] = await Promise.all([
+  const [customNodes, workflowDependencies, attentionAcceleration, llamaServer] = await Promise.all([
     scanCustomNodes(comfyRoot),
     scanWorkflowDependencies(comfyRoot),
-    inspectAttentionAcceleration(settings, comfyRoot, comfyInstallation)
+    inspectAttentionAcceleration(settings, comfyRoot, comfyInstallation),
+    scanLlamaServer(settings, comfyRoot)
   ]);
   const issues = await scanEnvironmentIssues(comfyRoot);
   const comfyItem: EnvironmentItem = comfyRoot || comfyInstallation
@@ -3795,6 +4100,7 @@ export async function scanEnvironment(
     gpus: nvidiaProbe.devices,
     modelDirectory,
     outputDirectory,
+    llamaServer,
     comfyCompatibility,
     attentionAcceleration,
     items,

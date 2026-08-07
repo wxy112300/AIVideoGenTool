@@ -1,5 +1,38 @@
 import type { H3PromptMode } from "../types.js";
 
+export function h3SmallModelPromptContract(mode: H3PromptMode): string {
+  const modeRule = mode === "R2V"
+    ? "R2V task rule: use the six R2V sections and keep supplied Picture, Video, and Audio labels exact; define reusable Subjects only when needed."
+    : mode === "FL2VA"
+      ? "FL2VA task rule: use Picture 1 as the first frame and Picture 2 as the final frame, then describe one continuous path between them."
+      : mode === "L2VA"
+        ? "L2VA task rule: use Picture 1 as the final frame and reserve the last beat for convergence on that exact composition."
+        : mode === "I2VA"
+          ? "I2VA task rule: use Picture 1 as the first-frame anchor and develop the requested action forward from it."
+          : "T2VA task rule: use text only; do not invent a Picture label or image-alignment line.";
+  const outputRule = mode === "R2V"
+    ? "Return subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music in that order."
+    : "Return integrated_multimodal_description, overall_soundscape, non_diegetic_music in that order.";
+  const formatRule = mode === "R2V"
+    ? "R2V format rule: keep the six sections distinct and use only supplied media labels."
+    : "Non-R2V format exclusion: never output subject_definitions, summary, retention_analysis, detailed_description, <Subject N>, <Video N>, or <Audio N> as prompt structure.";
+  return [
+    "Compact H3 small-model contract. User-intent priority: follow this order: user request, H3 mode/keyframes, action and camera timeline, synchronized sound, then minimal continuity anchors.",
+    "Use a silent four-pass workflow: extract the user's concrete requirements; plan sequential action beats across the supplied duration; render the required H3 fields; audit before answering.",
+    "User-word lock / User-intent preservation rule: preserve every concrete user requirement in meaning, including subject details, clothing or exposure level, objects, unusual nouns, scale, materials, body parts, actions, poses, behavior, camera terms, dialogue, and visible text. Never omit, euphemize, sanitize, or replace an explicit user term; do not reinterpret it. Translate ordinary prose only when needed for English output; keep quoted dialogue and visible text exact.",
+    "Reference economy: the H3 encoder sees the media directly. Use only compact anchors for identity, composition, and continuity. Do not inventory visible clothing, materials, background objects, lighting, or image quality unless the detail changes the requested action or must remain stable.",
+    "Addition rule: add a detail only if it preserves a user requirement, makes an action executable, connects cause and effect, controls the camera, synchronizes sound, or protects continuity. Otherwise omit it. Do not add generic quality slogans such as masterpiece, ultra HD, 4K, cinematic, or photorealistic unless the user asks for that style.",
+    "Motion-first priority: spend most of the description on what changes over time: preparation, force, body mechanics, gaze, weight, contact, reaction, secondary motion, camera path, environmental response, sound, and the final state. Replace vague adjectives with observable behavior.",
+    "Timeline and tag rules: start [Shot 1] without a timestamp; later shots use increasing times inside the clip. Use stable speaker IDs and exact <d>[Language] ...</d> for dialogue, preserve visible text in double quotes, and keep overall_soundscape separate from non_diegetic_music.",
+    "Write a physically grounded audiovisual timeline. Distinguish push/pull, zoom, pan/tilt, truck/pedestal, arc, tracking, static, POV, and roll; use only camera movements that help the requested action.",
+    "Final user-intent lock / audit: silently check that every user requirement is present, no assistant-added detail changes the user's meaning, the main action reaches the end of the clip, and no sentence is only a repeated image inventory.",
+    modeRule,
+    formatRule,
+    outputRule,
+    "Return only the final English H3 prompt. No analysis, planning notes, preface, Markdown fence, generic negative prompt, or extra sections."
+  ].join("\n");
+}
+
 export function h3OfficialPromptBaseline(mode: H3PromptMode): string {
   const modeRules = mode === "R2V"
     ? [

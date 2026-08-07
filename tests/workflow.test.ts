@@ -13,6 +13,9 @@ import {
   outputDimensions,
   outputFrameCountForTask,
   renderWorkflow,
+  isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3Model,
+  isMiniMaxH3TurboModel,
   validateApiWorkflow,
   workflowSupportsEndImage,
   workflowSupportsH3BoundaryExtension,
@@ -88,6 +91,73 @@ describe("activityTimeoutMinutesForTask", () => {
 });
 
 describe("renderWorkflow", () => {
+  it("renders the pruned MiniMax H3 Turbo first/last-frame graph", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_fl2va_turbo_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as unknown;
+    const turboTask: QueueTask = {
+      ...task,
+      modelId: "minimax_h3_fl2va_turbo",
+      duration: 5,
+      fps: 24,
+      steps: 8,
+      frameInterpolation: "off"
+    };
+    const rendered = renderWorkflow(source, turboTask, {
+      inputImage: "first.png",
+      endImage: "last.png",
+      vramTotalBytes: 24 * 1024 ** 3
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(workflowSupportsEndImage(source)).toBe(true);
+    expect(isMiniMaxH3TurboModel(turboTask.modelId)).toBe(true);
+    expect(isMiniMaxH3Model(turboTask.modelId)).toBe(true);
+    expect(isMiniMaxH3Fl2vaModel(turboTask.modelId)).toBe(false);
+    expect(rendered["1"]?.inputs.unet_name).toBe(
+      "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+    );
+    expect(rendered["6"]?.inputs).toMatchObject({
+      first_frame: ["5", 0],
+      last_frame: ["18", 0],
+      length: 124
+    });
+    expect(rendered["20"]).toMatchObject({
+      class_type: "LoraLoaderModelOnly",
+      inputs: {
+        model: ["1", 0],
+        lora_name: "minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors",
+        strength_model: 1
+      }
+    });
+    expect(rendered["21"]).toMatchObject({
+      class_type: "MiniMaxH3SigmaShift",
+      inputs: {
+        model: ["19", 0],
+        shift_video: 12,
+        shift_audio: 6
+      }
+    });
+    expect(rendered["7"]?.inputs.sampler_name).toBe("res_multistep");
+    expect(rendered["8"]?.inputs).toMatchObject({
+      model: ["21", 0],
+      scheduler: "simple",
+      steps: 8,
+      denoise: 1
+    });
+
+    const pytorch = renderWorkflow(source, {
+      ...turboTask,
+      attentionMode: "pytorch"
+    }, { inputImage: "first.png" }) as Record<string, { inputs: Record<string, unknown> }>;
+    expect(pytorch["19"]).toBeUndefined();
+    expect(pytorch["21"]?.inputs.model).toEqual(["20", 0]);
+    expect(pytorch["8"]?.inputs.model).toEqual(["21", 0]);
+  });
+
   it("renders the bundled MiniMax H3 I2V graph with staged model and VAE unloading", () => {
     const source = JSON.parse(
       readFileSync(

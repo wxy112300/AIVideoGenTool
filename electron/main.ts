@@ -71,6 +71,7 @@ import { promptRuntimeForSettings } from "../src/core/prompt-models.js";
 import {
   installAttentionAcceleration,
   installCustomNode,
+  installLlamaServer,
   installWorkflowDependency,
   forceStopComfyProcesses,
   repairEnvironmentIssue,
@@ -291,6 +292,10 @@ async function bundledWorkflowFor(
     minimax_h3_fl2va_int4: {
       filename: "minimax_h3_i2v_api.json",
       label: "内置 · MiniMax H3 FL2VA INT4 · 原生 24 FPS 音视频"
+    },
+    minimax_h3_fl2va_turbo: {
+      filename: "minimax_h3_fl2va_turbo_api.json",
+      label: "内置 · MiniMax H3 Turbo FL2VA · 首尾帧音视频"
     },
     minimax_h3_ref2va: {
       filename: "minimax_h3_r2v_api.json",
@@ -1433,6 +1438,10 @@ function registerIpc(): void {
   ipcMain.handle(
     "environment:scan",
     (_event, settings: Settings) => scanEnvironment(settings)
+  );
+  ipcMain.handle(
+    "llama-server:install",
+    (_event, settings: Settings) => installLlamaServer(settings)
   );
   ipcMain.handle(
     "service:start",

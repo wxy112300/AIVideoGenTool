@@ -35,6 +35,8 @@ const api: AppApi = {
     ipcRenderer.invoke("connection:test", kind, settings),
   scanEnvironment: (settings: Settings) =>
     ipcRenderer.invoke("environment:scan", settings),
+  installLlamaServer: (settings: Settings) =>
+    ipcRenderer.invoke("llama-server:install", settings),
   startLocalService: (kind, settings) =>
     ipcRenderer.invoke("service:start", kind, settings),
   restartLocalService: (kind, settings) =>
