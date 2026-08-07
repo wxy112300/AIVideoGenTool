@@ -544,6 +544,33 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
   if (classType === "TextGenerate") {
     return { start: 10, end: 98, label: "提示词扩写", tracksSteps: false };
   }
+  if (classType === "VHS_LoadVideo") {
+    return { start: 2, end: 5, label: "读取源视频", tracksSteps: false };
+  }
+  if (classType === "VHS_VideoInfoSource") {
+    return { start: 5, end: 7, label: "分析视频信息", tracksSteps: false };
+  }
+  if (classType === "SeedVR2LoadDiTModel") {
+    return { start: 4, end: 8, label: "加载 SeedVR2 DiT", tracksSteps: false };
+  }
+  if (classType === "SeedVR2LoadVAEModel") {
+    return { start: 8, end: 12, label: "加载 SeedVR2 VAE", tracksSteps: false };
+  }
+  if (
+    classType === "SeedVR2VideoUpscaler" ||
+    classType === "SeedVR2"
+  ) {
+    return { start: 12, end: 76, label: "SeedVR2 超分辨率", tracksSteps: true };
+  }
+  if (classType === "SeedVR2BlockSwap") {
+    return { start: 8, end: 12, label: "配置 SeedVR2 显存交换", tracksSteps: false };
+  }
+  if (classType === "AILab_FlashVSR" || classType === "ImageUpscaleWithModel") {
+    return { start: 12, end: 76, label: "视频超分辨率", tracksSteps: false };
+  }
+  if (classType === "ImageScale") {
+    return { start: 76, end: 80, label: "调整输出尺寸", tracksSteps: false };
+  }
   if (classType.includes("Loader")) {
     return { start: 4, end: 10, label: "加载模型", tracksSteps: false };
   }
@@ -561,6 +588,9 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
   }
   if (classType === "VRAM_Debug") {
     return { start: 80, end: 82, label: "卸载扩散模型并释放显存", tracksSteps: false };
+  }
+  if (classType === "VHS_VideoCombine") {
+    return { start: 82, end: 99, label: "封装输出视频", tracksSteps: false };
   }
   if (classType === "VAEDecodeAudio") {
     return { start: 88, end: 93, label: "解码音频", tracksSteps: true };
@@ -589,10 +619,14 @@ export function progressForNode(
   max?: number
 ): { progress: number; label: string } {
   const stage = nodeStage(classType);
-  const hasSteps = stage.tracksSteps &&
+  const hasProgressValues =
     typeof value === "number" &&
     typeof max === "number" &&
     max > 0;
+  if (hasProgressValues && value >= max) {
+    return { progress: stage.end, label: stage.label };
+  }
+  const hasSteps = stage.tracksSteps && hasProgressValues;
   if (!hasSteps) return { progress: stage.start, label: stage.label };
   const ratio = Math.min(1, Math.max(0, value / max));
   return {

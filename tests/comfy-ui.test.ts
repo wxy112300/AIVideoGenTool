@@ -218,6 +218,31 @@ describe("native Qwen prompt workflow", () => {
 });
 
 describe("ComfyUI task progress", () => {
+  it("maps upscale nodes across compute and output stages", () => {
+    expect(nodeStage("SeedVR2VideoUpscaler")).toMatchObject({
+      start: 12,
+      end: 76,
+      label: "SeedVR2 超分辨率",
+      tracksSteps: true
+    });
+    expect(progressForNode("SeedVR2VideoUpscaler", 50, 100)).toEqual({
+      progress: 44,
+      label: "SeedVR2 超分辨率 50/100"
+    });
+    expect(progressForNode("ImageScale")).toEqual({
+      progress: 76,
+      label: "调整输出尺寸"
+    });
+    expect(progressForNode("VRAM_Debug", 1, 1)).toEqual({
+      progress: 82,
+      label: "卸载扩散模型并释放显存"
+    });
+    expect(progressForNode("VHS_VideoCombine", 1, 1)).toEqual({
+      progress: 99,
+      label: "封装输出视频"
+    });
+  });
+
   it("maps local sampler progress into the overall sampling range", () => {
     expect(progressForNode("SamplerCustomAdvanced", 4, 20)).toEqual({
       progress: 27.2,
@@ -233,6 +258,10 @@ describe("ComfyUI task progress", () => {
     });
     expect(progressForNode("SaveVideo", 4, 20).progress).toBe(98.7);
     expect(progressForNode("VAEDecodeAudio", 1, 2).progress).toBe(90.5);
+    expect(progressForNode("SaveVideo", 20, 20)).toEqual({
+      progress: 99.5,
+      label: "编码并保存"
+    });
   });
 
   it("does not invent a sampling percentage without a node", () => {

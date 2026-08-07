@@ -3157,26 +3157,21 @@ export async function forceStopComfyProcesses(
     const listening = listeningPid(netstat.stdout, endpoint.port);
     if (listening) processIds.add(listening);
   }
-  let taskkillError = "";
-  try {
-    await execFileAsync(
-      "taskkill.exe",
-      ["/IM", "ComfyUI.exe", "/T", "/F"],
-      { encoding: "utf8", timeout: 15_000, windowsHide: true }
-    );
-  } catch (error) {
-    const processError = error as Error & { stderr?: string };
-    taskkillError = processError.stderr || processError.message;
-  }
+  const failedProcessIds: number[] = [];
   for (const processId of processIds) {
     await execFileAsync(
       "taskkill.exe",
       ["/PID", String(processId), "/T", "/F"],
       { encoding: "utf8", timeout: 10_000, windowsHide: true }
-    ).catch(() => undefined);
+    ).catch(() => {
+      failedProcessIds.push(processId);
+    });
   }
-  if (!processIds.size && taskkillError && !/not found|no running instance/i.test(taskkillError)) {
-    return { ok: false, message: `强制终止 ComfyUI 失败：${taskkillError}` };
+  if (failedProcessIds.length) {
+    return {
+      ok: false,
+      message: `强制终止 ComfyUI 失败：无法终止进程 PID ${failedProcessIds.join("、")}。`
+    };
   }
   return {
     ok: true,

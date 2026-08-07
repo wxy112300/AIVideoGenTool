@@ -170,7 +170,7 @@ export function uniqueUpscaleFilename(
   return `${stem}-${Date.now()}.mp4`;
 }
 
-function loadVideoNode(sourceVideo: string): ApiNode {
+function loadVideoNode(sourceVideo: string, useExternalBatching: boolean): ApiNode {
   return {
     class_type: "VHS_LoadVideo",
     inputs: {
@@ -182,7 +182,7 @@ function loadVideoNode(sourceVideo: string): ApiNode {
       skip_first_frames: 0,
       select_every_nth: 1,
       format: "AnimateDiff",
-      meta_batch: ["7", 0]
+      ...(useExternalBatching ? { meta_batch: ["7", 0] } : {})
     }
   };
 }
@@ -205,7 +205,10 @@ function exactScaleNode(image: unknown, task: UpscaleQueueTask): ApiNode {
   };
 }
 
-function combineVideoNode(task: UpscaleQueueTask): ApiNode {
+function combineVideoNode(
+  task: UpscaleQueueTask,
+  useExternalBatching: boolean
+): ApiNode {
   return {
     class_type: "VHS_VideoCombine",
     inputs: {
@@ -217,7 +220,7 @@ function combineVideoNode(task: UpscaleQueueTask): ApiNode {
       pingpong: false,
       save_output: true,
       audio: ["1", 2],
-      meta_batch: ["7", 0]
+      ...(useExternalBatching ? { meta_batch: ["7", 0] } : {})
     }
   };
 }
@@ -236,23 +239,28 @@ export function renderUpscaleWorkflow(
     availableNodes.has("SeedVR2VideoUpscaler") &&
     availableNodes.has("SeedVR2LoadDiTModel") &&
     availableNodes.has("SeedVR2LoadVAEModel");
+  const useExternalBatching = !modernSeedVr2;
   const workflow: Record<string, ApiNode> = {
-    "1": loadVideoNode(sourceVideo),
+    "1": loadVideoNode(sourceVideo, useExternalBatching),
     "2": {
       class_type: "VHS_VideoInfoSource",
       inputs: { video_info: ["1", 3] }
     },
-    "6": combineVideoNode(task),
-    "7": {
-      class_type: "VHS_BatchManager",
-      inputs: {
-        frames_per_batch: task.modelId === "realesrgan"
-          ? 1
-          : task.modelId === "seedvr2"
-            ? 5
-            : 16
-      }
-    }
+    "6": combineVideoNode(task, useExternalBatching),
+    ...(useExternalBatching
+      ? {
+          "7": {
+            class_type: "VHS_BatchManager",
+            inputs: {
+              frames_per_batch: task.modelId === "realesrgan"
+                ? 1
+                : task.modelId === "seedvr2"
+                  ? 5
+                  : 16
+            }
+          }
+        }
+      : {})
   };
 
   if (task.modelId === "realesrgan") {

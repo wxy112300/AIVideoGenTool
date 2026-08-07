@@ -169,6 +169,9 @@ describe("upscale workflows", () => {
       dit: ["3", 0],
       vae: ["4", 0]
     });
+    expect(workflow["1"]?.inputs.meta_batch).toBeUndefined();
+    expect(workflow["6"]?.inputs.meta_batch).toBeUndefined();
+    expect(workflow["7"]).toBeUndefined();
     expect(workflow["6"]?.class_type).toBe("VHS_VideoCombine");
     expect(workflow["9"]?.inputs).toMatchObject({ width: 1872, height: 1080 });
     expect(workflow["8"]?.inputs.image_pass).toEqual(["9", 0]);
