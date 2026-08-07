@@ -5,6 +5,114 @@ type ApiNode = {
   inputs: Record<string, unknown>;
 };
 
+export interface UpscaleResourceEstimateInput {
+  modelId: "seedvr2" | "flashvsr" | "realesrgan";
+  sourceWidth: number;
+  sourceHeight: number;
+  targetWidth: number;
+  targetHeight: number;
+  duration: number;
+  fps: number;
+}
+
+export interface UpscaleResourceEstimate {
+  frameCount: number;
+  vramMinGb: number;
+  vramMaxGb: number;
+  secondsMin: number;
+  secondsMax: number;
+  internalScale: 2 | 4;
+}
+
+const upscaleEstimateProfiles = {
+  realesrgan: {
+    baseVramMinGb: 2.5,
+    baseVramMaxGb: 4,
+    vramPerAreaMinGb: 0.85,
+    vramPerAreaMaxGb: 1.35,
+    secondsPerFrameMin: 0.18,
+    secondsPerFrameMax: 0.32
+  },
+  flashvsr: {
+    baseVramMinGb: 6.5,
+    baseVramMaxGb: 10,
+    vramPerAreaMinGb: 0.55,
+    vramPerAreaMaxGb: 0.95,
+    secondsPerFrameMin: 0.32,
+    secondsPerFrameMax: 0.55
+  },
+  seedvr2: {
+    baseVramMinGb: 8.5,
+    baseVramMaxGb: 13,
+    vramPerAreaMinGb: 0.9,
+    vramPerAreaMaxGb: 1.5,
+    secondsPerFrameMin: 1.2,
+    secondsPerFrameMax: 1.9
+  }
+} as const;
+
+function roundHalf(value: number): number {
+  return Math.round(value * 2) / 2;
+}
+
+export function estimateUpscaleResources(
+  input: UpscaleResourceEstimateInput
+): UpscaleResourceEstimate {
+  const profile = upscaleEstimateProfiles[input.modelId];
+  const safeSourceShortEdge = Math.max(
+    1,
+    Math.min(Math.max(1, input.sourceWidth), Math.max(1, input.sourceHeight))
+  );
+  const targetShortEdge = Math.min(
+    Math.max(1, input.targetWidth),
+    Math.max(1, input.targetHeight)
+  );
+  const targetPixels = Math.max(1, input.targetWidth * input.targetHeight);
+  const referencePixels = 1280 * 720;
+  const areaFactor = Math.max(0.35, targetPixels / referencePixels);
+  const resolutionFactor = Math.pow(areaFactor, 0.85);
+  const frameCount = Math.max(
+    1,
+    Math.ceil(Math.max(0, input.duration) * Math.max(1, input.fps))
+  );
+  const internalScale: 2 | 4 = input.modelId === "flashvsr" &&
+    targetShortEdge >= safeSourceShortEdge * 3
+    ? 4
+    : 2;
+  const internalScaleVram = input.modelId === "flashvsr" && internalScale === 4
+    ? 1.5
+    : 0;
+  const internalScaleTime = input.modelId === "flashvsr" && internalScale === 4
+    ? 1.18
+    : 1;
+  const vramMinGb = roundHalf(
+    profile.baseVramMinGb +
+      areaFactor * profile.vramPerAreaMinGb +
+      internalScaleVram
+  );
+  const vramMaxGb = Math.ceil(
+    profile.baseVramMaxGb +
+      areaFactor * profile.vramPerAreaMaxGb +
+      internalScaleVram * 1.5
+  );
+  const secondsMin = Math.max(
+    1,
+    Math.ceil(frameCount * profile.secondsPerFrameMin * resolutionFactor * internalScaleTime)
+  );
+  const secondsMax = Math.max(
+    secondsMin,
+    Math.ceil(frameCount * profile.secondsPerFrameMax * resolutionFactor * internalScaleTime)
+  );
+  return {
+    frameCount,
+    vramMinGb,
+    vramMaxGb,
+    secondsMin,
+    secondsMax,
+    internalScale
+  };
+}
+
 export function upscaleDimensions(
   sourceWidth: number,
   sourceHeight: number,

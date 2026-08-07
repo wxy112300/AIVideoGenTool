@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { UpscaleQueueTask } from "../src/types";
 import {
   createUpscaleFilename,
+  estimateUpscaleResources,
   renderUpscaleWorkflow,
   uniqueUpscaleFilename,
   upscaleDimensions
@@ -55,6 +56,53 @@ describe("upscale dimensions and filenames", () => {
     expect(
       createUpscaleFilename("SUL2-480p-5s-20260724-143205-v01.mp4", 1080)
     ).toBe("SUL2-1080p-5s-20260724-143205-v01.mp4");
+  });
+});
+
+describe("upscale resource estimates", () => {
+  const input = {
+    sourceWidth: 832,
+    sourceHeight: 480,
+    targetWidth: 1872,
+    targetHeight: 1080,
+    duration: 5,
+    fps: 24
+  };
+
+  it("scales the estimate with target pixels and frame count", () => {
+    const low = estimateUpscaleResources({
+      ...input,
+      modelId: "realesrgan",
+      targetWidth: 1280,
+      targetHeight: 720,
+      duration: 2
+    });
+    const high = estimateUpscaleResources({
+      ...input,
+      modelId: "realesrgan",
+      targetWidth: 3840,
+      targetHeight: 2160,
+      duration: 10
+    });
+    expect(low.frameCount).toBe(48);
+    expect(high.frameCount).toBe(240);
+    expect(high.vramMaxGb).toBeGreaterThan(low.vramMaxGb);
+    expect(high.secondsMax).toBeGreaterThan(low.secondsMax);
+  });
+
+  it("keeps model estimates distinct and selects FlashVSR 4x", () => {
+    const real = estimateUpscaleResources({ ...input, modelId: "realesrgan" });
+    const seed = estimateUpscaleResources({ ...input, modelId: "seedvr2" });
+    const flash = estimateUpscaleResources({
+      ...input,
+      modelId: "flashvsr",
+      targetWidth: 2160,
+      targetHeight: 2160
+    });
+    expect(seed.vramMinGb).toBeGreaterThan(real.vramMinGb);
+    expect(seed.secondsMin).toBeGreaterThan(real.secondsMin);
+    expect(flash.internalScale).toBe(4);
+    expect(flash.vramMaxGb).toBeGreaterThan(real.vramMaxGb);
   });
 });
 

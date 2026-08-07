@@ -109,6 +109,7 @@ import {
 } from "./core/workflow";
 import {
   createUpscaleFilename,
+  estimateUpscaleResources,
   upscaleDimensions
 } from "./core/upscale";
 import {
@@ -1046,6 +1047,18 @@ function formatElapsedDuration(seconds: number): string {
   return `${minutes}分${rounded % 60}秒`;
 }
 
+function formatUpscaleEstimateRange(minSeconds: number, maxSeconds: number): string {
+  const format = (seconds: number): string => {
+    const rounded = Math.max(1, Math.round(seconds));
+    if (rounded < 60) return `${rounded}秒`;
+    if (rounded < 3600) return `${Math.round(rounded / 60)}分`;
+    return `${(rounded / 3600).toFixed(1)}小时`;
+  };
+  const minimum = format(minSeconds);
+  const maximum = format(maxSeconds);
+  return minimum === maximum ? minimum : `${minimum}-${maximum}`;
+}
+
 function formatPerformancePercent(value: number | null | undefined): string {
   return value == null ? "不可用" : `${Math.round(value)}%`;
 }
@@ -1203,6 +1216,27 @@ function upscaleDialogHtml(): string {
     upscaleDialog.targetHeight
   );
   const sourceShortEdge = versionShortEdge(version);
+  const estimate = estimateUpscaleResources({
+    modelId: upscaleDialog.modelId,
+    sourceWidth: version.width,
+    sourceHeight: version.height,
+    targetWidth,
+    targetHeight,
+    duration: version.duration,
+    fps: version.fps
+  });
+  const formatEstimateGb = (value: number) =>
+    `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)} GB`;
+  const estimatedVram = `${formatEstimateGb(estimate.vramMinGb)}-${formatEstimateGb(estimate.vramMaxGb)}`;
+  const estimatedTime = formatUpscaleEstimateRange(
+    estimate.secondsMin,
+    estimate.secondsMax
+  );
+  const detectedVramBytes = environmentScan?.gpus[0]?.vramTotalBytes ??
+    performanceMetrics?.vramTotalBytes ??
+    0;
+  const vramWarning = detectedVramBytes > 0 &&
+    estimate.vramMaxGb * 1024 ** 3 > detectedVramBytes;
   const supportedIds = new Set(["seedvr2", "flashvsr", "realesrgan"]);
   const profiles = environmentScan?.modelProfiles.filter(
     (profile) => profile.category === "upscale" && supportedIds.has(profile.id)
@@ -1232,7 +1266,8 @@ function upscaleDialogHtml(): string {
             <label>显存策略<select id="upscale-tile" disabled><option value="safe" selected>保守 · 分批与每批卸载</option></select></label>
           </div>
           <label class="ios-switch-field disabled"><span class="policy-copy"><strong>人脸细节修复</strong><small>等待独立修复模型接入</small></span><input type="checkbox" disabled><span class="ios-switch" aria-hidden="true"></span></label>
-          <div class="upscale-output"><div><span>预计输出</span><strong>${targetWidth} × ${targetHeight}</strong><code>${escapeHtml(outputFilename)}</code></div><span>${upscaleDialog.modelId === "realesrgan" ? "预计峰值 6–9 GB" : upscaleDialog.modelId === "flashvsr" ? "预计峰值 14–19 GB" : "预计峰值 18–23 GB"}</span></div>
+          <div class="upscale-output"><div><span>预计输出</span><strong>${targetWidth} × ${targetHeight}</strong><code>${escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><span>预计峰值 ${estimatedVram}</span><span>预计耗时 ${estimatedTime}</span></div></div>
+          <p class="upscale-estimate-note ${vramWarning ? "warning" : ""}">按当前模型的保守分批策略估算，共 ${estimate.frameCount} 帧；不含首次加载模型、磁盘读取和最终编码时间。${vramWarning ? `预计峰值可能超过当前 ${formatBytes(detectedVramBytes)} 显存，建议降低目标分辨率或改用更轻模型。` : "实际速度和峰值会受 ComfyUI 版本、后台进程和磁盘速度影响。"}</p>
         </div>
         <div class="dialog-actions"><button class="secondary button-with-icon" id="cancel-upscale">${icon("x")}取消</button><button class="primary button-with-icon" id="enqueue-upscale">${icon(upscaleDialog.taskId ? "save" : "plus")}${upscaleDialog.taskId ? "保存更改" : "加入队列"}</button></div>
       </section>
@@ -1241,7 +1276,7 @@ function upscaleDialogHtml(): string {
 
 function shell(content: string): string {
   return `
-    <div class="app-shell">
+    <div class="app-shell ${page === "history" || page === "history-detail" ? "history-shell" : ""}">
       <header class="topbar">
         <button class="brand" data-page="create" aria-label="返回创建页">
           <span class="brand-mark">${icon("play")}</span><span>Local Video Studio</span>
@@ -1851,8 +1886,28 @@ async function editQueueTask(taskId: string): Promise<void> {
   }
 }
 
+function historyAssetsByNewest(): AppState["history"] {
+  return [...state.history].sort((left, right) => {
+    const leftTime = Date.parse(left.updatedAt || left.createdAt);
+    const rightTime = Date.parse(right.updatedAt || right.createdAt);
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    return 0;
+  });
+}
+
+function historyCardsByOrder(gallery: HTMLElement): HTMLElement[] {
+  return [...gallery.querySelectorAll<HTMLElement>(".history-gallery-item")].sort(
+    (left, right) =>
+      Number(left.dataset.historyOrder ?? Number.MAX_SAFE_INTEGER) -
+      Number(right.dataset.historyOrder ?? Number.MAX_SAFE_INTEGER)
+  );
+}
+
 function historyPage(): string {
-  const cards = state.history.map((asset) => {
+  const orderedAssets = historyAssetsByNewest();
+  const cards = orderedAssets.map((asset, historyOrder) => {
     const version = preferredVersion(asset);
     const historyTitle = asset.prompt.trim() || asset.title;
     const videoIndex = versionVideoIndex(version);
@@ -1861,7 +1916,7 @@ function historyPage(): string {
     const coverSeed = historyCoverSeed(asset.id, version.id);
     const coverTime = historyInitialCoverTime(asset.duration, coverSeed);
     return `
-      <article class="history-gallery-item panel" data-history="${asset.id}" tabindex="0" title="右键查看更多操作">
+      <article class="history-gallery-item panel" data-history="${asset.id}" data-history-order="${historyOrder}" tabindex="0" title="右键查看更多操作">
         <div class="history-media" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${escapeHtml(coverKey)}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="none" data-history-src="${escapeHtml(mediaUrl)}"></video>`
@@ -1931,17 +1986,30 @@ function restoreHistoryLayoutAnchor(): void {
   });
 }
 
-function historyMasonryColumnCount(width: number): number {
+function historyMasonryColumnCount(width: number, gap = 10): number {
   if (width <= 480) return 1;
-  if (width <= 680) return 2;
-  if (width >= 1280) return 4;
-  return 3;
+  const minimumCardWidth = 300;
+  const maximumCardWidth = 520;
+  const minimumColumns = 3;
+  const maximumColumns = 5;
+  let columns = minimumColumns;
+  const cardWidth = (columnCount: number) =>
+    (width - gap * (columnCount - 1)) / columnCount;
+
+  while (columns < maximumColumns && cardWidth(columns) > maximumCardWidth) {
+    columns += 1;
+  }
+  while (columns > 2 && cardWidth(columns) < minimumCardWidth) {
+    columns -= 1;
+  }
+  return columns;
 }
 
 function layoutHistoryMasonry(gallery: HTMLElement): number {
-  const cards = [...gallery.querySelectorAll<HTMLElement>(".history-gallery-item")];
+  const cards = historyCardsByOrder(gallery);
   if (!cards.length) return 0;
-  const columnCount = historyMasonryColumnCount(gallery.clientWidth);
+  const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 10;
+  const columnCount = historyMasonryColumnCount(gallery.clientWidth, gap);
   const columns = Array.from({ length: columnCount }, () => {
     const column = document.createElement("div");
     column.className = "history-masonry-column";
@@ -1966,7 +2034,8 @@ function bindHistoryMasonry(): void {
   let columnCount = layoutHistoryMasonry(gallery);
   if (typeof ResizeObserver === "undefined") return;
   historyMasonryResizeObserver = new ResizeObserver(() => {
-    const nextColumnCount = historyMasonryColumnCount(gallery.clientWidth);
+    const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 10;
+    const nextColumnCount = historyMasonryColumnCount(gallery.clientWidth, gap);
     if (nextColumnCount === columnCount) return;
     columnCount = layoutHistoryMasonry(gallery);
   });
@@ -1984,7 +2053,7 @@ function switchHistoryLayout(nextLayout: typeof historyLayout): void {
   gallery.classList.toggle("masonry", nextLayout === "masonry");
   gallery.classList.toggle("album", nextLayout === "album");
   if (nextLayout === "album") {
-    const cards = [...gallery.querySelectorAll<HTMLElement>(".history-gallery-item")];
+    const cards = historyCardsByOrder(gallery);
     gallery.replaceChildren(...cards);
     gallery.style.removeProperty("--masonry-columns");
   } else {
@@ -2030,11 +2099,12 @@ function historyDetailPage(): string {
   const videoIndex = versionVideoIndex(version);
   const mediaUrl = historyMediaUrl(asset, version);
   const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
-  const historyIndex = state.history.findIndex((item) => item.id === asset.id);
-  const previousAsset = historyIndex > 0 ? state.history[historyIndex - 1] : undefined;
-  const nextAsset = historyIndex >= 0 ? state.history[historyIndex + 1] : undefined;
+  const orderedHistory = historyAssetsByNewest();
+  const historyIndex = orderedHistory.findIndex((item) => item.id === asset.id);
+  const previousAsset = historyIndex > 0 ? orderedHistory[historyIndex - 1] : undefined;
+  const nextAsset = historyIndex >= 0 ? orderedHistory[historyIndex + 1] : undefined;
   const detailTitle = asset.prompt.trim() || asset.title;
-  const completedAt = formatHistoryTime(version.createdAt);
+  const completedAt = formatFullHistoryTime(version.createdAt);
   const fps = version.fps;
   const performanceStats = version.performanceStats;
   const elapsedSeconds = version.startedAt
