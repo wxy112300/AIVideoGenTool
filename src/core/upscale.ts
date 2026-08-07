@@ -8,15 +8,22 @@ type ApiNode = {
 export function upscaleDimensions(
   sourceWidth: number,
   sourceHeight: number,
-  targetHeight: UpscaleRequest["targetHeight"]
-): [number, UpscaleRequest["targetHeight"]] {
+  targetShortEdge: UpscaleRequest["targetHeight"]
+): [number, number] {
   const safeWidth = Math.max(1, sourceWidth);
   const safeHeight = Math.max(1, sourceHeight);
-  const width = Math.max(
+  const sourceShortEdge = Math.min(safeWidth, safeHeight);
+  const sourceLongEdge = Math.max(safeWidth, safeHeight);
+  if (sourceShortEdge === sourceLongEdge) {
+    return [targetShortEdge, targetShortEdge];
+  }
+  const targetLongEdge = Math.max(
     16,
-    Math.round((targetHeight * safeWidth) / safeHeight / 16) * 16
+    Math.round((targetShortEdge * sourceLongEdge) / sourceShortEdge / 16) * 16
   );
-  return [width, targetHeight];
+  return safeWidth >= safeHeight
+    ? [targetLongEdge, targetShortEdge]
+    : [targetShortEdge, targetLongEdge];
 }
 
 export function createUpscaleFilename(
@@ -107,6 +114,7 @@ export function renderUpscaleWorkflow(
   sourceVideo: string,
   models: { seedVr2: string; realEsrgan: string }
 ): Record<string, ApiNode> {
+  const sourceShortEdge = Math.max(1, Math.min(task.sourceWidth, task.sourceHeight));
   const workflow: Record<string, ApiNode> = {
     "1": loadVideoNode(sourceVideo),
     "2": {
@@ -161,7 +169,7 @@ export function renderUpscaleWorkflow(
       inputs: {
         frames: ["1", 0],
         preset: "Long Video (Low VRAM)",
-        scale: task.targetHeight >= task.sourceHeight * 3 ? 4 : 2,
+        scale: task.targetHeight >= sourceShortEdge * 3 ? 4 : 2,
         unload_model: true,
         seed: Math.max(1, task.seed),
         audio: ["1", 2]

@@ -129,6 +129,7 @@ let draftDirty = false;
 let flashMessage = "";
 let selectedHistoryAssetId = "";
 let selectedHistoryVersionId = "";
+let historyForwardTarget: { assetId: string; versionId: string } | null = null;
 let upscaleDialog: {
   taskId?: string;
   assetId: string;
@@ -138,8 +139,8 @@ let upscaleDialog: {
   tileMode: "auto" | "safe" | "fast";
 } | null = null;
 let historyScrollPosition = 0;
+let historyLayoutAnchor: { assetId: string; offsetFromCenter: number } | null = null;
 let historyLayout: "masonry" | "album" = "masonry";
-let historyCoverMode: "random" | "first" = "random";
 let environmentScan: EnvironmentScanResult | null = null;
 let environmentScanning = false;
 let serviceStarting: LocalServiceKind | null = null;
@@ -180,8 +181,15 @@ let performanceMetrics: PerformanceMetrics | null = null;
 let performancePolling = false;
 let historyContextMenuElement: HTMLElement | null = null;
 let historyContextMenuEvents: AbortController | null = null;
+let shellNavigationEvents: AbortController | null = null;
 let historyMasonryResizeObserver: ResizeObserver | null = null;
 let historyTitleResizeObserver: ResizeObserver | null = null;
+let historyMediaObserver: IntersectionObserver | null = null;
+let historyCoverWarmupController: AbortController | null = null;
+let historyCoverWarmupTimer: number | undefined;
+const HISTORY_COVER_CACHE_VERSION = "history-cover-v1";
+const HISTORY_COVER_MAX_EDGE = 640;
+const historyCoverDataUrls = new Map<string, string>();
 let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
 let h3PromptPreset: H3PromptPreset = "official-storyboard";
 let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
@@ -539,6 +547,21 @@ function updatePromptWordCounter(
     : `当前 ${count} 词 · 建议不超过 ${limit} 词`;
 }
 
+function resizePromptInput(promptInput: HTMLTextAreaElement): void {
+  promptInput.style.height = "auto";
+  const styles = window.getComputedStyle(promptInput);
+  const minHeight = Number.parseFloat(styles.minHeight) || 0;
+  const maxHeight = Number.parseFloat(styles.maxHeight);
+  const contentHeight = promptInput.scrollHeight;
+  const height = Number.isFinite(maxHeight)
+    ? Math.min(contentHeight, maxHeight)
+    : contentHeight;
+  promptInput.style.height = `${Math.max(minHeight, height)}px`;
+  promptInput.style.overflowY = Number.isFinite(maxHeight) && contentHeight > maxHeight
+    ? "auto"
+    : "hidden";
+}
+
 function h3PromptCheckMarkup(
   promptText: string,
   hasEndImage: boolean,
@@ -646,9 +669,31 @@ function versionVideoIndex(version: AssetVersion): number {
   return version.files.findIndex((file) => videoPattern.test(file.filename));
 }
 
+function versionShortEdge(version: AssetVersion): number {
+  const width = Number.isFinite(version.width) && version.width > 0 ? version.width : 0;
+  const height = Number.isFinite(version.height) && version.height > 0 ? version.height : 0;
+  return Math.max(0, Math.round(Math.min(width || height, height || width)));
+}
+
+function resolutionLabel(value: number): string {
+  const rounded = Math.max(0, Math.round(value));
+  return rounded === 2160 ? "4K" : rounded > 0 ? `${rounded}p` : "未知";
+}
+
+function historyResolutionLabel(
+  asset: AppState["history"][number],
+  version: AssetVersion
+): string {
+  const requestedResolution = version.kind === "original" &&
+    [360, 480, 540, 720, 768, 1080, 1440, 2160].includes(asset.resolution)
+    ? asset.resolution
+    : versionShortEdge(version);
+  return resolutionLabel(requestedResolution);
+}
+
 function preferredVersion(asset: AppState["history"][number]): AssetVersion {
   return asset.versions.find((version) => version.id === asset.defaultVersionId) ??
-    [...asset.versions].sort((left, right) => right.height - left.height)[0]!;
+    [...asset.versions].sort((left, right) => versionShortEdge(right) - versionShortEdge(left))[0]!;
 }
 
 function currentHistoryVersion(asset: AppState["history"][number]): AssetVersion {
@@ -664,6 +709,317 @@ function historyMediaUrl(
   return index < 0
     ? ""
     : `studio-media://history/${encodeURIComponent(asset.id)}/${encodeURIComponent(version.id)}/${index}`;
+}
+
+function historyCoverCacheKey(
+  asset: AppState["history"][number],
+  version: AssetVersion
+): string {
+  const videoIndex = versionVideoIndex(version);
+  const file = videoIndex >= 0 ? version.files[videoIndex] : undefined;
+  return [
+    HISTORY_COVER_CACHE_VERSION,
+    asset.id,
+    version.id,
+    version.createdAt,
+    file?.filename ?? version.outputFilename,
+    file?.absolutePath ?? ""
+  ].join(":");
+}
+
+function setHistoryCoverImage(media: HTMLElement, dataUrl: string): boolean {
+  const image = media.querySelector<HTMLImageElement>("[data-history-cover-image]");
+  if (!image || !dataUrl) return false;
+  const key = media.dataset.coverKey;
+  image.hidden = true;
+  const showImage = () => {
+    if (image.src !== dataUrl || !media.isConnected) return;
+    image.hidden = false;
+    media.dataset.historyCoverCached = "true";
+    media.classList.add("has-history-cover");
+  };
+  image.onload = showImage;
+  image.onerror = () => {
+    if (image.src !== dataUrl) return;
+    image.hidden = true;
+    media.classList.remove("has-history-cover");
+    delete media.dataset.historyCoverCached;
+    if (key) historyCoverDataUrls.delete(key);
+    loadHistoryCardVideo(media);
+  };
+  image.src = dataUrl;
+  if (image.complete && image.naturalWidth > 0) showImage();
+  return true;
+}
+
+async function loadHistoryCoverFromCache(media: HTMLElement): Promise<boolean> {
+  const key = media.dataset.coverKey;
+  if (!key) return false;
+  const cached = historyCoverDataUrls.get(key) ?? await window.studio.readHistoryCover(key);
+  if (!cached) return false;
+  historyCoverDataUrls.set(key, cached);
+  return setHistoryCoverImage(media, cached);
+}
+
+function loadHistoryCardVideo(media: HTMLElement): HTMLVideoElement | null {
+  const video = media.querySelector<HTMLVideoElement>("video");
+  const source = video?.dataset.historySrc;
+  if (!video || !source) return video ?? null;
+  if (video.dataset.historyLoaded === "true") return video;
+  video.src = source;
+  video.dataset.historyLoaded = "true";
+  video.load();
+  return video;
+}
+
+function releaseHistoryCardVideo(media: HTMLElement): void {
+  const video = media.querySelector<HTMLVideoElement>("video");
+  if (!video || video.dataset.historyLoaded !== "true") return;
+  video.pause();
+  video.removeAttribute("src");
+  delete video.dataset.historyLoaded;
+  video.load();
+}
+
+function historyCoverSeed(assetId: string, versionId: string): number {
+  let hash = 2166136261;
+  for (const character of `${assetId}:${versionId}`) {
+    hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  }
+  return hash >>> 0;
+}
+
+function historyInitialCoverTime(duration: number, seed: number): number {
+  const safeDuration = Math.max(0, Number.isFinite(duration) ? duration : 0);
+  if (safeDuration <= 0.5) return safeDuration / 2;
+  const positions = [0.2, 0.31, 0.43, 0.56, 0.68, 0.79];
+  const position = positions[seed % positions.length] ?? 0.43;
+  return Math.min(safeDuration - 0.1, Math.max(0.1, safeDuration * position));
+}
+
+function historyCoverCandidates(duration: number, seed: number): number[] {
+  const safeDuration = Math.max(0, Number.isFinite(duration) ? duration : 0);
+  if (safeDuration <= 0.5) return [safeDuration / 2];
+  const positions = [0.18, 0.28, 0.38, 0.49, 0.6, 0.71, 0.82];
+  const start = seed % positions.length;
+  return Array.from({ length: 4 }, (_, index) => {
+    const position = positions[(start + index) % positions.length] ?? 0.49;
+    return Math.min(safeDuration - 0.1, Math.max(0.1, safeDuration * position));
+  });
+}
+
+function historyCoverScore(video: HTMLVideoElement): number | null {
+  if (!video.videoWidth || !video.videoHeight) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 32;
+  canvas.height = 18;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return null;
+  try {
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let brightnessTotal = 0;
+    let brightnessSquaredTotal = 0;
+    let saturationTotal = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      const red = pixels[index] ?? 0;
+      const green = pixels[index + 1] ?? 0;
+      const blue = pixels[index + 2] ?? 0;
+      const brightness = red * 0.299 + green * 0.587 + blue * 0.114;
+      brightnessTotal += brightness;
+      brightnessSquaredTotal += brightness * brightness;
+      saturationTotal += Math.max(red, green, blue) - Math.min(red, green, blue);
+    }
+    const pixelCount = pixels.length / 4;
+    const brightnessAverage = brightnessTotal / pixelCount;
+    const brightnessVariance = Math.max(
+      0,
+      brightnessSquaredTotal / pixelCount - brightnessAverage * brightnessAverage
+    );
+    const saturationAverage = saturationTotal / pixelCount;
+    const exposurePenalty = Math.abs(brightnessAverage - 128) * 0.35;
+    const unusablePenalty = brightnessAverage < 18 || brightnessAverage > 242 ? 120 : 0;
+    return Math.sqrt(brightnessVariance) * 1.5 + saturationAverage * 0.35 - exposurePenalty - unusablePenalty;
+  } catch {
+    return null;
+  }
+}
+
+function historyCoverBlob(video: HTMLVideoElement): Promise<Blob | null> {
+  if (!video.videoWidth || !video.videoHeight) return Promise.resolve(null);
+  const scale = Math.min(
+    1,
+    HISTORY_COVER_MAX_EDGE / Math.max(video.videoWidth, video.videoHeight)
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+  canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) return Promise.resolve(null);
+  try {
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  } catch {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    canvas.toBlob(resolve, "image/jpeg", 0.78);
+  });
+}
+
+function historyBlobDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result)));
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function saveHistoryCover(
+  media: HTMLElement,
+  video: HTMLVideoElement,
+  isActive: () => boolean
+): Promise<void> {
+  const key = media.dataset.coverKey;
+  if (!key || !isActive() || media.dataset.historyCoverCached === "true") return;
+  const blob = await historyCoverBlob(video);
+  if (!blob || !isActive()) return;
+  const data = await blob.arrayBuffer();
+  if (!await window.studio.saveHistoryCover(key, data) || !isActive()) return;
+  const dataUrl = await historyBlobDataUrl(blob);
+  historyCoverDataUrls.set(key, dataUrl);
+  setHistoryCoverImage(media, dataUrl);
+}
+
+function waitForHistoryVideoData(
+  video: HTMLVideoElement,
+  signal: AbortSignal
+): Promise<boolean> {
+  if (video.readyState >= 2) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ready: boolean) => {
+      if (settled) return;
+      settled = true;
+      video.removeEventListener("loadeddata", onReady);
+      video.removeEventListener("error", onError);
+      signal.removeEventListener("abort", onAbort);
+      window.clearTimeout(timeout);
+      resolve(ready);
+    };
+    const onReady = () => finish(true);
+    const onError = () => finish(false);
+    const onAbort = () => finish(false);
+    const timeout = window.setTimeout(() => finish(false), 10_000);
+    video.addEventListener("loadeddata", onReady, { once: true });
+    video.addEventListener("error", onError, { once: true });
+    signal.addEventListener("abort", onAbort, { once: true });
+    video.load();
+  });
+}
+
+async function warmHistoryCover(
+  media: HTMLElement,
+  signal: AbortSignal
+): Promise<void> {
+  if (signal.aborted || media.dataset.historyCoverCached === "true") return;
+  const source = media.querySelector<HTMLVideoElement>("video")?.dataset.historySrc;
+  const key = media.dataset.coverKey;
+  if (!source || !key) return;
+  if (await loadHistoryCoverFromCache(media) || signal.aborted) return;
+  if (media.dataset.historyLoaded === "true" || media.matches(":hover") || media.classList.contains("playing")) return;
+  const video = document.createElement("video");
+  video.muted = true;
+  video.crossOrigin = "anonymous";
+  video.preload = "auto";
+  video.src = source;
+  try {
+    if (!await waitForHistoryVideoData(video, signal) || signal.aborted) return;
+    const duration = Number(media.dataset.previewDuration) || video.duration;
+    const fallbackTime = Number(media.dataset.coverTime) || 0;
+    const seed = Number(media.dataset.coverSeed) || 0;
+    const isActive = () =>
+      !signal.aborted &&
+      page === "history" &&
+      media.isConnected &&
+      !media.matches(":hover") &&
+      !media.classList.contains("playing");
+    const selectedTime = await chooseHistoryCoverTime(
+      video,
+      fallbackTime,
+      duration,
+      seed,
+      isActive
+    );
+    if (!isActive()) return;
+    media.dataset.coverTime = String(selectedTime);
+    await saveHistoryCover(media, video, isActive);
+  } finally {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  }
+}
+
+function scheduleHistoryCoverWarmup(mediaCards: HTMLElement[]): void {
+  historyCoverWarmupController?.abort();
+  window.clearTimeout(historyCoverWarmupTimer);
+  const controller = new AbortController();
+  historyCoverWarmupController = controller;
+  historyCoverWarmupTimer = window.setTimeout(() => {
+    historyCoverWarmupTimer = undefined;
+    void (async () => {
+      for (const media of mediaCards) {
+        if (controller.signal.aborted) return;
+        await warmHistoryCover(media, controller.signal);
+      }
+    })();
+  }, 1200);
+}
+
+function waitForHistorySeek(video: HTMLVideoElement, time: number): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      video.removeEventListener("seeked", finish);
+      window.clearTimeout(timeout);
+      resolve();
+    };
+    const timeout = window.setTimeout(finish, 1200);
+    video.addEventListener("seeked", finish, { once: true });
+    try {
+      video.currentTime = time;
+    } catch {
+      finish();
+    }
+  });
+}
+
+async function chooseHistoryCoverTime(
+  video: HTMLVideoElement,
+  fallbackTime: number,
+  duration: number,
+  seed: number,
+  isActive: () => boolean
+): Promise<number> {
+  const candidates = historyCoverCandidates(duration, seed);
+  let bestTime = fallbackTime;
+  let bestScore: number | null = null;
+  for (const candidate of candidates) {
+    if (!isActive()) return bestTime;
+    await waitForHistorySeek(video, candidate);
+    if (!isActive()) return bestTime;
+    const score = historyCoverScore(video);
+    if (score != null && (bestScore == null || score > bestScore)) {
+      bestScore = score;
+      bestTime = candidate;
+    }
+  }
+  if (!isActive()) return bestTime;
+  await waitForHistorySeek(video, bestTime);
+  return bestTime;
 }
 
 function historyAspectRatio(ratio: AppState["history"][number]["ratio"]): string {
@@ -726,6 +1082,21 @@ function formatHistoryTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
+}
+
+function formatFullHistoryTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function historyRenderDuration(version: AssetVersion): string {
+  if (!version.startedAt) return "耗时未知";
+  const startedAt = Date.parse(version.startedAt);
+  const createdAt = Date.parse(version.createdAt);
+  if (!Number.isFinite(startedAt) || !Number.isFinite(createdAt)) return "耗时未知";
+  return formatElapsedDuration(Math.max(0, (createdAt - startedAt) / 1000));
 }
 
 function formatTrimTime(seconds: number): string {
@@ -831,6 +1202,7 @@ function upscaleDialogHtml(): string {
     version.height,
     upscaleDialog.targetHeight
   );
+  const sourceShortEdge = versionShortEdge(version);
   const supportedIds = new Set(["seedvr2", "flashvsr", "realesrgan"]);
   const profiles = environmentScan?.modelProfiles.filter(
     (profile) => profile.category === "upscale" && supportedIds.has(profile.id)
@@ -841,7 +1213,7 @@ function upscaleDialogHtml(): string {
   ];
   const outputFilename = createUpscaleFilename(
     version.outputFilename,
-    targetHeight
+    upscaleDialog.targetHeight
   );
   return `
     <div class="dialog-backdrop upscale-backdrop" id="upscale-backdrop">
@@ -853,7 +1225,7 @@ function upscaleDialogHtml(): string {
         <div class="upscale-dialog-body">
           <div class="upscale-source"><div><strong>${escapeHtml(asset.title)}</strong><code>${escapeHtml(version.outputFilename)}</code></div><span>${version.width} × ${version.height} · ${formatVideoDuration(version.duration)}</span></div>
           <div><label>目标分辨率</label><div class="upscale-resolution">
-            ${([720, 1080, 1440, 2160] as const).map((height) => `<button class="${height === targetHeight ? "primary" : "secondary"}" data-upscale-height="${height}" ${height <= version.height ? "disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
+            ${([720, 1080, 1440, 2160] as const).map((height) => `<button class="${height === targetHeight ? "primary" : "secondary"}" data-upscale-height="${height}" ${height <= sourceShortEdge ? "disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
           </div></div>
           <div class="settings-grid two">
             <label>提升模型<select id="upscale-model">${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === upscaleDialog?.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
@@ -1186,7 +1558,7 @@ function createPage(): string {
           </select>
         </label>
         ${isMiniMaxH3 ? `<label class="settings-field settings-steps">采样步数（H3）
-          <select id="steps" aria-label="H3 采样步数">
+          <select id="steps" aria-label="H3 采样步数" title="${escapeHtml(isMiniMaxH3TurboModel(draft.modelId) ? "Turbo 建议从 8 步开始；4 步可能出现音频或动作异常。" : "只影响 H3；其他模型沿用各自工作流设置。")}">
             ${isMiniMaxH3TurboModel(draft.modelId)
               ? `<option value="4" ${h3Steps === 4 ? "selected" : ""}>4 · 极限加速（实验）</option>
                 <option value="6" ${h3Steps === 6 ? "selected" : ""}>6 · 加速预览</option>
@@ -1197,7 +1569,6 @@ function createPage(): string {
                 <option value="16" ${h3Steps === 16 ? "selected" : ""}>16 · 平衡预览</option>
                 <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · 快速预览</option>`}
           </select>
-          <small class="field-hint">${isMiniMaxH3TurboModel(draft.modelId) ? "Turbo 建议从 8 步开始；4 步可能出现音频或动作异常。" : "只影响 H3；其他模型沿用各自工作流设置。"}</small>
         </label>` : ""}
           </div>
         </section>
@@ -1486,18 +1857,20 @@ function historyPage(): string {
     const historyTitle = asset.prompt.trim() || asset.title;
     const videoIndex = versionVideoIndex(version);
     const mediaUrl = historyMediaUrl(asset, version);
-    const coverTime = historyCoverMode === "first"
-      ? 0
-      : Math.min(Math.max(asset.duration * 0.38, 0), Math.max(asset.duration - 0.1, 0));
+    const coverKey = historyCoverCacheKey(asset, version);
+    const coverSeed = historyCoverSeed(asset.id, version.id);
+    const coverTime = historyInitialCoverTime(asset.duration, coverSeed);
     return `
       <article class="history-gallery-item panel" data-history="${asset.id}" tabindex="0" title="右键查看更多操作">
-        <div class="history-media" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-time="${coverTime}" data-preview-duration="${asset.duration}">
+        <div class="history-media" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${escapeHtml(coverKey)}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
           ${mediaUrl
-            ? `<video muted loop playsinline preload="metadata" src="${mediaUrl}"></video>`
+            ? `<video muted loop playsinline preload="none" data-history-src="${escapeHtml(mediaUrl)}"></video>`
             : `<div class="history-media-fallback"><span>${icon("play")}</span><small>找不到视频文件</small></div>`}
+          ${mediaUrl ? `<img class="history-cover-image" data-history-cover-image="${asset.id}" alt="" loading="lazy" hidden>` : ""}
           <div class="history-media-badges">
-            <span class="media-chip">${historyCoverMode === "first" ? "第一帧" : `封面 ${formatVideoDuration(coverTime)}`}</span>
-            <span class="media-chip">${version.height === 2160 ? "4K" : `${version.height}p`}</span>
+            <span class="media-chip history-model-chip">${escapeHtml(modelName(version.modelId))}</span>
+            <span class="media-chip">${historyResolutionLabel(asset, version)}</span>
+            <span class="media-chip history-version-count-chip">${asset.versions.length} 个版本</span>
             <span class="media-chip">${formatVideoDuration(asset.duration)}</span>
           </div>
           ${mediaUrl ? `<span class="history-preview-state">${icon("play")}正在预览</span><button type="button" class="history-preview-progress" role="slider" aria-label="调整预览进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="等待视频加载"><i></i></button>` : ""}
@@ -1505,8 +1878,7 @@ function historyPage(): string {
         <div class="history-gallery-copy">
           <h3 class="history-card-title" title="${escapeHtml(historyTitle)}"><span class="history-card-title-track"><span>${escapeHtml(historyTitle)}</span><span aria-hidden="true">${escapeHtml(historyTitle)}</span></span></h3>
           <code>${escapeHtml(version.files[videoIndex]?.filename ?? version.outputFilename)}</code>
-          <div class="history-item-meta"><span class="model-badge">${escapeHtml(modelName(version.modelId))}</span><span>最高 ${version.height === 2160 ? "4K" : `${version.height}p`}</span><span>${asset.versions.length} 个版本</span></div>
-          <div class="history-item-actions"><span>${formatHistoryTime(asset.updatedAt)}</span><button class="ghost button-with-icon" data-open-history="${asset.id}">查看详情${icon("external-link")}</button></div>
+          <div class="history-card-meta"><span>${escapeHtml(formatFullHistoryTime(version.createdAt))}</span><span>渲染 ${escapeHtml(historyRenderDuration(version))}</span></div>
         </div>
       </article>`;
   }).join("");
@@ -1514,7 +1886,6 @@ function historyPage(): string {
     <section class="history-heading">
       <div><div class="heading-line"><h1>历史作品</h1><span class="badge">${state.history.length} 个视频</span></div></div>
       <div class="history-view-tools">
-        <label>封面<select id="history-cover-mode"><option value="random" ${historyCoverMode === "random" ? "selected" : ""}>随机帧</option><option value="first" ${historyCoverMode === "first" ? "selected" : ""}>第一帧</option></select></label>
         <div class="button-row"><button class="${historyLayout === "masonry" ? "secondary" : "ghost"} button-with-icon" data-history-layout="masonry">${icon("columns-3")}瀑布流</button><button class="${historyLayout === "album" ? "secondary" : "ghost"} button-with-icon" data-history-layout="album">${icon("layout-grid")}相册</button></div>
       </div>
     </section>
@@ -1523,6 +1894,41 @@ function historyPage(): string {
         ? `<div class="empty panel"><h2>还没有完成的视频</h2><p>队列完成后，结果会自动出现在这里。</p></div>`
         : cards}
     </section>`;
+}
+
+function captureHistoryLayoutAnchor(): { assetId: string; offsetFromCenter: number } | null {
+  const cards = [...document.querySelectorAll<HTMLElement>(".history-gallery-item")];
+  if (!cards.length) return null;
+  const viewportCenter = window.innerHeight / 2;
+  const card = cards.reduce((closest, candidate) => {
+    const closestRect = closest.getBoundingClientRect();
+    const candidateRect = candidate.getBoundingClientRect();
+    return Math.abs(candidateRect.top + candidateRect.height / 2 - viewportCenter) <
+      Math.abs(closestRect.top + closestRect.height / 2 - viewportCenter)
+      ? candidate
+      : closest;
+  });
+  const rect = card.getBoundingClientRect();
+  return {
+    assetId: card.dataset.history ?? "",
+    offsetFromCenter: rect.top + rect.height / 2 - viewportCenter
+  };
+}
+
+function restoreHistoryLayoutAnchor(): void {
+  const anchor = historyLayoutAnchor;
+  historyLayoutAnchor = null;
+  if (!anchor?.assetId) return;
+  window.requestAnimationFrame(() => {
+    const card = [...document.querySelectorAll<HTMLElement>(".history-gallery-item")]
+      .find((item) => item.dataset.history === anchor.assetId);
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const desiredCenter = window.innerHeight / 2 + anchor.offsetFromCenter;
+    const delta = rect.top + rect.height / 2 - desiredCenter;
+    if (Math.abs(delta) < 1) return;
+    window.scrollBy({ top: delta, behavior: "auto" });
+  });
 }
 
 function historyMasonryColumnCount(width: number): number {
@@ -1611,7 +2017,7 @@ function historyDetailPage(): string {
     : null;
   return `
     <div class="history-detail-back">
-      <button class="ghost button-with-icon" data-page="history">${icon("arrow-left")}返回历史</button>
+      <button class="secondary button-with-icon history-detail-back-button" data-page="history">${icon("arrow-left")}返回历史</button>
       <div class="history-detail-tools">
         <span>任务记录为生成时的只读快照</span>
         <span class="history-detail-position" aria-label="当前历史作品位置">第 ${historyIndex + 1} / 共 ${state.history.length} 个</span>
@@ -1628,21 +2034,21 @@ function historyDetailPage(): string {
             ? `<video controls loop playsinline preload="metadata" src="${mediaUrl}"></video>`
             : `<div class="history-media-fallback"><span>${icon("play")}</span><strong>视频文件不可用</strong><small>请检查输出目录或在下方定位文件。</small></div>`}
         </div>
-        <div class="panel version-toolbar"><div class="version-switcher">${asset.versions.map((item) => `<button class="${item.id === version.id ? "primary" : "ghost"}" data-version-id="${item.id}">${item.kind === "original" ? "原始" : modelName(item.modelId)} ${item.height === 2160 ? "4K" : `${item.height}p`}</button>`).join("")}</div><span>${asset.versions.length} 个版本</span></div>
+        <div class="panel version-toolbar"><div class="version-switcher">${asset.versions.map((item) => `<button class="${item.id === version.id ? "primary" : "ghost"}" data-version-id="${item.id}">${item.kind === "original" ? "原始" : modelName(item.modelId)} ${historyResolutionLabel(asset, item)}</button>`).join("")}</div><span>${asset.versions.length} 个版本</span></div>
       </div>
       <aside class="panel history-summary">
         <div><div class="history-title-line"><h1 class="history-detail-title" title="${escapeHtml(detailTitle)}"><span class="history-card-title-track"><span>${escapeHtml(detailTitle)}</span><span aria-hidden="true">${escapeHtml(detailTitle)}</span></span></h1><span class="status running">已完成</span></div><code>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code></div>
-        <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(version.modelId))}</span><span>${version.width} × ${version.height} · ${version.duration}秒 · ${fps} FPS</span></div>
+        <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(version.modelId))}</span><span>${historyResolutionLabel(asset, version)} · ${version.width} × ${version.height} · ${version.duration}秒 · ${fps} FPS</span></div>
         <div class="history-summary-row"><span>完成于</span><strong>${completedAt}</strong></div>
         <div class="history-summary-row"><span>总耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : formatElapsedDuration(elapsedSeconds)}</strong></div>
         <div class="history-summary-actions">
           <div class="history-primary-actions">
             <button class="secondary button-with-icon" data-edit-history="${asset.id}" aria-label="在创建页调整" title="在创建页调整">${icon("sliders-horizontal")}调整参数</button>
-            ${videoFile?.absolutePath ? `<button class="secondary button-with-icon" data-continue-history="${asset.id}" data-source-version="${version.id}" aria-label="继续创作" title="继续创作">${icon("video")}继续创作</button><button class="secondary button-with-icon history-file-action" data-show-file="${escapeHtml(videoFile.absolutePath)}" aria-label="打开所在目录" title="打开所在目录">${icon("folder-open")}定位文件</button>` : ""}
+            ${videoFile?.absolutePath ? `<button class="secondary button-with-icon" data-continue-history="${asset.id}" data-source-version="${version.id}" aria-label="继续创作" title="继续创作">${icon("video")}继续创作</button><button class="secondary button-with-icon" data-copy-file="${escapeHtml(videoFile.absolutePath)}" aria-label="复制文件" title="复制文件">${icon("copy")}复制文件</button><button class="secondary button-with-icon history-file-action" data-show-file="${escapeHtml(videoFile.absolutePath)}" aria-label="打开所在目录" title="打开所在目录">${icon("folder-open")}定位文件</button>` : ""}
           </div>
           <button class="ghost danger history-delete-button button-with-icon" data-delete-history="${asset.id}">${icon("trash-2")}删除视频和记录</button>
         </div>
-        <div class="history-upscale"><div class="history-upscale-heading"><div><strong>提升清晰度</strong><span>完成后会作为同一作品的新版本显示。</span></div>${icon("maximize-2")}</div><button class="secondary button-with-icon" data-open-upscale ${videoFile?.absolutePath && version.height < 2160 ? "" : "disabled"}>${version.height >= 2160 ? "当前已是 4K" : "提升分辨率…"}</button></div>
+        <div class="history-upscale"><div class="history-upscale-heading"><div><strong>提升清晰度</strong><span>完成后会作为同一作品的新版本显示。</span></div>${icon("maximize-2")}</div><button class="secondary button-with-icon" data-open-upscale ${videoFile?.absolutePath && versionShortEdge(version) < 2160 ? "" : "disabled"}>${versionShortEdge(version) >= 2160 ? "当前已是 4K" : "提升分辨率…"}</button></div>
       </aside>
     </section>
     <section class="history-record-grid">
@@ -1656,7 +2062,7 @@ function historyDetailPage(): string {
       </article>
       <article class="panel history-record">
         <h2>视频输出</h2>
-        <dl><dt>分辨率</dt><dd>${version.width} × ${version.height}</dd><dt>版本类型</dt><dd>${version.kind === "original" ? "原始生成" : "分辨率提升"}</dd><dt>时长</dt><dd>${version.duration} 秒</dd><dt>成片帧率</dt><dd>${fps} FPS</dd><dt>成片帧数</dt><dd>${Math.round(version.duration * fps)}</dd><dt>输出目录</dt><dd><code>${escapeHtml(videoFile?.absolutePath ?? state.settings.outputDirectory)}</code></dd></dl>
+        <dl><dt>分辨率</dt><dd>${historyResolutionLabel(asset, version)} · ${version.width} × ${version.height}</dd><dt>版本类型</dt><dd>${version.kind === "original" ? "原始生成" : "分辨率提升"}</dd><dt>时长</dt><dd>${version.duration} 秒</dd><dt>成片帧率</dt><dd>${fps} FPS</dd><dt>成片帧数</dt><dd>${Math.round(version.duration * fps)}</dd><dt>输出目录</dt><dd><code>${escapeHtml(videoFile?.absolutePath ?? state.settings.outputDirectory)}</code></dd></dl>
       </article>
       <article class="panel history-record full history-performance-record">
         <div class="history-record-heading"><h2>运行统计</h2><span class="muted">低频采样摘要</span></div>
@@ -2315,6 +2721,12 @@ function render(): void {
   historyMasonryResizeObserver = null;
   historyTitleResizeObserver?.disconnect();
   historyTitleResizeObserver = null;
+  historyMediaObserver?.disconnect();
+  historyMediaObserver = null;
+  historyCoverWarmupController?.abort();
+  historyCoverWarmupController = null;
+  window.clearTimeout(historyCoverWarmupTimer);
+  historyCoverWarmupTimer = undefined;
   closeHistoryContextMenu();
   const content =
     page === "create" ? createPage() :
@@ -2418,14 +2830,39 @@ function closeHistoryContextMenu(): void {
   historyContextMenuElement = null;
 }
 
-function openHistoryDetail(assetId: string): void {
+function openHistoryDetail(assetId: string, versionId?: string): void {
   historyScrollPosition = window.scrollY;
   selectedHistoryAssetId = assetId;
   const asset = state.history.find((item) => item.id === assetId);
-  selectedHistoryVersionId = asset ? preferredVersion(asset).id : "";
+  selectedHistoryVersionId = asset?.versions.find((item) => item.id === versionId)?.id ??
+    (asset ? preferredVersion(asset).id : "");
+  historyForwardTarget = asset
+    ? { assetId, versionId: selectedHistoryVersionId }
+    : null;
   page = "history-detail";
   render();
   window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function returnToHistory(): void {
+  if (page !== "history-detail") return;
+  page = "history";
+  flashMessage = "";
+  render();
+  window.requestAnimationFrame(() => {
+    window.scrollTo({ top: historyScrollPosition, behavior: "auto" });
+  });
+}
+
+function returnToLastHistoryDetail(): void {
+  if (page !== "history" || !historyForwardTarget) return;
+  const target = historyForwardTarget;
+  const asset = state.history.find((item) => item.id === target.assetId);
+  if (!asset) {
+    historyForwardTarget = null;
+    return;
+  }
+  openHistoryDetail(target.assetId, target.versionId);
 }
 
 async function copyHistoryText(value: string, successMessage: string): Promise<void> {
@@ -2434,6 +2871,19 @@ async function copyHistoryText(value: string, successMessage: string): Promise<v
     showMessage(successMessage);
   } catch {
     showMessage("复制失败，请检查系统剪贴板权限。");
+  }
+}
+
+async function copyHistoryFile(filename: string): Promise<void> {
+  if (!filename) {
+    showMessage("当前记录没有可用的视频文件。");
+    return;
+  }
+  try {
+    const copied = await window.studio.copyFile(filename);
+    showMessage(copied ? "视频文件已复制，可在资源管理器中粘贴。" : "当前系统暂不支持复制文件到剪贴板。");
+  } catch {
+    showMessage("复制视频文件失败，请检查文件是否仍然存在。");
   }
 }
 
@@ -2500,6 +2950,7 @@ function openHistoryContextMenu(
     <button role="menuitem" data-history-action="detail"><span class="context-icon">${icon("external-link")}</span><span><strong>查看详情</strong><small>播放视频并查看生成参数</small></span><kbd>Enter</kbd></button>
     <button role="menuitem" data-history-action="edit"><span class="context-icon">${icon("sparkles")}</span><span><strong>使用此参数再创建</strong><small>带入提示词、模型和 Seed</small></span></button>
     <div class="history-context-separator" role="separator"></div>
+    <button role="menuitem" data-history-action="copy-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>复制文件</strong><small>${absolutePath ? "复制视频文件，可在资源管理器中粘贴" : "当前记录没有可用文件"}</small></span></button>
     <button role="menuitem" data-history-action="copy-path" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>复制文件路径</strong><small>${absolutePath ? "复制完整视频文件路径" : "当前记录没有可用文件"}</small></span></button>
     <button role="menuitem" data-history-action="show-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("folder-open")}</span><span><strong>打开所在目录</strong><small>在 Explorer 中定位视频</small></span></button>
     <button role="menuitem" data-history-action="copy-prompt"><span class="context-icon">${icon("file-text")}</span><span><strong>复制提示词</strong><small>复制实际送入模型的文本</small></span></button>
@@ -2528,7 +2979,9 @@ function openHistoryContextMenu(
     closeHistoryContextMenu();
     if (action === "detail") openHistoryDetail(assetId);
     else if (action === "edit") await editHistoryAsset(assetId);
-    else if (action === "copy-path") {
+    else if (action === "copy-file") {
+      await copyHistoryFile(absolutePath);
+    } else if (action === "copy-path") {
       await copyHistoryText(absolutePath, "视频文件路径已复制。");
     } else if (action === "show-file") {
       const shown = await window.studio.showItemInFolder(absolutePath);
@@ -2646,22 +3099,89 @@ function bindConfirmationDialog(): void {
 }
 
 function bindShell(): void {
+  shellNavigationEvents?.abort();
+  const navigationEvents = new AbortController();
+  shellNavigationEvents = navigationEvents;
   document.querySelectorAll<HTMLElement>("[data-page]").forEach((button) => {
     button.addEventListener("click", () => {
       const nextPage = button.dataset.page as Page;
-      const restoreHistory =
-        page === "history-detail" && nextPage === "history";
+      if (page === "history-detail" && nextPage === "history") {
+        returnToHistory();
+        return;
+      }
+      if (nextPage === "history" && page !== "history") historyForwardTarget = null;
+      if (nextPage !== "history") historyForwardTarget = null;
       page = nextPage;
       flashMessage = "";
       render();
       window.requestAnimationFrame(() => {
         window.scrollTo({
-          top: restoreHistory ? historyScrollPosition : 0,
+          top: 0,
           behavior: "auto"
         });
       });
     });
   });
+  if (page === "history-detail") {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      return target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target.isContentEditable;
+    };
+    const handleKeyboardBack = (event: KeyboardEvent) => {
+      if (isEditableTarget(event.target)) return;
+      const isBrowserBack = event.key === "BrowserBack" ||
+        event.key === "GoBack" ||
+        event.code === "BrowserBack" ||
+        (event.altKey && event.key === "ArrowLeft") ||
+        (event.key === "Backspace" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey);
+      if (!isBrowserBack) return;
+      event.preventDefault();
+      event.stopPropagation();
+      returnToHistory();
+    };
+    const handleMouseBack = (event: MouseEvent) => {
+      if (event.button !== 3) return;
+      event.preventDefault();
+      event.stopPropagation();
+      returnToHistory();
+    };
+    window.addEventListener("keydown", handleKeyboardBack, { signal: navigationEvents.signal });
+    window.addEventListener("auxclick", handleMouseBack, { signal: navigationEvents.signal });
+    window.addEventListener("mouseup", handleMouseBack, { signal: navigationEvents.signal });
+  }
+  if (page === "history") {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      return target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target.isContentEditable;
+    };
+    const handleKeyboardForward = (event: KeyboardEvent) => {
+      if (isEditableTarget(event.target)) return;
+      const isBrowserForward = event.key === "BrowserForward" ||
+        event.key === "GoForward" ||
+        event.code === "BrowserForward" ||
+        (event.altKey && event.key === "ArrowRight") ||
+        (event.key === "Backspace" && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey);
+      if (!isBrowserForward) return;
+      event.preventDefault();
+      event.stopPropagation();
+      returnToLastHistoryDetail();
+    };
+    const handleMouseForward = (event: MouseEvent) => {
+      if (event.button !== 4) return;
+      event.preventDefault();
+      event.stopPropagation();
+      returnToLastHistoryDetail();
+    };
+    window.addEventListener("keydown", handleKeyboardForward, { signal: navigationEvents.signal });
+    window.addEventListener("auxclick", handleMouseForward, { signal: navigationEvents.signal });
+    window.addEventListener("mouseup", handleMouseForward, { signal: navigationEvents.signal });
+  }
   bindConfirmationDialog();
 }
 
@@ -3262,6 +3782,7 @@ function bindCreate(): void {
     updateSnippetButton();
   });
   promptInput?.addEventListener("input", () => {
+    resizePromptInput(promptInput);
     const versions = [...state.draft.promptVersions];
     const current = versions[state.draft.activePromptVersion];
     if (current?.label === "手动编辑") {
@@ -3285,6 +3806,10 @@ function bindCreate(): void {
       state.draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video")
     );
   });
+  if (promptInput) {
+    resizePromptInput(promptInput);
+    window.requestAnimationFrame(() => resizePromptInput(promptInput));
+  }
   updatePromptWordCounter(
     promptInput?.value ?? "",
     isMiniMaxH3Model(state.draft.modelId)
@@ -3676,12 +4201,12 @@ function bindUpscaleDialog(): void {
         );
         state = await window.studio.updateUpscaleTask(dialogState.taskId, {
           targetWidth,
-          targetHeight,
+          targetHeight: dialogState.targetHeight,
           modelId: dialogState.modelId,
           workflowPath: `builtin:upscale/${dialogState.modelId}`,
           tileMode: dialogState.tileMode,
           faceRestore: false,
-          outputFilename: createUpscaleFilename(sourceFile.filename, targetHeight)
+          outputFilename: createUpscaleFilename(sourceFile.filename, dialogState.targetHeight)
         });
       } else {
         state = await window.studio.enqueueUpscale({
@@ -3710,6 +4235,7 @@ function bindUpscaleDialog(): void {
 function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   bindHistoryMasonry();
   bindHistoryTitleMarquees();
+  restoreHistoryLayoutAnchor();
   const detailVideo = document.querySelector<HTMLVideoElement>('.history-player video');
   if (detailVideo && !playback) {
     const startPlayback = () => {
@@ -3723,14 +4249,18 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     if (detailVideo.readyState >= 2) startPlayback();
     else detailVideo.addEventListener('canplay', startPlayback, { once: true });
   }
-  document.querySelector("#history-cover-mode")?.addEventListener("change", (event) => {
-    historyCoverMode = (event.currentTarget as HTMLSelectElement).value as typeof historyCoverMode;
-    render();
-  });
   document.querySelectorAll<HTMLElement>("[data-history-layout]").forEach((button) => {
     button.addEventListener("click", () => {
-      historyLayout = button.dataset.historyLayout as typeof historyLayout;
+      const nextLayout = button.dataset.historyLayout as typeof historyLayout;
+      if (nextLayout === historyLayout) return;
+      historyLayoutAnchor = captureHistoryLayoutAnchor();
+      historyLayout = nextLayout;
       render();
+    });
+  });
+  document.querySelectorAll<HTMLElement>(".history-media-badges").forEach((badges) => {
+    badges.addEventListener("click", (event) => {
+      event.stopPropagation();
     });
   });
   document.querySelectorAll<HTMLButtonElement>("[data-history-navigation]").forEach((button) => {
@@ -3744,7 +4274,8 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       openHistoryDetail(nextAsset.id);
     });
   });
-  document.querySelectorAll<HTMLElement>("[data-history-media]").forEach((media) => {
+  const historyMediaCards = [...document.querySelectorAll<HTMLElement>("[data-history-media]")];
+  historyMediaCards.forEach((media) => {
     const video = media.querySelector<HTMLVideoElement>("video");
     if (!video) return;
     const progress = media.querySelector<HTMLButtonElement>(".history-preview-progress");
@@ -3753,7 +4284,9 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     let pendingSeekRatio: number | null = null;
     let seeking = false;
     let resumeAfterSeek = false;
-    const coverTime = Number(media.dataset.coverTime) || 0;
+    let coverTime = Number(media.dataset.coverTime) || 0;
+    const coverSeed = Number(media.dataset.coverSeed) || 0;
+    let coverSelectionStarted = false;
     const previewDuration = () =>
       Number.isFinite(video.duration) && video.duration > 0
         ? video.duration
@@ -3802,6 +4335,37 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
         // Some codecs do not expose a seekable range until more data is buffered.
       }
     };
+    const startSmartCoverSelection = () => {
+      if (
+        coverSelectionStarted ||
+        video.readyState < 2 ||
+        media.dataset.historyCoverCached === "true" ||
+        media.matches(":hover") ||
+        media.classList.contains("playing")
+      ) return;
+      coverSelectionStarted = true;
+      const duration = previewDuration();
+      const isActive = () =>
+        video.dataset.historyLoaded === "true" &&
+        media.isConnected &&
+        !media.matches(":hover") &&
+        !media.classList.contains("playing");
+      void chooseHistoryCoverTime(
+        video,
+        coverTime,
+        duration,
+        coverSeed,
+        isActive
+      ).then((selectedTime) => {
+        if (video.dataset.historyLoaded !== "true" || !media.isConnected) return;
+        coverTime = selectedTime;
+        media.dataset.coverTime = String(selectedTime);
+        if (isActive()) {
+          seekCover();
+          void saveHistoryCover(media, video, isActive);
+        }
+      });
+    };
     const prepareVideo = () => {
       if (video.videoWidth > 0 && video.videoHeight > 0) {
         media.style.setProperty(
@@ -3811,9 +4375,11 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       }
       if (pendingSeekRatio == null) seekCover();
       else seekToRatio(pendingSeekRatio);
+      startSmartCoverSelection();
     };
     if (video.readyState >= 1) prepareVideo();
-    else video.addEventListener("loadedmetadata", prepareVideo, { once: true });
+    video.addEventListener("loadedmetadata", prepareVideo);
+    video.addEventListener("loadeddata", startSmartCoverSelection, { once: true });
     video.addEventListener("timeupdate", () => {
       pendingSeekRatio = null;
       updatePreviewProgress();
@@ -3864,6 +4430,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       seekToRatio(current + (event.key === "ArrowRight" ? 0.05 : -0.05));
     });
     media.addEventListener("mouseenter", () => {
+      loadHistoryCardVideo(media);
       seekToRatio(0);
       media.classList.add("playing");
       void video.play().catch(() => undefined);
@@ -3875,6 +4442,27 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       seekCover();
     });
   });
+  const loadHistoryCardMedia = (media: HTMLElement) => {
+    void loadHistoryCoverFromCache(media).then((cached) => {
+      if (!cached) loadHistoryCardVideo(media);
+    });
+  };
+  if (typeof IntersectionObserver === "undefined") {
+    historyMediaCards.forEach(loadHistoryCardMedia);
+  } else {
+    historyMediaObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const media = entry.target as HTMLElement;
+        if (entry.isIntersecting) {
+          loadHistoryCardMedia(media);
+        } else if (!media.matches(":hover") && !media.classList.contains("playing")) {
+          releaseHistoryCardVideo(media);
+        }
+      });
+    }, { rootMargin: "320px 0px" });
+    historyMediaCards.forEach((media) => historyMediaObserver?.observe(media));
+  }
+  scheduleHistoryCoverWarmup(historyMediaCards);
   document.querySelectorAll<HTMLElement>("[data-history]").forEach((card) => {
     card.addEventListener("contextmenu", (event) => {
       event.preventDefault();
@@ -3885,7 +4473,8 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       );
     });
     const open = (event?: Event) => {
-      if ((event?.target as HTMLElement | null)?.closest("button")) return;
+      const target = event?.target;
+      if (target instanceof Element && target.closest("button")) return;
       openHistoryDetail(card.dataset.history!);
     };
     card.addEventListener("click", (event) => open(event));
@@ -3901,6 +4490,12 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   document.querySelectorAll<HTMLElement>("[data-version-id]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedHistoryVersionId = button.dataset.versionId!;
+      if (selectedHistoryAssetId) {
+        historyForwardTarget = {
+          assetId: selectedHistoryAssetId,
+          versionId: selectedHistoryVersionId
+        };
+      }
       render();
     });
   });
@@ -3908,15 +4503,15 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     const asset = state.history.find((item) => item.id === selectedHistoryAssetId);
     if (!asset) return;
     const version = currentHistoryVersion(asset);
-    const targetHeight = ([720, 1080, 1440, 2160] as const).find(
-      (height) => height > version.height
+    const targetShortEdge = ([720, 1080, 1440, 2160] as const).find(
+      (shortEdge) => shortEdge > versionShortEdge(version)
     );
-    if (!targetHeight) return;
+    if (!targetShortEdge) return;
     const configuredModel = state.settings.defaultUpscaleModel;
     upscaleDialog = {
       assetId: asset.id,
       versionId: version.id,
-      targetHeight,
+      targetHeight: targetShortEdge,
       modelId: (["seedvr2", "flashvsr", "realesrgan"] as const).includes(
         configuredModel as "seedvr2" | "flashvsr" | "realesrgan"
       )
@@ -3973,6 +4568,11 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     button.addEventListener("click", async () => {
       const shown = await window.studio.showItemInFolder(button.dataset.showFile!);
       if (!shown) showMessage("文件不存在或当前路径还没有在本机生成。");
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-copy-file]").forEach((button) => {
+    button.addEventListener("click", () => {
+      void copyHistoryFile(button.dataset.copyFile!);
     });
   });
 }

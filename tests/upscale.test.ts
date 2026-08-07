@@ -39,6 +39,12 @@ describe("upscale dimensions and filenames", () => {
     expect(upscaleDimensions(832, 480, 1080)).toEqual([1872, 1080]);
   });
 
+  it("uses the short edge for portrait and square sources", () => {
+    expect(upscaleDimensions(480, 704, 720)).toEqual([720, 1056]);
+    expect(upscaleDimensions(480, 704, 1080)).toEqual([1080, 1584]);
+    expect(upscaleDimensions(512, 512, 1080)).toEqual([1080, 1080]);
+  });
+
   it("replaces an existing quality suffix and avoids collisions", () => {
     expect(createUpscaleFilename("clip-720p.mp4", 2160)).toBe("clip-4K-v01.mp4");
     expect(uniqueUpscaleFilename("clip.mp4", 1080, ["clip-1080p-v01.mp4"]))
@@ -94,6 +100,18 @@ describe("upscale workflows", () => {
       unload_model: true
     });
     expect(workflow["7"]?.inputs.frames_per_batch).toBe(16);
+  });
+
+  it("chooses FlashVSR scale from the source short edge", () => {
+    const portraitTask = {
+      ...task("flashvsr"),
+      sourceWidth: 480,
+      sourceHeight: 704,
+      targetWidth: 2160,
+      targetHeight: 2160
+    };
+    const workflow = renderUpscaleWorkflow(portraitTask, "source.mp4", models);
+    expect(workflow["4"]?.inputs.scale).toBe(4);
   });
 
   it("forces SeedVR2 block swap even when an old task requested fast mode", () => {

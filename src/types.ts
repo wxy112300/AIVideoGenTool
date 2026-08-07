@@ -528,7 +528,10 @@ export interface AppApi {
   getPerformanceMetrics(settings: Settings): Promise<PerformanceMetrics>;
   pickDirectory(): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
+  readHistoryCover(key: string): Promise<string | null>;
+  saveHistoryCover(key: string, data: ArrayBuffer): Promise<boolean>;
   showItemInFolder(path: string): Promise<boolean>;
+  copyFile(path: string): Promise<boolean>;
   openExternal(url: string): Promise<boolean>;
   enhancePrompt(request: EnhanceRequest): Promise<string>;
   startPromptModel(): Promise<ConnectionResult>;

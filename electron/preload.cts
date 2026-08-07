@@ -25,7 +25,11 @@ const api: AppApi = {
     ipcRenderer.invoke("performance:get", settings),
   pickDirectory: () => ipcRenderer.invoke("file:pick-directory"),
   readImage: (path: string) => ipcRenderer.invoke("file:read-image", path),
+  readHistoryCover: (key: string) => ipcRenderer.invoke("history-cover:read", key),
+  saveHistoryCover: (key: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke("history-cover:save", key, data),
   showItemInFolder: (path: string) => ipcRenderer.invoke("file:show-in-folder", path),
+  copyFile: (path: string) => ipcRenderer.invoke("file:copy", path),
   openExternal: (url: string) => ipcRenderer.invoke("shell:open-external", url),
   enhancePrompt: (request: EnhanceRequest) =>
     ipcRenderer.invoke("prompt:enhance", request),

@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -9,6 +10,7 @@ import {
   type MenuItemConstructorOptions
 } from "electron";
 import { createReadStream, promises as fs } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -103,6 +105,9 @@ import {
 } from "./services/vram-watchdog.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
+const historyCoverDirectory = () => path.join(app.getPath("userData"), "history-covers");
+const historyCoverPath = (key: string) =>
+  path.join(historyCoverDirectory(), `${createHash("sha256").update(key).digest("hex")}.jpg`);
 let mainWindow: BrowserWindow | null = null;
 let store: JsonStore;
 let queueWorker: Promise<void> | null = null;
@@ -214,6 +219,8 @@ function registerMediaProtocol(): void {
       const partial = Boolean(match);
       const headers = new Headers({
         "Accept-Ranges": "bytes",
+        "Access-Control-Allow-Headers": "Range",
+        "Access-Control-Allow-Origin": "*",
         "Content-Type": contentType,
         "Content-Length": String(end - start + 1)
       });
@@ -744,7 +751,7 @@ function upscaleTaskFromRequest(
   state: AppState
 ): UpscaleQueueTask {
   const now = new Date().toISOString();
-  const [targetWidth, targetHeight] = upscaleDimensions(
+  const [targetWidth] = upscaleDimensions(
     request.sourceWidth,
     request.sourceHeight,
     request.targetHeight
@@ -757,7 +764,7 @@ function upscaleTaskFromRequest(
     updatedAt: now,
     outputFilename: uniqueUpscaleFilename(
       request.sourceFilename,
-      targetHeight,
+      request.targetHeight,
       outputNames(state)
     ),
     modelId: request.modelId,
@@ -773,7 +780,7 @@ function upscaleTaskFromRequest(
     sourceWidth: request.sourceWidth,
     sourceHeight: request.sourceHeight,
     targetWidth,
-    targetHeight,
+    targetHeight: request.targetHeight,
     tileMode: "safe",
     faceRestore: request.faceRestore,
     progress: 0
@@ -1117,7 +1124,7 @@ async function executeQueue(): Promise<void> {
             updatedAt: completedAt,
             modelId: completedTask.modelId,
             duration: totalDuration,
-            resolution: height,
+            resolution: completedTask.resolution,
             steps: completedTask.steps,
             fps: completedTask.fps,
             frameInterpolation: completedTask.frameInterpolation,
@@ -1297,6 +1304,30 @@ function registerIpc(): void {
     const content = await fs.readFile(filename);
     return `data:${mime};base64,${content.toString("base64")}`;
   });
+  ipcMain.handle("history-cover:read", async (_event, key: string) => {
+    if (!key) return null;
+    const content = await fs.readFile(historyCoverPath(key)).catch(() => null);
+    return content ? `data:image/jpeg;base64,${content.toString("base64")}` : null;
+  });
+  ipcMain.handle(
+    "history-cover:save",
+    async (_event, key: string, data: ArrayBuffer) => {
+      if (!key || !(data instanceof ArrayBuffer) || data.byteLength === 0) return false;
+      if (data.byteLength > 2 * 1024 * 1024) throw new Error("历史封面缓存不能超过 2 MB");
+      const directory = historyCoverDirectory();
+      await fs.mkdir(directory, { recursive: true });
+      const filename = historyCoverPath(key);
+      const temporary = `${filename}.${crypto.randomUUID()}.tmp`;
+      try {
+        await fs.writeFile(temporary, new Uint8Array(data));
+        await fs.rm(filename, { force: true });
+        await fs.rename(temporary, filename);
+      } finally {
+        await fs.rm(temporary, { force: true }).catch(() => undefined);
+      }
+      return true;
+    }
+  );
   ipcMain.handle(
     "file:save-clipboard-image",
     async (_event, data: ArrayBuffer, mimeType: string) => {
@@ -1327,6 +1358,12 @@ function registerIpc(): void {
   ipcMain.handle("file:show-in-folder", async (_event, filename: string) => {
     if (!filename || !(await fs.stat(filename).catch(() => null))) return false;
     shell.showItemInFolder(filename);
+    return true;
+  });
+  ipcMain.handle("file:copy", async (_event, filename: string) => {
+    const stat = filename ? await fs.stat(filename).catch(() => null) : null;
+    if (!stat?.isFile() || process.platform !== "win32") return false;
+    clipboard.writeBuffer("FileNameW", Buffer.from(`${path.resolve(filename)}\0`, "ucs2"));
     return true;
   });
   ipcMain.handle("shell:open-external", async (_event, value: string) => {
