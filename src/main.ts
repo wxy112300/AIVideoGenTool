@@ -1234,12 +1234,11 @@ function createPage(): string {
           </div>
         </section>
         <section class="composer-control-group composer-seed-group">
-          <div class="composer-group-heading"><div><strong>可复现性</strong><span>控制随机种子和任务复制</span></div></div>
+          <div class="composer-group-heading"><div><strong>可复现性</strong><span>控制随机种子</span></div></div>
           <div class="composer-control-grid composer-seed-grid">
         <label class="settings-field settings-seed">随机 Seed
-          <input id="seed" type="number" placeholder="留空则随机" value="${draft.seed ?? ""}">
+          <div class="inline-field seed-control"><input id="seed" type="number" placeholder="留空则随机" value="${draft.seed ?? ""}"><button class="secondary button-with-icon seed-random" id="random-seed" type="button" title="生成一个新的随机 Seed">${icon("refresh-cw")}随机</button><button class="icon-button" id="clear-seed" type="button" aria-label="清空 Seed" title="清空 Seed">${icon("x")}</button></div>
         </label>
-        <label class="ios-switch-field settings-field settings-keep-seed"><span class="policy-copy"><strong>复制任务时保留 Seed</strong></span><input id="keep-seed" type="checkbox" ${draft.keepSeedOnCopy ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
           </div>
         </section>
         <div class="interpolation-summary settings-summary ${!safety.safe || !r2vSlotsReady ? "unsafe" : isMiniMaxH3 && (draft.duration > 10 || draft.resolution >= 768) ? "caution" : interpolation.multiplier === 1 ? "disabled" : ""}">
@@ -1382,7 +1381,7 @@ function queueTaskCard(task: QueueTask): string {
           <div class="running-copy">
             <span class="eyebrow">当前步骤 · <span id="running-stage">${escapeHtml(task.stage ?? "准备中")}</span></span>
             <div class="progress" role="progressbar" aria-label="任务总进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(task.progress ?? 0)}"><span id="running-progress-bar" style="width:${task.progress ?? 0}%"></span></div>
-            <p>${escapeHtml(description)}</p>
+            <p class="task-description">${escapeHtml(description)}</p>
             <div class="task-meta">${metadata}<span id="running-elapsed">${elapsedText(task.startedAt)}</span></div>
             <div class="running-controls">
               <button class="secondary button-with-icon" id="${state.queueRunning ? "pause-queue" : "start-queue"}">${icon(state.queueRunning ? "pause" : "play")}${state.queueRunning ? "本条完成后暂停" : "继续执行后续任务"}</button>
@@ -1403,7 +1402,7 @@ function queueTaskCard(task: QueueTask): string {
       ${inputPreview}
       <div class="task-main">
         <div><span class="status ${task.status}">${statusLabel(task.status)}</span><h3>${escapeHtml(task.outputFilename)}</h3></div>
-        <p>${escapeHtml(description)}</p>
+        <p class="task-description">${escapeHtml(description)}</p>
         <div class="task-meta">${metadata}</div>
         ${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ""}
       </div>
@@ -2719,6 +2718,13 @@ function patchDraft(patch: Partial<Draft>): void {
   scheduleDraftSave();
 }
 
+function randomSeedValue(): number {
+  const values = new Uint32Array(2);
+  crypto.getRandomValues(values);
+  const high = (values[0] ?? 0) & 0x001fffff;
+  return high * 0x100000000 + (values[1] ?? 0);
+}
+
 async function handleClipboardPaste(event: ClipboardEvent): Promise<void> {
   if (page !== "create" || !state || state.draft.inputMode !== "image") return;
   const activeElement = document.activeElement;
@@ -3279,6 +3285,13 @@ function bindCreate(): void {
       state.draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video")
     );
   });
+  updatePromptWordCounter(
+    promptInput?.value ?? "",
+    isMiniMaxH3Model(state.draft.modelId)
+      ? h3PromptModeForDraft(state.draft)
+      : undefined,
+    state.draft.duration
+  );
   document.querySelector("#prompt-prev")?.addEventListener("click", () => {
     patchDraft({ activePromptVersion: Math.max(0, state.draft.activePromptVersion - 1) });
     render();
@@ -3489,8 +3502,13 @@ function bindCreate(): void {
       if (id === "fps" || id === "frame-interpolation") render();
     });
   }
-  document.querySelector("#keep-seed")?.addEventListener("change", (event) => {
-    patchDraft({ keepSeedOnCopy: (event.target as HTMLInputElement).checked });
+  document.querySelector<HTMLButtonElement>("#clear-seed")?.addEventListener("click", () => {
+    patchDraft({ seed: null });
+    render();
+  });
+  document.querySelector<HTMLButtonElement>("#random-seed")?.addEventListener("click", () => {
+    patchDraft({ seed: randomSeedValue() });
+    render();
   });
   const range = document.querySelector<HTMLInputElement>("#duration");
   const number = document.querySelector<HTMLInputElement>("#duration-number");

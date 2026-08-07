@@ -91,6 +91,16 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .task-card { padding: 16px; align-items: flex-start; }
 .task-main { min-width: 0; flex: 1; }
 .task-main p { margin-bottom: 8px; color: #c4c9d1; }
+.task-description {
+  max-height: 7.2em;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 8px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  scrollbar-gutter: stable;
+}
+.running-copy .task-description { max-height: 6.4em; }
 .task-main h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-actions { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .task-meta { flex-wrap: wrap; color: var(--muted); font-size: 12px; }
@@ -2458,27 +2468,30 @@ main { padding-top: 0; }
   min-width: 0;
 }
 
-.composer-control-grid .ios-switch-field.settings-keep-seed {
-  min-height: 42px;
-  padding: 9px 12px;
+.composer-seed-grid {
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.composer-control-grid .ios-switch-field.settings-keep-seed .ios-switch {
-  width: 42px;
-  height: 24px;
+.seed-control {
+  width: min(100%, 360px);
+  flex-wrap: nowrap;
 }
 
-.composer-control-grid .ios-switch-field.settings-keep-seed .ios-switch::after {
-  width: 16px;
-  height: 16px;
+.seed-control input[type="number"] {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.composer-control-grid .ios-switch-field.settings-keep-seed input:checked + .ios-switch::after {
-  transform: translateX(17px);
+.seed-control .icon-button {
+  flex: 0 0 38px;
 }
 
-.composer-control-grid .settings-keep-seed .policy-copy strong {
-  font-size: 11px;
+.seed-control .seed-random {
+  flex: 0 0 auto;
+  min-width: 64px;
+  padding-inline: 11px;
+  white-space: nowrap;
 }
 
 .composer-settings .settings-summary {
