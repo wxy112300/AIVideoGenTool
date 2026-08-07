@@ -173,7 +173,7 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .history-media-fallback span { color: var(--primary); font-size: 32px; }
 .history-media-fallback span .ui-icon { width: 30px; height: 30px; }
 .history-media-badges { position: absolute; z-index: 2; inset: 10px 10px auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; pointer-events: auto; }
-.media-chip, .history-preview-state { padding: 4px 7px; border: 1px solid rgba(255,255,255,.1); border-radius: 99px; color: #f4f6fa; background: rgba(17, 19, 23, .78); backdrop-filter: blur(8px); font-size: 10px; }
+.media-chip, .history-preview-state { flex: 0 0 auto; padding: 4px 7px; border: 1px solid rgba(255,255,255,.1); border-radius: 99px; color: #f4f6fa; background: rgba(17, 19, 23, .78); backdrop-filter: blur(8px); font-size: 10px; white-space: nowrap; }
 .history-model-chip { max-width: 55%; margin-right: auto; overflow: hidden; border-color: rgba(112,159,237,.3); color: #b7d2ff; background: rgba(31, 60, 114, .78); text-overflow: ellipsis; white-space: nowrap; }
 .history-version-count-chip { color: #b4bfce; background: rgba(17, 23, 32, .72); }
 .history-preview-state { position: absolute; z-index: 2; left: 10px; bottom: 10px; opacity: 0; transform: translateY(4px); transition: .16s ease; }

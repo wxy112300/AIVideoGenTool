@@ -1973,6 +1973,31 @@ function bindHistoryMasonry(): void {
   historyMasonryResizeObserver.observe(gallery);
 }
 
+function switchHistoryLayout(nextLayout: typeof historyLayout): void {
+  if (nextLayout === historyLayout) return;
+  const gallery = document.querySelector<HTMLElement>(".history-gallery");
+  if (!gallery) return;
+  historyLayoutAnchor = captureHistoryLayoutAnchor();
+  historyLayout = nextLayout;
+  historyMasonryResizeObserver?.disconnect();
+  historyMasonryResizeObserver = null;
+  gallery.classList.toggle("masonry", nextLayout === "masonry");
+  gallery.classList.toggle("album", nextLayout === "album");
+  if (nextLayout === "album") {
+    const cards = [...gallery.querySelectorAll<HTMLElement>(".history-gallery-item")];
+    gallery.replaceChildren(...cards);
+    gallery.style.removeProperty("--masonry-columns");
+  } else {
+    bindHistoryMasonry();
+  }
+  document.querySelectorAll<HTMLElement>("[data-history-layout]").forEach((button) => {
+    const active = button.dataset.historyLayout === nextLayout;
+    button.classList.toggle("secondary", active);
+    button.classList.toggle("ghost", !active);
+  });
+  restoreHistoryLayoutAnchor();
+}
+
 function bindHistoryTitleMarquees(): void {
   const titles = [...document.querySelectorAll<HTMLElement>(".history-card-title, .history-detail-title")];
   if (!titles.length) return;
@@ -4252,10 +4277,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   document.querySelectorAll<HTMLElement>("[data-history-layout]").forEach((button) => {
     button.addEventListener("click", () => {
       const nextLayout = button.dataset.historyLayout as typeof historyLayout;
-      if (nextLayout === historyLayout) return;
-      historyLayoutAnchor = captureHistoryLayoutAnchor();
-      historyLayout = nextLayout;
-      render();
+      switchHistoryLayout(nextLayout);
     });
   });
   document.querySelectorAll<HTMLElement>(".history-media-badges").forEach((badges) => {
