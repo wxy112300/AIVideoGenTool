@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  clipboard,
   crashReporter,
   dialog,
   ipcMain,
@@ -65,6 +64,7 @@ import {
   upscaleDimensions
 } from "../src/core/upscale.js";
 import { JsonStore } from "./store.js";
+import { copyFileToWindowsClipboard } from "./services/windows-clipboard.js";
 import {
   enhancePrompt,
   releasePromptModelRuntime,
@@ -2011,7 +2011,7 @@ function registerIpc(): void {
   ipcMain.handle("file:copy", async (_event, filename: string) => {
     const stat = filename ? await fs.stat(filename).catch(() => null) : null;
     if (!stat?.isFile() || process.platform !== "win32") return false;
-    clipboard.writeBuffer("FileNameW", Buffer.from(`${path.resolve(filename)}\0`, "ucs2"));
+    await copyFileToWindowsClipboard(path.resolve(filename));
     return true;
   });
   ipcMain.handle("shell:open-external", async (_event, value: string) => {

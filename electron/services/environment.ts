@@ -204,10 +204,18 @@ export function normalizeProxyUrl(value: string): string {
 }
 
 function downloadEnvironment(settings: Settings): NodeJS.ProcessEnv {
-  if (!settings.proxyEnabled) return process.env;
+  // Detached Python processes on a Chinese Windows locale otherwise inherit
+  // GBK for stderr. A custom node that logs an emoji while reporting an
+  // import error can then crash ComfyUI itself with UnicodeEncodeError.
+  const baseEnvironment: NodeJS.ProcessEnv = {
+    ...process.env,
+    PYTHONUTF8: "1",
+    PYTHONIOENCODING: "utf-8"
+  };
+  if (!settings.proxyEnabled) return baseEnvironment;
   const proxy = normalizeProxyUrl(settings.proxyUrl);
   return {
-    ...process.env,
+    ...baseEnvironment,
     HTTP_PROXY: proxy,
     HTTPS_PROXY: proxy,
     ALL_PROXY: proxy,
