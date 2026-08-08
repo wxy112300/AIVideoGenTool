@@ -23,6 +23,13 @@ const api: AppApi = {
     ipcRenderer.invoke("workflow:get-bundled", modelId, inputMode),
   getPerformanceMetrics: (settings: Settings) =>
     ipcRenderer.invoke("performance:get", settings),
+  readAppLogs: (limit?: number) => ipcRenderer.invoke("logs:read", limit),
+  openAppLogDirectory: (kind: "logs" | "crashDumps") =>
+    ipcRenderer.invoke("logs:open-directory", kind),
+  reportRendererError: (message: string, meta?: Record<string, unknown>) =>
+    ipcRenderer.invoke("logs:renderer-error", message, meta),
+  reportUserAction: (action: string, meta?: Record<string, unknown>) =>
+    ipcRenderer.invoke("logs:user-action", action, meta),
   pickDirectory: () => ipcRenderer.invoke("file:pick-directory"),
   readImage: (path: string) => ipcRenderer.invoke("file:read-image", path),
   readHistoryCover: (key: string) => ipcRenderer.invoke("history-cover:read", key),

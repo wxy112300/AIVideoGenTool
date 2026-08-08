@@ -506,6 +506,25 @@ export interface TaskPerformanceStats {
   vramTotalBytes: number | null;
 }
 
+export type AppLogLevel = "debug" | "info" | "warn" | "error" | "fatal";
+
+export interface AppLogRecord {
+  timestamp: string;
+  level: AppLogLevel;
+  scope: string;
+  event: string;
+  message: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface AppLogSnapshot {
+  directory: string;
+  crashDirectory?: string;
+  retentionDays: number;
+  records: AppLogRecord[];
+  text: string;
+}
+
 export interface TaskPreview {
   taskId: string;
   dataUrl: string;
@@ -526,6 +545,10 @@ export interface AppApi {
     inputMode?: Draft["inputMode"]
   ): Promise<BundledWorkflow | null>;
   getPerformanceMetrics(settings: Settings): Promise<PerformanceMetrics>;
+  readAppLogs(limit?: number): Promise<AppLogSnapshot>;
+  openAppLogDirectory(kind: "logs" | "crashDumps"): Promise<boolean>;
+  reportRendererError(message: string, meta?: Record<string, unknown>): Promise<void>;
+  reportUserAction(action: string, meta?: Record<string, unknown>): Promise<void>;
   pickDirectory(): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
   readHistoryCover(key: string): Promise<string | null>;

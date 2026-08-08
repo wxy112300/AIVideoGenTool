@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   Ban,
   Check,
   ChevronDown,
@@ -56,6 +57,7 @@ import {
   createIcons
 } from "lucide";
 import type {
+  AppLogSnapshot,
   AppState,
   AssetVersion,
   BundledWorkflow,
@@ -140,6 +142,8 @@ let upscaleDialog: {
   tileMode: "auto" | "safe" | "fast";
 } | null = null;
 let historyScrollPosition = 0;
+let historyScrollRestorePending = false;
+let historyViewportEvents: AbortController | null = null;
 let historyLayoutAnchor: { assetId: string; offsetFromCenter: number } | null = null;
 let historyLayout: "masonry" | "album" = "masonry";
 let environmentScan: EnvironmentScanResult | null = null;
@@ -162,7 +166,14 @@ let attentionAccelerationLog = "";
 let settingsDraft: Settings | null = null;
 let llamaServerInstalling = false;
 let llamaServerInstallLog = "";
-let settingsTab: "system" | "acceleration" | "video" | "nodes" | "prompt" | "upscale" = "system";
+let settingsTab: "system" | "acceleration" | "video" | "nodes" | "prompt" | "upscale" | "logs" = "system";
+let appLogs: AppLogSnapshot | null = null;
+let appLogsLoading = false;
+let appLogsError = "";
+let appLogPollingTimer: number | undefined;
+let appLogPollingInFlight = false;
+let appLogFollowTail = true;
+let appLogScreenClearedAt: number | null = null;
 let selectedInstallGuide: {
   profileName: string;
   component: ModelComponentStatus;
@@ -233,6 +244,7 @@ const lucideIconSet = {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   Ban,
   Check,
   ChevronDown,
@@ -1299,6 +1311,7 @@ function shell(content: string): string {
       ${flashMessage ? `<div class="flash" role="status">${escapeHtml(flashMessage)}</div>` : ""}
       <main>${content}</main>
     </div>
+    ${page === "history" || page === "history-detail" ? `<button class="history-back-top" id="history-back-top" type="button" aria-label="返回顶部" title="返回顶部">${icon("arrow-up")}</button>` : ""}
     ${confirmationDialog()}
     ${upscaleDialogHtml()}`;
 }
@@ -1988,6 +2001,34 @@ function restoreHistoryLayoutAnchor(): void {
     if (Math.abs(delta) < 1) return;
     window.scrollBy({ top: delta, behavior: "auto" });
   });
+}
+
+function restoreHistoryScrollPosition(): void {
+  const position = Math.max(0, historyScrollPosition);
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: position, behavior: "auto" });
+    });
+  });
+}
+
+function bindHistoryViewportControls(): void {
+  const events = new AbortController();
+  historyViewportEvents = events;
+  const backTop = document.querySelector<HTMLButtonElement>("#history-back-top");
+  const update = () => {
+    if (page === "history") historyScrollPosition = window.scrollY;
+    backTop?.classList.toggle("visible", window.scrollY > 260);
+  };
+  window.addEventListener("scroll", update, {
+    passive: true,
+    signal: events.signal
+  });
+  backTop?.addEventListener("click", () => {
+    reportUserAction("history-scroll-top");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, { signal: events.signal });
+  update();
 }
 
 function historyMasonryColumnCount(width: number, gap = 10): number {
@@ -2784,13 +2825,32 @@ function settingsPage(): string {
       </section>
     </section>`;
 
+  const logsPanel = `
+    <section class="settings-panel app-logs-panel">
+      <section class="panel settings-section">
+        <div class="section-heading">
+          <div><h2>运行日志</h2><span class="muted">记录程序生命周期、任务阶段和错误，不记录提示词、输入内容或媒体路径。</span></div>
+          <div class="button-row"><button class="secondary button-with-icon" id="refresh-app-logs" ${appLogsLoading ? "disabled" : ""}>${icon(appLogsLoading ? "refresh-cw" : "rotate-ccw")}${appLogsLoading ? "读取中…" : "刷新"}</button></div>
+        </div>
+        <div class="app-log-summary">
+          <div class="app-log-directory-actions"><span>目录</span><div><button class="secondary button-with-icon" id="open-app-log-directory">${icon("folder-open")}日志目录</button><button class="secondary button-with-icon" id="open-app-crash-directory">${icon("folder-open")}崩溃转储</button></div></div>
+          <div class="app-log-stats"><div class="app-log-stat"><span>保留</span><strong>${appLogs?.retentionDays ?? 7} 天</strong></div><div class="app-log-stat"><span>记录</span><strong id="app-log-count">${appLogs?.records.length ?? 0}</strong></div></div>
+        </div>
+        ${appLogsError ? `<p class="error">${escapeHtml(appLogsError)}</p>` : ""}
+        ${appLogs?.text
+          ? `<pre class="app-log-terminal" id="app-log-terminal">${appLogTerminalHtml(visibleAppLogText(appLogs.text))}</pre>`
+          : `<div class="environment-empty">${appLogsLoading ? "正在读取运行日志…" : "暂无运行日志"}</div>`}
+      </section>
+    </section>`;
+
   const activePanel =
     settingsTab === "system" ? systemPanel :
     settingsTab === "acceleration" ? accelerationPanel :
     settingsTab === "video" ? videoPanel :
     settingsTab === "nodes" ? nodePanel :
     settingsTab === "prompt" ? promptPanel :
-    upscalePanel;
+    settingsTab === "upscale" ? upscalePanel :
+    logsPanel;
 
   return `
     <section class="page-heading settings-heading">
@@ -2805,7 +2865,8 @@ function settingsPage(): string {
           ["video", "images", "视频模型"],
           ["nodes", "workflow", "节点与工作流"],
           ["prompt", "sparkles", "提示词扩写"],
-          ["upscale", "maximize-2", "分辨率提升"]
+          ["upscale", "maximize-2", "分辨率提升"],
+          ["logs", "file-text", "运行日志"]
         ] as const).map(([id, iconName, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "prompt" && environmentScan ? `<small>${promptAvailable}/${promptProfiles.length}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
       </nav>
       <div class="settings-content">${activePanel}</div>
@@ -2814,6 +2875,11 @@ function settingsPage(): string {
 }
 
 function render(): void {
+  if (page === "history" && !historyScrollRestorePending) {
+    historyScrollPosition = window.scrollY;
+  }
+  historyViewportEvents?.abort();
+  historyViewportEvents = null;
   const playback = captureHistoryPlayback();
   stopRenderedVideoPlayback();
   historyMasonryResizeObserver?.disconnect();
@@ -2853,8 +2919,16 @@ function render(): void {
     bindQueue();
     void loadQueueInputPreviews();
   }
-  else if (page === "history" || page === "history-detail") bindHistory(playback);
+  else if (page === "history" || page === "history-detail") {
+    bindHistory(playback);
+    bindHistoryViewportControls();
+  }
   else if (page === "settings") bindSettings();
+  syncAppLogPolling();
+  if (page === "history") {
+    restoreHistoryScrollPosition();
+    historyScrollRestorePending = false;
+  }
   restoreHistoryPlayback(playback);
 }
 
@@ -2869,8 +2943,152 @@ function showMessage(message: string): void {
   }, 3500);
 }
 
+function reportUserAction(action: string, meta?: Record<string, unknown>): void {
+  void window.studio.reportUserAction(action, meta).catch(() => undefined);
+}
+
+function clearAppLogScreen(): void {
+  if (appLogsLoading) return;
+  appLogScreenClearedAt = Date.now();
+  appLogFollowTail = true;
+  reportUserAction("clear-log-screen");
+  const terminal = document.querySelector<HTMLPreElement>("#app-log-terminal");
+  if (terminal) {
+    terminal.innerHTML = "";
+    terminal.scrollTop = 0;
+  }
+}
+
+function openAppLogContextMenu(clientX: number, clientY: number): void {
+  closeHistoryContextMenu();
+  const selectedText = window.getSelection()?.toString() ?? "";
+  const menu = document.createElement("section");
+  menu.className = "history-context-menu app-log-context-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "运行日志快捷操作");
+  menu.innerHTML = `<button role="menuitem" data-app-log-action="copy" ${selectedText.trim() ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>复制</strong><small>复制选中的日志文本</small></span></button><button role="menuitem" data-app-log-action="select-all"><span class="context-icon">${icon("list")}</span><span><strong>全选</strong><small>选择当前日志内容</small></span></button><div class="history-context-separator" role="separator"></div><button class="danger" role="menuitem" data-app-log-action="clear"><span class="context-icon">${icon("trash-2")}</span><span><strong>清屏</strong><small>只清空当前视口，继续接收新日志</small></span></button>`;
+  menu.style.left = `${clientX}px`;
+  menu.style.top = `${clientY}px`;
+  document.body.append(menu);
+  renderIcons(menu);
+  historyContextMenuElement = menu;
+  const events = new AbortController();
+  historyContextMenuEvents = events;
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(clientX, window.innerWidth - rect.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(clientY, window.innerHeight - rect.height - 8))}px`;
+  menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  menu.addEventListener("contextmenu", (event) => event.preventDefault());
+  menu.addEventListener("click", async (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-app-log-action]");
+    if (!button || button.disabled) return;
+    const action = button.dataset.appLogAction;
+    closeHistoryContextMenu();
+    if (action === "copy") {
+      try {
+        await navigator.clipboard.writeText(selectedText);
+        reportUserAction("copy-app-log-selection", { length: selectedText.length });
+        showMessage("日志片段已复制。");
+      } catch {
+        showMessage("复制日志失败，请检查系统剪贴板权限。");
+      }
+    } else if (action === "select-all") {
+      const terminal = document.querySelector<HTMLPreElement>("#app-log-terminal");
+      if (terminal) {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(terminal);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+    } else if (action === "clear") {
+      clearAppLogScreen();
+    }
+  });
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (!menu.contains(event.target as Node)) closeHistoryContextMenu();
+    },
+    { capture: true, signal: events.signal }
+  );
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key === "Escape") closeHistoryContextMenu();
+    },
+    { signal: events.signal }
+  );
+  window.addEventListener("blur", closeHistoryContextMenu, { signal: events.signal });
+  window.addEventListener("resize", closeHistoryContextMenu, { signal: events.signal });
+}
+
+function appLogTerminalHtml(text: string): string {
+  if (!text) return "暂无运行日志";
+  return text.split("\n").map((line) => {
+    const level = line.match(/\]\s+\[(DEBUG|INFO|WARN|ERROR|FATAL)\]/u)?.[1]?.toLowerCase() ?? "info";
+    return `<span class="app-log-line ${level}">${escapeHtml(line)}</span>`;
+  }).join("\n");
+}
+
+function visibleAppLogText(text: string): string {
+  if (appLogScreenClearedAt == null) return text;
+  return text.split("\n").filter((line) => {
+    const timestamp = line.match(/^\[([^\]]+)\]/u)?.[1];
+    return timestamp ? Date.parse(timestamp) >= appLogScreenClearedAt! : false;
+  }).join("\n");
+}
+
+function applyAppLogSnapshot(snapshot: AppLogSnapshot): void {
+  appLogs = snapshot;
+  const terminal = document.querySelector<HTMLPreElement>("#app-log-terminal");
+  if (!terminal) {
+    render();
+    return;
+  }
+  const shouldFollowTail = appLogFollowTail ||
+    terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 48;
+  terminal.innerHTML = appLogTerminalHtml(visibleAppLogText(snapshot.text));
+  if (shouldFollowTail) terminal.scrollTop = terminal.scrollHeight;
+  const count = document.querySelector<HTMLElement>("#app-log-count");
+  if (count) count.textContent = String(snapshot.records.length);
+}
+
+async function pollAppLogs(): Promise<void> {
+  if (
+    appLogPollingInFlight ||
+    appLogsLoading ||
+    page !== "settings" ||
+    settingsTab !== "logs"
+  ) return;
+  appLogPollingInFlight = true;
+  try {
+    const snapshot = await window.studio.readAppLogs(500);
+    if (snapshot.text !== appLogs?.text) applyAppLogSnapshot(snapshot);
+  } catch {
+    // The panel keeps the last readable log while the main process is busy.
+  } finally {
+    appLogPollingInFlight = false;
+  }
+}
+
+function syncAppLogPolling(): void {
+  const shouldPoll = page === "settings" && settingsTab === "logs";
+  if (!shouldPoll) {
+    if (appLogPollingTimer !== undefined) {
+      window.clearInterval(appLogPollingTimer);
+      appLogPollingTimer = undefined;
+    }
+    return;
+  }
+  if (appLogPollingTimer === undefined) {
+    appLogPollingTimer = window.setInterval(() => void pollAppLogs(), 2_000);
+  }
+}
+
 async function releasePromptModelFromUi(): Promise<void> {
   if (promptReleasing) return;
+  reportUserAction("release-prompt-service");
   promptReleasing = true;
   render();
   try {
@@ -2887,6 +3105,7 @@ async function releasePromptModelFromUi(): Promise<void> {
 
 async function startPromptModelFromUi(): Promise<void> {
   if (promptStarting) return;
+  reportUserAction("start-prompt-service");
   promptStarting = true;
   render();
   try {
@@ -2930,7 +3149,7 @@ function closeHistoryContextMenu(): void {
 }
 
 function openHistoryDetail(assetId: string, versionId?: string): void {
-  historyScrollPosition = window.scrollY;
+  if (page === "history") historyScrollPosition = window.scrollY;
   selectedHistoryAssetId = assetId;
   const asset = state.history.find((item) => item.id === assetId);
   selectedHistoryVersionId = asset?.versions.find((item) => item.id === versionId)?.id ??
@@ -2945,12 +3164,10 @@ function openHistoryDetail(assetId: string, versionId?: string): void {
 
 function returnToHistory(): void {
   if (page !== "history-detail") return;
+  historyScrollRestorePending = true;
   page = "history";
   flashMessage = "";
   render();
-  window.requestAnimationFrame(() => {
-    window.scrollTo({ top: historyScrollPosition, behavior: "auto" });
-  });
 }
 
 function returnToLastHistoryDetail(): void {
@@ -3204,21 +3421,29 @@ function bindShell(): void {
   document.querySelectorAll<HTMLElement>("[data-page]").forEach((button) => {
     button.addEventListener("click", () => {
       const nextPage = button.dataset.page as Page;
+      const previousPage = page;
       if (page === "history-detail" && nextPage === "history") {
         returnToHistory();
         return;
       }
+      if (previousPage === "history") historyScrollPosition = window.scrollY;
       if (nextPage === "history" && page !== "history") historyForwardTarget = null;
       if (nextPage !== "history") historyForwardTarget = null;
+      if (nextPage === "history" && previousPage !== "history") {
+        historyScrollRestorePending = true;
+      }
+      reportUserAction("navigate-panel", { from: page, to: nextPage });
       page = nextPage;
       flashMessage = "";
       render();
-      window.requestAnimationFrame(() => {
-        window.scrollTo({
-          top: 0,
-          behavior: "auto"
+      if (nextPage !== "history") {
+        window.requestAnimationFrame(() => {
+          window.scrollTo({
+            top: 0,
+            behavior: "auto"
+          });
         });
-      });
+      }
     });
   });
   if (page === "history-detail") {
@@ -4158,6 +4383,12 @@ function bindCreate(): void {
     render();
   });
   document.querySelector("#enqueue")?.addEventListener("click", async () => {
+    reportUserAction("queue-enqueue", {
+      taskType: state.draft.inputMode === "video" ? "extension" : "generation",
+      modelId: state.draft.modelId,
+      duration: state.draft.duration,
+      fps: state.draft.fps
+    });
     try {
       if (state.draft.inputMode === "video") {
         state = await window.studio.enqueueExtension(state.draft);
@@ -4174,6 +4405,7 @@ function bindCreate(): void {
 
 function bindQueue(): void {
   document.querySelector("#start-queue")?.addEventListener("click", async () => {
+    reportUserAction("queue-start");
     try {
       state = await window.studio.startQueue();
       promptRuntimeLoaded = false;
@@ -4183,27 +4415,35 @@ function bindQueue(): void {
     }
   });
   document.querySelector("#pause-queue")?.addEventListener("click", async () => {
+    reportUserAction("queue-pause");
     state = await window.studio.pauseQueue();
     render();
   });
   document.querySelector("#optimize-queue")?.addEventListener("click", async () => {
+    reportUserAction("queue-optimize");
     state = await window.studio.optimizeQueue();
     showMessage("等待任务已按模型和工作流重新分组。");
   });
   document.querySelectorAll<HTMLElement>("[data-remove]").forEach((button) => {
     button.addEventListener("click", async () => {
+      reportUserAction("queue-remove", { taskId: button.dataset.remove });
       state = await window.studio.removeTask(button.dataset.remove!);
       render();
     });
   });
   document.querySelectorAll<HTMLElement>("[data-cancel]").forEach((button) => {
     button.addEventListener("click", async () => {
+      reportUserAction("queue-cancel", { taskId: button.dataset.cancel });
       state = await window.studio.cancelTask(button.dataset.cancel!);
       render();
     });
   });
   document.querySelectorAll<HTMLElement>("[data-move]").forEach((button) => {
     button.addEventListener("click", async () => {
+      reportUserAction("queue-move", {
+        taskId: button.dataset.move,
+        direction: button.dataset.direction
+      });
       state = await window.studio.moveTask(
         button.dataset.move!,
         Number(button.dataset.direction) as -1 | 1
@@ -4213,6 +4453,7 @@ function bindQueue(): void {
   });
   document.querySelectorAll<HTMLElement>("[data-duplicate]").forEach((button) => {
     button.addEventListener("click", async () => {
+      reportUserAction("queue-duplicate", { taskId: button.dataset.duplicate });
       state = await window.studio.duplicateTask(button.dataset.duplicate!);
       render();
     });
@@ -4224,6 +4465,7 @@ function bindQueue(): void {
   });
   document.querySelectorAll<HTMLElement>("[data-retry]").forEach((button) => {
     button.addEventListener("click", async () => {
+      reportUserAction("queue-retry", { taskId: button.dataset.retry });
       state = await window.studio.retryTask(button.dataset.retry!);
       render();
     });
@@ -4283,6 +4525,11 @@ function bindUpscaleDialog(): void {
   document.querySelector("#enqueue-upscale")?.addEventListener("click", async () => {
     if (!upscaleDialog) return;
     const dialogState = upscaleDialog;
+    reportUserAction(dialogState.taskId ? "upscale-task-update" : "upscale-task-enqueue", {
+      taskId: dialogState.taskId,
+      modelId: dialogState.modelId,
+      targetHeight: dialogState.targetHeight
+    });
     const asset = state.history.find((item) => item.id === dialogState.assetId);
     const version = asset?.versions.find((item) => item.id === dialogState.versionId);
     const fileIndex = version ? versionVideoIndex(version) : -1;
@@ -4739,6 +4986,7 @@ function formSettings(): Settings {
 }
 
 async function runEnvironmentScan(settings: Settings): Promise<void> {
+  reportUserAction("scan-environment");
   environmentScanning = true;
   render();
   try {
@@ -4751,8 +4999,27 @@ async function runEnvironmentScan(settings: Settings): Promise<void> {
   }
 }
 
+async function loadAppLogs(): Promise<void> {
+  if (appLogsLoading) return;
+  appLogScreenClearedAt = null;
+  appLogsLoading = true;
+  appLogsError = "";
+  render();
+  try {
+    applyAppLogSnapshot(await window.studio.readAppLogs(500));
+  } catch (error) {
+    appLogsError = error instanceof Error ? error.message : String(error);
+  } finally {
+    appLogsLoading = false;
+    render();
+  }
+}
+
 function bindSettings(): void {
-  if (!environmentScan && !environmentScanning) {
+  if (settingsTab === "logs" && !appLogs && !appLogsLoading) {
+    void loadAppLogs();
+  }
+  if (settingsTab !== "logs" && !environmentScan && !environmentScanning) {
     void runEnvironmentScan(settingsDraft ?? state.settings);
     return;
   }
@@ -4806,9 +5073,39 @@ function bindSettings(): void {
     button.addEventListener("click", () => {
       settingsDraft = formSettings();
       settingsTab = button.dataset.settingsTab as typeof settingsTab;
+      reportUserAction("settings-tab", { tab: settingsTab });
       render();
     });
   });
+  document.querySelector<HTMLButtonElement>("#refresh-app-logs")?.addEventListener("click", () => {
+    void loadAppLogs();
+  });
+  const openLogDirectory = async (
+    kind: "logs" | "crashDumps",
+    action: string,
+    failureMessage: string
+  ) => {
+    reportUserAction(action);
+    const opened = await window.studio.openAppLogDirectory(kind);
+    if (!opened) showMessage(failureMessage);
+  };
+  document.querySelector<HTMLButtonElement>("#open-app-log-directory")?.addEventListener("click", () => {
+    void openLogDirectory("logs", "open-log-directory", "日志目录无法打开。");
+  });
+  document.querySelector<HTMLButtonElement>("#open-app-crash-directory")?.addEventListener("click", () => {
+    void openLogDirectory("crashDumps", "open-crash-directory", "崩溃转储目录无法打开。");
+  });
+  const terminal = document.querySelector<HTMLPreElement>("#app-log-terminal");
+  if (terminal) {
+    terminal.scrollTop = terminal.scrollHeight;
+    terminal.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      openAppLogContextMenu(event.clientX, event.clientY);
+    });
+    terminal.addEventListener("scroll", () => {
+      appLogFollowTail = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 48;
+    });
+  }
   document.querySelectorAll<HTMLButtonElement>("[data-install-profile]").forEach((button) => {
     button.addEventListener("click", () => {
       settingsDraft = formSettings();
@@ -5249,6 +5546,24 @@ window.studio.onAttentionInstallLog((message) => {
     logElement.textContent = attentionAccelerationLog;
     logElement.scrollTop = logElement.scrollHeight;
   }
+});
+
+window.addEventListener("error", (event) => {
+  void window.studio.reportRendererError(
+    event.message || "Renderer error",
+    {
+      source: event.filename,
+      line: event.lineno,
+      column: event.colno
+    }
+  ).catch(() => undefined);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason instanceof Error
+    ? event.reason.message
+    : String(event.reason ?? "Unhandled promise rejection");
+  void window.studio.reportRendererError(reason).catch(() => undefined);
 });
 
 function setMetric(

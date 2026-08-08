@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  crashReporter,
   dialog,
   ipcMain,
   Menu,
@@ -103,6 +104,7 @@ import {
   startAdaptiveVramWatchdog,
   type VramWatchdogMonitor
 } from "./services/vram-watchdog.js";
+import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const historyCoverDirectory = () => path.join(app.getPath("userData"), "history-covers");
@@ -117,6 +119,71 @@ let nativePromptWorker: Promise<unknown> | null = null;
 let allowWindowClose = false;
 let closeFlowRunning = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
+const appLogger = getApplicationLogger();
+let fatalProcessErrorHandled = false;
+
+try {
+  crashReporter.start({
+    uploadToServer: false,
+    compress: true
+  });
+} catch {
+  // Crash reporting is best-effort and must not prevent the app from starting.
+}
+
+function errorLogMeta(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      errorName: error.name,
+      errorStack: error.stack ?? ""
+    };
+  }
+  return { errorType: typeof error };
+}
+
+function appLogSnapshot(limit?: number) {
+  let crashDirectory = "";
+  try {
+    crashDirectory = app.getPath("crashDumps");
+  } catch {
+    // CrashReporter is initialized after Electron is ready.
+  }
+  return {
+    ...appLogger.recent(limit),
+    ...(crashDirectory ? { crashDirectory } : {})
+  };
+}
+
+process.on("uncaughtException", (error) => {
+  appLogger.fatal(
+    "process",
+    "uncaught-exception",
+    safeLogErrorMessage(error),
+    errorLogMeta(error)
+  );
+  if (fatalProcessErrorHandled) return;
+  fatalProcessErrorHandled = true;
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 100);
+});
+
+process.on("unhandledRejection", (reason) => {
+  appLogger.error(
+    "process",
+    "unhandled-rejection",
+    safeLogErrorMessage(reason),
+    errorLogMeta(reason)
+  );
+});
+
+process.on("warning", (warning) => {
+  appLogger.warn(
+    "process",
+    "runtime-warning",
+    safeLogErrorMessage(warning),
+    errorLogMeta(warning)
+  );
+});
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -368,7 +435,24 @@ async function bundledWorkflowFor(
   return null;
 }
 
+let lastQueueLogSignature = "";
+
 function sendState(state = store.get()): void {
+  const queueSignature = state.queue
+    .map((task) => `${task.id}:${task.status}`)
+    .join("|");
+  if (queueSignature !== lastQueueLogSignature) {
+    lastQueueLogSignature = queueSignature;
+    appLogger.info("queue", "state-changed", "Queue state changed", {
+      queueCount: state.queue.length,
+      waitingCount: state.queue.filter((task) => task.status === "waiting").length,
+      runningCount: state.queue.filter((task) => task.status === "running").length,
+      failedCount: state.queue.filter((task) => task.status === "failed").length,
+      cancelledCount: state.queue.filter((task) => task.status === "cancelled").length,
+      queueRunning: state.queueRunning,
+      taskOrder: state.queue.map((task) => task.id)
+    });
+  }
   mainWindow?.webContents.send("state:changed", state);
 }
 
@@ -492,6 +576,7 @@ async function interruptForExit(waitForWorker: boolean): Promise<{
 }
 
 async function finishWindowClose(): Promise<void> {
+  appLogger.info("app", "shutdown", "Application shutdown started");
   await releasePromptRuntime(store.get().settings);
   allowWindowClose = true;
   mainWindow?.destroy();
@@ -559,6 +644,7 @@ async function handleWindowClose(): Promise<void> {
 
 function createWindow(): void {
   allowWindowClose = false;
+  appLogger.info("window", "created", "Main window created");
   mainWindow = new BrowserWindow({
     title: "Local Video Studio",
     width: 1280,
@@ -616,12 +702,34 @@ function createWindow(): void {
     Menu.buildFromTemplate(menuItems).popup({ window: mainWindow! });
   });
   mainWindow.on("close", (event) => {
+    appLogger.info("window", "close-requested", "Main window close requested", {
+      hasRunningTask: store.get().queue.some((task) => task.status === "running")
+    });
     if (allowWindowClose) return;
     event.preventDefault();
     void handleWindowClose();
   });
   mainWindow.on("closed", () => {
+    appLogger.info("window", "closed", "Main window closed");
     mainWindow = null;
+  });
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    appLogger.error("renderer", "process-gone", "Renderer process exited", {
+      reason: details.reason,
+      exitCode: details.exitCode
+    });
+  });
+  mainWindow.webContents.on("unresponsive", () => {
+    appLogger.warn("renderer", "unresponsive", "Renderer became unresponsive");
+  });
+  mainWindow.webContents.on("responsive", () => {
+    appLogger.info("renderer", "responsive", "Renderer became responsive");
+  });
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
+    appLogger.error("renderer", "load-failed", "Renderer failed to load", {
+      errorCode,
+      errorDescription
+    });
   });
 
   const developmentUrl = process.env.VITE_DEV_SERVER_URL;
@@ -793,7 +901,25 @@ async function updateTask(
 ): Promise<AppState> {
   const next = await store.update((state) => {
     const task = state.queue.find((item) => item.id === taskId);
-    if (task) Object.assign(task, patch, { updatedAt: new Date().toISOString() });
+    if (!task) return;
+    if (patch.status && patch.status !== task.status) {
+      appLogger.info("queue", "task-status", "Queue task status changed", {
+        taskId,
+        taskType: task.taskType,
+        modelId: task.modelId,
+        status: patch.status
+      });
+    }
+    if (patch.stage && patch.stage !== task.stage) {
+      appLogger.info("queue", "task-stage", "Queue task stage changed", {
+        taskId,
+        taskType: task.taskType,
+        modelId: task.modelId,
+        progress: patch.progress ?? task.progress ?? 0,
+        stage: patch.stage
+      });
+    }
+    Object.assign(task, patch, { updatedAt: new Date().toISOString() });
   });
   sendState(next);
   return next;
@@ -931,6 +1057,21 @@ async function executeQueue(): Promise<void> {
   while (store.get().queueRunning) {
     const task = store.get().queue.find((item) => item.status === "waiting");
     if (!task) break;
+    appLogger.info("queue", "task-started", "Queue task execution started", {
+      taskId: task.id,
+      taskType: task.taskType,
+      modelId: task.modelId,
+      duration: task.duration,
+      fps: task.fps,
+      ...(task.taskType === "upscale"
+        ? {
+            sourceWidth: task.sourceWidth,
+            sourceHeight: task.sourceHeight,
+            targetWidth: task.targetWidth,
+            targetHeight: task.targetHeight
+          }
+        : {})
+    });
     activeController = new AbortController();
     let vramWatchdog: VramWatchdogMonitor | undefined;
     let taskPerformanceMonitor: TaskPerformanceMonitor | undefined;
@@ -984,16 +1125,26 @@ async function executeQueue(): Promise<void> {
           }
         }
       );
-      const { promptId, clientId, nodeTypes } = await submitTask(
+      const submitted = await submitTask(
         task,
         store.get().settings,
         activeController.signal
       );
+      const { promptId, clientId, nodeTypes } = submitted;
+      appLogger.info("comfy", "prompt-submitted", "Workflow submitted to ComfyUI", {
+        taskId: task.id,
+        taskType: task.taskType,
+        modelId: task.modelId,
+        promptId,
+        nodeCount: Object.keys(nodeTypes).length
+      });
       await updateTask(task.id, {
         comfyPromptId: promptId,
         progress: 2,
         stage: "等待 ComfyUI"
       });
+      let lastLoggedProgress = -5;
+      let lastLoggedStage = "";
       const result = await waitForTask(
         promptId,
         clientId,
@@ -1004,7 +1155,25 @@ async function executeQueue(): Promise<void> {
           store.get().settings.ltxExtensionTimeoutMinutes
         ),
         activeController.signal,
-        (progress, stage) => void updateTask(task.id, { progress, stage }),
+        (progress, stage) => {
+          void updateTask(task.id, { progress, stage });
+          const roundedProgress = Math.round(progress);
+          if (
+            stage !== lastLoggedStage ||
+            roundedProgress >= lastLoggedProgress + 5 ||
+            progress >= 100
+          ) {
+            lastLoggedProgress = roundedProgress;
+            lastLoggedStage = stage;
+            appLogger.info("queue", "task-progress", "Queue task progress", {
+              taskId: task.id,
+              taskType: task.taskType,
+              modelId: task.modelId,
+              progress: roundedProgress,
+              stage
+            });
+          }
+        },
         (dataUrl) =>
           mainWindow?.webContents.send("task:preview", {
             taskId: task.id,
@@ -1012,10 +1181,19 @@ async function executeQueue(): Promise<void> {
           }),
         () => Date.now() - lastGpuComputeAt < 10_000
       );
+      appLogger.info("queue", "task-output-ready", "ComfyUI task completed", {
+        taskId: task.id,
+        taskType: task.taskType,
+        modelId: task.modelId
+      });
       const completedTask = store.get().queue.find((item) => item.id === task.id);
       if (!completedTask) continue;
       const completedAt = new Date().toISOString();
       const files = await requireExistingVideoOutput(result);
+      appLogger.info("queue", "output-validated", "Task output validated", {
+        taskId: task.id,
+        outputCount: files.length
+      });
       if (completedTask.taskType === "extension") {
         const outputVideo = files.find(
           (file) => file.absolutePath && videoOutputPattern.test(file.filename)
@@ -1038,6 +1216,14 @@ async function executeQueue(): Promise<void> {
       if (taskPerformanceMonitor) {
         taskPerformanceStats = taskPerformanceMonitor.stop();
         taskPerformanceMonitor = undefined;
+        appLogger.info("performance", "task-summary", "Task performance summary", {
+          taskId: task.id,
+          durationSeconds: Math.round(taskPerformanceStats.durationSeconds),
+          vramPeakBytes: taskPerformanceStats.vramPeakBytes,
+          vramTotalBytes: taskPerformanceStats.vramTotalBytes,
+          gpuPeakPercent: taskPerformanceStats.gpuPeakPercent,
+          memoryPeakBytes: taskPerformanceStats.memoryPeakBytes
+        });
       }
       const next = await store.update((state) => {
         state.queue = state.queue.filter((item) => item.id !== task.id);
@@ -1202,8 +1388,30 @@ async function executeQueue(): Promise<void> {
       if (!taskPerformanceStats && taskPerformanceMonitor) {
         taskPerformanceStats = taskPerformanceMonitor.stop();
         taskPerformanceMonitor = undefined;
+        appLogger.info("performance", "task-summary", "Failed task performance summary", {
+          taskId: task.id,
+          durationSeconds: Math.round(taskPerformanceStats.durationSeconds),
+          vramPeakBytes: taskPerformanceStats.vramPeakBytes,
+          vramTotalBytes: taskPerformanceStats.vramTotalBytes,
+          gpuPeakPercent: taskPerformanceStats.gpuPeakPercent,
+          memoryPeakBytes: taskPerformanceStats.memoryPeakBytes
+        });
       }
       const requiresRestart = stalled || memoryFailure;
+      appLogger.error(
+        "queue",
+        "task-failed",
+        safeLogErrorMessage(error),
+        {
+          taskId: task.id,
+          taskType: task.taskType,
+          modelId: task.modelId,
+          stalled,
+          memoryFailure,
+          cudaContextFailure,
+          ...errorLogMeta(error)
+        }
+      );
       if (!aborted) {
         await interrupt(store.get().settings).catch(() => undefined);
         await freeMemory(store.get().settings).catch(() => undefined);
@@ -1226,9 +1434,21 @@ async function executeQueue(): Promise<void> {
         performanceStats: taskPerformanceStats
       });
       if (requiresRestart) {
+        appLogger.warn(
+          "queue",
+          "recovery-required",
+          "Task failure requires ComfyUI recovery",
+          { taskId: task.id, stalled, memoryFailure, cudaContextFailure }
+        );
         const recovery = await restartLocalService(
           "comfy",
           failedState.settings
+        );
+        appLogger.info(
+          "comfy",
+          recovery.ok ? "recovery-succeeded" : "recovery-failed",
+          recovery.message,
+          { taskId: task.id, recoveryOk: recovery.ok }
         );
         await updateTask(task.id, {
           error: `${error instanceof Error ? error.message : String(error)} ${
@@ -1250,6 +1470,31 @@ async function executeQueue(): Promise<void> {
 
 function registerIpc(): void {
   ipcMain.handle("state:get", () => store.get());
+  ipcMain.handle("logs:read", (_event, limit?: number) =>
+    appLogSnapshot(typeof limit === "number" ? limit : undefined)
+  );
+  ipcMain.handle(
+    "logs:open-directory",
+    async (_event, kind: "logs" | "crashDumps") => {
+      const directory = kind === "logs"
+        ? appLogger.directory
+        : app.getPath("crashDumps");
+      const error = await shell.openPath(directory);
+      return !error;
+    }
+  );
+  ipcMain.handle(
+    "logs:renderer-error",
+    (_event, message: string, meta?: Record<string, unknown>) => {
+      appLogger.error("renderer", "client-error", message, meta);
+    }
+  );
+  ipcMain.handle(
+    "logs:user-action",
+    (_event, action: string, meta?: Record<string, unknown>) => {
+      appLogger.info("ui", "user-action", action, meta);
+    }
+  );
   ipcMain.handle("draft:save", async (_event, draft: Draft) => {
     const next = await store.update((state) => {
       state.draft = draft;
@@ -1384,6 +1629,8 @@ function registerIpc(): void {
   ipcMain.handle("prompt:start", async () => {
     const settings = store.get().settings;
     const runtime = promptRuntimeForSettings(settings);
+    const startedAt = Date.now();
+    appLogger.info("prompt", "service-start-requested", "Prompt service start requested", { runtime });
     if (store.get().queueRunning || activeController || queueWorker) {
       return { ok: false, message: "当前有视频任务正在运行，暂不能启动提示词模型。" };
     }
@@ -1405,6 +1652,10 @@ function registerIpc(): void {
     nativePromptWorker = worker;
     try {
       await worker;
+      appLogger.info("prompt", "service-ready", "Prompt service ready", {
+        runtime,
+        durationMs: Date.now() - startedAt
+      });
       return {
         ok: true,
         message: runtime === "llama-server"
@@ -1412,6 +1663,11 @@ function registerIpc(): void {
           : "Qwen 提示词模型已启动并加载到 ComfyUI。"
       };
     } catch (error) {
+      appLogger.error("prompt", "service-start-failed", safeLogErrorMessage(error), {
+        runtime,
+        durationMs: Date.now() - startedAt,
+        ...errorLogMeta(error)
+      });
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
     } finally {
       if (nativePromptWorker === worker) nativePromptWorker = null;
@@ -1421,7 +1677,33 @@ function registerIpc(): void {
   ipcMain.handle("prompt:enhance", async (_event, request: EnhanceRequest) => {
     const settings = store.get().settings;
     const runtime = promptRuntimeForSettings(settings);
-    if (runtime === "lmstudio") return enhancePrompt(request, settings);
+    const startedAt = Date.now();
+    appLogger.info("prompt", "enhance-started", "Prompt enhancement started", {
+      runtime,
+      modelId: request.modelId,
+      mode: request.mode,
+      h3PromptMode: request.h3PromptMode,
+      referenceImageCount: request.imagePaths?.length ?? (request.imagePath ? 1 : 0),
+      durationSeconds: request.h3DurationSeconds
+    });
+    if (runtime === "lmstudio") {
+      try {
+        const result = await enhancePrompt(request, settings);
+        appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
+          runtime,
+          durationMs: Date.now() - startedAt,
+          outputLength: result.length
+        });
+        return result;
+      } catch (error) {
+        appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
+          runtime,
+          durationMs: Date.now() - startedAt,
+          ...errorLogMeta(error)
+        });
+        throw error;
+      }
+    }
     if (runtime === "llama-server") {
       if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
       if (store.get().queueRunning || activeController || queueWorker) {
@@ -1433,7 +1715,20 @@ function registerIpc(): void {
       const worker = enhancePromptWithLlamaServer(request, settings);
       nativePromptWorker = worker;
       try {
-        return await worker;
+        const result = await worker;
+        appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
+          runtime,
+          durationMs: Date.now() - startedAt,
+          outputLength: result.length
+        });
+        return result;
+      } catch (error) {
+        appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
+          runtime,
+          durationMs: Date.now() - startedAt,
+          ...errorLogMeta(error)
+        });
+        throw error;
       } finally {
         if (nativePromptWorker === worker) nativePromptWorker = null;
         if (nativePromptController === controller) nativePromptController = null;
@@ -1453,13 +1748,37 @@ function registerIpc(): void {
     })();
     nativePromptWorker = worker;
     try {
-      return await worker;
+      const result = await worker;
+      appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
+        runtime,
+        durationMs: Date.now() - startedAt,
+        outputLength: result.length
+      });
+      return result;
+    } catch (error) {
+      appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
+        runtime,
+        durationMs: Date.now() - startedAt,
+        ...errorLogMeta(error)
+      });
+      throw error;
     } finally {
       if (nativePromptWorker === worker) nativePromptWorker = null;
       if (nativePromptController === controller) nativePromptController = null;
     }
   });
-  ipcMain.handle("prompt:release", () => releasePromptRuntimeForUser());
+  ipcMain.handle("prompt:release", async () => {
+    const startedAt = Date.now();
+    appLogger.info("prompt", "service-release-requested", "Prompt service release requested");
+    const result = await releasePromptRuntimeForUser();
+    appLogger.info(
+      "prompt",
+      result.ok ? "service-released" : "service-release-failed",
+      result.message,
+      { durationMs: Date.now() - startedAt, ok: result.ok }
+    );
+    return result;
+  });
   ipcMain.handle(
     "connection:test",
     async (_event, kind: ConnectionKind, settings: Settings) => {
@@ -1479,7 +1798,30 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "environment:scan",
-    (_event, settings: Settings) => scanEnvironment(settings)
+    async (_event, settings: Settings) => {
+      const startedAt = Date.now();
+      appLogger.info("environment", "scan-started", "Environment scan started");
+      try {
+        const result = await scanEnvironment(settings);
+        appLogger.info("environment", "scan-finished", "Environment scan finished", {
+          durationMs: Date.now() - startedAt,
+          checkedFrom: result.comfyCompatibility.checkedFrom,
+          gpuCount: result.gpus.length,
+          modelProfiles: result.modelProfiles.length,
+          availableModels: result.modelProfiles.filter((profile) => profile.available).length,
+          customNodes: result.customNodes.length,
+          installedCustomNodes: result.customNodes.filter((node) => node.installed && !node.loadError).length,
+          issueCount: result.issues.length
+        });
+        return result;
+      } catch (error) {
+        appLogger.error("environment", "scan-failed", safeLogErrorMessage(error), {
+          durationMs: Date.now() - startedAt,
+          ...errorLogMeta(error)
+        });
+        throw error;
+      }
+    }
   );
   ipcMain.handle(
     "llama-server:install",
@@ -1487,12 +1829,22 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "service:start",
-    (_event, kind: LocalServiceKind, settings: Settings) =>
-      startLocalService(kind, settings)
+    async (_event, kind: LocalServiceKind, settings: Settings) => {
+      appLogger.info("service", "start-requested", "Local service start requested", { kind });
+      const result = await startLocalService(kind, settings);
+      appLogger.info(
+        "service",
+        result.ok ? "start-succeeded" : "start-failed",
+        result.message,
+        { kind, ok: result.ok }
+      );
+      return result;
+    }
   );
   ipcMain.handle(
     "service:force-stop-comfy",
     async (_event, settings: Settings) => {
+      appLogger.warn("service", "force-stop-requested", "ComfyUI force-stop requested");
       nativePromptController?.abort(new Error("ComfyUI 已被强制终止，提示词扩写已中止"));
       const worker = queueWorker;
       if (worker) {
@@ -1504,14 +1856,29 @@ function registerIpc(): void {
         await interrupt(settings).catch(() => undefined);
       }
       const result = await forceStopComfyProcesses(settings);
+      appLogger.info(
+        "service",
+        result.ok ? "force-stop-succeeded" : "force-stop-failed",
+        result.message,
+        { ok: result.ok }
+      );
       await waitWithTimeout(worker, 15_000);
       return result;
     }
   );
   ipcMain.handle(
     "service:restart",
-    (_event, kind: LocalServiceKind, settings: Settings) =>
-      restartLocalService(kind, settings)
+    async (_event, kind: LocalServiceKind, settings: Settings) => {
+      appLogger.info("service", "restart-requested", "Local service restart requested", { kind });
+      const result = await restartLocalService(kind, settings);
+      appLogger.info(
+        "service",
+        result.ok ? "restart-succeeded" : "restart-failed",
+        result.message,
+        { kind, ok: result.ok }
+      );
+      return result;
+    }
   );
   ipcMain.handle(
     "comfyui:update",
@@ -1574,6 +1941,16 @@ function registerIpc(): void {
       state.queue.push(queueTaskFromDraft(draft, state));
       state.draft = draft;
     });
+    const task = next.queue.at(-1);
+    if (task) {
+      appLogger.info("queue", "task-enqueued", "Generation task added to queue", {
+        taskId: task.id,
+        taskType: task.taskType,
+        modelId: task.modelId,
+        duration: task.duration,
+        fps: task.fps
+      });
+    }
     sendState(next);
     return next;
   });
@@ -1614,6 +1991,13 @@ function registerIpc(): void {
       state.queue.push(task);
       state.draft = draft;
     });
+    appLogger.info("queue", "task-enqueued", "Extension task added to queue", {
+      taskId: task.id,
+      taskType: task.taskType,
+      modelId: task.modelId,
+      duration: task.duration,
+      fps: task.fps
+    });
     sendState(next);
     return next;
   });
@@ -1628,6 +2012,20 @@ function registerIpc(): void {
     const next = await store.update((state) => {
       state.queue.push(upscaleTaskFromRequest(request, state));
     });
+    const task = next.queue.at(-1);
+    if (task?.taskType === "upscale") {
+      appLogger.info("queue", "task-enqueued", "Upscale task added to queue", {
+        taskId: task.id,
+        taskType: task.taskType,
+        modelId: task.modelId,
+        sourceWidth: task.sourceWidth,
+        sourceHeight: task.sourceHeight,
+        targetWidth: task.targetWidth,
+        targetHeight: task.targetHeight,
+        duration: task.duration,
+        fps: task.fps
+      });
+    }
     sendState(next);
     return next;
   });
@@ -1662,6 +2060,9 @@ function registerIpc(): void {
     const next = await store.update((state) => {
       state.queueRunning = true;
     });
+    appLogger.info("queue", "started", "Queue processing started", {
+      waitingTasks: next.queue.filter((task) => task.status === "waiting").length
+    });
     sendState(next);
     if (!queueWorker) {
       queueWorker = executeQueue().finally(() => {
@@ -1674,6 +2075,7 @@ function registerIpc(): void {
     const next = await store.update((state) => {
       state.queueRunning = false;
     });
+    appLogger.info("queue", "paused", "Queue processing paused");
     sendState(next);
     return next;
   });
@@ -1797,9 +2199,19 @@ function registerIpc(): void {
 
 app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return;
+  appLogger.info("app", "ready", "Application is ready", {
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch
+  });
   Menu.setApplicationMenu(null);
   store = new JsonStore(path.join(app.getPath("userData"), "studio-state.json"));
   await store.load();
+  appLogger.info("app", "state-loaded", "Application state loaded", {
+    queueCount: store.get().queue.length,
+    historyCount: store.get().history.length,
+    queueRunning: store.get().queueRunning
+  });
   await restoreHistoryOutputPaths();
   registerMediaProtocol();
   registerIpc();

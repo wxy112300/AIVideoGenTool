@@ -23,6 +23,7 @@ import {
 } from "../../src/core/h3-prompt.js";
 import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
+import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -714,6 +715,13 @@ export async function waitForTask(
   isComputeActive: () => boolean = () => false
 ): Promise<unknown> {
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
+  const logger = getApplicationLogger();
+  const loggedProgress = new Map<string, number>();
+  logger.info("comfy", "wait-started", "Waiting for ComfyUI task", {
+    promptId,
+    nodeCount: Object.keys(nodeTypes).length,
+    activityTimeoutMinutes
+  });
   let socket: WebSocket | undefined;
   let executionError = "";
   let lastActivityAt = Date.now();
@@ -775,6 +783,11 @@ export async function waitForTask(
         if (message.type === "executing" && typeof message.data?.node === "string") {
           activeNodeId = message.data.node;
           const stage = progressForNode(nodeTypes[activeNodeId]);
+          logger.info("comfy", "node-started", "ComfyUI started node", {
+            promptId,
+            nodeId: activeNodeId,
+            classType: nodeTypes[activeNodeId] ?? "unknown"
+          });
           reportProgress(stage.progress, stage.label);
         }
         if (
@@ -787,6 +800,17 @@ export async function waitForTask(
             ? message.data.node
             : activeNodeId;
           if (nodeId) {
+            const rounded = Math.floor((message.data.value / message.data.max) * 10);
+            if (loggedProgress.get(nodeId) !== rounded) {
+              loggedProgress.set(nodeId, rounded);
+              logger.info("comfy", "node-progress", "ComfyUI node progress", {
+                promptId,
+                nodeId,
+                classType: nodeTypes[nodeId] ?? "unknown",
+                progress: Math.round(message.data.value),
+                max: Math.round(message.data.max)
+              });
+            }
             const stage = progressForNode(
               nodeTypes[nodeId],
               message.data.value,
@@ -798,12 +822,22 @@ export async function waitForTask(
         if (message.type === "execution_error") {
           executionError =
             message.data?.exception_message || "ComfyUI 工作流执行失败";
+          logger.error("comfy", "execution-error", safeLogErrorMessage(executionError), {
+            promptId,
+            nodeId: typeof message.data?.node === "string" ? message.data.node : activeNodeId,
+            classType: nodeTypes[typeof message.data?.node === "string" ? message.data.node : activeNodeId] ?? "unknown"
+          });
         }
         if (message.type === "execution_interrupted") {
           executionError = "ComfyUI 任务已中止";
         }
         if (message.type === "executed") {
           if (typeof message.data?.node === "string") {
+            logger.info("comfy", "node-finished", "ComfyUI finished node", {
+              promptId,
+              nodeId: message.data.node,
+              classType: nodeTypes[message.data.node] ?? "unknown"
+            });
             const stage = progressForNode(
               nodeTypes[message.data.node],
               1,
@@ -828,9 +862,21 @@ export async function waitForTask(
     while (!signal.aborted) {
       if (executionError) throw new Error(executionError);
       if (Date.now() - lastServiceResponseAt > serviceSilenceLimit()) {
+        logger.error("comfy", "service-unresponsive", "ComfyUI service stopped responding", {
+          promptId,
+          idleSeconds: Math.round((Date.now() - lastServiceResponseAt) / 1000),
+          activeNodeId,
+          activeClassType: nodeTypes[activeNodeId] ?? "unknown"
+        });
         throw new TaskStalledError(3, "无法连接 ComfyUI");
       }
       if (Date.now() - lastActivityAt > activityTimeoutMs) {
+        logger.error("comfy", "task-stalled", "ComfyUI task produced no node activity", {
+          promptId,
+          idleSeconds: Math.round((Date.now() - lastActivityAt) / 1000),
+          activeNodeId,
+          activeClassType: nodeTypes[activeNodeId] ?? "unknown"
+        });
         throw new TaskStalledError(activityTimeoutMinutes);
       }
       let history: Record<string, unknown>;
@@ -861,13 +907,20 @@ export async function waitForTask(
       );
       for (const entry of entries) {
         const failure = historyFailure(entry);
-        if (failure) throw new Error(failure);
+        if (failure) {
+          logger.error("comfy", "history-failure", safeLogErrorMessage(failure), { promptId });
+          throw new Error(failure);
+        }
       }
       const completed = entries.find(
         (entry) =>
           completedHistoryEntry(entry) && !historyEntryHasUnfinishedBatch(entry)
       );
       if (completed) {
+        logger.info("comfy", "task-finished", "ComfyUI task finished successfully", {
+          promptId,
+          nodeCount: Object.keys(nodeTypes).length
+        });
         reportProgress(100, "已完成", true);
         return completed;
       }
