@@ -103,12 +103,17 @@ function legacyDimensions(asset: LegacyHistoryAsset): [number, number] {
 }
 
 function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
-  if (task.taskType === "upscale") return task;
+  const automaticRetryAttempt = Number.isInteger(task.automaticRetryAttempt) &&
+    (task.automaticRetryAttempt ?? 0) > 0
+    ? task.automaticRetryAttempt
+    : undefined;
+  if (task.taskType === "upscale") return { ...task, automaticRetryAttempt };
   if (task.taskType === "extension") {
     return {
       ...task,
       modelProfile: task.modelProfile ?? "q3_k_m",
-      attentionMode: task.attentionMode ?? "sage"
+      attentionMode: task.attentionMode ?? "sage",
+      automaticRetryAttempt
     };
   }
   return {
@@ -121,6 +126,7 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
     frameInterpolation: task.frameInterpolation ?? "off",
     attentionMode: task.attentionMode ?? "sage",
     keepSeedOnCopy: task.keepSeedOnCopy ?? false,
+    automaticRetryAttempt,
     ...(task.status === "running"
       ? {
           status: "waiting" as const,
@@ -271,6 +277,14 @@ export class JsonStore {
         this.state.settings.vramReserveGb > 1
       ) {
         this.state.settings.vramReserveGb = 1;
+        needsPersist = true;
+      }
+      if (
+        !Number.isInteger(this.state.settings.autoRetryCount) ||
+        this.state.settings.autoRetryCount < 1 ||
+        this.state.settings.autoRetryCount > 5
+      ) {
+        this.state.settings.autoRetryCount = 2;
         needsPersist = true;
       }
       if (!this.state.settings.autoOffload) {

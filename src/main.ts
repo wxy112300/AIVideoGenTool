@@ -2656,7 +2656,10 @@ function settingsPage(): string {
           <label class="policy-select-field"><span>显存安全余量</span><select id="vram-reserve"><option value="0.5" ${settings.vramReserveGb === 0.5 ? "selected" : ""}>0.5 GB · 激进</option><option value="0.75" ${settings.vramReserveGb === 0.75 ? "selected" : ""}>0.75 GB · 平衡</option><option value="1" ${settings.vramReserveGb === 1 ? "selected" : ""}>1 GB · 保守</option></select></label>
           <label class="ios-switch-field"><span class="policy-copy"><strong>安全取消</strong><small>先请求中断，再重启 ComfyUI 释放显存</small></span><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
           <label class="ios-switch-field"><span class="policy-copy"><strong>优化队列顺序</strong><small>允许按模型自动整理等待中的任务</small></span><input id="optimize-queue-setting" type="checkbox" ${settings.optimizeQueue ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+          <label class="ios-switch-field"><span class="policy-copy"><strong>任务失败自动重试</strong><small>仅重试可通过清理并重启 ComfyUI 恢复的错误</small></span><input id="auto-retry-failed-tasks" type="checkbox" ${settings.autoRetryFailedTasks ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+          <label class="policy-select-field"><span>自动重试次数</span><select id="auto-retry-count" ${settings.autoRetryFailedTasks ? "" : "disabled"}>${[1, 2, 3, 4, 5].map((count) => `<option value="${count}" ${settings.autoRetryCount === count ? "selected" : ""}>${count} 次${count === 2 ? " · 推荐" : ""}</option>`).join("")}</select></label>
         </div>
+        <p class="muted proxy-hint">CUDA 上下文损坏、显存分配失败、ComfyUI 失联或卡死会先完成进程清理和服务重启，再重试当前任务。参数、模型或工作流错误不会自动重试；达到上限后保留失败任务并继续队列。</p>
       </section>
     </section>`;
 
@@ -5083,6 +5086,8 @@ function formSettings(): Settings {
     ltxExtensionTimeoutMinutes: Number(value("ltx-extension-timeout", String(base.ltxExtensionTimeoutMinutes))) as Settings["ltxExtensionTimeoutMinutes"],
     safeCancel: checked("safe-cancel", base.safeCancel),
     optimizeQueue: checked("optimize-queue-setting", base.optimizeQueue),
+    autoRetryFailedTasks: checked("auto-retry-failed-tasks", base.autoRetryFailedTasks),
+    autoRetryCount: Number(value("auto-retry-count", String(base.autoRetryCount))) as Settings["autoRetryCount"],
     promptLanguage: value("prompt-language", base.promptLanguage) as Settings["promptLanguage"],
     promptCreativity: Number(value("prompt-creativity", String(base.promptCreativity))),
     defaultUpscaleModel: value("default-upscale-model", base.defaultUpscaleModel),
@@ -5176,6 +5181,10 @@ function bindSettings(): void {
     showMessage("扩写预设已恢复默认，请保存设置后生效。");
   });
   document.querySelector<HTMLInputElement>("#proxy-enabled")?.addEventListener("change", () => {
+    settingsDraft = formSettings();
+    render();
+  });
+  document.querySelector<HTMLInputElement>("#auto-retry-failed-tasks")?.addEventListener("change", () => {
     settingsDraft = formSettings();
     render();
   });

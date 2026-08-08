@@ -96,6 +96,8 @@ export interface Settings {
   ltxExtensionTimeoutMinutes: 10 | 20 | 30;
   safeCancel: boolean;
   optimizeQueue: boolean;
+  autoRetryFailedTasks: boolean;
+  autoRetryCount: 1 | 2 | 3 | 4 | 5;
   promptLanguage: "auto" | "zh" | "en";
   promptCreativity: number;
   defaultUpscaleModel: string;
@@ -128,6 +130,7 @@ interface QueueTaskBase {
   startedAt?: string;
   error?: string;
   performanceStats?: TaskPerformanceStats;
+  automaticRetryAttempt?: number;
 }
 
 export interface GenerationQueueTask extends QueueTaskBase {

@@ -15,6 +15,7 @@ import {
   evaluatePromptCoreSupport,
   ltxAudioVaeCompatible,
   normalizeProxyUrl,
+  parseComfyProcessInfo,
   parseComfyProcessIds,
   isWindowsPythonAlias,
   parseNvidiaGpuQuery,
@@ -28,6 +29,22 @@ import {
 } from "../electron/services/environment.js";
 
 describe("SageAttention environment selection", () => {
+  it("keeps ComfyUI process and parent details for recovery logs", () => {
+    expect(parseComfyProcessInfo(JSON.stringify({
+      ProcessId: 86824,
+      ParentProcessId: 85288,
+      Name: "python.exe",
+      ExecutablePath: "C:\\ComfyUI\\.venv\\Scripts\\python.exe",
+      CommandLine: "python.exe -s main.py --port 8188"
+    }))).toEqual([{
+      processId: 86824,
+      parentProcessId: 85288,
+      name: "python.exe",
+      executablePath: "C:\\ComfyUI\\.venv\\Scripts\\python.exe",
+      commandLine: "python.exe -s main.py --port 8188"
+    }]);
+  });
+
   it("selects the exact official Comfy wheel for the active runtime", () => {
     expect(attentionWheelForProbe({
       pythonVersion: "3.12.11",

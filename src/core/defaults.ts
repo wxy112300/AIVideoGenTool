@@ -96,6 +96,8 @@ export function createDefaultSettings(): Settings {
     ltxExtensionTimeoutMinutes: 20,
     safeCancel: true,
     optimizeQueue: true,
+    autoRetryFailedTasks: true,
+    autoRetryCount: 2,
     promptLanguage: "auto",
     promptCreativity: 0.7,
     defaultUpscaleModel: "seedvr2",

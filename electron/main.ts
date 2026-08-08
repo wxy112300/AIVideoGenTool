@@ -34,6 +34,10 @@ import type {
   UpscaleRequest
 } from "../src/types.js";
 import { createOutputFilename } from "../src/core/filename.js";
+import {
+  classifyFailureForRecovery,
+  nextAutomaticRetryAttempt
+} from "../src/core/recovery.js";
 import { historyVideoPaths } from "../src/core/history-delete.js";
 import {
   attachAbsoluteOutputPaths,
@@ -50,6 +54,7 @@ import {
   extensionWorkflowSafetyErrors,
   generationSafetyForTask,
   isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3Model,
   outputDimensions,
   validateApiWorkflow,
   workflowSupportsEndImage,
@@ -1098,6 +1103,81 @@ async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: st
   }
 }
 
+async function stabilizeH3RuntimeBetweenTasks(
+  taskId: string,
+  modelId: string,
+  settings: Settings
+): Promise<boolean> {
+  const gib = 1024 ** 3;
+  const before = await getPerformanceMetrics(settings).catch(() => null);
+  appLogger.info("comfy", "h3-release-started", "Releasing H3 runtime before the next queue task", {
+    taskId,
+    modelId,
+    vramUsedBytes: before?.vramUsedBytes ?? null,
+    vramTotalBytes: before?.vramTotalBytes ?? null
+  });
+  try {
+    await freeMemory(settings);
+  } catch (error) {
+    appLogger.warn("comfy", "h3-release-request-failed", "H3 runtime release request failed; restarting ComfyUI", {
+      taskId,
+      modelId,
+      error: safeLogErrorMessage(error)
+    });
+    const recovery = await restartLocalService("comfy", settings);
+    appLogger.info("comfy", recovery.ok ? "h3-release-restart-succeeded" : "h3-release-restart-failed", recovery.message, {
+      taskId,
+      modelId,
+      recoveryOk: recovery.ok
+    });
+    return recovery.ok;
+  }
+
+  const deadline = Date.now() + 20_000;
+  let stableSamples = 0;
+  let lastSample = before;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const sample = await getPerformanceMetrics(settings).catch(() => null);
+    if (!sample?.vramUsedBytes || !sample.vramTotalBytes) continue;
+    lastSample = sample;
+    const belowSafeLevel = sample.vramUsedBytes <= sample.vramTotalBytes * 0.45;
+    const releasedSubstantially = before?.vramUsedBytes != null &&
+      before.vramUsedBytes - sample.vramUsedBytes >= 4 * gib;
+    const gpuIdle = sample.gpuPercent == null || sample.gpuPercent < 10;
+    stableSamples = gpuIdle && (belowSafeLevel || releasedSubstantially)
+      ? stableSamples + 1
+      : 0;
+    if (stableSamples >= 2) {
+      appLogger.info("comfy", "h3-release-verified", "H3 runtime release was verified before continuing the queue", {
+        taskId,
+        modelId,
+        vramBeforeBytes: before?.vramUsedBytes ?? null,
+        vramAfterBytes: sample.vramUsedBytes,
+        vramTotalBytes: sample.vramTotalBytes,
+        gpuPercent: sample.gpuPercent
+      });
+      return true;
+    }
+  }
+
+  appLogger.warn("comfy", "h3-release-unverified", "H3 VRAM did not reach a safe idle level; restarting ComfyUI", {
+    taskId,
+    modelId,
+    vramBeforeBytes: before?.vramUsedBytes ?? null,
+    vramAfterBytes: lastSample?.vramUsedBytes ?? null,
+    vramTotalBytes: lastSample?.vramTotalBytes ?? null,
+    gpuPercent: lastSample?.gpuPercent ?? null
+  });
+  const recovery = await restartLocalService("comfy", settings);
+  appLogger.info("comfy", recovery.ok ? "h3-release-restart-succeeded" : "h3-release-restart-failed", recovery.message, {
+    taskId,
+    modelId,
+    recoveryOk: recovery.ok
+  });
+  return recovery.ok;
+}
+
 async function executeQueue(): Promise<void> {
   let lmStudioReleased = false;
   while (store.get().queueRunning) {
@@ -1107,6 +1187,8 @@ async function executeQueue(): Promise<void> {
       taskId: task.id,
       taskType: task.taskType,
       modelId: task.modelId,
+      automaticRetryAttempt: task.automaticRetryAttempt ?? 0,
+      automaticRetryLimit: store.get().settings.autoRetryCount,
       duration: task.duration,
       fps: task.fps,
       ...(task.taskType === "upscale"
@@ -1527,19 +1609,30 @@ async function executeQueue(): Promise<void> {
         state.history.unshift(asset);
       });
       sendState(next);
+      if (isMiniMaxH3Model(completedTask.modelId)) {
+        const stable = await stabilizeH3RuntimeBetweenTasks(
+          completedTask.id,
+          completedTask.modelId,
+          next.settings
+        );
+        if (!stable) {
+          const stopped = await store.update((state) => {
+            state.queueRunning = false;
+          });
+          sendState(stopped);
+          appLogger.error("queue", "h3-stabilization-failed", "Queue stopped because H3 runtime could not be safely released", {
+            taskId: completedTask.id,
+            modelId: completedTask.modelId
+          });
+        }
+      }
     } catch (error) {
       const aborted = activeController.signal.aborted;
       const stalled = error instanceof TaskStalledError;
-      const memoryFailure =
-        error instanceof Error &&
-        /out of memory|cuda error|cuda.*alloc|allocation.*failed|cublas_status_alloc_failed|illegal memory access|cudaErrorIllegalAddress|device-side assertion|显存不足/i.test(
-          error.message
-        );
-      const cudaContextFailure =
-        error instanceof Error &&
-        /illegal memory access|cudaErrorIllegalAddress|device-side assertion/i.test(
-          error.message
-        );
+      const recoveryDecision = classifyFailureForRecovery(error, stalled);
+      const memoryFailure = recoveryDecision.kind === "cuda-context" ||
+        recoveryDecision.kind === "gpu-memory";
+      const cudaContextFailure = recoveryDecision.forceStop;
       if (!taskPerformanceStats && taskPerformanceMonitor) {
         taskPerformanceStats = taskPerformanceMonitor.stop();
         taskPerformanceMonitor = undefined;
@@ -1553,7 +1646,6 @@ async function executeQueue(): Promise<void> {
           sharedGpuMemoryPeakBytes: taskPerformanceStats.sharedGpuMemoryPeakBytes ?? null
         });
       }
-      const requiresRestart = stalled || memoryFailure;
       appLogger.error(
         "queue",
         "task-failed",
@@ -1565,10 +1657,25 @@ async function executeQueue(): Promise<void> {
           stalled,
           memoryFailure,
           cudaContextFailure,
+          recoveryKind: recoveryDecision.kind,
+          recoverable: recoveryDecision.recoverable,
+          automaticRetryAttempt: task.automaticRetryAttempt ?? 0,
           ...errorLogMeta(error)
         }
       );
-      if (!aborted) {
+      if (!aborted && recoveryDecision.forceStop) {
+        appLogger.warn("comfy", "cuda-context-force-stop", "CUDA context is invalid; skipping HTTP cleanup and force-stopping ComfyUI", {
+          taskId: task.id,
+          modelId: task.modelId
+        });
+        const forced = await forceStopComfyProcesses(store.get().settings);
+        appLogger.info(
+          "comfy",
+          forced.ok ? "cuda-context-force-stop-succeeded" : "cuda-context-force-stop-failed",
+          forced.message,
+          { taskId: task.id, modelId: task.modelId, forceStopOk: forced.ok }
+        );
+      } else if (!aborted && recoveryDecision.kind === "gpu-memory") {
         await interrupt(store.get().settings).catch((interruptError) => {
           appLogger.warn("comfy", "interrupt-failed", "ComfyUI interrupt request failed", {
             taskId: task.id,
@@ -1582,12 +1689,6 @@ async function executeQueue(): Promise<void> {
           });
         });
       }
-      if (requiresRestart) {
-        const stopped = await store.update((state) => {
-          state.queueRunning = false;
-        });
-        sendState(stopped);
-      }
       const failedState = await updateTask(task.id, {
         status: aborted ? "cancelled" : "failed",
         error: aborted
@@ -1599,12 +1700,18 @@ async function executeQueue(): Promise<void> {
             : String(error),
         performanceStats: taskPerformanceStats
       });
-      if (requiresRestart) {
+      if (!aborted && recoveryDecision.requiresRestart) {
         appLogger.warn(
           "queue",
           "recovery-required",
           "Task failure requires ComfyUI recovery",
-          { taskId: task.id, stalled, memoryFailure, cudaContextFailure }
+          {
+            taskId: task.id,
+            stalled,
+            memoryFailure,
+            cudaContextFailure,
+            recoveryKind: recoveryDecision.kind
+          }
         );
         const recovery = await restartLocalService(
           "comfy",
@@ -1616,11 +1723,74 @@ async function executeQueue(): Promise<void> {
           recovery.message,
           { taskId: task.id, recoveryOk: recovery.ok }
         );
-        await updateTask(task.id, {
-          error: `${error instanceof Error ? error.message : String(error)} ${
-            recovery.ok ? "ComfyUI 已恢复就绪。" : `自动恢复失败：${recovery.message}`
-          }`
-        });
+        const originalError = error instanceof Error ? error.message : String(error);
+        if (!recovery.ok) {
+          const stopped = await store.update((state) => {
+            state.queueRunning = false;
+            const failedTask = state.queue.find((item) => item.id === task.id);
+            if (failedTask) {
+              failedTask.error = `${originalError} 自动恢复失败：${recovery.message}`;
+              failedTask.updatedAt = new Date().toISOString();
+            }
+          });
+          sendState(stopped);
+          appLogger.error("queue", "recovery-stopped-queue", "Queue stopped because ComfyUI recovery failed", {
+            taskId: task.id,
+            modelId: task.modelId,
+            recoveryKind: recoveryDecision.kind
+          });
+        } else {
+          const retryAttempt = task.automaticRetryAttempt ?? 0;
+          const retryLimit = failedState.settings.autoRetryCount;
+          const nextAttempt = nextAutomaticRetryAttempt({
+            enabled: failedState.settings.autoRetryFailedTasks,
+            recoverable: recoveryDecision.recoverable,
+            currentAttempt: retryAttempt,
+            retryLimit
+          });
+          if (nextAttempt !== null) {
+            const retryState = await store.update((state) => {
+              const failedTask = state.queue.find((item) => item.id === task.id);
+              if (!failedTask) return;
+              Object.assign(failedTask, {
+                status: "waiting" as const,
+                updatedAt: new Date().toISOString(),
+                comfyPromptId: undefined,
+                progress: 0,
+                stage: `自动重试 ${nextAttempt}/${retryLimit}`,
+                error: `${originalError} ComfyUI 已恢复，准备自动重试 ${nextAttempt}/${retryLimit}。`,
+                automaticRetryAttempt: nextAttempt
+              });
+              state.queueRunning = true;
+            });
+            sendState(retryState);
+            appLogger.warn("queue", "automatic-retry-scheduled", "Recoverable task was returned to the queue after ComfyUI recovery", {
+              taskId: task.id,
+              taskType: task.taskType,
+              modelId: task.modelId,
+              recoveryKind: recoveryDecision.kind,
+              retryAttempt: nextAttempt,
+              retryLimit
+            });
+          } else {
+            await updateTask(task.id, {
+              error: `${originalError} ComfyUI 已恢复就绪。${
+                failedState.settings.autoRetryFailedTasks
+                  ? `自动重试已达到上限（${retryLimit} 次），已跳过此任务。`
+                  : "自动重试未开启，已跳过此任务。"
+              }`
+            });
+            appLogger.warn("queue", "automatic-retry-skipped", "Recovered task remains failed and the queue will continue", {
+              taskId: task.id,
+              taskType: task.taskType,
+              modelId: task.modelId,
+              recoveryKind: recoveryDecision.kind,
+              retryAttempt,
+              retryLimit,
+              retryEnabled: failedState.settings.autoRetryFailedTasks
+            });
+          }
+        }
       }
     } finally {
       const finalStage = taskStageStartedAt.get(task.id);
@@ -2414,7 +2584,9 @@ function registerIpc(): void {
           : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
         comfyPromptId: undefined,
         progress: 0,
-        error: undefined
+        error: undefined,
+        stage: undefined,
+        automaticRetryAttempt: undefined
       });
     });
     sendState(next);
@@ -2429,7 +2601,9 @@ function registerIpc(): void {
         updatedAt: new Date().toISOString(),
         comfyPromptId: undefined,
         progress: 0,
-        error: undefined
+        error: undefined,
+        stage: undefined,
+        automaticRetryAttempt: undefined
       });
       state.queueRunning = true;
     });

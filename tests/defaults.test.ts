@@ -19,6 +19,8 @@ describe("draft defaults", () => {
     expect(draft.trimStartSeconds).toBe(0);
     expect(draft.trimEndSeconds).toBe(0);
     expect(createDefaultSettings().vramReserveGb).toBe(1);
+    expect(createDefaultSettings().autoRetryFailedTasks).toBe(true);
+    expect(createDefaultSettings().autoRetryCount).toBe(2);
     expect(createDefaultSettings().defaultVideoModel).toBe("minimax_h3_fl2va");
     expect(createDefaultSettings().ltxExtensionModelProfile).toBe("q3_k_m");
     expect(createDefaultSettings().ltxExtensionResolution).toBe(360);
