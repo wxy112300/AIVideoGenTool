@@ -2585,6 +2585,10 @@ function settingsPage(): string {
   const comfyInstallations = environmentScan?.comfyInstallations ?? [];
   const effectiveComfyInstallDirectory =
     environmentScan?.comfyInstallDirectory || settings.comfyInstallDirectory;
+  const effectiveModelDirectory =
+    settings.modelDirectory || environmentScan?.modelDirectory || "";
+  const effectiveOutputDirectory =
+    settings.outputDirectory || environmentScan?.outputDirectory || "";
 
   const systemPanel = `
     <section class="settings-panel">
@@ -2630,8 +2634,8 @@ function settingsPage(): string {
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>文件路径</h2><span class="muted">扫描结果可以一键写入，也可以手动定位</span></div></div>
         <div class="settings-grid two">
-          <label>ComfyUI 模型目录<div class="input-action"><input id="model-directory" value="${escapeHtml(settings.modelDirectory)}" placeholder="扫描或选择 models 目录"><button class="secondary button-with-icon" id="pick-model-directory">${icon("folder-open")}选择</button></div></label>
-          <label>视频输出目录<div class="input-action"><input id="output-directory" value="${escapeHtml(settings.outputDirectory)}" placeholder="扫描或选择 output 目录"><button class="secondary button-with-icon" id="pick-output-directory">${icon("folder-open")}选择</button></div></label>
+          <label>ComfyUI 模型目录<div class="input-action"><input id="model-directory" value="${escapeHtml(effectiveModelDirectory)}" placeholder="扫描或选择 models 目录"><button class="secondary button-with-icon" id="pick-model-directory">${icon("folder-open")}选择</button></div></label>
+          <label>视频输出目录<div class="input-action"><input id="output-directory" value="${escapeHtml(effectiveOutputDirectory)}" placeholder="扫描或选择 output 目录"><button class="secondary button-with-icon" id="pick-output-directory">${icon("folder-open")}选择</button></div></label>
         </div>
       </section>
       <section class="panel settings-section">
