@@ -64,7 +64,10 @@ import {
   upscaleDimensions
 } from "../src/core/upscale.js";
 import { JsonStore } from "./store.js";
-import { copyFileToWindowsClipboard } from "./services/windows-clipboard.js";
+import {
+  copyFileToWindowsClipboard,
+  resolveExistingHistoryFile
+} from "./services/windows-clipboard.js";
 import {
   enhancePrompt,
   releasePromptModelRuntime,
@@ -256,10 +259,16 @@ function registerMediaProtocol(): void {
       } else {
         return new Response("Not found", { status: 404 });
       }
-      const stat = filename ? await fs.stat(filename).catch(() => null) : null;
-      if (!filename || !stat?.isFile()) {
+      const resolvedFilename = filename
+        ? await resolveExistingHistoryFile(filename)
+        : null;
+      const stat = resolvedFilename
+        ? await fs.stat(resolvedFilename).catch(() => null)
+        : null;
+      if (!resolvedFilename || !stat?.isFile()) {
         return new Response("Media file not found", { status: 404 });
       }
+      filename = resolvedFilename;
       const contentType = new Map([
         [".mp4", "video/mp4"],
         [".m4v", "video/mp4"],
@@ -506,12 +515,10 @@ async function requireExistingVideoOutput(
     (file) => file.absolutePath && videoOutputPattern.test(file.filename)
   );
   for (const file of videoFiles) {
-    try {
-      const stat = await fs.stat(file.absolutePath!);
-      if (stat.isFile() && stat.size > 0) return files;
-    } catch {
-      // Try any other video returned by the workflow before reporting failure.
-    }
+    const resolved = await resolveExistingHistoryFile(file.absolutePath!);
+    if (!resolved) continue;
+    const stat = await fs.stat(resolved).catch(() => null);
+    if (stat?.isFile() && stat.size > 0) return files;
   }
 
   const returnedNames = files.map((file) => file.filename).join("、");
@@ -528,10 +535,15 @@ async function restoreHistoryOutputPaths(): Promise<void> {
 
   await store.update((state) => {
     for (const asset of state.history) {
-      asset.files = attachAbsoluteOutputPaths(asset.files, outputDirectory);
+      const originalAssetFiles = extractComfyOutputFiles(asset.comfyOutputs);
+      asset.files = attachAbsoluteOutputPaths(
+        originalAssetFiles.length ? originalAssetFiles : asset.files,
+        outputDirectory
+      );
       for (const version of asset.versions) {
+        const originalVersionFiles = extractComfyOutputFiles(version.comfyOutputs);
         version.files = attachAbsoluteOutputPaths(
-          version.files,
+          originalVersionFiles.length ? originalVersionFiles : version.files,
           outputDirectory
         );
       }
@@ -2004,15 +2016,61 @@ function registerIpc(): void {
     }
   );
   ipcMain.handle("file:show-in-folder", async (_event, filename: string) => {
-    if (!filename || !(await fs.stat(filename).catch(() => null))) return false;
-    shell.showItemInFolder(filename);
+    const requestedFilename = typeof filename === "string" ? filename : "";
+    const resolved = await resolveExistingHistoryFile(requestedFilename);
+    if (!resolved) {
+      appLogger.warn("history", "show-file-missing", "History file could not be found in its recorded location", {
+        filename: requestedFilename
+      });
+      return false;
+    }
+    shell.showItemInFolder(resolved);
+    appLogger.info("history", "show-file-succeeded", "History file revealed in Explorer", {
+      filename: resolved,
+      repairedPath: !requestedFilename || path.resolve(requestedFilename) !== resolved
+    });
     return true;
   });
   ipcMain.handle("file:copy", async (_event, filename: string) => {
-    const stat = filename ? await fs.stat(filename).catch(() => null) : null;
-    if (!stat?.isFile() || process.platform !== "win32") return false;
-    await copyFileToWindowsClipboard(path.resolve(filename));
-    return true;
+    if (process.platform !== "win32") {
+      return { ok: false, message: "复制文件目前仅支持 Windows。" };
+    }
+    const requestedFilename = typeof filename === "string" ? filename : "";
+    const resolved = await resolveExistingHistoryFile(requestedFilename);
+    if (!resolved) {
+      appLogger.warn("history", "copy-file-missing", "History file could not be found for clipboard copy", {
+        filename: requestedFilename
+      });
+      return {
+        ok: false,
+        message: "视频文件不存在，可能已被移动、重命名或删除。"
+      };
+    }
+    try {
+      await copyFileToWindowsClipboard(
+        resolved,
+        path.join(app.getPath("userData"), "clipboard-files")
+      );
+      appLogger.info("history", "copy-file-succeeded", "History file copied to the Windows clipboard", {
+        filename: resolved,
+        repairedPath: !requestedFilename || path.resolve(requestedFilename) !== resolved
+      });
+      return {
+        ok: true,
+        message: requestedFilename && path.resolve(requestedFilename) === resolved
+          ? "视频文件已复制，可在资源管理器中粘贴。"
+          : "已自动找到视频的实际文件并复制，可在资源管理器中粘贴。"
+      };
+    } catch (error) {
+      appLogger.warn("history", "copy-file-failed", "Windows clipboard file copy failed", {
+        filename: resolved,
+        error: safeLogErrorMessage(error)
+      });
+      return {
+        ok: false,
+        message: "剪贴板暂时被其他程序占用，请稍后再试。"
+      };
+    }
   });
   ipcMain.handle("shell:open-external", async (_event, value: string) => {
     try {

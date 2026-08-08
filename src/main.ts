@@ -130,6 +130,7 @@ let draftRevision = 0;
 let draftSaveInFlight = 0;
 let draftDirty = false;
 let flashMessage = "";
+let flashMessageTimer: number | undefined;
 let selectedHistoryAssetId = "";
 let selectedHistoryVersionId = "";
 let historyForwardTarget: { assetId: string; versionId: string } | null = null;
@@ -1313,7 +1314,7 @@ function shell(content: string): string {
             .join("")}
         </nav>
       </header>
-      ${flashMessage ? `<div class="flash" role="status">${escapeHtml(flashMessage)}</div>` : ""}
+      <div class="flash ${flashMessage ? "visible" : ""}" id="app-flash" role="status" aria-live="polite">${escapeHtml(flashMessage)}</div>
       <main>${content}</main>
     </div>
     ${page === "history" || page === "history-detail" ? `<button class="history-back-top" id="history-back-top" type="button" aria-label="返回顶部" title="返回顶部">${icon("arrow-up")}</button>` : ""}
@@ -2214,26 +2215,38 @@ function historyDetailPage(): string {
     </div>
     <section class="history-detail-hero">
       <div class="history-player-column">
-        <div class="panel history-player">
+        <div class="panel history-player" style="--video-aspect: ${version.width} / ${version.height}">
           ${mediaUrl
-            ? `<video controls loop playsinline preload="metadata" src="${mediaUrl}"></video>`
+            ? `<video controls loop playsinline preload="metadata" data-history-asset="${asset.id}" data-history-version="${version.id}" src="${mediaUrl}"></video>`
             : `<div class="history-media-fallback"><span>${icon("play")}</span><strong>视频文件不可用</strong><small>请检查输出目录或在下方定位文件。</small></div>`}
         </div>
-        <div class="panel version-toolbar"><div class="version-switcher">${asset.versions.map((item) => `<button class="${item.id === version.id ? "primary" : "ghost"}" data-version-id="${item.id}">${item.kind === "original" ? "原始" : modelName(item.modelId)} ${historyResolutionLabel(asset, item)}</button>`).join("")}</div><span>${asset.versions.length} 个版本</span></div>
       </div>
-      <aside class="panel history-summary">
-        <div><div class="history-title-line"><h1 class="history-detail-title" title="${escapeHtml(detailTitle)}"><span class="history-card-title-track"><span>${escapeHtml(detailTitle)}</span><span aria-hidden="true">${escapeHtml(detailTitle)}</span></span></h1><span class="status running">已完成</span></div><code>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code></div>
-        <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(version.modelId))}</span><span>${historyResolutionLabel(asset, version)} · ${version.width} × ${version.height} · ${version.duration}秒 · ${fps} FPS</span></div>
-        <div class="history-summary-row"><span>完成于</span><strong>${completedAt}</strong></div>
-        <div class="history-summary-row"><span>总耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : formatElapsedDuration(elapsedSeconds)}</strong></div>
-        <div class="history-summary-actions">
-          <div class="history-primary-actions">
-            <button class="secondary button-with-icon" data-edit-history="${asset.id}" aria-label="在创建页调整" title="在创建页调整">${icon("sliders-horizontal")}调整参数</button>
-            ${videoFile?.absolutePath ? `<button class="secondary button-with-icon" data-continue-history="${asset.id}" data-source-version="${version.id}" aria-label="继续创作" title="继续创作">${icon("video")}继续创作</button><button class="secondary button-with-icon" data-copy-file="${escapeHtml(videoFile.absolutePath)}" aria-label="复制文件" title="复制文件">${icon("copy")}复制文件</button><button class="secondary button-with-icon history-file-action" data-show-file="${escapeHtml(videoFile.absolutePath)}" aria-label="打开所在目录" title="打开所在目录">${icon("folder-open")}定位文件</button>` : ""}
+      <aside class="history-detail-sidebar">
+        <section class="panel history-summary">
+          <div class="history-summary-copy">
+          <div class="history-title-line"><h1 class="history-detail-title" title="${escapeHtml(detailTitle)}"><span class="history-card-title-track"><span>${escapeHtml(detailTitle)}</span><span aria-hidden="true">${escapeHtml(detailTitle)}</span></span></h1><span class="status running">已完成</span></div>
+          <code>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code>
+          <div class="history-summary-badges"><span class="model-badge">${escapeHtml(modelName(version.modelId))}</span><span>${version.kind === "original" ? "原始生成" : "分辨率提升版本"}</span></div>
           </div>
-          <button class="ghost danger history-delete-button button-with-icon" data-delete-history="${asset.id}">${icon("trash-2")}删除视频和记录</button>
-        </div>
-        <div class="history-upscale"><div class="history-upscale-heading"><div><strong>提升清晰度</strong><span>完成后会作为同一作品的新版本显示。</span></div>${icon("maximize-2")}</div><button class="secondary button-with-icon" data-open-upscale ${videoFile?.absolutePath && versionShortEdge(version) < 2160 ? "" : "disabled"}>${versionShortEdge(version) >= 2160 ? "当前已是 4K" : "提升分辨率…"}</button></div>
+          <div class="history-overview-facts">
+          <div><span>完成时间</span><strong>${completedAt}</strong></div>
+          <div><span>生成耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : formatElapsedDuration(elapsedSeconds)}</strong></div>
+          <div><span>分辨率</span><strong>${version.width} × ${version.height}</strong></div>
+          <div><span>视频时长</span><strong>${version.duration} 秒</strong></div>
+          <div><span>成片帧率</span><strong>${fps} FPS</strong></div>
+          <div><span>成片帧数</span><strong>${Math.round(version.duration * fps)} 帧</strong></div>
+          </div>
+          <div class="history-detail-quick-actions">
+          <button class="secondary button-with-icon" data-edit-history="${asset.id}" aria-label="在创建页调整" title="在创建页调整">${icon("sliders-horizontal")}调整参数</button>
+          ${videoFile?.absolutePath ? `<button class="secondary button-with-icon" data-continue-history="${asset.id}" data-source-version="${version.id}" aria-label="继续创作" title="继续创作">${icon("video")}继续创作</button><button class="secondary button-with-icon" data-copy-file="${escapeHtml(videoFile.absolutePath)}" aria-label="复制文件" title="复制文件">${icon("copy")}复制文件</button><button class="secondary button-with-icon history-file-action" data-show-file="${escapeHtml(videoFile.absolutePath)}" aria-label="打开所在目录" title="打开所在目录">${icon("folder-open")}定位文件</button>` : ""}
+            <button class="secondary button-with-icon" data-open-upscale ${videoFile?.absolutePath && versionShortEdge(version) < 2160 ? "" : "disabled"}>${icon("maximize-2")}${versionShortEdge(version) >= 2160 ? "当前已是 4K" : "提升分辨率"}</button>
+            <button class="secondary danger history-delete-button button-with-icon" data-delete-history="${asset.id}">${icon("trash-2")}删除视频和记录</button>
+          </div>
+        </section>
+        <section class="panel history-version-panel">
+          <div class="history-version-panel-heading"><strong>视频版本</strong><span>${asset.versions.length} 个版本</span></div>
+          <div class="version-switcher history-summary-version-switcher">${asset.versions.map((item) => `<button class="${item.id === version.id ? "primary" : "ghost"}" data-version-id="${item.id}" title="${item.kind === "original" ? `原始生成 · ${item.width} × ${item.height}` : `${modelName(item.modelId)} · ${item.width} × ${item.height}`}">${item.kind === "original" ? `原始 · ${historyResolutionLabel(asset, item)}` : `提升 · ${historyResolutionLabel(asset, item)}`}</button>`).join("")}</div>
+        </section>
       </aside>
     </section>
     <section class="history-record-grid">
@@ -2292,6 +2305,8 @@ function historyStateChanged(
 }
 
 interface HistoryPlaybackSnapshot {
+  assetId: string;
+  versionId: string;
   currentTime: number;
   paused: boolean;
   muted: boolean;
@@ -2303,6 +2318,8 @@ function captureHistoryPlayback(): HistoryPlaybackSnapshot | null {
   const video = document.querySelector<HTMLVideoElement>(".history-player video");
   if (!video) return null;
   return {
+    assetId: video.dataset.historyAsset ?? "",
+    versionId: video.dataset.historyVersion ?? "",
     currentTime: video.currentTime,
     paused: video.paused,
     muted: video.muted,
@@ -2314,6 +2331,10 @@ function restoreHistoryPlayback(snapshot: HistoryPlaybackSnapshot | null): void 
   if (!snapshot) return;
   const video = document.querySelector<HTMLVideoElement>(".history-player video");
   if (!video) return;
+  if (
+    video.dataset.historyAsset !== snapshot.assetId ||
+    video.dataset.historyVersion !== snapshot.versionId
+  ) return;
   const restore = () => {
     video.muted = snapshot.muted;
     video.playbackRate = snapshot.playbackRate;
@@ -3016,13 +3037,27 @@ function render(): void {
   restoreHistoryPlayback(playback);
 }
 
-function showMessage(message: string): void {
+function showMessage(message: string, renderPage = true): void {
   flashMessage = message;
-  render();
-  window.setTimeout(() => {
+  window.clearTimeout(flashMessageTimer);
+  if (renderPage) {
+    render();
+  } else {
+    const flash = document.querySelector<HTMLElement>("#app-flash");
+    if (flash) {
+      flash.textContent = message;
+      flash.classList.add("visible");
+    }
+  }
+  flashMessageTimer = window.setTimeout(() => {
     if (flashMessage === message) {
       flashMessage = "";
-      render();
+      if (renderPage) {
+        render();
+      } else {
+        const currentFlash = document.querySelector<HTMLElement>("#app-flash");
+        currentFlash?.classList.remove("visible");
+      }
     }
   }, 3500);
 }
@@ -3285,22 +3320,22 @@ function returnToLastHistoryDetail(): void {
 async function copyHistoryText(value: string, successMessage: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(value);
-    showMessage(successMessage);
+    showMessage(successMessage, false);
   } catch {
-    showMessage("复制失败，请检查系统剪贴板权限。");
+    showMessage("复制失败，请检查系统剪贴板权限。", false);
   }
 }
 
 async function copyHistoryFile(filename: string): Promise<void> {
   if (!filename) {
-    showMessage("当前记录没有可用的视频文件。");
+    showMessage("当前记录没有可用的视频文件。", false);
     return;
   }
   try {
-    const copied = await window.studio.copyFile(filename);
-    showMessage(copied ? "视频文件已复制，可在资源管理器中粘贴。" : "当前系统暂不支持复制文件到剪贴板。");
+    const result = await window.studio.copyFile(filename);
+    showMessage(result.message, false);
   } catch {
-    showMessage("复制视频文件失败，请检查文件是否仍然存在。");
+    showMessage("复制视频文件失败，请检查文件是否仍然存在。", false);
   }
 }
 
@@ -3402,7 +3437,7 @@ function openHistoryContextMenu(
       await copyHistoryText(absolutePath, "视频文件路径已复制。");
     } else if (action === "show-file") {
       const shown = await window.studio.showItemInFolder(absolutePath);
-      if (!shown) showMessage("视频文件不存在或已经被移动。");
+      if (!shown) showMessage("视频文件不存在或已经被移动。", false);
     } else if (action === "copy-prompt") {
       await copyHistoryText(asset.prompt, "提示词已复制。");
     } else if (action === "delete") {
@@ -4685,9 +4720,19 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   bindHistoryTitleMarquees();
   restoreHistoryLayoutAnchor();
   const detailVideo = document.querySelector<HTMLVideoElement>('.history-player video');
-  if (detailVideo && !playback) {
+  const playbackMatches = Boolean(
+    detailVideo && playback &&
+    detailVideo.dataset.historyAsset === playback.assetId &&
+    detailVideo.dataset.historyVersion === playback.versionId
+  );
+  if (detailVideo && !playbackMatches) {
     const startPlayback = () => {
       detailVideo.loop = true;
+      try {
+        detailVideo.currentTime = 0;
+      } catch {
+        // Metadata may not expose a seekable range yet; playback still begins at zero.
+      }
       void detailVideo.play().catch(() => {
         if (detailVideo.muted) return;
         detailVideo.muted = true;
@@ -4710,11 +4755,12 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   });
   document.querySelectorAll<HTMLButtonElement>("[data-history-navigation]").forEach((button) => {
     button.addEventListener("click", () => {
-      const currentIndex = state.history.findIndex(
+      const orderedHistory = historyAssetsByNewest();
+      const currentIndex = orderedHistory.findIndex(
         (item) => item.id === selectedHistoryAssetId
       );
       const nextIndex = currentIndex + Number(button.dataset.historyNavigation);
-      const nextAsset = state.history[nextIndex];
+      const nextAsset = orderedHistory[nextIndex];
       if (!nextAsset) return;
       openHistoryDetail(nextAsset.id);
     });
@@ -5021,7 +5067,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     button.addEventListener("click", async () => {
       reportUserAction("history-show-file");
       const shown = await window.studio.showItemInFolder(button.dataset.showFile!);
-      if (!shown) showMessage("文件不存在或当前路径还没有在本机生成。");
+      if (!shown) showMessage("文件不存在或当前路径还没有在本机生成。", false);
     });
   });
   document.querySelectorAll<HTMLElement>("[data-copy-file]").forEach((button) => {

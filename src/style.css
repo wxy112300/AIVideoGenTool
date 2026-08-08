@@ -1354,13 +1354,80 @@ pre { border: 1px solid #292f39; background: #0c0f14; font-size: 11px; line-heig
   color: #e8f1ff;
   background: rgba(29,49,76,.95);
   box-shadow: 0 16px 44px rgba(0,0,0,.3);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%, -8px);
+  transition: opacity .16s ease, transform .16s ease, visibility 0s linear .16s;
 }
+.flash.visible { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: 0s; }
+
+/* Preserve the useful player/inspector split while sizing the stage from the
+   available window height, which is especially important for portrait video. */
+.history-detail-hero { grid-template-columns: minmax(0, 1.55fr) minmax(320px, .72fr); gap: 18px; align-items: stretch; }
+.history-player-column { min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
+.history-player {
+  width: 100%;
+  height: clamp(380px, calc(100vh - 190px), 780px);
+  aspect-ratio: auto;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(43,53,68,.34), transparent 46%),
+    #07090c;
+  box-shadow: 0 24px 60px rgba(0,0,0,.3);
+}
+.history-player video { background: transparent; }
+.version-toolbar { position: relative; z-index: 1; margin-top: 0; border-radius: 12px; }
+.history-detail-sidebar {
+  min-width: 0;
+  max-height: clamp(380px, calc(100vh - 190px), 780px);
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+.history-summary {
+  min-height: 0;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  overflow-y: auto;
+}
+.history-summary-copy { min-width: 0; display: grid; gap: 6px; }
+.history-summary-copy > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-overview-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.history-overview-facts > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid rgba(58,68,82,.62);
+  border-radius: 10px;
+  background: rgba(13,17,23,.7);
+}
+.history-overview-facts span { color: var(--muted); font-size: 10px; letter-spacing: .03em; }
+.history-overview-facts strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #e2e7ef; font-size: 12px; font-weight: 570; white-space: nowrap; }
+.history-detail-quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.history-detail-quick-actions button { width: 100%; min-height: 39px; padding: 7px 9px; justify-content: center; white-space: nowrap; }
+.history-version-panel {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+}
+.history-version-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.history-version-panel-heading span { color: var(--muted); font-size: 10px; }
+.history-summary-version-switcher { justify-content: flex-start; gap: 5px; }
+.history-summary-version-switcher button { min-height: 29px; padding: 4px 9px; font-size: 11px; }
 
 @media (max-width: 1120px) {
   .create-workspace { grid-template-columns: 1fr; gap: 18px; }
   .create-workspace > .media-panel { position: static; }
-  .history-detail-hero { grid-template-columns: 1fr; }
-  .history-summary { min-height: auto; }
 }
 
 @media (max-width: 900px) {
@@ -1378,6 +1445,9 @@ pre { border: 1px solid #292f39; background: #0c0f14; font-size: 11px; line-heig
   .history-gallery.masonry { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .history-gallery.album { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .task-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-detail-hero { grid-template-columns: 1fr; }
+  .history-detail-sidebar { max-height: none; }
+  .history-summary { max-height: none; }
 }
 
 @media (max-width: 760px) {
@@ -1397,6 +1467,10 @@ pre { border: 1px solid #292f39; background: #0c0f14; font-size: 11px; line-heig
   .history-view-tools { align-items: flex-end; }
   .history-gallery.album { grid-template-columns: 1fr; }
   .task-stat-grid { grid-template-columns: 1fr; }
+  .history-player { height: clamp(300px, 56vh, 560px); }
+  .history-summary { padding: 18px; }
+  .history-overview-facts { grid-template-columns: 1fr; }
+  .history-summary-footer { align-items: stretch; flex-direction: column; }
 }
 
 /* Desktop density refinement: favor working space over decorative page chrome. */

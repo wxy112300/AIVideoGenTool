@@ -568,7 +568,7 @@ export interface AppApi {
   readHistoryCover(key: string): Promise<string | null>;
   saveHistoryCover(key: string, data: ArrayBuffer): Promise<boolean>;
   showItemInFolder(path: string): Promise<boolean>;
-  copyFile(path: string): Promise<boolean>;
+  copyFile(path: string): Promise<ConnectionResult>;
   openExternal(url: string): Promise<boolean>;
   enhancePrompt(request: EnhanceRequest): Promise<string>;
   startPromptModel(): Promise<ConnectionResult>;
