@@ -2457,6 +2457,23 @@ main { padding-top: 0; }
 .app-log-line.warn { color: #e6c16e; }
 .app-log-line.error { color: #ff9b86; }
 .app-log-line.fatal { color: #ff6f91; font-weight: 700; }
+.python-runtime-picker { display: grid; gap: 14px; padding: 16px; border: 1px solid rgba(75,95,124,.68); border-radius: 13px; background: linear-gradient(145deg, rgba(20,29,41,.92), rgba(12,17,24,.94)); }
+.python-runtime-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(68,82,103,.5); }
+.python-runtime-picker-head > div { min-width: 0; display: grid; gap: 4px; }
+.python-runtime-picker-head strong { color: #dce7f5; font-size: 12px; font-weight: 600; }
+.python-selection-badge { flex: 0 0 auto; padding: 5px 8px; border: 1px solid rgba(112,159,237,.28); border-radius: 7px; color: #a9c9ff; background: rgba(105,157,243,.1); font-size: 10px; font-weight: 700; }
+.python-runtime-picker-controls { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(240px, .8fr); gap: 13px; }
+.python-runtime-picker label { min-width: 0; display: grid; gap: 6px; color: #dce4ef; font-size: 12px; }
+.python-runtime-picker .input-action { min-width: 0; display: flex; gap: 8px; }
+.python-runtime-picker .input-action input { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.python-runtime-picker .input-action button { flex: 0 0 auto; min-height: 36px; padding-inline: 10px; white-space: nowrap; }
+.python-runtime-picker select { min-width: 0; width: 100%; min-height: 36px; }
+.python-runtime-note { margin: 0; color: #8d9caf; font-size: 10px; line-height: 1.5; }
+.python-runtime-note code { color: #b8cbea; font-size: 10px; }
+@media (max-width: 760px) {
+  .python-runtime-picker-controls { grid-template-columns: 1fr; }
+  .python-runtime-picker-head { align-items: flex-start; flex-direction: column; }
+}
 
 @media (max-width: 900px) {
   .settings-layout {

@@ -16,6 +16,7 @@ import {
   ltxAudioVaeCompatible,
   normalizeProxyUrl,
   parseComfyProcessIds,
+  isWindowsPythonAlias,
   parseNvidiaGpuQuery,
   parseComfyDesktop2Registry,
   patchLtxAudioVaeCompatibility,
@@ -74,6 +75,17 @@ describe("ComfyUI process discovery", () => {
     expect(parseComfyProcessIds("[4152, 20512, 4152]")).toEqual([4152, 20512]);
     expect(parseComfyProcessIds("4152")).toEqual([4152]);
     expect(parseComfyProcessIds("null")).toEqual([]);
+  });
+});
+
+describe("ComfyUI Python selection", () => {
+  it("rejects the Microsoft Store WindowsApps Python alias", () => {
+    expect(isWindowsPythonAlias(
+      "C:\\Users\\98000\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe"
+    )).toBe(true);
+    expect(isWindowsPythonAlias(
+      "C:\\Users\\98000\\Documents\\ComfyUI\\.venv\\Scripts\\python.exe"
+    )).toBe(false);
   });
 });
 

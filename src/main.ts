@@ -191,6 +191,11 @@ const workflowCapabilities: Record<string, WorkflowCapabilities> = {};
 const taskPreviews: Record<string, string> = {};
 let performanceMetrics: PerformanceMetrics | null = null;
 let performancePolling = false;
+let queueMoveScrollAnchor: {
+  taskId: string;
+  direction: -1 | 1;
+  viewportTop: number;
+} | null = null;
 let historyContextMenuElement: HTMLElement | null = null;
 let historyContextMenuEvents: AbortController | null = null;
 let shellNavigationEvents: AbortController | null = null;
@@ -1724,6 +1729,38 @@ function queueTaskInputUrl(task: QueueTask): string {
     : "";
 }
 
+function captureQueueMoveAnchor(button: HTMLButtonElement): void {
+  const taskId = button.dataset.move;
+  const direction = Number(button.dataset.direction);
+  if (!taskId || (direction !== -1 && direction !== 1)) return;
+  queueMoveScrollAnchor = {
+    taskId,
+    direction,
+    viewportTop: button.getBoundingClientRect().top
+  };
+}
+
+function restoreQueueMoveAnchor(): void {
+  const anchor = queueMoveScrollAnchor;
+  if (!anchor) return;
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      if (queueMoveScrollAnchor !== anchor) return;
+      const button = [...document.querySelectorAll<HTMLButtonElement>("[data-move]")]
+        .find((candidate) =>
+          candidate.dataset.move === anchor.taskId &&
+          Number(candidate.dataset.direction) === anchor.direction
+        );
+      if (!button) return;
+      const delta = button.getBoundingClientRect().top - anchor.viewportTop;
+      if (Math.abs(delta) > 0.5) {
+        window.scrollBy({ top: delta, behavior: "auto" });
+      }
+      queueMoveScrollAnchor = null;
+    });
+  });
+}
+
 async function loadQueueInputPreviews(): Promise<void> {
   const tasks = state.queue.filter(
     (task) => queueTaskInput(task) !== null
@@ -2096,6 +2133,7 @@ function bindHistoryMasonry(): void {
 
 function switchHistoryLayout(nextLayout: typeof historyLayout): void {
   if (nextLayout === historyLayout) return;
+  reportUserAction("history-layout", { from: historyLayout, to: nextLayout });
   const gallery = document.querySelector<HTMLElement>(".history-gallery");
   if (!gallery) return;
   historyLayoutAnchor = captureHistoryLayoutAnchor();
@@ -2799,6 +2837,28 @@ function settingsPage(): string {
     </section>`;
 
   const attention = environmentScan?.attentionAcceleration;
+  const pythonSourceLabels: Record<string, string> = {
+    selected: "手动指定",
+    "comfy-venv": "ComfyUI 虚拟环境",
+    embedded: "嵌入式 Python",
+    path: "系统 PATH",
+    "py-launcher": "py 启动器",
+    other: "其他来源"
+  };
+  const pythonRuntimes = environmentScan?.pythonRuntimes ?? [];
+  const detectedPythonPath = attention?.pythonPath ||
+    pythonRuntimes.find((runtime) => runtime.selected)?.path ||
+    pythonRuntimes[0]?.path ||
+    "";
+  const effectivePythonPath = settings.comfyPythonPath || detectedPythonPath;
+  const selectedPythonRuntime = pythonRuntimes.find(
+    (runtime) => runtime.path.toLowerCase() === effectivePythonPath.toLowerCase()
+  );
+  const pythonSelectionLabel = settings.comfyPythonPath
+    ? selectedPythonRuntime?.source === "comfy-venv"
+      ? "ComfyUI 虚拟环境"
+      : "手动指定"
+    : "自动探测";
   const accelerationPanel = `
     <section class="settings-panel acceleration-panel">
       <section class="panel settings-section acceleration-overview ${attention?.ready ? "available" : "missing"}">
@@ -2816,6 +2876,16 @@ function settingsPage(): string {
           <div class="acceleration-summary">
             <span class="acceleration-summary-icon">${icon(attention?.ready ? "circle-check" : "circle-alert")}</span>
             <div><strong>${escapeHtml(attention?.detail ?? "等待环境扫描")}</strong><span>兼容模式会自动移除 H3 工作流中的 SageAttention 节点。</span></div>
+          </div>
+        </div>
+        <div class="python-runtime-picker">
+          <div class="python-runtime-picker-head">
+            <div><span class="runtime-label">ComfyUI Python 解释器</span><strong>用于启动 ComfyUI、安装节点依赖和 H3 加速检测</strong></div>
+            <span class="python-selection-badge">${pythonSelectionLabel}</span>
+          </div>
+          <div class="python-runtime-picker-controls">
+            <label class="python-path-field"><span class="runtime-label">当前解释器路径</span><div class="input-action"><input id="comfy-python-path" value="${escapeHtml(effectivePythonPath)}" placeholder="扫描后自动填入可用解释器"><button class="secondary button-with-icon" id="pick-comfy-python">${icon("folder-open")}选择文件</button></div></label>
+            <label class="python-candidate-field"><span class="runtime-label">扫描到的候选版本</span><select id="comfy-python-candidate"><option value="">${environmentScanning ? "正在扫描…" : pythonRuntimes.length ? "选择一个解释器" : "未发现可用 Python"}</option>${pythonRuntimes.map((runtime) => `<option value="${escapeHtml(runtime.path)}" ${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? "selected" : ""}>Python ${escapeHtml(runtime.version)} · ${escapeHtml(pythonSourceLabels[runtime.source] ?? runtime.source)}${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? " · 当前" : ""}</option>`).join("")}</select></label>
           </div>
         </div>
         <div class="attention-runtime-grid">
@@ -2925,6 +2995,7 @@ function render(): void {
   } else if (page === "queue") {
     bindQueue();
     void loadQueueInputPreviews();
+    restoreQueueMoveAnchor();
   }
   else if (page === "history" || page === "history-detail") {
     bindHistory(playback);
@@ -3172,6 +3243,7 @@ function closeHistoryContextMenu(): void {
 
 function openHistoryDetail(assetId: string, versionId?: string): void {
   if (page === "history") historyScrollPosition = window.scrollY;
+  reportUserAction("history-open-detail", { assetId, versionId });
   selectedHistoryAssetId = assetId;
   const asset = state.history.find((item) => item.id === assetId);
   selectedHistoryVersionId = asset?.versions.find((item) => item.id === versionId)?.id ??
@@ -4460,8 +4532,9 @@ function bindQueue(): void {
       render();
     });
   });
-  document.querySelectorAll<HTMLElement>("[data-move]").forEach((button) => {
+  document.querySelectorAll<HTMLButtonElement>("[data-move]").forEach((button) => {
     button.addEventListener("click", async () => {
+      captureQueueMoveAnchor(button);
       reportUserAction("queue-move", {
         taskId: button.dataset.move,
         direction: button.dataset.direction
@@ -4854,6 +4927,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   });
   document.querySelectorAll<HTMLElement>("[data-version-id]").forEach((button) => {
     button.addEventListener("click", () => {
+      reportUserAction("history-version-select", { versionId: button.dataset.versionId });
       selectedHistoryVersionId = button.dataset.versionId!;
       if (selectedHistoryAssetId) {
         historyForwardTarget = {
@@ -4865,6 +4939,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     });
   });
   document.querySelector("[data-open-upscale]")?.addEventListener("click", () => {
+    reportUserAction("history-open-upscale");
     const asset = state.history.find((item) => item.id === selectedHistoryAssetId);
     if (!asset) return;
     const version = currentHistoryVersion(asset);
@@ -4888,10 +4963,12 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   });
   document.querySelectorAll<HTMLElement>("[data-delete-history]").forEach((button) => {
     button.addEventListener("click", () => {
+      reportUserAction("history-delete-requested", { assetId: button.dataset.deleteHistory });
       requestHistoryDeletion(button.dataset.deleteHistory!);
     });
   });
   document.querySelector("[data-copy-prompt]")?.addEventListener("click", async () => {
+    reportUserAction("history-copy-prompt");
     const asset = state.history.find((item) => item.id === selectedHistoryAssetId);
     if (!asset) return;
     await copyHistoryText(asset.prompt, "提示词已复制。");
@@ -4903,6 +4980,10 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   });
   document.querySelectorAll<HTMLElement>("[data-continue-history]").forEach((button) => {
     button.addEventListener("click", async () => {
+      reportUserAction("history-continue", {
+        assetId: button.dataset.continueHistory,
+        versionId: button.dataset.sourceVersion
+      });
       const asset = state.history.find(
         (item) => item.id === button.dataset.continueHistory
       );
@@ -4931,12 +5012,14 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   });
   document.querySelectorAll<HTMLElement>("[data-show-file]").forEach((button) => {
     button.addEventListener("click", async () => {
+      reportUserAction("history-show-file");
       const shown = await window.studio.showItemInFolder(button.dataset.showFile!);
       if (!shown) showMessage("文件不存在或当前路径还没有在本机生成。");
     });
   });
   document.querySelectorAll<HTMLElement>("[data-copy-file]").forEach((button) => {
     button.addEventListener("click", () => {
+      reportUserAction("history-copy-file");
       void copyHistoryFile(button.dataset.copyFile!);
     });
   });
@@ -4961,6 +5044,7 @@ function formSettings(): Settings {
       "comfy-install-directory",
       base.comfyInstallDirectory
     ),
+    comfyPythonPath: value("comfy-python-path", base.comfyPythonPath),
     lmStudioUrl: value("lm-url", base.lmStudioUrl),
     lmStudioModel: value("lm-model", base.lmStudioModel),
     lmStudioInstallDirectory: value(
@@ -5098,6 +5182,25 @@ function bindSettings(): void {
       reportUserAction("settings-tab", { tab: settingsTab });
       render();
     });
+  });
+  document.querySelector<HTMLSelectElement>("#comfy-python-candidate")?.addEventListener("change", (event) => {
+    const selectedPath = (event.currentTarget as HTMLSelectElement).value;
+    if (!selectedPath) return;
+    const input = document.querySelector<HTMLInputElement>("#comfy-python-path");
+    if (!input) return;
+    input.value = selectedPath;
+    settingsDraft = formSettings();
+    reportUserAction("select-comfy-python", { source: "scan-candidate" });
+    void runEnvironmentScan(settingsDraft);
+  });
+  document.querySelector<HTMLButtonElement>("#pick-comfy-python")?.addEventListener("click", async () => {
+    const selectedPath = await window.studio.pickPython();
+    const input = document.querySelector<HTMLInputElement>("#comfy-python-path");
+    if (!selectedPath || !input) return;
+    input.value = selectedPath;
+    settingsDraft = formSettings();
+    reportUserAction("select-comfy-python", { source: "file-picker" });
+    await runEnvironmentScan(settingsDraft);
   });
   document.querySelector<HTMLButtonElement>("#refresh-app-logs")?.addEventListener("click", () => {
     void loadAppLogs();
@@ -5375,6 +5478,7 @@ function bindSettings(): void {
     const nextSettings = formSettings();
     const previousProfile = previousSettings.ltxExtensionModelProfile;
     const pathsChanged = previousSettings.comfyInstallDirectory !== nextSettings.comfyInstallDirectory ||
+      previousSettings.comfyPythonPath !== nextSettings.comfyPythonPath ||
       previousSettings.modelDirectory !== nextSettings.modelDirectory ||
       previousSettings.outputDirectory !== nextSettings.outputDirectory ||
       previousSettings.lmStudioInstallDirectory !== nextSettings.lmStudioInstallDirectory ||
@@ -5433,6 +5537,7 @@ function bindSettings(): void {
   });
   document.querySelectorAll<HTMLElement>("[data-test]").forEach((button) => {
     button.addEventListener("click", async () => {
+      reportUserAction("connection-test", { kind: button.dataset.test });
       const resultElement = document.querySelector("#connection-result")!;
       resultElement.textContent = "正在连接…";
       const result = await window.studio.testConnection(

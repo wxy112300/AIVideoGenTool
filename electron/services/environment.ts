@@ -18,6 +18,7 @@ import type {
   LocalServiceKind,
   ModelComponentStatus,
   ModelScanProfile,
+  PythonRuntimeCandidate,
   Settings,
   WorkflowDependencyStatus
 } from "../../src/types.js";
@@ -2285,6 +2286,90 @@ async function findComfyInstallation(settings: Settings): Promise<ComfyInstallat
   return result;
 }
 
+export function isWindowsPythonAlias(filename: string): boolean {
+  return /[\\/]WindowsApps[\\/]python(?:3)?\.exe$/iu.test(filename);
+}
+
+async function pythonVersionFor(filename: string): Promise<string> {
+  if (!filename || isWindowsPythonAlias(filename) || !(await exists(filename))) return "";
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      filename,
+      ["--version"],
+      { encoding: "utf8", timeout: 5_000, windowsHide: true }
+    );
+    const output = `${stdout}\n${stderr}`;
+    return output.match(/Python\s+(\d+\.\d+(?:\.\d+)?)/i)?.[1] ?? "";
+  } catch {
+    return "";
+  }
+}
+
+async function findExecutablePaths(command: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync("where.exe", [command], {
+      encoding: "utf8",
+      timeout: 4_000,
+      windowsHide: true
+    });
+    return stdout.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function pythonLauncherPaths(): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync("py.exe", ["-0p"], {
+      encoding: "utf8",
+      timeout: 5_000,
+      windowsHide: true
+    });
+    return stdout.split(/\r?\n/u).flatMap((line) => {
+      const match = line.match(/\s([^\s].*python(?:\.exe)?)\s*$/iu);
+      return match?.[1] ? [match[1].trim()] : [];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function pythonRuntimeSource(filename: string, settings: Settings, root: string, sourceRoot: string): PythonRuntimeCandidate["source"] {
+  const normalized = path.resolve(filename).toLowerCase();
+  if (normalized === path.resolve(root, ".venv", "Scripts", "python.exe").toLowerCase() ||
+    normalized === path.resolve(sourceRoot, ".venv", "Scripts", "python.exe").toLowerCase()) return "comfy-venv";
+  if (normalized.includes(`${path.sep}python_embeded${path.sep}`.toLowerCase())) return "embedded";
+  if (normalized.includes("windowsapps")) return "other";
+  if (settings.comfyPythonPath.trim() && normalized === path.resolve(settings.comfyPythonPath).toLowerCase()) return "selected";
+  return "path";
+}
+
+async function discoverPythonRuntimes(
+  settings: Settings,
+  comfyRoot = "",
+  installation: ComfyInstallation | null = null
+): Promise<PythonRuntimeCandidate[]> {
+  const root = comfyRoot || await findComfyRoot(settings);
+  const selected = installation || await findComfyInstallation(settings);
+  const sourceRoot = selected?.sourceDirectory || root;
+  const paths = uniqueWindowsPaths([
+    settings.comfyPythonPath.trim(),
+    root ? path.join(root, ".venv", "Scripts", "python.exe") : "",
+    sourceRoot ? path.join(sourceRoot, ".venv", "Scripts", "python.exe") : "",
+    sourceRoot ? path.join(path.dirname(sourceRoot), "python_embeded", "python.exe") : "",
+    ...(await pythonLauncherPaths()),
+    ...(await findExecutablePaths("python.exe"))
+  ]).filter((filename) => !isWindowsPythonAlias(filename));
+  const candidates = await Promise.all(paths.map(async (filename) => ({
+    path: filename,
+    version: await pythonVersionFor(filename),
+    source: pythonRuntimeSource(filename, settings, root, sourceRoot),
+    selected: Boolean(settings.comfyPythonPath.trim()) &&
+      path.resolve(filename).toLowerCase() === path.resolve(settings.comfyPythonPath).toLowerCase()
+  })));
+  return candidates.filter((candidate) => Boolean(candidate.version));
+}
+
 async function findComfyPython(
   settings: Settings,
   comfyRoot = "",
@@ -2293,16 +2378,18 @@ async function findComfyPython(
   const root = comfyRoot || await findComfyRoot(settings);
   const selected = installation || await findComfyInstallation(settings);
   const sourceRoot = selected?.sourceDirectory || root;
-  const candidates = uniqueWindowsPaths([
+  const runtimes = await discoverPythonRuntimes(settings, root, selected);
+  const selectedRuntime = runtimes.find((runtime) => runtime.selected);
+  if (selectedRuntime) return selectedRuntime.path;
+  const preferredPaths = uniqueWindowsPaths([
     root ? path.join(root, ".venv", "Scripts", "python.exe") : "",
     sourceRoot ? path.join(sourceRoot, ".venv", "Scripts", "python.exe") : "",
-    sourceRoot ? path.join(path.dirname(sourceRoot), "python_embeded", "python.exe") : "",
-    selected?.executable && selected.type !== "desktop" ? selected.executable : ""
-  ]);
-  for (const candidate of candidates) {
-    if (await exists(candidate)) return candidate;
-  }
-  return await findExecutable("python.exe");
+    sourceRoot ? path.join(path.dirname(sourceRoot), "python_embeded", "python.exe") : ""
+  ]).map((filename) => path.resolve(filename).toLowerCase());
+  return runtimes.find((runtime) => preferredPaths.includes(path.resolve(runtime.path).toLowerCase()))?.path ??
+    runtimes.find((runtime) => runtime.source === "path")?.path ??
+    runtimes[0]?.path ??
+    "";
 }
 
 interface AttentionPythonProbe {
@@ -2423,9 +2510,10 @@ async function kjNodesSupportsModelAttention(comfyRoot: string): Promise<boolean
 async function inspectAttentionAcceleration(
   settings: Settings,
   comfyRoot: string,
-  installation: ComfyInstallation | null
+  installation: ComfyInstallation | null,
+  pythonPathOverride = ""
 ): Promise<AttentionAccelerationStatus> {
-  const pythonPath = await findComfyPython(settings, comfyRoot, installation);
+  const pythonPath = pythonPathOverride || await findComfyPython(settings, comfyRoot, installation);
   const probe = await inspectAttentionPython(pythonPath);
   const wheel = attentionWheelForProbe(probe);
   const kjNodesInstalled = Boolean(comfyRoot) && (
@@ -4006,10 +4094,22 @@ export async function scanEnvironment(
     modelFiles,
     settings.ltxExtensionModelProfile
   );
+  const pythonRuntimes = await discoverPythonRuntimes(
+    settings,
+    comfyRoot,
+    comfyInstallation
+  );
+  const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ??
+    pythonRuntimes[0];
   const [customNodes, workflowDependencies, attentionAcceleration, llamaServer] = await Promise.all([
     scanCustomNodes(comfyRoot),
     scanWorkflowDependencies(comfyRoot),
-    inspectAttentionAcceleration(settings, comfyRoot, comfyInstallation),
+    inspectAttentionAcceleration(
+      settings,
+      comfyRoot,
+      comfyInstallation,
+      selectedPython?.path ?? ""
+    ),
     scanLlamaServer(settings, comfyRoot)
   ]);
   const issues = await scanEnvironmentIssues(comfyRoot);
@@ -4092,6 +4192,7 @@ export async function scanEnvironment(
     comfySourceDirectory: comfyInstallation?.sourceDirectory ?? "",
     comfyInstallType: comfyInstallation?.type ?? "",
     comfyInstallations,
+    pythonRuntimes,
     gpus: nvidiaProbe.devices,
     modelDirectory,
     outputDirectory,

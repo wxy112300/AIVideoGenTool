@@ -142,7 +142,7 @@ function formatMeta(meta: Record<string, unknown> | undefined): string {
 }
 
 function formatLogRecord(record: AppLogRecord): string {
-  const level = record.level.toUpperCase().padEnd(5, " ");
+  const level = record.level.toUpperCase();
   const target = `${displayScope(record.scope)}.${displayEvent(record.event)}`;
   const metadata = formatMeta(record.meta);
   return `[${formatTimestamp(record.timestamp)}][${level}] ${target}: ${record.message}${metadata ? ` | ${metadata}` : ""}`;

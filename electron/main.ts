@@ -121,6 +121,7 @@ let closeFlowRunning = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const appLogger = getApplicationLogger();
 let fatalProcessErrorHandled = false;
+const taskStageStartedAt = new Map<string, { stage: string; startedAt: number }>();
 
 try {
   crashReporter.start({
@@ -206,6 +207,15 @@ app.on("second-instance", () => {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+});
+
+app.on("child-process-gone", (_event, details) => {
+  appLogger.error("process", "child-process-gone", "Electron child process exited", {
+    type: details.type,
+    reason: details.reason,
+    exitCode: details.exitCode,
+    serviceName: details.serviceName ?? ""
+  });
 });
 
 function registerMediaProtocol(): void {
@@ -457,6 +467,7 @@ function sendState(state = store.get()): void {
 }
 
 const videoOutputPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
+const performanceLogIntervalMs = 30_000;
 
 async function resolveTaskOutputDirectory(): Promise<string> {
   const configured = store.get().settings.outputDirectory.trim();
@@ -550,10 +561,16 @@ async function interruptForExit(waitForWorker: boolean): Promise<{
   nativePromptController?.abort(new Error("应用退出，提示词扩写已中止"));
   const interruptPromise = interrupt(settings).then(
     async () => {
+      appLogger.info("comfy", "shutdown-interrupt-succeeded", "ComfyUI interruption requested during shutdown");
       await freeMemory(settings).catch(() => undefined);
       return true;
     },
-    () => false
+    (error) => {
+      appLogger.warn("comfy", "shutdown-interrupt-failed", "ComfyUI interruption failed during shutdown", {
+        error: safeLogErrorMessage(error)
+      });
+      return false;
+    }
   );
   const interrupted = waitForWorker
     ? await interruptPromise
@@ -911,6 +928,17 @@ async function updateTask(
       });
     }
     if (patch.stage && patch.stage !== task.stage) {
+      const previousStage = taskStageStartedAt.get(taskId);
+      if (previousStage) {
+        appLogger.info("queue", "stage-duration", "Queue task stage finished", {
+          taskId,
+          taskType: task.taskType,
+          modelId: task.modelId,
+          stage: previousStage.stage,
+          durationSeconds: Math.round((Date.now() - previousStage.startedAt) / 1000)
+        });
+      }
+      taskStageStartedAt.set(taskId, { stage: patch.stage, startedAt: Date.now() });
       appLogger.info("queue", "task-stage", "Queue task stage changed", {
         taskId,
         taskType: task.taskType,
@@ -945,6 +973,11 @@ async function ensureComfyUiReady(taskId: string): Promise<void> {
     await testComfyUi(settings);
     return;
   } catch (connectionError) {
+    appLogger.warn("service", "connection-unavailable", "ComfyUI was not ready", {
+      taskId,
+      local: isLocalComfyUrl(settings.comfyUrl),
+      error: safeLogErrorMessage(connectionError)
+    });
     if (!isLocalComfyUrl(settings.comfyUrl)) {
       throw new Error(
         `无法连接 ComfyUI（${settings.comfyUrl}）：${
@@ -960,7 +993,16 @@ async function ensureComfyUiReady(taskId: string): Promise<void> {
     progress: 1,
     stage: "正在启动 ComfyUI，等待服务就绪"
   });
+  appLogger.info("service", "auto-start-requested", "Queue requested automatic ComfyUI startup", {
+    taskId
+  });
   const started = await startLocalService("comfy", settings);
+  appLogger.info(
+    "service",
+    started.ok ? "auto-start-succeeded" : "auto-start-failed",
+    started.message,
+    { taskId, ok: started.ok }
+  );
   if (!started.ok) {
     throw new Error(`ComfyUI 自动启动失败：${started.message}`);
   }
@@ -972,6 +1014,10 @@ async function ensureComfyUiReadyForPrompt(settings: Settings): Promise<void> {
     await testComfyUi(settings);
     return;
   } catch (connectionError) {
+    appLogger.warn("service", "prompt-connection-unavailable", "ComfyUI was not ready for prompt runtime", {
+      local: isLocalComfyUrl(settings.comfyUrl),
+      error: safeLogErrorMessage(connectionError)
+    });
     if (!isLocalComfyUrl(settings.comfyUrl)) {
       throw new Error(
         `无法连接 ComfyUI（${settings.comfyUrl}）：${
@@ -1078,6 +1124,7 @@ async function executeQueue(): Promise<void> {
     let taskPerformanceStats: TaskPerformanceStats | undefined;
     let performanceLogTimer: ReturnType<typeof setInterval> | undefined;
     let performanceLogInFlight = false;
+    const performanceWarnings = new Set<string>();
     try {
       if (task.taskType === "generation") {
         const safety = generationSafetyForTask(task);
@@ -1101,6 +1148,68 @@ async function executeQueue(): Promise<void> {
           const sample = await taskPerformanceMonitor.snapshot();
           const mib = (bytes: number | null): number | null =>
             bytes == null ? null : Math.round(bytes / 1024 ** 2);
+          const warnOnce = (
+            key: string,
+            message: string,
+            meta: Record<string, unknown>
+          ): void => {
+            if (performanceWarnings.has(key)) return;
+            performanceWarnings.add(key);
+            appLogger.warn("performance", key, message, {
+              taskId: task.id,
+              taskType: task.taskType,
+              modelId: task.modelId,
+              ...meta
+            });
+          };
+          const memoryRatio = sample.memoryTotalBytes > 0
+            ? sample.memoryUsedBytes / sample.memoryTotalBytes
+            : 0;
+          if (sample.vramUsedBytes == null || sample.vramTotalBytes == null) {
+            warnOnce(
+              "gpu-telemetry-unavailable",
+              "GPU telemetry is unavailable; nvidia-smi returned no usable sample",
+              {}
+            );
+          } else if (sample.vramUsedBytes / sample.vramTotalBytes >= 0.95) {
+            warnOnce(
+              "vram-near-limit",
+              "GPU VRAM is near capacity",
+              {
+                vramUsedMiB: mib(sample.vramUsedBytes),
+                vramTotalMiB: mib(sample.vramTotalBytes),
+                usagePercent: Math.round(sample.vramUsedBytes / sample.vramTotalBytes * 100)
+              }
+            );
+          }
+          if (sample.sharedGpuMemoryBytes != null && sample.sharedGpuMemoryBytes >= 2 * 1024 ** 3) {
+            warnOnce(
+              "shared-gpu-memory-high",
+              "GPU shared memory usage is high",
+              { sharedGpuMemoryMiB: mib(sample.sharedGpuMemoryBytes) }
+            );
+          }
+          if (sample.gpuTemperatureC != null && sample.gpuTemperatureC >= 85) {
+            warnOnce(
+              "gpu-temperature-high",
+              "GPU temperature is high",
+              { gpuTemperatureC: Math.round(sample.gpuTemperatureC) }
+            );
+          }
+          if (memoryRatio >= 0.9) {
+            warnOnce(
+              "system-memory-high",
+              "System memory usage is high",
+              { memoryUsedMiB: mib(sample.memoryUsedBytes), memoryTotalMiB: mib(sample.memoryTotalBytes), usagePercent: Math.round(memoryRatio * 100) }
+            );
+          }
+          if (sample.cpuPercent != null && sample.cpuPercent >= 95) {
+            warnOnce(
+              "cpu-usage-high",
+              "CPU usage is high",
+              { cpuPercent: Math.round(sample.cpuPercent) }
+            );
+          }
           appLogger.info("performance", "task-sample", "Task performance sample", {
             taskId: task.id,
             taskType: task.taskType,
@@ -1123,7 +1232,10 @@ async function executeQueue(): Promise<void> {
         }
       };
       void logPerformanceSnapshot();
-      performanceLogTimer = setInterval(() => void logPerformanceSnapshot(), 10_000);
+      performanceLogTimer = setInterval(
+        () => void logPerformanceSnapshot(),
+        performanceLogIntervalMs
+      );
       if (!lmStudioReleased) {
         await updateTask(task.id, {
           progress: 1,
@@ -1150,8 +1262,18 @@ async function executeQueue(): Promise<void> {
       let lastGpuComputeAt = 0;
       vramWatchdog = startAdaptiveVramWatchdog(
         activeController,
-        (_pressure, utilization, sample) => {
+        (pressure, utilization, sample) => {
           taskPerformanceMonitor?.recordGpuSample(sample);
+          if (pressure.reason && !performanceWarnings.has("vram-pressure")) {
+            performanceWarnings.add("vram-pressure");
+            appLogger.warn("performance", "vram-pressure", "VRAM safety pressure detected", {
+              taskId: task.id,
+              remainingMiB: Math.round(pressure.remainingMiB),
+              requiredReserveMiB: Math.round(pressure.requiredReserveMiB),
+              growthMiBPerSecond: Math.round(pressure.growthMiBPerSecond),
+              reason: pressure.reason
+            });
+          }
           if (utilization !== null && utilization >= 10) {
             lastGpuComputeAt = Date.now();
           }
@@ -1447,8 +1569,18 @@ async function executeQueue(): Promise<void> {
         }
       );
       if (!aborted) {
-        await interrupt(store.get().settings).catch(() => undefined);
-        await freeMemory(store.get().settings).catch(() => undefined);
+        await interrupt(store.get().settings).catch((interruptError) => {
+          appLogger.warn("comfy", "interrupt-failed", "ComfyUI interrupt request failed", {
+            taskId: task.id,
+            error: safeLogErrorMessage(interruptError)
+          });
+        });
+        await freeMemory(store.get().settings).catch((freeMemoryError) => {
+          appLogger.warn("comfy", "free-memory-failed", "ComfyUI memory release request failed", {
+            taskId: task.id,
+            error: safeLogErrorMessage(freeMemoryError)
+          });
+        });
       }
       if (requiresRestart) {
         const stopped = await store.update((state) => {
@@ -1491,6 +1623,17 @@ async function executeQueue(): Promise<void> {
         });
       }
     } finally {
+      const finalStage = taskStageStartedAt.get(task.id);
+      if (finalStage) {
+        appLogger.info("queue", "stage-duration", "Queue task final stage finished", {
+          taskId: task.id,
+          taskType: task.taskType,
+          modelId: task.modelId,
+          stage: finalStage.stage,
+          durationSeconds: Math.round((Date.now() - finalStage.startedAt) / 1000)
+        });
+        taskStageStartedAt.delete(task.id);
+      }
       if (performanceLogTimer) clearInterval(performanceLogTimer);
       vramWatchdog?.stop();
       taskPerformanceMonitor?.stop();
@@ -1501,6 +1644,33 @@ async function executeQueue(): Promise<void> {
     state.queueRunning = false;
   });
   sendState(next);
+}
+async function loggedOperation<T extends { ok: boolean; message: string }>(
+  scope: string,
+  event: string,
+  startedMessage: string,
+  operation: () => Promise<T>,
+  meta: Record<string, unknown> = {}
+): Promise<T> {
+  const startedAt = Date.now();
+  appLogger.info(scope, `${event}-started`, startedMessage, meta);
+  try {
+    const result = await operation();
+    appLogger.info(
+      scope,
+      result.ok ? `${event}-succeeded` : `${event}-failed`,
+      result.message,
+      { ...meta, ok: result.ok, durationMs: Date.now() - startedAt }
+    );
+    return result;
+  } catch (error) {
+    appLogger.error(scope, `${event}-failed`, safeLogErrorMessage(error), {
+      ...meta,
+      durationMs: Date.now() - startedAt,
+      ...errorLogMeta(error)
+    });
+    throw error;
+  }
 }
 
 function registerIpc(): void {
@@ -1538,8 +1708,17 @@ function registerIpc(): void {
     return next;
   });
   ipcMain.handle("settings:save", async (_event, settings: Settings) => {
+    const previous = store.get().settings;
+    const changedKeys = Object.keys(settings).filter((key) =>
+      JSON.stringify(previous[key as keyof Settings]) !==
+      JSON.stringify(settings[key as keyof Settings])
+    );
     const next = await store.update((state) => {
       state.settings = settings;
+    });
+    appLogger.info("settings", "saved", "Application settings saved", {
+      changedKeys,
+      changedCount: changedKeys.length
     });
     sendState(next);
     return next;
@@ -1565,12 +1744,26 @@ function registerIpc(): void {
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
+  ipcMain.handle("file:pick-python", async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [{ name: "Python 解释器", extensions: ["exe"] }]
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
   ipcMain.handle("workflow:inspect", async (_event, workflowPath: string) => {
+    const startedAt = Date.now();
     const source = JSON.parse(await fs.readFile(workflowPath, "utf8")) as unknown;
-    return {
+    const result = {
       supportsEndImage: workflowSupportsEndImage(source),
       supportsVideoExtension: extensionWorkflowSafetyErrors(source).length === 0
     };
+    appLogger.info("workflow", "inspected", "Workflow inspected", {
+      durationMs: Date.now() - startedAt,
+      supportsEndImage: result.supportsEndImage,
+      supportsVideoExtension: result.supportsVideoExtension
+    });
+    return result;
   });
   ipcMain.handle("workflow:get-bundled", (_event, modelId: string, inputMode?: Draft["inputMode"]) =>
     bundledWorkflowFor(modelId, inputMode)
@@ -1817,13 +2010,24 @@ function registerIpc(): void {
   ipcMain.handle(
     "connection:test",
     async (_event, kind: ConnectionKind, settings: Settings) => {
+      const startedAt = Date.now();
+      appLogger.info("service", "connection-test-started", "Service connection test started", { kind });
       try {
         const message =
           kind === "comfy"
             ? await testComfyUi(settings)
             : await testLmStudio(settings);
+        appLogger.info("service", "connection-test-succeeded", "Service connection test succeeded", {
+          kind,
+          durationMs: Date.now() - startedAt
+        });
         return { ok: true, message };
       } catch (error) {
+        appLogger.warn("service", "connection-test-failed", "Service connection test failed", {
+          kind,
+          durationMs: Date.now() - startedAt,
+          error: safeLogErrorMessage(error)
+        });
         return {
           ok: false,
           message: error instanceof Error ? error.message : String(error)
@@ -1860,7 +2064,12 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "llama-server:install",
-    (_event, settings: Settings) => installLlamaServer(settings)
+    (_event, settings: Settings) => loggedOperation(
+      "service",
+      "llama-server-install",
+      "llama-server installation started",
+      () => installLlamaServer(settings)
+    )
   );
   ipcMain.handle(
     "service:start",
@@ -1917,31 +2126,55 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "comfyui:update",
-    (_event, settings: Settings) => updateComfyUi(settings)
+    (_event, settings: Settings) => loggedOperation(
+      "service",
+      "comfy-update",
+      "ComfyUI update started",
+      () => updateComfyUi(settings)
+    )
   );
   ipcMain.handle(
     "environment:repair",
-    (_event, issueId: EnvironmentIssue["id"], settings: Settings) =>
-      repairEnvironmentIssue(issueId, settings)
+    (_event, issueId: EnvironmentIssue["id"], settings: Settings) => loggedOperation(
+      "environment",
+      "repair",
+      "Environment repair started",
+      () => repairEnvironmentIssue(issueId, settings),
+      { issueId }
+    )
   );
   ipcMain.handle(
     "custom-node:install",
-    (_event, nodeId: string, settings: Settings) =>
-      installCustomNode(nodeId, settings)
+    (_event, nodeId: string, settings: Settings) => loggedOperation(
+      "environment",
+      "custom-node-install",
+      "Custom node installation started",
+      () => installCustomNode(nodeId, settings),
+      { nodeId }
+    )
   );
   ipcMain.handle(
     "workflow-dependency:install",
-    (_event, workflowId, settings: Settings) =>
-      installWorkflowDependency(workflowId, settings)
+    (_event, workflowId, settings: Settings) => loggedOperation(
+      "environment",
+      "workflow-dependency-install",
+      "Workflow dependency installation started",
+      () => installWorkflowDependency(workflowId, settings),
+      { workflowId }
+    )
   );
   ipcMain.handle(
     "attention-acceleration:install",
-    (event, settings: Settings) =>
-      installAttentionAcceleration(settings, (message) => {
+    (event, settings: Settings) => loggedOperation(
+      "environment",
+      "attention-install",
+      "Attention acceleration installation started",
+      () => installAttentionAcceleration(settings, (message) => {
         if (!event.sender.isDestroyed()) {
           event.sender.send("attention-acceleration:log", message);
         }
       })
+    )
   );
   ipcMain.handle("queue:enqueue", async (_event, draft: Draft) => {
     if (draft.inputMode !== "image") {
@@ -2209,26 +2442,42 @@ function registerIpc(): void {
     return next;
   });
   ipcMain.handle("history:delete", async (_event, assetId: string) => {
+    const startedAt = Date.now();
+    appLogger.info("history", "delete-started", "History asset deletion started", { assetId });
     const current = store.get();
     const asset = current.history.find((item) => item.id === assetId);
     if (!asset) return current;
-    for (const filename of historyVideoPaths(asset, current.settings.outputDirectory)) {
-      try {
-        await fs.unlink(filename);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-        throw new Error(
-          `无法删除视频文件 ${path.basename(filename)}：${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
+    try {
+      for (const filename of historyVideoPaths(asset, current.settings.outputDirectory)) {
+        try {
+          await fs.unlink(filename);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+          throw new Error(
+            `无法删除视频文件 ${path.basename(filename)}：${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
       }
+      const next = await store.update((state) => {
+        state.history = state.history.filter((item) => item.id !== assetId);
+      });
+      appLogger.info("history", "delete-succeeded", "History asset deleted", {
+        assetId,
+        durationMs: Date.now() - startedAt,
+        versionCount: asset.versions.length
+      });
+      sendState(next);
+      return next;
+    } catch (error) {
+      appLogger.error("history", "delete-failed", safeLogErrorMessage(error), {
+        assetId,
+        durationMs: Date.now() - startedAt,
+        ...errorLogMeta(error)
+      });
+      throw error;
     }
-    const next = await store.update((state) => {
-      state.history = state.history.filter((item) => item.id !== assetId);
-    });
-    sendState(next);
-    return next;
   });
 }
 

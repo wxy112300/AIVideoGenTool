@@ -17,6 +17,7 @@ const api: AppApi = {
   saveClipboardImage: (data: ArrayBuffer, mimeType: string) =>
     ipcRenderer.invoke("file:save-clipboard-image", data, mimeType),
   pickWorkflow: () => ipcRenderer.invoke("file:pick-workflow"),
+  pickPython: () => ipcRenderer.invoke("file:pick-python"),
   inspectWorkflow: (path: string) =>
     ipcRenderer.invoke("workflow:inspect", path),
   getBundledWorkflow: (modelId: string, inputMode?: Draft["inputMode"]) =>

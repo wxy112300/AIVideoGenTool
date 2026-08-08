@@ -71,6 +71,7 @@ export function createDefaultSettings(): Settings {
   return {
     comfyUrl: "http://127.0.0.1:8188",
     comfyInstallDirectory: "",
+    comfyPythonPath: "",
     lmStudioUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
     lmStudioInstallDirectory: "",

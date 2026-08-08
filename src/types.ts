@@ -70,6 +70,7 @@ export type LtxExtensionModelProfile =
 export interface Settings {
   comfyUrl: string;
   comfyInstallDirectory: string;
+  comfyPythonPath: string;
   lmStudioUrl: string;
   lmStudioModel: string;
   lmStudioInstallDirectory: string;
@@ -409,6 +410,7 @@ export interface EnvironmentScanResult {
   comfySourceDirectory: string;
   comfyInstallType: "desktop" | "manual" | "portable" | "";
   comfyInstallations: ComfyUiInstallationSummary[];
+  pythonRuntimes: PythonRuntimeCandidate[];
   gpus: GpuDeviceInfo[];
   modelDirectory: string;
   outputDirectory: string;
@@ -420,6 +422,13 @@ export interface EnvironmentScanResult {
   customNodes: CustomNodeStatus[];
   workflowDependencies: WorkflowDependencyStatus[];
   issues: EnvironmentIssue[];
+}
+
+export interface PythonRuntimeCandidate {
+  path: string;
+  version: string;
+  source: "selected" | "comfy-venv" | "embedded" | "path" | "py-launcher" | "other";
+  selected: boolean;
 }
 
 export interface AttentionAccelerationStatus {
@@ -540,6 +549,7 @@ export interface AppApi {
   getDroppedFilePath(file: File): string;
   saveClipboardImage(data: ArrayBuffer, mimeType: string): Promise<string>;
   pickWorkflow(): Promise<string | null>;
+  pickPython(): Promise<string | null>;
   inspectWorkflow(path: string): Promise<WorkflowCapabilities>;
   getBundledWorkflow(
     modelId: string,
