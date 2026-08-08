@@ -773,6 +773,16 @@ export function renderWorkflow(
   }
   if (
     isMiniMaxH3Model(task.modelId) &&
+    task.attentionMode === "sage-triton"
+  ) {
+    for (const node of Object.values(workflow)) {
+      if (node.class_type !== "PathchSageAttentionKJ" || !node.inputs) continue;
+      node.inputs.sage_attention = "sageattn_qk_int8_pv_fp16_triton";
+      node.inputs.allow_compile = false;
+    }
+  }
+  if (
+    isMiniMaxH3Model(task.modelId) &&
     task.attentionMode === "pytorch"
   ) {
     const sageNodeIds = new Set(

@@ -1875,7 +1875,7 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
             : `<button class="secondary button-with-icon" data-edit-task="${task.id}" title="带回创建页调整参数并重新加入队列">${icon("sliders-horizontal")}编辑并重新加入</button>`
           : ""}
         <button class="secondary button-with-icon" data-duplicate="${task.id}">${icon("copy")}复制</button>
-        ${task.status === "failed" || task.status === "cancelled" ? `<button class="primary button-with-icon" data-retry="${task.id}">${icon("refresh-cw")}重试并启动</button>` : ""}
+        ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary button-with-icon" data-reset-task="${task.id}" title="清除失败状态并恢复为普通等待任务">${icon("rotate-ccw")}重置状态</button>` : ""}
         <button class="ghost danger button-with-icon" data-remove="${task.id}">${icon("trash-2")}移除</button>
       </div>
     </article>`;
@@ -2898,12 +2898,13 @@ function settingsPage(): string {
           <label class="acceleration-mode-field">H3 Attention 模式
             <select id="h3-attention-mode">
               <option value="sage" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>自动加速 · SageAttention CUDA FP16</option>
+              <option value="sage-triton" ${settings.h3AttentionMode === "sage-triton" ? "selected" : ""}>稳定加速 · SageAttention Triton FP16</option>
               <option value="pytorch" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>兼容模式 · PyTorch Attention</option>
             </select>
           </label>
           <div class="acceleration-summary">
             <span class="acceleration-summary-icon">${icon(attention?.ready ? "circle-check" : "circle-alert")}</span>
-            <div><strong>${escapeHtml(attention?.detail ?? "等待环境扫描")}</strong><span>兼容模式会自动移除 H3 工作流中的 SageAttention 节点。</span></div>
+            <div><strong>${escapeHtml(attention?.detail ?? "等待环境扫描")}</strong><span>CUDA 内核异常时会依次降级到 SageAttention Triton 和 PyTorch Attention，避免队列反复崩溃。</span></div>
           </div>
         </div>
         <div class="python-runtime-picker">
@@ -4595,16 +4596,20 @@ function bindQueue(): void {
       render();
     });
   });
+  document.querySelectorAll<HTMLElement>("[data-reset-task]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      reportUserAction("queue-reset-status", { taskId: button.dataset.resetTask });
+      try {
+        state = await window.studio.resetTask(button.dataset.resetTask!);
+        render();
+      } catch (error) {
+        showMessage(error instanceof Error ? error.message : "无法重置任务状态");
+      }
+    });
+  });
   document.querySelectorAll<HTMLElement>("[data-edit-task]").forEach((button) => {
     button.addEventListener("click", () => {
       void editQueueTask(button.dataset.editTask!);
-    });
-  });
-  document.querySelectorAll<HTMLElement>("[data-retry]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      reportUserAction("queue-retry", { taskId: button.dataset.retry });
-      state = await window.studio.retryTask(button.dataset.retry!);
-      render();
     });
   });
   document.querySelectorAll<HTMLElement>("[data-edit-upscale-task]").forEach((button) => {

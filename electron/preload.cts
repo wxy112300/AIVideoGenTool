@@ -79,7 +79,7 @@ const api: AppApi = {
     ipcRenderer.invoke("queue:move", taskId, direction),
   optimizeQueue: () => ipcRenderer.invoke("queue:optimize"),
   duplicateTask: (taskId: string) => ipcRenderer.invoke("queue:duplicate", taskId),
-  retryTask: (taskId: string) => ipcRenderer.invoke("queue:retry", taskId),
+  resetTask: (taskId: string) => ipcRenderer.invoke("queue:reset", taskId),
   deleteHistoryAsset: (assetId: string) =>
     ipcRenderer.invoke("history:delete", assetId),
   onStateChanged: (callback) => {

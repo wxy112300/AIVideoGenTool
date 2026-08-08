@@ -1,3 +1,5 @@
+import type { H3AttentionMode } from "../types.js";
+
 export type RecoverableFailureKind =
   | "cuda-context"
   | "gpu-memory"
@@ -10,6 +12,14 @@ export interface FailureRecoveryDecision {
   recoverable: boolean;
   requiresRestart: boolean;
   forceStop: boolean;
+}
+
+export function nextH3AttentionModeAfterCudaFailure(
+  current: H3AttentionMode | undefined
+): H3AttentionMode | null {
+  if (!current || current === "sage") return "sage-triton";
+  if (current === "sage-triton") return "pytorch";
+  return null;
 }
 
 const cudaContextPattern =

@@ -215,6 +215,19 @@ describe("renderWorkflow", () => {
       }
     });
 
+    const triton = renderWorkflow(
+      source,
+      { ...h3Task, attentionMode: "sage-triton" },
+      { inputImage: "input.png", vramTotalBytes: 24 * 1024 ** 3 }
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(triton["19"]).toMatchObject({
+      class_type: "PathchSageAttentionKJ",
+      inputs: {
+        sage_attention: "sageattn_qk_int8_pv_fp16_triton",
+        allow_compile: false
+      }
+    });
+
     const quickPreview = renderWorkflow(source, {
       ...h3Task,
       steps: 12

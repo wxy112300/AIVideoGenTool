@@ -35,6 +35,7 @@ import type {
 import { createOutputFilename } from "../src/core/filename.js";
 import {
   classifyFailureForRecovery,
+  nextH3AttentionModeAfterCudaFailure,
   nextAutomaticRetryAttempt
 } from "../src/core/recovery.js";
 import { historyVideoPaths } from "../src/core/history-delete.js";
@@ -1203,6 +1204,7 @@ async function executeQueue(): Promise<void> {
       automaticRetryLimit: store.get().settings.autoRetryCount,
       duration: task.duration,
       fps: task.fps,
+      attentionMode: task.taskType === "upscale" ? "not-applicable" : task.attentionMode ?? "sage",
       ...(task.taskType === "upscale"
         ? {
             sourceWidth: task.sourceWidth,
@@ -1672,6 +1674,7 @@ async function executeQueue(): Promise<void> {
           recoveryKind: recoveryDecision.kind,
           recoverable: recoveryDecision.recoverable,
           automaticRetryAttempt: task.automaticRetryAttempt ?? 0,
+          attentionMode: task.taskType === "upscale" ? "not-applicable" : task.attentionMode ?? "sage",
           ...errorLogMeta(error)
         }
       );
@@ -1752,10 +1755,45 @@ async function executeQueue(): Promise<void> {
             recoveryKind: recoveryDecision.kind
           });
         } else {
+          const attentionFallback = recoveryDecision.kind === "cuda-context" &&
+            task.taskType !== "upscale" &&
+            isMiniMaxH3Model(task.modelId)
+            ? nextH3AttentionModeAfterCudaFailure(task.attentionMode)
+            : null;
+          let recoveredState = failedState;
+          if (attentionFallback) {
+            let affectedTaskCount = 0;
+            recoveredState = await store.update((state) => {
+              for (const queuedTask of state.queue) {
+                if (queuedTask.taskType === "upscale" || !isMiniMaxH3Model(queuedTask.modelId)) continue;
+                const currentMode = queuedTask.attentionMode ?? "sage";
+                const shouldFallback = attentionFallback === "pytorch"
+                  ? currentMode !== "pytorch"
+                  : currentMode === "sage";
+                if (!shouldFallback) continue;
+                queuedTask.attentionMode = attentionFallback;
+                queuedTask.updatedAt = new Date().toISOString();
+                affectedTaskCount += 1;
+              }
+            });
+            sendState(recoveredState);
+            appLogger.warn(
+              "queue",
+              "h3-attention-fallback-applied",
+              "H3 Attention mode was downgraded after a deterministic CUDA kernel failure",
+              {
+                taskId: task.id,
+                modelId: task.modelId,
+                attentionFrom: task.attentionMode ?? "sage",
+                attentionTo: attentionFallback,
+                affectedTaskCount
+              }
+            );
+          }
           const retryAttempt = task.automaticRetryAttempt ?? 0;
-          const retryLimit = failedState.settings.autoRetryCount;
+          const retryLimit = recoveredState.settings.autoRetryCount;
           const nextAttempt = nextAutomaticRetryAttempt({
-            enabled: failedState.settings.autoRetryFailedTasks,
+            enabled: recoveredState.settings.autoRetryFailedTasks,
             recoverable: recoveryDecision.recoverable,
             currentAttempt: retryAttempt,
             retryLimit
@@ -1769,8 +1807,8 @@ async function executeQueue(): Promise<void> {
                 updatedAt: new Date().toISOString(),
                 comfyPromptId: undefined,
                 progress: 0,
-                stage: `自动重试 ${nextAttempt}/${retryLimit}`,
-                error: `${originalError} ComfyUI 已恢复，准备自动重试 ${nextAttempt}/${retryLimit}。`,
+                stage: `自动重试 ${nextAttempt}/${retryLimit}${attentionFallback ? ` · Attention ${attentionFallback}` : ""}`,
+                error: `${originalError} ComfyUI 已恢复，准备自动重试 ${nextAttempt}/${retryLimit}。${attentionFallback ? ` H3 Attention 已切换为 ${attentionFallback}。` : ""}`,
                 automaticRetryAttempt: nextAttempt
               });
               state.queueRunning = true;
@@ -1787,7 +1825,7 @@ async function executeQueue(): Promise<void> {
           } else {
             await updateTask(task.id, {
               error: `${originalError} ComfyUI 已恢复就绪。${
-                failedState.settings.autoRetryFailedTasks
+                recoveredState.settings.autoRetryFailedTasks
                   ? `自动重试已达到上限（${retryLimit} 次），已跳过此任务。`
                   : "自动重试未开启，已跳过此任务。"
               }`
@@ -1799,7 +1837,8 @@ async function executeQueue(): Promise<void> {
               recoveryKind: recoveryDecision.kind,
               retryAttempt,
               retryLimit,
-              retryEnabled: failedState.settings.autoRetryFailedTasks
+              retryEnabled: recoveredState.settings.autoRetryFailedTasks,
+              attentionFallback: attentionFallback ?? "none"
             });
           }
         }
@@ -1895,12 +1934,22 @@ function registerIpc(): void {
       JSON.stringify(previous[key as keyof Settings]) !==
       JSON.stringify(settings[key as keyof Settings])
     );
+    let updatedH3TaskCount = 0;
     const next = await store.update((state) => {
       state.settings = settings;
+      if (previous.h3AttentionMode !== settings.h3AttentionMode) {
+        for (const task of state.queue) {
+          if (task.status === "running" || task.taskType === "upscale" || !isMiniMaxH3Model(task.modelId)) continue;
+          task.attentionMode = settings.h3AttentionMode;
+          task.updatedAt = new Date().toISOString();
+          updatedH3TaskCount += 1;
+        }
+      }
     });
     appLogger.info("settings", "saved", "Application settings saved", {
       changedKeys,
-      changedCount: changedKeys.length
+      changedCount: changedKeys.length,
+      updatedH3TaskCount
     });
     sendState(next);
     return next;
@@ -2650,27 +2699,30 @@ function registerIpc(): void {
     sendState(next);
     return next;
   });
-  ipcMain.handle("queue:retry", async (_event, taskId: string) => {
+  ipcMain.handle("queue:reset", async (_event, taskId: string) => {
+    let reset = false;
     const next = await store.update((state) => {
       const task = state.queue.find((item) => item.id === taskId);
       if (!task || (task.status !== "failed" && task.status !== "cancelled")) return;
       Object.assign(task, {
-        status: "waiting",
+        status: "waiting" as const,
         updatedAt: new Date().toISOString(),
         comfyPromptId: undefined,
         progress: 0,
         error: undefined,
         stage: undefined,
+        startedAt: undefined,
         automaticRetryAttempt: undefined
       });
-      state.queueRunning = true;
+      reset = true;
     });
-    sendState(next);
-    if (!queueWorker) {
-      queueWorker = executeQueue().finally(() => {
-        queueWorker = null;
+    if (reset) {
+      appLogger.info("queue", "task-reset-to-waiting", "Failed or cancelled task was reset to the waiting queue without starting it", {
+        taskId,
+        queueRunning: next.queueRunning
       });
     }
+    sendState(next);
     return next;
   });
   ipcMain.handle("history:delete", async (_event, assetId: string) => {

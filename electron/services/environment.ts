@@ -2495,6 +2495,15 @@ async function inspectAttentionPython(python: string): Promise<AttentionPythonPr
   }
 }
 
+export function kjNodesAttentionSourceCompatible(source: string): boolean {
+  return source.includes("PathchSageAttentionKJ") &&
+    source.includes("optimized_attention_override") &&
+    source.includes("2**31") &&
+    source.includes("q.contiguous()") &&
+    source.includes("k.contiguous()") &&
+    source.includes("v.contiguous()");
+}
+
 async function kjNodesSupportsModelAttention(comfyRoot: string): Promise<boolean> {
   if (!comfyRoot) return false;
   const candidates = [
@@ -2509,10 +2518,7 @@ async function kjNodesSupportsModelAttention(comfyRoot: string): Promise<boolean
   ));
   for (const filename of candidates) {
     const source = await fs.readFile(filename, "utf8").catch(() => "");
-    if (
-      source.includes("PathchSageAttentionKJ") &&
-      source.includes("optimized_attention_override")
-    ) return true;
+    if (kjNodesAttentionSourceCompatible(source)) return true;
   }
   return false;
 }
@@ -2546,7 +2552,7 @@ async function inspectAttentionAcceleration(
     !wheel ? "匹配的 Windows wheel" : "",
     !sageReady ? `SageAttention ${sageAttentionVersion}` : "",
     !tritonReady ? "Triton" : "",
-    !kjNodesCompatible ? "新版 KJNodes 模型级补丁" : ""
+    !kjNodesCompatible ? "含大 stride 地址保护的新版 KJNodes" : ""
   ].filter(Boolean);
   return {
     pythonPath,

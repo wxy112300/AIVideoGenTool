@@ -25,6 +25,7 @@ export type H3ReferenceRole =
 export type H3ReferenceMediaType = "image" | "video";
 
 export type H3StepCount = 4 | 6 | 8 | 10 | 12 | 16 | 20;
+export type H3AttentionMode = "sage" | "sage-triton" | "pytorch";
 
 export interface H3ReferenceSlot {
   id: string;
@@ -86,7 +87,7 @@ export interface Settings {
   promptSystemTemplate: string;
   defaultVideoModel: string;
   vramReserveGb: number;
-  h3AttentionMode: "sage" | "pytorch";
+  h3AttentionMode: H3AttentionMode;
   autoOffload: boolean;
   ltxExtensionModelProfile: LtxExtensionModelProfile;
   ltxExtensionResolution: 360 | 480;
@@ -610,7 +611,7 @@ export interface AppApi {
   moveTask(taskId: string, direction: -1 | 1): Promise<AppState>;
   optimizeQueue(): Promise<AppState>;
   duplicateTask(taskId: string): Promise<AppState>;
-  retryTask(taskId: string): Promise<AppState>;
+  resetTask(taskId: string): Promise<AppState>;
   deleteHistoryAsset(assetId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;

@@ -18,6 +18,7 @@ import {
   parseComfyProcessInfo,
   parseComfyProcessIds,
   isWindowsPythonAlias,
+  kjNodesAttentionSourceCompatible,
   parseNvidiaGpuQuery,
   parseComfyDesktop2Registry,
   patchLtxAudioVaeCompatibility,
@@ -29,6 +30,13 @@ import {
 } from "../electron/services/environment.js";
 
 describe("SageAttention environment selection", () => {
+  it("requires the KJNodes large-stride guard added for modern attention runtimes", () => {
+    const legacy = "class PathchSageAttentionKJ: optimized_attention_override";
+    const guarded = `${legacy}\nif stride >= 2**31:\n q, k, v = q.contiguous(), k.contiguous(), v.contiguous()`;
+    expect(kjNodesAttentionSourceCompatible(legacy)).toBe(false);
+    expect(kjNodesAttentionSourceCompatible(guarded)).toBe(true);
+  });
+
   it("keeps ComfyUI process and parent details for recovery logs", () => {
     expect(parseComfyProcessInfo(JSON.stringify({
       ProcessId: 86824,

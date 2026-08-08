@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyFailureForRecovery,
+  nextH3AttentionModeAfterCudaFailure,
   nextAutomaticRetryAttempt
 } from "../src/core/recovery.js";
 
@@ -67,5 +68,12 @@ describe("queue failure recovery classification", () => {
       currentAttempt: 0,
       retryLimit: 2
     })).toBeNull();
+  });
+
+  it("degrades H3 attention instead of repeating a poisoned CUDA kernel", () => {
+    expect(nextH3AttentionModeAfterCudaFailure("sage")).toBe("sage-triton");
+    expect(nextH3AttentionModeAfterCudaFailure("sage-triton")).toBe("pytorch");
+    expect(nextH3AttentionModeAfterCudaFailure("pytorch")).toBeNull();
+    expect(nextH3AttentionModeAfterCudaFailure(undefined)).toBe("sage-triton");
   });
 });
