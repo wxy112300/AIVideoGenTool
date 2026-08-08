@@ -40,12 +40,12 @@ describe("application logger", () => {
 
     const snapshot = logger.recent();
     expect(snapshot.records).toHaveLength(1);
-    expect(snapshot.text).toContain("[INFO] [queue.task.progress] SeedVR2 超分辨率");
+    expect(snapshot.text).toContain("[INFO ] Queue.TaskProgress: SeedVR2 超分辨率");
     expect(await fs.readdir(directory)).toEqual(["app-2026-08-08.log"]);
     expect(snapshot.records[0]).toMatchObject({
       level: "info",
       scope: "queue",
-      event: "task.progress",
+      event: "task-progress",
       meta: {
         taskId: "task-123",
         modelId: "seedvr2",

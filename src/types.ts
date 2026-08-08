@@ -504,6 +504,7 @@ export interface TaskPerformanceStats {
   vramAverageBytes: number | null;
   vramPeakBytes: number | null;
   vramTotalBytes: number | null;
+  sharedGpuMemoryPeakBytes?: number | null;
 }
 
 export type AppLogLevel = "debug" | "info" | "warn" | "error" | "fatal";

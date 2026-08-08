@@ -19,7 +19,8 @@ const sensitiveKeyPattern = /(?:prompt|negative|text|content|body|token|secret|p
 const windowsPathPattern = /(?:[A-Za-z]:\\|\\\\)[^\r\n"']+/gu;
 const unixPathPattern = /(?:^|\s)(?:\/Users\/|\/home\/|\/tmp\/|\/var\/|\/mnt\/)[^\r\n"']+/gu;
 const urlPattern = /https?:\/\/[^\s"']+/giu;
-const logLinePattern = /^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+([\s\S]*?)(?:\s+\|\s+meta=(\{.*\}))?$/u;
+const logLinePattern = /^\[([^\]]+)\]\[([^\]]+)\]\s+([^:]+):\s+([\s\S]*?)(?:\s+\|\s+(.+))?$/u;
+const legacyLogLinePattern = /^\[([^\]]+)\]\s+\[([^\]]+)\]\s+\[([^\]]+)\]\s+([\s\S]*?)(?:\s+\|\s+meta=(\{.*\}))?$/u;
 
 function defaultDirectory(): string {
   return path.join(
@@ -79,34 +80,138 @@ function sanitizeMeta(meta: Record<string, unknown> | undefined): Record<string,
   return Object.keys(sanitized).length ? sanitized : undefined;
 }
 
+const displayScopeNames: Record<string, string> = {
+  app: "App",
+  comfy: "ComfyUI",
+  environment: "Environment",
+  performance: "Performance",
+  process: "Process",
+  prompt: "Prompt",
+  queue: "Queue",
+  renderer: "Renderer",
+  service: "Service",
+  ui: "UI",
+  window: "Window"
+};
+
+function displayScope(scope: string): string {
+  return displayScopeNames[scope.toLowerCase()] ??
+    scope.charAt(0).toUpperCase() + scope.slice(1);
+}
+
+function displayEvent(event: string): string {
+  return event
+    .split(/[-_.]/u)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+}
+
+function eventSlug(event: string): string {
+  return event
+    .replace(/([a-z0-9])([A-Z])/gu, "$1-$2")
+    .replace(/[^A-Za-z0-9]+/gu, "-")
+    .replace(/^-|-$/gu, "")
+    .toLowerCase();
+}
+
+function formatTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  const pad = (value: number, width = 2) => String(value).padStart(width, "0");
+  return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())}-${pad(date.getHours())}.${pad(date.getMinutes())}.${pad(date.getSeconds())}:${pad(date.getMilliseconds(), 3)}`;
+}
+
+function formatMetaValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => formatMetaValue(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") return "[object]";
+  if (typeof value === "string") {
+    const safe = value.replaceAll("\"", "'");
+    return /[\s|=,[\]]/u.test(safe) ? `"${safe}"` : safe;
+  }
+  return String(value);
+}
+
+function formatMeta(meta: Record<string, unknown> | undefined): string {
+  if (!meta) return "";
+  return Object.entries(meta)
+    .map(([key, value]) => `${key.charAt(0).toUpperCase()}${key.slice(1)}=${formatMetaValue(value)}`)
+    .join(" ");
+}
+
 function formatLogRecord(record: AppLogRecord): string {
-  const target = `${record.scope}.${record.event}`;
-  const metadata = record.meta ? ` | meta=${JSON.stringify(record.meta)}` : "";
-  return `[${record.timestamp}] [${record.level.toUpperCase()}] [${target}] ${record.message}${metadata}`;
+  const level = record.level.toUpperCase().padEnd(5, " ");
+  const target = `${displayScope(record.scope)}.${displayEvent(record.event)}`;
+  const metadata = formatMeta(record.meta);
+  return `[${formatTimestamp(record.timestamp)}][${level}] ${target}: ${record.message}${metadata ? ` | ${metadata}` : ""}`;
+}
+
+function parseMeta(text: string | undefined): Record<string, unknown> | undefined {
+  if (!text) return undefined;
+  const meta: Record<string, unknown> = {};
+  const pattern = /([A-Za-z][A-Za-z0-9]*)=(?:"((?:[^"\\]|\\.)*)"|(\[[^\]]*\])|(\S+))/gu;
+  for (const match of text.matchAll(pattern)) {
+    const key = match[1];
+    if (!key) continue;
+    const raw = match[2] ?? match[3] ?? match[4] ?? "";
+    if (match[3]) {
+      meta[key.charAt(0).toLowerCase() + key.slice(1)] = raw === "[]"
+        ? []
+        : raw.slice(1, -1).split(",").filter(Boolean);
+    } else if (raw === "true" || raw === "false") {
+      meta[key.charAt(0).toLowerCase() + key.slice(1)] = raw === "true";
+    } else if (raw !== "" && Number.isFinite(Number(raw))) {
+      meta[key.charAt(0).toLowerCase() + key.slice(1)] = Number(raw);
+    } else {
+      meta[key.charAt(0).toLowerCase() + key.slice(1)] = raw;
+    }
+  }
+  return Object.keys(meta).length ? meta : undefined;
 }
 
 function parseLogRecord(line: string): AppLogRecord | null {
-  const match = line.match(logLinePattern);
-  if (!match) return null;
-  const level = match[2]?.toLowerCase();
+  const modern = line.match(logLinePattern);
+  if (modern) {
+    const level = modern[2]?.trim().toLowerCase();
+    if (!level || !["debug", "info", "warn", "error", "fatal"].includes(level)) return null;
+    const target = modern[3] ?? "App.Unknown";
+    const separator = target.indexOf(".");
+    const displayScopeValue = separator > 0 ? target.slice(0, separator) : target;
+    const displayEventValue = separator > 0 ? target.slice(separator + 1) : "Unknown";
+    const scope = Object.entries(displayScopeNames).find(([, name]) => name === displayScopeValue)?.[0] ?? displayScopeValue.toLowerCase();
+    return {
+      timestamp: modern[1] ?? "",
+      level: level as AppLogLevel,
+      scope,
+      event: eventSlug(displayEventValue),
+      message: modern[4] ?? "",
+      ...(parseMeta(modern[5]) ? { meta: parseMeta(modern[5]) } : {})
+    };
+  }
+
+  const legacy = line.match(legacyLogLinePattern);
+  if (!legacy) return null;
+  const level = legacy[2]?.toLowerCase();
   if (!level || !["debug", "info", "warn", "error", "fatal"].includes(level)) return null;
-  const target = match[3] ?? "app.unknown";
+  const target = legacy[3] ?? "app.unknown";
   const separator = target.indexOf(".");
   let meta: Record<string, unknown> | undefined;
-  if (match[5]) {
+  if (legacy[5]) {
     try {
-      const parsed = JSON.parse(match[5]) as unknown;
+      const parsed = JSON.parse(legacy[5]) as unknown;
       if (isRecord(parsed)) meta = parsed;
     } catch {
       return null;
     }
   }
   return {
-    timestamp: match[1] ?? "",
+    timestamp: legacy[1] ?? "",
     level: level as AppLogLevel,
     scope: separator > 0 ? target.slice(0, separator) : target,
     event: separator > 0 ? target.slice(separator + 1) : "unknown",
-    message: match[4] ?? "",
+    message: legacy[4] ?? "",
     ...(meta ? { meta } : {})
   };
 }
@@ -214,7 +319,7 @@ export class AppLogger {
         .reverse();
       for (const line of lines) {
         const record = parseLogRecord(line);
-        if (record) entries.push({ record, line });
+        if (record) entries.push({ record, line: formatLogRecord(record) });
         if (entries.length >= recordLimit) break;
       }
       if (entries.length >= recordLimit) break;

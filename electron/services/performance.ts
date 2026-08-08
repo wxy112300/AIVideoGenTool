@@ -16,6 +16,19 @@ interface CpuSampleState {
   };
 }
 
+export interface TaskPerformanceTelemetry {
+  elapsedSeconds: number;
+  cpuPercent: number | null;
+  memoryUsedBytes: number;
+  memoryTotalBytes: number;
+  gpuPercent: number | null;
+  vramUsedBytes: number | null;
+  vramTotalBytes: number | null;
+  sharedGpuMemoryBytes: number | null;
+  sharedGpuMemoryPeakBytes: number | null;
+  gpuTemperatureC: number | null;
+}
+
 function readCpuPercent(state: CpuSampleState): number | null {
   const totals = os.cpus().reduce(
     (result, cpu) => {
@@ -37,6 +50,25 @@ function readCpuPercent(state: CpuSampleState): number | null {
 }
 
 const uiCpuState: CpuSampleState = {};
+
+async function readSharedGpuMemoryBytes(): Promise<number | null> {
+  if (process.platform !== "win32") return null;
+  const script = [
+    "$sum = (Get-Counter -Counter '\\GPU Adapter Memory(*)\\Shared Usage' -ErrorAction Stop).CounterSamples | Measure-Object -Property CookedValue -Sum",
+    "[math]::Round($sum.Sum)"
+  ].join("; ");
+  try {
+    const { stdout } = await execFileAsync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      { encoding: "utf8", timeout: 5_000, windowsHide: true }
+    );
+    const value = Number(stdout.trim());
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 async function nvidiaMetrics(): Promise<{
   gpuPercent: number | null;
@@ -95,6 +127,7 @@ export async function getPerformanceMetrics(
 
 export interface TaskPerformanceMonitor {
   recordGpuSample(sample: VramSample): void;
+  snapshot(): Promise<TaskPerformanceTelemetry>;
   stop(): TaskPerformanceStats;
 }
 
@@ -120,6 +153,15 @@ export function startTaskPerformanceMonitor(
   let vramBaseline: number | null = null;
   let vramPeak: number | null = null;
   let vramTotal: number | null = null;
+  let latestCpuPercent: number | null = null;
+  let latestMemoryUsedBytes = 0;
+  let latestMemoryTotalBytes = os.totalmem();
+  let latestGpuPercent: number | null = null;
+  let latestVramUsedBytes: number | null = null;
+  let latestVramTotalBytes: number | null = null;
+  let latestGpuTemperatureC: number | null = null;
+  let latestSharedGpuMemoryBytes: number | null = null;
+  let sharedGpuMemoryPeakBytes: number | null = null;
 
   const sampleHost = (): void => {
     if (stopped) return;
@@ -127,6 +169,9 @@ export function startTaskPerformanceMonitor(
     const total = os.totalmem();
     const used = total - os.freemem();
     sampleCount += 1;
+    latestCpuPercent = cpu;
+    latestMemoryUsedBytes = used;
+    latestMemoryTotalBytes = total;
     memoryTotal = total;
     memorySum += used;
     memoryPeak = Math.max(memoryPeak, used);
@@ -146,6 +191,10 @@ export function startTaskPerformanceMonitor(
       gpuSampleCount += 1;
       const usedBytes = sample.usedMiB * 1024 ** 2;
       const totalBytes = sample.totalMiB * 1024 ** 2;
+      latestGpuPercent = sample.gpuUtilization ?? null;
+      latestVramUsedBytes = usedBytes;
+      latestVramTotalBytes = totalBytes;
+      latestGpuTemperatureC = sample.gpuTemperatureC ?? null;
       vramBaseline ??= usedBytes;
       vramSum += usedBytes;
       vramPeak = vramPeak == null ? usedBytes : Math.max(vramPeak, usedBytes);
@@ -161,6 +210,26 @@ export function startTaskPerformanceMonitor(
           ? sample.gpuTemperatureC
           : Math.max(gpuTemperaturePeak, sample.gpuTemperatureC);
       }
+    },
+    async snapshot() {
+      latestSharedGpuMemoryBytes = await readSharedGpuMemoryBytes();
+      if (latestSharedGpuMemoryBytes != null) {
+        sharedGpuMemoryPeakBytes = sharedGpuMemoryPeakBytes == null
+          ? latestSharedGpuMemoryBytes
+          : Math.max(sharedGpuMemoryPeakBytes, latestSharedGpuMemoryBytes);
+      }
+      return {
+        elapsedSeconds: Math.max(0, (Date.now() - startedAt) / 1000),
+        cpuPercent: latestCpuPercent,
+        memoryUsedBytes: latestMemoryUsedBytes,
+        memoryTotalBytes: latestMemoryTotalBytes,
+        gpuPercent: latestGpuPercent,
+        vramUsedBytes: latestVramUsedBytes,
+        vramTotalBytes: latestVramTotalBytes,
+        sharedGpuMemoryBytes: latestSharedGpuMemoryBytes,
+        sharedGpuMemoryPeakBytes,
+        gpuTemperatureC: latestGpuTemperatureC
+      };
     },
     stop() {
       if (result) return result;
@@ -182,7 +251,8 @@ export function startTaskPerformanceMonitor(
         vramBaselineBytes: vramBaseline,
         vramAverageBytes: vramPeak == null ? null : vramSum / gpuSampleCount,
         vramPeakBytes: vramPeak,
-        vramTotalBytes: vramTotal
+        vramTotalBytes: vramTotal,
+        sharedGpuMemoryPeakBytes
       };
       return result;
     }

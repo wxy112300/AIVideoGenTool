@@ -1076,6 +1076,8 @@ async function executeQueue(): Promise<void> {
     let vramWatchdog: VramWatchdogMonitor | undefined;
     let taskPerformanceMonitor: TaskPerformanceMonitor | undefined;
     let taskPerformanceStats: TaskPerformanceStats | undefined;
+    let performanceLogTimer: ReturnType<typeof setInterval> | undefined;
+    let performanceLogInFlight = false;
     try {
       if (task.taskType === "generation") {
         const safety = generationSafetyForTask(task);
@@ -1092,6 +1094,36 @@ async function executeQueue(): Promise<void> {
         error: undefined
       });
       taskPerformanceMonitor = startTaskPerformanceMonitor();
+      const logPerformanceSnapshot = async (): Promise<void> => {
+        if (!taskPerformanceMonitor || performanceLogInFlight) return;
+        performanceLogInFlight = true;
+        try {
+          const sample = await taskPerformanceMonitor.snapshot();
+          const mib = (bytes: number | null): number | null =>
+            bytes == null ? null : Math.round(bytes / 1024 ** 2);
+          appLogger.info("performance", "task-sample", "Task performance sample", {
+            taskId: task.id,
+            taskType: task.taskType,
+            modelId: task.modelId,
+            elapsedSeconds: Math.round(sample.elapsedSeconds),
+            cpuPercent: sample.cpuPercent == null ? null : Math.round(sample.cpuPercent),
+            memoryUsedMiB: mib(sample.memoryUsedBytes),
+            memoryTotalMiB: mib(sample.memoryTotalBytes),
+            gpuPercent: sample.gpuPercent == null ? null : Math.round(sample.gpuPercent),
+            vramUsedMiB: mib(sample.vramUsedBytes),
+            vramTotalMiB: mib(sample.vramTotalBytes),
+            sharedGpuMemoryMiB: mib(sample.sharedGpuMemoryBytes),
+            sharedGpuMemoryPeakMiB: mib(sample.sharedGpuMemoryPeakBytes),
+            gpuTemperatureC: sample.gpuTemperatureC == null
+              ? null
+              : Math.round(sample.gpuTemperatureC)
+          });
+        } finally {
+          performanceLogInFlight = false;
+        }
+      };
+      void logPerformanceSnapshot();
+      performanceLogTimer = setInterval(() => void logPerformanceSnapshot(), 10_000);
       if (!lmStudioReleased) {
         await updateTask(task.id, {
           progress: 1,
@@ -1222,7 +1254,8 @@ async function executeQueue(): Promise<void> {
           vramPeakBytes: taskPerformanceStats.vramPeakBytes,
           vramTotalBytes: taskPerformanceStats.vramTotalBytes,
           gpuPeakPercent: taskPerformanceStats.gpuPeakPercent,
-          memoryPeakBytes: taskPerformanceStats.memoryPeakBytes
+          memoryPeakBytes: taskPerformanceStats.memoryPeakBytes,
+          sharedGpuMemoryPeakBytes: taskPerformanceStats.sharedGpuMemoryPeakBytes ?? null
         });
       }
       const next = await store.update((state) => {
@@ -1394,7 +1427,8 @@ async function executeQueue(): Promise<void> {
           vramPeakBytes: taskPerformanceStats.vramPeakBytes,
           vramTotalBytes: taskPerformanceStats.vramTotalBytes,
           gpuPeakPercent: taskPerformanceStats.gpuPeakPercent,
-          memoryPeakBytes: taskPerformanceStats.memoryPeakBytes
+          memoryPeakBytes: taskPerformanceStats.memoryPeakBytes,
+          sharedGpuMemoryPeakBytes: taskPerformanceStats.sharedGpuMemoryPeakBytes ?? null
         });
       }
       const requiresRestart = stalled || memoryFailure;
@@ -1457,6 +1491,7 @@ async function executeQueue(): Promise<void> {
         });
       }
     } finally {
+      if (performanceLogTimer) clearInterval(performanceLogTimer);
       vramWatchdog?.stop();
       taskPerformanceMonitor?.stop();
       activeController = null;
