@@ -145,6 +145,18 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .status { display: inline-block; margin-bottom: 7px; padding: 3px 8px; border-radius: 99px; font-size: 11px; background: var(--panel-2); }
 .status.running { color: var(--primary); }
 .status.failed, .status.cancelled, .error { color: var(--danger) !important; }
+.queue-task-heading { min-width: 0; display: grid; grid-template-columns: 46px minmax(0, 1fr); align-items: center; gap: 11px; }
+.queue-rank { position: relative; min-height: 38px; display: grid; align-content: center; gap: 2px; padding-right: 10px; border-right: 1px solid rgba(82,98,120,.62); }
+.queue-rank::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: -18px; width: 2px; border-radius: 2px; background: #556276; opacity: .75; }
+.queue-rank strong { color: #b9c7d8; font: 700 19px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .02em; }
+.queue-rank small { color: #7f8da1; font-size: 9px; letter-spacing: .08em; }
+.queue-rank.running { border-color: rgba(124,184,255,.7); }
+.queue-rank.running::before { background: var(--primary); box-shadow: 0 0 10px rgba(124,184,255,.55); }
+.queue-rank.running strong, .queue-rank.running small { color: var(--primary); }
+.queue-rank.failed, .queue-rank.cancelled { border-color: rgba(255,139,114,.58); }
+.queue-rank.failed::before, .queue-rank.cancelled::before { background: var(--danger); }
+.queue-rank.failed strong, .queue-rank.failed small, .queue-rank.cancelled strong, .queue-rank.cancelled small { color: var(--danger); }
+.queue-task-heading > div:last-child { min-width: 0; }
 .queue-mode { align-self: center; padding: 7px 10px; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); background: #15171a; font-size: 12px; }
 .task-card.expanded { display: block; padding: 18px; border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); box-shadow: 0 16px 48px rgba(31, 104, 190, .13); }
 .expanded-task-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 15px; }

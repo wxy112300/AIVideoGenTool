@@ -1702,7 +1702,7 @@ function queuePage(): string {
     <section class="task-list">
       ${state.queue.length === 0
         ? `<div class="empty panel"><h2>队列还是空的</h2><p>从创建页加入一个任务后，就可以在这里运行。</p><button class="secondary button-with-icon" data-page="create">${icon("plus")}去创建</button></div>`
-        : state.queue.map(queueTaskCard).join("")}
+        : state.queue.map((task, index) => queueTaskCard(task, index + 1)).join("")}
     </section>`;
 }
 
@@ -1805,7 +1805,7 @@ async function loadQueueInputPreviews(): Promise<void> {
   }));
 }
 
-function queueTaskCard(task: QueueTask): string {
+function queueTaskCard(task: QueueTask, queuePosition: number): string {
   const description = task.taskType === "generation"
     ? task.prompt
     : task.taskType === "extension"
@@ -1829,7 +1829,7 @@ function queueTaskCard(task: QueueTask): string {
     return `
       <article class="task-card panel running expanded">
         <div class="expanded-task-head">
-          <div><span class="status running">正在运行</span><h3>${escapeHtml(task.outputFilename)}</h3></div>
+          <div class="queue-task-heading"><div class="queue-rank running" aria-label="队列第 ${queuePosition} 项"><strong>${String(queuePosition).padStart(2, "0")}</strong><small>当前</small></div><div><span class="status running">正在运行</span><h3>${escapeHtml(task.outputFilename)}</h3></div></div>
           <div class="running-progress-value"><span>总进度</span><strong id="running-progress-label">${Math.round(task.progress ?? 0)}%</strong></div>
         </div>
         <div class="running-layout">
@@ -1861,7 +1861,7 @@ function queueTaskCard(task: QueueTask): string {
     <article class="task-card panel ${task.status}${inputPreview ? " task-card-with-preview" : ""}">
       ${inputPreview}
       <div class="task-main">
-        <div><span class="status ${task.status}">${statusLabel(task.status)}</span><h3>${escapeHtml(task.outputFilename)}</h3></div>
+        <div class="queue-task-heading"><div class="queue-rank ${task.status}" aria-label="队列第 ${queuePosition} 项"><strong>${String(queuePosition).padStart(2, "0")}</strong><small>队位</small></div><div><span class="status ${task.status}">${statusLabel(task.status)}</span><h3>${escapeHtml(task.outputFilename)}</h3></div></div>
         <p class="task-description">${escapeHtml(description)}</p>
         <div class="task-meta">${metadata}</div>
         ${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ""}
