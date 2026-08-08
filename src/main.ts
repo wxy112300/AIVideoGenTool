@@ -2007,7 +2007,12 @@ function restoreHistoryScrollPosition(): void {
   const position = Math.max(0, historyScrollPosition);
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
+      if (page !== "history") {
+        historyScrollRestorePending = false;
+        return;
+      }
       window.scrollTo({ top: position, behavior: "auto" });
+      historyScrollRestorePending = false;
     });
   });
 }
@@ -2016,11 +2021,13 @@ function bindHistoryViewportControls(): void {
   const events = new AbortController();
   historyViewportEvents = events;
   const backTop = document.querySelector<HTMLButtonElement>("#history-back-top");
-  const update = () => {
-    if (page === "history") historyScrollPosition = window.scrollY;
+  const update = (capturePosition = true) => {
+    if (capturePosition && page === "history" && !historyScrollRestorePending) {
+      historyScrollPosition = window.scrollY;
+    }
     backTop?.classList.toggle("visible", window.scrollY > 260);
   };
-  window.addEventListener("scroll", update, {
+  window.addEventListener("scroll", () => update(), {
     passive: true,
     signal: events.signal
   });
@@ -2028,7 +2035,7 @@ function bindHistoryViewportControls(): void {
     reportUserAction("history-scroll-top");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, { signal: events.signal });
-  update();
+  update(false);
 }
 
 function historyMasonryColumnCount(width: number, gap = 10): number {
@@ -2927,7 +2934,6 @@ function render(): void {
   syncAppLogPolling();
   if (page === "history") {
     restoreHistoryScrollPosition();
-    historyScrollRestorePending = false;
   }
   restoreHistoryPlayback(playback);
 }
