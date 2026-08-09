@@ -428,7 +428,7 @@ export async function submitTask(
   const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
   if (missingNodes.length) {
     throw new Error(
-      `当前 ComfyUI 缺少工作流节点：${missingNodes.join("、")}。请在设置页安装对应节点后重启服务。`
+      `当前 ComfyUI 服务尚未加载工作流节点：${missingNodes.join("、")}。请在设置页确认节点状态；如果文件已经安装，请重启 ComfyUI 后复检。`
     );
   }
   const clientId = `local-video-studio-${crypto.randomUUID()}`;

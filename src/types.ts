@@ -395,6 +395,7 @@ export interface CustomNodeStatus {
   purpose: string;
   repositoryUrl: string;
   installed: boolean;
+  loaded: boolean;
   loadError: string;
   directory: string;
   required: boolean;

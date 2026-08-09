@@ -1418,10 +1418,10 @@ function createPage(): string {
   const spectrumNode = environmentScan?.customNodes.find(
     (node) => node.id === "spectrum-minimax-h3"
   );
-  const spectrumInstalled = Boolean(spectrumNode?.installed && !spectrumNode.loadError);
+  const spectrumLoaded = Boolean(spectrumNode?.loaded);
   const spectrumEligible = isMiniMaxH3SpectrumEligible(draft.modelId);
   const spectrumReady = draft.spectrumMode !== "balanced" || (
-    spectrumEligible && spectrumInstalled
+    spectrumEligible && spectrumLoaded
   );
   const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
   const extending = draft.inputMode === "video";
@@ -1635,11 +1635,11 @@ function createPage(): string {
           </select>
         </label>
         <label class="settings-field settings-spectrum">Spectrum 加速
-          <select id="spectrum-mode" ${spectrumEligible && spectrumInstalled ? "" : "disabled"} title="${escapeHtml(!spectrumEligible ? "Turbo 低步数下预测收益有限且近似误差占比更高，当前暂不开放。" : !spectrumInstalled ? "请先在设置 → 节点与工作流中安装 Spectrum，并重启 ComfyUI。" : "使用系统内存保存 H3 特征；不会占用额外模型权重。")} ">
+          <select id="spectrum-mode" ${spectrumEligible && spectrumLoaded ? "" : "disabled"} title="${escapeHtml(!spectrumEligible ? "Turbo 低步数下预测收益有限且近似误差占比更高，当前暂不开放。" : !spectrumLoaded ? "请先在设置 → 节点与工作流中安装 Spectrum，并确认 ComfyUI 已重启加载。" : "使用系统内存保存 H3 特征；不会占用额外模型权重。")} ">
             <option value="off" ${draft.spectrumMode !== "balanced" ? "selected" : ""}>关闭 · 原生完整计算</option>
             <option value="balanced" ${draft.spectrumMode === "balanced" ? "selected" : ""}>平衡模式 · 系统内存</option>
           </select>
-          <small>${!spectrumEligible ? "Turbo 暂不开放" : spectrumInstalled ? `已安装${spectrumNode?.version ? ` v${escapeHtml(spectrumNode.version)}` : ""} · 预计降低 20–35% 采样耗时` : "需要先安装 Spectrum 节点"}</small>
+          <small>${!spectrumEligible ? "Turbo 暂不开放" : spectrumLoaded ? `已加载${spectrumNode?.version ? ` v${escapeHtml(spectrumNode.version)}` : ""} · 预计降低 20–35% 采样耗时` : spectrumNode?.installed ? "节点已安装，等待 ComfyUI 重启加载" : "需要先安装 Spectrum 节点"}</small>
         </label>` : ""}
           </div>
         </section>
@@ -2804,7 +2804,7 @@ function settingsPage(): string {
     </section>`;
 
   const nodeInstalled = environmentScan?.customNodes.filter(
-    (node) => node.installed && !node.loadError
+    (node) => node.loaded
   ).length ?? 0;
   const h3CoreNodes = environmentScan?.comfyCompatibility.coreNodes ?? [];
   const h3CoreKnown = environmentScan?.comfyCompatibility.checkedFrom !== "";
@@ -2866,7 +2866,7 @@ function settingsPage(): string {
             </div>
           </article>`).join("")}
         ${(environmentScan?.customNodes ?? []).map((node) => `
-          <article class="panel custom-node-card ${node.installed && !node.loadError ? "available" : "missing"}">
+          <article class="panel custom-node-card ${node.loaded ? "available" : "missing"}">
             <div class="custom-node-copy">
               <div class="model-title"><h3>${escapeHtml(node.name)}</h3><span class="model-badge">${node.required ? "项目必需" : "可选"}${node.version ? ` · v${escapeHtml(node.version)}` : ""}</span></div>
               <p>${escapeHtml(node.purpose)}</p>
@@ -2876,8 +2876,8 @@ function settingsPage(): string {
               ${customNodeLogs[node.id] ? `<details class="node-log" open><summary>安装日志</summary><pre>${escapeHtml(customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${node.installed && !node.loadError && !node.updateAvailable ? "available" : "missing"}">${node.updateAvailable ? `${icon("circle-alert")} 可更新至 v${escapeHtml(node.latestVersion)}` : node.installed && !node.loadError ? `${icon("circle-check")} 已加载` : node.loadError ? `${icon("circle-alert")} 加载失败` : `${icon("circle-alert")} 未安装`}</span>
-              ${node.installed && !node.loadError && !node.updateAvailable && node.id !== "spectrum-minimax-h3" ? "" : `<button class="${node.updateAvailable || !node.installed ? "primary" : "secondary"} button-with-icon" data-install-node="${escapeHtml(node.id)}" ${customNodeInstalling ? "disabled" : ""}>${icon(customNodeInstalling === node.id ? "refresh-cw" : node.installed ? "refresh-cw" : "download")}${customNodeInstalling === node.id ? "处理中…" : node.updateAvailable ? "更新节点" : node.installed ? "检查并更新" : "安装"}</button>`}
+              <span class="model-availability ${node.loaded && !node.updateAvailable ? "available" : "missing"}">${node.updateAvailable ? `${icon("circle-alert")} 可更新至 v${escapeHtml(node.latestVersion)}` : node.loaded ? `${icon("circle-check")} 已加载` : node.installed ? `${icon("circle-alert")} 已安装，未加载` : `${icon("circle-alert")} 未安装`}</span>
+              ${node.loaded && !node.updateAvailable && node.id !== "spectrum-minimax-h3" ? "" : `<button class="${node.updateAvailable || !node.installed || !node.loaded ? "primary" : "secondary"} button-with-icon" data-install-node="${escapeHtml(node.id)}" ${customNodeInstalling || state.queueRunning ? "disabled" : ""}>${icon(customNodeInstalling === node.id ? "refresh-cw" : node.installed ? "refresh-cw" : "download")}${customNodeInstalling === node.id ? "处理中…" : node.updateAvailable ? "更新并重启" : node.installed && !node.loaded ? "重启并复检" : node.installed ? "检查并更新" : "安装并重启"}</button>`}
             </div>
           </article>`).join("") || `<div class="panel environment-empty">等待环境扫描结果</div>`}
       </div>
@@ -5494,18 +5494,47 @@ function bindSettings(): void {
       render();
       try {
         const result = await window.studio.installCustomNode(nodeId, currentSettings);
+        if (!result.ok) throw new Error(result.message);
         customNodeLogs = {
           ...customNodeLogs,
           [nodeId]: result.log || result.message
         };
-        customNodeInstalling = "";
+        let message = result.message;
+        if (nodeId === "spectrum-minimax-h3") {
+          const restarted = await window.studio.restartLocalService(
+            "comfy",
+            currentSettings
+          );
+          customNodeLogs = {
+            ...customNodeLogs,
+            [nodeId]: [
+              customNodeLogs[nodeId],
+              `ComfyUI 重启：${restarted.message}`
+            ].filter(Boolean).join("\n\n")
+          };
+          if (!restarted.ok) {
+            throw new Error(`节点文件已安装，但 ComfyUI 自动重启失败：${restarted.message}`);
+          }
+          message = "Spectrum 已安装/更新，ComfyUI 已重启并完成节点复检。";
+        }
         environmentScan = await window.studio.scanEnvironment(currentSettings);
-        showMessage(result.message);
+        if (
+          nodeId === "spectrum-minimax-h3" &&
+          !environmentScan.customNodes.find((node) => node.id === nodeId)?.loaded
+        ) {
+          throw new Error("ComfyUI 已重启，但 Spectrum 节点仍未注册；请展开安装日志检查导入错误。");
+        }
+        showMessage(message);
       } catch (error) {
-        customNodeInstalling = "";
         const message = error instanceof Error ? error.message : String(error);
-        customNodeLogs = { ...customNodeLogs, [nodeId]: message };
+        customNodeLogs = {
+          ...customNodeLogs,
+          [nodeId]: [customNodeLogs[nodeId], message].filter(Boolean).join("\n\n")
+        };
         showMessage(`节点安装失败：${message}`);
+      } finally {
+        customNodeInstalling = "";
+        render();
       }
     });
   });

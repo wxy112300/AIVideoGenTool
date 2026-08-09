@@ -157,6 +157,7 @@ const customNodeCatalog = [
     repositoryUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
     directoryName: "ComfyUI-Spectrum-MiniMax-H3",
     aliases: ["comfyui-spectrum-minimax-h3"],
+    nodeTypes: ["SpectrumApplyMiniMaxH3"],
     required: false
   }
 ] as const;
@@ -1936,12 +1937,16 @@ async function scanCustomNodes(
       .filter((entry) => entry.isDirectory())
       .map((entry) => [entry.name.toLowerCase(), path.join(customNodesDirectory, entry.name)])
   );
-  const appData =
-    process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
-  const log = await fs
-    .readFile(path.join(appData, "ComfyUI", "logs", "comfyui.log"), "utf8")
-    .catch(() => "");
+  const log = (await readLatestComfyLog(comfyRoot)).content;
   const logLines = log.split(/\r?\n/);
+  const serviceNodeIds = await fetch(
+    `${settings.comfyUrl.replace(/\/+$/, "")}/object_info`,
+    { signal: AbortSignal.timeout(5_000) }
+  )
+    .then(async (response) => response.ok
+      ? availableComfyNodeIds(await response.json())
+      : null)
+    .catch(() => null);
 
   const latestSpectrumVersion = await latestSpectrumReleaseVersion(settings);
   return Promise.all(customNodeCatalog.map(async (definition) => {
@@ -1995,16 +2000,25 @@ async function scanCustomNodes(
     const latestVersion = definition.id === "spectrum-minimax-h3"
       ? latestSpectrumVersion
       : "";
+    const requiredNodeTypes = "nodeTypes" in definition
+      ? definition.nodeTypes
+      : undefined;
+    const registered = !requiredNodeTypes || serviceNodeIds === null ||
+      requiredNodeTypes.every((nodeType) => serviceNodeIds.has(nodeType));
+    const pendingRestartError = Boolean(directory) && !compatibilityError &&
+      !failed && requiredNodeTypes && serviceNodeIds !== null && !registered
+      ? "节点文件已安装，但当前 ComfyUI 服务尚未加载；请重启服务后复检"
+      : "";
+    const loadError = compatibilityError || importErrorLine ||
+      (failed ? "最近一次启动时导入失败" : "") || pendingRestartError;
     return {
       id: definition.id,
       name: definition.name,
       purpose: definition.purpose,
       repositoryUrl: definition.repositoryUrl,
       installed: Boolean(directory),
-      loadError:
-        compatibilityError ||
-        importErrorLine ||
-        (failed ? "最近一次启动时导入失败" : ""),
+      loaded: Boolean(directory) && !loadError && registered,
+      loadError,
       directory,
       required: definition.required,
       version,
