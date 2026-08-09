@@ -4,12 +4,16 @@ import type {
   Draft,
   EnhanceRequest,
   EnvironmentIssue,
-  Settings
+  Settings,
+  WindowCloseRequest,
+  WindowCloseResponse
 } from "../src/types.js";
 
 const api: AppApi = {
   getState: () => ipcRenderer.invoke("state:get"),
   setSettingsDirty: (dirty: boolean) => ipcRenderer.invoke("renderer:set-settings-dirty", dirty),
+  respondWindowClose: (response: WindowCloseResponse) =>
+    ipcRenderer.invoke("window:close-response", response),
   saveDraft: (draft: Draft) => ipcRenderer.invoke("draft:save", draft),
   saveSettings: (settings: Settings) => ipcRenderer.invoke("settings:save", settings),
   pickImage: () => ipcRenderer.invoke("file:pick-image"),
@@ -34,9 +38,10 @@ const api: AppApi = {
     ipcRenderer.invoke("logs:user-action", action, meta),
   pickDirectory: () => ipcRenderer.invoke("file:pick-directory"),
   readImage: (path: string) => ipcRenderer.invoke("file:read-image", path),
-  readHistoryCover: (key: string) => ipcRenderer.invoke("history-cover:read", key),
-  saveHistoryCover: (key: string, data: ArrayBuffer) =>
-    ipcRenderer.invoke("history-cover:save", key, data),
+  readHistoryCover: (key: string, sourcePath: string) =>
+    ipcRenderer.invoke("history-cover:read", key, sourcePath),
+  saveHistoryCover: (key: string, sourcePath: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke("history-cover:save", key, sourcePath, data),
   showItemInFolder: (path: string) => ipcRenderer.invoke("file:show-in-folder", path),
   copyFile: (path: string) => ipcRenderer.invoke("file:copy", path),
   openExternal: (url: string) => ipcRenderer.invoke("shell:open-external", url),
@@ -78,7 +83,6 @@ const api: AppApi = {
   cancelTask: (taskId: string) => ipcRenderer.invoke("queue:cancel", taskId),
   moveTask: (taskId: string, direction: -1 | 1) =>
     ipcRenderer.invoke("queue:move", taskId, direction),
-  optimizeQueue: () => ipcRenderer.invoke("queue:optimize"),
   duplicateTask: (taskId: string) => ipcRenderer.invoke("queue:duplicate", taskId),
   resetTask: (taskId: string) => ipcRenderer.invoke("queue:reset", taskId),
   deleteHistoryAsset: (assetId: string) =>
@@ -94,6 +98,12 @@ const api: AppApi = {
       callback(preview as Parameters<typeof callback>[0]);
     ipcRenderer.on("task:preview", listener);
     return () => ipcRenderer.removeListener("task:preview", listener);
+  },
+  onWindowCloseRequest: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, request: unknown) =>
+      callback(request as WindowCloseRequest);
+    ipcRenderer.on("window:close-requested", listener);
+    return () => ipcRenderer.removeListener("window:close-requested", listener);
   },
   onAttentionInstallLog: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, message: unknown) =>

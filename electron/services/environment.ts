@@ -28,12 +28,14 @@ import {
   unconcernedPromptModelId,
   unconcernedPromptModelSource
 } from "../../src/core/prompt-models.js";
+import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 
 const execFileAsync = promisify(execFile);
 const appLogger = getApplicationLogger();
 
-export const MINIMAX_H3_MINIMUM_COMFY_REVISION = "57500fc5";
+export const MINIMAX_H3_MINIMUM_COMFY_REVISION = "43cb4ff";
+export const MINIMAX_H3_MINIMUM_COMFY_VERSION = "0.31.0";
 const minimaxH3I2vWorkflowUrl =
   "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/video_minimax_h3_i2v.json";
 const sageAttentionVersion = "2.2.0";
@@ -41,6 +43,20 @@ const comfyWheelsIndex = "https://comfy-org.github.io/wheels/";
 const llamaServerReleaseApiUrl =
   "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest";
 const llamaServerCudaVariants = ["12.4", "13.3"] as const;
+
+function versionAtLeast(value: string, minimum: string): boolean {
+  const parse = (input: string): number[] => {
+    const match = input.match(/(?:^|[^\d])(\d+)\.(\d+)\.(\d+)(?:[^\d]|$)/);
+    return match ? match.slice(1).map(Number) : [];
+  };
+  const actual = parse(value);
+  const required = parse(minimum);
+  if (actual.length !== 3 || required.length !== 3) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (actual[index] !== required[index]) return actual[index] > required[index];
+  }
+  return true;
+}
 
 function formatGpuMemory(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
@@ -433,12 +449,12 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     recommendedFilename: "minimax_h3_audio_vae_fp32.safetensors",
     notes: "H3 原生立体声音频必须使用此 VAE；与视频 VAE 一起放在 models/vae。"
   },
-  "minimax_h3_fl2va_turbo:MiniMax H3 Turbo pruned LoRA": {
-    sourceLabel: "drbaph / MiniMax-H3-Turbo-Lora-ComfyUI",
-    downloadUrl: "https://huggingface.co/drbaph/MiniMax-H3-Turbo-Lora-ComfyUI/resolve/main/minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors",
+  "minimax_h3_fl2va_turbo:MiniMax H3 LightX2V Turbo LoRA": {
+    sourceLabel: "LightX2V / Kijai ComfyUI conversion",
+    downloadUrl: "https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
     targetSubdirectory: "loras",
-    recommendedFilename: "minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors",
-    notes: "首版 Turbo 推荐使用 ckpt500 pruned 转换版；建议 res_multistep、音频 shift 6、8-10 步。4 步属于实验档。"
+    recommendedFilename: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
+    notes: "LightX2V 独立 Turbo 预览版的精简 ComfyUI 权重；需要 ComfyUI v0.31.0+，建议 0.75 强度、ER-SDE、Beta 和 8 步。仅用于 FL2VA。"
   },
   "minimax_h3_fl2va_int4:MiniMax H3 FL2VA INT4 ConvRot 模型": {
     sourceLabel: "Merserk / MiniMax-H3-INT4-ConvRot",
@@ -965,10 +981,10 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
   },
   {
     id: "minimax_h3_fl2va_turbo",
-    name: "MiniMax H3 Turbo · 首尾帧",
+    name: "MiniMax H3 LightX2V Turbo · 首尾帧",
     category: "video",
-    badge: "Turbo · pruned 首尾帧",
-    description: "基于 pruned INT8 FL2VA 的 Turbo 首尾帧模式；使用原生 H3 音视频节点、res_multistep 和 ckpt500 pruned LoRA。仅支持图片生成，不提供视频续写。",
+    badge: "LightX2V · 原生采样",
+    description: "Turbo 不是另一套基础模型，而是通过蒸馏 LoRA 把 H3 从约 20 步压缩到 6-8 步，以少量画质、动态和音频精度换取明显提速。本工具采用 LightX2V 团队的 Turbo 方案，并使用 Kijai 转换的精简 ComfyUI 权重；仅支持 FL2VA 首帧/尾帧生成，不用于 R2V 或视频续写。",
     vram: "pruned INT8 + Turbo LoRA · 4090 推荐",
     integrated: true,
     components: [
@@ -993,9 +1009,9 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
         patterns: [/vae\/minimax_h3_audio_vae_fp32\.safetensors$/i]
       },
       {
-        label: "MiniMax H3 Turbo pruned LoRA",
-        expected: "loras/minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors",
-        patterns: [/loras\/minimax_h3_turbo_4step_ckpt500_pruned_comfyui\.safetensors$/i]
+        label: "MiniMax H3 LightX2V Turbo LoRA",
+        expected: "loras/minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
+        patterns: [/loras\/minimax_h3_fl2v_lightx2v_turbo_4step_v0\.1_comfy_resized_avg_rank_21_bf16\.safetensors$/i]
       }
     ]
   },
@@ -1389,7 +1405,9 @@ export function evaluateModelProfiles(
   const normalizedFiles = modelFiles.map((filename) =>
     filename.replaceAll("\\", "/")
   );
-  return modelProfileDefinitions.map((baseProfile) => {
+  return modelProfileDefinitions
+    .filter((profile) => !isRetiredVideoModel(profile.id))
+    .map((baseProfile) => {
     const profile = baseProfile.id === "sulphur2"
       ? {
           ...baseProfile,
@@ -1424,7 +1442,7 @@ export function evaluateModelProfiles(
       integrated: profile.integrated !== false,
       components
     };
-  });
+    });
 }
 
 async function exists(filename: string): Promise<boolean> {
@@ -2736,6 +2754,7 @@ async function inspectComfyCompatibility(
   let revision = "";
   let objectInfo: unknown = null;
   let checkedFrom: ComfyUiCompatibility["checkedFrom"] = "";
+  let nativeH3AvSamplingFromSource = false;
   const [statsResult, objectInfoResult] = await Promise.allSettled([
       fetch(`${baseUrl}/system_stats`, { signal: AbortSignal.timeout(3500) }),
       fetch(`${baseUrl}/object_info`, { signal: AbortSignal.timeout(8000) })
@@ -2770,6 +2789,7 @@ async function inspectComfyCompatibility(
       fs.readFile(path.join(sourceDirectory, "comfy_extras", "nodes_preview_any.py"), "utf8").catch(() => ""),
       fs.readFile(path.join(sourceDirectory, "nodes.py"), "utf8").catch(() => "")
     ]);
+    nativeH3AvSamplingFromSource = h3Source.includes("ModelSamplingAV");
     const sourceNodeIds = [
       ...minimaxH3CoreNodes
         .filter((node) => h3Source.includes(`node_id="${node.id}"`))
@@ -2787,7 +2807,16 @@ async function inspectComfyCompatibility(
       checkedFrom = "source";
     }
   }
-  const coreNodes = evaluateMiniMaxH3CoreSupport(objectInfo);
+  const nativeH3AvSampling = versionAtLeast(version, MINIMAX_H3_MINIMUM_COMFY_VERSION) ||
+    nativeH3AvSamplingFromSource;
+  const coreNodes = [
+    ...evaluateMiniMaxH3CoreSupport(objectInfo),
+    {
+      id: "ModelSamplingAV",
+      label: "H3 原生双时钟音视频采样（ComfyUI v0.31.0+）",
+      available: nativeH3AvSampling
+    }
+  ];
   const h3CoreSupported = coreNodes.every((node) => node.available);
   const promptNodes = evaluatePromptCoreSupport(objectInfo);
   const promptCoreSupported = promptNodes.every((node) => node.available);

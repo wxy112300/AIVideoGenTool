@@ -71,6 +71,20 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("Final user-intent lock");
   });
 
+  it("puts normalized user hard constraints after the source request", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "One shot, no cuts. A runner goes from A to B. No BGM, but keep footsteps.",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "T2VA"
+    });
+
+    expect(instruction).toContain("no non-diegetic background music");
+    expect(instruction).toContain("exactly one [Shot 1]");
+    expect(instruction.lastIndexOf("Explicit hard constraints extracted")).toBeGreaterThan(
+      instruction.lastIndexOf("User request (content to preserve")
+    );
+  });
+
   it("uses a compact user-first contract for the small prompt model", () => {
     const instruction = h3PromptInstruction({
       prompt: "微缩的人穿着银色外套，巨人弯腰观察他，然后镜头慢慢推进。",

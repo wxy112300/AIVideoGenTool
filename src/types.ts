@@ -98,7 +98,6 @@ export interface Settings {
   ltxExtensionUnloadBetweenStages: true;
   ltxExtensionTimeoutMinutes: 10 | 20 | 30;
   safeCancel: boolean;
-  optimizeQueue: boolean;
   autoRetryFailedTasks: boolean;
   autoRetryCount: 1 | 2 | 3 | 4 | 5;
   promptLanguage: "auto" | "zh" | "en";
@@ -131,6 +130,7 @@ interface QueueTaskBase {
   comfyPromptId?: string;
   progress?: number;
   stage?: string;
+  stageStartedAt?: string;
   startedAt?: string;
   error?: string;
   performanceStats?: TaskPerformanceStats;
@@ -474,6 +474,11 @@ export type H3PromptPreset =
   | "official-storyboard"
   | "reference-faithful"
   | "continuous-motion"
+  | "dialogue-sound"
+  | "beat-storyboard"
+  | "product-brand"
+  | "music-video"
+  | "narrative-animation"
   | "multi-reference";
 
 export type H3PromptMode = "T2VA" | "I2VA" | "FL2VA" | "L2VA" | "R2V";
@@ -558,9 +563,21 @@ export interface TaskPreview {
   dataUrl: string;
 }
 
+export interface WindowCloseRequest {
+  kind: "unsaved-settings" | "running-work";
+  hasUnsavedSettings?: boolean;
+}
+
+export type WindowCloseResponse =
+  | "cancel"
+  | "discard-settings"
+  | "finish-tasks"
+  | "force-exit";
+
 export interface AppApi {
   getState(): Promise<AppState>;
   setSettingsDirty(dirty: boolean): Promise<void>;
+  respondWindowClose(response: WindowCloseResponse): Promise<void>;
   saveDraft(draft: Draft): Promise<AppState>;
   saveSettings(settings: Settings): Promise<AppState>;
   pickImage(): Promise<string | null>;
@@ -581,8 +598,8 @@ export interface AppApi {
   reportUserAction(action: string, meta?: Record<string, unknown>): Promise<void>;
   pickDirectory(): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
-  readHistoryCover(key: string): Promise<string | null>;
-  saveHistoryCover(key: string, data: ArrayBuffer): Promise<boolean>;
+  readHistoryCover(key: string, sourcePath: string): Promise<string | null>;
+  saveHistoryCover(key: string, sourcePath: string, data: ArrayBuffer): Promise<boolean>;
   showItemInFolder(path: string): Promise<boolean>;
   copyFile(path: string): Promise<ConnectionResult>;
   openExternal(url: string): Promise<boolean>;
@@ -624,12 +641,12 @@ export interface AppApi {
   pauseQueue(): Promise<AppState>;
   cancelTask(taskId: string): Promise<AppState>;
   moveTask(taskId: string, direction: -1 | 1): Promise<AppState>;
-  optimizeQueue(): Promise<AppState>;
   duplicateTask(taskId: string): Promise<AppState>;
   resetTask(taskId: string): Promise<AppState>;
   deleteHistoryAsset(assetId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
+  onWindowCloseRequest(callback: (request: WindowCloseRequest) => void): () => void;
   onAttentionInstallLog(callback: (message: string) => void): () => void;
 }
 

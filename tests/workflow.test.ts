@@ -130,8 +130,8 @@ describe("renderWorkflow", () => {
       class_type: "LoraLoaderModelOnly",
       inputs: {
         model: ["1", 0],
-        lora_name: "minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors",
-        strength_model: 1
+        lora_name: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
+        strength_model: 0.75
       }
     });
     expect(rendered["21"]).toMatchObject({
@@ -139,16 +139,21 @@ describe("renderWorkflow", () => {
       inputs: {
         model: ["19", 0],
         shift_video: 12,
-        shift_audio: 6
+        shift_audio: 3
       }
     });
-    expect(rendered["7"]?.inputs.sampler_name).toBe("res_multistep");
+    expect(rendered["7"]?.inputs.sampler_name).toBe("er_sde");
     expect(rendered["8"]?.inputs).toMatchObject({
       model: ["21", 0],
-      scheduler: "simple",
+      scheduler: "beta",
       steps: 8,
       denoise: 1
     });
+    const migratedLegacyTask = renderWorkflow(source, {
+      ...turboTask,
+      steps: 12
+    }, { inputImage: "first.png" }) as Record<string, { inputs: Record<string, unknown> }>;
+    expect(migratedLegacyTask["8"]?.inputs.steps).toBe(8);
 
     const pytorch = renderWorkflow(source, {
       ...turboTask,

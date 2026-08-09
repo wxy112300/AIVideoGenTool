@@ -3,6 +3,7 @@ import {
   createH3PromptFromBuilder,
   createH3PromptTemplate,
   h3DurationPlan,
+  h3ExplicitConstraintSummary,
   normalizeH3PromptOutput
 } from "../src/core/h3-prompt.js";
 
@@ -14,6 +15,27 @@ describe("MiniMax H3 prompt templates", () => {
     expect(plan).toContain("Plan 6 sequential development beats");
     expect(plan).toContain("final beat must settle at 15.08 seconds");
     expect(plan).toContain("Connect the first-frame state to the last-frame state");
+    expect(plan).toContain("distance, scale, pace, acceleration");
+    expect(plan).toContain("A walk or run from A to B must have enough continuous time");
+  });
+
+  it("extracts explicit audio and single-shot constraints from the user request", () => {
+    const constraints = h3ExplicitConstraintSummary(
+      "One shot, no cuts. A runner goes from A to B. No BGM, but keep footsteps."
+    );
+
+    expect(constraints).toContain("non-diegetic background music");
+    expect(constraints).toContain("non_diegetic_music to N/A");
+    expect(constraints).toContain("exactly one [Shot 1]");
+    expect(constraints).not.toContain("completely silent");
+  });
+
+  it("treats complete silence separately from no background music", () => {
+    const constraints = h3ExplicitConstraintSummary("完全静音，不要字幕。");
+
+    expect(constraints).toContain("set overall_soundscape and non_diegetic_music to N/A");
+    expect(constraints).toContain("do not add dialogue, singing, music, ambience, or sound effects");
+    expect(constraints).toContain("do not add subtitles, captions");
   });
 
   it("normalizes model output to the requested H3 alignment mode", () => {

@@ -45,6 +45,7 @@ import {
   Server,
   Settings as SettingsIcon,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   SlidersHorizontal,
   Trash2,
@@ -76,10 +77,12 @@ import type {
   PromptVersion,
   QueueTask,
   Settings,
-  TaskPerformanceStats
-  ,WorkflowCapabilities
+  TaskPerformanceStats,
+  WindowCloseRequest,
+  WorkflowCapabilities
 } from "./types";
 import { createClearedDraft } from "./core/defaults";
+import { createHistoryCoverCacheKey } from "./core/history-cover";
 import { createDefaultH3PromptPresets, h3PromptPresetForMode } from "./core/h3-prompt-presets";
 import {
   isUnconcernedPromptModel,
@@ -106,6 +109,7 @@ import {
   isMiniMaxH3R2vModel,
   isMiniMaxH3SpectrumEligible,
   isMiniMaxH3TurboModel,
+  isRetiredVideoModel,
   normalizeH3Steps,
   outputDimensions,
   outputFrameCountForTask
@@ -195,6 +199,8 @@ let queueActionBusy: { taskId: string; action: "remove" | "cancel" | "edit" } | 
 let modalReturnFocus: HTMLElement | null = null;
 let modalInitialFocusPending = false;
 let modalControlFocusSelector = "";
+let pendingWindowCloseRequest: WindowCloseRequest | null = null;
+let windowCloseResponseBusy = false;
 const bundledWorkflows: Record<string, BundledWorkflow> = {};
 const bundledWorkflowKey = (modelId: string, inputMode: Draft["inputMode"]) =>
   `${modelId}:${inputMode}`;
@@ -215,18 +221,51 @@ let historyTitleResizeObserver: ResizeObserver | null = null;
 let historyMediaObserver: IntersectionObserver | null = null;
 let historyCoverWarmupController: AbortController | null = null;
 let historyCoverWarmupTimer: number | undefined;
-const HISTORY_COVER_CACHE_VERSION = "history-cover-v1";
 const HISTORY_COVER_MAX_EDGE = 640;
 const historyCoverDataUrls = new Map<string, string>();
 let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
 let h3PromptPreset: H3PromptPreset = "official-storyboard";
 let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
 const h3PromptPresetLabels: Record<H3PromptPreset, string> = {
-  "official-storyboard": "完整电影提示词（推荐）",
-  "reference-faithful": "参考图忠实理解",
-  "continuous-motion": "单镜头连贯动作",
+  "official-storyboard": "通用影视时间线",
+  "reference-faithful": "参考画面保真",
+  "continuous-motion": "单镜头连续动作",
+  "dialogue-sound": "对白与原生声音",
+  "beat-storyboard": "节拍分镜与镜头节奏",
+  "product-brand": "产品与品牌演示",
+  "music-video": "音乐视频与歌词",
+  "narrative-animation": "风格化动画叙事",
   "multi-reference": "多参考关系编排"
 };
+const h3PromptPresetOrder: H3PromptPreset[] = [
+  "official-storyboard",
+  "reference-faithful",
+  "continuous-motion",
+  "dialogue-sound",
+  "beat-storyboard",
+  "product-brand",
+  "music-video",
+  "narrative-animation",
+  "multi-reference"
+];
+const h3PromptPresetDescriptions: Record<H3PromptPreset, string> = {
+  "official-storyboard": "按 H3 官方字段组织完整的视听时间线，适合一般视频请求。",
+  "reference-faithful": "减少无依据的画面补写，优先保护参考图中的身份、构图和连续性。",
+  "continuous-motion": "把动作写成一个无剪辑的连续镜头，强调因果、身体力学和收束状态。",
+  "dialogue-sound": "优先处理对白、演唱、环境声、动作声和原生音乐的同步关系。",
+  "beat-storyboard": "按时长拆解镜头节拍、动作节点、转场、镜头运动和声音落点。",
+  "product-brand": "保护产品、界面、品牌素材和文案的真实性，强调功能动作与清晰收尾。",
+  "music-video": "把歌曲、歌词、节拍、表演和空间化文字作为同一条时间线设计。",
+  "narrative-animation": "强调角色锁定、因果故事、表演节奏、风格化运动和镜头连续性。",
+  "multi-reference": "为 R2V 图片、视频和音频分配明确关系，并保持标签和复用关系稳定。"
+};
+
+function h3PromptPresetOptions(selected: H3PromptPreset, includeMultiReference: boolean): string {
+  return h3PromptPresetOrder
+    .filter((preset) => includeMultiReference || preset !== "multi-reference")
+    .map((preset) => `<option value="${preset}" ${selected === preset ? "selected" : ""}>${h3PromptPresetLabels[preset]}</option>`)
+    .join("");
+}
 let promptEnhancing = false;
 let promptStarting = false;
 let promptReleasing = false;
@@ -301,6 +340,7 @@ const lucideIconSet = {
   Server,
   Settings: SettingsIcon,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
   SlidersHorizontal,
   Trash2,
@@ -361,7 +401,7 @@ function modelName(id: string): string {
     {
       minimax_h3_fl2va: "MiniMax H3 FL2VA",
       minimax_h3_fl2va_int4: "MiniMax H3 FL2VA · INT4 低显存",
-      minimax_h3_fl2va_turbo: "MiniMax H3 Turbo · 首尾帧",
+      minimax_h3_fl2va_turbo: "MiniMax H3 LightX2V Turbo · 首尾帧",
       minimax_h3_ref2va: "MiniMax H3 R2V · 多参考",
       minimax_h3_ref2va_int4: "MiniMax H3 R2V · 多参考 INT4",
       sulphur2: "Sulphur 2 GGUF",
@@ -746,14 +786,13 @@ function historyCoverCacheKey(
 ): string {
   const videoIndex = versionVideoIndex(version);
   const file = videoIndex >= 0 ? version.files[videoIndex] : undefined;
-  return [
-    HISTORY_COVER_CACHE_VERSION,
-    asset.id,
-    version.id,
-    version.createdAt,
-    file?.filename ?? version.outputFilename,
-    file?.absolutePath ?? ""
-  ].join(":");
+  return createHistoryCoverCacheKey({
+    assetId: asset.id,
+    versionId: version.id,
+    createdAt: version.createdAt,
+    filename: file?.filename ?? version.outputFilename,
+    absolutePath: file?.absolutePath ?? ""
+  });
 }
 
 function setHistoryCoverImage(media: HTMLElement, dataUrl: string): boolean {
@@ -783,11 +822,19 @@ function setHistoryCoverImage(media: HTMLElement, dataUrl: string): boolean {
 
 async function loadHistoryCoverFromCache(media: HTMLElement): Promise<boolean> {
   const key = media.dataset.coverKey;
-  if (!key) return false;
-  const cached = historyCoverDataUrls.get(key) ?? await window.studio.readHistoryCover(key);
-  if (!cached) return false;
-  historyCoverDataUrls.set(key, cached);
-  return setHistoryCoverImage(media, cached);
+  const sourcePath = media.dataset.coverSource;
+  if (!key || !sourcePath) return false;
+  try {
+    const cached = historyCoverDataUrls.get(key) ?? await window.studio.readHistoryCover(key, sourcePath);
+    if (!cached) return false;
+    historyCoverDataUrls.set(key, cached);
+    return setHistoryCoverImage(media, cached);
+  } catch (error) {
+    void window.studio.reportRendererError("读取历史封面缓存失败", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return false;
+  }
 }
 
 function loadHistoryCardVideo(media: HTMLElement): HTMLVideoElement | null {
@@ -891,7 +938,11 @@ function historyCoverBlob(video: HTMLVideoElement): Promise<Blob | null> {
     return Promise.resolve(null);
   }
   return new Promise((resolve) => {
-    canvas.toBlob(resolve, "image/jpeg", 0.78);
+    try {
+      canvas.toBlob(resolve, "image/jpeg", 0.78);
+    } catch {
+      resolve(null);
+    }
   });
 }
 
@@ -910,14 +961,21 @@ async function saveHistoryCover(
   isActive: () => boolean
 ): Promise<void> {
   const key = media.dataset.coverKey;
-  if (!key || !isActive() || media.dataset.historyCoverCached === "true") return;
+  const sourcePath = media.dataset.coverSource;
+  if (!key || !sourcePath || !isActive() || media.dataset.historyCoverCached === "true") return;
   const blob = await historyCoverBlob(video);
   if (!blob || !isActive()) return;
   const data = await blob.arrayBuffer();
-  if (!await window.studio.saveHistoryCover(key, data) || !isActive()) return;
-  const dataUrl = await historyBlobDataUrl(blob);
-  historyCoverDataUrls.set(key, dataUrl);
-  setHistoryCoverImage(media, dataUrl);
+  try {
+    if (!await window.studio.saveHistoryCover(key, sourcePath, data) || !isActive()) return;
+    const dataUrl = await historyBlobDataUrl(blob);
+    historyCoverDataUrls.set(key, dataUrl);
+    setHistoryCoverImage(media, dataUrl);
+  } catch (error) {
+    void window.studio.reportRendererError("保存历史封面缓存失败", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
 }
 
 function waitForHistoryVideoData(
@@ -1140,6 +1198,57 @@ function historyRenderDuration(version: AssetVersion): string {
   return formatElapsedDuration(Math.max(0, (createdAt - startedAt) / 1000));
 }
 
+function historyRenderSeconds(version: AssetVersion): number | null {
+  if (!version.startedAt) return null;
+  const startedAt = Date.parse(version.startedAt);
+  const createdAt = Date.parse(version.createdAt);
+  if (!Number.isFinite(startedAt) || !Number.isFinite(createdAt)) return null;
+  return Math.max(0, (createdAt - startedAt) / 1000);
+}
+
+function queueHistoryEstimateSeconds(task: QueueTask): number | null {
+  const candidates = state.history
+    .flatMap((asset) => asset.versions)
+    .filter((version) => version.modelId === task.modelId)
+    .map(historyRenderSeconds)
+    .filter((value): value is number => value != null && value > 0);
+  if (!candidates.length) return null;
+  return candidates.reduce((total, value) => total + value, 0) / candidates.length;
+}
+
+function queueTaskRemainingSeconds(task: QueueTask): number | null {
+  const historyEstimate = queueHistoryEstimateSeconds(task);
+  if (task.status !== "running") return historyEstimate;
+  const progress = Math.max(0, Math.min(100, task.progress ?? 0));
+  const startedAt = task.startedAt ? Date.parse(task.startedAt) : Number.NaN;
+  const elapsed = Number.isFinite(startedAt)
+    ? Math.max(0, (Date.now() - startedAt) / 1000)
+    : 0;
+  if (progress >= 2 && elapsed > 0) {
+    return elapsed * (100 - progress) / progress;
+  }
+  return historyEstimate;
+}
+
+function queueRemainingSeconds(tasks = state.queue): number | null {
+  const activeTasks = tasks.filter((task) => task.status === "waiting" || task.status === "running");
+  const estimates = activeTasks.map(queueTaskRemainingSeconds);
+  if (estimates.some((value) => value == null)) return null;
+  return estimates.reduce((total: number, value) => total + (value ?? 0), 0);
+}
+
+function queueStageElapsedText(task: QueueTask): string {
+  if (!task.stageStartedAt) return "阶段计时待开始";
+  const startedAt = Date.parse(task.stageStartedAt);
+  return Number.isFinite(startedAt)
+    ? `当前阶段 ${formatElapsedDuration(Math.max(0, (Date.now() - startedAt) / 1000))}`
+    : "阶段计时待开始";
+}
+
+function queueEstimateText(seconds: number | null): string {
+  return seconds == null ? "等待历史数据" : formatElapsedDuration(seconds);
+}
+
 function formatTrimTime(seconds: number): string {
   const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
   const minutes = Math.floor(safe / 60);
@@ -1164,12 +1273,10 @@ function createModelOptions(draft: Draft): string {
     : [
         { id: "minimax_h3_fl2va", name: "MiniMax H3 Image to Video", available: true, integrated: true },
       { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 Image to Video · INT4 低显存", available: true, integrated: true },
-        { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 Turbo · 首尾帧", available: true, integrated: true },
+        { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 LightX2V Turbo · 首尾帧", available: true, integrated: true },
         { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考", available: true, integrated: true },
         { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
-      { id: "sulphur2", name: "Sulphur 2 GGUF", available: true, integrated: true },
-        { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: true, integrated: true },
-        { id: "hunyuan15", name: "HunyuanVideo 1.5", available: true, integrated: true }
+      { id: "sulphur2", name: "Sulphur 2 GGUF", available: true, integrated: true }
       ];
   return profiles
     .map((profile) => {
@@ -1289,22 +1396,22 @@ function confirmationDialog(): string {
       ? `移除任务“${request.title}”？`
       : cancellingQueueTask
         ? `取消当前任务“${request.title}”？`
-    : discardingSettings
-      ? "放弃未保存的设置？"
-    : forceStoppingComfy
-      ? "强制终止所有 ComfyUI 进程？"
-      : "清空当前草稿？";
+        : discardingSettings
+          ? "放弃未保存的设置？"
+          : forceStoppingComfy
+            ? "强制终止所有 ComfyUI 进程？"
+            : "清空当前草稿？";
   const description = deleting
     ? "关联的视频文件会从磁盘永久删除，历史记录也会一并移除。"
     : removingQueueTask
       ? "这会从队列中移除任务，不会删除输入文件或历史作品。"
       : cancellingQueueTask
         ? "当前生成会被中断；如果已经产生可用的部分视频，程序会尝试保留它。"
-    : discardingSettings
-      ? "当前设置修改尚未保存。放弃后会恢复到上一次保存的值。"
-    : forceStoppingComfy
-      ? "这会关闭所有识别到的 ComfyUI Desktop/后端进程，立即中断当前任务并释放 CUDA 上下文；不会自动重新启动。"
-      : "首帧、尾帧和所有提示词版本都会清空；模型与输出设置会保留。";
+        : discardingSettings
+          ? "当前设置修改尚未保存。放弃后会恢复到上一次保存的值。"
+          : forceStoppingComfy
+            ? "这会关闭所有识别到的 ComfyUI Desktop/后端进程，立即中断当前任务并释放 CUDA 上下文；不会自动重新启动。"
+            : "首帧、尾帧和所有提示词版本都会清空；模型与输出设置会保留。";
   return `
     <div class="dialog-backdrop confirm-backdrop" id="confirm-backdrop">
       <section class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description" tabindex="-1">
@@ -1317,15 +1424,37 @@ function confirmationDialog(): string {
             ? `<div class="confirm-warning">只删除本条记录关联的视频，不会删除参考图片、工作流或整个输出目录。</div>`
             : removingQueueTask || cancellingQueueTask
               ? `<div class="confirm-warning">任务参数、输入媒体和错误记录会继续保留在本地，之后仍可编辑、重试或移除。</div>`
-            : discardingSettings
-              ? `<div class="confirm-warning">已经保存的设置不会受到影响；只有当前编辑中的设置草稿会被丢弃。</div>`
-            : forceStoppingComfy
-              ? `<div class="confirm-warning danger-warning">这是进程级强制操作，会关闭其它 ComfyUI 实例；未保存的 ComfyUI 工作流状态不会保留。</div>`
-              : ""}
+              : discardingSettings
+                ? `<div class="confirm-warning">已经保存的设置不会受到影响；只有当前编辑中的设置草稿会被丢弃。</div>`
+                : forceStoppingComfy
+                  ? `<div class="confirm-warning danger-warning">这是进程级强制操作，会关闭其它 ComfyUI 实例；未保存的 ComfyUI 工作流状态不会保留。</div>`
+                  : ""}
         </div>
         <div class="dialog-actions">
           <button class="secondary button-with-icon" id="cancel-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon("x")}取消</button>
           <button class="primary destructive button-with-icon" id="accept-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon(forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${confirmationBusy ? "处理中…" : forceStoppingComfy ? "强制终止进程" : deleting ? "删除视频和记录" : removingQueueTask ? "移除任务" : cancellingQueueTask ? "取消当前任务" : discardingSettings ? "放弃更改" : "清空草稿"}</button>
+        </div>
+      </section>
+    </div>`;
+}
+
+function windowCloseDialog(): string {
+  if (!pendingWindowCloseRequest) return "";
+  const runningWork = pendingWindowCloseRequest.kind === "running-work";
+  const hasUnsavedSettings = pendingWindowCloseRequest.hasUnsavedSettings === true;
+  return `
+    <div class="dialog-backdrop confirm-backdrop close-dialog-backdrop" id="window-close-backdrop">
+      <section class="confirm-dialog close-dialog" role="alertdialog" aria-modal="true" aria-labelledby="window-close-title" aria-describedby="window-close-description" tabindex="-1">
+        <div class="confirm-icon" aria-hidden="true">${icon("alert-triangle")}</div>
+        <div class="confirm-copy">
+          <span class="eyebrow">${runningWork ? "任务仍在运行" : "退出应用"}</span>
+          <h2 id="window-close-title">${runningWork ? "当前任务还没有结束" : "有未保存的设置"}</h2>
+          <p id="window-close-description">${runningWork ? "结束任务会中断当前 ComfyUI 计算；强制退出不会等待完整清理。" : "当前设置还有未保存更改，退出后这些修改会丢失。"}</p>
+          <div class="confirm-warning">${runningWork ? `${hasUnsavedSettings ? "未保存的设置也会被放弃。" : ""} ComfyUI 服务本身不会关闭。` : "已经保存的设置不会受到影响；只有当前编辑中的设置会被放弃。"}</div>
+        </div>
+        <div class="dialog-actions">
+          <button class="secondary button-with-icon" id="cancel-window-close" ${windowCloseResponseBusy ? "disabled" : ""}>${icon("x")}取消退出</button>
+          ${runningWork ? `<button class="primary destructive button-with-icon" id="finish-window-close" ${windowCloseResponseBusy ? "disabled" : ""}>${icon("power")}${windowCloseResponseBusy ? "处理中…" : "结束任务并退出"}</button><button class="ghost danger button-with-icon" id="force-window-close" ${windowCloseResponseBusy ? "disabled" : ""}>${icon("ban")}强制退出</button>` : `<button class="primary destructive button-with-icon" id="discard-window-close" ${windowCloseResponseBusy ? "disabled" : ""}>${icon("power")}${windowCloseResponseBusy ? "处理中…" : "放弃设置并退出"}</button>`}
         </div>
       </section>
     </div>`;
@@ -1427,6 +1556,7 @@ function shell(content: string): string {
     </div>
     ${page === "history" || page === "history-detail" ? `<button class="history-back-top" id="history-back-top" type="button" aria-label="返回顶部" title="返回顶部">${icon("arrow-up")}</button>` : ""}
     ${confirmationDialog()}
+    ${windowCloseDialog()}
     ${upscaleDialogHtml()}`;
 }
 
@@ -1521,7 +1651,7 @@ function createPage(): string {
   const promptStatus = promptModelStatus(state.settings);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
   const promptAiDisabled = promptRuntimeBusy || state.queueRunning;
-  const h3Steps = normalizeH3Steps(draft.steps);
+  const h3Steps = normalizeH3Steps(draft.steps, draft.modelId);
   const spectrumNode = environmentScan?.customNodes.find(
     (node) => node.id === "spectrum-minimax-h3"
   );
@@ -1557,6 +1687,11 @@ function createPage(): string {
     draft.h3ReferenceSlots.length > 0 &&
     draft.h3ReferenceSlots.every((slot) => Boolean(slot.mediaPath))
   );
+  const turboCoreBlockReason = isMiniMaxH3TurboModel(draft.modelId) &&
+    Boolean(environmentScan?.comfyCompatibility.checkedFrom) &&
+    !environmentScan?.comfyCompatibility.h3CoreSupported
+    ? "LightX2V Turbo 需要 ComfyUI v0.31.0+ 原生音视频采样；请先在设置中更新核心"
+    : "";
   const enqueueBlockReason = extending
     ? !videoReady
       ? "请先选择视频并等待读取完成"
@@ -1577,15 +1712,17 @@ function createPage(): string {
       ? "请先选择首帧图片"
       : !prompt.text.trim()
         ? "请先填写提示词"
-        : !draft.workflowPath
-          ? "请先选择该模型的 ComfyUI API 工作流"
-          : !r2vSlotsReady
-            ? "请先补齐 R2V 参考 Slot"
-            : !safety.safe
-              ? safety.message
-              : !spectrumReady
-                ? "请先在设置中安装并加载 Spectrum 节点"
-                : "";
+        : turboCoreBlockReason
+          ? turboCoreBlockReason
+          : !draft.workflowPath
+            ? "请先选择该模型的 ComfyUI API 工作流"
+            : !r2vSlotsReady
+              ? "请先补齐 R2V 参考 Slot"
+              : !safety.safe
+                ? safety.message
+                : !spectrumReady
+                  ? "请先在设置中安装并加载 Spectrum 节点"
+                  : "";
   const enqueueDisabled = Boolean(enqueueBlockReason);
   return `
     <section class="page-heading create-page-heading">
@@ -1655,19 +1792,18 @@ function createPage(): string {
       </section>
       <section class="panel composer">
       <div class="section-heading composer-heading">
-        <div>
+        <div class="composer-heading-main">
           <h2>${extending ? "描述接下来发生什么" : "提示词"}</h2>
           <span class="muted">${draft.activePromptVersion + 1} / ${draft.promptVersions.length} · ${escapeHtml(prompt.label)}</span>
+          <div class="prompt-version-controls">
+            <button class="icon-button" id="prompt-prev" aria-label="上一版提示词" title="上一版提示词" ${draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button>
+            <button class="icon-button" id="prompt-next" aria-label="下一版提示词" title="下一版提示词" ${draft.activePromptVersion >= draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button>
+          </div>
         </div>
-        <div class="button-row">
-          <button class="icon-button" id="prompt-prev" aria-label="上一版提示词" title="上一版提示词" ${draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button>
-          <button class="icon-button" id="prompt-next" aria-label="下一版提示词" title="下一版提示词" ${draft.activePromptVersion >= draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button>
-          <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="扩写方式" title="选择提示词扩写方式">
+        <div class="prompt-action-controls">
+          <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="扩写方式" title="${isMiniMaxH3 ? escapeHtml(h3PromptPresetDescriptions[activeH3PromptPreset]) : "选择提示词扩写方式"}">
             ${isMiniMaxH3
-              ? `<option value="official-storyboard" ${activeH3PromptPreset === "official-storyboard" ? "selected" : ""}>完整电影提示词（推荐）</option>
-                <option value="reference-faithful" ${activeH3PromptPreset === "reference-faithful" ? "selected" : ""}>参考图忠实理解</option>
-                <option value="continuous-motion" ${activeH3PromptPreset === "continuous-motion" ? "selected" : ""}>单镜头连贯动作</option>
-                ${isR2V ? `<option value="multi-reference" ${activeH3PromptPreset === "multi-reference" ? "selected" : ""}>多参考关系编排</option>` : ""}`
+              ? h3PromptPresetOptions(activeH3PromptPreset, isR2V)
               : `<option value="sulphur-native" ${enhanceMode === "sulphur-native" ? "selected" : ""}>Sulphur 原生增强（推荐）</option>
                  <option value="faithful" ${enhanceMode === "faithful" ? "selected" : ""}>忠实扩写（需 Instruct 模型）</option>`}
           </select>
@@ -1756,13 +1892,11 @@ function createPage(): string {
           </select>
         </label>
         ${isMiniMaxH3 ? `<label class="settings-field settings-steps">采样步数（H3）
-          <select id="steps" aria-label="H3 采样步数" title="${escapeHtml(isMiniMaxH3TurboModel(draft.modelId) ? "Turbo 建议从 8 步开始；4 步可能出现音频或动作异常。" : "只影响 H3；其他模型沿用各自工作流设置。")}">
+          <select id="steps" aria-label="H3 采样步数" title="${escapeHtml(isMiniMaxH3TurboModel(draft.modelId) ? "LightX2V Turbo 建议使用 8 步；6 步用于快速预览，4 步可能损失动态和音频质量。" : "只影响 H3；其他模型沿用各自工作流设置。")}">
             ${isMiniMaxH3TurboModel(draft.modelId)
               ? `<option value="4" ${h3Steps === 4 ? "selected" : ""}>4 · 极限加速（实验）</option>
                 <option value="6" ${h3Steps === 6 ? "selected" : ""}>6 · 加速预览</option>
-                <option value="8" ${h3Steps === 8 ? "selected" : ""}>8 · 均衡（推荐）</option>
-                <option value="10" ${h3Steps === 10 ? "selected" : ""}>10 · 质量优先</option>
-                <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · 稳妥预览</option>`
+                <option value="8" ${h3Steps === 8 || h3Steps > 8 ? "selected" : ""}>8 · 正式输出（推荐）</option>`
               : `<option value="20" ${h3Steps === 20 ? "selected" : ""}>20 · 标准质量（推荐）</option>
                 <option value="16" ${h3Steps === 16 ? "selected" : ""}>16 · 平衡预览</option>
                 <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · 快速预览</option>`}
@@ -1836,6 +1970,8 @@ function queuePage(): string {
   const running = state.queue.find((task) => task.status === "running");
   const activeTasks = state.queue.filter((task) => task.status === "waiting" || task.status === "running");
   const attentionTasks = state.queue.filter((task) => task.status === "failed" || task.status === "cancelled");
+  const waitingCount = activeTasks.filter((task) => task.status === "waiting").length;
+  const remainingSeconds = queueRemainingSeconds(activeTasks);
   const queueStatus = running
     ? "当前任务正在运行"
     : activeTasks.some((task) => task.status === "waiting")
@@ -1844,10 +1980,18 @@ function queuePage(): string {
         ? "有任务需要处理"
         : "队列为空";
   return `
-    <section class="page-heading">
-      <div><h1>生成队列</h1><p>${activeTasks.length} 项执行任务 · ${attentionTasks.length} 项需处理 · ${queueStatus}</p></div>
+    <section class="page-heading queue-page-heading">
+      <div class="queue-page-heading-main">
+        <div class="queue-heading-line">
+          <h1>生成队列</h1>
+          <div class="queue-overview" aria-label="队列概览">
+            <div class="queue-overview-item"><span>等待中</span><strong id="queue-waiting-count">${waitingCount}</strong></div>
+            <div class="queue-overview-item"><span>预计剩余</span><strong id="queue-eta">${queueEstimateText(remainingSeconds)}</strong><small id="queue-eta-note">${remainingSeconds == null ? "完成首条任务后更准确" : "按历史耗时与当前进度"}</small></div>
+          </div>
+        </div>
+        <p>${activeTasks.length} 项执行任务 · ${attentionTasks.length} 项需处理 · ${queueStatus}</p>
+      </div>
       <div class="button-row">
-        <button class="secondary button-with-icon" id="optimize-queue" ${state.queue.filter((task) => task.status === "waiting").length < 2 ? "disabled" : ""}>${icon("wand-sparkles")}按模型优化顺序</button>
         ${running ? `<span class="queue-mode">${state.queueRunning ? "自动继续后续任务" : "本条完成后暂停"}</span>` : `<button class="primary button-with-icon" id="start-queue" ${state.queue.some((task) => task.status === "waiting") ? "" : "disabled"}>${icon("play")}开始队列</button>`}
       </div>
     </section>
@@ -1973,10 +2117,10 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
     : null;
   const h3ComputeSummary = task.taskType !== "upscale" && isMiniMaxH3Model(task.modelId)
     ? isMiniMaxH3TurboModel(task.modelId)
-      ? `<span title="Turbo 低步数流程暂不开放 Spectrum">${normalizeH3Steps(task.steps)} 步 · Spectrum 不适用</span>`
+      ? `<span title="Turbo 低步数流程暂不开放 Spectrum">${normalizeH3Steps(task.steps, task.modelId)} 步 · Spectrum 不适用</span>`
       : task.spectrumMode === "balanced"
-        ? `<span title="Spectrum 已开启；H3 特征历史保存在系统内存">${normalizeH3Steps(task.steps)} 步 · Spectrum 开</span>`
-        : `<span title="Spectrum 已关闭；使用 H3 原生完整计算">${normalizeH3Steps(task.steps)} 步 · Spectrum 关</span>`
+        ? `<span title="Spectrum 已开启；H3 特征历史保存在系统内存">${normalizeH3Steps(task.steps, task.modelId)} 步 · Spectrum 开</span>`
+        : `<span title="Spectrum 已关闭；使用 H3 原生完整计算">${normalizeH3Steps(task.steps, task.modelId)} 步 · Spectrum 关</span>`
     : "";
   const seedText = String(task.seed);
   const metadata = task.taskType === "generation"
@@ -1998,7 +2142,7 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
     return `
       <article class="task-card panel running expanded">
         <div class="expanded-task-head">
-          <div class="queue-task-heading"><div class="queue-rank running" aria-label="队列第 ${queuePosition} 项"><strong>${String(queuePosition).padStart(2, "0")}</strong><small>当前</small></div><div><span class="status running">正在运行</span><h3>${escapeHtml(task.outputFilename)}</h3></div></div>
+          <div class="queue-task-heading"><div class="queue-rank running" aria-label="队列第 ${queuePosition} 项"><strong>${String(queuePosition).padStart(2, "0")}</strong><small>当前</small></div><div><div class="running-status-line"><span class="status running">正在运行</span><span class="running-elapsed-prominent" id="running-elapsed">${elapsedText(task.startedAt)}</span></div><h3>${escapeHtml(task.outputFilename)}</h3></div></div>
           <div class="running-progress-value"><span>总进度</span><strong id="running-progress-label">${Math.round(task.progress ?? 0)}%</strong></div>
         </div>
         <div class="running-layout">
@@ -2011,7 +2155,7 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
             <span class="eyebrow">当前步骤 · <span id="running-stage">${escapeHtml(task.stage ?? "准备中")}</span></span>
             <div class="progress" role="progressbar" aria-label="任务总进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(task.progress ?? 0)}"><span id="running-progress-bar" style="width:${task.progress ?? 0}%"></span></div>
             <p class="task-description">${escapeHtml(description)}</p>
-            <div class="task-meta">${metadata}<span id="running-elapsed">${elapsedText(task.startedAt)}</span></div>
+            <div class="task-meta">${metadata}<span id="running-stage-elapsed">${queueStageElapsedText(task)}</span><span id="running-eta">预计剩余 ${queueEstimateText(queueTaskRemainingSeconds(task))}</span></div>
             <div class="running-controls">
               <button class="secondary button-with-icon" id="${state.queueRunning ? "pause-queue" : "start-queue"}">${icon(state.queueRunning ? "pause" : "play")}${state.queueRunning ? "本条完成后暂停" : "继续执行后续任务"}</button>
               <button class="danger secondary button-with-icon" data-cancel="${task.id}" ${queueActionBusy?.taskId === task.id ? "disabled" : ""}>${icon("ban")}${queueActionBusy?.taskId === task.id && queueActionBusy.action === "cancel" ? "取消中…" : "取消当前任务"}</button>
@@ -2086,7 +2230,7 @@ function draftFromQueueTask(task: QueueTask): Draft | null {
     ratio: task.ratio,
     resolution,
     duration: task.duration,
-    steps: normalizeH3Steps(task.steps),
+    steps: normalizeH3Steps(task.steps, task.modelId),
     fps: task.fps,
     frameInterpolation: task.frameInterpolation,
     motion: task.motion,
@@ -2136,17 +2280,17 @@ function historyPage(): string {
   const orderedAssets = historyAssetsByNewest();
   const cards = orderedAssets.map((asset, historyOrder) => {
     const version = preferredVersion(asset);
-    const historyTitle = asset.prompt.trim() || asset.title;
+    const historyTitle = asset.title.trim() || asset.prompt.trim() || "未命名视频";
     const videoIndex = versionVideoIndex(version);
     const mediaUrl = historyMediaUrl(asset, version);
     const coverKey = historyCoverCacheKey(asset, version);
     const coverSeed = historyCoverSeed(asset.id, version.id);
     const coverTime = historyInitialCoverTime(asset.duration, coverSeed);
     return `
-      <article class="history-gallery-item panel" data-history="${asset.id}" data-history-order="${historyOrder}" tabindex="0" title="右键查看更多操作">
-        <div class="history-media" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${escapeHtml(coverKey)}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
+      <article class="history-gallery-item panel" data-history="${asset.id}" data-history-order="${historyOrder}" tabindex="0" aria-label="${escapeHtml(historyTitle)}，打开详情；右键查看更多操作" title="${escapeHtml(historyTitle)}">
+        <div class="history-media" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${escapeHtml(coverKey)}" data-cover-source="${escapeHtml(version.files[videoIndex]?.absolutePath ?? "")}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
           ${mediaUrl
-            ? `<video muted loop playsinline preload="none" data-history-src="${escapeHtml(mediaUrl)}"></video>`
+            ? `<video muted loop playsinline crossorigin="anonymous" preload="none" data-history-src="${escapeHtml(mediaUrl)}"></video>`
             : `<div class="history-media-fallback"><span>${icon("play")}</span><small>找不到视频文件</small></div>`}
           ${mediaUrl ? `<img class="history-cover-image" data-history-cover-image="${asset.id}" alt="" loading="lazy" hidden>` : ""}
           <div class="history-media-badges">
@@ -2159,7 +2303,7 @@ function historyPage(): string {
         </div>
         <div class="history-gallery-copy">
           <h3 class="history-card-title" title="${escapeHtml(historyTitle)}"><span class="history-card-title-track"><span>${escapeHtml(historyTitle)}</span><span aria-hidden="true">${escapeHtml(historyTitle)}</span></span></h3>
-          <code>${escapeHtml(version.files[videoIndex]?.filename ?? version.outputFilename)}</code>
+          <code class="history-card-filename">${escapeHtml(version.files[videoIndex]?.filename ?? version.outputFilename)}</code>
           <div class="history-card-meta"><span>${escapeHtml(formatFullHistoryTime(version.createdAt))}</span><span>渲染 ${escapeHtml(historyRenderDuration(version))}</span></div>
         </div>
       </article>`;
@@ -2358,6 +2502,7 @@ function historyDetailPage(): string {
     return historyPage();
   }
   const version = currentHistoryVersion(asset);
+  const retiredModel = isRetiredVideoModel(asset.modelId);
   selectedHistoryVersionId = version.id;
   const videoIndex = versionVideoIndex(version);
   const mediaUrl = historyMediaUrl(asset, version);
@@ -2366,7 +2511,7 @@ function historyDetailPage(): string {
   const historyIndex = orderedHistory.findIndex((item) => item.id === asset.id);
   const previousAsset = historyIndex > 0 ? orderedHistory[historyIndex - 1] : undefined;
   const nextAsset = historyIndex >= 0 ? orderedHistory[historyIndex + 1] : undefined;
-  const detailTitle = asset.prompt.trim() || asset.title;
+  const detailTitle = asset.title.trim() || asset.prompt.trim() || "未命名视频";
   const completedAt = formatFullHistoryTime(version.createdAt);
   const fps = version.fps;
   const performanceStats = version.performanceStats;
@@ -2379,9 +2524,10 @@ function historyDetailPage(): string {
       <div class="history-detail-tools">
         <span>任务记录为生成时的只读快照</span>
         <span class="history-detail-position" aria-label="当前历史作品位置">第 ${historyIndex + 1} / 共 ${state.history.length} 个</span>
+        <span class="history-keyboard-hint" aria-label="快捷键：Page Up 和 Page Down 切换历史视频"><kbd>Page Up</kbd><kbd>Page Down</kbd>切换视频</span>
         <div class="history-detail-navigation" aria-label="切换历史作品">
-          <button class="ghost button-with-icon" data-history-navigation="-1" ${previousAsset ? "" : "disabled"} title="${previousAsset ? `上一个：${escapeHtml(previousAsset.title)}` : "已经是第一项"}">${icon("arrow-left")}上一个</button>
-          <button class="ghost button-with-icon" data-history-navigation="1" ${nextAsset ? "" : "disabled"} title="${nextAsset ? `下一个：${escapeHtml(nextAsset.title)}` : "已经是最后一项"}">下一个${icon("arrow-right")}</button>
+          <button class="ghost button-with-icon" data-history-navigation="-1" ${previousAsset ? "" : "disabled"} title="${previousAsset ? `上一个：${escapeHtml(previousAsset.title)} · Page Up` : "已经是第一项"}">${icon("arrow-left")}上一个</button>
+          <button class="ghost button-with-icon" data-history-navigation="1" ${nextAsset ? "" : "disabled"} title="${nextAsset ? `下一个：${escapeHtml(nextAsset.title)} · Page Down` : "已经是最后一项"}">下一个${icon("arrow-right")}</button>
         </div>
       </div>
     </div>
@@ -2409,8 +2555,8 @@ function historyDetailPage(): string {
           <div><span>成片帧数</span><strong>${Math.round(version.duration * fps)} 帧</strong></div>
           </div>
           <div class="history-detail-quick-actions">
-          <button class="secondary button-with-icon" data-edit-history="${asset.id}" aria-label="在创建页调整" title="在创建页调整">${icon("sliders-horizontal")}调整参数</button>
-          ${videoFile?.absolutePath ? `<button class="secondary button-with-icon" data-continue-history="${asset.id}" data-source-version="${version.id}" aria-label="继续创作" title="继续创作">${icon("video")}继续创作</button><button class="secondary button-with-icon" data-copy-file="${escapeHtml(videoFile.absolutePath)}" aria-label="复制文件" title="复制文件">${icon("copy")}复制文件</button><button class="secondary button-with-icon history-file-action" data-show-file="${escapeHtml(videoFile.absolutePath)}" aria-label="打开所在目录" title="打开所在目录">${icon("folder-open")}定位文件</button>` : ""}
+          ${retiredModel ? "" : `<button class="secondary button-with-icon" data-edit-history="${asset.id}" aria-label="在创建页调整" title="在创建页调整">${icon("sliders-horizontal")}调整参数</button>`}
+          ${videoFile?.absolutePath ? `${retiredModel ? "" : `<button class="secondary button-with-icon" data-continue-history="${asset.id}" data-source-version="${version.id}" aria-label="继续创作" title="继续创作">${icon("video")}继续创作</button>`}<button class="secondary button-with-icon" data-copy-file="${escapeHtml(videoFile.absolutePath)}" aria-label="复制文件" title="复制文件">${icon("copy")}复制文件</button><button class="secondary button-with-icon history-file-action" data-show-file="${escapeHtml(videoFile.absolutePath)}" aria-label="打开所在目录" title="打开所在目录">${icon("folder-open")}定位文件</button>` : ""}
             <button class="secondary button-with-icon" data-open-upscale ${videoFile?.absolutePath && versionShortEdge(version) < 2160 ? "" : "disabled"}>${icon("maximize-2")}${versionShortEdge(version) >= 2160 ? "当前已是 4K" : "提升分辨率"}</button>
             <button class="secondary danger history-delete-button button-with-icon" data-delete-history="${asset.id}">${icon("trash-2")}删除视频和记录</button>
           </div>
@@ -2866,7 +3012,6 @@ function settingsPage(): string {
         <div class="runtime-policy-grid">
           <label class="policy-select-field"><span>显存安全余量</span><select id="vram-reserve"><option value="0.5" ${settings.vramReserveGb === 0.5 ? "selected" : ""}>0.5 GB · 激进</option><option value="0.75" ${settings.vramReserveGb === 0.75 ? "selected" : ""}>0.75 GB · 平衡</option><option value="1" ${settings.vramReserveGb === 1 ? "selected" : ""}>1 GB · 保守</option></select></label>
           <label class="ios-switch-field"><span class="policy-copy"><strong>安全取消</strong><small>先请求中断，再重启 ComfyUI 释放显存</small></span><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
-          <label class="ios-switch-field"><span class="policy-copy"><strong>优化队列顺序</strong><small>允许按模型自动整理等待中的任务</small></span><input id="optimize-queue-setting" type="checkbox" ${settings.optimizeQueue ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
           <label class="ios-switch-field"><span class="policy-copy"><strong>任务失败自动重试</strong><small>仅重试可通过清理并重启 ComfyUI 恢复的错误</small></span><input id="auto-retry-failed-tasks" type="checkbox" ${settings.autoRetryFailedTasks ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
           <label class="policy-select-field"><span>自动重试次数</span><select id="auto-retry-count" ${settings.autoRetryFailedTasks ? "" : "disabled"}>${[1, 2, 3, 4, 5].map((count) => `<option value="${count}" ${settings.autoRetryCount === count ? "selected" : ""}>${count} 次${count === 2 ? " · 推荐" : ""}</option>`).join("")}</select></label>
         </div>
@@ -2883,17 +3028,16 @@ function settingsPage(): string {
             ${(videoProfiles.length ? videoProfiles : [
               { id: "minimax_h3_fl2va", name: "MiniMax H3 FL2VA · 首帧 / 首尾帧", available: true, integrated: true },
               { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 FL2VA · INT4 低显存", available: true, integrated: true },
-              { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 Turbo · 首尾帧", available: true, integrated: true },
+              { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 LightX2V Turbo · 首尾帧", available: true, integrated: true },
               { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考 INT8", available: true, integrated: true },
               { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
-              { id: "sulphur2", name: "Sulphur 2 GGUF", available: false, integrated: true },
-              { id: "wan22_5b", name: "Wan 2.2 I2V 5B", available: false, integrated: true },
-              { id: "hunyuan15", name: "HunyuanVideo 1.5 I2V", available: false, integrated: true }
+              { id: "sulphur2", name: "Sulphur 2 GGUF", available: false, integrated: true }
             ]).map((profile) => `<option value="${profile.id}" ${settings.defaultVideoModel === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escapeHtml(profile.name)}${!profile.available ? " · 缺组件" : profile.integrated === false ? " · 工作流待接入" : ""}</option>`).join("")}
           </select></label>
         </div>
         <div class="scan-result">${environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${videoAvailable} 个已接入可运行模型，${videoProfiles.length - videoAvailable} 个缺组件或等待工作流接入` : "等待首次扫描"}</div>
       </section>
+      <div class="model-profile-list">${videoProfiles.length ? videoProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无模型扫描结果</div>`}</div>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>Sulphur 2 部署</h2><span class="muted">同一档位同时决定普通 I2V、原生 Extend、模型扫描和新任务快照。</span></div><span class="model-badge">分离式 GGUF</span></div>
         <div class="settings-grid two">
@@ -2904,7 +3048,6 @@ function settingsPage(): string {
         </div>
         <p class="muted proxy-hint">Q2 使用 distilled 模型且不加载 LoRA；Q3/Q4 使用 dev 模型和 distill LoRA。三档均要求 Gemma 3、LTX 文本连接器、独立视频/音频 VAE 与 latent upscaler，并强制单任务、<code>patch_on_device=false</code>、<code>--cache-none</code>、CPU offload 和分块解码。8GB 兼容仍要求充足的系统内存与页面文件。</p>
       </section>
-      <div class="model-profile-list">${videoProfiles.length ? videoProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无模型扫描结果</div>`}</div>
     </section>`;
 
   const promptPanel = `
@@ -2934,7 +3077,8 @@ function settingsPage(): string {
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>扩写预设</h2><span class="muted">预设会把原始文字和参考图整理成完整的 H3 视频提示词，覆盖主体、场景、动作、镜头、声音、对白和连续性。</span></div><button class="secondary button-with-icon" id="restore-h3-prompt-presets">${icon("rotate-ccw")}恢复默认</button></div>
-        <label>当前编辑预设<select id="h3-prompt-preset-setting">${(Object.keys(h3PromptPresetLabels) as H3PromptPreset[]).map((preset) => `<option value="${preset}" ${settingsH3PromptPreset === preset ? "selected" : ""}>${h3PromptPresetLabels[preset]}</option>`).join("")}</select></label>
+        <label>当前编辑预设<select id="h3-prompt-preset-setting">${h3PromptPresetOptions(settingsH3PromptPreset, true)}</select></label>
+        <p class="muted proxy-hint">${escapeHtml(h3PromptPresetDescriptions[settingsH3PromptPreset])}</p>
         <label>预设规则头<textarea id="h3-prompt-preset-text" rows="7">${escapeHtml(selectedH3PresetText)}</textarea></label>
         <p class="muted proxy-hint">规则头可自由修改；内置的 H3 官方基线会继续强制参考标签、首尾帧关系、连续性、音频和输出格式。修改后点击设置页顶部“保存设置”，创建页下次扩写立即使用。</p>
       </section>
@@ -2980,7 +3124,7 @@ function settingsPage(): string {
   ).length ?? 0;
   const h3CoreNodes = environmentScan?.comfyCompatibility.coreNodes ?? [];
   const h3CoreKnown = environmentScan?.comfyCompatibility.checkedFrom !== "";
-  const h3CoreReady = h3CoreNodes.length > 0 && h3CoreNodes.every((node) => node.available);
+  const h3CoreReady = environmentScan?.comfyCompatibility.h3CoreSupported ?? false;
   const promptCoreNodes = environmentScan?.comfyCompatibility.promptCoreNodes ?? [];
   const promptCoreKnown = environmentScan?.comfyCompatibility.checkedFrom !== "";
   const promptCoreReady = promptCoreNodes.length > 0 && promptCoreNodes.every((node) => node.available);
@@ -2999,12 +3143,12 @@ function settingsPage(): string {
       <div class="model-profile-list">
         <article class="panel custom-node-card ${h3CoreReady ? "available" : "missing"}">
           <div class="custom-node-copy">
-            <div class="model-title"><h3>MiniMax H3 I2V 核心节点</h3><span class="model-badge">ComfyUI 核心</span></div>
-            <p>这些节点随 ComfyUI 核心提供，不应安装成第三方 custom node；缺失时更新所选 ComfyUI 核心并重启复检。</p>
+            <div class="model-title"><h3>MiniMax H3 原生音视频核心</h3><span class="model-badge">ComfyUI v0.31.0+</span></div>
+            <p>LightX2V Turbo 直接使用 ComfyUI 原生 LoRA 与音视频采样，不需要额外的 Turbo custom node；版本过低时请更新所选 ComfyUI 并重启复检。</p>
             <div class="component-list">
               ${h3CoreNodes.map((node) => `<div class="component-row ${node.available ? "found" : "missing"}"><span class="component-state">${icon(node.available ? "circle-check" : "circle-alert")}</span><div><strong>${escapeHtml(node.label)}</strong><code>${escapeHtml(node.id)}</code></div></div>`).join("") || `<div class="component-row missing"><span class="component-state">${icon("circle-alert")}</span><div><strong>等待扫描核心节点</strong></div></div>`}
             </div>
-            <span class="muted">最低参考提交 <code>${escapeHtml(environmentScan?.comfyCompatibility.h3MinimumRevision ?? "")}</code></span>
+            <span class="muted">最低版本 <code>v0.31.0</code> · 参考提交 <code>${escapeHtml(environmentScan?.comfyCompatibility.h3MinimumRevision ?? "")}</code></span>
             ${comfyUpdateLog ? `<details class="node-log" open><summary>核心处理日志</summary><pre>${escapeHtml(comfyUpdateLog)}</pre></details>` : ""}
           </div>
           <div class="custom-node-actions">
@@ -3034,7 +3178,7 @@ function settingsPage(): string {
             </div>
             <div class="custom-node-actions">
               <span class="model-availability ${workflow.installed ? "available" : "missing"}">${workflow.installed ? `${icon("circle-check")} 已安装` : `${icon("circle-alert")} 未安装`}</span>
-              <button class="primary button-with-icon" data-install-workflow="${escapeHtml(workflow.id)}" ${workflowDependencyInstalling ? "disabled" : ""}>${icon(workflowDependencyInstalling === workflow.id ? "refresh-cw" : "download")}${workflowDependencyInstalling === workflow.id ? "安装中…" : workflow.installed ? "重新安装" : "一键安装"}</button>
+              <button class="${workflow.installed ? "secondary" : "primary"} button-with-icon" data-install-workflow="${escapeHtml(workflow.id)}" ${workflowDependencyInstalling ? "disabled" : ""}>${icon(workflowDependencyInstalling === workflow.id ? "refresh-cw" : "download")}${workflowDependencyInstalling === workflow.id ? "安装中…" : workflow.installed ? "重新安装" : "一键安装"}</button>
             </div>
           </article>`).join("")}
         ${(environmentScan?.customNodes ?? []).map((node) => `
@@ -3526,6 +3670,17 @@ function returnToLastHistoryDetail(): void {
   openHistoryDetail(target.assetId, target.versionId);
 }
 
+function navigateHistoryDetail(direction: -1 | 1): void {
+  if (page !== "history-detail") return;
+  const orderedHistory = historyAssetsByNewest();
+  const currentIndex = orderedHistory.findIndex(
+    (item) => item.id === selectedHistoryAssetId
+  );
+  const nextAsset = orderedHistory[currentIndex + direction];
+  if (!nextAsset) return;
+  openHistoryDetail(nextAsset.id);
+}
+
 async function copyHistoryText(value: string, successMessage: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(value);
@@ -3551,6 +3706,10 @@ async function copyHistoryFile(filename: string): Promise<void> {
 async function editHistoryAsset(assetId: string): Promise<void> {
   const asset = state.history.find((item) => item.id === assetId);
   if (!asset) return;
+  if (isRetiredVideoModel(asset.modelId)) {
+    showMessage(`${modelName(asset.modelId)} 已从创建模型中移除；历史视频和模型名称仍会保留。`);
+    return;
+  }
   const now = new Date().toISOString();
   const version = preferredVersion(asset);
   const isExtension = asset.inputMode === "video" || Boolean(asset.sourceVideoPath);
@@ -3610,6 +3769,7 @@ function openHistoryContextMenu(
   const asset = state.history.find((item) => item.id === assetId);
   if (!asset) return;
   const version = preferredVersion(asset);
+  const retiredModel = isRetiredVideoModel(asset.modelId);
   const videoIndex = versionVideoIndex(version);
   const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
   const absolutePath = videoFile?.absolutePath ?? "";
@@ -3623,7 +3783,7 @@ function openHistoryContextMenu(
       <span>${escapeHtml(videoFile?.filename ?? asset.outputFilename)}</span>
     </div>
     <button role="menuitem" data-history-action="detail"><span class="context-icon">${icon("external-link")}</span><span><strong>查看详情</strong><small>播放视频并查看生成参数</small></span><kbd>Enter</kbd></button>
-    <button role="menuitem" data-history-action="edit"><span class="context-icon">${icon("sparkles")}</span><span><strong>使用此参数再创建</strong><small>带入提示词、模型和 Seed</small></span></button>
+    ${retiredModel ? "" : `<button role="menuitem" data-history-action="edit"><span class="context-icon">${icon("sparkles")}</span><span><strong>使用此参数再创建</strong><small>带入提示词、模型和 Seed</small></span></button>`}
     <div class="history-context-separator" role="separator"></div>
     <button role="menuitem" data-history-action="copy-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>复制文件</strong><small>${absolutePath ? "复制视频文件，可在资源管理器中粘贴" : "当前记录没有可用文件"}</small></span></button>
     <button role="menuitem" data-history-action="copy-path" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>复制文件路径</strong><small>${absolutePath ? "复制完整视频文件路径" : "当前记录没有可用文件"}</small></span></button>
@@ -3795,6 +3955,46 @@ function bindConfirmationDialog(): void {
   if (dialog) bindModalFocus(dialog, close, "#cancel-confirmation");
 }
 
+function bindWindowCloseDialog(): void {
+  if (!pendingWindowCloseRequest) return;
+  const respond = async (response: "cancel" | "discard-settings" | "finish-tasks" | "force-exit") => {
+    if (windowCloseResponseBusy) return;
+    if (document.activeElement instanceof HTMLElement) {
+      rememberModalControlFocus(document.activeElement);
+    }
+    windowCloseResponseBusy = true;
+    render();
+    try {
+      await window.studio.respondWindowClose(response);
+      if (response === "cancel") {
+        pendingWindowCloseRequest = null;
+        windowCloseResponseBusy = false;
+        render();
+        restoreModalFocus();
+      }
+    } catch (error) {
+      windowCloseResponseBusy = false;
+      showMessage(error instanceof Error ? error.message : "无法处理退出请求");
+    }
+  };
+  const cancel = () => void respond("cancel");
+  document.querySelector("#cancel-window-close")?.addEventListener("click", cancel);
+  document.querySelector("#window-close-backdrop")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) cancel();
+  });
+  document.querySelector("#discard-window-close")?.addEventListener("click", () => {
+    void respond("discard-settings");
+  });
+  document.querySelector("#finish-window-close")?.addEventListener("click", () => {
+    void respond("finish-tasks");
+  });
+  document.querySelector("#force-window-close")?.addEventListener("click", () => {
+    void respond("force-exit");
+  });
+  const dialog = document.querySelector<HTMLElement>(".close-dialog");
+  if (dialog) bindModalFocus(dialog, cancel, "#cancel-window-close");
+}
+
 function bindShell(): void {
   shellNavigationEvents?.abort();
   const navigationEvents = new AbortController();
@@ -3860,7 +4060,21 @@ function bindShell(): void {
       event.stopPropagation();
       returnToHistory();
     };
+    const handleHistoryVideoNavigation = (event: KeyboardEvent) => {
+      if (event.isComposing || event.repeat || isEditableTarget(event.target)) return;
+      if (document.querySelector(".dialog-backdrop")) return;
+      const direction = event.key === "[" || event.code === "BracketLeft" || event.key === "PageUp" || event.code === "PageUp"
+        ? -1
+        : event.key === "]" || event.code === "BracketRight" || event.key === "PageDown" || event.code === "PageDown"
+          ? 1
+          : 0;
+      if (direction !== -1 && direction !== 1) return;
+      event.preventDefault();
+      event.stopPropagation();
+      navigateHistoryDetail(direction);
+    };
     window.addEventListener("keydown", handleKeyboardBack, { signal: navigationEvents.signal });
+    window.addEventListener("keydown", handleHistoryVideoNavigation, { signal: navigationEvents.signal });
     window.addEventListener("auxclick", handleMouseBack, { signal: navigationEvents.signal });
     window.addEventListener("mouseup", handleMouseBack, { signal: navigationEvents.signal });
   }
@@ -3895,6 +4109,7 @@ function bindShell(): void {
     window.addEventListener("mouseup", handleMouseForward, { signal: navigationEvents.signal });
   }
   bindConfirmationDialog();
+  bindWindowCloseDialog();
 }
 
 function scheduleDraftSave(): void {
@@ -4734,7 +4949,7 @@ function bindCreate(): void {
       const patch =
         id === "ratio" ? { ratio: value as Draft["ratio"] } :
         id === "resolution" ? { resolution: Number(value) as Draft["resolution"] } :
-        id === "steps" ? { steps: normalizeH3Steps(Number(value)) } :
+        id === "steps" ? { steps: normalizeH3Steps(Number(value), state.draft.modelId) } :
         id === "spectrum-mode" ? { spectrumMode: value as Draft["spectrumMode"] } :
         id === "fps" ? { fps: Number(value) as Draft["fps"] } :
         id === "frame-interpolation" ? { frameInterpolation: value as Draft["frameInterpolation"] } :
@@ -4812,11 +5027,6 @@ function bindQueue(): void {
     reportUserAction("queue-pause");
     state = await window.studio.pauseQueue();
     render();
-  });
-  document.querySelector("#optimize-queue")?.addEventListener("click", async () => {
-    reportUserAction("queue-optimize");
-    state = await window.studio.optimizeQueue();
-    showMessage("等待任务已按模型和工作流重新分组。");
   });
   document.querySelectorAll<HTMLElement>("[data-remove]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -5030,14 +5240,10 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   });
   document.querySelectorAll<HTMLButtonElement>("[data-history-navigation]").forEach((button) => {
     button.addEventListener("click", () => {
-      const orderedHistory = historyAssetsByNewest();
-      const currentIndex = orderedHistory.findIndex(
-        (item) => item.id === selectedHistoryAssetId
-      );
-      const nextIndex = currentIndex + Number(button.dataset.historyNavigation);
-      const nextAsset = orderedHistory[nextIndex];
-      if (!nextAsset) return;
-      openHistoryDetail(nextAsset.id);
+      const direction = Number(button.dataset.historyNavigation);
+      if (direction === -1 || direction === 1) {
+        navigateHistoryDetail(direction);
+      }
     });
   });
   const historyMediaCards = [...document.querySelectorAll<HTMLElement>("[data-history-media]")];
@@ -5407,7 +5613,6 @@ function formSettings(): Settings {
     ltxExtensionUnloadBetweenStages: true,
     ltxExtensionTimeoutMinutes: Number(value("ltx-extension-timeout", String(base.ltxExtensionTimeoutMinutes))) as Settings["ltxExtensionTimeoutMinutes"],
     safeCancel: checked("safe-cancel", base.safeCancel),
-    optimizeQueue: checked("optimize-queue-setting", base.optimizeQueue),
     autoRetryFailedTasks: checked("auto-retry-failed-tasks", base.autoRetryFailedTasks),
     autoRetryCount: Number(value("auto-retry-count", String(base.autoRetryCount))) as Settings["autoRetryCount"],
     promptLanguage: value("prompt-language", base.promptLanguage) as Settings["promptLanguage"],
@@ -6003,6 +6208,13 @@ function bindSettings(): void {
   syncSettingsDirtyUi();
 }
 
+window.studio.onWindowCloseRequest((request) => {
+  rememberModalFocus();
+  pendingWindowCloseRequest = request;
+  windowCloseResponseBusy = false;
+  render();
+});
+
 window.studio.onStateChanged((nextState) => {
   const previousHistory = state?.history;
   const historyChanged = historyStateChanged(previousHistory, nextState.history);
@@ -6130,6 +6342,19 @@ window.setInterval(() => {
   const running = state?.queue.find((task) => task.status === "running");
   const elapsed = document.querySelector<HTMLElement>("#running-elapsed");
   if (elapsed && running) elapsed.textContent = elapsedText(running.startedAt);
+  const stageElapsed = document.querySelector<HTMLElement>("#running-stage-elapsed");
+  if (stageElapsed && running) stageElapsed.textContent = queueStageElapsedText(running);
+  const runningEta = document.querySelector<HTMLElement>("#running-eta");
+  if (runningEta && running) runningEta.textContent = `预计剩余 ${queueEstimateText(queueTaskRemainingSeconds(running))}`;
+  const activeTasks = state?.queue.filter((task) => task.status === "waiting" || task.status === "running") ?? [];
+  const remainingSeconds = queueRemainingSeconds(activeTasks);
+  const waitingCount = activeTasks.filter((task) => task.status === "waiting").length;
+  const waitingElement = document.querySelector<HTMLElement>("#queue-waiting-count");
+  if (waitingElement) waitingElement.textContent = String(waitingCount);
+  const etaElement = document.querySelector<HTMLElement>("#queue-eta");
+  if (etaElement) etaElement.textContent = queueEstimateText(remainingSeconds);
+  const etaNote = document.querySelector<HTMLElement>("#queue-eta-note");
+  if (etaNote) etaNote.textContent = remainingSeconds == null ? "完成首条任务后会更准确" : "按历史耗时与当前进度估算";
 }, 2_000);
 
 void window.studio.getState().then((initialState) => {

@@ -64,7 +64,7 @@ npm.cmd run dev
 - **H3 提示词助手**：除了官方结构模板，还提供结构化构建器，可分别填写参考连续性、动作起因、身体/视线锁定、镜头类型与幅度/速度、景别变化、同步声音、对白和屏幕文字。
 - **提示词扩写**：支持 ComfyUI 原生 TextGenerate、应用自管理 llama-server 和可选 LM Studio 兼容接口；模型文件按各自运行时扫描和管理。
 - **提示词模型扫描**：设置页扫描与视频模型相同的 ComfyUI 模型根目录，按官方 `text_encoders` 文件统计可用性，并用同一个下载说明弹窗展示 Hugging Face 来源、文件名和目标目录；不再单独选择提示词模型目录。
-- **扩写预设**：设置 → 提示词扩写中可编辑完整电影提示词、参考图忠实理解、单镜头连贯动作、多参考关系编排四套规则头，覆盖整个提示词生成策略，保存后下一次扩写生效，也可以一键恢复全部默认。
+- **扩写预设**：设置 → 提示词扩写中可编辑通用影视时间线、参考画面保真、单镜头连续动作、对白与原生声音、节拍分镜、产品与品牌演示、音乐视频与歌词、风格化动画叙事和多参考关系编排九套规则头，覆盖不同创作意图；保存后下一次扩写生效，也可以一键恢复全部默认。
 - **内置 H3 官方基线**：软件固定保留 H3 的 T2VA、I2VA、FL2VA、L2VA 任务关系，R2V 参考标签顺序，原生音频、动作连续性和结构化输出约束；用户编辑预设不会删除这些底层规则。
 
 内置基线直接按公开的 [MiniMax H3 Video Prompt Writing Guide](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md) 实现，并结合 [Comfy-Org H3 I2V 工作流](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_i2v.json)、[H3 R2V 工作流](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json)、[ComfyUI H3 节点实现](https://github.com/Comfy-Org/ComfyUI/blob/master/comfy_extras/nodes_minimax_h3.py) 和 [Comfy-Org/MiniMax-H3 模型说明](https://huggingface.co/Comfy-Org/MiniMax-H3) 整理，软件不会在运行时联网读取这些文档。
@@ -96,7 +96,7 @@ MiniMax H3 的 FL2VA 和 R2V 使用不同的扩散模型，不能混用：
 | --- | --- | --- |
 | FL2VA | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` | 首帧、首尾帧和 H3 边界帧续写 |
 | FL2VA INT4 | `minimax_h3_fl2va_pruned_int4_convrot.safetensors` | 低显存首帧/首尾帧实验 |
-| FL2VA Turbo | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` + `minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors` | pruned 首尾帧加速；建议 8-10 步，不提供视频续写 |
+| FL2VA LightX2V Turbo | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` + `minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors` | ComfyUI v0.31.0+ 原生首尾帧加速；建议 8 步，不提供 R2V 或视频续写 |
 | R2V | `minimax_h3_ref2va_pruned_int8_convrot.safetensors` | 多图片参考生成 |
 | R2V INT4 | `minimax_h3_ref2va_pruned_int4_convrot.safetensors` | 低显存多图片参考实验 |
 
@@ -118,10 +118,10 @@ ComfyUI/models/vae/
 	minimax_h3_audio_vae_fp32.safetensors
 
 ComfyUI/models/loras/
-	minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors
+	minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors
 ```
 
-Turbo 使用 ComfyUI 核心的 `MiniMaxH3SigmaShift`、`res_multistep` 和 `simple` 调度器，不需要额外安装 Larry 的 Turbo custom node。设置页会检查该核心节点和推荐 LoRA；创建页将 Turbo 作为独立模型显示，只提供首帧/尾帧图片输入。建议先使用 8 步、视频 shift `12`、音频 shift `6`、LoRA strength `1.0` 的配置。4 步属于实验档，可能出现音频失真或动作异常；普通 H3 20 步仍是稳定回退路径。
+LightX2V Turbo 使用 ComfyUI v0.31.0+ 核心的原生音视频采样、标准 `LoraLoaderModelOnly`、`ER-SDE` 和 `Beta` 调度器，不依赖额外的 Turbo custom node。设置页会检查核心版本和 LightX2V 精简 ComfyUI LoRA；创建页将它作为独立模型显示，只提供 FL2VA 首帧/尾帧图片输入。默认使用 8 步、视频 shift `12`、音频 shift `3`、LoRA strength `0.75`；6 步适合快速预览，4 步仅作为实验档。旧 ckpt500 / res_multistep 以及旧的专用 Turbo 节点方案已弃用，普通 H3 20 步仍是稳定回退路径。
 
 官方和社区权重的下载地址会在“设置 → 视频模型”的组件卡片中显示。RTX 4090 等 24GB 显卡可以优先尝试官方 INT8；12GB 级别设备优先尝试 pruned INT4，但实际速度和成功率仍取决于系统内存、NVMe 和 ComfyUI offload。INT4 是社区转换，不等同于官方质量保证。
 

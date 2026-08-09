@@ -96,7 +96,6 @@ export function createDefaultSettings(): Settings {
     ltxExtensionUnloadBetweenStages: true,
     ltxExtensionTimeoutMinutes: 20,
     safeCancel: true,
-    optimizeQueue: true,
     autoRetryFailedTasks: true,
     autoRetryCount: 2,
     promptLanguage: "auto",

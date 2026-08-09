@@ -11,7 +11,11 @@ import type {
 import { createDefaultState } from "../src/core/defaults.js";
 import { normalizeH3ReferenceSlots } from "../src/core/h3-reference.js";
 import { isUnconcernedPromptModel } from "../src/core/prompt-models.js";
-import { generationSafetyForTask, normalizeH3Steps } from "../src/core/workflow.js";
+import {
+  generationSafetyForTask,
+  isRetiredVideoModel,
+  normalizeH3Steps
+} from "../src/core/workflow.js";
 
 interface ReplaceStateFileOptions {
   attempts?: number;
@@ -218,13 +222,19 @@ export class JsonStore {
         this.state.draft.h3ReferenceSlots = normalizedH3ReferenceSlots;
         needsPersist = true;
       }
-      const normalizedH3Steps = normalizeH3Steps(this.state.draft.steps);
+      const normalizedH3Steps = normalizeH3Steps(this.state.draft.steps, this.state.draft.modelId);
       if (normalizedH3Steps !== this.state.draft.steps) {
         this.state.draft.steps = normalizedH3Steps;
         needsPersist = true;
       }
-      if (saved.settings?.defaultVideoModel === "wan22_5b") {
+      if (isRetiredVideoModel(saved.settings?.defaultVideoModel ?? "")) {
         this.state.settings.defaultVideoModel = "minimax_h3_fl2va";
+        needsPersist = true;
+      }
+      if (isRetiredVideoModel(this.state.draft.modelId)) {
+        this.state.draft.modelId = "minimax_h3_fl2va";
+        this.state.draft.inputMode = "image";
+        this.state.draft.workflowPath = "";
         needsPersist = true;
       }
         if (!["qwen/qwen3.5-4b", "qwen/qwen3.5-2b", "qwen/qwen3.5-4b-unconcerned"].includes(this.state.settings.promptModelId)) {

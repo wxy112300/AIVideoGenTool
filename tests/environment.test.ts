@@ -404,7 +404,7 @@ describe("ComfyUI environment candidates", () => {
       "SEEDVR2\\ema_vae_fp16.safetensors"
     ]);
 
-    expect(profiles.find((profile) => profile.id === "wan22_5b")?.available).toBe(true);
+    expect(profiles.find((profile) => profile.id === "wan22_5b")).toBeUndefined();
     expect(profiles.find((profile) => profile.id === "seedvr2")?.available).toBe(true);
     expect(profiles.find((profile) => profile.id === "sulphur2")?.available).toBe(false);
   });
@@ -492,25 +492,34 @@ describe("ComfyUI environment candidates", () => {
     expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va")?.available).toBe(false);
   });
 
-  it("detects the pruned MiniMax H3 Turbo profile only with its recommended LoRA", () => {
+  it("detects the native MiniMax H3 LightX2V Turbo profile only with its recommended LoRA", () => {
     const profiles = evaluateModelProfiles([
       "diffusion_models\\minimax_h3_fl2va_pruned_int8_convrot.safetensors",
       "text_encoders\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
       "vae\\minimax_h3_video_vae_fp16.safetensors",
       "vae\\minimax_h3_audio_vae_fp32.safetensors",
-      "loras\\minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors"
+      "loras\\minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors"
     ]);
     const turbo = profiles.find((profile) => profile.id === "minimax_h3_fl2va_turbo");
 
     expect(turbo).toMatchObject({
       available: true,
       integrated: true,
-      badge: "Turbo · pruned 首尾帧"
+      badge: "LightX2V · 原生采样"
     });
     expect(turbo?.components.at(-1)?.installGuide).toMatchObject({
       targetSubdirectory: "loras",
-      recommendedFilename: "minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors"
+      recommendedFilename: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors"
     });
+
+    const legacyOnly = evaluateModelProfiles([
+      "diffusion_models\\minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "text_encoders\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "vae\\minimax_h3_video_vae_fp16.safetensors",
+      "vae\\minimax_h3_audio_vae_fp32.safetensors",
+      "loras\\minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors"
+    ]).find((profile) => profile.id === "minimax_h3_fl2va_turbo");
+    expect(legacyOnly?.available).toBe(false);
   });
 
   it("detects the community MiniMax H3 INT4 FL2VA profile independently", () => {
@@ -600,8 +609,8 @@ describe("ComfyUI environment candidates", () => {
       "clip_vision\\sigclip_vision_patch14_384.safetensors"
     ]);
 
-    expect(complete.find((profile) => profile.id === "hunyuan15")?.available).toBe(true);
-    expect(incorrectQwen.find((profile) => profile.id === "hunyuan15")?.available).toBe(false);
+    expect(complete.find((profile) => profile.id === "hunyuan15")).toBeUndefined();
+    expect(incorrectQwen.find((profile) => profile.id === "hunyuan15")).toBeUndefined();
   });
 
   it("detects the downloaded SmoothMix and DaSiWa High/Low model pairs", () => {
@@ -614,8 +623,8 @@ describe("ComfyUI environment candidates", () => {
       "vae\\wan_2.1_vae.safetensors"
     ]);
 
-    expect(profiles.find((profile) => profile.id === "wan22_smoothmix")?.available).toBe(true);
-    expect(profiles.find((profile) => profile.id === "wan22_dasiwa")?.available).toBe(true);
+    expect(profiles.find((profile) => profile.id === "wan22_smoothmix")).toBeUndefined();
+    expect(profiles.find((profile) => profile.id === "wan22_dasiwa")).toBeUndefined();
   });
 
   it("requires shared UMT5 and Wan 2.1 VAE assets before Remix is runnable", () => {
@@ -630,8 +639,8 @@ describe("ComfyUI environment candidates", () => {
       "vae\\wan_2.1_vae.safetensors"
     ]);
 
-    expect(incomplete.find((profile) => profile.id === "wan22_remix")?.available).toBe(false);
-    expect(complete.find((profile) => profile.id === "wan22_remix")?.available).toBe(true);
+    expect(incomplete.find((profile) => profile.id === "wan22_remix")).toBeUndefined();
+    expect(complete.find((profile) => profile.id === "wan22_remix")).toBeUndefined();
   });
 
   it("reports the RIFE interpolation checkpoint separately from video models", () => {
@@ -706,7 +715,7 @@ describe("ComfyUI environment candidates", () => {
       "latent_upscale_models\\hunyuanvideo15_latent_upsampler_1080p.safetensors"
     ]);
 
-    expect(profiles.find((profile) => profile.id === "hunyuan15_sr")?.available).toBe(true);
+    expect(profiles.find((profile) => profile.id === "hunyuan15_sr")).toBeUndefined();
   });
 
   it("provides a complete install guide for every component that can be missing", () => {

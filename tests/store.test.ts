@@ -154,6 +154,11 @@ describe("queue lock recovery", () => {
       "official-storyboard": "Use a compact three-shot structure.",
       "reference-faithful": "",
       "continuous-motion": "",
+      "dialogue-sound": "",
+      "beat-storyboard": "",
+      "product-brand": "",
+      "music-video": "",
+      "narrative-animation": "",
       "multi-reference": ""
     };
     await fs.writeFile(filename, JSON.stringify(state), "utf8");
@@ -166,6 +171,11 @@ describe("queue lock recovery", () => {
       );
       expect(loaded.settings.h3PromptPresets["reference-faithful"]).not.toBe("");
       expect(loaded.settings.h3PromptPresets["continuous-motion"]).not.toBe("");
+      expect(loaded.settings.h3PromptPresets["dialogue-sound"]).not.toBe("");
+      expect(loaded.settings.h3PromptPresets["beat-storyboard"]).not.toBe("");
+      expect(loaded.settings.h3PromptPresets["product-brand"]).not.toBe("");
+      expect(loaded.settings.h3PromptPresets["music-video"]).not.toBe("");
+      expect(loaded.settings.h3PromptPresets["narrative-animation"]).not.toBe("");
       expect(loaded.settings.h3PromptPresets["multi-reference"]).not.toBe("");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });

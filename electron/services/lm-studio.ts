@@ -12,6 +12,7 @@ import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
 import {
   h3DurationPlan,
   h3EffectiveDurationSeconds as h3EffectiveDurationNumber,
+  h3ExplicitConstraintSummary,
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
@@ -264,6 +265,7 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds);
   const referenceContext = request.referenceContext?.trim();
+  const hardConstraints = h3ExplicitConstraintSummary(request.prompt);
   return [
     `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
     h3DurationPlan(mode, Number(duration)),
@@ -273,7 +275,8 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
       : "The attached image(s) are the reference material in the order described below.",
     ...(referenceContext ? [`Reference map:\n${referenceContext}`] : []),
     "User request (preserve its concrete words and meaning):",
-    request.prompt.trim()
+    request.prompt.trim(),
+    ...(hardConstraints ? [hardConstraints] : [])
   ].filter(Boolean).join("\n\n");
 }
 

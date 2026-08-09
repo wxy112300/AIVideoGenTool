@@ -54,7 +54,7 @@
   "7": {
     "class_type": "KSamplerSelect",
     "inputs": {
-      "sampler_name": "res_multistep"
+      "sampler_name": "er_sde"
     }
   },
   "19": {
@@ -70,7 +70,7 @@
     "inputs": {
       "model": ["1", 0],
       "lora_name": "{{H3_TURBO_LORA}}",
-      "strength_model": 1
+      "strength_model": 0.75
     }
   },
   "21": {
@@ -78,14 +78,14 @@
     "inputs": {
       "model": ["19", 0],
       "shift_video": 12,
-      "shift_audio": 6
+      "shift_audio": 3
     }
   },
   "8": {
     "class_type": "BasicScheduler",
     "inputs": {
       "model": ["21", 0],
-      "scheduler": "simple",
+      "scheduler": "beta",
       "steps": 8,
       "denoise": 1
     }

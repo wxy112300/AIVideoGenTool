@@ -30,7 +30,9 @@ import type {
   Settings,
   TaskPerformanceStats,
   UpscaleQueueTask,
-  UpscaleRequest
+  UpscaleRequest,
+  WindowCloseRequest,
+  WindowCloseResponse
 } from "../src/types.js";
 import { createOutputFilename } from "../src/core/filename.js";
 import {
@@ -39,15 +41,13 @@ import {
   nextAutomaticRetryAttempt
 } from "../src/core/recovery.js";
 import { historyVideoPaths } from "../src/core/history-delete.js";
+import { createHistoryCoverCacheKey } from "../src/core/history-cover.js";
 import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
 import {
   attachAbsoluteOutputPaths,
   extractComfyOutputFiles
 } from "../src/core/comfy-output.js";
-import {
-  moveWaitingTask,
-  optimizeWaitingTasks
-} from "../src/core/queue.js";
+import { moveWaitingTask } from "../src/core/queue.js";
 import {
   extensionOutputDimensions,
   extensionSafetyForTask,
@@ -135,12 +135,44 @@ if (appliedChromiumWorkarounds.length) {
   );
 }
 
-const historyCoverDirectory = () => path.join(app.getPath("userData"), "history-covers");
-const historyCoverPath = (key: string) =>
-  path.join(historyCoverDirectory(), `${createHash("sha256").update(key).digest("hex")}.jpg`);
+const historyCoverDirectory = () => path.join(app.getPath("userData"), "history-covers", "v2");
+const historyCoverDigest = (key: string) => createHash("sha256").update(key).digest("hex");
+const historyCoverPathFromDigest = (digest: string) =>
+  path.join(historyCoverDirectory(), `${digest}.jpg`);
+const historyCoverPath = (key: string) => historyCoverPathFromDigest(historyCoverDigest(key));
+const historyCoverMetadataPath = (key: string) =>
+  path.join(historyCoverDirectory(), `${historyCoverDigest(key)}.json`);
+
+function historyCoverKeys(asset: HistoryAsset): string[] {
+  const videoPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
+  return asset.versions.map((version) => {
+    const file = version.files.find((item) => videoPattern.test(item.filename));
+    return createHistoryCoverCacheKey({
+      assetId: asset.id,
+      versionId: version.id,
+      createdAt: version.createdAt,
+      filename: file?.filename ?? version.outputFilename,
+      absolutePath: file?.absolutePath ?? ""
+    });
+  });
+}
+
+async function removeHistoryCoverCache(asset: HistoryAsset): Promise<void> {
+  await Promise.all(historyCoverKeys(asset).flatMap((key) => [
+    fs.rm(historyCoverPath(key), { force: true }).catch(() => undefined),
+    fs.rm(historyCoverMetadataPath(key), { force: true }).catch(() => undefined)
+  ]));
+}
+
+interface HistoryCoverMetadata {
+  sourceSize: number;
+  sourceMtimeMs: number;
+  generatedAt: string;
+}
 let mainWindow: BrowserWindow | null = null;
 let store: JsonStore;
 let rendererHasUnsavedSettings = false;
+let pendingWindowCloseRequest: WindowCloseRequest | null = null;
 let queueWorker: Promise<void> | null = null;
 let activeController: AbortController | null = null;
 let nativePromptController: AbortController | null = null;
@@ -261,7 +293,13 @@ function registerMediaProtocol(): void {
     try {
       const url = new URL(request.url);
       let filename: string | undefined;
-      if (url.hostname === "draft" && url.pathname === "/video") {
+      let trustedCacheFile = false;
+      if (url.hostname === "cover") {
+        const match = url.pathname.match(/^\/([a-f0-9]{64})\.jpg$/i);
+        if (!match?.[1]) return new Response("Invalid cover", { status: 400 });
+        filename = historyCoverPathFromDigest(match[1].toLowerCase());
+        trustedCacheFile = true;
+      } else if (url.hostname === "draft" && url.pathname === "/video") {
         filename = store.get().draft.sourceVideoPath;
       } else if (url.hostname === "draft" && url.pathname === "/reference-video") {
         filename = url.searchParams.get("source") ?? undefined;
@@ -290,7 +328,9 @@ function registerMediaProtocol(): void {
         return new Response("Not found", { status: 404 });
       }
       const resolvedFilename = filename
-        ? await resolveExistingHistoryFile(filename)
+        ? trustedCacheFile
+          ? filename
+          : await resolveExistingHistoryFile(filename)
         : null;
       const stat = resolvedFilename
         ? await fs.stat(resolvedFilename).catch(() => null)
@@ -305,7 +345,8 @@ function registerMediaProtocol(): void {
         [".webm", "video/webm"],
         [".mov", "video/quicktime"],
         [".mkv", "video/x-matroska"],
-        [".gif", "image/gif"]
+        [".gif", "image/gif"],
+        [".jpg", "image/jpeg"]
       ]).get(path.extname(filename).toLowerCase()) ?? "application/octet-stream";
       const range = request.headers.get("range");
       const match = range?.match(/^bytes=(\d*)-(\d*)$/);
@@ -423,7 +464,7 @@ async function bundledWorkflowFor(
     },
     minimax_h3_fl2va_turbo: {
       filename: "minimax_h3_fl2va_turbo_api.json",
-      label: "内置 · MiniMax H3 Turbo FL2VA · 首尾帧音视频"
+      label: "内置 · MiniMax H3 LightX2V Turbo FL2VA · 首尾帧音视频"
     },
     minimax_h3_ref2va: {
       filename: "minimax_h3_r2v_api.json",
@@ -643,6 +684,7 @@ async function finishWindowClose(): Promise<void> {
   appLogger.info("app", "shutdown", "Application shutdown started");
   await releasePromptRuntime(store.get().settings);
   rendererHasUnsavedSettings = false;
+  pendingWindowCloseRequest = null;
   allowWindowClose = true;
   mainWindow?.destroy();
   if (process.platform !== "darwin") app.quit();
@@ -661,36 +703,26 @@ async function handleWindowClose(): Promise<void> {
     return;
   }
   if (!hasRunningWork && rendererHasUnsavedSettings) {
-    const choice = await dialog.showMessageBox(mainWindow, {
-      type: "warning",
-      title: "有未保存的设置",
-      message: "当前设置还有未保存更改，是否放弃并退出？",
-      detail: "已保存的设置不会受到影响；退出后当前编辑中的设置会丢失。",
-      buttons: ["取消退出", "放弃设置并退出"],
-      defaultId: 0,
-      cancelId: 0,
-      noLink: true
-    });
-    if (choice.response === 0) return;
-    await finishWindowClose();
+    closeFlowRunning = true;
+    pendingWindowCloseRequest = { kind: "unsaved-settings" };
+    mainWindow.webContents.send("window:close-requested", pendingWindowCloseRequest);
     return;
   }
   closeFlowRunning = true;
+  pendingWindowCloseRequest = {
+    kind: "running-work",
+    hasUnsavedSettings: rendererHasUnsavedSettings
+  };
+  mainWindow.webContents.send("window:close-requested", pendingWindowCloseRequest);
+}
+
+async function finishRunningWorkClose(
+  response: "finish-tasks" | "force-exit"
+): Promise<void> {
   try {
-    const choice = await dialog.showMessageBox(mainWindow, {
-      type: "warning",
-      title: "任务仍在运行",
-      message: "当前视频任务或提示词扩写仍在运行，是否结束并退出？",
-      detail:
-        `“结束任务并退出”会中断当前 ComfyUI 计算并等待任务状态保存。“强制退出”仍会尝试中断计算，但不会等待完整清理。ComfyUI 服务本身不会关闭。${rendererHasUnsavedSettings ? "当前设置还有未保存更改，退出时也会放弃。" : ""}`,
-      buttons: ["取消退出", "结束任务并退出", "强制退出"],
-      defaultId: 1,
-      cancelId: 0,
-      noLink: true
-    });
-    if (choice.response === 0) return;
+    if (!mainWindow) return;
     mainWindow.setTitle("正在结束任务并退出…");
-    if (choice.response === 2) {
+    if (response === "force-exit") {
       await interruptForExit(false);
       await finishWindowClose();
       return;
@@ -1009,6 +1041,7 @@ async function updateTask(
         });
       }
       taskStageStartedAt.set(taskId, { stage: patch.stage, startedAt: Date.now() });
+      patch.stageStartedAt = new Date().toISOString();
       appLogger.info("queue", "task-stage", "Queue task stage changed", {
         taskId,
         taskType: task.taskType,
@@ -1963,6 +1996,27 @@ function registerIpc(): void {
   ipcMain.handle("renderer:set-settings-dirty", (_event, dirty: boolean) => {
     rendererHasUnsavedSettings = dirty === true;
   });
+  ipcMain.handle(
+    "window:close-response",
+    async (event, response: WindowCloseResponse) => {
+      if (event.sender !== mainWindow?.webContents || !pendingWindowCloseRequest) return;
+      const request = pendingWindowCloseRequest;
+      pendingWindowCloseRequest = null;
+      if (response === "cancel") {
+        closeFlowRunning = false;
+        return;
+      }
+      if (request.kind === "unsaved-settings" && response === "discard-settings") {
+        await finishWindowClose();
+        return;
+      }
+      if (request.kind === "running-work" && (response === "finish-tasks" || response === "force-exit")) {
+        await finishRunningWorkClose(response);
+        return;
+      }
+      closeFlowRunning = false;
+    }
+  );
   ipcMain.handle("logs:read", (_event, limit?: number) =>
     appLogSnapshot(typeof limit === "number" ? limit : undefined)
   );
@@ -2080,26 +2134,63 @@ function registerIpc(): void {
     const content = await fs.readFile(filename);
     return `data:${mime};base64,${content.toString("base64")}`;
   });
-  ipcMain.handle("history-cover:read", async (_event, key: string) => {
-    if (!key) return null;
-    const content = await fs.readFile(historyCoverPath(key)).catch(() => null);
-    return content ? `data:image/jpeg;base64,${content.toString("base64")}` : null;
+  ipcMain.handle("history-cover:read", async (_event, key: string, sourcePath: string) => {
+    if (!key || !sourcePath) return null;
+    const resolvedSource = await resolveExistingHistoryFile(sourcePath);
+    const sourceStat = resolvedSource ? await fs.stat(resolvedSource).catch(() => null) : null;
+    if (!sourceStat?.isFile()) return null;
+    const [coverStat, metadataText] = await Promise.all([
+      fs.stat(historyCoverPath(key)).catch(() => null),
+      fs.readFile(historyCoverMetadataPath(key), "utf8").catch(() => "")
+    ]);
+    if (!coverStat?.isFile() || coverStat.size <= 0 || !metadataText) return null;
+    let metadata: HistoryCoverMetadata;
+    try {
+      metadata = JSON.parse(metadataText) as HistoryCoverMetadata;
+    } catch {
+      return null;
+    }
+    if (
+      metadata.sourceSize !== sourceStat.size ||
+      Math.abs(metadata.sourceMtimeMs - sourceStat.mtimeMs) > 1
+    ) return null;
+    const digest = historyCoverDigest(key);
+    return `studio-media://cover/${digest}.jpg?v=${Math.round(coverStat.mtimeMs)}`;
   });
   ipcMain.handle(
     "history-cover:save",
-    async (_event, key: string, data: ArrayBuffer) => {
-      if (!key || !(data instanceof ArrayBuffer) || data.byteLength === 0) return false;
-      if (data.byteLength > 2 * 1024 * 1024) throw new Error("历史封面缓存不能超过 2 MB");
+    async (_event, key: string, sourcePath: string, data: ArrayBuffer | Uint8Array) => {
+      const bytes = data instanceof ArrayBuffer
+        ? new Uint8Array(data)
+        : ArrayBuffer.isView(data)
+          ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+          : null;
+      if (!key || !sourcePath || !bytes?.byteLength) return false;
+      if (bytes.byteLength > 2 * 1024 * 1024) throw new Error("历史封面缓存不能超过 2 MB");
+      const resolvedSource = await resolveExistingHistoryFile(sourcePath);
+      const sourceStat = resolvedSource ? await fs.stat(resolvedSource).catch(() => null) : null;
+      if (!sourceStat?.isFile()) return false;
       const directory = historyCoverDirectory();
       await fs.mkdir(directory, { recursive: true });
       const filename = historyCoverPath(key);
+      const metadataFilename = historyCoverMetadataPath(key);
       const temporary = `${filename}.${crypto.randomUUID()}.tmp`;
+      const metadataTemporary = `${metadataFilename}.${crypto.randomUUID()}.tmp`;
+      const metadata: HistoryCoverMetadata = {
+        sourceSize: sourceStat.size,
+        sourceMtimeMs: sourceStat.mtimeMs,
+        generatedAt: new Date().toISOString()
+      };
       try {
-        await fs.writeFile(temporary, new Uint8Array(data));
+        await fs.writeFile(temporary, bytes);
+        await fs.writeFile(metadataTemporary, JSON.stringify(metadata), "utf8");
         await fs.rm(filename, { force: true });
+        await fs.rm(metadataFilename, { force: true });
         await fs.rename(temporary, filename);
+        await fs.rename(metadataTemporary, metadataFilename);
       } finally {
         await fs.rm(temporary, { force: true }).catch(() => undefined);
+        await fs.rm(metadataTemporary, { force: true }).catch(() => undefined);
       }
       return true;
     }
@@ -2753,13 +2844,6 @@ function registerIpc(): void {
       return next;
     }
   );
-  ipcMain.handle("queue:optimize", async () => {
-    const next = await store.update((state) => {
-      state.queue = optimizeWaitingTasks(state.queue);
-    });
-    sendState(next);
-    return next;
-  });
   ipcMain.handle("queue:duplicate", async (_event, taskId: string) => {
     const next = await store.update((state) => {
       const source = state.queue.find((task) => task.id === taskId);
@@ -2840,6 +2924,7 @@ function registerIpc(): void {
       const next = await store.update((state) => {
         state.history = state.history.filter((item) => item.id !== assetId);
       });
+      await removeHistoryCoverCache(asset);
       appLogger.info("history", "delete-succeeded", "History asset deleted", {
         assetId,
         durationMs: Date.now() - startedAt,

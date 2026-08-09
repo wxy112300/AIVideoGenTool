@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { QueueTask } from "../src/types";
-import { moveWaitingTask, optimizeWaitingTasks } from "../src/core/queue";
+import { moveWaitingTask } from "../src/core/queue";
 
 function task(
   id: string,
@@ -44,24 +44,6 @@ describe("queue ordering", () => {
       "b",
       "failed",
       "a"
-    ]);
-  });
-
-  it("groups waiting tasks and keeps non-waiting slots fixed", () => {
-    const queue = [
-      task("z1", "wan"),
-      task("running", "sulphur", "running"),
-      task("a1", "hunyuan"),
-      task("z2", "wan"),
-      task("a2", "hunyuan")
-    ];
-    const optimized = optimizeWaitingTasks(queue);
-    expect(optimized.map((item) => item.id)).toEqual([
-      "a1",
-      "running",
-      "a2",
-      "z1",
-      "z2"
     ]);
   });
 });

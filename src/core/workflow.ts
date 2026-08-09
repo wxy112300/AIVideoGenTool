@@ -49,6 +49,19 @@ export function isMiniMaxH3Fl2vaModel(modelId: string): boolean {
   return modelId === "minimax_h3_fl2va" || modelId === "minimax_h3_fl2va_int4";
 }
 
+export const retiredVideoModelIds = [
+  "wan22_5b",
+  "hunyuan15",
+  "hunyuan15_sr",
+  "wan22_remix",
+  "wan22_smoothmix",
+  "wan22_dasiwa"
+] as const;
+
+export function isRetiredVideoModel(modelId: string): boolean {
+  return (retiredVideoModelIds as readonly string[]).includes(modelId);
+}
+
 export function isMiniMaxH3TurboModel(modelId: string): boolean {
   return modelId === "minimax_h3_fl2va_turbo";
 }
@@ -116,11 +129,12 @@ function applyMiniMaxH3Spectrum(
   for (const [, node] of consumers) node.inputs!.model = [nodeId, 0];
 }
 
-export function normalizeH3Steps(value: unknown): H3StepCount {
-  return value === 4 || value === 6 || value === 8 || value === 10 ||
+export function normalizeH3Steps(value: unknown, modelId = ""): H3StepCount {
+  const normalized = value === 4 || value === 6 || value === 8 || value === 10 ||
     value === 12 || value === 16 || value === 20
     ? value
     : 20;
+  return isMiniMaxH3TurboModel(modelId) && normalized > 8 ? 8 : normalized;
 }
 
 function generationSafetyProfileForModel(
@@ -552,7 +566,7 @@ const miniMaxH3ModelAssets: Record<
   minimax_h3_fl2va_turbo: {
     diffusionModel: "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
     textEncoder: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-    turboLora: "minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors"
+    turboLora: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors"
   },
   minimax_h3_ref2va: {
     diffusionModel: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
@@ -818,7 +832,7 @@ export function renderWorkflow(
     { class_type?: string; inputs?: Record<string, unknown> }
   >;
   if (isMiniMaxH3Model(task.modelId)) {
-    const steps = normalizeH3Steps(task.steps);
+    const steps = normalizeH3Steps(task.steps, task.modelId);
     for (const node of Object.values(workflow)) {
       if (node.class_type !== "BasicScheduler" || !node.inputs) continue;
       node.inputs.steps = steps;
