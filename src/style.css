@@ -111,6 +111,14 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .submit-row { margin-top: 18px; justify-content: flex-end; }
 .flash { position: fixed; z-index: 30; top: 76px; left: 50%; transform: translateX(-50%); max-width: min(620px, calc(100% - 32px)); padding: 11px 15px; border: 1px solid #50617a; border-radius: 10px; color: #e9f3ff; background: #20324a; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
 .task-list { display: grid; gap: 12px; }
+.queue-section { display: grid; gap: 12px; margin-bottom: 18px; }
+.queue-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.queue-section-heading > div { min-width: 0; }
+.queue-section-heading h2 { margin: 0; }
+.queue-section-heading .muted { font-size: 12px; }
+.queue-section-empty { min-height: 150px; padding: 32px 20px; }
+.queue-attention-section { padding-top: 4px; border-top: 1px solid rgba(92, 70, 76, .55); }
+.warning-badge { color: var(--warning); border-color: rgba(244, 189, 106, .3); background: rgba(244, 189, 106, .08); }
 .task-card { padding: 16px; align-items: flex-start; }
 .task-main { min-width: 0; flex: 1; }
 .task-main p { margin-bottom: 8px; color: #c4c9d1; }
@@ -143,6 +151,7 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .task-meta { min-width: 0; flex-wrap: nowrap; gap: 5px; overflow: visible; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .task-meta span { flex: 0 0 auto; }
 .task-meta span + span::before { content: "·"; margin-right: 5px; }
+.queue-retry-status { color: var(--warning); }
 .status { display: inline-block; margin-bottom: 7px; padding: 3px 8px; border-radius: 99px; font-size: 11px; background: var(--panel-2); }
 .status.running { color: var(--primary); }
 .status.failed, .status.cancelled, .error { color: var(--danger) !important; }
@@ -157,6 +166,9 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .queue-rank.failed, .queue-rank.cancelled { border-color: rgba(255,139,114,.58); }
 .queue-rank.failed::before, .queue-rank.cancelled::before { background: var(--danger); }
 .queue-rank.failed strong, .queue-rank.failed small, .queue-rank.cancelled strong, .queue-rank.cancelled small { color: var(--danger); }
+.queue-rank.attention { border-color: rgba(244, 189, 106, .55); }
+.queue-rank.attention::before { background: var(--warning); }
+.queue-rank.attention strong, .queue-rank.attention small { color: var(--warning); }
 .queue-task-heading > div:last-child { min-width: 0; }
 .queue-mode { align-self: center; padding: 7px 10px; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); background: #15171a; font-size: 12px; }
 .task-card.expanded { display: block; padding: 18px; border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); box-shadow: 0 16px 48px rgba(31, 104, 190, .13); }
@@ -427,6 +439,7 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .upscale-source > span, .upscale-output > span { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
 .upscale-estimates { min-width: 150px; display: grid; justify-items: end; gap: 3px !important; }
 .upscale-estimates span { color: #b9c9df; font-size: 11px; white-space: nowrap; }
+.upscale-policy-readonly { min-height: 42px; display: flex; align-items: center; padding: 0 12px; border: 1px solid #303846; border-radius: 10px; color: var(--muted); background: #0f1319; font-size: 12px; }
 .upscale-estimate-note { margin: -9px 2px 0; color: #8290a3; font-size: 10px; line-height: 1.45; }
 .upscale-estimate-note.warning { color: #e4b76b; }
 .upscale-resolution { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
@@ -644,6 +657,8 @@ main { padding-top: 6px; }
   font-size: 11px;
 }
 .save-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 4px rgba(114,214,160,.09); }
+.save-state.dirty { color: var(--warning); border-color: rgba(244,189,106,.35); }
+.save-state.dirty::before { background: var(--warning); box-shadow: 0 0 0 4px rgba(244,189,106,.1); }
 .muted, .save-state { color: var(--muted); }
 .panel {
   border-color: rgba(59, 68, 82, .72);

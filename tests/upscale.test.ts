@@ -138,16 +138,10 @@ describe("upscale workflows", () => {
     expect(workflow["5"]?.inputs).toMatchObject({ width: 720, height: 1296 });
   });
 
-  it("builds a VRAM-safe SeedVR2 workflow", () => {
+  it("rejects the removed legacy SeedVR2 nodes", () => {
     const seedTask = { ...task("seedvr2"), tileMode: "safe" as const };
-    const workflow = renderUpscaleWorkflow(seedTask, "source.mp4", models);
-    expect(workflow["3"]?.class_type).toBe("SeedVR2BlockSwap");
-    expect(workflow["4"]?.inputs).toMatchObject({
-      model: models.seedVr2,
-      batch_size: 1,
-      preserve_vram: true,
-      block_swap_config: ["3", 0]
-    });
+    expect(() => renderUpscaleWorkflow(seedTask, "source.mp4", models))
+      .toThrow(/更新 SeedVR2/);
   });
 
   it("builds the current modular SeedVR2 workflow when its nodes are available", () => {
@@ -165,7 +159,11 @@ describe("upscale workflows", () => {
     expect(workflow["4"]?.class_type).toBe("SeedVR2LoadVAEModel");
     expect(workflow["5"]?.inputs).toMatchObject({
       resolution: 1080,
-      batch_size: 5,
+      batch_size: 21,
+      uniform_batch_size: true,
+      temporal_overlap: 3,
+      prepend_frames: 4,
+      color_correction: "lab",
       dit: ["3", 0],
       vae: ["4", 0]
     });
@@ -201,14 +199,18 @@ describe("upscale workflows", () => {
     expect(workflow["4"]?.inputs.scale).toBe(4);
   });
 
-  it("forces SeedVR2 block swap even when an old task requested fast mode", () => {
+  it("uses the 24 GB performance profile for SeedVR2 fast mode", () => {
     const seedTask = { ...task("seedvr2"), tileMode: "fast" as const };
-    const workflow = renderUpscaleWorkflow(seedTask, "source.mp4", models);
-    expect(workflow["4"]?.inputs).toMatchObject({
-      batch_size: 1,
-      preserve_vram: true,
-      block_swap_config: ["3", 0]
+    const workflow = renderUpscaleWorkflow(seedTask, "source.mp4", models, {
+      SeedVR2VideoUpscaler: {},
+      SeedVR2LoadDiTModel: {},
+      SeedVR2LoadVAEModel: {}
     });
-    expect(workflow["7"]?.inputs.frames_per_batch).toBe(5);
+    expect(workflow["3"]?.inputs).toMatchObject({
+      blocks_to_swap: 0,
+      swap_io_components: false
+    });
+    expect(workflow["5"]?.inputs.batch_size).toBe(33);
+    expect(workflow["7"]).toBeUndefined();
   });
 });

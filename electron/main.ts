@@ -140,6 +140,7 @@ const historyCoverPath = (key: string) =>
   path.join(historyCoverDirectory(), `${createHash("sha256").update(key).digest("hex")}.jpg`);
 let mainWindow: BrowserWindow | null = null;
 let store: JsonStore;
+let rendererHasUnsavedSettings = false;
 let queueWorker: Promise<void> | null = null;
 let activeController: AbortController | null = null;
 let nativePromptController: AbortController | null = null;
@@ -641,6 +642,7 @@ async function interruptForExit(waitForWorker: boolean): Promise<{
 async function finishWindowClose(): Promise<void> {
   appLogger.info("app", "shutdown", "Application shutdown started");
   await releasePromptRuntime(store.get().settings);
+  rendererHasUnsavedSettings = false;
   allowWindowClose = true;
   mainWindow?.destroy();
   if (process.platform !== "darwin") app.quit();
@@ -651,7 +653,25 @@ async function handleWindowClose(): Promise<void> {
   const runningTask = store
     .get()
     .queue.find((task) => task.status === "running");
-  if (!runningTask && !activeController && !queueWorker && !nativePromptWorker) {
+  const hasRunningWork = Boolean(
+    runningTask || activeController || queueWorker || nativePromptWorker
+  );
+  if (!hasRunningWork && !rendererHasUnsavedSettings) {
+    await finishWindowClose();
+    return;
+  }
+  if (!hasRunningWork && rendererHasUnsavedSettings) {
+    const choice = await dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      title: "有未保存的设置",
+      message: "当前设置还有未保存更改，是否放弃并退出？",
+      detail: "已保存的设置不会受到影响；退出后当前编辑中的设置会丢失。",
+      buttons: ["取消退出", "放弃设置并退出"],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    });
+    if (choice.response === 0) return;
     await finishWindowClose();
     return;
   }
@@ -662,7 +682,7 @@ async function handleWindowClose(): Promise<void> {
       title: "任务仍在运行",
       message: "当前视频任务或提示词扩写仍在运行，是否结束并退出？",
       detail:
-        "“结束任务并退出”会中断当前 ComfyUI 计算并等待任务状态保存。“强制退出”仍会尝试中断计算，但不会等待完整清理。ComfyUI 服务本身不会关闭。",
+        `“结束任务并退出”会中断当前 ComfyUI 计算并等待任务状态保存。“强制退出”仍会尝试中断计算，但不会等待完整清理。ComfyUI 服务本身不会关闭。${rendererHasUnsavedSettings ? "当前设置还有未保存更改，退出时也会放弃。" : ""}`,
       buttons: ["取消退出", "结束任务并退出", "强制退出"],
       defaultId: 1,
       cancelId: 0,
@@ -954,7 +974,9 @@ function upscaleTaskFromRequest(
     sourceHeight: request.sourceHeight,
     targetWidth,
     targetHeight: request.targetHeight,
-    tileMode: "safe",
+    tileMode: request.tileMode === "fast" || request.tileMode === "auto"
+      ? request.tileMode
+      : "safe",
     faceRestore: request.faceRestore,
     progress: 0
   };
@@ -1547,6 +1569,10 @@ async function executeQueue(): Promise<void> {
             ratio: completedTask.ratio,
             prompt: completedTask.prompt,
             seed: completedTask.seed,
+            inputMode: "image",
+            h3ReferenceSlots: completedTask.h3ReferenceSlots?.map((slot) => ({ ...slot })),
+            sourceWidth: completedTask.sourceWidth,
+            sourceHeight: completedTask.sourceHeight,
             startImagePath: completedTask.startImagePath,
             endImagePath: completedTask.endImagePath,
             workflowPath: completedTask.workflowPath,
@@ -1601,9 +1627,13 @@ async function executeQueue(): Promise<void> {
             ratio: "source",
             prompt: completedTask.prompt,
             seed: completedTask.seed,
+            inputMode: "video",
+            sourceWidth: completedTask.sourceWidth,
+            sourceHeight: completedTask.sourceHeight,
             sourceAssetId: completedTask.sourceAssetId,
             sourceVersionId: completedTask.sourceVersionId,
             sourceVideoPath: completedTask.sourceVideoPath,
+            sourceVideoDuration: completedTask.sourceVideoDuration,
             trimStartSeconds: completedTask.trimStartSeconds,
             trimEndSeconds: completedTask.trimEndSeconds,
             workflowPath: completedTask.workflowPath,
@@ -1930,6 +1960,9 @@ async function loggedOperation<T extends { ok: boolean; message: string }>(
 
 function registerIpc(): void {
   ipcMain.handle("state:get", () => store.get());
+  ipcMain.handle("renderer:set-settings-dirty", (_event, dirty: boolean) => {
+    rendererHasUnsavedSettings = dirty === true;
+  });
   ipcMain.handle("logs:read", (_event, limit?: number) =>
     appLogSnapshot(typeof limit === "number" ? limit : undefined)
   );
@@ -2621,9 +2654,27 @@ function registerIpc(): void {
     async (_event, taskId: string, patch: Pick<UpscaleQueueTask, "targetWidth" | "targetHeight" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">) => {
       const next = await store.update((state) => {
         const task = state.queue.find((item) => item.id === taskId);
-        if (!task || task.taskType !== "upscale" || task.status !== "waiting") return;
+        if (
+          !task ||
+          task.taskType !== "upscale" ||
+          (task.status !== "waiting" &&
+            task.status !== "failed" &&
+            task.status !== "cancelled")
+        ) return;
+        const resetFailure = task.status === "failed" || task.status === "cancelled";
         Object.assign(task, patch, {
-          tileMode: "safe",
+          tileMode: patch.tileMode ?? task.tileMode,
+          ...(resetFailure
+            ? {
+                status: "waiting" as const,
+                error: undefined,
+                progress: 0,
+                stage: undefined,
+                startedAt: undefined,
+                comfyPromptId: undefined,
+                automaticRetryAttempt: undefined
+              }
+            : {}),
           updatedAt: new Date().toISOString()
         });
       });

@@ -94,6 +94,7 @@ const customNodeCatalog = [
     repositoryUrl: "https://github.com/city96/ComfyUI-GGUF.git",
     directoryName: "ComfyUI-GGUF",
     aliases: ["comfyui-gguf"],
+    nodeTypes: ["UnetLoaderGGUFAdvanced"],
     required: true
   },
   {
@@ -103,6 +104,7 @@ const customNodeCatalog = [
     repositoryUrl: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
     directoryName: "comfyui-videohelpersuite",
     aliases: ["comfyui-videohelpersuite"],
+    nodeTypes: ["VHS_LoadVideo", "VHS_VideoCombine", "VHS_BatchManager"],
     required: true
   },
   {
@@ -112,6 +114,7 @@ const customNodeCatalog = [
     repositoryUrl: "https://github.com/Lightricks/ComfyUI-LTXVideo.git",
     directoryName: "ComfyUI-LTXVideo",
     aliases: ["comfyui-ltxvideo"],
+    nodeTypes: ["LTXVExtendSampler", "LTXVSpatioTemporalTiledVAEDecode"],
     required: false
   },
   {
@@ -121,6 +124,8 @@ const customNodeCatalog = [
     repositoryUrl: "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git",
     directoryName: "ComfyUI-SeedVR2_VideoUpscaler",
     aliases: ["comfyui-seedvr2_videoupscaler", "seedvr2_videoupscaler"],
+    nodeTypes: ["SeedVR2LoadDiTModel", "SeedVR2LoadVAEModel", "SeedVR2VideoUpscaler"],
+    minimumVersion: "2.5.24",
     required: true
   },
   {
@@ -130,6 +135,7 @@ const customNodeCatalog = [
     repositoryUrl: "https://github.com/1038lab/ComfyUI-FlashVSR.git",
     directoryName: "ComfyUI-FlashVSR",
     aliases: ["comfyui-flashvsr"],
+    nodeTypes: ["AILab_FlashVSR"],
     required: true
   },
   {
@@ -139,6 +145,7 @@ const customNodeCatalog = [
     repositoryUrl: "https://github.com/kijai/ComfyUI-KJNodes.git",
     directoryName: "comfyui-kjnodes",
     aliases: ["comfyui-kjnodes"],
+    nodeTypes: ["VRAM_Debug"],
     required: true
   },
   {
@@ -148,6 +155,7 @@ const customNodeCatalog = [
     repositoryUrl: "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",
     directoryName: "ComfyUI-Frame-Interpolation",
     aliases: ["comfyui-frame-interpolation"],
+    nodeTypes: ["RIFE VFI"],
     required: false
   },
   {
@@ -1995,6 +2003,14 @@ async function scanCustomNodes(
             : "AudioVAE 加载接口过旧：不兼容当前 ComfyUI，请修复/更新节点"
         )
         .catch(() => "无法读取 ComfyUI-LTXVideo 版本文件");
+    } else if (definition.id === "seedvr2" && directory) {
+      compatibilityError = await Promise.all([
+        fs.readFile(path.join(directory, "src", "interfaces", "dit_model_loader.py"), "utf8"),
+        fs.readFile(path.join(directory, "src", "interfaces", "vae_model_loader.py"), "utf8"),
+        fs.readFile(path.join(directory, "src", "interfaces", "video_upscaler.py"), "utf8")
+      ])
+        .then(() => "")
+        .catch(() => "旧版 SeedVR2 单体节点已不再支持；请更新到 2.5.24+ 模块化节点");
     }
     const version = await readPythonProjectVersion(directory);
     const latestVersion = definition.id === "spectrum-minimax-h3"
@@ -2003,11 +2019,12 @@ async function scanCustomNodes(
     const requiredNodeTypes = "nodeTypes" in definition
       ? definition.nodeTypes
       : undefined;
-    const registered = !requiredNodeTypes || serviceNodeIds === null ||
+    const runtimeVerified = serviceNodeIds !== null;
+    const registered = !runtimeVerified || !requiredNodeTypes ||
       requiredNodeTypes.every((nodeType) => serviceNodeIds.has(nodeType));
     const pendingRestartError = Boolean(directory) && !compatibilityError &&
-      !failed && requiredNodeTypes && serviceNodeIds !== null && !registered
-      ? "节点文件已安装，但当前 ComfyUI 服务尚未加载；请重启服务后复检"
+      !failed && requiredNodeTypes && runtimeVerified && !registered
+      ? "节点文件已安装，但当前 ComfyUI 服务尚未加载全部必需模块；请重启服务后复检"
       : "";
     const loadError = compatibilityError || importErrorLine ||
       (failed ? "最近一次启动时导入失败" : "") || pendingRestartError;
@@ -2018,13 +2035,17 @@ async function scanCustomNodes(
       repositoryUrl: definition.repositoryUrl,
       installed: Boolean(directory),
       loaded: Boolean(directory) && !loadError && registered,
+      runtimeVerified,
       loadError,
       directory,
       required: definition.required,
       version,
       latestVersion,
       updateAvailable: Boolean(
-        version && latestVersion && compareReleaseVersions(version, latestVersion) < 0
+        compatibilityError ||
+        ("minimumVersion" in definition && (!version ||
+          compareReleaseVersions(version, definition.minimumVersion) < 0)) ||
+        (version && latestVersion && compareReleaseVersions(version, latestVersion) < 0)
       )
     };
   }));
@@ -3854,7 +3875,7 @@ export async function installCustomNode(
     let videoHelperPrepared = false;
 
     if (await exists(targetDirectory)) {
-      if (await exists(path.join(targetDirectory, ".git"))) {
+      if (await exists(path.join(targetDirectory, ".git")) && definition.id !== "seedvr2") {
         installLog.push(`更新 ${definition.repositoryUrl}`);
         const gitResult = await execFileAsync(git, ["-C", targetDirectory, "pull", "--ff-only"], {
           encoding: "utf8",
@@ -3870,7 +3891,11 @@ export async function installCustomNode(
           backupRoot,
           `${definition.directoryName}-${Date.now()}`
         );
-        installLog.push(`目录由 ComfyUI Manager 管理，下载上游副本后安全替换`);
+        installLog.push(
+          definition.id === "seedvr2"
+            ? "SeedVR2 使用破坏性新版接口：下载干净上游副本并备份替换旧目录"
+            : "目录由 ComfyUI Manager 管理，下载上游副本后安全替换"
+        );
         try {
           const gitResult = await execFileAsync(
             git,
@@ -3965,22 +3990,6 @@ export async function installCustomNode(
         }
       );
       installLog.push(`${pipResult.stdout}${pipResult.stderr}`.trim() || "pip：依赖已满足");
-      if (definition.id === "seedvr2") {
-        const peftResult = await execFileAsync(
-          python,
-          ["-m", "pip", "install", "--upgrade", "peft==0.20.0"],
-          {
-            encoding: "utf8",
-            timeout: 600_000,
-            windowsHide: true,
-            env: commandEnvironment
-          }
-        );
-        installLog.push(
-          `${peftResult.stdout}${peftResult.stderr}`.trim() ||
-          "SeedVR2：PEFT 兼容版本已确认"
-        );
-      }
     } else {
       installLog.push("未发现 requirements.txt，无需安装额外 Python 依赖");
     }

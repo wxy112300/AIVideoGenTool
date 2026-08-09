@@ -225,6 +225,44 @@ function combineVideoNode(
   };
 }
 
+const seedVr2RequiredNodes = [
+  "SeedVR2VideoUpscaler",
+  "SeedVR2LoadDiTModel",
+  "SeedVR2LoadVAEModel"
+] as const;
+
+function seedVr2Profile(task: UpscaleQueueTask): {
+  batchSize: number;
+  blocksToSwap: number;
+  swapIoComponents: boolean;
+  tiledVae: boolean;
+} {
+  const highResolution = task.targetHeight >= 1440;
+  const ultraHighResolution = task.targetHeight >= 2160;
+  if (task.tileMode === "safe") {
+    return {
+      batchSize: 9,
+      blocksToSwap: ultraHighResolution ? 24 : 16,
+      swapIoComponents: true,
+      tiledVae: highResolution
+    };
+  }
+  if (task.tileMode === "fast") {
+    return {
+      batchSize: ultraHighResolution ? 13 : highResolution ? 21 : 33,
+      blocksToSwap: ultraHighResolution ? 12 : 0,
+      swapIoComponents: ultraHighResolution,
+      tiledVae: ultraHighResolution
+    };
+  }
+  return {
+    batchSize: ultraHighResolution ? 9 : highResolution ? 13 : 21,
+    blocksToSwap: ultraHighResolution ? 20 : highResolution ? 8 : 0,
+    swapIoComponents: highResolution,
+    tiledVae: highResolution
+  };
+}
+
 export function renderUpscaleWorkflow(
   task: UpscaleQueueTask,
   sourceVideo: string,
@@ -235,10 +273,16 @@ export function renderUpscaleWorkflow(
   const availableNodes = objectInfo && typeof objectInfo === "object" && !Array.isArray(objectInfo)
     ? new Set(Object.keys(objectInfo as Record<string, unknown>))
     : new Set<string>();
-  const modernSeedVr2 = task.modelId === "seedvr2" &&
-    availableNodes.has("SeedVR2VideoUpscaler") &&
-    availableNodes.has("SeedVR2LoadDiTModel") &&
-    availableNodes.has("SeedVR2LoadVAEModel");
+  const missingSeedVr2Nodes = task.modelId === "seedvr2"
+    ? seedVr2RequiredNodes.filter((node) => !availableNodes.has(node))
+    : [];
+  if (missingSeedVr2Nodes.length) {
+    throw new Error(
+      `SeedVR2 节点版本过旧或尚未加载，缺少新版模块：${missingSeedVr2Nodes.join(", ")}。` +
+      "请在设置 → 节点与工作流中更新 SeedVR2，并重启 ComfyUI。"
+    );
+  }
+  const modernSeedVr2 = task.modelId === "seedvr2";
   const useExternalBatching = !modernSeedVr2;
   const workflow: Record<string, ApiNode> = {
     "1": loadVideoNode(sourceVideo, useExternalBatching),
@@ -272,14 +316,15 @@ export function renderUpscaleWorkflow(
       class_type: "ImageUpscaleWithModel",
       inputs: { upscale_model: ["3", 0], image: ["1", 0] }
     };
-  } else if (task.modelId === "seedvr2" && modernSeedVr2) {
+  } else if (task.modelId === "seedvr2") {
+    const profile = seedVr2Profile(task);
     workflow["3"] = {
       class_type: "SeedVR2LoadDiTModel",
       inputs: {
         model: models.seedVr2,
         device: "cuda:0",
-        blocks_to_swap: 20,
-        swap_io_components: true,
+        blocks_to_swap: profile.blocksToSwap,
+        swap_io_components: profile.swapIoComponents,
         offload_device: "cpu",
         cache_model: false,
         attention_mode: "sdpa"
@@ -292,8 +337,13 @@ export function renderUpscaleWorkflow(
         device: "cuda:0",
         offload_device: "cpu",
         cache_model: false,
-        encode_tiled: false,
-        decode_tiled: false
+        encode_tiled: profile.tiledVae,
+        encode_tile_size: 1024,
+        encode_tile_overlap: 128,
+        decode_tiled: profile.tiledVae,
+        decode_tile_size: 1024,
+        decode_tile_overlap: 128,
+        tile_debug: "false"
       }
     };
     workflow["5"] = {
@@ -305,11 +355,11 @@ export function renderUpscaleWorkflow(
         seed: task.seed,
         resolution: task.targetHeight,
         max_resolution: 0,
-        batch_size: 5,
-        uniform_batch_size: false,
-        temporal_overlap: 0,
-        prepend_frames: 0,
-        color_correction: "wavelet",
+        batch_size: profile.batchSize,
+        uniform_batch_size: true,
+        temporal_overlap: 3,
+        prepend_frames: 4,
+        color_correction: "lab",
         input_noise_scale: 0,
         latent_noise_scale: 0,
         offload_device: "cpu",
@@ -317,29 +367,6 @@ export function renderUpscaleWorkflow(
       }
     };
     workflow["9"] = exactScaleNode(["5", 0], task);
-  } else if (task.modelId === "seedvr2") {
-    workflow["3"] = {
-      class_type: "SeedVR2BlockSwap",
-      inputs: {
-        blocks_to_swap: 20,
-        use_non_blocking: true,
-        offload_io_components: true,
-        cache_model: false,
-        enable_debug: false
-      }
-    };
-    workflow["4"] = {
-      class_type: "SeedVR2",
-      inputs: {
-        images: ["1", 0],
-        model: models.seedVr2,
-        seed: task.seed,
-        new_resolution: task.targetHeight,
-        batch_size: 1,
-        preserve_vram: true,
-        block_swap_config: ["3", 0]
-      }
-    };
   } else if (task.modelId === "flashvsr") {
     workflow["4"] = {
       class_type: "AILab_FlashVSR",
@@ -356,10 +383,10 @@ export function renderUpscaleWorkflow(
     throw new Error(`不支持的分辨率提升模型：${task.modelId}`);
   }
 
-  if (task.modelId !== "seedvr2" || !modernSeedVr2) {
+  if (task.modelId !== "seedvr2") {
     workflow["5"] = exactScaleNode(["4", 0], task);
   }
-  const finalImageNode = modernSeedVr2 ? ["9", 0] : ["5", 0];
+  const finalImageNode = task.modelId === "seedvr2" ? ["9", 0] : ["5", 0];
   workflow["8"] = {
     class_type: "VRAM_Debug",
     inputs: {

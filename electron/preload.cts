@@ -9,6 +9,7 @@ import type {
 
 const api: AppApi = {
   getState: () => ipcRenderer.invoke("state:get"),
+  setSettingsDirty: (dirty: boolean) => ipcRenderer.invoke("renderer:set-settings-dirty", dirty),
   saveDraft: (draft: Draft) => ipcRenderer.invoke("draft:save", draft),
   saveSettings: (settings: Settings) => ipcRenderer.invoke("settings:save", settings),
   pickImage: () => ipcRenderer.invoke("file:pick-image"),

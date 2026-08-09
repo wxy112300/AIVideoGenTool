@@ -137,6 +137,7 @@ let selectedHistoryVersionId = "";
 let historyForwardTarget: { assetId: string; versionId: string } | null = null;
 let upscaleDialog: {
   taskId?: string;
+  replaceTaskId?: string;
   assetId: string;
   versionId: string;
   targetHeight: 720 | 1080 | 1440 | 2160;
@@ -150,6 +151,7 @@ let historyLayoutAnchor: { assetId: string; offsetFromCenter: number } | null = 
 let historyLayout: "masonry" | "album" = "masonry";
 let environmentScan: EnvironmentScanResult | null = null;
 let environmentScanning = false;
+let environmentScanError = "";
 let serviceStarting: LocalServiceKind | null = null;
 let serviceRestarting: LocalServiceKind | null = null;
 let serviceForceStopping = false;
@@ -183,9 +185,16 @@ let selectedInstallGuide: {
 let pendingConfirmation:
   | { kind: "clear-draft" }
   | { kind: "delete-history"; assetId: string; title: string }
+  | { kind: "remove-queue-task"; taskId: string; title: string }
+  | { kind: "cancel-queue-task"; taskId: string; title: string }
+  | { kind: "discard-settings"; nextPage: Page }
   | { kind: "force-stop-comfy" }
   | null = null;
 let confirmationBusy = false;
+let queueActionBusy: { taskId: string; action: "remove" | "cancel" | "edit" } | null = null;
+let modalReturnFocus: HTMLElement | null = null;
+let modalInitialFocusPending = false;
+let modalControlFocusSelector = "";
 const bundledWorkflows: Record<string, BundledWorkflow> = {};
 const bundledWorkflowKey = (modelId: string, inputMode: Draft["inputMode"]) =>
   `${modelId}:${inputMode}`;
@@ -1187,18 +1196,112 @@ function createModelOptions(draft: Draft): string {
     .join("");
 }
 
+function rememberModalFocus(): void {
+  const active = document.activeElement;
+  modalReturnFocus = active instanceof HTMLElement && active !== document.body
+    ? active
+    : null;
+  modalInitialFocusPending = true;
+  modalControlFocusSelector = "";
+}
+
+function rememberModalControlFocus(element: HTMLElement): void {
+  if (element.id) {
+    modalControlFocusSelector = `#${element.id}`;
+    return;
+  }
+  const upscaleHeight = element.dataset.upscaleHeight;
+  if (upscaleHeight) {
+    modalControlFocusSelector = `[data-upscale-height="${CSS.escape(upscaleHeight)}"]`;
+  }
+}
+
+function restoreModalFocus(): void {
+  const target = modalReturnFocus;
+  modalReturnFocus = null;
+  window.requestAnimationFrame(() => {
+    if (target?.isConnected && !target.hasAttribute("disabled")) {
+      target.focus();
+      return;
+    }
+    document.querySelector<HTMLElement>(`.nav-button[data-page="${page === "history-detail" ? "history" : page}"]`)?.focus();
+  });
+}
+
+function bindModalFocus(
+  dialog: HTMLElement,
+  close: () => void,
+  initialSelector?: string
+): void {
+  const focusableSelector = "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex=\"-1\"])";
+  const focusInitial = () => {
+    const storedControl = !modalInitialFocusPending && modalControlFocusSelector
+      ? dialog.querySelector<HTMLElement>(modalControlFocusSelector)
+      : null;
+    const initial = storedControl ?? (initialSelector
+      ? dialog.querySelector<HTMLElement>(initialSelector)
+      : null);
+    const first = initial ?? dialog.querySelector<HTMLElement>(focusableSelector);
+    (first ?? dialog).focus();
+    modalControlFocusSelector = "";
+  };
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusables = [...dialog.querySelectorAll<HTMLElement>(focusableSelector)]
+      .filter((element) => element.getClientRects().length > 0);
+    if (!focusables.length) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+    const first = focusables[0]!;
+    const last = focusables.at(-1)!;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  if (modalInitialFocusPending || modalControlFocusSelector) {
+    modalInitialFocusPending = false;
+    focusInitial();
+  }
+}
+
 function confirmationDialog(): string {
   if (!pendingConfirmation) return "";
   const request = pendingConfirmation;
   const deleting = request.kind === "delete-history";
+  const removingQueueTask = request.kind === "remove-queue-task";
+  const cancellingQueueTask = request.kind === "cancel-queue-task";
+  const discardingSettings = request.kind === "discard-settings";
   const forceStoppingComfy = request.kind === "force-stop-comfy";
-  const title = request.kind === "delete-history"
+  const title = deleting
     ? `删除“${request.title}”？`
+    : removingQueueTask
+      ? `移除任务“${request.title}”？`
+      : cancellingQueueTask
+        ? `取消当前任务“${request.title}”？`
+    : discardingSettings
+      ? "放弃未保存的设置？"
     : forceStoppingComfy
       ? "强制终止所有 ComfyUI 进程？"
       : "清空当前草稿？";
   const description = deleting
     ? "关联的视频文件会从磁盘永久删除，历史记录也会一并移除。"
+    : removingQueueTask
+      ? "这会从队列中移除任务，不会删除输入文件或历史作品。"
+      : cancellingQueueTask
+        ? "当前生成会被中断；如果已经产生可用的部分视频，程序会尝试保留它。"
+    : discardingSettings
+      ? "当前设置修改尚未保存。放弃后会恢复到上一次保存的值。"
     : forceStoppingComfy
       ? "这会关闭所有识别到的 ComfyUI Desktop/后端进程，立即中断当前任务并释放 CUDA 上下文；不会自动重新启动。"
       : "首帧、尾帧和所有提示词版本都会清空；模型与输出设置会保留。";
@@ -1212,13 +1315,17 @@ function confirmationDialog(): string {
           <p id="confirm-description">${escapeHtml(description)}</p>
           ${deleting
             ? `<div class="confirm-warning">只删除本条记录关联的视频，不会删除参考图片、工作流或整个输出目录。</div>`
+            : removingQueueTask || cancellingQueueTask
+              ? `<div class="confirm-warning">任务参数、输入媒体和错误记录会继续保留在本地，之后仍可编辑、重试或移除。</div>`
+            : discardingSettings
+              ? `<div class="confirm-warning">已经保存的设置不会受到影响；只有当前编辑中的设置草稿会被丢弃。</div>`
             : forceStoppingComfy
               ? `<div class="confirm-warning danger-warning">这是进程级强制操作，会关闭其它 ComfyUI 实例；未保存的 ComfyUI 工作流状态不会保留。</div>`
               : ""}
         </div>
         <div class="dialog-actions">
           <button class="secondary button-with-icon" id="cancel-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon("x")}取消</button>
-          <button class="primary destructive button-with-icon" id="accept-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon(forceStoppingComfy ? "ban" : "trash-2")}${confirmationBusy ? "处理中…" : forceStoppingComfy ? "强制终止进程" : deleting ? "删除视频和记录" : "清空草稿"}</button>
+          <button class="primary destructive button-with-icon" id="accept-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon(forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${confirmationBusy ? "处理中…" : forceStoppingComfy ? "强制终止进程" : deleting ? "删除视频和记录" : removingQueueTask ? "移除任务" : cancellingQueueTask ? "取消当前任务" : discardingSettings ? "放弃更改" : "清空草稿"}</button>
         </div>
       </section>
     </div>`;
@@ -1269,9 +1376,10 @@ function upscaleDialogHtml(): string {
     version.outputFilename,
     upscaleDialog.targetHeight
   );
+  const supportsTileMode = upscaleDialog.modelId === "seedvr2";
   return `
     <div class="dialog-backdrop upscale-backdrop" id="upscale-backdrop">
-      <section class="upscale-dialog" role="dialog" aria-modal="true" aria-labelledby="upscale-title">
+      <section class="upscale-dialog" role="dialog" aria-modal="true" aria-labelledby="upscale-title" tabindex="-1">
         <div class="upscale-dialog-head">
           <div><span class="eyebrow">创建后处理任务</span><h2 id="upscale-title">提升分辨率</h2></div>
           <button class="dialog-close" id="close-upscale" aria-label="关闭">${icon("x")}</button>
@@ -1283,13 +1391,12 @@ function upscaleDialogHtml(): string {
           </div></div>
           <div class="settings-grid two">
             <label>提升模型<select id="upscale-model">${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === upscaleDialog?.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
-            <label>显存策略<select id="upscale-tile" disabled><option value="safe" selected>保守 · 分批与每批卸载</option></select></label>
+            <label>显存策略${supportsTileMode ? `<select id="upscale-tile"><option value="auto" ${upscaleDialog.tileMode === "auto" ? "selected" : ""}>自动 · 按显存选择</option><option value="safe" ${upscaleDialog.tileMode === "safe" ? "selected" : ""}>保守 · 分批与每批卸载</option><option value="fast" ${upscaleDialog.tileMode === "fast" ? "selected" : ""}>速度优先 · 尽量少卸载</option></select>` : `<span class="upscale-policy-readonly">节点固定 · 低显存分批</span>`}</label>
           </div>
-          <label class="ios-switch-field disabled"><span class="policy-copy"><strong>人脸细节修复</strong><small>等待独立修复模型接入</small></span><input type="checkbox" disabled><span class="ios-switch" aria-hidden="true"></span></label>
           <div class="upscale-output"><div><span>预计输出</span><strong>${targetWidth} × ${outputHeight}</strong><code>${escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><span>预计峰值 ${estimatedVram}</span><span>预计耗时 ${estimatedTime}</span></div></div>
-          <p class="upscale-estimate-note ${vramWarning ? "warning" : ""}">按当前模型的保守分批策略估算，共 ${estimate.frameCount} 帧；不含首次加载模型、磁盘读取和最终编码时间。${vramWarning ? `预计峰值可能超过当前 ${formatBytes(detectedVramBytes)} 显存，建议降低目标分辨率或改用更轻模型。` : "实际速度和峰值会受 ComfyUI 版本、后台进程和磁盘速度影响。"}</p>
+          <p class="upscale-estimate-note ${vramWarning ? "warning" : ""}">按模型、目标分辨率和帧数估算，共 ${estimate.frameCount} 帧；显存策略会影响实际峰值和耗时，不含首次加载模型、磁盘读取和最终编码时间。${vramWarning ? `预计峰值可能超过当前 ${formatBytes(detectedVramBytes)} 显存，建议降低目标分辨率或改用更轻模型。` : "实际速度和峰值会受 ComfyUI 版本、后台进程和磁盘速度影响。"}</p>
         </div>
-        <div class="dialog-actions"><button class="secondary button-with-icon" id="cancel-upscale">${icon("x")}取消</button><button class="primary button-with-icon" id="enqueue-upscale">${icon(upscaleDialog.taskId ? "save" : "plus")}${upscaleDialog.taskId ? "保存更改" : "加入队列"}</button></div>
+        <div class="dialog-actions"><button class="secondary button-with-icon" id="cancel-upscale">${icon("x")}取消</button><button class="primary button-with-icon" id="enqueue-upscale">${icon(upscaleDialog.taskId ? "save" : "plus")}${upscaleDialog.taskId ? "保存更改" : upscaleDialog.replaceTaskId ? "重新加入队列" : "加入队列"}</button></div>
       </section>
     </div>`;
 }
@@ -1727,9 +1834,18 @@ function createPage(): string {
 
 function queuePage(): string {
   const running = state.queue.find((task) => task.status === "running");
+  const activeTasks = state.queue.filter((task) => task.status === "waiting" || task.status === "running");
+  const attentionTasks = state.queue.filter((task) => task.status === "failed" || task.status === "cancelled");
+  const queueStatus = running
+    ? "当前任务正在运行"
+    : activeTasks.some((task) => task.status === "waiting")
+      ? "等待任务已暂停"
+      : attentionTasks.length
+        ? "有任务需要处理"
+        : "队列为空";
   return `
     <section class="page-heading">
-      <div><h1>生成队列</h1><p>${state.queue.length} 项任务 · ${running ? "当前任务已在队列内展开" : state.queueRunning ? "准备执行" : "当前已暂停"}</p></div>
+      <div><h1>生成队列</h1><p>${activeTasks.length} 项执行任务 · ${attentionTasks.length} 项需处理 · ${queueStatus}</p></div>
       <div class="button-row">
         <button class="secondary button-with-icon" id="optimize-queue" ${state.queue.filter((task) => task.status === "waiting").length < 2 ? "disabled" : ""}>${icon("wand-sparkles")}按模型优化顺序</button>
         ${running ? `<span class="queue-mode">${state.queueRunning ? "自动继续后续任务" : "本条完成后暂停"}</span>` : `<button class="primary button-with-icon" id="start-queue" ${state.queue.some((task) => task.status === "waiting") ? "" : "disabled"}>${icon("play")}开始队列</button>`}
@@ -1737,15 +1853,14 @@ function queuePage(): string {
     </section>
     <section class="performance-grid" aria-label="性能监测">
       ${performanceCard("CPU", "metric-cpu", performanceMetrics?.cpuPercent, "%")}
-      ${performanceCard("系统内存", "metric-memory", performanceMetrics ? performanceMetrics.memoryUsedBytes / performanceMetrics.memoryTotalBytes * 100 : null, "%", performanceMetrics ? `${formatBytes(performanceMetrics.memoryUsedBytes)} / ${formatBytes(performanceMetrics.memoryTotalBytes)}` : "")}
+      ${performanceCard("系统内存", "metric-memory", performanceMetrics && performanceMetrics.memoryTotalBytes > 0 ? performanceMetrics.memoryUsedBytes / performanceMetrics.memoryTotalBytes * 100 : null, "%", performanceMetrics && performanceMetrics.memoryTotalBytes > 0 ? `${formatBytes(performanceMetrics.memoryUsedBytes)} / ${formatBytes(performanceMetrics.memoryTotalBytes)}` : "")}
       ${performanceCard("GPU", "metric-gpu", performanceMetrics?.gpuPercent, "%", performanceMetrics?.gpuTemperature != null ? `${performanceMetrics.gpuTemperature}°C` : "")}
       ${performanceCard("显存", "metric-vram", performanceMetrics?.vramUsedBytes != null && performanceMetrics.vramTotalBytes ? performanceMetrics.vramUsedBytes / performanceMetrics.vramTotalBytes * 100 : null, "%", performanceMetrics?.vramUsedBytes != null && performanceMetrics.vramTotalBytes != null ? `${formatBytes(performanceMetrics.vramUsedBytes)} / ${formatBytes(performanceMetrics.vramTotalBytes)}` : "")}
     </section>
-    <section class="task-list">
-      ${state.queue.length === 0
+    ${state.queue.length === 0
         ? `<div class="empty panel"><h2>队列还是空的</h2><p>从创建页加入一个任务后，就可以在这里运行。</p><button class="secondary button-with-icon" data-page="create">${icon("plus")}去创建</button></div>`
-        : state.queue.map((task, index) => queueTaskCard(task, index + 1)).join("")}
-    </section>`;
+      : `<section class="queue-section"><div class="queue-section-heading"><div><h2>执行队列</h2><span class="muted">等待和当前运行中的任务按此顺序执行。</span></div><span class="model-badge">${activeTasks.length} 项</span></div><div class="task-list">${activeTasks.length ? activeTasks.map((task, index) => queueTaskCard(task, index + 1)).join("") : `<div class="empty panel queue-section-empty"><h2>没有等待中的任务</h2><p>下面的任务需要重试、编辑或移除。</p></div>`}</div></section>${attentionTasks.length ? `<section class="queue-section queue-attention-section"><div class="queue-section-heading"><div><h2>需要处理</h2><span class="muted">失败和取消的任务不会自动占用执行队列。</span></div><span class="model-badge warning-badge">${attentionTasks.length} 项</span></div><div class="task-list">${attentionTasks.map((task) => queueTaskCard(task, 0)).join("")}</div></section>` : ""}`}
+    `;
 }
 
 type QueueTaskInput =
@@ -1869,6 +1984,13 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
     : task.taskType === "extension"
       ? `<span>视频续写</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>最多 ${task.maxGeneratedFrames} 模型帧</span><span>${task.overlapFrames} 帧上下文</span>${h3ComputeSummary}`
       : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${upscaleOutput![0]} × ${upscaleOutput![1]}</span><span>分批处理 · 每批卸载</span>`;
+  const attentionTask = task.status === "failed" || task.status === "cancelled";
+  const retrySummary = task.automaticRetryAttempt
+    ? `<span class="queue-retry-status">自动重试第 ${task.automaticRetryAttempt} 次</span>`
+    : "";
+  const rankMarkup = queuePosition > 0
+    ? `<strong>${String(queuePosition).padStart(2, "0")}</strong><small>队位</small>`
+    : `<strong>!</strong><small>需处理</small>`;
   if (task.status === "running") {
     const preview = taskPreviews[task.id] ?? "";
     const input = queueTaskInput(task);
@@ -1892,7 +2014,7 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
             <div class="task-meta">${metadata}<span id="running-elapsed">${elapsedText(task.startedAt)}</span></div>
             <div class="running-controls">
               <button class="secondary button-with-icon" id="${state.queueRunning ? "pause-queue" : "start-queue"}">${icon(state.queueRunning ? "pause" : "play")}${state.queueRunning ? "本条完成后暂停" : "继续执行后续任务"}</button>
-              <button class="danger secondary button-with-icon" data-cancel="${task.id}">${icon("ban")}取消当前任务</button>
+              <button class="danger secondary button-with-icon" data-cancel="${task.id}" ${queueActionBusy?.taskId === task.id ? "disabled" : ""}>${icon("ban")}${queueActionBusy?.taskId === task.id && queueActionBusy.action === "cancel" ? "取消中…" : "取消当前任务"}</button>
             </div>
             <p class="control-hint">${state.queueRunning ? "暂停不会冻结当前 GPU 计算；当前任务完成后不会启动下一条。" : "当前任务仍会继续运行，后续任务已暂停。"}</p>
           </div>
@@ -1908,21 +2030,21 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
     <article class="task-card panel ${task.status}${inputPreview ? " task-card-with-preview" : ""}">
       ${inputPreview}
       <div class="task-main">
-        <div class="queue-task-heading"><div class="queue-rank ${task.status}" aria-label="队列第 ${queuePosition} 项"><strong>${String(queuePosition).padStart(2, "0")}</strong><small>队位</small></div><div><span class="status ${task.status}">${statusLabel(task.status)}</span><h3>${escapeHtml(task.outputFilename)}</h3></div></div>
+        <div class="queue-task-heading"><div class="queue-rank ${attentionTask ? "attention" : task.status}" aria-label="${attentionTask ? "需要处理的任务" : `队列第 ${queuePosition} 项`}">${rankMarkup}</div><div><span class="status ${task.status}">${statusLabel(task.status)}</span><h3>${escapeHtml(task.outputFilename)}</h3></div></div>
         <p class="task-description">${escapeHtml(description)}</p>
-        <div class="task-meta">${metadata}</div>
+        <div class="task-meta">${metadata}${retrySummary}</div>
         ${task.error ? `<p class="error">${escapeHtml(task.error)}</p>` : ""}
       </div>
       <div class="task-actions">
         ${task.status === "waiting" ? `<div class="button-row"><button class="icon-button" data-move="${task.id}" data-direction="-1" aria-label="上移" title="上移">${icon("move-up")}</button><button class="icon-button" data-move="${task.id}" data-direction="1" aria-label="下移" title="下移">${icon("move-down")}</button></div>` : ""}
         ${task.status === "waiting" || task.status === "failed" || task.status === "cancelled"
           ? task.taskType === "upscale"
-            ? `<button class="secondary button-with-icon" data-edit-upscale-task="${task.id}" title="带回提升设置并重新加入队列">${icon("sliders-horizontal")}${task.status === "waiting" ? "编辑" : "编辑并重新加入"}</button>`
-            : `<button class="secondary button-with-icon" data-edit-task="${task.id}" title="带回创建页调整参数并重新加入队列">${icon("sliders-horizontal")}编辑并重新加入</button>`
+            ? `<button class="secondary button-with-icon" data-edit-upscale-task="${task.id}" ${queueActionBusy?.taskId === task.id && queueActionBusy.action === "edit" ? "disabled" : ""} title="带回提升设置并重新加入队列">${icon("sliders-horizontal")}${queueActionBusy?.taskId === task.id && queueActionBusy.action === "edit" ? "打开中…" : task.status === "waiting" ? "编辑" : "编辑并重新加入"}</button>`
+            : `<button class="secondary button-with-icon" data-edit-task="${task.id}" ${queueActionBusy?.taskId === task.id && queueActionBusy.action === "edit" ? "disabled" : ""} title="带回创建页调整参数并重新加入队列">${icon("sliders-horizontal")}${queueActionBusy?.taskId === task.id && queueActionBusy.action === "edit" ? "带回中…" : "编辑并重新加入"}</button>`
           : ""}
         <button class="secondary button-with-icon" data-duplicate="${task.id}">${icon("copy")}复制</button>
         ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary button-with-icon" data-reset-task="${task.id}" title="清除失败状态并恢复为普通等待任务">${icon("rotate-ccw")}重置状态</button>` : ""}
-        <button class="ghost danger button-with-icon" data-remove="${task.id}">${icon("trash-2")}移除</button>
+        <button class="ghost danger button-with-icon" data-remove="${task.id}" ${queueActionBusy?.taskId === task.id ? "disabled" : ""}>${icon("trash-2")}${queueActionBusy?.taskId === task.id && queueActionBusy.action === "remove" ? "移除中…" : "移除"}</button>
       </div>
     </article>`;
 }
@@ -1977,12 +2099,16 @@ async function editQueueTask(taskId: string): Promise<void> {
   const task = state.queue.find((item) => item.id === taskId);
   const draft = task ? draftFromQueueTask(task) : null;
   if (!task || !draft) return;
+  queueActionBusy = { taskId, action: "edit" };
+  render();
   try {
-    state = await window.studio.removeTask(taskId);
     await saveDraftImmediately(draft);
+    state = await window.studio.removeTask(taskId);
     page = "create";
+    queueActionBusy = null;
     showMessage("已带回创建页，可调整参数后重新加入队列。");
   } catch (error) {
+    queueActionBusy = null;
     showMessage(error instanceof Error ? error.message : "无法编辑该队列任务");
   }
 }
@@ -2454,7 +2580,7 @@ function installGuideDialog(): string {
   if (!guide) {
     return `
       <div class="dialog-backdrop" id="install-guide-backdrop">
-        <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title">
+        <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title" tabindex="-1">
           <div class="install-guide-head">
             <div><span class="eyebrow">${escapeHtml(profileName)}</span><h2 id="install-guide-title">${escapeHtml(component.label)}</h2></div>
             <button class="dialog-close" id="close-install-guide" aria-label="关闭">${icon("x")}</button>
@@ -2472,7 +2598,7 @@ function installGuideDialog(): string {
   const targetDirectory = `${configuredModelDirectory.replace(/[\\/]+$/, "")}\\${guide.targetSubdirectory.replaceAll("/", "\\")}`;
   return `
     <div class="dialog-backdrop" id="install-guide-backdrop">
-      <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title">
+      <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title" tabindex="-1">
         <div class="install-guide-head">
           <div><span class="eyebrow">${escapeHtml(profileName)}</span><h2 id="install-guide-title">${escapeHtml(component.label)}</h2></div>
             <button class="dialog-close" id="close-install-guide" aria-label="关闭">${icon("x")}</button>
@@ -2494,9 +2620,10 @@ function installGuideDialog(): string {
 
 function environmentOverview(): string {
   if (!environmentScan) {
-    return `<div class="environment-empty">${environmentScanning ? `<span class="scan-spinner"></span><div><strong>正在扫描本机环境与模型目录…</strong><p>检查命令、GPU、本地服务及所有模型组件。</p></div>` : `<div><strong>尚未扫描</strong><p>点击右上角“重新扫描”检查当前电脑。</p></div>`}</div>`;
+    return `${environmentScanError ? `<div class="service-status warning">${escapeHtml(environmentScanError)}</div>` : ""}<div class="environment-empty">${environmentScanning ? `<span class="scan-spinner"></span><div><strong>正在扫描本机环境与模型目录…</strong><p>检查命令、GPU、本地服务及所有模型组件。</p></div>` : `<div><strong>尚未扫描</strong><p>点击右上角“重新扫描”检查当前电脑。</p></div>`}</div>`;
   }
   return `
+    ${environmentScanError ? `<div class="service-status warning">${escapeHtml(environmentScanError)}</div>` : ""}
     <div class="environment-summary">
       <div><span class="muted">当前用户目录</span><code title="${escapeHtml(environmentScan.userHome)}">${escapeHtml(environmentScan.userHome)}</code></div>
       <span class="scan-time">扫描于 ${new Date(environmentScan.scannedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
@@ -2596,8 +2723,25 @@ function comfyCompatibilityPanel(): string {
     </section>`;
 }
 
+function settingsHaveUnsavedChanges(): boolean {
+  return settingsDraft !== null &&
+    JSON.stringify(settingsDraft) !== JSON.stringify(state.settings);
+}
+
+function syncSettingsDirtyUi(): void {
+  const dirty = settingsHaveUnsavedChanges();
+  const setSettingsDirty = window.studio.setSettingsDirty;
+  if (setSettingsDirty) void setSettingsDirty(dirty).catch(() => undefined);
+  const status = document.querySelector<HTMLElement>(".settings-heading-actions .save-state");
+  status?.classList.toggle("dirty", dirty);
+  if (status) status.textContent = dirty ? "未保存更改" : "已保存";
+  document.querySelector<HTMLButtonElement>("#discard-settings")?.toggleAttribute("disabled", !dirty);
+  document.querySelector<HTMLButtonElement>("#save-settings")?.toggleAttribute("disabled", !dirty);
+}
+
 function settingsPage(): string {
   const settings = settingsDraft ?? state.settings;
+  const settingsDirty = settingsHaveUnsavedChanges();
   const profiles = environmentScan?.modelProfiles ?? [];
   const videoProfiles = orderVideoProfiles(
     profiles.filter((profile) => profile.category === "video")
@@ -2706,12 +2850,12 @@ function settingsPage(): string {
         </div>
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>下载代理</h2><span class="muted">用于自动下载缺失的节点、Python 依赖和工作流；不会影响 ComfyUI 本地连接。</span></div><span class="model-badge">${settings.proxyEnabled ? "已开启" : "已关闭"}</span></div>
+        <div class="section-heading"><div><h2>下载代理</h2><span class="muted">用于节点、Python 依赖、工作流及节点运行时模型下载；不会影响 ComfyUI 本地连接。</span></div><span class="model-badge">${settings.proxyEnabled ? "已开启" : "已关闭"}</span></div>
         <div class="settings-grid two">
-          <label class="ios-switch-field"><span class="policy-copy"><strong>启用下载代理</strong><small>Git、pip 和工作流下载使用代理地址</small></span><input id="proxy-enabled" type="checkbox" ${settings.proxyEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+          <label class="ios-switch-field"><span class="policy-copy"><strong>启用下载代理</strong><small>Git、pip、工作流和 SeedVR2 等节点下载共用此地址</small></span><input id="proxy-enabled" type="checkbox" ${settings.proxyEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
           <label>代理地址<input id="proxy-url" value="${escapeHtml(settings.proxyUrl)}" placeholder="http://127.0.0.1:7890"></label>
         </div>
-        <p class="muted proxy-hint">默认关闭。开启后 Git 和 pip 下载使用此地址；可填写 <code>127.0.0.1:7890</code> 或完整代理 URL。</p>
+        <p class="muted proxy-hint">默认关闭。可填写 <code>127.0.0.1:7890</code> 或完整代理 URL。节点安装立即使用；ComfyUI 运行时下载需要保存后重启服务才能继承新代理。</p>
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>GPU 运行策略</h2><span class="muted">${escapeHtml(gpuSummary)}</span></div><span class="model-badge">${escapeHtml(gpuBadge)}</span></div>
@@ -2904,8 +3048,8 @@ function settingsPage(): string {
               ${customNodeLogs[node.id] ? `<details class="node-log" open><summary>安装日志</summary><pre>${escapeHtml(customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${node.loaded && !node.updateAvailable ? "available" : "missing"}">${node.updateAvailable ? `${icon("circle-alert")} 可更新至 v${escapeHtml(node.latestVersion)}` : node.loaded ? `${icon("circle-check")} 已加载` : node.installed ? `${icon("circle-alert")} 已安装，未加载` : `${icon("circle-alert")} 未安装`}</span>
-              ${node.loaded && !node.updateAvailable && node.id !== "spectrum-minimax-h3" ? "" : `<button class="${node.updateAvailable || !node.installed || !node.loaded ? "primary" : "secondary"} button-with-icon" data-install-node="${escapeHtml(node.id)}" ${customNodeInstalling || state.queueRunning ? "disabled" : ""}>${icon(customNodeInstalling === node.id ? "refresh-cw" : node.installed ? "refresh-cw" : "download")}${customNodeInstalling === node.id ? "处理中…" : node.updateAvailable ? "更新并重启" : node.installed && !node.loaded ? "重启并复检" : node.installed ? "检查并更新" : "安装并重启"}</button>`}
+              <span class="model-availability ${node.loaded && !node.updateAvailable ? "available" : "missing"}">${node.updateAvailable ? `${icon("circle-alert")} 需要更新` : node.loaded ? `${icon("circle-check")} ${node.runtimeVerified ? "运行时已验证" : "文件检查通过"}` : node.installed ? `${icon("circle-alert")} 已安装，需修复` : `${icon("circle-alert")} 未安装`}</span>
+              <button class="${node.updateAvailable || !node.installed || !node.loaded ? "primary" : "secondary"} button-with-icon" data-install-node="${escapeHtml(node.id)}" ${customNodeInstalling || state.queueRunning || state.queue.some((task) => task.status === "running") ? "disabled" : ""}>${icon(customNodeInstalling === node.id ? "refresh-cw" : node.installed ? "refresh-cw" : "download")}${customNodeInstalling === node.id ? "处理中…" : node.updateAvailable ? "更新并重启" : node.installed && !node.loaded ? "更新/重启复检" : node.installed ? "检查更新" : "安装并重启"}</button>
             </div>
           </article>`).join("") || `<div class="panel environment-empty">等待环境扫描结果</div>`}
       </div>
@@ -3008,7 +3152,7 @@ function settingsPage(): string {
   return `
     <section class="page-heading settings-heading">
       <div><div class="heading-line"><h1>设置</h1>${gpuDevices.length ? `<span class="model-badge">${escapeHtml(gpuBadge)}</span>` : ""}</div><p>模型扫描、GPU 显存检测和本地服务集中配置。</p></div>
-      <div class="button-row"><button class="secondary button-with-icon" id="scan-environment" ${environmentScanning ? "disabled" : ""}>${icon(environmentScanning ? "refresh-cw" : "scan-search")}${environmentScanning ? "扫描中…" : "重新扫描全部"}</button><button class="primary button-with-icon" id="save-settings">${icon("save")}保存设置</button></div>
+      <div class="button-row settings-heading-actions"><span class="save-state ${settingsDirty ? "dirty" : ""}">${settingsDirty ? "未保存更改" : "已保存"}</span><button class="secondary button-with-icon" id="scan-environment" ${environmentScanning ? "disabled" : ""}>${icon(environmentScanning ? "refresh-cw" : "scan-search")}${environmentScanning ? "扫描中…" : "重新扫描全部"}</button><button class="secondary button-with-icon" id="discard-settings" ${settingsDirty ? "" : "disabled"}>${icon("rotate-ccw")}放弃更改</button><button class="primary button-with-icon" id="save-settings" ${settingsDirty ? "" : "disabled"}>${icon("save")}保存设置</button></div>
     </section>
     <div class="settings-layout">
       <nav class="settings-sidebar" aria-label="设置分类">
@@ -3315,10 +3459,27 @@ async function togglePromptModelFromUi(): Promise<void> {
 function requestHistoryDeletion(assetId: string): void {
   const asset = state.history.find((item) => item.id === assetId);
   if (!asset) return;
+  rememberModalFocus();
   pendingConfirmation = {
     kind: "delete-history",
     assetId,
     title: asset.title
+  };
+  confirmationBusy = false;
+  render();
+}
+
+function requestQueueTaskConfirmation(
+  taskId: string,
+  action: "remove" | "cancel"
+): void {
+  const task = state.queue.find((item) => item.id === taskId);
+  if (!task) return;
+  rememberModalFocus();
+  pendingConfirmation = {
+    kind: action === "remove" ? "remove-queue-task" : "cancel-queue-task",
+    taskId,
+    title: task.outputFilename
   };
   confirmationBusy = false;
   render();
@@ -3391,14 +3552,27 @@ async function editHistoryAsset(assetId: string): Promise<void> {
   const asset = state.history.find((item) => item.id === assetId);
   if (!asset) return;
   const now = new Date().toISOString();
+  const version = preferredVersion(asset);
+  const isExtension = asset.inputMode === "video" || Boolean(asset.sourceVideoPath);
+  const sourceVideoDuration = asset.sourceVideoDuration ?? asset.trimEndSeconds ?? 0;
   const draft: Draft = {
     ...state.draft,
+    inputMode: isExtension ? "video" : "image",
     modelId: asset.modelId,
     workflowPath: asset.workflowPath ?? state.draft.workflowPath,
-    startImagePath: asset.startImagePath ?? state.draft.startImagePath,
-    sourceWidth: 0,
-    sourceHeight: 0,
-    endImagePath: asset.endImagePath ?? "",
+    startImagePath: isExtension ? "" : asset.startImagePath ?? "",
+    sourceWidth: asset.sourceWidth ?? (isExtension ? version.width : 0),
+    sourceHeight: asset.sourceHeight ?? (isExtension ? version.height : 0),
+    endImagePath: isExtension ? "" : asset.endImagePath ?? "",
+    sourceVideoPath: isExtension ? asset.sourceVideoPath ?? "" : "",
+    sourceVideoDuration: isExtension ? sourceVideoDuration : 0,
+    trimStartSeconds: isExtension ? asset.trimStartSeconds ?? 0 : 0,
+    trimEndSeconds: isExtension ? asset.trimEndSeconds ?? sourceVideoDuration : 0,
+    sourceAssetId: asset.sourceAssetId,
+    sourceVersionId: asset.sourceVersionId,
+    h3ReferenceSlots: isExtension
+      ? []
+      : (asset.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
     ratio: asset.ratio ?? state.draft.ratio,
     resolution: ([480, 540, 720, 768].includes(asset.resolution)
       ? asset.resolution
@@ -3558,6 +3732,28 @@ async function acceptConfirmation(): Promise<void> {
       confirmationBusy = false;
       showMessage(result.message);
       render();
+      restoreModalFocus();
+      return;
+    } else if (request.kind === "remove-queue-task") {
+      queueActionBusy = { taskId: request.taskId, action: "remove" };
+      state = await window.studio.removeTask(request.taskId);
+      queueActionBusy = null;
+    } else if (request.kind === "cancel-queue-task") {
+      queueActionBusy = { taskId: request.taskId, action: "cancel" };
+      state = await window.studio.cancelTask(request.taskId);
+      queueActionBusy = null;
+    } else if (request.kind === "discard-settings") {
+      settingsDraft = null;
+      void window.studio.setSettingsDirty(false).catch(() => undefined);
+      page = request.nextPage;
+      flashMessage = "";
+      pendingConfirmation = null;
+      confirmationBusy = false;
+      render();
+      restoreModalFocus();
+      if (request.nextPage !== "history") {
+        window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+      }
       return;
     } else {
       releaseHistoryVideo(request.assetId);
@@ -3571,7 +3767,9 @@ async function acceptConfirmation(): Promise<void> {
     pendingConfirmation = null;
     confirmationBusy = false;
     render();
+    restoreModalFocus();
   } catch (error) {
+    queueActionBusy = null;
     if (request.kind === "force-stop-comfy") serviceForceStopping = false;
     confirmationBusy = false;
     showMessage(error instanceof Error ? error.message : String(error));
@@ -3584,6 +3782,7 @@ function bindConfirmationDialog(): void {
     if (confirmationBusy) return;
     pendingConfirmation = null;
     render();
+    restoreModalFocus();
   };
   document.querySelector("#cancel-confirmation")?.addEventListener("click", close);
   document.querySelector("#accept-confirmation")?.addEventListener("click", () => {
@@ -3593,10 +3792,7 @@ function bindConfirmationDialog(): void {
     if (event.target === event.currentTarget) close();
   });
   const dialog = document.querySelector<HTMLElement>(".confirm-dialog");
-  dialog?.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") close();
-  });
-  dialog?.focus();
+  if (dialog) bindModalFocus(dialog, close, "#cancel-confirmation");
 }
 
 function bindShell(): void {
@@ -3607,6 +3803,13 @@ function bindShell(): void {
     button.addEventListener("click", () => {
       const nextPage = button.dataset.page as Page;
       const previousPage = page;
+      if (page === "settings" && nextPage !== "settings" && settingsHaveUnsavedChanges()) {
+        rememberModalFocus();
+        pendingConfirmation = { kind: "discard-settings", nextPage };
+        confirmationBusy = false;
+        render();
+        return;
+      }
       if (page === "history-detail" && nextPage === "history") {
         returnToHistory();
         return;
@@ -3736,8 +3939,9 @@ function performanceCard(
   suffix: string,
   detail = ""
 ): string {
-  const normalized = value == null ? 0 : Math.max(0, Math.min(100, value));
-  return `<article class="panel performance-card"><span>${label}</span><strong id="${id}">${value == null ? "—" : `${Math.round(value)}${suffix}`}</strong><small id="${id}-detail">${escapeHtml(detail)}</small><div class="metric-bar"><i id="${id}-bar" style="width:${normalized}%"></i></div></article>`;
+  const available = value != null && Number.isFinite(value);
+  const normalized = available ? Math.max(0, Math.min(100, value)) : 0;
+  return `<article class="panel performance-card"><span>${label}</span><strong id="${id}">${available ? `${Math.round(value)}${suffix}` : "—"}</strong><small id="${id}-detail">${escapeHtml(detail)}</small><div class="metric-bar"><i id="${id}-bar" style="width:${normalized}%"></i></div></article>`;
 }
 
 function patchDraft(patch: Partial<Draft>): void {
@@ -4567,6 +4771,7 @@ function bindCreate(): void {
   range?.addEventListener("change", render);
   number?.addEventListener("change", render);
   document.querySelector("#clear-draft")?.addEventListener("click", () => {
+    rememberModalFocus();
     pendingConfirmation = { kind: "clear-draft" };
     confirmationBusy = false;
     render();
@@ -4614,17 +4819,15 @@ function bindQueue(): void {
     showMessage("等待任务已按模型和工作流重新分组。");
   });
   document.querySelectorAll<HTMLElement>("[data-remove]").forEach((button) => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       reportUserAction("queue-remove", { taskId: button.dataset.remove });
-      state = await window.studio.removeTask(button.dataset.remove!);
-      render();
+      requestQueueTaskConfirmation(button.dataset.remove!, "remove");
     });
   });
   document.querySelectorAll<HTMLElement>("[data-cancel]").forEach((button) => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       reportUserAction("queue-cancel", { taskId: button.dataset.cancel });
-      state = await window.studio.cancelTask(button.dataset.cancel!);
-      render();
+      requestQueueTaskConfirmation(button.dataset.cancel!, "cancel");
     });
   });
   document.querySelectorAll<HTMLButtonElement>("[data-move]").forEach((button) => {
@@ -4669,17 +4872,15 @@ function bindQueue(): void {
       const task = state.queue.find((item) => item.id === button.dataset.editUpscaleTask);
       if (!task || task.taskType !== "upscale") return;
       try {
+        rememberModalFocus();
         const editingWaitingTask = task.status === "waiting";
-        if (!editingWaitingTask) {
-          state = await window.studio.removeTask(task.id);
-        }
         upscaleDialog = {
-          ...(editingWaitingTask ? { taskId: task.id } : {}),
+          ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
           assetId: task.sourceAssetId,
           versionId: task.sourceVersionId,
           targetHeight: task.targetHeight,
           modelId: task.modelId as typeof upscaleDialog extends { modelId: infer Model } ? Model : never,
-          tileMode: "safe"
+          tileMode: task.tileMode
         };
         render();
       } catch (error) {
@@ -4693,26 +4894,32 @@ function bindUpscaleDialog(): void {
   const closeUpscale = () => {
     upscaleDialog = null;
     render();
+    restoreModalFocus();
   };
   document.querySelector("#close-upscale")?.addEventListener("click", closeUpscale);
   document.querySelector("#cancel-upscale")?.addEventListener("click", closeUpscale);
   document.querySelector("#upscale-backdrop")?.addEventListener("click", (event) => {
     if (event.target === event.currentTarget) closeUpscale();
   });
+  const upscaleDialogElement = document.querySelector<HTMLElement>(".upscale-dialog");
+  if (upscaleDialogElement) bindModalFocus(upscaleDialogElement, closeUpscale, "#cancel-upscale");
   document.querySelectorAll<HTMLElement>("[data-upscale-height]").forEach((button) => {
     button.addEventListener("click", () => {
       if (!upscaleDialog) return;
+      rememberModalControlFocus(button);
       upscaleDialog.targetHeight = Number(button.dataset.upscaleHeight) as typeof upscaleDialog.targetHeight;
       render();
     });
   });
   document.querySelector("#upscale-model")?.addEventListener("change", (event) => {
     if (!upscaleDialog) return;
+    rememberModalControlFocus(event.currentTarget as HTMLElement);
     upscaleDialog.modelId = (event.currentTarget as HTMLSelectElement).value as typeof upscaleDialog.modelId;
     render();
   });
   document.querySelector("#upscale-tile")?.addEventListener("change", (event) => {
     if (!upscaleDialog) return;
+    rememberModalControlFocus(event.currentTarget as HTMLElement);
     upscaleDialog.tileMode = (event.currentTarget as HTMLSelectElement).value as typeof upscaleDialog.tileMode;
     render();
   });
@@ -4720,7 +4927,7 @@ function bindUpscaleDialog(): void {
     if (!upscaleDialog) return;
     const dialogState = upscaleDialog;
     reportUserAction(dialogState.taskId ? "upscale-task-update" : "upscale-task-enqueue", {
-      taskId: dialogState.taskId,
+      taskId: dialogState.taskId ?? dialogState.replaceTaskId,
       modelId: dialogState.modelId,
       targetHeight: dialogState.targetHeight
     });
@@ -4733,21 +4940,25 @@ function bindUpscaleDialog(): void {
       return;
     }
     try {
-      if (dialogState.taskId) {
-        const [targetWidth, targetHeight] = upscaleDimensions(
-          version.width,
-          version.height,
-          dialogState.targetHeight
+      const [targetWidth, targetHeight] = upscaleDimensions(
+        version.width,
+        version.height,
+        dialogState.targetHeight
+      );
+      const upscalePatch = {
+        targetWidth,
+        targetHeight: dialogState.targetHeight,
+        modelId: dialogState.modelId,
+        workflowPath: `builtin:upscale/${dialogState.modelId}`,
+        tileMode: dialogState.tileMode,
+        faceRestore: false,
+        outputFilename: createUpscaleFilename(sourceFile.filename, dialogState.targetHeight)
+      };
+      if (dialogState.taskId || dialogState.replaceTaskId) {
+        state = await window.studio.updateUpscaleTask(
+          dialogState.taskId ?? dialogState.replaceTaskId!,
+          upscalePatch
         );
-        state = await window.studio.updateUpscaleTask(dialogState.taskId, {
-          targetWidth,
-          targetHeight: dialogState.targetHeight,
-          modelId: dialogState.modelId,
-          workflowPath: `builtin:upscale/${dialogState.modelId}`,
-          tileMode: dialogState.tileMode,
-          faceRestore: false,
-          outputFilename: createUpscaleFilename(sourceFile.filename, dialogState.targetHeight)
-        });
       } else {
         state = await window.studio.enqueueUpscale({
           sourceAssetId: asset.id,
@@ -4765,7 +4976,14 @@ function bindUpscaleDialog(): void {
         });
       }
       upscaleDialog = null;
-      showMessage(dialogState.taskId ? "提升任务已更新。" : "分辨率提升任务已加入队列。");
+      showMessage(
+        dialogState.taskId
+          ? "提升任务已更新。"
+          : dialogState.replaceTaskId
+            ? "失败任务已恢复并更新设置。"
+            : "分辨率提升任务已加入队列。"
+      );
+      restoreModalFocus();
     } catch (error) {
       showMessage(error instanceof Error ? error.message : String(error));
     }
@@ -5057,6 +5275,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       (shortEdge) => shortEdge > versionShortEdge(version)
     );
     if (!targetShortEdge) return;
+    rememberModalFocus();
     const configuredModel = state.settings.defaultUpscaleModel;
     upscaleDialog = {
       assetId: asset.id,
@@ -5206,11 +5425,13 @@ function formSettings(): Settings {
 async function runEnvironmentScan(settings: Settings): Promise<void> {
   reportUserAction("scan-environment");
   environmentScanning = true;
+  environmentScanError = "";
   render();
   try {
     environmentScan = await window.studio.scanEnvironment(settings);
   } catch (error) {
-    showMessage(`环境扫描失败：${error instanceof Error ? error.message : String(error)}`);
+    environmentScanError = `环境扫描失败：${error instanceof Error ? error.message : String(error)}`;
+    showMessage(environmentScanError);
   } finally {
     environmentScanning = false;
     render();
@@ -5244,6 +5465,7 @@ function bindSettings(): void {
   document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(".settings-content input, .settings-content textarea, .settings-content select").forEach((input) => {
     const update = () => {
       settingsDraft = formSettings();
+      syncSettingsDirtyUi();
     };
     input.addEventListener("input", update);
     input.addEventListener("change", update);
@@ -5289,6 +5511,12 @@ function bindSettings(): void {
   });
   document.querySelector<HTMLInputElement>("#auto-retry-failed-tasks")?.addEventListener("change", () => {
     settingsDraft = formSettings();
+    render();
+  });
+  document.querySelector<HTMLButtonElement>("#discard-settings")?.addEventListener("click", () => {
+    if (!settingsHaveUnsavedChanges()) return;
+    settingsDraft = null;
+    void window.studio.setSettingsDirty(false).catch(() => undefined);
     render();
   });
   document.querySelectorAll<HTMLElement>("[data-settings-tab]").forEach((button) => {
@@ -5349,6 +5577,7 @@ function bindSettings(): void {
   }
   document.querySelectorAll<HTMLButtonElement>("[data-install-profile]").forEach((button) => {
     button.addEventListener("click", () => {
+      rememberModalFocus();
       settingsDraft = formSettings();
       const profile = environmentScan?.modelProfiles.find(
         (item) => item.id === button.dataset.installProfile
@@ -5404,6 +5633,7 @@ function bindSettings(): void {
     });
   });
   document.querySelector<HTMLButtonElement>("#force-stop-comfy")?.addEventListener("click", () => {
+    rememberModalFocus();
     settingsDraft = formSettings();
     pendingConfirmation = { kind: "force-stop-comfy" };
     confirmationBusy = false;
@@ -5516,6 +5746,10 @@ function bindSettings(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-install-node]").forEach((button) => {
     button.addEventListener("click", async () => {
       const nodeId = button.dataset.installNode!;
+      if (state.queue.some((task) => task.status === "running")) {
+        showMessage("当前有视频任务正在运行，请等待完成后再安装或更新节点。");
+        return;
+      }
       const currentSettings = formSettings();
       settingsDraft = currentSettings;
       customNodeInstalling = nodeId;
@@ -5527,30 +5761,24 @@ function bindSettings(): void {
           ...customNodeLogs,
           [nodeId]: result.log || result.message
         };
-        let message = result.message;
-        if (nodeId === "spectrum-minimax-h3") {
-          const restarted = await window.studio.restartLocalService(
-            "comfy",
-            currentSettings
-          );
-          customNodeLogs = {
-            ...customNodeLogs,
-            [nodeId]: [
-              customNodeLogs[nodeId],
-              `ComfyUI 重启：${restarted.message}`
-            ].filter(Boolean).join("\n\n")
-          };
-          if (!restarted.ok) {
-            throw new Error(`节点文件已安装，但 ComfyUI 自动重启失败：${restarted.message}`);
-          }
-          message = "Spectrum 已安装/更新，ComfyUI 已重启并完成节点复检。";
+        const restarted = await window.studio.restartLocalService(
+          "comfy",
+          currentSettings
+        );
+        customNodeLogs = {
+          ...customNodeLogs,
+          [nodeId]: [
+            customNodeLogs[nodeId],
+            `ComfyUI 重启：${restarted.message}`
+          ].filter(Boolean).join("\n\n")
+        };
+        if (!restarted.ok) {
+          throw new Error(`节点文件已安装/更新，但 ComfyUI 自动重启失败：${restarted.message}`);
         }
+        const message = `${result.message} ComfyUI 已重启并完成复检。`;
         environmentScan = await window.studio.scanEnvironment(currentSettings);
-        if (
-          nodeId === "spectrum-minimax-h3" &&
-          !environmentScan.customNodes.find((node) => node.id === nodeId)?.loaded
-        ) {
-          throw new Error("ComfyUI 已重启，但 Spectrum 节点仍未注册；请展开安装日志检查导入错误。");
+        if (!environmentScan.customNodes.find((node) => node.id === nodeId)?.loaded) {
+          throw new Error("ComfyUI 已重启，但节点必需模块仍未全部注册；请展开安装日志检查导入错误。");
         }
         showMessage(message);
       } catch (error) {
@@ -5601,12 +5829,15 @@ function bindSettings(): void {
   const closeInstallGuide = () => {
     selectedInstallGuide = null;
     render();
+    restoreModalFocus();
   };
   document.querySelector("#close-install-guide")?.addEventListener("click", closeInstallGuide);
   document.querySelector("#dismiss-install-guide")?.addEventListener("click", closeInstallGuide);
   document.querySelector("#install-guide-backdrop")?.addEventListener("click", (event) => {
     if (event.target === event.currentTarget) closeInstallGuide();
   });
+  const installGuide = document.querySelector<HTMLElement>(".install-guide-dialog");
+  if (installGuide) bindModalFocus(installGuide, closeInstallGuide, "#dismiss-install-guide");
   document.querySelector("#open-install-download")?.addEventListener("click", async () => {
     if (!selectedInstallGuide) return;
     const opened = await window.studio.openExternal(
@@ -5629,6 +5860,8 @@ function bindSettings(): void {
       previousSettings.lmStudioInstallDirectory !== nextSettings.lmStudioInstallDirectory ||
       previousSettings.promptModelDirectory !== nextSettings.promptModelDirectory ||
       previousSettings.promptLlamaServerPath !== nextSettings.promptLlamaServerPath;
+    const proxyChanged = previousSettings.proxyEnabled !== nextSettings.proxyEnabled ||
+      previousSettings.proxyUrl !== nextSettings.proxyUrl;
     state = await window.studio.saveSettings(nextSettings);
     settingsDraft = null;
     if (state.settings.ltxExtensionModelProfile !== previousProfile) {
@@ -5653,7 +5886,9 @@ function bindSettings(): void {
     if (pathsChanged || state.settings.ltxExtensionModelProfile !== previousProfile) {
       await runEnvironmentScan(state.settings);
     }
-    showMessage("设置已保存，将对下一项尚未开始的任务生效。");
+    showMessage(proxyChanged
+      ? "设置已保存。代理已用于后续安装；请重启 ComfyUI，让 SeedVR2 等节点的运行时下载继承新代理。"
+      : "设置已保存，将对下一项尚未开始的任务生效。");
   });
   document.querySelector<HTMLButtonElement>("#install-llama-server")?.addEventListener("click", async () => {
     const currentSettings = formSettings();
@@ -5765,6 +6000,7 @@ function bindSettings(): void {
       showMessage("已保存 LM Studio 安装目录并重新扫描。");
     });
   });
+  syncSettingsDirtyUi();
 }
 
 window.studio.onStateChanged((nextState) => {
@@ -5843,12 +6079,13 @@ function setMetric(
   value: number | null,
   detail = ""
 ): void {
+  const available = value != null && Number.isFinite(value);
   const label = document.querySelector<HTMLElement>(`#${id}`);
   const detailElement = document.querySelector<HTMLElement>(`#${id}-detail`);
   const bar = document.querySelector<HTMLElement>(`#${id}-bar`);
-  if (label) label.textContent = value == null ? "—" : `${Math.round(value)}%`;
+  if (label) label.textContent = available ? `${Math.round(value)}%` : "—";
   if (detailElement) detailElement.textContent = detail;
-  if (bar) bar.style.width = `${value == null ? 0 : Math.max(0, Math.min(100, value))}%`;
+  if (bar) bar.style.width = `${available ? Math.max(0, Math.min(100, value)) : 0}%`;
 }
 
 async function refreshPerformanceMetrics(): Promise<void> {
@@ -5860,8 +6097,12 @@ async function refreshPerformanceMetrics(): Promise<void> {
     setMetric("metric-cpu", performanceMetrics.cpuPercent);
     setMetric(
       "metric-memory",
-      performanceMetrics.memoryUsedBytes / performanceMetrics.memoryTotalBytes * 100,
-      `${formatBytes(performanceMetrics.memoryUsedBytes)} / ${formatBytes(performanceMetrics.memoryTotalBytes)}`
+      performanceMetrics.memoryTotalBytes > 0
+        ? performanceMetrics.memoryUsedBytes / performanceMetrics.memoryTotalBytes * 100
+        : null,
+      performanceMetrics.memoryTotalBytes > 0
+        ? `${formatBytes(performanceMetrics.memoryUsedBytes)} / ${formatBytes(performanceMetrics.memoryTotalBytes)}`
+        : ""
     );
     setMetric(
       "metric-gpu",
@@ -5895,12 +6136,18 @@ void window.studio.getState().then((initialState) => {
   state = initialState;
   render();
   void refreshPerformanceMetrics();
-  void Promise.all([
+  void Promise.allSettled([
     window.studio.getBundledWorkflow(state.draft.modelId, state.draft.inputMode),
     window.studio.scanEnvironment(state.settings)
-  ]).then(([bundled, scan]) => {
-    environmentScan = scan;
-    if (bundled) {
+  ]).then(([bundledResult, scanResult]) => {
+    if (scanResult.status === "fulfilled") {
+      environmentScanError = "";
+      environmentScan = scanResult.value;
+    } else {
+      environmentScanError = `启动时环境扫描失败：${scanResult.reason instanceof Error ? scanResult.reason.message : String(scanResult.reason)}`;
+    }
+    if (bundledResult.status === "fulfilled" && bundledResult.value) {
+      const bundled = bundledResult.value;
       bundledWorkflows[bundledWorkflowKey(bundled.modelId, state.draft.inputMode)] = bundled;
       workflowCapabilities[bundled.path] = {
         supportsEndImage: bundled.supportsEndImage,
@@ -5910,8 +6157,14 @@ void window.studio.getState().then((initialState) => {
         patchDraft({ workflowPath: bundled.path });
       }
     }
+    if (bundledResult.status === "rejected") {
+      void window.studio.reportRendererError(
+        bundledResult.reason instanceof Error
+          ? bundledResult.reason.message
+          : String(bundledResult.reason),
+        { source: "bundled-workflow-load" }
+      ).catch(() => undefined);
+    }
     render();
-  }).catch(() => {
-    // 创建页仍可手动选择工作流；详细扫描错误可在设置页重试查看。
   });
 });

@@ -254,11 +254,16 @@ export interface HistoryAsset {
   ratio?: Draft["ratio"];
   prompt: string;
   seed: number;
+  inputMode?: Draft["inputMode"];
+  h3ReferenceSlots?: H3ReferenceSlot[];
+  sourceWidth?: number;
+  sourceHeight?: number;
   startImagePath?: string;
   endImagePath?: string;
   sourceAssetId?: string;
   sourceVersionId?: string;
   sourceVideoPath?: string;
+  sourceVideoDuration?: number;
   trimStartSeconds?: number;
   trimEndSeconds?: number;
   workflowPath?: string;
@@ -396,6 +401,7 @@ export interface CustomNodeStatus {
   repositoryUrl: string;
   installed: boolean;
   loaded: boolean;
+  runtimeVerified: boolean;
   loadError: string;
   directory: string;
   required: boolean;
@@ -554,6 +560,7 @@ export interface TaskPreview {
 
 export interface AppApi {
   getState(): Promise<AppState>;
+  setSettingsDirty(dirty: boolean): Promise<void>;
   saveDraft(draft: Draft): Promise<AppState>;
   saveSettings(settings: Settings): Promise<AppState>;
   pickImage(): Promise<string | null>;
