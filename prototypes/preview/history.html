@@ -8,34 +8,88 @@
   <style>
 :root {
   color-scheme: light dark;
-  background-color: var(--background) !important;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
 
   /* Agent-facing contract; keep in sync with SKILL.md. */
-  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
-  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
-  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
-  --card-foreground: var(--foreground);
-  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
-  --popover-foreground: var(--foreground);
-  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
-  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
-  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
-  --secondary-foreground: var(--foreground);
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
   --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
-  --muted-foreground: light-dark(
-    rgb(26 28 31 / 49.4%),
-    rgb(255 255 255 / 49.8%)
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
   );
-  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
-  --accent-foreground: var(--primary);
-  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
-  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
-  --input: light-dark(
-    rgb(26 28 31 / 11.8%),
-    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
   );
-  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
-  --font-size-base: 14px;
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
   --viz-series-1: var(--primary);
   --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
   --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
@@ -59,7 +113,7 @@
   --line-height-normal: calc(var(--font-size-normal) * 1.5);
   --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
   --line-height-small: calc(var(--font-size-small) + 4px);
-  --radius: 12.5px;
+  --radius: var(--border-radius-lg, 12.5px);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -79,9 +133,6 @@
   --viz-accent-bg: var(--accent);
   --viz-font-size: var(--font-size-base);
   --viz-warning: var(--destructive);
-  --color-background-primary: var(--background);
-  --color-text-primary: var(--foreground);
-  --color-border-secondary: var(--border);
 }
 
 :root[data-theme="light"] {
@@ -97,6 +148,20 @@
 }
 
 html > body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
   margin: 0;
   padding: 5px;
   color: var(--foreground);
@@ -110,7 +175,7 @@ html > body {
 a {
   color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
   cursor: pointer;
-  font-weight: var(--viz-font-weight-medium);
+  font-weight: var(--font-weight-medium, 500);
   text-decoration: none;
   text-underline-offset: 2px;
 }
@@ -794,9 +859,163 @@ svg {
   width: 100%;
 }
 
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: 16px !important;
+  height: 16px !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
 .text-warning,
 .text-destructive {
   color: var(--destructive);
+}
+
+.studio-prototype, .studio-prototype * { box-sizing: border-box; }
+.studio-prototype {
+  --studio-bg: #090c12;
+  --studio-panel: #111720;
+  --studio-panel-2: #151d29;
+  --studio-border: #293548;
+  --studio-muted: #8e9bb0;
+  --studio-text: #eef4ff;
+  --studio-blue: #87b7ff;
+  --studio-blue-2: #4c8ff7;
+  --studio-green: #67d79d;
+  --studio-amber: #f1bb66;
+  --studio-red: #ff7a7a;
+  min-height: calc(100vh - 60px);
+  color: var(--studio-text);
+  background: var(--studio-bg);
+  border: 1px solid #1d2634;
+  border-radius: 18px;
+  overflow: clip;
+  font: 14px/1.5 Inter, "Segoe UI", system-ui, sans-serif;
+}
+.studio-prototype button, .studio-prototype input, .studio-prototype select, .studio-prototype textarea { font: inherit; }
+.studio-prototype button, .studio-prototype a { -webkit-tap-highlight-color: transparent; }
+.studio-prototype .studio-topbar { min-height: 64px; padding: 12px 22px; display:flex; align-items:center; justify-content:space-between; gap:18px; border-bottom:1px solid var(--studio-border); background:#0c1119; position:sticky; top:0; z-index:20; }
+.studio-prototype .studio-brand { display:flex; align-items:center; gap:10px; color:var(--studio-text); text-decoration:none; font-weight:750; }
+.studio-prototype .brand-mark { width:31px; height:31px; border-radius:10px; display:grid; place-items:center; background:linear-gradient(145deg,#9fc5ff,#4d88ed); color:#071326; box-shadow:0 7px 24px #4d88ed35; }
+.studio-prototype .studio-nav { display:flex; align-items:center; gap:4px; padding:4px; border:1px solid var(--studio-border); border-radius:12px; background:#111720; }
+.studio-prototype .studio-nav a { min-width:58px; padding:8px 13px; border-radius:8px; color:var(--studio-muted); text-decoration:none; text-align:center; }
+.studio-prototype .studio-nav a:hover, .studio-prototype .studio-nav a[aria-current="page"] { color:var(--studio-text); background:#202b3c; }
+.studio-prototype .studio-body { padding:22px; display:grid; gap:16px; }
+.studio-prototype .page-head { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:58px; }
+.studio-prototype .page-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.studio-prototype h1, .studio-prototype h2, .studio-prototype h3, .studio-prototype p { margin:0; }
+.studio-prototype h1 { font-size:23px; line-height:1.2; letter-spacing:-.025em; }
+.studio-prototype h2 { font-size:17px; line-height:1.3; }
+.studio-prototype h3 { font-size:15px; line-height:1.35; }
+.studio-prototype .muted { color:var(--studio-muted); }
+.studio-prototype .tiny { font-size:12px; }
+.studio-prototype code { color:#b9d4ff; overflow-wrap:anywhere; }
+.studio-prototype .actions, .studio-prototype .inline, .studio-prototype .section-head, .studio-prototype .status-line { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+.studio-prototype .section-head { justify-content:space-between; margin-bottom:14px; }
+.studio-prototype .btn { min-height:36px; padding:8px 13px; display:inline-flex; align-items:center; justify-content:center; gap:7px; color:var(--studio-text); border:1px solid #344258; border-radius:9px; background:#1a2331; cursor:pointer; text-decoration:none; }
+.studio-prototype .btn:hover { background:#243145; }
+.studio-prototype .btn.primary { color:#081425; border-color:#78adff; background:#82b5ff; font-weight:700; }
+.studio-prototype .btn.ghost { color:var(--studio-muted); background:transparent; }
+.studio-prototype .btn.danger { color:#ffaaaa; border-color:#63363e; background:#2b171b; }
+.studio-prototype .icon-btn { width:36px; height:36px; padding:0; }
+.studio-prototype .badge { display:inline-flex; align-items:center; gap:5px; min-height:24px; padding:3px 8px; border:1px solid #365276; border-radius:999px; color:#a9cbff; background:#102039; font-size:12px; white-space:nowrap; }
+.studio-prototype .badge.ok { color:#91e8b9; border-color:#285641; background:#10251b; }
+.studio-prototype .badge.warn { color:#ffd594; border-color:#674d2b; background:#2a2112; }
+.studio-prototype .badge.bad { color:#ffaaaa; border-color:#65363d; background:#2a171b; }
+.studio-prototype .panel { padding:18px; border:1px solid var(--studio-border); border-radius:15px; background:linear-gradient(160deg,var(--studio-panel),#0f141d); box-shadow:0 12px 30px #0000001e; min-width:0; }
+.studio-prototype .grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.studio-prototype .grid-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+.studio-prototype .grid-4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.studio-prototype .field { display:grid; gap:6px; color:#aebbd0; font-size:12px; }
+.studio-prototype input, .studio-prototype select, .studio-prototype textarea { width:100%; color:var(--studio-text); border:1px solid #334156; border-radius:9px; background:#0d131c; outline:none; }
+.studio-prototype input, .studio-prototype select { min-height:40px; padding:8px 10px; }
+.studio-prototype textarea { min-height:145px; padding:12px; resize:vertical; }
+.studio-prototype input:focus, .studio-prototype select:focus, .studio-prototype textarea:focus { border-color:#6ea7ff; box-shadow:0 0 0 3px #5e9cff1f; }
+.studio-prototype .workspace { display:grid; grid-template-columns:minmax(320px,.82fr) minmax(460px,1.18fr); gap:14px; align-items:start; }
+.studio-prototype .media-well { min-height:310px; border:1px dashed #40506a; border-radius:13px; background:#0b1017; display:grid; place-items:center; overflow:hidden; position:relative; }
+.studio-prototype .media-well.has-media { border-style:solid; background:radial-gradient(circle at 68% 28%,#9b5c3d 0 10%,transparent 38%),linear-gradient(160deg,#29333f,#0b1017 70%); }
+.studio-prototype .media-placeholder { max-width:260px; display:grid; place-items:center; gap:8px; color:var(--studio-muted); text-align:center; }
+.studio-prototype .media-placeholder svg { width:34px; height:34px; color:var(--studio-blue); }
+.studio-prototype .media-caption { position:absolute; inset:auto 10px 10px; display:flex; gap:8px; align-items:center; }
+.studio-prototype .drop-note { position:absolute; inset:0; display:none; place-items:center; background:#0c1a2fe8; color:#bcd7ff; font-weight:700; }
+.studio-prototype .media-well.dragging .drop-note { display:grid; }
+.studio-prototype .slot-list { display:grid; gap:9px; }
+.studio-prototype .reference-slot { display:grid; grid-template-columns:64px minmax(0,1fr) 130px 36px; gap:9px; align-items:center; padding:9px; border:1px solid #2d3a4e; border-radius:11px; background:#0d131c; }
+.studio-prototype .slot-thumb { height:50px; border-radius:8px; display:grid; place-items:center; color:#8fbaff; background:#17243a; }
+.studio-prototype .control-section { display:grid; gap:12px; padding-top:14px; margin-top:14px; border-top:1px solid #273246; }
+.studio-prototype .summary-strip { padding:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid #30405a; border-radius:10px; background:#0c1420; }
+.studio-prototype .queue-list { display:grid; gap:10px; }
+.studio-prototype .queue-card { padding:14px; display:grid; gap:12px; border:1px solid #2c394c; border-radius:13px; background:#101720; }
+.studio-prototype .queue-card.running { border-color:#4b78b9; background:linear-gradient(145deg,#13233a,#101720); }
+.studio-prototype .queue-row { display:grid; grid-template-columns:52px minmax(0,1fr) auto; gap:12px; align-items:center; }
+.studio-prototype .queue-rank { width:45px; height:45px; border-radius:12px; display:grid; place-items:center; color:#a8caff; background:#172944; font-weight:800; }
+.studio-prototype .progress { height:7px; overflow:hidden; border-radius:999px; background:#273143; }
+.studio-prototype .progress i { display:block; height:100%; width:64%; border-radius:inherit; background:linear-gradient(90deg,#5798ff,#9bc3ff); }
+.studio-prototype .running-grid { display:grid; grid-template-columns:minmax(280px,.9fr) minmax(340px,1.1fr); gap:14px; }
+.studio-prototype .preview { min-height:230px; display:grid; place-items:center; border-radius:11px; color:#91a3bd; background:radial-gradient(circle at center,#24334a,#090e15 66%); }
+.studio-prototype .metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+.studio-prototype .metric { padding:10px; border:1px solid #2b384b; border-radius:9px; background:#0d131c; }
+.studio-prototype .metric strong { display:block; margin-top:3px; font-size:16px; }
+.studio-prototype .gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:14px; align-items:start; }
+.studio-prototype .gallery.album { grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
+.studio-prototype .gallery-card { padding:0; overflow:hidden; cursor:pointer; }
+.studio-prototype .gallery-media { aspect-ratio:16/9; position:relative; background:radial-gradient(circle at 48% 38%,#c87b50 0 10%,transparent 35%),linear-gradient(145deg,#7d4d3d,#16202d 72%); }
+.studio-prototype .gallery-card:nth-child(3n+2) .gallery-media { aspect-ratio:4/3; }
+.studio-prototype .gallery-card:nth-child(3n) .gallery-media { aspect-ratio:9/12; }
+.studio-prototype .album .gallery-media { aspect-ratio:16/9 !important; }
+.studio-prototype .gallery-copy { padding:13px; display:grid; gap:8px; }
+.studio-prototype .media-chips { position:absolute; inset:8px 8px auto; display:flex; gap:5px; flex-wrap:wrap; }
+.studio-prototype .media-chip { padding:3px 7px; border-radius:999px; color:#eaf3ff; background:#090d14c9; font-size:11px; }
+.studio-prototype .context-menu { position:fixed; z-index:50; min-width:220px; padding:6px; display:none; border:1px solid #3b4a61; border-radius:11px; background:#151c26; box-shadow:0 20px 50px #0009; }
+.studio-prototype .context-menu.open { display:grid; }
+.studio-prototype .context-menu button { padding:9px 10px; display:flex; align-items:center; gap:9px; color:var(--studio-text); border:0; border-radius:7px; background:transparent; text-align:left; cursor:pointer; }
+.studio-prototype .context-menu button:hover { background:#263246; }
+.studio-prototype .context-menu button.danger { color:#ff9e9e; }
+.studio-prototype .detail-hero { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(320px,.7fr); gap:14px; align-items:start; }
+.studio-prototype .video-stage { min-height:390px; display:grid; place-items:center; color:#9eb1cc; background:radial-gradient(circle,#253752,#080d13 67%); }
+.studio-prototype .fact-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.studio-prototype .fact { padding:10px; border:1px solid #2b3749; border-radius:9px; background:#0d131b; }
+.studio-prototype .fact span { display:block; color:var(--studio-muted); font-size:11px; }
+.studio-prototype .record-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.studio-prototype .record-grid .full { grid-column:1/-1; }
+.studio-prototype dl { display:grid; grid-template-columns:130px minmax(0,1fr); gap:9px 14px; margin:0; }
+.studio-prototype dt { color:var(--studio-muted); }
+.studio-prototype dd { margin:0; min-width:0; }
+.studio-prototype .settings-layout { display:grid; grid-template-columns:210px minmax(0,1fr); gap:16px; align-items:start; }
+.studio-prototype .settings-sidebar { display:grid; gap:5px; padding:9px; position:sticky; top:86px; }
+.studio-prototype .settings-tab { width:100%; min-height:43px; padding:9px 11px; display:flex; align-items:center; gap:9px; color:var(--studio-muted); border:0; border-radius:9px; background:transparent; text-align:left; cursor:pointer; }
+.studio-prototype .settings-tab small { margin-left:auto; }
+.studio-prototype .settings-tab.active, .studio-prototype .settings-tab:hover { color:var(--studio-text); background:#1d2a3e; }
+.studio-prototype .settings-pane { display:none; gap:14px; }
+.studio-prototype .settings-pane.active { display:grid; }
+.studio-prototype .installation, .studio-prototype .dependency, .studio-prototype .model-profile { padding:13px; display:flex; align-items:flex-start; justify-content:space-between; gap:14px; border:1px solid #2d3a4d; border-radius:11px; background:#0d141e; }
+.studio-prototype .installation.active { border-color:#4d7cbd; background:#122039; }
+.studio-prototype .component-list { display:grid; gap:7px; margin-top:10px; }
+.studio-prototype .component { display:grid; grid-template-columns:18px minmax(0,1fr) 30px; gap:8px; align-items:start; }
+.studio-prototype .component.ok { color:#a8e6c2; }
+.studio-prototype .component.missing { color:#ffb0b0; }
+.studio-prototype .log-terminal { max-height:380px; overflow:auto; margin:0; padding:14px; border:1px solid #28364b; border-radius:10px; color:#b9cbe3; background:#070b11; white-space:pre-wrap; font:12px/1.65 "Cascadia Mono",Consolas,monospace; }
+.studio-prototype .dialog-backdrop { position:fixed; inset:0; z-index:60; display:none; place-items:center; padding:20px; background:#03060bc7; }
+.studio-prototype .dialog-backdrop.open { display:grid; }
+.studio-prototype .dialog { width:min(520px,100%); padding:20px; display:grid; gap:15px; border:1px solid #3a4c66; border-radius:15px; background:#131b27; box-shadow:0 24px 80px #000b; }
+@media (max-width:900px) {
+  .studio-prototype .workspace, .studio-prototype .running-grid, .studio-prototype .detail-hero { grid-template-columns:1fr; }
+  .studio-prototype .settings-layout { grid-template-columns:1fr; }
+  .studio-prototype .settings-sidebar { position:static; grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+@media (max-width:650px) {
+  .studio-prototype .studio-topbar, .studio-prototype .page-head { align-items:flex-start; flex-direction:column; }
+  .studio-prototype .studio-nav { width:100%; overflow:auto; }
+  .studio-prototype .studio-nav a { flex:1; }
+  .studio-prototype .studio-body { padding:14px; }
+  .studio-prototype .grid-2, .studio-prototype .grid-3, .studio-prototype .grid-4, .studio-prototype .record-grid, .studio-prototype .metrics { grid-template-columns:1fr; }
+  .studio-prototype .record-grid .full { grid-column:auto; }
+  .studio-prototype .settings-sidebar { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .studio-prototype .reference-slot { grid-template-columns:52px minmax(0,1fr) 36px; }
+  .studio-prototype .reference-slot select { grid-column:2; }
 }
 
     html { background: var(--background); }
@@ -818,504 +1037,73 @@ svg {
   </style>
 </head>
 <body>
-<style>
-  #video-history * { box-sizing: border-box; }
-  #video-history {
-    color: var(--foreground);
-    display: grid;
-    gap: 18px;
-  }
-  #video-history .bar,
-  #video-history .brand,
-  #video-history .nav,
-  #video-history .history-head,
-  #video-history .view-tools,
-  #video-history .section-line,
-  #video-history .item-meta,
-  #video-history .item-actions,
-  #video-history .preview-state {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    flex-wrap: wrap;
-  }
-  #video-history .bar,
-  #video-history .history-head,
-  #video-history .section-line,
-  #video-history .item-actions {
-    justify-content: space-between;
-  }
-  #video-history .brand { font-weight: 500; }
-  #video-history .history-title {
-    display: grid;
-    gap: 6px;
-  }
-  #video-history .view-tools {
-    justify-content: flex-end;
-  }
-  #video-history .view-switch {
-    display: flex;
-    gap: 5px;
-  }
-  #video-history .gallery {
-    columns: 3 220px;
-    column-gap: 14px;
-  }
-  #video-history .gallery.album {
-    columns: initial;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
-  }
-  #video-history .history-item {
-    display: grid;
-    gap: 10px;
-    padding: 0;
-    margin: 0 0 14px;
-    overflow: hidden;
-    break-inside: avoid;
-  }
-  #video-history .album .history-item {
-    margin: 0;
-  }
-  #video-history .media {
-    position: relative;
-    width: 100%;
-    aspect-ratio: var(--ratio, 16 / 9);
-    overflow: hidden;
-    background:
-      radial-gradient(circle at var(--light-x, 70%) 28%, color-mix(in srgb, var(--viz-series-1) 34%, transparent), transparent 35%),
-      linear-gradient(145deg, var(--muted), color-mix(in srgb, var(--viz-series-2) 22%, var(--muted)));
-  }
-  #video-history .album .media {
-    aspect-ratio: 16 / 9;
-  }
-  #video-history .media::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    pointer-events: none;
-    background:
-      linear-gradient(105deg, transparent 22%, color-mix(in srgb, var(--foreground) 10%, transparent) 48%, transparent 72%);
-    transform: translateX(-80%);
-  }
-  #video-history .media.is-playing::after {
-    opacity: 1;
-    animation: history-preview 2.8s linear infinite;
-  }
-  #video-history video {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  #video-history .fallback-scene {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    color: var(--muted-foreground);
-  }
-  #video-history .fallback-scene svg {
-    width: 42%;
-    height: 42%;
-    opacity: .5;
-  }
-  #video-history .media-badges {
-    position: absolute;
-    inset: 10px 10px auto;
-    z-index: 2;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-  }
-  #video-history .quality-badges {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  #video-history .duration-badge,
-  #video-history .cover-badge {
-    padding: 4px 7px;
-    color: var(--card-foreground);
-    background: color-mix(in srgb, var(--card) 82%, transparent);
-    border-radius: 999px;
-  }
-  #video-history .preview-state {
-    position: absolute;
-    z-index: 2;
-    left: 10px;
-    bottom: 10px;
-    padding: 5px 8px;
-    color: var(--card-foreground);
-    background: color-mix(in srgb, var(--card) 82%, transparent);
-    border-radius: 999px;
-    opacity: 0;
-    transform: translateY(4px);
-    transition: opacity .16s ease, transform .16s ease;
-  }
-  #video-history .media.is-playing .preview-state {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  #video-history .preview-progress {
-    position: absolute;
-    z-index: 3;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 10px;
-    background: transparent;
-    opacity: 0;
-    transition: opacity .14s ease;
-    padding: 0;
-    border: 0;
-    cursor: pointer;
-  }
-  #video-history .media.is-playing .preview-progress {
-    opacity: 1;
-  }
-  #video-history .preview-progress::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 4px;
-    background: color-mix(in srgb, var(--foreground) 20%, transparent);
-  }
-  #video-history .preview-progress-fill {
-    position: absolute;
-    z-index: 1;
-    left: 0;
-    bottom: 0;
-    width: var(--preview-progress, 0%);
-    height: 4px;
-    background: var(--primary);
-    transition: width .08s linear;
-  }
-  #video-history .item-copy {
-    display: grid;
-    gap: 8px;
-    padding: 0 12px 12px;
-    min-width: 0;
-  }
-  #video-history .item-title {
-    font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  #video-history .filename {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  #video-history .empty-note {
-    display: none;
-    text-align: center;
-  }
-  #video-history .gallery:empty + .empty-note { display: block; }
-  @keyframes history-preview {
-    from { transform: translateX(-80%); }
-    to { transform: translateX(80%); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    #video-history .media.is-playing::after { animation: none; }
-  }
-  @media (max-width: 680px) {
-    #video-history .gallery.album {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-  @media (max-width: 520px) {
-    #video-history .nav {
-      width: 100%;
-      justify-content: space-between;
-    }
-    #video-history .history-head {
-      align-items: flex-start;
-    }
-    #video-history .view-tools {
-      width: 100%;
-      justify-content: space-between;
-    }
-    #video-history .gallery,
-    #video-history .gallery.album {
-      columns: initial;
-      display: grid;
-      grid-template-columns: 1fr;
-    }
-  }
-</style>
-
-<div id="video-history">
-  <header class="bar">
-    <div class="brand"><i data-lucide="clapperboard" aria-hidden="true"></i><span>Local Video Studio</span></div>
-    <nav class="nav" aria-label="主导航">
-      <a class="btn btn-ghost" href="./create.html">创建</a>
-      <a class="btn btn-ghost" href="./queue.html">队列 <span class="viz-badge">5</span></a>
-      <a class="btn btn-ghost" href="./history.html" aria-current="page">历史</a>
-      <a class="btn btn-ghost" href="./settings.html">设置</a>
-    </nav>
-  </header>
-
-  <section class="history-head">
-    <div class="history-title">
-      <div class="section-line">
-        <h2>历史作品</h2>
-        <span class="viz-badge">18 个视频 · 最新优先</span>
-      </div>
-      <span class="text-muted">移动到视频上直接预览；移开后立即暂停并回到封面帧。</span>
-    </div>
-    <div class="view-tools">
-      <label class="form-label" for="cover-mode">默认封面
-        <select class="form-select" id="cover-mode">
-          <option value="random">随机帧</option>
-          <option value="first">第一帧</option>
-        </select>
-      </label>
-      <div class="view-switch" aria-label="排列方式">
-        <button class="btn" id="masonry-view" type="button" aria-pressed="true">
-          <i data-lucide="columns-3" aria-hidden="true"></i>瀑布流
-        </button>
-        <button class="btn btn-ghost" id="album-view" type="button" aria-pressed="false">
-          <i data-lucide="layout-grid" aria-hidden="true"></i>相册
-        </button>
-      </div>
-    </div>
-  </section>
-
-  <div class="gallery" id="history-gallery">
-    <article class="card history-item" data-id="sul-wind" data-completed="2026-07-24T15:02:00+08:00">
-      <div class="media" style="--ratio: 9 / 16; --light-x: 58%;" data-duration="5.2" data-cover="2.1">
-        <div class="fallback-scene"><i data-lucide="user-round" aria-hidden="true"></i></div>
-        <video muted loop playsinline preload="metadata" data-src="./media/SUL2-人物迎着微风回眸-20260724-143205.mp4"></video>
-        <div class="media-badges">
-          <span class="cover-badge text-small cover-index">随机帧 00:02</span>
-          <div class="quality-badges"><span class="viz-badge">4K</span><span class="duration-badge text-small">00:05</span></div>
-        </div>
-        <span class="preview-state text-small"><i data-lucide="play" aria-hidden="true"></i>正在预览</span>
-      </div>
-      <div class="item-copy">
-        <div class="item-title">人物迎着微风回眸</div>
-        <code class="filename text-small">SUL2-人物迎着微风回眸-20260724-143205.mp4</code>
-        <div class="item-meta"><span class="viz-badge">Sulphur 2</span><span class="text-small">3个版本</span><span class="text-small text-muted">原始480p · 最高4K</span></div>
-        <div class="item-actions"><span class="text-small text-muted">4K版本更新 · 今天 15:02</span><a class="btn btn-ghost" href="./history-detail.html?id=sul-wind">查看详情</a></div>
-      </div>
-    </article>
-
-    <article class="card history-item" data-id="wan-city" data-completed="2026-07-24T14:29:00+08:00">
-      <div class="media" style="--ratio: 16 / 9; --light-x: 28%;" data-duration="6.4" data-cover="3.3">
-        <div class="fallback-scene"><i data-lucide="building-2" aria-hidden="true"></i></div>
-        <video muted loop playsinline preload="metadata" data-src="./media/WAN22-5B-城市夜景慢速转身-20260724-141102.mp4"></video>
-        <div class="media-badges">
-          <span class="cover-badge text-small cover-index">随机帧 00:03</span>
-          <div class="quality-badges"><span class="viz-badge">HD</span><span class="duration-badge text-small">00:06</span></div>
-        </div>
-        <span class="preview-state text-small"><i data-lucide="play" aria-hidden="true"></i>正在预览</span>
-      </div>
-      <div class="item-copy">
-        <div class="item-title">城市夜景中的慢速转身</div>
-        <code class="filename text-small">WAN22-5B-城市夜景慢速转身-20260724-141102.mp4</code>
-        <div class="item-meta"><span class="viz-badge">Wan 2.2 5B</span><span class="text-small">2个版本</span><span class="text-small text-muted">原始540p · 最高1080p</span></div>
-        <div class="item-actions"><span class="text-small text-muted">HD版本更新 · 今天 14:29</span><a class="btn btn-ghost" href="./history-detail.html?id=wan-city">查看详情</a></div>
-      </div>
-    </article>
-
-    <article class="card history-item" data-id="sul-window" data-completed="2026-07-24T13:37:00+08:00">
-      <div class="media" style="--ratio: 4 / 3; --light-x: 76%;" data-duration="11.8" data-cover="6.6">
-        <div class="fallback-scene"><i data-lucide="panel-top" aria-hidden="true"></i></div>
-        <video muted loop playsinline preload="metadata" data-src="./media/SUL2-窗边回眸长镜头-20260724-132718.mp4"></video>
-        <div class="media-badges"><span class="cover-badge text-small cover-index">随机帧 00:07</span><span class="duration-badge text-small">00:12</span></div>
-        <span class="preview-state text-small"><i data-lucide="play" aria-hidden="true"></i>正在预览</span>
-      </div>
-      <div class="item-copy">
-        <div class="item-title">窗边回眸长镜头</div>
-        <code class="filename text-small">SUL2-窗边回眸长镜头-20260724-132718.mp4</code>
-        <div class="item-meta"><span class="viz-badge">Sulphur 2</span><span class="text-small text-muted">480p · 12秒 · 9分06秒</span></div>
-        <div class="item-actions"><span class="text-small text-muted">今天 13:37</span><a class="btn btn-ghost" href="./history-detail.html?id=sul-window">查看详情</a></div>
-      </div>
-    </article>
-
-    <article class="card history-item" data-id="hun-beach" data-completed="2026-07-24T13:10:00+08:00">
-      <div class="media" style="--ratio: 3 / 4; --light-x: 44%;" data-duration="8.1" data-cover="4.4">
-        <div class="fallback-scene"><i data-lucide="waves" aria-hidden="true"></i></div>
-        <video muted loop playsinline preload="metadata" data-src="./media/HUN15-海边全身跟随镜头-20260724-125502.mp4"></video>
-        <div class="media-badges"><span class="cover-badge text-small cover-index">随机帧 00:04</span><span class="duration-badge text-small">00:08</span></div>
-        <span class="preview-state text-small"><i data-lucide="play" aria-hidden="true"></i>正在预览</span>
-      </div>
-      <div class="item-copy">
-        <div class="item-title">海边全身跟随镜头</div>
-        <code class="filename text-small">HUN15-海边全身跟随镜头-20260724-125502.mp4</code>
-        <div class="item-meta"><span class="viz-badge">Hunyuan 1.5</span><span class="text-small text-muted">720p · 8秒 · 15分24秒</span></div>
-        <div class="item-actions"><span class="text-small text-muted">今天 13:10</span><a class="btn btn-ghost" href="./history-detail.html?id=hun-beach">查看详情</a></div>
-      </div>
-    </article>
-
-    <article class="card history-item" data-id="wan-cafe" data-completed="2026-07-24T12:24:00+08:00">
-      <div class="media" style="--ratio: 1 / 1; --light-x: 66%;" data-duration="7.0" data-cover="1.8">
-        <div class="fallback-scene"><i data-lucide="coffee" aria-hidden="true"></i></div>
-        <video muted loop playsinline preload="metadata" data-src="./media/WAN22-5B-咖啡馆细微表情-20260724-121912.mp4"></video>
-        <div class="media-badges"><span class="cover-badge text-small cover-index">随机帧 00:02</span><span class="duration-badge text-small">00:07</span></div>
-        <span class="preview-state text-small"><i data-lucide="play" aria-hidden="true"></i>正在预览</span>
-      </div>
-      <div class="item-copy">
-        <div class="item-title">咖啡馆中的细微表情</div>
-        <code class="filename text-small">WAN22-5B-咖啡馆细微表情-20260724-121912.mp4</code>
-        <div class="item-meta"><span class="viz-badge">Wan 2.2 5B</span><span class="text-small text-muted">540p · 7秒 · 4分39秒</span></div>
-        <div class="item-actions"><span class="text-small text-muted">今天 12:24</span><a class="btn btn-ghost" href="./history-detail.html?id=wan-cafe">查看详情</a></div>
-      </div>
-    </article>
-
-    <article class="card history-item" data-id="sul-valley" data-completed="2026-07-24T11:52:00+08:00">
-      <div class="media" style="--ratio: 21 / 9; --light-x: 34%;" data-duration="9.6" data-cover="5.2">
-        <div class="fallback-scene"><i data-lucide="mountain-snow" aria-hidden="true"></i></div>
-        <video muted loop playsinline preload="metadata" data-src="./media/SUL2-山谷电影感横移-20260724-114008.mp4"></video>
-        <div class="media-badges"><span class="cover-badge text-small cover-index">随机帧 00:05</span><span class="duration-badge text-small">00:10</span></div>
-        <span class="preview-state text-small"><i data-lucide="play" aria-hidden="true"></i>正在预览</span>
-      </div>
-      <div class="item-copy">
-        <div class="item-title">山谷中的电影感横移</div>
-        <code class="filename text-small">SUL2-山谷电影感横移-20260724-114008.mp4</code>
-        <div class="item-meta"><span class="viz-badge">Sulphur 2</span><span class="text-small text-muted">480p · 10秒 · 7分51秒</span></div>
-        <div class="item-actions"><span class="text-small text-muted">今天 11:52</span><a class="btn btn-ghost" href="./history-detail.html?id=sul-valley">查看详情</a></div>
-      </div>
-    </article>
-  </div>
+<div class="studio-prototype">
+  <header class="studio-topbar"><a class="studio-brand" href="./create.html"><span class="brand-mark"><i data-lucide="play"></i></span><span>Local Video Studio</span></a><nav class="studio-nav"><a href="./create.html">创建</a><a href="./queue.html">队列</a><a href="./history.html" aria-current="page">历史</a><a href="./settings.html">设置</a></nav></header>
+  <main class="studio-body">
+    <section class="page-head"><div><div class="page-title"><h1>历史作品</h1><span class="badge">8 个视频</span></div><p class="muted">封面读取持久缓存；悬停才加载并播放原视频，退出后回到稳定封面。</p></div><div class="actions"><button class="btn primary" data-layout="masonry"><i data-lucide="columns-3"></i>瀑布流</button><button class="btn" data-layout="album"><i data-lucide="layout-grid"></i>相册</button></div></section>
+    <section class="gallery">
+      <article class="panel gallery-card" data-context-card onclick="location.href='./history-detail.html'"><div class="gallery-media"><div class="media-chips"><span class="media-chip">MiniMax H3</span><span class="media-chip">768p</span><span class="media-chip">2 个版本</span></div></div><div class="gallery-copy"><h3>黄昏机场的人物转身</h3><code>H3-黄昏机场人物-20260809-214031.mp4</code><div class="section-head tiny muted"><span>8/9 21:56</span><span>渲染 22:14</span></div></div></article>
+      <article class="panel gallery-card" data-context-card onclick="location.href='./history-detail.html'"><div class="gallery-media"><div class="media-chips"><span class="media-chip">H3 R2V</span><span class="media-chip">720p</span><span class="media-chip">1 个版本</span></div></div><div class="gallery-copy"><h3>人物与霓虹街道</h3><code>H3-人物与霓虹街道-20260809-180201.mp4</code><div class="section-head tiny muted"><span>8/9 18:24</span><span>渲染 19:48</span></div></div></article>
+      <article class="panel gallery-card" data-context-card onclick="location.href='./history-detail.html'"><div class="gallery-media"><div class="media-chips"><span class="media-chip">Sulphur 2</span><span class="media-chip">480p</span><span class="media-chip">旧模型记录</span></div></div><div class="gallery-copy"><h3>海边慢镜头</h3><code>Sulphur2-海边慢镜头-20260728-121843.mp4</code><div class="section-head tiny muted"><span>7/28 12:31</span><span>渲染 06:42</span></div></div></article>
+      <article class="panel gallery-card" data-context-card><div class="gallery-media"><div class="media-chips"><span class="media-chip">MiniMax H3 Turbo</span><span class="media-chip">720p</span></div></div><div class="gallery-copy"><h3>高速列车窗边</h3><code>H3T-高速列车窗边-20260808-093300.mp4</code><div class="section-head tiny muted"><span>8/8 09:39</span><span>渲染 02:51</span></div></div></article>
+      <article class="panel gallery-card" data-context-card><div class="gallery-media"><div class="media-chips"><span class="media-chip">MiniMax H3</span><span class="media-chip">1080p</span><span class="media-chip">3 个版本</span></div></div><div class="gallery-copy"><h3>工作室灯光测试</h3><code>H3-工作室灯光-20260807-235812-1080p.mp4</code><div class="section-head tiny muted"><span>8/8 00:28</span><span>渲染 31:08</span></div></div></article>
+      <article class="panel gallery-card" data-context-card><div class="gallery-media"><div class="media-chips"><span class="media-chip">H3 R2V</span><span class="media-chip">768p</span></div></div><div class="gallery-copy"><h3>复古广告片</h3><code>H3-复古广告片-20260806-142015.mp4</code><div class="section-head tiny muted"><span>8/6 14:43</span><span>渲染 23:36</span></div></div></article>
+    </section>
+  </main>
+  <div class="context-menu" role="menu"><button><i data-lucide="play"></i>打开详情</button><button><i data-lucide="copy"></i>复制视频文件</button><button><i data-lucide="folder-open"></i>在 Explorer 中显示</button><button><i data-lucide="video"></i>继续创作</button><button><i data-lucide="maximize-2"></i>提升分辨率</button><button class="danger" data-open-dialog="delete-dialog"><i data-lucide="trash-2"></i>删除视频和记录</button></div>
+  <div class="dialog-backdrop" id="delete-dialog"><section class="dialog"><span class="badge bad">删除本地文件</span><h2>删除这个历史作品？</h2><p class="muted">作品的全部视频版本和历史记录都会删除。此操作不会进入回收站，无法撤销。</p><div class="actions" style="justify-content:flex-end"><button class="btn" data-close-dialog>取消</button><button class="btn danger" data-close-dialog>删除视频和记录</button></div></section></div>
 </div>
-
-<script>
-(() => {
-  const root = document.getElementById('video-history');
-  const gallery = root.querySelector('#history-gallery');
-  const masonryButton = root.querySelector('#masonry-view');
-  const albumButton = root.querySelector('#album-view');
-  const coverMode = root.querySelector('#cover-mode');
-
-  [...gallery.querySelectorAll('.history-item')]
-    .sort((left, right) => new Date(right.dataset.completed) - new Date(left.dataset.completed))
-    .forEach(item => gallery.appendChild(item));
-
-  function setView(mode) {
-    const album = mode === 'album';
-    gallery.classList.toggle('album', album);
-    masonryButton.setAttribute('aria-pressed', String(!album));
-    albumButton.setAttribute('aria-pressed', String(album));
-    masonryButton.classList.toggle('btn-ghost', album);
-    albumButton.classList.toggle('btn-ghost', !album);
-  }
-
-  masonryButton.addEventListener('click', () => setView('masonry'));
-  albumButton.addEventListener('click', () => setView('album'));
-
-  function formatSecond(value) {
-    return `00:${String(Math.max(0, Math.round(value))).padStart(2, '0')}`;
-  }
-
-  function applyCover(media) {
-    const video = media.querySelector('video');
-    const randomTime = Number(media.dataset.cover) || 0;
-    const target = coverMode.value === 'first' ? 0 : randomTime;
-    media.querySelector('.cover-index').textContent =
-      coverMode.value === 'first' ? '第一帧' : `随机帧 ${formatSecond(target)}`;
-    if (video.readyState >= 1) {
-      try { video.currentTime = target; } catch (_) {}
-    }
-  }
-
-  coverMode.addEventListener('change', () => {
-    root.querySelectorAll('.media').forEach(applyCover);
-  });
-
-  root.querySelectorAll('.media').forEach(media => {
-    const video = media.querySelector('video');
-    const source = video.dataset.src;
-    const progressTrack = document.createElement('button');
-    const progressFill = document.createElement('div');
-    progressTrack.className = 'preview-progress';
-    progressTrack.type = 'button';
-    progressTrack.setAttribute('aria-label', '跳转预览时间');
-    progressFill.className = 'preview-progress-fill';
-    progressTrack.appendChild(progressFill);
-    media.appendChild(progressTrack);
-
-    let previewFrame = 0;
-    let previewStartedAt = 0;
-    video.src = source;
-    video.addEventListener('loadedmetadata', () => applyCover(media), { once: true });
-
-    const startPreview = () => {
-      media.classList.add('is-playing');
-      previewStartedAt = performance.now() - (Number(video.currentTime) || 0) * 1000;
-      const updateProgress = now => {
-        if (!media.classList.contains('is-playing')) return;
-        const fallbackDuration = Number(media.dataset.duration) || 5;
-        const actualDuration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : fallbackDuration;
-        const elapsed = video.readyState >= 2
-          ? Number(video.currentTime) || 0
-          : ((now - previewStartedAt) / 1000) % actualDuration;
-        const ratio = Math.min(1, Math.max(0, elapsed / actualDuration));
-        progressTrack.dataset.progress = String(ratio);
-        progressTrack.setAttribute('aria-valuetext', `${Math.round(elapsed * 10) / 10}秒 / ${Math.round(actualDuration * 10) / 10}秒`);
-        media.style.setProperty('--preview-progress', `${ratio * 100}%`);
-        previewFrame = window.requestAnimationFrame(updateProgress);
-      };
-      window.cancelAnimationFrame(previewFrame);
-      previewFrame = window.requestAnimationFrame(updateProgress);
-      const result = video.play();
-      if (result && result.catch) result.catch(() => {});
-    };
-    const stopPreview = () => {
-      media.classList.remove('is-playing');
-      window.cancelAnimationFrame(previewFrame);
-      media.style.setProperty('--preview-progress', '0%');
-      video.pause();
-      applyCover(media);
-    };
-
-    const seekToRatio = ratio => {
-      const boundedRatio = Math.min(1, Math.max(0, ratio));
-      const duration = Number.isFinite(video.duration) && video.duration > 0
-        ? video.duration
-        : Number(media.dataset.duration) || 5;
-      const targetTime = boundedRatio * duration;
-      if (video.readyState >= 1) {
-        try { video.currentTime = targetTime; } catch (_) {}
-      }
-      previewStartedAt = performance.now() - targetTime * 1000;
-      progressTrack.dataset.progress = String(boundedRatio);
-      media.style.setProperty('--preview-progress', `${boundedRatio * 100}%`);
-    };
-
-    progressTrack.addEventListener('click', event => {
-      event.stopPropagation();
-      const bounds = progressTrack.getBoundingClientRect();
-      seekToRatio((event.clientX - bounds.left) / bounds.width);
-    });
-    progressTrack.addEventListener('keydown', event => {
-      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-      event.preventDefault();
-      const current = Number(progressTrack.dataset.progress) || 0;
-      seekToRatio(current + (event.key === 'ArrowRight' ? .05 : -.05));
-    });
-
-    media.addEventListener('pointerenter', startPreview);
-    media.addEventListener('pointerleave', stopPreview);
-    media.addEventListener('focusin', startPreview);
-    media.addEventListener('focusout', stopPreview);
-  });
-
-})();
-</script>
 
   <script src="./upscale-dialog.js"></script>
   <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"></script>
   <script>
     globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  </script>
+  <script>
+(() => {
+  const root = document.querySelector('.studio-prototype');
+  if (!root) return;
+  root.querySelectorAll('[data-settings-tab]').forEach((button) => {
+    button.addEventListener('click', () => {
+      root.querySelectorAll('[data-settings-tab]').forEach((item) => item.classList.toggle('active', item === button));
+      root.querySelectorAll('[data-settings-pane]').forEach((pane) => pane.classList.toggle('active', pane.dataset.settingsPane === button.dataset.settingsTab));
+    });
+  });
+  root.querySelectorAll('[data-layout]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const gallery = root.querySelector('.gallery');
+      gallery?.classList.toggle('album', button.dataset.layout === 'album');
+      root.querySelectorAll('[data-layout]').forEach((item) => item.classList.toggle('primary', item === button));
+    });
+  });
+  root.querySelectorAll('[data-input-mode]').forEach((button) => {
+    button.addEventListener('click', () => {
+      root.querySelectorAll('[data-mode-panel]').forEach((panel) => panel.hidden = panel.dataset.modePanel !== button.dataset.inputMode);
+      root.querySelectorAll('[data-input-mode]').forEach((item) => item.classList.toggle('primary', item === button));
+    });
+  });
+  root.querySelectorAll('[data-drag-demo]').forEach((well) => {
+    ['dragenter','dragover'].forEach((name) => well.addEventListener(name, (event) => { event.preventDefault(); well.classList.add('dragging'); }));
+    ['dragleave','drop'].forEach((name) => well.addEventListener(name, (event) => { event.preventDefault(); well.classList.remove('dragging'); }));
+  });
+  const menu = root.querySelector('.context-menu');
+  root.querySelectorAll('[data-context-card]').forEach((card) => card.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    if (!menu) return;
+    menu.style.left = `${Math.min(event.clientX, window.innerWidth - 240)}px`;
+    menu.style.top = `${Math.min(event.clientY, window.innerHeight - 250)}px`;
+    menu.classList.add('open');
+  }));
+  document.addEventListener('click', () => menu?.classList.remove('open'));
+  root.querySelectorAll('[data-open-dialog]').forEach((button) => button.addEventListener('click', () => root.querySelector(`#${button.dataset.openDialog}`)?.classList.add('open')));
+  root.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => button.closest('.dialog-backdrop')?.classList.remove('open')));
+  root.querySelectorAll('.dialog-backdrop').forEach((backdrop) => backdrop.addEventListener('click', (event) => { if (event.target === backdrop) backdrop.classList.remove('open'); }));
+  root.querySelectorAll('[data-demo-action]').forEach((button) => button.addEventListener('click', () => {
+    const status = root.querySelector('[data-demo-status]');
+    if (status) status.textContent = button.dataset.demoAction ?? '原型操作已触发';
+  }));
+})();
+
   </script>
 </body>
 </html>

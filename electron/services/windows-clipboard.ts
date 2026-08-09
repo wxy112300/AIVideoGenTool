@@ -7,16 +7,20 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 export async function resolveExistingHistoryFile(
-  filename: string
+  filename: string,
+  fallbackFilenames: string[] = []
 ): Promise<string | null> {
-  if (!filename.trim()) return null;
-  const resolved = path.resolve(filename);
-  const candidates = [
+  const requested = [filename, ...fallbackFilenames]
+    .map((candidate) => candidate.trim())
+    .filter(Boolean)
+    .map((candidate) => path.resolve(candidate));
+  if (!requested.length) return null;
+  const candidates = requested.flatMap((resolved) => [
     resolved,
     // VideoHelperSuite can report an `-audio.mp4` output while its finalized
     // file on disk is the otherwise identical `.mp4` path.
     resolved.replace(/-audio(?=\.[^.]+$)/i, "")
-  ];
+  ]);
   for (const candidate of new Set(candidates)) {
     const stat = await fs.stat(candidate).catch(() => null);
     if (stat?.isFile()) return candidate;

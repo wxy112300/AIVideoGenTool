@@ -234,17 +234,24 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .history-media.has-history-cover video { opacity: 0; }
 .history-media.has-history-cover.playing .history-cover-image { opacity: 0; }
 .history-media.has-history-cover.playing video { z-index: 2; opacity: 1; }
+.history-media-loading { position: absolute; z-index: 3; inset: 0; display: grid; place-content: center; justify-items: center; gap: 9px; padding: 20px; color: var(--muted); background: rgba(8, 10, 13, .78); text-align: center; opacity: 0; visibility: hidden; transition: opacity .18s ease, visibility .18s ease; pointer-events: none; }
+.history-media.media-loading:not(.has-history-cover) .history-media-loading,
+.history-media.playing.media-loading .history-media-loading { opacity: 1; visibility: visible; }
+.history-loading-spinner { width: 24px; height: 24px; border: 2px solid rgba(130, 177, 255, .22); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; }
+.history-media-error { position: absolute; z-index: 1; inset: 0; display: none; place-content: center; justify-items: center; gap: 8px; padding: 20px; color: var(--muted); background: #090a0c; text-align: center; }
+.history-media-error .ui-icon { width: 28px; height: 28px; color: var(--primary); }
+.history-media.media-error:not(.has-history-cover) .history-media-error { display: grid; }
 .history-media-fallback { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 7px; color: var(--muted); }
 .history-media-fallback span { color: var(--primary); font-size: 32px; }
 .history-media-fallback span .ui-icon { width: 30px; height: 30px; }
-.history-media-badges { position: absolute; z-index: 2; inset: 10px 10px auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; pointer-events: auto; }
+.history-media-badges { position: absolute; z-index: 4; inset: 10px 10px auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; pointer-events: auto; }
 .media-chip, .history-preview-state { flex: 0 0 auto; padding: 4px 7px; border: 1px solid rgba(255,255,255,.1); border-radius: 99px; color: #f4f6fa; background: rgba(17, 19, 23, .78); backdrop-filter: blur(8px); font-size: 10px; white-space: nowrap; }
 .history-model-chip { max-width: 55%; margin-right: auto; overflow: hidden; border-color: rgba(112,159,237,.3); color: #b7d2ff; background: rgba(31, 60, 114, .78); text-overflow: ellipsis; white-space: nowrap; }
 .history-version-count-chip { color: #b4bfce; background: rgba(17, 23, 32, .72); }
-.history-preview-state { position: absolute; z-index: 2; left: 10px; bottom: 10px; opacity: 0; transform: translateY(4px); transition: .16s ease; }
+.history-preview-state { position: absolute; z-index: 4; left: 10px; bottom: 10px; opacity: 0; transform: translateY(4px); transition: .16s ease; }
 .history-preview-state .ui-icon { width: 12px; height: 12px; vertical-align: -.15em; }
 .history-media.playing .history-preview-state { opacity: 1; transform: translateY(0); }
-.history-preview-progress { position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; width: 100%; height: 10px; padding: 0; border: 0; border-radius: 0; appearance: none; color: inherit; background: transparent; opacity: 0; cursor: ew-resize; touch-action: none; transition: opacity .14s ease; }
+.history-preview-progress { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; width: 100%; height: 10px; padding: 0; border: 0; border-radius: 0; appearance: none; color: inherit; background: transparent; opacity: 0; cursor: ew-resize; touch-action: none; transition: opacity .14s ease; }
 .history-preview-progress::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,.16); }
 .history-preview-progress i { position: absolute; z-index: 1; left: 0; bottom: 0; display: block; width: 0; height: 4px; pointer-events: none; background: var(--primary); }
 .history-media.playing .history-preview-progress, .history-media:hover .history-preview-progress, .history-media:focus-within .history-preview-progress { opacity: 1; }
@@ -1118,11 +1125,12 @@ select { padding-inline: 12px; }
 .history-detail-back-button:hover { border-color: rgba(139,181,255,.58); color: #f0f6ff; background: rgba(92,139,218,.23); }
 .history-detail-tools { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 14px; flex-wrap: wrap; }
 .history-detail-position { padding: 5px 9px; border: 1px solid rgba(112,159,237,.25); border-radius: 8px; color: #a9c9ff; background: rgba(105,157,243,.08); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.history-keyboard-hint { display: inline-flex; align-items: center; gap: 4px; color: #7f8da0; font-size: 10px; white-space: nowrap; }
-.history-keyboard-hint kbd { min-width: 18px; padding: 2px 5px; border: 1px solid rgba(96,110,130,.62); border-bottom-width: 2px; border-radius: 5px; color: #c2d0e2; background: #151b24; font: 10px/1.2 "Cascadia Mono", Consolas, monospace; text-align: center; }
-.history-keyboard-hint kbd + kbd { margin-left: 2px; }
-.history-detail-navigation { display: flex; gap: 5px; }
-.history-detail-navigation button { min-height: 34px; padding: 6px 10px; white-space: nowrap; }
+.history-detail-navigation { display: grid; grid-template-columns: repeat(2, minmax(86px, 1fr)); gap: 6px; }
+.history-detail-nav-button { min-height: 52px; display: grid; justify-items: center; align-content: center; gap: 5px; padding: 6px 8px; white-space: nowrap; }
+.history-detail-nav-label { display: inline-flex; align-items: center; gap: 5px; line-height: 1; }
+.history-detail-nav-label .ui-icon { width: 15px; height: 15px; }
+.history-detail-nav-shortcut { color: #8391a3; font-size: 9px; line-height: 1; }
+.history-detail-nav-shortcut kbd { padding: 2px 4px; border: 1px solid rgba(96,110,130,.62); border-bottom-width: 2px; border-radius: 4px; color: #b9c7d9; background: #151b24; font: 9px/1.1 "Cascadia Mono", Consolas, monospace; }
 .history-detail-hero { grid-template-columns: minmax(0, 1.58fr) minmax(310px, .72fr); gap: 20px; }
 .history-player-column { gap: 12px; }
 .history-player { border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.3); }

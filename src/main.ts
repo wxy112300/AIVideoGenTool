@@ -799,17 +799,18 @@ function setHistoryCoverImage(media: HTMLElement, dataUrl: string): boolean {
   const image = media.querySelector<HTMLImageElement>("[data-history-cover-image]");
   if (!image || !dataUrl) return false;
   const key = media.dataset.coverKey;
-  image.hidden = true;
+  image.hidden = false;
   const showImage = () => {
     if (image.src !== dataUrl || !media.isConnected) return;
     image.hidden = false;
     media.dataset.historyCoverCached = "true";
+    media.classList.remove("media-loading", "media-error");
     media.classList.add("has-history-cover");
   };
   image.onload = showImage;
   image.onerror = () => {
     if (image.src !== dataUrl) return;
-    image.hidden = true;
+    image.removeAttribute("src");
     media.classList.remove("has-history-cover");
     delete media.dataset.historyCoverCached;
     if (key) historyCoverDataUrls.delete(key);
@@ -842,6 +843,8 @@ function loadHistoryCardVideo(media: HTMLElement): HTMLVideoElement | null {
   const source = video?.dataset.historySrc;
   if (!video || !source) return video ?? null;
   if (video.dataset.historyLoaded === "true") return video;
+  media.classList.remove("media-error");
+  media.classList.add("media-loading");
   video.src = source;
   video.dataset.historyLoaded = "true";
   video.load();
@@ -854,6 +857,10 @@ function releaseHistoryCardVideo(media: HTMLElement): void {
   video.pause();
   video.removeAttribute("src");
   delete video.dataset.historyLoaded;
+  if (media.dataset.historyCoverCached !== "true") {
+    media.classList.remove("media-ready");
+    media.classList.add("media-loading");
+  }
   video.load();
 }
 
@@ -963,6 +970,10 @@ async function saveHistoryCover(
   const key = media.dataset.coverKey;
   const sourcePath = media.dataset.coverSource;
   if (!key || !sourcePath || !isActive() || media.dataset.historyCoverCached === "true") return;
+  const frameScore = historyCoverScore(video);
+  // Failed/unfinished seeks can expose the decoder's empty black surface.
+  // Never persist that surface as a cover for every subsequent launch.
+  if (frameScore == null || frameScore < -80) return;
   const blob = await historyCoverBlob(video);
   if (!blob || !isActive()) return;
   const data = await blob.arrayBuffer();
@@ -2288,11 +2299,13 @@ function historyPage(): string {
     const coverTime = historyInitialCoverTime(asset.duration, coverSeed);
     return `
       <article class="history-gallery-item panel" data-history="${asset.id}" data-history-order="${historyOrder}" tabindex="0" aria-label="${escapeHtml(historyTitle)}，打开详情；右键查看更多操作" title="${escapeHtml(historyTitle)}">
-        <div class="history-media" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${escapeHtml(coverKey)}" data-cover-source="${escapeHtml(version.files[videoIndex]?.absolutePath ?? "")}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
+        <div class="history-media${mediaUrl ? " media-loading" : ""}" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${escapeHtml(coverKey)}" data-cover-source="${escapeHtml(version.files[videoIndex]?.absolutePath ?? "")}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
           ${mediaUrl
-            ? `<video muted loop playsinline crossorigin="anonymous" preload="none" data-history-src="${escapeHtml(mediaUrl)}"></video>`
+            ? `<video muted loop playsinline preload="none" data-history-src="${escapeHtml(mediaUrl)}"></video>`
             : `<div class="history-media-fallback"><span>${icon("play")}</span><small>找不到视频文件</small></div>`}
-          ${mediaUrl ? `<img class="history-cover-image" data-history-cover-image="${asset.id}" alt="" loading="lazy" hidden>` : ""}
+          ${mediaUrl ? `<img class="history-cover-image" data-history-cover-image="${asset.id}" alt="">` : ""}
+          ${mediaUrl ? `<div class="history-media-loading" role="status"><span class="history-loading-spinner" aria-hidden="true"></span><small>正在加载封面</small></div>` : ""}
+          ${mediaUrl ? `<div class="history-media-error" aria-live="polite"><span>${icon("film")}</span><small>视频预览加载失败，点击卡片仍可打开详情</small></div>` : ""}
           <div class="history-media-badges">
             <span class="media-chip history-model-chip">${escapeHtml(modelName(version.modelId))}</span>
             <span class="media-chip">${historyResolutionLabel(asset, version)}</span>
@@ -2524,10 +2537,9 @@ function historyDetailPage(): string {
       <div class="history-detail-tools">
         <span>任务记录为生成时的只读快照</span>
         <span class="history-detail-position" aria-label="当前历史作品位置">第 ${historyIndex + 1} / 共 ${state.history.length} 个</span>
-        <span class="history-keyboard-hint" aria-label="快捷键：Page Up 和 Page Down 切换历史视频"><kbd>Page Up</kbd><kbd>Page Down</kbd>切换视频</span>
         <div class="history-detail-navigation" aria-label="切换历史作品">
-          <button class="ghost button-with-icon" data-history-navigation="-1" ${previousAsset ? "" : "disabled"} title="${previousAsset ? `上一个：${escapeHtml(previousAsset.title)} · Page Up` : "已经是第一项"}">${icon("arrow-left")}上一个</button>
-          <button class="ghost button-with-icon" data-history-navigation="1" ${nextAsset ? "" : "disabled"} title="${nextAsset ? `下一个：${escapeHtml(nextAsset.title)} · Page Down` : "已经是最后一项"}">下一个${icon("arrow-right")}</button>
+          <button class="ghost history-detail-nav-button" data-history-navigation="-1" aria-keyshortcuts="PageUp" ${previousAsset ? "" : "disabled"} title="${previousAsset ? `上一个：${escapeHtml(previousAsset.title)} · Page Up` : "已经是第一项"}"><span class="history-detail-nav-label">${icon("arrow-left")}上一个</span><span class="history-detail-nav-shortcut"><kbd>Page Up</kbd></span></button>
+          <button class="ghost history-detail-nav-button" data-history-navigation="1" aria-keyshortcuts="PageDown" ${nextAsset ? "" : "disabled"} title="${nextAsset ? `下一个：${escapeHtml(nextAsset.title)} · Page Down` : "已经是最后一项"}"><span class="history-detail-nav-label">下一个${icon("arrow-right")}</span><span class="history-detail-nav-shortcut"><kbd>Page Down</kbd></span></button>
         </div>
       </div>
     </div>
@@ -3636,7 +3648,55 @@ function closeHistoryContextMenu(): void {
   historyContextMenuElement = null;
 }
 
+function historyPlayerIsFullscreen(): boolean {
+  return Boolean(document.fullscreenElement?.closest(".history-player"));
+}
+
+function restoreHistoryPlayerFullscreen(): void {
+  const target = document.querySelector<HTMLVideoElement>(".history-player video") ??
+    document.querySelector<HTMLElement>(".history-player");
+  if (!target?.requestFullscreen) return;
+  void target.requestFullscreen().catch(() => undefined);
+}
+
+function updateHistoryDetailInPlace(): boolean {
+  const currentPlayer = document.querySelector<HTMLElement>(".history-player");
+  const currentVideo = currentPlayer?.querySelector<HTMLVideoElement>("video");
+  if (!currentPlayer || !currentVideo) return false;
+
+  const nextMarkup = document.createElement("div");
+  nextMarkup.innerHTML = historyDetailPage();
+  const nextPlayer = nextMarkup.querySelector<HTMLElement>(".history-player");
+  const nextVideo = nextPlayer?.querySelector<HTMLVideoElement>("video");
+  const currentBack = document.querySelector<HTMLElement>(".history-detail-back");
+  const nextBack = nextMarkup.querySelector<HTMLElement>(".history-detail-back");
+  const currentSidebar = document.querySelector<HTMLElement>(".history-detail-sidebar");
+  const nextSidebar = nextMarkup.querySelector<HTMLElement>(".history-detail-sidebar");
+  if (!nextPlayer || !nextVideo || !currentBack || !nextBack || !currentSidebar || !nextSidebar) {
+    return false;
+  }
+
+  currentPlayer.setAttribute("style", nextPlayer.getAttribute("style") ?? "");
+  currentVideo.pause();
+  const nextSource = nextVideo.getAttribute("src");
+  if (nextSource) currentVideo.setAttribute("src", nextSource);
+  else currentVideo.removeAttribute("src");
+  currentVideo.dataset.historyAsset = nextVideo.dataset.historyAsset ?? "";
+  currentVideo.dataset.historyVersion = nextVideo.dataset.historyVersion ?? "";
+  currentVideo.loop = true;
+  currentVideo.load();
+  currentBack.replaceWith(nextBack);
+  currentSidebar.replaceWith(nextSidebar);
+  historyTitleResizeObserver?.disconnect();
+  historyTitleResizeObserver = null;
+  renderIcons(appElement);
+  bindShell();
+  bindHistory();
+  return true;
+}
+
 function openHistoryDetail(assetId: string, versionId?: string): void {
+  const preserveFullscreen = page === "history-detail" && historyPlayerIsFullscreen();
   if (page === "history") historyScrollPosition = window.scrollY;
   reportUserAction("history-open-detail", { assetId, versionId });
   selectedHistoryAssetId = assetId;
@@ -3647,7 +3707,12 @@ function openHistoryDetail(assetId: string, versionId?: string): void {
     ? { assetId, versionId: selectedHistoryVersionId }
     : null;
   page = "history-detail";
+  if (preserveFullscreen && updateHistoryDetailInPlace()) {
+    window.scrollTo({ top: 0, behavior: "auto" });
+    return;
+  }
   render();
+  if (preserveFullscreen) restoreHistoryPlayerFullscreen();
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
@@ -5250,6 +5315,16 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   historyMediaCards.forEach((media) => {
     const video = media.querySelector<HTMLVideoElement>("video");
     if (!video) return;
+    video.addEventListener("error", () => {
+      media.classList.remove("playing");
+      media.classList.remove("media-loading", "media-ready");
+      if (media.dataset.historyCoverCached === "true") return;
+      media.classList.add("media-error");
+    });
+    video.addEventListener("loadeddata", () => {
+      media.classList.remove("media-loading", "media-error");
+      media.classList.add("media-ready");
+    });
     const progress = media.querySelector<HTMLButtonElement>(".history-preview-progress");
     const fill = progress?.querySelector<HTMLElement>("i");
     const fallbackDuration = Number(media.dataset.previewDuration) || 0;

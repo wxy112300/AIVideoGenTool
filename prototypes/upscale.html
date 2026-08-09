@@ -1,40 +1,7 @@
-<style>
-  #upscale-page {
-    min-height: 520px;
-    display: grid;
-    place-items: center;
-    color: var(--foreground);
-  }
-  #upscale-page .launcher {
-    display: grid;
-    gap: 12px;
-    text-align: center;
-  }
-</style>
-
-<div id="upscale-page">
-  <div class="launcher">
-    <h2>提升分辨率</h2>
-    <span class="text-muted">弹窗关闭后会回到原页面。</span>
-    <button class="btn btn-primary" id="open-upscale-demo" type="button">打开提升设置</button>
-    <a class="btn btn-ghost" href="./history-detail.html">返回视频详情</a>
-  </div>
+<div class="studio-prototype">
+  <header class="studio-topbar"><a class="studio-brand" href="./create.html"><span class="brand-mark"><i data-lucide="play"></i></span><span>Local Video Studio</span></a><nav class="studio-nav"><a href="./create.html">创建</a><a href="./queue.html">队列</a><a href="./history.html" aria-current="page">历史</a><a href="./settings.html">设置</a></nav></header>
+  <main class="studio-body" style="max-width:820px;margin:auto">
+    <section class="page-head"><div><span class="badge">创建后处理任务</span><h1 style="margin-top:8px">提升分辨率</h1></div><a class="btn" href="./history-detail.html"><i data-lucide="x"></i>关闭</a></section>
+    <section class="panel"><div class="summary-strip"><div><strong>黄昏机场的人物转身</strong><p class="muted tiny">H3-黄昏机场人物-20260809-214031.mp4</p></div><span class="badge">1360 × 768 · 10 秒</span></div><div class="control-section"><label class="field">目标分辨率<div class="actions"><button class="btn">720p</button><button class="btn primary">1080p</button><button class="btn">1440p</button><button class="btn">4K</button></div></label><div class="grid-2"><label class="field">提升模型<select><option>SeedVR2</option><option>FlashVSR</option><option>Real-ESRGAN</option></select></label><label class="field">显存策略<select><option>自动 · 按显存选择</option><option>保守 · 分批与每批卸载</option><option>速度优先 · 尽量少卸载</option></select></label></div><div class="summary-strip"><div><span class="muted tiny">预计输出</span><h2>1912 × 1080</h2><code>H3-黄昏机场人物-20260809-214031-1080p.mp4</code></div><div><span class="badge">预计峰值 18–21 GB</span><span class="badge warn">预计 18–32 分钟</span></div></div><p class="muted tiny">估算按模型、目标分辨率和 240 帧计算，不含首次加载、磁盘读取和最终编码时间。</p><div class="actions" style="justify-content:flex-end"><a class="btn" href="./history-detail.html">取消</a><button class="btn primary"><i data-lucide="plus"></i>加入队列</button></div></div></section>
+  </main>
 </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  const openButton = document.getElementById('open-upscale-demo');
-  const openDialog = () => {
-    globalThis.UpscaleDialog.open({
-      trigger: openButton,
-      title: '人物迎着微风回眸',
-      filename: 'SUL2-人物迎着微风回眸-20260724-143205.mp4',
-      sourceWidth: 832,
-      sourceHeight: 480,
-      duration: 5.2
-    });
-  };
-  openButton.addEventListener('click', openDialog);
-  openDialog();
-});
-</script>

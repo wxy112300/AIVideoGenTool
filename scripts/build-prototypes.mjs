@@ -43,6 +43,14 @@ const pages = [
 ];
 
 const baseStylesheet = fs.readFileSync(baseStylesheetPath, 'utf8');
+const studioStylesheet = fs.readFileSync(
+  path.join(prototypeDirectory, 'studio-prototype.css'),
+  'utf8'
+);
+const studioScript = fs.readFileSync(
+  path.join(prototypeDirectory, 'studio-prototype.js'),
+  'utf8'
+);
 fs.mkdirSync(outputDirectory, { recursive: true });
 fs.copyFileSync(
   path.join(prototypeDirectory, 'upscale-dialog.js'),
@@ -62,6 +70,7 @@ for (const [filename, title] of pages) {
   <title>Local Video Studio · ${title}</title>
   <style>
 ${baseStylesheet}
+${studioStylesheet}
     html { background: var(--background); }
     body {
       margin: 0;
@@ -86,6 +95,9 @@ ${fragment}
   <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"></script>
   <script>
     globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  </script>
+  <script>
+${studioScript}
   </script>
 </body>
 </html>

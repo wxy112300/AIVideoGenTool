@@ -1,4 +1,4 @@
-export const HISTORY_COVER_CACHE_VERSION = "history-cover-v2";
+export const HISTORY_COVER_CACHE_VERSION = "history-cover-v3";
 
 export interface HistoryCoverKeyInput {
   assetId: string;

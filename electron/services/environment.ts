@@ -3159,7 +3159,9 @@ export async function resolveComfyOutputDirectory(
   settings: Settings
 ): Promise<string> {
   const configured = settings.outputDirectory.trim();
-  if (configured) return path.resolve(configured);
+  if (configured && await exists(path.resolve(configured))) {
+    return path.resolve(configured);
+  }
   const comfyRoot = await findComfyRoot(settings);
   return comfyRoot ? path.join(comfyRoot, "output") : "";
 }

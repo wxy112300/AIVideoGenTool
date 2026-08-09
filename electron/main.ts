@@ -42,6 +42,7 @@ import {
 } from "../src/core/recovery.js";
 import { historyVideoPaths } from "../src/core/history-delete.js";
 import { createHistoryCoverCacheKey } from "../src/core/history-cover.js";
+import { historyFileCandidates } from "../src/core/history-media.js";
 import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
 import {
   attachAbsoluteOutputPaths,
@@ -135,7 +136,7 @@ if (appliedChromiumWorkarounds.length) {
   );
 }
 
-const historyCoverDirectory = () => path.join(app.getPath("userData"), "history-covers", "v2");
+const historyCoverDirectory = () => path.join(app.getPath("userData"), "history-covers", "v3");
 const historyCoverDigest = (key: string) => createHash("sha256").update(key).digest("hex");
 const historyCoverPathFromDigest = (digest: string) =>
   path.join(historyCoverDirectory(), `${digest}.jpg`);
@@ -168,6 +169,25 @@ interface HistoryCoverMetadata {
   sourceSize: number;
   sourceMtimeMs: number;
   generatedAt: string;
+}
+
+async function resolveHistorySourcePath(sourcePath: string): Promise<string | null> {
+  const direct = await resolveExistingHistoryFile(sourcePath);
+  if (direct) return direct;
+  const state = store.get();
+  const normalizedSource = path.resolve(sourcePath).toLowerCase();
+  const file = state.history
+    .flatMap((asset) => asset.versions.flatMap((version) => version.files))
+    .find((candidate) =>
+      candidate.absolutePath &&
+      path.resolve(candidate.absolutePath).toLowerCase() === normalizedSource
+    );
+  return file
+    ? resolveExistingHistoryFile(
+        sourcePath,
+        historyFileCandidates(file, state.settings)
+      )
+    : null;
 }
 let mainWindow: BrowserWindow | null = null;
 let store: JsonStore;
@@ -263,7 +283,8 @@ protocol.registerSchemesAsPrivileged([
       standard: true,
       secure: true,
       stream: true,
-      supportFetchAPI: true
+      supportFetchAPI: true,
+      corsEnabled: true
     }
   }
 ]);
@@ -312,10 +333,18 @@ function registerMediaProtocol(): void {
         const version = asset?.versions.find(
           (item) => item.id === decodeURIComponent(versionId ?? "")
         );
-        filename =
+        const historyFile =
           Number.isInteger(fileIndex) && fileIndex >= 0
-            ? version?.files[fileIndex]?.absolutePath
+            ? version?.files[fileIndex]
             : undefined;
+        filename = historyFile?.absolutePath;
+        if (historyFile) {
+          filename = await resolveExistingHistoryFile(
+            filename ?? "",
+            historyFileCandidates(historyFile, store.get().settings)
+          ) ?? undefined;
+          trustedCacheFile = Boolean(filename);
+        }
       } else if (url.hostname === "queue") {
         const taskId = decodeURIComponent(url.pathname.split("/").filter(Boolean)[0] ?? "");
         const task = store.get().queue.find((item) => item.id === taskId);
@@ -2136,7 +2165,7 @@ function registerIpc(): void {
   });
   ipcMain.handle("history-cover:read", async (_event, key: string, sourcePath: string) => {
     if (!key || !sourcePath) return null;
-    const resolvedSource = await resolveExistingHistoryFile(sourcePath);
+    const resolvedSource = await resolveHistorySourcePath(sourcePath);
     const sourceStat = resolvedSource ? await fs.stat(resolvedSource).catch(() => null) : null;
     if (!sourceStat?.isFile()) return null;
     const [coverStat, metadataText] = await Promise.all([
@@ -2167,7 +2196,7 @@ function registerIpc(): void {
           : null;
       if (!key || !sourcePath || !bytes?.byteLength) return false;
       if (bytes.byteLength > 2 * 1024 * 1024) throw new Error("历史封面缓存不能超过 2 MB");
-      const resolvedSource = await resolveExistingHistoryFile(sourcePath);
+      const resolvedSource = await resolveHistorySourcePath(sourcePath);
       const sourceStat = resolvedSource ? await fs.stat(resolvedSource).catch(() => null) : null;
       if (!sourceStat?.isFile()) return false;
       const directory = historyCoverDirectory();

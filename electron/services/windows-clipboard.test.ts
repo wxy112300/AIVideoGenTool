@@ -2,7 +2,10 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { stageFileForWindowsClipboard } from "./windows-clipboard.js";
+import {
+  resolveExistingHistoryFile,
+  stageFileForWindowsClipboard
+} from "./windows-clipboard.js";
 
 const temporaryRoots: string[] = [];
 
@@ -26,5 +29,20 @@ describe("stageFileForWindowsClipboard", () => {
 
     await expect(fs.readFile(source, "utf8")).resolves.toBe("video-data");
     await expect(fs.readFile(pasted, "utf8")).resolves.toBe("video-data");
+  });
+});
+
+describe("resolveExistingHistoryFile", () => {
+  it("uses a current-machine fallback when the recorded absolute path is stale", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "studio-history-media-"));
+    temporaryRoots.push(root);
+    const currentFile = path.join(root, "output", "result.mp4");
+    await fs.mkdir(path.dirname(currentFile), { recursive: true });
+    await fs.writeFile(currentFile, "video-data", "utf8");
+
+    await expect(resolveExistingHistoryFile(
+      "C:\\OldComputer\\ComfyUI\\output\\result.mp4",
+      [currentFile]
+    )).resolves.toBe(currentFile);
   });
 });
