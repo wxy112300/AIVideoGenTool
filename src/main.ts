@@ -129,6 +129,7 @@ type Page = "create" | "queue" | "history" | "history-detail" | "settings";
 
 const appElement = document.querySelector<HTMLDivElement>("#app")!;
 let state: AppState;
+let appVersion = "";
 let page: Page = "create";
 let draftSaveTimer: number | undefined;
 let draftRevision = 0;
@@ -1546,7 +1547,7 @@ function shell(content: string): string {
     <div class="app-shell ${page === "history" || page === "history-detail" ? "history-shell" : ""}">
       <header class="topbar">
         <button class="brand" data-page="create" aria-label="返回创建页">
-          <span class="brand-mark">${icon("play")}</span><span>Local Video Studio</span>
+          <span class="brand-mark">${icon("play")}</span><span>Local Video Studio</span><span class="brand-version">${appVersion ? `v${escapeHtml(appVersion)}` : ""}</span>
         </button>
         <nav aria-label="主导航">
           ${(["create", "queue", "history", "settings"] as Array<Exclude<Page, "history-detail">>)
@@ -6432,8 +6433,10 @@ window.setInterval(() => {
   if (etaNote) etaNote.textContent = remainingSeconds == null ? "完成首条任务后会更准确" : "按历史耗时与当前进度估算";
 }, 2_000);
 
-void window.studio.getState().then((initialState) => {
+void window.studio.getState().then(async (initialState) => {
   state = initialState;
+  appVersion = await window.studio.getAppVersion();
+  document.title = `Local Video Studio v${appVersion}`;
   render();
   void refreshPerformanceMetrics();
   void Promise.allSettled([

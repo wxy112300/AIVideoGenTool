@@ -10,6 +10,10 @@
 `docs/PRODUCT_REQUIREMENTS.md` 为准；本文只描述已经落地的能力、真实验证边界、
 本机环境、已知风险和下一步顺序。
 
+图片工作台的新需求、数据契约、分阶段实施和多 Agent 文件所有权见
+`docs/IMAGE_WORKSPACE_IMPLEMENTATION_PLAN.md`。该模块目前完成的是交互原型，不能按
+原型画面推断正式 Electron 功能已经实现。
+
 ## 1. 对产品需求的当前理解
 
 这是一个面向本地 ComfyUI 的 Windows Image-to-Video 工作台，而不是 ComfyUI

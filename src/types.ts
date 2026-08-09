@@ -576,6 +576,7 @@ export type WindowCloseResponse =
 
 export interface AppApi {
   getState(): Promise<AppState>;
+  getAppVersion(): Promise<string>;
   setSettingsDirty(dirty: boolean): Promise<void>;
   respondWindowClose(response: WindowCloseResponse): Promise<void>;
   saveDraft(draft: Draft): Promise<AppState>;

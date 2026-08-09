@@ -119,6 +119,8 @@ import {
 import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
+const studioProductName = "Local Video Studio";
+const studioWindowTitle = () => `${studioProductName} v${app.getVersion()}`;
 // Chromium 150 can fatally CHECK while Windows is temporarily rebuilding a
 // multi-monitor topology. Its own feature flag is the intended kill switch.
 const windowsChromiumWorkarounds = ["SkipEmptyDisplayHotplugEvent"] as const;
@@ -750,7 +752,7 @@ async function finishRunningWorkClose(
 ): Promise<void> {
   try {
     if (!mainWindow) return;
-    mainWindow.setTitle("正在结束任务并退出…");
+    mainWindow.setTitle(`正在结束任务并退出… · ${studioWindowTitle()}`);
     if (response === "force-exit") {
       await interruptForExit(false);
       await finishWindowClose();
@@ -781,7 +783,7 @@ async function finishRunningWorkClose(
   } finally {
     closeFlowRunning = false;
     if (!allowWindowClose && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.setTitle("Local Video Studio");
+      mainWindow.setTitle(studioWindowTitle());
     }
   }
 }
@@ -790,7 +792,7 @@ function createWindow(): void {
   allowWindowClose = false;
   appLogger.info("window", "created", "Main window created");
   mainWindow = new BrowserWindow({
-    title: "Local Video Studio",
+    title: studioWindowTitle(),
     width: 1280,
     height: 860,
     minWidth: 820,
@@ -2022,6 +2024,7 @@ async function loggedOperation<T extends { ok: boolean; message: string }>(
 
 function registerIpc(): void {
   ipcMain.handle("state:get", () => store.get());
+  ipcMain.handle("app:version", () => app.getVersion());
   ipcMain.handle("renderer:set-settings-dirty", (_event, dirty: boolean) => {
     rendererHasUnsavedSettings = dirty === true;
   });

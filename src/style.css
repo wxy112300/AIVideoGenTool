@@ -57,6 +57,7 @@ code { font-family: "Cascadia Code", Consolas, monospace; color: #c8d8ee; }
 .topbar { position: sticky; top: 0; z-index: 10; min-height: 64px; display: flex; align-items: center; justify-content: space-between; margin: 0 -28px; padding: 10px 28px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(18px); }
 .history-shell .topbar { margin-inline: -24px; padding-inline: 24px; }
 .brand { display: flex; gap: 10px; align-items: center; color: inherit; background: none; border: 0; font-weight: 700; }
+.brand-version { color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .02em; }
 .brand-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; color: #08111c; background: var(--primary); font-size: 11px; }
 .brand-mark .ui-icon { width: 16px; height: 16px; stroke-width: 2.1; }
 nav { display: flex; gap: 5px; }

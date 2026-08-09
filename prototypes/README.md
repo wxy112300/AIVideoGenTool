@@ -2,12 +2,15 @@
 
 > Baseline synchronized with the implemented desktop UI on 2026-08-09. New modules should be designed here first, then implemented against the approved prototype.
 
-- `create.html`: image generation/video continuation, H3 FL2VA/R2V reference slots, prompt presets/checks, Spectrum, steps and GPU-budget feedback.
-- `queue.html`: one expanded running task, live preview, performance telemetry, recovery state, compact pending tasks and retry actions.
-- `history.html`: persistent cover-cache behavior, responsive masonry/album layouts, hover playback model and right-click file/task actions.
+The approved image-workspace implementation phases and cross-agent ownership are documented in `docs/IMAGE_WORKSPACE_IMPLEMENTATION_PLAN.md`.
+
+- `create.html`: three creation modes—image editing, image-to-video/R2F reference slots, and video continuation. Image editing reuses the H3-style single prompt editor, version history, combinable intent hints, reusable instruction inserts, multimodal rewriting and batch controls.
+- `queue.html`: one expanded running task, live preview, performance telemetry, recovery state, compact pending tasks, and multi-Seed image batches represented as one task.
+- `history.html`: separate video/image tabs; video cover-cache and hover playback behavior; image projects group every generation and edit version.
 - `history-detail.html`: sticky return/navigation concepts, playback, version grouping, file operations, delete flow, generation snapshot and performance summary.
+- `image-detail.html`: large-image viewer, grouped side album, parent-version lineage, clipboard/file actions, continue-edit flow, and handoff to video Slot 1.
 - `upscale.html`: target resolution, current SeedVR2 strategy, model/VRAM selection and RTX 4090 estimates.
-- `settings.html`: seven current categories covering ComfyUI instances, Python/attention acceleration, models, nodes/workflows, prompt runtimes, upscale and diagnostics logs.
+- `settings.html`: system/runtime configuration plus separate video and image-editing models, shared workflow dependencies, multimodal prompt presets, upscale and diagnostics logs.
 - `studio-prototype.css` / `studio-prototype.js`: shared visual and interaction baseline used by every prototype page.
 
 These files are HTML fragments intended for product interaction review.
@@ -23,7 +26,7 @@ Rebuild the standalone pages after editing a fragment:
 ## Current prototype boundary
 
 - The prototypes describe behavior already present in the application; sample paths and telemetry are illustrative.
-- Output-directory migration and future image-editing modules are deliberately not included yet because they are not implemented or approved.
+- Image editing is currently an approved interaction prototype. Model choices and parameter ranges remain illustrative until the first ComfyUI image workflows are selected and validated.
 - Community NSFW/uncensored H3 derivatives are not represented as installable options while the ecosystem remains unstable.
 
 ## Automatic output naming

@@ -11,6 +11,7 @@ import type {
 
 const api: AppApi = {
   getState: () => ipcRenderer.invoke("state:get"),
+  getAppVersion: () => ipcRenderer.invoke("app:version"),
   setSettingsDirty: (dirty: boolean) => ipcRenderer.invoke("renderer:set-settings-dirty", dirty),
   respondWindowClose: (response: WindowCloseResponse) =>
     ipcRenderer.invoke("window:close-response", response),

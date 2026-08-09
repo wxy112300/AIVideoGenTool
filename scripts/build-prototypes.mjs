@@ -38,6 +38,7 @@ const pages = [
   ['queue.html', '队列'],
   ['history.html', '历史'],
   ['history-detail.html', '视频详情'],
+  ['image-detail.html', '图片详情'],
   ['upscale.html', '提升分辨率'],
   ['settings.html', '设置']
 ];

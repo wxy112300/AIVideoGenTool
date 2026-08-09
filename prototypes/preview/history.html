@@ -945,6 +945,7 @@ svg.lucide {
 .studio-prototype .slot-list { display:grid; gap:9px; }
 .studio-prototype .reference-slot { display:grid; grid-template-columns:64px minmax(0,1fr) 130px 36px; gap:9px; align-items:center; padding:9px; border:1px solid #2d3a4e; border-radius:11px; background:#0d131c; }
 .studio-prototype .slot-thumb { height:50px; border-radius:8px; display:grid; place-items:center; color:#8fbaff; background:#17243a; }
+.studio-prototype .picture-scene-thumb{background:linear-gradient(145deg,#88533d,#17243a)}.studio-prototype .picture-person-thumb{background:linear-gradient(145deg,#274f78,#17243a)}.studio-prototype .edit-picture-drop{min-height:150px;margin-top:12px}
 .studio-prototype .control-section { display:grid; gap:12px; padding-top:14px; margin-top:14px; border-top:1px solid #273246; }
 .studio-prototype .summary-strip { padding:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid #30405a; border-radius:10px; background:#0c1420; }
 .studio-prototype .queue-list { display:grid; gap:10px; }
@@ -1001,10 +1002,77 @@ svg.lucide {
 .studio-prototype .dialog-backdrop { position:fixed; inset:0; z-index:60; display:none; place-items:center; padding:20px; background:#03060bc7; }
 .studio-prototype .dialog-backdrop.open { display:grid; }
 .studio-prototype .dialog { width:min(520px,100%); padding:20px; display:grid; gap:15px; border:1px solid #3a4c66; border-radius:15px; background:#131b27; box-shadow:0 24px 80px #000b; }
+.studio-prototype .mode-switch { padding:4px; border:1px solid var(--studio-border); border-radius:12px; background:#0d131c; }
+.studio-prototype .handoff-banner { padding:13px 15px; display:flex; align-items:center; justify-content:space-between; gap:14px; border:1px solid #35639a; border-radius:13px; background:linear-gradient(100deg,#102541,#101923); }
+.studio-prototype .handoff-banner > div { display:grid; gap:4px; }
+.studio-prototype .image-workspace { grid-template-columns:minmax(350px,.86fr) minmax(500px,1.14fr); }
+.studio-prototype .image-edit-source { min-height:390px; }
+.studio-prototype .image-edit-source .media-caption { z-index:3; }
+.studio-prototype .image-scene, .studio-prototype .image-card-scene, .studio-prototype .image-stage-scene { position:absolute; inset:0; overflow:hidden; background:radial-gradient(circle at 72% 31%,#eea46e 0 5%,transparent 25%),linear-gradient(164deg,#a6654b 0 32%,#26384c 62%,#0b1119); }
+.studio-prototype .image-scene::before, .studio-prototype .image-card-scene::before, .studio-prototype .image-stage-scene::before { content:""; position:absolute; inset:52% -8% -16%; background:linear-gradient(175deg,#4d6174,#151f2b 68%); transform:skewY(-3deg); }
+.studio-prototype .image-subject, .studio-prototype .image-card-scene span, .studio-prototype .image-stage-subject { position:absolute; z-index:1; left:43%; bottom:8%; width:23%; height:66%; border-radius:46% 46% 20% 20%; background:linear-gradient(90deg,#172235,#5b7187 48%,#142034); box-shadow:0 20px 28px #0007; }
+.studio-prototype .image-subject::before, .studio-prototype .image-card-scene span::before, .studio-prototype .image-stage-subject::before { content:""; position:absolute; left:24%; top:-13%; width:52%; aspect-ratio:1; border-radius:50%; background:linear-gradient(145deg,#e0b29a,#815a4c); }
+.studio-prototype .intent-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.studio-prototype .intent-chip { min-height:42px; padding:8px 10px; display:flex; align-items:center; gap:7px; color:#aebbd0; border:1px solid #2f3c50; border-radius:9px; background:#0d141e; cursor:pointer; }
+.studio-prototype .intent-chip:hover, .studio-prototype .intent-chip.active { color:#dceaff; border-color:#5d91d9; background:#172945; }
+.studio-prototype .prompt-constraints, .studio-prototype .capability-tags, .studio-prototype .batch-seeds { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-top:10px; }
+.studio-prototype .quick-insert-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px; align-items:end; margin-top:11px; }
+.studio-prototype .quick-insert-row .btn { min-height:40px; }
+.studio-prototype .prompt-assist-status { margin-top:11px; }
+.studio-prototype .prompt-assist-status strong { display:flex; align-items:center; gap:7px; }
+.studio-prototype .compact-textarea { min-height:112px; }
+.studio-prototype .batch-seeds span, .studio-prototype .capability-tags span { padding:3px 7px; border:1px solid #30405a; border-radius:7px; color:#9fb4cf; background:#0b121c; font:11px/1.4 "Cascadia Mono",Consolas,monospace; }
+.studio-prototype .image-batch-card { border-color:#3f5e87; background:linear-gradient(120deg,#111f32,#101720); }
+.studio-prototype .segmented { display:inline-flex; padding:4px; border:1px solid #334156; border-radius:11px; background:#0d131c; }
+.studio-prototype .segmented button { min-height:34px; padding:6px 12px; display:flex; align-items:center; gap:6px; color:var(--studio-muted); border:0; border-radius:8px; background:transparent; cursor:pointer; }
+.studio-prototype .segmented button.active { color:var(--studio-text); background:#24334a; box-shadow:0 0 0 1px #405675 inset; }
+.studio-prototype .image-gallery .gallery-media { aspect-ratio:3/2; }
+.studio-prototype .image-gallery .gallery-card:nth-child(n) .gallery-media { aspect-ratio:3/2; }
+.studio-prototype .image-gallery.album .gallery-media { aspect-ratio:1/1 !important; }
+.studio-prototype .image-card-scene { position:absolute; inset:0; }
+.studio-prototype .image-project-card.image-variant-b .image-card-scene { filter:hue-rotate(105deg) saturate(1.3); }
+.studio-prototype .image-project-card.image-variant-c .image-card-scene { filter:sepia(.45) brightness(1.08); }
+.studio-prototype .image-project-card.image-variant-d .image-card-scene { filter:hue-rotate(305deg) saturate(1.35); }
+.studio-prototype .project-kind { position:absolute; z-index:2; left:8px; bottom:8px; padding:4px 8px; display:flex; align-items:center; gap:5px; border-radius:7px; color:#dbe9ff; background:#08101bd9; font-size:11px; }
+.studio-prototype .image-detail-layout { display:grid; grid-template-columns:minmax(560px,1fr) minmax(290px,340px); gap:14px; align-items:start; }
+.studio-prototype .image-viewer-panel{padding:0;overflow:hidden}.studio-prototype .image-viewer-grid{display:grid;grid-template-columns:132px minmax(0,1fr);min-width:0}.studio-prototype .version-rail { max-height:680px; overflow:auto; padding:12px; border-right:1px solid #293548; background:#0d131c; }
+.studio-prototype .version-list{display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px}
+.studio-prototype .version-group { display:grid; grid-template-columns:1fr; gap:8px; padding-top:11px; margin-top:11px; border-top:1px solid #293548; }
+.studio-prototype .version-group:first-of-type { padding-top:0; margin-top:0; border-top:0; }
+.studio-prototype .version-group-title { grid-column:1/-1; display:flex; justify-content:space-between; color:#bac8dc; font-size:11px; }
+.studio-prototype .version-group-title small { color:var(--studio-muted); }
+.studio-prototype .version-thumb, .studio-prototype .mini-version { position:relative; overflow:hidden; border:1px solid #344258; border-radius:9px; background:radial-gradient(circle at 65% 30%,#dfa170 0 8%,transparent 28%),linear-gradient(145deg,#885943,#203044); cursor:pointer; }
+.studio-prototype .version-thumb { width:100%; aspect-ratio:4/3; }
+.studio-prototype .version-thumb:nth-child(3n), .studio-prototype .mini-version:nth-child(3n) { filter:hue-rotate(9deg) brightness(1.08); }
+.studio-prototype .version-thumb:nth-child(2n), .studio-prototype .mini-version:nth-child(2n) { filter:saturate(.85) contrast(1.12); }
+.studio-prototype .version-thumb.active, .studio-prototype .mini-version.active { border-color:#86b8ff; box-shadow:0 0 0 2px #72a8ff55; filter:none; }
+.studio-prototype .version-thumb span { position:absolute; left:5px; bottom:4px; padding:1px 5px; border-radius:5px; color:white; background:#07101ac9; font-size:10px; }
+.studio-prototype .version-thumb svg { position:absolute; right:5px; top:5px; width:14px; height:14px; padding:2px; border-radius:50%; color:#08213a; background:#8dc0ff; }
+.studio-prototype .image-stage-panel { min-width:0;padding:12px; }
+.studio-prototype .image-stage-toolbar { min-height:48px; padding:0 4px 10px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.studio-prototype .image-stage { min-height:570px; position:relative; overflow:hidden; border:1px solid #28384e; border-radius:12px; background:#070b11; }
+.studio-prototype .image-stage-scene { inset:22px; border-radius:7px; box-shadow:0 20px 60px #000b; }
+.studio-prototype .image-stage.variant-3 .image-stage-scene { filter:saturate(.8); }
+.studio-prototype .image-stage.variant-4 .image-stage-scene { filter:contrast(1.12); }
+.studio-prototype .image-stage.variant-5 .image-stage-scene { filter:hue-rotate(-7deg); }
+.studio-prototype .image-stage.variant-7 .image-stage-scene { filter:brightness(1.08) saturate(1.15); }
+.studio-prototype .image-stage.variant-8 .image-stage-scene { filter:sepia(.16) contrast(1.06); }
+.studio-prototype .image-stage-hint { position:absolute; z-index:3; left:50%; bottom:10px; translate:-50% 0; padding:5px 9px; display:flex; align-items:center; gap:6px; border-radius:7px; color:#a9b8cd; background:#070b11d9; font-size:11px; }
+.studio-prototype .image-detail-sidebar { display:grid; gap:14px; position:sticky; top:84px; }
+.studio-prototype .image-records{margin-top:14px}
+.studio-prototype .primary-action-panel { display:grid; gap:10px; border-color:#426ea8; background:linear-gradient(145deg,#132641,#101720); }
+.studio-prototype .continue-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.studio-prototype .continue-actions .btn{justify-content:center;text-align:center}
+.studio-prototype .detail-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.studio-prototype .seed-input-row{display:grid;grid-template-columns:minmax(0,1fr) 38px 38px;gap:7px}.studio-prototype .image-seed-field{grid-column:span 2}
+.studio-prototype .model-capability-grid { display:grid; gap:10px; }
 @media (max-width:900px) {
-  .studio-prototype .workspace, .studio-prototype .running-grid, .studio-prototype .detail-hero { grid-template-columns:1fr; }
+  .studio-prototype .workspace, .studio-prototype .running-grid, .studio-prototype .detail-hero, .studio-prototype .image-detail-layout { grid-template-columns:1fr; }
   .studio-prototype .settings-layout { grid-template-columns:1fr; }
   .studio-prototype .settings-sidebar { position:static; grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .studio-prototype .version-rail, .studio-prototype .image-detail-sidebar { position:static; max-height:none; }
+  .studio-prototype .image-viewer-grid{grid-template-columns:118px minmax(0,1fr)}.studio-prototype .version-rail { display:block; max-height:620px;overflow:auto; white-space:normal; }
+  .studio-prototype .version-group { width:260px; display:inline-grid; margin:0 10px 0 0; vertical-align:top; white-space:normal; }
+  .studio-prototype .image-records{margin-left:0}
 }
 @media (max-width:650px) {
   .studio-prototype .studio-topbar, .studio-prototype .page-head { align-items:flex-start; flex-direction:column; }
@@ -1016,7 +1084,19 @@ svg.lucide {
   .studio-prototype .settings-sidebar { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .studio-prototype .reference-slot { grid-template-columns:52px minmax(0,1fr) 36px; }
   .studio-prototype .reference-slot select { grid-column:2; }
+  .studio-prototype .mode-switch, .studio-prototype .history-toolbar { width:100%; }
+  .studio-prototype .mode-switch .btn { flex:1; }
+  .studio-prototype .handoff-banner, .studio-prototype .image-stage-toolbar { align-items:flex-start; flex-direction:column; }
+  .studio-prototype .intent-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .studio-prototype .quick-insert-row { grid-template-columns:1fr; }
+  .studio-prototype .image-seed-field{grid-column:auto}.studio-prototype .continue-actions{grid-template-columns:1fr}
+  .studio-prototype .image-stage { min-height:430px; }
 }
+.image-model-row{display:grid;grid-template-columns:minmax(260px,.75fr) minmax(320px,1.25fr);gap:14px;align-items:stretch;margin-bottom:16px}
+.model-runtime-card{display:flex;flex-direction:column;justify-content:center;gap:7px;padding:13px 15px;border:1px solid var(--line);border-radius:12px;background:rgba(8,14,24,.42)}
+.model-runtime-card>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.model-runtime-card p{margin:0;line-height:1.55}
+.image-generation-grid{align-items:start}.range-field{gap:9px}.range-heading,.range-scale{display:flex;align-items:center;justify-content:space-between;gap:12px}.range-heading strong{color:var(--accent);font-size:15px}.range-field input[type="range"]{width:100%;height:5px;padding:0;border:0;accent-color:var(--accent);cursor:pointer}.range-scale{color:var(--muted);font-size:11px}.field-note{color:var(--muted);font-size:11px;line-height:1.45;font-weight:400}
+@media(max-width:900px){.image-model-row{grid-template-columns:1fr}}
 
     html { background: var(--background); }
     body {
@@ -1040,8 +1120,8 @@ svg.lucide {
 <div class="studio-prototype">
   <header class="studio-topbar"><a class="studio-brand" href="./create.html"><span class="brand-mark"><i data-lucide="play"></i></span><span>Local Video Studio</span></a><nav class="studio-nav"><a href="./create.html">创建</a><a href="./queue.html">队列</a><a href="./history.html" aria-current="page">历史</a><a href="./settings.html">设置</a></nav></header>
   <main class="studio-body">
-    <section class="page-head"><div><div class="page-title"><h1>历史作品</h1><span class="badge">8 个视频</span></div><p class="muted">封面读取持久缓存；悬停才加载并播放原视频，退出后回到稳定封面。</p></div><div class="actions"><button class="btn primary" data-layout="masonry"><i data-lucide="columns-3"></i>瀑布流</button><button class="btn" data-layout="album"><i data-lucide="layout-grid"></i>相册</button></div></section>
-    <section class="gallery">
+    <section class="page-head"><div><div class="page-title"><h1>历史作品</h1><span class="badge" data-history-count>8 个视频</span></div><p class="muted" data-history-description>封面读取持久缓存；悬停才加载并播放原视频，退出后回到稳定封面。</p></div><div class="actions history-toolbar"><div class="segmented" role="tablist" aria-label="作品类型"><button class="active" data-history-kind="video"><i data-lucide="clapperboard"></i>视频</button><button data-history-kind="image"><i data-lucide="image"></i>图片</button></div><button class="btn primary" data-layout="masonry"><i data-lucide="columns-3"></i>瀑布流</button><button class="btn" data-layout="album"><i data-lucide="layout-grid"></i>相册</button></div></section>
+    <section class="gallery" data-history-panel="video">
       <article class="panel gallery-card" data-context-card onclick="location.href='./history-detail.html'"><div class="gallery-media"><div class="media-chips"><span class="media-chip">MiniMax H3</span><span class="media-chip">768p</span><span class="media-chip">2 个版本</span></div></div><div class="gallery-copy"><h3>黄昏机场的人物转身</h3><code>H3-黄昏机场人物-20260809-214031.mp4</code><div class="section-head tiny muted"><span>8/9 21:56</span><span>渲染 22:14</span></div></div></article>
       <article class="panel gallery-card" data-context-card onclick="location.href='./history-detail.html'"><div class="gallery-media"><div class="media-chips"><span class="media-chip">H3 R2V</span><span class="media-chip">720p</span><span class="media-chip">1 个版本</span></div></div><div class="gallery-copy"><h3>人物与霓虹街道</h3><code>H3-人物与霓虹街道-20260809-180201.mp4</code><div class="section-head tiny muted"><span>8/9 18:24</span><span>渲染 19:48</span></div></div></article>
       <article class="panel gallery-card" data-context-card onclick="location.href='./history-detail.html'"><div class="gallery-media"><div class="media-chips"><span class="media-chip">Sulphur 2</span><span class="media-chip">480p</span><span class="media-chip">旧模型记录</span></div></div><div class="gallery-copy"><h3>海边慢镜头</h3><code>Sulphur2-海边慢镜头-20260728-121843.mp4</code><div class="section-head tiny muted"><span>7/28 12:31</span><span>渲染 06:42</span></div></div></article>
@@ -1049,8 +1129,14 @@ svg.lucide {
       <article class="panel gallery-card" data-context-card><div class="gallery-media"><div class="media-chips"><span class="media-chip">MiniMax H3</span><span class="media-chip">1080p</span><span class="media-chip">3 个版本</span></div></div><div class="gallery-copy"><h3>工作室灯光测试</h3><code>H3-工作室灯光-20260807-235812-1080p.mp4</code><div class="section-head tiny muted"><span>8/8 00:28</span><span>渲染 31:08</span></div></div></article>
       <article class="panel gallery-card" data-context-card><div class="gallery-media"><div class="media-chips"><span class="media-chip">H3 R2V</span><span class="media-chip">768p</span></div></div><div class="gallery-copy"><h3>复古广告片</h3><code>H3-复古广告片-20260806-142015.mp4</code><div class="section-head tiny muted"><span>8/6 14:43</span><span>渲染 23:36</span></div></div></article>
     </section>
+    <section class="gallery image-gallery" data-history-panel="image" hidden>
+      <article class="panel gallery-card image-project-card image-variant-a" data-context-card onclick="location.href='./image-detail.html'"><div class="gallery-media"><div class="image-card-scene"><span></span></div><div class="media-chips"><span class="media-chip">Qwen Image Edit</span><span class="media-chip">1536 × 1024</span><span class="media-chip">12 个版本</span></div><span class="project-kind"><i data-lucide="git-branch"></i>3 次迭代</span></div><div class="gallery-copy"><h3>黄昏机场人物素材</h3><code>airport-character-v12.png</code><div class="section-head tiny muted"><span>8/9 22:34</span><span>最近生成 6 张</span></div></div></article>
+      <article class="panel gallery-card image-project-card image-variant-b" data-context-card onclick="location.href='./image-detail.html'"><div class="gallery-media"><div class="image-card-scene"><span></span></div><div class="media-chips"><span class="media-chip">FLUX Kontext</span><span class="media-chip">2048 × 1152</span><span class="media-chip">8 个版本</span></div><span class="project-kind"><i data-lucide="palette"></i>风格重绘</span></div><div class="gallery-copy"><h3>雨夜霓虹街道背景</h3><code>neon-street-v08.png</code><div class="section-head tiny muted"><span>8/9 19:08</span><span>最近生成 4 张</span></div></div></article>
+      <article class="panel gallery-card image-project-card image-variant-c" data-context-card onclick="location.href='./image-detail.html'"><div class="gallery-media"><div class="image-card-scene"><span></span></div><div class="media-chips"><span class="media-chip">SUPIR</span><span class="media-chip">3072 × 2048</span><span class="media-chip">5 个版本</span></div><span class="project-kind"><i data-lucide="maximize-2"></i>放大重绘</span></div><div class="gallery-copy"><h3>复古飞行员肖像</h3><code>pilot-portrait-v05.png</code><div class="section-head tiny muted"><span>8/8 23:41</span><span>已选最终版本</span></div></div></article>
+      <article class="panel gallery-card image-project-card image-variant-d" data-context-card><div class="gallery-media"><div class="image-card-scene"><span></span></div><div class="media-chips"><span class="media-chip">Seedream Edit</span><span class="media-chip">1024 × 1536</span><span class="media-chip">16 个版本</span></div><span class="project-kind"><i data-lucide="person-standing"></i>姿态调整</span></div><div class="gallery-copy"><h3>红裙人物动作测试</h3><code>red-dress-pose-v16.png</code><div class="section-head tiny muted"><span>8/8 17:26</span><span>4 个生成批次</span></div></div></article>
+    </section>
   </main>
-  <div class="context-menu" role="menu"><button><i data-lucide="play"></i>打开详情</button><button><i data-lucide="copy"></i>复制视频文件</button><button><i data-lucide="folder-open"></i>在 Explorer 中显示</button><button><i data-lucide="video"></i>继续创作</button><button><i data-lucide="maximize-2"></i>提升分辨率</button><button class="danger" data-open-dialog="delete-dialog"><i data-lucide="trash-2"></i>删除视频和记录</button></div>
+  <div class="context-menu" role="menu"><button><i data-lucide="external-link"></i>打开详情</button><button><i data-lucide="copy"></i>复制当前文件</button><button><i data-lucide="folder-open"></i>在 Explorer 中显示</button><button><i data-lucide="wand-sparkles"></i>继续编辑 / 创作</button><button><i data-lucide="maximize-2"></i>提升分辨率</button><button class="danger" data-open-dialog="delete-dialog"><i data-lucide="trash-2"></i>删除文件和记录</button></div>
   <div class="dialog-backdrop" id="delete-dialog"><section class="dialog"><span class="badge bad">删除本地文件</span><h2>删除这个历史作品？</h2><p class="muted">作品的全部视频版本和历史记录都会删除。此操作不会进入回收站，无法撤销。</p><div class="actions" style="justify-content:flex-end"><button class="btn" data-close-dialog>取消</button><button class="btn danger" data-close-dialog>删除视频和记录</button></div></section></div>
 </div>
 
@@ -1071,11 +1157,26 @@ svg.lucide {
   });
   root.querySelectorAll('[data-layout]').forEach((button) => {
     button.addEventListener('click', () => {
-      const gallery = root.querySelector('.gallery');
-      gallery?.classList.toggle('album', button.dataset.layout === 'album');
+      root.querySelectorAll('.gallery').forEach((gallery) => gallery.classList.toggle('album', button.dataset.layout === 'album'));
       root.querySelectorAll('[data-layout]').forEach((item) => item.classList.toggle('primary', item === button));
     });
   });
+  const historyContent = {
+    video: { count: '8 个视频', description: '封面读取持久缓存；悬停才加载并播放原视频，退出后回到稳定封面。' },
+    image: { count: '4 个图片项目', description: '一个项目包含全部抽卡和后续编辑版本；选择满意图片后可继续编辑或送入视频 Slot 1。' }
+  };
+  const switchHistoryKind = (kind) => {
+    root.querySelectorAll('[data-history-kind]').forEach((item) => item.classList.toggle('active', item.dataset.historyKind === kind));
+    root.querySelectorAll('[data-history-panel]').forEach((panel) => panel.hidden = panel.dataset.historyPanel !== kind);
+    const content = historyContent[kind];
+    if (content) {
+      const count = root.querySelector('[data-history-count]');
+      const description = root.querySelector('[data-history-description]');
+      if (count) count.textContent = content.count;
+      if (description) description.textContent = content.description;
+    }
+  };
+  root.querySelectorAll('[data-history-kind]').forEach((button) => button.addEventListener('click', () => switchHistoryKind(button.dataset.historyKind)));
   root.querySelectorAll('[data-input-mode]').forEach((button) => {
     button.addEventListener('click', () => {
       root.querySelectorAll('[data-mode-panel]').forEach((panel) => panel.hidden = panel.dataset.modePanel !== button.dataset.inputMode);
@@ -1086,6 +1187,143 @@ svg.lucide {
     ['dragenter','dragover'].forEach((name) => well.addEventListener(name, (event) => { event.preventDefault(); well.classList.add('dragging'); }));
     ['dragleave','drop'].forEach((name) => well.addEventListener(name, (event) => { event.preventDefault(); well.classList.remove('dragging'); }));
   });
+  const imagePrompt = root.querySelector('[data-image-prompt]');
+  const promptVersions = [
+    '把 Picture 2 的人物放到 Picture 1 右侧靠窗的位置，右手举起来，融合自然一点；Picture 1 的其他内容尽量不要变化。',
+    '将 Picture 2 的人物放到 Picture 1 右侧靠窗的位置。保持 Picture 2 的人物身份、面部特征、发型和服装；匹配 Picture 1 的透视、尺度、色温、光源方向、接触阴影、景深和胶片颗粒，使人物自然融入场景。仅让人物右手自然抬起挥手，不要改变 Picture 1 中其他内容。',
+    '以 Picture 1 为基础画面，将 Picture 2 的人物置于右侧靠窗空位。严格保持 Picture 2 的身份、脸部、发型、服装与身体比例；仅让右手自然抬起挥手。统一人物与 Picture 1 的透视、尺度、暖色主光、接触阴影、边缘柔度、景深和胶片颗粒。保留 Picture 1 的背景结构和全部未指定内容；避免重复肢体、异常手指、重影、面部漂移和过度锐化。'
+  ];
+  let imagePromptIndex = 1;
+  const renderImagePromptVersion = () => {
+    if (!imagePrompt) return;
+    imagePrompt.value = promptVersions[imagePromptIndex];
+    const counter = root.querySelector('[data-image-prompt-counter]');
+    if (counter) counter.textContent = `${imagePromptIndex + 1} / ${promptVersions.length}`;
+    const previous = root.querySelector('[data-image-prompt-prev]');
+    const next = root.querySelector('[data-image-prompt-next]');
+    if (previous) previous.disabled = imagePromptIndex === 0;
+    if (next) next.disabled = imagePromptIndex === promptVersions.length - 1;
+  };
+  const saveCurrentImagePrompt = () => {
+    if (imagePrompt) promptVersions[imagePromptIndex] = imagePrompt.value;
+  };
+  root.querySelector('[data-image-prompt-prev]')?.addEventListener('click', () => {
+    saveCurrentImagePrompt();
+    imagePromptIndex = Math.max(0, imagePromptIndex - 1);
+    renderImagePromptVersion();
+  });
+  root.querySelector('[data-image-prompt-next]')?.addEventListener('click', () => {
+    saveCurrentImagePrompt();
+    imagePromptIndex = Math.min(promptVersions.length - 1, imagePromptIndex + 1);
+    renderImagePromptVersion();
+  });
+  root.querySelector('[data-insert-image-instruction]')?.addEventListener('click', () => {
+    const select = root.querySelector('[data-image-instruction]');
+    const instruction = select?.value?.trim();
+    if (!imagePrompt || !instruction) return;
+    const start = imagePrompt.selectionStart ?? imagePrompt.value.length;
+    const end = imagePrompt.selectionEnd ?? start;
+    const prefix = start > 0 && !/\s$/.test(imagePrompt.value.slice(0, start)) ? '\n' : '';
+    imagePrompt.value = `${imagePrompt.value.slice(0, start)}${prefix}${instruction}${imagePrompt.value.slice(end)}`;
+    imagePrompt.focus();
+    imagePrompt.selectionStart = imagePrompt.selectionEnd = start + prefix.length + instruction.length;
+    saveCurrentImagePrompt();
+    select.value = '';
+    const status = root.querySelector('[data-image-prompt-status]');
+    if (status) status.textContent = '已插入，可继续添加';
+  });
+  root.addEventListener('click', (event) => {
+    const removeButton = event.target.closest('[data-remove-edit-picture]');
+    if (removeButton) {
+      removeButton.closest('[data-edit-picture]')?.remove();
+    }
+  });
+  root.querySelector('[data-add-edit-picture]')?.addEventListener('click', () => {
+    const list = root.querySelector('[data-edit-picture-list]');
+    if (!list) return;
+    const used = [...list.querySelectorAll('[data-edit-picture]')].map((item) => Number(item.dataset.editPicture));
+    const next = [2, 3, 4, 5, 6].find((number) => !used.includes(number));
+    if (!next) return;
+    const article = document.createElement('article');
+    article.className = 'reference-slot';
+    article.dataset.editPicture = String(next);
+    article.innerHTML = `<div class="slot-thumb"><i data-lucide="image-plus"></i></div><div><strong>Picture ${next}</strong><p class="muted tiny">新参考图片</p></div><select aria-label="Picture ${next} 的作用"><option>自动</option><option>人物</option><option>物体</option><option>姿态</option><option>风格</option><option>背景</option></select><button class="btn icon-btn danger" data-remove-edit-picture title="删除 Picture ${next}"><i data-lucide="x"></i></button>`;
+    list.appendChild(article);
+    if (window.lucide) window.lucide.createIcons();
+  });
+  root.querySelector('[data-optimize-image-prompt]')?.addEventListener('click', () => {
+    if (!imagePrompt) return;
+    saveCurrentImagePrompt();
+    const preset = root.querySelector('[data-image-prompt-preset]')?.selectedOptions?.[0]?.textContent ?? '综合编辑';
+    const optimized = `${imagePrompt.value.trim()}\n\n执行要求：按照“${preset}”理解素材图与上方全部指令。准确识别目标对象和修改范围，未明确要求改变的内容应尽量保持一致。所有新增、移除和重绘区域都必须匹配原图的透视、尺度、光照、阴影、景深、噪点与材质。`;
+    promptVersions.splice(imagePromptIndex + 1, 0, optimized);
+    imagePromptIndex += 1;
+    renderImagePromptVersion();
+    const status = root.querySelector('[data-image-prompt-status]');
+    if (status) status.textContent = '已生成新的优化版本';
+  });
+  if (imagePrompt) renderImagePromptVersion();
+  const imageModelProfiles = {
+    qwen: { badge: '本地', title: 'Qwen Image Edit 2511 FP8', description: '多 Picture 编辑与人物一致性主力；按输入顺序编译引用，输出比例默认跟随 Picture 1。' },
+    flux: { badge: '本地 · 英文 Prompt', title: 'FLUX.1 Kontext Dev FP8', description: '适合目标修改、角色一致性与风格编辑；提示词助手会转换为更适合 Kontext 的英文指令。' },
+    seedream: { badge: '云端 · 需要 API', title: 'Seedream 5.0 Lite', description: 'ComfyUI Partner Node 云端能力，不属于本地模型；使用前需配置 API 与额度，支持更高分辨率输出。' }
+  };
+  const renderImageModelProfile = () => {
+    const profile = imageModelProfiles[root.querySelector('[data-image-model]')?.value] ?? imageModelProfiles.qwen;
+    const badge = root.querySelector('[data-image-model-badge]');
+    const title = root.querySelector('[data-image-model-title]');
+    const description = root.querySelector('[data-image-model-description]');
+    if (badge) badge.textContent = profile.badge;
+    if (title) title.textContent = profile.title;
+    if (description) description.textContent = profile.description;
+  };
+  root.querySelector('[data-image-model]')?.addEventListener('change', renderImageModelProfile);
+  renderImageModelProfile();
+  const renderImageBatchSettings = () => {
+    const count = Number(root.querySelector('[data-image-count]')?.value ?? 6);
+    const seed = root.querySelector('[data-image-seed-input]')?.value.trim() ?? '';
+    const format = root.querySelector('[data-image-format]')?.selectedOptions?.[0]?.textContent.split(' · ')[0] ?? 'PNG';
+    const countValue = root.querySelector('[data-image-count-value]');
+    const versionBadge = root.querySelector('[data-image-version-badge]');
+    const batchSummary = root.querySelector('[data-image-batch-summary]');
+    const outputSummary = root.querySelector('[data-image-output-summary]');
+    if (countValue) countValue.textContent = `${count} 张`;
+    if (versionBadge) versionBadge.textContent = `预计 ${count} 个版本`;
+    if (batchSummary) batchSummary.textContent = seed ? `一个任务 · ${count} 张使用相同 Seed ${seed}` : `一个任务 · ${count} 个随机 Seed 顺序生成`;
+    if (outputSummary) outputSummary.textContent = `${format} · 输出约 1536 × 1024 · 结果归入“黄昏机场人物素材”`;
+  };
+  root.querySelector('[data-image-count]')?.addEventListener('input', renderImageBatchSettings);
+  root.querySelector('[data-image-format]')?.addEventListener('change', renderImageBatchSettings);
+  root.querySelector('[data-image-seed-input]')?.addEventListener('input', renderImageBatchSettings);
+  root.querySelector('[data-random-image-seed]')?.addEventListener('click', () => {
+    const input = root.querySelector('[data-image-seed-input]');
+    if (!input) return;
+    const values = new Uint32Array(2);
+    crypto.getRandomValues(values);
+    input.value = ((BigInt(values[0]) << 32n | BigInt(values[1])) % 10000000000000000n).toString();
+    renderImageBatchSettings();
+  });
+  root.querySelector('[data-clear-image-seed]')?.addEventListener('click', () => {
+    const input = root.querySelector('[data-image-seed-input]');
+    if (input) input.value = '';
+    renderImageBatchSettings();
+  });
+  renderImageBatchSettings();
+  const switchImageVersion = (version) => {
+    const source = root.querySelector(`[data-image-version="${version}"][data-image-seed]`);
+    root.querySelectorAll('[data-image-version]').forEach((item) => item.classList.toggle('active', item.dataset.imageVersion === version));
+    const stage = root.querySelector('[data-image-stage]');
+    if (stage) stage.className = `image-stage variant-${Number(version)}`;
+    const seed = source?.dataset.imageSeed ?? '672408119';
+    const model = source?.dataset.imageModel ?? 'Qwen Image Edit';
+    const meta = root.querySelector('[data-image-stage-meta]');
+    const status = root.querySelector('[data-image-action-status]');
+    if (meta) meta.textContent = `版本 ${version} · Seed ${seed} · ${model}`;
+    root.querySelectorAll('[data-image-seed-label]').forEach((label) => { label.textContent = seed; });
+    root.querySelectorAll('[data-image-model-label]').forEach((label) => { label.textContent = model; });
+    if (status) status.textContent = version === '12' ? `版本 ${version} · 当前封面` : `版本 ${version} · 当前选中`;
+  };
+  root.querySelectorAll('[data-image-version]').forEach((button) => button.addEventListener('click', () => switchImageVersion(button.dataset.imageVersion)));
   const menu = root.querySelector('.context-menu');
   root.querySelectorAll('[data-context-card]').forEach((card) => card.addEventListener('contextmenu', (event) => {
     event.preventDefault();
@@ -1102,6 +1340,12 @@ svg.lucide {
     const status = root.querySelector('[data-demo-status]');
     if (status) status.textContent = button.dataset.demoAction ?? '原型操作已触发';
   }));
+  const params = new URLSearchParams(location.search);
+  const requestedMode = params.get('mode');
+  if (requestedMode) root.querySelector(`[data-input-mode="${requestedMode}"]`)?.click();
+  if (params.get('slot') === '1') root.querySelector('[data-handoff-banner]')?.removeAttribute('hidden');
+  if (params.get('project')) root.querySelector('[data-edit-project-banner]')?.removeAttribute('hidden');
+  if (params.get('kind')) switchHistoryKind(params.get('kind'));
 })();
 
   </script>

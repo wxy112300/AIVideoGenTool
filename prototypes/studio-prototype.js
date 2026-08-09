@@ -9,11 +9,26 @@
   });
   root.querySelectorAll('[data-layout]').forEach((button) => {
     button.addEventListener('click', () => {
-      const gallery = root.querySelector('.gallery');
-      gallery?.classList.toggle('album', button.dataset.layout === 'album');
+      root.querySelectorAll('.gallery').forEach((gallery) => gallery.classList.toggle('album', button.dataset.layout === 'album'));
       root.querySelectorAll('[data-layout]').forEach((item) => item.classList.toggle('primary', item === button));
     });
   });
+  const historyContent = {
+    video: { count: '8 个视频', description: '封面读取持久缓存；悬停才加载并播放原视频，退出后回到稳定封面。' },
+    image: { count: '4 个图片项目', description: '一个项目包含全部抽卡和后续编辑版本；选择满意图片后可继续编辑或送入视频 Slot 1。' }
+  };
+  const switchHistoryKind = (kind) => {
+    root.querySelectorAll('[data-history-kind]').forEach((item) => item.classList.toggle('active', item.dataset.historyKind === kind));
+    root.querySelectorAll('[data-history-panel]').forEach((panel) => panel.hidden = panel.dataset.historyPanel !== kind);
+    const content = historyContent[kind];
+    if (content) {
+      const count = root.querySelector('[data-history-count]');
+      const description = root.querySelector('[data-history-description]');
+      if (count) count.textContent = content.count;
+      if (description) description.textContent = content.description;
+    }
+  };
+  root.querySelectorAll('[data-history-kind]').forEach((button) => button.addEventListener('click', () => switchHistoryKind(button.dataset.historyKind)));
   root.querySelectorAll('[data-input-mode]').forEach((button) => {
     button.addEventListener('click', () => {
       root.querySelectorAll('[data-mode-panel]').forEach((panel) => panel.hidden = panel.dataset.modePanel !== button.dataset.inputMode);
@@ -24,6 +39,143 @@
     ['dragenter','dragover'].forEach((name) => well.addEventListener(name, (event) => { event.preventDefault(); well.classList.add('dragging'); }));
     ['dragleave','drop'].forEach((name) => well.addEventListener(name, (event) => { event.preventDefault(); well.classList.remove('dragging'); }));
   });
+  const imagePrompt = root.querySelector('[data-image-prompt]');
+  const promptVersions = [
+    '把 Picture 2 的人物放到 Picture 1 右侧靠窗的位置，右手举起来，融合自然一点；Picture 1 的其他内容尽量不要变化。',
+    '将 Picture 2 的人物放到 Picture 1 右侧靠窗的位置。保持 Picture 2 的人物身份、面部特征、发型和服装；匹配 Picture 1 的透视、尺度、色温、光源方向、接触阴影、景深和胶片颗粒，使人物自然融入场景。仅让人物右手自然抬起挥手，不要改变 Picture 1 中其他内容。',
+    '以 Picture 1 为基础画面，将 Picture 2 的人物置于右侧靠窗空位。严格保持 Picture 2 的身份、脸部、发型、服装与身体比例；仅让右手自然抬起挥手。统一人物与 Picture 1 的透视、尺度、暖色主光、接触阴影、边缘柔度、景深和胶片颗粒。保留 Picture 1 的背景结构和全部未指定内容；避免重复肢体、异常手指、重影、面部漂移和过度锐化。'
+  ];
+  let imagePromptIndex = 1;
+  const renderImagePromptVersion = () => {
+    if (!imagePrompt) return;
+    imagePrompt.value = promptVersions[imagePromptIndex];
+    const counter = root.querySelector('[data-image-prompt-counter]');
+    if (counter) counter.textContent = `${imagePromptIndex + 1} / ${promptVersions.length}`;
+    const previous = root.querySelector('[data-image-prompt-prev]');
+    const next = root.querySelector('[data-image-prompt-next]');
+    if (previous) previous.disabled = imagePromptIndex === 0;
+    if (next) next.disabled = imagePromptIndex === promptVersions.length - 1;
+  };
+  const saveCurrentImagePrompt = () => {
+    if (imagePrompt) promptVersions[imagePromptIndex] = imagePrompt.value;
+  };
+  root.querySelector('[data-image-prompt-prev]')?.addEventListener('click', () => {
+    saveCurrentImagePrompt();
+    imagePromptIndex = Math.max(0, imagePromptIndex - 1);
+    renderImagePromptVersion();
+  });
+  root.querySelector('[data-image-prompt-next]')?.addEventListener('click', () => {
+    saveCurrentImagePrompt();
+    imagePromptIndex = Math.min(promptVersions.length - 1, imagePromptIndex + 1);
+    renderImagePromptVersion();
+  });
+  root.querySelector('[data-insert-image-instruction]')?.addEventListener('click', () => {
+    const select = root.querySelector('[data-image-instruction]');
+    const instruction = select?.value?.trim();
+    if (!imagePrompt || !instruction) return;
+    const start = imagePrompt.selectionStart ?? imagePrompt.value.length;
+    const end = imagePrompt.selectionEnd ?? start;
+    const prefix = start > 0 && !/\s$/.test(imagePrompt.value.slice(0, start)) ? '\n' : '';
+    imagePrompt.value = `${imagePrompt.value.slice(0, start)}${prefix}${instruction}${imagePrompt.value.slice(end)}`;
+    imagePrompt.focus();
+    imagePrompt.selectionStart = imagePrompt.selectionEnd = start + prefix.length + instruction.length;
+    saveCurrentImagePrompt();
+    select.value = '';
+    const status = root.querySelector('[data-image-prompt-status]');
+    if (status) status.textContent = '已插入，可继续添加';
+  });
+  root.addEventListener('click', (event) => {
+    const removeButton = event.target.closest('[data-remove-edit-picture]');
+    if (removeButton) {
+      removeButton.closest('[data-edit-picture]')?.remove();
+    }
+  });
+  root.querySelector('[data-add-edit-picture]')?.addEventListener('click', () => {
+    const list = root.querySelector('[data-edit-picture-list]');
+    if (!list) return;
+    const used = [...list.querySelectorAll('[data-edit-picture]')].map((item) => Number(item.dataset.editPicture));
+    const next = [2, 3, 4, 5, 6].find((number) => !used.includes(number));
+    if (!next) return;
+    const article = document.createElement('article');
+    article.className = 'reference-slot';
+    article.dataset.editPicture = String(next);
+    article.innerHTML = `<div class="slot-thumb"><i data-lucide="image-plus"></i></div><div><strong>Picture ${next}</strong><p class="muted tiny">新参考图片</p></div><select aria-label="Picture ${next} 的作用"><option>自动</option><option>人物</option><option>物体</option><option>姿态</option><option>风格</option><option>背景</option></select><button class="btn icon-btn danger" data-remove-edit-picture title="删除 Picture ${next}"><i data-lucide="x"></i></button>`;
+    list.appendChild(article);
+    if (window.lucide) window.lucide.createIcons();
+  });
+  root.querySelector('[data-optimize-image-prompt]')?.addEventListener('click', () => {
+    if (!imagePrompt) return;
+    saveCurrentImagePrompt();
+    const preset = root.querySelector('[data-image-prompt-preset]')?.selectedOptions?.[0]?.textContent ?? '综合编辑';
+    const optimized = `${imagePrompt.value.trim()}\n\n执行要求：按照“${preset}”理解素材图与上方全部指令。准确识别目标对象和修改范围，未明确要求改变的内容应尽量保持一致。所有新增、移除和重绘区域都必须匹配原图的透视、尺度、光照、阴影、景深、噪点与材质。`;
+    promptVersions.splice(imagePromptIndex + 1, 0, optimized);
+    imagePromptIndex += 1;
+    renderImagePromptVersion();
+    const status = root.querySelector('[data-image-prompt-status]');
+    if (status) status.textContent = '已生成新的优化版本';
+  });
+  if (imagePrompt) renderImagePromptVersion();
+  const imageModelProfiles = {
+    qwen: { badge: '本地', title: 'Qwen Image Edit 2511 FP8', description: '多 Picture 编辑与人物一致性主力；按输入顺序编译引用，输出比例默认跟随 Picture 1。' },
+    flux: { badge: '本地 · 英文 Prompt', title: 'FLUX.1 Kontext Dev FP8', description: '适合目标修改、角色一致性与风格编辑；提示词助手会转换为更适合 Kontext 的英文指令。' },
+    seedream: { badge: '云端 · 需要 API', title: 'Seedream 5.0 Lite', description: 'ComfyUI Partner Node 云端能力，不属于本地模型；使用前需配置 API 与额度，支持更高分辨率输出。' }
+  };
+  const renderImageModelProfile = () => {
+    const profile = imageModelProfiles[root.querySelector('[data-image-model]')?.value] ?? imageModelProfiles.qwen;
+    const badge = root.querySelector('[data-image-model-badge]');
+    const title = root.querySelector('[data-image-model-title]');
+    const description = root.querySelector('[data-image-model-description]');
+    if (badge) badge.textContent = profile.badge;
+    if (title) title.textContent = profile.title;
+    if (description) description.textContent = profile.description;
+  };
+  root.querySelector('[data-image-model]')?.addEventListener('change', renderImageModelProfile);
+  renderImageModelProfile();
+  const renderImageBatchSettings = () => {
+    const count = Number(root.querySelector('[data-image-count]')?.value ?? 6);
+    const seed = root.querySelector('[data-image-seed-input]')?.value.trim() ?? '';
+    const format = root.querySelector('[data-image-format]')?.selectedOptions?.[0]?.textContent.split(' · ')[0] ?? 'PNG';
+    const countValue = root.querySelector('[data-image-count-value]');
+    const versionBadge = root.querySelector('[data-image-version-badge]');
+    const batchSummary = root.querySelector('[data-image-batch-summary]');
+    const outputSummary = root.querySelector('[data-image-output-summary]');
+    if (countValue) countValue.textContent = `${count} 张`;
+    if (versionBadge) versionBadge.textContent = `预计 ${count} 个版本`;
+    if (batchSummary) batchSummary.textContent = seed ? `一个任务 · ${count} 张使用相同 Seed ${seed}` : `一个任务 · ${count} 个随机 Seed 顺序生成`;
+    if (outputSummary) outputSummary.textContent = `${format} · 输出约 1536 × 1024 · 结果归入“黄昏机场人物素材”`;
+  };
+  root.querySelector('[data-image-count]')?.addEventListener('input', renderImageBatchSettings);
+  root.querySelector('[data-image-format]')?.addEventListener('change', renderImageBatchSettings);
+  root.querySelector('[data-image-seed-input]')?.addEventListener('input', renderImageBatchSettings);
+  root.querySelector('[data-random-image-seed]')?.addEventListener('click', () => {
+    const input = root.querySelector('[data-image-seed-input]');
+    if (!input) return;
+    const values = new Uint32Array(2);
+    crypto.getRandomValues(values);
+    input.value = ((BigInt(values[0]) << 32n | BigInt(values[1])) % 10000000000000000n).toString();
+    renderImageBatchSettings();
+  });
+  root.querySelector('[data-clear-image-seed]')?.addEventListener('click', () => {
+    const input = root.querySelector('[data-image-seed-input]');
+    if (input) input.value = '';
+    renderImageBatchSettings();
+  });
+  renderImageBatchSettings();
+  const switchImageVersion = (version) => {
+    const source = root.querySelector(`[data-image-version="${version}"][data-image-seed]`);
+    root.querySelectorAll('[data-image-version]').forEach((item) => item.classList.toggle('active', item.dataset.imageVersion === version));
+    const stage = root.querySelector('[data-image-stage]');
+    if (stage) stage.className = `image-stage variant-${Number(version)}`;
+    const seed = source?.dataset.imageSeed ?? '672408119';
+    const model = source?.dataset.imageModel ?? 'Qwen Image Edit';
+    const meta = root.querySelector('[data-image-stage-meta]');
+    const status = root.querySelector('[data-image-action-status]');
+    if (meta) meta.textContent = `版本 ${version} · Seed ${seed} · ${model}`;
+    root.querySelectorAll('[data-image-seed-label]').forEach((label) => { label.textContent = seed; });
+    root.querySelectorAll('[data-image-model-label]').forEach((label) => { label.textContent = model; });
+    if (status) status.textContent = version === '12' ? `版本 ${version} · 当前封面` : `版本 ${version} · 当前选中`;
+  };
+  root.querySelectorAll('[data-image-version]').forEach((button) => button.addEventListener('click', () => switchImageVersion(button.dataset.imageVersion)));
   const menu = root.querySelector('.context-menu');
   root.querySelectorAll('[data-context-card]').forEach((card) => card.addEventListener('contextmenu', (event) => {
     event.preventDefault();
@@ -40,4 +192,10 @@
     const status = root.querySelector('[data-demo-status]');
     if (status) status.textContent = button.dataset.demoAction ?? '原型操作已触发';
   }));
+  const params = new URLSearchParams(location.search);
+  const requestedMode = params.get('mode');
+  if (requestedMode) root.querySelector(`[data-input-mode="${requestedMode}"]`)?.click();
+  if (params.get('slot') === '1') root.querySelector('[data-handoff-banner]')?.removeAttribute('hidden');
+  if (params.get('project')) root.querySelector('[data-edit-project-banner]')?.removeAttribute('hidden');
+  if (params.get('kind')) switchHistoryKind(params.get('kind'));
 })();
