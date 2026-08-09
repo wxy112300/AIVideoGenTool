@@ -55,6 +55,7 @@ import {
   extensionWorkflowSafetyErrors,
   generationSafetyForTask,
   isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3R2vModel,
   isMiniMaxH3Model,
   outputDimensions,
   validateApiWorkflow,
@@ -2490,7 +2491,15 @@ function registerIpc(): void {
     if (draft.inputMode !== "image") {
       throw new Error("视频续写必须使用独立的 extension 队列任务");
     }
-    if (!draft.startImagePath) throw new Error("请先选择首帧图片");
+    const isR2V = isMiniMaxH3R2vModel(draft.modelId);
+    if (!isR2V && !draft.startImagePath) throw new Error("请先选择首帧图片");
+    if (
+      isR2V &&
+      (!draft.h3ReferenceSlots.length ||
+        draft.h3ReferenceSlots.some((slot) => !slot.mediaPath))
+    ) {
+      throw new Error("R2V 的每个 Slot 都必须先添加图片或视频。");
+    }
     if (!promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择该模型的 ComfyUI API 工作流");
     const safety = generationSafetyForTask(draft);

@@ -1825,6 +1825,12 @@ main { padding-top: 0; }
   padding: 12px 4px 4px;
   background: linear-gradient(180deg, transparent, rgba(17, 21, 28, .96) 28%);
 }
+.submit-feedback {
+  margin: 12px 0 0;
+  color: #ff9a9d !important;
+  font-size: 11px;
+  line-height: 1.5;
+}
 
 .history-view-tools {
   align-items: flex-end;

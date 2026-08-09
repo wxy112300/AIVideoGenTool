@@ -1450,9 +1450,36 @@ function createPage(): string {
     draft.h3ReferenceSlots.length > 0 &&
     draft.h3ReferenceSlots.every((slot) => Boolean(slot.mediaPath))
   );
-  const enqueueDisabled = extending
-    ? !videoReady || trimDuration <= 0 || !supportsVideoExtension || !safety.safe || !spectrumReady
-    : !safety.safe || !r2vSlotsReady || !spectrumReady;
+  const enqueueBlockReason = extending
+    ? !videoReady
+      ? "请先选择视频并等待读取完成"
+      : trimDuration <= 0
+        ? "请设置有效的视频保留范围"
+        : !prompt.text.trim()
+          ? "请先填写提示词"
+          : !draft.workflowPath
+            ? "请先选择视频续写 API 工作流"
+            : !supportsVideoExtension
+              ? "当前工作流未通过视频续写安全检查"
+              : !safety.safe
+                ? safety.message
+                : !spectrumReady
+                  ? "请先在设置中安装并加载 Spectrum 节点"
+                  : ""
+    : !isR2V && !draft.startImagePath
+      ? "请先选择首帧图片"
+      : !prompt.text.trim()
+        ? "请先填写提示词"
+        : !draft.workflowPath
+          ? "请先选择该模型的 ComfyUI API 工作流"
+          : !r2vSlotsReady
+            ? "请先补齐 R2V 参考 Slot"
+            : !safety.safe
+              ? safety.message
+              : !spectrumReady
+                ? "请先在设置中安装并加载 Spectrum 节点"
+                : "";
+  const enqueueDisabled = Boolean(enqueueBlockReason);
   return `
     <section class="page-heading create-page-heading">
       <div class="page-heading-copy"><h1>创建视频</h1><p>${extending ? "裁出要保留的视频片段，并从末帧继续生成。" : "导入参考画面，调整提示词，然后加入本地生成队列。"}</p></div>
@@ -1689,9 +1716,10 @@ function createPage(): string {
         <div><strong>ComfyUI API 工作流</strong><p class="muted">${extending && !supportsVideoExtension ? `${selectedModelProfile?.available ? `${modelName(draft.modelId)} 模型组件已安装完整；` : "模型组件尚未安装完整；"}当前工作流未通过原生续写安全检查。` : draft.workflowPath ? escapeHtml(Object.values(bundledWorkflows).find((workflow) => workflow.path === draft.workflowPath)?.label ?? draft.workflowPath) : "为当前模型选择从 ComfyUI 导出的 API 格式 JSON"}</p></div>
         <button class="secondary button-with-icon" id="pick-workflow">${icon("workflow")}${draft.workflowPath ? "更换 JSON" : "选择 JSON"}</button>
       </div>
+      ${enqueueBlockReason ? `<p class="submit-feedback error" role="status">${escapeHtml(enqueueBlockReason)}</p>` : ""}
       <div class="submit-row composer-submit-row">
         <button class="ghost danger button-with-icon" id="clear-draft">${icon("trash-2")}清空</button>
-        <button class="primary button-with-icon" id="enqueue" ${enqueueDisabled ? "disabled" : ""} title="${isR2V ? r2vSlotsReady ? "加入 R2V 多参考生成队列" : "请先补齐 R2V 参考 Slot" : extending ? supportsVideoExtension ? "加入视频续写队列" : "模型已安装，但专用视频续写工作流尚未接入" : safety.safe ? "加入本地生成队列" : escapeHtml(safety.message)}">${icon("plus")}加入队列</button>
+        <button class="primary button-with-icon" id="enqueue" ${enqueueDisabled ? "disabled" : ""} title="${escapeHtml(enqueueBlockReason || (isR2V ? "加入 R2V 多参考生成队列" : extending ? "加入视频续写队列" : "加入本地生成队列"))}">${icon("plus")}加入队列</button>
       </div>
       </section>
     </div>`;
