@@ -140,8 +140,9 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .running-copy .task-description { max-height: 6.4em; }
 .task-main h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-actions { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-.task-meta { flex-wrap: wrap; color: var(--muted); font-size: 12px; }
-.task-meta span + span::before { content: "·"; margin-right: 8px; }
+.task-meta { min-width: 0; flex-wrap: nowrap; gap: 5px; overflow: visible; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.task-meta span { flex: 0 0 auto; }
+.task-meta span + span::before { content: "·"; margin-right: 5px; }
 .status { display: inline-block; margin-bottom: 7px; padding: 3px 8px; border-radius: 99px; font-size: 11px; background: var(--panel-2); }
 .status.running { color: var(--primary); }
 .status.failed, .status.cancelled, .error { color: var(--danger) !important; }

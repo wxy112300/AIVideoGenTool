@@ -63,6 +63,59 @@ export function isMiniMaxH3Model(modelId: string): boolean {
     isMiniMaxH3R2vModel(modelId);
 }
 
+export function isMiniMaxH3SpectrumEligible(modelId: string): boolean {
+  return isMiniMaxH3Model(modelId) && !isMiniMaxH3TurboModel(modelId);
+}
+
+function applyMiniMaxH3Spectrum(
+  workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>
+): void {
+  const consumers = Object.entries(workflow).filter(([, node]) =>
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
+    Array.isArray(node.inputs?.model)
+  );
+  if (!consumers.length) {
+    throw new Error("Spectrum 加速需要连接到 H3 的 BasicScheduler / BasicGuider 模型输入。");
+  }
+  const existing = Object.entries(workflow).find(([, node]) =>
+    node.class_type === "SpectrumApplyMiniMaxH3"
+  );
+  const upstream = existing?.[1].inputs?.model ?? consumers[0]?.[1].inputs?.model;
+  if (!Array.isArray(upstream) || typeof upstream[0] !== "string") {
+    throw new Error("Spectrum 加速无法识别 H3 模型补丁链的输出。");
+  }
+  if (!existing && consumers.some(([, node]) => JSON.stringify(node.inputs?.model) !== JSON.stringify(upstream))) {
+    throw new Error("Spectrum 加速要求 BasicScheduler 与 BasicGuider 使用同一个 H3 模型输出。");
+  }
+  const numericIds = Object.keys(workflow)
+    .map(Number)
+    .filter(Number.isFinite);
+  const nodeId = existing?.[0] ?? String((numericIds.length ? Math.max(...numericIds) : 0) + 1);
+  workflow[nodeId] = {
+    class_type: "SpectrumApplyMiniMaxH3",
+    inputs: {
+      model: upstream,
+      enabled: true,
+      blend_weight: 0.5,
+      degree: 1,
+      ridge_lambda: 0.1,
+      window_size: 2,
+      flex_window: 0.75,
+      warmup_steps: 1,
+      tail_actual_steps: 1,
+      max_history: 8,
+      debug: true,
+      history_storage: "system_ram",
+      bootstrap_first_forecast: true,
+      anchor_residual_feedback: false,
+      selective_rollback_correction: false,
+      offline_smoothing_replay: true,
+      audio_blend_weight: 0
+    }
+  };
+  for (const [, node] of consumers) node.inputs!.model = [nodeId, 0];
+}
+
 export function normalizeH3Steps(value: unknown): H3StepCount {
   return value === 4 || value === 6 || value === 8 || value === 10 ||
     value === 12 || value === 16 || value === 20
@@ -803,6 +856,12 @@ export function renderWorkflow(
       }
       delete workflow[sageNodeId];
     }
+  }
+  if (
+    task.spectrumMode === "balanced" &&
+    isMiniMaxH3SpectrumEligible(task.modelId)
+  ) {
+    applyMiniMaxH3Spectrum(workflow);
   }
   const emptyReferenceNodeIds = new Set(
     Object.entries(workflow)

@@ -35,7 +35,8 @@ export function createDefaultDraft(): Draft {
     frameInterpolation: "off",
     motion: "natural",
     seed: null,
-    keepSeedOnCopy: false
+    keepSeedOnCopy: false,
+    spectrumMode: "off"
   };
 }
 

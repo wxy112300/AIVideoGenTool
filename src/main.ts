@@ -104,6 +104,7 @@ import {
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
+  isMiniMaxH3SpectrumEligible,
   isMiniMaxH3TurboModel,
   normalizeH3Steps,
   outputDimensions,
@@ -1414,6 +1415,14 @@ function createPage(): string {
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
   const promptAiDisabled = promptRuntimeBusy || state.queueRunning;
   const h3Steps = normalizeH3Steps(draft.steps);
+  const spectrumNode = environmentScan?.customNodes.find(
+    (node) => node.id === "spectrum-minimax-h3"
+  );
+  const spectrumInstalled = Boolean(spectrumNode?.installed && !spectrumNode.loadError);
+  const spectrumEligible = isMiniMaxH3SpectrumEligible(draft.modelId);
+  const spectrumReady = draft.spectrumMode !== "balanced" || (
+    spectrumEligible && spectrumInstalled
+  );
   const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
   const extending = draft.inputMode === "video";
   const prompt = activePrompt();
@@ -1442,8 +1451,8 @@ function createPage(): string {
     draft.h3ReferenceSlots.every((slot) => Boolean(slot.mediaPath))
   );
   const enqueueDisabled = extending
-    ? !videoReady || trimDuration <= 0 || !supportsVideoExtension || !safety.safe
-    : !safety.safe || !r2vSlotsReady;
+    ? !videoReady || trimDuration <= 0 || !supportsVideoExtension || !safety.safe || !spectrumReady
+    : !safety.safe || !r2vSlotsReady || !spectrumReady;
   return `
     <section class="page-heading create-page-heading">
       <div class="page-heading-copy"><h1>创建视频</h1><p>${extending ? "裁出要保留的视频片段，并从末帧继续生成。" : "导入参考画面，调整提示词，然后加入本地生成队列。"}</p></div>
@@ -1624,6 +1633,13 @@ function createPage(): string {
                 <option value="16" ${h3Steps === 16 ? "selected" : ""}>16 · 平衡预览</option>
                 <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · 快速预览</option>`}
           </select>
+        </label>
+        <label class="settings-field settings-spectrum">Spectrum 加速
+          <select id="spectrum-mode" ${spectrumEligible && spectrumInstalled ? "" : "disabled"} title="${escapeHtml(!spectrumEligible ? "Turbo 低步数下预测收益有限且近似误差占比更高，当前暂不开放。" : !spectrumInstalled ? "请先在设置 → 节点与工作流中安装 Spectrum，并重启 ComfyUI。" : "使用系统内存保存 H3 特征；不会占用额外模型权重。")} ">
+            <option value="off" ${draft.spectrumMode !== "balanced" ? "selected" : ""}>关闭 · 原生完整计算</option>
+            <option value="balanced" ${draft.spectrumMode === "balanced" ? "selected" : ""}>平衡模式 · 系统内存</option>
+          </select>
+          <small>${!spectrumEligible ? "Turbo 暂不开放" : spectrumInstalled ? `已安装${spectrumNode?.version ? ` v${escapeHtml(spectrumNode.version)}` : ""} · 预计降低 20–35% 采样耗时` : "需要先安装 Spectrum 节点"}</small>
         </label>` : ""}
           </div>
         </section>
@@ -1640,23 +1656,20 @@ function createPage(): string {
             ).join("")}
           </select>
         </label>
-        <label class="settings-field settings-interpolation">Frame Interpolation
+        ${isMiniMaxH3 ? "" : `<label class="settings-field settings-interpolation">Frame Interpolation
           <select id="frame-interpolation" ${isMiniMaxH3 ? "disabled" : ""}>
             <option value="off" ${draft.frameInterpolation === "off" ? "selected" : ""}>关闭 · 模型直接生成</option>
-            ${isMiniMaxH3 ? "" : `
-              <option value="rife2x" ${draft.frameInterpolation === "rife2x" ? "selected" : ""}>RIFE 2×</option>
-              <option value="rife4x" ${draft.frameInterpolation === "rife4x" ? "selected" : ""}>RIFE 4×</option>`}
+            <option value="rife2x" ${draft.frameInterpolation === "rife2x" ? "selected" : ""}>RIFE 2×</option>
+            <option value="rife4x" ${draft.frameInterpolation === "rife4x" ? "selected" : ""}>RIFE 4×</option>
           </select>
         </label>
         <label class="settings-field settings-motion">动作幅度
           <select id="motion" ${isMiniMaxH3 ? "disabled" : ""}>
-            ${isMiniMaxH3
-              ? `<option value="natural" selected>由镜头提示词控制</option>`
-              : `<option value="subtle" ${draft.motion === "subtle" ? "selected" : ""}>轻微</option>
-                <option value="natural" ${draft.motion === "natural" ? "selected" : ""}>自然</option>
-                <option value="strong" ${draft.motion === "strong" ? "selected" : ""}>强烈</option>`}
+            <option value="subtle" ${draft.motion === "subtle" ? "selected" : ""}>轻微</option>
+            <option value="natural" ${draft.motion === "natural" ? "selected" : ""}>自然</option>
+            <option value="strong" ${draft.motion === "strong" ? "selected" : ""}>强烈</option>
           </select>
-        </label>
+        </label>`}
           </div>
         </section>
         <section class="composer-control-group composer-seed-group">
@@ -1815,13 +1828,18 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
   const upscaleOutput = task.taskType === "upscale"
     ? upscaleDimensions(task.sourceWidth, task.sourceHeight, task.targetHeight)
     : null;
-  const h3StepsSummary = isMiniMaxH3Model(task.modelId) && task.taskType !== "upscale"
-    ? `<span>H3 ${normalizeH3Steps(task.steps)} 步</span>`
+  const h3ComputeSummary = task.taskType !== "upscale" && isMiniMaxH3Model(task.modelId)
+    ? isMiniMaxH3TurboModel(task.modelId)
+      ? `<span title="Turbo 低步数流程暂不开放 Spectrum">${normalizeH3Steps(task.steps)} 步 · Spectrum 不适用</span>`
+      : task.spectrumMode === "balanced"
+        ? `<span title="Spectrum 已开启；H3 特征历史保存在系统内存">${normalizeH3Steps(task.steps)} 步 · Spectrum 开</span>`
+        : `<span title="Spectrum 已关闭；使用 H3 原生完整计算">${normalizeH3Steps(task.steps)} 步 · Spectrum 关</span>`
     : "";
+  const seedText = String(task.seed);
   const metadata = task.taskType === "generation"
-    ? `<span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span>${h3StepsSummary}<span>Seed ${task.seed}</span>`
+    ? `<span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span>${h3ComputeSummary}<span>Seed ${escapeHtml(seedText)}</span>`
     : task.taskType === "extension"
-      ? `<span>视频续写</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>最多 ${task.maxGeneratedFrames} 模型帧</span><span>${task.overlapFrames} 帧上下文</span>${h3StepsSummary}`
+      ? `<span>视频续写</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>最多 ${task.maxGeneratedFrames} 模型帧</span><span>${task.overlapFrames} 帧上下文</span>${h3ComputeSummary}`
       : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${upscaleOutput![0]} × ${upscaleOutput![1]}</span><span>分批处理 · 每批卸载</span>`;
   if (task.status === "running") {
     const preview = taskPreviews[task.id] ?? "";
@@ -2256,7 +2274,7 @@ function historyDetailPage(): string {
       </article>
       <article class="panel history-record">
         <h2>原始生成参数</h2>
-        <dl><dt>模型</dt><dd>${escapeHtml(modelName(version.modelId))}</dd><dt>采样步数</dt><dd>${version.steps ?? "工作流默认"}</dd><dt>Seed</dt><dd><code>${version.seed ?? "不适用"}</code></dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "旧记录未保存")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId)}</code></dd></dl>
+        <dl><dt>模型</dt><dd>${escapeHtml(modelName(version.modelId))}</dd><dt>采样步数</dt><dd>${version.steps ?? "工作流默认"}</dd><dt>计算模式</dt><dd>${version.spectrumMode === "balanced" ? "Spectrum 平衡模式 · 系统内存" : "原生完整计算"}</dd><dt>Seed</dt><dd><code>${version.seed ?? "不适用"}</code></dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "旧记录未保存")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId)}</code></dd></dl>
       </article>
       <article class="panel history-record">
         <h2>视频输出</h2>
@@ -2850,15 +2868,16 @@ function settingsPage(): string {
         ${(environmentScan?.customNodes ?? []).map((node) => `
           <article class="panel custom-node-card ${node.installed && !node.loadError ? "available" : "missing"}">
             <div class="custom-node-copy">
-              <div class="model-title"><h3>${escapeHtml(node.name)}</h3><span class="model-badge">${node.required ? "项目必需" : "可选"}</span></div>
+              <div class="model-title"><h3>${escapeHtml(node.name)}</h3><span class="model-badge">${node.required ? "项目必需" : "可选"}${node.version ? ` · v${escapeHtml(node.version)}` : ""}</span></div>
               <p>${escapeHtml(node.purpose)}</p>
               <code>${escapeHtml(node.directory || node.repositoryUrl)}</code>
+              ${node.id === "spectrum-minimax-h3" ? `<p class="muted">本机版本：${node.version ? `v${escapeHtml(node.version)}` : node.installed ? "未读取到版本号" : "未安装"} · 最新发布：${node.latestVersion ? `v${escapeHtml(node.latestVersion)}` : "联网后重新扫描"} · 运行时固定使用系统内存，不额外下载模型。</p>` : ""}
               ${node.loadError ? `<span class="node-error">${escapeHtml(node.loadError)}</span>` : ""}
               ${customNodeLogs[node.id] ? `<details class="node-log" open><summary>安装日志</summary><pre>${escapeHtml(customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${node.installed && !node.loadError ? "available" : "missing"}">${node.installed && !node.loadError ? `${icon("circle-check")} 已加载` : node.loadError ? `${icon("circle-alert")} 加载失败` : `${icon("circle-alert")} 未安装`}</span>
-              ${node.installed && !node.loadError ? "" : `<button class="primary button-with-icon" data-install-node="${escapeHtml(node.id)}" ${customNodeInstalling ? "disabled" : ""}>${icon(customNodeInstalling === node.id ? "refresh-cw" : "download")}${customNodeInstalling === node.id ? "处理中…" : node.installed ? "修复/更新" : "安装"}</button>`}
+              <span class="model-availability ${node.installed && !node.loadError && !node.updateAvailable ? "available" : "missing"}">${node.updateAvailable ? `${icon("circle-alert")} 可更新至 v${escapeHtml(node.latestVersion)}` : node.installed && !node.loadError ? `${icon("circle-check")} 已加载` : node.loadError ? `${icon("circle-alert")} 加载失败` : `${icon("circle-alert")} 未安装`}</span>
+              ${node.installed && !node.loadError && !node.updateAvailable && node.id !== "spectrum-minimax-h3" ? "" : `<button class="${node.updateAvailable || !node.installed ? "primary" : "secondary"} button-with-icon" data-install-node="${escapeHtml(node.id)}" ${customNodeInstalling ? "disabled" : ""}>${icon(customNodeInstalling === node.id ? "refresh-cw" : node.installed ? "refresh-cw" : "download")}${customNodeInstalling === node.id ? "处理中…" : node.updateAvailable ? "更新节点" : node.installed ? "检查并更新" : "安装"}</button>`}
             </div>
           </article>`).join("") || `<div class="panel environment-empty">等待环境扫描结果</div>`}
       </div>
@@ -3362,6 +3381,7 @@ async function editHistoryAsset(assetId: string): Promise<void> {
       ? asset.fps ?? 24
       : 24) as Draft["fps"],
     frameInterpolation: asset.frameInterpolation ?? "off",
+    spectrumMode: preferredVersion(asset).spectrumMode ?? "off",
     seed: asset.seed,
     promptVersions: [
       ...state.draft.promptVersions,
@@ -4417,7 +4437,7 @@ function bindCreate(): void {
     patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
     showMessage(`已生成 H3 ${template.mode} 结构化提示词（${template.effectiveDurationSeconds.toFixed(2)} 秒），原内容仍可通过左箭头找回。`);
   });
-  for (const id of ["model", "ratio", "resolution", "steps", "fps", "frame-interpolation", "motion", "seed"]) {
+  for (const id of ["model", "ratio", "resolution", "steps", "spectrum-mode", "fps", "frame-interpolation", "motion", "seed"]) {
     document.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
       const value = (event.target as HTMLInputElement | HTMLSelectElement).value;
       if (id === "model") {
@@ -4463,7 +4483,10 @@ function bindCreate(): void {
                   : 20 as const,
                 fps: 24 as const,
                 frameInterpolation: "off" as const,
-                motion: "natural" as const
+                motion: "natural" as const,
+                spectrumMode: isMiniMaxH3TurboModel(value)
+                  ? "off" as const
+                  : state.draft.spectrumMode
               }
             : {}),
           ...(!bundled?.supportsEndImage && !nextIsR2V ? { endImagePath: "" } : {}),
@@ -4480,6 +4503,7 @@ function bindCreate(): void {
         id === "ratio" ? { ratio: value as Draft["ratio"] } :
         id === "resolution" ? { resolution: Number(value) as Draft["resolution"] } :
         id === "steps" ? { steps: normalizeH3Steps(Number(value)) } :
+        id === "spectrum-mode" ? { spectrumMode: value as Draft["spectrumMode"] } :
         id === "fps" ? { fps: Number(value) as Draft["fps"] } :
         id === "frame-interpolation" ? { frameInterpolation: value as Draft["frameInterpolation"] } :
         id === "motion" ? { motion: value as Draft["motion"] } :

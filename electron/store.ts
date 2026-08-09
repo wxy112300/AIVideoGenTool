@@ -113,6 +113,7 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
       ...task,
       modelProfile: task.modelProfile ?? "q3_k_m",
       attentionMode: task.attentionMode ?? "sage",
+      spectrumMode: task.spectrumMode ?? "off",
       automaticRetryAttempt
     };
   }
@@ -125,6 +126,7 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
     fps: (task.fps ?? 24) as Draft["fps"],
     frameInterpolation: task.frameInterpolation ?? "off",
     attentionMode: task.attentionMode ?? "sage",
+    spectrumMode: task.spectrumMode ?? "off",
     keepSeedOnCopy: task.keepSeedOnCopy ?? false,
     automaticRetryAttempt,
     ...(task.status === "running"

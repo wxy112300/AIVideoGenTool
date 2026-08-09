@@ -15,6 +15,7 @@ describe("draft defaults", () => {
     expect(draft.frameInterpolation).toBe("off");
     expect(draft.inputMode).toBe("image");
     expect(draft.modelId).toBe("minimax_h3_fl2va");
+    expect(draft.spectrumMode).toBe("off");
     expect(draft.sourceVideoPath).toBe("");
     expect(draft.trimStartSeconds).toBe(0);
     expect(draft.trimEndSeconds).toBe(0);

@@ -848,6 +848,7 @@ function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask 
     seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
     attentionMode: state.settings.h3AttentionMode,
+    spectrumMode: draft.spectrumMode,
     progress: 0
   };
 }
@@ -898,6 +899,7 @@ function extensionTaskFromDraft(
     seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
     attentionMode: state.settings.h3AttentionMode,
+    spectrumMode: draft.spectrumMode,
     maxGeneratedFrames: isMiniMaxH3Fl2vaModel(draft.modelId)
       ? 362
       : settings.ltxExtensionFrames,
@@ -1232,6 +1234,7 @@ async function executeQueue(): Promise<void> {
       duration: task.duration,
       fps: task.fps,
       attentionMode: task.taskType === "upscale" ? "not-applicable" : task.attentionMode ?? "sage",
+      spectrumMode: task.taskType === "upscale" ? "not-applicable" : task.spectrumMode ?? "off",
       ...(task.taskType === "upscale"
         ? {
             sourceWidth: task.sourceWidth,
@@ -1517,6 +1520,7 @@ async function executeQueue(): Promise<void> {
             height,
             duration: completedTask.duration,
             steps: completedTask.steps,
+            spectrumMode: completedTask.spectrumMode,
             fps: completedTask.fps,
             seed: completedTask.seed,
             performanceStats: taskPerformanceStats,
@@ -1570,6 +1574,7 @@ async function executeQueue(): Promise<void> {
             height,
             duration: totalDuration,
             steps: completedTask.steps,
+            spectrumMode: completedTask.spectrumMode,
             fps: completedTask.fps,
             seed: completedTask.seed,
             performanceStats: taskPerformanceStats,
@@ -1702,6 +1707,7 @@ async function executeQueue(): Promise<void> {
           recoverable: recoveryDecision.recoverable,
           automaticRetryAttempt: task.automaticRetryAttempt ?? 0,
           attentionMode: task.taskType === "upscale" ? "not-applicable" : task.attentionMode ?? "sage",
+          spectrumMode: task.taskType === "upscale" ? "not-applicable" : task.spectrumMode ?? "off",
           ...errorLogMeta(error)
         }
       );

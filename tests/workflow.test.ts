@@ -15,6 +15,7 @@ import {
   renderWorkflow,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
+  isMiniMaxH3SpectrumEligible,
   isMiniMaxH3TurboModel,
   validateApiWorkflow,
   workflowSupportsEndImage,
@@ -156,6 +157,15 @@ describe("renderWorkflow", () => {
     expect(pytorch["19"]).toBeUndefined();
     expect(pytorch["21"]?.inputs.model).toEqual(["20", 0]);
     expect(pytorch["8"]?.inputs.model).toEqual(["21", 0]);
+
+    const turboSpectrum = renderWorkflow(source, {
+      ...turboTask,
+      spectrumMode: "balanced"
+    }, { inputImage: "first.png" }) as Record<string, { class_type: string }>;
+    expect(isMiniMaxH3SpectrumEligible(turboTask.modelId)).toBe(false);
+    expect(Object.values(turboSpectrum).some((node) =>
+      node.class_type === "SpectrumApplyMiniMaxH3"
+    )).toBe(false);
   });
 
   it("renders the bundled MiniMax H3 I2V graph with staged model and VAE unloading", () => {
@@ -227,6 +237,27 @@ describe("renderWorkflow", () => {
         allow_compile: false
       }
     });
+
+    const spectrum = renderWorkflow(
+      source,
+      { ...h3Task, spectrumMode: "balanced" },
+      { inputImage: "input.png", vramTotalBytes: 24 * 1024 ** 3 }
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(isMiniMaxH3SpectrumEligible(h3Task.modelId)).toBe(true);
+    expect(spectrum["20"]).toMatchObject({
+      class_type: "SpectrumApplyMiniMaxH3",
+      inputs: {
+        model: ["19", 0],
+        enabled: true,
+        history_storage: "system_ram",
+        offline_smoothing_replay: true,
+        blend_weight: 0.5,
+        audio_blend_weight: 0,
+        debug: true
+      }
+    });
+    expect(spectrum["8"]?.inputs.model).toEqual(["20", 0]);
+    expect(spectrum["10"]?.inputs.model).toEqual(["20", 0]);
 
     const quickPreview = renderWorkflow(source, {
       ...h3Task,
@@ -311,7 +342,8 @@ describe("renderWorkflow", () => {
       modelId: "minimax_h3_ref2va",
       duration: 5,
       fps: 24,
-      frameInterpolation: "off"
+      frameInterpolation: "off",
+      spectrumMode: "balanced"
     }, {
       h3ReferenceImages: ["subject.png", "scene.png"]
     }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
@@ -326,6 +358,12 @@ describe("renderWorkflow", () => {
     expect(rendered["6"]?.inputs.image).toBe("scene.png");
     expect(rendered["7"]).toBeUndefined();
     expect(rendered["15"]?.inputs.sampler_name).toBe("res_multistep");
+    const spectrumNode = Object.entries(rendered).find(([, node]) =>
+      node.class_type === "SpectrumApplyMiniMaxH3"
+    );
+    expect(spectrumNode?.[1].inputs.model).toEqual(["16", 0]);
+    expect(rendered["17"]?.inputs.model).toEqual([spectrumNode?.[0], 0]);
+    expect(rendered["19"]?.inputs.model).toEqual([spectrumNode?.[0], 0]);
   });
 
   it("renders mixed R2V image and video references with paired video audio", () => {

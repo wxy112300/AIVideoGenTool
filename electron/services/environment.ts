@@ -149,8 +149,76 @@ const customNodeCatalog = [
     directoryName: "ComfyUI-Frame-Interpolation",
     aliases: ["comfyui-frame-interpolation"],
     required: false
+  },
+  {
+    id: "spectrum-minimax-h3",
+    name: "Spectrum MiniMax H3",
+    purpose: "用系统内存保存 H3 中间特征并预测部分采样步骤；支持标准 FL2VA / R2V，Turbo 暂不启用",
+    repositoryUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
+    directoryName: "ComfyUI-Spectrum-MiniMax-H3",
+    aliases: ["comfyui-spectrum-minimax-h3"],
+    required: false
   }
 ] as const;
+
+function normalizeReleaseVersion(value: string): string {
+  return value.trim().replace(/^v/i, "");
+}
+
+function compareReleaseVersions(left: string, right: string): number {
+  const a = normalizeReleaseVersion(left).split(/[.-]/).map((part) => Number(part) || 0);
+  const b = normalizeReleaseVersion(right).split(/[.-]/).map((part) => Number(part) || 0);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) - (b[index] ?? 0);
+  }
+  return 0;
+}
+
+async function readPythonProjectVersion(directory: string): Promise<string> {
+  if (!directory) return "";
+  return fs.readFile(path.join(directory, "pyproject.toml"), "utf8")
+    .then((source) => normalizeReleaseVersion(source.match(/^version\s*=\s*["']([^"']+)["']/m)?.[1] ?? ""))
+    .catch(() => "");
+}
+
+async function latestSpectrumReleaseVersion(settings: Settings): Promise<string> {
+  const url = "https://api.github.com/repos/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/latest";
+  try {
+    let payload: { tag_name?: unknown };
+    if (settings.proxyEnabled && settings.proxyUrl.trim()) {
+      const curl = await findExecutable("curl.exe");
+      if (!curl) return "";
+      const args = [
+        "-fsSL",
+        "--max-time",
+        "5",
+        "--proxy",
+        normalizeProxyUrl(settings.proxyUrl),
+        "-H",
+        "Accept: application/vnd.github+json",
+        url
+      ];
+      const result = await execFileAsync(curl, args, {
+        encoding: "utf8",
+        timeout: 8_000,
+        windowsHide: true
+      });
+      payload = JSON.parse(result.stdout) as { tag_name?: unknown };
+    } else {
+      const response = await fetch(url, {
+        headers: { Accept: "application/vnd.github+json" },
+        signal: AbortSignal.timeout(3500)
+      });
+      if (!response.ok) return "";
+      payload = await response.json() as { tag_name?: unknown };
+    }
+    return typeof payload.tag_name === "string"
+      ? normalizeReleaseVersion(payload.tag_name)
+      : "";
+  } catch {
+    return "";
+  }
+}
 
 interface CandidateContext {
   homeDirectory: string;
@@ -1853,7 +1921,10 @@ async function prepareVideoHelperSuite(
   );
 }
 
-async function scanCustomNodes(comfyRoot: string): Promise<CustomNodeStatus[]> {
+async function scanCustomNodes(
+  comfyRoot: string,
+  settings: Settings
+): Promise<CustomNodeStatus[]> {
   const customNodesDirectory = comfyRoot
     ? path.join(comfyRoot, "custom_nodes")
     : "";
@@ -1872,6 +1943,7 @@ async function scanCustomNodes(comfyRoot: string): Promise<CustomNodeStatus[]> {
     .catch(() => "");
   const logLines = log.split(/\r?\n/);
 
+  const latestSpectrumVersion = await latestSpectrumReleaseVersion(settings);
   return Promise.all(customNodeCatalog.map(async (definition) => {
     const matchedName = definition.aliases.find((alias) =>
       installedDirectories.has(alias.toLowerCase())
@@ -1919,6 +1991,10 @@ async function scanCustomNodes(comfyRoot: string): Promise<CustomNodeStatus[]> {
         )
         .catch(() => "无法读取 ComfyUI-LTXVideo 版本文件");
     }
+    const version = await readPythonProjectVersion(directory);
+    const latestVersion = definition.id === "spectrum-minimax-h3"
+      ? latestSpectrumVersion
+      : "";
     return {
       id: definition.id,
       name: definition.name,
@@ -1930,7 +2006,12 @@ async function scanCustomNodes(comfyRoot: string): Promise<CustomNodeStatus[]> {
         importErrorLine ||
         (failed ? "最近一次启动时导入失败" : ""),
       directory,
-      required: definition.required
+      required: definition.required,
+      version,
+      latestVersion,
+      updateAvailable: Boolean(
+        version && latestVersion && compareReleaseVersions(version, latestVersion) < 0
+      )
     };
   }));
 }
@@ -4252,7 +4333,7 @@ export async function scanEnvironment(
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ??
     pythonRuntimes[0];
   const [customNodes, workflowDependencies, attentionAcceleration, llamaServer] = await Promise.all([
-    scanCustomNodes(comfyRoot),
+    scanCustomNodes(comfyRoot, settings),
     scanWorkflowDependencies(comfyRoot),
     inspectAttentionAcceleration(
       settings,

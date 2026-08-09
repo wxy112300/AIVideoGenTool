@@ -26,6 +26,7 @@ export type H3ReferenceMediaType = "image" | "video";
 
 export type H3StepCount = 4 | 6 | 8 | 10 | 12 | 16 | 20;
 export type H3AttentionMode = "sage" | "sage-triton" | "pytorch";
+export type H3SpectrumMode = "off" | "balanced";
 
 export interface H3ReferenceSlot {
   id: string;
@@ -61,6 +62,7 @@ export interface Draft {
   motion: "subtle" | "natural" | "strong";
   seed: number | null;
   keepSeedOnCopy: boolean;
+  spectrumMode: H3SpectrumMode;
 }
 
 export type LtxExtensionModelProfile =
@@ -125,6 +127,7 @@ interface QueueTaskBase {
   seed: number;
   keepSeedOnCopy: boolean;
   attentionMode?: Settings["h3AttentionMode"];
+  spectrumMode?: H3SpectrumMode;
   comfyPromptId?: string;
   progress?: number;
   stage?: string;
@@ -223,6 +226,7 @@ export interface AssetVersion {
   height: number;
   duration: number;
   steps?: H3StepCount;
+  spectrumMode?: H3SpectrumMode;
   fps: number;
   seed?: number;
   performanceStats?: TaskPerformanceStats;
@@ -394,6 +398,9 @@ export interface CustomNodeStatus {
   loadError: string;
   directory: string;
   required: boolean;
+  version: string;
+  latestVersion: string;
+  updateAvailable: boolean;
 }
 
 export interface EnvironmentIssue {
