@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { AppLogger } from "../electron/services/app-logger.js";
+import { AppLogger, localDayStamp } from "../electron/services/app-logger.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -21,6 +21,15 @@ afterEach(async () => {
 });
 
 describe("application logger", () => {
+  it("uses the local calendar date for log filenames", () => {
+    const date = new Date("2026-08-08T16:05:00.000Z");
+    date.getFullYear = () => 2026;
+    date.getMonth = () => 7;
+    date.getDate = () => 9;
+
+    expect(localDayStamp(date)).toBe("2026-08-09");
+  });
+
   it("records lifecycle metadata without persisting private input values", async () => {
     const directory = await temporaryDirectory();
     const logger = new AppLogger({

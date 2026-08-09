@@ -30,8 +30,15 @@ function defaultDirectory(): string {
   );
 }
 
-function dayStamp(date: Date): string {
-  return date.toISOString().slice(0, 10);
+export function localDayStamp(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function localDayStart(day: string): number {
+  const [year, month, date] = day.split("-").map(Number);
+  if (!year || !month || !date) return Number.NaN;
+  return new Date(year, month - 1, date).getTime();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -284,16 +291,17 @@ export class AppLogger {
   ): void {
     try {
       this.ensureDirectory();
+      const writtenAt = this.now();
       const sanitizedMeta = sanitizeMeta(meta);
       const record: AppLogRecord = {
-        timestamp: this.now().toISOString(),
+        timestamp: writtenAt.toISOString(),
         level,
         scope: sanitizeMessage(scope),
         event: sanitizeMessage(event),
         message: sanitizeMessage(message),
         ...(sanitizedMeta ? { meta: sanitizedMeta } : {})
       };
-      const filename = path.join(this.directory, `app-${dayStamp(this.now())}.log`);
+      const filename = path.join(this.directory, `app-${localDayStamp(writtenAt)}.log`);
       appendFileSync(filename, `${formatLogRecord(record)}\n`, "utf8");
       this.writesSinceCleanup += 1;
       if (this.writesSinceCleanup >= 50) {
@@ -340,7 +348,7 @@ export class AppLogger {
       .map((filename) => {
         const fullPath = path.join(this.directory, filename);
         const date = filename.match(logFilePattern)?.[1];
-        const datedAt = date ? Date.parse(`${date}T00:00:00.000Z`) : Number.NaN;
+        const datedAt = date ? localDayStart(date) : Number.NaN;
         return {
           filename,
           fullPath,

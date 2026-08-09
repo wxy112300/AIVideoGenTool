@@ -39,6 +39,7 @@ import {
   nextAutomaticRetryAttempt
 } from "../src/core/recovery.js";
 import { historyVideoPaths } from "../src/core/history-delete.js";
+import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
 import {
   attachAbsoluteOutputPaths,
   extractComfyOutputFiles
@@ -116,6 +117,23 @@ import {
 import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
+// Chromium 150 can fatally CHECK while Windows is temporarily rebuilding a
+// multi-monitor topology. Its own feature flag is the intended kill switch.
+const windowsChromiumWorkarounds = ["SkipEmptyDisplayHotplugEvent"] as const;
+const appliedChromiumWorkarounds = process.platform === "win32"
+  ? windowsChromiumWorkarounds
+  : [];
+
+if (appliedChromiumWorkarounds.length) {
+  app.commandLine.appendSwitch(
+    "disable-features",
+    mergeChromiumFeatureList(
+      app.commandLine.getSwitchValue("disable-features"),
+      appliedChromiumWorkarounds
+    )
+  );
+}
+
 const historyCoverDirectory = () => path.join(app.getPath("userData"), "history-covers");
 const historyCoverPath = (key: string) =>
   path.join(historyCoverDirectory(), `${createHash("sha256").update(key).digest("hex")}.jpg`);
@@ -131,6 +149,15 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const appLogger = getApplicationLogger();
 let fatalProcessErrorHandled = false;
 const taskStageStartedAt = new Map<string, { stage: string; startedAt: number }>();
+
+if (appliedChromiumWorkarounds.length) {
+  appLogger.info(
+    "app",
+    "chromium-workaround-applied",
+    "Applied Windows Chromium display hotplug crash workaround",
+    { disabledFeatures: appliedChromiumWorkarounds }
+  );
+}
 
 try {
   crashReporter.start({
