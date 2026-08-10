@@ -6,11 +6,18 @@ import type {
   Draft,
   GenerationQueueTask,
   HistoryAsset,
+  ImageEditDraft,
+  ImageGenerationQueueTask,
+  ImageGenerationRun,
   QueueTask
 } from "../src/types.js";
 import { createDefaultState } from "../src/core/defaults.js";
+import { normalizeQwenImagePromptPresets } from "../src/core/qwen-image-prompt.js";
 import { normalizeH3ReferenceSlots } from "../src/core/h3-reference.js";
-import { isUnconcernedPromptModel } from "../src/core/prompt-models.js";
+import {
+  managedPromptModelDefinitions
+} from "../src/core/prompt-models.js";
+import { normalizeImageEditDraft, normalizeImageHistory } from "../src/core/image-project.js";
 import {
   generationSafetyForTask,
   isRetiredVideoModel,
@@ -106,11 +113,74 @@ function legacyDimensions(asset: LegacyHistoryAsset): [number, number] {
   return [Math.max(16, Math.round(height * ratioWidth / ratioHeight / 16) * 16), height];
 }
 
+const taskStatuses = new Set([
+  "waiting",
+  "running",
+  "completed",
+  "failed",
+  "cancelled"
+]);
+
+function normalizedTaskStatus(value: unknown): ImageGenerationRun["status"] {
+  return taskStatuses.has(String(value))
+    ? value as ImageGenerationRun["status"]
+    : "waiting";
+}
+
+function migrateImageGenerationTask(task: ImageGenerationQueueTask): ImageGenerationQueueTask {
+  const runs = Array.isArray(task.runs)
+    ? task.runs.map((run, index) => {
+        const status = normalizedTaskStatus(run.status);
+        const interrupted = status === "running";
+        return {
+          ...run,
+          index: Number.isInteger(run.index) ? run.index : index,
+          status: interrupted ? "waiting" : status,
+          ...(interrupted
+            ? {
+                comfyPromptId: undefined,
+                progress: 0,
+                stage: undefined,
+                startedAt: undefined,
+                completedAt: undefined,
+                error: undefined,
+                performanceStats: undefined
+              }
+            : {})
+        };
+      })
+    : [];
+  const taskInterrupted = task.status === "running" ||
+    runs.some((run) => normalizedTaskStatus(run.status) === "running");
+  return {
+    ...task,
+    status: taskInterrupted ? "waiting" : normalizedTaskStatus(task.status),
+    outputCount: Math.min(10, Math.max(1, Math.trunc(task.outputCount))),
+    runs,
+    ...(taskInterrupted
+      ? {
+          comfyPromptId: undefined,
+          progress: 0,
+          stage: undefined,
+          startedAt: undefined,
+          error: "应用上次退出时图片批次仍未完成，已恢复为等待状态。"
+        }
+      : {}),
+    automaticRetryAttempt: Number.isInteger(task.automaticRetryAttempt) &&
+      (task.automaticRetryAttempt ?? 0) > 0
+      ? task.automaticRetryAttempt
+      : undefined
+  };
+}
+
 function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
   const automaticRetryAttempt = Number.isInteger(task.automaticRetryAttempt) &&
     (task.automaticRetryAttempt ?? 0) > 0
     ? task.automaticRetryAttempt
     : undefined;
+  if (task.taskType === "image-generation") {
+    return migrateImageGenerationTask({ ...task, automaticRetryAttempt });
+  }
   if (task.taskType === "upscale") return { ...task, automaticRetryAttempt };
   if (task.taskType === "extension") {
     return {
@@ -147,6 +217,7 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
   if (asset.versions?.length) {
     return {
       ...asset,
+      mediaKind: "video",
       files,
       updatedAt: asset.updatedAt ?? asset.createdAt,
       versions: asset.versions
@@ -172,6 +243,7 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
   };
   return {
     ...asset,
+    mediaKind: "video",
     files,
     updatedAt: asset.updatedAt ?? asset.createdAt,
     defaultVersionId: version.id,
@@ -188,11 +260,17 @@ export class JsonStore {
   async load(): Promise<AppState> {
     try {
       const raw = await fs.readFile(this.filename, "utf8");
-      const saved = JSON.parse(raw) as Partial<Omit<AppState, "queue" | "history">> & {
+      const saved = JSON.parse(raw) as Partial<Omit<AppState, "queue" | "history" | "imageHistory">> & {
         queue?: Array<QueueTask | LegacyQueueTask>;
         history?: Array<HistoryAsset | LegacyHistoryAsset>;
+        imageHistory?: unknown;
+        imageDraft?: Partial<ImageEditDraft>;
       };
       const defaultState = createDefaultState();
+      const savedSchemaVersion = Number((saved as { schemaVersion?: unknown }).schemaVersion ?? 2);
+      const { promptSystemTemplate: _legacyPromptSystemTemplate, ...savedSettings } = (saved.settings ?? {}) as Partial<AppState["settings"]> & {
+        promptSystemTemplate?: unknown;
+      };
       const savedPresetText = saved.settings?.h3PromptPresets;
       const h3PromptPresets = Object.fromEntries(
         Object.entries(defaultState.settings.h3PromptPresets).map(([id, fallback]) => {
@@ -200,21 +278,29 @@ export class JsonStore {
           return [id, typeof value === "string" && value.trim() ? value : fallback];
         })
       ) as typeof defaultState.settings.h3PromptPresets;
+      const imagePromptPresets = normalizeQwenImagePromptPresets(saved.settings?.imagePromptPresets);
+      const imageHistory = normalizeImageHistory(saved.imageHistory);
       this.state = {
         ...defaultState,
         ...saved,
         draft: { ...defaultState.draft, ...saved.draft },
+        imageDraft: normalizeImageEditDraft(saved.imageDraft),
         settings: {
           ...defaultState.settings,
-          ...saved.settings,
-          h3PromptPresets
+          ...savedSettings,
+          h3PromptPresets,
+          imagePromptPresets
         },
         queueRunning: false,
-        schemaVersion: 2,
+        schemaVersion: 3,
         queue: (saved.queue ?? []).map(migrateQueueTask),
-        history: (saved.history ?? []).map(migrateHistoryAsset)
+        history: (saved.history ?? []).map(migrateHistoryAsset),
+        imageHistory
       };
-      let needsPersist = saved.queueRunning === true;
+      let needsPersist = saved.queueRunning === true || savedSchemaVersion < 3;
+      if (JSON.stringify(imageHistory) !== JSON.stringify(saved.imageHistory)) {
+        needsPersist = true;
+      }
       const normalizedH3ReferenceSlots = normalizeH3ReferenceSlots(
         this.state.draft.h3ReferenceSlots
       );
@@ -231,13 +317,41 @@ export class JsonStore {
         this.state.settings.defaultVideoModel = "minimax_h3_fl2va";
         needsPersist = true;
       }
+      if (typeof this.state.settings.defaultImageModel !== "string" || !this.state.settings.defaultImageModel.trim()) {
+        this.state.settings.defaultImageModel = "qwen-image-edit-2511";
+        needsPersist = true;
+      }
+      if (![
+        "native",
+        "lightning-4step"
+      ].includes(this.state.settings.defaultImageQualityProfile)) {
+        this.state.settings.defaultImageQualityProfile = "native";
+        needsPersist = true;
+      }
+      if (
+        !Number.isInteger(this.state.settings.imageOutputCount) ||
+        this.state.settings.imageOutputCount < 1 ||
+        this.state.settings.imageOutputCount > 10
+      ) {
+        this.state.settings.imageOutputCount = 6;
+        needsPersist = true;
+      }
+      if (!["png", "jpeg", "webp"].includes(this.state.settings.imageOutputFormat)) {
+        this.state.settings.imageOutputFormat = "png";
+        needsPersist = true;
+      }
       if (isRetiredVideoModel(this.state.draft.modelId)) {
         this.state.draft.modelId = "minimax_h3_fl2va";
         this.state.draft.inputMode = "image";
         this.state.draft.workflowPath = "";
         needsPersist = true;
       }
-        if (!["qwen/qwen3.5-4b", "qwen/qwen3.5-2b", "qwen/qwen3.5-4b-unconcerned"].includes(this.state.settings.promptModelId)) {
+        const supportedPromptModels = new Set([
+          "qwen/qwen3.5-4b",
+          "qwen/qwen3.5-2b",
+          ...managedPromptModelDefinitions.map((model) => model.id)
+        ]);
+        if (!supportedPromptModels.has(this.state.settings.promptModelId)) {
         this.state.settings.promptModelId = "qwen/qwen3.5-4b";
         needsPersist = true;
       }
@@ -248,21 +362,10 @@ export class JsonStore {
         this.state.settings.modelDirectory = "";
         needsPersist = true;
       }
-      const savedPromptRuntime = saved.settings?.promptRuntime;
-      if (!savedPromptRuntime) {
-        this.state.settings.promptRuntime = this.state.settings.promptUseLmStudio
-          ? "lmstudio"
-          : isUnconcernedPromptModel(this.state.settings.promptModelId)
-            ? "llama-server"
-            : "comfyui";
-        needsPersist = true;
-      }
-      if (isUnconcernedPromptModel(this.state.settings.promptModelId)) {
-        if (this.state.settings.promptRuntime !== "llama-server" || this.state.settings.promptUseLmStudio) {
-          needsPersist = true;
-        }
-        this.state.settings.promptRuntime = "llama-server";
+      if (this.state.settings.promptRuntime !== "comfyui" || this.state.settings.promptUseLmStudio) {
+        this.state.settings.promptRuntime = "comfyui";
         this.state.settings.promptUseLmStudio = false;
+        needsPersist = true;
       }
       const migratedComfyUrl = migrateLegacyComfyUrl(
         this.state.settings.comfyUrl

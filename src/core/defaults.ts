@@ -1,8 +1,35 @@
-import type { AppState, Draft, Settings } from "../types.js";
+import type { AppState, Draft, ImageEditDraft, Settings } from "../types.js";
 import { createDefaultH3PromptPresets } from "./h3-prompt-presets.js";
+import { createDefaultQwenImagePromptPresets } from "./qwen-image-prompt.js";
 
 export const defaultPrompt =
   "人物自然地看向镜头，头发被微风吹动，镜头缓慢推近，动作真实流畅。";
+
+export function createDefaultImageEditDraft(): ImageEditDraft {
+  return {
+    mode: "image-edit",
+    pictures: [],
+    nextPictureNumber: 1,
+    promptVersions: [
+      {
+        id: crypto.randomUUID(),
+        label: "原始",
+        text: "",
+        createdAt: new Date().toISOString()
+      }
+    ],
+    activePromptVersion: 0,
+    modelId: "qwen-image-edit-2511",
+    qualityProfile: "native",
+    outputCount: 6,
+    outputFormat: "png",
+    seed: null
+  };
+}
+
+export function createDefaultImagePromptPresets(): Record<"faithful" | "detail-enhance", string> {
+  return createDefaultQwenImagePromptPresets();
+}
 
 export function createDefaultDraft(): Draft {
   return {
@@ -83,9 +110,14 @@ export function createDefaultSettings(): Settings {
     promptLlamaServerPath: "",
     promptLlamaPort: 8091,
     h3PromptPresets: createDefaultH3PromptPresets(),
+    imagePromptPresets: createDefaultImagePromptPresets(),
     outputDirectory: "",
     modelDirectory: "",
     defaultVideoModel: "minimax_h3_fl2va",
+    defaultImageModel: "qwen-image-edit-2511",
+    defaultImageQualityProfile: "native",
+    imageOutputCount: 6,
+    imageOutputFormat: "png",
     vramReserveGb: 1,
     h3AttentionMode: "sage",
     autoOffload: true,
@@ -107,18 +139,18 @@ export function createDefaultSettings(): Settings {
     realEsrganModel: "RealESRGAN_x4plus.safetensors",
     proxyEnabled: false,
     proxyUrl: "http://127.0.0.1:7890",
-    promptSystemTemplate:
-      "你是视频生成提示词助手。保留主体身份与用户意图，把输入扩写为一段连贯、可直接用于图生视频模型的中文提示词。只返回提示词，不要解释。"
   };
 }
 
 export function createDefaultState(): AppState {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     draft: createDefaultDraft(),
+    imageDraft: createDefaultImageEditDraft(),
     settings: createDefaultSettings(),
     queue: [],
     history: [],
+    imageHistory: [],
     queueRunning: false
   };
 }

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  attachAbsoluteOutputPaths,
   extractComfyOutputFiles
 } from "../src/core/comfy-output";
+import {
+  attachAbsoluteOutputPaths,
+  safeOutputFilePath
+} from "../src/core/comfy-output-paths";
 
 describe("ComfyUI output parsing", () => {
   it("extracts and deduplicates common media collections", () => {
@@ -44,5 +47,13 @@ describe("ComfyUI output parsing", () => {
     );
     expect(file?.absolutePath).toContain("studio");
     expect(file?.absolutePath).toContain("result.mp4");
+  });
+
+  it("does not attach paths that escape the configured output directory", () => {
+    expect(safeOutputFilePath("C:\\ComfyUI\\output", "..\\models", "model.safetensors")).toBeNull();
+    expect(safeOutputFilePath("C:\\ComfyUI\\output", "studio", "C:\\outside.png")).toBeNull();
+    expect(attachAbsoluteOutputPaths([
+      { filename: "..\\..\\outside.png", subfolder: "studio", type: "output" }
+    ], "C:\\ComfyUI\\output")[0]?.absolutePath).toBeUndefined();
   });
 });

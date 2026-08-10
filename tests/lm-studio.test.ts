@@ -53,6 +53,24 @@ describe("LM Studio model selection", () => {
     ).toBe("qwen/qwen3.5-9b");
     expect(selectLmStudioModel("", ["sulphur-2-base"], "h3-vision")).toBe("");
   });
+
+  it("recognizes Gemma 4 as a visual H3 prompt model", () => {
+    expect(selectLmStudioModel(
+      "",
+      ["text-embedding-model", "gemma-4-26B-A4B-it-Q4"],
+      "h3-vision"
+    )).toBe("gemma-4-26B-A4B-it-Q4");
+  });
+
+  it("selects a vision model for image-edit mode", () => {
+    expect(
+      selectLmStudioModel(
+        "",
+        ["sulphur-2-base", "qwen/qwen3.5-9b"],
+        "image-edit"
+      )
+    ).toBe("qwen/qwen3.5-9b");
+  });
 });
 
 describe("LM Studio prompt enhancement requests", () => {
@@ -113,12 +131,41 @@ describe("LM Studio prompt enhancement requests", () => {
     expect(body.messages[0]?.content).toContain("physically grounded audiovisual timeline");
     expect(body.messages[0]?.content).toContain("User-intent priority");
     expect(body.messages[0]?.content).toContain("Final user-intent lock");
+    expect(body.messages[0]?.content).toContain("Factual boundary");
+    expect(body.messages[0]?.content).toContain("Endpoint grounding");
     expect(body.messages[1]?.content).toEqual([
       expect.objectContaining({ type: "text" }),
       expect.objectContaining({ type: "image_url" }),
       expect.objectContaining({ type: "image_url" })
     ]);
     expect(readFile).toHaveBeenCalledTimes(2);
+    readFile.mockRestore();
+  });
+
+  it("sends image references with a plain image-edit contract", async () => {
+    const readFile = vi.spyOn(fs, "readFile").mockResolvedValue(Buffer.from("image"));
+    const body = await buildLmStudioChatRequest(
+      {
+        prompt: "把 Picture 2 的人物放到 Picture 1 的场景中",
+        modelId: "qwen-image-edit-2511",
+        mode: "image-edit",
+        imageEditEnhanceMode: "faithful",
+        imageEditPresetText: "CUSTOM FAITHFUL RULE",
+        imagePaths: ["base.png", "person.png"],
+        referenceContext: "Slot 1 = 基础画面\nSlot 2 = 人物"
+      },
+      createDefaultSettings(),
+      "qwen/qwen3.5-9b"
+    );
+
+    expect(body.messages[0]?.content).toContain("Qwen-Image-Edit-2511");
+    expect(body.messages[0]?.content).toContain("Faithful mode:");
+    expect(body.messages[0]?.content).toContain("CUSTOM FAITHFUL RULE");
+    expect(body.messages[1]?.content).toEqual([
+      expect.objectContaining({ type: "text" }),
+      expect.objectContaining({ type: "image_url" }),
+      expect.objectContaining({ type: "image_url" })
+    ]);
     readFile.mockRestore();
   });
 

@@ -9,9 +9,9 @@ import {
   waitForTask
 } from "../dist/electron/electron/services/comfy-ui.js";
 import {
-  attachAbsoluteOutputPaths,
   extractComfyOutputFiles
 } from "../dist/electron/src/core/comfy-output.js";
+import { attachAbsoluteOutputPaths } from "../dist/electron/src/core/comfy-output-paths.js";
 import { createDefaultSettings } from "../dist/electron/src/core/defaults.js";
 import { startAdaptiveVramWatchdog } from "../dist/electron/electron/services/vram-watchdog.js";
 

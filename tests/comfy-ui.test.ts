@@ -4,6 +4,7 @@ import {
   buildNativePromptWorkflow,
   extractTextGenerateOutput,
   h3PromptInstruction,
+  imageEditPromptInstruction,
   historyFailure,
   historyEntryClientId,
   historyEntryHasUnfinishedBatch,
@@ -14,6 +15,42 @@ import {
 import { h3OfficialPromptBaseline } from "../src/core/h3-official-spec.js";
 
 describe("native Qwen prompt workflow", () => {
+  it("uses a plain image-edit contract without H3 timeline instructions", () => {
+    const instruction = imageEditPromptInstruction({
+      prompt: "把 Picture 2 的人物放到 Picture 1 的场景中。",
+      modelId: "qwen-image-edit-2511",
+      mode: "image-edit",
+      referenceContext: "Slot 1 = 基础画面\nSlot 2 = 人物"
+    });
+
+    expect(instruction).toContain("Qwen-Image-Edit-2511");
+    expect(instruction).toContain("Slot 1 = 基础画面");
+    expect(instruction).toContain("Do not output headings, lists, JSON, Markdown");
+    expect(instruction).not.toContain("Shot 1");
+    expect(instruction).not.toContain("integrated_multimodal_description:");
+  });
+
+  it("changes the image-edit optimization contract with the selected preset", () => {
+    const faithful = imageEditPromptInstruction({
+      prompt: "把 Picture 2 放到 Picture 1 中。",
+      modelId: "qwen-image-edit-2511",
+      mode: "image-edit",
+      imageEditEnhanceMode: "faithful",
+      imageEditPresetText: "CUSTOM FAITHFUL RULE"
+    });
+    const native = imageEditPromptInstruction({
+      prompt: "把 Picture 2 放到 Picture 1 中。",
+      modelId: "qwen-image-edit-2511",
+      mode: "image-edit",
+      imageEditEnhanceMode: "sulphur-native"
+    });
+
+    expect(faithful).toContain("Faithful mode:");
+    expect(faithful).toContain("CUSTOM FAITHFUL RULE");
+    expect(native).toContain("Detail-enhance mode:");
+    expect(faithful).not.toBe(native);
+  });
+
   it("loads the selected ComfyUI encoder and batches multiple H3 references", () => {
     const workflow = buildNativePromptWorkflow(
       {

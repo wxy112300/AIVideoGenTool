@@ -426,13 +426,20 @@ describe("ComfyUI environment candidates", () => {
     const completeProfile = complete.find((profile) => profile.id === "qwen/qwen3.5-4b");
     const fastProfile = completeFast.find((profile) => profile.id === "qwen/qwen3.5-2b");
 
-    expect(promptProfiles).toHaveLength(3);
+    expect(promptProfiles).toHaveLength(10);
     expect(promptProfiles.map((profile) => profile.id)).toEqual([
-      "qwen/qwen3.5-4b-unconcerned",
+      "community/gemma-4-e4b-unconcerned-q5",
+      "community/gemma-4-12b-uncensored-q4",
+      "community/gemma-4-26b-a4b-uncensored-q4",
+      "google/gemma-4-e4b-q3",
+      "google/gemma-4-12b-q4",
+      "google/gemma-4-12b-q5",
+      "google/gemma-4-26b-a4b-q4",
+      "google/gemma-4-31b-q4",
       "qwen/qwen3.5-4b",
       "qwen/qwen3.5-2b"
     ]);
-    expect(promptProfiles[0]?.managedBy).toBe("llama-server");
+    expect(promptProfiles[0]?.managedBy).toBe("comfyui");
     expect(legacy.find((profile) => profile.id === "qwen/qwen3.5-4b")?.available).toBe(false);
     expect(incompleteProfile).toMatchObject({
       category: "prompt",
@@ -454,18 +461,6 @@ describe("ComfyUI environment candidates", () => {
       targetSubdirectory: "text_encoders",
       recommendedFilename: "qwen3.5_2b_bf16.safetensors"
     });
-    const unconcerned = evaluateModelProfiles([
-      "prompt_models\\Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf",
-      "prompt_models\\mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf"
-    ]).find((profile) => profile.id === "qwen/qwen3.5-4b-unconcerned");
-    expect(unconcerned).toMatchObject({
-      managedBy: "llama-server",
-      available: true
-    });
-    expect(unconcerned?.components[0]?.installGuide).toMatchObject({
-      targetSubdirectory: "prompt_models",
-      recommendedFilename: "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf"
-    });
     expect(completeProfile?.components.map((component) => component.matches[0])).toEqual([
       "text_encoders/qwen3.5_4b_bf16.safetensors"
     ]);
@@ -474,6 +469,45 @@ describe("ComfyUI environment candidates", () => {
       targetSubdirectory: "text_encoders",
       recommendedFilename: "qwen3.5_4b_bf16.safetensors"
     });
+  });
+
+  it("scans Qwen Image Edit 2511 components without claiming workflow integration", () => {
+    const incomplete = evaluateModelProfiles([]).find(
+      (profile) => profile.id === "qwen-image-edit-2511"
+    );
+    const complete = evaluateModelProfiles([
+      "diffusion_models\\qwen_image_edit_2511_int8_convrot.safetensors",
+      "text_encoders\\qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "vae\\qwen_image_vae.safetensors"
+    ]).find((profile) => profile.id === "qwen-image-edit-2511");
+
+    expect(incomplete).toMatchObject({
+      category: "image",
+      available: false,
+      integrated: false
+    });
+    expect(complete).toMatchObject({
+      category: "image",
+      available: true,
+      integrated: false
+    });
+    expect(complete?.components.every((component) => component.installGuide.downloadUrl)).toBe(true);
+  });
+
+  it("keeps Gemma 4 tiers separate by requiring a colocated model directory", () => {
+    const profiles = evaluateModelProfiles([
+      "LLM\\gemma-4-26b-a4b-q4\\gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+      "LLM\\gemma-4-26b-a4b-q4\\mmproj-BF16.gguf"
+    ]).filter((profile) => profile.id.startsWith("google/gemma-4-"));
+
+    expect(profiles.find((profile) => profile.id === "google/gemma-4-26b-a4b-q4")).toMatchObject({
+      available: true,
+      managedBy: "comfyui",
+      integrated: true
+    });
+    expect(profiles.find((profile) => profile.id === "google/gemma-4-12b-q5")?.available).toBe(false);
+    expect(profiles.find((profile) => profile.id === "google/gemma-4-26b-a4b-q4")
+      ?.components.every((component) => component.installGuide.downloadUrl)).toBe(true);
   });
 
   it("requires the official MiniMax H3 FL2VA, Qwen3-VL and both VAE files", () => {

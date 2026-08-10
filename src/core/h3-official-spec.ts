@@ -1,5 +1,38 @@
 import type { H3PromptMode } from "../types.js";
 
+/**
+ * Community-tested guardrails adapted from the MIT-licensed
+ * duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer request contract. These rules
+ * complement the official H3 schema; they do not depend on that extension.
+ */
+export function h3CommunityPromptWriterContract(mode: H3PromptMode): string {
+  const referenceRules = mode === "R2V"
+    ? [
+        "Reference-role isolation: an explicitly assigned role is exclusive unless the user asks for additional traits. A motion-only Video contributes choreography, temporal order, pacing, and rhythm, but not performer identity, clothing, location, lighting, background, or soundtrack.",
+        "Video-observation boundary: sampled frames or contact sheets are internal observations of one source video, never target shots or keyframes. Never mention contact sheets, cells, sampled frames, sampling timestamps, or internal media analysis in the final prompt, and never create one target shot per observed frame.",
+        "Reference provenance: keep <Video N> as the source video or temporal source. When a concrete person, object, scene, pose, action, or effect is reused, define the reusable visible content as an appropriate <Subject N> while retaining its source provenance.",
+        "Reference task classification: ordinary reference images do not imply keyframe completion. Uploaded video or audio does not by itself imply editing, continuation, audio reuse, or audio reference; infer the task only from the user's stated intent.",
+        "R2V detail budget: for reference generation, target 350-500 grounded English words in detailed_description, preferably 450-500 when the references support it. Never invent or pad unsupported detail merely to meet a word count."
+      ]
+    : [
+        mode === "I2VA"
+          ? "First-frame grounding: separate facts visibly anchored by Picture 1 from newly requested action or space revealed after the opening frame."
+          : mode === "FL2VA"
+            ? "Endpoint grounding: preserve exact endpoint geometry and describe one continuous state and camera path between Picture 1 and Picture 2."
+            : mode === "L2VA"
+              ? "Last-frame grounding: invent only the minimum compatible preceding state needed to reach Picture 1; do not infer a named place or period without evidence."
+              : "Text-only grounding: preserve an explicit continuous-camera or no-cut request instead of adding unsupported cinematic cuts."
+      ];
+  return [
+    "Community prompt-writer guardrails. Priority is explicit user instruction, then assigned reference roles, then optional presets and defaults.",
+    "Factual boundary: the user's brief and supplied references define the available facts. Do not invent unsupported actions, expressions, events, transitions, visible text, props, locations, camera movement, dialogue, or music.",
+    "Continuous-shot default: use multiple shots only when the user's intent or a referenced temporal/camera structure requires them; otherwise keep one continuous shot.",
+    "Music boundary: preserve explicitly requested music in non_diegetic_music; otherwise output N/A. Never infer background music from mood, genre words, cinematic language, or visual style.",
+    "Audio-reference boundary: a local visual model cannot hear an audio file unless the runtime explicitly supports audio. Derive Audio copy/reference semantics only from the user's declared role and never invent unheard audio content.",
+    ...referenceRules
+  ].join("\n");
+}
+
 export function h3SmallModelPromptContract(mode: H3PromptMode): string {
   const modeRule = mode === "R2V"
     ? "R2V task rule: use the six R2V sections and keep supplied Picture, Video, and Audio labels exact; define reusable Subjects only when needed."
@@ -18,6 +51,7 @@ export function h3SmallModelPromptContract(mode: H3PromptMode): string {
     : "Non-R2V format exclusion: never output subject_definitions, summary, retention_analysis, detailed_description, <Subject N>, <Video N>, or <Audio N> as prompt structure.";
   return [
     "Compact H3 small-model contract. User-intent priority: follow this order: user request, H3 mode/keyframes, action and camera timeline, synchronized sound, then minimal continuity anchors.",
+    h3CommunityPromptWriterContract(mode),
     "Use a silent four-pass workflow: extract the user's concrete requirements; plan sequential action beats across the supplied duration; render the required H3 fields; audit before answering.",
     "User-word lock / User-intent preservation rule: preserve every concrete user requirement in meaning, including subject details, clothing or exposure level, objects, unusual nouns, scale, materials, body parts, actions, poses, behavior, camera terms, dialogue, and visible text. Never omit, euphemize, sanitize, or replace an explicit user term; do not reinterpret it. Translate ordinary prose only when needed for English output; keep quoted dialogue and visible text exact.",
     "Explicit-constraint rule: treat words such as no, without, never, avoid, 不要, 无, 禁止, and 仅 as hard constraints, not as mood or style hints. Normalize equivalent phrases before writing the prompt: no BGM / no background music / 无配乐 means non_diegetic_music: N/A, while complete silence means all audio fields are N/A. Never weaken a prohibition into quiet music, a partial prohibition, or an implied alternative.",

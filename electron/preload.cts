@@ -16,6 +16,7 @@ const api: AppApi = {
   respondWindowClose: (response: WindowCloseResponse) =>
     ipcRenderer.invoke("window:close-response", response),
   saveDraft: (draft: Draft) => ipcRenderer.invoke("draft:save", draft),
+  saveImageDraft: (draft) => ipcRenderer.invoke("image-draft:save", draft),
   saveSettings: (settings: Settings) => ipcRenderer.invoke("settings:save", settings),
   pickImage: () => ipcRenderer.invoke("file:pick-image"),
   pickVideo: () => ipcRenderer.invoke("file:pick-video"),
@@ -54,8 +55,6 @@ const api: AppApi = {
     ipcRenderer.invoke("connection:test", kind, settings),
   scanEnvironment: (settings: Settings) =>
     ipcRenderer.invoke("environment:scan", settings),
-  installLlamaServer: (settings: Settings) =>
-    ipcRenderer.invoke("llama-server:install", settings),
   startLocalService: (kind, settings) =>
     ipcRenderer.invoke("service:start", kind, settings),
   restartLocalService: (kind, settings) =>
@@ -75,6 +74,7 @@ const api: AppApi = {
   enqueue: (draft: Draft) => ipcRenderer.invoke("queue:enqueue", draft),
   enqueueExtension: (draft: Draft) =>
     ipcRenderer.invoke("queue:enqueue-extension", draft),
+  enqueueImageEdit: (draft) => ipcRenderer.invoke("queue:enqueue-image", draft),
   enqueueUpscale: (request) => ipcRenderer.invoke("queue:enqueue-upscale", request),
   updateUpscaleTask: (taskId, patch) =>
     ipcRenderer.invoke("queue:update-upscale", taskId, patch),

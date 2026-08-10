@@ -11,6 +11,7 @@
 - 官方基础提示词指南：[VIDEO_PROMPT_WRITING_GUIDE_base_en.md](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md)
 - 官方 R2V 提示词指南：[VIDEO_PROMPT_WRITING_GUIDE_ref_en.md](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_ref_en.md)
 - 官方 ComfyUI 教程：[MiniMax H3](https://docs.comfy.org/tutorials/video/minimax/minimax-h3)
+- 社区 Prompt Writer：[duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer](https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer)
 
 原文是社区实践资料，不是 MiniMax 官方文档。文章发表于 2026-08-06，实测环境写明为 RTX 4090 48GB 魔改卡、ComfyUI 0.30.0、Torch 2.11 + CUDA 12.8。文章中的耗时、显存和 Cache 加速比例不能直接当作普通 RTX 4090 24GB 的保证。
 
@@ -169,3 +170,16 @@ EasyCache 是 ComfyUI 内置节点，输出相对更保守；TeaCache 提速更�
 4. Turbo LoRA 与 Cache/Sol-Attn 分开测试，确认音频和快速运动没有回归后再考虑组合。
 
 本资料只记录研究结论，不改变当前默认工作流、默认模型或默认质量档位。
+
+## 8. 社区多模态 Prompt Writer 融合
+
+社区项目 `ComfyUI-MiniMaxH3-Prompt-Writer` 是独立的 ComfyUI UI 扩展，不是工作流节点。它使用 Gemma 4 GGUF + `mmproj` 分析图片和视频接触表，再结合官方 H3 指南生成 Prompt。当前项目不直接依赖该扩展，而是吸收以下可复用契约：
+
+- 优先级固定为用户明确要求 → 用户分配的参考角色 → 预设和默认值；
+- 参考素材是事实边界，不能凭空增加动作、表情、道具、地点、对白、文字、镜头或音乐；
+- motion-only 视频只提供动作、时序、节奏，不携带人物身份、服装、环境、灯光或音轨；
+- contact sheet、抽帧格子和内部采样时间只用于模型观察，不能出现在最终 Prompt 或被拆成目标镜头；
+- 未明确要求配乐时 `non_diegetic_music` 保持 `N/A`；视觉模型不能听音频时，只能根据用户声明决定 Audio 的复制/参考关系；
+- 生成结果继续由本地 H3 检查器验证字段顺序、超时长时间戳、说话人 ID 和内部分析信息泄露。
+
+模型支持采取扩展而非替换策略：ComfyUI 原生 Qwen3.5、Unconcerned Qwen、LM Studio 继续保留，同时为应用自管理 llama-server 新增 Gemma 4 E4B Q3、12B Q4、12B Q5、26B-A4B Q4 和 31B Q4。每个 Gemma GGUF 必须和自己的 `mmproj-BF16.gguf` 放在独立子目录，运行时按所选档位使用 8K 或16K上下文，并在视频队列开始前释放显存。

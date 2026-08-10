@@ -25,6 +25,11 @@ import type {
   ExtensionQueueTask,
   GenerationQueueTask,
   HistoryAsset,
+  ImageGenerationQueueTask,
+  ImageAssetVersion,
+  ImageEditDraft,
+  ImageGenerationRun,
+  ImageHistoryProject,
   LocalServiceKind,
   QueueTask,
   Settings,
@@ -45,10 +50,18 @@ import { createHistoryCoverCacheKey } from "../src/core/history-cover.js";
 import { historyFileCandidates } from "../src/core/history-media.js";
 import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
 import {
-  attachAbsoluteOutputPaths,
   extractComfyOutputFiles
 } from "../src/core/comfy-output.js";
-import { moveWaitingTask } from "../src/core/queue.js";
+import { attachAbsoluteOutputPaths } from "../src/core/comfy-output-paths.js";
+import { isImageGenerationQueueTask, moveWaitingTask } from "../src/core/queue.js";
+import {
+  createImageSourceVersion,
+  expandImageSeeds,
+  nextImageVersionNumber,
+  normalizeImageEditDraft
+} from "../src/core/image-project.js";
+import { promptModelBackend, promptModelSupportsImageEdit } from "../src/core/prompt-models.js";
+import { imageOutputFormatFromFilename, qwenImageEdit2511Adapter } from "../src/core/image-workflow.js";
 import {
   extensionOutputDimensions,
   extensionSafetyForTask,
@@ -72,21 +85,10 @@ import {
   copyFileToWindowsClipboard,
   resolveExistingHistoryFile
 } from "./services/windows-clipboard.js";
-import {
-  enhancePrompt,
-  releasePromptModelRuntime,
-  testLmStudio
-} from "./services/lm-studio.js";
-import {
-  enhancePromptWithLlamaServer,
-  releaseLlamaPromptModel,
-  startLlamaPromptModel
-} from "./services/llama-server.js";
-import { promptRuntimeForSettings } from "../src/core/prompt-models.js";
+import { isGemmaPromptModel, promptRuntimeForSettings } from "../src/core/prompt-models.js";
 import {
   installAttentionAcceleration,
   installCustomNode,
-  installLlamaServer,
   installWorkflowDependency,
   forceStopComfyProcesses,
   repairEnvironmentIssue,
@@ -100,12 +102,19 @@ import {
   freeMemory,
   enhancePromptWithComfyUi,
   interrupt,
+  submitImageTask,
   submitTask,
   TaskStalledError,
   warmNativePromptModel,
   testComfyUi,
   waitForTask
 } from "./services/comfy-ui.js";
+import {
+  enhancePromptWithH3PromptWriter,
+  promptWriterModelForSelection,
+  releaseH3PromptWriter,
+  testH3PromptWriter
+} from "./services/h3-prompt-writer.js";
 import {
   getPerformanceMetrics,
   startTaskPerformanceMonitor,
@@ -631,6 +640,36 @@ async function requireExistingVideoOutput(
   );
 }
 
+async function requireExistingImageOutput(
+  result: unknown
+): Promise<ReturnType<typeof extractComfyOutputFiles>> {
+  const outputDirectory = await resolveTaskOutputDirectory();
+  if (!outputDirectory) {
+    throw new Error(
+      "ComfyUI 已返回图片完成状态，但无法确定输出目录。请在设置中确认 ComfyUI 目录后重试。"
+    );
+  }
+  const files = attachAbsoluteOutputPaths(
+    extractComfyOutputFiles(result),
+    outputDirectory
+  );
+  const imageFiles = files.filter(
+    (file) => file.absolutePath && imageOutputFormatFromFilename(file.filename)
+  );
+  for (const file of imageFiles) {
+    const resolved = await resolveExistingHistoryFile(file.absolutePath!);
+    if (!resolved) continue;
+    const stat = await fs.stat(resolved).catch(() => null);
+    if (stat?.isFile() && stat.size > 0) return files;
+  }
+  const returnedNames = files.map((file) => file.filename).join("、");
+  throw new Error(
+    returnedNames
+      ? `ComfyUI 已返回完成状态，但图片输出不存在或为空：${returnedNames}`
+      : "ComfyUI 已返回完成状态，但图片工作流没有返回任何图片文件。"
+  );
+}
+
 async function restoreHistoryOutputPaths(): Promise<void> {
   const outputDirectory = await resolveTaskOutputDirectory();
   if (!outputDirectory) return;
@@ -937,6 +976,44 @@ function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask 
   };
 }
 
+function imageTaskFromDraft(
+  draft: ImageEditDraft,
+  state: AppState
+): ImageGenerationQueueTask {
+  const now = new Date().toISOString();
+  const prompt = draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "";
+  const id = crypto.randomUUID();
+  const projectId = draft.projectId ?? crypto.randomUUID();
+  const seeds = expandImageSeeds(draft.seed, draft.outputCount);
+  const runs: ImageGenerationRun[] = seeds.map((seed, index) => ({
+    id: crypto.randomUUID(),
+    index,
+    seed,
+    status: "waiting"
+  }));
+  const outputFilename = `QwenEdit-${new Date().toISOString().replace(/[-:.TZ]/gu, "").slice(0, 14)}-${id.slice(0, 8)}`;
+  return {
+    id,
+    taskType: "image-generation",
+    status: "waiting",
+    createdAt: now,
+    updatedAt: now,
+    outputFilename,
+    projectId,
+    parentVersionId: draft.parentVersionId,
+    pictures: draft.pictures.map((picture) => ({ ...picture })),
+    prompt,
+    promptVersion: draft.activePromptVersion + 1,
+    modelId: draft.modelId,
+    workflowPath: "builtin:image/qwen-image-edit-2511",
+    qualityProfile: draft.qualityProfile,
+    outputFormat: draft.outputFormat,
+    outputCount: runs.length,
+    runs,
+    progress: 0
+  };
+}
+
 function extensionTaskFromDraft(
   draft: Draft,
   state: AppState
@@ -1191,9 +1268,13 @@ async function validateNativePromptRuntime(settings: Settings): Promise<void> {
 }
 
 async function releasePromptRuntime(settings: Settings): Promise<number> {
-  const runtime = promptRuntimeForSettings(settings);
-  if (runtime === "lmstudio") return releasePromptModelRuntime(settings);
-  if (runtime === "llama-server") return releaseLlamaPromptModel();
+  if (isGemmaPromptModel(settings.promptModelId)) {
+    try {
+      return await releaseH3PromptWriter(settings) ? 1 : 0;
+    } catch {
+      return 0;
+    }
+  }
   try {
     await freeMemory(settings);
     return 1;
@@ -1211,18 +1292,13 @@ async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: st
   if (nativePromptWorker) {
     return { ok: false, message: "当前正在生成提示词，请等待本次扩写完成。" };
   }
-  const runtime = promptRuntimeForSettings(settings);
-  if (runtime === "lmstudio") {
+  if (isGemmaPromptModel(settings.promptModelId)) {
     try {
-      const count = await releasePromptModelRuntime(settings);
-      return { ok: true, message: count ? `已释放 ${count} 个 LM Studio 提示词模型。` : "当前没有已加载的 LM Studio 提示词模型。" };
-    } catch (error) {
-      return { ok: false, message: error instanceof Error ? error.message : String(error) };
+      const released = await releaseH3PromptWriter(settings);
+      return { ok: true, message: released ? "已请求 ComfyUI 卸载 H3 Prompt Writer 模型并释放显存。" : "当前没有已加载的 Prompt Writer 模型。" };
+    } catch {
+      return { ok: true, message: "ComfyUI 当前未运行，无需释放提示词模型。" };
     }
-  }
-  if (runtime === "llama-server") {
-    const count = await releaseLlamaPromptModel();
-    return { ok: true, message: count ? "已停止应用自管理的 llama-server 并释放提示词模型。" : "当前没有运行中的应用自管理提示词模型。" };
   }
   try {
     await freeMemory(settings);
@@ -1307,11 +1383,191 @@ async function stabilizeH3RuntimeBetweenTasks(
   return recovery.ok;
 }
 
+async function executeImageGenerationQueueTask(
+  task: ImageGenerationQueueTask
+): Promise<void> {
+  const controller = new AbortController();
+  activeController = controller;
+  try {
+    await updateTask(task.id, {
+      status: "running",
+      progress: 1,
+      stage: "准备图片批次",
+      startedAt: new Date().toISOString(),
+      error: undefined
+    });
+    const totalRuns = Math.max(1, task.runs.length);
+    for (const plannedRun of task.runs) {
+      const current = store.get().queue.find((item) => item.id === task.id);
+      if (!current || !isImageGenerationQueueTask(current)) return;
+      const run = current.runs.find((item) => item.id === plannedRun.id);
+      if (!run || run.status === "completed") continue;
+      const runStartedAt = new Date().toISOString();
+      await store.update((state) => {
+        const queued = state.queue.find((item) => item.id === task.id);
+        if (!queued || !isImageGenerationQueueTask(queued)) return;
+        const queuedRun = queued.runs.find((item) => item.id === run.id);
+        if (!queuedRun) return;
+        queuedRun.status = "running";
+        queuedRun.startedAt = runStartedAt;
+        queuedRun.progress = 1;
+        queued.stage = `生成第 ${run.index + 1} / ${totalRuns} 张`;
+      });
+      sendState(store.get());
+      const monitor = startTaskPerformanceMonitor();
+      try {
+        const submitted = await submitImageTask(
+          current,
+          { ...run, status: "running" },
+          store.get().settings,
+          controller.signal
+        );
+        let lastProgress = -1;
+        const result = await waitForTask(
+          submitted.promptId,
+          submitted.clientId,
+          submitted.nodeTypes,
+          store.get().settings,
+          20,
+          controller.signal,
+          (progress, stage) => {
+            const batchProgress = ((run.index + Math.max(0, progress) / 100) / totalRuns) * 100;
+            if (Math.round(batchProgress) < lastProgress + 2 && progress < 100) return;
+            lastProgress = Math.round(batchProgress);
+            void updateTask(task.id, {
+              progress: Math.min(99, batchProgress),
+              stage: `第 ${run.index + 1} / ${totalRuns} 张 · ${stage}`
+            });
+          },
+          (dataUrl) => {
+            mainWindow?.webContents.send("task:preview", {
+              taskId: task.id,
+              dataUrl
+            });
+          },
+          () => true
+        );
+        const files = await requireExistingImageOutput(result);
+        const file = files.find((candidate) => imageOutputFormatFromFilename(candidate.filename));
+        if (!file) throw new Error("图片工作流没有返回可用图片文件。");
+        const performanceStats = monitor.stop();
+        const completedAt = new Date().toISOString();
+        const versionId = crypto.randomUUID();
+        const next = await store.update((state) => {
+          const queued = state.queue.find((item) => item.id === task.id);
+          if (!queued || !isImageGenerationQueueTask(queued)) return;
+          let project = state.imageHistory.find((item) => item.id === queued.projectId);
+          const projectCreated = !project;
+          if (!project) {
+            project = {
+              mediaKind: "image",
+              id: queued.projectId,
+              title: queued.prompt.slice(0, 32) || "未命名图片",
+              createdAt: completedAt,
+              updatedAt: completedAt,
+              coverMode: "auto",
+              nextVersionNumber: 1,
+              versions: []
+            };
+            state.imageHistory.unshift(project);
+          }
+          if (projectCreated && project.versions.length === 0) {
+            const sourcePicture = queued.pictures[0];
+            if (sourcePicture?.absolutePath) {
+              const sourceVersion = createImageSourceVersion(sourcePicture, queued.createdAt);
+              sourceVersion.versionNumber = nextImageVersionNumber(project);
+              project.versions.unshift(sourceVersion);
+              project.nextVersionNumber = sourceVersion.versionNumber + 1;
+            }
+          }
+          const versionNumber = nextImageVersionNumber(project);
+          const version: ImageAssetVersion = {
+            id: versionId,
+            versionNumber,
+            kind: "edit",
+            parentVersionId: queued.parentVersionId,
+            taskId: queued.id,
+            runId: run.id,
+            createdAt: completedAt,
+            startedAt: run.startedAt,
+            modelId: queued.modelId,
+            workflowPath: queued.workflowPath,
+            prompt: queued.prompt,
+            promptVersion: queued.promptVersion,
+            references: queued.pictures.map((picture) => ({ ...picture })),
+            seed: run.seed,
+            width: queued.pictures[0]?.width ?? 0,
+            height: queued.pictures[0]?.height ?? 0,
+            format: imageOutputFormatFromFilename(file.filename) ?? queued.outputFormat,
+            file,
+            comfyPromptId: submitted.promptId,
+            comfyOutputs: result,
+            performanceStats
+          };
+          project.versions.unshift(version);
+          project.nextVersionNumber = versionNumber + 1;
+          project.updatedAt = completedAt;
+          const queuedRun = queued.runs.find((item) => item.id === run.id);
+          if (queuedRun) {
+            queuedRun.status = "completed";
+            queuedRun.progress = 100;
+            queuedRun.completedAt = completedAt;
+            queuedRun.comfyPromptId = submitted.promptId;
+            queuedRun.outputVersionId = versionId;
+            queuedRun.performanceStats = performanceStats;
+          }
+          queued.progress = ((run.index + 1) / totalRuns) * 100;
+          queued.stage = `已完成第 ${run.index + 1} / ${totalRuns} 张`;
+        });
+        sendState(next);
+      } catch (error) {
+        const performanceStats = monitor.stop();
+        await store.update((state) => {
+          const queued = state.queue.find((item) => item.id === task.id);
+          if (!queued || !isImageGenerationQueueTask(queued)) return;
+          const queuedRun = queued.runs.find((item) => item.id === run.id);
+          if (!queuedRun) return;
+          queuedRun.status = controller.signal.aborted ? "cancelled" : "failed";
+          queuedRun.error = error instanceof Error ? error.message : String(error);
+          queuedRun.performanceStats = performanceStats;
+          queued.error = queuedRun.error;
+        });
+        throw error;
+      }
+    }
+    const completed = await store.update((state) => {
+      state.queue = state.queue.filter((item) => item.id !== task.id);
+    });
+    sendState(completed);
+  } catch (error) {
+    await updateTask(task.id, {
+      status: controller.signal.aborted ? "cancelled" : "failed",
+      error: controller.signal.aborted
+        ? "图片批次已取消，已保留完成的图片版本。"
+        : error instanceof Error
+          ? error.message
+          : String(error)
+    });
+  } finally {
+    await freeMemory(store.get().settings).catch((error) => {
+      appLogger.warn("comfy", "image-release-failed", "Failed to release image model memory after batch", {
+        taskId: task.id,
+        error: safeLogErrorMessage(error)
+      });
+    });
+    if (activeController === controller) activeController = null;
+  }
+}
+
 async function executeQueue(): Promise<void> {
-  let lmStudioReleased = false;
+  let promptModelReleased = false;
   while (store.get().queueRunning) {
     const task = store.get().queue.find((item) => item.status === "waiting");
     if (!task) break;
+    if (isImageGenerationQueueTask(task)) {
+      await executeImageGenerationQueueTask(task);
+      continue;
+    }
     appLogger.info("queue", "task-started", "Queue task execution started", {
       taskId: task.id,
       taskType: task.taskType,
@@ -1449,21 +1705,17 @@ async function executeQueue(): Promise<void> {
         () => void logPerformanceSnapshot(),
         performanceLogIntervalMs
       );
-      if (!lmStudioReleased) {
+      if (!promptModelReleased) {
         await updateTask(task.id, {
           progress: 1,
           stage: "卸载提示词模型并释放显存"
         });
         const unloaded = await releasePromptRuntime(store.get().settings);
-        lmStudioReleased = true;
+        promptModelReleased = true;
         if (unloaded > 0) {
           await updateTask(task.id, {
             progress: 1,
-            stage: promptRuntimeForSettings(store.get().settings) === "lmstudio"
-              ? `已卸载 ${unloaded} 个 LM Studio 模型`
-              : promptRuntimeForSettings(store.get().settings) === "llama-server"
-                ? "已停止应用自管理提示词模型"
-                : "已释放 ComfyUI 提示词模型"
+            stage: "已释放 ComfyUI 提示词模型"
           });
         }
       }
@@ -1554,7 +1806,7 @@ async function executeQueue(): Promise<void> {
         modelId: task.modelId
       });
       const completedTask = store.get().queue.find((item) => item.id === task.id);
-      if (!completedTask) continue;
+      if (!completedTask || isImageGenerationQueueTask(completedTask)) continue;
       const completedAt = new Date().toISOString();
       const files = await requireExistingVideoOutput(result);
       appLogger.info("queue", "output-validated", "Task output validated", {
@@ -1618,6 +1870,7 @@ async function executeQueue(): Promise<void> {
             startedAt: completedTask.startedAt
           };
           const asset: HistoryAsset = {
+            mediaKind: "video",
             id: crypto.randomUUID(),
             taskId: completedTask.id,
             title: completedTask.prompt.slice(0, 28) || "未命名视频",
@@ -1676,6 +1929,7 @@ async function executeQueue(): Promise<void> {
             startedAt: completedTask.startedAt
           };
           const asset: HistoryAsset = {
+            mediaKind: "video",
             id: crypto.randomUUID(),
             taskId: completedTask.id,
             title: completedTask.prompt.slice(0, 28) || "视频续写",
@@ -1893,7 +2147,7 @@ async function executeQueue(): Promise<void> {
             let affectedTaskCount = 0;
             recoveredState = await store.update((state) => {
               for (const queuedTask of state.queue) {
-                if (queuedTask.taskType === "upscale" || !isMiniMaxH3Model(queuedTask.modelId)) continue;
+                if (queuedTask.taskType === "upscale" || queuedTask.taskType === "image-generation" || !isMiniMaxH3Model(queuedTask.modelId)) continue;
                 const currentMode = queuedTask.attentionMode ?? "sage";
                 const shouldFallback = attentionFallback === "pytorch"
                   ? currentMode !== "pytorch"
@@ -2081,6 +2335,14 @@ function registerIpc(): void {
     sendState(next);
     return next;
   });
+  ipcMain.handle("image-draft:save", async (_event, draft: ImageEditDraft) => {
+    const normalized = normalizeImageEditDraft(draft);
+    const next = await store.update((state) => {
+      state.imageDraft = normalized;
+    });
+    sendState(next);
+    return next;
+  });
   ipcMain.handle("settings:save", async (_event, settings: Settings) => {
     const previous = store.get().settings;
     const changedKeys = Object.keys(settings).filter((key) =>
@@ -2092,7 +2354,7 @@ function registerIpc(): void {
       state.settings = settings;
       if (previous.h3AttentionMode !== settings.h3AttentionMode) {
         for (const task of state.queue) {
-          if (task.status === "running" || task.taskType === "upscale" || !isMiniMaxH3Model(task.modelId)) continue;
+          if (task.status === "running" || task.taskType === "upscale" || task.taskType === "image-generation" || !isMiniMaxH3Model(task.modelId)) continue;
           task.attentionMode = settings.h3AttentionMode;
           task.updatedAt = new Date().toISOString();
           updatedH3TaskCount += 1;
@@ -2324,6 +2586,7 @@ function registerIpc(): void {
   ipcMain.handle("prompt:start", async () => {
     const settings = store.get().settings;
     const runtime = promptRuntimeForSettings(settings);
+    const promptBackend = promptModelBackend(settings.promptModelId);
     const startedAt = Date.now();
     appLogger.info("prompt", "service-start-requested", "Prompt service start requested", { runtime });
     if (store.get().queueRunning || activeController || queueWorker) {
@@ -2335,10 +2598,14 @@ function registerIpc(): void {
     const controller = new AbortController();
     nativePromptController = controller;
     const worker = (async () => {
-      if (runtime === "llama-server") {
-        const result = await startLlamaPromptModel(settings);
-        if (!result.ok) throw new Error(result.message);
+      if (promptBackend === "h3-prompt-writer") {
+        await ensureComfyUiReadyForPrompt(settings);
+        const status = await testH3PromptWriter(settings, controller.signal);
+        promptWriterModelForSelection(status.models, settings.promptModelId);
         return;
+      }
+      if (promptBackend !== "native-text-generate") {
+        throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
       }
       await ensureComfyUiReadyForPrompt(settings);
       await validateNativePromptRuntime(settings);
@@ -2353,8 +2620,8 @@ function registerIpc(): void {
       });
       return {
         ok: true,
-        message: runtime === "llama-server"
-          ? "Unconcerned Qwen3.5 已由应用启动并加载。"
+        message: promptBackend === "h3-prompt-writer"
+          ? "ComfyUI H3 Prompt Writer 已就绪；模型会在扩写时按需加载，完成后自动卸载。"
           : "Qwen 提示词模型已启动并加载到 ComfyUI。"
       };
     } catch (error) {
@@ -2372,6 +2639,7 @@ function registerIpc(): void {
   ipcMain.handle("prompt:enhance", async (_event, request: EnhanceRequest) => {
     const settings = store.get().settings;
     const runtime = promptRuntimeForSettings(settings);
+    const promptBackend = promptModelBackend(settings.promptModelId);
     const startedAt = Date.now();
     appLogger.info("prompt", "enhance-started", "Prompt enhancement started", {
       runtime,
@@ -2381,25 +2649,7 @@ function registerIpc(): void {
       referenceImageCount: request.imagePaths?.length ?? (request.imagePath ? 1 : 0),
       durationSeconds: request.h3DurationSeconds
     });
-    if (runtime === "lmstudio") {
-      try {
-        const result = await enhancePrompt(request, settings);
-        appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
-          runtime,
-          durationMs: Date.now() - startedAt,
-          outputLength: result.length
-        });
-        return result;
-      } catch (error) {
-        appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
-          runtime,
-          durationMs: Date.now() - startedAt,
-          ...errorLogMeta(error)
-        });
-        throw error;
-      }
-    }
-    if (runtime === "llama-server") {
+    if (promptBackend === "h3-prompt-writer") {
       if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
       if (store.get().queueRunning || activeController || queueWorker) {
         throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
@@ -2407,7 +2657,10 @@ function registerIpc(): void {
       if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
       const controller = new AbortController();
       nativePromptController = controller;
-      const worker = enhancePromptWithLlamaServer(request, settings);
+      const worker = (async () => {
+        await ensureComfyUiReadyForPrompt(settings);
+        return enhancePromptWithH3PromptWriter(request, settings, controller.signal);
+      })();
       nativePromptWorker = worker;
       try {
         const result = await worker;
@@ -2428,6 +2681,9 @@ function registerIpc(): void {
         if (nativePromptWorker === worker) nativePromptWorker = null;
         if (nativePromptController === controller) nativePromptController = null;
       }
+    }
+    if (promptBackend !== "native-text-generate") {
+      throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
     }
     if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
     if (store.get().queueRunning || activeController || queueWorker) {
@@ -2480,10 +2736,7 @@ function registerIpc(): void {
       const startedAt = Date.now();
       appLogger.info("service", "connection-test-started", "Service connection test started", { kind });
       try {
-        const message =
-          kind === "comfy"
-            ? await testComfyUi(settings)
-            : await testLmStudio(settings);
+        const message = await testComfyUi(settings);
         appLogger.info("service", "connection-test-succeeded", "Service connection test succeeded", {
           kind,
           durationMs: Date.now() - startedAt
@@ -2528,15 +2781,6 @@ function registerIpc(): void {
         throw error;
       }
     }
-  );
-  ipcMain.handle(
-    "llama-server:install",
-    (_event, settings: Settings) => loggedOperation(
-      "service",
-      "llama-server-install",
-      "llama-server installation started",
-      () => installLlamaServer(settings)
-    )
   );
   ipcMain.handle(
     "service:start",
@@ -2685,7 +2929,7 @@ function registerIpc(): void {
       state.draft = draft;
     });
     const task = next.queue.at(-1);
-    if (task) {
+    if (task && !isImageGenerationQueueTask(task)) {
       appLogger.info("queue", "task-enqueued", "Generation task added to queue", {
         taskId: task.id,
         taskType: task.taskType,
@@ -2694,6 +2938,48 @@ function registerIpc(): void {
         fps: task.fps
       });
     }
+    sendState(next);
+    return next;
+  });
+  ipcMain.handle("queue:enqueue-image", async (_event, draft: ImageEditDraft) => {
+    const normalized = normalizeImageEditDraft(draft);
+    if (normalized.modelId !== qwenImageEdit2511Adapter.id) {
+      throw new Error(`当前没有 ${normalized.modelId} 的图片模型适配器。`);
+    }
+    if (!normalized.pictures.length) throw new Error("请先添加至少一张 Picture 作为基础图片。");
+    if (normalized.pictures.length > qwenImageEdit2511Adapter.maxPictures) {
+      throw new Error(`当前 Qwen 2511 工作流最多支持 ${qwenImageEdit2511Adapter.maxPictures} 张 Picture。`);
+    }
+    const incompletePicture = normalized.pictures.find((picture) => !picture.absolutePath);
+    if (incompletePicture) {
+      throw new Error(`请先为 Slot ${incompletePicture.pictureNumber}（Picture ${incompletePicture.pictureNumber}）添加图片。`);
+    }
+    const prompt = normalized.promptVersions[normalized.activePromptVersion]?.text.trim() ?? "";
+    if (!prompt) throw new Error("图片处理提示词不能为空");
+    if (!qwenImageEdit2511Adapter.supportedFormats.includes(normalized.outputFormat)) {
+      throw new Error(`当前图片适配器不支持 ${normalized.outputFormat} 输出格式。`);
+    }
+    for (const picture of normalized.pictures) {
+      const stat = await fs.stat(picture.absolutePath).catch(() => null);
+      if (!stat?.isFile()) {
+        throw new Error(`Picture ${picture.pictureNumber} 文件不存在：${picture.absolutePath}`);
+      }
+    }
+    const compiled = qwenImageEdit2511Adapter.compilePrompt(prompt, normalized.pictures);
+    if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
+    const current = store.get();
+    const task = imageTaskFromDraft(normalized, current);
+    const next = await store.update((state) => {
+      state.queue.push(task);
+      state.imageDraft = normalized;
+    });
+    appLogger.info("queue", "image-task-enqueued", "Image generation batch added to queue", {
+      taskId: task.id,
+      projectId: task.projectId,
+      modelId: task.modelId,
+      outputCount: task.outputCount,
+      seedMode: normalized.seed == null ? "random-per-run" : "fixed"
+    });
     sendState(next);
     return next;
   });
@@ -2880,6 +3166,9 @@ function registerIpc(): void {
     const next = await store.update((state) => {
       const source = state.queue.find((task) => task.id === taskId);
       if (!source) return;
+      if (isImageGenerationQueueTask(source)) {
+        throw new Error("图片批次复制将在图片编辑页面接入。");
+      }
       const now = new Date().toISOString();
       const names = [
         ...state.queue.map((task) => task.outputFilename),

@@ -20,6 +20,7 @@ export interface H3PromptCheckOptions {
   mode?: H3PromptMode;
   hasImageReference?: boolean;
   hasVideoReference?: boolean;
+  durationSeconds?: number;
 }
 
 const baseSections = [
@@ -76,6 +77,26 @@ function firstShotHasTimestamp(prompt: string): boolean {
   return /\bAt\s+\d{2}:\d{2}(?:\.\d{3})?/u.test(firstShot);
 }
 
+function sectionsInOrder(prompt: string, sections: readonly string[]): boolean {
+  let previous = -1;
+  for (const section of sections) {
+    const index = prompt.indexOf(section);
+    if (index < 0) continue;
+    if (index <= previous) return false;
+    previous = index;
+  }
+  return true;
+}
+
+function timestampsOutsideDuration(prompt: string, durationSeconds?: number): string[] {
+  if (!Number.isFinite(durationSeconds) || (durationSeconds ?? 0) <= 0) return [];
+  return [...prompt.matchAll(/\bAt\s+(\d{2}):(\d{2})\.(\d{3})/giu)]
+    .filter((match) => Number(match[2]) >= 60 || (
+      Number(match[1]) * 60 + Number(match[2]) + Number(match[3]) / 1000
+    ) > durationSeconds! + 0.001)
+    .map((match) => match[0]);
+}
+
 function startsWithOfficialInstruction(prompt: string, mode: H3PromptMode): boolean {
   if (mode === "T2VA") return prompt.startsWith("integrated_multimodal_description:");
   if (mode === "I2VA") return prompt.startsWith("For the target video, at 0.00 seconds");
@@ -109,6 +130,18 @@ export function checkH3Prompt(
       message: `缺少官方字段：${missingSections.join("、")}`
     });
   }
+  if (!sectionsInOrder(prompt, requiredSections)) {
+    items.push({
+      level: "warning",
+      message: "官方字段顺序不正确；请按固定顺序排列，不要把声音或保留关系段落穿插到时间轴中。"
+    });
+  }
+  if (!sectionsInOrder(prompt, requiredSections)) {
+    items.push({
+      level: "warning",
+      message: "官方字段顺序不正确；请按固定顺序排列，不要把声音或保留关系段落穿插到时间轴中。"
+    });
+  }
 
   const timeline = prompt.match(/(?:integrated_multimodal_description:|detailed_description:)[\s\S]*/iu)?.[0] ?? "";
   if (!/\[Shot\s+1\]/iu.test(timeline)) {
@@ -119,6 +152,18 @@ export function checkH3Prompt(
   }
 
   if (mode === "R2V") {
+    if (/\b(?:contact sheet|sheet cells?|sampled frames?|internal media analysis)\b/iu.test(prompt)) {
+      items.push({
+        level: "warning",
+        message: "最终提示词泄露了接触表或抽帧等内部分析描述；这些内容不能成为目标镜头。"
+      });
+    }
+    if (/\b(?:contact sheet|sheet cells?|sampled frames?|internal media analysis)\b/iu.test(prompt)) {
+      items.push({
+        level: "warning",
+        message: "最终提示词泄露了接触表或抽帧等内部分析描述；这些内容不能成为目标镜头。"
+      });
+    }
     const hasImageReference = options.hasImageReference ?? true;
     if (hasImageReference && !/<(?:Subject|Picture)\s+1>/iu.test(prompt)) {
       items.push({
@@ -219,6 +264,13 @@ export function checkH3Prompt(
     items.push({
       level: "warning",
       message: "官方格式要求 [Shot 1] 不添加 At 时间戳"
+    });
+  }
+  const outsideDuration = timestampsOutsideDuration(prompt, options.durationSeconds);
+  if (outsideDuration.length) {
+    items.push({
+      level: "warning",
+      message: `检测到超出视频时长或格式非法的时间戳：${[...new Set(outsideDuration)].join("、")}`
     });
   }
   const soundscape = prompt.match(/overall_soundscape:\s*([\s\S]*?)(?=\n\s*non_diegetic_music:|$)/iu)?.[1] ?? "";

@@ -2,7 +2,7 @@
 
 ## Version Management
 
-The application follows semantic versioning while it remains in the `0.x` development phase. The current milestone is `0.2.0`, the first stable workstation milestone.
+The application follows semantic versioning while it remains in the `0.x` development phase. The current patch baseline is `0.3.11`; the image workspace feature was introduced as the `0.3.0` milestone.
 
 Before completing any code change, classify its release impact:
 

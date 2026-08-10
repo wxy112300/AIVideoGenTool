@@ -3064,6 +3064,7 @@ main { padding-top: 0; }
 
 .create-page-actions {
   min-width: 0;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -3071,16 +3072,20 @@ main { padding-top: 0; }
 }
 
 .create-page-actions .input-mode-switch {
-  width: 320px;
+  width: 430px;
   min-width: 0;
   height: 42px;
   margin: 0;
   padding: 3px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .create-page-actions .input-mode-switch button {
+  min-width: 0;
   min-height: 34px;
-  padding: 6px 10px;
+  padding: 6px 7px;
+  gap: 5px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -3096,6 +3101,22 @@ main { padding-top: 0; }
 
   .create-page-actions .input-mode-switch {
     flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 980px) {
+  .create-page-heading {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .create-page-actions {
+    width: 100%;
+  }
+
+  .create-page-actions .input-mode-switch {
+    width: min(430px, 100%);
   }
 }
 
@@ -3128,4 +3149,298 @@ body {
   .settings-content .model-profile-list { grid-template-columns: 1fr; }
   .composer-heading { grid-template-columns: 1fr; align-items: start; }
   .prompt-action-controls { justify-content: flex-start; margin-top: 8px; }
+}
+
+.image-edit-page-heading .input-mode-switch {
+  width: 430px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.image-edit-workspace {
+  grid-template-columns: minmax(320px, .82fr) minmax(520px, 1.18fr);
+}
+
+.image-edit-references {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.image-picture-list {
+  display: grid;
+  gap: 10px;
+}
+
+.image-picture-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid rgba(57, 66, 80, .68);
+  border-radius: 11px;
+  background: rgba(21, 25, 32, .84);
+}
+
+.image-picture-card.is-base {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  padding: 12px;
+}
+
+.image-picture-card.is-base .image-picture-preview {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 190px;
+  aspect-ratio: 16 / 10;
+}
+
+.image-picture-card.is-base .image-picture-preview img {
+  object-fit: contain;
+}
+
+.image-picture-card.is-base > .icon-button {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.image-picture-card.is-empty .image-picture-preview {
+  border-style: dashed;
+  background: rgba(13, 16, 20, .72);
+}
+
+.image-picture-preview {
+  width: 92px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 0;
+  border: 1px dashed #4b515b;
+  border-radius: 9px;
+  color: #8995a7;
+  background: #0d1014;
+}
+
+.image-picture-preview:hover {
+  border-color: var(--primary);
+  color: #dbe9ff;
+}
+
+.image-picture-preview.has-image {
+  border-style: solid;
+}
+
+.image-picture-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-picture-preview span {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  font-size: 10px;
+}
+
+.image-picture-preview .ui-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.image-picture-card-body {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.image-picture-card-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.image-picture-card-title strong {
+  color: #e1e9f4;
+  font-size: 12px;
+}
+
+.image-picture-card-title .picture-number {
+  color: #7f8da0;
+  font-size: 10px;
+}
+
+.image-picture-card code {
+  display: block;
+  overflow: hidden;
+  color: #8491a3;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-picture-card label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #8491a3;
+  font-size: 10px;
+}
+
+.image-picture-card select {
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.image-picture-card > .icon-button {
+  align-self: start;
+}
+
+.image-picture-empty {
+  min-height: 190px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 24px;
+  border: 1px dashed #4b515b;
+  border-radius: 11px;
+  color: #8995a7;
+  text-align: center;
+  background: rgba(13, 16, 20, .72);
+}
+
+.image-picture-empty .ui-icon {
+  width: 28px;
+  height: 28px;
+  color: #a6c5ed;
+}
+
+.image-picture-empty strong {
+  color: #dbe5f1;
+  font-size: 13px;
+}
+
+.image-picture-empty small {
+  max-width: 280px;
+  color: #7f8da0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.image-picture-drop-zone {
+  min-height: 92px;
+  margin-top: 8px;
+  border-radius: 11px;
+  background: rgba(13, 16, 20, .54);
+}
+
+.image-picture-drop-zone .drop-icon {
+  display: grid;
+  place-items: center;
+  color: #9cbbe4;
+}
+
+.image-picture-drop-zone .ui-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.image-picture-drop-zone strong {
+  color: #d6e1ef;
+  font-size: 12px;
+}
+
+.image-picture-drop-zone > span:last-child {
+  color: #7f8da0;
+  font-size: 10px;
+}
+
+.image-edit-output-group {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(57, 66, 80, .56);
+}
+
+.image-edit-settings-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.image-edit-settings-grid .range-field {
+  grid-column: 1 / -1;
+}
+
+.image-edit-composer .settings-summary {
+  margin-top: 0;
+}
+
+.image-edit-composer .composer-group-heading {
+  margin-bottom: 6px;
+}
+
+.image-edit-composer .settings-field {
+  gap: 5px;
+}
+
+.image-edit-composer .composer-submit-row {
+  margin-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .image-edit-page-heading .input-mode-switch {
+    width: 100%;
+  }
+
+  .image-edit-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .image-edit-references {
+    padding: 16px;
+  }
+
+  .image-picture-card {
+    grid-template-columns: 78px minmax(0, 1fr) auto;
+    gap: 9px;
+  }
+
+  .image-picture-preview {
+    width: 78px;
+  }
+
+  .image-picture-card.is-base {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .image-picture-card.is-base .image-picture-preview {
+    width: 100%;
+  }
+
+  .image-picture-card label {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .image-edit-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .image-edit-settings-grid .range-field {
+    grid-column: auto;
+  }
+
+  .image-edit-composer .prompt-tool-row {
+    align-items: stretch;
+  }
+
 }

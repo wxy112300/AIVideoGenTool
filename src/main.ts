@@ -69,6 +69,11 @@ import type {
   H3ReferenceMediaType,
   H3ReferenceRole,
   H3ReferenceSlot,
+  ImageGenerationQueueTask,
+  ImageEditDraft,
+  ImagePromptPreset,
+  ImageReference,
+  ImageReferenceRole,
   LocalServiceKind,
   ModelComponentStatus,
   ModelScanProfile,
@@ -81,13 +86,15 @@ import type {
   WindowCloseRequest,
   WorkflowCapabilities
 } from "./types";
-import { createClearedDraft } from "./core/defaults";
+import { createClearedDraft, createDefaultImageEditDraft, createDefaultImagePromptPresets } from "./core/defaults";
 import { createHistoryCoverCacheKey } from "./core/history-cover";
+import { nextImagePictureNumber, normalizeImageEditDraft } from "./core/image-project";
+import { qwenImageEdit2511Capability } from "./core/image-workflow";
 import { createDefaultH3PromptPresets, h3PromptPresetForMode } from "./core/h3-prompt-presets";
 import {
-  isUnconcernedPromptModel,
-  promptRuntimeForSettings,
-  unconcernedPromptModelId
+  isGemmaPromptModel,
+  isManagedPromptModel,
+  promptModelSupportsImageEdit
 } from "./core/prompt-models";
 import {
   h3ReferenceSlotCounts
@@ -126,15 +133,19 @@ import {
 import { checkH3Prompt } from "./core/h3-prompt-check";
 
 type Page = "create" | "queue" | "history" | "history-detail" | "settings";
+type CreationMode = "image-to-video" | "video-extension" | "image-edit";
 
 const appElement = document.querySelector<HTMLDivElement>("#app")!;
 let state: AppState;
 let appVersion = "";
 let page: Page = "create";
+let creationMode: CreationMode = "image-to-video";
 let draftSaveTimer: number | undefined;
 let draftRevision = 0;
 let draftSaveInFlight = 0;
 let draftDirty = false;
+let imageDraftSaveTimer: number | undefined;
+let imageDraftRevision = 0;
 let flashMessage = "";
 let flashMessageTimer: number | undefined;
 let selectedHistoryAssetId = "";
@@ -173,9 +184,7 @@ let coreDependencyRepairing = false;
 let attentionAccelerationInstalling = false;
 let attentionAccelerationLog = "";
 let settingsDraft: Settings | null = null;
-let llamaServerInstalling = false;
-let llamaServerInstallLog = "";
-let settingsTab: "system" | "acceleration" | "video" | "nodes" | "prompt" | "upscale" | "logs" = "system";
+let settingsTab: "system" | "acceleration" | "video" | "image" | "nodes" | "prompt" | "upscale" | "logs" = "system";
 let appLogs: AppLogSnapshot | null = null;
 let appLogsLoading = false;
 let appLogsError = "";
@@ -227,6 +236,15 @@ const historyCoverDataUrls = new Map<string, string>();
 let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
 let h3PromptPreset: H3PromptPreset = "official-storyboard";
 let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
+let settingsImagePromptPreset: ImagePromptPreset = "faithful";
+const imagePromptPresetLabels: Record<ImagePromptPreset, string> = {
+  faithful: "忠实整理",
+  "detail-enhance": "细节增强"
+};
+const imagePromptPresetDescriptions: Record<ImagePromptPreset, string> = {
+  faithful: "只澄清用户明确的编辑意图，不新增未要求的主体、材质、光照、构图或故事。",
+  "detail-enhance": "在不改变编辑范围的前提下，补充区域、材质、光照、透视和边缘融合等执行细节。"
+};
 const h3PromptPresetLabels: Record<H3PromptPreset, string> = {
   "official-storyboard": "通用影视时间线",
   "reference-faithful": "参考画面保真",
@@ -617,6 +635,13 @@ function updatePromptWordCounter(
     : `当前 ${count} 词 · 建议不超过 ${limit} 词`;
 }
 
+function updateImagePromptWordCounter(promptText: string): void {
+  const counter = document.querySelector<HTMLElement>("#image-prompt-word-counter");
+  if (!counter) return;
+  counter.className = "prompt-word-counter";
+  counter.textContent = `当前 ${countPromptWords(promptText)} 词`;
+}
+
 function resizePromptInput(promptInput: HTMLTextAreaElement): void {
   promptInput.style.height = "auto";
   const styles = window.getComputedStyle(promptInput);
@@ -642,7 +667,8 @@ function h3PromptCheckMarkup(
     hasEndImage,
     mode,
     hasImageReference: state.draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"),
-    hasVideoReference
+    hasVideoReference,
+    durationSeconds: state.draft.duration
   });
   return `<div id="h3-prompt-check" class="h3-prompt-check ${result.valid ? "valid" : "warning"}" aria-live="polite">
     <div class="h3-prompt-check-heading"><strong>H3 提示词检查</strong><span>${escapeHtml(result.summary)}</span></div>
@@ -662,7 +688,8 @@ function updateH3PromptCheck(
     hasEndImage,
     mode,
     hasImageReference: state.draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"),
-    hasVideoReference
+    hasVideoReference,
+    durationSeconds: state.draft.duration
   });
   element.className = `h3-prompt-check ${result.valid ? "valid" : "warning"}`;
   element.innerHTML = `<div class="h3-prompt-check-heading"><strong>H3 提示词检查</strong><span>${escapeHtml(result.summary)}</span></div>
@@ -1620,8 +1647,8 @@ function promptModelStatus(settings: Settings): { ready: boolean; detail: string
   }
   return {
     ready: true,
-    detail: promptRuntimeForSettings(settings) === "llama-server"
-      ? "启动应用自管理 llama-server 提示词模型"
+    detail: isGemmaPromptModel(settings.promptModelId)
+      ? "检查 ComfyUI H3 Prompt Writer"
       : "启动 ComfyUI 提示词模型"
   };
 }
@@ -1642,13 +1669,148 @@ function promptRuntimeControlTitle(settings = state.settings): string {
     : promptReleasing
       ? "正在释放提示词模型"
       : promptRuntimeLoaded
-      ? promptRuntimeForSettings(settings) === "llama-server"
-        ? "停止应用自管理 llama-server 并释放显存"
-        : "释放 ComfyUI 提示词模型并回收显存"
+      ? "释放 ComfyUI 提示词模型并回收显存"
       : promptModelStatus(settings).detail;
 }
 
+const imageReferenceRoleLabels: Record<ImageReferenceRole, string> = {
+  base: "基础画面",
+  person: "人物",
+  object: "物体",
+  pose: "姿态",
+  style: "风格",
+  background: "背景",
+  auto: "自动"
+};
+
+function activeImagePrompt(draft = state.imageDraft): PromptVersion {
+  return draft.promptVersions[draft.activePromptVersion] ??
+    draft.promptVersions.at(-1) ?? {
+      id: "image-prompt-fallback",
+      label: "原始",
+      text: "",
+      createdAt: new Date().toISOString()
+    };
+}
+
+function imageEditPromptInstructionOptions(): string {
+  return [
+    ["", "选择保持、编辑或禁止项"],
+    ["保持 Picture 1 的主体身份、构图、光源方向和背景结构不变。", "保持基础画面"],
+    ["只修改明确指定的区域，不要改变画面中的其他内容。", "只修改指定内容"],
+    ["移除指定元素，并使用周围纹理、光影和透视自然补全区域。", "自然移除元素"],
+    ["添加指定元素，并匹配原图的透视、尺度、光照、阴影、景深和颗粒。", "自然添加元素"],
+    ["修复抠图边缘、色温、光源方向、接触阴影、透视、景深和清晰度不一致造成的合成痕迹。", "修复合成痕迹"],
+    ["不要添加文字、Logo、水印或用户未要求的新元素。", "禁止新增文字或元素"]
+  ].map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join("");
+}
+
+function imageEditPage(): string {
+  const draft = normalizeImageEditDraft(state.imageDraft);
+  const prompt = activeImagePrompt(draft);
+  const imageProfile = environmentScan?.modelProfiles.find(
+    (profile) => profile.id === draft.modelId
+  );
+  const imageWorkflowReady = Boolean(imageProfile?.available && imageProfile.integrated);
+  const promptStatus = promptModelStatus(state.settings);
+  const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
+  const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
+  const imagePromptAiDisabled = promptRuntimeBusy || state.queueRunning || !prompt.text.trim() || !imagePromptModelSupportsImageEdit;
+  const imageEnhanceMode: ImagePromptPreset = promptEnhanceMode === "faithful"
+    ? "faithful"
+    : "detail-enhance";
+  const imagePromptOptimizeTitle = state.queueRunning
+    ? "当前有任务运行，暂不能启动提示词模型"
+    : !imagePromptModelSupportsImageEdit
+      ? "当前选择的提示词模型没有可用适配器，请在设置中重新选择已接入的模型"
+    : !prompt.text.trim()
+      ? "请先输入图片编辑 Prompt"
+      : isGemmaPromptModel(state.settings.promptModelId)
+        ? "使用设置中选择的 Gemma Prompt Writer 优化"
+        : "使用设置中选择的提示词模型优化";
+  const incompletePicture = draft.pictures.find((picture) => !picture.absolutePath);
+  const enqueueBlockReason = !draft.pictures.length
+    ? "请先添加 Slot 1（Picture 1）作为基础图片"
+    : !draft.pictures[0]?.absolutePath
+      ? "请先为 Slot 1（Picture 1）添加基础图片"
+      : incompletePicture
+        ? `请先为 Slot ${incompletePicture.pictureNumber}（Picture ${incompletePicture.pictureNumber}）添加图片`
+    : draft.pictures.length > qwenImageEdit2511Capability.maxPictures
+      ? `当前 Qwen 2511 最多支持 ${qwenImageEdit2511Capability.maxPictures} 张 Picture`
+      : !prompt.text.trim()
+        ? "请先填写图片编辑 Prompt"
+        : !imageProfile?.available
+          ? "请先在设置 → 图片模型中补齐 Qwen 2511 组件"
+          : !imageWorkflowReady
+            ? "Qwen 2511 工作流尚未通过本机验证，暂不能提交"
+            : "";
+  const count = Math.min(10, Math.max(1, draft.outputCount));
+  return `
+    <section class="page-heading create-page-heading image-edit-page-heading">
+      <div class="page-heading-copy"><h1>图片处理</h1><p>先生成可复用的图片素材，再从满意版本开始图生视频或继续编辑。</p></div>
+      <div class="create-page-actions">
+        <div class="input-mode-switch" role="group" aria-label="创建模式">
+          <button class="ghost button-with-icon" data-input-mode="image" aria-pressed="false">${icon("image")}图生视频</button>
+          <button class="ghost button-with-icon" data-input-mode="video" aria-pressed="false">${icon("video")}视频续写</button>
+          <button class="secondary active button-with-icon" data-input-mode="image-edit" aria-pressed="true">${icon("wand-sparkles")}图片处理</button>
+        </div>
+        <span class="save-state">自动保存</span>
+      </div>
+    </section>
+    <div class="create-workspace image-edit-workspace">
+      <section class="media-panel image-edit-references">
+        <div class="section-heading">
+          <div><h2>参考图片</h2><span class="muted">Slot ${draft.pictures.length}/${qwenImageEdit2511Capability.maxPictures} · Picture 1 是基础输入</span></div>
+          <button class="secondary button-with-icon" id="add-image-slot" ${draft.pictures.length >= qwenImageEdit2511Capability.maxPictures ? "disabled" : ""}>${icon("plus")}添加 Slot</button>
+        </div>
+        <div class="image-picture-list">
+          ${draft.pictures.length ? draft.pictures.map((picture) => `
+            <article class="image-picture-card ${picture.pictureNumber === 1 ? "is-base" : "is-reference"} ${picture.absolutePath ? "has-picture" : "is-empty"}" data-image-picture-card="${escapeHtml(picture.id)}">
+              <button class="image-picture-preview ${picture.absolutePath ? "has-image" : ""}" data-image-picture-pick="${escapeHtml(picture.id)}" aria-label="${picture.absolutePath ? `替换 Slot ${picture.pictureNumber} 图片` : `选择 Slot ${picture.pictureNumber} 图片`}">
+                <img data-image-picture-preview="${escapeHtml(picture.id)}" alt="Slot ${picture.pictureNumber}预览" ${picture.absolutePath ? "" : "hidden"}>
+                ${picture.absolutePath ? "" : `<span>${icon("image")}选择图片</span>`}
+              </button>
+              <div class="image-picture-card-body">
+                <div class="image-picture-card-title"><strong>Slot ${picture.pictureNumber}</strong><span class="picture-number">Picture ${picture.pictureNumber}</span><span class="model-badge">${picture.pictureNumber === 1 ? "基础输入" : "参考"}</span></div>
+                <code title="${escapeHtml(picture.absolutePath)}">${picture.absolutePath ? escapeHtml(picture.absolutePath.split(/[\\/]/u).pop() ?? picture.absolutePath) : "尚未添加图片"}</code>
+                <label>参考作用<select data-image-picture-role="${escapeHtml(picture.id)}" ${picture.pictureNumber === 1 ? "disabled" : ""}>${Object.entries(imageReferenceRoleLabels).map(([value, label]) => `<option value="${value}" ${picture.role === value || (picture.pictureNumber === 1 && value === "base") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+              </div>
+              <button class="icon-button danger" data-remove-image-picture="${escapeHtml(picture.id)}" aria-label="删除 Slot ${picture.pictureNumber}" title="删除 Slot ${picture.pictureNumber}">${icon("trash-2")}</button>
+            </article>`).join("") : `<div class="image-picture-empty"><span>${icon("images")}</span><strong>先添加 Picture 1</strong><small>基础画面决定默认构图；后续最多添加两张人物、物体、姿态或风格参考。</small></div>`}
+        </div>
+        <button class="drop-zone image-picture-drop-zone" id="image-picture-drop-zone" data-image-picture-drop ${draft.pictures.length >= qwenImageEdit2511Capability.maxPictures ? "disabled" : ""}>
+          <span class="drop-icon">${icon("upload")}</span><strong>拖入图片到下一个 Slot</strong><span>PNG、JPG、WEBP、BMP · 也可以点击选择文件</span>
+        </button>
+      </section>
+      <section class="panel composer image-edit-composer">
+        <div class="section-heading composer-heading">
+          <div class="composer-heading-main"><h2>提示词</h2><span class="muted">${draft.activePromptVersion + 1} / ${draft.promptVersions.length} · ${escapeHtml(prompt.label)}</span><div class="prompt-version-controls"><button class="icon-button" id="image-prompt-prev" aria-label="上一版提示词" ${draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button><button class="icon-button" id="image-prompt-next" aria-label="下一版提示词" ${draft.activePromptVersion >= draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button></div></div>
+          <div class="prompt-action-controls">
+            <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="图片提示词优化方式" title="只影响优化提示词，不影响图片生成参数；细节增强会补充执行细节，忠实整理尽量保持原意">
+              <option value="detail-enhance" ${imageEnhanceMode === "detail-enhance" ? "selected" : ""}>细节增强</option>
+              <option value="faithful" ${imageEnhanceMode === "faithful" ? "selected" : ""}>忠实整理</option>
+            </select>
+            <button class="icon-button prompt-runtime-button ${promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model-create" ${promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready) ? "disabled" : ""} aria-label="${escapeHtml(promptRuntimeControlTitle())}" title="${escapeHtml(promptRuntimeControlTitle())}" aria-busy="${promptRuntimeBusy}">${icon(promptRuntimeControlIcon())}</button>
+            <button class="secondary button-with-icon" id="enhance-prompt" ${imagePromptAiDisabled ? "disabled" : ""} title="${escapeHtml(imagePromptOptimizeTitle)}">${icon("sparkles")}${promptEnhancing ? "优化中…" : "优化提示词"}</button>
+          </div>
+        </div>
+        <div class="prompt-editor-shell"><textarea id="image-edit-prompt-input" rows="6" spellcheck="true" lang="${/[\u3400-\u9fff]/u.test(prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(prompt.text)}</textarea><div id="image-prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div></div>
+        <div class="prompt-tool-row"><label class="prompt-snippet-picker"><span>快速插入</span><select id="image-edit-instruction">${imageEditPromptInstructionOptions()}</select></label><button class="secondary button-with-icon" id="insert-image-edit-instruction" disabled>${icon("plus")}插入</button></div>
+        <section class="composer-control-group image-edit-output-group"><div class="composer-group-heading"><div><strong>生成设置</strong><span>一个批次顺序生成多张候选图，Seed 和参数会保存到任务快照</span></div></div><div class="composer-control-grid image-edit-settings-grid">
+          <label class="settings-field">模型<select id="image-edit-model"><option value="qwen-image-edit-2511" selected>Qwen-Image-Edit-2511</option></select></label>
+          <label class="settings-field">质量<select id="image-edit-quality"><option value="native" ${draft.qualityProfile === "native" ? "selected" : ""}>原生质量 · 40 步</option><option value="lightning-4step" ${draft.qualityProfile === "lightning-4step" ? "selected" : ""}>Lightning · 4 步</option></select></label>
+          <label class="settings-field">输出格式<select id="image-edit-format"><option value="png" ${draft.outputFormat === "png" ? "selected" : ""}>PNG · 无损</option><option value="jpeg" ${draft.outputFormat === "jpeg" ? "selected" : ""}>JPEG · 较小文件</option><option value="webp" ${draft.outputFormat === "webp" ? "selected" : ""}>WebP · 高压缩率</option></select></label>
+          <label class="settings-field">随机 Seed<div class="inline-field seed-control"><input id="image-edit-seed" type="number" placeholder="留空则每张随机" value="${draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="生成随机 Seed">${icon("refresh-cw")}</button><button class="icon-button" id="clear-image-edit-seed" title="清空 Seed">${icon("x")}</button></div></label>
+          <label class="settings-field range-field"><span class="range-heading"><span>生成数量</span><strong id="image-edit-count-value">${count} 张</strong></span><input id="image-edit-count" type="range" min="1" max="10" step="1" value="${count}"><span class="range-scale"><span>1</span><span>一个任务，逐张生成</span><span>10</span></span></label>
+        </div></section>
+        <div class="interpolation-summary settings-summary ${enqueueBlockReason ? "unsafe" : ""}"><div><strong>${enqueueBlockReason || `一个任务 · ${count} 个${draft.seed == null ? "随机" : "相同"} Seed 顺序生成`}</strong><span>图片模型输出不会自动放大</span></div><p>${escapeHtml(imageProfile?.available ? imageProfile.integrated ? "组件完整，工作流已接入。" : "组件完整，但工作流尚未通过本机验证。" : "请先打开设置 → 图片模型，下载并扫描三项 Qwen 组件。")}</p></div>
+        <div class="submit-row composer-submit-row"><button class="ghost danger button-with-icon" id="clear-image-edit-draft">${icon("trash-2")}清空</button><button class="primary button-with-icon" id="enqueue-image-edit" ${enqueueBlockReason ? "disabled" : ""}>${icon("plus")}加入队列</button></div>
+      </section>
+    </div>`;
+}
+
 function createPage(): string {
+  if (creationMode === "image-edit") return imageEditPage();
   const draft = state.draft;
   const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
   const isR2V = isMiniMaxH3R2vModel(draft.modelId);
@@ -1656,7 +1818,6 @@ function createPage(): string {
   const activeH3PromptPreset = h3Mode
     ? h3PromptPresetForMode(h3Mode, h3PromptPreset)
     : h3PromptPreset;
-  const promptRuntime = promptRuntimeForSettings(state.settings);
   const enhanceMode = isMiniMaxH3
     ? promptEnhanceMode === "faithful" ? "faithful" : "h3-vision"
     : promptEnhanceMode === "h3-vision" ? "sulphur-native" : promptEnhanceMode;
@@ -1741,8 +1902,9 @@ function createPage(): string {
       <div class="page-heading-copy"><h1>创建视频</h1><p>${extending ? "裁出要保留的视频片段，并从末帧继续生成。" : "导入参考画面，调整提示词，然后加入本地生成队列。"}</p></div>
       <div class="create-page-actions">
         <div class="input-mode-switch" role="group" aria-label="创建模式">
-          <button class="${extending ? "ghost" : "secondary active"} button-with-icon" data-input-mode="image" aria-pressed="${!extending}">${icon("image")}图片生成</button>
+          <button class="${extending ? "ghost" : "secondary active"} button-with-icon" data-input-mode="image" aria-pressed="${!extending}">${icon("image")}图生视频</button>
           <button class="${extending ? "secondary active" : "ghost"} button-with-icon" data-input-mode="video" aria-pressed="${extending}">${icon("video")}视频续写</button>
+          <button class="ghost button-with-icon" data-input-mode="image-edit" aria-pressed="false">${icon("wand-sparkles")}图片处理</button>
         </div>
         <span class="save-state">自动保存</span>
       </div>
@@ -1819,8 +1981,8 @@ function createPage(): string {
               : `<option value="sulphur-native" ${enhanceMode === "sulphur-native" ? "selected" : ""}>Sulphur 原生增强（推荐）</option>
                  <option value="faithful" ${enhanceMode === "faithful" ? "selected" : ""}>忠实扩写（需 Instruct 模型）</option>`}
           </select>
-          <button class="icon-button prompt-runtime-button ${promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model-create" ${promptRuntimeBusy || state.queueRunning || promptRuntime === "lmstudio" || (!promptRuntimeLoaded && !promptStatus.ready) ? "disabled" : ""} aria-label="${escapeHtml(promptRuntimeControlTitle())}" title="${escapeHtml(promptRuntimeControlTitle())}" aria-busy="${promptRuntimeBusy}">${icon(promptRuntimeControlIcon())}</button>
-          <button class="secondary button-with-icon" id="enhance-prompt" ${promptAiDisabled ? "disabled" : ""} title="${promptAiDisabled && state.queueRunning ? "当前有视频任务运行，暂不能启动提示词模型" : promptAiDisabled ? "正在生成提示词" : promptRuntime === "lmstudio" ? "使用 LM Studio 扩写" : promptRuntime === "llama-server" ? "使用应用自管理 Unconcerned 模型扩写" : "使用 ComfyUI 原生 Qwen 模型扩写"}">${icon("sparkles")}${promptEnhancing ? "扩写中…" : isMiniMaxH3 ? "优化 H3 提示词" : "本地扩写"}</button>
+          <button class="icon-button prompt-runtime-button ${promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model-create" ${promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready) ? "disabled" : ""} aria-label="${escapeHtml(promptRuntimeControlTitle())}" title="${escapeHtml(promptRuntimeControlTitle())}" aria-busy="${promptRuntimeBusy}">${icon(promptRuntimeControlIcon())}</button>
+          <button class="secondary button-with-icon" id="enhance-prompt" ${promptAiDisabled ? "disabled" : ""} title="${promptAiDisabled && state.queueRunning ? "当前有视频任务运行，暂不能启动提示词模型" : promptAiDisabled ? "正在生成提示词" : isGemmaPromptModel(state.settings.promptModelId) ? "使用 ComfyUI H3 Prompt Writer 优化" : "使用 ComfyUI 原生 Qwen 模型优化"}">${icon("sparkles")}${promptEnhancing ? "优化中…" : "优化提示词"}</button>
         </div>
       </div>
       <div class="prompt-editor-shell">
@@ -2024,6 +2186,9 @@ type QueueTaskInput =
   | { kind: "video"; path: string };
 
 function queueTaskInput(task: QueueTask): QueueTaskInput | null {
+  if (task.taskType === "image-generation" && task.pictures[0]?.absolutePath) {
+    return { kind: "image", path: task.pictures[0].absolutePath };
+  }
   if (task.taskType === "generation" && task.startImagePath) {
     return { kind: "image", path: task.startImagePath };
   }
@@ -2119,7 +2284,9 @@ async function loadQueueInputPreviews(): Promise<void> {
 }
 
 function queueTaskCard(task: QueueTask, queuePosition: number): string {
-  const description = task.taskType === "generation"
+  const description = task.taskType === "image-generation"
+    ? `${task.prompt} · ${task.outputCount} 张候选图`
+    : task.taskType === "generation"
     ? task.prompt
     : task.taskType === "extension"
       ? `${task.prompt} · 保留 ${task.trimStartSeconds.toFixed(1)}–${task.trimEndSeconds.toFixed(1)} 秒`
@@ -2127,15 +2294,17 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
   const upscaleOutput = task.taskType === "upscale"
     ? upscaleDimensions(task.sourceWidth, task.sourceHeight, task.targetHeight)
     : null;
-  const h3ComputeSummary = task.taskType !== "upscale" && isMiniMaxH3Model(task.modelId)
+  const h3ComputeSummary = task.taskType !== "upscale" && task.taskType !== "image-generation" && isMiniMaxH3Model(task.modelId)
     ? isMiniMaxH3TurboModel(task.modelId)
       ? `<span title="Turbo 低步数流程暂不开放 Spectrum">${normalizeH3Steps(task.steps, task.modelId)} 步 · Spectrum 不适用</span>`
       : task.spectrumMode === "balanced"
         ? `<span title="Spectrum 已开启；H3 特征历史保存在系统内存">${normalizeH3Steps(task.steps, task.modelId)} 步 · Spectrum 开</span>`
         : `<span title="Spectrum 已关闭；使用 H3 原生完整计算">${normalizeH3Steps(task.steps, task.modelId)} 步 · Spectrum 关</span>`
     : "";
-  const seedText = String(task.seed);
-  const metadata = task.taskType === "generation"
+  const seedText = task.taskType === "image-generation" ? "批次内独立" : String(task.seed);
+  const metadata = task.taskType === "image-generation"
+    ? `<span>图片处理</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.outputCount} 张候选图</span><span>${escapeHtml(task.qualityProfile)}</span><span>PNG 中间输出</span>`
+    : task.taskType === "generation"
     ? `<span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span>${h3ComputeSummary}<span>Seed ${escapeHtml(seedText)}</span>`
     : task.taskType === "extension"
       ? `<span>视频续写</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>最多 ${task.maxGeneratedFrames} 模型帧</span><span>${task.overlapFrames} 帧上下文</span>${h3ComputeSummary}`
@@ -2210,7 +2379,7 @@ function statusLabel(status: string): string {
 }
 
 function draftFromQueueTask(task: QueueTask): Draft | null {
-  if (task.taskType === "upscale" || task.status === "running") return null;
+  if (task.taskType === "upscale" || task.taskType === "image-generation" || task.status === "running") return null;
   const now = new Date().toISOString();
   const resolution = [480, 540, 720, 768].includes(task.resolution)
     ? task.resolution as Draft["resolution"]
@@ -2689,6 +2858,7 @@ function modelScanCard(profile: ModelScanProfile): string {
   const missingCount = profile.components.filter((component) => !component.found).length;
   const isPromptProfile = profile.category === "prompt";
   const isLlamaProfile = profile.managedBy === "llama-server";
+  const isGemmaProfile = isPromptProfile && isGemmaPromptModel(profile.id);
   const readyLabel = isPromptProfile
     ? "文件完整"
     : profile.integrated
@@ -2698,6 +2868,8 @@ function modelScanCard(profile: ModelScanProfile): string {
     ? isPromptProfile
       ? isLlamaProfile
         ? "GGUF + mmproj 文件完整；由应用自管理 llama-server"
+        : isGemmaProfile
+          ? "LLM GGUF + mmproj 文件完整；通过 ComfyUI Prompt Writer 处理视频和图片提示词"
         : "ComfyUI text_encoders 文件完整；可通过原生 TextGenerate 进行本地扩写"
       : profile.integrated
         ? "组件完整，可用于配置"
@@ -2798,11 +2970,7 @@ function environmentOverview(): string {
                 ? item.ok
                   ? `<button class="service-start secondary button-with-icon" data-restart-service="comfy" ${serviceStarting || serviceRestarting || serviceForceStopping ? "disabled" : ""}>${icon("refresh-cw")}${serviceRestarting === "comfy" ? "重启中…最多等待 2 分钟" : "重启服务"}</button>`
                   : `<button class="service-start button-with-icon" data-start-service="comfy" ${serviceStarting || serviceRestarting || serviceForceStopping ? "disabled" : ""}>${icon("play")}${serviceStarting === "comfy" ? "启动中…最多等待 2 分钟" : "一键启动"}</button>`
-                : !item.ok && item.id === "lmstudio"
-                  ? `<button class="service-start secondary button-with-icon" data-pick-lm-install>${icon("folder-open")}选择目录</button>`
-                : !item.ok && item.id === "lmstudio-api"
-                  ? `<button class="service-start button-with-icon" data-start-service="lmstudio" ${serviceStarting || serviceRestarting || serviceForceStopping ? "disabled" : ""}>${icon("play")}${serviceStarting === "lmstudio" ? "启动中…" : "一键启动"}</button>`
-                  : ""}
+                : ""}
             </div>
             <p>${escapeHtml(item.detail)}</p>
             ${item.path ? `<code title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</code>` : ""}
@@ -2905,18 +3073,21 @@ function settingsPage(): string {
   const videoProfiles = orderVideoProfiles(
     profiles.filter((profile) => profile.category === "video")
   );
+  const imageProfiles = profiles.filter((profile) => profile.category === "image");
   const promptProfiles = profiles.filter((profile) => profile.category === "prompt");
   const upscaleProfiles = profiles.filter((profile) => profile.category === "upscale");
   const promptStatus = promptModelStatus(settings);
-  const promptRuntime = promptRuntimeForSettings(settings);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
-  const llamaServer = environmentScan?.llamaServer;
   const defaultPromptPresets = createDefaultH3PromptPresets();
   const selectedH3PresetText = settings.h3PromptPresets[settingsH3PromptPreset] ??
     defaultPromptPresets[settingsH3PromptPreset];
+  const defaultImagePromptPresets = createDefaultImagePromptPresets();
+  const selectedImagePromptPresetText = settings.imagePromptPresets[settingsImagePromptPreset] ??
+    defaultImagePromptPresets[settingsImagePromptPreset];
   const videoAvailable = videoProfiles.filter(
     (profile) => profile.available && profile.integrated
   ).length;
+  const imageComponentsReady = imageProfiles.filter((profile) => profile.available).length;
   const upscaleAvailable = upscaleProfiles.filter((profile) => profile.available).length;
   const promptAvailable = promptProfiles.filter((profile) => profile.available).length;
   const gpu = environmentScan?.items.find((item) => item.id === "nvidia");
@@ -3063,58 +3234,61 @@ function settingsPage(): string {
       </section>
     </section>`;
 
+  const imagePanel = `
+    <section class="settings-panel">
+      <section class="panel settings-section">
+        <div class="section-heading">
+          <div><h2>图片编辑模型</h2><span class="muted">先在这里准备 Qwen-Image-Edit-2511 的本地组件；只有工作流完成验证后，创建页才会允许提交。</span></div>
+          <span class="model-badge">Qwen 2511</span>
+        </div>
+        <div class="settings-grid two">
+          <label>默认图片模型<select id="default-image-model">
+            ${(imageProfiles.length ? imageProfiles : [{ id: "qwen-image-edit-2511", name: "Qwen-Image-Edit-2511 · 图片处理", available: false, integrated: false }]).map((profile) => `<option value="${escapeHtml(profile.id)}" ${settings.defaultImageModel === profile.id ? "selected" : ""} ${profile.integrated === false ? "" : !profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available && profile.integrated ? "" : profile.available ? " · 工作流待验证" : " · 缺组件"}</option>`).join("")}
+          </select></label>
+          <label>默认质量档<select id="image-quality-profile">
+            <option value="native" ${settings.defaultImageQualityProfile === "native" ? "selected" : ""}>原生质量 · 40 步</option>
+            <option value="lightning-4step" ${settings.defaultImageQualityProfile === "lightning-4step" ? "selected" : ""}>Lightning · 4 步（需额外 LoRA）</option>
+          </select></label>
+          <label>默认生成数量<div class="inline-field"><input id="image-output-count" type="range" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><input id="image-output-count-number" type="number" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><span>张</span></div></label>
+          <label>默认输出格式<select id="image-output-format">
+            <option value="png" ${settings.imageOutputFormat === "png" ? "selected" : ""}>PNG · 无损</option>
+            <option value="jpeg" ${settings.imageOutputFormat === "jpeg" ? "selected" : ""}>JPEG · 文件更小</option>
+            <option value="webp" ${settings.imageOutputFormat === "webp" ? "selected" : ""}>WebP · 高压缩率</option>
+          </select></label>
+        </div>
+        <div class="scan-result">${environmentScanning ? "正在扫描图片模型组件…" : environmentScan ? `找到 ${imageComponentsReady} 个图片模型组件完整档位；Qwen 2511 当前最多支持 3 张 Picture` : "等待首次扫描"}</div>
+        <p class="muted proxy-hint">图片输出默认写入当前 ComfyUI 输出目录。PNG 是继续编辑和交给 H3 的首选格式；JPEG/WebP 只有在验证目标应用兼容后再作为默认值。</p>
+      </section>
+      <div class="model-profile-list">${imageProfiles.length ? imageProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无图片模型扫描结果；请先确认模型目录后重新扫描。</div>`}</div>
+    </section>`;
+
   const promptPanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>本地提示词模型</h2><span class="muted">Qwen3.5 原生模型使用 ComfyUI；Unconcerned GGUF 可由应用自己启动 llama-server，不依赖 LM Studio。</span></div><div class="button-row"><span class="model-badge">${promptRuntime === "lmstudio" ? "LM Studio" : promptRuntime === "llama-server" ? "应用自管理" : "ComfyUI 原生"}</span>${promptRuntime !== "lmstudio" ? `<button class="icon-button prompt-runtime-button ${promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model" ${promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready) ? "disabled" : ""} aria-label="${escapeHtml(promptRuntimeControlTitle(settings))}" title="${escapeHtml(promptRuntimeControlTitle(settings))}" aria-busy="${promptRuntimeBusy}">${icon(promptRuntimeControlIcon())}</button>` : ""}</div></div>
-        <label>提示词运行方式<select id="prompt-runtime"><option value="comfyui" ${promptRuntime === "comfyui" ? "selected" : ""}>ComfyUI 原生 TextGenerate</option><option value="llama-server" ${promptRuntime === "llama-server" ? "selected" : ""}>应用自管理 llama-server（Unconcerned）</option><option value="lmstudio" ${promptRuntime === "lmstudio" ? "selected" : ""}>LM Studio 兼容后端</option></select></label>
-        <label>默认提示词模型<select id="prompt-model-id">${promptProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${settings.promptModelId === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
+        <div class="section-heading"><div><h2>本地提示词模型</h2><span class="muted">统一由当前 ComfyUI 运行：Qwen 使用原生 TextGenerate，Gemma 4 使用 H3 Prompt Writer 扩展。</span></div><div class="button-row"><span class="model-badge">仅依赖 ComfyUI</span><button class="icon-button prompt-runtime-button ${promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model" ${promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready) ? "disabled" : ""} aria-label="${escapeHtml(promptRuntimeControlTitle(settings))}" title="${escapeHtml(promptRuntimeControlTitle(settings))}" aria-busy="${promptRuntimeBusy}">${icon(promptRuntimeControlIcon())}</button></div></div>
+        <label>默认提示词模型<select id="prompt-model-id">${promptProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${settings.promptModelId === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"} · 视频/图片</option>`).join("")}</select></label>
         <div class="settings-grid two">
-          <label>应用提示词模型目录<div class="input-action"><input id="prompt-model-directory" value="${escapeHtml(settings.promptModelDirectory)}" placeholder="留空使用 ComfyUI/models/prompt_models"><button class="secondary button-with-icon" data-pick-prompt-model-directory>${icon("folder-open")}选择</button></div><small>放置 Unconcerned GGUF 和 mmproj；也可使用 ComfyUI/models/prompt_models。</small></label>
-          <label>llama-server.exe 路径<input id="prompt-llama-server-path" value="${escapeHtml(settings.promptLlamaServerPath)}" placeholder="例如 D:\\AI\\llama.cpp\\llama-server.exe"><small>留空时应用会尝试从 PATH 和模型目录查找。</small></label>
+          <label>扩写语言<select id="prompt-language"><option value="auto" ${settings.promptLanguage === "auto" ? "selected" : ""}>跟随输入语言</option><option value="zh" ${settings.promptLanguage === "zh" ? "selected" : ""}>中文</option><option value="en" ${settings.promptLanguage === "en" ? "selected" : ""}>英文</option></select></label>
+          <label>创造性<select id="prompt-creativity"><option value="0.3" ${settings.promptCreativity === 0.3 ? "selected" : ""}>克制 · 0.3</option><option value="0.7" ${settings.promptCreativity === 0.7 ? "selected" : ""}>平衡 · 0.7</option><option value="1" ${settings.promptCreativity === 1 ? "selected" : ""}>丰富 · 1.0</option></select></label>
         </div>
-        <div class="settings-grid two llama-server-control">
-          <div class="settings-status-card ${llamaServer?.found ? "available" : "missing"}">
-            <span class="runtime-label">llama-server 自动扫描</span>
-            <strong>${llamaServer?.found ? "已找到" : environmentScanning ? "扫描中…" : "未找到"}</strong>
-            <code title="${escapeHtml(llamaServer?.path ?? "")}">${escapeHtml(llamaServer?.path || "可扫描 PATH、prompt_models 和应用管理目录")}</code>
-          </div>
-          <div class="llama-server-actions">
-            <button class="secondary button-with-icon" id="install-llama-server" ${llamaServerInstalling ? "disabled" : ""}>${icon(llamaServerInstalling ? "refresh-cw" : "download")}${llamaServerInstalling ? "正在下载并安装…" : llamaServer?.found ? "安装/更新应用版" : "一键安装 llama-server"}</button>
-            <small>官方 llama.cpp Windows CUDA 运行包；不会下载或移动模型文件。</small>
-          </div>
-        </div>
-        ${llamaServerInstallLog ? `<details class="node-log" open><summary>llama-server 安装日志</summary><pre>${escapeHtml(llamaServerInstallLog)}</pre></details>` : ""}
-        <div class="scan-result">${environmentScanning ? "正在扫描 ComfyUI/models 和应用提示词模型目录…" : environmentScan ? `找到 ${promptAvailable} 个提示词模型档位；ComfyUI 原生模型与应用自管理 GGUF 分开处理` : "等待首次扫描"}</div>
-        <p class="muted proxy-hint">Unconcerned 使用 Apache-2.0 的 Qwen3.5 GGUF + mmproj；应用只管理自己启动的 llama-server，不会接管 LM Studio。开始队列前或程序退出时会停止应用自管理提示词模型。</p>
+        <div class="scan-result">${environmentScanning ? "正在扫描 ComfyUI/models…" : environmentScan ? `找到 ${promptAvailable} 个提示词模型档位` : "等待首次扫描"}</div>
+        <p class="muted proxy-hint">Qwen Safetensors 使用 ComfyUI 官方 <code>models/text_encoders</code> 分类；Gemma GGUF 使用 H3 Prompt Writer 扩展注册的大写 <code>models/LLM/独立子目录</code>，主模型与匹配的 <code>mmproj</code> 必须放在一起。扩写完成会自动卸载，不需要安装或启动 llama-server、LM Studio。</p>
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>扩写预设</h2><span class="muted">预设会把原始文字和参考图整理成完整的 H3 视频提示词，覆盖主体、场景、动作、镜头、声音、对白和连续性。</span></div><button class="secondary button-with-icon" id="restore-h3-prompt-presets">${icon("rotate-ccw")}恢复默认</button></div>
+        <div class="section-heading"><div><h2>视频提示词预设</h2><span class="muted">预设会把原始文字和参考图整理成完整的 H3 视频提示词，覆盖主体、场景、动作、镜头、声音、对白和连续性。</span></div><button class="secondary button-with-icon" id="restore-h3-prompt-presets">${icon("rotate-ccw")}恢复默认</button></div>
         <label>当前编辑预设<select id="h3-prompt-preset-setting">${h3PromptPresetOptions(settingsH3PromptPreset, true)}</select></label>
         <p class="muted proxy-hint">${escapeHtml(h3PromptPresetDescriptions[settingsH3PromptPreset])}</p>
         <label>预设规则头<textarea id="h3-prompt-preset-text" rows="7">${escapeHtml(selectedH3PresetText)}</textarea></label>
         <p class="muted proxy-hint">规则头可自由修改；内置的 H3 官方基线会继续强制参考标签、首尾帧关系、连续性、音频和输出格式。修改后点击设置页顶部“保存设置”，创建页下次扩写立即使用。</p>
       </section>
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>图片提示词预设</h2><span class="muted">只影响图片“优化提示词”时的整理策略，不改变 Qwen Image 的生成参数。</span></div><button class="secondary button-with-icon" id="restore-image-prompt-presets">${icon("rotate-ccw")}恢复默认</button></div>
+        <label>当前编辑预设<select id="image-prompt-preset-setting">${Object.entries(imagePromptPresetLabels).map(([id, label]) => `<option value="${id}" ${settingsImagePromptPreset === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        <p class="muted proxy-hint">${escapeHtml(imagePromptPresetDescriptions[settingsImagePromptPreset])}</p>
+        <label>预设规则头<textarea id="image-prompt-preset-text" rows="7">${escapeHtml(selectedImagePromptPresetText)}</textarea></label>
+        <p class="muted proxy-hint">规则头会作为图片 Prompt 优化器的策略说明；最终发送给 Qwen Image 的 Prompt 不会包含这段设置文本。</p>
+      </section>
       <div class="model-profile-list">${promptProfiles.length ? promptProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无提示词模型扫描结果</div>`}</div>
-      <section class="panel settings-section">
-        <div class="section-heading"><div><h2>LM Studio</h2><span class="muted">本地提示词扩写服务</span></div><button class="secondary button-with-icon" data-test="lmstudio">${icon("zap")}测试并读取模型</button></div>
-        <div class="settings-grid two">
-          <label>安装目录<div class="input-action"><input id="lm-install-directory" value="${escapeHtml(settings.lmStudioInstallDirectory)}" placeholder="例如 D:\\Apps\\LM Studio"><button class="secondary button-with-icon" data-pick-lm-install>${icon("folder-open")}选择</button></div></label>
-          <label>OpenAI API 地址<input id="lm-url" value="${escapeHtml(settings.lmStudioUrl)}"></label>
-          <label>模型 ID<input id="lm-model" value="${escapeHtml(settings.lmStudioModel)}" placeholder="留空使用当前加载模型"></label>
-          <label>扩写语言<select id="prompt-language"><option value="auto" ${settings.promptLanguage === "auto" ? "selected" : ""}>跟随输入语言</option><option value="zh" ${settings.promptLanguage === "zh" ? "selected" : ""}>中文</option><option value="en" ${settings.promptLanguage === "en" ? "selected" : ""}>英文</option></select></label>
-          <label>创造性<select id="prompt-creativity"><option value="0.3" ${settings.promptCreativity === 0.3 ? "selected" : ""}>克制 · 0.3</option><option value="0.7" ${settings.promptCreativity === 0.7 ? "selected" : ""}>平衡 · 0.7</option><option value="1" ${settings.promptCreativity === 1 ? "selected" : ""}>丰富 · 1.0</option></select></label>
-        </div>
-        <div id="connection-result" class="connection-result muted">尚未单独测试连接</div>
-      </section>
-      <section class="panel settings-section">
-        <div class="section-heading"><div><h2>提示词模板</h2><span class="muted">创建页的“本地扩写”使用</span></div></div>
-        <label>系统模板<textarea id="prompt-template" rows="7">${escapeHtml(settings.promptSystemTemplate)}</textarea></label>
-      </section>
-      <section class="panel settings-section">
-        <h2>工作流占位符</h2><p class="muted">ComfyUI API JSON 提交前会递归替换：</p>
-        <div class="token-list">${["PROMPT", "NEGATIVE_PROMPT", "SEED", "INPUT_IMAGE", "END_IMAGE", "SOURCE_VIDEO", "TRIM_START", "TRIM_END", "EXTENSION_FRAMES", "OVERLAP_FRAMES", "UNLOAD_BETWEEN_STAGES", "WIDTH", "HEIGHT", "DURATION", "SOURCE_FPS", "FPS", "FRAMES", "OUTPUT_FRAMES", "OUTPUT_FILENAME", "H3_DIFFUSION_MODEL", "H3_TEXT_ENCODER", "H3_TURBO_LORA"].map((token) => `<code>{{${token}}}</code>`).join("")}</div>
-      </section>
     </section>`;
 
   const upscalePanel = `
@@ -3210,6 +3384,10 @@ function settingsPage(): string {
             </div>
           </article>`).join("") || `<div class="panel environment-empty">等待环境扫描结果</div>`}
       </div>
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>工作流占位符</h2><span class="muted">提交自定义视频 ComfyUI API JSON 前会递归替换；图片工作流不使用这些占位符。</span></div></div>
+        <div class="token-list">${["PROMPT", "NEGATIVE_PROMPT", "SEED", "INPUT_IMAGE", "END_IMAGE", "SOURCE_VIDEO", "TRIM_START", "TRIM_END", "EXTENSION_FRAMES", "OVERLAP_FRAMES", "UNLOAD_BETWEEN_STAGES", "WIDTH", "HEIGHT", "DURATION", "SOURCE_FPS", "FPS", "FRAMES", "OUTPUT_FRAMES", "OUTPUT_FILENAME", "H3_DIFFUSION_MODEL", "H3_TEXT_ENCODER", "H3_TURBO_LORA"].map((token) => `<code>{{${token}}}</code>`).join("")}</div>
+      </section>
     </section>`;
 
   const attention = environmentScan?.attentionAcceleration;
@@ -3301,6 +3479,7 @@ function settingsPage(): string {
     settingsTab === "system" ? systemPanel :
     settingsTab === "acceleration" ? accelerationPanel :
     settingsTab === "video" ? videoPanel :
+    settingsTab === "image" ? imagePanel :
     settingsTab === "nodes" ? nodePanel :
     settingsTab === "prompt" ? promptPanel :
     settingsTab === "upscale" ? upscalePanel :
@@ -3317,11 +3496,12 @@ function settingsPage(): string {
           ["system", "settings", "系统与路径"],
           ["acceleration", "zap", "推理加速"],
           ["video", "images", "视频模型"],
+          ["image", "images", "图片模型"],
           ["nodes", "workflow", "节点与工作流"],
           ["prompt", "sparkles", "提示词扩写"],
           ["upscale", "maximize-2", "分辨率提升"],
           ["logs", "file-text", "运行日志"]
-        ] as const).map(([id, iconName, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "prompt" && environmentScan ? `<small>${promptAvailable}/${promptProfiles.length}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
+        ] as const).map(([id, iconName, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "image" && environmentScan ? `<small>${imageComponentsReady}/${imageProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "prompt" && environmentScan ? `<small>${promptAvailable}/${promptProfiles.length}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
       </nav>
       <div class="settings-content">${activePanel}</div>
     </div>
@@ -3359,9 +3539,13 @@ function render(): void {
   bindUpscaleDialog();
   if (page === "create") {
     bindCreate();
-    void imagePreview(state.draft.startImagePath, "start-preview");
-    void imagePreview(state.draft.endImagePath, "end-preview");
-    if (isMiniMaxH3R2vModel(state.draft.modelId)) {
+    if (creationMode === "image-edit") {
+      void loadImageEditPreviews();
+    } else {
+      void imagePreview(state.draft.startImagePath, "start-preview");
+      void imagePreview(state.draft.endImagePath, "end-preview");
+    }
+    if (creationMode !== "image-edit" && isMiniMaxH3R2vModel(state.draft.modelId)) {
       bindH3ReferenceSlots();
       for (const slot of state.draft.h3ReferenceSlots) {
         if (slot.mediaType === "image") {
@@ -4195,6 +4379,22 @@ function scheduleDraftSave(): void {
   }, 350);
 }
 
+function scheduleImageDraftSave(): void {
+  window.clearTimeout(imageDraftSaveTimer);
+  imageDraftSaveTimer = window.setTimeout(async () => {
+    const revision = imageDraftRevision;
+    const draftToSave = state.imageDraft;
+    try {
+      const savedState = await window.studio.saveImageDraft(draftToSave);
+      if (revision === imageDraftRevision) {
+        state = { ...savedState, imageDraft: draftToSave };
+      }
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : "图片草稿保存失败", false);
+    }
+  }, 350);
+}
+
 async function saveDraftImmediately(draft: Draft): Promise<void> {
   window.clearTimeout(draftSaveTimer);
   draftRevision += 1;
@@ -4232,6 +4432,37 @@ function patchDraft(patch: Partial<Draft>): void {
   scheduleDraftSave();
 }
 
+function patchImageDraft(patch: Partial<ImageEditDraft>): void {
+  state.imageDraft = normalizeImageEditDraft({ ...state.imageDraft, ...patch });
+  imageDraftRevision += 1;
+  scheduleImageDraftSave();
+}
+
+async function loadImageEditPreviews(): Promise<void> {
+  const pictures = state.imageDraft.pictures;
+  await Promise.all(pictures.map(async (picture) => {
+    const image = document.querySelector<HTMLImageElement>(
+      `[data-image-picture-preview="${CSS.escape(picture.id)}"]`
+    );
+    if (!image || !picture.absolutePath) return;
+    const dataUrl = await window.studio.readImage(picture.absolutePath).catch(() => null);
+    if (!dataUrl || !image.isConnected) return;
+    image.addEventListener("load", () => {
+      if (!image.naturalWidth || !image.naturalHeight) return;
+      const current = state.imageDraft.pictures.find((item) => item.id === picture.id);
+      if (!current || (current.width === image.naturalWidth && current.height === image.naturalHeight)) return;
+      patchImageDraft({
+        pictures: state.imageDraft.pictures.map((item) =>
+          item.id === picture.id
+            ? { ...item, width: image.naturalWidth, height: image.naturalHeight }
+            : item
+        )
+      });
+    }, { once: true });
+    image.src = dataUrl;
+  }));
+}
+
 function randomSeedValue(): number {
   const values = new Uint32Array(2);
   crypto.getRandomValues(values);
@@ -4239,8 +4470,71 @@ function randomSeedValue(): number {
   return high * 0x100000000 + (values[1] ?? 0);
 }
 
+function addImageSlot(): void {
+  const pictures = state.imageDraft.pictures;
+  if (pictures.length >= qwenImageEdit2511Capability.maxPictures) {
+    showMessage(`当前 Qwen 2511 最多支持 ${qwenImageEdit2511Capability.maxPictures} 个 Slot`);
+    return;
+  }
+  const pictureNumber = nextImagePictureNumber(state.imageDraft);
+  const slot: ImageReference = {
+    id: crypto.randomUUID(),
+    pictureNumber,
+    absolutePath: "",
+    width: 0,
+    height: 0,
+    role: pictureNumber === 1 ? "base" : "auto"
+  };
+  patchImageDraft({
+    pictures: [...pictures, slot],
+    nextPictureNumber: pictureNumber + 1
+  });
+  render();
+}
+
+function addImagePicture(path: string, replacePictureId?: string): void {
+  if (!path) return;
+  const pictures = state.imageDraft.pictures;
+  const targetPicture = replacePictureId
+    ? pictures.find((picture) => picture.id === replacePictureId)
+    : pictures.find((picture) => !picture.absolutePath);
+  if (targetPicture) {
+    patchImageDraft({
+      pictures: pictures.map((picture) =>
+        picture.id === targetPicture.id
+          ? { ...picture, absolutePath: path, width: 0, height: 0 }
+          : picture
+      )
+    });
+    render();
+    return;
+  }
+  if (pictures.length >= qwenImageEdit2511Capability.maxPictures) {
+    showMessage(`当前 Qwen 2511 最多支持 ${qwenImageEdit2511Capability.maxPictures} 张 Picture`);
+    return;
+  }
+  const pictureNumber = nextImagePictureNumber(state.imageDraft);
+  const picture: ImageReference = {
+    id: crypto.randomUUID(),
+    pictureNumber,
+    absolutePath: path,
+    width: 0,
+    height: 0,
+    role: pictureNumber === 1 ? "base" : "auto"
+  };
+  patchImageDraft({
+    pictures: [...pictures, picture],
+    nextPictureNumber: pictureNumber + 1
+  });
+  render();
+}
+
+function imageFileIsSupported(file: File): boolean {
+  return file.type.startsWith("image/") || /\.(png|jpe?g|webp|bmp)$/i.test(file.name);
+}
+
 async function handleClipboardPaste(event: ClipboardEvent): Promise<void> {
-  if (page !== "create" || !state || state.draft.inputMode !== "image") return;
+  if (page !== "create" || !state) return;
   const activeElement = document.activeElement;
   if (
     activeElement instanceof HTMLInputElement ||
@@ -4255,6 +4549,29 @@ async function handleClipboardPaste(event: ClipboardEvent): Promise<void> {
   );
   const file = item?.getAsFile();
   if (!file) return;
+  if (creationMode === "image-edit") {
+    event.preventDefault();
+    if (!imageFileIsSupported(file)) {
+      showMessage("剪贴板图片仅支持 PNG、JPG、WEBP 或 BMP");
+      return;
+    }
+    const focusedPicture = activeElement instanceof HTMLElement
+      ? activeElement.closest<HTMLElement>("[data-image-picture-pick]")
+      : null;
+    const pictureId = focusedPicture?.dataset.imagePicturePick;
+    try {
+      const filename = await window.studio.saveClipboardImage(
+        await file.arrayBuffer(),
+        file.type || "image/png"
+      );
+      addImagePicture(filename, pictureId);
+      showMessage(pictureId ? "已替换选中的 Picture。" : "已添加到下一个 Picture。")
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : "无法读取剪贴板图片");
+    }
+    return;
+  }
+  if (state.draft.inputMode !== "image") return;
   const supportedTypes = new Set([
     "image/png",
     "image/jpeg",
@@ -4344,9 +4661,7 @@ function bindFrameDrop(
     clearDragState();
     const file = event.dataTransfer?.files.item(0);
     if (!file) return;
-    const isSupported =
-      file.type.startsWith("image/") ||
-      /\.(png|jpe?g|webp|bmp)$/i.test(file.name);
+      const isSupported = imageFileIsSupported(file);
     if (!isSupported) {
       showMessage("请拖入 PNG、JPG、WEBP 或 BMP 图片");
       return;
@@ -4660,10 +4975,243 @@ function bindVideoTrim(): void {
   endInput.addEventListener("input", () => updateTrim("end"));
 }
 
+function bindImageEditCreate(): void {
+  const choosePicture = async (pictureId?: string) => {
+    const filename = await window.studio.pickImage();
+    if (filename) addImagePicture(filename, pictureId);
+  };
+  document.querySelector("#add-image-slot")?.addEventListener("click", addImageSlot);
+  document.querySelectorAll<HTMLElement>("[data-image-picture-pick]").forEach((button) => {
+    button.addEventListener("click", () => {
+      void choosePicture(button.dataset.imagePicturePick);
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-remove-image-picture]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const pictureId = button.dataset.removeImagePicture;
+      if (!pictureId) return;
+      const picture = state.imageDraft.pictures.find((item) => item.id === pictureId);
+      if (!picture) return;
+      const pictures = picture.pictureNumber === 1
+        ? state.imageDraft.pictures.map((item) =>
+            item.id === pictureId
+              ? { ...item, absolutePath: "", width: 0, height: 0, role: "base" as const }
+              : item
+          )
+        : state.imageDraft.pictures.filter((item) => item.id !== pictureId);
+      patchImageDraft({ pictures });
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLSelectElement>("[data-image-picture-role]").forEach((select) => {
+    select.addEventListener("change", () => {
+      const pictureId = select.dataset.imagePictureRole;
+      if (!pictureId) return;
+      patchImageDraft({
+        pictures: state.imageDraft.pictures.map((picture) =>
+          picture.id === pictureId
+            ? { ...picture, role: select.value as ImageReferenceRole }
+            : picture
+        )
+      });
+    });
+  });
+  const dropZone = document.querySelector<HTMLElement>("#image-picture-drop-zone");
+  if (dropZone) {
+    const clearDragState = () => dropZone.classList.remove("drag-over");
+    dropZone.addEventListener("click", () => void choosePicture());
+    dropZone.addEventListener("dragenter", (event) => {
+      event.preventDefault();
+      dropZone.classList.add("drag-over");
+    });
+    dropZone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      dropZone.classList.add("drag-over");
+    });
+    dropZone.addEventListener("dragleave", (event) => {
+      const nextTarget = event.relatedTarget;
+      if (nextTarget instanceof Node && dropZone.contains(nextTarget)) return;
+      clearDragState();
+    });
+    dropZone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      clearDragState();
+      const file = event.dataTransfer?.files.item(0);
+      if (!file) return;
+      if (!imageFileIsSupported(file)) {
+        showMessage("请拖入 PNG、JPG、WEBP 或 BMP 图片");
+        return;
+      }
+      const filename = window.studio.getDroppedFilePath(file);
+      if (!filename) {
+        showMessage("无法读取拖入图片的本地路径");
+        return;
+      }
+      addImagePicture(filename);
+    });
+  }
+  const promptInput = document.querySelector<HTMLTextAreaElement>("#image-edit-prompt-input");
+  const snippetSelect = document.querySelector<HTMLSelectElement>("#image-edit-instruction");
+  const insertSnippet = document.querySelector<HTMLButtonElement>("#insert-image-edit-instruction");
+  const syncSnippetButton = () => {
+    if (insertSnippet) insertSnippet.disabled = !snippetSelect?.value;
+  };
+  snippetSelect?.addEventListener("change", syncSnippetButton);
+  insertSnippet?.addEventListener("click", () => {
+    if (!promptInput || !snippetSelect?.value) return;
+    const start = promptInput.selectionStart;
+    const prefix = promptInput.value && !/\s$/u.test(promptInput.value) ? "\n" : "";
+    const insertion = `${prefix}${snippetSelect.value}`;
+    promptInput.setRangeText(insertion, start, promptInput.selectionEnd, "end");
+    promptInput.dispatchEvent(new Event("input", { bubbles: true }));
+    snippetSelect.value = "";
+    syncSnippetButton();
+  });
+  promptInput?.addEventListener("input", () => {
+    const versions = [...state.imageDraft.promptVersions];
+    const current = versions[state.imageDraft.activePromptVersion];
+    if (current?.label === "手动编辑") {
+      versions[state.imageDraft.activePromptVersion] = { ...current, text: promptInput.value };
+    } else {
+      versions.splice(state.imageDraft.activePromptVersion + 1);
+      versions.push({
+        id: crypto.randomUUID(),
+        label: "手动编辑",
+        text: promptInput.value,
+        createdAt: new Date().toISOString()
+      });
+      state.imageDraft.activePromptVersion = versions.length - 1;
+    }
+    patchImageDraft({
+      promptVersions: versions,
+      activePromptVersion: state.imageDraft.activePromptVersion
+    });
+    resizePromptInput(promptInput);
+    updateImagePromptWordCounter(promptInput.value);
+  });
+  if (promptInput) {
+    resizePromptInput(promptInput);
+    window.requestAnimationFrame(() => resizePromptInput(promptInput));
+    updateImagePromptWordCounter(promptInput.value);
+  }
+  document.querySelector("#prompt-enhance-mode")?.addEventListener("change", (event) => {
+    promptEnhanceMode = (event.currentTarget as HTMLSelectElement).value === "faithful"
+      ? "faithful"
+      : "sulphur-native";
+  });
+  document.querySelector("#release-prompt-model-create")?.addEventListener("click", () => {
+    void togglePromptModelFromUi();
+  });
+  document.querySelector("#enhance-prompt")?.addEventListener("click", async () => {
+    if (promptEnhancing) return;
+    const requestPrompt = activeImagePrompt(state.imageDraft).text.trim();
+    if (!requestPrompt) {
+      showMessage("请先输入图片编辑 Prompt");
+      return;
+    }
+    promptEnhancing = true;
+    render();
+    try {
+      const pictures = state.imageDraft.pictures.filter((picture) => picture.absolutePath);
+      const text = await window.studio.enhancePrompt({
+        prompt: requestPrompt,
+        modelId: state.settings.promptModelId,
+        mode: "image-edit",
+        imageEditEnhanceMode: promptEnhanceMode === "faithful" ? "faithful" : "detail-enhance",
+        imageEditPresetText: state.settings.imagePromptPresets[
+          promptEnhanceMode === "faithful" ? "faithful" : "detail-enhance"
+        ],
+        imagePaths: pictures.map((picture) => picture.absolutePath),
+        referenceContext: pictures.map((picture) =>
+          `Slot ${picture.pictureNumber} / Picture ${picture.pictureNumber} = ${imageReferenceRoleLabels[picture.role ?? "auto"]}`
+        ).join("\n")
+      });
+      promptRuntimeLoaded = true;
+      const versions = [
+        ...state.imageDraft.promptVersions.slice(0, state.imageDraft.activePromptVersion + 1),
+        {
+          id: crypto.randomUUID(),
+          label: `图片优化 ${state.imageDraft.promptVersions.filter((item) => item.label.startsWith("图片优化")).length + 1}`,
+          text,
+          createdAt: new Date().toISOString()
+        }
+      ];
+      patchImageDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      promptEnhancing = false;
+      render();
+    }
+  });
+  document.querySelector("#image-prompt-prev")?.addEventListener("click", () => {
+    patchImageDraft({ activePromptVersion: Math.max(0, state.imageDraft.activePromptVersion - 1) });
+    render();
+  });
+  document.querySelector("#image-prompt-next")?.addEventListener("click", () => {
+    patchImageDraft({ activePromptVersion: Math.min(state.imageDraft.promptVersions.length - 1, state.imageDraft.activePromptVersion + 1) });
+    render();
+  });
+  for (const id of ["image-edit-model", "image-edit-quality", "image-edit-format", "image-edit-seed"]) {
+    document.querySelector(`#${id}`)?.addEventListener("change", (event) => {
+      const value = (event.currentTarget as HTMLInputElement | HTMLSelectElement).value;
+      patchImageDraft(
+        id === "image-edit-model" ? { modelId: value } :
+        id === "image-edit-quality" ? { qualityProfile: value } :
+        id === "image-edit-format" ? { outputFormat: value as ImageEditDraft["outputFormat"] } :
+        { seed: value ? Number(value) : null }
+      );
+      if (id !== "image-edit-seed") render();
+    });
+  }
+  const countInput = document.querySelector<HTMLInputElement>("#image-edit-count");
+  countInput?.addEventListener("input", () => {
+    const outputCount = Math.min(10, Math.max(1, Number(countInput.value) || 1));
+    patchImageDraft({ outputCount });
+    const countValue = document.querySelector("#image-edit-count-value");
+    if (countValue) countValue.textContent = `${outputCount} 张`;
+  });
+  document.querySelector("#random-image-edit-seed")?.addEventListener("click", () => {
+    patchImageDraft({ seed: randomSeedValue() });
+    render();
+  });
+  document.querySelector("#clear-image-edit-seed")?.addEventListener("click", () => {
+    patchImageDraft({ seed: null });
+    render();
+  });
+  document.querySelector("#clear-image-edit-draft")?.addEventListener("click", () => {
+    patchImageDraft(createDefaultImageEditDraft());
+    render();
+  });
+  document.querySelector("#enqueue-image-edit")?.addEventListener("click", async () => {
+    reportUserAction("image-queue-enqueue", {
+      modelId: state.imageDraft.modelId,
+      outputCount: state.imageDraft.outputCount,
+      pictureCount: state.imageDraft.pictures.length
+    });
+    try {
+      state = await window.studio.enqueueImageEdit(state.imageDraft);
+      showMessage(`已加入图片队列：${state.queue.at(-1)?.outputFilename ?? ""}`);
+      render();
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : String(error));
+    }
+  });
+}
+
 function bindCreate(): void {
   document.querySelectorAll<HTMLElement>("[data-input-mode]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const inputMode = button.dataset.inputMode === "video" ? "video" : "image";
+      const requestedMode = button.dataset.inputMode;
+      if (requestedMode === "image-edit") {
+        creationMode = "image-edit";
+        render();
+        return;
+      }
+      const inputMode = requestedMode === "video" ? "video" : "image";
+      creationMode = inputMode === "video" ? "video-extension" : "image-to-video";
       const modelId = inputMode === "video"
         ? isMiniMaxH3Fl2vaModel(state.draft.modelId)
           ? state.draft.modelId
@@ -4690,6 +5238,10 @@ function bindCreate(): void {
       render();
     });
   });
+  if (creationMode === "image-edit") {
+    bindImageEditCreate();
+    return;
+  }
   document.querySelector("#pick-video")?.addEventListener("click", async () => {
     const filename = await window.studio.pickVideo();
     if (filename) await selectDraftVideo(filename);
@@ -4867,9 +5419,15 @@ function bindCreate(): void {
           ? h3PromptPresetForMode(h3Mode, h3PromptPreset)
           : undefined,
         h3DurationSeconds: state.draft.duration,
+        h3AspectRatio: state.draft.ratio === "source"
+          ? state.draft.sourceHeight > state.draft.sourceWidth ? "9:16" : "16:9"
+          : state.draft.ratio,
+        referenceMediaPaths: isMiniMaxH3R2vModel(state.draft.modelId)
+          ? state.draft.h3ReferenceSlots.map((slot) => slot.mediaPath).filter(Boolean)
+          : [state.draft.startImagePath, state.draft.endImagePath].filter(Boolean),
         referenceContext: isH3Vision ? referenceContext : undefined
       });
-      if (promptRuntimeForSettings(state.settings) !== "lmstudio") promptRuntimeLoaded = true;
+      promptRuntimeLoaded = true;
       const versions = [
         ...state.draft.promptVersions.slice(0, state.draft.activePromptVersion + 1),
         { id: crypto.randomUUID(), label: `扩写 ${state.draft.promptVersions.filter((item) => item.label.startsWith("扩写")).length + 1}`, text, createdAt: new Date().toISOString() }
@@ -5649,6 +6207,13 @@ function formSettings(): Settings {
       base.h3PromptPresets[settingsH3PromptPreset]
     )
   };
+  const imagePromptPresets = {
+    ...base.imagePromptPresets,
+    [settingsImagePromptPreset]: value(
+      "image-prompt-preset-text",
+      base.imagePromptPresets[settingsImagePromptPreset]
+    )
+  };
   return {
     comfyUrl: value("comfy-url", base.comfyUrl),
     comfyInstallDirectory: value(
@@ -5662,17 +6227,21 @@ function formSettings(): Settings {
       "lm-install-directory",
       base.lmStudioInstallDirectory
     ),
-    promptRuntime: value("prompt-runtime", base.promptRuntime) as Settings["promptRuntime"],
-    promptUseLmStudio: value("prompt-runtime", base.promptRuntime) === "lmstudio",
+    promptRuntime: "comfyui",
+    promptUseLmStudio: false,
     promptModelId: value("prompt-model-id", base.promptModelId),
     promptModelDirectory: value("prompt-model-directory", base.promptModelDirectory),
     promptLlamaServerPath: value("prompt-llama-server-path", base.promptLlamaServerPath),
     promptLlamaPort: base.promptLlamaPort,
     h3PromptPresets,
+    imagePromptPresets,
     modelDirectory: value("model-directory", base.modelDirectory),
     outputDirectory: value("output-directory", base.outputDirectory),
-    promptSystemTemplate: value("prompt-template", base.promptSystemTemplate),
     defaultVideoModel: value("default-video-model", base.defaultVideoModel),
+    defaultImageModel: value("default-image-model", base.defaultImageModel),
+    defaultImageQualityProfile: value("image-quality-profile", base.defaultImageQualityProfile),
+    imageOutputCount: Math.min(10, Math.max(1, Number(value("image-output-count-number", String(base.imageOutputCount))))),
+    imageOutputFormat: value("image-output-format", base.imageOutputFormat) as Settings["imageOutputFormat"],
     vramReserveGb: Number(value("vram-reserve", String(base.vramReserveGb))),
     h3AttentionMode: value(
       "h3-attention-mode",
@@ -5751,24 +6320,23 @@ function bindSettings(): void {
     input.addEventListener("input", update);
     input.addEventListener("change", update);
   });
+  const imageCountRange = document.querySelector<HTMLInputElement>("#image-output-count");
+  const imageCountNumber = document.querySelector<HTMLInputElement>("#image-output-count-number");
+  const syncImageCount = (value: string) => {
+    const count = Math.min(10, Math.max(1, Number(value) || 1));
+    if (imageCountRange) imageCountRange.value = String(count);
+    if (imageCountNumber) imageCountNumber.value = String(count);
+    settingsDraft = formSettings();
+    syncSettingsDirtyUi();
+  };
+  imageCountRange?.addEventListener("input", () => syncImageCount(imageCountRange.value));
+  imageCountNumber?.addEventListener("input", () => syncImageCount(imageCountNumber.value));
   document.querySelector("#prompt-model-id")?.addEventListener("change", (event) => {
     const modelId = (event.currentTarget as HTMLSelectElement).value;
-    if (isUnconcernedPromptModel(modelId)) {
-      const runtime = document.querySelector<HTMLSelectElement>("#prompt-runtime");
-      if (runtime) runtime.value = "llama-server";
+    if (isManagedPromptModel(modelId)) {
       settingsDraft = formSettings();
-      showMessage("Unconcerned 模型由应用自管理 llama-server 运行，不依赖 LM Studio。");
+      showMessage("该 Gemma GGUF 由当前 ComfyUI 的 H3 Prompt Writer 运行，扩写完成后会自动卸载。");
     }
-  });
-  document.querySelector("#prompt-runtime")?.addEventListener("change", (event) => {
-    const runtime = (event.currentTarget as HTMLSelectElement).value;
-    const model = document.querySelector<HTMLSelectElement>("#prompt-model-id");
-    if (runtime === "llama-server" && model && !isUnconcernedPromptModel(model.value)) {
-      model.value = unconcernedPromptModelId;
-    } else if (runtime !== "llama-server" && model && isUnconcernedPromptModel(model.value)) {
-      model.value = "qwen/qwen3.5-4b";
-    }
-    settingsDraft = formSettings();
   });
   document.querySelector("#release-prompt-model")?.addEventListener("click", () => {
     void togglePromptModelFromUi();
@@ -5778,6 +6346,11 @@ function bindSettings(): void {
     settingsH3PromptPreset = (event.currentTarget as HTMLSelectElement).value as H3PromptPreset;
     render();
   });
+  document.querySelector("#image-prompt-preset-setting")?.addEventListener("change", (event) => {
+    settingsDraft = formSettings();
+    settingsImagePromptPreset = (event.currentTarget as HTMLSelectElement).value as ImagePromptPreset;
+    render();
+  });
   document.querySelector("#restore-h3-prompt-presets")?.addEventListener("click", () => {
     settingsDraft = {
       ...formSettings(),
@@ -5785,6 +6358,14 @@ function bindSettings(): void {
     };
     render();
     showMessage("扩写预设已恢复默认，请保存设置后生效。");
+  });
+  document.querySelector("#restore-image-prompt-presets")?.addEventListener("click", () => {
+    settingsDraft = {
+      ...formSettings(),
+      imagePromptPresets: createDefaultImagePromptPresets()
+    };
+    render();
+    showMessage("图片提示词预设已恢复默认，请保存设置后生效。");
   });
   document.querySelector<HTMLInputElement>("#proxy-enabled")?.addEventListener("change", () => {
     settingsDraft = formSettings();
@@ -6171,38 +6752,13 @@ function bindSettings(): void {
       ? "设置已保存。代理已用于后续安装；请重启 ComfyUI，让 SeedVR2 等节点的运行时下载继承新代理。"
       : "设置已保存，将对下一项尚未开始的任务生效。");
   });
-  document.querySelector<HTMLButtonElement>("#install-llama-server")?.addEventListener("click", async () => {
-    const currentSettings = formSettings();
-    settingsDraft = currentSettings;
-    llamaServerInstalling = true;
-    render();
-    try {
-      const result = await window.studio.installLlamaServer(currentSettings);
-      llamaServerInstallLog = result.log || result.message;
-      if (!result.ok) throw new Error(result.message);
-      state = await window.studio.saveSettings({
-        ...currentSettings,
-        promptLlamaServerPath: result.executablePath || currentSettings.promptLlamaServerPath
-      });
-      settingsDraft = null;
-      environmentScan = await window.studio.scanEnvironment(state.settings);
-      showMessage(result.message);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      llamaServerInstallLog = `${llamaServerInstallLog}\n${message}`.trim();
-      showMessage(`llama-server 安装失败：${message}`);
-    } finally {
-      llamaServerInstalling = false;
-      render();
-    }
-  });
   document.querySelectorAll<HTMLElement>("[data-test]").forEach((button) => {
     button.addEventListener("click", async () => {
       reportUserAction("connection-test", { kind: button.dataset.test });
       const resultElement = document.querySelector("#connection-result")!;
       resultElement.textContent = "正在连接…";
       const result = await window.studio.testConnection(
-        button.dataset.test as "comfy" | "lmstudio",
+        "comfy",
         formSettings()
       );
       resultElement.className = `connection-result ${result.ok ? "success" : "error"}`;
@@ -6302,7 +6858,7 @@ window.studio.onStateChanged((nextState) => {
         ? localDraft
         : nextState.draft
   };
-  if (nextState.queueRunning || promptRuntimeForSettings(nextState.settings) !== "comfyui") {
+  if (nextState.queueRunning) {
     promptRuntimeLoaded = false;
   }
   const activeElement = document.activeElement;

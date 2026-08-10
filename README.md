@@ -6,7 +6,7 @@ Local Video Studio 把参考图、提示词、视频模型、任务队列和生�
 
 ## 当前版本
 
-当前版本为 **`0.2.1`**，在首个稳定工作台基线上同步了图片工作台原型、实施计划和交接文档；图片生成、图片项目历史和 Qwen 编辑工作流将在 `0.3.0` 里程碑按计划分阶段实现。版本号唯一来源是根目录 `package.json`，应用窗口标题和界面品牌会自动读取同一版本。
+当前版本为 **`0.3.11`**，在图片工作台数据契约和 Qwen-Image-Edit-2511 基础上，扩展了社区验证的 Gemma 4 多模态提示词模型，并把提示词运行时统一收敛到 ComfyUI；本版本统一了图生视频、视频续写和图片处理三种创建模式的 Prompt 编辑器尺寸、优化按钮、设置中的 Prompt 模型以及模型启停逻辑，明确区分 ComfyUI 官方 `text_encoders` 与 H3 Prompt Writer 扩展注册的 `LLM` 模型目录，并让 Gemma 与 Qwen 都能使用英文 Qwen Image 编辑契约扩写图片 Prompt。
 
 版本规则遵循语义化版本：`0.2.x` 用于向后兼容的修复和小幅 UX 调整，`0.3.0` 用于新增功能或明显的工作流扩展，`1.0.0` 用于核心数据/API 兼容性稳定并准备正式发布。
 
@@ -68,7 +68,7 @@ npm.cmd run dev
 - **低显存保护**：按工作流启用模型卸载、CPU offload、分块 VAE 解码和单任务执行，降低长视频处理时的显存峰值。
 - **分阶段任务进度**：总进度条按加载、采样、解码、插帧、封装和保存阶段计算；当前阶段另显示局部步数，例如 `扩散采样 4/20`。
 - **H3 提示词助手**：除了官方结构模板，还提供结构化构建器，可分别填写参考连续性、动作起因、身体/视线锁定、镜头类型与幅度/速度、景别变化、同步声音、对白和屏幕文字。
-- **提示词扩写**：支持 ComfyUI 原生 TextGenerate、应用自管理 llama-server 和可选 LM Studio 兼容接口；模型文件按各自运行时扫描和管理。
+- **提示词扩写**：只依赖所选 ComfyUI。Qwen3.5 使用核心 `TextGenerate`；Gemma 4 使用 ComfyUI MiniMax H3 Prompt Writer 扩展，不再要求独立 llama-server 或 LM Studio。
 - **提示词模型扫描**：设置页扫描与视频模型相同的 ComfyUI 模型根目录，按官方 `text_encoders` 文件统计可用性，并用同一个下载说明弹窗展示 Hugging Face 来源、文件名和目标目录；不再单独选择提示词模型目录。
 - **扩写预设**：设置 → 提示词扩写中可编辑通用影视时间线、参考画面保真、单镜头连续动作、对白与原生声音、节拍分镜、产品与品牌演示、音乐视频与歌词、风格化动画叙事和多参考关系编排九套规则头，覆盖不同创作意图；保存后下一次扩写生效，也可以一键恢复全部默认。
 - **内置 H3 官方基线**：软件固定保留 H3 的 T2VA、I2VA、FL2VA、L2VA 任务关系，R2V 参考标签顺序，原生音频、动作连续性和结构化输出约束；用户编辑预设不会删除这些底层规则。
@@ -133,28 +133,24 @@ LightX2V Turbo 使用 ComfyUI v0.31.0+ 核心的原生音视频采样、标准 `
 
 ### 本地提示词模型
 
-提示词扩写有两条本地路径：ComfyUI 原生 Qwen3.5 2B/4B BF16 放在 `text_encoders`，或应用自管理的 Unconcerned Qwen3.5 GGUF + `mmproj` 放在 `prompt_models`。两条路径都支持文字和参考图/视频理解，但文件格式和运行时完全不同，不能交叉加载。
+提示词扩写有两条本地路径，但都由同一个 ComfyUI 实例运行：Qwen3.5 2B/4B BF16 放在 ComfyUI/Comfy-Org 官方使用的 `models/text_encoders`；Gemma 4 GGUF + `mmproj` 放在 H3 Prompt Writer 扩展注册并读取的大写 `models/LLM`。后者是该扩展的正式目录约定，不是 ComfyUI 核心的通用 GGUF 分类。文件格式和加载器不同，不能交叉加载。
 
 | 模型 | 下载文件 | 目标目录 |
 | --- | --- | --- |
 | Qwen3.5 4B | [qwen3.5_4b_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_4b_bf16.safetensors?download=true) | `ComfyUI/models/text_encoders/` |
 | Qwen3.5 2B | [qwen3.5_2b_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors?download=true) | `ComfyUI/models/text_encoders/` |
 
-### 应用自管理 Unconcerned 提示词模型
+### ComfyUI H3 Prompt Writer / Gemma 4
 
-如果不想依赖 LM Studio，可以在设置 → 提示词扩写中选择“应用自管理 llama-server（Unconcerned）”。当前档位使用 [HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive) 的 Q6_K GGUF 和 BF16 `mmproj`，由应用自己启动和停止本地 `llama-server.exe`，支持参考图/视频输入。设置页会自动扫描 `PATH`、提示词模型目录和应用管理目录；扫描不到时可以点击“一键安装 llama-server”，应用会下载官方 llama.cpp Windows CUDA 运行包并自动保存可执行文件路径。
+Gemma 路径使用 [ComfyUI MiniMax H3 Prompt Writer](https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer)。设置 → 节点与工作流提供安装/更新入口，并在所选 ComfyUI 的 Python 环境安装 GGUF CUDA 运行依赖。应用调用扩展的 `/h3studio` 接口，自动创建素材会话、上传图片或视频、匹配 GGUF 文件，并在完成后请求卸载模型释放显存。
 
-需要准备：
+Gemma 4 提供 E4B Q3（8GB）、12B Q4（12GB）、12B Q5（16GB）、26B-A4B Q4（24GB）和31B Q4（32GB+）五个社区实测档。普通 RTX 4090 优先考虑 12B Q5；26B-A4B 是社区作者的 24GB 质量档，但运行前必须释放 H3 和其它显存占用。每个 Gemma 档位的 GGUF 与匹配 `mmproj-BF16.gguf` 必须放在各自独立的 `ComfyUI/models/LLM/<档位>/` 子目录，防止同名视觉投影文件串用。Gemma 权重须遵守 Google Gemma 使用条款。
 
-| 文件 | 目标目录 |
-| --- | --- |
-| [Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/resolve/main/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf?download=true) | `ComfyUI/models/prompt_models/` 或设置中的应用提示词模型目录 |
-| [mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf](https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/resolve/main/mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf?download=true) | 同上 |
-| [llama.cpp Windows CUDA release](https://github.com/ggml-org/llama.cpp/releases) 中的 `llama-server.exe` | 在设置中填写完整路径，或放入模型目录/系统 `PATH` |
+需要降低不必要拒答时，可以在三个 Uncensored 档位中选择：快速档 [Gemma 4 E4B Q5_K_M](https://huggingface.co/llmfan46/gemma-4-E4B-it-ultra-uncensored-heretic-GGUF)、平衡档 [Gemma 4 12B Q4_K_M](https://huggingface.co/zaakirio/gemma-4-12b-it-uncensored-GGUF)，以及 4090 质量上限档 [Gemma 4 26B-A4B Q4_K_M](https://huggingface.co/llmfan46/gemma-4-26B-A4B-it-ultra-uncensored-heretic-GGUF)。三档都保留匹配的多模态投影并通过同一个 ComfyUI Prompt Writer 运行，不会替换默认模型。低拒答只描述模型行为，不代表输出必然准确、适当或合法；社区衍生权重的能力、偏差和输出需要用户自行评估。
 
-这个档位不使用 ComfyUI `TextGenerate`，也不需要 LM Studio。应用只管理自己启动的 `llama-server` 进程；扩写完成、开始视频队列或退出应用时会停止它并释放显存。模型采用 Apache-2.0，但 `llama.cpp` 和模型文件各自的上游许可证仍需分别遵守。
+暂不列入 Qwen Uncensored GGUF：当前 Prompt Writer 的本地后端使用 Gemma 4 专用 ChatHandler，而 `llama-cpp-python` 也尚未提供可直接替换的 Qwen3.5 多模态 handler。纯文本 Qwen 或只有主 GGUF、没有可用视觉 handler 的版本无法可靠结合参考图和视频抽帧，因此不会仅因为“能够加载”就显示成可用模型。
 
-Qwen3.5 4B 是 ComfyUI 原生路径的质量和显存平衡主力，Qwen3.5 2B 文件约 4.55GB，适合 12GB 显存或快速迭代，但复杂动作分析和提示词细节能力会低于 4B。原生档由 ComfyUI `CLIPLoader`、`TextGenerate`、`LoadImage` 和 `ImageBatch` 加载；Unconcerned 档则由应用自管理 `llama-server` 加载 GGUF + `mmproj`。两条路径不能交叉加载。关闭 LM Studio 后，应用会按需启动所选本地提示词运行时，执行提示词扩写并把结果保存为新的提示词版本；开始视频任务或退出应用时会释放提示词模型。
+Qwen3.5 4B 是 ComfyUI 原生路径的质量和显存平衡主力，Qwen3.5 2B 文件约 4.55GB，适合 12GB 显存或快速迭代，但复杂动作分析和提示词细节能力会低于 4B。原生档由 ComfyUI `CLIPLoader`、`TextGenerate`、`LoadImage` 和 `ImageBatch` 加载。Gemma 只用于 H3 视频提示词，图片编辑提示词继续使用原生 Qwen。
 
 R2V 当前在应用内支持混合媒体 Slot：最多 9 张参考图和 3 段参考视频，总数不超过 12 个。每个 Slot 可标注人物、场景、风格、动作、镜头等作用；提示词会按官方语义区分可复用内容的 `<Subject N>`、具体帧/构图锚点 `<Picture N>` 和参考视频 `<Video N>`。参考视频会同时送入画面帧和视频自身音轨；独立音频 Slot 尚未接入应用界面。
 
@@ -165,14 +161,14 @@ R2V 当前在应用内支持混合媒体 Slot：最多 9 张参考图和 3 段�
 - **结构化模板**：快速生成 T2VA、I2VA、FL2VA、L2VA 或 R2V 的官方字段结构。
 - **结构化构建器**：把镜头运动拆成类型、幅度和速度，并单独填写主体初始状态、连续性锁、身体/视线锁、动作时间线、景别变化、同步声音和最终状态；对白、环境声、背景音乐和屏幕文字位于可选高级字段中。
 
-构建器生成的内容会作为新的提示词版本保存，不会覆盖手写版本。快捷插入还提供参考图连续性、动作起因、镜头路径限制、空间回声、对白和屏幕文字句式。H3 检查器会提示缺少首镜头声明、参考图对齐字段、对白说话人 ID 和后续镜头时间戳等结构问题。
+构建器生成的内容会作为新的提示词版本保存，不会覆盖手写版本。快捷插入还提供参考图连续性、动作起因、镜头路径限制、空间回声、对白和屏幕文字句式。H3 检查器会提示缺少首镜头声明、字段顺序、参考图对齐、对白说话人 ID、超出时长的时间戳，以及误把 contact sheet/抽帧描述写进最终 Prompt 等问题。选择 Gemma 4 时会使用社区 Prompt Writer；选择 Qwen 时仍使用应用内融合后的同类规则。
 
 ## 数据与隐私
 
 - 提示词、任务队列、历史记录和设置保存在 Electron 的本地用户数据目录中。
 - 视频默认使用所选 ComfyUI 的输出目录，也可以在设置中指定其他目录。
 - 删除历史作品时，可同时删除记录和关联的视频文件；执行前会要求确认。
-- 推理和本地提示词扩写均在本机进行。只有在下载依赖、下载模型、启动可选 LM Studio 或用户主动配置外部服务时才会产生对应的网络请求。
+- 推理和提示词扩写均在本机 ComfyUI 中进行。只有下载依赖、节点或模型时才会访问对应上游地址。
 - 模型文件和生成媒体已被 `.gitignore` 排除，不应提交到仓库。
 
 ## 自定义 ComfyUI 工作流

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { JsonStore, replaceStateFile } from "../electron/store.js";
 import { createDefaultState } from "../src/core/defaults.js";
+import type { ImageGenerationQueueTask } from "../src/types.js";
 
 function fileError(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(code), { code });
@@ -79,6 +80,87 @@ describe("queue lock recovery", () => {
         queueRunning: boolean;
       };
       expect(persisted.queueRunning).toBe(false);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("recovers an interrupted image batch without repeating completed runs", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    const task: ImageGenerationQueueTask = {
+      id: "image-task-1",
+      taskType: "image-generation",
+      status: "running",
+      createdAt: "2026-08-10T00:00:00.000Z",
+      updatedAt: "2026-08-10T00:00:05.000Z",
+      outputFilename: "QwenEdit-1",
+      modelId: "qwen-image-edit-2511",
+      workflowPath: "builtin:image/qwen-image-edit-2511",
+      projectId: "image-project-1",
+      pictures: [],
+      prompt: "修复图片",
+      promptVersion: 1,
+      qualityProfile: "native",
+      outputFormat: "png",
+      outputCount: 3,
+      runs: [
+        {
+          id: "run-1",
+          index: 0,
+          seed: 11,
+          status: "completed",
+          comfyPromptId: "completed-prompt",
+          outputVersionId: "version-1",
+          progress: 100,
+          performanceStats: { durationSeconds: 1 } as never
+        },
+        {
+          id: "run-2",
+          index: 1,
+          seed: 22,
+          status: "running",
+          comfyPromptId: "stale-prompt",
+          progress: 43,
+          stage: "采样",
+          startedAt: "2026-08-10T00:00:03.000Z"
+        },
+        {
+          id: "run-3",
+          index: 2,
+          seed: 33,
+          status: "waiting"
+        }
+      ]
+    };
+    state.queue = [task];
+    state.queueRunning = true;
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      const recovered = loaded.queue[0];
+      expect(loaded.queueRunning).toBe(false);
+      expect(recovered?.status).toBe("waiting");
+      expect(recovered?.error).toContain("恢复为等待状态");
+      expect(recovered && recovered.taskType === "image-generation" ? recovered.runs.map((run) => run.status) : []).toEqual([
+        "completed",
+        "waiting",
+        "waiting"
+      ]);
+      if (recovered?.taskType !== "image-generation") throw new Error("图片任务未恢复");
+      expect(recovered.runs[0]).toMatchObject({
+        comfyPromptId: "completed-prompt",
+        outputVersionId: "version-1",
+        progress: 100
+      });
+      expect(recovered.runs[1]).toMatchObject({
+        comfyPromptId: undefined,
+        progress: 0,
+        startedAt: undefined,
+        stage: undefined
+      });
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
@@ -182,7 +264,110 @@ describe("queue lock recovery", () => {
     }
   });
 
-  it("preserves the app-managed Unconcerned prompt model during state migration", async () => {
+  it("persists edited image Prompt presets and fills missing defaults", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.settings.imagePromptPresets = {
+      faithful: "只保留用户原意。",
+      "detail-enhance": ""
+    };
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const store = new JsonStore(filename);
+      const loaded = await store.load();
+      expect(loaded.settings.imagePromptPresets.faithful).toBe("只保留用户原意。");
+      expect(loaded.settings.imagePromptPresets["detail-enhance"]).not.toBe("");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates a schema v2 video state to v3 with an independent image draft", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const { imageDraft: _imageDraft, ...stateWithoutImageDraft } = createDefaultState();
+    const legacyState = {
+      ...stateWithoutImageDraft,
+      schemaVersion: 2
+    };
+    await fs.writeFile(filename, JSON.stringify(legacyState), "utf8");
+
+    try {
+      const store = new JsonStore(filename);
+      const loaded = await store.load();
+      expect(loaded.schemaVersion).toBe(3);
+      expect(loaded.imageDraft.mode).toBe("image-edit");
+      expect(loaded.imageDraft.modelId).toBe("qwen-image-edit-2511");
+      expect(loaded.imageHistory).toEqual([]);
+      const persisted = JSON.parse(await fs.readFile(filename, "utf8")) as {
+        schemaVersion: number;
+        imageDraft: { mode: string };
+        imageHistory: unknown[];
+      };
+      expect(persisted.schemaVersion).toBe(3);
+      expect(persisted.imageDraft.mode).toBe("image-edit");
+      expect(persisted.imageHistory).toEqual([]);
+
+      const reloaded = await new JsonStore(filename).load();
+      expect(reloaded.schemaVersion).toBe(3);
+      expect(reloaded.imageDraft.mode).toBe("image-edit");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("normalizes and persists legacy image project versions on load", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.imageHistory = [{
+      mediaKind: "image",
+      id: "project-legacy",
+      title: "旧图片项目",
+      createdAt: "2026-08-10T00:00:00.000Z",
+      updatedAt: "2026-08-10T00:00:02.000Z",
+      coverMode: "auto",
+      nextVersionNumber: 1,
+      versions: [{
+        id: "generated-source",
+        versionNumber: 0,
+        kind: "source",
+        taskId: "task-1",
+        createdAt: "2026-08-10T00:00:01.000Z",
+        modelId: "qwen-image-edit-2511",
+        workflowPath: "builtin:image/qwen-image-edit-2511",
+        prompt: "修复",
+        promptVersion: 1,
+        references: [],
+        width: 1024,
+        height: 1024,
+        format: "png",
+        file: { filename: "edit.png", subfolder: "", type: "output" }
+      }]
+    }];
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.imageHistory[0]?.versions[0]).toMatchObject({
+        versionNumber: 1,
+        kind: "edit"
+      });
+      const persisted = JSON.parse(await fs.readFile(filename, "utf8")) as {
+        imageHistory: Array<{ versions: Array<{ kind: string; versionNumber: number }> }>;
+      };
+      expect(persisted.imageHistory[0]?.versions[0]).toMatchObject({
+        versionNumber: 1,
+        kind: "edit"
+      });
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates retired prompt runtimes and models to ComfyUI Qwen", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
     const state = createDefaultState();
@@ -194,8 +379,8 @@ describe("queue lock recovery", () => {
     try {
       const store = new JsonStore(filename);
       const loaded = await store.load();
-      expect(loaded.settings.promptModelId).toBe("qwen/qwen3.5-4b-unconcerned");
-      expect(loaded.settings.promptRuntime).toBe("llama-server");
+      expect(loaded.settings.promptModelId).toBe("qwen/qwen3.5-4b");
+      expect(loaded.settings.promptRuntime).toBe("comfyui");
       expect(loaded.settings.promptUseLmStudio).toBe(false);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });

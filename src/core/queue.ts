@@ -1,4 +1,10 @@
-import type { QueueTask } from "../types.js";
+import type { ImageGenerationQueueTask, QueueTask } from "../types.js";
+
+export function isImageGenerationQueueTask(
+  task: QueueTask
+): task is ImageGenerationQueueTask {
+  return task.taskType === "image-generation";
+}
 
 export function moveWaitingTask(
   queue: QueueTask[],

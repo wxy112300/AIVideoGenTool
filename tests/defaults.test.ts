@@ -33,6 +33,8 @@ describe("draft defaults", () => {
     expect(createDefaultSettings().promptUseLmStudio).toBe(false);
     expect(createDefaultSettings().promptModelId).toBe("qwen/qwen3.5-4b");
     expect(createDefaultSettings().promptModelDirectory).toBe("");
+    expect(createDefaultSettings().imagePromptPresets.faithful).not.toBe("");
+    expect(createDefaultSettings().imagePromptPresets["detail-enhance"]).not.toBe("");
   });
 
   it("uses 8188 as the ComfyUI default and migrates only the legacy 8000 default", () => {

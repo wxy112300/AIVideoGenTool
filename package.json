@@ -1,8 +1,8 @@
 {
   "name": "ai-video-gen-tool",
-  "version": "0.2.1",
+  "version": "0.3.11",
   "private": true,
-  "description": "Local Video Studio desktop client for ComfyUI and LM Studio",
+  "description": "Local image and video creation studio powered by ComfyUI",
   "main": "dist/electron/electron/main.js",
   "type": "module",
   "scripts": {

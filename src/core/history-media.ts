@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { HistoryFile, Settings } from "../types.js";
+import { safeOutputFilePath } from "./comfy-output-paths.js";
 
 type HistoryPathSettings = Pick<
   Settings,
@@ -10,7 +11,6 @@ export function historyFileCandidates(
   file: HistoryFile,
   settings: HistoryPathSettings
 ): string[] {
-  const relativeParts = [file.subfolder, file.filename].filter(Boolean);
   const roots = [
     settings.outputDirectory,
     settings.modelDirectory
@@ -26,6 +26,8 @@ export function historyFileCandidates(
 
   return [...new Set([
     file.absolutePath ? path.resolve(file.absolutePath) : "",
-    ...roots.map((root) => path.resolve(root, ...relativeParts))
+    ...roots
+      .map((root) => safeOutputFilePath(root, file.subfolder, file.filename))
+      .filter((candidate): candidate is string => candidate !== null)
   ].filter(Boolean))];
 }

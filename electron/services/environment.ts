@@ -23,10 +23,7 @@ import type {
   WorkflowDependencyStatus
 } from "../../src/types.js";
 import {
-  unconcernedPromptModelFilename,
-  unconcernedPromptMmprojFilename,
-  unconcernedPromptModelId,
-  unconcernedPromptModelSource
+  managedPromptModelDefinitions
 } from "../../src/core/prompt-models.js";
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
@@ -172,6 +169,16 @@ const customNodeCatalog = [
     directoryName: "ComfyUI-Frame-Interpolation",
     aliases: ["comfyui-frame-interpolation"],
     nodeTypes: ["RIFE VFI"],
+    required: false
+  },
+  {
+    id: "minimax-h3-prompt-writer",
+    name: "MiniMax H3 Prompt Writer",
+    purpose: "在 ComfyUI 内运行 Gemma 4，多模态理解素材并生成 H3 官方格式提示词",
+    repositoryUrl: "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git",
+    directoryName: "ComfyUI-MiniMaxH3-Prompt-Writer",
+    aliases: ["comfyui-minimaxh3-prompt-writer"],
+    runtimeEndpoint: "/h3studio/status",
     required: false
   },
   {
@@ -380,7 +387,7 @@ export function buildComfyDesktopCandidates(
 interface ModelProfileDefinition {
   id: string;
   name: string;
-  category: "video" | "upscale" | "interpolation" | "prompt";
+  category: "video" | "image" | "upscale" | "interpolation" | "prompt";
   managedBy?: "comfyui" | "lmstudio" | "llama-server";
   badge: string;
   description: string;
@@ -393,34 +400,50 @@ interface ModelProfileDefinition {
   }>;
 }
 
+const gemmaPromptModelDefinitions = managedPromptModelDefinitions;
+
+function escapedPattern(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+const gemmaInstallGuides = Object.fromEntries(
+  gemmaPromptModelDefinitions.flatMap((model) => {
+    const revision = model.revision ? `/resolve/${model.revision}` : "/resolve/main";
+    const baseUrl = `https://huggingface.co/${model.source}${revision}`;
+    return [
+      [`${model.id}:${model.name} GGUF`, {
+        sourceLabel: `${model.source} · ${model.badge}`,
+        downloadUrl: `${baseUrl}/${model.modelFilename}?download=true`,
+        targetSubdirectory: model.targetDirectory,
+        recommendedFilename: model.modelFilename,
+        notes: `${model.description} 目录规则来自 MiniMax H3 Prompt Writer 扩展：使用大写 models/LLM，并让每个主 GGUF 与其匹配的 mmproj 独占一个子目录。${model.licenseNote}`
+      }],
+      [`${model.id}:${model.name} mmproj`, {
+        sourceLabel: `${model.source} · matching vision projector`,
+        downloadUrl: `${baseUrl}/${model.mmprojFilename}?download=true`,
+        targetSubdirectory: model.targetDirectory,
+        recommendedFilename: model.mmprojFilename,
+        notes: "这是 MiniMax H3 Prompt Writer 扩展注册的 LLM 分类，不是 ComfyUI 核心的通用 GGUF 分类。必须与对应 Gemma GGUF 放在同一个独立子目录；不同 Gemma 档位的同名 mmproj 不能混用。"
+      }]
+    ];
+  })
+) as Record<string, ModelComponentStatus["installGuide"]>;
+
 const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
-  [`${unconcernedPromptModelId}:Unconcerned Qwen3.5 4B GGUF`]: {
-    sourceLabel: `${unconcernedPromptModelSource} · Q6_K GGUF`,
-    downloadUrl: "https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/resolve/main/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf?download=true",
-    targetSubdirectory: "prompt_models",
-    recommendedFilename: unconcernedPromptModelFilename,
-    notes: "应用自管理 llama-server 使用的主模型；需要同时下载 mmproj 文件。Apache-2.0。"
-  },
-  [`${unconcernedPromptModelId}:Unconcerned Qwen3.5 4B mmproj`]: {
-    sourceLabel: `${unconcernedPromptModelSource} · BF16 vision projector`,
-    downloadUrl: "https://huggingface.co/HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive/resolve/main/mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf?download=true",
-    targetSubdirectory: "prompt_models",
-    recommendedFilename: unconcernedPromptMmprojFilename,
-    notes: "图片/视频理解投影文件；必须与同名 GGUF 主模型一起使用。Apache-2.0。"
-  },
+  ...gemmaInstallGuides,
   "qwen/qwen3.5-2b:Qwen3.5 2B ComfyUI 文本编码器": {
     sourceLabel: "Hugging Face · Comfy-Org/Qwen3.5",
     downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors?download=true",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "qwen3.5_2b_bf16.safetensors",
-    notes: "更快、更省显存的提示词助手备选；仍支持文字和参考图理解，但复杂动作分析与提示词细节能力低于 4B。"
+    notes: "Comfy-Org 官方仓库按 text_encoders 分类发布。更快、更省显存的提示词助手备选；仍支持文字和参考图理解，但复杂动作分析与提示词细节能力低于 4B。"
   },
   "qwen/qwen3.5-4b:Qwen3.5 4B ComfyUI 文本编码器": {
     sourceLabel: "Hugging Face · Comfy-Org/Qwen3.5",
     downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_4b_bf16.safetensors?download=true",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "qwen3.5_4b_bf16.safetensors",
-    notes: "4090 推荐的唯一提示词助手模型。它同时支持文字生成和图片/视频理解；官方 ComfyUI TextGenerate 工作流使用此文件。"
+    notes: "Comfy-Org 官方仓库按 text_encoders 分类发布。4090 推荐的原生提示词助手模型，同时支持文字生成和图片/视频理解；ComfyUI TextGenerate 工作流使用此文件。"
   },
   "minimax_h3_fl2va:MiniMax H3 FL2VA INT8 模型": {
     sourceLabel: "Comfy-Org / MiniMax-H3",
@@ -522,6 +545,26 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
     targetSubdirectory: "vae",
     recommendedFilename: "minimax_h3_audio_vae_fp32.safetensors"
+  },
+  "qwen-image-edit-2511:Qwen Image Edit 2511 扩散模型": {
+    sourceLabel: "Comfy-Org / Qwen-Image-Edit_ComfyUI",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2511_int8_convrot.safetensors",
+    targetSubdirectory: "diffusion_models",
+    recommendedFilename: "qwen_image_edit_2511_int8_convrot.safetensors",
+    notes: "官方 ComfyUI INT8 ConvRot 变体；也可以使用 BF16 或 FP8 Mixed 变体，但需要与当前显卡和工作流实测匹配。"
+  },
+  "qwen-image-edit-2511:Qwen 2.5 VL 7B 文本编码器": {
+    sourceLabel: "Comfy-Org / Qwen-Image_ComfyUI",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+    notes: "Qwen Image Edit 与 HunyuanVideo 1.5 共用同一 Qwen2.5-VL 文本编码器；图片工作流从 Qwen-Image_ComfyUI 来源下载即可。"
+  },
+  "qwen-image-edit-2511:Qwen Image VAE": {
+    sourceLabel: "Comfy-Org / Qwen-Image_ComfyUI",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
+    targetSubdirectory: "vae",
+    recommendedFilename: "qwen_image_vae.safetensors"
   },
   "sulphur2:Sulphur 2 Q2_K distilled GGUF": {
     sourceLabel: "szwagros / sulphur-2-gguf",
@@ -861,28 +904,31 @@ function sulphurComponentsFor(
 }
 
 const modelProfileDefinitions: ModelProfileDefinition[] = [
-  {
-    id: unconcernedPromptModelId,
-    name: "Qwen3.5 4B Unconcerned · 应用自管理",
-    category: "prompt",
-    managedBy: "llama-server",
-    badge: "GGUF · 无拒答实验",
-    description: "由应用自己启动 llama-server，使用 Qwen3.5 4B GGUF 与 mmproj 处理文字和参考图；不依赖 LM Studio，也不能通过 ComfyUI TextGenerate 加载。",
-    vram: "Q6_K · GGUF 约 3.5 GB + mmproj",
-    integrated: false,
-    components: [
-      {
-        label: "Unconcerned Qwen3.5 4B GGUF",
-        expected: `prompt_models/${unconcernedPromptModelFilename}`,
-        patterns: [new RegExp(`(?:prompt_models|llama|llm)/${unconcernedPromptModelFilename.replaceAll(".", "\\.")}$`, "i")]
-      },
-      {
-        label: "Unconcerned Qwen3.5 4B mmproj",
-        expected: `prompt_models/${unconcernedPromptMmprojFilename}`,
-        patterns: [new RegExp(`(?:prompt_models|llama|llm)/${unconcernedPromptMmprojFilename.replaceAll(".", "\\.")}$`, "i")]
-      }
-    ]
-  },
+  ...gemmaPromptModelDefinitions.map((model): ModelProfileDefinition => {
+    const directoryPattern = escapedPattern(model.targetDirectory.replaceAll("\\", "/"));
+    return {
+      id: model.id,
+      name: model.name,
+      category: "prompt",
+      managedBy: "comfyui",
+      badge: model.badge,
+      description: model.description,
+      vram: model.vram,
+      integrated: true,
+      components: [
+        {
+          label: `${model.name} GGUF`,
+          expected: `${model.targetDirectory}/${model.modelFilename}`,
+          patterns: [new RegExp(`${directoryPattern}/${escapedPattern(model.modelFilename)}$`, "i")]
+        },
+        {
+          label: `${model.name} mmproj`,
+          expected: `${model.targetDirectory}/${model.mmprojFilename}`,
+          patterns: [new RegExp(`${directoryPattern}/${escapedPattern(model.mmprojFilename)}$`, "i")]
+        }
+      ]
+    };
+  }),
   {
     id: "qwen/qwen3.5-4b",
     name: "Qwen3.5 4B · H3 提示词助手",
@@ -914,6 +960,33 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
         label: "Qwen3.5 2B ComfyUI 文本编码器",
         expected: "text_encoders/qwen3.5_2b_bf16.safetensors",
         patterns: [/text_encoders\/qwen3\.5_2b_bf16\.safetensors$/i]
+      }
+    ]
+  },
+  {
+    id: "qwen-image-edit-2511",
+    name: "Qwen-Image-Edit-2511 · 图片处理",
+    category: "image",
+    managedBy: "comfyui",
+    badge: "最多 3 Picture · 原生质量",
+    description: "Qwen 2511 多图编辑模型；当前先扫描官方扩散模型、Qwen VL 文本编码器和图片 VAE，工作流通过验证后才启用。",
+    vram: "INT8/FP8/BF16 · 4090 需实测",
+    integrated: false,
+    components: [
+      {
+        label: "Qwen Image Edit 2511 扩散模型",
+        expected: "diffusion_models/qwen_image_edit_2511_{bf16|int8_convrot|fp8mixed}.safetensors",
+        patterns: [/diffusion_models\/qwen_image_edit_2511_(?:bf16|int8_convrot|fp8mixed)\.safetensors$/i]
+      },
+      {
+        label: "Qwen 2.5 VL 7B 文本编码器",
+        expected: "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        patterns: [/text_encoders\/qwen_2\.5_vl_7b_fp8_scaled\.safetensors$/i]
+      },
+      {
+        label: "Qwen Image VAE",
+        expected: "vae/qwen_image_vae.safetensors",
+        patterns: [/vae\/qwen_image_vae\.safetensors$/i]
       }
     ]
   },
@@ -1973,6 +2046,11 @@ async function scanCustomNodes(
       ? availableComfyNodeIds(await response.json())
       : null)
     .catch(() => null);
+  const h3PromptWriterLoaded = serviceNodeIds === null
+    ? null
+    : await fetch(`${settings.comfyUrl.replace(/\/+$/, "")}/h3studio/status`, {
+        signal: AbortSignal.timeout(5_000)
+      }).then((response) => response.ok).catch(() => false);
 
   const latestSpectrumVersion = await latestSpectrumReleaseVersion(settings);
   return Promise.all(customNodeCatalog.map(async (definition) => {
@@ -2038,8 +2116,10 @@ async function scanCustomNodes(
       ? definition.nodeTypes
       : undefined;
     const runtimeVerified = serviceNodeIds !== null;
-    const registered = !runtimeVerified || !requiredNodeTypes ||
-      requiredNodeTypes.every((nodeType) => serviceNodeIds.has(nodeType));
+    const registered = "runtimeEndpoint" in definition
+      ? h3PromptWriterLoaded !== false
+      : !runtimeVerified || !requiredNodeTypes ||
+        requiredNodeTypes.every((nodeType) => serviceNodeIds.has(nodeType));
     const pendingRestartError = Boolean(directory) && !compatibilityError &&
       !failed && requiredNodeTypes && runtimeVerified && !registered
       ? "节点文件已安装，但当前 ComfyUI 服务尚未加载全部必需模块；请重启服务后复检"
@@ -3658,10 +3738,7 @@ export async function startLocalService(
   settings: Settings
 ): Promise<{ ok: boolean; message: string }> {
   try {
-    const healthUrl =
-      kind === "comfy"
-        ? await startComfyUi(settings)
-        : await startLmStudio(settings);
+    const healthUrl = await startComfyUi(settings);
     const ready = await waitForService(healthUrl);
     return ready
       ? {
@@ -3684,9 +3761,6 @@ export async function restartLocalService(
   kind: LocalServiceKind,
   settings: Settings
 ): Promise<{ ok: boolean; message: string }> {
-  if (kind !== "comfy") {
-    return { ok: false, message: "目前只支持重启 ComfyUI 服务。" };
-  }
   try {
     await stopComfyUi(settings);
     const healthUrl = await startComfyUi(settings);
@@ -4023,6 +4097,29 @@ export async function installCustomNode(
       installLog.push(`${pipResult.stdout}${pipResult.stderr}`.trim() || "pip：依赖已满足");
     } else {
       installLog.push("未发现 requirements.txt，无需安装额外 Python 依赖");
+    }
+    if (definition.id === "minimax-h3-prompt-writer") {
+      const python = await findComfyPython(settings, comfyRoot);
+      if (!python) throw new Error("Prompt Writer 已下载，但没有找到所选 ComfyUI 的 Python 环境。");
+      const ggufRequirements = path.join(targetDirectory, "requirements-gguf.txt");
+      if (!(await exists(ggufRequirements))) {
+        throw new Error("Prompt Writer 缺少 requirements-gguf.txt，无法安装本地 GGUF 后端。");
+      }
+      installLog.push("安装 ComfyUI 内置 GGUF 运行时（CUDA wheel，不启动独立 llama-server）");
+      const args = process.platform === "win32"
+        ? [
+            "-m", "pip", "install", "--only-binary=:all:",
+            "--extra-index-url", "https://abetlen.github.io/llama-cpp-python/whl/cu130",
+            "-r", ggufRequirements
+          ]
+        : ["-m", "pip", "install", "-r", ggufRequirements];
+      const ggufResult = await execFileAsync(python, args, {
+        encoding: "utf8",
+        timeout: 900_000,
+        windowsHide: true,
+        env: commandEnvironment
+      });
+      installLog.push(`${ggufResult.stdout}${ggufResult.stderr}`.trim() || "GGUF 运行依赖已满足");
     }
     return {
       ok: true,
@@ -4386,7 +4483,7 @@ export async function scanEnvironment(
   );
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ??
     pythonRuntimes[0];
-  const [customNodes, workflowDependencies, attentionAcceleration, llamaServer] = await Promise.all([
+  const [customNodes, workflowDependencies, attentionAcceleration] = await Promise.all([
     scanCustomNodes(comfyRoot, settings),
     scanWorkflowDependencies(comfyRoot),
     inspectAttentionAcceleration(
@@ -4394,9 +4491,14 @@ export async function scanEnvironment(
       comfyRoot,
       comfyInstallation,
       selectedPython?.path ?? ""
-    ),
-    scanLlamaServer(settings, comfyRoot)
+    )
   ]);
+  const llamaServer: LlamaServerStatus = {
+    found: false,
+    path: "",
+    directory: "",
+    source: ""
+  };
   const issues = await scanEnvironmentIssues(comfyRoot);
   const comfyItem: EnvironmentItem = comfyRoot || comfyInstallation
     ? {
@@ -4437,25 +4539,20 @@ export async function scanEnvironment(
     comfyInstallation
   );
   const comfyHealthUrl = `${detectedComfyBaseUrl}/system_stats`;
-  const lmStudioUrl = `${settings.lmStudioUrl.replace(/\/+$/, "")}/models`;
   const [
     nodeItem,
     gitItem,
     ffmpegItem,
     nvidiaProbe,
     comfyEnvironmentItem,
-    comfyApiItem,
-    lmStudioEnvironmentItem,
-    lmStudioApiItem
+    comfyApiItem
   ] = await Promise.all([
     commandItem("node", "Node.js", "node.exe", ["--version"]),
     commandItem("git", "Git", "git.exe", ["--version"], true),
     commandItem("ffmpeg", "FFmpeg", "ffmpeg.exe", ["-version"], true),
     nvidiaItem(),
     Promise.resolve(comfyItem),
-    localServiceItem("comfyui-api", "ComfyUI 服务", comfyHealthUrl),
-    lmStudioItem(settings),
-    localServiceItem("lmstudio-api", "LM Studio 服务", lmStudioUrl)
+    localServiceItem("comfyui-api", "ComfyUI 服务", comfyHealthUrl)
   ]);
   const items = [
     nodeItem,
@@ -4463,9 +4560,7 @@ export async function scanEnvironment(
     ffmpegItem,
     nvidiaProbe.item,
     comfyEnvironmentItem,
-    comfyApiItem,
-    lmStudioEnvironmentItem,
-    lmStudioApiItem
+    comfyApiItem
   ];
 
   return {

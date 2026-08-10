@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { HistoryFile } from "../types.js";
 
 const outputCollectionKeys = new Set([
@@ -51,15 +50,4 @@ export function extractComfyOutputFiles(value: unknown): HistoryFile[] {
 
   visit(value);
   return results;
-}
-
-export function attachAbsoluteOutputPaths(
-  files: HistoryFile[],
-  outputDirectory: string
-): HistoryFile[] {
-  if (!outputDirectory.trim()) return files;
-  return files.map((file) => ({
-    ...file,
-    absolutePath: path.resolve(outputDirectory, file.subfolder, file.filename)
-  }));
 }

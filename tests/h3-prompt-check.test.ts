@@ -154,4 +154,28 @@ describe("MiniMax H3 prompt checks", () => {
 
     expect(result.valid).toBe(true);
   });
+
+  it("warns about leaked contact-sheet language and timestamps beyond duration", () => {
+    const result = checkH3Prompt([
+      "subject_definitions:",
+      "<Subject 1> comes from <Video 1>.",
+      "summary:",
+      "[reference generation] Transfer motion from <Video 1>.",
+      "retention_analysis:",
+      "<Video 1>: attribute_transfer.",
+      "detailed_description:",
+      "[Shot 1] Recreate each contact sheet cell. [Shot 2] At 00:12.000, the motion ends.",
+      "overall_soundscape: Natural room tone.",
+      "non_diegetic_music: N/A"
+    ].join("\n"), {
+      mode: "R2V",
+      hasImageReference: false,
+      hasVideoReference: true,
+      durationSeconds: 5
+    });
+
+    const messages = result.items.map((item) => item.message).join("\n");
+    expect(messages).toContain("接触表");
+    expect(messages).toContain("00:12.000");
+  });
 });

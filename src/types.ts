@@ -36,6 +36,58 @@ export interface H3ReferenceSlot {
   note: string;
 }
 
+export type ImageOutputFormat = "png" | "jpeg" | "webp";
+export type ImageReferenceRole =
+  | "base"
+  | "person"
+  | "object"
+  | "pose"
+  | "style"
+  | "background"
+  | "auto";
+
+export interface ImageReference {
+  id: string;
+  pictureNumber: number;
+  absolutePath: string;
+  width: number;
+  height: number;
+  role?: ImageReferenceRole;
+}
+
+export type ImageReferenceSnapshot = ImageReference;
+
+export interface ImageEditDraft {
+  mode: "image-edit";
+  projectId?: string;
+  parentVersionId?: string;
+  pictures: ImageReference[];
+  nextPictureNumber: number;
+  promptVersions: PromptVersion[];
+  activePromptVersion: number;
+  modelId: string;
+  qualityProfile: string;
+  outputCount: number;
+  outputFormat: ImageOutputFormat;
+  seed: number | null;
+}
+
+export interface ImageGenerationRun {
+  id: string;
+  index: number;
+  seed: number;
+  status: TaskStatus;
+  comfyPromptId?: string;
+  progress?: number;
+  stage?: string;
+  stageStartedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  outputVersionId?: string;
+  error?: string;
+  performanceStats?: TaskPerformanceStats;
+}
+
 export interface Draft {
   inputMode: "image" | "video";
   startImagePath: string;
@@ -84,10 +136,14 @@ export interface Settings {
   promptLlamaServerPath: string;
   promptLlamaPort: number;
   h3PromptPresets: Record<H3PromptPreset, string>;
+  imagePromptPresets: Record<ImagePromptPreset, string>;
   outputDirectory: string;
   modelDirectory: string;
-  promptSystemTemplate: string;
   defaultVideoModel: string;
+  defaultImageModel: string;
+  defaultImageQualityProfile: string;
+  imageOutputCount: number;
+  imageOutputFormat: ImageOutputFormat;
   vramReserveGb: number;
   h3AttentionMode: H3AttentionMode;
   autoOffload: boolean;
@@ -113,20 +169,13 @@ export interface Settings {
 
 interface QueueTaskBase {
   id: string;
-  taskType: "generation" | "extension" | "upscale";
+  taskType: "generation" | "extension" | "upscale" | "image-generation";
   status: TaskStatus;
   createdAt: string;
   updatedAt: string;
   outputFilename: string;
   modelId: string;
   workflowPath: string;
-  duration: number;
-  steps?: H3StepCount;
-  fps: number;
-  seed: number;
-  keepSeedOnCopy: boolean;
-  attentionMode?: Settings["h3AttentionMode"];
-  spectrumMode?: H3SpectrumMode;
   comfyPromptId?: string;
   progress?: number;
   stage?: string;
@@ -137,7 +186,31 @@ interface QueueTaskBase {
   automaticRetryAttempt?: number;
 }
 
-export interface GenerationQueueTask extends QueueTaskBase {
+interface VideoQueueTaskBase extends QueueTaskBase {
+  taskType: "generation" | "extension" | "upscale";
+  duration: number;
+  steps?: H3StepCount;
+  fps: number;
+  seed: number;
+  keepSeedOnCopy: boolean;
+  attentionMode?: Settings["h3AttentionMode"];
+  spectrumMode?: H3SpectrumMode;
+}
+
+export interface ImageGenerationQueueTask extends QueueTaskBase {
+  taskType: "image-generation";
+  projectId: string;
+  parentVersionId?: string;
+  pictures: ImageReferenceSnapshot[];
+  prompt: string;
+  promptVersion: number;
+  qualityProfile: string;
+  outputFormat: ImageOutputFormat;
+  outputCount: number;
+  runs: ImageGenerationRun[];
+}
+
+export interface GenerationQueueTask extends VideoQueueTaskBase {
   taskType: "generation";
   prompt: string;
   promptVersion: number;
@@ -154,7 +227,7 @@ export interface GenerationQueueTask extends QueueTaskBase {
   modelProfile?: LtxExtensionModelProfile;
 }
 
-export interface UpscaleQueueTask extends QueueTaskBase {
+export interface UpscaleQueueTask extends VideoQueueTaskBase {
   taskType: "upscale";
   sourceAssetId: string;
   sourceVersionId: string;
@@ -168,7 +241,7 @@ export interface UpscaleQueueTask extends QueueTaskBase {
   faceRestore: boolean;
 }
 
-export interface ExtensionQueueTask extends QueueTaskBase {
+export interface ExtensionQueueTask extends VideoQueueTaskBase {
   taskType: "extension";
   prompt: string;
   promptVersion: number;
@@ -191,7 +264,11 @@ export interface ExtensionQueueTask extends QueueTaskBase {
   unloadBetweenStages: true;
 }
 
-export type QueueTask = GenerationQueueTask | ExtensionQueueTask | UpscaleQueueTask;
+export type QueueTask =
+  | GenerationQueueTask
+  | ExtensionQueueTask
+  | UpscaleQueueTask
+  | ImageGenerationQueueTask;
 
 export interface UpscaleRequest {
   sourceAssetId: string;
@@ -239,7 +316,46 @@ export interface AssetVersion {
   startedAt?: string;
 }
 
+export interface ImageHistoryProject {
+  mediaKind: "image";
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  coverMode: "auto" | "pinned";
+  coverVersionId?: string;
+  nextVersionNumber: number;
+  versions: ImageAssetVersion[];
+}
+
+export interface ImageAssetVersion {
+  id: string;
+  versionNumber: number;
+  kind: "source" | "edit" | "upscale";
+  parentVersionId?: string;
+  taskId?: string;
+  runId?: string;
+  createdAt: string;
+  startedAt?: string;
+  modelId: string;
+  workflowPath: string;
+  prompt: string;
+  promptVersion: number;
+  references: ImageReferenceSnapshot[];
+  seed?: number;
+  width: number;
+  height: number;
+  format: ImageOutputFormat;
+  file: HistoryFile;
+  comfyPromptId?: string;
+  comfyOutputs?: unknown;
+  performanceStats?: TaskPerformanceStats;
+}
+
+export type HistoryItem = HistoryAsset | ImageHistoryProject;
+
 export interface HistoryAsset {
+  mediaKind: "video";
   id: string;
   taskId: string;
   title: string;
@@ -277,16 +393,18 @@ export interface HistoryAsset {
 }
 
 export interface AppState {
-  schemaVersion: 2;
+  schemaVersion: 3;
   draft: Draft;
+  imageDraft: ImageEditDraft;
   settings: Settings;
   queue: QueueTask[];
   history: HistoryAsset[];
+  imageHistory: ImageHistoryProject[];
   queueRunning: boolean;
 }
 
-export type ConnectionKind = "comfy" | "lmstudio";
-export type LocalServiceKind = "comfy" | "lmstudio";
+export type ConnectionKind = "comfy";
+export type LocalServiceKind = "comfy";
 
 export interface ConnectionResult {
   ok: boolean;
@@ -309,6 +427,7 @@ export type EnvironmentItemId =
   | "nvidia"
   | "comfyui"
   | "comfyui-api"
+  // Retained only for deserializing older scan payloads; new scans do not emit them.
   | "lmstudio"
   | "lmstudio-api";
 
@@ -384,7 +503,7 @@ export interface ModelComponentStatus {
 export interface ModelScanProfile {
   id: string;
   name: string;
-  category: "video" | "upscale" | "interpolation" | "prompt";
+  category: "video" | "image" | "upscale" | "interpolation" | "prompt";
   managedBy?: "comfyui" | "lmstudio" | "llama-server";
   badge: string;
   description: string;
@@ -467,8 +586,9 @@ export interface AttentionAccelerationStatus {
   detail: string;
 }
 
-export type PromptEnhanceMode = "faithful" | "sulphur-native" | "h3-vision";
+export type PromptEnhanceMode = "faithful" | "sulphur-native" | "h3-vision" | "image-edit";
 export type PromptRuntime = "comfyui" | "lmstudio" | "llama-server";
+export type ImagePromptPreset = "faithful" | "detail-enhance";
 
 export type H3PromptPreset =
   | "official-storyboard"
@@ -487,11 +607,15 @@ export interface EnhanceRequest {
   prompt: string;
   modelId: string;
   mode?: PromptEnhanceMode;
+  imageEditEnhanceMode?: ImagePromptPreset;
+  imageEditPresetText?: string;
   imagePath?: string;
   imagePaths?: string[];
   h3PromptMode?: H3PromptMode;
   h3PromptPreset?: H3PromptPreset;
   h3DurationSeconds?: number;
+  h3AspectRatio?: string;
+  referenceMediaPaths?: string[];
   referenceContext?: string;
 }
 
@@ -580,6 +704,7 @@ export interface AppApi {
   setSettingsDirty(dirty: boolean): Promise<void>;
   respondWindowClose(response: WindowCloseResponse): Promise<void>;
   saveDraft(draft: Draft): Promise<AppState>;
+  saveImageDraft(draft: ImageEditDraft): Promise<AppState>;
   saveSettings(settings: Settings): Promise<AppState>;
   pickImage(): Promise<string | null>;
   pickVideo(): Promise<string | null>;
@@ -609,7 +734,6 @@ export interface AppApi {
   releasePromptModel(): Promise<ConnectionResult>;
   testConnection(kind: ConnectionKind, settings: Settings): Promise<ConnectionResult>;
   scanEnvironment(settings: Settings): Promise<EnvironmentScanResult>;
-  installLlamaServer(settings: Settings): Promise<ConnectionResult>;
   startLocalService(
     kind: LocalServiceKind,
     settings: Settings
@@ -635,6 +759,7 @@ export interface AppApi {
   installAttentionAcceleration(settings: Settings): Promise<ConnectionResult>;
   enqueue(draft: Draft): Promise<AppState>;
   enqueueExtension(draft: Draft): Promise<AppState>;
+  enqueueImageEdit(draft: ImageEditDraft): Promise<AppState>;
   enqueueUpscale(request: UpscaleRequest): Promise<AppState>;
   updateUpscaleTask(taskId: string, patch: Pick<UpscaleQueueTask, "targetWidth" | "targetHeight" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">): Promise<AppState>;
   removeTask(taskId: string): Promise<AppState>;

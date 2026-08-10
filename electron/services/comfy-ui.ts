@@ -1,6 +1,13 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { EnhanceRequest, H3PromptPreset, QueueTask, Settings } from "../../src/types.js";
+import type {
+  EnhanceRequest,
+  H3PromptPreset,
+  ImageGenerationQueueTask,
+  ImageGenerationRun,
+  QueueTask,
+  Settings
+} from "../../src/types.js";
 import {
   missingWorkflowNodeTypes,
   renderWorkflow,
@@ -8,6 +15,12 @@ import {
   isMiniMaxH3R2vModel,
   workflowSupportsEndImage
 } from "../../src/core/workflow.js";
+import { nativePromptModelFiles } from "../../src/core/prompt-models.js";
+import {
+  qwenImageEditPromptContract,
+  normalizeQwenImageEditPromptOutput,
+  qwenImageEditPromptUserContent
+} from "../../src/core/qwen-image-prompt.js";
 import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
 import {
   prepareExtensionContext,
@@ -24,6 +37,11 @@ import {
 } from "../../src/core/h3-prompt.js";
 import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
+import {
+  buildQwenImageEdit2511Workflow,
+  renderImageWorkflow,
+  qwenImageEdit2511Adapter
+} from "../../src/core/image-workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 
 function cleanBaseUrl(url: string): string {
@@ -85,13 +103,8 @@ async function uploadInput(
   return result.subfolder ? `${result.subfolder}/${result.name}` : result.name;
 }
 
-const nativePromptModelFiles: Record<string, string> = {
-  "qwen/qwen3.5-4b": "qwen3.5_4b_bf16.safetensors",
-  "qwen/qwen3.5-2b": "qwen3.5_2b_bf16.safetensors"
-};
-
 export function promptModelFilename(modelId: string): string {
-  return nativePromptModelFiles[modelId] ?? "";
+  return nativePromptModelFiles[modelId as keyof typeof nativePromptModelFiles] ?? "";
 }
 
 export function h3PromptInstruction(
@@ -123,6 +136,14 @@ export function h3PromptInstruction(
   ].join("\n\n");
 }
 
+export function imageEditPromptInstruction(request: EnhanceRequest): string {
+  const preset = request.imageEditEnhanceMode === "faithful" ? "faithful" : "detail-enhance";
+  return [
+    qwenImageEditPromptContract(preset, request.imageEditPresetText),
+    qwenImageEditPromptUserContent(request)
+  ].join("\n\n");
+}
+
 export function buildNativePromptWorkflow(
   request: EnhanceRequest,
   uploadedImages: string[],
@@ -149,9 +170,15 @@ export function buildNativePromptWorkflow(
       class_type: "TextGenerate",
       inputs: {
         clip: ["clip", 0],
-        prompt: warmup ? "Reply with READY only." : h3PromptInstruction(request, promptPresets),
+        prompt: warmup
+          ? "Reply with READY only."
+          : request.mode === "image-edit"
+            ? imageEditPromptInstruction(request)
+            : h3PromptInstruction(request, promptPresets),
         max_length: warmup
           ? 8
+          : request.mode === "image-edit"
+            ? 896
           : mode === "R2V"
             ? 1536
             : Math.min(1536, Math.max(896, Math.ceil(h3EffectiveDurationSeconds(request.h3DurationSeconds ?? 5) / 5.17) * 384)),
@@ -281,6 +308,9 @@ export async function enhancePromptWithComfyUi(
   );
   const output = extractTextGenerateOutput(history);
   if (warmup) return output;
+  if (request.mode === "image-edit") {
+    return normalizeQwenImageEditPromptOutput(output);
+  }
   const imageCount = request.imagePaths?.length ?? 0;
   const mode = request.h3PromptMode ?? inferH3PromptMode(
     Boolean(request.imagePath || imageCount > 0),
@@ -416,7 +446,7 @@ export async function submitTask(
         vramAvailableBytes
       });
     }
-  } else {
+  } else if (task.taskType === "upscale") {
       const sourceVideo = await uploadInput(
         baseUrl,
         task.sourceFilePath,
@@ -427,6 +457,8 @@ export async function submitTask(
         seedVr2: settings.seedVr2Model,
         realEsrgan: settings.realEsrganModel
       }, objectInfo);
+  } else {
+    throw new Error("图片任务必须通过 submitImageTask 提交。");
   }
   const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
   if (missingNodes.length) {
@@ -450,6 +482,53 @@ export async function submitTask(
           : undefined;
       return typeof classType === "string" ? [[id, classType]] : [];
     })
+  );
+  return { promptId: result.prompt_id, clientId, nodeTypes };
+}
+
+export async function submitImageTask(
+  task: ImageGenerationQueueTask,
+  run: ImageGenerationRun,
+  settings: Settings,
+  signal: AbortSignal
+): Promise<{
+  promptId: string;
+  clientId: string;
+  nodeTypes: Record<string, string>;
+}> {
+  if (task.modelId !== qwenImageEdit2511Adapter.id) {
+    throw new Error(`当前没有 ${task.modelId} 的图片工作流适配器。`);
+  }
+  const baseUrl = cleanBaseUrl(settings.comfyUrl);
+  const objectInfo = await jsonRequest<Record<string, unknown>>(
+    `${baseUrl}/object_info`,
+    { signal }
+  );
+  const compiled = qwenImageEdit2511Adapter.compilePrompt(task.prompt, task.pictures);
+  if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
+  const uploadedPictures = await Promise.all(
+    compiled.pictures.map((picture, index) =>
+      uploadInput(baseUrl, picture.absolutePath, signal, `Picture ${index + 1}`)
+    )
+  );
+  const workflow = buildQwenImageEdit2511Workflow(task, run);
+  const prompt = renderImageWorkflow(workflow, uploadedPictures);
+  const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
+  if (missingNodes.length) {
+    throw new Error(
+      `当前 ComfyUI 服务尚未加载图片工作流节点：${missingNodes.join("、")}。请更新 ComfyUI 后重启并重新扫描。`
+    );
+  }
+  const clientId = `local-video-studio-image-${crypto.randomUUID()}`;
+  const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, client_id: clientId }),
+    signal
+  });
+  if (!result.prompt_id) throw new Error("ComfyUI 未返回图片 Prompt ID");
+  const nodeTypes = Object.fromEntries(
+    Object.entries(prompt).map(([id, value]) => [id, value.class_type])
   );
   return { promptId: result.prompt_id, clientId, nodeTypes };
 }

@@ -10,6 +10,11 @@ import type {
 import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
 import {
+  normalizeQwenImageEditPromptOutput,
+  qwenImageEditPromptContract,
+  qwenImageEditPromptUserContent
+} from "../../src/core/qwen-image-prompt.js";
+import {
   h3DurationPlan,
   h3EffectiveDurationSeconds as h3EffectiveDurationNumber,
   h3ExplicitConstraintSummary,
@@ -151,8 +156,8 @@ export function selectLmStudioModel(
   const generationModels = availableModels.filter(
     (id) => !/(?:^|[-_/])(embed|embedding|rerank)(?:[-_/]|$)/i.test(id)
   );
-  if (mode === "h3-vision") {
-    return generationModels.find((id) => /qwen3(?:\.5|-vl)|qwen.*vision|qwen.*vl|gemma-3/i.test(id)) ?? "";
+  if (mode === "h3-vision" || mode === "image-edit") {
+    return generationModels.find((id) => /qwen3(?:\.5|-vl)|qwen.*vision|qwen.*vl|gemma-[34]/i.test(id)) ?? "";
   }
   if (mode === "faithful") {
     return generationModels.find((id) => !/sulphur/i.test(id)) ?? "";
@@ -196,6 +201,7 @@ function faithfulUserPrompt(prompt: string, settings: Settings): string {
     prompt
   ].join("\n");
 }
+
 
 function imageMimeType(filename: string): string {
   switch (path.extname(filename).toLowerCase()) {
@@ -286,6 +292,31 @@ export async function buildLmStudioChatRequest(
   model: string
 ): Promise<LmStudioChatRequest> {
   const mode: PromptEnhanceMode = request.mode ?? "sulphur-native";
+  if (mode === "image-edit") {
+    const imagePaths = request.imagePaths?.length
+      ? request.imagePaths
+      : request.imagePath
+        ? [request.imagePath]
+        : [];
+    return {
+      model,
+      temperature: Math.min(settings.promptCreativity, 0.35),
+      max_tokens: 900,
+      messages: [
+        {
+          role: "system",
+          content: qwenImageEditPromptContract(
+            request.imageEditEnhanceMode === "faithful" ? "faithful" : "detail-enhance",
+            request.imageEditPresetText
+          )
+        },
+        {
+          role: "user",
+          content: await nativeUserContent(qwenImageEditPromptUserContent(request), imagePaths)
+        }
+      ]
+    };
+  }
   if (mode === "h3-vision") {
     const imagePaths = request.imagePaths?.length
       ? request.imagePaths
@@ -386,9 +417,9 @@ export async function enhancePrompt(
       "提示词扩写失败：LM Studio 当前未加载生成模型，请在 Developer 页面加载提示词增强或聊天模型。"
     );
   }
-  if (mode === "h3-vision" && /sulphur/i.test(model)) {
+  if ((mode === "h3-vision" || mode === "image-edit") && /sulphur/i.test(model)) {
     throw new Error(
-      "H3 视觉优化不能使用 Sulphur 模型；请在 LM Studio 中加载 Qwen3.5 或 Qwen3-VL。"
+      `${mode === "image-edit" ? "图片编辑优化" : "H3 视觉优化"}不能使用 Sulphur 模型；请在 LM Studio 中加载 Qwen3.5 或 Qwen3-VL。`
     );
   }
   if (mode === "faithful" && /sulphur/i.test(model)) {
@@ -425,6 +456,7 @@ export async function enhancePrompt(
     .replace(/^```(?:text|markdown)?\s*/iu, "")
     .replace(/\s*```$/u, "")
     .trim();
+  if (mode === "image-edit") return normalizeQwenImageEditPromptOutput(normalized);
   if (mode !== "h3-vision") return normalized;
   const h3Mode = h3PromptModeForRequest(request);
   return normalizeH3PromptOutput(

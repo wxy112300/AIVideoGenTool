@@ -11,10 +11,9 @@ import {
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import {
-  unconcernedPromptModelFilename,
-  unconcernedPromptMmprojFilename,
-  unconcernedPromptModelId,
-  isUnconcernedPromptModel
+  isManagedPromptModel,
+  managedPromptModel,
+  type ManagedPromptModelDefinition
 } from "../../src/core/prompt-models.js";
 
 const execFileAsync = promisify(execFile);
@@ -22,6 +21,7 @@ const defaultPort = 8091;
 const healthTimeoutMs = 90_000;
 let ownedServer: ChildProcess | null = null;
 let ownedServerPort = 0;
+let ownedServerModelId = "";
 let startPromise: Promise<ConnectionResult> | null = null;
 let lastServerOutput = "";
 
@@ -105,10 +105,17 @@ async function resolveServerExecutable(settings: Settings): Promise<string> {
   return "";
 }
 
-async function resolvePromptAssets(settings: Settings): Promise<{ model: string; mmproj: string }> {
+async function resolvePromptAssets(
+  settings: Settings,
+  definition: ManagedPromptModelDefinition
+): Promise<{ model: string; mmproj: string }> {
   for (const root of promptModelDirectories(settings)) {
-    const model = await findFile(root, unconcernedPromptModelFilename);
-    const mmproj = await findFile(root, unconcernedPromptMmprojFilename);
+    const model = await findFile(root, definition.modelFilename);
+    if (!model) continue;
+    const colocatedProjector = path.join(path.dirname(model), definition.mmprojFilename);
+    const mmproj = await isFile(colocatedProjector)
+      ? colocatedProjector
+      : await findFile(root, definition.mmprojFilename);
     if (model && mmproj) return { model, mmproj };
   }
   return { model: "", mmproj: "" };
@@ -132,12 +139,37 @@ async function waitForServer(port: number): Promise<void> {
   throw new Error(`llama-server 启动超时。${lastServerOutput ? `最后日志：${lastServerOutput}` : "请检查 llama-server.exe、模型文件和显卡运行库。"}`);
 }
 
+async function runningServerModelMatches(
+  port: number,
+  definition: ManagedPromptModelDefinition
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${serverUrl(port)}/v1/models`, {
+      signal: AbortSignal.timeout(2_000)
+    });
+    if (!response.ok) return false;
+    const body = (await response.json()) as { data?: Array<{ id?: string }> };
+    const filename = definition.modelFilename.toLowerCase();
+    const stem = filename.replace(/\.gguf$/u, "");
+    return (body.data ?? []).some((item) => {
+      const id = item.id?.toLowerCase() ?? "";
+      return id === definition.id.toLowerCase() || id.includes(filename) || id.includes(stem);
+    });
+  } catch {
+    return false;
+  }
+}
+
 export async function startLlamaPromptModel(settings: Settings): Promise<ConnectionResult> {
-  if (!isUnconcernedPromptModel(settings.promptModelId)) {
-    return { ok: false, message: "当前提示词模型不是应用自管理的 Unconcerned 模型。" };
+  const definition = managedPromptModel(settings.promptModelId);
+  if (!definition || !isManagedPromptModel(settings.promptModelId)) {
+    return { ok: false, message: "当前提示词模型不属于应用自管理的 llama-server 模型。" };
   }
   if (startPromise) return startPromise;
   startPromise = (async () => {
+    if (ownedServer && ownedServerModelId !== definition.id) {
+      await stopOwnedServer();
+    }
     const executable = await resolveServerExecutable(settings);
     if (!executable) {
       return {
@@ -145,18 +177,24 @@ export async function startLlamaPromptModel(settings: Settings): Promise<Connect
         message: "找不到 llama-server.exe。请下载 llama.cpp 的 Windows CUDA 版本，并在设置中填写 llama-server.exe 的完整路径。"
       };
     }
-    const assets = await resolvePromptAssets(settings);
+    const assets = await resolvePromptAssets(settings, definition);
     if (!assets.model || !assets.mmproj) {
       return {
         ok: false,
-        message: `缺少 Unconcerned 模型文件。请把 ${unconcernedPromptModelFilename} 和 ${unconcernedPromptMmprojFilename} 放入应用管理的 prompt_models 目录后重新扫描。`
+        message: `缺少 ${definition.name} 的模型文件。请把 ${definition.modelFilename} 和匹配的 ${definition.mmprojFilename} 放在同一子目录后重新扫描。`
       };
     }
     const port = portForSettings(settings);
     try {
       const existing = await fetch(`${serverUrl(port)}/health`, { signal: AbortSignal.timeout(1_500) });
       if (existing.ok) {
-        return { ok: true, message: `已连接已有 llama-server（${serverUrl(port)}）。` };
+        if (ownedServerModelId === definition.id || await runningServerModelMatches(port, definition)) {
+          return { ok: true, message: `已连接已有 ${definition.name} llama-server（${serverUrl(port)}）。` };
+        }
+        return {
+          ok: false,
+          message: `端口 ${port} 已有 llama-server，但加载的不是 ${definition.name}。请先停止旧提示词服务或更换端口。`
+        };
       }
     } catch {}
     lastServerOutput = "";
@@ -166,7 +204,7 @@ export async function startLlamaPromptModel(settings: Settings): Promise<Connect
       "--host", "127.0.0.1",
       "--port", String(port),
       "--n-gpu-layers", "999",
-      "--ctx-size", "32768",
+      "--ctx-size", String(definition.contextSize),
       "--parallel", "1"
     ], {
       cwd: path.dirname(executable),
@@ -179,13 +217,15 @@ export async function startLlamaPromptModel(settings: Settings): Promise<Connect
       if (ownedServer === child) {
         ownedServer = null;
         ownedServerPort = 0;
+        ownedServerModelId = "";
       }
     });
     ownedServer = child;
     ownedServerPort = port;
+    ownedServerModelId = definition.id;
     try {
       await waitForServer(port);
-      return { ok: true, message: `Unconcerned Qwen3.5 已由应用启动（${serverUrl(port)}）。` };
+      return { ok: true, message: `${definition.name} 已由应用启动（${serverUrl(port)}）。` };
     } catch (error) {
       await stopOwnedServer();
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
@@ -202,6 +242,7 @@ async function stopOwnedServer(): Promise<void> {
   const child = ownedServer;
   ownedServer = null;
   ownedServerPort = 0;
+  ownedServerModelId = "";
   if (!child?.pid || child.exitCode !== null) return;
   if (process.platform === "win32") {
     await new Promise<void>((resolve) => {
@@ -230,7 +271,7 @@ export async function enhancePromptWithLlamaServer(
   const body = await buildLmStudioChatRequest(
     request,
     { ...settings, promptUseLmStudio: true, lmStudioUrl: `${serverUrl(port)}/v1` },
-    unconcernedPromptModelId
+    settings.promptModelId
   );
   const response = await fetch(`${serverUrl(port)}/v1/chat/completions`, {
     method: "POST",
@@ -247,14 +288,20 @@ export async function enhancePromptWithLlamaServer(
   };
   const content = result.choices?.[0]?.message?.content?.trim();
   if (!content) throw new Error("llama-server 没有返回提示词文本");
+  const normalizedContent = content
+    .replace(/<think>[\s\S]*?<\/think>/giu, "")
+    .replace(/^```(?:text|markdown)?\s*/iu, "")
+    .replace(/\s*```$/u, "")
+    .trim();
+  if (request.mode === "image-edit") return normalizedContent;
   const imageCount = request.imagePaths?.length ?? 0;
   const mode = request.h3PromptMode ?? inferH3PromptMode(
     Boolean(request.imagePath || imageCount > 0),
     imageCount > 1
   );
-  return normalizeH3PromptOutput(content, mode, request.h3DurationSeconds ?? 5);
+  return normalizeH3PromptOutput(normalizedContent, mode, request.h3DurationSeconds ?? 5);
 }
 
-export function llamaPromptServerStatus(): { running: boolean; port: number; output: string } {
-  return { running: Boolean(ownedServer), port: ownedServerPort, output: lastServerOutput };
+export function llamaPromptServerStatus(): { running: boolean; port: number; output: string; modelId: string } {
+  return { running: Boolean(ownedServer), port: ownedServerPort, output: lastServerOutput, modelId: ownedServerModelId };
 }
