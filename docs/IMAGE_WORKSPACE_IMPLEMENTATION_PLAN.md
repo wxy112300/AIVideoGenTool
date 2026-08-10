@@ -197,7 +197,7 @@
 - 默认图片编辑模型。
 - 默认生成数量。
 - 默认输出格式 PNG / JPEG / WebP。
-- 图片输出目录或当前采用的 ComfyUI 输出目录说明。
+- 独立图片输出目录；默认跟随所选 ComfyUI 的 `output\\Images`，不改写视频输出目录。
 - 图片 Prompt 运行时和预设管理。
 - 图片模型、文本编码器、VAE、GGUF 节点和工作流完整性检查。
 - 图片放大模型和节点状态。
@@ -265,6 +265,7 @@ interface ImageGenerationQueueTask extends QueueTaskCommon {
   taskType: "image-generation";
   projectId: string;
   parentVersionId?: string;
+  imageOutputDirectory: string;  // 入队时解析后的图片最终目录，不受后续设置修改影响
   pictures: ImageReferenceSnapshot[];
   prompt: string;
   promptVersion: number;
@@ -326,6 +327,7 @@ interface ImageAssetVersion {
   height: number;
   format: "png" | "jpeg" | "webp";
   file: HistoryFile;
+  sourceFile?: HistoryFile;  // ComfyUI staging 文件；用于失败恢复和清理，不作为用户最终路径
   comfyPromptId?: string;
   comfyOutputs?: unknown;
   performanceStats?: TaskPerformanceStats;
@@ -334,7 +336,7 @@ interface ImageAssetVersion {
 
 ### 3.6 状态迁移
 
-- `AppState.schemaVersion` 从 2 升级到 3。
+- `AppState.schemaVersion` 从 2 升级到 3；图片输出目录设置再从 3 幂等升级到 4。
 - 所有旧 `HistoryAsset` 迁移为 `mediaKind = "video"`，数据内容不变。
 - 旧 QueueTask 同样保持原行为。
 - 新增独立 `imageDraft`，不要改变现有视频 `draft` 的含义。
@@ -362,12 +364,87 @@ interface ImageAssetVersion {
 ### 4.2 路径
 
 - 数据库/JSON只保存文件元数据和真实路径，不保存图片 Blob。
-- 首个版本不迁移既有视频或图片文件。
+- 不因设置加载或 ComfyUI 实例切换自动迁移既有媒体；只有用户明确确认迁移操作时才移动文件。
 - 继续复用现有路径恢复策略，并扩展图片格式候选。
 - 删除当前版本必须解析并验证精确绝对路径，不能递归删除项目目录。
 - 项目最后一个版本被删除时，删除项目记录；是否删除原始用户导入图必须单独判断，默认不删除用户源文件。
 
-### 4.3 缩略图缓存
+### 4.3 ComfyUI 输出根、视频目录与图片目录
+
+视频和图片都需要可迁移，但必须共享同一个受控的 ComfyUI output 根。不能继续让一个 `Settings.outputDirectory` 同时承担“ComfyUI 服务输出根”和“应用视频历史目录”两个含义。
+
+#### 设置字段
+
+```ts
+interface Settings {
+  comfyOutputDirectory: string;  // ComfyUI 实际 output 根；空字符串 = 自动检测
+  videoOutputDirectory: string;  // 空字符串 = <comfyOutput>\\Videos
+  imageOutputDirectory: string;  // 空字符串 = <comfyOutput>\\Images
+}
+```
+
+- `comfyOutputDirectory` 是 ComfyUI 服务根目录，不是用户媒体迁移目标；它由所选 ComfyUI 实例离线/运行时解析，并用于计算相对 `filename_prefix`。
+- `videoOutputDirectory = ""` 和 `imageOutputDirectory = ""` 分别表示自动目录 `<comfyOutput>\\Videos` 与 `<comfyOutput>\\Images`，不把某台机器的绝对路径写入默认状态。
+- 用户选择的两个媒体目录必须是 `comfyOutputDirectory` 的子目录或其本身；解析后使用 `path.relative`/规范化大小写校验，选择 output 外部目录立即拒绝并说明“必须位于当前 ComfyUI output 目录内”。
+- 设置页显示 ComfyUI output 根、视频目录和图片目录三个独立字段；两个媒体目录都提供“恢复自动目录”和“迁移历史文件”操作。
+- 视频/图片输出目录的选择按钮可以创建尚不存在的目标子目录，并直接定位到该目录；模型目录、Prompt 目录等普通路径选择器不自动创建目录。
+- 现有 schema v3 的 `outputDirectory` 作为旧视频目录/旧 Comfy output 信息迁移到 v4：先根据模型目录、安装实例和历史绝对路径推断 Comfy output 根，再把旧目录保留为迁移源，不能直接丢弃或覆盖。
+
+#### ComfyUI output 子目录与最终文件
+
+ComfyUI 的视频/图片保存节点只能稳定写入自身 output 根下的相对子目录，因此任务分成两个路径：
+
+1. ComfyUI output 根：当前 ComfyUI 服务真实使用的 output 目录。
+2. 应用管理目录：视频默认 `Videos`，图片默认 `Images`；任务入队时保存解析后的目标目录快照。
+
+- workflow 的 `filename_prefix` 使用从 ComfyUI output 根到目标目录的安全相对路径；绝对路径和 `..` 越界路径一律拒绝。
+- 任何试图把视频或图片目录设到 ComfyUI output 外的操作都不能进入保存状态，也不能启动迁移。
+- 图片仍可使用专用 staging 子目录处理格式转换；staging 和最终目录都必须在 ComfyUI output 根内。
+- 复制目标使用项目/版本稳定命名，避免不同项目的同名文件覆盖；临时文件写入目标目录后原子重命名。
+- 复制完成后验证文件存在、大小非零、格式和宽高可读取，再把最终路径写入 `ImageAssetVersion.file`。
+- `sourceFile` 保存 Comfy staging 元数据，便于目标目录写入失败时恢复或清理；历史详情和用户操作只使用 `file`。
+- 只有最终文件验证成功且历史状态原子持久化成功后，才清理 staging；清理失败只记录警告。视频也遵守同样的“先写新目录、再更新历史、最后清理旧文件”顺序。
+
+#### 修改目录时的统一迁移事务
+
+用户修改 `videoOutputDirectory` 或 `imageOutputDirectory` 且历史中存在对应媒体时，保存设置前显示迁移确认和预检结果。两个迁移可以分别执行，也可以在一次确认中同时执行；视频和图片使用不同的文件清单。
+
+#### 用户交互状态机
+
+目录输入属于未保存设置草稿。用户点击“保存设置”时，不能先持久化新目录再询问迁移，否则迁移失败会让设置和历史路径先后失去一致性。
+
+1. 规范化新目录，并验证它位于当前 ComfyUI output 根内；不合法时拒绝保存，保留用户草稿并明确提示“输出目录必须位于当前 ComfyUI output 目录内”。
+2. 将新目录与当前生效目录按 Windows 规范化绝对路径比较；相同目录只保存其他设置，不显示迁移弹窗。
+3. 新目录合法且不同目录时，先执行只读预检，再显示三选一确认弹窗。预检至少显示媒体类型、可找到文件数、缺失文件数、冲突数和总大小。弹窗必须明确列出旧目录和新目录。
+4. 弹窗提供三个通用操作，不能把“关闭弹窗”误当成保存：
+  - **应用更改**：保存新目录，只影响之后创建的新视频；历史对象的 `file.absolutePath`、旧文件和历史展示均不修改。正文必须明确提示“历史文件不会移动”。
+  - **应用并迁移**：锁定设置页并进入迁移进度；所有目标文件复核通过后才更新历史路径。正文必须明确提示“历史文件将移动到新目录”。
+  - **取消**：不调用保存 IPC，不改变当前生效目录或历史数据；只撤销本次目录输入。其他未保存设置草稿可以保留在页面上，等待用户之后再次保存或放弃。
+5. 用户选择迁移操作时，进入不可绕过的迁移进度弹窗；设置页、目录输入和普通关闭流程锁定，直到迁移完成、失败或用户取消。迁移中的“取消”只取消迁移，不把新目录保存成生效设置。
+
+迁移进度分为：扫描历史文件、准备目标文件、第 N / M 个文件、目标文件复核、更新历史记录、清理旧文件、完成。真正的历史路径提交发生在“目标文件复核”全部通过之后，不能在单个文件移动后零散修改历史状态。
+
+迁移流程固定为：
+
+1. 解析旧目录和新目录，验证新目录位于当前 ComfyUI output 根内，列出可找到、缺失、冲突和总字节数。
+2. 视频只枚举 `HistoryAsset` 及其 `AssetVersion.files` 中明确记录的视频文件，并额外纳入等待队列中通过 `sourceAssetId/sourceVersionId` 或明确源路径引用的 `extension.sourceVideoPath`、`upscale.sourceFilePath`；图片只枚举 `ImageHistoryProject` 中 `edit` / `upscale` 版本的最终文件。不能递归搬运整个旧 output 目录。
+3. 优先使用历史文件记录的 `absolutePath` 定位源文件；只有在旧记录缺少绝对路径时，才使用迁移前保存的旧目录和 `subfolder + filename` 候选。无法唯一定位的文件进入缺失/歧义报告，不得猜路径。
+4. 按规范化源路径去重。同一个物理文件被多个历史版本引用时只移动一次，但提交阶段更新所有引用它的历史记录。
+5. 目标路径保留历史文件的相对 `subfolder + filename` 结构；目标已存在且大小/哈希匹配时视为已完成，目标已存在但内容不同则是冲突，不能覆盖。
+6. 对每个已找到且无冲突的媒体，在新目录写入临时副本并校验；禁止先删除旧文件。用户源图 `source` 版本只保留原路径，不移动原始用户文件。
+7. 所有目标文件成功写入并通过存在性、非零大小、大小/哈希和可读取性复核后，在一次状态写入中更新对应目录设置、历史版本绝对路径和队列视频输入路径；视频历史、队列和图片历史分别更新，互不影响。应用启动时也按 `sourceAssetId/sourceVersionId` 修复等待队列中的旧路径。
+8. 状态写入成功后，再删除旧的已迁移文件；删除失败保留新副本和新历史路径，迁移结果显示“完成但旧文件清理有警告”，不回滚可用历史。
+9. 任意复制、校验或目标冲突失败时，不更新对应目录设置和历史引用；清理本次迁移创建的临时文件，旧目录和旧历史继续有效。另一种媒体的迁移可以独立成功。
+
+迁移必须可重入：开始移动前持久化迁移 ID、媒体类型、旧目录、新目录和逐文件源/目标/大小/哈希/状态清单。目标文件已经存在且校验匹配时视为完成；目标存在但内容不同则生成冲突报告，不能覆盖。应用中途退出时，在历史路径提交前旧状态仍指向旧文件，下一次启动可以依据迁移清单清理临时文件或继续迁移；历史路径提交后则以新路径为准并继续清理旧文件。迁移 API、视频路径候选和图片路径候选必须分开，不能通过把新目录加入通用候选来掩盖迁移失败。
+
+完成弹窗必须区分三种结果：
+
+- **迁移成功**：所有历史文件目标存在且复核通过，历史路径已更新。
+- **迁移完成但有清理警告**：历史路径已更新，新文件可用，但部分旧文件删除失败。
+- **迁移未完成**：存在缺失、冲突、复制/校验失败或用户取消；旧历史路径保持有效，并提供报告，不显示“迁移成功”。
+
+### 4.4 缩略图缓存
 
 - 图片历史使用独立缓存命名空间，例如 `history-image-covers/v1`。
 - 缓存 Key 至少包含版本 ID、源路径、文件大小和修改时间。
@@ -465,7 +542,7 @@ Prompt 编译必须有单元测试：
 1. 引入 `mediaKind` 判别联合。
 2. 新增 `ImageEditDraft`、图片 QueueTask、图片项目和图片版本类型。
 3. 将旧视频类型通过别名或小步重命名保持兼容。
-4. `schemaVersion` 升至 3并实现幂等迁移。
+4. `schemaVersion` 升至 3并实现幂等迁移；图片输出目录字段从 3 升至 4。
 5. 添加 Seed 展开、版本编号、封面选择和父版本关系纯函数。
 6. 建立图片 workflow adapter 接口和空实现。
 7. 添加 fixture 和单元测试，不接真实 GPU。
@@ -486,6 +563,8 @@ Prompt 编译必须有单元测试：
 ## Phase 1：Qwen 2511 环境、工作流与单张命令行闭环
 
 目标：先证明后端能在本机稳定生成一张图，再接 GUI。
+
+当前状态：P1 代码基础已接入。环境扫描现在区分组件完整、应用工作流集成和 ComfyUI 运行时节点就绪；原生 workflow 已按官方 Qwen 2511 模板使用双路 `TextEncodeQwenImageEditPlus`、`FluxKontextMultiReferenceLatentMethod`、`FluxKontextImageScale` 与 `VAEEncode`，提交前会校验最终上传后的 API graph。当前机器的 `http://127.0.0.1:8188` 尚未启动，单图/双图真实生成、4090 显存记录和取消后的下一任务仍待本机运行验收。
 
 任务：
 
@@ -549,6 +628,8 @@ Prompt 编译必须有单元测试：
 5. 取消、失败重试和应用重启恢复。
 6. 批次结束后显存清理。
 7. 格式转换与文件完整性验证。
+
+当前 P2 还必须接入独立视频/图片输出目录：入队快照保存最终目录，workflow 使用相对 output 子目录，JPEG/WebP 转换和目录迁移均遵守复制后校验、最后清理源文件的顺序。
 
 验收：
 
@@ -649,6 +730,7 @@ Prompt 编译必须有单元测试：
 7. 离线检查、一键安装/修复、代理和可见日志。
 
 优先级调整：模型组件扫描、Qwen 节点/工作流完整性和运行时验证属于 P1；放大模型状态、安装辅助和可移植诊断属于 P6。
+图片输出目录、视频输出目录、默认 `output\\Images` / `output\\Videos` 解析、目录越界提示、迁移预检和迁移日志属于 P3/P4 的前置契约；不能在两个媒体设置中复用同一个输入框，也不能把迁移实现成修改全局 ComfyUI output 根。
 
 验收：
 

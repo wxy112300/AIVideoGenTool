@@ -1,4 +1,3 @@
-import path from "node:path";
 import type {
   ImageAssetVersion,
   ImageEditDraft,
@@ -45,8 +44,19 @@ function normalizedTimestamp(value: unknown, fallback: string): string {
   return value;
 }
 
+function imageBasename(filename: string): string {
+  const separator = Math.max(filename.lastIndexOf("/"), filename.lastIndexOf("\\"));
+  return filename.slice(separator + 1);
+}
+
+function imageExtension(filename: string): string {
+  const basename = imageBasename(filename);
+  const dot = basename.lastIndexOf(".");
+  return dot > 0 ? basename.slice(dot).toLowerCase() : "";
+}
+
 function imageFormatFromFilename(filename: string): ImageOutputFormat {
-  const extension = path.extname(filename).toLowerCase();
+  const extension = imageExtension(filename);
   if (extension === ".jpg" || extension === ".jpeg") return "jpeg";
   if (extension === ".webp") return "webp";
   return "png";
@@ -308,7 +318,7 @@ export function createImageSourceVersion(
   reference: ImageReference,
   createdAt: string
 ): ImageAssetVersion {
-  const filename = path.basename(reference.absolutePath);
+  const filename = imageBasename(reference.absolutePath);
   return {
     id: crypto.randomUUID(),
     versionNumber: 1,

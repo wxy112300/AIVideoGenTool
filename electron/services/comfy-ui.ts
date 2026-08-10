@@ -40,7 +40,8 @@ import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
 import {
   buildQwenImageEdit2511Workflow,
   renderImageWorkflow,
-  qwenImageEdit2511Adapter
+  qwenImageEdit2511Adapter,
+  validateQwenImageEdit2511Workflow
 } from "../../src/core/image-workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 
@@ -53,7 +54,7 @@ async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     signal: init?.signal
-      ? AbortSignal.any([init.signal, timeout])
+            ? AbortSignal.any([init.signal, timeout])
       : timeout
   });
   if (!response.ok) {
@@ -62,6 +63,15 @@ async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   }
   return (await response.json()) as T;
 }
+const videoOutputExtraData = {
+  extra_pnginfo: {
+    workflow: {
+      extra: {
+        VHS_MetadataImage: false
+      }
+    }
+  }
+};
 
 export async function testComfyUi(settings: Settings): Promise<string> {
   const stats = await jsonRequest<Record<string, unknown>>(
@@ -470,7 +480,11 @@ export async function submitTask(
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, client_id: clientId }),
+    body: JSON.stringify({
+      prompt,
+      client_id: clientId,
+      extra_data: videoOutputExtraData
+    }),
     signal
   });
   if (!result.prompt_id) throw new Error("ComfyUI 未返回 Prompt ID");
@@ -513,6 +527,10 @@ export async function submitImageTask(
   );
   const workflow = buildQwenImageEdit2511Workflow(task, run);
   const prompt = renderImageWorkflow(workflow, uploadedPictures);
+  const workflowErrors = validateQwenImageEdit2511Workflow(prompt, task.qualityProfile);
+  if (workflowErrors.length) {
+    throw new Error(`图片工作流校验失败：${workflowErrors.join(" ")}`);
+  }
   const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
   if (missingNodes.length) {
     throw new Error(

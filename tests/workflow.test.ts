@@ -976,7 +976,7 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
       Object.values(rendered).some(
         (node) => node.class_type === "PreviewImage"
       )
-    ).toBe(true);
+    ).toBe(false);
     expect(JSON.stringify(rendered)).not.toContain("{{");
   });
 

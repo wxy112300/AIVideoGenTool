@@ -292,12 +292,22 @@ export class JsonStore {
           imagePromptPresets
         },
         queueRunning: false,
-        schemaVersion: 3,
+        schemaVersion: 4,
         queue: (saved.queue ?? []).map(migrateQueueTask),
         history: (saved.history ?? []).map(migrateHistoryAsset),
         imageHistory
       };
-      let needsPersist = saved.queueRunning === true || savedSchemaVersion < 3;
+      let needsPersist = saved.queueRunning === true || savedSchemaVersion < 4;
+      if (typeof saved.settings?.imageOutputDirectory !== "string") {
+        this.state.settings.imageOutputDirectory = "";
+        needsPersist = true;
+      } else {
+        const normalizedImageOutputDirectory = saved.settings.imageOutputDirectory.trim();
+        if (normalizedImageOutputDirectory !== this.state.settings.imageOutputDirectory) {
+          this.state.settings.imageOutputDirectory = normalizedImageOutputDirectory;
+          needsPersist = true;
+        }
+      }
       if (JSON.stringify(imageHistory) !== JSON.stringify(saved.imageHistory)) {
         needsPersist = true;
       }

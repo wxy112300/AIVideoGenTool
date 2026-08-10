@@ -25,6 +25,7 @@ import type {
 import {
   managedPromptModelDefinitions
 } from "../../src/core/prompt-models.js";
+import { qwenImageEdit2511RequiredNodeTypes } from "../../src/core/image-workflow.js";
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 
@@ -393,6 +394,7 @@ interface ModelProfileDefinition {
   description: string;
   vram: string;
   integrated?: boolean;
+  runtimeNodeTypes?: readonly string[];
   components: Array<{
     label: string;
     expected: string;
@@ -971,7 +973,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     badge: "最多 3 Picture · 原生质量",
     description: "Qwen 2511 多图编辑模型；当前先扫描官方扩散模型、Qwen VL 文本编码器和图片 VAE，工作流通过验证后才启用。",
     vram: "INT8/FP8/BF16 · 4090 需实测",
-    integrated: false,
+    integrated: true,
+    runtimeNodeTypes: qwenImageEdit2511RequiredNodeTypes,
     components: [
       {
         label: "Qwen Image Edit 2511 扩散模型",
@@ -1473,7 +1476,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
 
 export function evaluateModelProfiles(
   modelFiles: string[],
-  ltxModelProfile: Settings["ltxExtensionModelProfile"] = "q3_k_m"
+  ltxModelProfile: Settings["ltxExtensionModelProfile"] = "q3_k_m",
+  runtimeNodeIds?: ReadonlySet<string>
 ): ModelScanProfile[] {
   const normalizedFiles = modelFiles.map((filename) =>
     filename.replaceAll("\\", "/")
@@ -1503,6 +1507,9 @@ export function evaluateModelProfiles(
           installGuides[`hunyuan15:${component.label}`]
       };
     });
+    const runtimeMissingNodes = profile.runtimeNodeTypes && runtimeNodeIds
+      ? profile.runtimeNodeTypes.filter((nodeType) => !runtimeNodeIds.has(nodeType))
+      : [];
     return {
       id: profile.id,
       name: profile.name,
@@ -1513,6 +1520,13 @@ export function evaluateModelProfiles(
       vram: profile.vram,
       available: components.every((component) => component.found),
       integrated: profile.integrated !== false,
+      ...(profile.runtimeNodeTypes
+        ? {
+            runtimeVerified: runtimeNodeIds !== undefined,
+            runtimeReady: runtimeNodeIds !== undefined && runtimeMissingNodes.length === 0,
+            runtimeMissingNodes
+          }
+        : {}),
       components
     };
     });
@@ -4472,9 +4486,28 @@ export async function scanEnvironment(
   ) {
     modelFiles.push("frame_interpolation/rife47.pth");
   }
+  const configuredComfyBaseUrl = settings.comfyUrl.replace(/\/+$/, "");
+  const desktopComfyBaseUrl = "http://127.0.0.1:8000";
+  const runtimeComfyBaseUrl = await firstReachableServiceBase(
+    [
+      configuredComfyBaseUrl,
+      ...(comfyInstallation?.type === "desktop" ? [desktopComfyBaseUrl] : [])
+    ],
+    "/object_info"
+  );
+  const runtimeNodeIds = runtimeComfyBaseUrl
+    ? await fetch(`${runtimeComfyBaseUrl}/object_info`, {
+        signal: AbortSignal.timeout(8000)
+      })
+        .then(async (response) => response.ok
+          ? availableComfyNodeIds(await response.json())
+          : undefined)
+        .catch(() => undefined)
+    : undefined;
   const modelProfiles = evaluateModelProfiles(
     modelFiles,
-    settings.ltxExtensionModelProfile
+    settings.ltxExtensionModelProfile,
+    runtimeNodeIds
   );
   const pythonRuntimes = await discoverPythonRuntimes(
     settings,
@@ -4523,10 +4556,9 @@ export async function scanEnvironment(
         detail: `未在 ${userHome} 及常见磁盘目录中找到`
       };
 
-  const configuredComfyBaseUrl = settings.comfyUrl.replace(/\/+$/, "");
-  const desktopComfyBaseUrl = "http://127.0.0.1:8000";
   const reachableComfyBaseUrl = await firstReachableServiceBase(
     [
+      runtimeComfyBaseUrl,
       configuredComfyBaseUrl,
       ...(comfyInstallation?.type === "desktop" ? [desktopComfyBaseUrl] : [])
     ],

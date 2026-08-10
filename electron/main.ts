@@ -25,6 +25,8 @@ import type {
   ExtensionQueueTask,
   GenerationQueueTask,
   HistoryAsset,
+  HistoryFile,
+  HistoryMigrationProgress,
   ImageGenerationQueueTask,
   ImageAssetVersion,
   ImageEditDraft,
@@ -33,6 +35,7 @@ import type {
   LocalServiceKind,
   QueueTask,
   Settings,
+  SettingsSaveMode,
   TaskPerformanceStats,
   UpscaleQueueTask,
   UpscaleRequest,
@@ -53,7 +56,11 @@ import {
   extractComfyOutputFiles
 } from "../src/core/comfy-output.js";
 import { attachAbsoluteOutputPaths } from "../src/core/comfy-output-paths.js";
-import { isImageGenerationQueueTask, moveWaitingTask } from "../src/core/queue.js";
+import {
+  isImageGenerationQueueTask,
+  moveWaitingTask,
+  syncQueueVideoInputPaths
+} from "../src/core/queue.js";
 import {
   createImageSourceVersion,
   expandImageSeeds,
@@ -126,6 +133,15 @@ import {
   type VramWatchdogMonitor
 } from "./services/vram-watchdog.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
+import {
+  cleanupVideoHistoryMigration,
+  isPathWithinDirectory,
+  markVideoHistoryMigrationCommitted,
+  planVideoHistoryMigration,
+  prepareVideoHistoryMigration,
+  rollbackVideoHistoryMigration,
+  type PreparedVideoHistoryMigration
+} from "./services/video-history-migration.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const studioProductName = "Local Video Studio";
@@ -203,6 +219,7 @@ async function resolveHistorySourcePath(sourcePath: string): Promise<string | nu
 let mainWindow: BrowserWindow | null = null;
 let store: JsonStore;
 let rendererHasUnsavedSettings = false;
+let historyMigrationRunning = false;
 let pendingWindowCloseRequest: WindowCloseRequest | null = null;
 let queueWorker: Promise<void> | null = null;
 let activeController: AbortController | null = null;
@@ -597,15 +614,7 @@ const performanceLogIntervalMs = 30_000;
 async function resolveTaskOutputDirectory(): Promise<string> {
   const configured = store.get().settings.outputDirectory.trim();
   const detected = await resolveComfyOutputDirectory(store.get().settings);
-  const resolved = detected || configured;
-  if (!resolved) return "";
-
-  await store.update((state) => {
-    if (state.settings.outputDirectory !== resolved) {
-      state.settings.outputDirectory = resolved;
-    }
-  });
-  return resolved;
+  return detected || configured;
 }
 
 async function requireExistingVideoOutput(
@@ -670,6 +679,24 @@ async function requireExistingImageOutput(
   );
 }
 
+function restoreRecordedHistoryFiles(
+  reportedFiles: HistoryFile[],
+  recordedFiles: HistoryFile[],
+  outputDirectory: string
+): HistoryFile[] {
+  const recordedPaths = new Map(
+    recordedFiles
+      .filter((file) => file.absolutePath)
+      .map((file) => [`${file.subfolder}\u0000${file.filename}\u0000${file.type}`, file.absolutePath!])
+  );
+  const files = reportedFiles.length ? reportedFiles : recordedFiles;
+  return files.map((file) => {
+    const recordedPath = recordedPaths.get(`${file.subfolder}\u0000${file.filename}\u0000${file.type}`);
+    if (recordedPath) return { ...file, absolutePath: recordedPath };
+    return attachAbsoluteOutputPaths([file], outputDirectory)[0] ?? file;
+  });
+}
+
 async function restoreHistoryOutputPaths(): Promise<void> {
   const outputDirectory = await resolveTaskOutputDirectory();
   if (!outputDirectory) return;
@@ -677,18 +704,21 @@ async function restoreHistoryOutputPaths(): Promise<void> {
   await store.update((state) => {
     for (const asset of state.history) {
       const originalAssetFiles = extractComfyOutputFiles(asset.comfyOutputs);
-      asset.files = attachAbsoluteOutputPaths(
+      asset.files = restoreRecordedHistoryFiles(
         originalAssetFiles.length ? originalAssetFiles : asset.files,
+        asset.files,
         outputDirectory
       );
       for (const version of asset.versions) {
         const originalVersionFiles = extractComfyOutputFiles(version.comfyOutputs);
-        version.files = attachAbsoluteOutputPaths(
+        version.files = restoreRecordedHistoryFiles(
           originalVersionFiles.length ? originalVersionFiles : version.files,
+          version.files,
           outputDirectory
         );
       }
     }
+    state.queue = syncQueueVideoInputPaths(state.queue, state.history);
   });
 }
 
@@ -750,6 +780,73 @@ async function interruptForExit(waitForWorker: boolean): Promise<{
   };
 }
 
+function sendHistoryMigrationProgress(progress: HistoryMigrationProgress): void {
+  mainWindow?.webContents.send("history-migration:progress", progress);
+}
+
+async function effectiveVideoOutputDirectory(settings: Settings): Promise<string> {
+  const configured = settings.outputDirectory.trim();
+  if (configured) return path.resolve(configured);
+  const detected = await resolveComfyOutputDirectory({
+    ...settings,
+    outputDirectory: ""
+  });
+  return detected ? path.resolve(detected) : "";
+}
+
+async function validateVideoOutputDirectoryChange(
+  previous: Settings,
+  next: Settings
+): Promise<{ oldDirectory: string; newDirectory: string }> {
+  const oldDirectory = await effectiveVideoOutputDirectory(previous);
+  const newDirectory = await effectiveVideoOutputDirectory(next);
+  if (!newDirectory) {
+    throw new Error("无法确定新的视频输出目录，请先启动或选择 ComfyUI 实例。");
+  }
+  if (!oldDirectory || oldDirectory.toLowerCase() === newDirectory.toLowerCase()) {
+    return { oldDirectory, newDirectory };
+  }
+  const outputRoot = await resolveComfyOutputDirectory({
+    ...previous,
+    outputDirectory: ""
+  }) || oldDirectory;
+  if (!isPathWithinDirectory(outputRoot, newDirectory)) {
+    throw new Error("视频输出目录必须位于当前 ComfyUI output 目录内。");
+  }
+  return { oldDirectory, newDirectory };
+}
+
+function applyVideoMigrationPaths(
+  state: AppState,
+  plan: PreparedVideoHistoryMigration["plan"]
+): void {
+  for (const entry of plan.entries) {
+    for (const reference of entry.references) {
+      if (reference.kind === "queue") {
+        const task = state.queue.find((item) => item.id === reference.taskId);
+        if (task?.taskType === "extension" && reference.field === "sourceVideoPath") {
+          task.sourceVideoPath = entry.targetPath;
+          task.updatedAt = new Date().toISOString();
+        } else if (task?.taskType === "upscale" && reference.field === "sourceFilePath") {
+          task.sourceFilePath = entry.targetPath;
+          task.updatedAt = new Date().toISOString();
+        }
+        continue;
+      }
+      const asset = state.history.find((item) => item.id === reference.assetId);
+      if (!asset) continue;
+      if (reference.versionId) {
+        const version = asset.versions.find((item) => item.id === reference.versionId);
+        const file = version?.files[reference.fileIndex];
+        if (file) file.absolutePath = entry.targetPath;
+      } else {
+        const file = asset.files[reference.fileIndex];
+        if (file) file.absolutePath = entry.targetPath;
+      }
+    }
+  }
+}
+
 async function finishWindowClose(): Promise<void> {
   appLogger.info("app", "shutdown", "Application shutdown started");
   await releasePromptRuntime(store.get().settings);
@@ -762,6 +859,16 @@ async function finishWindowClose(): Promise<void> {
 
 async function handleWindowClose(): Promise<void> {
   if (!mainWindow || closeFlowRunning) return;
+  if (historyMigrationRunning) {
+    await dialog.showMessageBox(mainWindow, {
+      type: "info",
+      title: "目录迁移正在进行",
+      message: "请等待历史视频迁移完成后再退出应用。",
+      buttons: ["知道了"],
+      noLink: true
+    });
+    return;
+  }
   const runningTask = store
     .get()
     .queue.find((task) => task.status === "running");
@@ -978,7 +1085,8 @@ function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask 
 
 function imageTaskFromDraft(
   draft: ImageEditDraft,
-  state: AppState
+  state: AppState,
+  diffusionModelFilename?: string
 ): ImageGenerationQueueTask {
   const now = new Date().toISOString();
   const prompt = draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "";
@@ -1002,6 +1110,7 @@ function imageTaskFromDraft(
     projectId,
     parentVersionId: draft.parentVersionId,
     pictures: draft.pictures.map((picture) => ({ ...picture })),
+    ...(diffusionModelFilename ? { diffusionModelFilename } : {}),
     prompt,
     promptVersion: draft.activePromptVersion + 1,
     modelId: draft.modelId,
@@ -1012,6 +1121,39 @@ function imageTaskFromDraft(
     runs,
     progress: 0
   };
+}
+
+async function requireImageModelRuntime(settings: Settings): Promise<string> {
+  const scan = await scanEnvironment(settings);
+  const profile = scan.modelProfiles.find(
+    (item) => item.id === qwenImageEdit2511Adapter.id
+  );
+  if (!profile?.available) {
+    const missing = profile?.components
+      .filter((component) => !component.found)
+      .map((component) => component.expected)
+      .join("、");
+    throw new Error(
+      `Qwen Image Edit 2511 组件尚未完整${missing ? `，缺少：${missing}` : ""}。`
+    );
+  }
+  if (!profile.runtimeVerified) {
+    throw new Error("请先启动 ComfyUI 并重新扫描环境，完成 Qwen 图片工作流节点验证。");
+  }
+  if (!profile.runtimeReady) {
+    throw new Error(
+      `当前 ComfyUI 缺少 Qwen 图片工作流节点：${profile.runtimeMissingNodes?.join("、") || "未知节点"}。`
+    );
+  }
+  const diffusionModel = profile.components
+    .find((component) => component.label.includes("扩散模型"))
+    ?.matches[0]
+    ?.split(/[\\/]/u)
+    .pop();
+  if (!diffusionModel) {
+    throw new Error("Qwen Image Edit 2511 扩散模型文件未能从环境扫描结果中解析。");
+  }
+  return diffusionModel;
 }
 
 function extensionTaskFromDraft(
@@ -2343,14 +2485,27 @@ function registerIpc(): void {
     sendState(next);
     return next;
   });
-  ipcMain.handle("settings:save", async (_event, settings: Settings) => {
+  ipcMain.handle("settings:save", async (_event, settings: Settings, mode: SettingsSaveMode = "apply") => {
+    if (mode !== "apply" && mode !== "migrate-video-history") {
+      throw new Error("未知的设置保存模式。");
+    }
+    if (historyMigrationRunning) {
+      throw new Error("当前正在迁移历史视频，请等待本次操作完成。");
+    }
     const previous = store.get().settings;
+    const outputDirectoryChanged = previous.outputDirectory.trim() !== settings.outputDirectory.trim();
+    const directories = outputDirectoryChanged || mode === "migrate-video-history"
+      ? await validateVideoOutputDirectoryChange(previous, settings)
+      : { oldDirectory: "", newDirectory: "" };
+    const shouldMigrate = mode === "migrate-video-history" &&
+      directories.oldDirectory &&
+      directories.newDirectory.toLowerCase() !== directories.oldDirectory.toLowerCase();
     const changedKeys = Object.keys(settings).filter((key) =>
       JSON.stringify(previous[key as keyof Settings]) !==
       JSON.stringify(settings[key as keyof Settings])
     );
     let updatedH3TaskCount = 0;
-    const next = await store.update((state) => {
+    const commitSettings = (state: AppState): void => {
       state.settings = settings;
       if (previous.h3AttentionMode !== settings.h3AttentionMode) {
         for (const task of state.queue) {
@@ -2360,6 +2515,86 @@ function registerIpc(): void {
           updatedH3TaskCount += 1;
         }
       }
+    };
+    if (shouldMigrate) {
+      historyMigrationRunning = true;
+      let preparation: PreparedVideoHistoryMigration | null = null;
+      let stateCommitted = false;
+      try {
+        sendHistoryMigrationProgress({
+          phase: "scanning",
+          current: 0,
+          total: 0,
+          message: "正在扫描历史视频文件",
+          migratedFiles: 0,
+          warningCount: 0
+        });
+        const plan = await planVideoHistoryMigration(
+          store.get().history,
+          directories.oldDirectory,
+          directories.newDirectory,
+          store.get().queue
+        );
+        sendHistoryMigrationProgress({
+          phase: "scanning",
+          current: 0,
+          total: plan.entries.length,
+          message: `已找到 ${plan.entries.length} 个历史视频文件，准备迁移`,
+          migratedFiles: 0,
+          warningCount: plan.missing.length + plan.conflicts.length
+        });
+        preparation = await prepareVideoHistoryMigration(
+          plan,
+          path.join(app.getPath("userData"), "video-history-migration.json"),
+          sendHistoryMigrationProgress
+        );
+        sendHistoryMigrationProgress({
+          phase: "committing",
+          current: plan.entries.length,
+          total: plan.entries.length,
+          message: "目标文件已复核，正在更新历史记录",
+          migratedFiles: plan.entries.length,
+          warningCount: 0
+        });
+        const next = await store.update((state) => {
+          commitSettings(state);
+          applyVideoMigrationPaths(state, plan);
+        });
+        stateCommitted = true;
+        await markVideoHistoryMigrationCommitted(preparation);
+        const warnings = await cleanupVideoHistoryMigration(
+          preparation,
+          sendHistoryMigrationProgress
+        );
+        sendHistoryMigrationProgress({
+          phase: "completed",
+          current: plan.entries.length,
+          total: plan.entries.length,
+          message: warnings.length
+            ? "历史视频已迁移，部分旧文件清理失败"
+            : "历史视频迁移完成",
+          migratedFiles: plan.entries.length,
+          warningCount: warnings.length
+        });
+        appLogger.info("settings", "video-history-migrated", "Video history was migrated to the new output directory", {
+          oldDirectory: directories.oldDirectory,
+          newDirectory: directories.newDirectory,
+          migratedFiles: plan.entries.length,
+          warningCount: warnings.length
+        });
+        sendState(next);
+        return next;
+      } catch (error) {
+        if (preparation && !stateCommitted) {
+          await rollbackVideoHistoryMigration(preparation);
+        }
+        throw error;
+      } finally {
+        historyMigrationRunning = false;
+      }
+    }
+    const next = await store.update((state) => {
+      commitSettings(state);
     });
     appLogger.info("settings", "saved", "Application settings saved", {
       changedKeys,
@@ -2417,8 +2652,17 @@ function registerIpc(): void {
   ipcMain.handle("performance:get", (_event, settings: Settings) =>
     getPerformanceMetrics(settings)
   );
-  ipcMain.handle("file:pick-directory", async () => {
-    const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+  ipcMain.handle("file:pick-directory", async (_event, defaultPath?: string, createIfMissing = false) => {
+    const candidate = typeof defaultPath === "string" ? defaultPath.trim() : "";
+    const candidatePath = candidate ? path.resolve(candidate) : "";
+    if (createIfMissing && candidatePath) {
+      await fs.mkdir(candidatePath, { recursive: true }).catch(() => undefined);
+    }
+    const candidateStat = candidatePath ? await fs.stat(candidatePath).catch(() => null) : null;
+    const result = await dialog.showOpenDialog({
+      defaultPath: candidateStat?.isDirectory() ? candidatePath : undefined,
+      properties: ["openDirectory"]
+    });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
   ipcMain.handle("file:read-image", async (_event, filename: string) => {
@@ -2959,6 +3203,7 @@ function registerIpc(): void {
     if (!qwenImageEdit2511Adapter.supportedFormats.includes(normalized.outputFormat)) {
       throw new Error(`当前图片适配器不支持 ${normalized.outputFormat} 输出格式。`);
     }
+    const diffusionModelFilename = await requireImageModelRuntime(store.get().settings);
     for (const picture of normalized.pictures) {
       const stat = await fs.stat(picture.absolutePath).catch(() => null);
       if (!stat?.isFile()) {
@@ -2968,7 +3213,7 @@ function registerIpc(): void {
     const compiled = qwenImageEdit2511Adapter.compilePrompt(prompt, normalized.pictures);
     if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
     const current = store.get();
-    const task = imageTaskFromDraft(normalized, current);
+    const task = imageTaskFromDraft(normalized, current, diffusionModelFilename);
     const next = await store.update((state) => {
       state.queue.push(task);
       state.imageDraft = normalized;

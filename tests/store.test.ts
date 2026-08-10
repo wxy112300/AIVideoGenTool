@@ -228,6 +228,23 @@ describe("queue lock recovery", () => {
     }
   });
 
+  it("persists a customized image output directory without changing video output", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.settings.outputDirectory = "C:\\ComfyUI\\output\\Videos";
+    state.settings.imageOutputDirectory = " C:\\ComfyUI\\output\\Images ";
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.settings.outputDirectory).toBe("C:\\ComfyUI\\output\\Videos");
+      expect(loaded.settings.imageOutputDirectory).toBe("C:\\ComfyUI\\output\\Images");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("persists edited H3 prompt presets and fills missing preset defaults", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
@@ -284,7 +301,7 @@ describe("queue lock recovery", () => {
     }
   });
 
-  it("migrates a schema v2 video state to v3 with an independent image draft", async () => {
+  it("migrates a schema v2 video state to v4 with an independent image draft", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
     const { imageDraft: _imageDraft, ...stateWithoutImageDraft } = createDefaultState();
@@ -297,21 +314,24 @@ describe("queue lock recovery", () => {
     try {
       const store = new JsonStore(filename);
       const loaded = await store.load();
-      expect(loaded.schemaVersion).toBe(3);
+      expect(loaded.schemaVersion).toBe(4);
       expect(loaded.imageDraft.mode).toBe("image-edit");
       expect(loaded.imageDraft.modelId).toBe("qwen-image-edit-2511");
+      expect(loaded.settings.imageOutputDirectory).toBe("");
       expect(loaded.imageHistory).toEqual([]);
       const persisted = JSON.parse(await fs.readFile(filename, "utf8")) as {
         schemaVersion: number;
         imageDraft: { mode: string };
+        settings: { imageOutputDirectory: string };
         imageHistory: unknown[];
       };
-      expect(persisted.schemaVersion).toBe(3);
+      expect(persisted.schemaVersion).toBe(4);
       expect(persisted.imageDraft.mode).toBe("image-edit");
+      expect(persisted.settings.imageOutputDirectory).toBe("");
       expect(persisted.imageHistory).toEqual([]);
 
       const reloaded = await new JsonStore(filename).load();
-      expect(reloaded.schemaVersion).toBe(3);
+      expect(reloaded.schemaVersion).toBe(4);
       expect(reloaded.imageDraft.mode).toBe("image-edit");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });

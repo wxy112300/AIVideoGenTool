@@ -3,8 +3,10 @@ import {
   buildQwenImageEdit2511Workflow,
   compileQwenImageEditPrompt,
   imageOutputCandidateFromValue,
+  qwenImageEdit2511RequiredNodeTypes,
   qwenImageEdit2511Capability,
-  renderImageWorkflow
+  renderImageWorkflow,
+  validateQwenImageEdit2511Workflow
 } from "../src/core/image-workflow.js";
 import type { ImageGenerationQueueTask, ImageReference } from "../src/types.js";
 
@@ -84,6 +86,7 @@ describe("Qwen image edit workflow contract", () => {
       updatedAt: "2026-08-10T00:00:00.000Z",
       projectId: "project-1",
       pictures: [picture(1), picture(3)],
+      diffusionModelFilename: "qwen_image_edit_2511_bf16.safetensors",
       prompt: "把 Picture 3 的人物放到 Picture 1 的场景中。",
       promptVersion: 1,
       modelId: "qwen-image-edit-2511",
@@ -105,8 +108,53 @@ describe("Qwen image edit workflow contract", () => {
     expect(workflow.positive?.class_type).toBe("TextEncodeQwenImageEditPlus");
     expect(workflow.positive?.inputs.image1).toEqual(["image-picture-1", 0]);
     expect(workflow.positive?.inputs.image2).toEqual(["image-picture-3", 0]);
+    expect(workflow.model?.inputs.unet_name).toBe("qwen_image_edit_2511_bf16.safetensors");
+    expect(workflow.negative?.class_type).toBe("TextEncodeQwenImageEditPlus");
+    expect(workflow.sourceImage?.class_type).toBe("FluxKontextImageScale");
+    expect(workflow.source?.class_type).toBe("VAEEncode");
+    expect(workflow.positiveReference?.class_type).toBe("FluxKontextMultiReferenceLatentMethod");
     expect(workflow.sampler?.inputs.seed).toBe(123);
     expect(workflow.save?.class_type).toBe("SaveImage");
+    expect(validateQwenImageEdit2511Workflow(workflow, "native", true)).toEqual([]);
+    expect(validateQwenImageEdit2511Workflow(
+      renderImageWorkflow(workflow, ["uploaded-picture-1.png", "uploaded-picture-3.png"])
+    )).toEqual([]);
+  });
+
+  it("declares the native runtime node contract without the removed Flux reference node", () => {
+    expect(qwenImageEdit2511RequiredNodeTypes).toContain("TextEncodeQwenImageEditPlus");
+    expect(qwenImageEdit2511RequiredNodeTypes).toContain("FluxKontextImageScale");
+    expect(qwenImageEdit2511RequiredNodeTypes).toContain("FluxKontextMultiReferenceLatentMethod");
+  });
+
+  it("rejects a workflow fixture with an unresolved image placeholder", () => {
+    const workflow = buildQwenImageEdit2511Workflow({
+      id: "task-1",
+      taskType: "image-generation",
+      status: "waiting",
+      createdAt: "2026-08-10T00:00:00.000Z",
+      updatedAt: "2026-08-10T00:00:00.000Z",
+      outputFilename: "QwenEdit-1",
+      modelId: "qwen-image-edit-2511",
+      workflowPath: "builtin:image/qwen-image-edit-2511",
+      projectId: "project-1",
+      pictures: [picture(1)],
+      prompt: "编辑 Picture 1。",
+      promptVersion: 1,
+      qualityProfile: "native",
+      outputFormat: "png",
+      outputCount: 1,
+      runs: []
+    }, {
+      id: "run-1",
+      index: 0,
+      seed: 123,
+      status: "waiting"
+    });
+
+    expect(validateQwenImageEdit2511Workflow(workflow)).toContain(
+      "图片工作流仍包含未上传的 IMAGE 占位符。"
+    );
   });
 
   it("rejects a Qwen workflow without a base Picture", () => {

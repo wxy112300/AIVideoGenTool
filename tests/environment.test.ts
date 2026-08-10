@@ -28,6 +28,7 @@ import {
   tritonRequirementForTorch,
   videoHelperBatchCompatible
 } from "../electron/services/environment.js";
+import { qwenImageEdit2511RequiredNodeTypes } from "../src/core/image-workflow.js";
 
 describe("SageAttention environment selection", () => {
   it("requires the KJNodes large-stride guard added for modern attention runtimes", () => {
@@ -471,7 +472,7 @@ describe("ComfyUI environment candidates", () => {
     });
   });
 
-  it("scans Qwen Image Edit 2511 components without claiming workflow integration", () => {
+  it("scans Qwen Image Edit 2511 components separately from runtime readiness", () => {
     const incomplete = evaluateModelProfiles([]).find(
       (profile) => profile.id === "qwen-image-edit-2511"
     );
@@ -484,14 +485,46 @@ describe("ComfyUI environment candidates", () => {
     expect(incomplete).toMatchObject({
       category: "image",
       available: false,
-      integrated: false
+      integrated: true,
+      runtimeVerified: false,
+      runtimeReady: false
     });
     expect(complete).toMatchObject({
       category: "image",
       available: true,
-      integrated: false
+      integrated: true,
+      runtimeVerified: false,
+      runtimeReady: false
     });
     expect(complete?.components.every((component) => component.installGuide.downloadUrl)).toBe(true);
+
+    const runtimeNodes = new Set(qwenImageEdit2511RequiredNodeTypes);
+    const ready = evaluateModelProfiles([
+      "diffusion_models\\qwen_image_edit_2511_int8_convrot.safetensors",
+      "text_encoders\\qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "vae\\qwen_image_vae.safetensors"
+    ], "q3_k_m", runtimeNodes).find(
+      (profile) => profile.id === "qwen-image-edit-2511"
+    );
+    expect(ready).toMatchObject({
+      available: true,
+      integrated: true,
+      runtimeVerified: true,
+      runtimeReady: true,
+      runtimeMissingNodes: []
+    });
+
+    const missingRuntimeNode = new Set(runtimeNodes);
+    missingRuntimeNode.delete("TextEncodeQwenImageEditPlus");
+    const blocked = evaluateModelProfiles([
+      "diffusion_models\\qwen_image_edit_2511_int8_convrot.safetensors",
+      "text_encoders\\qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "vae\\qwen_image_vae.safetensors"
+    ], "q3_k_m", missingRuntimeNode).find(
+      (profile) => profile.id === "qwen-image-edit-2511"
+    );
+    expect(blocked?.runtimeReady).toBe(false);
+    expect(blocked?.runtimeMissingNodes).toContain("TextEncodeQwenImageEditPlus");
   });
 
   it("keeps Gemma 4 tiers separate by requiring a colocated model directory", () => {

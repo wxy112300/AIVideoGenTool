@@ -138,6 +138,7 @@ export interface Settings {
   h3PromptPresets: Record<H3PromptPreset, string>;
   imagePromptPresets: Record<ImagePromptPreset, string>;
   outputDirectory: string;
+  imageOutputDirectory: string;
   modelDirectory: string;
   defaultVideoModel: string;
   defaultImageModel: string;
@@ -202,6 +203,7 @@ export interface ImageGenerationQueueTask extends QueueTaskBase {
   projectId: string;
   parentVersionId?: string;
   pictures: ImageReferenceSnapshot[];
+  diffusionModelFilename?: string;
   prompt: string;
   promptVersion: number;
   qualityProfile: string;
@@ -393,7 +395,7 @@ export interface HistoryAsset {
 }
 
 export interface AppState {
-  schemaVersion: 3;
+  schemaVersion: 4;
   draft: Draft;
   imageDraft: ImageEditDraft;
   settings: Settings;
@@ -510,6 +512,9 @@ export interface ModelScanProfile {
   vram: string;
   available: boolean;
   integrated: boolean;
+  runtimeVerified?: boolean;
+  runtimeReady?: boolean;
+  runtimeMissingNodes?: string[];
   components: ModelComponentStatus[];
 }
 
@@ -698,6 +703,25 @@ export type WindowCloseResponse =
   | "finish-tasks"
   | "force-exit";
 
+export type SettingsSaveMode = "apply" | "migrate-video-history";
+
+export type HistoryMigrationPhase =
+  | "scanning"
+  | "moving"
+  | "verifying"
+  | "committing"
+  | "cleaning"
+  | "completed";
+
+export interface HistoryMigrationProgress {
+  phase: HistoryMigrationPhase;
+  current: number;
+  total: number;
+  message: string;
+  migratedFiles: number;
+  warningCount: number;
+}
+
 export interface AppApi {
   getState(): Promise<AppState>;
   getAppVersion(): Promise<string>;
@@ -705,7 +729,7 @@ export interface AppApi {
   respondWindowClose(response: WindowCloseResponse): Promise<void>;
   saveDraft(draft: Draft): Promise<AppState>;
   saveImageDraft(draft: ImageEditDraft): Promise<AppState>;
-  saveSettings(settings: Settings): Promise<AppState>;
+  saveSettings(settings: Settings, mode?: SettingsSaveMode): Promise<AppState>;
   pickImage(): Promise<string | null>;
   pickVideo(): Promise<string | null>;
   getDroppedFilePath(file: File): string;
@@ -722,7 +746,7 @@ export interface AppApi {
   openAppLogDirectory(kind: "logs" | "crashDumps"): Promise<boolean>;
   reportRendererError(message: string, meta?: Record<string, unknown>): Promise<void>;
   reportUserAction(action: string, meta?: Record<string, unknown>): Promise<void>;
-  pickDirectory(): Promise<string | null>;
+  pickDirectory(defaultPath?: string, createIfMissing?: boolean): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
   readHistoryCover(key: string, sourcePath: string): Promise<string | null>;
   saveHistoryCover(key: string, sourcePath: string, data: ArrayBuffer): Promise<boolean>;
@@ -774,6 +798,7 @@ export interface AppApi {
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
   onWindowCloseRequest(callback: (request: WindowCloseRequest) => void): () => void;
   onAttentionInstallLog(callback: (message: string) => void): () => void;
+  onHistoryMigrationProgress(callback: (progress: HistoryMigrationProgress) => void): () => void;
 }
 
 declare global {

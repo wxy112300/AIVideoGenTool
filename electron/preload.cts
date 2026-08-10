@@ -4,7 +4,9 @@ import type {
   Draft,
   EnhanceRequest,
   EnvironmentIssue,
+  HistoryMigrationProgress,
   Settings,
+  SettingsSaveMode,
   WindowCloseRequest,
   WindowCloseResponse
 } from "../src/types.js";
@@ -17,7 +19,8 @@ const api: AppApi = {
     ipcRenderer.invoke("window:close-response", response),
   saveDraft: (draft: Draft) => ipcRenderer.invoke("draft:save", draft),
   saveImageDraft: (draft) => ipcRenderer.invoke("image-draft:save", draft),
-  saveSettings: (settings: Settings) => ipcRenderer.invoke("settings:save", settings),
+  saveSettings: (settings: Settings, mode?: SettingsSaveMode) =>
+    ipcRenderer.invoke("settings:save", settings, mode),
   pickImage: () => ipcRenderer.invoke("file:pick-image"),
   pickVideo: () => ipcRenderer.invoke("file:pick-video"),
   getDroppedFilePath: (file) => webUtils.getPathForFile(file),
@@ -38,7 +41,8 @@ const api: AppApi = {
     ipcRenderer.invoke("logs:renderer-error", message, meta),
   reportUserAction: (action: string, meta?: Record<string, unknown>) =>
     ipcRenderer.invoke("logs:user-action", action, meta),
-  pickDirectory: () => ipcRenderer.invoke("file:pick-directory"),
+  pickDirectory: (defaultPath?: string, createIfMissing?: boolean) =>
+    ipcRenderer.invoke("file:pick-directory", defaultPath, createIfMissing),
   readImage: (path: string) => ipcRenderer.invoke("file:read-image", path),
   readHistoryCover: (key: string, sourcePath: string) =>
     ipcRenderer.invoke("history-cover:read", key, sourcePath),
@@ -111,6 +115,12 @@ const api: AppApi = {
       callback(String(message));
     ipcRenderer.on("attention-acceleration:log", listener);
     return () => ipcRenderer.removeListener("attention-acceleration:log", listener);
+  },
+  onHistoryMigrationProgress: (callback: (progress: HistoryMigrationProgress) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: unknown) =>
+      callback(progress as HistoryMigrationProgress);
+    ipcRenderer.on("history-migration:progress", listener);
+    return () => ipcRenderer.removeListener("history-migration:progress", listener);
   }
 };
 

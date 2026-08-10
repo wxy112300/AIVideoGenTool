@@ -996,30 +996,6 @@ export function renderWorkflow(
       decodedImages = [unloadId, 1];
       node.inputs.images = decodedImages;
     }
-    if (
-      task.taskType === "generation" &&
-      task.modelId === "sulphur2"
-    ) {
-      const previewFrameId = String(nextNodeId++);
-      const previewOutputId = String(nextNodeId++);
-      workflow[previewFrameId] = {
-        class_type: "ImageFromBatch",
-        inputs: {
-          image: decodedImages,
-          batch_index: Math.max(
-            0,
-            Math.floor((context.frames ?? generationFrameCountForTask(task)) / 2)
-          ),
-          length: 1
-        }
-      };
-      workflow[previewOutputId] = {
-        class_type: "PreviewImage",
-        inputs: {
-          images: [previewFrameId, 0]
-        }
-      };
-    }
     if (interpolationMultiplier === 1) continue;
     const interpolateId = String(nextNodeId++);
     const trimId = String(nextNodeId++);

@@ -69,6 +69,7 @@ import type {
   H3ReferenceMediaType,
   H3ReferenceRole,
   H3ReferenceSlot,
+  HistoryMigrationProgress,
   ImageGenerationQueueTask,
   ImageEditDraft,
   ImagePromptPreset,
@@ -82,6 +83,7 @@ import type {
   PromptVersion,
   QueueTask,
   Settings,
+  SettingsSaveMode,
   TaskPerformanceStats,
   WindowCloseRequest,
   WorkflowCapabilities
@@ -205,6 +207,15 @@ let pendingConfirmation:
   | { kind: "force-stop-comfy" }
   | null = null;
 let confirmationBusy = false;
+let pendingDirectoryMigration: {
+  target: "video";
+  previousSettings: Settings;
+  nextSettings: Settings;
+  oldDirectory: string;
+  newDirectory: string;
+} | null = null;
+let directoryMigrationBusy = false;
+let historyMigrationProgress: HistoryMigrationProgress | null = null;
 let queueActionBusy: { taskId: string; action: "remove" | "cancel" | "edit" } | null = null;
 let modalReturnFocus: HTMLElement | null = null;
 let modalInitialFocusPending = false;
@@ -1421,6 +1432,107 @@ function bindModalFocus(
   }
 }
 
+function directoryMigrationDialog(): string {
+  const request = pendingDirectoryMigration;
+  if (!request) return "";
+  const progress = historyMigrationProgress;
+  const phaseRanges: Record<HistoryMigrationProgress["phase"], [number, number]> = {
+    scanning: [0, 10],
+    moving: [10, 65],
+    verifying: [65, 82],
+    committing: [82, 88],
+    cleaning: [88, 100],
+    completed: [100, 100]
+  };
+  const [phaseStart, phaseEnd] = progress
+    ? phaseRanges[progress.phase]
+    : [0, 0];
+  const phaseRatio = progress?.total
+    ? Math.max(0, Math.min(1, progress.current / progress.total))
+    : progress?.phase === "completed"
+      ? 1
+      : 0;
+  const progressValue = phaseStart + (phaseEnd - phaseStart) * phaseRatio;
+  return `
+    <div class="dialog-backdrop confirm-backdrop" id="directory-migration-backdrop">
+      <section class="confirm-dialog directory-migration-dialog" role="alertdialog" aria-modal="true" aria-labelledby="directory-migration-title" aria-describedby="directory-migration-description" tabindex="-1">
+        <div class="confirm-icon" aria-hidden="true">${icon(directoryMigrationBusy ? "refresh-cw" : "folder-open")}</div>
+        <div class="confirm-copy">
+          <span class="eyebrow">${directoryMigrationBusy ? "正在处理目录" : "输出目录已更改"}</span>
+          <h2 id="directory-migration-title">应用视频输出目录更改？</h2>
+          <p id="directory-migration-description">${directoryMigrationBusy ? escapeHtml(progress?.message || "正在准备迁移") : "请选择如何处理已有的视频历史记录。"}</p>
+          <div class="confirm-warning"><strong>当前目录</strong><code>${escapeHtml(request.oldDirectory || "自动目录")}</code><strong>新目录</strong><code>${escapeHtml(request.newDirectory)}</code></div>
+          ${directoryMigrationBusy
+            ? `<div class="progress" role="progressbar" aria-label="历史视频迁移进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progressValue)}"><span style="width:${progressValue}%"></span></div><p class="muted">${progress ? `${progress.current} / ${progress.total} 个文件${progress.warningCount ? ` · ${progress.warningCount} 个警告` : ""}` : "准备中"}</p>`
+            : `<p class="muted">“应用更改”只影响之后创建的视频；“应用并迁移”会扫描历史中实际记录的视频文件并在复核后更新路径。</p>`}
+        </div>
+        <div class="dialog-actions">
+          <button class="secondary button-with-icon" id="directory-apply" ${directoryMigrationBusy ? "disabled" : ""}>${icon("check")}应用更改</button>
+          <button class="primary button-with-icon" id="directory-apply-migrate" ${directoryMigrationBusy ? "disabled" : ""}>${icon("folder-open")}应用并迁移</button>
+          <button class="ghost button-with-icon" id="directory-cancel" ${directoryMigrationBusy ? "disabled" : ""}>${icon("x")}取消</button>
+        </div>
+      </section>
+    </div>`;
+}
+
+async function chooseDirectoryMigration(mode: SettingsSaveMode | "cancel"): Promise<void> {
+  const request = pendingDirectoryMigration;
+  if (!request || directoryMigrationBusy) return;
+  if (mode === "cancel") {
+    settingsDraft = {
+      ...request.nextSettings,
+      outputDirectory: request.previousSettings.outputDirectory
+    };
+    pendingDirectoryMigration = null;
+    historyMigrationProgress = null;
+    render();
+    restoreModalFocus();
+    showMessage("已取消目录更改，继续使用当前目录。");
+    return;
+  }
+  directoryMigrationBusy = true;
+  historyMigrationProgress = null;
+  render();
+  try {
+    await saveSettingsFromUi(request.nextSettings, mode);
+    const warningCount = (historyMigrationProgress as HistoryMigrationProgress | null)?.warningCount ?? 0;
+    pendingDirectoryMigration = null;
+    directoryMigrationBusy = false;
+    historyMigrationProgress = null;
+    render();
+    restoreModalFocus();
+    if (mode === "migrate-video-history") {
+      showMessage(warningCount
+        ? `历史视频已迁移，但有 ${warningCount} 个旧文件清理警告。`
+        : "历史视频迁移完成。");
+    }
+  } catch (error) {
+    directoryMigrationBusy = false;
+    showMessage(error instanceof Error ? error.message : String(error), false);
+    render();
+  }
+}
+
+function bindDirectoryMigrationDialog(): void {
+  if (!pendingDirectoryMigration) return;
+  document.querySelector("#directory-apply")?.addEventListener("click", () => {
+    void chooseDirectoryMigration("apply");
+  });
+  document.querySelector("#directory-apply-migrate")?.addEventListener("click", () => {
+    void chooseDirectoryMigration("migrate-video-history");
+  });
+  document.querySelector("#directory-cancel")?.addEventListener("click", () => {
+    void chooseDirectoryMigration("cancel");
+  });
+  document.querySelector("#directory-migration-backdrop")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget && !directoryMigrationBusy) {
+      void chooseDirectoryMigration("cancel");
+    }
+  });
+  const dialog = document.querySelector<HTMLElement>(".directory-migration-dialog");
+  if (dialog) bindModalFocus(dialog, () => void chooseDirectoryMigration("cancel"), "#directory-cancel");
+}
+
 function confirmationDialog(): string {
   if (!pendingConfirmation) return "";
   const request = pendingConfirmation;
@@ -1595,6 +1707,7 @@ function shell(content: string): string {
     </div>
     ${page === "history" || page === "history-detail" ? `<button class="history-back-top" id="history-back-top" type="button" aria-label="返回顶部" title="返回顶部">${icon("arrow-up")}</button>` : ""}
     ${confirmationDialog()}
+    ${directoryMigrationDialog()}
     ${windowCloseDialog()}
     ${upscaleDialogHtml()}`;
 }
@@ -1711,7 +1824,6 @@ function imageEditPage(): string {
   const imageProfile = environmentScan?.modelProfiles.find(
     (profile) => profile.id === draft.modelId
   );
-  const imageWorkflowReady = Boolean(imageProfile?.available && imageProfile.integrated);
   const promptStatus = promptModelStatus(state.settings);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
   const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
@@ -1741,9 +1853,13 @@ function imageEditPage(): string {
         ? "请先填写图片编辑 Prompt"
         : !imageProfile?.available
           ? "请先在设置 → 图片模型中补齐 Qwen 2511 组件"
-          : !imageWorkflowReady
-            ? "Qwen 2511 工作流尚未通过本机验证，暂不能提交"
-            : "";
+          : !imageProfile.integrated
+            ? "Qwen 2511 图片工作流尚未接入"
+            : !imageProfile.runtimeVerified
+              ? "请先启动 ComfyUI 并重新扫描环境，完成图片节点验证"
+              : !imageProfile.runtimeReady
+                ? `当前 ComfyUI 缺少图片工作流节点：${imageProfile.runtimeMissingNodes?.join("、") || "未知节点"}`
+                : "";
   const count = Math.min(10, Math.max(1, draft.outputCount));
   return `
     <section class="page-heading create-page-heading image-edit-page-heading">
@@ -1803,7 +1919,7 @@ function imageEditPage(): string {
           <label class="settings-field">随机 Seed<div class="inline-field seed-control"><input id="image-edit-seed" type="number" placeholder="留空则每张随机" value="${draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="生成随机 Seed">${icon("refresh-cw")}</button><button class="icon-button" id="clear-image-edit-seed" title="清空 Seed">${icon("x")}</button></div></label>
           <label class="settings-field range-field"><span class="range-heading"><span>生成数量</span><strong id="image-edit-count-value">${count} 张</strong></span><input id="image-edit-count" type="range" min="1" max="10" step="1" value="${count}"><span class="range-scale"><span>1</span><span>一个任务，逐张生成</span><span>10</span></span></label>
         </div></section>
-        <div class="interpolation-summary settings-summary ${enqueueBlockReason ? "unsafe" : ""}"><div><strong>${enqueueBlockReason || `一个任务 · ${count} 个${draft.seed == null ? "随机" : "相同"} Seed 顺序生成`}</strong><span>图片模型输出不会自动放大</span></div><p>${escapeHtml(imageProfile?.available ? imageProfile.integrated ? "组件完整，工作流已接入。" : "组件完整，但工作流尚未通过本机验证。" : "请先打开设置 → 图片模型，下载并扫描三项 Qwen 组件。")}</p></div>
+        <div class="interpolation-summary settings-summary ${enqueueBlockReason ? "unsafe" : ""}"><div><strong>${enqueueBlockReason || `一个任务 · ${count} 个${draft.seed == null ? "随机" : "相同"} Seed 顺序生成`}</strong><span>图片模型输出不会自动放大</span></div><p>${escapeHtml(imageProfile ? imageWorkflowStatus(imageProfile) : "请先打开设置 → 图片模型，下载并扫描三项 Qwen 组件。")}</p></div>
         <div class="submit-row composer-submit-row"><button class="ghost danger button-with-icon" id="clear-image-edit-draft">${icon("trash-2")}清空</button><button class="primary button-with-icon" id="enqueue-image-edit" ${enqueueBlockReason ? "disabled" : ""}>${icon("plus")}加入队列</button></div>
       </section>
     </div>`;
@@ -2854,16 +2970,44 @@ function stopRenderedVideoPlayback(): void {
   });
 }
 
+function isImageWorkflowReady(profile?: ModelScanProfile): boolean {
+  return Boolean(
+    profile?.category === "image" &&
+    profile.available &&
+    profile.integrated &&
+    profile.runtimeVerified &&
+    profile.runtimeReady
+  );
+}
+
+function imageWorkflowStatus(profile?: ModelScanProfile): string {
+  if (!profile) return "等待环境扫描";
+  if (!profile.available) return "组件不完整";
+  if (!profile.integrated) return "工作流待接入";
+  if (!profile.runtimeVerified) return "启动 ComfyUI 后重新扫描";
+  if (!profile.runtimeReady) {
+    return profile.runtimeMissingNodes?.length
+      ? `缺少节点：${profile.runtimeMissingNodes.join("、")}`
+      : "运行时节点验证未通过";
+  }
+  return "工作流节点已验证";
+}
+
 function modelScanCard(profile: ModelScanProfile): string {
   const missingCount = profile.components.filter((component) => !component.found).length;
   const isPromptProfile = profile.category === "prompt";
   const isLlamaProfile = profile.managedBy === "llama-server";
   const isGemmaProfile = isPromptProfile && isGemmaPromptModel(profile.id);
+  const isReady = profile.category === "image"
+    ? isImageWorkflowReady(profile)
+    : profile.available;
   const readyLabel = isPromptProfile
     ? "文件完整"
-    : profile.integrated
+    : isReady
       ? "可用"
-      : "组件完整";
+      : profile.category === "image"
+        ? imageWorkflowStatus(profile)
+        : "组件完整";
   const metaLabel = profile.available
     ? isPromptProfile
       ? isLlamaProfile
@@ -2871,22 +3015,24 @@ function modelScanCard(profile: ModelScanProfile): string {
         : isGemmaProfile
           ? "LLM GGUF + mmproj 文件完整；通过 ComfyUI Prompt Writer 处理视频和图片提示词"
         : "ComfyUI text_encoders 文件完整；可通过原生 TextGenerate 进行本地扩写"
-      : profile.integrated
-        ? "组件完整，可用于配置"
-        : "依赖已完整；生成工作流将在下一阶段接入"
+      : profile.category === "image"
+        ? imageWorkflowStatus(profile)
+        : profile.integrated
+          ? "组件完整，可用于配置"
+          : "依赖已完整；生成工作流将在下一阶段接入"
     : isPromptProfile
       ? isLlamaProfile
         ? "补齐 GGUF + mmproj，并配置 llama-server.exe 后才能使用"
         : "补齐对应的 ComfyUI text_encoders 文件后才能接入本地扩写"
       : "补齐所有必需组件后才能启用";
   return `
-    <article class="panel model-profile ${profile.available ? "available" : "missing"}">
+    <article class="panel model-profile ${isReady ? "available" : "missing"}">
       <div class="model-profile-head">
         <div>
           <div class="model-title"><h3>${escapeHtml(profile.name)}</h3><span class="model-badge">${escapeHtml(profile.badge)}</span></div>
           <p class="muted">${escapeHtml(profile.description)}</p>
         </div>
-        <span class="model-availability ${profile.available ? "available" : "missing"}">${profile.available ? `${icon("circle-check")} ${readyLabel}` : `${icon("circle-alert")} 缺少 ${missingCount} 项`}</span>
+        <span class="model-availability ${isReady ? "available" : "missing"}">${profile.available ? `${icon(isReady ? "circle-check" : "circle-alert")} ${escapeHtml(readyLabel)}` : `${icon("circle-alert")} 缺少 ${missingCount} 项`}</span>
       </div>
       <div class="model-meta-line"><span>${escapeHtml(profile.vram)}</span><span>${metaLabel}</span></div>
       <div class="component-list">
@@ -3088,6 +3234,7 @@ function settingsPage(): string {
     (profile) => profile.available && profile.integrated
   ).length;
   const imageComponentsReady = imageProfiles.filter((profile) => profile.available).length;
+  const imageWorkflowsReady = imageProfiles.filter((profile) => isImageWorkflowReady(profile)).length;
   const upscaleAvailable = upscaleProfiles.filter((profile) => profile.available).length;
   const promptAvailable = promptProfiles.filter((profile) => profile.available).length;
   const gpu = environmentScan?.items.find((item) => item.id === "nvidia");
@@ -3128,8 +3275,18 @@ function settingsPage(): string {
     environmentScan?.comfyInstallDirectory || settings.comfyInstallDirectory;
   const effectiveModelDirectory =
     settings.modelDirectory || environmentScan?.modelDirectory || "";
-  const effectiveOutputDirectory =
-    settings.outputDirectory || environmentScan?.outputDirectory || "";
+  const comfyOutputRoot = environmentScan?.comfyRoot
+    ? `${environmentScan.comfyRoot.replace(/[\\/]+$/u, "")}\\output`
+    : environmentScan?.outputDirectory || "";
+  const autoVideoOutputDirectory = comfyOutputRoot
+    ? `${comfyOutputRoot.replace(/[\\/]+$/u, "")}\\Videos`
+    : "";
+  const autoImageOutputDirectory = comfyOutputRoot
+    ? `${comfyOutputRoot.replace(/[\\/]+$/u, "")}\\Images`
+    : "";
+  const videoOutputDirectoryValue = settings.outputDirectory || autoVideoOutputDirectory;
+  const imageOutputDirectoryPlaceholder = autoImageOutputDirectory ||
+    "自动：当前 ComfyUI\\output\\Images";
 
   const systemPanel = `
     <section class="settings-panel">
@@ -3176,7 +3333,8 @@ function settingsPage(): string {
         <div class="section-heading"><div><h2>文件路径</h2><span class="muted">扫描结果可以一键写入，也可以手动定位</span></div></div>
         <div class="settings-grid two">
           <label>ComfyUI 模型目录<div class="input-action"><input id="model-directory" value="${escapeHtml(effectiveModelDirectory)}" placeholder="扫描或选择 models 目录"><button class="secondary button-with-icon" id="pick-model-directory">${icon("folder-open")}选择</button></div></label>
-          <label>视频输出目录<div class="input-action"><input id="output-directory" value="${escapeHtml(effectiveOutputDirectory)}" placeholder="扫描或选择 output 目录"><button class="secondary button-with-icon" id="pick-output-directory">${icon("folder-open")}选择</button></div></label>
+          <label>视频输出目录<div class="input-action"><input id="output-directory" value="${escapeHtml(videoOutputDirectoryValue)}" placeholder="自动：当前 ComfyUI\\output\\Videos"><button class="secondary button-with-icon" id="pick-output-directory">${icon("folder-open")}选择</button></div></label>
+          <label>图片输出目录<div class="input-action"><input id="image-output-directory" value="${escapeHtml(settings.imageOutputDirectory || autoImageOutputDirectory)}" placeholder="${escapeHtml(imageOutputDirectoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-image-output-directory">${icon("folder-open")}选择</button></div></label>
         </div>
       </section>
       <section class="panel settings-section">
@@ -3243,7 +3401,7 @@ function settingsPage(): string {
         </div>
         <div class="settings-grid two">
           <label>默认图片模型<select id="default-image-model">
-            ${(imageProfiles.length ? imageProfiles : [{ id: "qwen-image-edit-2511", name: "Qwen-Image-Edit-2511 · 图片处理", available: false, integrated: false }]).map((profile) => `<option value="${escapeHtml(profile.id)}" ${settings.defaultImageModel === profile.id ? "selected" : ""} ${profile.integrated === false ? "" : !profile.available ? "disabled" : ""}>${escapeHtml(profile.name)}${profile.available && profile.integrated ? "" : profile.available ? " · 工作流待验证" : " · 缺组件"}</option>`).join("")}
+            ${(imageProfiles.length ? imageProfiles : [{ id: "qwen-image-edit-2511", name: "Qwen-Image-Edit-2511 · 图片处理", category: "image" as const, badge: "Qwen 2511", description: "", vram: "", available: false, integrated: true, components: [] }]).map((profile) => `<option value="${escapeHtml(profile.id)}" ${settings.defaultImageModel === profile.id ? "selected" : ""} ${isImageWorkflowReady(profile) ? "" : "disabled"}>${escapeHtml(profile.name)}${isImageWorkflowReady(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile))}`}</option>`).join("")}
           </select></label>
           <label>默认质量档<select id="image-quality-profile">
             <option value="native" ${settings.defaultImageQualityProfile === "native" ? "selected" : ""}>原生质量 · 40 步</option>
@@ -3256,8 +3414,8 @@ function settingsPage(): string {
             <option value="webp" ${settings.imageOutputFormat === "webp" ? "selected" : ""}>WebP · 高压缩率</option>
           </select></label>
         </div>
-        <div class="scan-result">${environmentScanning ? "正在扫描图片模型组件…" : environmentScan ? `找到 ${imageComponentsReady} 个图片模型组件完整档位；Qwen 2511 当前最多支持 3 张 Picture` : "等待首次扫描"}</div>
-        <p class="muted proxy-hint">图片输出默认写入当前 ComfyUI 输出目录。PNG 是继续编辑和交给 H3 的首选格式；JPEG/WebP 只有在验证目标应用兼容后再作为默认值。</p>
+        <div class="scan-result">${environmentScanning ? "正在扫描图片模型组件和 ComfyUI 节点…" : environmentScan ? `找到 ${imageComponentsReady} 个组件完整档位，${imageWorkflowsReady} 个工作流可用；Qwen 2511 当前最多支持 3 张 Picture` : "等待首次扫描"}</div>
+        <p class="muted proxy-hint">PNG 是继续编辑和交给 H3 的首选格式；JPEG/WebP 只有在验证目标应用兼容后再作为默认值。</p>
       </section>
       <div class="model-profile-list">${imageProfiles.length ? imageProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无图片模型扫描结果；请先确认模型目录后重新扫描。</div>`}</div>
     </section>`;
@@ -4359,6 +4517,7 @@ function bindShell(): void {
     window.addEventListener("mouseup", handleMouseForward, { signal: navigationEvents.signal });
   }
   bindConfirmationDialog();
+  bindDirectoryMigrationDialog();
   bindWindowCloseDialog();
 }
 
@@ -6237,6 +6396,7 @@ function formSettings(): Settings {
     imagePromptPresets,
     modelDirectory: value("model-directory", base.modelDirectory),
     outputDirectory: value("output-directory", base.outputDirectory),
+    imageOutputDirectory: value("image-output-directory", base.imageOutputDirectory),
     defaultVideoModel: value("default-video-model", base.defaultVideoModel),
     defaultImageModel: value("default-image-model", base.defaultImageModel),
     defaultImageQualityProfile: value("image-quality-profile", base.defaultImageQualityProfile),
@@ -6270,6 +6430,57 @@ function formSettings(): Settings {
     proxyEnabled: checked("proxy-enabled", base.proxyEnabled),
     proxyUrl: value("proxy-url", base.proxyUrl)
   };
+}
+
+function directoryComparisonKey(value: string): string {
+  return value.trim().replace(/[\\/]+$/u, "").toLowerCase();
+}
+
+async function saveSettingsFromUi(
+  nextSettings: Settings,
+  mode: SettingsSaveMode = "apply"
+): Promise<void> {
+  const previousSettings = state.settings;
+  const previousProfile = previousSettings.ltxExtensionModelProfile;
+  const pathsChanged = previousSettings.comfyInstallDirectory !== nextSettings.comfyInstallDirectory ||
+    previousSettings.comfyPythonPath !== nextSettings.comfyPythonPath ||
+    previousSettings.modelDirectory !== nextSettings.modelDirectory ||
+    previousSettings.outputDirectory !== nextSettings.outputDirectory ||
+    previousSettings.imageOutputDirectory !== nextSettings.imageOutputDirectory ||
+    previousSettings.lmStudioInstallDirectory !== nextSettings.lmStudioInstallDirectory ||
+    previousSettings.promptModelDirectory !== nextSettings.promptModelDirectory ||
+    previousSettings.promptLlamaServerPath !== nextSettings.promptLlamaServerPath;
+  const proxyChanged = previousSettings.proxyEnabled !== nextSettings.proxyEnabled ||
+    previousSettings.proxyUrl !== nextSettings.proxyUrl;
+  state = await window.studio.saveSettings(nextSettings, mode);
+  settingsDraft = null;
+  if (state.settings.ltxExtensionModelProfile !== previousProfile) {
+    delete bundledWorkflows[bundledWorkflowKey("sulphur2", "image")];
+    delete bundledWorkflows[bundledWorkflowKey("sulphur2", "video")];
+    if (state.draft.modelId === "sulphur2") {
+      const bundled = await window.studio.getBundledWorkflow(
+        "sulphur2",
+        state.draft.inputMode
+      );
+      if (bundled) {
+        bundledWorkflows[
+          bundledWorkflowKey("sulphur2", state.draft.inputMode)
+        ] = bundled;
+        state = await window.studio.saveDraft({
+          ...state.draft,
+          workflowPath: bundled.path
+        });
+      }
+    }
+  }
+  if (pathsChanged || state.settings.ltxExtensionModelProfile !== previousProfile) {
+    await runEnvironmentScan(state.settings);
+  }
+  showMessage(proxyChanged
+    ? "设置已保存。代理已用于后续安装；请重启 ComfyUI，让 SeedVR2 等节点的运行时下载继承新代理。"
+    : mode === "migrate-video-history"
+      ? "设置已保存，历史视频迁移完成。"
+      : "设置已保存，将对下一项尚未开始的任务生效。");
 }
 
 async function runEnvironmentScan(settings: Settings): Promise<void> {
@@ -6714,43 +6925,28 @@ function bindSettings(): void {
   document.querySelector("#save-settings")?.addEventListener("click", async () => {
     const previousSettings = state.settings;
     const nextSettings = formSettings();
-    const previousProfile = previousSettings.ltxExtensionModelProfile;
-    const pathsChanged = previousSettings.comfyInstallDirectory !== nextSettings.comfyInstallDirectory ||
-      previousSettings.comfyPythonPath !== nextSettings.comfyPythonPath ||
-      previousSettings.modelDirectory !== nextSettings.modelDirectory ||
-      previousSettings.outputDirectory !== nextSettings.outputDirectory ||
-      previousSettings.lmStudioInstallDirectory !== nextSettings.lmStudioInstallDirectory ||
-      previousSettings.promptModelDirectory !== nextSettings.promptModelDirectory ||
-      previousSettings.promptLlamaServerPath !== nextSettings.promptLlamaServerPath;
-    const proxyChanged = previousSettings.proxyEnabled !== nextSettings.proxyEnabled ||
-      previousSettings.proxyUrl !== nextSettings.proxyUrl;
-    state = await window.studio.saveSettings(nextSettings);
-    settingsDraft = null;
-    if (state.settings.ltxExtensionModelProfile !== previousProfile) {
-      delete bundledWorkflows[bundledWorkflowKey("sulphur2", "image")];
-      delete bundledWorkflows[bundledWorkflowKey("sulphur2", "video")];
-      if (state.draft.modelId === "sulphur2") {
-        const bundled = await window.studio.getBundledWorkflow(
-          "sulphur2",
-          state.draft.inputMode
-        );
-        if (bundled) {
-          bundledWorkflows[
-            bundledWorkflowKey("sulphur2", state.draft.inputMode)
-          ] = bundled;
-          state = await window.studio.saveDraft({
-            ...state.draft,
-            workflowPath: bundled.path
-          });
-        }
-      }
+    const oldDirectory = previousSettings.outputDirectory || environmentScan?.outputDirectory || "";
+    const newDirectory = nextSettings.outputDirectory || environmentScan?.outputDirectory || "";
+    const directoryChanged = directoryComparisonKey(oldDirectory) !== directoryComparisonKey(newDirectory);
+    if (directoryChanged) {
+      rememberModalFocus();
+      pendingDirectoryMigration = {
+        target: "video",
+        previousSettings,
+        nextSettings,
+        oldDirectory,
+        newDirectory
+      };
+      directoryMigrationBusy = false;
+      historyMigrationProgress = null;
+      render();
+      return;
     }
-    if (pathsChanged || state.settings.ltxExtensionModelProfile !== previousProfile) {
-      await runEnvironmentScan(state.settings);
+    try {
+      await saveSettingsFromUi(nextSettings);
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : String(error), false);
     }
-    showMessage(proxyChanged
-      ? "设置已保存。代理已用于后续安装；请重启 ComfyUI，让 SeedVR2 等节点的运行时下载继承新代理。"
-      : "设置已保存，将对下一项尚未开始的任务生效。");
   });
   document.querySelectorAll<HTMLElement>("[data-test]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -6779,8 +6975,8 @@ function bindSettings(): void {
     showMessage("已采用扫描到的 ComfyUI 模型和输出目录。");
   });
   document.querySelector("#pick-comfy-install-directory")?.addEventListener("click", async () => {
-    const directory = await window.studio.pickDirectory();
     const input = document.querySelector<HTMLInputElement>("#comfy-install-directory");
+    const directory = await window.studio.pickDirectory();
     if (!directory || !input) return;
     input.value = directory;
     settingsDraft = formSettings();
@@ -6806,13 +7002,21 @@ function bindSettings(): void {
     }
   });
   document.querySelector("#pick-output-directory")?.addEventListener("click", async () => {
-    const directory = await window.studio.pickDirectory();
     const input = document.querySelector<HTMLInputElement>("#output-directory");
+    const directory = await window.studio.pickDirectory(input?.value, true);
     if (directory && input) {
       input.value = directory;
       settingsDraft = formSettings();
       void runEnvironmentScan(settingsDraft);
     }
+  });
+  document.querySelector("#pick-image-output-directory")?.addEventListener("click", async () => {
+    const input = document.querySelector<HTMLInputElement>("#image-output-directory");
+    const directory = await window.studio.pickDirectory(input?.value, true);
+    if (!directory || !input) return;
+    input.value = directory;
+    settingsDraft = formSettings();
+    syncSettingsDirtyUi();
   });
   document.querySelector("[data-pick-prompt-model-directory]")?.addEventListener("click", async () => {
     const directory = await window.studio.pickDirectory();
@@ -6869,6 +7073,11 @@ window.studio.onStateChanged((nextState) => {
   if (isEditing || draftSaveInFlight > 0) return;
   if ((page === "history" || page === "history-detail") && !historyChanged) return;
   render();
+});
+
+window.studio.onHistoryMigrationProgress((progress) => {
+  historyMigrationProgress = progress;
+  if (pendingDirectoryMigration) render();
 });
 
 window.studio.onTaskPreview((preview) => {

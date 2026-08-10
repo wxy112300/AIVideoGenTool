@@ -48,6 +48,25 @@ export interface ImageModelAdapter extends ImageModelCapability {
   parseOutputs(history: unknown): ImageOutputCandidate[];
 }
 
+export const qwenImageEdit2511RequiredNodeTypes = [
+  "CLIPLoader",
+  "UNETLoader",
+  "VAELoader",
+  "LoadImage",
+  "TextEncodeQwenImageEditPlus",
+  "FluxKontextImageScale",
+  "FluxKontextMultiReferenceLatentMethod",
+  "VAEEncode",
+  "ModelSamplingAuraFlow",
+  "KSampler",
+  "VAEDecode",
+  "SaveImage"
+] as const;
+
+export const qwenImageEdit2511LightningNodeTypes = [
+  "LoraLoaderModelOnly"
+] as const;
+
 const qwenImageDiffusionModel = "qwen_image_edit_2511_int8_convrot.safetensors";
 const qwenImageTextEncoder = "qwen_2.5_vl_7b_fp8_scaled.safetensors";
 const qwenImageVae = "qwen_image_vae.safetensors";
@@ -158,6 +177,34 @@ function imageReferenceInputs(
   );
 }
 
+export function validateQwenImageEdit2511Workflow(
+  workflow: ComfyApiWorkflow,
+  qualityProfile = "native",
+  allowImagePlaceholders = false
+): string[] {
+  const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
+  const required = [
+    ...qwenImageEdit2511RequiredNodeTypes,
+    ...(qualityProfile === "lightning-4step" ? qwenImageEdit2511LightningNodeTypes : [])
+  ];
+  const errors = required
+    .filter((nodeType) => !nodeTypes.has(nodeType))
+    .map((nodeType) => `图片工作流缺少节点 ${nodeType}。`);
+  const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
+  if (inputNodes.length < 1 || inputNodes.length > qwenImageEdit2511Capability.maxPictures) {
+    errors.push(`图片工作流必须包含 1–${qwenImageEdit2511Capability.maxPictures} 个 LoadImage 节点。`);
+  }
+  const unresolvedPlaceholders = Object.values(workflow).flatMap((node) =>
+    Object.values(node.inputs).filter(
+      (value) => typeof value === "string" && /^\{\{IMAGE_\d+\}\}$/u.test(value)
+    )
+  );
+  if (unresolvedPlaceholders.length && !allowImagePlaceholders) {
+    errors.push("图片工作流仍包含未上传的 IMAGE 占位符。");
+  }
+  return [...new Set(errors)];
+}
+
 export function buildQwenImageEdit2511Workflow(
   task: ImageGenerationQueueTask,
   run: ImageGenerationRun
@@ -210,7 +257,7 @@ export function buildQwenImageEdit2511Workflow(
     model: {
       class_type: "UNETLoader",
       inputs: {
-        unet_name: qwenImageDiffusionModel,
+        unet_name: task.diffusionModelFilename || qwenImageDiffusionModel,
         weight_dtype: "default"
       }
     },
@@ -243,10 +290,16 @@ export function buildQwenImageEdit2511Workflow(
         shift: 3.1
       }
     },
+    sourceImage: {
+      class_type: "FluxKontextImageScale",
+      inputs: {
+        image: [`image-${compiled.pictures[0]?.id ?? "missing"}`, 0]
+      }
+    },
     source: {
       class_type: "VAEEncode",
       inputs: {
-        pixels: [`image-${compiled.pictures[0]?.id ?? "missing"}`, 0],
+        pixels: ["sourceImage", 0],
         vae: ["vae", 0]
       }
     },
@@ -292,6 +345,8 @@ export function buildQwenImageEdit2511Workflow(
       }
     };
   }
+  const validationErrors = validateQwenImageEdit2511Workflow(modelNode, quality.id, true);
+  if (validationErrors.length) throw new Error(validationErrors.join(" "));
   return modelNode;
 }
 

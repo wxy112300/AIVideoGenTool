@@ -112,6 +112,7 @@ export function createDefaultSettings(): Settings {
     h3PromptPresets: createDefaultH3PromptPresets(),
     imagePromptPresets: createDefaultImagePromptPresets(),
     outputDirectory: "",
+    imageOutputDirectory: "",
     modelDirectory: "",
     defaultVideoModel: "minimax_h3_fl2va",
     defaultImageModel: "qwen-image-edit-2511",
@@ -144,7 +145,7 @@ export function createDefaultSettings(): Settings {
 
 export function createDefaultState(): AppState {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     draft: createDefaultDraft(),
     imageDraft: createDefaultImageEditDraft(),
     settings: createDefaultSettings(),
