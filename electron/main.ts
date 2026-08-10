@@ -795,6 +795,55 @@ async function waitWithTimeout(
   ]);
 }
 
+async function cleanupCancelledQueueTask(
+  taskId: string,
+  settings: Settings,
+  worker: Promise<void> | null
+): Promise<void> {
+  try {
+    if (settings.safeCancel) {
+      await interrupt(settings).catch((error) => {
+        appLogger.warn("comfy", "cancel-interrupt-failed", "ComfyUI interrupt request failed during background cancellation cleanup", {
+          taskId,
+          error: safeLogErrorMessage(error)
+        });
+      });
+    }
+    const workerSettled = await waitWithTimeout(worker, 15_000);
+    if (settings.safeCancel && workerSettled) {
+      try {
+        await freeMemory(settings);
+        await updateTask(taskId, {
+          stage: "任务已取消，显存已释放",
+          error: "任务已取消"
+        });
+        return;
+      } catch (error) {
+        appLogger.warn("comfy", "cancel-free-memory-failed", "ComfyUI memory release failed after task cancellation; falling back to restart", {
+          taskId,
+          error: safeLogErrorMessage(error)
+        });
+      }
+    }
+    const recovery = await restartLocalService("comfy", settings);
+    await updateTask(taskId, {
+      stage: recovery.ok ? "任务已取消，ComfyUI 已后台重启" : "任务已取消，但 ComfyUI 清理失败",
+      error: recovery.ok
+        ? "任务已取消"
+        : `任务已取消；ComfyUI 清理失败：${recovery.message}`
+    });
+  } catch (error) {
+    appLogger.error("comfy", "cancel-cleanup-failed", "Background cancellation cleanup failed", {
+      taskId,
+      error: safeLogErrorMessage(error)
+    });
+    await updateTask(taskId, {
+      stage: "任务已取消，但 ComfyUI 清理失败",
+      error: `任务已取消；ComfyUI 清理失败：${safeLogErrorMessage(error)}`
+    }).catch(() => undefined);
+  }
+}
+
 async function interruptForExit(waitForWorker: boolean): Promise<{
   interrupted: boolean;
   workerSettled: boolean;
@@ -3568,18 +3617,18 @@ function registerIpc(): void {
       const worker = queueWorker;
       const next = await store.update((state) => {
         state.queueRunning = false;
+        const current = state.queue.find((item) => item.id === taskId);
+        if (current && current.status === "running") {
+          current.status = "cancelled";
+          current.stage = "任务已取消，正在后台清理 ComfyUI";
+          current.error = "任务已取消，正在后台清理 ComfyUI。";
+          current.updatedAt = new Date().toISOString();
+        }
       });
       sendState(next);
       activeController?.abort(new Error("用户取消任务"));
-      if (settings.safeCancel) {
-        await interrupt(settings).catch(() => undefined);
-      }
-      await updateTask(taskId, {
-        stage: "任务已取消，正在重启 ComfyUI 以释放显存"
-      });
-      await restartLocalService("comfy", serviceSettings);
-      await waitWithTimeout(worker, 15_000);
-      return store.get();
+      void cleanupCancelledQueueTask(taskId, serviceSettings, worker);
+      return next;
     }
     return updateTask(taskId, {
       status: "cancelled",
