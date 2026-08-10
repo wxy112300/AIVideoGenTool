@@ -11,6 +11,8 @@ import {
   comfyUiBundledFrontendArgs,
   buildLmStudioCandidates,
   comfyUiMemoryArgs,
+  comfyUiRuntimeProfileForSettings,
+  comfyUiRuntimeProfileFromCommandLine,
   evaluateModelProfiles,
   evaluateMiniMaxH3CoreSupport,
   evaluatePromptCoreSupport,
@@ -284,6 +286,25 @@ describe("ComfyUI environment candidates", () => {
     expect(args).toEqual(expect.arrayContaining(["--vram-headroom", "0.5"]));
     expect(args).not.toContain("--disable-pinned-memory");
     expect(args).not.toContain("--disable-async-offload");
+  });
+
+  it("keeps Qwen image and standard video runtime profiles distinct", () => {
+    expect(comfyUiRuntimeProfileForSettings({
+      defaultImageModel: "qwen-image-edit-2511"
+    })).toBe("qwen-image");
+    expect(comfyUiRuntimeProfileForSettings({
+      defaultImageModel: ""
+    })).toBe("standard");
+
+    expect(comfyUiRuntimeProfileFromCommandLine(
+      "python main.py --cpu-vae --disable-smart-memory"
+    )).toBe("qwen-image");
+    expect(comfyUiRuntimeProfileFromCommandLine(
+      "python main.py --disable-pinned-memory --disable-async-offload"
+    )).toBe("standard");
+    expect(comfyUiRuntimeProfileFromCommandLine(
+      "python main.py --listen 127.0.0.1"
+    )).toBe("unknown");
   });
 
   it("detects VideoHelperSuite builds that support six-value ComfyUI queues", () => {

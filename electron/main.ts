@@ -106,6 +106,7 @@ import {
   installAttentionAcceleration,
   installCustomNode,
   installWorkflowDependency,
+  alignLocalComfyUiRuntimeProfile,
   forceStopComfyProcesses,
   repairEnvironmentIssue,
   resolveComfyOutputDirectory,
@@ -1437,9 +1438,20 @@ function isLocalComfyUrl(value: string): boolean {
 async function ensureComfyUiReady(taskId: string): Promise<void> {
   const settings = store.get().settings;
   const queuedTask = store.get().queue.find((item) => item.id === taskId);
-  const serviceSettings = queuedTask?.taskType === "image-generation"
-    ? { ...settings, defaultImageModel: queuedTask.modelId }
-    : settings;
+  const serviceSettings = comfyUiSettingsForQueueTask(queuedTask, settings);
+  const profile = await alignLocalComfyUiRuntimeProfile(serviceSettings);
+  if (!profile.ok) {
+    throw new Error(`ComfyUI 运行配置切换失败：${profile.message}`);
+  }
+  if (profile.restarted) {
+    appLogger.info("service", "runtime-profile-aligned", "ComfyUI runtime profile was aligned for the queue task", {
+      taskId,
+      taskType: queuedTask?.taskType ?? "unknown",
+      modelId: queuedTask?.modelId ?? "unknown",
+      previousProfile: profile.previousProfile,
+      desiredProfile: profile.desiredProfile
+    });
+  }
   try {
     await testComfyUi(serviceSettings);
     return;
@@ -1478,6 +1490,22 @@ async function ensureComfyUiReady(taskId: string): Promise<void> {
     throw new Error(`ComfyUI 自动启动失败：${started.message}`);
   }
   await testComfyUi(serviceSettings);
+}
+
+function comfyUiSettingsForQueueTask(
+  task: QueueTask | undefined,
+  settings: Settings
+): Settings {
+  return {
+    ...settings,
+    // Qwen image editing needs its aggressive CPU-VAE profile. Every other
+    // workflow must explicitly opt out even when Qwen is the persisted default
+    // image model, otherwise H3 inherits CPU FP32 VAE execution and its FP16
+    // decoder fails with a dtype mismatch.
+    defaultImageModel: task?.taskType === "image-generation"
+      ? task.modelId
+      : ""
+  };
 }
 
 async function ensureComfyUiReadyForPrompt(settings: Settings): Promise<void> {
@@ -2280,7 +2308,7 @@ async function executeQueue(): Promise<void> {
         const stable = await stabilizeH3RuntimeBetweenTasks(
           completedTask.id,
           completedTask.modelId,
-          next.settings
+          comfyUiSettingsForQueueTask(completedTask, next.settings)
         );
         if (!stable) {
           const stopped = await store.update((state) => {
@@ -2384,7 +2412,7 @@ async function executeQueue(): Promise<void> {
         );
         const recovery = await restartLocalService(
           "comfy",
-          failedState.settings
+          comfyUiSettingsForQueueTask(task, failedState.settings)
         );
         appLogger.info(
           "comfy",
@@ -3536,6 +3564,7 @@ function registerIpc(): void {
     if (!task) return store.get();
     if (task.status === "running") {
       const settings = store.get().settings;
+      const serviceSettings = comfyUiSettingsForQueueTask(task, settings);
       const worker = queueWorker;
       const next = await store.update((state) => {
         state.queueRunning = false;
@@ -3548,7 +3577,7 @@ function registerIpc(): void {
       await updateTask(taskId, {
         stage: "任务已取消，正在重启 ComfyUI 以释放显存"
       });
-      await restartLocalService("comfy", settings);
+      await restartLocalService("comfy", serviceSettings);
       await waitWithTimeout(worker, 15_000);
       return store.get();
     }

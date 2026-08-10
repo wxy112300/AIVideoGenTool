@@ -3332,6 +3332,35 @@ export function comfyUiMemoryArgs(
   return args;
 }
 
+export type ComfyUiRuntimeProfile = "standard" | "qwen-image";
+
+export function comfyUiRuntimeProfileForSettings(
+  settings: Partial<Pick<Settings, "defaultImageModel">>
+): ComfyUiRuntimeProfile {
+  return settings.defaultImageModel === "qwen-image-edit-2511"
+    ? "qwen-image"
+    : "standard";
+}
+
+export function comfyUiRuntimeProfileFromCommandLine(
+  commandLine: string
+): ComfyUiRuntimeProfile | "unknown" {
+  const normalized = commandLine.toLowerCase();
+  if (
+    normalized.includes("--cpu-vae") ||
+    normalized.includes("--disable-smart-memory")
+  ) {
+    return "qwen-image";
+  }
+  if (
+    normalized.includes("--disable-pinned-memory") &&
+    normalized.includes("--disable-async-offload")
+  ) {
+    return "standard";
+  }
+  return "unknown";
+}
+
 export function availableVramBytesForReserve(
   totalBytes: number,
   reserveGb: number
@@ -3502,6 +3531,8 @@ async function startComfyUi(settings: Settings): Promise<string> {
     "index.html"
   );
   const directories = comfyDataDirectories(settings, comfyRoot || sourceRoot);
+  const runtimeProfile = comfyUiRuntimeProfileForSettings(settings);
+  const memoryArgs = comfyUiMemoryArgs(settings);
   const args = [
     "-s",
     mainPy,
@@ -3512,7 +3543,7 @@ async function startComfyUi(settings: Settings): Promise<string> {
     "--disable-auto-launch",
     "--preview-method",
     "auto",
-    ...comfyUiMemoryArgs(settings)
+    ...memoryArgs
   ];
   if (settings.modelDirectory.trim()) {
     args.push("--models-directory", directories.modelDirectory);
@@ -3538,6 +3569,10 @@ async function startComfyUi(settings: Settings): Promise<string> {
   } else if (settings.outputDirectory.trim()) {
     args.push("--output-directory", directories.outputDirectory);
   }
+  appLogger.info("comfy", "runtime-profile-launch", "Launching ComfyUI with an isolated runtime profile", {
+    runtimeProfile,
+    memoryArgs
+  });
   await launchDetached(python, args, sourceRoot, downloadEnvironment(settings));
   return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
 }
@@ -3660,6 +3695,81 @@ async function allComfyProcessInfo(settings: Settings): Promise<ComfyProcessInfo
     });
     return [];
   }
+}
+
+export async function alignLocalComfyUiRuntimeProfile(
+  settings: Settings
+): Promise<{
+  ok: boolean;
+  restarted: boolean;
+  desiredProfile: ComfyUiRuntimeProfile;
+  previousProfile: ComfyUiRuntimeProfile | "unknown" | "not-running";
+  message: string;
+}> {
+  const desiredProfile = comfyUiRuntimeProfileForSettings(settings);
+  const endpoint = localEndpoint(settings.comfyUrl, 8188);
+  if (!endpoint) {
+    return {
+      ok: true,
+      restarted: false,
+      desiredProfile,
+      previousProfile: "not-running",
+      message: "Remote ComfyUI runtime profiles are managed by the remote service."
+    };
+  }
+
+  const netstat = await execFileAsync(
+    "netstat.exe",
+    ["-ano", "-p", "tcp"],
+    { encoding: "utf8", timeout: 5000, windowsHide: true }
+  ).catch(() => ({ stdout: "" }));
+  const listenerPid = listeningPid(netstat.stdout, endpoint.port);
+  if (!listenerPid) {
+    return {
+      ok: true,
+      restarted: false,
+      desiredProfile,
+      previousProfile: "not-running",
+      message: "ComfyUI is not running; the requested runtime profile will be used at startup."
+    };
+  }
+
+  const processes = await allComfyProcessInfo(settings);
+  const listener = processes.find((item) => item.processId === listenerPid);
+  const previousProfile = comfyUiRuntimeProfileFromCommandLine(
+    listener?.commandLine ?? ""
+  );
+  if (previousProfile === "unknown" || previousProfile === desiredProfile) {
+    return {
+      ok: true,
+      restarted: false,
+      desiredProfile,
+      previousProfile,
+      message: previousProfile === "unknown"
+        ? "The running ComfyUI process is externally managed; its runtime profile was left unchanged."
+        : `ComfyUI is already using the ${desiredProfile} runtime profile.`
+    };
+  }
+
+  appLogger.info("comfy", "runtime-profile-switch-started", "Switching the ComfyUI runtime profile", {
+    processId: listenerPid,
+    previousProfile,
+    desiredProfile
+  });
+  const restarted = await restartLocalService("comfy", settings);
+  appLogger.info(
+    "comfy",
+    restarted.ok ? "runtime-profile-switch-succeeded" : "runtime-profile-switch-failed",
+    restarted.message,
+    { processId: listenerPid, previousProfile, desiredProfile, ok: restarted.ok }
+  );
+  return {
+    ok: restarted.ok,
+    restarted: restarted.ok,
+    desiredProfile,
+    previousProfile,
+    message: restarted.message
+  };
 }
 
 export async function forceStopComfyProcesses(
