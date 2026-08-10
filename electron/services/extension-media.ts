@@ -8,7 +8,8 @@ import {
   extensionContextDuration,
   extensionOutputDimensions,
   frameInterpolationMultiplier,
-  isMiniMaxH3Fl2vaModel
+  isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3R2vModel
 } from "../../src/core/workflow.js";
 
 const execFileAsync = promisify(execFile);
@@ -124,6 +125,50 @@ export async function prepareH3BoundaryFrame(
   };
 }
 
+export async function prepareH3MotionContext(
+  task: ExtensionQueueTask,
+  signal: AbortSignal
+): Promise<{ filePath: string; cleanup(): Promise<void> }> {
+  const directory = temporaryDirectory(task.id);
+  await fs.rm(directory, { recursive: true, force: true });
+  await fs.mkdir(directory, { recursive: true });
+  const filePath = path.join(directory, "h3-motion-context.mp4");
+  const contextFrames = 22;
+  const contextDuration = contextFrames / 24;
+  const contextStart = Math.max(
+    task.trimStartSeconds,
+    task.trimEndSeconds - contextDuration
+  );
+  const [width, height] = extensionOutputDimensions(task);
+  const sourceHasAudio = await hasAudioStream(task.sourceVideoPath, signal);
+  const args = [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-ss", String(contextStart),
+    "-i", task.sourceVideoPath
+  ];
+  if (!sourceHasAudio) {
+    args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=32000");
+  }
+  args.push(
+    "-t", String(contextDuration),
+    "-map", "0:v:0",
+    "-map", sourceHasAudio ? "0:a:0" : "1:a:0",
+    "-vf", scaleFilter(width, height, 24),
+    "-frames:v", String(contextFrames),
+    "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-ar", "32000", "-ac", "2",
+    "-shortest", "-movflags", "+faststart",
+    filePath
+  );
+  await run("ffmpeg", args, signal);
+  const stat = await fs.stat(filePath);
+  if (stat.size <= 0) throw new Error("FFmpeg 没有生成可用的 H3 运动与音频上下文");
+  return {
+    filePath,
+    cleanup: () => fs.rm(directory, { recursive: true, force: true })
+  };
+}
+
 async function hasAudioStream(filename: string, signal: AbortSignal): Promise<boolean> {
   try {
     const output = await run("ffprobe", [
@@ -161,6 +206,8 @@ export async function finalizeExtensionOutput(
   const finalPath = path.join(directory, "final.mp4");
   const retainedDuration = task.trimEndSeconds - task.trimStartSeconds;
   const contextDuration = extensionContextDuration(task);
+  const h3MotionContext = isMiniMaxH3R2vModel(task.modelId);
+  const audioRate = h3MotionContext ? "32000" : "48000";
   const [width, height] = extensionOutputDimensions(task);
   const filter = scaleFilter(width, height, task.fps);
   const sourceHasAudio = await hasAudioStream(task.sourceVideoPath, signal);
@@ -174,7 +221,7 @@ export async function finalizeExtensionOutput(
     ];
     if (!sourceHasAudio) {
       retainedArgs.push(
-        "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"
+        "-f", "lavfi", "-i", `anullsrc=channel_layout=stereo:sample_rate=${audioRate}`
       );
     }
     retainedArgs.push(
@@ -183,7 +230,7 @@ export async function finalizeExtensionOutput(
       "-map", sourceHasAudio ? "0:a:0" : "1:a:0",
       "-vf", filter,
       "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p",
-      "-c:a", "aac", "-ar", "48000", "-ac", "2",
+      "-c:a", "aac", "-ar", audioRate, "-ac", "2",
       "-shortest", retainedPath
     );
     await run("ffmpeg", retainedArgs, signal);
@@ -191,23 +238,27 @@ export async function finalizeExtensionOutput(
     const continuationArgs = [
       "-hide_banner", "-loglevel", "error", "-y",
       "-ss", String(
-        isMiniMaxH3Fl2vaModel(task.modelId) ? 1 / 24 : contextDuration
+        h3MotionContext
+          ? 0
+          : isMiniMaxH3Fl2vaModel(task.modelId)
+            ? 1 / 24
+            : contextDuration
       ),
       "-i", generatedPath
     ];
     if (!generatedHasAudio) {
       continuationArgs.push(
-        "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"
+        "-f", "lavfi", "-i", `anullsrc=channel_layout=stereo:sample_rate=${audioRate}`
       );
     }
-    if (isMiniMaxH3Fl2vaModel(task.modelId)) {
+    if (isMiniMaxH3Fl2vaModel(task.modelId) || h3MotionContext) {
       continuationArgs.push("-t", String(task.duration));
     }
     continuationArgs.push(
       "-map", "0:v:0", "-map", generatedHasAudio ? "0:a:0" : "1:a:0",
       "-vf", filter,
       "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p",
-      "-c:a", "aac", "-ar", "48000", "-ac", "2",
+      "-c:a", "aac", "-ar", audioRate, "-ac", "2",
       "-shortest", continuationPath
     );
     await run("ffmpeg", continuationArgs, signal);

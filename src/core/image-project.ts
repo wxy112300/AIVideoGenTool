@@ -1,5 +1,6 @@
 import type {
   ImageAssetVersion,
+  ImageGenerationQueueTask,
   ImageEditDraft,
   ImageHistoryProject,
   ImageOutputFormat,
@@ -7,6 +8,7 @@ import type {
   ImageReferenceRole
 } from "../types.js";
 import { createDefaultImageEditDraft } from "./defaults.js";
+import { normalizeImageTargetResolution } from "./image-workflow.js";
 
 const imageOutputFormats: ImageOutputFormat[] = ["png", "jpeg", "webp"];
 const imageReferenceRoles: ImageReferenceRole[] = [
@@ -296,6 +298,11 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
     qualityProfile: typeof source.qualityProfile === "string" && source.qualityProfile.trim()
       ? source.qualityProfile
       : defaults.qualityProfile,
+    targetResolution: normalizeImageTargetResolution(
+      source.targetResolution ?? defaults.targetResolution,
+      pictures[0]?.width ?? 0,
+      pictures[0]?.height ?? 0
+    ),
     outputCount,
     outputFormat,
     seed
@@ -310,6 +317,33 @@ export function nextImagePictureNumber(
     0
   );
   return Math.max(1, draft.nextPictureNumber, largestExisting + 1);
+}
+
+export function imageEditDraftFromQueueTask(
+  task: ImageGenerationQueueTask,
+  currentDraft: ImageEditDraft
+): ImageEditDraft {
+  const seeds = task.runs.map((run) => run.seed);
+  const sameSeed = seeds.length > 0 && seeds.every((seed) => seed === seeds[0]);
+  return normalizeImageEditDraft({
+    ...currentDraft,
+    projectId: task.projectId,
+    parentVersionId: task.parentVersionId,
+    pictures: task.pictures.map((picture) => ({ ...picture })),
+    promptVersions: [{
+      id: crypto.randomUUID(),
+      label: "从队列调整",
+      text: task.prompt,
+      createdAt: new Date().toISOString()
+    }],
+    activePromptVersion: 0,
+    modelId: task.modelId,
+    qualityProfile: task.qualityProfile,
+    targetResolution: task.targetResolution ?? "source",
+    outputCount: task.outputCount,
+    outputFormat: "png",
+    seed: sameSeed ? seeds[0] : null
+  });
 }
 
 export function createImageSourceVersion(
@@ -337,6 +371,32 @@ export function createImageSourceVersion(
       absolutePath: reference.absolutePath
     }
   };
+}
+
+export function imageEditPicturesForVersion(
+  version: Pick<ImageAssetVersion, "file" | "width" | "height" | "references">
+): ImageReference[] {
+  const outputPath = version.file.absolutePath?.trim();
+  if (!outputPath) return [];
+  const retainedReferences = version.references
+    .filter((reference) => reference.pictureNumber > 1 && reference.absolutePath.trim())
+    .slice(0, 2)
+    .map((reference, index) => ({
+      ...reference,
+      pictureNumber: index + 2,
+      role: reference.role === "base" ? "auto" as const : reference.role
+    }));
+  return [
+    {
+      id: crypto.randomUUID(),
+      pictureNumber: 1,
+      absolutePath: outputPath,
+      width: version.width,
+      height: version.height,
+      role: "base"
+    },
+    ...retainedReferences
+  ];
 }
 
 export function expandImageSeeds(

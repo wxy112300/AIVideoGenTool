@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createClearedDraft,
   createDefaultDraft,
+  createDefaultImageEditDraft,
   createDefaultSettings
 } from "../src/core/defaults";
 import { migrateLegacyComfyUrl } from "../electron/store";
@@ -23,6 +24,9 @@ describe("draft defaults", () => {
     expect(createDefaultSettings().autoRetryFailedTasks).toBe(true);
     expect(createDefaultSettings().autoRetryCount).toBe(2);
     expect(createDefaultSettings().defaultVideoModel).toBe("minimax_h3_fl2va");
+    expect(createDefaultImageEditDraft().qualityProfile).toBe("balanced-20");
+    expect(createDefaultImageEditDraft().targetResolution).toBe("source");
+    expect(createDefaultSettings().defaultImageQualityProfile).toBe("balanced-20");
     expect(createDefaultSettings().ltxExtensionModelProfile).toBe("q3_k_m");
     expect(createDefaultSettings().ltxExtensionResolution).toBe(360);
     expect(createDefaultSettings().ltxExtensionFrames).toBe(49);

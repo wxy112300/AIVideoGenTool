@@ -17,6 +17,8 @@ export interface WorkflowContext {
   fps: number;
   vramTotalBytes: number;
   vramAvailableBytes: number;
+  h3ContextLatentPath: string;
+  h3ContextSavePrefix: string;
 }
 
 export interface WorkflowValidation {
@@ -77,7 +79,7 @@ export function isMiniMaxH3Model(modelId: string): boolean {
 }
 
 export function isMiniMaxH3SpectrumEligible(modelId: string): boolean {
-  return isMiniMaxH3Model(modelId) && !isMiniMaxH3TurboModel(modelId);
+  return isMiniMaxH3Model(modelId);
 }
 
 function applyMiniMaxH3Spectrum(
@@ -119,6 +121,7 @@ function applyMiniMaxH3Spectrum(
       max_history: 8,
       debug: true,
       history_storage: "system_ram",
+      offline_archive_storage: "system_ram",
       bootstrap_first_forecast: true,
       anchor_residual_feedback: false,
       selective_rollback_correction: false,
@@ -321,6 +324,25 @@ export function workflowSupportsH3BoundaryExtension(source: unknown): boolean {
     classTypes.has("SaveVideo");
 }
 
+export function workflowSupportsH3MotionContextExtension(source: unknown): boolean {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return false;
+  const serialized = JSON.stringify(source);
+  const classTypes = new Set(
+    Object.values(source as Record<string, unknown>).flatMap((node) => {
+      if (!node || typeof node !== "object" || Array.isArray(node)) return [];
+      const classType = (node as Record<string, unknown>).class_type;
+      return typeof classType === "string" ? [classType] : [];
+    })
+  );
+  return serialized.includes("{{SOURCE_VIDEO}}") &&
+    classTypes.has("MiniMaxH3ReferenceToVideo") &&
+    classTypes.has("MiniMaxH3MotionContext") &&
+    classTypes.has("MiniMaxH3MotionContextTrim") &&
+    classTypes.has("MiniMaxH3MotionContextSaveLatent") &&
+    classTypes.has("CreateVideo") &&
+    classTypes.has("SaveVideo");
+}
+
 export function generationFrameCountForTask(
   task: Pick<
     GenerationQueueTask,
@@ -430,6 +452,7 @@ export function extensionSafetyForTask(
     | "overlapFrames"
     | "resolution"
     | "unloadBetweenStages"
+    | "spectrumMode"
   >
 ): ExtensionSafety {
   if (isMiniMaxH3Fl2vaModel(task.modelId)) {
@@ -457,6 +480,46 @@ export function extensionSafetyForTask(
     return result(
       true,
       `H3 结尾帧接续：生成 ${generationSafety.generatedFrames}/${generationSafety.maxGeneratedFrames} 帧新片段；它不是 latent overlap 原生续写。${generationSafety.message}`
+    );
+  }
+  if (isMiniMaxH3R2vModel(task.modelId)) {
+    const contextFrames = 22;
+    const generationSafety = generationSafetyForTask(task);
+    const sampledFrames = generationSafety.generatedFrames + contextFrames;
+    const result = (safe: boolean, message: string): ExtensionSafety => ({
+      ...generationSafety,
+      safe,
+      generatedFrames: sampledFrames,
+      minimumContextSeconds: contextFrames / 24,
+      message
+    });
+    if (!task.sourceVideoPath || task.sourceVideoDuration <= 0) {
+      return result(false, "请先选择可读取的源视频。");
+    }
+    if (
+      !Number.isFinite(task.trimStartSeconds) ||
+      !Number.isFinite(task.trimEndSeconds) ||
+      task.trimStartSeconds < 0 ||
+      task.trimEndSeconds > task.sourceVideoDuration ||
+      task.trimEndSeconds <= task.trimStartSeconds
+    ) {
+      return result(false, "视频裁剪范围无效。");
+    }
+    if (task.trimEndSeconds - task.trimStartSeconds < contextFrames / 24) {
+      return result(false, "H3 Motion Context 至少需要保留约 0.92 秒（22 帧）源视频。");
+    }
+    if (task.spectrumMode !== "off") {
+      return result(false, "H3 Motion Context 续写必须关闭 Spectrum，避免预测固定上下文行导致音频和接缝退化。");
+    }
+    if (!generationSafety.safe || sampledFrames > generationSafety.maxGeneratedFrames) {
+      return result(
+        false,
+        `新增片段与 22 帧运动上下文合计需要采样 ${sampledFrames} 帧，超过 H3 当前 ${generationSafety.maxGeneratedFrames} 帧预算。请缩短新增时长。`
+      );
+    }
+    return result(
+      true,
+      `H3 Motion Context：采样 ${sampledFrames}/${generationSafety.maxGeneratedFrames} 帧，其中前 22 帧承接上一段运动和音频并在输出前自动裁掉。`
     );
   }
   const multiplier = frameInterpolationMultiplier(task);
@@ -750,6 +813,8 @@ export function renderWorkflow(
     INPUT_IMAGE: context.inputImage ?? "",
     END_IMAGE: context.endImage ?? "",
     SOURCE_VIDEO: context.sourceVideo ?? "",
+    H3_CONTEXT_LATENT_PATH: context.h3ContextLatentPath ?? "",
+    H3_CONTEXT_SAVE_PREFIX: context.h3ContextSavePrefix ?? `h3_context/${task.id}/clip`,
     H3_REF_IMAGE_0: context.h3ReferenceImages?.[0] ?? "",
     H3_REF_IMAGE_1: context.h3ReferenceImages?.[1] ?? "",
     H3_REF_IMAGE_2: context.h3ReferenceImages?.[2] ?? "",
@@ -778,7 +843,11 @@ export function renderWorkflow(
     DURATION: task.duration,
     FPS: fps,
     SOURCE_FPS: fps / interpolationMultiplier,
-    FRAMES: context.frames ?? generationFrameCountForTask(task),
+    FRAMES: context.frames ?? (
+      task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
+        ? generationFrameCountForTask(task) + 22
+        : generationFrameCountForTask(task)
+    ),
     OUTPUT_FRAMES: outputFrameCountForTask(task),
     OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, ""),
     H3_DIFFUSION_MODEL: h3Assets?.diffusionModel ?? "",
@@ -881,7 +950,9 @@ export function renderWorkflow(
     Object.entries(workflow)
       .filter(([, node]) =>
         (node.class_type === "LoadImage" && node.inputs?.image === "") ||
-        (node.class_type === "VHS_LoadVideoFFmpeg" && node.inputs?.video === "")
+        (node.class_type === "VHS_LoadVideoFFmpeg" && node.inputs?.video === "") ||
+        (node.class_type === "MiniMaxH3MotionContextLoadLatent" &&
+          node.inputs?.latent_path === "")
       )
       .map(([id]) => id)
   );

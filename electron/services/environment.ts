@@ -25,7 +25,10 @@ import type {
 import {
   managedPromptModelDefinitions
 } from "../../src/core/prompt-models.js";
-import { qwenImageEdit2511RequiredNodeTypes } from "../../src/core/image-workflow.js";
+import {
+  flux2Klein4bRequiredNodeTypes,
+  qwenImageEdit2511RequiredNodeTypes
+} from "../../src/core/image-workflow.js";
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 
@@ -180,6 +183,21 @@ const customNodeCatalog = [
     directoryName: "ComfyUI-MiniMaxH3-Prompt-Writer",
     aliases: ["comfyui-minimaxh3-prompt-writer"],
     runtimeEndpoint: "/h3studio/status",
+    required: false
+  },
+  {
+    id: "h3-motion-context",
+    name: "H3 Motion Context",
+    purpose: "让 H3 R2V 续写继承上一段的运动方向、速度和 32 kHz 音频，并保存 latent 供下一次无损接续",
+    repositoryUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context.git",
+    directoryName: "ComfyUI-H3-Motion-Context",
+    aliases: ["comfyui-h3-motion-context"],
+    nodeTypes: [
+      "MiniMaxH3MotionContext",
+      "MiniMaxH3MotionContextTrim",
+      "MiniMaxH3MotionContextSaveLatent",
+      "MiniMaxH3MotionContextLoadLatent"
+    ],
     required: false
   },
   {
@@ -399,6 +417,7 @@ interface ModelProfileDefinition {
     label: string;
     expected: string;
     patterns: RegExp[];
+    optional?: boolean;
   }>;
 }
 
@@ -567,6 +586,34 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     downloadUrl: "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
     targetSubdirectory: "vae",
     recommendedFilename: "qwen_image_vae.safetensors"
+  },
+  "qwen-image-edit-2511:Qwen Image Edit 2511 Lightning LoRA（可选）": {
+    sourceLabel: "lightx2v / Qwen-Image-Edit-2511-Lightning",
+    downloadUrl: "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors?download=true",
+    targetSubdirectory: "loras",
+    recommendedFilename: "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+    notes: "仅使用 Qwen Lightning 4 步质量档时需要；原生 20/40 步不依赖此 LoRA。"
+  },
+  "flux2-klein-4b:FLUX.2 Klein 4B FP8 扩散模型": {
+    sourceLabel: "Black Forest Labs / FLUX.2 Klein 4B FP8",
+    downloadUrl: "https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/resolve/main/flux-2-klein-base-4b-fp8.safetensors",
+    targetSubdirectory: "diffusion_models",
+    recommendedFilename: "flux-2-klein-base-4b-fp8.safetensors",
+    notes: "官方 4B Base 图片编辑模型；ComfyUI blueprint 采用 FP8 文件名和 20 步采样，官方称约 13GB VRAM，适合 RTX 4090。"
+  },
+  "flux2-klein-4b:Qwen3 4B FLUX.2 文本编码器": {
+    sourceLabel: "Comfy-Org / Qwen3",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "qwen_3_4b.safetensors",
+    notes: "FLUX.2 Klein 官方 ComfyUI blueprint 使用的 Qwen3 4B 文本编码器。"
+  },
+  "flux2-klein-4b:FLUX.2 VAE": {
+    sourceLabel: "Comfy-Org / FLUX.2",
+    downloadUrl: "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
+    targetSubdirectory: "vae",
+    recommendedFilename: "flux2-vae.safetensors",
+    notes: "FLUX.2 Klein 官方 blueprint 使用的 VAE。"
   },
   "sulphur2:Sulphur 2 Q2_K distilled GGUF": {
     sourceLabel: "szwagros / sulphur-2-gguf",
@@ -971,8 +1018,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     category: "image",
     managedBy: "comfyui",
     badge: "最多 3 Picture · 原生质量",
-    description: "Qwen 2511 多图编辑模型；当前先扫描官方扩散模型、Qwen VL 文本编码器和图片 VAE，工作流通过验证后才启用。",
-    vram: "INT8/FP8/BF16 · 4090 需实测",
+    description: "Qwen 2511 多图编辑模型；使用 CPU 文本编码器、CPU VAE 和激进 DynamicVRAM 卸载，优先保证 24GB 显存设备不爆显存。",
+    vram: "INT8 + CPU/offload · 速度较慢",
     integrated: true,
     runtimeNodeTypes: qwenImageEdit2511RequiredNodeTypes,
     components: [
@@ -990,6 +1037,40 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
         label: "Qwen Image VAE",
         expected: "vae/qwen_image_vae.safetensors",
         patterns: [/vae\/qwen_image_vae\.safetensors$/i]
+      },
+      {
+        label: "Qwen Image Edit 2511 Lightning LoRA（可选）",
+        expected: "loras/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+        patterns: [/loras\/Qwen-Image-Edit-2511-Lightning-4steps-V1\.0-bf16\.safetensors$/i],
+        optional: true
+      }
+    ]
+  },
+  {
+    id: "flux2-klein-4b",
+    name: "FLUX.2 Klein 4B · 图片处理",
+    category: "image",
+    managedBy: "comfyui",
+    badge: "约 13GB VRAM · 单图编辑",
+    description: "Black Forest Labs 的轻量图片生成/编辑模型；初版按官方 ComfyUI blueprint 接入单图编辑，适合 RTX 4090 快速运行。",
+    vram: "FP8 · 官方约 13 GB VRAM",
+    integrated: true,
+    runtimeNodeTypes: flux2Klein4bRequiredNodeTypes,
+    components: [
+      {
+        label: "FLUX.2 Klein 4B FP8 扩散模型",
+        expected: "diffusion_models/flux-2-klein-base-4b-fp8.safetensors",
+        patterns: [/diffusion_models\/flux-2-klein-base-4b-fp8\.safetensors$/i]
+      },
+      {
+        label: "Qwen3 4B FLUX.2 文本编码器",
+        expected: "text_encoders/qwen_3_4b.safetensors",
+        patterns: [/text_encoders\/qwen_3_4b\.safetensors$/i]
+      },
+      {
+        label: "FLUX.2 VAE",
+        expected: "vae/flux2-vae.safetensors",
+        patterns: [/vae\/flux2-vae\.safetensors$/i]
       }
     ]
   },
@@ -1499,6 +1580,7 @@ export function evaluateModelProfiles(
       return {
         label: component.label,
         found: matches.length > 0,
+        ...(component.optional ? { optional: true } : {}),
         expected: component.expected,
         matches,
         installGuide:
@@ -1518,7 +1600,7 @@ export function evaluateModelProfiles(
       badge: profile.badge,
       description: profile.description,
       vram: profile.vram,
-      available: components.every((component) => component.found),
+      available: components.every((component) => component.found || component.optional === true),
       integrated: profile.integrated !== false,
       ...(profile.runtimeNodeTypes
         ? {
@@ -3222,21 +3304,32 @@ async function waitForService(
 }
 
 export function comfyUiMemoryArgs(
-  settings: Pick<Settings, "vramReserveGb">
+  settings: Pick<Settings, "vramReserveGb"> &
+    Partial<Pick<Settings, "defaultImageModel">>
 ): string[] {
   const configuredReserve = Number.isFinite(settings.vramReserveGb)
     ? settings.vramReserveGb
     : 1;
-  return [
+  const isQwenImage = settings.defaultImageModel === "qwen-image-edit-2511";
+  const args = [
     "--cache-none",
     "--reserve-vram",
-    String(Math.max(0.5, Math.min(1, configuredReserve))),
+    String(Math.max(0.5, Math.min(1, configuredReserve)))
+  ];
+  if (isQwenImage) {
+    args.push(
+      "--cpu-vae",
+      "--disable-smart-memory",
+      "--vram-headroom",
+      "0.5"
+    );
+  } else {
     // On Windows with 24 GB cards, H3's 21 GB transformer plus the 32B
     // encoder can make pinned/async offload commit over 90 GB and page every
     // layer. The synchronous path completed the same graph at normal speed.
-    "--disable-pinned-memory",
-    "--disable-async-offload"
-  ];
+    args.push("--disable-pinned-memory", "--disable-async-offload");
+  }
+  return args;
 }
 
 export function availableVramBytesForReserve(
@@ -3252,7 +3345,7 @@ export function availableVramBytesForReserve(
 export async function resolveComfyOutputDirectory(
   settings: Settings
 ): Promise<string> {
-  const configured = settings.outputDirectory.trim();
+  const configured = sharedComfyOutputRoot(settings);
   if (configured && await exists(path.resolve(configured))) {
     return path.resolve(configured);
   }
@@ -3260,29 +3353,80 @@ export async function resolveComfyOutputDirectory(
   return comfyRoot ? path.join(comfyRoot, "output") : "";
 }
 
+export function sharedComfyOutputRoot(
+  settings: Pick<Settings, "outputDirectory"> &
+    Partial<Pick<Settings, "imageOutputDirectory">>
+): string {
+  const videoDirectory = settings.outputDirectory.trim();
+  const imageDirectory = settings.imageOutputDirectory?.trim() ?? "";
+  if (videoDirectory && imageDirectory) {
+    const videoParent = path.dirname(path.resolve(videoDirectory));
+    const imageParent = path.dirname(path.resolve(imageDirectory));
+    if (videoParent.toLowerCase() === imageParent.toLowerCase()) {
+      return videoParent;
+    }
+  }
+  const candidate = videoDirectory || imageDirectory;
+  if (!candidate) return "";
+  return configuredComfyOutputRoot(candidate);
+}
+
+function configuredComfyOutputRoot(directory: string): string {
+  let current = path.resolve(directory);
+  let outputRoot = "";
+  while (true) {
+    if (path.basename(current).toLowerCase() === "output") {
+      outputRoot = current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  if (outputRoot) return outputRoot;
+  const basename = path.basename(path.resolve(directory)).toLowerCase();
+  return basename === "images" || basename === "videos"
+    ? path.dirname(path.resolve(directory))
+    : path.resolve(directory);
+}
+
+export function comfyOutputSubfolder(
+  settings: Pick<Settings, "outputDirectory"> &
+    Partial<Pick<Settings, "imageOutputDirectory">>,
+  kind: "video" | "image"
+): string {
+  const root = sharedComfyOutputRoot(settings);
+  const target = kind === "image"
+    ? settings.imageOutputDirectory?.trim() ?? ""
+    : settings.outputDirectory.trim();
+  if (!root || !target) return "";
+  return path.relative(root, path.resolve(target)).replaceAll(path.sep, "/");
+}
+
 export function comfyDataDirectories(
-  settings: Pick<Settings, "modelDirectory" | "outputDirectory">,
+  settings: Pick<Settings, "modelDirectory" | "outputDirectory"> &
+    Partial<Pick<Settings, "imageOutputDirectory">>,
   comfyRoot: string
 ): { modelDirectory: string; outputDirectory: string } {
   return {
     modelDirectory: settings.modelDirectory.trim()
       ? path.resolve(settings.modelDirectory)
       : path.join(comfyRoot, "models"),
-    outputDirectory: settings.outputDirectory.trim()
-      ? path.resolve(settings.outputDirectory)
+    outputDirectory: sharedComfyOutputRoot(settings)
+      ? path.resolve(sharedComfyOutputRoot(settings))
       : path.join(comfyRoot, "output")
   };
 }
 
 export function mergeComfyDesktopSettings(
   value: unknown,
-  settings: Pick<Settings, "modelDirectory" | "outputDirectory">
+  settings: Pick<Settings, "modelDirectory" | "outputDirectory"> &
+    Partial<Pick<Settings, "imageOutputDirectory">>
 ): Record<string, unknown> {
   const current = value && typeof value === "object" && !Array.isArray(value)
     ? { ...(value as Record<string, unknown>) }
     : {};
   const modelDirectory = settings.modelDirectory.trim();
-  const outputDirectory = settings.outputDirectory.trim();
+  const outputDirectory = sharedComfyOutputRoot(settings);
   const currentModels = Array.isArray(current.modelsDirs)
     ? current.modelsDirs.filter((item): item is string => typeof item === "string")
     : [];

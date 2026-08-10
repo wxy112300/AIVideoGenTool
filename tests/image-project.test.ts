@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   expandImageSeeds,
   createImageSourceVersion,
+  imageEditPicturesForVersion,
+  imageEditDraftFromQueueTask,
   imageProjectCoverVersion,
   nextImagePictureNumber,
   normalizeImageHistory,
   normalizeImageEditDraft,
   nextImageVersionNumber
 } from "../src/core/image-project.js";
-import type { ImageHistoryProject } from "../src/types.js";
+import type { ImageGenerationQueueTask, ImageHistoryProject } from "../src/types.js";
 
 function project(): ImageHistoryProject {
   return {
@@ -81,6 +83,78 @@ describe("image project pure functions", () => {
     expect(draft.seed).toBe(12);
     expect(draft.pictures[0]).toMatchObject({ absolutePath: "a.png", pictureNumber: 1 });
     expect(draft.activePromptVersion).toBe(0);
+    expect(draft.targetResolution).toBe("source");
+  });
+
+  it("falls back to the original size when a saved target exceeds the base image", () => {
+    const draft = normalizeImageEditDraft({
+      targetResolution: 2160,
+      pictures: [{ id: "p1", pictureNumber: 1, absolutePath: "a.png", width: 1024, height: 1024 }]
+    });
+
+    expect(draft.targetResolution).toBe("source");
+  });
+
+  it("uses the viewed generated file as Picture 1 when continuing an edit", () => {
+    const pictures = imageEditPicturesForVersion({
+      file: {
+        filename: "generated.png",
+        subfolder: "Images",
+        type: "output",
+        absolutePath: "C:/output/generated.png"
+      },
+      width: 1280,
+      height: 720,
+      references: [
+        { id: "source", pictureNumber: 1, absolutePath: "C:/input/source.jpg", width: 1920, height: 1080, role: "base" },
+        { id: "style", pictureNumber: 2, absolutePath: "C:/input/style.jpg", width: 1024, height: 1024, role: "style" }
+      ]
+    });
+
+    expect(pictures).toMatchObject([
+      { pictureNumber: 1, absolutePath: "C:/output/generated.png", width: 1280, height: 720, role: "base" },
+      { pictureNumber: 2, absolutePath: "C:/input/style.jpg", role: "style" }
+    ]);
+  });
+
+  it("restores a failed image queue task into the image draft", () => {
+    const currentDraft = normalizeImageEditDraft({});
+    const task: ImageGenerationQueueTask = {
+      id: "image-task-1",
+      taskType: "image-generation",
+      status: "failed",
+      createdAt: "2026-08-11T00:00:00.000Z",
+      updatedAt: "2026-08-11T00:01:00.000Z",
+      outputFilename: "QwenEdit-1",
+      modelId: "qwen-image-edit-2511",
+      workflowPath: "builtin:image/qwen-image-edit-2511",
+      projectId: "project-1",
+      pictures: [{ id: "picture-1", pictureNumber: 1, absolutePath: "input.png", width: 1280, height: 720, role: "base" }],
+      targetResolution: 720,
+      outputWidth: 1280,
+      outputHeight: 720,
+      prompt: "把天空改成蓝色",
+      promptVersion: 2,
+      qualityProfile: "balanced-20",
+      outputFormat: "png",
+      outputCount: 2,
+      runs: [
+        { id: "run-1", index: 0, seed: 42, status: "failed" },
+        { id: "run-2", index: 1, seed: 42, status: "failed" }
+      ]
+    };
+
+    const draft = imageEditDraftFromQueueTask(task, currentDraft);
+    expect(draft).toMatchObject({
+      modelId: "qwen-image-edit-2511",
+      qualityProfile: "balanced-20",
+      targetResolution: 720,
+      outputCount: 2,
+      seed: 42,
+      projectId: "project-1"
+    });
+    expect(draft.pictures[0]?.absolutePath).toBe("input.png");
+    expect(draft.promptVersions[0]?.text).toBe("把天空改成蓝色");
   });
 
   it("preserves empty Slots and promotes the first Slot to the base input", () => {

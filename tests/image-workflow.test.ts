@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildFlux2Klein4bWorkflow,
   buildQwenImageEdit2511Workflow,
+  compileFlux2Klein4bPrompt,
   compileQwenImageEditPrompt,
+  flux2Klein4bCapability,
+  flux2Klein4bRequiredNodeTypes,
+  imageLightningComponentFound,
   imageOutputCandidateFromValue,
+  imageOutputDimensions,
+  imageResolutionOptionsFor,
+  normalizeImageTargetResolution,
   qwenImageEdit2511RequiredNodeTypes,
   qwenImageEdit2511Capability,
   renderImageWorkflow,
+  validateFlux2Klein4bWorkflow,
   validateQwenImageEdit2511Workflow
 } from "../src/core/image-workflow.js";
 import type { ImageGenerationQueueTask, ImageReference } from "../src/types.js";
@@ -21,12 +30,47 @@ function picture(pictureNumber: number, absolutePath = `picture-${pictureNumber}
 }
 
 describe("Qwen image edit workflow contract", () => {
+  it("keeps Lightning optional for native quality and detects it for 4-step mode", () => {
+    expect(imageLightningComponentFound([
+      { label: "Qwen Image VAE", found: true },
+      { label: "Qwen Image Edit 2511 Lightning LoRA（可选）", found: false }
+    ])).toBe(false);
+    expect(imageLightningComponentFound([
+      { label: "Qwen Image Edit 2511 Lightning LoRA（可选）", found: true }
+    ])).toBe(true);
+  });
+
+  it("offers source-relative output presets without exposing an upscale target", () => {
+    expect(imageResolutionOptionsFor(2816, 1152).map((option) => option.value)).toEqual([
+      "source",
+      1152,
+      1080,
+      720,
+      640,
+      480
+    ]);
+    expect(imageOutputDimensions(2816, 1152, 1080)).toEqual([2640, 1080]);
+    expect(normalizeImageTargetResolution(2160, 2816, 1152)).toBe("source");
+    expect(imageResolutionOptionsFor(1024, 1024).map((option) => option.value)).toEqual([
+      "source",
+      720,
+      640,
+      480
+    ]);
+  });
+
   it("exposes the actual native template capability", () => {
     expect(qwenImageEdit2511Capability.maxPictures).toBe(3);
     expect(qwenImageEdit2511Capability.qualityProfiles.map((profile) => profile.id)).toEqual([
+      "balanced-20",
       "native",
       "lightning-4step"
     ]);
+    expect(qwenImageEdit2511Capability.qualityProfiles[0]).toMatchObject({
+      steps: 20,
+      cfg: 4,
+      lightning: false
+    });
     expect(qwenImageEdit2511Capability.supportedFormats).toEqual(["png"]);
   });
 
@@ -85,6 +129,7 @@ describe("Qwen image edit workflow contract", () => {
       status: "waiting",
       createdAt: "2026-08-10T00:00:00.000Z",
       updatedAt: "2026-08-10T00:00:00.000Z",
+      outputFilename: "QwenEdit-1",
       projectId: "project-1",
       pictures: [picture(1), picture(3)],
       diffusionModelFilename: "qwen_image_edit_2511_bf16.safetensors",
@@ -110,17 +155,22 @@ describe("Qwen image edit workflow contract", () => {
     expect(workflow["image-picture-1"]?.inputs.image).toBe("{{IMAGE_0}}");
     expect(workflow["image-picture-3"]?.inputs.image).toBe("{{IMAGE_1}}");
     expect(workflow.positive?.class_type).toBe("TextEncodeQwenImageEditPlus");
+    expect(workflow.clip?.inputs.device).toBe("cpu");
     expect(workflow.positive?.inputs.image1).toEqual(["image-picture-1", 0]);
     expect(workflow.positive?.inputs.image2).toEqual(["image-picture-3", 0]);
     expect(workflow.model?.inputs.unet_name).toBe("qwen_image_edit_2511_bf16.safetensors");
     expect(workflow.negative?.class_type).toBe("TextEncodeQwenImageEditPlus");
     expect(workflow.sourceImage?.class_type).toBe("FluxKontextImageScale");
     expect(workflow.source?.class_type).toBe("VAEEncode");
+    expect(workflow.cfgNorm?.class_type).toBe("CFGNorm");
+    expect(workflow.cfgNorm?.inputs.strength).toBe(1);
     expect(workflow.exactSize?.class_type).toBe("ImageScale");
     expect(workflow.exactSize?.inputs.width).toBe(1024);
     expect(workflow.exactSize?.inputs.height).toBe(1024);
     expect(workflow.save?.inputs.filename_prefix).toContain("Images/QwenEdit_");
     expect(workflow.positiveReference?.class_type).toBe("FluxKontextMultiReferenceLatentMethod");
+    expect(workflow.positiveReference?.inputs.reference_latents_method).toBe("index_timestep_zero");
+    expect(workflow.negativeReference?.inputs.reference_latents_method).toBe("index_timestep_zero");
     expect(workflow.sampler?.inputs.seed).toBe(123);
     expect(workflow.save?.class_type).toBe("SaveImage");
     expect(validateQwenImageEdit2511Workflow(workflow, "native", true)).toEqual([]);
@@ -172,6 +222,7 @@ describe("Qwen image edit workflow contract", () => {
       status: "waiting" as const,
       createdAt: "2026-08-10T00:00:00.000Z",
       updatedAt: "2026-08-10T00:00:00.000Z",
+      outputFilename: "QwenEdit-1",
       projectId: "project-1",
       pictures: [],
       prompt: "生成一张图片。",
@@ -216,5 +267,72 @@ describe("Qwen image edit workflow contract", () => {
 
     expect(rendered.load?.inputs.image).toBe("studio-input-a.png");
     expect(rendered.save?.inputs.filename_prefix).toBe("Qwen");
+  });
+});
+
+describe("FLUX.2 Klein 4B image edit workflow contract", () => {
+  it("exposes a consumer-GPU single-reference capability", () => {
+    expect(flux2Klein4bCapability.maxPictures).toBe(1);
+    expect(flux2Klein4bCapability.qualityProfiles).toMatchObject([
+      { id: "native", steps: 20, cfg: 5 }
+    ]);
+    expect(flux2Klein4bRequiredNodeTypes).toContain("ReferenceLatent");
+    expect(flux2Klein4bRequiredNodeTypes).toContain("SamplerCustomAdvanced");
+  });
+
+  it("compiles only Picture 1 and rejects extra references", () => {
+    const result = compileFlux2Klein4bPrompt(
+      "编辑 Picture 1，并参考 Picture 2。",
+      [picture(1), picture(2)]
+    );
+
+    expect(result.errors).toContain("当前 FLUX.2 Klein 4B 工作流最多支持 1 张 Picture。");
+    expect(result.pictures).toHaveLength(1);
+  });
+
+  it("builds the official reference-latent sampler graph", () => {
+    const task: ImageGenerationQueueTask = {
+      id: "klein-task-1",
+      taskType: "image-generation",
+      status: "waiting",
+      createdAt: "2026-08-10T00:00:00.000Z",
+      updatedAt: "2026-08-10T00:00:00.000Z",
+      outputFilename: "KleinEdit-1",
+      modelId: "flux2-klein-4b",
+      workflowPath: "builtin:image/flux2-klein-4b",
+      projectId: "klein-project-1",
+      pictures: [picture(1)],
+      imageOutputSubfolder: "Images",
+      outputWidth: 1057,
+      outputHeight: 895,
+      prompt: "编辑 Picture 1。",
+      promptVersion: 1,
+      qualityProfile: "native",
+      outputFormat: "png",
+      outputCount: 1,
+      runs: []
+    };
+    const workflow = buildFlux2Klein4bWorkflow(task, {
+      id: "klein-run-1",
+      index: 0,
+      seed: 42,
+      status: "running"
+    });
+
+    expect(workflow.input?.inputs.image).toBe("{{IMAGE_0}}");
+    expect(workflow.clip?.inputs).toMatchObject({
+      clip_name: "qwen_3_4b.safetensors",
+      type: "flux2",
+      device: "cpu"
+    });
+    expect(workflow.scaledImage?.class_type).toBe("ImageScaleToTotalPixels");
+    expect(workflow.positiveReference?.class_type).toBe("ReferenceLatent");
+    expect(workflow.negativeReference?.class_type).toBe("ReferenceLatent");
+    expect(workflow.scheduler?.inputs.steps).toBe(20);
+    expect(workflow.guider?.inputs.cfg).toBe(5);
+    expect(workflow.exactSize?.inputs.width).toBe(1057);
+    expect(workflow.exactSize?.inputs.height).toBe(895);
+    expect(workflow.save?.inputs.filename_prefix).toContain("Images/Flux2Klein_");
+    expect(validateFlux2Klein4bWorkflow(workflow, "native", true)).toEqual([]);
   });
 });

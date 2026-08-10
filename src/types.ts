@@ -37,6 +37,7 @@ export interface H3ReferenceSlot {
 }
 
 export type ImageOutputFormat = "png" | "jpeg" | "webp";
+export type ImageTargetResolution = "source" | 2160 | 1152 | 1080 | 720 | 640 | 480;
 export type ImageReferenceRole =
   | "base"
   | "person"
@@ -67,6 +68,7 @@ export interface ImageEditDraft {
   activePromptVersion: number;
   modelId: string;
   qualityProfile: string;
+  targetResolution: ImageTargetResolution;
   outputCount: number;
   outputFormat: ImageOutputFormat;
   seed: number | null;
@@ -100,6 +102,7 @@ export interface Draft {
   trimEndSeconds: number;
   sourceAssetId?: string;
   sourceVersionId?: string;
+  h3ContextLatentPath?: string;
   promptVersions: PromptVersion[];
   activePromptVersion: number;
   h3ReferenceSlots: H3ReferenceSlot[];
@@ -115,6 +118,7 @@ export interface Draft {
   seed: number | null;
   keepSeedOnCopy: boolean;
   spectrumMode: H3SpectrumMode;
+  spectrumModeUserSet?: boolean;
 }
 
 export type LtxExtensionModelProfile =
@@ -208,6 +212,7 @@ export interface ImageGenerationQueueTask extends QueueTaskBase {
   imageOutputSubfolder?: string;
   outputWidth?: number;
   outputHeight?: number;
+  targetResolution?: ImageTargetResolution;
   diffusionModelFilename?: string;
   prompt: string;
   promptVersion: number;
@@ -258,6 +263,9 @@ export interface ExtensionQueueTask extends VideoQueueTaskBase {
   trimEndSeconds: number;
   sourceAssetId?: string;
   sourceVersionId?: string;
+  h3ContextLatentPath?: string;
+  h3ContextSavePrefix?: string;
+  h3ContextSavedPath?: string;
   sourceWidth: number;
   sourceHeight: number;
   ratio: Draft["ratio"];
@@ -321,6 +329,7 @@ export interface AssetVersion {
   tileMode?: UpscaleQueueTask["tileMode"];
   faceRestore?: boolean;
   startedAt?: string;
+  h3ContextLatentPath?: string;
 }
 
 export interface ImageHistoryProject {
@@ -385,6 +394,7 @@ export interface HistoryAsset {
   endImagePath?: string;
   sourceAssetId?: string;
   sourceVersionId?: string;
+  h3ContextLatentPath?: string;
   sourceVideoPath?: string;
   sourceVideoDuration?: number;
   trimStartSeconds?: number;
@@ -400,7 +410,7 @@ export interface HistoryAsset {
 }
 
 export interface AppState {
-  schemaVersion: 4;
+  schemaVersion: 6;
   draft: Draft;
   imageDraft: ImageEditDraft;
   settings: Settings;
@@ -496,6 +506,7 @@ export interface WorkflowDependencyStatus {
 export interface ModelComponentStatus {
   label: string;
   found: boolean;
+  optional?: boolean;
   expected: string;
   matches: string[];
   installGuide: {

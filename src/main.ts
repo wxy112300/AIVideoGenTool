@@ -93,11 +93,19 @@ import type {
 import { createClearedDraft, createDefaultImageEditDraft, createDefaultImagePromptPresets } from "./core/defaults";
 import { createHistoryCoverCacheKey } from "./core/history-cover";
 import {
+  imageEditDraftFromQueueTask,
+  imageEditPicturesForVersion,
   imageProjectCoverVersion,
   nextImagePictureNumber,
   normalizeImageEditDraft
 } from "./core/image-project";
-import { qwenImageEdit2511Capability } from "./core/image-workflow";
+import {
+  imageModelCapabilityFor,
+  imageLightningComponentFound,
+  imageQualityProfileRequiresLightning,
+  imageResolutionOptionsFor,
+  normalizeImageTargetResolution
+} from "./core/image-workflow";
 import { createDefaultH3PromptPresets, h3PromptPresetForMode } from "./core/h3-prompt-presets";
 import {
   isGemmaPromptModel,
@@ -226,6 +234,7 @@ let pendingDirectoryMigration: {
 let directoryMigrationBusy = false;
 let historyMigrationProgress: HistoryMigrationProgress | null = null;
 let queueActionBusy: { taskId: string; action: "remove" | "cancel" | "edit" } | null = null;
+let enqueueBusy = false;
 let modalReturnFocus: HTMLElement | null = null;
 let modalInitialFocusPending = false;
 let modalControlFocusSelector = "";
@@ -245,6 +254,7 @@ let queueMoveScrollAnchor: {
 } | null = null;
 let historyContextMenuElement: HTMLElement | null = null;
 let historyContextMenuEvents: AbortController | null = null;
+let imageLightboxEvents: AbortController | null = null;
 let shellNavigationEvents: AbortController | null = null;
 let historyMasonryResizeObserver: ResizeObserver | null = null;
 let historyTitleResizeObserver: ResizeObserver | null = null;
@@ -452,7 +462,9 @@ function modelName(id: string): string {
       wan22_14b_nsfw: "Wan 2.2 I2V 14B + NSFW",
       wan22_remix: "Wan 2.2 Remix v3",
       wan22_smoothmix: "Wan 2.2 SmoothMix I2V",
-      wan22_dasiwa: "DaSiWa SynthSeduction v9"
+      wan22_dasiwa: "DaSiWa SynthSeduction v9",
+      "qwen-image-edit-2511": "Qwen-Image-Edit-2511",
+      "flux2-klein-4b": "FLUX.2 Klein 4B"
       ,seedvr2: "SeedVR2"
       ,flashvsr: "FlashVSR"
       ,realesrgan: "Real-ESRGAN x4plus"
@@ -751,10 +763,10 @@ function interpolationEstimate(draft: Draft): {
 function extensionSafetyForDraft(draft: Draft, settings: Settings) {
   return extensionSafetyForTask({
     ...draft,
-    resolution: isMiniMaxH3Fl2vaModel(draft.modelId)
+    resolution: isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
       ? draft.resolution
       : settings.ltxExtensionResolution,
-    maxGeneratedFrames: isMiniMaxH3Fl2vaModel(draft.modelId)
+    maxGeneratedFrames: isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
       ? 362
       : settings.ltxExtensionFrames,
     overlapFrames: settings.ltxExtensionOverlapFrames,
@@ -1439,7 +1451,9 @@ function createModelOptions(draft: Draft): string {
     .map((profile) => {
       const selected = draft.modelId === profile.id;
       const supportsVideoExtension =
-        draft.inputMode === "video" && isMiniMaxH3Fl2vaModel(profile.id)
+        draft.inputMode === "video" && (
+          isMiniMaxH3Fl2vaModel(profile.id) || isMiniMaxH3R2vModel(profile.id)
+        )
           ? true
           : selected
             ? workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true
@@ -1455,7 +1469,14 @@ function createModelOptions(draft: Draft): string {
         : draft.inputMode === "video" && !supportsVideoExtension
           ? " · 未通过续写检查"
           : "";
-      return `<option value="${escapeHtml(profile.id)}" ${selected ? "selected" : ""} ${unavailable ? "disabled" : ""}>${escapeHtml(profile.name)}${suffix}</option>`;
+      const modeLabel = draft.inputMode === "video"
+        ? isMiniMaxH3R2vModel(profile.id)
+          ? " · Motion Context 推荐"
+          : isMiniMaxH3Fl2vaModel(profile.id)
+            ? " · 尾帧兼容"
+            : ""
+        : "";
+      return `<option value="${escapeHtml(profile.id)}" ${selected ? "selected" : ""} ${unavailable ? "disabled" : ""}>${escapeHtml(profile.name)}${modeLabel}${suffix}</option>`;
     })
     .join("");
 }
@@ -1937,10 +1958,30 @@ function imageEditPromptInstructionOptions(): string {
 
 function imageEditPage(): string {
   const draft = normalizeImageEditDraft(state.imageDraft);
+  const imageCapability = imageModelCapabilityFor(draft.modelId);
+  const basePicture = draft.pictures[0];
+  const selectedTargetResolution = normalizeImageTargetResolution(
+    draft.targetResolution,
+    basePicture?.width ?? 0,
+    basePicture?.height ?? 0
+  );
+  const imageResolutionOptions = imageResolutionOptionsFor(
+    basePicture?.width ?? 0,
+    basePicture?.height ?? 0
+  );
+  const imageModelProfiles = environmentScan?.modelProfiles.filter((profile) => profile.category === "image") ?? [];
+  const imageModelOptions = imageModelProfiles.length
+    ? imageModelProfiles
+    : [
+        { id: "qwen-image-edit-2511", name: "Qwen-Image-Edit-2511 · 图片处理", category: "image" as const, badge: "Qwen 2511", description: "", vram: "", available: false, integrated: true, components: [] },
+        { id: "flux2-klein-4b", name: "FLUX.2 Klein 4B · 图片处理", category: "image" as const, badge: "约 13GB VRAM", description: "", vram: "", available: false, integrated: true, components: [] }
+      ];
   const prompt = activeImagePrompt(draft);
   const imageProfile = environmentScan?.modelProfiles.find(
     (profile) => profile.id === draft.modelId
   );
+  const lightningReady = !imageQualityProfileRequiresLightning(draft.qualityProfile) ||
+    imageLightningComponentFound(imageProfile?.components ?? []);
   const promptStatus = promptModelStatus(state.settings);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
   const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
@@ -1964,18 +2005,16 @@ function imageEditPage(): string {
       ? "请先为 Slot 1（Picture 1）添加基础图片"
       : incompletePicture
         ? `请先为 Slot ${incompletePicture.pictureNumber}（Picture ${incompletePicture.pictureNumber}）添加图片`
-    : draft.pictures.length > qwenImageEdit2511Capability.maxPictures
-      ? `当前 Qwen 2511 最多支持 ${qwenImageEdit2511Capability.maxPictures} 张 Picture`
+    : draft.pictures.length > imageCapability.maxPictures
+      ? `当前 ${imageCapability.name} 最多支持 ${imageCapability.maxPictures} 张 Picture`
       : !prompt.text.trim()
         ? "请先填写图片编辑 Prompt"
         : !imageProfile?.available
-          ? "请先在设置 → 图片模型中补齐 Qwen 2511 组件"
+          ? `请先在设置 → 图片模型中补齐 ${imageCapability.name} 组件`
           : !imageProfile.integrated
-            ? "Qwen 2511 图片工作流尚未接入"
-            : !imageProfile.runtimeVerified
-              ? "请先启动 ComfyUI 并重新扫描环境，完成图片节点验证"
-              : !imageProfile.runtimeReady
-                ? `当前 ComfyUI 缺少图片工作流节点：${imageProfile.runtimeMissingNodes?.join("、") || "未知节点"}`
+            ? `${imageCapability.name} 图片工作流尚未接入`
+            : !lightningReady
+                  ? "当前 4 步 Lightning 档缺少 Lightning LoRA，请先在设置中下载并扫描"
                 : "";
   const count = Math.min(10, Math.max(1, draft.outputCount));
   return `
@@ -1993,8 +2032,8 @@ function imageEditPage(): string {
     <div class="create-workspace image-edit-workspace">
       <section class="media-panel image-edit-references">
         <div class="section-heading">
-          <div><h2>参考图片</h2><span class="muted">Slot ${draft.pictures.length}/${qwenImageEdit2511Capability.maxPictures} · Picture 1 是基础输入</span></div>
-          <button class="secondary button-with-icon" id="add-image-slot" ${draft.pictures.length >= qwenImageEdit2511Capability.maxPictures ? "disabled" : ""}>${icon("plus")}添加 Slot</button>
+          <div><h2>参考图片</h2><span class="muted">Slot ${draft.pictures.length}/${imageCapability.maxPictures} · Picture 1 是基础输入</span></div>
+          <button class="secondary button-with-icon" id="add-image-slot" ${draft.pictures.length >= imageCapability.maxPictures ? "disabled" : ""}>${icon("plus")}添加 Slot</button>
         </div>
         <div class="image-picture-list">
           ${draft.pictures.length ? draft.pictures.map((picture) => `
@@ -2011,7 +2050,7 @@ function imageEditPage(): string {
               <button class="icon-button danger" data-remove-image-picture="${escapeHtml(picture.id)}" aria-label="删除 Slot ${picture.pictureNumber}" title="删除 Slot ${picture.pictureNumber}">${icon("trash-2")}</button>
             </article>`).join("") : `<div class="image-picture-empty"><span>${icon("images")}</span><strong>先添加 Picture 1</strong><small>基础画面决定默认构图；后续最多添加两张人物、物体、姿态或风格参考。</small></div>`}
         </div>
-        <button class="drop-zone image-picture-drop-zone" id="image-picture-drop-zone" data-image-picture-drop ${draft.pictures.length >= qwenImageEdit2511Capability.maxPictures ? "disabled" : ""}>
+        <button class="drop-zone image-picture-drop-zone" id="image-picture-drop-zone" data-image-picture-drop ${draft.pictures.length >= imageCapability.maxPictures ? "disabled" : ""}>
           <span class="drop-icon">${icon("upload")}</span><strong>拖入图片到下一个 Slot</strong><span>PNG、JPG、WEBP、BMP · 也可以点击选择文件</span>
         </button>
       </section>
@@ -2030,13 +2069,14 @@ function imageEditPage(): string {
         <div class="prompt-editor-shell"><textarea id="image-edit-prompt-input" rows="6" spellcheck="true" lang="${/[\u3400-\u9fff]/u.test(prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(prompt.text)}</textarea><div id="image-prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div></div>
         <div class="prompt-tool-row"><label class="prompt-snippet-picker"><span>快速插入</span><select id="image-edit-instruction">${imageEditPromptInstructionOptions()}</select></label><button class="secondary button-with-icon" id="insert-image-edit-instruction" disabled>${icon("plus")}插入</button></div>
         <section class="composer-control-group image-edit-output-group"><div class="composer-group-heading"><div><strong>生成设置</strong><span>一个批次顺序生成多张候选图，Seed 和参数会保存到任务快照</span></div></div><div class="composer-control-grid image-edit-settings-grid">
-          <label class="settings-field">模型<select id="image-edit-model"><option value="qwen-image-edit-2511" selected>Qwen-Image-Edit-2511</option></select></label>
-          <label class="settings-field">质量<select id="image-edit-quality"><option value="native" ${draft.qualityProfile === "native" ? "selected" : ""}>原生质量 · 40 步</option><option value="lightning-4step" ${draft.qualityProfile === "lightning-4step" ? "selected" : ""}>Lightning · 4 步</option></select></label>
+          <label class="settings-field">模型<select id="image-edit-model">${imageModelOptions.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.modelId === profile.id ? "selected" : ""} ${isImageModelSelectable(profile) ? "" : "disabled"}>${escapeHtml(profile.name)}${isImageModelSelectable(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile))}`}</option>`).join("")}</select></label>
+          <label class="settings-field">质量<select id="image-edit-quality">${imageCapability.qualityProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? "disabled" : ""}>${escapeHtml(profile.label)} · ${profile.steps} 步${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? " · 缺少 LoRA" : ""}</option>`).join("")}</select></label>
+          <label class="settings-field">输出分辨率<select id="image-edit-resolution" aria-label="图片输出分辨率">${imageResolutionOptions.map((option) => `<option value="${option.value}" ${selectedTargetResolution === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select></label>
           <label class="settings-field">随机 Seed<div class="inline-field seed-control"><input id="image-edit-seed" type="number" placeholder="留空则每张随机" value="${draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="生成随机 Seed">${icon("refresh-cw")}</button><button class="icon-button" id="clear-image-edit-seed" title="清空 Seed">${icon("x")}</button></div></label>
           <label class="settings-field range-field"><span class="range-heading"><span>生成数量</span><strong id="image-edit-count-value">${count} 张</strong></span><input id="image-edit-count" type="range" min="1" max="10" step="1" value="${count}"><span class="range-scale"><span>1</span><span>一个任务，逐张生成</span><span>10</span></span></label>
         </div></section>
-        <div class="interpolation-summary settings-summary ${enqueueBlockReason ? "unsafe" : ""}"><div><strong>${enqueueBlockReason || `一个任务 · ${count} 个${draft.seed == null ? "随机" : "相同"} Seed 顺序生成`}</strong><span>图片模型输出不会自动放大</span></div><p>${escapeHtml(imageProfile ? imageWorkflowStatus(imageProfile) : "请先打开设置 → 图片模型，下载并扫描三项 Qwen 组件。")}</p></div>
-        <div class="submit-row composer-submit-row"><button class="ghost danger button-with-icon" id="clear-image-edit-draft">${icon("trash-2")}清空</button><button class="primary button-with-icon" id="enqueue-image-edit" ${enqueueBlockReason ? "disabled" : ""}>${icon("plus")}加入队列</button></div>
+        <div class="interpolation-summary settings-summary ${enqueueBlockReason ? "unsafe" : ""}"><div><strong>${enqueueBlockReason || `一个任务 · ${count} 个${draft.seed == null ? "随机" : "相同"} Seed 顺序生成`}</strong><span>Qwen 不执行 AI 超分；高于原图短边的档位已隐藏</span></div><p>${escapeHtml(imageProfile ? imageWorkflowStatus(imageProfile) : "请先打开设置 → 图片模型，下载并扫描三项 Qwen 组件。")}</p></div>
+        <div class="submit-row composer-submit-row"><button class="ghost danger button-with-icon" id="clear-image-edit-draft">${icon("trash-2")}清空</button><button class="primary button-with-icon enqueue-button ${enqueueBusy ? "busy" : ""}" id="enqueue-image-edit" ${enqueueBlockReason || enqueueBusy ? "disabled" : ""} aria-busy="${enqueueBusy}">${icon(enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${enqueueBusy ? "加入中…" : "加入队列"}</span></button></div>
       </section>
     </div>`;
 }
@@ -2067,6 +2107,12 @@ function createPage(): string {
   );
   const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
   const extending = draft.inputMode === "video";
+  const h3MotionContextNode = environmentScan?.customNodes.find(
+    (node) => node.id === "h3-motion-context"
+  );
+  const h3MotionContextReady = !extending || !isR2V || Boolean(
+    h3MotionContextNode?.installed || h3MotionContextNode?.loaded
+  );
   const prompt = activePrompt();
   const interpolation = interpolationEstimate(draft);
   const safety = extending
@@ -2088,7 +2134,7 @@ function createPage(): string {
     : 100;
   const videoReady = Boolean(draft.sourceVideoPath && draft.sourceVideoDuration > 0);
   const r2vCounts = h3ReferenceSlotCounts(draft.h3ReferenceSlots);
-  const r2vSlotsReady = !isR2V || (
+  const r2vSlotsReady = extending || !isR2V || (
     draft.h3ReferenceSlots.length > 0 &&
     draft.h3ReferenceSlots.every((slot) => Boolean(slot.mediaPath))
   );
@@ -2110,6 +2156,8 @@ function createPage(): string {
               ? "当前工作流未通过视频续写安全检查"
               : !safety.safe
                 ? safety.message
+                : !h3MotionContextReady
+                  ? "请先在设置 → 节点与工作流中安装 H3 Motion Context，并重启 ComfyUI"
                 : !spectrumReady
                   ? "请先在设置中安装并加载 Spectrum 节点"
                   : ""
@@ -2227,8 +2275,10 @@ function createPage(): string {
       </div>
       ${isMiniMaxH3 ? h3PromptCheckMarkup(prompt.text, Boolean(draft.endImagePath), h3Mode, draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video")) : ""}
       ${extending && isMiniMaxH3 ? `<div class="h3-extension-note">
-        <strong>H3 结尾帧接续</strong>
-        <span>从保留片段的最后一帧生成新段并保留 H3 原生音轨；它不是 latent overlap 原生续写，边界动作可能发生变化。</span>
+        <strong>${isR2V ? "H3 R2V Motion Context（推荐）" : "H3 结尾帧接续（兼容）"}</strong>
+        <span>${isR2V
+          ? `携带上一段最后 22 帧的运动与 32 kHz 音频；头部上下文会自动同步裁掉。${draft.h3ContextLatentPath ? "已找到上一段 latent，将跳过有损重编码。" : "当前使用像素/音频回退，完成后会保存 latent 供下一次接续。"} Spectrum 会被强制关闭。`
+          : "从保留片段的最后一帧生成新段并保留 H3 原生音轨；不依赖额外节点，但边界动作可能发生变化。"}</span>
       </div>` : ""}
       ${isMiniMaxH3 && !extending ? `<details class="h3-prompt-helper">
         <summary>
@@ -2309,11 +2359,11 @@ function createPage(): string {
           </select>
         </label>
         <label class="settings-field settings-spectrum">Spectrum 加速
-          <select id="spectrum-mode" ${spectrumEligible && spectrumLoaded ? "" : "disabled"} title="${escapeHtml(!spectrumEligible ? "Turbo 低步数下预测收益有限且近似误差占比更高，当前暂不开放。" : !spectrumLoaded ? "请先在设置 → 节点与工作流中安装 Spectrum，并确认 ComfyUI 已重启加载。" : "使用系统内存保存 H3 特征；不会占用额外模型权重。")} ">
+          <select id="spectrum-mode" ${spectrumEligible && spectrumLoaded && !(extending && isR2V) ? "" : "disabled"} title="${escapeHtml(extending && isR2V ? "Motion Context 官方建议关闭 Spectrum，避免固定上下文行与音频质量退化。" : !spectrumEligible ? "当前模型暂不支持 Spectrum。" : !spectrumLoaded ? "请先在设置 → 节点与工作流中安装 Spectrum，并确认 ComfyUI 已重启加载。" : "使用系统内存保存 H3 特征；不会占用额外模型权重。")} ">
             <option value="off" ${draft.spectrumMode !== "balanced" ? "selected" : ""}>关闭 · 原生完整计算</option>
             <option value="balanced" ${draft.spectrumMode === "balanced" ? "selected" : ""}>平衡模式 · 系统内存</option>
           </select>
-          <small>${!spectrumEligible ? "Turbo 暂不开放" : spectrumLoaded ? `已加载${spectrumNode?.version ? ` v${escapeHtml(spectrumNode.version)}` : ""} · 预计降低 20–35% 采样耗时` : spectrumNode?.installed ? "节点已安装，等待 ComfyUI 重启加载" : "需要先安装 Spectrum 节点"}</small>
+          <small>${!spectrumEligible ? "当前模型不支持 Spectrum" : spectrumLoaded ? `已加载${spectrumNode?.version ? ` v${escapeHtml(spectrumNode.version)}` : ""} · 预计降低 20–35% 采样耗时` : spectrumNode?.installed ? "节点已安装，等待 ComfyUI 重启加载" : "需要先安装 Spectrum 节点"}</small>
         </label>` : ""}
           </div>
         </section>
@@ -2366,7 +2416,7 @@ function createPage(): string {
       ${enqueueBlockReason ? `<p class="submit-feedback error" role="status">${escapeHtml(enqueueBlockReason)}</p>` : ""}
       <div class="submit-row composer-submit-row">
         <button class="ghost danger button-with-icon" id="clear-draft">${icon("trash-2")}清空</button>
-        <button class="primary button-with-icon" id="enqueue" ${enqueueDisabled ? "disabled" : ""} title="${escapeHtml(enqueueBlockReason || (isR2V ? "加入 R2V 多参考生成队列" : extending ? "加入视频续写队列" : "加入本地生成队列"))}">${icon("plus")}加入队列</button>
+        <button class="primary button-with-icon enqueue-button ${enqueueBusy ? "busy" : ""}" id="enqueue" ${enqueueDisabled || enqueueBusy ? "disabled" : ""} aria-busy="${enqueueBusy}" title="${escapeHtml(enqueueBlockReason || (isR2V ? "加入 R2V 多参考生成队列" : extending ? "加入视频续写队列" : "加入本地生成队列"))}">${icon(enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${enqueueBusy ? "加入中…" : "加入队列"}</span></button>
       </div>
       </section>
     </div>`;
@@ -2527,9 +2577,7 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
     ? upscaleDimensions(task.sourceWidth, task.sourceHeight, task.targetHeight)
     : null;
   const h3ComputeSummary = task.taskType !== "upscale" && task.taskType !== "image-generation" && isMiniMaxH3Model(task.modelId)
-    ? isMiniMaxH3TurboModel(task.modelId)
-      ? `<span title="Turbo 低步数流程暂不开放 Spectrum">${normalizeH3Steps(task.steps, task.modelId)} 步 · Spectrum 不适用</span>`
-      : task.spectrumMode === "balanced"
+    ? task.spectrumMode === "balanced"
         ? `<span title="Spectrum 已开启；H3 特征历史保存在系统内存">${normalizeH3Steps(task.steps, task.modelId)} 步 · Spectrum 开</span>`
         : `<span title="Spectrum 已关闭；使用 H3 原生完整计算">${normalizeH3Steps(task.steps, task.modelId)} 步 · Spectrum 关</span>`
     : "";
@@ -2654,11 +2702,23 @@ function draftFromQueueTask(task: QueueTask): Draft | null {
 
 async function editQueueTask(taskId: string): Promise<void> {
   const task = state.queue.find((item) => item.id === taskId);
-  const draft = task ? draftFromQueueTask(task) : null;
-  if (!task || !draft) return;
+  if (!task || task.status === "running") return;
   queueActionBusy = { taskId, action: "edit" };
   render();
   try {
+    if (task.taskType === "image-generation") {
+      const imageDraft = imageEditDraftFromQueueTask(task, state.imageDraft);
+      state = await window.studio.saveImageDraft(imageDraft);
+      state = await window.studio.removeTask(taskId);
+      page = "create";
+      creationMode = "image-edit";
+      queueActionBusy = null;
+      showMessage("已带回图片创作页，可调整参数后重新加入队列。");
+      render();
+      return;
+    }
+    const draft = draftFromQueueTask(task);
+    if (!draft) return;
     await saveDraftImmediately(draft);
     state = await window.studio.removeTask(taskId);
     page = "create";
@@ -3053,6 +3113,9 @@ function imageHistoryDetailPage(): string {
   }
   const version = currentImageHistoryVersion(project);
   selectedHistoryVersionId = version.id;
+  const versionIndex = project.versions.findIndex((item) => item.id === version.id);
+  const previousVersion = project.versions[versionIndex + 1];
+  const nextVersion = project.versions[versionIndex - 1];
   const orderedProjects = imageProjectsByNewest();
   const projectIndex = orderedProjects.findIndex((item) => item.id === project.id);
   const previousProject = projectIndex > 0 ? orderedProjects[projectIndex - 1] : undefined;
@@ -3063,9 +3126,9 @@ function imageHistoryDetailPage(): string {
   const parent = version.parentVersionId
     ? project.versions.find((item) => item.id === version.parentVersionId)
     : undefined;
-  const elapsedSeconds = version.startedAt
+  const elapsedSeconds = version.performanceStats?.durationSeconds ?? (version.startedAt
     ? Math.max(0, (Date.parse(version.createdAt) - Date.parse(version.startedAt)) / 1000)
-    : null;
+    : null);
   const filePath = version.file.absolutePath ?? "";
   return `
     <div class="history-detail-back">
@@ -3089,10 +3152,14 @@ function imageHistoryDetailPage(): string {
             </div>
           </aside>
           <section class="image-history-stage-panel">
-            <div class="image-history-stage-toolbar"><div><strong>${escapeHtml(version.file.filename)}</strong><p class="muted tiny">版本 ${version.versionNumber} · Seed ${version.seed ?? "随机"} · ${escapeHtml(version.kind === "source" ? "原始图片" : modelName(version.modelId))}</p></div><div class="button-row"><button class="icon-button" data-image-stage-mode="fit" title="适合窗口" aria-label="适合窗口">${icon("scan-search")}</button><button class="icon-button" data-image-stage-mode="original" title="原始尺寸" aria-label="原始尺寸">${icon("maximize-2")}</button></div></div>
+            <div class="image-history-stage-toolbar"><div><strong>${escapeHtml(version.file.filename)}</strong><p class="muted tiny">版本 ${version.versionNumber} · Seed ${version.seed ?? "随机"} · ${escapeHtml(version.kind === "source" ? "原始图片" : modelName(version.modelId))}</p></div></div>
             <div class="image-history-stage" data-image-stage="fit" style="--image-aspect:${version.width || 1} / ${version.height || 1}">
               ${mediaUrl ? `<img src="${escapeHtml(mediaUrl)}" alt="${escapeHtml(title)} · 版本 ${version.versionNumber}" data-image-history-stage-image>` : `<div class="history-media-fallback"><span>${icon("image")}</span><strong>图片文件不可用</strong><small>请检查输出目录或在下方定位文件。</small></div>`}
-              <span class="image-history-stage-hint">${icon("move-up")}适合窗口 · 原始尺寸</span>
+            </div>
+            <div class="image-history-stage-controls" aria-label="图片版本浏览操作">
+              <button class="icon-button image-history-stage-nav" data-image-version-navigation="-1" ${previousVersion ? "" : "disabled"} title="${previousVersion ? `上一版本：v${previousVersion.versionNumber}` : "已经是最早版本"}" aria-label="上一版本">${icon("arrow-left")}</button>
+              <button class="primary button-with-icon image-history-open-viewer" data-open-image-lightbox ${mediaUrl ? "" : "disabled"}>${icon("maximize-2")}查看大图</button>
+              <button class="icon-button image-history-stage-nav" data-image-version-navigation="1" ${nextVersion ? "" : "disabled"} title="${nextVersion ? `下一版本：v${nextVersion.versionNumber}` : "已经是最新版本"}" aria-label="下一版本">${icon("arrow-right")}</button>
             </div>
           </section>
         </div>
@@ -3103,7 +3170,7 @@ function imageHistoryDetailPage(): string {
           <h2>${escapeHtml(title)}</h2>
           <p class="muted tiny">${escapeHtml(version.prompt || (version.kind === "source" ? "原始导入图片" : "未保存编辑要求"))}</p>
           <div class="image-history-facts"><div><span>模型</span><strong>${escapeHtml(version.kind === "source" ? "原始图片" : modelName(version.modelId))}</strong></div><div><span>Seed</span><strong>${version.seed ?? "随机"}</strong></div><div><span>尺寸</span><strong>${version.width} × ${version.height}</strong></div><div><span>格式</span><strong>${version.format.toUpperCase()}</strong></div><div><span>生成时间</span><strong>${escapeHtml(formatFullHistoryTime(version.createdAt))}</strong></div><div><span>耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : escapeHtml(formatElapsedDuration(elapsedSeconds))}</strong></div></div>
-          <div class="image-history-quick-actions"><button class="primary button-with-icon" data-image-continue-video>${icon("video")}开始创作视频</button><button class="secondary button-with-icon" data-image-continue-edit>${icon("wand-sparkles")}继续编辑图片</button>${filePath ? `<button class="secondary button-with-icon" data-copy-image="${escapeHtml(filePath)}">${icon("copy")}复制图片</button><button class="secondary button-with-icon" data-copy-file="${escapeHtml(filePath)}">${icon("copy")}复制文件</button><button class="secondary button-with-icon" data-show-file="${escapeHtml(filePath)}">${icon("folder-open")}打开所在位置</button>` : ""}<button class="secondary button-with-icon" data-image-set-cover="${escapeHtml(project.id)}" data-image-cover-version="${pinnedVersion?.id === version.id ? "" : version.id}">${icon("image")}${pinnedVersion?.id === version.id ? "恢复自动封面" : "设为项目封面"}</button><button class="secondary danger button-with-icon" data-delete-image-version="${escapeHtml(project.id)}" data-image-version-delete-id="${escapeHtml(version.id)}" ${version.kind === "source" ? "disabled" : ""}>${icon("trash-2")}${version.kind === "source" ? "原始图不可删除" : "删除当前版本"}</button><button class="secondary danger button-with-icon" data-delete-history="${escapeHtml(project.id)}">${icon("trash-2")}删除图片项目</button></div>
+          <div class="image-history-quick-actions"><button class="primary button-with-icon" data-image-continue-video-project="${escapeHtml(project.id)}" data-image-continue-video-version="${escapeHtml(version.id)}">${icon("video")}开始创作视频</button><button class="secondary button-with-icon" data-image-continue-edit-project="${escapeHtml(project.id)}" data-image-continue-edit-version="${escapeHtml(version.id)}">${icon("wand-sparkles")}继续编辑图片</button>${filePath ? `<button class="secondary button-with-icon" data-copy-image="${escapeHtml(filePath)}">${icon("copy")}复制图片</button><button class="secondary button-with-icon" data-copy-file="${escapeHtml(filePath)}">${icon("copy")}复制文件</button><button class="secondary button-with-icon" data-show-file="${escapeHtml(filePath)}">${icon("folder-open")}打开所在位置</button>` : ""}<button class="secondary button-with-icon" data-image-set-cover="${escapeHtml(project.id)}" data-image-cover-version="${pinnedVersion?.id === version.id ? "" : version.id}">${icon("image")}${pinnedVersion?.id === version.id ? "恢复自动封面" : "设为项目封面"}</button><button class="secondary danger button-with-icon" data-delete-image-version="${escapeHtml(project.id)}" data-image-version-delete-id="${escapeHtml(version.id)}" ${version.kind === "source" ? "disabled" : ""}>${icon("trash-2")}${version.kind === "source" ? "原始图不可删除" : "删除当前版本"}</button><button class="secondary danger button-with-icon" data-delete-history="${escapeHtml(project.id)}">${icon("trash-2")}删除图片项目</button></div>
         </section>
         <section class="panel image-history-version-panel"><div class="history-version-panel-heading"><strong>图片项目版本</strong><span>${project.versions.length} 个版本</span></div><p class="muted tiny">${parent ? `当前版本基于 v${parent.versionNumber} 继续编辑。` : version.kind === "source" ? "这是项目最初导入的基础图片。" : "当前版本没有记录父版本。"}</p></section>
       </aside>
@@ -3113,7 +3180,20 @@ function imageHistoryDetailPage(): string {
       <article class="panel history-record"><h2>版本来源</h2><dl><dt>所属项目</dt><dd>${escapeHtml(title)}</dd><dt>父版本</dt><dd>${parent ? `v${parent.versionNumber}` : version.kind === "source" ? "原始图片" : "未记录"}</dd><dt>版本编号</dt><dd>${version.versionNumber} / ${project.versions.length}</dd><dt>版本类型</dt><dd>${version.kind === "source" ? "原始素材" : version.kind === "upscale" ? "分辨率提升" : "图片编辑"}</dd></dl></article>
       <article class="panel history-record"><h2>生成信息</h2><dl><dt>模型</dt><dd>${escapeHtml(version.kind === "source" ? "原始图片" : modelName(version.modelId))}</dd><dt>Seed</dt><dd>${version.seed ?? "随机"}</dd><dt>生成时间</dt><dd>${escapeHtml(formatFullHistoryTime(version.createdAt))}</dd><dt>输出格式</dt><dd>${version.format.toUpperCase()}</dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "原始导入")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId ?? "旧记录未保存")}</code></dd></dl></article>
       <article class="panel history-record full"><div class="history-record-heading"><h2>输出文件</h2><span>1 个</span></div><div class="output-files"><div class="output-file"><div><strong>${escapeHtml(version.file.filename)}</strong><p class="muted">${escapeHtml(version.file.subfolder || ".")} · ${escapeHtml(version.file.type)}</p></div>${filePath ? `<button class="secondary button-with-icon" data-show-file="${escapeHtml(filePath)}">${icon("folder-open")}在 Explorer 中显示</button>` : `<span class="muted">当前文件不可用</span>`}</div></div><details><summary>原始 ComfyUI 输出快照</summary><pre>${escapeHtml(JSON.stringify(version.comfyOutputs, null, 2))}</pre></details></article>
-    </section>`;
+    </section>
+    ${mediaUrl ? `<div class="image-lightbox" data-image-lightbox hidden>
+      <div class="image-lightbox-backdrop" data-image-lightbox-close></div>
+      <section class="image-lightbox-dialog" role="dialog" aria-modal="true" aria-labelledby="image-lightbox-title" tabindex="-1">
+        <header class="image-lightbox-toolbar">
+          <div><strong id="image-lightbox-title">${escapeHtml(title)}</strong><span>版本 ${version.versionNumber} · ${version.width} × ${version.height}</span></div>
+          <div class="button-row"><button class="secondary button-with-icon" data-image-lightbox-reset>${icon("rotate-ccw")}重置视图</button><button class="icon-button" data-image-lightbox-close aria-label="关闭大图" title="关闭大图">${icon("x")}</button></div>
+        </header>
+        <div class="image-lightbox-stage" data-image-lightbox-stage>
+          <img src="${escapeHtml(mediaUrl)}" alt="${escapeHtml(title)} · 版本 ${version.versionNumber}" data-image-lightbox-image draggable="false">
+        </div>
+        <p class="image-lightbox-hint">滚轮缩放 · 拖动平移 · 双击重置 · Esc 关闭</p>
+      </section>
+    </div>` : ""}`;
 }
 
 function historyStateChanged(
@@ -3231,11 +3311,36 @@ function isImageWorkflowReady(profile?: ModelScanProfile): boolean {
   );
 }
 
+function isImageModelSelectable(profile?: ModelScanProfile): boolean {
+  return Boolean(
+    profile?.category === "image" &&
+    profile.available &&
+    profile.integrated
+  );
+}
+
+function enableSpectrumByDefaultIfAvailable(): void {
+  const spectrumNode = environmentScan?.customNodes.find(
+    (node) => node.id === "spectrum-minimax-h3"
+  );
+  const draft = state?.draft;
+  if (
+    !draft ||
+    draft.spectrumModeUserSet ||
+    draft.spectrumMode === "balanced" ||
+    !spectrumNode?.installed ||
+    !spectrumNode.loaded ||
+    !isMiniMaxH3SpectrumEligible(draft.modelId) ||
+    (draft.inputMode === "video" && isMiniMaxH3R2vModel(draft.modelId))
+  ) return;
+  patchDraft({ spectrumMode: "balanced" });
+}
+
 function imageWorkflowStatus(profile?: ModelScanProfile): string {
   if (!profile) return "等待环境扫描";
   if (!profile.available) return "组件不完整";
   if (!profile.integrated) return "工作流待接入";
-  if (!profile.runtimeVerified) return "启动 ComfyUI 后重新扫描";
+  if (!profile.runtimeVerified) return "未启动，入队时自动启动并验证";
   if (!profile.runtimeReady) {
     return profile.runtimeMissingNodes?.length
       ? `缺少节点：${profile.runtimeMissingNodes.join("、")}`
@@ -3245,7 +3350,7 @@ function imageWorkflowStatus(profile?: ModelScanProfile): string {
 }
 
 function modelScanCard(profile: ModelScanProfile): string {
-  const missingCount = profile.components.filter((component) => !component.found).length;
+  const missingCount = profile.components.filter((component) => !component.found && !component.optional).length;
   const isPromptProfile = profile.category === "prompt";
   const isLlamaProfile = profile.managedBy === "llama-server";
   const isGemmaProfile = isPromptProfile && isGemmaPromptModel(profile.id);
@@ -3288,12 +3393,12 @@ function modelScanCard(profile: ModelScanProfile): string {
       <div class="model-meta-line"><span>${escapeHtml(profile.vram)}</span><span>${metaLabel}</span></div>
       <div class="component-list">
         ${profile.components.map((component, componentIndex) => `
-          <div class="component-row ${component.found ? "found" : "missing"}">
+          <div class="component-row ${component.found ? "found" : component.optional ? "optional missing" : "missing"}">
             <span class="component-state">${icon(component.found ? "circle-check" : "circle-alert")}</span>
             <div><strong>${escapeHtml(component.label)}</strong>
               ${component.found
                 ? `<code title="${escapeHtml(component.matches.join("\n"))}">${escapeHtml(component.matches.join(" · "))}</code>`
-                : `<span>缺失：${escapeHtml(component.expected)}</span>`}
+                : `<span>${component.optional ? "可选，4 步 Lightning 档需要：" : "缺失："}${escapeHtml(component.expected)}</span>`}
             </div>
             ${component.found ? "" : `<button class="component-info" data-install-profile="${escapeHtml(profile.id)}" data-install-component="${componentIndex}" aria-label="查看 ${escapeHtml(component.label)} 的下载和安装说明" title="查看下载和安装说明">${icon("info")}</button>`}
           </div>`).join("")}
@@ -3471,6 +3576,7 @@ function settingsPage(): string {
     profiles.filter((profile) => profile.category === "video")
   );
   const imageProfiles = profiles.filter((profile) => profile.category === "image");
+  const imageQualityProfiles = imageModelCapabilityFor(settings.defaultImageModel).qualityProfiles;
   const promptProfiles = profiles.filter((profile) => profile.category === "prompt");
   const upscaleProfiles = profiles.filter((profile) => profile.category === "upscale");
   const promptStatus = promptModelStatus(settings);
@@ -3647,21 +3753,23 @@ function settingsPage(): string {
     <section class="settings-panel">
       <section class="panel settings-section">
         <div class="section-heading">
-          <div><h2>图片编辑模型</h2><span class="muted">先在这里准备 Qwen-Image-Edit-2511 的本地组件；只有工作流完成验证后，创建页才会允许提交。</span></div>
-          <span class="model-badge">Qwen 2511</span>
+          <div><h2>图片编辑模型</h2><span class="muted">选择适合当前显存的本地图像模型；只有组件和工作流完成验证后，创建页才会允许提交。</span></div>
+          <span class="model-badge">Qwen / Klein</span>
         </div>
         <div class="settings-grid two">
           <label>默认图片模型<select id="default-image-model">
-            ${(imageProfiles.length ? imageProfiles : [{ id: "qwen-image-edit-2511", name: "Qwen-Image-Edit-2511 · 图片处理", category: "image" as const, badge: "Qwen 2511", description: "", vram: "", available: false, integrated: true, components: [] }]).map((profile) => `<option value="${escapeHtml(profile.id)}" ${settings.defaultImageModel === profile.id ? "selected" : ""} ${isImageWorkflowReady(profile) ? "" : "disabled"}>${escapeHtml(profile.name)}${isImageWorkflowReady(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile))}`}</option>`).join("")}
+            ${(imageProfiles.length ? imageProfiles : [
+              { id: "qwen-image-edit-2511", name: "Qwen-Image-Edit-2511 · 图片处理", category: "image" as const, badge: "Qwen 2511", description: "", vram: "", available: false, integrated: true, components: [] },
+              { id: "flux2-klein-4b", name: "FLUX.2 Klein 4B · 图片处理", category: "image" as const, badge: "约 13GB VRAM", description: "", vram: "", available: false, integrated: true, components: [] }
+            ]).map((profile) => `<option value="${escapeHtml(profile.id)}" ${settings.defaultImageModel === profile.id ? "selected" : ""} ${isImageModelSelectable(profile) ? "" : "disabled"}>${escapeHtml(profile.name)}${isImageModelSelectable(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile))}`}</option>`).join("")}
           </select></label>
           <label>默认质量档<select id="image-quality-profile">
-            <option value="native" ${settings.defaultImageQualityProfile === "native" ? "selected" : ""}>原生质量 · 40 步</option>
-            <option value="lightning-4step" ${settings.defaultImageQualityProfile === "lightning-4step" ? "selected" : ""}>Lightning · 4 步（需额外 LoRA）</option>
+            ${imageQualityProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${settings.defaultImageQualityProfile === profile.id ? "selected" : ""}>${escapeHtml(profile.label)} · ${profile.steps} 步</option>`).join("")}
           </select></label>
           <label>默认生成数量<div class="inline-field"><input id="image-output-count" type="range" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><input id="image-output-count-number" type="number" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><span>张</span></div></label>
         </div>
         <div class="scan-result">${environmentScanning ? "正在扫描图片模型组件和 ComfyUI 节点…" : environmentScan ? `找到 ${imageComponentsReady} 个组件完整档位，${imageWorkflowsReady} 个工作流可用；Qwen 2511 当前最多支持 3 张 Picture` : "等待首次扫描"}</div>
-        <p class="muted proxy-hint">图片工作流固定输出 PNG，便于继续编辑和交给 H3 使用。</p>
+        <p class="muted proxy-hint">图片工作流固定输出 PNG，便于继续编辑和交给 H3 使用。Qwen 2511 会在下次启动 ComfyUI 时自动使用 CPU VAE、文本编码器卸载和更激进的显存回收；FLUX.2 Klein 4B 是 4090 的优先轻量候选。</p>
       </section>
       <div class="model-profile-list">${imageProfiles.length ? imageProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无图片模型扫描结果；请先确认模型目录后重新扫描。</div>`}</div>
     </section>`;
@@ -4386,6 +4494,30 @@ function navigateImageHistoryDetail(direction: -1 | 1): void {
   openImageHistoryDetail(nextProject.id);
 }
 
+function navigateImageHistoryVersion(direction: -1 | 1): void {
+  if (page !== "image-history-detail") return;
+  const project = state.imageHistory.find((item) => item.id === selectedHistoryAssetId);
+  if (!project) return;
+  const currentIndex = project.versions.findIndex((item) => item.id === selectedHistoryVersionId);
+  if (currentIndex < 0) return;
+  const nextVersion = project.versions[currentIndex - direction];
+  if (!nextVersion) return;
+  selectedHistoryVersionId = nextVersion.id;
+  historyForwardTarget = { assetId: project.id, versionId: nextVersion.id };
+  reportUserAction("image-history-version-navigation", {
+    projectId: project.id,
+    versionId: nextVersion.id,
+    direction
+  });
+  render();
+  window.requestAnimationFrame(() => {
+    document.querySelector<HTMLElement>(`[data-image-version-id="${CSS.escape(nextVersion.id)}"]`)?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest"
+    });
+  });
+}
+
 async function copyHistoryText(value: string, successMessage: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(value);
@@ -4587,14 +4719,125 @@ function releaseHistoryVideo(assetId: string): void {
   });
 }
 
+function bindImageHistoryLightbox(): void {
+  imageLightboxEvents?.abort();
+  imageLightboxEvents = null;
+  document.body.classList.remove("image-lightbox-open");
+  const lightbox = document.querySelector<HTMLElement>("[data-image-lightbox]");
+  const openButton = document.querySelector<HTMLButtonElement>("[data-open-image-lightbox]");
+  const dialog = lightbox?.querySelector<HTMLElement>(".image-lightbox-dialog");
+  const stage = lightbox?.querySelector<HTMLElement>("[data-image-lightbox-stage]");
+  const image = lightbox?.querySelector<HTMLImageElement>("[data-image-lightbox-image]");
+  if (!lightbox || !openButton || !dialog || !stage || !image) return;
+
+  const events = new AbortController();
+  imageLightboxEvents = events;
+  let scale = 1;
+  let offsetX = 0;
+  let offsetY = 0;
+  let activePointerId: number | null = null;
+  let lastPointerX = 0;
+  let lastPointerY = 0;
+  const clampScale = (value: number) => Math.min(5, Math.max(1, value));
+  const updateTransform = () => {
+    image.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0) scale(${scale})`;
+    stage.classList.toggle("is-zoomed", scale > 1);
+  };
+  const reset = () => {
+    scale = 1;
+    offsetX = 0;
+    offsetY = 0;
+    updateTransform();
+  };
+  const close = () => {
+    lightbox.hidden = true;
+    document.body.classList.remove("image-lightbox-open");
+    openButton.focus();
+  };
+  const open = () => {
+    lightbox.hidden = false;
+    document.body.classList.add("image-lightbox-open");
+    reset();
+    window.requestAnimationFrame(() => dialog.focus());
+  };
+
+  openButton.addEventListener("click", open, { signal: events.signal });
+  lightbox.querySelectorAll<HTMLElement>("[data-image-lightbox-close]").forEach((button) => {
+    button.addEventListener("click", close, { signal: events.signal });
+  });
+  lightbox.querySelector<HTMLElement>("[data-image-lightbox-reset]")?.addEventListener(
+    "click",
+    reset,
+    { signal: events.signal }
+  );
+  stage.addEventListener("wheel", (event) => {
+    if (lightbox.hidden) return;
+    event.preventDefault();
+    const rect = stage.getBoundingClientRect();
+    const factor = event.deltaY < 0 ? 1.12 : 0.88;
+    const nextScale = clampScale(scale * factor);
+    if (nextScale === scale) return;
+    const pointerX = event.clientX - rect.left - rect.width / 2 - offsetX;
+    const pointerY = event.clientY - rect.top - rect.height / 2 - offsetY;
+    const scaleRatio = nextScale / scale;
+    offsetX -= pointerX * (scaleRatio - 1);
+    offsetY -= pointerY * (scaleRatio - 1);
+    scale = nextScale;
+    if (scale === 1) {
+      offsetX = 0;
+      offsetY = 0;
+    }
+    updateTransform();
+  }, { passive: false, signal: events.signal });
+  stage.addEventListener("pointerdown", (event) => {
+    if (lightbox.hidden || event.button !== 0 || scale <= 1) return;
+    activePointerId = event.pointerId;
+    lastPointerX = event.clientX;
+    lastPointerY = event.clientY;
+    stage.setPointerCapture(event.pointerId);
+    stage.classList.add("is-panning");
+    event.preventDefault();
+  }, { signal: events.signal });
+  stage.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== activePointerId) return;
+    offsetX += event.clientX - lastPointerX;
+    offsetY += event.clientY - lastPointerY;
+    lastPointerX = event.clientX;
+    lastPointerY = event.clientY;
+    updateTransform();
+  }, { signal: events.signal });
+  const stopPanning = (event: PointerEvent) => {
+    if (event.pointerId !== activePointerId) return;
+    activePointerId = null;
+    stage.classList.remove("is-panning");
+    if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+  };
+  stage.addEventListener("pointerup", stopPanning, { signal: events.signal });
+  stage.addEventListener("pointercancel", stopPanning, { signal: events.signal });
+  stage.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    reset();
+  }, { signal: events.signal });
+  document.addEventListener("keydown", (event) => {
+    if (lightbox.hidden) return;
+    if (event.key === "Escape") close();
+    else if (event.key === "0") reset();
+  }, { signal: events.signal });
+}
+
 async function continueImageEdit(project: ImageHistoryProject, version: ImageAssetVersion): Promise<void> {
   const now = new Date().toISOString();
+  const pictures = imageEditPicturesForVersion(version);
+  if (!pictures.length) {
+    showMessage("当前图片版本的本地文件不可用，无法继续编辑。", false);
+    return;
+  }
   const draft = normalizeImageEditDraft({
     ...state.imageDraft,
     projectId: project.id,
     parentVersionId: version.id,
     modelId: version.modelId || state.imageDraft.modelId,
-    pictures: version.references.map((reference) => ({ ...reference })),
+    pictures,
     promptVersions: [{
       id: crypto.randomUUID(),
       label: "从图片历史继续编辑",
@@ -5037,6 +5280,7 @@ function patchImageDraft(patch: Partial<ImageEditDraft>): void {
 
 async function loadImageEditPreviews(): Promise<void> {
   const pictures = state.imageDraft.pictures;
+  let dimensionsChanged = false;
   await Promise.all(pictures.map(async (picture) => {
     const image = document.querySelector<HTMLImageElement>(
       `[data-image-picture-preview="${CSS.escape(picture.id)}"]`
@@ -5044,20 +5288,35 @@ async function loadImageEditPreviews(): Promise<void> {
     if (!image || !picture.absolutePath) return;
     const dataUrl = await window.studio.readImage(picture.absolutePath).catch(() => null);
     if (!dataUrl || !image.isConnected) return;
-    image.addEventListener("load", () => {
-      if (!image.naturalWidth || !image.naturalHeight) return;
-      const current = state.imageDraft.pictures.find((item) => item.id === picture.id);
-      if (!current || (current.width === image.naturalWidth && current.height === image.naturalHeight)) return;
-      patchImageDraft({
-        pictures: state.imageDraft.pictures.map((item) =>
-          item.id === picture.id
-            ? { ...item, width: image.naturalWidth, height: image.naturalHeight }
-            : item
-        )
-      });
-    }, { once: true });
-    image.src = dataUrl;
+    await new Promise<void>((resolve) => {
+      image.addEventListener("load", () => {
+        if (image.naturalWidth && image.naturalHeight) {
+          const current = state.imageDraft.pictures.find((item) => item.id === picture.id);
+          if (current && (current.width !== image.naturalWidth || current.height !== image.naturalHeight)) {
+            const nextPictures = state.imageDraft.pictures.map((item) =>
+              item.id === picture.id
+                ? { ...item, width: image.naturalWidth, height: image.naturalHeight }
+                : item
+            );
+            const basePicture = nextPictures[0];
+            patchImageDraft({
+              pictures: nextPictures,
+              targetResolution: normalizeImageTargetResolution(
+                state.imageDraft.targetResolution,
+                basePicture?.width ?? 0,
+                basePicture?.height ?? 0
+              )
+            });
+            dimensionsChanged = true;
+          }
+        }
+        resolve();
+      }, { once: true });
+      image.addEventListener("error", () => resolve(), { once: true });
+      image.src = dataUrl;
+    });
   }));
+  if (dimensionsChanged && page === "create" && creationMode === "image-edit") render();
 }
 
 function randomSeedValue(): number {
@@ -5069,8 +5328,9 @@ function randomSeedValue(): number {
 
 function addImageSlot(): void {
   const pictures = state.imageDraft.pictures;
-  if (pictures.length >= qwenImageEdit2511Capability.maxPictures) {
-    showMessage(`当前 Qwen 2511 最多支持 ${qwenImageEdit2511Capability.maxPictures} 个 Slot`);
+  const capability = imageModelCapabilityFor(state.imageDraft.modelId);
+  if (pictures.length >= capability.maxPictures) {
+    showMessage(`当前 ${capability.name} 最多支持 ${capability.maxPictures} 个 Slot`);
     return;
   }
   const pictureNumber = nextImagePictureNumber(state.imageDraft);
@@ -5106,8 +5366,9 @@ function addImagePicture(path: string, replacePictureId?: string): void {
     render();
     return;
   }
-  if (pictures.length >= qwenImageEdit2511Capability.maxPictures) {
-    showMessage(`当前 Qwen 2511 最多支持 ${qwenImageEdit2511Capability.maxPictures} 张 Picture`);
+  const capability = imageModelCapabilityFor(state.imageDraft.modelId);
+  if (pictures.length >= capability.maxPictures) {
+    showMessage(`当前 ${capability.name} 最多支持 ${capability.maxPictures} 张 Picture`);
     return;
   }
   const pictureNumber = nextImagePictureNumber(state.imageDraft);
@@ -5448,6 +5709,7 @@ async function selectDraftVideo(
     duration: number;
     width: number;
     height: number;
+    h3ContextLatentPath?: string;
   }
 ): Promise<void> {
   const draft: Draft = {
@@ -5459,6 +5721,7 @@ async function selectDraftVideo(
     trimEndSeconds: source?.duration ?? 0,
     sourceAssetId: source?.assetId,
     sourceVersionId: source?.versionId,
+    h3ContextLatentPath: source?.h3ContextLatentPath,
     sourceWidth: source?.width ?? 0,
     sourceHeight: source?.height ?? 0,
     ratio: "source"
@@ -5570,6 +5833,23 @@ function bindVideoTrim(): void {
   };
   startInput.addEventListener("input", () => updateTrim("start"));
   endInput.addEventListener("input", () => updateTrim("end"));
+}
+
+function setEnqueueBusyUi(busy: boolean): void {
+  const button = document.querySelector<HTMLButtonElement>(
+    creationMode === "image-edit" ? "#enqueue-image-edit" : "#enqueue"
+  );
+  if (!button) return;
+  button.disabled = busy;
+  button.classList.toggle("busy", busy);
+  button.setAttribute("aria-busy", String(busy));
+  const buttonIcon = button.querySelector<HTMLElement>(".enqueue-spinner");
+  if (buttonIcon) {
+    buttonIcon.outerHTML = icon(busy ? "refresh-cw" : "plus", "enqueue-spinner");
+    renderIcons(button);
+  }
+  const label = button.querySelector<HTMLElement>("[data-enqueue-label]");
+  if (label) label.textContent = busy ? "加入中…" : "加入队列";
 }
 
 function bindImageEditCreate(): void {
@@ -5751,12 +6031,30 @@ function bindImageEditCreate(): void {
     patchImageDraft({ activePromptVersion: Math.min(state.imageDraft.promptVersions.length - 1, state.imageDraft.activePromptVersion + 1) });
     render();
   });
-  for (const id of ["image-edit-model", "image-edit-quality", "image-edit-seed"]) {
+  for (const id of ["image-edit-model", "image-edit-quality", "image-edit-resolution", "image-edit-seed"]) {
     document.querySelector(`#${id}`)?.addEventListener("change", (event) => {
       const value = (event.currentTarget as HTMLInputElement | HTMLSelectElement).value;
+      const modelCapability = id === "image-edit-model"
+        ? imageModelCapabilityFor(value)
+        : undefined;
       patchImageDraft(
-        id === "image-edit-model" ? { modelId: value } :
+        id === "image-edit-model"
+          ? {
+              modelId: value,
+              qualityProfile: modelCapability?.qualityProfiles.some((profile) => profile.id === state.imageDraft.qualityProfile)
+                ? state.imageDraft.qualityProfile
+                : modelCapability?.qualityProfiles[0]?.id ?? "native"
+            }
+          :
         id === "image-edit-quality" ? { qualityProfile: value } :
+        id === "image-edit-resolution"
+          ? {
+              targetResolution: normalizeImageTargetResolution(
+                value,
+                state.imageDraft.pictures[0]?.width ?? 0,
+                state.imageDraft.pictures[0]?.height ?? 0
+              )
+            } :
         { seed: value ? Number(value) : null }
       );
       if (id !== "image-edit-seed") render();
@@ -5782,17 +6080,22 @@ function bindImageEditCreate(): void {
     render();
   });
   document.querySelector("#enqueue-image-edit")?.addEventListener("click", async () => {
-    reportUserAction("image-queue-enqueue", {
-      modelId: state.imageDraft.modelId,
-      outputCount: state.imageDraft.outputCount,
-      pictureCount: state.imageDraft.pictures.length
-    });
+    if (enqueueBusy) return;
+    enqueueBusy = true;
+    setEnqueueBusyUi(true);
     try {
+      reportUserAction("image-queue-enqueue", {
+        modelId: state.imageDraft.modelId,
+        outputCount: state.imageDraft.outputCount,
+        pictureCount: state.imageDraft.pictures.length
+      });
       state = await window.studio.enqueueImageEdit(state.imageDraft);
       showMessage(`已加入图片队列：${state.queue.at(-1)?.outputFilename ?? ""}`);
-      render();
     } catch (error) {
       showMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      enqueueBusy = false;
+      render();
     }
   });
 }
@@ -5809,9 +6112,14 @@ function bindCreate(): void {
       const inputMode = requestedMode === "video" ? "video" : "image";
       creationMode = inputMode === "video" ? "video-extension" : "image-to-video";
       const modelId = inputMode === "video"
-        ? isMiniMaxH3Fl2vaModel(state.draft.modelId)
+        ? isMiniMaxH3R2vModel(state.draft.modelId) || isMiniMaxH3Fl2vaModel(state.draft.modelId)
           ? state.draft.modelId
-          : "sulphur2"
+          : (() => {
+              const node = environmentScan?.customNodes.find((item) => item.id === "h3-motion-context");
+              return node?.installed || node?.loaded;
+            })()
+            ? "minimax_h3_ref2va"
+            : "minimax_h3_fl2va"
         : state.draft.modelId;
       const key = bundledWorkflowKey(modelId, inputMode);
       const bundled = bundledWorkflows[key] ??
@@ -5828,7 +6136,12 @@ function bindCreate(): void {
         modelId,
         workflowPath: bundled?.path ?? "",
         ...(inputMode === "video"
-          ? { ratio: "source" as const }
+          ? {
+              ratio: "source" as const,
+              spectrumMode: isMiniMaxH3R2vModel(modelId)
+                ? "off" as const
+                : state.draft.spectrumMode
+            }
           : {})
       });
       render();
@@ -5850,6 +6163,7 @@ function bindCreate(): void {
       trimEndSeconds: 0,
       sourceAssetId: undefined,
       sourceVersionId: undefined,
+      h3ContextLatentPath: undefined,
       sourceWidth: 0,
       sourceHeight: 0
     });
@@ -6114,7 +6428,7 @@ function bindCreate(): void {
         const nextIsR2V = isMiniMaxH3R2vModel(value);
         const oldWasR2V = isMiniMaxH3R2vModel(state.draft.modelId);
         const existingSlots = state.draft.h3ReferenceSlots;
-        const slotsForR2V = nextIsR2V && !existingSlots.length
+        const slotsForR2V = nextIsR2V && state.draft.inputMode !== "video" && !existingSlots.length
           ? [state.draft.startImagePath, state.draft.endImagePath]
               .filter(Boolean)
               .map((imagePath) => newH3ReferenceSlot(imagePath))
@@ -6138,8 +6452,8 @@ function bindCreate(): void {
         patchDraft({
           modelId: value,
           h3ReferenceSlots: slotsForR2V,
-          startImagePath: nextIsR2V ? "" : restoredStartImage,
-          endImagePath: nextIsR2V ? "" : restoredEndImage,
+          startImagePath: nextIsR2V && state.draft.inputMode !== "video" ? "" : restoredStartImage,
+          endImagePath: nextIsR2V && state.draft.inputMode !== "video" ? "" : restoredEndImage,
           ...(isMiniMaxH3Model(value)
             ? {
                 ratio: "source" as const,
@@ -6151,7 +6465,7 @@ function bindCreate(): void {
                 fps: 24 as const,
                 frameInterpolation: "off" as const,
                 motion: "natural" as const,
-                spectrumMode: isMiniMaxH3TurboModel(value)
+                spectrumMode: (state.draft.inputMode === "video" && nextIsR2V)
                   ? "off" as const
                   : state.draft.spectrumMode
               }
@@ -6163,6 +6477,7 @@ function bindCreate(): void {
               ? ""
               : state.draft.workflowPath)
         });
+        enableSpectrumByDefaultIfAvailable();
         render();
         return;
       }
@@ -6170,7 +6485,9 @@ function bindCreate(): void {
         id === "ratio" ? { ratio: value as Draft["ratio"] } :
         id === "resolution" ? { resolution: Number(value) as Draft["resolution"] } :
         id === "steps" ? { steps: normalizeH3Steps(Number(value), state.draft.modelId) } :
-        id === "spectrum-mode" ? { spectrumMode: value as Draft["spectrumMode"] } :
+        id === "spectrum-mode"
+          ? { spectrumMode: value as Draft["spectrumMode"], spectrumModeUserSet: true }
+          :
         id === "fps" ? { fps: Number(value) as Draft["fps"] } :
         id === "frame-interpolation" ? { frameInterpolation: value as Draft["frameInterpolation"] } :
         id === "motion" ? { motion: value as Draft["motion"] } :
@@ -6212,13 +6529,16 @@ function bindCreate(): void {
     render();
   });
   document.querySelector("#enqueue")?.addEventListener("click", async () => {
-    reportUserAction("queue-enqueue", {
-      taskType: state.draft.inputMode === "video" ? "extension" : "generation",
-      modelId: state.draft.modelId,
-      duration: state.draft.duration,
-      fps: state.draft.fps
-    });
+    if (enqueueBusy) return;
+    enqueueBusy = true;
+    setEnqueueBusyUi(true);
     try {
+      reportUserAction("queue-enqueue", {
+        taskType: state.draft.inputMode === "video" ? "extension" : "generation",
+        modelId: state.draft.modelId,
+        duration: state.draft.duration,
+        fps: state.draft.fps
+      });
       if (state.draft.inputMode === "video") {
         state = await window.studio.enqueueExtension(state.draft);
         showMessage(`已加入续写队列：${state.queue.at(-1)?.outputFilename ?? ""}`);
@@ -6228,6 +6548,9 @@ function bindCreate(): void {
       showMessage(`已加入队列：${state.queue.at(-1)?.outputFilename ?? ""}`);
     } catch (error) {
       showMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      enqueueBusy = false;
+      render();
     }
   });
 }
@@ -6483,6 +6806,12 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       }
     });
   });
+  document.querySelectorAll<HTMLButtonElement>("[data-image-version-navigation]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const direction = Number(button.dataset.imageVersionNavigation);
+      if (direction === -1 || direction === 1) navigateImageHistoryVersion(direction);
+    });
+  });
   document.querySelectorAll<HTMLButtonElement>("[data-image-version-id]").forEach((button) => {
     button.addEventListener("click", () => {
       const versionId = button.dataset.imageVersionId;
@@ -6493,15 +6822,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       render();
     });
   });
-  document.querySelectorAll<HTMLButtonElement>("[data-image-stage-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const stage = document.querySelector<HTMLElement>("[data-image-stage]");
-      if (!stage) return;
-      const mode = button.dataset.imageStageMode === "original" ? "original" : "fit";
-      stage.dataset.imageStage = mode;
-      stage.classList.toggle("original-size", mode === "original");
-    });
-  });
+  bindImageHistoryLightbox();
   const historyMediaCards = [...document.querySelectorAll<HTMLElement>("[data-history-media]")];
   historyMediaCards.forEach((media) => {
     const video = media.querySelector<HTMLVideoElement>("video");
@@ -6788,15 +7109,19 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     }
     await copyHistoryText(version.prompt, "Prompt 已复制。");
   });
-  document.querySelector("[data-image-continue-edit]")?.addEventListener("click", async () => {
-    const project = state.imageHistory.find((item) => item.id === selectedHistoryAssetId);
-    if (!project) return;
-    await continueImageEdit(project, currentImageHistoryVersion(project));
+  document.querySelector<HTMLElement>("[data-image-continue-edit-project]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLElement;
+    const project = state.imageHistory.find((item) => item.id === button.dataset.imageContinueEditProject);
+    const version = project?.versions.find((item) => item.id === button.dataset.imageContinueEditVersion);
+    if (!project || !version) return;
+    await continueImageEdit(project, version);
   });
-  document.querySelector("[data-image-continue-video]")?.addEventListener("click", async () => {
-    const project = state.imageHistory.find((item) => item.id === selectedHistoryAssetId);
-    if (!project) return;
-    await continueImageToVideo(project, currentImageHistoryVersion(project));
+  document.querySelector<HTMLElement>("[data-image-continue-video-project]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLElement;
+    const project = state.imageHistory.find((item) => item.id === button.dataset.imageContinueVideoProject);
+    const version = project?.versions.find((item) => item.id === button.dataset.imageContinueVideoVersion);
+    if (!project || !version) return;
+    await continueImageToVideo(project, version);
   });
   document.querySelector<HTMLButtonElement>("[data-image-set-cover]")?.addEventListener("click", async (event) => {
     const button = event.currentTarget as HTMLButtonElement;
@@ -6840,7 +7165,8 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
           versionId: version.id,
           duration: version.duration,
           width: version.width,
-          height: version.height
+          height: version.height,
+          h3ContextLatentPath: version.h3ContextLatentPath
         });
       } catch (error) {
         showMessage(error instanceof Error ? error.message : "无法继续创作");
@@ -6973,6 +7299,7 @@ async function saveSettingsFromUi(
 ): Promise<void> {
   const previousSettings = state.settings;
   const previousProfile = previousSettings.ltxExtensionModelProfile;
+  const imageModelChanged = previousSettings.defaultImageModel !== nextSettings.defaultImageModel;
   const pathsChanged = previousSettings.comfyInstallDirectory !== nextSettings.comfyInstallDirectory ||
     previousSettings.comfyPythonPath !== nextSettings.comfyPythonPath ||
     previousSettings.modelDirectory !== nextSettings.modelDirectory ||
@@ -6985,6 +7312,19 @@ async function saveSettingsFromUi(
     previousSettings.proxyUrl !== nextSettings.proxyUrl;
   state = await window.studio.saveSettings(nextSettings, mode);
   settingsDraft = null;
+  if (imageModelChanged && state.imageDraft.modelId === previousSettings.defaultImageModel) {
+    const capability = imageModelCapabilityFor(nextSettings.defaultImageModel);
+    const qualityProfile = capability.qualityProfiles.some(
+      (profile) => profile.id === state.imageDraft.qualityProfile
+    )
+      ? state.imageDraft.qualityProfile
+      : capability.qualityProfiles[0]?.id ?? "native";
+    state = await window.studio.saveImageDraft({
+      ...state.imageDraft,
+      modelId: nextSettings.defaultImageModel,
+      qualityProfile
+    });
+  }
   if (state.settings.ltxExtensionModelProfile !== previousProfile) {
     delete bundledWorkflows[bundledWorkflowKey("sulphur2", "image")];
     delete bundledWorkflows[bundledWorkflowKey("sulphur2", "video")];
@@ -7021,6 +7361,7 @@ async function runEnvironmentScan(settings: Settings): Promise<void> {
   render();
   try {
     environmentScan = await window.studio.scanEnvironment(settings);
+    enableSpectrumByDefaultIfAvailable();
   } catch (error) {
     environmentScanError = `环境扫描失败：${error instanceof Error ? error.message : String(error)}`;
     showMessage(environmentScanError);
@@ -7079,6 +7420,17 @@ function bindSettings(): void {
       settingsDraft = formSettings();
       showMessage("该 Gemma GGUF 由当前 ComfyUI 的 H3 Prompt Writer 运行，扩写完成后会自动卸载。");
     }
+  });
+  document.querySelector("#default-image-model")?.addEventListener("change", () => {
+    const settings = formSettings();
+    const capability = imageModelCapabilityFor(settings.defaultImageModel);
+    const qualityProfile = capability.qualityProfiles.some(
+      (profile) => profile.id === settings.defaultImageQualityProfile
+    )
+      ? settings.defaultImageQualityProfile
+      : capability.qualityProfiles[0]?.id ?? "native";
+    settingsDraft = { ...settings, defaultImageQualityProfile: qualityProfile };
+    render();
   });
   document.querySelector("#release-prompt-model")?.addEventListener("click", () => {
     void togglePromptModelFromUi();
@@ -7745,6 +8097,7 @@ void window.studio.getState().then(async (initialState) => {
     if (scanResult.status === "fulfilled") {
       environmentScanError = "";
       environmentScan = scanResult.value;
+      enableSpectrumByDefaultIfAvailable();
     } else {
       environmentScanError = `启动时环境扫描失败：${scanResult.reason instanceof Error ? scanResult.reason.message : String(scanResult.reason)}`;
     }

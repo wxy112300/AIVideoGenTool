@@ -4,7 +4,7 @@
 >
 > 目标硬件：Windows + NVIDIA RTX 4090 24GB，优先使用 ComfyUI 本地运行。
 >
-> 当前状态：仅记录调研结果，暂不接入 UI、设置、模型扫描或任务队列。
+> 当前状态：FLUX.2 Klein 4B 已接入设置、模型扫描和图片任务 adapter；Qwen-Image-Edit-2511 保留为质量主线，并已增加低显存运行策略。真实 Klein 权重下载和两模型 GPU smoke test 仍待完成。
 
 ## 1. 需求定义
 
@@ -89,6 +89,30 @@ Qwen-Image-Edit-2511
 ```
 
 Q4_K_M 的 13.2GB 是权重文件大小，不是最终显存峰值。实际峰值取决于分辨率、VAE、文本编码器、offload 策略和 ComfyUI 版本，必须通过真实工作流测量。
+
+### 4.3 当前优先运行模型：FLUX.2 Klein 4B
+
+FLUX.2 Klein 4B 是当前 RTX 4090 的优先接入模型：官方定位为消费级 GPU，约 13GB VRAM，支持单图编辑和多参考编辑；本项目首版按 ComfyUI 0.31 官方 blueprint 接入单图编辑，使用 20 步、CFG 5、约 1MP 内部工作尺寸和 ReferenceLatent 条件。
+
+当前设置会扫描以下组件：
+
+- `diffusion_models/flux-2-klein-base-4b-fp8.safetensors`
+- `text_encoders/qwen_3_4b.safetensors`
+- `vae/flux2-vae.safetensors`
+
+它与 Qwen 2511 共用图片项目、PNG 输出和严格 Picture 1 尺寸契约，但使用独立 adapter，不把 Qwen 节点图硬套到 Klein。
+
+### 4.4 Qwen 2511 的 24GB 运行策略
+
+Qwen 官方 INT8 ConvRot diffusion 文件约 19.5 GiB，Qwen VL FP8 文本编码器约 8.95 GiB；两者不能在 24GB 显存中同时完整驻留。当前实现采取：
+
+1. `CLIPLoader.device = cpu`，把 Qwen VL 文本编码器放到 CPU。
+2. ComfyUI 冷启动 Qwen 任务时追加 `--cpu-vae`。
+3. 追加 `--disable-smart-memory`，允许更激进地把模型权重卸载到系统内存。
+4. 追加 `--vram-headroom 0.5`，给 DynamicVRAM 留额外余量。
+5. 保留 `--cache-none --disable-pinned-memory --disable-async-offload`，避免 Windows 提交内存和换页失控。
+
+这条路径优先保证不爆显存，代价是速度会明显下降；Qwen Q4_K_M/Q3_K_M GGUF 仍是后续更合理的质量/速度方案，但需要 ComfyUI-GGUF 专用 loader。
 
 ### 4.2 FireRed-Image-Edit-1.1
 

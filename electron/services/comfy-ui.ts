@@ -3,6 +3,8 @@ import path from "node:path";
 import type {
   EnhanceRequest,
   H3PromptPreset,
+  ExtensionQueueTask,
+  GenerationQueueTask,
   ImageGenerationQueueTask,
   ImageGenerationRun,
   QueueTask,
@@ -24,9 +26,13 @@ import {
 import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
 import {
   prepareExtensionContext,
-  prepareH3BoundaryFrame
+  prepareH3BoundaryFrame,
+  prepareH3MotionContext
 } from "./extension-media.js";
-import { availableVramBytesForReserve } from "./environment.js";
+import {
+  availableVramBytesForReserve,
+  comfyOutputSubfolder
+} from "./environment.js";
 import {
   inferH3PromptMode,
   h3DurationPlan,
@@ -38,10 +44,8 @@ import {
 import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
 import {
-  buildQwenImageEdit2511Workflow,
+  imageModelAdapterFor,
   renderImageWorkflow,
-  qwenImageEdit2511Adapter,
-  validateQwenImageEdit2511Workflow
 } from "../../src/core/image-workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 
@@ -350,6 +354,19 @@ export async function warmNativePromptModel(
   );
 }
 
+function workflowTaskForComfyOutput<T extends GenerationQueueTask | ExtensionQueueTask>(
+  task: T,
+  settings: Settings
+): T {
+  const videoOutputSubfolder = comfyOutputSubfolder(settings, "video");
+  return videoOutputSubfolder
+    ? {
+        ...task,
+        outputFilename: `${videoOutputSubfolder}/${task.outputFilename}`
+      } as T
+    : task;
+}
+
 export async function submitTask(
   task: QueueTask,
   settings: Settings,
@@ -393,20 +410,33 @@ export async function submitTask(
     const source = JSON.parse(sourceText) as unknown;
     if (task.taskType === "extension") {
       const h3Boundary = isMiniMaxH3Fl2vaModel(task.modelId);
+      const h3MotionContext = isMiniMaxH3R2vModel(task.modelId);
       const prepared = h3Boundary
         ? await prepareH3BoundaryFrame(task, signal)
-        : await prepareExtensionContext(task, signal);
+        : h3MotionContext
+          ? await prepareH3MotionContext(task, signal)
+          : await prepareExtensionContext(task, signal);
       try {
         const uploadedInput = await uploadInput(
           baseUrl,
           prepared.filePath,
           signal,
-          h3Boundary ? "H3 接续边界帧" : "续写上下文"
+          h3Boundary
+            ? "H3 接续边界帧"
+            : h3MotionContext
+              ? "H3 运动与音频上下文"
+              : "续写上下文"
         );
-        prompt = renderWorkflow(source, task, {
+        prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
           ...(h3Boundary
             ? { inputImage: uploadedInput }
             : { sourceVideo: uploadedInput }),
+          ...(h3MotionContext
+            ? {
+                h3ContextLatentPath: task.h3ContextLatentPath ?? "",
+                h3ContextSavePrefix: task.h3ContextSavePrefix ?? `h3_context/${task.id}/clip`
+              }
+            : {}),
           vramTotalBytes,
           vramAvailableBytes
         });
@@ -435,7 +465,7 @@ export async function submitTask(
           )
         )
       ]);
-      prompt = renderWorkflow(source, task, {
+      prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
         h3ReferenceImages,
         h3ReferenceVideos,
         vramTotalBytes,
@@ -449,7 +479,7 @@ export async function submitTask(
           ? uploadInput(baseUrl, task.endImagePath, signal, "尾帧")
           : Promise.resolve("")
       ]);
-      prompt = renderWorkflow(source, task, {
+      prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
         inputImage,
         endImage,
         vramTotalBytes,
@@ -510,7 +540,8 @@ export async function submitImageTask(
   clientId: string;
   nodeTypes: Record<string, string>;
 }> {
-  if (task.modelId !== qwenImageEdit2511Adapter.id) {
+  const adapter = imageModelAdapterFor(task.modelId);
+  if (!adapter) {
     throw new Error(`当前没有 ${task.modelId} 的图片工作流适配器。`);
   }
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
@@ -518,16 +549,16 @@ export async function submitImageTask(
     `${baseUrl}/object_info`,
     { signal }
   );
-  const compiled = qwenImageEdit2511Adapter.compilePrompt(task.prompt, task.pictures);
+  const compiled = adapter.compilePrompt(task.prompt, task.pictures);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const uploadedPictures = await Promise.all(
     compiled.pictures.map((picture, index) =>
       uploadInput(baseUrl, picture.absolutePath, signal, `Picture ${index + 1}`)
     )
   );
-  const workflow = buildQwenImageEdit2511Workflow(task, run);
+  const workflow = adapter.buildWorkflow(task, run);
   const prompt = renderImageWorkflow(workflow, uploadedPictures);
-  const workflowErrors = validateQwenImageEdit2511Workflow(prompt, task.qualityProfile);
+  const workflowErrors = adapter.validateWorkflow(prompt, task.qualityProfile);
   if (workflowErrors.length) {
     throw new Error(`图片工作流校验失败：${workflowErrors.join(" ")}`);
   }

@@ -20,6 +20,7 @@ import {
   validateApiWorkflow,
   workflowSupportsEndImage,
   workflowSupportsH3BoundaryExtension,
+  workflowSupportsH3MotionContextExtension,
   workflowSupportsVideoExtension
 } from "../src/core/workflow";
 
@@ -166,11 +167,20 @@ describe("renderWorkflow", () => {
     const turboSpectrum = renderWorkflow(source, {
       ...turboTask,
       spectrumMode: "balanced"
-    }, { inputImage: "first.png" }) as Record<string, { class_type: string }>;
-    expect(isMiniMaxH3SpectrumEligible(turboTask.modelId)).toBe(false);
-    expect(Object.values(turboSpectrum).some((node) =>
+    }, { inputImage: "first.png" }) as Record<string, { class_type: string; inputs?: Record<string, unknown> }>;
+    expect(isMiniMaxH3SpectrumEligible(turboTask.modelId)).toBe(true);
+    const turboSpectrumNode = Object.entries(turboSpectrum).find(([, node]) =>
       node.class_type === "SpectrumApplyMiniMaxH3"
-    )).toBe(false);
+    );
+    expect(turboSpectrumNode?.[1]).toMatchObject({
+      class_type: "SpectrumApplyMiniMaxH3",
+      inputs: {
+        history_storage: "system_ram",
+        offline_archive_storage: "system_ram"
+      }
+    });
+    expect(turboSpectrum["8"]?.inputs?.model).toEqual([turboSpectrumNode?.[0], 0]);
+    expect(turboSpectrum["10"]?.inputs?.model).toEqual([turboSpectrumNode?.[0], 0]);
   });
 
   it("renders the bundled MiniMax H3 I2V graph with staged model and VAE unloading", () => {
@@ -255,6 +265,7 @@ describe("renderWorkflow", () => {
         model: ["19", 0],
         enabled: true,
         history_storage: "system_ram",
+        offline_archive_storage: "system_ram",
         offline_smoothing_replay: true,
         blend_weight: 0.5,
         audio_blend_weight: 0,
@@ -744,6 +755,30 @@ describe("generation VRAM safety", () => {
     expect(extensionSafetyForTask({ ...h3Extension, duration: 16 }).safe).toBe(false);
   });
 
+  it("budgets the 22 pinned frames for H3 Motion Context extension", () => {
+    const h3MotionExtension: ExtensionQueueTask = {
+      ...extensionTask,
+      modelId: "minimax_h3_ref2va",
+      resolution: 720,
+      duration: 13,
+      fps: 24,
+      frameInterpolation: "off",
+      spectrumMode: "off",
+      maxGeneratedFrames: 362
+    };
+    expect(extensionSafetyForTask(h3MotionExtension)).toMatchObject({
+      safe: true,
+      generatedFrames: 350,
+      maxGeneratedFrames: 362,
+      minimumContextSeconds: 22 / 24
+    });
+    expect(extensionSafetyForTask({ ...h3MotionExtension, duration: 15 }).safe).toBe(false);
+    expect(extensionSafetyForTask({
+      ...h3MotionExtension,
+      spectrumMode: "balanced"
+    }).safe).toBe(false);
+  });
+
   it("aligns MiniMax H3 dimensions to the required 32-pixel grid", () => {
     expect(outputDimensions({
       ...task,
@@ -1040,6 +1075,55 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
       first_frame: ["5", 0]
     });
     expect(rendered["18"]).toBeUndefined();
+  });
+
+  it("renders H3 R2V Motion Context with pixel fallback and optional latent reuse", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_r2v_extend_api.json", import.meta.url),
+        "utf8"
+      )
+    );
+    const h3MotionExtension: ExtensionQueueTask = {
+      ...extensionTask,
+      modelId: "minimax_h3_ref2va",
+      resolution: 480,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off",
+      spectrumMode: "off",
+      maxGeneratedFrames: 362,
+      h3ContextSavePrefix: "h3_context/task-1/clip"
+    };
+    const rendered = renderWorkflow(source, h3MotionExtension, {
+      sourceVideo: "uploaded/context.mp4",
+      h3ContextSavePrefix: "h3_context/task-1/clip"
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(workflowSupportsH3MotionContextExtension(source)).toBe(true);
+    expect(rendered["5"]?.inputs).toMatchObject({
+      video: "uploaded/context.mp4",
+      frame_load_cap: 22
+    });
+    expect(rendered["6"]?.inputs.length).toBe(146);
+    expect(rendered["7"]).toBeUndefined();
+    expect(rendered["8"]?.inputs.context_latent).toBeUndefined();
+    expect(rendered["8"]?.inputs).toMatchObject({
+      context_length: "22",
+      audio_context_length: 22,
+      context_frames: ["5", 0],
+      context_audio: ["5", 2]
+    });
+    expect(rendered["15"]?.inputs.filename_prefix).toBe("h3_context/task-1/clip");
+
+    const latentRendered = renderWorkflow(source, h3MotionExtension, {
+      sourceVideo: "uploaded/context.mp4",
+      h3ContextLatentPath: "D:/ComfyUI/output/h3_context/old/clip_00001.safetensors",
+      h3ContextSavePrefix: "h3_context/task-1/clip"
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(latentRendered["7"]?.inputs.latent_path).toContain("clip_00001.safetensors");
+    expect(latentRendered["8"]?.inputs.context_latent).toEqual(["7", 0]);
+    expect(JSON.stringify(latentRendered)).not.toContain("{{");
   });
 
   it("renders the distilled Q2 graph without a distill LoRA", () => {

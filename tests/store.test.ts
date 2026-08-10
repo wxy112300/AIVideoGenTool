@@ -301,7 +301,7 @@ describe("queue lock recovery", () => {
     }
   });
 
-  it("migrates a schema v2 video state to v4 with an independent image draft", async () => {
+  it("migrates a schema v2 video state to v6 with an independent image draft", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
     const { imageDraft: _imageDraft, ...stateWithoutImageDraft } = createDefaultState();
@@ -314,7 +314,7 @@ describe("queue lock recovery", () => {
     try {
       const store = new JsonStore(filename);
       const loaded = await store.load();
-      expect(loaded.schemaVersion).toBe(4);
+      expect(loaded.schemaVersion).toBe(6);
       expect(loaded.imageDraft.mode).toBe("image-edit");
       expect(loaded.imageDraft.modelId).toBe("qwen-image-edit-2511");
       expect(loaded.settings.imageOutputDirectory).toBe("");
@@ -325,14 +325,33 @@ describe("queue lock recovery", () => {
         settings: { imageOutputDirectory: string };
         imageHistory: unknown[];
       };
-      expect(persisted.schemaVersion).toBe(4);
+      expect(persisted.schemaVersion).toBe(6);
       expect(persisted.imageDraft.mode).toBe("image-edit");
       expect(persisted.settings.imageOutputDirectory).toBe("");
       expect(persisted.imageHistory).toEqual([]);
 
       const reloaded = await new JsonStore(filename).load();
-      expect(reloaded.schemaVersion).toBe(4);
+      expect(reloaded.schemaVersion).toBe(6);
       expect(reloaded.imageDraft.mode).toBe("image-edit");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates the old Qwen native default to the official 20-step balanced profile", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.schemaVersion = 4;
+    state.settings.defaultImageQualityProfile = "native";
+    state.imageDraft.qualityProfile = "native";
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.schemaVersion).toBe(6);
+      expect(loaded.settings.defaultImageQualityProfile).toBe("balanced-20");
+      expect(loaded.imageDraft.qualityProfile).toBe("balanced-20");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

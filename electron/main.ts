@@ -69,7 +69,14 @@ import {
   normalizeImageEditDraft
 } from "../src/core/image-project.js";
 import { promptModelBackend, promptModelSupportsImageEdit } from "../src/core/prompt-models.js";
-import { imageOutputFormatFromFilename, qwenImageEdit2511Adapter } from "../src/core/image-workflow.js";
+import {
+  imageModelAdapterFor,
+  imageOutputDimensions,
+  imageOutputFormatFromFilename,
+  imageLightningComponentFound,
+  imageQualityProfileRequiresLightning,
+  normalizeImageTargetResolution
+} from "../src/core/image-workflow.js";
 import {
   extensionOutputDimensions,
   extensionSafetyForTask,
@@ -82,7 +89,8 @@ import {
   outputDimensions,
   validateApiWorkflow,
   workflowSupportsEndImage,
-  workflowSupportsH3BoundaryExtension
+  workflowSupportsH3BoundaryExtension,
+  workflowSupportsH3MotionContextExtension
 } from "../src/core/workflow.js";
 import {
   uniqueUpscaleFilename,
@@ -489,6 +497,26 @@ async function bundledWorkflowFor(
     q4_k_m: "Q4_K_M dev · 质量"
   }[ltxProfile];
   if (inputMode === "video") {
+    if (isMiniMaxH3R2vModel(modelId)) {
+      const filename = "minimax_h3_r2v_extend_api.json";
+      const candidates = [
+        path.join(app.getAppPath(), "workflows", filename),
+        path.join(process.resourcesPath, "workflows", filename),
+        path.resolve(currentDirectory, "..", "..", "..", "workflows", filename)
+      ];
+      for (const candidate of candidates) {
+        if (!(await fs.stat(candidate).catch(() => null))) continue;
+        const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
+        return {
+          modelId,
+          label: "内置 · MiniMax H3 R2V Motion Context · 运动与音频连续",
+          path: candidate,
+          supportsEndImage: false,
+          supportsVideoExtension: workflowSupportsH3MotionContextExtension(source)
+        };
+      }
+      return null;
+    }
     if (isMiniMaxH3Fl2vaModel(modelId)) {
       const filename = "minimax_h3_i2v_api.json";
       const candidates = [
@@ -637,7 +665,8 @@ async function resolveTaskOutputDirectory(): Promise<string> {
 }
 
 async function requireExistingVideoOutput(
-  result: unknown
+  result: unknown,
+  alternateRoots: string[] = []
 ): Promise<ReturnType<typeof extractComfyOutputFiles>> {
   const outputDirectory = await resolveTaskOutputDirectory();
   if (!outputDirectory) {
@@ -646,21 +675,24 @@ async function requireExistingVideoOutput(
     );
   }
 
-  const files = attachAbsoluteOutputPaths(
-    extractComfyOutputFiles(result),
-    outputDirectory
-  );
-  const videoFiles = files.filter(
-    (file) => file.absolutePath && videoOutputPattern.test(file.filename)
-  );
-  for (const file of videoFiles) {
-    const resolved = await resolveExistingHistoryFile(file.absolutePath!);
-    if (!resolved) continue;
-    const stat = await fs.stat(resolved).catch(() => null);
-    if (stat?.isFile() && stat.size > 0) return files;
+  const reportedFiles = extractComfyOutputFiles(result);
+  const roots = [...new Set([outputDirectory, ...alternateRoots].filter(Boolean))];
+  let lastFiles = attachAbsoluteOutputPaths(reportedFiles, outputDirectory);
+  for (const root of roots) {
+    const files = attachAbsoluteOutputPaths(reportedFiles, root);
+    lastFiles = files;
+    const videoFiles = files.filter(
+      (file) => file.absolutePath && videoOutputPattern.test(file.filename)
+    );
+    for (const file of videoFiles) {
+      const resolved = await resolveExistingHistoryFile(file.absolutePath!);
+      if (!resolved) continue;
+      const stat = await fs.stat(resolved).catch(() => null);
+      if (stat?.isFile() && stat.size > 0) return files;
+    }
   }
 
-  const returnedNames = files.map((file) => file.filename).join("、");
+  const returnedNames = lastFiles.map((file) => file.filename).join("、");
   throw new Error(
     returnedNames
       ? `ComfyUI 已返回完成状态，但输出视频不存在或为空：${returnedNames}`
@@ -670,27 +702,35 @@ async function requireExistingVideoOutput(
 
 async function requireExistingImageOutput(
   result: unknown,
-  outputRoot: string
+  outputRoot: string,
+  alternateRoots: string[] = []
 ): Promise<ReturnType<typeof extractComfyOutputFiles>> {
   if (!outputRoot) {
     throw new Error(
       "ComfyUI 已返回图片完成状态，但无法确定输出目录。请在设置中确认 ComfyUI 目录后重试。"
     );
   }
-  const files = attachAbsoluteOutputPaths(
-    extractComfyOutputFiles(result),
-    outputRoot
-  );
-  const imageFiles = files.filter(
-    (file) => file.absolutePath && imageOutputFormatFromFilename(file.filename) === "png"
-  );
-  for (const file of imageFiles) {
-    const resolved = await resolveExistingHistoryFile(file.absolutePath!);
-    if (!resolved) continue;
-    const stat = await fs.stat(resolved).catch(() => null);
-    if (stat?.isFile() && stat.size > 0) return files;
+  const reportedFiles = extractComfyOutputFiles(result);
+  const configuredRoots = [outputRoot, ...alternateRoots].filter(Boolean);
+  const parentRoots = configuredRoots
+    .filter((root) => ["images", "videos"].includes(path.basename(path.resolve(root)).toLowerCase()))
+    .map((root) => path.dirname(path.resolve(root)));
+  const roots = [...new Set([...configuredRoots, ...parentRoots])];
+  let lastFiles = attachAbsoluteOutputPaths(reportedFiles, outputRoot);
+  for (const root of roots) {
+    const files = attachAbsoluteOutputPaths(reportedFiles, root);
+    lastFiles = files;
+    const imageFiles = files.filter(
+      (file) => file.absolutePath && imageOutputFormatFromFilename(file.filename) === "png"
+    );
+    for (const file of imageFiles) {
+      const resolved = await resolveExistingHistoryFile(file.absolutePath!);
+      if (!resolved) continue;
+      const stat = await fs.stat(resolved).catch(() => null);
+      if (stat?.isFile() && stat.size > 0) return files;
+    }
   }
-  const returnedNames = files.map((file) => file.filename).join("、");
+  const returnedNames = lastFiles.map((file) => file.filename).join("、");
   throw new Error(
     returnedNames
       ? `ComfyUI 已返回完成状态，但图片输出不存在或为空：${returnedNames}`
@@ -1124,6 +1164,17 @@ function imageTaskFromDraft(
     status: "waiting"
   }));
   const outputFilename = `QwenEdit-${new Date().toISOString().replace(/[-:.TZ]/gu, "").slice(0, 14)}-${id.slice(0, 8)}`;
+  const basePicture = draft.pictures[0];
+  const targetResolution = normalizeImageTargetResolution(
+    draft.targetResolution,
+    basePicture?.width ?? 0,
+    basePicture?.height ?? 0
+  );
+  const [outputWidth, outputHeight] = imageOutputDimensions(
+    basePicture?.width ?? 0,
+    basePicture?.height ?? 0,
+    targetResolution
+  );
   return {
     id,
     taskType: "image-generation",
@@ -1137,8 +1188,9 @@ function imageTaskFromDraft(
     imageOutputRoot: outputTarget.root,
     imageOutputDirectory: outputTarget.directory,
     imageOutputSubfolder: outputTarget.subfolder,
-    outputWidth: draft.pictures[0]?.width,
-    outputHeight: draft.pictures[0]?.height,
+    outputWidth,
+    outputHeight,
+    targetResolution,
     ...(diffusionModelFilename ? { diffusionModelFilename } : {}),
     prompt,
     promptVersion: draft.activePromptVersion + 1,
@@ -1157,10 +1209,7 @@ async function resolveImageOutputTarget(settings: Settings): Promise<{
   directory: string;
   subfolder: string;
 }> {
-  const detectedRoot = await resolveComfyOutputDirectory({
-    ...settings,
-    outputDirectory: ""
-  });
+  const detectedRoot = await resolveComfyOutputDirectory(settings);
   const rootCandidate = detectedRoot || settings.outputDirectory.trim();
   if (!rootCandidate) throw new Error("无法确定 ComfyUI output 目录，无法准备图片输出目录。");
   const root = path.resolve(rootCandidate);
@@ -1186,11 +1235,13 @@ function readImageDimensions(filename: string): { width: number; height: number 
   return { width: size.width, height: size.height };
 }
 
-async function requireImageModelRuntime(settings: Settings): Promise<string> {
+async function requireImageModelAssets(
+  settings: Settings,
+  modelId = settings.defaultImageModel,
+  qualityProfile = "native"
+): Promise<string> {
   const scan = await scanEnvironment(settings);
-  const profile = scan.modelProfiles.find(
-    (item) => item.id === qwenImageEdit2511Adapter.id
-  );
+  const profile = scan.modelProfiles.find((item) => item.id === modelId);
   if (!profile?.available) {
     const missing = profile?.components
       .filter((component) => !component.found)
@@ -1200,12 +1251,12 @@ async function requireImageModelRuntime(settings: Settings): Promise<string> {
       `Qwen Image Edit 2511 组件尚未完整${missing ? `，缺少：${missing}` : ""}。`
     );
   }
-  if (!profile.runtimeVerified) {
-    throw new Error("请先启动 ComfyUI 并重新扫描环境，完成 Qwen 图片工作流节点验证。");
-  }
-  if (!profile.runtimeReady) {
+  if (
+    imageQualityProfileRequiresLightning(qualityProfile) &&
+    !imageLightningComponentFound(profile.components)
+  ) {
     throw new Error(
-      `当前 ComfyUI 缺少 Qwen 图片工作流节点：${profile.runtimeMissingNodes?.join("、") || "未知节点"}。`
+      "当前选择了 Qwen Lightning 4 步档，但未找到 Lightning LoRA。请在设置 → 图片模型中打开下载说明并重新扫描。"
     );
   }
   const diffusionModel = profile.components
@@ -1234,7 +1285,7 @@ function extensionTaskFromDraft(
     updatedAt: now,
     outputFilename: createOutputFilename(
       draft.modelId,
-      isMiniMaxH3Fl2vaModel(draft.modelId)
+      isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
         ? draft.resolution
         : settings.ltxExtensionResolution,
       draft.duration,
@@ -1253,7 +1304,7 @@ function extensionTaskFromDraft(
     modelId: draft.modelId,
     workflowPath: draft.workflowPath,
     ratio: "source",
-    resolution: isMiniMaxH3Fl2vaModel(draft.modelId)
+    resolution: isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
       ? draft.resolution
       : settings.ltxExtensionResolution,
     duration: draft.duration,
@@ -1265,8 +1316,8 @@ function extensionTaskFromDraft(
     seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
     attentionMode: state.settings.h3AttentionMode,
-    spectrumMode: draft.spectrumMode,
-    maxGeneratedFrames: isMiniMaxH3Fl2vaModel(draft.modelId)
+    spectrumMode: isMiniMaxH3R2vModel(draft.modelId) ? "off" : draft.spectrumMode,
+    maxGeneratedFrames: isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
       ? 362
       : settings.ltxExtensionFrames,
     overlapFrames: settings.ltxExtensionOverlapFrames,
@@ -1385,8 +1436,12 @@ function isLocalComfyUrl(value: string): boolean {
 
 async function ensureComfyUiReady(taskId: string): Promise<void> {
   const settings = store.get().settings;
+  const queuedTask = store.get().queue.find((item) => item.id === taskId);
+  const serviceSettings = queuedTask?.taskType === "image-generation"
+    ? { ...settings, defaultImageModel: queuedTask.modelId }
+    : settings;
   try {
-    await testComfyUi(settings);
+    await testComfyUi(serviceSettings);
     return;
   } catch (connectionError) {
     appLogger.warn("service", "connection-unavailable", "ComfyUI was not ready", {
@@ -1412,7 +1467,7 @@ async function ensureComfyUiReady(taskId: string): Promise<void> {
   appLogger.info("service", "auto-start-requested", "Queue requested automatic ComfyUI startup", {
     taskId
   });
-  const started = await startLocalService("comfy", settings);
+  const started = await startLocalService("comfy", serviceSettings);
   appLogger.info(
     "service",
     started.ok ? "auto-start-succeeded" : "auto-start-failed",
@@ -1422,7 +1477,7 @@ async function ensureComfyUiReady(taskId: string): Promise<void> {
   if (!started.ok) {
     throw new Error(`ComfyUI 自动启动失败：${started.message}`);
   }
-  await testComfyUi(settings);
+  await testComfyUi(serviceSettings);
 }
 
 async function ensureComfyUiReadyForPrompt(settings: Settings): Promise<void> {
@@ -1601,6 +1656,7 @@ async function executeImageGenerationQueueTask(
       startedAt: new Date().toISOString(),
       error: undefined
     });
+    await ensureComfyUiReady(task.id);
     const totalRuns = Math.max(1, task.runs.length);
     for (const plannedRun of task.runs) {
       const current = store.get().queue.find((item) => item.id === task.id);
@@ -1654,7 +1710,8 @@ async function executeImageGenerationQueueTask(
         );
         const files = await requireExistingImageOutput(
           result,
-          task.imageOutputRoot ?? await resolveTaskOutputDirectory()
+          task.imageOutputRoot ?? await resolveTaskOutputDirectory(),
+          [store.get().settings.outputDirectory]
         );
         const file = files.find((candidate) => imageOutputFormatFromFilename(candidate.filename) === "png");
         if (!file) throw new Error("图片工作流没有返回可用图片文件。");
@@ -1697,15 +1754,15 @@ async function executeImageGenerationQueueTask(
             taskId: queued.id,
             runId: run.id,
             createdAt: completedAt,
-            startedAt: run.startedAt,
+            startedAt: runStartedAt,
             modelId: queued.modelId,
             workflowPath: queued.workflowPath,
             prompt: queued.prompt,
             promptVersion: queued.promptVersion,
             references: queued.pictures.map((picture) => ({ ...picture })),
             seed: run.seed,
-            width: queued.pictures[0]?.width ?? 0,
-            height: queued.pictures[0]?.height ?? 0,
+            width: queued.outputWidth ?? queued.pictures[0]?.width ?? 0,
+            height: queued.outputHeight ?? queued.pictures[0]?.height ?? 0,
             format: "png",
             file,
             comfyPromptId: submitted.promptId,
@@ -2016,7 +2073,10 @@ async function executeQueue(): Promise<void> {
       const completedTask = store.get().queue.find((item) => item.id === task.id);
       if (!completedTask || isImageGenerationQueueTask(completedTask)) continue;
       const completedAt = new Date().toISOString();
-      const files = await requireExistingVideoOutput(result);
+      const files = await requireExistingVideoOutput(
+        result,
+        [store.get().settings.outputDirectory]
+      );
       appLogger.info("queue", "output-validated", "Task output validated", {
         taskId: task.id,
         outputCount: files.length
@@ -2030,9 +2090,11 @@ async function executeQueue(): Promise<void> {
         }
         await updateTask(task.id, {
           progress: 99,
-          stage: isMiniMaxH3Fl2vaModel(completedTask.modelId)
-            ? "裁掉重复边界帧并合并原生音轨"
-            : "去除重叠帧并拼接成片"
+          stage: isMiniMaxH3R2vModel(completedTask.modelId)
+            ? "合并 Motion Context 续写片段与 32 kHz 音轨"
+            : isMiniMaxH3Fl2vaModel(completedTask.modelId)
+              ? "裁掉重复边界帧并合并原生音轨"
+              : "去除重叠帧并拼接成片"
         });
         await finalizeExtensionOutput(
           completedTask,
@@ -2134,7 +2196,8 @@ async function executeQueue(): Promise<void> {
             comfyPromptId: promptId,
             comfyOutputs: result,
             files,
-            startedAt: completedTask.startedAt
+            startedAt: completedTask.startedAt,
+            h3ContextLatentPath: completedTask.h3ContextSavedPath
           };
           const asset: HistoryAsset = {
             mediaKind: "video",
@@ -2158,6 +2221,7 @@ async function executeQueue(): Promise<void> {
             sourceHeight: completedTask.sourceHeight,
             sourceAssetId: completedTask.sourceAssetId,
             sourceVersionId: completedTask.sourceVersionId,
+            h3ContextLatentPath: completedTask.h3ContextSavedPath,
             sourceVideoPath: completedTask.sourceVideoPath,
             sourceVideoDuration: completedTask.sourceVideoDuration,
             trimStartSeconds: completedTask.trimStartSeconds,
@@ -3253,12 +3317,13 @@ function registerIpc(): void {
   });
   ipcMain.handle("queue:enqueue-image", async (_event, draft: ImageEditDraft) => {
     const normalized = normalizeImageEditDraft(draft);
-    if (normalized.modelId !== qwenImageEdit2511Adapter.id) {
+    const adapter = imageModelAdapterFor(normalized.modelId);
+    if (!adapter) {
       throw new Error(`当前没有 ${normalized.modelId} 的图片模型适配器。`);
     }
     if (!normalized.pictures.length) throw new Error("请先添加至少一张 Picture 作为基础图片。");
-    if (normalized.pictures.length > qwenImageEdit2511Adapter.maxPictures) {
-      throw new Error(`当前 Qwen 2511 工作流最多支持 ${qwenImageEdit2511Adapter.maxPictures} 张 Picture。`);
+    if (normalized.pictures.length > adapter.maxPictures) {
+      throw new Error(`当前 ${adapter.name} 工作流最多支持 ${adapter.maxPictures} 张 Picture。`);
     }
     const incompletePicture = normalized.pictures.find((picture) => !picture.absolutePath);
     if (incompletePicture) {
@@ -3266,7 +3331,11 @@ function registerIpc(): void {
     }
     const prompt = normalized.promptVersions[normalized.activePromptVersion]?.text.trim() ?? "";
     if (!prompt) throw new Error("图片处理提示词不能为空");
-    const diffusionModelFilename = await requireImageModelRuntime(store.get().settings);
+    const diffusionModelFilename = await requireImageModelAssets(
+      store.get().settings,
+      normalized.modelId,
+      normalized.qualityProfile
+    );
     const outputTarget = await resolveImageOutputTarget(store.get().settings);
     const preparedDraft = normalizeImageEditDraft({
       ...normalized,
@@ -3283,7 +3352,7 @@ function registerIpc(): void {
       }
     }
     const preparedPrompt = preparedDraft.promptVersions[preparedDraft.activePromptVersion]?.text.trim() ?? "";
-    const compiled = qwenImageEdit2511Adapter.compilePrompt(preparedPrompt, preparedDraft.pictures);
+    const compiled = adapter.compilePrompt(preparedPrompt, preparedDraft.pictures);
     if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
     const current = store.get();
     const task = imageTaskFromDraft(preparedDraft, current, diffusionModelFilename, outputTarget);
@@ -3326,12 +3395,30 @@ function registerIpc(): void {
       ? workflowSupportsH3BoundaryExtension(workflow)
         ? []
         : ["H3 接续工作流缺少 INPUT_IMAGE、MiniMaxH3ImageToVideo 或视频输出节点"]
+      : isMiniMaxH3R2vModel(draft.modelId)
+        ? workflowSupportsH3MotionContextExtension(workflow)
+          ? []
+          : ["H3 Motion Context 工作流缺少 R2V、运动上下文、同步裁剪、latent 保存或视频输出节点"]
       : extensionWorkflowSafetyErrors(workflow);
     if (workflowSafetyErrors.length) {
       throw new Error(`续写工作流不符合原生续写低显存契约：${workflowSafetyErrors.join("；")}`);
     }
     const current = store.get();
     const task = extensionTaskFromDraft(draft, current);
+    if (isMiniMaxH3R2vModel(task.modelId)) {
+      const outputDirectory = await resolveTaskOutputDirectory();
+      const relativePrefix = `h3_context/${task.id}/clip`;
+      task.h3ContextSavePrefix = relativePrefix;
+      task.h3ContextSavedPath = outputDirectory
+        ? path.join(outputDirectory, "h3_context", task.id, "clip_00001.safetensors")
+        : undefined;
+      task.h3ContextLatentPath =
+        draft.h3ContextLatentPath &&
+        Math.abs(draft.trimEndSeconds - draft.sourceVideoDuration) < 0.05 &&
+        await fs.stat(draft.h3ContextLatentPath).catch(() => null)
+          ? draft.h3ContextLatentPath
+          : undefined;
+    }
     const safety = extensionSafetyForTask(task);
     if (!safety.safe) throw new Error(safety.message);
     const next = await store.update((state) => {

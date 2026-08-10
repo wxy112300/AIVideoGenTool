@@ -6,6 +6,7 @@ import {
   buildComfyDesktopCandidates,
   buildComfyDesktopSourceCandidates,
   comfyDataDirectories,
+  comfyOutputSubfolder,
   mergeComfyDesktopSettings,
   comfyUiBundledFrontendArgs,
   buildLmStudioCandidates,
@@ -171,6 +172,42 @@ describe("ComfyUI environment candidates", () => {
     });
   });
 
+  it("uses the shared parent when video and image directories are siblings", () => {
+    const settings = {
+      modelDirectory: "C:\\Models",
+      outputDirectory: "C:\\ComfyUI\\output\\Videos",
+      imageOutputDirectory: "C:\\ComfyUI\\output\\Images"
+    };
+
+    expect(comfyDataDirectories(settings, "C:\\ComfyUI").outputDirectory).toBe(
+      "C:\\ComfyUI\\output"
+    );
+    expect(comfyOutputSubfolder(settings, "video")).toBe("Videos");
+    expect(comfyOutputSubfolder(settings, "image")).toBe("Images");
+  });
+
+  it("derives the ComfyUI root when only the conventional image directory is configured", () => {
+    expect(comfyDataDirectories({
+      modelDirectory: "C:\\Models",
+      outputDirectory: "",
+      imageOutputDirectory: "C:\\ComfyUI\\output\\Images"
+    }, "C:\\ComfyUI").outputDirectory).toBe("C:\\ComfyUI\\output");
+  });
+
+  it("keeps arbitrary nested and Unicode output directories under the ComfyUI output root", () => {
+    const settings = {
+      modelDirectory: "C:\\Models",
+      outputDirectory: "C:\\ComfyUI\\output\\视频",
+      imageOutputDirectory: "C:\\ComfyUI\\output\\Output\\图片"
+    };
+
+    expect(comfyDataDirectories(settings, "C:\\ComfyUI").outputDirectory).toBe(
+      "C:\\ComfyUI\\output"
+    );
+    expect(comfyOutputSubfolder(settings, "video")).toBe("视频");
+    expect(comfyOutputSubfolder(settings, "image")).toBe("Output/图片");
+  });
+
   it("merges selected paths into Comfy Desktop settings", () => {
     expect(mergeComfyDesktopSettings({
       modelsDirs: ["D:\\SharedModels"],
@@ -234,6 +271,19 @@ describe("ComfyUI environment candidates", () => {
       "--disable-async-offload"
     ]);
     expect(args).not.toContain("--lowvram");
+  });
+
+  it("adds the aggressive CPU/offload profile for Qwen image editing", () => {
+    const args = comfyUiMemoryArgs({
+      vramReserveGb: 1,
+      defaultImageModel: "qwen-image-edit-2511"
+    });
+
+    expect(args).toContain("--cpu-vae");
+    expect(args).toContain("--disable-smart-memory");
+    expect(args).toEqual(expect.arrayContaining(["--vram-headroom", "0.5"]));
+    expect(args).not.toContain("--disable-pinned-memory");
+    expect(args).not.toContain("--disable-async-offload");
   });
 
   it("detects VideoHelperSuite builds that support six-value ComfyUI queues", () => {
@@ -496,6 +546,7 @@ describe("ComfyUI environment candidates", () => {
       runtimeVerified: false,
       runtimeReady: false
     });
+    expect(complete?.available).toBe(true);
     expect(complete?.components.every((component) => component.installGuide.downloadUrl)).toBe(true);
 
     const runtimeNodes = new Set(qwenImageEdit2511RequiredNodeTypes);
@@ -525,6 +576,20 @@ describe("ComfyUI environment candidates", () => {
     );
     expect(blocked?.runtimeReady).toBe(false);
     expect(blocked?.runtimeMissingNodes).toContain("TextEncodeQwenImageEditPlus");
+  });
+
+  it("keeps the Lightning LoRA optional for the base Qwen profile", () => {
+    const profile = evaluateModelProfiles([
+      "diffusion_models/qwen_image_edit_2511_int8_convrot.safetensors",
+      "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "vae/qwen_image_vae.safetensors"
+    ]).find((item) => item.id === "qwen-image-edit-2511");
+    const lightning = profile?.components.find((component) => component.label.includes("Lightning LoRA"));
+    expect(profile?.available).toBe(true);
+    expect(lightning).toMatchObject({ optional: true, found: false });
+    expect(lightning?.installGuide.recommendedFilename).toBe(
+      "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+    );
   });
 
   it("keeps Gemma 4 tiers separate by requiring a colocated model directory", () => {
@@ -797,6 +862,15 @@ describe("ComfyUI environment candidates", () => {
       expect(component.installGuide.targetSubdirectory).not.toBe("");
       expect(component.installGuide.recommendedFilename).not.toBe("");
     }
+  });
+
+  it("uses the official FLUX.2 Klein FP8 checkpoint URL", () => {
+    const profile = evaluateModelProfiles([]).find((item) => item.id === "flux2-klein-4b");
+    const component = profile?.components.find((item) => item.label.includes("扩散模型"));
+
+    expect(component?.installGuide.downloadUrl).toBe(
+      "https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/resolve/main/flux-2-klein-base-4b-fp8.safetensors"
+    );
   });
 });
 

@@ -1,11 +1,11 @@
 # 图片工作台实施计划
 
-> 状态：交互原型已完成；正式代码已完成图片数据契约、创建页、图片批次执行、视频/图片历史 Tab 和图片项目详情，真实 Qwen 闭环与图片放大仍待完成
+> 状态：交互原型和真实图片闭环已完成；正式代码已支持图片数据契约、创建页、图片批次执行、视频/图片历史 Tab、图片项目详情、Qwen 2511 图片编辑、目标分辨率、ComfyUI 输出目录解析、离线入队和版本浏览；独立 AI 图片放大仍待完成
 > 制定日期：2026-08-10  
-> 版本基线：当前应用为 `0.4.0`；图片稳定交付版本待真实运行和放大功能完整验收后确定
+> 版本基线：当前应用为 `0.8.11`；图片放大仍作为后续能力单独验收
 > 交互基线：`prototypes/` 当前图片创建、图片历史和图片详情原型
 
-当前边界：正式 renderer 已支持图片创建模式、图片批次队列、独立图片历史 Tab 和图片项目详情；图片模型仍处于工作流待验证状态，图片放大和真实 Qwen 运行验收仍需按本文实施。
+当前边界：正式 renderer 已支持图片创建模式、图片批次队列、独立图片历史 Tab、图片项目详情、Qwen 2511 图片编辑和两种图片模型适配；FLUX.2 Klein 4B 的真实 GPU 验收与独立 AI 图片放大仍需按本文实施。
 
 ## 1. 目标与产品边界
 
@@ -509,8 +509,8 @@ Prompt 编译必须有单元测试：
   - 固定 Picture 稳定引用、项目来源版本和输出文件安全规则。
   - 统一实际使用的图片 Prompt 契约，避免两套规则继续漂移。
 
-2. **P1：Phase 1，真实 Qwen 2511 单图闭环**
-  - 先在真实 ComfyUI 上验证单图、双图、原生质量和取消后的下一任务。
+2. **P1：Phase 1，真实图片模型单图闭环**
+  - 先在真实 ComfyUI 上验证 FLUX.2 Klein 4B 单图，再验证 Qwen 2511 单图、双图、原生质量和取消后的下一任务。
   - 只有运行时验证通过后，模型扫描结果才允许从“组件完整”变为“工作流可用”；不能用文件存在代替集成验证。
   - Phase 7 中与模型/节点扫描、工作流检查直接相关的部分前置到这里。
 
@@ -563,7 +563,7 @@ Prompt 编译必须有单元测试：
 
 目标：先证明后端能在本机稳定生成一张图，再接 GUI。
 
-当前状态：P1 代码基础已接入。环境扫描现在区分组件完整、应用工作流集成和 ComfyUI 运行时节点就绪；原生 workflow 已按官方 Qwen 2511 模板使用双路 `TextEncodeQwenImageEditPlus`、`FluxKontextMultiReferenceLatentMethod`、`FluxKontextImageScale` 与 `VAEEncode`，提交前会校验最终上传后的 API graph。当前机器的 `http://127.0.0.1:8188` 尚未启动，单图/双图真实生成、4090 显存记录和取消后的下一任务仍待本机运行验收。
+当前状态：P1 代码基础已接入。环境扫描现在区分组件完整、应用工作流集成和 ComfyUI 运行时节点就绪；Qwen workflow 已按官方模板使用双路 `TextEncodeQwenImageEditPlus`、`FluxKontextMultiReferenceLatentMethod`、`FluxKontextImageScale`、`CFGNorm` 与 `VAEEncode`，文本编码器使用 CPU，冷启动追加 CPU VAE 与激进卸载；FLUX.2 Klein 4B 已按官方 blueprint 使用 `ReferenceLatent`、`Flux2Scheduler`、`CFGGuider` 和 `SamplerCustomAdvanced`。当前机器的 `http://127.0.0.1:8188` 尚未启动，真实生成、4090 显存记录和取消后的下一任务仍待本机运行验收。
 
 任务：
 

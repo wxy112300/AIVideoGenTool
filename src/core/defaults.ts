@@ -20,7 +20,8 @@ export function createDefaultImageEditDraft(): ImageEditDraft {
     ],
     activePromptVersion: 0,
     modelId: "qwen-image-edit-2511",
-    qualityProfile: "native",
+    qualityProfile: "balanced-20",
+    targetResolution: "source",
     outputCount: 6,
     outputFormat: "png",
     seed: null
@@ -63,7 +64,8 @@ export function createDefaultDraft(): Draft {
     motion: "natural",
     seed: null,
     keepSeedOnCopy: false,
-    spectrumMode: "off"
+    spectrumMode: "off",
+    spectrumModeUserSet: false
   };
 }
 
@@ -116,7 +118,7 @@ export function createDefaultSettings(): Settings {
     modelDirectory: "",
     defaultVideoModel: "minimax_h3_fl2va",
     defaultImageModel: "qwen-image-edit-2511",
-    defaultImageQualityProfile: "native",
+    defaultImageQualityProfile: "balanced-20",
     imageOutputCount: 6,
     imageOutputFormat: "png",
     vramReserveGb: 1,
@@ -145,7 +147,7 @@ export function createDefaultSettings(): Settings {
 
 export function createDefaultState(): AppState {
   return {
-    schemaVersion: 4,
+    schemaVersion: 6,
     draft: createDefaultDraft(),
     imageDraft: createDefaultImageEditDraft(),
     settings: createDefaultSettings(),

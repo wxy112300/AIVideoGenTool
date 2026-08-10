@@ -3,7 +3,8 @@ import type {
   ImageGenerationRun,
   ImageOutputFormat,
   ImageReference,
-  ImageReferenceSnapshot
+  ImageReferenceSnapshot,
+  ImageTargetResolution
 } from "../types.js";
 import { extractComfyOutputFiles } from "./comfy-output.js";
 
@@ -45,6 +46,11 @@ export interface ImageOutputCandidate {
 export interface ImageModelAdapter extends ImageModelCapability {
   compilePrompt(prompt: string, pictures: ImageReferenceSnapshot[]): CompiledImagePrompt;
   buildWorkflow(task: ImageGenerationQueueTask, run: ImageGenerationRun): ComfyApiWorkflow;
+  validateWorkflow(
+    workflow: ComfyApiWorkflow,
+    qualityProfile?: string,
+    allowImagePlaceholders?: boolean
+  ): string[];
   parseOutputs(history: unknown): ImageOutputCandidate[];
 }
 
@@ -59,6 +65,7 @@ export const qwenImageEdit2511RequiredNodeTypes = [
   "VAEEncode",
   "ImageScale",
   "ModelSamplingAuraFlow",
+  "CFGNorm",
   "KSampler",
   "VAEDecode",
   "SaveImage"
@@ -68,12 +75,122 @@ export const qwenImageEdit2511LightningNodeTypes = [
   "LoraLoaderModelOnly"
 ] as const;
 
+export const flux2Klein4bRequiredNodeTypes = [
+  "UNETLoader",
+  "CLIPLoader",
+  "VAELoader",
+  "LoadImage",
+  "ImageScaleToTotalPixels",
+  "GetImageSize",
+  "ReferenceLatent",
+  "VAEEncode",
+  "CLIPTextEncode",
+  "EmptyFlux2LatentImage",
+  "Flux2Scheduler",
+  "CFGGuider",
+  "KSamplerSelect",
+  "RandomNoise",
+  "SamplerCustomAdvanced",
+  "VAEDecode",
+  "ImageScale",
+  "SaveImage"
+] as const;
+
 const qwenImageDiffusionModel = "qwen_image_edit_2511_int8_convrot.safetensors";
 const qwenImageTextEncoder = "qwen_2.5_vl_7b_fp8_scaled.safetensors";
 const qwenImageVae = "qwen_image_vae.safetensors";
 const qwenImageLightningLora = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors";
+const flux2Klein4bDiffusionModel = "flux-2-klein-base-4b-fp8.safetensors";
+const flux2Klein4bTextEncoder = "qwen_3_4b.safetensors";
+const flux2Klein4bVae = "flux2-vae.safetensors";
 
 const pictureReferencePattern = /(?:<\s*)?(?:picture|image|图片)\s*([1-9]\d*)(?:\s*>)?/giu;
+
+export const imageTargetResolutionValues = [2160, 1152, 1080, 720, 640, 480] as const;
+
+export interface ImageResolutionOption {
+  value: ImageTargetResolution;
+  label: string;
+  width: number;
+  height: number;
+}
+
+function alignedImageDimension(value: number): number {
+  return Math.max(8, Math.round(value / 8) * 8);
+}
+
+export function normalizeImageTargetResolution(
+  value: unknown,
+  sourceWidth = 0,
+  sourceHeight = 0
+): ImageTargetResolution {
+  if (value === "source") return "source";
+  const numeric = typeof value === "number" ? value : Number(value);
+  const isSupported = imageTargetResolutionValues.some((candidate) => candidate === numeric);
+  if (!isSupported) return "source";
+  const shortEdge = Math.min(sourceWidth, sourceHeight);
+  return sourceWidth > 0 && sourceHeight > 0 && numeric > shortEdge
+    ? "source"
+    : numeric as ImageTargetResolution;
+}
+
+export function imageOutputDimensions(
+  sourceWidth: number,
+  sourceHeight: number,
+  targetResolution: ImageTargetResolution
+): [number, number] {
+  if (
+    !Number.isFinite(sourceWidth) ||
+    !Number.isFinite(sourceHeight) ||
+    sourceWidth <= 0 ||
+    sourceHeight <= 0 ||
+    targetResolution === "source"
+  ) {
+    return [Math.max(0, Math.trunc(sourceWidth)), Math.max(0, Math.trunc(sourceHeight))];
+  }
+  const shortEdge = Math.min(sourceWidth, sourceHeight);
+  const normalizedTarget = normalizeImageTargetResolution(
+    targetResolution,
+    sourceWidth,
+    sourceHeight
+  );
+  if (normalizedTarget === "source") return [sourceWidth, sourceHeight];
+  const scale = normalizedTarget / shortEdge;
+  return [
+    alignedImageDimension(sourceWidth * scale),
+    alignedImageDimension(sourceHeight * scale)
+  ];
+}
+
+export function imageResolutionOptionsFor(
+  sourceWidth = 0,
+  sourceHeight = 0
+): ImageResolutionOption[] {
+  const hasSource = sourceWidth > 0 && sourceHeight > 0;
+  const sourceLabel = hasSource
+    ? `原图 · ${sourceWidth}×${sourceHeight}`
+    : "原图 · 上传后读取";
+  const options: ImageResolutionOption[] = [{
+    value: "source",
+    label: sourceLabel,
+    width: sourceWidth,
+    height: sourceHeight
+  }];
+  const shortEdge = Math.min(sourceWidth, sourceHeight);
+  for (const target of imageTargetResolutionValues) {
+    if (hasSource && target > shortEdge) continue;
+    const [width, height] = hasSource
+      ? imageOutputDimensions(sourceWidth, sourceHeight, target)
+      : [0, 0];
+    options.push({
+      value: target,
+      label: hasSource ? `${target}p · ${width}×${height}` : `${target}p`,
+      width,
+      height
+    });
+  }
+  return options;
+}
 
 export const qwenImageEdit2511Capability: ImageModelCapability = {
   id: "qwen-image-edit-2511",
@@ -81,6 +198,13 @@ export const qwenImageEdit2511Capability: ImageModelCapability = {
   maxPictures: 3,
   supportedFormats: ["png"],
   qualityProfiles: [
+    {
+      id: "balanced-20",
+      label: "平衡质量",
+      steps: 20,
+      cfg: 4,
+      lightning: false
+    },
     {
       id: "native",
       label: "原生质量",
@@ -98,13 +222,31 @@ export const qwenImageEdit2511Capability: ImageModelCapability = {
   ]
 };
 
+export const flux2Klein4bCapability: ImageModelCapability = {
+  id: "flux2-klein-4b",
+  name: "FLUX.2 Klein 4B",
+  maxPictures: 1,
+  supportedFormats: ["png"],
+  qualityProfiles: [
+    {
+      id: "native",
+      label: "原生质量",
+      steps: 20,
+      cfg: 5,
+      lightning: false
+    }
+  ]
+};
+
 function orderedPictures(pictures: ImageReferenceSnapshot[]): ImageReferenceSnapshot[] {
   return [...pictures].sort((left, right) => left.pictureNumber - right.pictureNumber);
 }
 
-export function compileQwenImageEditPrompt(
+function compileImagePromptWithLimit(
   prompt: string,
-  pictures: ImageReferenceSnapshot[]
+  pictures: ImageReferenceSnapshot[],
+  maxPictures: number,
+  modelLabel: string
 ): CompiledImagePrompt {
   const ordered = orderedPictures(pictures);
   const usable = ordered.filter((picture) => picture.absolutePath.trim());
@@ -122,8 +264,8 @@ export function compileQwenImageEditPrompt(
     }
     originalToCompiled.set(picture.pictureNumber, index + 1);
   });
-  if (ordered.length > qwenImageEdit2511Capability.maxPictures) {
-    errors.push(`当前 Qwen 2511 工作流最多支持 ${qwenImageEdit2511Capability.maxPictures} 张 Picture。`);
+  if (ordered.length > maxPictures) {
+    errors.push(`当前 ${modelLabel} 工作流最多支持 ${maxPictures} 张 Picture。`);
   }
 
   const referencedPictureNumbers = new Set<number>();
@@ -140,10 +282,34 @@ export function compileQwenImageEditPrompt(
 
   return {
     prompt: compiledPrompt,
-    pictures: usable.slice(0, qwenImageEdit2511Capability.maxPictures),
+    pictures: usable.slice(0, maxPictures),
     referencedPictureNumbers: [...referencedPictureNumbers].sort((left, right) => left - right),
     errors: [...new Set(errors)]
   };
+}
+
+export function compileQwenImageEditPrompt(
+  prompt: string,
+  pictures: ImageReferenceSnapshot[]
+): CompiledImagePrompt {
+  return compileImagePromptWithLimit(
+    prompt,
+    pictures,
+    qwenImageEdit2511Capability.maxPictures,
+    "Qwen 2511"
+  );
+}
+
+export function compileFlux2Klein4bPrompt(
+  prompt: string,
+  pictures: ImageReferenceSnapshot[]
+): CompiledImagePrompt {
+  return compileImagePromptWithLimit(
+    prompt,
+    pictures,
+    flux2Klein4bCapability.maxPictures,
+    "FLUX.2 Klein 4B"
+  );
 }
 
 export function imageOutputFormatFromFilename(filename: string): ImageOutputFormat | undefined {
@@ -164,6 +330,18 @@ export function imageOutputCandidateFromValue(value: unknown): ImageOutputCandid
     type: typeof source.type === "string" ? source.type : "output",
     format: imageOutputFormatFromFilename(source.filename)
   };
+}
+
+export function imageQualityProfileRequiresLightning(qualityProfile: string): boolean {
+  return qualityProfile === "lightning-4step";
+}
+
+export function imageLightningComponentFound(
+  components: ReadonlyArray<{ label: string; found: boolean }>
+): boolean {
+  return components.some((component) =>
+    component.label.includes("Lightning LoRA") && component.found
+  );
 }
 
 function imageReferenceInputs(
@@ -210,6 +388,30 @@ export function validateQwenImageEdit2511Workflow(
   );
   if (unresolvedPlaceholders.length && !allowImagePlaceholders) {
     errors.push("图片工作流仍包含未上传的 IMAGE 占位符。");
+  }
+  return [...new Set(errors)];
+}
+
+export function validateFlux2Klein4bWorkflow(
+  workflow: ComfyApiWorkflow,
+  _qualityProfile = "native",
+  allowImagePlaceholders = false
+): string[] {
+  const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
+  const errors = flux2Klein4bRequiredNodeTypes
+    .filter((nodeType) => !nodeTypes.has(nodeType))
+    .map((nodeType) => `FLUX.2 Klein workflow 缺少节点 ${nodeType}。`);
+  const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
+  if (inputNodes.length !== 1) {
+    errors.push("FLUX.2 Klein 4B 工作流必须包含 1 个 LoadImage 节点。");
+  }
+  const unresolvedPlaceholders = Object.values(workflow).flatMap((node) =>
+    Object.values(node.inputs).filter(
+      (value) => typeof value === "string" && /^\{\{IMAGE_\d+\}\}$/u.test(value)
+    )
+  );
+  if (unresolvedPlaceholders.length && !allowImagePlaceholders) {
+    errors.push("FLUX.2 Klein 工作流仍包含未上传的 IMAGE 占位符。");
   }
   return [...new Set(errors)];
 }
@@ -262,7 +464,7 @@ export function buildQwenImageEdit2511Workflow(
       inputs: {
         clip_name: qwenImageTextEncoder,
         type: "qwen_image",
-        device: "default"
+        device: "cpu"
       }
     },
     vae: {
@@ -288,14 +490,14 @@ export function buildQwenImageEdit2511Workflow(
       class_type: "FluxKontextMultiReferenceLatentMethod",
       inputs: {
         conditioning: ["positive", 0],
-        method: "index_timestep_zero"
+        reference_latents_method: "index_timestep_zero"
       }
     },
     negativeReference: {
       class_type: "FluxKontextMultiReferenceLatentMethod",
       inputs: {
         conditioning: ["negative", 0],
-        method: "index_timestep_zero"
+        reference_latents_method: "index_timestep_zero"
       }
     },
     sampling: {
@@ -303,6 +505,13 @@ export function buildQwenImageEdit2511Workflow(
       inputs: {
         model: ["model", 0],
         shift: 3.1
+      }
+    },
+    cfgNorm: {
+      class_type: "CFGNorm",
+      inputs: {
+        model: quality.lightning ? ["lightningModel", 0] : ["sampling", 0],
+        strength: 1
       }
     },
     sourceImage: {
@@ -323,7 +532,7 @@ export function buildQwenImageEdit2511Workflow(
       inputs: {
         model: quality.lightning
           ? ["lightningModel", 0]
-          : ["sampling", 0],
+          : ["cfgNorm", 0],
         positive: ["positiveReference", 0],
         negative: ["negativeReference", 0],
         latent_image: ["source", 0],
@@ -375,6 +584,144 @@ export function buildQwenImageEdit2511Workflow(
   return modelNode;
 }
 
+export function buildFlux2Klein4bWorkflow(
+  task: ImageGenerationQueueTask,
+  run: ImageGenerationRun
+): ComfyApiWorkflow {
+  const compiled = compileFlux2Klein4bPrompt(task.prompt, task.pictures);
+  if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
+  const picture = compiled.pictures[0];
+  if (!picture) throw new Error("FLUX.2 Klein 4B 至少需要一张基础 Picture。");
+  const quality = flux2Klein4bCapability.qualityProfiles.find(
+    (profile) => profile.id === task.qualityProfile
+  ) ?? flux2Klein4bCapability.qualityProfiles[0]!;
+  const outputWidth = exactImageDimension(task.outputWidth, picture.width);
+  const outputHeight = exactImageDimension(task.outputHeight, picture.height);
+  const outputPrefix = [
+    task.imageOutputSubfolder?.replace(/[\\/]+/gu, "/").replace(/^\/+|\/+$/gu, ""),
+    `Flux2Klein_${task.outputFilename}_${run.index + 1}`
+  ].filter(Boolean).join("/");
+  return {
+    input: {
+      class_type: "LoadImage",
+      inputs: { image: "{{IMAGE_0}}" }
+    },
+    scaledImage: {
+      class_type: "ImageScaleToTotalPixels",
+      inputs: {
+        image: ["input", 0],
+        upscale_method: "nearest-exact",
+        megapixels: 1,
+        resolution_steps: 1
+      }
+    },
+    imageSize: {
+      class_type: "GetImageSize",
+      inputs: { image: ["scaledImage", 0] }
+    },
+    clip: {
+      class_type: "CLIPLoader",
+      inputs: {
+        clip_name: flux2Klein4bTextEncoder,
+        type: "flux2",
+        device: "cpu"
+      }
+    },
+    vae: {
+      class_type: "VAELoader",
+      inputs: { vae_name: flux2Klein4bVae }
+    },
+    model: {
+      class_type: "UNETLoader",
+      inputs: {
+        unet_name: task.diffusionModelFilename || flux2Klein4bDiffusionModel,
+        weight_dtype: "default"
+      }
+    },
+    positive: {
+      class_type: "CLIPTextEncode",
+      inputs: { clip: ["clip", 0], text: compiled.prompt }
+    },
+    negative: {
+      class_type: "CLIPTextEncode",
+      inputs: { clip: ["clip", 0], text: "" }
+    },
+    referenceImage: {
+      class_type: "VAEEncode",
+      inputs: { pixels: ["scaledImage", 0], vae: ["vae", 0] }
+    },
+    positiveReference: {
+      class_type: "ReferenceLatent",
+      inputs: { conditioning: ["positive", 0], latent: ["referenceImage", 0] }
+    },
+    negativeReference: {
+      class_type: "ReferenceLatent",
+      inputs: { conditioning: ["negative", 0], latent: ["referenceImage", 0] }
+    },
+    latent: {
+      class_type: "EmptyFlux2LatentImage",
+      inputs: {
+        width: ["imageSize", 0],
+        height: ["imageSize", 1],
+        batch_size: 1
+      }
+    },
+    noise: {
+      class_type: "RandomNoise",
+      inputs: { noise_seed: run.seed }
+    },
+    sampler: {
+      class_type: "KSamplerSelect",
+      inputs: { sampler_name: "euler" }
+    },
+    scheduler: {
+      class_type: "Flux2Scheduler",
+      inputs: {
+        steps: quality.steps,
+        width: ["imageSize", 0],
+        height: ["imageSize", 1]
+      }
+    },
+    guider: {
+      class_type: "CFGGuider",
+      inputs: {
+        model: ["model", 0],
+        positive: ["positiveReference", 0],
+        negative: ["negativeReference", 0],
+        cfg: quality.cfg
+      }
+    },
+    sampled: {
+      class_type: "SamplerCustomAdvanced",
+      inputs: {
+        noise: ["noise", 0],
+        guider: ["guider", 0],
+        sampler: ["sampler", 0],
+        sigmas: ["scheduler", 0],
+        latent_image: ["latent", 0]
+      }
+    },
+    decoded: {
+      class_type: "VAEDecode",
+      inputs: { samples: ["sampled", 0], vae: ["vae", 0] }
+    },
+    exactSize: {
+      class_type: "ImageScale",
+      inputs: {
+        image: ["decoded", 0],
+        upscale_method: "lanczos",
+        width: outputWidth,
+        height: outputHeight,
+        crop: "disabled"
+      }
+    },
+    save: {
+      class_type: "SaveImage",
+      inputs: { images: ["exactSize", 0], filename_prefix: outputPrefix }
+    }
+  };
+}
+
 export function renderImageWorkflow(
   workflow: ComfyApiWorkflow,
   uploadedPictures: string[]
@@ -403,9 +750,35 @@ export const qwenImageEdit2511Adapter: ImageModelAdapter = {
   ...qwenImageEdit2511Capability,
   compilePrompt: compileQwenImageEditPrompt,
   buildWorkflow: buildQwenImageEdit2511Workflow,
+  validateWorkflow: validateQwenImageEdit2511Workflow,
   parseOutputs(history: unknown): ImageOutputCandidate[] {
     return extractComfyOutputFiles(history)
       .map((file) => imageOutputCandidateFromValue(file))
       .filter((file): file is ImageOutputCandidate => file !== null);
   }
 };
+
+export const flux2Klein4bAdapter: ImageModelAdapter = {
+  ...flux2Klein4bCapability,
+  compilePrompt: compileFlux2Klein4bPrompt,
+  buildWorkflow: buildFlux2Klein4bWorkflow,
+  validateWorkflow: validateFlux2Klein4bWorkflow,
+  parseOutputs(history: unknown): ImageOutputCandidate[] {
+    return extractComfyOutputFiles(history)
+      .map((file) => imageOutputCandidateFromValue(file))
+      .filter((file): file is ImageOutputCandidate => file !== null);
+  }
+};
+
+export const imageModelAdapters: Record<string, ImageModelAdapter> = {
+  [qwenImageEdit2511Adapter.id]: qwenImageEdit2511Adapter,
+  [flux2Klein4bAdapter.id]: flux2Klein4bAdapter
+};
+
+export function imageModelAdapterFor(modelId: string): ImageModelAdapter | undefined {
+  return imageModelAdapters[modelId];
+}
+
+export function imageModelCapabilityFor(modelId: string): ImageModelCapability {
+  return imageModelAdapters[modelId] ?? qwenImageEdit2511Capability;
+}

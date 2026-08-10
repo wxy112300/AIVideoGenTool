@@ -292,12 +292,12 @@ export class JsonStore {
           imagePromptPresets
         },
         queueRunning: false,
-        schemaVersion: 4,
+        schemaVersion: 6,
         queue: (saved.queue ?? []).map(migrateQueueTask),
         history: (saved.history ?? []).map(migrateHistoryAsset),
         imageHistory
       };
-      let needsPersist = saved.queueRunning === true || savedSchemaVersion < 4;
+      let needsPersist = saved.queueRunning === true || savedSchemaVersion < 6;
       if (typeof saved.settings?.imageOutputDirectory !== "string") {
         this.state.settings.imageOutputDirectory = "";
         needsPersist = true;
@@ -332,11 +332,25 @@ export class JsonStore {
         needsPersist = true;
       }
       if (![
+        "balanced-20",
         "native",
         "lightning-4step"
       ].includes(this.state.settings.defaultImageQualityProfile)) {
-        this.state.settings.defaultImageQualityProfile = "native";
+        this.state.settings.defaultImageQualityProfile = "balanced-20";
         needsPersist = true;
+      }
+      if (savedSchemaVersion < 5) {
+        if (this.state.settings.defaultImageQualityProfile === "native") {
+          this.state.settings.defaultImageQualityProfile = "balanced-20";
+          needsPersist = true;
+        }
+        if (
+          this.state.imageDraft.modelId === "qwen-image-edit-2511" &&
+          this.state.imageDraft.qualityProfile === "native"
+        ) {
+          this.state.imageDraft.qualityProfile = "balanced-20";
+          needsPersist = true;
+        }
       }
       if (
         !Number.isInteger(this.state.settings.imageOutputCount) ||
