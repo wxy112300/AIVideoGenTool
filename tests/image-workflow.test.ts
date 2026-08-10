@@ -27,6 +27,7 @@ describe("Qwen image edit workflow contract", () => {
       "native",
       "lightning-4step"
     ]);
+    expect(qwenImageEdit2511Capability.supportedFormats).toEqual(["png"]);
   });
 
   it("compiles stable Picture numbers to continuous model inputs", () => {
@@ -87,6 +88,9 @@ describe("Qwen image edit workflow contract", () => {
       projectId: "project-1",
       pictures: [picture(1), picture(3)],
       diffusionModelFilename: "qwen_image_edit_2511_bf16.safetensors",
+      imageOutputSubfolder: "Images",
+      outputWidth: 1024,
+      outputHeight: 1024,
       prompt: "把 Picture 3 的人物放到 Picture 1 的场景中。",
       promptVersion: 1,
       modelId: "qwen-image-edit-2511",
@@ -112,6 +116,10 @@ describe("Qwen image edit workflow contract", () => {
     expect(workflow.negative?.class_type).toBe("TextEncodeQwenImageEditPlus");
     expect(workflow.sourceImage?.class_type).toBe("FluxKontextImageScale");
     expect(workflow.source?.class_type).toBe("VAEEncode");
+    expect(workflow.exactSize?.class_type).toBe("ImageScale");
+    expect(workflow.exactSize?.inputs.width).toBe(1024);
+    expect(workflow.exactSize?.inputs.height).toBe(1024);
+    expect(workflow.save?.inputs.filename_prefix).toContain("Images/QwenEdit_");
     expect(workflow.positiveReference?.class_type).toBe("FluxKontextMultiReferenceLatentMethod");
     expect(workflow.sampler?.inputs.seed).toBe(123);
     expect(workflow.save?.class_type).toBe("SaveImage");

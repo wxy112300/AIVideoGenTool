@@ -7,6 +7,7 @@ import {
   Menu,
   protocol,
   shell,
+  nativeImage,
   type MenuItemConstructorOptions
 } from "electron";
 import { createReadStream, promises as fs } from "node:fs";
@@ -650,20 +651,20 @@ async function requireExistingVideoOutput(
 }
 
 async function requireExistingImageOutput(
-  result: unknown
+  result: unknown,
+  outputRoot: string
 ): Promise<ReturnType<typeof extractComfyOutputFiles>> {
-  const outputDirectory = await resolveTaskOutputDirectory();
-  if (!outputDirectory) {
+  if (!outputRoot) {
     throw new Error(
       "ComfyUI 已返回图片完成状态，但无法确定输出目录。请在设置中确认 ComfyUI 目录后重试。"
     );
   }
   const files = attachAbsoluteOutputPaths(
     extractComfyOutputFiles(result),
-    outputDirectory
+    outputRoot
   );
   const imageFiles = files.filter(
-    (file) => file.absolutePath && imageOutputFormatFromFilename(file.filename)
+    (file) => file.absolutePath && imageOutputFormatFromFilename(file.filename) === "png"
   );
   for (const file of imageFiles) {
     const resolved = await resolveExistingHistoryFile(file.absolutePath!);
@@ -1086,7 +1087,12 @@ function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask 
 function imageTaskFromDraft(
   draft: ImageEditDraft,
   state: AppState,
-  diffusionModelFilename?: string
+  diffusionModelFilename: string | undefined,
+  outputTarget: {
+    root: string;
+    directory: string;
+    subfolder: string;
+  }
 ): ImageGenerationQueueTask {
   const now = new Date().toISOString();
   const prompt = draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "";
@@ -1110,17 +1116,56 @@ function imageTaskFromDraft(
     projectId,
     parentVersionId: draft.parentVersionId,
     pictures: draft.pictures.map((picture) => ({ ...picture })),
+    imageOutputRoot: outputTarget.root,
+    imageOutputDirectory: outputTarget.directory,
+    imageOutputSubfolder: outputTarget.subfolder,
+    outputWidth: draft.pictures[0]?.width,
+    outputHeight: draft.pictures[0]?.height,
     ...(diffusionModelFilename ? { diffusionModelFilename } : {}),
     prompt,
     promptVersion: draft.activePromptVersion + 1,
     modelId: draft.modelId,
     workflowPath: "builtin:image/qwen-image-edit-2511",
     qualityProfile: draft.qualityProfile,
-    outputFormat: draft.outputFormat,
+    outputFormat: "png",
     outputCount: runs.length,
     runs,
     progress: 0
   };
+}
+
+async function resolveImageOutputTarget(settings: Settings): Promise<{
+  root: string;
+  directory: string;
+  subfolder: string;
+}> {
+  const detectedRoot = await resolveComfyOutputDirectory({
+    ...settings,
+    outputDirectory: ""
+  });
+  const rootCandidate = detectedRoot || settings.outputDirectory.trim();
+  if (!rootCandidate) throw new Error("无法确定 ComfyUI output 目录，无法准备图片输出目录。");
+  const root = path.resolve(rootCandidate);
+  const configured = settings.imageOutputDirectory.trim();
+  const directory = path.resolve(configured || path.join(root, "Images"));
+  if (!isPathWithinDirectory(root, directory)) {
+    throw new Error("图片输出目录必须位于当前 ComfyUI output 目录内。");
+  }
+  await fs.mkdir(directory, { recursive: true });
+  return {
+    root,
+    directory,
+    subfolder: path.relative(root, directory).replaceAll(path.sep, "/")
+  };
+}
+
+function readImageDimensions(filename: string): { width: number; height: number } {
+  const image = nativeImage.createFromPath(filename);
+  const size = image.getSize();
+  if (!size.width || !size.height) {
+    throw new Error(`无法读取 Picture 图片尺寸：${filename}`);
+  }
+  return { width: size.width, height: size.height };
 }
 
 async function requireImageModelRuntime(settings: Settings): Promise<string> {
@@ -1589,8 +1634,11 @@ async function executeImageGenerationQueueTask(
           },
           () => true
         );
-        const files = await requireExistingImageOutput(result);
-        const file = files.find((candidate) => imageOutputFormatFromFilename(candidate.filename));
+        const files = await requireExistingImageOutput(
+          result,
+          task.imageOutputRoot ?? await resolveTaskOutputDirectory()
+        );
+        const file = files.find((candidate) => imageOutputFormatFromFilename(candidate.filename) === "png");
         if (!file) throw new Error("图片工作流没有返回可用图片文件。");
         const performanceStats = monitor.stop();
         const completedAt = new Date().toISOString();
@@ -1640,7 +1688,7 @@ async function executeImageGenerationQueueTask(
             seed: run.seed,
             width: queued.pictures[0]?.width ?? 0,
             height: queued.pictures[0]?.height ?? 0,
-            format: imageOutputFormatFromFilename(file.filename) ?? queued.outputFormat,
+            format: "png",
             file,
             comfyPromptId: submitted.promptId,
             comfyOutputs: result,
@@ -3200,30 +3248,37 @@ function registerIpc(): void {
     }
     const prompt = normalized.promptVersions[normalized.activePromptVersion]?.text.trim() ?? "";
     if (!prompt) throw new Error("图片处理提示词不能为空");
-    if (!qwenImageEdit2511Adapter.supportedFormats.includes(normalized.outputFormat)) {
-      throw new Error(`当前图片适配器不支持 ${normalized.outputFormat} 输出格式。`);
-    }
     const diffusionModelFilename = await requireImageModelRuntime(store.get().settings);
-    for (const picture of normalized.pictures) {
+    const outputTarget = await resolveImageOutputTarget(store.get().settings);
+    const preparedDraft = normalizeImageEditDraft({
+      ...normalized,
+      pictures: normalized.pictures.map((picture) => ({
+        ...picture,
+        ...readImageDimensions(picture.absolutePath)
+      })),
+      outputFormat: "png"
+    });
+    for (const picture of preparedDraft.pictures) {
       const stat = await fs.stat(picture.absolutePath).catch(() => null);
       if (!stat?.isFile()) {
         throw new Error(`Picture ${picture.pictureNumber} 文件不存在：${picture.absolutePath}`);
       }
     }
-    const compiled = qwenImageEdit2511Adapter.compilePrompt(prompt, normalized.pictures);
+    const preparedPrompt = preparedDraft.promptVersions[preparedDraft.activePromptVersion]?.text.trim() ?? "";
+    const compiled = qwenImageEdit2511Adapter.compilePrompt(preparedPrompt, preparedDraft.pictures);
     if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
     const current = store.get();
-    const task = imageTaskFromDraft(normalized, current, diffusionModelFilename);
+    const task = imageTaskFromDraft(preparedDraft, current, diffusionModelFilename, outputTarget);
     const next = await store.update((state) => {
       state.queue.push(task);
-      state.imageDraft = normalized;
+      state.imageDraft = preparedDraft;
     });
     appLogger.info("queue", "image-task-enqueued", "Image generation batch added to queue", {
       taskId: task.id,
       projectId: task.projectId,
       modelId: task.modelId,
       outputCount: task.outputCount,
-      seedMode: normalized.seed == null ? "random-per-run" : "fixed"
+      seedMode: preparedDraft.seed == null ? "random-per-run" : "fixed"
     });
     sendState(next);
     return next;

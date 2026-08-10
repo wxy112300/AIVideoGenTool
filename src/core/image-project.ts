@@ -249,9 +249,7 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
         }))
     : [];
   const promptVersions = storedPromptVersions.length ? storedPromptVersions : defaults.promptVersions;
-  const outputFormat = imageOutputFormats.includes(source.outputFormat as ImageOutputFormat)
-    ? source.outputFormat as ImageOutputFormat
-    : defaults.outputFormat;
+  const outputFormat: ImageOutputFormat = "png";
   const outputCount = Math.min(
     10,
     Math.max(

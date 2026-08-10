@@ -203,6 +203,11 @@ export interface ImageGenerationQueueTask extends QueueTaskBase {
   projectId: string;
   parentVersionId?: string;
   pictures: ImageReferenceSnapshot[];
+  imageOutputRoot?: string;
+  imageOutputDirectory?: string;
+  imageOutputSubfolder?: string;
+  outputWidth?: number;
+  outputHeight?: number;
   diffusionModelFilename?: string;
   prompt: string;
   promptVersion: number;

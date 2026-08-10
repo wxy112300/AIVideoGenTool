@@ -346,7 +346,7 @@ export class JsonStore {
         this.state.settings.imageOutputCount = 6;
         needsPersist = true;
       }
-      if (!["png", "jpeg", "webp"].includes(this.state.settings.imageOutputFormat)) {
+      if (this.state.settings.imageOutputFormat !== "png") {
         this.state.settings.imageOutputFormat = "png";
         needsPersist = true;
       }

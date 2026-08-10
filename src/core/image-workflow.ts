@@ -57,6 +57,7 @@ export const qwenImageEdit2511RequiredNodeTypes = [
   "FluxKontextImageScale",
   "FluxKontextMultiReferenceLatentMethod",
   "VAEEncode",
+  "ImageScale",
   "ModelSamplingAuraFlow",
   "KSampler",
   "VAEDecode",
@@ -78,7 +79,7 @@ export const qwenImageEdit2511Capability: ImageModelCapability = {
   id: "qwen-image-edit-2511",
   name: "Qwen-Image-Edit-2511",
   maxPictures: 3,
-  supportedFormats: ["png", "jpeg", "webp"],
+  supportedFormats: ["png"],
   qualityProfiles: [
     {
       id: "native",
@@ -177,6 +178,14 @@ function imageReferenceInputs(
   );
 }
 
+function exactImageDimension(value: number | undefined, fallback: number): number {
+  const dimension = value ?? fallback;
+  if (!Number.isInteger(dimension) || dimension <= 0) {
+    throw new Error("图片输出尺寸无效，无法保持 Picture 1 的原始尺寸。");
+  }
+  return dimension;
+}
+
 export function validateQwenImageEdit2511Workflow(
   workflow: ComfyApiWorkflow,
   qualityProfile = "native",
@@ -240,6 +249,12 @@ export function buildQwenImageEdit2511Workflow(
     vae: ["vae", 0],
     ...imageReferenceInputs(compiled.pictures, "image")
   };
+  const outputWidth = exactImageDimension(task.outputWidth, compiled.pictures[0]?.width ?? 0);
+  const outputHeight = exactImageDimension(task.outputHeight, compiled.pictures[0]?.height ?? 0);
+  const outputPrefix = [
+    task.imageOutputSubfolder?.replace(/[\\/]+/gu, "/").replace(/^\/+|\/+$/gu, ""),
+    `QwenEdit_${task.outputFilename}_${run.index + 1}`
+  ].filter(Boolean).join("/");
   const modelNode: ComfyApiWorkflow = {
     ...pictureNodes,
     clip: {
@@ -327,11 +342,21 @@ export function buildQwenImageEdit2511Workflow(
         vae: ["vae", 0]
       }
     },
+    exactSize: {
+      class_type: "ImageScale",
+      inputs: {
+        image: ["decoded", 0],
+        upscale_method: "lanczos",
+        width: outputWidth,
+        height: outputHeight,
+        crop: "disabled"
+      }
+    },
     save: {
       class_type: "SaveImage",
       inputs: {
-        images: ["decoded", 0],
-        filename_prefix: `LocalVideoStudio/QwenEdit_${run.index + 1}`
+        images: ["exactSize", 0],
+        filename_prefix: outputPrefix
       }
     }
   };

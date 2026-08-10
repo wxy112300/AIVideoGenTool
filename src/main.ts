@@ -1915,7 +1915,6 @@ function imageEditPage(): string {
         <section class="composer-control-group image-edit-output-group"><div class="composer-group-heading"><div><strong>生成设置</strong><span>一个批次顺序生成多张候选图，Seed 和参数会保存到任务快照</span></div></div><div class="composer-control-grid image-edit-settings-grid">
           <label class="settings-field">模型<select id="image-edit-model"><option value="qwen-image-edit-2511" selected>Qwen-Image-Edit-2511</option></select></label>
           <label class="settings-field">质量<select id="image-edit-quality"><option value="native" ${draft.qualityProfile === "native" ? "selected" : ""}>原生质量 · 40 步</option><option value="lightning-4step" ${draft.qualityProfile === "lightning-4step" ? "selected" : ""}>Lightning · 4 步</option></select></label>
-          <label class="settings-field">输出格式<select id="image-edit-format"><option value="png" ${draft.outputFormat === "png" ? "selected" : ""}>PNG · 无损</option><option value="jpeg" ${draft.outputFormat === "jpeg" ? "selected" : ""}>JPEG · 较小文件</option><option value="webp" ${draft.outputFormat === "webp" ? "selected" : ""}>WebP · 高压缩率</option></select></label>
           <label class="settings-field">随机 Seed<div class="inline-field seed-control"><input id="image-edit-seed" type="number" placeholder="留空则每张随机" value="${draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="生成随机 Seed">${icon("refresh-cw")}</button><button class="icon-button" id="clear-image-edit-seed" title="清空 Seed">${icon("x")}</button></div></label>
           <label class="settings-field range-field"><span class="range-heading"><span>生成数量</span><strong id="image-edit-count-value">${count} 张</strong></span><input id="image-edit-count" type="range" min="1" max="10" step="1" value="${count}"><span class="range-scale"><span>1</span><span>一个任务，逐张生成</span><span>10</span></span></label>
         </div></section>
@@ -3333,8 +3332,8 @@ function settingsPage(): string {
         <div class="section-heading"><div><h2>文件路径</h2><span class="muted">扫描结果可以一键写入，也可以手动定位</span></div></div>
         <div class="settings-grid two">
           <label>ComfyUI 模型目录<div class="input-action"><input id="model-directory" value="${escapeHtml(effectiveModelDirectory)}" placeholder="扫描或选择 models 目录"><button class="secondary button-with-icon" id="pick-model-directory">${icon("folder-open")}选择</button></div></label>
-          <label>视频输出目录<div class="input-action"><input id="output-directory" value="${escapeHtml(videoOutputDirectoryValue)}" placeholder="自动：当前 ComfyUI\\output\\Videos"><button class="secondary button-with-icon" id="pick-output-directory">${icon("folder-open")}选择</button></div></label>
-          <label>图片输出目录<div class="input-action"><input id="image-output-directory" value="${escapeHtml(settings.imageOutputDirectory || autoImageOutputDirectory)}" placeholder="${escapeHtml(imageOutputDirectoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-image-output-directory">${icon("folder-open")}选择</button></div></label>
+          <label>视频输出目录<div class="input-action"><input id="output-directory" data-auto-directory="${escapeHtml(autoVideoOutputDirectory)}" value="${escapeHtml(videoOutputDirectoryValue)}" placeholder="自动：当前 ComfyUI\\output\\Videos"><button class="secondary button-with-icon" id="pick-output-directory">${icon("folder-open")}选择</button></div></label>
+          <label>图片输出目录<div class="input-action"><input id="image-output-directory" data-auto-directory="${escapeHtml(autoImageOutputDirectory)}" value="${escapeHtml(settings.imageOutputDirectory || autoImageOutputDirectory)}" placeholder="${escapeHtml(imageOutputDirectoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-image-output-directory">${icon("folder-open")}选择</button></div></label>
         </div>
       </section>
       <section class="panel settings-section">
@@ -3408,14 +3407,9 @@ function settingsPage(): string {
             <option value="lightning-4step" ${settings.defaultImageQualityProfile === "lightning-4step" ? "selected" : ""}>Lightning · 4 步（需额外 LoRA）</option>
           </select></label>
           <label>默认生成数量<div class="inline-field"><input id="image-output-count" type="range" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><input id="image-output-count-number" type="number" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><span>张</span></div></label>
-          <label>默认输出格式<select id="image-output-format">
-            <option value="png" ${settings.imageOutputFormat === "png" ? "selected" : ""}>PNG · 无损</option>
-            <option value="jpeg" ${settings.imageOutputFormat === "jpeg" ? "selected" : ""}>JPEG · 文件更小</option>
-            <option value="webp" ${settings.imageOutputFormat === "webp" ? "selected" : ""}>WebP · 高压缩率</option>
-          </select></label>
         </div>
         <div class="scan-result">${environmentScanning ? "正在扫描图片模型组件和 ComfyUI 节点…" : environmentScan ? `找到 ${imageComponentsReady} 个组件完整档位，${imageWorkflowsReady} 个工作流可用；Qwen 2511 当前最多支持 3 张 Picture` : "等待首次扫描"}</div>
-        <p class="muted proxy-hint">PNG 是继续编辑和交给 H3 的首选格式；JPEG/WebP 只有在验证目标应用兼容后再作为默认值。</p>
+        <p class="muted proxy-hint">图片工作流固定输出 PNG，便于继续编辑和交给 H3 使用。</p>
       </section>
       <div class="model-profile-list">${imageProfiles.length ? imageProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无图片模型扫描结果；请先确认模型目录后重新扫描。</div>`}</div>
     </section>`;
@@ -5313,13 +5307,12 @@ function bindImageEditCreate(): void {
     patchImageDraft({ activePromptVersion: Math.min(state.imageDraft.promptVersions.length - 1, state.imageDraft.activePromptVersion + 1) });
     render();
   });
-  for (const id of ["image-edit-model", "image-edit-quality", "image-edit-format", "image-edit-seed"]) {
+  for (const id of ["image-edit-model", "image-edit-quality", "image-edit-seed"]) {
     document.querySelector(`#${id}`)?.addEventListener("change", (event) => {
       const value = (event.currentTarget as HTMLInputElement | HTMLSelectElement).value;
       patchImageDraft(
         id === "image-edit-model" ? { modelId: value } :
         id === "image-edit-quality" ? { qualityProfile: value } :
-        id === "image-edit-format" ? { outputFormat: value as ImageEditDraft["outputFormat"] } :
         { seed: value ? Number(value) : null }
       );
       if (id !== "image-edit-seed") render();
@@ -6357,6 +6350,14 @@ function formSettings(): Settings {
   const base = settingsDraft ?? state.settings;
   const value = (id: string, fallback: string) =>
     document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`)?.value.trim() ?? fallback;
+  const directoryValue = (id: string, fallback: string) => {
+    const input = document.querySelector<HTMLInputElement>(`#${id}`);
+    const raw = input?.value.trim() ?? fallback;
+    const automatic = input?.dataset.autoDirectory?.trim() ?? "";
+    return !fallback.trim() && automatic && raw.toLowerCase() === automatic.toLowerCase()
+      ? ""
+      : raw;
+  };
   const checked = (id: string, fallback: boolean) =>
     document.querySelector<HTMLInputElement>(`#${id}`)?.checked ?? fallback;
   const h3PromptPresets = {
@@ -6395,13 +6396,13 @@ function formSettings(): Settings {
     h3PromptPresets,
     imagePromptPresets,
     modelDirectory: value("model-directory", base.modelDirectory),
-    outputDirectory: value("output-directory", base.outputDirectory),
-    imageOutputDirectory: value("image-output-directory", base.imageOutputDirectory),
+    outputDirectory: directoryValue("output-directory", base.outputDirectory),
+    imageOutputDirectory: directoryValue("image-output-directory", base.imageOutputDirectory),
     defaultVideoModel: value("default-video-model", base.defaultVideoModel),
     defaultImageModel: value("default-image-model", base.defaultImageModel),
     defaultImageQualityProfile: value("image-quality-profile", base.defaultImageQualityProfile),
     imageOutputCount: Math.min(10, Math.max(1, Number(value("image-output-count-number", String(base.imageOutputCount))))),
-    imageOutputFormat: value("image-output-format", base.imageOutputFormat) as Settings["imageOutputFormat"],
+    imageOutputFormat: "png",
     vramReserveGb: Number(value("vram-reserve", String(base.vramReserveGb))),
     h3AttentionMode: value(
       "h3-attention-mode",

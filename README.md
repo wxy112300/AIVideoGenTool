@@ -6,7 +6,7 @@ Local Video Studio 把参考图、提示词、视频模型、任务队列和生�
 
 ## 当前版本
 
-当前版本为 **`0.3.11`**，在图片工作台数据契约和 Qwen-Image-Edit-2511 基础上，扩展了社区验证的 Gemma 4 多模态提示词模型，并把提示词运行时统一收敛到 ComfyUI；本版本统一了图生视频、视频续写和图片处理三种创建模式的 Prompt 编辑器尺寸、优化按钮、设置中的 Prompt 模型以及模型启停逻辑，明确区分 ComfyUI 官方 `text_encoders` 与 H3 Prompt Writer 扩展注册的 `LLM` 模型目录，并让 Gemma 与 Qwen 都能使用英文 Qwen Image 编辑契约扩写图片 Prompt。
+当前版本为 **`0.3.12`**，在图片工作台数据契约和 Qwen-Image-Edit-2511 基础上，扩展了社区验证的 Gemma 4 多模态提示词模型，并把提示词运行时统一收敛到 ComfyUI；本版本统一了图生视频、视频续写和图片处理三种创建模式的 Prompt 编辑器尺寸、优化按钮、设置中的 Prompt 模型以及模型启停逻辑，明确区分 ComfyUI 官方 `text_encoders` 与 H3 Prompt Writer 扩展注册的 `LLM` 模型目录，并让 Gemma 与 Qwen 都能使用英文 Qwen Image 编辑契约扩写图片 Prompt。图片生成现在固定输出 PNG，实际写入图片输出目录，并严格保持 Picture 1 的输入尺寸。
 
 版本规则遵循语义化版本：`0.2.x` 用于向后兼容的修复和小幅 UX 调整，`0.3.0` 用于新增功能或明显的工作流扩展，`1.0.0` 用于核心数据/API 兼容性稳定并准备正式发布。
 
