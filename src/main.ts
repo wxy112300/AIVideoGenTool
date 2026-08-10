@@ -2413,10 +2413,10 @@ function createPage(): string {
         <div><strong>ComfyUI API 工作流</strong><p class="muted">${extending && !supportsVideoExtension ? `${selectedModelProfile?.available ? `${modelName(draft.modelId)} 模型组件已安装完整；` : "模型组件尚未安装完整；"}当前工作流未通过原生续写安全检查。` : draft.workflowPath ? escapeHtml(Object.values(bundledWorkflows).find((workflow) => workflow.path === draft.workflowPath)?.label ?? draft.workflowPath) : "为当前模型选择从 ComfyUI 导出的 API 格式 JSON"}</p></div>
         <button class="secondary button-with-icon" id="pick-workflow">${icon("workflow")}${draft.workflowPath ? "更换 JSON" : "选择 JSON"}</button>
       </div>
-      ${enqueueBlockReason ? `<p class="submit-feedback error" role="status">${escapeHtml(enqueueBlockReason)}</p>` : ""}
+      <p class="submit-feedback error" data-enqueue-feedback role="status" ${enqueueBlockReason ? "" : "hidden"}>${escapeHtml(enqueueBlockReason)}</p>
       <div class="submit-row composer-submit-row">
         <button class="ghost danger button-with-icon" id="clear-draft">${icon("trash-2")}清空</button>
-        <button class="primary button-with-icon enqueue-button ${enqueueBusy ? "busy" : ""}" id="enqueue" ${enqueueDisabled || enqueueBusy ? "disabled" : ""} aria-busy="${enqueueBusy}" title="${escapeHtml(enqueueBlockReason || (isR2V ? "加入 R2V 多参考生成队列" : extending ? "加入视频续写队列" : "加入本地生成队列"))}">${icon(enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${enqueueBusy ? "加入中…" : "加入队列"}</span></button>
+        <button class="primary button-with-icon enqueue-button ${enqueueBusy ? "busy" : ""}" id="enqueue" data-enqueue-block-reason="${escapeHtml(enqueueBlockReason)}" data-enqueue-ready-title="${escapeHtml(isR2V ? "加入 R2V 多参考生成队列" : extending ? "加入视频续写队列" : "加入本地生成队列")}" ${enqueueDisabled || enqueueBusy ? "disabled" : ""} aria-busy="${enqueueBusy}" title="${escapeHtml(enqueueBlockReason || (isR2V ? "加入 R2V 多参考生成队列" : extending ? "加入视频续写队列" : "加入本地生成队列"))}">${icon(enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${enqueueBusy ? "加入中…" : "加入队列"}</span></button>
       </div>
       </section>
     </div>`;
@@ -5852,6 +5852,25 @@ function setEnqueueBusyUi(busy: boolean): void {
   if (label) label.textContent = busy ? "加入中…" : "加入队列";
 }
 
+function syncPromptEnqueueUi(promptText: string): void {
+  const button = document.querySelector<HTMLButtonElement>("#enqueue");
+  if (!button) return;
+  const currentReason = button.dataset.enqueueBlockReason ?? "";
+  if (currentReason && currentReason !== "请先填写提示词") return;
+  const hasPrompt = promptText.trim().length > 0;
+  const reason = hasPrompt ? "" : "请先填写提示词";
+  button.dataset.enqueueBlockReason = reason;
+  button.disabled = !hasPrompt || enqueueBusy;
+  button.title = hasPrompt
+    ? button.dataset.enqueueReadyTitle ?? "加入队列"
+    : reason;
+  const feedback = document.querySelector<HTMLElement>("[data-enqueue-feedback]");
+  if (feedback) {
+    feedback.hidden = hasPrompt;
+    feedback.textContent = reason;
+  }
+}
+
 function bindImageEditCreate(): void {
   const choosePicture = async (pictureId?: string) => {
     const filename = await window.studio.pickImage();
@@ -6254,6 +6273,7 @@ function bindCreate(): void {
       state.draft.activePromptVersion = versions.length - 1;
     }
     patchDraft({ promptVersions: versions, activePromptVersion: state.draft.activePromptVersion });
+    syncPromptEnqueueUi(promptInput.value);
     updatePromptWordCounter(promptInput.value, isMiniMaxH3Model(state.draft.modelId) ? h3PromptModeForDraft(state.draft) : undefined, state.draft.duration);
     updateH3PromptCheck(
       promptInput.value,
