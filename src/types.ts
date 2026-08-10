@@ -799,6 +799,8 @@ export interface AppApi {
   duplicateTask(taskId: string): Promise<AppState>;
   resetTask(taskId: string): Promise<AppState>;
   deleteHistoryAsset(assetId: string): Promise<AppState>;
+  setImageHistoryCover(projectId: string, versionId?: string): Promise<AppState>;
+  deleteImageHistoryVersion(projectId: string, versionId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
   onWindowCloseRequest(callback: (request: WindowCloseRequest) => void): () => void;

@@ -92,6 +92,10 @@ const api: AppApi = {
   resetTask: (taskId: string) => ipcRenderer.invoke("queue:reset", taskId),
   deleteHistoryAsset: (assetId: string) =>
     ipcRenderer.invoke("history:delete", assetId),
+  setImageHistoryCover: (projectId: string, versionId?: string) =>
+    ipcRenderer.invoke("image-history:set-cover", projectId, versionId),
+  deleteImageHistoryVersion: (projectId: string, versionId: string) =>
+    ipcRenderer.invoke("image-history:delete-version", projectId, versionId),
   onStateChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, state: unknown) =>
       callback(state as Parameters<typeof callback>[0]);

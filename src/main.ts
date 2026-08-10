@@ -70,8 +70,10 @@ import type {
   H3ReferenceRole,
   H3ReferenceSlot,
   HistoryMigrationProgress,
+  ImageAssetVersion,
   ImageGenerationQueueTask,
   ImageEditDraft,
+  ImageHistoryProject,
   ImagePromptPreset,
   ImageReference,
   ImageReferenceRole,
@@ -90,7 +92,11 @@ import type {
 } from "./types";
 import { createClearedDraft, createDefaultImageEditDraft, createDefaultImagePromptPresets } from "./core/defaults";
 import { createHistoryCoverCacheKey } from "./core/history-cover";
-import { nextImagePictureNumber, normalizeImageEditDraft } from "./core/image-project";
+import {
+  imageProjectCoverVersion,
+  nextImagePictureNumber,
+  normalizeImageEditDraft
+} from "./core/image-project";
 import { qwenImageEdit2511Capability } from "./core/image-workflow";
 import { createDefaultH3PromptPresets, h3PromptPresetForMode } from "./core/h3-prompt-presets";
 import {
@@ -134,7 +140,8 @@ import {
 } from "./core/prompt-suggestions";
 import { checkH3Prompt } from "./core/h3-prompt-check";
 
-type Page = "create" | "queue" | "history" | "history-detail" | "settings";
+type Page = "create" | "queue" | "history" | "history-detail" | "image-history-detail" | "settings";
+type HistoryKind = "video" | "image";
 type CreationMode = "image-to-video" | "video-extension" | "image-edit";
 
 const appElement = document.querySelector<HTMLDivElement>("#app")!;
@@ -152,6 +159,7 @@ let flashMessage = "";
 let flashMessageTimer: number | undefined;
 let selectedHistoryAssetId = "";
 let selectedHistoryVersionId = "";
+let historyKind: HistoryKind = "video";
 let historyForwardTarget: { assetId: string; versionId: string } | null = null;
 let upscaleDialog: {
   taskId?: string;
@@ -201,6 +209,7 @@ let selectedInstallGuide: {
 let pendingConfirmation:
   | { kind: "clear-draft" }
   | { kind: "delete-history"; assetId: string; title: string }
+  | { kind: "delete-image-version"; projectId: string; versionId: string; title: string }
   | { kind: "remove-queue-task"; taskId: string; title: string }
   | { kind: "cancel-queue-task"; taskId: string; title: string }
   | { kind: "discard-settings"; nextPage: Page }
@@ -244,6 +253,8 @@ let historyCoverWarmupController: AbortController | null = null;
 let historyCoverWarmupTimer: number | undefined;
 const HISTORY_COVER_MAX_EDGE = 640;
 const historyCoverDataUrls = new Map<string, string>();
+const imageHistoryThumbnailDataUrls = new Map<string, string>();
+const IMAGE_HISTORY_THUMBNAIL_MAX_EDGE = 640;
 let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
 let h3PromptPreset: H3PromptPreset = "official-storyboard";
 let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
@@ -819,6 +830,102 @@ function historyMediaUrl(
     : `studio-media://history/${encodeURIComponent(asset.id)}/${encodeURIComponent(version.id)}/${index}`;
 }
 
+function imageProjectsByNewest(): ImageHistoryProject[] {
+  return [...state.imageHistory].sort((left, right) => {
+    const leftTime = Date.parse(left.updatedAt || left.createdAt);
+    const rightTime = Date.parse(right.updatedAt || right.createdAt);
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    return 0;
+  });
+}
+
+function preferredImageVersion(project: ImageHistoryProject): ImageAssetVersion {
+  return imageProjectCoverVersion(project) ??
+    [...project.versions].sort((left, right) => right.versionNumber - left.versionNumber)[0]!;
+}
+
+function currentImageHistoryVersion(project: ImageHistoryProject): ImageAssetVersion {
+  return project.versions.find((version) => version.id === selectedHistoryVersionId) ??
+    preferredImageVersion(project);
+}
+
+function imageHistoryMediaUrl(
+  project: ImageHistoryProject,
+  version = preferredImageVersion(project)
+): string {
+  return version.file.filename
+    ? `studio-media://history/${encodeURIComponent(project.id)}/${encodeURIComponent(version.id)}/0`
+    : "";
+}
+
+function imageHistoryThumbnailCacheKey(
+  project: ImageHistoryProject,
+  version: ImageAssetVersion
+): string {
+  return `image-history:${createHistoryCoverCacheKey({
+    assetId: project.id,
+    versionId: version.id,
+    createdAt: version.createdAt,
+    filename: version.file.filename,
+    absolutePath: version.file.absolutePath ?? ""
+  })}`;
+}
+
+async function loadImageHistoryThumbnail(image: HTMLImageElement): Promise<void> {
+  const key = image.dataset.imageHistoryCacheKey ?? "";
+  const sourcePath = image.dataset.imageHistorySource ?? "";
+  if (!key || !sourcePath || !image.isConnected) return;
+  try {
+    const cached = imageHistoryThumbnailDataUrls.get(key) ??
+      await window.studio.readHistoryCover(key, sourcePath);
+    if (cached) {
+      imageHistoryThumbnailDataUrls.set(key, cached);
+      if (image.isConnected) image.src = cached;
+      return;
+    }
+    const sourceData = await window.studio.readImage(sourcePath);
+    if (!sourceData || !image.isConnected) return;
+    const source = document.createElement("img");
+    source.src = sourceData;
+    await source.decode();
+    if (!source.naturalWidth || !source.naturalHeight) return;
+    const scale = Math.min(1, IMAGE_HISTORY_THUMBNAIL_MAX_EDGE / Math.max(source.naturalWidth, source.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(source.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(source.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", .88));
+    if (!blob || blob.size > 2 * 1024 * 1024 || !image.isConnected) return;
+    const saved = await window.studio.saveHistoryCover(key, sourcePath, await blob.arrayBuffer());
+    if (!saved || !image.isConnected) return;
+    const savedUrl = await window.studio.readHistoryCover(key, sourcePath);
+    if (savedUrl) {
+      imageHistoryThumbnailDataUrls.set(key, savedUrl);
+      if (image.isConnected) image.src = savedUrl;
+    }
+  } catch {
+  }
+}
+
+function historyHeading(description: string): string {
+  const activeCount = historyKind === "video" ? state.history.length : state.imageHistory.length;
+  return `
+    <section class="history-heading">
+      <div class="history-heading-title"><div class="heading-line"><h1>历史作品</h1><span class="badge">${activeCount} 个${historyKind === "video" ? "视频" : "图片项目"}</span></div><p>${escapeHtml(description)}</p></div>
+      <div class="history-kind-tabs" role="tablist" aria-label="作品类型">
+        <button class="${historyKind === "video" ? "active" : ""}" role="tab" aria-selected="${historyKind === "video"}" data-history-kind="video">${icon("film")}视频</button>
+        <button class="${historyKind === "image" ? "active" : ""}" role="tab" aria-selected="${historyKind === "image"}" data-history-kind="image">${icon("image")}图片</button>
+      </div>
+      <div class="history-view-tools">
+        <div class="button-row"><button class="${historyLayout === "masonry" ? "secondary" : "ghost"} button-with-icon" data-history-layout="masonry">${icon("columns-3")}瀑布流</button><button class="${historyLayout === "album" ? "secondary" : "ghost"} button-with-icon" data-history-layout="album">${icon("layout-grid")}相册</button></div>
+      </div>
+    </section>`;
+}
+
 function historyCoverCacheKey(
   asset: AppState["history"][number],
   version: AssetVersion
@@ -1381,7 +1488,7 @@ function restoreModalFocus(): void {
       target.focus();
       return;
     }
-    document.querySelector<HTMLElement>(`.nav-button[data-page="${page === "history-detail" ? "history" : page}"]`)?.focus();
+    document.querySelector<HTMLElement>(`.nav-button[data-page="${page === "history-detail" || page === "image-history-detail" ? "history" : page}"]`)?.focus();
   });
 }
 
@@ -1537,11 +1644,15 @@ function confirmationDialog(): string {
   if (!pendingConfirmation) return "";
   const request = pendingConfirmation;
   const deleting = request.kind === "delete-history";
+  const deletingImageVersion = request.kind === "delete-image-version";
+  const deletingImage = deleting && state.imageHistory.some((item) => item.id === request.assetId);
   const removingQueueTask = request.kind === "remove-queue-task";
   const cancellingQueueTask = request.kind === "cancel-queue-task";
   const discardingSettings = request.kind === "discard-settings";
   const forceStoppingComfy = request.kind === "force-stop-comfy";
-  const title = deleting
+  const title = deletingImageVersion
+    ? `删除“${request.title}”？`
+    : deleting
     ? `删除“${request.title}”？`
     : removingQueueTask
       ? `移除任务“${request.title}”？`
@@ -1552,8 +1663,12 @@ function confirmationDialog(): string {
           : forceStoppingComfy
             ? "强制终止所有 ComfyUI 进程？"
             : "清空当前草稿？";
-  const description = deleting
-    ? "关联的视频文件会从磁盘永久删除，历史记录也会一并移除。"
+  const description = deletingImageVersion
+    ? "当前图片版本和对应生成文件会永久删除；同项目的其他版本和原始导入图片不会受影响。"
+    : deleting
+    ? deletingImage
+      ? "图片项目记录和生成的版本文件会从磁盘永久删除；最初导入的原始素材不会删除。"
+      : "关联的视频文件会从磁盘永久删除，历史记录也会一并移除。"
     : removingQueueTask
       ? "这会从队列中移除任务，不会删除输入文件或历史作品。"
       : cancellingQueueTask
@@ -1571,8 +1686,10 @@ function confirmationDialog(): string {
           <span class="eyebrow">此操作无法撤销</span>
           <h2 id="confirm-title">${escapeHtml(title)}</h2>
           <p id="confirm-description">${escapeHtml(description)}</p>
-          ${deleting
-            ? `<div class="confirm-warning">只删除本条记录关联的视频，不会删除参考图片、工作流或整个输出目录。</div>`
+          ${deletingImageVersion
+            ? `<div class="confirm-warning">如果后续版本基于它生成，版本谱系会保留父版本已删除的标记。</div>`
+            : deleting
+            ? `<div class="confirm-warning">${deletingImage ? "只删除本图片项目的生成版本，不会删除原始导入图片或整个输出目录。" : "只删除本条记录关联的视频，不会删除参考图片、工作流或整个输出目录。"}</div>`
             : removingQueueTask || cancellingQueueTask
               ? `<div class="confirm-warning">任务参数、输入媒体和错误记录会继续保留在本地，之后仍可编辑、重试或移除。</div>`
               : discardingSettings
@@ -1583,7 +1700,7 @@ function confirmationDialog(): string {
         </div>
         <div class="dialog-actions">
           <button class="secondary button-with-icon" id="cancel-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon("x")}取消</button>
-          <button class="primary destructive button-with-icon" id="accept-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon(forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${confirmationBusy ? "处理中…" : forceStoppingComfy ? "强制终止进程" : deleting ? "删除视频和记录" : removingQueueTask ? "移除任务" : cancellingQueueTask ? "取消当前任务" : discardingSettings ? "放弃更改" : "清空草稿"}</button>
+          <button class="primary destructive button-with-icon" id="accept-confirmation" ${confirmationBusy ? "disabled" : ""}>${icon(forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${confirmationBusy ? "处理中…" : forceStoppingComfy ? "强制终止进程" : deletingImageVersion ? "删除当前版本" : deleting ? deletingImage ? "删除图片项目" : "删除视频和记录" : removingQueueTask ? "移除任务" : cancellingQueueTask ? "取消当前任务" : discardingSettings ? "放弃更改" : "清空草稿"}</button>
         </div>
       </section>
     </div>`;
@@ -1683,20 +1800,20 @@ function upscaleDialogHtml(): string {
 
 function shell(content: string): string {
   return `
-    <div class="app-shell ${page === "history" || page === "history-detail" ? "history-shell" : ""}">
+    <div class="app-shell ${page === "history" || page === "history-detail" || page === "image-history-detail" ? "history-shell" : ""}">
       <header class="topbar">
         <button class="brand" data-page="create" aria-label="返回创建页">
           <span class="brand-mark">${icon("play")}</span><span>Local Video Studio</span><span class="brand-version">${appVersion ? `v${escapeHtml(appVersion)}` : ""}</span>
         </button>
         <nav aria-label="主导航">
-          ${(["create", "queue", "history", "settings"] as Array<Exclude<Page, "history-detail">>)
+          ${(["create", "queue", "history", "settings"] as Array<Exclude<Page, "history-detail" | "image-history-detail">>)
             .map((item) => {
               const labels = { create: "创建", queue: "队列", history: "历史", settings: "设置" };
               const badge = item === "queue" && state.queue.length
                 ? `<span class="badge">${state.queue.length}</span>`
                 : "";
               const active =
-                page === item || (item === "history" && page === "history-detail");
+                page === item || (item === "history" && (page === "history-detail" || page === "image-history-detail"));
               return `<button class="nav-button ${active ? "active" : ""}" data-page="${item}">${labels[item]}${badge}</button>`;
             })
             .join("")}
@@ -1705,7 +1822,7 @@ function shell(content: string): string {
       <div class="flash ${flashMessage ? "visible" : ""}" id="app-flash" role="status" aria-live="polite">${escapeHtml(flashMessage)}</div>
       <main>${content}</main>
     </div>
-    ${page === "history" || page === "history-detail" ? `<button class="history-back-top" id="history-back-top" type="button" aria-label="返回顶部" title="返回顶部">${icon("arrow-up")}</button>` : ""}
+    ${page === "history" || page === "history-detail" || page === "image-history-detail" ? `<button class="history-back-top" id="history-back-top" type="button" aria-label="返回顶部" title="返回顶部">${icon("arrow-up")}</button>` : ""}
     ${confirmationDialog()}
     ${directoryMigrationDialog()}
     ${windowCloseDialog()}
@@ -2572,7 +2689,44 @@ function historyCardsByOrder(gallery: HTMLElement): HTMLElement[] {
   );
 }
 
+function imageHistoryPage(): string {
+  const projects = imageProjectsByNewest();
+  const cards = projects.map((project, historyOrder) => {
+    const version = preferredImageVersion(project);
+    const mediaUrl = imageHistoryMediaUrl(project, version);
+    const title = project.title.trim() || "未命名图片";
+    const iterationCount = Math.max(0, project.versions.filter((item) => item.kind !== "source").length);
+    return `
+      <article class="history-gallery-item panel image-history-gallery-item" data-history="${escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" tabindex="0" aria-label="${escapeHtml(title)}，打开图片详情；右键查看更多操作" title="${escapeHtml(title)}">
+        <div class="history-media image-history-media" style="--media-ratio:${version.width || 1} / ${version.height || 1}">
+          ${mediaUrl
+            ? `<img src="${escapeHtml(mediaUrl)}" loading="lazy" alt="${escapeHtml(title)}" data-image-history-preview data-image-history-cache-key="${escapeHtml(imageHistoryThumbnailCacheKey(project, version))}" data-image-history-source="${escapeHtml(version.file.absolutePath ?? "")}">`
+            : `<div class="history-media-fallback"><span>${icon("image")}</span><small>找不到图片文件</small></div>`}
+          <div class="history-media-badges">
+            <span class="media-chip history-model-chip">${escapeHtml(version.kind === "source" ? "原始图片" : modelName(version.modelId))}</span>
+            <span class="media-chip">${version.width > 0 && version.height > 0 ? `${version.width} × ${version.height}` : "尺寸未知"}</span>
+            <span class="media-chip history-version-count-chip">${project.versions.length} 个版本</span>
+          </div>
+          <span class="image-project-kind">${icon("workflow")}${iterationCount ? `${iterationCount} 次迭代` : "原始素材"}</span>
+        </div>
+        <div class="history-gallery-copy">
+          <h3 class="history-card-title" title="${escapeHtml(title)}"><span class="history-card-title-track"><span>${escapeHtml(title)}</span><span aria-hidden="true">${escapeHtml(title)}</span></span></h3>
+          <code class="history-card-filename">${escapeHtml(version.file.filename)}</code>
+          <div class="history-card-meta"><span>${escapeHtml(formatFullHistoryTime(project.updatedAt || version.createdAt))}</span><span>最新版本 v${version.versionNumber}</span></div>
+        </div>
+      </article>`;
+  }).join("");
+  return `
+    ${historyHeading("一个图片项目包含原始素材和全部后续编辑版本；选择满意版本后可继续编辑或送入视频 Slot 1。")}
+    <section class="history-gallery ${historyLayout}">
+      ${projects.length === 0
+        ? `<div class="empty panel"><h2>还没有图片项目</h2><p>图片处理队列完成后，项目会自动出现在这里。</p></div>`
+        : cards}
+    </section>`;
+}
+
 function historyPage(): string {
+  if (historyKind === "image") return imageHistoryPage();
   const orderedAssets = historyAssetsByNewest();
   const cards = orderedAssets.map((asset, historyOrder) => {
     const version = preferredVersion(asset);
@@ -2583,7 +2737,7 @@ function historyPage(): string {
     const coverSeed = historyCoverSeed(asset.id, version.id);
     const coverTime = historyInitialCoverTime(asset.duration, coverSeed);
     return `
-      <article class="history-gallery-item panel" data-history="${asset.id}" data-history-order="${historyOrder}" tabindex="0" aria-label="${escapeHtml(historyTitle)}，打开详情；右键查看更多操作" title="${escapeHtml(historyTitle)}">
+      <article class="history-gallery-item panel" data-history="${asset.id}" data-history-kind="video" data-history-order="${historyOrder}" tabindex="0" aria-label="${escapeHtml(historyTitle)}，打开详情；右键查看更多操作" title="${escapeHtml(historyTitle)}">
         <div class="history-media${mediaUrl ? " media-loading" : ""}" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${escapeHtml(coverKey)}" data-cover-source="${escapeHtml(version.files[videoIndex]?.absolutePath ?? "")}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="none" data-history-src="${escapeHtml(mediaUrl)}"></video>`
@@ -2607,12 +2761,7 @@ function historyPage(): string {
       </article>`;
   }).join("");
   return `
-    <section class="history-heading">
-      <div><div class="heading-line"><h1>历史作品</h1><span class="badge">${state.history.length} 个视频</span></div></div>
-      <div class="history-view-tools">
-        <div class="button-row"><button class="${historyLayout === "masonry" ? "secondary" : "ghost"} button-with-icon" data-history-layout="masonry">${icon("columns-3")}瀑布流</button><button class="${historyLayout === "album" ? "secondary" : "ghost"} button-with-icon" data-history-layout="album">${icon("layout-grid")}相册</button></div>
-      </div>
-    </section>
+    ${historyHeading("封面读取持久缓存；悬停才加载并播放原视频，退出后回到稳定封面。")}
     <section class="history-gallery ${historyLayout}">
       ${state.history.length === 0
         ? `<div class="empty panel"><h2>还没有完成的视频</h2><p>队列完成后，结果会自动出现在这里。</p></div>`
@@ -2759,8 +2908,10 @@ function switchHistoryLayout(nextLayout: typeof historyLayout): void {
   gallery.classList.toggle("album", nextLayout === "album");
   if (nextLayout === "album") {
     const cards = historyCardsByOrder(gallery);
-    gallery.replaceChildren(...cards);
-    gallery.style.removeProperty("--masonry-columns");
+    if (cards.length) {
+      gallery.replaceChildren(...cards);
+      gallery.style.removeProperty("--masonry-columns");
+    }
   } else {
     bindHistoryMasonry();
   }
@@ -2893,6 +3044,78 @@ function historyDetailPage(): string {
     </section>`;
 }
 
+function imageHistoryDetailPage(): string {
+  const project = state.imageHistory.find((item) => item.id === selectedHistoryAssetId);
+  if (!project) {
+    historyKind = "image";
+    page = "history";
+    return historyPage();
+  }
+  const version = currentImageHistoryVersion(project);
+  selectedHistoryVersionId = version.id;
+  const orderedProjects = imageProjectsByNewest();
+  const projectIndex = orderedProjects.findIndex((item) => item.id === project.id);
+  const previousProject = projectIndex > 0 ? orderedProjects[projectIndex - 1] : undefined;
+  const nextProject = projectIndex >= 0 ? orderedProjects[projectIndex + 1] : undefined;
+  const title = project.title.trim() || "未命名图片";
+  const mediaUrl = imageHistoryMediaUrl(project, version);
+  const pinnedVersion = imageProjectCoverVersion(project);
+  const parent = version.parentVersionId
+    ? project.versions.find((item) => item.id === version.parentVersionId)
+    : undefined;
+  const elapsedSeconds = version.startedAt
+    ? Math.max(0, (Date.parse(version.createdAt) - Date.parse(version.startedAt)) / 1000)
+    : null;
+  const filePath = version.file.absolutePath ?? "";
+  return `
+    <div class="history-detail-back">
+      <button class="secondary button-with-icon history-detail-back-button" data-page="history">${icon("arrow-left")}返回图片历史</button>
+      <div class="history-detail-tools">
+        <span>图片项目保留所有编辑版本</span>
+        <span class="history-detail-position" aria-label="当前图片项目位置">第 ${projectIndex + 1} / 共 ${orderedProjects.length} 个</span>
+        <div class="history-detail-navigation" aria-label="切换图片项目">
+          <button class="ghost history-detail-nav-button" data-history-navigation="-1" ${previousProject ? "" : "disabled"} title="${previousProject ? `上一个：${escapeHtml(previousProject.title)}` : "已经是第一项"}"><span class="history-detail-nav-label">${icon("arrow-left")}上一个</span><span class="history-detail-nav-shortcut"><kbd>Page Up</kbd></span></button>
+          <button class="ghost history-detail-nav-button" data-history-navigation="1" ${nextProject ? "" : "disabled"} title="${nextProject ? `下一个：${escapeHtml(nextProject.title)}` : "已经是最后一项"}"><span class="history-detail-nav-label">下一个${icon("arrow-right")}</span><span class="history-detail-nav-shortcut"><kbd>Page Down</kbd></span></button>
+        </div>
+      </div>
+    </div>
+    <section class="image-history-detail-layout">
+      <section class="panel image-history-viewer-panel">
+        <div class="image-history-viewer-grid">
+          <aside class="image-history-version-rail">
+            <div><h2>版本</h2><p class="muted tiny">最新在前</p></div>
+            <div class="image-history-version-list">
+              ${project.versions.map((item) => `<button class="image-history-version-thumb ${item.id === version.id ? "active" : ""}" data-image-version-id="${escapeHtml(item.id)}" title="版本 ${item.versionNumber} · ${item.width} × ${item.height}">${imageHistoryMediaUrl(project, item) ? `<img src="${escapeHtml(imageHistoryMediaUrl(project, item))}" loading="lazy" alt="">` : ""}<span>${String(item.versionNumber).padStart(2, "0")}</span>${item.id === pinnedVersion?.id ? icon("circle-check") : ""}</button>`).join("")}
+            </div>
+          </aside>
+          <section class="image-history-stage-panel">
+            <div class="image-history-stage-toolbar"><div><strong>${escapeHtml(version.file.filename)}</strong><p class="muted tiny">版本 ${version.versionNumber} · Seed ${version.seed ?? "随机"} · ${escapeHtml(version.kind === "source" ? "原始图片" : modelName(version.modelId))}</p></div><div class="button-row"><button class="icon-button" data-image-stage-mode="fit" title="适合窗口" aria-label="适合窗口">${icon("scan-search")}</button><button class="icon-button" data-image-stage-mode="original" title="原始尺寸" aria-label="原始尺寸">${icon("maximize-2")}</button></div></div>
+            <div class="image-history-stage" data-image-stage="fit" style="--image-aspect:${version.width || 1} / ${version.height || 1}">
+              ${mediaUrl ? `<img src="${escapeHtml(mediaUrl)}" alt="${escapeHtml(title)} · 版本 ${version.versionNumber}" data-image-history-stage-image>` : `<div class="history-media-fallback"><span>${icon("image")}</span><strong>图片文件不可用</strong><small>请检查输出目录或在下方定位文件。</small></div>`}
+              <span class="image-history-stage-hint">${icon("move-up")}适合窗口 · 原始尺寸</span>
+            </div>
+          </section>
+        </div>
+      </section>
+      <aside class="image-history-detail-sidebar">
+        <section class="panel image-history-summary">
+          <div class="status-line"><span class="badge ok">版本 ${version.versionNumber}${pinnedVersion?.id === version.id ? " · 当前封面" : ""}</span><span class="badge">PNG</span></div>
+          <h2>${escapeHtml(title)}</h2>
+          <p class="muted tiny">${escapeHtml(version.prompt || (version.kind === "source" ? "原始导入图片" : "未保存编辑要求"))}</p>
+          <div class="image-history-facts"><div><span>模型</span><strong>${escapeHtml(version.kind === "source" ? "原始图片" : modelName(version.modelId))}</strong></div><div><span>Seed</span><strong>${version.seed ?? "随机"}</strong></div><div><span>尺寸</span><strong>${version.width} × ${version.height}</strong></div><div><span>格式</span><strong>${version.format.toUpperCase()}</strong></div><div><span>生成时间</span><strong>${escapeHtml(formatFullHistoryTime(version.createdAt))}</strong></div><div><span>耗时</span><strong>${elapsedSeconds == null ? "旧记录未保存" : escapeHtml(formatElapsedDuration(elapsedSeconds))}</strong></div></div>
+          <div class="image-history-quick-actions"><button class="primary button-with-icon" data-image-continue-video>${icon("video")}开始创作视频</button><button class="secondary button-with-icon" data-image-continue-edit>${icon("wand-sparkles")}继续编辑图片</button>${filePath ? `<button class="secondary button-with-icon" data-copy-image="${escapeHtml(filePath)}">${icon("copy")}复制图片</button><button class="secondary button-with-icon" data-copy-file="${escapeHtml(filePath)}">${icon("copy")}复制文件</button><button class="secondary button-with-icon" data-show-file="${escapeHtml(filePath)}">${icon("folder-open")}打开所在位置</button>` : ""}<button class="secondary button-with-icon" data-image-set-cover="${escapeHtml(project.id)}" data-image-cover-version="${pinnedVersion?.id === version.id ? "" : version.id}">${icon("image")}${pinnedVersion?.id === version.id ? "恢复自动封面" : "设为项目封面"}</button><button class="secondary danger button-with-icon" data-delete-image-version="${escapeHtml(project.id)}" data-image-version-delete-id="${escapeHtml(version.id)}" ${version.kind === "source" ? "disabled" : ""}>${icon("trash-2")}${version.kind === "source" ? "原始图不可删除" : "删除当前版本"}</button><button class="secondary danger button-with-icon" data-delete-history="${escapeHtml(project.id)}">${icon("trash-2")}删除图片项目</button></div>
+        </section>
+        <section class="panel image-history-version-panel"><div class="history-version-panel-heading"><strong>图片项目版本</strong><span>${project.versions.length} 个版本</span></div><p class="muted tiny">${parent ? `当前版本基于 v${parent.versionNumber} 继续编辑。` : version.kind === "source" ? "这是项目最初导入的基础图片。" : "当前版本没有记录父版本。"}</p></section>
+      </aside>
+    </section>
+    <section class="history-record-grid image-history-record-grid">
+      <article class="panel history-record full"><div class="history-record-heading"><h2>本次编辑要求</h2><button class="ghost button-with-icon" data-copy-image-prompt>${icon("copy")}复制 Prompt</button></div><span class="muted">生成时保存的 Prompt 快照</span><div class="history-prompt-scroll" tabindex="0" aria-label="图片编辑要求"><p class="history-prompt">${escapeHtml(version.prompt || "原始导入图片，没有编辑 Prompt")}</p></div></article>
+      <article class="panel history-record"><h2>版本来源</h2><dl><dt>所属项目</dt><dd>${escapeHtml(title)}</dd><dt>父版本</dt><dd>${parent ? `v${parent.versionNumber}` : version.kind === "source" ? "原始图片" : "未记录"}</dd><dt>版本编号</dt><dd>${version.versionNumber} / ${project.versions.length}</dd><dt>版本类型</dt><dd>${version.kind === "source" ? "原始素材" : version.kind === "upscale" ? "分辨率提升" : "图片编辑"}</dd></dl></article>
+      <article class="panel history-record"><h2>生成信息</h2><dl><dt>模型</dt><dd>${escapeHtml(version.kind === "source" ? "原始图片" : modelName(version.modelId))}</dd><dt>Seed</dt><dd>${version.seed ?? "随机"}</dd><dt>生成时间</dt><dd>${escapeHtml(formatFullHistoryTime(version.createdAt))}</dd><dt>输出格式</dt><dd>${version.format.toUpperCase()}</dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "原始导入")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId ?? "旧记录未保存")}</code></dd></dl></article>
+      <article class="panel history-record full"><div class="history-record-heading"><h2>输出文件</h2><span>1 个</span></div><div class="output-files"><div class="output-file"><div><strong>${escapeHtml(version.file.filename)}</strong><p class="muted">${escapeHtml(version.file.subfolder || ".")} · ${escapeHtml(version.file.type)}</p></div>${filePath ? `<button class="secondary button-with-icon" data-show-file="${escapeHtml(filePath)}">${icon("folder-open")}在 Explorer 中显示</button>` : `<span class="muted">当前文件不可用</span>`}</div></div><details><summary>原始 ComfyUI 输出快照</summary><pre>${escapeHtml(JSON.stringify(version.comfyOutputs, null, 2))}</pre></details></article>
+    </section>`;
+}
+
 function historyStateChanged(
   previous: AppState["history"] | undefined,
   next: AppState["history"]
@@ -2915,6 +3138,35 @@ function historyStateChanged(
         previousVersion.id !== version.id ||
         previousVersion.createdAt !== version.createdAt ||
         previousVersion.files.length !== version.files.length;
+    });
+  });
+}
+
+function imageHistoryStateChanged(
+  previous: ImageHistoryProject[] | undefined,
+  next: ImageHistoryProject[]
+): boolean {
+  if (!previous || previous.length !== next.length) return true;
+  return next.some((project, index) => {
+    const previousProject = previous[index];
+    if (!previousProject) return true;
+    if (
+      previousProject.id !== project.id ||
+      previousProject.updatedAt !== project.updatedAt ||
+      previousProject.coverMode !== project.coverMode ||
+      previousProject.coverVersionId !== project.coverVersionId ||
+      previousProject.versions.length !== project.versions.length
+    ) {
+      return true;
+    }
+    return project.versions.some((version, versionIndex) => {
+      const previousVersion = previousProject.versions[versionIndex];
+      return !previousVersion ||
+        previousVersion.id !== version.id ||
+        previousVersion.versionNumber !== version.versionNumber ||
+        previousVersion.createdAt !== version.createdAt ||
+        previousVersion.file.filename !== version.file.filename ||
+        previousVersion.file.absolutePath !== version.file.absolutePath;
     });
   });
 }
@@ -3684,6 +3936,7 @@ function render(): void {
     page === "queue" ? queuePage() :
     page === "history" ? historyPage() :
     page === "history-detail" ? historyDetailPage() :
+    page === "image-history-detail" ? imageHistoryDetailPage() :
     settingsPage();
   appElement.innerHTML = shell(content);
   renderIcons(appElement);
@@ -3710,7 +3963,7 @@ function render(): void {
     void loadQueueInputPreviews();
     restoreQueueMoveAnchor();
   }
-  else if (page === "history" || page === "history-detail") {
+  else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
     bindHistory(playback);
     bindHistoryViewportControls();
   }
@@ -3951,12 +4204,29 @@ async function togglePromptModelFromUi(): Promise<void> {
 
 function requestHistoryDeletion(assetId: string): void {
   const asset = state.history.find((item) => item.id === assetId);
-  if (!asset) return;
+  const project = state.imageHistory.find((item) => item.id === assetId);
+  const title = asset?.title ?? project?.title;
+  if (!title) return;
   rememberModalFocus();
   pendingConfirmation = {
     kind: "delete-history",
     assetId,
-    title: asset.title
+    title
+  };
+  confirmationBusy = false;
+  render();
+}
+
+function requestImageVersionDeletion(projectId: string, versionId: string): void {
+  const project = state.imageHistory.find((item) => item.id === projectId);
+  const version = project?.versions.find((item) => item.id === versionId);
+  if (!project || !version || version.kind === "source") return;
+  rememberModalFocus();
+  pendingConfirmation = {
+    kind: "delete-image-version",
+    projectId,
+    versionId,
+    title: `${project.title} · 版本 ${version.versionNumber}`
   };
   confirmationBusy = false;
   render();
@@ -4036,6 +4306,7 @@ function openHistoryDetail(assetId: string, versionId?: string): void {
   const preserveFullscreen = page === "history-detail" && historyPlayerIsFullscreen();
   if (page === "history") historyScrollPosition = window.scrollY;
   reportUserAction("history-open-detail", { assetId, versionId });
+  historyKind = "video";
   selectedHistoryAssetId = assetId;
   const asset = state.history.find((item) => item.id === assetId);
   selectedHistoryVersionId = asset?.versions.find((item) => item.id === versionId)?.id ??
@@ -4053,8 +4324,22 @@ function openHistoryDetail(assetId: string, versionId?: string): void {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
+function openImageHistoryDetail(projectId: string, versionId?: string): void {
+  const project = state.imageHistory.find((item) => item.id === projectId);
+  if (!project) return;
+  reportUserAction("image-history-open-detail", { projectId, versionId });
+  historyKind = "image";
+  selectedHistoryAssetId = projectId;
+  selectedHistoryVersionId = project.versions.find((item) => item.id === versionId)?.id ??
+    preferredImageVersion(project).id;
+  historyForwardTarget = { assetId: projectId, versionId: selectedHistoryVersionId };
+  page = "image-history-detail";
+  render();
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
 function returnToHistory(): void {
-  if (page !== "history-detail") return;
+  if (page !== "history-detail" && page !== "image-history-detail") return;
   historyScrollRestorePending = true;
   page = "history";
   flashMessage = "";
@@ -4064,6 +4349,15 @@ function returnToHistory(): void {
 function returnToLastHistoryDetail(): void {
   if (page !== "history" || !historyForwardTarget) return;
   const target = historyForwardTarget;
+  if (historyKind === "image") {
+    const project = state.imageHistory.find((item) => item.id === target.assetId);
+    if (!project) {
+      historyForwardTarget = null;
+      return;
+    }
+    openImageHistoryDetail(target.assetId, target.versionId);
+    return;
+  }
   const asset = state.history.find((item) => item.id === target.assetId);
   if (!asset) {
     historyForwardTarget = null;
@@ -4083,6 +4377,15 @@ function navigateHistoryDetail(direction: -1 | 1): void {
   openHistoryDetail(nextAsset.id);
 }
 
+function navigateImageHistoryDetail(direction: -1 | 1): void {
+  if (page !== "image-history-detail") return;
+  const orderedProjects = imageProjectsByNewest();
+  const currentIndex = orderedProjects.findIndex((item) => item.id === selectedHistoryAssetId);
+  const nextProject = orderedProjects[currentIndex + direction];
+  if (!nextProject) return;
+  openImageHistoryDetail(nextProject.id);
+}
+
 async function copyHistoryText(value: string, successMessage: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(value);
@@ -4092,16 +4395,35 @@ async function copyHistoryText(value: string, successMessage: string): Promise<v
   }
 }
 
-async function copyHistoryFile(filename: string): Promise<void> {
+async function copyHistoryFile(filename: string, successMessage = "视频文件已复制。"): Promise<void> {
   if (!filename) {
-    showMessage("当前记录没有可用的视频文件。", false);
+    showMessage("当前记录没有可用的媒体文件。", false);
     return;
   }
   try {
     const result = await window.studio.copyFile(filename);
-    showMessage(result.message, false);
+    showMessage(result.ok ? successMessage : result.message, false);
   } catch {
-    showMessage("复制视频文件失败，请检查文件是否仍然存在。", false);
+    showMessage("复制媒体文件失败，请检查文件是否仍然存在。", false);
+  }
+}
+
+async function copyHistoryImage(filename: string): Promise<void> {
+  if (!filename) {
+    showMessage("当前记录没有可用的图片文件。", false);
+    return;
+  }
+  try {
+    const dataUrl = await window.studio.readImage(filename);
+    if (!dataUrl || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+      showMessage("当前系统不支持复制图片像素，请使用复制文件。", false);
+      return;
+    }
+    const blob = await fetch(dataUrl).then((response) => response.blob());
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+    showMessage("图片像素已复制到剪贴板。", false);
+  } catch {
+    showMessage("复制图片像素失败，请检查系统剪贴板权限。", false);
   }
 }
 
@@ -4265,6 +4587,124 @@ function releaseHistoryVideo(assetId: string): void {
   });
 }
 
+async function continueImageEdit(project: ImageHistoryProject, version: ImageAssetVersion): Promise<void> {
+  const now = new Date().toISOString();
+  const draft = normalizeImageEditDraft({
+    ...state.imageDraft,
+    projectId: project.id,
+    parentVersionId: version.id,
+    modelId: version.modelId || state.imageDraft.modelId,
+    pictures: version.references.map((reference) => ({ ...reference })),
+    promptVersions: [{
+      id: crypto.randomUUID(),
+      label: "从图片历史继续编辑",
+      text: version.prompt,
+      createdAt: now
+    }],
+    activePromptVersion: 0,
+    seed: version.seed ?? null,
+    outputFormat: "png"
+  });
+  state = await window.studio.saveImageDraft(draft);
+  creationMode = "image-edit";
+  page = "create";
+  reportUserAction("image-history-continue-edit", { projectId: project.id, versionId: version.id });
+  render();
+}
+
+async function continueImageToVideo(project: ImageHistoryProject, version: ImageAssetVersion): Promise<void> {
+  const filename = version.file.absolutePath;
+  if (!filename) {
+    showMessage("当前图片版本的本地文件不可用。", false);
+    return;
+  }
+  await saveDraftImmediately({
+    ...state.draft,
+    inputMode: "image",
+    startImagePath: filename,
+    sourceWidth: version.width,
+    sourceHeight: version.height,
+    sourceAssetId: project.id,
+    sourceVersionId: version.id,
+    endImagePath: "",
+    sourceVideoPath: "",
+    sourceVideoDuration: 0,
+    trimStartSeconds: 0,
+    trimEndSeconds: 0,
+    ratio: "source"
+  });
+  creationMode = "image-to-video";
+  page = "create";
+  reportUserAction("image-history-continue-video", { projectId: project.id, versionId: version.id });
+  render();
+}
+
+function openImageHistoryContextMenu(
+  projectId: string,
+  clientX: number,
+  clientY: number
+): void {
+  closeHistoryContextMenu();
+  const project = state.imageHistory.find((item) => item.id === projectId);
+  if (!project) return;
+  const version = preferredImageVersion(project);
+  const absolutePath = version.file.absolutePath ?? "";
+  const title = project.title.trim() || "未命名图片";
+  const menu = document.createElement("section");
+  menu.className = "history-context-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", `${title} 快捷操作`);
+  menu.innerHTML = `
+    <div class="history-context-heading"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(version.file.filename)}</span></div>
+    <button role="menuitem" data-image-history-action="detail"><span class="context-icon">${icon("external-link")}</span><span><strong>查看详情</strong><small>查看版本、Prompt 和项目谱系</small></span><kbd>Enter</kbd></button>
+    <button role="menuitem" data-image-history-action="edit"><span class="context-icon">${icon("wand-sparkles")}</span><span><strong>继续编辑图片</strong><small>以当前版本作为下一轮编辑基础</small></span></button>
+    <button role="menuitem" data-image-history-action="video"><span class="context-icon">${icon("video")}</span><span><strong>开始创作视频</strong><small>把当前图片放入视频首帧</small></span></button>
+    <div class="history-context-separator" role="separator"></div>
+    <button role="menuitem" data-image-history-action="copy-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>复制文件</strong><small>${absolutePath ? "复制图片文件，可在资源管理器中粘贴" : "当前记录没有可用文件"}</small></span></button>
+    <button role="menuitem" data-image-history-action="copy-path" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>复制文件路径</strong><small>${absolutePath ? "复制完整图片文件路径" : "当前记录没有可用文件"}</small></span></button>
+    <button role="menuitem" data-image-history-action="show-file" ${absolutePath ? "" : "disabled"}><span class="context-icon">${icon("folder-open")}</span><span><strong>打开所在目录</strong><small>在 Explorer 中定位图片</small></span></button>
+    <button role="menuitem" data-image-history-action="copy-prompt" ${version.prompt ? "" : "disabled"}><span class="context-icon">${icon("file-text")}</span><span><strong>复制 Prompt</strong><small>${version.prompt ? "复制当前版本的编辑要求" : "原始图片没有 Prompt"}</small></span></button>
+    <div class="history-context-separator" role="separator"></div>
+    <button class="danger" role="menuitem" data-image-history-action="delete"><span class="context-icon">${icon("trash-2")}</span><span><strong>删除图片项目</strong><small>操作前仍会要求确认</small></span></button>`;
+  menu.style.left = `${clientX}px`;
+  menu.style.top = `${clientY}px`;
+  document.body.append(menu);
+  renderIcons(menu);
+  historyContextMenuElement = menu;
+  const events = new AbortController();
+  historyContextMenuEvents = events;
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(clientX, window.innerWidth - rect.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(clientY, window.innerHeight - rect.height - 8))}px`;
+  menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  menu.addEventListener("contextmenu", (event) => event.preventDefault());
+  menu.addEventListener("click", async (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-image-history-action]");
+    if (!button || button.disabled) return;
+    const action = button.dataset.imageHistoryAction;
+    closeHistoryContextMenu();
+    if (action === "detail") openImageHistoryDetail(projectId);
+    else if (action === "edit") await continueImageEdit(project, version);
+    else if (action === "video") await continueImageToVideo(project, version);
+    else if (action === "copy-file") await copyHistoryFile(absolutePath, "图片文件已复制。");
+    else if (action === "copy-path") await copyHistoryText(absolutePath, "图片文件路径已复制。");
+    else if (action === "show-file") {
+      const shown = await window.studio.showItemInFolder(absolutePath);
+      if (!shown) showMessage("图片文件不存在或已经被移动。", false);
+    } else if (action === "copy-prompt") await copyHistoryText(version.prompt, "Prompt 已复制。");
+    else if (action === "delete") requestHistoryDeletion(projectId);
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!menu.contains(event.target as Node)) closeHistoryContextMenu();
+  }, { capture: true, signal: events.signal });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeHistoryContextMenu();
+  }, { signal: events.signal });
+  window.addEventListener("blur", closeHistoryContextMenu, { signal: events.signal });
+  window.addEventListener("resize", closeHistoryContextMenu, { signal: events.signal });
+  window.addEventListener("scroll", closeHistoryContextMenu, { capture: true, signal: events.signal });
+}
+
 async function acceptConfirmation(): Promise<void> {
   if (!pendingConfirmation || confirmationBusy) return;
   const request = pendingConfirmation;
@@ -4317,14 +4757,17 @@ async function acceptConfirmation(): Promise<void> {
         window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
       }
       return;
-    } else {
+    } else if (request.kind === "delete-history") {
       releaseHistoryVideo(request.assetId);
       await new Promise<void>((resolve) =>
         window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()))
       );
       state = await window.studio.deleteHistoryAsset(request.assetId);
       selectedHistoryAssetId = "";
-      if (page === "history-detail") page = "history";
+      if (page === "history-detail" || page === "image-history-detail") {
+        if (page === "image-history-detail") historyKind = "image";
+        page = "history";
+      }
     }
     pendingConfirmation = null;
     confirmationBusy = false;
@@ -4412,7 +4855,7 @@ function bindShell(): void {
         render();
         return;
       }
-      if (page === "history-detail" && nextPage === "history") {
+      if ((page === "history-detail" || page === "image-history-detail") && nextPage === "history") {
         returnToHistory();
         return;
       }
@@ -4436,7 +4879,7 @@ function bindShell(): void {
       }
     });
   });
-  if (page === "history-detail") {
+  if (page === "history-detail" || page === "image-history-detail") {
     const isEditableTarget = (target: EventTarget | null): boolean => {
       if (!(target instanceof HTMLElement)) return false;
       return target instanceof HTMLInputElement ||
@@ -4473,7 +4916,8 @@ function bindShell(): void {
       if (direction !== -1 && direction !== 1) return;
       event.preventDefault();
       event.stopPropagation();
-      navigateHistoryDetail(direction);
+      if (page === "image-history-detail") navigateImageHistoryDetail(direction);
+      else navigateHistoryDetail(direction);
     };
     window.addEventListener("keydown", handleKeyboardBack, { signal: navigationEvents.signal });
     window.addEventListener("keydown", handleHistoryVideoNavigation, { signal: navigationEvents.signal });
@@ -5980,6 +6424,22 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   bindHistoryMasonry();
   bindHistoryTitleMarquees();
   restoreHistoryLayoutAnchor();
+  document.querySelectorAll<HTMLButtonElement>("[data-history-kind][role=tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextKind = button.dataset.historyKind as HistoryKind;
+      if (nextKind !== "video" && nextKind !== "image") return;
+      if (nextKind === historyKind) return;
+      reportUserAction("history-kind", { kind: nextKind });
+      historyKind = nextKind;
+      historyScrollPosition = 0;
+      historyScrollRestorePending = false;
+      render();
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+    });
+  });
+  document.querySelectorAll<HTMLImageElement>("[data-image-history-preview]").forEach((image) => {
+    void loadImageHistoryThumbnail(image);
+  });
   const detailVideo = document.querySelector<HTMLVideoElement>('.history-player video');
   const playbackMatches = Boolean(
     detailVideo && playback &&
@@ -6018,8 +6478,28 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     button.addEventListener("click", () => {
       const direction = Number(button.dataset.historyNavigation);
       if (direction === -1 || direction === 1) {
-        navigateHistoryDetail(direction);
+        if (page === "image-history-detail") navigateImageHistoryDetail(direction);
+        else navigateHistoryDetail(direction);
       }
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-image-version-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const versionId = button.dataset.imageVersionId;
+      if (!versionId || !selectedHistoryAssetId) return;
+      selectedHistoryVersionId = versionId;
+      historyForwardTarget = { assetId: selectedHistoryAssetId, versionId };
+      reportUserAction("image-history-version-select", { projectId: selectedHistoryAssetId, versionId });
+      render();
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-image-stage-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const stage = document.querySelector<HTMLElement>("[data-image-stage]");
+      if (!stage) return;
+      const mode = button.dataset.imageStageMode === "original" ? "original" : "fit";
+      stage.dataset.imageStage = mode;
+      stage.classList.toggle("original-size", mode === "original");
     });
   });
   const historyMediaCards = [...document.querySelectorAll<HTMLElement>("[data-history-media]")];
@@ -6224,16 +6704,20 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   document.querySelectorAll<HTMLElement>("[data-history]").forEach((card) => {
     card.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      openHistoryContextMenu(
-        card.dataset.history!,
-        event.clientX,
-        event.clientY
-      );
+      if (card.dataset.historyKind === "image") {
+        openImageHistoryContextMenu(card.dataset.history!, event.clientX, event.clientY);
+      } else {
+        openHistoryContextMenu(card.dataset.history!, event.clientX, event.clientY);
+      }
     });
     const open = (event?: Event) => {
       const target = event?.target;
       if (target instanceof Element && target.closest("button")) return;
-      openHistoryDetail(card.dataset.history!);
+      if (card.dataset.historyKind === "image") {
+        openImageHistoryDetail(card.dataset.history!);
+      } else {
+        openHistoryDetail(card.dataset.history!);
+      }
     };
     card.addEventListener("click", (event) => open(event));
     card.addEventListener("keydown", (event) => {
@@ -6294,6 +6778,38 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     if (!asset) return;
     await copyHistoryText(asset.prompt, "提示词已复制。");
   });
+  document.querySelector("[data-copy-image-prompt]")?.addEventListener("click", async () => {
+    const project = state.imageHistory.find((item) => item.id === selectedHistoryAssetId);
+    if (!project) return;
+    const version = currentImageHistoryVersion(project);
+    if (!version.prompt) {
+      showMessage("当前原始图片没有可复制的 Prompt。", false);
+      return;
+    }
+    await copyHistoryText(version.prompt, "Prompt 已复制。");
+  });
+  document.querySelector("[data-image-continue-edit]")?.addEventListener("click", async () => {
+    const project = state.imageHistory.find((item) => item.id === selectedHistoryAssetId);
+    if (!project) return;
+    await continueImageEdit(project, currentImageHistoryVersion(project));
+  });
+  document.querySelector("[data-image-continue-video]")?.addEventListener("click", async () => {
+    const project = state.imageHistory.find((item) => item.id === selectedHistoryAssetId);
+    if (!project) return;
+    await continueImageToVideo(project, currentImageHistoryVersion(project));
+  });
+  document.querySelector<HTMLButtonElement>("[data-image-set-cover]")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    const projectId = button.dataset.imageSetCover;
+    if (!projectId) return;
+    try {
+      state = await window.studio.setImageHistoryCover(projectId, button.dataset.imageCoverVersion || undefined);
+      showMessage(button.dataset.imageCoverVersion ? "已将当前版本设为项目封面。" : "已恢复自动封面。", false);
+      render();
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : "无法更新项目封面。", false);
+    }
+  });
   document.querySelectorAll<HTMLElement>("[data-edit-history]").forEach((button) => {
     button.addEventListener("click", () => {
       void editHistoryAsset(button.dataset.editHistory!);
@@ -6342,6 +6858,20 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     button.addEventListener("click", () => {
       reportUserAction("history-copy-file");
       void copyHistoryFile(button.dataset.copyFile!);
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-copy-image]").forEach((button) => {
+    button.addEventListener("click", () => {
+      reportUserAction("image-history-copy-image");
+      void copyHistoryImage(button.dataset.copyImage!);
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-delete-image-version]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.hasAttribute("disabled")) return;
+      const projectId = button.dataset.deleteImageVersion;
+      const versionId = button.dataset.imageVersionDeleteId;
+      if (projectId && versionId) requestImageVersionDeletion(projectId, versionId);
     });
   });
 }
@@ -7055,6 +7585,8 @@ window.studio.onWindowCloseRequest((request) => {
 window.studio.onStateChanged((nextState) => {
   const previousHistory = state?.history;
   const historyChanged = historyStateChanged(previousHistory, nextState.history);
+  const previousImageHistory = state?.imageHistory;
+  const imageHistoryChanged = imageHistoryStateChanged(previousImageHistory, nextState.imageHistory);
   const localDraft = state?.draft;
   state = {
     ...nextState,
@@ -7072,7 +7604,8 @@ window.studio.onStateChanged((nextState) => {
     activeElement instanceof HTMLTextAreaElement ||
     activeElement instanceof HTMLSelectElement;
   if (isEditing || draftSaveInFlight > 0) return;
-  if ((page === "history" || page === "history-detail") && !historyChanged) return;
+  const visibleHistoryChanged = historyKind === "image" ? imageHistoryChanged : historyChanged;
+  if ((page === "history" || page === "history-detail" || page === "image-history-detail") && !visibleHistoryChanged) return;
   render();
 });
 

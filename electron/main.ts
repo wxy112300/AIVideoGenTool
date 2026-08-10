@@ -356,23 +356,37 @@ function registerMediaProtocol(): void {
       } else if (url.hostname === "history") {
         const [assetId, versionId, fileIndexText] = url.pathname.split("/").filter(Boolean);
         const fileIndex = Number(fileIndexText);
-        const asset = store
-          .get()
-          .history.find((item) => item.id === decodeURIComponent(assetId ?? ""));
-        const version = asset?.versions.find(
-          (item) => item.id === decodeURIComponent(versionId ?? "")
-        );
-        const historyFile =
-          Number.isInteger(fileIndex) && fileIndex >= 0
+        const decodedAssetId = decodeURIComponent(assetId ?? "");
+        const decodedVersionId = decodeURIComponent(versionId ?? "");
+        const currentState = store.get();
+        const asset = currentState.history.find((item) => item.id === decodedAssetId);
+        if (asset) {
+          const version = asset.versions.find((item) => item.id === decodedVersionId);
+          const historyFile = Number.isInteger(fileIndex) && fileIndex >= 0
             ? version?.files[fileIndex]
             : undefined;
-        filename = historyFile?.absolutePath;
-        if (historyFile) {
-          filename = await resolveExistingHistoryFile(
-            filename ?? "",
-            historyFileCandidates(historyFile, store.get().settings)
-          ) ?? undefined;
-          trustedCacheFile = Boolean(filename);
+          filename = historyFile?.absolutePath;
+          if (historyFile) {
+            filename = await resolveExistingHistoryFile(
+              filename ?? "",
+              historyFileCandidates(historyFile, currentState.settings)
+            ) ?? undefined;
+            trustedCacheFile = Boolean(filename);
+          }
+        } else {
+          const project = currentState.imageHistory.find((item) => item.id === decodedAssetId);
+          const version = project?.versions.find((item) => item.id === decodedVersionId);
+          const historyFile = Number.isInteger(fileIndex) && fileIndex === 0
+            ? version?.file
+            : undefined;
+          filename = historyFile?.absolutePath;
+          if (historyFile) {
+            filename = await resolveExistingHistoryFile(
+              filename ?? "",
+              historyFileCandidates(historyFile, currentState.settings)
+            ) ?? undefined;
+            trustedCacheFile = Boolean(filename);
+          }
         }
       } else if (url.hostname === "queue") {
         const taskId = decodeURIComponent(url.pathname.split("/").filter(Boolean)[0] ?? "");
@@ -404,7 +418,11 @@ function registerMediaProtocol(): void {
         [".mov", "video/quicktime"],
         [".mkv", "video/x-matroska"],
         [".gif", "image/gif"],
-        [".jpg", "image/jpeg"]
+        [".png", "image/png"],
+        [".jpg", "image/jpeg"],
+        [".jpeg", "image/jpeg"],
+        [".webp", "image/webp"],
+        [".bmp", "image/bmp"]
       ]).get(path.extname(filename).toLowerCase()) ?? "application/octet-stream";
       const range = request.headers.get("range");
       const match = range?.match(/^bytes=(\d*)-(\d*)$/);
@@ -3528,9 +3546,18 @@ function registerIpc(): void {
     appLogger.info("history", "delete-started", "History asset deletion started", { assetId });
     const current = store.get();
     const asset = current.history.find((item) => item.id === assetId);
-    if (!asset) return current;
+    const imageProject = current.imageHistory.find((item) => item.id === assetId);
+    if (!asset && !imageProject) return current;
     try {
-      for (const filename of historyVideoPaths(asset, current.settings.outputDirectory)) {
+      const filesToDelete = asset
+        ? historyVideoPaths(asset, current.settings.outputDirectory)
+        : [...new Set(
+            imageProject!.versions
+              .filter((version) => version.kind !== "source")
+              .map((version) => version.file.absolutePath)
+              .filter((filename): filename is string => Boolean(filename))
+          )];
+      for (const filename of filesToDelete) {
         try {
           await fs.unlink(filename);
         } catch (error) {
@@ -3543,13 +3570,14 @@ function registerIpc(): void {
         }
       }
       const next = await store.update((state) => {
-        state.history = state.history.filter((item) => item.id !== assetId);
+        if (asset) state.history = state.history.filter((item) => item.id !== assetId);
+        if (imageProject) state.imageHistory = state.imageHistory.filter((item) => item.id !== assetId);
       });
-      await removeHistoryCoverCache(asset);
+      if (asset) await removeHistoryCoverCache(asset);
       appLogger.info("history", "delete-succeeded", "History asset deleted", {
         assetId,
         durationMs: Date.now() - startedAt,
-        versionCount: asset.versions.length
+        versionCount: asset?.versions.length ?? imageProject?.versions.length ?? 0
       });
       sendState(next);
       return next;
@@ -3561,6 +3589,57 @@ function registerIpc(): void {
       });
       throw error;
     }
+  });
+  ipcMain.handle("image-history:set-cover", async (_event, projectId: string, versionId?: string) => {
+    const next = await store.update((state) => {
+      const project = state.imageHistory.find((item) => item.id === projectId);
+      if (!project) throw new Error("图片项目不存在。");
+      if (versionId) {
+        if (!project.versions.some((version) => version.id === versionId)) {
+          throw new Error("图片版本不存在。");
+        }
+        project.coverMode = "pinned";
+        project.coverVersionId = versionId;
+      } else {
+        project.coverMode = "auto";
+        project.coverVersionId = undefined;
+      }
+    });
+    sendState(next);
+    return next;
+  });
+  ipcMain.handle("image-history:delete-version", async (_event, projectId: string, versionId: string) => {
+    const current = store.get();
+    const project = current.imageHistory.find((item) => item.id === projectId);
+    const version = project?.versions.find((item) => item.id === versionId);
+    if (!project || !version) throw new Error("图片项目或版本不存在。");
+    if (version.kind === "source") throw new Error("原始导入图片不能从项目中删除。");
+    const remainingPaths = new Set(
+      project.versions
+        .filter((item) => item.id !== versionId)
+        .map((item) => item.file.absolutePath)
+        .filter((filename): filename is string => Boolean(filename))
+    );
+    if (version.file.absolutePath && !remainingPaths.has(version.file.absolutePath)) {
+      await fs.unlink(version.file.absolutePath).catch((error) => {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw new Error(`无法删除图片文件 ${path.basename(version.file.absolutePath!)}：${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    }
+    const next = await store.update((state) => {
+      const target = state.imageHistory.find((item) => item.id === projectId);
+      if (!target) return;
+      target.versions = target.versions.filter((item) => item.id !== versionId);
+      if (target.coverVersionId === versionId) {
+        target.coverMode = "auto";
+        target.coverVersionId = undefined;
+      }
+      target.updatedAt = [...target.versions]
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]?.createdAt ?? target.createdAt;
+    });
+    sendState(next);
+    return next;
   });
 }
 
