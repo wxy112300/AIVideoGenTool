@@ -28,6 +28,7 @@ import {
   patchVideoHelperBatchCompatibility,
   renameWithRetry,
   selectLlamaServerReleaseAssets,
+  shouldReportComfyDatabaseIssue,
   tritonRequirementForTorch,
   videoHelperBatchCompatible
 } from "../electron/services/environment.js";
@@ -104,6 +105,48 @@ describe("ComfyUI process discovery", () => {
     expect(parseComfyProcessIds("[4152, 20512, 4152]")).toEqual([4152, 20512]);
     expect(parseComfyProcessIds("4152")).toEqual([4152]);
     expect(parseComfyProcessIds("null")).toEqual([]);
+  });
+});
+
+describe("ComfyUI database issue reporting", () => {
+  const now = new Date("2026-08-11T10:00:00Z").getTime();
+  const recentLog = now - 60_000;
+
+  it("hides historical database errors while the current service is healthy", () => {
+    expect(shouldReportComfyDatabaseIssue({
+      logContent: "Failed to initialize database",
+      logModifiedAt: recentLog,
+      databaseModifiedAt: 0,
+      serviceReachable: true,
+      now
+    })).toBe(false);
+  });
+
+  it("hides stale errors and errors followed by a successful server start", () => {
+    expect(shouldReportComfyDatabaseIssue({
+      logContent: "Failed to initialize database",
+      logModifiedAt: now - 16 * 60_000,
+      databaseModifiedAt: 0,
+      serviceReachable: false,
+      now
+    })).toBe(false);
+    expect(shouldReportComfyDatabaseIssue({
+      logContent: "Failed to initialize database\nStarting server\nTo see the GUI go to: http://127.0.0.1:8188",
+      logModifiedAt: recentLog,
+      databaseModifiedAt: 0,
+      serviceReachable: false,
+      now
+    })).toBe(false);
+  });
+
+  it("reports a recent unresolved database startup failure", () => {
+    expect(shouldReportComfyDatabaseIssue({
+      logContent: "Starting ComfyUI\nFailed to initialize database\nStartup aborted",
+      logModifiedAt: recentLog,
+      databaseModifiedAt: 0,
+      serviceReachable: false,
+      now
+    })).toBe(true);
   });
 });
 

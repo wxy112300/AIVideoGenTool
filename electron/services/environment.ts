@@ -2278,7 +2278,37 @@ async function readLatestComfyLog(
     : { content: "", modifiedAt: 0 };
 }
 
-async function scanEnvironmentIssues(comfyRoot: string): Promise<EnvironmentIssue[]> {
+export function shouldReportComfyDatabaseIssue(input: {
+  logContent: string;
+  logModifiedAt: number;
+  databaseModifiedAt: number;
+  serviceReachable: boolean;
+  now?: number;
+}): boolean {
+  if (input.serviceReachable || !input.logContent || !input.logModifiedAt) return false;
+  const now = input.now ?? Date.now();
+  const recentStartupWindowMs = 15 * 60 * 1000;
+  if (now - input.logModifiedAt > recentStartupWindowMs) return false;
+  if (input.databaseModifiedAt > input.logModifiedAt) return false;
+
+  const databaseErrors = [
+    "Failed to initialize database",
+    "Can't locate revision identified by",
+    "unable to open database file"
+  ];
+  const lastErrorIndex = Math.max(
+    ...databaseErrors.map((message) => input.logContent.toLowerCase().lastIndexOf(message.toLowerCase()))
+  );
+  if (lastErrorIndex < 0) return false;
+
+  const logAfterError = input.logContent.slice(lastErrorIndex);
+  return !/Starting server|To see the GUI go to:|Prompt Server Address/i.test(logAfterError);
+}
+
+async function scanEnvironmentIssues(
+  comfyRoot: string,
+  comfyServiceReachable: boolean
+): Promise<EnvironmentIssue[]> {
   const issues: EnvironmentIssue[] = [];
   if (comfyRoot) {
     const fantasyNodes = path.join(
@@ -2303,14 +2333,12 @@ async function scanEnvironmentIssues(comfyRoot: string): Promise<EnvironmentIssu
   const databaseStat = comfyRoot
     ? await fs.stat(path.join(comfyRoot, "user", "comfyui.db")).catch(() => null)
     : null;
-  const databaseWasRebuiltAfterLog =
-    Boolean(databaseStat) && (databaseStat?.mtimeMs ?? 0) > log.modifiedAt;
-  if (
-    /Failed to initialize database|Can't locate revision identified by|unable to open database file/i.test(
-      log.content
-    ) &&
-    !databaseWasRebuiltAfterLog
-  ) {
+  if (shouldReportComfyDatabaseIssue({
+    logContent: log.content,
+    logModifiedAt: log.modifiedAt,
+    databaseModifiedAt: databaseStat?.mtimeMs ?? 0,
+    serviceReachable: comfyServiceReachable
+  })) {
     issues.push({
       id: "comfy-database",
       label: "ComfyUI 数据库初始化失败",
@@ -4786,7 +4814,7 @@ export async function scanEnvironment(
     directory: "",
     source: ""
   };
-  const issues = await scanEnvironmentIssues(comfyRoot);
+  const issues = await scanEnvironmentIssues(comfyRoot, Boolean(runtimeComfyBaseUrl));
   const comfyItem: EnvironmentItem = comfyRoot || comfyInstallation
     ? {
         id: "comfyui",

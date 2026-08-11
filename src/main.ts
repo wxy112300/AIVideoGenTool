@@ -180,8 +180,9 @@ let upscaleDialog: {
 } | null = null;
 let historyScrollPosition = 0;
 let historyScrollRestorePending = false;
-let historyViewportEvents: AbortController | null = null;
+let pageViewportEvents: AbortController | null = null;
 let historyLayoutAnchor: { assetId: string; offsetFromCenter: number } | null = null;
+let historyLayoutRestoreFrame: number | null = null;
 let historyLayout: "masonry" | "album" = "masonry";
 let environmentScan: EnvironmentScanResult | null = null;
 let environmentScanning = false;
@@ -258,6 +259,7 @@ let imageLightboxEvents: AbortController | null = null;
 let shellNavigationEvents: AbortController | null = null;
 let historyMasonryResizeObserver: ResizeObserver | null = null;
 let historyAlbumResizeObserver: ResizeObserver | null = null;
+let imageHistoryViewerResizeObserver: ResizeObserver | null = null;
 let historyTitleResizeObserver: ResizeObserver | null = null;
 let historyMediaObserver: IntersectionObserver | null = null;
 let historyCoverWarmupController: AbortController | null = null;
@@ -1844,7 +1846,7 @@ function shell(content: string): string {
       <div class="flash ${flashMessage ? "visible" : ""}" id="app-flash" role="status" aria-live="polite">${escapeHtml(flashMessage)}</div>
       <main>${content}</main>
     </div>
-    ${page === "history" || page === "history-detail" || page === "image-history-detail" ? `<button class="history-back-top" id="history-back-top" type="button" aria-label="返回顶部" title="返回顶部">${icon("arrow-up")}</button>` : ""}
+    <button class="history-back-top" id="history-back-top" type="button" aria-label="返回顶部" title="返回顶部">${icon("arrow-up")}</button>
     ${confirmationDialog()}
     ${directoryMigrationDialog()}
     ${windowCloseDialog()}
@@ -2831,6 +2833,12 @@ function historyPage(): string {
 }
 
 function captureHistoryLayoutAnchor(): { assetId: string; offsetFromCenter: number } | null {
+  if (window.scrollY <= 1) return null;
+  const heading = document.querySelector<HTMLElement>(".history-heading");
+  if (heading) {
+    const stickyTop = Number.parseFloat(getComputedStyle(heading).top) || 0;
+    if (heading.getBoundingClientRect().top > stickyTop + 1) return null;
+  }
   const cards = [...document.querySelectorAll<HTMLElement>(".history-gallery-item")];
   if (!cards.length) return null;
   const viewportCenter = window.innerHeight / 2;
@@ -2850,10 +2858,15 @@ function captureHistoryLayoutAnchor(): { assetId: string; offsetFromCenter: numb
 }
 
 function restoreHistoryLayoutAnchor(): void {
+  if (historyLayoutRestoreFrame !== null) {
+    window.cancelAnimationFrame(historyLayoutRestoreFrame);
+    historyLayoutRestoreFrame = null;
+  }
   const anchor = historyLayoutAnchor;
   historyLayoutAnchor = null;
   if (!anchor?.assetId) return;
-  window.requestAnimationFrame(() => {
+  historyLayoutRestoreFrame = window.requestAnimationFrame(() => {
+    historyLayoutRestoreFrame = null;
     const card = [...document.querySelectorAll<HTMLElement>(".history-gallery-item")]
       .find((item) => item.dataset.history === anchor.assetId);
     if (!card) return;
@@ -2879,9 +2892,9 @@ function restoreHistoryScrollPosition(): void {
   });
 }
 
-function bindHistoryViewportControls(): void {
+function bindPageViewportControls(): void {
   const events = new AbortController();
-  historyViewportEvents = events;
+  pageViewportEvents = events;
   const backTop = document.querySelector<HTMLButtonElement>("#history-back-top");
   const update = (capturePosition = true) => {
     if (capturePosition && page === "history" && !historyScrollRestorePending) {
@@ -2894,7 +2907,7 @@ function bindHistoryViewportControls(): void {
     signal: events.signal
   });
   backTop?.addEventListener("click", () => {
-    reportUserAction("history-scroll-top");
+    reportUserAction(page === "history" ? "history-scroll-top" : "page-scroll-top");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, { signal: events.signal });
   update(false);
@@ -2989,8 +3002,39 @@ function bindHistoryAlbum(): void {
   historyAlbumResizeObserver.observe(gallery);
 }
 
+function layoutImageHistoryViewer(): void {
+  const stagePanel = document.querySelector<HTMLElement>(".image-history-stage-panel");
+  const versionRail = document.querySelector<HTMLElement>(".image-history-version-rail");
+  const versionList = document.querySelector<HTMLElement>(".image-history-version-list");
+  if (!stagePanel || !versionRail || !versionList) return;
+  if (window.matchMedia("(max-width: 760px)").matches) {
+    versionRail.style.removeProperty("height");
+    versionList.style.removeProperty("height");
+    return;
+  }
+  versionRail.style.height = "0px";
+  versionList.style.height = "0px";
+  const stageHeight = stagePanel.getBoundingClientRect().height;
+  if (stageHeight <= 0) return;
+  versionRail.style.height = `${stageHeight}px`;
+  versionList.style.height = "100%";
+}
+
+function bindImageHistoryViewer(): void {
+  const stagePanel = document.querySelector<HTMLElement>(".image-history-stage-panel");
+  if (!stagePanel) return;
+  layoutImageHistoryViewer();
+  if (typeof ResizeObserver === "undefined") return;
+  imageHistoryViewerResizeObserver = new ResizeObserver(layoutImageHistoryViewer);
+  imageHistoryViewerResizeObserver.observe(stagePanel);
+}
+
 function switchHistoryLayout(nextLayout: typeof historyLayout): void {
   if (nextLayout === historyLayout) return;
+  if (historyLayoutRestoreFrame !== null) {
+    window.cancelAnimationFrame(historyLayoutRestoreFrame);
+    historyLayoutRestoreFrame = null;
+  }
   reportUserAction("history-layout", { from: historyLayout, to: nextLayout });
   const gallery = document.querySelector<HTMLElement>(".history-gallery");
   if (!gallery) return;
@@ -3000,6 +3044,8 @@ function switchHistoryLayout(nextLayout: typeof historyLayout): void {
   historyMasonryResizeObserver = null;
   historyAlbumResizeObserver?.disconnect();
   historyAlbumResizeObserver = null;
+  imageHistoryViewerResizeObserver?.disconnect();
+  imageHistoryViewerResizeObserver = null;
   gallery.classList.toggle("masonry", nextLayout === "masonry");
   gallery.classList.toggle("album", nextLayout === "album");
   gallery.style.removeProperty("grid-template-columns");
@@ -3669,6 +3715,15 @@ function settingsPage(): string {
   const comfyInstallations = environmentScan?.comfyInstallations ?? [];
   const effectiveComfyInstallDirectory =
     environmentScan?.comfyInstallDirectory || settings.comfyInstallDirectory;
+  const selectedComfyInstallation = comfyInstallations.find(
+    (installation) => installation.selected || (
+      Boolean(effectiveComfyInstallDirectory) &&
+      installation.directory.toLowerCase() === effectiveComfyInstallDirectory.toLowerCase()
+    )
+  ) ?? comfyInstallations[0];
+  const effectiveComfyCoreDirectory =
+    environmentScan?.comfySourceDirectory || selectedComfyInstallation?.sourceDirectory || "";
+  const effectiveComfyDataDirectory = environmentScan?.comfyRoot || "";
   const effectiveModelDirectory =
     settings.modelDirectory || environmentScan?.modelDirectory || "";
   const comfyOutputRoot = environmentScan?.comfyRoot
@@ -3697,9 +3752,19 @@ function settingsPage(): string {
           <div><h2>ComfyUI 安装实例</h2><span class="muted">选择一键启动、更新和离线版本检测使用的安装；不会自动改写你的选择</span></div>
           ${comfyInstallations.length > 1 ? `<span class="model-availability missing">发现 ${comfyInstallations.length} 个安装</span>` : `<span class="model-badge">${comfyInstallations.length ? "已发现" : "未发现"}</span>`}
         </div>
-        <label>当前安装目录
+        <label>当前安装入口
           <div class="input-action"><input id="comfy-install-directory" value="${escapeHtml(effectiveComfyInstallDirectory)}" placeholder="留空时自动选择扫描结果"><button class="secondary button-with-icon" id="pick-comfy-install-directory">${icon("folder-open")}选择目录</button></div>
         </label>
+        <div class="comfy-directory-map" aria-label="当前 ComfyUI 目录结构">
+          <div class="comfy-directory-row">
+            <span class="comfy-directory-label">核心目录</span>
+            <div><code title="${escapeHtml(effectiveComfyCoreDirectory)}">${escapeHtml(effectiveComfyCoreDirectory || "等待扫描")}</code><small>包含 main.py 和核心版本文件，用于启动与更新</small></div>
+          </div>
+          <div class="comfy-directory-row">
+            <span class="comfy-directory-label">数据 / 节点目录</span>
+            <div><code title="${escapeHtml(effectiveComfyDataDirectory)}">${escapeHtml(effectiveComfyDataDirectory || "等待扫描")}</code><small>包含 models、custom_nodes、input、output 和 user</small></div>
+          </div>
+        </div>
         ${comfyInstallations.length ? `<div class="comfy-installation-list">
           ${comfyInstallations.map((installation) => {
             const active = settings.comfyInstallDirectory
@@ -3712,7 +3777,7 @@ function settingsPage(): string {
             ].filter(Boolean);
             const version = versionParts.join(" · ") || "版本元数据未读取到";
             return `<article class="comfy-installation ${active ? "active" : ""}">
-              <div><div class="model-title"><strong>${escapeHtml(typeLabel)}</strong><span class="model-badge">${escapeHtml(version)}</span></div><code title="${escapeHtml(installation.directory)}">${escapeHtml(installation.directory)}</code>${installation.revision ? `<span class="muted">提交 ${escapeHtml(installation.revision)}</span>` : ""}</div>
+              <div><div class="model-title"><strong>${escapeHtml(typeLabel)}</strong><span class="model-badge">${escapeHtml(version)}</span></div><div class="comfy-installation-entry"><span>安装入口</span><code title="${escapeHtml(installation.directory)}">${escapeHtml(installation.directory)}</code></div>${installation.revision ? `<span class="muted">提交 ${escapeHtml(installation.revision)}</span>` : ""}</div>
               <button class="secondary button-with-icon" data-select-comfy-install="${escapeHtml(installation.directory)}" ${active ? "disabled" : ""}>${icon(active ? "check" : "play")}${active ? "当前使用" : "使用此版本"}</button>
             </article>`;
           }).join("")}
@@ -4060,17 +4125,24 @@ function settingsPage(): string {
 }
 
 function render(): void {
+  if (historyLayoutRestoreFrame !== null) {
+    window.cancelAnimationFrame(historyLayoutRestoreFrame);
+    historyLayoutRestoreFrame = null;
+  }
+  historyLayoutAnchor = null;
   if (page === "history" && !historyScrollRestorePending) {
     historyScrollPosition = window.scrollY;
   }
-  historyViewportEvents?.abort();
-  historyViewportEvents = null;
+  pageViewportEvents?.abort();
+  pageViewportEvents = null;
   const playback = captureHistoryPlayback();
   stopRenderedVideoPlayback();
   historyMasonryResizeObserver?.disconnect();
   historyMasonryResizeObserver = null;
   historyAlbumResizeObserver?.disconnect();
   historyAlbumResizeObserver = null;
+  imageHistoryViewerResizeObserver?.disconnect();
+  imageHistoryViewerResizeObserver = null;
   historyTitleResizeObserver?.disconnect();
   historyTitleResizeObserver = null;
   historyMediaObserver?.disconnect();
@@ -4090,6 +4162,7 @@ function render(): void {
   appElement.innerHTML = shell(content);
   renderIcons(appElement);
   bindShell();
+  bindPageViewportControls();
   bindUpscaleDialog();
   if (page === "create") {
     bindCreate();
@@ -4114,7 +4187,6 @@ function render(): void {
   }
   else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
     bindHistory(playback);
-    bindHistoryViewportControls();
   }
   else if (page === "settings") bindSettings();
   syncAppLogPolling();
@@ -4124,27 +4196,21 @@ function render(): void {
   restoreHistoryPlayback(playback);
 }
 
-function showMessage(message: string, renderPage = true): void {
+function syncFlashMessage(): void {
+  const flash = document.querySelector<HTMLElement>("#app-flash");
+  if (!flash) return;
+  flash.textContent = flashMessage;
+  flash.classList.toggle("visible", Boolean(flashMessage));
+}
+
+function showMessage(message: string, _legacyRenderPage?: boolean): void {
   flashMessage = message;
   window.clearTimeout(flashMessageTimer);
-  if (renderPage) {
-    render();
-  } else {
-    const flash = document.querySelector<HTMLElement>("#app-flash");
-    if (flash) {
-      flash.textContent = message;
-      flash.classList.add("visible");
-    }
-  }
+  syncFlashMessage();
   flashMessageTimer = window.setTimeout(() => {
     if (flashMessage === message) {
       flashMessage = "";
-      if (renderPage) {
-        render();
-      } else {
-        const currentFlash = document.querySelector<HTMLElement>("#app-flash");
-        currentFlash?.classList.remove("visible");
-      }
+      syncFlashMessage();
     }
   }, 3500);
 }
@@ -6807,6 +6873,7 @@ function bindUpscaleDialog(): void {
 function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   if (historyLayout === "album") bindHistoryAlbum();
   else bindHistoryMasonry();
+  if (page === "image-history-detail") bindImageHistoryViewer();
   bindHistoryTitleMarquees();
   restoreHistoryLayoutAnchor();
   document.querySelectorAll<HTMLButtonElement>("[data-history-kind][role=tab]").forEach((button) => {
