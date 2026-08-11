@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   expandImageSeeds,
   createImageSourceVersion,
+  findImageProjectLineage,
   imageEditPicturesForVersion,
   imageEditDraftFromQueueTask,
   imageProjectCoverVersion,
@@ -69,8 +70,18 @@ describe("image project pure functions", () => {
   });
 
   it("clamps output count and normalizes an image draft", () => {
+    const contentHash = "a".repeat(64);
     const draft = normalizeImageEditDraft({
-      pictures: [{ id: "p1", pictureNumber: 1, absolutePath: " a.png ", width: 0, height: 0 }],
+      pictures: [{
+        id: "p1",
+        pictureNumber: 1,
+        absolutePath: " a.png ",
+        originalPath: "C:/external/a.png",
+        managedRelativePath: "sources/a.png",
+        contentHash,
+        width: 0,
+        height: 0
+      }],
       activePromptVersion: 99,
       outputCount: 99,
       outputFormat: "tiff",
@@ -81,7 +92,13 @@ describe("image project pure functions", () => {
     expect(draft.outputCount).toBe(10);
     expect(draft.outputFormat).toBe("png");
     expect(draft.seed).toBe(12);
-    expect(draft.pictures[0]).toMatchObject({ absolutePath: "a.png", pictureNumber: 1 });
+    expect(draft.pictures[0]).toMatchObject({
+      absolutePath: "a.png",
+      originalPath: "C:/external/a.png",
+      managedRelativePath: "sources/a.png",
+      contentHash,
+      pictureNumber: 1
+    });
     expect(draft.activePromptVersion).toBe(0);
     expect(draft.targetResolution).toBe("source");
   });
@@ -129,6 +146,7 @@ describe("image project pure functions", () => {
   });
 
   it("uses the viewed generated file as Picture 1 when continuing an edit", () => {
+    const contentHash = "b".repeat(64);
     const pictures = imageEditPicturesForVersion({
       file: {
         filename: "generated.png",
@@ -138,6 +156,7 @@ describe("image project pure functions", () => {
       },
       width: 1280,
       height: 720,
+      contentHash,
       references: [
         { id: "source", pictureNumber: 1, absolutePath: "C:/input/source.jpg", width: 1920, height: 1080, role: "base" },
         { id: "style", pictureNumber: 2, absolutePath: "C:/input/style.jpg", width: 1024, height: 1024, role: "style" }
@@ -145,9 +164,48 @@ describe("image project pure functions", () => {
     });
 
     expect(pictures).toMatchObject([
-      { pictureNumber: 1, absolutePath: "C:/output/generated.png", width: 1280, height: 720, role: "base" },
+      { pictureNumber: 1, absolutePath: "C:/output/generated.png", width: 1280, height: 720, role: "base", contentHash },
       { pictureNumber: 2, absolutePath: "C:/input/style.jpg", role: "style" }
     ]);
+  });
+
+  it("starts a new project when Picture 1 changes even if the prompt stays the same", () => {
+    const existing = project();
+    existing.versions[0]!.contentHash = "1".repeat(64);
+    existing.versions[1]!.contentHash = "2".repeat(64);
+
+    expect(findImageProjectLineage([existing], {
+      absolutePath: "C:/library/new-base.png",
+      contentHash: "3".repeat(64)
+    })).toBeUndefined();
+  });
+
+  it("keeps the project when Picture 1 is any generated version in its lineage", () => {
+    const existing = project();
+    existing.versions[1]!.contentHash = "2".repeat(64);
+
+    expect(findImageProjectLineage([existing], {
+      absolutePath: "C:/library/copied-result.png",
+      contentHash: "2".repeat(64)
+    })).toEqual({ projectId: "project-1", parentVersionId: "version-2" });
+  });
+
+  it("does not treat a secondary reference as project ancestry", () => {
+    const existing = project();
+    existing.versions[1]!.references = [{
+      id: "style-reference",
+      pictureNumber: 2,
+      absolutePath: "C:/input/style.png",
+      contentHash: "4".repeat(64),
+      width: 512,
+      height: 512,
+      role: "style"
+    }];
+
+    expect(findImageProjectLineage([existing], {
+      absolutePath: "C:/library/style-copy.png",
+      contentHash: "4".repeat(64)
+    })).toBeUndefined();
   });
 
   it("restores a failed image queue task into the image draft", () => {

@@ -2350,7 +2350,7 @@ function imageEditPage(): string {
         <div class="image-picture-list">
           ${draft.pictures.length ? draft.pictures.map((picture) => `
             <article class="image-picture-card ${picture.pictureNumber === 1 ? "is-base" : "is-reference"} ${picture.absolutePath ? "has-picture" : "is-empty"} ${picture.markup ? "has-markup" : ""}" data-image-picture-card="${escapeHtml(picture.id)}">
-              <button class="image-picture-preview ${picture.absolutePath ? "has-image" : ""}" data-image-picture-pick="${escapeHtml(picture.id)}" aria-label="${picture.absolutePath ? `替换 Slot ${picture.pictureNumber} 图片` : `选择 Slot ${picture.pictureNumber} 图片`}">
+              <button class="image-picture-preview ${picture.absolutePath ? "has-image" : ""}" data-image-picture-pick="${escapeHtml(picture.id)}" style="--picture-ratio:${picture.width > 0 && picture.height > 0 ? `${picture.width} / ${picture.height}` : "1 / 1"}" aria-label="${picture.absolutePath ? `替换 Slot ${picture.pictureNumber} 图片` : `选择 Slot ${picture.pictureNumber} 图片`}">
                 <img data-image-picture-preview="${escapeHtml(picture.id)}" alt="Slot ${picture.pictureNumber}预览" ${picture.absolutePath ? "" : "hidden"}>
                 ${picture.absolutePath ? "" : `<span>${icon("image")}选择图片</span>`}
               </button>
@@ -5326,6 +5326,13 @@ function bindImageHistoryLightbox(): void {
   const image = lightbox?.querySelector<HTMLImageElement>("[data-image-lightbox-image]");
   if (!lightbox || !openButton || !dialog || !stage || !image) return;
 
+  lightbox.querySelector<HTMLElement>("[data-image-lightbox-version-controls]")?.remove();
+  const versionFooter = document.createElement("footer");
+  versionFooter.className = "image-lightbox-footer";
+  versionFooter.setAttribute("data-image-lightbox-version-controls", "");
+  versionFooter.innerHTML = `<div class="image-lightbox-version-controls" aria-label="\u5927\u56fe\u7248\u672c\u5207\u6362"><button class="secondary button-with-icon" data-image-lightbox-version-navigation="-1">${icon("arrow-left")}\u4e0a\u4e00\u5f20</button><span data-image-lightbox-version-label></span><button class="secondary button-with-icon" data-image-lightbox-version-navigation="1">\u4e0b\u4e00\u5f20${icon("arrow-right")}</button></div>`;
+  lightbox.querySelector<HTMLElement>(".image-lightbox-hint")?.before(versionFooter);
+  const versionMeta = lightbox.querySelector<HTMLElement>(".image-lightbox-toolbar > div:first-child > span");
   const events = new AbortController();
   imageLightboxEvents = events;
   let scale = 1;
@@ -5334,6 +5341,7 @@ function bindImageHistoryLightbox(): void {
   let activePointerId: number | null = null;
   let lastPointerX = 0;
   let lastPointerY = 0;
+  let lightboxVersionChanged = false;
   const clampScale = (value: number) => Math.min(5, Math.max(1, value));
   const updateTransform = () => {
     image.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0) scale(${scale})`;
@@ -5345,19 +5353,77 @@ function bindImageHistoryLightbox(): void {
     offsetY = 0;
     updateTransform();
   };
-  const close = () => {
+  const syncVersionNavigation = () => {
+    const project = state.imageHistory.find((item) => item.id === selectedHistoryAssetId);
+    const currentIndex = project?.versions.findIndex((item) => item.id === selectedHistoryVersionId) ?? -1;
+    const current = currentIndex >= 0 ? project?.versions[currentIndex] : undefined;
+    const previousVersion = currentIndex >= 0 ? project?.versions[currentIndex + 1] : undefined;
+    const nextVersion = currentIndex >= 0 ? project?.versions[currentIndex - 1] : undefined;
+    const entries = [[-1, previousVersion], [1, nextVersion]] as const;
+    entries.forEach(([direction, targetVersion]) => {
+      const button = versionFooter.querySelector<HTMLButtonElement>(`[data-image-lightbox-version-navigation="${direction}"]`);
+      if (!button) return;
+      const available = Boolean(project && targetVersion && imageHistoryMediaUrl(project, targetVersion));
+      button.disabled = !available;
+      button.title = targetVersion
+        ? `${direction === -1 ? "\u4e0a\u4e00\u5f20\u56fe\u7247" : "\u4e0b\u4e00\u5f20\u56fe\u7247"} \u00b7 \u7248\u672c ${targetVersion.versionNumber}`
+        : direction === -1 ? "\u5df2\u7ecf\u662f\u6700\u65e9\u7248\u672c" : "\u5df2\u7ecf\u662f\u6700\u65b0\u7248\u672c";
+    });
+    const label = versionFooter.querySelector<HTMLElement>("[data-image-lightbox-version-label]");
+    if (label) label.textContent = project && current ? `\u7248\u672c ${current.versionNumber} / ${project.versions.length}` : "";
+    if (versionMeta && project && current) {
+      versionMeta.textContent = `\u7248\u672c ${current.versionNumber} \u00b7 ${current.width} \u00d7 ${current.height}`;
+    }
+  };
+  const navigateVersion = (direction: -1 | 1) => {
+    const project = state.imageHistory.find((item) => item.id === selectedHistoryAssetId);
+    if (!project) return;
+    const currentIndex = project.versions.findIndex((item) => item.id === selectedHistoryVersionId);
+    if (currentIndex < 0) return;
+    const targetVersion = project.versions[currentIndex - direction];
+    const mediaUrl = targetVersion ? imageHistoryMediaUrl(project, targetVersion) : "";
+    if (!targetVersion || !mediaUrl) return;
+    selectedHistoryVersionId = targetVersion.id;
+    historyForwardTarget = { assetId: project.id, versionId: targetVersion.id };
+    lightboxVersionChanged = true;
+    reportUserAction("image-history-lightbox-version-navigation", {
+      projectId: project.id,
+      versionId: targetVersion.id,
+      direction
+    });
+    image.src = mediaUrl;
+    image.alt = `${project.title.trim() || "\u672a\u547d\u540d\u56fe\u7247"} \u00b7 \u7248\u672c ${targetVersion.versionNumber}`;
+    reset();
+    syncVersionNavigation();
+  };  const close = () => {
     lightbox.hidden = true;
     document.body.classList.remove("image-lightbox-open");
+    if (lightboxVersionChanged) {
+      lightboxVersionChanged = false;
+      render();
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLButtonElement>("[data-open-image-lightbox]")?.focus();
+      });
+      return;
+    }
     openButton.focus();
   };
   const open = () => {
     lightbox.hidden = false;
     document.body.classList.add("image-lightbox-open");
+    lightboxVersionChanged = false;
+    syncVersionNavigation();
     reset();
     window.requestAnimationFrame(() => dialog.focus());
   };
 
   openButton.addEventListener("click", open, { signal: events.signal });
+  versionFooter.querySelectorAll<HTMLButtonElement>("[data-image-lightbox-version-navigation]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const direction = Number(button.dataset.imageLightboxVersionNavigation);
+      if (direction === -1 || direction === 1) navigateVersion(direction);
+    }, { signal: events.signal });
+  });
   lightbox.querySelectorAll<HTMLElement>("[data-image-lightbox-close]").forEach((button) => {
     button.addEventListener("click", close, { signal: events.signal });
   });
@@ -5418,6 +5484,8 @@ function bindImageHistoryLightbox(): void {
     if (lightbox.hidden) return;
     if (event.key === "Escape") close();
     else if (event.key === "0") reset();
+    else if (event.key === "ArrowLeft") navigateVersion(-1);
+    else if (event.key === "ArrowRight") navigateVersion(1);
   }, { signal: events.signal });
 }
 
@@ -5915,6 +5983,8 @@ async function loadImageEditPreviews(): Promise<void> {
     await new Promise<void>((resolve) => {
       image.addEventListener("load", () => {
         if (image.naturalWidth && image.naturalHeight) {
+    const preview = image.closest<HTMLButtonElement>(".image-picture-preview");
+    preview?.style.setProperty("--picture-ratio", `${image.naturalWidth} / ${image.naturalHeight}`);
           const current = state.imageDraft.pictures.find((item) => item.id === picture.id);
           if (current && (current.width !== image.naturalWidth || current.height !== image.naturalHeight)) {
             const nextPictures = state.imageDraft.pictures.map((item) =>

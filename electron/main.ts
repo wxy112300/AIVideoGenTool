@@ -68,6 +68,7 @@ import {
 import {
   createImageSourceVersion,
   expandImageSeeds,
+  findImageProjectLineage,
   nextImageVersionNumber,
   normalizeImageEditDraft
 } from "../src/core/image-project.js";
@@ -166,6 +167,7 @@ import {
   archiveImagePaths,
   archiveImageReferences,
   cleanupImageAssetLibrary,
+  hashImageFile,
   organizeImageAssetLibrary,
   scanImageAssetLibrary
 } from "./services/image-asset-library.js";
@@ -1328,6 +1330,50 @@ function imageTaskFromDraft(
   };
 }
 
+async function resolveImageProjectLineage(
+  state: AppState,
+  draft: ImageEditDraft
+): Promise<{ projectId: string; parentVersionId?: string } | undefined> {
+  const basePicture = draft.pictures[0];
+  if (!basePicture?.absolutePath || !basePicture.contentHash) return undefined;
+
+  const known = findImageProjectLineage(state.imageHistory, basePicture);
+  if (known) return known;
+
+  // A second batch can be queued before the first one has produced history.
+  // Reuse that pending lineage only when Picture 1 has the same content.
+  const queuedMatch = state.queue.find((item) =>
+    isImageGenerationQueueTask(item) &&
+    item.pictures[0]?.contentHash === basePicture.contentHash
+  );
+  if (queuedMatch && isImageGenerationQueueTask(queuedMatch)) {
+    return {
+      projectId: queuedMatch.projectId,
+      ...(queuedMatch.parentVersionId ? { parentVersionId: queuedMatch.parentVersionId } : {})
+    };
+  }
+
+  // Older history did not persist output hashes. Hash existing output files on
+  // demand so a copied or moved historical result still keeps its ancestry.
+  const preferred = draft.projectId
+    ? [
+        ...state.imageHistory.filter((project) => project.id === draft.projectId),
+        ...state.imageHistory.filter((project) => project.id !== draft.projectId)
+      ]
+    : state.imageHistory;
+  for (const project of preferred) {
+    for (const version of project.versions) {
+      const outputPath = version.file.absolutePath?.trim();
+      if (!outputPath) continue;
+      const outputHash = await hashImageFile(outputPath).catch(() => undefined);
+      if (outputHash === basePicture.contentHash) {
+        return { projectId: project.id, parentVersionId: version.id };
+      }
+    }
+  }
+  return undefined;
+}
+
 async function resolveImageOutputTarget(settings: Settings): Promise<{
   root: string;
   directory: string;
@@ -1872,6 +1918,9 @@ async function executeImageGenerationQueueTask(
         const file = files.find((candidate) => imageOutputFormatFromFilename(candidate.filename) === "png");
         if (!file) throw new Error("图片工作流没有返回可用图片文件。");
         const performanceStats = monitor.stop();
+        const outputContentHash = file.absolutePath
+          ? await hashImageFile(file.absolutePath).catch(() => undefined)
+          : undefined;
         const completedAt = new Date().toISOString();
         const versionId = crypto.randomUUID();
         const next = await store.update((state) => {
@@ -1928,6 +1977,7 @@ async function executeImageGenerationQueueTask(
             width: queued.outputWidth ?? queued.pictures[0]?.width ?? 0,
             height: queued.outputHeight ?? queued.pictures[0]?.height ?? 0,
             format: "png",
+            ...(outputContentHash ? { contentHash: outputContentHash } : {}),
             file,
             comfyPromptId: submitted.promptId,
             comfyOutputs: result,
@@ -3815,13 +3865,19 @@ function registerIpc(): void {
       });
       throw error;
     }
-    const preparedDraft = normalizeImageEditDraft({
+    let preparedDraft = normalizeImageEditDraft({
       ...normalized,
       pictures: archivedPictures.map((picture) => ({
         ...picture,
         ...readImageDimensions(picture.absolutePath)
       })),
       outputFormat: "png"
+    });
+    const lineage = await resolveImageProjectLineage(store.get(), preparedDraft);
+    preparedDraft = normalizeImageEditDraft({
+      ...preparedDraft,
+      projectId: lineage?.projectId,
+      parentVersionId: lineage?.parentVersionId
     });
     for (const picture of preparedDraft.pictures) {
       const stat = await fs.stat(picture.absolutePath).catch(() => null);

@@ -585,16 +585,18 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .image-history-stage-toolbar p { margin: 4px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .image-history-stage { position: relative; min-width: 0; min-height: 0; width: 100%; height: auto; max-width: 100%; max-height: none; align-self: stretch; display: grid; place-items: center; overflow: hidden; aspect-ratio: auto; border: 1px solid rgba(47, 60, 77, .72); border-radius: 12px; background: radial-gradient(circle at 50% 40%, rgba(42, 57, 76, .36), transparent 48%), #070a0e; }
 .image-history-stage[data-image-orientation="tall"] { width: 100%; height: auto; }
-.image-history-stage img { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; object-position: center; transition: width .16s ease, height .16s ease; }
+.image-history-stage img { display: block; min-width: 0; min-height: 0; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; object-position: center; transition: width .16s ease, height .16s ease; }
 .image-history-stage.original-size { overflow: auto; place-items: start; }
 .image-history-stage.original-size img { width: auto; height: auto; min-width: 100%; min-height: 100%; object-fit: initial; }
+.image-history-stage[data-image-orientation="wide"] img { width: 100%; height: auto; }
+.image-history-stage[data-image-orientation="tall"] img { width: auto; height: 100%; }
 .image-history-open-viewer { flex: 0 0 auto; white-space: nowrap; }
 .image-history-stage-controls { display: flex; align-items: center; justify-content: center; gap: 10px; }
 .image-history-stage-nav { width: 42px; min-width: 42px; padding-inline: 8px; }
 .image-history-detail-sidebar { min-width: 0; min-height: 0; height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto; align-content: stretch; gap: 12px; }
 .image-history-summary { min-width: 0; min-height: 0; display: grid; gap: 12px; padding: 17px; overflow: hidden; }
 .image-history-summary h2 { margin: 0; overflow-wrap: anywhere; }
-.image-history-summary > p { max-height: 78px; margin: 0; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-height: 1.5; }
+.image-history-summary > p { max-height: 78px; margin: 0; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; line-clamp: 4; -webkit-line-clamp: 4; line-height: 1.5; }
 .image-history-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .image-history-facts > div { min-width: 0; display: grid; gap: 3px; padding: 8px 10px; border: 1px solid rgba(58,68,82,.62); border-radius: 10px; background: rgba(13,17,23,.7); }
 .image-history-facts span { color: var(--muted); font-size: 10px; }
@@ -607,7 +609,7 @@ body.image-lightbox-open { overflow: hidden; }
 .image-lightbox { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: clamp(12px, 3vw, 34px); }
 .image-lightbox[hidden] { display: none; }
 .image-lightbox-backdrop { position: absolute; inset: 0; background: rgba(2, 4, 8, .84); backdrop-filter: blur(10px); }
-.image-lightbox-dialog { position: relative; z-index: 1; width: 100%; height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; border: 1px solid rgba(130, 166, 218, .28); border-radius: 16px; background: #0d1118; box-shadow: 0 28px 100px rgba(0, 0, 0, .7); outline: none; }
+.image-lightbox-dialog { position: relative; z-index: 1; width: 100%; height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; overflow: hidden; border: 1px solid rgba(130, 166, 218, .28); border-radius: 16px; background: #0d1118; box-shadow: 0 28px 100px rgba(0, 0, 0, .7); outline: none; }
 .image-lightbox-toolbar { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 16px; border-bottom: 1px solid rgba(57, 66, 80, .76); background: rgba(19, 24, 33, .94); }
 .image-lightbox-toolbar > div:first-child { min-width: 0; display: grid; gap: 3px; }
 .image-lightbox-toolbar strong, .image-lightbox-toolbar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -616,6 +618,10 @@ body.image-lightbox-open { overflow: hidden; }
 .image-lightbox-stage.is-zoomed { cursor: grab; }
 .image-lightbox-stage.is-panning { cursor: grabbing; }
 .image-lightbox-stage img { display: block; max-width: 100%; max-height: 100%; user-select: none; transform-origin: center; will-change: transform; }
+.image-lightbox-footer { display: grid; gap: 0; border-top: 1px solid rgba(57, 66, 80, .76); background: rgba(19, 24, 33, .94); }
+.image-lightbox-version-controls { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 14px 8px; }
+.image-lightbox-version-controls button { min-width: 100px; justify-content: center; }
+.image-lightbox-version-controls > span { min-width: 92px; color: var(--muted); font-size: 11px; text-align: center; }
 .image-lightbox-hint { margin: 0; padding: 9px 14px 11px; border-top: 1px solid rgba(57, 66, 80, .76); color: var(--muted); background: rgba(19, 24, 33, .94); font-size: 11px; text-align: center; }
 
 @media (max-width: 900px) {
@@ -3531,8 +3537,11 @@ body {
 .image-picture-card.is-base .image-picture-preview {
   grid-column: 1 / -1;
   width: 100%;
-  min-height: 190px;
-  aspect-ratio: 16 / 10;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  aspect-ratio: var(--picture-ratio, 16 / 10);
+  justify-self: stretch;
 }
 
 .image-picture-card.is-base .image-picture-preview img {
@@ -3549,9 +3558,22 @@ body {
   background: rgba(13, 16, 20, .72);
 }
 
+.image-picture-card.is-empty .image-picture-preview {
+  min-height: 92px;
+  aspect-ratio: 1;
+}
+
+.image-picture-card.is-base.is-empty .image-picture-preview {
+  min-height: 190px;
+  aspect-ratio: 16 / 10;
+}
+
 .image-picture-preview {
   width: 92px;
-  aspect-ratio: 1;
+  aspect-ratio: var(--picture-ratio, 1);
+  height: auto;
+  min-height: 0;
+  max-height: none;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -3572,9 +3594,11 @@ body {
 }
 
 .image-picture-preview img {
+  min-width: 0;
+  min-height: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .image-picture-preview span {
@@ -4017,6 +4041,8 @@ body.image-markup-open {
 
   .image-picture-card.is-base .image-picture-preview {
     width: 100%;
+    height: auto;
+    min-height: 0;
   }
 
   .image-picture-card label {

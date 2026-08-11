@@ -143,6 +143,9 @@ function normalizeImageAssetVersion(
     format: imageOutputFormats.includes(source.format as ImageOutputFormat)
       ? source.format as ImageOutputFormat
       : imageFormatFromFilename(file.filename),
+    ...(typeof source.contentHash === "string" && /^[a-f0-9]{64}$/iu.test(source.contentHash.trim())
+      ? { contentHash: source.contentHash.trim().toLowerCase() }
+      : {}),
     file,
     ...(typeof source.comfyPromptId === "string" && source.comfyPromptId.trim()
       ? { comfyPromptId: source.comfyPromptId }
@@ -231,7 +234,16 @@ function normalizeImageReference(value: unknown, index: number): ImageReference 
     width: normalizedInteger(source.width, 0, 0),
     height: normalizedInteger(source.height, 0, 0),
     ...(role ? { role } : {}),
-    ...(markup ? { markup } : {})
+    ...(markup ? { markup } : {}),
+    ...(typeof source.contentHash === "string" && /^[a-f0-9]{64}$/iu.test(source.contentHash.trim())
+      ? { contentHash: source.contentHash.trim().toLowerCase() }
+      : {}),
+    ...(typeof source.managedRelativePath === "string" && source.managedRelativePath.trim()
+      ? { managedRelativePath: source.managedRelativePath.trim() }
+      : {}),
+    ...(typeof source.originalPath === "string" && source.originalPath.trim()
+      ? { originalPath: source.originalPath.trim() }
+      : {})
   };
 }
 
@@ -405,6 +417,7 @@ export function createImageSourceVersion(
     width: reference.width,
     height: reference.height,
     format: imageFormatFromFilename(filename),
+    ...(reference.contentHash ? { contentHash: reference.contentHash } : {}),
     file: {
       filename,
       subfolder: "",
@@ -415,7 +428,7 @@ export function createImageSourceVersion(
 }
 
 export function imageEditPicturesForVersion(
-  version: Pick<ImageAssetVersion, "file" | "width" | "height" | "references">
+  version: Pick<ImageAssetVersion, "file" | "width" | "height" | "references" | "contentHash">
 ): ImageReference[] {
   const outputPath = version.file.absolutePath?.trim();
   if (!outputPath) return [];
@@ -434,10 +447,54 @@ export function imageEditPicturesForVersion(
       absolutePath: outputPath,
       width: version.width,
       height: version.height,
-      role: "base"
+      role: "base",
+      ...(version.contentHash ? { contentHash: version.contentHash } : {})
     },
     ...retainedReferences
   ];
+}
+
+export interface ImageProjectLineageMatch {
+  projectId: string;
+  parentVersionId?: string;
+}
+
+function normalizedLineagePath(value: string | undefined): string {
+  return value?.trim().replaceAll("\\", "/").replace(/\/+$/u, "").toLowerCase() ?? "";
+}
+
+/**
+ * Matches Picture 1 only against project outputs (including the protected source
+ * version). Secondary references do not establish ancestry.
+ */
+export function findImageProjectLineage(
+  projects: readonly ImageHistoryProject[],
+  basePicture: Pick<ImageReference, "absolutePath" | "originalPath" | "contentHash">
+): ImageProjectLineageMatch | undefined {
+  const hash = basePicture.contentHash?.trim().toLowerCase();
+  const paths = new Set(
+    [basePicture.absolutePath, basePicture.originalPath]
+      .map(normalizedLineagePath)
+      .filter(Boolean)
+  );
+  for (const project of projects) {
+    for (const version of project.versions) {
+      const sourceHash = version.kind === "source"
+        ? version.references[0]?.contentHash?.trim().toLowerCase()
+        : undefined;
+      if (hash && (version.contentHash === hash || sourceHash === hash)) {
+        return { projectId: project.id, parentVersionId: version.id };
+      }
+      const outputPath = normalizedLineagePath(version.file.absolutePath);
+      const sourcePath = version.kind === "source"
+        ? normalizedLineagePath(version.references[0]?.absolutePath)
+        : "";
+      if ((outputPath && paths.has(outputPath)) || (sourcePath && paths.has(sourcePath))) {
+        return { projectId: project.id, parentVersionId: version.id };
+      }
+    }
+  }
+  return undefined;
 }
 
 export function expandImageSeeds(

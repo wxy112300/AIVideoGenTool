@@ -34,7 +34,7 @@ export function isPathInsideImageLibrary(libraryDirectory: string, candidate: st
   return resolved === root || resolved.startsWith(`${root}${path.sep}`);
 }
 
-async function fileHash(filename: string): Promise<string> {
+export async function hashImageFile(filename: string): Promise<string> {
   const hash = createHash("sha256");
   await new Promise<void>((resolve, reject) => {
     const stream = createReadStream(filename);
@@ -210,7 +210,7 @@ async function archiveFile(sourcePath: string, library: string): Promise<{
   hash: string;
   relativePath: string;
 }> {
-  const hash = await fileHash(sourcePath);
+  const hash = await hashImageFile(sourcePath);
   const extension = imageExtensions.has(path.extname(sourcePath).toLowerCase())
     ? path.extname(sourcePath).toLowerCase()
     : ".png";
@@ -218,19 +218,19 @@ async function archiveFile(sourcePath: string, library: string): Promise<{
   const destination = path.join(library, relativePath);
   await fs.mkdir(path.dirname(destination), { recursive: true });
   const existing = await fs.stat(destination).catch(() => null);
-  if (existing?.isFile() && await fileHash(destination) !== hash) {
+  if (existing?.isFile() && await hashImageFile(destination) !== hash) {
     throw new Error(`素材库中的哈希文件校验失败，请先保留该文件并重新扫描：${destination}`);
   }
   if (!existing?.isFile()) {
     const temporary = `${destination}.${randomUUID()}.tmp`;
     await fs.copyFile(sourcePath, temporary);
-    if (await fileHash(temporary) !== hash) {
+    if (await hashImageFile(temporary) !== hash) {
       await fs.rm(temporary, { force: true });
       throw new Error(`素材复制校验失败：${sourcePath}`);
     }
     await fs.rename(temporary, destination).catch(async (error: NodeJS.ErrnoException) => {
       if (error.code !== "EEXIST") throw error;
-      if (await fileHash(destination) !== hash) {
+      if (await hashImageFile(destination) !== hash) {
         await fs.rm(temporary, { force: true });
         throw new Error(`素材归档发生哈希冲突：${destination}`);
       }

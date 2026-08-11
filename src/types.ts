@@ -416,6 +416,8 @@ export interface ImageAssetVersion {
   width: number;
   height: number;
   format: ImageOutputFormat;
+  /** SHA-256 of this version's output file, used to preserve image-project lineage. */
+  contentHash?: string;
   file: HistoryFile;
   comfyPromptId?: string;
   comfyOutputs?: unknown;
