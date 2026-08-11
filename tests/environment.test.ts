@@ -734,6 +734,27 @@ describe("ComfyUI environment candidates", () => {
     );
   });
 
+  it("detects the RTX 3080 Q3 GGUF FL2VA experiment profile", () => {
+    const profiles = evaluateModelProfiles([
+      "unet\\minimax_h3_fl2va_pruned-Q3_K.gguf",
+      "text_encoders\\qwen3vl_32b_minimax_h3-Q2_K_M.gguf",
+      "vae\\minimax_h3_video_vae_fp16.safetensors",
+      "vae\\minimax_h3_audio_vae_fp32.safetensors"
+    ]);
+    const q3 = profiles.find((profile) => profile.id === "minimax_h3_fl2va_q3_gguf");
+
+    expect(q3).toMatchObject({
+      available: true,
+      integrated: true,
+      badge: "Q3 GGUF · 3080 实验",
+      vram: "Q3 · 3080 10GB 实验 · 32GB RAM 起步"
+    });
+    expect(q3?.components[0]?.installGuide).toMatchObject({
+      targetSubdirectory: "unet",
+      recommendedFilename: "minimax_h3_fl2va_pruned-Q3_K.gguf"
+    });
+  });
+
   it("detects official and community R2V profiles without marking them integrated", () => {
     const profiles = evaluateModelProfiles([
       "diffusion_models\\minimax_h3_ref2va_pruned_int8_convrot.safetensors",

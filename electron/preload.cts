@@ -26,6 +26,8 @@ const api: AppApi = {
   getDroppedFilePath: (file) => webUtils.getPathForFile(file),
   saveClipboardImage: (data: ArrayBuffer, mimeType: string) =>
     ipcRenderer.invoke("file:save-clipboard-image", data, mimeType),
+  readImageMarkup: (documentPath) => ipcRenderer.invoke("image-markup:read", documentPath),
+  saveImageMarkup: (request) => ipcRenderer.invoke("image-markup:save", request),
   pickWorkflow: () => ipcRenderer.invoke("file:pick-workflow"),
   pickPython: () => ipcRenderer.invoke("file:pick-python"),
   inspectWorkflow: (path: string) =>

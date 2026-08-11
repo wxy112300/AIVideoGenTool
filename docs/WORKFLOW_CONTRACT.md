@@ -72,6 +72,10 @@ Do not assume lower dedicated VRAM usage is automatically safer or faster. Recor
 - Upscaling belongs to a result-driven post-process. The user selects a successful image/video version first, then submits an upscale task.
 - Image projects group iterative edits and generated variants; each version retains model, prompt, seed, format, dimensions, source-version lineage, generation time, and output path.
 - Image format is explicit (`PNG`, `JPEG`, or another supported encoder) and not inferred from a decorative canvas option.
+- Visual annotations are non-destructive sidecars: retain the original Picture path, store editable canvas JSON plus a flattened PNG under application user data, and attach both to that Picture snapshot.
+- A flattened annotation replaces its Picture's upload input; it does not consume another model reference slot. Prompt compilation must include the per-mark notes and explicitly require removal of all temporary strokes, shapes, arrows, labels, and text from the output.
+- Replacing or clearing a Picture invalidates its annotation sidecar reference. Queue tasks receive an immutable copy of the annotation metadata and validate the flattened file before execution.
+- Visual guidance and a true binary inpaint mask are separate capabilities. Do not silently route visual marks into a mask socket; add mask-aware workflows only after their model/node contract is validated.
 - Video extension modes remain distinct: boundary-frame continuation and native latent/overlap or reference-based extension must not be presented as equivalent.
 
 ## Environment Detection and Installation

@@ -33,6 +33,7 @@ import type {
   ImageEditDraft,
   ImageGenerationRun,
   ImageHistoryProject,
+  ImageMarkupSaveRequest,
   LocalServiceKind,
   QueueTask,
   Settings,
@@ -73,6 +74,7 @@ import {
   imageModelAdapterFor,
   imageOutputDimensions,
   imageOutputFormatFromFilename,
+  imageReferenceInputPath,
   imageLightningComponentFound,
   imageQualityProfileRequiresLightning,
   normalizeImageTargetResolution
@@ -498,6 +500,26 @@ async function bundledWorkflowFor(
     q4_k_m: "Q4_K_M dev · 质量"
   }[ltxProfile];
   if (inputMode === "video") {
+    if (modelId === "minimax_h3_fl2va_q3_gguf") {
+      const filename = "minimax_h3_i2v_gguf_q3_api.json";
+      const candidates = [
+        path.join(app.getAppPath(), "workflows", filename),
+        path.join(process.resourcesPath, "workflows", filename),
+        path.resolve(currentDirectory, "..", "..", "..", "workflows", filename)
+      ];
+      for (const candidate of candidates) {
+        if (!(await fs.stat(candidate).catch(() => null))) continue;
+        const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
+        return {
+          modelId,
+          label: "内置 · MiniMax H3 Q3 GGUF · 3080 低显存实验（不支持续写）",
+          path: candidate,
+          supportsEndImage: workflowSupportsEndImage(source),
+          supportsVideoExtension: false
+        };
+      }
+      return null;
+    }
     if (isMiniMaxH3R2vModel(modelId)) {
       const filename = "minimax_h3_r2v_extend_api.json";
       const candidates = [
@@ -566,6 +588,10 @@ async function bundledWorkflowFor(
     minimax_h3_fl2va_int4: {
       filename: "minimax_h3_i2v_api.json",
       label: "内置 · MiniMax H3 FL2VA INT4 · 原生 24 FPS 音视频"
+    },
+    minimax_h3_fl2va_q3_gguf: {
+      filename: "minimax_h3_i2v_gguf_q3_api.json",
+      label: "内置 · MiniMax H3 Q3 GGUF · RTX 3080 低显存实验"
     },
     minimax_h3_fl2va_turbo: {
       filename: "minimax_h3_fl2va_turbo_api.json",
@@ -1234,7 +1260,10 @@ function imageTaskFromDraft(
     outputFilename,
     projectId,
     parentVersionId: draft.parentVersionId,
-    pictures: draft.pictures.map((picture) => ({ ...picture })),
+    pictures: draft.pictures.map((picture) => ({
+      ...picture,
+      ...(picture.markup ? { markup: { ...picture.markup } } : {})
+    })),
     imageOutputRoot: outputTarget.root,
     imageOutputDirectory: outputTarget.directory,
     imageOutputSubfolder: outputTarget.subfolder,
@@ -2879,6 +2908,54 @@ function registerIpc(): void {
     const content = await fs.readFile(filename);
     return `data:${mime};base64,${content.toString("base64")}`;
   });
+  ipcMain.handle("image-markup:read", async (_event, documentPath: string) => {
+    const root = path.join(app.getPath("userData"), "image-guides");
+    const filename = typeof documentPath === "string" ? path.resolve(documentPath) : "";
+    if (!filename || !isPathWithinDirectory(root, filename)) return null;
+    return fs.readFile(filename, "utf8").catch(() => null);
+  });
+  ipcMain.handle("image-markup:save", async (_event, request: ImageMarkupSaveRequest) => {
+    if (!request || typeof request !== "object") throw new Error("标记数据无效");
+    const sourceStat = await fs.stat(request.sourcePath).catch(() => null);
+    if (!sourceStat?.isFile()) throw new Error("原始 Picture 文件不存在");
+    if (typeof request.document !== "string" || !request.document.trim()) {
+      throw new Error("标记工程为空");
+    }
+    const bytes = request.renderedPng instanceof ArrayBuffer
+      ? new Uint8Array(request.renderedPng)
+      : null;
+    if (!bytes?.byteLength) throw new Error("标注图片为空");
+    if (bytes.byteLength > 100 * 1024 * 1024) throw new Error("标注图片不能超过 100 MB");
+    const pictureKey = createHash("sha256")
+      .update(`${request.pictureId}\0${path.resolve(request.sourcePath)}`)
+      .digest("hex")
+      .slice(0, 24);
+    const revision = Math.max(1, Math.trunc(request.previousRevision ?? 0) + 1);
+    const directory = path.join(app.getPath("userData"), "image-guides", pictureKey);
+    await fs.mkdir(directory, { recursive: true });
+    const basename = `revision-${String(revision).padStart(4, "0")}`;
+    const documentPath = path.join(directory, `${basename}.fabric.json`);
+    const renderedPath = path.join(directory, `${basename}-guide.png`);
+    const documentTemporary = `${documentPath}.${crypto.randomUUID()}.tmp`;
+    const renderedTemporary = `${renderedPath}.${crypto.randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(documentTemporary, request.document, "utf8");
+      await fs.writeFile(renderedTemporary, bytes);
+      await fs.rename(documentTemporary, documentPath);
+      await fs.rename(renderedTemporary, renderedPath);
+    } finally {
+      await fs.rm(documentTemporary, { force: true }).catch(() => undefined);
+      await fs.rm(renderedTemporary, { force: true }).catch(() => undefined);
+    }
+    return {
+      documentPath,
+      renderedPath,
+      summary: typeof request.summary === "string" ? request.summary.trim() : "",
+      revision,
+      objectCount: Math.max(0, Math.trunc(request.objectCount || 0)),
+      updatedAt: new Date().toISOString()
+    };
+  });
   ipcMain.handle("history-cover:read", async (_event, key: string, sourcePath: string) => {
     if (!key || !sourcePath) return null;
     const resolvedSource = await resolveHistorySourcePath(sourcePath);
@@ -3426,6 +3503,13 @@ function registerIpc(): void {
       const stat = await fs.stat(picture.absolutePath).catch(() => null);
       if (!stat?.isFile()) {
         throw new Error(`Picture ${picture.pictureNumber} 文件不存在：${picture.absolutePath}`);
+      }
+      const effectivePath = imageReferenceInputPath(picture);
+      if (effectivePath !== picture.absolutePath) {
+        const markedStat = await fs.stat(effectivePath).catch(() => null);
+        if (!markedStat?.isFile()) {
+          throw new Error(`Picture ${picture.pictureNumber} 的标记预览不存在，请重新打开标记画布并保存。`);
+        }
       }
     }
     const preparedPrompt = preparedDraft.promptVersions[preparedDraft.activePromptVersion]?.text.trim() ?? "";

@@ -48,7 +48,15 @@ interface GenerationSafetyProfile {
 }
 
 export function isMiniMaxH3Fl2vaModel(modelId: string): boolean {
-  return modelId === "minimax_h3_fl2va" || modelId === "minimax_h3_fl2va_int4";
+  return modelId === "minimax_h3_fl2va" ||
+    modelId === "minimax_h3_fl2va_int4" ||
+    modelId === "minimax_h3_fl2va_q3_gguf";
+}
+
+export function isMiniMaxH3BoundaryExtensionModel(modelId: string): boolean {
+  return modelId === "minimax_h3_fl2va" ||
+    modelId === "minimax_h3_fl2va_int4" ||
+    modelId === "minimax_h3_fl2va_turbo";
 }
 
 export const retiredVideoModelIds = [
@@ -464,6 +472,9 @@ export function extensionSafetyForTask(
       minimumContextSeconds,
       message
     });
+    if (task.modelId === "minimax_h3_fl2va_q3_gguf") {
+      return result(false, "H3 Q3 GGUF 3080 实验档只支持普通 FL2VA 图生视频，不支持视频续写。");
+    }
     if (!task.sourceVideoPath || task.sourceVideoDuration <= 0) {
       return result(false, "请先选择可读取的源视频。");
     }
@@ -625,6 +636,10 @@ const miniMaxH3ModelAssets: Record<
   minimax_h3_fl2va_int4: {
     diffusionModel: "minimax_h3_fl2va_pruned_int4_convrot.safetensors",
     textEncoder: "qwen3vl_32b_minimax_h3_int4_convrot.safetensors"
+  },
+  minimax_h3_fl2va_q3_gguf: {
+    diffusionModel: "minimax_h3_fl2va_pruned-Q3_K.gguf",
+    textEncoder: "qwen3vl_32b_minimax_h3-Q2_K_M.gguf"
   },
   minimax_h3_fl2va_turbo: {
     diffusionModel: "minimax_h3_fl2va_pruned_int8_convrot.safetensors",

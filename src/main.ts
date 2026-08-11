@@ -34,6 +34,7 @@ import {
   MoveUp,
   PackageOpen,
   Pause,
+  Pencil,
   Play,
   Power,
   Plus,
@@ -100,7 +101,9 @@ import {
   normalizeImageEditDraft
 } from "./core/image-project";
 import {
+  imageMarkupPromptContext,
   imageModelCapabilityFor,
+  imageReferenceInputPath,
   imageLightningComponentFound,
   imageQualityProfileRequiresLightning,
   imageResolutionOptionsFor,
@@ -127,6 +130,7 @@ import {
   frameInterpolationMultiplier,
   generationFrameCountForTask,
   generationSafetyForTask,
+  isMiniMaxH3BoundaryExtensionModel,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
@@ -383,6 +387,7 @@ const lucideIconSet = {
   MoveUp,
   PackageOpen,
   Pause,
+  Pencil,
   Play,
   Power,
   Plus,
@@ -455,6 +460,7 @@ function modelName(id: string): string {
     {
       minimax_h3_fl2va: "MiniMax H3 FL2VA",
       minimax_h3_fl2va_int4: "MiniMax H3 FL2VA · INT4 低显存",
+      minimax_h3_fl2va_q3_gguf: "MiniMax H3 FL2VA · Q3 GGUF · RTX 3080 实验",
       minimax_h3_fl2va_turbo: "MiniMax H3 LightX2V Turbo · 首尾帧",
       minimax_h3_ref2va: "MiniMax H3 R2V · 多参考",
       minimax_h3_ref2va_int4: "MiniMax H3 R2V · 多参考 INT4",
@@ -472,6 +478,51 @@ function modelName(id: string): string {
       ,flashvsr: "FlashVSR"
       ,realesrgan: "Real-ESRGAN x4plus"
     }[id] ?? id
+  );
+}
+
+const modelHardwareRecommendations: Record<string, string> = {
+  "qwen/qwen3.5-4b": "RTX 3060 12GB 以上 · 系统 RAM 16GB 以上",
+  "qwen/qwen3.5-2b": "RTX 2060 6GB 以上 · 系统 RAM 16GB 以上",
+  "qwen-image-edit-2511": "RTX 3090/4090 24GB 以上 · CPU/offload",
+  "flux2-klein-4b": "RTX 4080/4090 16GB 以上",
+  minimax_h3_fl2va: "RTX 3090/4090 24GB 以上 · 系统 RAM 64GB 推荐",
+  minimax_h3_fl2va_int4: "RTX 4070/4080 16GB 推荐 · 12GB 仅实验",
+  minimax_h3_fl2va_q3_gguf: "RTX 3080 10GB 实验 · 系统 RAM 32GB 起步",
+  minimax_h3_fl2va_turbo: "RTX 3090/4090 24GB 以上 · Turbo 不降低基础显存",
+  minimax_h3_ref2va: "RTX 3090/4090 24GB 以上 · 多参考需更多 RAM",
+  minimax_h3_ref2va_int4: "RTX 4070/4080 16GB 推荐 · 12GB 仅实验",
+  sulphur2: "RTX 3060 12GB 以上 · 系统 RAM 32GB 以上",
+  wan22_5b: "RTX 3080 12GB/4070 12GB 以上 · 16GB 推荐",
+  hunyuan15: "RTX 3090/4090 24GB 以上",
+  wan22_14b_nsfw: "RTX 3090/4090 24GB 以上 · 保守卸载",
+  wan22_remix: "RTX 3090/4090 24GB 以上",
+  wan22_smoothmix: "RTX 3090/4090 24GB 以上",
+  wan22_dasiwa: "RTX 3090/4090 24GB 以上",
+  seedvr2: "RTX 3090/4090 24GB 以上",
+  flashvsr: "RTX 4080/4090 16GB 以上",
+  hunyuan15_sr: "RTX 4090 24GB 以上 · 两阶段模型卸载",
+  realesrgan: "RTX 2060/3060 6GB 以上",
+  rife: "RTX 2060/3060 6GB 以上",
+  "community/gemma-4-e4b-unconcerned-q5": "RTX 3060 12GB 以上 · 系统 RAM 16GB 以上",
+  "community/gemma-4-12b-uncensored-q4": "RTX 3060/4070 12GB 以上 · 系统 RAM 24GB 以上",
+  "community/gemma-4-26b-a4b-uncensored-q4": "RTX 3090/4090 24GB 以上",
+  "google/gemma-4-e4b-q3": "RTX 3060 8GB/12GB 以上 · 系统 RAM 16GB 以上",
+  "google/gemma-4-12b-q4": "RTX 3060/4070 12GB 以上 · 系统 RAM 24GB 以上",
+  "google/gemma-4-12b-q5": "RTX 4080/4090 16GB 以上 · 系统 RAM 24GB 以上",
+  "google/gemma-4-26b-a4b-q4": "RTX 3090/4090 24GB 以上",
+  "google/gemma-4-31b-q4": "RTX 4090 32GB 以上或专业卡"
+};
+
+function modelHardwareRecommendation(profile: ModelScanProfile): string {
+  return modelHardwareRecommendations[profile.id] ?? (
+    profile.category === "video"
+      ? "RTX 3080 12GB 以上 · 系统 RAM 32GB 以上"
+      : profile.category === "image"
+        ? "RTX 3060 12GB 以上"
+        : profile.category === "prompt"
+          ? "RTX 3060 12GB 以上 · 系统 RAM 16GB 以上"
+          : "RTX 2060 6GB 以上"
   );
 }
 
@@ -1445,6 +1496,7 @@ function createModelOptions(draft: Draft): string {
     : [
         { id: "minimax_h3_fl2va", name: "MiniMax H3 Image to Video", available: true, integrated: true },
       { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 Image to Video · INT4 低显存", available: true, integrated: true },
+          { id: "minimax_h3_fl2va_q3_gguf", name: "MiniMax H3 Image to Video · Q3 GGUF · RTX 3080 实验", available: true, integrated: true },
         { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 LightX2V Turbo · 首尾帧", available: true, integrated: true },
         { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考", available: true, integrated: true },
         { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
@@ -1455,7 +1507,7 @@ function createModelOptions(draft: Draft): string {
       const selected = draft.modelId === profile.id;
       const supportsVideoExtension =
         draft.inputMode === "video" && (
-          isMiniMaxH3Fl2vaModel(profile.id) || isMiniMaxH3R2vModel(profile.id)
+          isMiniMaxH3BoundaryExtensionModel(profile.id) || isMiniMaxH3R2vModel(profile.id)
         )
           ? true
           : selected
@@ -2040,17 +2092,17 @@ function imageEditPage(): string {
         </div>
         <div class="image-picture-list">
           ${draft.pictures.length ? draft.pictures.map((picture) => `
-            <article class="image-picture-card ${picture.pictureNumber === 1 ? "is-base" : "is-reference"} ${picture.absolutePath ? "has-picture" : "is-empty"}" data-image-picture-card="${escapeHtml(picture.id)}">
+            <article class="image-picture-card ${picture.pictureNumber === 1 ? "is-base" : "is-reference"} ${picture.absolutePath ? "has-picture" : "is-empty"} ${picture.markup ? "has-markup" : ""}" data-image-picture-card="${escapeHtml(picture.id)}">
               <button class="image-picture-preview ${picture.absolutePath ? "has-image" : ""}" data-image-picture-pick="${escapeHtml(picture.id)}" aria-label="${picture.absolutePath ? `替换 Slot ${picture.pictureNumber} 图片` : `选择 Slot ${picture.pictureNumber} 图片`}">
                 <img data-image-picture-preview="${escapeHtml(picture.id)}" alt="Slot ${picture.pictureNumber}预览" ${picture.absolutePath ? "" : "hidden"}>
                 ${picture.absolutePath ? "" : `<span>${icon("image")}选择图片</span>`}
               </button>
               <div class="image-picture-card-body">
-                <div class="image-picture-card-title"><strong>Slot ${picture.pictureNumber}</strong><span class="picture-number">Picture ${picture.pictureNumber}</span><span class="model-badge">${picture.pictureNumber === 1 ? "基础输入" : "参考"}</span></div>
+                <div class="image-picture-card-title"><strong>Slot ${picture.pictureNumber}</strong><span class="picture-number">Picture ${picture.pictureNumber}</span><span class="model-badge">${picture.pictureNumber === 1 ? "基础输入" : "参考"}</span>${picture.markup ? `<span class="model-availability available">${icon("pencil")} 已标记 ${picture.markup.objectCount} 处</span>` : ""}</div>
                 <code title="${escapeHtml(picture.absolutePath)}">${picture.absolutePath ? escapeHtml(picture.absolutePath.split(/[\\/]/u).pop() ?? picture.absolutePath) : "尚未添加图片"}</code>
                 <label>参考作用<select data-image-picture-role="${escapeHtml(picture.id)}" ${picture.pictureNumber === 1 ? "disabled" : ""}>${Object.entries(imageReferenceRoleLabels).map(([value, label]) => `<option value="${value}" ${picture.role === value || (picture.pictureNumber === 1 && value === "base") ? "selected" : ""}>${label}</option>`).join("")}</select></label>
               </div>
-              <button class="icon-button danger" data-remove-image-picture="${escapeHtml(picture.id)}" aria-label="删除 Slot ${picture.pictureNumber}" title="删除 Slot ${picture.pictureNumber}">${icon("trash-2")}</button>
+              <div class="image-picture-card-actions">${picture.absolutePath ? `<button class="icon-button" data-markup-image-picture="${escapeHtml(picture.id)}" aria-label="标记 Picture ${picture.pictureNumber}" title="标记图片">${icon("pencil")}</button>` : ""}<button class="icon-button danger" data-remove-image-picture="${escapeHtml(picture.id)}" aria-label="删除 Slot ${picture.pictureNumber}" title="删除 Slot ${picture.pictureNumber}">${icon("trash-2")}</button></div>
             </article>`).join("") : `<div class="image-picture-empty"><span>${icon("images")}</span><strong>先添加 Picture 1</strong><small>基础画面决定默认构图；后续最多添加两张人物、物体、姿态或风格参考。</small></div>`}
         </div>
         <button class="drop-zone image-picture-drop-zone" id="image-picture-drop-zone" data-image-picture-drop ${draft.pictures.length >= imageCapability.maxPictures ? "disabled" : ""}>
@@ -3439,16 +3491,20 @@ function modelScanCard(profile: ModelScanProfile): string {
   const isPromptProfile = profile.category === "prompt";
   const isLlamaProfile = profile.managedBy === "llama-server";
   const isGemmaProfile = isPromptProfile && isGemmaPromptModel(profile.id);
+  const runtimeUnavailable = profile.runtimeVerified === true && profile.runtimeReady === false;
+  const hardwareRecommendation = modelHardwareRecommendation(profile);
   const isReady = profile.category === "image"
     ? isImageWorkflowReady(profile)
-    : profile.available;
+    : profile.available && !runtimeUnavailable;
   const readyLabel = isPromptProfile
     ? "文件完整"
     : isReady
       ? "可用"
-      : profile.category === "image"
-        ? imageWorkflowStatus(profile)
-        : "组件完整";
+      : runtimeUnavailable
+        ? "运行节点未就绪"
+        : profile.category === "image"
+          ? imageWorkflowStatus(profile)
+          : "组件完整";
   const metaLabel = profile.available
     ? isPromptProfile
       ? isLlamaProfile
@@ -3458,6 +3514,8 @@ function modelScanCard(profile: ModelScanProfile): string {
         : "ComfyUI text_encoders 文件完整；可通过原生 TextGenerate 进行本地扩写"
       : profile.category === "image"
         ? imageWorkflowStatus(profile)
+        : runtimeUnavailable
+          ? `缺少运行节点：${profile.runtimeMissingNodes?.join("、") || "请启动 ComfyUI 后重新扫描"}`
         : profile.integrated
           ? "组件完整，可用于配置"
           : "依赖已完整；生成工作流将在下一阶段接入"
@@ -3475,7 +3533,7 @@ function modelScanCard(profile: ModelScanProfile): string {
         </div>
         <span class="model-availability ${isReady ? "available" : "missing"}">${profile.available ? `${icon(isReady ? "circle-check" : "circle-alert")} ${escapeHtml(readyLabel)}` : `${icon("circle-alert")} 缺少 ${missingCount} 项`}</span>
       </div>
-      <div class="model-meta-line"><span>${escapeHtml(profile.vram)}</span><span>${metaLabel}</span></div>
+      <div class="model-meta-line"><span>${escapeHtml(profile.vram)}</span><span class="model-hardware-recommendation">推荐硬件 · ${escapeHtml(hardwareRecommendation)}</span><span>${metaLabel}</span></div>
       <div class="component-list">
         ${profile.components.map((component, componentIndex) => `
           <div class="component-row ${component.found ? "found" : component.optional ? "optional missing" : "missing"}">
@@ -3831,6 +3889,7 @@ function settingsPage(): string {
             ${(videoProfiles.length ? videoProfiles : [
               { id: "minimax_h3_fl2va", name: "MiniMax H3 FL2VA · 首帧 / 首尾帧", available: true, integrated: true },
               { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 FL2VA · INT4 低显存", available: true, integrated: true },
+              { id: "minimax_h3_fl2va_q3_gguf", name: "MiniMax H3 FL2VA · Q3 GGUF · RTX 3080 实验", available: true, integrated: true },
               { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 LightX2V Turbo · 首尾帧", available: true, integrated: true },
               { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考 INT8", available: true, integrated: true },
               { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
@@ -5393,7 +5452,8 @@ async function loadImageEditPreviews(): Promise<void> {
       `[data-image-picture-preview="${CSS.escape(picture.id)}"]`
     );
     if (!image || !picture.absolutePath) return;
-    const dataUrl = await window.studio.readImage(picture.absolutePath).catch(() => null);
+    const previewPath = picture.markup?.renderedPath || picture.absolutePath;
+    const dataUrl = await window.studio.readImage(previewPath).catch(() => null);
     if (!dataUrl || !image.isConnected) return;
     await new Promise<void>((resolve) => {
       image.addEventListener("load", () => {
@@ -5433,6 +5493,49 @@ function randomSeedValue(): number {
   return high * 0x100000000 + (values[1] ?? 0);
 }
 
+async function editImagePictureMarkup(pictureId: string): Promise<void> {
+  const picture = state.imageDraft.pictures.find((item) => item.id === pictureId);
+  if (!picture?.absolutePath) return;
+  try {
+    const { openImageMarkupEditor } = await import("./image-markup-editor");
+    const [sourceDataUrl, existingDocument] = await Promise.all([
+      window.studio.readImage(picture.absolutePath),
+      picture.markup?.documentPath
+        ? window.studio.readImageMarkup(picture.markup.documentPath)
+        : Promise.resolve(null)
+    ]);
+    if (!sourceDataUrl) throw new Error("无法读取原始图片，请确认文件仍然存在。");
+    const result = await openImageMarkupEditor({
+      pictureNumber: picture.pictureNumber,
+      filename: picture.absolutePath,
+      sourceDataUrl,
+      existingDocument
+    });
+    if (!result) return;
+    const markup = result.objectCount > 0
+      ? await window.studio.saveImageMarkup({
+          pictureId: picture.id,
+          sourcePath: picture.absolutePath,
+          document: result.document,
+          renderedPng: result.renderedPng,
+          summary: result.summary,
+          objectCount: result.objectCount,
+          previousRevision: picture.markup?.revision
+        })
+      : undefined;
+    patchImageDraft({
+      pictures: state.imageDraft.pictures.map((item) =>
+        item.id === pictureId ? { ...item, markup } : item
+      )
+    });
+    render();
+    void loadImageEditPreviews();
+    showMessage(markup ? `已保存 ${markup.objectCount} 处图片标记` : "图片标记已清除", true);
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : "图片标记保存失败", false);
+  }
+}
+
 function addImageSlot(): void {
   const pictures = state.imageDraft.pictures;
   const capability = imageModelCapabilityFor(state.imageDraft.modelId);
@@ -5466,7 +5569,7 @@ function addImagePicture(path: string, replacePictureId?: string): void {
     patchImageDraft({
       pictures: pictures.map((picture) =>
         picture.id === targetPicture.id
-          ? { ...picture, absolutePath: path, width: 0, height: 0 }
+          ? { ...picture, absolutePath: path, width: 0, height: 0, markup: undefined }
           : picture
       )
     });
@@ -5998,12 +6101,19 @@ function bindImageEditCreate(): void {
       const pictures = picture.pictureNumber === 1
         ? state.imageDraft.pictures.map((item) =>
             item.id === pictureId
-              ? { ...item, absolutePath: "", width: 0, height: 0, role: "base" as const }
+              ? { ...item, absolutePath: "", width: 0, height: 0, role: "base" as const, markup: undefined }
               : item
           )
         : state.imageDraft.pictures.filter((item) => item.id !== pictureId);
       patchImageDraft({ pictures });
       render();
+    });
+  });
+  document.querySelectorAll<HTMLElement>("[data-markup-image-picture]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const pictureId = button.dataset.markupImagePicture;
+      if (pictureId) void editImagePictureMarkup(pictureId);
     });
   });
   document.querySelectorAll<HTMLSelectElement>("[data-image-picture-role]").forEach((select) => {
@@ -6126,10 +6236,13 @@ function bindImageEditCreate(): void {
         imageEditPresetText: state.settings.imagePromptPresets[
           promptEnhanceMode === "faithful" ? "faithful" : "detail-enhance"
         ],
-        imagePaths: pictures.map((picture) => picture.absolutePath),
-        referenceContext: pictures.map((picture) =>
-          `Slot ${picture.pictureNumber} / Picture ${picture.pictureNumber} = ${imageReferenceRoleLabels[picture.role ?? "auto"]}`
-        ).join("\n")
+        imagePaths: pictures.map(imageReferenceInputPath),
+        referenceContext: [
+          pictures.map((picture) =>
+            `Slot ${picture.pictureNumber} / Picture ${picture.pictureNumber} = ${imageReferenceRoleLabels[picture.role ?? "auto"]}`
+          ).join("\n"),
+          imageMarkupPromptContext(pictures)
+        ].filter(Boolean).join("\n\n")
       });
       promptRuntimeLoaded = true;
       const versions = [

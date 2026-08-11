@@ -183,3 +183,36 @@ EasyCache 是 ComfyUI 内置节点，输出相对更保守；TeaCache 提速更�
 - 生成结果继续由本地 H3 检查器验证字段顺序、超时长时间戳、说话人 ID 和内部分析信息泄露。
 
 模型支持采取扩展而非替换策略：ComfyUI 原生 Qwen3.5、Unconcerned Qwen、LM Studio 继续保留，同时为应用自管理 llama-server 新增 Gemma 4 E4B Q3、12B Q4、12B Q5、26B-A4B Q4 和 31B Q4。每个 Gemma GGUF 必须和自己的 `mmproj-BF16.gguf` 放在独立子目录，运行时按所选档位使用 8K 或16K上下文，并在视频队列开始前释放显存。
+
+## 9. 2026-08-11 低显存社区方案更新
+
+本节专门区分“checkpoint 文件大小”和“完整生成峰值显存”。两者不能互换。
+
+### 9.1 RTX 3080 10GB 实验档
+
+当前最适合 3080 方向的是社区 `Unsloth/MiniMax-H3-GGUF` 的 Q3 GGUF 路线：
+
+- `minimax_h3_fl2va_pruned-Q3_K.gguf` 约 8.16 GiB；
+- 配套 `qwen3vl_32b_minimax_h3-Q2_K_M.gguf` 约 12.20 GiB；
+- 文本编码器应放 CPU，扩散模型使用 CPU/RAM offload；
+- 只先支持 FL2VA 普通图生视频，不把它扩展到 R2V 或视频续写；
+- 建议从 480p、短片和 4–8 steps 开始，并准备至少 32GB 系统内存，64GB 更稳妥。
+
+该档已作为 `minimax_h3_fl2va_q3_gguf` 接入设置扫描和独立 GGUF workflow，但仍属于社区实验档。未完成 RTX 3080 实机端到端 smoke 前，不能把“可扫描/可构图”称为“稳定可用”。
+
+### 9.2 不能当作 3080 方案的档位
+
+- 社区 `DmitryDB/MiniMax-H3-ComfyUI-Quants` 的 `NVFP4` 约 10.862 GiB，是 checkpoint 大小；作者标注为 RTX 50/Blackwell 的 8–12GB 档，并明确没有完成完整 prompt-to-decoded-video 显存测试。
+- `Abiray/MiniMax-H3-Pruned-GGUF` 的 Q3 约 8.9GB，但模型卡把它标为约 12GB GPU 起步；不能直接宣称 10GB 稳定。
+- LightX2V Turbo 是 4 步 LoRA，减少采样时间而不是按比例减少基础模型和 VAE 的显存占用；当前 v0.1 仍是预览版，只适合 FL2VA 质量/速度实验。
+
+### 9.3 ComfyUI 依赖和风险
+
+Q3 GGUF workflow 需要 `ComfyUI-GGUF` 的 `UnetLoaderGGUFAdvanced` 与 `CLIPLoaderGGUF`。最近合并的 H3 修复也应纳入验证基线：
+
+- [H3 音频 VAE 完整卸载修复](https://github.com/Comfy-Org/ComfyUI/pull/15377)；
+- [H3 latent noise mask 采样修复](https://github.com/Comfy-Org/ComfyUI/pull/15322)；
+- [EasyCache 音频损坏修复](https://github.com/Comfy-Org/ComfyUI/pull/15390)；
+- [H3 sampler/audio 修复](https://github.com/Comfy-Org/ComfyUI/pull/15243)。
+
+这里的 H3 mask 修复是视频 latent noise mask，不是图片 Canvas 的 inpaint mask。3080 档验收必须记录 GPU 峰值、共享显存、系统 RAM、页面文件、分辨率、帧数、steps、音频是否正常以及输出是否可播放。

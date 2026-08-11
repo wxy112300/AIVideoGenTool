@@ -249,6 +249,24 @@ function orderedPictures(pictures: ImageReferenceSnapshot[]): ImageReferenceSnap
   return [...pictures].sort((left, right) => left.pictureNumber - right.pictureNumber);
 }
 
+export function imageReferenceInputPath(
+  picture: Pick<ImageReference, "absolutePath" | "markup">
+): string {
+  return picture.markup?.renderedPath?.trim() || picture.absolutePath.trim();
+}
+
+export function imageMarkupPromptContext(
+  pictures: ReadonlyArray<Pick<ImageReference, "pictureNumber" | "markup">>
+): string {
+  const marked = pictures.filter((picture) => picture.markup?.objectCount);
+  if (!marked.length) return "";
+  return [
+    "Visual annotation instructions:",
+    "Some Pictures contain temporary colored marks, boxes, arrows, labels, or text added only to identify edit targets. Follow their instructions, but remove every annotation from the final image and reconstruct the underlying pixels naturally.",
+    ...marked.map((picture) => `Picture ${picture.pictureNumber}: ${picture.markup?.summary || `${picture.markup?.objectCount ?? 0} marked target(s)`}`)
+  ].join("\n");
+}
+
 function compileImagePromptWithLimit(
   prompt: string,
   pictures: ImageReferenceSnapshot[],
@@ -287,9 +305,11 @@ function compileImagePromptWithLimit(
     return `Picture ${compiledNumber}`;
   });
 
+  const compiledPictures = usable.slice(0, maxPictures);
+  const markupContext = imageMarkupPromptContext(compiledPictures);
   return {
-    prompt: compiledPrompt,
-    pictures: usable.slice(0, maxPictures),
+    prompt: markupContext ? `${compiledPrompt.trim()}\n\n${markupContext}` : compiledPrompt,
+    pictures: compiledPictures,
     referencedPictureNumbers: [...referencedPictureNumbers].sort((left, right) => left - right),
     errors: [...new Set(errors)]
   };

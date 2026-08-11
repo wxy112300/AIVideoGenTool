@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image markup visual verification</title>
+    <link rel="stylesheet" href="/src/style.css">
+  </head>
+  <body>
+    <script type="module">
+      import { openImageMarkupEditor } from "/src/image-markup-editor.ts";
+
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="768" viewBox="0 0 1920 768">
+        <rect width="1920" height="768" fill="#17324d"/>
+        <rect x="8" y="8" width="1904" height="752" fill="none" stroke="#56e37f" stroke-width="16"/>
+        <rect x="40" y="40" width="880" height="688" fill="#27669b"/>
+        <rect x="1000" y="40" width="880" height="688" fill="#9b5327"/>
+        <text x="960" y="410" text-anchor="middle" fill="white" font-size="96" font-family="sans-serif">FULL 1920 × 768</text>
+      </svg>`;
+      const sourceDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      void openImageMarkupEditor({ pictureNumber: 1, filename: "wide-verification.svg", sourceDataUrl });
+      const ready = () => {
+        const shell = document.querySelector(".image-markup-canvas-shell");
+        const wrapper = shell?.querySelector(".canvas-container");
+        const lower = shell?.querySelector(".lower-canvas");
+        const upper = shell?.querySelector(".upper-canvas");
+        const zoom = document.querySelector("[data-markup-zoom-value]")?.textContent;
+        if (!shell || !wrapper || !lower || !upper || zoom === "100%") return requestAnimationFrame(ready);
+        const rect = (element) => {
+          const value = element.getBoundingClientRect();
+          return { x: value.x, y: value.y, width: value.width, height: value.height };
+        };
+        window.__markupVerification = {
+          ready: true,
+          shell: rect(shell),
+          wrapper: rect(wrapper),
+          lower: rect(lower),
+          upper: rect(upper),
+          zoom
+        };
+      };
+      requestAnimationFrame(() => requestAnimationFrame(ready));
+    </script>
+  </body>
+</html>

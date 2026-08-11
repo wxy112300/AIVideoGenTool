@@ -1174,6 +1174,40 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
   });
 });
 
+describe("MiniMax H3 Q3 GGUF workflow", () => {
+  it("uses GGUF loaders and the paired Q2 text encoder", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_i2v_gguf_q3_api.json", import.meta.url),
+        "utf8"
+      )
+    );
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va_q3_gguf"
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(workflowSupportsEndImage(source)).toBe(true);
+    expect(workflowSupportsH3BoundaryExtension(source)).toBe(true);
+    expect(rendered["1"]).toMatchObject({
+      class_type: "UnetLoaderGGUFAdvanced",
+      inputs: {
+        unet_name: "minimax_h3_fl2va_pruned-Q3_K.gguf",
+        patch_on_device: false
+      }
+    });
+    expect(rendered["2"]).toMatchObject({
+      class_type: "CLIPLoaderGGUF",
+      inputs: {
+        clip_name: "qwen3vl_32b_minimax_h3-Q2_K_M.gguf",
+        type: "minimax"
+      }
+    });
+    expect(JSON.stringify(rendered)).not.toContain("{{");
+  });
+});
+
 describe("HunyuanVideo 1.5 workflow compatibility", () => {
   it("rounds Hunyuan video length to the required 4n+1 frame count", () => {
     expect(frameCountForTask({ ...task, modelId: "hunyuan15" }, 24)).toBe(121);

@@ -86,6 +86,39 @@ describe("image project pure functions", () => {
     expect(draft.targetResolution).toBe("source");
   });
 
+  it("preserves a valid image markup sidecar and drops an incomplete one", () => {
+    const draft = normalizeImageEditDraft({
+      pictures: [
+        {
+          id: "p1",
+          pictureNumber: 1,
+          absolutePath: "a.png",
+          width: 1024,
+          height: 1024,
+          markup: {
+            documentPath: "guide.fabric.json",
+            renderedPath: "guide.png",
+            summary: "A：移除标记区域",
+            revision: 3,
+            objectCount: 1,
+            updatedAt: "2026-08-11T00:00:00.000Z"
+          }
+        },
+        {
+          id: "p2",
+          pictureNumber: 2,
+          absolutePath: "b.png",
+          width: 512,
+          height: 512,
+          markup: { documentPath: "", renderedPath: "missing.png" }
+        }
+      ]
+    });
+
+    expect(draft.pictures[0]?.markup).toMatchObject({ revision: 3, objectCount: 1 });
+    expect(draft.pictures[1]?.markup).toBeUndefined();
+  });
+
   it("falls back to the original size when a saved target exceeds the base image", () => {
     const draft = normalizeImageEditDraft({
       targetResolution: 2160,

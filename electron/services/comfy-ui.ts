@@ -23,6 +23,7 @@ import {
   normalizeQwenImageEditPromptOutput,
   qwenImageEditPromptUserContent
 } from "../../src/core/qwen-image-prompt.js";
+import { imageReferenceInputPath } from "../../src/core/image-workflow.js";
 import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
 import {
   prepareExtensionContext,
@@ -553,7 +554,7 @@ export async function submitImageTask(
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
   const uploadedPictures = await Promise.all(
     compiled.pictures.map((picture, index) =>
-      uploadInput(baseUrl, picture.absolutePath, signal, `Picture ${index + 1}`)
+      uploadInput(baseUrl, imageReferenceInputPath(picture), signal, `Picture ${index + 1}`)
     )
   );
   const workflow = adapter.buildWorkflow(task, run);

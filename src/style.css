@@ -388,6 +388,7 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .model-availability.available { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
 .model-availability.missing { color: var(--danger); background: color-mix(in srgb, var(--danger) 11%, transparent); }
 .model-meta-line { display: flex; gap: 8px 18px; flex-wrap: wrap; margin: 14px 0 10px; color: var(--muted); font-size: 12px; }
+.model-hardware-recommendation { color: #b9d2f5; font-weight: 650; }
 .component-list { display: grid; gap: 7px; }
 .component-row { min-width: 0; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: start; gap: 9px; padding: 9px 10px; border-radius: 9px; background: #15171a; }
 .component-state { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; font-weight: 800; }
@@ -3466,7 +3467,7 @@ body {
   object-fit: contain;
 }
 
-.image-picture-card.is-base > .icon-button {
+.image-picture-card.is-base > .image-picture-card-actions {
   grid-column: 2;
   grid-row: 2;
 }
@@ -3564,8 +3565,264 @@ body {
   font-size: 11px;
 }
 
-.image-picture-card > .icon-button {
+.image-picture-card-actions {
+  display: flex;
   align-self: start;
+  gap: 6px;
+}
+
+.image-picture-card.has-markup {
+  border-color: rgba(91, 151, 236, .62);
+}
+
+.image-picture-card-title .model-availability {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 9px;
+}
+
+.image-picture-card-title .model-availability .ui-icon {
+  width: 11px;
+  height: 11px;
+}
+
+.image-picture-card > .image-picture-card-actions {
+  align-self: start;
+}
+
+body.image-markup-open {
+  overflow: hidden;
+}
+
+.image-markup-overlay {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 64px minmax(0, 1fr);
+  color: #e7edf6;
+  background: #090c11;
+}
+
+.image-markup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 22px;
+  border-bottom: 1px solid #29313d;
+  background: #11161d;
+}
+
+.image-markup-header > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.image-markup-header strong {
+  font-size: 15px;
+}
+
+.image-markup-header span {
+  overflow: hidden;
+  color: #8996a8;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-markup-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) 290px;
+}
+
+.image-markup-tools {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 8px;
+  overflow-y: auto;
+  border-right: 1px solid #29313d;
+  background: #11161d;
+}
+
+.image-markup-tools button,
+.markup-zoom button {
+  min-height: 34px;
+  padding: 6px 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #aeb9c8;
+  font-size: 11px;
+  background: transparent;
+}
+
+.image-markup-tools button:hover,
+.image-markup-tools button.active,
+.markup-zoom button:hover {
+  border-color: #466184;
+  color: #eef5ff;
+  background: #1d2b3e;
+}
+
+.markup-tool-divider {
+  height: 1px;
+  margin: 4px 2px;
+  background: #29313d;
+}
+
+.image-markup-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 34px;
+  background-color: #0a0d12;
+  background-image: linear-gradient(45deg, #10151c 25%, transparent 25%), linear-gradient(-45deg, #10151c 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #10151c 75%), linear-gradient(-45deg, transparent 75%, #10151c 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.image-markup-canvas-shell {
+  flex: none;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow: 0 16px 60px rgba(0, 0, 0, .56), 0 0 0 1px rgba(255, 255, 255, .08);
+}
+
+.markup-zoom {
+  position: fixed;
+  z-index: 2;
+  bottom: 18px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid #303a48;
+  border-radius: 9px;
+  background: rgba(17, 22, 29, .94);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  transform: translateX(-50%);
+}
+
+.markup-zoom span {
+  min-width: 52px;
+  color: #8f9cad;
+  font-size: 10px;
+  text-align: center;
+}
+
+.image-markup-inspector {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 14px;
+  padding: 18px;
+  border-left: 1px solid #29313d;
+  background: #11161d;
+}
+
+.image-markup-inspector p {
+  margin: 5px 0 0;
+  color: #8491a3;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.markup-note-list {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  overflow-y: auto;
+}
+
+.markup-note-card {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #303946;
+  border-radius: 9px;
+  background: #161c24;
+}
+
+.markup-note-card > span {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  background: #d94850;
+}
+
+.markup-note-card textarea {
+  min-height: 58px;
+  resize: vertical;
+  padding: 7px 8px;
+  border-color: #303946;
+  font-size: 11px;
+  line-height: 1.5;
+  background: #0e1319;
+}
+
+.markup-note-empty {
+  padding: 18px 12px;
+  border: 1px dashed #35404e;
+  border-radius: 9px;
+  color: #7f8b9c;
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.markup-style-controls {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #29313d;
+}
+
+.markup-style-controls label {
+  display: grid;
+  gap: 7px;
+  color: #8996a8;
+  font-size: 10px;
+}
+
+.markup-style-controls input[type="color"] {
+  width: 42px;
+  height: 28px;
+  padding: 2px;
+}
+
+.markup-removal-hint {
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: #90a9c8 !important;
+  background: rgba(66, 112, 166, .12);
+}
+
+@media (max-width: 900px) {
+  .image-markup-body {
+    grid-template-columns: 64px minmax(0, 1fr) 230px;
+  }
+
+  .image-markup-inspector {
+    padding: 12px;
+  }
 }
 
 .image-picture-empty {

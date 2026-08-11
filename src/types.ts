@@ -47,6 +47,25 @@ export type ImageReferenceRole =
   | "background"
   | "auto";
 
+export interface ImageMarkupData {
+  documentPath: string;
+  renderedPath: string;
+  summary: string;
+  revision: number;
+  objectCount: number;
+  updatedAt: string;
+}
+
+export interface ImageMarkupSaveRequest {
+  pictureId: string;
+  sourcePath: string;
+  document: string;
+  renderedPng: ArrayBuffer;
+  summary: string;
+  objectCount: number;
+  previousRevision?: number;
+}
+
 export interface ImageReference {
   id: string;
   pictureNumber: number;
@@ -54,6 +73,7 @@ export interface ImageReference {
   width: number;
   height: number;
   role?: ImageReferenceRole;
+  markup?: ImageMarkupData;
 }
 
 export type ImageReferenceSnapshot = ImageReference;
@@ -750,6 +770,8 @@ export interface AppApi {
   pickVideo(): Promise<string | null>;
   getDroppedFilePath(file: File): string;
   saveClipboardImage(data: ArrayBuffer, mimeType: string): Promise<string>;
+  readImageMarkup(documentPath: string): Promise<string | null>;
+  saveImageMarkup(request: ImageMarkupSaveRequest): Promise<ImageMarkupData>;
   pickWorkflow(): Promise<string | null>;
   pickPython(): Promise<string | null>;
   inspectWorkflow(path: string): Promise<WorkflowCapabilities>;

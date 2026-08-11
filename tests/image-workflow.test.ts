@@ -7,9 +7,11 @@ import {
   flux2Klein4bCapability,
   flux2Klein4bRequiredNodeTypes,
   imageLightningComponentFound,
+  imageMarkupPromptContext,
   imageOutputCandidateFromValue,
   imageOutputDimensions,
   imageResolutionOptionsFor,
+  imageReferenceInputPath,
   normalizeImageTargetResolution,
   qwenImageEdit2511RequiredNodeTypes,
   qwenImageEdit2511Capability,
@@ -89,6 +91,29 @@ describe("Qwen image edit workflow contract", () => {
       "picture-3.png"
     ]);
     expect(result.referencedPictureNumbers).toEqual([1, 3]);
+  });
+
+  it("uses a marked rendering for the same Picture slot and adds a cleanup contract", () => {
+    const marked = {
+      ...picture(1, "original.png"),
+      markup: {
+        documentPath: "guide.fabric.json",
+        renderedPath: "guide.png",
+        summary: "A：只移除红框内的水印",
+        revision: 2,
+        objectCount: 1,
+        updatedAt: "2026-08-11T00:00:00.000Z"
+      }
+    };
+
+    const result = compileQwenImageEditPrompt("修复 Picture 1。", [marked]);
+
+    expect(result.pictures).toHaveLength(1);
+    expect(imageReferenceInputPath(result.pictures[0]!)).toBe("guide.png");
+    expect(result.prompt).toContain("Visual annotation instructions:");
+    expect(result.prompt).toContain("remove every annotation from the final image");
+    expect(result.prompt).toContain("A：只移除红框内的水印");
+    expect(imageMarkupPromptContext([picture(1)])).toBe("");
   });
 
   it("blocks references to a deleted Picture instead of silently reassigning", () => {

@@ -187,6 +187,16 @@
   document.addEventListener('click', () => menu?.classList.remove('open'));
   root.querySelectorAll('[data-open-dialog]').forEach((button) => button.addEventListener('click', () => root.querySelector(`#${button.dataset.openDialog}`)?.classList.add('open')));
   root.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => button.closest('.dialog-backdrop')?.classList.remove('open')));
+  const markupOverlay = root.querySelector('[data-image-markup-overlay]');
+  root.querySelectorAll('[data-open-image-markup]').forEach((button) => button.addEventListener('click', () => {
+    if (markupOverlay) markupOverlay.hidden = false;
+  }));
+  root.querySelectorAll('[data-markup-cancel],[data-markup-save]').forEach((button) => button.addEventListener('click', () => {
+    if (markupOverlay) markupOverlay.hidden = true;
+  }));
+  root.querySelectorAll('[data-markup-tool]').forEach((button) => button.addEventListener('click', () => {
+    root.querySelectorAll('[data-markup-tool]').forEach((item) => item.classList.toggle('primary', item === button));
+  }));
   root.querySelectorAll('.dialog-backdrop').forEach((backdrop) => backdrop.addEventListener('click', (event) => { if (event.target === backdrop) backdrop.classList.remove('open'); }));
   root.querySelectorAll('[data-demo-action]').forEach((button) => button.addEventListener('click', () => {
     const status = root.querySelector('[data-demo-status]');

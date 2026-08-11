@@ -111,7 +111,7 @@ const customNodeCatalog = [
     repositoryUrl: "https://github.com/city96/ComfyUI-GGUF.git",
     directoryName: "ComfyUI-GGUF",
     aliases: ["comfyui-gguf"],
-    nodeTypes: ["UnetLoaderGGUFAdvanced"],
+    nodeTypes: ["UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF"],
     required: true
   },
   {
@@ -513,6 +513,20 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     targetSubdirectory: "text_encoders",
     recommendedFilename: "qwen3vl_32b_minimax_h3_int4_convrot.safetensors",
     notes: "与 INT4 ConvRot FL2VA 扩散模型配套的文本编码器；需要 ComfyUI 0.30.0 或更高版本。"
+  },
+  "minimax_h3_fl2va_q3_gguf:MiniMax H3 FL2VA Q3 GGUF 扩散模型": {
+    sourceLabel: "Unsloth / MiniMax-H3-GGUF",
+    downloadUrl: "https://huggingface.co/unsloth/MiniMax-H3-GGUF/resolve/main/minimax_h3_fl2va_pruned-Q3_K.gguf",
+    targetSubdirectory: "unet",
+    recommendedFilename: "minimax_h3_fl2va_pruned-Q3_K.gguf",
+    notes: "社区 Q3 GGUF 扩散模型，文件约 8.16 GiB。3080 10GB 仅作为低分辨率、短片和 CPU/RAM offload 实验档；需要安装 ComfyUI-GGUF，不能与原生 UNETLoader 混用。"
+  },
+  "minimax_h3_fl2va_q3_gguf:Qwen3-VL 32B H3 Q2 GGUF 文本编码器": {
+    sourceLabel: "Unsloth / MiniMax-H3-GGUF",
+    downloadUrl: "https://huggingface.co/unsloth/MiniMax-H3-GGUF/resolve/main/qwen3vl_32b_minimax_h3-Q2_K_M.gguf",
+    targetSubdirectory: "text_encoders",
+    recommendedFilename: "qwen3vl_32b_minimax_h3-Q2_K_M.gguf",
+    notes: "Q2 文本编码器约 12.2 GiB，必须配合 CLIPLoaderGGUF，并建议放在 CPU/offload 路径；它的文件大小不等于显存峰值。"
   },
   "minimax_h3_ref2va:MiniMax H3 Ref2VA INT8 模型": {
     sourceLabel: "Comfy-Org / MiniMax-H3",
@@ -1079,8 +1093,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "MiniMax H3 FL2VA · 首帧 / 首尾帧",
     category: "video",
     badge: "FL2VA · 原生音视频",
-    description: "只接入首帧或首尾帧图生视频，原生 24 FPS 同步立体声音频；不提供纯文本流程。",
-    vram: "pruned INT8 · DynamicVRAM",
+    description: "只接入首帧或首尾帧图生视频，原生 24 FPS 同步立体声音频；推荐 RTX 4090/3090 24GB，并准备 64GB 系统内存。",
+    vram: "pruned INT8 · RTX 4090/3090 24GB · DynamicVRAM",
     integrated: true,
     components: [
       {
@@ -1110,8 +1124,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "MiniMax H3 FL2VA · INT4 低显存",
     category: "video",
     badge: "INT4 · 低显存",
-    description: "社区 pruned INT4 ConvRot 档，复用 H3 原生音视频节点；建议 12GB 起步并准备充足系统内存。",
-    vram: "pruned INT4 · 12GB 起步 · RAM offload",
+    description: "社区 pruned INT4 ConvRot 档，复用 H3 原生音视频节点；推荐 16GB 显存，12GB 仅作为实验起点并准备充足系统内存。",
+    vram: "pruned INT4 · 16GB 推荐 · 12GB 实验 · RAM offload",
     integrated: true,
     components: [
       {
@@ -1137,12 +1151,45 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     ]
   },
   {
+    id: "minimax_h3_fl2va_q3_gguf",
+    name: "MiniMax H3 FL2VA · Q3 GGUF · RTX 3080 实验",
+    category: "video",
+    managedBy: "comfyui",
+    badge: "Q3 GGUF · 3080 实验",
+    description: "Unsloth 社区 Q3 GGUF 低显存档；面向 RTX 3080 10GB 的 480p/短片实验，必须使用 ComfyUI-GGUF、CPU 文本编码器和 RAM offload，不支持视频续写。",
+    vram: "Q3 · 3080 10GB 实验 · 32GB RAM 起步",
+    integrated: true,
+    runtimeNodeTypes: ["UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF", "MiniMaxH3ImageToVideo"],
+    components: [
+      {
+        label: "MiniMax H3 FL2VA Q3 GGUF 扩散模型",
+        expected: "unet/minimax_h3_fl2va_pruned-Q3_K.gguf",
+        patterns: [/unet\/minimax_h3_fl2va_pruned-Q3_K\.gguf$/i]
+      },
+      {
+        label: "Qwen3-VL 32B H3 Q2 GGUF 文本编码器",
+        expected: "text_encoders/qwen3vl_32b_minimax_h3-Q2_K_M.gguf",
+        patterns: [/text_encoders\/qwen3vl_32b_minimax_h3-Q2_K_M\.gguf$/i]
+      },
+      {
+        label: "MiniMax H3 视频 VAE",
+        expected: "vae/minimax_h3_video_vae_fp16.safetensors",
+        patterns: [/vae\/minimax_h3_video_vae_fp16\.safetensors$/i]
+      },
+      {
+        label: "MiniMax H3 音频 VAE",
+        expected: "vae/minimax_h3_audio_vae_fp32.safetensors",
+        patterns: [/vae\/minimax_h3_audio_vae_fp32\.safetensors$/i]
+      }
+    ]
+  },
+  {
     id: "minimax_h3_fl2va_turbo",
     name: "MiniMax H3 LightX2V Turbo · 首尾帧",
     category: "video",
     badge: "LightX2V · 原生采样",
-    description: "Turbo 不是另一套基础模型，而是通过蒸馏 LoRA 把 H3 从约 20 步压缩到 6-8 步，以少量画质、动态和音频精度换取明显提速。本工具采用 LightX2V 团队的 Turbo 方案，并使用 Kijai 转换的精简 ComfyUI 权重；仅支持 FL2VA 首帧/尾帧生成，不用于 R2V 或视频续写。",
-    vram: "pruned INT8 + Turbo LoRA · 4090 推荐",
+    description: "Turbo 不是另一套基础模型，而是通过蒸馏 LoRA 把 H3 从约 20 步压缩到 6-8 步；显存仍接近基础 INT8 档。推荐 RTX 4090/3090 24GB，且仅支持 FL2VA。",
+    vram: "pruned INT8 + Turbo LoRA · RTX 4090/3090 24GB",
     integrated: true,
     components: [
       {
@@ -1177,8 +1224,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "MiniMax H3 R2V · 多参考 INT8",
     category: "video",
     badge: "R2V · 多参考",
-    description: "官方 Ref2VA 多参考档，当前支持最多 9 张图片参考；视频和音频 Slot 将在后续扩展。",
-    vram: "pruned INT8 · 4090/24GB 起步 · DynamicVRAM",
+    description: "官方 Ref2VA 多参考档，当前支持最多 9 张图片参考；推荐 RTX 4090/3090 24GB，参考数量越多越需要系统内存。",
+    vram: "pruned INT8 · RTX 4090/3090 24GB 起步 · DynamicVRAM",
     integrated: true,
     components: [
       {
@@ -1208,8 +1255,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "MiniMax H3 R2V · 多参考 INT4",
     category: "video",
     badge: "R2V · INT4 低显存",
-    description: "社区 Ref2VA INT4 ConvRot 档，支持多张图片参考；视频和音频 Slot 将在后续扩展。",
-    vram: "pruned INT4 · 12GB 起步 · 4090 可试 · RAM offload",
+    description: "社区 Ref2VA INT4 ConvRot 档，支持多张图片参考；推荐 16GB 显存，12GB 仅作实验，3080 10GB 不作为该档目标。",
+    vram: "pruned INT4 · 16GB 推荐 · 12GB 实验 · RAM offload",
     integrated: true,
     components: [
       {

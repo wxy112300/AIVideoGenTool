@@ -5,7 +5,8 @@ import type {
   ImageHistoryProject,
   ImageOutputFormat,
   ImageReference,
-  ImageReferenceRole
+  ImageReferenceRole,
+  ImageMarkupData
 } from "../types.js";
 import { createDefaultImageEditDraft } from "./defaults.js";
 import { normalizeImageTargetResolution } from "./image-workflow.js";
@@ -187,13 +188,31 @@ function normalizeImageReference(value: unknown, index: number): ImageReference 
   const role = imageReferenceRoles.includes(source.role as ImageReferenceRole)
     ? source.role
     : undefined;
+  const markupSource = source.markup && typeof source.markup === "object"
+    ? source.markup as Partial<ImageMarkupData>
+    : null;
+  const markup = markupSource &&
+    typeof markupSource.documentPath === "string" && markupSource.documentPath.trim() &&
+    typeof markupSource.renderedPath === "string" && markupSource.renderedPath.trim()
+    ? {
+        documentPath: markupSource.documentPath.trim(),
+        renderedPath: markupSource.renderedPath.trim(),
+        summary: typeof markupSource.summary === "string" ? markupSource.summary.trim() : "",
+        revision: normalizedInteger(markupSource.revision, 1, 1),
+        objectCount: normalizedInteger(markupSource.objectCount, 0, 0),
+        updatedAt: typeof markupSource.updatedAt === "string" && markupSource.updatedAt.trim()
+          ? markupSource.updatedAt
+          : new Date(0).toISOString()
+      }
+    : undefined;
   return {
     id: typeof source.id === "string" && source.id.trim() ? source.id : crypto.randomUUID(),
     pictureNumber: normalizedInteger(source.pictureNumber, index + 1, 1),
     absolutePath,
     width: normalizedInteger(source.width, 0, 0),
     height: normalizedInteger(source.height, 0, 0),
-    ...(role ? { role } : {})
+    ...(role ? { role } : {}),
+    ...(markup ? { markup } : {})
   };
 }
 
@@ -329,7 +348,10 @@ export function imageEditDraftFromQueueTask(
     ...currentDraft,
     projectId: task.projectId,
     parentVersionId: task.parentVersionId,
-    pictures: task.pictures.map((picture) => ({ ...picture })),
+    pictures: task.pictures.map((picture) => ({
+      ...picture,
+      ...(picture.markup ? { markup: { ...picture.markup } } : {})
+    })),
     promptVersions: [{
       id: crypto.randomUUID(),
       label: "从队列调整",
