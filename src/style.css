@@ -247,9 +247,18 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .history-kind-tabs button:hover { color: #e6edf7; background: rgba(65, 88, 120, .22); }
 .history-kind-tabs button.active { border-color: rgba(124, 184, 255, .48); color: #ecf5ff; background: rgba(55, 102, 167, .34); }
 .history-kind-tabs .ui-icon { width: 14px; height: 14px; }
-.history-gallery.masonry, .history-gallery.album { display: grid; gap: 15px; align-items: start; }
-.history-gallery.masonry { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.history-gallery.album { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.history-gallery.masonry {
+  display: grid;
+  gap: 15px;
+  align-items: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.history-gallery.album {
+  display: grid;
+  gap: 15px;
+  align-items: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 .history-gallery-item { min-width: 0; display: grid; gap: 0; margin: 0; overflow: hidden; cursor: pointer; }
 .history-gallery.album .history-gallery-item { grid-template-rows: auto 52px; align-self: start; }
 .history-gallery-item:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
@@ -532,8 +541,8 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .output-file p { margin: 4px 0 0; }
 .image-history-detail-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(320px, .72fr); gap: 18px; align-items: stretch; }
 .image-history-viewer-panel { min-width: 0; align-self: start; padding: 14px; overflow: hidden; }
-.image-history-viewer-grid { min-width: 0; height: clamp(420px, 72vh, 720px); display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 14px; align-items: stretch; }
-.image-history-version-rail { min-width: 0; min-height: 0; height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; padding: 5px 0; }
+.image-history-viewer-grid { min-width: 0; min-height: clamp(420px, 72vh, 720px); height: auto; display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 14px; align-items: start; }
+.image-history-version-rail { min-width: 0; min-height: 0; height: clamp(420px, 72vh, 720px); display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; padding: 5px 0; }
 .image-history-version-rail h2 { margin: 0; font-size: 13px; }
 .image-history-version-rail p { margin: 3px 0 0; }
 .image-history-version-list { min-height: 0; height: 100%; display: grid; align-content: start; gap: 7px; overflow-y: scroll; overscroll-behavior: contain; padding-right: 3px; scrollbar-gutter: stable; scrollbar-color: rgba(145,169,207,.82) rgba(30,38,50,.72); }
@@ -546,13 +555,14 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .image-history-version-thumb span { position: absolute; z-index: 2; right: 5px; bottom: 4px; padding: 1px 4px; border-radius: 4px; color: #fff; background: rgba(4, 7, 11, .72); font-size: 10px; font-variant-numeric: tabular-nums; }
 .image-history-version-thumb .ui-icon { position: absolute; z-index: 3; top: 5px; right: 5px; width: 12px; height: 12px; color: #ffd36e; }
 .image-history-version-thumb.active { border-color: var(--primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 28%, transparent); }
-.image-history-stage-panel { min-width: 0; min-height: 0; height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 9px; }
+.image-history-stage-panel { min-width: 0; min-height: 0; height: auto; display: grid; grid-template-rows: auto auto auto; gap: 9px; }
 .image-history-stage-toolbar { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 2px 2px 0; }
 .image-history-stage-toolbar > div:first-child { min-width: 0; }
 .image-history-stage-toolbar strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .image-history-stage-toolbar p { margin: 4px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.image-history-stage { position: relative; min-width: 0; min-height: 0; height: 100%; max-height: none; display: grid; place-items: center; overflow: hidden; aspect-ratio: auto; border: 1px solid rgba(47, 60, 77, .72); border-radius: 12px; background: radial-gradient(circle at 50% 40%, rgba(42, 57, 76, .36), transparent 48%), #070a0e; }
-.image-history-stage img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; transition: width .16s ease, height .16s ease; }
+.image-history-stage { position: relative; min-width: 0; min-height: 0; width: 100%; height: auto; max-width: 100%; max-height: none; align-self: center; display: grid; place-items: center; overflow: hidden; aspect-ratio: var(--image-aspect, 4 / 3); border: 1px solid rgba(47, 60, 77, .72); border-radius: 12px; background: radial-gradient(circle at 50% 40%, rgba(42, 57, 76, .36), transparent 48%), #070a0e; }
+.image-history-stage[data-image-orientation="tall"] { width: 100%; height: auto; }
+.image-history-stage img { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; object-position: center; transition: width .16s ease, height .16s ease; }
 .image-history-stage.original-size { overflow: auto; place-items: start; }
 .image-history-stage.original-size img { width: auto; height: auto; min-width: 100%; min-height: 100%; object-fit: initial; }
 .image-history-open-viewer { flex: 0 0 auto; white-space: nowrap; }
@@ -600,7 +610,9 @@ body.image-lightbox-open { overflow: hidden; }
   .image-history-version-list { height: auto; display: flex; max-height: 84px; overflow-x: auto; overflow-y: hidden; padding-bottom: 3px; }
   .image-history-version-thumb { flex: 0 0 68px; }
   .image-history-stage-panel { height: auto; grid-template-rows: auto auto auto; }
-  .image-history-stage { height: clamp(320px, 65vh, 560px); min-height: 320px; }
+  .image-history-stage,
+  .image-history-stage[data-image-orientation="wide"],
+  .image-history-stage[data-image-orientation="tall"] { width: 100%; height: clamp(320px, 65vh, 560px); min-height: 320px; aspect-ratio: auto; }
   .image-history-stage-toolbar { align-items: flex-start; flex-direction: column; }
   .image-history-stage-controls { width: 100%; }
   .image-history-stage-controls .image-history-open-viewer { flex: 1 1 auto; justify-content: center; }
@@ -2346,9 +2358,9 @@ main { padding-top: 0; }
 
 .history-gallery.album .history-model-chip {
   min-width: 0;
-  flex: 1 1 auto;
-  max-width: none;
-  margin-right: 0;
+  flex: 0 1 auto;
+  max-width: 55%;
+  margin-right: auto;
 }
 
 .history-gallery.album .history-gallery-copy {

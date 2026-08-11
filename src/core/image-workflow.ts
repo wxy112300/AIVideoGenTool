@@ -230,9 +230,16 @@ export const flux2Klein4bCapability: ImageModelCapability = {
   qualityProfiles: [
     {
       id: "native",
-      label: "原生质量",
+      label: "快速质量",
       steps: 20,
       cfg: 5,
+      lightning: false
+    },
+    {
+      id: "high-quality",
+      label: "高质量",
+      steps: 50,
+      cfg: 4,
       lightning: false
     }
   ]

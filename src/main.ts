@@ -257,6 +257,7 @@ let historyContextMenuEvents: AbortController | null = null;
 let imageLightboxEvents: AbortController | null = null;
 let shellNavigationEvents: AbortController | null = null;
 let historyMasonryResizeObserver: ResizeObserver | null = null;
+let historyAlbumResizeObserver: ResizeObserver | null = null;
 let historyTitleResizeObserver: ResizeObserver | null = null;
 let historyMediaObserver: IntersectionObserver | null = null;
 let historyCoverWarmupController: AbortController | null = null;
@@ -2955,6 +2956,39 @@ function bindHistoryMasonry(): void {
   historyMasonryResizeObserver.observe(gallery);
 }
 
+function layoutHistoryAlbum(gallery: HTMLElement): void {
+  const cards = historyCardsByOrder(gallery);
+  if (!cards.length || gallery.clientWidth <= 0) return;
+  const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 8;
+  const minimumCardWidth = 180;
+  const maximumCardWidth = 300;
+  const cardCount = cards.length;
+  const availableWidth = gallery.clientWidth;
+  const maximumRowWidth = cardCount * maximumCardWidth + (cardCount - 1) * gap;
+  let columnCount = cardCount;
+  let cardWidth = maximumCardWidth;
+  if (maximumRowWidth > availableWidth) {
+    columnCount = Math.min(
+      cardCount,
+      Math.max(1, Math.floor((availableWidth + gap) / (minimumCardWidth + gap)))
+    );
+    cardWidth = (availableWidth - (columnCount - 1) * gap) / columnCount;
+  }
+  cardWidth = Math.max(1, Math.min(maximumCardWidth, cardWidth));
+  gallery.style.gridTemplateColumns = `repeat(${columnCount}, ${cardWidth}px)`;
+  gallery.style.justifyContent = "start";
+}
+
+function bindHistoryAlbum(): void {
+  const gallery = document.querySelector<HTMLElement>(".history-gallery.album");
+  if (!gallery) return;
+  const update = () => layoutHistoryAlbum(gallery);
+  update();
+  if (typeof ResizeObserver === "undefined") return;
+  historyAlbumResizeObserver = new ResizeObserver(update);
+  historyAlbumResizeObserver.observe(gallery);
+}
+
 function switchHistoryLayout(nextLayout: typeof historyLayout): void {
   if (nextLayout === historyLayout) return;
   reportUserAction("history-layout", { from: historyLayout, to: nextLayout });
@@ -2964,14 +2998,19 @@ function switchHistoryLayout(nextLayout: typeof historyLayout): void {
   historyLayout = nextLayout;
   historyMasonryResizeObserver?.disconnect();
   historyMasonryResizeObserver = null;
+  historyAlbumResizeObserver?.disconnect();
+  historyAlbumResizeObserver = null;
   gallery.classList.toggle("masonry", nextLayout === "masonry");
   gallery.classList.toggle("album", nextLayout === "album");
+  gallery.style.removeProperty("grid-template-columns");
+  gallery.style.removeProperty("justify-content");
   if (nextLayout === "album") {
     const cards = historyCardsByOrder(gallery);
     if (cards.length) {
       gallery.replaceChildren(...cards);
       gallery.style.removeProperty("--masonry-columns");
     }
+    bindHistoryAlbum();
   } else {
     bindHistoryMasonry();
   }
@@ -3153,7 +3192,7 @@ function imageHistoryDetailPage(): string {
           </aside>
           <section class="image-history-stage-panel">
             <div class="image-history-stage-toolbar"><div><strong>${escapeHtml(version.file.filename)}</strong><p class="muted tiny">版本 ${version.versionNumber} · Seed ${version.seed ?? "随机"} · ${escapeHtml(version.kind === "source" ? "原始图片" : modelName(version.modelId))}</p></div></div>
-            <div class="image-history-stage" data-image-stage="fit" style="--image-aspect:${version.width || 1} / ${version.height || 1}">
+            <div class="image-history-stage ${version.width > version.height ? "is-wide" : "is-tall"}" data-image-stage="fit" data-image-orientation="${version.width > version.height ? "wide" : "tall"}" style="--image-aspect:${version.width || 1} / ${version.height || 1}">
               ${mediaUrl ? `<img src="${escapeHtml(mediaUrl)}" alt="${escapeHtml(title)} · 版本 ${version.versionNumber}" data-image-history-stage-image>` : `<div class="history-media-fallback"><span>${icon("image")}</span><strong>图片文件不可用</strong><small>请检查输出目录或在下方定位文件。</small></div>`}
             </div>
             <div class="image-history-stage-controls" aria-label="图片版本浏览操作">
@@ -4030,6 +4069,8 @@ function render(): void {
   stopRenderedVideoPlayback();
   historyMasonryResizeObserver?.disconnect();
   historyMasonryResizeObserver = null;
+  historyAlbumResizeObserver?.disconnect();
+  historyAlbumResizeObserver = null;
   historyTitleResizeObserver?.disconnect();
   historyTitleResizeObserver = null;
   historyMediaObserver?.disconnect();
@@ -6764,7 +6805,8 @@ function bindUpscaleDialog(): void {
 }
 
 function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
-  bindHistoryMasonry();
+  if (historyLayout === "album") bindHistoryAlbum();
+  else bindHistoryMasonry();
   bindHistoryTitleMarquees();
   restoreHistoryLayoutAnchor();
   document.querySelectorAll<HTMLButtonElement>("[data-history-kind][role=tab]").forEach((button) => {

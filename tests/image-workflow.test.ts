@@ -273,9 +273,20 @@ describe("Qwen image edit workflow contract", () => {
 describe("FLUX.2 Klein 4B image edit workflow contract", () => {
   it("exposes a consumer-GPU single-reference capability", () => {
     expect(flux2Klein4bCapability.maxPictures).toBe(1);
-    expect(flux2Klein4bCapability.qualityProfiles).toMatchObject([
-      { id: "native", steps: 20, cfg: 5 }
+    expect(flux2Klein4bCapability.qualityProfiles.map((profile) => profile.id)).toEqual([
+      "native",
+      "high-quality"
     ]);
+    expect(flux2Klein4bCapability.qualityProfiles[0]).toMatchObject({
+      id: "native",
+      steps: 20,
+      cfg: 5
+    });
+    expect(flux2Klein4bCapability.qualityProfiles[1]).toMatchObject({
+      id: "high-quality",
+      steps: 50,
+      cfg: 4
+    });
     expect(flux2Klein4bRequiredNodeTypes).toContain("ReferenceLatent");
     expect(flux2Klein4bRequiredNodeTypes).toContain("SamplerCustomAdvanced");
   });
@@ -307,7 +318,7 @@ describe("FLUX.2 Klein 4B image edit workflow contract", () => {
       outputHeight: 895,
       prompt: "编辑 Picture 1。",
       promptVersion: 1,
-      qualityProfile: "native",
+      qualityProfile: "high-quality",
       outputFormat: "png",
       outputCount: 1,
       runs: []
@@ -328,11 +339,11 @@ describe("FLUX.2 Klein 4B image edit workflow contract", () => {
     expect(workflow.scaledImage?.class_type).toBe("ImageScaleToTotalPixels");
     expect(workflow.positiveReference?.class_type).toBe("ReferenceLatent");
     expect(workflow.negativeReference?.class_type).toBe("ReferenceLatent");
-    expect(workflow.scheduler?.inputs.steps).toBe(20);
-    expect(workflow.guider?.inputs.cfg).toBe(5);
+    expect(workflow.scheduler?.inputs.steps).toBe(50);
+    expect(workflow.guider?.inputs.cfg).toBe(4);
     expect(workflow.exactSize?.inputs.width).toBe(1057);
     expect(workflow.exactSize?.inputs.height).toBe(895);
     expect(workflow.save?.inputs.filename_prefix).toContain("Images/Flux2Klein_");
-    expect(validateFlux2Klein4bWorkflow(workflow, "native", true)).toEqual([]);
+    expect(validateFlux2Klein4bWorkflow(workflow, "high-quality", true)).toEqual([]);
   });
 });

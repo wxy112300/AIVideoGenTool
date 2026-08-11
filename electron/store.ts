@@ -334,6 +334,7 @@ export class JsonStore {
       if (![
         "balanced-20",
         "native",
+        "high-quality",
         "lightning-4step"
       ].includes(this.state.settings.defaultImageQualityProfile)) {
         this.state.settings.defaultImageQualityProfile = "balanced-20";
