@@ -112,6 +112,7 @@ describe("Qwen image edit workflow contract", () => {
     expect(imageReferenceInputPath(result.pictures[0]!)).toBe("guide.png");
     expect(result.prompt).toContain("Visual annotation instructions:");
     expect(result.prompt).toContain("remove every annotation from the final image");
+    expect(result.prompt).toContain("per-annotation notes below are the authoritative edit list");
     expect(result.prompt).toContain("A：只移除红框内的水印");
     expect(imageMarkupPromptContext([picture(1)])).toBe("");
   });

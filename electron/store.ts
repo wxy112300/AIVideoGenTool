@@ -12,6 +12,7 @@ import type {
   QueueTask
 } from "../src/types.js";
 import { createDefaultState } from "../src/core/defaults.js";
+import { normalizeUiLocale } from "../src/core/i18n.js";
 import { normalizeQwenImagePromptPresets } from "../src/core/qwen-image-prompt.js";
 import { normalizeH3ReferenceSlots } from "../src/core/h3-reference.js";
 import {
@@ -292,12 +293,17 @@ export class JsonStore {
           imagePromptPresets
         },
         queueRunning: false,
-        schemaVersion: 6,
+        schemaVersion: 8,
         queue: (saved.queue ?? []).map(migrateQueueTask),
         history: (saved.history ?? []).map(migrateHistoryAsset),
         imageHistory
       };
-      let needsPersist = saved.queueRunning === true || savedSchemaVersion < 6;
+      const savedUiLocale = (saved.settings as { uiLocale?: unknown } | undefined)?.uiLocale;
+      const normalizedUiLocale = normalizeUiLocale(savedUiLocale);
+      this.state.settings.uiLocale = normalizedUiLocale;
+      let needsPersist = saved.queueRunning === true ||
+        savedSchemaVersion < 8 ||
+        savedUiLocale !== normalizedUiLocale;
       if (typeof saved.settings?.imageOutputDirectory !== "string") {
         this.state.settings.imageOutputDirectory = "";
         needsPersist = true;
@@ -305,6 +311,16 @@ export class JsonStore {
         const normalizedImageOutputDirectory = saved.settings.imageOutputDirectory.trim();
         if (normalizedImageOutputDirectory !== this.state.settings.imageOutputDirectory) {
           this.state.settings.imageOutputDirectory = normalizedImageOutputDirectory;
+          needsPersist = true;
+        }
+      }
+      if (typeof saved.settings?.imageInputLibraryDirectory !== "string") {
+        this.state.settings.imageInputLibraryDirectory = "";
+        needsPersist = true;
+      } else {
+        const normalizedImageInputLibraryDirectory = saved.settings.imageInputLibraryDirectory.trim();
+        if (normalizedImageInputLibraryDirectory !== this.state.settings.imageInputLibraryDirectory) {
+          this.state.settings.imageInputLibraryDirectory = normalizedImageInputLibraryDirectory;
           needsPersist = true;
         }
       }

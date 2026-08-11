@@ -263,6 +263,7 @@ export function imageMarkupPromptContext(
   return [
     "Visual annotation instructions:",
     "Some Pictures contain temporary colored marks, boxes, arrows, labels, or text added only to identify edit targets. Follow their instructions, but remove every annotation from the final image and reconstruct the underlying pixels naturally.",
+    "The per-annotation notes below are the authoritative edit list. A general preservation instruction may protect unrelated content, but must never override, broaden, or replace a specific annotation note.",
     ...marked.map((picture) => `Picture ${picture.pictureNumber}: ${picture.markup?.summary || `${picture.markup?.objectCount ?? 0} marked target(s)`}`)
   ].join("\n");
 }

@@ -139,6 +139,19 @@ For any repository change, classify the impact before completion. When bumping:
 4. Prefer `npm.cmd version patch|minor --no-git-tag-version`, review its diff, and keep the bump in the same commit.
 5. Verify with `npm.cmd pkg get version` and the appropriate verification tier.
 
+### Changelog Maintenance
+
+- Record every released package version in `CHANGELOG.md`.
+- Keep the README current-version section concise; historical release notes belong in the changelog.
+- For unreleased work, use the `Unreleased` section and move its entries under the new version when bumping the package.
+
+### Shared Worktree and Multi-Agent Safety
+
+- Re-read every target file immediately before editing it. Never apply a patch prepared from an older conversation snapshot without comparing it to the current worktree.
+- If a target file changed after the task began, stop and reconcile the current diff first. Preserve newer fields, schema versions, migrations, adapters, tests, and user changes instead of replaying stale code.
+- Do not let multiple agents concurrently own hotspot files such as `src/main.ts`, `electron/main.ts`, `electron/store.ts`, `src/types.ts`, or shared workflow adapters. Use separate Git worktrees/branches or assign one owner per hotspot.
+- Before handoff, inspect `git diff --name-status` and the full diff for unexpected deletions. A passing typecheck is not sufficient when persisted-state migrations, model routing, media paths, or queue recovery changed.
+
 ## Repository Conventions
 
 - Keep IPC and persisted-state changes backward compatible unless the requested release includes an explicit migration plan.

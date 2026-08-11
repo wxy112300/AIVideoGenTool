@@ -71,6 +71,9 @@ import type {
   H3ReferenceRole,
   H3ReferenceSlot,
   HistoryMigrationProgress,
+  ImageAssetLibraryProgress,
+  ImageAssetLibraryResult,
+  ImageAssetLibraryScan,
   ImageAssetVersion,
   ImageGenerationQueueTask,
   ImageEditDraft,
@@ -238,6 +241,20 @@ let pendingDirectoryMigration: {
 } | null = null;
 let directoryMigrationBusy = false;
 let historyMigrationProgress: HistoryMigrationProgress | null = null;
+let imageAssetLibraryDialog: {
+  scan: ImageAssetLibraryScan | null;
+  busy: boolean;
+  error: string;
+  confirmCleanup: boolean;
+  selectedPaths: string[];
+  lastResult: {
+    tone: "success" | "warning";
+    title: string;
+    detail: string;
+    operationId?: string;
+  } | null;
+} | null = null;
+let imageAssetLibraryProgress: ImageAssetLibraryProgress | null = null;
 let queueActionBusy: { taskId: string; action: "remove" | "cancel" | "edit" } | null = null;
 let enqueueBusy = false;
 let modalReturnFocus: HTMLElement | null = null;
@@ -1716,6 +1733,167 @@ function bindDirectoryMigrationDialog(): void {
   if (dialog) bindModalFocus(dialog, () => void chooseDirectoryMigration("cancel"), "#directory-cancel");
 }
 
+function imageAssetProgressPercent(progress: ImageAssetLibraryProgress | null, busy: boolean): number {
+  if (!progress) return busy ? 5 : 100;
+  if (progress.phase === "completed") return 100;
+  const ranges: Record<ImageAssetLibraryProgress["phase"], [number, number]> = {
+    scanning: [5, 20],
+    archiving: [20, 72],
+    verifying: [72, 86],
+    committing: [86, 96],
+    cleaning: [20, 92],
+    completed: [100, 100]
+  };
+  const [start, end] = ranges[progress.phase];
+  const ratio = progress.total
+    ? Math.max(0, Math.min(1, progress.current / progress.total))
+    : 0;
+  return Math.round(start + (end - start) * ratio);
+}
+
+function imageAssetPhaseLabel(phase: ImageAssetLibraryProgress["phase"] | undefined): string {
+  return ({
+    scanning: "扫描引用",
+    archiving: "复制归档",
+    verifying: "校验文件",
+    committing: "保存历史",
+    cleaning: "清理素材",
+    completed: "操作完成"
+  } as const)[phase ?? "scanning"];
+}
+
+function imageAssetResultSummary(
+  result: ImageAssetLibraryResult,
+  action: "organize" | "cleanup"
+): NonNullable<NonNullable<typeof imageAssetLibraryDialog>["lastResult"]> {
+  const missing = result.scan.missingReferences.length;
+  if (action === "cleanup") {
+    return {
+      tone: "success",
+      title: "素材清理完成",
+      detail: `已删除 ${result.cleanedFiles} 个未被引用的素材和 ${result.cleanedDirectories} 个空分片目录，释放 ${formatAssetBytes(result.cleanedBytes)}。执行前已重新核对引用。`,
+      operationId: result.operationId
+    };
+  }
+  return {
+    tone: missing ? "warning" : "success",
+    title: missing ? "整理完成，仍有缺失引用" : "整理完成，原文件已保留",
+    detail: `已归档 ${result.archivedFiles} 个外部文件，并将 ${result.reorganizedFiles} 个旧分片文件复制到扁平目录；校验并写入 ${result.updatedReferences} 处引用，历史状态已保存。原文件和旧分片副本没有删除，可以稍后再清理。${missing ? ` 另有 ${missing} 个原文件已不存在，未改写这些记录。` : " 当前已没有待整理引用。"}`,
+    operationId: result.operationId
+  };
+}
+
+function imageAssetLibraryDialogHtml(): string {
+  const dialog = imageAssetLibraryDialog;
+  if (!dialog) return "";
+  const scan = dialog.scan;
+  const progress = imageAssetLibraryProgress;
+  const progressValue = imageAssetProgressPercent(progress, dialog.busy);
+  const orphanPreview = scan?.orphanFiles.slice(0, 12).map((file) => `
+    <label class="asset-library-file">
+      <input type="checkbox" data-orphan-path="${escapeHtml(file.absolutePath)}" ${dialog.selectedPaths.includes(file.absolutePath) ? "checked" : ""}>
+      <span><strong title="${escapeHtml(file.relativePath)}">${escapeHtml(file.relativePath)}</strong><small>${formatAssetBytes(file.size)}</small></span>
+    </label>`).join("") ?? "";
+  return `
+    <div class="dialog-backdrop confirm-backdrop" id="image-asset-library-backdrop">
+      <section class="confirm-dialog image-asset-library-dialog" role="dialog" aria-modal="true" aria-labelledby="image-asset-library-title" tabindex="-1">
+        <div class="confirm-copy">
+          <span class="eyebrow">图片输入资产</span>
+          <h2 id="image-asset-library-title">整理图片素材库</h2>
+          <p id="image-assets-progress-message">${dialog.busy ? escapeHtml(progress?.message || "正在扫描历史与素材文件") : "归档仍在外部的历史素材，并检查素材库中没有被历史、草稿或队列引用的文件。"}</p>
+          ${scan ? `<code class="asset-library-path">${escapeHtml(scan.libraryDirectory)}</code>` : ""}
+          ${dialog.busy ? `<div class="progress" id="image-assets-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressValue}"><span style="width:${progressValue}%"></span></div>` : ""}
+          ${dialog.busy ? `<div class="asset-library-progress-meta"><span id="image-assets-progress-phase">${imageAssetPhaseLabel(progress?.phase)}</span><span id="image-assets-progress-count">${progress?.total ? `${progress.current} / ${progress.total}` : "准备中"}</span></div>` : ""}
+          ${dialog.error ? `<div class="confirm-warning danger-hint">${escapeHtml(dialog.error)}</div>` : ""}
+          ${dialog.lastResult ? `<div class="asset-library-result ${dialog.lastResult.tone}" role="status"><span class="asset-library-result-icon">${icon(dialog.lastResult.tone === "success" ? "circle-check" : "alert-triangle")}</span><div><strong>${escapeHtml(dialog.lastResult.title)}</strong><p>${escapeHtml(dialog.lastResult.detail)}</p>${dialog.lastResult.operationId ? `<small>操作编号 ${escapeHtml(dialog.lastResult.operationId)} · 可在运行日志中检索</small>` : ""}</div></div>` : ""}
+          ${scan ? `<div class="asset-library-summary">
+            <article><span>记录引用</span><strong>${scan.totalReferences}</strong></article>
+            <article><span>待整理</span><strong>${scan.archiveCandidates}</strong><small>${formatAssetBytes(scan.archiveBytes)}</small></article>
+            <article class="${scan.missingReferences.length ? "warning" : ""}"><span>已缺失</span><strong>${scan.missingReferences.length}</strong></article>
+            <article><span>可清理</span><strong>${scan.orphanFiles.length}</strong><small>${formatAssetBytes(scan.orphanBytes)}</small></article>
+          </div>
+          ${scan.missingReferences.length ? `<details class="asset-library-details"><summary>查看 ${scan.missingReferences.length} 个缺失引用</summary>${scan.missingReferences.slice(0, 20).map((item) => `<code>${escapeHtml(item)}</code>`).join("")}</details>` : ""}
+          ${scan.orphanFiles.length ? `<details class="asset-library-orphans" ${dialog.confirmCleanup ? "open" : ""}><summary><span><strong>可清理的未引用素材</strong><small>${scan.orphanFiles.length} 个 · ${formatAssetBytes(scan.orphanBytes)}</small></span><span class="asset-library-summary-action">展开选择</span></summary><div class="asset-library-file-list">${orphanPreview}${scan.orphanFiles.length > 12 ? `<p class="muted">另有 ${scan.orphanFiles.length - 12} 个文件；本次清理只处理上面勾选的文件。</p>` : ""}</div></details>` : `<p class="asset-library-clean">没有发现可清理的孤立素材。</p>`}
+          ${dialog.confirmCleanup ? `<div class="confirm-warning"><strong>确认永久删除勾选的孤立文件？</strong><span>执行前会重新扫描引用；素材库外文件不会被删除。</span></div>` : ""}` : ""}
+        </div>
+        <div class="dialog-actions">
+          <button class="secondary button-with-icon" id="image-assets-rescan" ${dialog.busy ? "disabled" : ""}>${icon("scan-search")}重新扫描</button>
+          <button class="primary button-with-icon" id="image-assets-organize" ${dialog.busy || !scan?.archiveCandidates ? "disabled" : ""}>${icon("folder-open")}归档并修复</button>
+          ${scan?.orphanFiles.length ? `<button class="secondary destructive button-with-icon" id="image-assets-cleanup" ${dialog.busy ? "disabled" : ""}>${icon("trash-2")}${dialog.confirmCleanup ? "确认清理" : "清理所选"}</button>` : ""}
+          <button class="ghost button-with-icon" id="image-assets-close" ${dialog.busy ? "disabled" : ""}>${icon("x")}关闭</button>
+        </div>
+      </section>
+    </div>`;
+}
+
+async function scanImageAssets(): Promise<void> {
+  if (!imageAssetLibraryDialog || imageAssetLibraryDialog.busy) return;
+  imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: true, error: "", confirmCleanup: false, lastResult: null };
+  imageAssetLibraryProgress = null;
+  render();
+  try {
+    const scan = await window.studio.scanImageAssetLibrary();
+    imageAssetLibraryDialog = { scan, busy: false, error: "", confirmCleanup: false, selectedPaths: scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: null };
+  } catch (error) {
+    imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error) };
+  }
+  render();
+}
+
+function bindImageAssetLibraryDialog(): void {
+  const dialog = imageAssetLibraryDialog;
+  if (!dialog) return;
+  const close = () => {
+    if (imageAssetLibraryDialog?.busy) return;
+    imageAssetLibraryDialog = null;
+    imageAssetLibraryProgress = null;
+    render();
+    restoreModalFocus();
+  };
+  document.querySelector("#image-assets-close")?.addEventListener("click", close);
+  document.querySelector("#image-asset-library-backdrop")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) close();
+  });
+  document.querySelector("#image-assets-rescan")?.addEventListener("click", () => void scanImageAssets());
+  document.querySelector("#image-assets-organize")?.addEventListener("click", async () => {
+    if (!imageAssetLibraryDialog || imageAssetLibraryDialog.busy) return;
+    imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: true, error: "", lastResult: null };
+    imageAssetLibraryProgress = null;
+    render();
+    try {
+      const result = await window.studio.organizeImageAssetLibrary();
+      imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "organize") };
+      showMessage(`素材库整理完成：归档 ${result.archivedFiles} 个外部素材、迁移 ${result.reorganizedFiles} 个旧目录文件、更新 ${result.updatedReferences} 处引用；原文件未删除。`);
+    } catch (error) {
+      imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error) };
+    }
+    render();
+  });
+  document.querySelector("#image-assets-cleanup")?.addEventListener("click", async () => {
+    if (!imageAssetLibraryDialog || imageAssetLibraryDialog.busy) return;
+    if (!imageAssetLibraryDialog.confirmCleanup) {
+      const selectedPaths = [...document.querySelectorAll<HTMLInputElement>("[data-orphan-path]:checked")].map((item) => item.dataset.orphanPath || "").filter(Boolean);
+      imageAssetLibraryDialog = { ...imageAssetLibraryDialog, confirmCleanup: true, selectedPaths };
+      render();
+      return;
+    }
+    const paths = imageAssetLibraryDialog.selectedPaths;
+    imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: true, error: "", confirmCleanup: false, lastResult: null };
+    imageAssetLibraryProgress = null;
+    render();
+    try {
+      const result = await window.studio.cleanupImageAssetLibrary(paths);
+      imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "cleanup") };
+      showMessage(`已清理 ${result.cleanedFiles} 个孤立素材，释放 ${formatAssetBytes(result.cleanedBytes)}。`);
+    } catch (error) {
+      imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error), confirmCleanup: false };
+    }
+    render();
+  });
+  const element = document.querySelector<HTMLElement>(".image-asset-library-dialog");
+  if (element) bindModalFocus(element, close, "#image-assets-close");
+}
+
 function confirmationDialog(): string {
   if (!pendingConfirmation) return "";
   const request = pendingConfirmation;
@@ -1901,6 +2079,7 @@ function shell(content: string): string {
     <button class="history-back-top" id="history-back-top" type="button" aria-label="返回顶部" title="返回顶部">${icon("arrow-up")}</button>
     ${confirmationDialog()}
     ${directoryMigrationDialog()}
+    ${imageAssetLibraryDialogHtml()}
     ${windowCloseDialog()}
     ${upscaleDialogHtml()}`;
 }
@@ -2003,6 +2182,7 @@ function imageEditPromptInstructionOptions(): string {
   return [
     ["", "选择保持、编辑或禁止项"],
     ["保持 Picture 1 的主体身份、构图、光源方向和背景结构不变。", "保持基础画面"],
+    ["以带标记 Picture 中每一条标记说明作为具体修改清单，只执行这些说明。本条指令不新增、不替代任何标记要求；如果与某条标记说明冲突，以标记说明为准。除完成标记要求所必需的局部调整外，保持所有未标记区域和未提及内容不变。", "按标记局部修改"],
     ["只修改明确指定的区域，不要改变画面中的其他内容。", "只修改指定内容"],
     ["移除指定元素，并使用周围纹理、光影和透视自然补全区域。", "自然移除元素"],
     ["添加指定元素，并匹配原图的透视、尺度、光照、阴影、景深和颗粒。", "自然添加元素"],
@@ -3793,6 +3973,9 @@ function settingsPage(): string {
   const autoImageOutputDirectory = comfyOutputRoot
     ? `${comfyOutputRoot.replace(/[\\/]+$/u, "")}\\Images`
     : "";
+  const autoImageInputLibraryDirectory = environmentScan?.comfyRoot
+    ? `${environmentScan.comfyRoot.replace(/[\\/]+$/u, "")}\\input\\LocalVideoStudio`
+    : "";
   const videoOutputDirectoryValue = settings.outputDirectory || autoVideoOutputDirectory;
   const imageOutputDirectoryPlaceholder = autoImageOutputDirectory ||
     "自动：当前 ComfyUI\\output\\Images";
@@ -3849,12 +4032,22 @@ function settingsPage(): string {
         <div id="connection-result" class="connection-result muted">尚未单独测试连接</div>
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>文件路径</h2><span class="muted">扫描结果可以一键写入，也可以手动定位</span></div></div>
-        <div class="settings-grid two">
-          <label>ComfyUI 模型目录<div class="input-action"><input id="model-directory" value="${escapeHtml(effectiveModelDirectory)}" placeholder="扫描或选择 models 目录"><button class="secondary button-with-icon" id="pick-model-directory">${icon("folder-open")}选择</button></div></label>
-          <label>视频输出目录<div class="input-action"><input id="output-directory" data-auto-directory="${escapeHtml(autoVideoOutputDirectory)}" value="${escapeHtml(videoOutputDirectoryValue)}" placeholder="自动：当前 ComfyUI\\output\\Videos"><button class="secondary button-with-icon" id="pick-output-directory">${icon("folder-open")}选择</button></div></label>
-          <label>图片输出目录<div class="input-action"><input id="image-output-directory" data-auto-directory="${escapeHtml(autoImageOutputDirectory)}" value="${escapeHtml(settings.imageOutputDirectory || autoImageOutputDirectory)}" placeholder="${escapeHtml(imageOutputDirectoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-image-output-directory">${icon("folder-open")}选择</button></div></label>
+        <div class="section-heading"><div><h2>文件路径</h2><span class="muted">先确认生成结果保存位置，再管理 ComfyUI 使用的素材与模型</span></div></div>
+        <div class="path-settings-group primary-paths">
+          <div class="path-settings-caption"><strong>输出位置</strong><span>视频和图片生成结果分别保存</span></div>
+          <div class="settings-grid two">
+            <label>视频输出目录<div class="input-action"><input id="output-directory" data-auto-directory="${escapeHtml(autoVideoOutputDirectory)}" value="${escapeHtml(videoOutputDirectoryValue)}" placeholder="自动：当前 ComfyUI\\output\\Videos"><button class="secondary button-with-icon" id="pick-output-directory">${icon("folder-open")}选择</button></div></label>
+            <label>图片输出目录<div class="input-action"><input id="image-output-directory" data-auto-directory="${escapeHtml(autoImageOutputDirectory)}" value="${escapeHtml(settings.imageOutputDirectory || autoImageOutputDirectory)}" placeholder="${escapeHtml(imageOutputDirectoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-image-output-directory">${icon("folder-open")}选择</button></div></label>
+          </div>
         </div>
+        <div class="path-settings-group resource-paths">
+          <div class="path-settings-caption"><strong>ComfyUI 资源</strong><span>输入素材和本地模型所在位置</span></div>
+          <div class="settings-grid two">
+            <label>输入素材库<div class="input-action"><input id="image-input-library-directory" value="${escapeHtml(settings.imageInputLibraryDirectory || autoImageInputLibraryDirectory)}" placeholder="等待识别当前 ComfyUI 数据目录"><button class="secondary button-with-icon" id="pick-image-input-library-directory">${icon("folder-open")}选择</button></div></label>
+            <label>模型目录<div class="input-action"><input id="model-directory" value="${escapeHtml(effectiveModelDirectory)}" placeholder="扫描或选择 models 目录"><button class="secondary button-with-icon" id="pick-model-directory">${icon("folder-open")}选择</button></div></label>
+          </div>
+        </div>
+        <div class="asset-library-settings-row"><div><strong>素材库维护</strong><span class="muted">归档旧历史引用，并检查未被使用的输入素材。</span></div><button class="secondary button-with-icon" id="open-image-asset-library">${icon("package-open")}整理素材库</button></div>
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>下载代理</h2><span class="muted">用于节点、Python 依赖、工作流及节点运行时模型下载；不会影响 ComfyUI 本地连接。</span></div><span class="model-badge">${settings.proxyEnabled ? "已开启" : "已关闭"}</span></div>
@@ -5365,6 +5558,7 @@ function bindShell(): void {
   }
   bindConfirmationDialog();
   bindDirectoryMigrationDialog();
+  bindImageAssetLibraryDialog();
   bindWindowCloseDialog();
 }
 
@@ -5409,6 +5603,13 @@ async function saveDraftImmediately(draft: Draft): Promise<void> {
 }
 
 function formatBytes(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+function formatAssetBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(bytes < 10 * 1024 ** 2 ? 1 : 0)} MB`;
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
@@ -7496,6 +7697,7 @@ function formSettings(): Settings {
     modelDirectory: value("model-directory", base.modelDirectory),
     outputDirectory: directoryValue("output-directory", base.outputDirectory),
     imageOutputDirectory: directoryValue("image-output-directory", base.imageOutputDirectory),
+    imageInputLibraryDirectory: directoryValue("image-input-library-directory", base.imageInputLibraryDirectory),
     defaultVideoModel: value("default-video-model", base.defaultVideoModel),
     defaultImageModel: value("default-image-model", base.defaultImageModel),
     defaultImageQualityProfile: value("image-quality-profile", base.defaultImageQualityProfile),
@@ -7547,6 +7749,7 @@ async function saveSettingsFromUi(
     previousSettings.modelDirectory !== nextSettings.modelDirectory ||
     previousSettings.outputDirectory !== nextSettings.outputDirectory ||
     previousSettings.imageOutputDirectory !== nextSettings.imageOutputDirectory ||
+    previousSettings.imageInputLibraryDirectory !== nextSettings.imageInputLibraryDirectory ||
     previousSettings.lmStudioInstallDirectory !== nextSettings.lmStudioInstallDirectory ||
     previousSettings.promptModelDirectory !== nextSettings.promptModelDirectory ||
     previousSettings.promptLlamaServerPath !== nextSettings.promptLlamaServerPath;
@@ -8143,6 +8346,24 @@ function bindSettings(): void {
     settingsDraft = formSettings();
     syncSettingsDirtyUi();
   });
+  document.querySelector("#pick-image-input-library-directory")?.addEventListener("click", async () => {
+    const input = document.querySelector<HTMLInputElement>("#image-input-library-directory");
+    const directory = await window.studio.pickDirectory(input?.value, true);
+    if (!directory || !input) return;
+    input.value = directory;
+    settingsDraft = formSettings();
+    syncSettingsDirtyUi();
+  });
+  document.querySelector("#open-image-asset-library")?.addEventListener("click", () => {
+    if (settingsHaveUnsavedChanges()) {
+      showMessage("请先保存素材库目录设置，再开始整理。", false);
+      return;
+    }
+    rememberModalFocus();
+    imageAssetLibraryDialog = { scan: null, busy: false, error: "", confirmCleanup: false, selectedPaths: [], lastResult: null };
+    render();
+    void scanImageAssets();
+  });
   document.querySelector("[data-pick-prompt-model-directory]")?.addEventListener("click", async () => {
     const directory = await window.studio.pickDirectory();
     const input = document.querySelector<HTMLInputElement>("#prompt-model-directory");
@@ -8206,6 +8427,22 @@ window.studio.onStateChanged((nextState) => {
 window.studio.onHistoryMigrationProgress((progress) => {
   historyMigrationProgress = progress;
   if (pendingDirectoryMigration) render();
+});
+
+window.studio.onImageAssetLibraryProgress((progress) => {
+  imageAssetLibraryProgress = progress;
+  const message = document.querySelector<HTMLElement>("#image-assets-progress-message");
+  if (message) message.textContent = progress.message;
+  const progressElement = document.querySelector<HTMLElement>("#image-assets-progress");
+  if (progressElement) {
+    const value = imageAssetProgressPercent(progress, true);
+    progressElement.setAttribute("aria-valuenow", String(value));
+    progressElement.querySelector<HTMLElement>("span")?.style.setProperty("width", `${value}%`);
+  }
+  const phase = document.querySelector<HTMLElement>("#image-assets-progress-phase");
+  if (phase) phase.textContent = imageAssetPhaseLabel(progress.phase);
+  const count = document.querySelector<HTMLElement>("#image-assets-progress-count");
+  if (count) count.textContent = progress.total ? `${progress.current} / ${progress.total}` : "准备中";
 });
 
 window.studio.onTaskPreview((preview) => {

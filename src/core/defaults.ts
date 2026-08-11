@@ -115,6 +115,7 @@ export function createDefaultSettings(): Settings {
     imagePromptPresets: createDefaultImagePromptPresets(),
     outputDirectory: "",
     imageOutputDirectory: "",
+    imageInputLibraryDirectory: "",
     modelDirectory: "",
     defaultVideoModel: "minimax_h3_fl2va",
     defaultImageModel: "qwen-image-edit-2511",
@@ -133,6 +134,7 @@ export function createDefaultSettings(): Settings {
     safeCancel: true,
     autoRetryFailedTasks: true,
     autoRetryCount: 2,
+    uiLocale: "zh-CN",
     promptLanguage: "auto",
     promptCreativity: 0.7,
     defaultUpscaleModel: "seedvr2",
@@ -147,7 +149,7 @@ export function createDefaultSettings(): Settings {
 
 export function createDefaultState(): AppState {
   return {
-    schemaVersion: 6,
+    schemaVersion: 8,
     draft: createDefaultDraft(),
     imageDraft: createDefaultImageEditDraft(),
     settings: createDefaultSettings(),

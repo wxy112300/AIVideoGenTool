@@ -5,6 +5,8 @@ export type TaskStatus =
   | "failed"
   | "cancelled";
 
+export type UiLocale = "zh-CN" | "en-US";
+
 export interface PromptVersion {
   id: string;
   label: string;
@@ -74,6 +76,9 @@ export interface ImageReference {
   height: number;
   role?: ImageReferenceRole;
   markup?: ImageMarkupData;
+  contentHash?: string;
+  managedRelativePath?: string;
+  originalPath?: string;
 }
 
 export type ImageReferenceSnapshot = ImageReference;
@@ -163,6 +168,7 @@ export interface Settings {
   imagePromptPresets: Record<ImagePromptPreset, string>;
   outputDirectory: string;
   imageOutputDirectory: string;
+  imageInputLibraryDirectory: string;
   modelDirectory: string;
   defaultVideoModel: string;
   defaultImageModel: string;
@@ -181,6 +187,7 @@ export interface Settings {
   safeCancel: boolean;
   autoRetryFailedTasks: boolean;
   autoRetryCount: 1 | 2 | 3 | 4 | 5;
+  uiLocale?: UiLocale;
   promptLanguage: "auto" | "zh" | "en";
   promptCreativity: number;
   defaultUpscaleModel: string;
@@ -430,7 +437,7 @@ export interface HistoryAsset {
 }
 
 export interface AppState {
-  schemaVersion: 6;
+  schemaVersion: number;
   draft: Draft;
   imageDraft: ImageEditDraft;
   settings: Settings;
@@ -758,6 +765,49 @@ export interface HistoryMigrationProgress {
   warningCount: number;
 }
 
+export type ImageAssetLibraryPhase =
+  | "scanning"
+  | "archiving"
+  | "verifying"
+  | "committing"
+  | "cleaning"
+  | "completed";
+
+export interface ImageAssetLibraryProgress {
+  phase: ImageAssetLibraryPhase;
+  current: number;
+  total: number;
+  message: string;
+}
+
+export interface ImageAssetLibraryFile {
+  absolutePath: string;
+  relativePath: string;
+  size: number;
+}
+
+export interface ImageAssetLibraryScan {
+  libraryDirectory: string;
+  totalReferences: number;
+  managedReferences: number;
+  archiveCandidates: number;
+  missingReferences: string[];
+  orphanFiles: ImageAssetLibraryFile[];
+  archiveBytes: number;
+  orphanBytes: number;
+}
+
+export interface ImageAssetLibraryResult {
+  operationId?: string;
+  scan: ImageAssetLibraryScan;
+  archivedFiles: number;
+  reorganizedFiles: number;
+  updatedReferences: number;
+  cleanedFiles: number;
+  cleanedDirectories: number;
+  cleanedBytes: number;
+}
+
 export interface AppApi {
   getState(): Promise<AppState>;
   getAppVersion(): Promise<string>;
@@ -839,6 +889,10 @@ export interface AppApi {
   onWindowCloseRequest(callback: (request: WindowCloseRequest) => void): () => void;
   onAttentionInstallLog(callback: (message: string) => void): () => void;
   onHistoryMigrationProgress(callback: (progress: HistoryMigrationProgress) => void): () => void;
+  scanImageAssetLibrary(): Promise<ImageAssetLibraryScan>;
+  organizeImageAssetLibrary(): Promise<ImageAssetLibraryResult>;
+  cleanupImageAssetLibrary(paths: string[]): Promise<ImageAssetLibraryResult>;
+  onImageAssetLibraryProgress(callback: (progress: ImageAssetLibraryProgress) => void): () => void;
 }
 
 declare global {

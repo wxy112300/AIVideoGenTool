@@ -89,6 +89,7 @@ function sanitizeMeta(meta: Record<string, unknown> | undefined): Record<string,
 
 const displayScopeNames: Record<string, string> = {
   app: "App",
+  assets: "Assets",
   comfy: "ComfyUI",
   environment: "Environment",
   performance: "Performance",

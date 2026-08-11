@@ -11,7 +11,7 @@ import {
   type MenuItemConstructorOptions
 } from "electron";
 import { createReadStream, promises as fs } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -28,6 +28,7 @@ import type {
   HistoryAsset,
   HistoryFile,
   HistoryMigrationProgress,
+  ImageAssetLibraryProgress,
   ImageGenerationQueueTask,
   ImageAssetVersion,
   ImageEditDraft,
@@ -45,6 +46,7 @@ import type {
   WindowCloseResponse
 } from "../src/types.js";
 import { createOutputFilename } from "../src/core/filename.js";
+import { normalizeUiLocale } from "../src/core/i18n.js";
 import {
   classifyFailureForRecovery,
   nextH3AttentionModeAfterCudaFailure,
@@ -154,6 +156,12 @@ import {
   rollbackVideoHistoryMigration,
   type PreparedVideoHistoryMigration
 } from "./services/video-history-migration.js";
+import {
+  archiveImageReferences,
+  cleanupImageAssetLibrary,
+  organizeImageAssetLibrary,
+  scanImageAssetLibrary
+} from "./services/image-asset-library.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const studioProductName = "Local Video Studio";
@@ -232,6 +240,7 @@ let mainWindow: BrowserWindow | null = null;
 let store: JsonStore;
 let rendererHasUnsavedSettings = false;
 let historyMigrationRunning = false;
+let imageAssetLibraryRunning = false;
 let pendingWindowCloseRequest: WindowCloseRequest | null = null;
 let queueWorker: Promise<void> | null = null;
 let activeController: AbortController | null = null;
@@ -917,6 +926,34 @@ async function interruptForExit(waitForWorker: boolean): Promise<{
 
 function sendHistoryMigrationProgress(progress: HistoryMigrationProgress): void {
   mainWindow?.webContents.send("history-migration:progress", progress);
+}
+
+function sendImageAssetLibraryProgress(progress: ImageAssetLibraryProgress): void {
+  mainWindow?.webContents.send("image-assets:progress", progress);
+}
+
+async function effectiveImageInputLibraryDirectory(settings: Settings): Promise<string> {
+  const configured = settings.imageInputLibraryDirectory.trim();
+  if (configured) return path.resolve(configured);
+  const outputRoot = await resolveComfyOutputDirectory(settings);
+  if (!outputRoot) {
+    throw new Error("无法确定 ComfyUI input 目录，请先选择 ComfyUI 实例或手动设置图片素材库目录。");
+  }
+  return path.join(path.dirname(path.resolve(outputRoot)), "input", "LocalVideoStudio");
+}
+
+async function materializeDefaultImageInputLibraryDirectory(): Promise<void> {
+  if (store.get().settings.imageInputLibraryDirectory.trim()) return;
+  const directory = await effectiveImageInputLibraryDirectory(store.get().settings).catch(() => "");
+  if (!directory) return;
+  await store.update((state) => {
+    if (!state.settings.imageInputLibraryDirectory.trim()) {
+      state.settings.imageInputLibraryDirectory = directory;
+    }
+  });
+  appLogger.info("settings", "image-input-library-defaulted", "Default image input library was saved", {
+    directory
+  });
 }
 
 async function effectiveVideoOutputDirectory(settings: Settings): Promise<string> {
@@ -2728,6 +2765,16 @@ function registerIpc(): void {
     if (historyMigrationRunning) {
       throw new Error("当前正在迁移历史视频，请等待本次操作完成。");
     }
+    if (!settings.imageInputLibraryDirectory.trim()) {
+      settings = {
+        ...settings,
+        imageInputLibraryDirectory: await effectiveImageInputLibraryDirectory(settings)
+      };
+    }
+    settings = {
+      ...settings,
+      uiLocale: normalizeUiLocale(settings.uiLocale)
+    };
     const previous = store.get().settings;
     const outputDirectoryChanged = previous.outputDirectory.trim() !== settings.outputDirectory.trim();
     const directories = outputDirectoryChanged || mode === "migrate-video-history"
@@ -2900,6 +2947,125 @@ function registerIpc(): void {
       properties: ["openDirectory"]
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+  ipcMain.handle("image-assets:scan", async () => {
+    if (imageAssetLibraryRunning) throw new Error("图片素材库正在处理中，请稍候。");
+    imageAssetLibraryRunning = true;
+    const operationId = randomUUID().slice(0, 8);
+    try {
+      const snapshot = store.get();
+      const library = await effectiveImageInputLibraryDirectory(snapshot.settings);
+      appLogger.info("assets", "image-library-scan-started", "开始扫描图片素材库", {
+        operationId,
+        projectCount: snapshot.imageHistory.length,
+        queueCount: snapshot.queue.filter((task) => task.taskType === "image-generation").length
+      });
+      const result = await scanImageAssetLibrary(snapshot, library, sendImageAssetLibraryProgress);
+      appLogger.info("assets", "image-library-scan-completed", "图片素材库扫描完成", {
+        operationId,
+        totalReferences: result.totalReferences,
+        managedReferences: result.managedReferences,
+        archiveCandidates: result.archiveCandidates,
+        missingReferences: result.missingReferences.length,
+        orphanCount: result.orphanFiles.length
+      });
+      return result;
+    } catch (error) {
+      appLogger.error("assets", "image-library-scan-failed", "图片素材库扫描失败", {
+        operationId,
+        error: safeLogErrorMessage(error)
+      });
+      throw error;
+    } finally {
+      imageAssetLibraryRunning = false;
+    }
+  });
+  ipcMain.handle("image-assets:organize", async () => {
+    if (imageAssetLibraryRunning) throw new Error("图片素材库正在处理中，请稍候。");
+    if (store.get().queueRunning) throw new Error("队列运行期间不能整理图片素材库，请先暂停或等待任务完成。");
+    imageAssetLibraryRunning = true;
+    const operationId = randomUUID().slice(0, 8);
+    try {
+      const snapshot = store.get();
+      const library = await effectiveImageInputLibraryDirectory(snapshot.settings);
+      appLogger.info("assets", "image-library-organize-started", "开始归档并修复图片素材库", {
+        operationId,
+        projectCount: snapshot.imageHistory.length,
+        queueCount: snapshot.queue.filter((task) => task.taskType === "image-generation").length
+      });
+      const prepared = await organizeImageAssetLibrary(snapshot, library, sendImageAssetLibraryProgress);
+      const next = await store.update((state) => {
+        state.imageDraft = prepared.state.imageDraft;
+        state.imageHistory = prepared.state.imageHistory;
+        const preparedTasks = new Map(
+          prepared.state.queue
+            .filter((task): task is ImageGenerationQueueTask => task.taskType === "image-generation")
+            .map((task) => [task.id, task])
+        );
+        for (const task of state.queue) {
+          if (task.taskType !== "image-generation") continue;
+          const preparedTask = preparedTasks.get(task.id);
+          if (preparedTask) task.pictures = preparedTask.pictures;
+        }
+      });
+      sendState(next);
+      sendImageAssetLibraryProgress({ phase: "completed", current: 1, total: 1, message: "图片素材库整理完成" });
+      appLogger.info("assets", "image-library-organize-completed", "图片素材库整理完成，历史引用已保存，原文件和旧分片副本未删除", {
+        operationId,
+        archivedCount: prepared.result.archivedFiles,
+        reorganizedCount: prepared.result.reorganizedFiles,
+        updatedReferences: prepared.result.updatedReferences,
+        remainingArchiveCandidates: prepared.result.scan.archiveCandidates,
+        missingReferences: prepared.result.scan.missingReferences.length,
+        orphanCount: prepared.result.scan.orphanFiles.length
+      });
+      return { ...prepared.result, operationId };
+    } catch (error) {
+      appLogger.error("assets", "image-library-organize-failed", "图片素材库归档修复失败，历史引用未提交", {
+        operationId,
+        error: safeLogErrorMessage(error)
+      });
+      throw error;
+    } finally {
+      imageAssetLibraryRunning = false;
+    }
+  });
+  ipcMain.handle("image-assets:cleanup", async (_event, paths: string[]) => {
+    if (imageAssetLibraryRunning) throw new Error("图片素材库正在处理中，请稍候。");
+    if (store.get().queueRunning) throw new Error("队列运行期间不能清理图片素材库，请先暂停或等待任务完成。");
+    imageAssetLibraryRunning = true;
+    const operationId = randomUUID().slice(0, 8);
+    try {
+      const snapshot = store.get();
+      const library = await effectiveImageInputLibraryDirectory(snapshot.settings);
+      appLogger.info("assets", "image-library-cleanup-started", "开始清理未被引用的图片素材", {
+        operationId,
+        requestedCount: Array.isArray(paths) ? paths.length : 0
+      });
+      const result = await cleanupImageAssetLibrary(
+        snapshot,
+        library,
+        Array.isArray(paths) ? paths : [],
+        sendImageAssetLibraryProgress
+      );
+      sendImageAssetLibraryProgress({ phase: "completed", current: 1, total: 1, message: "素材库清理完成" });
+      appLogger.info("assets", "image-library-cleanup-completed", "图片素材库清理完成", {
+        operationId,
+        cleanedCount: result.cleanedFiles,
+        cleanedDirectoryCount: result.cleanedDirectories,
+        cleanedBytes: result.cleanedBytes,
+        remainingOrphanCount: result.scan.orphanFiles.length
+      });
+      return { ...result, operationId };
+    } catch (error) {
+      appLogger.error("assets", "image-library-cleanup-failed", "图片素材库清理失败", {
+        operationId,
+        error: safeLogErrorMessage(error)
+      });
+      throw error;
+    } finally {
+      imageAssetLibraryRunning = false;
+    }
   });
   ipcMain.handle("file:read-image", async (_event, filename: string) => {
     if (!filename) return null;
@@ -3491,9 +3657,30 @@ function registerIpc(): void {
       normalized.qualityProfile
     );
     const outputTarget = await resolveImageOutputTarget(store.get().settings);
+    const imageLibraryDirectory = await effectiveImageInputLibraryDirectory(store.get().settings);
+    const archiveOperationId = randomUUID().slice(0, 8);
+    appLogger.info("assets", "image-input-archive-started", "开始归档图片任务输入素材", {
+      operationId: archiveOperationId,
+      referenceCount: normalized.pictures.length
+    });
+    let archivedPictures: typeof normalized.pictures;
+    try {
+      archivedPictures = await archiveImageReferences(normalized.pictures, imageLibraryDirectory);
+      appLogger.info("assets", "image-input-archive-completed", "图片任务输入素材已归档并校验", {
+        operationId: archiveOperationId,
+        referenceCount: archivedPictures.length,
+        uniqueAssets: new Set(archivedPictures.map((picture) => picture.contentHash).filter(Boolean)).size
+      });
+    } catch (error) {
+      appLogger.error("assets", "image-input-archive-failed", "图片任务输入素材归档失败，任务未加入队列", {
+        operationId: archiveOperationId,
+        error: safeLogErrorMessage(error)
+      });
+      throw error;
+    }
     const preparedDraft = normalizeImageEditDraft({
       ...normalized,
-      pictures: normalized.pictures.map((picture) => ({
+      pictures: archivedPictures.map((picture) => ({
         ...picture,
         ...readImageDimensions(picture.absolutePath)
       })),
@@ -3902,6 +4089,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   store = new JsonStore(path.join(app.getPath("userData"), "studio-state.json"));
   await store.load();
+  await materializeDefaultImageInputLibraryDirectory();
   appLogger.info("app", "state-loaded", "Application state loaded", {
     queueCount: store.get().queue.length,
     historyCount: store.get().history.length,

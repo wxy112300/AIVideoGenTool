@@ -5,6 +5,7 @@ import type {
   EnhanceRequest,
   EnvironmentIssue,
   HistoryMigrationProgress,
+  ImageAssetLibraryProgress,
   Settings,
   SettingsSaveMode,
   WindowCloseRequest,
@@ -45,6 +46,9 @@ const api: AppApi = {
     ipcRenderer.invoke("logs:user-action", action, meta),
   pickDirectory: (defaultPath?: string, createIfMissing?: boolean) =>
     ipcRenderer.invoke("file:pick-directory", defaultPath, createIfMissing),
+  scanImageAssetLibrary: () => ipcRenderer.invoke("image-assets:scan"),
+  organizeImageAssetLibrary: () => ipcRenderer.invoke("image-assets:organize"),
+  cleanupImageAssetLibrary: (paths) => ipcRenderer.invoke("image-assets:cleanup", paths),
   readImage: (path: string) => ipcRenderer.invoke("file:read-image", path),
   readHistoryCover: (key: string, sourcePath: string) =>
     ipcRenderer.invoke("history-cover:read", key, sourcePath),
@@ -127,6 +131,12 @@ const api: AppApi = {
       callback(progress as HistoryMigrationProgress);
     ipcRenderer.on("history-migration:progress", listener);
     return () => ipcRenderer.removeListener("history-migration:progress", listener);
+  },
+  onImageAssetLibraryProgress: (callback: (progress: ImageAssetLibraryProgress) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: unknown) =>
+      callback(progress as ImageAssetLibraryProgress);
+    ipcRenderer.on("image-assets:progress", listener);
+    return () => ipcRenderer.removeListener("image-assets:progress", listener);
   }
 };
 

@@ -23,6 +23,7 @@ describe("draft defaults", () => {
     expect(createDefaultSettings().vramReserveGb).toBe(1);
     expect(createDefaultSettings().autoRetryFailedTasks).toBe(true);
     expect(createDefaultSettings().autoRetryCount).toBe(2);
+    expect(createDefaultSettings().uiLocale).toBe("zh-CN");
     expect(createDefaultSettings().defaultVideoModel).toBe("minimax_h3_fl2va");
     expect(createDefaultImageEditDraft().qualityProfile).toBe("balanced-20");
     expect(createDefaultImageEditDraft().targetResolution).toBe("source");
@@ -38,6 +39,7 @@ describe("draft defaults", () => {
     expect(createDefaultSettings().promptModelId).toBe("qwen/qwen3.5-4b");
     expect(createDefaultSettings().promptModelDirectory).toBe("");
     expect(createDefaultSettings().imageOutputDirectory).toBe("");
+    expect(createDefaultSettings().imageInputLibraryDirectory).toBe("");
     expect(createDefaultSettings().imagePromptPresets.faithful).not.toBe("");
     expect(createDefaultSettings().imagePromptPresets["detail-enhance"]).not.toBe("");
   });

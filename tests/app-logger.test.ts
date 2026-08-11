@@ -84,4 +84,30 @@ describe("application logger", () => {
     expect(logger.recent().records).toHaveLength(1);
     expect(await fs.stat(path.join(directory, "app-2026-08-08.log")).catch(() => null)).not.toBeNull();
   });
+
+  it("records image asset maintenance results as searchable audit entries", async () => {
+    const directory = await temporaryDirectory();
+    const logger = new AppLogger({
+      directory,
+      now: () => new Date("2026-08-11T08:00:00.000Z")
+    });
+
+    logger.info("assets", "image-library-organize-completed", "图片素材库归档修复完成，历史引用已保存", {
+      operationId: "a1b2c3d4",
+      archivedCount: 4,
+      updatedReferences: 9,
+      remainingArchiveCandidates: 0,
+      missingReferences: 1
+    });
+
+    const snapshot = logger.recent();
+    expect(snapshot.text).toContain("Assets.ImageLibraryOrganizeCompleted");
+    expect(snapshot.text).toContain("OperationId=a1b2c3d4");
+    expect(snapshot.text).toContain("ArchivedCount=4");
+    expect(snapshot.records[0]?.meta).toMatchObject({
+      updatedReferences: 9,
+      remainingArchiveCandidates: 0,
+      missingReferences: 1
+    });
+  });
 });
