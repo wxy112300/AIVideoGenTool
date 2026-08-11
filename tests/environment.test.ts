@@ -976,6 +976,15 @@ describe("ComfyUI environment candidates", () => {
       "https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/resolve/main/flux-2-klein-base-4b-fp8.safetensors"
     );
   });
+
+  it("uses the current FLUX.2 Klein Qwen3 4B text encoder URL", () => {
+    const profile = evaluateModelProfiles([]).find((item) => item.id === "flux2-klein-4b");
+    const component = profile?.components.find((item) => item.label.includes("文本编码器"));
+
+    expect(component?.installGuide.downloadUrl).toBe(
+      "https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors"
+    );
+  });
 });
 
 describe("download proxy settings", () => {

@@ -623,11 +623,11 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     notes: "官方 4B Base 图片编辑模型；ComfyUI blueprint 采用 FP8 文件名和 20 步采样，官方称约 13GB VRAM，适合 RTX 4090。"
   },
   "flux2-klein-4b:Qwen3 4B FLUX.2 文本编码器": {
-    sourceLabel: "Comfy-Org / Qwen3",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3",
+    sourceLabel: "Comfy-Org / FLUX.2 Klein",
+    downloadUrl: "https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "qwen_3_4b.safetensors",
-    notes: "FLUX.2 Klein 官方 ComfyUI blueprint 使用的 Qwen3 4B 文本编码器。"
+    notes: "采用 Comfy-Org FLUX.2 Klein 官方 workflow 当前引用的 Qwen3 4B 文本编码器。"
   },
   "flux2-klein-4b:FLUX.2 VAE": {
     sourceLabel: "Comfy-Org / FLUX.2",

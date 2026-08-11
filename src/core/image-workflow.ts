@@ -4,7 +4,8 @@ import type {
   ImageOutputFormat,
   ImageReference,
   ImageReferenceSnapshot,
-  ImageTargetResolution
+  ImageTargetResolution,
+  ModelScanProfile
 } from "../types.js";
 import { extractComfyOutputFiles } from "./comfy-output.js";
 
@@ -22,6 +23,12 @@ export interface ImageModelCapability {
   maxPictures: number;
   supportedFormats: ImageOutputFormat[];
   qualityProfiles: ImageQualityProfile[];
+}
+
+export function cachedImageProfileAllowsEnqueue(
+  profile: Pick<ModelScanProfile, "category" | "integrated"> | undefined
+): boolean {
+  return profile === undefined || (profile.category === "image" && profile.integrated);
 }
 
 export interface CompiledImagePrompt {
@@ -250,9 +257,9 @@ function orderedPictures(pictures: ImageReferenceSnapshot[]): ImageReferenceSnap
 }
 
 export function imageReferenceInputPath(
-  picture: Pick<ImageReference, "absolutePath" | "markup">
+  picture: Pick<ImageReference, "absolutePath">
 ): string {
-  return picture.markup?.renderedPath?.trim() || picture.absolutePath.trim();
+  return picture.absolutePath.trim();
 }
 
 export function imageMarkupPromptContext(
@@ -262,9 +269,43 @@ export function imageMarkupPromptContext(
   if (!marked.length) return "";
   return [
     "Visual annotation instructions:",
-    "Some Pictures contain temporary colored marks, boxes, arrows, labels, or text added only to identify edit targets. Follow their instructions, but remove every annotation from the final image and reconstruct the underlying pixels naturally.",
+    "Canvas annotations are location-only editing instructions stored alongside the clean source Pictures. Use their notes to identify the intended target, but never add annotation graphics, labels, arrows, boxes, or note text to the output.",
     "The per-annotation notes below are the authoritative edit list. A general preservation instruction may protect unrelated content, but must never override, broaden, or replace a specific annotation note.",
     ...marked.map((picture) => `Picture ${picture.pictureNumber}: ${picture.markup?.summary || `${picture.markup?.objectCount ?? 0} marked target(s)`}`)
+  ].join("\n");
+}
+
+interface CompiledMarkupGuide {
+  sourcePictureNumber: number;
+  sourceInputNumber: number;
+  guideInputNumber: number;
+  summary: string;
+}
+
+function markupGuidePicture(
+  picture: ImageReferenceSnapshot,
+  compiledPictureNumber: number
+): ImageReferenceSnapshot {
+  return {
+    ...picture,
+    id: `${picture.id}-markup-guide-r${picture.markup?.revision ?? 0}`,
+    pictureNumber: compiledPictureNumber,
+    absolutePath: picture.markup?.renderedPath.trim() ?? "",
+    role: "auto",
+    markup: undefined
+  };
+}
+
+function compiledMarkupPromptContext(guides: CompiledMarkupGuide[]): string {
+  if (!guides.length) return "";
+  return [
+    "Visual annotation reference contract:",
+    "The clean source Picture is the image to edit. Its paired annotation-guide Picture is location-only reference material, not output content.",
+    "Never reproduce any colored mark, border, box, arrow, label, letter, number, note, or annotation-guide text. Reconstruct clean natural pixels where the requested edit is made, and preserve unmarked content.",
+    ...guides.map((guide) => [
+      `Picture ${guide.sourceInputNumber} is the clean source for original Picture ${guide.sourcePictureNumber}; Picture ${guide.guideInputNumber} is only its temporary annotation guide.`,
+      `Requested edits for Picture ${guide.sourceInputNumber}: ${guide.summary}`
+    ].join(" "))
   ].join("\n");
 }
 
@@ -272,7 +313,8 @@ function compileImagePromptWithLimit(
   prompt: string,
   pictures: ImageReferenceSnapshot[],
   maxPictures: number,
-  modelLabel: string
+  modelLabel: string,
+  includeMarkupGuides = false
 ): CompiledImagePrompt {
   const ordered = orderedPictures(pictures);
   const usable = ordered.filter((picture) => picture.absolutePath.trim());
@@ -283,15 +325,35 @@ function compileImagePromptWithLimit(
       errors.push(`Picture ${picture.pictureNumber} 尚未添加图片。`);
     });
   const originalToCompiled = new Map<number, number>();
-  usable.forEach((picture, index) => {
+  const compiledPictures: ImageReferenceSnapshot[] = [];
+  const markupGuides: CompiledMarkupGuide[] = [];
+  usable.forEach((picture) => {
     if (originalToCompiled.has(picture.pictureNumber)) {
       errors.push(`Picture ${picture.pictureNumber} 重复，无法确定引用对象。`);
       return;
     }
-    originalToCompiled.set(picture.pictureNumber, index + 1);
+    const sourceInputNumber = compiledPictures.length + 1;
+    originalToCompiled.set(picture.pictureNumber, sourceInputNumber);
+    compiledPictures.push(picture);
+    if (includeMarkupGuides && picture.markup?.objectCount && picture.markup.renderedPath.trim()) {
+      const guideInputNumber = compiledPictures.length + 1;
+      compiledPictures.push(markupGuidePicture(picture, guideInputNumber));
+      markupGuides.push({
+        sourcePictureNumber: picture.pictureNumber,
+        sourceInputNumber,
+        guideInputNumber,
+        summary: picture.markup.summary.trim() || `${picture.markup.objectCount} marked target(s)`
+      });
+    }
   });
   if (ordered.length > maxPictures) {
     errors.push(`当前 ${modelLabel} 工作流最多支持 ${maxPictures} 张 Picture。`);
+  }
+  if (compiledPictures.length > maxPictures) {
+    const guideCount = markupGuides.length;
+    errors.push(
+      `Canvas 标记会额外占用 ${guideCount} 个标注参考输入；当前 ${modelLabel} 最多接收 ${maxPictures} 张模型输入，请减少普通参考图或清除部分标记。`
+    );
   }
 
   const referencedPictureNumbers = new Set<number>();
@@ -306,11 +368,13 @@ function compileImagePromptWithLimit(
     return `Picture ${compiledNumber}`;
   });
 
-  const compiledPictures = usable.slice(0, maxPictures);
-  const markupContext = imageMarkupPromptContext(compiledPictures);
+  const limitedPictures = compiledPictures.slice(0, maxPictures);
+  const markupContext = includeMarkupGuides
+    ? compiledMarkupPromptContext(markupGuides)
+    : imageMarkupPromptContext(usable);
   return {
     prompt: markupContext ? `${compiledPrompt.trim()}\n\n${markupContext}` : compiledPrompt,
-    pictures: compiledPictures,
+    pictures: limitedPictures,
     referencedPictureNumbers: [...referencedPictureNumbers].sort((left, right) => left - right),
     errors: [...new Set(errors)]
   };
@@ -324,7 +388,8 @@ export function compileQwenImageEditPrompt(
     prompt,
     pictures,
     qwenImageEdit2511Capability.maxPictures,
-    "Qwen 2511"
+    "Qwen 2511",
+    true
   );
 }
 
@@ -805,6 +870,13 @@ export const imageModelAdapters: Record<string, ImageModelAdapter> = {
 
 export function imageModelAdapterFor(modelId: string): ImageModelAdapter | undefined {
   return imageModelAdapters[modelId];
+}
+
+export function firstSupportedImageModelId(
+  ...candidates: Array<string | undefined>
+): string {
+  return candidates.find((candidate) => candidate && imageModelAdapterFor(candidate)) ??
+    qwenImageEdit2511Adapter.id;
 }
 
 export function imageModelCapabilityFor(modelId: string): ImageModelCapability {

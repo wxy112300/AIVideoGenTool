@@ -47,6 +47,36 @@ async function fileHash(filename: string): Promise<string> {
 
 function referenceHandles(state: AppState): ReferenceHandle[] {
   const handles: ReferenceHandle[] = [];
+  const addPathReference = (
+    sourcePath: string | undefined,
+    updatePath: (nextPath: string) => void
+  ) => {
+    if (!sourcePath?.trim()) return;
+    handles.push({
+      path: sourcePath,
+      update(nextPath) {
+        updatePath(nextPath);
+      }
+    });
+  };
+  const addVideoInputReferences = (target: {
+    startImagePath?: string;
+    endImagePath?: string;
+    h3ReferenceSlots?: Array<{ mediaType: "image" | "video"; mediaPath: string }>;
+  }) => {
+    addPathReference(target.startImagePath, (nextPath) => {
+      target.startImagePath = nextPath;
+    });
+    addPathReference(target.endImagePath, (nextPath) => {
+      target.endImagePath = nextPath;
+    });
+    target.h3ReferenceSlots?.forEach((slot) => {
+      if (slot.mediaType !== "image") return;
+      addPathReference(slot.mediaPath, (nextPath) => {
+        slot.mediaPath = nextPath;
+      });
+    });
+  };
   const addReference = (reference: ImageReference) => {
     if (!reference.absolutePath?.trim()) return;
     handles.push({
@@ -71,8 +101,10 @@ function referenceHandles(state: AppState): ReferenceHandle[] {
   };
 
   state.imageDraft.pictures.forEach(addReference);
+  addVideoInputReferences(state.draft);
   for (const task of state.queue) {
     if (task.taskType === "image-generation") task.pictures.forEach(addReference);
+    else if (task.taskType === "generation") addVideoInputReferences(task);
   }
   for (const project of state.imageHistory) {
     for (const version of project.versions) {
@@ -91,6 +123,7 @@ function referenceHandles(state: AppState): ReferenceHandle[] {
       });
     }
   }
+  state.history.forEach(addVideoInputReferences);
   return handles;
 }
 
@@ -205,6 +238,28 @@ async function archiveFile(sourcePath: string, library: string): Promise<{
     });
   }
   return { absolutePath: destination, hash, relativePath };
+}
+
+export async function archiveImagePaths(
+  sourcePaths: readonly string[],
+  libraryDirectory: string
+): Promise<string[]> {
+  const library = path.resolve(libraryDirectory);
+  await fs.mkdir(library, { recursive: true });
+  const archivedByPath = new Map<string, Awaited<ReturnType<typeof archiveFile>>>();
+  const archivedPaths: string[] = [];
+  for (const sourcePath of sourcePaths) {
+    const stat = await fs.stat(sourcePath).catch(() => null);
+    if (!stat?.isFile()) throw new Error(`图片素材不存在：${sourcePath}`);
+    const key = normalizedPath(sourcePath);
+    let archived = archivedByPath.get(key);
+    if (!archived) {
+      archived = await archiveFile(sourcePath, library);
+      archivedByPath.set(key, archived);
+    }
+    archivedPaths.push(archived.absolutePath);
+  }
+  return archivedPaths;
 }
 
 export async function archiveImageReferences(

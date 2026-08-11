@@ -105,6 +105,8 @@ import {
   normalizeImageEditDraft
 } from "./core/image-project";
 import {
+  cachedImageProfileAllowsEnqueue,
+  firstSupportedImageModelId,
   imageMarkupPromptContext,
   imageModelCapabilityFor,
   imageReferenceInputPath,
@@ -2289,8 +2291,6 @@ function imageEditPage(): string {
   const imageProfile = environmentScan?.modelProfiles.find(
     (profile) => profile.id === draft.modelId
   );
-  const lightningReady = !imageQualityProfileRequiresLightning(draft.qualityProfile) ||
-    imageLightningComponentFound(imageProfile?.components ?? []);
   const promptStatus = promptModelStatus(state.settings);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
   const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
@@ -2308,6 +2308,10 @@ function imageEditPage(): string {
         ? "使用设置中选择的 Gemma Prompt Writer 优化"
         : "使用设置中选择的提示词模型优化";
   const incompletePicture = draft.pictures.find((picture) => !picture.absolutePath);
+  const markupGuideCount = draft.modelId === "qwen-image-edit-2511"
+    ? draft.pictures.filter((picture) => picture.markup?.objectCount && picture.markup.renderedPath.trim()).length
+    : 0;
+  const imageModelInputCount = draft.pictures.length + markupGuideCount;
   const enqueueBlockReason = !draft.pictures.length
     ? "请先添加 Slot 1（Picture 1）作为基础图片"
     : !draft.pictures[0]?.absolutePath
@@ -2316,15 +2320,13 @@ function imageEditPage(): string {
         ? `请先为 Slot ${incompletePicture.pictureNumber}（Picture ${incompletePicture.pictureNumber}）添加图片`
     : draft.pictures.length > imageCapability.maxPictures
       ? `当前 ${imageCapability.name} 最多支持 ${imageCapability.maxPictures} 张 Picture`
+      : imageModelInputCount > imageCapability.maxPictures
+        ? `Canvas 标记额外占用 ${markupGuideCount} 个参考输入；请减少普通参考图或清除部分标记`
       : !prompt.text.trim()
         ? "请先填写图片编辑 Prompt"
-        : !imageProfile?.available
-          ? `请先在设置 → 图片模型中补齐 ${imageCapability.name} 组件`
-          : !imageProfile.integrated
-            ? `${imageCapability.name} 图片工作流尚未接入`
-            : !lightningReady
-                  ? "当前 4 步 Lightning 档缺少 Lightning LoRA，请先在设置中下载并扫描"
-                : "";
+        : !cachedImageProfileAllowsEnqueue(imageProfile)
+          ? `${imageCapability.name} 图片工作流尚未接入`
+          : "";
   const count = Math.min(10, Math.max(1, draft.outputCount));
   return `
     <section class="page-heading create-page-heading image-edit-page-heading">
@@ -2341,7 +2343,7 @@ function imageEditPage(): string {
     <div class="create-workspace image-edit-workspace">
       <section class="media-panel image-edit-references">
         <div class="section-heading">
-          <div><h2>参考图片</h2><span class="muted">Slot ${draft.pictures.length}/${imageCapability.maxPictures} · Picture 1 是基础输入</span></div>
+          <div><h2>参考图片</h2><span class="muted">Slot ${draft.pictures.length}/${imageCapability.maxPictures}${markupGuideCount ? ` · 模型输入 ${imageModelInputCount}/${imageCapability.maxPictures}` : ""} · Picture 1 是基础输入</span></div>
           <button class="secondary button-with-icon" id="add-image-slot" ${draft.pictures.length >= imageCapability.maxPictures ? "disabled" : ""}>${icon("plus")}添加 Slot</button>
         </div>
         <div class="image-picture-list">
@@ -2384,7 +2386,15 @@ function imageEditPage(): string {
           <label class="settings-field">随机 Seed<div class="inline-field seed-control"><input id="image-edit-seed" type="number" placeholder="留空则每张随机" value="${draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="生成随机 Seed">${icon("refresh-cw")}</button><button class="icon-button" id="clear-image-edit-seed" title="清空 Seed">${icon("x")}</button></div></label>
           <label class="settings-field range-field"><span class="range-heading"><span>生成数量</span><strong id="image-edit-count-value">${count} 张</strong></span><input id="image-edit-count" type="range" min="1" max="10" step="1" value="${count}"><span class="range-scale"><span>1</span><span>一个任务，逐张生成</span><span>10</span></span></label>
         </div></section>
-        <div class="interpolation-summary settings-summary ${enqueueBlockReason ? "unsafe" : ""}"><div><strong>${enqueueBlockReason || `一个任务 · ${count} 个${draft.seed == null ? "随机" : "相同"} Seed 顺序生成`}</strong><span>Qwen 不执行 AI 超分；高于原图短边的档位已隐藏</span></div><p>${escapeHtml(imageProfile ? imageWorkflowStatus(imageProfile) : "请先打开设置 → 图片模型，下载并扫描三项 Qwen 组件。")}</p></div>
+        <div class="interpolation-summary settings-summary ${enqueueBlockReason ? "unsafe" : ""}"><div><strong>${enqueueBlockReason || `一个任务 · ${count} 个${draft.seed == null ? "随机" : "相同"} Seed 顺序生成`}</strong><span>${escapeHtml(imageCapability.name)} 不执行 AI 超分；高于原图短边的档位已隐藏</span></div><p>${escapeHtml(
+          !imageProfile
+            ? "加入队列时会重新扫描模型文件；任务启动时再验证 ComfyUI 运行节点。"
+            : !imageProfile.available
+              ? "当前缓存扫描显示组件不完整；仍可加入队列，届时会按已保存路径重新扫描确认。"
+              : imageProfile.runtimeVerified && !imageProfile.runtimeReady
+                ? `${imageWorkflowStatus(imageProfile)}；可先入队，任务启动时会再次验证。`
+                : `${imageWorkflowStatus(imageProfile)}；加入队列时仍会复核模型文件。`
+        )}</p></div>
         <div class="submit-row composer-submit-row"><button class="ghost danger button-with-icon" id="clear-image-edit-draft">${icon("trash-2")}清空</button><button class="primary button-with-icon enqueue-button ${enqueueBusy ? "busy" : ""}" id="enqueue-image-edit" ${enqueueBlockReason || enqueueBusy ? "disabled" : ""} aria-busy="${enqueueBusy}">${icon(enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${enqueueBusy ? "加入中…" : "加入队列"}</span></button></div>
       </section>
     </div>`;
@@ -3083,19 +3093,17 @@ async function editQueueTask(taskId: string): Promise<void> {
       const imageDraft = imageEditDraftFromQueueTask(task, state.imageDraft);
       state = await window.studio.saveImageDraft(imageDraft);
       state = await window.studio.removeTask(taskId);
-      page = "create";
-      creationMode = "image-edit";
       queueActionBusy = null;
+      navigateToCreationMode("image-edit");
       showMessage("已带回图片创作页，可调整参数后重新加入队列。");
-      render();
       return;
     }
     const draft = draftFromQueueTask(task);
     if (!draft) return;
     await saveDraftImmediately(draft);
     state = await window.studio.removeTask(taskId);
-    page = "create";
     queueActionBusy = null;
+    navigateToCreationMode(draft.inputMode === "video" ? "video-extension" : "image-to-video");
     showMessage("已带回创建页，可调整参数后重新加入队列。");
   } catch (error) {
     queueActionBusy = null;
@@ -3769,7 +3777,6 @@ function isImageWorkflowReady(profile?: ModelScanProfile): boolean {
 function isImageModelSelectable(profile?: ModelScanProfile): boolean {
   return Boolean(
     profile?.category === "image" &&
-    profile.available &&
     profile.integrated
   );
 }
@@ -4970,6 +4977,16 @@ function returnToHistory(): void {
   render();
 }
 
+function navigateToCreationMode(mode: CreationMode): void {
+  creationMode = mode;
+  page = "create";
+  historyForwardTarget = null;
+  render();
+  window.requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  });
+}
+
 function returnToLastHistoryDetail(): void {
   if (page !== "history" || !historyForwardTarget) return;
   const target = historyForwardTarget;
@@ -5129,8 +5146,7 @@ async function editHistoryAsset(assetId: string): Promise<void> {
     activePromptVersion: state.draft.promptVersions.length
   };
   await saveDraftImmediately(draft);
-  page = "create";
-  render();
+  navigateToCreationMode(isExtension ? "video-extension" : "image-to-video");
 }
 
 function openHistoryContextMenu(
@@ -5349,11 +5365,23 @@ async function continueImageEdit(project: ImageHistoryProject, version: ImageAss
     showMessage("当前图片版本的本地文件不可用，无法继续编辑。", false);
     return;
   }
+  const modelId = firstSupportedImageModelId(
+    version.kind === "source" ? undefined : version.modelId,
+    state.imageDraft.modelId,
+    state.settings.defaultImageModel
+  );
+  const capability = imageModelCapabilityFor(modelId);
+  const qualityProfile = capability.qualityProfiles.some(
+    (profile) => profile.id === state.imageDraft.qualityProfile
+  )
+    ? state.imageDraft.qualityProfile
+    : capability.qualityProfiles[0]?.id ?? "native";
   const draft = normalizeImageEditDraft({
     ...state.imageDraft,
     projectId: project.id,
     parentVersionId: version.id,
-    modelId: version.modelId || state.imageDraft.modelId,
+    modelId,
+    qualityProfile,
     pictures,
     promptVersions: [{
       id: crypto.randomUUID(),
@@ -5366,10 +5394,8 @@ async function continueImageEdit(project: ImageHistoryProject, version: ImageAss
     outputFormat: "png"
   });
   state = await window.studio.saveImageDraft(draft);
-  creationMode = "image-edit";
-  page = "create";
   reportUserAction("image-history-continue-edit", { projectId: project.id, versionId: version.id });
-  render();
+  navigateToCreationMode("image-edit");
 }
 
 async function continueImageToVideo(project: ImageHistoryProject, version: ImageAssetVersion): Promise<void> {
@@ -5393,10 +5419,8 @@ async function continueImageToVideo(project: ImageHistoryProject, version: Image
     trimEndSeconds: 0,
     ratio: "source"
   });
-  creationMode = "image-to-video";
-  page = "create";
   reportUserAction("image-history-continue-video", { projectId: project.id, versionId: version.id });
-  render();
+  navigateToCreationMode("image-to-video");
 }
 
 function openImageHistoryContextMenu(
@@ -5528,6 +5552,17 @@ async function acceptConfirmation(): Promise<void> {
         if (page === "image-history-detail") historyKind = "image";
         page = "history";
       }
+    } else if (request.kind === "delete-image-version") {
+      state = await window.studio.deleteImageHistoryVersion(request.projectId, request.versionId);
+      imageHistoryThumbnailDataUrls.clear();
+      selectedHistoryVersionId = "";
+      const remainingProject = state.imageHistory.find((item) => item.id === request.projectId);
+      if (!remainingProject) {
+        selectedHistoryAssetId = "";
+        historyKind = "image";
+        page = "history";
+      }
+      showMessage("当前图片版本和对应文件已删除。", true);
     }
     pendingConfirmation = null;
     confirmationBusy = false;
@@ -6279,7 +6314,8 @@ async function selectDraftVideo(
     width: number;
     height: number;
     h3ContextLatentPath?: string;
-  }
+  },
+  renderAfterSave = true
 ): Promise<void> {
   const draft: Draft = {
     ...state.draft,
@@ -6296,7 +6332,7 @@ async function selectDraftVideo(
     ratio: "source"
   };
   await saveDraftImmediately(draft);
-  render();
+  if (renderAfterSave) render();
 }
 
 function bindVideoDrop(): void {
@@ -7857,7 +7893,6 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
         return;
       }
       try {
-        page = "create";
         await selectDraftVideo(filename, {
           assetId: asset.id,
           versionId: version.id,
@@ -7865,7 +7900,8 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
           width: version.width,
           height: version.height,
           h3ContextLatentPath: version.h3ContextLatentPath
-        });
+        }, false);
+        navigateToCreationMode("video-extension");
       } catch (error) {
         showMessage(error instanceof Error ? error.message : "无法继续创作");
       }

@@ -76,7 +76,6 @@ import {
   imageModelAdapterFor,
   imageOutputDimensions,
   imageOutputFormatFromFilename,
-  imageReferenceInputPath,
   imageLightningComponentFound,
   imageQualityProfileRequiresLightning,
   normalizeImageTargetResolution
@@ -164,6 +163,7 @@ import {
   type PreparedVideoHistoryMigration
 } from "./services/video-history-migration.js";
 import {
+  archiveImagePaths,
   archiveImageReferences,
   cleanupImageAssetLibrary,
   organizeImageAssetLibrary,
@@ -1366,13 +1366,17 @@ async function requireImageModelAssets(
 ): Promise<string> {
   const scan = await scanEnvironment(settings);
   const profile = scan.modelProfiles.find((item) => item.id === modelId);
+  const adapter = imageModelAdapterFor(modelId);
+  if (!adapter || profile?.category !== "image" || !profile.integrated) {
+    throw new Error(`当前没有 ${modelId} 的可用图片工作流适配器。`);
+  }
   if (!profile?.available) {
     const missing = profile?.components
       .filter((component) => !component.found)
       .map((component) => component.expected)
       .join("、");
     throw new Error(
-      `Qwen Image Edit 2511 组件尚未完整${missing ? `，缺少：${missing}` : ""}。`
+      `${adapter.name} 组件尚未完整${missing ? `，缺少：${missing}` : ""}。请确认设置已保存后重新扫描。`
     );
   }
   if (
@@ -2970,8 +2974,11 @@ function registerIpc(): void {
       const library = await effectiveImageInputLibraryDirectory(snapshot.settings);
       appLogger.info("assets", "image-library-scan-started", "开始扫描图片素材库", {
         operationId,
-        projectCount: snapshot.imageHistory.length,
-        queueCount: snapshot.queue.filter((task) => task.taskType === "image-generation").length
+        imageProjectCount: snapshot.imageHistory.length,
+        videoHistoryCount: snapshot.history.length,
+        queueCount: snapshot.queue.filter((task) =>
+          task.taskType === "image-generation" || task.taskType === "generation"
+        ).length
       });
       const result = await scanImageAssetLibrary(snapshot, library, sendImageAssetLibraryProgress);
       appLogger.info("assets", "image-library-scan-completed", "图片素材库扫描完成", {
@@ -3003,22 +3010,39 @@ function registerIpc(): void {
       const library = await effectiveImageInputLibraryDirectory(snapshot.settings);
       appLogger.info("assets", "image-library-organize-started", "开始归档并修复图片素材库", {
         operationId,
-        projectCount: snapshot.imageHistory.length,
-        queueCount: snapshot.queue.filter((task) => task.taskType === "image-generation").length
+        imageProjectCount: snapshot.imageHistory.length,
+        videoHistoryCount: snapshot.history.length,
+        queueCount: snapshot.queue.filter((task) =>
+          task.taskType === "image-generation" || task.taskType === "generation"
+        ).length
       });
       const prepared = await organizeImageAssetLibrary(snapshot, library, sendImageAssetLibraryProgress);
       const next = await store.update((state) => {
         state.imageDraft = prepared.state.imageDraft;
         state.imageHistory = prepared.state.imageHistory;
+        state.draft.startImagePath = prepared.state.draft.startImagePath;
+        state.draft.endImagePath = prepared.state.draft.endImagePath;
+        state.draft.h3ReferenceSlots = prepared.state.draft.h3ReferenceSlots.map((slot) => ({ ...slot }));
         const preparedTasks = new Map(
-          prepared.state.queue
-            .filter((task): task is ImageGenerationQueueTask => task.taskType === "image-generation")
-            .map((task) => [task.id, task])
+          prepared.state.queue.map((task) => [task.id, task])
         );
         for (const task of state.queue) {
-          if (task.taskType !== "image-generation") continue;
           const preparedTask = preparedTasks.get(task.id);
-          if (preparedTask) task.pictures = preparedTask.pictures;
+          if (task.taskType === "image-generation" && preparedTask?.taskType === "image-generation") {
+            task.pictures = preparedTask.pictures;
+          } else if (task.taskType === "generation" && preparedTask?.taskType === "generation") {
+            task.startImagePath = preparedTask.startImagePath;
+            task.endImagePath = preparedTask.endImagePath;
+            task.h3ReferenceSlots = preparedTask.h3ReferenceSlots?.map((slot) => ({ ...slot }));
+          }
+        }
+        const preparedHistory = new Map(prepared.state.history.map((asset) => [asset.id, asset]));
+        for (const asset of state.history) {
+          const preparedAsset = preparedHistory.get(asset.id);
+          if (!preparedAsset) continue;
+          asset.startImagePath = preparedAsset.startImagePath;
+          asset.endImagePath = preparedAsset.endImagePath;
+          asset.h3ReferenceSlots = preparedAsset.h3ReferenceSlots?.map((slot) => ({ ...slot }));
         }
       });
       sendState(next);
@@ -3669,9 +3693,47 @@ function registerIpc(): void {
         "当前工作流不支持尾帧。请选择包含 {{END_IMAGE}} 占位符的自定义 API 工作流，或移除尾帧。"
       );
     }
+    const videoInputImagePaths = (
+      isR2V
+        ? draft.h3ReferenceSlots
+          .filter((slot) => slot.mediaType === "image")
+          .map((slot) => slot.mediaPath)
+        : [draft.startImagePath, draft.endImagePath]
+    ).filter((candidate): candidate is string => Boolean(candidate.trim()));
+    const imageLibraryDirectory = await effectiveImageInputLibraryDirectory(store.get().settings);
+    const archiveOperationId = randomUUID().slice(0, 8);
+    appLogger.info("assets", "video-input-image-archive-started", "开始归档视频任务输入图片", {
+      operationId: archiveOperationId,
+      referenceCount: videoInputImagePaths.length
+    });
+    let preparedDraft = structuredClone(draft);
+    try {
+      const archivedPaths = await archiveImagePaths(videoInputImagePaths, imageLibraryDirectory);
+      const replacements = new Map(
+        videoInputImagePaths.map((sourcePath, index) => [sourcePath, archivedPaths[index]!])
+      );
+      preparedDraft.startImagePath = replacements.get(preparedDraft.startImagePath) ?? preparedDraft.startImagePath;
+      preparedDraft.endImagePath = replacements.get(preparedDraft.endImagePath) ?? preparedDraft.endImagePath;
+      preparedDraft.h3ReferenceSlots = preparedDraft.h3ReferenceSlots.map((slot) =>
+        slot.mediaType === "image"
+          ? { ...slot, mediaPath: replacements.get(slot.mediaPath) ?? slot.mediaPath }
+          : slot
+      );
+      appLogger.info("assets", "video-input-image-archive-completed", "视频任务输入图片已归档并校验", {
+        operationId: archiveOperationId,
+        referenceCount: videoInputImagePaths.length,
+        uniqueAssets: new Set(archivedPaths).size
+      });
+    } catch (error) {
+      appLogger.error("assets", "video-input-image-archive-failed", "视频任务输入图片归档失败，任务未加入队列", {
+        operationId: archiveOperationId,
+        error: safeLogErrorMessage(error)
+      });
+      throw error;
+    }
     const next = await store.update((state) => {
-      state.queue.push(queueTaskFromDraft(draft, state));
-      state.draft = draft;
+      state.queue.push(queueTaskFromDraft(preparedDraft, state));
+      state.draft = preparedDraft;
     });
     const task = next.queue.at(-1);
     if (task && !isImageGenerationQueueTask(task)) {
@@ -3742,9 +3804,9 @@ function registerIpc(): void {
       if (!stat?.isFile()) {
         throw new Error(`Picture ${picture.pictureNumber} 文件不存在：${picture.absolutePath}`);
       }
-      const effectivePath = imageReferenceInputPath(picture);
-      if (effectivePath !== picture.absolutePath) {
-        const markedStat = await fs.stat(effectivePath).catch(() => null);
+      const markedPath = picture.markup?.renderedPath.trim();
+      if (picture.markup?.objectCount && markedPath) {
+        const markedStat = await fs.stat(markedPath).catch(() => null);
         if (!markedStat?.isFile()) {
           throw new Error(`Picture ${picture.pictureNumber} 的标记预览不存在，请重新打开标记画布并保存。`);
         }
@@ -4105,37 +4167,64 @@ function registerIpc(): void {
     return next;
   });
   ipcMain.handle("image-history:delete-version", async (_event, projectId: string, versionId: string) => {
+    const startedAt = Date.now();
     const current = store.get();
     const project = current.imageHistory.find((item) => item.id === projectId);
     const version = project?.versions.find((item) => item.id === versionId);
     if (!project || !version) throw new Error("图片项目或版本不存在。");
     if (version.kind === "source") throw new Error("原始导入图片不能从项目中删除。");
-    const remainingPaths = new Set(
-      project.versions
-        .filter((item) => item.id !== versionId)
-        .map((item) => item.file.absolutePath)
-        .filter((filename): filename is string => Boolean(filename))
+    const sharedByAnotherVersion = project.versions.some((item) =>
+      item.id !== versionId && (
+        Boolean(version.file.absolutePath && item.file.absolutePath === version.file.absolutePath) ||
+        (item.file.filename === version.file.filename && item.file.subfolder === version.file.subfolder)
+      )
     );
-    if (version.file.absolutePath && !remainingPaths.has(version.file.absolutePath)) {
-      await fs.unlink(version.file.absolutePath).catch((error) => {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          throw new Error(`无法删除图片文件 ${path.basename(version.file.absolutePath!)}：${error instanceof Error ? error.message : String(error)}`);
-        }
-      });
-    }
-    const next = await store.update((state) => {
-      const target = state.imageHistory.find((item) => item.id === projectId);
-      if (!target) return;
-      target.versions = target.versions.filter((item) => item.id !== versionId);
-      if (target.coverVersionId === versionId) {
-        target.coverMode = "auto";
-        target.coverVersionId = undefined;
-      }
-      target.updatedAt = [...target.versions]
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]?.createdAt ?? target.createdAt;
+    appLogger.info("history", "image-version-delete-started", "开始删除图片版本和生成文件", {
+      projectId,
+      versionId,
+      filename: version.file.filename
     });
-    sendState(next);
-    return next;
+    try {
+      const resolvedFile = sharedByAnotherVersion
+        ? null
+        : await resolveExistingHistoryFile(
+            version.file.absolutePath ?? "",
+            historyFileCandidates(version.file, current.settings)
+          );
+      if (resolvedFile) {
+        await fs.unlink(resolvedFile).catch((error) => {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw new Error(`无法删除图片文件 ${path.basename(resolvedFile)}：${error instanceof Error ? error.message : String(error)}`);
+          }
+        });
+      }
+      const next = await store.update((state) => {
+        const target = state.imageHistory.find((item) => item.id === projectId);
+        if (!target) return;
+        target.versions = target.versions.filter((item) => item.id !== versionId);
+        if (target.coverVersionId === versionId) {
+          target.coverMode = "auto";
+          target.coverVersionId = undefined;
+        }
+        target.updatedAt = [...target.versions]
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]?.createdAt ?? target.createdAt;
+      });
+      appLogger.info("history", "image-version-delete-succeeded", "图片版本和生成文件已删除", {
+        projectId,
+        versionId,
+        durationMs: Date.now() - startedAt
+      });
+      sendState(next);
+      return next;
+    } catch (error) {
+      appLogger.error("history", "image-version-delete-failed", safeLogErrorMessage(error), {
+        projectId,
+        versionId,
+        durationMs: Date.now() - startedAt,
+        ...errorLogMeta(error)
+      });
+      throw error;
+    }
   });
 }
 

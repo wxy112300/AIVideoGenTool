@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildFlux2Klein4bWorkflow,
   buildQwenImageEdit2511Workflow,
+  cachedImageProfileAllowsEnqueue,
   compileFlux2Klein4bPrompt,
   compileQwenImageEditPrompt,
   flux2Klein4bCapability,
   flux2Klein4bRequiredNodeTypes,
+  firstSupportedImageModelId,
   imageLightningComponentFound,
   imageMarkupPromptContext,
   imageOutputCandidateFromValue,
@@ -30,6 +32,26 @@ function picture(pictureNumber: number, absolutePath = `picture-${pictureNumber}
     height: 1024
   };
 }
+
+describe("image enqueue readiness", () => {
+  it("does not let a missing or stale cached scan replace the authoritative enqueue scan", () => {
+    expect(cachedImageProfileAllowsEnqueue(undefined)).toBe(true);
+    expect(cachedImageProfileAllowsEnqueue({ category: "image", integrated: true })).toBe(true);
+    expect(cachedImageProfileAllowsEnqueue({ category: "image", integrated: false })).toBe(false);
+    expect(cachedImageProfileAllowsEnqueue({ category: "video", integrated: true })).toBe(false);
+  });
+
+  it("does not treat an image history source marker as a runnable model", () => {
+    expect(firstSupportedImageModelId(
+      "source",
+      "flux2-klein-4b",
+      "qwen-image-edit-2511"
+    )).toBe("flux2-klein-4b");
+    expect(firstSupportedImageModelId("source", "unknown-model")).toBe(
+      "qwen-image-edit-2511"
+    );
+  });
+});
 
 describe("Qwen image edit workflow contract", () => {
   it("keeps Lightning optional for native quality and detects it for 4-step mode", () => {
@@ -93,7 +115,7 @@ describe("Qwen image edit workflow contract", () => {
     expect(result.referencedPictureNumbers).toEqual([1, 3]);
   });
 
-  it("uses a marked rendering for the same Picture slot and adds a cleanup contract", () => {
+  it("keeps the clean source and sends markup as a separate location-only guide", () => {
     const marked = {
       ...picture(1, "original.png"),
       markup: {
@@ -108,13 +130,66 @@ describe("Qwen image edit workflow contract", () => {
 
     const result = compileQwenImageEditPrompt("修复 Picture 1。", [marked]);
 
-    expect(result.pictures).toHaveLength(1);
-    expect(imageReferenceInputPath(result.pictures[0]!)).toBe("guide.png");
-    expect(result.prompt).toContain("Visual annotation instructions:");
-    expect(result.prompt).toContain("remove every annotation from the final image");
-    expect(result.prompt).toContain("per-annotation notes below are the authoritative edit list");
+    expect(result.errors).toEqual([]);
+    expect(result.pictures).toHaveLength(2);
+    expect(result.pictures.map(imageReferenceInputPath)).toEqual(["original.png", "guide.png"]);
+    expect(result.prompt).toContain("Visual annotation reference contract:");
+    expect(result.prompt).toContain("Picture 1 is the clean source");
+    expect(result.prompt).toContain("Picture 2 is only its temporary annotation guide");
+    expect(result.prompt).toContain("Never reproduce any colored mark");
     expect(result.prompt).toContain("A：只移除红框内的水印");
     expect(imageMarkupPromptContext([picture(1)])).toBe("");
+  });
+
+  it("renumbers later clean references after an inserted markup guide", () => {
+    const marked = {
+      ...picture(1, "original.png"),
+      markup: {
+        documentPath: "guide.fabric.json",
+        renderedPath: "guide.png",
+        summary: "A：替换标记区域",
+        revision: 1,
+        objectCount: 1,
+        updatedAt: "2026-08-11T00:00:00.000Z"
+      }
+    };
+
+    const result = compileQwenImageEditPrompt(
+      "把 Picture 2 的物体放到 Picture 1 的标记位置。",
+      [marked, picture(2)]
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.prompt).toContain("把 Picture 3 的物体放到 Picture 1 的标记位置。");
+    expect(result.pictures.map(imageReferenceInputPath)).toEqual([
+      "original.png",
+      "guide.png",
+      "picture-2.png"
+    ]);
+  });
+
+  it("reports when clean pictures plus markup guides exceed native inputs", () => {
+    const marked = {
+      ...picture(1, "original.png"),
+      markup: {
+        documentPath: "guide.fabric.json",
+        renderedPath: "guide.png",
+        summary: "A：替换标记区域",
+        revision: 1,
+        objectCount: 1,
+        updatedAt: "2026-08-11T00:00:00.000Z"
+      }
+    };
+
+    const result = compileQwenImageEditPrompt("编辑 Picture 1。", [
+      marked,
+      picture(2),
+      picture(3)
+    ]);
+
+    expect(result.errors).toContain(
+      "Canvas 标记会额外占用 1 个标注参考输入；当前 Qwen 2511 最多接收 3 张模型输入，请减少普通参考图或清除部分标记。"
+    );
   });
 
   it("blocks references to a deleted Picture instead of silently reassigning", () => {

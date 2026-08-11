@@ -36,4 +36,19 @@ describe("history media path recovery", () => {
       "D:\\ComfyUI\\ComfyUI\\output\\result.mp4"
     ]);
   });
+
+  it("checks the configured image output directory before video and ComfyUI roots", () => {
+    const candidates = historyFileCandidates({
+      filename: "edited.png",
+      subfolder: "LocalVideoStudio/Image",
+      type: "output"
+    }, {
+      imageOutputDirectory: "E:\\ImageOutput",
+      outputDirectory: "E:\\VideoOutput",
+      modelDirectory: "D:\\ComfyUI\\models",
+      comfyInstallDirectory: "D:\\ComfyUI"
+    });
+
+    expect(candidates[0]).toBe("E:\\ImageOutput\\LocalVideoStudio\\Image\\edited.png");
+  });
 });

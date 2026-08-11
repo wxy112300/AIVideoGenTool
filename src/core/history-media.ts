@@ -5,13 +5,14 @@ import { safeOutputFilePath } from "./comfy-output-paths.js";
 type HistoryPathSettings = Pick<
   Settings,
   "outputDirectory" | "modelDirectory" | "comfyInstallDirectory"
->;
+> & Partial<Pick<Settings, "imageOutputDirectory">>;
 
 export function historyFileCandidates(
   file: HistoryFile,
   settings: HistoryPathSettings
 ): string[] {
   const roots = [
+    settings.imageOutputDirectory ?? "",
     settings.outputDirectory,
     settings.modelDirectory
       ? path.join(path.dirname(settings.modelDirectory), "output")
