@@ -116,6 +116,25 @@ function normalizeImageAssetVersion(
     prompt: typeof source.prompt === "string" ? source.prompt : "",
     promptVersion: normalizedInteger(source.promptVersion, 0, 0),
     references: normalizeImageReferences(source.references),
+    ...(typeof source.qualityProfile === "string" && source.qualityProfile.trim()
+      ? { qualityProfile: source.qualityProfile.trim() }
+      : {}),
+    ...(typeof source.steps === "number" && Number.isFinite(source.steps)
+      ? { steps: normalizedInteger(source.steps, 1, 1) }
+      : {}),
+    ...(typeof source.cfg === "number" && Number.isFinite(source.cfg)
+      ? { cfg: source.cfg }
+      : {}),
+    ...(source.targetResolution === "source" ||
+      (typeof source.targetResolution === "number" && Number.isFinite(source.targetResolution))
+      ? { targetResolution: source.targetResolution }
+      : {}),
+    ...(typeof source.outputCount === "number" && Number.isFinite(source.outputCount)
+      ? { outputCount: normalizedInteger(source.outputCount, 1, 1) }
+      : {}),
+    ...(typeof source.diffusionModelFilename === "string" && source.diffusionModelFilename.trim()
+      ? { diffusionModelFilename: source.diffusionModelFilename.trim() }
+      : {}),
     ...(typeof source.seed === "number" && Number.isFinite(source.seed)
       ? { seed: Math.trunc(source.seed) }
       : {}),

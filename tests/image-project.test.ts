@@ -277,6 +277,12 @@ describe("image project pure functions", () => {
             prompt: "修复",
             promptVersion: 1,
             references: [],
+            qualityProfile: "lightning-4step",
+            steps: 4,
+            cfg: 1,
+            targetResolution: 1080,
+            outputCount: 6,
+            diffusionModelFilename: "qwen_image_edit_2511_int8.safetensors",
             width: 1024,
             height: 1024,
             format: "png",
@@ -304,6 +310,14 @@ describe("image project pure functions", () => {
 
     expect(history[0]?.versions.map((version) => version.versionNumber)).toEqual([2, 1]);
     expect(history[0]?.versions[0]?.kind).toBe("edit");
+    expect(history[0]?.versions[0]).toMatchObject({
+      qualityProfile: "lightning-4step",
+      steps: 4,
+      cfg: 1,
+      targetResolution: 1080,
+      outputCount: 6,
+      diffusionModelFilename: "qwen_image_edit_2511_int8.safetensors"
+    });
     expect(history[0]?.versions[0]?.parentVersionId).toBeUndefined();
     expect(history[0]?.versions[1]?.parentVersionId).toBe("deleted-parent");
     expect(history[0]?.nextVersionNumber).toBe(3);

@@ -70,6 +70,7 @@ import type {
   H3ReferenceMediaType,
   H3ReferenceRole,
   H3ReferenceSlot,
+  HistoryAsset,
   HistoryMigrationProgress,
   ImageAssetLibraryProgress,
   ImageAssetLibraryResult,
@@ -2961,11 +2962,16 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
         : `<span title="Spectrum 已关闭；使用 H3 原生完整计算">${normalizeH3Steps(task.steps, task.modelId, task.videoLoras)} 步 · Spectrum 关</span>`
     : "";
   const loraSummary = task.taskType !== "image-generation" && task.videoLoras?.length
-    ? `<span>LoRA · ${task.videoLoras.map((lora) => escapeHtml(lora.name)).join(" + ")}</span>`
+    ? task.videoLoras.map((lora, index) => `<span class="task-meta-lora" title="${escapeHtml(lora.filename)}">LoRA ${index + 1} · ${escapeHtml(lora.name)} · 强度 ${lora.strength}</span>`).join("")
     : "";
+  const imageQueueQuality = task.taskType === "image-generation"
+    ? imageModelCapabilityFor(task.modelId).qualityProfiles.find(
+        (profile) => profile.id === task.qualityProfile
+      )
+    : undefined;
   const seedText = task.taskType === "image-generation" ? "批次内独立" : String(task.seed);
   const metadata = task.taskType === "image-generation"
-    ? `<span>图片处理</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.outputCount} 张候选图</span><span>${escapeHtml(task.qualityProfile)}</span><span>PNG 中间输出</span>`
+    ? `<span>图片处理</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.outputCount} 张候选图</span><span>${escapeHtml(imageQueueQuality?.label ?? task.qualityProfile)}${imageQueueQuality ? ` · ${imageQueueQuality.steps} 步 · CFG ${imageQueueQuality.cfg}` : ""}</span>${imageQueueQuality?.lightning ? `<span>LoRA · Qwen Lightning</span>` : ""}<span>${task.pictures.length} 张 Picture · ${task.pictures.reduce((count, picture) => count + (picture.markup?.objectCount ?? 0), 0)} 处 Canvas 标记</span><span>PNG 中间输出</span>`
     : task.taskType === "generation"
     ? `<span>${escapeHtml(modelName(task.modelId))}</span>${loraSummary}<span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span>${h3ComputeSummary}<span>Seed ${escapeHtml(seedText)}</span>`
     : task.taskType === "extension"
@@ -3467,6 +3473,44 @@ function bindHistoryTitleMarquees(): void {
   }
 }
 
+function videoLoraSnapshotMarkup(loras: ReadonlyArray<Draft["videoLoras"][number]>): string {
+  if (!loras.length) return `<p class="history-empty-note">本次提交未使用 LoRA。</p>`;
+  return `<div class="history-snapshot-list">${loras.map((lora, index) => `
+    <div class="history-snapshot-item">
+      <span class="history-snapshot-index">${index + 1}</span>
+      <div><strong>${escapeHtml(lora.name)}</strong><p>${escapeHtml(lora.modelFamily)} · ${videoLoraPurposeLabel(lora.purpose)} · 强度 ${lora.strength}</p><code>${escapeHtml(lora.filename || "旧记录未保存文件名")}</code></div>
+    </div>`).join("")}</div>`;
+}
+
+function videoInputSnapshotMarkup(asset: HistoryAsset): string {
+  const items: string[] = [];
+  if (asset.inputMode === "video" || asset.sourceVideoPath) {
+    items.push(`<dt>输入模式</dt><dd>视频续写</dd>`);
+    items.push(`<dt>源视频</dt><dd><code>${escapeHtml(asset.sourceVideoPath || "旧记录未保存")}</code></dd>`);
+    items.push(`<dt>源视频时长</dt><dd>${asset.sourceVideoDuration ?? "旧记录未保存"} 秒</dd>`);
+    items.push(`<dt>保留范围</dt><dd>${asset.trimStartSeconds ?? 0}–${asset.trimEndSeconds ?? asset.sourceVideoDuration ?? "?"} 秒</dd>`);
+    if (asset.sourceAssetId) items.push(`<dt>来源作品</dt><dd><code>${escapeHtml(asset.sourceAssetId)}</code></dd>`);
+    if (asset.sourceVersionId) items.push(`<dt>来源版本</dt><dd><code>${escapeHtml(asset.sourceVersionId)}</code></dd>`);
+  } else {
+    items.push(`<dt>输入模式</dt><dd>${asset.h3ReferenceSlots?.length ? "R2V 多参考" : "图生视频"}</dd>`);
+    if (asset.startImagePath) items.push(`<dt>首帧</dt><dd><code>${escapeHtml(asset.startImagePath)}</code></dd>`);
+    if (asset.endImagePath) items.push(`<dt>尾帧</dt><dd><code>${escapeHtml(asset.endImagePath)}</code></dd>`);
+    for (const [index, slot] of (asset.h3ReferenceSlots ?? []).entries()) {
+      items.push(`<dt>Slot ${index + 1}</dt><dd><strong>${slot.mediaType === "video" ? "视频" : "图片"} · ${escapeHtml(h3ReferenceRoleLabels[slot.role])}</strong><br><code>${escapeHtml(slot.mediaPath || "旧记录未保存")}</code>${slot.note ? `<br><span>${escapeHtml(slot.note)}</span>` : ""}</dd>`);
+    }
+  }
+  return `<dl>${items.join("")}</dl>`;
+}
+
+function imageReferenceSnapshotMarkup(version: ImageAssetVersion): string {
+  if (!version.references.length) return `<p class="history-empty-note">旧记录没有保存输入图片快照。</p>`;
+  return `<div class="history-snapshot-list">${version.references.map((picture) => `
+    <div class="history-snapshot-item image-reference-snapshot">
+      <span class="history-snapshot-index">${picture.pictureNumber}</span>
+      <div><strong>Picture ${picture.pictureNumber} · ${escapeHtml(imageReferenceRoleLabels[picture.role ?? "auto"])}</strong><p>${picture.width || "?"} × ${picture.height || "?"}</p><code>${escapeHtml(picture.absolutePath || "旧记录未保存路径")}</code>${picture.markup?.objectCount ? `<div class="history-markup-snapshot"><strong>Canvas 标记 / Mask 指令 · ${picture.markup.objectCount} 处</strong><p>${escapeHtml(picture.markup.summary || "旧记录没有保存标记说明")}</p></div>` : `<span class="history-unmarked">未使用 Canvas 标记</span>`}</div>
+    </div>`).join("")}</div>`;
+}
+
 function historyDetailPage(): string {
   const asset = state.history.find((item) => item.id === selectedHistoryAssetId);
   if (!asset) {
@@ -3544,12 +3588,20 @@ function historyDetailPage(): string {
         <span class="muted">实际送入模型的完整提示词</span><div class="history-prompt-scroll" tabindex="0" aria-label="完整提示词"><p class="history-prompt">${escapeHtml(asset.prompt)}</p></div>
       </article>
       <article class="panel history-record">
-        <h2>原始生成参数</h2>
-        <dl><dt>模型</dt><dd>${escapeHtml(modelName(version.modelId))}</dd>${version.videoLoras?.length ? `<dt>LoRA</dt><dd>${version.videoLoras.map((lora) => `${escapeHtml(lora.name)} · ${lora.strength}`).join(" + ")}</dd>` : ""}<dt>采样步数</dt><dd>${version.steps ?? "工作流默认"}</dd><dt>计算模式</dt><dd>${version.spectrumMode === "balanced" ? "Spectrum 平衡模式 · 系统内存" : "原生完整计算"}</dd><dt>Seed</dt><dd><code>${version.seed ?? "不适用"}</code></dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "旧记录未保存")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId)}</code></dd></dl>
+        <h2>版本与生成参数</h2>
+        <dl><dt>模型</dt><dd>${escapeHtml(modelName(version.modelId))}</dd><dt>Prompt 版本</dt><dd>${version.promptVersion ?? asset.promptVersion ?? "旧记录未保存"}</dd>${version.kind === "upscale" ? `<dt>分块模式</dt><dd>${escapeHtml(version.tileMode ?? "旧记录未保存")}</dd><dt>人脸修复</dt><dd>${version.faceRestore == null ? "旧记录未保存" : version.faceRestore ? "开启" : "关闭"}</dd>` : `<dt>采样步数</dt><dd>${version.steps ?? "工作流默认"}</dd><dt>Attention</dt><dd>${escapeHtml(version.attentionMode ?? asset.attentionMode ?? "旧记录未保存")}</dd><dt>计算模式</dt><dd>${version.spectrumMode === "balanced" ? "Spectrum 平衡模式 · 系统内存" : version.spectrumMode === "off" ? "原生完整计算" : "旧记录未保存"}</dd><dt>动作幅度</dt><dd>${escapeHtml(version.motion ?? asset.motion ?? "旧记录未保存")}</dd>`}<dt>Seed</dt><dd><code>${version.seed ?? "不适用"}</code></dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "旧记录未保存")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId)}</code></dd></dl>
       </article>
       <article class="panel history-record">
         <h2>视频输出</h2>
-        <dl><dt>分辨率</dt><dd>${historyResolutionLabel(asset, version)} · ${version.width} × ${version.height}</dd><dt>版本类型</dt><dd>${version.kind === "original" ? "原始生成" : "分辨率提升"}</dd><dt>时长</dt><dd>${version.duration} 秒</dd><dt>成片帧率</dt><dd>${fps} FPS</dd><dt>成片帧数</dt><dd>${Math.round(version.duration * fps)}</dd><dt>输出目录</dt><dd><code>${escapeHtml(videoFile?.absolutePath ?? state.settings.outputDirectory)}</code></dd></dl>
+        <dl><dt>分辨率</dt><dd>${historyResolutionLabel(asset, version)} · ${version.width} × ${version.height}</dd><dt>画面比例</dt><dd>${escapeHtml(version.ratio ?? asset.ratio ?? "旧记录未保存")}</dd><dt>版本类型</dt><dd>${version.kind === "original" ? "原始生成" : "分辨率提升"}</dd><dt>时长</dt><dd>${version.duration} 秒</dd><dt>成片帧率</dt><dd>${fps} FPS</dd><dt>帧率处理</dt><dd>${escapeHtml(version.frameInterpolation ?? asset.frameInterpolation ?? "旧记录未保存")}</dd><dt>成片帧数</dt><dd>${Math.round(version.duration * fps)}</dd><dt>输出目录</dt><dd><code>${escapeHtml(videoFile?.absolutePath ?? state.settings.outputDirectory)}</code></dd></dl>
+      </article>
+      <article class="panel history-record">
+        <div class="history-record-heading"><h2>LoRA 叠加</h2><span>${version.videoLoras?.length ?? asset.videoLoras?.length ?? 0} 个</span></div>
+        ${videoLoraSnapshotMarkup(version.videoLoras ?? asset.videoLoras ?? [])}
+      </article>
+      <article class="panel history-record">
+        <div class="history-record-heading"><h2>输入素材</h2><span>提交快照</span></div>
+        ${videoInputSnapshotMarkup(asset)}
       </article>
       <article class="panel history-record full history-performance-record">
         <div class="history-record-heading"><h2>运行统计</h2><span class="muted">低频采样摘要</span></div>
@@ -3593,6 +3645,16 @@ function imageHistoryDetailPage(): string {
     ? Math.max(0, (Date.parse(version.createdAt) - Date.parse(version.startedAt)) / 1000)
     : null);
   const filePath = version.file.absolutePath ?? "";
+  const imageCapability = imageModelCapabilityFor(version.modelId);
+  const imageQuality = imageCapability.qualityProfiles.find(
+    (profile) => profile.id === version.qualityProfile
+  );
+  const imageSteps = version.steps ?? imageQuality?.steps;
+  const imageCfg = version.cfg ?? imageQuality?.cfg;
+  const imageQualityLabel = imageQuality?.label ?? version.qualityProfile ?? "旧记录未保存";
+  const imageLoraLabel = imageQuality?.lightning
+    ? "Qwen Image Edit Lightning LoRA · 由质量档自动加载"
+    : "未使用图片 LoRA";
   return `
     <div class="history-detail-back">
       <button class="secondary button-with-icon history-detail-back-button" data-page="history">${icon("arrow-left")}返回图片历史</button>
@@ -3641,7 +3703,8 @@ function imageHistoryDetailPage(): string {
     <section class="history-record-grid image-history-record-grid">
       <article class="panel history-record full"><div class="history-record-heading"><h2>本次编辑要求</h2><button class="ghost button-with-icon" data-copy-image-prompt>${icon("copy")}复制 Prompt</button></div><span class="muted">生成时保存的 Prompt 快照</span><div class="history-prompt-scroll" tabindex="0" aria-label="图片编辑要求"><p class="history-prompt">${escapeHtml(version.prompt || "原始导入图片，没有编辑 Prompt")}</p></div></article>
       <article class="panel history-record"><h2>版本来源</h2><dl><dt>所属项目</dt><dd>${escapeHtml(title)}</dd><dt>父版本</dt><dd>${parent ? `v${parent.versionNumber}` : version.kind === "source" ? "原始图片" : "未记录"}</dd><dt>版本编号</dt><dd>${version.versionNumber} / ${project.versions.length}</dd><dt>版本类型</dt><dd>${version.kind === "source" ? "原始素材" : version.kind === "upscale" ? "分辨率提升" : "图片编辑"}</dd></dl></article>
-      <article class="panel history-record"><h2>生成信息</h2><dl><dt>模型</dt><dd>${escapeHtml(version.kind === "source" ? "原始图片" : modelName(version.modelId))}</dd><dt>Seed</dt><dd>${version.seed ?? "随机"}</dd><dt>生成时间</dt><dd>${escapeHtml(formatFullHistoryTime(version.createdAt))}</dd><dt>输出格式</dt><dd>${version.format.toUpperCase()}</dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "原始导入")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId ?? "旧记录未保存")}</code></dd></dl></article>
+      <article class="panel history-record"><h2>生成信息</h2><dl><dt>模型</dt><dd>${escapeHtml(version.kind === "source" ? "原始图片" : modelName(version.modelId))}</dd><dt>模型文件</dt><dd><code>${escapeHtml(version.diffusionModelFilename ?? "旧记录未保存")}</code></dd><dt>质量档</dt><dd>${escapeHtml(version.kind === "source" ? "不适用" : imageQualityLabel)}</dd><dt>采样步数</dt><dd>${version.kind === "source" ? "不适用" : imageSteps ?? "旧记录未保存"}</dd><dt>CFG</dt><dd>${version.kind === "source" ? "不适用" : imageCfg ?? "旧记录未保存"}</dd><dt>图片 LoRA</dt><dd>${escapeHtml(version.kind === "source" ? "不适用" : imageLoraLabel)}</dd><dt>目标尺寸</dt><dd>${version.targetResolution === "source" ? "保持原图" : version.targetResolution ? `${version.targetResolution}p` : "旧记录未保存"}</dd><dt>批次候选</dt><dd>${version.outputCount ?? "旧记录未保存"}</dd><dt>Prompt 版本</dt><dd>${version.promptVersion || "旧记录未保存"}</dd><dt>Seed</dt><dd>${version.seed ?? "随机"}</dd><dt>生成时间</dt><dd>${escapeHtml(formatFullHistoryTime(version.createdAt))}</dd><dt>输出格式</dt><dd>${version.format.toUpperCase()}</dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "原始导入")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId ?? "旧记录未保存")}</code></dd></dl></article>
+      <article class="panel history-record full"><div class="history-record-heading"><h2>输入图片与 Canvas 标记</h2><span>${version.references.length} 张 Picture</span></div>${imageReferenceSnapshotMarkup(version)}</article>
       <article class="panel history-record full"><div class="history-record-heading"><h2>输出文件</h2><span>1 个</span></div><div class="output-files"><div class="output-file"><div><strong>${escapeHtml(version.file.filename)}</strong><p class="muted">${escapeHtml(version.file.subfolder || ".")} · ${escapeHtml(version.file.type)}</p></div>${filePath ? `<button class="secondary button-with-icon" data-show-file="${escapeHtml(filePath)}">${icon("folder-open")}在 Explorer 中显示</button>` : `<span class="muted">当前文件不可用</span>`}</div></div><details><summary>原始 ComfyUI 输出快照</summary><pre>${escapeHtml(JSON.stringify(version.comfyOutputs, null, 2))}</pre></details></article>
     </section>
     ${mediaUrl ? `<div class="image-lightbox" data-image-lightbox hidden>

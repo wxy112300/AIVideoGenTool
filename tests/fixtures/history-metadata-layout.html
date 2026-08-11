@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>History metadata layout verification</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <main class="app-shell" style="padding-top:32px">
+    <article class="task-card panel">
+      <div class="task-main">
+        <h3>MiniMax H3 多 LoRA 长参数任务</h3>
+        <p class="task-description">用于验证多个长名称 LoRA 和完整生成参数不会横向挤出队列卡片。</p>
+        <div class="task-meta">
+          <span>MiniMax H3 FL2VA</span>
+          <span class="task-meta-lora">LoRA 1 · LightX2V Turbo 4-Step Performance Acceleration · 强度 1</span>
+          <span class="task-meta-lora">LoRA 2 · PinkFluffyBunny NSFW Pruned Rank 128 Community Alpha · 强度 0.5</span>
+          <span>768p</span><span>15秒</span><span>24 FPS</span><span>20 步 · Spectrum 开</span><span>Seed 866691979021008</span>
+        </div>
+      </div>
+    </article>
+    <section class="history-record-grid">
+      <article class="panel history-record">
+        <div class="history-record-heading"><h2>LoRA 叠加</h2><span>2 个</span></div>
+        <div class="history-snapshot-list">
+          <div class="history-snapshot-item"><span class="history-snapshot-index">1</span><div><strong>LightX2V Turbo 4-Step</strong><p>minimax-h3 · 性能 · 强度 1</p><code>D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\models\loras\very-long-lora-filename.safetensors</code></div></div>
+          <div class="history-snapshot-item"><span class="history-snapshot-index">2</span><div><strong>PinkFluffyBunny NSFW</strong><p>minimax-h3 · 内容 · 强度 0.5</p><code>D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\models\loras\pink-fluffy-bunny-pruned-rank128.safetensors</code></div></div>
+        </div>
+      </article>
+      <article class="panel history-record">
+        <div class="history-record-heading"><h2>输入图片与 Canvas 标记</h2><span>1 张</span></div>
+        <div class="history-snapshot-list">
+          <div class="history-snapshot-item image-reference-snapshot"><span class="history-snapshot-index">1</span><div><strong>Picture 1 · 基础画面</strong><p>1920 × 1080</p><code>C:\Users\Example\Documents\ComfyUI\input\LocalVideoStudio\a-very-long-input-image-filename.png</code><div class="history-markup-snapshot"><strong>Canvas 标记 / Mask 指令 · 2 处</strong><p>A：只移除红框区域中的水印，其他像素保持不变。\nB：修复合成边缘并保持原有光照方向。</p></div></div></div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

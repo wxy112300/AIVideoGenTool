@@ -360,9 +360,14 @@ export interface AssetVersion {
   width: number;
   height: number;
   duration: number;
+  promptVersion?: number;
   steps?: H3StepCount;
+  attentionMode?: Settings["h3AttentionMode"];
   spectrumMode?: H3SpectrumMode;
   fps: number;
+  frameInterpolation?: Draft["frameInterpolation"];
+  ratio?: Draft["ratio"];
+  motion?: Draft["motion"];
   seed?: number;
   performanceStats?: TaskPerformanceStats;
   workflowPath: string;
@@ -401,6 +406,12 @@ export interface ImageAssetVersion {
   prompt: string;
   promptVersion: number;
   references: ImageReferenceSnapshot[];
+  qualityProfile?: string;
+  steps?: number;
+  cfg?: number;
+  targetResolution?: ImageTargetResolution;
+  outputCount?: number;
+  diffusionModelFilename?: string;
   seed?: number;
   width: number;
   height: number;
@@ -428,6 +439,9 @@ export interface HistoryAsset {
   fps?: number;
   frameInterpolation?: Draft["frameInterpolation"];
   ratio?: Draft["ratio"];
+  promptVersion?: number;
+  attentionMode?: Settings["h3AttentionMode"];
+  motion?: Draft["motion"];
   prompt: string;
   seed: number;
   inputMode?: Draft["inputMode"];
