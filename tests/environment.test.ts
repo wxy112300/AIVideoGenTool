@@ -746,8 +746,8 @@ describe("ComfyUI environment candidates", () => {
     expect(q3).toMatchObject({
       available: true,
       integrated: true,
-      badge: "Q3 GGUF · 3080 实验",
-      vram: "Q3 · 3080 10GB 实验 · 32GB RAM 起步"
+      badge: "Q3 GGUF · 实验",
+      vram: "Q3 GGUF · CPU 文本编码器 · RAM offload"
     });
     expect(q3?.components[0]?.installGuide).toMatchObject({
       targetSubdirectory: "unet",
@@ -773,7 +773,7 @@ describe("ComfyUI environment candidates", () => {
     expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va_int4")).toMatchObject({
       available: true,
       integrated: true,
-      badge: "R2V · INT4 低显存"
+      badge: "R2V · INT4 · 压缩"
     });
   });
 

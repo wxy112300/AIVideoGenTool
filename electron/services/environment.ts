@@ -997,7 +997,7 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "Qwen3.5 4B · H3 提示词助手",
     category: "prompt",
     managedBy: "comfyui",
-    badge: "4090 推荐 · BF16",
+    badge: "BF16 · 多模态",
     description: "同时处理文字和参考图/视频，并按 H3 提示词规则生成更适合视频生成的描述。",
     vram: "BF16 · 文件约 9.3 GB",
     integrated: false,
@@ -1014,8 +1014,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "Qwen3.5 2B · 快速提示词助手",
     category: "prompt",
     managedBy: "comfyui",
-    badge: "低显存 · BF16",
-    description: "更快的文字和参考图理解备选，适合 12GB 显存或需要快速迭代的设备。",
+    badge: "BF16 · 快速",
+    description: "更快的文字和参考图理解备选，适合快速迭代。",
     vram: "BF16 · 文件约 4.55 GB",
     integrated: false,
     components: [
@@ -1032,7 +1032,7 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     category: "image",
     managedBy: "comfyui",
     badge: "最多 3 Picture · 原生质量",
-    description: "Qwen 2511 多图编辑模型；使用 CPU 文本编码器、CPU VAE 和激进 DynamicVRAM 卸载，优先保证 24GB 显存设备不爆显存。",
+    description: "Qwen 2511 多图编辑模型；使用 CPU 文本编码器、CPU VAE 和激进 DynamicVRAM 卸载。",
     vram: "INT8 + CPU/offload · 速度较慢",
     integrated: true,
     runtimeNodeTypes: qwenImageEdit2511RequiredNodeTypes,
@@ -1065,9 +1065,9 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "FLUX.2 Klein 4B · 图片处理",
     category: "image",
     managedBy: "comfyui",
-    badge: "约 13GB VRAM · 单图编辑",
-    description: "Black Forest Labs 的轻量图片生成/编辑模型；初版按官方 ComfyUI blueprint 接入单图编辑，适合 RTX 4090 快速运行。",
-    vram: "FP8 · 官方约 13 GB VRAM",
+    badge: "FP8 · 单图编辑",
+    description: "Black Forest Labs 的轻量图片生成/编辑模型；初版按官方 ComfyUI blueprint 接入单图编辑。",
+    vram: "FP8 · 单图编辑",
     integrated: true,
     runtimeNodeTypes: flux2Klein4bRequiredNodeTypes,
     components: [
@@ -1093,8 +1093,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "MiniMax H3 FL2VA · 首帧 / 首尾帧",
     category: "video",
     badge: "FL2VA · 原生音视频",
-    description: "只接入首帧或首尾帧图生视频，原生 24 FPS 同步立体声音频；推荐 RTX 4090/3090 24GB，并准备 64GB 系统内存。",
-    vram: "pruned INT8 · RTX 4090/3090 24GB · DynamicVRAM",
+    description: "只接入首帧或首尾帧图生视频，原生 24 FPS 同步立体声音频。",
+    vram: "pruned INT8 · DynamicVRAM · 阶段卸载",
     integrated: true,
     components: [
       {
@@ -1123,9 +1123,9 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     id: "minimax_h3_fl2va_int4",
     name: "MiniMax H3 FL2VA · INT4 低显存",
     category: "video",
-    badge: "INT4 · 低显存",
-    description: "社区 pruned INT4 ConvRot 档，复用 H3 原生音视频节点；推荐 16GB 显存，12GB 仅作为实验起点并准备充足系统内存。",
-    vram: "pruned INT4 · 16GB 推荐 · 12GB 实验 · RAM offload",
+    badge: "INT4 · 压缩",
+    description: "社区 pruned INT4 ConvRot 档，复用 H3 原生音视频节点。",
+    vram: "pruned INT4 · RAM offload",
     integrated: true,
     components: [
       {
@@ -1152,12 +1152,12 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
   },
   {
     id: "minimax_h3_fl2va_q3_gguf",
-    name: "MiniMax H3 FL2VA · Q3 GGUF · RTX 3080 实验",
+    name: "MiniMax H3 FL2VA · Q3 GGUF · 低显存实验",
     category: "video",
     managedBy: "comfyui",
-    badge: "Q3 GGUF · 3080 实验",
-    description: "Unsloth 社区 Q3 GGUF 低显存档；面向 RTX 3080 10GB 的 480p/短片实验，必须使用 ComfyUI-GGUF、CPU 文本编码器和 RAM offload，不支持视频续写。",
-    vram: "Q3 · 3080 10GB 实验 · 32GB RAM 起步",
+    badge: "Q3 GGUF · 实验",
+    description: "Unsloth 社区 Q3 GGUF 档，面向 480p/短片实验；必须使用 ComfyUI-GGUF、CPU 文本编码器和 RAM offload，不支持视频续写。",
+    vram: "Q3 GGUF · CPU 文本编码器 · RAM offload",
     integrated: true,
     runtimeNodeTypes: ["UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF", "MiniMaxH3ImageToVideo"],
     components: [
@@ -1188,8 +1188,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "MiniMax H3 LightX2V Turbo · 首尾帧",
     category: "video",
     badge: "LightX2V · 原生采样",
-    description: "Turbo 不是另一套基础模型，而是通过蒸馏 LoRA 把 H3 从约 20 步压缩到 6-8 步；显存仍接近基础 INT8 档。推荐 RTX 4090/3090 24GB，且仅支持 FL2VA。",
-    vram: "pruned INT8 + Turbo LoRA · RTX 4090/3090 24GB",
+    description: "Turbo 不是另一套基础模型，而是通过蒸馏 LoRA 把 H3 从约 20 步压缩到 6-8 步；资源占用仍接近基础 INT8 档，仅支持 FL2VA。",
+    vram: "pruned INT8 + Turbo LoRA · 4–8 steps",
     integrated: true,
     components: [
       {
@@ -1224,8 +1224,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "MiniMax H3 R2V · 多参考 INT8",
     category: "video",
     badge: "R2V · 多参考",
-    description: "官方 Ref2VA 多参考档，当前支持最多 9 张图片参考；推荐 RTX 4090/3090 24GB，参考数量越多越需要系统内存。",
-    vram: "pruned INT8 · RTX 4090/3090 24GB 起步 · DynamicVRAM",
+    description: "官方 Ref2VA 多参考档，当前支持最多 9 张图片参考；参考数量越多越需要系统内存。",
+    vram: "pruned INT8 · DynamicVRAM · 多参考",
     integrated: true,
     components: [
       {
@@ -1254,9 +1254,9 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     id: "minimax_h3_ref2va_int4",
     name: "MiniMax H3 R2V · 多参考 INT4",
     category: "video",
-    badge: "R2V · INT4 低显存",
-    description: "社区 Ref2VA INT4 ConvRot 档，支持多张图片参考；推荐 16GB 显存，12GB 仅作实验，3080 10GB 不作为该档目标。",
-    vram: "pruned INT4 · 16GB 推荐 · 12GB 实验 · RAM offload",
+    badge: "R2V · INT4 · 压缩",
+    description: "社区 Ref2VA INT4 ConvRot 档，支持多张图片参考。",
+    vram: "pruned INT4 · RAM offload · 多参考",
     integrated: true,
     components: [
       {
@@ -1285,7 +1285,7 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     id: "sulphur2",
     name: "Sulphur 2 GGUF",
     category: "video",
-    badge: "GGUF · 低显存",
+    badge: "GGUF · 分阶段",
     description: "I2V 与原生 Extend 共用分离式 GGUF 部署。",
     vram: "Q3 默认 · CPU offload · 独立 VAE",
     components: sulphurComponentsFor("q3_k_m")
@@ -1445,7 +1445,7 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     name: "DaSiWa SynthSeduction v9",
     category: "video",
     badge: "专用合并模型",
-    description: "DaSiWa v9 High/Low 成对工作；4090 使用 Q4 版本更保守。",
+    description: "DaSiWa v9 High/Low 成对工作，偏写实人物与自然运动。",
     vram: "Q4 · 约 19–22 GB",
     components: [
       {
@@ -1531,7 +1531,7 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     category: "video",
     badge: "双阶段 1080p",
     description: "先生成 720p latent，再使用官方 8 步 SR 分支输出 1080p。",
-    vram: "双阶段工作流 · 4090 需模型间卸载",
+    vram: "双阶段工作流 · 模型间卸载",
     components: [
       {
         label: "HunyuanVideo 1.5 I2V 模型",

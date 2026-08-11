@@ -460,7 +460,7 @@ function modelName(id: string): string {
     {
       minimax_h3_fl2va: "MiniMax H3 FL2VA",
       minimax_h3_fl2va_int4: "MiniMax H3 FL2VA · INT4 低显存",
-      minimax_h3_fl2va_q3_gguf: "MiniMax H3 FL2VA · Q3 GGUF · RTX 3080 实验",
+      minimax_h3_fl2va_q3_gguf: "MiniMax H3 FL2VA · Q3 GGUF · 低显存实验",
       minimax_h3_fl2va_turbo: "MiniMax H3 LightX2V Turbo · 首尾帧",
       minimax_h3_ref2va: "MiniMax H3 R2V · 多参考",
       minimax_h3_ref2va_int4: "MiniMax H3 R2V · 多参考 INT4",
@@ -1496,7 +1496,7 @@ function createModelOptions(draft: Draft): string {
     : [
         { id: "minimax_h3_fl2va", name: "MiniMax H3 Image to Video", available: true, integrated: true },
       { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 Image to Video · INT4 低显存", available: true, integrated: true },
-          { id: "minimax_h3_fl2va_q3_gguf", name: "MiniMax H3 Image to Video · Q3 GGUF · RTX 3080 实验", available: true, integrated: true },
+          { id: "minimax_h3_fl2va_q3_gguf", name: "MiniMax H3 Image to Video · Q3 GGUF · 低显存实验", available: true, integrated: true },
         { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 LightX2V Turbo · 首尾帧", available: true, integrated: true },
         { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考", available: true, integrated: true },
         { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
@@ -3533,7 +3533,7 @@ function modelScanCard(profile: ModelScanProfile): string {
         </div>
         <span class="model-availability ${isReady ? "available" : "missing"}">${profile.available ? `${icon(isReady ? "circle-check" : "circle-alert")} ${escapeHtml(readyLabel)}` : `${icon("circle-alert")} 缺少 ${missingCount} 项`}</span>
       </div>
-      <div class="model-meta-line"><span>${escapeHtml(profile.vram)}</span><span class="model-hardware-recommendation">推荐硬件 · ${escapeHtml(hardwareRecommendation)}</span><span>${metaLabel}</span></div>
+      <div class="model-meta-line"><span>资源 / 策略 · ${escapeHtml(profile.vram)}</span><span class="model-hardware-recommendation">推荐硬件 · ${escapeHtml(hardwareRecommendation)}</span><span>${metaLabel}</span></div>
       <div class="component-list">
         ${profile.components.map((component, componentIndex) => `
           <div class="component-row ${component.found ? "found" : component.optional ? "optional missing" : "missing"}">
@@ -3889,7 +3889,7 @@ function settingsPage(): string {
             ${(videoProfiles.length ? videoProfiles : [
               { id: "minimax_h3_fl2va", name: "MiniMax H3 FL2VA · 首帧 / 首尾帧", available: true, integrated: true },
               { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 FL2VA · INT4 低显存", available: true, integrated: true },
-              { id: "minimax_h3_fl2va_q3_gguf", name: "MiniMax H3 FL2VA · Q3 GGUF · RTX 3080 实验", available: true, integrated: true },
+              { id: "minimax_h3_fl2va_q3_gguf", name: "MiniMax H3 FL2VA · Q3 GGUF · 低显存实验", available: true, integrated: true },
               { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 LightX2V Turbo · 首尾帧", available: true, integrated: true },
               { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考 INT8", available: true, integrated: true },
               { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },

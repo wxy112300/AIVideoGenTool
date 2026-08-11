@@ -591,7 +591,7 @@ async function bundledWorkflowFor(
     },
     minimax_h3_fl2va_q3_gguf: {
       filename: "minimax_h3_i2v_gguf_q3_api.json",
-      label: "内置 · MiniMax H3 Q3 GGUF · RTX 3080 低显存实验"
+      label: "内置 · MiniMax H3 Q3 GGUF · 低显存实验"
     },
     minimax_h3_fl2va_turbo: {
       filename: "minimax_h3_fl2va_turbo_api.json",
