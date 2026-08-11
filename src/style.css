@@ -106,6 +106,14 @@ textarea:focus, input:focus, select:focus { border-color: var(--primary); box-sh
 .settings-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .field-hint { color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.35; }
 label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
+.field-label-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+.field-info { position: relative; z-index: 2; width: 17px; height: 17px; display: inline-grid; flex: 0 0 17px; place-items: center; border: 0; border-radius: 0; color: #7faef2; background: transparent; cursor: help; transition: color .12s ease, opacity .12s ease; }
+.field-info > .ui-icon { width: 15px; height: 15px; stroke-width: 1.8; }
+.field-info:hover { color: #a8cbff; }
+.field-info-tip { position: absolute; z-index: 40; top: calc(100% + 8px); right: -4px; width: max-content; max-width: min(300px, 72vw); padding: 9px 11px; border: 1px solid rgba(91, 117, 155, .72); border-radius: 8px; color: #dbe8fa; background: #151d28; box-shadow: 0 10px 28px rgba(0, 0, 0, .42); font-size: 11px; font-weight: 450; line-height: 1.5; opacity: 0; pointer-events: none; transform: translateY(-3px); transition: opacity .12s ease, transform .12s ease; }
+.field-info:hover .field-info-tip,
+.field-info:focus-visible .field-info-tip { opacity: 1; transform: translateY(0); }
+.field-info:focus-visible { color: #b9d7ff; outline: 1px solid rgba(124, 184, 255, .52); outline-offset: 2px; border-radius: 3px; }
 .checkbox-field { display: flex; align-items: center; align-self: end; min-height: 42px; }
 .checkbox-field input { width: auto; }
 .inline-field input[type="range"] { padding: 0; }
@@ -396,8 +404,10 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .component-row.missing .component-state { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--panel-2)); }
 .component-row strong { display: block; font-size: 12px; }
 .component-row code, .component-row span:not(.component-state) { display: block; margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.component-info { width: 23px; height: 23px; display: grid; place-items: center; padding: 0; border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--border)); border-radius: 50%; color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); font-family: Georgia, serif; font-size: 13px; font-weight: 700; line-height: 1; }
-.component-info:hover { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 17%, transparent); transform: translateY(-1px); }
+.component-info { width: 23px; height: 23px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 0; color: var(--primary); background: transparent; line-height: 1; }
+.component-info > .ui-icon { width: 16px; height: 16px; stroke-width: 1.8; }
+.component-info:hover { color: #afd0ff; background: transparent; transform: translateY(-1px); }
+.component-info:focus-visible { outline: 1px solid rgba(124, 184, 255, .52); outline-offset: 1px; border-radius: 3px; }
 .dialog-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: rgba(3, 5, 8, .74); backdrop-filter: blur(5px); }
 .install-guide-dialog { width: min(560px, 100%); padding: 22px; border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border)); border-radius: 16px; background: #181b20; box-shadow: 0 24px 80px rgba(0, 0, 0, .5); }
 .install-guide-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
@@ -3080,6 +3090,41 @@ main { padding-top: 0; }
   align-self: stretch;
 }
 
+.video-lora-stack { display: grid; gap: 10px; margin-top: 13px; padding-top: 13px; border-top: 1px solid rgba(56, 65, 78, .52); }
+.video-lora-stack-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+.video-lora-stack-heading > div:first-child { min-width: 0; display: grid; gap: 4px; }
+.video-lora-stack-heading > div:first-child > strong { max-width: 170px; color: #dbe6f5; font-size: 12px; }
+.video-lora-stack-heading > div:first-child > span { color: #8492a5; font-size: 10px; }
+.video-lora-add { width: min(100%, 330px); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.video-lora-add select { min-width: 0; height: 36px; font-size: 11px; }
+.video-lora-add button { min-height: 36px; padding: 7px 10px; white-space: nowrap; }
+.video-lora-list { display: grid; gap: 7px; }
+.video-lora-row { min-width: 0; display: grid; grid-template-columns: minmax(170px, 1fr) minmax(220px, .9fr) auto; align-items: center; gap: 12px; padding: 9px 10px; border: 1px solid rgba(61, 74, 94, .68); border-radius: 10px; background: rgba(13, 18, 25, .7); }
+.video-lora-identity { min-width: 0; display: flex; align-items: center; gap: 9px; }
+.video-lora-order { width: 23px; height: 23px; display: grid; flex: 0 0 23px; place-items: center; border-radius: 7px; color: #a9caff; background: rgba(90, 139, 218, .14); font-size: 10px; font-weight: 700; }
+.video-lora-identity > div { min-width: 0; display: grid; gap: 2px; }
+.video-lora-identity strong { overflow: hidden; color: #dce7f5; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.video-lora-identity span { color: #7f8da0; font-size: 9px; }
+.video-lora-name-line { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.video-lora-name-line > strong { min-width: 0; }
+.video-lora-name-line > .video-lora-info { z-index: 8; width: 16px; height: 16px; flex-basis: 16px; color: #8fbbff; }
+.video-lora-info-tip { right: auto; left: -34px; width: min(390px, 72vw); display: grid; gap: 8px; padding: 12px 13px; text-align: left; white-space: normal; }
+.video-lora-info-tip > strong { color: #edf5ff; font-size: 12px; white-space: normal; }
+.video-lora-info-tip > span { display: grid; grid-template-columns: 66px minmax(0, 1fr); gap: 8px; color: #c7d3e2; font-size: 10px; line-height: 1.5; }
+.video-lora-info-tip b { color: #8fbbff; font-weight: 650; }
+.video-lora-info-tip small { padding-top: 5px; border-top: 1px solid rgba(91, 117, 155, .42); color: #77869a; font-size: 9px; }
+.video-lora-strength { min-width: 0; display: grid; grid-template-columns: auto minmax(80px, 1fr) 58px; align-items: center; gap: 7px; color: #8d9bad; font-size: 10px; }
+.video-lora-strength input[type="range"] { min-width: 0; padding: 0; }
+.video-lora-strength input[type="number"] { width: 58px; min-width: 0; padding: 7px 6px; text-align: center; }
+.video-lora-actions { display: flex; align-items: center; gap: 4px; }
+.video-lora-actions > .icon-button { width: 30px; height: 30px; padding: 0; color: #9ba8b9; }
+.video-lora-actions > .icon-button:disabled { opacity: .28; cursor: default; }
+.video-lora-empty { min-height: 42px; display: grid; place-items: center; border: 1px dashed rgba(61, 74, 94, .62); border-radius: 9px; color: #77869a; font-size: 10px; }
+.video-lora-issues { display: grid; gap: 6px; }
+.video-lora-issue { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 7px; padding: 8px 10px; border: 1px solid rgba(224, 173, 87, .3); border-radius: 8px; color: #d9bd89; background: rgba(145, 99, 29, .09); font-size: 10px; line-height: 1.45; }
+.video-lora-issue > .ui-icon { width: 14px; height: 14px; margin-top: 1px; }
+.video-lora-issue.error { border-color: rgba(226, 91, 104, .34); color: #efa4ad; background: rgba(134, 38, 51, .1); }
+
 .composer-control-grid .settings-duration .inline-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 76px auto;
@@ -3142,6 +3187,11 @@ main { padding-top: 0; }
   .composer-control-grid {
     grid-template-columns: 1fr;
   }
+
+  .video-lora-stack-heading { align-items: stretch; flex-direction: column; }
+  .video-lora-add { width: 100%; }
+  .video-lora-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .video-lora-strength { grid-column: 1 / -1; grid-row: 2; }
 
   .composer-heading { grid-template-columns: 1fr; gap: 10px; }
   .composer-heading-main { align-items: center; }

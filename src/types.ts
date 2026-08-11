@@ -132,6 +132,7 @@ export interface Draft {
   activePromptVersion: number;
   h3ReferenceSlots: H3ReferenceSlot[];
   modelId: string;
+  videoLoras: VideoLoraSelection[];
   workflowPath: string;
   ratio: "source" | "16:9" | "9:16" | "1:1" | "4:3";
   resolution: 480 | 540 | 720 | 768;
@@ -144,6 +145,19 @@ export interface Draft {
   keepSeedOnCopy: boolean;
   spectrumMode: H3SpectrumMode;
   spectrumModeUserSet?: boolean;
+}
+
+export type VideoLoraPurpose = "performance" | "style" | "content" | "character" | "motion" | "quality";
+
+export interface VideoLoraSelection {
+  id: string;
+  name: string;
+  filename: string;
+  strength: number;
+  modelFamily: string;
+  compatibleModelIds: string[];
+  compatibleInputModes: Array<"image" | "video">;
+  purpose: VideoLoraPurpose;
 }
 
 export type LtxExtensionModelProfile =
@@ -227,6 +241,7 @@ interface VideoQueueTaskBase extends QueueTaskBase {
   keepSeedOnCopy: boolean;
   attentionMode?: Settings["h3AttentionMode"];
   spectrumMode?: H3SpectrumMode;
+  videoLoras?: VideoLoraSelection[];
 }
 
 export interface ImageGenerationQueueTask extends QueueTaskBase {
@@ -341,6 +356,7 @@ export interface AssetVersion {
   createdAt: string;
   outputFilename: string;
   modelId: string;
+  videoLoras?: VideoLoraSelection[];
   width: number;
   height: number;
   duration: number;
@@ -405,6 +421,7 @@ export interface HistoryAsset {
   outputFilename: string;
   createdAt: string;
   modelId: string;
+  videoLoras?: VideoLoraSelection[];
   duration: number;
   resolution: number;
   steps?: H3StepCount;
@@ -548,7 +565,7 @@ export interface ModelComponentStatus {
 export interface ModelScanProfile {
   id: string;
   name: string;
-  category: "video" | "image" | "upscale" | "interpolation" | "prompt";
+  category: "video" | "lora" | "image" | "upscale" | "interpolation" | "prompt";
   managedBy?: "comfyui" | "lmstudio" | "llama-server";
   badge: string;
   description: string;

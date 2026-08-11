@@ -91,6 +91,7 @@ import type {
   Settings,
   SettingsSaveMode,
   TaskPerformanceStats,
+  VideoLoraPurpose,
   WindowCloseRequest,
   WorkflowCapabilities
 } from "./types";
@@ -138,7 +139,6 @@ import {
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
   isMiniMaxH3SpectrumEligible,
-  isMiniMaxH3TurboModel,
   isRetiredVideoModel,
   normalizeH3Steps,
   outputDimensions,
@@ -154,6 +154,17 @@ import {
   promptSnippets
 } from "./core/prompt-suggestions";
 import { checkH3Prompt } from "./core/h3-prompt-check";
+import { structurallyEqual } from "./core/structural-equal";
+import {
+  BUILTIN_VIDEO_LORAS,
+  H3_TURBO_LORA_ID,
+  bundledWorkflowModelId,
+  isH3TurboEnabled,
+  reorderVideoLoras,
+  videoLoraConfigurationIssues,
+  videoLoraCompatibleWithDraft,
+  videoLoraSelection
+} from "./core/video-loras";
 
 type Page = "create" | "queue" | "history" | "history-detail" | "image-history-detail" | "settings";
 type HistoryKind = "video" | "image";
@@ -210,7 +221,7 @@ let coreDependencyRepairing = false;
 let attentionAccelerationInstalling = false;
 let attentionAccelerationLog = "";
 let settingsDraft: Settings | null = null;
-let settingsTab: "system" | "acceleration" | "video" | "image" | "nodes" | "prompt" | "upscale" | "logs" = "system";
+let settingsTab: "system" | "acceleration" | "video" | "lora" | "image" | "nodes" | "prompt" | "upscale" | "logs" = "system";
 let appLogs: AppLogSnapshot | null = null;
 let appLogsLoading = false;
 let appLogsError = "";
@@ -430,6 +441,70 @@ const lucideIconSet = {
 
 function icon(name: string, className = ""): string {
   return `<i data-lucide="${name}" class="ui-icon ${className}" aria-hidden="true"></i>`;
+}
+
+function fieldLabelWithTip(label: string, tip: string): string {
+  return `<span class="field-label-row"><span>${escapeHtml(label)}</span><span class="field-info" tabindex="0" aria-label="${escapeHtml(tip)}">${icon("info")}<span class="field-info-tip" role="tooltip">${escapeHtml(tip)}</span></span></span>`;
+}
+
+function videoLoraPurposeLabel(purpose: VideoLoraPurpose): string {
+  return ({
+    performance: "性能",
+    style: "风格",
+    content: "内容",
+    character: "人物",
+    motion: "动作",
+    quality: "质量"
+  } satisfies Record<VideoLoraPurpose, string>)[purpose];
+}
+
+function videoLoraInfoButton(lora: Draft["videoLoras"][number]): string {
+  const definition = BUILTIN_VIDEO_LORAS.find((item) => item.id === lora.id);
+  const guide = definition?.guide;
+  if (!guide) {
+    const fallback = "此 LoRA 暂无内置教程。建议从 0.6–1.0 小幅调整，并与不使用 LoRA 的结果对照。";
+    return `<span class="field-info video-lora-info" tabindex="0" aria-label="${escapeHtml(fallback)}">${icon("info")}<span class="field-info-tip video-lora-info-tip" role="tooltip">${escapeHtml(fallback)}</span></span>`;
+  }
+  const constraintNotes = [
+    ...definition.rules.settingConflicts.map((conflict) => conflict.message),
+    ...definition.rules.combinations.map((combination) => combination.message)
+  ];
+  const ariaLabel = [guide.summary, guide.recommendedStrength, guide.effects, guide.stacking, guide.compatibility, ...constraintNotes].join(" ");
+  return `<span class="field-info video-lora-info" tabindex="0" aria-label="${escapeHtml(ariaLabel)}">
+    ${icon("info")}
+    <span class="field-info-tip video-lora-info-tip" role="tooltip">
+      <strong>${escapeHtml(lora.name)}</strong>
+      <span><b>作用</b>${escapeHtml(guide.summary)}</span>
+      <span><b>推荐强度</b>${escapeHtml(guide.recommendedStrength)}</span>
+      <span><b>可能影响</b>${escapeHtml(guide.effects)}</span>
+      <span><b>叠加建议</b>${escapeHtml(guide.stacking)}</span>
+      <span><b>兼容范围</b>${escapeHtml(guide.compatibility)}</span>
+      ${constraintNotes.length ? `<span><b>冲突限制</b>${escapeHtml(constraintNotes.join(" "))}</span>` : ""}
+      <small>来源：${escapeHtml(guide.source)}</small>
+    </span>
+  </span>`;
+}
+
+function detectedVideoLoraFilename(profile: ModelScanProfile | undefined): string {
+  const match = profile?.components.flatMap((component) => component.matches)[0];
+  if (!match) return "";
+  const normalized = match.replaceAll("\\", "/");
+  const markerIndex = normalized.toLowerCase().lastIndexOf("loras/");
+  return markerIndex >= 0 ? normalized.slice(markerIndex + "loras/".length) : "";
+}
+
+function profileProvidesVideoLora(
+  profile: ModelScanProfile | undefined,
+  filename: string
+): boolean {
+  if (!profile?.available) return false;
+  const expected = `loras/${filename}`.replaceAll("\\", "/").toLowerCase();
+  return profile.components.some((component) =>
+    component.matches.some((match) => {
+      const normalized = match.replaceAll("\\", "/").toLowerCase();
+      return normalized === expected || normalized.endsWith(`/${expected}`);
+    })
+  );
 }
 
 function renderIcons(root: Element): void {
@@ -1514,7 +1589,6 @@ function createModelOptions(draft: Draft): string {
         { id: "minimax_h3_fl2va", name: "MiniMax H3 Image to Video", available: true, integrated: true },
       { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 Image to Video · INT4 低显存", available: true, integrated: true },
           { id: "minimax_h3_fl2va_q3_gguf", name: "MiniMax H3 Image to Video · Q3 GGUF · 低显存实验", available: true, integrated: true },
-        { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 LightX2V Turbo · 首尾帧", available: true, integrated: true },
         { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考", available: true, integrated: true },
         { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
       { id: "sulphur2", name: "Sulphur 2 GGUF", available: true, integrated: true }
@@ -2331,12 +2405,40 @@ function createPage(): string {
   const promptStatus = promptModelStatus(state.settings);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
   const promptAiDisabled = promptRuntimeBusy || state.queueRunning;
-  const h3Steps = normalizeH3Steps(draft.steps, draft.modelId);
+  const turboEnabled = isH3TurboEnabled(draft);
+  const h3Steps = normalizeH3Steps(draft.steps, draft.modelId, draft.videoLoras);
+  const turboLoraProfile = environmentScan?.modelProfiles.find(
+    (profile) => profile.id === H3_TURBO_LORA_ID
+  );
+  const compatibleLoraDefinitions = BUILTIN_VIDEO_LORAS.filter((lora) =>
+    videoLoraCompatibleWithDraft(lora, draft.modelId, draft.inputMode)
+  );
+  const addableLoraDefinitions = compatibleLoraDefinitions.filter((lora) =>
+    !draft.videoLoras.some((selected) => selected.id === lora.id)
+  );
+  const installReadyLoraDefinitions = addableLoraDefinitions.filter((lora) =>
+    environmentScan?.modelProfiles.find((item) => item.id === lora.id)?.available === true
+  );
+  const loraIssues = videoLoraConfigurationIssues({
+    modelId: draft.modelId,
+    inputMode: draft.inputMode,
+    spectrumMode: draft.spectrumMode,
+    attentionMode: state.settings.h3AttentionMode,
+    videoLoras: draft.videoLoras
+  });
+  const loraBlockingIssue = loraIssues.find((issue) => issue.severity === "error");
+  const scannedModelProfiles = environmentScan?.modelProfiles;
+  const missingSelectedLora = scannedModelProfiles
+    ? draft.videoLoras.find((lora) => !profileProvidesVideoLora(
+        scannedModelProfiles.find((profile) => profile.id === lora.id),
+        lora.filename
+      ))
+    : undefined;
   const spectrumNode = environmentScan?.customNodes.find(
     (node) => node.id === "spectrum-minimax-h3"
   );
   const spectrumLoaded = Boolean(spectrumNode?.loaded);
-  const spectrumEligible = isMiniMaxH3SpectrumEligible(draft.modelId);
+  const spectrumEligible = isMiniMaxH3SpectrumEligible(draft.modelId) && !turboEnabled;
   const spectrumReady = draft.spectrumMode !== "balanced" || (
     spectrumEligible && spectrumLoaded
   );
@@ -2373,11 +2475,18 @@ function createPage(): string {
     draft.h3ReferenceSlots.length > 0 &&
     draft.h3ReferenceSlots.every((slot) => Boolean(slot.mediaPath))
   );
-  const turboCoreBlockReason = isMiniMaxH3TurboModel(draft.modelId) &&
+  const turboCoreBlockReason = turboEnabled &&
     Boolean(environmentScan?.comfyCompatibility.checkedFrom) &&
     !environmentScan?.comfyCompatibility.h3CoreSupported
     ? "LightX2V Turbo 需要 ComfyUI v0.31.0+ 原生音视频采样；请先在设置中更新核心"
     : "";
+  const turboLoraBlockReason = turboEnabled && turboLoraProfile && !turboLoraProfile.available
+    ? "LightX2V Turbo LoRA 文件缺失；请先在设置 → LoRA 中安装"
+    : "";
+  const selectedLoraBlockReason = loraBlockingIssue?.message ??
+    (missingSelectedLora
+      ? `${missingSelectedLora.name} 当前记录的文件未找到；请在设置 → LoRA 中重新扫描或安装`
+      : "");
   const enqueueBlockReason = extending
     ? !videoReady
       ? "请先选择视频并等待读取完成"
@@ -2400,8 +2509,8 @@ function createPage(): string {
       ? "请先选择首帧图片"
       : !prompt.text.trim()
         ? "请先填写提示词"
-        : turboCoreBlockReason
-          ? turboCoreBlockReason
+        : turboCoreBlockReason || turboLoraBlockReason || selectedLoraBlockReason
+          ? turboCoreBlockReason || turboLoraBlockReason || selectedLoraBlockReason
           : !draft.workflowPath
             ? "请先选择该模型的 ComfyUI API 工作流"
             : !r2vSlotsReady
@@ -2583,8 +2692,8 @@ function createPage(): string {
           </select>
         </label>
         ${isMiniMaxH3 ? `<label class="settings-field settings-steps">采样步数（H3）
-          <select id="steps" aria-label="H3 采样步数" title="${escapeHtml(isMiniMaxH3TurboModel(draft.modelId) ? "LightX2V Turbo 建议使用 8 步；6 步用于快速预览，4 步可能损失动态和音频质量。" : "只影响 H3；其他模型沿用各自工作流设置。")}">
-            ${isMiniMaxH3TurboModel(draft.modelId)
+          <select id="steps" aria-label="H3 采样步数" title="${escapeHtml(turboEnabled ? "LightX2V Turbo 建议使用 8 步；6 步用于快速预览，4 步可能损失动态和音频质量。" : "只影响 H3；其他模型沿用各自工作流设置。")}">
+            ${turboEnabled
               ? `<option value="4" ${h3Steps === 4 ? "selected" : ""}>4 · 极限加速（实验）</option>
                 <option value="6" ${h3Steps === 6 ? "selected" : ""}>6 · 加速预览</option>
                 <option value="8" ${h3Steps === 8 || h3Steps > 8 ? "selected" : ""}>8 · 正式输出（推荐）</option>`
@@ -2593,13 +2702,38 @@ function createPage(): string {
                 <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · 快速预览</option>`}
           </select>
         </label>
-        <label class="settings-field settings-spectrum">Spectrum 加速
+        <label class="settings-field settings-spectrum">${fieldLabelWithTip("Spectrum 加速", extending && isR2V ? "Motion Context 官方建议关闭 Spectrum，避免固定上下文帧与音频质量退化。" : !spectrumEligible ? turboEnabled ? "LightX2V Turbo 当前使用专用低步数采样策略，不与 Spectrum 叠加。" : "当前模型暂不支持 Spectrum。" : !spectrumLoaded ? "请先在设置 → 节点与工作流中安装 Spectrum，并确认 ComfyUI 已重启加载。" : `Spectrum ${spectrumNode?.version ? `v${spectrumNode.version}` : "已加载"}，预计降低 20–35% 采样耗时；使用系统内存保存 H3 特征。`)}
           <select id="spectrum-mode" ${spectrumEligible && spectrumLoaded && !(extending && isR2V) ? "" : "disabled"} title="${escapeHtml(extending && isR2V ? "Motion Context 官方建议关闭 Spectrum，避免固定上下文行与音频质量退化。" : !spectrumEligible ? "当前模型暂不支持 Spectrum。" : !spectrumLoaded ? "请先在设置 → 节点与工作流中安装 Spectrum，并确认 ComfyUI 已重启加载。" : "使用系统内存保存 H3 特征；不会占用额外模型权重。")} ">
             <option value="off" ${draft.spectrumMode !== "balanced" ? "selected" : ""}>关闭 · 原生完整计算</option>
             <option value="balanced" ${draft.spectrumMode === "balanced" ? "selected" : ""}>平衡模式 · 系统内存</option>
           </select>
-          <small>${!spectrumEligible ? "当前模型不支持 Spectrum" : spectrumLoaded ? `已加载${spectrumNode?.version ? ` v${escapeHtml(spectrumNode.version)}` : ""} · 预计降低 20–35% 采样耗时` : spectrumNode?.installed ? "节点已安装，等待 ComfyUI 重启加载" : "需要先安装 Spectrum 节点"}</small>
         </label>` : ""}
+          </div>
+          <div class="video-lora-stack">
+            <div class="video-lora-stack-heading">
+              <div><strong>${fieldLabelWithTip("LoRA 叠加", "LoRA 会按列表顺序叠加到当前基础模型。每个 LoRA 只能用于其声明兼容的模型和输入模式；强度通常从 0.6–1.0 起步，过高可能造成画面失真。")}</strong><span>${draft.videoLoras.length ? `已启用 ${draft.videoLoras.length} 个适配层` : "可选，不使用 LoRA 也可以正常生成"}</span></div>
+              <div class="video-lora-add">
+                <select id="video-lora-to-add" aria-label="选择要添加的 LoRA" ${installReadyLoraDefinitions.length ? "" : "disabled"}>
+                  ${installReadyLoraDefinitions.length
+                    ? installReadyLoraDefinitions.map((lora) => `<option value="${escapeHtml(lora.id)}">${escapeHtml(lora.name)}</option>`).join("")
+                    : `<option value="">${!environmentScan ? "等待环境扫描" : addableLoraDefinitions.length ? "兼容 LoRA 尚未安装" : "没有更多兼容 LoRA"}</option>`}
+                </select>
+                <button class="secondary button-with-icon" id="add-video-lora" type="button" ${installReadyLoraDefinitions.length ? "" : "disabled"}>${icon("plus")}添加</button>
+              </div>
+            </div>
+            ${draft.videoLoras.length
+              ? `<div class="video-lora-list">${draft.videoLoras.map((lora, index) => `
+                  <article class="video-lora-row" data-video-lora-id="${escapeHtml(lora.id)}">
+                    <div class="video-lora-identity"><span class="video-lora-order">${index + 1}</span><div><span class="video-lora-name-line"><strong>${escapeHtml(lora.name)}</strong>${videoLoraInfoButton(lora)}</span><span>${escapeHtml(lora.modelFamily)} · ${videoLoraPurposeLabel(lora.purpose)}</span></div></div>
+                    <label class="video-lora-strength"><span>强度</span><input type="range" min="0" max="2" step="0.05" value="${lora.strength}" data-video-lora-strength="${escapeHtml(lora.id)}"><input type="number" min="0" max="2" step="0.05" value="${lora.strength}" data-video-lora-strength-number="${escapeHtml(lora.id)}"></label>
+                    <div class="video-lora-actions">
+                      <button class="icon-button" type="button" data-move-video-lora="${escapeHtml(lora.id)}" data-direction="up" aria-label="上移 ${escapeHtml(lora.name)}" title="上移 LoRA" ${index === 0 ? "disabled" : ""}>${icon("move-up")}</button>
+                      <button class="icon-button" type="button" data-move-video-lora="${escapeHtml(lora.id)}" data-direction="down" aria-label="下移 ${escapeHtml(lora.name)}" title="下移 LoRA" ${index === draft.videoLoras.length - 1 ? "disabled" : ""}>${icon("move-down")}</button>
+                      <button class="icon-button" type="button" data-remove-video-lora="${escapeHtml(lora.id)}" aria-label="移除 ${escapeHtml(lora.name)}" title="移除 LoRA">${icon("x")}</button>
+                    </div>
+                  </article>`).join("")}</div>`
+              : `<div class="video-lora-empty">未使用 LoRA</div>`}
+            ${loraIssues.length ? `<div class="video-lora-issues">${loraIssues.map((issue) => `<div class="video-lora-issue ${issue.severity}">${icon(issue.severity === "error" ? "circle-alert" : "alert-triangle")}<span>${escapeHtml(issue.message)}</span></div>`).join("")}</div>` : ""}
           </div>
         </section>
         <section class="composer-control-group composer-motion-group">
@@ -2813,14 +2947,17 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
     : null;
   const h3ComputeSummary = task.taskType !== "upscale" && task.taskType !== "image-generation" && isMiniMaxH3Model(task.modelId)
     ? task.spectrumMode === "balanced"
-        ? `<span title="Spectrum 已开启；H3 特征历史保存在系统内存">${normalizeH3Steps(task.steps, task.modelId)} 步 · Spectrum 开</span>`
-        : `<span title="Spectrum 已关闭；使用 H3 原生完整计算">${normalizeH3Steps(task.steps, task.modelId)} 步 · Spectrum 关</span>`
+        ? `<span title="Spectrum 已开启；H3 特征历史保存在系统内存">${normalizeH3Steps(task.steps, task.modelId, task.videoLoras)} 步 · Spectrum 开</span>`
+        : `<span title="Spectrum 已关闭；使用 H3 原生完整计算">${normalizeH3Steps(task.steps, task.modelId, task.videoLoras)} 步 · Spectrum 关</span>`
+    : "";
+  const loraSummary = task.taskType !== "image-generation" && task.videoLoras?.length
+    ? `<span>LoRA · ${task.videoLoras.map((lora) => escapeHtml(lora.name)).join(" + ")}</span>`
     : "";
   const seedText = task.taskType === "image-generation" ? "批次内独立" : String(task.seed);
   const metadata = task.taskType === "image-generation"
     ? `<span>图片处理</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.outputCount} 张候选图</span><span>${escapeHtml(task.qualityProfile)}</span><span>PNG 中间输出</span>`
     : task.taskType === "generation"
-    ? `<span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span>${h3ComputeSummary}<span>Seed ${escapeHtml(seedText)}</span>`
+    ? `<span>${escapeHtml(modelName(task.modelId))}</span>${loraSummary}<span>${task.resolution}p</span><span>${task.duration}秒</span><span>${frameRateSummary(task.fps, task.frameInterpolation)}</span>${h3ComputeSummary}<span>Seed ${escapeHtml(seedText)}</span>`
     : task.taskType === "extension"
       ? `<span>视频续写</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${task.resolution}p</span><span>最多 ${task.maxGeneratedFrames} 模型帧</span><span>${task.overlapFrames} 帧上下文</span>${h3ComputeSummary}`
       : `<span>分辨率提升</span><span>${escapeHtml(modelName(task.modelId))}</span><span>${upscaleOutput![0]} × ${upscaleOutput![1]}</span><span>分批处理 · 每批卸载</span>`;
@@ -2922,11 +3059,12 @@ function draftFromQueueTask(task: QueueTask): Draft | null {
     activePromptVersion: 0,
     h3ReferenceSlots: extension ? [] : (task.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
     modelId: task.modelId,
+    videoLoras: task.videoLoras?.map((lora) => ({ ...lora })) ?? [],
     workflowPath: task.workflowPath,
     ratio: task.ratio,
     resolution,
     duration: task.duration,
-    steps: normalizeH3Steps(task.steps, task.modelId),
+    steps: normalizeH3Steps(task.steps, task.modelId, task.videoLoras),
     fps: task.fps,
     frameInterpolation: task.frameInterpolation,
     motion: task.motion,
@@ -3399,7 +3537,7 @@ function historyDetailPage(): string {
       </article>
       <article class="panel history-record">
         <h2>原始生成参数</h2>
-        <dl><dt>模型</dt><dd>${escapeHtml(modelName(version.modelId))}</dd><dt>采样步数</dt><dd>${version.steps ?? "工作流默认"}</dd><dt>计算模式</dt><dd>${version.spectrumMode === "balanced" ? "Spectrum 平衡模式 · 系统内存" : "原生完整计算"}</dd><dt>Seed</dt><dd><code>${version.seed ?? "不适用"}</code></dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "旧记录未保存")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId)}</code></dd></dl>
+        <dl><dt>模型</dt><dd>${escapeHtml(modelName(version.modelId))}</dd>${version.videoLoras?.length ? `<dt>LoRA</dt><dd>${version.videoLoras.map((lora) => `${escapeHtml(lora.name)} · ${lora.strength}`).join(" + ")}</dd>` : ""}<dt>采样步数</dt><dd>${version.steps ?? "工作流默认"}</dd><dt>计算模式</dt><dd>${version.spectrumMode === "balanced" ? "Spectrum 平衡模式 · 系统内存" : "原生完整计算"}</dd><dt>Seed</dt><dd><code>${version.seed ?? "不适用"}</code></dd><dt>工作流</dt><dd><code>${escapeHtml(version.workflowPath || "旧记录未保存")}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${escapeHtml(version.comfyPromptId)}</code></dd></dl>
       </article>
       <article class="panel history-record">
         <h2>视频输出</h2>
@@ -3673,6 +3811,9 @@ function modelScanCard(profile: ModelScanProfile): string {
   const isGemmaProfile = isPromptProfile && isGemmaPromptModel(profile.id);
   const runtimeUnavailable = profile.runtimeVerified === true && profile.runtimeReady === false;
   const hardwareRecommendation = modelHardwareRecommendation(profile);
+  const loraDefinition = profile.category === "lora"
+    ? BUILTIN_VIDEO_LORAS.find((lora) => lora.id === profile.id)
+    : undefined;
   const isReady = profile.category === "image"
     ? isImageWorkflowReady(profile)
     : profile.available && !runtimeUnavailable;
@@ -3708,7 +3849,7 @@ function modelScanCard(profile: ModelScanProfile): string {
     <article class="panel model-profile ${isReady ? "available" : "missing"}">
       <div class="model-profile-head">
         <div>
-          <div class="model-title"><h3>${escapeHtml(profile.name)}</h3><span class="model-badge">${escapeHtml(profile.badge)}</span></div>
+          <div class="model-title"><h3>${escapeHtml(profile.name)}</h3>${loraDefinition ? videoLoraInfoButton(loraDefinition) : ""}<span class="model-badge">${escapeHtml(profile.badge)}</span></div>
           <p class="muted">${escapeHtml(profile.description)}</p>
         </div>
         <span class="model-availability ${isReady ? "available" : "missing"}">${profile.available ? `${icon(isReady ? "circle-check" : "circle-alert")} ${escapeHtml(readyLabel)}` : `${icon("circle-alert")} 缺少 ${missingCount} 项`}</span>
@@ -3877,7 +4018,7 @@ function comfyCompatibilityPanel(): string {
 
 function settingsHaveUnsavedChanges(): boolean {
   return settingsDraft !== null &&
-    JSON.stringify(settingsDraft) !== JSON.stringify(state.settings);
+    !structurallyEqual(settingsDraft, state.settings);
 }
 
 function syncSettingsDirtyUi(): void {
@@ -3898,6 +4039,7 @@ function settingsPage(): string {
   const videoProfiles = orderVideoProfiles(
     profiles.filter((profile) => profile.category === "video")
   );
+  const loraProfiles = profiles.filter((profile) => profile.category === "lora");
   const imageProfiles = profiles.filter((profile) => profile.category === "image");
   const imageQualityProfiles = imageModelCapabilityFor(settings.defaultImageModel).qualityProfiles;
   const promptProfiles = profiles.filter((profile) => profile.category === "prompt");
@@ -3913,6 +4055,7 @@ function settingsPage(): string {
   const videoAvailable = videoProfiles.filter(
     (profile) => profile.available && profile.integrated
   ).length;
+  const loraAvailable = loraProfiles.filter((profile) => profile.available).length;
   const imageComponentsReady = imageProfiles.filter((profile) => profile.available).length;
   const imageWorkflowsReady = imageProfiles.filter((profile) => isImageWorkflowReady(profile)).length;
   const upscaleAvailable = upscaleProfiles.filter((profile) => profile.available).length;
@@ -4083,7 +4226,6 @@ function settingsPage(): string {
               { id: "minimax_h3_fl2va", name: "MiniMax H3 FL2VA · 首帧 / 首尾帧", available: true, integrated: true },
               { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 FL2VA · INT4 低显存", available: true, integrated: true },
               { id: "minimax_h3_fl2va_q3_gguf", name: "MiniMax H3 FL2VA · Q3 GGUF · 低显存实验", available: true, integrated: true },
-              { id: "minimax_h3_fl2va_turbo", name: "MiniMax H3 LightX2V Turbo · 首尾帧", available: true, integrated: true },
               { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考 INT8", available: true, integrated: true },
               { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
               { id: "sulphur2", name: "Sulphur 2 GGUF", available: false, integrated: true }
@@ -4103,6 +4245,19 @@ function settingsPage(): string {
         </div>
         <p class="muted proxy-hint">Q2 使用 distilled 模型且不加载 LoRA；Q3/Q4 使用 dev 模型和 distill LoRA。三档均要求 Gemma 3、LTX 文本连接器、独立视频/音频 VAE 与 latent upscaler，并强制单任务、<code>patch_on_device=false</code>、<code>--cache-none</code>、CPU offload 和分块解码。8GB 兼容仍要求充足的系统内存与页面文件。</p>
       </section>
+    </section>`;
+
+  const loraPanel = `
+    <section class="settings-panel">
+      <section class="panel settings-section">
+        <div class="section-heading">
+          <div><h2>视频 LoRA</h2><span class="muted">LoRA 是叠加在基础模型上的可选适配层，不再作为独立视频模型显示。</span></div>
+          <span class="model-badge">${loraAvailable}/${loraProfiles.length} 可用</span>
+        </div>
+        <div class="scan-result">标准 <code>.safetensors</code> LoRA 由 ComfyUI 核心 <code>LoraLoaderModelOnly</code> 加载，不需要单独安装节点。只有带自定义加载器、采样器、缓存或模型补丁的特殊 LoRA 才会额外依赖节点。</div>
+        <p class="muted proxy-hint">LightX2V Turbo 4-Step 仅兼容 MiniMax H3 FL2VA。启用后默认使用 strength 0.75、ER-SDE、Beta 和 8 步；它减少采样步数，但不会把 H3 变成低显存模型。</p>
+      </section>
+      <div class="model-profile-list">${loraProfiles.length ? loraProfiles.map(modelScanCard).join("") : `<div class="panel environment-empty">尚无 LoRA 扫描结果</div>`}</div>
     </section>`;
 
   const imagePanel = `
@@ -4347,6 +4502,7 @@ function settingsPage(): string {
     settingsTab === "system" ? systemPanel :
     settingsTab === "acceleration" ? accelerationPanel :
     settingsTab === "video" ? videoPanel :
+    settingsTab === "lora" ? loraPanel :
     settingsTab === "image" ? imagePanel :
     settingsTab === "nodes" ? nodePanel :
     settingsTab === "prompt" ? promptPanel :
@@ -4364,12 +4520,13 @@ function settingsPage(): string {
           ["system", "settings", "系统与路径"],
           ["acceleration", "zap", "推理加速"],
           ["video", "images", "视频模型"],
+          ["lora", "zap", "LoRA"],
           ["image", "images", "图片模型"],
           ["nodes", "workflow", "节点与工作流"],
           ["prompt", "sparkles", "提示词扩写"],
           ["upscale", "maximize-2", "分辨率提升"],
           ["logs", "file-text", "运行日志"]
-        ] as const).map(([id, iconName, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "image" && environmentScan ? `<small>${imageComponentsReady}/${imageProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "prompt" && environmentScan ? `<small>${promptAvailable}/${promptProfiles.length}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
+        ] as const).map(([id, iconName, label]) => `<button class="settings-tab ${settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "lora" && environmentScan ? `<small>${loraAvailable}/${loraProfiles.length}</small>` : ""}${id === "image" && environmentScan ? `<small>${imageComponentsReady}/${imageProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "prompt" && environmentScan ? `<small>${promptAvailable}/${promptProfiles.length}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
       </nav>
       <div class="settings-content">${activePanel}</div>
     </div>
@@ -4947,12 +5104,13 @@ async function editHistoryAsset(assetId: string): Promise<void> {
     h3ReferenceSlots: isExtension
       ? []
       : (asset.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
+    videoLoras: asset.videoLoras?.map((lora) => ({ ...lora })) ?? [],
     ratio: asset.ratio ?? state.draft.ratio,
     resolution: ([480, 540, 720, 768].includes(asset.resolution)
       ? asset.resolution
       : state.draft.resolution) as Draft["resolution"],
     duration: asset.duration,
-    steps: normalizeH3Steps(asset.steps),
+    steps: normalizeH3Steps(asset.steps, asset.modelId, asset.videoLoras),
     fps: ([8, 12, 16, 24, 25, 30].includes(asset.fps ?? 24)
       ? asset.fps ?? 24
       : 24) as Draft["fps"],
@@ -6561,9 +6719,11 @@ function bindCreate(): void {
             ? "minimax_h3_ref2va"
             : "minimax_h3_fl2va"
         : state.draft.modelId;
-      const key = bundledWorkflowKey(modelId, inputMode);
+      const videoLoras = inputMode === "video" ? [] : state.draft.videoLoras;
+      const workflowModelId = bundledWorkflowModelId({ modelId, videoLoras });
+      const key = bundledWorkflowKey(workflowModelId, inputMode);
       const bundled = bundledWorkflows[key] ??
-        (await window.studio.getBundledWorkflow(modelId, inputMode));
+        (await window.studio.getBundledWorkflow(workflowModelId, inputMode));
       if (bundled) {
         bundledWorkflows[key] = bundled;
         workflowCapabilities[bundled.path] = {
@@ -6574,6 +6734,7 @@ function bindCreate(): void {
       patchDraft({
         inputMode,
         modelId,
+        videoLoras,
         workflowPath: bundled?.path ?? "",
         ...(inputMode === "video"
           ? {
@@ -6859,11 +7020,106 @@ function bindCreate(): void {
     patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
     showMessage(`已生成 H3 ${template.mode} 结构化提示词（${template.effectiveDurationSeconds.toFixed(2)} 秒），原内容仍可通过左箭头找回。`);
   });
+  const applyVideoLoraStack = async (videoLoras: Draft["videoLoras"]): Promise<void> => {
+    const wasTurboEnabled = isH3TurboEnabled(state.draft);
+    const turboWillBeEnabled = isH3TurboEnabled({ modelId: state.draft.modelId, videoLoras });
+    const turboStateChanged = wasTurboEnabled !== turboWillBeEnabled;
+    const previousWorkflowModelId = bundledWorkflowModelId(state.draft);
+    const workflowModelId = bundledWorkflowModelId({
+      modelId: state.draft.modelId,
+      videoLoras
+    });
+    const key = bundledWorkflowKey(workflowModelId, state.draft.inputMode);
+    const bundled = bundledWorkflows[key] ??
+      await window.studio.getBundledWorkflow(workflowModelId, state.draft.inputMode);
+    if (bundled) {
+      bundledWorkflows[key] = bundled;
+      workflowCapabilities[bundled.path] = {
+        supportsEndImage: bundled.supportsEndImage,
+        supportsVideoExtension: bundled.supportsVideoExtension
+      };
+    }
+    const previousBundledPath = bundledWorkflows[
+      bundledWorkflowKey(previousWorkflowModelId, state.draft.inputMode)
+    ]?.path;
+    const currentWorkflowIsBundled = !state.draft.workflowPath ||
+      state.draft.workflowPath === previousBundledPath;
+    const shouldSwitchWorkflow = turboStateChanged && currentWorkflowIsBundled;
+    patchDraft({
+      videoLoras,
+      steps: turboWillBeEnabled
+        ? normalizeH3Steps(state.draft.steps, state.draft.modelId, videoLoras)
+        : wasTurboEnabled ? 20 : state.draft.steps,
+      spectrumMode: turboWillBeEnabled ? "off" : state.draft.spectrumMode,
+      workflowPath: shouldSwitchWorkflow
+        ? bundled?.path ?? state.draft.workflowPath
+        : state.draft.workflowPath
+    });
+    render();
+    if (turboStateChanged && !currentWorkflowIsBundled) {
+      showMessage(turboWillBeEnabled
+        ? "已保留当前自定义工作流；Turbo 提交前会检查 ER-SDE、Beta 与 Sigma Shift。"
+        : "已保留当前自定义工作流；其中自带的 LoRA 和采样设置不会被应用自动删除。");
+    } else if (turboStateChanged && shouldSwitchWorkflow) {
+      showMessage(turboWillBeEnabled
+        ? "已启用 Turbo，并切换到匹配的低步数工作流。"
+        : "已关闭 Turbo，并恢复标准 H3 工作流。"
+      );
+    }
+  };
+  document.querySelector("#add-video-lora")?.addEventListener("click", async () => {
+    const id = document.querySelector<HTMLSelectElement>("#video-lora-to-add")?.value ?? "";
+    const lora = BUILTIN_VIDEO_LORAS.find((item) => item.id === id);
+    if (!lora || state.draft.videoLoras.some((item) => item.id === id)) return;
+    const profile = environmentScan?.modelProfiles.find((item) => item.id === id);
+    const detectedFilename = detectedVideoLoraFilename(profile);
+    if (!detectedFilename) {
+      showMessage(`${lora.name} 尚未检测到可用文件，请先在设置 → LoRA 中安装或重新扫描。`, false);
+      return;
+    }
+    await applyVideoLoraStack([
+      ...state.draft.videoLoras,
+      videoLoraSelection(lora, lora.strength, detectedFilename)
+    ]);
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-remove-video-lora]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.removeVideoLora;
+      if (!id) return;
+      await applyVideoLoraStack(state.draft.videoLoras.filter((lora) => lora.id !== id));
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-move-video-lora]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.moveVideoLora;
+      const direction = button.dataset.direction === "up" ? -1 : 1;
+      if (!id) return;
+      await applyVideoLoraStack(reorderVideoLoras(state.draft.videoLoras, id, direction));
+    });
+  });
+  const updateLoraStrength = (id: string, rawValue: string): void => {
+    const strength = Math.max(0, Math.min(2, Number(rawValue) || 0));
+    patchDraft({
+      videoLoras: state.draft.videoLoras.map((lora) =>
+        lora.id === id ? { ...lora, strength } : lora
+      )
+    });
+    const range = document.querySelector<HTMLInputElement>(`[data-video-lora-strength="${CSS.escape(id)}"]`);
+    const number = document.querySelector<HTMLInputElement>(`[data-video-lora-strength-number="${CSS.escape(id)}"]`);
+    if (range) range.value = String(strength);
+    if (number) number.value = String(strength);
+  };
+  document.querySelectorAll<HTMLInputElement>("[data-video-lora-strength]").forEach((input) => {
+    input.addEventListener("input", () => updateLoraStrength(input.dataset.videoLoraStrength ?? "", input.value));
+  });
+  document.querySelectorAll<HTMLInputElement>("[data-video-lora-strength-number]").forEach((input) => {
+    input.addEventListener("change", () => updateLoraStrength(input.dataset.videoLoraStrengthNumber ?? "", input.value));
+  });
   for (const id of ["model", "ratio", "resolution", "steps", "spectrum-mode", "fps", "frame-interpolation", "motion", "seed"]) {
     document.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
       const value = (event.target as HTMLInputElement | HTMLSelectElement).value;
       if (id === "model") {
-        const oldKey = bundledWorkflowKey(state.draft.modelId, state.draft.inputMode);
+        const oldKey = bundledWorkflowKey(bundledWorkflowModelId(state.draft), state.draft.inputMode);
         const nextKey = bundledWorkflowKey(value, state.draft.inputMode);
         const oldBundledPath = bundledWorkflows[oldKey]?.path;
         const nextIsR2V = isMiniMaxH3R2vModel(value);
@@ -6892,6 +7148,7 @@ function bindCreate(): void {
         }
         patchDraft({
           modelId: value,
+          videoLoras: [],
           h3ReferenceSlots: slotsForR2V,
           startImagePath: nextIsR2V && state.draft.inputMode !== "video" ? "" : restoredStartImage,
           endImagePath: nextIsR2V && state.draft.inputMode !== "video" ? "" : restoredEndImage,
@@ -6900,9 +7157,7 @@ function bindCreate(): void {
                 ratio: "source" as const,
                 resolution: 480 as const,
                 duration: 5,
-                steps: isMiniMaxH3TurboModel(value)
-                  ? 8 as const
-                  : 20 as const,
+                steps: 20 as const,
                 fps: 24 as const,
                 frameInterpolation: "off" as const,
                 motion: "natural" as const,
@@ -6925,7 +7180,7 @@ function bindCreate(): void {
       const patch =
         id === "ratio" ? { ratio: value as Draft["ratio"] } :
         id === "resolution" ? { resolution: Number(value) as Draft["resolution"] } :
-        id === "steps" ? { steps: normalizeH3Steps(Number(value), state.draft.modelId) } :
+        id === "steps" ? { steps: normalizeH3Steps(Number(value), state.draft.modelId, state.draft.videoLoras) } :
         id === "spectrum-mode"
           ? { spectrumMode: value as Draft["spectrumMode"], spectrumModeUserSet: true }
           :
@@ -7721,6 +7976,7 @@ function formSettings(): Settings {
     safeCancel: checked("safe-cancel", base.safeCancel),
     autoRetryFailedTasks: checked("auto-retry-failed-tasks", base.autoRetryFailedTasks),
     autoRetryCount: Number(value("auto-retry-count", String(base.autoRetryCount))) as Settings["autoRetryCount"],
+    uiLocale: base.uiLocale,
     promptLanguage: value("prompt-language", base.promptLanguage) as Settings["promptLanguage"],
     promptCreativity: Number(value("prompt-creativity", String(base.promptCreativity))),
     defaultUpscaleModel: value("default-upscale-model", base.defaultUpscaleModel),
@@ -8570,7 +8826,10 @@ void window.studio.getState().then(async (initialState) => {
   render();
   void refreshPerformanceMetrics();
   void Promise.allSettled([
-    window.studio.getBundledWorkflow(state.draft.modelId, state.draft.inputMode),
+    window.studio.getBundledWorkflow(
+      bundledWorkflowModelId(state.draft),
+      state.draft.inputMode
+    ),
     window.studio.scanEnvironment(state.settings)
   ]).then(([bundledResult, scanResult]) => {
     if (scanResult.status === "fulfilled") {

@@ -406,7 +406,7 @@ export function buildComfyDesktopCandidates(
 interface ModelProfileDefinition {
   id: string;
   name: string;
-  category: "video" | "image" | "upscale" | "interpolation" | "prompt";
+  category: "video" | "lora" | "image" | "upscale" | "interpolation" | "prompt";
   managedBy?: "comfyui" | "lmstudio" | "llama-server";
   badge: string;
   description: string;
@@ -493,12 +493,19 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     recommendedFilename: "minimax_h3_audio_vae_fp32.safetensors",
     notes: "H3 原生立体声音频必须使用此 VAE；与视频 VAE 一起放在 models/vae。"
   },
-  "minimax_h3_fl2va_turbo:MiniMax H3 LightX2V Turbo LoRA": {
+  "minimax-h3-lightx2v-turbo-4step:MiniMax H3 LightX2V Turbo LoRA": {
     sourceLabel: "LightX2V / Kijai ComfyUI conversion",
     downloadUrl: "https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
     targetSubdirectory: "loras",
     recommendedFilename: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
-    notes: "LightX2V 独立 Turbo 预览版的精简 ComfyUI 权重；需要 ComfyUI v0.31.0+，建议 0.75 强度、ER-SDE、Beta 和 8 步。仅用于 FL2VA。"
+    notes: "LightX2V Turbo LoRA；需要 ComfyUI v0.31.0+，建议 0.75 强度、ER-SDE、Beta 和 8 步。它只适配 MiniMax H3 FL2VA，不是独立基础模型。"
+  },
+  "minimax-h3-pink-fluffy-bunny-nsfw:PinkFluffyBunny NSFW LoRA": {
+    sourceLabel: "SexGod1979 / PinkFluffyBunny-MiniMax-H3",
+    downloadUrl: "https://huggingface.co/SexGod1979/PinkFluffyBunny-MiniMax-H3/resolve/main/PinkFluffyBunny-pruned-v1-rank128.safetensors?download=true",
+    targetSubdirectory: "loras",
+    recommendedFilename: "PinkFluffyBunny-pruned-v1-rank128.safetensors",
+    notes: "MiniMax H3 FL2VA 的可选 NSFW 内容 LoRA。当前应用使用 pruned INT8 底模，因此选择同体系的 pruned v1 rank128；作者建议从 0.5 强度开始，并标注为 alpha 质量。"
   },
   "minimax_h3_fl2va_int4:MiniMax H3 FL2VA INT4 ConvRot 模型": {
     sourceLabel: "Merserk / MiniMax-H3-INT4-ConvRot",
@@ -1184,38 +1191,37 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     ]
   },
   {
-    id: "minimax_h3_fl2va_turbo",
-    name: "MiniMax H3 LightX2V Turbo · 首尾帧",
-    category: "video",
-    badge: "LightX2V · 原生采样",
-    description: "Turbo 不是另一套基础模型，而是通过蒸馏 LoRA 把 H3 从约 20 步压缩到 6-8 步；资源占用仍接近基础 INT8 档，仅支持 FL2VA。",
-    vram: "pruned INT8 + Turbo LoRA · 4–8 steps",
+    id: "minimax-h3-lightx2v-turbo-4step",
+    name: "LightX2V Turbo 4-Step",
+    category: "lora",
+    badge: "H3 专属 · 性能",
+    description: "MiniMax H3 FL2VA 的蒸馏 LoRA，把约 20 步采样压缩到 6–8 步；不会降低基础模型的显存需求。",
+    vram: "LoRA · strength 0.75 · 4–8 steps",
     integrated: true,
     components: [
-      {
-        label: "MiniMax H3 FL2VA INT8 模型",
-        expected: "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
-        patterns: [/(?:diffusion_models|unet)\/minimax_h3_fl2va_pruned_int8_convrot\.safetensors$/i]
-      },
-      {
-        label: "Qwen3-VL 32B H3 文本编码器",
-        expected: "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-        patterns: [/text_encoders\/qwen3vl_32b_minimax_h3_nvfp4_awq\.safetensors$/i]
-      },
-      {
-        label: "MiniMax H3 视频 VAE",
-        expected: "vae/minimax_h3_video_vae_fp16.safetensors",
-        patterns: [/vae\/minimax_h3_video_vae_fp16\.safetensors$/i]
-      },
-      {
-        label: "MiniMax H3 音频 VAE",
-        expected: "vae/minimax_h3_audio_vae_fp32.safetensors",
-        patterns: [/vae\/minimax_h3_audio_vae_fp32\.safetensors$/i]
-      },
       {
         label: "MiniMax H3 LightX2V Turbo LoRA",
         expected: "loras/minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
         patterns: [/loras\/minimax_h3_fl2v_lightx2v_turbo_4step_v0\.1_comfy_resized_avg_rank_21_bf16\.safetensors$/i]
+      }
+    ]
+  },
+  {
+    id: "minimax-h3-pink-fluffy-bunny-nsfw",
+    name: "PinkFluffyBunny NSFW",
+    category: "lora",
+    badge: "H3 专属 · NSFW",
+    description: "MiniMax H3 FL2VA pruned 底模的社区 NSFW 内容 LoRA，可与性能 LoRA 按顺序叠加。",
+    vram: "pruned v1 · rank 128 · strength 0.5",
+    integrated: true,
+    components: [
+      {
+        label: "PinkFluffyBunny NSFW LoRA",
+        expected: "loras/PinkFluffyBunny-pruned-v1-rank128.safetensors",
+        patterns: [
+          /loras\/PinkFluffyBunny-pruned-v1-rank128\.safetensors$/i,
+          /loras\/PinkCherry[_-]PinkFluffyBunny-v1-rank128\.safetensors$/i
+        ]
       }
     ]
   },

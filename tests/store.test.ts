@@ -301,7 +301,7 @@ describe("queue lock recovery", () => {
     }
   });
 
-  it("migrates a schema v2 video state to v8 with an independent image draft", async () => {
+  it("migrates a schema v2 video state to v9 with an independent image draft", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
     const { imageDraft: _imageDraft, ...stateWithoutImageDraft } = createDefaultState();
@@ -314,7 +314,7 @@ describe("queue lock recovery", () => {
     try {
       const store = new JsonStore(filename);
       const loaded = await store.load();
-      expect(loaded.schemaVersion).toBe(8);
+      expect(loaded.schemaVersion).toBe(9);
       expect(loaded.imageDraft.mode).toBe("image-edit");
       expect(loaded.imageDraft.modelId).toBe("qwen-image-edit-2511");
       expect(loaded.settings.imageOutputDirectory).toBe("");
@@ -326,13 +326,13 @@ describe("queue lock recovery", () => {
         settings: { imageOutputDirectory: string };
         imageHistory: unknown[];
       };
-      expect(persisted.schemaVersion).toBe(8);
+      expect(persisted.schemaVersion).toBe(9);
       expect(persisted.imageDraft.mode).toBe("image-edit");
       expect(persisted.settings.imageOutputDirectory).toBe("");
       expect(persisted.imageHistory).toEqual([]);
 
       const reloaded = await new JsonStore(filename).load();
-      expect(reloaded.schemaVersion).toBe(8);
+      expect(reloaded.schemaVersion).toBe(9);
       expect(reloaded.imageDraft.mode).toBe("image-edit");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
@@ -350,9 +350,38 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(8);
+      expect(loaded.schemaVersion).toBe(9);
       expect(loaded.settings.defaultImageQualityProfile).toBe("balanced-20");
       expect(loaded.imageDraft.qualityProfile).toBe("balanced-20");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates the legacy Turbo pseudo-model to H3 plus a LoRA selection", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.schemaVersion = 8;
+    state.draft.modelId = "minimax_h3_fl2va_turbo";
+    state.draft.videoLoras = [];
+    state.draft.steps = 8;
+    state.settings.defaultVideoModel = "minimax_h3_fl2va_turbo";
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.schemaVersion).toBe(9);
+      expect(loaded.draft.modelId).toBe("minimax_h3_fl2va");
+      expect(loaded.draft.videoLoras).toEqual([
+        expect.objectContaining({
+          id: "minimax-h3-lightx2v-turbo-4step",
+          strength: 0.75,
+          modelFamily: "minimax-h3"
+        })
+      ]);
+      expect(loaded.settings.defaultVideoModel).toBe("minimax_h3_fl2va");
+      expect(loaded.draft.steps).toBe(8);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

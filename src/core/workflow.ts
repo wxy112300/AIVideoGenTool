@@ -4,6 +4,12 @@ import type {
   H3StepCount,
   QueueTask
 } from "../types.js";
+import {
+  H3_TURBO_LORA_FILENAME,
+  H3_TURBO_LORA_ID,
+  isH3TurboEnabled,
+  videoLoraFilename
+} from "./video-loras.js";
 
 export interface WorkflowContext {
   inputImage: string;
@@ -140,12 +146,86 @@ function applyMiniMaxH3Spectrum(
   for (const [, node] of consumers) node.inputs!.model = [nodeId, 0];
 }
 
-export function normalizeH3Steps(value: unknown, modelId = ""): H3StepCount {
+function applyVideoLoraStack(
+  workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
+  task: GenerationQueueTask | ExtensionQueueTask
+): void {
+  const selected = task.videoLoras ?? [];
+  if (!isMiniMaxH3Model(task.modelId) || selected.length === 0) return;
+
+  const sageNodes = Object.values(workflow).filter((node) =>
+    node.class_type === "PathchSageAttentionKJ" && Array.isArray(node.inputs?.model)
+  );
+  const directConsumers = Object.values(workflow).filter((node) =>
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
+    Array.isArray(node.inputs?.model)
+  );
+  const targets = sageNodes.length ? sageNodes : directConsumers;
+  const targetInput = targets[0]?.inputs?.model;
+  if (!Array.isArray(targetInput) || typeof targetInput[0] !== "string") {
+    throw new Error("无法识别当前工作流的模型链，不能安全叠加所选 LoRA。");
+  }
+  if (targets.some((node) => JSON.stringify(node.inputs?.model) !== JSON.stringify(targetInput))) {
+    throw new Error("当前工作流存在多条不同模型链，不能自动确定 LoRA 叠加位置。");
+  }
+
+  const existingChain: string[] = [];
+  const selectedFilenames = new Set(selected.map((lora) => lora.filename.toLowerCase()));
+  const visited = new Set<string>();
+  let rootInput: unknown[] = [...targetInput];
+  while (typeof rootInput[0] === "string") {
+    const nodeId = rootInput[0];
+    if (visited.has(nodeId)) {
+      throw new Error("当前工作流的 LoRA 模型链存在循环引用，无法安全叠加应用 LoRA。");
+    }
+    const node = workflow[nodeId];
+    const loraName = typeof node?.inputs?.lora_name === "string"
+      ? node.inputs.lora_name.toLowerCase()
+      : "";
+    if (
+      node?.class_type !== "LoraLoaderModelOnly" ||
+      !Array.isArray(node.inputs?.model) ||
+      !selectedFilenames.has(loraName)
+    ) break;
+    visited.add(nodeId);
+    existingChain.unshift(nodeId);
+    rootInput = [...node.inputs.model];
+  }
+
+  let nextNodeId = Math.max(
+    0,
+    ...Object.keys(workflow).map((id) => Number.parseInt(id, 10) || 0)
+  ) + 1;
+  while (workflow[String(nextNodeId)]) nextNodeId += 1;
+  let output: unknown[] = rootInput;
+  selected.forEach((lora, index) => {
+    const nodeId = existingChain[index] ?? String(nextNodeId++);
+    workflow[nodeId] = {
+      class_type: "LoraLoaderModelOnly",
+      inputs: {
+        model: output,
+        lora_name: lora.filename,
+        strength_model: lora.strength
+      }
+    };
+    output = [nodeId, 0];
+  });
+  for (const obsoleteNodeId of existingChain.slice(selected.length)) {
+    delete workflow[obsoleteNodeId];
+  }
+  for (const target of targets) target.inputs!.model = output;
+}
+
+export function normalizeH3Steps(
+  value: unknown,
+  modelId = "",
+  videoLoras?: GenerationQueueTask["videoLoras"]
+): H3StepCount {
   const normalized = value === 4 || value === 6 || value === 8 || value === 10 ||
     value === 12 || value === 16 || value === 20
     ? value
     : 20;
-  return isMiniMaxH3TurboModel(modelId) && normalized > 8 ? 8 : normalized;
+  return isH3TurboEnabled({ modelId, videoLoras }) && normalized > 8 ? 8 : normalized;
 }
 
 function generationSafetyProfileForModel(
@@ -199,6 +279,26 @@ function generationSafetyProfileForModel(
 
 export function workflowSupportsEndImage(source: unknown): boolean {
   return JSON.stringify(source).includes("{{END_IMAGE}}");
+}
+
+export function workflowSupportsH3TurboSampling(source: unknown): boolean {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return false;
+  const nodes = Object.values(source as Record<string, unknown>).filter(
+    (node): node is Record<string, unknown> =>
+      Boolean(node) && typeof node === "object" && !Array.isArray(node)
+  );
+  const hasNode = (classType: string, predicate: (inputs: Record<string, unknown>) => boolean) =>
+    nodes.some((node) => {
+      if (node.class_type !== classType) return false;
+      const inputs = node.inputs;
+      return Boolean(inputs) && typeof inputs === "object" && !Array.isArray(inputs) &&
+        predicate(inputs as Record<string, unknown>);
+    });
+  return hasNode("KSamplerSelect", (inputs) => inputs.sampler_name === "er_sde") &&
+    hasNode("BasicScheduler", (inputs) => inputs.scheduler === "beta") &&
+    hasNode("MiniMaxH3SigmaShift", (inputs) =>
+      typeof inputs.shift_video === "number" && typeof inputs.shift_audio === "number"
+    );
 }
 
 export function workflowSupportsVideoExtension(source: unknown): boolean {
@@ -625,10 +725,7 @@ const wan14ModelAssets: Record<
   }
 };
 
-const miniMaxH3ModelAssets: Record<
-  string,
-  { diffusionModel: string; textEncoder: string; turboLora?: string }
-> = {
+const miniMaxH3ModelAssets: Record<string, { diffusionModel: string; textEncoder: string }> = {
   minimax_h3_fl2va: {
     diffusionModel: "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
     textEncoder: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
@@ -643,8 +740,7 @@ const miniMaxH3ModelAssets: Record<
   },
   minimax_h3_fl2va_turbo: {
     diffusionModel: "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
-    textEncoder: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-    turboLora: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors"
+    textEncoder: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
   },
   minimax_h3_ref2va: {
     diffusionModel: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
@@ -867,7 +963,8 @@ export function renderWorkflow(
     OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, ""),
     H3_DIFFUSION_MODEL: h3Assets?.diffusionModel ?? "",
     H3_TEXT_ENCODER: h3Assets?.textEncoder ?? "",
-    H3_TURBO_LORA: h3Assets?.turboLora ?? "",
+    H3_TURBO_LORA: videoLoraFilename(task.videoLoras, H3_TURBO_LORA_ID) ||
+      (isMiniMaxH3TurboModel(task.modelId) ? H3_TURBO_LORA_FILENAME : ""),
     HIGH_MODEL: modelAssets?.high ?? "",
     LOW_MODEL: modelAssets?.low ?? "",
     TEXT_ENCODER: modelAssets?.textEncoder ?? "",
@@ -915,8 +1012,9 @@ export function renderWorkflow(
     string,
     { class_type?: string; inputs?: Record<string, unknown> }
   >;
+  applyVideoLoraStack(workflow, task);
   if (isMiniMaxH3Model(task.modelId)) {
-    const steps = normalizeH3Steps(task.steps, task.modelId);
+    const steps = normalizeH3Steps(task.steps, task.modelId, task.videoLoras);
     for (const node of Object.values(workflow)) {
       if (node.class_type !== "BasicScheduler" || !node.inputs) continue;
       node.inputs.steps = steps;
@@ -957,7 +1055,8 @@ export function renderWorkflow(
   }
   if (
     task.spectrumMode === "balanced" &&
-    isMiniMaxH3SpectrumEligible(task.modelId)
+    isMiniMaxH3SpectrumEligible(task.modelId) &&
+    !isH3TurboEnabled(task)
   ) {
     applyMiniMaxH3Spectrum(workflow);
   }

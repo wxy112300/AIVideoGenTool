@@ -21,6 +21,7 @@ import {
   workflowSupportsEndImage,
   workflowSupportsH3BoundaryExtension,
   workflowSupportsH3MotionContextExtension,
+  workflowSupportsH3TurboSampling,
   workflowSupportsVideoExtension
 } from "../src/core/workflow";
 
@@ -102,7 +103,17 @@ describe("renderWorkflow", () => {
     ) as unknown;
     const turboTask: QueueTask = {
       ...task,
-      modelId: "minimax_h3_fl2va_turbo",
+      modelId: "minimax_h3_fl2va",
+      videoLoras: [{
+        id: "minimax-h3-lightx2v-turbo-4step",
+        name: "LightX2V Turbo 4-Step",
+        filename: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
+        strength: 0.75,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: ["minimax_h3_fl2va"],
+        compatibleInputModes: ["image"],
+        purpose: "performance"
+      }],
       duration: 5,
       fps: 24,
       steps: 8,
@@ -116,9 +127,10 @@ describe("renderWorkflow", () => {
 
     expect(validateApiWorkflow(source).valid).toBe(true);
     expect(workflowSupportsEndImage(source)).toBe(true);
-    expect(isMiniMaxH3TurboModel(turboTask.modelId)).toBe(true);
+    expect(workflowSupportsH3TurboSampling(source)).toBe(true);
+    expect(isMiniMaxH3TurboModel(turboTask.modelId)).toBe(false);
     expect(isMiniMaxH3Model(turboTask.modelId)).toBe(true);
-    expect(isMiniMaxH3Fl2vaModel(turboTask.modelId)).toBe(false);
+    expect(isMiniMaxH3Fl2vaModel(turboTask.modelId)).toBe(true);
     expect(rendered["1"]?.inputs.unet_name).toBe(
       "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
     );
@@ -172,15 +184,105 @@ describe("renderWorkflow", () => {
     const turboSpectrumNode = Object.entries(turboSpectrum).find(([, node]) =>
       node.class_type === "SpectrumApplyMiniMaxH3"
     );
-    expect(turboSpectrumNode?.[1]).toMatchObject({
-      class_type: "SpectrumApplyMiniMaxH3",
+    expect(turboSpectrumNode).toBeUndefined();
+    expect(turboSpectrum["8"]?.inputs?.model).toEqual(["21", 0]);
+    expect(turboSpectrum["10"]?.inputs?.model).toEqual(["21", 0]);
+  });
+
+  it("preserves custom workflow LoRAs and appends selected LoRAs after them", () => {
+    const source = JSON.parse(
+      readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    source["30"] = {
+      class_type: "LoraLoaderModelOnly",
       inputs: {
-        history_storage: "system_ram",
-        offline_archive_storage: "system_ram"
+        model: ["1", 0],
+        lora_name: "custom-user-style.safetensors",
+        strength_model: 0.4
       }
+    };
+    source["19"]!.inputs.model = ["30", 0];
+
+    const untouched = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      videoLoras: []
+    }, { inputImage: "input.png" }) as typeof source;
+    expect(untouched["30"]?.inputs).toMatchObject({
+      model: ["1", 0],
+      lora_name: "custom-user-style.safetensors",
+      strength_model: 0.4
     });
-    expect(turboSpectrum["8"]?.inputs?.model).toEqual([turboSpectrumNode?.[0], 0]);
-    expect(turboSpectrum["10"]?.inputs?.model).toEqual([turboSpectrumNode?.[0], 0]);
+    expect(untouched["19"]?.inputs.model).toEqual(["30", 0]);
+
+    const stacked = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      videoLoras: [{
+        id: "app-content",
+        name: "App Content",
+        filename: "app-content.safetensors",
+        strength: 0.6,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: ["minimax_h3_fl2va"],
+        compatibleInputModes: ["image"],
+        purpose: "content"
+      }]
+    }, { inputImage: "input.png" }) as typeof source;
+    const appLoader = Object.entries(stacked).find(([, node]) =>
+      node.class_type === "LoraLoaderModelOnly" &&
+      node.inputs.lora_name === "app-content.safetensors"
+    );
+    expect(stacked["30"]?.inputs.lora_name).toBe("custom-user-style.safetensors");
+    expect(appLoader?.[1].inputs.model).toEqual(["30", 0]);
+    expect(stacked["19"]?.inputs.model).toEqual([appLoader?.[0], 0]);
+  });
+
+  it("stacks multiple H3 LoRAs in selection order and preserves individual strengths", () => {
+    const source = JSON.parse(
+      readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off",
+      videoLoras: [
+        {
+          id: "style-a",
+          name: "Style A",
+          filename: "style-a.safetensors",
+          strength: 0.65,
+          modelFamily: "minimax-h3",
+          compatibleModelIds: ["minimax_h3_fl2va"],
+          compatibleInputModes: ["image"],
+          purpose: "style"
+        },
+        {
+          id: "motion-b",
+          name: "Motion B",
+          filename: "motion-b.safetensors",
+          strength: 1.1,
+          modelFamily: "minimax-h3",
+          compatibleModelIds: ["minimax_h3_fl2va"],
+          compatibleInputModes: ["image"],
+          purpose: "motion"
+        }
+      ]
+    }, { inputImage: "input.png" }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    const loaders = Object.entries(rendered).filter(([, node]) => node.class_type === "LoraLoaderModelOnly");
+    expect(loaders).toHaveLength(2);
+    expect(loaders[0]?.[1].inputs).toMatchObject({
+      lora_name: "style-a.safetensors",
+      strength_model: 0.65
+    });
+    expect(loaders[1]?.[1].inputs).toMatchObject({
+      model: [loaders[0]?.[0], 0],
+      lora_name: "motion-b.safetensors",
+      strength_model: 1.1
+    });
+    expect(rendered["19"]?.inputs.model).toEqual([loaders[1]?.[0], 0]);
   });
 
   it("renders the bundled MiniMax H3 I2V graph with staged model and VAE unloading", () => {

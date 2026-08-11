@@ -6,7 +6,7 @@ Local Video Studio 把参考图、提示词、视频模型、任务队列和生�
 
 ## 当前版本
 
-当前开发版本为 **`0.11.6`**。图片输入素材库使用简洁的单层 `sources` 目录并按内容哈希去重；整理结果保持在弹窗顶部，未引用素材使用可展开的紧凑列表，旧文件始终保留到用户确认清理。
+当前开发版本为 **`0.15.0`**。视频模型与 LoRA 已分层管理；每个 LoRA 现在携带兼容模型、输入模式、设置冲突、组合风险、推荐顺序和工作流要求等规则。创建页会在提交前显示冲突，后端会再次校验，同时保留自定义工作流中由用户维护的 LoRA 链。
 
 每个版本的新增功能、修复和兼容性说明统一记录在 [CHANGELOG.md](CHANGELOG.md)，README 不再重复累积历史版本文案。
 
@@ -105,7 +105,6 @@ MiniMax H3 的 FL2VA 和 R2V 使用不同的扩散模型，不能混用：
 | --- | --- | --- |
 | FL2VA | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` | 首帧、首尾帧和 H3 边界帧续写 |
 | FL2VA INT4 | `minimax_h3_fl2va_pruned_int4_convrot.safetensors` | 低显存首帧/首尾帧实验 |
-| FL2VA LightX2V Turbo | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` + `minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors` | ComfyUI v0.31.0+ 原生首尾帧加速；建议 8 步，不提供 R2V 或视频续写 |
 | R2V | `minimax_h3_ref2va_pruned_int8_convrot.safetensors` | 多图片参考生成 |
 | R2V INT4 | `minimax_h3_ref2va_pruned_int4_convrot.safetensors` | 低显存多图片参考实验 |
 
@@ -130,7 +129,11 @@ ComfyUI/models/loras/
 	minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors
 ```
 
-LightX2V Turbo 使用 ComfyUI v0.31.0+ 核心的原生音视频采样、标准 `LoraLoaderModelOnly`、`ER-SDE` 和 `Beta` 调度器，不依赖额外的 Turbo custom node。设置页会检查核心版本和 LightX2V 精简 ComfyUI LoRA；创建页将它作为独立模型显示，只提供 FL2VA 首帧/尾帧图片输入。默认使用 8 步、视频 shift `12`、音频 shift `3`、LoRA strength `0.75`；6 步适合快速预览，4 步仅作为实验档。旧 ckpt500 / res_multistep 以及旧的专用 Turbo 节点方案已弃用，普通 H3 20 步仍是稳定回退路径。
+LightX2V Turbo 使用 ComfyUI v0.31.0+ 核心的原生音视频采样、标准 `LoraLoaderModelOnly`、`ER-SDE` 和 `Beta` 调度器，不依赖额外的 Turbo custom node。设置页在独立“LoRA”分类中检查权重；创建页的 LoRA 堆栈会在选择 MiniMax H3 FL2VA 后把它列为可添加项。默认使用 8 步、视频 shift `12`、音频 shift `3`、LoRA strength `0.75`；6 步适合快速预览，4 步仅作为实验档。旧 ckpt500 / res_multistep 以及旧的专用 Turbo 节点方案已弃用，普通 H3 20 步仍是稳定回退路径。
+
+普通 ComfyUI LoRA 是一组叠加到兼容基础模型上的适配权重，通常可以由核心 `LoraLoader` / `LoraLoaderModelOnly` 直接加载，并不天然依赖第三方节点。创建页允许按顺序叠加多个 LoRA，并为每项单独保存 strength。只有发布者同时要求特殊加载器、采样器、缓存、控制网络或模型补丁时，才需要额外节点；应用会把模型家族、兼容模型、输入模式和额外依赖作为 LoRA 元数据声明，而不会假设所有 LoRA 都能任意跨模型使用。
+
+PinkFluffyBunny NSFW 是可选的社区 H3 FL2VA 内容 LoRA。当前工作流使用 pruned INT8 底模，因此设置页选择与之对应的 `pruned-v1-rank128` 文件，默认强度 `0.5`；创建页可单独使用，也可与 Turbo 按顺序叠加并分别调整强度。仓库另有在 unpruned 底模上训练的 v2 rank128/256/512 变体，目前不会混入 pruned 工作流。作者将其标记为 alpha 质量，因此组合结果需要实际抽样验证；它不会被提供给 R2V 或视频续写模式。
 
 官方和社区权重的下载地址会在“设置 → 视频模型”的组件卡片中显示。RTX 4090 等 24GB 显卡可以优先尝试官方 INT8；12GB 级别设备优先尝试 pruned INT4，但实际速度和成功率仍取决于系统内存、NVMe 和 ComfyUI offload。INT4 是社区转换，不等同于官方质量保证。
 

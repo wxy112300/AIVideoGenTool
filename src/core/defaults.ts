@@ -54,6 +54,7 @@ export function createDefaultDraft(): Draft {
     activePromptVersion: 0,
     h3ReferenceSlots: [],
     modelId: "minimax_h3_fl2va",
+    videoLoras: [],
     workflowPath: "",
     ratio: "source",
     resolution: 480,
@@ -149,7 +150,7 @@ export function createDefaultSettings(): Settings {
 
 export function createDefaultState(): AppState {
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     draft: createDefaultDraft(),
     imageDraft: createDefaultImageEditDraft(),
     settings: createDefaultSettings(),

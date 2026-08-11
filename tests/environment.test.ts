@@ -683,7 +683,7 @@ describe("ComfyUI environment candidates", () => {
 
     expect(fl2va?.available).toBe(true);
     expect(fl2va?.integrated).toBe(true);
-    expect(profiles.find((profile) => profile.id === "minimax_h3_fl2va_turbo")?.available).toBe(false);
+    expect(profiles.find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step")?.available).toBe(false);
     expect(profiles.some((profile) => profile.id === "minimax_h3_ref2va")).toBe(true);
     expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va")?.available).toBe(false);
   });
@@ -696,12 +696,13 @@ describe("ComfyUI environment candidates", () => {
       "vae\\minimax_h3_audio_vae_fp32.safetensors",
       "loras\\minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors"
     ]);
-    const turbo = profiles.find((profile) => profile.id === "minimax_h3_fl2va_turbo");
+    const turbo = profiles.find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step");
 
     expect(turbo).toMatchObject({
       available: true,
       integrated: true,
-      badge: "LightX2V · 原生采样"
+      badge: "H3 专属 · 性能",
+      category: "lora"
     });
     expect(turbo?.components.at(-1)?.installGuide).toMatchObject({
       targetSubdirectory: "loras",
@@ -714,8 +715,26 @@ describe("ComfyUI environment candidates", () => {
       "vae\\minimax_h3_video_vae_fp16.safetensors",
       "vae\\minimax_h3_audio_vae_fp32.safetensors",
       "loras\\minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors"
-    ]).find((profile) => profile.id === "minimax_h3_fl2va_turbo");
+    ]).find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step");
     expect(legacyOnly?.available).toBe(false);
+  });
+
+  it("detects the PinkFluffyBunny NSFW LoRA independently from the H3 base model", () => {
+    const profiles = evaluateModelProfiles([
+      "loras\\PinkFluffyBunny-pruned-v1-rank128.safetensors"
+    ]);
+    const nsfw = profiles.find((profile) => profile.id === "minimax-h3-pink-fluffy-bunny-nsfw");
+
+    expect(nsfw).toMatchObject({
+      available: true,
+      integrated: true,
+      badge: "H3 专属 · NSFW",
+      category: "lora"
+    });
+    expect(nsfw?.components[0]?.installGuide).toMatchObject({
+      targetSubdirectory: "loras",
+      recommendedFilename: "PinkFluffyBunny-pruned-v1-rank128.safetensors"
+    });
   });
 
   it("detects the community MiniMax H3 INT4 FL2VA profile independently", () => {

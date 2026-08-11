@@ -24,6 +24,11 @@ import {
   isRetiredVideoModel,
   normalizeH3Steps
 } from "../src/core/workflow.js";
+import {
+  LEGACY_H3_TURBO_MODEL_ID,
+  baseVideoModelId,
+  normalizeVideoLoras
+} from "../src/core/video-loras.js";
 
 interface ReplaceStateFileOptions {
   attempts?: number;
@@ -183,9 +188,17 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
     return migrateImageGenerationTask({ ...task, automaticRetryAttempt });
   }
   if (task.taskType === "upscale") return { ...task, automaticRetryAttempt };
+  const legacyModelId = task.modelId;
+  const modelId = baseVideoModelId(legacyModelId);
+  const videoLoras = normalizeVideoLoras(
+    (task as QueueTask & { videoLoras?: unknown }).videoLoras,
+    legacyModelId
+  );
   if (task.taskType === "extension") {
     return {
       ...task,
+      modelId,
+      videoLoras,
       modelProfile: task.modelProfile ?? "q3_k_m",
       attentionMode: task.attentionMode ?? "sage",
       spectrumMode: task.spectrumMode ?? "off",
@@ -194,6 +207,8 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
   }
   return {
     ...task,
+    modelId,
+    videoLoras,
     taskType: "generation",
     sourceWidth: task.sourceWidth ?? 0,
     sourceHeight: task.sourceHeight ?? 0,
@@ -215,13 +230,25 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
 
 function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryAsset {
   const files = asset.files ?? [];
+  const legacyModelId = asset.modelId;
+  const modelId = baseVideoModelId(legacyModelId);
+  const videoLoras = normalizeVideoLoras(
+    (asset as HistoryAsset & { videoLoras?: unknown }).videoLoras,
+    legacyModelId
+  );
   if (asset.versions?.length) {
     return {
       ...asset,
+      modelId,
+      videoLoras,
       mediaKind: "video",
       files,
       updatedAt: asset.updatedAt ?? asset.createdAt,
-      versions: asset.versions
+      versions: asset.versions.map((version) => ({
+        ...version,
+        modelId: baseVideoModelId(version.modelId),
+        videoLoras: normalizeVideoLoras(version.videoLoras, version.modelId)
+      }))
     };
   }
   const [width, height] = legacyDimensions(asset);
@@ -230,7 +257,8 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
     kind: "original",
     createdAt: asset.createdAt,
     outputFilename: asset.outputFilename,
-    modelId: asset.modelId,
+    modelId,
+    videoLoras,
     width,
     height,
     duration: asset.duration,
@@ -244,6 +272,8 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
   };
   return {
     ...asset,
+    modelId,
+    videoLoras,
     mediaKind: "video",
     files,
     updatedAt: asset.updatedAt ?? asset.createdAt,
@@ -293,7 +323,7 @@ export class JsonStore {
           imagePromptPresets
         },
         queueRunning: false,
-        schemaVersion: 8,
+        schemaVersion: 9,
         queue: (saved.queue ?? []).map(migrateQueueTask),
         history: (saved.history ?? []).map(migrateHistoryAsset),
         imageHistory
@@ -302,7 +332,7 @@ export class JsonStore {
       const normalizedUiLocale = normalizeUiLocale(savedUiLocale);
       this.state.settings.uiLocale = normalizedUiLocale;
       let needsPersist = saved.queueRunning === true ||
-        savedSchemaVersion < 8 ||
+        savedSchemaVersion < 9 ||
         savedUiLocale !== normalizedUiLocale;
       if (typeof saved.settings?.imageOutputDirectory !== "string") {
         this.state.settings.imageOutputDirectory = "";
@@ -334,12 +364,34 @@ export class JsonStore {
         this.state.draft.h3ReferenceSlots = normalizedH3ReferenceSlots;
         needsPersist = true;
       }
-      const normalizedH3Steps = normalizeH3Steps(this.state.draft.steps, this.state.draft.modelId);
+      const legacyDraftModelId = this.state.draft.modelId;
+      const normalizedDraftModelId = baseVideoModelId(legacyDraftModelId);
+      const normalizedDraftLoras = normalizeVideoLoras(
+        this.state.draft.videoLoras,
+        legacyDraftModelId
+      );
+      if (
+        normalizedDraftModelId !== this.state.draft.modelId ||
+        JSON.stringify(normalizedDraftLoras) !== JSON.stringify(this.state.draft.videoLoras)
+      ) {
+        this.state.draft.modelId = normalizedDraftModelId;
+        this.state.draft.videoLoras = normalizedDraftLoras;
+        needsPersist = true;
+      }
+      const normalizedH3Steps = normalizeH3Steps(
+        this.state.draft.steps,
+        this.state.draft.modelId,
+        this.state.draft.videoLoras
+      );
       if (normalizedH3Steps !== this.state.draft.steps) {
         this.state.draft.steps = normalizedH3Steps;
         needsPersist = true;
       }
       if (isRetiredVideoModel(saved.settings?.defaultVideoModel ?? "")) {
+        this.state.settings.defaultVideoModel = "minimax_h3_fl2va";
+        needsPersist = true;
+      }
+      if (this.state.settings.defaultVideoModel === LEGACY_H3_TURBO_MODEL_ID) {
         this.state.settings.defaultVideoModel = "minimax_h3_fl2va";
         needsPersist = true;
       }
