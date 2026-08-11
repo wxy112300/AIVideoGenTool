@@ -2965,15 +2965,14 @@ main { padding-top: 0; }
 
 /* Keep the composer readable as more H3 controls are added. */
 .composer-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
   gap: 10px;
 }
 
 .composer-heading > div:first-child {
   min-width: 0;
-  flex: 1 1 auto;
 }
 
 .composer-heading .button-row {
@@ -2990,29 +2989,33 @@ main { padding-top: 0; }
 }
 
 .composer-heading .prompt-enhance-mode {
-  width: 142px;
-  min-width: 142px;
+  width: 100%;
+  min-width: 0;
 }
 
 .composer-heading #enhance-prompt {
   white-space: nowrap;
 }
-.composer-heading {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-}
 .composer-heading-main {
   min-width: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
 }
 .composer-heading-main > h2 { flex: 0 0 auto; }
 .composer-heading-main > .muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.prompt-version-controls { display: inline-flex; flex: 0 0 auto; gap: 4px; margin-left: 4px; }
+.prompt-version-controls { display: inline-flex; justify-self: end; gap: 4px; margin-left: 0; }
 .prompt-version-controls .icon-button { min-width: 32px; min-height: 32px; padding-inline: 6px; }
-.prompt-action-controls { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
-.prompt-action-controls .prompt-enhance-mode { width: 142px; min-width: 142px; }
+.prompt-action-controls {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+}
+.prompt-action-controls .prompt-enhance-mode { width: 100%; min-width: 0; }
 .prompt-action-controls #enhance-prompt { white-space: nowrap; }
 
 .composer-settings {
@@ -3141,8 +3144,7 @@ main { padding-top: 0; }
   }
 
   .composer-heading { grid-template-columns: 1fr; gap: 10px; }
-  .composer-heading-main { align-items: baseline; flex-wrap: wrap; }
-  .prompt-action-controls { justify-content: flex-start; }
+  .composer-heading-main { align-items: center; }
 
   .composer-group-heading > div { display: grid; gap: 3px; }
   .composer-group-heading span { white-space: normal; }
@@ -3337,6 +3339,10 @@ main { padding-top: 0; }
   gap: 12px;
 }
 
+.create-page-actions > .save-state {
+  display: none;
+}
+
 .create-page-actions .input-mode-switch {
   width: 430px;
   min-width: 0;
@@ -3414,7 +3420,7 @@ body {
 @media (max-width: 1120px) {
   .settings-content .model-profile-list { grid-template-columns: 1fr; }
   .composer-heading { grid-template-columns: 1fr; align-items: start; }
-  .prompt-action-controls { justify-content: flex-start; margin-top: 8px; }
+  .prompt-action-controls { margin-top: 0; }
 }
 
 .image-edit-page-heading .input-mode-switch {
