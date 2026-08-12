@@ -231,7 +231,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       }, false);
       options.navigateToCreationMode("video-extension");
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : t(uiKeys.history.actions.continueFailed), { renderPage: false });
+      context.notify(error instanceof Error ? error.message : t(uiKeys.history.actions.continueFailed), { renderPage: false, kind: "error" });
     }
   };
   const openUpscaleDialog = () => {

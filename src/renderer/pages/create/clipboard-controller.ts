@@ -52,7 +52,7 @@ export function mountCreateClipboardController(
         options.addImagePicture(filename, focusedPicture?.dataset.imagePicturePick);
         context.notify(t(focusedPicture ? uiKeys.create.interaction.replacedPicture : uiKeys.create.interaction.addedPicture));
       } catch (error) {
-        context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.clipboardReadFailed));
+        context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.clipboardReadFailed), { kind: "error" });
       }
       return;
     }
@@ -88,7 +88,7 @@ export function mountCreateClipboardController(
         context.requestRender();
         context.notify(t(uiKeys.create.interaction.pastedR2vSlot, { tag: h3ReferenceTag(state.draft.h3ReferenceSlots, targetSlot.id) }));
       } catch (error) {
-        context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.clipboardReadFailed));
+        context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.clipboardReadFailed), { kind: "error" });
       }
       return;
     }
@@ -107,7 +107,7 @@ export function mountCreateClipboardController(
       context.requestRender();
       context.notify(t(field === "startImagePath" ? uiKeys.create.interaction.pastedStartFrame : uiKeys.create.interaction.pastedEndFrame));
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.clipboardReadFailed));
+      context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.clipboardReadFailed), { kind: "error" });
     }
   };
   window.addEventListener("paste", handler);

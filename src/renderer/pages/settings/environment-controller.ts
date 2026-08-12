@@ -41,6 +41,9 @@ export function mountSettingsEnvironmentController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+  const requestSettingsRender = () => {
+    if (context.getRoute().page === "settings") context.requestRender();
+  };
 
   root.querySelectorAll<HTMLButtonElement>("[data-start-service]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -59,14 +62,14 @@ export function mountSettingsEnvironmentController(
         options.setServiceStarting(null);
         options.setServiceStatusMessage(result.message);
         options.setEnvironmentScan(await context.studio.scanEnvironment(settings));
-        context.notify(result.message);
+        context.notify(result.message, { kind: result.ok ? "info" : "error" });
       } catch (error) {
         options.setServiceStarting(null);
         const message = context.t(uiKeys.settings.actions.startFailed, { error: error instanceof Error ? error.message : String(error) });
         options.setServiceStatusMessage(message);
-        context.notify(message);
+        context.notify(message, { kind: "error" });
       }
-      context.requestRender();
+      requestSettingsRender();
     }, { signal });
   });
 
@@ -83,14 +86,14 @@ export function mountSettingsEnvironmentController(
         options.setServiceRestarting(null);
         options.setServiceStatusMessage(result.message);
         options.setEnvironmentScan(await context.studio.scanEnvironment(settings));
-        context.notify(result.message);
+        context.notify(result.message, { kind: result.ok ? "info" : "error" });
       } catch (error) {
         options.setServiceRestarting(null);
         const message = context.t(uiKeys.settings.actions.restartFailed, { error: error instanceof Error ? error.message : String(error) });
         options.setServiceStatusMessage(message);
-        context.notify(message);
+        context.notify(message, { kind: "error" });
       }
-      context.requestRender();
+      requestSettingsRender();
     }, { signal });
   });
 
@@ -110,17 +113,17 @@ export function mountSettingsEnvironmentController(
     try {
       const result = await context.studio.updateComfyUi(settings);
       options.setComfyUpdateLog(result.log || result.message);
-      context.notify(result.message);
+      context.notify(result.message, { kind: result.ok ? "info" : "error" });
       if (result.ok && options.getEnvironmentScan()?.comfyCompatibility.updateMode === "git") {
         options.setServiceStatusMessage(context.t(uiKeys.settings.actions.updateCompleted));
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       options.setComfyUpdateLog(message);
-      context.notify(context.t(uiKeys.settings.actions.comfyUpdateFailed, { error: message }));
+      context.notify(context.t(uiKeys.settings.actions.comfyUpdateFailed, { error: message }), { kind: "error" });
     } finally {
       options.setComfyUpdating(false);
-      context.requestRender();
+      requestSettingsRender();
     }
   }, { signal });
 
@@ -136,16 +139,16 @@ export function mountSettingsEnvironmentController(
         result.log || options.getAttentionAccelerationLog() || result.message
       );
       options.setEnvironmentScan(await context.studio.scanEnvironment(settings));
-      context.notify(result.message);
+      context.notify(result.message, { kind: result.ok ? "info" : "error" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       options.setAttentionAccelerationLog(
         [options.getAttentionAccelerationLog(), message].filter(Boolean).join("\n")
       );
-      context.notify(context.t(uiKeys.settings.actions.attentionInstallFailed, { error: message }));
+      context.notify(context.t(uiKeys.settings.actions.attentionInstallFailed, { error: message }), { kind: "error" });
     } finally {
       options.setAttentionAccelerationInstalling(false);
-      context.requestRender();
+      requestSettingsRender();
     }
   }, { signal });
 
@@ -180,16 +183,16 @@ export function mountSettingsEnvironmentController(
         options.setComfyUpdateLog(`${options.getComfyUpdateLog()}\n\n${restarted.message}`);
         options.setEnvironmentScan(await context.studio.scanEnvironment(settings));
       }
-      context.notify(result.message);
+      context.notify(result.message, { kind: result.ok ? "info" : "error" });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       options.setComfyUpdateLog(
         [options.getComfyUpdateLog(), message].filter(Boolean).join("\n\n")
       );
-      context.notify(context.t(uiKeys.settings.actions.coreNodeProcessFailed, { error: message }));
+      context.notify(context.t(uiKeys.settings.actions.coreNodeProcessFailed, { error: message }), { kind: "error" });
     } finally {
       options.setCoreDependencyRepairing(false);
-      context.requestRender();
+      requestSettingsRender();
     }
   }, { signal });
 
@@ -205,14 +208,14 @@ export function mountSettingsEnvironmentController(
         options.setEnvironmentRepairLog(issueId, result.log || result.message);
         options.setEnvironmentRepairing("");
         options.setEnvironmentScan(await context.studio.scanEnvironment(settings));
-        context.notify(result.message);
+        context.notify(result.message, { kind: result.ok ? "info" : "error" });
       } catch (error) {
         options.setEnvironmentRepairing("");
         const message = error instanceof Error ? error.message : String(error);
         options.setEnvironmentRepairLog(issueId, message);
-        context.notify(context.t(uiKeys.settings.actions.environmentRepairFailed, { error: message }));
+        context.notify(context.t(uiKeys.settings.actions.environmentRepairFailed, { error: message }), { kind: "error" });
       }
-      context.requestRender();
+      requestSettingsRender();
     }, { signal });
   });
 
@@ -223,7 +226,7 @@ export function mountSettingsEnvironmentController(
       const state = context.getState();
       if (!nodeId) return;
       if (state?.queue.some((task) => task.status === "running")) {
-        context.notify(context.t(uiKeys.settings.actions.runningTaskBlocked));
+        context.notify(context.t(uiKeys.settings.actions.runningTaskBlocked), { kind: "warning" });
         return;
       }
       const settings = options.formSettings();
@@ -258,10 +261,10 @@ export function mountSettingsEnvironmentController(
           nodeId,
           [options.getCustomNodeLog(nodeId), message].filter(Boolean).join("\n\n")
         );
-        context.notify(context.t(uiKeys.settings.actions.nodeInstallFailed, { message }));
+        context.notify(context.t(uiKeys.settings.actions.nodeInstallFailed, { message }), { kind: "error" });
       } finally {
         options.setCustomNodeInstalling("");
-        context.requestRender();
+        requestSettingsRender();
       }
     }, { signal });
   });
@@ -288,10 +291,10 @@ export function mountSettingsEnvironmentController(
           workflowId,
           options.getWorkflowDependencyLog(workflowId) || message
         );
-        context.notify(context.t(uiKeys.settings.actions.workflowInstallFailed, { message }));
+        context.notify(context.t(uiKeys.settings.actions.workflowInstallFailed, { message }), { kind: "error" });
       } finally {
         options.setWorkflowDependencyInstalling("");
-        context.requestRender();
+        requestSettingsRender();
       }
     }, { signal });
   });

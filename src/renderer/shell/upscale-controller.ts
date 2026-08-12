@@ -127,7 +127,7 @@ export function mountUpscaleController(
       }
       options.restoreModalFocus();
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : String(error), { renderPage: false });
+      context.notify(error instanceof Error ? error.message : String(error), { renderPage: false, kind: "error" });
     }
   }, { signal });
 

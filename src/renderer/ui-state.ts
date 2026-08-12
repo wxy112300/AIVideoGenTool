@@ -7,10 +7,14 @@ import type {
 import type { Page } from "./contracts";
 import type { ConfirmationRequest } from "./shell/confirmation-service";
 import type { UpscaleDialogState, ImageAssetLibraryDialogState } from "./shell/secondary-dialogs";
+import type { AppNotification } from "./notifications";
 
 export interface RendererUiState {
   appVersion: string;
   flashMessage: string;
+  flashNotification: AppNotification | null;
+  flashNotificationQueue: AppNotification[];
+  nextFlashNotificationId: number;
   flashMessageTimer: number | undefined;
   selectedHistoryAssetId: string;
   selectedHistoryVersionId: string;
@@ -41,6 +45,9 @@ export function createRendererUiState(): RendererUiState {
   return {
     appVersion: "",
     flashMessage: "",
+    flashNotification: null,
+    flashNotificationQueue: [],
+    nextFlashNotificationId: 1,
     flashMessageTimer: undefined,
     selectedHistoryAssetId: "",
     selectedHistoryVersionId: "",

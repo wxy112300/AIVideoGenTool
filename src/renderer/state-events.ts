@@ -18,6 +18,8 @@ import {
   imageAssetProgressPercent
 } from "./shell/secondary-dialogs";
 import { uiKeys } from "../core/i18n-keys";
+import { queueCompletionChange } from "./notifications";
+import type { RendererNotifyOptions } from "./contracts";
 
 export interface RendererEventOptions {
   studio: AppApi;
@@ -38,6 +40,7 @@ export interface RendererEventOptions {
   taskPreviews: Record<string, string>;
   appendAttentionAccelerationLog(message: string): string;
   appendDependencyInstallLog(progress: DependencyInstallProgress): string;
+  notify(message: string, options?: RendererNotifyOptions): void;
   requestRender(): void;
 }
 
@@ -96,6 +99,7 @@ export function registerRendererEvents(
     }),
     options.studio.onStateChanged((nextState) => {
       const previousState = options.getState();
+      const completion = queueCompletionChange(previousState, nextState);
       const historyChanged = historyStateChanged(previousState?.history, nextState.history);
       const imageHistoryChanged = imageHistoryStateChanged(
         previousState?.imageHistory,
@@ -109,6 +113,14 @@ export function registerRendererEvents(
           : nextState.draft
       });
       if (nextState.queueRunning) options.setPromptRuntimeLoaded(false);
+      for (const task of completion.completedTasks) {
+        options.notify(options.t(uiKeys.runtime.taskCompleted, { title: task.title }), {
+          kind: "task-complete"
+        });
+      }
+      if (completion.queueCompleted) {
+        options.notify(options.t(uiKeys.runtime.queueCompleted), { kind: "queue-complete" });
+      }
       if (isEditingFormControl() || options.getDraftSaveInFlight() > 0) return;
       const visibleHistoryChanged = options.getHistoryKind() === "image"
         ? imageHistoryChanged

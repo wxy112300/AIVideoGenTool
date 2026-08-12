@@ -123,7 +123,7 @@ export function mountSettingsPageController(
     try {
       await options.saveSettingsFromUi(nextSettings);
     } catch (error) {
-      options.context.notify(error instanceof Error ? error.message : String(error), { renderPage: false });
+      options.context.notify(error instanceof Error ? error.message : String(error), { renderPage: false, kind: "error" });
     }
   }, { signal });
 
@@ -133,9 +133,17 @@ export function mountSettingsPageController(
       const resultElement = root.querySelector<HTMLElement>("#connection-result");
       if (!resultElement) return;
       resultElement.textContent = options.context.t(uiKeys.settings.actions.connectionPending);
-      const result = await options.context.studio.testConnection("comfy", options.formSettings());
-      resultElement.className = `connection-result ${result.ok ? "success" : "error"}`;
-      resultElement.textContent = result.message;
+      try {
+        const result = await options.context.studio.testConnection("comfy", options.formSettings());
+        resultElement.className = `connection-result ${result.ok ? "success" : "error"}`;
+        resultElement.textContent = result.message;
+        options.context.notify(result.message, { kind: result.ok ? "info" : "error" });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        resultElement.className = "connection-result error";
+        resultElement.textContent = message;
+        options.context.notify(message, { kind: "error" });
+      }
     }, { signal });
   });
 

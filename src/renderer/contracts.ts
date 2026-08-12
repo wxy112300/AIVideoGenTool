@@ -1,5 +1,5 @@
 import type { Translator, TranslationParams } from "../core/i18n";
-import type { AppApi, AppState } from "../types";
+import type { AppApi, AppState, NotificationKind } from "../types";
 
 export type Page =
   | "create"
@@ -30,6 +30,8 @@ export interface RendererRouteState {
 
 export interface RendererNotifyOptions {
   renderPage?: boolean;
+  kind?: NotificationKind;
+  durationMs?: number;
 }
 
 export type RendererCleanup = () => void;

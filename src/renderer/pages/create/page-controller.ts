@@ -413,7 +413,7 @@ export function mountCreatePageController(
           : t(uiKeys.create.interaction.queueAdded, { filename: nextState.queue.at(-1)?.outputFilename ?? "" })
       );
     } catch (error) {
-      options.context.notify(error instanceof Error ? error.message : String(error));
+      options.context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
     } finally {
       options.setEnqueueBusy(false);
       options.context.requestRender();

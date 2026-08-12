@@ -107,7 +107,7 @@ export function mountHistoryActionsController(
       );
       context.requestRender();
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : t(uiKeys.history.actions.coverUpdateFailed), { renderPage: false });
+      context.notify(error instanceof Error ? error.message : t(uiKeys.history.actions.coverUpdateFailed), { renderPage: false, kind: "error" });
     }
   }, { signal });
 

@@ -13,7 +13,8 @@ import {
   state
 } from "./renderer/renderer-state";
 import { rendererUiState as ui } from "./renderer/ui-state";
-import type { CreationMode, HistoryKind, Page } from "./renderer/contracts";
+import type { CreationMode, HistoryKind, Page, RendererNotifyOptions } from "./renderer/contracts";
+import { notificationDuration } from "./renderer/notifications";
 import {
   queueTaskInput,
   queueTaskInputUrl,
@@ -505,11 +506,11 @@ async function chooseDirectoryMigration(mode: SettingsSaveMode | "cancel"): Prom
     if (mode === "migrate-video-history") {
       showMessage(warningCount
         ? uiText(uiKeys.runtime.migrationCompletedWarnings, { count: warningCount })
-        : uiText(uiKeys.runtime.migrationCompleted));
+        : uiText(uiKeys.runtime.migrationCompleted), warningCount ? { kind: "warning" } : undefined);
     }
   } catch (error) {
     ui.directoryMigrationBusy = false;
-    showMessage(error instanceof Error ? error.message : String(error), false);
+    showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
     render();
   }
 }
@@ -554,7 +555,9 @@ async function scanImageAssets(): Promise<void> {
     const scan = await window.studio.scanImageAssetLibrary();
     ui.imageAssetLibraryDialog = { scan, busy: false, error: "", confirmCleanup: false, selectedPaths: scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: null };
   } catch (error) {
-    ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error) };
+    const message = error instanceof Error ? error.message : String(error);
+    ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: message };
+    showMessage(message, { kind: "error" });
   }
   render();
 }
@@ -584,7 +587,9 @@ function bindImageAssetLibraryDialog(): void {
       ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "organize", formatAssetBytes, rendererApp.context.t) };
       showMessage(uiText(uiKeys.runtime.assetOrganized, { archived: result.archivedFiles, reorganized: result.reorganizedFiles, references: result.updatedReferences }));
     } catch (error) {
-      ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error) };
+      const message = error instanceof Error ? error.message : String(error);
+      ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: message };
+      showMessage(message, { kind: "error" });
     }
     render();
   });
@@ -605,7 +610,9 @@ function bindImageAssetLibraryDialog(): void {
       ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "cleanup", formatAssetBytes, rendererApp.context.t) };
       showMessage(uiText(uiKeys.runtime.assetCleaned, { files: result.cleanedFiles, bytes: formatAssetBytes(result.cleanedBytes) }));
     } catch (error) {
-      ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error), confirmCleanup: false };
+      const message = error instanceof Error ? error.message : String(error);
+      ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: message, confirmCleanup: false };
+      showMessage(message, { kind: "error" });
     }
     render();
   });
@@ -810,7 +817,7 @@ async function editQueueTask(taskId: string): Promise<void> {
     showMessage(uiText(uiKeys.runtime.queueReturned));
   } catch (error) {
     queueActionBusy = null;
-    showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.cannotEditQueue));
+    showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.cannotEditQueue), { kind: "error" });
   }
 }
 
@@ -1027,7 +1034,7 @@ const rendererApp = createRendererApp({
     setPage(nextPage);
     render();
   },
-  notify: (message, options) => showMessage(message, options?.renderPage ?? true),
+  notify: showMessage,
   reportUserAction,
   renderLegacy: () => renderCoordinator.render()
 });
@@ -1137,19 +1144,54 @@ function syncFlashMessage(): void {
   const flash = document.querySelector<HTMLElement>("#app-flash");
   if (!flash) return;
   flash.textContent = ui.flashMessage;
+  const kind = ui.flashNotification?.kind ?? "info";
+  flash.dataset.kind = kind;
+  flash.className = `flash flash-${kind}${ui.flashMessage ? " visible" : ""}`;
+  flash.setAttribute("role", kind === "error" ? "alert" : "status");
+  flash.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
   flash.classList.toggle("visible", Boolean(ui.flashMessage));
 }
 
-function showMessage(message: string, _legacyRenderPage?: boolean): void {
+function displayNextNotification(): void {
+  const next = ui.flashNotificationQueue.shift() ?? null;
+  ui.flashNotification = next;
+  ui.flashMessage = next?.message ?? "";
+  window.clearTimeout(ui.flashMessageTimer);
+  syncFlashMessage();
+  if (!next) return;
+  ui.flashMessageTimer = window.setTimeout(() => {
+    if (ui.flashNotification?.id !== next.id) return;
+    displayNextNotification();
+  }, next.durationMs);
+}
+
+function showMessage(
+  message: string,
+  legacyOrOptions?: boolean | RendererNotifyOptions
+): void {
+  const options = typeof legacyOrOptions === "object" ? legacyOrOptions : undefined;
+  const kind = options?.kind ?? "info";
+  const notification = {
+    id: ui.nextFlashNotificationId++,
+    message,
+    kind,
+    durationMs: options?.durationMs ?? notificationDuration[kind]
+  };
+  void window.studio.reportNotification(kind, message).catch(() => undefined);
+  if (kind === "task-complete" || kind === "queue-complete") {
+    ui.flashNotificationQueue.push(notification);
+    if (!ui.flashNotification) displayNextNotification();
+    return;
+  }
+  ui.flashNotificationQueue = [];
+  ui.flashNotification = notification;
   ui.flashMessage = message;
   window.clearTimeout(ui.flashMessageTimer);
   syncFlashMessage();
   ui.flashMessageTimer = window.setTimeout(() => {
-    if (ui.flashMessage === message) {
-      ui.flashMessage = "";
-      syncFlashMessage();
-    }
-  }, 3500);
+    if (ui.flashNotification?.id !== notification.id) return;
+    displayNextNotification();
+  }, notification.durationMs);
 }
 
 function reportUserAction(action: string, meta?: Record<string, unknown>): void {
@@ -1225,7 +1267,7 @@ async function releasePromptModelFromUi(): Promise<void> {
     if (result.ok) promptRuntimeLoaded = false;
     showMessage(result.message);
   } catch (error) {
-    showMessage(error instanceof Error ? error.message : String(error));
+    showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
   } finally {
     promptReleasing = false;
     render();
@@ -1243,7 +1285,7 @@ async function startPromptModelFromUi(): Promise<void> {
     promptRuntimeLoaded = true;
     showMessage(result.message);
   } catch (error) {
-    showMessage(error instanceof Error ? error.message : String(error));
+    showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
   } finally {
     promptStarting = false;
     render();
@@ -1389,7 +1431,6 @@ function returnToHistory(): void {
   if (page !== "history-detail" && page !== "image-history-detail") return;
   historyLayoutController.setScrollRestorePending(true);
   setPage("history");
-  ui.flashMessage = "";
   render();
 }
 
@@ -1574,7 +1615,7 @@ function bindWindowCloseDialog(): void {
       }
     } catch (error) {
       ui.windowCloseResponseBusy = false;
-      showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.exitRequestFailed));
+      showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.exitRequestFailed), { kind: "error" });
     }
   };
   const cancel = () => void respond("cancel");
@@ -1615,9 +1656,6 @@ function bindShell(): void {
       ui.historyForwardTarget = null;
     },
     setPage,
-    clearFlashMessage: () => {
-      ui.flashMessage = "";
-    },
     reportUserAction,
     render,
     bindConfirmationDialog,
@@ -1655,7 +1693,7 @@ function scheduleImageDraftSave(): void {
         setRendererState({ ...savedState, imageDraft: draftToSave });
       }
     } catch (error) {
-      showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.imageDraftSaveFailed), false);
+      showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.imageDraftSaveFailed), { kind: "error" });
     }
   }, 350);
 }
@@ -1770,7 +1808,7 @@ async function editImagePictureMarkup(pictureId: string): Promise<void> {
     void loadImageEditPreviews();
     showMessage(markup ? uiText(uiKeys.runtime.markupSaved, { count: markup.objectCount }) : uiText(uiKeys.runtime.markupCleared), true);
   } catch (error) {
-    showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.markupSaveFailed), false);
+    showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.markupSaveFailed), { kind: "error" });
   }
 }
 
@@ -1778,7 +1816,7 @@ function addImageSlot(): void {
   const pictures = state.imageDraft.pictures;
   const capability = imageModelCapabilityFor(state.imageDraft.modelId);
   if (pictures.length >= capability.maxPictures) {
-    showMessage(uiText(uiKeys.runtime.maxPictureSlots, { name: capability.name, count: capability.maxPictures }));
+    showMessage(uiText(uiKeys.runtime.maxPictureSlots, { name: capability.name, count: capability.maxPictures }), { kind: "warning" });
     return;
   }
   const pictureNumber = nextImagePictureNumber(state.imageDraft);
@@ -1816,7 +1854,7 @@ function addImagePicture(path: string, replacePictureId?: string): void {
   }
   const capability = imageModelCapabilityFor(state.imageDraft.modelId);
   if (pictures.length >= capability.maxPictures) {
-    showMessage(uiText(uiKeys.runtime.maxPictureReferences, { name: capability.name, count: capability.maxPictures }));
+    showMessage(uiText(uiKeys.runtime.maxPictureReferences, { name: capability.name, count: capability.maxPictures }), { kind: "warning" });
     return;
   }
   const pictureNumber = nextImagePictureNumber(state.imageDraft);
@@ -2258,7 +2296,7 @@ async function runEnvironmentScan(settings: Settings): Promise<void> {
     enableSpectrumByDefaultIfAvailable();
   } catch (error) {
     environmentScanError = uiText(uiKeys.runtime.environmentScanFailed, { error: error instanceof Error ? error.message : String(error) });
-    showMessage(environmentScanError);
+    showMessage(environmentScanError, { kind: "error" });
   } finally {
     environmentScanning = false;
     render();
@@ -2479,6 +2517,7 @@ registerRendererEvents({
     }
     return next;
   },
+  notify: showMessage,
   requestRender: render
 });
 

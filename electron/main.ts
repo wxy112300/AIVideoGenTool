@@ -28,6 +28,7 @@ import type {
   ImageEditDraft,
   ImageMarkupSaveRequest,
   LocalServiceKind,
+  NotificationKind,
   QueueTask,
   Settings,
   SettingsSaveMode,
@@ -1510,6 +1511,20 @@ function registerIpc(): void {
     "logs:user-action",
     (_event, action: string, meta?: Record<string, unknown>) => {
       appLogger.info("ui", "user-action", action, meta);
+    }
+  );
+  ipcMain.handle(
+    "logs:notification",
+    (_event, kind: NotificationKind, message: string) => {
+      const event = kind.replaceAll("-", "_");
+      const meta = { notificationKind: kind };
+      if (kind === "error") {
+        appLogger.error("ui", event, message, meta);
+      } else if (kind === "warning") {
+        appLogger.warn("ui", event, message, meta);
+      } else {
+        appLogger.info("ui", event, message, meta);
+      }
     }
   );
   ipcMain.handle("draft:save", async (_event, draft: Draft) => {

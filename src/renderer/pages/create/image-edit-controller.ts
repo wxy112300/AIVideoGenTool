@@ -272,7 +272,7 @@ export function mountImageEditController(
       ];
       options.patchImageDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : String(error));
+      context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
     } finally {
       options.setPromptEnhancing(false);
       context.requestRender();
@@ -368,7 +368,7 @@ export function mountImageEditController(
       context.notify(t(uiKeys.create.interaction.imageQueueAdded, { filename: outputFilename }));
       options.setState(nextState);
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : String(error));
+      context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
     } finally {
       options.setEnqueueBusy(false);
       options.setEnqueueBusyUi(false);

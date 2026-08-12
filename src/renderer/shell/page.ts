@@ -1,4 +1,5 @@
 import type { Page } from "../contracts";
+import type { NotificationKind } from "../../types";
 import type { Translate } from "../../core/i18n";
 import { uiKeys } from "../../core/i18n-keys";
 
@@ -7,6 +8,7 @@ export interface ShellPageOptions {
   appVersion: string;
   queueCount: number;
   flashMessage: string;
+  flashKind: NotificationKind;
   content: string;
   t: Translate;
   icon(name: string, className?: string): string;
@@ -47,7 +49,7 @@ export function renderShell(options: ShellPageOptions): string {
             .join("")}
         </nav>
       </header>
-      <div class="flash ${options.flashMessage ? "visible" : ""}" id="app-flash" role="status" aria-live="polite">${options.escapeHtml(options.flashMessage)}</div>
+      <div class="flash flash-${options.flashKind} ${options.flashMessage ? "visible" : ""}" id="app-flash" data-kind="${options.flashKind}" role="${options.flashKind === "error" ? "alert" : "status"}" aria-live="${options.flashKind === "error" ? "assertive" : "polite"}">${options.escapeHtml(options.flashMessage)}</div>
       <main>${options.content}</main>
     </div>
     <button class="history-back-top" id="history-back-top" type="button" aria-label="${options.escapeHtml(options.t(uiKeys.app.returnTop))}" title="${options.escapeHtml(options.t(uiKeys.app.returnTop))}">${options.icon("arrow-up")}</button>

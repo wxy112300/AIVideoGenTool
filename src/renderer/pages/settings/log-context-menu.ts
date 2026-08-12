@@ -52,7 +52,7 @@ export function createAppLogContextMenu(
           context.reportUserAction("copy-app-log-selection", { length: selectedText.length });
           context.notify(context.t(uiKeys.settings.actions.logCopied), { renderPage: false });
         } catch {
-          context.notify(context.t(uiKeys.settings.actions.logCopyFailed), { renderPage: false });
+          context.notify(context.t(uiKeys.settings.actions.logCopyFailed), { renderPage: false, kind: "error" });
         }
       } else if (action === "select-all") {
         const terminal = document.querySelector<HTMLPreElement>("#app-log-terminal");

@@ -70,7 +70,7 @@ export function mountVideoExtensionController(
         return;
       }
       void options.selectDraftVideo(filename).catch((error) => {
-        context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.videoReadFailed));
+        context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.videoReadFailed), { kind: "error" });
       });
     }, { signal });
   }

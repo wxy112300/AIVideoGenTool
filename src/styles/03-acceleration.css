@@ -118,3 +118,14 @@
   transition: opacity .16s ease, transform .16s ease, visibility 0s linear .16s;
 }
 .flash.visible { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: 0s; }
+.flash::before { display: inline-grid; width: 18px; height: 18px; margin-right: 9px; place-items: center; border-radius: 50%; font-size: 12px; font-weight: 800; vertical-align: -1px; content: "i"; }
+.flash-info { border-color: rgba(116,165,244,.5); color: #e8f1ff; background: rgba(29,49,76,.97); }
+.flash-info::before { color: #0c1625; background: #83b6ff; }
+.flash-warning { border-color: rgba(244,189,106,.58); color: #fff3d9; background: rgba(69,49,21,.97); }
+.flash-warning::before { color: #2b1b05; background: #f4bd6a; content: "!"; }
+.flash-error { border-color: rgba(255,112,112,.62); color: #ffe9e9; background: rgba(75,29,33,.97); }
+.flash-error::before { color: #321015; background: #ff7d82; content: "!"; }
+.flash-task-complete { border-color: rgba(83,211,150,.58); color: #e3fff1; background: rgba(22,65,47,.97); }
+.flash-task-complete::before { color: #0c291c; background: #62d99d; content: "✓"; }
+.flash-queue-complete { border-color: rgba(133,180,255,.64); color: #eef5ff; background: rgba(28,54,88,.98); }
+.flash-queue-complete::before { color: #10233d; background: #9ac4ff; content: "✓"; box-shadow: 3px 0 0 rgba(154,196,255,.42); }

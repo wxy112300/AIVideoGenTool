@@ -73,7 +73,7 @@ export function mountQueueController(
       options.setPromptRuntimeLoaded(false);
       context.requestRender();
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : String(error));
+      context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
     }
   }, { signal });
 
@@ -133,7 +133,7 @@ export function mountQueueController(
         options.setState(await context.studio.resetTask(taskId));
         context.requestRender();
       } catch (error) {
-        context.notify(error instanceof Error ? error.message : t(uiKeys.runtime.queueResetFailed));
+        context.notify(error instanceof Error ? error.message : t(uiKeys.runtime.queueResetFailed), { kind: "error" });
       }
     }, { signal });
   });
@@ -156,7 +156,7 @@ export function mountQueueController(
         options.rememberModalFocus();
         options.editUpscaleTask(task);
       } catch (error) {
-        context.notify(error instanceof Error ? error.message : t(uiKeys.runtime.queueEditFailed));
+        context.notify(error instanceof Error ? error.message : t(uiKeys.runtime.queueEditFailed), { kind: "error" });
       }
     }, { signal });
   });

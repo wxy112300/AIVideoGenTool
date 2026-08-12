@@ -202,7 +202,7 @@ export function persistVideoHistoryResult(
     task.sourceWidth, task.sourceHeight, task.targetHeight
   );
   const version: AssetVersion = {
-    id: result.id(), kind: "upscale", createdAt: result.completedAt,
+    id: result.id(), taskId: task.id, kind: "upscale", createdAt: result.completedAt,
     outputFilename: task.outputFilename, modelId: task.modelId,
     width: targetWidth, height: targetHeight, duration: task.duration,
     fps: task.fps, seed: task.seed, performanceStats: result.performanceStats,

@@ -272,7 +272,7 @@ export function mountCreatePromptController(
       ];
       options.patchDraft(promptPatchForDraft(nextDraft, versions, versions.length - 1));
     } catch (error) {
-      options.context.notify(error instanceof Error ? error.message : String(error));
+      options.context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
     } finally {
       options.setPromptEnhancing(false);
       options.context.requestRender();

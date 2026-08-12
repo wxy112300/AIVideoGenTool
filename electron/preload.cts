@@ -45,6 +45,8 @@ const api: AppApi = {
     ipcRenderer.invoke("logs:renderer-error", message, meta),
   reportUserAction: (action: string, meta?: Record<string, unknown>) =>
     ipcRenderer.invoke("logs:user-action", action, meta),
+  reportNotification: (kind, message) =>
+    ipcRenderer.invoke("logs:notification", kind, message),
   pickDirectory: (defaultPath?: string, createIfMissing?: boolean) =>
     ipcRenderer.invoke("file:pick-directory", defaultPath, createIfMissing),
   scanImageAssetLibrary: () => ipcRenderer.invoke("image-assets:scan"),

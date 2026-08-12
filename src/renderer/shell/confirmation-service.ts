@@ -1,5 +1,5 @@
 import type { AppState, Settings } from "../../types";
-import type { Page, RendererContext } from "../contracts";
+import type { Page, RendererContext, RendererNotifyOptions } from "../contracts";
 import { createClearedDraft } from "../../core/draft-defaults";
 import { uiKeys } from "../../core/i18n-keys";
 
@@ -37,7 +37,7 @@ export interface ConfirmationServiceOptions {
   rememberModalFocus(): void;
   restoreModalFocus(): void;
   render(): void;
-  notify(message: string): void;
+  notify(message: string, options?: RendererNotifyOptions): void;
   getPage(): Page;
 }
 
@@ -83,10 +83,14 @@ export async function acceptConfirmation(
       options.setQueueActionBusy({ taskId: request.taskId, action: "remove" });
       options.setState(await context.studio.removeTask(request.taskId));
       options.setQueueActionBusy(null);
+      options.notify(t(uiKeys.runtime.queueTaskRemoved, { title: request.title }));
     } else if (request.kind === "cancel-queue-task") {
       options.setQueueActionBusy({ taskId: request.taskId, action: "cancel" });
       options.setState(await context.studio.cancelTask(request.taskId));
       options.setQueueActionBusy(null);
+      options.notify(t(uiKeys.runtime.queueTaskCancelled, { title: request.title }), {
+        kind: "warning"
+      });
     } else if (request.kind === "discard-settings") {
       options.setSettingsDraft(null);
       void context.studio.setSettingsDirty(false).catch(() => undefined);
@@ -106,6 +110,7 @@ export async function acceptConfirmation(
         if (options.getPage() === "image-history-detail") options.setHistoryKind("image");
         options.setPage("history");
       }
+      options.notify(t(uiKeys.runtime.historyAssetDeleted, { title: request.title }));
     } else if (request.kind === "delete-image-version") {
       options.setState(await context.studio.deleteImageHistoryVersion(request.projectId, request.versionId));
       options.clearImageHistoryThumbnailCache();
@@ -126,6 +131,6 @@ export async function acceptConfirmation(
     options.setQueueActionBusy(null);
     if (request.kind === "force-stop-comfy") options.setServiceForceStopping(false);
     options.setBusy(false);
-    options.notify(error instanceof Error ? error.message : String(error));
+    options.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
   }
 }

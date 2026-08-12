@@ -355,6 +355,7 @@ export interface HistoryFile {
 
 export interface AssetVersion {
   id: string;
+  taskId?: string;
   kind: "original" | "upscale";
   createdAt: string;
   outputFilename: string;
@@ -870,6 +871,7 @@ export interface AppApi {
   openAppLogDirectory(kind: "logs" | "crashDumps"): Promise<boolean>;
   reportRendererError(message: string, meta?: Record<string, unknown>): Promise<void>;
   reportUserAction(action: string, meta?: Record<string, unknown>): Promise<void>;
+  reportNotification(kind: NotificationKind, message: string): Promise<void>;
   pickDirectory(defaultPath?: string, createIfMissing?: boolean): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
   readHistoryCover(key: string, sourcePath: string): Promise<string | null>;
@@ -933,6 +935,13 @@ export interface AppApi {
   cleanupImageAssetLibrary(paths: string[]): Promise<ImageAssetLibraryResult>;
   onImageAssetLibraryProgress(callback: (progress: ImageAssetLibraryProgress) => void): () => void;
 }
+
+export type NotificationKind =
+  | "info"
+  | "warning"
+  | "error"
+  | "task-complete"
+  | "queue-complete";
 
 export interface DependencyInstallProgress {
   kind: "custom-node" | "workflow";

@@ -14,7 +14,6 @@ export interface ShellControllerOptions {
   setHistoryScrollRestorePending(value: boolean): void;
   clearHistoryForwardTarget(): void;
   setPage(page: Page): void;
-  clearFlashMessage(): void;
   reportUserAction(action: string, meta?: Record<string, unknown>): void;
   render(): void;
   bindConfirmationDialog(): void;
@@ -56,7 +55,6 @@ export function mountShellController(
       if (nextPage === "history" && previousPage !== "history") options.setHistoryScrollRestorePending(true);
       options.reportUserAction("navigate-panel", { from: previousPage, to: nextPage });
       options.setPage(nextPage);
-      options.clearFlashMessage();
       options.render();
       if (nextPage !== "history") {
         window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
