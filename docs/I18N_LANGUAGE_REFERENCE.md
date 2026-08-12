@@ -9,6 +9,7 @@ are added to the runtime translation catalog. It is not loaded by the applicatio
 | Locale ID | Language | Role |
 | --- | --- | --- |
 | `zh-CN` | Simplified Chinese | Current default UI locale |
+| `zh-TW` | Traditional Chinese | Traditional Chinese UI locale |
 | `en-US` | English (US) | Initial alternative UI locale |
 
 UI locale controls application chrome, controls, state, and messages. It does not

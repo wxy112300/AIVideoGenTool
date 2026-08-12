@@ -10,6 +10,7 @@ describe("UI locale foundation", () => {
   it("keeps Chinese as the default and normalizes unknown values", () => {
     expect(defaultUiLocale).toBe("zh-CN");
     expect(normalizeUiLocale("en-US")).toBe("en-US");
+    expect(normalizeUiLocale("zh-TW")).toBe("zh-TW");
     expect(normalizeUiLocale("fr-FR")).toBe("zh-CN");
     expect(normalizeUiLocale(undefined)).toBe("zh-CN");
   });
@@ -18,6 +19,7 @@ describe("UI locale foundation", () => {
     const translator = createTranslator("en-US");
     expect(translator.t("task.status.waiting")).toBe("Waiting");
     expect(translator.t("nav.settings")).toBe("Settings");
+    expect(createTranslator("zh-TW").t("nav.settings")).toBe("設定");
     expect(translator.t("queue.remaining", { count: 3 }, "剩余 {count} 项")).toBe("剩余 3 项");
   });
 

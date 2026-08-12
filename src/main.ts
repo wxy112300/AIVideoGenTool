@@ -2135,7 +2135,7 @@ function uiText(key: string, fallback: string): string {
 }
 
 function localizeStaticSettingsUi(root: HTMLElement, locale: Settings["uiLocale"]): void {
-  if (locale !== "en-US") return;
+  if (!locale || locale === "zh-CN") return;
   const ignoredTags = new Set(["CODE", "PRE", "TEXTAREA", "SCRIPT", "STYLE"]);
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const textNodes: Text[] = [];
@@ -4239,6 +4239,7 @@ function settingsPage(): string {
         <label>${translate.t("settings.uiLanguage.label")}
           <select id="ui-locale">
             <option value="zh-CN" ${settings.uiLocale === "zh-CN" ? "selected" : ""}>简体中文</option>
+            <option value="zh-TW" ${settings.uiLocale === "zh-TW" ? "selected" : ""}>繁體中文</option>
             <option value="en-US" ${settings.uiLocale === "en-US" ? "selected" : ""}>English (US)</option>
           </select>
         </label>

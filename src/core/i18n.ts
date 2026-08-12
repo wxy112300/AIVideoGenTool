@@ -1,7 +1,7 @@
 import type { UiLocale } from "../types.js";
 
 export const defaultUiLocale: UiLocale = "zh-CN";
-export const supportedUiLocales = ["zh-CN", "en-US"] as const satisfies readonly UiLocale[];
+export const supportedUiLocales = ["zh-CN", "zh-TW", "en-US"] as const satisfies readonly UiLocale[];
 
 export type TranslationParams = Record<string, string | number>;
 export type TranslationCatalog = Record<string, string>;
@@ -28,6 +28,21 @@ export const uiTranslationCatalogs: TranslationCatalogs = {
     "task.status.failed": "失败",
     "task.status.cancelled": "已取消"
   },
+  "zh-TW": {
+    "nav.create": "建立",
+    "nav.queue": "佇列",
+    "nav.history": "歷史紀錄",
+    "nav.settings": "設定",
+    "settings.uiLanguage.title": "介面語言",
+    "settings.uiLanguage.label": "介面語言",
+    "settings.uiLanguage.description": "選擇 Local Video Studio 的介面顯示語言。",
+    "settings.uiLanguage.help": "選擇後會立即預覽介面語言；儲存設定後會記住你的偏好。未翻譯的內容暫時顯示為預設語言。",
+    "task.status.waiting": "等待中",
+    "task.status.running": "執行中",
+    "task.status.completed": "完成",
+    "task.status.failed": "失敗",
+    "task.status.cancelled": "已取消"
+  },
   "en-US": {
     "nav.create": "Create",
     "nav.queue": "Queue",
@@ -46,6 +61,70 @@ export const uiTranslationCatalogs: TranslationCatalogs = {
 };
 
 const staticUiTextCatalogs: Partial<Record<UiLocale, Record<string, string>>> = {
+  "zh-TW": {
+    "本机环境": "本機環境",
+    "ComfyUI 安装实例": "ComfyUI 安裝實例",
+    "当前安装入口": "目前安裝入口",
+    "选择目录": "選擇資料夾",
+    "核心目录": "核心目錄",
+    "数据 / 节点目录": "資料 / 節點目錄",
+    "便携版": "可攜版",
+    "源码版": "原始碼版",
+    "当前使用": "目前使用中",
+    "使用此版本": "使用此版本",
+    "ComfyUI 连接": "ComfyUI 連線",
+    "测试连接": "測試連線",
+    "终止中…": "正在終止…",
+    "强制终止所有进程": "強制終止所有處理程序",
+    "服务地址": "服務位址",
+    "文件路径": "檔案路徑",
+    "输出位置": "輸出位置",
+    "视频输出目录": "影片輸出資料夾",
+    "图片输出目录": "圖片輸出資料夾",
+    "选择": "選擇",
+    "输入素材库": "輸入素材庫",
+    "模型目录": "模型資料夾",
+    "素材库维护": "素材庫維護",
+    "下载代理": "下載 Proxy",
+    "已开启": "已啟用",
+    "已关闭": "已關閉",
+    "启用下载代理": "啟用下載 Proxy",
+    "代理地址": "Proxy 位址",
+    "GPU 运行策略": "GPU 執行策略",
+    "已识别硬件": "已辨識硬體",
+    "显存安全余量": "顯存安全餘量",
+    "安全取消": "安全取消",
+    "任务失败自动重试": "工作失敗時自動重試",
+    "自动重试次数": "自動重試次數",
+    "推荐": "建議",
+    "视频模型": "影片模型",
+    "默认模型": "預設模型",
+    "等待首次扫描": "等待首次掃描",
+    "图片编辑模型": "圖片編輯模型",
+    "默认图片模型": "預設圖片模型",
+    "默认质量档": "預設品質設定",
+    "默认生成数量": "預設生成數量",
+    "张": "張",
+    "本地提示词模型": "本機提示詞模型",
+    "默认提示词模型": "預設提示詞模型",
+    "扩写语言": "擴寫語言",
+    "跟随输入语言": "跟隨輸入語言",
+    "中文": "中文",
+    "英文": "英文",
+    "创造性": "創造性",
+    "视频提示词预设": "影片提示詞預設",
+    "恢复默认": "恢復預設",
+    "当前编辑预设": "目前編輯預設",
+    "图片提示词预设": "圖片提示詞預設",
+    "分辨率提升模型": "解析度提升模型",
+    "节点与工作流依赖": "節點與工作流程相依項目",
+    "运行日志": "執行日誌",
+    "刷新": "重新整理",
+    "日志目录": "日誌資料夾",
+    "崩溃转储": "當機傾印",
+    "暂无运行日志": "尚無執行日誌",
+    "设置": "設定"
+  },
   "en-US": {
     "本机环境": "Local environment",
     "必需组件、可选工具和本地服务状态": "Required components, optional tools, and local service status.",
