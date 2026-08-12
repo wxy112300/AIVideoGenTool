@@ -1,4 +1,4 @@
-import type { VideoLoraSelection } from "../types.js";
+import type { ModelScanProfile, VideoLoraSelection } from "../types.js";
 
 export interface VideoLoraGuide {
   summary: string;
@@ -114,6 +114,28 @@ export const BUILTIN_VIDEO_LORAS: readonly BuiltinVideoLora[] = [
   H3_TURBO_LORA,
   H3_PINK_FLUFFY_BUNNY_LORA
 ];
+
+export function detectedVideoLoraFilename(profile: ModelScanProfile | undefined): string {
+  const match = profile?.components.flatMap((component) => component.matches)[0];
+  if (!match) return "";
+  const normalized = match.replaceAll("\\", "/");
+  const markerIndex = normalized.toLowerCase().lastIndexOf("loras/");
+  return markerIndex >= 0 ? normalized.slice(markerIndex + "loras/".length) : "";
+}
+
+export function profileProvidesVideoLora(
+  profile: ModelScanProfile | undefined,
+  filename: string
+): boolean {
+  if (!profile?.available) return false;
+  const expected = `loras/${filename}`.replaceAll("\\", "/").toLowerCase();
+  return profile.components.some((component) =>
+    component.matches.some((match) => {
+      const normalized = match.replaceAll("\\", "/").toLowerCase();
+      return normalized === expected || normalized.endsWith(`/${expected}`);
+    })
+  );
+}
 
 export function videoLoraSelection(
   definition: VideoLoraSelection,
