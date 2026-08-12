@@ -8,6 +8,13 @@
 
 ## 未发布
 
+### 0.18.9 候选 — 2026-08-12
+
+- 将 ComfyUI 根目录、Desktop 可执行文件、Desktop 2 `installations.json`、Portable 与手动源码安装发现迁入独立服务。
+- 多实例去重、当前设置目录匹配、Desktop 产品版本、核心版本和 Git revision 读取统一收口，环境总管改为消费发现结果。
+- 保留既有候选目录、Desktop 源码目录和注册表解析导出，现有设置页与测试调用方无需迁移。
+- 新增显式离线目录优先、核心版本读取和 Windows Portable 布局识别测试。
+
 ### 0.18.8 候选 — 2026-08-12
 
 - 将 MiniMax H3 与 Prompt Writer 的 ComfyUI 核心节点清单、最低版本和语义版本比较迁入独立兼容性模块。
