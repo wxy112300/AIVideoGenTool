@@ -1,6 +1,6 @@
 import type { AppState, Settings } from "../../types";
 import type { Page, RendererContext } from "../contracts";
-import { createClearedDraft } from "../../core/defaults";
+import { createClearedDraft } from "../../core/draft-defaults";
 import { uiKeys } from "../../core/i18n-keys";
 
 export type ConfirmationRequest =

@@ -1,6 +1,6 @@
-import { createDefaultImagePromptPresets } from "../../../core/defaults";
+import { createDefaultQwenImagePromptPresets } from "../../prompt-packs";
 import { imageModelCapabilityFor } from "../../../core/image-workflow";
-import { createDefaultH3PromptPresets } from "../../../core/h3-prompt-presets";
+import { createDefaultH3PromptPresets } from "../../prompt-packs";
 import { isManagedPromptModel } from "../../../core/prompt-models";
 import type {
   H3PromptPreset,
@@ -95,7 +95,7 @@ export function mountSettingsFieldsController(
   root.querySelector("#restore-image-prompt-presets")?.addEventListener("click", () => {
     options.setSettingsDraft({
       ...options.formSettings(),
-      imagePromptPresets: createDefaultImagePromptPresets()
+      imagePromptPresets: createDefaultQwenImagePromptPresets()
     });
     context.requestRender();
     context.notify(context.t(uiKeys.settings.actions.imagePresetRestored));

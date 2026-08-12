@@ -2,14 +2,21 @@ import type {
   ExtensionQueueTask,
   GenerationQueueTask,
   H3StepCount,
-  QueueTask
+  QueueTask,
+  UiLocale
 } from "../types.js";
 import {
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
-  isH3TurboEnabled,
   videoLoraFilename
 } from "./video-loras.js";
+import { modelCatalog } from "./catalog/index.js";
+import {
+  normalizeVideoSteps,
+  resolveVideoGenerationPolicy,
+  shouldApplySpectrum
+} from "./video-policy.js";
+import { workflowMessage } from "./runtime/workflow-messages.js";
 
 export interface WorkflowContext {
   inputImage: string;
@@ -25,6 +32,7 @@ export interface WorkflowContext {
   vramAvailableBytes: number;
   h3ContextLatentPath: string;
   h3ContextSavePrefix: string;
+  locale?: UiLocale;
 }
 
 export interface WorkflowValidation {
@@ -54,15 +62,12 @@ interface GenerationSafetyProfile {
 }
 
 export function isMiniMaxH3Fl2vaModel(modelId: string): boolean {
-  return modelId === "minimax_h3_fl2va" ||
-    modelId === "minimax_h3_fl2va_int4" ||
-    modelId === "minimax_h3_fl2va_q3_gguf";
+  return modelCatalog.get(modelId)?.definition.variant === "fl2va";
 }
 
 export function isMiniMaxH3BoundaryExtensionModel(modelId: string): boolean {
-  return modelId === "minimax_h3_fl2va" ||
-    modelId === "minimax_h3_fl2va_int4" ||
-    modelId === "minimax_h3_fl2va_turbo";
+  const variant = modelCatalog.get(modelId)?.definition.variant;
+  return variant === "fl2va" || variant === "turbo";
 }
 
 export const retiredVideoModelIds = [
@@ -79,42 +84,41 @@ export function isRetiredVideoModel(modelId: string): boolean {
 }
 
 export function isMiniMaxH3TurboModel(modelId: string): boolean {
-  return modelId === "minimax_h3_fl2va_turbo";
+  return modelCatalog.get(modelId)?.definition.variant === "turbo";
 }
 
 export function isMiniMaxH3R2vModel(modelId: string): boolean {
-  return modelId === "minimax_h3_ref2va" || modelId === "minimax_h3_ref2va_int4";
+  return modelCatalog.get(modelId)?.definition.variant === "r2v";
 }
 
 export function isMiniMaxH3Model(modelId: string): boolean {
-  return isMiniMaxH3Fl2vaModel(modelId) ||
-    isMiniMaxH3TurboModel(modelId) ||
-    isMiniMaxH3R2vModel(modelId);
+  return modelCatalog.isFamily(modelId, "minimax-h3");
 }
 
 export function isMiniMaxH3SpectrumEligible(modelId: string): boolean {
-  return isMiniMaxH3Model(modelId);
+  return modelCatalog.get(modelId)?.definition.capabilities?.supportsSpectrum === true;
 }
 
 function applyMiniMaxH3Spectrum(
-  workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>
+  workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
+  locale: UiLocale = "zh-CN"
 ): void {
   const consumers = Object.entries(workflow).filter(([, node]) =>
     (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
     Array.isArray(node.inputs?.model)
   );
   if (!consumers.length) {
-    throw new Error("Spectrum 加速需要连接到 H3 的 BasicScheduler / BasicGuider 模型输入。");
+    throw new Error(workflowMessage("spectrumConsumersMissing", {}, locale));
   }
   const existing = Object.entries(workflow).find(([, node]) =>
     node.class_type === "SpectrumApplyMiniMaxH3"
   );
   const upstream = existing?.[1].inputs?.model ?? consumers[0]?.[1].inputs?.model;
   if (!Array.isArray(upstream) || typeof upstream[0] !== "string") {
-    throw new Error("Spectrum 加速无法识别 H3 模型补丁链的输出。");
+    throw new Error(workflowMessage("spectrumOutputUnknown", {}, locale));
   }
   if (!existing && consumers.some(([, node]) => JSON.stringify(node.inputs?.model) !== JSON.stringify(upstream))) {
-    throw new Error("Spectrum 加速要求 BasicScheduler 与 BasicGuider 使用同一个 H3 模型输出。");
+    throw new Error(workflowMessage("spectrumOutputsDiffer", {}, locale));
   }
   const numericIds = Object.keys(workflow)
     .map(Number)
@@ -148,7 +152,8 @@ function applyMiniMaxH3Spectrum(
 
 function applyVideoLoraStack(
   workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
-  task: GenerationQueueTask | ExtensionQueueTask
+  task: GenerationQueueTask | ExtensionQueueTask,
+  locale: UiLocale = "zh-CN"
 ): void {
   const selected = task.videoLoras ?? [];
   if (!isMiniMaxH3Model(task.modelId) || selected.length === 0) return;
@@ -163,10 +168,10 @@ function applyVideoLoraStack(
   const targets = sageNodes.length ? sageNodes : directConsumers;
   const targetInput = targets[0]?.inputs?.model;
   if (!Array.isArray(targetInput) || typeof targetInput[0] !== "string") {
-    throw new Error("无法识别当前工作流的模型链，不能安全叠加所选 LoRA。");
+    throw new Error(workflowMessage("loraChainUnknown", {}, locale));
   }
   if (targets.some((node) => JSON.stringify(node.inputs?.model) !== JSON.stringify(targetInput))) {
-    throw new Error("当前工作流存在多条不同模型链，不能自动确定 LoRA 叠加位置。");
+    throw new Error(workflowMessage("loraChainsDiffer", {}, locale));
   }
 
   const existingChain: string[] = [];
@@ -176,7 +181,7 @@ function applyVideoLoraStack(
   while (typeof rootInput[0] === "string") {
     const nodeId = rootInput[0];
     if (visited.has(nodeId)) {
-      throw new Error("当前工作流的 LoRA 模型链存在循环引用，无法安全叠加应用 LoRA。");
+      throw new Error(workflowMessage("loraChainCycle", {}, locale));
     }
     const node = workflow[nodeId];
     const loraName = typeof node?.inputs?.lora_name === "string"
@@ -221,11 +226,11 @@ export function normalizeH3Steps(
   modelId = "",
   videoLoras?: GenerationQueueTask["videoLoras"]
 ): H3StepCount {
-  const normalized = value === 4 || value === 6 || value === 8 || value === 10 ||
-    value === 12 || value === 16 || value === 20
-    ? value
-    : 20;
-  return isH3TurboEnabled({ modelId, videoLoras }) && normalized > 8 ? 8 : normalized;
+  return normalizeVideoSteps(value, resolveVideoGenerationPolicy({
+    modelId,
+    inputMode: "image",
+    videoLoras
+  }));
 }
 
 function generationSafetyProfileForModel(
@@ -271,7 +276,7 @@ function generationSafetyProfileForModel(
     };
   }
   return {
-    label: "当前模型",
+    label: workflowMessage("currentModel"),
     maxGeneratedFrames: 81,
     maxDurationSeconds: 10
   };
@@ -318,13 +323,18 @@ export function workflowSupportsVideoExtension(source: unknown): boolean {
   );
 }
 
-export function extensionWorkflowSafetyErrors(source: unknown): string[] {
+export function extensionWorkflowSafetyErrors(
+  source: unknown,
+  locale: UiLocale = "zh-CN"
+): string[] {
+  const message = (key: Parameters<typeof workflowMessage>[0]) =>
+    workflowMessage(key, {}, locale);
   const errors: string[] = [];
   if (!workflowSupportsVideoExtension(source)) {
-    errors.push("缺少 SOURCE_VIDEO、EXTENSION_FRAMES 或 OVERLAP_FRAMES 输入占位符");
+    errors.push(message("missingExtensionPlaceholders"));
   }
   if (!source || typeof source !== "object" || Array.isArray(source)) {
-    return errors.length ? errors : ["工作流根节点不是 API 对象"];
+    return errors.length ? errors : [message("workflowRootInvalid")];
   }
   const nodes = Object.values(source as Record<string, unknown>).filter(
     (node): node is Record<string, unknown> =>
@@ -339,14 +349,14 @@ export function extensionWorkflowSafetyErrors(source: unknown): string[] {
   if (!classTypes.some((value) =>
     value === "LTXVExtendSampler" || value === "LTXVLoopingSampler"
   )) {
-    errors.push("缺少官方 LTXVExtendSampler 或 LTXVLoopingSampler");
+    errors.push(message("missingExtensionSampler"));
   }
   const usesCheckpointLoader = classTypes.includes("LowVRAMCheckpointLoader");
   const ggufLoader = nodes.find(
     (node) => node.class_type === "UnetLoaderGGUFAdvanced"
   );
   if (!usesCheckpointLoader && !ggufLoader) {
-    errors.push("缺少 LowVRAMCheckpointLoader 或 UnetLoaderGGUFAdvanced");
+    errors.push(message("missingWorkflowLoader"));
   }
   if (ggufLoader) {
     const inputs = ggufLoader.inputs;
@@ -354,22 +364,22 @@ export function extensionWorkflowSafetyErrors(source: unknown): string[] {
       ? (inputs as Record<string, unknown>).patch_on_device
       : undefined;
     if (patchOnDevice !== false) {
-      errors.push("GGUF loader 必须关闭 patch_on_device");
+      errors.push(message("ggufPatchOnDevice"));
     }
     if (!classTypes.includes("DualCLIPLoader")) {
-      errors.push("GGUF 工作流缺少独立 DualCLIPLoader");
+      errors.push(message("missingDualClipLoader"));
     }
     if (!classTypes.includes("VAELoader")) {
-      errors.push("GGUF 工作流缺少独立 VAELoader");
+      errors.push(message("missingVaeLoader"));
     }
   }
   if (!classTypes.includes("VRAM_Debug")) {
-    errors.push("缺少采样后的 VRAM_Debug 显式卸载节点");
+    errors.push(message("missingVramDebug"));
   }
   if (!classTypes.some((value) =>
     value === "VAEDecodeTiled" || value.includes("TiledVAEDecode")
   )) {
-    errors.push("缺少 tiled VAE decode");
+    errors.push(message("missingTiledVae"));
   }
   return errors;
 }
@@ -475,8 +485,13 @@ export function generationSafetyForTask(
   task: Pick<
     GenerationQueueTask,
     "modelId" | "duration" | "fps" | "frameInterpolation"
-  > & { resolution?: number }
+  > & { resolution?: number },
+  locale: UiLocale = "zh-CN"
 ): GenerationSafety {
+  const message = (
+    key: Parameters<typeof workflowMessage>[0],
+    params: Record<string, string | number> = {}
+  ) => workflowMessage(key, params, locale);
   const profile = generationSafetyProfileForModel(task.modelId);
   const { maxDurationSeconds, maxGeneratedFrames } = profile;
   if (
@@ -490,7 +505,7 @@ export function generationSafetyForTask(
       generatedFrames: 0,
       maxGeneratedFrames,
       maxDurationSeconds,
-      message: "时长和帧率必须是大于 0 的有效数字。"
+      message: message("durationFpsInvalid")
     };
   }
   const generatedFrames = generationFrameCountForTask(task);
@@ -500,7 +515,7 @@ export function generationSafetyForTask(
       generatedFrames,
       maxGeneratedFrames,
       maxDurationSeconds,
-      message: `当前单段输出最长 ${maxDurationSeconds} 秒；更长视频需要插帧、续写或分段生成。`
+      message: message("durationLimit", { maxDurationSeconds })
     };
   }
   if (generatedFrames > maxGeneratedFrames) {
@@ -509,22 +524,27 @@ export function generationSafetyForTask(
       generatedFrames,
       maxGeneratedFrames,
       maxDurationSeconds,
-      message: `当前组合需要生成 ${generatedFrames} 个模型帧，${profile.label} 的当前验证预算是 ${maxGeneratedFrames} 帧。请降低输出 FPS、启用 RIFE，或等待更高帧数实测通过。`
+      message: message("frameBudget", { generatedFrames, label: profile.label, maxGeneratedFrames })
     };
   }
   if (isMiniMaxH3Model(task.modelId)) {
     const resolution = task.resolution ?? 480;
     const guidance = task.duration <= 5 && resolution <= 540
-      ? "官方本地模板默认档，适合作为当前显卡的稳妥起步范围。"
+      ? message("h3SafeGuidance")
       : task.duration <= 10 && resolution <= 720
-        ? "当前显卡可尝试的均衡档；请预留更长采样和解码时间。"
-        : "当前显卡重负载档；允许生成但显存与耗时风险较高，请关闭其他 GPU 程序，并避免同时排多个长任务。";
+        ? message("h3BalancedGuidance")
+        : message("h3HeavyGuidance");
     return {
       safe: true,
       generatedFrames,
       maxGeneratedFrames,
       maxDurationSeconds,
-      message: `${profile.label} 官方帧范围：${generatedFrames}/${maxGeneratedFrames}。${guidance}`
+      message: message("h3FrameRange", {
+        label: profile.label,
+        generatedFrames,
+        maxGeneratedFrames,
+        guidance
+      })
     };
   }
   return {
@@ -532,7 +552,7 @@ export function generationSafetyForTask(
     generatedFrames,
     maxGeneratedFrames,
     maxDurationSeconds,
-    message: `${profile.label} 模型帧预算：${generatedFrames}/${maxGeneratedFrames}。`
+    message: message("modelFrameBudget", { label: profile.label, generatedFrames, maxGeneratedFrames })
   };
 }
 
@@ -561,10 +581,15 @@ export function extensionSafetyForTask(
     | "resolution"
     | "unloadBetweenStages"
     | "spectrumMode"
-  >
+  >,
+  locale: UiLocale = "zh-CN"
 ): ExtensionSafety {
+  const message = (
+    key: Parameters<typeof workflowMessage>[0],
+    params: Record<string, string | number> = {}
+  ) => workflowMessage(key, params, locale);
   if (isMiniMaxH3Fl2vaModel(task.modelId)) {
-    const generationSafety = generationSafetyForTask(task);
+    const generationSafety = generationSafetyForTask(task, locale);
     const minimumContextSeconds = 1 / 24;
     const result = (safe: boolean, message: string): ExtensionSafety => ({
       ...generationSafety,
@@ -573,10 +598,10 @@ export function extensionSafetyForTask(
       message
     });
     if (task.modelId === "minimax_h3_fl2va_q3_gguf") {
-      return result(false, "H3 Q3 GGUF 3080 实验档只支持普通 FL2VA 图生视频，不支持视频续写。");
+      return result(false, message("q3NoExtension"));
     }
     if (!task.sourceVideoPath || task.sourceVideoDuration <= 0) {
-      return result(false, "请先选择可读取的源视频。");
+      return result(false, message("sourceVideoMissing"));
     }
     if (
       !Number.isFinite(task.trimStartSeconds) ||
@@ -585,17 +610,21 @@ export function extensionSafetyForTask(
       task.trimEndSeconds > task.sourceVideoDuration ||
       task.trimEndSeconds <= task.trimStartSeconds
     ) {
-      return result(false, "视频裁剪范围无效。");
+      return result(false, message("trimInvalid"));
     }
     if (!generationSafety.safe) return result(false, generationSafety.message);
     return result(
       true,
-      `H3 结尾帧接续：生成 ${generationSafety.generatedFrames}/${generationSafety.maxGeneratedFrames} 帧新片段；它不是 latent overlap 原生续写。${generationSafety.message}`
+      message("h3BoundarySummary", {
+        generatedFrames: generationSafety.generatedFrames,
+        maxGeneratedFrames: generationSafety.maxGeneratedFrames,
+        message: generationSafety.message
+      })
     );
   }
   if (isMiniMaxH3R2vModel(task.modelId)) {
     const contextFrames = 22;
-    const generationSafety = generationSafetyForTask(task);
+    const generationSafety = generationSafetyForTask(task, locale);
     const sampledFrames = generationSafety.generatedFrames + contextFrames;
     const result = (safe: boolean, message: string): ExtensionSafety => ({
       ...generationSafety,
@@ -605,7 +634,7 @@ export function extensionSafetyForTask(
       message
     });
     if (!task.sourceVideoPath || task.sourceVideoDuration <= 0) {
-      return result(false, "请先选择可读取的源视频。");
+      return result(false, message("sourceVideoMissing"));
     }
     if (
       !Number.isFinite(task.trimStartSeconds) ||
@@ -614,23 +643,29 @@ export function extensionSafetyForTask(
       task.trimEndSeconds > task.sourceVideoDuration ||
       task.trimEndSeconds <= task.trimStartSeconds
     ) {
-      return result(false, "视频裁剪范围无效。");
+      return result(false, message("trimInvalid"));
     }
     if (task.trimEndSeconds - task.trimStartSeconds < contextFrames / 24) {
-      return result(false, "H3 Motion Context 至少需要保留约 0.92 秒（22 帧）源视频。");
+      return result(false, message("motionContextMinimum"));
     }
     if (task.spectrumMode !== "off") {
-      return result(false, "H3 Motion Context 续写必须关闭 Spectrum，避免预测固定上下文行导致音频和接缝退化。");
+      return result(false, message("motionContextSpectrum"));
     }
     if (!generationSafety.safe || sampledFrames > generationSafety.maxGeneratedFrames) {
       return result(
         false,
-        `新增片段与 22 帧运动上下文合计需要采样 ${sampledFrames} 帧，超过 H3 当前 ${generationSafety.maxGeneratedFrames} 帧预算。请缩短新增时长。`
+        message("motionContextBudget", {
+          sampledFrames,
+          maxGeneratedFrames: generationSafety.maxGeneratedFrames
+        })
       );
     }
     return result(
       true,
-      `H3 Motion Context：采样 ${sampledFrames}/${generationSafety.maxGeneratedFrames} 帧，其中前 22 帧承接上一段运动和音频并在输出前自动裁掉。`
+      message("motionContextSummary", {
+        sampledFrames,
+        maxGeneratedFrames: generationSafety.maxGeneratedFrames
+      })
     );
   }
   const multiplier = frameInterpolationMultiplier(task);
@@ -650,10 +685,10 @@ export function extensionSafetyForTask(
     message
   });
   if (task.modelId !== "sulphur2") {
-    return result(false, "当前只允许 Sulphur 2 使用原生视频续写任务。");
+    return result(false, message("sulphurOnly"));
   }
   if (!task.sourceVideoPath || task.sourceVideoDuration <= 0) {
-    return result(false, "请先选择可读取的源视频。");
+    return result(false, message("sourceVideoMissing"));
   }
   if (
     !Number.isFinite(task.trimStartSeconds) ||
@@ -662,29 +697,39 @@ export function extensionSafetyForTask(
     task.trimEndSeconds > task.sourceVideoDuration ||
     task.trimEndSeconds <= task.trimStartSeconds
   ) {
-    return result(false, "视频裁剪范围无效。");
+    return result(false, message("trimInvalid"));
   }
   if (task.trimEndSeconds - task.trimStartSeconds < minimumContextSeconds) {
     return result(
       false,
-      `至少保留 ${minimumContextSeconds.toFixed(1)} 秒，才能提供 ${task.overlapFrames} 帧续写上下文。`
+      message("contextMinimum", {
+        seconds: minimumContextSeconds.toFixed(1),
+        frames: task.overlapFrames
+      })
     );
   }
   if (![360, 480].includes(task.resolution)) {
-    return result(false, "Sulphur 2 续写只允许 360p 或 480p 基准分辨率。");
+    return result(false, message("sulphurResolution"));
   }
   if (!task.unloadBetweenStages) {
-    return result(false, "Sulphur 2 续写必须开启阶段间模型卸载。");
+    return result(false, message("sulphurUnload"));
   }
   if (generatedFrames > task.maxGeneratedFrames) {
     return result(
       false,
-      `当前组合需要 ${generatedFrames} 个模型帧，24GB 预设上限为 ${task.maxGeneratedFrames} 帧。请缩短新增时长或启用 RIFE。`
+      message("sulphurBudget", {
+        generatedFrames,
+        maxGeneratedFrames: task.maxGeneratedFrames
+      })
     );
   }
   return result(
     true,
-    `GGUF 续写预算：${generatedFrames}/${task.maxGeneratedFrames} 模型帧，${task.overlapFrames} 帧上下文。`
+    message("sulphurSummary", {
+      generatedFrames,
+      maxGeneratedFrames: task.maxGeneratedFrames,
+      frames: task.overlapFrames
+    })
   );
 }
 
@@ -1012,7 +1057,7 @@ export function renderWorkflow(
     string,
     { class_type?: string; inputs?: Record<string, unknown> }
   >;
-  applyVideoLoraStack(workflow, task);
+  applyVideoLoraStack(workflow, task, context.locale);
   if (isMiniMaxH3Model(task.modelId)) {
     const steps = normalizeH3Steps(task.steps, task.modelId, task.videoLoras);
     for (const node of Object.values(workflow)) {
@@ -1053,12 +1098,13 @@ export function renderWorkflow(
       delete workflow[sageNodeId];
     }
   }
-  if (
-    task.spectrumMode === "balanced" &&
-    isMiniMaxH3SpectrumEligible(task.modelId) &&
-    !isH3TurboEnabled(task)
-  ) {
-    applyMiniMaxH3Spectrum(workflow);
+  if (shouldApplySpectrum({
+    modelId: task.modelId,
+    inputMode: task.taskType === "extension" ? "video" : "image",
+    spectrumMode: task.spectrumMode,
+    videoLoras: task.videoLoras
+  })) {
+    applyMiniMaxH3Spectrum(workflow, context.locale);
   }
   const emptyReferenceNodeIds = new Set(
     Object.entries(workflow)
@@ -1215,14 +1261,21 @@ export function renderWorkflow(
   return workflow;
 }
 
-export function validateApiWorkflow(source: unknown): WorkflowValidation {
+export function validateApiWorkflow(
+  source: unknown,
+  locale: UiLocale = "zh-CN"
+): WorkflowValidation {
+  const message = (
+    key: Parameters<typeof workflowMessage>[0],
+    params: Record<string, string | number> = {}
+  ) => workflowMessage(key, params, locale);
   const errors: string[] = [];
   const warnings: string[] = [];
   const placeholders = new Set<string>();
   if (!source || typeof source !== "object" || Array.isArray(source)) {
     return {
       valid: false,
-      errors: ["工作流根节点必须是 ComfyUI API 格式的对象"],
+      errors: [message("apiRootInvalid")],
       warnings,
       placeholders: [],
       nodeCount: 0
@@ -1231,20 +1284,20 @@ export function validateApiWorkflow(source: unknown): WorkflowValidation {
 
   const entries = Object.entries(source as Record<string, unknown>);
   if (Array.isArray((source as Record<string, unknown>).nodes)) {
-    errors.push("检测到普通 UI workflow；请使用 Export Workflow (API) 导出");
+    errors.push(message("uiWorkflowDetected"));
   }
-  if (entries.length === 0) errors.push("工作流没有节点");
+  if (entries.length === 0) errors.push(message("workflowEmpty"));
   for (const [nodeId, value] of entries) {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      errors.push(`节点 ${nodeId} 不是对象`);
+      errors.push(message("nodeNotObject", { nodeId }));
       continue;
     }
     const node = value as Record<string, unknown>;
     if (typeof node.class_type !== "string" || !node.class_type) {
-      errors.push(`节点 ${nodeId} 缺少 class_type；可能导出了普通 UI workflow`);
+      errors.push(message("nodeClassMissing", { nodeId }));
     }
     if (!node.inputs || typeof node.inputs !== "object" || Array.isArray(node.inputs)) {
-      errors.push(`节点 ${nodeId} 缺少 inputs`);
+      errors.push(message("nodeInputsMissing", { nodeId }));
     }
   }
 
@@ -1253,7 +1306,7 @@ export function validateApiWorkflow(source: unknown): WorkflowValidation {
     if (match[1]) placeholders.add(match[1]);
   }
   if (!placeholders.has("PROMPT")) {
-    errors.push("缺少 {{PROMPT}}，GUI 无法注入当前提示词");
+    errors.push(message("promptPlaceholderMissing"));
   }
   const hasH3ReferenceImage = [...placeholders].some((token) =>
     /^H3_REF_IMAGE_\d+$/u.test(token)
@@ -1262,11 +1315,11 @@ export function validateApiWorkflow(source: unknown): WorkflowValidation {
     /^H3_REF_VIDEO_\d+$/u.test(token)
   );
   if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage && !hasH3ReferenceVideo) {
-    errors.push("缺少 {{INPUT_IMAGE}}、{{SOURCE_VIDEO}} 或 H3 参考媒体占位符，GUI 无法注入输入媒体");
+    errors.push(message("mediaPlaceholderMissing"));
   }
-  if (!placeholders.has("SEED")) warnings.push("缺少 {{SEED}}，任务 Seed 不会传入工作流");
+  if (!placeholders.has("SEED")) warnings.push(message("seedPlaceholderMissing"));
   if (!placeholders.has("OUTPUT_FILENAME")) {
-    warnings.push("缺少 {{OUTPUT_FILENAME}}，ComfyUI 将自行决定输出文件名");
+    warnings.push(message("filenamePlaceholderMissing"));
   }
 
   return {

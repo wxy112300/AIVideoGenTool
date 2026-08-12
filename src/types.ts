@@ -130,6 +130,8 @@ export interface Draft {
   h3ContextLatentPath?: string;
   promptVersions: PromptVersion[];
   activePromptVersion: number;
+  extensionPromptVersions?: PromptVersion[];
+  extensionActivePromptVersion?: number;
   h3ReferenceSlots: H3ReferenceSlot[];
   modelId: string;
   videoLoras: VideoLoraSelection[];

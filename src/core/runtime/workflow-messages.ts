@@ -1,0 +1,122 @@
+import type { UiLocale } from "../../types.js";
+
+export type WorkflowMessageKey =
+  | "spectrumConsumersMissing"
+  | "spectrumOutputUnknown"
+  | "spectrumOutputsDiffer"
+  | "loraChainUnknown"
+  | "loraChainsDiffer"
+  | "loraChainCycle"
+  | "missingExtensionPlaceholders"
+  | "workflowRootInvalid"
+  | "missingExtensionSampler"
+  | "missingWorkflowLoader"
+  | "ggufPatchOnDevice"
+  | "missingDualClipLoader"
+  | "missingVaeLoader"
+  | "missingVramDebug"
+  | "missingTiledVae"
+  | "durationFpsInvalid"
+  | "durationLimit"
+  | "frameBudget"
+  | "h3SafeGuidance"
+  | "h3BalancedGuidance"
+  | "h3HeavyGuidance"
+  | "h3FrameRange"
+  | "currentModel"
+  | "modelFrameBudget"
+  | "q3NoExtension"
+  | "sourceVideoMissing"
+  | "trimInvalid"
+  | "h3BoundarySummary"
+  | "motionContextMinimum"
+  | "motionContextSpectrum"
+  | "motionContextBudget"
+  | "motionContextSummary"
+  | "sulphurOnly"
+  | "contextMinimum"
+  | "sulphurResolution"
+  | "sulphurUnload"
+  | "sulphurBudget"
+  | "sulphurSummary"
+  | "apiRootInvalid"
+  | "uiWorkflowDetected"
+  | "workflowEmpty"
+  | "nodeNotObject"
+  | "nodeClassMissing"
+  | "nodeInputsMissing"
+  | "promptPlaceholderMissing"
+  | "mediaPlaceholderMissing"
+  | "seedPlaceholderMissing"
+  | "filenamePlaceholderMissing";
+
+type RuntimeParams = Record<string, string | number>;
+type WorkflowLocale = Record<WorkflowMessageKey, string>;
+
+const zhCN: WorkflowLocale = {
+  spectrumConsumersMissing: "Spectrum 加速需要连接到 H3 的 BasicScheduler / BasicGuider 模型输入。",
+  spectrumOutputUnknown: "Spectrum 加速无法识别 H3 模型补丁链的输出。",
+  spectrumOutputsDiffer: "Spectrum 加速要求 BasicScheduler 与 BasicGuider 使用同一个 H3 模型输出。",
+  loraChainUnknown: "无法识别当前工作流的模型链，不能安全叠加所选 LoRA。",
+  loraChainsDiffer: "当前工作流存在多条不同模型链，不能自动确定 LoRA 叠加位置。",
+  loraChainCycle: "当前工作流的 LoRA 模型链存在循环引用，无法安全叠加应用 LoRA。",
+  missingExtensionPlaceholders: "缺少 SOURCE_VIDEO、EXTENSION_FRAMES 或 OVERLAP_FRAMES 输入占位符",
+  workflowRootInvalid: "工作流根节点不是 API 对象",
+  missingExtensionSampler: "缺少官方 LTXVExtendSampler 或 LTXVLoopingSampler",
+  missingWorkflowLoader: "缺少 LowVRAMCheckpointLoader 或 UnetLoaderGGUFAdvanced",
+  ggufPatchOnDevice: "GGUF loader 必须关闭 patch_on_device",
+  missingDualClipLoader: "GGUF 工作流缺少独立 DualCLIPLoader",
+  missingVaeLoader: "GGUF 工作流缺少独立 VAELoader",
+  missingVramDebug: "缺少采样后的 VRAM_Debug 显式卸载节点",
+  missingTiledVae: "缺少 tiled VAE decode",
+  durationFpsInvalid: "时长和帧率必须是大于 0 的有效数字。",
+  durationLimit: "当前单段输出最长 {maxDurationSeconds} 秒；更长视频需要插帧、续写或分段生成。",
+  frameBudget: "当前组合需要生成 {generatedFrames} 个模型帧，{label} 的当前验证预算是 {maxGeneratedFrames} 帧。请降低输出 FPS、启用 RIFE，或等待更高帧数实测通过。",
+  h3SafeGuidance: "官方本地模板默认档，适合作为当前显卡的稳妥起步范围。",
+  h3BalancedGuidance: "当前显卡可尝试的均衡档；请预留更长采样和解码时间。",
+  h3HeavyGuidance: "当前显卡重负载档；允许生成但显存与耗时风险较高，请关闭其他 GPU 程序，并避免同时排多个长任务。",
+  h3FrameRange: "{label} 官方帧范围：{generatedFrames}/{maxGeneratedFrames}。{guidance}",
+  currentModel: "当前模型",
+  modelFrameBudget: "{label} 模型帧预算：{generatedFrames}/{maxGeneratedFrames}。",
+  q3NoExtension: "H3 Q3 GGUF 3080 实验档只支持普通 FL2VA 图生视频，不支持视频续写。",
+  sourceVideoMissing: "请先选择可读取的源视频。",
+  trimInvalid: "视频裁剪范围无效。",
+  h3BoundarySummary: "H3 结尾帧接续：生成 {generatedFrames}/{maxGeneratedFrames} 帧新片段；它不是 latent overlap 原生续写。{message}",
+  motionContextMinimum: "H3 Motion Context 至少需要保留约 0.92 秒（22 帧）源视频。",
+  motionContextSpectrum: "H3 Motion Context 续写必须关闭 Spectrum，避免预测固定上下文行导致音频和接缝退化。",
+  motionContextBudget: "新增片段与 22 帧运动上下文合计需要采样 {sampledFrames} 帧，超过 H3 当前 {maxGeneratedFrames} 帧预算。请缩短新增时长。",
+  motionContextSummary: "H3 Motion Context：采样 {sampledFrames}/{maxGeneratedFrames} 帧，其中前 22 帧承接上一段运动和音频并在输出前自动裁掉。",
+  sulphurOnly: "当前只允许 Sulphur 2 使用原生视频续写任务。",
+  contextMinimum: "至少保留 {seconds} 秒，才能提供 {frames} 帧续写上下文。",
+  sulphurResolution: "Sulphur 2 续写只允许 360p 或 480p 基准分辨率。",
+  sulphurUnload: "Sulphur 2 续写必须开启阶段间模型卸载。",
+  sulphurBudget: "当前组合需要 {generatedFrames} 个模型帧，24GB 预设上限为 {maxGeneratedFrames} 帧。请缩短新增时长或启用 RIFE。",
+  sulphurSummary: "GGUF 续写预算：{generatedFrames}/{maxGeneratedFrames} 模型帧，{frames} 帧上下文。",
+  apiRootInvalid: "工作流根节点必须是 ComfyUI API 格式的对象",
+  uiWorkflowDetected: "检测到普通 UI workflow；请使用 Export Workflow (API) 导出",
+  workflowEmpty: "工作流没有节点",
+  nodeNotObject: "节点 {nodeId} 不是对象",
+  nodeClassMissing: "节点 {nodeId} 缺少 class_type；可能导出了普通 UI workflow",
+  nodeInputsMissing: "节点 {nodeId} 缺少 inputs",
+  promptPlaceholderMissing: "缺少 {{PROMPT}}，GUI 无法注入当前提示词",
+  mediaPlaceholderMissing: "缺少 {{INPUT_IMAGE}}、{{SOURCE_VIDEO}} 或 H3 参考媒体占位符，GUI 无法注入输入媒体",
+  seedPlaceholderMissing: "缺少 {{SEED}}，任务 Seed 不会传入工作流",
+  filenamePlaceholderMissing: "缺少 {{OUTPUT_FILENAME}}，ComfyUI 将自行决定输出文件名",
+};
+const enUS: Partial<WorkflowLocale> = {};
+const catalogs: Record<UiLocale, Partial<WorkflowLocale>> = {
+  "zh-CN": zhCN,
+  "en-US": enUS
+};
+
+export function workflowMessage(
+  key: WorkflowMessageKey,
+  params: RuntimeParams = {},
+  locale: UiLocale = "zh-CN"
+): string {
+  const template = catalogs[locale][key] ?? zhCN[key];
+  return template.replace(/\{([A-Za-z0-9_.-]+)\}/gu, (match, name: string) => {
+    const value = params[name];
+    return value == null ? match : String(value);
+  });
+}

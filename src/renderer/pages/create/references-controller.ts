@@ -15,6 +15,7 @@ import {
 import { h3ReferenceSlotCounts } from "../../../core/h3-reference";
 import { isMiniMaxH3Model } from "../../../core/workflow";
 import { uiKeys } from "../../../core/i18n-keys";
+import { h3PromptPackFor } from "../../prompt-packs";
 
 export interface H3ReferencesControllerOptions {
   getDraft(): Draft | undefined;
@@ -83,7 +84,8 @@ export function mountH3ReferencesController(
       updatePromptWordCounter(
         promptInput.value,
         isMiniMaxH3Model(draft.modelId) ? h3PromptModeForDraft(draft) : undefined,
-        draft.duration
+        draft.duration,
+        h3PromptPackFor(context.getState()?.settings.uiLocale).ui
       );
       insertPromptSnippet(promptInput, h3ReferenceTag(draft.h3ReferenceSlots, slotId));
     }, { signal });

@@ -17,9 +17,9 @@ describe("Qwen Image Edit prompt contract", () => {
     expect(presets["detail-enhance"]).not.toMatch(/[\u3400-\u9fff]/u);
   });
 
-  it("migrates the previous Chinese built-in defaults but preserves custom rules", () => {
+  it("preserves custom rules and falls back to English defaults", () => {
     const normalized = normalizeQwenImagePromptPresets({
-      faithful: "只整理和细化用户明确提出的图片编辑意图，不得新增或推断人物、物品、背景、文字、Logo、水印、动作、风格、材质、光照或构图。保持用户明确的主体、编辑范围和限制不变。",
+      faithful: "",
       "detail-enhance": "My custom image editing policy."
     });
 

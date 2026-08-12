@@ -1,32 +1,14 @@
-import type { AppState, Draft, ImageEditDraft, Settings } from "../types.js";
-import { createDefaultH3PromptPresets } from "./h3-prompt-presets.js";
-import { createDefaultQwenImagePromptPresets } from "./qwen-image-prompt.js";
+import type { AppState, Draft, Settings } from "../types.js";
+import {
+  createDefaultH3PromptPresets,
+  createDefaultQwenImagePromptPresets
+} from "./prompts/index.js";
+import { createDefaultImageEditDraft } from "./draft-defaults.js";
 
 export const defaultPrompt =
   "The subject naturally looks toward the camera as a light breeze moves their hair; the camera slowly pushes in with realistic, fluid motion.";
 
-export function createDefaultImageEditDraft(): ImageEditDraft {
-  return {
-    mode: "image-edit",
-    pictures: [],
-    nextPictureNumber: 1,
-    promptVersions: [
-      {
-        id: crypto.randomUUID(),
-        label: "原始",
-        text: "",
-        createdAt: new Date().toISOString()
-      }
-    ],
-    activePromptVersion: 0,
-    modelId: "qwen-image-edit-2511",
-    qualityProfile: "balanced-20",
-    targetResolution: "source",
-    outputCount: 6,
-    outputFormat: "png",
-    seed: null
-  };
-}
+export { createDefaultImageEditDraft } from "./draft-defaults.js";
 
 export function createDefaultImagePromptPresets(): Record<"faithful" | "detail-enhance", string> {
   return createDefaultQwenImagePromptPresets();
@@ -52,6 +34,15 @@ export function createDefaultDraft(): Draft {
       }
     ],
     activePromptVersion: 0,
+    extensionPromptVersions: [
+      {
+        id: crypto.randomUUID(),
+        label: "原始",
+        text: defaultPrompt,
+        createdAt: new Date().toISOString()
+      }
+    ],
+    extensionActivePromptVersion: 0,
     h3ReferenceSlots: [],
     modelId: "minimax_h3_fl2va",
     videoLoras: [],
@@ -70,33 +61,7 @@ export function createDefaultDraft(): Draft {
   };
 }
 
-export function createClearedDraft(current: Draft): Draft {
-  return {
-    ...current,
-    inputMode: "image",
-    startImagePath: "",
-    sourceWidth: 0,
-    sourceHeight: 0,
-    endImagePath: "",
-    sourceVideoPath: "",
-    sourceVideoDuration: 0,
-    trimStartSeconds: 0,
-    trimEndSeconds: 0,
-    sourceAssetId: undefined,
-    sourceVersionId: undefined,
-    promptVersions: [
-      {
-        id: crypto.randomUUID(),
-        label: "新建",
-        text: "",
-        createdAt: new Date().toISOString()
-      }
-    ],
-    activePromptVersion: 0,
-    h3ReferenceSlots: [],
-    seed: null
-  };
-}
+export { createClearedDraft } from "./draft-defaults.js";
 
 export function createDefaultSettings(): Settings {
   return {
@@ -150,7 +115,7 @@ export function createDefaultSettings(): Settings {
 
 export function createDefaultState(): AppState {
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     draft: createDefaultDraft(),
     imageDraft: createDefaultImageEditDraft(),
     settings: createDefaultSettings(),

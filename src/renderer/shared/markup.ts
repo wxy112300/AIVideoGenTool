@@ -1,5 +1,6 @@
 import { videoLoraDefinition } from "../../core/video-loras";
-import type { Draft } from "../../types";
+import { loraLocaleFor } from "../../core/catalog/loras/locales";
+import type { Draft, UiLocale } from "../../types";
 import { escapeHtml } from "./dom";
 import { icon } from "./icons";
 import { createTranslator, type Translate } from "../../core/i18n";
@@ -11,17 +12,18 @@ export function fieldLabelWithTip(label: string, tip: string): string {
 
 export function videoLoraInfoButton(
   lora: Draft["videoLoras"][number],
-  t: Translate = createTranslator("zh-CN").t
+  t: Translate = createTranslator("zh-CN").t,
+  locale: UiLocale = "zh-CN"
 ): string {
   const definition = videoLoraDefinition(lora.id);
-  const guide = definition?.guide;
+  const guide = loraLocaleFor(lora.id, locale)?.guide ?? definition?.guide;
   if (!guide) {
     const fallback = t(uiKeys.shared.loraFallback);
     return `<span class="field-info video-lora-info" tabindex="0" aria-label="${escapeHtml(fallback)}">${icon("info")}<span class="field-info-tip video-lora-info-tip" role="tooltip">${escapeHtml(fallback)}</span></span>`;
   }
   const constraintNotes = [
-    ...definition.rules.settingConflicts.map((conflict) => conflict.message),
-    ...definition.rules.combinations.map((combination) => combination.message)
+    ...(definition?.rules.settingConflicts.map((conflict) => conflict.message) ?? []),
+    ...(definition?.rules.combinations.map((combination) => combination.message) ?? [])
   ];
   const ariaLabel = [guide.summary, guide.recommendedStrength, guide.effects, guide.stacking, guide.compatibility, ...constraintNotes].join(" ");
   return `<span class="field-info video-lora-info" tabindex="0" aria-label="${escapeHtml(ariaLabel)}">

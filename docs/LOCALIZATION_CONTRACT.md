@@ -10,6 +10,8 @@ This document defines the localization seam. It does not add translated copy.
 - `zh-CN` remains the default catalog and is loaded with the renderer runtime.
 - Non-default locales are loaded through `loadUiLocale()` only when selected; missing entries fall back to `zh-CN`.
 - `Settings -> interface language` persists `settings.uiLocale` and is the future locale switch entry.
+- Runtime workflow safety and validation keys live in `src/core/runtime/workflow-messages.ts`.
+- Workflow graph, safety, and API validation functions accept an optional `UiLocale`; callers should pass `settings.uiLocale` while keeping the default `zh-CN` fallback.
 
 When adding a locale, update the `UiLocale` union, the supported locale list, the locale loader map, and add one catalog file. Do not statically import every locale into the renderer entry.
 
@@ -37,6 +39,7 @@ Keep these values outside UI catalogs unless they are ordinary labels:
 - A user's manually entered prompt remains authoritative. Chinese, Japanese, quoted visible text, dialogue, lyrics, proper nouns, and other explicitly supplied language must be preserved rather than translated.
 - UI labels for those templates may be localized separately from their model-facing values. For example, a shortcut can have a Chinese label while inserting an English instruction.
 - Legacy user-configured presets are user content and may be preserved for compatibility; built-in legacy Chinese defaults must normalize to the current English defaults.
+- Runtime safety messages keep node names, model names, and technical identifiers literal; only the surrounding explanation is catalog-owned.
 
 ## Migration order
 

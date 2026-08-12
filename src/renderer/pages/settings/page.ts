@@ -10,6 +10,7 @@ import type {
 import type { SettingsTab } from "../../contracts";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
+import { modelCatalog } from "../../../core/catalog";
 import {
   renderSettingsComfyCompatibilityPanel,
   renderSettingsEnvironmentIssuesPanel,
@@ -352,14 +353,12 @@ export function renderSettingsPage(
         <div class="section-heading">
           <div><h2>视频模型</h2><span class="muted">根据真实文件组件判断是否可用，不仅检查单个 checkpoint 名称。</span></div>
           <label class="compact-label">默认模型<select id="default-video-model">
-            ${(videoProfiles.length ? videoProfiles : [
-              { id: "minimax_h3_fl2va", name: "MiniMax H3 FL2VA · 首帧 / 首尾帧", available: true, integrated: true },
-              { id: "minimax_h3_fl2va_int4", name: "MiniMax H3 FL2VA · INT4 低显存", available: true, integrated: true },
-              { id: "minimax_h3_fl2va_q3_gguf", name: "MiniMax H3 FL2VA · Q3 GGUF · 低显存实验", available: true, integrated: true },
-              { id: "minimax_h3_ref2va", name: "MiniMax H3 R2V · 多参考 INT8", available: true, integrated: true },
-              { id: "minimax_h3_ref2va_int4", name: "MiniMax H3 R2V · 多参考 INT4", available: true, integrated: true },
-              { id: "sulphur2", name: "Sulphur 2 GGUF", available: false, integrated: true }
-            ]).map((profile) => `<option value="${profile.id}" ${settings.defaultVideoModel === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? " · 缺组件" : profile.integrated === false ? " · 工作流待接入" : ""}</option>`).join("")}
+            ${(videoProfiles.length ? videoProfiles : modelCatalog.list("video").map((entry) => ({
+              id: entry.definition.id,
+              name: modelCatalog.localized(entry.definition.id, settings.uiLocale)?.name ?? entry.definition.id,
+              available: false,
+              integrated: entry.definition.scan?.integrated !== false
+            }))).map((profile) => `<option value="${profile.id}" ${settings.defaultVideoModel === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? " · 缺组件" : profile.integrated === false ? " · 工作流待接入" : ""}</option>`).join("")}
           </select></label>
         </div>
         <div class="scan-result">${viewModel.environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${videoAvailable} 个已接入可运行模型，${videoProfiles.length - videoAvailable} 个缺组件或等待工作流接入` : "等待首次扫描"}</div>
@@ -399,10 +398,17 @@ export function renderSettingsPage(
         </div>
         <div class="settings-grid two">
           <label>默认图片模型<select id="default-image-model">
-            ${(imageProfiles.length ? imageProfiles : [
-              { id: "qwen-image-edit-2511", name: "Qwen-Image-Edit-2511 · 图片处理", category: "image" as const, badge: "Qwen 2511", description: "", vram: "", available: false, integrated: true, components: [] },
-              { id: "flux2-klein-4b", name: "FLUX.2 Klein 4B · 图片处理", category: "image" as const, badge: "约 13GB VRAM", description: "", vram: "", available: false, integrated: true, components: [] }
-            ]).map((profile) => `<option value="${escape(profile.id)}" ${settings.defaultImageModel === profile.id ? "selected" : ""} ${options.isImageModelSelectable(profile) ? "" : "disabled"}>${escape(profile.name)}${options.isImageModelSelectable(profile) ? "" : ` · ${escape(options.imageWorkflowStatus(profile))}`}</option>`).join("")}
+            ${(imageProfiles.length ? imageProfiles : modelCatalog.list("image").map((entry) => ({
+              id: entry.definition.id,
+              name: modelCatalog.localized(entry.definition.id, settings.uiLocale)?.name ?? entry.definition.id,
+              category: "image" as const,
+              badge: modelCatalog.localized(entry.definition.id, settings.uiLocale)?.badge ?? "",
+              description: modelCatalog.localized(entry.definition.id, settings.uiLocale)?.description ?? "",
+              vram: entry.definition.scan?.vram ?? "",
+              available: false,
+              integrated: entry.definition.scan?.integrated !== false,
+              components: []
+            }))).map((profile) => `<option value="${escape(profile.id)}" ${settings.defaultImageModel === profile.id ? "selected" : ""} ${options.isImageModelSelectable(profile) ? "" : "disabled"}>${escape(profile.name)}${options.isImageModelSelectable(profile) ? "" : ` · ${escape(options.imageWorkflowStatus(profile))}`}</option>`).join("")}
           </select></label>
           <label>默认质量档<select id="image-quality-profile">
             ${imageQualityProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.defaultImageQualityProfile === profile.id ? "selected" : ""}>${escape(profile.label)} · ${profile.steps} 步</option>`).join("")}

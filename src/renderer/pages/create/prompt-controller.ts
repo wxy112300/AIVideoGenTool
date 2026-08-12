@@ -10,9 +10,13 @@ import {
   createH3PromptFromBuilder,
   createH3PromptTemplate
 } from "../../../core/h3-prompt";
-import { h3PromptPresetForMode } from "../../../core/h3-prompt-presets";
+import {
+  activePromptIndexForDraft,
+  promptPatchForDraft,
+  promptVersionsForDraft
+} from "../../../core/draft-prompts";
+import { h3PromptPackFor, h3PromptPresetForMode, promptSnippetFor } from "../../prompt-packs";
 import { isMiniMaxH3Model, isMiniMaxH3R2vModel } from "../../../core/workflow";
-import { promptSnippetFor } from "../../../core/prompt-suggestions";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import {
   activePrompt,
@@ -38,6 +42,10 @@ export interface CreatePromptControllerOptions {
   isPromptEnhancing(): boolean;
   setPromptEnhancing(value: boolean): void;
   setPromptRuntimeLoaded(value: boolean): void;
+  clearPromptVersion(): void;
+  undoPromptEdit(): boolean;
+  redoPromptEdit(): boolean;
+  invalidatePromptEditHistory(): void;
   togglePromptModel(): Promise<void>;
   getH3PromptBuilder(): H3PromptBuilderInput;
   setH3PromptBuilder(builder: H3PromptBuilderInput): void;
@@ -51,6 +59,7 @@ export function mountCreatePromptController(
   const signal = events.signal;
   const root = options.context.root;
   const getDraft = () => options.context.getState()?.draft;
+  const promptUi = () => h3PromptPackFor(options.context.getState()?.settings.uiLocale).ui;
 
   root.querySelector("#pick-workflow")?.addEventListener("click", async () => {
     const filename = await options.context.studio.pickWorkflow();
@@ -80,23 +89,25 @@ export function mountCreatePromptController(
   promptInput?.addEventListener("input", () => {
     const draft = getDraft();
     if (!draft) return;
+    options.invalidatePromptEditHistory();
     resizePromptInput(promptInput);
-    const versions = [...draft.promptVersions];
-    const current = versions[draft.activePromptVersion];
-    let activePromptVersion = draft.activePromptVersion;
-    if (current?.label === "手动编辑") {
+    const versions = [...promptVersionsForDraft(draft)];
+    const activePromptVersion = activePromptIndexForDraft(draft);
+    const current = versions[activePromptVersion];
+    let nextActivePromptVersion = activePromptVersion;
+    if (current?.label === promptUi().t("manualEditVersion")) {
       versions[activePromptVersion] = { ...current, text: promptInput.value };
     } else {
       versions.splice(activePromptVersion + 1);
       versions.push({
         id: crypto.randomUUID(),
-        label: "手动编辑",
+        label: promptUi().t("manualEditVersion"),
         text: promptInput.value,
         createdAt: new Date().toISOString()
       });
-      activePromptVersion = versions.length - 1;
+      nextActivePromptVersion = versions.length - 1;
     }
-    options.patchDraft({ promptVersions: versions, activePromptVersion });
+    options.patchDraft(promptPatchForDraft(draft, versions, nextActivePromptVersion));
     options.syncPromptEnqueueUi(promptInput.value);
     options.updateH3PromptCheck(
       promptInput.value,
@@ -107,30 +118,80 @@ export function mountCreatePromptController(
     updatePromptWordCounter(
       promptInput.value,
       isMiniMaxH3Model(draft.modelId) ? h3PromptModeForDraft(draft) : undefined,
-      draft.duration
+      draft.duration,
+      promptUi()
     );
   }, { signal });
   if (promptInput) {
     resizePromptInput(promptInput);
     window.requestAnimationFrame(() => resizePromptInput(promptInput));
   }
+  const focusPromptInput = () => {
+    window.requestAnimationFrame(() => {
+      const nextInput = root.querySelector<HTMLTextAreaElement>("#prompt-input");
+      if (!nextInput) return;
+      nextInput.focus();
+      nextInput.setSelectionRange(nextInput.value.length, nextInput.value.length);
+    });
+  };
+  promptInput?.addEventListener("keydown", (event) => {
+    const modifier = event.ctrlKey || event.metaKey;
+    if (!modifier || event.altKey) return;
+    const key = event.key.toLowerCase();
+    const undo = key === "z" && !event.shiftKey;
+    const redo = key === "y" || (key === "z" && event.shiftKey);
+    const handled = undo
+      ? options.undoPromptEdit()
+      : redo
+        ? options.redoPromptEdit()
+        : false;
+    if (!handled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    options.context.requestRender();
+    focusPromptInput();
+  }, { signal });
   const initialDraft = getDraft();
   updatePromptWordCounter(
     promptInput?.value ?? "",
     initialDraft && isMiniMaxH3Model(initialDraft.modelId) ? h3PromptModeForDraft(initialDraft) : undefined,
-    initialDraft?.duration ?? 0
+    initialDraft?.duration ?? 0,
+    promptUi()
   );
+
+  root.querySelector("#clear-prompt")?.addEventListener("click", (event) => {
+    event.stopImmediatePropagation();
+    const draft = getDraft();
+    if (!draft) return;
+    options.clearPromptVersion();
+    options.context.requestRender();
+    focusPromptInput();
+  }, { signal });
 
   root.querySelector("#prompt-prev")?.addEventListener("click", () => {
     const draft = getDraft();
     if (!draft) return;
-    options.patchDraft({ activePromptVersion: Math.max(0, draft.activePromptVersion - 1) });
+    options.invalidatePromptEditHistory();
+    const promptVersions = [...promptVersionsForDraft(draft)];
+    const activePromptVersion = activePromptIndexForDraft(draft);
+    options.patchDraft(promptPatchForDraft(
+      draft,
+      promptVersions,
+      Math.max(0, activePromptVersion - 1)
+    ));
     options.context.requestRender();
   }, { signal });
   root.querySelector("#prompt-next")?.addEventListener("click", () => {
     const draft = getDraft();
     if (!draft) return;
-    options.patchDraft({ activePromptVersion: Math.min(draft.promptVersions.length - 1, draft.activePromptVersion + 1) });
+    options.invalidatePromptEditHistory();
+    const promptVersions = [...promptVersionsForDraft(draft)];
+    const activePromptVersion = activePromptIndexForDraft(draft);
+    options.patchDraft(promptPatchForDraft(
+      draft,
+      promptVersions,
+      Math.min(promptVersions.length - 1, activePromptVersion + 1)
+    ));
     options.context.requestRender();
   }, { signal });
   root.querySelector("#prompt-enhance-mode")?.addEventListener("change", (event) => {
@@ -176,7 +237,7 @@ export function mountCreatePromptController(
               ? "<Picture 1> = last frame"
               : "";
       const text = await options.context.studio.enhancePrompt({
-        prompt: activePrompt(draft).text,
+        prompt: activePrompt(draft, options.context.getState()?.settings.uiLocale).text,
         modelId: draft.modelId,
         mode: requestMode,
         imagePath: draft.startImagePath || undefined,
@@ -197,16 +258,19 @@ export function mountCreatePromptController(
       options.setPromptRuntimeLoaded(true);
       const nextDraft = getDraft();
       if (!nextDraft) return;
+      options.invalidatePromptEditHistory();
+      const nextPromptVersions = promptVersionsForDraft(nextDraft);
+      const nextActivePromptVersion = activePromptIndexForDraft(nextDraft);
       const versions = [
-        ...nextDraft.promptVersions.slice(0, nextDraft.activePromptVersion + 1),
+        ...nextPromptVersions.slice(0, nextActivePromptVersion + 1),
         {
           id: crypto.randomUUID(),
-          label: `扩写 ${nextDraft.promptVersions.filter((item) => item.label.startsWith("扩写")).length + 1}`,
+          label: promptUi().t("expandedVersion", { count: nextPromptVersions.filter((item) => item.label.startsWith(promptUi().t("expandedVersion", { count: "" }).trim())).length + 1 }),
           text,
           createdAt: new Date().toISOString()
         }
       ];
-      options.patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
+      options.patchDraft(promptPatchForDraft(nextDraft, versions, versions.length - 1));
     } catch (error) {
       options.context.notify(error instanceof Error ? error.message : String(error));
     } finally {
@@ -218,8 +282,9 @@ export function mountCreatePromptController(
   root.querySelector("#h3-prompt-template")?.addEventListener("click", () => {
     const draft = getDraft();
     if (!draft) return;
+    options.invalidatePromptEditHistory();
     const template = createH3PromptTemplate(
-      activePrompt(draft).text,
+      activePrompt(draft, options.context.getState()?.settings.uiLocale).text,
       draft.duration,
       {
         hasEndImage: Boolean(draft.endImagePath),
@@ -232,17 +297,23 @@ export function mountCreatePromptController(
         }))
       }
     );
+    const promptVersions = promptVersionsForDraft(draft);
+    const activePromptVersion = activePromptIndexForDraft(draft);
     const versions = [
-      ...draft.promptVersions.slice(0, draft.activePromptVersion + 1),
+      ...promptVersions.slice(0, activePromptVersion + 1),
       {
         id: crypto.randomUUID(),
-        label: "H3 分镜模板",
+        label: promptUi().t("h3TemplateVersion"),
         text: template.text,
         createdAt: new Date().toISOString()
       }
     ];
-    options.patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
-    options.context.notify(`已创建 H3 ${template.mode} 官方结构模板（${template.effectiveDurationSeconds.toFixed(2)} 秒、${template.shotCount} 个镜头），原内容仍可通过左箭头找回。`);
+    options.patchDraft(promptPatchForDraft(draft, versions, versions.length - 1));
+    options.context.notify(promptUi().t("templateCreated", {
+      mode: template.mode,
+      duration: template.effectiveDurationSeconds.toFixed(2),
+      shots: template.shotCount
+    }));
   }, { signal });
 
   root.querySelectorAll<HTMLElement>("[data-h3-builder]").forEach((field) => {
@@ -262,6 +333,7 @@ export function mountCreatePromptController(
   root.querySelector("#h3-builder-generate")?.addEventListener("click", () => {
     const draft = getDraft();
     if (!draft) return;
+    options.invalidatePromptEditHistory();
     const template = createH3PromptFromBuilder(
       options.getH3PromptBuilder(),
       draft.duration,
@@ -276,17 +348,22 @@ export function mountCreatePromptController(
         }))
       }
     );
+    const promptVersions = promptVersionsForDraft(draft);
+    const activePromptVersion = activePromptIndexForDraft(draft);
     const versions = [
-      ...draft.promptVersions.slice(0, draft.activePromptVersion + 1),
+      ...promptVersions.slice(0, activePromptVersion + 1),
       {
         id: crypto.randomUUID(),
-        label: "H3 构建器版本",
+        label: promptUi().t("h3BuilderVersion"),
         text: template.text,
         createdAt: new Date().toISOString()
       }
     ];
-    options.patchDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
-    options.context.notify(`已生成 H3 ${template.mode} 结构化提示词（${template.effectiveDurationSeconds.toFixed(2)} 秒），原内容仍可通过左箭头找回。`);
+    options.patchDraft(promptPatchForDraft(draft, versions, versions.length - 1));
+    options.context.notify(promptUi().t("builderCreated", {
+      mode: template.mode,
+      duration: template.effectiveDurationSeconds.toFixed(2)
+    }));
   }, { signal });
 
   return () => events.abort();

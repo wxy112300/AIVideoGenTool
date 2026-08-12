@@ -5,6 +5,7 @@ export default defineConfig({
   build: {
     outDir: "dist/renderer",
     emptyOutDir: true,
+    chunkSizeWarningLimit: 500,
     rolldownOptions: {
       output: {
         codeSplitting: {
@@ -20,6 +21,11 @@ export default defineConfig({
             {
               name: "i18n-runtime",
               test: /[\\/]src[\\/]core[\\/]i18n(?:-keys)?\.ts$/
+            },
+            {
+              name: "model-catalog",
+              test: /[\\/]src[\\/]core[\\/]catalog[\\/]/,
+              priority: 1
             }
           ]
         }

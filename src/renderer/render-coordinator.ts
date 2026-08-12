@@ -31,6 +31,7 @@ export interface RenderCoordinatorOptions {
   bindSettings(): void;
   bindHistoryViewportControls(): RendererCleanup;
   restoreHistoryScrollPosition(): void;
+  ensurePromptPacks(): Promise<void>;
   syncAppLogPolling(): void;
   renderConfirmationDialog(): string;
   renderDirectoryMigrationDialog(): string;
@@ -95,53 +96,65 @@ function stopRenderedVideoPlayback(root: HTMLElement): void {
 export function createRenderCoordinator(
   options: RenderCoordinatorOptions
 ): RenderCoordinator {
+  let renderRequest = 0;
   return {
     render() {
-      options.beforeRenderHistory();
-      const previousPage = options.getPage();
-      const playback = captureHistoryPlayback(options.root, previousPage);
-      stopRenderedVideoPlayback(options.root);
-      options.closeAppLogContextMenu();
+      const request = ++renderRequest;
+      void (async () => {
+        const requestedPage = options.getPage();
+        if (requestedPage === "create" || requestedPage === "settings") {
+          await options.ensurePromptPacks();
+        }
+        if (request !== renderRequest) return;
 
-      const content = previousPage === "create" ? options.renderPages.create() :
-        previousPage === "queue" ? options.renderPages.queue() :
-        previousPage === "history" ? options.renderPages.history() :
-        previousPage === "history-detail" ? options.renderPages.historyDetail() :
-        previousPage === "image-history-detail" ? options.renderPages.imageHistoryDetail() :
-        options.renderPages.settings();
-      const page = options.getPage();
-      const state = options.getState();
-      const ui = options.getUiState();
+        options.beforeRenderHistory();
+        const previousPage = options.getPage();
+        const playback = captureHistoryPlayback(options.root, previousPage);
+        stopRenderedVideoPlayback(options.root);
+        options.closeAppLogContextMenu();
 
-      options.root.innerHTML = renderShell({
-        page,
-        appVersion: ui.appVersion,
-        queueCount: state.queue.length,
-        flashMessage: ui.flashMessage,
-        content,
-        t: options.t,
-        icon: options.icon,
-        escapeHtml: options.escapeHtml,
-        confirmationDialog: options.renderConfirmationDialog(),
-        directoryMigrationDialog: options.renderDirectoryMigrationDialog(),
-        imageAssetLibraryDialog: options.renderImageAssetLibraryDialog(),
-        windowCloseDialog: options.renderWindowCloseDialog(),
-        upscaleDialog: options.renderUpscaleDialog()
+        const content = previousPage === "create" ? options.renderPages.create() :
+          previousPage === "queue" ? options.renderPages.queue() :
+          previousPage === "history" ? options.renderPages.history() :
+          previousPage === "history-detail" ? options.renderPages.historyDetail() :
+          previousPage === "image-history-detail" ? options.renderPages.imageHistoryDetail() :
+          options.renderPages.settings();
+        const page = options.getPage();
+        const state = options.getState();
+        const ui = options.getUiState();
+
+        options.root.innerHTML = renderShell({
+          page,
+          appVersion: ui.appVersion,
+          queueCount: state.queue.length,
+          flashMessage: ui.flashMessage,
+          content,
+          t: options.t,
+          icon: options.icon,
+          escapeHtml: options.escapeHtml,
+          confirmationDialog: options.renderConfirmationDialog(),
+          directoryMigrationDialog: options.renderDirectoryMigrationDialog(),
+          imageAssetLibraryDialog: options.renderImageAssetLibraryDialog(),
+          windowCloseDialog: options.renderWindowCloseDialog(),
+          upscaleDialog: options.renderUpscaleDialog()
+        });
+        renderIcons(options.root);
+        options.bindShell();
+        options.addPageCleanup(options.bindHistoryViewportControls());
+        options.bindUpscaleDialog();
+        if (page === "create") options.bindCreate();
+        else if (page === "queue") options.bindQueue();
+        else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
+          options.bindHistory(playback);
+        } else if (page === "settings") {
+          options.bindSettings();
+        }
+        options.syncAppLogPolling();
+        if (page === "history") options.restoreHistoryScrollPosition();
+        restoreHistoryPlayback(options.root, playback);
+      })().catch((error) => {
+        console.error("Failed to render page dependencies", error);
       });
-      renderIcons(options.root);
-      options.bindShell();
-      options.addPageCleanup(options.bindHistoryViewportControls());
-      options.bindUpscaleDialog();
-      if (page === "create") options.bindCreate();
-      else if (page === "queue") options.bindQueue();
-      else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
-        options.bindHistory(playback);
-      } else if (page === "settings") {
-        options.bindSettings();
-      }
-      options.syncAppLogPolling();
-      if (page === "history") options.restoreHistoryScrollPosition();
-      restoreHistoryPlayback(options.root, playback);
     }
   };
 }

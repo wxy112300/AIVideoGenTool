@@ -8,7 +8,7 @@ import type {
   ImageReferenceRole,
   ImageMarkupData
 } from "../types.js";
-import { createDefaultImageEditDraft } from "./defaults.js";
+import { createDefaultImageEditDraft } from "./draft-defaults.js";
 import { normalizeImageTargetResolution } from "./image-workflow.js";
 
 const imageOutputFormats: ImageOutputFormat[] = ["png", "jpeg", "webp"];

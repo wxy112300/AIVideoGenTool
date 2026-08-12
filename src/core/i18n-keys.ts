@@ -827,6 +827,14 @@ export const uiKeys = {
     removeEndFrame: "create.references.removeEndFrame",
     promptTitle: "create.prompt.title",
     extensionPromptTitle: "create.prompt.extensionTitle",
+    clearPrompt: "create.prompt.clear",
+    modelStatus: {
+      missingComponent: "create.modelStatus.missingComponent",
+      workflowPending: "create.modelStatus.workflowPending",
+      extensionCheckFailed: "create.modelStatus.extensionCheckFailed",
+      motionContextRecommended: "create.modelStatus.motionContextRecommended",
+      endFrameCompatible: "create.modelStatus.endFrameCompatible"
+    },
     fragments: {
       imageInstructionPlaceholder: "create.fragments.imageInstruction.placeholder",
       imageInstructionKeepBase: "create.fragments.imageInstruction.keepBase",

@@ -6,7 +6,7 @@ Local Video Studio 把参考图、提示词、视频模型、任务队列和生�
 
 ## 当前版本
 
-当前开发版本为 **`0.16.2`**。本版本完成 Renderer 入口模块化收口：集中管理入口级 UI 临时状态，拆分 Create、History、Settings 页面 assembly，并将渲染分派、Shell 重建、历史视频播放恢复和页面生命周期协调移入独立模块；同时保留图片项目按 Picture 1 内容指纹维护生成血缘的行为。
+当前开发版本为 **`0.17.0`**。本版本完成 Renderer 模块化和本地化基础收口：拆分 Create、History、Settings 页面 assembly，建立模型 catalog、Prompt Pack、runtime message catalog 和视频策略模块；为图生视频、视频续写和图片处理提供独立 Prompt 状态、清屏撤销/重做与按需加载，并保持现有队列、历史、工作流和持久化兼容。
 
 每个版本的新增功能、修复和兼容性说明统一记录在 [CHANGELOG.md](CHANGELOG.md)，README 不再重复累积历史版本文案。
 

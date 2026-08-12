@@ -68,6 +68,8 @@ Hover preview failure must not destroy a valid static cover. Detail playback/vie
 ### Create
 
 - The current media input and prompt are the dominant decisions; advanced generation controls remain compact.
+- Each prompt composer exposes a clear-current-version action; deleting the last version leaves one blank editable version.
+- Prompt text editing preserves native textarea undo/redo: `Ctrl+Z`, `Ctrl+Y`, and `Ctrl+Shift+Z` remain available; clearing a prompt version adds an application-level undo/redo transaction for the same shortcuts.
 - Prompt assistance updates the same primary prompt editor and supports alternatives/undo where present. Do not introduce a second competing prompt box.
 - Quick instructions insert or refine combinable intent; they do not artificially restrict the user to one capability.
 - Image creation supports multiple reference pictures using human-readable `<Picture N>` references when the selected model supports them.

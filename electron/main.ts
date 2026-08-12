@@ -73,6 +73,7 @@ import {
   normalizeImageEditDraft
 } from "../src/core/image-project.js";
 import { promptModelBackend, promptModelSupportsImageEdit } from "../src/core/prompt-models.js";
+import { activePromptIndexForDraft, promptVersionsForDraft } from "../src/core/draft-prompts.js";
 import {
   imageModelAdapterFor,
   imageOutputDimensions,
@@ -1216,9 +1217,11 @@ function createWindow(): void {
 }
 
 function promptOf(draft: Draft): string {
+  const promptVersions = promptVersionsForDraft(draft);
+  const activePromptVersion = activePromptIndexForDraft(draft);
   return (
-    draft.promptVersions[draft.activePromptVersion]?.text ??
-    draft.promptVersions.at(-1)?.text ??
+    promptVersions[activePromptVersion]?.text ??
+    promptVersions.at(-1)?.text ??
     ""
   ).trim();
 }
@@ -1238,7 +1241,7 @@ function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask 
     updatedAt: now,
     outputFilename: createOutputFilename(draft.modelId, draft.resolution, draft.duration, names),
     prompt,
-    promptVersion: draft.activePromptVersion + 1,
+    promptVersion: activePromptIndexForDraft(draft) + 1,
     h3ReferenceSlots: draft.h3ReferenceSlots.map((slot) => ({ ...slot })),
     startImagePath: draft.startImagePath,
     sourceWidth: draft.sourceWidth,
@@ -1466,7 +1469,7 @@ function extensionTaskFromDraft(
       outputNames(state)
     ),
     prompt,
-    promptVersion: draft.activePromptVersion + 1,
+    promptVersion: activePromptIndexForDraft(draft) + 1,
     sourceVideoPath: draft.sourceVideoPath,
     sourceVideoDuration: draft.sourceVideoDuration,
     trimStartSeconds: draft.trimStartSeconds,
@@ -2075,10 +2078,10 @@ async function executeQueue(): Promise<void> {
     const performanceWarnings = new Set<string>();
     try {
       if (task.taskType === "generation") {
-        const safety = generationSafetyForTask(task);
+        const safety = generationSafetyForTask(task, store.get().settings.uiLocale);
         if (!safety.safe) throw new Error(safety.message);
       } else if (task.taskType === "extension") {
-        const safety = extensionSafetyForTask(task);
+        const safety = extensionSafetyForTask(task, store.get().settings.uiLocale);
         if (!safety.safe) throw new Error(safety.message);
       }
       await updateTask(task.id, {
@@ -3709,7 +3712,7 @@ function registerIpc(): void {
     }
     if (!promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择该模型的 ComfyUI API 工作流");
-    const safety = generationSafetyForTask(draft);
+    const safety = generationSafetyForTask(draft, store.get().settings.uiLocale);
     if (!safety.safe) throw new Error(safety.message);
     let workflow: unknown;
     try {
@@ -3719,7 +3722,7 @@ function registerIpc(): void {
         `无法读取工作流 JSON：${error instanceof Error ? error.message : String(error)}`
       );
     }
-    const validation = validateApiWorkflow(workflow);
+    const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
     if (!validation.valid) {
       throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
     }
@@ -3937,7 +3940,7 @@ function registerIpc(): void {
         `无法读取续写工作流 JSON：${error instanceof Error ? error.message : String(error)}`
       );
     }
-    const validation = validateApiWorkflow(workflow);
+    const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
     if (!validation.valid) {
       throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
     }
@@ -3949,7 +3952,7 @@ function registerIpc(): void {
         ? workflowSupportsH3MotionContextExtension(workflow)
           ? []
           : ["H3 Motion Context 工作流缺少 R2V、运动上下文、同步裁剪、latent 保存或视频输出节点"]
-      : extensionWorkflowSafetyErrors(workflow);
+      : extensionWorkflowSafetyErrors(workflow, store.get().settings.uiLocale);
     if (workflowSafetyErrors.length) {
       throw new Error(`续写工作流不符合原生续写低显存契约：${workflowSafetyErrors.join("；")}`);
     }
@@ -3969,7 +3972,7 @@ function registerIpc(): void {
           ? draft.h3ContextLatentPath
           : undefined;
     }
-    const safety = extensionSafetyForTask(task);
+    const safety = extensionSafetyForTask(task, current.settings.uiLocale);
     if (!safety.safe) throw new Error(safety.message);
     const next = await store.update((state) => {
       state.queue.push(task);

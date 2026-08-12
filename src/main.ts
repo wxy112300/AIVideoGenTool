@@ -83,15 +83,10 @@ import {
 } from "./renderer/pages/create/view-model";
 import {
   createDefaultH3PromptBuilder,
-  h3PromptPresetDescriptions,
   h3PromptPresetOptions,
-  h3ReferenceRoleLabels,
   h3PromptModeForDraft,
   imageFileIsSupported,
   h3ReferenceRolePromptLabels,
-  imagePromptPresetDescriptions,
-  imagePromptPresetLabels,
-  imageReferenceRoleLabels,
   imageReferenceRolePromptLabels,
   loadImagePreview,
   orderVideoProfiles,
@@ -99,6 +94,22 @@ import {
   updateImagePromptWordCounter,
   updatePromptWordCounter
 } from "./renderer/pages/create/helpers";
+import {
+  h3PromptPackFor,
+  loadPromptPacks,
+  qwenImagePromptPackFor
+} from "./renderer/prompt-packs";
+import {
+  activePromptIndexForDraft,
+  clearPromptVersion,
+  promptPatchForDraft,
+  promptVersionsForDraft
+} from "./core/draft-prompts";
+import {
+  PromptEditHistory,
+  type PromptHistoryScope,
+  type PromptHistorySnapshot
+} from "./core/prompt-edit-history";
 import { escapeHtml } from "./renderer/shared/dom";
 import {
   elapsedText,
@@ -170,7 +181,7 @@ import type {
   WindowCloseRequest,
   WorkflowCapabilities
 } from "./types";
-import { createClearedDraft, createDefaultImagePromptPresets } from "./core/defaults";
+import { createClearedDraft } from "./core/draft-defaults";
 import {
   imageEditDraftFromQueueTask,
   imageEditPicturesForVersion,
@@ -183,7 +194,6 @@ import {
   imageModelCapabilityFor,
   normalizeImageTargetResolution
 } from "./core/image-workflow";
-import { createDefaultH3PromptPresets } from "./core/h3-prompt-presets";
 import {
   isGemmaPromptModel
 } from "./core/prompt-models";
@@ -193,10 +203,10 @@ import {
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
-  isMiniMaxH3SpectrumEligible,
   isRetiredVideoModel,
   normalizeH3Steps
 } from "./core/workflow";
+import { resolveVideoGenerationPolicy } from "./core/video-policy";
 import {
   createUpscaleFilename,
   estimateUpscaleResources,
@@ -272,6 +282,7 @@ let promptEnhancing = false;
 let promptStarting = false;
 let promptReleasing = false;
 let promptRuntimeLoaded = false;
+const promptEditHistory = new PromptEditHistory();
 
 let h3PromptBuilder = createDefaultH3PromptBuilder();
 
@@ -281,6 +292,72 @@ function uiText(
   fallback?: string
 ): string {
   return createTranslator(state.settings.uiLocale).t(key, params, fallback);
+}
+
+function videoPromptSnapshot(): PromptHistorySnapshot {
+  return {
+    promptVersions: promptVersionsForDraft(state.draft).map((version) => ({ ...version })),
+    activePromptVersion: activePromptIndexForDraft(state.draft)
+  };
+}
+
+function imagePromptSnapshot(): PromptHistorySnapshot {
+  return {
+    promptVersions: state.imageDraft.promptVersions.map((version) => ({ ...version })),
+    activePromptVersion: state.imageDraft.activePromptVersion
+  };
+}
+
+function clearPromptVersionForScope(scope: PromptHistoryScope): void {
+  const before = scope === "video" ? videoPromptSnapshot() : imagePromptSnapshot();
+  if (before.promptVersions.length === 1 && !before.promptVersions[0]?.text) return;
+  const cleared = clearPromptVersion(before.promptVersions, before.activePromptVersion);
+  const after = {
+    promptVersions: cleared.promptVersions,
+    activePromptVersion: cleared.activePromptVersion
+  };
+  promptEditHistory.record(scope, before, after);
+  if (scope === "video") {
+    patchDraft(promptPatchForDraft(state.draft, after.promptVersions, after.activePromptVersion));
+  } else {
+    patchImageDraft(after);
+  }
+}
+
+function applyPromptHistorySnapshot(
+  scope: PromptHistoryScope,
+  snapshot: PromptHistorySnapshot
+): void {
+  if (scope === "video") {
+    patchDraft(promptPatchForDraft(
+      state.draft,
+      snapshot.promptVersions.map((version) => ({ ...version })),
+      snapshot.activePromptVersion
+    ));
+  } else {
+    patchImageDraft({
+      promptVersions: snapshot.promptVersions.map((version) => ({ ...version })),
+      activePromptVersion: snapshot.activePromptVersion
+    });
+  }
+}
+
+function undoPromptEdit(scope: PromptHistoryScope): boolean {
+  const snapshot = promptEditHistory.undo(scope);
+  if (!snapshot) return false;
+  applyPromptHistorySnapshot(scope, snapshot);
+  return true;
+}
+
+function redoPromptEdit(scope: PromptHistoryScope): boolean {
+  const snapshot = promptEditHistory.redo(scope);
+  if (!snapshot) return false;
+  applyPromptHistorySnapshot(scope, snapshot);
+  return true;
+}
+
+function invalidatePromptEditHistory(scope: PromptHistoryScope): void {
+  promptEditHistory.invalidate(scope);
 }
 
 window.addEventListener("dragover", (event) => {
@@ -579,9 +656,13 @@ const createPageOptions: CreatePageOptions = {
   t: (key, params, fallback) => createTranslator(state.settings.uiLocale).t(key, params, fallback),
   icon,
   escapeHtml,
-  h3ReferenceRoleLabels,
-  imageReferenceRoleLabels,
-  videoLoraInfoButton: (lora) => videoLoraInfoButton(lora, uiText),
+  get h3ReferenceRoleLabels() {
+    return h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels;
+  },
+  get imageReferenceRoleLabels() {
+    return qwenImagePromptPackFor(state.settings.uiLocale).referenceRoleLabels;
+  },
+  videoLoraInfoButton: (lora) => videoLoraInfoButton(lora, uiText, state.settings.uiLocale),
   videoLoraPurposeLabel: (purpose) => videoLoraPurposeLabel(purpose, uiText)
 };
 
@@ -641,7 +722,7 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
     queueActionBusy,
     icon,
     escapeHtml,
-    modelName,
+    modelName: (id) => modelName(id, state.settings.uiLocale),
     frameRateSummary,
     queueStageElapsedText: (queueTask) => queueStageElapsedText(queueTask, rendererApp.context.t),
     queueTaskRemainingSeconds: (queueTask) => calculateQueueTaskRemainingSeconds(queueTask, state.history),
@@ -670,13 +751,25 @@ function draftFromQueueTask(task: QueueTask): Draft | null {
     trimEndSeconds: extension ? task.trimEndSeconds : 0,
     sourceAssetId: extension ? task.sourceAssetId : undefined,
     sourceVersionId: extension ? task.sourceVersionId : undefined,
-    promptVersions: [{
-      id: crypto.randomUUID(),
-      label: uiText(uiKeys.runtime.fromQueue),
-      text: task.prompt,
-      createdAt: now
-    }],
-    activePromptVersion: 0,
+    ...(extension
+      ? {
+          extensionPromptVersions: [{
+            id: crypto.randomUUID(),
+            label: uiText(uiKeys.runtime.fromQueue),
+            text: task.prompt,
+            createdAt: now
+          }],
+          extensionActivePromptVersion: 0
+        }
+      : {
+          promptVersions: [{
+            id: crypto.randomUUID(),
+            label: uiText(uiKeys.runtime.fromQueue),
+            text: task.prompt,
+            createdAt: now
+          }],
+          activePromptVersion: 0
+        }),
     h3ReferenceSlots: extension ? [] : (task.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
     modelId: task.modelId,
     videoLoras: task.videoLoras?.map((lora) => ({ ...lora })) ?? [],
@@ -737,9 +830,9 @@ const historyPageOptions: HistoryPageOptions = {
   escapeHtml,
   formatBytes,
   videoLoraPurposeLabel: (purpose) => videoLoraPurposeLabel(purpose, uiText),
-  h3ReferenceRoleLabel: (role) => h3ReferenceRoleLabels[role],
-  imageReferenceRoleLabel: (role) => imageReferenceRoleLabels[role],
-  modelName,
+  h3ReferenceRoleLabel: (role) => h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels[role],
+  imageReferenceRoleLabel: (role) => qwenImagePromptPackFor(state.settings.uiLocale).referenceRoleLabels[role],
+  modelName: (id) => modelName(id, state.settings.uiLocale),
   formatFullHistoryTime,
   formatVideoDuration,
   formatElapsedDuration: (seconds) => formatElapsedDuration(seconds, uiText),
@@ -827,8 +920,12 @@ function enableSpectrumByDefaultIfAvailable(): void {
     draft.spectrumMode === "balanced" ||
     !spectrumNode?.installed ||
     !spectrumNode.loaded ||
-    !isMiniMaxH3SpectrumEligible(draft.modelId) ||
-    (draft.inputMode === "video" && isMiniMaxH3R2vModel(draft.modelId))
+    !resolveVideoGenerationPolicy({
+      modelId: draft.modelId,
+      inputMode: draft.inputMode,
+      spectrumMode: draft.spectrumMode,
+      videoLoras: draft.videoLoras
+    }).spectrum.allowed
   ) return;
   patchDraft({ spectrumMode: "balanced" });
 }
@@ -890,11 +987,11 @@ function settingsPage(): string {
     } satisfies SettingsViewModelDependencies),
     {
       t: rendererApp.context.t,
-      defaultH3PromptPresets: createDefaultH3PromptPresets(),
-      defaultImagePromptPresets: createDefaultImagePromptPresets(),
-      h3PromptPresetDescriptions,
-      imagePromptPresetLabels,
-      imagePromptPresetDescriptions,
+      defaultH3PromptPresets: h3PromptPackFor(state.settings.uiLocale).defaultPresets,
+      defaultImagePromptPresets: qwenImagePromptPackFor(state.settings.uiLocale).defaultPresets,
+      h3PromptPresetDescriptions: h3PromptPackFor(state.settings.uiLocale).presetDescriptions,
+      imagePromptPresetLabels: qwenImagePromptPackFor(state.settings.uiLocale).presetLabels,
+      imagePromptPresetDescriptions: qwenImagePromptPackFor(state.settings.uiLocale).presetDescriptions,
       icon,
       escapeHtml,
       formatBytes,
@@ -904,12 +1001,12 @@ function settingsPage(): string {
       isGemmaPromptModel,
       videoLoraInfoButton: (profileId) => {
         const lora = BUILTIN_VIDEO_LORAS.find((item) => item.id === profileId);
-        return lora ? videoLoraInfoButton(lora, uiText) : "";
+        return lora ? videoLoraInfoButton(lora, uiText, state.settings.uiLocale) : "";
       },
       isImageWorkflowReady,
       isImageModelSelectable,
       imageWorkflowStatus,
-      h3PromptPresetOptions,
+      h3PromptPresetOptions: (selected, includeMultiReference) => h3PromptPresetOptions(selected, includeMultiReference, state.settings.uiLocale),
       renderAppLogTerminal: (text) => appLogTerminalHtml(visibleAppLogText(text, appLogScreenClearedAt))
     }
   );
@@ -953,6 +1050,7 @@ function initializeRenderCoordinator(): void {
   },
   beforeRenderHistory: historyLayoutController.beforeRender,
   closeAppLogContextMenu: appLogContextMenu.close,
+  ensurePromptPacks: loadPromptPacks,
   bindShell,
   bindUpscaleDialog,
   bindCreate,
@@ -1868,7 +1966,7 @@ function bindCreate(): void {
       addImagePicture,
       editImagePictureMarkup,
       imageFileIsSupported,
-      imageReferenceRoleLabel: (role) => imageReferenceRoleLabels[role],
+      imageReferenceRoleLabel: (role) => qwenImagePromptPackFor(state.settings.uiLocale).referenceRoleLabels[role],
       imageReferenceRolePromptLabel: (role) => imageReferenceRolePromptLabels[role],
       resizePromptInput,
       updateImagePromptWordCounter,
@@ -1884,6 +1982,10 @@ function bindCreate(): void {
       setPromptRuntimeLoaded: (value) => {
         promptRuntimeLoaded = value;
       },
+      clearPromptVersion: () => clearPromptVersionForScope("image"),
+      undoPromptEdit: () => undoPromptEdit("image"),
+      redoPromptEdit: () => redoPromptEdit("image"),
+      invalidatePromptEditHistory: () => invalidatePromptEditHistory("image"),
       togglePromptModel: togglePromptModelFromUi,
       randomSeedValue,
       isEnqueueBusy: () => ui.enqueueBusy,
@@ -1893,7 +1995,7 @@ function bindCreate(): void {
       setEnqueueBusyUi
     },
     createPrompt: {
-      h3ReferenceRoleLabels,
+      h3ReferenceRoleLabels: h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels,
       h3ReferenceRolePromptLabels,
       getPromptEnhanceMode: () => promptEnhanceMode,
       setPromptEnhanceMode: (mode) => {
@@ -1910,6 +2012,10 @@ function bindCreate(): void {
       setPromptRuntimeLoaded: (value) => {
         promptRuntimeLoaded = value;
       },
+      clearPromptVersion: () => clearPromptVersionForScope("video"),
+      undoPromptEdit: () => undoPromptEdit("video"),
+      redoPromptEdit: () => redoPromptEdit("video"),
+      invalidatePromptEditHistory: () => invalidatePromptEditHistory("video"),
       togglePromptModel: togglePromptModelFromUi,
       getH3PromptBuilder: () => h3PromptBuilder,
       setH3PromptBuilder: (builder) => {

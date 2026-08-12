@@ -8,6 +8,15 @@
 
 ## 未发布
 
+### 0.17.0 候选 — 2026-08-12
+
+- 完成 Renderer 模块化收口：拆分 Create、History、Settings 页面 assembly、controller、view model 和 render coordinator，降低多 agent 编辑冲突。
+- 建立模型 catalog、Prompt Pack、runtime workflow message catalog 和统一视频生成策略，模型元数据、Prompt UI 与 workflow 逻辑边界更加清晰。
+- 完成本地化结构整理：全局 UI key、按语言 catalog、Prompt Pack 索引和 LoRA/workflow runtime 文案均可按 locale 扩展；模型 Prompt 内容保持英文。
+- 图生视频、视频续写和图片处理 Prompt 版本彻底隔离；旧存档自动迁移，新增清屏当前版本、应用级 Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z 撤销重做。
+- Prompt Pack 改为 Create/Settings 按需加载，model catalog 和 Prompt Pack 使用独立构建 chunk，恢复 500 KB bundle 告警阈值并消除无效动态导入警告。
+- 删除 Qwen legacy 中文默认 Prompt，保留旧设置和历史数据的兼容迁移；新增 runtime、Prompt、catalog、LoRA、策略和 Draft 状态测试。
+
 ### 0.16.2 候选 — 2026-08-12
 
 - Renderer 入口级 UI 临时状态集中到独立模块，降低多 agent 并行编辑 `main.ts` 时的冲突面。

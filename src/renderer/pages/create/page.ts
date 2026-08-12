@@ -11,6 +11,7 @@ import type {
 } from "../../../types";
 import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
 import type { Translate } from "../../../core/i18n";
+import type { PromptUi } from "../../../core/prompts/types.js";
 import { uiKeys } from "../../../core/i18n-keys";
 import {
   renderCreateModelOptions,
@@ -57,6 +58,8 @@ export interface ImageEditPageViewModel {
 export interface VideoCreatePageViewModel {
   draft: Draft;
   prompt: PromptVersion;
+  promptVersionIndex: number;
+  promptVersionCount: number;
   promptRuntimeBusy: boolean;
   promptEnhancing: boolean;
   extending: boolean;
@@ -70,6 +73,7 @@ export interface VideoCreatePageViewModel {
   releasePromptControlDisabled: boolean;
   promptAiDisabled: boolean;
   promptEnhanceButtonTitle: string;
+  promptUi: PromptUi;
   h3PromptPresetOptionsMarkup: string;
   promptSnippetOptionsMarkup: string;
   h3PromptCheckMarkup: string;
@@ -177,7 +181,7 @@ export function renderImageEditPage(
       </section>
       <section class="panel composer image-edit-composer">
         <div class="section-heading composer-heading">
-          <div class="composer-heading-main"><h2>${t(uiKeys.create.promptTitle)}</h2><span class="muted">${viewModel.draft.activePromptVersion + 1} / ${viewModel.draft.promptVersions.length} · ${escapeHtml(viewModel.prompt.label)}</span><div class="prompt-version-controls"><button class="icon-button" id="image-prompt-prev" aria-label="${t(uiKeys.create.imageEdit.previousPrompt)}" ${viewModel.draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button><button class="icon-button" id="image-prompt-next" aria-label="${t(uiKeys.create.imageEdit.nextPrompt)}" ${viewModel.draft.activePromptVersion >= viewModel.draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button></div></div>
+          <div class="composer-heading-main"><h2>${t(uiKeys.create.promptTitle)}</h2><span class="muted">${viewModel.draft.activePromptVersion + 1} / ${viewModel.draft.promptVersions.length} · ${escapeHtml(viewModel.prompt.label)}</span><div class="prompt-version-controls"><button class="icon-button" id="image-prompt-prev" aria-label="${t(uiKeys.create.imageEdit.previousPrompt)}" ${viewModel.draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button><button class="icon-button" id="image-prompt-next" aria-label="${t(uiKeys.create.imageEdit.nextPrompt)}" ${viewModel.draft.activePromptVersion >= viewModel.draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button><button class="icon-button danger" id="clear-image-prompt" aria-label="${t(uiKeys.create.clearPrompt)}" title="${t(uiKeys.create.clearPrompt)}" ${viewModel.draft.promptVersions.length === 1 && !viewModel.prompt.text ? "disabled" : ""}>${icon("trash-2")}</button></div></div>
           <div class="prompt-action-controls">
             <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="${t(uiKeys.create.imageEdit.optimizeMethod)}" title="${t(uiKeys.create.imageEdit.optimizeTitle)}">
               <option value="detail-enhance" ${viewModel.imageEnhanceMode === "detail-enhance" ? "selected" : ""}>${t(uiKeys.create.imageEdit.detailEnhance)}</option>
@@ -187,7 +191,7 @@ export function renderImageEditPage(
             <button class="secondary button-with-icon" id="enhance-prompt" ${viewModel.imagePromptAiDisabled ? "disabled" : ""} title="${escapeHtml(viewModel.imagePromptOptimizeTitle)}">${icon("sparkles")}${viewModel.promptEnhancing ? t(uiKeys.create.imageEdit.optimizing) : t(uiKeys.create.imageEdit.optimizePrompt)}</button>
           </div>
         </div>
-        <div class="prompt-editor-shell"><textarea id="image-edit-prompt-input" rows="6" spellcheck="true" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea><div id="image-prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div></div>
+        <div class="prompt-editor-shell"><textarea id="image-edit-prompt-input" rows="6" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea><div id="image-prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div></div>
         <div class="prompt-tool-row"><label class="prompt-snippet-picker"><span>${t(uiKeys.create.imageEdit.quickInsert)}</span><select id="image-edit-instruction">${renderImageEditPromptInstructionOptions(escapeHtml, t)}</select></label><button class="secondary button-with-icon" id="insert-image-edit-instruction" disabled>${icon("plus")}${t(uiKeys.create.imageEdit.insert)}</button></div>
         <section class="composer-control-group image-edit-output-group"><div class="composer-group-heading"><div><strong>${t(uiKeys.create.imageEdit.generationSettings)}</strong><span>${t(uiKeys.create.imageEdit.batchDescription)}</span></div></div><div class="composer-control-grid image-edit-settings-grid">
           <label class="settings-field">${t(uiKeys.create.imageEdit.model)}<select id="image-edit-model">${viewModel.imageModelOptionsMarkup}</select></label>
@@ -209,6 +213,28 @@ export function renderCreatePage(
   const icon = options.icon;
   const escapeHtml = options.escapeHtml;
   const t = options.t;
+  const promptUi = viewModel.promptUi;
+  const promptModeLabel = viewModel.h3Mode === "R2V"
+    ? promptUi.t("modeR2v")
+    : viewModel.h3Mode === "FL2VA"
+      ? promptUi.t("modeFl2va")
+      : viewModel.h3Mode === "L2VA"
+        ? promptUi.t("modeL2va")
+        : viewModel.h3Mode === "T2VA"
+          ? promptUi.t("modeT2va")
+          : promptUi.t("modeI2va");
+  const referenceSectionTitle = viewModel.h3Mode === "R2V"
+    ? promptUi.t("referenceTagsTitle")
+    : viewModel.h3Mode === "T2VA"
+      ? promptUi.t("textTimelineTitle")
+      : promptUi.t("referenceAlignmentTitle");
+  const referenceSectionDescription = viewModel.h3Mode === "R2V"
+    ? promptUi.t("referenceR2vDescription")
+    : viewModel.h3Mode === "T2VA"
+      ? promptUi.t("referenceT2vaDescription")
+      : viewModel.h3Mode === "L2VA"
+        ? promptUi.t("referenceL2vaDescription")
+        : promptUi.t("referenceDefaultDescription");
   return `
     <section class="page-heading create-page-heading">
       <div class="page-heading-copy"><h1>${t(uiKeys.create.videoTitle)}</h1><p>${t(viewModel.extending ? uiKeys.create.extensionDescription : uiKeys.create.videoDescription)}</p></div>
@@ -285,58 +311,59 @@ export function renderCreatePage(
       <div class="section-heading composer-heading">
         <div class="composer-heading-main">
           <h2>${t(viewModel.extending ? uiKeys.create.extensionPromptTitle : uiKeys.create.promptTitle)}</h2>
-          <span class="muted">${viewModel.draft.activePromptVersion + 1} / ${viewModel.draft.promptVersions.length} · ${escapeHtml(viewModel.prompt.label)}</span>
+          <span class="muted">${viewModel.promptVersionIndex + 1} / ${viewModel.promptVersionCount} 路 ${escapeHtml(viewModel.prompt.label)}</span>
           <div class="prompt-version-controls">
-            <button class="icon-button" id="prompt-prev" aria-label="上一版提示词" title="上一版提示词" ${viewModel.draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button>
-            <button class="icon-button" id="prompt-next" aria-label="下一版提示词" title="下一版提示词" ${viewModel.draft.activePromptVersion >= viewModel.draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button>
+            <button class="icon-button" id="prompt-prev" aria-label="${promptUi.t("previousVersion")}" title="${promptUi.t("previousVersion")}" ${viewModel.promptVersionIndex === 0 ? "disabled" : ""}>${icon("chevron-left")}</button>
+            <button class="icon-button" id="prompt-next" aria-label="${promptUi.t("nextVersion")}" title="${promptUi.t("nextVersion")}" ${viewModel.promptVersionIndex >= viewModel.promptVersionCount - 1 ? "disabled" : ""}>${icon("chevron-right")}</button>
+            <button class="icon-button danger" id="clear-prompt" aria-label="${t(uiKeys.create.clearPrompt)}" title="${t(uiKeys.create.clearPrompt)}" ${viewModel.promptVersionCount === 1 && !viewModel.prompt.text ? "disabled" : ""}>${icon("trash-2")}</button>
           </div>
         </div>
         <div class="prompt-action-controls">
-          <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="扩写方式" title="${escapeHtml(viewModel.h3PromptEnhanceTitle)}">
+          <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="${promptUi.t("enhanceMode")}" title="${escapeHtml(viewModel.h3PromptEnhanceTitle)}">
             ${viewModel.isMiniMaxH3
               ? viewModel.h3PromptPresetOptionsMarkup
-                : `<option value="sulphur-native" ${viewModel.enhanceMode === "sulphur-native" ? "selected" : ""}>Sulphur 原生增强（推荐）</option>
-                  <option value="faithful" ${viewModel.enhanceMode === "faithful" ? "selected" : ""}>忠实扩写（需 Instruct 模型）</option>`}
+                : `<option value="sulphur-native" ${viewModel.enhanceMode === "sulphur-native" ? "selected" : ""}>${promptUi.t("sulphurNativeEnhance")}</option>
+                  <option value="faithful" ${viewModel.enhanceMode === "faithful" ? "selected" : ""}>${promptUi.t("faithfulEnhance")}</option>`}
           </select>
              <button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" title="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-busy="${viewModel.promptRuntimeBusy}">${icon(viewModel.releasePromptControlIconName)}</button>
-             <button class="secondary button-with-icon" id="enhance-prompt" ${viewModel.promptAiDisabled ? "disabled" : ""} title="${escapeHtml(viewModel.promptEnhanceButtonTitle)}">${icon("sparkles")}${viewModel.promptEnhancing ? "优化中…" : "优化提示词"}</button>
+             <button class="secondary button-with-icon" id="enhance-prompt" ${viewModel.promptAiDisabled ? "disabled" : ""} title="${escapeHtml(viewModel.promptEnhanceButtonTitle)}">${icon("sparkles")}${viewModel.promptEnhancing ? promptUi.t("optimizing") : promptUi.t("optimizePrompt")}</button>
         </div>
       </div>
       <div class="prompt-editor-shell">
-        <textarea id="prompt-input" rows="6" spellcheck="true" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea>
+        <textarea id="prompt-input" rows="6" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea>
         <div id="prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div>
       </div>
       <div class="prompt-tool-row">
-        <label class="prompt-snippet-picker"><span>快速插入</span><select id="prompt-snippet"><option value="">选择镜头、动作、声音或对白片段</option>${viewModel.promptSnippetOptionsMarkup}</select></label>
-        <button class="secondary button-with-icon" id="insert-prompt-snippet" type="button" disabled>${icon("plus")}插入</button>
+        <label class="prompt-snippet-picker"><span>${promptUi.t("snippetPicker")}</span><select id="prompt-snippet"><option value="">${promptUi.t("snippetPlaceholder")}</option>${viewModel.promptSnippetOptionsMarkup}</select></label>
+        <button class="secondary button-with-icon" id="insert-prompt-snippet" type="button" disabled>${icon("plus")}${promptUi.t("insertSnippet")}</button>
       </div>
       ${viewModel.isMiniMaxH3 ? viewModel.h3PromptCheckMarkup : ""}
       ${viewModel.extending && viewModel.isMiniMaxH3 ? `<div class="h3-extension-note">
-        <strong>${viewModel.isR2V ? "H3 R2V Motion Context（推荐）" : "H3 结尾帧接续（兼容）"}</strong>
+        <strong>${viewModel.isR2V ? promptUi.t("extensionR2vTitle") : promptUi.t("extensionBoundaryTitle")}</strong>
         <span>${viewModel.isR2V
-          ? `携带上一段最后 22 帧的运动与 32 kHz 音频；头部上下文会自动同步裁掉。${viewModel.draft.h3ContextLatentPath ? "已找到上一段 latent，将跳过有损重编码。" : "当前使用像素/音频回退，完成后会保存 latent 供下一次接续。"} Spectrum 会被强制关闭。`
-          : "从保留片段的最后一帧生成新段并保留 H3 原生音轨；不依赖额外节点，但边界动作可能发生变化。"}</span>
+          ? promptUi.t(viewModel.draft.h3ContextLatentPath ? "extensionR2vLatentDescription" : "extensionR2vFallbackDescription")
+          : promptUi.t("extensionBoundaryDescription")}</span>
       </div>` : ""}
       ${viewModel.isMiniMaxH3 && !viewModel.extending ? `<details class="h3-prompt-helper">
         <summary>
           <span class="h3-helper-heading">
-            <strong>H3 提示词助手 <span class="model-badge">可选</span></strong>
-            <span>${viewModel.h3Mode === "R2V" ? "R2V 多参考" : viewModel.h3Mode === "FL2VA" ? "FL2VA 首尾帧" : viewModel.h3Mode === "L2VA" ? "L2VA 尾帧" : viewModel.h3Mode === "T2VA" ? "T2VA 纯文本" : "I2VA 首帧"} · 模板、检查和构建器</span>
+            <strong>${promptUi.t("helperTitle")} <span class="model-badge">${promptUi.t("optional")}</span></strong>
+            <span>${promptUi.t("helperModeSubtitle", { mode: promptModeLabel })}</span>
           </span>
-          <span class="h3-helper-toggle"><span class="when-closed">打开</span><span class="when-open">收起</span>${icon("chevron-down")}</span>
+          <span class="h3-helper-toggle"><span class="when-closed">${promptUi.t("toggleOpen")}</span><span class="when-open">${promptUi.t("toggleClose")}</span>${icon("chevron-down")}</span>
         </summary>
         <div class="h3-helper-body">
           <div class="h3-prompt-sections">
-            <div><strong>${viewModel.h3Mode === "R2V" ? "参考标签" : viewModel.h3Mode === "T2VA" ? "文字时间轴" : "参考对齐"}</strong><span>${viewModel.h3Mode === "R2V" ? "按顺序使用 Picture / Video 标签，并给每个参考分配作用。" : viewModel.h3Mode === "T2VA" ? "不添加图片对齐句，直接从文字构建完整视听时间轴。" : viewModel.h3Mode === "L2VA" ? "从合理的前置状态逐步收束到尾帧。" : "按官方格式先锁定首帧或首尾帧，再写连续动作。"}</span></div>
-            <div><strong>时间轴</strong><span>用 [Shot 1] 开始；后续镜头写明确切时间。</span></div>
-            <div><strong>声音与对白</strong><span>对白放入 d 标签；现场声和背景音乐分开描述。</span></div>
+            <div><strong>${referenceSectionTitle}</strong><span>${referenceSectionDescription}</span></div>
+            <div><strong>${promptUi.t("timelineTitle")}</strong><span>${promptUi.t("timelineDescription")}</span></div>
+            <div><strong>${promptUi.t("soundTitle")}</strong><span>${promptUi.t("soundDescription")}</span></div>
           </div>
           <div class="h3-helper-actions h3-helper-quick-actions">
-            <span>从模板开始，或打开构建器逐项组合；都会新建版本，不覆盖当前提示词。</span>
-            <button class="secondary button-with-icon" id="h3-prompt-template" type="button">${icon("list-ordered")}使用结构模板</button>
+            <span>${promptUi.t("helperIntro")}</span>
+            <button class="secondary button-with-icon" id="h3-prompt-template" type="button">${icon("list-ordered")}${promptUi.t("useTemplate")}</button>
           </div>
           <details class="h3-builder-disclosure">
-            <summary><span><strong>结构化构建器</strong><small>镜头、动作、连续性、声音和屏幕文字</small></span>${icon("chevron-down")}</summary>
+            <summary><span><strong>${promptUi.t("builderTitle")}</strong><small>${promptUi.t("builderHint")}</small></span>${icon("chevron-down")}</summary>
             ${renderH3PromptBuilderMarkup(viewModel.h3PromptBuilder, { icon, escapeHtml, t })}
           </details>
         </div>

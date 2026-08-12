@@ -1,6 +1,6 @@
 import { imageMarkupPromptContext, imageReferenceInputPath } from "../../../core/image-workflow";
 import { imageModelCapabilityFor, normalizeImageTargetResolution } from "../../../core/image-workflow";
-import { createDefaultImageEditDraft } from "../../../core/defaults";
+import { createDefaultImageEditDraft } from "../../../core/draft-defaults";
 import type { AppState, ImageEditDraft, ImagePromptPreset, ImageReferenceRole } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { activeImagePrompt } from "./helpers";
@@ -21,6 +21,10 @@ export interface ImageEditControllerOptions {
   isPromptEnhancing(): boolean;
   setPromptEnhancing(value: boolean): void;
   setPromptRuntimeLoaded(value: boolean): void;
+  clearPromptVersion(): void;
+  undoPromptEdit(): boolean;
+  redoPromptEdit(): boolean;
+  invalidatePromptEditHistory(): void;
   togglePromptModel(): Promise<void>;
   randomSeedValue(): number;
   isEnqueueBusy(): boolean;
@@ -153,6 +157,7 @@ export function mountImageEditController(
   promptInput?.addEventListener("input", () => {
     const draft = getDraft();
     if (!draft) return;
+    options.invalidatePromptEditHistory();
     const versions = [...draft.promptVersions];
     const current = versions[draft.activePromptVersion];
     let activePromptVersion = draft.activePromptVersion;
@@ -178,6 +183,40 @@ export function mountImageEditController(
     window.requestAnimationFrame(() => options.resizePromptInput(promptInput));
     options.updateImagePromptWordCounter(promptInput.value);
   }
+  const focusPromptInput = () => {
+    window.requestAnimationFrame(() => {
+      const nextInput = root.querySelector<HTMLTextAreaElement>("#image-edit-prompt-input");
+      if (!nextInput) return;
+      nextInput.focus();
+      nextInput.setSelectionRange(nextInput.value.length, nextInput.value.length);
+    });
+  };
+  promptInput?.addEventListener("keydown", (event) => {
+    const modifier = event.ctrlKey || event.metaKey;
+    if (!modifier || event.altKey) return;
+    const key = event.key.toLowerCase();
+    const undo = key === "z" && !event.shiftKey;
+    const redo = key === "y" || (key === "z" && event.shiftKey);
+    const handled = undo
+      ? options.undoPromptEdit()
+      : redo
+        ? options.redoPromptEdit()
+        : false;
+    if (!handled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    context.requestRender();
+    focusPromptInput();
+  }, { signal });
+
+  root.querySelector("#clear-image-prompt")?.addEventListener("click", (event) => {
+    event.stopImmediatePropagation();
+    const draft = getDraft();
+    if (!draft) return;
+    options.clearPromptVersion();
+    context.requestRender();
+    focusPromptInput();
+  }, { signal });
 
   root.querySelector("#prompt-enhance-mode")?.addEventListener("change", (event) => {
     options.setPromptEnhanceMode(
@@ -194,7 +233,7 @@ export function mountImageEditController(
     if (options.isPromptEnhancing()) return;
     const draft = getDraft();
     if (!draft) return;
-    const requestPrompt = activeImagePrompt(draft).text.trim();
+    const requestPrompt = activeImagePrompt(draft, context.getState()?.settings.uiLocale).text.trim();
     if (!requestPrompt) {
       context.notify(t(uiKeys.create.validation.imagePromptEmpty));
       return;
@@ -221,6 +260,7 @@ export function mountImageEditController(
       options.setPromptRuntimeLoaded(true);
       const nextDraft = getDraft();
       if (!nextDraft) return;
+      options.invalidatePromptEditHistory();
       const versions = [
         ...nextDraft.promptVersions.slice(0, nextDraft.activePromptVersion + 1),
         {
@@ -243,6 +283,7 @@ export function mountImageEditController(
     event.stopImmediatePropagation();
     const draft = getDraft();
     if (draft) {
+      options.invalidatePromptEditHistory();
       options.patchImageDraft({ activePromptVersion: Math.max(0, draft.activePromptVersion - 1) });
       context.requestRender();
     }
@@ -251,6 +292,7 @@ export function mountImageEditController(
     event.stopImmediatePropagation();
     const draft = getDraft();
     if (draft) {
+      options.invalidatePromptEditHistory();
       options.patchImageDraft({ activePromptVersion: Math.min(draft.promptVersions.length - 1, draft.activePromptVersion + 1) });
       context.requestRender();
     }

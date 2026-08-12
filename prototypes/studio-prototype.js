@@ -46,6 +46,23 @@
     '以 Picture 1 为基础画面，将 Picture 2 的人物置于右侧靠窗空位。严格保持 Picture 2 的身份、脸部、发型、服装与身体比例；仅让右手自然抬起挥手。统一人物与 Picture 1 的透视、尺度、暖色主光、接触阴影、边缘柔度、景深和胶片颗粒。保留 Picture 1 的背景结构和全部未指定内容；避免重复肢体、异常手指、重影、面部漂移和过度锐化。'
   ];
   let imagePromptIndex = 1;
+  const addPromptClearButton = (textarea, onClear) => {
+    if (!textarea) return;
+    const actions = textarea.closest('.panel')?.querySelector('.section-head .actions');
+    if (!actions || actions.querySelector('[data-prompt-clear]')) return;
+    const button = document.createElement('button');
+    button.className = 'btn icon-btn danger';
+    button.type = 'button';
+    button.dataset.promptClear = 'true';
+    button.title = '清空当前提示词版本';
+    button.setAttribute('aria-label', button.title);
+    button.innerHTML = '<i data-lucide="trash-2"></i>';
+    const preset = actions.querySelector('select');
+    if (preset) actions.insertBefore(button, preset);
+    else actions.insertBefore(button, actions.firstChild);
+    button.addEventListener('click', onClear);
+    if (window.lucide) window.lucide.createIcons();
+  };
   const renderImagePromptVersion = () => {
     if (!imagePrompt) return;
     imagePrompt.value = promptVersions[imagePromptIndex];
@@ -59,6 +76,30 @@
   const saveCurrentImagePrompt = () => {
     if (imagePrompt) promptVersions[imagePromptIndex] = imagePrompt.value;
   };
+  addPromptClearButton(
+    root.querySelector('[data-mode-panel="image"] textarea'),
+    () => {
+      const textarea = root.querySelector('[data-mode-panel="image"] textarea');
+      if (textarea) textarea.value = '';
+    }
+  );
+  addPromptClearButton(
+    root.querySelector('[data-mode-panel="video"] textarea'),
+    () => {
+      const textarea = root.querySelector('[data-mode-panel="video"] textarea');
+      if (textarea) textarea.value = '';
+    }
+  );
+  addPromptClearButton(imagePrompt, () => {
+    saveCurrentImagePrompt();
+    if (promptVersions.length > 1) {
+      promptVersions.splice(imagePromptIndex, 1);
+      imagePromptIndex = Math.min(imagePromptIndex, promptVersions.length - 1);
+    } else {
+      promptVersions[0] = '';
+    }
+    renderImagePromptVersion();
+  });
   root.querySelector('[data-image-prompt-prev]')?.addEventListener('click', () => {
     saveCurrentImagePrompt();
     imagePromptIndex = Math.max(0, imagePromptIndex - 1);

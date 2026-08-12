@@ -29,6 +29,7 @@ import {
   flux2Klein4bRequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes
 } from "../../src/core/image-workflow.js";
+import { modelCatalog } from "../../src/core/catalog/index.js";
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 
@@ -418,6 +419,7 @@ interface ModelProfileDefinition {
     expected: string;
     patterns: RegExp[];
     optional?: boolean;
+    installGuide?: ModelComponentStatus["installGuide"];
   }>;
 }
 
@@ -1608,6 +1610,36 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
   }
 ];
 
+function catalogModelProfileDefinitionsFor(
+  ltxModelProfile: Settings["ltxExtensionModelProfile"]
+): ModelProfileDefinition[] {
+  return [...modelCatalog.entries]
+    .sort((left, right) => right.definition.order - left.definition.order)
+    .flatMap((entry) => {
+  const scan = entry.definition.scanVariants?.[ltxModelProfile] ?? entry.definition.scan;
+  if (!scan) return [];
+  const locale = modelCatalog.localized(entry.definition.id, "zh-CN");
+  return [{
+    id: entry.definition.id,
+    name: locale?.name ?? entry.definition.id,
+    category: entry.definition.category,
+    managedBy: scan.managedBy,
+    badge: locale?.badge ?? "",
+    description: locale?.description ?? "",
+    vram: scan.vram,
+    integrated: scan.integrated,
+    runtimeNodeTypes: scan.runtimeNodeTypes,
+    components: scan.components.map((component) => ({
+      label: component.label,
+      expected: component.expected,
+      patterns: [...component.patterns],
+      ...(component.optional ? { optional: true } : {}),
+      installGuide: component.installGuide
+    }))
+  } satisfies ModelProfileDefinition];
+    });
+}
+
 export function evaluateModelProfiles(
   modelFiles: string[],
   ltxModelProfile: Settings["ltxExtensionModelProfile"] = "q3_k_m",
@@ -1616,15 +1648,16 @@ export function evaluateModelProfiles(
   const normalizedFiles = modelFiles.map((filename) =>
     filename.replaceAll("\\", "/")
   );
-  return modelProfileDefinitions
+  const catalogModelProfileDefinitions = catalogModelProfileDefinitionsFor(ltxModelProfile);
+  const catalogModelProfileIds = new Set(catalogModelProfileDefinitions.map((profile) => profile.id));
+  return [
+    ...modelProfileDefinitions.filter((profile) => !catalogModelProfileIds.has(profile.id)),
+    ...catalogModelProfileDefinitions
+  ]
     .filter((profile) => !isRetiredVideoModel(profile.id))
     .map((baseProfile) => {
     const profile = baseProfile.id === "sulphur2"
-      ? {
-          ...baseProfile,
-          name: `Sulphur 2 ${ltxModelProfile.replaceAll("_", " ").toUpperCase()}`,
-          components: sulphurComponentsFor(ltxModelProfile)
-        }
+      ? { ...baseProfile, name: `Sulphur 2 ${ltxModelProfile.replaceAll("_", " ").toUpperCase()}` }
       : baseProfile;
     const components = profile.components.map((component) => {
       const matches = normalizedFiles.filter((filename) =>
@@ -1636,7 +1669,7 @@ export function evaluateModelProfiles(
         ...(component.optional ? { optional: true } : {}),
         expected: component.expected,
         matches,
-        installGuide:
+        installGuide: component.installGuide ??
           installGuides[`${profile.id}:${component.label}`] ??
           installGuides[`minimax_h3_fl2va:${component.label}`] ??
           installGuides[`hunyuan15:${component.label}`]

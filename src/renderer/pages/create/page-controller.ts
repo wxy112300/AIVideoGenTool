@@ -42,6 +42,10 @@ export interface CreatePageControllerOptions {
     setPromptEnhanceMode(mode: ImagePromptPreset): void;
     setPromptEnhancing(value: boolean): void;
     setPromptRuntimeLoaded(value: boolean): void;
+    clearPromptVersion(): void;
+    undoPromptEdit(): boolean;
+    redoPromptEdit(): boolean;
+    invalidatePromptEditHistory(): void;
     togglePromptModel(): Promise<void>;
     isEnqueueBusy(): boolean;
     setEnqueueBusy(value: boolean): void;
@@ -57,6 +61,10 @@ export interface CreatePageControllerOptions {
     isPromptEnhancing(): boolean;
     setPromptEnhancing(value: boolean): void;
     setPromptRuntimeLoaded(value: boolean): void;
+    clearPromptVersion(): void;
+    undoPromptEdit(): boolean;
+    redoPromptEdit(): boolean;
+    invalidatePromptEditHistory(): void;
     togglePromptModel(): Promise<void>;
     getH3PromptBuilder(): H3PromptBuilderInput;
     setH3PromptBuilder(builder: H3PromptBuilderInput): void;
@@ -363,7 +371,7 @@ export function mountCreatePageController(
   const updateDuration = (value: string) => {
     const state = getState();
     if (!state) return;
-    const maxDuration = generationSafetyForTask(state.draft).maxDurationSeconds;
+    const maxDuration = generationSafetyForTask(state.draft, state.settings.uiLocale).maxDurationSeconds;
     const duration = Math.max(1, Math.min(maxDuration, Number(value) || 1));
     options.patchDraft({ duration });
     options.syncEnqueueUi();

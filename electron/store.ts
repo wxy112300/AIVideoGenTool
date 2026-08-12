@@ -19,6 +19,7 @@ import {
   managedPromptModelDefinitions
 } from "../src/core/prompt-models.js";
 import { normalizeImageEditDraft, normalizeImageHistory } from "../src/core/image-project.js";
+import { copyPromptVersions, ensureDraftPromptState } from "../src/core/draft-prompts.js";
 import {
   generationSafetyForTask,
   isRetiredVideoModel,
@@ -311,10 +312,31 @@ export class JsonStore {
       ) as typeof defaultState.settings.h3PromptPresets;
       const imagePromptPresets = normalizeQwenImagePromptPresets(saved.settings?.imagePromptPresets);
       const imageHistory = normalizeImageHistory(saved.imageHistory);
+      const savedDraft = saved.draft;
+      const hasIndependentExtensionPromptState = Array.isArray(savedDraft?.extensionPromptVersions) &&
+        savedDraft.extensionPromptVersions.length > 0 &&
+        Number.isInteger(savedDraft.extensionActivePromptVersion);
+      const legacyExtensionDraft = !hasIndependentExtensionPromptState && savedDraft?.inputMode === "video";
+      const mergedDraft = ensureDraftPromptState({
+        ...defaultState.draft,
+        ...savedDraft,
+        ...(legacyExtensionDraft
+          ? {
+              promptVersions: defaultState.draft.promptVersions,
+              activePromptVersion: defaultState.draft.activePromptVersion,
+              extensionPromptVersions: copyPromptVersions(
+                savedDraft.promptVersions?.length
+                  ? savedDraft.promptVersions
+                  : defaultState.draft.extensionPromptVersions ?? defaultState.draft.promptVersions
+              ),
+              extensionActivePromptVersion: savedDraft.activePromptVersion ?? 0
+            }
+          : {})
+      });
       this.state = {
         ...defaultState,
         ...saved,
-        draft: { ...defaultState.draft, ...saved.draft },
+        draft: mergedDraft,
         imageDraft: normalizeImageEditDraft(saved.imageDraft),
         settings: {
           ...defaultState.settings,
@@ -323,7 +345,7 @@ export class JsonStore {
           imagePromptPresets
         },
         queueRunning: false,
-        schemaVersion: 9,
+        schemaVersion: 10,
         queue: (saved.queue ?? []).map(migrateQueueTask),
         history: (saved.history ?? []).map(migrateHistoryAsset),
         imageHistory
@@ -332,7 +354,8 @@ export class JsonStore {
       const normalizedUiLocale = normalizeUiLocale(savedUiLocale);
       this.state.settings.uiLocale = normalizedUiLocale;
       let needsPersist = saved.queueRunning === true ||
-        savedSchemaVersion < 9 ||
+        savedSchemaVersion < 10 ||
+        !hasIndependentExtensionPromptState ||
         savedUiLocale !== normalizedUiLocale;
       if (typeof saved.settings?.imageOutputDirectory !== "string") {
         this.state.settings.imageOutputDirectory = "";
@@ -467,7 +490,7 @@ export class JsonStore {
         this.state.settings.comfyUrl = migratedComfyUrl;
         needsPersist = true;
       }
-      if (!generationSafetyForTask(this.state.draft).safe) {
+      if (!generationSafetyForTask(this.state.draft, this.state.settings.uiLocale).safe) {
         Object.assign(this.state.draft, {
           duration: 5,
           fps: 24,

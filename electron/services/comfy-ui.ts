@@ -439,6 +439,7 @@ export async function submitTask(
               }
             : {}),
           vramTotalBytes,
+          locale: settings.uiLocale,
           vramAvailableBytes
         });
       } finally {
@@ -470,6 +471,7 @@ export async function submitTask(
         h3ReferenceImages,
         h3ReferenceVideos,
         vramTotalBytes,
+        locale: settings.uiLocale,
         vramAvailableBytes
       });
     } else {
@@ -484,6 +486,7 @@ export async function submitTask(
         inputImage,
         endImage,
         vramTotalBytes,
+        locale: settings.uiLocale,
         vramAvailableBytes
       });
     }

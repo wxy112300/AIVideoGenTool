@@ -93,12 +93,21 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const asset = state?.history.find((item) => item.id === assetId);
     if (!state || !asset) return;
     if (isRetiredVideoModel(asset.modelId)) {
-      context.notify(t(uiKeys.history.actions.retiredModel, { model: modelName(asset.modelId) }));
+      context.notify(t(uiKeys.history.actions.retiredModel, { model: modelName(asset.modelId, state.settings.uiLocale) }));
       return;
     }
     const version = preferredVersion(asset);
     const isExtension = asset.inputMode === "video" || Boolean(asset.sourceVideoPath);
     const sourceVideoDuration = asset.sourceVideoDuration ?? asset.trimEndSeconds ?? 0;
+    const historyPromptVersion = {
+      id: crypto.randomUUID(),
+      label: t(uiKeys.history.actions.fromHistory),
+      text: asset.prompt,
+      createdAt: new Date().toISOString()
+    };
+    const existingPromptVersions = isExtension && state.draft.extensionPromptVersions?.length
+      ? state.draft.extensionPromptVersions
+      : state.draft.promptVersions;
     const draft: Draft = {
       ...state.draft,
       inputMode: isExtension ? "video" : "image",
@@ -124,16 +133,15 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       frameInterpolation: asset.frameInterpolation ?? "off",
       spectrumMode: preferredVersion(asset).spectrumMode ?? "off",
       seed: asset.seed,
-      promptVersions: [
-        ...state.draft.promptVersions,
-        {
-          id: crypto.randomUUID(),
-          label: t(uiKeys.history.actions.fromHistory),
-          text: asset.prompt,
-          createdAt: new Date().toISOString()
-        }
-      ],
-      activePromptVersion: state.draft.promptVersions.length
+      ...(isExtension
+        ? {
+            extensionPromptVersions: [...existingPromptVersions, historyPromptVersion],
+            extensionActivePromptVersion: existingPromptVersions.length
+          }
+        : {
+            promptVersions: [...state.draft.promptVersions, historyPromptVersion],
+            activePromptVersion: state.draft.promptVersions.length
+          })
     };
     await options.saveDraftImmediately(draft);
     options.navigateToCreationMode(isExtension ? "video-extension" : "image-to-video");

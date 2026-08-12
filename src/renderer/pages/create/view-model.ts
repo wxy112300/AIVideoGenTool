@@ -13,7 +13,10 @@ import type {
 } from "../../../types";
 import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
 import { createTranslator, type Translate } from "../../../core/i18n";
+import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import { uiKeys } from "../../../core/i18n-keys";
+import { modelCatalog } from "../../../core/catalog";
+import { h3PromptPackFor, h3PromptPresetForMode } from "../../prompt-packs";
 import {
   imageModelCapabilityFor,
   imageLightningComponentFound,
@@ -23,7 +26,6 @@ import {
   cachedImageProfileAllowsEnqueue
 } from "../../../core/image-workflow";
 import { normalizeImageEditDraft } from "../../../core/image-project";
-import { h3PromptPresetForMode } from "../../../core/h3-prompt-presets";
 import { promptModelSupportsImageEdit, isGemmaPromptModel } from "../../../core/prompt-models";
 import { h3ReferenceSlotCounts } from "../../../core/h3-reference";
 import {
@@ -31,19 +33,16 @@ import {
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
-  isMiniMaxH3SpectrumEligible,
   isMiniMaxH3BoundaryExtensionModel,
-  normalizeH3Steps,
   outputDimensions
 } from "../../../core/workflow";
 import {
   BUILTIN_VIDEO_LORAS,
   H3_TURBO_LORA_ID,
-  isH3TurboEnabled,
   profileProvidesVideoLora,
-  videoLoraCompatibleWithDraft,
-  videoLoraConfigurationIssues
+  videoLoraCompatibleWithDraft
 } from "../../../core/video-loras";
+import { normalizeVideoSteps, resolveVideoGenerationPolicy } from "../../../core/video-policy";
 import { escapeHtml } from "../../shared/dom";
 import { formatBytes } from "../../shared/formatters";
 import { fieldLabelWithTip } from "../../shared/markup";
@@ -56,7 +55,6 @@ import {
   extensionSafetyForDraft,
   h3PromptCheckMarkup,
   h3PromptModeForDraft,
-  h3PromptPresetDescriptions,
   h3PromptPresetOptions,
   interpolationEstimate,
   promptSnippetOptions
@@ -200,11 +198,18 @@ export function buildImageEditPageViewModel(
   const imageModelProfiles = environmentScan?.modelProfiles.filter((profile) => profile.category === "image") ?? [];
   const imageModelOptions = imageModelProfiles.length
     ? imageModelProfiles
-    : [
-        { id: "qwen-image-edit-2511", name: t(uiKeys.create.options.qwenImageModel), category: "image" as const, badge: "Qwen 2511", description: "", vram: "", available: false, integrated: true, components: [] },
-        { id: "flux2-klein-4b", name: t(uiKeys.create.options.fluxImageModel), category: "image" as const, badge: t(uiKeys.create.options.vramBadge), description: "", vram: "", available: false, integrated: true, components: [] }
-      ];
-  const prompt = activeImagePrompt(draft);
+    : modelCatalog.list("image").map((entry) => ({
+        id: entry.definition.id,
+        name: modelCatalog.localized(entry.definition.id, state.settings.uiLocale)?.name ?? entry.definition.id,
+        category: "image" as const,
+        badge: modelCatalog.localized(entry.definition.id, state.settings.uiLocale)?.badge ?? "",
+        description: modelCatalog.localized(entry.definition.id, state.settings.uiLocale)?.description ?? "",
+        vram: entry.definition.scan?.vram ?? "",
+        available: false,
+        integrated: entry.definition.scan?.integrated !== false,
+        components: []
+      }));
+  const prompt = activeImagePrompt(draft, state.settings.uiLocale);
   const imageProfile = environmentScan?.modelProfiles.find(
     (profile) => profile.id === draft.modelId
   );
@@ -282,6 +287,7 @@ export function buildVideoCreatePageViewModel(
     enqueueBusy
   } = options;
   const draft = state.draft;
+  const h3PromptPack = h3PromptPackFor(state.settings.uiLocale);
   const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
   const isR2V = isMiniMaxH3R2vModel(draft.modelId);
   const h3Mode = isMiniMaxH3 ? h3PromptModeForDraft(draft) : undefined;
@@ -294,8 +300,16 @@ export function buildVideoCreatePageViewModel(
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
   const promptAiDisabled = promptRuntimeBusy || state.queueRunning;
-  const turboEnabled = isH3TurboEnabled(draft);
-  const h3Steps = normalizeH3Steps(draft.steps, draft.modelId, draft.videoLoras);
+  const videoPolicy = resolveVideoGenerationPolicy({
+    modelId: draft.modelId,
+    inputMode: draft.inputMode,
+    spectrumMode: draft.spectrumMode,
+    attentionMode: state.settings.h3AttentionMode,
+    videoLoras: draft.videoLoras,
+    locale: state.settings.uiLocale
+  });
+  const turboEnabled = videoPolicy.turboEnabled;
+  const h3Steps = normalizeVideoSteps(draft.steps, videoPolicy);
   const turboLoraProfile = environmentScan?.modelProfiles.find(
     (profile) => profile.id === H3_TURBO_LORA_ID
   );
@@ -308,13 +322,7 @@ export function buildVideoCreatePageViewModel(
   const installReadyLoraDefinitions = addableLoraDefinitions.filter((lora) =>
     environmentScan?.modelProfiles.find((item) => item.id === lora.id)?.available === true
   );
-  const loraIssues = videoLoraConfigurationIssues({
-    modelId: draft.modelId,
-    inputMode: draft.inputMode,
-    spectrumMode: draft.spectrumMode,
-    attentionMode: state.settings.h3AttentionMode,
-    videoLoras: draft.videoLoras
-  });
+  const loraIssues = videoPolicy.issues;
   const loraBlockingIssue = loraIssues.find((issue) => issue.severity === "error");
   const scannedModelProfiles = environmentScan?.modelProfiles;
   const missingSelectedLora = scannedModelProfiles
@@ -327,9 +335,9 @@ export function buildVideoCreatePageViewModel(
     (node) => node.id === "spectrum-minimax-h3"
   );
   const spectrumLoaded = Boolean(spectrumNode?.loaded);
-  const spectrumEligible = isMiniMaxH3SpectrumEligible(draft.modelId) && !turboEnabled;
+  const spectrumEligible = videoPolicy.spectrum.allowed;
   const spectrumReady = draft.spectrumMode !== "balanced" || (
-    spectrumEligible && spectrumLoaded
+    videoPolicy.spectrum.allowed && spectrumLoaded
   );
   const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
   const extending = draft.inputMode === "video";
@@ -339,11 +347,13 @@ export function buildVideoCreatePageViewModel(
   const h3MotionContextReady = !extending || !isR2V || Boolean(
     h3MotionContextNode?.installed || h3MotionContextNode?.loaded
   );
-  const prompt = activePrompt(draft);
+  const prompt = activePrompt(draft, state.settings.uiLocale);
+  const promptVersionIndex = activePromptIndexForDraft(draft);
+  const promptVersionCount = promptVersionsForDraft(draft).length;
   const interpolation = interpolationEstimate(draft);
   const safety = extending
     ? extensionSafetyForDraft(draft, state.settings)
-    : generationSafetyForTask(draft);
+    : generationSafetyForTask(draft, state.settings.uiLocale);
   const supportsEndImage = workflowCapabilities[draft.workflowPath]?.supportsEndImage === true;
   const supportsVideoExtension = workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true;
   const selectedModelProfile = environmentScan?.modelProfiles.find(
@@ -396,6 +406,8 @@ export function buildVideoCreatePageViewModel(
   return {
     draft,
     prompt,
+    promptVersionIndex,
+    promptVersionCount,
     promptRuntimeBusy,
     promptEnhancing,
     extending,
@@ -404,8 +416,9 @@ export function buildVideoCreatePageViewModel(
     h3Mode,
     enhanceMode,
     h3PromptEnhanceTitle: isMiniMaxH3
-      ? h3PromptPresetDescriptions[activeH3PromptPreset]
+      ? h3PromptPack.presetDescriptions[activeH3PromptPreset]
       : "选择提示词扩写方式",
+    promptUi: h3PromptPack.ui,
     releasePromptControlTitle: options.promptRuntimeControlTitle(),
     releasePromptControlIconName: options.promptRuntimeControlIcon(),
     releasePromptControlDisabled: promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready),
@@ -418,9 +431,9 @@ export function buildVideoCreatePageViewModel(
           ? "使用 ComfyUI H3 Prompt Writer 优化"
           : "使用 ComfyUI 原生 Qwen 模型优化",
     h3PromptPresetOptionsMarkup: isMiniMaxH3
-      ? h3PromptPresetOptions(activeH3PromptPreset, isR2V)
+      ? h3PromptPresetOptions(activeH3PromptPreset, isR2V, state.settings.uiLocale)
       : "",
-    promptSnippetOptionsMarkup: promptSnippetOptions(escapeHtml),
+    promptSnippetOptionsMarkup: promptSnippetOptions(escapeHtml, state.settings.uiLocale),
     h3PromptCheckMarkup: isMiniMaxH3
       ? h3PromptCheckMarkup(
           prompt.text,
@@ -429,7 +442,8 @@ export function buildVideoCreatePageViewModel(
           draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"),
           draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"),
           draft.duration,
-          escapeHtml
+          escapeHtml,
+          h3PromptPack.ui
         )
       : "",
     h3PromptBuilder,
@@ -437,7 +451,8 @@ export function buildVideoCreatePageViewModel(
       draft,
       environmentScan,
       workflowCapabilities,
-      bundledWorkflows
+      bundledWorkflows,
+      t
     ),
     resolutionOptionsMarkup: extending && !isMiniMaxH3
       ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p · ${t(uiKeys.create.options.ggufConservative)}</option>`
@@ -493,7 +508,7 @@ export function buildVideoCreatePageViewModel(
         : !spectrumLoaded
           ? t(uiKeys.create.validation.spectrumInstall)
           : t(uiKeys.create.validation.spectrumNative),
-    spectrumModeDisabled: !(spectrumEligible && spectrumLoaded && !(extending && isR2V)),
+    spectrumModeDisabled: !(videoPolicy.spectrum.allowed && spectrumLoaded),
     loraLabelMarkup: fieldLabelWithTip(
       t(uiKeys.create.validation.loraLabel),
       t(uiKeys.create.validation.loraDescription)
@@ -522,7 +537,7 @@ export function buildVideoCreatePageViewModel(
     interpolationOutputFrames: interpolation.outputFrames,
     supportsEndImage,
     selectedWorkflowDescription: extending && !supportsVideoExtension
-      ? `${selectedModelProfile?.available ? t(uiKeys.create.validation.workflowComponentsReady, { name: modelName(draft.modelId) }) : t(uiKeys.create.validation.workflowComponentsMissing)}${t(uiKeys.create.validation.workflowSafetyFailed)}`
+      ? `${selectedModelProfile?.available ? t(uiKeys.create.validation.workflowComponentsReady, { name: modelName(draft.modelId, state.settings.uiLocale) }) : t(uiKeys.create.validation.workflowComponentsMissing)}${t(uiKeys.create.validation.workflowSafetyFailed)}`
       : draft.workflowPath
         ? escapeHtml(Object.values(bundledWorkflows).find((workflow) => workflow.path === draft.workflowPath)?.label ?? draft.workflowPath)
         : t(uiKeys.create.validation.chooseApiWorkflow),

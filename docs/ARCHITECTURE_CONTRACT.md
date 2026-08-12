@@ -37,6 +37,7 @@ Large entry files are an existing risk, not a pattern to expand. When work intro
 ### Draft and queue
 
 - A creation draft is mutable UI state.
+- Image-to-video and video-extension Create modes own separate prompt-version state; legacy drafts without an extension prompt state are migrated by copying the existing prompt once.
 - Submission creates a complete execution snapshot: model, mode, prompt, inputs, output settings, seed, workflow options, runtime profile, and display metadata needed later.
 - Later draft changes cannot alter queued or running work.
 - A multi-output image batch can be one logical queue task while retaining individual output/version identity.
