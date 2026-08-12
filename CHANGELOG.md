@@ -8,6 +8,13 @@
 
 ## 未发布
 
+### 0.18.12 候选 — 2026-08-13
+
+- 将 ComfyUI 进程清单、监听端口识别、强制终止、孤儿进程复检和稳定端口释放迁入独立 shutdown service。
+- 保留 Windows `taskkill /T /F` 与 Node `SIGKILL` 后备路径，以及完整进程 ID、父进程、命令行和失败上下文日志。
+- 重启和环境修复仍通过原有薄包装调用停止服务；更新服务未做改动。
+- 新增 TCP LISTENING 端口匹配、非监听连接排除和 ComfyUI worker/listener PID 去重测试。
+
 ### 0.18.11 候选 — 2026-08-12
 
 - 将 ComfyUI 启动编排迁入独立 runtime service，环境总管改为注入目录发现、Python、Desktop 设置、进程启动和路径能力。
