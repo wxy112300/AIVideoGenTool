@@ -61,6 +61,19 @@ import {
   uniqueWindowsPaths,
   type ComfyInstallation
 } from "./comfy-discovery.js";
+import {
+  availableVramBytesForReserve,
+  comfyUiBundledFrontendArgs,
+  comfyUiMemoryArgs,
+  comfyUiRuntimeProfileForSettings,
+  comfyUiRuntimeProfileFromCommandLine,
+  type ComfyUiRuntimeProfile
+} from "./comfy-runtime-policy.js";
+import {
+  launchDetached,
+  localEndpoint,
+  waitForService
+} from "./local-service-process.js";
 
 export {
   ltxAudioVaeCompatible,
@@ -82,6 +95,13 @@ export {
   buildComfyDesktopSourceCandidates,
   parseComfyDesktop2Registry
 } from "./comfy-discovery.js";
+export {
+  availableVramBytesForReserve,
+  comfyUiBundledFrontendArgs,
+  comfyUiMemoryArgs,
+  comfyUiRuntimeProfileForSettings,
+  comfyUiRuntimeProfileFromCommandLine
+} from "./comfy-runtime-policy.js";
 
 const execFileAsync = promisify(execFile);
 const appLogger = getApplicationLogger();
@@ -2489,134 +2509,7 @@ async function lmStudioItem(settings: Settings): Promise<EnvironmentItem> {
   };
 }
 
-function localEndpoint(rawUrl: string, fallbackPort: number): {
-  host: string;
-  port: number;
-} | null {
-  try {
-    const url = new URL(rawUrl);
-    if (
-      url.protocol !== "http:" ||
-      !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
-    ) {
-      return null;
-    }
-    const port = Number(url.port || fallbackPort);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
-    return { host: "127.0.0.1", port };
-  } catch {
-    return null;
-  }
-}
 
-async function launchDetached(
-  executable: string,
-  args: string[],
-  cwd?: string,
-  env: NodeJS.ProcessEnv = process.env
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(executable, args, {
-      cwd,
-      env,
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true
-    });
-    child.once("error", reject);
-    child.once("spawn", () => {
-      child.unref();
-      resolve();
-    });
-  });
-}
-
-async function waitForService(
-  url: string,
-  timeoutMs = 120_000
-): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(1500)
-      });
-      if (response.ok) return true;
-    } catch {
-      // The process may still be importing models and custom nodes.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-  }
-  return false;
-}
-
-export function comfyUiMemoryArgs(
-  settings: Pick<Settings, "vramReserveGb"> &
-    Partial<Pick<Settings, "defaultImageModel">>
-): string[] {
-  const configuredReserve = Number.isFinite(settings.vramReserveGb)
-    ? settings.vramReserveGb
-    : 1;
-  const isQwenImage = settings.defaultImageModel === "qwen-image-edit-2511";
-  const args = [
-    "--cache-none",
-    "--reserve-vram",
-    String(Math.max(0.5, Math.min(1, configuredReserve)))
-  ];
-  if (isQwenImage) {
-    args.push(
-      "--cpu-vae",
-      "--disable-smart-memory",
-      "--vram-headroom",
-      "0.5"
-    );
-  } else {
-    // On Windows with 24 GB cards, H3's 21 GB transformer plus the 32B
-    // encoder can make pinned/async offload commit over 90 GB and page every
-    // layer. The synchronous path completed the same graph at normal speed.
-    args.push("--disable-pinned-memory", "--disable-async-offload");
-  }
-  return args;
-}
-
-export type ComfyUiRuntimeProfile = "standard" | "qwen-image";
-
-export function comfyUiRuntimeProfileForSettings(
-  settings: Partial<Pick<Settings, "defaultImageModel">>
-): ComfyUiRuntimeProfile {
-  return settings.defaultImageModel === "qwen-image-edit-2511"
-    ? "qwen-image"
-    : "standard";
-}
-
-export function comfyUiRuntimeProfileFromCommandLine(
-  commandLine: string
-): ComfyUiRuntimeProfile | "unknown" {
-  const normalized = commandLine.toLowerCase();
-  if (
-    normalized.includes("--cpu-vae") ||
-    normalized.includes("--disable-smart-memory")
-  ) {
-    return "qwen-image";
-  }
-  if (
-    normalized.includes("--disable-pinned-memory") &&
-    normalized.includes("--disable-async-offload")
-  ) {
-    return "standard";
-  }
-  return "unknown";
-}
-
-export function availableVramBytesForReserve(
-  totalBytes: number,
-  reserveGb: number
-): number {
-  const configuredReserve = Number.isFinite(reserveGb)
-    ? Math.max(0.5, Math.min(1, reserveGb))
-    : 1;
-  return Math.max(0, totalBytes - configuredReserve * 1024 ** 3);
-}
 
 export async function resolveComfyOutputDirectory(
   settings: Settings
@@ -2727,17 +2620,6 @@ async function applyComfyDesktopSettings(settings: Settings): Promise<void> {
   await fs.writeFile(filename, JSON.stringify(next, null, 2), "utf8");
 }
 
-export function comfyUiBundledFrontendArgs(
-  sourceRoot: string,
-  bundledFrontendAvailable: boolean
-): string[] {
-  return bundledFrontendAvailable
-    ? [
-        "--front-end-root",
-        path.join(sourceRoot, "web_custom_versions", "desktop_app")
-      ]
-    : [];
-}
 
 async function startComfyUi(settings: Settings): Promise<string> {
   const endpoint = localEndpoint(settings.comfyUrl, 8188);

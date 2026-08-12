@@ -30,10 +30,8 @@ import {
   prepareH3BoundaryFrame,
   prepareH3MotionContext
 } from "./extension-media.js";
-import {
-  availableVramBytesForReserve,
-  comfyOutputSubfolder
-} from "./environment.js";
+import { comfyOutputSubfolder } from "./environment.js";
+import { availableVramBytesForReserve } from "./comfy-runtime-policy.js";
 import {
   inferH3PromptMode,
   h3DurationPlan,
