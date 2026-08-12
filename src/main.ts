@@ -1,4 +1,5 @@
 import { countPromptWords, recommendedH3PromptWords } from "./core/prompt-count";
+import { createTranslator, translateStaticUiText } from "./core/i18n";
 import "./style.css";
 import {
   AlertTriangle,
@@ -2129,6 +2130,38 @@ function upscaleDialogHtml(): string {
     </div>`;
 }
 
+function uiText(key: string, fallback: string): string {
+  return createTranslator(settingsDraft?.uiLocale ?? state.settings.uiLocale).t(key, undefined, fallback);
+}
+
+function localizeStaticSettingsUi(root: HTMLElement, locale: Settings["uiLocale"]): void {
+  if (locale !== "en-US") return;
+  const ignoredTags = new Set(["CODE", "PRE", "TEXTAREA", "SCRIPT", "STYLE"]);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.parentElement && !ignoredTags.has(node.parentElement.tagName)) {
+      textNodes.push(node as Text);
+    }
+  }
+  textNodes.forEach((node) => {
+    const source = node.nodeValue ?? "";
+    const trimmed = source.trim();
+    if (!trimmed) return;
+    const translated = translateStaticUiText(locale, trimmed);
+    if (translated === trimmed) return;
+    node.nodeValue = source.replace(trimmed, translated);
+  });
+  root.querySelectorAll<HTMLElement>("[aria-label], [placeholder], [title]").forEach((element) => {
+    ["aria-label", "placeholder", "title"].forEach((attribute) => {
+      const source = element.getAttribute(attribute);
+      if (!source) return;
+      const translated = translateStaticUiText(locale, source);
+      if (translated !== source) element.setAttribute(attribute, translated);
+    });
+  });
+}
+
 function shell(content: string): string {
   return `
     <div class="app-shell ${page === "history" || page === "history-detail" || page === "image-history-detail" ? "history-shell" : ""}">
@@ -2139,7 +2172,12 @@ function shell(content: string): string {
         <nav aria-label="主导航">
           ${(["create", "queue", "history", "settings"] as Array<Exclude<Page, "history-detail" | "image-history-detail">>)
             .map((item) => {
-              const labels = { create: "创建", queue: "队列", history: "历史", settings: "设置" };
+              const labels = {
+                create: uiText("nav.create", "创建"),
+                queue: uiText("nav.queue", "队列"),
+                history: uiText("nav.history", "历史"),
+                settings: uiText("nav.settings", "设置")
+              };
               const badge = item === "queue" && state.queue.length
                 ? `<span class="badge">${state.queue.length}</span>`
                 : "";
@@ -4104,6 +4142,7 @@ function syncSettingsDirtyUi(): void {
 
 function settingsPage(): string {
   const settings = settingsDraft ?? state.settings;
+  const translate = createTranslator(settings.uiLocale);
   const settingsDirty = settingsHaveUnsavedChanges();
   const profiles = environmentScan?.modelProfiles ?? [];
   const videoProfiles = orderVideoProfiles(
@@ -4195,6 +4234,16 @@ function settingsPage(): string {
 
   const systemPanel = `
     <section class="settings-panel">
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>${translate.t("settings.uiLanguage.title")}</h2><span class="muted">${translate.t("settings.uiLanguage.description")}</span></div></div>
+        <label>${translate.t("settings.uiLanguage.label")}
+          <select id="ui-locale">
+            <option value="zh-CN" ${settings.uiLocale === "zh-CN" ? "selected" : ""}>简体中文</option>
+            <option value="en-US" ${settings.uiLocale === "en-US" ? "selected" : ""}>English (US)</option>
+          </select>
+        </label>
+        <p class="muted proxy-hint">${translate.t("settings.uiLanguage.help")}</p>
+      </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>本机环境</h2><span class="muted">必需组件、可选工具和本地服务状态</span></div></div>
         ${environmentOverview()}
@@ -4639,6 +4688,13 @@ function render(): void {
     page === "image-history-detail" ? imageHistoryDetailPage() :
     settingsPage();
   appElement.innerHTML = shell(content);
+  document.documentElement.lang = settingsDraft?.uiLocale ?? state.settings.uiLocale ?? "zh-CN";
+  if (page === "settings") {
+    localizeStaticSettingsUi(
+      appElement.querySelector<HTMLElement>(".settings-content") ?? appElement,
+      settingsDraft?.uiLocale ?? state.settings.uiLocale
+    );
+  }
   renderIcons(appElement);
   bindShell();
   bindPageViewportControls();
@@ -8145,7 +8201,7 @@ function formSettings(): Settings {
     safeCancel: checked("safe-cancel", base.safeCancel),
     autoRetryFailedTasks: checked("auto-retry-failed-tasks", base.autoRetryFailedTasks),
     autoRetryCount: Number(value("auto-retry-count", String(base.autoRetryCount))) as Settings["autoRetryCount"],
-    uiLocale: base.uiLocale,
+    uiLocale: value("ui-locale", base.uiLocale ?? "zh-CN") as Settings["uiLocale"],
     promptLanguage: value("prompt-language", base.promptLanguage) as Settings["promptLanguage"],
     promptCreativity: Number(value("prompt-creativity", String(base.promptCreativity))),
     defaultUpscaleModel: value("default-upscale-model", base.defaultUpscaleModel),
@@ -8263,7 +8319,6 @@ function bindSettings(): void {
   }
   if (settingsTab !== "logs" && !environmentScan && !environmentScanning) {
     void runEnvironmentScan(settingsDraft ?? state.settings);
-    return;
   }
   document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(".settings-content input, .settings-content textarea, .settings-content select").forEach((input) => {
     const update = () => {
@@ -8336,6 +8391,10 @@ function bindSettings(): void {
     render();
   });
   document.querySelector<HTMLInputElement>("#auto-retry-failed-tasks")?.addEventListener("change", () => {
+    settingsDraft = formSettings();
+    render();
+  });
+  document.querySelector<HTMLSelectElement>("#ui-locale")?.addEventListener("change", () => {
     settingsDraft = formSettings();
     render();
   });
