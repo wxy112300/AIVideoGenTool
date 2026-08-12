@@ -31,9 +31,7 @@ import {
 } from "../../src/core/image-workflow.js";
 import {
   customNodeCatalog,
-  modelCatalog,
-  workflowDependencyCatalog,
-  workflowDependencyDefinition
+  modelCatalog
 } from "../../src/core/catalog/index.js";
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
@@ -43,6 +41,10 @@ import {
   scanCustomNodes
 } from "./dependency-scanner.js";
 import { installCustomNodePackage } from "./dependency-installer.js";
+import {
+  installWorkflowDependencyPackage,
+  scanWorkflowDependencies
+} from "./dependency-workflows.js";
 
 export {
   ltxAudioVaeCompatible,
@@ -4115,94 +4117,19 @@ export async function installAttentionAcceleration(
   }
 }
 
-function workflowDependenciesFor(comfyRoot: string): WorkflowDependencyStatus[] {
-  return workflowDependencyCatalog.map((definition) => ({
-    id: definition.id,
-    name: definition.name,
-    purpose: definition.purpose,
-    installed: false,
-    path: comfyRoot ? path.join(comfyRoot, ...definition.targetSegments) : "",
-    sourceUrl: definition.sourceUrl
-  }));
-}
-
-async function scanWorkflowDependencies(
-  comfyRoot: string
-): Promise<WorkflowDependencyStatus[]> {
-  return Promise.all(workflowDependenciesFor(comfyRoot).map(async (workflow) => ({
-    ...workflow,
-    installed: Boolean(workflow.path) && await exists(workflow.path)
-  })));
-}
-
 export async function installWorkflowDependency(
   workflowId: WorkflowDependencyStatus["id"],
   settings: Settings,
   onLog?: (message: string) => void
 ): Promise<{ ok: boolean; message: string; log?: string }> {
-  const definition = workflowDependencyDefinition(workflowId);
-  if (!definition) {
-    return { ok: false, message: "未知的工作流依赖，已拒绝安装。" };
-  }
-  const installLog: string[] = [];
-  const report = (message: string) => {
-    const normalized = message.trim();
-    if (!normalized) return;
-    installLog.push(normalized);
-    onLog?.(normalized);
-  };
-  report(proxyLogLabel(settings));
-  let temporaryFile = "";
-  try {
-    const comfyRoot = await findComfyRoot(settings);
-    if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
-    const workflow = workflowDependenciesFor(comfyRoot).find(
-      (candidate) => candidate.id === definition.id
-    );
-    if (!workflow) throw new Error("工作流依赖定义不完整，已停止安装。");
-    const targetDirectory = path.dirname(workflow.path);
-    await fs.mkdir(targetDirectory, { recursive: true });
-    temporaryFile = path.join(
-      targetDirectory,
-      `.video_minimax_h3_i2v-${crypto.randomUUID()}.download`
-    );
-    const curl = await findExecutable("curl.exe");
-    if (!curl) throw new Error("没有找到 curl，无法下载官方工作流。");
-    const args = ["-fL", "--retry", "2", "--connect-timeout", "20"];
-    if (settings.proxyEnabled) {
-      args.push("--proxy", normalizeProxyUrl(settings.proxyUrl));
-    }
-    args.push(workflow.sourceUrl, "--output", temporaryFile);
-    report(`下载 ${workflow.sourceUrl}`);
-    const output = await runLoggedProcess(curl, args, {
-      timeoutMs: 180_000,
-      env: downloadEnvironment(settings),
-      onLog: report
-    });
-    if (!output) report("官方工作流下载完成");
-    report("正在校验工作流 JSON……");
-    const source = await fs.readFile(temporaryFile, "utf8");
-    const parsed = JSON.parse(source) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      throw new Error("下载的工作流不是有效 JSON 对象。");
-    }
-    await fs.copyFile(temporaryFile, workflow.path);
-    report(`已安装：${workflow.path}`);
-    return {
-      ok: true,
-      message: "MiniMax H3 I2V 官方工作流已安装到 ComfyUI。",
-      log: installLog.join("\n\n")
-    };
-  } catch (error) {
-    report(error instanceof Error ? error.message : String(error));
-    return {
-      ok: false,
-      message: error instanceof Error ? error.message : String(error),
-      log: installLog.join("\n\n")
-    };
-  } finally {
-    if (temporaryFile) await fs.rm(temporaryFile, { force: true }).catch(() => undefined);
-  }
+  return installWorkflowDependencyPackage(workflowId, settings, {
+    findComfyRoot,
+    findExecutable,
+    normalizeProxyUrl,
+    downloadEnvironment,
+    proxyLogLabel,
+    runLoggedProcess
+  }, onLog);
 }
 
 export async function scanEnvironment(
