@@ -1,5 +1,37 @@
 import type { ModelScanProfile, UiLocale, VideoLoraSelection } from "../types.js";
+import {
+  H3_FL2VA_MODEL_ID,
+  H3_PINK_FLUFFY_BUNNY_LORA_FILENAME,
+  H3_PINK_FLUFFY_BUNNY_LORA_ID,
+  H3_REALISM_PEOPLE_LORA_FILENAME,
+  H3_REALISM_PEOPLE_LORA_ID,
+  H3_TURBO_LORA_FILENAME,
+  H3_TURBO_LORA_ID,
+  LEGACY_H3_TURBO_MODEL_ID,
+  VIDEO_LORA_DEFINITIONS
+} from "./catalog/loras/definitions.js";
+import type {
+  VideoLoraRules,
+  VideoLoraSettingKey
+} from "./catalog/loras/definitions.js";
 import { loraLocaleFor, loraRuleText } from "./catalog/loras/locales.js";
+
+export {
+  H3_FL2VA_MODEL_ID,
+  H3_PINK_FLUFFY_BUNNY_LORA_FILENAME,
+  H3_PINK_FLUFFY_BUNNY_LORA_ID,
+  H3_REALISM_PEOPLE_LORA_FILENAME,
+  H3_REALISM_PEOPLE_LORA_ID,
+  H3_TURBO_LORA_FILENAME,
+  H3_TURBO_LORA_ID,
+  LEGACY_H3_TURBO_MODEL_ID
+};
+export type {
+  VideoLoraCombinationRule,
+  VideoLoraRules,
+  VideoLoraSettingConflict,
+  VideoLoraSettingKey
+} from "./catalog/loras/definitions.js";
 
 export interface VideoLoraGuide {
   summary: string;
@@ -8,31 +40,6 @@ export interface VideoLoraGuide {
   stacking: string;
   compatibility: string;
   source: string;
-}
-
-export type VideoLoraSettingKey = "spectrumMode" | "attentionMode";
-
-export interface VideoLoraSettingConflict {
-  setting: VideoLoraSettingKey;
-  values: string[];
-  severity: "error" | "warning";
-  localeKey?: string;
-  message?: string;
-}
-
-export interface VideoLoraCombinationRule {
-  loraId: string;
-  severity: "error" | "warning";
-  localeKey?: string;
-  message?: string;
-}
-
-export interface VideoLoraRules {
-  orderPriority: number;
-  settingConflicts: VideoLoraSettingConflict[];
-  combinations: VideoLoraCombinationRule[];
-  workflowRequirement?: "h3-turbo-sampling";
-  promptPrefixes?: string[];
 }
 
 export interface VideoLoraConfigurationIssue {
@@ -47,99 +54,21 @@ export interface BuiltinVideoLora extends VideoLoraSelection {
   rules: VideoLoraRules;
 }
 
-export const H3_TURBO_LORA_ID = "minimax-h3-lightx2v-turbo-4step";
-export const LEGACY_H3_TURBO_MODEL_ID = "minimax_h3_fl2va_turbo";
-export const H3_FL2VA_MODEL_ID = "minimax_h3_fl2va";
-export const H3_TURBO_LORA_FILENAME =
-  "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors";
-export const H3_PINK_FLUFFY_BUNNY_LORA_ID = "minimax-h3-pink-fluffy-bunny-nsfw";
-export const H3_PINK_FLUFFY_BUNNY_LORA_FILENAME =
-  "PinkFluffyBunny-pruned-v1-rank128.safetensors";
-export const H3_REALISM_PEOPLE_LORA_ID = "minimax-h3-realism-people";
-export const H3_REALISM_PEOPLE_LORA_FILENAME =
-  "h3-realism-people-t2v-i2v-r2v.safetensors";
+export const BUILTIN_VIDEO_LORAS: readonly BuiltinVideoLora[] = VIDEO_LORA_DEFINITIONS.map((definition) => ({
+  ...videoLoraSelection(definition),
+  guide: { ...loraLocaleFor(definition.id)?.guide! },
+  rules: definition.rules
+}));
 
-export const H3_TURBO_LORA: BuiltinVideoLora = {
-  id: H3_TURBO_LORA_ID,
-  name: "LightX2V Turbo 4-Step",
-  filename: H3_TURBO_LORA_FILENAME,
-  strength: 0.75,
-  modelFamily: "minimax-h3",
-  compatibleModelIds: [H3_FL2VA_MODEL_ID],
-  compatibleInputModes: ["image"],
-  purpose: "performance",
-  guide: {
-    ...loraLocaleFor(H3_TURBO_LORA_ID)?.guide!
-  },
-  rules: {
-    orderPriority: 10,
-    settingConflicts: [{
-      setting: "spectrumMode",
-      values: ["balanced"],
-      severity: "error",
-      localeKey: "turboSpectrum",
-    }],
-    combinations: [],
-    workflowRequirement: "h3-turbo-sampling"
-  }
-};
+function requiredBuiltinVideoLora(id: string): BuiltinVideoLora {
+  const lora = BUILTIN_VIDEO_LORAS.find((candidate) => candidate.id === id);
+  if (!lora) throw new Error(`Missing built-in video LoRA definition: ${id}`);
+  return lora;
+}
 
-export const H3_PINK_FLUFFY_BUNNY_LORA: BuiltinVideoLora = {
-  id: H3_PINK_FLUFFY_BUNNY_LORA_ID,
-  name: "PinkFluffyBunny NSFW",
-  filename: H3_PINK_FLUFFY_BUNNY_LORA_FILENAME,
-  strength: 0.5,
-  modelFamily: "minimax-h3",
-  compatibleModelIds: [H3_FL2VA_MODEL_ID],
-  compatibleInputModes: ["image"],
-  purpose: "content",
-  guide: {
-    ...loraLocaleFor(H3_PINK_FLUFFY_BUNNY_LORA_ID)?.guide!
-  },
-  rules: {
-    orderPriority: 50,
-    settingConflicts: [],
-    combinations: [{
-      loraId: H3_TURBO_LORA_ID,
-      severity: "warning",
-      localeKey: "pinkTurbo",
-    }]
-  }
-};
-
-export const H3_REALISM_PEOPLE_LORA: BuiltinVideoLora = {
-  id: H3_REALISM_PEOPLE_LORA_ID,
-  name: "MiniMax H3 Realism People",
-  filename: H3_REALISM_PEOPLE_LORA_FILENAME,
-  strength: 0.8,
-  modelFamily: "minimax-h3",
-  compatibleModelIds: [H3_FL2VA_MODEL_ID, "minimax_h3_ref2va"],
-  compatibleInputModes: ["image"],
-  purpose: "quality",
-  guide: {
-    ...loraLocaleFor(H3_REALISM_PEOPLE_LORA_ID)?.guide!
-  },
-  rules: {
-    orderPriority: 40,
-    settingConflicts: [],
-    combinations: [{
-      loraId: H3_TURBO_LORA_ID,
-      severity: "warning",
-      localeKey: "realismTurbo"
-    }, {
-      loraId: H3_PINK_FLUFFY_BUNNY_LORA_ID,
-      severity: "warning",
-      localeKey: "realismPink"
-    }],
-    promptPrefixes: ["r34l1sm"]
-  }
-};
-
-export const BUILTIN_VIDEO_LORAS: readonly BuiltinVideoLora[] = [
-  H3_TURBO_LORA,
-  H3_REALISM_PEOPLE_LORA,
-  H3_PINK_FLUFFY_BUNNY_LORA
-];
+export const H3_TURBO_LORA = requiredBuiltinVideoLora(H3_TURBO_LORA_ID);
+export const H3_REALISM_PEOPLE_LORA = requiredBuiltinVideoLora(H3_REALISM_PEOPLE_LORA_ID);
+export const H3_PINK_FLUFFY_BUNNY_LORA = requiredBuiltinVideoLora(H3_PINK_FLUFFY_BUNNY_LORA_ID);
 
 export function detectedVideoLoraFilename(profile: ModelScanProfile | undefined): string {
   const match = profile?.components.flatMap((component) => component.matches)[0];
@@ -176,7 +105,8 @@ export function videoLoraSelection(
     modelFamily: definition.modelFamily,
     compatibleModelIds: [...definition.compatibleModelIds],
     compatibleInputModes: [...definition.compatibleInputModes],
-    purpose: definition.purpose
+    purpose: definition.purpose,
+    promptPrefixes: [...(definition.promptPrefixes ?? [])]
   };
 }
 
@@ -303,7 +233,10 @@ export function normalizeVideoLoras(
         compatibleInputModes: Array.isArray(candidate.compatibleInputModes)
           ? candidate.compatibleInputModes.filter((mode): mode is "image" | "video" => mode === "image" || mode === "video")
           : ["image"],
-        purpose: candidate.purpose ?? "style"
+        purpose: candidate.purpose ?? "style",
+        promptPrefixes: Array.isArray(candidate.promptPrefixes)
+          ? candidate.promptPrefixes.filter((prefix): prefix is string => typeof prefix === "string")
+          : []
       };
     const normalizedItem = videoLoraSelection(
       definition,
@@ -379,7 +312,7 @@ export function videoPromptForLoras(
   loras: readonly VideoLoraSelection[] | undefined
 ): string {
   const prefixes = [...new Set((loras ?? []).flatMap((lora) =>
-    videoLoraDefinition(lora.id)?.rules.promptPrefixes ?? []
+    lora.promptPrefixes ?? videoLoraDefinition(lora.id)?.promptPrefixes ?? []
   ))];
   return prefixes.reduceRight((current, prefix) => {
     const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

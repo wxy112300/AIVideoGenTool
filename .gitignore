@@ -9,7 +9,7 @@ temp/
 *.partial
 
 # Local models and caches
-models/
+/models/
 node_modules/
 .cache/
 

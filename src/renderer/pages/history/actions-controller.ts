@@ -1,5 +1,6 @@
 import type { AppState } from "../../../types";
 import { uiKeys } from "../../../core/i18n-keys";
+import { videoPromptForLoras } from "../../../core/video-loras";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 
 export interface HistoryActionsControllerOptions {
@@ -50,7 +51,13 @@ export function mountHistoryActionsController(
     const asset = context.getState()?.history.find(
       (item) => item.id === options.getSelectedHistoryAssetId()
     );
-    if (asset) await options.copyHistoryText(asset.prompt, t(uiKeys.history.menu.promptCopied));
+    if (asset) {
+      const version = asset.versions.find((item) => item.id === options.getSelectedHistoryVersionId());
+      await options.copyHistoryText(
+        videoPromptForLoras(asset.prompt, version?.videoLoras ?? asset.videoLoras),
+        t(uiKeys.history.menu.promptCopied)
+      );
+    }
   }, { signal });
 
   root.querySelector("[data-copy-image-prompt]")?.addEventListener("click", async (event) => {

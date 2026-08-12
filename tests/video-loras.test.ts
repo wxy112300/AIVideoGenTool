@@ -6,6 +6,7 @@ import {
   H3_TURBO_LORA,
   normalizeVideoLoras,
   reorderVideoLoras,
+  videoLoraSelection,
   videoLoraCompatibleWithDraft,
   videoLoraConfigurationIssues,
   videoPromptForLoras
@@ -56,6 +57,21 @@ describe("video LoRA catalog", () => {
       "a woman, r34l1sm, turns toward the window",
       [H3_REALISM_PEOPLE_LORA]
     )).toBe("r34l1sm, a woman, turns toward the window");
+  });
+
+  it("freezes automatic prompt prefixes into a queued LoRA selection snapshot", () => {
+    const snapshot = videoLoraSelection(H3_REALISM_PEOPLE_LORA);
+    expect(snapshot.promptPrefixes).toEqual(["r34l1sm"]);
+    expect(videoPromptForLoras("portrait close-up", [{
+      ...snapshot,
+      id: "archived-realism-definition"
+    }])).toBe("r34l1sm, portrait close-up");
+  });
+
+  it("hydrates automatic prompt prefixes when normalizing old persisted built-in selections", () => {
+    const { promptPrefixes: _omitted, ...legacySelection } = H3_REALISM_PEOPLE_LORA;
+    const [normalized] = normalizeVideoLoras([legacySelection]);
+    expect(normalized?.promptPrefixes).toEqual(["r34l1sm"]);
   });
 
   it("normalizes both built-ins without merging their strengths", () => {

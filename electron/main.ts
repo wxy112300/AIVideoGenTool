@@ -102,7 +102,8 @@ import {
 import {
   isH3TurboEnabled,
   normalizeVideoLoras,
-  videoLoraConfigurationIssues
+  videoLoraConfigurationIssues,
+  videoLoraSelection
 } from "../src/core/video-loras.js";
 import {
   uniqueUpscaleFilename,
@@ -1248,7 +1249,7 @@ function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask 
     sourceHeight: draft.sourceHeight,
     endImagePath: draft.endImagePath,
     modelId: draft.modelId,
-    videoLoras: draft.videoLoras.map((lora) => ({ ...lora })),
+    videoLoras: draft.videoLoras.map((lora) => videoLoraSelection(lora)),
     workflowPath: draft.workflowPath,
     ratio: draft.ratio,
     resolution: draft.resolution,
@@ -1479,7 +1480,7 @@ function extensionTaskFromDraft(
     sourceWidth: draft.sourceWidth,
     sourceHeight: draft.sourceHeight,
     modelId: draft.modelId,
-    videoLoras: draft.videoLoras.map((lora) => ({ ...lora })),
+    videoLoras: draft.videoLoras.map((lora) => videoLoraSelection(lora)),
     workflowPath: draft.workflowPath,
     ratio: "source",
     resolution: isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
@@ -2342,7 +2343,7 @@ async function executeQueue(): Promise<void> {
             createdAt: completedAt,
             outputFilename: completedTask.outputFilename,
             modelId: completedTask.modelId,
-            videoLoras: completedTask.videoLoras?.map((lora) => ({ ...lora })),
+            videoLoras: completedTask.videoLoras?.map((lora) => videoLoraSelection(lora)),
             width,
             height,
             duration: completedTask.duration,
@@ -2371,7 +2372,7 @@ async function executeQueue(): Promise<void> {
             createdAt: completedAt,
             updatedAt: completedAt,
             modelId: completedTask.modelId,
-            videoLoras: completedTask.videoLoras?.map((lora) => ({ ...lora })),
+            videoLoras: completedTask.videoLoras?.map((lora) => videoLoraSelection(lora)),
             duration: completedTask.duration,
             resolution: completedTask.resolution,
             steps: completedTask.steps,
@@ -2411,7 +2412,7 @@ async function executeQueue(): Promise<void> {
             createdAt: completedAt,
             outputFilename: completedTask.outputFilename,
             modelId: completedTask.modelId,
-            videoLoras: completedTask.videoLoras?.map((lora) => ({ ...lora })),
+            videoLoras: completedTask.videoLoras?.map((lora) => videoLoraSelection(lora)),
             width,
             height,
             duration: totalDuration,
@@ -2441,7 +2442,7 @@ async function executeQueue(): Promise<void> {
             createdAt: completedAt,
             updatedAt: completedAt,
             modelId: completedTask.modelId,
-            videoLoras: completedTask.videoLoras?.map((lora) => ({ ...lora })),
+            videoLoras: completedTask.videoLoras?.map((lora) => videoLoraSelection(lora)),
             duration: totalDuration,
             resolution: completedTask.resolution,
             steps: completedTask.steps,

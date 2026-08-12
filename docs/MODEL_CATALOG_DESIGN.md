@@ -21,7 +21,8 @@ The current model data is split across several implementation surfaces:
 - `src/renderer/pages/create/helpers.ts`: Create fallback list, ordering, mode suffixes, and some capability checks.
 - `src/core/workflow.ts`: model-family predicates, safety limits, output dimensions, and workflow-specific behavior.
 - `src/core/image-workflow.ts`: image capabilities and image adapters.
-- `src/core/video-loras.ts`: LoRA definitions and compatibility rules.
+- `src/core/catalog/loras/definitions.ts`: canonical LoRA technical metadata, compatibility rules, scan patterns, install guides, and automatic Prompt prefixes.
+- `src/core/video-loras.ts`: runtime selection, persisted-snapshot normalization, policy checks, and compatibility exports derived from the canonical definitions.
 - `workflows/`: API-format workflow templates.
 
 The catalog now covers the remaining Prompt, image, legacy video, upscale, interpolation, and LoRA entries as well. H3 models have per-model directories; the other migrated entries are grouped by capability in `src/core/catalog/models/prompt.ts`, `image.ts`, `legacy-video.ts`, `post-process.ts`, and `loras.ts`. `electron/services/environment.ts` consumes catalog scan definitions first, while legacy definitions remain as a compatibility fallback during cleanup.
@@ -162,6 +163,10 @@ Do not move arbitrary node-input mapping into editable metadata. A new adapter i
 
 LoRA definitions and custom-node definitions should follow the same pattern, but they are separate registries. A model definition references compatible LoRA IDs and node IDs; it does not duplicate their descriptions.
 
+Built-in video LoRAs use `src/core/catalog/loras/definitions.ts` as their single technical source of truth. Settings/environment scanning and runtime selection are adapters over that registry; filename, default strength, compatible model/input modes, load order, conflicts, download metadata, and automatic Prompt prefixes must not be copied into another list. Localized user guidance remains in locale modules because it is presentation content rather than execution metadata.
+
+When a LoRA is added to a draft or queue task, its execution-relevant fields—including automatic Prompt prefixes—are copied into the persisted `VideoLoraSelection` snapshot. New catalog changes therefore cannot silently alter an already queued task. Normalization may hydrate fields missing from older built-in records for backward compatibility.
+
 ## Add-model workflow
 
 For a model using an existing adapter:
@@ -203,7 +208,7 @@ Dynamic metadata updates should be limited to catalog data. They must not be all
 2. Move environment scan definitions and install guides behind the catalog. **Implemented for all current model profiles; legacy fallback remains temporarily.**
 3. Make Create and Settings consume catalog entries and remove duplicate fallback arrays. **Implemented for video and image fallbacks.**
 4. Replace `modelName()` and family predicates with catalog queries where behavior is equivalent. **Implemented for model names and H3 family/variant predicates.**
-5. Split the remaining transition module into per-model directories and migrate image capability/LoRA registries separately.
+5. Split the remaining transition module into per-model directories and migrate image capability/LoRA registries separately. **LoRA technical metadata is now unified; per-LoRA module splitting remains optional as the registry grows.**
 6. Add catalog validation, persisted-ID compatibility tests, and a new-model checklist.
 
 Each step should remain independently typechecked and behavior-tested.

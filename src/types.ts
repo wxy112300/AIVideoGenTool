@@ -160,6 +160,7 @@ export interface VideoLoraSelection {
   compatibleModelIds: string[];
   compatibleInputModes: Array<"image" | "video">;
   purpose: VideoLoraPurpose;
+  promptPrefixes?: string[];
 }
 
 export type LtxExtensionModelProfile =

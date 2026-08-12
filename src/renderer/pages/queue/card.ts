@@ -7,6 +7,7 @@ import { upscaleDimensions } from "../../../core/upscale";
 import type { Draft, QueueTask } from "../../../types";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
+import { videoPromptForLoras } from "../../../core/video-loras";
 
 export type QueueTaskInput =
   | { kind: "image"; path: string }
@@ -74,12 +75,17 @@ export function renderQueueTaskCard(
   options: QueueCardRenderOptions
 ): string {
   const t = options.t;
+  const executionPrompt = task.taskType === "generation" || task.taskType === "extension"
+    ? videoPromptForLoras(task.prompt, task.videoLoras)
+    : task.taskType === "image-generation"
+      ? task.prompt
+      : "";
   const description = task.taskType === "image-generation"
-    ? `${task.prompt} · ${t(uiKeys.queue.card.imageCandidates, { count: task.outputCount })}`
+    ? `${executionPrompt} · ${t(uiKeys.queue.card.imageCandidates, { count: task.outputCount })}`
     : task.taskType === "generation"
-    ? task.prompt
+    ? executionPrompt
     : task.taskType === "extension"
-      ? `${task.prompt} · ${t(uiKeys.queue.card.extensionRetain, { start: task.trimStartSeconds.toFixed(1), end: task.trimEndSeconds.toFixed(1) })}`
+      ? `${executionPrompt} · ${t(uiKeys.queue.card.extensionRetain, { start: task.trimStartSeconds.toFixed(1), end: task.trimEndSeconds.toFixed(1) })}`
       : `${task.sourceFilename} → ${task.outputFilename}`;
   const upscaleOutput = task.taskType === "upscale"
     ? upscaleDimensions(task.sourceWidth, task.sourceHeight, task.targetHeight)

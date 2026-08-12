@@ -7,6 +7,7 @@ import type {
 } from "../../../types";
 import type { HistoryKind } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
+import { videoPromptForLoras } from "../../../core/video-loras";
 import {
   renderHistoryHeading,
   renderImageLightboxMarkup,
@@ -180,6 +181,10 @@ export function renderHistoryDetailPage(
   const completedAt = options.formatFullHistoryTime(version.createdAt);
   const fps = version.fps;
   const performanceStats = version.performanceStats;
+  const executionPrompt = videoPromptForLoras(
+    asset.prompt,
+    version.videoLoras ?? asset.videoLoras
+  );
   const elapsedSeconds = version.startedAt
     ? Math.max(0, (new Date(version.createdAt).getTime() - new Date(version.startedAt).getTime()) / 1000)
     : null;
@@ -234,7 +239,7 @@ export function renderHistoryDetailPage(
     <section class="history-record-grid">
       <article class="panel history-record full">
         <div class="history-record-heading"><h2>${options.t(uiKeys.history.page.promptHeading)}</h2><button class="ghost button-with-icon" data-copy-prompt>${options.icon("copy")}${options.t(uiKeys.history.page.copyPrompt)}</button></div>
-        <span class="muted">${options.t(uiKeys.history.page.fullPrompt)}</span><div class="history-prompt-scroll" tabindex="0" aria-label="${options.t(uiKeys.history.page.fullPrompt)}"><p class="history-prompt">${options.escapeHtml(asset.prompt)}</p></div>
+        <span class="muted">${options.t(uiKeys.history.page.fullPrompt)}</span><div class="history-prompt-scroll" tabindex="0" aria-label="${options.t(uiKeys.history.page.fullPrompt)}"><p class="history-prompt">${options.escapeHtml(executionPrompt)}</p></div>
       </article>
       <article class="panel history-record">
         <h2>${options.t(uiKeys.history.page.generationParams)}</h2>

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { modelCatalog } from "../src/core/catalog";
+import { VIDEO_LORA_DEFINITIONS } from "../src/core/catalog/loras/definitions";
+import { BUILTIN_VIDEO_LORAS } from "../src/core/video-loras";
 
 describe("model catalog", () => {
   it("registers H3 models from one index", () => {
@@ -52,6 +54,27 @@ describe("model catalog", () => {
       "minimax-h3-realism-people",
       "minimax-h3-pink-fluffy-bunny-nsfw"
     ]);
+  });
+
+  it("derives LoRA scanning and runtime metadata from the same definitions", () => {
+    expect(modelCatalog.list("lora").map((entry) => entry.definition.id))
+      .toEqual(VIDEO_LORA_DEFINITIONS.map((lora) => lora.id));
+    expect(BUILTIN_VIDEO_LORAS.map((lora) => ({
+      id: lora.id,
+      filename: lora.filename,
+      strength: lora.strength,
+      promptPrefixes: lora.promptPrefixes
+    }))).toEqual(VIDEO_LORA_DEFINITIONS.map((lora) => ({
+      id: lora.id,
+      filename: lora.filename,
+      strength: lora.strength,
+      promptPrefixes: lora.promptPrefixes
+    })));
+    for (const lora of VIDEO_LORA_DEFINITIONS) {
+      expect(lora.scan.components.some((component) =>
+        component.expected.replaceAll("\\", "/").endsWith(`loras/${lora.filename}`)
+      ), lora.id).toBe(true);
+    }
   });
 
   it("provides English display metadata for every catalog entry", () => {
