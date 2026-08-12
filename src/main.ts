@@ -2464,6 +2464,21 @@ registerRendererEvents({
       .slice(-40_000);
     return attentionAccelerationLog;
   },
+  appendDependencyInstallLog: (progress) => {
+    const current = progress.kind === "custom-node"
+      ? customNodeLogs[progress.id] ?? ""
+      : workflowDependencyLogs[progress.id] ?? "";
+    const next = [current, progress.message]
+      .filter(Boolean)
+      .join("\n")
+      .slice(-60_000);
+    if (progress.kind === "custom-node") {
+      customNodeLogs = { ...customNodeLogs, [progress.id]: next };
+    } else {
+      workflowDependencyLogs = { ...workflowDependencyLogs, [progress.id]: next };
+    }
+    return next;
+  },
   requestRender: render
 });
 

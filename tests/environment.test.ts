@@ -27,6 +27,7 @@ import {
   patchLtxAudioVaeCompatibility,
   patchVideoHelperBatchCompatibility,
   renameWithRetry,
+  runLoggedProcess,
   selectLlamaServerReleaseAssets,
   shouldReportComfyDatabaseIssue,
   tritonRequirementForTorch,
@@ -86,6 +87,30 @@ describe("SageAttention environment selection", () => {
       torchVersion: "2.8.0+cu129",
       cudaVersion: "12.9"
     })).toBeNull();
+  });
+});
+
+describe("dependency installer subprocess feedback", () => {
+  it("streams command output before returning the collected log", async () => {
+    const messages: string[] = [];
+    const output = await runLoggedProcess(
+      process.execPath,
+      ["-e", "console.log('download started'); console.error('dependency ready')"],
+      { timeoutMs: 5_000, onLog: (message) => messages.push(message) }
+    );
+
+    expect(messages).toContain("download started");
+    expect(messages).toContain("dependency ready");
+    expect(output).toContain("download started");
+    expect(output).toContain("dependency ready");
+  });
+
+  it("stops a command that exceeds its explicit time limit", async () => {
+    await expect(runLoggedProcess(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)"],
+      { timeoutMs: 150 }
+    )).rejects.toThrow("已停止");
   });
 });
 

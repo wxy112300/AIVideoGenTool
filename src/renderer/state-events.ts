@@ -1,6 +1,7 @@
 import type {
   AppApi,
   AppState,
+  DependencyInstallProgress,
   HistoryMigrationProgress,
   ImageAssetLibraryProgress,
   TaskPreview,
@@ -36,6 +37,7 @@ export interface RendererEventOptions {
   setImageAssetLibraryProgress(progress: ImageAssetLibraryProgress): void;
   taskPreviews: Record<string, string>;
   appendAttentionAccelerationLog(message: string): string;
+  appendDependencyInstallLog(progress: DependencyInstallProgress): string;
   requestRender(): void;
 }
 
@@ -130,6 +132,16 @@ export function registerRendererEvents(
     options.studio.onAttentionInstallLog((message) => {
       const log = options.appendAttentionAccelerationLog(message);
       const logElement = document.querySelector<HTMLElement>("#attention-install-log");
+      if (logElement) {
+        logElement.textContent = log;
+        logElement.scrollTop = logElement.scrollHeight;
+      }
+    }),
+    options.studio.onDependencyInstallLog((progress) => {
+      const log = options.appendDependencyInstallLog(progress);
+      const logElement = document.querySelector<HTMLElement>(
+        `[data-dependency-install-log="${CSS.escape(`${progress.kind}:${progress.id}`)}"]`
+      );
       if (logElement) {
         logElement.textContent = log;
         logElement.scrollTop = logElement.scrollHeight;

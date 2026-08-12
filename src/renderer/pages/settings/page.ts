@@ -523,7 +523,7 @@ export function renderSettingsPage(
               <div class="model-title"><h3>${escape(workflow.name)}</h3><span class="model-badge">${s("nodes.officialWorkflow")}</span></div>
               <p>${escape(workflow.purpose)}</p>
               <code>${escape(workflow.path || workflow.sourceUrl)}</code>
-              ${viewModel.workflowDependencyLogs[workflow.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre>${escape(viewModel.workflowDependencyLogs[workflow.id])}</pre></details>` : ""}
+              ${viewModel.workflowDependencyLogs[workflow.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`workflow:${workflow.id}`)}">${escape(viewModel.workflowDependencyLogs[workflow.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
               <span class="model-availability ${workflow.installed ? "available" : "missing"}">${workflow.installed ? `${icon("circle-check")} ${s("nodes.installed")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
@@ -538,7 +538,7 @@ export function renderSettingsPage(
               <code>${escape(node.directory || node.repositoryUrl)}</code>
               ${node.id === "spectrum-minimax-h3" ? `<p class="muted">${s("nodes.localVersion")}${node.version ? `v${escape(node.version)}` : node.installed ? s("nodes.versionUnread") : s("nodes.notInstalled")} · ${s("nodes.latestRelease")}${node.latestVersion ? `v${escape(node.latestVersion)}` : s("nodes.rescanOnline")} · ${s("nodes.runtimeMemory")}</p>` : ""}
               ${node.loadError ? `<span class="node-error">${escape(node.loadError)}</span>` : ""}
-              ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre>${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
+              ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`custom-node:${node.id}`)}">${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
               <span class="model-availability ${node.loaded && !node.updateAvailable ? "available" : "missing"}">${node.updateAvailable ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}` : node.loaded ? `${icon("circle-check")} ${node.runtimeVerified ? s("nodes.runtimeVerified") : s("nodes.fileCheckPassed")}` : node.installed ? `${icon("circle-alert")} ${s("nodes.installedRepair")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>

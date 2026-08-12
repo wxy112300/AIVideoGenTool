@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AppApi,
   Draft,
+  DependencyInstallProgress,
   EnhanceRequest,
   EnvironmentIssue,
   HistoryMigrationProgress,
@@ -125,6 +126,12 @@ const api: AppApi = {
       callback(String(message));
     ipcRenderer.on("attention-acceleration:log", listener);
     return () => ipcRenderer.removeListener("attention-acceleration:log", listener);
+  },
+  onDependencyInstallLog: (callback: (progress: DependencyInstallProgress) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: unknown) =>
+      callback(progress as DependencyInstallProgress);
+    ipcRenderer.on("dependency-install:log", listener);
+    return () => ipcRenderer.removeListener("dependency-install:log", listener);
   },
   onHistoryMigrationProgress: (callback: (progress: HistoryMigrationProgress) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: unknown) =>

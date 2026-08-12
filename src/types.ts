@@ -924,11 +924,20 @@ export interface AppApi {
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
   onWindowCloseRequest(callback: (request: WindowCloseRequest) => void): () => void;
   onAttentionInstallLog(callback: (message: string) => void): () => void;
+  onDependencyInstallLog(
+    callback: (progress: DependencyInstallProgress) => void
+  ): () => void;
   onHistoryMigrationProgress(callback: (progress: HistoryMigrationProgress) => void): () => void;
   scanImageAssetLibrary(): Promise<ImageAssetLibraryScan>;
   organizeImageAssetLibrary(): Promise<ImageAssetLibraryResult>;
   cleanupImageAssetLibrary(paths: string[]): Promise<ImageAssetLibraryResult>;
   onImageAssetLibraryProgress(callback: (progress: ImageAssetLibraryProgress) => void): () => void;
+}
+
+export interface DependencyInstallProgress {
+  kind: "custom-node" | "workflow";
+  id: string;
+  message: string;
 }
 
 declare global {

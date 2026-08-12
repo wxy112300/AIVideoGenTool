@@ -1,42 +1,56 @@
 # Local Video Studio
 
-一个面向 Windows 和本地 ComfyUI 的视频生成桌面工作台。
+Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-Local Video Studio 把参考图、提示词、视频模型、任务队列和生成历史整理到统一的 GUI 中，让用户不必频繁编辑 ComfyUI 节点图，也能完成图生视频、视频续写、插帧和超分辨率处理。
+当前开发版本：**0.18.1**。本次校准了项目入口文档与 Agent harness，并为节点/工作流安装补齐实时日志和超时保护。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
-## 当前版本
+> 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
-当前开发版本为 **`0.18.0`**。本版本完成多语言切换和界面本地化：新增 English 与台湾繁体中文（`zh-TW`）catalog，Settings 可即时切换语言；补齐 Create、Settings、Queue、History、模型 catalog、Prompt Pack、LoRA 与 workflow runtime 文案，并保留未迁移动态 metadata 的安全回退，同时保持现有队列、历史、工作流和持久化兼容。
+## 当前能力
 
-每个版本的新增功能、修复和兼容性说明统一记录在 [CHANGELOG.md](CHANGELOG.md)，README 不再重复累积历史版本文案。
+- 图片处理：多参考图编辑、批量候选、Prompt 版本、Canvas 定位标记和图片版本历史。
+- 视频创作：首帧/首尾帧图生视频、H3 多参考 R2V、视频续写、原生音频和目标帧率处理。
+- LoRA 堆栈：顺序、强度、兼容模型、触发词和冲突提示随队列快照保存。
+- 本地队列：单重型 GPU 阶段执行，支持暂停/取消、阶段进度、实时预览和性能摘要。
+- 作品历史：图片和视频分区、版本管理、完整提交参数、文件操作和继续创作。
+- 环境管理：离线扫描多个 ComfyUI 安装、核心/数据目录、模型、节点、工作流和 Python 环境。
+- 本地提示词辅助：通过所选 ComfyUI 运行 Qwen3.5 或 MiniMax H3 Prompt Writer/Gemma，不要求独立 LM Studio 或 llama-server。
 
-版本规则遵循语义化版本：`0.x` 的 patch 用于向后兼容的修复和小幅 UX 调整，minor 用于新增功能或明显的工作流扩展，`1.0.0` 用于核心数据/API 兼容性稳定并准备正式发布。
+## 支持范围
 
-> [!IMPORTANT]
-> 项目仍处于早期开发阶段，目前以 Windows、NVIDIA GPU 和本地 ComfyUI 为主要运行环境。模型权重、ComfyUI 和第三方节点不会包含在仓库中。
+模型和组件的准确状态以应用“设置”页及 `src/core/catalog/` 为准。README 只列当前主要模型族，避免文件名或变体更新后形成第二份过期清单。
 
-## 立即启动
+| 类别 | 当前主要支持 |
+| --- | --- |
+| 视频生成 | MiniMax H3 FL2VA（INT8、INT4、实验性 Q3 GGUF）、MiniMax H3 R2V（INT8、INT4）、Sulphur 2 / LTX 2.3；另保留 Wan 2.2 14B + NSFW 兼容配置 |
+| 图片处理 | Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
+| 视频增强 | SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
+| H3 LoRA | LightX2V Turbo、Realism People、PinkFluffyBunny NSFW |
+| Prompt | Qwen3.5 2B/4B、MiniMax H3 Prompt Writer 的 Gemma 4 GGUF 配置 |
 
-### 最简单的方式：Windows
+Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部分已经从新建任务列表淘汰；旧队列和历史仍保留原模型名称。当前显式保留的 Wan 2.2 14B + NSFW 兼容配置及未来变化，以 catalog 的 `retired` 标记为准。
 
-1. 安装 [Node.js 22 LTS 或更高版本](https://nodejs.org/)。
-2. 安装并启动本地 [ComfyUI](https://github.com/Comfy-Org/ComfyUI)。
-3. 克隆仓库后，双击根目录的 `start-ui.bat`。
+## 快速开始
+
+### 1. 准备基础环境
+
+- Windows 10/11。
+- Node.js 22 LTS 或更高版本。
+- Git（节点安装/更新需要）。
+- ComfyUI Desktop、Portable 或源码安装之一。
+- NVIDIA 驱动；H3 推荐 24GB 级显存和充足系统内存。
+- FFmpeg；视频裁帧、续写和部分后处理需要。
+
+通常无需单独安装完整 CUDA Toolkit。优先使用 ComfyUI 自身 Python/PyTorch 所带的 CUDA runtime；只有某个自定义 CUDA 扩展明确要求编译工具链时才额外安装。
+
+### 2. 克隆并启动 GUI
 
 ```powershell
 git clone https://github.com/wxy112300/AIVideoGenTool.git
 cd AIVideoGenTool
 ```
 
-`start-ui.bat` 会自动检查依赖、安装缺失的 Electron runtime、执行构建并启动桌面应用。首次打开后进入“设置”，选择 ComfyUI 实例，确认服务地址和模型目录，再回到“创建”页面。
-
-如果 npm 下载需要代理，可以双击 `start-ui-proxy.bat`，或在命令行传入代理地址：
-
-```bat
-start-ui-proxy.bat http://127.0.0.1:7890
-```
-
-### 命令行启动
+双击 `start-ui.bat`，或执行：
 
 ```powershell
 npm.cmd ci
@@ -44,196 +58,81 @@ npm.cmd run build
 npm.cmd start
 ```
 
-开发模式会同时启动 Vite、Electron TypeScript watch 和桌面窗口：
+开发模式：
 
 ```powershell
-npm.cmd ci
 npm.cmd run dev
 ```
 
-### 启动前检查
+npm 下载需要本机代理时可使用：
 
-- Windows 10/11
-- NVIDIA GPU，推荐 24GB 级显存和 64GB 系统内存运行 H3
-- 本地 ComfyUI；应用默认连接 `http://127.0.0.1:8188`
-- FFmpeg（视频续写、精确裁帧和部分媒体处理需要）
-- 模型权重和第三方节点不会随仓库下载，需要在应用“设置”中按扫描结果补齐
-
-## 主要功能
-
-- **统一创作界面**：拖入首帧或首尾帧，设置提示词、模型、时长、分辨率、帧率和随机种子。
-- **图片视觉标记**：在全屏画布中圈选、绘制箭头或添加文字，精确告诉图片编辑模型“改哪里”；标记工程可重复编辑，原图不会被覆盖。
-- **本地任务队列**：持久化等待任务，展示当前节点、进度、预览、耗时以及 CPU、内存和显存占用。
-- **生成历史**：直接播放输出视频，查看任务参数和不同版本，并支持复制文件、打开目录和删除文件。
-- **环境检查**：扫描常见目录和 Comfy Desktop 安装记录，识别多个 ComfyUI 实例、核心版本、模型和自定义节点。
-- **动态 GPU 检测**：通过 `nvidia-smi` 读取实际 GPU 型号、驱动和总显存；运行预算按“总显存 - 安全余量”计算，不把 4090 写死在配置中。
-- **服务管理**：连接已有 ComfyUI，也可以从应用内启动、重启和更新所选安装；默认接口为 `http://127.0.0.1:8188`。
-- **低显存保护**：按工作流启用模型卸载、CPU offload、分块 VAE 解码和单任务执行，降低长视频处理时的显存峰值。
-- **分阶段任务进度**：总进度条按加载、采样、解码、插帧、封装和保存阶段计算；当前阶段另显示局部步数，例如 `扩散采样 4/20`。
-- **H3 提示词助手**：除了官方结构模板，还提供结构化构建器，可分别填写参考连续性、动作起因、身体/视线锁定、镜头类型与幅度/速度、景别变化、同步声音、对白和屏幕文字。
-- **提示词扩写**：只依赖所选 ComfyUI。Qwen3.5 使用核心 `TextGenerate`；Gemma 4 使用 ComfyUI MiniMax H3 Prompt Writer 扩展，不再要求独立 llama-server 或 LM Studio。
-- **提示词模型扫描**：设置页扫描与视频模型相同的 ComfyUI 模型根目录，按官方 `text_encoders` 文件统计可用性，并用同一个下载说明弹窗展示 Hugging Face 来源、文件名和目标目录；不再单独选择提示词模型目录。
-- **扩写预设**：设置 → 提示词扩写中可编辑通用影视时间线、参考画面保真、单镜头连续动作、对白与原生声音、节拍分镜、产品与品牌演示、音乐视频与歌词、风格化动画叙事和多参考关系编排九套规则头，覆盖不同创作意图；保存后下一次扩写生效，也可以一键恢复全部默认。
-- **内置 H3 官方基线**：软件固定保留 H3 的 T2VA、I2VA、FL2VA、L2VA 任务关系，R2V 参考标签顺序，原生音频、动作连续性和结构化输出约束；用户编辑预设不会删除这些底层规则。
-
-内置基线直接按公开的 [MiniMax H3 Video Prompt Writing Guide](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md) 实现，并结合 [Comfy-Org H3 I2V 工作流](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_i2v.json)、[H3 R2V 工作流](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json)、[ComfyUI H3 节点实现](https://github.com/Comfy-Org/ComfyUI/blob/master/comfy_extras/nodes_minimax_h3.py) 和 [Comfy-Org/MiniMax-H3 模型说明](https://huggingface.co/Comfy-Org/MiniMax-H3) 整理，软件不会在运行时联网读取这些文档。
-- **下载代理**：可为依赖、节点和工作流下载单独配置 HTTP 代理，默认关闭。
-
-## 已接入的工作流
-
-| 类型 | 模型或工具 | 当前能力 |
-| --- | --- | --- |
-| 图生视频 | MiniMax H3 FL2VA INT8 | 首帧或首尾帧、原生 24 FPS 音视频、结构化镜头与声音提示词 |
-| 图生视频 | MiniMax H3 FL2VA INT4 ConvRot | 社区低显存档，首帧或首尾帧，建议 12GB 起步并准备充足系统内存 |
-| 多参考图生视频 | MiniMax H3 R2V INT8 | 最多 9 张图片 Slot，按 `<Picture N>` 分配人物、场景、风格、动作和镜头作用 |
-| 多参考图生视频 | MiniMax H3 R2V INT4 ConvRot | 社区低显存 R2V 图片参考档，适合显存较小的设备实验 |
-| 图生视频 / 续写 | Sulphur 2 / LTX 2.3 | GGUF 低显存配置、原生 overlap 视频续写 |
-| 图生视频 | Wan 2.2 | 5B、14B 及 Remix、SmoothMix 等内置配置 |
-| 图生视频 | HunyuanVideo 1.5 | 标准 I2V 和双阶段 1080p SR |
-| 帧插值 | RIFE | 2× / 4× 插帧，将模型生成帧率与成片目标帧率分开 |
-| 视频超分 | SeedVR2、FlashVSR、Real-ESRGAN | 分批处理和批次间模型卸载 |
-
-MiniMax H3 的“续写”目前采用**边界帧接续**：提取原视频最后一帧作为下一段的首帧，并保留 H3 原生音轨。它不是 latent overlap，因此片段边界的动作连续性可能弱于 Sulphur 2 / LTX 2.3 的原生续写。
-
-不同工作流对 ComfyUI 版本、节点、权重目录和显存的要求不同。设置页会按当前选择的 ComfyUI 实例给出检测结果、下载地址和目标目录；更完整的依赖说明见 [依赖与环境配置](docs/DEPENDENCIES_AND_SETUP.md)。
-
-### MiniMax H3 模型选择
-
-MiniMax H3 的 FL2VA 和 R2V 使用不同的扩散模型，不能混用：
-
-| 模式 | 扩散模型 | 适用场景 |
-| --- | --- | --- |
-| FL2VA | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` | 首帧、首尾帧和 H3 边界帧续写 |
-| FL2VA INT4 | `minimax_h3_fl2va_pruned_int4_convrot.safetensors` | 低显存首帧/首尾帧实验 |
-| R2V | `minimax_h3_ref2va_pruned_int8_convrot.safetensors` | 多图片参考生成 |
-| R2V INT4 | `minimax_h3_ref2va_pruned_int4_convrot.safetensors` | 低显存多图片参考实验 |
-
-所有 H3 变体还需要对应的 Qwen 文本编码器和官方 VAE：
-
-```text
-ComfyUI/models/diffusion_models/
-	minimax_h3_fl2va_pruned_int8_convrot.safetensors
-	minimax_h3_fl2va_pruned_int4_convrot.safetensors
-	minimax_h3_ref2va_pruned_int8_convrot.safetensors
-	minimax_h3_ref2va_pruned_int4_convrot.safetensors
-
-ComfyUI/models/text_encoders/
-	qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors
-	qwen3vl_32b_minimax_h3_int4_convrot.safetensors
-
-ComfyUI/models/vae/
-	minimax_h3_video_vae_fp16.safetensors
-	minimax_h3_audio_vae_fp32.safetensors
-
-ComfyUI/models/loras/
-	minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors
+```bat
+start-ui-proxy.bat http://127.0.0.1:7890
 ```
 
-LightX2V Turbo 使用 ComfyUI v0.31.0+ 核心的原生音视频采样、标准 `LoraLoaderModelOnly`、`ER-SDE` 和 `Beta` 调度器，不依赖额外的 Turbo custom node。设置页在独立“LoRA”分类中检查权重；创建页的 LoRA 堆栈会在选择 MiniMax H3 FL2VA 后把它列为可添加项。默认使用 8 步、视频 shift `12`、音频 shift `3`、LoRA strength `0.75`；6 步适合快速预览，4 步仅作为实验档。旧 ckpt500 / res_multistep 以及旧的专用 Turbo 节点方案已弃用，普通 H3 20 步仍是稳定回退路径。
+### 3. 在设置中选择正确的 ComfyUI
 
-普通 ComfyUI LoRA 是一组叠加到兼容基础模型上的适配权重，通常可以由核心 `LoraLoader` / `LoraLoaderModelOnly` 直接加载，并不天然依赖第三方节点。创建页允许按顺序叠加多个 LoRA，并为每项单独保存 strength。只有发布者同时要求特殊加载器、采样器、缓存、控制网络或模型补丁时，才需要额外节点；应用会把模型家族、兼容模型、输入模式和额外依赖作为 LoRA 元数据声明，而不会假设所有 LoRA 都能任意跨模型使用。
+打开“设置 → 系统与路径”：
 
-PinkFluffyBunny NSFW 是可选的社区 H3 FL2VA 内容 LoRA。当前工作流使用 pruned INT8 底模，因此设置页选择与之对应的 `pruned-v1-rank128` 文件，默认强度 `0.5`；创建页可单独使用，也可与 Turbo 按顺序叠加并分别调整强度。仓库另有在 unpruned 底模上训练的 v2 rank128/256/512 变体，目前不会混入 pruned 工作流。作者将其标记为 alpha 质量，因此组合结果需要实际抽样验证；它不会被提供给 R2V 或视频续写模式。
+1. 选择实际使用的 ComfyUI 安装。Desktop 启动器目录、核心目录和数据/节点目录可能不同。
+2. 确认接口地址；默认是 `http://127.0.0.1:8188`。
+3. 确认模型目录、视频/图片输出目录和输入素材库。
+4. 执行重新扫描。离线扫描不要求先启动 ComfyUI；运行时节点验证才需要服务。
 
-官方和社区权重的下载地址会在“设置 → 视频模型”的组件卡片中显示。RTX 4090 等 24GB 显卡可以优先尝试官方 INT8；12GB 级别设备优先尝试 pruned INT4，但实际速度和成功率仍取决于系统内存、NVMe 和 ComfyUI offload。INT4 是社区转换，不等同于官方质量保证。
+同一台电脑存在多个 ComfyUI 时，务必确认“所选安装”和当前连接的服务是同一个实例。否则模型可能扫描成功，节点却安装到了另一套目录。
 
-### 本地提示词模型
+### 4. 按顺序补齐工作流依赖
 
-提示词扩写有两条本地路径，但都由同一个 ComfyUI 实例运行：Qwen3.5 2B/4B BF16 放在 ComfyUI/Comfy-Org 官方使用的 `models/text_encoders`；Gemma 4 GGUF + `mmproj` 放在 H3 Prompt Writer 扩展注册并读取的大写 `models/LLM`。后者是该扩展的正式目录约定，不是 ComfyUI 核心的通用 GGUF 分类。文件格式和加载器不同，不能交叉加载。
+一个模型能够生成，至少需要以下三层同时成立：
 
-| 模型 | 下载文件 | 目标目录 |
-| --- | --- | --- |
-| Qwen3.5 4B | [qwen3.5_4b_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_4b_bf16.safetensors?download=true) | `ComfyUI/models/text_encoders/` |
-| Qwen3.5 2B | [qwen3.5_2b_bf16.safetensors](https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors?download=true) | `ComfyUI/models/text_encoders/` |
+1. **模型组件**：扩散模型、文本/视觉编码器、VAE、LoRA 等文件位于 catalog 指定目录。
+2. **节点与 Python 依赖**：ComfyUI 核心节点版本满足要求；第三方节点已安装，并在所选 ComfyUI Python 中安装了 `requirements.txt`。
+3. **工作流与运行时验证**：应用有对应的 API workflow/adapter，启动任务时 ComfyUI `/object_info` 能看到真实节点。
 
-### ComfyUI H3 Prompt Writer / Gemma 4
+推荐操作顺序：
 
-Gemma 路径使用 [ComfyUI MiniMax H3 Prompt Writer](https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer)。设置 → 节点与工作流提供安装/更新入口，并在所选 ComfyUI 的 Python 环境安装 GGUF CUDA 运行依赖。应用调用扩展的 `/h3studio` 接口，自动创建素材会话、上传图片或视频、匹配 GGUF 文件，并在完成后请求卸载模型释放显存。
+1. 在“设置 → 节点与工作流”先安装或更新缺失节点。
+2. 查看安装卡片中的实时日志。`git`、`pip`、兼容补丁、超时和错误都会留在卡片内；完成后按提示重启/复检 ComfyUI。
+3. 在视频模型、图片模型、LoRA 或增强页点击缺失组件的信息图标，按显示的来源、推荐文件名和目标子目录下载权重。
+4. 再次离线扫描。服务启动后进行运行时复检。
+5. 用低分辨率、短时长或单张候选完成一次最小真实测试，再提高负载。
 
-Gemma 4 提供 E4B Q3（8GB）、12B Q4（12GB）、12B Q5（16GB）、26B-A4B Q4（24GB）和31B Q4（32GB+）五个社区实测档。普通 RTX 4090 优先考虑 12B Q5；26B-A4B 是社区作者的 24GB 质量档，但运行前必须释放 H3 和其它显存占用。每个 Gemma 档位的 GGUF 与匹配 `mmproj-BF16.gguf` 必须放在各自独立的 `ComfyUI/models/LLM/<档位>/` 子目录，防止同名视觉投影文件串用。Gemma 权重须遵守 Google Gemma 使用条款。
+节点可以由应用一键安装；大型模型权重目前通常由用户从设置页给出的官方/社区来源手动下载。不要把模型文件放进仓库。
 
-需要降低不必要拒答时，可以在三个 Uncensored 档位中选择：快速档 [Gemma 4 E4B Q5_K_M](https://huggingface.co/llmfan46/gemma-4-E4B-it-ultra-uncensored-heretic-GGUF)、平衡档 [Gemma 4 12B Q4_K_M](https://huggingface.co/zaakirio/gemma-4-12b-it-uncensored-GGUF)，以及 4090 质量上限档 [Gemma 4 26B-A4B Q4_K_M](https://huggingface.co/llmfan46/gemma-4-26B-A4B-it-ultra-uncensored-heretic-GGUF)。三档都保留匹配的多模态投影并通过同一个 ComfyUI Prompt Writer 运行，不会替换默认模型。低拒答只描述模型行为，不代表输出必然准确、适当或合法；社区衍生权重的能力、偏差和输出需要用户自行评估。
+详细目录、安装状态含义和排错流程见 [依赖、环境与初始化](docs/DEPENDENCIES_AND_SETUP.md)。
 
-暂不列入 Qwen Uncensored GGUF：当前 Prompt Writer 的本地后端使用 Gemma 4 专用 ChatHandler，而 `llama-cpp-python` 也尚未提供可直接替换的 Qwen3.5 多模态 handler。纯文本 Qwen 或只有主 GGUF、没有可用视觉 handler 的版本无法可靠结合参考图和视频抽帧，因此不会仅因为“能够加载”就显示成可用模型。
+## 数据位置
 
-Qwen3.5 4B 是 ComfyUI 原生路径的质量和显存平衡主力，Qwen3.5 2B 文件约 4.55GB，适合 12GB 显存或快速迭代，但复杂动作分析和提示词细节能力会低于 4B。原生档由 ComfyUI `CLIPLoader`、`TextGenerate`、`LoadImage` 和 `ImageBatch` 加载。Gemma 只用于 H3 视频提示词，图片编辑提示词继续使用原生 Qwen。
+- 应用状态、草稿、队列和历史元数据由 Electron 用户数据目录管理；媒体本身保存为文件路径，不以 Base64 塞进状态文件。
+- 输入图片在任务加入队列时按内容哈希归档到设置的输入素材库，默认位于 ComfyUI `input/LocalVideoStudio`。
+- 图片和视频输出目录可在设置中分别指定；历史记录保存实际输出路径。
+- 模型权重使用所选 ComfyUI 的模型目录，具体子目录由 catalog 组件卡片给出。
 
-R2V 当前在应用内支持混合媒体 Slot：最多 9 张参考图和 3 段参考视频，总数不超过 12 个。每个 Slot 可标注人物、场景、风格、动作、镜头等作用；提示词会按官方语义区分可复用内容的 `<Subject N>`、具体帧/构图锚点 `<Picture N>` 和参考视频 `<Video N>`。参考视频会同时送入画面帧和视频自身音轨；独立音频 Slot 尚未接入应用界面。
+迁移、整理或删除媒体前请使用应用内提供的确认与整理工具；不要直接批量移动仍被队列或历史引用的文件。
 
-### MiniMax H3 提示词助手
-
-创建页的 H3 提示词助手包含两种方式：
-
-- **结构化模板**：快速生成 T2VA、I2VA、FL2VA、L2VA 或 R2V 的官方字段结构。
-- **结构化构建器**：把镜头运动拆成类型、幅度和速度，并单独填写主体初始状态、连续性锁、身体/视线锁、动作时间线、景别变化、同步声音和最终状态；对白、环境声、背景音乐和屏幕文字位于可选高级字段中。
-
-构建器生成的内容会作为新的提示词版本保存，不会覆盖手写版本。快捷插入还提供参考图连续性、动作起因、镜头路径限制、空间回声、对白和屏幕文字句式。H3 检查器会提示缺少首镜头声明、字段顺序、参考图对齐、对白说话人 ID、超出时长的时间戳，以及误把 contact sheet/抽帧描述写进最终 Prompt 等问题。选择 Gemma 4 时会使用社区 Prompt Writer；选择 Qwen 时仍使用应用内融合后的同类规则。
-
-## 数据与隐私
-
-- 提示词、任务队列、历史记录和设置保存在 Electron 的本地用户数据目录中。
-- 视频默认使用所选 ComfyUI 的输出目录，也可以在设置中指定其他目录。
-- 删除历史作品时，可同时删除记录和关联的视频文件；执行前会要求确认。
-- 推理和提示词扩写均在本机 ComfyUI 中进行。只有下载依赖、节点或模型时才会访问对应上游地址。
-- 模型文件和生成媒体已被 `.gitignore` 排除，不应提交到仓库。
-
-## 自定义 ComfyUI 工作流
-
-`workflows/` 中保存的是 ComfyUI **API 格式**工作流。应用会在提交任务前递归替换占位符，常用字段包括：
-
-```text
-{{PROMPT}} {{NEGATIVE_PROMPT}} {{SEED}}
-{{INPUT_IMAGE}} {{END_IMAGE}}
-{{H3_REF_IMAGE_0}} ... {{H3_REF_IMAGE_8}}
-{{WIDTH}} {{HEIGHT}} {{DURATION}}
-{{BASE_WIDTH}} {{BASE_HEIGHT}} {{HALF_WIDTH}} {{HALF_HEIGHT}}
-{{SOURCE_FPS}} {{FPS}} {{FRAMES}} {{OUTPUT_FRAMES}}
-{{HIGH_MODEL}} {{LOW_MODEL}} {{TEXT_ENCODER}} {{VAE_MODEL}}
-{{OUTPUT_FILENAME}}
-```
-
-工作流必须由 ComfyUI 以 API 格式导出，并包含对应模型所需的节点和占位符。具体约束和验证顺序见 [依赖与环境配置](docs/DEPENDENCIES_AND_SETUP.md)。
-
-## 开发
+## 验证与开发
 
 ```powershell
-npm.cmd ci
 npm.cmd run typecheck
-npm.cmd test
-npm.cmd run build
-npm.cmd run dev
+npm.cmd run test
+npm.cmd run verify
 ```
 
-主要目录：
+`npm.cmd run verify` 会执行全部测试、TypeScript 检查和生产构建。它证明代码和静态工作流通过，不等同于某个本地模型已经真实生成成功。
 
-```text
-electron/    Electron 主进程、持久化和本地服务集成
-src/         渲染界面、状态类型和工作流转换逻辑
-workflows/   内置 ComfyUI API 工作流
-tests/       单元测试
-docs/        产品、环境和工作流设计文档
-prototypes/  早期界面与交互原型
-```
+开发者和 Coding Agent 从 [AGENTS.md](AGENTS.md) 与 [Agent Start Here](docs/AGENT_START_HERE.md) 开始；模型/工作流、架构、UX 分别由以下契约约束：
+
+- [工作流契约](docs/WORKFLOW_CONTRACT.md)
+- [架构契约](docs/ARCHITECTURE_CONTRACT.md)
+- [UX 契约](docs/UX_CONTRACT.md)
 
 ## 当前限制
 
-- 当前优先支持 Windows；尚未提供正式安装包和自动更新渠道。
-- 可运行的分辨率、时长和速度由模型、量化版本、显存、系统内存及 ComfyUI 环境共同决定。
-- 环境修复覆盖已知依赖，但无法保证自动修复任意第三方节点或被手动修改过的 Python 环境。
-- H3 边界帧接续属于实验性能力，不等同于模型原生的长视频上下文续写。
-- 运行中取消会优先中止 ComfyUI 任务并释放模型；由应用启动的进程会随应用退出，独立启动的 ComfyUI 服务不会被强制关闭。
+- 暂无正式 Windows 安装包，当前从源码启动。
+- ComfyUI 和社区节点持续变化；设置页的离线扫描、运行时验证与真实最小测试缺一不可。
+- 不同量化、LoRA、Attention、Cache 或 Offload 组合可能改变显存、速度和质量；应用只在对应工作流范围内应用策略，不承诺任意组合兼容。
+- 实验性模型或社区转换的“可识别”不代表已经在所有硬件上通过运行测试。
 
-## 参与贡献
+## License
 
-欢迎提交 Issue 和 Pull Request。报告问题时，请尽量附上：
-
-- Local Video Studio 的提交版本
-- ComfyUI 安装类型、核心版本和服务地址
-- 使用的模型、工作流、分辨率、帧数和 GPU 型号
-- 设置页检测结果及相关日志（请先移除用户名、访问令牌和私人媒体路径）
-
-产品范围与交互要求见 [产品需求文档](docs/PRODUCT_REQUIREMENTS.md)，视频续写的设计边界见 [视频续写设计](docs/VIDEO_EXTENSION_DESIGN.md)。
-
-## 许可证
-
-本项目使用 [MIT License](LICENSE)。模型权重、ComfyUI、第三方节点和各自的模型许可证不包含在本项目许可证授权范围内，请分别遵守其上游许可条款。
+仓库暂未声明开源许可证。公开使用、再分发或贡献前，请由维护者补充明确的 `LICENSE` 文件；各模型、LoRA 和第三方节点继续受各自许可证约束。

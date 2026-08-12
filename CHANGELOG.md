@@ -8,6 +8,14 @@
 
 ## 未发布
 
+### 0.18.1 候选 — 2026-08-12
+
+- 重写 README 与依赖配置说明，以当前模型 catalog 为准移除过时的 Wan/Hunyuan 主力模型描述、独立 LM Studio/llama-server 安装路径和旧 H3 I2V-only 边界。
+- 新增 Agent 起步指南，明确从契约、模型 catalog、节点注册表、workflow adapter、队列快照到真实 ComfyUI 最小运行的接入路线，并强调模型权重、节点文件、Python 依赖与运行时验证是不同状态。
+- 自定义节点和官方工作流安装现在把阶段、Git/curl/pip 输出实时流回对应设置卡片，同时写入应用日志；进度更新只修改日志区域，不重绘整个设置页。
+- 为节点 Git 更新/克隆、普通 Python requirements、Prompt Writer GGUF runtime 和工作流下载加入明确超时；超时会终止子进程树并保留已收到的错误上下文。
+- 新增安装子进程实时输出与超时终止测试。
+
 ### 0.18.0 候选 — 2026-08-12
 
 - 新增完整 English UI catalog 与台湾繁体中文（`zh-TW`）catalog，Settings 可选择简体中文、繁體中文（台灣）或 English，并在保存后立即切换当前界面。

@@ -3665,21 +3665,39 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "custom-node:install",
-    (_event, nodeId: string, settings: Settings) => loggedOperation(
+    (event, nodeId: string, settings: Settings) => loggedOperation(
       "environment",
       "custom-node-install",
       "Custom node installation started",
-      () => installCustomNode(nodeId, settings),
+      () => installCustomNode(nodeId, settings, (message) => {
+        appLogger.info("environment", "custom-node-install-progress", message, { nodeId });
+        if (!event.sender.isDestroyed()) {
+          event.sender.send("dependency-install:log", {
+            kind: "custom-node",
+            id: nodeId,
+            message
+          });
+        }
+      }),
       { nodeId }
     )
   );
   ipcMain.handle(
     "workflow-dependency:install",
-    (_event, workflowId, settings: Settings) => loggedOperation(
+    (event, workflowId, settings: Settings) => loggedOperation(
       "environment",
       "workflow-dependency-install",
       "Workflow dependency installation started",
-      () => installWorkflowDependency(workflowId, settings),
+      () => installWorkflowDependency(workflowId, settings, (message) => {
+        appLogger.info("environment", "workflow-dependency-install-progress", message, { workflowId });
+        if (!event.sender.isDestroyed()) {
+          event.sender.send("dependency-install:log", {
+            kind: "workflow",
+            id: workflowId,
+            message
+          });
+        }
+      }),
       { workflowId }
     )
   );

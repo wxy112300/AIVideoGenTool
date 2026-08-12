@@ -229,6 +229,7 @@ export function mountSettingsEnvironmentController(
       const settings = options.formSettings();
       options.setSettingsDraft(settings);
       options.setCustomNodeInstalling(nodeId);
+      options.setCustomNodeLog(nodeId, context.t("settings.nodes.processing"));
       context.requestRender();
       try {
         const result = await context.studio.installCustomNode(nodeId, settings);
@@ -273,6 +274,7 @@ export function mountSettingsEnvironmentController(
       const settings = options.formSettings();
       options.setSettingsDraft(settings);
       options.setWorkflowDependencyInstalling(workflowId);
+      options.setWorkflowDependencyLog(workflowId, context.t("settings.nodes.installing"));
       context.requestRender();
       try {
         const result = await context.studio.installWorkflowDependency(workflowId, settings);
