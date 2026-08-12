@@ -8,8 +8,16 @@
 
 ## 未发布
 
+### 0.18.0 候选 — 2026-08-12
+
+- 新增完整 English UI catalog 与台湾繁体中文（`zh-TW`）catalog，Settings 可选择简体中文、繁體中文（台灣）或 English，并在保存后立即切换当前界面。
+- 补齐模型 catalog、Prompt Pack、LoRA guide/rule、workflow runtime safety message 与 Settings copy pack 的 English/台湾繁体文案；Prompt 与模型面对的内容仍保持英文边界。
+- 修复 Settings 语言下拉框只显示选择、却没有把 `uiLocale` 写入表单状态的问题；新增语言 catalog key parity、Settings form、模型 English metadata 和 zh-TW Prompt Pack 测试。
+- 将 Settings 的视频模型、Sulphur、LoRA、图片模型、Prompt、Upscale、Nodes/Workflow 与 H3 加速面板的固定文案接入三语 copy pack；动态硬件、组件和路径 metadata 继续按契约安全回退。
+
 ### 0.17.0 候选 — 2026-08-12
 
+- 新增 MiniMax H3 Realism People LoRA：设置页可离线扫描与下载，创建页支持 INT8 FL2VA/R2V 选择、强度和排序，执行时自动补齐 `r34l1sm` 触发词，并提示 Turbo/NSFW 叠加风险。
 - 完成 Renderer 模块化收口：拆分 Create、History、Settings 页面 assembly、controller、view model 和 render coordinator，降低多 agent 编辑冲突。
 - 建立模型 catalog、Prompt Pack、runtime workflow message catalog 和统一视频生成策略，模型元数据、Prompt UI 与 workflow 逻辑边界更加清晰。
 - 完成本地化结构整理：全局 UI key、按语言 catalog、Prompt Pack 索引和 LoRA/workflow runtime 文案均可按 locale 扩展；模型 Prompt 内容保持英文。
@@ -32,6 +40,7 @@
 
 ### 0.16.0 候选 — 2026-08-12
 
+- 新增台灣繁體中文（`zh-TW`）介面：Settings 可切換語言，並同步支援全域 UI catalog、Prompt Pack、主要模型 catalog、LoRA 說明與 workflow runtime 訊息；缺少專屬文案時安全回退簡體中文。
 - 视频历史详情扩展为完整提交快照：展示 Prompt 版本、模型、Steps、Attention、Spectrum、动作幅度、Seed、画面比例、帧率插值、工作流与 ComfyUI Prompt ID。
 - 视频 LoRA 从单行摘要改为按真实加载顺序逐项展示，保留名称、模型族、用途、强度和权重文件名；没有使用 LoRA 时也会明确说明。
 - 视频输入素材新增独立记录区，区分图生视频、R2V 多参考和视频续写，并显示首尾帧、各参考 Slot、源视频、裁切范围及来源历史版本。

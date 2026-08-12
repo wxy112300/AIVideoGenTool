@@ -6,7 +6,7 @@ Local Video Studio 把参考图、提示词、视频模型、任务队列和生�
 
 ## 当前版本
 
-当前开发版本为 **`0.17.0`**。本版本完成 Renderer 模块化和本地化基础收口：拆分 Create、History、Settings 页面 assembly，建立模型 catalog、Prompt Pack、runtime message catalog 和视频策略模块；为图生视频、视频续写和图片处理提供独立 Prompt 状态、清屏撤销/重做与按需加载，并保持现有队列、历史、工作流和持久化兼容。
+当前开发版本为 **`0.18.0`**。本版本完成多语言切换和界面本地化：新增 English 与台湾繁体中文（`zh-TW`）catalog，Settings 可即时切换语言；补齐 Create、Settings、Queue、History、模型 catalog、Prompt Pack、LoRA 与 workflow runtime 文案，并保留未迁移动态 metadata 的安全回退，同时保持现有队列、历史、工作流和持久化兼容。
 
 每个版本的新增功能、修复和兼容性说明统一记录在 [CHANGELOG.md](CHANGELOG.md)，README 不再重复累积历史版本文案。
 

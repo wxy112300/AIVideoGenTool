@@ -2,19 +2,28 @@ import { describe, expect, it } from "vitest";
 import {
   BUILTIN_VIDEO_LORAS,
   H3_PINK_FLUFFY_BUNNY_LORA,
+  H3_REALISM_PEOPLE_LORA,
   H3_TURBO_LORA,
   normalizeVideoLoras,
   reorderVideoLoras,
   videoLoraCompatibleWithDraft,
-  videoLoraConfigurationIssues
+  videoLoraConfigurationIssues,
+  videoPromptForLoras
 } from "../src/core/video-loras";
 
 describe("video LoRA catalog", () => {
-  it("offers Turbo and PinkFluffyBunny as separate stackable H3 LoRAs", () => {
+  it("offers Turbo, Realism People, and PinkFluffyBunny as separate stackable H3 LoRAs", () => {
     expect(BUILTIN_VIDEO_LORAS.map((lora) => lora.id)).toEqual([
       H3_TURBO_LORA.id,
+      H3_REALISM_PEOPLE_LORA.id,
       H3_PINK_FLUFFY_BUNNY_LORA.id
     ]);
+    expect(H3_REALISM_PEOPLE_LORA).toMatchObject({
+      strength: 0.8,
+      purpose: "quality",
+      compatibleModelIds: ["minimax_h3_fl2va", "minimax_h3_ref2va"],
+      compatibleInputModes: ["image"]
+    });
     expect(H3_PINK_FLUFFY_BUNNY_LORA).toMatchObject({
       strength: 0.5,
       purpose: "content",
@@ -32,6 +41,21 @@ describe("video LoRA catalog", () => {
       expect(Array.isArray(lora.rules.settingConflicts)).toBe(true);
       expect(Array.isArray(lora.rules.combinations)).toBe(true);
     }
+  });
+
+  it("adds the Realism People trigger at the start of the execution Prompt without duplication", () => {
+    expect(videoPromptForLoras(
+      "a woman turns toward the window",
+      [H3_REALISM_PEOPLE_LORA]
+    )).toBe("r34l1sm, a woman turns toward the window");
+    expect(videoPromptForLoras(
+      "r34l1sm, a woman turns toward the window",
+      [H3_REALISM_PEOPLE_LORA]
+    )).toBe("r34l1sm, a woman turns toward the window");
+    expect(videoPromptForLoras(
+      "a woman, r34l1sm, turns toward the window",
+      [H3_REALISM_PEOPLE_LORA]
+    )).toBe("r34l1sm, a woman, turns toward the window");
   });
 
   it("normalizes both built-ins without merging their strengths", () => {
@@ -74,6 +98,26 @@ describe("video LoRA catalog", () => {
     ]));
   });
 
+  it("warns about unvalidated Realism People stacks", () => {
+    const issues = videoLoraConfigurationIssues({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      spectrumMode: "off",
+      attentionMode: "sage",
+      videoLoras: [H3_TURBO_LORA, H3_REALISM_PEOPLE_LORA, H3_PINK_FLUFFY_BUNNY_LORA]
+    });
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: `combination:${[H3_REALISM_PEOPLE_LORA.id, H3_TURBO_LORA.id].sort().join(":")}`,
+        severity: "warning"
+      }),
+      expect.objectContaining({
+        code: `combination:${[H3_PINK_FLUFFY_BUNNY_LORA.id, H3_REALISM_PEOPLE_LORA.id].sort().join(":")}`,
+        severity: "warning"
+      })
+    ]));
+  });
+
   it("warns when LoRAs are loaded against their recommended order", () => {
     const issues = videoLoraConfigurationIssues({
       modelId: "minimax_h3_fl2va",
@@ -102,6 +146,14 @@ describe("video LoRA catalog", () => {
       "minimax_h3_fl2va",
       "video"
     )).toBe(false);
+  });
+
+  it("offers Realism People to INT8 FL2VA and R2V but not extension or unvalidated compressed models", () => {
+    expect(videoLoraCompatibleWithDraft(H3_REALISM_PEOPLE_LORA, "minimax_h3_fl2va", "image")).toBe(true);
+    expect(videoLoraCompatibleWithDraft(H3_REALISM_PEOPLE_LORA, "minimax_h3_ref2va", "image")).toBe(true);
+    expect(videoLoraCompatibleWithDraft(H3_REALISM_PEOPLE_LORA, "minimax_h3_ref2va", "video")).toBe(false);
+    expect(videoLoraCompatibleWithDraft(H3_REALISM_PEOPLE_LORA, "minimax_h3_fl2va_int4", "image")).toBe(false);
+    expect(videoLoraCompatibleWithDraft(H3_REALISM_PEOPLE_LORA, "minimax_h3_fl2va_q3_gguf", "image")).toBe(false);
   });
 
   it("reorders LoRAs immutably and keeps boundary moves stable", () => {

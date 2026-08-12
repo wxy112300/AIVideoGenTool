@@ -3,6 +3,7 @@ import { defaultH3PromptPresets } from "./content.js";
 import { h3SnippetDefinitions } from "./snippets.js";
 import { presetLocale as enPresetLocale, referenceRoleLocale as enReferenceRoleLocale, snippetLocale as enSnippetLocale, uiLocale as enUiLocale } from "./locale.en-US.js";
 import { presetLocale as zhPresetLocale, referenceRoleLocale as zhReferenceRoleLocale, snippetLocale as zhSnippetLocale, uiLocale as zhUiLocale } from "./locale.zh-CN.js";
+import { presetLocale as twPresetLocale, referenceRoleLocale as twReferenceRoleLocale, snippetLocale as twSnippetLocale, uiLocale as twUiLocale } from "./locale.zh-TW.js";
 import type { H3PromptPack, H3PromptUiKey, PromptUi, PromptUiLocale } from "../types.js";
 
 export const h3PromptPresetOrder: readonly H3PromptPreset[] = [
@@ -27,12 +28,12 @@ export function h3PromptPresetForMode(
 }
 
 export function h3PromptPackFor(locale: UiLocale = "zh-CN"): H3PromptPack {
-  const resolvedLocale = locale === "en-US" ? "en-US" : "zh-CN";
-  const presetLocale = resolvedLocale === "en-US" ? enPresetLocale : zhPresetLocale;
-  const snippetLocale = resolvedLocale === "en-US" ? enSnippetLocale : zhSnippetLocale;
-  const selectedUiLocale = resolvedLocale === "en-US" ? enUiLocale : zhUiLocale;
+  const resolvedLocale = locale === "en-US" || locale === "zh-TW" ? locale : "zh-CN";
+  const presetLocale = resolvedLocale === "en-US" ? enPresetLocale : resolvedLocale === "zh-TW" ? twPresetLocale : zhPresetLocale;
+  const snippetLocale = resolvedLocale === "en-US" ? enSnippetLocale : resolvedLocale === "zh-TW" ? twSnippetLocale : zhSnippetLocale;
+  const selectedUiLocale = resolvedLocale === "en-US" ? enUiLocale : resolvedLocale === "zh-TW" ? twUiLocale : zhUiLocale;
   const fallbackUiLocale = zhUiLocale;
-  const referenceRoleLocale = resolvedLocale === "en-US" ? enReferenceRoleLocale : zhReferenceRoleLocale;
+  const referenceRoleLocale = resolvedLocale === "en-US" ? enReferenceRoleLocale : resolvedLocale === "zh-TW" ? twReferenceRoleLocale : zhReferenceRoleLocale;
   const ui: PromptUi = {
     locale: resolvedLocale,
     t(key: H3PromptUiKey, params = {}) {

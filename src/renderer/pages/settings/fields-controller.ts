@@ -55,7 +55,7 @@ export function mountSettingsFieldsController(
     const modelId = (event.currentTarget as HTMLSelectElement).value;
     if (isManagedPromptModel(modelId)) {
       options.setSettingsDraft(options.formSettings());
-      context.notify("该 Gemma GGUF 由当前 ComfyUI 的 H3 Prompt Writer 运行，扩写完成后会自动卸载。");
+      context.notify(context.t(uiKeys.settings.promptWriterRuntime));
     }
   }, { signal });
 

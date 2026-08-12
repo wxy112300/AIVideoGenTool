@@ -417,19 +417,19 @@ export function buildVideoCreatePageViewModel(
     enhanceMode,
     h3PromptEnhanceTitle: isMiniMaxH3
       ? h3PromptPack.presetDescriptions[activeH3PromptPreset]
-      : "选择提示词扩写方式",
+      : h3PromptPack.ui.t("enhanceMode"),
     promptUi: h3PromptPack.ui,
     releasePromptControlTitle: options.promptRuntimeControlTitle(),
     releasePromptControlIconName: options.promptRuntimeControlIcon(),
     releasePromptControlDisabled: promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready),
     promptAiDisabled,
     promptEnhanceButtonTitle: promptAiDisabled && state.queueRunning
-      ? "当前有视频任务运行，暂不能启动提示词模型"
+      ? t(uiKeys.create.validation.promptTaskRunning)
       : promptAiDisabled
-        ? "正在生成提示词"
+        ? h3PromptPack.ui.t("optimizing")
         : isGemmaPromptModel(state.settings.promptModelId)
-          ? "使用 ComfyUI H3 Prompt Writer 优化"
-          : "使用 ComfyUI 原生 Qwen 模型优化",
+          ? t(uiKeys.create.validation.gemmaOptimize)
+          : t(uiKeys.create.validation.promptOptimize),
     h3PromptPresetOptionsMarkup: isMiniMaxH3
       ? h3PromptPresetOptions(activeH3PromptPreset, isR2V, state.settings.uiLocale)
       : "",

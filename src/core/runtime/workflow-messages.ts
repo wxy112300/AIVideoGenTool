@@ -1,4 +1,5 @@
 import type { UiLocale } from "../../types.js";
+import { zhTWWorkflowMessages } from "./workflow-messages.zh-TW.js";
 
 export type WorkflowMessageKey =
   | "spectrumConsumersMissing"
@@ -51,7 +52,7 @@ export type WorkflowMessageKey =
   | "filenamePlaceholderMissing";
 
 type RuntimeParams = Record<string, string | number>;
-type WorkflowLocale = Record<WorkflowMessageKey, string>;
+export type WorkflowLocale = Record<WorkflowMessageKey, string>;
 
 const zhCN: WorkflowLocale = {
   spectrumConsumersMissing: "Spectrum 加速需要连接到 H3 的 BasicScheduler / BasicGuider 模型输入。",
@@ -103,9 +104,59 @@ const zhCN: WorkflowLocale = {
   seedPlaceholderMissing: "缺少 {{SEED}}，任务 Seed 不会传入工作流",
   filenamePlaceholderMissing: "缺少 {{OUTPUT_FILENAME}}，ComfyUI 将自行决定输出文件名",
 };
-const enUS: Partial<WorkflowLocale> = {};
+const enUS: Partial<WorkflowLocale> = {
+  spectrumConsumersMissing: "Spectrum acceleration must connect to the H3 BasicScheduler / BasicGuider model input.",
+  spectrumOutputUnknown: "Spectrum acceleration could not identify the output of the H3 model patch chain.",
+  spectrumOutputsDiffer: "Spectrum acceleration requires BasicScheduler and BasicGuider to use the same H3 model output.",
+  loraChainUnknown: "The current workflow model chain could not be identified; the selected LoRA cannot be applied safely.",
+  loraChainsDiffer: "The current workflow contains multiple different model chains, so the LoRA insertion point cannot be determined automatically.",
+  loraChainCycle: "The current workflow LoRA chain contains a cycle and cannot be applied safely.",
+  missingExtensionPlaceholders: "Missing SOURCE_VIDEO, EXTENSION_FRAMES, or OVERLAP_FRAMES input placeholders",
+  workflowRootInvalid: "Workflow root is not an API object",
+  missingExtensionSampler: "Missing the official LTXVExtendSampler or LTXVLoopingSampler",
+  missingWorkflowLoader: "Missing LowVRAMCheckpointLoader or UnetLoaderGGUFAdvanced",
+  ggufPatchOnDevice: "The GGUF loader must disable patch_on_device",
+  missingDualClipLoader: "GGUF workflow is missing an independent DualCLIPLoader",
+  missingVaeLoader: "GGUF workflow is missing an independent VAELoader",
+  missingVramDebug: "Missing the explicit post-sampling VRAM_Debug unload node",
+  missingTiledVae: "Missing tiled VAE decode",
+  durationFpsInvalid: "Duration and FPS must be valid numbers greater than 0.",
+  durationLimit: "A single segment can be at most {maxDurationSeconds} seconds; longer videos need interpolation, extension, or segmented generation.",
+  frameBudget: "This combination needs {generatedFrames} model frames, while the current verified budget for {label} is {maxGeneratedFrames} frames. Lower output FPS, enable RIFE, or wait for higher-frame validation.",
+  h3SafeGuidance: "The official local-template default is a safe starting range for the current GPU.",
+  h3BalancedGuidance: "A balanced range for this GPU; allow more time for sampling and decoding.",
+  h3HeavyGuidance: "A heavy load for this GPU; generation is allowed but VRAM and duration risk are higher. Close other GPU programs and avoid queuing several long tasks.",
+  h3FrameRange: "{label} official frame range: {generatedFrames}/{maxGeneratedFrames}. {guidance}",
+  currentModel: "Current model",
+  modelFrameBudget: "{label} model-frame budget: {generatedFrames}/{maxGeneratedFrames}.",
+  q3NoExtension: "The H3 Q3 GGUF 3080 experimental profile supports ordinary FL2VA image-to-video only, not video extension.",
+  sourceVideoMissing: "Choose a readable source video first.",
+  trimInvalid: "The video trim range is invalid.",
+  h3BoundarySummary: "H3 end-frame continuation: generating {generatedFrames}/{maxGeneratedFrames} new frames; this is not native latent-overlap extension. {message}",
+  motionContextMinimum: "H3 Motion Context needs about 0.92 seconds (22 frames) of source video.",
+  motionContextSpectrum: "H3 Motion Context extension must disable Spectrum to avoid degraded audio and seams from predicting fixed context rows.",
+  motionContextBudget: "The new segment plus 22 motion-context frames needs {sampledFrames} sampled frames, exceeding the current H3 budget of {maxGeneratedFrames}. Shorten the new segment.",
+  motionContextSummary: "H3 Motion Context: sampling {sampledFrames}/{maxGeneratedFrames} frames; the first 22 carry motion and audio from the previous segment and are trimmed from output.",
+  sulphurOnly: "Only Sulphur 2 may use native video extension tasks here.",
+  contextMinimum: "Keep at least {seconds} seconds to provide {frames} frames of extension context.",
+  sulphurResolution: "Sulphur 2 extension allows only 360p or 480p base resolution.",
+  sulphurUnload: "Sulphur 2 extension must enable model unloading between stages.",
+  sulphurBudget: "This combination needs {generatedFrames} model frames, exceeding the 24GB preset limit of {maxGeneratedFrames}. Shorten the new segment or enable RIFE.",
+  sulphurSummary: "GGUF extension budget: {generatedFrames}/{maxGeneratedFrames} model frames, {frames} context frames.",
+  apiRootInvalid: "Workflow root must be an object in ComfyUI API format",
+  uiWorkflowDetected: "A standard UI workflow was detected; export it as Workflow (API)",
+  workflowEmpty: "Workflow has no nodes",
+  nodeNotObject: "Node {nodeId} is not an object",
+  nodeClassMissing: "Node {nodeId} is missing class_type; it may be a standard UI workflow export",
+  nodeInputsMissing: "Node {nodeId} is missing inputs",
+  promptPlaceholderMissing: "Missing {{PROMPT}}; the GUI cannot inject the current prompt",
+  mediaPlaceholderMissing: "Missing {{INPUT_IMAGE}}, {{SOURCE_VIDEO}}, or an H3 reference-media placeholder; the GUI cannot inject input media",
+  seedPlaceholderMissing: "Missing {{SEED}}; the task Seed will not be passed into the workflow",
+  filenamePlaceholderMissing: "Missing {{OUTPUT_FILENAME}}; ComfyUI will choose the output filename"
+};
 const catalogs: Record<UiLocale, Partial<WorkflowLocale>> = {
   "zh-CN": zhCN,
+  "zh-TW": zhTWWorkflowMessages,
   "en-US": enUS
 };
 

@@ -2,7 +2,7 @@ import type { UiLocale } from "../types.js";
 import { zhCNCatalog } from "./locales/zh-CN.js";
 
 export const defaultUiLocale: UiLocale = "zh-CN";
-export const supportedUiLocales = ["zh-CN", "en-US"] as const satisfies readonly UiLocale[];
+export const supportedUiLocales = ["zh-CN", "zh-TW", "en-US"] as const satisfies readonly UiLocale[];
 
 export type TranslationParams = Record<string, string | number>;
 export type TranslationCatalog = Record<string, string>;
@@ -20,7 +20,8 @@ export const uiTranslationCatalogs: TranslationCatalogs = {
 };
 
 const localeLoaders: Partial<Record<UiLocale, () => Promise<TranslationCatalog>>> = {
-  "en-US": async () => (await import("./locales/en-US.js")).enUSCatalog
+  "en-US": async () => (await import("./locales/en-US.js")).enUSCatalog,
+  "zh-TW": async () => (await import("./locales/zh-TW.js")).zhTWCatalog
 };
 const localeLoadPromises: Partial<Record<UiLocale, Promise<TranslationCatalog>>> = {};
 

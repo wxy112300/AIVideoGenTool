@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ExtensionQueueTask, QueueTask } from "../src/types";
+import { H3_REALISM_PEOPLE_LORA } from "../src/core/video-loras";
 import {
   activityTimeoutMinutesForTask,
   extensionWorkflowSafetyErrors,
@@ -283,6 +284,31 @@ describe("renderWorkflow", () => {
       strength_model: 1.1
     });
     expect(rendered["19"]?.inputs.model).toEqual([loaders[1]?.[0], 0]);
+  });
+
+  it("renders Realism People as a model LoRA and prefixes its required trigger once", () => {
+    const source = JSON.parse(
+      readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      prompt: "a woman speaks beside a window",
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off",
+      videoLoras: [H3_REALISM_PEOPLE_LORA]
+    }, { inputImage: "input.png" }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    const realismLoader = Object.values(rendered).find((node) =>
+      node.class_type === "LoraLoaderModelOnly" &&
+      node.inputs.lora_name === H3_REALISM_PEOPLE_LORA.filename
+    );
+    const conditioning = Object.values(rendered).find((node) =>
+      node.class_type === "MiniMaxH3ImageToVideo"
+    );
+
+    expect(realismLoader?.inputs.strength_model).toBe(0.8);
+    expect(conditioning?.inputs.prompt).toBe("r34l1sm, a woman speaks beside a window");
   });
 
   it("renders the bundled MiniMax H3 I2V graph with staged model and VAE unloading", () => {

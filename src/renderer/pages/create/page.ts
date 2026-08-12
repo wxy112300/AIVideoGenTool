@@ -311,7 +311,7 @@ export function renderCreatePage(
       <div class="section-heading composer-heading">
         <div class="composer-heading-main">
           <h2>${t(viewModel.extending ? uiKeys.create.extensionPromptTitle : uiKeys.create.promptTitle)}</h2>
-          <span class="muted">${viewModel.promptVersionIndex + 1} / ${viewModel.promptVersionCount} 路 ${escapeHtml(viewModel.prompt.label)}</span>
+          <span class="muted">${viewModel.promptVersionIndex + 1} / ${viewModel.promptVersionCount} · ${escapeHtml(viewModel.prompt.label)}</span>
           <div class="prompt-version-controls">
             <button class="icon-button" id="prompt-prev" aria-label="${promptUi.t("previousVersion")}" title="${promptUi.t("previousVersion")}" ${viewModel.promptVersionIndex === 0 ? "disabled" : ""}>${icon("chevron-left")}</button>
             <button class="icon-button" id="prompt-next" aria-label="${promptUi.t("nextVersion")}" title="${promptUi.t("nextVersion")}" ${viewModel.promptVersionIndex >= viewModel.promptVersionCount - 1 ? "disabled" : ""}>${icon("chevron-right")}</button>

@@ -8,8 +8,9 @@ This document defines the localization seam. It does not add translated copy.
 - Catalog values live in `src/core/locales/<locale>.ts`.
 - `src/core/i18n.ts` owns locale normalization, fallback, loading, and the in-memory catalog cache.
 - `zh-CN` remains the default catalog and is loaded with the renderer runtime.
-- Non-default locales are loaded through `loadUiLocale()` only when selected; missing entries fall back to `zh-CN`.
+- `zh-TW` and `en-US` are loaded through `loadUiLocale()` only when selected; missing entries fall back to `zh-CN`.
 - `Settings -> interface language` persists `settings.uiLocale` and is the future locale switch entry.
+- `en-US` and `zh-TW` now have parity with the global `zh-CN` key catalog; fixed Settings page copy is owned by its three-locale copy pack, while dynamic hardware, component, and path metadata remains outside UI catalogs by contract.
 - Runtime workflow safety and validation keys live in `src/core/runtime/workflow-messages.ts`.
 - Workflow graph, safety, and API validation functions accept an optional `UiLocale`; callers should pass `settings.uiLocale` while keeping the default `zh-CN` fallback.
 
@@ -47,6 +48,6 @@ Keep these values outside UI catalogs unless they are ordinary labels:
 2. Page headings, tabs, primary actions, and empty/loading/error states.
 3. Settings labels and recovery messages.
 4. Detailed cards, tooltips, prompt builder labels, and runtime messages.
-5. Add the `en-US` catalog only when a complete translation batch is reviewed.
+5. Add or expand non-default locale catalogs in reviewable batches; keep fallback behavior until the affected page surface is complete.
 
 Until a locale catalog is complete, fallback to `zh-CN` is intentional and must remain functional.

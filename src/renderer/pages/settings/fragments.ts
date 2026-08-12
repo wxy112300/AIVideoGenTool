@@ -258,7 +258,7 @@ export function renderSettingsModelScanCard(
           : options.t(uiKeys.settings.system.scanCardComponentComplete);
   const metaLabel = profile.available
     ? isPromptProfile
-      ? isLlamaProfile
+        ? isLlamaProfile
         ? "GGUF + mmproj 文件完整；由应用自管理 llama-server"
         : isGemmaProfile
           ? "LLM GGUF + mmproj 文件完整；通过 ComfyUI Prompt Writer 处理视频和图片提示词"

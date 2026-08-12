@@ -1,4 +1,5 @@
 import type { UiLocale } from "../../../types.js";
+import { zhTWLoraLocales } from "./locale.zh-TW.js";
 
 export interface CatalogLoraGuideLocale {
   summary: string;
@@ -28,6 +29,22 @@ const zhCN: Record<string, CatalogLoraLocale> = {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
       turboSpectrum: "LightX2V Turbo 使用专用低步数采样策略，不能同时启用 Spectrum。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，内容、人物和风格 LoRA 后加载。"
+    }
+  },
+  "minimax-h3-realism-people": {
+    guide: {
+      summary: "人物写实质量 LoRA，增强近景面部、自然皮肤纹理、微表情、手部活动、电影灯光和轻微纪录片式镜头感。应用会自动把触发词 r34l1sm 放到执行 Prompt 开头。",
+      recommendedStrength: "默认 0.8；作者 intended strength 为 1.0，0.6–0.8 更轻。多 LoRA 叠加时建议先从 0.6–0.8 测试。",
+      effects: "可能改变肤色、调色、镜头运动、人物朝向和肢体物理；强度过高时可能降低纹理清晰度或放大手部瑕疵。",
+      stacking: "建议放在 Turbo 之后、NSFW 内容 LoRA 之前。首次使用应保留相同 Prompt/Seed 的无 LoRA 对照；与其他人物 LoRA 叠加时分别降低强度。",
+      compatibility: "作者权重支持 H3 T2V/I2V/R2V；当前应用开放给已接入的 INT8 FL2VA 图生视频与 INT8 R2V，多参考续写和 INT4/GGUF 尚未验证。",
+      source: "fal / MiniMax-H3-Realism-People-LoRA"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      realismTurbo: "Realism People 可与 Turbo 叠加，但低步数可能削弱人物细节；建议 Turbo 在前，并与标准 20 步做同 Seed 对照。",
+      realismPink: "Realism People 与 PinkFluffyBunny 都会改变人物和身体细节；组合属于未充分验证路径，建议分别降低强度并检查肤色、手部和动作。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；推荐顺序为性能 LoRA、人物/质量 LoRA、内容 LoRA。"
     }
   },
   "minimax-h3-pink-fluffy-bunny-nsfw": {
@@ -63,6 +80,22 @@ const enUS: Record<string, CatalogLoraLocale> = {
       orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before content, character, and style LoRAs."
     }
   },
+  "minimax-h3-realism-people": {
+    guide: {
+      summary: "A people-realism quality LoRA for close-up faces, natural skin texture, micro-expressions, hands at work, film lighting, and subtle documentary camera motion. The app automatically prefixes the execution Prompt with r34l1sm.",
+      recommendedStrength: "Default 0.8; the author's intended strength is 1.0, with 0.6–0.8 for a lighter effect. Start at 0.6–0.8 when stacking LoRAs.",
+      effects: "May alter skin tone, grading, camera movement, gaze, and body physics; excessive strength can soften texture or amplify hand artifacts.",
+      stacking: "Place it after Turbo and before NSFW content LoRAs. Keep a same-Prompt/same-Seed baseline without the adapter, and lower each strength when combining people-focused LoRAs.",
+      compatibility: "The author supplies one H3 T2V/I2V/R2V weight. The app currently enables validated INT8 FL2VA image-to-video and INT8 R2V; multi-reference extension and INT4/GGUF remain unvalidated.",
+      source: "fal / MiniMax-H3-Realism-People-LoRA"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      realismTurbo: "Realism People can stack with Turbo, but low-step sampling may reduce people detail; place Turbo first and compare against standard 20-step sampling with the same Seed.",
+      realismPink: "Realism People and PinkFluffyBunny both alter people and body detail. This stack is not fully validated; lower both strengths and inspect skin tone, hands, and motion.",
+      orderSuggestion: "Place {current} before {previous}; the recommended order is performance, people/quality, then content LoRAs."
+    }
+  },
   "minimax-h3-pink-fluffy-bunny-nsfw": {
     guide: {
       summary: "A community NSFW content LoRA for H3 response to adult content, body detail, and related poses. It does not replace the Prompt.",
@@ -85,6 +118,10 @@ const genericRules: Record<UiLocale, Record<string, string>> = {
     incompatible: "{name} 不兼容当前基础模型或输入模式。",
     orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，内容、人物和风格 LoRA 后加载。"
   },
+  "zh-TW": {
+    incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+    orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入，內容、人物和風格 LoRA 後載入。"
+  },
   "en-US": {
     incompatible: "{name} is incompatible with the current base model or input mode.",
     orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before content, character, and style LoRAs."
@@ -92,7 +129,7 @@ const genericRules: Record<UiLocale, Record<string, string>> = {
 };
 
 export function loraLocaleFor(id: string, locale: UiLocale = "zh-CN"): CatalogLoraLocale | undefined {
-  return (locale === "en-US" ? enUS[id] : undefined) ?? zhCN[id];
+  return (locale === "en-US" ? enUS[id] : locale === "zh-TW" ? zhTWLoraLocales[id] : undefined) ?? zhCN[id];
 }
 
 export function loraRuleText(

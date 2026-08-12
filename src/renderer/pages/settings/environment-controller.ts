@@ -112,7 +112,7 @@ export function mountSettingsEnvironmentController(
       options.setComfyUpdateLog(result.log || result.message);
       context.notify(result.message);
       if (result.ok && options.getEnvironmentScan()?.comfyCompatibility.updateMode === "git") {
-        options.setServiceStatusMessage("更新完成。重启 ComfyUI 后会重新检测 H3 核心节点。");
+        options.setServiceStatusMessage(context.t(uiKeys.settings.actions.updateCompleted));
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -142,7 +142,7 @@ export function mountSettingsEnvironmentController(
       options.setAttentionAccelerationLog(
         [options.getAttentionAccelerationLog(), message].filter(Boolean).join("\n")
       );
-      context.notify(`推理加速环境安装失败：${message}`);
+      context.notify(context.t(uiKeys.settings.actions.attentionInstallFailed, { error: message }));
     } finally {
       options.setAttentionAccelerationInstalling(false);
       context.requestRender();
@@ -163,7 +163,7 @@ export function mountSettingsEnvironmentController(
         const nextScan = await context.studio.scanEnvironment(settings);
         options.setEnvironmentScan(nextScan);
         if (nextScan.comfyCompatibility.h3CoreSupported) {
-          context.notify("ComfyUI 已启动，MiniMax H3 I2V 核心节点已加载。");
+          context.notify(context.t(uiKeys.settings.actions.h3CoreLoaded));
           return;
         }
       }
@@ -186,7 +186,7 @@ export function mountSettingsEnvironmentController(
       options.setComfyUpdateLog(
         [options.getComfyUpdateLog(), message].filter(Boolean).join("\n\n")
       );
-      context.notify(`核心节点处理失败：${message}`);
+      context.notify(context.t(uiKeys.settings.actions.coreNodeProcessFailed, { error: message }));
     } finally {
       options.setCoreDependencyRepairing(false);
       context.requestRender();
@@ -223,7 +223,7 @@ export function mountSettingsEnvironmentController(
       const state = context.getState();
       if (!nodeId) return;
       if (state?.queue.some((task) => task.status === "running")) {
-        context.notify("当前有视频任务正在运行，请等待完成后再安装或更新节点。");
+        context.notify(context.t(uiKeys.settings.actions.runningTaskBlocked));
         return;
       }
       const settings = options.formSettings();
@@ -237,18 +237,18 @@ export function mountSettingsEnvironmentController(
         const restarted = await context.studio.restartLocalService("comfy", settings);
         options.setCustomNodeLog(
           nodeId,
-          [options.getCustomNodeLog(nodeId), `ComfyUI 重启：${restarted.message}`]
+          [options.getCustomNodeLog(nodeId), context.t(uiKeys.settings.actions.comfyRestartLog, { message: restarted.message })]
             .filter(Boolean)
             .join("\n\n")
         );
         if (!restarted.ok) {
-          throw new Error(`节点文件已安装/更新，但 ComfyUI 自动重启失败：${restarted.message}`);
+          throw new Error(context.t(uiKeys.settings.actions.nodeRestartFailed, { message: restarted.message }));
         }
-        const message = `${result.message} ComfyUI 已重启并完成复检。`;
+        const message = context.t(uiKeys.settings.actions.comfyRestarted, { message: result.message });
         const scan = await context.studio.scanEnvironment(settings);
         options.setEnvironmentScan(scan);
         if (!scan.customNodes.find((node) => node.id === nodeId)?.loaded) {
-          throw new Error("ComfyUI 已重启，但节点必需模块仍未全部注册；请展开安装日志检查导入错误。");
+          throw new Error(context.t(uiKeys.settings.actions.nodeReadyCheckFailed));
         }
         context.notify(message);
       } catch (error) {
@@ -257,7 +257,7 @@ export function mountSettingsEnvironmentController(
           nodeId,
           [options.getCustomNodeLog(nodeId), message].filter(Boolean).join("\n\n")
         );
-        context.notify(`节点安装失败：${message}`);
+        context.notify(context.t(uiKeys.settings.actions.nodeInstallFailed, { message }));
       } finally {
         options.setCustomNodeInstalling("");
         context.requestRender();
@@ -286,7 +286,7 @@ export function mountSettingsEnvironmentController(
           workflowId,
           options.getWorkflowDependencyLog(workflowId) || message
         );
-        context.notify(`工作流安装失败：${message}`);
+        context.notify(context.t(uiKeys.settings.actions.workflowInstallFailed, { message }));
       } finally {
         options.setWorkflowDependencyInstalling("");
         context.requestRender();

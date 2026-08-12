@@ -2,13 +2,14 @@ import type { ImagePromptPreset, UiLocale } from "../../../types.js";
 import { createDefaultQwenImagePromptPresets } from "./content.js";
 import { presetLocale as enPresetLocale, referenceRoleLocale as enReferenceRoleLocale, uiLocale as enUiLocale } from "./locale.en-US.js";
 import { presetLocale as zhPresetLocale, referenceRoleLocale as zhReferenceRoleLocale, uiLocale as zhUiLocale } from "./locale.zh-CN.js";
+import { presetLocale as twPresetLocale, referenceRoleLocale as twReferenceRoleLocale, uiLocale as twUiLocale } from "./locale.zh-TW.js";
 import type { ImagePromptPack, ImagePromptUiKey } from "../types.js";
 
 export function qwenImagePromptPackFor(locale: UiLocale = "zh-CN"): ImagePromptPack {
-  const resolvedLocale = locale === "en-US" ? "en-US" : "zh-CN";
-  const presetLocale = resolvedLocale === "en-US" ? enPresetLocale : zhPresetLocale;
-  const referenceRoleLocale = resolvedLocale === "en-US" ? enReferenceRoleLocale : zhReferenceRoleLocale;
-  const selectedUiLocale = resolvedLocale === "en-US" ? enUiLocale : zhUiLocale;
+  const resolvedLocale = locale === "en-US" || locale === "zh-TW" ? locale : "zh-CN";
+  const presetLocale = resolvedLocale === "en-US" ? enPresetLocale : resolvedLocale === "zh-TW" ? twPresetLocale : zhPresetLocale;
+  const referenceRoleLocale = resolvedLocale === "en-US" ? enReferenceRoleLocale : resolvedLocale === "zh-TW" ? twReferenceRoleLocale : zhReferenceRoleLocale;
+  const selectedUiLocale = resolvedLocale === "en-US" ? enUiLocale : resolvedLocale === "zh-TW" ? twUiLocale : zhUiLocale;
   return {
     locale: resolvedLocale,
     defaultPresets: createDefaultQwenImagePromptPresets(),

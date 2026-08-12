@@ -19,6 +19,7 @@ import {
   renderSettingsModelScanCard,
   type SettingsInstallGuideSelection
 } from "./fragments";
+import { settingsText } from "./copy";
 
 interface ImageQualityProfileOption {
   id: string;
@@ -98,6 +99,8 @@ export function renderSettingsPage(
 ): string {
   const settings = viewModel.settings;
   const t = options.t;
+  const s = (key: Parameters<typeof settingsText>[1], params?: Record<string, string | number>) =>
+    settingsText(settings.uiLocale, key, params);
   const environmentScan = viewModel.environmentScan;
   const escape = (value: string | number | null | undefined) => options.escapeHtml(value == null ? "" : String(value));
   const icon = (name: string, className?: string) => options.icon(name, className);
@@ -249,7 +252,7 @@ export function renderSettingsPage(
     <section class="settings-panel">
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${t(uiKeys.settings.localeTitle)}</h2><span class="muted">${t(uiKeys.settings.localeDescription)}</span></div></div>
-        <label>${t(uiKeys.settings.localeLabel)}<select id="ui-locale"><option value="zh-CN" ${settings.uiLocale === "zh-CN" ? "selected" : ""}>${t(uiKeys.settings.localeChinese)}</option><option value="en-US" ${settings.uiLocale === "en-US" ? "selected" : ""}>${t(uiKeys.settings.localeEnglish)}</option></select></label>
+        <label>${t(uiKeys.settings.localeLabel)}<select id="ui-locale"><option value="zh-CN" ${settings.uiLocale === "zh-CN" ? "selected" : ""}>${t(uiKeys.settings.localeChinese)}</option><option value="zh-TW" ${settings.uiLocale === "zh-TW" ? "selected" : ""}>${t(uiKeys.settings.localeTraditionalChinese)}</option><option value="en-US" ${settings.uiLocale === "en-US" ? "selected" : ""}>${t(uiKeys.settings.localeEnglish)}</option></select></label>
         <p class="muted proxy-hint">${t(uiKeys.settings.localePending)}</p>
       </section>
       <section class="panel settings-section">
@@ -351,28 +354,28 @@ export function renderSettingsPage(
     <section class="settings-panel">
       <section class="panel settings-section">
         <div class="section-heading">
-          <div><h2>视频模型</h2><span class="muted">根据真实文件组件判断是否可用，不仅检查单个 checkpoint 名称。</span></div>
-          <label class="compact-label">默认模型<select id="default-video-model">
+          <div><h2>${s("video.title")}</h2><span class="muted">${s("video.description")}</span></div>
+          <label class="compact-label">${s("video.defaultModel")}<select id="default-video-model">
             ${(videoProfiles.length ? videoProfiles : modelCatalog.list("video").map((entry) => ({
               id: entry.definition.id,
               name: modelCatalog.localized(entry.definition.id, settings.uiLocale)?.name ?? entry.definition.id,
               available: false,
               integrated: entry.definition.scan?.integrated !== false
-            }))).map((profile) => `<option value="${profile.id}" ${settings.defaultVideoModel === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? " · 缺组件" : profile.integrated === false ? " · 工作流待接入" : ""}</option>`).join("")}
+            }))).map((profile) => `<option value="${profile.id}" ${settings.defaultVideoModel === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? s("video.missingComponent") : profile.integrated === false ? s("video.workflowPending") : ""}</option>`).join("")}
           </select></label>
         </div>
-        <div class="scan-result">${viewModel.environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${videoAvailable} 个已接入可运行模型，${videoProfiles.length - videoAvailable} 个缺组件或等待工作流接入` : "等待首次扫描"}</div>
+        <div class="scan-result">${viewModel.environmentScanning ? s("video.scanning") : environmentScan ? s("video.summary", { available: videoAvailable, pending: videoProfiles.length - videoAvailable }) : s("video.waitingScan")}</div>
       </section>
-      <div class="model-profile-list">${videoProfiles.length ? videoProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">尚无模型扫描结果</div>`}</div>
+      <div class="model-profile-list">${videoProfiles.length ? videoProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("video.empty")}</div>`}</div>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>Sulphur 2 部署</h2><span class="muted">同一档位同时决定普通 I2V、原生 Extend、模型扫描和新任务快照。</span></div><span class="model-badge">分离式 GGUF</span></div>
+        <div class="section-heading"><div><h2>${s("sulphur.title")}</h2><span class="muted">${s("sulphur.description")}</span></div><span class="model-badge">${s("sulphur.badge")}</span></div>
         <div class="settings-grid two">
-          <label>Transformer 量化档<select id="ltx-extension-model-profile"><option value="q2_distilled" ${settings.ltxExtensionModelProfile === "q2_distilled" ? "selected" : ""}>Q2_K distilled · 7.93 GB · 8GB 兼容</option><option value="q3_k_m" ${settings.ltxExtensionModelProfile === "q3_k_m" ? "selected" : ""}>Q3_K_M dev · 11.13 GB · 推荐</option><option value="q4_k_m" ${settings.ltxExtensionModelProfile === "q4_k_m" ? "selected" : ""}>Q4_K_M dev · 14.30 GB · 质量</option></select></label>
-          <label>基准分辨率<select id="ltx-extension-resolution"><option value="360" ${settings.ltxExtensionResolution === 360 ? "selected" : ""}>360p · 推荐</option><option value="480" ${settings.ltxExtensionResolution === 480 ? "selected" : ""}>480p · 较慢</option></select></label>
-          <label>每段新增模型帧<select id="ltx-extension-frames"><option value="49" ${settings.ltxExtensionFrames === 49 ? "selected" : ""}>49 帧 · 推荐</option><option value="65" ${settings.ltxExtensionFrames === 65 ? "selected" : ""}>65 帧 · 较长</option></select></label>
-          <label>单节点等待上限<select id="ltx-extension-timeout"><option value="10" ${settings.ltxExtensionTimeoutMinutes === 10 ? "selected" : ""}>10 分钟 · 快速止损</option><option value="20" ${settings.ltxExtensionTimeoutMinutes === 20 ? "selected" : ""}>20 分钟 · 推荐</option><option value="30" ${settings.ltxExtensionTimeoutMinutes === 30 ? "selected" : ""}>30 分钟 · 极慢设备</option></select></label>
+          <label>${s("sulphur.transformer")}<select id="ltx-extension-model-profile"><option value="q2_distilled" ${settings.ltxExtensionModelProfile === "q2_distilled" ? "selected" : ""}>Q2_K distilled · 7.93 GB · 8GB compatible</option><option value="q3_k_m" ${settings.ltxExtensionModelProfile === "q3_k_m" ? "selected" : ""}>Q3_K_M dev · 11.13 GB · ${s("sulphur.recommended")}</option><option value="q4_k_m" ${settings.ltxExtensionModelProfile === "q4_k_m" ? "selected" : ""}>Q4_K_M dev · 14.30 GB · quality</option></select></label>
+          <label>${s("sulphur.resolution")}<select id="ltx-extension-resolution"><option value="360" ${settings.ltxExtensionResolution === 360 ? "selected" : ""}>360p · ${s("sulphur.recommended")}</option><option value="480" ${settings.ltxExtensionResolution === 480 ? "selected" : ""}>480p · ${s("sulphur.slower")}</option></select></label>
+          <label>${s("sulphur.frames")}<select id="ltx-extension-frames"><option value="49" ${settings.ltxExtensionFrames === 49 ? "selected" : ""}>49 ${s("sulphur.framesUnit")} · ${s("sulphur.recommended")}</option><option value="65" ${settings.ltxExtensionFrames === 65 ? "selected" : ""}>65 ${s("sulphur.framesUnit")} · ${s("sulphur.longer")}</option></select></label>
+          <label>${s("sulphur.timeout")}<select id="ltx-extension-timeout"><option value="10" ${settings.ltxExtensionTimeoutMinutes === 10 ? "selected" : ""}>10 minutes · ${s("sulphur.fastStop")}</option><option value="20" ${settings.ltxExtensionTimeoutMinutes === 20 ? "selected" : ""}>20 minutes · ${s("sulphur.recommended")}</option><option value="30" ${settings.ltxExtensionTimeoutMinutes === 30 ? "selected" : ""}>30 minutes · ${s("sulphur.verySlow")}</option></select></label>
         </div>
-        <p class="muted proxy-hint">Q2 使用 distilled 模型且不加载 LoRA；Q3/Q4 使用 dev 模型和 distill LoRA。三档均要求 Gemma 3、LTX 文本连接器、独立视频/音频 VAE 与 latent upscaler，并强制单任务、<code>patch_on_device=false</code>、<code>--cache-none</code>、CPU offload 和分块解码。8GB 兼容仍要求充足的系统内存与页面文件。</p>
+        <p class="muted proxy-hint">${s("sulphur.note")}</p>
       </section>
     </section>`;
 
@@ -380,24 +383,24 @@ export function renderSettingsPage(
     <section class="settings-panel">
       <section class="panel settings-section">
         <div class="section-heading">
-          <div><h2>视频 LoRA</h2><span class="muted">LoRA 是叠加在基础模型上的可选适配层，不再作为独立视频模型显示。</span></div>
-          <span class="model-badge">${loraAvailable}/${loraProfiles.length} 可用</span>
+          <div><h2>${s("lora.title")}</h2><span class="muted">${s("lora.description")}</span></div>
+          <span class="model-badge">${s("lora.available", { available: loraAvailable, total: loraProfiles.length })}</span>
         </div>
-        <div class="scan-result">标准 <code>.safetensors</code> LoRA 由 ComfyUI 核心 <code>LoraLoaderModelOnly</code> 加载，不需要单独安装节点。只有带自定义加载器、采样器、缓存或模型补丁的特殊 LoRA 才会额外依赖节点。</div>
-        <p class="muted proxy-hint">LightX2V Turbo 4-Step 仅兼容 MiniMax H3 FL2VA。启用后默认使用 strength 0.75、ER-SDE、Beta 和 8 步；它减少采样步数，但不会把 H3 变成低显存模型。</p>
+        <div class="scan-result">${s("lora.scan")}</div>
+        <p class="muted proxy-hint">${s("lora.turbo")}</p>
       </section>
-      <div class="model-profile-list">${loraProfiles.length ? loraProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">尚无 LoRA 扫描结果</div>`}</div>
+      <div class="model-profile-list">${loraProfiles.length ? loraProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("lora.empty")}</div>`}</div>
     </section>`;
 
   const imagePanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
         <div class="section-heading">
-          <div><h2>图片编辑模型</h2><span class="muted">选择适合当前显存的本地图像模型；只有组件和工作流完成验证后，创建页才会允许提交。</span></div>
+          <div><h2>${s("image.title")}</h2><span class="muted">${s("image.description")}</span></div>
           <span class="model-badge">Qwen / Klein</span>
         </div>
         <div class="settings-grid two">
-          <label>默认图片模型<select id="default-image-model">
+          <label>${s("image.defaultModel")}<select id="default-image-model">
             ${(imageProfiles.length ? imageProfiles : modelCatalog.list("image").map((entry) => ({
               id: entry.definition.id,
               name: modelCatalog.localized(entry.definition.id, settings.uiLocale)?.name ?? entry.definition.id,
@@ -410,59 +413,59 @@ export function renderSettingsPage(
               components: []
             }))).map((profile) => `<option value="${escape(profile.id)}" ${settings.defaultImageModel === profile.id ? "selected" : ""} ${options.isImageModelSelectable(profile) ? "" : "disabled"}>${escape(profile.name)}${options.isImageModelSelectable(profile) ? "" : ` · ${escape(options.imageWorkflowStatus(profile))}`}</option>`).join("")}
           </select></label>
-          <label>默认质量档<select id="image-quality-profile">
-            ${imageQualityProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.defaultImageQualityProfile === profile.id ? "selected" : ""}>${escape(profile.label)} · ${profile.steps} 步</option>`).join("")}
+          <label>${s("image.defaultQuality")}<select id="image-quality-profile">
+            ${imageQualityProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.defaultImageQualityProfile === profile.id ? "selected" : ""}>${escape(profile.label)} · ${profile.steps} ${s("sulphur.framesUnit")}</option>`).join("")}
           </select></label>
-          <label>默认生成数量<div class="inline-field"><input id="image-output-count" type="range" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><input id="image-output-count-number" type="number" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><span>张</span></div></label>
+          <label>${s("image.defaultCount")}<div class="inline-field"><input id="image-output-count" type="range" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><input id="image-output-count-number" type="number" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><span>${s("image.countUnit")}</span></div></label>
         </div>
-        <div class="scan-result">${viewModel.environmentScanning ? "正在扫描图片模型组件和 ComfyUI 节点…" : environmentScan ? `找到 ${imageComponentsReady} 个组件完整档位，${imageWorkflowsReady} 个工作流可用；Qwen 2511 当前最多支持 3 张 Picture` : "等待首次扫描"}</div>
-        <p class="muted proxy-hint">图片工作流固定输出 PNG，便于继续编辑和交给 H3 使用。Qwen 2511 会在下次启动 ComfyUI 时自动使用 CPU VAE、文本编码器卸载和更激进的显存回收；FLUX.2 Klein 4B 是 4090 的优先轻量候选。</p>
+        <div class="scan-result">${viewModel.environmentScanning ? s("image.scanning") : environmentScan ? s("image.summary", { components: imageComponentsReady, workflows: imageWorkflowsReady }) : s("image.waitingScan")}</div>
+        <p class="muted proxy-hint">${s("image.note")}</p>
       </section>
-      <div class="model-profile-list">${imageProfiles.length ? imageProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">尚无图片模型扫描结果；请先确认模型目录后重新扫描。</div>`}</div>
+      <div class="model-profile-list">${imageProfiles.length ? imageProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("image.empty")}</div>`}</div>
     </section>`;
 
   const promptPanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>本地提示词模型</h2><span class="muted">统一由当前 ComfyUI 运行：Qwen 使用原生 TextGenerate，Gemma 4 使用 H3 Prompt Writer 扩展。</span></div><div class="button-row"><span class="model-badge">仅依赖 ComfyUI</span><button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model" ${viewModel.promptRuntimeBusy || viewModel.queueRunning || (!viewModel.promptRuntimeLoaded && !viewModel.promptStatus.ready) ? "disabled" : ""} aria-label="${escape(viewModel.promptRuntimeControlTitle)}" title="${escape(viewModel.promptRuntimeControlTitle)}" aria-busy="${viewModel.promptRuntimeBusy}">${icon(viewModel.promptRuntimeControlIconName)}</button></div></div>
-        <label>默认提示词模型<select id="prompt-model-id">${promptProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.promptModelId === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escape(profile.name)}${profile.available ? "" : " · 缺组件"} · 视频/图片</option>`).join("")}</select></label>
+        <div class="section-heading"><div><h2>${s("prompt.title")}</h2><span class="muted">${s("prompt.description")}</span></div><div class="button-row"><span class="model-badge">${s("prompt.badge")}</span><button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model" ${viewModel.promptRuntimeBusy || viewModel.queueRunning || (!viewModel.promptRuntimeLoaded && !viewModel.promptStatus.ready) ? "disabled" : ""} aria-label="${escape(viewModel.promptRuntimeControlTitle)}" title="${escape(viewModel.promptRuntimeControlTitle)}" aria-busy="${viewModel.promptRuntimeBusy}">${icon(viewModel.promptRuntimeControlIconName)}</button></div></div>
+        <label>${s("prompt.defaultModel")}<select id="prompt-model-id">${promptProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.promptModelId === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escape(profile.name)}${profile.available ? "" : s("prompt.missingComponent")} ${s("prompt.videoImage")}</option>`).join("")}</select></label>
         <div class="settings-grid two">
-          <label>扩写语言<select id="prompt-language"><option value="auto" ${settings.promptLanguage === "auto" ? "selected" : ""}>跟随输入语言</option><option value="zh" ${settings.promptLanguage === "zh" ? "selected" : ""}>中文</option><option value="en" ${settings.promptLanguage === "en" ? "selected" : ""}>英文</option></select></label>
-          <label>创造性<select id="prompt-creativity"><option value="0.3" ${settings.promptCreativity === 0.3 ? "selected" : ""}>克制 · 0.3</option><option value="0.7" ${settings.promptCreativity === 0.7 ? "selected" : ""}>平衡 · 0.7</option><option value="1" ${settings.promptCreativity === 1 ? "selected" : ""}>丰富 · 1.0</option></select></label>
+          <label>${s("prompt.language")}<select id="prompt-language"><option value="auto" ${settings.promptLanguage === "auto" ? "selected" : ""}>${s("prompt.followInput")}</option><option value="zh" ${settings.promptLanguage === "zh" ? "selected" : ""}>${s("prompt.chinese")}</option><option value="en" ${settings.promptLanguage === "en" ? "selected" : ""}>${s("prompt.english")}</option></select></label>
+          <label>${s("prompt.creativity")}<select id="prompt-creativity"><option value="0.3" ${settings.promptCreativity === 0.3 ? "selected" : ""}>${s("prompt.restrained")} · 0.3</option><option value="0.7" ${settings.promptCreativity === 0.7 ? "selected" : ""}>${s("prompt.balanced")} · 0.7</option><option value="1" ${settings.promptCreativity === 1 ? "selected" : ""}>${s("prompt.rich")} · 1.0</option></select></label>
         </div>
-        <div class="scan-result">${viewModel.environmentScanning ? "正在扫描 ComfyUI/models…" : environmentScan ? `找到 ${promptAvailable} 个提示词模型档位` : "等待首次扫描"}</div>
-        <p class="muted proxy-hint">Qwen Safetensors 使用 ComfyUI 官方 <code>models/text_encoders</code> 分类；Gemma GGUF 使用 H3 Prompt Writer 扩展注册的大写 <code>models/LLM/独立子目录</code>，主模型与匹配的 <code>mmproj</code> 必须放在一起。扩写完成会自动卸载，不需要安装或启动 llama-server、LM Studio。</p>
+        <div class="scan-result">${viewModel.environmentScanning ? s("prompt.scanning") : environmentScan ? s("prompt.summary", { count: promptAvailable }) : s("prompt.waitingScan")}</div>
+        <p class="muted proxy-hint">${s("prompt.note")}</p>
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>视频提示词预设</h2><span class="muted">预设会把原始文字和参考图整理成完整的 H3 视频提示词，覆盖主体、场景、动作、镜头、声音、对白和连续性。</span></div><button class="secondary button-with-icon" id="restore-h3-prompt-presets">${icon("rotate-ccw")}恢复默认</button></div>
-        <label>当前编辑预设<select id="h3-prompt-preset-setting">${options.h3PromptPresetOptions(viewModel.settingsH3PromptPreset, true)}</select></label>
+        <div class="section-heading"><div><h2>${s("prompt.videoPresetTitle")}</h2><span class="muted">${s("prompt.videoPresetDescription")}</span></div><button class="secondary button-with-icon" id="restore-h3-prompt-presets">${icon("rotate-ccw")}${s("prompt.restore")}</button></div>
+        <label>${s("prompt.currentPreset")}<select id="h3-prompt-preset-setting">${options.h3PromptPresetOptions(viewModel.settingsH3PromptPreset, true)}</select></label>
         <p class="muted proxy-hint">${escape(options.h3PromptPresetDescriptions[viewModel.settingsH3PromptPreset])}</p>
-        <label>预设规则头<textarea id="h3-prompt-preset-text" rows="7">${escape(selectedH3PresetText)}</textarea></label>
-        <p class="muted proxy-hint">规则头可自由修改；内置的 H3 官方基线会继续强制参考标签、首尾帧关系、连续性、音频和输出格式。修改后点击设置页顶部“保存设置”，创建页下次扩写立即使用。</p>
+        <label>${s("prompt.ruleHeader")}<textarea id="h3-prompt-preset-text" rows="7">${escape(selectedH3PresetText)}</textarea></label>
+        <p class="muted proxy-hint">${s("prompt.h3Note")}</p>
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>图片提示词预设</h2><span class="muted">只影响图片“优化提示词”时的整理策略，不改变 Qwen Image 的生成参数。</span></div><button class="secondary button-with-icon" id="restore-image-prompt-presets">${icon("rotate-ccw")}恢复默认</button></div>
-        <label>当前编辑预设<select id="image-prompt-preset-setting">${Object.entries(options.imagePromptPresetLabels).map(([id, label]) => `<option value="${id}" ${viewModel.settingsImagePromptPreset === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        <div class="section-heading"><div><h2>${s("prompt.imagePresetTitle")}</h2><span class="muted">${s("prompt.imagePresetDescription")}</span></div><button class="secondary button-with-icon" id="restore-image-prompt-presets">${icon("rotate-ccw")}${s("prompt.restore")}</button></div>
+        <label>${s("prompt.currentPreset")}<select id="image-prompt-preset-setting">${Object.entries(options.imagePromptPresetLabels).map(([id, label]) => `<option value="${id}" ${viewModel.settingsImagePromptPreset === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
         <p class="muted proxy-hint">${escape(options.imagePromptPresetDescriptions[viewModel.settingsImagePromptPreset])}</p>
-        <label>预设规则头<textarea id="image-prompt-preset-text" rows="7">${escape(selectedImagePromptPresetText)}</textarea></label>
-        <p class="muted proxy-hint">规则头会作为图片 Prompt 优化器的策略说明；最终发送给 Qwen Image 的 Prompt 不会包含这段设置文本。</p>
+        <label>${s("prompt.ruleHeader")}<textarea id="image-prompt-preset-text" rows="7">${escape(selectedImagePromptPresetText)}</textarea></label>
+        <p class="muted proxy-hint">${s("prompt.imageNote")}</p>
       </section>
-      <div class="model-profile-list">${promptProfiles.length ? promptProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">尚无提示词模型扫描结果</div>`}</div>
+      <div class="model-profile-list">${promptProfiles.length ? promptProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("prompt.empty")}</div>`}</div>
     </section>`;
 
   const upscalePanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>分辨率提升模型</h2><span class="muted">只有组件完整的模型才能进入后续提升工作流。</span></div>
-          <label class="compact-label">默认模型<select id="default-upscale-model">${upscaleProfiles.map((profile) => `<option value="${profile.id}" ${settings.defaultUpscaleModel === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escape(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
+        <div class="section-heading"><div><h2>${s("upscale.title")}</h2><span class="muted">${s("upscale.description")}</span></div>
+          <label class="compact-label">${s("upscale.defaultModel")}<select id="default-upscale-model">${upscaleProfiles.map((profile) => `<option value="${profile.id}" ${settings.defaultUpscaleModel === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escape(profile.name)}${profile.available ? "" : s("upscale.missingComponent")}</option>`).join("")}</select></label>
         </div>
-        <div class="scan-result">${viewModel.environmentScanning ? "正在扫描模型目录…" : environmentScan ? `找到 ${upscaleAvailable} 个可运行模型，${upscaleProfiles.length - upscaleAvailable} 个待补齐` : "等待首次扫描"}</div>
+        <div class="scan-result">${viewModel.environmentScanning ? s("upscale.scanning") : environmentScan ? s("upscale.summary", { available: upscaleAvailable, pending: upscaleProfiles.length - upscaleAvailable }) : s("upscale.waitingScan")}</div>
         <div class="settings-grid two">
-          <label>SeedVR2 权重<input id="seedvr2-model" value="${escape(settings.seedVr2Model)}"></label>
-          <label>Real-ESRGAN 权重<input id="realesrgan-model" value="${escape(settings.realEsrganModel)}"></label>
+          <label>${s("upscale.seedWeight")}<input id="seedvr2-model" value="${escape(settings.seedVr2Model)}"></label>
+          <label>${s("upscale.realesrganWeight")}<input id="realesrgan-model" value="${escape(settings.realEsrganModel)}"></label>
         </div>
       </section>
-      <div class="model-profile-list">${upscaleProfiles.length ? upscaleProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">尚无模型扫描结果</div>`}</div>
+      <div class="model-profile-list">${upscaleProfiles.length ? upscaleProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("upscale.empty")}</div>`}</div>
     </section>`;
 
   const nodeInstalled = environmentScan?.customNodes.filter(
@@ -483,80 +486,80 @@ export function renderSettingsPage(
   const nodePanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>节点与工作流依赖</h2><span class="muted">换电脑后按项目清单复现 ComfyUI 节点环境</span></div><span class="model-badge">${nodeDependencyAvailable}/${nodeDependencyTotal} 可用</span></div>
-        <div class="scan-result">安装只使用项目内置仓库清单；完成后重启 ComfyUI，再重新扫描。</div>
+        <div class="section-heading"><div><h2>${s("nodes.title")}</h2><span class="muted">${s("nodes.description")}</span></div><span class="model-badge">${nodeDependencyAvailable}/${nodeDependencyTotal} ${s("nodes.installed")}</span></div>
+        <div class="scan-result">${s("nodes.installNote")}</div>
       </section>
       <div class="model-profile-list">
         <article class="panel custom-node-card ${h3CoreReady ? "available" : "missing"}">
           <div class="custom-node-copy">
-            <div class="model-title"><h3>MiniMax H3 原生音视频核心</h3><span class="model-badge">ComfyUI v0.31.0+</span></div>
-            <p>LightX2V Turbo 直接使用 ComfyUI 原生 LoRA 与音视频采样，不需要额外的 Turbo custom node；版本过低时请更新所选 ComfyUI 并重启复检。</p>
+            <div class="model-title"><h3>${s("nodes.h3Title")}</h3><span class="model-badge">${s("nodes.h3Badge")}</span></div>
+            <p>${s("nodes.h3Description")}</p>
             <div class="component-list">
-              ${h3CoreNodes.map((node) => `<div class="component-row ${node.available ? "found" : "missing"}"><span class="component-state">${icon(node.available ? "circle-check" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`).join("") || `<div class="component-row missing"><span class="component-state">${icon("circle-alert")}</span><div><strong>等待扫描核心节点</strong></div></div>`}
+              ${h3CoreNodes.map((node) => `<div class="component-row ${node.available ? "found" : "missing"}"><span class="component-state">${icon(node.available ? "circle-check" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`).join("") || `<div class="component-row missing"><span class="component-state">${icon("circle-alert")}</span><div><strong>${s("nodes.waitingCore")}</strong></div></div>`}
             </div>
-            <span class="muted">最低版本 <code>v0.31.0</code> · 参考提交 <code>${escape(environmentScan?.comfyCompatibility.h3MinimumRevision ?? "")}</code></span>
-            ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>核心处理日志</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
+            <span class="muted">${s("nodes.minimumVersion")} <code>v0.31.0</code> · ${s("nodes.coreLog")} <code>${escape(environmentScan?.comfyCompatibility.h3MinimumRevision ?? "")}</code></span>
+            ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>${s("nodes.coreLog")}</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
           </div>
           <div class="custom-node-actions">
-            <span class="model-availability ${h3CoreReady ? "available" : "missing"}">${h3CoreReady ? `${icon("circle-check")} 已加载` : h3CoreKnown ? `${icon("circle-alert")} 核心缺失` : `${icon("circle-help")} 尚未启动检测`}</span>
-            ${h3CoreReady ? "" : `<button class="primary button-with-icon" id="repair-h3-core" ${viewModel.coreDependencyRepairing ? "disabled" : ""}>${icon(viewModel.coreDependencyRepairing ? "refresh-cw" : "shield-check")}${viewModel.coreDependencyRepairing ? "处理中…" : h3CoreKnown ? "一键补齐/更新" : "启动并检测"}</button>`}
+            <span class="model-availability ${h3CoreReady ? "available" : "missing"}">${h3CoreReady ? `${icon("circle-check")} ${s("nodes.loaded")}` : h3CoreKnown ? `${icon("circle-alert")} ${s("nodes.coreMissing")}` : `${icon("circle-help")} ${s("nodes.notChecked")}`}</span>
+            ${h3CoreReady ? "" : `<button class="primary button-with-icon" id="repair-h3-core" ${viewModel.coreDependencyRepairing ? "disabled" : ""}>${icon(viewModel.coreDependencyRepairing ? "refresh-cw" : "shield-check")}${viewModel.coreDependencyRepairing ? s("nodes.processing") : h3CoreKnown ? s("nodes.repairUpdate") : s("nodes.startCheck")}</button>`}
           </div>
         </article>
         <article class="panel custom-node-card ${promptCoreReady ? "available" : "missing"}">
           <div class="custom-node-copy">
-            <div class="model-title"><h3>Qwen 提示词核心节点</h3><span class="model-badge">ComfyUI 核心</span></div>
-            <p>Qwen3.5 2B/4B 使用 ComfyUI 自带的文本生成链路，不需要安装第三方节点；更新 ComfyUI 核心后重新扫描即可。</p>
+            <div class="model-title"><h3>${s("nodes.qwenTitle")}</h3><span class="model-badge">${s("nodes.qwenBadge")}</span></div>
+            <p>${s("nodes.qwenDescription")}</p>
             <div class="component-list">
-              ${promptCoreNodes.map((node) => `<div class="component-row ${node.available ? "found" : "missing"}"><span class="component-state">${icon(node.available ? "circle-check" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`).join("") || `<div class="component-row missing"><span class="component-state">${icon("circle-alert")}</span><div><strong>等待扫描 Qwen 核心节点</strong></div></div>`}
+              ${promptCoreNodes.map((node) => `<div class="component-row ${node.available ? "found" : "missing"}"><span class="component-state">${icon(node.available ? "circle-check" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`).join("") || `<div class="component-row missing"><span class="component-state">${icon("circle-alert")}</span><div><strong>${s("nodes.waitingQwen")}</strong></div></div>`}
             </div>
           </div>
           <div class="custom-node-actions">
-            <span class="model-availability ${promptCoreReady ? "available" : "missing"}">${promptCoreReady ? `${icon("circle-check")} 已加载` : promptCoreKnown ? `${icon("circle-alert")} 核心缺失` : `${icon("circle-help")} 尚未启动检测`}</span>
+            <span class="model-availability ${promptCoreReady ? "available" : "missing"}">${promptCoreReady ? `${icon("circle-check")} ${s("nodes.loaded")}` : promptCoreKnown ? `${icon("circle-alert")} ${s("nodes.coreMissing")}` : `${icon("circle-help")} ${s("nodes.notChecked")}`}</span>
           </div>
         </article>
         ${workflowDependencies.map((workflow) => `
           <article class="panel custom-node-card ${workflow.installed ? "available" : "missing"}">
             <div class="custom-node-copy">
-              <div class="model-title"><h3>${escape(workflow.name)}</h3><span class="model-badge">官方工作流</span></div>
+              <div class="model-title"><h3>${escape(workflow.name)}</h3><span class="model-badge">${s("nodes.officialWorkflow")}</span></div>
               <p>${escape(workflow.purpose)}</p>
               <code>${escape(workflow.path || workflow.sourceUrl)}</code>
-              ${viewModel.workflowDependencyLogs[workflow.id] ? `<details class="node-log" open><summary>安装日志</summary><pre>${escape(viewModel.workflowDependencyLogs[workflow.id])}</pre></details>` : ""}
+              ${viewModel.workflowDependencyLogs[workflow.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre>${escape(viewModel.workflowDependencyLogs[workflow.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${workflow.installed ? "available" : "missing"}">${workflow.installed ? `${icon("circle-check")} 已安装` : `${icon("circle-alert")} 未安装`}</span>
-              <button class="${workflow.installed ? "secondary" : "primary"} button-with-icon" data-install-workflow="${escape(workflow.id)}" ${viewModel.workflowDependencyInstalling ? "disabled" : ""}>${icon(viewModel.workflowDependencyInstalling === workflow.id ? "refresh-cw" : "download")}${viewModel.workflowDependencyInstalling === workflow.id ? "安装中…" : workflow.installed ? "重新安装" : "一键安装"}</button>
+              <span class="model-availability ${workflow.installed ? "available" : "missing"}">${workflow.installed ? `${icon("circle-check")} ${s("nodes.installed")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
+              <button class="${workflow.installed ? "secondary" : "primary"} button-with-icon" data-install-workflow="${escape(workflow.id)}" ${viewModel.workflowDependencyInstalling ? "disabled" : ""}>${icon(viewModel.workflowDependencyInstalling === workflow.id ? "refresh-cw" : "download")}${viewModel.workflowDependencyInstalling === workflow.id ? s("nodes.installing") : workflow.installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>
             </div>
           </article>`).join("")}
         ${(environmentScan?.customNodes ?? []).map((node) => `
           <article class="panel custom-node-card ${node.loaded ? "available" : "missing"}">
             <div class="custom-node-copy">
-              <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? "项目必需" : "可选"}${node.version ? ` · v${escape(node.version)}` : ""}</span></div>
+              <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.version ? ` · v${escape(node.version)}` : ""}</span></div>
               <p>${escape(node.purpose)}</p>
               <code>${escape(node.directory || node.repositoryUrl)}</code>
-              ${node.id === "spectrum-minimax-h3" ? `<p class="muted">本机版本：${node.version ? `v${escape(node.version)}` : node.installed ? "未读取到版本号" : "未安装"} · 最新发布：${node.latestVersion ? `v${escape(node.latestVersion)}` : "联网后重新扫描"} · 运行时固定使用系统内存，不额外下载模型。</p>` : ""}
+              ${node.id === "spectrum-minimax-h3" ? `<p class="muted">${s("nodes.localVersion")}${node.version ? `v${escape(node.version)}` : node.installed ? s("nodes.versionUnread") : s("nodes.notInstalled")} · ${s("nodes.latestRelease")}${node.latestVersion ? `v${escape(node.latestVersion)}` : s("nodes.rescanOnline")} · ${s("nodes.runtimeMemory")}</p>` : ""}
               ${node.loadError ? `<span class="node-error">${escape(node.loadError)}</span>` : ""}
-              ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>安装日志</summary><pre>${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
+              ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre>${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${node.loaded && !node.updateAvailable ? "available" : "missing"}">${node.updateAvailable ? `${icon("circle-alert")} 需要更新` : node.loaded ? `${icon("circle-check")} ${node.runtimeVerified ? "运行时已验证" : "文件检查通过"}` : node.installed ? `${icon("circle-alert")} 已安装，需修复` : `${icon("circle-alert")} 未安装`}</span>
-              <button class="${node.updateAvailable || !node.installed || !node.loaded ? "primary" : "secondary"} button-with-icon" data-install-node="${escape(node.id)}" ${customNodeInstallBlocked ? "disabled" : ""}>${icon(viewModel.customNodeInstalling === node.id ? "refresh-cw" : node.installed ? "refresh-cw" : "download")}${viewModel.customNodeInstalling === node.id ? "处理中…" : node.updateAvailable ? "更新并重启" : node.installed && !node.loaded ? "更新/重启复检" : node.installed ? "检查更新" : "安装并重启"}</button>
+              <span class="model-availability ${node.loaded && !node.updateAvailable ? "available" : "missing"}">${node.updateAvailable ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}` : node.loaded ? `${icon("circle-check")} ${node.runtimeVerified ? s("nodes.runtimeVerified") : s("nodes.fileCheckPassed")}` : node.installed ? `${icon("circle-alert")} ${s("nodes.installedRepair")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
+              <button class="${node.updateAvailable || !node.installed || !node.loaded ? "primary" : "secondary"} button-with-icon" data-install-node="${escape(node.id)}" ${customNodeInstallBlocked ? "disabled" : ""}>${icon(viewModel.customNodeInstalling === node.id ? "refresh-cw" : node.installed ? "refresh-cw" : "download")}${viewModel.customNodeInstalling === node.id ? s("nodes.processing") : node.updateAvailable ? s("nodes.updateRestart") : node.installed && !node.loaded ? s("nodes.updateRecheck") : node.installed ? s("nodes.checkUpdate") : s("nodes.installRestart")}</button>
             </div>
-          </article>`).join("") || `<div class="panel environment-empty">等待环境扫描结果</div>`}
+          </article>`).join("") || `<div class="panel environment-empty">${s("nodes.empty")}</div>`}
       </div>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>工作流占位符</h2><span class="muted">提交自定义视频 ComfyUI API JSON 前会递归替换；图片工作流不使用这些占位符。</span></div></div>
+        <div class="section-heading"><div><h2>${s("nodes.placeholderTitle")}</h2><span class="muted">${s("nodes.placeholderDescription")}</span></div></div>
         <div class="token-list">${["PROMPT", "NEGATIVE_PROMPT", "SEED", "INPUT_IMAGE", "END_IMAGE", "SOURCE_VIDEO", "TRIM_START", "TRIM_END", "EXTENSION_FRAMES", "OVERLAP_FRAMES", "UNLOAD_BETWEEN_STAGES", "WIDTH", "HEIGHT", "DURATION", "SOURCE_FPS", "FPS", "FRAMES", "OUTPUT_FRAMES", "OUTPUT_FILENAME", "H3_DIFFUSION_MODEL", "H3_TEXT_ENCODER", "H3_TURBO_LORA"].map((token) => `<code>{{${token}}}</code>`).join("")}</div>
       </section>
     </section>`;
 
   const attention = environmentScan?.attentionAcceleration;
   const pythonSourceLabels: Record<string, string> = {
-    selected: "手动指定",
-    "comfy-venv": "ComfyUI 虚拟环境",
-    embedded: "嵌入式 Python",
-    path: "系统 PATH",
-    "py-launcher": "py 启动器",
-    other: "其他来源"
+    selected: s("accel.sourceSelected"),
+    "comfy-venv": s("accel.sourceComfyVenv"),
+    embedded: s("accel.sourceEmbedded"),
+    path: s("accel.sourcePath"),
+    "py-launcher": s("accel.sourceLauncher"),
+    other: s("accel.sourceOther")
   };
   const pythonRuntimes = environmentScan?.pythonRuntimes ?? [];
   const detectedPythonPath = attention?.pythonPath ||
@@ -569,50 +572,50 @@ export function renderSettingsPage(
   );
   const pythonSelectionLabel = settings.comfyPythonPath
     ? selectedPythonRuntime?.source === "comfy-venv"
-      ? "ComfyUI 虚拟环境"
-      : "手动指定"
-    : "自动探测";
+      ? s("accel.sourceComfyVenv")
+      : s("accel.sourceSelected")
+    : s("accel.autoDetect");
   const accelerationPanel = `
     <section class="settings-panel acceleration-panel">
       <section class="panel settings-section acceleration-overview ${attention?.ready ? "available" : "missing"}">
         <div class="section-heading">
-          <div><h2>H3 推理加速</h2><span class="muted">为当前 ComfyUI 环境匹配 Python、PyTorch、CUDA 与 Attention 运行库</span></div>
-          <span class="model-availability ${attention?.ready ? "available" : "missing"}">${attention?.ready ? `${icon("circle-check")} 已就绪` : attention?.supported ? `${icon("circle-alert")} 待安装/修复` : `${icon("circle-alert")} 环境不支持`}</span>
+          <div><h2>${s("accel.title")}</h2><span class="muted">${s("accel.description")}</span></div>
+          <span class="model-availability ${attention?.ready ? "available" : "missing"}">${attention?.ready ? `${icon("circle-check")} ${s("accel.ready")}` : attention?.supported ? `${icon("circle-alert")} ${s("accel.pending")}` : `${icon("circle-alert")} ${s("accel.unsupported")}`}</span>
         </div>
         <div class="acceleration-control-row">
-          <label class="acceleration-mode-field">H3 Attention 模式
+          <label class="acceleration-mode-field">${s("accel.mode")}
             <select id="h3-attention-mode">
-              <option value="sage" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>自动加速 · SageAttention CUDA FP16</option>
-              <option value="sage-triton" ${settings.h3AttentionMode === "sage-triton" ? "selected" : ""}>稳定加速 · SageAttention Triton FP16</option>
-              <option value="pytorch" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>兼容模式 · PyTorch Attention</option>
+              <option value="sage" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>${s("accel.auto")} · SageAttention CUDA FP16</option>
+              <option value="sage-triton" ${settings.h3AttentionMode === "sage-triton" ? "selected" : ""}>${s("accel.stable")} · SageAttention Triton FP16</option>
+              <option value="pytorch" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>${s("accel.compatible")} · PyTorch Attention</option>
             </select>
           </label>
           <div class="acceleration-summary">
             <span class="acceleration-summary-icon">${icon(attention?.ready ? "circle-check" : "circle-alert")}</span>
-            <div><strong>${escape(attention?.detail ?? "等待环境扫描")}</strong><span>CUDA 内核异常时会依次降级到 SageAttention Triton 和 PyTorch Attention，避免队列反复崩溃。</span></div>
+            <div><strong>${escape(attention?.detail ?? s("accel.waitingScan"))}</strong><span>${s("accel.fallback")}</span></div>
           </div>
         </div>
         <div class="python-runtime-picker">
           <div class="python-runtime-picker-head">
-            <div><span class="runtime-label">ComfyUI Python 解释器</span><strong>用于启动 ComfyUI、安装节点依赖和 H3 加速检测</strong></div>
+            <div><span class="runtime-label">${s("accel.python")}</span><strong>${s("accel.pythonUse")}</strong></div>
             <span class="python-selection-badge">${pythonSelectionLabel}</span>
           </div>
           <div class="python-runtime-picker-controls">
-            <label class="python-path-field"><span class="runtime-label">当前解释器路径</span><div class="input-action"><input id="comfy-python-path" value="${escape(effectivePythonPath)}" placeholder="扫描后自动填入可用解释器"><button class="secondary button-with-icon" id="pick-comfy-python">${icon("folder-open")}选择文件</button></div></label>
-            <label class="python-candidate-field"><span class="runtime-label">扫描到的候选版本</span><select id="comfy-python-candidate"><option value="">${viewModel.environmentScanning ? "正在扫描…" : pythonRuntimes.length ? "选择一个解释器" : "未发现可用 Python"}</option>${pythonRuntimes.map((runtime) => `<option value="${escape(runtime.path)}" ${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? "selected" : ""}>Python ${escape(runtime.version)} · ${escape(pythonSourceLabels[runtime.source] ?? runtime.source)}${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? " · 当前" : ""}</option>`).join("")}</select></label>
+            <label class="python-path-field"><span class="runtime-label">${s("accel.currentPath")}</span><div class="input-action"><input id="comfy-python-path" value="${escape(effectivePythonPath)}" placeholder="${s("accel.scanFill")}"><button class="secondary button-with-icon" id="pick-comfy-python">${icon("folder-open")}${s("accel.chooseFile")}</button></div></label>
+            <label class="python-candidate-field"><span class="runtime-label">${s("accel.candidates")}</span><select id="comfy-python-candidate"><option value="">${viewModel.environmentScanning ? s("accel.scanning") : pythonRuntimes.length ? s("accel.chooseInterpreter") : s("accel.noPython")}</option>${pythonRuntimes.map((runtime) => `<option value="${escape(runtime.path)}" ${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? "selected" : ""}>Python ${escape(runtime.version)} · ${escape(pythonSourceLabels[runtime.source] ?? runtime.source)}${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? ` · ${s("accel.current")}` : ""}</option>`).join("")}</select></label>
           </div>
         </div>
         <div class="attention-runtime-grid">
-          <article class="attention-runtime-card"><span class="runtime-label">ComfyUI Python</span><strong class="runtime-value">${escape(attention?.pythonVersion || "未找到")}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || "请先选择 ComfyUI 安装目录")}</code></article>
-          <article class="attention-runtime-card"><span class="runtime-label">PyTorch / CUDA</span><strong class="runtime-value">${escape(attention?.torchVersion || "未知")}</strong><code class="runtime-detail">CUDA ${escape(attention?.cudaVersion || "未知")} · SM ${escape(attention?.gpuArchitecture || "未知")}</code></article>
-          <article class="attention-runtime-card"><span class="runtime-label">SageAttention</span><strong class="runtime-value">${escape(attention?.sageAttentionVersion || "未安装")}</strong><code class="runtime-detail" title="${escape(attention?.recommendedWheel || "")}">${escape(attention?.recommendedWheel || "当前环境没有匹配的 wheel")}</code></article>
-          <article class="attention-runtime-card"><span class="runtime-label">Triton / KJNodes</span><strong class="runtime-value">${escape(attention?.tritonVersion || "未安装")}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? "KJNodes 模型级补丁可用" : attention?.kjNodesInstalled ? "KJNodes 需要更新" : "KJNodes 未安装"}</code></article>
+          <article class="attention-runtime-card"><span class="runtime-label">ComfyUI Python</span><strong class="runtime-value">${escape(attention?.pythonVersion || s("accel.notFound"))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>
+          <article class="attention-runtime-card"><span class="runtime-label">PyTorch / CUDA</span><strong class="runtime-value">${escape(attention?.torchVersion || s("accel.unknown"))}</strong><code class="runtime-detail">CUDA ${escape(attention?.cudaVersion || s("accel.unknown"))} · SM ${escape(attention?.gpuArchitecture || s("accel.unknown"))}</code></article>
+          <article class="attention-runtime-card"><span class="runtime-label">SageAttention</span><strong class="runtime-value">${escape(attention?.sageAttentionVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail" title="${escape(attention?.recommendedWheel || "")}">${escape(attention?.recommendedWheel || s("accel.noWheel"))}</code></article>
+          <article class="attention-runtime-card"><span class="runtime-label">Triton / KJNodes</span><strong class="runtime-value">${escape(attention?.tritonVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? s("accel.kjAvailable") : attention?.kjNodesInstalled ? s("accel.kjUpdate") : s("accel.kjMissing")}</code></article>
         </div>
         <div class="acceleration-actions">
-          <button class="primary button-with-icon" id="install-attention-acceleration" ${viewModel.attentionAccelerationInstalling || !attention?.supported ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? "正在补全环境…" : attention?.ready ? "重新安装/修复" : "一键安装并自检"}</button>
-          <div><strong>安装过程会临时停止 ComfyUI</strong><span>环境补全后，若服务此前正在运行，程序会自动将它重启。</span></div>
+          <button class="primary button-with-icon" id="install-attention-acceleration" ${viewModel.attentionAccelerationInstalling || !attention?.supported ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : attention?.ready ? s("accel.repair") : s("accel.install")}</button>
+          <div><strong>${s("accel.stopComfy")}</strong><span>${s("accel.restartComfy")}</span></div>
         </div>
-        ${viewModel.attentionAccelerationLog ? `<details class="node-log" open><summary>环境安装日志</summary><pre id="attention-install-log">${escape(viewModel.attentionAccelerationLog)}</pre></details>` : ""}
+        ${viewModel.attentionAccelerationLog ? `<details class="node-log" open><summary>${s("accel.log")}</summary><pre id="attention-install-log">${escape(viewModel.attentionAccelerationLog)}</pre></details>` : ""}
       </section>
     </section>`;
 

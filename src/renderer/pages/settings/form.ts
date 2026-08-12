@@ -66,7 +66,7 @@ export function readSettingsFromForm(
     safeCancel: checked("safe-cancel", base.safeCancel),
     autoRetryFailedTasks: checked("auto-retry-failed-tasks", base.autoRetryFailedTasks),
     autoRetryCount: Number(value("auto-retry-count", String(base.autoRetryCount))) as Settings["autoRetryCount"],
-    uiLocale: base.uiLocale,
+    uiLocale: value("ui-locale", base.uiLocale ?? "zh-CN") as Settings["uiLocale"],
     promptLanguage: value("prompt-language", base.promptLanguage) as Settings["promptLanguage"],
     promptCreativity: Number(value("prompt-creativity", String(base.promptCreativity))),
     defaultUpscaleModel: value("default-upscale-model", base.defaultUpscaleModel),

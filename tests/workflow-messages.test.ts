@@ -9,9 +9,10 @@ describe("workflow runtime messages", () => {
     expect(workflowMessage("nodeNotObject", { nodeId: "42" })).toContain("节点 42");
   });
 
-  it("falls back to the default catalog until another locale is populated", () => {
+  it("uses the English runtime catalog with the same interpolation contract", () => {
     expect(workflowMessage("promptPlaceholderMissing", {}, "en-US")).toBe(
-      workflowMessage("promptPlaceholderMissing")
+      "Missing {{PROMPT}}; the GUI cannot inject the current prompt"
     );
+    expect(workflowMessage("durationLimit", { maxDurationSeconds: 10 }, "en-US")).toContain("10 seconds");
   });
 });

@@ -32,6 +32,7 @@ export interface VideoLoraRules {
   settingConflicts: VideoLoraSettingConflict[];
   combinations: VideoLoraCombinationRule[];
   workflowRequirement?: "h3-turbo-sampling";
+  promptPrefixes?: string[];
 }
 
 export interface VideoLoraConfigurationIssue {
@@ -54,6 +55,9 @@ export const H3_TURBO_LORA_FILENAME =
 export const H3_PINK_FLUFFY_BUNNY_LORA_ID = "minimax-h3-pink-fluffy-bunny-nsfw";
 export const H3_PINK_FLUFFY_BUNNY_LORA_FILENAME =
   "PinkFluffyBunny-pruned-v1-rank128.safetensors";
+export const H3_REALISM_PEOPLE_LORA_ID = "minimax-h3-realism-people";
+export const H3_REALISM_PEOPLE_LORA_FILENAME =
+  "h3-realism-people-t2v-i2v-r2v.safetensors";
 
 export const H3_TURBO_LORA: BuiltinVideoLora = {
   id: H3_TURBO_LORA_ID,
@@ -103,8 +107,37 @@ export const H3_PINK_FLUFFY_BUNNY_LORA: BuiltinVideoLora = {
   }
 };
 
+export const H3_REALISM_PEOPLE_LORA: BuiltinVideoLora = {
+  id: H3_REALISM_PEOPLE_LORA_ID,
+  name: "MiniMax H3 Realism People",
+  filename: H3_REALISM_PEOPLE_LORA_FILENAME,
+  strength: 0.8,
+  modelFamily: "minimax-h3",
+  compatibleModelIds: [H3_FL2VA_MODEL_ID, "minimax_h3_ref2va"],
+  compatibleInputModes: ["image"],
+  purpose: "quality",
+  guide: {
+    ...loraLocaleFor(H3_REALISM_PEOPLE_LORA_ID)?.guide!
+  },
+  rules: {
+    orderPriority: 40,
+    settingConflicts: [],
+    combinations: [{
+      loraId: H3_TURBO_LORA_ID,
+      severity: "warning",
+      localeKey: "realismTurbo"
+    }, {
+      loraId: H3_PINK_FLUFFY_BUNNY_LORA_ID,
+      severity: "warning",
+      localeKey: "realismPink"
+    }],
+    promptPrefixes: ["r34l1sm"]
+  }
+};
+
 export const BUILTIN_VIDEO_LORAS: readonly BuiltinVideoLora[] = [
   H3_TURBO_LORA,
+  H3_REALISM_PEOPLE_LORA,
   H3_PINK_FLUFFY_BUNNY_LORA
 ];
 
@@ -339,4 +372,23 @@ export function videoLoraFilename(
   id: string
 ): string {
   return loras?.find((lora) => lora.id === id)?.filename ?? "";
+}
+
+export function videoPromptForLoras(
+  prompt: string,
+  loras: readonly VideoLoraSelection[] | undefined
+): string {
+  const prefixes = [...new Set((loras ?? []).flatMap((lora) =>
+    videoLoraDefinition(lora.id)?.rules.promptPrefixes ?? []
+  ))];
+  return prefixes.reduceRight((current, prefix) => {
+    const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const existing = new RegExp(`(^|[\\s,;:])${escaped}(?=$|[\\s,;:])`, "iu");
+    const withoutDuplicate = current
+      .replace(existing, "$1")
+      .replace(/([,;:])\s*[,;:]+\s*/gu, "$1 ")
+      .replace(/^\s*[,;:]\s*/u, "")
+      .trim();
+    return withoutDuplicate ? `${prefix}, ${withoutDuplicate}` : prefix;
+  }, prompt.trim());
 }

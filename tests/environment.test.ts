@@ -737,6 +737,28 @@ describe("ComfyUI environment candidates", () => {
     });
   });
 
+  it("detects MiniMax H3 Realism People and exposes its current combined I2V/R2V download", () => {
+    const profiles = evaluateModelProfiles([
+      "loras\\h3-realism-people-t2v-i2v-r2v.safetensors"
+    ]);
+    const realism = profiles.find((profile) => profile.id === "minimax-h3-realism-people");
+
+    expect(realism).toMatchObject({
+      available: true,
+      integrated: true,
+      badge: "H3 专属 · 人物写实",
+      category: "lora"
+    });
+    expect(realism?.components[0]?.installGuide).toMatchObject({
+      sourceLabel: "fal / MiniMax-H3-Realism-People-LoRA",
+      targetSubdirectory: "loras",
+      recommendedFilename: "h3-realism-people-t2v-i2v-r2v.safetensors"
+    });
+    expect(realism?.components[0]?.installGuide.downloadUrl).toContain(
+      "/h3-realism-people-t2v-i2v-r2v.safetensors"
+    );
+  });
+
   it("detects the community MiniMax H3 INT4 FL2VA profile independently", () => {
     const profiles = evaluateModelProfiles([
       "diffusion_models\\minimax_h3_fl2va_pruned_int4_convrot.safetensors",

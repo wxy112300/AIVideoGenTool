@@ -8,7 +8,8 @@ import type {
 import {
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
-  videoLoraFilename
+  videoLoraFilename,
+  videoPromptForLoras
 } from "./video-loras.js";
 import { modelCatalog } from "./catalog/index.js";
 import {
@@ -963,7 +964,7 @@ export function renderWorkflow(
   ];
   const interpolationMultiplier = frameInterpolationMultiplier(task);
   const tokens: Record<string, string | number | boolean> = {
-    PROMPT: task.prompt,
+    PROMPT: videoPromptForLoras(task.prompt, task.videoLoras),
     NEGATIVE_PROMPT: "",
     SEED: task.seed,
     INPUT_IMAGE: context.inputImage ?? "",

@@ -5,7 +5,7 @@ export type TaskStatus =
   | "failed"
   | "cancelled";
 
-export type UiLocale = "zh-CN" | "en-US";
+export type UiLocale = "zh-CN" | "zh-TW" | "en-US";
 
 export interface PromptVersion {
   id: string;

@@ -1,7 +1,7 @@
 import { escapeHtml } from "./dom";
 
-export function appLogTerminalHtml(text: string): string {
-  if (!text) return "暂无运行日志";
+export function appLogTerminalHtml(text: string, emptyLabel = "No runtime logs"): string {
+  if (!text) return emptyLabel;
   return text.split("\n").map((line) => {
     const level = line.match(/\]\[(DEBUG|INFO|WARN|ERROR|FATAL)\s*\]/u)?.[1]?.toLowerCase() ?? "info";
     return `<span class="app-log-line ${level}">${escapeHtml(line)}</span>`;

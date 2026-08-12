@@ -47,6 +47,20 @@ describe("model catalog", () => {
       "realesrgan"
     ]);
     expect(modelCatalog.list("interpolation").map((entry) => entry.definition.id)).toEqual(["rife"]);
-    expect(modelCatalog.list("lora")).toHaveLength(2);
+    expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).toEqual([
+      "minimax-h3-lightx2v-turbo-4step",
+      "minimax-h3-realism-people",
+      "minimax-h3-pink-fluffy-bunny-nsfw"
+    ]);
+  });
+
+  it("provides English display metadata for every catalog entry", () => {
+    for (const entry of modelCatalog.entries) {
+      const locale = entry.locales["en-US"];
+      expect(locale?.name, entry.definition.id).toBeTruthy();
+      expect(locale?.name, entry.definition.id).not.toMatch(/[\u3400-\u9fff]/u);
+      expect(locale?.badge ?? "", entry.definition.id).not.toMatch(/[\u3400-\u9fff]/u);
+      expect(locale?.description ?? "", entry.definition.id).not.toMatch(/[\u3400-\u9fff]/u);
+    }
   });
 });

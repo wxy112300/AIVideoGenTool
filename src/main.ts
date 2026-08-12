@@ -1007,7 +1007,7 @@ function settingsPage(): string {
       isImageModelSelectable,
       imageWorkflowStatus,
       h3PromptPresetOptions: (selected, includeMultiReference) => h3PromptPresetOptions(selected, includeMultiReference, state.settings.uiLocale),
-      renderAppLogTerminal: (text) => appLogTerminalHtml(visibleAppLogText(text, appLogScreenClearedAt))
+      renderAppLogTerminal: (text) => appLogTerminalHtml(visibleAppLogText(text, appLogScreenClearedAt), uiText(uiKeys.settings.logsEmpty))
     }
   );
 }
@@ -1177,7 +1177,7 @@ function applyAppLogSnapshot(snapshot: AppLogSnapshot): void {
   }
   const shouldFollowTail = appLogFollowTail ||
     terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 48;
-  terminal.innerHTML = appLogTerminalHtml(visibleAppLogText(snapshot.text, appLogScreenClearedAt));
+  terminal.innerHTML = appLogTerminalHtml(visibleAppLogText(snapshot.text, appLogScreenClearedAt), uiText(uiKeys.settings.logsEmpty));
   if (shouldFollowTail) terminal.scrollTop = terminal.scrollHeight;
   const count = document.querySelector<HTMLElement>("#app-log-count");
   if (count) count.textContent = String(snapshot.records.length);
@@ -2245,6 +2245,7 @@ async function saveSettingsFromUi(
     : mode === "migrate-video-history"
       ? uiText(uiKeys.runtime.settingsMigrationSaved)
       : uiText(uiKeys.runtime.settingsNextTaskSaved));
+  render();
 }
 
 async function runEnvironmentScan(settings: Settings): Promise<void> {
