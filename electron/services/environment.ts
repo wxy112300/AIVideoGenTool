@@ -74,6 +74,7 @@ import {
   localEndpoint,
   waitForService
 } from "./local-service-process.js";
+import { startComfyUiService } from "./comfy-runtime-service.js";
 
 export {
   ltxAudioVaeCompatible,
@@ -2622,88 +2623,16 @@ async function applyComfyDesktopSettings(settings: Settings): Promise<void> {
 
 
 async function startComfyUi(settings: Settings): Promise<string> {
-  const endpoint = localEndpoint(settings.comfyUrl, 8188);
-  if (!endpoint) {
-    throw new Error("一键启动只支持本机 ComfyUI 地址（localhost 或 127.0.0.1）。");
-  }
-  const comfyRoot = await findComfyRoot(settings);
-  const installation = await findComfyInstallation(settings);
-  if (installation?.type === "desktop" && !installation.sourceDirectory) {
-    await applyComfyDesktopSettings(settings);
-    await launchDetached(
-      installation.executable,
-      [],
-      installation.directory,
-      downloadEnvironment(settings)
-    );
-    return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
-  }
-  const sourceRoot = installation?.sourceDirectory || comfyRoot;
-  if (!sourceRoot) throw new Error("没有找到 ComfyUI 核心程序目录。");
-
-  const mainPy = path.join(sourceRoot, "main.py");
-  if (!(await exists(mainPy))) {
-    throw new Error(
-      `找到了 ComfyUI 目录 ${sourceRoot}，但缺少 main.py；请先安装完整的 ComfyUI 程序。`
-    );
-  }
-
-  const python = await findComfyPython(settings, comfyRoot, installation);
-  if (!python) {
-    throw new Error("找到了 ComfyUI main.py，但没有找到可用的 Python 运行环境。");
-  }
-
-  const bundledFrontend = path.join(
-    sourceRoot,
-    "web_custom_versions",
-    "desktop_app",
-    "index.html"
-  );
-  const directories = comfyDataDirectories(settings, comfyRoot || sourceRoot);
-  const runtimeProfile = comfyUiRuntimeProfileForSettings(settings);
-  const memoryArgs = comfyUiMemoryArgs(settings);
-  const args = [
-    "-s",
-    mainPy,
-    "--listen",
-    endpoint.host,
-    "--port",
-    String(endpoint.port),
-    "--disable-auto-launch",
-    "--preview-method",
-    "auto",
-    ...memoryArgs
-  ];
-  if (settings.modelDirectory.trim()) {
-    args.push("--models-directory", directories.modelDirectory);
-  }
-  args.push(
-    ...comfyUiBundledFrontendArgs(sourceRoot, await exists(bundledFrontend))
-  );
-  if (comfyRoot && comfyRoot !== sourceRoot) {
-    args.push(
-      "--base-directory",
-      comfyRoot,
-      "--user-directory",
-      path.join(comfyRoot, "user"),
-      "--input-directory",
-      path.join(comfyRoot, "input"),
-      "--output-directory",
-      directories.outputDirectory,
-      "--temp-directory",
-      path.join(comfyRoot, "temp"),
-      "--database-url",
-      `sqlite:///${path.join(comfyRoot, "user", "comfyui.db").replaceAll("\\", "/")}`
-    );
-  } else if (settings.outputDirectory.trim()) {
-    args.push("--output-directory", directories.outputDirectory);
-  }
-  appLogger.info("comfy", "runtime-profile-launch", "Launching ComfyUI with an isolated runtime profile", {
-    runtimeProfile,
-    memoryArgs
+  return startComfyUiService(settings, {
+    findComfyRoot,
+    findComfyInstallation,
+    applyComfyDesktopSettings,
+    launchDetached,
+    downloadEnvironment,
+    exists,
+    findComfyPython,
+    comfyDataDirectories
   });
-  await launchDetached(python, args, sourceRoot, downloadEnvironment(settings));
-  return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
 }
 
 function listeningPid(netstatOutput: string, port: number): number | null {

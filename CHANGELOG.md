@@ -8,6 +8,13 @@
 
 ## 未发布
 
+### 0.18.11 候选 — 2026-08-12
+
+- 将 ComfyUI 启动编排迁入独立 runtime service，环境总管改为注入目录发现、Python、Desktop 设置、进程启动和路径能力。
+- 保留 Desktop 外壳由官方可执行文件启动的行为；源码、Portable 与 Desktop 管理实例继续使用所选 Python 和本机端口。
+- 核心目录与数据目录分离时，继续完整传递 base/user/input/output/temp/database 参数，模型目录和 Qwen/标准显存策略保持不变。
+- 新增源码/数据目录分离启动参数和 Desktop 外壳委派测试。
+
 ### 0.18.10 候选 — 2026-08-12
 
 - 将 ComfyUI 标准/H3 与 Qwen Image 的 VRAM 参数、运行配置识别、保留显存计算和 Desktop 前端参数迁入独立运行策略模块。
