@@ -29,17 +29,35 @@ import {
   flux2Klein4bRequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes
 } from "../../src/core/image-workflow.js";
-import { modelCatalog } from "../../src/core/catalog/index.js";
+import {
+  customNodeCatalog,
+  customNodeDefinition,
+  modelCatalog,
+  workflowDependencyCatalog,
+  workflowDependencyDefinition
+} from "../../src/core/catalog/index.js";
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
+import {
+  ltxAudioVaeCompatible,
+  videoHelperBatchCompatible
+} from "./dependency-compatibility.js";
+import {
+  availableComfyNodeIds,
+  readLatestComfyLog,
+  scanCustomNodes
+} from "./dependency-scanner.js";
+
+export {
+  ltxAudioVaeCompatible,
+  videoHelperBatchCompatible
+} from "./dependency-compatibility.js";
 
 const execFileAsync = promisify(execFile);
 const appLogger = getApplicationLogger();
 
 export const MINIMAX_H3_MINIMUM_COMFY_REVISION = "43cb4ff";
 export const MINIMAX_H3_MINIMUM_COMFY_VERSION = "0.31.0";
-const minimaxH3I2vWorkflowUrl =
-  "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/video_minimax_h3_i2v.json";
 const sageAttentionVersion = "2.2.0";
 const comfyWheelsIndex = "https://comfy-org.github.io/wheels/";
 const llamaServerReleaseApiUrl =
@@ -78,12 +96,6 @@ const promptCoreNodes = [
   { id: "PreviewAny", label: "PreviewAny · 输出提示词文本" }
 ] as const;
 
-function availableComfyNodeIds(objectInfo: unknown): Set<string> {
-  return objectInfo && typeof objectInfo === "object" && !Array.isArray(objectInfo)
-    ? new Set(Object.keys(objectInfo as Record<string, unknown>))
-    : new Set<string>();
-}
-
 export function evaluateMiniMaxH3CoreSupport(
   objectInfo: unknown
 ): ComfyUiCompatibility["coreNodes"] {
@@ -104,133 +116,8 @@ export function evaluatePromptCoreSupport(
   }));
 }
 
-const customNodeCatalog = [
-  {
-    id: "comfyui-gguf",
-    name: "ComfyUI-GGUF",
-    purpose: "加载 Remix、SmoothMix 等 GGUF 视频模型",
-    repositoryUrl: "https://github.com/city96/ComfyUI-GGUF.git",
-    directoryName: "ComfyUI-GGUF",
-    aliases: ["comfyui-gguf"],
-    nodeTypes: ["UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF"],
-    required: true
-  },
-  {
-    id: "video-helper-suite",
-    name: "VideoHelperSuite",
-    purpose: "视频读取、合成、编码和音频封装",
-    repositoryUrl: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
-    directoryName: "comfyui-videohelpersuite",
-    aliases: ["comfyui-videohelpersuite"],
-    nodeTypes: ["VHS_LoadVideo", "VHS_VideoCombine", "VHS_BatchManager"],
-    required: true
-  },
-  {
-    id: "ltx-video",
-    name: "ComfyUI-LTXVideo",
-    purpose: "Sulphur 2 原生视频续写、低显存加载与分阶段卸载",
-    repositoryUrl: "https://github.com/Lightricks/ComfyUI-LTXVideo.git",
-    directoryName: "ComfyUI-LTXVideo",
-    aliases: ["comfyui-ltxvideo"],
-    nodeTypes: ["LTXVExtendSampler", "LTXVSpatioTemporalTiledVAEDecode"],
-    required: false
-  },
-  {
-    id: "seedvr2",
-    name: "SeedVR2 Video Upscaler",
-    purpose: "SeedVR2 视频超分工作流",
-    repositoryUrl: "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git",
-    directoryName: "ComfyUI-SeedVR2_VideoUpscaler",
-    aliases: ["comfyui-seedvr2_videoupscaler", "seedvr2_videoupscaler"],
-    nodeTypes: ["SeedVR2LoadDiTModel", "SeedVR2LoadVAEModel", "SeedVR2VideoUpscaler"],
-    minimumVersion: "2.5.24",
-    required: true
-  },
-  {
-    id: "flashvsr",
-    name: "ComfyUI-FlashVSR",
-    purpose: "FlashVSR 视频超分工作流",
-    repositoryUrl: "https://github.com/1038lab/ComfyUI-FlashVSR.git",
-    directoryName: "ComfyUI-FlashVSR",
-    aliases: ["comfyui-flashvsr"],
-    nodeTypes: ["AILab_FlashVSR"],
-    required: true
-  },
-  {
-    id: "kjnodes",
-    name: "ComfyUI-KJNodes",
-    purpose: "采样后主动卸载模型，为 Wan 分块 VAE 解码释放显存",
-    repositoryUrl: "https://github.com/kijai/ComfyUI-KJNodes.git",
-    directoryName: "comfyui-kjnodes",
-    aliases: ["comfyui-kjnodes"],
-    nodeTypes: ["VRAM_Debug"],
-    required: true
-  },
-  {
-    id: "frame-interpolation",
-    name: "ComfyUI Frame Interpolation",
-    purpose: "使用 RIFE/FILM 将快速模式生成帧插值到 24 或 30 FPS",
-    repositoryUrl: "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",
-    directoryName: "ComfyUI-Frame-Interpolation",
-    aliases: ["comfyui-frame-interpolation"],
-    nodeTypes: ["RIFE VFI"],
-    required: false
-  },
-  {
-    id: "minimax-h3-prompt-writer",
-    name: "MiniMax H3 Prompt Writer",
-    purpose: "在 ComfyUI 内运行 Gemma 4，多模态理解素材并生成 H3 官方格式提示词",
-    repositoryUrl: "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git",
-    directoryName: "ComfyUI-MiniMaxH3-Prompt-Writer",
-    aliases: ["comfyui-minimaxh3-prompt-writer"],
-    runtimeEndpoint: "/h3studio/status",
-    required: false
-  },
-  {
-    id: "h3-motion-context",
-    name: "H3 Motion Context",
-    purpose: "让 H3 R2V 续写继承上一段的运动方向、速度和 32 kHz 音频，并保存 latent 供下一次无损接续",
-    repositoryUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context.git",
-    directoryName: "ComfyUI-H3-Motion-Context",
-    aliases: ["comfyui-h3-motion-context"],
-    nodeTypes: [
-      "MiniMaxH3MotionContext",
-      "MiniMaxH3MotionContextTrim",
-      "MiniMaxH3MotionContextSaveLatent",
-      "MiniMaxH3MotionContextLoadLatent"
-    ],
-    required: false
-  },
-  {
-    id: "spectrum-minimax-h3",
-    name: "Spectrum MiniMax H3",
-    purpose: "用系统内存保存 H3 中间特征并预测部分采样步骤；支持标准 FL2VA / R2V，Turbo 暂不启用",
-    repositoryUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
-    directoryName: "ComfyUI-Spectrum-MiniMax-H3",
-    aliases: ["comfyui-spectrum-minimax-h3"],
-    nodeTypes: ["SpectrumApplyMiniMaxH3"],
-    required: false
-  }
-] as const;
-
 function normalizeReleaseVersion(value: string): string {
   return value.trim().replace(/^v/i, "");
-}
-
-function compareReleaseVersions(left: string, right: string): number {
-  const a = normalizeReleaseVersion(left).split(/[.-]/).map((part) => Number(part) || 0);
-  const b = normalizeReleaseVersion(right).split(/[.-]/).map((part) => Number(part) || 0);
-  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
-    if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) - (b[index] ?? 0);
-  }
-  return 0;
-}
-
-async function readPythonProjectVersion(directory: string): Promise<string> {
-  if (!directory) return "";
-  return fs.readFile(path.join(directory, "pyproject.toml"), "utf8")
-    .then((source) => normalizeReleaseVersion(source.match(/^version\s*=\s*["']([^"']+)["']/m)?.[1] ?? ""))
-    .catch(() => "");
 }
 
 async function latestSpectrumReleaseVersion(settings: Settings): Promise<string> {
@@ -2097,29 +1984,6 @@ export function patchVideoHelperBatchCompatibility(
   };
 }
 
-export function videoHelperBatchCompatible(
-  utilsSource: string,
-  nodesSource: string,
-  loadVideoSource: string
-): boolean {
-  return (
-    utilsSource.includes("if len(value) == 6") &&
-    utilsSource.includes("sensitive = value[5]") &&
-    nodesSource.includes("frames_per_batch = int(frames_per_batch)") &&
-    nodesSource.includes("batch_manager_states = {}") &&
-    nodesSource.includes("batch_manager_states[unique_id] = self") &&
-    nodesSource.includes("self = batch_manager_states[unique_id]") &&
-    nodesSource.includes("batch_manager_states.pop(self.unique_id, None)") &&
-    nodesSource.includes("previous = batch_manager_states.pop(unique_id, None)") &&
-    loadVideoSource.includes(
-      "meta_batch.frames_per_batch = int(meta_batch.frames_per_batch)"
-    ) &&
-    loadVideoSource.includes(
-      "itertools.islice(gen, int(meta_batch.frames_per_batch))"
-    )
-  );
-}
-
 export function patchLtxAudioVaeCompatibility(source: string): string {
   if (!source.includes("audio_vae = AudioVAE(sd, metadata)")) return source;
   const patched = source
@@ -2143,10 +2007,6 @@ export function patchLtxAudioVaeCompatibility(source: string): string {
     );
   }
   return patched;
-}
-
-export function ltxAudioVaeCompatible(source: string): boolean {
-  return !source.includes("AudioVAE(sd, metadata)");
 }
 
 async function prepareLtxVideo(
@@ -2201,167 +2061,6 @@ async function prepareVideoHelperSuite(
   report(
     "已应用并锁定当前 ComfyUI 分批队列兼容层；后续更新由本应用备份替换"
   );
-}
-
-async function scanCustomNodes(
-  comfyRoot: string,
-  settings: Settings
-): Promise<CustomNodeStatus[]> {
-  const customNodesDirectory = comfyRoot
-    ? path.join(comfyRoot, "custom_nodes")
-    : "";
-  const entries = customNodesDirectory
-    ? await fs.readdir(customNodesDirectory, { withFileTypes: true }).catch(() => [])
-    : [];
-  const installedDirectories = new Map(
-    entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => [entry.name.toLowerCase(), path.join(customNodesDirectory, entry.name)])
-  );
-  const log = (await readLatestComfyLog(comfyRoot)).content;
-  const logLines = log.split(/\r?\n/);
-  const serviceNodeIds = await fetch(
-    `${settings.comfyUrl.replace(/\/+$/, "")}/object_info`,
-    { signal: AbortSignal.timeout(5_000) }
-  )
-    .then(async (response) => response.ok
-      ? availableComfyNodeIds(await response.json())
-      : null)
-    .catch(() => null);
-  const h3PromptWriterLoaded = serviceNodeIds === null
-    ? null
-    : await fetch(`${settings.comfyUrl.replace(/\/+$/, "")}/h3studio/status`, {
-        signal: AbortSignal.timeout(5_000)
-      }).then((response) => response.ok).catch(() => false);
-
-  const latestSpectrumVersion = await latestSpectrumReleaseVersion(settings);
-  return Promise.all(customNodeCatalog.map(async (definition) => {
-    const matchedName = definition.aliases.find((alias) =>
-      installedDirectories.has(alias.toLowerCase())
-    );
-    const directory = matchedName
-      ? installedDirectories.get(matchedName.toLowerCase()) ?? ""
-      : "";
-    const failed =
-      Boolean(directory) &&
-      (logLines.some((line) =>
-        line.trim().endsWith(`(IMPORT FAILED): ${directory}`)
-      ) ||
-        logLines.some((line) =>
-          line.includes(`Cannot import ${directory} module`)
-        ));
-    const importErrorLine = failed
-      ? [...logLines]
-          .reverse()
-          .find((line) => line.includes(`Cannot import ${directory} module`))
-          ?.replace(/^.*?Cannot import /, "Cannot import ")
-      : "";
-    let compatibilityError = "";
-    if (definition.id === "video-helper-suite" && directory) {
-      compatibilityError = await Promise.all([
-        fs.readFile(path.join(directory, "videohelpersuite", "utils.py"), "utf8"),
-        fs.readFile(path.join(directory, "videohelpersuite", "nodes.py"), "utf8"),
-        fs.readFile(
-          path.join(directory, "videohelpersuite", "load_video_nodes.py"),
-          "utf8"
-        )
-      ])
-        .then(([utilsSource, nodesSource, loadVideoSource]) =>
-          videoHelperBatchCompatible(utilsSource, nodesSource, loadVideoSource)
-            ? ""
-            : "版本过旧：不兼容当前 ComfyUI 的分批视频队列，请更新节点"
-        )
-        .catch(() => "无法读取 VideoHelperSuite 版本文件");
-    } else if (definition.id === "ltx-video" && directory) {
-      compatibilityError = await fs
-        .readFile(path.join(directory, "low_vram_loaders.py"), "utf8")
-        .then((source) =>
-          ltxAudioVaeCompatible(source)
-            ? ""
-            : "AudioVAE 加载接口过旧：不兼容当前 ComfyUI，请修复/更新节点"
-        )
-        .catch(() => "无法读取 ComfyUI-LTXVideo 版本文件");
-    } else if (definition.id === "seedvr2" && directory) {
-      compatibilityError = await Promise.all([
-        fs.readFile(path.join(directory, "src", "interfaces", "dit_model_loader.py"), "utf8"),
-        fs.readFile(path.join(directory, "src", "interfaces", "vae_model_loader.py"), "utf8"),
-        fs.readFile(path.join(directory, "src", "interfaces", "video_upscaler.py"), "utf8")
-      ])
-        .then(() => "")
-        .catch(() => "旧版 SeedVR2 单体节点已不再支持；请更新到 2.5.24+ 模块化节点");
-    }
-    const version = await readPythonProjectVersion(directory);
-    const latestVersion = definition.id === "spectrum-minimax-h3"
-      ? latestSpectrumVersion
-      : "";
-    const requiredNodeTypes = "nodeTypes" in definition
-      ? definition.nodeTypes
-      : undefined;
-    const runtimeVerified = serviceNodeIds !== null;
-    const registered = "runtimeEndpoint" in definition
-      ? h3PromptWriterLoaded !== false
-      : !runtimeVerified || !requiredNodeTypes ||
-        requiredNodeTypes.every((nodeType) => serviceNodeIds.has(nodeType));
-    const pendingRestartError = Boolean(directory) && !compatibilityError &&
-      !failed && requiredNodeTypes && runtimeVerified && !registered
-      ? "节点文件已安装，但当前 ComfyUI 服务尚未加载全部必需模块；请重启服务后复检"
-      : "";
-    const loadError = compatibilityError || importErrorLine ||
-      (failed ? "最近一次启动时导入失败" : "") || pendingRestartError;
-    return {
-      id: definition.id,
-      name: definition.name,
-      purpose: definition.purpose,
-      repositoryUrl: definition.repositoryUrl,
-      installed: Boolean(directory),
-      loaded: Boolean(directory) && !loadError && registered,
-      runtimeVerified,
-      loadError,
-      directory,
-      required: definition.required,
-      version,
-      latestVersion,
-      updateAvailable: Boolean(
-        compatibilityError ||
-        ("minimumVersion" in definition && (!version ||
-          compareReleaseVersions(version, definition.minimumVersion) < 0)) ||
-        (version && latestVersion && compareReleaseVersions(version, latestVersion) < 0)
-      )
-    };
-  }));
-}
-
-async function readLatestComfyLog(
-  comfyRoot: string
-): Promise<{ content: string; modifiedAt: number }> {
-  const appData =
-    process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
-  const candidates = [path.join(appData, "ComfyUI", "logs", "comfyui.log")];
-  const userDirectory = comfyRoot ? path.join(comfyRoot, "user") : "";
-  if (userDirectory) {
-    const entries = await fs.readdir(userDirectory, { withFileTypes: true }).catch(() => []);
-    candidates.push(
-      ...entries
-        .filter((entry) => entry.isFile() && /^comfyui.*\.log$/i.test(entry.name))
-        .map((entry) => path.join(userDirectory, entry.name))
-    );
-  }
-  const available = (
-    await Promise.all(
-      candidates.map(async (filename) => ({
-        filename,
-        stat: await fs.stat(filename).catch(() => null)
-      }))
-    )
-  )
-    .filter((item) => item.stat?.isFile() && (item.stat.size ?? 0) > 0)
-    .sort((left, right) => (right.stat?.mtimeMs ?? 0) - (left.stat?.mtimeMs ?? 0));
-  return available[0]
-    ? {
-        content: await fs.readFile(available[0].filename, "utf8").catch(() => ""),
-        modifiedAt: available[0].stat?.mtimeMs ?? 0
-      }
-    : { content: "", modifiedAt: 0 };
 }
 
 export function shouldReportComfyDatabaseIssue(input: {
@@ -4346,7 +4045,7 @@ export async function installCustomNode(
   settings: Settings,
   onLog?: (message: string) => void
 ): Promise<{ ok: boolean; message: string; log?: string }> {
-  const definition = customNodeCatalog.find((item) => item.id === nodeId);
+  const definition = customNodeDefinition(nodeId);
   if (!definition) return { ok: false, message: "未知的节点包，已拒绝安装。" };
 
   const installLog: string[] = [];
@@ -4749,17 +4448,14 @@ export async function installAttentionAcceleration(
 }
 
 function workflowDependenciesFor(comfyRoot: string): WorkflowDependencyStatus[] {
-  const target = comfyRoot
-    ? path.join(comfyRoot, "user", "default", "workflows", "video_minimax_h3_i2v.json")
-    : "";
-  return [{
-    id: "minimax_h3_i2v",
-    name: "MiniMax H3 Image-to-Video 官方工作流",
-    purpose: "安装到 ComfyUI 用户工作流目录，可在 ComfyUI 中打开并导出 API 格式。",
+  return workflowDependencyCatalog.map((definition) => ({
+    id: definition.id,
+    name: definition.name,
+    purpose: definition.purpose,
     installed: false,
-    path: target,
-    sourceUrl: minimaxH3I2vWorkflowUrl
-  }];
+    path: comfyRoot ? path.join(comfyRoot, ...definition.targetSegments) : "",
+    sourceUrl: definition.sourceUrl
+  }));
 }
 
 async function scanWorkflowDependencies(
@@ -4776,7 +4472,8 @@ export async function installWorkflowDependency(
   settings: Settings,
   onLog?: (message: string) => void
 ): Promise<{ ok: boolean; message: string; log?: string }> {
-  if (workflowId !== "minimax_h3_i2v") {
+  const definition = workflowDependencyDefinition(workflowId);
+  if (!definition) {
     return { ok: false, message: "未知的工作流依赖，已拒绝安装。" };
   }
   const installLog: string[] = [];
@@ -4791,7 +4488,10 @@ export async function installWorkflowDependency(
   try {
     const comfyRoot = await findComfyRoot(settings);
     if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
-    const workflow = workflowDependenciesFor(comfyRoot)[0];
+    const workflow = workflowDependenciesFor(comfyRoot).find(
+      (candidate) => candidate.id === definition.id
+    );
+    if (!workflow) throw new Error("工作流依赖定义不完整，已停止安装。");
     const targetDirectory = path.dirname(workflow.path);
     await fs.mkdir(targetDirectory, { recursive: true });
     temporaryFile = path.join(
@@ -4917,8 +4617,11 @@ export async function scanEnvironment(
   );
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ??
     pythonRuntimes[0];
+  const latestSpectrumVersionPromise = latestSpectrumReleaseVersion(settings);
   const [customNodes, workflowDependencies, attentionAcceleration] = await Promise.all([
-    scanCustomNodes(comfyRoot, settings),
+    latestSpectrumVersionPromise.then((latestSpectrumVersion) =>
+      scanCustomNodes(comfyRoot, settings, latestSpectrumVersion)
+    ),
     scanWorkflowDependencies(comfyRoot),
     inspectAttentionAcceleration(
       settings,

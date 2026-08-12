@@ -41,3 +41,14 @@ export type {
   CatalogModelVariant,
   CatalogPromptPackId
 } from "./types.js";
+export {
+  customNodeCatalog,
+  customNodeDefinition,
+  workflowDependencyCatalog,
+  workflowDependencyDefinition
+} from "./dependencies/index.js";
+export type {
+  CatalogCustomNodeDefinition,
+  CatalogWorkflowDependencyDefinition,
+  CatalogWorkflowDependencyId
+} from "./dependencies/index.js";
