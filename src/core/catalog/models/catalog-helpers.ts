@@ -23,9 +23,10 @@ export function component(
 export function entry(
   definition: CatalogModelEntry["definition"],
   zhCN: CatalogModelEntry["locales"]["zh-CN"],
-  enUS: CatalogModelEntry["locales"]["en-US"] = zhCN
+  enUS: CatalogModelEntry["locales"]["en-US"] = zhCN,
+  zhTW?: CatalogModelEntry["locales"]["zh-TW"]
 ): CatalogModelEntry {
-  return { definition, locales: { "zh-CN": zhCN, "en-US": enUS } };
+  return { definition, locales: { "zh-CN": zhCN, "zh-TW": zhTW, "en-US": enUS } };
 }
 
 export const comfyWanSource = "Comfy-Org / Wan_2.2_ComfyUI_Repackaged";

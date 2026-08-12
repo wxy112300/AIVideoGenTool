@@ -84,6 +84,25 @@ describe("model catalog", () => {
       expect(locale?.name, entry.definition.id).not.toMatch(/[\u3400-\u9fff]/u);
       expect(locale?.badge ?? "", entry.definition.id).not.toMatch(/[\u3400-\u9fff]/u);
       expect(locale?.description ?? "", entry.definition.id).not.toMatch(/[\u3400-\u9fff]/u);
+      expect(locale?.limitations?.join(" ") ?? "", entry.definition.id).not.toMatch(/[\u3400-\u9fff]/u);
     }
+  });
+
+  it("provides Taiwan Traditional Chinese display metadata for every catalog entry", () => {
+    for (const entry of modelCatalog.entries) {
+      const locale = entry.locales["zh-TW"];
+      expect(locale?.name, entry.definition.id).toBeTruthy();
+      expect(locale?.badge ?? locale?.description ?? "", entry.definition.id).toBeTruthy();
+    }
+    expect(modelCatalog.localized("qwen-image-edit-2511", "zh-TW")).toMatchObject({
+      name: "Qwen-Image-Edit-2511 · 圖片處理",
+      badge: "最多 3 Picture · 原生品質"
+    });
+    expect(modelCatalog.localized("minimax-h3-realism-people", "zh-TW")).toMatchObject({
+      badge: "H3 專屬 · 人物寫實"
+    });
+    expect(modelCatalog.localized("google/gemma-4-26b-a4b-q4", "zh-TW")).toMatchObject({
+      badge: "社群推薦 · MoE Q4"
+    });
   });
 });

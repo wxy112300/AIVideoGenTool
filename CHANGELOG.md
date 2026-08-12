@@ -14,12 +14,13 @@
 - 补齐模型 catalog、Prompt Pack、LoRA guide/rule、workflow runtime safety message 与 Settings copy pack 的 English/台湾繁体文案；Prompt 与模型面对的内容仍保持英文边界。
 - 修复 Settings 语言下拉框只显示选择、却没有把 `uiLocale` 写入表单状态的问题；新增语言 catalog key parity、Settings form、模型 English metadata 和 zh-TW Prompt Pack 测试。
 - 将 Settings 的视频模型、Sulphur、LoRA、图片模型、Prompt、Upscale、Nodes/Workflow 与 H3 加速面板的固定文案接入三语 copy pack；动态硬件、组件和路径 metadata 继续按契约安全回退。
+- 补齐分组式模型 catalog 的台湾繁体文案，覆盖图片模型、旧视频兼容记录、后处理、Prompt 模型和 LoRA；新增全 catalog 语言完整性测试。
+- 统一视频 LoRA 技术定义：运行时、设置扫描、安装信息、兼容规则和自动触发词由同一注册表派生；新任务会把触发词冻结进队列快照，旧记录继续兼容归一化。
+- 修复根目录 `models/` 忽略规则误伤 `src/core/catalog/models/` 源码的问题，确保模型 catalog 模块会随 Git 正常迁移到其他电脑。
 
 ### 0.17.0 候选 — 2026-08-12
 
 - 新增 MiniMax H3 Realism People LoRA：设置页可离线扫描与下载，创建页支持 INT8 FL2VA/R2V 选择、强度和排序，执行时自动补齐 `r34l1sm` 触发词，并提示 Turbo/NSFW 叠加风险。
-- 统一视频 LoRA 技术定义：运行时、设置扫描、安装信息、兼容规则和自动触发词由同一注册表派生；新任务会把触发词冻结进队列快照，旧记录继续兼容归一化。
-- 修复根目录 `models/` 忽略规则误伤 `src/core/catalog/models/` 源码的问题，确保模型 catalog 模块会随 Git 正常迁移到其他电脑。
 - 完成 Renderer 模块化收口：拆分 Create、History、Settings 页面 assembly、controller、view model 和 render coordinator，降低多 agent 编辑冲突。
 - 建立模型 catalog、Prompt Pack、runtime workflow message catalog 和统一视频生成策略，模型元数据、Prompt UI 与 workflow 逻辑边界更加清晰。
 - 完成本地化结构整理：全局 UI key、按语言 catalog、Prompt Pack 索引和 LoRA/workflow runtime 文案均可按 locale 扩展；模型 Prompt 内容保持英文。
