@@ -1,0 +1,240 @@
+
+/* Settings layout contract: one stable sidebar, one aligned content column. */
+.settings-layout {
+  grid-template-columns: minmax(200px, 230px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.settings-sidebar {
+  width: 100%;
+  top: 146px;
+  padding: 8px;
+  gap: 4px;
+}
+
+.settings-tab {
+  min-width: 0;
+  min-height: 44px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  padding: 9px 10px;
+}
+
+.settings-content,
+.settings-content > .settings-panel,
+.settings-content .settings-section {
+  min-width: 0;
+  width: 100%;
+}
+
+.settings-panel {
+  gap: 16px;
+}
+
+.settings-section {
+  padding: 20px;
+}
+
+.settings-section > .section-heading,
+.settings-section .section-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 18px;
+  min-width: 0;
+  margin-bottom: 0;
+  padding-bottom: 14px;
+}
+
+.settings-section .section-heading > div,
+.settings-section .section-heading > div:first-child {
+  min-width: 0;
+}
+
+.settings-section .section-heading h2,
+.settings-section .section-heading p,
+.settings-section .section-heading .muted {
+  overflow-wrap: anywhere;
+}
+
+.settings-section .section-heading > .model-badge,
+.settings-section .section-heading > .model-availability,
+.settings-section .section-heading > .compatibility-actions {
+  justify-self: end;
+}
+
+.settings-section .settings-grid,
+.settings-section .runtime-policy-grid {
+  width: 100%;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.settings-section .settings-grid {
+  gap: 14px;
+}
+
+.settings-section label,
+.settings-section .input-action,
+.settings-section .input-action input {
+  min-width: 0;
+}
+
+.settings-section .input-action {
+  width: 100%;
+}
+
+.settings-section .input-action input {
+  flex: 1 1 auto;
+}
+
+.settings-section .input-action button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.settings-section .compact-label {
+  width: min(280px, 100%);
+  min-width: 0;
+}
+
+.runtime-policy-grid {
+  align-items: stretch;
+}
+
+.runtime-policy-grid > * {
+  min-width: 0;
+}
+
+.app-log-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(56,65,78,.52);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.app-log-directory-actions { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; }
+.app-log-directory-actions > span { color: #8d9caf; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.app-log-directory-actions > div { min-width: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.app-log-directory-actions button { min-height: 32px; padding: 6px 10px; font-size: 11px; white-space: nowrap; }
+.app-log-stats { display: flex; align-items: stretch; gap: 18px; padding-left: 14px; border-left: 1px solid rgba(56,65,78,.56); }
+.app-log-stat { min-width: 60px; display: grid; gap: 3px; }
+.app-log-stat > span { color: #8d9caf; font-size: 10px; }
+.app-log-stat strong { color: #d9e5f4; font-size: 13px; }
+.app-logs-panel { height: calc(100vh - 200px); min-height: 360px; }
+.app-logs-panel > .settings-section { min-height: 0; height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; }
+.app-log-terminal { min-height: 0; height: 100%; max-height: none; margin: 0; padding: 13px 14px; overflow: auto; border: 1px solid #10151d; border-radius: 10px; color: #b9c7d8; background: #090d12; font: 11px/1.65 "Cascadia Mono", Consolas, monospace; white-space: pre; tab-size: 2; }
+.app-log-line { display: inline; }
+.app-log-line.debug { color: #8391a4; }
+.app-log-line.info { color: #b9c7d8; }
+.app-log-line.warn { color: #e6c16e; }
+.app-log-line.error { color: #ff9b86; }
+.app-log-line.fatal { color: #ff6f91; font-weight: 700; }
+.python-runtime-picker { display: grid; gap: 14px; padding: 16px; border: 1px solid rgba(75,95,124,.68); border-radius: 13px; background: linear-gradient(145deg, rgba(20,29,41,.92), rgba(12,17,24,.94)); }
+.python-runtime-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(68,82,103,.5); }
+.python-runtime-picker-head > div { min-width: 0; display: grid; gap: 4px; }
+.python-runtime-picker-head strong { color: #dce7f5; font-size: 12px; font-weight: 600; }
+.python-selection-badge { flex: 0 0 auto; padding: 5px 8px; border: 1px solid rgba(112,159,237,.28); border-radius: 7px; color: #a9c9ff; background: rgba(105,157,243,.1); font-size: 10px; font-weight: 700; }
+.python-runtime-picker-controls { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(240px, .8fr); gap: 13px; }
+.python-runtime-picker label { min-width: 0; display: grid; gap: 6px; color: #dce4ef; font-size: 12px; }
+.python-runtime-picker .input-action { min-width: 0; display: flex; gap: 8px; }
+.python-runtime-picker .input-action input { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.python-runtime-picker .input-action button { flex: 0 0 auto; min-height: 36px; padding-inline: 10px; white-space: nowrap; }
+.python-runtime-picker select { min-width: 0; width: 100%; min-height: 36px; }
+.python-runtime-note { margin: 0; color: #8d9caf; font-size: 10px; line-height: 1.5; }
+.python-runtime-note code { color: #b8cbea; font-size: 10px; }
+@media (max-width: 760px) {
+  .python-runtime-picker-controls { grid-template-columns: 1fr; }
+  .python-runtime-picker-head { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 900px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .settings-sidebar {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .settings-sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-section {
+    padding: 17px;
+  }
+
+  .settings-section > .section-heading,
+  .settings-section .section-heading {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .settings-section .section-heading > .model-badge,
+  .settings-section .section-heading > .model-availability,
+  .settings-section .section-heading > .compatibility-actions {
+    justify-self: start;
+  }
+
+  .settings-section .settings-grid,
+  .settings-section .settings-grid.two {
+    grid-template-columns: 1fr;
+  }
+
+  .app-log-summary {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .app-log-stats {
+    padding: 10px 0 0;
+    border-top: 1px solid rgba(56,65,78,.56);
+    border-left: 0;
+  }
+}
+
+.r2v-workspace > .media-panel {
+  min-width: 0;
+}
+
+.r2v-workspace > .media-panel .section-heading {
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.r2v-workspace .h3-reference-grid {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.r2v-workspace .h3-reference-slot {
+  padding: 14px;
+}
+
+.r2v-workspace .h3-reference-slot-head {
+  align-items: flex-start;
+}
+
+.r2v-workspace .h3-reference-slot-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.r2v-workspace .h3-reference-slot-actions button,
+.r2v-workspace > .media-panel .section-heading > button {
+  white-space: nowrap;
+}

@@ -1,0 +1,116 @@
+
+/* Prompt helper: compact when closed, progressive disclosure when open. */
+.h3-prompt-helper {
+  margin-top: 10px;
+  padding-top: 0;
+}
+
+.h3-prompt-helper:not([open]) summary {
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.h3-helper-heading {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.h3-helper-heading > strong {
+  flex: 0 0 auto;
+}
+
+.h3-helper-heading > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.h3-prompt-helper:not([open]) .h3-helper-heading > span {
+  display: none;
+}
+
+.h3-prompt-helper:not([open]) .h3-helper-toggle {
+  font-size: 10px;
+}
+
+.h3-prompt-helper[open] .h3-helper-body {
+  padding-top: 1px;
+}
+
+.h3-helper-quick-actions {
+  align-items: center;
+  margin-top: 10px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(105,164,255,.12);
+  border-bottom: 1px solid rgba(105,164,255,.12);
+}
+
+.h3-helper-quick-actions > span {
+  max-width: 58ch;
+}
+
+.h3-builder-disclosure {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.h3-builder-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0 2px;
+  color: #dbe9ff;
+  list-style: none;
+}
+
+.h3-builder-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.h3-builder-disclosure > summary > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.h3-builder-disclosure > summary strong {
+  font-size: 11px;
+}
+
+.h3-builder-disclosure > summary small {
+  color: #8998ad;
+  font-size: 10px;
+}
+
+.h3-builder-disclosure > summary > .ui-icon {
+  width: 14px;
+  height: 14px;
+  transition: transform .16s ease;
+}
+
+.h3-builder-disclosure[open] > summary > .ui-icon {
+  transform: rotate(180deg);
+}
+
+.h3-builder-disclosure .h3-prompt-builder {
+  margin-top: 10px;
+}
+
+@media (max-width: 760px) {
+  .h3-helper-heading {
+    display: grid;
+    gap: 2px;
+  }
+
+  .h3-helper-heading > span {
+    white-space: normal;
+  }
+
+  .h3-helper-quick-actions {
+    align-items: stretch;
+  }
+}

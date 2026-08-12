@@ -1,0 +1,115 @@
+
+/* Preserve the useful player/inspector split while sizing the stage from the
+   available window height, which is especially important for portrait video. */
+.history-detail-hero { grid-template-columns: minmax(0, 1.55fr) minmax(320px, .72fr); gap: 18px; align-items: stretch; }
+.history-player-column { min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
+.history-player {
+  width: 100%;
+  height: clamp(380px, calc(100vh - 190px), 780px);
+  aspect-ratio: auto;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(43,53,68,.34), transparent 46%),
+    #07090c;
+  box-shadow: 0 24px 60px rgba(0,0,0,.3);
+}
+.history-player video { background: transparent; }
+.version-toolbar { position: relative; z-index: 1; margin-top: 0; border-radius: 12px; }
+.history-detail-sidebar {
+  min-width: 0;
+  max-height: clamp(380px, calc(100vh - 190px), 780px);
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+.history-summary {
+  min-height: 0;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  overflow-y: auto;
+}
+.history-summary-copy { min-width: 0; display: grid; gap: 6px; }
+.history-summary-copy > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-overview-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.history-overview-facts > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid rgba(58,68,82,.62);
+  border-radius: 10px;
+  background: rgba(13,17,23,.7);
+}
+.history-overview-facts span { color: var(--muted); font-size: 10px; letter-spacing: .03em; }
+.history-overview-facts strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #e2e7ef; font-size: 12px; font-weight: 570; white-space: nowrap; }
+.history-detail-quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.history-detail-quick-actions button { width: 100%; min-height: 39px; padding: 7px 9px; justify-content: center; white-space: nowrap; }
+.history-version-panel {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+}
+.history-version-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.history-version-panel-heading span { color: var(--muted); font-size: 10px; }
+.history-summary-version-switcher { justify-content: flex-start; gap: 5px; }
+.history-summary-version-switcher button { min-height: 29px; padding: 4px 9px; font-size: 11px; }
+
+@media (max-width: 1120px) {
+  .create-workspace { grid-template-columns: 1fr; gap: 18px; }
+  .create-workspace > .media-panel { position: static; }
+}
+
+@media (max-width: 900px) {
+  .app-shell { padding-inline: 24px; }
+  .topbar { margin-inline: -24px; padding-inline: 24px; }
+  .page-heading { min-height: 100px; }
+  .settings-layout { grid-template-columns: 1fr; gap: 17px; }
+  .settings-sidebar {
+    position: static;
+    top: auto;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .settings-tab { justify-content: center; }
+  .history-gallery.masonry { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-gallery.album { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .task-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-detail-hero { grid-template-columns: 1fr; }
+  .history-detail-sidebar { max-height: none; }
+  .history-summary { max-height: none; }
+}
+
+@media (max-width: 760px) {
+  body { min-width: 360px; }
+  .app-shell { padding-inline: 16px; }
+  .app-shell.history-shell { padding-inline: 16px; }
+  .topbar { position: relative; margin-inline: -16px; padding: 12px 16px; flex-direction: column; align-items: stretch; }
+  .history-shell .topbar { margin-inline: -16px; padding-inline: 16px; }
+  .topbar nav { width: 100%; justify-content: space-between; }
+  .nav-button { flex: 1; padding-inline: 8px; }
+  .history-detail-back { top: 0; }
+  .history-detail-tools { align-items: flex-end; flex-direction: column; gap: 7px; }
+  .history-heading { grid-template-columns: 1fr; align-items: stretch; }
+  .history-heading > .history-kind-tabs { width: min(100%, 360px); justify-self: center; }
+  .history-heading > .history-view-tools { justify-self: stretch; }
+  .history-heading > .history-view-tools .button-row { justify-content: flex-end; }
+  .page-heading { min-height: auto; padding-block: 22px; }
+  .create-workspace { display: grid; grid-template-columns: 1fr; }
+  .media-panel, .composer, .environment-panel, .settings-page, .token-help { padding: 18px; }
+  .drop-zone { min-height: 290px; }
+  .history-view-tools { align-items: flex-end; }
+  .history-gallery.album { grid-template-columns: 1fr; }
+  .task-stat-grid { grid-template-columns: 1fr; }
+  .history-player { height: clamp(300px, 56vh, 560px); }
+  .history-summary { padding: 18px; }
+  .history-overview-facts { grid-template-columns: 1fr; }
+  .history-summary-footer { align-items: stretch; flex-direction: column; }
+}

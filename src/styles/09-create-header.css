@@ -1,0 +1,73 @@
+
+/* The create header is a compact control rail, not a separate content panel. */
+.create-page-heading {
+  min-height: 60px;
+  margin-bottom: 12px;
+  padding: 8px 2px;
+}
+
+.create-page-heading .page-heading-copy {
+  min-width: 0;
+}
+
+.create-page-actions {
+  min-width: 0;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.create-page-actions > .save-state {
+  display: none;
+}
+
+.create-page-actions .input-mode-switch {
+  width: 430px;
+  min-width: 0;
+  height: 42px;
+  margin: 0;
+  padding: 3px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.create-page-actions .input-mode-switch button {
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 7px;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .create-page-heading {
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .create-page-actions {
+    justify-content: space-between;
+  }
+
+  .create-page-actions .input-mode-switch {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 980px) {
+  .create-page-heading {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .create-page-actions {
+    width: 100%;
+  }
+
+  .create-page-actions .input-mode-switch {
+    width: min(430px, 100%);
+  }
+}
