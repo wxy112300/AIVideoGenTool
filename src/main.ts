@@ -12,6 +12,7 @@ import {
   setRendererState,
   state
 } from "./renderer/renderer-state";
+import { rendererUiState as ui } from "./renderer/ui-state";
 import type { CreationMode, HistoryKind, Page } from "./renderer/contracts";
 import {
   queueTaskInput,
@@ -27,16 +28,13 @@ import { mountQueueController } from "./renderer/pages/queue/controller";
 import { loadQueueInputPreviews as loadQueueInputPreviewsForPage } from "./renderer/pages/queue/input-previews";
 import { renderQueuePage } from "./renderer/pages/queue/page";
 import { renderSettingsPage } from "./renderer/pages/settings/page";
-import { mountSettingsPageController } from "./renderer/pages/settings/page-controller";
-import { mountSettingsControllers } from "./renderer/pages/settings/controllers";
+import { mountSettingsAssembly } from "./renderer/pages/settings/assembly";
+import { createRenderCoordinator, type RenderCoordinator } from "./renderer/render-coordinator";
 import { readSettingsFromForm } from "./renderer/pages/settings/form";
 import {
   buildSettingsPageViewModel,
   type SettingsViewModelDependencies
 } from "./renderer/pages/settings/view-model";
-import { mountSettingsFieldsController } from "./renderer/pages/settings/fields-controller";
-import { mountSettingsEnvironmentController } from "./renderer/pages/settings/environment-controller";
-import { mountSettingsLogsController } from "./renderer/pages/settings/logs-controller";
 import { createAppLogContextMenu } from "./renderer/pages/settings/log-context-menu";
 import {
   renderHistoryDetailPage,
@@ -46,10 +44,8 @@ import {
   type HistoryPageOptions,
   type HistoryPageViewModel
 } from "./renderer/pages/history/page";
-import {
-  mountHistoryPageController,
-  type HistoryPlaybackSnapshot
-} from "./renderer/pages/history/page-controller";
+import { type HistoryPlaybackSnapshot } from "./renderer/pages/history/page-controller";
+import { mountHistoryAssembly } from "./renderer/pages/history/assembly";
 import { createHistoryContextMenus } from "./renderer/pages/history/context-menus";
 import { createHistoryLayoutController } from "./renderer/pages/history/layout-controller";
 import { createHistoryActions } from "./renderer/pages/history/actions";
@@ -77,8 +73,7 @@ import {
   renderImageEditPage,
   type CreatePageOptions,
 } from "./renderer/pages/create/page";
-import { mountCreatePageController } from "./renderer/pages/create/page-controller";
-import { mountCreateClipboardController } from "./renderer/pages/create/clipboard-controller";
+import { mountCreateAssembly } from "./renderer/pages/create/assembly";
 import { mountH3ReferencesController } from "./renderer/pages/create/references-controller";
 import {
   buildImageEditPageViewModel,
@@ -128,7 +123,6 @@ import {
   promptModelStatus
 } from "./renderer/shared/status";
 import { appLogTerminalHtml, visibleAppLogText } from "./renderer/shared/logs";
-import { renderShell } from "./renderer/shell/page";
 import { mountShellController } from "./renderer/shell/controller";
 import { mountUpscaleController } from "./renderer/shell/upscale-controller";
 import { acceptConfirmation as runConfirmation } from "./renderer/shell/confirmation-service";
@@ -222,27 +216,12 @@ import {
 } from "./core/video-loras";
 
 const appElement = document.querySelector<HTMLDivElement>("#app")!;
-let appVersion = "";
 let draftSaveTimer: number | undefined;
 let draftRevision = 0;
 let draftSaveInFlight = 0;
 let draftDirty = false;
 let imageDraftSaveTimer: number | undefined;
 let imageDraftRevision = 0;
-let flashMessage = "";
-let flashMessageTimer: number | undefined;
-let selectedHistoryAssetId = "";
-let selectedHistoryVersionId = "";
-let historyForwardTarget: { assetId: string; versionId: string } | null = null;
-let upscaleDialog: {
-  taskId?: string;
-  replaceTaskId?: string;
-  assetId: string;
-  versionId: string;
-  targetHeight: 720 | 1080 | 1440 | 2160;
-  modelId: "seedvr2" | "flashvsr" | "realesrgan";
-  tileMode: "auto" | "safe" | "fast";
-} | null = null;
 let environmentScan: EnvironmentScanResult | null = null;
 let environmentScanning = false;
 let environmentScanError = "";
@@ -274,53 +253,13 @@ let selectedInstallGuide: {
   profileName: string;
   component: ModelComponentStatus;
 } | null = null;
-let pendingConfirmation:
-  | { kind: "clear-draft" }
-  | { kind: "delete-history"; assetId: string; title: string }
-  | { kind: "delete-image-version"; projectId: string; versionId: string; title: string }
-  | { kind: "remove-queue-task"; taskId: string; title: string }
-  | { kind: "cancel-queue-task"; taskId: string; title: string }
-  | { kind: "discard-settings"; nextPage: Page }
-  | { kind: "force-stop-comfy" }
-  | null = null;
-let confirmationBusy = false;
-let pendingDirectoryMigration: {
-  target: "video";
-  previousSettings: Settings;
-  nextSettings: Settings;
-  oldDirectory: string;
-  newDirectory: string;
-} | null = null;
-let directoryMigrationBusy = false;
-let historyMigrationProgress: HistoryMigrationProgress | null = null;
-let imageAssetLibraryDialog: {
-  scan: ImageAssetLibraryScan | null;
-  busy: boolean;
-  error: string;
-  confirmCleanup: boolean;
-  selectedPaths: string[];
-  lastResult: {
-    tone: "success" | "warning";
-    title: string;
-    detail: string;
-    operationId?: string;
-  } | null;
-} | null = null;
-let imageAssetLibraryProgress: ImageAssetLibraryProgress | null = null;
 let queueActionBusy: { taskId: string; action: "remove" | "cancel" | "edit" } | null = null;
-let enqueueBusy = false;
-let modalReturnFocus: HTMLElement | null = null;
-let modalInitialFocusPending = false;
-let modalControlFocusSelector = "";
-let pendingWindowCloseRequest: WindowCloseRequest | null = null;
-let windowCloseResponseBusy = false;
 const bundledWorkflows: Record<string, BundledWorkflow> = {};
 const bundledWorkflowKey = (modelId: string, inputMode: Draft["inputMode"]) =>
   `${modelId}:${inputMode}`;
 const workflowCapabilities: Record<string, WorkflowCapabilities> = {};
 const taskPreviews: Record<string, string> = {};
 let performanceMetrics: PerformanceMetrics | null = null;
-let shellControllerCleanup: (() => void) | null = null;
 let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
 let h3PromptPreset: H3PromptPreset = "official-storyboard";
 let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
@@ -360,27 +299,27 @@ function updateH3PromptCheck(
 
 function rememberModalFocus(): void {
   const active = document.activeElement;
-  modalReturnFocus = active instanceof HTMLElement && active !== document.body
+  ui.modalReturnFocus = active instanceof HTMLElement && active !== document.body
     ? active
     : null;
-  modalInitialFocusPending = true;
-  modalControlFocusSelector = "";
+  ui.modalInitialFocusPending = true;
+  ui.modalControlFocusSelector = "";
 }
 
 function rememberModalControlFocus(element: HTMLElement): void {
   if (element.id) {
-    modalControlFocusSelector = `#${element.id}`;
+    ui.modalControlFocusSelector = `#${element.id}`;
     return;
   }
   const upscaleHeight = element.dataset.upscaleHeight;
   if (upscaleHeight) {
-    modalControlFocusSelector = `[data-upscale-height="${CSS.escape(upscaleHeight)}"]`;
+    ui.modalControlFocusSelector = `[data-upscale-height="${CSS.escape(upscaleHeight)}"]`;
   }
 }
 
 function restoreModalFocus(): void {
-  const target = modalReturnFocus;
-  modalReturnFocus = null;
+  const target = ui.modalReturnFocus;
+  ui.modalReturnFocus = null;
   window.requestAnimationFrame(() => {
     if (target?.isConnected && !target.hasAttribute("disabled")) {
       target.focus();
@@ -397,15 +336,15 @@ function bindModalFocus(
 ): void {
   const focusableSelector = "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex=\"-1\"])";
   const focusInitial = () => {
-    const storedControl = !modalInitialFocusPending && modalControlFocusSelector
-      ? dialog.querySelector<HTMLElement>(modalControlFocusSelector)
+    const storedControl = !ui.modalInitialFocusPending && ui.modalControlFocusSelector
+      ? dialog.querySelector<HTMLElement>(ui.modalControlFocusSelector)
       : null;
     const initial = storedControl ?? (initialSelector
       ? dialog.querySelector<HTMLElement>(initialSelector)
       : null);
     const first = initial ?? dialog.querySelector<HTMLElement>(focusableSelector);
     (first ?? dialog).focus();
-    modalControlFocusSelector = "";
+    ui.modalControlFocusSelector = "";
   };
   dialog.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
@@ -431,46 +370,46 @@ function bindModalFocus(
       first.focus();
     }
   });
-  if (modalInitialFocusPending || modalControlFocusSelector) {
-    modalInitialFocusPending = false;
+  if (ui.modalInitialFocusPending || ui.modalControlFocusSelector) {
+    ui.modalInitialFocusPending = false;
     focusInitial();
   }
 }
 
 function directoryMigrationDialog(): string {
   return renderDirectoryMigrationDialog({
-    request: pendingDirectoryMigration,
-    progress: historyMigrationProgress,
-    busy: directoryMigrationBusy,
+    request: ui.pendingDirectoryMigration,
+    progress: ui.historyMigrationProgress,
+    busy: ui.directoryMigrationBusy,
     icon,
     escapeHtml
   });
 }
 
 async function chooseDirectoryMigration(mode: SettingsSaveMode | "cancel"): Promise<void> {
-  const request = pendingDirectoryMigration;
-  if (!request || directoryMigrationBusy) return;
+  const request = ui.pendingDirectoryMigration;
+  if (!request || ui.directoryMigrationBusy) return;
   if (mode === "cancel") {
     settingsDraft = {
       ...request.nextSettings,
       outputDirectory: request.previousSettings.outputDirectory
     };
-    pendingDirectoryMigration = null;
-    historyMigrationProgress = null;
+    ui.pendingDirectoryMigration = null;
+    ui.historyMigrationProgress = null;
     render();
     restoreModalFocus();
     showMessage("已取消目录更改，继续使用当前目录。");
     return;
   }
-  directoryMigrationBusy = true;
-  historyMigrationProgress = null;
+  ui.directoryMigrationBusy = true;
+  ui.historyMigrationProgress = null;
   render();
   try {
     await saveSettingsFromUi(request.nextSettings, mode);
-    const warningCount = (historyMigrationProgress as HistoryMigrationProgress | null)?.warningCount ?? 0;
-    pendingDirectoryMigration = null;
-    directoryMigrationBusy = false;
-    historyMigrationProgress = null;
+    const warningCount = (ui.historyMigrationProgress as HistoryMigrationProgress | null)?.warningCount ?? 0;
+    ui.pendingDirectoryMigration = null;
+    ui.directoryMigrationBusy = false;
+    ui.historyMigrationProgress = null;
     render();
     restoreModalFocus();
     if (mode === "migrate-video-history") {
@@ -479,14 +418,14 @@ async function chooseDirectoryMigration(mode: SettingsSaveMode | "cancel"): Prom
         : "历史视频迁移完成。");
     }
   } catch (error) {
-    directoryMigrationBusy = false;
+    ui.directoryMigrationBusy = false;
     showMessage(error instanceof Error ? error.message : String(error), false);
     render();
   }
 }
 
 function bindDirectoryMigrationDialog(): void {
-  if (!pendingDirectoryMigration) return;
+  if (!ui.pendingDirectoryMigration) return;
   document.querySelector("#directory-apply")?.addEventListener("click", () => {
     void chooseDirectoryMigration("apply");
   });
@@ -497,7 +436,7 @@ function bindDirectoryMigrationDialog(): void {
     void chooseDirectoryMigration("cancel");
   });
   document.querySelector("#directory-migration-backdrop")?.addEventListener("click", (event) => {
-    if (event.target === event.currentTarget && !directoryMigrationBusy) {
+    if (event.target === event.currentTarget && !ui.directoryMigrationBusy) {
       void chooseDirectoryMigration("cancel");
     }
   });
@@ -507,8 +446,8 @@ function bindDirectoryMigrationDialog(): void {
 
 function imageAssetLibraryDialogHtml(): string {
   return renderImageAssetLibraryDialog({
-    dialog: imageAssetLibraryDialog,
-    progress: imageAssetLibraryProgress,
+    dialog: ui.imageAssetLibraryDialog,
+    progress: ui.imageAssetLibraryProgress,
     icon,
     escapeHtml,
     formatAssetBytes
@@ -516,26 +455,26 @@ function imageAssetLibraryDialogHtml(): string {
 }
 
 async function scanImageAssets(): Promise<void> {
-  if (!imageAssetLibraryDialog || imageAssetLibraryDialog.busy) return;
-  imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: true, error: "", confirmCleanup: false, lastResult: null };
-  imageAssetLibraryProgress = null;
+  if (!ui.imageAssetLibraryDialog || ui.imageAssetLibraryDialog.busy) return;
+  ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: true, error: "", confirmCleanup: false, lastResult: null };
+  ui.imageAssetLibraryProgress = null;
   render();
   try {
     const scan = await window.studio.scanImageAssetLibrary();
-    imageAssetLibraryDialog = { scan, busy: false, error: "", confirmCleanup: false, selectedPaths: scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: null };
+    ui.imageAssetLibraryDialog = { scan, busy: false, error: "", confirmCleanup: false, selectedPaths: scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: null };
   } catch (error) {
-    imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error) };
+    ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error) };
   }
   render();
 }
 
 function bindImageAssetLibraryDialog(): void {
-  const dialog = imageAssetLibraryDialog;
+  const dialog = ui.imageAssetLibraryDialog;
   if (!dialog) return;
   const close = () => {
-    if (imageAssetLibraryDialog?.busy) return;
-    imageAssetLibraryDialog = null;
-    imageAssetLibraryProgress = null;
+    if (ui.imageAssetLibraryDialog?.busy) return;
+    ui.imageAssetLibraryDialog = null;
+    ui.imageAssetLibraryProgress = null;
     render();
     restoreModalFocus();
   };
@@ -545,37 +484,37 @@ function bindImageAssetLibraryDialog(): void {
   });
   document.querySelector("#image-assets-rescan")?.addEventListener("click", () => void scanImageAssets());
   document.querySelector("#image-assets-organize")?.addEventListener("click", async () => {
-    if (!imageAssetLibraryDialog || imageAssetLibraryDialog.busy) return;
-    imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: true, error: "", lastResult: null };
-    imageAssetLibraryProgress = null;
+    if (!ui.imageAssetLibraryDialog || ui.imageAssetLibraryDialog.busy) return;
+    ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: true, error: "", lastResult: null };
+    ui.imageAssetLibraryProgress = null;
     render();
     try {
       const result = await window.studio.organizeImageAssetLibrary();
-      imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "organize", formatAssetBytes) };
+      ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "organize", formatAssetBytes) };
       showMessage(`素材库整理完成：归档 ${result.archivedFiles} 个外部素材、迁移 ${result.reorganizedFiles} 个旧目录文件、更新 ${result.updatedReferences} 处引用；原文件未删除。`);
     } catch (error) {
-      imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error) };
+      ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error) };
     }
     render();
   });
   document.querySelector("#image-assets-cleanup")?.addEventListener("click", async () => {
-    if (!imageAssetLibraryDialog || imageAssetLibraryDialog.busy) return;
-    if (!imageAssetLibraryDialog.confirmCleanup) {
+    if (!ui.imageAssetLibraryDialog || ui.imageAssetLibraryDialog.busy) return;
+    if (!ui.imageAssetLibraryDialog.confirmCleanup) {
       const selectedPaths = [...document.querySelectorAll<HTMLInputElement>("[data-orphan-path]:checked")].map((item) => item.dataset.orphanPath || "").filter(Boolean);
-      imageAssetLibraryDialog = { ...imageAssetLibraryDialog, confirmCleanup: true, selectedPaths };
+      ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, confirmCleanup: true, selectedPaths };
       render();
       return;
     }
-    const paths = imageAssetLibraryDialog.selectedPaths;
-    imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: true, error: "", confirmCleanup: false, lastResult: null };
-    imageAssetLibraryProgress = null;
+    const paths = [...ui.imageAssetLibraryDialog.selectedPaths];
+    ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: true, error: "", confirmCleanup: false, lastResult: null };
+    ui.imageAssetLibraryProgress = null;
     render();
     try {
       const result = await window.studio.cleanupImageAssetLibrary(paths);
-      imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "cleanup", formatAssetBytes) };
+      ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "cleanup", formatAssetBytes) };
       showMessage(`已清理 ${result.cleanedFiles} 个孤立素材，释放 ${formatAssetBytes(result.cleanedBytes)}。`);
     } catch (error) {
-      imageAssetLibraryDialog = { ...imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error), confirmCleanup: false };
+      ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error), confirmCleanup: false };
     }
     render();
   });
@@ -585,7 +524,7 @@ function bindImageAssetLibraryDialog(): void {
 
 function upscaleDialogHtml(): string {
   return renderUpscaleDialog({
-    dialog: upscaleDialog,
+    dialog: ui.upscaleDialog,
     history: state.history,
     environment: environmentScan,
     performance: performanceMetrics,
@@ -644,7 +583,7 @@ function createViewModelDependencies(): CreateViewModelDependencies {
     promptReleasing,
     promptRuntimeLoaded,
     h3PromptBuilder,
-    enqueueBusy,
+    enqueueBusy: ui.enqueueBusy,
     promptRuntimeControlTitle,
     promptRuntimeControlIcon
   };
@@ -768,8 +707,8 @@ function createHistoryPageViewModel(): HistoryPageViewModel {
     state,
     historyKind,
     historyLayout: historyLayoutController.getLayout(),
-    selectedHistoryAssetId,
-    selectedHistoryVersionId
+    selectedHistoryAssetId: ui.selectedHistoryAssetId,
+    selectedHistoryVersionId: ui.selectedHistoryVersionId
   };
 }
 
@@ -835,67 +774,26 @@ function bindHistoryTitleMarquees(): void {
 }
 
 function historyDetailPage(): string {
-  const asset = state.history.find((item) => item.id === selectedHistoryAssetId);
+  const asset = state.history.find((item) => item.id === ui.selectedHistoryAssetId);
   if (!asset) {
     setPage("history");
     return historyPage();
   }
-  const version = currentHistoryVersion(asset, selectedHistoryVersionId);
-  selectedHistoryVersionId = version.id;
+  const version = currentHistoryVersion(asset, ui.selectedHistoryVersionId);
+  ui.selectedHistoryVersionId = version.id;
   return renderHistoryDetailPage(createHistoryPageViewModel(), historyPageOptions);
 }
 
 function imageHistoryDetailPage(): string {
-  const project = state.imageHistory.find((item) => item.id === selectedHistoryAssetId);
+  const project = state.imageHistory.find((item) => item.id === ui.selectedHistoryAssetId);
   if (!project) {
     setHistoryKind("image");
     setPage("history");
     return historyPage();
   }
-  const version = currentImageHistoryVersion(project, selectedHistoryVersionId);
-  selectedHistoryVersionId = version.id;
+  const version = currentImageHistoryVersion(project, ui.selectedHistoryVersionId);
+  ui.selectedHistoryVersionId = version.id;
   return renderImageHistoryDetailPage(createHistoryPageViewModel(), historyPageOptions);
-}
-
-function captureHistoryPlayback(): HistoryPlaybackSnapshot | null {
-  if (page !== "history-detail") return null;
-  const video = document.querySelector<HTMLVideoElement>(".history-player video");
-  if (!video) return null;
-  return {
-    assetId: video.dataset.historyAsset ?? "",
-    versionId: video.dataset.historyVersion ?? "",
-    currentTime: video.currentTime,
-    paused: video.paused,
-    muted: video.muted,
-    playbackRate: video.playbackRate
-  };
-}
-
-function restoreHistoryPlayback(snapshot: HistoryPlaybackSnapshot | null): void {
-  if (!snapshot) return;
-  const video = document.querySelector<HTMLVideoElement>(".history-player video");
-  if (!video) return;
-  if (
-    video.dataset.historyAsset !== snapshot.assetId ||
-    video.dataset.historyVersion !== snapshot.versionId
-  ) return;
-  const restore = () => {
-    video.muted = snapshot.muted;
-    video.playbackRate = snapshot.playbackRate;
-    if (Number.isFinite(video.duration)) {
-      video.currentTime = Math.min(snapshot.currentTime, video.duration);
-    }
-    if (snapshot.paused) video.pause();
-    else void video.play().catch(() => undefined);
-  };
-  if (video.readyState >= 1) window.requestAnimationFrame(restore);
-  else video.addEventListener("loadedmetadata", restore, { once: true });
-}
-
-function stopRenderedVideoPlayback(): void {
-  document.querySelectorAll<HTMLVideoElement>("video").forEach((video) => {
-    video.pause();
-  });
 }
 
 function enableSpectrumByDefaultIfAvailable(): void {
@@ -996,82 +894,11 @@ function settingsPage(): string {
   );
 }
 
-function renderLegacy(): void {
-  historyLayoutController.beforeRender();
-  const playback = captureHistoryPlayback();
-  stopRenderedVideoPlayback();
-  appLogContextMenu.close();
-  const content =
-    page === "create" ? createPage() :
-    page === "queue" ? queuePage() :
-    page === "history" ? historyPage() :
-    page === "history-detail" ? historyDetailPage() :
-    page === "image-history-detail" ? imageHistoryDetailPage() :
-    settingsPage();
-  appElement.innerHTML = renderShell({
-    page,
-    appVersion,
-    queueCount: state.queue.length,
-    flashMessage,
-    content,
-    icon,
-    escapeHtml,
-    confirmationDialog: renderConfirmationDialog({
-      request: pendingConfirmation,
-      confirmationBusy,
-      imageHistoryIds: new Set(state.imageHistory.map((item) => item.id)),
-      icon,
-      escapeHtml
-    }),
-    directoryMigrationDialog: directoryMigrationDialog(),
-    imageAssetLibraryDialog: imageAssetLibraryDialogHtml(),
-    windowCloseDialog: renderWindowCloseDialog({
-      request: pendingWindowCloseRequest,
-      responseBusy: windowCloseResponseBusy,
-      icon,
-      escapeHtml
-    }),
-    upscaleDialog: upscaleDialogHtml()
-  });
-  renderIcons(appElement);
-  bindShell();
-  rendererApp.addPageCleanup(historyLayoutController.bindViewportControls());
-  bindUpscaleDialog();
-  if (page === "create") {
-    bindCreate();
-    if (creationMode === "image-edit") {
-      void loadImageEditPreviews();
-    } else {
-      void loadImagePreview(rendererApp.context, state.draft.startImagePath, "start-preview", patchDraft);
-      void loadImagePreview(rendererApp.context, state.draft.endImagePath, "end-preview", patchDraft);
-    }
-    if (creationMode !== "image-edit" && isMiniMaxH3R2vModel(state.draft.modelId)) {
-      bindH3ReferenceSlots();
-      for (const slot of state.draft.h3ReferenceSlots) {
-        if (slot.mediaType === "image") {
-          void loadImagePreview(rendererApp.context, slot.mediaPath, `h3-slot-preview-${slot.id}`, patchDraft);
-        }
-      }
-    }
-  } else if (page === "queue") {
-    bindQueue();
-    void loadQueueInputPreviewsForPage(rendererApp.context);
-  }
-  else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
-    bindHistory(playback);
-  }
-  else if (page === "settings") bindSettings();
-  syncAppLogPolling();
-  if (page === "history") {
-    historyLayoutController.restoreScrollPosition();
-  }
-  restoreHistoryPlayback(playback);
-}
-
 function render(): void {
   rendererApp.render();
 }
 
+let renderCoordinator: RenderCoordinator;
 const rendererApp = createRendererApp({
   root: appElement,
   studio: window.studio,
@@ -1084,8 +911,58 @@ const rendererApp = createRendererApp({
   },
   notify: (message, options) => showMessage(message, options?.renderPage ?? true),
   reportUserAction,
-  renderLegacy
+  renderLegacy: () => renderCoordinator.render()
 });
+
+function initializeRenderCoordinator(): void {
+  renderCoordinator = createRenderCoordinator({
+  root: appElement,
+  addPageCleanup: rendererApp.addPageCleanup,
+  getPage: () => page,
+  getState: () => state,
+  getUiState: () => ui,
+  renderPages: {
+    create: createPage,
+    queue: queuePage,
+    history: historyPage,
+    historyDetail: historyDetailPage,
+    imageHistoryDetail: imageHistoryDetailPage,
+    settings: settingsPage
+  },
+  beforeRenderHistory: historyLayoutController.beforeRender,
+  closeAppLogContextMenu: appLogContextMenu.close,
+  bindShell,
+  bindUpscaleDialog,
+  bindCreate,
+  bindQueue: () => {
+    bindQueue();
+    void loadQueueInputPreviewsForPage(rendererApp.context);
+  },
+  bindHistory,
+  bindSettings,
+  bindHistoryViewportControls: historyLayoutController.bindViewportControls,
+  restoreHistoryScrollPosition: historyLayoutController.restoreScrollPosition,
+  syncAppLogPolling,
+  renderConfirmationDialog: () => renderConfirmationDialog({
+    request: ui.pendingConfirmation,
+    confirmationBusy: ui.confirmationBusy,
+    imageHistoryIds: new Set(state.imageHistory.map((item) => item.id)),
+    icon,
+    escapeHtml
+  }),
+  renderDirectoryMigrationDialog: directoryMigrationDialog,
+  renderImageAssetLibraryDialog: imageAssetLibraryDialogHtml,
+  renderWindowCloseDialog: () => renderWindowCloseDialog({
+    request: ui.pendingWindowCloseRequest,
+    responseBusy: ui.windowCloseResponseBusy,
+    icon,
+    escapeHtml
+  }),
+  renderUpscaleDialog: upscaleDialogHtml,
+  icon,
+  escapeHtml
+  });
+}
 
 const historyMediaRuntime = createHistoryMediaRuntime(
   rendererApp.context,
@@ -1095,13 +972,13 @@ const historyLayoutController = createHistoryLayoutController(rendererApp.contex
 const historyActions = createHistoryActions({
   context: rendererApp.context,
   setState: setRendererState,
-  getSelectedHistoryAssetId: () => selectedHistoryAssetId,
-  getSelectedHistoryVersionId: () => selectedHistoryVersionId,
+  getSelectedHistoryAssetId: () => ui.selectedHistoryAssetId,
+  getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
   setSelectedHistoryAssetId: (assetId) => {
-    selectedHistoryAssetId = assetId;
+    ui.selectedHistoryAssetId = assetId;
   },
   setDialog: (dialog) => {
-    upscaleDialog = dialog;
+    ui.upscaleDialog = dialog;
   },
   rememberModalFocus,
   saveDraftImmediately,
@@ -1122,6 +999,7 @@ const historyContextMenus = createHistoryContextMenus(rendererApp.context, {
   requestHistoryDeletion
 });
 const appLogContextMenu = createAppLogContextMenu(rendererApp.context, clearAppLogScreen);
+initializeRenderCoordinator();
 const queueLiveStatus = createQueueLiveStatus({
   studio: window.studio,
   getState: () => state,
@@ -1135,17 +1013,17 @@ queueLiveStatus.start();
 function syncFlashMessage(): void {
   const flash = document.querySelector<HTMLElement>("#app-flash");
   if (!flash) return;
-  flash.textContent = flashMessage;
-  flash.classList.toggle("visible", Boolean(flashMessage));
+  flash.textContent = ui.flashMessage;
+  flash.classList.toggle("visible", Boolean(ui.flashMessage));
 }
 
 function showMessage(message: string, _legacyRenderPage?: boolean): void {
-  flashMessage = message;
-  window.clearTimeout(flashMessageTimer);
+  ui.flashMessage = message;
+  window.clearTimeout(ui.flashMessageTimer);
   syncFlashMessage();
-  flashMessageTimer = window.setTimeout(() => {
-    if (flashMessage === message) {
-      flashMessage = "";
+  ui.flashMessageTimer = window.setTimeout(() => {
+    if (ui.flashMessage === message) {
+      ui.flashMessage = "";
       syncFlashMessage();
     }
   }, 3500);
@@ -1263,12 +1141,12 @@ function requestHistoryDeletion(assetId: string): void {
   const title = asset?.title ?? project?.title;
   if (!title) return;
   rememberModalFocus();
-  pendingConfirmation = {
+  ui.pendingConfirmation = {
     kind: "delete-history",
     assetId,
     title
   };
-  confirmationBusy = false;
+  ui.confirmationBusy = false;
   render();
 }
 
@@ -1277,13 +1155,13 @@ function requestImageVersionDeletion(projectId: string, versionId: string): void
   const version = project?.versions.find((item) => item.id === versionId);
   if (!project || !version || version.kind === "source") return;
   rememberModalFocus();
-  pendingConfirmation = {
+  ui.pendingConfirmation = {
     kind: "delete-image-version",
     projectId,
     versionId,
     title: `${project.title} · 版本 ${version.versionNumber}`
   };
-  confirmationBusy = false;
+  ui.confirmationBusy = false;
   render();
 }
 
@@ -1294,12 +1172,12 @@ function requestQueueTaskConfirmation(
   const task = state.queue.find((item) => item.id === taskId);
   if (!task) return;
   rememberModalFocus();
-  pendingConfirmation = {
+  ui.pendingConfirmation = {
     kind: action === "remove" ? "remove-queue-task" : "cancel-queue-task",
     taskId,
     title: task.outputFilename
   };
-  confirmationBusy = false;
+  ui.confirmationBusy = false;
   render();
 }
 
@@ -1353,12 +1231,12 @@ function openHistoryDetail(assetId: string, versionId?: string): void {
   if (page === "history") historyLayoutController.captureScrollPosition();
   reportUserAction("history-open-detail", { assetId, versionId });
   setHistoryKind("video");
-  selectedHistoryAssetId = assetId;
+  ui.selectedHistoryAssetId = assetId;
   const asset = state.history.find((item) => item.id === assetId);
-  selectedHistoryVersionId = asset?.versions.find((item) => item.id === versionId)?.id ??
+  ui.selectedHistoryVersionId = asset?.versions.find((item) => item.id === versionId)?.id ??
     (asset ? preferredVersion(asset).id : "");
-  historyForwardTarget = asset
-    ? { assetId, versionId: selectedHistoryVersionId }
+  ui.historyForwardTarget = asset
+    ? { assetId, versionId: ui.selectedHistoryVersionId }
     : null;
   setPage("history-detail");
   if (preserveFullscreen && updateHistoryDetailInPlace()) {
@@ -1375,10 +1253,10 @@ function openImageHistoryDetail(projectId: string, versionId?: string): void {
   if (!project) return;
   reportUserAction("image-history-open-detail", { projectId, versionId });
   setHistoryKind("image");
-  selectedHistoryAssetId = projectId;
-  selectedHistoryVersionId = project.versions.find((item) => item.id === versionId)?.id ??
+  ui.selectedHistoryAssetId = projectId;
+  ui.selectedHistoryVersionId = project.versions.find((item) => item.id === versionId)?.id ??
     preferredImageVersion(project).id;
-  historyForwardTarget = { assetId: projectId, versionId: selectedHistoryVersionId };
+  ui.historyForwardTarget = { assetId: projectId, versionId: ui.selectedHistoryVersionId };
   setPage("image-history-detail");
   render();
   window.scrollTo({ top: 0, behavior: "auto" });
@@ -1388,14 +1266,14 @@ function returnToHistory(): void {
   if (page !== "history-detail" && page !== "image-history-detail") return;
   historyLayoutController.setScrollRestorePending(true);
   setPage("history");
-  flashMessage = "";
+  ui.flashMessage = "";
   render();
 }
 
 function navigateToCreationMode(mode: CreationMode): void {
   setCreationMode(mode);
   setPage("create");
-  historyForwardTarget = null;
+  ui.historyForwardTarget = null;
   render();
   window.requestAnimationFrame(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -1403,12 +1281,12 @@ function navigateToCreationMode(mode: CreationMode): void {
 }
 
 function returnToLastHistoryDetail(): void {
-  if (page !== "history" || !historyForwardTarget) return;
-  const target = historyForwardTarget;
+  if (page !== "history" || !ui.historyForwardTarget) return;
+  const target = ui.historyForwardTarget;
   if (historyKind === "image") {
     const project = state.imageHistory.find((item) => item.id === target.assetId);
     if (!project) {
-      historyForwardTarget = null;
+      ui.historyForwardTarget = null;
       return;
     }
     openImageHistoryDetail(target.assetId, target.versionId);
@@ -1416,7 +1294,7 @@ function returnToLastHistoryDetail(): void {
   }
   const asset = state.history.find((item) => item.id === target.assetId);
   if (!asset) {
-    historyForwardTarget = null;
+    ui.historyForwardTarget = null;
     return;
   }
   openHistoryDetail(target.assetId, target.versionId);
@@ -1426,7 +1304,7 @@ function navigateHistoryDetail(direction: -1 | 1): void {
   if (page !== "history-detail") return;
   const orderedHistory = historyAssetsByNewest(state.history);
   const currentIndex = orderedHistory.findIndex(
-    (item) => item.id === selectedHistoryAssetId
+    (item) => item.id === ui.selectedHistoryAssetId
   );
   const nextAsset = orderedHistory[currentIndex + direction];
   if (!nextAsset) return;
@@ -1436,7 +1314,7 @@ function navigateHistoryDetail(direction: -1 | 1): void {
 function navigateImageHistoryDetail(direction: -1 | 1): void {
   if (page !== "image-history-detail") return;
   const orderedProjects = imageProjectsByNewest(state.imageHistory);
-  const currentIndex = orderedProjects.findIndex((item) => item.id === selectedHistoryAssetId);
+  const currentIndex = orderedProjects.findIndex((item) => item.id === ui.selectedHistoryAssetId);
   const nextProject = orderedProjects[currentIndex + direction];
   if (!nextProject) return;
   openImageHistoryDetail(nextProject.id);
@@ -1444,14 +1322,14 @@ function navigateImageHistoryDetail(direction: -1 | 1): void {
 
 function navigateImageHistoryVersion(direction: -1 | 1): void {
   if (page !== "image-history-detail") return;
-  const project = state.imageHistory.find((item) => item.id === selectedHistoryAssetId);
+  const project = state.imageHistory.find((item) => item.id === ui.selectedHistoryAssetId);
   if (!project) return;
-  const currentIndex = project.versions.findIndex((item) => item.id === selectedHistoryVersionId);
+  const currentIndex = project.versions.findIndex((item) => item.id === ui.selectedHistoryVersionId);
   if (currentIndex < 0) return;
   const nextVersion = project.versions[currentIndex - direction];
   if (!nextVersion) return;
-  selectedHistoryVersionId = nextVersion.id;
-  historyForwardTarget = { assetId: project.id, versionId: nextVersion.id };
+  ui.selectedHistoryVersionId = nextVersion.id;
+  ui.historyForwardTarget = { assetId: project.id, versionId: nextVersion.id };
   reportUserAction("image-history-version-navigation", {
     projectId: project.id,
     versionId: nextVersion.id,
@@ -1470,7 +1348,7 @@ function releaseHistoryVideo(assetId: string): void {
   const cards = [...document.querySelectorAll<HTMLElement>("[data-history]")];
   const card = cards.find((item) => item.dataset.history === assetId);
   const videos =
-    page === "history-detail" && selectedHistoryAssetId === assetId
+    page === "history-detail" && ui.selectedHistoryAssetId === assetId
       ? document.querySelectorAll<HTMLVideoElement>(".history-player video")
       : card?.querySelectorAll<HTMLVideoElement>("video") ?? [];
   videos.forEach((video) => {
@@ -1482,14 +1360,14 @@ function releaseHistoryVideo(assetId: string): void {
 
 async function acceptConfirmation(): Promise<void> {
   await runConfirmation(rendererApp.context, {
-    getRequest: () => pendingConfirmation,
+    getRequest: () => ui.pendingConfirmation,
     setRequest: (request) => {
-      pendingConfirmation = request;
+      ui.pendingConfirmation = request;
     },
     setBusy: (value) => {
-      confirmationBusy = value;
+      ui.confirmationBusy = value;
     },
-    isBusy: () => confirmationBusy,
+    isBusy: () => ui.confirmationBusy,
     getState: () => state,
     setState: setRendererState,
     getFormSettings: formSettings,
@@ -1515,10 +1393,10 @@ async function acceptConfirmation(): Promise<void> {
     setPage,
     setHistoryKind,
     setSelectedHistoryAssetId: (assetId) => {
-      selectedHistoryAssetId = assetId;
+      ui.selectedHistoryAssetId = assetId;
     },
     setSelectedHistoryVersionId: (versionId) => {
-      selectedHistoryVersionId = versionId;
+      ui.selectedHistoryVersionId = versionId;
     },
     clearImageHistoryThumbnailCache: () => {
       historyMediaRuntime.clearImageHistoryThumbnailCache();
@@ -1536,10 +1414,10 @@ async function acceptConfirmation(): Promise<void> {
 }
 
 function bindConfirmationDialog(): void {
-  if (!pendingConfirmation) return;
+  if (!ui.pendingConfirmation) return;
   const close = () => {
-    if (confirmationBusy) return;
-    pendingConfirmation = null;
+    if (ui.confirmationBusy) return;
+    ui.pendingConfirmation = null;
     render();
     restoreModalFocus();
   };
@@ -1555,24 +1433,24 @@ function bindConfirmationDialog(): void {
 }
 
 function bindWindowCloseDialog(): void {
-  if (!pendingWindowCloseRequest) return;
+  if (!ui.pendingWindowCloseRequest) return;
   const respond = async (response: "cancel" | "discard-settings" | "finish-tasks" | "force-exit") => {
-    if (windowCloseResponseBusy) return;
+    if (ui.windowCloseResponseBusy) return;
     if (document.activeElement instanceof HTMLElement) {
       rememberModalControlFocus(document.activeElement);
     }
-    windowCloseResponseBusy = true;
+    ui.windowCloseResponseBusy = true;
     render();
     try {
       await window.studio.respondWindowClose(response);
       if (response === "cancel") {
-        pendingWindowCloseRequest = null;
-        windowCloseResponseBusy = false;
+        ui.pendingWindowCloseRequest = null;
+        ui.windowCloseResponseBusy = false;
         render();
         restoreModalFocus();
       }
     } catch (error) {
-      windowCloseResponseBusy = false;
+      ui.windowCloseResponseBusy = false;
       showMessage(error instanceof Error ? error.message : "无法处理退出请求");
     }
   };
@@ -1595,14 +1473,13 @@ function bindWindowCloseDialog(): void {
 }
 
 function bindShell(): void {
-  shellControllerCleanup?.();
-  shellControllerCleanup = mountShellController({
+  rendererApp.addPageCleanup(mountShellController({
     getPage: () => page,
     settingsHaveUnsavedChanges,
     rememberModalFocus,
     requestDiscardSettings: (nextPage) => {
-      pendingConfirmation = { kind: "discard-settings", nextPage };
-      confirmationBusy = false;
+      ui.pendingConfirmation = { kind: "discard-settings", nextPage };
+      ui.confirmationBusy = false;
       render();
     },
     returnToHistory,
@@ -1612,11 +1489,11 @@ function bindShell(): void {
     setHistoryScrollPosition: () => historyLayoutController.captureScrollPosition(),
     setHistoryScrollRestorePending: historyLayoutController.setScrollRestorePending,
     clearHistoryForwardTarget: () => {
-      historyForwardTarget = null;
+      ui.historyForwardTarget = null;
     },
     setPage,
     clearFlashMessage: () => {
-      flashMessage = "";
+      ui.flashMessage = "";
     },
     reportUserAction,
     render,
@@ -1624,11 +1501,7 @@ function bindShell(): void {
     bindDirectoryMigrationDialog,
     bindImageAssetLibraryDialog,
     bindWindowCloseDialog
-  });
-  rendererApp.addPageCleanup(() => {
-    shellControllerCleanup?.();
-    shellControllerCleanup = null;
-  });
+  }));
 }
 
 function scheduleDraftSave(): void {
@@ -1911,7 +1784,7 @@ function syncVideoEnqueueUi(): void {
   if (!button) return;
   const reason = buildVideoCreatePageViewModel(createViewModelDependencies()).enqueueBlockReason;
   button.dataset.enqueueBlockReason = reason;
-  button.disabled = Boolean(reason) || enqueueBusy;
+  button.disabled = Boolean(reason) || ui.enqueueBusy;
   button.title = reason || button.dataset.enqueueReadyTitle || "加入队列";
   const feedback = document.querySelector<HTMLElement>("[data-enqueue-feedback]");
   if (feedback) {
@@ -1932,7 +1805,7 @@ function syncImageEditEnqueueUi(): void {
   const reason = imageEditEnqueueBlockReason(draft, imageProfile);
   const button = document.querySelector<HTMLButtonElement>("#enqueue-image-edit");
   if (button) {
-    button.disabled = Boolean(reason) || enqueueBusy;
+    button.disabled = Boolean(reason) || ui.enqueueBusy;
     button.title = reason || "加入图片编辑队列";
     button.dataset.enqueueBlockReason = reason;
   }
@@ -1946,12 +1819,12 @@ function syncImageEditEnqueueUi(): void {
 }
 
 function bindCreate(): void {
-  rendererApp.addPageCleanup(mountCreateClipboardController(rendererApp.context, {
-    addImagePicture,
-    updateH3ReferenceSlot,
-    patchDraft
-  }));
-  rendererApp.addPageCleanup(mountCreatePageController({
+  rendererApp.addPageCleanup(mountCreateAssembly(rendererApp.context, {
+    clipboard: {
+      addImagePicture,
+      updateH3ReferenceSlot,
+      patchDraft
+    },
     context: rendererApp.context,
     setCreationMode,
     getEnvironmentScan: () => environmentScan,
@@ -1987,9 +1860,9 @@ function bindCreate(): void {
       },
       togglePromptModel: togglePromptModelFromUi,
       randomSeedValue,
-      isEnqueueBusy: () => enqueueBusy,
+      isEnqueueBusy: () => ui.enqueueBusy,
       setEnqueueBusy: (value) => {
-        enqueueBusy = value;
+        ui.enqueueBusy = value;
       },
       setEnqueueBusyUi
     },
@@ -2019,18 +1892,32 @@ function bindCreate(): void {
       syncPromptEnqueueUi,
       updateH3PromptCheck
     },
-    isEnqueueBusy: () => enqueueBusy,
+    isEnqueueBusy: () => ui.enqueueBusy,
     setEnqueueBusy: (value) => {
-      enqueueBusy = value;
+      ui.enqueueBusy = value;
     },
     setEnqueueBusyUi,
     requestClearDraftConfirmation: () => {
       rememberModalFocus();
-      pendingConfirmation = { kind: "clear-draft" };
-      confirmationBusy = false;
+      ui.pendingConfirmation = { kind: "clear-draft" };
+      ui.confirmationBusy = false;
       render();
     }
   }));
+  if (creationMode === "image-edit") {
+    void loadImageEditPreviews();
+  } else {
+    void loadImagePreview(rendererApp.context, state.draft.startImagePath, "start-preview", patchDraft);
+    void loadImagePreview(rendererApp.context, state.draft.endImagePath, "end-preview", patchDraft);
+    if (isMiniMaxH3R2vModel(state.draft.modelId)) {
+      bindH3ReferenceSlots();
+      for (const slot of state.draft.h3ReferenceSlots) {
+        if (slot.mediaType === "image") {
+          void loadImagePreview(rendererApp.context, slot.mediaPath, `h3-slot-preview-${slot.id}`, patchDraft);
+        }
+      }
+    }
+  }
 }
 
 function bindQueue(): void {
@@ -2047,12 +1934,12 @@ function bindQueue(): void {
     },
     editUpscaleTask: (task) => {
       const editingWaitingTask = task.status === "waiting";
-      upscaleDialog = {
+      ui.upscaleDialog = {
         ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
         assetId: task.sourceAssetId,
         versionId: task.sourceVersionId,
         targetHeight: task.targetHeight,
-        modelId: task.modelId as typeof upscaleDialog extends { modelId: infer Model } ? Model : never,
+        modelId: task.modelId as typeof ui.upscaleDialog extends { modelId: infer Model } ? Model : never,
         tileMode: task.tileMode
       };
       render();
@@ -2063,9 +1950,9 @@ function bindQueue(): void {
 
 function bindUpscaleDialog(): void {
   rendererApp.addPageCleanup(mountUpscaleController(rendererApp.context, {
-    getDialog: () => upscaleDialog,
+    getDialog: () => ui.upscaleDialog,
     setDialog: (dialog) => {
-      upscaleDialog = dialog;
+      ui.upscaleDialog = dialog;
     },
     setRendererState,
     rememberModalFocus,
@@ -2077,7 +1964,7 @@ function bindUpscaleDialog(): void {
 }
 
 function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
-  rendererApp.addPageCleanup(mountHistoryPageController({
+  rendererApp.addPageCleanup(mountHistoryAssembly({
     context: rendererApp.context,
     playback,
     navigation: {
@@ -2093,18 +1980,18 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       navigateImageHistoryVersion,
       selectVideoHistoryVersion: (versionId) => {
         reportUserAction("history-version-select", { versionId });
-        selectedHistoryVersionId = versionId;
-        if (selectedHistoryAssetId) {
-          historyForwardTarget = { assetId: selectedHistoryAssetId, versionId };
+        ui.selectedHistoryVersionId = versionId;
+        if (ui.selectedHistoryAssetId) {
+          ui.historyForwardTarget = { assetId: ui.selectedHistoryAssetId, versionId };
         }
         render();
       },
       selectImageHistoryVersion: (versionId) => {
-        if (!selectedHistoryAssetId) return;
-        selectedHistoryVersionId = versionId;
-        historyForwardTarget = { assetId: selectedHistoryAssetId, versionId };
+        if (!ui.selectedHistoryAssetId) return;
+        ui.selectedHistoryVersionId = versionId;
+        ui.historyForwardTarget = { assetId: ui.selectedHistoryAssetId, versionId };
         reportUserAction("image-history-version-select", {
-          projectId: selectedHistoryAssetId,
+          projectId: ui.selectedHistoryAssetId,
           versionId
         });
         render();
@@ -2113,8 +2000,8 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     media: { ...historyMediaRuntime, formatVideoDuration },
     actions: {
       setState: setRendererState,
-      getSelectedHistoryAssetId: () => selectedHistoryAssetId,
-      getSelectedHistoryVersionId: () => selectedHistoryVersionId,
+      getSelectedHistoryAssetId: () => ui.selectedHistoryAssetId,
+      getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
       openUpscaleDialog: historyActions.openUpscaleDialog,
       requestHistoryDeletion,
       requestImageVersionDeletion,
@@ -2142,13 +2029,13 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     bindHistoryTitleMarquees: historyLayoutController.bindTitleMarquees,
     restoreHistoryLayoutAnchor: historyLayoutController.restoreLayoutAnchor,
     imageLightbox: {
-      getSelectedHistoryAssetId: () => selectedHistoryAssetId,
-      getSelectedHistoryVersionId: () => selectedHistoryVersionId,
+      getSelectedHistoryAssetId: () => ui.selectedHistoryAssetId,
+      getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
       setSelectedHistoryVersionId: (versionId) => {
-        selectedHistoryVersionId = versionId;
+        ui.selectedHistoryVersionId = versionId;
       },
       setHistoryForwardTarget: (target) => {
-        historyForwardTarget = target;
+        ui.historyForwardTarget = target;
       }
     },
     openHistoryContextMenu: historyContextMenus.openHistory,
@@ -2267,141 +2154,143 @@ function bindSettings(): void {
     void runEnvironmentScan(settingsDraft ?? state.settings);
     return;
   }
-  rendererApp.addPageCleanup(mountSettingsFieldsController(rendererApp.context, {
-    formSettings,
-    setH3PromptPreset: (preset) => {
-      settingsH3PromptPreset = preset;
+  rendererApp.addPageCleanup(mountSettingsAssembly(rendererApp.context, {
+    fields: {
+      formSettings,
+      setH3PromptPreset: (preset) => {
+        settingsH3PromptPreset = preset;
+      },
+      setImagePromptPreset: (preset) => {
+        settingsImagePromptPreset = preset;
+      },
+      setSettingsDraft: (draft) => {
+        settingsDraft = draft;
+      },
+      setSettingsTab: (tab) => {
+        settingsTab = tab;
+      },
+      hasUnsavedChanges: settingsHaveUnsavedChanges,
+      syncSettingsDirtyUi
     },
-    setImagePromptPreset: (preset) => {
-      settingsImagePromptPreset = preset;
+    environment: {
+      formSettings,
+      getEnvironmentScan: () => environmentScan,
+      setEnvironmentScan: (scan) => {
+        environmentScan = scan;
+      },
+      setSettingsDraft: (draft) => {
+        settingsDraft = draft;
+      },
+      setServiceStarting: (kind) => {
+        serviceStarting = kind;
+      },
+      setServiceRestarting: (kind) => {
+        serviceRestarting = kind;
+      },
+      setServiceStatusMessage: (message) => {
+        serviceStatusMessage = message;
+      },
+      setComfyUpdating: (value) => {
+        comfyUpdating = value;
+      },
+      getComfyUpdateLog: () => comfyUpdateLog,
+      setComfyUpdateLog: (log) => {
+        comfyUpdateLog = log;
+      },
+      setAttentionAccelerationInstalling: (value) => {
+        attentionAccelerationInstalling = value;
+      },
+      getAttentionAccelerationLog: () => attentionAccelerationLog,
+      setAttentionAccelerationLog: (log) => {
+        attentionAccelerationLog = log;
+      },
+      setCoreDependencyRepairing: (value) => {
+        coreDependencyRepairing = value;
+      },
+      setEnvironmentRepairing: (issueId) => {
+        environmentRepairing = issueId;
+      },
+      setEnvironmentRepairLog: (issueId, log) => {
+        environmentRepairLogs = { ...environmentRepairLogs, [issueId]: log };
+      },
+      setCustomNodeInstalling: (nodeId) => {
+        customNodeInstalling = nodeId;
+      },
+      getCustomNodeLog: (nodeId) => customNodeLogs[nodeId] ?? "",
+      setCustomNodeLog: (nodeId, log) => {
+        customNodeLogs = { ...customNodeLogs, [nodeId]: log };
+      },
+      setWorkflowDependencyInstalling: (workflowId) => {
+        workflowDependencyInstalling = workflowId;
+      },
+      getWorkflowDependencyLog: (workflowId) => workflowDependencyLogs[workflowId] ?? "",
+      setWorkflowDependencyLog: (workflowId, log) => {
+        workflowDependencyLogs = { ...workflowDependencyLogs, [workflowId]: log };
+      },
+      requestForceStopConfirmation: () => {
+        ui.pendingConfirmation = { kind: "force-stop-comfy" };
+        ui.confirmationBusy = false;
+      },
+      rememberModalFocus
     },
-    setSettingsDraft: (draft) => {
-      settingsDraft = draft;
+    logs: {
+      loadAppLogs: () => {
+        void loadAppLogs();
+      },
+      openAppLogContextMenu: appLogContextMenu.open,
+      setAppLogFollowTail: (followTail) => {
+        appLogFollowTail = followTail;
+      }
     },
-    setSettingsTab: (tab) => {
-      settingsTab = tab;
-    },
-    hasUnsavedChanges: settingsHaveUnsavedChanges,
-    syncSettingsDirtyUi
-  }));
-  rendererApp.addPageCleanup(mountSettingsEnvironmentController(rendererApp.context, {
-    formSettings,
-    getEnvironmentScan: () => environmentScan,
-    setEnvironmentScan: (scan) => {
-      environmentScan = scan;
-    },
-    setSettingsDraft: (draft) => {
-      settingsDraft = draft;
-    },
-    setServiceStarting: (kind) => {
-      serviceStarting = kind;
-    },
-    setServiceRestarting: (kind) => {
-      serviceRestarting = kind;
-    },
-    setServiceStatusMessage: (message) => {
-      serviceStatusMessage = message;
-    },
-    setComfyUpdating: (value) => {
-      comfyUpdating = value;
-    },
-    getComfyUpdateLog: () => comfyUpdateLog,
-    setComfyUpdateLog: (log) => {
-      comfyUpdateLog = log;
-    },
-    setAttentionAccelerationInstalling: (value) => {
-      attentionAccelerationInstalling = value;
-    },
-    getAttentionAccelerationLog: () => attentionAccelerationLog,
-    setAttentionAccelerationLog: (log) => {
-      attentionAccelerationLog = log;
-    },
-    setCoreDependencyRepairing: (value) => {
-      coreDependencyRepairing = value;
-    },
-    setEnvironmentRepairing: (issueId) => {
-      environmentRepairing = issueId;
-    },
-    setEnvironmentRepairLog: (issueId, log) => {
-      environmentRepairLogs = { ...environmentRepairLogs, [issueId]: log };
-    },
-    setCustomNodeInstalling: (nodeId) => {
-      customNodeInstalling = nodeId;
-    },
-    getCustomNodeLog: (nodeId) => customNodeLogs[nodeId] ?? "",
-    setCustomNodeLog: (nodeId, log) => {
-      customNodeLogs = { ...customNodeLogs, [nodeId]: log };
-    },
-    setWorkflowDependencyInstalling: (workflowId) => {
-      workflowDependencyInstalling = workflowId;
-    },
-    getWorkflowDependencyLog: (workflowId) => workflowDependencyLogs[workflowId] ?? "",
-    setWorkflowDependencyLog: (workflowId, log) => {
-      workflowDependencyLogs = { ...workflowDependencyLogs, [workflowId]: log };
-    },
-    requestForceStopConfirmation: () => {
-      pendingConfirmation = { kind: "force-stop-comfy" };
-      confirmationBusy = false;
-    },
-    rememberModalFocus
-  }));
-  rendererApp.addPageCleanup(mountSettingsLogsController(rendererApp.context, {
-    loadAppLogs: () => {
-      void loadAppLogs();
-    },
-    openAppLogContextMenu: appLogContextMenu.open,
-    setAppLogFollowTail: (followTail) => {
-      appLogFollowTail = followTail;
+    page: {
+      context: rendererApp.context,
+      formSettings,
+      getEnvironmentScan: () => environmentScan,
+      setSettingsDraft: (draft) => {
+        settingsDraft = draft;
+      },
+      setInstallGuide: (selection) => {
+        selectedInstallGuide = selection;
+      },
+      getInstallGuide: () => selectedInstallGuide,
+      settingsHaveUnsavedChanges,
+      syncSettingsDirtyUi,
+      runEnvironmentScan,
+      loadAppLogs: () => void loadAppLogs(),
+      togglePromptModel: togglePromptModelFromUi,
+      saveSettingsFromUi,
+      saveSettingsDirect: async (settings) => {
+        setRendererState(await window.studio.saveSettings(settings));
+      },
+      requestDirectoryMigration: (previousSettings, nextSettings, oldDirectory, newDirectory) => {
+        ui.pendingDirectoryMigration = {
+          target: "video",
+          previousSettings,
+          nextSettings,
+          oldDirectory,
+          newDirectory
+        };
+        ui.directoryMigrationBusy = false;
+        ui.historyMigrationProgress = null;
+        render();
+      },
+      openImageAssetLibrary: () => {
+        rememberModalFocus();
+        ui.imageAssetLibraryDialog = {
+          scan: null,
+          busy: false,
+          error: "",
+          confirmCleanup: false,
+          selectedPaths: [],
+          lastResult: null
+        };
+        render();
+        void scanImageAssets();
+      },
+      rememberModalFocus,
+      restoreModalFocus,
+      bindModalFocus
     }
-  }));
-  rendererApp.addPageCleanup(mountSettingsPageController({
-    context: rendererApp.context,
-    formSettings,
-    getEnvironmentScan: () => environmentScan,
-    setSettingsDraft: (draft) => {
-      settingsDraft = draft;
-    },
-    setInstallGuide: (selection) => {
-      selectedInstallGuide = selection;
-    },
-    getInstallGuide: () => selectedInstallGuide,
-    settingsHaveUnsavedChanges,
-    syncSettingsDirtyUi,
-    runEnvironmentScan,
-    loadAppLogs: () => void loadAppLogs(),
-    togglePromptModel: togglePromptModelFromUi,
-    saveSettingsFromUi,
-    saveSettingsDirect: async (settings) => {
-      setRendererState(await window.studio.saveSettings(settings));
-    },
-    requestDirectoryMigration: (previousSettings, nextSettings, oldDirectory, newDirectory) => {
-      pendingDirectoryMigration = {
-        target: "video",
-        previousSettings,
-        nextSettings,
-        oldDirectory,
-        newDirectory
-      };
-      directoryMigrationBusy = false;
-      historyMigrationProgress = null;
-      render();
-    },
-    openImageAssetLibrary: () => {
-      rememberModalFocus();
-      imageAssetLibraryDialog = {
-        scan: null,
-        busy: false,
-        error: "",
-        confirmCleanup: false,
-        selectedPaths: [],
-        lastResult: null
-      };
-      render();
-      void scanImageAssets();
-    },
-    rememberModalFocus,
-    restoreModalFocus,
-    bindModalFocus
   }));
 }
 
@@ -2418,17 +2307,17 @@ registerRendererEvents({
   },
   rememberModalFocus,
   setPendingWindowCloseRequest: (request) => {
-    pendingWindowCloseRequest = request;
+    ui.pendingWindowCloseRequest = request;
   },
   setWindowCloseResponseBusy: (value) => {
-    windowCloseResponseBusy = value;
+    ui.windowCloseResponseBusy = value;
   },
   setHistoryMigrationProgress: (progress) => {
-    historyMigrationProgress = progress;
+    ui.historyMigrationProgress = progress;
   },
-  hasPendingDirectoryMigration: () => Boolean(pendingDirectoryMigration),
+  hasPendingDirectoryMigration: () => Boolean(ui.pendingDirectoryMigration),
   setImageAssetLibraryProgress: (progress) => {
-    imageAssetLibraryProgress = progress;
+    ui.imageAssetLibraryProgress = progress;
   },
   taskPreviews,
   appendAttentionAccelerationLog: (message) => {
@@ -2446,7 +2335,7 @@ bootstrapRenderer({
   setState: setRendererState,
   getState: () => state,
   setAppVersion: (version) => {
-    appVersion = version;
+    ui.appVersion = version;
   },
   setEnvironmentScan: (scan) => {
     environmentScan = scan;

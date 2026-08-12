@@ -8,6 +8,13 @@
 
 ## 未发布
 
+### 0.16.2 候选 — 2026-08-12
+
+- Renderer 入口级 UI 临时状态集中到独立模块，降低多 agent 并行编辑 `main.ts` 时的冲突面。
+- Create、History、Settings 页面增加明确的 assembly 入口，统一管理页面 controller 的挂载和清理。
+- 将渲染分派、Shell 重建、历史视频播放状态恢复和页面生命周期协调移入独立 render coordinator。
+- 保持现有队列、历史、工作流、IPC 和持久化数据契约不变，并通过 323 个测试及生产构建验证。
+
 ### 0.16.1 候选 — 2026-08-12
 
 - 修复图片草稿替换 Picture 1 后仍沿用旧 `projectId`，导致相同 Prompt 下的无关底图被错误归入旧图片项目的问题。
