@@ -8,6 +8,13 @@
 
 ## 未发布
 
+### 0.18.2 候选 — 2026-08-12
+
+- 开始拆分 Electron `main.ts` 的队列职责：视频生成、图片批次、视频续写和超分请求的执行快照工厂迁入 `src/core/queue-task-factory.ts`，并支持注入时间、ID 与随机源进行确定性测试。
+- 队列复制、删除、排序、失败重置和待执行超分参数更新改为 `src/core/queue.ts` 的纯状态变换；对应非执行 IPC 注册迁入 `electron/queue-ipc.ts`。
+- 保持运行 worker、ComfyUI 中断、故障恢复和历史落盘逻辑原位，作为下一阶段拆分边界，避免一次性搬动长任务生命周期。
+- 新增队列快照不可变性、图片批次 runs、R2V 策略隔离及队列 mutation 回归测试。
+
 ### 0.18.1 候选 — 2026-08-12
 
 - 重写 README 与依赖配置说明，以当前模型 catalog 为准移除过时的 Wan/Hunyuan 主力模型描述、独立 LM Studio/llama-server 安装路径和旧 H3 I2V-only 边界。

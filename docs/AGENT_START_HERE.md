@@ -21,7 +21,8 @@ Inspect `git status` before reading or editing hotspot files. This repository is
 - Custom-node repositories, directory names and offline/runtime probes: `customNodeCatalog` in `electron/services/environment.ts`.
 - Video workflow selection and placeholder policy: `src/core/workflow.ts`, `src/core/video-policy.ts`, and `workflows/*.json`.
 - Image workflow construction and required runtime nodes: `src/core/image-workflow.ts`.
-- Queue execution, ComfyUI submission and runtime validation: `electron/main.ts` and `electron/services/comfy.ts`.
+- Queue task snapshots and pure mutations: `src/core/queue-task-factory.ts` and `src/core/queue.ts`.
+- Queue mutation IPC: `electron/queue-ipc.ts`; execution worker, ComfyUI submission and runtime validation currently remain in `electron/main.ts` and `electron/services/comfy-ui.ts`.
 - Persisted defaults and migrations: `src/core/defaults.ts`, `electron/store.ts`, and `src/types.ts`.
 - Settings installation UX: `src/renderer/pages/settings/` plus preload/IPC handlers.
 

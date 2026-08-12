@@ -23,8 +23,6 @@ import type {
   Draft,
   EnhanceRequest,
   EnvironmentIssue,
-  ExtensionQueueTask,
-  GenerationQueueTask,
   HistoryAsset,
   HistoryFile,
   HistoryMigrationProgress,
@@ -32,7 +30,6 @@ import type {
   ImageGenerationQueueTask,
   ImageAssetVersion,
   ImageEditDraft,
-  ImageGenerationRun,
   ImageHistoryProject,
   ImageMarkupSaveRequest,
   LocalServiceKind,
@@ -45,7 +42,6 @@ import type {
   WindowCloseRequest,
   WindowCloseResponse
 } from "../src/types.js";
-import { createOutputFilename } from "../src/core/filename.js";
 import { normalizeUiLocale } from "../src/core/i18n.js";
 import {
   classifyFailureForRecovery,
@@ -62,25 +58,20 @@ import {
 import { attachAbsoluteOutputPaths } from "../src/core/comfy-output-paths.js";
 import {
   isImageGenerationQueueTask,
-  moveWaitingTask,
   syncQueueVideoInputPaths
 } from "../src/core/queue.js";
 import {
   createImageSourceVersion,
-  expandImageSeeds,
   findImageProjectLineage,
   nextImageVersionNumber,
   normalizeImageEditDraft
 } from "../src/core/image-project.js";
 import { promptModelBackend, promptModelSupportsImageEdit } from "../src/core/prompt-models.js";
-import { activePromptIndexForDraft, promptVersionsForDraft } from "../src/core/draft-prompts.js";
 import {
   imageModelAdapterFor,
-  imageOutputDimensions,
   imageOutputFormatFromFilename,
   imageLightningComponentFound,
-  imageQualityProfileRequiresLightning,
-  normalizeImageTargetResolution
+  imageQualityProfileRequiresLightning
 } from "../src/core/image-workflow.js";
 import {
   extensionOutputDimensions,
@@ -106,10 +97,17 @@ import {
   videoLoraSelection
 } from "../src/core/video-loras.js";
 import {
-  uniqueUpscaleFilename,
   upscaleDimensions
 } from "../src/core/upscale.js";
+import {
+  extensionTaskFromDraft,
+  imageTaskFromDraft,
+  promptOf,
+  queueTaskFromDraft,
+  upscaleTaskFromRequest
+} from "../src/core/queue-task-factory.js";
 import { JsonStore } from "./store.js";
+import { registerQueueMutationIpc } from "./queue-ipc.js";
 import {
   copyFileToWindowsClipboard,
   resolveExistingHistoryFile
@@ -1217,123 +1215,6 @@ function createWindow(): void {
   }
 }
 
-function promptOf(draft: Draft): string {
-  const promptVersions = promptVersionsForDraft(draft);
-  const activePromptVersion = activePromptIndexForDraft(draft);
-  return (
-    promptVersions[activePromptVersion]?.text ??
-    promptVersions.at(-1)?.text ??
-    ""
-  ).trim();
-}
-
-function queueTaskFromDraft(draft: Draft, state: AppState): GenerationQueueTask {
-  const now = new Date().toISOString();
-  const prompt = promptOf(draft);
-  const names = [
-    ...state.queue.map((item) => item.outputFilename),
-    ...state.history.map((item) => item.outputFilename)
-  ];
-  return {
-    id: crypto.randomUUID(),
-    taskType: "generation",
-    status: "waiting",
-    createdAt: now,
-    updatedAt: now,
-    outputFilename: createOutputFilename(draft.modelId, draft.resolution, draft.duration, names),
-    prompt,
-    promptVersion: activePromptIndexForDraft(draft) + 1,
-    h3ReferenceSlots: draft.h3ReferenceSlots.map((slot) => ({ ...slot })),
-    startImagePath: draft.startImagePath,
-    sourceWidth: draft.sourceWidth,
-    sourceHeight: draft.sourceHeight,
-    endImagePath: draft.endImagePath,
-    modelId: draft.modelId,
-    videoLoras: draft.videoLoras.map((lora) => videoLoraSelection(lora)),
-    workflowPath: draft.workflowPath,
-    ratio: draft.ratio,
-    resolution: draft.resolution,
-    duration: draft.duration,
-    steps: draft.steps,
-    fps: draft.fps,
-    frameInterpolation: draft.frameInterpolation,
-    motion: draft.motion,
-    ...(draft.modelId === "sulphur2"
-      ? { modelProfile: state.settings.ltxExtensionModelProfile }
-      : {}),
-    seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
-    keepSeedOnCopy: draft.keepSeedOnCopy,
-    attentionMode: state.settings.h3AttentionMode,
-    spectrumMode: draft.spectrumMode,
-    progress: 0
-  };
-}
-
-function imageTaskFromDraft(
-  draft: ImageEditDraft,
-  state: AppState,
-  diffusionModelFilename: string | undefined,
-  outputTarget: {
-    root: string;
-    directory: string;
-    subfolder: string;
-  }
-): ImageGenerationQueueTask {
-  const now = new Date().toISOString();
-  const prompt = draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "";
-  const id = crypto.randomUUID();
-  const projectId = draft.projectId ?? crypto.randomUUID();
-  const seeds = expandImageSeeds(draft.seed, draft.outputCount);
-  const runs: ImageGenerationRun[] = seeds.map((seed, index) => ({
-    id: crypto.randomUUID(),
-    index,
-    seed,
-    status: "waiting"
-  }));
-  const outputFilename = `QwenEdit-${new Date().toISOString().replace(/[-:.TZ]/gu, "").slice(0, 14)}-${id.slice(0, 8)}`;
-  const basePicture = draft.pictures[0];
-  const targetResolution = normalizeImageTargetResolution(
-    draft.targetResolution,
-    basePicture?.width ?? 0,
-    basePicture?.height ?? 0
-  );
-  const [outputWidth, outputHeight] = imageOutputDimensions(
-    basePicture?.width ?? 0,
-    basePicture?.height ?? 0,
-    targetResolution
-  );
-  return {
-    id,
-    taskType: "image-generation",
-    status: "waiting",
-    createdAt: now,
-    updatedAt: now,
-    outputFilename,
-    projectId,
-    parentVersionId: draft.parentVersionId,
-    pictures: draft.pictures.map((picture) => ({
-      ...picture,
-      ...(picture.markup ? { markup: { ...picture.markup } } : {})
-    })),
-    imageOutputRoot: outputTarget.root,
-    imageOutputDirectory: outputTarget.directory,
-    imageOutputSubfolder: outputTarget.subfolder,
-    outputWidth,
-    outputHeight,
-    targetResolution,
-    ...(diffusionModelFilename ? { diffusionModelFilename } : {}),
-    prompt,
-    promptVersion: draft.activePromptVersion + 1,
-    modelId: draft.modelId,
-    workflowPath: "builtin:image/qwen-image-edit-2511",
-    qualityProfile: draft.qualityProfile,
-    outputFormat: "png",
-    outputCount: runs.length,
-    runs,
-    progress: 0
-  };
-}
-
 async function resolveImageProjectLineage(
   state: AppState,
   draft: ImageEditDraft
@@ -1446,115 +1327,6 @@ async function requireImageModelAssets(
     throw new Error("Qwen Image Edit 2511 扩散模型文件未能从环境扫描结果中解析。");
   }
   return diffusionModel;
-}
-
-function extensionTaskFromDraft(
-  draft: Draft,
-  state: AppState
-): ExtensionQueueTask {
-  const now = new Date().toISOString();
-  const prompt = promptOf(draft);
-  const settings = state.settings;
-  return {
-    id: crypto.randomUUID(),
-    taskType: "extension",
-    status: "waiting",
-    createdAt: now,
-    updatedAt: now,
-    outputFilename: createOutputFilename(
-      draft.modelId,
-      isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
-        ? draft.resolution
-        : settings.ltxExtensionResolution,
-      draft.duration,
-      outputNames(state)
-    ),
-    prompt,
-    promptVersion: activePromptIndexForDraft(draft) + 1,
-    sourceVideoPath: draft.sourceVideoPath,
-    sourceVideoDuration: draft.sourceVideoDuration,
-    trimStartSeconds: draft.trimStartSeconds,
-    trimEndSeconds: draft.trimEndSeconds,
-    sourceAssetId: draft.sourceAssetId,
-    sourceVersionId: draft.sourceVersionId,
-    sourceWidth: draft.sourceWidth,
-    sourceHeight: draft.sourceHeight,
-    modelId: draft.modelId,
-    videoLoras: draft.videoLoras.map((lora) => videoLoraSelection(lora)),
-    workflowPath: draft.workflowPath,
-    ratio: "source",
-    resolution: isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
-      ? draft.resolution
-      : settings.ltxExtensionResolution,
-    duration: draft.duration,
-    steps: draft.steps,
-    fps: draft.fps,
-    frameInterpolation: draft.frameInterpolation,
-    motion: draft.motion,
-    modelProfile: settings.ltxExtensionModelProfile,
-    seed: draft.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
-    keepSeedOnCopy: draft.keepSeedOnCopy,
-    attentionMode: state.settings.h3AttentionMode,
-    spectrumMode: isMiniMaxH3R2vModel(draft.modelId) ? "off" : draft.spectrumMode,
-    maxGeneratedFrames: isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
-      ? 362
-      : settings.ltxExtensionFrames,
-    overlapFrames: settings.ltxExtensionOverlapFrames,
-    unloadBetweenStages: settings.ltxExtensionUnloadBetweenStages,
-    progress: 0
-  };
-}
-
-function outputNames(state: AppState): string[] {
-  return [
-    ...state.queue.map((item) => item.outputFilename),
-    ...state.history.flatMap((asset) =>
-      asset.versions.map((version) => version.outputFilename)
-    )
-  ];
-}
-
-function upscaleTaskFromRequest(
-  request: UpscaleRequest,
-  state: AppState
-): UpscaleQueueTask {
-  const now = new Date().toISOString();
-  const [targetWidth] = upscaleDimensions(
-    request.sourceWidth,
-    request.sourceHeight,
-    request.targetHeight
-  );
-  return {
-    id: crypto.randomUUID(),
-    taskType: "upscale",
-    status: "waiting",
-    createdAt: now,
-    updatedAt: now,
-    outputFilename: uniqueUpscaleFilename(
-      request.sourceFilename,
-      request.targetHeight,
-      outputNames(state)
-    ),
-    modelId: request.modelId,
-    workflowPath: `builtin:upscale/${request.modelId}`,
-    duration: request.duration,
-    fps: request.fps,
-    seed: Math.floor(Math.random() * 0xffffffff),
-    keepSeedOnCopy: true,
-    sourceAssetId: request.sourceAssetId,
-    sourceVersionId: request.sourceVersionId,
-    sourceFilePath: request.sourceFilePath,
-    sourceFilename: request.sourceFilename,
-    sourceWidth: request.sourceWidth,
-    sourceHeight: request.sourceHeight,
-    targetWidth,
-    targetHeight: request.targetHeight,
-    tileMode: request.tileMode === "fast" || request.tileMode === "auto"
-      ? request.tileMode
-      : "safe",
-    faceRestore: request.faceRestore,
-    progress: 0
-  };
 }
 
 async function updateTask(
@@ -3918,7 +3690,7 @@ function registerIpc(): void {
     const compiled = adapter.compilePrompt(preparedPrompt, preparedDraft.pictures);
     if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
     const current = store.get();
-    const task = imageTaskFromDraft(preparedDraft, current, diffusionModelFilename, outputTarget);
+    const task = imageTaskFromDraft(preparedDraft, diffusionModelFilename, outputTarget);
     const next = await store.update((state) => {
       state.queue.push(task);
       state.imageDraft = preparedDraft;
@@ -4035,47 +3807,11 @@ function registerIpc(): void {
     sendState(next);
     return next;
   });
-  ipcMain.handle(
-    "queue:update-upscale",
-    async (_event, taskId: string, patch: Pick<UpscaleQueueTask, "targetWidth" | "targetHeight" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">) => {
-      const next = await store.update((state) => {
-        const task = state.queue.find((item) => item.id === taskId);
-        if (
-          !task ||
-          task.taskType !== "upscale" ||
-          (task.status !== "waiting" &&
-            task.status !== "failed" &&
-            task.status !== "cancelled")
-        ) return;
-        const resetFailure = task.status === "failed" || task.status === "cancelled";
-        Object.assign(task, patch, {
-          tileMode: patch.tileMode ?? task.tileMode,
-          ...(resetFailure
-            ? {
-                status: "waiting" as const,
-                error: undefined,
-                progress: 0,
-                stage: undefined,
-                startedAt: undefined,
-                comfyPromptId: undefined,
-                automaticRetryAttempt: undefined
-              }
-            : {}),
-          updatedAt: new Date().toISOString()
-        });
-      });
-      sendState(next);
-      return next;
-    }
-  );
-  ipcMain.handle("queue:remove", async (_event, taskId: string) => {
-    const next = await store.update((state) => {
-      state.queue = state.queue.filter(
-        (task) => task.id !== taskId || task.status === "running"
-      );
-    });
-    sendState(next);
-    return next;
+  registerQueueMutationIpc({
+    ipc: ipcMain,
+    store,
+    logger: appLogger,
+    sendState
   });
   ipcMain.handle("queue:start", async () => {
     if (nativePromptWorker) {
@@ -4129,77 +3865,6 @@ function registerIpc(): void {
       status: "cancelled",
       error: "任务在开始前被取消"
     });
-  });
-  ipcMain.handle(
-    "queue:move",
-    async (_event, taskId: string, direction: -1 | 1) => {
-      const next = await store.update((state) => {
-        state.queue = moveWaitingTask(state.queue, taskId, direction);
-      });
-      sendState(next);
-      return next;
-    }
-  );
-  ipcMain.handle("queue:duplicate", async (_event, taskId: string) => {
-    const next = await store.update((state) => {
-      const source = state.queue.find((task) => task.id === taskId);
-      if (!source) return;
-      if (isImageGenerationQueueTask(source)) {
-        throw new Error("图片批次复制将在图片编辑页面接入。");
-      }
-      const now = new Date().toISOString();
-      const names = [
-        ...state.queue.map((task) => task.outputFilename),
-        ...state.history.map((asset) => asset.outputFilename)
-      ];
-      const outputFilename = source.taskType === "generation" || source.taskType === "extension"
-        ? createOutputFilename(source.modelId, source.resolution, source.duration, names)
-        : uniqueUpscaleFilename(source.sourceFilename, source.targetHeight, names);
-      state.queue.push({
-        ...source,
-        id: crypto.randomUUID(),
-        status: "waiting",
-        createdAt: now,
-        updatedAt: now,
-        outputFilename,
-        seed: source.keepSeedOnCopy
-          ? source.seed
-          : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
-        comfyPromptId: undefined,
-        progress: 0,
-        error: undefined,
-        stage: undefined,
-        automaticRetryAttempt: undefined
-      });
-    });
-    sendState(next);
-    return next;
-  });
-  ipcMain.handle("queue:reset", async (_event, taskId: string) => {
-    let reset = false;
-    const next = await store.update((state) => {
-      const task = state.queue.find((item) => item.id === taskId);
-      if (!task || (task.status !== "failed" && task.status !== "cancelled")) return;
-      Object.assign(task, {
-        status: "waiting" as const,
-        updatedAt: new Date().toISOString(),
-        comfyPromptId: undefined,
-        progress: 0,
-        error: undefined,
-        stage: undefined,
-        startedAt: undefined,
-        automaticRetryAttempt: undefined
-      });
-      reset = true;
-    });
-    if (reset) {
-      appLogger.info("queue", "task-reset-to-waiting", "Failed or cancelled task was reset to the waiting queue without starting it", {
-        taskId,
-        queueRunning: next.queueRunning
-      });
-    }
-    sendState(next);
-    return next;
   });
   ipcMain.handle("history:delete", async (_event, assetId: string) => {
     const startedAt = Date.now();

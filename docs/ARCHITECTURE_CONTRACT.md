@@ -23,8 +23,10 @@ The renderer must not directly access arbitrary local files or spawn processes. 
 | --- | --- | --- |
 | Renderer UI and transient draft | `src/main.ts`, `src/style.css` | Display and edit state without losing input focus or mutating queued snapshots. |
 | Shared domain logic | `src/core/` | Deterministic, testable transformations without Electron globals. |
+| Queue snapshots and pure mutations | `src/core/queue-task-factory.ts`, `src/core/queue.ts` | Create immutable execution snapshots and transform queue state without IPC or process globals. |
 | Shared persisted/IPC types | `src/types.ts` | Backward-compatible shapes or explicit migrations. |
 | Privileged application lifecycle | `electron/main.ts`, `electron/preload.cts` | Windows, IPC, dialogs, process ownership, clean shutdown. |
+| Queue mutation IPC | `electron/queue-ipc.ts` | Register non-execution queue controls against explicit store/logger/state dependencies. |
 | Runtime integrations | `electron/services/` | ComfyUI, environment, media, monitoring, prompt helpers, and child processes. |
 | Persistence | `electron/store.ts` | Defaults, migrations, queue/history/settings durability. |
 | Workflow templates | `workflows/` | API-format workflow graphs adapted through model-specific code. |
