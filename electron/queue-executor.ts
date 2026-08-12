@@ -1,0 +1,575 @@
+import type { AppState, HistoryFile, ImageGenerationQueueTask, QueueTask, Settings, TaskPerformanceStats } from "../src/types.js";
+import { isImageGenerationQueueTask } from "../src/core/queue.js";
+import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
+import {
+  activityTimeoutMinutesForTask,
+  extensionSafetyForTask,
+  generationSafetyForTask,
+  isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3Model,
+  isMiniMaxH3R2vModel
+} from "../src/core/workflow.js";
+import { hashImageFile } from "./services/image-asset-library.js";
+import {
+  freeMemory,
+  submitImageTask,
+  submitTask,
+  TaskStalledError,
+  waitForTask
+} from "./services/comfy-ui.js";
+import { finalizeExtensionOutput } from "./services/extension-media.js";
+import { startTaskPerformanceMonitor, type TaskPerformanceMonitor } from "./services/performance.js";
+import { startAdaptiveVramWatchdog, type VramWatchdogMonitor } from "./services/vram-watchdog.js";
+import { safeLogErrorMessage, type AppLogger } from "./services/app-logger.js";
+import type { JsonStore } from "./store.js";
+import { persistImageHistoryResult, persistVideoHistoryResult } from "./queue-history.js";
+import { recoverQueueFailure } from "./queue-recovery.js";
+import type { QueueWorkerController } from "./queue-worker.js";
+
+const performanceLogIntervalMs = 30_000;
+const videoOutputPattern = /\\.(mp4|webm|mov|m4v|mkv)$/i;
+
+export interface QueueExecutorDependencies {
+  store: JsonStore;
+  logger: AppLogger;
+  worker: QueueWorkerController;
+  sendState(state: AppState): void;
+  sendPreview(payload: { taskId: string; dataUrl: string }): void;
+  updateTask(taskId: string, patch: Partial<QueueTask>): Promise<AppState>;
+  ensureComfyUiReady(taskId: string): Promise<void>;
+  resolveTaskOutputDirectory(): Promise<string>;
+  requireExistingImageOutput(result: unknown, outputRoot: string, alternateRoots?: string[]): Promise<HistoryFile[]>;
+  requireExistingVideoOutput(result: unknown, alternateRoots?: string[]): Promise<HistoryFile[]>;
+  releasePromptRuntime(settings: Settings): Promise<number>;
+  stabilizeH3RuntimeBetweenTasks(taskId: string, modelId: string, settings: Settings): Promise<boolean>;
+  settingsForTask(task: QueueTask | undefined, settings: Settings): Settings;
+  errorMeta(error: unknown): Record<string, unknown>;
+  taskStageStartedAt: Map<string, { stage: string; startedAt: number }>;
+}
+
+export function createQueueExecutor(deps: QueueExecutorDependencies): () => Promise<void> {
+  const {
+    store,
+    logger,
+    worker: queueWorkerController,
+    sendState,
+    sendPreview,
+    updateTask,
+    ensureComfyUiReady,
+    resolveTaskOutputDirectory,
+    requireExistingImageOutput,
+    requireExistingVideoOutput,
+    releasePromptRuntime,
+    stabilizeH3RuntimeBetweenTasks,
+    settingsForTask: comfyUiSettingsForQueueTask,
+    errorMeta: errorLogMeta,
+    taskStageStartedAt
+  } = deps;
+
+  async function executeImageGenerationQueueTask(
+    task: ImageGenerationQueueTask
+  ): Promise<void> {
+    const controller = queueWorkerController.beginTask();
+    try {
+      await updateTask(task.id, {
+        status: "running",
+        progress: 1,
+        stage: "准备图片批次",
+        startedAt: new Date().toISOString(),
+        error: undefined
+      });
+      await ensureComfyUiReady(task.id);
+      const totalRuns = Math.max(1, task.runs.length);
+      for (const plannedRun of task.runs) {
+        const current = store.get().queue.find((item) => item.id === task.id);
+        if (!current || !isImageGenerationQueueTask(current)) return;
+        const run = current.runs.find((item) => item.id === plannedRun.id);
+        if (!run || run.status === "completed") continue;
+        const runStartedAt = new Date().toISOString();
+        await store.update((state) => {
+          const queued = state.queue.find((item) => item.id === task.id);
+          if (!queued || !isImageGenerationQueueTask(queued)) return;
+          const queuedRun = queued.runs.find((item) => item.id === run.id);
+          if (!queuedRun) return;
+          queuedRun.status = "running";
+          queuedRun.startedAt = runStartedAt;
+          queuedRun.progress = 1;
+          queued.stage = `生成第 ${run.index + 1} / ${totalRuns} 张`;
+        });
+        sendState(store.get());
+        const monitor = startTaskPerformanceMonitor();
+        try {
+          const submitted = await submitImageTask(
+            current,
+            { ...run, status: "running" },
+            store.get().settings,
+            controller.signal
+          );
+          let lastProgress = -1;
+          const result = await waitForTask(
+            submitted.promptId,
+            submitted.clientId,
+            submitted.nodeTypes,
+            store.get().settings,
+            20,
+            controller.signal,
+            (progress, stage) => {
+              const batchProgress = ((run.index + Math.max(0, progress) / 100) / totalRuns) * 100;
+              if (Math.round(batchProgress) < lastProgress + 2 && progress < 100) return;
+              lastProgress = Math.round(batchProgress);
+              void updateTask(task.id, {
+                progress: Math.min(99, batchProgress),
+                stage: `第 ${run.index + 1} / ${totalRuns} 张 · ${stage}`
+              });
+            },
+            (dataUrl) => {
+              sendPreview({
+                taskId: task.id,
+                dataUrl
+              });
+            },
+            () => true
+          );
+          const files = await requireExistingImageOutput(
+            result,
+            task.imageOutputRoot ?? await resolveTaskOutputDirectory(),
+            [store.get().settings.outputDirectory]
+          );
+          const file = files.find((candidate) => imageOutputFormatFromFilename(candidate.filename) === "png");
+          if (!file) throw new Error("图片工作流没有返回可用图片文件。");
+          const performanceStats = monitor.stop();
+          const outputContentHash = file.absolutePath
+            ? await hashImageFile(file.absolutePath).catch(() => undefined)
+            : undefined;
+          const completedAt = new Date().toISOString();
+          const versionId = crypto.randomUUID();
+          const next = await store.update((state) => {
+            persistImageHistoryResult(state, {
+              taskId: task.id,
+              run,
+              startedAt: runStartedAt,
+              completedAt,
+              versionId,
+              file,
+              outputContentHash,
+              promptId: submitted.promptId,
+              comfyOutputs: result,
+              performanceStats
+            });
+          });
+          sendState(next);
+        } catch (error) {
+          const performanceStats = monitor.stop();
+          await store.update((state) => {
+            const queued = state.queue.find((item) => item.id === task.id);
+            if (!queued || !isImageGenerationQueueTask(queued)) return;
+            const queuedRun = queued.runs.find((item) => item.id === run.id);
+            if (!queuedRun) return;
+            queuedRun.status = controller.signal.aborted ? "cancelled" : "failed";
+            queuedRun.error = error instanceof Error ? error.message : String(error);
+            queuedRun.performanceStats = performanceStats;
+            queued.error = queuedRun.error;
+          });
+          throw error;
+        }
+      }
+      const completed = await store.update((state) => {
+        state.queue = state.queue.filter((item) => item.id !== task.id);
+      });
+      sendState(completed);
+    } catch (error) {
+      await updateTask(task.id, {
+        status: controller.signal.aborted ? "cancelled" : "failed",
+        error: controller.signal.aborted
+          ? "图片批次已取消，已保留完成的图片版本。"
+          : error instanceof Error
+            ? error.message
+            : String(error)
+      });
+    } finally {
+      await freeMemory(store.get().settings).catch((error) => {
+        logger.warn("comfy", "image-release-failed", "Failed to release image model memory after batch", {
+          taskId: task.id,
+          error: safeLogErrorMessage(error)
+        });
+      });
+      queueWorkerController.endTask(controller);
+    }
+  }
+  
+  async function executeQueue(): Promise<void> {
+    let promptModelReleased = false;
+    while (store.get().queueRunning) {
+      const task = store.get().queue.find((item) => item.status === "waiting");
+      if (!task) break;
+      if (isImageGenerationQueueTask(task)) {
+        await executeImageGenerationQueueTask(task);
+        continue;
+      }
+      logger.info("queue", "task-started", "Queue task execution started", {
+        taskId: task.id,
+        taskType: task.taskType,
+        modelId: task.modelId,
+        automaticRetryAttempt: task.automaticRetryAttempt ?? 0,
+        automaticRetryLimit: store.get().settings.autoRetryCount,
+        duration: task.duration,
+        fps: task.fps,
+        attentionMode: task.taskType === "upscale" ? "not-applicable" : task.attentionMode ?? "sage",
+        spectrumMode: task.taskType === "upscale" ? "not-applicable" : task.spectrumMode ?? "off",
+        ...(task.taskType === "upscale"
+          ? {
+              sourceWidth: task.sourceWidth,
+              sourceHeight: task.sourceHeight,
+              targetWidth: task.targetWidth,
+              targetHeight: task.targetHeight
+            }
+          : {})
+      });
+      const activeController = queueWorkerController.beginTask();
+      let vramWatchdog: VramWatchdogMonitor | undefined;
+      let taskPerformanceMonitor: TaskPerformanceMonitor | undefined;
+      let taskPerformanceStats: TaskPerformanceStats | undefined;
+      let performanceLogTimer: ReturnType<typeof setInterval> | undefined;
+      let performanceLogInFlight = false;
+      const performanceWarnings = new Set<string>();
+      try {
+        if (task.taskType === "generation") {
+          const safety = generationSafetyForTask(task, store.get().settings.uiLocale);
+          if (!safety.safe) throw new Error(safety.message);
+        } else if (task.taskType === "extension") {
+          const safety = extensionSafetyForTask(task, store.get().settings.uiLocale);
+          if (!safety.safe) throw new Error(safety.message);
+        }
+        await updateTask(task.id, {
+          status: "running",
+          progress: 1,
+          stage: "提交工作流",
+          startedAt: new Date().toISOString(),
+          error: undefined
+        });
+        taskPerformanceMonitor = startTaskPerformanceMonitor();
+        const logPerformanceSnapshot = async (): Promise<void> => {
+          if (!taskPerformanceMonitor || performanceLogInFlight) return;
+          performanceLogInFlight = true;
+          try {
+            const sample = await taskPerformanceMonitor.snapshot();
+            const mib = (bytes: number | null): number | null =>
+              bytes == null ? null : Math.round(bytes / 1024 ** 2);
+            const warnOnce = (
+              key: string,
+              message: string,
+              meta: Record<string, unknown>
+            ): void => {
+              if (performanceWarnings.has(key)) return;
+              performanceWarnings.add(key);
+              logger.warn("performance", key, message, {
+                taskId: task.id,
+                taskType: task.taskType,
+                modelId: task.modelId,
+                ...meta
+              });
+            };
+            const memoryRatio = sample.memoryTotalBytes > 0
+              ? sample.memoryUsedBytes / sample.memoryTotalBytes
+              : 0;
+            if (sample.vramUsedBytes == null || sample.vramTotalBytes == null) {
+              warnOnce(
+                "gpu-telemetry-unavailable",
+                "GPU telemetry is unavailable; nvidia-smi returned no usable sample",
+                {}
+              );
+            } else if (sample.vramUsedBytes / sample.vramTotalBytes >= 0.95) {
+              warnOnce(
+                "vram-near-limit",
+                "GPU VRAM is near capacity",
+                {
+                  vramUsedMiB: mib(sample.vramUsedBytes),
+                  vramTotalMiB: mib(sample.vramTotalBytes),
+                  usagePercent: Math.round(sample.vramUsedBytes / sample.vramTotalBytes * 100)
+                }
+              );
+            }
+            if (sample.sharedGpuMemoryBytes != null && sample.sharedGpuMemoryBytes >= 2 * 1024 ** 3) {
+              warnOnce(
+                "shared-gpu-memory-high",
+                "GPU shared memory usage is high",
+                { sharedGpuMemoryMiB: mib(sample.sharedGpuMemoryBytes) }
+              );
+            }
+            if (sample.gpuTemperatureC != null && sample.gpuTemperatureC >= 85) {
+              warnOnce(
+                "gpu-temperature-high",
+                "GPU temperature is high",
+                { gpuTemperatureC: Math.round(sample.gpuTemperatureC) }
+              );
+            }
+            if (memoryRatio >= 0.9) {
+              warnOnce(
+                "system-memory-high",
+                "System memory usage is high",
+                { memoryUsedMiB: mib(sample.memoryUsedBytes), memoryTotalMiB: mib(sample.memoryTotalBytes), usagePercent: Math.round(memoryRatio * 100) }
+              );
+            }
+            if (sample.cpuPercent != null && sample.cpuPercent >= 95) {
+              warnOnce(
+                "cpu-usage-high",
+                "CPU usage is high",
+                { cpuPercent: Math.round(sample.cpuPercent) }
+              );
+            }
+            logger.info("performance", "task-sample", "Task performance sample", {
+              taskId: task.id,
+              taskType: task.taskType,
+              modelId: task.modelId,
+              elapsedSeconds: Math.round(sample.elapsedSeconds),
+              cpuPercent: sample.cpuPercent == null ? null : Math.round(sample.cpuPercent),
+              memoryUsedMiB: mib(sample.memoryUsedBytes),
+              memoryTotalMiB: mib(sample.memoryTotalBytes),
+              gpuPercent: sample.gpuPercent == null ? null : Math.round(sample.gpuPercent),
+              vramUsedMiB: mib(sample.vramUsedBytes),
+              vramTotalMiB: mib(sample.vramTotalBytes),
+              sharedGpuMemoryMiB: mib(sample.sharedGpuMemoryBytes),
+              sharedGpuMemoryPeakMiB: mib(sample.sharedGpuMemoryPeakBytes),
+              gpuTemperatureC: sample.gpuTemperatureC == null
+                ? null
+                : Math.round(sample.gpuTemperatureC)
+            });
+          } finally {
+            performanceLogInFlight = false;
+          }
+        };
+        void logPerformanceSnapshot();
+        performanceLogTimer = setInterval(
+          () => void logPerformanceSnapshot(),
+          performanceLogIntervalMs
+        );
+        if (!promptModelReleased) {
+          await updateTask(task.id, {
+            progress: 1,
+            stage: "卸载提示词模型并释放显存"
+          });
+          const unloaded = await releasePromptRuntime(store.get().settings);
+          promptModelReleased = true;
+          if (unloaded > 0) {
+            await updateTask(task.id, {
+              progress: 1,
+              stage: "已释放 ComfyUI 提示词模型"
+            });
+          }
+        }
+        await ensureComfyUiReady(task.id);
+        await updateTask(task.id, {
+          progress: 1,
+          stage: "提交工作流"
+        });
+        let lastGpuComputeAt = 0;
+        vramWatchdog = startAdaptiveVramWatchdog(
+          activeController,
+          (pressure, utilization, sample) => {
+            taskPerformanceMonitor?.recordGpuSample(sample);
+            if (pressure.reason && !performanceWarnings.has("vram-pressure")) {
+              performanceWarnings.add("vram-pressure");
+              logger.warn("performance", "vram-pressure", "VRAM safety pressure detected", {
+                taskId: task.id,
+                remainingMiB: Math.round(pressure.remainingMiB),
+                requiredReserveMiB: Math.round(pressure.requiredReserveMiB),
+                growthMiBPerSecond: Math.round(pressure.growthMiBPerSecond),
+                reason: pressure.reason
+              });
+            }
+            if (utilization !== null && utilization >= 10) {
+              lastGpuComputeAt = Date.now();
+            }
+          }
+        );
+        const submitted = await submitTask(
+          task,
+          store.get().settings,
+          activeController.signal
+        );
+        const { promptId, clientId, nodeTypes } = submitted;
+        logger.info("comfy", "prompt-submitted", "Workflow submitted to ComfyUI", {
+          taskId: task.id,
+          taskType: task.taskType,
+          modelId: task.modelId,
+          promptId,
+          nodeCount: Object.keys(nodeTypes).length
+        });
+        await updateTask(task.id, {
+          comfyPromptId: promptId,
+          progress: 2,
+          stage: "等待 ComfyUI"
+        });
+        let lastLoggedProgress = -5;
+        let lastLoggedStage = "";
+        const result = await waitForTask(
+          promptId,
+          clientId,
+          nodeTypes,
+          store.get().settings,
+          activityTimeoutMinutesForTask(
+            task,
+            store.get().settings.ltxExtensionTimeoutMinutes
+          ),
+          activeController.signal,
+          (progress, stage) => {
+            void updateTask(task.id, { progress, stage });
+            const roundedProgress = Math.round(progress);
+            if (
+              stage !== lastLoggedStage ||
+              roundedProgress >= lastLoggedProgress + 5 ||
+              progress >= 100
+            ) {
+              lastLoggedProgress = roundedProgress;
+              lastLoggedStage = stage;
+              logger.info("queue", "task-progress", "Queue task progress", {
+                taskId: task.id,
+                taskType: task.taskType,
+                modelId: task.modelId,
+                progress: roundedProgress,
+                stage
+              });
+            }
+          },
+          (dataUrl) =>
+            sendPreview({
+              taskId: task.id,
+              dataUrl
+            }),
+          () => Date.now() - lastGpuComputeAt < 10_000
+        );
+        logger.info("queue", "task-output-ready", "ComfyUI task completed", {
+          taskId: task.id,
+          taskType: task.taskType,
+          modelId: task.modelId
+        });
+        const completedTask = store.get().queue.find((item) => item.id === task.id);
+        if (!completedTask || isImageGenerationQueueTask(completedTask)) continue;
+        const completedAt = new Date().toISOString();
+        const files = await requireExistingVideoOutput(
+          result,
+          [store.get().settings.outputDirectory]
+        );
+        logger.info("queue", "output-validated", "Task output validated", {
+          taskId: task.id,
+          outputCount: files.length
+        });
+        if (completedTask.taskType === "extension") {
+          const outputVideo = files.find(
+            (file) => file.absolutePath && videoOutputPattern.test(file.filename)
+          );
+          if (!outputVideo?.absolutePath) {
+            throw new Error("续写工作流没有返回可供 FFmpeg 拼接的视频文件");
+          }
+          await updateTask(task.id, {
+            progress: 99,
+            stage: isMiniMaxH3R2vModel(completedTask.modelId)
+              ? "合并 Motion Context 续写片段与 32 kHz 音轨"
+              : isMiniMaxH3Fl2vaModel(completedTask.modelId)
+                ? "裁掉重复边界帧并合并原生音轨"
+                : "去除重叠帧并拼接成片"
+          });
+          await finalizeExtensionOutput(
+            completedTask,
+            outputVideo.absolutePath,
+            activeController.signal
+          );
+        }
+        if (taskPerformanceMonitor) {
+          taskPerformanceStats = taskPerformanceMonitor.stop();
+          taskPerformanceMonitor = undefined;
+          logger.info("performance", "task-summary", "Task performance summary", {
+            taskId: task.id,
+            durationSeconds: Math.round(taskPerformanceStats.durationSeconds),
+            vramPeakBytes: taskPerformanceStats.vramPeakBytes,
+            vramTotalBytes: taskPerformanceStats.vramTotalBytes,
+            gpuPeakPercent: taskPerformanceStats.gpuPeakPercent,
+            memoryPeakBytes: taskPerformanceStats.memoryPeakBytes,
+            sharedGpuMemoryPeakBytes: taskPerformanceStats.sharedGpuMemoryPeakBytes ?? null
+          });
+        }
+        const next = await store.update((state) => {
+          persistVideoHistoryResult(state, {
+            task: completedTask,
+            completedAt,
+            promptId,
+            comfyOutputs: result,
+            files,
+            performanceStats: taskPerformanceStats,
+            id: () => crypto.randomUUID()
+          });
+        });
+        sendState(next);
+        if (isMiniMaxH3Model(completedTask.modelId)) {
+          const stable = await stabilizeH3RuntimeBetweenTasks(
+            completedTask.id,
+            completedTask.modelId,
+            comfyUiSettingsForQueueTask(completedTask, next.settings)
+          );
+          if (!stable) {
+            const stopped = await store.update((state) => {
+              state.queueRunning = false;
+            });
+            sendState(stopped);
+            logger.error("queue", "h3-stabilization-failed", "Queue stopped because H3 runtime could not be safely released", {
+              taskId: completedTask.id,
+              modelId: completedTask.modelId
+            });
+          }
+        }
+      } catch (error) {
+        const aborted = activeController.signal.aborted;
+        const stalled = error instanceof TaskStalledError;
+        if (!taskPerformanceStats && taskPerformanceMonitor) {
+          taskPerformanceStats = taskPerformanceMonitor.stop();
+          taskPerformanceMonitor = undefined;
+          logger.info("performance", "task-summary", "Failed task performance summary", {
+            taskId: task.id,
+            durationSeconds: Math.round(taskPerformanceStats.durationSeconds),
+            vramPeakBytes: taskPerformanceStats.vramPeakBytes,
+            vramTotalBytes: taskPerformanceStats.vramTotalBytes,
+            gpuPeakPercent: taskPerformanceStats.gpuPeakPercent,
+            memoryPeakBytes: taskPerformanceStats.memoryPeakBytes,
+            sharedGpuMemoryPeakBytes: taskPerformanceStats.sharedGpuMemoryPeakBytes ?? null
+          });
+        }
+        await recoverQueueFailure({
+          store,
+          logger: logger,
+          sendState,
+          updateTask,
+          settingsForTask: comfyUiSettingsForQueueTask,
+          errorMeta: errorLogMeta
+        }, {
+          task,
+          error,
+          aborted,
+          stalled,
+          performanceStats: taskPerformanceStats
+        });
+      } finally {
+        const finalStage = taskStageStartedAt.get(task.id);
+        if (finalStage) {
+          logger.info("queue", "stage-duration", "Queue task final stage finished", {
+            taskId: task.id,
+            taskType: task.taskType,
+            modelId: task.modelId,
+            stage: finalStage.stage,
+            durationSeconds: Math.round((Date.now() - finalStage.startedAt) / 1000)
+          });
+          taskStageStartedAt.delete(task.id);
+        }
+        if (performanceLogTimer) clearInterval(performanceLogTimer);
+        vramWatchdog?.stop();
+        taskPerformanceMonitor?.stop();
+        queueWorkerController.endTask(activeController);
+      }
+    }
+    const next = await store.update((state) => {
+      state.queueRunning = false;
+    });
+    sendState(next);
+  }
+
+  return executeQueue;
+}

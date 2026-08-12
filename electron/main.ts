@@ -7,7 +7,6 @@ import {
   Menu,
   protocol,
   shell,
-  nativeImage,
   type MenuItemConstructorOptions
 } from "electron";
 import { createReadStream, promises as fs } from "node:fs";
@@ -17,7 +16,6 @@ import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type {
   AppState,
-  AssetVersion,
   BundledWorkflow,
   ConnectionKind,
   Draft,
@@ -27,27 +25,16 @@ import type {
   HistoryFile,
   HistoryMigrationProgress,
   ImageAssetLibraryProgress,
-  ImageGenerationQueueTask,
-  ImageAssetVersion,
   ImageEditDraft,
-  ImageHistoryProject,
   ImageMarkupSaveRequest,
   LocalServiceKind,
   QueueTask,
   Settings,
   SettingsSaveMode,
-  TaskPerformanceStats,
-  UpscaleQueueTask,
-  UpscaleRequest,
   WindowCloseRequest,
   WindowCloseResponse
 } from "../src/types.js";
 import { normalizeUiLocale } from "../src/core/i18n.js";
-import {
-  classifyFailureForRecovery,
-  nextH3AttentionModeAfterCudaFailure,
-  nextAutomaticRetryAttempt
-} from "../src/core/recovery.js";
 import { historyVideoPaths } from "../src/core/history-delete.js";
 import { createHistoryCoverCacheKey } from "../src/core/history-cover.js";
 import { historyFileCandidates } from "../src/core/history-media.js";
@@ -57,57 +44,29 @@ import {
 } from "../src/core/comfy-output.js";
 import { attachAbsoluteOutputPaths } from "../src/core/comfy-output-paths.js";
 import {
-  isImageGenerationQueueTask,
   syncQueueVideoInputPaths
 } from "../src/core/queue.js";
+import { normalizeImageEditDraft } from "../src/core/image-project.js";
+import { promptModelBackend } from "../src/core/prompt-models.js";
+import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
 import {
-  createImageSourceVersion,
-  findImageProjectLineage,
-  nextImageVersionNumber,
-  normalizeImageEditDraft
-} from "../src/core/image-project.js";
-import { promptModelBackend, promptModelSupportsImageEdit } from "../src/core/prompt-models.js";
-import {
-  imageModelAdapterFor,
-  imageOutputFormatFromFilename,
-  imageLightningComponentFound,
-  imageQualityProfileRequiresLightning
-} from "../src/core/image-workflow.js";
-import {
-  extensionOutputDimensions,
-  extensionSafetyForTask,
-  activityTimeoutMinutesForTask,
   extensionWorkflowSafetyErrors,
-  generationSafetyForTask,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3R2vModel,
   isMiniMaxH3Model,
-  normalizeH3Steps,
-  outputDimensions,
-  validateApiWorkflow,
   workflowSupportsEndImage,
   workflowSupportsH3BoundaryExtension,
-  workflowSupportsH3MotionContextExtension,
-  workflowSupportsH3TurboSampling
+  workflowSupportsH3MotionContextExtension
 } from "../src/core/workflow.js";
-import {
-  isH3TurboEnabled,
-  normalizeVideoLoras,
-  videoLoraConfigurationIssues,
-  videoLoraSelection
-} from "../src/core/video-loras.js";
-import {
-  upscaleDimensions
-} from "../src/core/upscale.js";
-import {
-  extensionTaskFromDraft,
-  imageTaskFromDraft,
-  promptOf,
-  queueTaskFromDraft,
-  upscaleTaskFromRequest
-} from "../src/core/queue-task-factory.js";
 import { JsonStore } from "./store.js";
 import { registerQueueMutationIpc } from "./queue-ipc.js";
+import { registerQueueEnqueueIpc } from "./queue-enqueue.js";
+import { createQueueExecutor } from "./queue-executor.js";
+import { cleanupCancelledQueueTask as cleanupCancelledQueueTaskInRecovery } from "./queue-recovery.js";
+import {
+  QueueWorkerController,
+  registerQueueControlIpc
+} from "./queue-worker.js";
 import {
   copyFileToWindowsClipboard,
   resolveExistingHistoryFile
@@ -130,12 +89,8 @@ import {
   freeMemory,
   enhancePromptWithComfyUi,
   interrupt,
-  submitImageTask,
-  submitTask,
-  TaskStalledError,
   warmNativePromptModel,
-  testComfyUi,
-  waitForTask
+  testComfyUi
 } from "./services/comfy-ui.js";
 import {
   enhancePromptWithH3PromptWriter,
@@ -143,16 +98,7 @@ import {
   releaseH3PromptWriter,
   testH3PromptWriter
 } from "./services/h3-prompt-writer.js";
-import {
-  getPerformanceMetrics,
-  startTaskPerformanceMonitor,
-  type TaskPerformanceMonitor
-} from "./services/performance.js";
-import { finalizeExtensionOutput } from "./services/extension-media.js";
-import {
-  startAdaptiveVramWatchdog,
-  type VramWatchdogMonitor
-} from "./services/vram-watchdog.js";
+import { getPerformanceMetrics } from "./services/performance.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
 import {
   cleanupVideoHistoryMigration,
@@ -164,10 +110,7 @@ import {
   type PreparedVideoHistoryMigration
 } from "./services/video-history-migration.js";
 import {
-  archiveImagePaths,
-  archiveImageReferences,
   cleanupImageAssetLibrary,
-  hashImageFile,
   organizeImageAssetLibrary,
   scanImageAssetLibrary
 } from "./services/image-asset-library.js";
@@ -251,8 +194,7 @@ let rendererHasUnsavedSettings = false;
 let historyMigrationRunning = false;
 let imageAssetLibraryRunning = false;
 let pendingWindowCloseRequest: WindowCloseRequest | null = null;
-let queueWorker: Promise<void> | null = null;
-let activeController: AbortController | null = null;
+const queueWorkerController = new QueueWorkerController();
 let nativePromptController: AbortController | null = null;
 let nativePromptWorker: Promise<unknown> | null = null;
 let allowWindowClose = false;
@@ -701,7 +643,6 @@ function sendState(state = store.get()): void {
 }
 
 const videoOutputPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
-const performanceLogIntervalMs = 30_000;
 
 async function resolveTaskOutputDirectory(): Promise<string> {
   const configured = store.get().settings.outputDirectory.trim();
@@ -839,55 +780,18 @@ async function waitWithTimeout(
   ]);
 }
 
-async function cleanupCancelledQueueTask(
+function cleanupCancelledQueueTask(
   taskId: string,
   settings: Settings,
   worker: Promise<void> | null
 ): Promise<void> {
-  try {
-    if (settings.safeCancel) {
-      await interrupt(settings).catch((error) => {
-        appLogger.warn("comfy", "cancel-interrupt-failed", "ComfyUI interrupt request failed during background cancellation cleanup", {
-          taskId,
-          error: safeLogErrorMessage(error)
-        });
-      });
-    }
-    const workerSettled = await waitWithTimeout(worker, 15_000);
-    if (settings.safeCancel && workerSettled) {
-      try {
-        await freeMemory(settings);
-        await updateTask(taskId, {
-          stage: "任务已取消，显存已释放",
-          error: "任务已取消"
-        });
-        return;
-      } catch (error) {
-        appLogger.warn("comfy", "cancel-free-memory-failed", "ComfyUI memory release failed after task cancellation; falling back to restart", {
-          taskId,
-          error: safeLogErrorMessage(error)
-        });
-      }
-    }
-    const recovery = await restartLocalService("comfy", settings);
-    await updateTask(taskId, {
-      stage: recovery.ok ? "任务已取消，ComfyUI 已后台重启" : "任务已取消，但 ComfyUI 清理失败",
-      error: recovery.ok
-        ? "任务已取消"
-        : `任务已取消；ComfyUI 清理失败：${recovery.message}`
-    });
-  } catch (error) {
-    appLogger.error("comfy", "cancel-cleanup-failed", "Background cancellation cleanup failed", {
-      taskId,
-      error: safeLogErrorMessage(error)
-    });
-    await updateTask(taskId, {
-      stage: "任务已取消，但 ComfyUI 清理失败",
-      error: `任务已取消；ComfyUI 清理失败：${safeLogErrorMessage(error)}`
-    }).catch(() => undefined);
-  }
+  return cleanupCancelledQueueTaskInRecovery(
+    { logger: appLogger, updateTask },
+    taskId,
+    settings,
+    worker
+  );
 }
-
 async function interruptForExit(waitForWorker: boolean): Promise<{
   interrupted: boolean;
   workerSettled: boolean;
@@ -898,7 +802,7 @@ async function interruptForExit(waitForWorker: boolean): Promise<{
     state.queueRunning = false;
   });
   sendState(next);
-  activeController?.abort(new Error("应用退出，任务已中止"));
+  queueWorkerController.abort(new Error("应用退出，任务已中止"));
   nativePromptController?.abort(new Error("应用退出，提示词扩写已中止"));
   const interruptPromise = interrupt(settings).then(
     async () => {
@@ -922,7 +826,7 @@ async function interruptForExit(waitForWorker: boolean): Promise<{
         )
       ]);
   const workerSettled = waitForWorker
-    ? await waitWithTimeout(queueWorker, 15_000)
+    ? await waitWithTimeout(queueWorkerController.runningWorker, 15_000)
     : false;
   const promptSettled = waitForWorker
     ? await waitWithTimeout(nativePromptWorker, 15_000)
@@ -1054,7 +958,7 @@ async function handleWindowClose(): Promise<void> {
     .get()
     .queue.find((task) => task.status === "running");
   const hasRunningWork = Boolean(
-    runningTask || activeController || queueWorker || nativePromptWorker
+    runningTask || queueWorkerController.activeController || queueWorkerController.runningWorker || nativePromptWorker
   );
   if (!hasRunningWork && !rendererHasUnsavedSettings) {
     await finishWindowClose();
@@ -1213,120 +1117,6 @@ function createWindow(): void {
       path.join(currentDirectory, "..", "..", "renderer", "index.html")
     );
   }
-}
-
-async function resolveImageProjectLineage(
-  state: AppState,
-  draft: ImageEditDraft
-): Promise<{ projectId: string; parentVersionId?: string } | undefined> {
-  const basePicture = draft.pictures[0];
-  if (!basePicture?.absolutePath || !basePicture.contentHash) return undefined;
-
-  const known = findImageProjectLineage(state.imageHistory, basePicture);
-  if (known) return known;
-
-  // A second batch can be queued before the first one has produced history.
-  // Reuse that pending lineage only when Picture 1 has the same content.
-  const queuedMatch = state.queue.find((item) =>
-    isImageGenerationQueueTask(item) &&
-    item.pictures[0]?.contentHash === basePicture.contentHash
-  );
-  if (queuedMatch && isImageGenerationQueueTask(queuedMatch)) {
-    return {
-      projectId: queuedMatch.projectId,
-      ...(queuedMatch.parentVersionId ? { parentVersionId: queuedMatch.parentVersionId } : {})
-    };
-  }
-
-  // Older history did not persist output hashes. Hash existing output files on
-  // demand so a copied or moved historical result still keeps its ancestry.
-  const preferred = draft.projectId
-    ? [
-        ...state.imageHistory.filter((project) => project.id === draft.projectId),
-        ...state.imageHistory.filter((project) => project.id !== draft.projectId)
-      ]
-    : state.imageHistory;
-  for (const project of preferred) {
-    for (const version of project.versions) {
-      const outputPath = version.file.absolutePath?.trim();
-      if (!outputPath) continue;
-      const outputHash = await hashImageFile(outputPath).catch(() => undefined);
-      if (outputHash === basePicture.contentHash) {
-        return { projectId: project.id, parentVersionId: version.id };
-      }
-    }
-  }
-  return undefined;
-}
-
-async function resolveImageOutputTarget(settings: Settings): Promise<{
-  root: string;
-  directory: string;
-  subfolder: string;
-}> {
-  const detectedRoot = await resolveComfyOutputDirectory(settings);
-  const rootCandidate = detectedRoot || settings.outputDirectory.trim();
-  if (!rootCandidate) throw new Error("无法确定 ComfyUI output 目录，无法准备图片输出目录。");
-  const root = path.resolve(rootCandidate);
-  const configured = settings.imageOutputDirectory.trim();
-  const directory = path.resolve(configured || path.join(root, "Images"));
-  if (!isPathWithinDirectory(root, directory)) {
-    throw new Error("图片输出目录必须位于当前 ComfyUI output 目录内。");
-  }
-  await fs.mkdir(directory, { recursive: true });
-  return {
-    root,
-    directory,
-    subfolder: path.relative(root, directory).replaceAll(path.sep, "/")
-  };
-}
-
-function readImageDimensions(filename: string): { width: number; height: number } {
-  const image = nativeImage.createFromPath(filename);
-  const size = image.getSize();
-  if (!size.width || !size.height) {
-    throw new Error(`无法读取 Picture 图片尺寸：${filename}`);
-  }
-  return { width: size.width, height: size.height };
-}
-
-async function requireImageModelAssets(
-  settings: Settings,
-  modelId = settings.defaultImageModel,
-  qualityProfile = "native"
-): Promise<string> {
-  const scan = await scanEnvironment(settings);
-  const profile = scan.modelProfiles.find((item) => item.id === modelId);
-  const adapter = imageModelAdapterFor(modelId);
-  if (!adapter || profile?.category !== "image" || !profile.integrated) {
-    throw new Error(`当前没有 ${modelId} 的可用图片工作流适配器。`);
-  }
-  if (!profile?.available) {
-    const missing = profile?.components
-      .filter((component) => !component.found)
-      .map((component) => component.expected)
-      .join("、");
-    throw new Error(
-      `${adapter.name} 组件尚未完整${missing ? `，缺少：${missing}` : ""}。请确认设置已保存后重新扫描。`
-    );
-  }
-  if (
-    imageQualityProfileRequiresLightning(qualityProfile) &&
-    !imageLightningComponentFound(profile.components)
-  ) {
-    throw new Error(
-      "当前选择了 Qwen Lightning 4 步档，但未找到 Lightning LoRA。请在设置 → 图片模型中打开下载说明并重新扫描。"
-    );
-  }
-  const diffusionModel = profile.components
-    .find((component) => component.label.includes("扩散模型"))
-    ?.matches[0]
-    ?.split(/[\\/]/u)
-    .pop();
-  if (!diffusionModel) {
-    throw new Error("Qwen Image Edit 2511 扩散模型文件未能从环境扫描结果中解析。");
-  }
-  return diffusionModel;
 }
 
 async function updateTask(
@@ -1524,7 +1314,7 @@ async function releasePromptRuntime(settings: Settings): Promise<number> {
 
 async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: string }> {
   const settings = store.get().settings;
-  if (store.get().queueRunning || activeController || queueWorker) {
+  if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
     return { ok: false, message: "当前有视频任务正在运行，暂不能释放提示词模型。" };
   }
   if (nativePromptWorker) {
@@ -1621,914 +1411,26 @@ async function stabilizeH3RuntimeBetweenTasks(
   return recovery.ok;
 }
 
-async function executeImageGenerationQueueTask(
-  task: ImageGenerationQueueTask
-): Promise<void> {
-  const controller = new AbortController();
-  activeController = controller;
-  try {
-    await updateTask(task.id, {
-      status: "running",
-      progress: 1,
-      stage: "准备图片批次",
-      startedAt: new Date().toISOString(),
-      error: undefined
-    });
-    await ensureComfyUiReady(task.id);
-    const totalRuns = Math.max(1, task.runs.length);
-    for (const plannedRun of task.runs) {
-      const current = store.get().queue.find((item) => item.id === task.id);
-      if (!current || !isImageGenerationQueueTask(current)) return;
-      const run = current.runs.find((item) => item.id === plannedRun.id);
-      if (!run || run.status === "completed") continue;
-      const runStartedAt = new Date().toISOString();
-      await store.update((state) => {
-        const queued = state.queue.find((item) => item.id === task.id);
-        if (!queued || !isImageGenerationQueueTask(queued)) return;
-        const queuedRun = queued.runs.find((item) => item.id === run.id);
-        if (!queuedRun) return;
-        queuedRun.status = "running";
-        queuedRun.startedAt = runStartedAt;
-        queuedRun.progress = 1;
-        queued.stage = `生成第 ${run.index + 1} / ${totalRuns} 张`;
-      });
-      sendState(store.get());
-      const monitor = startTaskPerformanceMonitor();
-      try {
-        const submitted = await submitImageTask(
-          current,
-          { ...run, status: "running" },
-          store.get().settings,
-          controller.signal
-        );
-        let lastProgress = -1;
-        const result = await waitForTask(
-          submitted.promptId,
-          submitted.clientId,
-          submitted.nodeTypes,
-          store.get().settings,
-          20,
-          controller.signal,
-          (progress, stage) => {
-            const batchProgress = ((run.index + Math.max(0, progress) / 100) / totalRuns) * 100;
-            if (Math.round(batchProgress) < lastProgress + 2 && progress < 100) return;
-            lastProgress = Math.round(batchProgress);
-            void updateTask(task.id, {
-              progress: Math.min(99, batchProgress),
-              stage: `第 ${run.index + 1} / ${totalRuns} 张 · ${stage}`
-            });
-          },
-          (dataUrl) => {
-            mainWindow?.webContents.send("task:preview", {
-              taskId: task.id,
-              dataUrl
-            });
-          },
-          () => true
-        );
-        const files = await requireExistingImageOutput(
-          result,
-          task.imageOutputRoot ?? await resolveTaskOutputDirectory(),
-          [store.get().settings.outputDirectory]
-        );
-        const file = files.find((candidate) => imageOutputFormatFromFilename(candidate.filename) === "png");
-        if (!file) throw new Error("图片工作流没有返回可用图片文件。");
-        const performanceStats = monitor.stop();
-        const outputContentHash = file.absolutePath
-          ? await hashImageFile(file.absolutePath).catch(() => undefined)
-          : undefined;
-        const completedAt = new Date().toISOString();
-        const versionId = crypto.randomUUID();
-        const next = await store.update((state) => {
-          const queued = state.queue.find((item) => item.id === task.id);
-          if (!queued || !isImageGenerationQueueTask(queued)) return;
-          let project = state.imageHistory.find((item) => item.id === queued.projectId);
-          const projectCreated = !project;
-          if (!project) {
-            project = {
-              mediaKind: "image",
-              id: queued.projectId,
-              title: queued.prompt.slice(0, 32) || "未命名图片",
-              createdAt: completedAt,
-              updatedAt: completedAt,
-              coverMode: "auto",
-              nextVersionNumber: 1,
-              versions: []
-            };
-            state.imageHistory.unshift(project);
-          }
-          if (projectCreated && project.versions.length === 0) {
-            const sourcePicture = queued.pictures[0];
-            if (sourcePicture?.absolutePath) {
-              const sourceVersion = createImageSourceVersion(sourcePicture, queued.createdAt);
-              sourceVersion.versionNumber = nextImageVersionNumber(project);
-              project.versions.unshift(sourceVersion);
-              project.nextVersionNumber = sourceVersion.versionNumber + 1;
-            }
-          }
-          const versionNumber = nextImageVersionNumber(project);
-          const quality = imageModelAdapterFor(queued.modelId)?.qualityProfiles.find(
-            (profile) => profile.id === queued.qualityProfile
-          );
-          const version: ImageAssetVersion = {
-            id: versionId,
-            versionNumber,
-            kind: "edit",
-            parentVersionId: queued.parentVersionId,
-            taskId: queued.id,
-            runId: run.id,
-            createdAt: completedAt,
-            startedAt: runStartedAt,
-            modelId: queued.modelId,
-            workflowPath: queued.workflowPath,
-            prompt: queued.prompt,
-            promptVersion: queued.promptVersion,
-            references: queued.pictures.map((picture) => ({ ...picture })),
-            qualityProfile: queued.qualityProfile,
-            ...(quality ? { steps: quality.steps, cfg: quality.cfg } : {}),
-            targetResolution: queued.targetResolution,
-            outputCount: queued.outputCount,
-            diffusionModelFilename: queued.diffusionModelFilename,
-            seed: run.seed,
-            width: queued.outputWidth ?? queued.pictures[0]?.width ?? 0,
-            height: queued.outputHeight ?? queued.pictures[0]?.height ?? 0,
-            format: "png",
-            ...(outputContentHash ? { contentHash: outputContentHash } : {}),
-            file,
-            comfyPromptId: submitted.promptId,
-            comfyOutputs: result,
-            performanceStats
-          };
-          project.versions.unshift(version);
-          project.nextVersionNumber = versionNumber + 1;
-          project.updatedAt = completedAt;
-          const queuedRun = queued.runs.find((item) => item.id === run.id);
-          if (queuedRun) {
-            queuedRun.status = "completed";
-            queuedRun.progress = 100;
-            queuedRun.completedAt = completedAt;
-            queuedRun.comfyPromptId = submitted.promptId;
-            queuedRun.outputVersionId = versionId;
-            queuedRun.performanceStats = performanceStats;
-          }
-          queued.progress = ((run.index + 1) / totalRuns) * 100;
-          queued.stage = `已完成第 ${run.index + 1} / ${totalRuns} 张`;
-        });
-        sendState(next);
-      } catch (error) {
-        const performanceStats = monitor.stop();
-        await store.update((state) => {
-          const queued = state.queue.find((item) => item.id === task.id);
-          if (!queued || !isImageGenerationQueueTask(queued)) return;
-          const queuedRun = queued.runs.find((item) => item.id === run.id);
-          if (!queuedRun) return;
-          queuedRun.status = controller.signal.aborted ? "cancelled" : "failed";
-          queuedRun.error = error instanceof Error ? error.message : String(error);
-          queuedRun.performanceStats = performanceStats;
-          queued.error = queuedRun.error;
-        });
-        throw error;
-      }
-    }
-    const completed = await store.update((state) => {
-      state.queue = state.queue.filter((item) => item.id !== task.id);
-    });
-    sendState(completed);
-  } catch (error) {
-    await updateTask(task.id, {
-      status: controller.signal.aborted ? "cancelled" : "failed",
-      error: controller.signal.aborted
-        ? "图片批次已取消，已保留完成的图片版本。"
-        : error instanceof Error
-          ? error.message
-          : String(error)
-    });
-  } finally {
-    await freeMemory(store.get().settings).catch((error) => {
-      appLogger.warn("comfy", "image-release-failed", "Failed to release image model memory after batch", {
-        taskId: task.id,
-        error: safeLogErrorMessage(error)
-      });
-    });
-    if (activeController === controller) activeController = null;
-  }
-}
-
+let queueExecutor: (() => Promise<void>) | null = null;
 async function executeQueue(): Promise<void> {
-  let promptModelReleased = false;
-  while (store.get().queueRunning) {
-    const task = store.get().queue.find((item) => item.status === "waiting");
-    if (!task) break;
-    if (isImageGenerationQueueTask(task)) {
-      await executeImageGenerationQueueTask(task);
-      continue;
-    }
-    appLogger.info("queue", "task-started", "Queue task execution started", {
-      taskId: task.id,
-      taskType: task.taskType,
-      modelId: task.modelId,
-      automaticRetryAttempt: task.automaticRetryAttempt ?? 0,
-      automaticRetryLimit: store.get().settings.autoRetryCount,
-      duration: task.duration,
-      fps: task.fps,
-      attentionMode: task.taskType === "upscale" ? "not-applicable" : task.attentionMode ?? "sage",
-      spectrumMode: task.taskType === "upscale" ? "not-applicable" : task.spectrumMode ?? "off",
-      ...(task.taskType === "upscale"
-        ? {
-            sourceWidth: task.sourceWidth,
-            sourceHeight: task.sourceHeight,
-            targetWidth: task.targetWidth,
-            targetHeight: task.targetHeight
-          }
-        : {})
-    });
-    activeController = new AbortController();
-    let vramWatchdog: VramWatchdogMonitor | undefined;
-    let taskPerformanceMonitor: TaskPerformanceMonitor | undefined;
-    let taskPerformanceStats: TaskPerformanceStats | undefined;
-    let performanceLogTimer: ReturnType<typeof setInterval> | undefined;
-    let performanceLogInFlight = false;
-    const performanceWarnings = new Set<string>();
-    try {
-      if (task.taskType === "generation") {
-        const safety = generationSafetyForTask(task, store.get().settings.uiLocale);
-        if (!safety.safe) throw new Error(safety.message);
-      } else if (task.taskType === "extension") {
-        const safety = extensionSafetyForTask(task, store.get().settings.uiLocale);
-        if (!safety.safe) throw new Error(safety.message);
-      }
-      await updateTask(task.id, {
-        status: "running",
-        progress: 1,
-        stage: "提交工作流",
-        startedAt: new Date().toISOString(),
-        error: undefined
-      });
-      taskPerformanceMonitor = startTaskPerformanceMonitor();
-      const logPerformanceSnapshot = async (): Promise<void> => {
-        if (!taskPerformanceMonitor || performanceLogInFlight) return;
-        performanceLogInFlight = true;
-        try {
-          const sample = await taskPerformanceMonitor.snapshot();
-          const mib = (bytes: number | null): number | null =>
-            bytes == null ? null : Math.round(bytes / 1024 ** 2);
-          const warnOnce = (
-            key: string,
-            message: string,
-            meta: Record<string, unknown>
-          ): void => {
-            if (performanceWarnings.has(key)) return;
-            performanceWarnings.add(key);
-            appLogger.warn("performance", key, message, {
-              taskId: task.id,
-              taskType: task.taskType,
-              modelId: task.modelId,
-              ...meta
-            });
-          };
-          const memoryRatio = sample.memoryTotalBytes > 0
-            ? sample.memoryUsedBytes / sample.memoryTotalBytes
-            : 0;
-          if (sample.vramUsedBytes == null || sample.vramTotalBytes == null) {
-            warnOnce(
-              "gpu-telemetry-unavailable",
-              "GPU telemetry is unavailable; nvidia-smi returned no usable sample",
-              {}
-            );
-          } else if (sample.vramUsedBytes / sample.vramTotalBytes >= 0.95) {
-            warnOnce(
-              "vram-near-limit",
-              "GPU VRAM is near capacity",
-              {
-                vramUsedMiB: mib(sample.vramUsedBytes),
-                vramTotalMiB: mib(sample.vramTotalBytes),
-                usagePercent: Math.round(sample.vramUsedBytes / sample.vramTotalBytes * 100)
-              }
-            );
-          }
-          if (sample.sharedGpuMemoryBytes != null && sample.sharedGpuMemoryBytes >= 2 * 1024 ** 3) {
-            warnOnce(
-              "shared-gpu-memory-high",
-              "GPU shared memory usage is high",
-              { sharedGpuMemoryMiB: mib(sample.sharedGpuMemoryBytes) }
-            );
-          }
-          if (sample.gpuTemperatureC != null && sample.gpuTemperatureC >= 85) {
-            warnOnce(
-              "gpu-temperature-high",
-              "GPU temperature is high",
-              { gpuTemperatureC: Math.round(sample.gpuTemperatureC) }
-            );
-          }
-          if (memoryRatio >= 0.9) {
-            warnOnce(
-              "system-memory-high",
-              "System memory usage is high",
-              { memoryUsedMiB: mib(sample.memoryUsedBytes), memoryTotalMiB: mib(sample.memoryTotalBytes), usagePercent: Math.round(memoryRatio * 100) }
-            );
-          }
-          if (sample.cpuPercent != null && sample.cpuPercent >= 95) {
-            warnOnce(
-              "cpu-usage-high",
-              "CPU usage is high",
-              { cpuPercent: Math.round(sample.cpuPercent) }
-            );
-          }
-          appLogger.info("performance", "task-sample", "Task performance sample", {
-            taskId: task.id,
-            taskType: task.taskType,
-            modelId: task.modelId,
-            elapsedSeconds: Math.round(sample.elapsedSeconds),
-            cpuPercent: sample.cpuPercent == null ? null : Math.round(sample.cpuPercent),
-            memoryUsedMiB: mib(sample.memoryUsedBytes),
-            memoryTotalMiB: mib(sample.memoryTotalBytes),
-            gpuPercent: sample.gpuPercent == null ? null : Math.round(sample.gpuPercent),
-            vramUsedMiB: mib(sample.vramUsedBytes),
-            vramTotalMiB: mib(sample.vramTotalBytes),
-            sharedGpuMemoryMiB: mib(sample.sharedGpuMemoryBytes),
-            sharedGpuMemoryPeakMiB: mib(sample.sharedGpuMemoryPeakBytes),
-            gpuTemperatureC: sample.gpuTemperatureC == null
-              ? null
-              : Math.round(sample.gpuTemperatureC)
-          });
-        } finally {
-          performanceLogInFlight = false;
-        }
-      };
-      void logPerformanceSnapshot();
-      performanceLogTimer = setInterval(
-        () => void logPerformanceSnapshot(),
-        performanceLogIntervalMs
-      );
-      if (!promptModelReleased) {
-        await updateTask(task.id, {
-          progress: 1,
-          stage: "卸载提示词模型并释放显存"
-        });
-        const unloaded = await releasePromptRuntime(store.get().settings);
-        promptModelReleased = true;
-        if (unloaded > 0) {
-          await updateTask(task.id, {
-            progress: 1,
-            stage: "已释放 ComfyUI 提示词模型"
-          });
-        }
-      }
-      await ensureComfyUiReady(task.id);
-      await updateTask(task.id, {
-        progress: 1,
-        stage: "提交工作流"
-      });
-      let lastGpuComputeAt = 0;
-      vramWatchdog = startAdaptiveVramWatchdog(
-        activeController,
-        (pressure, utilization, sample) => {
-          taskPerformanceMonitor?.recordGpuSample(sample);
-          if (pressure.reason && !performanceWarnings.has("vram-pressure")) {
-            performanceWarnings.add("vram-pressure");
-            appLogger.warn("performance", "vram-pressure", "VRAM safety pressure detected", {
-              taskId: task.id,
-              remainingMiB: Math.round(pressure.remainingMiB),
-              requiredReserveMiB: Math.round(pressure.requiredReserveMiB),
-              growthMiBPerSecond: Math.round(pressure.growthMiBPerSecond),
-              reason: pressure.reason
-            });
-          }
-          if (utilization !== null && utilization >= 10) {
-            lastGpuComputeAt = Date.now();
-          }
-        }
-      );
-      const submitted = await submitTask(
-        task,
-        store.get().settings,
-        activeController.signal
-      );
-      const { promptId, clientId, nodeTypes } = submitted;
-      appLogger.info("comfy", "prompt-submitted", "Workflow submitted to ComfyUI", {
-        taskId: task.id,
-        taskType: task.taskType,
-        modelId: task.modelId,
-        promptId,
-        nodeCount: Object.keys(nodeTypes).length
-      });
-      await updateTask(task.id, {
-        comfyPromptId: promptId,
-        progress: 2,
-        stage: "等待 ComfyUI"
-      });
-      let lastLoggedProgress = -5;
-      let lastLoggedStage = "";
-      const result = await waitForTask(
-        promptId,
-        clientId,
-        nodeTypes,
-        store.get().settings,
-        activityTimeoutMinutesForTask(
-          task,
-          store.get().settings.ltxExtensionTimeoutMinutes
-        ),
-        activeController.signal,
-        (progress, stage) => {
-          void updateTask(task.id, { progress, stage });
-          const roundedProgress = Math.round(progress);
-          if (
-            stage !== lastLoggedStage ||
-            roundedProgress >= lastLoggedProgress + 5 ||
-            progress >= 100
-          ) {
-            lastLoggedProgress = roundedProgress;
-            lastLoggedStage = stage;
-            appLogger.info("queue", "task-progress", "Queue task progress", {
-              taskId: task.id,
-              taskType: task.taskType,
-              modelId: task.modelId,
-              progress: roundedProgress,
-              stage
-            });
-          }
-        },
-        (dataUrl) =>
-          mainWindow?.webContents.send("task:preview", {
-            taskId: task.id,
-            dataUrl
-          }),
-        () => Date.now() - lastGpuComputeAt < 10_000
-      );
-      appLogger.info("queue", "task-output-ready", "ComfyUI task completed", {
-        taskId: task.id,
-        taskType: task.taskType,
-        modelId: task.modelId
-      });
-      const completedTask = store.get().queue.find((item) => item.id === task.id);
-      if (!completedTask || isImageGenerationQueueTask(completedTask)) continue;
-      const completedAt = new Date().toISOString();
-      const files = await requireExistingVideoOutput(
-        result,
-        [store.get().settings.outputDirectory]
-      );
-      appLogger.info("queue", "output-validated", "Task output validated", {
-        taskId: task.id,
-        outputCount: files.length
-      });
-      if (completedTask.taskType === "extension") {
-        const outputVideo = files.find(
-          (file) => file.absolutePath && videoOutputPattern.test(file.filename)
-        );
-        if (!outputVideo?.absolutePath) {
-          throw new Error("续写工作流没有返回可供 FFmpeg 拼接的视频文件");
-        }
-        await updateTask(task.id, {
-          progress: 99,
-          stage: isMiniMaxH3R2vModel(completedTask.modelId)
-            ? "合并 Motion Context 续写片段与 32 kHz 音轨"
-            : isMiniMaxH3Fl2vaModel(completedTask.modelId)
-              ? "裁掉重复边界帧并合并原生音轨"
-              : "去除重叠帧并拼接成片"
-        });
-        await finalizeExtensionOutput(
-          completedTask,
-          outputVideo.absolutePath,
-          activeController.signal
-        );
-      }
-      if (taskPerformanceMonitor) {
-        taskPerformanceStats = taskPerformanceMonitor.stop();
-        taskPerformanceMonitor = undefined;
-        appLogger.info("performance", "task-summary", "Task performance summary", {
-          taskId: task.id,
-          durationSeconds: Math.round(taskPerformanceStats.durationSeconds),
-          vramPeakBytes: taskPerformanceStats.vramPeakBytes,
-          vramTotalBytes: taskPerformanceStats.vramTotalBytes,
-          gpuPeakPercent: taskPerformanceStats.gpuPeakPercent,
-          memoryPeakBytes: taskPerformanceStats.memoryPeakBytes,
-          sharedGpuMemoryPeakBytes: taskPerformanceStats.sharedGpuMemoryPeakBytes ?? null
-        });
-      }
-      const next = await store.update((state) => {
-        state.queue = state.queue.filter((item) => item.id !== task.id);
-        if (completedTask.taskType === "generation") {
-          const [width, height] = outputDimensions(completedTask);
-          const version: AssetVersion = {
-            id: crypto.randomUUID(),
-            kind: "original",
-            createdAt: completedAt,
-            outputFilename: completedTask.outputFilename,
-            modelId: completedTask.modelId,
-            videoLoras: completedTask.videoLoras?.map((lora) => videoLoraSelection(lora)),
-            width,
-            height,
-            duration: completedTask.duration,
-            promptVersion: completedTask.promptVersion,
-            steps: completedTask.steps,
-            attentionMode: completedTask.attentionMode,
-            spectrumMode: completedTask.spectrumMode,
-            fps: completedTask.fps,
-            frameInterpolation: completedTask.frameInterpolation,
-            ratio: completedTask.ratio,
-            motion: completedTask.motion,
-            seed: completedTask.seed,
-            performanceStats: taskPerformanceStats,
-            workflowPath: completedTask.workflowPath,
-            comfyPromptId: promptId,
-            comfyOutputs: result,
-            files,
-            startedAt: completedTask.startedAt
-          };
-          const asset: HistoryAsset = {
-            mediaKind: "video",
-            id: crypto.randomUUID(),
-            taskId: completedTask.id,
-            title: completedTask.prompt.slice(0, 28) || "未命名视频",
-            outputFilename: completedTask.outputFilename,
-            createdAt: completedAt,
-            updatedAt: completedAt,
-            modelId: completedTask.modelId,
-            videoLoras: completedTask.videoLoras?.map((lora) => videoLoraSelection(lora)),
-            duration: completedTask.duration,
-            resolution: completedTask.resolution,
-            steps: completedTask.steps,
-            fps: completedTask.fps,
-            frameInterpolation: completedTask.frameInterpolation,
-            ratio: completedTask.ratio,
-            promptVersion: completedTask.promptVersion,
-            attentionMode: completedTask.attentionMode,
-            motion: completedTask.motion,
-            prompt: completedTask.prompt,
-            seed: completedTask.seed,
-            inputMode: "image",
-            h3ReferenceSlots: completedTask.h3ReferenceSlots?.map((slot) => ({ ...slot })),
-            sourceWidth: completedTask.sourceWidth,
-            sourceHeight: completedTask.sourceHeight,
-            startImagePath: completedTask.startImagePath,
-            endImagePath: completedTask.endImagePath,
-            workflowPath: completedTask.workflowPath,
-            startedAt: completedTask.startedAt,
-            comfyPromptId: promptId,
-            comfyOutputs: result,
-            files,
-            defaultVersionId: version.id,
-            versions: [version]
-          };
-          state.history.unshift(asset);
-          return;
-        }
-        if (completedTask.taskType === "extension") {
-          const [width, height] = extensionOutputDimensions(completedTask);
-          const totalDuration =
-            completedTask.trimEndSeconds - completedTask.trimStartSeconds +
-            completedTask.duration;
-          const version: AssetVersion = {
-            id: crypto.randomUUID(),
-            kind: "original",
-            createdAt: completedAt,
-            outputFilename: completedTask.outputFilename,
-            modelId: completedTask.modelId,
-            videoLoras: completedTask.videoLoras?.map((lora) => videoLoraSelection(lora)),
-            width,
-            height,
-            duration: totalDuration,
-            promptVersion: completedTask.promptVersion,
-            steps: completedTask.steps,
-            attentionMode: completedTask.attentionMode,
-            spectrumMode: completedTask.spectrumMode,
-            fps: completedTask.fps,
-            frameInterpolation: completedTask.frameInterpolation,
-            ratio: "source",
-            motion: completedTask.motion,
-            seed: completedTask.seed,
-            performanceStats: taskPerformanceStats,
-            workflowPath: completedTask.workflowPath,
-            comfyPromptId: promptId,
-            comfyOutputs: result,
-            files,
-            startedAt: completedTask.startedAt,
-            h3ContextLatentPath: completedTask.h3ContextSavedPath
-          };
-          const asset: HistoryAsset = {
-            mediaKind: "video",
-            id: crypto.randomUUID(),
-            taskId: completedTask.id,
-            title: completedTask.prompt.slice(0, 28) || "视频续写",
-            outputFilename: completedTask.outputFilename,
-            createdAt: completedAt,
-            updatedAt: completedAt,
-            modelId: completedTask.modelId,
-            videoLoras: completedTask.videoLoras?.map((lora) => videoLoraSelection(lora)),
-            duration: totalDuration,
-            resolution: completedTask.resolution,
-            steps: completedTask.steps,
-            fps: completedTask.fps,
-            frameInterpolation: completedTask.frameInterpolation,
-            ratio: "source",
-            promptVersion: completedTask.promptVersion,
-            attentionMode: completedTask.attentionMode,
-            motion: completedTask.motion,
-            prompt: completedTask.prompt,
-            seed: completedTask.seed,
-            inputMode: "video",
-            sourceWidth: completedTask.sourceWidth,
-            sourceHeight: completedTask.sourceHeight,
-            sourceAssetId: completedTask.sourceAssetId,
-            sourceVersionId: completedTask.sourceVersionId,
-            h3ContextLatentPath: completedTask.h3ContextSavedPath,
-            sourceVideoPath: completedTask.sourceVideoPath,
-            sourceVideoDuration: completedTask.sourceVideoDuration,
-            trimStartSeconds: completedTask.trimStartSeconds,
-            trimEndSeconds: completedTask.trimEndSeconds,
-            workflowPath: completedTask.workflowPath,
-            startedAt: completedTask.startedAt,
-            comfyPromptId: promptId,
-            comfyOutputs: result,
-            files,
-            defaultVersionId: version.id,
-            versions: [version]
-          };
-          state.history.unshift(asset);
-          return;
-        }
-        const assetIndex = state.history.findIndex(
-          (asset) => asset.id === completedTask.sourceAssetId
-        );
-        if (assetIndex < 0) {
-          throw new Error("源作品已不存在，无法保存提升版本");
-        }
-        const asset = state.history[assetIndex]!;
-        const [targetWidth, targetHeight] = upscaleDimensions(
-          completedTask.sourceWidth,
-          completedTask.sourceHeight,
-          completedTask.targetHeight
-        );
-        const version: AssetVersion = {
-          id: crypto.randomUUID(),
-          kind: "upscale",
-          createdAt: completedAt,
-          outputFilename: completedTask.outputFilename,
-          modelId: completedTask.modelId,
-          width: targetWidth,
-          height: targetHeight,
-          duration: completedTask.duration,
-          fps: completedTask.fps,
-          seed: completedTask.seed,
-            performanceStats: taskPerformanceStats,
-          workflowPath: completedTask.workflowPath,
-          comfyPromptId: promptId,
-          comfyOutputs: result,
-          files,
-          tileMode: completedTask.tileMode,
-          faceRestore: completedTask.faceRestore,
-          startedAt: completedTask.startedAt
-        };
-        asset.versions.push(version);
-        asset.updatedAt = completedAt;
-        asset.defaultVersionId = version.id;
-        state.history.splice(assetIndex, 1);
-        state.history.unshift(asset);
-      });
-      sendState(next);
-      if (isMiniMaxH3Model(completedTask.modelId)) {
-        const stable = await stabilizeH3RuntimeBetweenTasks(
-          completedTask.id,
-          completedTask.modelId,
-          comfyUiSettingsForQueueTask(completedTask, next.settings)
-        );
-        if (!stable) {
-          const stopped = await store.update((state) => {
-            state.queueRunning = false;
-          });
-          sendState(stopped);
-          appLogger.error("queue", "h3-stabilization-failed", "Queue stopped because H3 runtime could not be safely released", {
-            taskId: completedTask.id,
-            modelId: completedTask.modelId
-          });
-        }
-      }
-    } catch (error) {
-      const aborted = activeController.signal.aborted;
-      const stalled = error instanceof TaskStalledError;
-      const recoveryDecision = classifyFailureForRecovery(error, stalled);
-      const memoryFailure = recoveryDecision.kind === "cuda-context" ||
-        recoveryDecision.kind === "gpu-memory";
-      const cudaContextFailure = recoveryDecision.forceStop;
-      if (!taskPerformanceStats && taskPerformanceMonitor) {
-        taskPerformanceStats = taskPerformanceMonitor.stop();
-        taskPerformanceMonitor = undefined;
-        appLogger.info("performance", "task-summary", "Failed task performance summary", {
-          taskId: task.id,
-          durationSeconds: Math.round(taskPerformanceStats.durationSeconds),
-          vramPeakBytes: taskPerformanceStats.vramPeakBytes,
-          vramTotalBytes: taskPerformanceStats.vramTotalBytes,
-          gpuPeakPercent: taskPerformanceStats.gpuPeakPercent,
-          memoryPeakBytes: taskPerformanceStats.memoryPeakBytes,
-          sharedGpuMemoryPeakBytes: taskPerformanceStats.sharedGpuMemoryPeakBytes ?? null
-        });
-      }
-      appLogger.error(
-        "queue",
-        "task-failed",
-        safeLogErrorMessage(error),
-        {
-          taskId: task.id,
-          taskType: task.taskType,
-          modelId: task.modelId,
-          stalled,
-          memoryFailure,
-          cudaContextFailure,
-          recoveryKind: recoveryDecision.kind,
-          recoverable: recoveryDecision.recoverable,
-          automaticRetryAttempt: task.automaticRetryAttempt ?? 0,
-          attentionMode: task.taskType === "upscale" ? "not-applicable" : task.attentionMode ?? "sage",
-          spectrumMode: task.taskType === "upscale" ? "not-applicable" : task.spectrumMode ?? "off",
-          ...errorLogMeta(error)
-        }
-      );
-      if (!aborted && recoveryDecision.forceStop) {
-        appLogger.warn("comfy", "cuda-context-force-stop", "CUDA context is invalid; skipping HTTP cleanup and force-stopping ComfyUI", {
-          taskId: task.id,
-          modelId: task.modelId
-        });
-        const forced = await forceStopComfyProcesses(store.get().settings);
-        appLogger.info(
-          "comfy",
-          forced.ok ? "cuda-context-force-stop-succeeded" : "cuda-context-force-stop-failed",
-          forced.message,
-          { taskId: task.id, modelId: task.modelId, forceStopOk: forced.ok }
-        );
-      } else if (!aborted && recoveryDecision.kind === "gpu-memory") {
-        await interrupt(store.get().settings).catch((interruptError) => {
-          appLogger.warn("comfy", "interrupt-failed", "ComfyUI interrupt request failed", {
-            taskId: task.id,
-            error: safeLogErrorMessage(interruptError)
-          });
-        });
-        await freeMemory(store.get().settings).catch((freeMemoryError) => {
-          appLogger.warn("comfy", "free-memory-failed", "ComfyUI memory release request failed", {
-            taskId: task.id,
-            error: safeLogErrorMessage(freeMemoryError)
-          });
-        });
-      }
-      const failedState = await updateTask(task.id, {
-        status: aborted ? "cancelled" : "failed",
-        error: aborted
-          ? "任务已中止，ComfyUI 已停止当前采样。"
-          : cudaContextFailure
-            ? `${error instanceof Error ? error.message : String(error)} CUDA 上下文已失效，正在重启 ComfyUI。`
-          : error instanceof Error
-            ? error.message
-            : String(error),
-        performanceStats: taskPerformanceStats
-      });
-      if (!aborted && recoveryDecision.requiresRestart) {
-        appLogger.warn(
-          "queue",
-          "recovery-required",
-          "Task failure requires ComfyUI recovery",
-          {
-            taskId: task.id,
-            stalled,
-            memoryFailure,
-            cudaContextFailure,
-            recoveryKind: recoveryDecision.kind
-          }
-        );
-        const recovery = await restartLocalService(
-          "comfy",
-          comfyUiSettingsForQueueTask(task, failedState.settings)
-        );
-        appLogger.info(
-          "comfy",
-          recovery.ok ? "recovery-succeeded" : "recovery-failed",
-          recovery.message,
-          { taskId: task.id, recoveryOk: recovery.ok }
-        );
-        const originalError = error instanceof Error ? error.message : String(error);
-        if (!recovery.ok) {
-          const stopped = await store.update((state) => {
-            state.queueRunning = false;
-            const failedTask = state.queue.find((item) => item.id === task.id);
-            if (failedTask) {
-              failedTask.error = `${originalError} 自动恢复失败：${recovery.message}`;
-              failedTask.updatedAt = new Date().toISOString();
-            }
-          });
-          sendState(stopped);
-          appLogger.error("queue", "recovery-stopped-queue", "Queue stopped because ComfyUI recovery failed", {
-            taskId: task.id,
-            modelId: task.modelId,
-            recoveryKind: recoveryDecision.kind
-          });
-        } else {
-          const attentionFallback = recoveryDecision.kind === "cuda-context" &&
-            task.taskType !== "upscale" &&
-            isMiniMaxH3Model(task.modelId)
-            ? nextH3AttentionModeAfterCudaFailure(task.attentionMode)
-            : null;
-          let recoveredState = failedState;
-          if (attentionFallback) {
-            let affectedTaskCount = 0;
-            recoveredState = await store.update((state) => {
-              for (const queuedTask of state.queue) {
-                if (queuedTask.taskType === "upscale" || queuedTask.taskType === "image-generation" || !isMiniMaxH3Model(queuedTask.modelId)) continue;
-                const currentMode = queuedTask.attentionMode ?? "sage";
-                const shouldFallback = attentionFallback === "pytorch"
-                  ? currentMode !== "pytorch"
-                  : currentMode === "sage";
-                if (!shouldFallback) continue;
-                queuedTask.attentionMode = attentionFallback;
-                queuedTask.updatedAt = new Date().toISOString();
-                affectedTaskCount += 1;
-              }
-            });
-            sendState(recoveredState);
-            appLogger.warn(
-              "queue",
-              "h3-attention-fallback-applied",
-              "H3 Attention mode was downgraded after a deterministic CUDA kernel failure",
-              {
-                taskId: task.id,
-                modelId: task.modelId,
-                attentionFrom: task.attentionMode ?? "sage",
-                attentionTo: attentionFallback,
-                affectedTaskCount
-              }
-            );
-          }
-          const retryAttempt = task.automaticRetryAttempt ?? 0;
-          const retryLimit = recoveredState.settings.autoRetryCount;
-          const nextAttempt = nextAutomaticRetryAttempt({
-            enabled: recoveredState.settings.autoRetryFailedTasks,
-            recoverable: recoveryDecision.recoverable,
-            currentAttempt: retryAttempt,
-            retryLimit
-          });
-          if (nextAttempt !== null) {
-            const retryState = await store.update((state) => {
-              const failedTask = state.queue.find((item) => item.id === task.id);
-              if (!failedTask) return;
-              Object.assign(failedTask, {
-                status: "waiting" as const,
-                updatedAt: new Date().toISOString(),
-                comfyPromptId: undefined,
-                progress: 0,
-                stage: `自动重试 ${nextAttempt}/${retryLimit}${attentionFallback ? ` · Attention ${attentionFallback}` : ""}`,
-                error: `${originalError} ComfyUI 已恢复，准备自动重试 ${nextAttempt}/${retryLimit}。${attentionFallback ? ` H3 Attention 已切换为 ${attentionFallback}。` : ""}`,
-                automaticRetryAttempt: nextAttempt
-              });
-              state.queueRunning = true;
-            });
-            sendState(retryState);
-            appLogger.warn("queue", "automatic-retry-scheduled", "Recoverable task was returned to the queue after ComfyUI recovery", {
-              taskId: task.id,
-              taskType: task.taskType,
-              modelId: task.modelId,
-              recoveryKind: recoveryDecision.kind,
-              retryAttempt: nextAttempt,
-              retryLimit
-            });
-          } else {
-            await updateTask(task.id, {
-              error: `${originalError} ComfyUI 已恢复就绪。${
-                recoveredState.settings.autoRetryFailedTasks
-                  ? `自动重试已达到上限（${retryLimit} 次），已跳过此任务。`
-                  : "自动重试未开启，已跳过此任务。"
-              }`
-            });
-            appLogger.warn("queue", "automatic-retry-skipped", "Recovered task remains failed and the queue will continue", {
-              taskId: task.id,
-              taskType: task.taskType,
-              modelId: task.modelId,
-              recoveryKind: recoveryDecision.kind,
-              retryAttempt,
-              retryLimit,
-              retryEnabled: recoveredState.settings.autoRetryFailedTasks,
-              attentionFallback: attentionFallback ?? "none"
-            });
-          }
-        }
-      }
-    } finally {
-      const finalStage = taskStageStartedAt.get(task.id);
-      if (finalStage) {
-        appLogger.info("queue", "stage-duration", "Queue task final stage finished", {
-          taskId: task.id,
-          taskType: task.taskType,
-          modelId: task.modelId,
-          stage: finalStage.stage,
-          durationSeconds: Math.round((Date.now() - finalStage.startedAt) / 1000)
-        });
-        taskStageStartedAt.delete(task.id);
-      }
-      if (performanceLogTimer) clearInterval(performanceLogTimer);
-      vramWatchdog?.stop();
-      taskPerformanceMonitor?.stop();
-      activeController = null;
-    }
-  }
-  const next = await store.update((state) => {
-    state.queueRunning = false;
+  queueExecutor ??= createQueueExecutor({
+    store,
+    logger: appLogger,
+    worker: queueWorkerController,
+    sendState,
+    sendPreview: (payload) => mainWindow?.webContents.send("task:preview", payload),
+    updateTask,
+    ensureComfyUiReady,
+    resolveTaskOutputDirectory,
+    requireExistingImageOutput,
+    requireExistingVideoOutput,
+    releasePromptRuntime,
+    stabilizeH3RuntimeBetweenTasks,
+    settingsForTask: comfyUiSettingsForQueueTask,
+    errorMeta: errorLogMeta,
+    taskStageStartedAt
   });
-  sendState(next);
+  return queueExecutor();
 }
 async function loggedOperation<T extends { ok: boolean; message: string }>(
   scope: string,
@@ -3170,7 +2072,7 @@ function registerIpc(): void {
     const promptBackend = promptModelBackend(settings.promptModelId);
     const startedAt = Date.now();
     appLogger.info("prompt", "service-start-requested", "Prompt service start requested", { runtime });
-    if (store.get().queueRunning || activeController || queueWorker) {
+    if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
       return { ok: false, message: "当前有视频任务正在运行，暂不能启动提示词模型。" };
     }
     if (nativePromptWorker) {
@@ -3232,7 +2134,7 @@ function registerIpc(): void {
     });
     if (promptBackend === "h3-prompt-writer") {
       if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
-      if (store.get().queueRunning || activeController || queueWorker) {
+      if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
         throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
       }
       if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
@@ -3267,7 +2169,7 @@ function registerIpc(): void {
       throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
     }
     if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
-    if (store.get().queueRunning || activeController || queueWorker) {
+    if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
       throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
     }
     if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
@@ -3382,13 +2284,13 @@ function registerIpc(): void {
     async (_event, settings: Settings) => {
       appLogger.warn("service", "force-stop-requested", "ComfyUI force-stop requested");
       nativePromptController?.abort(new Error("ComfyUI 已被强制终止，提示词扩写已中止"));
-      const worker = queueWorker;
+      const worker = queueWorkerController.runningWorker;
       if (worker) {
         const stopped = await store.update((state) => {
           state.queueRunning = false;
         });
         sendState(stopped);
-        activeController?.abort(new Error("用户强制终止 ComfyUI"));
+        queueWorkerController.abort(new Error("用户强制终止 ComfyUI"));
         await interrupt(settings).catch(() => undefined);
       }
       const result = await forceStopComfyProcesses(settings);
@@ -3486,326 +2388,13 @@ function registerIpc(): void {
       })
     )
   );
-  ipcMain.handle("queue:enqueue", async (_event, draft: Draft) => {
-    draft.videoLoras = normalizeVideoLoras(draft.videoLoras, draft.modelId);
-    draft.steps = normalizeH3Steps(draft.steps, draft.modelId, draft.videoLoras);
-    if (draft.inputMode !== "image") {
-      throw new Error("视频续写必须使用独立的 extension 队列任务");
-    }
-    const isR2V = isMiniMaxH3R2vModel(draft.modelId);
-    if (!isR2V && !draft.startImagePath) throw new Error("请先选择首帧图片");
-    if (
-      isR2V &&
-      (!draft.h3ReferenceSlots.length ||
-        draft.h3ReferenceSlots.some((slot) => !slot.mediaPath))
-    ) {
-      throw new Error("R2V 的每个 Slot 都必须先添加图片或视频。");
-    }
-    if (!promptOf(draft)) throw new Error("提示词不能为空");
-    if (!draft.workflowPath) throw new Error("请先选择该模型的 ComfyUI API 工作流");
-    const safety = generationSafetyForTask(draft, store.get().settings.uiLocale);
-    if (!safety.safe) throw new Error(safety.message);
-    let workflow: unknown;
-    try {
-      workflow = JSON.parse(await fs.readFile(draft.workflowPath, "utf8"));
-    } catch (error) {
-      throw new Error(
-        `无法读取工作流 JSON：${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-    const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
-    if (!validation.valid) {
-      throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
-    }
-    if (draft.videoLoras.length) {
-      const loraIssues = videoLoraConfigurationIssues({
-        modelId: draft.modelId,
-        inputMode: draft.inputMode,
-        spectrumMode: draft.spectrumMode,
-        attentionMode: store.get().settings.h3AttentionMode,
-        videoLoras: draft.videoLoras
-      });
-      const blockingIssue = loraIssues.find((issue) => issue.severity === "error");
-      if (blockingIssue) throw new Error(blockingIssue.message);
-      loraIssues.filter((issue) => issue.severity === "warning").forEach((issue) => {
-        appLogger.warn("queue", "video-lora-compatibility-warning", issue.message, {
-          loraIds: issue.loraIds
-        });
-      });
-      const scan = await scanEnvironment(store.get().settings);
-      const missing = draft.videoLoras.find((lora) => {
-        const profile = scan.modelProfiles.find((candidate) => candidate.id === lora.id);
-        if (!profile?.available) return true;
-        const expected = `loras/${lora.filename}`.replaceAll("\\", "/").toLowerCase();
-        return !profile.components.some((component) =>
-          component.matches.some((match) => {
-            const normalized = match.replaceAll("\\", "/").toLowerCase();
-            return normalized === expected || normalized.endsWith(`/${expected}`);
-          })
-        );
-      });
-      if (missing) {
-        throw new Error(`${missing.name} 当前记录的文件 ${missing.filename} 未找到，请先在设置 → LoRA 中重新扫描或安装。`);
-      }
-    }
-    if (isH3TurboEnabled(draft)) {
-      if (!workflowSupportsH3TurboSampling(workflow)) {
-        throw new Error("LightX2V Turbo 需要 ER-SDE、Beta 调度器和 MiniMaxH3SigmaShift；请使用内置 Turbo 工作流或匹配这些要求的自定义工作流。");
-      }
-    }
-    if (
-      draft.endImagePath &&
-      !workflowSupportsEndImage(workflow)
-    ) {
-      throw new Error(
-        "当前工作流不支持尾帧。请选择包含 {{END_IMAGE}} 占位符的自定义 API 工作流，或移除尾帧。"
-      );
-    }
-    const videoInputImagePaths = (
-      isR2V
-        ? draft.h3ReferenceSlots
-          .filter((slot) => slot.mediaType === "image")
-          .map((slot) => slot.mediaPath)
-        : [draft.startImagePath, draft.endImagePath]
-    ).filter((candidate): candidate is string => Boolean(candidate.trim()));
-    const imageLibraryDirectory = await effectiveImageInputLibraryDirectory(store.get().settings);
-    const archiveOperationId = randomUUID().slice(0, 8);
-    appLogger.info("assets", "video-input-image-archive-started", "开始归档视频任务输入图片", {
-      operationId: archiveOperationId,
-      referenceCount: videoInputImagePaths.length
-    });
-    let preparedDraft = structuredClone(draft);
-    try {
-      const archivedPaths = await archiveImagePaths(videoInputImagePaths, imageLibraryDirectory);
-      const replacements = new Map(
-        videoInputImagePaths.map((sourcePath, index) => [sourcePath, archivedPaths[index]!])
-      );
-      preparedDraft.startImagePath = replacements.get(preparedDraft.startImagePath) ?? preparedDraft.startImagePath;
-      preparedDraft.endImagePath = replacements.get(preparedDraft.endImagePath) ?? preparedDraft.endImagePath;
-      preparedDraft.h3ReferenceSlots = preparedDraft.h3ReferenceSlots.map((slot) =>
-        slot.mediaType === "image"
-          ? { ...slot, mediaPath: replacements.get(slot.mediaPath) ?? slot.mediaPath }
-          : slot
-      );
-      appLogger.info("assets", "video-input-image-archive-completed", "视频任务输入图片已归档并校验", {
-        operationId: archiveOperationId,
-        referenceCount: videoInputImagePaths.length,
-        uniqueAssets: new Set(archivedPaths).size
-      });
-    } catch (error) {
-      appLogger.error("assets", "video-input-image-archive-failed", "视频任务输入图片归档失败，任务未加入队列", {
-        operationId: archiveOperationId,
-        error: safeLogErrorMessage(error)
-      });
-      throw error;
-    }
-    const next = await store.update((state) => {
-      state.queue.push(queueTaskFromDraft(preparedDraft, state));
-      state.draft = preparedDraft;
-    });
-    const task = next.queue.at(-1);
-    if (task && !isImageGenerationQueueTask(task)) {
-      appLogger.info("queue", "task-enqueued", "Generation task added to queue", {
-        taskId: task.id,
-        taskType: task.taskType,
-        modelId: task.modelId,
-        duration: task.duration,
-        fps: task.fps
-      });
-    }
-    sendState(next);
-    return next;
-  });
-  ipcMain.handle("queue:enqueue-image", async (_event, draft: ImageEditDraft) => {
-    const normalized = normalizeImageEditDraft(draft);
-    const adapter = imageModelAdapterFor(normalized.modelId);
-    if (!adapter) {
-      throw new Error(`当前没有 ${normalized.modelId} 的图片模型适配器。`);
-    }
-    if (!normalized.pictures.length) throw new Error("请先添加至少一张 Picture 作为基础图片。");
-    if (normalized.pictures.length > adapter.maxPictures) {
-      throw new Error(`当前 ${adapter.name} 工作流最多支持 ${adapter.maxPictures} 张 Picture。`);
-    }
-    const incompletePicture = normalized.pictures.find((picture) => !picture.absolutePath);
-    if (incompletePicture) {
-      throw new Error(`请先为 Slot ${incompletePicture.pictureNumber}（Picture ${incompletePicture.pictureNumber}）添加图片。`);
-    }
-    const prompt = normalized.promptVersions[normalized.activePromptVersion]?.text.trim() ?? "";
-    if (!prompt) throw new Error("图片处理提示词不能为空");
-    const diffusionModelFilename = await requireImageModelAssets(
-      store.get().settings,
-      normalized.modelId,
-      normalized.qualityProfile
-    );
-    const outputTarget = await resolveImageOutputTarget(store.get().settings);
-    const imageLibraryDirectory = await effectiveImageInputLibraryDirectory(store.get().settings);
-    const archiveOperationId = randomUUID().slice(0, 8);
-    appLogger.info("assets", "image-input-archive-started", "开始归档图片任务输入素材", {
-      operationId: archiveOperationId,
-      referenceCount: normalized.pictures.length
-    });
-    let archivedPictures: typeof normalized.pictures;
-    try {
-      archivedPictures = await archiveImageReferences(normalized.pictures, imageLibraryDirectory);
-      appLogger.info("assets", "image-input-archive-completed", "图片任务输入素材已归档并校验", {
-        operationId: archiveOperationId,
-        referenceCount: archivedPictures.length,
-        uniqueAssets: new Set(archivedPictures.map((picture) => picture.contentHash).filter(Boolean)).size
-      });
-    } catch (error) {
-      appLogger.error("assets", "image-input-archive-failed", "图片任务输入素材归档失败，任务未加入队列", {
-        operationId: archiveOperationId,
-        error: safeLogErrorMessage(error)
-      });
-      throw error;
-    }
-    let preparedDraft = normalizeImageEditDraft({
-      ...normalized,
-      pictures: archivedPictures.map((picture) => ({
-        ...picture,
-        ...readImageDimensions(picture.absolutePath)
-      })),
-      outputFormat: "png"
-    });
-    const lineage = await resolveImageProjectLineage(store.get(), preparedDraft);
-    preparedDraft = normalizeImageEditDraft({
-      ...preparedDraft,
-      projectId: lineage?.projectId,
-      parentVersionId: lineage?.parentVersionId
-    });
-    for (const picture of preparedDraft.pictures) {
-      const stat = await fs.stat(picture.absolutePath).catch(() => null);
-      if (!stat?.isFile()) {
-        throw new Error(`Picture ${picture.pictureNumber} 文件不存在：${picture.absolutePath}`);
-      }
-      const markedPath = picture.markup?.renderedPath.trim();
-      if (picture.markup?.objectCount && markedPath) {
-        const markedStat = await fs.stat(markedPath).catch(() => null);
-        if (!markedStat?.isFile()) {
-          throw new Error(`Picture ${picture.pictureNumber} 的标记预览不存在，请重新打开标记画布并保存。`);
-        }
-      }
-    }
-    const preparedPrompt = preparedDraft.promptVersions[preparedDraft.activePromptVersion]?.text.trim() ?? "";
-    const compiled = adapter.compilePrompt(preparedPrompt, preparedDraft.pictures);
-    if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
-    const current = store.get();
-    const task = imageTaskFromDraft(preparedDraft, diffusionModelFilename, outputTarget);
-    const next = await store.update((state) => {
-      state.queue.push(task);
-      state.imageDraft = preparedDraft;
-    });
-    appLogger.info("queue", "image-task-enqueued", "Image generation batch added to queue", {
-      taskId: task.id,
-      projectId: task.projectId,
-      modelId: task.modelId,
-      outputCount: task.outputCount,
-      seedMode: preparedDraft.seed == null ? "random-per-run" : "fixed"
-    });
-    sendState(next);
-    return next;
-  });
-  ipcMain.handle("queue:enqueue-extension", async (_event, draft: Draft) => {
-    draft.videoLoras = normalizeVideoLoras(draft.videoLoras, draft.modelId);
-    const extensionLoraIssue = videoLoraConfigurationIssues({
-      modelId: draft.modelId,
-      inputMode: draft.inputMode,
-      spectrumMode: draft.spectrumMode,
-      attentionMode: store.get().settings.h3AttentionMode,
-      videoLoras: draft.videoLoras
-    }).find((issue) => issue.severity === "error");
-    if (extensionLoraIssue) throw new Error(extensionLoraIssue.message);
-    if (draft.inputMode !== "video") {
-      throw new Error("只有视频输入模式可以创建 extension 队列任务");
-    }
-    if (!promptOf(draft)) throw new Error("提示词不能为空");
-    if (!draft.workflowPath) throw new Error("请先选择视频续写 API 工作流");
-    if (!(await fs.stat(draft.sourceVideoPath).catch(() => null))) {
-      throw new Error("源视频文件不存在，无法加入续写队列");
-    }
-    let workflow: unknown;
-    try {
-      workflow = JSON.parse(await fs.readFile(draft.workflowPath, "utf8"));
-    } catch (error) {
-      throw new Error(
-        `无法读取续写工作流 JSON：${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-    const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
-    if (!validation.valid) {
-      throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
-    }
-    const workflowSafetyErrors = isMiniMaxH3Fl2vaModel(draft.modelId)
-      ? workflowSupportsH3BoundaryExtension(workflow)
-        ? []
-        : ["H3 接续工作流缺少 INPUT_IMAGE、MiniMaxH3ImageToVideo 或视频输出节点"]
-      : isMiniMaxH3R2vModel(draft.modelId)
-        ? workflowSupportsH3MotionContextExtension(workflow)
-          ? []
-          : ["H3 Motion Context 工作流缺少 R2V、运动上下文、同步裁剪、latent 保存或视频输出节点"]
-      : extensionWorkflowSafetyErrors(workflow, store.get().settings.uiLocale);
-    if (workflowSafetyErrors.length) {
-      throw new Error(`续写工作流不符合原生续写低显存契约：${workflowSafetyErrors.join("；")}`);
-    }
-    const current = store.get();
-    const task = extensionTaskFromDraft(draft, current);
-    if (isMiniMaxH3R2vModel(task.modelId)) {
-      const outputDirectory = await resolveTaskOutputDirectory();
-      const relativePrefix = `h3_context/${task.id}/clip`;
-      task.h3ContextSavePrefix = relativePrefix;
-      task.h3ContextSavedPath = outputDirectory
-        ? path.join(outputDirectory, "h3_context", task.id, "clip_00001.safetensors")
-        : undefined;
-      task.h3ContextLatentPath =
-        draft.h3ContextLatentPath &&
-        Math.abs(draft.trimEndSeconds - draft.sourceVideoDuration) < 0.05 &&
-        await fs.stat(draft.h3ContextLatentPath).catch(() => null)
-          ? draft.h3ContextLatentPath
-          : undefined;
-    }
-    const safety = extensionSafetyForTask(task, current.settings.uiLocale);
-    if (!safety.safe) throw new Error(safety.message);
-    const next = await store.update((state) => {
-      state.queue.push(task);
-      state.draft = draft;
-    });
-    appLogger.info("queue", "task-enqueued", "Extension task added to queue", {
-      taskId: task.id,
-      taskType: task.taskType,
-      modelId: task.modelId,
-      duration: task.duration,
-      fps: task.fps
-    });
-    sendState(next);
-    return next;
-  });
-  ipcMain.handle("queue:enqueue-upscale", async (_event, request: UpscaleRequest) => {
-    const current = store.get();
-    const asset = current.history.find((item) => item.id === request.sourceAssetId);
-    const version = asset?.versions.find((item) => item.id === request.sourceVersionId);
-    if (!asset || !version) throw new Error("源作品或版本已不存在");
-    if (!request.sourceFilePath || !(await fs.stat(request.sourceFilePath).catch(() => null))) {
-      throw new Error("源视频文件不存在，无法加入提升队列");
-    }
-    const next = await store.update((state) => {
-      state.queue.push(upscaleTaskFromRequest(request, state));
-    });
-    const task = next.queue.at(-1);
-    if (task?.taskType === "upscale") {
-      appLogger.info("queue", "task-enqueued", "Upscale task added to queue", {
-        taskId: task.id,
-        taskType: task.taskType,
-        modelId: task.modelId,
-        sourceWidth: task.sourceWidth,
-        sourceHeight: task.sourceHeight,
-        targetWidth: task.targetWidth,
-        targetHeight: task.targetHeight,
-        duration: task.duration,
-        fps: task.fps
-      });
-    }
-    sendState(next);
-    return next;
+  registerQueueEnqueueIpc({
+    ipc: ipcMain,
+    store,
+    logger: appLogger,
+    sendState,
+    effectiveImageInputLibraryDirectory,
+    resolveTaskOutputDirectory
   });
   registerQueueMutationIpc({
     ipc: ipcMain,
@@ -3813,58 +2402,17 @@ function registerIpc(): void {
     logger: appLogger,
     sendState
   });
-  ipcMain.handle("queue:start", async () => {
-    if (nativePromptWorker) {
-      throw new Error("当前正在生成提示词，请等待扩写完成后再开始视频任务。 ");
-    }
-    const next = await store.update((state) => {
-      state.queueRunning = true;
-    });
-    appLogger.info("queue", "started", "Queue processing started", {
-      waitingTasks: next.queue.filter((task) => task.status === "waiting").length
-    });
-    sendState(next);
-    if (!queueWorker) {
-      queueWorker = executeQueue().finally(() => {
-        queueWorker = null;
-      });
-    }
-    return next;
-  });
-  ipcMain.handle("queue:pause", async () => {
-    const next = await store.update((state) => {
-      state.queueRunning = false;
-    });
-    appLogger.info("queue", "paused", "Queue processing paused");
-    sendState(next);
-    return next;
-  });
-  ipcMain.handle("queue:cancel", async (_event, taskId: string) => {
-    const task = store.get().queue.find((item) => item.id === taskId);
-    if (!task) return store.get();
-    if (task.status === "running") {
-      const settings = store.get().settings;
-      const serviceSettings = comfyUiSettingsForQueueTask(task, settings);
-      const worker = queueWorker;
-      const next = await store.update((state) => {
-        state.queueRunning = false;
-        const current = state.queue.find((item) => item.id === taskId);
-        if (current && current.status === "running") {
-          current.status = "cancelled";
-          current.stage = "任务已取消，正在后台清理 ComfyUI";
-          current.error = "任务已取消，正在后台清理 ComfyUI。";
-          current.updatedAt = new Date().toISOString();
-        }
-      });
-      sendState(next);
-      activeController?.abort(new Error("用户取消任务"));
-      void cleanupCancelledQueueTask(taskId, serviceSettings, worker);
-      return next;
-    }
-    return updateTask(taskId, {
-      status: "cancelled",
-      error: "任务在开始前被取消"
-    });
+  registerQueueControlIpc({
+    ipc: ipcMain,
+    store,
+    logger: appLogger,
+    worker: queueWorkerController,
+    sendState,
+    executeQueue,
+    nativePromptBusy: () => Boolean(nativePromptWorker),
+    settingsForTask: comfyUiSettingsForQueueTask,
+    cleanupCancelledTask: cleanupCancelledQueueTask,
+    updateTask
   });
   ipcMain.handle("history:delete", async (_event, assetId: string) => {
     const startedAt = Date.now();

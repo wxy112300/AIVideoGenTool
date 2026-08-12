@@ -8,6 +8,14 @@
 
 ## 未发布
 
+### 0.18.3 候选 — 2026-08-12
+
+- 完成 Electron 队列职责拆分：入队校验与输入素材归档迁入 `electron/queue-enqueue.ts`，四类任务继续保持原有校验顺序和不可变执行快照。
+- 图片批次与视频任务执行循环迁入 `electron/queue-executor.ts`；worker 的单实例运行、暂停、取消与 AbortController 生命周期由 `electron/queue-worker.ts` 统一管理。
+- ComfyUI 中断清理、CUDA/显存故障恢复、H3 Attention 降级和自动重试迁入 `electron/queue-recovery.ts`，保留原有安全取消、重启与重试上限策略。
+- 图片项目版本、视频生成/续写历史和超分版本的原子落盘迁入 `electron/queue-history.ts`；任务只有在输出文件验证成功后才从队列移除并写入历史。
+- `electron/main.ts` 减少约 1500 行队列实现，仅保留依赖装配和其他应用 IPC；新增历史原子落盘及 worker 单实例/取消生命周期测试。
+
 ### 0.18.2 候选 — 2026-08-12
 
 - 开始拆分 Electron `main.ts` 的队列职责：视频生成、图片批次、视频续写和超分请求的执行快照工厂迁入 `src/core/queue-task-factory.ts`，并支持注入时间、ID 与随机源进行确定性测试。
