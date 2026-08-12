@@ -31,7 +31,6 @@ import {
 } from "../../src/core/image-workflow.js";
 import {
   customNodeCatalog,
-  customNodeDefinition,
   modelCatalog,
   workflowDependencyCatalog,
   workflowDependencyDefinition
@@ -39,19 +38,20 @@ import {
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 import {
-  ltxAudioVaeCompatible,
-  videoHelperBatchCompatible
-} from "./dependency-compatibility.js";
-import {
   availableComfyNodeIds,
   readLatestComfyLog,
   scanCustomNodes
 } from "./dependency-scanner.js";
+import { installCustomNodePackage } from "./dependency-installer.js";
 
 export {
   ltxAudioVaeCompatible,
   videoHelperBatchCompatible
 } from "./dependency-compatibility.js";
+export {
+  patchLtxAudioVaeCompatibility,
+  patchVideoHelperBatchCompatibility
+} from "./dependency-node-adapters.js";
 
 const execFileAsync = promisify(execFile);
 const appLogger = getApplicationLogger();
@@ -1901,167 +1901,6 @@ export async function installLlamaServer(
   }
 }
 
-export function patchVideoHelperBatchCompatibility(
-  utilsSource: string,
-  nodesSource: string,
-  loadVideoSource: string
-): { utilsSource: string; nodesSource: string; loadVideoSource: string } {
-  let patchedUtils = utilsSource;
-  if (!patchedUtils.includes("if len(value) == 6")) {
-    patchedUtils = patchedUtils
-      .replace(
-        "    (_, _, prompt, extra_data, outputs_to_execute) = next(iter(currently_running.values()))",
-        "    value = next(iter(currently_running.values()))\n    if len(value) == 6:\n        (_, prompt_id, prompt, extra_data, outputs_to_execute, _) = value\n    else:\n        (_, prompt_id, prompt, extra_data, outputs_to_execute) = value"
-      )
-      .replace(
-        "    prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute))",
-        "    sensitive = value[5] if len(value) > 5 else {}\n    prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute, sensitive))"
-      )
-      .replace(
-        "    (run_number, _, prompt, _, _) = next(iter(prompt_queue.currently_running.values()))",
-        "    value = next(iter(prompt_queue.currently_running.values()))\n    if len(value) == 6:\n        (run_number, _, prompt, extra_data, outputs_to_execute, _) = value\n    else:\n        (run_number, _, prompt, extra_data, outputs_to_execute) = value"
-      );
-  }
-  let patchedNodes = nodesSource;
-  if (!patchedNodes.includes("batch_manager_states = {}")) {
-    patchedNodes = patchedNodes.replace(
-      /(^|\r?\n)class BatchManager:/,
-      "$1batch_manager_states = {}\n\nclass BatchManager:"
-    );
-  }
-  if (!patchedNodes.includes("frames_per_batch = int(frames_per_batch)")) {
-    patchedNodes = patchedNodes.replace(
-      /(    def update_batch\(self, frames_per_batch, prompt=None, unique_id=None\):\r?\n)(        if unique_id is not None and prompt is not None:)/,
-      "$1        frames_per_batch = int(frames_per_batch)\n$2"
-    );
-  }
-  patchedNodes = patchedNodes.replace(
-    /(        frames_per_batch = int\(frames_per_batch\)\r?\n)        self\.frames_per_batch = frames_per_batch\r?\n/,
-    "$1"
-  );
-  if (!patchedNodes.includes("batch_manager_states.get(self.unique_id) is self")) {
-    patchedNodes = patchedNodes.replace(
-      /(    def reset\(self\):\r?\n)(        self\.close_inputs\(\))/,
-      "$1        if self.unique_id is not None and batch_manager_states.get(self.unique_id) is self:\n            batch_manager_states.pop(self.unique_id, None)\n$2"
-    );
-  }
-  if (!patchedNodes.includes("batch_manager_states[unique_id] = self")) {
-    patchedNodes = patchedNodes.replace(
-      /(            self\.unique_id = unique_id\r?\n)(        else:\r?\n)/,
-      "$1            batch_manager_states[unique_id] = self\n$2            if unique_id not in batch_manager_states:\n                raise RuntimeError(\"Meta-Batch state was lost before the workflow completed\")\n            self = batch_manager_states[unique_id]\n            self.frames_per_batch = frames_per_batch\n"
-    );
-  }
-  if (!patchedNodes.includes("previous = batch_manager_states.pop(unique_id, None)")) {
-    patchedNodes = patchedNodes.replace(
-      /(        if requeue == 0:\r?\n)(            self\.reset\(\))/,
-      "$1            previous = batch_manager_states.pop(unique_id, None)\n            if previous is not None and previous is not self:\n                previous.reset()\n$2"
-    );
-  }
-  let patchedLoadVideo = loadVideoSource;
-  if (
-    !patchedLoadVideo.includes(
-      "meta_batch.frames_per_batch = int(meta_batch.frames_per_batch)"
-    )
-  ) {
-    patchedLoadVideo = patchedLoadVideo.replace(
-      /(    if meta_batch is not None:\r?\n)(        if 'frames' in format:)/,
-      "$1        meta_batch.frames_per_batch = int(meta_batch.frames_per_batch)\n$2"
-    );
-  }
-  patchedLoadVideo = patchedLoadVideo.replace(
-    "gen = itertools.islice(gen, meta_batch.frames_per_batch)",
-    "gen = itertools.islice(gen, int(meta_batch.frames_per_batch))"
-  );
-  if (!videoHelperBatchCompatible(patchedUtils, patchedNodes, patchedLoadVideo)) {
-    throw new Error(
-      "VideoHelperSuite 源码结构与兼容补丁不匹配，已停止安装以避免损坏节点。"
-    );
-  }
-  return {
-    utilsSource: patchedUtils,
-    nodesSource: patchedNodes,
-    loadVideoSource: patchedLoadVideo
-  };
-}
-
-export function patchLtxAudioVaeCompatibility(source: string): string {
-  if (!source.includes("audio_vae = AudioVAE(sd, metadata)")) return source;
-  const patched = source
-    .replace(
-      "from comfy.ldm.lightricks.vae.audio_vae import AudioVAE",
-      "from comfy.sd import VAE"
-    )
-    .replace(
-      "        audio_vae = AudioVAE(sd, metadata)",
-      [
-        "        sd_audio = comfy.utils.state_dict_prefix_replace(",
-        '            dict(sd), {"audio_vae.": "autoencoder.", "vocoder.": "vocoder."}, filter_keys=True',
-        "        )",
-        "        audio_vae = VAE(sd=sd_audio, metadata=metadata)",
-        "        audio_vae.throw_exception_if_invalid()"
-      ].join("\n")
-    );
-  if (!ltxAudioVaeCompatible(patched)) {
-    throw new Error(
-      "ComfyUI-LTXVideo 源码结构与 AudioVAE 兼容补丁不匹配，已停止修改以避免损坏节点。"
-    );
-  }
-  return patched;
-}
-
-async function prepareLtxVideo(
-  targetDirectory: string,
-  report: (message: string) => void
-): Promise<void> {
-  const loaderPath = path.join(targetDirectory, "low_vram_loaders.py");
-  const source = await fs.readFile(loaderPath, "utf8");
-  const patched = patchLtxAudioVaeCompatibility(source);
-  if (patched !== source) {
-    await fs.writeFile(loaderPath, patched, "utf8");
-    report(
-      "已应用 ComfyUI 0.22+ AudioVAE 加载兼容层（comfy.sd.VAE wrapper）"
-    );
-  } else {
-    report("AudioVAE 加载接口已兼容当前 ComfyUI");
-  }
-}
-
-async function prepareVideoHelperSuite(
-  targetDirectory: string,
-  report: (message: string) => void
-): Promise<void> {
-  const utilsPath = path.join(targetDirectory, "videohelpersuite", "utils.py");
-  const nodesPath = path.join(targetDirectory, "videohelpersuite", "nodes.py");
-  const loadVideoPath = path.join(
-    targetDirectory,
-    "videohelpersuite",
-    "load_video_nodes.py"
-  );
-  const [utilsSource, nodesSource, loadVideoSource] = await Promise.all([
-    fs.readFile(utilsPath, "utf8"),
-    fs.readFile(nodesPath, "utf8"),
-    fs.readFile(loadVideoPath, "utf8")
-  ]);
-  const patched = patchVideoHelperBatchCompatibility(
-    utilsSource,
-    nodesSource,
-    loadVideoSource
-  );
-  await Promise.all([
-    fs.writeFile(utilsPath, patched.utilsSource, "utf8"),
-    fs.writeFile(nodesPath, patched.nodesSource, "utf8"),
-    fs.writeFile(loadVideoPath, patched.loadVideoSource, "utf8")
-  ]);
-  await fs.rm(path.join(targetDirectory, ".git"), {
-    recursive: true,
-    force: true,
-    maxRetries: 5,
-    retryDelay: 200
-  });
-  report(
-    "已应用并锁定当前 ComfyUI 分批队列兼容层；后续更新由本应用备份替换"
-  );
-}
 
 export function shouldReportComfyDatabaseIssue(input: {
   logContent: string;
@@ -4045,188 +3884,17 @@ export async function installCustomNode(
   settings: Settings,
   onLog?: (message: string) => void
 ): Promise<{ ok: boolean; message: string; log?: string }> {
-  const definition = customNodeDefinition(nodeId);
-  if (!definition) return { ok: false, message: "未知的节点包，已拒绝安装。" };
-
-  const installLog: string[] = [];
-  const report = (message: string) => {
-    const normalized = message.trim();
-    if (!normalized) return;
-    installLog.push(normalized);
-    onLog?.(normalized);
-  };
-  try {
-    const commandEnvironment = downloadEnvironment(settings);
-    report(proxyLogLabel(settings));
-    report("正在定位所选 ComfyUI 的数据目录和 Python 环境……");
-    const comfyRoot = await findComfyRoot(settings);
-    if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
-    const customNodesDirectory = path.join(comfyRoot, "custom_nodes");
-    const targetDirectory = path.join(customNodesDirectory, definition.directoryName);
-    const git = await findExecutable("git.exe");
-    if (!git) throw new Error("缺少 Git，无法下载节点包。");
-    await fs.mkdir(customNodesDirectory, { recursive: true });
-    let videoHelperPrepared = false;
-
-    if (await exists(targetDirectory)) {
-      if (await exists(path.join(targetDirectory, ".git")) && definition.id !== "seedvr2") {
-        report(`更新 ${definition.repositoryUrl}`);
-        const gitOutput = await runLoggedProcess(git, ["-C", targetDirectory, "pull", "--ff-only"], {
-          timeoutMs: 300_000,
-          env: commandEnvironment,
-          onLog: report
-        });
-        if (!gitOutput) report("Git：已是最新版本");
-      } else {
-        const replacementDirectory = `${targetDirectory}.update-${crypto.randomUUID()}`;
-        const backupRoot = path.join(comfyRoot, "node-backups");
-        const backupDirectory = path.join(
-          backupRoot,
-          `${definition.directoryName}-${Date.now()}`
-        );
-        report(
-          definition.id === "seedvr2"
-            ? "SeedVR2 使用破坏性新版接口：下载干净上游副本并备份替换旧目录"
-            : "目录由 ComfyUI Manager 管理，下载上游副本后安全替换"
-        );
-        try {
-          const gitOutput = await runLoggedProcess(
-            git,
-            ["clone", "--depth", "1", definition.repositoryUrl, replacementDirectory],
-            {
-              timeoutMs: 600_000,
-              env: commandEnvironment,
-              onLog: report
-            }
-          );
-          if (!gitOutput) report("Git：克隆完成");
-          if (definition.id === "video-helper-suite") {
-            report("正在应用 Video Helper Suite 兼容补丁……");
-            await prepareVideoHelperSuite(replacementDirectory, report);
-            videoHelperPrepared = true;
-          }
-          await fs.mkdir(backupRoot, { recursive: true });
-          await renameWithRetry(targetDirectory, backupDirectory);
-          try {
-            try {
-              await renameWithRetry(replacementDirectory, targetDirectory);
-            } catch (error) {
-              if (!retryableRenameError(error)) throw error;
-              report(
-                "Windows 持续占用新目录，自动改用文件复制完成替换"
-              );
-              await fs.cp(replacementDirectory, targetDirectory, {
-                recursive: true,
-                force: false,
-                errorOnExist: true
-              });
-            }
-          } catch (error) {
-            await fs
-              .rm(targetDirectory, {
-                recursive: true,
-                force: true,
-                maxRetries: 5,
-                retryDelay: 200
-              })
-              .catch(() => undefined);
-            await renameWithRetry(backupDirectory, targetDirectory).catch(
-              () => undefined
-            );
-            throw error;
-          }
-          report(`旧目录已备份：${backupDirectory}`);
-        } finally {
-          await fs.rm(replacementDirectory, {
-            recursive: true,
-            force: true,
-            maxRetries: 5,
-            retryDelay: 200
-          });
-        }
-      }
-    } else {
-      report(`克隆 ${definition.repositoryUrl}`);
-      const gitOutput = await runLoggedProcess(
-        git,
-        ["clone", "--depth", "1", definition.repositoryUrl, targetDirectory],
-        {
-          timeoutMs: 600_000,
-          env: commandEnvironment,
-          onLog: report
-        }
-      );
-      if (!gitOutput) report("Git：克隆完成");
-    }
-
-    if (definition.id === "video-helper-suite" && !videoHelperPrepared) {
-      report("正在应用 Video Helper Suite 兼容补丁……");
-      await prepareVideoHelperSuite(targetDirectory, report);
-    }
-    if (definition.id === "ltx-video") {
-      report("正在检查 LTX Video 兼容层……");
-      await prepareLtxVideo(targetDirectory, report);
-    }
-
-    const requirements = path.join(targetDirectory, "requirements.txt");
-    if (await exists(requirements)) {
-      const python = await findComfyPython(settings, comfyRoot);
-      if (!python) throw new Error("节点已下载，但没有找到所选 ComfyUI 的 Python 环境。");
-      report(`安装 Python 依赖 ${requirements}`);
-      const pipOutput = await runLoggedProcess(
-        python,
-        ["-m", "pip", "install", "-r", requirements],
-        {
-          timeoutMs: 900_000,
-          env: commandEnvironment,
-          onLog: report
-        }
-      );
-      if (!pipOutput) report("pip：依赖已满足");
-    } else {
-      report("未发现 requirements.txt，无需安装额外 Python 依赖");
-    }
-    if (definition.id === "minimax-h3-prompt-writer") {
-      const python = await findComfyPython(settings, comfyRoot);
-      if (!python) throw new Error("Prompt Writer 已下载，但没有找到所选 ComfyUI 的 Python 环境。");
-      const ggufRequirements = path.join(targetDirectory, "requirements-gguf.txt");
-      if (!(await exists(ggufRequirements))) {
-        throw new Error("Prompt Writer 缺少 requirements-gguf.txt，无法安装本地 GGUF 后端。");
-      }
-      report("安装 ComfyUI 内置 GGUF 运行时（CUDA wheel，不启动独立 llama-server）");
-      const args = process.platform === "win32"
-        ? [
-            "-m", "pip", "install", "--only-binary=:all:",
-            "--extra-index-url", "https://abetlen.github.io/llama-cpp-python/whl/cu130",
-            "-r", ggufRequirements
-          ]
-        : ["-m", "pip", "install", "-r", ggufRequirements];
-      const ggufOutput = await runLoggedProcess(python, args, {
-        timeoutMs: 1_200_000,
-        env: commandEnvironment,
-        onLog: report
-      });
-      if (!ggufOutput) report("GGUF 运行依赖已满足");
-    }
-    return {
-      ok: true,
-      message: `${definition.name} 已安装或更新。请重启 ComfyUI 后复检。`,
-      log: installLog.join("\n\n")
-    };
-  } catch (error) {
-    const processError = error as Error & { stdout?: string; stderr?: string };
-    const details = [
-      processError.message,
-      processError.stdout,
-      processError.stderr
-    ].filter(Boolean).join("\n");
-    report(details);
-    return {
-      ok: false,
-      message: error instanceof Error ? error.message : String(error),
-      log: installLog.join("\n\n")
-    };
-  }
+  return installCustomNodePackage(nodeId, settings, {
+    downloadEnvironment,
+    proxyLogLabel,
+    findComfyRoot,
+    findExecutable,
+    findComfyPython,
+    exists,
+    retryableRenameError,
+    renameWithRetry,
+    runLoggedProcess
+  }, onLog);
 }
 
 export function tritonRequirementForTorch(torchVersion: string): string {
