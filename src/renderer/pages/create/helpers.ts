@@ -87,6 +87,17 @@ export const h3ReferenceRoleLabels: Record<H3ReferenceRole, string> = {
   other: "其它参考"
 };
 
+export const h3ReferenceRolePromptLabels: Record<H3ReferenceRole, string> = {
+  subject: "subject",
+  scene: "scene / environment",
+  style: "style / clothing",
+  motion: "motion / pose",
+  camera: "camera / composition",
+  voice: "voice association",
+  keyframe: "keyframe",
+  other: "other reference"
+};
+
 export const imageReferenceRoleLabels: Record<ImageReferenceRole, string> = {
   base: "基础画面",
   person: "人物",
@@ -95,6 +106,16 @@ export const imageReferenceRoleLabels: Record<ImageReferenceRole, string> = {
   style: "风格",
   background: "背景",
   auto: "自动"
+};
+
+export const imageReferenceRolePromptLabels: Record<ImageReferenceRole, string> = {
+  base: "base image",
+  person: "person",
+  object: "object",
+  pose: "pose",
+  style: "style",
+  background: "background",
+  auto: "automatic reference"
 };
 
 export function activePrompt(draft: Draft): PromptVersion {

@@ -7,6 +7,7 @@ import type {
   UpscaleQueueTask
 } from "../../../types";
 import type { RendererContext } from "../../contracts";
+import { uiKeys } from "../../../core/i18n-keys";
 import {
   imageEditPicturesForVersion,
   normalizeImageEditDraft
@@ -48,42 +49,43 @@ export interface HistoryActionsOptions {
 
 export function createHistoryActions(options: HistoryActionsOptions) {
   const { context } = options;
+  const t = context.t;
   const copyHistoryText = async (value: string, successMessage: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(value);
       context.notify(successMessage, { renderPage: false });
     } catch {
-      context.notify("复制失败，请检查系统剪贴板权限。", { renderPage: false });
+      context.notify(t(uiKeys.history.actions.copyFailed), { renderPage: false });
     }
   };
-  const copyHistoryFile = async (filename: string, successMessage = "视频文件已复制。"): Promise<void> => {
+  const copyHistoryFile = async (filename: string, successMessage = t(uiKeys.history.menu.videoFileCopied)): Promise<void> => {
     if (!filename) {
-      context.notify("当前记录没有可用的媒体文件。", { renderPage: false });
+      context.notify(t(uiKeys.history.actions.noMediaFile), { renderPage: false });
       return;
     }
     try {
       const result = await context.studio.copyFile(filename);
       context.notify(result.ok ? successMessage : result.message, { renderPage: false });
     } catch {
-      context.notify("复制媒体文件失败，请检查文件是否仍然存在。", { renderPage: false });
+      context.notify(t(uiKeys.history.actions.copyMediaFailed), { renderPage: false });
     }
   };
   const copyHistoryImage = async (filename: string): Promise<void> => {
     if (!filename) {
-      context.notify("当前记录没有可用的图片文件。", { renderPage: false });
+      context.notify(t(uiKeys.history.actions.noImageFile), { renderPage: false });
       return;
     }
     try {
       const dataUrl = await context.studio.readImage(filename);
       if (!dataUrl || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-        context.notify("当前系统不支持复制图片像素，请使用复制文件。", { renderPage: false });
+        context.notify(t(uiKeys.history.actions.imageClipboardUnsupported), { renderPage: false });
         return;
       }
       const blob = await fetch(dataUrl).then((response) => response.blob());
       await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
-      context.notify("图片像素已复制到剪贴板。", { renderPage: false });
+      context.notify(t(uiKeys.history.actions.imagePixelsCopied), { renderPage: false });
     } catch {
-      context.notify("复制图片像素失败，请检查系统剪贴板权限。", { renderPage: false });
+      context.notify(t(uiKeys.history.actions.copyImagePixelsFailed), { renderPage: false });
     }
   };
   const editHistoryAsset = async (assetId: string): Promise<void> => {
@@ -91,7 +93,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const asset = state?.history.find((item) => item.id === assetId);
     if (!state || !asset) return;
     if (isRetiredVideoModel(asset.modelId)) {
-      context.notify(`${modelName(asset.modelId)} 已从创建模型中移除；历史视频和模型名称仍会保留。`);
+      context.notify(t(uiKeys.history.actions.retiredModel, { model: modelName(asset.modelId) }));
       return;
     }
     const version = preferredVersion(asset);
@@ -126,7 +128,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
         ...state.draft.promptVersions,
         {
           id: crypto.randomUUID(),
-          label: "从历史调整",
+          label: t(uiKeys.history.actions.fromHistory),
           text: asset.prompt,
           createdAt: new Date().toISOString()
         }
@@ -139,7 +141,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
   const continueImageEdit = async (project: ImageHistoryProject, version: ImageAssetVersion): Promise<void> => {
     const pictures = imageEditPicturesForVersion(version);
     if (!pictures.length) {
-      context.notify("当前图片版本的本地文件不可用，无法继续编辑。", { renderPage: false });
+      context.notify(t(uiKeys.history.actions.imageUnavailable), { renderPage: false });
       return;
     }
     const state = context.getState();
@@ -162,7 +164,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       pictures,
       promptVersions: [{
         id: crypto.randomUUID(),
-        label: "从图片历史继续编辑",
+        label: t(uiKeys.history.actions.fromImageHistory),
         text: version.prompt,
         createdAt: new Date().toISOString()
       }],
@@ -177,7 +179,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
   const continueImageToVideo = async (project: ImageHistoryProject, version: ImageAssetVersion): Promise<void> => {
     const filename = version.file.absolutePath;
     if (!filename) {
-      context.notify("当前图片版本的本地文件不可用。", { renderPage: false });
+      context.notify(t(uiKeys.history.actions.imageUnavailable), { renderPage: false });
       return;
     }
     const state = context.getState();
@@ -207,7 +209,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
     const videoIndex = version ? versionVideoIndex(version) : -1;
     const filename = videoIndex >= 0 ? version?.files[videoIndex]?.absolutePath : undefined;
     if (!asset || !version || !filename) {
-      context.notify("当前视频版本的本地文件不可用。", { renderPage: false });
+      context.notify(t(uiKeys.history.actions.videoUnavailable), { renderPage: false });
       return;
     }
     try {
@@ -221,7 +223,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       }, false);
       options.navigateToCreationMode("video-extension");
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : "无法继续创作", { renderPage: false });
+      context.notify(error instanceof Error ? error.message : t(uiKeys.history.actions.continueFailed), { renderPage: false });
     }
   };
   const openUpscaleDialog = () => {

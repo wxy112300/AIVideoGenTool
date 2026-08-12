@@ -1,5 +1,6 @@
 import type { RendererContext } from "../../contracts";
 import { icon, renderIcons } from "../../shared/icons";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface AppLogContextMenu {
   open(clientX: number, clientY: number): void;
@@ -26,8 +27,8 @@ export function createAppLogContextMenu(
     const nextMenu = document.createElement("section");
     nextMenu.className = "history-context-menu app-log-context-menu";
     nextMenu.setAttribute("role", "menu");
-    nextMenu.setAttribute("aria-label", "运行日志快捷操作");
-    nextMenu.innerHTML = `<button role="menuitem" data-app-log-action="copy" ${selectedText.trim() ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>复制</strong><small>复制选中的日志文本</small></span></button><button role="menuitem" data-app-log-action="select-all"><span class="context-icon">${icon("list")}</span><span><strong>全选</strong><small>选择当前日志内容</small></span></button><div class="history-context-separator" role="separator"></div><button class="danger" role="menuitem" data-app-log-action="clear"><span class="context-icon">${icon("trash-2")}</span><span><strong>清屏</strong><small>只清空当前视口，继续接收新日志</small></span></button>`;
+    nextMenu.setAttribute("aria-label", context.t(uiKeys.settings.logMenu.ariaLabel));
+    nextMenu.innerHTML = `<button role="menuitem" data-app-log-action="copy" ${selectedText.trim() ? "" : "disabled"}><span class="context-icon">${icon("copy")}</span><span><strong>${context.t(uiKeys.settings.logMenu.copy)}</strong><small>${context.t(uiKeys.settings.logMenu.copyDescription)}</small></span></button><button role="menuitem" data-app-log-action="select-all"><span class="context-icon">${icon("list")}</span><span><strong>${context.t(uiKeys.settings.logMenu.selectAll)}</strong><small>${context.t(uiKeys.settings.logMenu.selectAllDescription)}</small></span></button><div class="history-context-separator" role="separator"></div><button class="danger" role="menuitem" data-app-log-action="clear"><span class="context-icon">${icon("trash-2")}</span><span><strong>${context.t(uiKeys.settings.logMenu.clear)}</strong><small>${context.t(uiKeys.settings.logMenu.clearDescription)}</small></span></button>`;
     nextMenu.style.left = `${clientX}px`;
     nextMenu.style.top = `${clientY}px`;
     document.body.append(nextMenu);
@@ -49,9 +50,9 @@ export function createAppLogContextMenu(
         try {
           await navigator.clipboard.writeText(selectedText);
           context.reportUserAction("copy-app-log-selection", { length: selectedText.length });
-          context.notify("日志片段已复制。", { renderPage: false });
+          context.notify(context.t(uiKeys.settings.actions.logCopied), { renderPage: false });
         } catch {
-          context.notify("复制日志失败，请检查系统剪贴板权限。", { renderPage: false });
+          context.notify(context.t(uiKeys.settings.actions.logCopyFailed), { renderPage: false });
         }
       } else if (action === "select-all") {
         const terminal = document.querySelector<HTMLPreElement>("#app-log-terminal");

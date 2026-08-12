@@ -4,6 +4,8 @@ import type {
   ImageAssetVersion,
   ImageHistoryProject
 } from "../../../types";
+import { createTranslator, type Translate } from "../../../core/i18n";
+import { uiKeys } from "../../../core/i18n-keys";
 import { createHistoryCoverCacheKey } from "../../../core/history-cover";
 import { imageModelCapabilityFor } from "../../../core/image-workflow";
 import { imageProjectCoverVersion } from "../../../core/image-project";
@@ -19,20 +21,21 @@ export function versionShortEdge(version: AssetVersion): number {
   return Math.max(0, Math.round(Math.min(width || height, height || width)));
 }
 
-export function resolutionLabel(value: number): string {
+export function resolutionLabel(value: number, t: Translate = createTranslator("zh-CN").t): string {
   const rounded = Math.max(0, Math.round(value));
-  return rounded === 2160 ? "4K" : rounded > 0 ? `${rounded}p` : "未知";
+  return rounded === 2160 ? "4K" : rounded > 0 ? `${rounded}p` : t(uiKeys.history.media.unknownResolution);
 }
 
 export function historyResolutionLabel(
   asset: HistoryAsset,
-  version: AssetVersion
+  version: AssetVersion,
+  t: Translate = createTranslator("zh-CN").t
 ): string {
   const requestedResolution = version.kind === "original" &&
     [360, 480, 540, 720, 768, 1080, 1440, 2160].includes(asset.resolution)
     ? asset.resolution
     : versionShortEdge(version);
-  return resolutionLabel(requestedResolution);
+  return resolutionLabel(requestedResolution, t);
 }
 
 export function preferredVersion(asset: HistoryAsset): AssetVersion {
@@ -167,7 +170,10 @@ export function historyRenderSeconds(version: AssetVersion): number | null {
   return Math.max(0, (createdAt - startedAt) / 1000);
 }
 
-export function imageHistoryGenerationSummary(version: ImageAssetVersion) {
+export function imageHistoryGenerationSummary(
+  version: ImageAssetVersion,
+  t: Translate = createTranslator("zh-CN").t
+) {
   const imageCapability = imageModelCapabilityFor(version.modelId);
   const imageQuality = imageCapability.qualityProfiles.find(
     (profile) => profile.id === version.qualityProfile
@@ -175,10 +181,10 @@ export function imageHistoryGenerationSummary(version: ImageAssetVersion) {
   return {
     steps: version.steps ?? imageQuality?.steps,
     cfg: version.cfg ?? imageQuality?.cfg,
-    qualityLabel: imageQuality?.label ?? version.qualityProfile ?? "旧记录未保存",
+    qualityLabel: imageQuality?.label ?? version.qualityProfile ?? t(uiKeys.history.detail.qualityNotSaved),
     loraLabel: imageQuality?.lightning
-      ? "Qwen Image Edit Lightning LoRA · 由质量档自动加载"
-      : "未使用图片 LoRA"
+      ? t(uiKeys.history.detail.imageLoraAutoLoaded)
+      : t(uiKeys.history.detail.noImageLora)
   };
 }
 

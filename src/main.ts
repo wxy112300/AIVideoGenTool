@@ -88,9 +88,11 @@ import {
   h3ReferenceRoleLabels,
   h3PromptModeForDraft,
   imageFileIsSupported,
+  h3ReferenceRolePromptLabels,
   imagePromptPresetDescriptions,
   imagePromptPresetLabels,
   imageReferenceRoleLabels,
+  imageReferenceRolePromptLabels,
   loadImagePreview,
   orderVideoProfiles,
   resizePromptInput,
@@ -202,6 +204,8 @@ import {
 } from "./core/upscale";
 import { checkH3Prompt } from "./core/h3-prompt-check";
 import { structurallyEqual } from "./core/structural-equal";
+import { createTranslator, loadUiLocale, type TranslationParams } from "./core/i18n";
+import { uiKeys } from "./core/i18n-keys";
 import {
   BUILTIN_VIDEO_LORAS,
   H3_TURBO_LORA_ID,
@@ -271,6 +275,14 @@ let promptRuntimeLoaded = false;
 
 let h3PromptBuilder = createDefaultH3PromptBuilder();
 
+function uiText(
+  key: string,
+  params?: TranslationParams,
+  fallback?: string
+): string {
+  return createTranslator(state.settings.uiLocale).t(key, params, fallback);
+}
+
 window.addEventListener("dragover", (event) => {
   if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
 });
@@ -293,7 +305,7 @@ function updateH3PromptCheck(
     durationSeconds: state.draft.duration
   });
   element.className = `h3-prompt-check ${result.valid ? "valid" : "warning"}`;
-  element.innerHTML = `<div class="h3-prompt-check-heading"><strong>H3 提示词检查</strong><span>${escapeHtml(result.summary)}</span></div>
+  element.innerHTML = `<div class="h3-prompt-check-heading"><strong>${uiText(uiKeys.runtime.h3PromptCheck)}</strong><span>${escapeHtml(result.summary)}</span></div>
     ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}`;
 }
 
@@ -381,6 +393,7 @@ function directoryMigrationDialog(): string {
     request: ui.pendingDirectoryMigration,
     progress: ui.historyMigrationProgress,
     busy: ui.directoryMigrationBusy,
+    t: rendererApp.context.t,
     icon,
     escapeHtml
   });
@@ -398,7 +411,7 @@ async function chooseDirectoryMigration(mode: SettingsSaveMode | "cancel"): Prom
     ui.historyMigrationProgress = null;
     render();
     restoreModalFocus();
-    showMessage("已取消目录更改，继续使用当前目录。");
+    showMessage(uiText(uiKeys.runtime.directoryCancelled));
     return;
   }
   ui.directoryMigrationBusy = true;
@@ -414,8 +427,8 @@ async function chooseDirectoryMigration(mode: SettingsSaveMode | "cancel"): Prom
     restoreModalFocus();
     if (mode === "migrate-video-history") {
       showMessage(warningCount
-        ? `历史视频已迁移，但有 ${warningCount} 个旧文件清理警告。`
-        : "历史视频迁移完成。");
+        ? uiText(uiKeys.runtime.migrationCompletedWarnings, { count: warningCount })
+        : uiText(uiKeys.runtime.migrationCompleted));
     }
   } catch (error) {
     ui.directoryMigrationBusy = false;
@@ -450,7 +463,8 @@ function imageAssetLibraryDialogHtml(): string {
     progress: ui.imageAssetLibraryProgress,
     icon,
     escapeHtml,
-    formatAssetBytes
+    formatAssetBytes,
+    t: rendererApp.context.t
   });
 }
 
@@ -490,8 +504,8 @@ function bindImageAssetLibraryDialog(): void {
     render();
     try {
       const result = await window.studio.organizeImageAssetLibrary();
-      ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "organize", formatAssetBytes) };
-      showMessage(`素材库整理完成：归档 ${result.archivedFiles} 个外部素材、迁移 ${result.reorganizedFiles} 个旧目录文件、更新 ${result.updatedReferences} 处引用；原文件未删除。`);
+      ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "organize", formatAssetBytes, rendererApp.context.t) };
+      showMessage(uiText(uiKeys.runtime.assetOrganized, { archived: result.archivedFiles, reorganized: result.reorganizedFiles, references: result.updatedReferences }));
     } catch (error) {
       ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -511,8 +525,8 @@ function bindImageAssetLibraryDialog(): void {
     render();
     try {
       const result = await window.studio.cleanupImageAssetLibrary(paths);
-      ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "cleanup", formatAssetBytes) };
-      showMessage(`已清理 ${result.cleanedFiles} 个孤立素材，释放 ${formatAssetBytes(result.cleanedBytes)}。`);
+      ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "cleanup", formatAssetBytes, rendererApp.context.t) };
+      showMessage(uiText(uiKeys.runtime.assetCleaned, { files: result.cleanedFiles, bytes: formatAssetBytes(result.cleanedBytes) }));
     } catch (error) {
       ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: error instanceof Error ? error.message : String(error), confirmCleanup: false };
     }
@@ -532,11 +546,12 @@ function upscaleDialogHtml(): string {
     escapeHtml,
     formatBytes,
     formatVideoDuration,
-    formatUpscaleEstimateRange,
+    formatUpscaleEstimateRange: (minSeconds, maxSeconds) => formatUpscaleEstimateRange(minSeconds, maxSeconds, rendererApp.context.t),
     createUpscaleFilename,
     estimateUpscaleResources,
     upscaleDimensions,
-    versionShortEdge
+    versionShortEdge,
+    t: rendererApp.context.t
   });
 }
 
@@ -550,27 +565,29 @@ function promptRuntimeControlIcon(): string {
 
 function promptRuntimeControlTitle(settings = state.settings): string {
   return promptStarting
-    ? "正在启动提示词模型"
+    ? uiText(uiKeys.runtime.promptStarting)
     : promptEnhancing
-    ? "提示词模型正在运行"
+    ? uiText(uiKeys.runtime.promptRunning)
     : promptReleasing
-      ? "正在释放提示词模型"
+      ? uiText(uiKeys.runtime.promptReleasing)
       : promptRuntimeLoaded
-      ? "释放 ComfyUI 提示词模型并回收显存"
-      : promptModelStatus(settings, environmentScan).detail;
+      ? uiText(uiKeys.runtime.releasePrompt)
+      : promptModelStatus(settings, environmentScan, uiText).detail;
 }
 
 const createPageOptions: CreatePageOptions = {
+  t: (key, params, fallback) => createTranslator(state.settings.uiLocale).t(key, params, fallback),
   icon,
   escapeHtml,
   h3ReferenceRoleLabels,
   imageReferenceRoleLabels,
-  videoLoraInfoButton,
-  videoLoraPurposeLabel
+  videoLoraInfoButton: (lora) => videoLoraInfoButton(lora, uiText),
+  videoLoraPurposeLabel: (purpose) => videoLoraPurposeLabel(purpose, uiText)
 };
 
 function createViewModelDependencies(): CreateViewModelDependencies {
   return {
+    t: uiText,
     state,
     environmentScan,
     performanceMetrics,
@@ -606,9 +623,10 @@ function createPage(): string {
 
 function queuePage(): string {
   return renderQueuePage(state, {
+    t: rendererApp.context.t,
     performanceMetrics,
     queueRemainingSeconds: (tasks) => calculateQueueRemainingSeconds(tasks, state.history),
-    queueEstimateText,
+    queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
     performanceCard,
     renderTaskCard: queueTaskCard,
     icon
@@ -617,6 +635,7 @@ function queuePage(): string {
 
 function queueTaskCard(task: QueueTask, queuePosition: number): string {
   return renderQueueTaskCard(task, queuePosition, {
+    t: rendererApp.context.t,
     taskPreviews,
     queueRunning: state.queueRunning,
     queueActionBusy,
@@ -624,10 +643,10 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
     escapeHtml,
     modelName,
     frameRateSummary,
-    queueStageElapsedText,
+    queueStageElapsedText: (queueTask) => queueStageElapsedText(queueTask, rendererApp.context.t),
     queueTaskRemainingSeconds: (queueTask) => calculateQueueTaskRemainingSeconds(queueTask, state.history),
-    queueEstimateText,
-    elapsedText
+    queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
+    elapsedText: (startedAt) => elapsedText(startedAt, rendererApp.context.t)
   });
 }
 
@@ -653,7 +672,7 @@ function draftFromQueueTask(task: QueueTask): Draft | null {
     sourceVersionId: extension ? task.sourceVersionId : undefined,
     promptVersions: [{
       id: crypto.randomUUID(),
-      label: "从队列调整",
+      label: uiText(uiKeys.runtime.fromQueue),
       text: task.prompt,
       createdAt: now
     }],
@@ -686,7 +705,7 @@ async function editQueueTask(taskId: string): Promise<void> {
       setRendererState(await window.studio.removeTask(taskId));
       queueActionBusy = null;
       navigateToCreationMode("image-edit");
-      showMessage("已带回图片创作页，可调整参数后重新加入队列。");
+      showMessage(uiText(uiKeys.runtime.queueImageReturned));
       return;
     }
     const draft = draftFromQueueTask(task);
@@ -695,10 +714,10 @@ async function editQueueTask(taskId: string): Promise<void> {
     setRendererState(await window.studio.removeTask(taskId));
     queueActionBusy = null;
     navigateToCreationMode(draft.inputMode === "video" ? "video-extension" : "image-to-video");
-    showMessage("已带回创建页，可调整参数后重新加入队列。");
+    showMessage(uiText(uiKeys.runtime.queueReturned));
   } catch (error) {
     queueActionBusy = null;
-    showMessage(error instanceof Error ? error.message : "无法编辑该队列任务");
+    showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.cannotEditQueue));
   }
 }
 
@@ -713,16 +732,17 @@ function createHistoryPageViewModel(): HistoryPageViewModel {
 }
 
 const historyPageOptions: HistoryPageOptions = {
+  t: (key, params, fallback) => createTranslator(state.settings.uiLocale).t(key, params, fallback),
   icon,
   escapeHtml,
   formatBytes,
-  videoLoraPurposeLabel,
+  videoLoraPurposeLabel: (purpose) => videoLoraPurposeLabel(purpose, uiText),
   h3ReferenceRoleLabel: (role) => h3ReferenceRoleLabels[role],
   imageReferenceRoleLabel: (role) => imageReferenceRoleLabels[role],
   modelName,
   formatFullHistoryTime,
   formatVideoDuration,
-  formatElapsedDuration,
+  formatElapsedDuration: (seconds) => formatElapsedDuration(seconds, uiText),
   historyAssetsByNewest,
   imageProjectsByNewest,
   preferredVersion,
@@ -731,8 +751,8 @@ const historyPageOptions: HistoryPageOptions = {
   historyCoverCacheKey,
   historyCoverSeed,
   historyInitialCoverTime,
-  historyResolutionLabel,
-  historyRenderDuration,
+  historyResolutionLabel: (asset, version) => historyResolutionLabel(asset, version, uiText),
+  historyRenderDuration: (version) => historyRenderDuration(version, uiText),
   versionVideoIndex,
   versionShortEdge,
   preferredImageVersion,
@@ -741,7 +761,7 @@ const historyPageOptions: HistoryPageOptions = {
   imageHistoryThumbnailCacheKey,
   imageProjectCoverVersion,
   isRetiredVideoModel,
-  imageHistoryGenerationSummary
+  imageHistoryGenerationSummary: (version) => imageHistoryGenerationSummary(version, uiText)
 };
 
 function imageHistoryPage(): string {
@@ -825,7 +845,7 @@ function syncSettingsDirtyUi(): void {
   if (setSettingsDirty) void setSettingsDirty(dirty).catch(() => undefined);
   const status = document.querySelector<HTMLElement>(".settings-heading-actions .save-state");
   status?.classList.toggle("dirty", dirty);
-  if (status) status.textContent = dirty ? "未保存更改" : "已保存";
+  if (status) status.textContent = dirty ? uiText(uiKeys.runtime.unsavedChanges) : uiText(uiKeys.runtime.saved);
   document.querySelector<HTMLButtonElement>("#discard-settings")?.toggleAttribute("disabled", !dirty);
   document.querySelector<HTMLButtonElement>("#save-settings")?.toggleAttribute("disabled", !dirty);
 }
@@ -869,6 +889,7 @@ function settingsPage(): string {
       promptRuntimeControlTitle
     } satisfies SettingsViewModelDependencies),
     {
+      t: rendererApp.context.t,
       defaultH3PromptPresets: createDefaultH3PromptPresets(),
       defaultImagePromptPresets: createDefaultImagePromptPresets(),
       h3PromptPresetDescriptions,
@@ -883,7 +904,7 @@ function settingsPage(): string {
       isGemmaPromptModel,
       videoLoraInfoButton: (profileId) => {
         const lora = BUILTIN_VIDEO_LORAS.find((item) => item.id === profileId);
-        return lora ? videoLoraInfoButton(lora) : "";
+        return lora ? videoLoraInfoButton(lora, uiText) : "";
       },
       isImageWorkflowReady,
       isImageModelSelectable,
@@ -921,6 +942,7 @@ function initializeRenderCoordinator(): void {
   getPage: () => page,
   getState: () => state,
   getUiState: () => ui,
+  t: rendererApp.context.t,
   renderPages: {
     create: createPage,
     queue: queuePage,
@@ -947,6 +969,7 @@ function initializeRenderCoordinator(): void {
     request: ui.pendingConfirmation,
     confirmationBusy: ui.confirmationBusy,
     imageHistoryIds: new Set(state.imageHistory.map((item) => item.id)),
+    t: rendererApp.context.t,
     icon,
     escapeHtml
   }),
@@ -955,6 +978,7 @@ function initializeRenderCoordinator(): void {
   renderWindowCloseDialog: () => renderWindowCloseDialog({
     request: ui.pendingWindowCloseRequest,
     responseBusy: ui.windowCloseResponseBusy,
+    t: rendererApp.context.t,
     icon,
     escapeHtml
   }),
@@ -1002,6 +1026,7 @@ const appLogContextMenu = createAppLogContextMenu(rendererApp.context, clearAppL
 initializeRenderCoordinator();
 const queueLiveStatus = createQueueLiveStatus({
   studio: window.studio,
+  t: rendererApp.context.t,
   getState: () => state,
   getPage: () => page,
   setPerformanceMetrics: (metrics) => {
@@ -1159,7 +1184,7 @@ function requestImageVersionDeletion(projectId: string, versionId: string): void
     kind: "delete-image-version",
     projectId,
     versionId,
-    title: `${project.title} · 版本 ${version.versionNumber}`
+    title: uiText(uiKeys.runtime.historyVersionTitle, { title: project.title, version: version.versionNumber })
   };
   ui.confirmationBusy = false;
   render();
@@ -1451,7 +1476,7 @@ function bindWindowCloseDialog(): void {
       }
     } catch (error) {
       ui.windowCloseResponseBusy = false;
-      showMessage(error instanceof Error ? error.message : "无法处理退出请求");
+      showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.exitRequestFailed));
     }
   };
   const cancel = () => void respond("cancel");
@@ -1532,7 +1557,7 @@ function scheduleImageDraftSave(): void {
         setRendererState({ ...savedState, imageDraft: draftToSave });
       }
     } catch (error) {
-      showMessage(error instanceof Error ? error.message : "图片草稿保存失败", false);
+      showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.imageDraftSaveFailed), false);
     }
   }, 350);
 }
@@ -1619,7 +1644,7 @@ async function editImagePictureMarkup(pictureId: string): Promise<void> {
         ? window.studio.readImageMarkup(picture.markup.documentPath)
         : Promise.resolve(null)
     ]);
-    if (!sourceDataUrl) throw new Error("无法读取原始图片，请确认文件仍然存在。");
+    if (!sourceDataUrl) throw new Error(uiText(uiKeys.runtime.readOriginalImageFailed));
     const result = await openImageMarkupEditor({
       pictureNumber: picture.pictureNumber,
       filename: picture.absolutePath,
@@ -1645,9 +1670,9 @@ async function editImagePictureMarkup(pictureId: string): Promise<void> {
     });
     render();
     void loadImageEditPreviews();
-    showMessage(markup ? `已保存 ${markup.objectCount} 处图片标记` : "图片标记已清除", true);
+    showMessage(markup ? uiText(uiKeys.runtime.markupSaved, { count: markup.objectCount }) : uiText(uiKeys.runtime.markupCleared), true);
   } catch (error) {
-    showMessage(error instanceof Error ? error.message : "图片标记保存失败", false);
+    showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.markupSaveFailed), false);
   }
 }
 
@@ -1655,7 +1680,7 @@ function addImageSlot(): void {
   const pictures = state.imageDraft.pictures;
   const capability = imageModelCapabilityFor(state.imageDraft.modelId);
   if (pictures.length >= capability.maxPictures) {
-    showMessage(`当前 ${capability.name} 最多支持 ${capability.maxPictures} 个 Slot`);
+    showMessage(uiText(uiKeys.runtime.maxPictureSlots, { name: capability.name, count: capability.maxPictures }));
     return;
   }
   const pictureNumber = nextImagePictureNumber(state.imageDraft);
@@ -1693,7 +1718,7 @@ function addImagePicture(path: string, replacePictureId?: string): void {
   }
   const capability = imageModelCapabilityFor(state.imageDraft.modelId);
   if (pictures.length >= capability.maxPictures) {
-    showMessage(`当前 ${capability.name} 最多支持 ${capability.maxPictures} 张 Picture`);
+    showMessage(uiText(uiKeys.runtime.maxPictureReferences, { name: capability.name, count: capability.maxPictures }));
     return;
   }
   const pictureNumber = nextImagePictureNumber(state.imageDraft);
@@ -1776,7 +1801,7 @@ function setEnqueueBusyUi(busy: boolean): void {
     renderIcons(button);
   }
   const label = button.querySelector<HTMLElement>("[data-enqueue-label]");
-  if (label) label.textContent = busy ? "加入中…" : "加入队列";
+  if (label) label.textContent = busy ? uiText(uiKeys.runtime.enqueueing) : uiText(uiKeys.runtime.enqueue);
 }
 
 function syncVideoEnqueueUi(): void {
@@ -1785,7 +1810,7 @@ function syncVideoEnqueueUi(): void {
   const reason = buildVideoCreatePageViewModel(createViewModelDependencies()).enqueueBlockReason;
   button.dataset.enqueueBlockReason = reason;
   button.disabled = Boolean(reason) || ui.enqueueBusy;
-  button.title = reason || button.dataset.enqueueReadyTitle || "加入队列";
+  button.title = reason || button.dataset.enqueueReadyTitle || uiText(uiKeys.runtime.enqueue);
   const feedback = document.querySelector<HTMLElement>("[data-enqueue-feedback]");
   if (feedback) {
     feedback.hidden = !reason;
@@ -1802,11 +1827,11 @@ function syncImageEditEnqueueUi(): void {
   const imageProfile = environmentScan?.modelProfiles.find(
     (profile) => profile.id === draft.modelId
   );
-  const reason = imageEditEnqueueBlockReason(draft, imageProfile);
+  const reason = imageEditEnqueueBlockReason(draft, imageProfile, uiText);
   const button = document.querySelector<HTMLButtonElement>("#enqueue-image-edit");
   if (button) {
     button.disabled = Boolean(reason) || ui.enqueueBusy;
-    button.title = reason || "加入图片编辑队列";
+    button.title = reason || uiText(uiKeys.runtime.imageEnqueue);
     button.dataset.enqueueBlockReason = reason;
   }
   const summary = document.querySelector<HTMLElement>(".image-edit-composer .interpolation-summary");
@@ -1814,7 +1839,7 @@ function syncImageEditEnqueueUi(): void {
   if (summary && summaryTitle) {
     const count = Math.min(10, Math.max(1, draft.outputCount));
     summary.classList.toggle("unsafe", Boolean(reason));
-    summaryTitle.textContent = reason || `一个任务 · ${count} 个${draft.seed == null ? "随机" : "相同"} Seed 顺序生成`;
+    summaryTitle.textContent = reason || uiText(uiKeys.create.imageEdit.summary, { count, seedMode: draft.seed == null ? uiText(uiKeys.runtime.random) : uiText(uiKeys.runtime.same) });
   }
 }
 
@@ -1844,6 +1869,7 @@ function bindCreate(): void {
       editImagePictureMarkup,
       imageFileIsSupported,
       imageReferenceRoleLabel: (role) => imageReferenceRoleLabels[role],
+      imageReferenceRolePromptLabel: (role) => imageReferenceRolePromptLabels[role],
       resizePromptInput,
       updateImagePromptWordCounter,
       syncEnqueueUi: syncImageEditEnqueueUi,
@@ -1868,6 +1894,7 @@ function bindCreate(): void {
     },
     createPrompt: {
       h3ReferenceRoleLabels,
+      h3ReferenceRolePromptLabels,
       getPromptEnhanceMode: () => promptEnhanceMode,
       setPromptEnhanceMode: (mode) => {
         promptEnhanceMode = mode;
@@ -2069,6 +2096,7 @@ async function saveSettingsFromUi(
     previousSettings.promptLlamaServerPath !== nextSettings.promptLlamaServerPath;
   const proxyChanged = previousSettings.proxyEnabled !== nextSettings.proxyEnabled ||
     previousSettings.proxyUrl !== nextSettings.proxyUrl;
+  await loadUiLocale(nextSettings.uiLocale);
   setRendererState(await window.studio.saveSettings(nextSettings, mode));
   settingsDraft = null;
   if (imageModelChanged && state.imageDraft.modelId === previousSettings.defaultImageModel) {
@@ -2107,10 +2135,10 @@ async function saveSettingsFromUi(
     await runEnvironmentScan(state.settings);
   }
   showMessage(proxyChanged
-    ? "设置已保存。代理已用于后续安装；请重启 ComfyUI，让 SeedVR2 等节点的运行时下载继承新代理。"
+    ? uiText(uiKeys.runtime.settingsProxySaved)
     : mode === "migrate-video-history"
-      ? "设置已保存，历史视频迁移完成。"
-      : "设置已保存，将对下一项尚未开始的任务生效。");
+      ? uiText(uiKeys.runtime.settingsMigrationSaved)
+      : uiText(uiKeys.runtime.settingsNextTaskSaved));
 }
 
 async function runEnvironmentScan(settings: Settings): Promise<void> {
@@ -2122,7 +2150,7 @@ async function runEnvironmentScan(settings: Settings): Promise<void> {
     environmentScan = await window.studio.scanEnvironment(settings);
     enableSpectrumByDefaultIfAvailable();
   } catch (error) {
-    environmentScanError = `环境扫描失败：${error instanceof Error ? error.message : String(error)}`;
+    environmentScanError = uiText(uiKeys.runtime.environmentScanFailed, { error: error instanceof Error ? error.message : String(error) });
     showMessage(environmentScanError);
   } finally {
     environmentScanning = false;
@@ -2260,6 +2288,7 @@ function bindSettings(): void {
       togglePromptModel: togglePromptModelFromUi,
       saveSettingsFromUi,
       saveSettingsDirect: async (settings) => {
+        await loadUiLocale(settings.uiLocale);
         setRendererState(await window.studio.saveSettings(settings));
       },
       requestDirectoryMigration: (previousSettings, nextSettings, oldDirectory, newDirectory) => {
@@ -2296,6 +2325,7 @@ function bindSettings(): void {
 
 registerRendererEvents({
   studio: window.studio,
+  t: rendererApp.context.t,
   getState: () => state,
   setState: setRendererState,
   getPage: () => page,

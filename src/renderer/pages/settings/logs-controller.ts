@@ -1,4 +1,5 @@
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface SettingsLogsControllerOptions {
   loadAppLogs(): void;
@@ -31,12 +32,12 @@ export function mountSettingsLogsController(
 
   root.querySelector("#open-app-log-directory")?.addEventListener("click", (event) => {
     event.stopImmediatePropagation();
-    void openLogDirectory("logs", "open-log-directory", "日志目录无法打开。");
+    void openLogDirectory("logs", "open-log-directory", context.t(uiKeys.settings.actions.logDirectoryFailed));
   }, { signal });
 
   root.querySelector("#open-app-crash-directory")?.addEventListener("click", (event) => {
     event.stopImmediatePropagation();
-    void openLogDirectory("crashDumps", "open-crash-directory", "崩溃转储目录无法打开。");
+    void openLogDirectory("crashDumps", "open-crash-directory", context.t(uiKeys.settings.actions.crashDumpDirectoryFailed));
   }, { signal });
 
   const terminal = root.querySelector<HTMLPreElement>("#app-log-terminal");

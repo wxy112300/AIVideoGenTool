@@ -8,6 +8,8 @@ import type {
   Settings
 } from "../../../types";
 import type { SettingsTab } from "../../contracts";
+import type { Translate } from "../../../core/i18n";
+import { uiKeys } from "../../../core/i18n-keys";
 import {
   renderSettingsComfyCompatibilityPanel,
   renderSettingsEnvironmentIssuesPanel,
@@ -68,6 +70,7 @@ export interface SettingsPageViewModel {
 }
 
 export interface SettingsPageOptions {
+  t: Translate;
   defaultH3PromptPresets: Record<H3PromptPreset, string>;
   defaultImagePromptPresets: Record<ImagePromptPreset, string>;
   h3PromptPresetDescriptions: Record<H3PromptPreset, string>;
@@ -93,12 +96,14 @@ export function renderSettingsPage(
   options: SettingsPageOptions
 ): string {
   const settings = viewModel.settings;
+  const t = options.t;
   const environmentScan = viewModel.environmentScan;
   const escape = (value: string | number | null | undefined) => options.escapeHtml(value == null ? "" : String(value));
   const icon = (name: string, className?: string) => options.icon(name, className);
   const sharedFragmentOptions = {
     icon: options.icon,
-    escapeHtml: options.escapeHtml
+    escapeHtml: options.escapeHtml,
+    t
   };
   const environmentOverview = renderSettingsEnvironmentOverview(
     {
@@ -178,13 +183,13 @@ export function renderSettingsPage(
     : gpu?.ok
       ? gpu.detail
       : environmentScan
-        ? "未检测到 NVIDIA GPU"
-        : "等待扫描真实显卡与显存";
+        ? t(uiKeys.settings.system.gpuNotDetected)
+        : t(uiKeys.settings.system.gpuScanWaiting);
   const gpuBadge = gpuDevices.length
     ? gpuDevices.length === 1
       ? `${gpuDevices[0]!.name} · ${options.formatBytes(gpuDevices[0]!.vramTotalBytes)}`
-      : `${gpuDevices.length} 张 GPU`
-    : "GPU 待检测";
+      : t(uiKeys.settings.system.gpuCount, { count: gpuDevices.length })
+    : t(uiKeys.settings.system.gpuWaiting);
   const reserveVramBytes = Math.max(
     0,
     (Number.isFinite(settings.vramReserveGb)
@@ -192,16 +197,18 @@ export function renderSettingsPage(
       : 1)
   ) * 1024 ** 3;
   const gpuBudgetSummary = gpuDevices.length
-    ? gpuDevices.map((device) =>
-        `${options.formatBytes(device.vramTotalBytes)} 总显存 - ${options.formatBytes(reserveVramBytes)} 余量 = ${options.formatBytes(Math.max(0, device.vramTotalBytes - reserveVramBytes))} 工作预算`
-      ).join("；")
-    : "扫描完成后将按总显存扣除安全余量计算工作预算";
+    ? gpuDevices.map((device) => t(uiKeys.settings.system.gpuBudgetSummary, {
+        total: options.formatBytes(device.vramTotalBytes),
+        reserve: options.formatBytes(reserveVramBytes),
+        budget: options.formatBytes(Math.max(0, device.vramTotalBytes - reserveVramBytes))
+      })).join("；")
+    : t(uiKeys.settings.system.gpuBudgetWaiting);
   const gpuCards = gpuDevices.length
     ? `<div class="gpu-device-list">${gpuDevices.map((device) => `
         <article class="gpu-device-card">
-          <span class="runtime-label">GPU ${device.index}</span>
+          <span class="runtime-label">${t(uiKeys.settings.system.gpuDevice, { index: device.index })}</span>
           <strong class="runtime-value">${escape(device.name)}</strong>
-          <code class="runtime-detail">${options.formatBytes(device.vramTotalBytes)} 总显存 · ${options.formatBytes(Math.max(0, device.vramTotalBytes - reserveVramBytes))} 工作预算 · 驱动 ${escape(device.driverVersion || "未知")}</code>
+          <code class="runtime-detail">${options.formatBytes(device.vramTotalBytes)} ${t(uiKeys.settings.system.totalVram)} · ${options.formatBytes(Math.max(0, device.vramTotalBytes - reserveVramBytes))} ${t(uiKeys.settings.system.workBudget)} · ${t(uiKeys.settings.system.driver)} ${escape(device.driverVersion || t(uiKeys.settings.compatibility.versionUnknown))}</code>
         </article>`).join("")}</div>`
     : `<div class="scan-result">${escape(gpuSummary)}</div>`;
   const comfyInstallations = environmentScan?.comfyInstallations ?? [];
@@ -232,7 +239,7 @@ export function renderSettingsPage(
     : "";
   const videoOutputDirectoryValue = settings.outputDirectory || autoVideoOutputDirectory;
   const imageOutputDirectoryPlaceholder = autoImageOutputDirectory ||
-    "自动：当前 ComfyUI\\output\\Images";
+    t(uiKeys.settings.system.autoDirectoryPlaceholder, { folder: "Images" });
   const customNodeInstallBlocked = Boolean(
     viewModel.customNodeInstalling || viewModel.queueRunning || viewModel.hasRunningQueueTask
   );
@@ -240,27 +247,32 @@ export function renderSettingsPage(
   const systemPanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>本机环境</h2><span class="muted">必需组件、可选工具和本地服务状态</span></div></div>
+        <div class="section-heading"><div><h2>${t(uiKeys.settings.localeTitle)}</h2><span class="muted">${t(uiKeys.settings.localeDescription)}</span></div></div>
+        <label>${t(uiKeys.settings.localeLabel)}<select id="ui-locale"><option value="zh-CN" ${settings.uiLocale === "zh-CN" ? "selected" : ""}>${t(uiKeys.settings.localeChinese)}</option><option value="en-US" ${settings.uiLocale === "en-US" ? "selected" : ""}>${t(uiKeys.settings.localeEnglish)}</option></select></label>
+        <p class="muted proxy-hint">${t(uiKeys.settings.localePending)}</p>
+      </section>
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>${t(uiKeys.settings.system.environmentTitle)}</h2><span class="muted">${t(uiKeys.settings.system.environmentDescription)}</span></div></div>
         ${environmentOverview}
       </section>
       ${comfyCompatibilityPanel}
       ${environmentIssuesPanel}
       <section class="panel settings-section">
         <div class="section-heading">
-          <div><h2>ComfyUI 安装实例</h2><span class="muted">选择一键启动、更新和离线版本检测使用的安装；不会自动改写你的选择</span></div>
-          ${comfyInstallations.length > 1 ? `<span class="model-availability missing">发现 ${comfyInstallations.length} 个安装</span>` : `<span class="model-badge">${comfyInstallations.length ? "已发现" : "未发现"}</span>`}
+          <div><h2>${t(uiKeys.settings.system.installationTitle)}</h2><span class="muted">${t(uiKeys.settings.system.installationDescription)}</span></div>
+          ${comfyInstallations.length > 1 ? `<span class="model-availability missing">${t(uiKeys.settings.system.installationCount, { count: comfyInstallations.length })}</span>` : `<span class="model-badge">${t(comfyInstallations.length ? uiKeys.settings.system.found : uiKeys.settings.system.notFound)}</span>`}
         </div>
-        <label>当前安装入口
-          <div class="input-action"><input id="comfy-install-directory" value="${escape(effectiveComfyInstallDirectory)}" placeholder="留空时自动选择扫描结果"><button class="secondary button-with-icon" id="pick-comfy-install-directory">${icon("folder-open")}选择目录</button></div>
+        <label>${t(uiKeys.settings.system.currentInstallEntry)}
+          <div class="input-action"><input id="comfy-install-directory" value="${escape(effectiveComfyInstallDirectory)}" placeholder="${t(uiKeys.settings.system.directoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-comfy-install-directory">${icon("folder-open")}${t(uiKeys.settings.system.chooseDirectory)}</button></div>
         </label>
-        <div class="comfy-directory-map" aria-label="当前 ComfyUI 目录结构">
+        <div class="comfy-directory-map" aria-label="${t(uiKeys.settings.system.directoryStructureLabel)}">
           <div class="comfy-directory-row">
-            <span class="comfy-directory-label">核心目录</span>
-            <div><code title="${escape(effectiveComfyCoreDirectory)}">${escape(effectiveComfyCoreDirectory || "等待扫描")}</code><small>包含 main.py 和核心版本文件，用于启动与更新</small></div>
+            <span class="comfy-directory-label">${t(uiKeys.settings.system.coreDirectory)}</span>
+            <div><code title="${escape(effectiveComfyCoreDirectory)}">${escape(effectiveComfyCoreDirectory || t(uiKeys.settings.system.waitingScan))}</code><small>${t(uiKeys.settings.system.coreDirectoryDescription)}</small></div>
           </div>
           <div class="comfy-directory-row">
-            <span class="comfy-directory-label">数据 / 节点目录</span>
-            <div><code title="${escape(effectiveComfyDataDirectory)}">${escape(effectiveComfyDataDirectory || "等待扫描")}</code><small>包含 models、custom_nodes、input、output 和 user</small></div>
+            <span class="comfy-directory-label">${t(uiKeys.settings.system.dataNodeDirectory)}</span>
+            <div><code title="${escape(effectiveComfyDataDirectory)}">${escape(effectiveComfyDataDirectory || t(uiKeys.settings.system.waitingScan))}</code><small>${t(uiKeys.settings.system.dataNodeDirectoryDescription)}</small></div>
           </div>
         </div>
         ${comfyInstallations.length ? `<div class="comfy-installation-list">
@@ -268,65 +280,69 @@ export function renderSettingsPage(
             const active = settings.comfyInstallDirectory
               ? installation.selected || installation.directory.toLowerCase() === settings.comfyInstallDirectory.toLowerCase()
               : installation === comfyInstallations[0];
-            const typeLabel = installation.type === "desktop" ? "Desktop" : installation.type === "portable" ? "便携版" : "源码版";
+            const typeLabel = installation.type === "desktop"
+              ? t(uiKeys.settings.system.desktop)
+              : installation.type === "portable"
+                ? t(uiKeys.settings.system.portable)
+                : t(uiKeys.settings.system.source);
             const versionParts = [
-              installation.desktopVersion ? `Desktop v${installation.desktopVersion}` : "",
-              installation.version ? `核心 v${installation.version}` : ""
+              installation.desktopVersion ? t(uiKeys.settings.system.desktopVersion, { version: installation.desktopVersion }) : "",
+              installation.version ? t(uiKeys.settings.system.coreVersion, { version: installation.version }) : ""
             ].filter(Boolean);
-            const version = versionParts.join(" · ") || "版本元数据未读取到";
+            const version = versionParts.join(" · ") || t(uiKeys.settings.system.versionMetadataMissing);
             return `<article class="comfy-installation ${active ? "active" : ""}">
-              <div><div class="model-title"><strong>${escape(typeLabel)}</strong><span class="model-badge">${escape(version)}</span></div><div class="comfy-installation-entry"><span>安装入口</span><code title="${escape(installation.directory)}">${escape(installation.directory)}</code></div>${installation.revision ? `<span class="muted">提交 ${escape(installation.revision)}</span>` : ""}</div>
-              <button class="secondary button-with-icon" data-select-comfy-install="${escape(installation.directory)}" ${active ? "disabled" : ""}>${icon(active ? "check" : "play")}${active ? "当前使用" : "使用此版本"}</button>
+              <div><div class="model-title"><strong>${escape(typeLabel)}</strong><span class="model-badge">${escape(version)}</span></div><div class="comfy-installation-entry"><span>${t(uiKeys.settings.system.installEntry)}</span><code title="${escape(installation.directory)}">${escape(installation.directory)}</code></div>${installation.revision ? `<span class="muted">${escape(t(uiKeys.settings.system.revision, { value: installation.revision }))}</span>` : ""}</div>
+              <button class="secondary button-with-icon" data-select-comfy-install="${escape(installation.directory)}" ${active ? "disabled" : ""}>${icon(active ? "check" : "play")}${active ? t(uiKeys.settings.system.currentUse) : t(uiKeys.settings.system.useVersion)}</button>
             </article>`;
           }).join("")}
-        </div>` : `<p class="muted proxy-hint">没有在常见位置找到安装。可手动选择包含 ComfyUI.exe、Comfy Desktop.exe 或 main.py 的目录。</p>`}
+        </div>` : `<p class="muted proxy-hint">${t(uiKeys.settings.system.noInstallFoundDescription)}</p>`}
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>ComfyUI 连接</h2><span class="muted">连接运行中的 ComfyUI API</span></div><div class="connection-actions"><button class="secondary button-with-icon" data-test="comfy" ${viewModel.serviceForceStopping ? "disabled" : ""}>${icon("zap")}测试连接</button><button class="primary destructive button-with-icon" id="force-stop-comfy" ${viewModel.serviceForceStopping || viewModel.serviceBusy ? "disabled" : ""}>${icon(viewModel.serviceForceStopping ? "refresh-cw" : "ban")}${viewModel.serviceForceStopping ? "终止中…" : "强制终止所有进程"}</button></div></div>
-        <label>服务地址<input id="comfy-url" value="${escape(settings.comfyUrl)}" placeholder="http://127.0.0.1:8188"></label>
-        <p class="muted proxy-hint">默认使用 <code>http://127.0.0.1:8188</code>。一键启动与重启会直接让 ComfyUI 监听此地址。</p>
-        <p class="muted proxy-hint danger-hint">强制终止会关闭所有 ComfyUI Desktop/后端实例，不会自动重启；适用于模型无法卸载或显存未释放的情况。</p>
-        <div id="connection-result" class="connection-result muted">尚未单独测试连接</div>
+        <div class="section-heading"><div><h2>${t(uiKeys.settings.system.connectionTitle)}</h2><span class="muted">${t(uiKeys.settings.system.connectionDescription)}</span></div><div class="connection-actions"><button class="secondary button-with-icon" data-test="comfy" ${viewModel.serviceForceStopping ? "disabled" : ""}>${icon("zap")}${t(uiKeys.settings.system.testConnection)}</button><button class="primary destructive button-with-icon" id="force-stop-comfy" ${viewModel.serviceForceStopping || viewModel.serviceBusy ? "disabled" : ""}>${icon(viewModel.serviceForceStopping ? "refresh-cw" : "ban")}${t(viewModel.serviceForceStopping ? uiKeys.settings.system.forceStopping : uiKeys.settings.system.forceStop)}</button></div></div>
+        <label>${t(uiKeys.settings.system.serviceAddress)}<input id="comfy-url" value="${escape(settings.comfyUrl)}" placeholder="http://127.0.0.1:8188"></label>
+        <p class="muted proxy-hint">${t(uiKeys.settings.system.connectionDefaultHint)}</p>
+        <p class="muted proxy-hint danger-hint">${t(uiKeys.settings.system.forceStopHint)}</p>
+        <div id="connection-result" class="connection-result muted">${t(uiKeys.settings.system.connectionNotTested)}</div>
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>文件路径</h2><span class="muted">先确认生成结果保存位置，再管理 ComfyUI 使用的素材与模型</span></div></div>
+        <div class="section-heading"><div><h2>${t(uiKeys.settings.system.filePathsTitle)}</h2><span class="muted">${t(uiKeys.settings.system.filePathsDescription)}</span></div></div>
         <div class="path-settings-group primary-paths">
-          <div class="path-settings-caption"><strong>输出位置</strong><span>视频和图片生成结果分别保存</span></div>
+          <div class="path-settings-caption"><strong>${t(uiKeys.settings.system.outputLocation)}</strong><span>${t(uiKeys.settings.system.outputDescription)}</span></div>
           <div class="settings-grid two">
-            <label>视频输出目录<div class="input-action"><input id="output-directory" data-auto-directory="${escape(autoVideoOutputDirectory)}" value="${escape(videoOutputDirectoryValue)}" placeholder="自动：当前 ComfyUI\\output\\Videos"><button class="secondary button-with-icon" id="pick-output-directory">${icon("folder-open")}选择</button></div></label>
-            <label>图片输出目录<div class="input-action"><input id="image-output-directory" data-auto-directory="${escape(autoImageOutputDirectory)}" value="${escape(settings.imageOutputDirectory || autoImageOutputDirectory)}" placeholder="${escape(imageOutputDirectoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-image-output-directory">${icon("folder-open")}选择</button></div></label>
+            <label>${t(uiKeys.settings.system.videoOutputDirectory)}<div class="input-action"><input id="output-directory" data-auto-directory="${escape(autoVideoOutputDirectory)}" value="${escape(videoOutputDirectoryValue)}" placeholder="${t(uiKeys.settings.system.autoDirectoryPlaceholder, { folder: "Videos" })}"><button class="secondary button-with-icon" id="pick-output-directory">${icon("folder-open")}${t(uiKeys.settings.system.chooseDirectory)}</button></div></label>
+            <label>${t(uiKeys.settings.system.imageOutputDirectory)}<div class="input-action"><input id="image-output-directory" data-auto-directory="${escape(autoImageOutputDirectory)}" value="${escape(settings.imageOutputDirectory || autoImageOutputDirectory)}" placeholder="${escape(imageOutputDirectoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-image-output-directory">${icon("folder-open")}${t(uiKeys.settings.system.chooseDirectory)}</button></div></label>
           </div>
         </div>
         <div class="path-settings-group resource-paths">
-          <div class="path-settings-caption"><strong>ComfyUI 资源</strong><span>输入素材和本地模型所在位置</span></div>
+          <div class="path-settings-caption"><strong>${t(uiKeys.settings.system.inputResources)}</strong><span>${t(uiKeys.settings.system.inputResourcesDescription)}</span></div>
           <div class="settings-grid two">
-            <label>输入素材库<div class="input-action"><input id="image-input-library-directory" value="${escape(settings.imageInputLibraryDirectory || autoImageInputLibraryDirectory)}" placeholder="等待识别当前 ComfyUI 数据目录"><button class="secondary button-with-icon" id="pick-image-input-library-directory">${icon("folder-open")}选择</button></div></label>
-            <label>模型目录<div class="input-action"><input id="model-directory" value="${escape(effectiveModelDirectory)}" placeholder="扫描或选择 models 目录"><button class="secondary button-with-icon" id="pick-model-directory">${icon("folder-open")}选择</button></div></label>
+            <label>${t(uiKeys.settings.system.inputLibrary)}<div class="input-action"><input id="image-input-library-directory" value="${escape(settings.imageInputLibraryDirectory || autoImageInputLibraryDirectory)}" placeholder="${t(uiKeys.settings.system.inputLibraryPlaceholder)}"><button class="secondary button-with-icon" id="pick-image-input-library-directory">${icon("folder-open")}${t(uiKeys.settings.system.chooseDirectory)}</button></div></label>
+            <label>${t(uiKeys.settings.system.modelDirectory)}<div class="input-action"><input id="model-directory" value="${escape(effectiveModelDirectory)}" placeholder="${t(uiKeys.settings.system.modelDirectoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-model-directory">${icon("folder-open")}${t(uiKeys.settings.system.chooseDirectory)}</button></div></label>
           </div>
         </div>
-        <div class="asset-library-settings-row"><div><strong>素材库维护</strong><span class="muted">归档旧历史引用，并检查未被使用的输入素材。</span></div><button class="secondary button-with-icon" id="open-image-asset-library">${icon("package-open")}整理素材库</button></div>
+        <div class="asset-library-settings-row"><div><strong>${t(uiKeys.settings.system.assetLibraryMaintenance)}</strong><span class="muted">${t(uiKeys.settings.system.assetLibraryDescription)}</span></div><button class="secondary button-with-icon" id="open-image-asset-library">${icon("package-open")}${t(uiKeys.settings.system.organizeAssetLibrary)}</button></div>
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>下载代理</h2><span class="muted">用于节点、Python 依赖、工作流及节点运行时模型下载；不会影响 ComfyUI 本地连接。</span></div><span class="model-badge">${settings.proxyEnabled ? "已开启" : "已关闭"}</span></div>
+        <div class="section-heading"><div><h2>${t(uiKeys.settings.system.proxyTitle)}</h2><span class="muted">${t(uiKeys.settings.system.proxyDescription)}</span></div><span class="model-badge">${t(settings.proxyEnabled ? uiKeys.settings.system.enabled : uiKeys.settings.system.disabled)}</span></div>
         <div class="settings-grid two">
-          <label class="ios-switch-field"><span class="policy-copy"><strong>启用下载代理</strong><small>Git、pip、工作流和 SeedVR2 等节点下载共用此地址</small></span><input id="proxy-enabled" type="checkbox" ${settings.proxyEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
-          <label>代理地址<input id="proxy-url" value="${escape(settings.proxyUrl)}" placeholder="http://127.0.0.1:7890"></label>
+          <label class="ios-switch-field"><span class="policy-copy"><strong>${t(uiKeys.settings.system.enableProxy)}</strong><small>${t(uiKeys.settings.system.proxyResourceDescription)}</small></span><input id="proxy-enabled" type="checkbox" ${settings.proxyEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+          <label>${t(uiKeys.settings.system.proxyAddress)}<input id="proxy-url" value="${escape(settings.proxyUrl)}" placeholder="http://127.0.0.1:7890"></label>
         </div>
-        <p class="muted proxy-hint">默认关闭。可填写 <code>127.0.0.1:7890</code> 或完整代理 URL。节点安装立即使用；ComfyUI 运行时下载需要保存后重启服务才能继承新代理。</p>
+        <p class="muted proxy-hint">${t(uiKeys.settings.system.proxyDefaultHint)}</p>
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>GPU 运行策略</h2><span class="muted">${escape(gpuSummary)}</span></div><span class="model-badge">${escape(gpuBadge)}</span></div>
+        <div class="section-heading"><div><h2>${t(uiKeys.settings.system.gpuPolicyTitle)}</h2><span class="muted">${escape(gpuSummary)}</span></div><span class="model-badge">${escape(gpuBadge)}</span></div>
         <div class="gpu-hardware-block">
-          <div class="gpu-hardware-heading"><div><strong>已识别硬件</strong><span>来自 nvidia-smi 的实时检测结果</span></div><span class="gpu-budget-label">${escape(gpuBudgetSummary)}</span></div>
+          <div class="gpu-hardware-heading"><div><strong>${t(uiKeys.settings.system.recognizedHardware)}</strong><span>${t(uiKeys.settings.system.gpuDetectionDescription)}</span></div><span class="gpu-budget-label">${escape(gpuBudgetSummary)}</span></div>
           ${gpuCards}
         </div>
         <div class="runtime-policy-grid">
-          <label class="policy-select-field"><span>显存安全余量</span><select id="vram-reserve"><option value="0.5" ${settings.vramReserveGb === 0.5 ? "selected" : ""}>0.5 GB · 激进</option><option value="0.75" ${settings.vramReserveGb === 0.75 ? "selected" : ""}>0.75 GB · 平衡</option><option value="1" ${settings.vramReserveGb === 1 ? "selected" : ""}>1 GB · 保守</option></select></label>
-          <label class="ios-switch-field"><span class="policy-copy"><strong>安全取消</strong><small>先请求中断，再后台释放显存；清理失败时才重启 ComfyUI</small></span><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
-          <label class="ios-switch-field"><span class="policy-copy"><strong>任务失败自动重试</strong><small>仅重试可通过清理并重启 ComfyUI 恢复的错误</small></span><input id="auto-retry-failed-tasks" type="checkbox" ${settings.autoRetryFailedTasks ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
-          <label class="policy-select-field"><span>自动重试次数</span><select id="auto-retry-count" ${settings.autoRetryFailedTasks ? "" : "disabled"}>${[1, 2, 3, 4, 5].map((count) => `<option value="${count}" ${settings.autoRetryCount === count ? "selected" : ""}>${count} 次${count === 2 ? " · 推荐" : ""}</option>`).join("")}</select></label>
+          <label class="policy-select-field"><span>${t(uiKeys.settings.system.vramReserve)}</span><select id="vram-reserve"><option value="0.5" ${settings.vramReserveGb === 0.5 ? "selected" : ""}>0.5 GB · ${t(uiKeys.settings.system.aggressive)}</option><option value="0.75" ${settings.vramReserveGb === 0.75 ? "selected" : ""}>0.75 GB · ${t(uiKeys.settings.system.balanced)}</option><option value="1" ${settings.vramReserveGb === 1 ? "selected" : ""}>1 GB · ${t(uiKeys.settings.system.conservative)}</option></select></label>
+          <label class="ios-switch-field"><span class="policy-copy"><strong>${t(uiKeys.settings.system.safeCancel)}</strong><small>${t(uiKeys.settings.system.safeCancelDescription)}</small></span><input id="safe-cancel" type="checkbox" ${settings.safeCancel ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+          <label class="ios-switch-field"><span class="policy-copy"><strong>${t(uiKeys.settings.system.autoRetry)}</strong><small>${t(uiKeys.settings.system.autoRetryDescription)}</small></span><input id="auto-retry-failed-tasks" type="checkbox" ${settings.autoRetryFailedTasks ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
+          <label class="policy-select-field"><span>${t(uiKeys.settings.system.retryCount)}</span><select id="auto-retry-count" ${settings.autoRetryFailedTasks ? "" : "disabled"}>${[1, 2, 3, 4, 5].map((count) => `<option value="${count}" ${settings.autoRetryCount === count ? "selected" : ""}>${t(uiKeys.settings.system.retryCountValue, { count, suffix: count === 2 ? ` · ${t(uiKeys.settings.system.recommended)}` : "" })}</option>`).join("")}</select></label>
         </div>
-        <p class="muted proxy-hint">CUDA 上下文损坏、显存分配失败、ComfyUI 失联或卡死会先完成进程清理和服务重启，再重试当前任务。参数、模型或工作流错误不会自动重试；达到上限后保留失败任务并继续队列。</p>
+        <p class="muted proxy-hint">${t(uiKeys.settings.system.retryPolicyDescription)}</p>
       </section>
     </section>`;
 
@@ -598,17 +614,17 @@ export function renderSettingsPage(
     <section class="settings-panel app-logs-panel">
       <section class="panel settings-section">
         <div class="section-heading">
-          <div><h2>运行日志</h2><span class="muted">记录程序生命周期、任务阶段和错误，不记录提示词、输入内容或媒体路径。</span></div>
-          <div class="button-row"><button class="secondary button-with-icon" id="refresh-app-logs" ${viewModel.appLogsLoading ? "disabled" : ""}>${icon(viewModel.appLogsLoading ? "refresh-cw" : "rotate-ccw")}${viewModel.appLogsLoading ? "读取中…" : "刷新"}</button></div>
+          <div><h2>${t(uiKeys.settings.logsTitle)}</h2><span class="muted">${t(uiKeys.settings.logsDescription)}</span></div>
+          <div class="button-row"><button class="secondary button-with-icon" id="refresh-app-logs" ${viewModel.appLogsLoading ? "disabled" : ""}>${icon(viewModel.appLogsLoading ? "refresh-cw" : "rotate-ccw")}${viewModel.appLogsLoading ? t(uiKeys.settings.logsLoading) : t(uiKeys.settings.logsRefresh)}</button></div>
         </div>
         <div class="app-log-summary">
-          <div class="app-log-directory-actions"><span>目录</span><div><button class="secondary button-with-icon" id="open-app-log-directory">${icon("folder-open")}日志目录</button><button class="secondary button-with-icon" id="open-app-crash-directory">${icon("folder-open")}崩溃转储</button></div></div>
-          <div class="app-log-stats"><div class="app-log-stat"><span>保留</span><strong>${viewModel.appLogs?.retentionDays ?? 7} 天</strong></div><div class="app-log-stat"><span>记录</span><strong id="app-log-count">${viewModel.appLogs?.records.length ?? 0}</strong></div></div>
+          <div class="app-log-directory-actions"><span>${t(uiKeys.settings.logsDirectory)}</span><div><button class="secondary button-with-icon" id="open-app-log-directory">${icon("folder-open")}${t(uiKeys.settings.logsDirectoryOpen)}</button><button class="secondary button-with-icon" id="open-app-crash-directory">${icon("folder-open")}${t(uiKeys.settings.logsCrashDump)}</button></div></div>
+          <div class="app-log-stats"><div class="app-log-stat"><span>${t(uiKeys.settings.logsRetention)}</span><strong>${viewModel.appLogs?.retentionDays ?? 7} ${t(uiKeys.settings.system.days)}</strong></div><div class="app-log-stat"><span>${t(uiKeys.settings.logsRecords)}</span><strong id="app-log-count">${viewModel.appLogs?.records.length ?? 0}</strong></div></div>
         </div>
         ${viewModel.appLogsError ? `<p class="error">${escape(viewModel.appLogsError)}</p>` : ""}
         ${viewModel.appLogs?.text
           ? `<pre class="app-log-terminal" id="app-log-terminal">${options.renderAppLogTerminal(viewModel.appLogs.text)}</pre>`
-          : `<div class="environment-empty">${viewModel.appLogsLoading ? "正在读取运行日志…" : "暂无运行日志"}</div>`}
+          : `<div class="environment-empty">${viewModel.appLogsLoading ? t(uiKeys.settings.logsReading) : t(uiKeys.settings.logsEmpty)}</div>`}
       </section>
     </section>`;
 
@@ -625,22 +641,22 @@ export function renderSettingsPage(
 
   return `
     <section class="page-heading settings-heading">
-      <div><div class="heading-line"><h1>设置</h1>${gpuDevices.length ? `<span class="model-badge">${escape(gpuBadge)}</span>` : ""}</div><p>模型扫描、GPU 显存检测和本地服务集中配置。</p></div>
-      <div class="button-row settings-heading-actions"><span class="save-state ${viewModel.settingsDirty ? "dirty" : ""}">${viewModel.settingsDirty ? "未保存更改" : "已保存"}</span><button class="secondary button-with-icon" id="scan-environment" ${viewModel.environmentScanning ? "disabled" : ""}>${icon(viewModel.environmentScanning ? "refresh-cw" : "scan-search")}${viewModel.environmentScanning ? "扫描中…" : "重新扫描全部"}</button><button class="secondary button-with-icon" id="discard-settings" ${viewModel.settingsDirty ? "" : "disabled"}>${icon("rotate-ccw")}放弃更改</button><button class="primary button-with-icon" id="save-settings" ${viewModel.settingsDirty ? "" : "disabled"}>${icon("save")}保存设置</button></div>
+      <div><div class="heading-line"><h1>${t(uiKeys.settings.title)}</h1>${gpuDevices.length ? `<span class="model-badge">${escape(gpuBadge)}</span>` : ""}</div><p>${t(uiKeys.settings.description)}</p></div>
+      <div class="button-row settings-heading-actions"><span class="save-state ${viewModel.settingsDirty ? "dirty" : ""}">${viewModel.settingsDirty ? t(uiKeys.settings.unsaved) : t(uiKeys.settings.saved)}</span><button class="secondary button-with-icon" id="scan-environment" ${viewModel.environmentScanning ? "disabled" : ""}>${icon(viewModel.environmentScanning ? "refresh-cw" : "scan-search")}${viewModel.environmentScanning ? t(uiKeys.settings.scanning) : t(uiKeys.settings.rescan)}</button><button class="secondary button-with-icon" id="discard-settings" ${viewModel.settingsDirty ? "" : "disabled"}>${icon("rotate-ccw")}${t(uiKeys.settings.discard)}</button><button class="primary button-with-icon" id="save-settings" ${viewModel.settingsDirty ? "" : "disabled"}>${icon("save")}${t(uiKeys.settings.save)}</button></div>
     </section>
     <div class="settings-layout">
-      <nav class="settings-sidebar" aria-label="设置分类">
+      <nav class="settings-sidebar" aria-label="${t(uiKeys.settings.categories)}">
         ${([
-          ["system", "settings", "系统与路径"],
-          ["acceleration", "zap", "推理加速"],
-          ["video", "images", "视频模型"],
-          ["lora", "zap", "LoRA"],
-          ["image", "images", "图片模型"],
-          ["nodes", "workflow", "节点与工作流"],
-          ["prompt", "sparkles", "提示词扩写"],
-          ["upscale", "maximize-2", "分辨率提升"],
-          ["logs", "file-text", "运行日志"]
-        ] as const).map(([id, iconName, label]) => `<button class="settings-tab ${viewModel.settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span>${label}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "lora" && environmentScan ? `<small>${loraAvailable}/${loraProfiles.length}</small>` : ""}${id === "image" && environmentScan ? `<small>${imageComponentsReady}/${imageProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "prompt" && environmentScan ? `<small>${promptAvailable}/${promptProfiles.length}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
+          ["system", "settings", uiKeys.settings.tabSystem],
+          ["acceleration", "zap", uiKeys.settings.tabAcceleration],
+          ["video", "images", uiKeys.settings.tabVideo],
+          ["lora", "zap", uiKeys.settings.tabLora],
+          ["image", "images", uiKeys.settings.tabImage],
+          ["nodes", "workflow", uiKeys.settings.tabNodes],
+          ["prompt", "sparkles", uiKeys.settings.tabPrompt],
+          ["upscale", "maximize-2", uiKeys.settings.tabUpscale],
+          ["logs", "file-text", uiKeys.settings.tabLogs]
+        ] as const).map(([id, iconName, labelKey]) => `<button class="settings-tab ${viewModel.settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span>${t(labelKey)}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "lora" && environmentScan ? `<small>${loraAvailable}/${loraProfiles.length}</small>` : ""}${id === "image" && environmentScan ? `<small>${imageComponentsReady}/${imageProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "prompt" && environmentScan ? `<small>${promptAvailable}/${promptProfiles.length}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
       </nav>
       <div class="settings-content">${activePanel}</div>
     </div>

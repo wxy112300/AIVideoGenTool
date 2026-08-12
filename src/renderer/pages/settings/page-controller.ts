@@ -6,6 +6,7 @@ import type {
 import { directoryComparisonKey } from "./helpers";
 import type { SettingsInstallGuideSelection } from "./fragments";
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface SettingsPageControllerOptions {
   context: RendererContext;
@@ -97,7 +98,7 @@ export function mountSettingsPageController(
     const selected = options.getInstallGuide();
     if (!selected) return;
     const opened = await options.context.studio.openExternal(selected.component.installGuide.downloadUrl);
-    if (!opened) options.context.notify("下载页面无法打开，请检查链接或系统浏览器设置。");
+    if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed));
   }, { signal });
 
   root.querySelector("#scan-environment")?.addEventListener("click", () => {
@@ -131,7 +132,7 @@ export function mountSettingsPageController(
       options.context.reportUserAction("connection-test", { kind: button.dataset.test });
       const resultElement = root.querySelector<HTMLElement>("#connection-result");
       if (!resultElement) return;
-      resultElement.textContent = "正在连接…";
+      resultElement.textContent = options.context.t(uiKeys.settings.actions.connectionPending);
       const result = await options.context.studio.testConnection("comfy", options.formSettings());
       resultElement.className = `connection-result ${result.ok ? "success" : "error"}`;
       resultElement.textContent = result.message;
@@ -149,7 +150,7 @@ export function mountSettingsPageController(
       outputDirectory: scan.outputDirectory
     });
     options.setSettingsDraft(null);
-    options.context.notify("已采用扫描到的 ComfyUI 模型和输出目录。");
+    options.context.notify(options.context.t(uiKeys.settings.actions.scannedPathsApplied));
   }, { signal });
 
   root.querySelector("#pick-comfy-install-directory")?.addEventListener("click", async () => {
@@ -214,7 +215,7 @@ export function mountSettingsPageController(
 
   root.querySelector("#open-image-asset-library")?.addEventListener("click", () => {
     if (options.settingsHaveUnsavedChanges()) {
-      options.context.notify("请先保存素材库目录设置，再开始整理。", { renderPage: false });
+      options.context.notify(options.context.t(uiKeys.settings.actions.saveLibraryFirst), { renderPage: false });
       return;
     }
     options.openImageAssetLibrary();
@@ -243,7 +244,7 @@ export function mountSettingsPageController(
       options.setSettingsDraft(null);
       const state = options.context.getState();
       if (state) await options.runEnvironmentScan(state.settings);
-      options.context.notify("已保存 LM Studio 安装目录并重新扫描。");
+      options.context.notify(options.context.t(uiKeys.settings.actions.lmStudioSaved));
     }, { signal });
   });
 

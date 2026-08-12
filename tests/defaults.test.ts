@@ -11,6 +11,7 @@ describe("draft defaults", () => {
   it("keeps the starter prompt for a new install", () => {
     const draft = createDefaultDraft();
     expect(draft.promptVersions[0]?.text).not.toBe("");
+    expect(draft.promptVersions[0]?.text).not.toMatch(/[\u3400-\u9fff]/u);
     expect(draft.duration).toBe(5);
     expect(draft.fps).toBe(24);
     expect(draft.frameInterpolation).toBe("off");

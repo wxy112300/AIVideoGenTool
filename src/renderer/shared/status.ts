@@ -1,4 +1,6 @@
 import { isGemmaPromptModel } from "../../core/prompt-models";
+import { createTranslator, type Translate } from "../../core/i18n";
+import { uiKeys } from "../../core/i18n-keys";
 import type { EnvironmentScanResult, ModelScanProfile, Settings } from "../../types";
 
 export interface PromptModelStatus {
@@ -8,16 +10,17 @@ export interface PromptModelStatus {
 
 export function promptModelStatus(
   settings: Settings,
-  environmentScan: EnvironmentScanResult | null
+  environmentScan: EnvironmentScanResult | null,
+  t: Translate = createTranslator("zh-CN").t
 ): PromptModelStatus {
   if (!environmentScan) {
-    return { ready: false, detail: "等待环境扫描确认提示词模型" };
+    return { ready: false, detail: t(uiKeys.status.promptWaitingScan) };
   }
   const profile = environmentScan.modelProfiles.find(
     (item) => item.category === "prompt" && item.id === settings.promptModelId
   );
   if (!profile) {
-    return { ready: false, detail: "当前提示词模型未在设置扫描结果中" };
+    return { ready: false, detail: t(uiKeys.status.promptNotFound) };
   }
   if (!profile.available) {
     const missing = profile.components
@@ -26,14 +29,14 @@ export function promptModelStatus(
       .join("、");
     return {
       ready: false,
-      detail: `模型未配置完整${missing ? `：缺少 ${missing}` : ""}`
+      detail: `${t(uiKeys.status.promptIncomplete, { missing: missing ? `：${t(uiKeys.status.promptMissing, { missing })}` : "" })}`
     };
   }
   return {
     ready: true,
     detail: isGemmaPromptModel(settings.promptModelId)
-      ? "检查 ComfyUI H3 Prompt Writer"
-      : "启动 ComfyUI 提示词模型"
+      ? t(uiKeys.status.promptGemma)
+      : t(uiKeys.status.promptQwen)
   };
 }
 
@@ -51,15 +54,15 @@ export function isImageModelSelectable(profile?: ModelScanProfile): boolean {
   return Boolean(profile?.category === "image" && profile.integrated);
 }
 
-export function imageWorkflowStatus(profile?: ModelScanProfile): string {
-  if (!profile) return "等待环境扫描";
-  if (!profile.available) return "组件不完整";
-  if (!profile.integrated) return "工作流待接入";
-  if (!profile.runtimeVerified) return "未启动，入队时自动启动并验证";
+export function imageWorkflowStatus(profile?: ModelScanProfile, t: Translate = createTranslator("zh-CN").t): string {
+  if (!profile) return t(uiKeys.status.imageWaitingScan);
+  if (!profile.available) return t(uiKeys.status.imageIncomplete);
+  if (!profile.integrated) return t(uiKeys.status.imagePendingIntegration);
+  if (!profile.runtimeVerified) return t(uiKeys.status.imageNotStarted);
   if (!profile.runtimeReady) {
     return profile.runtimeMissingNodes?.length
-      ? `缺少节点：${profile.runtimeMissingNodes.join("、")}`
-      : "运行时节点验证未通过";
+      ? t(uiKeys.status.imageMissingNodes, { nodes: profile.runtimeMissingNodes.join("、") })
+      : t(uiKeys.status.imageRuntimeFailed);
   }
-  return "工作流节点已验证";
+  return t(uiKeys.status.imageVerified);
 }

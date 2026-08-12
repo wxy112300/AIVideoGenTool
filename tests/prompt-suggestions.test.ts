@@ -10,6 +10,7 @@ describe("prompt snippets", () => {
     expect(promptSnippetFor("continuity-body-gaze-lock")).toContain("gaze");
     expect(promptSnippetFor("dialogue-mandarin")).toContain("<d>[Chinese]");
     expect(promptSnippetFor("screen-text")).toContain("exactly");
+    expect(promptSnippets.every((snippet) => !/[\u3400-\u9fff]/u.test(snippet.text))).toBe(true);
   });
 
   it("returns an empty string for an unknown snippet", () => {

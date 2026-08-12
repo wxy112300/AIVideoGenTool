@@ -1,5 +1,6 @@
 import type { AppState, QueueTask, UpscaleQueueTask } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export type QueueConfirmationAction = "remove" | "cancel";
 
@@ -63,6 +64,7 @@ export function mountQueueController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+  const t = context.t;
 
   root.querySelector("#start-queue")?.addEventListener("click", async () => {
     context.reportUserAction("queue-start");
@@ -131,7 +133,7 @@ export function mountQueueController(
         options.setState(await context.studio.resetTask(taskId));
         context.requestRender();
       } catch (error) {
-        context.notify(error instanceof Error ? error.message : "无法重置任务状态");
+        context.notify(error instanceof Error ? error.message : t(uiKeys.runtime.queueResetFailed));
       }
     }, { signal });
   });
@@ -154,7 +156,7 @@ export function mountQueueController(
         options.rememberModalFocus();
         options.editUpscaleTask(task);
       } catch (error) {
-        context.notify(error instanceof Error ? error.message : "无法编辑提升任务");
+        context.notify(error instanceof Error ? error.message : t(uiKeys.runtime.queueEditFailed));
       }
     }, { signal });
   });

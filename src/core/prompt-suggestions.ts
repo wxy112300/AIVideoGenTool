@@ -130,7 +130,7 @@ export const promptSnippets: readonly PromptSnippet[] = [
     id: "dialogue-mandarin",
     group: "对白",
     label: "中文对白",
-    text: "The speaker (S1) speaks Mandarin Chinese with a clear, natural voice and says exactly: <d>[Chinese] 在这里填写准确对白。</d>"
+    text: "The speaker (S1) speaks Mandarin Chinese with a clear, natural voice and says exactly: <d>[Chinese] Write the exact original dialogue here.</d>"
   },
   {
     id: "dialogue-english",
@@ -142,7 +142,7 @@ export const promptSnippets: readonly PromptSnippet[] = [
     id: "screen-text",
     group: "屏幕文字",
     label: "锁定画面文字",
-    text: "Any visible sign, subtitle, label, or neon text reads exactly \"在这里填写原文\"; preserve its original punctuation without translation."
+    text: "Any visible sign, subtitle, label, or neon text reads exactly \"Write the original text here\"; preserve its original punctuation without translation."
   }
 ];
 

@@ -1,5 +1,6 @@
 import type { Draft } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface VideoExtensionControllerOptions {
   selectDraftVideo(filename: string): Promise<void>;
@@ -16,6 +17,7 @@ export function mountVideoExtensionController(
   const signal = events.signal;
   const root = context.root;
   const getDraft = () => context.getState()?.draft;
+  const t = context.t;
 
   root.querySelector("#pick-video")?.addEventListener("click", async (event) => {
     event.stopImmediatePropagation();
@@ -59,16 +61,16 @@ export function mountVideoExtensionController(
       const file = event.dataTransfer?.files.item(0);
       if (!file) return;
       if (!file.type.startsWith("video/") && !/\.(mp4|webm|mov|m4v|mkv)$/i.test(file.name)) {
-        context.notify("请拖入 MP4、WebM、MOV、M4V 或 MKV 视频");
+        context.notify(t(uiKeys.create.interaction.invalidVideoDrop));
         return;
       }
       const filename = context.studio.getDroppedFilePath(file);
       if (!filename) {
-        context.notify("无法读取拖入视频的本地路径");
+        context.notify(t(uiKeys.create.interaction.videoPathFailed));
         return;
       }
       void options.selectDraftVideo(filename).catch((error) => {
-        context.notify(error instanceof Error ? error.message : "无法读取拖入的视频");
+        context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.videoReadFailed));
       });
     }, { signal });
   }
@@ -138,9 +140,9 @@ export function mountVideoExtensionController(
     endInput.setAttribute("aria-valuetext", options.formatTrimTime(end));
     root.querySelector("#trim-start-output")!.textContent = options.formatTrimTime(start);
     root.querySelector("#trim-end-output")!.textContent = options.formatTrimTime(end);
-    root.querySelector("#trim-kept")!.textContent = `${kept.toFixed(1)} 秒`;
-    root.querySelector("#trim-discarded")!.textContent = `${Math.max(0, duration - kept).toFixed(1)} 秒`;
-    root.querySelector("#trim-total")!.textContent = `约 ${(kept + draft.duration).toFixed(1)} 秒`;
+    root.querySelector("#trim-kept")!.textContent = t(uiKeys.create.interaction.trimAdded, { value: kept.toFixed(1) });
+    root.querySelector("#trim-discarded")!.textContent = t(uiKeys.create.interaction.trimAdded, { value: Math.max(0, duration - kept).toFixed(1) });
+    root.querySelector("#trim-total")!.textContent = t(uiKeys.create.interaction.trimApproxTotal, { value: (kept + draft.duration).toFixed(1) });
     video.pause();
     video.currentTime = active === "start" ? start : end;
     options.patchDraft({ trimStartSeconds: start, trimEndSeconds: end });

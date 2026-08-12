@@ -1,4 +1,5 @@
 import type { AppState } from "../types";
+import type { Translate } from "../core/i18n";
 import type { Page, RendererCleanup } from "./contracts";
 import type { RendererUiState } from "./ui-state";
 import type { HistoryPlaybackSnapshot } from "./pages/history/page-controller";
@@ -11,6 +12,7 @@ export interface RenderCoordinatorOptions {
   getPage(): Page;
   getState(): AppState;
   getUiState(): RendererUiState;
+  t: Translate;
   renderPages: {
     create(): string;
     queue(): string;
@@ -117,6 +119,7 @@ export function createRenderCoordinator(
         queueCount: state.queue.length,
         flashMessage: ui.flashMessage,
         content,
+        t: options.t,
         icon: options.icon,
         escapeHtml: options.escapeHtml,
         confirmationDialog: options.renderConfirmationDialog(),

@@ -2,6 +2,7 @@ import type { Draft, H3ReferenceSlot, ImageEditDraft } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { h3ReferenceSlotCounts } from "../../../core/h3-reference";
 import { isMiniMaxH3R2vModel } from "../../../core/workflow";
+import { uiKeys } from "../../../core/i18n-keys";
 import {
   h3ReferenceTag,
   imageFileIsSupported
@@ -18,6 +19,7 @@ export function mountCreateClipboardController(
   options: CreateClipboardControllerOptions
 ): RendererCleanup {
   const handler = async (event: ClipboardEvent) => {
+    const t = context.t;
     if (context.getRoute().page !== "create") return;
     const state = context.getState();
     if (!state) return;
@@ -36,7 +38,7 @@ export function mountCreateClipboardController(
     if (context.getRoute().creationMode === "image-edit") {
       event.preventDefault();
       if (!imageFileIsSupported(file)) {
-        context.notify("剪贴板图片仅支持 PNG、JPG、WEBP 或 BMP");
+        context.notify(t(uiKeys.create.interaction.clipboardFormats));
         return;
       }
       const focusedPicture = activeElement instanceof HTMLElement
@@ -48,16 +50,16 @@ export function mountCreateClipboardController(
           file.type || "image/png"
         );
         options.addImagePicture(filename, focusedPicture?.dataset.imagePicturePick);
-        context.notify(focusedPicture ? "已替换选中的 Picture。" : "已添加到下一个 Picture。");
+        context.notify(t(focusedPicture ? uiKeys.create.interaction.replacedPicture : uiKeys.create.interaction.addedPicture));
       } catch (error) {
-        context.notify(error instanceof Error ? error.message : "无法读取剪贴板图片");
+        context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.clipboardReadFailed));
       }
       return;
     }
     if (state.draft.inputMode !== "image") return;
     const supportedTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/bmp"]);
     if (!supportedTypes.has(file.type.toLowerCase())) {
-      context.notify("剪贴板图片仅支持 PNG、JPG、WEBP 或 BMP");
+      context.notify(t(uiKeys.create.interaction.clipboardFormats));
       return;
     }
     event.preventDefault();
@@ -72,8 +74,8 @@ export function mountCreateClipboardController(
         const { imageCount } = h3ReferenceSlotCounts(state.draft.h3ReferenceSlots);
         context.notify(
           imageCount >= 9
-            ? "R2V 的图片 Slot 已满，请添加图片 Slot 后再粘贴。"
-            : "R2V 当前没有空 Slot，请先添加一个 Slot。"
+            ? t(uiKeys.create.interaction.r2vImageFull)
+            : t(uiKeys.create.interaction.r2vEmptySlot)
         );
         return;
       }
@@ -84,9 +86,9 @@ export function mountCreateClipboardController(
         );
         options.updateH3ReferenceSlot(targetSlot.id, { mediaPath: filename });
         context.requestRender();
-        context.notify(`已粘贴到下一个空的 R2V Slot（${h3ReferenceTag(state.draft.h3ReferenceSlots, targetSlot.id)}）。`);
+        context.notify(t(uiKeys.create.interaction.pastedR2vSlot, { tag: h3ReferenceTag(state.draft.h3ReferenceSlots, targetSlot.id) }));
       } catch (error) {
-        context.notify(error instanceof Error ? error.message : "无法读取剪贴板图片");
+        context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.clipboardReadFailed));
       }
       return;
     }
@@ -103,9 +105,9 @@ export function mountCreateClipboardController(
         ...(field === "startImagePath" ? { sourceWidth: 0, sourceHeight: 0 } : {})
       });
       context.requestRender();
-      context.notify(field === "startImagePath" ? "已粘贴为首帧图片。" : "已粘贴为尾帧图片。");
+      context.notify(t(field === "startImagePath" ? uiKeys.create.interaction.pastedStartFrame : uiKeys.create.interaction.pastedEndFrame));
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : "无法读取剪贴板图片");
+      context.notify(error instanceof Error ? error.message : t(uiKeys.create.interaction.clipboardReadFailed));
     }
   };
   window.addEventListener("paste", handler);

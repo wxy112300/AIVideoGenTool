@@ -14,6 +14,7 @@ import {
 } from "./helpers";
 import { h3ReferenceSlotCounts } from "../../../core/h3-reference";
 import { isMiniMaxH3Model } from "../../../core/workflow";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface H3ReferencesControllerOptions {
   getDraft(): Draft | undefined;
@@ -29,6 +30,7 @@ export function mountH3ReferencesController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+  const t = context.t;
   const updateSlot = (slotId: string, patch: Partial<H3ReferenceSlot>) => {
     const draft = options.getDraft();
     if (!draft) return;
@@ -96,16 +98,16 @@ export function mountH3ReferencesController(
       const counts = h3ReferenceSlotCounts(draft.h3ReferenceSlots);
       if (nextType === "image" && counts.imageCount >= 9) {
         select.value = currentSlot.mediaType;
-        options.notify("R2V 最多支持 9 个图片 Slot。");
+        options.notify(t(uiKeys.create.interaction.r2vMaxImages));
         return;
       }
       if (nextType === "video" && counts.videoCount >= 3) {
         select.value = currentSlot.mediaType;
-        options.notify("R2V 最多支持 3 个视频 Slot。");
+        options.notify(t(uiKeys.create.interaction.r2vMaxVideos));
         return;
       }
       if (nextType === "video" && currentSlot.mediaPath) {
-        options.notify("切换为视频后需要重新选择视频文件，当前图片不会自动转换。");
+        options.notify(t(uiKeys.create.interaction.switchVideoReselect));
       }
       updateSlot(slotId, { mediaType: nextType, mediaPath: "" });
       options.requestRender();
@@ -165,15 +167,13 @@ export function mountH3ReferencesController(
       const isSupported = isVideo
         ? file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|mkv|gif)$/i.test(file.name)
         : file.type.startsWith("image/") || /\.(png|jpe?g|webp|bmp)$/i.test(file.name);
-      if (!isSupported) {
-        options.notify(isVideo
-          ? "视频 Slot 只支持 MP4、WebM、MOV、M4V、MKV 或 GIF"
-          : "图片 Slot 只支持 PNG、JPG、WEBP 或 BMP 图片");
+        if (!isSupported) {
+          options.notify(t(isVideo ? uiKeys.create.interaction.videoSlotFormats : uiKeys.create.interaction.imageSlotFormats));
         return;
       }
       const filename = context.studio.getDroppedFilePath(file);
       if (!filename) {
-        options.notify(`无法读取拖入${isVideo ? "视频" : "图片"}的本地路径`);
+          options.notify(t(uiKeys.create.interaction.mediaPathFailed, { type: isVideo ? t(uiKeys.create.fragments.video) : t(uiKeys.create.fragments.image) }));
         return;
       }
       updateSlot(slotId, { mediaPath: filename });

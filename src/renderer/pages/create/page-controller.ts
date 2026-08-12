@@ -19,6 +19,7 @@ import { mountCreatePromptController, type CreatePromptControllerOptions } from 
 import { mountImageEditController, type ImageEditControllerOptions } from "./image-edit-controller";
 import { mountImageToVideoController } from "./image-to-video-controller";
 import { mountVideoExtensionController } from "./video-extension-controller";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface CreatePageControllerOptions {
   context: RendererContext;
@@ -73,6 +74,7 @@ export function mountCreatePageController(
   const signal = events.signal;
   const root = options.context.root;
   const getState = () => options.context.getState();
+  const t = options.context.t;
 
   root.querySelectorAll<HTMLElement>("[data-input-mode]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -218,12 +220,12 @@ export function mountCreatePageController(
     options.context.requestRender();
     if (turboStateChanged && !currentWorkflowIsBundled) {
       options.context.notify(turboWillBeEnabled
-        ? "已保留当前自定义工作流；Turbo 提交前会检查 ER-SDE、Beta 与 Sigma Shift。"
-        : "已保留当前自定义工作流；其中自带的 LoRA 和采样设置不会被应用自动删除。");
+        ? t(uiKeys.create.interaction.customWorkflowTurbo)
+        : t(uiKeys.create.interaction.customWorkflowStandard));
     } else if (turboStateChanged && shouldSwitchWorkflow) {
       options.context.notify(turboWillBeEnabled
-        ? "已启用 Turbo，并切换到匹配的低步数工作流。"
-        : "已关闭 Turbo，并恢复标准 H3 工作流。");
+        ? t(uiKeys.create.interaction.turboEnabled)
+        : t(uiKeys.create.interaction.turboDisabled));
     }
   };
 
@@ -236,7 +238,7 @@ export function mountCreatePageController(
     const profile = options.getEnvironmentScan()?.modelProfiles.find((item) => item.id === id);
     const detectedFilename = detectedVideoLoraFilename(profile);
     if (!detectedFilename) {
-      options.context.notify(`${lora.name} 尚未检测到可用文件，请先在设置 → LoRA 中安装或重新扫描。`, { renderPage: false });
+      options.context.notify(t(uiKeys.create.interaction.loraFileMissing, { name: lora.name }), { renderPage: false });
       return;
     }
     await applyVideoLoraStack([...state.draft.videoLoras, videoLoraSelection(lora, lora.strength, detectedFilename)]);
@@ -370,8 +372,8 @@ export function mountCreatePageController(
     const added = root.querySelector("#trim-added");
     const total = root.querySelector("#trim-total");
     const kept = state.draft.trimEndSeconds - state.draft.trimStartSeconds;
-    if (added) added.textContent = `${duration.toFixed(1)} 秒`;
-    if (total) total.textContent = `约 ${(kept + duration).toFixed(1)} 秒`;
+    if (added) added.textContent = t(uiKeys.create.interaction.trimAdded, { value: duration.toFixed(1) });
+    if (total) total.textContent = t(uiKeys.create.interaction.trimApproxTotal, { value: (kept + duration).toFixed(1) });
   };
   range?.addEventListener("input", () => updateDuration(range.value), { signal });
   number?.addEventListener("input", () => updateDuration(number.value), { signal });
@@ -399,8 +401,8 @@ export function mountCreatePageController(
       options.setRendererState(nextState);
       options.context.notify(
         state.draft.inputMode === "video"
-          ? `已加入续写队列：${nextState.queue.at(-1)?.outputFilename ?? ""}`
-          : `已加入队列：${nextState.queue.at(-1)?.outputFilename ?? ""}`
+          ? t(uiKeys.create.interaction.extensionQueueAdded, { filename: nextState.queue.at(-1)?.outputFilename ?? "" })
+          : t(uiKeys.create.interaction.queueAdded, { filename: nextState.queue.at(-1)?.outputFilename ?? "" })
       );
     } catch (error) {
       options.context.notify(error instanceof Error ? error.message : String(error));

@@ -1,5 +1,7 @@
 import type { AssetVersion, Draft, QueueTask } from "../../types";
 import { escapeHtml } from "./dom";
+import { createTranslator, type Translate } from "../../core/i18n";
+import { uiKeys } from "../../core/i18n-keys";
 
 export function historyAspectRatio(ratio: Draft["ratio"] | undefined): string {
   return (
@@ -37,18 +39,18 @@ export function formatVideoDuration(seconds: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(rounded % 60).padStart(2, "0")}`;
 }
 
-export function formatElapsedDuration(seconds: number): string {
+export function formatElapsedDuration(seconds: number, t: Translate = createTranslator("zh-CN").t): string {
   const rounded = Math.max(0, Math.round(seconds));
   const minutes = Math.floor(rounded / 60);
-  return `${minutes}分${rounded % 60}秒`;
+  return t(uiKeys.format.elapsed, { minutes, seconds: rounded % 60 });
 }
 
-export function formatUpscaleEstimateRange(minSeconds: number, maxSeconds: number): string {
+export function formatUpscaleEstimateRange(minSeconds: number, maxSeconds: number, t: Translate = createTranslator("zh-CN").t): string {
   const format = (seconds: number): string => {
     const rounded = Math.max(1, Math.round(seconds));
-    if (rounded < 60) return `${rounded}秒`;
-    if (rounded < 3600) return `${Math.round(rounded / 60)}分`;
-    return `${(rounded / 3600).toFixed(1)}小时`;
+    if (rounded < 60) return t(uiKeys.format.upscaleSeconds, { value: rounded });
+    if (rounded < 3600) return t(uiKeys.format.upscaleMinutes, { value: Math.round(rounded / 60) });
+    return t(uiKeys.format.upscaleHours, { value: (rounded / 3600).toFixed(1) });
   };
   const minimum = format(minSeconds);
   const maximum = format(maxSeconds);
@@ -73,24 +75,24 @@ export function formatFullHistoryTime(value: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-export function historyRenderDuration(version: AssetVersion): string {
-  if (!version.startedAt) return "耗时未知";
+export function historyRenderDuration(version: AssetVersion, t: Translate = createTranslator("zh-CN").t): string {
+  if (!version.startedAt) return t(uiKeys.format.unknownDuration);
   const startedAt = Date.parse(version.startedAt);
   const createdAt = Date.parse(version.createdAt);
-  if (!Number.isFinite(startedAt) || !Number.isFinite(createdAt)) return "耗时未知";
-  return formatElapsedDuration(Math.max(0, (createdAt - startedAt) / 1000));
+  if (!Number.isFinite(startedAt) || !Number.isFinite(createdAt)) return t(uiKeys.format.unknownDuration);
+  return formatElapsedDuration(Math.max(0, (createdAt - startedAt) / 1000), t);
 }
 
-export function queueStageElapsedText(task: QueueTask): string {
-  if (!task.stageStartedAt) return "阶段计时待开始";
+export function queueStageElapsedText(task: QueueTask, t: Translate = createTranslator("zh-CN").t): string {
+  if (!task.stageStartedAt) return t(uiKeys.format.stagePending);
   const startedAt = Date.parse(task.stageStartedAt);
   return Number.isFinite(startedAt)
-    ? `当前阶段 ${formatElapsedDuration(Math.max(0, (Date.now() - startedAt) / 1000))}`
-    : "阶段计时待开始";
+    ? t(uiKeys.format.currentStage, { duration: formatElapsedDuration(Math.max(0, (Date.now() - startedAt) / 1000), t) })
+    : t(uiKeys.format.stagePending);
 }
 
-export function queueEstimateText(seconds: number | null): string {
-  return seconds == null ? "等待历史数据" : formatElapsedDuration(seconds);
+export function queueEstimateText(seconds: number | null, t: Translate = createTranslator("zh-CN").t): string {
+  return seconds == null ? t(uiKeys.format.waitingHistory) : formatElapsedDuration(seconds, t);
 }
 
 export function formatTrimTime(seconds: number): string {
@@ -111,11 +113,11 @@ export function formatAssetBytes(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
-export function elapsedText(startedAt?: string): string {
-  if (!startedAt) return "等待计时";
+export function elapsedText(startedAt?: string, t: Translate = createTranslator("zh-CN").t): string {
+  if (!startedAt) return t(uiKeys.format.waitingTimer);
   const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000));
   const minutes = Math.floor(seconds / 60);
-  return `已运行 ${minutes > 0 ? `${minutes}分` : ""}${seconds % 60}秒`;
+  return t(uiKeys.format.running, { value: formatElapsedDuration(seconds, t) });
 }
 
 export function performanceCard(

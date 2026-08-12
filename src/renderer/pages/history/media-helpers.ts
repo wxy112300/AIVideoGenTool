@@ -1,4 +1,5 @@
 import type { RendererContext } from "../../contracts";
+import { uiKeys } from "../../../core/i18n-keys";
 import type { HistoryMediaControllerOptions } from "./media-controller";
 import { historyCoverCandidates } from "./helpers";
 
@@ -109,7 +110,7 @@ export function createHistoryMediaRuntime(
       historyCoverDataUrls.set(key, cached);
       return setHistoryCoverImage(media, cached);
     } catch (error) {
-      void context.studio.reportRendererError("读取历史封面缓存失败", {
+      void context.studio.reportRendererError(context.t(uiKeys.history.media.coverReadFailed), {
         error: error instanceof Error ? error.message : String(error)
       });
       return false;
@@ -217,7 +218,7 @@ export function createHistoryMediaRuntime(
       historyCoverDataUrls.set(key, dataUrl);
       setHistoryCoverImage(media, dataUrl);
     } catch (error) {
-      void context.studio.reportRendererError("保存历史封面缓存失败", {
+      void context.studio.reportRendererError(context.t(uiKeys.history.media.coverSaveFailed), {
         error: error instanceof Error ? error.message : String(error)
       });
     }

@@ -1,6 +1,7 @@
 import type { AppState, Settings } from "../../types";
 import type { Page, RendererContext } from "../contracts";
 import { createClearedDraft } from "../../core/defaults";
+import { uiKeys } from "../../core/i18n-keys";
 
 export type ConfirmationRequest =
   | { kind: "clear-draft" }
@@ -45,13 +46,14 @@ export async function acceptConfirmation(
   options: ConfirmationServiceOptions
 ): Promise<void> {
   const request = options.getRequest();
+  const t = context.t;
   if (!request || options.isBusy()) return;
   options.setBusy(true);
   const acceptButton = context.root.querySelector<HTMLButtonElement>("#accept-confirmation");
   const cancelButton = context.root.querySelector<HTMLButtonElement>("#cancel-confirmation");
   if (acceptButton) {
     acceptButton.disabled = true;
-    acceptButton.textContent = "处理中…";
+    acceptButton.textContent = t(uiKeys.dialog.processing);
   }
   if (cancelButton) cancelButton.disabled = true;
   try {
@@ -64,7 +66,7 @@ export async function acceptConfirmation(
       ));
     } else if (request.kind === "force-stop-comfy") {
       options.setServiceForceStopping(true);
-      options.setServiceStatusMessage("正在强制终止所有 ComfyUI 进程并释放 CUDA 上下文…");
+      options.setServiceStatusMessage(t(uiKeys.runtime.forceStopStatus));
       const settings = options.getFormSettings();
       const result = await context.studio.forceStopComfyProcesses(settings);
       options.setServiceForceStopping(false);
@@ -114,7 +116,7 @@ export async function acceptConfirmation(
         options.setHistoryKind("image");
         options.setPage("history");
       }
-      options.notify("当前图片版本和对应文件已删除。");
+      options.notify(t(uiKeys.runtime.imageVersionDeleted));
     }
     options.setRequest(null);
     options.setBusy(false);

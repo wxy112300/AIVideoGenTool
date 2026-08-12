@@ -4,6 +4,7 @@ import { createDefaultImageEditDraft } from "../../../core/defaults";
 import type { AppState, ImageEditDraft, ImagePromptPreset, ImageReferenceRole } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { activeImagePrompt } from "./helpers";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface ImageEditControllerOptions {
   setState(nextState: AppState): void;
@@ -26,6 +27,7 @@ export interface ImageEditControllerOptions {
   setEnqueueBusy(value: boolean): void;
   setEnqueueBusyUi(busy: boolean): void;
   imageReferenceRoleLabel(role: ImageReferenceRole): string;
+  imageReferenceRolePromptLabel(role: ImageReferenceRole): string;
 }
 
 export function mountImageEditController(
@@ -36,6 +38,7 @@ export function mountImageEditController(
   const signal = events.signal;
   const root = context.root;
   const getDraft = () => context.getState()?.imageDraft;
+  const t = context.t;
 
   const choosePicture = async (pictureId?: string) => {
     const filename = await context.studio.pickImage();
@@ -117,12 +120,12 @@ export function mountImageEditController(
       const file = event.dataTransfer?.files.item(0);
       if (!file) return;
       if (!options.imageFileIsSupported(file)) {
-        context.notify("请拖入 PNG、JPG、WEBP 或 BMP 图片");
+        context.notify(t(uiKeys.create.interaction.invalidImageDrop));
         return;
       }
       const filename = context.studio.getDroppedFilePath(file);
       if (!filename) {
-        context.notify("无法读取拖入图片的本地路径");
+        context.notify(t(uiKeys.create.interaction.imagePathFailed));
         return;
       }
       options.addImagePicture(filename);
@@ -153,13 +156,13 @@ export function mountImageEditController(
     const versions = [...draft.promptVersions];
     const current = versions[draft.activePromptVersion];
     let activePromptVersion = draft.activePromptVersion;
-    if (current?.label === "手动编辑") {
+    if (current?.label === t(uiKeys.create.interaction.manualEdit)) {
       versions[activePromptVersion] = { ...current, text: promptInput.value };
     } else {
       versions.splice(activePromptVersion + 1);
       versions.push({
         id: crypto.randomUUID(),
-        label: "手动编辑",
+        label: t(uiKeys.create.interaction.manualEdit),
         text: promptInput.value,
         createdAt: new Date().toISOString()
       });
@@ -193,7 +196,7 @@ export function mountImageEditController(
     if (!draft) return;
     const requestPrompt = activeImagePrompt(draft).text.trim();
     if (!requestPrompt) {
-      context.notify("请先输入图片编辑 Prompt");
+      context.notify(t(uiKeys.create.validation.imagePromptEmpty));
       return;
     }
     options.setPromptEnhancing(true);
@@ -210,7 +213,7 @@ export function mountImageEditController(
         imagePaths: pictures.map(imageReferenceInputPath),
         referenceContext: [
           pictures.map((picture) =>
-            `Slot ${picture.pictureNumber} / Picture ${picture.pictureNumber} = ${options.imageReferenceRoleLabel(picture.role ?? "auto")}`
+            `Slot ${picture.pictureNumber} / Picture ${picture.pictureNumber} = ${options.imageReferenceRolePromptLabel(picture.role ?? "auto")}`
           ).join("\n"),
           imageMarkupPromptContext(pictures)
         ].filter(Boolean).join("\n\n")
@@ -222,7 +225,7 @@ export function mountImageEditController(
         ...nextDraft.promptVersions.slice(0, nextDraft.activePromptVersion + 1),
         {
           id: crypto.randomUUID(),
-          label: `图片优化 ${nextDraft.promptVersions.filter((item) => item.label.startsWith("图片优化")).length + 1}`,
+          label: t(uiKeys.create.interaction.imageOptimizedVersion, { count: nextDraft.promptVersions.filter((item) => item.label.startsWith(t(uiKeys.create.interaction.imageOptimizedVersion, { count: "" }).trim())).length + 1 }),
           text,
           createdAt: new Date().toISOString()
         }
@@ -288,7 +291,7 @@ export function mountImageEditController(
     const outputCount = Math.min(10, Math.max(1, Number(countInput.value) || 1));
     options.patchImageDraft({ outputCount });
     const countValue = root.querySelector("#image-edit-count-value");
-    if (countValue) countValue.textContent = `${outputCount} 张`;
+    if (countValue) countValue.textContent = t(uiKeys.create.imageEdit.outputCountValue, { count: outputCount });
   }, { signal });
   root.querySelector("#random-image-edit-seed")?.addEventListener("click", (event) => {
     event.stopImmediatePropagation();
@@ -320,7 +323,7 @@ export function mountImageEditController(
       });
       const nextState = await context.studio.enqueueImageEdit(draft);
       const outputFilename = nextState.queue.at(-1)?.outputFilename ?? "";
-      context.notify(`已加入图片队列：${outputFilename}`);
+      context.notify(t(uiKeys.create.interaction.imageQueueAdded, { filename: outputFilename }));
       options.setState(nextState);
     } catch (error) {
       context.notify(error instanceof Error ? error.message : String(error));

@@ -6,6 +6,8 @@ import type {
   EnvironmentScanResult,
   WorkflowCapabilities
 } from "../types";
+import { createTranslator, loadUiLocale } from "../core/i18n";
+import { uiKeys } from "../core/i18n-keys";
 
 export interface RendererBootstrapOptions {
   studio: AppApi;
@@ -26,6 +28,7 @@ export interface RendererBootstrapOptions {
 
 export function bootstrapRenderer(options: RendererBootstrapOptions): void {
   void options.studio.getState().then(async (initialState) => {
+    await loadUiLocale(initialState.settings.uiLocale).catch(() => undefined);
     options.setState(initialState);
     const appVersion = await options.studio.getAppVersion();
     options.setAppVersion(appVersion);
@@ -45,7 +48,7 @@ export function bootstrapRenderer(options: RendererBootstrapOptions): void {
         options.enableSpectrumByDefaultIfAvailable();
       } else {
         options.setEnvironmentScanError(
-          `启动时环境扫描失败：${scanResult.reason instanceof Error ? scanResult.reason.message : String(scanResult.reason)}`
+          createTranslator(initialState.settings.uiLocale).t(uiKeys.runtime.startupScanFailed, { error: scanResult.reason instanceof Error ? scanResult.reason.message : String(scanResult.reason) })
         );
       }
       if (bundledResult.status === "fulfilled" && bundledResult.value) {

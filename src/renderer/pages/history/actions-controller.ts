@@ -1,4 +1,5 @@
 import type { AppState } from "../../../types";
+import { uiKeys } from "../../../core/i18n-keys";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 
 export interface HistoryActionsControllerOptions {
@@ -29,6 +30,7 @@ export function mountHistoryActionsController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+  const t = context.t;
 
   root.querySelector("[data-open-upscale]")?.addEventListener("click", (event) => {
     stopAction(event);
@@ -48,7 +50,7 @@ export function mountHistoryActionsController(
     const asset = context.getState()?.history.find(
       (item) => item.id === options.getSelectedHistoryAssetId()
     );
-    if (asset) await options.copyHistoryText(asset.prompt, "提示词已复制。");
+    if (asset) await options.copyHistoryText(asset.prompt, t(uiKeys.history.menu.promptCopied));
   }, { signal });
 
   root.querySelector("[data-copy-image-prompt]")?.addEventListener("click", async (event) => {
@@ -58,10 +60,10 @@ export function mountHistoryActionsController(
     const versionId = options.getSelectedHistoryVersionId();
     const version = project?.versions.find((item) => item.id === versionId);
     if (!version?.prompt) {
-      context.notify("当前原始图片没有可复制的 Prompt。", { renderPage: false });
+      context.notify(t(uiKeys.history.menu.originalNoPrompt), { renderPage: false });
       return;
     }
-    await options.copyHistoryText(version.prompt, "Prompt 已复制。");
+    await options.copyHistoryText(version.prompt, t(uiKeys.history.menu.promptCopied));
   }, { signal });
 
   root.querySelectorAll<HTMLElement>("[data-image-continue-edit-project]").forEach((button) => {
@@ -93,12 +95,12 @@ export function mountHistoryActionsController(
         button.dataset.imageCoverVersion || undefined
       ));
       context.notify(
-        button.dataset.imageCoverVersion ? "已将当前版本设为项目封面。" : "已恢复自动封面。",
+        button.dataset.imageCoverVersion ? t(uiKeys.history.actions.coverSet) : t(uiKeys.history.actions.autoCoverRestored),
         { renderPage: false }
       );
       context.requestRender();
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : "无法更新项目封面。", { renderPage: false });
+      context.notify(error instanceof Error ? error.message : t(uiKeys.history.actions.coverUpdateFailed), { renderPage: false });
     }
   }, { signal });
 
@@ -126,7 +128,7 @@ export function mountHistoryActionsController(
       if (!filename) return;
       context.reportUserAction("history-show-file");
       const shown = await context.studio.showItemInFolder(filename);
-      if (!shown) context.notify("文件不存在或当前路径还没有在本机生成。", { renderPage: false });
+      if (!shown) context.notify(t(uiKeys.history.actions.fileMissing), { renderPage: false });
     }, { signal });
   });
 

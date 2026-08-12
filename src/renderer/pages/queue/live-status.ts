@@ -1,4 +1,6 @@
 import type { AppApi, AppState, PerformanceMetrics } from "../../../types";
+import type { Translate } from "../../../core/i18n";
+import { uiKeys } from "../../../core/i18n-keys";
 import {
   elapsedText,
   formatBytes,
@@ -13,6 +15,7 @@ import type { Page } from "../../contracts";
 
 export interface QueueLiveStatusOptions {
   studio: AppApi;
+  t: Translate;
   getState(): AppState | undefined;
   getPage(): Page;
   setPerformanceMetrics(metrics: PerformanceMetrics): void;
@@ -75,12 +78,12 @@ export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
     if (!state) return;
     const running = state.queue.find((task) => task.status === "running");
     const elapsed = document.querySelector<HTMLElement>("#running-elapsed");
-    if (elapsed && running) elapsed.textContent = elapsedText(running.startedAt);
+    if (elapsed && running) elapsed.textContent = elapsedText(running.startedAt, options.t);
     const stageElapsed = document.querySelector<HTMLElement>("#running-stage-elapsed");
-    if (stageElapsed && running) stageElapsed.textContent = queueStageElapsedText(running);
+    if (stageElapsed && running) stageElapsed.textContent = queueStageElapsedText(running, options.t);
     const runningEta = document.querySelector<HTMLElement>("#running-eta");
     if (runningEta && running) {
-      runningEta.textContent = `预计剩余 ${queueEstimateText(queueTaskRemainingSeconds(running, state.history))}`;
+      runningEta.textContent = options.t(uiKeys.queue.card.eta, { time: queueEstimateText(queueTaskRemainingSeconds(running, state.history), options.t) });
     }
     const activeTasks = state.queue.filter((task) => task.status === "waiting" || task.status === "running");
     const remainingSeconds = queueRemainingSeconds(activeTasks, state.history);
@@ -88,12 +91,12 @@ export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
     const waitingElement = document.querySelector<HTMLElement>("#queue-waiting-count");
     if (waitingElement) waitingElement.textContent = String(waitingCount);
     const etaElement = document.querySelector<HTMLElement>("#queue-eta");
-    if (etaElement) etaElement.textContent = queueEstimateText(remainingSeconds);
+    if (etaElement) etaElement.textContent = queueEstimateText(remainingSeconds, options.t);
     const etaNote = document.querySelector<HTMLElement>("#queue-eta-note");
     if (etaNote) {
       etaNote.textContent = remainingSeconds == null
-        ? "完成首条任务后会更准确"
-        : "按历史耗时与当前进度估算";
+        ? options.t(uiKeys.queue.etaNoteAfterFirst)
+        : options.t(uiKeys.queue.etaNoteCurrentProgress);
     }
   };
 

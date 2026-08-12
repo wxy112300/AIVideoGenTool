@@ -1,6 +1,7 @@
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { icon } from "../../shared/icons";
 import { imageHistoryMediaUrl } from "./helpers";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface ImageHistoryLightboxControllerOptions {
   getSelectedHistoryAssetId(): string;
@@ -28,7 +29,7 @@ export function mountImageHistoryLightbox(
   const versionFooter = document.createElement("footer");
   versionFooter.className = "image-lightbox-footer";
   versionFooter.setAttribute("data-image-lightbox-version-controls", "");
-  versionFooter.innerHTML = `<div class="image-lightbox-version-controls" aria-label="大图版本切换"><button class="secondary button-with-icon" data-image-lightbox-version-navigation="-1">${icon("arrow-left")}上一张</button><span data-image-lightbox-version-label></span><button class="secondary button-with-icon" data-image-lightbox-version-navigation="1">下一张${icon("arrow-right")}</button></div>`;
+  versionFooter.innerHTML = `<div class="image-lightbox-version-controls" aria-label="${context.t(uiKeys.history.lightboxVersionSwitch)}"><button class="secondary button-with-icon" data-image-lightbox-version-navigation="-1">${icon("arrow-left")}${context.t(uiKeys.history.lightboxPrevious)}</button><span data-image-lightbox-version-label></span><button class="secondary button-with-icon" data-image-lightbox-version-navigation="1">${context.t(uiKeys.history.lightboxNext)}${icon("arrow-right")}</button></div>`;
   lightbox.querySelector<HTMLElement>(".image-lightbox-hint")?.before(versionFooter);
   const versionMeta = lightbox.querySelector<HTMLElement>(".image-lightbox-toolbar > div:first-child > span");
   let scale = 1;
@@ -63,13 +64,13 @@ export function mountImageHistoryLightbox(
       const available = Boolean(project && targetVersion && imageHistoryMediaUrl(project, targetVersion));
       button.disabled = !available;
       button.title = targetVersion
-        ? `${direction === -1 ? "上一张图片" : "下一张图片"} · 版本 ${targetVersion.versionNumber}`
-        : direction === -1 ? "已经是最早版本" : "已经是最新版本";
+        ? `${direction === -1 ? context.t(uiKeys.history.lightboxPrevious) : context.t(uiKeys.history.lightboxNext)} · ${context.t(uiKeys.history.version, { version: targetVersion.versionNumber })}`
+        : direction === -1 ? context.t(uiKeys.history.lightboxEarliest) : context.t(uiKeys.history.lightboxLatest);
     });
     const label = versionFooter.querySelector<HTMLElement>("[data-image-lightbox-version-label]");
-    if (label) label.textContent = project && current ? `版本 ${current.versionNumber} / ${project.versions.length}` : "";
+    if (label) label.textContent = project && current ? context.t(uiKeys.history.lightboxVersionLabel, { current: current.versionNumber, total: project.versions.length }) : "";
     if (versionMeta && project && current) {
-      versionMeta.textContent = `版本 ${current.versionNumber} · ${current.width} × ${current.height}`;
+      versionMeta.textContent = `${context.t(uiKeys.history.version, { version: current.versionNumber })} · ${current.width} × ${current.height}`;
     }
   };
   const navigateVersion = (direction: -1 | 1) => {
@@ -90,7 +91,7 @@ export function mountImageHistoryLightbox(
       direction
     });
     image.src = mediaUrl;
-    image.alt = `${project.title.trim() || "未命名图片"} · 版本 ${targetVersion.versionNumber}`;
+    image.alt = `${project.title.trim() || context.t(uiKeys.history.card.untitledImage)} · ${context.t(uiKeys.history.version, { version: targetVersion.versionNumber })}`;
     reset();
     syncVersionNavigation();
   };

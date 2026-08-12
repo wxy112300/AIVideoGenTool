@@ -12,6 +12,8 @@ import type {
   WorkflowCapabilities
 } from "../../../types";
 import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
+import { createTranslator, type Translate } from "../../../core/i18n";
+import { uiKeys } from "../../../core/i18n-keys";
 import {
   imageModelCapabilityFor,
   imageLightningComponentFound,
@@ -62,6 +64,7 @@ import {
 import type { ImageEditPageViewModel, VideoCreatePageViewModel } from "./page";
 
 export interface CreateViewModelDependencies {
+  t: Translate;
   state: AppState;
   environmentScan: EnvironmentScanResult | null;
   performanceMetrics: PerformanceMetrics | null;
@@ -81,7 +84,8 @@ export interface CreateViewModelDependencies {
 
 export function imageEditEnqueueBlockReason(
   draft: ImageEditDraft,
-  imageProfile: EnvironmentScanResult["modelProfiles"][number] | undefined
+  imageProfile: EnvironmentScanResult["modelProfiles"][number] | undefined,
+  t: Translate = createTranslator("zh-CN").t
 ): string {
   const imageCapability = imageModelCapabilityFor(draft.modelId);
   const incompletePicture = draft.pictures.find((picture) => !picture.absolutePath);
@@ -91,23 +95,24 @@ export function imageEditEnqueueBlockReason(
   const imageModelInputCount = draft.pictures.length + markupGuideCount;
   const prompt = activeImagePrompt(draft);
   return !draft.pictures.length
-    ? "请先添加 Slot 1（Picture 1）作为基础图片"
+    ? t(uiKeys.create.validation.imageAddSlot)
     : !draft.pictures[0]?.absolutePath
-      ? "请先为 Slot 1（Picture 1）添加基础图片"
+      ? t(uiKeys.create.validation.imageBaseMissing)
       : incompletePicture
-        ? `请先为 Slot ${incompletePicture.pictureNumber}（Picture ${incompletePicture.pictureNumber}）添加图片`
+        ? t(uiKeys.create.validation.imagePictureMissing, { slot: incompletePicture.pictureNumber })
         : draft.pictures.length > imageCapability.maxPictures
-          ? `当前 ${imageCapability.name} 最多支持 ${imageCapability.maxPictures} 张 Picture`
+          ? t(uiKeys.create.validation.imageTooMany, { name: imageCapability.name, count: imageCapability.maxPictures })
           : imageModelInputCount > imageCapability.maxPictures
-            ? `Canvas 标记额外占用 ${markupGuideCount} 个参考输入；请减少普通参考图或清除部分标记`
+            ? t(uiKeys.create.validation.imageMarkupTooMany, { count: markupGuideCount })
             : !prompt.text.trim()
-              ? "请先填写图片编辑 Prompt"
+              ? t(uiKeys.create.validation.imagePromptMissing)
               : !cachedImageProfileAllowsEnqueue(imageProfile)
-                ? `${imageCapability.name} 图片工作流尚未接入`
+                ? t(uiKeys.create.validation.imageWorkflowMissing, { name: imageCapability.name })
                 : "";
 }
 
 export interface VideoEnqueueBlockReasonInput {
+  t?: Translate;
   promptText: string;
   extending: boolean;
   isR2V: boolean;
@@ -129,39 +134,40 @@ export interface VideoEnqueueBlockReasonInput {
 export function videoEnqueueBlockReason(
   input: VideoEnqueueBlockReasonInput
 ): string {
+  const t = input.t ?? createTranslator("zh-CN").t;
   if (input.extending) {
     return !input.videoReady
-      ? "请先选择视频并等待读取完成"
+      ? t(uiKeys.create.validation.videoMissing)
       : input.trimDuration <= 0
-        ? "请设置有效的视频保留范围"
+        ? t(uiKeys.create.validation.invalidTrim)
         : !input.promptText.trim()
-          ? "请先填写提示词"
+          ? t(uiKeys.create.validation.promptMissing)
           : !input.workflowPath
-            ? "请先选择视频续写 API 工作流"
+            ? t(uiKeys.create.validation.extensionWorkflowMissing)
             : !input.supportsVideoExtension
-              ? "当前工作流未通过视频续写安全检查"
+              ? t(uiKeys.create.validation.extensionUnsafe)
               : !input.safetySafe
                 ? input.safetyMessage
                 : !input.h3MotionContextReady
-                  ? "请先在设置 → 节点与工作流中安装 H3 Motion Context，并重启 ComfyUI"
+                  ? t(uiKeys.create.validation.motionContextMissing)
                   : !input.spectrumReady
-                    ? "请先在设置中安装并加载 Spectrum 节点"
+                    ? t(uiKeys.create.validation.spectrumMissing)
                     : "";
   }
   return !input.isR2V && !input.startImagePath
-    ? "请先选择首帧图片"
+    ? t(uiKeys.create.validation.startFrameMissing)
     : !input.promptText.trim()
-      ? "请先填写提示词"
+      ? t(uiKeys.create.validation.promptMissing)
       : input.turboCoreBlockReason || input.turboLoraBlockReason || input.selectedLoraBlockReason
         ? input.turboCoreBlockReason || input.turboLoraBlockReason || input.selectedLoraBlockReason
         : !input.workflowPath
-          ? "请先选择该模型的 ComfyUI API 工作流"
+          ? t(uiKeys.create.validation.modelWorkflowMissing)
           : !input.r2vSlotsReady
-            ? "请先补齐 R2V 参考 Slot"
+            ? t(uiKeys.create.validation.r2vSlotMissing)
             : !input.safetySafe
               ? input.safetyMessage
               : !input.spectrumReady
-                ? "请先在设置中安装并加载 Spectrum 节点"
+                ? t(uiKeys.create.validation.spectrumMissing)
                 : "";
 }
 
@@ -169,6 +175,7 @@ export function buildImageEditPageViewModel(
   options: CreateViewModelDependencies
 ): ImageEditPageViewModel {
   const {
+    t,
     state,
     environmentScan,
     promptEnhanceMode,
@@ -194,14 +201,14 @@ export function buildImageEditPageViewModel(
   const imageModelOptions = imageModelProfiles.length
     ? imageModelProfiles
     : [
-        { id: "qwen-image-edit-2511", name: "Qwen-Image-Edit-2511 · 图片处理", category: "image" as const, badge: "Qwen 2511", description: "", vram: "", available: false, integrated: true, components: [] },
-        { id: "flux2-klein-4b", name: "FLUX.2 Klein 4B · 图片处理", category: "image" as const, badge: "约 13GB VRAM", description: "", vram: "", available: false, integrated: true, components: [] }
+        { id: "qwen-image-edit-2511", name: t(uiKeys.create.options.qwenImageModel), category: "image" as const, badge: "Qwen 2511", description: "", vram: "", available: false, integrated: true, components: [] },
+        { id: "flux2-klein-4b", name: t(uiKeys.create.options.fluxImageModel), category: "image" as const, badge: t(uiKeys.create.options.vramBadge), description: "", vram: "", available: false, integrated: true, components: [] }
       ];
   const prompt = activeImagePrompt(draft);
   const imageProfile = environmentScan?.modelProfiles.find(
     (profile) => profile.id === draft.modelId
   );
-  const promptStatus = promptModelStatus(state.settings, environmentScan);
+  const promptStatus = promptModelStatus(state.settings, environmentScan, t);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
   const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
   const imagePromptAiDisabled = promptRuntimeBusy || state.queueRunning || !prompt.text.trim() || !imagePromptModelSupportsImageEdit;
@@ -209,20 +216,20 @@ export function buildImageEditPageViewModel(
     ? "faithful"
     : "detail-enhance";
   const imagePromptOptimizeTitle = state.queueRunning
-    ? "当前有任务运行，暂不能启动提示词模型"
+    ? t(uiKeys.create.validation.promptTaskRunning)
     : !imagePromptModelSupportsImageEdit
-      ? "当前选择的提示词模型没有可用适配器，请在设置中重新选择已接入的模型"
+      ? t(uiKeys.create.validation.promptAdapterMissing)
       : !prompt.text.trim()
-        ? "请先输入图片编辑 Prompt"
+        ? t(uiKeys.create.validation.imagePromptEmpty)
         : isGemmaPromptModel(state.settings.promptModelId)
-          ? "使用设置中选择的 Gemma Prompt Writer 优化"
-          : "使用设置中选择的提示词模型优化";
+          ? t(uiKeys.create.validation.gemmaOptimize)
+          : t(uiKeys.create.validation.promptOptimize);
   const incompletePicture = draft.pictures.find((picture) => !picture.absolutePath);
   const markupGuideCount = draft.modelId === "qwen-image-edit-2511"
     ? draft.pictures.filter((picture) => picture.markup?.objectCount && picture.markup.renderedPath.trim()).length
     : 0;
   const imageModelInputCount = draft.pictures.length + markupGuideCount;
-  const enqueueBlockReason = imageEditEnqueueBlockReason(draft, imageProfile);
+  const enqueueBlockReason = imageEditEnqueueBlockReason(draft, imageProfile, t);
   const count = Math.min(10, Math.max(1, draft.outputCount));
   return {
     draft,
@@ -231,8 +238,8 @@ export function buildImageEditPageViewModel(
     promptEnhancing,
     imageCapabilityName: imageCapability.name,
     imageCapabilityMaxPictures: imageCapability.maxPictures,
-    imageModelOptionsMarkup: imageModelOptions.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.modelId === profile.id ? "selected" : ""} ${isImageModelSelectable(profile) ? "" : "disabled"}>${escapeHtml(profile.name)}${isImageModelSelectable(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile))}`}</option>`).join(""),
-    imageQualityOptionsMarkup: imageCapability.qualityProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? "disabled" : ""}>${escapeHtml(profile.label)} · ${profile.steps} 步${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? " · 缺少 LoRA" : ""}</option>`).join(""),
+    imageModelOptionsMarkup: imageModelOptions.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.modelId === profile.id ? "selected" : ""} ${isImageModelSelectable(profile) ? "" : "disabled"}>${escapeHtml(profile.name)}${isImageModelSelectable(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile, t))}`}</option>`).join(""),
+    imageQualityOptionsMarkup: imageCapability.qualityProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? "disabled" : ""}>${escapeHtml(profile.label)} · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? ` · ${t(uiKeys.create.videoSettings.missingLora)}` : ""}</option>`).join(""),
     imageResolutionOptionsMarkup: imageResolutionOptions.map((option) => `<option value="${option.value}" ${selectedTargetResolution === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
     imageEnhanceMode,
     imagePromptOptimizeTitle,
@@ -245,12 +252,12 @@ export function buildImageEditPageViewModel(
     enqueueBlockReason,
     count,
     imageProfileStatusText: !imageProfile
-      ? "加入队列时会重新扫描模型文件；任务启动时再验证 ComfyUI 运行节点。"
+      ? t(uiKeys.create.validation.imageRescan)
       : !imageProfile.available
-        ? "当前缓存扫描显示组件不完整；仍可加入队列，届时会按已保存路径重新扫描确认。"
+        ? t(uiKeys.create.validation.imageScanIncomplete)
         : imageProfile.runtimeVerified && !imageProfile.runtimeReady
-          ? `${imageWorkflowStatus(imageProfile)}；可先入队，任务启动时会再次验证。`
-          : `${imageWorkflowStatus(imageProfile)}；加入队列时仍会复核模型文件。`,
+          ? t(uiKeys.create.validation.imageRuntimeRecheck, { status: imageWorkflowStatus(imageProfile, t) })
+          : t(uiKeys.create.validation.imageWorkflowRecheck, { status: imageWorkflowStatus(imageProfile, t) }),
     enqueueBusy
   };
 }
@@ -259,6 +266,7 @@ export function buildVideoCreatePageViewModel(
   options: CreateViewModelDependencies
 ): VideoCreatePageViewModel {
   const {
+    t,
     state,
     environmentScan,
     performanceMetrics,
@@ -283,7 +291,7 @@ export function buildVideoCreatePageViewModel(
   const enhanceMode = isMiniMaxH3
     ? promptEnhanceMode === "faithful" ? "faithful" : "h3-vision"
     : promptEnhanceMode === "faithful" ? "faithful" : "sulphur-native";
-  const promptStatus = promptModelStatus(state.settings, environmentScan);
+  const promptStatus = promptModelStatus(state.settings, environmentScan, t);
   const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
   const promptAiDisabled = promptRuntimeBusy || state.queueRunning;
   const turboEnabled = isH3TurboEnabled(draft);
@@ -357,16 +365,17 @@ export function buildVideoCreatePageViewModel(
   const turboCoreBlockReason = turboEnabled &&
     Boolean(environmentScan?.comfyCompatibility.checkedFrom) &&
     !environmentScan?.comfyCompatibility.h3CoreSupported
-    ? "LightX2V Turbo 需要 ComfyUI v0.31.0+ 原生音视频采样；请先在设置中更新核心"
+    ? t(uiKeys.create.validation.turboCoreMissing)
     : "";
   const turboLoraBlockReason = turboEnabled && turboLoraProfile && !turboLoraProfile.available
-    ? "LightX2V Turbo LoRA 文件缺失；请先在设置 → LoRA 中安装"
+    ? t(uiKeys.create.validation.turboLoraMissing)
     : "";
   const selectedLoraBlockReason = loraBlockingIssue?.message ??
     (missingSelectedLora
-      ? `${missingSelectedLora.name} 当前记录的文件未找到；请在设置 → LoRA 中重新扫描或安装`
+      ? t(uiKeys.create.validation.selectedLoraMissing, { name: missingSelectedLora.name })
       : "");
   const enqueueBlockReason = videoEnqueueBlockReason({
+    t,
     promptText: prompt.text,
     extending,
     isR2V,
@@ -431,7 +440,7 @@ export function buildVideoCreatePageViewModel(
       bundledWorkflows
     ),
     resolutionOptionsMarkup: extending && !isMiniMaxH3
-      ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p · GGUF 保守预设</option>`
+      ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p · ${t(uiKeys.create.options.ggufConservative)}</option>`
       : (isMiniMaxH3 ? [480, 540, 720, 768] as const : [480, 540, 720] as const).map((value) => {
           const [width, height] = outputDimensions({
             ...draft,
@@ -443,58 +452,58 @@ export function buildVideoCreatePageViewModel(
             detectedVramTotalBytes >= 20 * 1024 ** 3;
           const h3Label = isMiniMaxH3
             ? value === 480
-              ? " · 低显存起步"
+              ? t(uiKeys.create.options.h3LowVram)
               : value === 768
-                ? " · 高显存开放档"
+                ? t(uiKeys.create.options.h3HighVram)
                 : ""
             : "";
           const vramLabel = recommended && detectedVramTotalBytes > 0
-            ? ` · ${formatBytes(detectedVramTotalBytes)} 显存推荐`
+            ? t(uiKeys.create.options.vramRecommended, { value: formatBytes(detectedVramTotalBytes) })
             : "";
           return `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p · ${width}×${height}${vramLabel}${h3Label}</option>`;
         }).join(""),
-    stepsOptionsMarkup: turboEnabled
-      ? `<option value="4" ${h3Steps === 4 ? "selected" : ""}>4 · 极限加速（实验）</option>
-         <option value="6" ${h3Steps === 6 ? "selected" : ""}>6 · 加速预览</option>
-         <option value="8" ${h3Steps === 8 || h3Steps > 8 ? "selected" : ""}>8 · 正式输出（推荐）</option>`
-      : `<option value="20" ${h3Steps === 20 ? "selected" : ""}>20 · 标准质量（推荐）</option>
-         <option value="16" ${h3Steps === 16 ? "selected" : ""}>16 · 平衡预览</option>
-         <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · 快速预览</option>`,
+     stepsOptionsMarkup: turboEnabled
+      ? `<option value="4" ${h3Steps === 4 ? "selected" : ""}>4 · ${t(uiKeys.create.options.turboStepsExperimental)}</option>
+        <option value="6" ${h3Steps === 6 ? "selected" : ""}>6 · ${t(uiKeys.create.options.turboStepsPreview)}</option>
+        <option value="8" ${h3Steps === 8 || h3Steps > 8 ? "selected" : ""}>8 · ${t(uiKeys.create.options.turboStepsOutput)}</option>`
+      : `<option value="20" ${h3Steps === 20 ? "selected" : ""}>20 · ${t(uiKeys.create.options.standardStepsOutput)}</option>
+        <option value="16" ${h3Steps === 16 ? "selected" : ""}>16 · ${t(uiKeys.create.options.balancedStepsPreview)}</option>
+        <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · ${t(uiKeys.create.options.fastStepsPreview)}</option>`,
     stepsTitle: turboEnabled
-      ? "LightX2V Turbo 建议使用 8 步；6 步用于快速预览，4 步可能损失动态和音频质量。"
-      : "只影响 H3；其他模型沿用各自工作流设置。",
+      ? t(uiKeys.create.options.turboStepsTitle)
+      : t(uiKeys.create.options.h3StepsTitle),
     spectrumLabelMarkup: fieldLabelWithTip(
-      "Spectrum 加速",
+      t(uiKeys.create.validation.spectrumLabel),
       extending && isR2V
-        ? "Motion Context 官方建议关闭 Spectrum，避免固定上下文帧与音频质量退化。"
+        ? t(uiKeys.create.validation.spectrumMotionContext)
         : !spectrumEligible
           ? turboEnabled
-            ? "LightX2V Turbo 当前使用专用低步数采样策略，不与 Spectrum 叠加。"
-            : "当前模型暂不支持 Spectrum。"
+            ? t(uiKeys.create.validation.spectrumTurbo)
+            : t(uiKeys.create.validation.spectrumUnsupported)
           : !spectrumLoaded
-            ? "请先在设置 → 节点与工作流中安装 Spectrum，并确认 ComfyUI 已重启加载。"
-            : `Spectrum ${spectrumNode?.version ? `v${spectrumNode.version}` : "已加载"}，预计降低 20–35% 采样耗时；使用系统内存保存 H3 特征。`
+            ? t(uiKeys.create.validation.spectrumInstall)
+            : t(uiKeys.create.validation.spectrumLoaded, { version: spectrumNode?.version ? `v${spectrumNode.version}` : t(uiKeys.create.options.spectrumLoaded) })
     ),
-    spectrumOptionsMarkup: `<option value="off" ${draft.spectrumMode !== "balanced" ? "selected" : ""}>关闭 · 原生完整计算</option>
-      <option value="balanced" ${draft.spectrumMode === "balanced" ? "selected" : ""}>平衡模式 · 系统内存</option>`,
+    spectrumOptionsMarkup: `<option value="off" ${draft.spectrumMode !== "balanced" ? "selected" : ""}>${t(uiKeys.create.options.spectrumOff)}</option>
+      <option value="balanced" ${draft.spectrumMode === "balanced" ? "selected" : ""}>${t(uiKeys.create.options.spectrumBalanced)}</option>`,
     spectrumTitle: extending && isR2V
-      ? "Motion Context 官方建议关闭 Spectrum，避免固定上下文行与音频质量退化。"
+      ? t(uiKeys.create.validation.spectrumMotionContext)
       : !spectrumEligible
-        ? "当前模型暂不支持 Spectrum。"
+        ? t(uiKeys.create.validation.spectrumUnsupported)
         : !spectrumLoaded
-          ? "请先在设置 → 节点与工作流中安装 Spectrum，并确认 ComfyUI 已重启加载。"
-          : "使用系统内存保存 H3 特征；不会占用额外模型权重。",
+          ? t(uiKeys.create.validation.spectrumInstall)
+          : t(uiKeys.create.validation.spectrumNative),
     spectrumModeDisabled: !(spectrumEligible && spectrumLoaded && !(extending && isR2V)),
     loraLabelMarkup: fieldLabelWithTip(
-      "LoRA 叠加",
-      "LoRA 会按列表顺序叠加到当前基础模型。每个 LoRA 只能用于其声明兼容的模型和输入模式；强度通常从 0.6–1.0 起步，过高可能造成画面失真。"
+      t(uiKeys.create.validation.loraLabel),
+      t(uiKeys.create.validation.loraDescription)
     ),
     installReadyLoraDefinitions,
     installReadyLoraEmptyLabel: !environmentScan
-      ? "等待环境扫描"
+      ? t(uiKeys.create.validation.loraScanWaiting)
       : addableLoraDefinitions.length
-        ? "兼容 LoRA 尚未安装"
-        : "没有更多兼容 LoRA",
+        ? t(uiKeys.create.validation.loraNotInstalled)
+        : t(uiKeys.create.validation.loraNoMore),
     loraIssues,
     trimDuration,
     trimStartPercent,
@@ -513,10 +522,10 @@ export function buildVideoCreatePageViewModel(
     interpolationOutputFrames: interpolation.outputFrames,
     supportsEndImage,
     selectedWorkflowDescription: extending && !supportsVideoExtension
-      ? `${selectedModelProfile?.available ? `${modelName(draft.modelId)} 模型组件已安装完整；` : "模型组件尚未安装完整；"}当前工作流未通过原生续写安全检查。`
+      ? `${selectedModelProfile?.available ? t(uiKeys.create.validation.workflowComponentsReady, { name: modelName(draft.modelId) }) : t(uiKeys.create.validation.workflowComponentsMissing)}${t(uiKeys.create.validation.workflowSafetyFailed)}`
       : draft.workflowPath
         ? escapeHtml(Object.values(bundledWorkflows).find((workflow) => workflow.path === draft.workflowPath)?.label ?? draft.workflowPath)
-        : "为当前模型选择从 ComfyUI 导出的 API 格式 JSON",
+        : t(uiKeys.create.validation.chooseApiWorkflow),
     enqueueBlockReason,
     enqueueDisabled: Boolean(enqueueBlockReason),
     enqueueBusy

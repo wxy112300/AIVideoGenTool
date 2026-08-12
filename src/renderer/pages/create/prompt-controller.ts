@@ -30,6 +30,7 @@ export interface CreatePromptControllerOptions {
   syncPromptEnqueueUi(promptText: string): void;
   updateH3PromptCheck(promptText: string, hasEndImage: boolean, mode?: H3PromptMode, hasVideoReference?: boolean): void;
   h3ReferenceRoleLabels: Record<H3ReferenceRole, string>;
+  h3ReferenceRolePromptLabels: Record<H3ReferenceRole, string>;
   getPromptEnhanceMode(): PromptEnhanceMode;
   setPromptEnhanceMode(mode: PromptEnhanceMode): void;
   getH3PromptPreset(): H3PromptPreset;
@@ -165,14 +166,14 @@ export function mountCreatePromptController(
         : [draft.startImagePath, draft.endImagePath].filter(Boolean);
       const referenceContext = isMiniMaxH3R2vModel(draft.modelId)
         ? draft.h3ReferenceSlots.map((slot) =>
-            `${h3ReferenceTag(draft.h3ReferenceSlots, slot.id)} = ${options.h3ReferenceRoleLabels[slot.role]}${slot.note ? `; ${slot.note}` : ""}`
+            `${h3ReferenceTag(draft.h3ReferenceSlots, slot.id)} = ${options.h3ReferenceRolePromptLabels[slot.role]}${slot.note ? `; ${slot.note}` : ""}`
           ).join("\n")
         : h3Mode === "FL2VA"
-          ? "<Picture 1> = 首帧; <Picture 2> = 尾帧"
+          ? "<Picture 1> = first frame; <Picture 2> = last frame"
           : h3Mode === "I2VA"
-            ? "<Picture 1> = 首帧"
+            ? "<Picture 1> = first frame"
             : h3Mode === "L2VA"
-              ? "<Picture 1> = 尾帧"
+              ? "<Picture 1> = last frame"
               : "";
       const text = await options.context.studio.enhancePrompt({
         prompt: activePrompt(draft).text,
@@ -226,7 +227,7 @@ export function mountCreatePromptController(
         mode: h3PromptModeForDraft(draft),
         referenceSlots: draft.h3ReferenceSlots.map((slot) => ({
           mediaType: slot.mediaType,
-          role: options.h3ReferenceRoleLabels[slot.role],
+          role: options.h3ReferenceRolePromptLabels[slot.role],
           note: slot.note
         }))
       }
@@ -270,7 +271,7 @@ export function mountCreatePromptController(
         mode: h3PromptModeForDraft(draft),
         referenceSlots: draft.h3ReferenceSlots.map((slot) => ({
           mediaType: slot.mediaType,
-          role: options.h3ReferenceRoleLabels[slot.role],
+          role: options.h3ReferenceRolePromptLabels[slot.role],
           note: slot.note
         }))
       }

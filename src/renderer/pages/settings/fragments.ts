@@ -4,6 +4,8 @@ import type {
   ModelComponentStatus,
   ModelScanProfile
 } from "../../../types";
+import type { Translate } from "../../../core/i18n";
+import { uiKeys } from "../../../core/i18n-keys";
 
 type IconRenderer = (name: string, className?: string) => string;
 type EscapeHtml = (value: string) => string;
@@ -11,6 +13,7 @@ type EscapeHtml = (value: string) => string;
 interface SettingsFragmentRenderOptions {
   icon: IconRenderer;
   escapeHtml: EscapeHtml;
+  t: Translate;
 }
 
 export interface SettingsEnvironmentOverviewViewModel {
@@ -115,14 +118,15 @@ export function renderSettingsEnvironmentOverview(
   const { environmentScan } = viewModel;
   const escape = (value: string | number | null | undefined) => escapeValue(options, value);
   const icon = (name: string, className?: string) => options.icon(name, className);
+  const t = options.t;
   if (!environmentScan) {
-    return `${viewModel.environmentScanError ? `<div class="service-status warning">${escape(viewModel.environmentScanError)}</div>` : ""}<div class="environment-empty">${viewModel.environmentScanning ? `<span class="scan-spinner"></span><div><strong>正在扫描本机环境与模型目录…</strong><p>检查命令、GPU、本地服务及所有模型组件。</p></div>` : `<div><strong>尚未扫描</strong><p>点击右上角“重新扫描”检查当前电脑。</p></div>`}</div>`;
+    return `${viewModel.environmentScanError ? `<div class="service-status warning">${escape(viewModel.environmentScanError)}</div>` : ""}<div class="environment-empty">${viewModel.environmentScanning ? `<span class="scan-spinner"></span><div><strong>${t(uiKeys.settings.system.scanningEnvironment)}</strong><p>${t(uiKeys.settings.system.scanningEnvironmentDescription)}</p></div>` : `<div><strong>${t(uiKeys.settings.system.notScanned)}</strong><p>${t(uiKeys.settings.system.rescanInstruction)}</p></div>`}</div>`;
   }
   return `
     ${viewModel.environmentScanError ? `<div class="service-status warning">${escape(viewModel.environmentScanError)}</div>` : ""}
     <div class="environment-summary">
-      <div><span class="muted">当前用户目录</span><code title="${escape(environmentScan.userHome)}">${escape(environmentScan.userHome)}</code></div>
-      <span class="scan-time">扫描于 ${escape(options.formatScanTime(environmentScan.scannedAt))}</span>
+      <div><span class="muted">${t(uiKeys.settings.system.currentUserDirectory)}</span><code title="${escape(environmentScan.userHome)}">${escape(environmentScan.userHome)}</code></div>
+      <span class="scan-time">${escape(t(uiKeys.settings.system.scannedAt, { time: options.formatScanTime(environmentScan.scannedAt) }))}</span>
     </div>
     <div class="environment-grid">
       ${environmentScan.items.map((item) => `
@@ -130,11 +134,11 @@ export function renderSettingsEnvironmentOverview(
           <span class="environment-state">${icon(item.ok ? "circle-check" : "circle-alert")}</span>
           <div>
             <div class="environment-item-heading">
-              <div class="environment-name"><strong>${escape(item.label)}</strong>${item.optional ? `<span class="optional-tag">可选</span>` : ""}</div>
+              <div class="environment-name"><strong>${escape(item.label)}</strong>${item.optional ? `<span class="optional-tag">${t(uiKeys.settings.system.optional)}</span>` : ""}</div>
               ${item.id === "comfyui-api"
                 ? item.ok
-                  ? `<button class="service-start secondary button-with-icon" data-restart-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping ? "disabled" : ""}>${icon("refresh-cw")}${viewModel.serviceRestarting === "comfy" ? "重启中…最多等待 2 分钟" : "重启服务"}</button>`
-                  : `<button class="service-start button-with-icon" data-start-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping ? "disabled" : ""}>${icon("play")}${viewModel.serviceStarting === "comfy" ? "启动中…最多等待 2 分钟" : "一键启动"}</button>`
+                  ? `<button class="service-start secondary button-with-icon" data-restart-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping ? "disabled" : ""}>${icon("refresh-cw")}${t(viewModel.serviceRestarting === "comfy" ? uiKeys.settings.system.restartWaiting : uiKeys.settings.system.restartService)}</button>`
+                  : `<button class="service-start button-with-icon" data-start-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping ? "disabled" : ""}>${icon("play")}${t(viewModel.serviceStarting === "comfy" ? uiKeys.settings.system.startWaiting : uiKeys.settings.system.startService)}</button>`
                 : ""}
             </div>
             <p>${escape(item.detail)}</p>
@@ -145,14 +149,14 @@ export function renderSettingsEnvironmentOverview(
     ${viewModel.serviceStatusMessage ? `<div class="service-status ${viewModel.serviceStarting || viewModel.serviceRestarting ? "working" : ""}">${escape(viewModel.serviceStatusMessage)}</div>` : ""}
     ${environmentScan.comfyRoot || environmentScan.comfyInstallDirectory ? `
       <div class="detected-path">
-        <div><span class="eyebrow">检测到 ComfyUI ${
-          environmentScan.comfyInstallType === "desktop" ? "桌面版" :
-          environmentScan.comfyInstallType === "portable" ? "便携版" :
-          environmentScan.comfyInstallType === "manual" ? "手动安装" : "数据目录"
-        }</span>
+        <div><span class="eyebrow">${t(uiKeys.settings.system.detectedComfyUi, { type:
+          environmentScan.comfyInstallType === "desktop" ? t(uiKeys.settings.system.desktopInstall) :
+          environmentScan.comfyInstallType === "portable" ? t(uiKeys.settings.system.portableInstall) :
+          environmentScan.comfyInstallType === "manual" ? t(uiKeys.settings.system.manualInstall) : t(uiKeys.settings.system.dataDirectory)
+        })}</span>
         <strong>${escape(environmentScan.comfyInstallDirectory || environmentScan.comfyRoot)}</strong>
-        <p class="muted">核心源码：${escape(environmentScan.comfySourceDirectory || "未找到")}<br>数据目录：${escape(environmentScan.comfyRoot || "等待初始化")}<br>服务：${escape(environmentScan.comfyUrl)}<br>模型：${escape(environmentScan.modelDirectory || "等待初始化")}<br>输出：${escape(environmentScan.outputDirectory || "等待初始化")}</p></div>
-        <button class="secondary button-with-icon" id="use-scanned-comfy">${icon("check")}采用这些路径</button>
+        <p class="muted">${t(uiKeys.settings.system.coreSource)}：${escape(environmentScan.comfySourceDirectory || t(uiKeys.settings.system.notFoundPath))}<br>${t(uiKeys.settings.system.dataDirectory)}：${escape(environmentScan.comfyRoot || t(uiKeys.settings.system.initializationWaiting))}<br>${t(uiKeys.settings.system.service)}：${escape(environmentScan.comfyUrl)}<br>${t(uiKeys.settings.system.modelPath)}：${escape(environmentScan.modelDirectory || t(uiKeys.settings.system.initializationWaiting))}<br>${t(uiKeys.settings.system.outputPath)}：${escape(environmentScan.outputDirectory || t(uiKeys.settings.system.initializationWaiting))}</p></div>
+        <button class="secondary button-with-icon" id="use-scanned-comfy">${icon("check")}${t(uiKeys.settings.system.useScannedPaths)}</button>
       </div>` : ""}`;
 }
 
@@ -164,18 +168,19 @@ export function renderSettingsEnvironmentIssuesPanel(
   if (!issues.length) return "";
   const escape = (value: string | number | null | undefined) => escapeValue(options, value);
   const icon = (name: string, className?: string) => options.icon(name, className);
+  const t = options.t;
   return `
     <section class="panel settings-section environment-issues">
-      <div class="section-heading"><div><h2>检测到的问题</h2><span class="muted">修复操作只针对已识别的问题，并保留执行日志或备份。</span></div><span class="model-badge">${issues.length} 项</span></div>
+      <div class="section-heading"><div><h2>${t(uiKeys.settings.system.issuesTitle)}</h2><span class="muted">${t(uiKeys.settings.system.issuesDescription)}</span></div><span class="model-badge">${t(uiKeys.settings.system.issueCount, { count: issues.length })}</span></div>
       <div class="issue-list">
         ${issues.map((issue) => `
           <article class="issue-card ${issue.severity}">
             <div>
               <strong>${escape(issue.label)}</strong>
               <p class="muted">${escape(issue.detail)}</p>
-              ${viewModel.environmentRepairLogs[issue.id] ? `<details class="node-log" open><summary>修复日志</summary><pre>${escape(viewModel.environmentRepairLogs[issue.id])}</pre></details>` : ""}
+              ${viewModel.environmentRepairLogs[issue.id] ? `<details class="node-log" open><summary>${t(uiKeys.settings.system.repairLog)}</summary><pre>${escape(viewModel.environmentRepairLogs[issue.id])}</pre></details>` : ""}
             </div>
-            ${issue.repairable ? `<button class="primary button-with-icon" data-repair-issue="${escape(issue.id)}" ${viewModel.environmentRepairing ? "disabled" : ""}>${icon(viewModel.environmentRepairing === issue.id ? "refresh-cw" : "shield-check")}${viewModel.environmentRepairing === issue.id ? "修复中…" : escape(issue.repairLabel)}</button>` : ""}
+            ${issue.repairable ? `<button class="primary button-with-icon" data-repair-issue="${escape(issue.id)}" ${viewModel.environmentRepairing ? "disabled" : ""}>${icon(viewModel.environmentRepairing === issue.id ? "refresh-cw" : "shield-check")}${viewModel.environmentRepairing === issue.id ? t(uiKeys.settings.system.repairing) : escape(issue.repairLabel)}</button>` : ""}
           </article>`).join("")}
       </div>
     </section>`;
@@ -192,7 +197,7 @@ export function renderSettingsComfyCompatibilityPanel(
   ) ?? viewModel.environmentScan?.comfyInstallations[0];
   const versionLabel = compatibility.version
     ? `v${compatibility.version}`
-    : "版本号未知";
+    : options.t(uiKeys.settings.compatibility.versionUnknown);
   const ready = Boolean(compatibility.version || compatibility.revision || compatibility.checkedFrom);
   const versionMismatch = compatibility.checkedFrom === "api" &&
     Boolean(selectedInstallation?.version) &&
@@ -200,28 +205,29 @@ export function renderSettingsComfyCompatibilityPanel(
     selectedInstallation?.version !== compatibility.version;
   const escape = (value: string | number | null | undefined) => escapeValue(options, value);
   const icon = (name: string, className?: string) => options.icon(name, className);
+  const t = options.t;
   return `
     <section class="panel settings-section comfy-compatibility ${ready ? "available" : "missing"}">
       <div class="section-heading">
         <div>
-          <h2>ComfyUI 核心版本</h2>
-          <span class="muted">显示当前选择或当前已连接服务的核心信息</span>
+          <h2>${t(uiKeys.settings.compatibility.title)}</h2>
+          <span class="muted">${t(uiKeys.settings.compatibility.description)}</span>
         </div>
         <div class="compatibility-actions">
-            <span class="model-availability ${ready ? "available" : "missing"}">${ready ? `${icon("circle-check")} 已识别` : `${icon("circle-help")} 等待启动服务`}</span>
-          <button class="primary button-with-icon" id="update-comfyui" ${viewModel.comfyUpdating || compatibility.updateMode === "unsupported" ? "disabled" : ""}>${icon(viewModel.comfyUpdating ? "refresh-cw" : "download")}${viewModel.comfyUpdating ? "正在处理…" : compatibility.updateMode === "desktop" ? "打开官方更新器" : "手动更新 ComfyUI"}</button>
+            <span class="model-availability ${ready ? "available" : "missing"}">${ready ? `${icon("circle-check")} ${t(uiKeys.settings.compatibility.recognized)}` : `${icon("circle-help")} ${t(uiKeys.settings.compatibility.waitingService)}`}</span>
+          <button class="primary button-with-icon" id="update-comfyui" ${viewModel.comfyUpdating || compatibility.updateMode === "unsupported" ? "disabled" : ""}>${icon(viewModel.comfyUpdating ? "refresh-cw" : "download")}${viewModel.comfyUpdating ? t(uiKeys.settings.compatibility.processing) : compatibility.updateMode === "desktop" ? t(uiKeys.settings.compatibility.openOfficialUpdater) : t(uiKeys.settings.compatibility.manualUpdate)}</button>
         </div>
       </div>
       <div class="compatibility-version">
-        <div><span>Desktop 应用</span><strong>${escape(selectedInstallation?.desktopVersion ? `v${selectedInstallation.desktopVersion}` : selectedInstallation?.type === "desktop" ? "未读取到应用版本" : "不适用")}</strong></div>
-        <div><span>所选目录本地核心</span><strong>${escape(selectedInstallation?.version ? `v${selectedInstallation.version}` : "未找到本地版本文件")}</strong></div>
-        <div><span>当前连接服务核心</span><strong>${escape(compatibility.checkedFrom === "api" ? versionLabel : "服务未连接")}</strong></div>
-        <div><span>核心提交</span><code>${escape(compatibility.revision || "未知")}</code></div>
-        <div><span>检测来源</span><strong>${compatibility.checkedFrom === "api" ? "运行中服务 /object_info" : compatibility.checkedFrom === "source" ? "本地核心源码" : "等待启动服务"}</strong></div>
+        <div><span>${t(uiKeys.settings.compatibility.desktopApp)}</span><strong>${escape(selectedInstallation?.desktopVersion ? `v${selectedInstallation.desktopVersion}` : selectedInstallation?.type === "desktop" ? t(uiKeys.settings.compatibility.versionNotRead) : t(uiKeys.settings.compatibility.notApplicable))}</strong></div>
+        <div><span>${t(uiKeys.settings.compatibility.selectedLocalCore)}</span><strong>${escape(selectedInstallation?.version ? `v${selectedInstallation.version}` : t(uiKeys.settings.compatibility.versionNotRead))}</strong></div>
+        <div><span>${t(uiKeys.settings.compatibility.connectedServiceCore)}</span><strong>${escape(compatibility.checkedFrom === "api" ? versionLabel : t(uiKeys.settings.compatibility.serviceNotConnected))}</strong></div>
+        <div><span>${t(uiKeys.settings.compatibility.coreCommit)}</span><code>${escape(compatibility.revision || t(uiKeys.settings.compatibility.versionUnknown))}</code></div>
+        <div><span>${t(uiKeys.settings.compatibility.detectionSource)}</span><strong>${compatibility.checkedFrom === "api" ? t(uiKeys.settings.compatibility.runningService) : compatibility.checkedFrom === "source" ? t(uiKeys.settings.compatibility.localCoreSource) : t(uiKeys.settings.compatibility.waitingStart)}</strong></div>
       </div>
-      ${versionMismatch ? `<div class="service-status warning">当前连接服务是核心 ${escape(versionLabel)}，但所选目录的本地核心是 v${escape(selectedInstallation?.version ?? "未知")}；你可能连接到了另一个正在运行的 ComfyUI 实例。重启服务前请确认端口和安装目录。</div>` : ""}
+      ${versionMismatch ? `<div class="service-status warning">${escape(t(uiKeys.settings.compatibility.mismatchWarning, { serviceVersion: versionLabel, localVersion: `v${selectedInstallation?.version ?? t(uiKeys.settings.compatibility.versionUnknown)}` }))}</div>` : ""}
       <p class="muted">${escape(compatibility.updateHint)}</p>
-      ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>更新日志</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
+      ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>${t(uiKeys.settings.compatibility.updateLog)}</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
     </section>`;
 }
 
@@ -242,14 +248,14 @@ export function renderSettingsModelScanCard(
     ? options.isImageWorkflowReady(profile)
     : profile.available && !runtimeUnavailable;
   const readyLabel = isPromptProfile
-    ? "文件完整"
+    ? options.t(uiKeys.settings.system.scanCardFileComplete)
     : isReady
-      ? "可用"
+      ? options.t(uiKeys.settings.system.scanCardAvailable)
       : runtimeUnavailable
-        ? "运行节点未就绪"
+        ? options.t(uiKeys.settings.system.scanCardRuntimeUnavailable)
         : profile.category === "image"
           ? options.imageWorkflowStatus(profile)
-          : "组件完整";
+          : options.t(uiKeys.settings.system.scanCardComponentComplete);
   const metaLabel = profile.available
     ? isPromptProfile
       ? isLlamaProfile
@@ -278,9 +284,9 @@ export function renderSettingsModelScanCard(
           <div class="model-title"><h3>${escape(profile.name)}</h3>${loraInfoButton}<span class="model-badge">${escape(profile.badge)}</span></div>
           <p class="muted">${escape(profile.description)}</p>
         </div>
-        <span class="model-availability ${isReady ? "available" : "missing"}">${profile.available ? `${icon(isReady ? "circle-check" : "circle-alert")} ${escape(readyLabel)}` : `${icon("circle-alert")} 缺少 ${missingCount} 项`}</span>
+        <span class="model-availability ${isReady ? "available" : "missing"}">${profile.available ? `${icon(isReady ? "circle-check" : "circle-alert")} ${escape(readyLabel)}` : `${icon("circle-alert")} ${options.t(uiKeys.settings.system.scanCardMissingCount, { count: missingCount })}`}</span>
       </div>
-      <div class="model-meta-line"><span>资源 / 策略 · ${escape(profile.vram)}</span><span class="model-hardware-recommendation">推荐硬件 · ${escape(hardwareRecommendation)}</span><span>${metaLabel}</span></div>
+      <div class="model-meta-line"><span>${options.t(uiKeys.settings.system.scanCardResourcePolicy)} · ${escape(profile.vram)}</span><span class="model-hardware-recommendation">${options.t(uiKeys.settings.system.scanCardRecommendedHardware)} · ${escape(hardwareRecommendation)}</span><span>${metaLabel}</span></div>
       <div class="component-list">
         ${profile.components.map((component, componentIndex) => `
           <div class="component-row ${component.found ? "found" : component.optional ? "optional missing" : "missing"}">
@@ -288,9 +294,9 @@ export function renderSettingsModelScanCard(
             <div><strong>${escape(component.label)}</strong>
               ${component.found
                 ? `<code title="${escape(component.matches.join("\n"))}">${escape(component.matches.join(" · "))}</code>`
-                : `<span>${component.optional ? "可选，4 步 Lightning 档需要：" : "缺失："}${escape(component.expected)}</span>`}
-            </div>
-            ${component.found ? "" : `<button class="component-info" data-install-profile="${escape(profile.id)}" data-install-component="${componentIndex}" aria-label="查看 ${escape(component.label)} 的下载和安装说明" title="查看下载和安装说明">${icon("info")}</button>`}
+                : `<span>${component.optional ? "可选，4 步 Lightning 档需要：" : options.t(uiKeys.settings.system.scanCardMissing)}${escape(component.expected)}</span>`}
+              </div>
+              ${component.found ? "" : `<button class="component-info" data-install-profile="${escape(profile.id)}" data-install-component="${componentIndex}" aria-label="查看 ${escape(component.label)} 的${options.t(uiKeys.settings.system.scanCardInstallInfo)}" title="${options.t(uiKeys.settings.system.scanCardInstallInfo)}">${icon("info")}</button>`}
           </div>`).join("")}
       </div>
     </article>`;
@@ -305,16 +311,17 @@ export function renderSettingsInstallGuideDialog(
   const guide = component.installGuide;
   const escape = (value: string | number | null | undefined) => escapeValue(options, value);
   const icon = (name: string, className?: string) => options.icon(name, className);
+  const t = options.t;
   if (!guide) {
     return `
       <div class="dialog-backdrop" id="install-guide-backdrop">
         <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title" tabindex="-1">
           <div class="install-guide-head">
             <div><span class="eyebrow">${escape(profileName)}</span><h2 id="install-guide-title">${escape(component.label)}</h2></div>
-            <button class="dialog-close" id="close-install-guide" aria-label="关闭">${icon("x")}</button>
+            <button class="dialog-close" id="close-install-guide" aria-label="${t(uiKeys.settings.system.installGuideClose)}">${icon("x")}</button>
           </div>
-          <div class="install-note"><strong>扫描数据需要刷新</strong><p>当前结果来自更新前的主进程。请关闭并重新启动应用，然后重新扫描环境。</p></div>
-          <div class="dialog-actions"><button class="primary" id="dismiss-install-guide">知道了</button></div>
+          <div class="install-note"><strong>${t(uiKeys.settings.system.installGuideRefreshTitle)}</strong><p>${t(uiKeys.settings.system.installGuideRefreshDescription)}</p></div>
+          <div class="dialog-actions"><button class="primary" id="dismiss-install-guide">${t(uiKeys.settings.system.installGuideAcknowledged)}</button></div>
         </section>
       </div>`;
   }
@@ -324,18 +331,18 @@ export function renderSettingsInstallGuideDialog(
       <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title" tabindex="-1">
         <div class="install-guide-head">
           <div><span class="eyebrow">${escape(profileName)}</span><h2 id="install-guide-title">${escape(component.label)}</h2></div>
-            <button class="dialog-close" id="close-install-guide" aria-label="关闭">${icon("x")}</button>
+            <button class="dialog-close" id="close-install-guide" aria-label="${t(uiKeys.settings.system.installGuideClose)}">${icon("x")}</button>
         </div>
-        <p class="muted">下载完成后，将文件放入下面的目录，再回到设置页重新扫描。</p>
+        <p class="muted">${t(uiKeys.settings.system.installGuideDownloadInstruction)}</p>
         <div class="install-guide-fields">
-          <div><span>下载来源</span><strong>${escape(guide.sourceLabel)}</strong></div>
-          <div><span>推荐文件</span><code>${escape(guide.recommendedFilename)}</code></div>
-          <div class="install-target"><span>应放目录</span><code>${escape(targetDirectory)}</code></div>
+          <div><span>${t(uiKeys.settings.system.installGuideSource)}</span><strong>${escape(guide.sourceLabel)}</strong></div>
+          <div><span>${t(uiKeys.settings.system.installGuideRecommendedFile)}</span><code>${escape(guide.recommendedFilename)}</code></div>
+          <div class="install-target"><span>${t(uiKeys.settings.system.installGuideTargetDirectory)}</span><code>${escape(targetDirectory)}</code></div>
         </div>
-        ${guide.notes ? `<div class="install-note"><strong>注意</strong><p>${escape(guide.notes)}</p></div>` : ""}
+        ${guide.notes ? `<div class="install-note"><strong>${t(uiKeys.settings.system.installGuideNote)}</strong><p>${escape(guide.notes)}</p></div>` : ""}
         <div class="dialog-actions">
-          <button class="secondary" id="dismiss-install-guide">关闭</button>
-          <button class="primary button-with-icon" id="open-install-download">打开下载页面${icon("external-link")}</button>
+          <button class="secondary" id="dismiss-install-guide">${t(uiKeys.settings.system.installGuideClose)}</button>
+          <button class="primary button-with-icon" id="open-install-download">${t(uiKeys.settings.system.installGuideOpenDownload)}${icon("external-link")}</button>
         </div>
       </section>
     </div>`;

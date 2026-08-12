@@ -3,7 +3,7 @@ import { createDefaultH3PromptPresets } from "./h3-prompt-presets.js";
 import { createDefaultQwenImagePromptPresets } from "./qwen-image-prompt.js";
 
 export const defaultPrompt =
-  "人物自然地看向镜头，头发被微风吹动，镜头缓慢推近，动作真实流畅。";
+  "The subject naturally looks toward the camera as a light breeze moves their hair; the camera slowly pushes in with realistic, fluid motion.";
 
 export function createDefaultImageEditDraft(): ImageEditDraft {
   return {

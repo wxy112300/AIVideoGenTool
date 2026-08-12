@@ -1,6 +1,9 @@
 import type { AppState, PerformanceMetrics, QueueTask } from "../../../types";
+import type { Translate } from "../../../core/i18n";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface QueuePageOptions {
+  t: Translate;
   performanceMetrics: PerformanceMetrics | null;
   queueRemainingSeconds(tasks: QueueTask[]): number | null;
   queueEstimateText(seconds: number | null): string;
@@ -25,38 +28,38 @@ export function renderQueuePage(
   const waitingCount = activeTasks.filter((task) => task.status === "waiting").length;
   const remainingSeconds = options.queueRemainingSeconds(activeTasks);
   const queueStatus = running
-    ? "当前任务正在运行"
+    ? options.t(uiKeys.queue.statusRunning)
     : activeTasks.some((task) => task.status === "waiting")
-      ? "等待任务已暂停"
+      ? options.t(uiKeys.queue.statusPaused)
       : attentionTasks.length
-        ? "有任务需要处理"
-        : "队列为空";
+        ? options.t(uiKeys.queue.statusAttention)
+        : options.t(uiKeys.queue.statusEmpty);
   const metrics = options.performanceMetrics;
   return `
     <section class="page-heading queue-page-heading">
       <div class="queue-page-heading-main">
         <div class="queue-heading-line">
-          <h1>生成队列</h1>
-          <div class="queue-overview" aria-label="队列概览">
-            <div class="queue-overview-item"><span>等待中</span><strong id="queue-waiting-count">${waitingCount}</strong></div>
-            <div class="queue-overview-item"><span>预计剩余</span><strong id="queue-eta">${options.queueEstimateText(remainingSeconds)}</strong><small id="queue-eta-note">${remainingSeconds == null ? "完成首条任务后更准确" : "按历史耗时与当前进度"}</small></div>
+          <h1>${options.t(uiKeys.queue.title)}</h1>
+          <div class="queue-overview" aria-label="${options.t(uiKeys.queue.ariaOverview)}">
+            <div class="queue-overview-item"><span>${options.t(uiKeys.queue.waiting)}</span><strong id="queue-waiting-count">${waitingCount}</strong></div>
+            <div class="queue-overview-item"><span>${options.t(uiKeys.queue.eta)}</span><strong id="queue-eta">${options.queueEstimateText(remainingSeconds)}</strong><small id="queue-eta-note">${remainingSeconds == null ? options.t(uiKeys.queue.etaNoteAfterFirst) : options.t(uiKeys.queue.etaNoteCurrentProgress)}</small></div>
           </div>
         </div>
-        <p>${activeTasks.length} 项执行任务 · ${attentionTasks.length} 项需处理 · ${queueStatus}</p>
+        <p>${options.t(uiKeys.queue.summary, { activeCount: activeTasks.length, attentionCount: attentionTasks.length, status: queueStatus })}</p>
       </div>
       <div class="button-row">
-        ${running ? `<span class="queue-mode">${state.queueRunning ? "自动继续后续任务" : "本条完成后暂停"}</span>` : `<button class="primary button-with-icon" id="start-queue" ${state.queue.some((task) => task.status === "waiting") ? "" : "disabled"}>${options.icon("play")}开始队列</button>`}
+        ${running ? `<span class="queue-mode">${state.queueRunning ? options.t(uiKeys.queue.automaticContinue) : options.t(uiKeys.queue.pauseAfterCurrent)}</span>` : `<button class="primary button-with-icon" id="start-queue" ${state.queue.some((task) => task.status === "waiting") ? "" : "disabled"}>${options.icon("play")}${options.t(uiKeys.queue.start)}</button>`}
       </div>
     </section>
-    <section class="performance-grid" aria-label="性能监测">
-      ${options.performanceCard("CPU", "metric-cpu", metrics?.cpuPercent, "%")}
-      ${options.performanceCard("系统内存", "metric-memory", metrics && metrics.memoryTotalBytes > 0 ? metrics.memoryUsedBytes / metrics.memoryTotalBytes * 100 : null, "%", metrics && metrics.memoryTotalBytes > 0 ? `${formatBytes(metrics.memoryUsedBytes)} / ${formatBytes(metrics.memoryTotalBytes)}` : "")}
-      ${options.performanceCard("GPU", "metric-gpu", metrics?.gpuPercent, "%", metrics?.gpuTemperature != null ? `${metrics.gpuTemperature}°C` : "")}
-      ${options.performanceCard("显存", "metric-vram", metrics?.vramUsedBytes != null && metrics.vramTotalBytes ? metrics.vramUsedBytes / metrics.vramTotalBytes * 100 : null, "%", metrics?.vramUsedBytes != null && metrics.vramTotalBytes != null ? `${formatBytes(metrics.vramUsedBytes)} / ${formatBytes(metrics.vramTotalBytes)}` : "")}
+    <section class="performance-grid" aria-label="${options.t(uiKeys.queue.performance)}">
+      ${options.performanceCard(options.t(uiKeys.queue.cpu), "metric-cpu", metrics?.cpuPercent, "%")}
+      ${options.performanceCard(options.t(uiKeys.queue.systemMemory), "metric-memory", metrics && metrics.memoryTotalBytes > 0 ? metrics.memoryUsedBytes / metrics.memoryTotalBytes * 100 : null, "%", metrics && metrics.memoryTotalBytes > 0 ? `${formatBytes(metrics.memoryUsedBytes)} / ${formatBytes(metrics.memoryTotalBytes)}` : "")}
+      ${options.performanceCard(options.t(uiKeys.queue.gpu), "metric-gpu", metrics?.gpuPercent, "%", metrics?.gpuTemperature != null ? `${metrics.gpuTemperature}°C` : "")}
+      ${options.performanceCard(options.t(uiKeys.queue.vram), "metric-vram", metrics?.vramUsedBytes != null && metrics.vramTotalBytes ? metrics.vramUsedBytes / metrics.vramTotalBytes * 100 : null, "%", metrics?.vramUsedBytes != null && metrics.vramTotalBytes != null ? `${formatBytes(metrics.vramUsedBytes)} / ${formatBytes(metrics.vramTotalBytes)}` : "")}
     </section>
     ${state.queue.length === 0
-        ? `<div class="empty panel"><h2>队列还是空的</h2><p>从创建页加入一个任务后，就可以在这里运行。</p><button class="secondary button-with-icon" data-page="create">${options.icon("plus")}去创建</button></div>`
-      : `<section class="queue-section"><div class="queue-section-heading"><div><h2>执行队列</h2><span class="muted">等待和当前运行中的任务按此顺序执行。</span></div><span class="model-badge">${activeTasks.length} 项</span></div><div class="task-list">${activeTasks.length ? activeTasks.map((task, index) => options.renderTaskCard(task, index + 1)).join("") : `<div class="empty panel queue-section-empty"><h2>没有等待中的任务</h2><p>下面的任务需要重试、编辑或移除。</p></div>`}</div></section>${attentionTasks.length ? `<section class="queue-section queue-attention-section"><div class="queue-section-heading"><div><h2>需要处理</h2><span class="muted">失败和取消的任务不会自动占用执行队列。</span></div><span class="model-badge warning-badge">${attentionTasks.length} 项</span></div><div class="task-list">${attentionTasks.map((task) => options.renderTaskCard(task, 0)).join("")}</div></section>` : ""}`}
+        ? `<div class="empty panel"><h2>${options.t(uiKeys.queue.emptyTitle)}</h2><p>${options.t(uiKeys.queue.emptyDescription)}</p><button class="secondary button-with-icon" data-page="create">${options.icon("plus")}${options.t(uiKeys.queue.create)}</button></div>`
+      : `<section class="queue-section"><div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.executionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.executionDescription)}</span></div><span class="model-badge">${options.t(uiKeys.queue.count, { count: activeTasks.length })}</span></div><div class="task-list">${activeTasks.length ? activeTasks.map((task, index) => options.renderTaskCard(task, index + 1)).join("") : `<div class="empty panel queue-section-empty"><h2>${options.t(uiKeys.queue.waitingEmptyTitle)}</h2><p>${options.t(uiKeys.queue.waitingEmptyDescription)}</p></div>`}</div></section>${attentionTasks.length ? `<section class="queue-section queue-attention-section"><div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.attentionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.attentionDescription)}</span></div><span class="model-badge warning-badge">${options.t(uiKeys.queue.count, { count: attentionTasks.length })}</span></div><div class="task-list">${attentionTasks.map((task) => options.renderTaskCard(task, 0)).join("")}</div></section>` : ""}`}
     `;
 }
 

@@ -7,6 +7,7 @@ import type {
   WindowCloseRequest
 } from "../types";
 import type { HistoryKind, Page, RendererCleanup } from "./contracts";
+import type { Translate } from "../core/i18n";
 import {
   historyStateChanged,
   imageHistoryStateChanged
@@ -15,9 +16,11 @@ import {
   imageAssetPhaseLabel,
   imageAssetProgressPercent
 } from "./shell/secondary-dialogs";
+import { uiKeys } from "../core/i18n-keys";
 
 export interface RendererEventOptions {
   studio: AppApi;
+  t: Translate;
   getState(): AppState | undefined;
   setState(nextState: AppState): void;
   getPage(): Page;
@@ -43,7 +46,7 @@ function isEditingFormControl(): boolean {
     activeElement instanceof HTMLSelectElement;
 }
 
-function updateImageAssetLibraryProgress(progress: ImageAssetLibraryProgress): void {
+function updateImageAssetLibraryProgress(progress: ImageAssetLibraryProgress, t: Translate): void {
   const message = document.querySelector<HTMLElement>("#image-assets-progress-message");
   if (message) message.textContent = progress.message;
   const progressElement = document.querySelector<HTMLElement>("#image-assets-progress");
@@ -53,9 +56,9 @@ function updateImageAssetLibraryProgress(progress: ImageAssetLibraryProgress): v
     progressElement.querySelector<HTMLElement>("span")?.style.setProperty("width", `${value}%`);
   }
   const phase = document.querySelector<HTMLElement>("#image-assets-progress-phase");
-  if (phase) phase.textContent = imageAssetPhaseLabel(progress.phase);
+  if (phase) phase.textContent = imageAssetPhaseLabel(progress.phase, t);
   const count = document.querySelector<HTMLElement>("#image-assets-progress-count");
-  if (count) count.textContent = progress.total ? `${progress.current} / ${progress.total}` : "准备中";
+  if (count) count.textContent = progress.total ? `${progress.current} / ${progress.total}` : t(uiKeys.assetLibrary.preparing);
 }
 
 function updateTaskPreview(
@@ -121,7 +124,7 @@ export function registerRendererEvents(
     }),
     options.studio.onImageAssetLibraryProgress((progress) => {
       options.setImageAssetLibraryProgress(progress);
-      updateImageAssetLibraryProgress(progress);
+      updateImageAssetLibraryProgress(progress, options.t);
     }),
     options.studio.onTaskPreview((preview) => updateTaskPreview(preview, options)),
     options.studio.onAttentionInstallLog((message) => {

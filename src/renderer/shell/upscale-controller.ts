@@ -2,6 +2,7 @@ import type { RendererCleanup, RendererContext } from "../contracts";
 import type { UpscaleDialogState } from "./secondary-dialogs";
 import { createUpscaleFilename, upscaleDimensions } from "../../core/upscale";
 import { versionVideoIndex } from "../pages/history/helpers";
+import { uiKeys } from "../../core/i18n-keys";
 
 export interface UpscaleControllerOptions {
   getDialog(): UpscaleDialogState | null;
@@ -21,6 +22,7 @@ export function mountUpscaleController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+  const t = context.t;
   const closeUpscale = () => {
     options.setDialog(null);
     context.requestRender();
@@ -80,7 +82,7 @@ export function mountUpscaleController(
     const fileIndex = version ? versionVideoIndex(version) : -1;
     const sourceFile = fileIndex >= 0 ? version?.files[fileIndex] : undefined;
     if (!asset || !version || !sourceFile?.absolutePath) {
-      context.notify("源视频文件不可用，无法创建提升任务。", { renderPage: false });
+      context.notify(t(uiKeys.runtime.upscaleSourceMissing), { renderPage: false });
       return;
     }
     try {
@@ -100,7 +102,7 @@ export function mountUpscaleController(
           upscalePatch
         );
         options.setRendererState(nextState);
-        context.notify(dialog.taskId ? "提升任务已更新。" : "失败任务已恢复并更新设置。", { renderPage: false });
+        context.notify(dialog.taskId ? t(uiKeys.runtime.upscaleUpdated) : t(uiKeys.runtime.upscaleRecovered), { renderPage: false });
         options.setDialog(null);
         context.requestRender();
       } else {
@@ -119,7 +121,7 @@ export function mountUpscaleController(
           faceRestore: false
         });
         options.setRendererState(nextState);
-        context.notify("分辨率提升任务已加入队列。", { renderPage: false });
+        context.notify(t(uiKeys.runtime.upscaleQueued), { renderPage: false });
         options.setDialog(null);
         context.requestRender();
       }

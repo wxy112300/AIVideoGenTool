@@ -5,6 +5,7 @@ import type {
   Settings
 } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface SettingsEnvironmentControllerOptions {
   formSettings(): Settings;
@@ -49,8 +50,8 @@ export function mountSettingsEnvironmentController(
       options.setServiceStarting(kind);
       options.setServiceStatusMessage(
         kind === "comfy"
-          ? "正在启动 ComfyUI 后端并检测接口，首次加载节点可能需要 1–2 分钟…"
-          : "正在启动 LM Studio…"
+          ? context.t(uiKeys.settings.actions.serviceStartingComfy)
+          : context.t(uiKeys.settings.actions.serviceStartingLmStudio)
       );
       context.requestRender();
       try {
@@ -61,7 +62,7 @@ export function mountSettingsEnvironmentController(
         context.notify(result.message);
       } catch (error) {
         options.setServiceStarting(null);
-        const message = `启动失败：${error instanceof Error ? error.message : String(error)}`;
+        const message = context.t(uiKeys.settings.actions.startFailed, { error: error instanceof Error ? error.message : String(error) });
         options.setServiceStatusMessage(message);
         context.notify(message);
       }
@@ -75,7 +76,7 @@ export function mountSettingsEnvironmentController(
       const settings = options.formSettings();
       options.setSettingsDraft(settings);
       options.setServiceRestarting(kind);
-      options.setServiceStatusMessage("正在停止并重新启动 ComfyUI，节点加载期间会持续检测，最多等待 2 分钟…");
+      options.setServiceStatusMessage(context.t(uiKeys.settings.actions.serviceRestartingComfy));
       context.requestRender();
       try {
         const result = await context.studio.restartLocalService(kind, settings);
@@ -85,7 +86,7 @@ export function mountSettingsEnvironmentController(
         context.notify(result.message);
       } catch (error) {
         options.setServiceRestarting(null);
-        const message = `重启失败：${error instanceof Error ? error.message : String(error)}`;
+        const message = context.t(uiKeys.settings.actions.restartFailed, { error: error instanceof Error ? error.message : String(error) });
         options.setServiceStatusMessage(message);
         context.notify(message);
       }
@@ -116,7 +117,7 @@ export function mountSettingsEnvironmentController(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       options.setComfyUpdateLog(message);
-      context.notify(`ComfyUI 更新失败：${message}`);
+      context.notify(context.t(uiKeys.settings.actions.comfyUpdateFailed, { error: message }));
     } finally {
       options.setComfyUpdating(false);
       context.requestRender();
@@ -209,7 +210,7 @@ export function mountSettingsEnvironmentController(
         options.setEnvironmentRepairing("");
         const message = error instanceof Error ? error.message : String(error);
         options.setEnvironmentRepairLog(issueId, message);
-        context.notify(`自动修复失败：${message}`);
+        context.notify(context.t(uiKeys.settings.actions.environmentRepairFailed, { error: message }));
       }
       context.requestRender();
     }, { signal });

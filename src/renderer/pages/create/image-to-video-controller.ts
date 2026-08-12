@@ -1,5 +1,6 @@
 import type { Draft } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface ImageToVideoControllerOptions {
   patchDraft(patch: Partial<Draft>): void;
@@ -14,6 +15,7 @@ function bindFrameDrop(
 ): void {
   const zone = context.root.querySelector<HTMLElement>(selector);
   if (!zone) return;
+  const t = context.t;
   const clearDragState = () => zone.classList.remove("drag-over");
   zone.addEventListener("dragenter", (event) => {
     event.preventDefault();
@@ -36,12 +38,12 @@ function bindFrameDrop(
     const file = event.dataTransfer?.files.item(0);
     if (!file) return;
     if (!file.type.startsWith("image/") && !/\.(png|jpe?g|webp|bmp)$/i.test(file.name)) {
-      context.notify("请拖入 PNG、JPG、WEBP 或 BMP 图片");
+      context.notify(t(uiKeys.create.interaction.invalidImageDrop));
       return;
     }
     const filename = context.studio.getDroppedFilePath(file);
     if (!filename) {
-      context.notify("无法读取拖入图片的本地路径");
+      context.notify(t(uiKeys.create.interaction.imagePathFailed));
       return;
     }
     options.patchDraft({

@@ -8,6 +8,7 @@ import type {
   Settings
 } from "../../../types";
 import type { RendererCleanup, RendererContext, SettingsTab } from "../../contracts";
+import { uiKeys } from "../../../core/i18n-keys";
 
 export interface SettingsFieldsControllerOptions {
   formSettings(): Settings;
@@ -88,7 +89,7 @@ export function mountSettingsFieldsController(
       h3PromptPresets: createDefaultH3PromptPresets()
     });
     context.requestRender();
-    context.notify("扩写预设已恢复默认，请保存设置后生效。");
+    context.notify(context.t(uiKeys.settings.actions.h3PresetRestored));
   }, { signal });
 
   root.querySelector("#restore-image-prompt-presets")?.addEventListener("click", () => {
@@ -97,7 +98,7 @@ export function mountSettingsFieldsController(
       imagePromptPresets: createDefaultImagePromptPresets()
     });
     context.requestRender();
-    context.notify("图片提示词预设已恢复默认，请保存设置后生效。");
+    context.notify(context.t(uiKeys.settings.actions.imagePresetRestored));
   }, { signal });
 
   root.querySelector<HTMLInputElement>("#proxy-enabled")?.addEventListener("change", () => {

@@ -8,6 +8,8 @@ import type {
   ImageAssetLibraryScan,
   PerformanceMetrics
 } from "../../types";
+import type { Translate } from "../../core/i18n";
+import { uiKeys } from "../../core/i18n-keys";
 import type {
   UpscaleResourceEstimate,
   UpscaleResourceEstimateInput
@@ -29,6 +31,7 @@ export interface DirectoryMigrationDialogOptions {
   request: DirectoryMigrationDialogRequest | null;
   progress: HistoryMigrationProgress | null;
   busy: boolean;
+  t: Translate;
   icon: IconRenderer;
   escapeHtml: HtmlEscaper;
 }
@@ -55,6 +58,7 @@ export interface ImageAssetLibraryDialogOptions {
   icon: IconRenderer;
   escapeHtml: HtmlEscaper;
   formatAssetBytes(bytes: number): string;
+  t: Translate;
 }
 
 export interface UpscaleDialogState {
@@ -90,6 +94,7 @@ export interface UpscaleDialogOptions {
     targetHeight: UpscaleTargetHeight
   ): [number, number];
   versionShortEdge(version: AssetVersion): number;
+  t: Translate;
 }
 
 interface UpscaleModelProfileOption {
@@ -142,36 +147,38 @@ export function imageAssetProgressPercent(
 }
 
 export function imageAssetPhaseLabel(
-  phase: ImageAssetLibraryProgress["phase"] | undefined
+  phase: ImageAssetLibraryProgress["phase"] | undefined,
+  t: Translate
 ): string {
   return ({
-    scanning: "扫描引用",
-    archiving: "复制归档",
-    verifying: "校验文件",
-    committing: "保存历史",
-    cleaning: "清理素材",
-    completed: "操作完成"
+    scanning: t(uiKeys.assetLibrary.phaseScanning),
+    archiving: t(uiKeys.assetLibrary.phaseArchiving),
+    verifying: t(uiKeys.assetLibrary.phaseVerifying),
+    committing: t(uiKeys.assetLibrary.phaseCommitting),
+    cleaning: t(uiKeys.assetLibrary.phaseCleaning),
+    completed: t(uiKeys.assetLibrary.phaseCompleted)
   } as const)[phase ?? "scanning"];
 }
 
 export function imageAssetResultSummary(
   result: ImageAssetLibraryResult,
   action: "organize" | "cleanup",
-  formatAssetBytes: (bytes: number) => string
+  formatAssetBytes: (bytes: number) => string,
+  t: Translate
 ): ImageAssetLibraryDialogResultViewModel {
   const missing = result.scan.missingReferences.length;
   if (action === "cleanup") {
     return {
       tone: "success",
-      title: "素材清理完成",
-      detail: `已删除 ${result.cleanedFiles} 个未被引用的素材和 ${result.cleanedDirectories} 个空分片目录，释放 ${formatAssetBytes(result.cleanedBytes)}。执行前已重新核对引用。`,
+      title: t(uiKeys.assetLibrary.cleanupDoneTitle),
+      detail: t(uiKeys.assetLibrary.cleanupDoneDetail, { files: result.cleanedFiles, directories: result.cleanedDirectories, bytes: formatAssetBytes(result.cleanedBytes) }),
       operationId: result.operationId
     };
   }
   return {
     tone: missing ? "warning" : "success",
-    title: missing ? "整理完成，仍有缺失引用" : "整理完成，原文件已保留",
-    detail: `已归档 ${result.archivedFiles} 个外部文件，并将 ${result.reorganizedFiles} 个旧分片文件复制到扁平目录；校验并写入 ${result.updatedReferences} 处引用，历史状态已保存。原文件和旧分片副本没有删除，可以稍后再清理。${missing ? ` 另有 ${missing} 个原文件已不存在，未改写这些记录。` : " 当前已没有待整理引用。"}`,
+    title: missing ? t(uiKeys.assetLibrary.organizeMissingTitle) : t(uiKeys.assetLibrary.organizeDoneTitle),
+    detail: `${t(uiKeys.assetLibrary.organizeDoneDetail, { archived: result.archivedFiles, reorganized: result.reorganizedFiles, references: result.updatedReferences })}${missing ? ` ${t(uiKeys.assetLibrary.organizeMissingDetail, { missing })}` : ` ${t(uiKeys.assetLibrary.organizeNoMissing)}`}`,
     operationId: result.operationId
   };
 }
@@ -191,23 +198,24 @@ export function renderDirectoryMigrationDialog(
   const request = options.request;
   if (!request) return "";
   const progressValue = directoryMigrationProgressValue(options.progress);
+  const t = options.t;
   return `
     <div class="dialog-backdrop confirm-backdrop" id="directory-migration-backdrop">
       <section class="confirm-dialog directory-migration-dialog" role="alertdialog" aria-modal="true" aria-labelledby="directory-migration-title" aria-describedby="directory-migration-description" tabindex="-1">
         <div class="confirm-icon" aria-hidden="true">${options.icon(options.busy ? "refresh-cw" : "folder-open")}</div>
         <div class="confirm-copy">
-          <span class="eyebrow">${options.busy ? "正在处理目录" : "输出目录已更改"}</span>
-          <h2 id="directory-migration-title">应用视频输出目录更改？</h2>
-          <p id="directory-migration-description">${options.busy ? options.escapeHtml(options.progress?.message || "正在准备迁移") : "请选择如何处理已有的视频历史记录。"}</p>
-          <div class="confirm-warning"><strong>当前目录</strong><code>${options.escapeHtml(request.oldDirectory || "自动目录")}</code><strong>新目录</strong><code>${options.escapeHtml(request.newDirectory)}</code></div>
+          <span class="eyebrow">${options.busy ? t(uiKeys.migration.processingDirectory) : t(uiKeys.migration.outputChanged)}</span>
+          <h2 id="directory-migration-title">${t(uiKeys.migration.applyTitle)}</h2>
+          <p id="directory-migration-description">${options.busy ? options.escapeHtml(options.progress?.message || t(uiKeys.migration.preparing)) : t(uiKeys.migration.chooseExisting)}</p>
+          <div class="confirm-warning"><strong>${t(uiKeys.migration.currentDirectory)}</strong><code>${options.escapeHtml(request.oldDirectory || t(uiKeys.migration.autoDirectory))}</code><strong>${t(uiKeys.migration.newDirectory)}</strong><code>${options.escapeHtml(request.newDirectory)}</code></div>
           ${options.busy
-            ? `<div class="progress" role="progressbar" aria-label="历史视频迁移进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progressValue)}"><span style="width:${progressValue}%"></span></div><p class="muted">${options.progress ? `${options.progress.current} / ${options.progress.total} 个文件${options.progress.warningCount ? ` · ${options.progress.warningCount} 个警告` : ""}` : "准备中"}</p>`
-            : `<p class="muted">“应用更改”只影响之后创建的视频；“应用并迁移”会扫描历史中实际记录的视频文件并在复核后更新路径。</p>`}
+            ? `<div class="progress" role="progressbar" aria-label="${t(uiKeys.migration.progressLabel)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progressValue)}"><span style="width:${progressValue}%"></span></div><p class="muted">${options.progress ? `${t(uiKeys.migration.fileCount, { current: options.progress.current, total: options.progress.total })}${options.progress.warningCount ? ` · ${t(uiKeys.migration.warningCount, { count: options.progress.warningCount })}` : ""}` : t(uiKeys.migration.preparing)}</p>`
+            : `<p class="muted">${t(uiKeys.migration.applyInfo)}</p>`}
         </div>
         <div class="dialog-actions">
-          <button class="secondary button-with-icon" id="directory-apply" ${options.busy ? "disabled" : ""}>${options.icon("check")}应用更改</button>
-          <button class="primary button-with-icon" id="directory-apply-migrate" ${options.busy ? "disabled" : ""}>${options.icon("folder-open")}应用并迁移</button>
-          <button class="ghost button-with-icon" id="directory-cancel" ${options.busy ? "disabled" : ""}>${options.icon("x")}取消</button>
+          <button class="secondary button-with-icon" id="directory-apply" ${options.busy ? "disabled" : ""}>${options.icon("check")}${t(uiKeys.migration.apply)}</button>
+          <button class="primary button-with-icon" id="directory-apply-migrate" ${options.busy ? "disabled" : ""}>${options.icon("folder-open")}${t(uiKeys.migration.applyAndMigrate)}</button>
+          <button class="ghost button-with-icon" id="directory-cancel" ${options.busy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.migration.cancel)}</button>
         </div>
       </section>
     </div>`;
@@ -221,6 +229,7 @@ export function renderImageAssetLibraryDialog(
   const scan = dialog.scan;
   const progress = options.progress;
   const progressValue = imageAssetProgressPercent(progress, dialog.busy);
+  const t = options.t;
   const orphanPreview = scan?.orphanFiles.slice(0, 12).map((file) => `
     <label class="asset-library-file">
       <input type="checkbox" data-orphan-path="${options.escapeHtml(file.absolutePath)}" ${dialog.selectedPaths.includes(file.absolutePath) ? "checked" : ""}>
@@ -230,29 +239,29 @@ export function renderImageAssetLibraryDialog(
     <div class="dialog-backdrop confirm-backdrop" id="image-asset-library-backdrop">
       <section class="confirm-dialog image-asset-library-dialog" role="dialog" aria-modal="true" aria-labelledby="image-asset-library-title" tabindex="-1">
         <div class="confirm-copy">
-          <span class="eyebrow">图片输入资产</span>
-          <h2 id="image-asset-library-title">整理图片素材库</h2>
-          <p id="image-assets-progress-message">${dialog.busy ? options.escapeHtml(progress?.message || "正在扫描历史与素材文件") : "归档仍在外部的历史素材，并检查素材库中没有被历史、草稿或队列引用的文件。"}</p>
+          <span class="eyebrow">${t(uiKeys.assetLibrary.eyebrow)}</span>
+          <h2 id="image-asset-library-title">${t(uiKeys.assetLibrary.title)}</h2>
+          <p id="image-assets-progress-message">${dialog.busy ? options.escapeHtml(progress?.message || t(uiKeys.assetLibrary.busyMessage)) : t(uiKeys.assetLibrary.idleMessage)}</p>
           ${scan ? `<code class="asset-library-path">${options.escapeHtml(scan.libraryDirectory)}</code>` : ""}
           ${dialog.busy ? `<div class="progress" id="image-assets-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressValue}"><span style="width:${progressValue}%"></span></div>` : ""}
-          ${dialog.busy ? `<div class="asset-library-progress-meta"><span id="image-assets-progress-phase">${imageAssetPhaseLabel(progress?.phase)}</span><span id="image-assets-progress-count">${progress?.total ? `${progress.current} / ${progress.total}` : "准备中"}</span></div>` : ""}
+          ${dialog.busy ? `<div class="asset-library-progress-meta"><span id="image-assets-progress-phase">${imageAssetPhaseLabel(progress?.phase, t)}</span><span id="image-assets-progress-count">${progress?.total ? `${progress.current} / ${progress.total}` : t(uiKeys.assetLibrary.preparing)}</span></div>` : ""}
           ${dialog.error ? `<div class="confirm-warning danger-hint">${options.escapeHtml(dialog.error)}</div>` : ""}
-          ${dialog.lastResult ? `<div class="asset-library-result ${dialog.lastResult.tone}" role="status"><span class="asset-library-result-icon">${options.icon(dialog.lastResult.tone === "success" ? "circle-check" : "alert-triangle")}</span><div><strong>${options.escapeHtml(dialog.lastResult.title)}</strong><p>${options.escapeHtml(dialog.lastResult.detail)}</p>${dialog.lastResult.operationId ? `<small>操作编号 ${options.escapeHtml(dialog.lastResult.operationId)} · 可在运行日志中检索</small>` : ""}</div></div>` : ""}
+          ${dialog.lastResult ? `<div class="asset-library-result ${dialog.lastResult.tone}" role="status"><span class="asset-library-result-icon">${options.icon(dialog.lastResult.tone === "success" ? "circle-check" : "alert-triangle")}</span><div><strong>${options.escapeHtml(dialog.lastResult.title)}</strong><p>${options.escapeHtml(dialog.lastResult.detail)}</p>${dialog.lastResult.operationId ? `<small>${t(uiKeys.assetLibrary.operationNumber, { id: options.escapeHtml(dialog.lastResult.operationId) })} · ${t(uiKeys.assetLibrary.logSearch)}</small>` : ""}</div></div>` : ""}
           ${scan ? `<div class="asset-library-summary">
-            <article><span>记录引用</span><strong>${scan.totalReferences}</strong></article>
-            <article><span>待整理</span><strong>${scan.archiveCandidates}</strong><small>${options.formatAssetBytes(scan.archiveBytes)}</small></article>
-            <article class="${scan.missingReferences.length ? "warning" : ""}"><span>已缺失</span><strong>${scan.missingReferences.length}</strong></article>
-            <article><span>可清理</span><strong>${scan.orphanFiles.length}</strong><small>${options.formatAssetBytes(scan.orphanBytes)}</small></article>
+            <article><span>${t(uiKeys.assetLibrary.references)}</span><strong>${scan.totalReferences}</strong></article>
+            <article><span>${t(uiKeys.assetLibrary.pendingArchive)}</span><strong>${scan.archiveCandidates}</strong><small>${options.formatAssetBytes(scan.archiveBytes)}</small></article>
+            <article class="${scan.missingReferences.length ? "warning" : ""}"><span>${t(uiKeys.assetLibrary.missing)}</span><strong>${scan.missingReferences.length}</strong></article>
+            <article><span>${t(uiKeys.assetLibrary.cleanable)}</span><strong>${scan.orphanFiles.length}</strong><small>${options.formatAssetBytes(scan.orphanBytes)}</small></article>
           </div>
-          ${scan.missingReferences.length ? `<details class="asset-library-details"><summary>查看 ${scan.missingReferences.length} 个缺失引用</summary>${scan.missingReferences.slice(0, 20).map((item) => `<code>${options.escapeHtml(item)}</code>`).join("")}</details>` : ""}
-          ${scan.orphanFiles.length ? `<details class="asset-library-orphans" ${dialog.confirmCleanup ? "open" : ""}><summary><span><strong>可清理的未引用素材</strong><small>${scan.orphanFiles.length} 个 · ${options.formatAssetBytes(scan.orphanBytes)}</small></span><span class="asset-library-summary-action">展开选择</span></summary><div class="asset-library-file-list">${orphanPreview}${scan.orphanFiles.length > 12 ? `<p class="muted">另有 ${scan.orphanFiles.length - 12} 个文件；本次清理只处理上面勾选的文件。</p>` : ""}</div></details>` : `<p class="asset-library-clean">没有发现可清理的孤立素材。</p>`}
-          ${dialog.confirmCleanup ? `<div class="confirm-warning"><strong>确认永久删除勾选的孤立文件？</strong><span>执行前会重新扫描引用；素材库外文件不会被删除。</span></div>` : ""}` : ""}
+          ${scan.missingReferences.length ? `<details class="asset-library-details"><summary>${t(uiKeys.assetLibrary.missingReferences, { count: scan.missingReferences.length })}</summary>${scan.missingReferences.slice(0, 20).map((item) => `<code>${options.escapeHtml(item)}</code>`).join("")}</details>` : ""}
+          ${scan.orphanFiles.length ? `<details class="asset-library-orphans" ${dialog.confirmCleanup ? "open" : ""}><summary><span><strong>${t(uiKeys.assetLibrary.orphanTitle)}</strong><small>${t(uiKeys.assetLibrary.count, { count: scan.orphanFiles.length })} · ${options.formatAssetBytes(scan.orphanBytes)}</small></span><span class="asset-library-summary-action">${t(uiKeys.assetLibrary.expandSelect)}</span></summary><div class="asset-library-file-list">${orphanPreview}${scan.orphanFiles.length > 12 ? `<p class="muted">${t(uiKeys.assetLibrary.moreFiles, { count: scan.orphanFiles.length - 12 })}</p>` : ""}</div></details>` : `<p class="asset-library-clean">${t(uiKeys.assetLibrary.noCleanable)}</p>`}
+          ${dialog.confirmCleanup ? `<div class="confirm-warning"><strong>${t(uiKeys.assetLibrary.confirmDelete)}</strong><span>${t(uiKeys.assetLibrary.confirmDeleteDescription)}</span></div>` : ""}` : ""}
         </div>
         <div class="dialog-actions">
-          <button class="secondary button-with-icon" id="image-assets-rescan" ${dialog.busy ? "disabled" : ""}>${options.icon("scan-search")}重新扫描</button>
-          <button class="primary button-with-icon" id="image-assets-organize" ${dialog.busy || !scan?.archiveCandidates ? "disabled" : ""}>${options.icon("folder-open")}归档并修复</button>
-          ${scan?.orphanFiles.length ? `<button class="secondary destructive button-with-icon" id="image-assets-cleanup" ${dialog.busy ? "disabled" : ""}>${options.icon("trash-2")}${dialog.confirmCleanup ? "确认清理" : "清理所选"}</button>` : ""}
-          <button class="ghost button-with-icon" id="image-assets-close" ${dialog.busy ? "disabled" : ""}>${options.icon("x")}关闭</button>
+          <button class="secondary button-with-icon" id="image-assets-rescan" ${dialog.busy ? "disabled" : ""}>${options.icon("scan-search")}${t(uiKeys.assetLibrary.rescan)}</button>
+          <button class="primary button-with-icon" id="image-assets-organize" ${dialog.busy || !scan?.archiveCandidates ? "disabled" : ""}>${options.icon("folder-open")}${t(uiKeys.assetLibrary.organize)}</button>
+          ${scan?.orphanFiles.length ? `<button class="secondary destructive button-with-icon" id="image-assets-cleanup" ${dialog.busy ? "disabled" : ""}>${options.icon("trash-2")}${dialog.confirmCleanup ? t(uiKeys.assetLibrary.cleanupConfirm) : t(uiKeys.assetLibrary.cleanupSelected)}</button>` : ""}
+          <button class="ghost button-with-icon" id="image-assets-close" ${dialog.busy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.assetLibrary.close)}</button>
         </div>
       </section>
     </div>`;
@@ -310,26 +319,27 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     dialog.targetHeight
   );
   const supportsTileMode = dialog.modelId === "seedvr2";
+  const t = options.t;
   return `
     <div class="dialog-backdrop upscale-backdrop" id="upscale-backdrop">
       <section class="upscale-dialog" role="dialog" aria-modal="true" aria-labelledby="upscale-title" tabindex="-1">
         <div class="upscale-dialog-head">
-          <div><span class="eyebrow">创建后处理任务</span><h2 id="upscale-title">提升分辨率</h2></div>
-          <button class="dialog-close" id="close-upscale" aria-label="关闭">${options.icon("x")}</button>
+          <div><span class="eyebrow">${t(uiKeys.upscale.eyebrow)}</span><h2 id="upscale-title">${t(uiKeys.upscale.title)}</h2></div>
+          <button class="dialog-close" id="close-upscale" aria-label="${t(uiKeys.upscale.close)}">${options.icon("x")}</button>
         </div>
         <div class="upscale-dialog-body">
           <div class="upscale-source"><div><strong>${options.escapeHtml(asset.title)}</strong><code>${options.escapeHtml(version.outputFilename)}</code></div><span>${version.width} × ${version.height} · ${options.formatVideoDuration(version.duration)}</span></div>
-          <div><label>目标分辨率</label><div class="upscale-resolution">
+          <div><label>${t(uiKeys.upscale.targetResolution)}</label><div class="upscale-resolution">
             ${([720, 1080, 1440, 2160] as const).map((height) => `<button class="${height === selectedTargetHeight ? "primary" : "secondary"}" data-upscale-height="${height}" ${height <= sourceShortEdge ? "disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
           </div></div>
           <div class="settings-grid two">
-            <label>提升模型<select id="upscale-model">${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === dialog.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${options.escapeHtml(profile.name)}${profile.available ? "" : " · 缺组件"}</option>`).join("")}</select></label>
-            <label>显存策略${supportsTileMode ? `<select id="upscale-tile"><option value="auto" ${dialog.tileMode === "auto" ? "selected" : ""}>自动 · 按显存选择</option><option value="safe" ${dialog.tileMode === "safe" ? "selected" : ""}>保守 · 分批与每批卸载</option><option value="fast" ${dialog.tileMode === "fast" ? "selected" : ""}>速度优先 · 尽量少卸载</option></select>` : `<span class="upscale-policy-readonly">节点固定 · 低显存分批</span>`}</label>
+            <label>${t(uiKeys.upscale.model)}<select id="upscale-model">${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === dialog.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${options.escapeHtml(profile.name)}${profile.available ? "" : t(uiKeys.upscale.missingComponent)}</option>`).join("")}</select></label>
+            <label>${t(uiKeys.upscale.memoryPolicy)}${supportsTileMode ? `<select id="upscale-tile"><option value="auto" ${dialog.tileMode === "auto" ? "selected" : ""}>${t(uiKeys.upscale.autoPolicy)}</option><option value="safe" ${dialog.tileMode === "safe" ? "selected" : ""}>${t(uiKeys.upscale.safePolicy)}</option><option value="fast" ${dialog.tileMode === "fast" ? "selected" : ""}>${t(uiKeys.upscale.fastPolicy)}</option></select>` : `<span class="upscale-policy-readonly">${t(uiKeys.upscale.nodeFixed)}</span>`}</label>
           </div>
-          <div class="upscale-output"><div><span>预计输出</span><strong>${targetWidth} × ${outputHeight}</strong><code>${options.escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><span>预计峰值 ${estimatedVram}</span><span>预计耗时 ${estimatedTime}</span></div></div>
-          <p class="upscale-estimate-note ${vramWarning ? "warning" : ""}">按模型、目标分辨率和帧数估算，共 ${estimate.frameCount} 帧；显存策略会影响实际峰值和耗时，不含首次加载模型、磁盘读取和最终编码时间。${vramWarning ? `预计峰值可能超过当前 ${options.formatBytes(detectedVramBytes)} 显存，建议降低目标分辨率或改用更轻模型。` : "实际速度和峰值会受 ComfyUI 版本、后台进程和磁盘速度影响。"}</p>
+          <div class="upscale-output"><div><span>${t(uiKeys.upscale.estimatedOutput)}</span><strong>${targetWidth} × ${outputHeight}</strong><code>${options.escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><span>${t(uiKeys.upscale.estimatedPeak, { value: estimatedVram })}</span><span>${t(uiKeys.upscale.estimatedTime, { value: estimatedTime })}</span></div></div>
+          <p class="upscale-estimate-note ${vramWarning ? "warning" : ""}">${t(uiKeys.upscale.estimateNote, { frames: estimate.frameCount })} ${vramWarning ? t(uiKeys.upscale.vramWarning, { vram: options.formatBytes(detectedVramBytes) }) : t(uiKeys.upscale.actualImpact)}</p>
         </div>
-        <div class="dialog-actions"><button class="secondary button-with-icon" id="cancel-upscale">${options.icon("x")}取消</button><button class="primary button-with-icon" id="enqueue-upscale">${options.icon(dialog.taskId ? "save" : "plus")}${dialog.taskId ? "保存更改" : dialog.replaceTaskId ? "重新加入队列" : "加入队列"}</button></div>
+        <div class="dialog-actions"><button class="secondary button-with-icon" id="cancel-upscale">${options.icon("x")}${t(uiKeys.upscale.cancel)}</button><button class="primary button-with-icon" id="enqueue-upscale">${options.icon(dialog.taskId ? "save" : "plus")}${dialog.taskId ? t(uiKeys.upscale.saveChanges) : dialog.replaceTaskId ? t(uiKeys.upscale.requeue) : t(uiKeys.upscale.enqueue)}</button></div>
       </section>
     </div>`;
 }

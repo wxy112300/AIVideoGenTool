@@ -1,4 +1,6 @@
 import type { Page } from "../contracts";
+import type { Translate } from "../../core/i18n";
+import { uiKeys } from "../../core/i18n-keys";
 
 export interface ShellPageOptions {
   page: Page;
@@ -6,6 +8,7 @@ export interface ShellPageOptions {
   queueCount: number;
   flashMessage: string;
   content: string;
+  t: Translate;
   icon(name: string, className?: string): string;
   escapeHtml(value: unknown): string;
   confirmationDialog: string;
@@ -22,19 +25,24 @@ export function renderShell(options: ShellPageOptions): string {
   return `
     <div class="app-shell ${historyShell ? "history-shell" : ""}">
       <header class="topbar">
-        <button class="brand" data-page="create" aria-label="返回创建页">
-          <span class="brand-mark">${options.icon("play")}</span><span>Local Video Studio</span><span class="brand-version">${options.appVersion ? `v${options.escapeHtml(options.appVersion)}` : ""}</span>
+        <button class="brand" data-page="create" aria-label="${options.escapeHtml(options.t(uiKeys.app.backToCreate))}">
+          <span class="brand-mark">${options.icon("play")}</span><span>${options.escapeHtml(options.t(uiKeys.app.brand))}</span><span class="brand-version">${options.appVersion ? `v${options.escapeHtml(options.appVersion)}` : ""}</span>
         </button>
-        <nav aria-label="主导航">
+        <nav aria-label="${options.escapeHtml(options.t(uiKeys.nav.ariaLabel))}">
           ${(["create", "queue", "history", "settings"] as Array<Exclude<Page, "history-detail" | "image-history-detail">>)
             .map((item) => {
-              const labels = { create: "创建", queue: "队列", history: "历史", settings: "设置" };
+              const labels = {
+                create: uiKeys.nav.create,
+                queue: uiKeys.nav.queue,
+                history: uiKeys.nav.history,
+                settings: uiKeys.nav.settings
+              };
               const badge = item === "queue" && options.queueCount
                 ? `<span class="badge">${options.queueCount}</span>`
                 : "";
               const active = options.page === item ||
                 (item === "history" && historyShell);
-              return `<button class="nav-button ${active ? "active" : ""}" data-page="${item}">${labels[item]}${badge}</button>`;
+              return `<button class="nav-button ${active ? "active" : ""}" data-page="${item}">${options.escapeHtml(options.t(labels[item]))}${badge}</button>`;
             })
             .join("")}
         </nav>
@@ -42,7 +50,7 @@ export function renderShell(options: ShellPageOptions): string {
       <div class="flash ${options.flashMessage ? "visible" : ""}" id="app-flash" role="status" aria-live="polite">${options.escapeHtml(options.flashMessage)}</div>
       <main>${options.content}</main>
     </div>
-    <button class="history-back-top" id="history-back-top" type="button" aria-label="返回顶部" title="返回顶部">${options.icon("arrow-up")}</button>
+    <button class="history-back-top" id="history-back-top" type="button" aria-label="${options.escapeHtml(options.t(uiKeys.app.returnTop))}" title="${options.escapeHtml(options.t(uiKeys.app.returnTop))}">${options.icon("arrow-up")}</button>
     ${options.confirmationDialog}
     ${options.directoryMigrationDialog}
     ${options.imageAssetLibraryDialog}
