@@ -43,6 +43,7 @@ describe("model catalog", () => {
       "birefnet-background-removal",
       "lama-inpaint",
       "qwen-image-edit-2511",
+      "qwen-image-edit-2511-crop-stitch",
       "flux2-klein-4b"
     ]);
     expect(modelCatalog.list("upscale").map((entry) => entry.definition.id)).toEqual([
@@ -58,6 +59,8 @@ describe("model catalog", () => {
     ]);
     expect(modelCatalog.get("lama-inpaint")?.definition.scan?.requiredCustomNodeIds)
       .toEqual(["inpaint-nodes"]);
+    expect(modelCatalog.get("qwen-image-edit-2511-crop-stitch")?.definition.scan?.requiredCustomNodeIds)
+      .toEqual(["inpaint-cropandstitch"]);
     expect(modelCatalog.get("birefnet-background-removal")?.definition.scan?.requiredCustomNodeIds)
       .toBeUndefined();
   });

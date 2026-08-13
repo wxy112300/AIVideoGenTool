@@ -64,9 +64,12 @@ export function resolveVideoGenerationPolicy(
     turboEnabled,
     steps: {
       mode: turboEnabled ? "turbo" : "standard",
-      options: turboEnabled ? turboStepOptions : standardStepOptions,
-      defaultValue: turboEnabled ? 8 : 20,
-      maxValue: turboEnabled ? 8 : 20
+      options: definition?.capabilities?.generationSteps ??
+        (turboEnabled ? turboStepOptions : standardStepOptions),
+      defaultValue: definition?.capabilities?.defaultGenerationSteps ??
+        (turboEnabled ? 8 : 20),
+      maxValue: definition?.capabilities?.maxGenerationSteps ??
+        (turboEnabled ? 8 : 20)
     },
     spectrum: {
       supportedByModel,
@@ -88,13 +91,14 @@ export function normalizeVideoSteps(
   value: unknown,
   policy: VideoGenerationPolicy
 ): H3StepCount {
-  const normalized = value === 4 || value === 6 || value === 8 || value === 10 ||
-    value === 12 || value === 16 || value === 20
+  const normalized = (value === 4 || value === 6 || value === 8 || value === 10 ||
+    value === 12 || value === 16 || value === 20) &&
+    policy.steps.options.includes(value as H3StepCount)
     ? value
     : policy.steps.defaultValue;
-  return policy.turboEnabled && normalized > policy.steps.maxValue
+  return normalized > policy.steps.maxValue
     ? policy.steps.maxValue
-    : normalized;
+    : normalized as H3StepCount;
 }
 
 export function shouldApplySpectrum(input: VideoGenerationPolicyInput): boolean {

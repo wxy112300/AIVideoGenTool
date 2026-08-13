@@ -12,7 +12,7 @@ import type {
 import type { CreationMode, RendererCleanup, RendererContext } from "../../contracts";
 import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
 import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, videoLoraCompatibleWithDraft, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
-import { generationSafetyForTask, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3R2vModel, normalizeH3Steps } from "../../../core/workflow";
+import { generationSafetyForTask, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, normalizeH3Steps } from "../../../core/workflow";
 import { h3ReferenceSlotCounts } from "../../../core/h3-reference";
 import { newH3ReferenceSlot } from "./helpers";
 import { mountCreatePromptController, type CreatePromptControllerOptions } from "./prompt-controller";
@@ -328,11 +328,13 @@ export function mountCreatePageController(
                 ratio: "source" as const,
                 resolution: 480 as const,
                 duration: 5,
-                steps: 20 as const,
+                steps: isMiniMaxH3Q3GgufModel(value) ? 8 as const : 20 as const,
                 fps: 24 as const,
                 frameInterpolation: "off" as const,
                 motion: "natural" as const,
-                spectrumMode: state.draft.inputMode === "video" && nextIsR2V ? "off" as const : state.draft.spectrumMode
+                spectrumMode: isMiniMaxH3Q3GgufModel(value) || state.draft.inputMode === "video" && nextIsR2V
+                  ? "off" as const
+                  : state.draft.spectrumMode
               }
             : {}),
           ...(!bundled?.supportsEndImage && !nextIsR2V ? { endImagePath: "" } : {}),

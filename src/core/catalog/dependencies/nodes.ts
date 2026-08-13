@@ -15,14 +15,33 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   nodeTypes: ["INPAINT_LoadInpaintModel", "INPAINT_ExpandMask", "INPAINT_InpaintWithModel"],
   required: false
 }, {
+  id: "inpaint-cropandstitch",
+  name: "ComfyUI Inpaint Crop & Stitch",
+  purpose: "按 Mask 裁剪局部上下文，供 Qwen 重绘后无缝拼回原图",
+  repositoryUrl: "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git",
+  directoryName: "ComfyUI-Inpaint-CropAndStitch",
+  aliases: ["comfyui-inpaint-cropandstitch", "ComfyUI-Inpaint-CropAndStitch", "comfyui-crop-and-stitch"],
+  nodeTypes: ["InpaintCropImproved", "InpaintStitchImproved"],
+  required: false
+}, {
   id: "comfyui-gguf",
   name: "ComfyUI-GGUF",
-  purpose: "加载 Remix、SmoothMix 等 GGUF 视频模型",
+  purpose: "加载 Remix、SmoothMix、Wan 和 Sulphur 等历史 GGUF 视频模型",
   repositoryUrl: "https://github.com/city96/ComfyUI-GGUF.git",
   directoryName: "ComfyUI-GGUF",
   aliases: ["comfyui-gguf"],
   nodeTypes: ["UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF"],
   required: true
+}, {
+  id: "comfyui-gguf-h3",
+  name: "ComfyUI-GGUF H3",
+  purpose: "为 MiniMax H3 Q3 3080 实验档加载 H3 GGUF 扩散模型和文本编码器",
+  repositoryUrl: "https://github.com/molbal/ComfyUI-GGUF.git",
+  directoryName: "ComfyUI-GGUF-H3",
+  aliases: ["comfyui-gguf-h3"],
+  nodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF"],
+  runtimeRequirement: "只注册 H3 专用 loader 名称，与通用 ComfyUI-GGUF 并存；Q3_K 扩散模型仍需 CPU/RAM offload。",
+  required: false
 }, {
   id: "video-helper-suite",
   name: "VideoHelperSuite",

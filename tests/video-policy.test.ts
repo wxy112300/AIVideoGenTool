@@ -67,4 +67,26 @@ describe("video generation policy", () => {
     expect(extensionPolicy.spectrum.reason).toBe("motion-context");
     expect(generationPolicy.spectrum.allowed).toBe(true);
   });
+
+  it("locks the Q3 GGUF profile to the 3080 starting steps and disables Spectrum", () => {
+    const policy = resolveVideoGenerationPolicy({
+      modelId: "minimax_h3_fl2va_q3_gguf",
+      inputMode: "image",
+      spectrumMode: "balanced",
+      videoLoras: []
+    });
+
+    expect(policy.steps.options).toEqual([4, 6, 8]);
+    expect(policy.steps.defaultValue).toBe(8);
+    expect(policy.steps.maxValue).toBe(8);
+    expect(normalizeVideoSteps(20, policy)).toBe(8);
+    expect(normalizeVideoSteps(6, policy)).toBe(6);
+    expect(policy.spectrum.allowed).toBe(false);
+    expect(shouldApplySpectrum({
+      modelId: "minimax_h3_fl2va_q3_gguf",
+      inputMode: "image",
+      spectrumMode: "balanced",
+      videoLoras: []
+    })).toBe(false);
+  });
 });

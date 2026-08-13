@@ -4,9 +4,14 @@ import path from "node:path";
 import { customNodeDefinition } from "../../src/core/catalog/index.js";
 import type { Settings } from "../../src/types.js";
 import {
+  prepareH3Gguf,
   prepareLtxVideo,
   prepareVideoHelperSuite
 } from "./dependency-node-adapters.js";
+
+function normalizedRepositoryUrl(value: string): string {
+  return value.trim().replace(/\/+$/u, "").replace(/\.git$/iu, "").toLowerCase();
+}
 
 export interface DependencyInstallerRuntime {
   downloadEnvironment(settings: Settings): NodeJS.ProcessEnv;
@@ -60,9 +65,21 @@ export async function installCustomNodePackage(
     if (!git) throw new Error("缺少 Git，无法下载节点包。");
     await fs.mkdir(customNodesDirectory, { recursive: true });
     let videoHelperPrepared = false;
+    let h3GgufPrepared = false;
 
     if (await runtime.exists(targetDirectory)) {
-      if (await runtime.exists(path.join(targetDirectory, ".git")) && definition.id !== "seedvr2") {
+      const isGitDirectory = await runtime.exists(path.join(targetDirectory, ".git"));
+      let repositoryMatches = false;
+      if (isGitDirectory && definition.id !== "seedvr2") {
+        const origin = await runtime.runLoggedProcess(
+          git,
+          ["-C", targetDirectory, "remote", "get-url", "origin"],
+          { timeoutMs: 30_000, env: commandEnvironment }
+        ).catch(() => "");
+        repositoryMatches = normalizedRepositoryUrl(origin) ===
+          normalizedRepositoryUrl(definition.repositoryUrl);
+      }
+      if (isGitDirectory && repositoryMatches && definition.id !== "seedvr2") {
         report(`更新 ${definition.repositoryUrl}`);
         const gitOutput = await runtime.runLoggedProcess(git, ["-C", targetDirectory, "pull", "--ff-only"], {
           timeoutMs: 300_000,
@@ -78,7 +95,9 @@ export async function installCustomNodePackage(
           `${definition.directoryName}-${Date.now()}`
         );
         report(
-          definition.id === "seedvr2"
+          !repositoryMatches && isGitDirectory
+            ? `检测到节点仓库已切换，备份旧目录并安装 ${definition.repositoryUrl}`
+            : definition.id === "seedvr2"
             ? "SeedVR2 使用破坏性新版接口：下载干净上游副本并备份替换旧目录"
             : "目录由 ComfyUI Manager 管理，下载上游副本后安全替换"
         );
@@ -93,7 +112,11 @@ export async function installCustomNodePackage(
             }
           );
           if (!gitOutput) report("Git：克隆完成");
-          if (definition.id === "video-helper-suite") {
+          if (definition.id === "comfyui-gguf-h3") {
+            report("正在应用 H3 GGUF 独立节点适配层……");
+            await prepareH3Gguf(replacementDirectory, report);
+            h3GgufPrepared = true;
+          } else if (definition.id === "video-helper-suite") {
             report("正在应用 Video Helper Suite 兼容补丁……");
             await prepareVideoHelperSuite(replacementDirectory, report);
             videoHelperPrepared = true;
@@ -152,6 +175,10 @@ export async function installCustomNodePackage(
       if (!gitOutput) report("Git：克隆完成");
     }
 
+    if (definition.id === "comfyui-gguf-h3" && !h3GgufPrepared) {
+      report("正在检查 H3 GGUF 独立节点适配层……");
+      await prepareH3Gguf(targetDirectory, report);
+    }
     if (definition.id === "video-helper-suite" && !videoHelperPrepared) {
       report("正在应用 Video Helper Suite 兼容补丁……");
       await prepareVideoHelperSuite(targetDirectory, report);

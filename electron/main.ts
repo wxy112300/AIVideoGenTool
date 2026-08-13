@@ -78,6 +78,7 @@ import {
   isGemmaPromptModel,
   promptRuntimeForSettings
 } from "../src/core/prompt-models.js";
+import { comfyUiSettingsForQueueTask } from "./services/comfy-runtime-policy.js";
 import {
   installAttentionAcceleration,
   installCustomNode,
@@ -1242,22 +1243,6 @@ async function ensureComfyUiReady(taskId: string): Promise<void> {
     throw new Error(`ComfyUI 自动启动失败：${started.message}`);
   }
   await testComfyUi(serviceSettings);
-}
-
-function comfyUiSettingsForQueueTask(
-  task: QueueTask | undefined,
-  settings: Settings
-): Settings {
-  return {
-    ...settings,
-    // Qwen image editing needs its aggressive CPU-VAE profile. Every other
-    // workflow must explicitly opt out even when Qwen is the persisted default
-    // image model, otherwise H3 inherits CPU FP32 VAE execution and its FP16
-    // decoder fails with a dtype mismatch.
-    defaultImageModel: task?.taskType === "image-generation"
-      ? task.modelId
-      : ""
-  };
 }
 
 async function ensureComfyUiReadyForPrompt(settings: Settings): Promise<void> {

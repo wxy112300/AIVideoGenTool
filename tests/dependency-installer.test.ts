@@ -85,4 +85,93 @@ describe("dependency installer", () => {
     )).resolves.toMatchObject({ ok: false, message: expect.stringContaining("未知") });
     expect(findComfyRoot).not.toHaveBeenCalled();
   });
+
+  it("installs H3 GGUF beside the legacy GGUF package without replacing it", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-gguf-migrate-"));
+    temporaryDirectories.push(comfyRoot);
+    const legacyDirectory = path.join(comfyRoot, "custom_nodes", "ComfyUI-GGUF");
+    const h3Directory = path.join(comfyRoot, "custom_nodes", "ComfyUI-GGUF-H3");
+    await fs.mkdir(path.join(legacyDirectory, ".git"), { recursive: true });
+    await fs.writeFile(path.join(legacyDirectory, "legacy.txt"), "city96");
+    const processCalls: string[][] = [];
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "代理：关闭",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async () => "git.exe",
+      findComfyPython: async () => "python.exe",
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args) => {
+        processCalls.push(args);
+        if (args[0] === "clone") {
+          const cloneDirectory = args.at(-1)!;
+          await fs.mkdir(cloneDirectory, { recursive: true });
+          await fs.writeFile(
+            path.join(cloneDirectory, "nodes.py"),
+            'NODE_CLASS_MAPPINGS = {"UnetLoaderGGUFAdvanced": object, "CLIPLoaderGGUF": object}\n'
+          );
+          await fs.writeFile(path.join(cloneDirectory, "__init__.py"), "");
+        }
+        return "";
+      }
+    };
+
+    const result = await installCustomNodePackage(
+      "comfyui-gguf-h3",
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok).toBe(true);
+    expect(processCalls.some((args) => args[0] === "pull")).toBe(false);
+    expect(processCalls.some((args) =>
+      args[0] === "clone" && args.includes("https://github.com/molbal/ComfyUI-GGUF.git")
+    )).toBe(true);
+    expect(await exists(path.join(legacyDirectory, "legacy.txt"))).toBe(true);
+    expect(await exists(h3Directory)).toBe(true);
+    expect(await fs.readFile(path.join(h3Directory, "__init__.py"), "utf8"))
+      .toContain("H3UnetLoaderGGUFAdvanced");
+  });
+
+  it("restores the shared city96 GGUF package after an older H3 migration", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-gguf-restore-"));
+    temporaryDirectories.push(comfyRoot);
+    const targetDirectory = path.join(comfyRoot, "custom_nodes", "ComfyUI-GGUF");
+    await fs.mkdir(path.join(targetDirectory, ".git"), { recursive: true });
+    await fs.writeFile(path.join(targetDirectory, "old-molbal.txt"), "molbal");
+    const processCalls: string[][] = [];
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "代理：关闭",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async () => "git.exe",
+      findComfyPython: async () => "python.exe",
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args) => {
+        processCalls.push(args);
+        if (args[0] === "remote") return "https://github.com/molbal/ComfyUI-GGUF.git";
+        if (args[0] === "clone") await fs.mkdir(args.at(-1)!, { recursive: true });
+        return "";
+      }
+    };
+
+    const result = await installCustomNodePackage(
+      "comfyui-gguf",
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok).toBe(true);
+    expect(processCalls.some((args) =>
+      args[0] === "clone" && args.includes("https://github.com/city96/ComfyUI-GGUF.git")
+    )).toBe(true);
+    expect(await exists(path.join(targetDirectory, "old-molbal.txt"))).toBe(false);
+    expect((await fs.readdir(path.join(comfyRoot, "node-backups"))).some((name) =>
+      name.startsWith("ComfyUI-GGUF-")
+    )).toBe(true);
+  });
 });

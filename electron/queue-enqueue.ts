@@ -15,6 +15,7 @@ import {
   extensionWorkflowSafetyErrors,
   generationSafetyForTask,
   isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3Q3GgufModel,
   isMiniMaxH3R2vModel,
   normalizeH3Steps,
   validateApiWorkflow,
@@ -32,6 +33,7 @@ import {
   SPECTRUM_MODEL_AWARE_MINIMUM_VERSION,
   SPECTRUM_TURBO_MINIMUM_VERSION
 } from "../src/core/catalog/index.js";
+import { resolveVideoGenerationPolicy } from "../src/core/video-policy.js";
 import { releaseVersionAtLeast } from "../src/core/release-version.js";
 import {
   extensionTaskFromDraft,
@@ -167,6 +169,21 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     if (!draft.workflowPath) throw new Error("请先选择该模型的 ComfyUI API 工作流");
     const safety = generationSafetyForTask(draft, store.get().settings.uiLocale);
     if (!safety.safe) throw new Error(safety.message);
+    if (isMiniMaxH3Q3GgufModel(draft.modelId) && draft.videoLoras.length) {
+      throw new Error("H3 Q3 GGUF 3080 实验档不支持 LoRA，请先移除 LoRA。");
+    }
+    const videoPolicy = resolveVideoGenerationPolicy({
+      modelId: draft.modelId,
+      inputMode: draft.inputMode,
+      spectrumMode: draft.spectrumMode,
+      videoLoras: draft.videoLoras,
+      locale: store.get().settings.uiLocale
+    });
+    if (draft.spectrumMode === "balanced" && !videoPolicy.spectrum.allowed) {
+      throw new Error(isMiniMaxH3Q3GgufModel(draft.modelId)
+        ? "H3 Q3 GGUF 3080 实验档不支持 Spectrum，请关闭后再提交。"
+        : "当前模型不支持 Spectrum，请关闭后再提交。");
+    }
     const workflow = await readWorkflow(draft.workflowPath, "工作流");
     const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);

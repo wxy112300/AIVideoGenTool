@@ -350,14 +350,14 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     downloadUrl: "https://huggingface.co/unsloth/MiniMax-H3-GGUF/resolve/main/minimax_h3_fl2va_pruned-Q3_K.gguf",
     targetSubdirectory: "unet",
     recommendedFilename: "minimax_h3_fl2va_pruned-Q3_K.gguf",
-    notes: "社区 Q3 GGUF 扩散模型，文件约 8.16 GiB。3080 10GB 仅作为低分辨率、短片和 CPU/RAM offload 实验档；需要安装 ComfyUI-GGUF，不能与原生 UNETLoader 混用。"
+    notes: "社区 Q3 GGUF 扩散模型，文件约 8.16 GiB。3080 10GB 仅作为低分辨率、短片和 CPU/RAM offload 实验档；需要安装独立 H3 GGUF 节点包，不能与原生 UNETLoader 混用。"
   },
   "minimax_h3_fl2va_q3_gguf:Qwen3-VL 32B H3 Q2 GGUF 文本编码器": {
     sourceLabel: "Unsloth / MiniMax-H3-GGUF",
     downloadUrl: "https://huggingface.co/unsloth/MiniMax-H3-GGUF/resolve/main/qwen3vl_32b_minimax_h3-Q2_K_M.gguf",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "qwen3vl_32b_minimax_h3-Q2_K_M.gguf",
-    notes: "Q2 文本编码器约 12.2 GiB，必须配合 CLIPLoaderGGUF，并建议放在 CPU/offload 路径；它的文件大小不等于显存峰值。"
+    notes: "Q2 文本编码器约 12.2 GiB，必须配合 H3CLIPLoaderGGUF，并建议放在 CPU/offload 路径；它的文件大小不等于显存峰值。"
   },
   "minimax_h3_ref2va:MiniMax H3 Ref2VA INT8 模型": {
     sourceLabel: "Comfy-Org / MiniMax-H3",
@@ -987,10 +987,11 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     category: "video",
     managedBy: "comfyui",
     badge: "Q3 GGUF · 实验",
-    description: "Unsloth 社区 Q3 GGUF 档，面向 480p/短片实验；必须使用 ComfyUI-GGUF、CPU 文本编码器和 RAM offload，不支持视频续写。",
+    description: "Unsloth 社区 Q3 GGUF 档，面向 480p/短片实验；必须使用独立 H3 GGUF 节点包、CPU 文本编码器和 RAM offload，不支持视频续写。",
     vram: "Q3 GGUF · CPU 文本编码器 · RAM offload",
     integrated: true,
-    runtimeNodeTypes: ["UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF", "MiniMaxH3ImageToVideo"],
+    requiredCustomNodeIds: ["comfyui-gguf-h3"],
+    runtimeNodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF", "MiniMaxH3ImageToVideo"],
     components: [
       {
         label: "MiniMax H3 FL2VA Q3 GGUF 扩散模型",

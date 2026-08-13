@@ -649,7 +649,7 @@ describe("renderWorkflow", () => {
     };
     expect(extensionWorkflowSafetyErrors(source)).toEqual([]);
     expect(extensionWorkflowSafetyErrors({ ...source, "2": undefined })).toContain(
-      "缺少 LowVRAMCheckpointLoader 或 UnetLoaderGGUFAdvanced"
+      "缺少 LowVRAMCheckpointLoader、UnetLoaderGGUFAdvanced 或 H3UnetLoaderGGUFAdvanced"
     );
   });
 
@@ -1340,6 +1340,23 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
 });
 
 describe("MiniMax H3 Q3 GGUF workflow", () => {
+  it("keeps native H3 on native loaders", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url),
+        "utf8"
+      )
+    );
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va"
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(rendered["1"]?.class_type).toBe("UNETLoader");
+    expect(rendered["2"]?.class_type).toBe("CLIPLoader");
+    expect(JSON.stringify(rendered)).not.toContain("H3UnetLoaderGGUFAdvanced");
+  });
+
   it("uses GGUF loaders and the paired Q2 text encoder", () => {
     const source = JSON.parse(
       readFileSync(
@@ -1356,20 +1373,48 @@ describe("MiniMax H3 Q3 GGUF workflow", () => {
     expect(workflowSupportsEndImage(source)).toBe(true);
     expect(workflowSupportsH3BoundaryExtension(source)).toBe(true);
     expect(rendered["1"]).toMatchObject({
-      class_type: "UnetLoaderGGUFAdvanced",
+      class_type: "H3UnetLoaderGGUFAdvanced",
       inputs: {
         unet_name: "minimax_h3_fl2va_pruned-Q3_K.gguf",
         patch_on_device: false
       }
     });
     expect(rendered["2"]).toMatchObject({
-      class_type: "CLIPLoaderGGUF",
+      class_type: "H3CLIPLoaderGGUF",
       inputs: {
         clip_name: "qwen3vl_32b_minimax_h3-Q2_K_M.gguf",
         type: "minimax"
       }
     });
+    expect(rendered["8"]?.inputs.steps).toBe(8);
+    expect(rendered["19"]?.inputs.sage_attention).toBe("auto");
     expect(JSON.stringify(rendered)).not.toContain("{{");
+  });
+
+  it("rejects Q3 configurations outside the 3080 starting resolution and duration", () => {
+    expect(generationSafetyForTask({
+      ...task,
+      modelId: "minimax_h3_fl2va_q3_gguf",
+      resolution: 480,
+      duration: 5
+    })).toMatchObject({
+      safe: true,
+      generatedFrames: 124,
+      maxGeneratedFrames: 124,
+      maxDurationSeconds: 5
+    });
+    expect(generationSafetyForTask({
+      ...task,
+      modelId: "minimax_h3_fl2va_q3_gguf",
+      resolution: 540,
+      duration: 5
+    }).safe).toBe(false);
+    expect(generationSafetyForTask({
+      ...task,
+      modelId: "minimax_h3_fl2va_q3_gguf",
+      resolution: 480,
+      duration: 6
+    }).safe).toBe(false);
   });
 });
 

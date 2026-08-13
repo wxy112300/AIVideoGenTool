@@ -391,6 +391,9 @@ export function buildVideoCreatePageViewModel(
     (draft.spectrumModelAwareMode === "off" || spectrumModelAwareSupported)
   );
   const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
+  const resolutionOptions = isMiniMaxH3
+    ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? [480, 540, 720, 768]
+    : [480, 540, 720];
   const extending = draft.inputMode === "video";
   const h3MotionContextNode = environmentScan?.customNodes.find(
     (node) => node.id === "h3-motion-context"
@@ -507,10 +510,10 @@ export function buildVideoCreatePageViewModel(
     ),
     resolutionOptionsMarkup: extending && !isMiniMaxH3
       ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p · ${t(uiKeys.create.options.ggufConservative)}</option>`
-      : (isMiniMaxH3 ? [480, 540, 720, 768] as const : [480, 540, 720] as const).map((value) => {
+      : resolutionOptions.map((value) => {
           const [width, height] = outputDimensions({
             ...draft,
-            resolution: value
+            resolution: value as Draft["resolution"]
           });
           const recommended =
             draft.modelId === "sulphur2" &&
@@ -528,13 +531,20 @@ export function buildVideoCreatePageViewModel(
             : "";
           return `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p · ${width}×${height}${vramLabel}${h3Label}</option>`;
         }).join(""),
-     stepsOptionsMarkup: turboEnabled
-      ? `<option value="4" ${h3Steps === 4 ? "selected" : ""}>4 · ${t(uiKeys.create.options.turboStepsExperimental)}</option>
-        <option value="6" ${h3Steps === 6 ? "selected" : ""}>6 · ${t(uiKeys.create.options.turboStepsPreview)}</option>
-        <option value="8" ${h3Steps === 8 || h3Steps > 8 ? "selected" : ""}>8 · ${t(uiKeys.create.options.turboStepsOutput)}</option>`
-      : `<option value="20" ${h3Steps === 20 ? "selected" : ""}>20 · ${t(uiKeys.create.options.standardStepsOutput)}</option>
-        <option value="16" ${h3Steps === 16 ? "selected" : ""}>16 · ${t(uiKeys.create.options.balancedStepsPreview)}</option>
-        <option value="12" ${h3Steps === 12 ? "selected" : ""}>12 · ${t(uiKeys.create.options.fastStepsPreview)}</option>`,
+    stepsOptionsMarkup: videoPolicy.steps.options.map((value) => {
+      const label = turboEnabled
+        ? value === 4
+          ? t(uiKeys.create.options.turboStepsExperimental)
+          : value === 6
+            ? t(uiKeys.create.options.turboStepsPreview)
+            : t(uiKeys.create.options.turboStepsOutput)
+        : value === videoPolicy.steps.defaultValue
+          ? t(uiKeys.create.options.standardStepsOutput)
+          : value === Math.max(...videoPolicy.steps.options)
+            ? t(uiKeys.create.options.balancedStepsPreview)
+            : t(uiKeys.create.options.fastStepsPreview);
+      return `<option value="${value}" ${h3Steps === value ? "selected" : ""}>${value} · ${label}</option>`;
+    }).join(""),
     stepsTitle: turboEnabled
       ? t(uiKeys.create.options.turboStepsTitle)
       : t(uiKeys.create.options.h3StepsTitle),

@@ -142,7 +142,7 @@ export const h3Q3GgufModel = h3Component({
     `${h3Q3BaseUrl}/minimax_h3_fl2va_pruned-Q3_K.gguf`,
     "unet",
     "minimax_h3_fl2va_pruned-Q3_K.gguf",
-    "社区 Q3 GGUF 扩散模型，文件约 8.16 GiB。3080 10GB 仅作为低分辨率、短片和 CPU/RAM offload 实验档；需要安装 ComfyUI-GGUF，不能与原生 UNETLoader 混用。"
+    "社区 Q3 GGUF 扩散模型，文件约 8.16 GiB。3080 10GB 仅作为 480p、124 帧、8 步以内和 CPU/RAM offload 实验档；需要独立的 H3-aware ComfyUI-GGUF 包，不能与原生 UNETLoader 混用。"
   )
 });
 
@@ -155,7 +155,7 @@ export const h3Q2GgufTextEncoder = h3Component({
     `${h3Q3BaseUrl}/qwen3vl_32b_minimax_h3-Q2_K_M.gguf`,
     "text_encoders",
     "qwen3vl_32b_minimax_h3-Q2_K_M.gguf",
-    "Q2 文本编码器约 12.2 GiB，必须配合 CLIPLoaderGGUF，并建议放在 CPU/offload 路径；它的文件大小不等于显存峰值。"
+    "Q2 文本编码器约 12.2 GiB，必须配合 H3 专用 CLIPLoaderGGUF，并放在 CPU/offload 路径；它的文件大小不等于显存峰值。"
   )
 });
 

@@ -32,6 +32,7 @@
 - LaMa 作为无 Prompt 工作流，在入队准备和不可变任务快照两层强制清空隐藏的旧 Prompt，避免 Qwen 编辑内容泄漏到 LaMa 历史或执行数据。
 - 修复切换界面语言并成功保存后，退出窗口仍错误提示 `Unsaved settings`：持久化成功后同步清理渲染端草稿与主进程退出保护标志，保存失败时仍保留未保存状态。
 - 节点安装支持连续加入串行队列：每项保留独立实时日志和失败状态，单项失败继续后续项目，整批只重启并复扫一次 ComfyUI，减少逐个等待和重复重启。
+- 收紧 MiniMax H3 Q3 GGUF 的 RTX 3080 实验档：新增独立 `ComfyUI-GGUF-H3` 节点包和 H3 专用 loader 名称，保留历史模型使用的通用 `ComfyUI-GGUF`；默认启用低显存/CPU VAE/同步卸载，并锁定 480p、124 帧、8 步以内，关闭 Spectrum、LoRA 和实时预览。该档仍需真实 RTX 3080 smoke 才能升级为“运行通过”。
 - Spectrum 改为“最低可用 / 当前推荐 / 上游最新”三层版本状态：普通 H3 最低 `v0.2.1`、当前推荐 `v0.2.7`，支持旧版继续使用，同时保留更新提示和一键更新。
 - 解除过时的 LightX2V Turbo + Spectrum 冲突；组合要求 Spectrum `v0.2.6+` 的原生 ER-SDE 支持，并在入队时再次离线复核版本。
 - 创建页在启用 Spectrum 后显示 `model_aware_mode`，支持 `off / schedule / schedule_confidence / full`；该实验功能要求 `v0.2.7+`、默认关闭，并随不可变队列快照和历史版本保存。

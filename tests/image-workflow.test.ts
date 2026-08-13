@@ -5,9 +5,11 @@ import {
   buildBirefnetBackgroundRemovalWorkflow,
   buildFlux2Klein4bWorkflow,
   buildQwenImageEdit2511Workflow,
+  buildQwenImageEdit2511CropStitchWorkflow,
   cachedImageProfileAllowsEnqueue,
   compileFlux2Klein4bPrompt,
   compileQwenImageEditPrompt,
+  compileQwenImageEditCropStitchPrompt,
   flux2Klein4bCapability,
   flux2Klein4bRequiredNodeTypes,
   firstSupportedImageModelId,
@@ -22,11 +24,14 @@ import {
   lamaInpaintCapability,
   normalizeImageTargetResolution,
   qwenImageEdit2511RequiredNodeTypes,
+  qwenImageEdit2511CropStitchRequiredNodeTypes,
   qwenImageEdit2511Capability,
+  qwenImageEdit2511CropStitchCapability,
   renderImageWorkflow,
   validateFlux2Klein4bWorkflow,
   validateLamaInpaintWorkflow,
   validateQwenImageEdit2511Workflow,
+  validateQwenImageEdit2511CropStitchWorkflow,
   validateBirefnetWorkflow
 } from "../src/core/image-workflow.js";
 import type { ImageGenerationQueueTask, ImageReference } from "../src/types.js";
@@ -156,6 +161,74 @@ describe("BiRefNet deterministic background-removal workflow", () => {
 });
 
 describe("Qwen image edit workflow contract", () => {
+  it("exposes a single-picture Crop/Stitch fusion capability", () => {
+    expect(qwenImageEdit2511CropStitchCapability).toMatchObject({
+      maxPictures: 1,
+      operation: "harmonize",
+      requiresPrompt: true,
+      requiresMask: true,
+      supportsSeed: true,
+      sourceResolutionOnly: true
+    });
+    expect(qwenImageEdit2511CropStitchRequiredNodeTypes).toEqual(
+      expect.arrayContaining(["InpaintCropImproved", "InpaintStitchImproved", "LoadImageMask"])
+    );
+  });
+
+  it("adds a preservation contract without sending annotation markup as content", () => {
+    const marked = {
+      ...picture(1),
+      mask: {
+        documentPath: "mask.fabric.json",
+        maskPath: "mask.png",
+        revision: 1,
+        regionCount: 1,
+        updatedAt: "2026-08-13T00:00:00.000Z"
+      }
+    };
+    const result = compileQwenImageEditCropStitchPrompt(
+      "修复 Picture 1 中合成边缘的光影和色温。",
+      [marked]
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.pictures).toHaveLength(1);
+    expect(result.prompt).toContain("Fusion repair contract");
+    expect(result.prompt).toContain("Preserve every unmasked pixel");
+  });
+
+  it("builds a local crop, Qwen sampler, and stitch graph", () => {
+    const task: ImageGenerationQueueTask = {
+      id: "fusion-task", taskType: "image-generation", status: "waiting",
+      createdAt: "2026-08-13T00:00:00.000Z", updatedAt: "2026-08-13T00:00:00.000Z",
+      outputFilename: "Fusion-test", projectId: "project", pictures: [{
+        ...picture(1),
+        mask: {
+          documentPath: "mask.fabric.json", maskPath: "mask.png", revision: 1,
+          regionCount: 1, updatedAt: "2026-08-13T00:00:00.000Z"
+        }
+      }],
+      diffusionModelFilename: "qwen_image_edit_2511_int8_convrot.safetensors",
+      imageOutputSubfolder: "Images", outputWidth: 1024, outputHeight: 1024,
+      prompt: "修复 Picture 1 的融合边缘。", promptVersion: 1,
+      modelId: "qwen-image-edit-2511-crop-stitch",
+      workflowPath: "builtin:image/qwen-image-edit-2511-crop-stitch",
+      qualityProfile: "native", outputFormat: "png", outputCount: 1, runs: []
+    };
+    const workflow = buildQwenImageEdit2511CropStitchWorkflow(task, {
+      id: "run", index: 0, seed: 12, status: "running"
+    });
+    expect(workflow.source?.inputs.image).toBe("{{IMAGE_0}}");
+    expect(workflow.mask?.inputs.image).toBe("{{MASK_0}}");
+    expect(workflow.crop?.class_type).toBe("InpaintCropImproved");
+    expect(workflow.crop?.inputs.mask).toEqual(["mask", 0]);
+    expect(workflow.stitched?.inputs.stitcher).toEqual(["crop", 0]);
+    expect(workflow.stitched?.inputs.inpainted_image).toEqual(["cropOutput", 0]);
+    expect(workflow.sampler?.inputs.steps).toBe(40);
+    expect(validateQwenImageEdit2511CropStitchWorkflow(
+      renderImageWorkflow(workflow, ["source.png"], ["mask.png"])
+    )).toEqual([]);
+  });
+
   it("keeps Lightning optional for native quality and detects it for 4-step mode", () => {
     expect(imageLightningComponentFound([
       { label: "Qwen Image VAE", found: true },

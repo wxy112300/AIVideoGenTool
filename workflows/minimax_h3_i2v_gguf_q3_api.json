@@ -1,6 +1,6 @@
 {
   "1": {
-    "class_type": "UnetLoaderGGUFAdvanced",
+    "class_type": "H3UnetLoaderGGUFAdvanced",
     "inputs": {
       "unet_name": "{{H3_DIFFUSION_MODEL}}",
       "dequant_dtype": "default",
@@ -9,7 +9,7 @@
     }
   },
   "2": {
-    "class_type": "CLIPLoaderGGUF",
+    "class_type": "H3CLIPLoaderGGUF",
     "inputs": {
       "clip_name": "{{H3_TEXT_ENCODER}}",
       "type": "minimax"
@@ -62,7 +62,7 @@
     "class_type": "PathchSageAttentionKJ",
     "inputs": {
       "model": ["1", 0],
-      "sage_attention": "sageattn_qk_int8_pv_fp16_cuda",
+      "sage_attention": "auto",
       "allow_compile": false
     }
   },

@@ -19,19 +19,25 @@ export const minimaxH3Fl2vaQ3Gguf: CatalogModelEntry = {
     adapterId: "minimax-h3",
     promptPackId: "h3",
     order: 80,
+    runtimeProfile: "h3-q3-3080",
     inputModes: ["image"],
     capabilities: {
       supportsEndFrame: true,
-      supportsSpectrum: true,
-      maxDurationSeconds: 15,
-      maxGeneratedFrames: 362,
-      resolutions: [480, 540, 720, 768]
+      supportsSpectrum: false,
+      supportsLivePreview: false,
+      maxDurationSeconds: 5,
+      maxGeneratedFrames: 124,
+      resolutions: [480],
+      generationSteps: [4, 6, 8],
+      defaultGenerationSteps: 8,
+      maxGenerationSteps: 8
     },
     scan: {
       managedBy: "comfyui",
       vram: "Q3 GGUF · CPU 文本编码器 · RAM offload",
       integrated: true,
-      runtimeNodeTypes: ["UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF", "MiniMaxH3ImageToVideo"],
+      requiredCustomNodeIds: ["comfyui-gguf-h3"],
+      runtimeNodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF", "MiniMaxH3ImageToVideo"],
       components: [h3Q3GgufModel, h3Q2GgufTextEncoder, h3Fl2vaVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
     }
   },

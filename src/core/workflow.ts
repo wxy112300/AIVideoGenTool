@@ -61,6 +61,7 @@ interface GenerationSafetyProfile {
   label: string;
   maxGeneratedFrames: number;
   maxDurationSeconds: number;
+  resolutions?: readonly number[];
 }
 
 export function isMiniMaxH3Fl2vaModel(modelId: string): boolean {
@@ -97,8 +98,16 @@ export function isMiniMaxH3Model(modelId: string): boolean {
   return modelCatalog.isFamily(modelId, "minimax-h3");
 }
 
+export function isMiniMaxH3Q3GgufModel(modelId: string): boolean {
+  return modelCatalog.get(modelId)?.definition.runtimeProfile === "h3-q3-3080";
+}
+
 export function isMiniMaxH3SpectrumEligible(modelId: string): boolean {
   return modelCatalog.get(modelId)?.definition.capabilities?.supportsSpectrum === true;
+}
+
+export function isMiniMaxH3LivePreviewSupported(modelId: string): boolean {
+  return modelCatalog.get(modelId)?.definition.capabilities?.supportsLivePreview !== false;
 }
 
 function applyMiniMaxH3Spectrum(
@@ -278,14 +287,16 @@ function generationSafetyProfileForModel(
   modelId: string
 ): GenerationSafetyProfile {
   if (isMiniMaxH3Model(modelId)) {
+    const capabilities = modelCatalog.get(modelId)?.definition.capabilities;
     return {
       label: isMiniMaxH3R2vModel(modelId)
         ? "MiniMax H3 R2V"
         : isMiniMaxH3TurboModel(modelId)
           ? "MiniMax H3 Turbo FL2VA"
           : "MiniMax H3 FL2VA",
-      maxGeneratedFrames: 362,
-      maxDurationSeconds: 15
+      maxGeneratedFrames: capabilities?.maxGeneratedFrames ?? 362,
+      maxDurationSeconds: capabilities?.maxDurationSeconds ?? 15,
+      resolutions: capabilities?.resolutions
     };
   }
   if (modelId === "wan22_5b") {
@@ -394,7 +405,8 @@ export function extensionWorkflowSafetyErrors(
   }
   const usesCheckpointLoader = classTypes.includes("LowVRAMCheckpointLoader");
   const ggufLoader = nodes.find(
-    (node) => node.class_type === "UnetLoaderGGUFAdvanced"
+    (node) => node.class_type === "UnetLoaderGGUFAdvanced" ||
+      node.class_type === "H3UnetLoaderGGUFAdvanced"
   );
   if (!usesCheckpointLoader && !ggufLoader) {
     errors.push(message("missingWorkflowLoader"));
@@ -557,6 +569,22 @@ export function generationSafetyForTask(
       maxGeneratedFrames,
       maxDurationSeconds,
       message: message("durationLimit", { maxDurationSeconds })
+    };
+  }
+  if (
+    task.resolution !== undefined &&
+    profile.resolutions?.length &&
+    !profile.resolutions.includes(task.resolution)
+  ) {
+    return {
+      safe: false,
+      generatedFrames,
+      maxGeneratedFrames,
+      maxDurationSeconds,
+      message: message("resolutionLimit", {
+        label: profile.label,
+        resolutions: profile.resolutions.join("/")
+      })
     };
   }
   if (generatedFrames > maxGeneratedFrames) {

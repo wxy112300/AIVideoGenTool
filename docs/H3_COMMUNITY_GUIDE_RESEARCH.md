@@ -202,7 +202,7 @@ EasyCache 是 ComfyUI 内置节点，输出相对更保守；TeaCache 提速更�
 
 该 workflow 使用的 `LLMTextProcessor`、`AILab_ImageCompare`、`LoadVideoUI`、`VHS_LoadAudioUpload` 以及 rgthree bypass 组件，是它自己的 ComfyUI 方案。当前应用选择 `VisionLLMNode` + Qwen3.6 Q4 的解耦路径：图片直接交给多模态节点；视频/音频若当前后端无法读取，则只使用用户在参考角色中声明的描述，不伪造“已听到/已分析”的内容。这样保留了 Auto Prompter 的提示词质量逻辑，同时不把整套旧节点和旧模型锁死到 4090 默认运行路径。
 
-## 9. 2026-08-11 低显存社区方案更新
+## 9. 2026-08-13 低显存社区方案更新
 
 本节专门区分“checkpoint 文件大小”和“完整生成峰值显存”。两者不能互换。
 
@@ -214,9 +214,10 @@ EasyCache 是 ComfyUI 内置节点，输出相对更保守；TeaCache 提速更�
 - 配套 `qwen3vl_32b_minimax_h3-Q2_K_M.gguf` 约 12.20 GiB；
 - 文本编码器应放 CPU，扩散模型使用 CPU/RAM offload；
 - 只先支持 FL2VA 普通图生视频，不把它扩展到 R2V 或视频续写；
-- 建议从 480p、短片和 4–8 steps 开始，并准备至少 32GB 系统内存，64GB 更稳妥。
+- 3080 产品基线锁定 480p、124 帧（约 5 秒）和 4–8 steps，默认 8 steps；关闭 Spectrum、LoRA 和实时预览；
+- ComfyUI 启动使用 `--lowvram --cpu-vae --disable-smart-memory --disable-pinned-memory --disable-async-offload`，并准备至少 32GB 系统内存，64GB 更稳妥。
 
-该档已作为 `minimax_h3_fl2va_q3_gguf` 接入设置扫描和独立 GGUF workflow，但仍属于社区实验档。未完成 RTX 3080 实机端到端 smoke 前，不能把“可扫描/可构图”称为“稳定可用”。
+该档已作为 `minimax_h3_fl2va_q3_gguf` 接入设置扫描和独立 GGUF workflow，但仍属于社区实验档。主力 H3 的 INT8/INT4/Turbo/R2V 原生路径不依赖这套 GGUF 节点。未完成 RTX 3080 实机端到端 smoke 前，不能把“可扫描/可构图”称为“稳定可用”。
 
 ### 9.2 不能当作 3080 方案的档位
 
@@ -226,7 +227,9 @@ EasyCache 是 ComfyUI 内置节点，输出相对更保守；TeaCache 提速更�
 
 ### 9.3 ComfyUI 依赖和风险
 
-Q3 GGUF workflow 需要 `ComfyUI-GGUF` 的 `UnetLoaderGGUFAdvanced` 与 `CLIPLoaderGGUF`。最近合并的 H3 修复也应纳入验证基线：
+Q3 GGUF workflow 使用独立的 `comfyui-gguf-h3` 节点包：它安装在 `ComfyUI-GGUF-H3`，从具备 `minimax_h3` 架构支持的 `molbal/ComfyUI-GGUF` fork 提取 loader，并注册 `H3UnetLoaderGGUFAdvanced` 与 `H3CLIPLoaderGGUF`。通用 `comfyui-gguf` 仍保留 `city96/ComfyUI-GGUF`，继续服务历史 Wan/Sulphur/Remix GGUF workflow；安装器不会替换它。原 `city96` 主线不能直接加载这份无 metadata 的 Unsloth H3 GGUF。
+
+该 fork 的 README 仍把 `_K` 扩散量化标为实验/非推荐格式，因此“loader 能识别”仍不等于“3080 smoke 已通过”。如果 Q3_K 在目标 ComfyUI 版本上加载慢或失败，应优先准备 Q2_K fallback，而不是放宽分辨率和帧数。最近合并的 H3 修复也应纳入验证基线：
 
 - [H3 音频 VAE 完整卸载修复](https://github.com/Comfy-Org/ComfyUI/pull/15377)；
 - [H3 latent noise mask 采样修复](https://github.com/Comfy-Org/ComfyUI/pull/15322)；

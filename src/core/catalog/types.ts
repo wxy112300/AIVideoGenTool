@@ -1,4 +1,4 @@
-import type { UiLocale } from "../../types.js";
+import type { H3StepCount, UiLocale } from "../../types.js";
 
 export type CatalogModelCategory = "video" | "image" | "upscale" | "interpolation" | "prompt" | "lora";
 export type CatalogModelInputMode = "image" | "video";
@@ -35,11 +35,15 @@ export interface CatalogModelCapabilities {
   supportsEndFrame?: boolean;
   supportsVideoExtension?: boolean;
   supportsSpectrum?: boolean;
+  supportsLivePreview?: boolean;
   supportsReferenceSlots?: boolean;
   maxReferenceImages?: number;
   maxDurationSeconds?: number;
   maxGeneratedFrames?: number;
   resolutions?: readonly number[];
+  generationSteps?: readonly H3StepCount[];
+  defaultGenerationSteps?: H3StepCount;
+  maxGenerationSteps?: H3StepCount;
 }
 
 export interface CatalogModelDefinition {
@@ -52,6 +56,7 @@ export interface CatalogModelDefinition {
   order: number;
   inputModes: readonly CatalogModelInputMode[];
   retired?: boolean;
+  runtimeProfile?: "h3-q3-3080";
   capabilities?: CatalogModelCapabilities;
   scan?: CatalogModelScanDefinition;
   scanVariants?: Readonly<Record<string, CatalogModelScanDefinition>>;

@@ -14,6 +14,7 @@ import {
   missingWorkflowNodeTypes,
   renderWorkflow,
   isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3LivePreviewSupported,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
   workflowSupportsEndImage
@@ -410,7 +411,9 @@ export async function submitTask(
     vramTotalBytes,
     settings.vramReserveGb
   );
-  const h3LivePreviewRequested = settings.h3LivePreview && isMiniMaxH3Model(task.modelId);
+  const h3LivePreviewRequested = settings.h3LivePreview &&
+    isMiniMaxH3Model(task.modelId) &&
+    isMiniMaxH3LivePreviewSupported(task.modelId);
   const h3PreviewTinyVae = h3LivePreviewRequested
     ? h3PreviewTinyVaeFromObjectInfo(objectInfo)
     : "";

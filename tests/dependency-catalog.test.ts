@@ -32,9 +32,26 @@ describe("dependency catalog", () => {
       runtimeRequirement: expect.stringContaining("0.3.36"),
       required: false
     });
+    expect(customNodeDefinition("comfyui-gguf")).toMatchObject({
+      repositoryUrl: "https://github.com/city96/ComfyUI-GGUF.git",
+      directoryName: "ComfyUI-GGUF",
+      required: true
+    });
+    expect(customNodeDefinition("comfyui-gguf-h3")).toMatchObject({
+      repositoryUrl: "https://github.com/molbal/ComfyUI-GGUF.git",
+      directoryName: "ComfyUI-GGUF-H3",
+      nodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF"],
+      required: false
+    });
     expect(customNodeDefinition("h3-motion-context")?.nodeTypes).toContain(
       "MiniMaxH3MotionContextSaveLatent"
     );
+    expect(customNodeDefinition("inpaint-cropandstitch")).toMatchObject({
+      directoryName: "ComfyUI-Inpaint-CropAndStitch",
+      nodeTypes: ["InpaintCropImproved", "InpaintStitchImproved"],
+      repositoryUrl: "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git",
+      required: false
+    });
   });
 
   it("defines portable workflow destinations without machine paths", () => {

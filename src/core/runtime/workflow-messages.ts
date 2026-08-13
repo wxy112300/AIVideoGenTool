@@ -19,6 +19,7 @@ export type WorkflowMessageKey =
   | "missingTiledVae"
   | "durationFpsInvalid"
   | "durationLimit"
+  | "resolutionLimit"
   | "frameBudget"
   | "h3SafeGuidance"
   | "h3BalancedGuidance"
@@ -64,7 +65,7 @@ const zhCN: WorkflowLocale = {
   missingExtensionPlaceholders: "缺少 SOURCE_VIDEO、EXTENSION_FRAMES 或 OVERLAP_FRAMES 输入占位符",
   workflowRootInvalid: "工作流根节点不是 API 对象",
   missingExtensionSampler: "缺少官方 LTXVExtendSampler 或 LTXVLoopingSampler",
-  missingWorkflowLoader: "缺少 LowVRAMCheckpointLoader 或 UnetLoaderGGUFAdvanced",
+  missingWorkflowLoader: "缺少 LowVRAMCheckpointLoader、UnetLoaderGGUFAdvanced 或 H3UnetLoaderGGUFAdvanced",
   ggufPatchOnDevice: "GGUF loader 必须关闭 patch_on_device",
   missingDualClipLoader: "GGUF 工作流缺少独立 DualCLIPLoader",
   missingVaeLoader: "GGUF 工作流缺少独立 VAELoader",
@@ -72,6 +73,7 @@ const zhCN: WorkflowLocale = {
   missingTiledVae: "缺少 tiled VAE decode",
   durationFpsInvalid: "时长和帧率必须是大于 0 的有效数字。",
   durationLimit: "当前单段输出最长 {maxDurationSeconds} 秒；更长视频需要插帧、续写或分段生成。",
+  resolutionLimit: "{label} 当前验证档只允许 {resolutions}p 分辨率。",
   frameBudget: "当前组合需要生成 {generatedFrames} 个模型帧，{label} 的当前验证预算是 {maxGeneratedFrames} 帧。请降低输出 FPS、启用 RIFE，或等待更高帧数实测通过。",
   h3SafeGuidance: "官方本地模板默认档，适合作为当前显卡的稳妥起步范围。",
   h3BalancedGuidance: "当前显卡可尝试的均衡档；请预留更长采样和解码时间。",
@@ -122,6 +124,7 @@ const enUS: Partial<WorkflowLocale> = {
   missingTiledVae: "Missing tiled VAE decode",
   durationFpsInvalid: "Duration and FPS must be valid numbers greater than 0.",
   durationLimit: "A single segment can be at most {maxDurationSeconds} seconds; longer videos need interpolation, extension, or segmented generation.",
+  resolutionLimit: "The current verified {label} profile allows only {resolutions}p resolution.",
   frameBudget: "This combination needs {generatedFrames} model frames, while the current verified budget for {label} is {maxGeneratedFrames} frames. Lower output FPS, enable RIFE, or wait for higher-frame validation.",
   h3SafeGuidance: "The official local-template default is a safe starting range for the current GPU.",
   h3BalancedGuidance: "A balanced range for this GPU; allow more time for sampling and decoding.",

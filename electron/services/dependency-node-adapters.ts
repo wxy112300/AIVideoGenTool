@@ -113,6 +113,46 @@ export function patchLtxAudioVaeCompatibility(source: string): string {
   return patched;
 }
 
+const h3GgufInitSource = `WEB_DIRECTORY = "./web"
+
+try:
+    import comfy.utils
+except ImportError:
+    pass
+else:
+    from .nodes import NODE_CLASS_MAPPINGS as _NODE_CLASS_MAPPINGS
+    NODE_CLASS_MAPPINGS = {
+        "H3UnetLoaderGGUFAdvanced": _NODE_CLASS_MAPPINGS["UnetLoaderGGUFAdvanced"],
+        "H3CLIPLoaderGGUF": _NODE_CLASS_MAPPINGS["CLIPLoaderGGUF"],
+    }
+    NODE_DISPLAY_NAME_MAPPINGS = {
+        key: value.TITLE for key, value in NODE_CLASS_MAPPINGS.items()
+    }
+    __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
+`;
+
+export async function prepareH3Gguf(
+  targetDirectory: string,
+  report: (message: string) => void
+): Promise<void> {
+  const nodesPath = path.join(targetDirectory, "nodes.py");
+  const nodesSource = await fs.readFile(nodesPath, "utf8");
+  if (!/["']UnetLoaderGGUFAdvanced["']/.test(nodesSource) ||
+      !/["']CLIPLoaderGGUF["']/.test(nodesSource)) {
+    throw new Error(
+      "ComfyUI-GGUF H3 源码缺少预期 loader，已停止安装以避免覆盖通用 GGUF 节点。"
+    );
+  }
+  await fs.writeFile(path.join(targetDirectory, "__init__.py"), h3GgufInitSource, "utf8");
+  await fs.rm(path.join(targetDirectory, ".git"), {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 200
+  });
+  report("已将 H3 GGUF loader 重命名为独立节点，保留通用 GGUF 包不变");
+}
+
 export async function prepareLtxVideo(
   targetDirectory: string,
   report: (message: string) => void

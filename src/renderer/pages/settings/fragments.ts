@@ -67,7 +67,7 @@ const modelHardwareRecommendations: Record<string, string> = {
   "flux2-klein-4b": "RTX 4080/4090 16GB 以上",
   minimax_h3_fl2va: "RTX 3090/4090 24GB 以上 · 系统 RAM 64GB 推荐",
   minimax_h3_fl2va_int4: "RTX 4070/4080 16GB 推荐 · 12GB 仅实验",
-  minimax_h3_fl2va_q3_gguf: "RTX 3080 10GB 实验 · 系统 RAM 32GB 起步",
+  minimax_h3_fl2va_q3_gguf: "RTX 3080 10GB 实验 · 480p/5秒/32GB RAM 起步",
   minimax_h3_fl2va_turbo: "RTX 3090/4090 24GB 以上 · Turbo 不降低基础显存",
   minimax_h3_ref2va: "RTX 3090/4090 24GB 以上 · 多参考需更多 RAM",
   minimax_h3_ref2va_int4: "RTX 4070/4080 16GB 推荐 · 12GB 仅实验",

@@ -1837,7 +1837,7 @@ function randomSeedValue(): number {
 async function editImagePictureMarkup(pictureId: string): Promise<void> {
   const picture = state.imageDraft.pictures.find((item) => item.id === pictureId);
   if (!picture?.absolutePath) return;
-  const maskMode = state.imageDraft.modelId === "lama-inpaint";
+  const maskMode = imageModelCapabilityFor(state.imageDraft.modelId).requiresMask === true;
   try {
     const { openImageMarkupEditor } = await import("./image-markup-editor");
     const [sourceDataUrl, existingDocument] = await Promise.all([

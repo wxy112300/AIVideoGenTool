@@ -4,9 +4,25 @@ import {
   startComfyUiService,
   type ComfyRuntimeServiceDependencies
 } from "../electron/services/comfy-runtime-service";
+import { comfyUiSettingsForQueueTask } from "../electron/services/comfy-runtime-policy";
 import { createDefaultState } from "../src/core/defaults";
 
 describe("ComfyUI runtime service", () => {
+  it("selects memory settings from the queued model instead of persisted defaults", () => {
+    const settings = {
+      ...createDefaultState().settings,
+      defaultImageModel: "qwen-image-edit-2511",
+      defaultVideoModel: "minimax_h3_fl2va_q3_gguf"
+    };
+
+    expect(comfyUiSettingsForQueueTask({ taskType: "generation", modelId: "wan22_5b" }, settings))
+      .toMatchObject({ defaultImageModel: "", defaultVideoModel: "wan22_5b" });
+    expect(comfyUiSettingsForQueueTask({ taskType: "image-generation", modelId: "qwen-image-edit-2511" }, settings))
+      .toMatchObject({ defaultImageModel: "qwen-image-edit-2511", defaultVideoModel: "" });
+    expect(comfyUiSettingsForQueueTask({ taskType: "upscale", modelId: "seedvr2" }, settings))
+      .toMatchObject({ defaultImageModel: "", defaultVideoModel: "" });
+  });
+
   it("builds a source launch from the selected data and core directories", async () => {
     const launchDetached = vi.fn(async () => undefined);
     const settings = {
@@ -38,7 +54,13 @@ describe("ComfyUI runtime service", () => {
     await expect(startComfyUiService(settings, dependencies)).resolves.toBe(
       "http://127.0.0.1:8288/system_stats"
     );
-    const [python, args, cwd, env] = launchDetached.mock.calls[0];
+    const launchCalls = launchDetached.mock.calls as unknown as Array<[
+      string,
+      string[],
+      string,
+      NodeJS.ProcessEnv
+    ]>;
+    const [python, args, cwd, env] = launchCalls[0]!;
     expect(python).toContain("python.exe");
     expect(cwd).toBe("D:\\ComfyCore");
     expect(env).toEqual({ TEST_ENV: "1" });

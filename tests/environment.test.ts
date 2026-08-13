@@ -359,6 +359,21 @@ describe("ComfyUI environment candidates", () => {
     expect(args).not.toContain("--disable-async-offload");
   });
 
+  it("uses the aggressive H3 Q3 profile for a 3080 default video model", () => {
+    const args = comfyUiMemoryArgs({
+      vramReserveGb: 0.5,
+      defaultVideoModel: "minimax_h3_fl2va_q3_gguf"
+    });
+
+    expect(args).toEqual(expect.arrayContaining([
+      "--lowvram",
+      "--cpu-vae",
+      "--disable-smart-memory",
+      "--disable-pinned-memory",
+      "--disable-async-offload"
+    ]));
+  });
+
   it("keeps Qwen image and standard video runtime profiles distinct", () => {
     expect(comfyUiRuntimeProfileForSettings({
       defaultImageModel: "qwen-image-edit-2511"
@@ -366,6 +381,10 @@ describe("ComfyUI environment candidates", () => {
     expect(comfyUiRuntimeProfileForSettings({
       defaultImageModel: ""
     })).toBe("standard");
+    expect(comfyUiRuntimeProfileForSettings({
+      defaultImageModel: "",
+      defaultVideoModel: "minimax_h3_fl2va_q3_gguf"
+    })).toBe("h3-q3-3080");
 
     expect(comfyUiRuntimeProfileFromCommandLine(
       "python main.py --cpu-vae --disable-smart-memory"
@@ -373,6 +392,9 @@ describe("ComfyUI environment candidates", () => {
     expect(comfyUiRuntimeProfileFromCommandLine(
       "python main.py --disable-pinned-memory --disable-async-offload"
     )).toBe("standard");
+    expect(comfyUiRuntimeProfileFromCommandLine(
+      "python main.py --lowvram --cpu-vae --disable-smart-memory"
+    )).toBe("h3-q3-3080");
     expect(comfyUiRuntimeProfileFromCommandLine(
       "python main.py --listen 127.0.0.1"
     )).toBe("unknown");
