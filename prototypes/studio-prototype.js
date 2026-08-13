@@ -35,6 +35,13 @@
       root.querySelectorAll('[data-input-mode]').forEach((item) => item.classList.toggle('primary', item === button));
     });
   });
+  const spectrumMode = root.querySelector('[data-spectrum-mode]');
+  const syncSpectrumModelAware = () => {
+    const field = root.querySelector('[data-spectrum-model-aware]');
+    if (field) field.hidden = spectrumMode?.value !== 'balanced';
+  };
+  spectrumMode?.addEventListener('change', syncSpectrumModelAware);
+  syncSpectrumModelAware();
   root.querySelectorAll('[data-drag-demo]').forEach((well) => {
     ['dragenter','dragover'].forEach((name) => well.addEventListener(name, (event) => { event.preventDefault(); well.classList.add('dragging'); }));
     ['dragleave','drop'].forEach((name) => well.addEventListener(name, (event) => { event.preventDefault(); well.classList.remove('dragging'); }));
@@ -157,24 +164,54 @@
   });
   if (imagePrompt) renderImagePromptVersion();
   const imageModelProfiles = {
+    lama: { badge: '本地 · 无 Prompt', title: 'LaMa · 局部移除', description: '在 Picture 1 上用半透明高亮绘制一个或多个 Mask；提交时只发送干净原图和独立黑白 Mask，并保持原图尺寸。' },
     qwen: { badge: '本地', title: 'Qwen Image Edit 2511 FP8', description: '多 Picture 编辑与人物一致性主力；按输入顺序编译引用，输出比例默认跟随 Picture 1。' },
     flux: { badge: '本地 · 英文 Prompt', title: 'FLUX.1 Kontext Dev FP8', description: '适合目标修改、角色一致性与风格编辑；提示词助手会转换为更适合 Kontext 的英文指令。' },
     seedream: { badge: '云端 · 需要 API', title: 'Seedream 5.0 Lite', description: 'ComfyUI Partner Node 云端能力，不属于本地模型；使用前需配置 API 与额度，支持更高分辨率输出。' }
   };
   const renderImageModelProfile = () => {
-    const profile = imageModelProfiles[root.querySelector('[data-image-model]')?.value] ?? imageModelProfiles.qwen;
+    const model = root.querySelector('[data-image-model]')?.value ?? 'qwen';
+    const profile = imageModelProfiles[model] ?? imageModelProfiles.qwen;
+    const isLama = model === 'lama';
     const badge = root.querySelector('[data-image-model-badge]');
     const title = root.querySelector('[data-image-model-title]');
     const description = root.querySelector('[data-image-model-description]');
     if (badge) badge.textContent = profile.badge;
     if (title) title.textContent = profile.title;
     if (description) description.textContent = profile.description;
+    root.querySelectorAll('[data-lama-hidden]').forEach((element) => {
+      element.hidden = isLama;
+      element.style.display = isLama ? 'none' : '';
+    });
+    const promptControls = root.querySelector('[data-image-prompt-controls]');
+    const lamaPanel = root.querySelector('[data-lama-panel]');
+    if (promptControls) promptControls.hidden = isLama;
+    if (lamaPanel) lamaPanel.hidden = !isLama;
+    const inputTitle = root.querySelector('[data-image-input-title]');
+    const inputSummary = root.querySelector('[data-image-input-summary]');
+    const markupLabel = root.querySelector('[data-image-markup-label]');
+    if (inputTitle) inputTitle.textContent = isLama ? '待修复图片' : '参考图片';
+    if (inputSummary) inputSummary.textContent = isLama ? 'LaMa 单图局部移除 · 原图不会被标记覆盖' : 'Qwen 多图编辑 · 当前 2 / 6';
+    if (markupLabel) markupLabel.textContent = isLama ? '绘制移除区域' : '标记图片';
+    const quality = root.querySelector('[data-image-quality]');
+    if (quality) quality.innerHTML = isLama
+      ? '<option>自然边缘</option><option>紧贴 Mask</option><option>扩大修补</option>'
+      : '<option>原生质量</option><option>Lightning · 快速</option>';
+    const format = root.querySelector('[data-image-format]');
+    if (format) {
+      if (isLama) format.value = 'png';
+      format.disabled = isLama;
+    }
   };
-  root.querySelector('[data-image-model]')?.addEventListener('change', renderImageModelProfile);
+  root.querySelector('[data-image-model]')?.addEventListener('change', () => {
+    renderImageModelProfile();
+    renderImageBatchSettings();
+  });
   renderImageModelProfile();
   const renderImageBatchSettings = () => {
     const count = Number(root.querySelector('[data-image-count]')?.value ?? 6);
     const seed = root.querySelector('[data-image-seed-input]')?.value.trim() ?? '';
+    const isLama = root.querySelector('[data-image-model]')?.value === 'lama';
     const format = root.querySelector('[data-image-format]')?.selectedOptions?.[0]?.textContent.split(' · ')[0] ?? 'PNG';
     const countValue = root.querySelector('[data-image-count-value]');
     const versionBadge = root.querySelector('[data-image-version-badge]');
@@ -182,8 +219,12 @@
     const outputSummary = root.querySelector('[data-image-output-summary]');
     if (countValue) countValue.textContent = `${count} 张`;
     if (versionBadge) versionBadge.textContent = `预计 ${count} 个版本`;
-    if (batchSummary) batchSummary.textContent = seed ? `一个任务 · ${count} 张使用相同 Seed ${seed}` : `一个任务 · ${count} 个随机 Seed 顺序生成`;
-    if (outputSummary) outputSummary.textContent = `${format} · 输出约 1536 × 1024 · 结果归入“黄昏机场人物素材”`;
+    if (batchSummary) batchSummary.textContent = isLama
+      ? `一个任务 · ${count} 张局部修补结果`
+      : seed ? `一个任务 · ${count} 张使用相同 Seed ${seed}` : `一个任务 · ${count} 个随机 Seed 顺序生成`;
+    if (outputSummary) outputSummary.textContent = isLama
+      ? 'PNG · 保持原图尺寸 · 只处理 Mask 覆盖区域'
+      : `${format} · 输出约 1536 × 1024 · 结果归入“黄昏机场人物素材”`;
   };
   root.querySelector('[data-image-count]')?.addEventListener('input', renderImageBatchSettings);
   root.querySelector('[data-image-format]')?.addEventListener('change', renderImageBatchSettings);
@@ -230,6 +271,29 @@
   root.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => button.closest('.dialog-backdrop')?.classList.remove('open')));
   const markupOverlay = root.querySelector('[data-image-markup-overlay]');
   root.querySelectorAll('[data-open-image-markup]').forEach((button) => button.addEventListener('click', () => {
+    const isLama = root.querySelector('[data-image-model]')?.value === 'lama';
+    const markupTitle = root.querySelector('[data-markup-title]');
+    const saveLabel = root.querySelector('[data-markup-save-label]');
+    const inspectorTitle = root.querySelector('[data-markup-inspector-title]');
+    const inspectorCopy = root.querySelector('[data-markup-inspector-copy]');
+    const footer = root.querySelector('[data-markup-footer]');
+    if (markupTitle) markupTitle.textContent = isLama ? '绘制移除区域' : '标记 Picture 1';
+    if (saveLabel) saveLabel.textContent = isLama ? '保存 Mask' : '保存标记';
+    if (inspectorTitle) inspectorTitle.textContent = isLama ? 'Mask 说明' : '标记说明';
+    if (inspectorCopy) inspectorCopy.textContent = isLama ? '用半透明高亮覆盖要移除的内容；可绘制多个区域。' : '区域会自动编号；说明会同时进入 Prompt。';
+    if (footer) footer.textContent = isLama ? '高亮仅用于编辑显示；模型收到的是独立黑白 Mask。' : '最终图片会自动要求模型移除红框、箭头、编号和标注文字。';
+    root.querySelectorAll('[data-annotation-tool],[data-annotation-demo]').forEach((element) => {
+      element.hidden = isLama;
+      element.style.display = isLama ? 'none' : '';
+    });
+    const maskDemo = root.querySelector('[data-mask-demo]');
+    if (maskDemo) {
+      maskDemo.hidden = !isLama;
+      maskDemo.style.display = isLama ? 'block' : 'none';
+    }
+    root.querySelectorAll('[data-markup-tool]').forEach((tool) => {
+      tool.classList.toggle('primary', tool.dataset.markupTool === (isLama ? 'highlight' : 'select'));
+    });
     if (markupOverlay) markupOverlay.hidden = false;
   }));
   root.querySelectorAll('[data-markup-cancel],[data-markup-save]').forEach((button) => button.addEventListener('click', () => {

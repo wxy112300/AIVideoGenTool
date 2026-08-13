@@ -29,6 +29,11 @@ import {
   videoLoraConfigurationIssues
 } from "../src/core/video-loras.js";
 import {
+  SPECTRUM_MODEL_AWARE_MINIMUM_VERSION,
+  SPECTRUM_TURBO_MINIMUM_VERSION
+} from "../src/core/catalog/index.js";
+import { releaseVersionAtLeast } from "../src/core/release-version.js";
+import {
   extensionTaskFromDraft,
   imageTaskFromDraft,
   promptOf,
@@ -119,7 +124,7 @@ async function requireImageModelAssets(
   settings: Settings,
   modelId = settings.defaultImageModel,
   qualityProfile = "native"
-): Promise<string> {
+): Promise<string | undefined> {
   const scan = await scanEnvironment(settings);
   const profile = scan.modelProfiles.find((item) => item.id === modelId);
   const adapter = imageModelAdapterFor(modelId);
@@ -131,9 +136,16 @@ async function requireImageModelAssets(
       .map((component) => component.expected).join("、");
     throw new Error(`${adapter.name} 组件尚未完整${missing ? `，缺少：${missing}` : ""}。请确认设置已保存后重新扫描。`);
   }
+  if (profile.missingCustomNodeNames?.length) {
+    throw new Error(
+      `${adapter.name} 缺少必需节点：${profile.missingCustomNodeNames.join("、")}。` +
+      "请先在设置 → 节点与工作流中安装；节点目录存在即可入队，无需启动 ComfyUI。"
+    );
+  }
   if (imageQualityProfileRequiresLightning(qualityProfile) && !imageLightningComponentFound(profile.components)) {
     throw new Error("当前选择了 Qwen Lightning 4 步档，但未找到 Lightning LoRA。请在设置 → 图片模型中打开下载说明并重新扫描。");
   }
+  if (modelId === "lama-inpaint") return undefined;
   const diffusionModel = profile.components.find((component) => component.label.includes("扩散模型"))
     ?.matches[0]?.split(/[\\/]/u).pop();
   if (!diffusionModel) throw new Error("Qwen Image Edit 2511 扩散模型文件未能从环境扫描结果中解析。");
@@ -158,6 +170,9 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     const workflow = await readWorkflow(draft.workflowPath, "工作流");
     const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
+    const dependencyScan = draft.videoLoras.length || draft.spectrumMode === "balanced"
+      ? await scanEnvironment(store.get().settings)
+      : undefined;
     if (draft.videoLoras.length) {
       const issues = videoLoraConfigurationIssues({
         modelId: draft.modelId, inputMode: draft.inputMode,
@@ -169,9 +184,8 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       issues.filter((issue) => issue.severity === "warning").forEach((issue) => {
         logger.warn("queue", "video-lora-compatibility-warning", issue.message, { loraIds: issue.loraIds });
       });
-      const scan = await scanEnvironment(store.get().settings);
       const missing = draft.videoLoras.find((lora) => {
-        const profile = scan.modelProfiles.find((candidate) => candidate.id === lora.id);
+        const profile = dependencyScan?.modelProfiles.find((candidate) => candidate.id === lora.id);
         if (!profile?.available) return true;
         const expected = `loras/${lora.filename}`.replaceAll("\\", "/").toLowerCase();
         return !profile.components.some((component) => component.matches.some((match) => {
@@ -180,6 +194,26 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         }));
       });
       if (missing) throw new Error(`${missing.name} 当前记录的文件 ${missing.filename} 未找到，请先在设置 → LoRA 中重新扫描或安装。`);
+    }
+    if (draft.spectrumMode === "balanced") {
+      const spectrum = dependencyScan?.customNodes.find(
+        (node) => node.id === "spectrum-minimax-h3"
+      );
+      if (!spectrum?.loaded) {
+        throw new Error("Spectrum 节点不可用；请先在设置 → 节点与工作流中安装、更新并复检。");
+      }
+      if (isH3TurboEnabled(draft) && !releaseVersionAtLeast(
+        spectrum.version,
+        SPECTRUM_TURBO_MINIMUM_VERSION
+      )) {
+        throw new Error(`LightX2V Turbo + Spectrum 需要 Spectrum v${SPECTRUM_TURBO_MINIMUM_VERSION}+；当前 ${spectrum.version ? `v${spectrum.version}` : "版本未知"}。`);
+      }
+      if (draft.spectrumModelAwareMode !== "off" && !releaseVersionAtLeast(
+        spectrum.version,
+        SPECTRUM_MODEL_AWARE_MINIMUM_VERSION
+      )) {
+        throw new Error(`模型感知预测需要 Spectrum v${SPECTRUM_MODEL_AWARE_MINIMUM_VERSION}+；当前 ${spectrum.version ? `v${spectrum.version}` : "版本未知"}。`);
+      }
     }
     if (isH3TurboEnabled(draft) && !workflowSupportsH3TurboSampling(workflow)) {
       throw new Error("LightX2V Turbo 需要 ER-SDE、Beta 调度器和 MiniMaxH3SigmaShift；请使用内置 Turbo 工作流或匹配这些要求的自定义工作流。");
@@ -231,8 +265,13 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     if (normalized.pictures.length > adapter.maxPictures) throw new Error(`当前 ${adapter.name} 工作流最多支持 ${adapter.maxPictures} 张 Picture。`);
     const incomplete = normalized.pictures.find((picture) => !picture.absolutePath);
     if (incomplete) throw new Error(`请先为 Slot ${incomplete.pictureNumber}（Picture ${incomplete.pictureNumber}）添加图片。`);
-    const prompt = normalized.promptVersions[normalized.activePromptVersion]?.text.trim() ?? "";
-    if (!prompt) throw new Error("图片处理提示词不能为空");
+    const prompt = adapter.requiresPrompt === false
+      ? ""
+      : normalized.promptVersions[normalized.activePromptVersion]?.text.trim() ?? "";
+    if (adapter.requiresPrompt !== false && !prompt) throw new Error("图片处理提示词不能为空");
+    if (adapter.requiresMask && !normalized.pictures[0]?.mask?.regionCount) {
+      throw new Error("请先在原图上绘制并保存 Mask。");
+    }
     const diffusionModelFilename = await requireImageModelAssets(store.get().settings, normalized.modelId, normalized.qualityProfile);
     const outputTarget = await resolveImageOutputTarget(store.get().settings);
     const library = await deps.effectiveImageInputLibraryDirectory(store.get().settings);
@@ -253,6 +292,17 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     }
     let preparedDraft = normalizeImageEditDraft({
       ...normalized,
+      ...(adapter.requiresPrompt === false
+        ? {
+            promptVersions: [{
+              id: randomUUID(),
+              label: "无需 Prompt",
+              text: "",
+              createdAt: new Date().toISOString()
+            }],
+            activePromptVersion: 0
+          }
+        : {}),
       pictures: archivedPictures.map((picture) => ({ ...picture, ...readImageDimensions(picture.absolutePath) })),
       outputFormat: "png"
     });
@@ -265,6 +315,10 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       const markedPath = picture.markup?.renderedPath.trim();
       if (picture.markup?.objectCount && markedPath && !(await fs.stat(markedPath).catch(() => null))?.isFile()) {
         throw new Error(`Picture ${picture.pictureNumber} 的标记预览不存在，请重新打开标记画布并保存。`);
+      }
+      const maskPath = picture.mask?.maskPath.trim();
+      if (adapter.requiresMask && (!maskPath || !(await fs.stat(maskPath).catch(() => null))?.isFile())) {
+        throw new Error(`Picture ${picture.pictureNumber} 的 Mask 不存在，请重新绘制并保存。`);
       }
     }
     const preparedPrompt = preparedDraft.promptVersions[preparedDraft.activePromptVersion]?.text.trim() ?? "";

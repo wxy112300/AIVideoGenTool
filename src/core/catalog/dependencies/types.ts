@@ -8,6 +8,7 @@ export interface CatalogCustomNodeDefinition {
   nodeTypes?: readonly string[];
   runtimeEndpoint?: string;
   minimumVersion?: string;
+  recommendedVersion?: string;
   required: boolean;
 }
 

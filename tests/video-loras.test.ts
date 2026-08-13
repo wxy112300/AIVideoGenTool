@@ -93,7 +93,7 @@ describe("video LoRA catalog", () => {
     );
   });
 
-  it("blocks declared setting conflicts and reports risky combinations", () => {
+  it("allows Spectrum with Turbo and still reports risky LoRA combinations", () => {
     const issues = videoLoraConfigurationIssues({
       modelId: "minimax_h3_fl2va",
       inputMode: "image",
@@ -104,13 +104,12 @@ describe("video LoRA catalog", () => {
 
     expect(issues).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        code: `setting:${H3_TURBO_LORA.id}:spectrumMode`,
-        severity: "error"
-      }),
-      expect.objectContaining({
         code: `combination:${[H3_TURBO_LORA.id, H3_PINK_FLUFFY_BUNNY_LORA.id].sort().join(":")}`,
         severity: "warning"
       })
+    ]));
+    expect(issues).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: `setting:${H3_TURBO_LORA.id}:spectrumMode` })
     ]));
   });
 

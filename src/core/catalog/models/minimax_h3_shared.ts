@@ -31,14 +31,30 @@ export function h3Component(options: {
   expected: string;
   pattern: RegExp;
   installGuide?: CatalogInstallGuide;
+  optional?: boolean;
 }): CatalogModelComponent {
   return {
     label: options.label,
     expected: options.expected,
     patterns: [options.pattern],
-    ...(options.installGuide ? { installGuide: options.installGuide } : {})
+    ...(options.installGuide ? { installGuide: options.installGuide } : {}),
+    ...(options.optional ? { optional: true } : {})
   };
 }
+
+export const h3LivePreviewTae = h3Component({
+  label: "MiniMax H3 TAE 实时预览（可选）",
+  expected: "vae_approx/taeh3.safetensors",
+  pattern: /vae_approx\/taeh3\.safetensors$/i,
+  optional: true,
+  installGuide: guide(
+    "Kijai / MiniMax-H3-TAE",
+    "https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors",
+    "vae_approx",
+    "taeh3.safetensors",
+    "供 KJNodes Model Preview Override 在采样期间解码低分辨率 RGB 预览；不参与最终视频 VAE 解码。"
+  )
+});
 
 export const h3Fl2vaVideoVae = h3Component({
   label: "MiniMax H3 视频 VAE",

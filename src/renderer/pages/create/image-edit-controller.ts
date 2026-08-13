@@ -68,7 +68,7 @@ export function mountImageEditController(
       const pictures = picture.pictureNumber === 1
         ? draft.pictures.map((item) =>
             item.id === pictureId
-              ? { ...item, absolutePath: "", width: 0, height: 0, role: "base" as const, markup: undefined }
+              ? { ...item, absolutePath: "", width: 0, height: 0, role: "base" as const, markup: undefined, mask: undefined }
               : item
           )
         : draft.pictures.filter((item) => item.id !== pictureId);
@@ -219,11 +219,17 @@ export function mountImageEditController(
   }, { signal });
 
   root.querySelector("#prompt-enhance-mode")?.addEventListener("change", (event) => {
+    const select = event.currentTarget as HTMLSelectElement;
     options.setPromptEnhanceMode(
-      (event.currentTarget as HTMLSelectElement).value === "faithful"
+      select.value === "faithful"
         ? "faithful"
         : "detail-enhance"
     );
+    const description = select.selectedOptions[0]?.dataset.description ?? "";
+    const info = root.querySelector<HTMLElement>("#prompt-enhance-mode-info");
+    const tip = root.querySelector<HTMLElement>("#prompt-enhance-mode-tip");
+    if (info && description) info.setAttribute("aria-label", description);
+    if (tip && description) tip.textContent = description;
   }, { signal });
   root.querySelector("#release-prompt-model-create")?.addEventListener("click", () => {
     void options.togglePromptModel();
@@ -310,7 +316,9 @@ export function mountImageEditController(
               modelId: value,
               qualityProfile: modelCapability?.qualityProfiles.some((profile) => profile.id === draft.qualityProfile)
                 ? draft.qualityProfile
-                : modelCapability?.qualityProfiles[0]?.id ?? "native"
+                : modelCapability?.qualityProfiles[0]?.id ?? "native",
+              ...(modelCapability?.maxPictures === 1 ? { pictures: draft.pictures.slice(0, 1) } : {}),
+              ...(modelCapability?.sourceResolutionOnly ? { targetResolution: "source" as const } : {})
             }
           : id === "image-edit-quality"
             ? { qualityProfile: value }

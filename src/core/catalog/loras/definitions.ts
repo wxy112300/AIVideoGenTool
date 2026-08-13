@@ -58,12 +58,7 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
   variant: "turbo",
   rules: {
     orderPriority: 10,
-    settingConflicts: [{
-      setting: "spectrumMode",
-      values: ["balanced"],
-      severity: "error",
-      localeKey: "turboSpectrum"
-    }],
+    settingConflicts: [],
     combinations: [],
     workflowRequirement: "h3-turbo-sampling"
   },

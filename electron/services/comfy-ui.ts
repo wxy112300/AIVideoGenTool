@@ -14,6 +14,7 @@ import {
   missingWorkflowNodeTypes,
   renderWorkflow,
   isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
   workflowSupportsEndImage
 } from "../../src/core/workflow.js";
@@ -46,6 +47,7 @@ import {
   imageModelAdapterFor,
   renderImageWorkflow,
 } from "../../src/core/image-workflow.js";
+import { customNodeDefinition, modelCatalog } from "../../src/core/catalog/index.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 
 function cleanBaseUrl(url: string): string {
@@ -374,6 +376,8 @@ export async function submitTask(
   promptId: string;
   clientId: string;
   nodeTypes: Record<string, string>;
+  h3LivePreviewRequested: boolean;
+  h3LivePreviewActive: boolean;
 }> {
   if (!task.workflowPath) {
     throw new Error("任务没有配置 ComfyUI API 工作流 JSON");
@@ -400,6 +404,10 @@ export async function submitTask(
     vramTotalBytes,
     settings.vramReserveGb
   );
+  const h3LivePreviewRequested = settings.h3LivePreview && isMiniMaxH3Model(task.modelId);
+  const h3PreviewTinyVae = h3LivePreviewRequested
+    ? h3PreviewTinyVaeFromObjectInfo(objectInfo)
+    : "";
   let prompt: unknown;
   if (task.taskType === "generation" || task.taskType === "extension") {
     const sourceText = await fs.readFile(task.workflowPath, {
@@ -438,7 +446,8 @@ export async function submitTask(
             : {}),
           vramTotalBytes,
           locale: settings.uiLocale,
-          vramAvailableBytes
+          vramAvailableBytes,
+          h3PreviewTinyVae
         });
       } finally {
         await prepared.cleanup();
@@ -470,7 +479,8 @@ export async function submitTask(
         h3ReferenceVideos,
         vramTotalBytes,
         locale: settings.uiLocale,
-        vramAvailableBytes
+        vramAvailableBytes,
+        h3PreviewTinyVae
       });
     } else {
       const supportsEndImage = workflowSupportsEndImage(source);
@@ -485,7 +495,8 @@ export async function submitTask(
         endImage,
         vramTotalBytes,
         locale: settings.uiLocale,
-        vramAvailableBytes
+        vramAvailableBytes,
+        h3PreviewTinyVae
       });
     }
   } else if (task.taskType === "upscale") {
@@ -529,7 +540,13 @@ export async function submitTask(
       return typeof classType === "string" ? [[id, classType]] : [];
     })
   );
-  return { promptId: result.prompt_id, clientId, nodeTypes };
+  return {
+    promptId: result.prompt_id,
+    clientId,
+    nodeTypes,
+    h3LivePreviewRequested,
+    h3LivePreviewActive: Boolean(h3PreviewTinyVae)
+  };
 }
 
 export async function submitImageTask(
@@ -553,23 +570,27 @@ export async function submitImageTask(
   );
   const compiled = adapter.compilePrompt(task.prompt, task.pictures);
   if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
+  const workflow = adapter.buildWorkflow(task, run);
+  const workflowErrors = adapter.validateWorkflow(workflow, task.qualityProfile, true);
+  if (workflowErrors.length) {
+    throw new Error(`图片工作流校验失败：${workflowErrors.join(" ")}`);
+  }
+  assertImageWorkflowRuntimeCompatible(task.modelId, workflow, objectInfo);
   const uploadedPictures = await Promise.all(
     compiled.pictures.map((picture, index) =>
       uploadInput(baseUrl, imageReferenceInputPath(picture), signal, `Picture ${index + 1}`)
     )
   );
-  const workflow = adapter.buildWorkflow(task, run);
-  const prompt = renderImageWorkflow(workflow, uploadedPictures);
-  const workflowErrors = adapter.validateWorkflow(prompt, task.qualityProfile);
-  if (workflowErrors.length) {
-    throw new Error(`图片工作流校验失败：${workflowErrors.join(" ")}`);
-  }
-  const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
-  if (missingNodes.length) {
-    throw new Error(
-      `当前 ComfyUI 服务尚未加载图片工作流节点：${missingNodes.join("、")}。请更新 ComfyUI 后重启并重新扫描。`
-    );
-  }
+  const uploadedMasks = await Promise.all(
+    compiled.pictures
+      .filter((picture) => picture.mask?.maskPath)
+      .map((picture, index) =>
+        uploadInput(baseUrl, picture.mask!.maskPath, signal, `Mask ${index + 1}`)
+      )
+  );
+  const prompt = renderImageWorkflow(workflow, uploadedPictures, uploadedMasks);
+  const renderedWorkflowErrors = adapter.validateWorkflow(prompt, task.qualityProfile);
+  if (renderedWorkflowErrors.length) throw new Error(`图片工作流校验失败：${renderedWorkflowErrors.join(" ")}`);
   const clientId = `local-video-studio-image-${crypto.randomUUID()}`;
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
     method: "POST",
@@ -584,6 +605,59 @@ export async function submitImageTask(
   return { promptId: result.prompt_id, clientId, nodeTypes };
 }
 
+function objectInfoInputNames(value: unknown): Set<string> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const input = (value as { input?: unknown }).input;
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const groups = input as Record<string, unknown>;
+  const names = new Set<string>();
+  for (const groupName of ["required", "optional", "hidden"]) {
+    const group = groups[groupName];
+    if (!group || typeof group !== "object" || Array.isArray(group)) continue;
+    for (const name of Object.keys(group as Record<string, unknown>)) names.add(name);
+  }
+  return names.size ? names : null;
+}
+
+export function assertImageWorkflowRuntimeCompatible(
+  modelId: string,
+  workflow: Record<string, { class_type: string; inputs: Record<string, unknown> }>,
+  objectInfo: Record<string, unknown>
+): void {
+  const missingNodes = missingWorkflowNodeTypes(workflow, objectInfo);
+  if (missingNodes.length) {
+    const scan = modelCatalog.get(modelId)?.definition.scan;
+    const requiredPackages = (scan?.requiredCustomNodeIds ?? [])
+      .map((id) => customNodeDefinition(id))
+      .filter((definition) => definition?.nodeTypes?.some((nodeType) => missingNodes.includes(nodeType)));
+    if (requiredPackages.length) {
+      throw new Error(
+        `必需节点未加载：${requiredPackages.map((item) => item!.name).join("、")}；` +
+        `ComfyUI 未注册 ${missingNodes.join("、")}。节点目录存在但当前运行时不可用，` +
+        "请检查导入错误、重启 ComfyUI，或在设置 → 节点与工作流中更新节点版本。"
+      );
+    }
+    throw new Error(
+      `ComfyUI 核心版本不兼容：缺少图片工作流节点 ${missingNodes.join("、")}。` +
+      "请更新当前选中的 ComfyUI 安装并重启。"
+    );
+  }
+
+  const incompatibleInputs: string[] = [];
+  for (const node of Object.values(workflow)) {
+    const supported = objectInfoInputNames(objectInfo[node.class_type]);
+    if (!supported) continue;
+    const unknownInputs = Object.keys(node.inputs).filter((name) => !supported.has(name));
+    if (unknownInputs.length) incompatibleInputs.push(`${node.class_type} 缺少输入 ${unknownInputs.join("/")}`);
+  }
+  if (incompatibleInputs.length) {
+    throw new Error(
+      `节点版本不兼容：${[...new Set(incompatibleInputs)].join("；")}。` +
+      "请在设置 → 节点与工作流中更新对应节点后重启 ComfyUI。"
+    );
+  }
+}
+
 interface ComfySocketMessage {
   type?: string;
   data?: {
@@ -593,7 +667,39 @@ interface ComfySocketMessage {
     node?: string | null;
     exception_message?: string;
     output?: unknown;
+    image?: string;
+    mime?: string;
+    step?: number;
+    total?: number;
   };
+}
+
+export function h3PreviewTinyVaeFromObjectInfo(
+  objectInfo: Record<string, unknown>
+): string {
+  const node = objectInfo.ModelPreviewOverrideKJ;
+  if (!node || typeof node !== "object" || Array.isArray(node)) return "";
+  const input = (node as { input?: unknown }).input;
+  if (!input || typeof input !== "object" || Array.isArray(input)) return "";
+  for (const groupName of ["required", "optional"] as const) {
+    const group = (input as Record<string, unknown>)[groupName];
+    if (!group || typeof group !== "object" || Array.isArray(group)) continue;
+    const spec = (group as Record<string, unknown>).tiny_vae;
+    if (!Array.isArray(spec) || !Array.isArray(spec[0])) continue;
+    const match = spec[0].find((value) =>
+      typeof value === "string" && /(?:^|[\\/])taeh3\.safetensors$/i.test(value)
+    );
+    if (typeof match === "string") return match;
+  }
+  return "";
+}
+
+export function h3PreviewEventDataUrl(message: unknown): string | null {
+  if (!message || typeof message !== "object" || Array.isArray(message)) return null;
+  const value = message as ComfySocketMessage;
+  if (value.type !== "kj_preview_override" || !value.data?.image) return null;
+  const mime = value.data.mime?.startsWith("image/") ? value.data.mime : "image/jpeg";
+  return `data:${mime};base64,${value.data.image}`;
 }
 
 function socketUrl(httpUrl: string, clientId: string): string {
@@ -898,6 +1004,12 @@ export async function waitForTask(
           return;
         }
         const message = JSON.parse(text) as ComfySocketMessage;
+        const h3Preview = h3PreviewEventDataUrl(message);
+        if (h3Preview) {
+          lastActivityAt = Date.now();
+          onPreview(h3Preview);
+          return;
+        }
         if (
           message.data?.prompt_id &&
           message.data.prompt_id !== promptId

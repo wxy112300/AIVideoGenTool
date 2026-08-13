@@ -10,6 +10,7 @@ import type {
 import type { SettingsTab } from "../../contracts";
 import { promptModelStatus } from "../../shared/status";
 import type { SettingsPageViewModel } from "./page";
+import type { CustomNodeInstallPhase } from "./node-install-queue";
 
 export interface SettingsViewModelDependencies {
   state: AppState;
@@ -35,6 +36,9 @@ export interface SettingsViewModelDependencies {
   workflowDependencyInstalling: string;
   workflowDependencyLogs: Record<string, string>;
   customNodeInstalling: string;
+  customNodeInstallQueue: string[];
+  customNodeInstallBatch: string[];
+  customNodeInstallPhase: CustomNodeInstallPhase;
   customNodeLogs: Record<string, string>;
   coreDependencyRepairing: boolean;
   attentionAccelerationInstalling: boolean;
@@ -83,6 +87,9 @@ export function buildSettingsPageViewModel(
     workflowDependencyInstalling: options.workflowDependencyInstalling,
     workflowDependencyLogs: options.workflowDependencyLogs,
     customNodeInstalling: options.customNodeInstalling,
+    customNodeInstallQueue: options.customNodeInstallQueue,
+    customNodeInstallBatch: options.customNodeInstallBatch,
+    customNodeInstallPhase: options.customNodeInstallPhase,
     customNodeLogs: options.customNodeLogs,
     coreDependencyRepairing: options.coreDependencyRepairing,
     attentionAccelerationInstalling: options.attentionAccelerationInstalling,

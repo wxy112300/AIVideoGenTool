@@ -990,6 +990,26 @@ main { padding-top: 0; }
   transform: translateX(19px);
 }
 
+.queue-preview-toggle.ios-switch-field {
+  min-height: 36px;
+  gap: 8px;
+  padding: 6px 9px;
+  border-color: transparent;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+}
+
+.queue-preview-toggle.ios-switch-field:hover {
+  border-color: var(--border);
+  background: #151a22;
+}
+
+.queue-preview-toggle .ios-switch {
+  transform: scale(.82);
+  transform-origin: center;
+}
+
 .policy-copy {
   min-width: 0;
   display: grid;

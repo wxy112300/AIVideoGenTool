@@ -30,6 +30,7 @@ const api: AppApi = {
     ipcRenderer.invoke("file:save-clipboard-image", data, mimeType),
   readImageMarkup: (documentPath) => ipcRenderer.invoke("image-markup:read", documentPath),
   saveImageMarkup: (request) => ipcRenderer.invoke("image-markup:save", request),
+  saveImageMask: (request) => ipcRenderer.invoke("image-mask:save", request),
   pickWorkflow: () => ipcRenderer.invoke("file:pick-workflow"),
   pickPython: () => ipcRenderer.invoke("file:pick-python"),
   inspectWorkflow: (path: string) =>

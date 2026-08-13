@@ -63,6 +63,17 @@
   justify-self: end;
 }
 
+.settings-section .section-heading .button-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: currentColor;
+  background: rgba(8, 18, 32, .24);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
 .settings-section .settings-grid,
 .settings-section .runtime-policy-grid {
   width: 100%;

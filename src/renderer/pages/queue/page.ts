@@ -48,6 +48,11 @@ export function renderQueuePage(
         <p>${options.t(uiKeys.queue.summary, { activeCount: activeTasks.length, attentionCount: attentionTasks.length, status: queueStatus })}</p>
       </div>
       <div class="button-row">
+        <label class="ios-switch-field queue-preview-toggle" title="${options.t(uiKeys.queue.h3LivePreviewTip)}">
+          <span>${options.t(uiKeys.queue.h3LivePreview)}</span>
+          <input id="h3-live-preview" type="checkbox" ${state.settings.h3LivePreview ? "checked" : ""}>
+          <span class="ios-switch" aria-hidden="true"></span>
+        </label>
         ${running ? `<span class="queue-mode">${state.queueRunning ? options.t(uiKeys.queue.automaticContinue) : options.t(uiKeys.queue.pauseAfterCurrent)}</span>` : `<button class="primary button-with-icon" id="start-queue" ${state.queue.some((task) => task.status === "waiting") ? "" : "disabled"}>${options.icon("play")}${options.t(uiKeys.queue.start)}</button>`}
       </div>
     </section>

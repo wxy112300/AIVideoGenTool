@@ -1,11 +1,19 @@
 import {
   flux2Klein4bRequiredNodeTypes,
+  lamaInpaintRequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes
 } from "../../image-workflow.js";
 import { component, entry, guide } from "./catalog-helpers.js";
 import type { CatalogModelEntry } from "../types.js";
 
 export const imageModelEntries: CatalogModelEntry[] = [
+  entry({
+    id: "lama-inpaint", family: "lama", category: "image", adapterId: "lama-inpaint", order: 110, inputModes: ["image"],
+    capabilities: { maxReferenceImages: 1 },
+    scan: { managedBy: "comfyui", vram: "轻量局部修补 · 原图尺寸", integrated: true, requiredCustomNodeIds: ["inpaint-nodes"], runtimeNodeTypes: lamaInpaintRequiredNodeTypes, components: [
+      component("Big LaMa 局部修补模型", "inpaint/big-lama.pt", /inpaint\/big-lama\.pt$/i, guide("Sanster / Big LaMa", "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt", "inpaint", "big-lama.pt", "仅移除 Mask 覆盖内容并修复背景；无需 Prompt。"))
+    ] }
+  }, { name: "LaMa · 局部移除", badge: "单图 + Mask · 原图尺寸", description: "涂抹需要移除的区域，使用 Big LaMa 自动修复背景；不读取 Prompt。" }, { name: "LaMa · object removal", badge: "One image + mask · source size", description: "Remove masked content and reconstruct the background with Big LaMa. No prompt is sent." }, { name: "LaMa · 局部移除", badge: "單圖 + Mask · 原圖尺寸", description: "塗抹需要移除的區域，使用 Big LaMa 自動修復背景；不讀取 Prompt。" }),
   entry({
     id: "qwen-image-edit-2511", family: "qwen-image-edit", category: "image", adapterId: "qwen-image-edit-2511", promptPackId: "qwen-image-edit", order: 100, inputModes: ["image"],
     capabilities: { maxReferenceImages: 3, resolutions: [2160, 1152, 1080, 720, 640, 480] },

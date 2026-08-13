@@ -82,6 +82,8 @@ type SettingsCopyKey =
   | "nodes.title"
   | "nodes.description"
   | "nodes.installNote"
+  | "nodes.installAll"
+  | "nodes.updateAll"
   | "nodes.h3Title"
   | "nodes.h3Badge"
   | "nodes.h3Description"
@@ -92,6 +94,8 @@ type SettingsCopyKey =
   | "nodes.coreMissing"
   | "nodes.notChecked"
   | "nodes.processing"
+  | "nodes.waitingPosition"
+  | "nodes.finalizing"
   | "nodes.repairUpdate"
   | "nodes.startCheck"
   | "nodes.qwenTitle"
@@ -110,6 +114,7 @@ type SettingsCopyKey =
   | "nodes.localVersion"
   | "nodes.versionUnread"
   | "nodes.latestRelease"
+  | "nodes.recommendedVersion"
   | "nodes.rescanOnline"
   | "nodes.runtimeMemory"
   | "nodes.needsUpdate"
@@ -255,6 +260,8 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.title": "节点与工作流依赖",
   "nodes.description": "换电脑后按项目清单复现 ComfyUI 节点环境",
   "nodes.installNote": "安装只使用项目内置仓库清单；完成后重启 ComfyUI，再重新扫描。",
+  "nodes.installAll": "安装 / 更新缺失节点",
+  "nodes.updateAll": "更新全部节点",
   "nodes.h3Title": "MiniMax H3 原生音视频核心",
   "nodes.h3Badge": "ComfyUI v0.31.0+",
   "nodes.h3Description": "LightX2V Turbo 直接使用 ComfyUI 原生 LoRA 与音视频采样，不需要额外的 Turbo custom node；版本过低时请更新所选 ComfyUI 并重启复检。",
@@ -265,6 +272,8 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.coreMissing": "核心缺失",
   "nodes.notChecked": "尚未启动检测",
   "nodes.processing": "处理中…",
+  "nodes.waitingPosition": "排队中 · 第 {position} 个",
+  "nodes.finalizing": "正在重启并复检…",
   "nodes.repairUpdate": "一键补齐/更新",
   "nodes.startCheck": "启动并检测",
   "nodes.qwenTitle": "Qwen 提示词核心节点",
@@ -283,6 +292,7 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.localVersion": "本机版本：",
   "nodes.versionUnread": "未读取到版本号",
   "nodes.latestRelease": "最新发布：",
+  "nodes.recommendedVersion": "推荐版本：",
   "nodes.rescanOnline": "联网后重新扫描",
   "nodes.runtimeMemory": "运行时固定使用系统内存，不额外下载模型。",
   "nodes.needsUpdate": "需要更新",
@@ -421,6 +431,8 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.title": "節點與工作流程依賴",
   "nodes.description": "換電腦後依照專案清單重現 ComfyUI 節點環境",
   "nodes.installNote": "安裝只使用專案內建儲存庫清單；完成後重新啟動 ComfyUI，再重新掃描。",
+  "nodes.installAll": "安裝 / 更新缺少節點",
+  "nodes.updateAll": "更新全部節點",
   "nodes.h3Title": "MiniMax H3 原生影音核心",
   "nodes.h3Badge": "ComfyUI v0.31.0+",
   "nodes.h3Description": "LightX2V Turbo 直接使用 ComfyUI 原生 LoRA 與影音採樣，不需要額外的 Turbo custom node；版本過低時請更新所選 ComfyUI 並重新啟動複檢。",
@@ -431,6 +443,8 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.coreMissing": "核心缺失",
   "nodes.notChecked": "尚未啟動檢測",
   "nodes.processing": "處理中…",
+  "nodes.waitingPosition": "排隊中 · 第 {position} 個",
+  "nodes.finalizing": "正在重新啟動並複檢…",
   "nodes.repairUpdate": "一鍵補齊/更新",
   "nodes.startCheck": "啟動並檢測",
   "nodes.qwenTitle": "Qwen 提示詞核心節點",
@@ -449,6 +463,7 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.localVersion": "本機版本：",
   "nodes.versionUnread": "未讀取到版本號",
   "nodes.latestRelease": "最新發布：",
+  "nodes.recommendedVersion": "建議版本：",
   "nodes.rescanOnline": "連線後重新掃描",
   "nodes.runtimeMemory": "執行時固定使用系統記憶體，不額外下載模型。",
   "nodes.needsUpdate": "需要更新",
@@ -591,6 +606,8 @@ const enUS: SettingsCopyCatalog = {
   "nodes.title": "Nodes and workflow dependencies",
   "nodes.description": "Recreate the ComfyUI node environment from the project checklist on another computer",
   "nodes.installNote": "Installation uses only the project repository list; restart ComfyUI and rescan when complete.",
+  "nodes.installAll": "Install / update missing nodes",
+  "nodes.updateAll": "Update all nodes",
   "nodes.h3Title": "MiniMax H3 native audio/video core",
   "nodes.h3Badge": "ComfyUI v0.31.0+",
   "nodes.h3Description": "LightX2V Turbo uses ComfyUI native LoRA and audio/video sampling without an extra Turbo custom node; update the selected ComfyUI and restart to recheck when the version is too old.",
@@ -601,6 +618,8 @@ const enUS: SettingsCopyCatalog = {
   "nodes.coreMissing": "Core missing",
   "nodes.notChecked": "Detection not started",
   "nodes.processing": "Processing…",
+  "nodes.waitingPosition": "Queued · #{position}",
+  "nodes.finalizing": "Restarting and verifying…",
   "nodes.repairUpdate": "Repair/update",
   "nodes.startCheck": "Start and check",
   "nodes.qwenTitle": "Qwen prompt core nodes",
@@ -619,6 +638,7 @@ const enUS: SettingsCopyCatalog = {
   "nodes.localVersion": "Local version: ",
   "nodes.versionUnread": "Version not read",
   "nodes.latestRelease": "Latest release: ",
+  "nodes.recommendedVersion": "Recommended: ",
   "nodes.rescanOnline": "Rescan after connecting",
   "nodes.runtimeMemory": "Uses system memory at runtime and does not download extra models.",
   "nodes.needsUpdate": "Needs update",

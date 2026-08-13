@@ -60,6 +60,28 @@ describe("renderer notifications", () => {
     expect(queueCompletionChange(previous, next).queueCompleted).toBe(false);
   });
 
+  it("detects a newly failed task once and keeps its detailed runtime error", () => {
+    const previous = createDefaultState();
+    previous.queue.push({
+      id: "image-task",
+      taskType: "image-generation",
+      status: "running",
+      outputFilename: "LaMa-test"
+    } as never);
+    const next = structuredClone(previous);
+    Object.assign(next.queue[0]!, {
+      status: "failed",
+      error: "节点版本不兼容：INPAINT_ExpandMask 缺少输入 blur_type"
+    });
+
+    expect(queueCompletionChange(previous, next).failedTasks).toEqual([{
+      taskId: "image-task",
+      title: "LaMa-test",
+      error: "节点版本不兼容：INPAINT_ExpandMask 缺少输入 blur_type"
+    }]);
+    expect(queueCompletionChange(next, structuredClone(next)).failedTasks).toEqual([]);
+  });
+
   it("delivers completion notifications without rerendering a focused form", () => {
     class FakeInput {}
     vi.stubGlobal("HTMLInputElement", FakeInput);
@@ -202,9 +224,7 @@ describe("renderer notifications", () => {
       setCoreDependencyRepairing: noop,
       setEnvironmentRepairing: noop,
       setEnvironmentRepairLog: noop,
-      setCustomNodeInstalling: noop,
-      getCustomNodeLog: () => "",
-      setCustomNodeLog: noop,
+      enqueueCustomNodeInstall: () => ({ accepted: true, position: 1 }),
       setWorkflowDependencyInstalling: noop,
       getWorkflowDependencyLog: () => "",
       setWorkflowDependencyLog: noop,

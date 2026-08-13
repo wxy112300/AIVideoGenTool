@@ -118,6 +118,12 @@ export function registerRendererEvents(
           kind: "task-complete"
         });
       }
+      for (const task of completion.failedTasks) {
+        options.notify(options.t(uiKeys.runtime.taskFailed, {
+          title: task.title,
+          error: task.error
+        }), { kind: "error" });
+      }
       if (completion.queueCompleted) {
         options.notify(options.t(uiKeys.runtime.queueCompleted), { kind: "queue-complete" });
       }

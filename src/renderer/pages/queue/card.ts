@@ -92,7 +92,7 @@ export function renderQueueTaskCard(
     : null;
   const h3ComputeSummary = task.taskType !== "upscale" && task.taskType !== "image-generation" && isMiniMaxH3Model(task.modelId)
     ? task.spectrumMode === "balanced"
-        ? `<span title="${t(uiKeys.queue.card.spectrumOnTitle)}">${normalizeH3Steps(task.steps, task.modelId, task.videoLoras)} ${t(uiKeys.queue.card.steps)} · ${t(uiKeys.queue.card.spectrumOn)}</span>`
+        ? `<span title="${t(uiKeys.queue.card.spectrumOnTitle)}">${normalizeH3Steps(task.steps, task.modelId, task.videoLoras)} ${t(uiKeys.queue.card.steps)} · ${t(uiKeys.queue.card.spectrumOn)}${task.spectrumModelAwareMode && task.spectrumModelAwareMode !== "off" ? ` · ${t(uiKeys.queue.card.modelAware, { mode: task.spectrumModelAwareMode })}` : ""}</span>`
         : `<span title="${t(uiKeys.queue.card.spectrumOffTitle)}">${normalizeH3Steps(task.steps, task.modelId, task.videoLoras)} ${t(uiKeys.queue.card.steps)} · ${t(uiKeys.queue.card.spectrumOff)}</span>`
     : "";
   const loraSummary = task.taskType !== "image-generation" && task.videoLoras?.length

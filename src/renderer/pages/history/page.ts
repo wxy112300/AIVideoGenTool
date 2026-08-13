@@ -67,6 +67,19 @@ export interface HistoryPageOptions {
   imageHistoryGenerationSummary(version: ImageAssetVersion): ImageHistoryGenerationSummary;
 }
 
+function historyComputeMode(version: AssetVersion, options: HistoryPageOptions): string {
+  if (version.spectrumMode === "off") {
+    return options.t(uiKeys.history.page.nativeCompute);
+  }
+  if (version.spectrumMode !== "balanced") {
+    return options.t(uiKeys.history.detail.legacyNotSaved);
+  }
+  const spectrumLabel = options.t(uiKeys.history.page.spectrumBalanced);
+  return version.spectrumModelAwareMode && version.spectrumModelAwareMode !== "off"
+    ? `${spectrumLabel} · ${options.t(uiKeys.queue.card.modelAware, { mode: version.spectrumModelAwareMode })}`
+    : spectrumLabel;
+}
+
 export function renderImageHistoryPage(
   viewModel: HistoryPageViewModel,
   options: HistoryPageOptions
@@ -243,7 +256,7 @@ export function renderHistoryDetailPage(
       </article>
       <article class="panel history-record">
         <h2>${options.t(uiKeys.history.page.generationParams)}</h2>
-        <dl><dt>${options.t(uiKeys.history.page.model)}</dt><dd>${options.escapeHtml(options.modelName(version.modelId))}</dd><dt>${options.t(uiKeys.history.page.promptVersion)}</dt><dd>${version.promptVersion ?? asset.promptVersion ?? options.t(uiKeys.history.detail.legacyNotSaved)}</dd>${version.kind === "upscale" ? `<dt>${options.t(uiKeys.history.page.tileMode)}</dt><dd>${options.escapeHtml(version.tileMode ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.faceRestore)}</dt><dd>${version.faceRestore == null ? options.t(uiKeys.history.detail.legacyNotSaved) : version.faceRestore ? options.t(uiKeys.history.page.enabled) : options.t(uiKeys.history.page.disabled)}</dd>` : `<dt>${options.t(uiKeys.history.page.samplingSteps)}</dt><dd>${version.steps ?? options.t(uiKeys.history.page.workflowDefault)}</dd><dt>${options.t(uiKeys.history.page.attention)}</dt><dd>${options.escapeHtml(version.attentionMode ?? asset.attentionMode ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.computeMode)}</dt><dd>${version.spectrumMode === "balanced" ? options.t(uiKeys.history.page.spectrumBalanced) : version.spectrumMode === "off" ? options.t(uiKeys.history.page.nativeCompute) : options.t(uiKeys.history.detail.legacyNotSaved)}</dd><dt>${options.t(uiKeys.history.page.motion)}</dt><dd>${options.escapeHtml(version.motion ?? asset.motion ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd>`}<dt>${options.t(uiKeys.history.page.seed)}</dt><dd><code>${version.seed ?? options.t(uiKeys.history.page.notApplicable)}</code></dd><dt>${options.t(uiKeys.history.page.workflow)}</dt><dd><code>${options.escapeHtml(version.workflowPath || options.t(uiKeys.history.detail.legacyNotSaved))}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${options.escapeHtml(version.comfyPromptId)}</code></dd></dl>
+        <dl><dt>${options.t(uiKeys.history.page.model)}</dt><dd>${options.escapeHtml(options.modelName(version.modelId))}</dd><dt>${options.t(uiKeys.history.page.promptVersion)}</dt><dd>${version.promptVersion ?? asset.promptVersion ?? options.t(uiKeys.history.detail.legacyNotSaved)}</dd>${version.kind === "upscale" ? `<dt>${options.t(uiKeys.history.page.tileMode)}</dt><dd>${options.escapeHtml(version.tileMode ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.faceRestore)}</dt><dd>${version.faceRestore == null ? options.t(uiKeys.history.detail.legacyNotSaved) : version.faceRestore ? options.t(uiKeys.history.page.enabled) : options.t(uiKeys.history.page.disabled)}</dd>` : `<dt>${options.t(uiKeys.history.page.samplingSteps)}</dt><dd>${version.steps ?? options.t(uiKeys.history.page.workflowDefault)}</dd><dt>${options.t(uiKeys.history.page.attention)}</dt><dd>${options.escapeHtml(version.attentionMode ?? asset.attentionMode ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.computeMode)}</dt><dd>${options.escapeHtml(historyComputeMode(version, options))}</dd><dt>${options.t(uiKeys.history.page.motion)}</dt><dd>${options.escapeHtml(version.motion ?? asset.motion ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd>`}<dt>${options.t(uiKeys.history.page.seed)}</dt><dd><code>${version.seed ?? options.t(uiKeys.history.page.notApplicable)}</code></dd><dt>${options.t(uiKeys.history.page.workflow)}</dt><dd><code>${options.escapeHtml(version.workflowPath || options.t(uiKeys.history.detail.legacyNotSaved))}</code></dd><dt>ComfyUI Prompt ID</dt><dd><code>${options.escapeHtml(version.comfyPromptId)}</code></dd></dl>
       </article>
       <article class="panel history-record">
         <h2>${options.t(uiKeys.history.page.videoOutput)}</h2>

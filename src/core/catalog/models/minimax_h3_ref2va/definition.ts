@@ -2,6 +2,7 @@ import type { CatalogModelEntry } from "../../types.js";
 import {
   h3Fl2vaAudioVae,
   h3Fl2vaVideoVae,
+  h3LivePreviewTae,
   h3Nvfp4TextEncoder,
   h3Ref2vaInt8Model
 } from "../minimax_h3_shared.js";
@@ -31,7 +32,7 @@ export const minimaxH3Ref2va: CatalogModelEntry = {
     scan: {
       vram: "pruned INT8 · DynamicVRAM · 多参考",
       integrated: true,
-      components: [h3Ref2vaInt8Model, h3Nvfp4TextEncoder, h3Fl2vaVideoVae, h3Fl2vaAudioVae]
+      components: [h3Ref2vaInt8Model, h3Nvfp4TextEncoder, h3Fl2vaVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
     }
   },
   locales: {

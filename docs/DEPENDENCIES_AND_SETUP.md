@@ -94,11 +94,17 @@ npm.cmd run dev
 3. 应用本项目明确维护的兼容补丁。
 4. 使用所选 ComfyUI Python 执行节点的 `requirements.txt`。
 5. 在卡片中实时输出阶段、Git/pip 内容、超时和错误。
-6. 安装完成后重启或提示用户重启，并通过运行时节点重新检查。
+6. 当前批次安装完成后只重启一次 ComfyUI，并统一通过运行时节点重新检查。
+
+可以连续点击多个节点加入等待队列。应用会锁定该批次开始时所选的 ComfyUI 实例和 Python，串行执行每个节点的 Git/pip 操作；单项失败会写入对应卡片日志并继续下一项，不会让后续节点永远等待。批次末尾统一重启和复扫，卡片会区分“排队中”“处理中”和“正在重启并复检”。重启/复检阶段不再接受新的节点，避免节点被安装到另一套环境。
+
+面板顶端的“一键安装 / 更新缺失节点”会只加入未安装、未加载或有更新提示的 Custom Nodes；全部健康时按钮切换为“更新全部节点”。两种操作都复用同一串行队列，不会把 ComfyUI 核心升级或内置工作流文件混入节点批次。
 
 Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分钟，Prompt Writer 的 GGUF runtime 为 20 分钟。超时会终止对应子进程树并保留已收到的日志，避免无限显示“处理中”。
 
 当前注册的节点族包括 GGUF、Video Helper Suite、LTXVideo、SeedVR2、FlashVSR、KJNodes、Frame Interpolation、MiniMax H3 Prompt Writer、H3 Motion Context 和 Spectrum。准确仓库、目录名、用途和 required/optional 状态以 `customNodeCatalog` 为准。
+
+Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.7`，包含原生 ER-SDE 修复和可选的模型感知预测；设置页仍会查询上游最新发布并提供一键更新，但高于最低线的旧版不会只因“不是最新版”而被判定不可用。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。
 
 注意：MiniMax H3 基础生成节点属于 ComfyUI 核心，不应伪装成第三方节点。如果核心节点缺失，应更新/切换正确的 ComfyUI 核心并重新扫描。
 
@@ -133,7 +139,8 @@ Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分
 - FL2VA 与 R2V 使用不同扩散权重，不能互换。
 - 共同依赖 H3 文本编码器、视频 VAE、音频 VAE 和足够新的 ComfyUI 核心节点。
 - R2V 支持多参考图片；Motion Context 是可选的 R2V 续写增强节点，不是基础 FL2VA 的必需项。
-- LightX2V Turbo、Realism People 和 PinkFluffyBunny 是 LoRA，不是独立视频模型；兼容模式、顺序、强度和冲突由 LoRA catalog 管理。
+- LightX2V Turbo、Realism People 和 PinkFluffyBunny 是 LoRA，不是独立视频模型；兼容模式、顺序、强度和冲突由 LoRA catalog 管理。LightX2V Turbo 使用原生 ER-SDE/Beta 路径，Spectrum `v0.2.6+` 可叠加；更早版本必须先更新。
+- H3 实时预览是可选能力：更新 KJNodes 以获得 `ModelPreviewOverrideKJ`，并把 Kijai 的 `taeh3.safetensors` 放入 `models/vae_approx`。设置页会离线检查 KJNodes 的预览源码，服务启动后再通过 `/object_info` 验证节点注册；它只负责采样期间的低分辨率 RGB 预览，不替代 `models/vae` 中的最终视频 VAE。队列开关默认关闭，缺少节点或权重时保持原工作流运行。
 - SageAttention、Spectrum、Cache/Attention patch 是模型范围内的策略，不得泄漏到 Qwen、Sulphur 或其他工作流。
 
 ### Sulphur 2 / LTX 2.3
@@ -165,7 +172,7 @@ Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分
 - ComfyUI 正占用节点文件，导致 Windows 替换失败；
 - 节点上游 requirements 与当前 Torch/CUDA ABI 不兼容。
 
-不要反复点击安装制造并发进程。等待当前操作结束或超时，根据日志修正后重试。
+可以连续点击不同节点加入应用内安装队列；同一节点不会重复入队，Git/pip 始终串行。不要同时启动第二个 Local Video Studio 实例安装同一套 ComfyUI，也不要在批次运行时从外部修改对应节点目录。
 
 ## 9. 验证
 

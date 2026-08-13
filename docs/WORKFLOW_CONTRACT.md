@@ -63,6 +63,11 @@ Do not assume lower dedicated VRAM usage is automatically safer or faster. Recor
 - Keep a configurable safety reserve, but do not silently override the user's selected budget with an overly conservative model-specific cap.
 - Prefer deterministic cleanup at workflow boundaries over repeated global restarts. A restart may be an explicit recovery policy after measured leakage or incompatible profile changes.
 - Cache/attention/turbo features are opt-in per compatible workflow. Their quality and determinism must be evaluated against the same source, prompt, seed, dimensions, frames, steps, and output settings.
+- Spectrum MiniMax H3 uses `v0.2.1` as the minimum safe standard baseline and a pinned recommended version rather than requiring whatever release happens to be newest. The settings scan may offer a newer release without marking a supported installed version unusable.
+- LightX2V Turbo may stack with Spectrum only on Spectrum `v0.2.6+`, which supports the native ComfyUI ER-SDE path used by the bundled Turbo workflow. H3 Motion Context extension still disables Spectrum.
+- Spectrum `model_aware_mode` is available only on `v0.2.7+`, remains opt-in/default-off, and must be serialized into the immutable task snapshot. Omit the node input entirely when mode is `off` so older supported Spectrum workflows remain compatible.
+- MiniMax H3 live preview uses KJNodes `ModelPreviewOverrideKJ` plus `models/vae_approx/taeh3.safetensors`. It is an operational observer, not the final video VAE: insert it after LoRA/attention/cache model patches and immediately before every scheduler/guider consumer. The queue control is default-off because each step still performs a tiny decode and latent-to-CPU transfer. The product profile is one frame, 512px maximum side, JPEG quality 72; animated multi-frame previews are not enabled by default.
+- H3 live preview is optional and must never make an otherwise runnable task fail. If either the runtime node or `taeh3.safetensors` is unavailable, submit the original workflow unchanged and report the unavailable preview separately from generation readiness.
 - Offload by itself should not be described as lowering quality. If quality changes, inspect sampler parameters, cache state, patches, precision, and node execution path.
 - Long-video estimates must separate diffusion sampling, VAE/audio decoding, interpolation, upscaling, and muxing.
 
@@ -76,6 +81,7 @@ Do not assume lower dedicated VRAM usage is automatically safer or faster. Recor
 - A flattened annotation replaces its Picture's upload input; it does not consume another model reference slot. Prompt compilation must include the per-mark notes and explicitly require removal of all temporary strokes, shapes, arrows, labels, and text from the output.
 - Replacing or clearing a Picture invalidates its annotation sidecar reference. Queue tasks receive an immutable copy of the annotation metadata and validate the flattened file before execution.
 - Visual guidance and a true binary inpaint mask are separate capabilities. Do not silently route visual marks into a mask socket; add mask-aware workflows only after their model/node contract is validated.
+- LaMa object removal uses the clean Picture plus a separate binary mask sidecar. The translucent editor overlay is display-only; it must never replace the Picture input. The mask is mandatory, the prompt is omitted, output remains at source resolution, and the applied result becomes a normal image-project version.
 - Video extension modes remain distinct: boundary-frame continuation and native latent/overlap or reference-based extension must not be presented as equivalent.
 
 ## Environment Detection and Installation

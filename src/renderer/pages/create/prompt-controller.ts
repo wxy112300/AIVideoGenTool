@@ -200,6 +200,12 @@ export function mountCreatePromptController(
     const value = (event.currentTarget as HTMLSelectElement).value;
     if (isMiniMaxH3Model(draft.modelId)) options.setH3PromptPreset(value as H3PromptPreset);
     else options.setPromptEnhanceMode(value as PromptEnhanceMode);
+    const select = event.currentTarget as HTMLSelectElement;
+    const description = select.selectedOptions[0]?.dataset.description ?? "";
+    const info = root.querySelector<HTMLElement>("#prompt-enhance-mode-info");
+    const tip = root.querySelector<HTMLElement>("#prompt-enhance-mode-tip");
+    if (info && description) info.setAttribute("aria-label", description);
+    if (tip && description) tip.textContent = description;
   }, { signal });
   root.querySelector("#release-prompt-model-create")?.addEventListener("click", () => {
     void options.togglePromptModel();

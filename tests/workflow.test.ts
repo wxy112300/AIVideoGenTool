@@ -95,6 +95,36 @@ describe("activityTimeoutMinutesForTask", () => {
 });
 
 describe("renderWorkflow", () => {
+  it("adds a conservative KJNodes H3 TAE preview wrapper when runtime support is available", () => {
+    const source = JSON.parse(
+      readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      steps: 20
+    }, {
+      inputImage: "first.png",
+      h3PreviewTinyVae: "taeh3.safetensors"
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    const preview = Object.entries(rendered).find(([, node]) =>
+      node.class_type === "ModelPreviewOverrideKJ"
+    );
+
+    expect(preview?.[1].inputs).toMatchObject({
+      tiny_vae: "taeh3.safetensors",
+      max_resolution: 512,
+      jpeg_quality: 72,
+      preview_frames: 1,
+      suppress_default_preview: true
+    });
+    for (const node of Object.values(rendered).filter((item) =>
+      item.class_type === "BasicScheduler" || item.class_type === "BasicGuider"
+    )) {
+      expect(node.inputs.model).toEqual([preview?.[0], 0]);
+    }
+  });
+
   it("renders the pruned MiniMax H3 Turbo first/last-frame graph", () => {
     const source = JSON.parse(
       readFileSync(
@@ -179,15 +209,22 @@ describe("renderWorkflow", () => {
 
     const turboSpectrum = renderWorkflow(source, {
       ...turboTask,
-      spectrumMode: "balanced"
+      spectrumMode: "balanced",
+      spectrumModelAwareMode: "full"
     }, { inputImage: "first.png" }) as Record<string, { class_type: string; inputs?: Record<string, unknown> }>;
     expect(isMiniMaxH3SpectrumEligible(turboTask.modelId)).toBe(true);
     const turboSpectrumNode = Object.entries(turboSpectrum).find(([, node]) =>
       node.class_type === "SpectrumApplyMiniMaxH3"
     );
-    expect(turboSpectrumNode).toBeUndefined();
-    expect(turboSpectrum["8"]?.inputs?.model).toEqual(["21", 0]);
-    expect(turboSpectrum["10"]?.inputs?.model).toEqual(["21", 0]);
+    expect(turboSpectrumNode?.[1].inputs).toMatchObject({
+      model: ["21", 0],
+      offline_smoothing_replay: true,
+      audio_blend_weight: 0,
+      model_aware_mode: "full",
+      model_aware_risk_threshold: 0.65
+    });
+    expect(turboSpectrum["8"]?.inputs?.model).toEqual([turboSpectrumNode?.[0], 0]);
+    expect(turboSpectrum["10"]?.inputs?.model).toEqual([turboSpectrumNode?.[0], 0]);
   });
 
   it("preserves custom workflow LoRAs and appends selected LoRAs after them", () => {

@@ -40,6 +40,7 @@ describe("model catalog", () => {
   it("covers every model category used by environment scanning", () => {
     expect(modelCatalog.list("prompt")).toHaveLength(10);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
+      "lama-inpaint",
       "qwen-image-edit-2511",
       "flux2-klein-4b"
     ]);
@@ -54,6 +55,8 @@ describe("model catalog", () => {
       "minimax-h3-realism-people",
       "minimax-h3-pink-fluffy-bunny-nsfw"
     ]);
+    expect(modelCatalog.get("lama-inpaint")?.definition.scan?.requiredCustomNodeIds)
+      .toEqual(["inpaint-nodes"]);
   });
 
   it("derives LoRA scanning and runtime metadata from the same definitions", () => {

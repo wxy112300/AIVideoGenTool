@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertImageWorkflowRuntimeCompatible,
   executedPreviewDataUrl,
   buildNativePromptWorkflow,
   extractTextGenerateOutput,
@@ -8,11 +9,68 @@ import {
   historyFailure,
   historyEntryClientId,
   historyEntryHasUnfinishedBatch,
+  h3PreviewEventDataUrl,
+  h3PreviewTinyVaeFromObjectInfo,
   nodeStage,
   progressForNode,
   safeComfyUploadFilename
 } from "../electron/services/comfy-ui.js";
 import { h3OfficialPromptBaseline } from "../src/core/h3-official-spec.js";
+
+describe("H3 live preview runtime discovery", () => {
+  it("selects the TAE only when KJNodes exposes it through vae_approx", () => {
+    expect(h3PreviewTinyVaeFromObjectInfo({
+      ModelPreviewOverrideKJ: {
+        input: {
+          optional: {
+            tiny_vae: [["none", "taeh3.safetensors"], { default: "none" }]
+          }
+        }
+      }
+    })).toBe("taeh3.safetensors");
+    expect(h3PreviewTinyVaeFromObjectInfo({})).toBe("");
+  });
+
+  it("converts the KJNodes custom preview event into the renderer data URL", () => {
+    expect(h3PreviewEventDataUrl({
+      type: "kj_preview_override",
+      data: { image: "YWJj", mime: "image/jpeg" }
+    })).toBe("data:image/jpeg;base64,YWJj");
+    expect(h3PreviewEventDataUrl({ type: "progress", data: {} })).toBeNull();
+  });
+});
+
+describe("image workflow runtime preflight", () => {
+  it("distinguishes an unloaded required custom-node package", () => {
+    expect(() => assertImageWorkflowRuntimeCompatible(
+      "lama-inpaint",
+      {
+        inpaint: {
+          class_type: "INPAINT_InpaintWithModel",
+          inputs: { image: ["source", 0], mask: ["mask", 0], inpaint_model: ["model", 0], seed: 1 }
+        }
+      },
+      {}
+    )).toThrow(/必需节点未加载：ComfyUI Inpaint Nodes/);
+  });
+
+  it("reports a registered node whose input schema is incompatible", () => {
+    expect(() => assertImageWorkflowRuntimeCompatible(
+      "lama-inpaint",
+      {
+        expand: {
+          class_type: "INPAINT_ExpandMask",
+          inputs: { mask: ["mask", 0], grow: 8, blur: 5, blur_type: "gaussian" }
+        }
+      },
+      {
+        INPAINT_ExpandMask: {
+          input: { required: { mask: ["MASK"], grow: ["INT"], blur: ["INT"] } }
+        }
+      }
+    )).toThrow(/节点版本不兼容.*blur_type/);
+  });
+});
 
 describe("native Qwen prompt workflow", () => {
   it("uses a plain image-edit contract without H3 timeline instructions", () => {

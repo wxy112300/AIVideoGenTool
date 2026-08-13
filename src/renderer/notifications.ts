@@ -17,6 +17,7 @@ export const notificationDuration: Record<NotificationKind, number> = {
 
 export interface QueueCompletionChange {
   completedTasks: Array<{ taskId: string; title: string }>;
+  failedTasks: Array<{ taskId: string; title: string; error: string }>;
   queueCompleted: boolean;
 }
 
@@ -40,14 +41,22 @@ export function queueCompletionChange(
   previous: AppState | undefined,
   next: AppState
 ): QueueCompletionChange {
-  if (!previous) return { completedTasks: [], queueCompleted: false };
+  if (!previous) return { completedTasks: [], failedTasks: [], queueCompleted: false };
   const before = completedHistoryTasks(previous);
   const after = completedHistoryTasks(next);
   const completedTasks = [...after.entries()]
     .filter(([taskId]) => !before.has(taskId))
     .map(([taskId, title]) => ({ taskId, title }));
+  const previousTasks = new Map(previous.queue.map((task) => [task.id, task]));
+  const failedTasks = next.queue
+    .filter((task) => task.status === "failed" && previousTasks.get(task.id)?.status !== "failed")
+    .map((task) => ({
+      taskId: task.id,
+      title: task.outputFilename,
+      error: task.error?.trim() || "未知运行错误"
+    }));
   const queueCompleted = previous.queueRunning &&
     !next.queueRunning &&
     next.queue.length === 0;
-  return { completedTasks, queueCompleted };
+  return { completedTasks, failedTasks, queueCompleted };
 }

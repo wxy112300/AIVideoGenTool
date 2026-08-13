@@ -8,12 +8,12 @@ export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
       recommendedStrength: "預設 0.75；建議 0.65–0.85。4 步僅適合實驗，穩定測試優先使用 8 步。",
       effects: "速度明顯提高，但過強或步數過低可能損失細節、運動穩定性和音訊質量。",
       stacking: "與內容或風格 LoRA 同用時建議放在前面；若組合後質量下降，先降低其他 LoRA 強度，再回退標準 20 步。",
-      compatibility: "僅 MiniMax H3 FL2VA 圖生影片；會同時切換 ER-SDE、Beta 與 Turbo 步數策略。",
+      compatibility: "僅 MiniMax H3 FL2VA 圖生影片；會同時切換 ER-SDE、Beta 與 Turbo 步數策略。Spectrum v0.2.6+ 可與此原生 ER-SDE 路徑疊加。",
       source: "LightX2V / Kijai ComfyUI conversion"
     },
     rules: {
       incompatible: "{name} 不相容目前基礎模型或輸入模式。",
-      turboSpectrum: "LightX2V Turbo 使用專用低步數取樣策略，不能同時啟用 Spectrum。",
+      turboSpectrum: "Spectrum v0.2.6+ 可與 LightX2V Turbo 的原生 ER-SDE 路徑疊加；更早版本請先更新。",
       orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入，內容、人物和風格 LoRA 後載入。"
     }
   },

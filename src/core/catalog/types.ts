@@ -25,6 +25,8 @@ export interface CatalogModelScanDefinition {
   managedBy?: "comfyui" | "lmstudio" | "llama-server";
   vram: string;
   integrated?: boolean;
+  /** Custom-node packages that must exist on disk before this model can be queued. */
+  requiredCustomNodeIds?: readonly string[];
   runtimeNodeTypes?: readonly string[];
   components: readonly CatalogModelComponent[];
 }

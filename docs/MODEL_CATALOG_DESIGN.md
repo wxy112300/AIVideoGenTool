@@ -153,7 +153,7 @@ Existing adapters and workflows remain code-owned. `workflow.ts` and `image-work
 
 ### Runtime policy
 
-Static model capabilities and LoRA compatibility rules are resolved by `src/core/video-policy.ts` into one effective video-generation policy. The policy is consumed by the Create view model, queue/workflow construction, and startup defaults. This keeps interactions such as Turbo changing the available step options, Turbo disabling Spectrum, and R2V Motion Context disabling Spectrum for extension in one decision path.
+Static model capabilities and LoRA compatibility rules are resolved by `src/core/video-policy.ts` into one effective video-generation policy. The policy is consumed by the Create view model, queue/workflow construction, and startup defaults. This keeps interactions such as Turbo changing the available step options, Spectrum version-gating Turbo/model-aware combinations, and R2V Motion Context disabling Spectrum for extension in one decision path.
 
 The policy result contains effective step mode/options, Spectrum availability and reason, and configuration issues. Adding another typed conflict should update the relevant model/LoRA rule and the policy tests; UI and workflow consumers should not grow a second special case.
 

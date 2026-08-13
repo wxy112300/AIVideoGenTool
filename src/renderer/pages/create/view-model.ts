@@ -16,7 +16,12 @@ import { createTranslator, type Translate } from "../../../core/i18n";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import { uiKeys } from "../../../core/i18n-keys";
 import { modelCatalog } from "../../../core/catalog";
-import { h3PromptPackFor, h3PromptPresetForMode } from "../../prompt-packs";
+import {
+  SPECTRUM_MODEL_AWARE_MINIMUM_VERSION,
+  SPECTRUM_TURBO_MINIMUM_VERSION
+} from "../../../core/catalog";
+import { releaseVersionAtLeast } from "../../../core/release-version";
+import { h3PromptPackFor, h3PromptPresetForMode, qwenImagePromptPackFor } from "../../prompt-packs";
 import {
   imageModelCapabilityFor,
   imageLightningComponentFound,
@@ -102,10 +107,16 @@ export function imageEditEnqueueBlockReason(
           ? t(uiKeys.create.validation.imageTooMany, { name: imageCapability.name, count: imageCapability.maxPictures })
           : imageModelInputCount > imageCapability.maxPictures
             ? t(uiKeys.create.validation.imageMarkupTooMany, { count: markupGuideCount })
-            : !prompt.text.trim()
+            : imageCapability.requiresMask && !draft.pictures[0]?.mask?.regionCount
+              ? "请先在原图上绘制并保存 Mask"
+            : imageCapability.requiresPrompt !== false && !prompt.text.trim()
               ? t(uiKeys.create.validation.imagePromptMissing)
+              : imageProfile?.missingCustomNodeNames?.length
+                ? `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与工作流中安装。`
               : !cachedImageProfileAllowsEnqueue(imageProfile)
-                ? t(uiKeys.create.validation.imageWorkflowMissing, { name: imageCapability.name })
+                ? !imageProfile?.available
+                  ? `${imageCapability.name} 模型文件不完整，请先在设置 → 图片模型中安装并重新扫描。`
+                  : t(uiKeys.create.validation.imageWorkflowMissing, { name: imageCapability.name })
                 : "";
 }
 
@@ -185,13 +196,17 @@ export function buildImageEditPageViewModel(
   } = options;
   const draft = normalizeImageEditDraft(state.imageDraft);
   const imageCapability = imageModelCapabilityFor(draft.modelId);
+  const promptless = imageCapability.requiresPrompt === false;
   const basePicture = draft.pictures[0];
   const selectedTargetResolution = normalizeImageTargetResolution(
     draft.targetResolution,
     basePicture?.width ?? 0,
     basePicture?.height ?? 0
   );
-  const imageResolutionOptions = imageResolutionOptionsFor(
+  const imageResolutionOptions = imageCapability.sourceResolutionOnly ? imageResolutionOptionsFor(
+    basePicture?.width ?? 0,
+    basePicture?.height ?? 0
+  ).slice(0, 1) : imageResolutionOptionsFor(
     basePicture?.width ?? 0,
     basePicture?.height ?? 0
   );
@@ -220,6 +235,7 @@ export function buildImageEditPageViewModel(
   const imageEnhanceMode: ImagePromptPreset = promptEnhanceMode === "faithful"
     ? "faithful"
     : "detail-enhance";
+  const imagePromptPack = qwenImagePromptPackFor(state.settings.uiLocale);
   const imagePromptOptimizeTitle = state.queueRunning
     ? t(uiKeys.create.validation.promptTaskRunning)
     : !imagePromptModelSupportsImageEdit
@@ -244,9 +260,12 @@ export function buildImageEditPageViewModel(
     imageCapabilityName: imageCapability.name,
     imageCapabilityMaxPictures: imageCapability.maxPictures,
     imageModelOptionsMarkup: imageModelOptions.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.modelId === profile.id ? "selected" : ""} ${isImageModelSelectable(profile) ? "" : "disabled"}>${escapeHtml(profile.name)}${isImageModelSelectable(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile, t))}`}</option>`).join(""),
-    imageQualityOptionsMarkup: imageCapability.qualityProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? "disabled" : ""}>${escapeHtml(profile.label)} · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? ` · ${t(uiKeys.create.videoSettings.missingLora)}` : ""}</option>`).join(""),
+    imageQualityOptionsMarkup: imageCapability.qualityProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? "disabled" : ""}>${escapeHtml(profile.label)}${profile.steps > 0 ? ` · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}` : ""}${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? ` · ${t(uiKeys.create.videoSettings.missingLora)}` : ""}</option>`).join(""),
     imageResolutionOptionsMarkup: imageResolutionOptions.map((option) => `<option value="${option.value}" ${selectedTargetResolution === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
     imageEnhanceMode,
+    imagePromptEnhanceTitle: imagePromptPack.presetDescriptions[imageEnhanceMode],
+    imageDetailEnhanceTitle: imagePromptPack.presetDescriptions["detail-enhance"],
+    imageFaithfulEnhanceTitle: imagePromptPack.presetDescriptions.faithful,
     imagePromptOptimizeTitle,
     imagePromptAiDisabled,
     releasePromptControlTitle: options.promptRuntimeControlTitle(),
@@ -259,11 +278,16 @@ export function buildImageEditPageViewModel(
     imageProfileStatusText: !imageProfile
       ? t(uiKeys.create.validation.imageRescan)
       : !imageProfile.available
-        ? t(uiKeys.create.validation.imageScanIncomplete)
+        ? `${imageCapability.name} 模型文件不完整，当前不可选择或加入队列。`
+        : imageProfile.missingCustomNodeNames?.length
+          ? `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。模型可以选择，但安装节点前不能加入队列。`
         : imageProfile.runtimeVerified && !imageProfile.runtimeReady
           ? t(uiKeys.create.validation.imageRuntimeRecheck, { status: imageWorkflowStatus(imageProfile, t) })
           : t(uiKeys.create.validation.imageWorkflowRecheck, { status: imageWorkflowStatus(imageProfile, t) }),
-    enqueueBusy
+    enqueueBusy,
+    promptless,
+    maskRequired: imageCapability.requiresMask === true,
+    sourceResolutionOnly: imageCapability.sourceResolutionOnly === true
   };
 }
 
@@ -335,9 +359,18 @@ export function buildVideoCreatePageViewModel(
     (node) => node.id === "spectrum-minimax-h3"
   );
   const spectrumLoaded = Boolean(spectrumNode?.loaded);
-  const spectrumEligible = videoPolicy.spectrum.allowed;
+  const spectrumTurboCompatible = !turboEnabled || releaseVersionAtLeast(
+    spectrumNode?.version ?? "",
+    SPECTRUM_TURBO_MINIMUM_VERSION
+  );
+  const spectrumModelAwareSupported = releaseVersionAtLeast(
+    spectrumNode?.version ?? "",
+    SPECTRUM_MODEL_AWARE_MINIMUM_VERSION
+  );
+  const spectrumEligible = videoPolicy.spectrum.allowed && spectrumTurboCompatible;
   const spectrumReady = draft.spectrumMode !== "balanced" || (
-    videoPolicy.spectrum.allowed && spectrumLoaded
+    spectrumEligible && spectrumLoaded &&
+    (draft.spectrumModelAwareMode === "off" || spectrumModelAwareSupported)
   );
   const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
   const extending = draft.inputMode === "video";
@@ -492,23 +525,40 @@ export function buildVideoCreatePageViewModel(
       extending && isR2V
         ? t(uiKeys.create.validation.spectrumMotionContext)
         : !spectrumEligible
-          ? turboEnabled
-            ? t(uiKeys.create.validation.spectrumTurbo)
+          ? turboEnabled && !spectrumTurboCompatible
+            ? t(uiKeys.create.validation.spectrumTurboUpdate, { version: SPECTRUM_TURBO_MINIMUM_VERSION })
             : t(uiKeys.create.validation.spectrumUnsupported)
           : !spectrumLoaded
             ? t(uiKeys.create.validation.spectrumInstall)
             : t(uiKeys.create.validation.spectrumLoaded, { version: spectrumNode?.version ? `v${spectrumNode.version}` : t(uiKeys.create.options.spectrumLoaded) })
     ),
     spectrumOptionsMarkup: `<option value="off" ${draft.spectrumMode !== "balanced" ? "selected" : ""}>${t(uiKeys.create.options.spectrumOff)}</option>
-      <option value="balanced" ${draft.spectrumMode === "balanced" ? "selected" : ""}>${t(uiKeys.create.options.spectrumBalanced)}</option>`,
+      <option value="balanced" ${draft.spectrumMode === "balanced" ? "selected" : ""} ${spectrumEligible && spectrumLoaded ? "" : "disabled"}>${t(uiKeys.create.options.spectrumBalanced)}</option>`,
     spectrumTitle: extending && isR2V
       ? t(uiKeys.create.validation.spectrumMotionContext)
       : !spectrumEligible
-        ? t(uiKeys.create.validation.spectrumUnsupported)
+        ? turboEnabled && !spectrumTurboCompatible
+          ? t(uiKeys.create.validation.spectrumTurboUpdate, { version: SPECTRUM_TURBO_MINIMUM_VERSION })
+          : t(uiKeys.create.validation.spectrumUnsupported)
         : !spectrumLoaded
           ? t(uiKeys.create.validation.spectrumInstall)
           : t(uiKeys.create.validation.spectrumNative),
-    spectrumModeDisabled: !(videoPolicy.spectrum.allowed && spectrumLoaded),
+    spectrumModeDisabled: draft.spectrumMode !== "balanced" && !(spectrumEligible && spectrumLoaded),
+    spectrumModelAwareMarkup: draft.spectrumMode === "balanced"
+      ? `<label class="settings-field settings-spectrum-model-aware">${fieldLabelWithTip(
+          t(uiKeys.create.validation.spectrumModelAwareLabel),
+          spectrumModelAwareSupported
+            ? t(uiKeys.create.validation.spectrumModelAwareDescription)
+            : t(uiKeys.create.validation.spectrumModelAwareUpdate, { version: SPECTRUM_MODEL_AWARE_MINIMUM_VERSION })
+        )}
+          <select id="spectrum-model-aware-mode">
+            <option value="off" ${draft.spectrumModelAwareMode === "off" ? "selected" : ""}>${t(uiKeys.create.options.spectrumModelAwareOff)}</option>
+            <option value="schedule" ${draft.spectrumModelAwareMode === "schedule" ? "selected" : ""} ${spectrumModelAwareSupported ? "" : "disabled"}>${t(uiKeys.create.options.spectrumModelAwareSchedule)}</option>
+            <option value="schedule_confidence" ${draft.spectrumModelAwareMode === "schedule_confidence" ? "selected" : ""} ${spectrumModelAwareSupported ? "" : "disabled"}>${t(uiKeys.create.options.spectrumModelAwareConfidence)}</option>
+            <option value="full" ${draft.spectrumModelAwareMode === "full" ? "selected" : ""} ${spectrumModelAwareSupported ? "" : "disabled"}>${t(uiKeys.create.options.spectrumModelAwareFull)}</option>
+          </select>
+        </label>`
+      : "",
     loraLabelMarkup: fieldLabelWithTip(
       t(uiKeys.create.validation.loraLabel),
       t(uiKeys.create.validation.loraDescription)

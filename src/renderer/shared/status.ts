@@ -51,13 +51,16 @@ export function isImageWorkflowReady(profile?: ModelScanProfile): boolean {
 }
 
 export function isImageModelSelectable(profile?: ModelScanProfile): boolean {
-  return Boolean(profile?.category === "image" && profile.integrated);
+  return Boolean(profile?.category === "image" && profile.integrated && profile.available);
 }
 
 export function imageWorkflowStatus(profile?: ModelScanProfile, t: Translate = createTranslator("zh-CN").t): string {
   if (!profile) return t(uiKeys.status.imageWaitingScan);
   if (!profile.available) return t(uiKeys.status.imageIncomplete);
   if (!profile.integrated) return t(uiKeys.status.imagePendingIntegration);
+  if (profile.missingCustomNodeNames?.length) {
+    return t(uiKeys.status.imageMissingNodes, { nodes: profile.missingCustomNodeNames.join("、") });
+  }
   if (!profile.runtimeVerified) return t(uiKeys.status.imageNotStarted);
   if (!profile.runtimeReady) {
     return profile.runtimeMissingNodes?.length

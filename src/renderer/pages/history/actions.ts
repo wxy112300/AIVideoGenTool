@@ -132,6 +132,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       fps: ([8, 12, 16, 24, 25, 30].includes(asset.fps ?? 24) ? asset.fps ?? 24 : 24) as Draft["fps"],
       frameInterpolation: asset.frameInterpolation ?? "off",
       spectrumMode: preferredVersion(asset).spectrumMode ?? "off",
+      spectrumModelAwareMode: preferredVersion(asset).spectrumModelAwareMode ?? "off",
       seed: asset.seed,
       ...(isExtension
         ? {

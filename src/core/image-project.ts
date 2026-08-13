@@ -227,6 +227,22 @@ function normalizeImageReference(value: unknown, index: number): ImageReference 
           : new Date(0).toISOString()
       }
     : undefined;
+  const maskSource = source.mask && typeof source.mask === "object"
+    ? source.mask
+    : null;
+  const mask = maskSource &&
+    typeof maskSource.documentPath === "string" && maskSource.documentPath.trim() &&
+    typeof maskSource.maskPath === "string" && maskSource.maskPath.trim()
+    ? {
+        documentPath: maskSource.documentPath.trim(),
+        maskPath: maskSource.maskPath.trim(),
+        revision: normalizedInteger(maskSource.revision, 1, 1),
+        regionCount: normalizedInteger(maskSource.regionCount, 0, 0),
+        updatedAt: typeof maskSource.updatedAt === "string" && maskSource.updatedAt.trim()
+          ? maskSource.updatedAt
+          : new Date(0).toISOString()
+      }
+    : undefined;
   return {
     id: typeof source.id === "string" && source.id.trim() ? source.id : crypto.randomUUID(),
     pictureNumber: normalizedInteger(source.pictureNumber, index + 1, 1),
@@ -235,6 +251,7 @@ function normalizeImageReference(value: unknown, index: number): ImageReference 
     height: normalizedInteger(source.height, 0, 0),
     ...(role ? { role } : {}),
     ...(markup ? { markup } : {}),
+    ...(mask ? { mask } : {}),
     ...(typeof source.contentHash === "string" && /^[a-f0-9]{64}$/iu.test(source.contentHash.trim())
       ? { contentHash: source.contentHash.trim().toLowerCase() }
       : {}),
@@ -381,7 +398,8 @@ export function imageEditDraftFromQueueTask(
     parentVersionId: task.parentVersionId,
     pictures: task.pictures.map((picture) => ({
       ...picture,
-      ...(picture.markup ? { markup: { ...picture.markup } } : {})
+      ...(picture.markup ? { markup: { ...picture.markup } } : {}),
+      ...(picture.mask ? { mask: { ...picture.mask } } : {})
     })),
     promptVersions: [{
       id: crypto.randomUUID(),

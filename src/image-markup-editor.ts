@@ -43,6 +43,7 @@ export interface ImageMarkupEditorOptions {
   filename: string;
   sourceDataUrl: string;
   existingDocument?: string | null;
+  mode?: "annotation" | "mask";
 }
 
 export interface ImageMarkupEditorResult {
@@ -108,6 +109,7 @@ function dataUrlFilename(filename: string): string {
 export async function openImageMarkupEditor(
   options: ImageMarkupEditorOptions
 ): Promise<ImageMarkupEditorResult | null> {
+  const maskMode = options.mode === "mask";
   const sourceElement = document.createElement("img");
   sourceElement.src = options.sourceDataUrl;
   await sourceElement.decode();
@@ -119,21 +121,24 @@ export async function openImageMarkupEditor(
   overlay.className = "image-markup-overlay";
   overlay.innerHTML = `
     <header class="image-markup-header">
-      <div><strong>标记 Picture ${options.pictureNumber}</strong><span>${escapeMarkup(dataUrlFilename(options.filename))} · 原图不会被修改</span></div>
-      <div class="button-row"><button class="secondary" data-markup-cancel>取消</button><button class="primary" data-markup-save>保存标记</button></div>
+      <div><strong>${maskMode ? "绘制移除区域" : `标记 Picture ${options.pictureNumber}`}</strong><span>${escapeMarkup(dataUrlFilename(options.filename))} · 原图不会被修改</span></div>
+      <div class="button-row"><button class="secondary" data-markup-cancel>取消</button><button class="primary" data-markup-save>${maskMode ? "保存 Mask" : "保存标记"}</button></div>
     </header>
     <div class="image-markup-body">
       <aside class="image-markup-tools" aria-label="标记工具">
-        ${(["select", "brush", "highlight", "rectangle", "ellipse", "arrow", "text", "eraser"] as ImageMarkupTool[]).map((tool) => `<button class="${tool === "select" ? "active" : ""}" data-markup-tool="${tool}" title="${toolLabels[tool]}">${toolLabels[tool]}</button>`).join("")}
+        ${(maskMode
+          ? (["select", "brush", "highlight", "eraser"] as ImageMarkupTool[])
+          : (["select", "brush", "highlight", "rectangle", "ellipse", "arrow", "text", "eraser"] as ImageMarkupTool[])
+        ).map((tool) => `<button class="${tool === (maskMode ? "highlight" : "select") ? "active" : ""}" data-markup-tool="${tool}" title="${toolLabels[tool]}">${toolLabels[tool]}</button>`).join("")}
         <span class="markup-tool-divider"></span>
         <button data-markup-undo title="撤销">撤销</button><button data-markup-redo title="重做">重做</button>
       </aside>
       <main class="image-markup-stage"><div class="image-markup-canvas-shell"><canvas data-markup-canvas></canvas></div><div class="markup-zoom"><button data-markup-zoom-out>−</button><span data-markup-zoom-value>100%</span><button data-markup-zoom-in>＋</button><button data-markup-fit>适应窗口</button></div></main>
       <aside class="image-markup-inspector">
-        <div><strong>标记说明</strong><p>区域自动编号，说明会同时进入 Prompt。滚轮缩放；选择工具下拖动画面平移，也可用中键或 Space + 拖动。</p></div>
-        <div class="markup-note-list" data-markup-note-list></div>
-        <div class="markup-style-controls"><label>颜色<input type="color" data-markup-color value="#ff4f55"></label><label>线宽<input type="range" data-markup-width min="2" max="28" value="8"></label></div>
-        <p class="markup-removal-hint">最终提示会要求模型移除框线、箭头、编号和标注文字。</p>
+        <div><strong>${maskMode ? "Mask 说明" : "标记说明"}</strong><p>${maskMode ? "用半透明高亮覆盖要移除的物体。可以绘制多个区域；保存后只向模型发送独立黑白 Mask。" : "区域自动编号，说明会同时进入 Prompt。"}滚轮缩放；选择工具下拖动画面平移，也可用中键或 Space + 拖动。</p></div>
+        <div class="markup-note-list" data-markup-note-list ${maskMode ? "hidden" : ""}></div>
+        <div class="markup-style-controls"><label ${maskMode ? "hidden" : ""}>颜色<input type="color" data-markup-color value="#ff4f55"></label><label>线宽<input type="range" data-markup-width min="2" max="${maskMode ? 96 : 28}" value="${maskMode ? 18 : 8}"></label></div>
+        <p class="markup-removal-hint">${maskMode ? "高亮颜色只是界面覆盖层，不会写入原图或生成结果。" : "最终提示会要求模型移除框线、箭头、编号和标注文字。"}</p>
       </aside>
     </div>`;
   document.body.append(overlay);
@@ -187,7 +192,7 @@ export async function openImageMarkupEditor(
   canvas.insertAt(0, sourceImage);
   loading = false;
 
-  let activeTool: ImageMarkupTool = "select";
+  let activeTool: ImageMarkupTool = maskMode ? "highlight" : "select";
   let draftObject: FabricObject | null = null;
   let draftArrow: { line: Line; head: Triangle } | null = null;
   let pointerStart = { x: 0, y: 0 };
@@ -267,7 +272,9 @@ export async function openImageMarkupEditor(
     for (const object of annotationObjects(canvas)) {
       if (object.annotationId && !unique.has(object.annotationId)) unique.set(object.annotationId, object);
     }
-    noteList.innerHTML = unique.size
+    noteList.innerHTML = maskMode
+      ? ""
+      : unique.size
       ? [...unique.values()].map((object) => `<label class="markup-note-card"><span>${escapeMarkup(object.annotationLabel ?? "?")}</span><textarea data-markup-note="${escapeMarkup(object.annotationId ?? "")}">${escapeMarkup(object.annotationNote ?? defaultNote(object.annotationKind ?? "rectangle"))}</textarea></label>`).join("")
       : `<div class="markup-note-empty">画出区域、箭头或文字后，可在这里补充具体要求。</div>`;
     noteList.querySelectorAll<HTMLTextAreaElement>("[data-markup-note]").forEach((input) => {
@@ -341,7 +348,7 @@ export async function openImageMarkupEditor(
     canvas.insertAt(0, sourceImage);
     restoringHistory = false;
     annotationSequence = Math.max(annotationSequence, annotationObjects(canvas).length);
-    selectTool("select");
+    selectTool(maskMode ? "highlight" : "select");
     renderNotes();
   };
 
@@ -400,8 +407,8 @@ export async function openImageMarkupEditor(
       text.enterEditing();
       text.selectAll();
       renderNotes();
-      pushHistory();
-      selectTool("select");
+  pushHistory();
+  selectTool(maskMode ? "highlight" : "select");
       return;
     }
     if (activeTool !== "rectangle" && activeTool !== "ellipse" && activeTool !== "arrow") return;
@@ -590,17 +597,27 @@ export async function openImageMarkupEditor(
       }
       const unique = new Map<string, MarkupFabricObject>();
       for (const object of objects) if (object.annotationId && !unique.has(object.annotationId)) unique.set(object.annotationId, object);
-      const summary = [...unique.values()].map((object) => `${object.annotationLabel ?? "?"}：${(object.annotationNote ?? defaultNote(object.annotationKind ?? "rectangle")).trim()}`).join("\n");
+      const summary = maskMode
+        ? `${unique.size} 个移除区域`
+        : [...unique.values()].map((object) => `${object.annotationLabel ?? "?"}：${(object.annotationNote ?? defaultNote(object.annotationKind ?? "rectangle")).trim()}`).join("\n");
       canvas.discardActiveObject();
       canvas.requestRenderAll();
-      const blob = await canvas.toBlob({ format: "png", multiplier: 1, enableRetinaScaling: false });
-      if (!blob) throw new Error("无法导出标注图片");
       const document: StoredMarkupDocument = {
         version: 1,
         sourceWidth: sourceElement.naturalWidth,
         sourceHeight: sourceElement.naturalHeight,
         canvas: serializableCanvas()
       };
+      if (maskMode) {
+        sourceImage.visible = false;
+        canvas.backgroundColor = "#000000";
+        for (const object of objects) {
+          object.set({ opacity: 1, stroke: "#ffffff", fill: "#ffffff" });
+        }
+        canvas.requestRenderAll();
+      }
+      const blob = await canvas.toBlob({ format: "png", multiplier: 1, enableRetinaScaling: false });
+      if (!blob) throw new Error("无法导出标注图片");
       finish({
         document: JSON.stringify(document),
         renderedPng: await blob.arrayBuffer(),

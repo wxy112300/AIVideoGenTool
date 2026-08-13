@@ -42,6 +42,9 @@ export interface ImageEditPageViewModel {
   imageQualityOptionsMarkup: string;
   imageResolutionOptionsMarkup: string;
   imageEnhanceMode: ImagePromptPreset;
+  imagePromptEnhanceTitle: string;
+  imageDetailEnhanceTitle: string;
+  imageFaithfulEnhanceTitle: string;
   imagePromptOptimizeTitle: string;
   imagePromptAiDisabled: boolean;
   releasePromptControlTitle: string;
@@ -53,6 +56,9 @@ export interface ImageEditPageViewModel {
   count: number;
   imageProfileStatusText: string;
   enqueueBusy: boolean;
+  promptless: boolean;
+  maskRequired: boolean;
+  sourceResolutionOnly: boolean;
 }
 
 export interface VideoCreatePageViewModel {
@@ -86,6 +92,7 @@ export interface VideoCreatePageViewModel {
   spectrumOptionsMarkup: string;
   spectrumTitle: string;
   spectrumModeDisabled: boolean;
+  spectrumModelAwareMarkup: string;
   loraLabelMarkup: string;
   installReadyLoraDefinitions: ReadonlyArray<InstallReadyLoraDefinition>;
   installReadyLoraEmptyLabel: string;
@@ -110,6 +117,14 @@ export interface VideoCreatePageViewModel {
   enqueueBlockReason: string;
   enqueueDisabled: boolean;
   enqueueBusy: boolean;
+}
+
+function renderPromptModeInfo(
+  tip: string,
+  icon: (name: string, className?: string) => string,
+  escapeHtml: (value: string) => string
+): string {
+  return `<span class="field-info prompt-mode-info" id="prompt-enhance-mode-info" tabindex="0" aria-label="${escapeHtml(tip)}">${icon("info")}<span class="field-info-tip" id="prompt-enhance-mode-tip" role="tooltip">${escapeHtml(tip)}</span></span>`;
 }
 
 export type CreatePageViewModel = ImageEditPageViewModel | VideoCreatePageViewModel;
@@ -142,6 +157,7 @@ export function renderImageEditPage(
   const icon = options.icon;
   const escapeHtml = options.escapeHtml;
   const t = options.t;
+  const maskMode = viewModel.maskRequired;
   return `
     <section class="page-heading create-page-heading image-edit-page-heading">
       <div class="page-heading-copy"><h1>${t(uiKeys.create.imageEditTitle)}</h1><p>${t(uiKeys.create.imageEditDescription)}</p></div>
@@ -158,49 +174,50 @@ export function renderImageEditPage(
       <section class="media-panel image-edit-references">
         <div class="section-heading">
           <div><h2>${t(uiKeys.create.imageReferencesTitle)}</h2><span class="muted">${t(uiKeys.create.imageEdit.slotSummary, { count: viewModel.draft.pictures.length, max: viewModel.imageCapabilityMaxPictures })}${viewModel.markupGuideCount ? ` · ${t(uiKeys.create.imageEdit.modelInputSummary, { count: viewModel.imageModelInputCount, max: viewModel.imageCapabilityMaxPictures })}` : ""} · ${t(uiKeys.create.imageEdit.baseInputSummary)}</span></div>
-          <button class="secondary button-with-icon" id="add-image-slot" ${viewModel.draft.pictures.length >= viewModel.imageCapabilityMaxPictures ? "disabled" : ""}>${icon("plus")}${t(uiKeys.create.addSlot)}</button>
+          ${maskMode ? "" : `<button class="secondary button-with-icon" id="add-image-slot" ${viewModel.draft.pictures.length >= viewModel.imageCapabilityMaxPictures ? "disabled" : ""}>${icon("plus")}${t(uiKeys.create.addSlot)}</button>`}
         </div>
         <div class="image-picture-list">
           ${viewModel.draft.pictures.length ? viewModel.draft.pictures.map((picture) => `
-            <article class="image-picture-card ${picture.pictureNumber === 1 ? "is-base" : "is-reference"} ${picture.absolutePath ? "has-picture" : "is-empty"} ${picture.markup ? "has-markup" : ""}" data-image-picture-card="${escapeHtml(picture.id)}">
+            <article class="image-picture-card ${picture.pictureNumber === 1 ? "is-base" : "is-reference"} ${picture.absolutePath ? "has-picture" : "is-empty"} ${picture.markup || picture.mask ? "has-markup" : ""}" data-image-picture-card="${escapeHtml(picture.id)}">
               <button class="image-picture-preview ${picture.absolutePath ? "has-image" : ""}" data-image-picture-pick="${escapeHtml(picture.id)}" style="--picture-ratio:${picture.width > 0 && picture.height > 0 ? `${picture.width} / ${picture.height}` : "1 / 1"}" aria-label="${t(picture.absolutePath ? uiKeys.create.imageEdit.replaceSlotImage : uiKeys.create.imageEdit.chooseSlotImage, { index: picture.pictureNumber })}">
                 <img data-image-picture-preview="${escapeHtml(picture.id)}" alt="${t(uiKeys.create.imageEdit.previewAlt, { index: picture.pictureNumber })}" ${picture.absolutePath ? "" : "hidden"}>
                 ${picture.absolutePath ? "" : `<span>${icon("image")}${t(uiKeys.create.imageEdit.chooseImage)}</span>`}
               </button>
               <div class="image-picture-card-body">
-                <div class="image-picture-card-title"><strong>${t(uiKeys.create.imageEdit.slotTitle, { index: picture.pictureNumber })}</strong><span class="picture-number">Picture ${picture.pictureNumber}</span><span class="model-badge">${picture.pictureNumber === 1 ? t(uiKeys.create.imageEdit.baseInput) : t(uiKeys.create.imageEdit.reference)}</span>${picture.markup ? `<span class="model-availability available">${icon("pencil")} ${t(uiKeys.create.imageEdit.markedCount, { count: picture.markup.objectCount })}</span>` : ""}</div>
+                <div class="image-picture-card-title"><strong>${t(uiKeys.create.imageEdit.slotTitle, { index: picture.pictureNumber })}</strong><span class="picture-number">Picture ${picture.pictureNumber}</span><span class="model-badge">${picture.pictureNumber === 1 ? t(uiKeys.create.imageEdit.baseInput) : t(uiKeys.create.imageEdit.reference)}</span>${picture.mask ? `<span class="model-availability available">${icon("brush")} Mask · ${picture.mask.regionCount}</span>` : picture.markup ? `<span class="model-availability available">${icon("pencil")} ${t(uiKeys.create.imageEdit.markedCount, { count: picture.markup.objectCount })}</span>` : ""}</div>
                 <code title="${escapeHtml(picture.absolutePath)}">${picture.absolutePath ? escapeHtml(picture.absolutePath.split(/[\\/]/u).pop() ?? picture.absolutePath) : t(uiKeys.create.imageEdit.notAdded)}</code>
-                <label>${t(uiKeys.create.imageEdit.referenceRole)}<select data-image-picture-role="${escapeHtml(picture.id)}" ${picture.pictureNumber === 1 ? "disabled" : ""}>${imageReferenceRoleOptions(options, picture)}</select></label>
+                ${maskMode ? `<span class="muted">${picture.mask ? "Mask 已保存，可以加入队列" : "需要绘制 Mask 后才能加入队列"}</span>` : `<label>${t(uiKeys.create.imageEdit.referenceRole)}<select data-image-picture-role="${escapeHtml(picture.id)}" ${picture.pictureNumber === 1 ? "disabled" : ""}>${imageReferenceRoleOptions(options, picture)}</select></label>`}
               </div>
-              <div class="image-picture-card-actions">${picture.absolutePath ? `<button class="icon-button" data-markup-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.imageEdit.markPicture, { index: picture.pictureNumber })}" title="${t(uiKeys.create.imageEdit.markImage)}">${icon("pencil")}</button>` : ""}<button class="icon-button danger" data-remove-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}" title="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}">${icon("trash-2")}</button></div>
+              <div class="image-picture-card-actions">${picture.absolutePath ? `<button class="${maskMode ? "secondary button-with-icon" : "icon-button"}" data-markup-image-picture="${escapeHtml(picture.id)}" aria-label="${maskMode ? "绘制移除区域" : t(uiKeys.create.imageEdit.markPicture, { index: picture.pictureNumber })}" title="${maskMode ? "绘制或修改 Mask" : t(uiKeys.create.imageEdit.markImage)}">${icon(maskMode ? "brush" : "pencil")}${maskMode ? `<span>${picture.mask ? "修改 Mask" : "绘制 Mask"}</span>` : ""}</button>` : ""}<button class="icon-button danger" data-remove-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}" title="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}">${icon("trash-2")}</button></div>
             </article>`).join("") : `<div class="image-picture-empty"><span>${icon("images")}</span><strong>${t(uiKeys.create.imageEdit.emptyTitle)}</strong><small>${t(uiKeys.create.imageEdit.emptyDescription)}</small></div>`}
         </div>
-        <button class="drop-zone image-picture-drop-zone" id="image-picture-drop-zone" data-image-picture-drop ${viewModel.draft.pictures.length >= viewModel.imageCapabilityMaxPictures ? "disabled" : ""}>
+        ${maskMode && viewModel.draft.pictures.some((picture) => picture.absolutePath) ? "" : `<button class="drop-zone image-picture-drop-zone" id="image-picture-drop-zone" data-image-picture-drop ${viewModel.draft.pictures.length >= viewModel.imageCapabilityMaxPictures ? "disabled" : ""}>
           <span class="drop-icon">${icon("upload")}</span><strong>${t(uiKeys.create.imageEdit.dropNextSlot)}</strong><span>${t(uiKeys.create.imageEdit.imageFormats)}</span>
-        </button>
+        </button>`}
       </section>
       <section class="panel composer image-edit-composer">
-        <div class="section-heading composer-heading">
+        ${viewModel.promptless ? `<div class="section-heading composer-heading"><div><h2>局部移除</h2><span class="muted">LaMa 不读取 Prompt，只处理 Mask 覆盖区域并自动修复背景。</span></div></div>` : `<div class="section-heading composer-heading">
           <div class="composer-heading-main"><h2>${t(uiKeys.create.promptTitle)}</h2><span class="muted">${viewModel.draft.activePromptVersion + 1} / ${viewModel.draft.promptVersions.length} · ${escapeHtml(viewModel.prompt.label)}</span><div class="prompt-version-controls"><button class="icon-button" id="image-prompt-prev" aria-label="${t(uiKeys.create.imageEdit.previousPrompt)}" ${viewModel.draft.activePromptVersion === 0 ? "disabled" : ""}>${icon("chevron-left")}</button><button class="icon-button" id="image-prompt-next" aria-label="${t(uiKeys.create.imageEdit.nextPrompt)}" ${viewModel.draft.activePromptVersion >= viewModel.draft.promptVersions.length - 1 ? "disabled" : ""}>${icon("chevron-right")}</button><button class="icon-button danger" id="clear-image-prompt" aria-label="${t(uiKeys.create.clearPrompt)}" title="${t(uiKeys.create.clearPrompt)}" ${viewModel.draft.promptVersions.length === 1 && !viewModel.prompt.text ? "disabled" : ""}>${icon("trash-2")}</button></div></div>
           <div class="prompt-action-controls">
-            <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="${t(uiKeys.create.imageEdit.optimizeMethod)}" title="${t(uiKeys.create.imageEdit.optimizeTitle)}">
-              <option value="detail-enhance" ${viewModel.imageEnhanceMode === "detail-enhance" ? "selected" : ""}>${t(uiKeys.create.imageEdit.detailEnhance)}</option>
-              <option value="faithful" ${viewModel.imageEnhanceMode === "faithful" ? "selected" : ""}>${t(uiKeys.create.imageEdit.faithful)}</option>
-            </select>
+            <div class="prompt-mode-control"><select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="${t(uiKeys.create.imageEdit.optimizeMethod)}">
+              <option value="detail-enhance" data-description="${escapeHtml(viewModel.imageDetailEnhanceTitle)}" ${viewModel.imageEnhanceMode === "detail-enhance" ? "selected" : ""}>${t(uiKeys.create.imageEdit.detailEnhance)}</option>
+              <option value="faithful" data-description="${escapeHtml(viewModel.imageFaithfulEnhanceTitle)}" ${viewModel.imageEnhanceMode === "faithful" ? "selected" : ""}>${t(uiKeys.create.imageEdit.faithful)}</option>
+            </select>${renderPromptModeInfo(viewModel.imagePromptEnhanceTitle, icon, escapeHtml)}</div>
             <button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" title="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-busy="${viewModel.promptRuntimeBusy}">${icon(viewModel.releasePromptControlIconName)}</button>
             <button class="secondary button-with-icon" id="enhance-prompt" ${viewModel.imagePromptAiDisabled ? "disabled" : ""} title="${escapeHtml(viewModel.imagePromptOptimizeTitle)}">${icon("sparkles")}${viewModel.promptEnhancing ? t(uiKeys.create.imageEdit.optimizing) : t(uiKeys.create.imageEdit.optimizePrompt)}</button>
           </div>
-        </div>
+        </div>`}
+        ${viewModel.promptless ? "" : `
         <div class="prompt-editor-shell"><textarea id="image-edit-prompt-input" rows="6" spellcheck="true" aria-keyshortcuts="Control+Z Control+Y Control+Shift+Z" lang="${/[\u3400-\u9fff]/u.test(viewModel.prompt.text) ? "zh-CN" : "en-US"}">${escapeHtml(viewModel.prompt.text)}</textarea><div id="image-prompt-word-counter" class="prompt-word-counter" aria-live="polite"></div></div>
-        <div class="prompt-tool-row"><label class="prompt-snippet-picker"><span>${t(uiKeys.create.imageEdit.quickInsert)}</span><select id="image-edit-instruction">${renderImageEditPromptInstructionOptions(escapeHtml, t)}</select></label><button class="secondary button-with-icon" id="insert-image-edit-instruction" disabled>${icon("plus")}${t(uiKeys.create.imageEdit.insert)}</button></div>
+        <div class="prompt-tool-row"><label class="prompt-snippet-picker"><span>${t(uiKeys.create.imageEdit.quickInsert)}</span><select id="image-edit-instruction">${renderImageEditPromptInstructionOptions(escapeHtml, t)}</select></label><button class="secondary button-with-icon" id="insert-image-edit-instruction" disabled>${icon("plus")}${t(uiKeys.create.imageEdit.insert)}</button></div>`}
         <section class="composer-control-group image-edit-output-group"><div class="composer-group-heading"><div><strong>${t(uiKeys.create.imageEdit.generationSettings)}</strong><span>${t(uiKeys.create.imageEdit.batchDescription)}</span></div></div><div class="composer-control-grid image-edit-settings-grid">
           <label class="settings-field">${t(uiKeys.create.imageEdit.model)}<select id="image-edit-model">${viewModel.imageModelOptionsMarkup}</select></label>
           <label class="settings-field">${t(uiKeys.create.imageEdit.quality)}<select id="image-edit-quality">${viewModel.imageQualityOptionsMarkup}</select></label>
           <label class="settings-field">${t(uiKeys.create.imageEdit.outputResolution)}<select id="image-edit-resolution" aria-label="${t(uiKeys.create.imageEdit.outputResolution)}">${viewModel.imageResolutionOptionsMarkup}</select></label>
-          <label class="settings-field">${t(uiKeys.create.imageEdit.randomSeed)}<div class="inline-field seed-control"><input id="image-edit-seed" type="number" placeholder="${t(uiKeys.create.imageEdit.randomPerImage)}" value="${viewModel.draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="${t(uiKeys.create.imageEdit.randomizeSeed)}">${icon("refresh-cw")}</button><button class="icon-button" id="clear-image-edit-seed" title="${t(uiKeys.create.imageEdit.clearSeed)}">${icon("x")}</button></div></label>
+          ${viewModel.promptless ? "" : `<label class="settings-field">${t(uiKeys.create.imageEdit.randomSeed)}<div class="inline-field seed-control"><input id="image-edit-seed" type="number" placeholder="${t(uiKeys.create.imageEdit.randomPerImage)}" value="${viewModel.draft.seed ?? ""}"><button class="icon-button" id="random-image-edit-seed" title="${t(uiKeys.create.imageEdit.randomizeSeed)}">${icon("refresh-cw")}</button><button class="icon-button" id="clear-image-edit-seed" title="${t(uiKeys.create.imageEdit.clearSeed)}">${icon("x")}</button></div></label>`}
           <label class="settings-field range-field"><span class="range-heading"><span>${t(uiKeys.create.imageEdit.outputCount)}</span><strong id="image-edit-count-value">${t(uiKeys.create.imageEdit.outputCountValue, { count: viewModel.count })}</strong></span><input id="image-edit-count" type="range" min="1" max="10" step="1" value="${viewModel.count}"><span class="range-scale"><span>1</span><span>${t(uiKeys.create.imageEdit.sequentialGeneration)}</span><span>10</span></span></label>
         </div></section>
-        <div class="interpolation-summary settings-summary ${viewModel.enqueueBlockReason ? "unsafe" : ""}"><div><strong>${viewModel.enqueueBlockReason || t(uiKeys.create.imageEdit.summary, { count: viewModel.count, seedMode: t(viewModel.draft.seed == null ? uiKeys.runtime.random : uiKeys.runtime.same) })}</strong><span>${t(uiKeys.create.imageEdit.noUpscale, { capability: escapeHtml(viewModel.imageCapabilityName) })}</span></div><p>${escapeHtml(viewModel.imageProfileStatusText)}</p></div>
+        <div class="interpolation-summary settings-summary ${viewModel.enqueueBlockReason ? "unsafe" : ""}"><div><strong>${viewModel.enqueueBlockReason || (viewModel.promptless ? `生成 ${viewModel.count} 张局部修补结果` : t(uiKeys.create.imageEdit.summary, { count: viewModel.count, seedMode: t(viewModel.draft.seed == null ? uiKeys.runtime.random : uiKeys.runtime.same) }))}</strong><span>${viewModel.promptless ? "保持原图尺寸，只处理 Mask 覆盖区域" : t(uiKeys.create.imageEdit.noUpscale, { capability: escapeHtml(viewModel.imageCapabilityName) })}</span></div><p>${escapeHtml(viewModel.imageProfileStatusText)}</p></div>
         <div class="submit-row composer-submit-row"><button class="ghost danger button-with-icon" id="clear-image-edit-draft">${icon("trash-2")}${t(uiKeys.create.imageEdit.clear)}</button><button class="primary button-with-icon enqueue-button ${viewModel.enqueueBusy ? "busy" : ""}" id="enqueue-image-edit" ${viewModel.enqueueBlockReason || viewModel.enqueueBusy ? "disabled" : ""} aria-busy="${viewModel.enqueueBusy}">${icon(viewModel.enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${viewModel.enqueueBusy ? t(uiKeys.create.imageEdit.enqueueBusy) : t(uiKeys.create.imageEdit.enqueue)}</span></button></div>
       </section>
     </div>`;
@@ -319,7 +336,7 @@ export function renderCreatePage(
           </div>
         </div>
         <div class="prompt-action-controls">
-          <select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="${promptUi.t("enhanceMode")}" title="${escapeHtml(viewModel.h3PromptEnhanceTitle)}">
+          <div class="prompt-mode-control"><select class="prompt-enhance-mode" id="prompt-enhance-mode" aria-label="${promptUi.t("enhanceMode")}">
             ${viewModel.isMiniMaxH3
               ? viewModel.h3PromptPresetOptionsMarkup
                 : `<option value="sulphur-native" ${viewModel.enhanceMode === "sulphur-native" ? "selected" : ""}>${promptUi.t("sulphurNativeEnhance")}</option>
@@ -397,8 +414,9 @@ export function renderCreatePage(
         <label class="settings-field settings-spectrum">${viewModel.spectrumLabelMarkup}
           <select id="spectrum-mode" ${viewModel.spectrumModeDisabled ? "disabled" : ""} title="${escapeHtml(viewModel.spectrumTitle)}">
             ${viewModel.spectrumOptionsMarkup}
-          </select>
-        </label>` : ""}
+          </select>${renderPromptModeInfo(viewModel.h3PromptEnhanceTitle, icon, escapeHtml)}</div>
+        </label>
+        ${viewModel.spectrumModelAwareMarkup}` : ""}
           </div>
           <div class="video-lora-stack">
             <div class="video-lora-stack-heading">

@@ -66,6 +66,24 @@ export function mountQueueController(
   const root = context.root;
   const t = context.t;
 
+  root.querySelector<HTMLInputElement>("#h3-live-preview")?.addEventListener("change", async (event) => {
+    const input = event.currentTarget as HTMLInputElement;
+    const current = currentState(context);
+    if (!current) return;
+    input.disabled = true;
+    try {
+      options.setState(await context.studio.saveSettings({
+        ...current.settings,
+        h3LivePreview: input.checked
+      }));
+      context.requestRender();
+    } catch (error) {
+      input.checked = !input.checked;
+      input.disabled = false;
+      context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+    }
+  }, { signal });
+
   root.querySelector("#start-queue")?.addEventListener("click", async () => {
     context.reportUserAction("queue-start");
     try {

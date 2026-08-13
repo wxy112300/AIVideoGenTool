@@ -234,6 +234,7 @@ interface ModelProfileDefinition {
   description: string;
   vram: string;
   integrated?: boolean;
+  requiredCustomNodeIds?: readonly string[];
   runtimeNodeTypes?: readonly string[];
   components: Array<{
     label: string;
@@ -1449,6 +1450,7 @@ function catalogModelProfileDefinitionsFor(
     description: locale?.description ?? "",
     vram: scan.vram,
     integrated: scan.integrated,
+    requiredCustomNodeIds: scan.requiredCustomNodeIds,
     runtimeNodeTypes: scan.runtimeNodeTypes,
     components: scan.components.map((component) => ({
       label: component.label,
@@ -1509,6 +1511,9 @@ export function evaluateModelProfiles(
       vram: profile.vram,
       available: components.every((component) => component.found || component.optional === true),
       integrated: profile.integrated !== false,
+      ...(profile.requiredCustomNodeIds?.length
+        ? { requiredCustomNodeIds: [...profile.requiredCustomNodeIds] }
+        : {}),
       ...(profile.runtimeNodeTypes
         ? {
             runtimeVerified: runtimeNodeIds !== undefined,
@@ -3315,7 +3320,7 @@ export async function scanEnvironment(
           : undefined)
         .catch(() => undefined)
     : undefined;
-  const modelProfiles = evaluateModelProfiles(
+  const scannedModelProfiles = evaluateModelProfiles(
     modelFiles,
     settings.ltxExtensionModelProfile,
     runtimeNodeIds
@@ -3340,6 +3345,20 @@ export async function scanEnvironment(
       selectedPython?.path ?? ""
     )
   ]);
+  const customNodesById = new Map(customNodes.map((node) => [node.id, node]));
+  const modelProfiles = scannedModelProfiles.map((profile) => {
+    const requiredCustomNodeIds = profile.requiredCustomNodeIds ?? [];
+    const missingCustomNodeIds = requiredCustomNodeIds.filter(
+      (id) => !customNodesById.get(id)?.installed
+    );
+    return requiredCustomNodeIds.length
+      ? {
+          ...profile,
+          missingCustomNodeIds,
+          missingCustomNodeNames: missingCustomNodeIds.map((id) => customNodesById.get(id)?.name ?? id)
+        }
+      : profile;
+  });
   const llamaServer: LlamaServerStatus = {
     found: false,
     path: "",

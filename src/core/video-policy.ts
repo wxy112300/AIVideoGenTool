@@ -11,7 +11,7 @@ import {
 } from "./video-loras.js";
 import type { VideoLoraConfigurationIssue } from "./video-loras.js";
 
-export type VideoPolicySpectrumReason = "unsupported-model" | "turbo" | "motion-context" | null;
+export type VideoPolicySpectrumReason = "unsupported-model" | "motion-context" | null;
 export type VideoPolicyStepMode = "standard" | "turbo";
 
 export interface VideoGenerationPolicy {
@@ -56,11 +56,9 @@ export function resolveVideoGenerationPolicy(
   const motionContext = input.inputMode === "video" && definition?.variant === "r2v";
   const reason: VideoPolicySpectrumReason = !supportedByModel
     ? "unsupported-model"
-    : turboEnabled
-      ? "turbo"
-      : motionContext
-        ? "motion-context"
-        : null;
+    : motionContext
+      ? "motion-context"
+      : null;
   return {
     isH3,
     turboEnabled,

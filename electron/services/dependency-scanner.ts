@@ -2,24 +2,15 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { customNodeCatalog } from "../../src/core/catalog/index.js";
+import {
+  compareReleaseVersions,
+  normalizeReleaseVersion
+} from "../../src/core/release-version.js";
 import type { CustomNodeStatus, Settings } from "../../src/types.js";
 import {
   ltxAudioVaeCompatible,
   videoHelperBatchCompatible
 } from "./dependency-compatibility.js";
-
-function normalizeReleaseVersion(value: string): string {
-  return value.trim().replace(/^v/i, "");
-}
-
-function compareReleaseVersions(left: string, right: string): number {
-  const a = normalizeReleaseVersion(left).split(/[.-]/).map((part) => Number(part) || 0);
-  const b = normalizeReleaseVersion(right).split(/[.-]/).map((part) => Number(part) || 0);
-  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
-    if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) - (b[index] ?? 0);
-  }
-  return 0;
-}
 
 async function readPythonProjectVersion(directory: string): Promise<string> {
   if (!directory) return "";
@@ -126,6 +117,8 @@ export async function scanCustomNodes(
           ?.replace(/^.*?Cannot import /, "Cannot import ")
       : "";
     let compatibilityError = "";
+    let updateNotice = "";
+    let optionalUpdateRecommended = false;
     if (definition.id === "video-helper-suite" && directory) {
       compatibilityError = await Promise.all([
         fs.readFile(path.join(directory, "videohelpersuite", "utils.py"), "utf8"),
@@ -158,8 +151,28 @@ export async function scanCustomNodes(
       ])
         .then(() => "")
         .catch(() => "旧版 SeedVR2 单体节点已不再支持；请更新到 2.5.24+ 模块化节点");
+    } else if (definition.id === "kjnodes" && directory) {
+      const previewSourceAvailable = await fs
+        .readFile(path.join(directory, "nodes", "preview_override_node.py"), "utf8")
+        .then((source) => source.includes("ModelPreviewOverrideKJ"))
+        .catch(() => false);
+      optionalUpdateRecommended = !previewSourceAvailable;
+      updateNotice = !previewSourceAvailable
+        ? "当前 KJNodes 缺少可选的 H3 TAE 实时预览节点；更新后可启用实时预览"
+        : serviceNodeIds !== null && !serviceNodeIds.has("ModelPreviewOverrideKJ")
+          ? "H3 TAE 实时预览文件已安装，但当前服务尚未加载；重启 ComfyUI 后可用"
+          : "";
     }
     const version = await readPythonProjectVersion(directory);
+    const belowMinimumVersion = Boolean(
+      directory && definition.minimumVersion &&
+      (!version || compareReleaseVersions(version, definition.minimumVersion) < 0)
+    );
+    if (!compatibilityError && belowMinimumVersion) {
+      compatibilityError = version
+        ? `版本过低：当前 v${version}，最低支持 v${definition.minimumVersion}`
+        : `无法读取版本；最低支持 v${definition.minimumVersion}，请更新节点后复检`;
+    }
     const latestVersion = definition.id === "spectrum-minimax-h3"
       ? latestSpectrumVersion
       : "";
@@ -184,14 +197,17 @@ export async function scanCustomNodes(
       loaded: Boolean(directory) && !loadError && registered,
       runtimeVerified,
       loadError,
+      updateNotice,
       directory,
       required: definition.required,
       version,
+      minimumVersion: definition.minimumVersion ?? "",
+      recommendedVersion: definition.recommendedVersion ?? "",
       latestVersion,
       updateAvailable: Boolean(
-        compatibilityError ||
-        (definition.minimumVersion && (!version ||
-          compareReleaseVersions(version, definition.minimumVersion) < 0)) ||
+        compatibilityError || optionalUpdateRecommended ||
+        (definition.recommendedVersion && (!version ||
+          compareReleaseVersions(version, definition.recommendedVersion) < 0)) ||
         (version && latestVersion && compareReleaseVersions(version, latestVersion) < 0)
       )
     };

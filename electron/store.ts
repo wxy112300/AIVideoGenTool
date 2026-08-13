@@ -203,6 +203,7 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
       modelProfile: task.modelProfile ?? "q3_k_m",
       attentionMode: task.attentionMode ?? "sage",
       spectrumMode: task.spectrumMode ?? "off",
+      spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
       automaticRetryAttempt
     };
   }
@@ -218,6 +219,7 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
     frameInterpolation: task.frameInterpolation ?? "off",
     attentionMode: task.attentionMode ?? "sage",
     spectrumMode: task.spectrumMode ?? "off",
+    spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
     keepSeedOnCopy: task.keepSeedOnCopy ?? false,
     automaticRetryAttempt,
     ...(task.status === "running"

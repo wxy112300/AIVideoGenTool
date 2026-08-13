@@ -13,6 +13,7 @@ import { activePromptIndexForDraft, promptVersionsForDraft } from "./draft-promp
 import { createOutputFilename } from "./filename.js";
 import { expandImageSeeds } from "./image-project.js";
 import {
+  imageModelAdapterFor,
   imageOutputDimensions,
   normalizeImageTargetResolution
 } from "./image-workflow.js";
@@ -105,6 +106,9 @@ export function queueTaskFromDraft(
     keepSeedOnCopy: draft.keepSeedOnCopy,
     attentionMode: state.settings.h3AttentionMode,
     spectrumMode: draft.spectrumMode,
+    spectrumModelAwareMode: draft.spectrumMode === "balanced"
+      ? draft.spectrumModelAwareMode
+      : "off",
     progress: 0
   };
 }
@@ -137,18 +141,20 @@ export function imageTaskFromDraft(
     basePicture?.height ?? 0,
     targetResolution
   );
+  const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
   return {
     id,
     taskType: "image-generation",
     status: "waiting",
     createdAt: now,
     updatedAt: now,
-    outputFilename: `QwenEdit-${currentDate.toISOString().replace(/[-:.TZ]/gu, "").slice(0, 14)}-${id.slice(0, 8)}`,
+    outputFilename: `${draft.modelId === "lama-inpaint" ? "LaMa" : "ImageEdit"}-${currentDate.toISOString().replace(/[-:.TZ]/gu, "").slice(0, 14)}-${id.slice(0, 8)}`,
     projectId,
     parentVersionId: draft.parentVersionId,
     pictures: draft.pictures.map((picture) => ({
       ...picture,
-      ...(picture.markup ? { markup: { ...picture.markup } } : {})
+      ...(picture.markup ? { markup: { ...picture.markup } } : {}),
+      ...(picture.mask ? { mask: { ...picture.mask } } : {})
     })),
     imageOutputRoot: outputTarget.root,
     imageOutputDirectory: outputTarget.directory,
@@ -157,10 +163,10 @@ export function imageTaskFromDraft(
     outputHeight,
     targetResolution,
     ...(diffusionModelFilename ? { diffusionModelFilename } : {}),
-    prompt: draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "",
-    promptVersion: draft.activePromptVersion + 1,
+    prompt: promptless ? "" : draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "",
+    promptVersion: promptless ? 1 : draft.activePromptVersion + 1,
     modelId: draft.modelId,
-    workflowPath: "builtin:image/qwen-image-edit-2511",
+    workflowPath: `builtin:image/${imageModelAdapterFor(draft.modelId)?.id ?? draft.modelId}`,
     qualityProfile: draft.qualityProfile,
     outputFormat: "png",
     outputCount: runs.length,
@@ -214,6 +220,9 @@ export function extensionTaskFromDraft(
     keepSeedOnCopy: draft.keepSeedOnCopy,
     attentionMode: state.settings.h3AttentionMode,
     spectrumMode: isMiniMaxH3R2vModel(draft.modelId) ? "off" : draft.spectrumMode,
+    spectrumModelAwareMode: isMiniMaxH3R2vModel(draft.modelId) || draft.spectrumMode !== "balanced"
+      ? "off"
+      : draft.spectrumModelAwareMode,
     maxGeneratedFrames: isH3 ? 362 : state.settings.ltxExtensionFrames,
     overlapFrames: state.settings.ltxExtensionOverlapFrames,
     unloadBetweenStages: state.settings.ltxExtensionUnloadBetweenStages,

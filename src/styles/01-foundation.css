@@ -114,6 +114,9 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .field-info:hover .field-info-tip,
 .field-info:focus-visible .field-info-tip { opacity: 1; transform: translateY(0); }
 .field-info:focus-visible { color: #b9d7ff; outline: 1px solid rgba(124, 184, 255, .52); outline-offset: 2px; border-radius: 3px; }
+.prompt-mode-control { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.prompt-mode-control > select { min-width: 0; }
+.prompt-mode-info { z-index: 12; }
 .checkbox-field { display: flex; align-items: center; align-self: end; min-height: 42px; }
 .checkbox-field input { width: auto; }
 .inline-field input[type="range"] { padding: 0; }
@@ -395,6 +398,7 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .model-badge { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 99px; color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); font-size: 11px; }
 .model-availability { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 8px; font-size: 12px; font-weight: 700; }
 .model-availability.available { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.model-availability.warning { color: var(--warning); background: color-mix(in srgb, var(--warning) 11%, transparent); }
 .model-availability.missing { color: var(--danger); background: color-mix(in srgb, var(--danger) 11%, transparent); }
 .model-meta-line { display: flex; gap: 8px 18px; flex-wrap: wrap; margin: 14px 0 10px; color: var(--muted); font-size: 12px; }
 .model-hardware-recommendation { color: #b9d2f5; font-weight: 650; }
@@ -433,6 +437,7 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .custom-node-copy > .muted code { display: inline; overflow: visible; text-overflow: clip; white-space: nowrap; }
 .custom-node-actions { flex: 0 0 auto; display: grid; justify-items: end; gap: 9px; }
 .node-error { display: block; margin-top: 7px; color: var(--danger); font-size: 11px; }
+.node-update-notice { display: block; margin-top: 7px; color: var(--warning); font-size: 11px; }
 .node-log { margin-top: 10px; }
 .node-log summary { font-size: 12px; }
 .node-log pre { max-height: 220px; margin: 7px 0 0; padding: 10px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }

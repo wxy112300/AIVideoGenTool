@@ -57,6 +57,7 @@ export function createDefaultDraft(): Draft {
     seed: null,
     keepSeedOnCopy: false,
     spectrumMode: "off",
+    spectrumModelAwareMode: "off",
     spectrumModeUserSet: false
   };
 }
@@ -90,6 +91,7 @@ export function createDefaultSettings(): Settings {
     imageOutputFormat: "png",
     vramReserveGb: 1,
     h3AttentionMode: "sage",
+    h3LivePreview: false,
     autoOffload: true,
     ltxExtensionModelProfile: "q3_k_m",
     ltxExtensionResolution: 360,

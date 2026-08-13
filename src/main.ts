@@ -38,6 +38,10 @@ import {
 } from "./renderer/pages/settings/view-model";
 import { createAppLogContextMenu } from "./renderer/pages/settings/log-context-menu";
 import {
+  CustomNodeInstallQueue,
+  type CustomNodeInstallPhase
+} from "./renderer/pages/settings/node-install-queue";
+import {
   renderHistoryDetailPage,
   renderHistoryPage,
   renderImageHistoryDetailPage,
@@ -208,6 +212,8 @@ import {
   normalizeH3Steps
 } from "./core/workflow";
 import { resolveVideoGenerationPolicy } from "./core/video-policy";
+import { SPECTRUM_TURBO_MINIMUM_VERSION } from "./core/catalog";
+import { releaseVersionAtLeast } from "./core/release-version";
 import {
   createUpscaleFilename,
   estimateUpscaleResources,
@@ -249,6 +255,9 @@ let comfyUpdateLog = "";
 let environmentRepairing = "";
 let environmentRepairLogs: Record<string, string> = {};
 let customNodeInstalling = "";
+let customNodeInstallQueue: string[] = [];
+let customNodeInstallBatch: string[] = [];
+let customNodeInstallPhase: CustomNodeInstallPhase = "idle";
 let customNodeLogs: Record<string, string> = {};
 let workflowDependencyInstalling = "";
 let workflowDependencyLogs: Record<string, string> = {};
@@ -927,6 +936,10 @@ function enableSpectrumByDefaultIfAvailable(): void {
     draft.spectrumMode === "balanced" ||
     !spectrumNode?.installed ||
     !spectrumNode.loaded ||
+    (isH3TurboEnabled(draft) && !releaseVersionAtLeast(
+      spectrumNode.version,
+      SPECTRUM_TURBO_MINIMUM_VERSION
+    )) ||
     !resolveVideoGenerationPolicy({
       modelId: draft.modelId,
       inputMode: draft.inputMode,
@@ -980,6 +993,9 @@ function settingsPage(): string {
       workflowDependencyInstalling,
       workflowDependencyLogs,
       customNodeInstalling,
+      customNodeInstallQueue,
+      customNodeInstallBatch,
+      customNodeInstallPhase,
       customNodeLogs,
       coreDependencyRepairing,
       attentionAccelerationInstalling,
@@ -1128,6 +1144,51 @@ const historyContextMenus = createHistoryContextMenus(rendererApp.context, {
   requestHistoryDeletion
 });
 const appLogContextMenu = createAppLogContextMenu(rendererApp.context, clearAppLogScreen);
+const customNodeInstallManager = new CustomNodeInstallQueue({
+  install: (nodeId, settings) => window.studio.installCustomNode(nodeId, settings),
+  restart: (settings) => window.studio.restartLocalService("comfy", settings),
+  scan: (settings) => window.studio.scanEnvironment(settings),
+  nodeName: (nodeId) => environmentScan?.customNodes.find((node) => node.id === nodeId)?.name ?? nodeId,
+  getLog: (nodeId) => customNodeLogs[nodeId] ?? "",
+  setLog: (nodeId, log) => {
+    customNodeLogs = { ...customNodeLogs, [nodeId]: log };
+  },
+  setEnvironmentScan: (scan) => {
+    environmentScan = scan;
+  },
+  notify: (message, kind) => showMessage(message, { kind }),
+  onSnapshot: (snapshot) => {
+    customNodeInstalling = snapshot.activeNodeId;
+    customNodeInstallQueue = snapshot.queuedNodeIds;
+    customNodeInstallBatch = snapshot.batchNodeIds;
+    customNodeInstallPhase = snapshot.phase;
+    if (page !== "settings") return;
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLInputElement ||
+      activeElement instanceof HTMLTextAreaElement ||
+      activeElement instanceof HTMLSelectElement) return;
+    render();
+  },
+  messages: {
+    queued: (name, position) => uiText(uiKeys.settings.actions.nodeQueued, { name, position }),
+    get processing() {
+      return uiText(uiKeys.settings.actions.nodeProcessing);
+    },
+    restartLog: (message) => uiText(uiKeys.settings.actions.comfyRestartLog, { message }),
+    installFailed: (name, message) => uiText(uiKeys.settings.actions.nodeInstallFailed, {
+      message: `${name}: ${message}`
+    }),
+    restartFailed: (message) => uiText(uiKeys.settings.actions.nodeRestartFailed, { message }),
+    readyCheckFailed: (name) => uiText(
+      uiKeys.settings.actions.nodeBatchReadyCheckFailed,
+      { name }
+    ),
+    completed: (success, failed) => uiText(
+      uiKeys.settings.actions.nodeBatchCompleted,
+      { success, failed }
+    )
+  }
+});
 initializeRenderCoordinator();
 const queueLiveStatus = createQueueLiveStatus({
   studio: window.studio,
@@ -1726,7 +1787,9 @@ async function loadImageEditPreviews(): Promise<void> {
       `[data-image-picture-preview="${CSS.escape(picture.id)}"]`
     );
     if (!image || !picture.absolutePath) return;
-    const previewPath = picture.markup?.renderedPath || picture.absolutePath;
+    const previewPath = state.imageDraft.modelId === "lama-inpaint"
+      ? picture.absolutePath
+      : picture.markup?.renderedPath || picture.absolutePath;
     const dataUrl = await window.studio.readImage(previewPath).catch(() => null);
     if (!dataUrl || !image.isConnected) return;
     await new Promise<void>((resolve) => {
@@ -1772,12 +1835,13 @@ function randomSeedValue(): number {
 async function editImagePictureMarkup(pictureId: string): Promise<void> {
   const picture = state.imageDraft.pictures.find((item) => item.id === pictureId);
   if (!picture?.absolutePath) return;
+  const maskMode = state.imageDraft.modelId === "lama-inpaint";
   try {
     const { openImageMarkupEditor } = await import("./image-markup-editor");
     const [sourceDataUrl, existingDocument] = await Promise.all([
       window.studio.readImage(picture.absolutePath),
-      picture.markup?.documentPath
-        ? window.studio.readImageMarkup(picture.markup.documentPath)
+      (maskMode ? picture.mask?.documentPath : picture.markup?.documentPath)
+        ? window.studio.readImageMarkup((maskMode ? picture.mask?.documentPath : picture.markup?.documentPath)!)
         : Promise.resolve(null)
     ]);
     if (!sourceDataUrl) throw new Error(uiText(uiKeys.runtime.readOriginalImageFailed));
@@ -1785,9 +1849,31 @@ async function editImagePictureMarkup(pictureId: string): Promise<void> {
       pictureNumber: picture.pictureNumber,
       filename: picture.absolutePath,
       sourceDataUrl,
-      existingDocument
+      existingDocument,
+      mode: maskMode ? "mask" : "annotation"
     });
     if (!result) return;
+    if (maskMode) {
+      const mask = result.objectCount > 0
+        ? await window.studio.saveImageMask({
+            pictureId: picture.id,
+            sourcePath: picture.absolutePath,
+            document: result.document,
+            maskPng: result.renderedPng,
+            regionCount: result.objectCount,
+            previousRevision: picture.mask?.revision
+          })
+        : undefined;
+      patchImageDraft({
+        pictures: state.imageDraft.pictures.map((item) =>
+          item.id === pictureId ? { ...item, mask } : item
+        )
+      });
+      render();
+      void loadImageEditPreviews();
+      showMessage(mask ? `Mask 已保存 · ${mask.regionCount} 个区域` : "Mask 已清除", true);
+      return;
+    }
     const markup = result.objectCount > 0
       ? await window.studio.saveImageMarkup({
           pictureId: picture.id,
@@ -1845,7 +1931,7 @@ function addImagePicture(path: string, replacePictureId?: string): void {
     patchImageDraft({
       pictures: pictures.map((picture) =>
         picture.id === targetPicture.id
-          ? { ...picture, absolutePath: path, width: 0, height: 0, markup: undefined }
+          ? { ...picture, absolutePath: path, width: 0, height: 0, markup: undefined, mask: undefined }
           : picture
       )
     });
@@ -1975,7 +2061,9 @@ function syncImageEditEnqueueUi(): void {
   if (summary && summaryTitle) {
     const count = Math.min(10, Math.max(1, draft.outputCount));
     summary.classList.toggle("unsafe", Boolean(reason));
-    summaryTitle.textContent = reason || uiText(uiKeys.create.imageEdit.summary, { count, seedMode: draft.seed == null ? uiText(uiKeys.runtime.random) : uiText(uiKeys.runtime.same) });
+    summaryTitle.textContent = reason || (imageProfile?.id === "lama-inpaint"
+      ? `生成 ${count} 张局部修补结果`
+      : uiText(uiKeys.create.imageEdit.summary, { count, seedMode: draft.seed == null ? uiText(uiKeys.runtime.random) : uiText(uiKeys.runtime.same) }));
   }
 }
 
@@ -2241,8 +2329,10 @@ async function saveSettingsFromUi(
   const proxyChanged = previousSettings.proxyEnabled !== nextSettings.proxyEnabled ||
     previousSettings.proxyUrl !== nextSettings.proxyUrl;
   await loadUiLocale(nextSettings.uiLocale);
-  setRendererState(await window.studio.saveSettings(nextSettings, mode));
+  const savedState = await window.studio.saveSettings(nextSettings, mode);
   settingsDraft = null;
+  setRendererState(savedState);
+  syncSettingsDirtyUi();
   if (imageModelChanged && state.imageDraft.modelId === previousSettings.defaultImageModel) {
     const capability = imageModelCapabilityFor(nextSettings.defaultImageModel);
     const qualityProfile = capability.qualityProfiles.some(
@@ -2386,13 +2476,8 @@ function bindSettings(): void {
       setEnvironmentRepairLog: (issueId, log) => {
         environmentRepairLogs = { ...environmentRepairLogs, [issueId]: log };
       },
-      setCustomNodeInstalling: (nodeId) => {
-        customNodeInstalling = nodeId;
-      },
-      getCustomNodeLog: (nodeId) => customNodeLogs[nodeId] ?? "",
-      setCustomNodeLog: (nodeId, log) => {
-        customNodeLogs = { ...customNodeLogs, [nodeId]: log };
-      },
+      enqueueCustomNodeInstall: (nodeId, settings) =>
+        customNodeInstallManager.enqueue(nodeId, settings),
       setWorkflowDependencyInstalling: (workflowId) => {
         workflowDependencyInstalling = workflowId;
       },

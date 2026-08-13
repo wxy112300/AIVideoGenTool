@@ -178,13 +178,22 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       });
       sendState(completed);
     } catch (error) {
+      const message = controller.signal.aborted
+        ? "图片批次已取消，已保留完成的图片版本。"
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      if (!controller.signal.aborted) {
+        logger.error("queue", "image-task-failed", "图片任务运行失败，已标记错误并跳过", {
+          taskId: task.id,
+          modelId: task.modelId,
+          error: message,
+          ...errorLogMeta(error)
+        });
+      }
       await updateTask(task.id, {
         status: controller.signal.aborted ? "cancelled" : "failed",
-        error: controller.signal.aborted
-          ? "图片批次已取消，已保留完成的图片版本。"
-          : error instanceof Error
-            ? error.message
-            : String(error)
+        error: message
       });
     } finally {
       await freeMemory(store.get().settings).catch((error) => {
@@ -388,6 +397,21 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           activeController.signal
         );
         const { promptId, clientId, nodeTypes } = submitted;
+        if (submitted.h3LivePreviewRequested && !submitted.h3LivePreviewActive) {
+          logger.warn(
+            "comfy",
+            "h3-live-preview-unavailable",
+            "H3 live preview was requested but KJNodes ModelPreviewOverrideKJ or taeh3.safetensors is unavailable; generation continues without preview",
+            { taskId: task.id, modelId: task.modelId }
+          );
+        } else if (submitted.h3LivePreviewActive) {
+          logger.info("comfy", "h3-live-preview-enabled", "H3 TAE live preview enabled", {
+            taskId: task.id,
+            modelId: task.modelId,
+            maxResolution: 512,
+            previewFrames: 1
+          });
+        }
         logger.info("comfy", "prompt-submitted", "Workflow submitted to ComfyUI", {
           taskId: task.id,
           taskType: task.taskType,

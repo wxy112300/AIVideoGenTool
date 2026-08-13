@@ -29,6 +29,7 @@ export type H3ReferenceMediaType = "image" | "video";
 export type H3StepCount = 4 | 6 | 8 | 10 | 12 | 16 | 20;
 export type H3AttentionMode = "sage" | "sage-triton" | "pytorch";
 export type H3SpectrumMode = "off" | "balanced";
+export type H3SpectrumModelAwareMode = "off" | "schedule" | "schedule_confidence" | "full";
 
 export interface H3ReferenceSlot {
   id: string;
@@ -58,6 +59,14 @@ export interface ImageMarkupData {
   updatedAt: string;
 }
 
+export interface ImageMaskData {
+  documentPath: string;
+  maskPath: string;
+  revision: number;
+  regionCount: number;
+  updatedAt: string;
+}
+
 export interface ImageMarkupSaveRequest {
   pictureId: string;
   sourcePath: string;
@@ -65,6 +74,15 @@ export interface ImageMarkupSaveRequest {
   renderedPng: ArrayBuffer;
   summary: string;
   objectCount: number;
+  previousRevision?: number;
+}
+
+export interface ImageMaskSaveRequest {
+  pictureId: string;
+  sourcePath: string;
+  document: string;
+  maskPng: ArrayBuffer;
+  regionCount: number;
   previousRevision?: number;
 }
 
@@ -76,6 +94,7 @@ export interface ImageReference {
   height: number;
   role?: ImageReferenceRole;
   markup?: ImageMarkupData;
+  mask?: ImageMaskData;
   contentHash?: string;
   managedRelativePath?: string;
   originalPath?: string;
@@ -146,6 +165,7 @@ export interface Draft {
   seed: number | null;
   keepSeedOnCopy: boolean;
   spectrumMode: H3SpectrumMode;
+  spectrumModelAwareMode: H3SpectrumModelAwareMode;
   spectrumModeUserSet?: boolean;
 }
 
@@ -194,6 +214,7 @@ export interface Settings {
   imageOutputFormat: ImageOutputFormat;
   vramReserveGb: number;
   h3AttentionMode: H3AttentionMode;
+  h3LivePreview: boolean;
   autoOffload: boolean;
   ltxExtensionModelProfile: LtxExtensionModelProfile;
   ltxExtensionResolution: 360 | 480;
@@ -244,6 +265,7 @@ interface VideoQueueTaskBase extends QueueTaskBase {
   keepSeedOnCopy: boolean;
   attentionMode?: Settings["h3AttentionMode"];
   spectrumMode?: H3SpectrumMode;
+  spectrumModelAwareMode?: H3SpectrumModelAwareMode;
   videoLoras?: VideoLoraSelection[];
 }
 
@@ -368,6 +390,7 @@ export interface AssetVersion {
   steps?: H3StepCount;
   attentionMode?: Settings["h3AttentionMode"];
   spectrumMode?: H3SpectrumMode;
+  spectrumModelAwareMode?: H3SpectrumModelAwareMode;
   fps: number;
   frameInterpolation?: Draft["frameInterpolation"];
   ratio?: Draft["ratio"];
@@ -447,6 +470,8 @@ export interface HistoryAsset {
   ratio?: Draft["ratio"];
   promptVersion?: number;
   attentionMode?: Settings["h3AttentionMode"];
+  spectrumMode?: H3SpectrumMode;
+  spectrumModelAwareMode?: H3SpectrumModelAwareMode;
   motion?: Draft["motion"];
   prompt: string;
   seed: number;
@@ -592,6 +617,9 @@ export interface ModelScanProfile {
   vram: string;
   available: boolean;
   integrated: boolean;
+  requiredCustomNodeIds?: string[];
+  missingCustomNodeIds?: string[];
+  missingCustomNodeNames?: string[];
   runtimeVerified?: boolean;
   runtimeReady?: boolean;
   runtimeMissingNodes?: string[];
@@ -607,9 +635,12 @@ export interface CustomNodeStatus {
   loaded: boolean;
   runtimeVerified: boolean;
   loadError: string;
+  updateNotice?: string;
   directory: string;
   required: boolean;
   version: string;
+  minimumVersion: string;
+  recommendedVersion: string;
   latestVersion: string;
   updateAvailable: boolean;
 }
@@ -859,6 +890,7 @@ export interface AppApi {
   saveClipboardImage(data: ArrayBuffer, mimeType: string): Promise<string>;
   readImageMarkup(documentPath: string): Promise<string | null>;
   saveImageMarkup(request: ImageMarkupSaveRequest): Promise<ImageMarkupData>;
+  saveImageMask(request: ImageMaskSaveRequest): Promise<ImageMaskData>;
   pickWorkflow(): Promise<string | null>;
   pickPython(): Promise<string | null>;
   inspectWorkflow(path: string): Promise<WorkflowCapabilities>;

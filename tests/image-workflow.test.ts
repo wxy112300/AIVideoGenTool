@@ -14,11 +14,15 @@ import {
   imageOutputDimensions,
   imageResolutionOptionsFor,
   imageReferenceInputPath,
+  buildLamaInpaintWorkflow,
+  compileLamaInpaintInput,
+  lamaInpaintCapability,
   normalizeImageTargetResolution,
   qwenImageEdit2511RequiredNodeTypes,
   qwenImageEdit2511Capability,
   renderImageWorkflow,
   validateFlux2Klein4bWorkflow,
+  validateLamaInpaintWorkflow,
   validateQwenImageEdit2511Workflow
 } from "../src/core/image-workflow.js";
 import type { ImageGenerationQueueTask, ImageReference } from "../src/types.js";
@@ -34,11 +38,20 @@ function picture(pictureNumber: number, absolutePath = `picture-${pictureNumber}
 }
 
 describe("image enqueue readiness", () => {
-  it("does not let a missing or stale cached scan replace the authoritative enqueue scan", () => {
-    expect(cachedImageProfileAllowsEnqueue(undefined)).toBe(true);
-    expect(cachedImageProfileAllowsEnqueue({ category: "image", integrated: true })).toBe(true);
-    expect(cachedImageProfileAllowsEnqueue({ category: "image", integrated: false })).toBe(false);
-    expect(cachedImageProfileAllowsEnqueue({ category: "video", integrated: true })).toBe(false);
+  it("requires an offline scan with model files and required node directories present", () => {
+    expect(cachedImageProfileAllowsEnqueue(undefined)).toBe(false);
+    expect(cachedImageProfileAllowsEnqueue({
+      category: "image", integrated: true, available: true, missingCustomNodeIds: []
+    })).toBe(true);
+    expect(cachedImageProfileAllowsEnqueue({
+      category: "image", integrated: true, available: false, missingCustomNodeIds: []
+    })).toBe(false);
+    expect(cachedImageProfileAllowsEnqueue({
+      category: "image", integrated: true, available: true, missingCustomNodeIds: ["inpaint-nodes"]
+    })).toBe(false);
+    expect(cachedImageProfileAllowsEnqueue({
+      category: "video", integrated: true, available: true, missingCustomNodeIds: []
+    })).toBe(false);
   });
 
   it("does not treat an image history source marker as a runnable model", () => {
@@ -50,6 +63,56 @@ describe("image enqueue readiness", () => {
     expect(firstSupportedImageModelId("source", "unknown-model")).toBe(
       "qwen-image-edit-2511"
     );
+  });
+});
+
+describe("LaMa mask-only image workflow", () => {
+  const maskedPicture = (): ImageReference => ({
+    ...picture(1),
+    mask: {
+      documentPath: "mask.fabric.json",
+      maskPath: "mask.png",
+      revision: 1,
+      regionCount: 2,
+      updatedAt: "2026-08-13T00:00:00.000Z"
+    }
+  });
+
+  it("requires a saved mask but no prompt", () => {
+    expect(compileLamaInpaintInput("", [picture(1)]).errors).toContain(
+      "请先在原图上绘制并保存 Mask。"
+    );
+    expect(compileLamaInpaintInput("", [maskedPicture()])).toMatchObject({
+      prompt: "",
+      errors: []
+    });
+    expect(lamaInpaintCapability).toMatchObject({
+      maxPictures: 1,
+      requiresPrompt: false,
+      requiresMask: true,
+      sourceResolutionOnly: true
+    });
+  });
+
+  it("builds and renders separate source and mask inputs", () => {
+    const task: ImageGenerationQueueTask = {
+      id: "lama-task", taskType: "image-generation", status: "waiting",
+      createdAt: "2026-08-13T00:00:00.000Z", updatedAt: "2026-08-13T00:00:00.000Z",
+      outputFilename: "LaMa-test", projectId: "project", pictures: [maskedPicture()],
+      prompt: "", promptVersion: 1, modelId: "lama-inpaint",
+      workflowPath: "builtin:image/lama-inpaint", qualityProfile: "natural",
+      outputFormat: "png", outputCount: 1, runs: []
+    };
+    const workflow = buildLamaInpaintWorkflow(task, {
+      id: "run", index: 0, seed: 7, status: "running"
+    });
+    expect(workflow.source?.inputs.image).toBe("{{IMAGE_0}}");
+    expect(workflow.mask?.inputs.image).toBe("{{MASK_0}}");
+    expect(workflow.inpainted?.inputs.image).toEqual(["source", 0]);
+    expect(workflow.inpainted?.inputs.mask).toEqual(["expandedMask", 0]);
+    expect(validateLamaInpaintWorkflow(
+      renderImageWorkflow(workflow, ["source.png"], ["mask.png"])
+    )).toEqual([]);
   });
 });
 

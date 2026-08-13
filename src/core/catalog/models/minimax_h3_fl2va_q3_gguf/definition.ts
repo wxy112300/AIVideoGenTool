@@ -2,6 +2,7 @@ import type { CatalogModelEntry } from "../../types.js";
 import {
   h3Fl2vaAudioVae,
   h3Fl2vaVideoVae,
+  h3LivePreviewTae,
   h3Q2GgufTextEncoder,
   h3Q3GgufModel
 } from "../minimax_h3_shared.js";
@@ -31,7 +32,7 @@ export const minimaxH3Fl2vaQ3Gguf: CatalogModelEntry = {
       vram: "Q3 GGUF · CPU 文本编码器 · RAM offload",
       integrated: true,
       runtimeNodeTypes: ["UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF", "MiniMaxH3ImageToVideo"],
-      components: [h3Q3GgufModel, h3Q2GgufTextEncoder, h3Fl2vaVideoVae, h3Fl2vaAudioVae]
+      components: [h3Q3GgufModel, h3Q2GgufTextEncoder, h3Fl2vaVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
     }
   },
   locales: {

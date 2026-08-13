@@ -3,6 +3,7 @@ import {
   h3Fl2vaAudioVae,
   h3Fl2vaInt8Model,
   h3Fl2vaVideoVae,
+  h3LivePreviewTae,
   h3Nvfp4TextEncoder
 } from "../minimax_h3_shared.js";
 import { localeEnUS } from "./locale.en-US.js";
@@ -30,7 +31,7 @@ export const minimaxH3Fl2va: CatalogModelEntry = {
     scan: {
       vram: "pruned INT8 · DynamicVRAM · 阶段卸载",
       integrated: true,
-      components: [h3Fl2vaInt8Model, h3Nvfp4TextEncoder, h3Fl2vaVideoVae, h3Fl2vaAudioVae]
+      components: [h3Fl2vaInt8Model, h3Nvfp4TextEncoder, h3Fl2vaVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
     }
   },
   locales: {

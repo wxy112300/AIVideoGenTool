@@ -7,7 +7,7 @@ import {
 } from "../src/core/video-policy";
 
 describe("video generation policy", () => {
-  it("switches Turbo to low-step options and disables Spectrum", () => {
+  it("switches Turbo to low-step options while keeping Spectrum available", () => {
     const policy = resolveVideoGenerationPolicy({
       modelId: "minimax_h3_fl2va",
       inputMode: "image",
@@ -19,14 +19,14 @@ describe("video generation policy", () => {
     expect(policy.steps.options).toEqual([4, 6, 8]);
     expect(policy.steps.maxValue).toBe(8);
     expect(normalizeVideoSteps(20, policy)).toBe(8);
-    expect(policy.spectrum.allowed).toBe(false);
-    expect(policy.spectrum.reason).toBe("turbo");
+    expect(policy.spectrum.allowed).toBe(true);
+    expect(policy.spectrum.reason).toBeNull();
     expect(shouldApplySpectrum({
       modelId: "minimax_h3_fl2va",
       inputMode: "image",
       spectrumMode: "balanced",
       videoLoras: [H3_TURBO_LORA]
-    })).toBe(false);
+    })).toBe(true);
   });
 
   it("keeps Spectrum available for standard H3 image generation", () => {

@@ -6,6 +6,7 @@ import type {
 } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
+import { customNodeIdsForBulkAction } from "./node-install-queue";
 
 export interface SettingsEnvironmentControllerOptions {
   formSettings(): Settings;
@@ -24,9 +25,10 @@ export interface SettingsEnvironmentControllerOptions {
   setCoreDependencyRepairing(value: boolean): void;
   setEnvironmentRepairing(issueId: string): void;
   setEnvironmentRepairLog(issueId: EnvironmentIssue["id"], log: string): void;
-  setCustomNodeInstalling(nodeId: string): void;
-  getCustomNodeLog(nodeId: string): string;
-  setCustomNodeLog(nodeId: string, log: string): void;
+  enqueueCustomNodeInstall(
+    nodeId: string,
+    settings: Settings
+  ): { accepted: boolean; position: number };
   setWorkflowDependencyInstalling(workflowId: string): void;
   getWorkflowDependencyLog(workflowId: string): string;
   setWorkflowDependencyLog(workflowId: string, log: string): void;
@@ -220,7 +222,7 @@ export function mountSettingsEnvironmentController(
   });
 
   root.querySelectorAll<HTMLButtonElement>("[data-install-node]").forEach((button) => {
-    button.addEventListener("click", async (event) => {
+    button.addEventListener("click", (event) => {
       event.stopImmediatePropagation();
       const nodeId = button.dataset.installNode;
       const state = context.getState();
@@ -231,43 +233,41 @@ export function mountSettingsEnvironmentController(
       }
       const settings = options.formSettings();
       options.setSettingsDraft(settings);
-      options.setCustomNodeInstalling(nodeId);
-      options.setCustomNodeLog(nodeId, context.t("settings.nodes.processing"));
-      context.requestRender();
-      try {
-        const result = await context.studio.installCustomNode(nodeId, settings);
-        if (!result.ok) throw new Error(result.message);
-        options.setCustomNodeLog(nodeId, result.log || result.message);
-        const restarted = await context.studio.restartLocalService("comfy", settings);
-        options.setCustomNodeLog(
-          nodeId,
-          [options.getCustomNodeLog(nodeId), context.t(uiKeys.settings.actions.comfyRestartLog, { message: restarted.message })]
-            .filter(Boolean)
-            .join("\n\n")
-        );
-        if (!restarted.ok) {
-          throw new Error(context.t(uiKeys.settings.actions.nodeRestartFailed, { message: restarted.message }));
-        }
-        const message = context.t(uiKeys.settings.actions.comfyRestarted, { message: result.message });
-        const scan = await context.studio.scanEnvironment(settings);
-        options.setEnvironmentScan(scan);
-        if (!scan.customNodes.find((node) => node.id === nodeId)?.loaded) {
-          throw new Error(context.t(uiKeys.settings.actions.nodeReadyCheckFailed));
-        }
-        context.notify(message);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        options.setCustomNodeLog(
-          nodeId,
-          [options.getCustomNodeLog(nodeId), message].filter(Boolean).join("\n\n")
-        );
-        context.notify(context.t(uiKeys.settings.actions.nodeInstallFailed, { message }), { kind: "error" });
-      } finally {
-        options.setCustomNodeInstalling("");
-        requestSettingsRender();
+      const queued = options.enqueueCustomNodeInstall(nodeId, settings);
+      if (!queued.accepted) {
+        context.notify(context.t(uiKeys.settings.actions.nodeAlreadyQueued), {
+          kind: "warning",
+          renderPage: false
+        });
       }
     }, { signal });
   });
+
+  root.querySelector<HTMLButtonElement>("#install-all-custom-nodes")?.addEventListener("click", () => {
+    const state = context.getState();
+    if (state?.queue.some((task) => task.status === "running")) {
+      context.notify(context.t(uiKeys.settings.actions.runningTaskBlocked), { kind: "warning" });
+      return;
+    }
+    const nodes = options.getEnvironmentScan()?.customNodes ?? [];
+    const settings = options.formSettings();
+    options.setSettingsDraft(settings);
+    let accepted = 0;
+    for (const nodeId of customNodeIdsForBulkAction(nodes)) {
+      if (options.enqueueCustomNodeInstall(nodeId, settings).accepted) accepted += 1;
+    }
+    if (accepted > 0) {
+      context.notify(context.t(uiKeys.settings.actions.nodeBulkQueued, { count: accepted }), {
+        kind: "info",
+        renderPage: false
+      });
+    } else {
+      context.notify(context.t(uiKeys.settings.actions.nodeAlreadyQueued), {
+        kind: "warning",
+        renderPage: false
+      });
+    }
+  }, { signal });
 
   root.querySelectorAll<HTMLButtonElement>("[data-install-workflow]").forEach((button) => {
     button.addEventListener("click", async (event) => {

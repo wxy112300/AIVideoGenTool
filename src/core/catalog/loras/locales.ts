@@ -22,12 +22,12 @@ const zhCN: Record<string, CatalogLoraLocale> = {
       recommendedStrength: "默认 0.75；建议 0.65–0.85。4 步仅适合实验，稳定测试优先使用 8 步。",
       effects: "速度明显提高，但过强或步数过低可能损失细节、运动稳定性和音频质量。",
       stacking: "与内容或风格 LoRA 同用时建议放在前面；若组合后质量下降，先降低其他 LoRA 强度，再回退标准 20 步。",
-      compatibility: "仅 MiniMax H3 FL2VA 图生视频；会同时切换 ER-SDE、Beta 与 Turbo 步数策略。",
+      compatibility: "仅 MiniMax H3 FL2VA 图生视频；会同时切换 ER-SDE、Beta 与 Turbo 步数策略。Spectrum v0.2.6+ 可与这条原生 ER-SDE 路径叠加。",
       source: "LightX2V / Kijai ComfyUI conversion"
     },
     rules: {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
-      turboSpectrum: "LightX2V Turbo 使用专用低步数采样策略，不能同时启用 Spectrum。",
+      turboSpectrum: "Spectrum v0.2.6+ 可与 LightX2V Turbo 的原生 ER-SDE 路径叠加；更早版本请先更新。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，内容、人物和风格 LoRA 后加载。"
     }
   },
@@ -71,12 +71,12 @@ const enUS: Record<string, CatalogLoraLocale> = {
       recommendedStrength: "Default 0.75; start around 0.65–0.85. Four steps are experimental; use eight steps for stable tests.",
       effects: "Significantly faster, but excessive strength or too few steps can reduce detail, motion stability, and audio quality.",
       stacking: "Place it before content or style LoRAs; if quality drops, lower other LoRA strengths first, then compare against standard 20-step sampling.",
-      compatibility: "MiniMax H3 FL2VA image-to-video only; also switches the ER-SDE, Beta, and Turbo step strategy.",
+      compatibility: "MiniMax H3 FL2VA image-to-video only; also switches the ER-SDE, Beta, and Turbo step strategy. Spectrum v0.2.6+ can stack with this native ER-SDE path.",
       source: "LightX2V / Kijai ComfyUI conversion"
     },
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
-      turboSpectrum: "LightX2V Turbo uses a dedicated low-step sampling strategy and cannot be combined with Spectrum.",
+      turboSpectrum: "Spectrum v0.2.6+ can stack with LightX2V Turbo's native ER-SDE path; update older versions first.",
       orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before content, character, and style LoRAs."
     }
   },

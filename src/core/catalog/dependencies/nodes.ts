@@ -1,6 +1,20 @@
 import type { CatalogCustomNodeDefinition } from "./types.js";
 
+export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
+export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
+export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
+export const SPECTRUM_RECOMMENDED_VERSION = "0.2.7";
+
 export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
+  id: "inpaint-nodes",
+  name: "ComfyUI Inpaint Nodes",
+  purpose: "加载 LaMa 局部修补模型、扩张 Mask 并移除目标",
+  repositoryUrl: "https://github.com/Acly/comfyui-inpaint-nodes.git",
+  directoryName: "comfyui-inpaint-nodes",
+  aliases: ["comfyui-inpaint-nodes"],
+  nodeTypes: ["INPAINT_LoadInpaintModel", "INPAINT_ExpandMask", "INPAINT_InpaintWithModel"],
+  required: false
+}, {
   id: "comfyui-gguf",
   name: "ComfyUI-GGUF",
   purpose: "加载 Remix、SmoothMix 等 GGUF 视频模型",
@@ -49,11 +63,11 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
 }, {
   id: "kjnodes",
   name: "ComfyUI-KJNodes",
-  purpose: "采样后主动卸载模型，为 Wan 分块 VAE 解码释放显存",
+  purpose: "模型补丁、显存调试与 MiniMax H3 TAE 实时预览",
   repositoryUrl: "https://github.com/kijai/ComfyUI-KJNodes.git",
   directoryName: "comfyui-kjnodes",
   aliases: ["comfyui-kjnodes"],
-  nodeTypes: ["VRAM_Debug"],
+  nodeTypes: ["VRAM_Debug", "PathchSageAttentionKJ"],
   required: true
 }, {
   id: "frame-interpolation",
@@ -90,11 +104,13 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
 }, {
   id: "spectrum-minimax-h3",
   name: "Spectrum MiniMax H3",
-  purpose: "用系统内存保存 H3 中间特征并预测部分采样步骤；支持标准 FL2VA / R2V，Turbo 暂不启用",
+  purpose: "预测部分 H3 采样步骤；支持标准 FL2VA / R2V，并在推荐版本上支持 LightX2V Turbo",
   repositoryUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
   directoryName: "ComfyUI-Spectrum-MiniMax-H3",
   aliases: ["comfyui-spectrum-minimax-h3"],
   nodeTypes: ["SpectrumApplyMiniMaxH3"],
+  minimumVersion: SPECTRUM_MINIMUM_VERSION,
+  recommendedVersion: SPECTRUM_RECOMMENDED_VERSION,
   required: false
 }];
 

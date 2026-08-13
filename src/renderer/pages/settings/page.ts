@@ -20,6 +20,10 @@ import {
   type SettingsInstallGuideSelection
 } from "./fragments";
 import { settingsText } from "./copy";
+import {
+  customNodeIdsForBulkAction,
+  type CustomNodeInstallPhase
+} from "./node-install-queue";
 
 interface ImageQualityProfileOption {
   id: string;
@@ -60,6 +64,9 @@ export interface SettingsPageViewModel {
   workflowDependencyInstalling: string;
   workflowDependencyLogs: Record<string, string>;
   customNodeInstalling: string;
+  customNodeInstallQueue: string[];
+  customNodeInstallBatch: string[];
+  customNodeInstallPhase: CustomNodeInstallPhase;
   customNodeLogs: Record<string, string>;
   coreDependencyRepairing: boolean;
   attentionAccelerationInstalling: boolean;
@@ -244,8 +251,11 @@ export function renderSettingsPage(
   const videoOutputDirectoryValue = settings.outputDirectory || autoVideoOutputDirectory;
   const imageOutputDirectoryPlaceholder = autoImageOutputDirectory ||
     t(uiKeys.settings.system.autoDirectoryPlaceholder, { folder: "Images" });
-  const customNodeInstallBlocked = Boolean(
-    viewModel.customNodeInstalling || viewModel.queueRunning || viewModel.hasRunningQueueTask
+  const customNodeInstallFinalizing = viewModel.customNodeInstallPhase === "restarting" ||
+    viewModel.customNodeInstallPhase === "scanning";
+  const customNodeInstallGloballyBlocked = Boolean(
+    customNodeInstallFinalizing || viewModel.workflowDependencyInstalling ||
+    viewModel.queueRunning || viewModel.hasRunningQueueTask
   );
 
   const systemPanel = `
@@ -397,7 +407,7 @@ export function renderSettingsPage(
       <section class="panel settings-section">
         <div class="section-heading">
           <div><h2>${s("image.title")}</h2><span class="muted">${s("image.description")}</span></div>
-          <span class="model-badge">Qwen / Klein</span>
+          <span class="model-badge">Qwen / Klein / LaMa</span>
         </div>
         <div class="settings-grid two">
           <label>${s("image.defaultModel")}<select id="default-image-model">
@@ -483,10 +493,15 @@ export function renderSettingsPage(
     workflowDependencies.filter((workflow) => workflow.installed).length;
   const nodeDependencyTotal = (environmentScan?.customNodes.length ?? 0) + 2 +
     workflowDependencies.length;
+  const customNodes = environmentScan?.customNodes ?? [];
+  const bulkNodeIds = customNodeIdsForBulkAction(customNodes);
+  const allCustomNodesHealthy = customNodes.length > 0 && customNodes.every((node) =>
+    node.installed && node.loaded && !node.updateAvailable
+  );
   const nodePanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>${s("nodes.title")}</h2><span class="muted">${s("nodes.description")}</span></div><span class="model-badge">${nodeDependencyAvailable}/${nodeDependencyTotal} ${s("nodes.installed")}</span></div>
+        <div class="section-heading"><div><h2>${s("nodes.title")}</h2><span class="muted">${s("nodes.description")}</span></div><div class="button-row"><span class="model-badge">${nodeDependencyAvailable}/${nodeDependencyTotal} ${s("nodes.installed")}</span><button class="primary button-with-icon" id="install-all-custom-nodes" ${!customNodes.length || customNodeInstallGloballyBlocked || viewModel.customNodeInstallPhase !== "idle" ? "disabled" : ""}>${icon(allCustomNodesHealthy ? "refresh-cw" : "download")}${allCustomNodesHealthy ? s("nodes.updateAll") : s("nodes.installAll")} <span class="button-count">${bulkNodeIds.length}</span></button></div></div>
         <div class="scan-result">${s("nodes.installNote")}</div>
       </section>
       <div class="model-profile-list">
@@ -527,24 +542,38 @@ export function renderSettingsPage(
             </div>
             <div class="custom-node-actions">
               <span class="model-availability ${workflow.installed ? "available" : "missing"}">${workflow.installed ? `${icon("circle-check")} ${s("nodes.installed")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
-              <button class="${workflow.installed ? "secondary" : "primary"} button-with-icon" data-install-workflow="${escape(workflow.id)}" ${viewModel.workflowDependencyInstalling ? "disabled" : ""}>${icon(viewModel.workflowDependencyInstalling === workflow.id ? "refresh-cw" : "download")}${viewModel.workflowDependencyInstalling === workflow.id ? s("nodes.installing") : workflow.installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>
+              <button class="${workflow.installed ? "secondary" : "primary"} button-with-icon" data-install-workflow="${escape(workflow.id)}" ${viewModel.workflowDependencyInstalling || viewModel.customNodeInstallPhase !== "idle" ? "disabled" : ""}>${icon(viewModel.workflowDependencyInstalling === workflow.id ? "refresh-cw" : "download")}${viewModel.workflowDependencyInstalling === workflow.id ? s("nodes.installing") : workflow.installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>
             </div>
           </article>`).join("")}
-        ${(environmentScan?.customNodes ?? []).map((node) => `
+        ${customNodes.map((node) => {
+          const queuedIndex = viewModel.customNodeInstallQueue.indexOf(node.id);
+          const queued = queuedIndex >= 0;
+          const active = viewModel.customNodeInstalling === node.id;
+          const installBlocked = customNodeInstallGloballyBlocked || active || queued;
+          const installStatus = active
+            ? s("nodes.processing")
+            : queued
+              ? s("nodes.waitingPosition", { position: queuedIndex + 1 })
+              : customNodeInstallFinalizing && viewModel.customNodeInstallBatch.includes(node.id)
+                ? s("nodes.finalizing")
+                : "";
+          return `
           <article class="panel custom-node-card ${node.loaded ? "available" : "missing"}">
             <div class="custom-node-copy">
               <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.version ? ` · v${escape(node.version)}` : ""}</span></div>
               <p>${escape(node.purpose)}</p>
               <code>${escape(node.directory || node.repositoryUrl)}</code>
-              ${node.id === "spectrum-minimax-h3" ? `<p class="muted">${s("nodes.localVersion")}${node.version ? `v${escape(node.version)}` : node.installed ? s("nodes.versionUnread") : s("nodes.notInstalled")} · ${s("nodes.latestRelease")}${node.latestVersion ? `v${escape(node.latestVersion)}` : s("nodes.rescanOnline")} · ${s("nodes.runtimeMemory")}</p>` : ""}
+              ${node.id === "spectrum-minimax-h3" ? `<p class="muted">${s("nodes.localVersion")}${node.version ? `v${escape(node.version)}` : node.installed ? s("nodes.versionUnread") : s("nodes.notInstalled")} · ${s("nodes.recommendedVersion")}${node.recommendedVersion ? `v${escape(node.recommendedVersion)}` : "—"} · ${s("nodes.latestRelease")}${node.latestVersion ? `v${escape(node.latestVersion)}` : s("nodes.rescanOnline")} · ${s("nodes.runtimeMemory")}</p>` : ""}
               ${node.loadError ? `<span class="node-error">${escape(node.loadError)}</span>` : ""}
+              ${node.updateNotice ? `<span class="node-update-notice">${escape(node.updateNotice)}</span>` : ""}
               ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`custom-node:${node.id}`)}">${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${node.loaded && !node.updateAvailable ? "available" : "missing"}">${node.updateAvailable ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}` : node.loaded ? `${icon("circle-check")} ${node.runtimeVerified ? s("nodes.runtimeVerified") : s("nodes.fileCheckPassed")}` : node.installed ? `${icon("circle-alert")} ${s("nodes.installedRepair")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
-              <button class="${node.updateAvailable || !node.installed || !node.loaded ? "primary" : "secondary"} button-with-icon" data-install-node="${escape(node.id)}" ${customNodeInstallBlocked ? "disabled" : ""}>${icon(viewModel.customNodeInstalling === node.id ? "refresh-cw" : node.installed ? "refresh-cw" : "download")}${viewModel.customNodeInstalling === node.id ? s("nodes.processing") : node.updateAvailable ? s("nodes.updateRestart") : node.installed && !node.loaded ? s("nodes.updateRecheck") : node.installed ? s("nodes.checkUpdate") : s("nodes.installRestart")}</button>
+              <span class="model-availability ${installStatus ? "missing" : node.loaded ? node.updateAvailable ? "warning" : "available" : "missing"}">${installStatus ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}` : node.updateAvailable && node.loaded ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}` : node.loaded ? `${icon("circle-check")} ${node.runtimeVerified ? s("nodes.runtimeVerified") : s("nodes.fileCheckPassed")}` : node.installed ? `${icon("circle-alert")} ${s("nodes.installedRepair")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
+              <button class="${node.updateAvailable || !node.installed || !node.loaded ? "primary" : "secondary"} button-with-icon" data-install-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : node.installed ? "refresh-cw" : "download")}${installStatus || (node.updateAvailable ? s("nodes.updateRestart") : node.installed && !node.loaded ? s("nodes.updateRecheck") : node.installed ? s("nodes.checkUpdate") : s("nodes.installRestart"))}</button>
             </div>
-          </article>`).join("") || `<div class="panel environment-empty">${s("nodes.empty")}</div>`}
+          </article>`;
+        }).join("") || `<div class="panel environment-empty">${s("nodes.empty")}</div>`}
       </div>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${s("nodes.placeholderTitle")}</h2><span class="muted">${s("nodes.placeholderDescription")}</span></div></div>

@@ -25,6 +25,8 @@ export const uiKeys = {
     summary: "queue.summary",
     automaticContinue: "queue.automaticContinue",
     pauseAfterCurrent: "queue.pauseAfterCurrent",
+    h3LivePreview: "queue.h3LivePreview",
+    h3LivePreviewTip: "queue.h3LivePreviewTip",
     start: "queue.start",
     performance: "queue.performance",
     cpu: "queue.metric.cpu",
@@ -49,6 +51,7 @@ export const uiKeys = {
       steps: "queue.card.steps",
       spectrumOn: "queue.card.spectrumOn",
       spectrumOff: "queue.card.spectrumOff",
+      modelAware: "queue.card.modelAware",
       loraStrength: "queue.card.loraStrength",
       imageProcessing: "queue.card.imageProcessing",
       lightningLora: "queue.card.lightningLora",
@@ -241,6 +244,7 @@ export const uiKeys = {
     queueImageReturned: "runtime.queueImageReturned",
     queueReturned: "runtime.queueReturned",
     taskCompleted: "runtime.taskCompleted",
+    taskFailed: "runtime.taskFailed",
     queueCompleted: "runtime.queueCompleted",
     queueTaskRemoved: "runtime.queueTaskRemoved",
     queueTaskCancelled: "runtime.queueTaskCancelled",
@@ -551,6 +555,12 @@ export const uiKeys = {
       comfyRestarted: "settings.actions.comfyRestarted",
       nodeRestartFailed: "settings.actions.nodeRestartFailed",
       nodeReadyCheckFailed: "settings.actions.nodeReadyCheckFailed",
+      nodeAlreadyQueued: "settings.actions.nodeAlreadyQueued",
+      nodeQueued: "settings.actions.nodeQueued",
+      nodeBulkQueued: "settings.actions.nodeBulkQueued",
+      nodeProcessing: "settings.actions.nodeProcessing",
+      nodeBatchCompleted: "settings.actions.nodeBatchCompleted",
+      nodeBatchReadyCheckFailed: "settings.actions.nodeBatchReadyCheckFailed",
       nodeInstallFailed: "settings.actions.nodeInstallFailed",
       workflowInstallFailed: "settings.actions.workflowInstallFailed"
     },
@@ -1112,6 +1122,10 @@ export const uiKeys = {
       spectrumLabel: "create.validation.spectrumLabel",
       spectrumMotionContext: "create.validation.spectrumMotionContext",
       spectrumTurbo: "create.validation.spectrumTurbo",
+      spectrumTurboUpdate: "create.validation.spectrumTurboUpdate",
+      spectrumModelAwareLabel: "create.validation.spectrumModelAwareLabel",
+      spectrumModelAwareDescription: "create.validation.spectrumModelAwareDescription",
+      spectrumModelAwareUpdate: "create.validation.spectrumModelAwareUpdate",
       spectrumUnsupported: "create.validation.spectrumUnsupported",
       spectrumInstall: "create.validation.spectrumInstall",
       spectrumLoaded: "create.validation.spectrumLoaded",
@@ -1178,7 +1192,11 @@ export const uiKeys = {
       h3StepsTitle: "create.options.h3StepsTitle",
       spectrumOff: "create.options.spectrumOff",
       spectrumBalanced: "create.options.spectrumBalanced",
-      spectrumLoaded: "create.options.spectrumLoaded"
+      spectrumLoaded: "create.options.spectrumLoaded",
+      spectrumModelAwareOff: "create.options.spectrumModelAwareOff",
+      spectrumModelAwareSchedule: "create.options.spectrumModelAwareSchedule",
+      spectrumModelAwareConfidence: "create.options.spectrumModelAwareConfidence",
+      spectrumModelAwareFull: "create.options.spectrumModelAwareFull"
     }
   }
 } as const;

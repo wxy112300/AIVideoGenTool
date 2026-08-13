@@ -33,6 +33,7 @@ export interface WorkflowContext {
   vramAvailableBytes: number;
   h3ContextLatentPath: string;
   h3ContextSavePrefix: string;
+  h3PreviewTinyVae: string;
   locale?: UiLocale;
 }
 
@@ -102,7 +103,8 @@ export function isMiniMaxH3SpectrumEligible(modelId: string): boolean {
 
 function applyMiniMaxH3Spectrum(
   workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
-  locale: UiLocale = "zh-CN"
+  locale: UiLocale = "zh-CN",
+  modelAwareMode: GenerationQueueTask["spectrumModelAwareMode"] = "off"
 ): void {
   const consumers = Object.entries(workflow).filter(([, node]) =>
     (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
@@ -145,10 +147,48 @@ function applyMiniMaxH3Spectrum(
       anchor_residual_feedback: false,
       selective_rollback_correction: false,
       offline_smoothing_replay: true,
-      audio_blend_weight: 0
+      audio_blend_weight: 0,
+      ...(modelAwareMode && modelAwareMode !== "off"
+        ? {
+            model_aware_mode: modelAwareMode,
+            model_aware_risk_threshold: 0.65
+          }
+        : {})
     }
   };
   for (const [, node] of consumers) node.inputs!.model = [nodeId, 0];
+}
+
+function applyMiniMaxH3LivePreview(
+  workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
+  tinyVae: string
+): void {
+  if (!tinyVae) return;
+  const consumers = Object.values(workflow).filter((node) =>
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
+    Array.isArray(node.inputs?.model)
+  );
+  const modelInput = consumers[0]?.inputs?.model;
+  if (!Array.isArray(modelInput) || typeof modelInput[0] !== "string") return;
+  if (consumers.some((node) => JSON.stringify(node.inputs?.model) !== JSON.stringify(modelInput))) return;
+
+  const numericIds = Object.keys(workflow)
+    .map(Number)
+    .filter(Number.isFinite);
+  const nodeId = String((numericIds.length ? Math.max(...numericIds) : 0) + 1);
+  workflow[nodeId] = {
+    class_type: "ModelPreviewOverrideKJ",
+    inputs: {
+      model: modelInput,
+      max_resolution: 512,
+      jpeg_quality: 72,
+      suppress_default_preview: true,
+      preview_frames: 1,
+      preview_fps: 12,
+      tiny_vae: tinyVae
+    }
+  };
+  for (const node of consumers) node.inputs!.model = [nodeId, 0];
 }
 
 function applyVideoLoraStack(
@@ -1105,7 +1145,14 @@ export function renderWorkflow(
     spectrumMode: task.spectrumMode,
     videoLoras: task.videoLoras
   })) {
-    applyMiniMaxH3Spectrum(workflow, context.locale);
+    applyMiniMaxH3Spectrum(
+      workflow,
+      context.locale,
+      task.spectrumModelAwareMode ?? "off"
+    );
+  }
+  if (isMiniMaxH3Model(task.modelId)) {
+    applyMiniMaxH3LivePreview(workflow, context.h3PreviewTinyVae ?? "");
   }
   const emptyReferenceNodeIds = new Set(
     Object.entries(workflow)

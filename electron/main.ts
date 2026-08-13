@@ -26,6 +26,7 @@ import type {
   HistoryMigrationProgress,
   ImageAssetLibraryProgress,
   ImageEditDraft,
+  ImageMaskSaveRequest,
   ImageMarkupSaveRequest,
   LocalServiceKind,
   NotificationKind,
@@ -1649,6 +1650,7 @@ function registerIpc(): void {
           migratedFiles: plan.entries.length,
           warningCount: warnings.length
         });
+        rendererHasUnsavedSettings = false;
         sendState(next);
         return next;
       } catch (error) {
@@ -1668,6 +1670,7 @@ function registerIpc(): void {
       changedCount: changedKeys.length,
       updatedH3TaskCount
     });
+    rendererHasUnsavedSettings = false;
     sendState(next);
     return next;
   });
@@ -1879,9 +1882,12 @@ function registerIpc(): void {
     return `data:${mime};base64,${content.toString("base64")}`;
   });
   ipcMain.handle("image-markup:read", async (_event, documentPath: string) => {
-    const root = path.join(app.getPath("userData"), "image-guides");
+    const roots = [
+      path.join(app.getPath("userData"), "image-guides"),
+      path.join(app.getPath("userData"), "image-masks")
+    ];
     const filename = typeof documentPath === "string" ? path.resolve(documentPath) : "";
-    if (!filename || !isPathWithinDirectory(root, filename)) return null;
+    if (!filename || !roots.some((root) => isPathWithinDirectory(root, filename))) return null;
     return fs.readFile(filename, "utf8").catch(() => null);
   });
   ipcMain.handle("image-markup:save", async (_event, request: ImageMarkupSaveRequest) => {
@@ -2410,6 +2416,47 @@ function registerIpc(): void {
     sendState,
     effectiveImageInputLibraryDirectory,
     resolveTaskOutputDirectory
+  });
+  ipcMain.handle("image-mask:save", async (_event, request: ImageMaskSaveRequest) => {
+    if (!request || typeof request !== "object") throw new Error("Mask 数据无效");
+    const sourceStat = await fs.stat(request.sourcePath).catch(() => null);
+    if (!sourceStat?.isFile()) throw new Error("原始 Picture 文件不存在");
+    if (typeof request.document !== "string" || !request.document.trim()) {
+      throw new Error("Mask 工程为空");
+    }
+    const bytes = request.maskPng instanceof ArrayBuffer
+      ? new Uint8Array(request.maskPng)
+      : null;
+    if (!bytes?.byteLength) throw new Error("Mask 图片为空");
+    if (bytes.byteLength > 100 * 1024 * 1024) throw new Error("Mask 图片不能超过 100 MB");
+    const pictureKey = createHash("sha256")
+      .update(`${request.pictureId}\0${path.resolve(request.sourcePath)}`)
+      .digest("hex")
+      .slice(0, 24);
+    const revision = Math.max(1, Math.trunc(request.previousRevision ?? 0) + 1);
+    const directory = path.join(app.getPath("userData"), "image-masks", pictureKey);
+    await fs.mkdir(directory, { recursive: true });
+    const basename = `revision-${String(revision).padStart(4, "0")}`;
+    const documentPath = path.join(directory, `${basename}.fabric.json`);
+    const maskPath = path.join(directory, `${basename}-mask.png`);
+    const documentTemporary = `${documentPath}.${crypto.randomUUID()}.tmp`;
+    const maskTemporary = `${maskPath}.${crypto.randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(documentTemporary, request.document, "utf8");
+      await fs.writeFile(maskTemporary, bytes);
+      await fs.rename(documentTemporary, documentPath);
+      await fs.rename(maskTemporary, maskPath);
+    } finally {
+      await fs.rm(documentTemporary, { force: true }).catch(() => undefined);
+      await fs.rm(maskTemporary, { force: true }).catch(() => undefined);
+    }
+    return {
+      documentPath,
+      maskPath,
+      revision,
+      regionCount: Math.max(0, Math.trunc(request.regionCount || 0)),
+      updatedAt: new Date().toISOString()
+    };
   });
   registerQueueMutationIpc({
     ipc: ipcMain,

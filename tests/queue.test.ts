@@ -110,6 +110,8 @@ describe("queue execution snapshots", () => {
       ...createDefaultDraft(),
       startImagePath: "start.png",
       workflowPath: "workflow.json",
+      spectrumMode: "balanced" as const,
+      spectrumModelAwareMode: "full" as const,
       seed: null,
       h3ReferenceSlots: [{ id: "slot-1", kind: "image" as const, mediaPath: "ref.png" }]
     };
@@ -122,6 +124,8 @@ describe("queue execution snapshots", () => {
       modelId: "minimax_h3_fl2va",
       seed: Math.floor(0.25 * Number.MAX_SAFE_INTEGER),
       promptVersion: 1,
+      spectrumMode: "balanced",
+      spectrumModelAwareMode: "full",
       createdAt: "2026-08-12T12:00:00.000Z"
     });
     expect(queued.h3ReferenceSlots[0]?.mediaPath).toBe("ref.png");
@@ -159,6 +163,37 @@ describe("queue execution snapshots", () => {
     expect(queued.runs.map((run) => run.id)).toEqual(["run-1", "run-2"]);
     expect(queued.pictures[0]?.markup?.prompt).toBe("marked area");
     expect(queued.imageOutputSubfolder).toBe("Images");
+  });
+
+  it("never carries a hidden prompt into a promptless LaMa task snapshot", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "lama-inpaint";
+    draft.qualityProfile = "natural";
+    draft.promptVersions[0]!.text = "stale prompt from Qwen";
+    draft.pictures = [{
+      id: "picture-1",
+      pictureNumber: 1,
+      absolutePath: "input.png",
+      width: 1024,
+      height: 768,
+      mask: {
+        documentPath: "mask.json",
+        maskPath: "mask.png",
+        revision: 1,
+        regionCount: 1,
+        updatedAt: "now"
+      }
+    }];
+
+    const queued = imageTaskFromDraft(
+      draft,
+      undefined,
+      { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" },
+      clock(["task-lama", "project-lama", "run-lama"])
+    );
+
+    expect(queued.prompt).toBe("");
+    expect(queued.promptVersion).toBe(1);
   });
 
   it("scopes R2V extension policy while preserving its source snapshot", () => {

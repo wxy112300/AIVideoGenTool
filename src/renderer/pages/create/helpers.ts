@@ -27,6 +27,7 @@ import {
 } from "../../../core/workflow";
 import { h3PromptPackFor, qwenImagePromptPackFor } from "../../prompt-packs";
 import type { PromptUi } from "../../../core/prompts/types.js";
+import { escapeHtml } from "../../shared/dom";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import type { RendererContext } from "../../contracts";
@@ -296,7 +297,7 @@ export function h3PromptPresetOptions(
   const pack = h3PromptPackFor(locale);
   return pack.presetOrder
     .filter((preset) => includeMultiReference || preset !== "multi-reference")
-    .map((preset) => `<option value="${preset}" ${selected === preset ? "selected" : ""}>${pack.presetLabels[preset]}</option>`)
+    .map((preset) => `<option value="${preset}" data-description="${escapeHtml(pack.presetDescriptions[preset])}" title="${escapeHtml(pack.presetDescriptions[preset])}" ${selected === preset ? "selected" : ""}>${escapeHtml(pack.presetLabels[preset])}</option>`)
     .join("");
 }
 
