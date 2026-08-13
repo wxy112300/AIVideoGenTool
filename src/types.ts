@@ -297,6 +297,11 @@ interface VideoQueueTaskBase extends QueueTaskBase {
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
   videoLoras?: VideoLoraSelection[];
+  /**
+   * Queue-time snapshot of the optional H3 preview observer.
+   * Older persisted tasks may omit this and fall back to the current setting.
+   */
+  h3LivePreview?: boolean;
 }
 
 export interface ImageGenerationQueueTask extends QueueTaskBase {
@@ -936,6 +941,7 @@ export interface AppApi {
   saveDraft(draft: Draft): Promise<AppState>;
   saveImageDraft(draft: ImageEditDraft): Promise<AppState>;
   saveSettings(settings: Settings, mode?: SettingsSaveMode): Promise<AppState>;
+  setQueueH3LivePreview(enabled: boolean): Promise<AppState>;
   pickImage(): Promise<string | null>;
   pickVideo(): Promise<string | null>;
   getDroppedFilePath(file: File): string;

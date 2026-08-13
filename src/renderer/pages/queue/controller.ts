@@ -72,10 +72,10 @@ export function mountQueueController(
     if (!current) return;
     input.disabled = true;
     try {
-      options.setState(await context.studio.saveSettings({
-        ...current.settings,
-        h3LivePreview: input.checked
-      }));
+      // This is a queue preference, not a general settings form submission.
+      // Keep it on a narrow IPC path so toggling it never performs environment
+      // validation, starts ComfyUI, or marks the settings page dirty.
+      options.setState(await context.studio.setQueueH3LivePreview(input.checked));
       context.requestRender();
     } catch (error) {
       input.checked = !input.checked;

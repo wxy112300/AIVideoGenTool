@@ -180,7 +180,10 @@ function migrateImageGenerationTask(task: ImageGenerationQueueTask): ImageGenera
   };
 }
 
-function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
+function migrateQueueTask(
+  task: QueueTask | LegacyQueueTask,
+  defaultH3LivePreview: boolean
+): QueueTask {
   const automaticRetryAttempt = Number.isInteger(task.automaticRetryAttempt) &&
     (task.automaticRetryAttempt ?? 0) > 0
     ? task.automaticRetryAttempt
@@ -202,6 +205,9 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
       videoLoras,
       modelProfile: task.modelProfile ?? "q3_k_m",
       attentionMode: task.attentionMode ?? "sage",
+      h3LivePreview: typeof task.h3LivePreview === "boolean"
+        ? task.h3LivePreview
+        : defaultH3LivePreview,
       spectrumMode: task.spectrumMode ?? "off",
       spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
       automaticRetryAttempt
@@ -218,6 +224,9 @@ function migrateQueueTask(task: QueueTask | LegacyQueueTask): QueueTask {
     fps: (task.fps ?? 24) as Draft["fps"],
     frameInterpolation: task.frameInterpolation ?? "off",
     attentionMode: task.attentionMode ?? "sage",
+    h3LivePreview: typeof task.h3LivePreview === "boolean"
+      ? task.h3LivePreview
+      : defaultH3LivePreview,
     spectrumMode: task.spectrumMode ?? "off",
     spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
     keepSeedOnCopy: task.keepSeedOnCopy ?? false,
@@ -348,7 +357,12 @@ export class JsonStore {
         },
         queueRunning: false,
         schemaVersion: 10,
-        queue: (saved.queue ?? []).map(migrateQueueTask),
+        queue: (saved.queue ?? []).map((task) => migrateQueueTask(
+          task,
+          typeof savedSettings.h3LivePreview === "boolean"
+            ? savedSettings.h3LivePreview
+            : defaultState.settings.h3LivePreview
+        )),
         history: (saved.history ?? []).map(migrateHistoryAsset),
         imageHistory
       };

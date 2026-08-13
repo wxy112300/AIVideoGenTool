@@ -1453,8 +1453,17 @@ function updateHistoryDetailInPlace(): boolean {
   currentVideo.load();
   currentBack.replaceWith(nextBack);
   currentSidebar.replaceWith(nextSidebar);
+  // The shell controller owns the global Page Up/Page Down listeners.  The
+  // fullscreen fast path only replaces the detail fragments, so rebinding the
+  // shell here would leave the previous window listener alive and make each
+  // subsequent key press navigate more than once.  Bind only the newly-created
+  // back button; the existing shell listener remains the single global owner.
+  nextBack.querySelector<HTMLButtonElement>("[data-page=history]")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    returnToHistory();
+  });
   renderIcons(appElement);
-  bindShell();
   bindHistory();
   return true;
 }

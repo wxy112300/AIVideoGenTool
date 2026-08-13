@@ -130,9 +130,9 @@ export function renderQueueTaskCard(
         </div>
         <div class="running-layout">
           <div class="live-preview">
-            <img id="live-preview-image" ${input?.kind === "image" ? `data-queue-input-image="${options.escapeHtml(task.id)}"` : ""} alt="${input ? t(uiKeys.queue.card.userInputPreview) : t(uiKeys.queue.card.comfyPreview)}" src="${preview ? options.escapeHtml(preview) : ""}" style="${preview ? "" : "display:none"}">
+            <img id="live-preview-image-${options.escapeHtml(task.id)}" data-live-preview-image="${options.escapeHtml(task.id)}" data-live-preview-active="${preview ? "true" : "false"}" ${input?.kind === "image" ? `data-queue-input-image="${options.escapeHtml(task.id)}"` : ""} alt="${input ? t(uiKeys.queue.card.userInputPreview) : t(uiKeys.queue.card.comfyPreview)}" src="${preview ? options.escapeHtml(preview) : ""}" style="${preview ? "" : "display:none"}">
             ${inputVideoUrl ? `<video data-queue-input-video="${options.escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}" style="${preview ? "display:none" : ""}"></video>` : ""}
-            <div id="live-preview-empty" style="${preview || inputVideoUrl ? "display:none" : ""}"><span>${options.icon(input ? input.kind === "image" ? "image" : "film" : "film")}</span><strong>${input ? t(uiKeys.queue.card.readingInput) : t(uiKeys.queue.card.waitingPreview)}</strong><small>${input ? t(uiKeys.queue.card.frameReturned) : t(uiKeys.queue.card.samplingPreview)}</small></div>
+            <div id="live-preview-empty-${options.escapeHtml(task.id)}" data-live-preview-empty="${options.escapeHtml(task.id)}" style="${preview || inputVideoUrl ? "display:none" : ""}"><span>${options.icon(input ? input.kind === "image" ? "image" : "film" : "film")}</span><strong>${input ? t(uiKeys.queue.card.readingInput) : t(uiKeys.queue.card.waitingPreview)}</strong><small>${input ? t(uiKeys.queue.card.frameReturned) : t(uiKeys.queue.card.samplingPreview)}</small></div>
           </div>
           <div class="running-copy">
             <span class="eyebrow">${t(uiKeys.queue.card.currentStep)} · <span id="running-stage">${options.escapeHtml(task.stage ?? t(uiKeys.queue.card.preparing))}</span></span>

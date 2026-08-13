@@ -29,6 +29,15 @@ describe("H3 live preview runtime discovery", () => {
         }
       }
     })).toBe("taeh3.safetensors");
+    expect(h3PreviewTinyVaeFromObjectInfo({
+      ModelPreviewOverrideKJ: {
+        input: {
+          required: {
+            tiny_vae: ["COMBO", { options: ["none", "taeh3.safetensors"] }]
+          }
+        }
+      }
+    })).toBe("taeh3.safetensors");
     expect(h3PreviewTinyVaeFromObjectInfo({})).toBe("");
   });
 
@@ -37,6 +46,10 @@ describe("H3 live preview runtime discovery", () => {
       type: "kj_preview_override",
       data: { image: "YWJj", mime: "image/jpeg" }
     })).toBe("data:image/jpeg;base64,YWJj");
+    expect(h3PreviewEventDataUrl({
+      type: "kj_preview_override",
+      data: { image: "data:image/webp;base64,YWJj", mime: "image/webp" }
+    })).toBe("data:image/webp;base64,YWJj");
     expect(h3PreviewEventDataUrl({ type: "progress", data: {} })).toBeNull();
   });
 });

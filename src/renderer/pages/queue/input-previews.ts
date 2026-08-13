@@ -32,9 +32,14 @@ export async function loadQueueInputPreviews(context: RendererContext): Promise<
       `[data-queue-input-image="${task.id}"]`
     );
     if (!image) return;
+    // A running H3 card reuses the same image element for its input and live
+    // preview. Never let this asynchronous input read overwrite a preview
+    // that arrived after the card was rendered.
+    if (image.dataset.livePreviewActive === "true") return;
     try {
       const dataUrl = await context.studio.readImage(input.path);
       if (!dataUrl) return;
+      if (image.dataset.livePreviewActive === "true") return;
       image.src = dataUrl;
       image.style.display = "";
       image.closest<HTMLElement>("[data-queue-input-preview]")

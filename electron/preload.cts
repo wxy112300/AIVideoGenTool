@@ -23,6 +23,8 @@ const api: AppApi = {
   saveImageDraft: (draft) => ipcRenderer.invoke("image-draft:save", draft),
   saveSettings: (settings: Settings, mode?: SettingsSaveMode) =>
     ipcRenderer.invoke("settings:save", settings, mode),
+  setQueueH3LivePreview: (enabled: boolean) =>
+    ipcRenderer.invoke("queue:set-h3-live-preview", enabled),
   pickImage: () => ipcRenderer.invoke("file:pick-image"),
   pickVideo: () => ipcRenderer.invoke("file:pick-video"),
   getDroppedFilePath: (file) => webUtils.getPathForFile(file),

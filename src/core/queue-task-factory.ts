@@ -105,6 +105,7 @@ export function queueTaskFromDraft(
     seed: draft.seed ?? Math.floor(clock.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
     attentionMode: state.settings.h3AttentionMode,
+    h3LivePreview: state.settings.h3LivePreview,
     spectrumMode: draft.spectrumMode,
     spectrumModelAwareMode: draft.spectrumMode === "balanced"
       ? draft.spectrumModelAwareMode
@@ -222,6 +223,7 @@ export function extensionTaskFromDraft(
     seed: draft.seed ?? Math.floor(clock.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
     attentionMode: state.settings.h3AttentionMode,
+    h3LivePreview: state.settings.h3LivePreview,
     spectrumMode: isMiniMaxH3R2vModel(draft.modelId) ? "off" : draft.spectrumMode,
     spectrumModelAwareMode: isMiniMaxH3R2vModel(draft.modelId) || draft.spectrumMode !== "balanced"
       ? "off"

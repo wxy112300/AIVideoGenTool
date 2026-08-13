@@ -411,7 +411,10 @@ export async function submitTask(
     vramTotalBytes,
     settings.vramReserveGb
   );
-  const h3LivePreviewRequested = settings.h3LivePreview &&
+  const taskH3LivePreview = task.taskType === "generation" || task.taskType === "extension"
+    ? task.h3LivePreview
+    : undefined;
+  const h3LivePreviewRequested = (taskH3LivePreview ?? settings.h3LivePreview) &&
     isMiniMaxH3Model(task.modelId) &&
     isMiniMaxH3LivePreviewSupported(task.modelId);
   const h3PreviewTinyVae = h3LivePreviewRequested
@@ -683,6 +686,34 @@ interface ComfySocketMessage {
   };
 }
 
+function comboOptionsFromObjectInfoSpec(spec: unknown): string[] {
+  if (Array.isArray(spec)) {
+    // Legacy INPUT_TYPES shape: [string[], config].
+    if (Array.isArray(spec[0])) {
+      return spec[0].filter((value): value is string => typeof value === "string");
+    }
+    // ComfyUI node-definition/API-node shape: ["COMBO", { options: string[] }].
+    const config = spec[1];
+    if (config && typeof config === "object" && !Array.isArray(config)) {
+      for (const key of ["options", "choices", "values"] as const) {
+        const values = (config as Record<string, unknown>)[key];
+        if (Array.isArray(values)) {
+          return values.filter((value): value is string => typeof value === "string");
+        }
+      }
+    }
+  }
+  if (spec && typeof spec === "object" && !Array.isArray(spec)) {
+    for (const key of ["options", "choices", "values"] as const) {
+      const values = (spec as Record<string, unknown>)[key];
+      if (Array.isArray(values)) {
+        return values.filter((value): value is string => typeof value === "string");
+      }
+    }
+  }
+  return [];
+}
+
 export function h3PreviewTinyVaeFromObjectInfo(
   objectInfo: Record<string, unknown>
 ): string {
@@ -694,8 +725,7 @@ export function h3PreviewTinyVaeFromObjectInfo(
     const group = (input as Record<string, unknown>)[groupName];
     if (!group || typeof group !== "object" || Array.isArray(group)) continue;
     const spec = (group as Record<string, unknown>).tiny_vae;
-    if (!Array.isArray(spec) || !Array.isArray(spec[0])) continue;
-    const match = spec[0].find((value) =>
+    const match = comboOptionsFromObjectInfoSpec(spec).find((value) =>
       typeof value === "string" && /(?:^|[\\/])taeh3\.safetensors$/i.test(value)
     );
     if (typeof match === "string") return match;
@@ -706,9 +736,15 @@ export function h3PreviewTinyVaeFromObjectInfo(
 export function h3PreviewEventDataUrl(message: unknown): string | null {
   if (!message || typeof message !== "object" || Array.isArray(message)) return null;
   const value = message as ComfySocketMessage;
-  if (value.type !== "kj_preview_override" || !value.data?.image) return null;
-  const mime = value.data.mime?.startsWith("image/") ? value.data.mime : "image/jpeg";
-  return `data:${mime};base64,${value.data.image}`;
+  if (value.type !== "kj_preview_override") return null;
+  const data = value.data && typeof value.data === "object" ? value.data : undefined;
+  const image = typeof data?.image === "string" ? data.image.trim() : "";
+  if (!image) return null;
+  if (image.startsWith("data:image/")) return image;
+  const mime = typeof data?.mime === "string" && data.mime.startsWith("image/")
+    ? data.mime
+    : "image/jpeg";
+  return `data:${mime};base64,${image}`;
 }
 
 function socketUrl(httpUrl: string, clientId: string): string {
@@ -1013,16 +1049,16 @@ export async function waitForTask(
           return;
         }
         const message = JSON.parse(text) as ComfySocketMessage;
-        const h3Preview = h3PreviewEventDataUrl(message);
-        if (h3Preview) {
-          lastActivityAt = Date.now();
-          onPreview(h3Preview);
-          return;
-        }
         if (
           message.data?.prompt_id &&
           message.data.prompt_id !== promptId
         ) {
+          return;
+        }
+        const h3Preview = h3PreviewEventDataUrl(message);
+        if (h3Preview) {
+          lastActivityAt = Date.now();
+          onPreview(h3Preview);
           return;
         }
         if (

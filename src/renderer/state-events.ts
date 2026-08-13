@@ -74,13 +74,21 @@ function updateTaskPreview(
   const state = options.getState();
   const running = state?.queue.find((task) => task.status === "running");
   if (options.getPage() !== "queue" || running?.id !== preview.taskId) return;
-  const image = document.querySelector<HTMLImageElement>("#live-preview-image");
-  const empty = document.querySelector<HTMLElement>("#live-preview-empty");
+  const taskSelector = CSS.escape(preview.taskId);
+  const image = document.querySelector<HTMLImageElement>(
+    `[data-live-preview-image="${taskSelector}"]`
+  );
+  const empty = document.querySelector<HTMLElement>(
+    `[data-live-preview-empty="${taskSelector}"]`
+  );
   if (image) {
     image.src = preview.dataUrl;
     image.style.display = "";
+    image.dataset.livePreviewActive = "true";
   }
-  document.querySelector<HTMLVideoElement>("[data-queue-input-video]")?.style.setProperty(
+  document.querySelector<HTMLVideoElement>(
+    `[data-queue-input-video="${taskSelector}"]`
+  )?.style.setProperty(
     "display",
     "none"
   );

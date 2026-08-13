@@ -124,11 +124,16 @@ describe("queue execution snapshots", () => {
       modelId: "minimax_h3_fl2va",
       seed: Math.floor(0.25 * Number.MAX_SAFE_INTEGER),
       promptVersion: 1,
+      h3LivePreview: false,
       spectrumMode: "balanced",
       spectrumModelAwareMode: "full",
       createdAt: "2026-08-12T12:00:00.000Z"
     });
     expect(queued.h3ReferenceSlots[0]?.mediaPath).toBe("ref.png");
+
+    state.settings.h3LivePreview = true;
+    const previewQueued = queueTaskFromDraft(draft, state, clock(["preview-task"]));
+    expect(previewQueued.h3LivePreview).toBe(true);
   });
 
   it("builds all image runs and clones markup into the queue snapshot", () => {

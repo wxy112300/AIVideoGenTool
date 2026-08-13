@@ -1553,6 +1553,17 @@ function registerIpc(): void {
     sendState(next);
     return next;
   });
+  ipcMain.handle("queue:set-h3-live-preview", async (_event, enabled: boolean) => {
+    const value = enabled === true;
+    const next = await store.update((state) => {
+      state.settings.h3LivePreview = value;
+    });
+    appLogger.info("queue", "h3-live-preview-setting-changed", "H3 live preview queue preference changed", {
+      enabled: value
+    });
+    sendState(next);
+    return next;
+  });
   ipcMain.handle("settings:save", async (_event, settings: Settings, mode: SettingsSaveMode = "apply") => {
     if (mode !== "apply" && mode !== "migrate-video-history") {
       throw new Error("未知的设置保存模式。");
