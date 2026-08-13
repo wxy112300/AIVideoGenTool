@@ -1,0 +1,34 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "prompt-reference.png"
+    }
+  },
+  "2": {
+    "class_type": "VisionLLMNode",
+    "inputs": {
+      "prompt": "Describe the reference image and rewrite the user's request as an actionable MiniMax H3 prompt. Keep the user's intent and preserve explicit constraints.",
+      "style": "raw",
+      "target_language": "en",
+      "model": "LLM/qwen3.6-27b-uncensored-q4/Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-DAU-NEO-MAX-NEO-Q4_K_M.gguf",
+      "mmproj": "LLM/qwen3.6-27b-uncensored-q4/mmproj-BF16.gguf",
+      "max_tokens": 768,
+      "temperature": 0.35,
+      "device": "GPU",
+      "image": [
+        "1",
+        0
+      ]
+    }
+  },
+  "3": {
+    "class_type": "PreviewAny",
+    "inputs": {
+      "source": [
+        "2",
+        0
+      ]
+    }
+  }
+}

@@ -3,6 +3,12 @@ import { entry, component, guide } from "./catalog-helpers.js";
 import type { CatalogModelEntry } from "../types.js";
 
 const managedPromptEnglish: Record<string, { name: string; badge: string; description: string; licenseNote: string }> = {
+  "qwen/qwen3.6-27b-uncensored-q4": {
+    name: "Qwen3.6 27B Q4 · Uncensored · ComfyUI",
+    badge: "Uncensored · Q4 · 4090",
+    description: "A community Q4 GGUF profile for ComfyUI MultiModal Prompt Nodes. It can read reference images and should run alone on a 24 GB RTX 4090.",
+    licenseNote: "Community derivative; read the upstream model card. Use the regular Q4 quant, not an MTP variant, and release the prompt model before H3 generation."
+  },
   "community/gemma-4-e4b-unconcerned-q5": {
     name: "Gemma 4 E4B Q5 · Uncensored",
     badge: "Uncensored · Q5",
@@ -54,6 +60,12 @@ const managedPromptEnglish: Record<string, { name: string; badge: string; descri
 };
 
 const managedPromptTraditional: Record<string, { name: string; badge: string; description: string; licenseNote: string }> = {
+  "qwen/qwen3.6-27b-uncensored-q4": {
+    name: "Qwen3.6 27B Q4 · Uncensored · ComfyUI",
+    badge: "Uncensored · Q4 · 4090",
+    description: "供 ComfyUI MultiModal Prompt Nodes 使用的社群 Q4 GGUF；可理解參考圖片，建議在 24GB RTX 4090 上單獨運行。",
+    licenseNote: "社群衍生模型；請閱讀上游模型卡。使用普通 Q4，不使用 MTP 變體，H3 生成前應先釋放提示詞模型。"
+  },
   "community/gemma-4-e4b-unconcerned-q5": {
     name: "Gemma 4 E4B Q5 · Uncensored",
     badge: "Uncensored · Q5",
@@ -124,11 +136,24 @@ const managedPromptEntries: CatalogModelEntry[] = managedPromptModelDefinitions.
   const notes = `${model.description} 使用大写 models/LLM，并让每个主 GGUF 与其匹配的 mmproj 独占一个子目录。${model.licenseNote}`;
   const makeGuide = (filename: string) => guide(sourceLabel, `${baseUrl}/${filename}?download=true`, model.targetDirectory, filename, notes);
   return entry({
-    id: model.id, family: "gemma-prompt-writer", category: "prompt", adapterId: "h3-prompt-writer", order: 250 - index, inputModes: ["image", "video"],
-    scan: { managedBy: "comfyui", vram: model.vram, integrated: true, components: [
+    id: model.id,
+    family: model.backend === "comfyui-multimodal" ? "qwen36-prompt-writer" : "gemma-prompt-writer",
+    category: "prompt",
+    adapterId: model.backend ?? "h3-prompt-writer",
+    order: 260 - index,
+    inputModes: ["image", "video"],
+    scan: {
+      managedBy: "comfyui",
+      vram: model.vram,
+      integrated: true,
+      ...(model.backend === "comfyui-multimodal"
+        ? { requiredCustomNodeIds: ["comfyui-multimodal-prompt-nodes"], runtimeNodeTypes: ["VisionLLMNode"] }
+        : {}),
+      components: [
       component(`${model.name} GGUF`, `${model.targetDirectory}/${model.modelFilename}`, new RegExp(`${directoryPattern}/${model.modelFilename.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "i"), makeGuide(model.modelFilename)),
       component(`${model.name} mmproj`, `${model.targetDirectory}/${model.mmprojFilename}`, new RegExp(`${directoryPattern}/${model.mmprojFilename.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "i"), makeGuide(model.mmprojFilename))
-    ] }
+      ]
+    }
   }, { name: model.name, badge: model.badge, description: model.description, limitations: [model.licenseNote] }, {
     name: english.name,
     badge: english.badge,

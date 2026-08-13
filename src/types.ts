@@ -584,7 +584,7 @@ export interface ComfyUiInstallationSummary {
 }
 
 export interface WorkflowDependencyStatus {
-  id: "minimax_h3_i2v";
+  id: "minimax_h3_i2v" | "qwen36_h3_prompt_enhancer";
   name: string;
   purpose: string;
   installed: boolean;

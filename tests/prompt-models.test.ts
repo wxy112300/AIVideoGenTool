@@ -4,16 +4,19 @@ import {
   isManagedPromptModel,
   managedPromptModel,
   managedPromptModelDefinitions,
+  isComfyMultimodalPromptModel,
   promptModelBackend,
   promptModelSupportsImageEdit,
   promptRuntimeForSettings
 } from "../src/core/prompt-models.js";
 
 describe("prompt model runtime selection", () => {
-  it("routes all ten selectable prompt models to a real backend", () => {
-    expect(managedPromptModelDefinitions).toHaveLength(8);
+  it("routes all selectable prompt models to a real backend", () => {
+    expect(managedPromptModelDefinitions).toHaveLength(9);
     for (const model of managedPromptModelDefinitions) {
-      expect(promptModelBackend(model.id)).toBe("h3-prompt-writer");
+      expect(promptModelBackend(model.id)).toBe(
+        model.id === "qwen/qwen3.6-27b-uncensored-q4" ? "comfyui-multimodal" : "h3-prompt-writer"
+      );
       expect(promptModelSupportsImageEdit(model.id)).toBe(true);
     }
     for (const modelId of ["qwen/qwen3.5-4b", "qwen/qwen3.5-2b"]) {
@@ -69,6 +72,18 @@ describe("prompt model runtime selection", () => {
     });
     expect(isGemmaPromptModel("community/gemma-4-12b-uncensored-q4")).toBe(true);
     expect(isGemmaPromptModel("community/gemma-4-26b-a4b-uncensored-q4")).toBe(true);
+  });
+
+  it("routes Qwen3.6 through the ComfyUI multimodal node without treating it as Gemma", () => {
+    const modelId = "qwen/qwen3.6-27b-uncensored-q4";
+    expect(isComfyMultimodalPromptModel(modelId)).toBe(true);
+    expect(isGemmaPromptModel(modelId)).toBe(false);
+    expect(managedPromptModel(modelId)).toMatchObject({
+      backend: "comfyui-multimodal",
+      modelFilename: "Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-DAU-NEO-MAX-NEO-Q4_K_M.gguf",
+      mmprojFilename: "mmproj-BF16.gguf",
+      targetDirectory: "LLM/qwen3.6-27b-uncensored-q4"
+    });
   });
 
   it("migrates every legacy runtime selection to ComfyUI", () => {

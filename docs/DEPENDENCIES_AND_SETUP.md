@@ -10,6 +10,7 @@ Local Video Studio 是 Electron + TypeScript + Vite 桌面应用。它负责素�
 
 - Qwen3.5 使用 ComfyUI 核心 `TextGenerate` 路径。
 - Gemma 4 使用 ComfyUI MiniMax H3 Prompt Writer 节点及其 ComfyUI Python 依赖。
+- Qwen3.6 27B Q4（可选）使用 `ComfyUI-MultiModal-Prompt-Nodes` 的 `VisionLLMNode`；它只依赖所选 ComfyUI 的 Python 环境，不需要 LM Studio、llama-server 或第二个服务。
 - 旧状态中可能仍有 LM Studio/llama-server 字段用于兼容迁移，但当前 UI 不要求、也不推荐安装独立服务。
 
 ## 2. 五种不同的“已安装”
@@ -39,7 +40,7 @@ Local Video Studio 是 Electron + TypeScript + Vite 桌面应用。它负责素�
 - ComfyUI Desktop、Portable 或源码安装之一。
 - 与所选 ComfyUI 绑定的 Python/PyTorch/CUDA runtime。
 
-一般不需要系统级完整 CUDA Toolkit。Portable 使用 `python_embeded`，Desktop/源码安装通常使用自己的 `.venv`。节点依赖必须安装进这套 Python，而不是随便一个系统 Python。
+一般不需要为 ComfyUI 本体单独安装系统级完整 CUDA Toolkit。Portable 使用 `python_embeded`，Desktop/源码安装通常使用自己的 `.venv`。节点依赖必须安装进这套 Python，而不是随便一个系统 Python。Qwen3.6 的 JamePeng `llama-cpp-python` GPU 构建如果没有匹配的预编译 wheel，可能需要 Visual Studio Build Tools、CMake 和 CUDA Toolkit；安装器会把构建输出完整写入节点日志，不会把 CPU/官方 PyPI fallback 冒充成 4090 可用后端。
 
 ## 4. ComfyUI 核心目录与数据目录
 
@@ -100,9 +101,11 @@ npm.cmd run dev
 
 面板顶端的“一键安装 / 更新缺失节点”会只加入未安装、未加载或有更新提示的 Custom Nodes；全部健康时按钮切换为“更新全部节点”。两种操作都复用同一串行队列，不会把 ComfyUI 核心升级或内置工作流文件混入节点批次。
 
-Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分钟，Prompt Writer 的 GGUF runtime 为 20 分钟。超时会终止对应子进程树并保留已收到的日志，避免无限显示“处理中”。
+Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分钟，Prompt Writer 和 MultiModal Prompt Nodes 的 Python runtime 为 20 分钟。超时会终止对应子进程树并保留已收到的日志，避免无限显示“处理中”。
 
-当前注册的节点族包括 GGUF、Video Helper Suite、LTXVideo、SeedVR2、FlashVSR、KJNodes、Frame Interpolation、MiniMax H3 Prompt Writer、H3 Motion Context 和 Spectrum。准确仓库、目录名、用途和 required/optional 状态以 `customNodeCatalog` 为准。
+当前注册的节点族包括 GGUF、Video Helper Suite、LTXVideo、SeedVR2、FlashVSR、KJNodes、Frame Interpolation、ComfyUI MultiModal Prompt Nodes、MiniMax H3 Prompt Writer、H3 Motion Context 和 Spectrum。准确仓库、目录名、用途和 required/optional 状态以 `customNodeCatalog` 为准。
+
+Qwen3.6 本地多模态路径有一个额外的 Python ABI 边界：节点仓库的普通 requirements 只安装轻量依赖，安装器会跳过其中可能覆盖后端的普通 `llama-cpp-python`，改用节点作者推荐的 JamePeng GPU 构建。Qwen3.5/3.6 的社区兼容参考线是 0.3.36+，但具体 wheel/源码构建仍取决于 Python、CUDA 和驱动；若本机没有匹配 wheel，安装日志会明确显示编译前置条件和失败原因。设置页会把“节点目录已安装”“VisionLLMNode 已加载”和“模型/mmproj 文件完整”分开显示，实际运行仍在 ComfyUI 启动后验证。4090 默认使用 Q4_K_M、8K 上下文、GPU 层，扩写完成后请求 ComfyUI `/free` 释放显存，再交给 H3。
 
 Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.7`，包含原生 ER-SDE 修复和可选的模型感知预测；设置页仍会查询上游最新发布并提供一键更新，但高于最低线的旧版不会只因“不是最新版”而被判定不可用。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。
 

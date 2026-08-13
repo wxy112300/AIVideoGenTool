@@ -1,3 +1,8 @@
+export type PromptModelBackend =
+  | "h3-prompt-writer"
+  | "native-text-generate"
+  | "comfyui-multimodal";
+
 export interface ManagedPromptModelDefinition {
   id: string;
   name: string;
@@ -11,9 +16,13 @@ export interface ManagedPromptModelDefinition {
   description: string;
   vram: string;
   licenseNote: string;
+  /**
+   * The ComfyUI-side adapter that owns model loading and unloading. Existing
+   * Gemma entries intentionally omit this field and keep the H3 Prompt Writer
+   * adapter for backwards-compatible persisted settings.
+   */
+  backend?: Exclude<PromptModelBackend, "native-text-generate">;
 }
-
-export type PromptModelBackend = "h3-prompt-writer" | "native-text-generate";
 
 export const nativePromptModelFiles = {
   "qwen/qwen3.5-4b": "qwen3.5_4b_bf16.safetensors",
@@ -27,6 +36,21 @@ export const unconcernedPromptModelFilename = "Qwen3.5-4B-Uncensored-HauhauCS-Ag
 export const unconcernedPromptMmprojFilename = "mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf";
 
 export const managedPromptModelDefinitions: readonly ManagedPromptModelDefinition[] = [
+  {
+    id: "qwen/qwen3.6-27b-uncensored-q4",
+    name: "Qwen3.6 27B Q4 · Uncensored · ComfyUI",
+    source: "DavidAU/Qwen3.6-27B-Fable-Fusion-711-Uncensored-Heretic-NM-DAU-NEO-MAX-MTP-GGUF",
+    revision: "main",
+    modelFilename: "Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-DAU-NEO-MAX-NEO-Q4_K_M.gguf",
+    mmprojFilename: "mmproj-BF16.gguf",
+    targetDirectory: "LLM/qwen3.6-27b-uncensored-q4",
+    contextSize: 8192,
+    badge: "Uncensored · Q4 · 4090",
+    description: "Qwen3.6 27B 的社区 Uncensored Q4 GGUF；通过 ComfyUI MultiModal Prompt Nodes 运行，支持参考图片理解。使用普通 Q4，不使用 MTP 变体。",
+    vram: "Q4_K_M 约 18.5 GB + mmproj 约 0.93 GB；4090 单独运行",
+    licenseNote: "社区衍生模型，采用 Apache-2.0 模型卡声明；请阅读上游模型卡。4090 运行前应释放 H3/图像模型，提示词完成后自动卸载。",
+    backend: "comfyui-multimodal"
+  },
   {
     id: "community/gemma-4-e4b-unconcerned-q5",
     name: "Gemma 4 E4B Q5 · Uncensored",
@@ -150,12 +174,25 @@ export function isManagedPromptModel(modelId: string): boolean {
 }
 
 export function isGemmaPromptModel(modelId: string): boolean {
-  return Boolean(managedPromptModel(modelId));
+  const model = managedPromptModel(modelId);
+  return Boolean(model && model.backend !== "comfyui-multimodal");
+}
+
+export function isComfyMultimodalPromptModel(modelId: string): boolean {
+  return managedPromptModel(modelId)?.backend === "comfyui-multimodal";
+}
+
+export function comfyMultimodalPromptModel(
+  modelId: string
+): ManagedPromptModelDefinition | undefined {
+  const model = managedPromptModel(modelId);
+  return model?.backend === "comfyui-multimodal" ? model : undefined;
 }
 
 export function promptModelBackend(modelId: string): PromptModelBackend | null {
-  if (isGemmaPromptModel(modelId)) return "h3-prompt-writer";
   if (modelId in nativePromptModelFiles) return "native-text-generate";
+  const managed = managedPromptModel(modelId);
+  if (managed) return managed.backend ?? "h3-prompt-writer";
   return null;
 }
 

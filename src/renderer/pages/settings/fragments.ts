@@ -44,6 +44,7 @@ export interface SettingsComfyCompatibilityPanelViewModel {
 
 export interface SettingsModelScanCardOptions extends SettingsFragmentRenderOptions {
   isGemmaPromptModel(modelId: string): boolean;
+  isComfyMultimodalPromptModel(modelId: string): boolean;
   videoLoraInfoButton(profileId: string): string;
   isImageWorkflowReady(profile?: ModelScanProfile): boolean;
   imageWorkflowStatus(profile?: ModelScanProfile): string;
@@ -239,6 +240,7 @@ export function renderSettingsModelScanCard(
   const isPromptProfile = profile.category === "prompt";
   const isLlamaProfile = profile.managedBy === "llama-server";
   const isGemmaProfile = isPromptProfile && options.isGemmaPromptModel(profile.id);
+  const isMultimodalProfile = isPromptProfile && options.isComfyMultimodalPromptModel(profile.id);
   const runtimeUnavailable = profile.runtimeVerified === true && profile.runtimeReady === false;
   const hardwareRecommendation = modelHardwareRecommendation(profile);
   const loraInfoButton = profile.category === "lora"
@@ -260,7 +262,9 @@ export function renderSettingsModelScanCard(
     ? isPromptProfile
         ? isLlamaProfile
         ? "GGUF + mmproj 文件完整；由应用自管理 llama-server"
-        : isGemmaProfile
+        : isMultimodalProfile
+          ? "LLM GGUF + mmproj 文件完整；通过 ComfyUI MultiModal Prompt Nodes 处理 H3 提示词"
+          : isGemmaProfile
           ? "LLM GGUF + mmproj 文件完整；通过 ComfyUI Prompt Writer 处理视频和图片提示词"
           : "ComfyUI text_encoders 文件完整；可通过原生 TextGenerate 进行本地扩写"
       : profile.category === "image"
@@ -273,7 +277,9 @@ export function renderSettingsModelScanCard(
     : isPromptProfile
       ? isLlamaProfile
         ? "补齐 GGUF + mmproj，并配置 llama-server.exe 后才能使用"
-        : "补齐对应的 ComfyUI text_encoders 文件后才能接入本地扩写"
+        : isMultimodalProfile
+          ? "补齐 Qwen3.6 GGUF、mmproj 与 MultiModal Prompt Nodes 后才能接入本地扩写"
+          : "补齐对应的 ComfyUI text_encoders 文件后才能接入本地扩写"
       : "补齐所有必需组件后才能启用";
   const escape = (value: string | number | null | undefined) => escapeValue(options, value);
   const icon = (name: string, className?: string) => options.icon(name, className);

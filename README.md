@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.19.0**。本阶段新增 LaMa 局部移除：在图片处理页绘制独立 Mask、提交无 Prompt 的 ComfyUI 修补任务，并将结果和 Mask 元数据纳入既有队列与图片版本历史。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.19.0**。本阶段补充了 LaMa 局部移除，以及可选的 Qwen3.6 27B Q4 多模态提示词扩写：通过 ComfyUI 节点读取参考图，不需要独立 LM Studio 或 llama-server；同时融合了 MiniMax H3 Auto Prompter 的 R2V 结构化提示词约束。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -14,7 +14,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 - 本地队列：单重型 GPU 阶段执行，支持暂停/取消、阶段进度、实时预览和性能摘要。
 - 作品历史：图片和视频分区、版本管理、完整提交参数、文件操作和继续创作。
 - 环境管理：离线扫描多个 ComfyUI 安装、核心/数据目录、模型、节点、工作流和 Python 环境。
-- 本地提示词辅助：通过所选 ComfyUI 运行 Qwen3.5 或 MiniMax H3 Prompt Writer/Gemma，不要求独立 LM Studio 或 llama-server。
+- 本地提示词辅助：通过所选 ComfyUI 运行 Qwen3.5、Qwen3.6 MultiModal 或 MiniMax H3 Prompt Writer/Gemma，不要求独立 LM Studio 或 llama-server。
 
 ## 支持范围
 
@@ -26,7 +26,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 | 图片处理 | Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
 | 视频增强 | SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
 | H3 LoRA | LightX2V Turbo、Realism People、PinkFluffyBunny NSFW |
-| Prompt | Qwen3.5 2B/4B、MiniMax H3 Prompt Writer 的 Gemma 4 GGUF 配置 |
+| Prompt | Qwen3.5 2B/4B、Qwen3.6 27B Q4 MultiModal、MiniMax H3 Prompt Writer 的 Gemma 4 GGUF 配置 |
 
 Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部分已经从新建任务列表淘汰；旧队列和历史仍保留原模型名称。当前显式保留的 Wan 2.2 14B + NSFW 兼容配置及未来变化，以 catalog 的 `retired` 标记为准。
 
@@ -42,6 +42,8 @@ Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部
 - FFmpeg；视频裁帧、续写和部分后处理需要。
 
 通常无需单独安装完整 CUDA Toolkit。优先使用 ComfyUI 自身 Python/PyTorch 所带的 CUDA runtime；只有某个自定义 CUDA 扩展明确要求编译工具链时才额外安装。
+
+Qwen3.6 MultiModal 是例外：其本地 GGUF vision 后端使用节点作者推荐的 JamePeng `llama-cpp-python` GPU 构建。若没有匹配的预编译 wheel，安装器可能需要 Visual Studio Build Tools、CMake 和 CUDA Toolkit；具体日志和前置条件会显示在设置 → 节点与工作流。
 
 ### 2. 克隆并启动 GUI
 

@@ -293,6 +293,7 @@ export const uiKeys = {
     promptMissing: "status.promptMissing",
     promptGemma: "status.promptGemma",
     promptQwen: "status.promptQwen",
+    promptQwenMultimodal: "status.promptQwenMultimodal",
     imageWaitingScan: "status.imageWaitingScan",
     imageIncomplete: "status.imageIncomplete",
     imagePendingIntegration: "status.imagePendingIntegration",

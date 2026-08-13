@@ -2,7 +2,8 @@ import type {
   EnvironmentIssue,
   EnvironmentScanResult,
   LocalServiceKind,
-  Settings
+  Settings,
+  WorkflowDependencyStatus
 } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
@@ -272,7 +273,7 @@ export function mountSettingsEnvironmentController(
   root.querySelectorAll<HTMLButtonElement>("[data-install-workflow]").forEach((button) => {
     button.addEventListener("click", async (event) => {
       event.stopImmediatePropagation();
-      const workflowId = button.dataset.installWorkflow as "minimax_h3_i2v" | undefined;
+      const workflowId = button.dataset.installWorkflow as WorkflowDependencyStatus["id"] | undefined;
       if (!workflowId) return;
       const settings = options.formSettings();
       options.setSettingsDraft(settings);

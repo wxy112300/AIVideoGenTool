@@ -27,13 +27,18 @@ describe("dependency catalog", () => {
       runtimeEndpoint: "/h3studio/status",
       required: false
     });
+    expect(customNodeDefinition("comfyui-multimodal-prompt-nodes")).toMatchObject({
+      nodeTypes: ["VisionLLMNode"],
+      runtimeRequirement: expect.stringContaining("0.3.36"),
+      required: false
+    });
     expect(customNodeDefinition("h3-motion-context")?.nodeTypes).toContain(
       "MiniMaxH3MotionContextSaveLatent"
     );
   });
 
   it("defines portable workflow destinations without machine paths", () => {
-    expect(workflowDependencyCatalog).toHaveLength(1);
+    expect(workflowDependencyCatalog).toHaveLength(2);
     expect(workflowDependencyDefinition("minimax_h3_i2v")).toMatchObject({
       sourceUrl: expect.stringContaining("Comfy-Org/workflow_templates"),
       targetSegments: [
@@ -42,6 +47,10 @@ describe("dependency catalog", () => {
         "workflows",
         "video_minimax_h3_i2v.json"
       ]
+    });
+    expect(workflowDependencyDefinition("qwen36_h3_prompt_enhancer")).toMatchObject({
+      sourceUrl: expect.stringContaining("qwen36_h3_prompt_enhancer_api.json"),
+      targetSegments: ["user", "default", "workflows", "qwen36_h3_prompt_enhancer_api.json"]
     });
     for (const definition of workflowDependencyCatalog) {
       expect(definition.targetSegments.every((segment) =>

@@ -9,10 +9,12 @@ export interface CatalogCustomNodeDefinition {
   runtimeEndpoint?: string;
   minimumVersion?: string;
   recommendedVersion?: string;
+  /** Python-side runtime requirement when the node package's own version is not the constraint. */
+  runtimeRequirement?: string;
   required: boolean;
 }
 
-export type CatalogWorkflowDependencyId = "minimax_h3_i2v";
+export type CatalogWorkflowDependencyId = "minimax_h3_i2v" | "qwen36_h3_prompt_enhancer";
 
 export interface CatalogWorkflowDependencyDefinition {
   id: CatalogWorkflowDependencyId;

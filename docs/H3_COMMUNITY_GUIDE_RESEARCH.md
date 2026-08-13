@@ -25,7 +25,7 @@
 | H3-Base | 是 | 生成 768p 级别的同步视频和立体声音频 |
 | H3-Regenerate-2K | 否，主要通过 API 提供 | 使用 768p 结果和原始上下文重新生成 2K |
 
-本地 ComfyUI 主要运行 H3-Base。当前应用使用本地 Qwen3.5 作为提示词扩写器，是对闭源 Context-IR 的本地替代，不等同于官方 Context-IR。
+本地 ComfyUI 主要运行 H3-Base。当前应用使用本地 Qwen3.5、Gemma Prompt Writer 或可选的 Qwen3.6 GGUF 作为提示词扩写器，是对闭源 Context-IR 的本地替代，不等同于官方 Context-IR。Qwen3.6 通过 ComfyUI MultiModal Prompt Nodes 运行，不再需要独立的 LM Studio 或 llama-server。
 
 ## 2. 消费级模型选择
 
@@ -47,7 +47,7 @@
 - `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`
 - 官方视频 VAE 和音频 VAE
 
-提示词扩写另有一个应用自管理实验档：`HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive` 的 GGUF + `mmproj`。它不兼容 ComfyUI 原生 `text_encoders`/`TextGenerate`，应用会通过本地 `llama-server.exe` 的 OpenAI 兼容接口运行，不依赖 LM Studio；设置、扫描、启动、停止、队列前释放和退出清理已经接入。该档位用于减少提示词模型本身的拒答，不会改变 MiniMax H3 视频基座的许可证或官方使用限制。
+提示词扩写另有一个可选的 Uncensored 档位：Qwen3.6 27B Q4 GGUF + `mmproj`。它不兼容 ComfyUI 原生 `text_encoders`/`TextGenerate`，应用会通过所选 ComfyUI 的 `VisionLLMNode` 运行，不依赖 LM Studio 或 llama-server；设置、扫描、启动、队列前释放和退出清理均沿用 ComfyUI 单运行时策略。4090 使用普通 Q4_K_M（不选 MTP）和 8K 上下文，提示词完成后卸载，避免与 H3 共占显存。
 
 这个组合的原因是 4090 24GB 需要分层加载和卸载。`pruned` 主要面向推理，去除了可以预计算/缓存的 AdaLN 分支；完整 BF16 或完整 INT8 不是不能通过 CPU/RAM offload 启动，但不适合当前默认路径。
 
@@ -173,7 +173,7 @@ EasyCache 是 ComfyUI 内置节点，输出相对更保守；TeaCache 提速更�
 
 ## 8. 社区多模态 Prompt Writer 融合
 
-社区项目 `ComfyUI-MiniMaxH3-Prompt-Writer` 是独立的 ComfyUI UI 扩展，不是工作流节点。它使用 Gemma 4 GGUF + `mmproj` 分析图片和视频接触表，再结合官方 H3 指南生成 Prompt。当前项目不直接依赖该扩展，而是吸收以下可复用契约：
+社区项目 `ComfyUI-MiniMaxH3-Prompt-Writer` 是独立的 ComfyUI UI 扩展，不是工作流节点。另一个可直接接入的节点包是 [`ComfyUI-MultiModal-Prompt-Nodes`](https://github.com/kantan-kanto/ComfyUI-MultiModal-Prompt-Nodes)，提供 `VisionLLMNode`，可在同一个 ComfyUI Python 环境中加载 Qwen3.6 GGUF + `mmproj` 并接收图片。Civitai 的 [`MiniMaxH3 Auto Prompter`](https://civitai.com/models/2834106/minimaxh3-auto-prompter) 是工作流方案，不是模型；由于下载文件需要登录，项目没有直接复制其 JSON，而是吸收其提示词结构。当前项目统一通过独立的 core 提示词模块向不同后端发送同一份 H3 合同：
 
 - 优先级固定为用户明确要求 → 用户分配的参考角色 → 预设和默认值；
 - 参考素材是事实边界，不能凭空增加动作、表情、道具、地点、对白、文字、镜头或音乐；
@@ -181,8 +181,26 @@ EasyCache 是 ComfyUI 内置节点，输出相对更保守；TeaCache 提速更�
 - contact sheet、抽帧格子和内部采样时间只用于模型观察，不能出现在最终 Prompt 或被拆成目标镜头；
 - 未明确要求配乐时 `non_diegetic_music` 保持 `N/A`；视觉模型不能听音频时，只能根据用户声明决定 Audio 的复制/参考关系；
 - 生成结果继续由本地 H3 检查器验证字段顺序、超时长时间戳、说话人 ID 和内部分析信息泄露。
+- R2V 额外要求 `subject_definitions` → `summary` → `retention_analysis` → `detailed_description` → 音频字段；用 retention/attribute-transfer 关系描述参考如何保留或迁移，避免把参考图说明重复成静态清单。
+- I2VA/FL2VA/L2VA 保留官方对齐行，把运动和镜头变化写进 `integrated_multimodal_description`，不把参考图或 contact sheet 当成最终镜头。
 
-模型支持采取扩展而非替换策略：ComfyUI 原生 Qwen3.5、Unconcerned Qwen、LM Studio 继续保留，同时为应用自管理 llama-server 新增 Gemma 4 E4B Q3、12B Q4、12B Q5、26B-A4B Q4 和 31B Q4。每个 Gemma GGUF 必须和自己的 `mmproj-BF16.gguf` 放在独立子目录，运行时按所选档位使用 8K 或16K上下文，并在视频队列开始前释放显存。
+模型支持采取扩展而非替换策略：ComfyUI 原生 Qwen3.5、Gemma Prompt Writer 和 Qwen3.6 MultiModal 继续保留。Qwen3.6 使用 `DavidAU/Qwen3.6-27B-Fable-Fusion-711-Uncensored-Heretic-NM-DAU-NEO-MAX-MTP-GGUF` 的普通 `Q4_K_M` 文件和同目录 `mmproj-BF16.gguf`；MTP 变体不纳入默认目录。节点依赖安装到当前 ComfyUI 的 Python，运行时选择 GPU，扩写后 `/free`，再开始 H3。
+
+### 8.1 已下载的 `minimaxh3Auto_v5.json` 对照
+
+用户提供的 `minimaxh3Auto_v5.json` 是 ComfyUI **画布格式**（63 个节点、`version: 0.4`），不是可以直接提交到 `/prompt` 的 API workflow。因此没有把它原样放进生产目录：其中包含本机输入文件名、示例内容、旧模型路径和多组 UI bypass/预览节点，直接复用会把机器状态和第三方节点耦合进 Local Video Studio。
+
+从该文件吸收并落实到 `src/core/h3-auto-prompter.ts` 的规则包括：
+
+- T2VA/I2VA/L2VA 的三字段输出和精确首尾帧对齐行；FL2VA 的开头/结尾帧连续桥接；
+- 图片版 REF2V/R2V 的六段顺序：`subject_definitions` → `summary` → `retention_analysis` → `detailed_description` → 音频字段；
+- `<Subject N>`、`<Picture N>`、`<Video N>`、`<Audio N>` 的职责边界，以及图片作为身份来源时不额外创建 Picture 标签的规则；
+- summary 的任务关系前缀（`keyframe completion`、`reference generation`、`video editing`、`video continuation`、`audio reuse`、`audio reference`）；
+- 视觉关系词 `fully_preserved` / `partially_preserved` / `attribute_transfer` / `weak_reference` 与音频关系词 `fully_copy` / `partially_copy` / `reference` / `weak_reference`；
+- 稳定说话人 ID、`<d>[Language] ...</d>`、`<scenetrans>`、`<cutoff>` 和音频分层规则；
+- R2V 典型生成任务约 350–500 个有依据的英文单词，但禁止为凑字数发明参考图中不存在的内容。
+
+该 workflow 使用的 `LLMTextProcessor`、`AILab_ImageCompare`、`LoadVideoUI`、`VHS_LoadAudioUpload` 以及 rgthree bypass 组件，是它自己的 ComfyUI 方案。当前应用选择 `VisionLLMNode` + Qwen3.6 Q4 的解耦路径：图片直接交给多模态节点；视频/音频若当前后端无法读取，则只使用用户在参考角色中声明的描述，不伪造“已听到/已分析”的内容。这样保留了 Auto Prompter 的提示词质量逻辑，同时不把整套旧节点和旧模型锁死到 4090 默认运行路径。
 
 ## 9. 2026-08-11 低显存社区方案更新
 
@@ -216,3 +234,29 @@ Q3 GGUF workflow 需要 `ComfyUI-GGUF` 的 `UnetLoaderGGUFAdvanced` 与 `CLIPLoa
 - [H3 sampler/audio 修复](https://github.com/Comfy-Org/ComfyUI/pull/15243)。
 
 这里的 H3 mask 修复是视频 latent noise mask，不是图片 Canvas 的 inpaint mask。3080 档验收必须记录 GPU 峰值、共享显存、系统 RAM、页面文件、分辨率、帧数、steps、音频是否正常以及输出是否可播放。
+
+## 10. 社区视觉真实感与快速插入
+
+这次补充了社区作品中反复出现、且适合组合使用的视觉预设。主要参考：
+
+- [Awesome MiniMax H3 Prompts](https://github.com/xianyu110/awesome-minimax-h3-prompts)：区分作者原文与 AI 反推文案；后者只能作为写作参考，不能证明原作者使用过其中的每个词。
+- [MiniMax H3 Prompt Writer 使用指南](https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer/blob/main/docs/USAGE.md)：强调让参考素材承担身份/场景/动作/镜头等明确角色，并把 Creative Brief 当作可编辑起点。
+
+### 社区反复出现的模式
+
+- **UGC / 手机真实感**：`iPhone selfie-vlog`、`handheld`、`natural light`、`slight motion blur`、`not cinematic` 经常成组出现。它们共同表达的是普通手机主摄、自然曝光、轻微手持和不追求棚拍完成度，而不是单个模型魔法词。
+- **纪录片 / 消费级设备**：`DV 16mm camcorder`、`imperfect framing`、`delayed focus`、`clumsy zooms`、`analog noise` 用来主动保留真实拍摄缺陷。
+- **人像与产品**：`50mm prime lens`、`85mm prime lens`、`telephoto portrait lens`、`macro lens`、`shallow depth of field`、`rack focus` 反复用于控制主体分离、产品细节和焦点转移。
+- **真实材质**：比 `8K`、`ultra detailed` 更稳定的写法是 skin pores、fine hair、fabric irregularity、contact shadows、natural reflections、highlight roll-off 等可观察的物理细节。
+- **反向约束**：高质量样例常在结尾写 `AVOID`，明确禁止 face changes、wardrobe changes、camera shake、text、watermarks、plastic surfaces 或 CG-rendered look。项目把这些语义转成自然句子，不生成一个独立的负面提示词字段。
+
+目前没有找到可核验的 H3 原始来源证明 `Old iPhone 1x standard lens` 这个完整短语有特殊权重。它可以作为可读的社区风格组合，但应用预设使用更明确的 `older smartphone main camera at 1x`，并同时补充曝光、手持、对焦和后期限制。
+
+### 已接入的预设策略
+
+快速插入新增两组：
+
+- **真实感与材质**：真人实拍、避免 CG/玩偶/塑料感、自然皮肤与材质、自然光与真实曝光。
+- **拍摄与设备**：旧手机 1x 真实感、纪录片手持质感。
+
+预设文本保持英文，因为它们直接面向 H3 和 Prompt Writer。三种 UI 语言只翻译分组和标签。点击扩写时，插入文本会随当前 Prompt 原样进入 `User request`；H3 扩写契约会把真人、自然材质、反 CG、反塑料、手机或纪录片拍摄等要求视为硬约束，并要求把它们分配到 style、lighting、camera、materials 和 continuity，而不是丢弃或输出成孤立的预设列表。

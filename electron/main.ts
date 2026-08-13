@@ -73,7 +73,11 @@ import {
   copyFileToWindowsClipboard,
   resolveExistingHistoryFile
 } from "./services/windows-clipboard.js";
-import { isGemmaPromptModel, promptRuntimeForSettings } from "../src/core/prompt-models.js";
+import {
+  isComfyMultimodalPromptModel,
+  isGemmaPromptModel,
+  promptRuntimeForSettings
+} from "../src/core/prompt-models.js";
 import {
   installAttentionAcceleration,
   installCustomNode,
@@ -90,10 +94,14 @@ import {
 import {
   freeMemory,
   enhancePromptWithComfyUi,
+  testComfyUi,
   interrupt,
-  warmNativePromptModel,
-  testComfyUi
+  warmNativePromptModel
 } from "./services/comfy-ui.js";
+import {
+  enhancePromptWithMultimodalComfyUi,
+  warmMultimodalPromptModel
+} from "./services/multimodal-prompt.js";
 import {
   enhancePromptWithH3PromptWriter,
   promptWriterModelForSelection,
@@ -1283,8 +1291,21 @@ async function validateNativePromptRuntime(settings: Settings): Promise<void> {
       .map((component) => component.expected)
       .join("、");
     throw new Error(
-      `提示词模型尚未就绪${missing ? `，缺少：${missing}` : ""}。请把模型放入 ComfyUI/models/text_encoders 后重新扫描。`
+      `提示词模型尚未就绪${missing ? `，缺少：${missing}` : ""}。请把模型放入 ${isComfyMultimodalPromptModel(settings.promptModelId) ? "ComfyUI/models/LLM 的对应子目录" : "ComfyUI/models/text_encoders"} 后重新扫描。`
     );
+  }
+  if (isComfyMultimodalPromptModel(settings.promptModelId)) {
+    if (profile.missingCustomNodeIds?.length) {
+      throw new Error(
+        `Qwen3.6 提示词模型缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与工作流中安装。`
+      );
+    }
+    if (profile.runtimeVerified && profile.runtimeReady === false) {
+      throw new Error(
+        `Qwen3.6 提示词节点尚未被当前 ComfyUI 加载：${profile.runtimeMissingNodes?.join("、") || "VisionLLMNode"}。请重启 ComfyUI 后重新扫描。`
+      );
+    }
+    return;
   }
   if (!scan.comfyCompatibility.promptCoreSupported) {
     const missing = scan.comfyCompatibility.promptCoreNodes
@@ -2108,6 +2129,12 @@ function registerIpc(): void {
         promptWriterModelForSelection(status.models, settings.promptModelId);
         return;
       }
+      if (promptBackend === "comfyui-multimodal") {
+        await ensureComfyUiReadyForPrompt(settings);
+        await validateNativePromptRuntime(settings);
+        await warmMultimodalPromptModel(settings, controller.signal);
+        return;
+      }
       if (promptBackend !== "native-text-generate") {
         throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
       }
@@ -2126,6 +2153,8 @@ function registerIpc(): void {
         ok: true,
         message: promptBackend === "h3-prompt-writer"
           ? "ComfyUI H3 Prompt Writer 已就绪；模型会在扩写时按需加载，完成后自动卸载。"
+          : promptBackend === "comfyui-multimodal"
+            ? "Qwen3.6 多模态提示词模型已通过 ComfyUI 节点验证；每次扩写后自动释放显存。"
           : "Qwen 提示词模型已启动并加载到 ComfyUI。"
       };
     } catch (error) {
@@ -2164,6 +2193,40 @@ function registerIpc(): void {
       const worker = (async () => {
         await ensureComfyUiReadyForPrompt(settings);
         return enhancePromptWithH3PromptWriter(request, settings, controller.signal);
+      })();
+      nativePromptWorker = worker;
+      try {
+        const result = await worker;
+        appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
+          runtime,
+          durationMs: Date.now() - startedAt,
+          outputLength: result.length
+        });
+        return result;
+      } catch (error) {
+        appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
+          runtime,
+          durationMs: Date.now() - startedAt,
+          ...errorLogMeta(error)
+        });
+        throw error;
+      } finally {
+        if (nativePromptWorker === worker) nativePromptWorker = null;
+        if (nativePromptController === controller) nativePromptController = null;
+      }
+    }
+    if (promptBackend === "comfyui-multimodal") {
+      if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
+      if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
+        throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
+      }
+      if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
+      const controller = new AbortController();
+      nativePromptController = controller;
+      const worker = (async () => {
+        await ensureComfyUiReadyForPrompt(settings);
+        await validateNativePromptRuntime(settings);
+        return enhancePromptWithMultimodalComfyUi(request, settings, controller.signal);
       })();
       nativePromptWorker = worker;
       try {

@@ -10,6 +10,11 @@
 
 ### 0.19.0 候选 — 2026-08-13
 
+- 提示词扩写新增可选 Qwen3.6 27B Q4 Uncensored 配置：使用 ComfyUI MultiModal Prompt Nodes 的 `VisionLLMNode`，支持多参考图，完全复用所选 ComfyUI 的 Python，不再需要 LM Studio、llama-server 或第二个服务。
+- 节点与工作流目录新增 MultiModal Prompt Nodes 与 Qwen3.6 H3 提示词扩写 API 工作流；安装器跳过会覆盖多模态后端的普通 `llama-cpp-python` requirements，改装 JamePeng GPU 构建并保留完整编译日志。
+- Qwen3.6 按 RTX 4090 设计为普通 Q4_K_M、同目录 `mmproj-BF16.gguf`、8K 上下文、GPU 层；扩写完成或退出时请求 ComfyUI `/free`，避免与 H3/图片任务交叉占用显存。
+- 融合 Civitai MiniMaxH3 Auto Prompter 的结构化提示词逻辑：R2V 使用 `subject_definitions → summary → retention_analysis → detailed_description`，其他 H3 模式保持官方三字段、首尾帧对齐和明确的音频/配乐约束；所有提示词后端共享同一份 core contract。
+- 设置扫描、启动校验、提示词状态和多语言文案新增 Qwen3.6 ComfyUI 多模态路径；节点目录、模型/mmproj 文件和运行时节点仍分开显示，未完成真实 GPU smoke 前不会宣称模型已跑通。
 - 修复图片处理页的参考图片拖拽目标：每个上方 Picture 预览窗口现在都支持拖入、点击选择和覆盖替换；下方区域继续用于新增下一个 Picture，并在覆盖时显示明确反馈。
 - 修复 LaMa「绘制 Mask」按钮缺少画笔图标，以及图片历史大图弹窗上一张/下一张按钮未初始化 Lucide 图标的问题。
 - 队列页新增默认关闭的 H3 TAE 实时预览开关；接入 KJNodes `ModelPreviewOverrideKJ` 与 `vae_approx/taeh3.safetensors`，以单帧 512px 的保守配置复用现有运行卡片预览，并解析 `kj_preview_override` 自定义 WebSocket 事件。缺少可选预览依赖时不改变原 H3 工作流。

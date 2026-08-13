@@ -16,6 +16,7 @@ import {
   safeComfyUploadFilename
 } from "../electron/services/comfy-ui.js";
 import { h3OfficialPromptBaseline } from "../src/core/h3-official-spec.js";
+import { promptSnippetFor } from "../src/core/prompt-suggestions.js";
 
 describe("H3 live preview runtime discovery", () => {
   it("selects the TAE only when KJNodes exposes it through vae_approx", () => {
@@ -100,7 +101,7 @@ describe("native Qwen prompt workflow", () => {
       prompt: "把 Picture 2 放到 Picture 1 中。",
       modelId: "qwen-image-edit-2511",
       mode: "image-edit",
-      imageEditEnhanceMode: "sulphur-native"
+      imageEditEnhanceMode: "detail-enhance"
     });
 
     expect(faithful).toContain("Faithful mode:");
@@ -176,6 +177,22 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("no non-diegetic background music");
     expect(instruction).toContain("exactly one [Shot 1]");
     expect(instruction.lastIndexOf("Explicit hard constraints extracted")).toBeGreaterThan(
+      instruction.lastIndexOf("User request (content to preserve")
+    );
+  });
+
+  it("preserves inserted visual-quality presets for prompt expansion", () => {
+    const visualPreset = promptSnippetFor("visual-anti-cg-plastic");
+    const instruction = h3PromptInstruction({
+      prompt: `A woman walks toward the camera. ${visualPreset}`,
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "T2VA"
+    });
+
+    expect(instruction).toContain(visualPreset);
+    expect(instruction).toContain("Visual-quality preset rule");
+    expect(instruction).toContain("integrate and refine it across the style, action timeline, lighting, camera, materials, and continuity");
+    expect(instruction.lastIndexOf(visualPreset)).toBeGreaterThan(
       instruction.lastIndexOf("User request (content to preserve")
     );
   });

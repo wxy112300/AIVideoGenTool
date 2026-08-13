@@ -43,6 +43,7 @@ import {
 } from "../../src/core/h3-prompt.js";
 import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
+import { h3AutoPrompterContract } from "../../src/core/h3-auto-prompter.js";
 import {
   imageModelAdapterFor,
   renderImageWorkflow,
@@ -54,7 +55,7 @@ function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
-async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
+export async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const timeout = AbortSignal.timeout(15_000);
   const response = await fetch(url, {
     ...init,
@@ -95,7 +96,7 @@ export function safeComfyUploadFilename(
   return `studio-input-${safeId}${safeExtension}`;
 }
 
-async function uploadInput(
+export async function uploadInput(
   baseUrl: string,
   filePath: string,
   signal: AbortSignal,
@@ -140,6 +141,7 @@ export function h3PromptInstruction(
   return [
     "You are the prompt director for MiniMax H3 video generation.",
     h3SmallModelPromptContract(mode),
+    h3AutoPrompterContract(mode, duration, referenceContext),
     `This is an H3 ${mode} request for approximately ${duration.toFixed(2)} seconds.`,
     h3DurationPlan(mode, duration),
     `Selected preset (low-priority style hint only): ${preset}.\n${presetText}`,
@@ -251,6 +253,10 @@ function textCandidates(value: unknown): string[] {
 }
 
 export function extractTextGenerateOutput(history: unknown): string {
+  return extractStringNodeOutput(history, ["preview", "text-generate"]);
+}
+
+export function extractStringNodeOutput(history: unknown, nodeIds: readonly string[]): string {
   if (!history || typeof history !== "object" || Array.isArray(history)) {
     throw new Error("ComfyUI 没有返回提示词结果。");
   }
@@ -259,7 +265,7 @@ export function extractTextGenerateOutput(history: unknown): string {
     throw new Error("ComfyUI 提示词任务没有输出节点结果。");
   }
   const outputRecords = outputs as Record<string, unknown>;
-  const text = ["preview", "text-generate"]
+  const text = nodeIds
     .flatMap((nodeId) => textCandidates(outputRecords[nodeId]))
     .map((item) => item.trim())
     .find((item) => item.length > 0);

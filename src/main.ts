@@ -200,6 +200,7 @@ import {
   normalizeImageTargetResolution
 } from "./core/image-workflow";
 import {
+  isComfyMultimodalPromptModel,
   isGemmaPromptModel
 } from "./core/prompt-models";
 import {
@@ -1022,6 +1023,7 @@ function settingsPage(): string {
       orderVideoProfiles,
       getImageQualityProfiles: (modelId) => imageModelCapabilityFor(modelId).qualityProfiles,
       isGemmaPromptModel,
+      isComfyMultimodalPromptModel,
       videoLoraInfoButton: (profileId) => {
         const lora = BUILTIN_VIDEO_LORAS.find((item) => item.id === profileId);
         return lora ? videoLoraInfoButton(lora, uiText, state.settings.uiLocale) : "";

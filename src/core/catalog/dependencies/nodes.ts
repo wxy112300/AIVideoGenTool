@@ -79,6 +79,16 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   nodeTypes: ["RIFE VFI"],
   required: false
 }, {
+  id: "comfyui-multimodal-prompt-nodes",
+  name: "ComfyUI MultiModal Prompt Nodes",
+  purpose: "在 ComfyUI 内运行 Qwen3.6 GGUF 与 mmproj，按参考图片和文字生成提示词",
+  repositoryUrl: "https://github.com/kantan-kanto/ComfyUI-MultiModal-Prompt-Nodes.git",
+  directoryName: "ComfyUI-MultiModal-Prompt-Nodes",
+  aliases: ["comfyui-multimodal-prompt-nodes", "ComfyUI-MultiModal-Prompt-Nodes"],
+  nodeTypes: ["VisionLLMNode"],
+  runtimeRequirement: "轻量依赖之外，Qwen3.6 vision 需要 JamePeng llama-cpp-python（参考兼容线 0.3.36+）与 GPU 构建",
+  required: false
+}, {
   id: "minimax-h3-prompt-writer",
   name: "MiniMax H3 Prompt Writer",
   purpose: "在 ComfyUI 内运行 Gemma 4，多模态理解素材并生成 H3 官方格式提示词",

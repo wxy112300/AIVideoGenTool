@@ -270,6 +270,7 @@ export const zhCNCatalog = {
     [uiKeys.status.promptMissing]: "缺少 {missing}",
     [uiKeys.status.promptGemma]: "检查 ComfyUI H3 Prompt Writer",
     [uiKeys.status.promptQwen]: "启动 ComfyUI 提示词模型",
+    [uiKeys.status.promptQwenMultimodal]: "Qwen3.6 ComfyUI 多模态节点已就绪",
     [uiKeys.status.imageWaitingScan]: "等待环境扫描",
     [uiKeys.status.imageIncomplete]: "组件不完整",
     [uiKeys.status.imagePendingIntegration]: "工作流待接入",

@@ -270,6 +270,7 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.status.promptMissing]: "Missing {missing}",
 	[uiKeys.status.promptGemma]: "Check ComfyUI H3 Prompt Writer",
 	[uiKeys.status.promptQwen]: "Start the ComfyUI prompt model",
+	[uiKeys.status.promptQwenMultimodal]: "Qwen3.6 ComfyUI multimodal node is ready",
 	[uiKeys.status.imageWaitingScan]: "Waiting for environment scan",
 	[uiKeys.status.imageIncomplete]: "Incomplete components",
 	[uiKeys.status.imagePendingIntegration]: "Workflow pending integration",

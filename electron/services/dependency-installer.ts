@@ -161,23 +161,77 @@ export async function installCustomNodePackage(
       await prepareLtxVideo(targetDirectory, report);
     }
 
+    const isMultimodalPromptNodes = definition.id === "comfyui-multimodal-prompt-nodes";
     const requirements = path.join(targetDirectory, "requirements.txt");
     if (await runtime.exists(requirements)) {
       const python = await runtime.findComfyPython(settings, comfyRoot);
       if (!python) throw new Error("节点已下载，但没有找到所选 ComfyUI 的 Python 环境。");
-      report(`安装 Python 依赖 ${requirements}`);
-      const pipOutput = await runtime.runLoggedProcess(
+      // MultiModal Prompt Nodes lists llama-cpp-python in requirements.txt,
+      // but its README explicitly warns that the normal PyPI build can
+      // overwrite the JamePeng build required for Qwen3.6 vision. Install
+      // only the lightweight dependencies here; the backend is installed in
+      // the dedicated block below.
+      const requirementArgs = isMultimodalPromptNodes
+        ? ["-m", "pip", "install", "dashscope>=1.20.0", "pillow>=10.0.0", "numpy>=1.24.0"]
+        : ["-m", "pip", "install", "-r", requirements];
+      report(
+        isMultimodalPromptNodes
+          ? "安装 MultiModal Prompt Nodes 的轻量依赖（跳过普通 llama-cpp-python，避免覆盖 Qwen3.6 后端）"
+          : `安装 Python 依赖 ${requirements}`
+      );
+      const pipOutput = await runtime.runLoggedProcess(python, requirementArgs, {
+        timeoutMs: 900_000,
+        env: commandEnvironment,
+        onLog: report
+      });
+      if (!pipOutput) report("pip：依赖已满足");
+    } else {
+      if (isMultimodalPromptNodes) {
+        const python = await runtime.findComfyPython(settings, comfyRoot);
+        if (!python) throw new Error("MultiModal Prompt Nodes 已下载，但没有找到所选 ComfyUI 的 Python 环境。");
+        report("节点没有 requirements.txt，直接安装 MultiModal 的轻量依赖（不安装普通 llama-cpp-python）");
+        await runtime.runLoggedProcess(
+          python,
+          ["-m", "pip", "install", "dashscope>=1.20.0", "pillow>=10.0.0", "numpy>=1.24.0"],
+          {
+            timeoutMs: 900_000,
+            env: commandEnvironment,
+            onLog: report
+          }
+        );
+      } else {
+        report("未发现 requirements.txt，无需安装额外 Python 依赖");
+      }
+    }
+    if (isMultimodalPromptNodes) {
+      const python = await runtime.findComfyPython(settings, comfyRoot);
+      if (!python) throw new Error("MultiModal Prompt Nodes 已下载，但没有找到所选 ComfyUI 的 Python 环境。");
+      report("安装 Qwen3.6 所需的 JamePeng llama-cpp-python 后端（GPU 多模态构建）……");
+      const backendEnvironment = {
+        ...commandEnvironment,
+        CMAKE_ARGS: [
+          commandEnvironment.CMAKE_ARGS,
+          "-DGGML_CUDA=ON",
+          "-DLLAMA_BUILD_EXAMPLES=OFF",
+          "-DLLAMA_BUILD_TOOLS=OFF",
+          "-DLLAMA_BUILD_TESTS=OFF",
+          "-DLLAMA_BUILD_SERVER=OFF"
+        ].filter(Boolean).join(" ")
+      };
+      const backendOutput = await runtime.runLoggedProcess(
         python,
-        ["-m", "pip", "install", "-r", requirements],
+        [
+          "-m", "pip", "install", "--upgrade", "--no-cache-dir",
+          "llama-cpp-python @ git+https://github.com/JamePeng/llama-cpp-python.git"
+        ],
         {
-          timeoutMs: 900_000,
-          env: commandEnvironment,
+          timeoutMs: 1_200_000,
+          env: backendEnvironment,
           onLog: report
         }
       );
-      if (!pipOutput) report("pip：依赖已满足");
-    } else {
-      report("未发现 requirements.txt，无需安装额外 Python 依赖");
+      if (!backendOutput) report("JamePeng llama-cpp-python：后端已满足");
+      report("Qwen3.6 多模态后端安装完成；请重启 ComfyUI，设置页会验证 VisionLLMNode 与实际运行时。");
     }
     if (definition.id === "minimax-h3-prompt-writer") {
       const python = await runtime.findComfyPython(settings, comfyRoot);

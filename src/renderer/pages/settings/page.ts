@@ -93,6 +93,7 @@ export interface SettingsPageOptions {
   orderVideoProfiles(profiles: ModelScanProfile[]): ModelScanProfile[];
   getImageQualityProfiles(modelId: string): ImageQualityProfileOption[];
   isGemmaPromptModel(modelId: string): boolean;
+  isComfyMultimodalPromptModel(modelId: string): boolean;
   videoLoraInfoButton(profileId: string): string;
   isImageWorkflowReady(profile?: ModelScanProfile): boolean;
   isImageModelSelectable(profile?: ModelScanProfile): boolean;
@@ -153,6 +154,7 @@ export function renderSettingsPage(
     {
       ...sharedFragmentOptions,
       isGemmaPromptModel: options.isGemmaPromptModel,
+      isComfyMultimodalPromptModel: options.isComfyMultimodalPromptModel,
       videoLoraInfoButton: options.videoLoraInfoButton,
       isImageWorkflowReady: options.isImageWorkflowReady,
       imageWorkflowStatus: options.imageWorkflowStatus
