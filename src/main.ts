@@ -197,6 +197,7 @@ import {
 import {
   firstSupportedImageModelId,
   imageModelCapabilityFor,
+  imageReferenceInputPath,
   normalizeImageTargetResolution
 } from "./core/image-workflow";
 import {
@@ -1789,9 +1790,7 @@ async function loadImageEditPreviews(): Promise<void> {
       `[data-image-picture-preview="${CSS.escape(picture.id)}"]`
     );
     if (!image || !picture.absolutePath) return;
-    const previewPath = state.imageDraft.modelId === "lama-inpaint"
-      ? picture.absolutePath
-      : picture.markup?.renderedPath || picture.absolutePath;
+    const previewPath = picture.markup?.renderedPath || imageReferenceInputPath(picture);
     const dataUrl = await window.studio.readImage(previewPath).catch(() => null);
     if (!dataUrl || !image.isConnected) return;
     await new Promise<void>((resolve) => {
@@ -1834,6 +1833,16 @@ function randomSeedValue(): number {
   return high * 0x100000000 + (values[1] ?? 0);
 }
 
+function sameImageCrop(
+  left: ImageReference["crop"] | null | undefined,
+  right: { x: number; y: number; width: number; height: number; sourceWidth: number; sourceHeight: number } | null
+): boolean {
+  if (!left || !right) return !left && !right;
+  return left.x === right.x && left.y === right.y &&
+    left.width === right.width && left.height === right.height &&
+    left.sourceWidth === right.sourceWidth && left.sourceHeight === right.sourceHeight;
+}
+
 async function editImagePictureMarkup(pictureId: string): Promise<void> {
   const picture = state.imageDraft.pictures.find((item) => item.id === pictureId);
   if (!picture?.absolutePath) return;
@@ -1852,9 +1861,25 @@ async function editImagePictureMarkup(pictureId: string): Promise<void> {
       filename: picture.absolutePath,
       sourceDataUrl,
       existingDocument,
+      existingCrop: picture.crop,
       mode: maskMode ? "mask" : "annotation"
     });
     if (!result) return;
+    const cropChanged = !sameImageCrop(picture.crop, result.crop);
+    let crop = picture.crop;
+    if (cropChanged) {
+      crop = result.crop
+        ? (await window.studio.saveImageCrop({
+            pictureId: picture.id,
+            sourcePath: picture.absolutePath,
+            crop: result.crop,
+            croppedPng: result.croppedPng,
+            previousRevision: picture.crop?.revision
+          })) ?? undefined
+        : undefined;
+    }
+    const width = result.crop?.width ?? picture.crop?.sourceWidth ?? picture.width;
+    const height = result.crop?.height ?? picture.crop?.sourceHeight ?? picture.height;
     if (maskMode) {
       const mask = result.objectCount > 0
         ? await window.studio.saveImageMask({
@@ -1868,7 +1893,7 @@ async function editImagePictureMarkup(pictureId: string): Promise<void> {
         : undefined;
       patchImageDraft({
         pictures: state.imageDraft.pictures.map((item) =>
-          item.id === pictureId ? { ...item, mask } : item
+          item.id === pictureId ? { ...item, crop, width, height, mask } : item
         )
       });
       render();
@@ -1889,7 +1914,7 @@ async function editImagePictureMarkup(pictureId: string): Promise<void> {
       : undefined;
     patchImageDraft({
       pictures: state.imageDraft.pictures.map((item) =>
-        item.id === pictureId ? { ...item, markup } : item
+        item.id === pictureId ? { ...item, crop, width, height, markup } : item
       )
     });
     render();
@@ -1933,7 +1958,7 @@ function addImagePicture(path: string, replacePictureId?: string): void {
     patchImageDraft({
       pictures: pictures.map((picture) =>
         picture.id === targetPicture.id
-          ? { ...picture, absolutePath: path, width: 0, height: 0, markup: undefined, mask: undefined }
+          ? { ...picture, absolutePath: path, width: 0, height: 0, crop: undefined, markup: undefined, mask: undefined }
           : picture
       )
     });

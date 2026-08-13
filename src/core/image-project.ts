@@ -6,7 +6,8 @@ import type {
   ImageOutputFormat,
   ImageReference,
   ImageReferenceRole,
-  ImageMarkupData
+  ImageMarkupData,
+  ImageCropData
 } from "../types.js";
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
 import { normalizeImageTargetResolution } from "./image-workflow.js";
@@ -79,6 +80,33 @@ function normalizeImageFile(value: unknown): ImageAssetVersion["file"] | null {
     ...(typeof source.absolutePath === "string" && source.absolutePath.trim()
       ? { absolutePath: source.absolutePath }
       : {})
+  };
+}
+
+function normalizeImageCrop(value: unknown): ImageCropData | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Partial<ImageCropData>;
+  const numbers = [source.x, source.y, source.width, source.height, source.sourceWidth, source.sourceHeight];
+  if (!numbers.every((item) => typeof item === "number" && Number.isFinite(item))) return undefined;
+  const sourceWidth = Math.max(1, Math.trunc(source.sourceWidth!));
+  const sourceHeight = Math.max(1, Math.trunc(source.sourceHeight!));
+  const x = Math.max(0, Math.min(sourceWidth - 1, Math.trunc(source.x!)));
+  const y = Math.max(0, Math.min(sourceHeight - 1, Math.trunc(source.y!)));
+  const width = Math.max(1, Math.min(sourceWidth - x, Math.trunc(source.width!)));
+  const height = Math.max(1, Math.min(sourceHeight - y, Math.trunc(source.height!)));
+  if (typeof source.documentPath !== "string" || !source.documentPath.trim() ||
+      typeof source.croppedPath !== "string" || !source.croppedPath.trim()) return undefined;
+  return {
+    x,
+    y,
+    width,
+    height,
+    sourceWidth,
+    sourceHeight,
+    documentPath: source.documentPath.trim(),
+    croppedPath: source.croppedPath.trim(),
+    revision: normalizedInteger(source.revision, 1, 1),
+    updatedAt: normalizedTimestamp(source.updatedAt, new Date(0).toISOString())
   };
 }
 
@@ -242,7 +270,8 @@ function normalizeImageReference(value: unknown, index: number): ImageReference 
           ? maskSource.updatedAt
           : new Date(0).toISOString()
       }
-    : undefined;
+      : undefined;
+  const crop = normalizeImageCrop(source.crop);
   return {
     id: typeof source.id === "string" && source.id.trim() ? source.id : crypto.randomUUID(),
     pictureNumber: normalizedInteger(source.pictureNumber, index + 1, 1),
@@ -250,6 +279,7 @@ function normalizeImageReference(value: unknown, index: number): ImageReference 
     width: normalizedInteger(source.width, 0, 0),
     height: normalizedInteger(source.height, 0, 0),
     ...(role ? { role } : {}),
+    ...(crop ? { crop } : {}),
     ...(markup ? { markup } : {}),
     ...(mask ? { mask } : {}),
     ...(typeof source.contentHash === "string" && /^[a-f0-9]{64}$/iu.test(source.contentHash.trim())
@@ -398,6 +428,7 @@ export function imageEditDraftFromQueueTask(
     parentVersionId: task.parentVersionId,
     pictures: task.pictures.map((picture) => ({
       ...picture,
+      ...(picture.crop ? { crop: { ...picture.crop } } : {}),
       ...(picture.markup ? { markup: { ...picture.markup } } : {}),
       ...(picture.mask ? { mask: { ...picture.mask } } : {})
     })),
@@ -432,8 +463,8 @@ export function createImageSourceVersion(
     prompt: "",
     promptVersion: 0,
     references: [{ ...reference }],
-    width: reference.width,
-    height: reference.height,
+    width: reference.crop?.sourceWidth ?? reference.width,
+    height: reference.crop?.sourceHeight ?? reference.height,
     format: imageFormatFromFilename(filename),
     ...(reference.contentHash ? { contentHash: reference.contentHash } : {}),
     file: {

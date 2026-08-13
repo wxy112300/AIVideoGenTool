@@ -98,6 +98,14 @@ function referenceHandles(state: AppState): ReferenceHandle[] {
         }
       });
     }
+    if (reference.crop?.croppedPath?.trim()) {
+      handles.push({
+        path: reference.crop.croppedPath,
+        update(nextPath) {
+          if (reference.crop) reference.crop.croppedPath = nextPath;
+        }
+      });
+    }
   };
 
   state.imageDraft.pictures.forEach(addReference);
@@ -289,6 +297,10 @@ export async function archiveImageReferences(
     if (reference.markup?.renderedPath?.trim()) {
       const rendered = await archiveFile(reference.markup.renderedPath, library);
       reference.markup.renderedPath = rendered.absolutePath;
+    }
+    if (reference.crop?.croppedPath?.trim()) {
+      const cropped = await archiveFile(reference.crop.croppedPath, library);
+      reference.crop.croppedPath = cropped.absolutePath;
     }
   }
   return next;

@@ -18,7 +18,7 @@
         <text x="960" y="410" text-anchor="middle" fill="white" font-size="96" font-family="sans-serif">FULL 1920 × 768</text>
       </svg>`;
       const sourceDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-      void openImageMarkupEditor({ pictureNumber: 1, filename: "wide-verification.svg", sourceDataUrl });
+      window.__markupEditorPromise = openImageMarkupEditor({ pictureNumber: 1, filename: "wide-verification.svg", sourceDataUrl });
       const ready = () => {
         const shell = document.querySelector(".image-markup-canvas-shell");
         const wrapper = shell?.querySelector(".canvas-container");

@@ -324,7 +324,12 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
             activePromptVersion: 0
           }
         : {}),
-      pictures: archivedPictures.map((picture) => ({ ...picture, ...readImageDimensions(picture.absolutePath) })),
+      pictures: archivedPictures.map((picture) => ({
+        ...picture,
+        ...(picture.crop
+          ? { width: picture.crop.width, height: picture.crop.height }
+          : readImageDimensions(picture.absolutePath))
+      })),
       outputFormat: "png"
     });
     const lineage = await resolveImageProjectLineage(store.get(), preparedDraft);
@@ -332,6 +337,9 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     for (const picture of preparedDraft.pictures) {
       if (!(await fs.stat(picture.absolutePath).catch(() => null))?.isFile()) {
         throw new Error(`Picture ${picture.pictureNumber} 文件不存在：${picture.absolutePath}`);
+      }
+      if (picture.crop?.croppedPath?.trim() && !(await fs.stat(picture.crop.croppedPath).catch(() => null))?.isFile()) {
+        throw new Error(`Picture ${picture.pictureNumber} 的裁剪文件不存在，请重新打开裁剪工具并保存。`);
       }
       const markedPath = picture.markup?.renderedPath.trim();
       if (picture.markup?.objectCount && markedPath && !(await fs.stat(markedPath).catch(() => null))?.isFile()) {

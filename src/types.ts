@@ -67,6 +67,27 @@ export interface ImageMaskData {
   updatedAt: string;
 }
 
+/**
+ * A non-destructive crop expressed in the original Picture's pixel space.
+ * The original input path remains the lineage anchor; croppedPath is only the
+ * derived file used when the Picture is sent to a workflow.
+ */
+export interface ImageCropSelection {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  sourceWidth: number;
+  sourceHeight: number;
+}
+
+export interface ImageCropData extends ImageCropSelection {
+  documentPath: string;
+  croppedPath: string;
+  revision: number;
+  updatedAt: string;
+}
+
 export interface ImageMarkupSaveRequest {
   pictureId: string;
   sourcePath: string;
@@ -86,6 +107,14 @@ export interface ImageMaskSaveRequest {
   previousRevision?: number;
 }
 
+export interface ImageCropSaveRequest {
+  pictureId: string;
+  sourcePath: string;
+  crop: ImageCropSelection | null;
+  croppedPng?: ArrayBuffer;
+  previousRevision?: number;
+}
+
 export interface ImageReference {
   id: string;
   pictureNumber: number;
@@ -93,6 +122,7 @@ export interface ImageReference {
   width: number;
   height: number;
   role?: ImageReferenceRole;
+  crop?: ImageCropData;
   markup?: ImageMarkupData;
   mask?: ImageMaskData;
   contentHash?: string;
@@ -891,6 +921,7 @@ export interface AppApi {
   readImageMarkup(documentPath: string): Promise<string | null>;
   saveImageMarkup(request: ImageMarkupSaveRequest): Promise<ImageMarkupData>;
   saveImageMask(request: ImageMaskSaveRequest): Promise<ImageMaskData>;
+  saveImageCrop(request: ImageCropSaveRequest): Promise<ImageCropData | null>;
   pickWorkflow(): Promise<string | null>;
   pickPython(): Promise<string | null>;
   inspectWorkflow(path: string): Promise<WorkflowCapabilities>;

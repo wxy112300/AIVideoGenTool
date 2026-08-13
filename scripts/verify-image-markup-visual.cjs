@@ -120,6 +120,44 @@ app.whenReady().then(async () => {
       const upper = document.querySelector('.upper-canvas');
       upper.dispatchEvent(new MouseEvent('mouseup', { button: 0, buttons: 0, clientX: ${arrowPreview.end.x}, clientY: ${arrowPreview.end.y}, bubbles: true, cancelable: true }));
     })()`);
+    const cropInteraction = await window.webContents.executeJavaScript(`(async () => {
+      document.querySelector('[data-markup-crop]').click();
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const image = document.querySelector('[data-image-cropper-image]');
+        if (image?.cropper) break;
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      const image = document.querySelector('[data-image-cropper-image]');
+      const cropper = image?.cropper;
+      if (!cropper) return { ready: false };
+      cropper.setData({ x: 200, y: 100, width: 1200, height: 500 });
+      document.querySelector('[data-cropper-apply]').click();
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if (document.querySelector('[data-image-cropper-dialog]')?.hidden) break;
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      const canvas = document.querySelector('.lower-canvas');
+      return {
+        ready: true,
+        dialogHidden: document.querySelector('[data-image-cropper-dialog]')?.hidden === true,
+        width: canvas?.width ?? 0,
+        height: canvas?.height ?? 0
+      };
+    })()`);
+    const cropWorks = cropInteraction.ready && cropInteraction.dialogHidden &&
+      cropInteraction.width === 1200 && cropInteraction.height === 500;
+    const savedResult = await window.webContents.executeJavaScript(`(async () => {
+      document.querySelector('[data-markup-save]').click();
+      const result = await window.__markupEditorPromise;
+      return {
+        objectCount: result?.objectCount ?? 0,
+        crop: result?.crop ?? null,
+        croppedPngByteLength: result?.croppedPng?.byteLength ?? 0
+      };
+    })()`);
+    const cropSaveWorks = savedResult.objectCount > 0 &&
+      savedResult.crop?.width === 1200 && savedResult.crop?.height === 500 &&
+      savedResult.croppedPngByteLength > 0;
     await fs.writeFile(resultPath, JSON.stringify({
       ...result,
       aligned,
@@ -127,10 +165,14 @@ app.whenReady().then(async () => {
       wheelZoomWorks,
       dragPanWorks,
       liveArrowPreviewWorks,
+      cropWorks,
+      cropSaveWorks,
+      savedResult,
+      cropInteraction,
       interaction,
       screenshotPath
     }, null, 2));
-    if (!aligned || !contentCoversCanvas || !wheelZoomWorks || !dragPanWorks || !liveArrowPreviewWorks) process.exitCode = 1;
+    if (!aligned || !contentCoversCanvas || !wheelZoomWorks || !dragPanWorks || !liveArrowPreviewWorks || !cropWorks || !cropSaveWorks) process.exitCode = 1;
     window.destroy();
   } catch (error) {
     await fs.writeFile(resultPath, JSON.stringify({ error: error instanceof Error ? error.stack : String(error) }, null, 2));

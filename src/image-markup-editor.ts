@@ -12,6 +12,9 @@ import {
   Triangle,
   type TPointerEventInfo
 } from "fabric/es";
+import Cropper from "cropperjs";
+import "cropperjs/dist/cropper.css";
+import type { ImageCropData, ImageCropSelection } from "./types.js";
 
 export type ImageMarkupTool =
   | "select"
@@ -32,9 +35,10 @@ interface MarkupFabricObject extends FabricObject {
 }
 
 interface StoredMarkupDocument {
-  version: 1;
+  version: 1 | 2;
   sourceWidth: number;
   sourceHeight: number;
+  crop?: ImageCropSelection | null;
   canvas: Record<string, unknown>;
 }
 
@@ -43,6 +47,7 @@ export interface ImageMarkupEditorOptions {
   filename: string;
   sourceDataUrl: string;
   existingDocument?: string | null;
+  existingCrop?: ImageCropData | null;
   mode?: "annotation" | "mask";
 }
 
@@ -51,6 +56,8 @@ export interface ImageMarkupEditorResult {
   renderedPng: ArrayBuffer;
   summary: string;
   objectCount: number;
+  crop: ImageCropSelection | null;
+  croppedPng?: ArrayBuffer;
 }
 
 const toolLabels: Record<ImageMarkupTool, string> = {
@@ -106,16 +113,85 @@ function dataUrlFilename(filename: string): string {
   return filename.split(/[\\/]/u).pop() ?? filename;
 }
 
+function normalizeCropSelection(
+  crop: Pick<ImageCropSelection, "x" | "y" | "width" | "height" | "sourceWidth" | "sourceHeight">
+): ImageCropSelection {
+  const sourceWidth = Math.max(1, Math.trunc(crop.sourceWidth));
+  const sourceHeight = Math.max(1, Math.trunc(crop.sourceHeight));
+  const x = Math.max(0, Math.min(sourceWidth - 1, Math.trunc(crop.x)));
+  const y = Math.max(0, Math.min(sourceHeight - 1, Math.trunc(crop.y)));
+  return {
+    sourceWidth,
+    sourceHeight,
+    x,
+    y,
+    width: Math.max(1, Math.min(sourceWidth - x, Math.trunc(crop.width))),
+    height: Math.max(1, Math.min(sourceHeight - y, Math.trunc(crop.height)))
+  };
+}
+
+function isFullCrop(crop: ImageCropSelection): boolean {
+  return crop.x === 0 && crop.y === 0 &&
+    crop.width === crop.sourceWidth && crop.height === crop.sourceHeight;
+}
+
+function cropDataUrl(source: HTMLImageElement, crop: ImageCropSelection): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = crop.width;
+  canvas.height = crop.height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("当前环境无法创建裁剪画布");
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+  return canvas.toDataURL("image/png");
+}
+
+async function imageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
+  const image = document.createElement("img");
+  image.src = dataUrl;
+  await image.decode();
+  if (!image.naturalWidth || !image.naturalHeight) throw new Error("无法读取裁剪结果尺寸");
+  return image;
+}
+
+async function dataUrlToArrayBuffer(dataUrl: string): Promise<ArrayBuffer> {
+  const response = await fetch(dataUrl);
+  return response.arrayBuffer();
+}
+
 export async function openImageMarkupEditor(
   options: ImageMarkupEditorOptions
 ): Promise<ImageMarkupEditorResult | null> {
   const maskMode = options.mode === "mask";
-  const sourceElement = document.createElement("img");
-  sourceElement.src = options.sourceDataUrl;
-  await sourceElement.decode();
-  if (!sourceElement.naturalWidth || !sourceElement.naturalHeight) {
+  const originalSourceElement = document.createElement("img");
+  originalSourceElement.src = options.sourceDataUrl;
+  await originalSourceElement.decode();
+  if (!originalSourceElement.naturalWidth || !originalSourceElement.naturalHeight) {
     throw new Error("无法读取 Picture 尺寸");
   }
+  let storedDocumentCrop: ImageCropSelection | null = null;
+  if (!options.existingCrop && options.existingDocument) {
+    try {
+      const stored = JSON.parse(options.existingDocument) as StoredMarkupDocument;
+      storedDocumentCrop = stored.version === 2 && stored.crop ? stored.crop : null;
+    } catch {
+      storedDocumentCrop = null;
+    }
+  }
+  const requestedCrop = options.existingCrop ?? storedDocumentCrop;
+  const originalCrop = requestedCrop &&
+      requestedCrop.sourceWidth === originalSourceElement.naturalWidth &&
+      requestedCrop.sourceHeight === originalSourceElement.naturalHeight
+    ? normalizeCropSelection(requestedCrop)
+    : null;
+  let currentCrop = originalCrop && !isFullCrop(originalCrop) ? originalCrop : null;
+  let currentSourceDataUrl = currentCrop
+    ? cropDataUrl(originalSourceElement, currentCrop)
+    : options.sourceDataUrl;
+  let sourceElement = currentCrop
+    ? await imageFromDataUrl(currentSourceDataUrl)
+    : originalSourceElement;
 
   const overlay = document.createElement("div");
   overlay.className = "image-markup-overlay";
@@ -126,6 +202,7 @@ export async function openImageMarkupEditor(
     </header>
     <div class="image-markup-body">
       <aside class="image-markup-tools" aria-label="标记工具">
+        <button data-markup-crop title="裁剪">裁剪</button>
         ${(maskMode
           ? (["select", "brush", "highlight", "eraser"] as ImageMarkupTool[])
           : (["select", "brush", "highlight", "rectangle", "ellipse", "arrow", "text", "eraser"] as ImageMarkupTool[])
@@ -140,6 +217,13 @@ export async function openImageMarkupEditor(
         <div class="markup-style-controls"><label ${maskMode ? "hidden" : ""}>颜色<input type="color" data-markup-color value="#ff4f55"></label><label>线宽<input type="range" data-markup-width min="2" max="${maskMode ? 96 : 28}" value="${maskMode ? 18 : 8}"></label></div>
         <p class="markup-removal-hint">${maskMode ? "高亮颜色只是界面覆盖层，不会写入原图或生成结果。" : "最终提示会要求模型移除框线、箭头、编号和标注文字。"}</p>
       </aside>
+    </div>
+    <div class="image-cropper-dialog" data-image-cropper-dialog hidden>
+      <div class="image-cropper-panel">
+        <header><div><strong>裁剪 Picture ${options.pictureNumber}</strong><span>裁剪不会修改原图，保存后标记和 Mask 都以裁剪后的画布为准。</span></div><button class="secondary" data-cropper-cancel>取消</button></header>
+        <div class="image-cropper-stage"><img data-image-cropper-image alt="待裁剪图片"></div>
+        <footer><label>比例<select data-cropper-aspect><option value="free">自由</option><option value="original">原图比例</option><option value="1">1 : 1</option><option value="1.3333333333">4 : 3</option><option value="1.7777777778">16 : 9</option><option value="0.5625">9 : 16</option></select></label><button class="secondary" data-cropper-reset>还原原图</button><span class="image-cropper-size" data-cropper-size></span><button class="primary" data-cropper-apply>应用裁剪</button></footer>
+      </div>
     </div>`;
   document.body.append(overlay);
   document.body.classList.add("image-markup-open");
@@ -162,7 +246,7 @@ export async function openImageMarkupEditor(
   // Fabric can report a device-scaled bitmap size in Electron on high-DPI
   // displays, while HTMLImageElement.naturalWidth remains in CSS pixels. The
   // ratio then becomes 0.5 and leaves three quarters of the canvas empty.
-  const sourceImage = new FabricImage(sourceElement, {
+  let sourceImage = new FabricImage(sourceElement, {
     width: sourceElement.naturalWidth,
     height: sourceElement.naturalHeight
   });
@@ -180,11 +264,17 @@ export async function openImageMarkupEditor(
   });
   (sourceImage as MarkupFabricObject).annotationSource = true;
 
+  const cropDialog = overlay.querySelector<HTMLElement>("[data-image-cropper-dialog]")!;
+  const cropImage = overlay.querySelector<HTMLImageElement>("[data-image-cropper-image]")!;
+  const cropAspect = overlay.querySelector<HTMLSelectElement>("[data-cropper-aspect]")!;
+  const cropSize = overlay.querySelector<HTMLElement>("[data-cropper-size]")!;
+  let cropper: Cropper | null = null;
+
   let loading = true;
   if (options.existingDocument) {
     try {
       const stored = JSON.parse(options.existingDocument) as StoredMarkupDocument;
-      if (stored.version === 1 && stored.canvas) await canvas.loadFromJSON(stored.canvas);
+      if ((stored.version === 1 || stored.version === 2) && stored.canvas) await canvas.loadFromJSON(stored.canvas);
     } catch {
       // A damaged sidecar must never prevent opening the clean source image.
     }
@@ -203,6 +293,108 @@ export async function openImageMarkupEditor(
   const undoStack: string[] = [];
   const redoStack: string[] = [];
   let restoringHistory = false;
+
+  const updateCropSize = (): void => {
+    if (!cropper) return;
+    const data = cropper.getData(true);
+    cropSize.textContent = `${Math.max(1, Math.round(data.width))} × ${Math.max(1, Math.round(data.height))}`;
+  };
+
+  const closeCropper = (): void => {
+    cropper?.destroy();
+    cropper = null;
+    cropDialog.hidden = true;
+    cropImage.onload = null;
+    cropImage.removeAttribute("src");
+  };
+
+  const applyCrop = async (selection: ImageCropSelection): Promise<void> => {
+    const previous = currentCrop ?? {
+      x: 0,
+      y: 0,
+      width: originalSourceElement.naturalWidth,
+      height: originalSourceElement.naturalHeight,
+      sourceWidth: originalSourceElement.naturalWidth,
+      sourceHeight: originalSourceElement.naturalHeight
+    };
+    const next = isFullCrop(selection) ? null : selection;
+    const nextDisplay = next ?? {
+      x: 0,
+      y: 0,
+      width: originalSourceElement.naturalWidth,
+      height: originalSourceElement.naturalHeight,
+      sourceWidth: originalSourceElement.naturalWidth,
+      sourceHeight: originalSourceElement.naturalHeight
+    };
+    const offsetX = previous.x - nextDisplay.x;
+    const offsetY = previous.y - nextDisplay.y;
+    annotationObjects(canvas).forEach((object) => {
+      object.set({
+        left: (object.left ?? 0) + offsetX,
+        top: (object.top ?? 0) + offsetY
+      });
+      object.setCoords();
+    });
+    currentCrop = next;
+    currentSourceDataUrl = currentCrop
+      ? cropDataUrl(originalSourceElement, currentCrop)
+      : options.sourceDataUrl;
+    sourceElement = currentCrop
+      ? await imageFromDataUrl(currentSourceDataUrl)
+      : originalSourceElement;
+    canvas.remove(sourceImage);
+    sourceImage = new FabricImage(sourceElement, {
+      width: sourceElement.naturalWidth,
+      height: sourceElement.naturalHeight,
+      left: 0,
+      top: 0,
+      originX: "left",
+      originY: "top",
+      scaleX: 1,
+      scaleY: 1,
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hoverCursor: "default"
+    });
+    (sourceImage as MarkupFabricObject).annotationSource = true;
+    canvas.setDimensions({ width: sourceElement.naturalWidth, height: sourceElement.naturalHeight });
+    canvas.insertAt(0, sourceImage);
+    canvas.calcOffset();
+    applyDisplayScale(Math.min(displayScale, 1));
+    renderNotes();
+    canvas.requestRenderAll();
+  };
+
+  const openCropper = (): void => {
+    if (cropper) return;
+    cropDialog.hidden = false;
+    cropImage.onload = () => {
+      const initial = currentCrop ?? {
+        x: 0,
+        y: 0,
+        width: originalSourceElement.naturalWidth,
+        height: originalSourceElement.naturalHeight
+      };
+      cropper = new Cropper(cropImage, {
+        viewMode: 1,
+        dragMode: "crop",
+        autoCropArea: 1,
+        background: false,
+        responsive: true,
+        restore: false,
+        checkOrientation: false,
+        guides: true,
+        center: true,
+        cropBoxMovable: true,
+        cropBoxResizable: true,
+        data: initial,
+        crop: updateCropSize
+      });
+      updateCropSize();
+    };
+    cropImage.src = options.sourceDataUrl;
+  };
 
   const serializableCanvas = (): Record<string, unknown> => {
     const serialized = canvas.toObject(annotationProperties) as Record<string, unknown> & {
@@ -514,10 +706,52 @@ export async function openImageMarkupEditor(
   };
   stage.addEventListener("wheel", onStageWheel, { passive: false });
 
+  overlay.querySelector("[data-markup-crop]")?.addEventListener("click", openCropper);
   overlay.querySelectorAll<HTMLElement>("[data-markup-tool]").forEach((button) => button.addEventListener("click", () => selectTool(button.dataset.markupTool as ImageMarkupTool)));
   overlay.querySelector("[data-markup-zoom-in]")?.addEventListener("click", () => applyDisplayScale(displayScale * 1.2));
   overlay.querySelector("[data-markup-zoom-out]")?.addEventListener("click", () => applyDisplayScale(displayScale / 1.2));
   overlay.querySelector("[data-markup-fit]")?.addEventListener("click", fitCanvas);
+  overlay.querySelector("[data-cropper-cancel]")?.addEventListener("click", closeCropper);
+  overlay.querySelector("[data-cropper-reset]")?.addEventListener("click", () => {
+    if (!cropper) return;
+    cropper.setData({
+      x: 0,
+      y: 0,
+      width: originalSourceElement.naturalWidth,
+      height: originalSourceElement.naturalHeight,
+      rotate: 0,
+      scaleX: 1,
+      scaleY: 1
+    });
+    updateCropSize();
+  });
+  cropAspect.addEventListener("change", () => {
+    if (!cropper) return;
+    const value = cropAspect.value;
+    cropper.setAspectRatio(value === "free" ? NaN : value === "original"
+      ? originalSourceElement.naturalWidth / originalSourceElement.naturalHeight
+      : Number(value));
+    updateCropSize();
+  });
+  overlay.querySelector("[data-cropper-apply]")?.addEventListener("click", async () => {
+    if (!cropper) return;
+    const data = cropper.getData(true);
+    const selection = normalizeCropSelection({
+      x: data.x,
+      y: data.y,
+      width: data.width,
+      height: data.height,
+      sourceWidth: originalSourceElement.naturalWidth,
+      sourceHeight: originalSourceElement.naturalHeight
+    });
+    try {
+      await applyCrop(selection);
+      closeCropper();
+      pushHistory();
+    } catch (error) {
+      window.console.error("Failed to apply image crop", error);
+    }
+  });
   overlay.querySelector("[data-markup-undo]")?.addEventListener("click", async () => {
     if (undoStack.length <= 1) return;
     const current = undoStack.pop();
@@ -544,6 +778,7 @@ export async function openImageMarkupEditor(
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", onKeyUp, true);
       stage.removeEventListener("wheel", onStageWheel);
+      closeCropper();
       canvas.dispose();
       overlay.remove();
       document.body.classList.remove("image-markup-open");
@@ -592,7 +827,14 @@ export async function openImageMarkupEditor(
     overlay.querySelector("[data-markup-save]")?.addEventListener("click", async () => {
       const objects = annotationObjects(canvas);
       if (!objects.length) {
-        finish({ document: "", renderedPng: new ArrayBuffer(0), summary: "", objectCount: 0 });
+        finish({
+          document: "",
+          renderedPng: new ArrayBuffer(0),
+          summary: "",
+          objectCount: 0,
+          crop: currentCrop,
+          ...(currentCrop ? { croppedPng: await dataUrlToArrayBuffer(currentSourceDataUrl) } : {})
+        });
         return;
       }
       const unique = new Map<string, MarkupFabricObject>();
@@ -603,9 +845,10 @@ export async function openImageMarkupEditor(
       canvas.discardActiveObject();
       canvas.requestRenderAll();
       const document: StoredMarkupDocument = {
-        version: 1,
+        version: 2,
         sourceWidth: sourceElement.naturalWidth,
         sourceHeight: sourceElement.naturalHeight,
+        crop: currentCrop,
         canvas: serializableCanvas()
       };
       if (maskMode) {
@@ -622,7 +865,9 @@ export async function openImageMarkupEditor(
         document: JSON.stringify(document),
         renderedPng: await blob.arrayBuffer(),
         summary,
-        objectCount: unique.size
+        objectCount: unique.size,
+        crop: currentCrop,
+        ...(currentCrop ? { croppedPng: await dataUrlToArrayBuffer(currentSourceDataUrl) } : {})
       });
     });
   });

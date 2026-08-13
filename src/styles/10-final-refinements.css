@@ -331,6 +331,104 @@ body.image-markup-open {
   background: #1d2b3e;
 }
 
+.image-cropper-dialog {
+  position: fixed;
+  z-index: 4;
+  inset: 64px 0 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(7, 10, 14, .94);
+}
+
+.image-cropper-dialog[hidden] {
+  display: none;
+}
+
+.image-cropper-panel {
+  width: min(1120px, 100%);
+  height: min(760px, 100%);
+  min-height: 420px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid #354257;
+  border-radius: 12px;
+  background: #11161d;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .55);
+}
+
+.image-cropper-panel > header,
+.image-cropper-panel > footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #29313d;
+}
+
+.image-cropper-panel > header {
+  justify-content: space-between;
+}
+
+.image-cropper-panel > header > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.image-cropper-panel > header span {
+  overflow: hidden;
+  color: #8996a8;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-cropper-panel > footer {
+  justify-content: flex-end;
+  border-top: 1px solid #29313d;
+  border-bottom: 0;
+}
+
+.image-cropper-panel > footer label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #aeb9c8;
+  font-size: 11px;
+}
+
+.image-cropper-panel > footer select {
+  min-width: 126px;
+}
+
+.image-cropper-size {
+  min-width: 96px;
+  color: #8fa8ca;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  text-align: right;
+}
+
+.image-cropper-stage {
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 22px;
+  background-color: #0a0d12;
+  background-image: linear-gradient(45deg, #10151c 25%, transparent 25%), linear-gradient(-45deg, #10151c 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #10151c 75%), linear-gradient(-45deg, transparent 75%, #10151c 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.image-cropper-stage > img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
 .markup-tool-divider {
   height: 1px;
   margin: 4px 2px;

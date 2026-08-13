@@ -300,6 +300,18 @@ describe("Qwen image edit workflow contract", () => {
         revision: 2,
         objectCount: 1,
         updatedAt: "2026-08-11T00:00:00.000Z"
+      },
+      crop: {
+        documentPath: "crop.json",
+        croppedPath: "cropped.png",
+        x: 10,
+        y: 10,
+        width: 800,
+        height: 600,
+        sourceWidth: 1024,
+        sourceHeight: 768,
+        revision: 1,
+        updatedAt: "2026-08-11T00:00:00.000Z"
       }
     };
 
@@ -307,13 +319,31 @@ describe("Qwen image edit workflow contract", () => {
 
     expect(result.errors).toEqual([]);
     expect(result.pictures).toHaveLength(2);
-    expect(result.pictures.map(imageReferenceInputPath)).toEqual(["original.png", "guide.png"]);
+    expect(result.pictures.map(imageReferenceInputPath)).toEqual(["cropped.png", "guide.png"]);
     expect(result.prompt).toContain("Visual annotation reference contract:");
     expect(result.prompt).toContain("Picture 1 is the clean source");
     expect(result.prompt).toContain("Picture 2 is only its temporary annotation guide");
     expect(result.prompt).toContain("Never reproduce any colored mark");
     expect(result.prompt).toContain("A：只移除红框内的水印");
     expect(imageMarkupPromptContext([picture(1)])).toBe("");
+  });
+
+  it("uses the non-destructive crop derivative as the workflow input", () => {
+    expect(imageReferenceInputPath({
+      absolutePath: "original.png",
+      crop: {
+        documentPath: "crop.json",
+        croppedPath: "cropped.png",
+        x: 12,
+        y: 8,
+        width: 640,
+        height: 480,
+        sourceWidth: 1280,
+        sourceHeight: 960,
+        revision: 1,
+        updatedAt: "2026-08-13T00:00:00.000Z"
+      }
+    })).toBe("cropped.png");
   });
 
   it("renumbers later clean references after an inserted markup guide", () => {

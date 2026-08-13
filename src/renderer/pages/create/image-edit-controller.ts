@@ -111,7 +111,7 @@ export function mountImageEditController(
       const pictures = picture.pictureNumber === 1
         ? draft.pictures.map((item) =>
             item.id === pictureId
-              ? { ...item, absolutePath: "", width: 0, height: 0, role: "base" as const, markup: undefined, mask: undefined }
+              ? { ...item, absolutePath: "", width: 0, height: 0, role: "base" as const, crop: undefined, markup: undefined, mask: undefined }
               : item
           )
         : draft.pictures.filter((item) => item.id !== pictureId);

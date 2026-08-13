@@ -356,9 +356,9 @@ function orderedPictures(pictures: ImageReferenceSnapshot[]): ImageReferenceSnap
 }
 
 export function imageReferenceInputPath(
-  picture: Pick<ImageReference, "absolutePath">
+  picture: Pick<ImageReference, "absolutePath" | "crop">
 ): string {
-  return picture.absolutePath.trim();
+  return picture.crop?.croppedPath.trim() || picture.absolutePath.trim();
 }
 
 export function imageMarkupPromptContext(
@@ -391,6 +391,7 @@ function markupGuidePicture(
     pictureNumber: compiledPictureNumber,
     absolutePath: picture.markup?.renderedPath.trim() ?? "",
     role: "auto",
+    crop: undefined,
     markup: undefined
   };
 }

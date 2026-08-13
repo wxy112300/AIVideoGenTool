@@ -25,6 +25,7 @@ import type {
   HistoryFile,
   HistoryMigrationProgress,
   ImageAssetLibraryProgress,
+  ImageCropSaveRequest,
   ImageEditDraft,
   ImageMaskSaveRequest,
   ImageMarkupSaveRequest,
@@ -1965,6 +1966,73 @@ function registerIpc(): void {
       summary: typeof request.summary === "string" ? request.summary.trim() : "",
       revision,
       objectCount: Math.max(0, Math.trunc(request.objectCount || 0)),
+      updatedAt: new Date().toISOString()
+    };
+  });
+  ipcMain.handle("image-crop:save", async (_event, request: ImageCropSaveRequest) => {
+    if (!request || typeof request !== "object") throw new Error("裁剪数据无效");
+    const sourceStat = await fs.stat(request.sourcePath).catch(() => null);
+    if (!sourceStat?.isFile()) throw new Error("原始 Picture 文件不存在");
+    if (request.crop === null) return null;
+    const crop = request.crop;
+    const values = [crop.x, crop.y, crop.width, crop.height, crop.sourceWidth, crop.sourceHeight];
+    if (!values.every((value) => typeof value === "number" && Number.isFinite(value))) {
+      throw new Error("裁剪区域无效");
+    }
+    const sourceWidth = Math.max(1, Math.trunc(crop.sourceWidth));
+    const sourceHeight = Math.max(1, Math.trunc(crop.sourceHeight));
+    const x = Math.max(0, Math.trunc(crop.x));
+    const y = Math.max(0, Math.trunc(crop.y));
+    const width = Math.max(1, Math.trunc(crop.width));
+    const height = Math.max(1, Math.trunc(crop.height));
+    if (x + width > sourceWidth || y + height > sourceHeight) {
+      throw new Error("裁剪区域超出原图范围");
+    }
+    const bytes = request.croppedPng instanceof ArrayBuffer
+      ? new Uint8Array(request.croppedPng)
+      : null;
+    if (!bytes?.byteLength) throw new Error("裁剪结果为空");
+    if (bytes.byteLength > 100 * 1024 * 1024) throw new Error("裁剪结果不能超过 100 MB");
+    const pictureKey = createHash("sha256")
+      .update(`${request.pictureId}\0${path.resolve(request.sourcePath)}`)
+      .digest("hex")
+      .slice(0, 24);
+    const revision = Math.max(1, Math.trunc(request.previousRevision ?? 0) + 1);
+    const directory = path.join(app.getPath("userData"), "image-crops", pictureKey);
+    await fs.mkdir(directory, { recursive: true });
+    const basename = `revision-${String(revision).padStart(4, "0")}`;
+    const documentPath = path.join(directory, `${basename}.crop.json`);
+    const croppedPath = path.join(directory, `${basename}-crop.png`);
+    const documentTemporary = `${documentPath}.${crypto.randomUUID()}.tmp`;
+    const croppedTemporary = `${croppedPath}.${crypto.randomUUID()}.tmp`;
+    const document = JSON.stringify({
+      version: 1,
+      sourceWidth,
+      sourceHeight,
+      x,
+      y,
+      width,
+      height
+    }, null, 2);
+    try {
+      await fs.writeFile(documentTemporary, document, "utf8");
+      await fs.writeFile(croppedTemporary, bytes);
+      await fs.rename(documentTemporary, documentPath);
+      await fs.rename(croppedTemporary, croppedPath);
+    } finally {
+      await fs.rm(documentTemporary, { force: true }).catch(() => undefined);
+      await fs.rm(croppedTemporary, { force: true }).catch(() => undefined);
+    }
+    return {
+      documentPath,
+      croppedPath,
+      x,
+      y,
+      width,
+      height,
+      sourceWidth,
+      sourceHeight,
+      revision,
       updatedAt: new Date().toISOString()
     };
   });

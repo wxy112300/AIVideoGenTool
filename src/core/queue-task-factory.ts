@@ -155,6 +155,7 @@ export function imageTaskFromDraft(
     parentVersionId: draft.parentVersionId,
     pictures: draft.pictures.map((picture) => ({
       ...picture,
+      ...(picture.crop ? { crop: { ...picture.crop } } : {}),
       ...(picture.markup ? { markup: { ...picture.markup } } : {}),
       ...(picture.mask ? { mask: { ...picture.mask } } : {})
     })),

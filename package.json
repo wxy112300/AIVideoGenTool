@@ -27,6 +27,7 @@
     "wait-on": "^9.0.3"
   },
   "dependencies": {
+    "cropperjs": "1.6.2",
     "fabric": "^7.4.0",
     "lucide": "^1.28.0"
   }
