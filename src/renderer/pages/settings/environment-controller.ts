@@ -23,6 +23,9 @@ export interface SettingsEnvironmentControllerOptions {
   setAttentionAccelerationInstalling(value: boolean): void;
   getAttentionAccelerationLog(): string;
   setAttentionAccelerationLog(log: string): void;
+  setLlamaCppPythonInstalling(value: boolean): void;
+  getLlamaCppPythonLog(): string;
+  setLlamaCppPythonLog(log: string): void;
   setCoreDependencyRepairing(value: boolean): void;
   setEnvironmentRepairing(issueId: string): void;
   setEnvironmentRepairLog(issueId: EnvironmentIssue["id"], log: string): void;
@@ -151,6 +154,29 @@ export function mountSettingsEnvironmentController(
       context.notify(context.t(uiKeys.settings.actions.attentionInstallFailed, { error: message }), { kind: "error" });
     } finally {
       options.setAttentionAccelerationInstalling(false);
+      requestSettingsRender();
+    }
+  }, { signal });
+
+  root.querySelector("#install-llama-cpp-python")?.addEventListener("click", async () => {
+    const settings = options.formSettings();
+    options.setSettingsDraft(settings);
+    options.setLlamaCppPythonInstalling(true);
+    options.setLlamaCppPythonLog("");
+    context.requestRender();
+    try {
+      const result = await context.studio.installLlamaCppPython(settings);
+      options.setLlamaCppPythonLog(result.log || result.message);
+      options.setEnvironmentScan(await context.studio.scanEnvironment(settings));
+      context.notify(result.message, { kind: result.ok ? "info" : "error" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      options.setLlamaCppPythonLog(
+        [options.getLlamaCppPythonLog(), message].filter(Boolean).join("\n")
+      );
+      context.notify(message, { kind: "error" });
+    } finally {
+      options.setLlamaCppPythonInstalling(false);
       requestSettingsRender();
     }
   }, { signal });

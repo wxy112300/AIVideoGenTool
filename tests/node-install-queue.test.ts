@@ -73,6 +73,19 @@ describe("CustomNodeInstallQueue", () => {
     expect(customNodeIdsForBulkAction(nodes.slice(0, 1))).toEqual(["healthy"]);
   });
 
+  it("keeps optional system-toolchain nodes out of the bulk installer", () => {
+    const nodes = [
+      nodeStatus("required-missing", { installed: false, loaded: false, required: true }),
+      nodeStatus("optional-toolchain", { installed: false, loaded: false, bulkInstall: false }),
+      nodeStatus("optional-normal", { installed: false, loaded: false })
+    ];
+
+    expect(customNodeIdsForBulkAction(nodes)).toEqual([
+      "required-missing",
+      "optional-normal"
+    ]);
+  });
+
   it("installs queued nodes serially, then restarts and scans once", async () => {
     const settings = createDefaultState().settings;
     const calls: string[] = [];

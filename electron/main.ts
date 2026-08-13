@@ -83,6 +83,7 @@ import { comfyUiSettingsForQueueTask } from "./services/comfy-runtime-policy.js"
 import {
   installAttentionAcceleration,
   installCustomNode,
+  installLlamaCppPython,
   installWorkflowDependency,
   alignLocalComfyUiRuntimeProfile,
   forceStopComfyProcesses,
@@ -2540,6 +2541,24 @@ function registerIpc(): void {
         }
       }),
       { workflowId }
+    )
+  );
+  ipcMain.handle(
+    "llama-cpp-python:install",
+    (event, settings: Settings) => loggedOperation(
+      "environment",
+      "llama-cpp-python-install",
+      "llama-cpp-python installation started",
+      () => installLlamaCppPython(settings, (message) => {
+        appLogger.info("environment", "llama-cpp-python-install-progress", message);
+        if (!event.sender.isDestroyed()) {
+          event.sender.send("dependency-install:log", {
+            kind: "python-runtime",
+            id: "llama-cpp-python",
+            message
+          });
+        }
+      })
     )
   );
   ipcMain.handle(

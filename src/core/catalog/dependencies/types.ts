@@ -11,6 +11,8 @@ export interface CatalogCustomNodeDefinition {
   recommendedVersion?: string;
   /** Python-side runtime requirement when the node package's own version is not the constraint. */
   runtimeRequirement?: string;
+  /** Optional nodes with external toolchains can opt out of the bulk installer. */
+  bulkInstall?: boolean;
   required: boolean;
 }
 

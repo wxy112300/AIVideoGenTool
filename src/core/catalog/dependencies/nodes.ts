@@ -105,7 +105,8 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   directoryName: "ComfyUI-MultiModal-Prompt-Nodes",
   aliases: ["comfyui-multimodal-prompt-nodes", "ComfyUI-MultiModal-Prompt-Nodes"],
   nodeTypes: ["VisionLLMNode"],
-  runtimeRequirement: "轻量依赖之外，Qwen3.6 vision 需要 JamePeng llama-cpp-python（参考兼容线 0.3.36+）与 GPU 构建",
+  runtimeRequirement: "可选节点：Qwen3.6 vision 需要 JamePeng llama-cpp-python（参考兼容线 0.3.36+）GPU 后端；没有匹配的预编译 wheel 时，需要系统 CUDA Toolkit（含 nvcc）、Visual Studio Build Tools 和 CMake。安装前会自动扫描 PATH、CUDA_PATH/CUDAToolkit_ROOT 与 NVIDIA 默认目录。",
+  bulkInstall: false,
   required: false
 }, {
   id: "minimax-h3-prompt-writer",
@@ -115,6 +116,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   directoryName: "ComfyUI-MiniMaxH3-Prompt-Writer",
   aliases: ["comfyui-minimaxh3-prompt-writer"],
   runtimeEndpoint: "/h3studio/status",
+  runtimeRequirement: "Gemma GGUF 需要当前 ComfyUI Python 中的 llama-cpp-python CUDA 后端；请在设置 → 提示词扩展的运行依赖卡片中一键安装和自检，不要重复安装第二个版本。",
   required: false
 }, {
   id: "h3-motion-context",

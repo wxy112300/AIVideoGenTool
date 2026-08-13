@@ -72,6 +72,8 @@ export interface SettingsPageViewModel {
   coreDependencyRepairing: boolean;
   attentionAccelerationInstalling: boolean;
   attentionAccelerationLog: string;
+  llamaCppPythonInstalling: boolean;
+  llamaCppPythonLog: string;
   selectedInstallGuide: SettingsInstallGuideSelection | null;
   installGuideModelDirectory: string;
   appLogs: AppLogSnapshot | null;
@@ -190,6 +192,20 @@ export function renderSettingsPage(
   const imageWorkflowsReady = imageProfiles.filter((profile) => options.isImageWorkflowReady(profile)).length;
   const upscaleAvailable = upscaleProfiles.filter((profile) => profile.available).length;
   const promptAvailable = promptProfiles.filter((profile) => profile.available).length;
+  const llamaCppPython = environmentScan?.llamaCppPython;
+  const promptWriterNode = environmentScan?.customNodes.find(
+    (node) => node.id === "minimax-h3-prompt-writer"
+  );
+  const llamaRuntimeLabel = !environmentScan
+    ? s("prompt.runtimeWaiting")
+    : llamaCppPython?.ready
+      ? s("prompt.runtimeReady")
+      : llamaCppPython?.gpuOffload === false
+        ? s("prompt.runtimeCpu")
+        : llamaCppPython?.installed
+          ? s("prompt.runtimeUnknown")
+          : s("prompt.runtimeMissing");
+  const llamaRuntimeClass = llamaCppPython?.ready ? "available" : "missing";
   const gpu = environmentScan?.items.find((item) => item.id === "nvidia");
   const gpuDevices = environmentScan?.gpus ?? [];
   const gpuSummary = gpuDevices.length
@@ -449,6 +465,22 @@ export function renderSettingsPage(
         <div class="scan-result">${viewModel.environmentScanning ? s("prompt.scanning") : environmentScan ? s("prompt.summary", { count: promptAvailable }) : s("prompt.waitingScan")}</div>
         <p class="muted proxy-hint">${s("prompt.note")}</p>
       </section>
+      <section class="panel settings-section prompt-runtime-dependency ${llamaRuntimeClass}">
+        <div class="section-heading">
+          <div><h2>${s("prompt.runtimeTitle")}</h2><span class="muted">${s("prompt.runtimeDescription")}</span></div>
+          <span class="model-availability ${llamaRuntimeClass}">${icon(llamaCppPython?.ready ? "circle-check" : environmentScan ? "circle-alert" : "circle-help")} ${llamaRuntimeLabel}</span>
+        </div>
+        <div class="component-list">
+          <div class="component-row ${llamaCppPython?.ready ? "found" : "missing"}"><span class="component-state">${icon(llamaCppPython?.ready ? "circle-check" : "circle-alert")}</span><div><strong>llama-cpp-python</strong><code>${escape(llamaCppPython?.packageVersion ? `v${llamaCppPython.packageVersion}` : llamaCppPython?.detail || s("prompt.runtimeWaiting"))}</code></div></div>
+          <div class="component-row ${llamaCppPython?.pythonPath ? "found" : "missing"}"><span class="component-state">${icon(llamaCppPython?.pythonPath ? "circle-check" : "circle-alert")}</span><div><strong>${s("prompt.runtimePython")}</strong><code>${escape(llamaCppPython?.pythonPath || s("prompt.runtimeWaiting"))}${llamaCppPython?.pythonVersion ? ` · Python ${escape(llamaCppPython.pythonVersion)}` : ""}</code></div></div>
+          <div class="component-row ${llamaCppPython?.cudaVersion ? "found" : "missing"}"><span class="component-state">${icon(llamaCppPython?.cudaVersion ? "circle-check" : "circle-alert")}</span><div><strong>${s("prompt.runtimeTorch")}</strong><code>${escape([llamaCppPython?.torchVersion, llamaCppPython?.cudaVersion ? `CUDA ${llamaCppPython.cudaVersion}` : ""].filter(Boolean).join(" · ") || s("prompt.runtimeWaiting"))}</code></div></div>
+        </div>
+        ${environmentScan && !promptWriterNode?.loaded ? `<p class="muted proxy-hint">${s("prompt.runtimeNodeMissing")}</p>` : ""}
+        <div class="button-row">
+          <button class="${llamaCppPython?.ready ? "secondary" : "primary"} button-with-icon" id="install-llama-cpp-python" ${viewModel.llamaCppPythonInstalling || viewModel.hasRunningQueueTask || viewModel.queueRunning || !environmentScan?.comfyRoot ? "disabled" : ""}>${icon(viewModel.llamaCppPythonInstalling ? "refresh-cw" : llamaCppPython?.ready ? "refresh-cw" : "download")}${viewModel.llamaCppPythonInstalling ? s("prompt.runtimeInstalling") : llamaCppPython?.ready ? s("prompt.runtimeRepair") : s("prompt.runtimeInstall")}</button>
+        </div>
+        ${(viewModel.llamaCppPythonLog || viewModel.llamaCppPythonInstalling) ? `<details class="node-log" open><summary>${s("prompt.runtimeLog")}</summary><pre data-dependency-install-log="python-runtime:llama-cpp-python">${escape(viewModel.llamaCppPythonLog || s("prompt.runtimeInstalling"))}</pre></details>` : ""}
+      </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${s("prompt.videoPresetTitle")}</h2><span class="muted">${s("prompt.videoPresetDescription")}</span></div><button class="secondary button-with-icon" id="restore-h3-prompt-presets">${icon("rotate-ccw")}${s("prompt.restore")}</button></div>
         <label>${s("prompt.currentPreset")}<select id="h3-prompt-preset-setting">${options.h3PromptPresetOptions(viewModel.settingsH3PromptPreset, true)}</select></label>
@@ -498,13 +530,14 @@ export function renderSettingsPage(
     workflowDependencies.length;
   const customNodes = environmentScan?.customNodes ?? [];
   const bulkNodeIds = customNodeIdsForBulkAction(customNodes);
-  const allCustomNodesHealthy = customNodes.length > 0 && customNodes.every((node) =>
+  const bulkCustomNodes = customNodes.filter((node) => node.bulkInstall !== false);
+  const allCustomNodesHealthy = bulkCustomNodes.length > 0 && bulkCustomNodes.every((node) =>
     node.installed && node.loaded && !node.updateAvailable
   );
   const nodePanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>${s("nodes.title")}</h2><span class="muted">${s("nodes.description")}</span></div><div class="button-row"><span class="model-badge">${nodeDependencyAvailable}/${nodeDependencyTotal} ${s("nodes.installed")}</span><button class="primary button-with-icon" id="install-all-custom-nodes" ${!customNodes.length || customNodeInstallGloballyBlocked || viewModel.customNodeInstallPhase !== "idle" ? "disabled" : ""}>${icon(allCustomNodesHealthy ? "refresh-cw" : "download")}${allCustomNodesHealthy ? s("nodes.updateAll") : s("nodes.installAll")} <span class="button-count">${bulkNodeIds.length}</span></button></div></div>
+        <div class="section-heading"><div><h2>${s("nodes.title")}</h2><span class="muted">${s("nodes.description")}</span></div><div class="button-row"><span class="model-badge">${nodeDependencyAvailable}/${nodeDependencyTotal} ${s("nodes.installed")}</span><button class="primary button-with-icon" id="install-all-custom-nodes" ${!bulkNodeIds.length || customNodeInstallGloballyBlocked || viewModel.customNodeInstallPhase !== "idle" ? "disabled" : ""}>${icon(allCustomNodesHealthy ? "refresh-cw" : "download")}${allCustomNodesHealthy ? s("nodes.updateAll") : s("nodes.installAll")} <span class="button-count">${bulkNodeIds.length}</span></button></div></div>
         <div class="scan-result">${s("nodes.installNote")}</div>
       </section>
       <div class="model-profile-list">
@@ -563,9 +596,10 @@ export function renderSettingsPage(
           return `
           <article class="panel custom-node-card ${node.loaded ? "available" : "missing"}">
             <div class="custom-node-copy">
-              <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.version ? ` · v${escape(node.version)}` : ""}</span></div>
+              <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.bulkInstall === false ? ` · ${s("nodes.manualInstall")}` : ""}${node.version ? ` · v${escape(node.version)}` : ""}</span></div>
               <p>${escape(node.purpose)}</p>
               <code>${escape(node.directory || node.repositoryUrl)}</code>
+              ${node.runtimeRequirement ? `<p class="muted"><strong>${s("nodes.prerequisite")}</strong> ${escape(node.runtimeRequirement)}</p>` : ""}
               ${node.id === "spectrum-minimax-h3" ? `<p class="muted">${s("nodes.localVersion")}${node.version ? `v${escape(node.version)}` : node.installed ? s("nodes.versionUnread") : s("nodes.notInstalled")} · ${s("nodes.recommendedVersion")}${node.recommendedVersion ? `v${escape(node.recommendedVersion)}` : "—"} · ${s("nodes.latestRelease")}${node.latestVersion ? `v${escape(node.latestVersion)}` : s("nodes.rescanOnline")} · ${s("nodes.runtimeMemory")}</p>` : ""}
               ${node.loadError ? `<span class="node-error">${escape(node.loadError)}</span>` : ""}
               ${node.updateNotice ? `<span class="node-update-notice">${escape(node.updateNotice)}</span>` : ""}

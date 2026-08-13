@@ -36,6 +36,7 @@ describe("dependency scanner", () => {
     const statuses = await scanCustomNodes(comfyRoot, settings);
     const kjNodes = statuses.find((status) => status.id === "kjnodes");
     const flashVsr = statuses.find((status) => status.id === "flashvsr");
+    const multimodal = statuses.find((status) => status.id === "comfyui-multimodal-prompt-nodes");
 
     expect(kjNodes).toMatchObject({
       installed: true,
@@ -47,6 +48,10 @@ describe("dependency scanner", () => {
       installed: false,
       runtimeVerified: false,
       loaded: false
+    });
+    expect(multimodal).toMatchObject({
+      bulkInstall: false,
+      runtimeRequirement: expect.stringContaining("nvcc")
     });
   });
 

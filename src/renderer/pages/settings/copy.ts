@@ -59,6 +59,20 @@ type SettingsCopyKey =
   | "prompt.summary"
   | "prompt.waitingScan"
   | "prompt.note"
+  | "prompt.runtimeTitle"
+  | "prompt.runtimeDescription"
+  | "prompt.runtimeReady"
+  | "prompt.runtimeMissing"
+  | "prompt.runtimeCpu"
+  | "prompt.runtimeUnknown"
+  | "prompt.runtimeWaiting"
+  | "prompt.runtimePython"
+  | "prompt.runtimeTorch"
+  | "prompt.runtimeInstall"
+  | "prompt.runtimeRepair"
+  | "prompt.runtimeInstalling"
+  | "prompt.runtimeLog"
+  | "prompt.runtimeNodeMissing"
   | "prompt.videoPresetTitle"
   | "prompt.videoPresetDescription"
   | "prompt.restore"
@@ -111,6 +125,8 @@ type SettingsCopyKey =
   | "nodes.oneClickInstall"
   | "nodes.projectRequired"
   | "nodes.optional"
+  | "nodes.manualInstall"
+  | "nodes.prerequisite"
   | "nodes.localVersion"
   | "nodes.versionUnread"
   | "nodes.latestRelease"
@@ -259,6 +275,20 @@ const zhCN: SettingsCopyCatalog = {
   "prompt.summary": "找到 {count} 个提示词模型档位",
   "prompt.waitingScan": "等待首次扫描",
   "prompt.note": "Qwen Safetensors 使用 ComfyUI 官方 models/text_encoders 分类；Gemma GGUF 使用 H3 Prompt Writer 扩展注册的大写 models/LLM/独立子目录，主模型与匹配的 mmproj 必须放在一起。扩写完成会自动卸载，不需要安装或启动 llama-server、LM Studio。",
+  "prompt.runtimeTitle": "Gemma GGUF 运行依赖",
+  "prompt.runtimeDescription": "H3 Prompt Writer 与可选 MultiModal 节点共用当前 ComfyUI Python 中的 llama-cpp-python；这里独立检测并安装 CUDA 后端。修复不兼容后端时会替换当前版本，请不要让两个节点各自重复安装。",
+  "prompt.runtimeReady": "CUDA 后端已就绪",
+  "prompt.runtimeMissing": "未安装",
+  "prompt.runtimeCpu": "已安装但不是 CUDA 后端",
+  "prompt.runtimeUnknown": "已安装但无法确认",
+  "prompt.runtimeWaiting": "等待环境扫描",
+  "prompt.runtimePython": "ComfyUI Python",
+  "prompt.runtimeTorch": "PyTorch / CUDA",
+  "prompt.runtimeInstall": "一键安装并自检",
+  "prompt.runtimeRepair": "修复运行依赖",
+  "prompt.runtimeInstalling": "正在安装并自检…",
+  "prompt.runtimeLog": "运行依赖安装日志",
+  "prompt.runtimeNodeMissing": "Prompt Writer 节点尚未加载；安装依赖后请重启 ComfyUI 并重新扫描。",
   "prompt.videoPresetTitle": "视频提示词预设",
   "prompt.videoPresetDescription": "预设会把原始文字和参考图整理成完整的 H3 视频提示词，覆盖主体、场景、动作、镜头、声音、对白和连续性。",
   "prompt.restore": "恢复默认",
@@ -281,7 +311,7 @@ const zhCN: SettingsCopyCatalog = {
   "upscale.empty": "尚无模型扫描结果",
   "nodes.title": "节点与工作流依赖",
   "nodes.description": "换电脑后按项目清单复现 ComfyUI 节点环境",
-  "nodes.installNote": "安装只使用项目内置仓库清单；完成后重启 ComfyUI，再重新扫描。",
+  "nodes.installNote": "安装只使用项目内置仓库清单；一键安装会跳过带系统级编译前置的可选节点，这类节点请按卡片说明单独安装。完成后重启 ComfyUI，再重新扫描。",
   "nodes.installAll": "安装 / 更新缺失节点",
   "nodes.updateAll": "更新全部节点",
   "nodes.h3Title": "MiniMax H3 原生音视频核心",
@@ -311,6 +341,8 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.oneClickInstall": "一键安装",
   "nodes.projectRequired": "项目必需",
   "nodes.optional": "可选",
+  "nodes.manualInstall": "需单独安装",
+  "nodes.prerequisite": "运行/安装说明：",
   "nodes.localVersion": "本机版本：",
   "nodes.versionUnread": "未读取到版本号",
   "nodes.latestRelease": "最新发布：",
@@ -474,7 +506,7 @@ const zhTW: SettingsCopyCatalog = {
   "upscale.empty": "尚無模型掃描結果",
   "nodes.title": "節點與工作流程依賴",
   "nodes.description": "換電腦後依照專案清單重現 ComfyUI 節點環境",
-  "nodes.installNote": "安裝只使用專案內建儲存庫清單；完成後重新啟動 ComfyUI，再重新掃描。",
+  "nodes.installNote": "安裝只使用專案內建儲存庫清單；一鍵安裝會跳過帶系統級編譯前置的選用節點，請依卡片說明單獨安裝。完成後重新啟動 ComfyUI，再重新掃描。",
   "nodes.installAll": "安裝 / 更新缺少節點",
   "nodes.updateAll": "更新全部節點",
   "nodes.h3Title": "MiniMax H3 原生影音核心",
@@ -504,6 +536,8 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.oneClickInstall": "一鍵安裝",
   "nodes.projectRequired": "專案必要",
   "nodes.optional": "選用",
+  "nodes.manualInstall": "需單獨安裝",
+  "nodes.prerequisite": "執行/安裝說明：",
   "nodes.localVersion": "本機版本：",
   "nodes.versionUnread": "未讀取到版本號",
   "nodes.latestRelease": "最新發布：",
@@ -649,6 +683,20 @@ const enUS: SettingsCopyCatalog = {
   "prompt.summary": "{count} prompt model profiles found",
   "prompt.waitingScan": "Waiting for first scan",
   "prompt.note": "Qwen Safetensors use ComfyUI's models/text_encoders category; Gemma GGUF uses the H3 Prompt Writer extension's uppercase models/LLM/independent-subdirectory layout. The main model and matching mmproj must stay together. The model unloads after expansion; llama-server and LM Studio are not required.",
+  "prompt.runtimeTitle": "Gemma GGUF runtime",
+  "prompt.runtimeDescription": "H3 Prompt Writer and the optional MultiModal node share llama-cpp-python in the selected ComfyUI Python. This card detects and installs the CUDA backend independently; repairing an incompatible build replaces the current package.",
+  "prompt.runtimeReady": "CUDA backend ready",
+  "prompt.runtimeMissing": "Not installed",
+  "prompt.runtimeCpu": "Installed, but not a CUDA backend",
+  "prompt.runtimeUnknown": "Installed, but backend is unverified",
+  "prompt.runtimeWaiting": "Waiting for environment scan",
+  "prompt.runtimePython": "ComfyUI Python",
+  "prompt.runtimeTorch": "PyTorch / CUDA",
+  "prompt.runtimeInstall": "Install and self-test",
+  "prompt.runtimeRepair": "Repair runtime",
+  "prompt.runtimeInstalling": "Installing and testing…",
+  "prompt.runtimeLog": "Runtime installation log",
+  "prompt.runtimeNodeMissing": "The Prompt Writer node is not loaded; restart ComfyUI and rescan after installing the runtime.",
   "prompt.videoPresetTitle": "Video prompt presets",
   "prompt.videoPresetDescription": "Presets organize original text and reference images into a complete H3 video prompt covering subject, scene, action, camera, sound, dialogue, and continuity.",
   "prompt.restore": "Restore defaults",
@@ -671,7 +719,7 @@ const enUS: SettingsCopyCatalog = {
   "upscale.empty": "No model scan results",
   "nodes.title": "Nodes and workflow dependencies",
   "nodes.description": "Recreate the ComfyUI node environment from the project checklist on another computer",
-  "nodes.installNote": "Installation uses only the project repository list; restart ComfyUI and rescan when complete.",
+  "nodes.installNote": "Installation uses only the project repository list; one-click install skips optional nodes with system build prerequisites. Install those from their cards, then restart ComfyUI and rescan.",
   "nodes.installAll": "Install / update missing nodes",
   "nodes.updateAll": "Update all nodes",
   "nodes.h3Title": "MiniMax H3 native audio/video core",
@@ -701,6 +749,8 @@ const enUS: SettingsCopyCatalog = {
   "nodes.oneClickInstall": "Install with one click",
   "nodes.projectRequired": "Project required",
   "nodes.optional": "Optional",
+  "nodes.manualInstall": "Install separately",
+  "nodes.prerequisite": "Runtime/install note: ",
   "nodes.localVersion": "Local version: ",
   "nodes.versionUnread": "Version not read",
   "nodes.latestRelease": "Latest release: ",

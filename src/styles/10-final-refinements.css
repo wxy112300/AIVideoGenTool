@@ -14,6 +14,8 @@ body {
 }
 .settings-content > .settings-panel { gap: 12px; }
 .settings-content .settings-section { padding: 18px; border-radius: 12px; box-shadow: 0 8px 22px rgba(0, 0, 0, .11); }
+.settings-content .prompt-runtime-dependency.available { border-color: color-mix(in srgb, var(--success) 28%, var(--border)); }
+.settings-content .prompt-runtime-dependency.missing { border-color: color-mix(in srgb, var(--danger) 24%, var(--border)); }
 .settings-content .model-profile-list { grid-template-columns: 1fr; gap: 12px; }
 .settings-content .model-profile,
 .settings-content .custom-node-card,

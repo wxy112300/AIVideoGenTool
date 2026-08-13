@@ -38,10 +38,11 @@ export interface CustomNodeInstallQueueDependencies {
 }
 
 export function customNodeIdsForBulkAction(nodes: readonly CustomNodeStatus[]): string[] {
-  const actionable = nodes.filter((node) =>
+  const eligible = nodes.filter((node) => node.bulkInstall !== false);
+  const actionable = eligible.filter((node) =>
     !node.installed || !node.loaded || node.updateAvailable
   );
-  return (actionable.length ? actionable : nodes).map((node) => node.id);
+  return (actionable.length ? actionable : eligible).map((node) => node.id);
 }
 
 function cloneSettings(settings: Settings): Settings {

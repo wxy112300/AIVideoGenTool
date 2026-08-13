@@ -556,10 +556,27 @@ export interface LlamaServerStatus {
   source: "configured" | "prompt-models" | "app-managed" | "path" | "";
 }
 
+/** Runtime dependency shared by the Gemma H3 Prompt Writer and optional vision nodes. */
+export interface LlamaCppPythonStatus {
+  packageName: "llama-cpp-python";
+  pythonPath: string;
+  pythonVersion: string;
+  packageVersion: string;
+  torchVersion: string;
+  cudaVersion: string;
+  installed: boolean;
+  importable: boolean;
+  gpuOffload: boolean | null;
+  ready: boolean;
+  detail: string;
+  error: string;
+}
+
 export type EnvironmentItemId =
   | "node"
   | "git"
   | "ffmpeg"
+  | "cuda-toolkit"
   | "nvidia"
   | "comfyui"
   | "comfyui-api"
@@ -673,6 +690,10 @@ export interface CustomNodeStatus {
   recommendedVersion: string;
   latestVersion: string;
   updateAvailable: boolean;
+  /** Python/system prerequisite shown in Settings; absent on legacy scan payloads. */
+  runtimeRequirement?: string;
+  /** Optional external-toolchain nodes can be excluded from bulk installation. */
+  bulkInstall?: boolean;
 }
 
 export interface EnvironmentIssue {
@@ -698,6 +719,7 @@ export interface EnvironmentScanResult {
   modelDirectory: string;
   outputDirectory: string;
   llamaServer: LlamaServerStatus;
+  llamaCppPython: LlamaCppPythonStatus;
   comfyCompatibility: ComfyUiCompatibility;
   attentionAcceleration: AttentionAccelerationStatus;
   items: EnvironmentItem[];
@@ -970,6 +992,7 @@ export interface AppApi {
     workflowId: WorkflowDependencyStatus["id"],
     settings: Settings
   ): Promise<ConnectionResult>;
+  installLlamaCppPython(settings: Settings): Promise<ConnectionResult>;
   installAttentionAcceleration(settings: Settings): Promise<ConnectionResult>;
   enqueue(draft: Draft): Promise<AppState>;
   enqueueExtension(draft: Draft): Promise<AppState>;
@@ -1008,7 +1031,7 @@ export type NotificationKind =
   | "queue-complete";
 
 export interface DependencyInstallProgress {
-  kind: "custom-node" | "workflow";
+  kind: "custom-node" | "workflow" | "python-runtime";
   id: string;
   message: string;
 }

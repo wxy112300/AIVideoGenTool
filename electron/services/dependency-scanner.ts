@@ -204,6 +204,8 @@ export async function scanCustomNodes(
       minimumVersion: definition.minimumVersion ?? "",
       recommendedVersion: definition.recommendedVersion ?? "",
       latestVersion,
+      runtimeRequirement: definition.runtimeRequirement ?? "",
+      bulkInstall: definition.bulkInstall !== false,
       updateAvailable: Boolean(
         compatibilityError || optionalUpdateRecommended ||
         (definition.recommendedVersion && (!version ||

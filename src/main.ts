@@ -266,6 +266,8 @@ let workflowDependencyLogs: Record<string, string> = {};
 let coreDependencyRepairing = false;
 let attentionAccelerationInstalling = false;
 let attentionAccelerationLog = "";
+let llamaCppPythonInstalling = false;
+let llamaCppPythonLog = "";
 let settingsDraft: Settings | null = null;
 let settingsTab: "system" | "acceleration" | "video" | "lora" | "image" | "nodes" | "prompt" | "upscale" | "logs" = "system";
 let appLogs: AppLogSnapshot | null = null;
@@ -1002,6 +1004,8 @@ function settingsPage(): string {
       coreDependencyRepairing,
       attentionAccelerationInstalling,
       attentionAccelerationLog,
+      llamaCppPythonInstalling,
+      llamaCppPythonLog,
       selectedInstallGuide,
       appLogs,
       appLogsLoading,
@@ -2494,6 +2498,13 @@ function bindSettings(): void {
       setAttentionAccelerationLog: (log) => {
         attentionAccelerationLog = log;
       },
+      setLlamaCppPythonInstalling: (value) => {
+        llamaCppPythonInstalling = value;
+      },
+      getLlamaCppPythonLog: () => llamaCppPythonLog,
+      setLlamaCppPythonLog: (log) => {
+        llamaCppPythonLog = log;
+      },
       setCoreDependencyRepairing: (value) => {
         coreDependencyRepairing = value;
       },
@@ -2617,15 +2628,19 @@ registerRendererEvents({
   appendDependencyInstallLog: (progress) => {
     const current = progress.kind === "custom-node"
       ? customNodeLogs[progress.id] ?? ""
-      : workflowDependencyLogs[progress.id] ?? "";
+      : progress.kind === "workflow"
+        ? workflowDependencyLogs[progress.id] ?? ""
+        : llamaCppPythonLog;
     const next = [current, progress.message]
       .filter(Boolean)
       .join("\n")
       .slice(-60_000);
     if (progress.kind === "custom-node") {
       customNodeLogs = { ...customNodeLogs, [progress.id]: next };
-    } else {
+    } else if (progress.kind === "workflow") {
       workflowDependencyLogs = { ...workflowDependencyLogs, [progress.id]: next };
+    } else {
+      llamaCppPythonLog = next;
     }
     return next;
   },

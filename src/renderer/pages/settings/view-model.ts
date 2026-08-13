@@ -43,6 +43,8 @@ export interface SettingsViewModelDependencies {
   coreDependencyRepairing: boolean;
   attentionAccelerationInstalling: boolean;
   attentionAccelerationLog: string;
+  llamaCppPythonInstalling: boolean;
+  llamaCppPythonLog: string;
   selectedInstallGuide: SettingsPageViewModel["selectedInstallGuide"];
   appLogs: AppLogSnapshot | null;
   appLogsLoading: boolean;
@@ -94,6 +96,8 @@ export function buildSettingsPageViewModel(
     coreDependencyRepairing: options.coreDependencyRepairing,
     attentionAccelerationInstalling: options.attentionAccelerationInstalling,
     attentionAccelerationLog: options.attentionAccelerationLog,
+    llamaCppPythonInstalling: options.llamaCppPythonInstalling,
+    llamaCppPythonLog: options.llamaCppPythonLog,
     selectedInstallGuide: options.selectedInstallGuide,
     installGuideModelDirectory:
       options.environmentScan?.modelDirectory ||

@@ -12,6 +12,8 @@
 
 - 提示词扩写新增可选 Qwen3.6 27B Q4 Uncensored 配置：使用 ComfyUI MultiModal Prompt Nodes 的 `VisionLLMNode`，支持多参考图，完全复用所选 ComfyUI 的 Python，不再需要 LM Studio、llama-server 或第二个服务。
 - 节点与工作流目录新增 MultiModal Prompt Nodes 与 Qwen3.6 H3 提示词扩写 API 工作流；安装器跳过会覆盖多模态后端的普通 `llama-cpp-python` requirements，改装 JamePeng GPU 构建并保留完整编译日志。
+- MultiModal Prompt Nodes 现在会在安装前检查 `nvcc`，自动发现 PATH、CUDA 环境变量和 NVIDIA 默认 Toolkit 目录；节点说明补充 CUDA Toolkit/Visual Studio/CMake 前置条件，一键节点安装会跳过该可选编译型节点，避免无意触发源码构建。
+- 提示词扩展设置新增独立的 `llama-cpp-python` 运行依赖卡片：扫描所选 ComfyUI Python、按 PyTorch CUDA 版本选择 Windows 预编译 wheel、安装后执行 `import llama_cpp` 与 GPU offload 自检，并在安装期间安全停止/恢复 ComfyUI。
 - Qwen3.6 按 RTX 4090 设计为普通 Q4_K_M、同目录 `mmproj-BF16.gguf`、8K 上下文、GPU 层；扩写完成或退出时请求 ComfyUI `/free`，避免与 H3/图片任务交叉占用显存。
 - 融合 Civitai MiniMaxH3 Auto Prompter 的结构化提示词逻辑：R2V 使用 `subject_definitions → summary → retention_analysis → detailed_description`，其他 H3 模式保持官方三字段、首尾帧对齐和明确的音频/配乐约束；所有提示词后端共享同一份 core contract。
 - 设置扫描、启动校验、提示词状态和多语言文案新增 Qwen3.6 ComfyUI 多模态路径；节点目录、模型/mmproj 文件和运行时节点仍分开显示，未完成真实 GPU smoke 前不会宣称模型已跑通。

@@ -14,6 +14,7 @@ import type {
   EnvironmentScanResult,
   GpuDeviceInfo,
   LlamaServerStatus,
+  LlamaCppPythonStatus,
   LocalServiceKind,
   ModelComponentStatus,
   ModelScanProfile,
@@ -39,7 +40,13 @@ import {
   readLatestComfyLog,
   scanCustomNodes
 } from "./dependency-scanner.js";
+import { discoverCudaToolkit } from "./cuda-toolkit.js";
 import { installCustomNodePackage } from "./dependency-installer.js";
+import {
+  inspectLlamaCppPython,
+  installLlamaCppPythonPackage,
+  type LlamaCppPythonRuntime
+} from "./llama-cpp-python.js";
 import {
   installWorkflowDependencyPackage,
   scanWorkflowDependencies
@@ -2347,6 +2354,44 @@ async function commandItem(
   }
 }
 
+async function cudaToolkitItem(): Promise<EnvironmentItem> {
+  const toolkit = await discoverCudaToolkit({
+    findExecutable,
+    exists
+  });
+  if (!toolkit) {
+    return {
+      id: "cuda-toolkit",
+      label: "CUDA Toolkit",
+      ok: false,
+      detail: "未找到 nvcc；仅在安装 Qwen3.6 多模态可选节点时需要",
+      optional: true
+    };
+  }
+  let version = "";
+  try {
+    const { stdout, stderr } = await execFileAsync(toolkit.nvcc, ["-V"], {
+      encoding: "utf8",
+      timeout: 5000,
+      windowsHide: true
+    });
+    version = `${stdout}\n${stderr}`
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .find((line) => /release\s+\d/iu.test(line)) ?? "";
+  } catch {
+    // The path is still useful even if nvcc refuses to print its version.
+  }
+  return {
+    id: "cuda-toolkit",
+    label: "CUDA Toolkit",
+    ok: true,
+    detail: `${version || "已找到 nvcc"} · ${toolkit.source === "path" ? "PATH" : toolkit.source === "environment" ? "环境变量" : "默认目录"}`,
+    path: toolkit.root,
+    optional: true
+  };
+}
+
 export function parseNvidiaGpuQuery(output: string): GpuDeviceInfo[] {
   return output.split(/\r?\n/).flatMap((line, lineIndex) => {
     const fields = line.split(",").map((field) => field.trim());
@@ -3020,6 +3065,76 @@ export async function installCustomNode(
   }, onLog);
 }
 
+export async function inspectLlamaCppPythonRuntime(
+  pythonPath: string
+): Promise<LlamaCppPythonStatus> {
+  return inspectLlamaCppPython(pythonPath, runLoggedProcess);
+}
+
+export async function installLlamaCppPython(
+  settings: Settings,
+  onLog?: (message: string) => void
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  const runtime: LlamaCppPythonRuntime = {
+    downloadEnvironment,
+    proxyLogLabel,
+    findComfyRoot,
+    findComfyPython,
+    runLoggedProcess
+  };
+  const restartLog: string[] = [];
+  const reportRestart = (message: string) => {
+    const normalized = message.trim();
+    if (!normalized) return;
+    restartLog.push(normalized);
+    onLog?.(normalized);
+  };
+  let wasRunning = false;
+  try {
+    const comfyRoot = await findComfyRoot(settings);
+    const python = await findComfyPython(settings, comfyRoot);
+    const before = await inspectLlamaCppPython(python, runLoggedProcess);
+    if (!before.ready) {
+      const healthUrl = `${settings.comfyUrl.replace(/\/+$/u, "")}/system_stats`;
+      wasRunning = await fetch(healthUrl, {
+        signal: AbortSignal.timeout(2000)
+      }).then((response) => response.ok).catch(() => false);
+      if (wasRunning) {
+        reportRestart("正在停止 ComfyUI，避免替换 Python 扩展时文件被占用……");
+        await stopComfyUi(settings);
+        reportRestart("ComfyUI 已停止");
+      }
+    }
+    const result = await installLlamaCppPythonPackage(settings, runtime, onLog);
+    if (wasRunning) {
+      reportRestart("正在重启 ComfyUI，并重新检查提示词节点……");
+      const healthUrl = await startComfyUi(settings);
+      if (!(await waitForService(healthUrl))) {
+        throw new Error("llama-cpp-python 安装完成，但 ComfyUI 重启后未在等待时间内就绪。");
+      }
+      reportRestart("ComfyUI 已重启并恢复连接");
+    }
+    return {
+      ...result,
+      log: [result.log, ...restartLog].filter(Boolean).join("\n\n")
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    reportRestart(message);
+    if (wasRunning) {
+      try {
+        reportRestart("安装过程异常，正在尝试恢复 ComfyUI……");
+        const healthUrl = await startComfyUi(settings);
+        await waitForService(healthUrl);
+        reportRestart("ComfyUI 已恢复");
+      } catch (recoveryError) {
+        reportRestart(`ComfyUI 恢复失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
+      }
+    }
+    return { ok: false, message, log: restartLog.join("\n\n") };
+  }
+}
+
 export function tritonRequirementForTorch(torchVersion: string): string {
   const match = torchVersion.match(/^(\d+)\.(\d+)/);
   if (!match) throw new Error(`无法识别 PyTorch 版本：${torchVersion || "未知"}`);
@@ -3334,7 +3449,7 @@ export async function scanEnvironment(
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ??
     pythonRuntimes[0];
   const latestSpectrumVersionPromise = latestSpectrumReleaseVersion(settings);
-  const [customNodes, workflowDependencies, attentionAcceleration] = await Promise.all([
+  const [customNodes, workflowDependencies, attentionAcceleration, llamaCppPython] = await Promise.all([
     latestSpectrumVersionPromise.then((latestSpectrumVersion) =>
       scanCustomNodes(comfyRoot, settings, latestSpectrumVersion)
     ),
@@ -3344,6 +3459,10 @@ export async function scanEnvironment(
       comfyRoot,
       comfyInstallation,
       selectedPython?.path ?? ""
+    ),
+    inspectLlamaCppPython(
+      selectedPython?.path ?? "",
+      runLoggedProcess
     )
   ]);
   const customNodesById = new Map(customNodes.map((node) => [node.id, node]));
@@ -3409,6 +3528,7 @@ export async function scanEnvironment(
     nodeItem,
     gitItem,
     ffmpegItem,
+    cudaToolkit,
     nvidiaProbe,
     comfyEnvironmentItem,
     comfyApiItem
@@ -3416,6 +3536,7 @@ export async function scanEnvironment(
     commandItem("node", "Node.js", "node.exe", ["--version"]),
     commandItem("git", "Git", "git.exe", ["--version"], true),
     commandItem("ffmpeg", "FFmpeg", "ffmpeg.exe", ["-version"], true),
+    cudaToolkitItem(),
     nvidiaItem(),
     Promise.resolve(comfyItem),
     localServiceItem("comfyui-api", "ComfyUI 服务", comfyHealthUrl)
@@ -3424,6 +3545,7 @@ export async function scanEnvironment(
     nodeItem,
     gitItem,
     ffmpegItem,
+    cudaToolkit,
     nvidiaProbe.item,
     comfyEnvironmentItem,
     comfyApiItem
@@ -3443,6 +3565,7 @@ export async function scanEnvironment(
     modelDirectory,
     outputDirectory,
     llamaServer,
+    llamaCppPython,
     comfyCompatibility,
     attentionAcceleration,
     items,

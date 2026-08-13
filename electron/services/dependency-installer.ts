@@ -8,9 +8,41 @@ import {
   prepareLtxVideo,
   prepareVideoHelperSuite
 } from "./dependency-node-adapters.js";
+import {
+  discoverCudaToolkit,
+  withCudaToolkitEnvironment
+} from "./cuda-toolkit.js";
+import { installLlamaCppPythonPackage } from "./llama-cpp-python.js";
 
 function normalizedRepositoryUrl(value: string): string {
   return value.trim().replace(/\/+$/u, "").replace(/\.git$/iu, "").toLowerCase();
+}
+
+/**
+ * Git for Windows keeps its own long-path switch even when the Windows
+ * long-path policy is enabled.  Keep this scoped to the installer process so
+ * node installation works for users who have never configured Git globally,
+ * and so pip's VCS builds inherit the same setting for their submodules.
+ */
+export function withWindowsGitLongPaths(
+  environment: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform
+): NodeJS.ProcessEnv {
+  if (platform !== "win32") return environment;
+  return {
+    ...environment,
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "core.longpaths",
+    GIT_CONFIG_VALUE_0: "true"
+  };
+}
+
+function installationFailureMessage(error: unknown, details: string): string {
+  const fallback = error instanceof Error ? error.message : String(error);
+  if (/filename too long|unable to create file|unable to checkout/iu.test(details)) {
+    return `${fallback}（检测到 Windows Git 长路径错误；安装器已自动启用进程级 longpaths。若仍失败，请启用系统长路径支持后重试。）`;
+  }
+  return fallback;
 }
 
 export interface DependencyInstallerRuntime {
@@ -54,11 +86,28 @@ export async function installCustomNodePackage(
     onLog?.(normalized);
   };
   try {
-    const commandEnvironment = runtime.downloadEnvironment(settings);
+    const commandEnvironment = withWindowsGitLongPaths(
+      runtime.downloadEnvironment(settings)
+    );
     report(runtime.proxyLogLabel(settings));
+    if (process.platform === "win32") {
+      report("Windows Git 长路径兼容已启用（仅限本次安装进程）");
+    }
     report("正在定位所选 ComfyUI 的数据目录和 Python 环境……");
     const comfyRoot = await runtime.findComfyRoot(settings);
     if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
+    const isMultimodalPromptNodes = definition.id === "comfyui-multimodal-prompt-nodes";
+    let cudaToolkitRoot = "";
+    if (isMultimodalPromptNodes) {
+      const cudaToolkit = await discoverCudaToolkit(runtime, commandEnvironment);
+      if (!cudaToolkit) {
+        throw new Error(
+          "Qwen3.6 多模态节点需要 GPU 版 llama-cpp-python；当前未找到 CUDA Toolkit 的 nvcc。请安装与当前 PyTorch CUDA 版本兼容的 CUDA Toolkit，或提供匹配的预编译后端后再单独安装此节点。"
+        );
+      }
+      cudaToolkitRoot = cudaToolkit.root;
+      report(`检测到 CUDA Toolkit：${cudaToolkit.root}（${cudaToolkit.source}）`);
+    }
     const customNodesDirectory = path.join(comfyRoot, "custom_nodes");
     const targetDirectory = path.join(customNodesDirectory, definition.directoryName);
     const git = await runtime.findExecutable("git.exe");
@@ -188,7 +237,6 @@ export async function installCustomNodePackage(
       await prepareLtxVideo(targetDirectory, report);
     }
 
-    const isMultimodalPromptNodes = definition.id === "comfyui-multimodal-prompt-nodes";
     const requirements = path.join(targetDirectory, "requirements.txt");
     if (await runtime.exists(requirements)) {
       const python = await runtime.findComfyPython(settings, comfyRoot);
@@ -235,7 +283,7 @@ export async function installCustomNodePackage(
       if (!python) throw new Error("MultiModal Prompt Nodes 已下载，但没有找到所选 ComfyUI 的 Python 环境。");
       report("安装 Qwen3.6 所需的 JamePeng llama-cpp-python 后端（GPU 多模态构建）……");
       const backendEnvironment = {
-        ...commandEnvironment,
+        ...withCudaToolkitEnvironment(commandEnvironment, cudaToolkitRoot),
         CMAKE_ARGS: [
           commandEnvironment.CMAKE_ARGS,
           "-DGGML_CUDA=ON",
@@ -261,26 +309,10 @@ export async function installCustomNodePackage(
       report("Qwen3.6 多模态后端安装完成；请重启 ComfyUI，设置页会验证 VisionLLMNode 与实际运行时。");
     }
     if (definition.id === "minimax-h3-prompt-writer") {
-      const python = await runtime.findComfyPython(settings, comfyRoot);
-      if (!python) throw new Error("Prompt Writer 已下载，但没有找到所选 ComfyUI 的 Python 环境。");
-      const ggufRequirements = path.join(targetDirectory, "requirements-gguf.txt");
-      if (!(await runtime.exists(ggufRequirements))) {
-        throw new Error("Prompt Writer 缺少 requirements-gguf.txt，无法安装本地 GGUF 后端。");
-      }
-      report("安装 ComfyUI 内置 GGUF 运行时（CUDA wheel，不启动独立 llama-server）");
-      const args = process.platform === "win32"
-        ? [
-            "-m", "pip", "install", "--only-binary=:all:",
-            "--extra-index-url", "https://abetlen.github.io/llama-cpp-python/whl/cu130",
-            "-r", ggufRequirements
-          ]
-        : ["-m", "pip", "install", "-r", ggufRequirements];
-      const ggufOutput = await runtime.runLoggedProcess(python, args, {
-        timeoutMs: 1_200_000,
-        env: commandEnvironment,
-        onLog: report
-      });
-      if (!ggufOutput) report("GGUF 运行依赖已满足");
+      report("正在安装并验证 H3 Prompt Writer 共用的 llama-cpp-python 后端……");
+      const backend = await installLlamaCppPythonPackage(settings, runtime, report);
+      if (!backend.ok) throw new Error(backend.message);
+      report("H3 Prompt Writer 的 llama-cpp-python 后端已通过自检。");
     }
     return {
       ok: true,
@@ -297,7 +329,7 @@ export async function installCustomNodePackage(
     report(details);
     return {
       ok: false,
-      message: error instanceof Error ? error.message : String(error),
+      message: installationFailureMessage(error, details),
       log: installLog.join("\n\n")
     };
   }

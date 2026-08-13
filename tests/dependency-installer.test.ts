@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   installCustomNodePackage,
+  withWindowsGitLongPaths,
   type DependencyInstallerRuntime
 } from "../electron/services/dependency-installer";
 import { createDefaultState } from "../src/core/defaults";
@@ -23,10 +24,27 @@ async function exists(filename: string): Promise<boolean> {
 }
 
 describe("dependency installer", () => {
+  it("passes Git long-path configuration to Windows child processes", () => {
+    const environment = {
+      PATH: "C:\\Git\\cmd",
+      GIT_CONFIG_COUNT: "4"
+    };
+    const configured = withWindowsGitLongPaths(environment, "win32");
+
+    expect(configured).toMatchObject({
+      PATH: environment.PATH,
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "core.longpaths",
+      GIT_CONFIG_VALUE_0: "true"
+    });
+    expect(withWindowsGitLongPaths(environment, "linux")).toBe(environment);
+  });
+
   it("runs the shared clone path and streams progress", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-node-install-"));
     temporaryDirectories.push(comfyRoot);
     const processCalls: string[][] = [];
+    const processEnvironments: NodeJS.ProcessEnv[] = [];
     const runtime: DependencyInstallerRuntime = {
       downloadEnvironment: () => ({ ...process.env }),
       proxyLogLabel: () => "代理：关闭",
@@ -38,6 +56,7 @@ describe("dependency installer", () => {
       renameWithRetry: async (source, target) => fs.rename(source, target),
       runLoggedProcess: async (_executable, args, options) => {
         processCalls.push(args);
+        if (options.env) processEnvironments.push(options.env);
         options.onLog?.("clone progress");
         if (args[0] === "clone") {
           await fs.mkdir(args.at(-1)!, { recursive: true });
@@ -61,6 +80,12 @@ describe("dependency installer", () => {
     expect(await exists(path.join(comfyRoot, "custom_nodes", "ComfyUI-KJNodes")))
       .toBe(true);
     expect(onLog).toHaveBeenCalledWith("clone progress");
+    if (process.platform === "win32") {
+      expect(processEnvironments[0]).toMatchObject({
+        GIT_CONFIG_KEY_0: "core.longpaths",
+        GIT_CONFIG_VALUE_0: "true"
+      });
+    }
     expect(result.log).toContain("无需安装额外 Python 依赖");
   });
 
@@ -84,6 +109,37 @@ describe("dependency installer", () => {
       runtime
     )).resolves.toMatchObject({ ok: false, message: expect.stringContaining("未知") });
     expect(findComfyRoot).not.toHaveBeenCalled();
+  });
+
+  it("fails the optional Qwen3.6 node before cloning when CUDA Toolkit is unavailable", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-multimodal-preflight-"));
+    temporaryDirectories.push(comfyRoot);
+    const processCalls: string[][] = [];
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async (command) => command === "git.exe" ? "git.exe" : "",
+      findComfyPython: async () => "python.exe",
+      exists: async () => false,
+      retryableRenameError: () => false,
+      renameWithRetry: async () => undefined,
+      runLoggedProcess: async (_executable, args) => {
+        processCalls.push(args);
+        return "";
+      }
+    };
+
+    const result = await installCustomNodePackage(
+      "comfyui-multimodal-prompt-nodes",
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("CUDA Toolkit");
+    expect(result.message).toContain("nvcc");
+    expect(processCalls).toEqual([]);
   });
 
   it("installs H3 GGUF beside the legacy GGUF package without replacing it", async () => {

@@ -107,6 +107,32 @@ Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分
 
 Qwen3.6 本地多模态路径有一个额外的 Python ABI 边界：节点仓库的普通 requirements 只安装轻量依赖，安装器会跳过其中可能覆盖后端的普通 `llama-cpp-python`，改用节点作者推荐的 JamePeng GPU 构建。Qwen3.5/3.6 的社区兼容参考线是 0.3.36+，但具体 wheel/源码构建仍取决于 Python、CUDA 和驱动；若本机没有匹配 wheel，安装日志会明确显示编译前置条件和失败原因。设置页会把“节点目录已安装”“VisionLLMNode 已加载”和“模型/mmproj 文件完整”分开显示，实际运行仍在 ComfyUI 启动后验证。4090 默认使用 Q4_K_M、8K 上下文、GPU 层，扩写完成后请求 ComfyUI `/free` 释放显存，再交给 H3。
 
+### Gemma / H3 Prompt Writer 的 llama-cpp-python
+
+Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件是三个独立状态。设置 → 提示词扩展会单独扫描所选 ComfyUI Python 中的 `llama-cpp-python`，并提供“一键安装并自检”。Windows 优先使用与当前 PyTorch CUDA 版本匹配的预编译 wheel；安装后会实际执行 `import llama_cpp` 和 GPU offload 自检，不会把 CPU 版或无法确认的包标记为就绪。
+
+H3 Prompt Writer 与可选 MultiModal Prompt Nodes 共用同一个 Python 包名，不能在同一 ComfyUI 环境中各自安装两个版本。MultiModal 的 JamePeng 源码构建可能覆盖官方 wheel；安装器会在卡片日志中保留完整 pip 输出，并要求用户明确修复当前共享后端后再重启 ComfyUI。模型权重不由此步骤下载，仍由提示词模型卡片中的模型目录检查负责。
+
+#### Qwen3.6 多模态节点的 CUDA Toolkit 安装
+
+这只是可选的本地视觉扩写节点的编译前置，不是 H3、Spectrum 或 ComfyUI 本体的通用依赖。当前 ComfyUI Python 如果没有匹配的 JamePeng 预编译 wheel，安装器会编译 GPU 后端，因此需要 CUDA Toolkit 中的 `nvcc`，而 PyTorch 自带的 CUDA runtime 不包含它。
+
+Windows 安装步骤：
+
+1. 关闭 ComfyUI 和 Local Video Studio，打开 NVIDIA 官方 [CUDA Toolkit 下载页](https://developer.nvidia.com/cuda-downloads)；当前 `torch.version.cuda` 为 13.0 时，优先选择兼容的 CUDA 13.0 Windows x86_64 安装包，可使用 [CUDA 13.0 存档页](https://developer.nvidia.com/cuda-13-0-2-download-archive)。
+2. 选择 `Windows`、`x86_64`、对应的 Windows 版本和 `exe (local)` 安装器。保留 CUDA Compiler/开发工具（尤其是 `nvcc`）和 Visual Studio 集成；已经正常工作的 NVIDIA 驱动不必为了这个节点重复更换。
+3. 使用默认目录安装，例如 `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0`。安装完成后重新打开终端或重启应用。
+4. 在 PowerShell 验证：
+
+   ```powershell
+   where.exe nvcc
+   nvcc -V
+   ```
+
+   能看到 `...CUDA\v13.0\bin\nvcc.exe` 且有版本输出后，再在设置页单独安装 MultiModal Prompt Nodes。
+
+应用会依次扫描当前进程的 `PATH`、`CUDAToolkit_ROOT`/`CUDA_PATH`/`CUDA_HOME`，以及 NVIDIA 默认安装目录下的版本文件夹；默认安装不需要手动填写路径。自定义目录未被找到时，设置 `CUDAToolkit_ROOT` 后重新启动应用即可。节点卡片会明确标注这条前置条件；“一键安装/更新缺失节点”会跳过这类需要系统级编译工具的可选节点，避免无意中触发长时间源码编译。
+
 Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.7`，包含原生 ER-SDE 修复和可选的模型感知预测；设置页仍会查询上游最新发布并提供一键更新，但高于最低线的旧版不会只因“不是最新版”而被判定不可用。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。
 
 注意：MiniMax H3 基础生成节点属于 ComfyUI 核心，不应伪装成第三方节点。如果核心节点缺失，应更新/切换正确的 ComfyUI 核心并重新扫描。

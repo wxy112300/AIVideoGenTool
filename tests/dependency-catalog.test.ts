@@ -30,6 +30,7 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("comfyui-multimodal-prompt-nodes")).toMatchObject({
       nodeTypes: ["VisionLLMNode"],
       runtimeRequirement: expect.stringContaining("0.3.36"),
+      bulkInstall: false,
       required: false
     });
     expect(customNodeDefinition("comfyui-gguf")).toMatchObject({

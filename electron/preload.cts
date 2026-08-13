@@ -85,6 +85,8 @@ const api: AppApi = {
     ipcRenderer.invoke("custom-node:install", nodeId, settings),
   installWorkflowDependency: (workflowId, settings) =>
     ipcRenderer.invoke("workflow-dependency:install", workflowId, settings),
+  installLlamaCppPython: (settings) =>
+    ipcRenderer.invoke("llama-cpp-python:install", settings),
   installAttentionAcceleration: (settings) =>
     ipcRenderer.invoke("attention-acceleration:install", settings),
   enqueue: (draft: Draft) => ipcRenderer.invoke("queue:enqueue", draft),
