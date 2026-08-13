@@ -251,7 +251,20 @@ export function buildImageEditPageViewModel(
     : 0;
   const imageModelInputCount = draft.pictures.length + markupGuideCount;
   const enqueueBlockReason = imageEditEnqueueBlockReason(draft, imageProfile, t);
-  const count = Math.min(10, Math.max(1, draft.outputCount));
+  const count = imageCapability.deterministic ? 1 : Math.min(10, Math.max(1, draft.outputCount));
+  const backgroundRemoval = imageCapability.operation === "background-removal";
+  const promptlessTitle = t(backgroundRemoval
+    ? uiKeys.create.imageEdit.promptlessBackgroundRemovalTitle
+    : uiKeys.create.imageEdit.promptlessLocalRemovalTitle);
+  const promptlessDescription = t(backgroundRemoval
+    ? uiKeys.create.imageEdit.promptlessBackgroundRemovalDescription
+    : uiKeys.create.imageEdit.promptlessLocalRemovalDescription);
+  const promptlessSummary = t(backgroundRemoval
+    ? uiKeys.create.imageEdit.promptlessBackgroundRemovalSummary
+    : uiKeys.create.imageEdit.promptlessLocalRemovalSummary, { count });
+  const promptlessResultDescription = t(backgroundRemoval
+    ? uiKeys.create.imageEdit.promptlessBackgroundRemovalResult
+    : uiKeys.create.imageEdit.promptlessLocalRemovalResult);
   return {
     draft,
     prompt,
@@ -275,6 +288,11 @@ export function buildImageEditPageViewModel(
     imageModelInputCount,
     enqueueBlockReason,
     count,
+    outputCountVisible: !imageCapability.deterministic,
+    promptlessTitle,
+    promptlessDescription,
+    promptlessSummary,
+    promptlessResultDescription,
     imageProfileStatusText: !imageProfile
       ? t(uiKeys.create.validation.imageRescan)
       : !imageProfile.available

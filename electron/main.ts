@@ -147,9 +147,11 @@ if (appliedChromiumWorkarounds.length) {
 
 const historyCoverDirectory = () => path.join(app.getPath("userData"), "history-covers", "v3");
 const historyCoverDigest = (key: string) => createHash("sha256").update(key).digest("hex");
-const historyCoverPathFromDigest = (digest: string) =>
-  path.join(historyCoverDirectory(), `${digest}.jpg`);
-const historyCoverPath = (key: string) => historyCoverPathFromDigest(historyCoverDigest(key));
+const historyCoverExtension = (key: string) => key.startsWith("image-history:") ? ".png" : ".jpg";
+const historyCoverPathFromDigest = (digest: string, extension = ".jpg") =>
+  path.join(historyCoverDirectory(), `${digest}${extension}`);
+const historyCoverPath = (key: string) =>
+  historyCoverPathFromDigest(historyCoverDigest(key), historyCoverExtension(key));
 const historyCoverMetadataPath = (key: string) =>
   path.join(historyCoverDirectory(), `${historyCoverDigest(key)}.json`);
 
@@ -326,9 +328,9 @@ function registerMediaProtocol(): void {
       let filename: string | undefined;
       let trustedCacheFile = false;
       if (url.hostname === "cover") {
-        const match = url.pathname.match(/^\/([a-f0-9]{64})\.jpg$/i);
+        const match = url.pathname.match(/^\/([a-f0-9]{64})\.(jpg|png)$/i);
         if (!match?.[1]) return new Response("Invalid cover", { status: 400 });
-        filename = historyCoverPathFromDigest(match[1].toLowerCase());
+        filename = historyCoverPathFromDigest(match[1].toLowerCase(), `.${match[2]!.toLowerCase()}`);
         trustedCacheFile = true;
       } else if (url.hostname === "draft" && url.pathname === "/video") {
         filename = store.get().draft.sourceVideoPath;
@@ -1756,6 +1758,34 @@ function registerIpc(): void {
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
+  ipcMain.handle("file:open-directory", async (_event, directory: string) => {
+    const requestedDirectory = typeof directory === "string" ? directory.trim() : "";
+    if (!requestedDirectory) return false;
+    const directoryPath = path.resolve(requestedDirectory);
+    try {
+      await fs.mkdir(directoryPath, { recursive: true });
+      const directoryStat = await fs.stat(directoryPath);
+      if (!directoryStat.isDirectory()) return false;
+      const errorMessage = await shell.openPath(directoryPath);
+      if (errorMessage) {
+        appLogger.warn("settings", "open-model-directory-failed", "Model directory could not be opened", {
+          directory: directoryPath,
+          error: errorMessage
+        });
+        return false;
+      }
+      appLogger.info("settings", "open-model-directory-succeeded", "Model directory opened", {
+        directory: directoryPath
+      });
+      return true;
+    } catch (error) {
+      appLogger.warn("settings", "open-model-directory-failed", "Model directory could not be opened", {
+        directory: directoryPath,
+        error: safeLogErrorMessage(error)
+      });
+      return false;
+    }
+  });
   ipcMain.handle("image-assets:scan", async () => {
     if (imageAssetLibraryRunning) throw new Error("图片素材库正在处理中，请稍候。");
     imageAssetLibraryRunning = true;
@@ -1974,7 +2004,7 @@ function registerIpc(): void {
       Math.abs(metadata.sourceMtimeMs - sourceStat.mtimeMs) > 1
     ) return null;
     const digest = historyCoverDigest(key);
-    return `studio-media://cover/${digest}.jpg?v=${Math.round(coverStat.mtimeMs)}`;
+    return `studio-media://cover/${digest}${historyCoverExtension(key)}?v=${Math.round(coverStat.mtimeMs)}`;
   });
   ipcMain.handle(
     "history-cover:save",

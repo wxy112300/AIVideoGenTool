@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  birefnetBackgroundRemovalCapability,
+  birefnetRequiredNodeTypes,
+  buildBirefnetBackgroundRemovalWorkflow,
   buildFlux2Klein4bWorkflow,
   buildQwenImageEdit2511Workflow,
   cachedImageProfileAllowsEnqueue,
@@ -23,7 +26,8 @@ import {
   renderImageWorkflow,
   validateFlux2Klein4bWorkflow,
   validateLamaInpaintWorkflow,
-  validateQwenImageEdit2511Workflow
+  validateQwenImageEdit2511Workflow,
+  validateBirefnetWorkflow
 } from "../src/core/image-workflow.js";
 import type { ImageGenerationQueueTask, ImageReference } from "../src/types.js";
 
@@ -113,6 +117,41 @@ describe("LaMa mask-only image workflow", () => {
     expect(validateLamaInpaintWorkflow(
       renderImageWorkflow(workflow, ["source.png"], ["mask.png"])
     )).toEqual([]);
+  });
+});
+
+describe("BiRefNet deterministic background-removal workflow", () => {
+  it("is a single-image, promptless, source-sized deterministic operation", () => {
+    expect(birefnetBackgroundRemovalCapability).toMatchObject({
+      maxPictures: 1,
+      deterministic: true,
+      operation: "background-removal",
+      requiresPrompt: false,
+      supportsSeed: false,
+      sourceResolutionOnly: true
+    });
+  });
+
+  it("builds the native ComfyUI BiRefNet alpha workflow without SAM", () => {
+    const task: ImageGenerationQueueTask = {
+      id: "birefnet-task", taskType: "image-generation", status: "waiting",
+      createdAt: "2026-08-13T00:00:00.000Z", updatedAt: "2026-08-13T00:00:00.000Z",
+      outputFilename: "BiRefNet-test", projectId: "project", pictures: [picture(1)],
+      prompt: "", promptVersion: 1, modelId: "birefnet-background-removal",
+      workflowPath: "builtin:image/birefnet-background-removal", qualityProfile: "native",
+      outputFormat: "png", outputCount: 1, runs: []
+    };
+    const workflow = buildBirefnetBackgroundRemovalWorkflow(task, {
+      id: "run", index: 0, seed: 7, status: "running"
+    });
+    expect(Object.values(workflow).map((node) => node.class_type)).toEqual(
+      expect.arrayContaining([...birefnetRequiredNodeTypes])
+    );
+    expect(workflow.input?.inputs.image).toBe("{{IMAGE_0}}");
+    expect(workflow.backgroundModel?.inputs.bg_removal_name).toBe("birefnet.safetensors");
+    expect(workflow.transparentImage?.inputs.alpha).toEqual(["alphaMask", 0]);
+    expect(workflow.save?.inputs.images).toEqual(["transparentImage", 0]);
+    expect(validateBirefnetWorkflow(renderImageWorkflow(workflow, ["source.png"]))).toEqual([]);
   });
 });
 

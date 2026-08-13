@@ -1,4 +1,5 @@
 import {
+  birefnetRequiredNodeTypes,
   flux2Klein4bRequiredNodeTypes,
   lamaInpaintRequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes
@@ -7,6 +8,30 @@ import { component, entry, guide } from "./catalog-helpers.js";
 import type { CatalogModelEntry } from "../types.js";
 
 export const imageModelEntries: CatalogModelEntry[] = [
+  entry({
+    id: "birefnet-background-removal", family: "birefnet", category: "image", adapterId: "birefnet-background-removal", order: 120, inputModes: ["image"],
+    capabilities: { maxReferenceImages: 1 },
+    scan: { managedBy: "comfyui", vram: "原生 BiRefNet · 单图 · 透明 PNG", integrated: true, runtimeNodeTypes: birefnetRequiredNodeTypes, components: [
+      component(
+        "BiRefNet 背景移除模型",
+        "background_removal/birefnet.safetensors",
+        /background_removal[\\/]birefnet\.safetensors$/i,
+        guide(
+          "Comfy-Org / BiRefNet",
+          "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors?download=true",
+          "background_removal",
+          "birefnet.safetensors",
+          "ComfyUI 原生背景移除模型；输出带透明通道的 PNG。无需 SAM 或第三方节点。"
+        )
+      )
+    ] }
+  }, {
+    name: "BiRefNet · 自动抠图", badge: "原生 · 透明 PNG", description: "ComfyUI 原生 BiRefNet 背景移除；单张图片自动分离人物或主体并输出透明 PNG，不读取 Prompt。"
+  }, {
+    name: "BiRefNet · background removal", badge: "Native · transparent PNG", description: "Native ComfyUI BiRefNet background removal. Separates a person or clear subject from one image and saves a transparent PNG without a prompt."
+  }, {
+    name: "BiRefNet · 自動摳圖", badge: "原生 · 透明 PNG", description: "ComfyUI 原生 BiRefNet 背景移除；單張圖片自動分離人物或主體並輸出透明 PNG，不讀取 Prompt。"
+  }),
   entry({
     id: "lama-inpaint", family: "lama", category: "image", adapterId: "lama-inpaint", order: 110, inputModes: ["image"],
     capabilities: { maxReferenceImages: 1 },

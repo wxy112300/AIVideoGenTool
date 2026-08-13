@@ -348,6 +348,7 @@ export function renderSettingsInstallGuideDialog(
         ${guide.notes ? `<div class="install-note"><strong>${t(uiKeys.settings.system.installGuideNote)}</strong><p>${escape(guide.notes)}</p></div>` : ""}
         <div class="dialog-actions">
           <button class="secondary" id="dismiss-install-guide">${t(uiKeys.settings.system.installGuideClose)}</button>
+          <button class="secondary button-with-icon" id="open-install-directory" data-install-directory="${escape(targetDirectory)}">${icon("folder-open")}${t(uiKeys.settings.system.installGuideOpenDirectory)}</button>
           <button class="primary button-with-icon" id="open-install-download">${t(uiKeys.settings.system.installGuideOpenDownload)}${icon("external-link")}</button>
         </div>
       </section>

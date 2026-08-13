@@ -145,7 +145,7 @@ async function requireImageModelAssets(
   if (imageQualityProfileRequiresLightning(qualityProfile) && !imageLightningComponentFound(profile.components)) {
     throw new Error("当前选择了 Qwen Lightning 4 步档，但未找到 Lightning LoRA。请在设置 → 图片模型中打开下载说明并重新扫描。");
   }
-  if (modelId === "lama-inpaint") return undefined;
+  if (adapter.operation === "inpaint" || adapter.operation === "background-removal") return undefined;
   const diffusionModel = profile.components.find((component) => component.label.includes("扩散模型"))
     ?.matches[0]?.split(/[\\/]/u).pop();
   if (!diffusionModel) throw new Error("Qwen Image Edit 2511 扩散模型文件未能从环境扫描结果中解析。");
@@ -258,8 +258,12 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
   });
 
   ipc.handle("queue:enqueue-image", async (_event, draft: ImageEditDraft) => {
-    const normalized = normalizeImageEditDraft(draft);
-    const adapter = imageModelAdapterFor(normalized.modelId);
+    const requested = normalizeImageEditDraft(draft);
+    const adapter = imageModelAdapterFor(requested.modelId);
+    const normalized = normalizeImageEditDraft({
+      ...requested,
+      ...(adapter?.deterministic ? { outputCount: 1 } : {})
+    });
     if (!adapter) throw new Error(`当前没有 ${normalized.modelId} 的图片模型适配器。`);
     if (!normalized.pictures.length) throw new Error("请先添加至少一张 Picture 作为基础图片。");
     if (normalized.pictures.length > adapter.maxPictures) throw new Error(`当前 ${adapter.name} 工作流最多支持 ${adapter.maxPictures} 张 Picture。`);

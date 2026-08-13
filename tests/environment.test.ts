@@ -33,7 +33,10 @@ import {
   tritonRequirementForTorch,
   videoHelperBatchCompatible
 } from "../electron/services/environment.js";
-import { qwenImageEdit2511RequiredNodeTypes } from "../src/core/image-workflow.js";
+import {
+  birefnetRequiredNodeTypes,
+  qwenImageEdit2511RequiredNodeTypes
+} from "../src/core/image-workflow.js";
 
 describe("SageAttention environment selection", () => {
   it("requires the KJNodes large-stride guard added for modern attention runtimes", () => {
@@ -761,6 +764,35 @@ describe("ComfyUI environment candidates", () => {
       targetSubdirectory: "loras",
       recommendedFilename: "PinkFluffyBunny-pruned-v1-rank128.safetensors"
     });
+  });
+
+  it("scans the native BiRefNet model independently from runtime node readiness", () => {
+    const incomplete = evaluateModelProfiles([]).find(
+      (profile) => profile.id === "birefnet-background-removal"
+    );
+    const complete = evaluateModelProfiles([
+      "background_removal\\birefnet.safetensors"
+    ]).find((profile) => profile.id === "birefnet-background-removal");
+
+    expect(incomplete).toMatchObject({
+      category: "image",
+      available: false,
+      integrated: true,
+      runtimeVerified: false,
+      runtimeReady: false
+    });
+    expect(complete?.available).toBe(true);
+    expect(complete?.components[0]?.installGuide).toMatchObject({
+      targetSubdirectory: "background_removal",
+      recommendedFilename: "birefnet.safetensors"
+    });
+
+    const runtime = evaluateModelProfiles(
+      ["background_removal/birefnet.safetensors"],
+      "q3_k_m",
+      new Set(birefnetRequiredNodeTypes)
+    ).find((profile) => profile.id === "birefnet-background-removal");
+    expect(runtime).toMatchObject({ runtimeVerified: true, runtimeReady: true, runtimeMissingNodes: [] });
   });
 
   it("detects MiniMax H3 Realism People and exposes its current combined I2V/R2V download", () => {

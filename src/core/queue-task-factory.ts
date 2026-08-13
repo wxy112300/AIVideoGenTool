@@ -123,7 +123,9 @@ export function imageTaskFromDraft(
   const now = currentDate.toISOString();
   const id = clock.id();
   const projectId = draft.projectId ?? clock.id();
-  const runs: ImageGenerationRun[] = expandImageSeeds(draft.seed, draft.outputCount)
+  const adapter = imageModelAdapterFor(draft.modelId);
+  const outputCount = adapter?.deterministic ? 1 : draft.outputCount;
+  const runs: ImageGenerationRun[] = expandImageSeeds(draft.seed, outputCount)
     .map((seed, index) => ({
       id: clock.id(),
       index,
@@ -139,7 +141,7 @@ export function imageTaskFromDraft(
   const [outputWidth, outputHeight] = imageOutputDimensions(
     basePicture?.width ?? 0,
     basePicture?.height ?? 0,
-    targetResolution
+    adapter?.sourceResolutionOnly ? "source" : targetResolution
   );
   const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
   return {
@@ -148,7 +150,7 @@ export function imageTaskFromDraft(
     status: "waiting",
     createdAt: now,
     updatedAt: now,
-    outputFilename: `${draft.modelId === "lama-inpaint" ? "LaMa" : "ImageEdit"}-${currentDate.toISOString().replace(/[-:.TZ]/gu, "").slice(0, 14)}-${id.slice(0, 8)}`,
+    outputFilename: `${draft.modelId === "lama-inpaint" ? "LaMa" : draft.modelId === "birefnet-background-removal" ? "BiRefNet" : "ImageEdit"}-${currentDate.toISOString().replace(/[-:.TZ]/gu, "").slice(0, 14)}-${id.slice(0, 8)}`,
     projectId,
     parentVersionId: draft.parentVersionId,
     pictures: draft.pictures.map((picture) => ({
@@ -161,12 +163,12 @@ export function imageTaskFromDraft(
     imageOutputSubfolder: outputTarget.subfolder,
     outputWidth,
     outputHeight,
-    targetResolution,
+    targetResolution: adapter?.sourceResolutionOnly ? "source" : targetResolution,
     ...(diffusionModelFilename ? { diffusionModelFilename } : {}),
     prompt: promptless ? "" : draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "",
     promptVersion: promptless ? 1 : draft.activePromptVersion + 1,
     modelId: draft.modelId,
-    workflowPath: `builtin:image/${imageModelAdapterFor(draft.modelId)?.id ?? draft.modelId}`,
+    workflowPath: `builtin:image/${adapter?.id ?? draft.modelId}`,
     qualityProfile: draft.qualityProfile,
     outputFormat: "png",
     outputCount: runs.length,

@@ -40,7 +40,13 @@ export function persistImageHistoryResult(
     project = {
       mediaKind: "image",
       id: queued.projectId,
-      title: queued.prompt.slice(0, 32) || (queued.modelId === "lama-inpaint" ? "局部移除" : "未命名图片"),
+      title: queued.prompt.slice(0, 32) || (
+        queued.modelId === "lama-inpaint"
+          ? "局部移除"
+          : queued.modelId === "birefnet-background-removal"
+            ? "自动抠图"
+            : "未命名图片"
+      ),
       createdAt: result.completedAt,
       updatedAt: result.completedAt,
       coverMode: "auto",

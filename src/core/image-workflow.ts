@@ -23,6 +23,9 @@ export interface ImageModelCapability {
   maxPictures: number;
   supportedFormats: ImageOutputFormat[];
   qualityProfiles: ImageQualityProfile[];
+  /** The operation uses a deterministic, single-pass workflow rather than sampling. */
+  deterministic?: boolean;
+  operation?: "edit" | "inpaint" | "background-removal";
   requiresPrompt?: boolean;
   requiresMask?: boolean;
   supportsSeed?: boolean;
@@ -118,6 +121,16 @@ export const lamaInpaintRequiredNodeTypes = [
   "INPAINT_LoadInpaintModel",
   "INPAINT_ExpandMask",
   "INPAINT_InpaintWithModel",
+  "SaveImage"
+] as const;
+
+/** Native ComfyUI nodes used by the official BiRefNet background-removal template. */
+export const birefnetRequiredNodeTypes = [
+  "LoadImage",
+  "LoadBackgroundRemovalModel",
+  "RemoveBackground",
+  "InvertMask",
+  "JoinImageWithAlpha",
   "SaveImage"
 ] as const;
 
@@ -275,6 +288,7 @@ export const lamaInpaintCapability: ImageModelCapability = {
   name: "LaMa 局部移除",
   maxPictures: 1,
   supportedFormats: ["png"],
+  operation: "inpaint",
   requiresPrompt: false,
   requiresMask: true,
   supportsSeed: false,
@@ -283,6 +297,21 @@ export const lamaInpaintCapability: ImageModelCapability = {
     { id: "natural", label: "自然边缘", steps: 0, cfg: 0, lightning: false },
     { id: "tight", label: "紧贴 Mask", steps: 0, cfg: 0, lightning: false },
     { id: "wide", label: "扩大修补", steps: 0, cfg: 0, lightning: false }
+  ]
+};
+
+export const birefnetBackgroundRemovalCapability: ImageModelCapability = {
+  id: "birefnet-background-removal",
+  name: "BiRefNet 自动抠图",
+  maxPictures: 1,
+  supportedFormats: ["png"],
+  deterministic: true,
+  operation: "background-removal",
+  requiresPrompt: false,
+  supportsSeed: false,
+  sourceResolutionOnly: true,
+  qualityProfiles: [
+    { id: "native", label: "自动抠图", steps: 0, cfg: 0, lightning: false }
   ]
 };
 
@@ -916,10 +945,111 @@ export const lamaInpaintAdapter: ImageModelAdapter = {
   }
 };
 
+export function compileBirefnetInput(
+  _prompt: string,
+  pictures: ImageReferenceSnapshot[]
+): CompiledImagePrompt {
+  const picture = orderedPictures(pictures)[0];
+  const errors: string[] = [];
+  if (!picture?.absolutePath.trim()) errors.push("BiRefNet 自动抠图需要一张原始图片。");
+  if (pictures.length > 1) errors.push("BiRefNet 自动抠图只支持一张原始图片。");
+  return {
+    prompt: "",
+    pictures: picture?.absolutePath.trim() ? [picture] : [],
+    referencedPictureNumbers: [],
+    errors
+  };
+}
+
+export function validateBirefnetWorkflow(
+  workflow: ComfyApiWorkflow,
+  _qualityProfile = "native",
+  allowImagePlaceholders = false
+): string[] {
+  const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
+  const errors = birefnetRequiredNodeTypes
+    .filter((nodeType) => !nodeTypes.has(nodeType))
+    .map((nodeType) => `BiRefNet 工作流缺少节点 ${nodeType}。`);
+  const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
+  if (inputNodes.length !== 1) errors.push("BiRefNet 自动抠图工作流必须包含 1 个 LoadImage 节点。");
+  if (!allowImagePlaceholders) {
+    const unresolved = Object.values(workflow).flatMap((node) =>
+      Object.values(node.inputs).filter((value) =>
+        typeof value === "string" && /^\{\{IMAGE_\d+\}\}$/u.test(value)
+      )
+    );
+    if (unresolved.length) errors.push("BiRefNet 工作流仍包含未上传的图片占位符。");
+  }
+  return [...new Set(errors)];
+}
+
+export function buildBirefnetBackgroundRemovalWorkflow(
+  task: ImageGenerationQueueTask,
+  run: ImageGenerationRun
+): ComfyApiWorkflow {
+  const compiled = compileBirefnetInput(task.prompt, task.pictures);
+  if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
+  const picture = compiled.pictures[0];
+  if (!picture) throw new Error("BiRefNet 自动抠图至少需要一张基础 Picture。");
+  const outputPrefix = [
+    task.imageOutputSubfolder?.replace(/[\\/]+/gu, "/").replace(/^\/+|\/+$/gu, ""),
+    `BiRefNet_${task.outputFilename}_${run.index + 1}`
+  ].filter(Boolean).join("/");
+  const workflow: ComfyApiWorkflow = {
+    input: {
+      class_type: "LoadImage",
+      inputs: { image: "{{IMAGE_0}}" }
+    },
+    backgroundModel: {
+      class_type: "LoadBackgroundRemovalModel",
+      inputs: { bg_removal_name: "birefnet.safetensors" }
+    },
+    foregroundMask: {
+      class_type: "RemoveBackground",
+      inputs: {
+        image: ["input", 0],
+        bg_removal_model: ["backgroundModel", 0]
+      }
+    },
+    alphaMask: {
+      class_type: "InvertMask",
+      inputs: { mask: ["foregroundMask", 0] }
+    },
+    transparentImage: {
+      class_type: "JoinImageWithAlpha",
+      inputs: {
+        image: ["input", 0],
+        alpha: ["alphaMask", 0]
+      }
+    },
+    save: {
+      class_type: "SaveImage",
+      inputs: {
+        images: ["transparentImage", 0],
+        filename_prefix: outputPrefix
+      }
+    }
+  };
+  const errors = validateBirefnetWorkflow(workflow, task.qualityProfile, true);
+  if (errors.length) throw new Error(errors.join(" "));
+  return workflow;
+}
+
 export const imageModelAdapters: Record<string, ImageModelAdapter> = {
   [qwenImageEdit2511Adapter.id]: qwenImageEdit2511Adapter,
   [flux2Klein4bAdapter.id]: flux2Klein4bAdapter,
-  [lamaInpaintAdapter.id]: lamaInpaintAdapter
+  [lamaInpaintAdapter.id]: lamaInpaintAdapter,
+  [birefnetBackgroundRemovalCapability.id]: {
+    ...birefnetBackgroundRemovalCapability,
+    compilePrompt: compileBirefnetInput,
+    buildWorkflow: buildBirefnetBackgroundRemovalWorkflow,
+    validateWorkflow: validateBirefnetWorkflow,
+    parseOutputs(history: unknown): ImageOutputCandidate[] {
+      return extractComfyOutputFiles(history)
+        .map((file) => imageOutputCandidateFromValue(file))
+        .filter((file): file is ImageOutputCandidate => file !== null);
+    }
+  }
 };
 
 export function imageModelAdapterFor(modelId: string): ImageModelAdapter | undefined {

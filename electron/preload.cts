@@ -59,6 +59,7 @@ const api: AppApi = {
   saveHistoryCover: (key: string, sourcePath: string, data: ArrayBuffer) =>
     ipcRenderer.invoke("history-cover:save", key, sourcePath, data),
   showItemInFolder: (path: string) => ipcRenderer.invoke("file:show-in-folder", path),
+  openDirectory: (path: string) => ipcRenderer.invoke("file:open-directory", path),
   copyFile: (path: string) => ipcRenderer.invoke("file:copy", path),
   openExternal: (url: string) => ipcRenderer.invoke("shell:open-external", url),
   enhancePrompt: (request: EnhanceRequest) =>

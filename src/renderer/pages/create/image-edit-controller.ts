@@ -327,7 +327,8 @@ export function mountImageEditController(
                 ? draft.qualityProfile
                 : modelCapability?.qualityProfiles[0]?.id ?? "native",
               ...(modelCapability?.maxPictures === 1 ? { pictures: draft.pictures.slice(0, 1) } : {}),
-              ...(modelCapability?.sourceResolutionOnly ? { targetResolution: "source" as const } : {})
+              ...(modelCapability?.sourceResolutionOnly ? { targetResolution: "source" as const } : {}),
+              ...(modelCapability?.deterministic ? { outputCount: 1 } : {})
             }
           : id === "image-edit-quality"
             ? { qualityProfile: value }

@@ -909,6 +909,7 @@ export interface AppApi {
   readHistoryCover(key: string, sourcePath: string): Promise<string | null>;
   saveHistoryCover(key: string, sourcePath: string, data: ArrayBuffer): Promise<boolean>;
   showItemInFolder(path: string): Promise<boolean>;
+  openDirectory(path: string): Promise<boolean>;
   copyFile(path: string): Promise<ConnectionResult>;
   openExternal(url: string): Promise<boolean>;
   enhancePrompt(request: EnhanceRequest): Promise<string>;

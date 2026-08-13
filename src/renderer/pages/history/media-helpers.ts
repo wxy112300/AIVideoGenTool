@@ -47,7 +47,9 @@ export function createHistoryMediaRuntime(
       const canvasContext = canvas.getContext("2d");
       if (!canvasContext) return;
       canvasContext.drawImage(source, 0, 0, canvas.width, canvas.height);
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", .88));
+      // PNG keeps the alpha channel so transparent BiRefNet results remain
+      // transparent in the history gallery instead of becoming black JPEGs.
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
       if (!blob || blob.size > 2 * 1024 * 1024 || !image.isConnected) return;
       const saved = await context.studio.saveHistoryCover(key, sourcePath, await blob.arrayBuffer());
       if (!saved || !image.isConnected) return;

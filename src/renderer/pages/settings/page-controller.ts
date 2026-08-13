@@ -100,6 +100,12 @@ export function mountSettingsPageController(
     const opened = await options.context.studio.openExternal(selected.component.installGuide.downloadUrl);
     if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed));
   }, { signal });
+  root.querySelector("#open-install-directory")?.addEventListener("click", async (event) => {
+    const directory = (event.currentTarget as HTMLButtonElement).dataset.installDirectory?.trim();
+    if (!directory) return;
+    const opened = await options.context.studio.openDirectory(directory);
+    if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.openDirectoryFailed));
+  }, { signal });
 
   root.querySelector("#scan-environment")?.addEventListener("click", () => {
     const settings = options.formSettings();

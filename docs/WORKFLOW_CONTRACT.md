@@ -82,6 +82,7 @@ Do not assume lower dedicated VRAM usage is automatically safer or faster. Recor
 - Replacing or clearing a Picture invalidates its annotation sidecar reference. Queue tasks receive an immutable copy of the annotation metadata and validate the flattened file before execution.
 - Visual guidance and a true binary inpaint mask are separate capabilities. Do not silently route visual marks into a mask socket; add mask-aware workflows only after their model/node contract is validated.
 - LaMa object removal uses the clean Picture plus a separate binary mask sidecar. The translucent editor overlay is display-only; it must never replace the Picture input. The mask is mandatory, the prompt is omitted, output remains at source resolution, and the applied result becomes a normal image-project version.
+- BiRefNet background removal is a separate deterministic, promptless image capability. It uses the native `LoadBackgroundRemovalModel`/`RemoveBackground`/`JoinImageWithAlpha` nodes with `models/background_removal/birefnet.safetensors`, accepts one clean Picture, keeps source resolution, emits one transparent PNG, and does not require SAM or a custom node package. Runtime node registration is checked only when the service is available.
 - Video extension modes remain distinct: boundary-frame continuation and native latent/overlap or reference-based extension must not be presented as equivalent.
 
 ## Environment Detection and Installation

@@ -503,7 +503,8 @@ export const uiKeys = {
       installGuideRecommendedFile: "settings.system.installGuideRecommendedFile",
       installGuideTargetDirectory: "settings.system.installGuideTargetDirectory",
       installGuideNote: "settings.system.installGuideNote",
-      installGuideOpenDownload: "settings.system.installGuideOpenDownload"
+      installGuideOpenDownload: "settings.system.installGuideOpenDownload",
+      installGuideOpenDirectory: "settings.system.installGuideOpenDirectory"
     },
     compatibility: {
       title: "settings.compatibility.title",
@@ -530,6 +531,7 @@ export const uiKeys = {
     },
     actions: {
       downloadPageFailed: "settings.actions.downloadPageFailed",
+      openDirectoryFailed: "settings.actions.openDirectoryFailed",
       connectionPending: "settings.actions.connectionPending",
       scannedPathsApplied: "settings.actions.scannedPathsApplied",
       saveLibraryFirst: "settings.actions.saveLibraryFirst",
@@ -988,6 +990,14 @@ export const uiKeys = {
       insert: "create.imageEdit.insert",
       generationSettings: "create.imageEdit.generationSettings",
       batchDescription: "create.imageEdit.batchDescription",
+      promptlessLocalRemovalTitle: "create.imageEdit.promptlessLocalRemovalTitle",
+      promptlessLocalRemovalDescription: "create.imageEdit.promptlessLocalRemovalDescription",
+      promptlessLocalRemovalSummary: "create.imageEdit.promptlessLocalRemovalSummary",
+      promptlessLocalRemovalResult: "create.imageEdit.promptlessLocalRemovalResult",
+      promptlessBackgroundRemovalTitle: "create.imageEdit.promptlessBackgroundRemovalTitle",
+      promptlessBackgroundRemovalDescription: "create.imageEdit.promptlessBackgroundRemovalDescription",
+      promptlessBackgroundRemovalSummary: "create.imageEdit.promptlessBackgroundRemovalSummary",
+      promptlessBackgroundRemovalResult: "create.imageEdit.promptlessBackgroundRemovalResult",
       model: "create.imageEdit.model",
       quality: "create.imageEdit.quality",
       outputResolution: "create.imageEdit.outputResolution",

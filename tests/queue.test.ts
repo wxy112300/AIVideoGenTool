@@ -196,6 +196,32 @@ describe("queue execution snapshots", () => {
     expect(queued.promptVersion).toBe(1);
   });
 
+  it("forces deterministic BiRefNet cutouts to one output even when the draft count is stale", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "birefnet-background-removal";
+    draft.outputCount = 10;
+    draft.promptVersions[0]!.text = "stale prompt from an editor";
+    draft.pictures = [{
+      id: "picture-1",
+      pictureNumber: 1,
+      absolutePath: "input.png",
+      width: 1024,
+      height: 768
+    }];
+
+    const queued = imageTaskFromDraft(
+      draft,
+      undefined,
+      { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" },
+      clock(["task-birefnet", "project-birefnet", "run-birefnet"])
+    );
+
+    expect(queued.outputCount).toBe(1);
+    expect(queued.runs).toHaveLength(1);
+    expect(queued.prompt).toBe("");
+    expect(queued.targetResolution).toBe("source");
+  });
+
   it("scopes R2V extension policy while preserving its source snapshot", () => {
     const state = createDefaultState();
     const draft = {

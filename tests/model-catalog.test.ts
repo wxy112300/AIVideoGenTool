@@ -40,6 +40,7 @@ describe("model catalog", () => {
   it("covers every model category used by environment scanning", () => {
     expect(modelCatalog.list("prompt")).toHaveLength(11);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
+      "birefnet-background-removal",
       "lama-inpaint",
       "qwen-image-edit-2511",
       "flux2-klein-4b"
@@ -57,6 +58,8 @@ describe("model catalog", () => {
     ]);
     expect(modelCatalog.get("lama-inpaint")?.definition.scan?.requiredCustomNodeIds)
       .toEqual(["inpaint-nodes"]);
+    expect(modelCatalog.get("birefnet-background-removal")?.definition.scan?.requiredCustomNodeIds)
+      .toBeUndefined();
   });
 
   it("derives LoRA scanning and runtime metadata from the same definitions", () => {
