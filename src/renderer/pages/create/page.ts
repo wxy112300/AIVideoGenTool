@@ -414,7 +414,7 @@ export function renderCreatePage(
         <label class="settings-field settings-spectrum">${viewModel.spectrumLabelMarkup}
           <select id="spectrum-mode" ${viewModel.spectrumModeDisabled ? "disabled" : ""} title="${escapeHtml(viewModel.spectrumTitle)}">
             ${viewModel.spectrumOptionsMarkup}
-          </select>${renderPromptModeInfo(viewModel.h3PromptEnhanceTitle, icon, escapeHtml)}</div>
+          </select>
         </label>
         ${viewModel.spectrumModelAwareMarkup}` : ""}
           </div>
