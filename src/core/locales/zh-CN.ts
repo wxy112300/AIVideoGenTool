@@ -323,7 +323,7 @@ export const zhCNCatalog = {
     [uiKeys.settings.save]: "保存设置",
     [uiKeys.settings.categories]: "设置分类",
     [uiKeys.settings.tabSystem]: "系统与路径",
-    [uiKeys.settings.tabAcceleration]: "推理加速",
+    [uiKeys.settings.tabAcceleration]: "性能与加速",
     [uiKeys.settings.tabVideo]: "视频模型",
     [uiKeys.settings.tabLora]: "LoRA",
     [uiKeys.settings.tabImage]: "图片模型",

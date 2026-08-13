@@ -10,9 +10,13 @@
 
 ### 0.19.0 候选 — 2026-08-13
 
+- 修复图片处理页的参考图片拖拽目标：每个上方 Picture 预览窗口现在都支持拖入、点击选择和覆盖替换；下方区域继续用于新增下一个 Picture，并在覆盖时显示明确反馈。
+- 修复 LaMa「绘制 Mask」按钮缺少画笔图标，以及图片历史大图弹窗上一张/下一张按钮未初始化 Lucide 图标的问题。
 - 队列页新增默认关闭的 H3 TAE 实时预览开关；接入 KJNodes `ModelPreviewOverrideKJ` 与 `vae_approx/taeh3.safetensors`，以单帧 512px 的保守配置复用现有运行卡片预览，并解析 `kj_preview_override` 自定义 WebSocket 事件。缺少可选预览依赖时不改变原 H3 工作流。
 - KJNodes 依赖扫描新增 `ModelPreviewOverrideKJ` 运行时注册与离线源码能力检查；节点与工作流面板新增批量安装/更新按钮，只处理需要修复的 Custom Nodes，全部健康时允许显式更新全部，并复用串行队列、一次重启和统一复检。
 - 创建页的提示词扩写预设改用统一 `i` 提示展示本地化说明；切换预设时只更新提示内容，不重绘页面或打断输入。
+- 推理加速页收窄为“性能与加速”：Attention 后端、Python/PyTorch/CUDA/SageAttention/KJNodes 状态与安装说明统一接入三语文案，长解释改为 `i` 提示。
+- 重排“性能与加速”设置页为 H3 加速策略、运行时解释器、运行时组件三个独立分区；保留原有选择、扫描、安装/修复控件与交互行为，并同步更新设置原型。
 - 图片模型新增 `LaMa · 局部移除`，使用 `ComfyUI Inpaint Nodes` 与 `models/inpaint/big-lama.pt` 构建单图 Mask 修补工作流。
 - LaMa 模式允许空 Prompt、固定原图分辨率并强制要求有效 Mask；模型能力驱动创建页隐藏无效的 Prompt、Seed 和多参考控制。
 - 复用全屏 Canvas 的缩放、平移和撤销能力，使用半透明高亮显示涂抹范围，保存时输出独立黑白 Mask，绝不将覆盖色烧录到原图。

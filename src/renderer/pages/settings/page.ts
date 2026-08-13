@@ -20,6 +20,7 @@ import {
   type SettingsInstallGuideSelection
 } from "./fragments";
 import { settingsText } from "./copy";
+import { fieldLabelWithTip } from "../../shared/markup";
 import {
   customNodeIdsForBulkAction,
   type CustomNodeInstallPhase
@@ -606,43 +607,54 @@ export function renderSettingsPage(
     : s("accel.autoDetect");
   const accelerationPanel = `
     <section class="settings-panel acceleration-panel">
-      <section class="panel settings-section acceleration-overview ${attention?.ready ? "available" : "missing"}">
+      <section class="panel settings-section acceleration-section acceleration-strategy-panel ${attention?.ready ? "available" : "missing"}">
         <div class="section-heading">
-          <div><h2>${s("accel.title")}</h2><span class="muted">${s("accel.description")}</span></div>
+          <div><h2>${s("accel.strategyTitle")}</h2><span class="muted">${s("accel.strategyDescription")}</span></div>
           <span class="model-availability ${attention?.ready ? "available" : "missing"}">${attention?.ready ? `${icon("circle-check")} ${s("accel.ready")}` : attention?.supported ? `${icon("circle-alert")} ${s("accel.pending")}` : `${icon("circle-alert")} ${s("accel.unsupported")}`}</span>
         </div>
-        <div class="acceleration-control-row">
-          <label class="acceleration-mode-field">${s("accel.mode")}
+        <div class="acceleration-strategy-grid">
+          <label class="acceleration-mode-field">${fieldLabelWithTip(s("accel.mode"), s("accel.modeTip"))}
             <select id="h3-attention-mode">
-              <option value="sage" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>${s("accel.auto")} · SageAttention CUDA FP16</option>
-              <option value="sage-triton" ${settings.h3AttentionMode === "sage-triton" ? "selected" : ""}>${s("accel.stable")} · SageAttention Triton FP16</option>
-              <option value="pytorch" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>${s("accel.compatible")} · PyTorch Attention</option>
+              <option value="sage" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>${s("accel.modeSage")}</option>
+              <option value="sage-triton" ${settings.h3AttentionMode === "sage-triton" ? "selected" : ""}>${s("accel.modeSageTriton")}</option>
+              <option value="pytorch" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>${s("accel.modePytorch")}</option>
             </select>
           </label>
           <div class="acceleration-summary">
             <span class="acceleration-summary-icon">${icon(attention?.ready ? "circle-check" : "circle-alert")}</span>
-            <div><strong>${escape(attention?.detail ?? s("accel.waitingScan"))}</strong><span>${s("accel.fallback")}</span></div>
+            <div><strong>${escape(attention?.detail ?? s("accel.waitingScan"))}</strong><span class="acceleration-fallback-tip">${fieldLabelWithTip(s("accel.fallbackLabel"), s("accel.fallback"))}</span></div>
           </div>
+        </div>
+      </section>
+      <section class="panel settings-section acceleration-section acceleration-runtime-panel">
+        <div class="section-heading">
+          <div><h2>${s("accel.runtimeTitle")}</h2><span class="muted">${s("accel.runtimeDescription")}</span></div>
+          <span class="python-selection-badge">${pythonSelectionLabel}</span>
         </div>
         <div class="python-runtime-picker">
           <div class="python-runtime-picker-head">
-            <div><span class="runtime-label">${s("accel.python")}</span><strong>${s("accel.pythonUse")}</strong></div>
-            <span class="python-selection-badge">${pythonSelectionLabel}</span>
+            <div><div class="runtime-label">${fieldLabelWithTip(s("accel.python"), s("accel.pythonUseTip"))}</div><strong>${s("accel.pythonUse")}</strong></div>
           </div>
           <div class="python-runtime-picker-controls">
             <label class="python-path-field"><span class="runtime-label">${s("accel.currentPath")}</span><div class="input-action"><input id="comfy-python-path" value="${escape(effectivePythonPath)}" placeholder="${s("accel.scanFill")}"><button class="secondary button-with-icon" id="pick-comfy-python">${icon("folder-open")}${s("accel.chooseFile")}</button></div></label>
             <label class="python-candidate-field"><span class="runtime-label">${s("accel.candidates")}</span><select id="comfy-python-candidate"><option value="">${viewModel.environmentScanning ? s("accel.scanning") : pythonRuntimes.length ? s("accel.chooseInterpreter") : s("accel.noPython")}</option>${pythonRuntimes.map((runtime) => `<option value="${escape(runtime.path)}" ${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? "selected" : ""}>Python ${escape(runtime.version)} · ${escape(pythonSourceLabels[runtime.source] ?? runtime.source)}${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? ` · ${s("accel.current")}` : ""}</option>`).join("")}</select></label>
           </div>
         </div>
+      </section>
+      <section class="panel settings-section acceleration-section acceleration-components-panel">
+        <div class="section-heading">
+          <div><h2>${s("accel.componentsTitle")}</h2><span class="muted">${s("accel.componentsDescription")}</span></div>
+          <span class="model-availability ${attention?.ready ? "available" : "missing"}">${attention?.ready ? `${icon("circle-check")} ${s("accel.ready")}` : s("accel.pending")}</span>
+        </div>
         <div class="attention-runtime-grid">
-          <article class="attention-runtime-card"><span class="runtime-label">ComfyUI Python</span><strong class="runtime-value">${escape(attention?.pythonVersion || s("accel.notFound"))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>
-          <article class="attention-runtime-card"><span class="runtime-label">PyTorch / CUDA</span><strong class="runtime-value">${escape(attention?.torchVersion || s("accel.unknown"))}</strong><code class="runtime-detail">CUDA ${escape(attention?.cudaVersion || s("accel.unknown"))} · SM ${escape(attention?.gpuArchitecture || s("accel.unknown"))}</code></article>
-          <article class="attention-runtime-card"><span class="runtime-label">SageAttention</span><strong class="runtime-value">${escape(attention?.sageAttentionVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail" title="${escape(attention?.recommendedWheel || "")}">${escape(attention?.recommendedWheel || s("accel.noWheel"))}</code></article>
-          <article class="attention-runtime-card"><span class="runtime-label">Triton / KJNodes</span><strong class="runtime-value">${escape(attention?.tritonVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? s("accel.kjAvailable") : attention?.kjNodesInstalled ? s("accel.kjUpdate") : s("accel.kjMissing")}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimePython"), s("accel.runtimePythonTip"))}</div><strong class="runtime-value">${escape(attention?.pythonVersion || s("accel.notFound"))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeTorch"), s("accel.runtimeTorchTip"))}</div><strong class="runtime-value">${escape(attention?.torchVersion || s("accel.unknown"))}</strong><code class="runtime-detail">${s("accel.cuda")} ${escape(attention?.cudaVersion || s("accel.unknown"))} · ${s("accel.sm")} ${escape(attention?.gpuArchitecture || s("accel.unknown"))}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeSage"), s("accel.runtimeSageTip"))}</div><strong class="runtime-value">${escape(attention?.sageAttentionVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail" title="${escape(attention?.recommendedWheel || "")}">${escape(attention?.recommendedWheel || s("accel.noWheel"))}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeKj"), s("accel.runtimeKjTip"))}</div><strong class="runtime-value">${escape(attention?.tritonVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? s("accel.kjAvailable") : attention?.kjNodesInstalled ? s("accel.kjUpdate") : s("accel.kjMissing")}</code></article>
         </div>
         <div class="acceleration-actions">
           <button class="primary button-with-icon" id="install-attention-acceleration" ${viewModel.attentionAccelerationInstalling || !attention?.supported ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : attention?.ready ? s("accel.repair") : s("accel.install")}</button>
-          <div><strong>${s("accel.stopComfy")}</strong><span>${s("accel.restartComfy")}</span></div>
+          <div>${fieldLabelWithTip(s("accel.stopComfy"), s("accel.restartComfy"))}</div>
         </div>
         ${viewModel.attentionAccelerationLog ? `<details class="node-log" open><summary>${s("accel.log")}</summary><pre id="attention-install-log">${escape(viewModel.attentionAccelerationLog)}</pre></details>` : ""}
       </section>

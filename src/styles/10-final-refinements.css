@@ -105,6 +105,7 @@ body {
 }
 
 .image-picture-preview {
+  position: relative;
   width: 92px;
   aspect-ratio: var(--picture-ratio, 1);
   height: auto;
@@ -123,6 +124,34 @@ body {
 .image-picture-preview:hover {
   border-color: var(--primary);
   color: #dbe9ff;
+}
+
+.image-picture-preview.drag-over {
+  border-color: #8ab4ff;
+  color: #f4f8ff;
+  background: rgba(49, 82, 134, .32);
+  box-shadow:
+    inset 0 0 0 2px rgba(138, 180, 255, .22),
+    0 0 0 4px rgba(101, 151, 255, .1);
+}
+
+.image-picture-preview.drag-over::after {
+  content: attr(data-drop-label);
+  position: absolute;
+  z-index: 2;
+  inset: 8px;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  border: 1px dashed rgba(180, 207, 255, .82);
+  border-radius: 7px;
+  color: #f4f8ff;
+  background: rgba(19, 35, 59, .9);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: none;
 }
 
 .image-picture-preview.has-image {

@@ -1,5 +1,5 @@
 import type { RendererCleanup, RendererContext } from "../../contracts";
-import { icon } from "../../shared/icons";
+import { icon, renderIcons } from "../../shared/icons";
 import { imageHistoryMediaUrl } from "./helpers";
 import { uiKeys } from "../../../core/i18n-keys";
 
@@ -30,6 +30,7 @@ export function mountImageHistoryLightbox(
   versionFooter.className = "image-lightbox-footer";
   versionFooter.setAttribute("data-image-lightbox-version-controls", "");
   versionFooter.innerHTML = `<div class="image-lightbox-version-controls" aria-label="${context.t(uiKeys.history.lightboxVersionSwitch)}"><button class="secondary button-with-icon" data-image-lightbox-version-navigation="-1">${icon("arrow-left")}${context.t(uiKeys.history.lightboxPrevious)}</button><span data-image-lightbox-version-label></span><button class="secondary button-with-icon" data-image-lightbox-version-navigation="1">${context.t(uiKeys.history.lightboxNext)}${icon("arrow-right")}</button></div>`;
+  renderIcons(versionFooter);
   lightbox.querySelector<HTMLElement>(".image-lightbox-hint")?.before(versionFooter);
   const versionMeta = lightbox.querySelector<HTMLElement>(".image-lightbox-toolbar > div:first-child > span");
   let scale = 1;

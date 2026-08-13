@@ -1,13 +1,14 @@
 
-/* H3 acceleration: keep environment details readable instead of flowing inline. */
-.acceleration-panel { gap: 14px; }
-.acceleration-overview { overflow: hidden; }
-.acceleration-control-row {
+/* H3 acceleration: separate strategy, runtime selection, and component health. */
+.acceleration-panel { gap: 16px; }
+.acceleration-section { overflow: visible; }
+.acceleration-section > .section-heading { padding-bottom: 16px; }
+.acceleration-strategy-grid {
   display: grid;
   grid-template-columns: minmax(280px, .9fr) minmax(340px, 1.1fr);
-  gap: 14px;
+  gap: 16px;
   align-items: stretch;
-  margin-top: 18px;
+  margin-top: 0;
 }
 .acceleration-mode-field {
   min-width: 0;
@@ -21,6 +22,7 @@
 .acceleration-mode-field select { width: 100%; }
 .acceleration-summary {
   min-width: 0;
+  min-height: 100%;
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
   gap: 11px;
@@ -43,12 +45,13 @@
 .acceleration-summary-icon .ui-icon { width: 18px; height: 18px; }
 .acceleration-summary > div { min-width: 0; display: grid; gap: 3px; }
 .acceleration-summary strong { overflow-wrap: anywhere; color: #dbe7f7; font-size: 13px; }
-.acceleration-summary span:last-child { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.acceleration-summary > div > span:last-child { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.acceleration-summary .field-label-row { justify-content: flex-start; gap: 6px; }
 .attention-runtime-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 0;
 }
 .attention-runtime-card {
   min-width: 0;
@@ -59,7 +62,8 @@
   border-radius: 10px;
   background: #10151b;
 }
-.runtime-label { color: #8f9bab; font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.runtime-label { display: block; color: #8f9bab; font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.runtime-label .field-label-row { width: 100%; }
 .runtime-value { min-width: 0; color: #e3e9f2; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
 .runtime-detail {
   min-width: 0;
@@ -84,8 +88,32 @@
 .acceleration-actions strong { color: #cbd4e0; font-size: 12px; }
 .acceleration-actions span { color: var(--muted); font-size: 11px; }
 
+/* The runtime picker is a section in the acceleration page, not a nested card. */
+.acceleration-runtime-panel .python-runtime-picker {
+  display: grid;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.acceleration-runtime-panel .python-runtime-picker-head {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.acceleration-runtime-panel .python-runtime-picker-controls {
+  grid-template-columns: minmax(0, 1.2fr) minmax(240px, .8fr);
+  gap: 14px;
+}
+.acceleration-components-panel .attention-runtime-card {
+  min-height: 102px;
+}
+.acceleration-components-panel .acceleration-actions {
+  margin-top: 17px;
+}
+
 @media (max-width: 1120px) {
-  .acceleration-control-row { grid-template-columns: 1fr; }
+  .acceleration-strategy-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {
@@ -95,6 +123,7 @@
   .h3-slot-toolbar button { width: 100%; }
   .h3-reference-grid { grid-template-columns: 1fr; }
   .attention-runtime-grid { grid-template-columns: 1fr; }
+  .acceleration-runtime-panel .python-runtime-picker-controls { grid-template-columns: 1fr; }
   .runtime-detail { white-space: normal; overflow-wrap: anywhere; }
   .acceleration-actions { grid-template-columns: 1fr; align-items: stretch; }
   .acceleration-actions button { justify-self: start; }

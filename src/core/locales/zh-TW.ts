@@ -323,7 +323,7 @@ export const zhTWCatalog = {
     [uiKeys.settings.save]: "儲存設定",
     [uiKeys.settings.categories]: "設定分類",
     [uiKeys.settings.tabSystem]: "系統與路徑",
-    [uiKeys.settings.tabAcceleration]: "推理加速",
+    [uiKeys.settings.tabAcceleration]: "效能與加速",
     [uiKeys.settings.tabVideo]: "影片模型",
     [uiKeys.settings.tabLora]: "LoRA",
     [uiKeys.settings.tabImage]: "圖片模型",

@@ -130,16 +130,28 @@ type SettingsCopyKey =
   | "nodes.placeholderDescription"
   | "accel.title"
   | "accel.description"
+  | "accel.strategyTitle"
+  | "accel.strategyDescription"
+  | "accel.runtimeTitle"
+  | "accel.runtimeDescription"
+  | "accel.componentsTitle"
+  | "accel.componentsDescription"
   | "accel.ready"
   | "accel.pending"
   | "accel.unsupported"
   | "accel.mode"
+  | "accel.modeTip"
+  | "accel.modeSage"
+  | "accel.modeSageTriton"
+  | "accel.modePytorch"
   | "accel.auto"
   | "accel.stable"
   | "accel.compatible"
   | "accel.waitingScan"
+  | "accel.fallbackLabel"
   | "accel.fallback"
   | "accel.python"
+  | "accel.pythonUseTip"
   | "accel.pythonUse"
   | "accel.currentPath"
   | "accel.scanFill"
@@ -153,6 +165,16 @@ type SettingsCopyKey =
   | "accel.unknown"
   | "accel.notInstalled"
   | "accel.noWheel"
+  | "accel.runtimePython"
+  | "accel.runtimePythonTip"
+  | "accel.runtimeTorch"
+  | "accel.runtimeTorchTip"
+  | "accel.runtimeSage"
+  | "accel.runtimeSageTip"
+  | "accel.runtimeKj"
+  | "accel.runtimeKjTip"
+  | "accel.cuda"
+  | "accel.sm"
   | "accel.kjAvailable"
   | "accel.kjUpdate"
   | "accel.kjMissing"
@@ -306,19 +328,31 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.empty": "等待环境扫描结果",
   "nodes.placeholderTitle": "工作流占位符",
   "nodes.placeholderDescription": "提交自定义视频 ComfyUI API JSON 前会递归替换；图片工作流不使用这些占位符。",
-  "accel.title": "H3 推理加速",
-  "accel.description": "为当前 ComfyUI 环境匹配 Python、PyTorch、CUDA 与 Attention 运行库",
+  "accel.title": "性能与加速",
+  "accel.description": "查看 GPU 运行时状态并配置 H3 加速后端",
+  "accel.strategyTitle": "H3 加速策略",
+  "accel.strategyDescription": "选择 H3 的 Attention 后端；仅影响 MiniMax H3 工作流。",
+  "accel.runtimeTitle": "运行时解释器",
+  "accel.runtimeDescription": "选择用于启动 ComfyUI、安装依赖和读取加速状态的 Python 环境。",
+  "accel.componentsTitle": "运行时组件",
+  "accel.componentsDescription": "检查当前环境中的 PyTorch、CUDA、SageAttention、Triton 与 KJNodes。",
   "accel.ready": "已就绪",
   "accel.pending": "待安装/修复",
   "accel.unsupported": "环境不支持",
-  "accel.mode": "H3 Attention 模式",
+  "accel.mode": "H3 Attention 后端",
+  "accel.modeTip": "只影响 MiniMax H3 工作流；其他模型的采样和节点策略在各自的模型或工作流设置中管理。",
+  "accel.modeSage": "自动加速 · SageAttention CUDA FP16",
+  "accel.modeSageTriton": "稳定加速 · SageAttention Triton FP16",
+  "accel.modePytorch": "兼容模式 · PyTorch Attention",
   "accel.auto": "自动加速",
   "accel.stable": "稳定加速",
   "accel.compatible": "兼容模式",
   "accel.waitingScan": "等待环境扫描",
+  "accel.fallbackLabel": "降级策略",
   "accel.fallback": "CUDA 内核异常时会依次降级到 SageAttention Triton 和 PyTorch Attention，避免队列反复崩溃。",
   "accel.python": "ComfyUI Python 解释器",
-  "accel.pythonUse": "用于启动 ComfyUI、安装节点依赖和 H3 加速检测",
+  "accel.pythonUseTip": "此解释器用于启动 ComfyUI、安装节点依赖，并读取 H3 加速环境状态。",
+  "accel.pythonUse": "服务与安装使用",
   "accel.currentPath": "当前解释器路径",
   "accel.scanFill": "扫描后自动填入可用解释器",
   "accel.chooseFile": "选择文件",
@@ -331,6 +365,16 @@ const zhCN: SettingsCopyCatalog = {
   "accel.unknown": "未知",
   "accel.notInstalled": "未安装",
   "accel.noWheel": "当前环境没有匹配的 wheel",
+  "accel.runtimePython": "ComfyUI Python",
+  "accel.runtimePythonTip": "显示当前用于启动服务和执行环境检查的 Python 版本与路径。",
+  "accel.runtimeTorch": "PyTorch / CUDA",
+  "accel.runtimeTorchTip": "显示选定 Python 环境中的 PyTorch、CUDA 和 GPU 架构信息。",
+  "accel.runtimeSage": "SageAttention",
+  "accel.runtimeSageTip": "H3 的可选 Attention 加速库；缺失时可以回退到 Triton 或 PyTorch。",
+  "accel.runtimeKj": "Triton / KJNodes",
+  "accel.runtimeKjTip": "显示 Triton 与 KJNodes 状态；KJNodes 还提供 H3 实时预览所需的节点。",
+  "accel.cuda": "CUDA",
+  "accel.sm": "SM",
   "accel.kjAvailable": "KJNodes 模型级补丁可用",
   "accel.kjUpdate": "KJNodes 需要更新",
   "accel.kjMissing": "KJNodes 未安装",
@@ -477,19 +521,31 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.empty": "等待環境掃描結果",
   "nodes.placeholderTitle": "工作流程佔位符",
   "nodes.placeholderDescription": "提交自訂影片 ComfyUI API JSON 前會遞迴替換；圖片工作流程不使用這些佔位符。",
-  "accel.title": "H3 推理加速",
-  "accel.description": "為目前的 ComfyUI 環境匹配 Python、PyTorch、CUDA 與 Attention 執行庫",
+  "accel.title": "效能與加速",
+  "accel.description": "查看 GPU 執行時狀態並設定 H3 加速後端",
+  "accel.strategyTitle": "H3 加速策略",
+  "accel.strategyDescription": "選擇 H3 的 Attention 後端；只影響 MiniMax H3 工作流程。",
+  "accel.runtimeTitle": "執行時解譯器",
+  "accel.runtimeDescription": "選擇用於啟動 ComfyUI、安裝依賴與讀取加速狀態的 Python 環境。",
+  "accel.componentsTitle": "執行時元件",
+  "accel.componentsDescription": "檢查目前環境中的 PyTorch、CUDA、SageAttention、Triton 與 KJNodes。",
   "accel.ready": "已就緒",
   "accel.pending": "待安裝/修復",
   "accel.unsupported": "環境不支援",
-  "accel.mode": "H3 Attention 模式",
+  "accel.mode": "H3 Attention 後端",
+  "accel.modeTip": "只影響 MiniMax H3 工作流程；其他模型的採樣與節點策略在各自的模型或工作流程設定中管理。",
+  "accel.modeSage": "自動加速 · SageAttention CUDA FP16",
+  "accel.modeSageTriton": "穩定加速 · SageAttention Triton FP16",
+  "accel.modePytorch": "相容模式 · PyTorch Attention",
   "accel.auto": "自動加速",
   "accel.stable": "穩定加速",
   "accel.compatible": "相容模式",
   "accel.waitingScan": "等待環境掃描",
+  "accel.fallbackLabel": "降級策略",
   "accel.fallback": "CUDA 核心異常時會依序降級到 SageAttention Triton 與 PyTorch Attention，避免佇列反覆崩潰。",
   "accel.python": "ComfyUI Python 解譯器",
-  "accel.pythonUse": "用於啟動 ComfyUI、安裝節點依賴與 H3 加速檢測",
+  "accel.pythonUseTip": "此解譯器用於啟動 ComfyUI、安裝節點依賴，並讀取 H3 加速環境狀態。",
+  "accel.pythonUse": "服務與安裝使用",
   "accel.currentPath": "目前解譯器路徑",
   "accel.scanFill": "掃描後自動填入可用解譯器",
   "accel.chooseFile": "選擇檔案",
@@ -502,6 +558,16 @@ const zhTW: SettingsCopyCatalog = {
   "accel.unknown": "未知",
   "accel.notInstalled": "未安裝",
   "accel.noWheel": "目前環境沒有相符的 wheel",
+  "accel.runtimePython": "ComfyUI Python",
+  "accel.runtimePythonTip": "顯示目前用於啟動服務和執行環境檢查的 Python 版本與路徑。",
+  "accel.runtimeTorch": "PyTorch / CUDA",
+  "accel.runtimeTorchTip": "顯示選定 Python 環境中的 PyTorch、CUDA 與 GPU 架構資訊。",
+  "accel.runtimeSage": "SageAttention",
+  "accel.runtimeSageTip": "H3 的可選 Attention 加速庫；缺失時可以回退到 Triton 或 PyTorch。",
+  "accel.runtimeKj": "Triton / KJNodes",
+  "accel.runtimeKjTip": "顯示 Triton 與 KJNodes 狀態；KJNodes 也提供 H3 即時預覽所需的節點。",
+  "accel.cuda": "CUDA",
+  "accel.sm": "SM",
   "accel.kjAvailable": "KJNodes 模型級補丁可用",
   "accel.kjUpdate": "KJNodes 需要更新",
   "accel.kjMissing": "KJNodes 未安裝",
@@ -652,19 +718,31 @@ const enUS: SettingsCopyCatalog = {
   "nodes.empty": "Waiting for environment scan",
   "nodes.placeholderTitle": "Workflow placeholders",
   "nodes.placeholderDescription": "Custom video ComfyUI API JSON is recursively replaced before submission; image workflows do not use these placeholders.",
-  "accel.title": "H3 inference acceleration",
-  "accel.description": "Match Python, PyTorch, CUDA, and Attention runtimes to the current ComfyUI environment",
+  "accel.title": "Performance & acceleration",
+  "accel.description": "Inspect GPU runtime status and configure H3 acceleration backends",
+  "accel.strategyTitle": "H3 acceleration strategy",
+  "accel.strategyDescription": "Choose the H3 Attention backend; this only affects MiniMax H3 workflows.",
+  "accel.runtimeTitle": "Runtime interpreter",
+  "accel.runtimeDescription": "Choose the Python environment used to start ComfyUI, install dependencies, and inspect acceleration status.",
+  "accel.componentsTitle": "Runtime components",
+  "accel.componentsDescription": "Check PyTorch, CUDA, SageAttention, Triton, and KJNodes in the selected environment.",
   "accel.ready": "Ready",
   "accel.pending": "Needs install/repair",
   "accel.unsupported": "Environment unsupported",
-  "accel.mode": "H3 Attention mode",
+  "accel.mode": "H3 Attention backend",
+  "accel.modeTip": "This only affects MiniMax H3 workflows. Other models keep their own sampling and node policies.",
+  "accel.modeSage": "Automatic acceleration · SageAttention CUDA FP16",
+  "accel.modeSageTriton": "Stable acceleration · SageAttention Triton FP16",
+  "accel.modePytorch": "Compatibility mode · PyTorch Attention",
   "accel.auto": "Automatic acceleration",
   "accel.stable": "Stable acceleration",
   "accel.compatible": "Compatibility mode",
   "accel.waitingScan": "Waiting for environment scan",
+  "accel.fallbackLabel": "Fallback policy",
   "accel.fallback": "CUDA kernel failures fall back through SageAttention Triton and PyTorch Attention to avoid repeated queue crashes.",
   "accel.python": "ComfyUI Python interpreter",
-  "accel.pythonUse": "Used to start ComfyUI, install node dependencies, and check H3 acceleration",
+  "accel.pythonUseTip": "This interpreter starts ComfyUI, installs node dependencies, and reports H3 acceleration runtime status.",
+  "accel.pythonUse": "Service and install runtime",
   "accel.currentPath": "Current interpreter path",
   "accel.scanFill": "Filled with an available interpreter after scanning",
   "accel.chooseFile": "Choose file",
@@ -677,6 +755,16 @@ const enUS: SettingsCopyCatalog = {
   "accel.unknown": "Unknown",
   "accel.notInstalled": "Not installed",
   "accel.noWheel": "No matching wheel for the current environment",
+  "accel.runtimePython": "ComfyUI Python",
+  "accel.runtimePythonTip": "The Python version and path used to start the service and inspect the environment.",
+  "accel.runtimeTorch": "PyTorch / CUDA",
+  "accel.runtimeTorchTip": "PyTorch, CUDA, and GPU architecture detected in the selected Python environment.",
+  "accel.runtimeSage": "SageAttention",
+  "accel.runtimeSageTip": "Optional H3 Attention acceleration; missing installs can fall back to Triton or PyTorch.",
+  "accel.runtimeKj": "Triton / KJNodes",
+  "accel.runtimeKjTip": "Triton and KJNodes status. KJNodes also provides the node used by H3 live preview.",
+  "accel.cuda": "CUDA",
+  "accel.sm": "SM",
   "accel.kjAvailable": "KJNodes model patch available",
   "accel.kjUpdate": "KJNodes needs an update",
   "accel.kjMissing": "KJNodes not installed",

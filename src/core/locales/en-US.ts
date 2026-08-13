@@ -323,7 +323,7 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.settings.save]: "Save settings",
 	[uiKeys.settings.categories]: "Settings categories",
 	[uiKeys.settings.tabSystem]: "System & paths",
-	[uiKeys.settings.tabAcceleration]: "Acceleration",
+	[uiKeys.settings.tabAcceleration]: "Performance & acceleration",
 	[uiKeys.settings.tabVideo]: "Video models",
 	[uiKeys.settings.tabLora]: "LoRA",
 	[uiKeys.settings.tabImage]: "Image models",

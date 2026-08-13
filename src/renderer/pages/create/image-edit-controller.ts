@@ -52,11 +52,54 @@ export function mountImageEditController(
     event.stopImmediatePropagation();
     options.addImageSlot();
   }, { signal });
-  root.querySelectorAll<HTMLElement>("[data-image-picture-pick]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+  const bindImageDropZone = (zone: HTMLElement, replacePictureId?: string) => {
+    const clearDragState = () => zone.classList.remove("drag-over");
+    zone.addEventListener("click", (event) => {
       event.stopImmediatePropagation();
-      void choosePicture(button.dataset.imagePicturePick);
+      void choosePicture(replacePictureId);
     }, { signal });
+    zone.addEventListener("dragenter", (event) => {
+      event.preventDefault();
+      zone.classList.add("drag-over");
+    }, { signal });
+    zone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      zone.classList.add("drag-over");
+    }, { signal });
+    zone.addEventListener("dragleave", (event) => {
+      const nextTarget = event.relatedTarget;
+      if (nextTarget instanceof Node && zone.contains(nextTarget)) return;
+      clearDragState();
+    }, { signal });
+    zone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      clearDragState();
+      const file = event.dataTransfer?.files.item(0);
+      if (!file) return;
+      if (!options.imageFileIsSupported(file)) {
+        context.notify(t(uiKeys.create.interaction.invalidImageDrop));
+        return;
+      }
+      const filename = context.studio.getDroppedFilePath(file);
+      if (!filename) {
+        context.notify(t(uiKeys.create.interaction.imagePathFailed));
+        return;
+      }
+      const targetWasOccupied = replacePictureId
+        ? Boolean(getDraft()?.pictures.find((picture) => picture.id === replacePictureId)?.absolutePath)
+        : false;
+      options.addImagePicture(filename, replacePictureId);
+      if (replacePictureId) {
+        context.notify(t(targetWasOccupied
+          ? uiKeys.create.interaction.replacedPicture
+          : uiKeys.create.interaction.addedPicture));
+      }
+    }, { signal });
+  };
+  root.querySelectorAll<HTMLElement>("[data-image-picture-pick]").forEach((button) => {
+    bindImageDropZone(button, button.dataset.imagePicturePick);
   });
   root.querySelectorAll<HTMLElement>("[data-remove-image-picture]").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -100,41 +143,7 @@ export function mountImageEditController(
   });
 
   const dropZone = root.querySelector<HTMLElement>("#image-picture-drop-zone");
-  if (dropZone) {
-    const clearDragState = () => dropZone.classList.remove("drag-over");
-    dropZone.addEventListener("click", () => void choosePicture(), { signal });
-    dropZone.addEventListener("dragenter", (event) => {
-      event.preventDefault();
-      dropZone.classList.add("drag-over");
-    }, { signal });
-    dropZone.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-      dropZone.classList.add("drag-over");
-    }, { signal });
-    dropZone.addEventListener("dragleave", (event) => {
-      const nextTarget = event.relatedTarget;
-      if (nextTarget instanceof Node && dropZone.contains(nextTarget)) return;
-      clearDragState();
-    }, { signal });
-    dropZone.addEventListener("drop", (event) => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      clearDragState();
-      const file = event.dataTransfer?.files.item(0);
-      if (!file) return;
-      if (!options.imageFileIsSupported(file)) {
-        context.notify(t(uiKeys.create.interaction.invalidImageDrop));
-        return;
-      }
-      const filename = context.studio.getDroppedFilePath(file);
-      if (!filename) {
-        context.notify(t(uiKeys.create.interaction.imagePathFailed));
-        return;
-      }
-      options.addImagePicture(filename);
-    }, { signal });
-  }
+  if (dropZone) bindImageDropZone(dropZone);
 
   const promptInput = root.querySelector<HTMLTextAreaElement>("#image-edit-prompt-input");
   const snippetSelect = root.querySelector<HTMLSelectElement>("#image-edit-instruction");
