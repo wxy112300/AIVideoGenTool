@@ -4,6 +4,45 @@ export const LLAMA_CPP_PYTHON_REQUIREMENT = "llama-cpp-python>=0.3.34,<0.4";
 export const LLAMA_CPP_PYTHON_WHEEL_ROOT =
   "https://abetlen.github.io/llama-cpp-python/whl";
 
+/**
+ * The upstream Windows wheel index is published for selected CUDA minor
+ * versions.  PyTorch can report a CUDA minor for which abetlen does not have
+ * a dedicated wheel (for example, cu129).  Keep this table explicit rather
+ * than guessing from the display version so an unsupported runtime never
+ * silently falls back to a CPU wheel or a source build.
+ */
+const LLAMA_CPP_PYTHON_WHEEL_VARIANTS = new Set([
+  "cu118",
+  "cu121",
+  "cu122",
+  "cu123",
+  "cu124",
+  "cu125",
+  "cu130",
+  "cu132"
+]);
+
+// The upstream index currently has no cu126/cu128/cu129 pages.  Use the
+// nearest published CUDA 12.x wheel instead of generating a 404 index URL.
+// Treat these as explicit, self-checked fallbacks rather than exact matches;
+// the import/GPU probe below must still pass after pip finishes.
+const LLAMA_CPP_PYTHON_WHEEL_FALLBACKS: Record<string, string> = {
+  cu126: "cu125",
+  cu128: "cu125",
+  cu129: "cu125"
+};
+
+export interface LlamaCppWheelSelection {
+  requestedKey: string;
+  wheelKey: string;
+  exact: boolean;
+}
+
+function cudaVersionLabelFromWheelKey(key: string): string {
+  const match = key.match(/^cu(\d)(\d)(\d)$/u);
+  return match ? `${match[1]}${match[2]}.${match[3]}` : key;
+}
+
 interface LlamaCppPythonProbe {
   pythonVersion?: string;
   packageVersion?: string;
@@ -163,16 +202,29 @@ export function llamaCppWheelIndexForCuda(
   cudaVersion: string,
   platform: NodeJS.Platform = process.platform
 ): string | null {
+  const selection = llamaCppWheelSelectionForCuda(cudaVersion, platform);
+  return selection
+    ? `${LLAMA_CPP_PYTHON_WHEEL_ROOT}/${selection.wheelKey}`
+    : null;
+}
+
+export function llamaCppWheelSelectionForCuda(
+  cudaVersion: string,
+  platform: NodeJS.Platform = process.platform
+): LlamaCppWheelSelection | null {
   if (platform !== "win32") return null;
   const match = cudaVersion.trim().match(/^(\d+)\.(\d+)/u);
   if (!match) return null;
-  const key = `cu${match[1]}${match[2]}`;
-  // These are the CUDA variants published by the upstream Windows wheel index.
-  // Refuse an unknown runtime instead of silently falling back to a CPU/source build.
-  if (!["cu121", "cu122", "cu123", "cu124", "cu125", "cu126", "cu128", "cu129", "cu130"].includes(key)) {
-    return null;
-  }
-  return `${LLAMA_CPP_PYTHON_WHEEL_ROOT}/${key}`;
+  const requestedKey = `cu${match[1]}${match[2]}`;
+  const wheelKey = LLAMA_CPP_PYTHON_WHEEL_VARIANTS.has(requestedKey)
+    ? requestedKey
+    : LLAMA_CPP_PYTHON_WHEEL_FALLBACKS[requestedKey] ?? "";
+  if (!wheelKey) return null;
+  return {
+    requestedKey,
+    wheelKey,
+    exact: requestedKey === wheelKey
+  };
 }
 
 export async function installLlamaCppPythonPackage(
@@ -200,14 +252,19 @@ export async function installLlamaCppPythonPackage(
       report(`llama-cpp-python 已就绪：${before.detail}`);
       return { ok: true, message: "llama-cpp-python 已经就绪，无需重复安装。", log: log.join("\n\n") };
     }
-    const wheelIndex = llamaCppWheelIndexForCuda(before.cudaVersion);
+    const wheelSelection = llamaCppWheelSelectionForCuda(before.cudaVersion);
+    const wheelIndex = wheelSelection
+      ? `${LLAMA_CPP_PYTHON_WHEEL_ROOT}/${wheelSelection.wheelKey}`
+      : null;
     if (process.platform === "win32" && !wheelIndex) {
       throw new Error(
         `当前 ComfyUI Python 的 PyTorch CUDA 版本为 ${before.cudaVersion || "未知"}，没有匹配的预编译 llama-cpp-python wheel；已拒绝回退到 CPU 或源码编译。`
       );
     }
     report(
-      wheelIndex
+      wheelSelection && !wheelSelection.exact
+        ? `CUDA ${before.cudaVersion} 没有专用预编译 wheel，改用官方发布的 CUDA ${cudaVersionLabelFromWheelKey(wheelSelection.wheelKey)} 预编译后端并在安装后自检（不会启动独立 llama-server）……`
+        : wheelIndex
         ? `安装 CUDA ${before.cudaVersion} 预编译后端（不会启动独立 llama-server）……`
         : "安装 llama-cpp-python 后端……"
     );

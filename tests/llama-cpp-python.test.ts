@@ -3,6 +3,7 @@ import { createDefaultState } from "../src/core/defaults";
 import {
   installLlamaCppPythonPackage,
   llamaCppWheelIndexForCuda,
+  llamaCppWheelSelectionForCuda,
   LLAMA_CPP_PYTHON_PROBE_SCRIPT,
   statusFromLlamaCppProbe,
   type LlamaCppPythonRuntime
@@ -11,7 +12,13 @@ import {
 describe("llama-cpp-python runtime", () => {
   it("requires an explicit supported CUDA wheel index on Windows", () => {
     expect(llamaCppWheelIndexForCuda("13.0", "win32")).toContain("/cu130");
-    expect(llamaCppWheelIndexForCuda("12.6", "win32")).toContain("/cu126");
+    expect(llamaCppWheelIndexForCuda("12.6", "win32")).toContain("/cu125");
+    expect(llamaCppWheelIndexForCuda("12.9", "win32")).toContain("/cu125");
+    expect(llamaCppWheelSelectionForCuda("12.9", "win32")).toEqual({
+      requestedKey: "cu129",
+      wheelKey: "cu125",
+      exact: false
+    });
     expect(llamaCppWheelIndexForCuda("13.1", "win32")).toBeNull();
     expect(llamaCppWheelIndexForCuda("13.0", "linux")).toBeNull();
   });

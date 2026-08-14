@@ -109,7 +109,7 @@ Qwen3.6 本地多模态路径有一个额外的 Python ABI 边界：节点仓库
 
 ### Gemma / H3 Prompt Writer 的 llama-cpp-python
 
-Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件是三个独立状态。设置 → 提示词扩展会单独扫描所选 ComfyUI Python 中的 `llama-cpp-python`，并提供“一键安装并自检”。Windows 优先使用与当前 PyTorch CUDA 版本匹配的预编译 wheel；安装后会实际执行 `import llama_cpp` 和 GPU offload 自检，不会把 CPU 版或无法确认的包标记为就绪。
+Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件是三个独立状态。设置 → 提示词扩展会单独扫描所选 ComfyUI Python 中的 `llama-cpp-python`，并提供“一键安装并自检”。Windows 优先使用与当前 PyTorch CUDA 版本匹配的预编译 wheel；如果 PyTorch 报告 CUDA 12.6/12.8/12.9（上游没有这些独立索引），安装器会明确记录并尝试当前上游发布的 CUDA 12.5 wheel，随后必须通过 `import llama_cpp` 和 GPU offload 自检。自检失败会保留完整 pip 日志，不会把 CPU 版或无法确认的包标记为就绪。
 
 H3 Prompt Writer 与可选 MultiModal Prompt Nodes 共用同一个 Python 包名，不能在同一 ComfyUI 环境中各自安装两个版本。MultiModal 的 JamePeng 源码构建可能覆盖官方 wheel；安装器会在卡片日志中保留完整 pip 输出，并要求用户明确修复当前共享后端后再重启 ComfyUI。模型权重不由此步骤下载，仍由提示词模型卡片中的模型目录检查负责。
 
