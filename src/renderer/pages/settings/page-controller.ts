@@ -107,6 +107,15 @@ export function mountSettingsPageController(
     if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.openDirectoryFailed));
   }, { signal });
 
+  root.querySelectorAll<HTMLButtonElement>("[data-open-environment-download]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const url = button.dataset.openEnvironmentDownload?.trim();
+      if (!url) return;
+      const opened = await options.context.studio.openExternal(url);
+      if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed));
+    }, { signal });
+  });
+
   root.querySelector("#scan-environment")?.addEventListener("click", () => {
     const settings = options.formSettings();
     options.setSettingsDraft(settings);

@@ -25,12 +25,13 @@ describe("dependency catalog", () => {
     });
     expect(customNodeDefinition("minimax-h3-prompt-writer")).toMatchObject({
       runtimeEndpoint: "/h3studio/status",
+      minimumVersion: "0.3.1",
       required: false
     });
     expect(customNodeDefinition("comfyui-multimodal-prompt-nodes")).toMatchObject({
       nodeTypes: ["VisionLLMNode"],
-      runtimeRequirement: expect.stringContaining("0.3.36"),
-      bulkInstall: false,
+      minimumVersion: "1.0.15",
+      runtimeRequirement: expect.stringContaining("Python 3.10–3.14"),
       required: false
     });
     expect(customNodeDefinition("comfyui-gguf")).toMatchObject({

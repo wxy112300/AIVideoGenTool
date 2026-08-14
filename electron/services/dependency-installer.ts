@@ -4,14 +4,11 @@ import path from "node:path";
 import { customNodeDefinition } from "../../src/core/catalog/index.js";
 import type { Settings } from "../../src/types.js";
 import {
+  prepareH3PromptWriter,
   prepareH3Gguf,
   prepareLtxVideo,
   prepareVideoHelperSuite
 } from "./dependency-node-adapters.js";
-import {
-  discoverCudaToolkit,
-  withCudaToolkitEnvironment
-} from "./cuda-toolkit.js";
 import { installLlamaCppPythonPackage } from "./llama-cpp-python.js";
 
 function normalizedRepositoryUrl(value: string): string {
@@ -97,17 +94,6 @@ export async function installCustomNodePackage(
     const comfyRoot = await runtime.findComfyRoot(settings);
     if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
     const isMultimodalPromptNodes = definition.id === "comfyui-multimodal-prompt-nodes";
-    let cudaToolkitRoot = "";
-    if (isMultimodalPromptNodes) {
-      const cudaToolkit = await discoverCudaToolkit(runtime, commandEnvironment);
-      if (!cudaToolkit) {
-        throw new Error(
-          "Qwen3.6 多模态节点需要 GPU 版 llama-cpp-python；当前未找到 CUDA Toolkit 的 nvcc。请安装与当前 PyTorch CUDA 版本兼容的 CUDA Toolkit，或提供匹配的预编译后端后再单独安装此节点。"
-        );
-      }
-      cudaToolkitRoot = cudaToolkit.root;
-      report(`检测到 CUDA Toolkit：${cudaToolkit.root}（${cudaToolkit.source}）`);
-    }
     const customNodesDirectory = path.join(comfyRoot, "custom_nodes");
     const targetDirectory = path.join(customNodesDirectory, definition.directoryName);
     const git = await runtime.findExecutable("git.exe");
@@ -236,6 +222,10 @@ export async function installCustomNodePackage(
       report("正在检查 LTX Video 兼容层……");
       await prepareLtxVideo(targetDirectory, report);
     }
+    if (definition.id === "minimax-h3-prompt-writer") {
+      report("正在检查 H3 Prompt Writer 的 llama-cpp-python API 兼容层……");
+      await prepareH3PromptWriter(targetDirectory, report);
+    }
 
     const requirements = path.join(targetDirectory, "requirements.txt");
     if (await runtime.exists(requirements)) {
@@ -279,38 +269,18 @@ export async function installCustomNodePackage(
       }
     }
     if (isMultimodalPromptNodes) {
-      const python = await runtime.findComfyPython(settings, comfyRoot);
-      if (!python) throw new Error("MultiModal Prompt Nodes 已下载，但没有找到所选 ComfyUI 的 Python 环境。");
-      report("安装 Qwen3.6 所需的 JamePeng llama-cpp-python 后端（GPU 多模态构建）……");
-      const backendEnvironment = {
-        ...withCudaToolkitEnvironment(commandEnvironment, cudaToolkitRoot),
-        CMAKE_ARGS: [
-          commandEnvironment.CMAKE_ARGS,
-          "-DGGML_CUDA=ON",
-          "-DLLAMA_BUILD_EXAMPLES=OFF",
-          "-DLLAMA_BUILD_TOOLS=OFF",
-          "-DLLAMA_BUILD_TESTS=OFF",
-          "-DLLAMA_BUILD_SERVER=OFF"
-        ].filter(Boolean).join(" ")
-      };
-      const backendOutput = await runtime.runLoggedProcess(
-        python,
-        [
-          "-m", "pip", "install", "--upgrade", "--no-cache-dir",
-          "llama-cpp-python @ git+https://github.com/JamePeng/llama-cpp-python.git"
-        ],
-        {
-          timeoutMs: 1_200_000,
-          env: backendEnvironment,
-          onLog: report
-        }
-      );
-      if (!backendOutput) report("JamePeng llama-cpp-python：后端已满足");
-      report("Qwen3.6 多模态后端安装完成；请重启 ComfyUI，设置页会验证 VisionLLMNode 与实际运行时。");
+      report("正在安装并验证提示词模型共用的 JamePeng llama-cpp-python 后端……");
+      const backend = await installLlamaCppPythonPackage(settings, runtime, report, {
+        forceReinstall: false
+      });
+      if (!backend.ok) throw new Error(backend.message);
+      report("Qwen3.6 多模态后端已通过自检；请重启 ComfyUI，设置页会继续验证 VisionLLMNode。");
     }
     if (definition.id === "minimax-h3-prompt-writer") {
       report("正在安装并验证 H3 Prompt Writer 共用的 llama-cpp-python 后端……");
-      const backend = await installLlamaCppPythonPackage(settings, runtime, report);
+      const backend = await installLlamaCppPythonPackage(settings, runtime, report, {
+        forceReinstall: false
+      });
       if (!backend.ok) throw new Error(backend.message);
       report("H3 Prompt Writer 的 llama-cpp-python 后端已通过自检。");
     }

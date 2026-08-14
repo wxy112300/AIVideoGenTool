@@ -50,8 +50,9 @@ describe("dependency scanner", () => {
       loaded: false
     });
     expect(multimodal).toMatchObject({
-      bulkInstall: false,
-      runtimeRequirement: expect.stringContaining("nvcc")
+      bulkInstall: true,
+      minimumVersion: "1.0.15",
+      runtimeRequirement: expect.stringContaining("预编译 wheel")
     });
   });
 

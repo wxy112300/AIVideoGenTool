@@ -31,6 +31,7 @@ import type {
   ImageMarkupSaveRequest,
   LocalServiceKind,
   NotificationKind,
+  QueueLifecycle,
   QueueTask,
   Settings,
   SettingsSaveMode,
@@ -109,7 +110,8 @@ import {
   enhancePromptWithH3PromptWriter,
   promptWriterModelForSelection,
   releaseH3PromptWriter,
-  testH3PromptWriter
+  testH3PromptWriter,
+  validateH3PromptWriterRuntime
 } from "./services/h3-prompt-writer.js";
 import { getPerformanceMetrics } from "./services/performance.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
@@ -641,7 +643,7 @@ let lastQueueLogSignature = "";
 function sendState(state = store.get()): void {
   const queueSignature = state.queue
     .map((task) => `${task.id}:${task.status}`)
-    .join("|");
+    .join("|") + `|lifecycle:${state.queueLifecycle}`;
   if (queueSignature !== lastQueueLogSignature) {
     lastQueueLogSignature = queueSignature;
     appLogger.info("queue", "state-changed", "Queue state changed", {
@@ -651,6 +653,7 @@ function sendState(state = store.get()): void {
       failedCount: state.queue.filter((task) => task.status === "failed").length,
       cancelledCount: state.queue.filter((task) => task.status === "cancelled").length,
       queueRunning: state.queueRunning,
+      queueLifecycle: state.queueLifecycle,
       taskOrder: state.queue.map((task) => task.id)
     });
   }
@@ -1176,6 +1179,18 @@ async function updateTask(
   return next;
 }
 
+async function setQueueLifecycle(
+  lifecycle: QueueLifecycle,
+  taskId?: string
+): Promise<AppState> {
+  const next = await store.update((state) => {
+    state.queueLifecycle = lifecycle;
+    state.queueLifecycleTaskId = taskId;
+  });
+  sendState(next);
+  return next;
+}
+
 function isLocalComfyUrl(value: string): boolean {
   try {
     const hostname = new URL(value).hostname.toLowerCase();
@@ -1431,6 +1446,7 @@ async function executeQueue(): Promise<void> {
     worker: queueWorkerController,
     sendState,
     sendPreview: (payload) => mainWindow?.webContents.send("task:preview", payload),
+    setQueueLifecycle,
     updateTask,
     ensureComfyUiReady,
     resolveTaskOutputDirectory,
@@ -2222,6 +2238,7 @@ function registerIpc(): void {
         await ensureComfyUiReadyForPrompt(settings);
         const status = await testH3PromptWriter(settings, controller.signal);
         promptWriterModelForSelection(status.models, settings.promptModelId);
+        validateH3PromptWriterRuntime(status.diagnostics);
         return;
       }
       if (promptBackend === "comfyui-multimodal") {

@@ -733,18 +733,31 @@ export function h3PreviewTinyVaeFromObjectInfo(
   return "";
 }
 
-export function h3PreviewEventDataUrl(message: unknown): string | null {
+interface H3PreviewEvent {
+  dataUrl: string;
+  step?: number;
+  totalSteps?: number;
+}
+
+function h3PreviewEvent(message: unknown): H3PreviewEvent | null {
   if (!message || typeof message !== "object" || Array.isArray(message)) return null;
   const value = message as ComfySocketMessage;
   if (value.type !== "kj_preview_override") return null;
   const data = value.data && typeof value.data === "object" ? value.data : undefined;
   const image = typeof data?.image === "string" ? data.image.trim() : "";
   if (!image) return null;
-  if (image.startsWith("data:image/")) return image;
-  const mime = typeof data?.mime === "string" && data.mime.startsWith("image/")
-    ? data.mime
-    : "image/jpeg";
-  return `data:${mime};base64,${image}`;
+  const dataUrl = image.startsWith("data:image/")
+    ? image
+    : `data:${typeof data?.mime === "string" && data.mime.startsWith("image/") ? data.mime : "image/jpeg"};base64,${image}`;
+  const step = typeof data?.step === "number" && Number.isFinite(data.step) ? data.step : undefined;
+  const totalSteps = typeof data?.total === "number" && Number.isFinite(data.total) ? data.total : undefined;
+  return { dataUrl, step, totalSteps };
+}
+
+export function h3PreviewEventDataUrl(message: unknown): string | null {
+  const preview = h3PreviewEvent(message);
+  if (!preview) return null;
+  return preview.dataUrl;
 }
 
 function socketUrl(httpUrl: string, clientId: string): string {
@@ -995,7 +1008,7 @@ export async function waitForTask(
   activityTimeoutMinutes: number,
   signal: AbortSignal,
   onProgress: (value: number, stage: string) => void,
-  onPreview: (dataUrl: string) => void,
+  onPreview: (dataUrl: string, source?: "h3-tae" | "comfy") => void,
   isComputeActive: () => boolean = () => false
 ): Promise<unknown> {
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
@@ -1010,6 +1023,7 @@ export async function waitForTask(
   let executionError = "";
   let lastActivityAt = Date.now();
   let lastServiceResponseAt = Date.now();
+  let h3PreviewFrameCount = 0;
   let activeNodeId = "";
   let lastReportedProgress = 2;
   let lastReportedStage = "";
@@ -1044,7 +1058,7 @@ export async function waitForTask(
           const preview = await previewDataUrl(event.data);
           if (preview) {
             lastActivityAt = Date.now();
-            onPreview(preview);
+            onPreview(preview, "comfy");
           }
           return;
         }
@@ -1055,10 +1069,22 @@ export async function waitForTask(
         ) {
           return;
         }
-        const h3Preview = h3PreviewEventDataUrl(message);
+        const h3Preview = h3PreviewEvent(message);
         if (h3Preview) {
           lastActivityAt = Date.now();
-          onPreview(h3Preview);
+          h3PreviewFrameCount += 1;
+          const logMeta = {
+            promptId,
+            frame: h3PreviewFrameCount,
+            step: h3Preview.step ?? null,
+            totalSteps: h3Preview.totalSteps ?? null
+          };
+          if (h3PreviewFrameCount === 1) {
+            logger.info("comfy", "h3-live-preview-first-frame", "H3 TAE live preview first frame received", logMeta);
+          } else if (h3PreviewFrameCount % 5 === 0) {
+            logger.debug("comfy", "h3-live-preview-frame", "H3 TAE live preview frame received", logMeta);
+          }
+          onPreview(h3Preview.dataUrl, "h3-tae");
           return;
         }
         if (
@@ -1139,7 +1165,7 @@ export async function waitForTask(
             baseUrl,
             message.data
           );
-          if (preview) onPreview(preview);
+          if (preview) onPreview(preview, "comfy");
         }
       } catch {
         // Unknown extension messages are ignored.

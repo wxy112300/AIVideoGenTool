@@ -6,6 +6,10 @@ import type {
 } from "../../../types";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
+import {
+  environmentItemStatusTone,
+  modelProfileStatusTone
+} from "../../shared/status";
 
 type IconRenderer = (name: string, className?: string) => string;
 type EscapeHtml = (value: string) => string;
@@ -131,8 +135,8 @@ export function renderSettingsEnvironmentOverview(
     </div>
     <div class="environment-grid">
       ${environmentScan.items.map((item) => `
-        <article class="environment-item ${item.ok ? "available" : "missing"}">
-          <span class="environment-state">${icon(item.ok ? "circle-check" : "circle-alert")}</span>
+        <article class="environment-item ${environmentItemStatusTone(item)}">
+          <span class="environment-state">${icon(item.ok ? "circle-check" : item.optional ? "circle-help" : "circle-alert")}</span>
           <div>
             <div class="environment-item-heading">
               <div class="environment-name"><strong>${escape(item.label)}</strong>${item.optional ? `<span class="optional-tag">${t(uiKeys.settings.system.optional)}</span>` : ""}</div>
@@ -141,6 +145,7 @@ export function renderSettingsEnvironmentOverview(
                   ? `<button class="service-start secondary button-with-icon" data-restart-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping ? "disabled" : ""}>${icon("refresh-cw")}${t(viewModel.serviceRestarting === "comfy" ? uiKeys.settings.system.restartWaiting : uiKeys.settings.system.restartService)}</button>`
                   : `<button class="service-start button-with-icon" data-start-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping ? "disabled" : ""}>${icon("play")}${t(viewModel.serviceStarting === "comfy" ? uiKeys.settings.system.startWaiting : uiKeys.settings.system.startService)}</button>`
                 : ""}
+              ${!item.ok && item.downloadUrl ? `<button class="environment-download secondary button-with-icon" data-open-environment-download="${escape(item.downloadUrl)}">${icon("external-link")} ${t(uiKeys.settings.system.openDependencyDownload)}</button>` : ""}
             </div>
             <p>${escape(item.detail)}</p>
             ${item.path ? `<code title="${escape(item.path)}">${escape(item.path)}</code>` : ""}
@@ -200,6 +205,7 @@ export function renderSettingsComfyCompatibilityPanel(
     ? `v${compatibility.version}`
     : options.t(uiKeys.settings.compatibility.versionUnknown);
   const ready = Boolean(compatibility.version || compatibility.revision || compatibility.checkedFrom);
+  const statusTone = ready ? "available" : "warning";
   const versionMismatch = compatibility.checkedFrom === "api" &&
     Boolean(selectedInstallation?.version) &&
     Boolean(compatibility.version) &&
@@ -208,14 +214,14 @@ export function renderSettingsComfyCompatibilityPanel(
   const icon = (name: string, className?: string) => options.icon(name, className);
   const t = options.t;
   return `
-    <section class="panel settings-section comfy-compatibility ${ready ? "available" : "missing"}">
+    <section class="panel settings-section comfy-compatibility ${statusTone}">
       <div class="section-heading">
         <div>
           <h2>${t(uiKeys.settings.compatibility.title)}</h2>
           <span class="muted">${t(uiKeys.settings.compatibility.description)}</span>
         </div>
         <div class="compatibility-actions">
-            <span class="model-availability ${ready ? "available" : "missing"}">${ready ? `${icon("circle-check")} ${t(uiKeys.settings.compatibility.recognized)}` : `${icon("circle-help")} ${t(uiKeys.settings.compatibility.waitingService)}`}</span>
+            <span class="model-availability ${statusTone}">${ready ? `${icon("circle-check")} ${t(uiKeys.settings.compatibility.recognized)}` : `${icon("circle-help")} ${t(uiKeys.settings.compatibility.waitingService)}`}</span>
           <button class="primary button-with-icon" id="update-comfyui" ${viewModel.comfyUpdating || compatibility.updateMode === "unsupported" ? "disabled" : ""}>${icon(viewModel.comfyUpdating ? "refresh-cw" : "download")}${viewModel.comfyUpdating ? t(uiKeys.settings.compatibility.processing) : compatibility.updateMode === "desktop" ? t(uiKeys.settings.compatibility.openOfficialUpdater) : t(uiKeys.settings.compatibility.manualUpdate)}</button>
         </div>
       </div>
@@ -249,9 +255,10 @@ export function renderSettingsModelScanCard(
   const isReady = profile.category === "image"
     ? options.isImageWorkflowReady(profile)
     : profile.available && !runtimeUnavailable;
+  const statusTone = modelProfileStatusTone(profile, isReady);
   const readyLabel = isPromptProfile
     ? options.t(uiKeys.settings.system.scanCardFileComplete)
-    : isReady
+    : statusTone === "available"
       ? options.t(uiKeys.settings.system.scanCardAvailable)
       : runtimeUnavailable
         ? options.t(uiKeys.settings.system.scanCardRuntimeUnavailable)
@@ -284,19 +291,19 @@ export function renderSettingsModelScanCard(
   const escape = (value: string | number | null | undefined) => escapeValue(options, value);
   const icon = (name: string, className?: string) => options.icon(name, className);
   return `
-    <article class="panel model-profile ${isReady ? "available" : "missing"}">
+    <article class="panel model-profile ${statusTone}">
       <div class="model-profile-head">
         <div>
           <div class="model-title"><h3>${escape(profile.name)}</h3>${loraInfoButton}<span class="model-badge">${escape(profile.badge)}</span></div>
           <p class="muted">${escape(profile.description)}</p>
         </div>
-        <span class="model-availability ${isReady ? "available" : "missing"}">${profile.available ? `${icon(isReady ? "circle-check" : "circle-alert")} ${escape(readyLabel)}` : `${icon("circle-alert")} ${options.t(uiKeys.settings.system.scanCardMissingCount, { count: missingCount })}`}</span>
+        <span class="model-availability ${statusTone}">${profile.available ? `${icon(statusTone === "available" ? "circle-check" : statusTone === "warning" ? "circle-help" : "circle-alert")} ${escape(readyLabel)}` : `${icon("circle-alert")} ${options.t(uiKeys.settings.system.scanCardMissingCount, { count: missingCount })}`}</span>
       </div>
       <div class="model-meta-line"><span>${options.t(uiKeys.settings.system.scanCardResourcePolicy)} · ${escape(profile.vram)}</span><span class="model-hardware-recommendation">${options.t(uiKeys.settings.system.scanCardRecommendedHardware)} · ${escape(hardwareRecommendation)}</span><span>${metaLabel}</span></div>
       <div class="component-list">
         ${profile.components.map((component, componentIndex) => `
-          <div class="component-row ${component.found ? "found" : component.optional ? "optional missing" : "missing"}">
-            <span class="component-state">${icon(component.found ? "circle-check" : "circle-alert")}</span>
+          <div class="component-row ${component.found ? "found" : component.optional ? "warning" : "missing"}">
+            <span class="component-state">${icon(component.found ? "circle-check" : component.optional ? "circle-help" : "circle-alert")}</span>
             <div><strong>${escape(component.label)}</strong>
               ${component.found
                 ? `<code title="${escape(component.matches.join("\n"))}">${escape(component.matches.join(" · "))}</code>`

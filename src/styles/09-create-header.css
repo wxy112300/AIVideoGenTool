@@ -1,9 +1,16 @@
 
 /* The create header is a compact control rail, not a separate content panel. */
 .create-page-heading {
+  position: sticky;
+  top: 64px;
+  z-index: 9;
   min-height: 60px;
   margin-bottom: 12px;
   padding: 8px 2px;
+  border-bottom: 1px solid rgba(54, 63, 76, .62);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  box-shadow: 0 10px 24px rgba(5, 8, 13, .16);
+  backdrop-filter: blur(18px);
 }
 
 .create-page-heading .page-heading-copy {
@@ -41,8 +48,14 @@
   white-space: nowrap;
 }
 
+/* The media column is sticky as well; keep it below the pinned create rail. */
+.create-page-heading + .create-workspace > .media-panel {
+  top: 140px;
+}
+
 @media (max-width: 760px) {
   .create-page-heading {
+    top: 0;
     align-items: stretch;
     gap: 10px;
   }

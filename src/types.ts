@@ -5,6 +5,21 @@ export type TaskStatus =
   | "failed"
   | "cancelled";
 
+/**
+ * Queue-level state is deliberately separate from an individual task status.
+ * A running task can be paused, cancelled, or waiting for ComfyUI cleanup
+ * without changing the immutable task status until the worker has finished
+ * the corresponding operation.
+ */
+export type QueueLifecycle =
+  | "idle"
+  | "starting"
+  | "running"
+  | "pausing"
+  | "cancelling"
+  | "cleaning"
+  | "error";
+
 export type UiLocale = "zh-CN" | "zh-TW" | "en-US";
 
 export interface PromptVersion {
@@ -542,6 +557,10 @@ export interface AppState {
   history: HistoryAsset[];
   imageHistory: ImageHistoryProject[];
   queueRunning: boolean;
+  /** ISO timestamp for the current queue run, not an individual task. */
+  queueStartedAt?: string;
+  queueLifecycle: QueueLifecycle;
+  queueLifecycleTaskId?: string;
 }
 
 export type ConnectionKind = "comfy";
@@ -575,6 +594,10 @@ export interface LlamaCppPythonStatus {
   ready: boolean;
   detail: string;
   error: string;
+  /** True when the isolated native probe crashed before returning JSON. */
+  nativeCrash?: boolean;
+  /** Windows/native exit code when a probe crash was identified. */
+  nativeCrashCode?: string;
 }
 
 export type EnvironmentItemId =
@@ -596,6 +619,10 @@ export interface EnvironmentItem {
   detail: string;
   path?: string;
   optional?: boolean;
+  /** Explicitly distinguishes a service that is merely offline from a confirmed missing dependency. */
+  status?: "available" | "warning" | "missing";
+  /** Official/manual installation page, when this item can be installed by the user. */
+  downloadUrl?: string;
 }
 
 export interface GpuDeviceInfo {

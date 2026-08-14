@@ -120,6 +120,10 @@ export function renderQueueTaskCard(
     : `<strong>!</strong><small>${t(uiKeys.queue.card.needsAttention)}</small>`;
   if (task.status === "running") {
     const preview = options.taskPreviews[task.id] ?? "";
+    const livePreviewRequested =
+      (task.taskType === "generation" || task.taskType === "extension") &&
+      task.h3LivePreview === true &&
+      isMiniMaxH3Model(task.modelId);
     const input = queueTaskInput(task);
     const inputVideoUrl = input?.kind === "video" ? queueTaskInputUrl(task) : "";
     return `
@@ -129,10 +133,12 @@ export function renderQueueTaskCard(
           <div class="running-progress-value"><span>${t(uiKeys.queue.card.totalProgress)}</span><strong id="running-progress-label">${Math.round(task.progress ?? 0)}%</strong></div>
         </div>
         <div class="running-layout">
-          <div class="live-preview">
+          <div class="live-preview${livePreviewRequested ? " live-preview-enabled" : ""}" data-live-preview-surface="${options.escapeHtml(task.id)}">
+            <span class="live-preview-live-dot" data-live-preview-indicator="${options.escapeHtml(task.id)}" aria-label="${t(uiKeys.queue.card.livePreviewActive)}" title="${t(uiKeys.queue.card.livePreviewActive)}" style="${preview ? "" : "display:none"}"></span>
+            <span class="live-preview-spinner" data-live-preview-spinner="${options.escapeHtml(task.id)}" role="status" aria-label="${t(uiKeys.queue.card.livePreviewLoading)}" title="${t(uiKeys.queue.card.livePreviewLoading)}" style="${livePreviewRequested && !preview ? "" : "display:none"}"></span>
             <img id="live-preview-image-${options.escapeHtml(task.id)}" data-live-preview-image="${options.escapeHtml(task.id)}" data-live-preview-active="${preview ? "true" : "false"}" ${input?.kind === "image" ? `data-queue-input-image="${options.escapeHtml(task.id)}"` : ""} alt="${input ? t(uiKeys.queue.card.userInputPreview) : t(uiKeys.queue.card.comfyPreview)}" src="${preview ? options.escapeHtml(preview) : ""}" style="${preview ? "" : "display:none"}">
             ${inputVideoUrl ? `<video data-queue-input-video="${options.escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}" style="${preview ? "display:none" : ""}"></video>` : ""}
-            <div id="live-preview-empty-${options.escapeHtml(task.id)}" data-live-preview-empty="${options.escapeHtml(task.id)}" style="${preview || inputVideoUrl ? "display:none" : ""}"><span>${options.icon(input ? input.kind === "image" ? "image" : "film" : "film")}</span><strong>${input ? t(uiKeys.queue.card.readingInput) : t(uiKeys.queue.card.waitingPreview)}</strong><small>${input ? t(uiKeys.queue.card.frameReturned) : t(uiKeys.queue.card.samplingPreview)}</small></div>
+            <div id="live-preview-empty-${options.escapeHtml(task.id)}" data-live-preview-empty="${options.escapeHtml(task.id)}" style="${preview || inputVideoUrl ? "display:none" : ""}"><span>${options.icon(input ? input.kind === "image" ? "image" : "film" : "film")}</span></div>
           </div>
           <div class="running-copy">
             <span class="eyebrow">${t(uiKeys.queue.card.currentStep)} · <span id="running-stage">${options.escapeHtml(task.stage ?? t(uiKeys.queue.card.preparing))}</span></span>
@@ -140,7 +146,7 @@ export function renderQueueTaskCard(
             <p class="task-description">${options.escapeHtml(description)}</p>
             <div class="task-meta">${metadata}<span id="running-stage-elapsed">${options.queueStageElapsedText(task)}</span><span id="running-eta">${t(uiKeys.queue.card.eta, { time: options.queueEstimateText(options.queueTaskRemainingSeconds(task)) })}</span></div>
             <div class="running-controls">
-              <button class="secondary button-with-icon" id="${options.queueRunning ? "pause-queue" : "start-queue"}">${options.icon(options.queueRunning ? "pause" : "play")}${options.queueRunning ? t(uiKeys.queue.pauseAfterCurrent) : t(uiKeys.queue.card.continueTasks)}</button>
+              <button class="secondary button-with-icon" id="${options.queueRunning ? "pause-queue" : "continue-queue"}">${options.icon(options.queueRunning ? "pause" : "play")}${options.queueRunning ? t(uiKeys.queue.pauseAfterCurrent) : t(uiKeys.queue.card.continueTasks)}</button>
               <button class="danger secondary button-with-icon" data-cancel="${task.id}" ${options.queueActionBusy?.taskId === task.id ? "disabled" : ""}>${options.icon("ban")}${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "cancel" ? t(uiKeys.queue.card.cancelling) : t(uiKeys.queue.card.cancelCurrent)}</button>
             </div>
             <p class="control-hint">${options.queueRunning ? t(uiKeys.queue.card.pauseHint) : t(uiKeys.queue.card.runningHint)}</p>
@@ -162,16 +168,16 @@ export function renderQueueTaskCard(
         <div class="task-meta">${metadata}${retrySummary}</div>
         ${task.error ? `<p class="error">${options.escapeHtml(task.error)}</p>` : ""}
       </div>
-      <div class="task-actions">
-        ${task.status === "waiting" ? `<div class="button-row"><button class="icon-button" data-move="${task.id}" data-direction="-1" aria-label="${t(uiKeys.queue.card.moveUp)}" title="${t(uiKeys.queue.card.moveUp)}">${options.icon("move-up")}</button><button class="icon-button" data-move="${task.id}" data-direction="1" aria-label="${t(uiKeys.queue.card.moveDown)}" title="${t(uiKeys.queue.card.moveDown)}">${options.icon("move-down")}</button></div>` : ""}
+      <div class="task-actions queue-task-actions">
+        ${task.status === "waiting" ? `<div class="queue-reorder-controls" aria-label="${t(uiKeys.queue.card.moveUp)} / ${t(uiKeys.queue.card.moveDown)}"><button class="icon-button" data-move="${task.id}" data-direction="-1" aria-label="${t(uiKeys.queue.card.moveUp)}" aria-keyshortcuts="ArrowUp" title="${t(uiKeys.queue.card.moveUp)} (↑)">${options.icon("move-up")}</button><button class="icon-button" data-move="${task.id}" data-direction="1" aria-label="${t(uiKeys.queue.card.moveDown)}" aria-keyshortcuts="ArrowDown" title="${t(uiKeys.queue.card.moveDown)} (↓)">${options.icon("move-down")}</button></div>` : ""}
         ${task.status === "waiting" || task.status === "failed" || task.status === "cancelled"
           ? task.taskType === "upscale"
-            ? `<button class="secondary button-with-icon" data-edit-upscale-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editUpscaleTitle)}">${options.icon("sliders-horizontal")}${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : task.status === "waiting" ? t(uiKeys.queue.card.edit) : t(uiKeys.queue.card.editAgain)}</button>`
-            : `<button class="secondary button-with-icon" data-edit-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editTitle)}">${options.icon("sliders-horizontal")}${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.editAgain)}</button>`
+            ? `<button class="secondary button-with-icon queue-action-primary" data-edit-upscale-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editUpscaleTitle)}">${options.icon("sliders-horizontal")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.edit)}</span></button>`
+            : `<button class="secondary button-with-icon queue-action-primary" data-edit-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editTitle)}">${options.icon("sliders-horizontal")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.edit)}</span></button>`
           : ""}
-        <button class="secondary button-with-icon" data-duplicate="${task.id}">${options.icon("copy")}${t(uiKeys.queue.card.duplicate)}</button>
-        ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary button-with-icon" data-reset-task="${task.id}" title="${t(uiKeys.queue.card.resetTitle)}">${options.icon("rotate-ccw")}${t(uiKeys.queue.card.reset)}</button>` : ""}
-        <button class="ghost danger button-with-icon" data-remove="${task.id}" ${options.queueActionBusy?.taskId === task.id ? "disabled" : ""}>${options.icon("trash-2")}${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}</button>
+        ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary button-with-icon queue-action-primary queue-action-reset" data-reset-task="${task.id}" title="${t(uiKeys.queue.card.resetTitle)}">${options.icon("rotate-ccw")}<span class="queue-action-label">${t(uiKeys.queue.card.reset)}</span></button>` : ""}
+        <button class="secondary button-with-icon queue-action-quiet" data-duplicate="${task.id}" aria-label="${t(uiKeys.queue.card.duplicate)}" title="${t(uiKeys.queue.card.duplicate)}">${options.icon("copy")}<span class="queue-action-label">${t(uiKeys.queue.card.duplicate)}</span></button>
+        <button class="ghost danger button-with-icon queue-action-quiet" data-remove="${task.id}" aria-label="${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}" title="${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}" ${options.queueActionBusy?.taskId === task.id ? "disabled" : ""}>${options.icon("trash-2")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}</span></button>
       </div>
     </article>`;
 }

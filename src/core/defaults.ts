@@ -124,6 +124,8 @@ export function createDefaultState(): AppState {
     queue: [],
     history: [],
     imageHistory: [],
-    queueRunning: false
+    queueRunning: false,
+    queueStartedAt: undefined,
+    queueLifecycle: "idle"
   };
 }

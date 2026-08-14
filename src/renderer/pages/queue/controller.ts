@@ -17,18 +17,20 @@ interface QueueMoveScrollAnchor {
   taskId: string;
   direction: -1 | 1;
   viewportTop: number;
+  focusAfterMove: boolean;
 }
 
 let queueMoveScrollAnchor: QueueMoveScrollAnchor | null = null;
 
-function captureQueueMoveAnchor(button: HTMLButtonElement): void {
+function captureQueueMoveAnchor(button: HTMLButtonElement, focusAfterMove = false): void {
   const taskId = button.dataset.move;
   const direction = Number(button.dataset.direction);
   if (!taskId || (direction !== -1 && direction !== 1)) return;
   queueMoveScrollAnchor = {
     taskId,
     direction,
-    viewportTop: button.getBoundingClientRect().top
+    viewportTop: button.getBoundingClientRect().top,
+    focusAfterMove
   };
 }
 
@@ -43,10 +45,16 @@ function restoreQueueMoveAnchor(root: HTMLElement): void {
           candidate.dataset.move === anchor.taskId &&
           Number(candidate.dataset.direction) === anchor.direction
         );
-      if (!button) return;
+      if (!button) {
+        queueMoveScrollAnchor = null;
+        return;
+      }
       const delta = button.getBoundingClientRect().top - anchor.viewportTop;
       if (Math.abs(delta) > 0.5) {
         window.scrollBy({ top: delta, behavior: "auto" });
+      }
+      if (anchor.focusAfterMove) {
+        button.focus({ preventScroll: true });
       }
       queueMoveScrollAnchor = null;
     });
@@ -66,6 +74,29 @@ export function mountQueueController(
   const root = context.root;
   const t = context.t;
 
+  const startQueue = async (): Promise<void> => {
+    context.reportUserAction("queue-start");
+    try {
+      options.setState(await context.studio.startQueue());
+      options.setPromptRuntimeLoaded(false);
+      context.requestRender();
+    } catch (error) {
+      context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+    }
+  };
+
+  const endQueue = async (action: "queue-end" | "queue-pause" = "queue-end"): Promise<void> => {
+    context.reportUserAction(action);
+    try {
+      // Ending the queue is graceful: the current task is allowed to finish,
+      // while later waiting tasks remain available for a future restart.
+      options.setState(await context.studio.pauseQueue());
+      context.requestRender();
+    } catch (error) {
+      context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+    }
+  };
+
   root.querySelector<HTMLInputElement>("#h3-live-preview")?.addEventListener("change", async (event) => {
     const input = event.currentTarget as HTMLInputElement;
     const current = currentState(context);
@@ -84,21 +115,21 @@ export function mountQueueController(
     }
   }, { signal });
 
-  root.querySelector("#start-queue")?.addEventListener("click", async () => {
-    context.reportUserAction("queue-start");
-    try {
-      options.setState(await context.studio.startQueue());
-      options.setPromptRuntimeLoaded(false);
-      context.requestRender();
-    } catch (error) {
-      context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+  root.querySelector("#queue-primary-action")?.addEventListener("click", async () => {
+    const state = currentState(context);
+    if (state?.queueRunning) {
+      await endQueue();
+      return;
     }
+    await startQueue();
   }, { signal });
 
   root.querySelector("#pause-queue")?.addEventListener("click", async () => {
-    context.reportUserAction("queue-pause");
-    options.setState(await context.studio.pauseQueue());
-    context.requestRender();
+    await endQueue("queue-pause");
+  }, { signal });
+
+  root.querySelector("#continue-queue")?.addEventListener("click", async () => {
+    await startQueue();
   }, { signal });
 
   root.querySelectorAll<HTMLElement>("[data-remove]").forEach((button) => {
@@ -119,16 +150,39 @@ export function mountQueueController(
     }, { signal });
   });
 
-  root.querySelectorAll<HTMLButtonElement>("[data-move]").forEach((button) => {
-    button.addEventListener("click", async () => {
+  const moveTask = async (button: HTMLButtonElement, focusAfterMove = false): Promise<void> => {
       const taskId = button.dataset.move;
       const directionValue = button.dataset.direction;
       const direction = Number(directionValue);
       if (!taskId || (direction !== -1 && direction !== 1)) return;
-      captureQueueMoveAnchor(button);
+      captureQueueMoveAnchor(button, focusAfterMove);
       context.reportUserAction("queue-move", { taskId, direction: directionValue });
       options.setState(await context.studio.moveTask(taskId, direction as -1 | 1));
       context.requestRender();
+  };
+
+  root.querySelectorAll<HTMLButtonElement>("[data-move]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await moveTask(button);
+    }, { signal });
+    button.addEventListener("keydown", async (event) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const direction = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+      if (!direction) return;
+      event.preventDefault();
+      const currentDirection = Number(button.dataset.direction);
+      if (currentDirection !== direction) {
+        const sibling = [...root.querySelectorAll<HTMLButtonElement>("[data-move]")]
+          .find((candidate) =>
+            candidate.dataset.move === button.dataset.move &&
+            Number(candidate.dataset.direction) === direction
+          );
+        if (sibling) {
+          await moveTask(sibling, true);
+        }
+        return;
+      }
+      await moveTask(button, true);
     }, { signal });
   });
 

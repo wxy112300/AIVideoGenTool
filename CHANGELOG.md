@@ -11,15 +11,19 @@
 ### 0.19.0 候选 — 2026-08-13
 
 - 提示词扩写新增可选 Qwen3.6 27B Q4 Uncensored 配置：使用 ComfyUI MultiModal Prompt Nodes 的 `VisionLLMNode`，支持多参考图，完全复用所选 ComfyUI 的 Python，不再需要 LM Studio、llama-server 或第二个服务。
-- 节点与工作流目录新增 MultiModal Prompt Nodes 与 Qwen3.6 H3 提示词扩写 API 工作流；安装器跳过会覆盖多模态后端的普通 `llama-cpp-python` requirements，改装 JamePeng GPU 构建并保留完整编译日志。
-- MultiModal Prompt Nodes 现在会在安装前检查 `nvcc`，自动发现 PATH、CUDA 环境变量和 NVIDIA 默认 Toolkit 目录；节点说明补充 CUDA Toolkit/Visual Studio/CMake 前置条件，一键节点安装会跳过该可选编译型节点，避免无意触发源码构建。
+- 节点与工作流目录新增 MultiModal Prompt Nodes 与 Qwen3.6 H3 提示词扩写 API 工作流；安装器跳过会覆盖共享后端的普通 `llama-cpp-python` requirements，并将该节点纳入一键安装/更新。
+- MultiModal Prompt Nodes 与 H3 Prompt Writer 统一使用固定的 JamePeng Windows 预编译 GPU 后端，不再要求用户安装 `nvcc`、Visual Studio 或 CMake，也不会由一个节点的源码编译覆盖另一个；安装前明确验证 Python 3.10–3.14 与已发布 CUDA wheel 矩阵，批量安装时已就绪的共享后端不会重复下载。
 - 提示词扩展设置新增独立的 `llama-cpp-python` 运行依赖卡片：扫描所选 ComfyUI Python、按 PyTorch CUDA 版本选择 Windows 预编译 wheel、安装后执行 `import llama_cpp` 与 GPU offload 自检，并在安装期间安全停止/恢复 ComfyUI。
+- 修复 H3 Prompt Writer 在 Windows `0xC000001D` 非法指令下只显示“GGUF 无法加载”的问题：Windows 安装统一使用固定的 JamePeng 动态 CUDA/CPU 后端 wheel；探针会先注册动态 DLL 再判断 GPU offload，安装日志每 2% 显示下载进度，45 分钟慢速下载上限，并通过 `--no-deps` 避免重装或污染 ComfyUI 的 NumPy/Pillow 等公共依赖。节点安装/修复同时兼容 `0.3.39+` 将 KV 类型迁移到 `GGMLType` 枚举的 API 变化。
 - Qwen3.6 按 RTX 4090 设计为普通 Q4_K_M、同目录 `mmproj-BF16.gguf`、8K 上下文、GPU 层；扩写完成或退出时请求 ComfyUI `/free`，避免与 H3/图片任务交叉占用显存。
 - 融合 Civitai MiniMaxH3 Auto Prompter 的结构化提示词逻辑：R2V 使用 `subject_definitions → summary → retention_analysis → detailed_description`，其他 H3 模式保持官方三字段、首尾帧对齐和明确的音频/配乐约束；所有提示词后端共享同一份 core contract。
 - 设置扫描、启动校验、提示词状态和多语言文案新增 Qwen3.6 ComfyUI 多模态路径；节点目录、模型/mmproj 文件和运行时节点仍分开显示，未完成真实 GPU smoke 前不会宣称模型已跑通。
 - 修复图片处理页的参考图片拖拽目标：每个上方 Picture 预览窗口现在都支持拖入、点击选择和覆盖替换；下方区域继续用于新增下一个 Picture，并在覆盖时显示明确反馈。
 - 修复 LaMa「绘制 Mask」按钮缺少画笔图标，以及图片历史大图弹窗上一张/下一张按钮未初始化 Lucide 图标的问题。
 - 队列页新增默认关闭的 H3 TAE 实时预览开关；接入 KJNodes `ModelPreviewOverrideKJ` 与 `vae_approx/taeh3.safetensors`，以单帧 512px 的保守配置复用现有运行卡片预览，并解析 `kj_preview_override` 自定义 WebSocket 事件。缺少可选预览依赖时不改变原 H3 工作流。
+- 修复队列顶部“已运行”误显示当前任务耗时的问题：现在从点击“开始队列”起记录整批队列会话时间，并在暂停/清理过渡阶段保持显示，队列结束后释放。
+- 补充 H3 TAE 预览的首帧、周期帧、无帧诊断日志；明确预览由节点回调和异步编码节奏决定，中间帧可能被丢弃，不再将“已挂载预览节点”误报为“已经收到画面”。
+- 修复顶部全局通知无法选中文本的问题；通知显示时允许鼠标选中并复制，同时保留自动消失和页面操作隔离。
 - KJNodes 依赖扫描新增 `ModelPreviewOverrideKJ` 运行时注册与离线源码能力检查；节点与工作流面板新增批量安装/更新按钮，只处理需要修复的 Custom Nodes，全部健康时允许显式更新全部，并复用串行队列、一次重启和统一复检。
 - 创建页的提示词扩写预设改用统一 `i` 提示展示本地化说明；切换预设时只更新提示内容，不重绘页面或打断输入。
 - 推理加速页收窄为“性能与加速”：Attention 后端、Python/PyTorch/CUDA/SageAttention/KJNodes 状态与安装说明统一接入三语文案，长解释改为 `i` 提示。

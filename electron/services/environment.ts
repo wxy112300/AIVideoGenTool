@@ -42,6 +42,7 @@ import {
 } from "./dependency-scanner.js";
 import { discoverCudaToolkit } from "./cuda-toolkit.js";
 import { installCustomNodePackage } from "./dependency-installer.js";
+import { prepareH3PromptWriter } from "./dependency-node-adapters.js";
 import {
   inspectLlamaCppPython,
   installLlamaCppPythonPackage,
@@ -94,6 +95,7 @@ export {
   videoHelperBatchCompatible
 } from "./dependency-compatibility.js";
 export {
+  patchH3PromptWriterLlamaCppCompatibility,
   patchLtxAudioVaeCompatibility,
   patchVideoHelperBatchCompatibility
 } from "./dependency-node-adapters.js";
@@ -2327,6 +2329,15 @@ async function findExecutable(command: string): Promise<string> {
   }
 }
 
+const environmentDependencyDownloadUrls: Partial<Record<EnvironmentItemId, string>> = {
+  node: "https://nodejs.org/en/download",
+  git: "https://git-scm.com/downloads",
+  ffmpeg: "https://ffmpeg.org/download.html",
+  "cuda-toolkit": "https://developer.nvidia.com/cuda-downloads",
+  nvidia: "https://www.nvidia.com/Download/index.aspx",
+  comfyui: "https://www.comfy.org/download"
+};
+
 async function commandItem(
   id: EnvironmentItemId,
   label: string,
@@ -2336,7 +2347,14 @@ async function commandItem(
 ): Promise<EnvironmentItem> {
   const executable = await findExecutable(command);
   if (!executable) {
-    return { id, label, ok: false, detail: "未找到", optional };
+    return {
+      id,
+      label,
+      ok: false,
+      detail: "未找到",
+      optional,
+      downloadUrl: environmentDependencyDownloadUrls[id]
+    };
   }
   try {
     const { stdout, stderr } = await execFileAsync(executable, args, {
@@ -2365,7 +2383,8 @@ async function cudaToolkitItem(): Promise<EnvironmentItem> {
       label: "CUDA Toolkit",
       ok: false,
       detail: "未找到 nvcc；仅在安装 Qwen3.6 多模态可选节点时需要",
-      optional: true
+      optional: true,
+      downloadUrl: environmentDependencyDownloadUrls["cuda-toolkit"]
     };
   }
   let version = "";
@@ -2422,9 +2441,10 @@ async function nvidiaItem(): Promise<NvidiaProbe> {
     return {
       item: {
         id: "nvidia",
-        label: "NVIDIA GPU",
+        label: "NVIDIA 驱动 / GPU",
         ok: false,
-        detail: "未找到 nvidia-smi"
+        detail: "未找到 nvidia-smi；通常表示 NVIDIA 驱动未安装或驱动不可用",
+        downloadUrl: environmentDependencyDownloadUrls.nvidia
       },
       devices: []
     };
@@ -2442,7 +2462,7 @@ async function nvidiaItem(): Promise<NvidiaProbe> {
     return {
       item: {
         id: "nvidia",
-        label: "NVIDIA GPU",
+        label: "NVIDIA 驱动 / GPU",
         ok: true,
         detail: devices.length
           ? devices.map((device) =>
@@ -2457,10 +2477,12 @@ async function nvidiaItem(): Promise<NvidiaProbe> {
     return {
       item: {
         id: "nvidia",
-        label: "NVIDIA GPU",
-        ok: true,
-        detail: "已找到 nvidia-smi，但暂时无法读取显卡详情",
-        path: executable
+        label: "NVIDIA 驱动 / GPU",
+        ok: false,
+        status: "warning",
+        detail: "已找到 nvidia-smi，但暂时无法读取显卡详情；请检查驱动状态",
+        path: executable,
+        downloadUrl: environmentDependencyDownloadUrls.nvidia
       },
       devices: []
     };
@@ -2477,7 +2499,7 @@ async function localServiceItem(
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return { id, label, ok: true, detail: `运行中 · ${url}` };
   } catch {
-    return { id, label, ok: false, detail: `未运行或无法连接 · ${url}` };
+    return { id, label, ok: false, status: "warning", detail: `未运行或无法连接 · ${url}` };
   }
 }
 
@@ -3094,18 +3116,31 @@ export async function installLlamaCppPython(
     const comfyRoot = await findComfyRoot(settings);
     const python = await findComfyPython(settings, comfyRoot);
     const before = await inspectLlamaCppPython(python, runLoggedProcess);
-    if (!before.ready) {
-      const healthUrl = `${settings.comfyUrl.replace(/\/+$/u, "")}/system_stats`;
-      wasRunning = await fetch(healthUrl, {
-        signal: AbortSignal.timeout(2000)
-      }).then((response) => response.ok).catch(() => false);
-      if (wasRunning) {
-        reportRestart("正在停止 ComfyUI，避免替换 Python 扩展时文件被占用……");
-        await stopComfyUi(settings);
-        reportRestart("ComfyUI 已停止");
-      }
+    // The button is also an explicit repair action while the probe still
+    // reports a healthy package (the native import can succeed but model load
+    // may crash). Always release an app-managed ComfyUI process before pip
+    // replaces its native DLLs, then restore it below if it was running.
+    const healthUrl = `${settings.comfyUrl.replace(/\/+$/u, "")}/system_stats`;
+    wasRunning = await fetch(healthUrl, {
+      signal: AbortSignal.timeout(2000)
+    }).then((response) => response.ok).catch(() => false);
+    if (wasRunning) {
+      reportRestart("正在停止 ComfyUI，避免替换 Python 扩展时文件被占用……");
+      await stopComfyUi(settings);
+      reportRestart("ComfyUI 已停止");
     }
     const result = await installLlamaCppPythonPackage(settings, runtime, onLog);
+    if (result.ok) {
+      const promptWriterDirectory = path.join(
+        comfyRoot,
+        "custom_nodes",
+        "ComfyUI-MiniMaxH3-Prompt-Writer"
+      );
+      if (await exists(promptWriterDirectory)) {
+        reportRestart("正在检查 H3 Prompt Writer 与新版 llama-cpp-python 的 API 兼容层……");
+        await prepareH3PromptWriter(promptWriterDirectory, reportRestart);
+      }
+    }
     if (wasRunning) {
       reportRestart("正在重启 ComfyUI，并重新检查提示词节点……");
       const healthUrl = await startComfyUi(settings);
@@ -3506,7 +3541,8 @@ export async function scanEnvironment(
         id: "comfyui",
         label: "ComfyUI",
         ok: false,
-        detail: `未在 ${userHome} 及常见磁盘目录中找到`
+        detail: `未在 ${userHome} 及常见磁盘目录中找到`,
+        downloadUrl: environmentDependencyDownloadUrls.comfyui
       };
 
   const reachableComfyBaseUrl = await firstReachableServiceBase(

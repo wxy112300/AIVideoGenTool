@@ -25,6 +25,16 @@ interface WriterErrorBody {
   };
 }
 
+export interface H3PromptWriterRuntimeDiagnostics {
+  status?: string;
+  message?: string;
+  return_code_hex?: string;
+  error?: string;
+  error_type?: string;
+  gpu_offload?: boolean | null;
+  package_version?: string | null;
+}
+
 function baseUrl(settings: Pick<Settings, "comfyUrl">): string {
   return settings.comfyUrl.replace(/\/+$/, "");
 }
@@ -38,15 +48,61 @@ async function writerRequest<T>(url: string, init?: RequestInit): Promise<T> {
     }
     const message = body.error?.message || `HTTP ${response.status}`;
     const details = body.error?.details ? `（${JSON.stringify(body.error.details)}）` : "";
+    if (/(?:0xC000001D|-1073741795|illegal instruction|非法指令)/iu.test(`${message}${details}`)) {
+      throw new Error(
+        `H3 Prompt Writer 的 GGUF 原生运行库因 Windows 0xC000001D 非法指令崩溃。当前 llama-cpp-python wheel 与 CPU 指令集不兼容；请到设置 → 提示词扩写点击“重新安装/修复”，应用会切换兼容的动态 CPU 后端。${details}`
+      );
+    }
     throw new Error(`H3 Prompt Writer：${message}${details}`);
   }
   return await response.json() as T;
 }
 
+async function readWriterRuntimeDiagnostics(
+  root: string,
+  signal: AbortSignal
+): Promise<H3PromptWriterRuntimeDiagnostics | null> {
+  try {
+    const response = await fetch(`${root}/h3studio/runtime/gguf/diagnostics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh: true }),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)])
+    });
+    if (!response.ok) return null;
+    const body = await response.json() as {
+      diagnostics?: H3PromptWriterRuntimeDiagnostics;
+    };
+    return body.diagnostics || null;
+  } catch (error) {
+    if (signal.aborted) throw error;
+    // This endpoint was added after the first public node release. Older
+    // nodes still support status/models and remain usable without diagnostics.
+    return null;
+  }
+}
+
+export function validateH3PromptWriterRuntime(
+  diagnostics: H3PromptWriterRuntimeDiagnostics | null | undefined
+): void {
+  if (!diagnostics) return;
+  const status = diagnostics.status?.toLowerCase() || "";
+  const code = diagnostics.return_code_hex?.toUpperCase() || "";
+  const detail = [diagnostics.message, diagnostics.error].filter(Boolean).join("：");
+  if (status === "crashed" && (code === "0XC000001D" || /illegal instruction|非法指令/iu.test(detail))) {
+    throw new Error(
+      `H3 Prompt Writer 的 GGUF 原生运行库因 Windows ${code || "0xC000001D"} 非法指令崩溃。当前 llama-cpp-python wheel 与 CPU 指令集不兼容；请到设置 → 提示词扩写点击“重新安装/修复”，应用会切换兼容的动态 CPU 后端。${detail ? `（${detail}）` : ""}`
+    );
+  }
+  if (["crashed", "timeout", "invalid_response"].includes(status)) {
+    throw new Error(`H3 Prompt Writer 的 GGUF 运行时自检失败：${detail || status}。请到设置 → 提示词扩写查看运行依赖日志并修复。`);
+  }
+}
+
 export async function testH3PromptWriter(
   settings: Pick<Settings, "comfyUrl">,
   signal?: AbortSignal
-): Promise<{ version: string; models: WriterModel[] }> {
+): Promise<{ version: string; models: WriterModel[]; diagnostics: H3PromptWriterRuntimeDiagnostics | null }> {
   const root = baseUrl(settings);
   const [status, catalog] = await Promise.all([
     writerRequest<{ version?: string }>(`${root}/h3studio/status`, {
@@ -56,7 +112,11 @@ export async function testH3PromptWriter(
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5_000)]) : AbortSignal.timeout(5_000)
     })
   ]);
-  return { version: status.version || "未知", models: catalog.models || [] };
+  const diagnostics = await readWriterRuntimeDiagnostics(
+    root,
+    signal || new AbortController().signal
+  );
+  return { version: status.version || "未知", models: catalog.models || [], diagnostics };
 }
 
 function writerMode(mode?: H3PromptMode, imageEdit = false): "T2VA" | "I2VA" | "FL2VA" | "L2VA" | "Reference" {
@@ -152,8 +212,9 @@ export async function enhancePromptWithH3PromptWriter(
   };
   signal.addEventListener("abort", cancel, { once: true });
   try {
-    const { models } = await testH3PromptWriter(settings, signal);
+    const { models, diagnostics } = await testH3PromptWriter(settings, signal);
     const model = promptWriterModelForSelection(models, settings.promptModelId);
+    validateH3PromptWriterRuntime(diagnostics);
     await uploadMedia(root, sessionId, mode, mediaPaths, signal);
     const creativeBrief = [request.prompt.trim(), request.referenceContext?.trim()]
       .filter(Boolean)

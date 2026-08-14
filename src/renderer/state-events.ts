@@ -20,6 +20,8 @@ import {
 import { uiKeys } from "../core/i18n-keys";
 import { queueCompletionChange } from "./notifications";
 import type { RendererNotifyOptions } from "./contracts";
+import { queueLayoutSignature } from "./pages/queue/helpers";
+import { patchQueueLiveDom } from "./pages/queue/live-status";
 
 export interface RendererEventOptions {
   studio: AppApi;
@@ -70,9 +72,13 @@ function updateTaskPreview(
   preview: TaskPreview,
   options: RendererEventOptions
 ): void {
-  options.taskPreviews[preview.taskId] = preview.dataUrl;
   const state = options.getState();
   const running = state?.queue.find((task) => task.status === "running");
+  if (!running || running.id !== preview.taskId) {
+    delete options.taskPreviews[preview.taskId];
+    return;
+  }
+  options.taskPreviews[preview.taskId] = preview.dataUrl;
   if (options.getPage() !== "queue" || running?.id !== preview.taskId) return;
   const taskSelector = CSS.escape(preview.taskId);
   const image = document.querySelector<HTMLImageElement>(
@@ -81,11 +87,19 @@ function updateTaskPreview(
   const empty = document.querySelector<HTMLElement>(
     `[data-live-preview-empty="${taskSelector}"]`
   );
+  const indicator = document.querySelector<HTMLElement>(
+    `[data-live-preview-indicator="${taskSelector}"]`
+  );
+  const spinner = document.querySelector<HTMLElement>(
+    `[data-live-preview-spinner="${taskSelector}"]`
+  );
   if (image) {
     image.src = preview.dataUrl;
     image.style.display = "";
     image.dataset.livePreviewActive = "true";
   }
+  if (indicator) indicator.style.display = "";
+  if (spinner) spinner.style.display = "none";
   document.querySelector<HTMLVideoElement>(
     `[data-queue-input-video="${taskSelector}"]`
   )?.style.setProperty(
@@ -93,6 +107,20 @@ function updateTaskPreview(
     "none"
   );
   if (empty) empty.style.display = "none";
+}
+
+function pruneTaskPreviews(
+  state: AppState,
+  options: RendererEventOptions
+): void {
+  const runningTaskIds = new Set(
+    state.queue
+      .filter((task) => task.status === "running")
+      .map((task) => task.id)
+  );
+  for (const taskId of Object.keys(options.taskPreviews)) {
+    if (!runningTaskIds.has(taskId)) delete options.taskPreviews[taskId];
+  }
 }
 
 export function registerRendererEvents(
@@ -107,6 +135,9 @@ export function registerRendererEvents(
     }),
     options.studio.onStateChanged((nextState) => {
       const previousState = options.getState();
+      const queueStructureStable = options.getPage() === "queue" &&
+        previousState !== undefined &&
+        queueLayoutSignature(previousState) === queueLayoutSignature(nextState);
       const completion = queueCompletionChange(previousState, nextState);
       const historyChanged = historyStateChanged(previousState?.history, nextState.history);
       const imageHistoryChanged = imageHistoryStateChanged(
@@ -120,6 +151,7 @@ export function registerRendererEvents(
           ? localDraft
           : nextState.draft
       });
+      pruneTaskPreviews(nextState, options);
       if (nextState.queueRunning) options.setPromptRuntimeLoaded(false);
       for (const task of completion.completedTasks) {
         options.notify(options.t(uiKeys.runtime.taskCompleted, { title: task.title }), {
@@ -135,6 +167,7 @@ export function registerRendererEvents(
       if (completion.queueCompleted) {
         options.notify(options.t(uiKeys.runtime.queueCompleted), { kind: "queue-complete" });
       }
+      if (queueStructureStable && patchQueueLiveDom(nextState, options.t)) return;
       if (isEditingFormControl() || options.getDraftSaveInFlight() > 0) return;
       const visibleHistoryChanged = options.getHistoryKind() === "image"
         ? imageHistoryChanged

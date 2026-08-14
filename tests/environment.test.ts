@@ -24,6 +24,7 @@ import {
   kjNodesAttentionSourceCompatible,
   parseNvidiaGpuQuery,
   parseComfyDesktop2Registry,
+  patchH3PromptWriterLlamaCppCompatibility,
   patchLtxAudioVaeCompatibility,
   patchVideoHelperBatchCompatibility,
   renameWithRetry,
@@ -467,6 +468,20 @@ describe("ComfyUI environment candidates", () => {
     expect(patched).toContain("from comfy.sd import VAE");
     expect(patched).toContain("state_dict_prefix_replace");
     expect(patched).toContain("audio_vae.throw_exception_if_invalid()");
+  });
+
+  it("keeps H3 Prompt Writer compatible when GGML KV constants move into _ggml", () => {
+    const backend = [
+      "        try:",
+      "            from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0, Llama",
+      "            kv_types = {'q8': GGML_TYPE_Q8_0, 'f16': GGML_TYPE_F16}"
+    ].join("\n");
+    const patched = patchH3PromptWriterLlamaCppCompatibility(backend);
+    expect(patched).toContain("            from llama_cpp import Llama");
+    expect(patched).toContain("                from llama_cpp._ggml import GGMLType");
+    expect(patched).toContain("                GGML_TYPE_Q8_0 = GGMLType.GGML_TYPE_Q8_0");
+    expect(patched).toContain("            kv_types = {'q8': GGML_TYPE_Q8_0, 'f16': GGML_TYPE_F16}");
+    expect(patchH3PromptWriterLlamaCppCompatibility(patched)).toBe(patched);
   });
 
   it("uses the current home directory instead of a hard-coded username", () => {

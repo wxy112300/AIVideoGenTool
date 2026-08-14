@@ -1,6 +1,11 @@
 import type { AppState, PerformanceMetrics, QueueTask } from "../../../types";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
+import { elapsedText } from "../../shared/formatters";
+import {
+  queueComfyUiStatus,
+  queueHeaderTone
+} from "./live-status";
 
 export interface QueuePageOptions {
   t: Translate;
@@ -25,38 +30,57 @@ export function renderQueuePage(
   const running = state.queue.find((task) => task.status === "running");
   const activeTasks = state.queue.filter((task) => task.status === "waiting" || task.status === "running");
   const attentionTasks = state.queue.filter((task) => task.status === "failed" || task.status === "cancelled");
-  const waitingCount = activeTasks.filter((task) => task.status === "waiting").length;
   const remainingSeconds = options.queueRemainingSeconds(activeTasks);
-  const queueStatus = running
-    ? options.t(uiKeys.queue.statusRunning)
-    : activeTasks.some((task) => task.status === "waiting")
-      ? options.t(uiKeys.queue.statusPaused)
-      : attentionTasks.length
-        ? options.t(uiKeys.queue.statusAttention)
-        : options.t(uiKeys.queue.statusEmpty);
+  const lifecycle = state.queueLifecycle ?? "idle";
+  const comfyUi = queueComfyUiStatus(state, options.t);
+  const headerTone = queueHeaderTone(state);
+  const showRunSummary = Boolean(
+    state.queueStartedAt &&
+    (state.queueRunning || (lifecycle !== "idle" && lifecycle !== "error"))
+  );
+  const hasWaitingTasks = state.queue.some((task) => task.status === "waiting");
+  const primaryMode = state.queueRunning ? "end" : running ? "continue" : "start";
+  const primaryLabel = state.queueRunning
+    ? options.t(uiKeys.queue.end)
+    : running
+      ? options.t(uiKeys.queue.continueQueue)
+      : options.t(uiKeys.queue.start);
+  const primaryTitle = state.queueRunning
+    ? options.t(uiKeys.queue.endHint)
+    : running
+      ? options.t(uiKeys.queue.continueQueue)
+      : options.t(uiKeys.queue.start);
+  const primaryDisabled = ["pausing", "cancelling", "cleaning"].includes(lifecycle)
+    || (!state.queueRunning && !running && !hasWaitingTasks);
   const metrics = options.performanceMetrics;
   return `
-    <section class="page-heading queue-page-heading">
+    <section class="page-heading queue-page-heading" aria-labelledby="queue-title">
       <div class="queue-page-heading-main">
-        <div class="queue-heading-line">
-          <h1>${options.t(uiKeys.queue.title)}</h1>
-          <div class="queue-overview" aria-label="${options.t(uiKeys.queue.ariaOverview)}">
-            <div class="queue-overview-item"><span>${options.t(uiKeys.queue.waiting)}</span><strong id="queue-waiting-count">${waitingCount}</strong></div>
-            <div class="queue-overview-item"><span>${options.t(uiKeys.queue.eta)}</span><strong id="queue-eta">${options.queueEstimateText(remainingSeconds)}</strong><small id="queue-eta-note">${remainingSeconds == null ? options.t(uiKeys.queue.etaNoteAfterFirst) : options.t(uiKeys.queue.etaNoteCurrentProgress)}</small></div>
+        <div class="queue-heading-line" data-queue-header-tone="${headerTone}">
+          <div class="queue-title-group">
+            <h1 id="queue-title">${options.t(uiKeys.queue.title)}</h1>
+            <span class="model-badge queue-task-count-badge" id="queue-active-count" data-queue-state="${headerTone}" aria-live="polite">${options.t(uiKeys.queue.taskCount, { count: activeTasks.length })}</span>
+          </div>
+          <span class="queue-heading-divider" aria-hidden="true"></span>
+          <div class="queue-runtime-status" aria-live="polite">
+            <span id="queue-comfy-status" class="queue-runtime-badge" data-status="${comfyUi.tone}" title="${comfyUi.label}">${comfyUi.shortLabel}</span>
+          </div>
+          <div id="queue-run-summary" class="queue-run-summary" aria-label="${options.t(uiKeys.queue.ariaOverview)}" ${showRunSummary ? "" : "hidden"}>
+            <span class="queue-run-metric queue-run-elapsed"><span id="queue-runtime-elapsed">${showRunSummary ? elapsedText(state.queueStartedAt, options.t) : ""}</span></span>
+            <span class="queue-run-metric" title="${remainingSeconds == null ? options.t(uiKeys.queue.etaNoteAfterFirst) : options.t(uiKeys.queue.etaNoteCurrentProgress)}"><span>${options.t(uiKeys.queue.etaShort)}</span><strong id="queue-eta">${options.queueEstimateText(remainingSeconds)}</strong></span>
           </div>
         </div>
-        <p>${options.t(uiKeys.queue.summary, { activeCount: activeTasks.length, attentionCount: attentionTasks.length, status: queueStatus })}</p>
       </div>
-      <div class="button-row">
-        <label class="ios-switch-field queue-preview-toggle" title="${options.t(uiKeys.queue.h3LivePreviewTip)}">
-          <span>${options.t(uiKeys.queue.h3LivePreview)}</span>
+      <div class="button-row queue-heading-actions">
+        <label class="ios-switch-field queue-preview-toggle" title="${options.t(uiKeys.queue.livePreviewTip)}">
+          <span>${options.t(uiKeys.queue.livePreview)}</span>
           <input id="h3-live-preview" type="checkbox" ${state.settings.h3LivePreview ? "checked" : ""}>
           <span class="ios-switch" aria-hidden="true"></span>
         </label>
-        ${running ? `<span class="queue-mode">${state.queueRunning ? options.t(uiKeys.queue.automaticContinue) : options.t(uiKeys.queue.pauseAfterCurrent)}</span>` : `<button class="primary button-with-icon" id="start-queue" ${state.queue.some((task) => task.status === "waiting") ? "" : "disabled"}>${options.icon("play")}${options.t(uiKeys.queue.start)}</button>`}
+        <button class="${state.queueRunning ? "secondary" : "primary"} button-with-icon queue-primary-action" id="queue-primary-action" data-queue-primary-mode="${primaryMode}" title="${primaryTitle}" ${primaryDisabled ? "disabled" : ""}>${options.icon(state.queueRunning ? "pause" : "play")}<span id="queue-primary-label">${primaryLabel}</span></button>
       </div>
     </section>
-    <section class="performance-grid" aria-label="${options.t(uiKeys.queue.performance)}">
+    <section class="performance-grid queue-performance-grid" aria-label="${options.t(uiKeys.queue.performance)}">
       ${options.performanceCard(options.t(uiKeys.queue.cpu), "metric-cpu", metrics?.cpuPercent, "%")}
       ${options.performanceCard(options.t(uiKeys.queue.systemMemory), "metric-memory", metrics && metrics.memoryTotalBytes > 0 ? metrics.memoryUsedBytes / metrics.memoryTotalBytes * 100 : null, "%", metrics && metrics.memoryTotalBytes > 0 ? `${formatBytes(metrics.memoryUsedBytes)} / ${formatBytes(metrics.memoryTotalBytes)}` : "")}
       ${options.performanceCard(options.t(uiKeys.queue.gpu), "metric-gpu", metrics?.gpuPercent, "%", metrics?.gpuTemperature != null ? `${metrics.gpuTemperature}°C` : "")}

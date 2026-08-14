@@ -134,7 +134,10 @@
 .detected-path { padding: 16px; background: rgba(78,126,204,.08); }
 .flash {
   z-index: 220;
-  top: 86px;
+  /* Keep global notices in the unused center of the sticky topbar.  The
+     notice is still mounted independently and updated in place, so this is
+     intentionally a layout-only change: no page render or focus reset. */
+  top: 10px;
   padding: 12px 16px;
   border-color: rgba(116,165,244,.45);
   color: #e8f1ff;
@@ -143,10 +146,13 @@
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
   transform: translate(-50%, -8px);
   transition: opacity .16s ease, transform .16s ease, visibility 0s linear .16s;
 }
-.flash.visible { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition-delay: 0s; }
+.flash.visible { opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, 0); transition-delay: 0s; }
 .flash::before { display: inline-grid; width: 18px; height: 18px; margin-right: 9px; place-items: center; border-radius: 50%; font-size: 12px; font-weight: 800; vertical-align: -1px; content: "i"; }
 .flash-info { border-color: rgba(116,165,244,.5); color: #e8f1ff; background: rgba(29,49,76,.97); }
 .flash-info::before { color: #0c1625; background: #83b6ff; }

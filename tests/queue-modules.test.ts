@@ -3,6 +3,7 @@ import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { persistVideoHistoryResult } from "../electron/queue-history";
 import { QueueWorkerController } from "../electron/queue-worker";
+import { queueLayoutSignature } from "../src/renderer/pages/queue/helpers";
 
 describe("queue history persistence", () => {
   it("atomically removes a completed generation task and records its history snapshot", () => {
@@ -71,5 +72,36 @@ describe("queue worker lifecycle", () => {
     await controller.runningWorker;
     expect(controller.runningWorker).toBeNull();
     expect(controller.activeController).toBeNull();
+  });
+});
+
+describe("queue renderer layout signature", () => {
+  it("ignores progress telemetry but detects task structure changes", () => {
+    const state = createDefaultState();
+    const task = queueTaskFromDraft({
+      ...createDefaultDraft(),
+      startImagePath: "C:/input/start.png",
+      workflowPath: "workflow.json"
+    }, state, {
+      now: () => new Date("2026-08-12T12:00:00.000Z"),
+      id: () => "task-signature",
+      random: () => 0.5
+    });
+    state.queue = [task];
+    const baseline = queueLayoutSignature(state);
+
+    task.progress = 42;
+    task.stage = "等待 ComfyUI";
+    task.stageStartedAt = "2026-08-12T12:00:10.000Z";
+    task.updatedAt = "2026-08-12T12:00:10.000Z";
+    task.comfyPromptId = "prompt-1";
+    expect(queueLayoutSignature(state)).toBe(baseline);
+
+    state.queueLifecycle = "starting";
+    state.queueLifecycleTaskId = task.id;
+    expect(queueLayoutSignature(state)).toBe(baseline);
+
+    task.status = "running";
+    expect(queueLayoutSignature(state)).not.toBe(baseline);
   });
 });

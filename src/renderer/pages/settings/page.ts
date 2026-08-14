@@ -21,6 +21,7 @@ import {
 } from "./fragments";
 import { settingsText } from "./copy";
 import { fieldLabelWithTip } from "../../shared/markup";
+import { customNodeStatusTone } from "../../shared/status";
 import {
   customNodeIdsForBulkAction,
   type CustomNodeInstallPhase
@@ -205,12 +206,18 @@ export function renderSettingsPage(
         : llamaCppPython?.installed
           ? s("prompt.runtimeUnknown")
           : s("prompt.runtimeMissing");
-  const llamaRuntimeClass = llamaCppPython?.ready ? "available" : "missing";
+  const llamaRuntimeClass = llamaCppPython?.nativeCrash
+    ? "missing"
+    : llamaCppPython?.ready
+    ? "available"
+    : !environmentScan || llamaCppPython?.installed
+      ? "warning"
+      : "missing";
   const gpu = environmentScan?.items.find((item) => item.id === "nvidia");
   const gpuDevices = environmentScan?.gpus ?? [];
   const gpuSummary = gpuDevices.length
     ? gpuDevices.map((device) => `${device.name} · ${options.formatBytes(device.vramTotalBytes)}`).join("；")
-    : gpu?.ok
+    : gpu?.ok || gpu?.status === "warning"
       ? gpu.detail
       : environmentScan
         ? t(uiKeys.settings.system.gpuNotDetected)
@@ -293,7 +300,7 @@ export function renderSettingsPage(
       <section class="panel settings-section">
         <div class="section-heading">
           <div><h2>${t(uiKeys.settings.system.installationTitle)}</h2><span class="muted">${t(uiKeys.settings.system.installationDescription)}</span></div>
-          ${comfyInstallations.length > 1 ? `<span class="model-availability missing">${t(uiKeys.settings.system.installationCount, { count: comfyInstallations.length })}</span>` : `<span class="model-badge">${t(comfyInstallations.length ? uiKeys.settings.system.found : uiKeys.settings.system.notFound)}</span>`}
+          ${comfyInstallations.length > 1 ? `<span class="model-availability warning">${t(uiKeys.settings.system.installationCount, { count: comfyInstallations.length })}</span>` : `<span class="model-badge">${t(comfyInstallations.length ? uiKeys.settings.system.found : uiKeys.settings.system.notFound)}</span>`}
         </div>
         <label>${t(uiKeys.settings.system.currentInstallEntry)}
           <div class="input-action"><input id="comfy-install-directory" value="${escape(effectiveComfyInstallDirectory)}" placeholder="${t(uiKeys.settings.system.directoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-comfy-install-directory">${icon("folder-open")}${t(uiKeys.settings.system.chooseDirectory)}</button></div>
@@ -468,12 +475,12 @@ export function renderSettingsPage(
       <section class="panel settings-section prompt-runtime-dependency ${llamaRuntimeClass}">
         <div class="section-heading">
           <div><h2>${s("prompt.runtimeTitle")}</h2><span class="muted">${s("prompt.runtimeDescription")}</span></div>
-          <span class="model-availability ${llamaRuntimeClass}">${icon(llamaCppPython?.ready ? "circle-check" : environmentScan ? "circle-alert" : "circle-help")} ${llamaRuntimeLabel}</span>
+          <span class="model-availability ${llamaRuntimeClass}">${icon(llamaRuntimeClass === "available" ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")} ${llamaRuntimeLabel}</span>
         </div>
         <div class="component-list">
-          <div class="component-row ${llamaCppPython?.ready ? "found" : "missing"}"><span class="component-state">${icon(llamaCppPython?.ready ? "circle-check" : "circle-alert")}</span><div><strong>llama-cpp-python</strong><code>${escape(llamaCppPython?.packageVersion ? `v${llamaCppPython.packageVersion}` : llamaCppPython?.detail || s("prompt.runtimeWaiting"))}</code></div></div>
-          <div class="component-row ${llamaCppPython?.pythonPath ? "found" : "missing"}"><span class="component-state">${icon(llamaCppPython?.pythonPath ? "circle-check" : "circle-alert")}</span><div><strong>${s("prompt.runtimePython")}</strong><code>${escape(llamaCppPython?.pythonPath || s("prompt.runtimeWaiting"))}${llamaCppPython?.pythonVersion ? ` · Python ${escape(llamaCppPython.pythonVersion)}` : ""}</code></div></div>
-          <div class="component-row ${llamaCppPython?.cudaVersion ? "found" : "missing"}"><span class="component-state">${icon(llamaCppPython?.cudaVersion ? "circle-check" : "circle-alert")}</span><div><strong>${s("prompt.runtimeTorch")}</strong><code>${escape([llamaCppPython?.torchVersion, llamaCppPython?.cudaVersion ? `CUDA ${llamaCppPython.cudaVersion}` : ""].filter(Boolean).join(" · ") || s("prompt.runtimeWaiting"))}</code></div></div>
+          <div class="component-row ${llamaCppPython?.ready ? "found" : llamaRuntimeClass === "warning" ? "warning" : "missing"}"><span class="component-state">${icon(llamaCppPython?.ready ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>llama-cpp-python</strong><code>${escape(llamaCppPython?.nativeCrash ? llamaCppPython.detail : llamaCppPython?.packageVersion ? `v${llamaCppPython.packageVersion}` : llamaCppPython?.detail || s("prompt.runtimeWaiting"))}</code></div></div>
+          <div class="component-row ${llamaCppPython?.pythonPath ? "found" : llamaRuntimeClass === "warning" ? "warning" : "missing"}"><span class="component-state">${icon(llamaCppPython?.pythonPath ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${s("prompt.runtimePython")}</strong><code>${escape(llamaCppPython?.pythonPath || s("prompt.runtimeWaiting"))}${llamaCppPython?.pythonVersion ? ` · Python ${escape(llamaCppPython.pythonVersion)}` : ""}</code></div></div>
+          <div class="component-row ${llamaCppPython?.cudaVersion ? "found" : llamaRuntimeClass === "warning" ? "warning" : "missing"}"><span class="component-state">${icon(llamaCppPython?.cudaVersion ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${s("prompt.runtimeTorch")}</strong><code>${escape([llamaCppPython?.torchVersion, llamaCppPython?.cudaVersion ? `CUDA ${llamaCppPython.cudaVersion}` : ""].filter(Boolean).join(" · ") || s("prompt.runtimeWaiting"))}</code></div></div>
         </div>
         ${environmentScan && !promptWriterNode?.loaded ? `<p class="muted proxy-hint">${s("prompt.runtimeNodeMissing")}</p>` : ""}
         <div class="button-row">
@@ -517,11 +524,13 @@ export function renderSettingsPage(
     (node) => node.loaded
   ).length ?? 0;
   const h3CoreNodes = environmentScan?.comfyCompatibility.coreNodes ?? [];
-  const h3CoreKnown = environmentScan?.comfyCompatibility.checkedFrom !== "";
+  const h3CoreKnown = Boolean(environmentScan && environmentScan.comfyCompatibility.checkedFrom !== "");
   const h3CoreReady = environmentScan?.comfyCompatibility.h3CoreSupported ?? false;
   const promptCoreNodes = environmentScan?.comfyCompatibility.promptCoreNodes ?? [];
-  const promptCoreKnown = environmentScan?.comfyCompatibility.checkedFrom !== "";
+  const promptCoreKnown = Boolean(environmentScan && environmentScan.comfyCompatibility.checkedFrom !== "");
   const promptCoreReady = promptCoreNodes.length > 0 && promptCoreNodes.every((node) => node.available);
+  const h3CoreTone = h3CoreReady ? "available" : h3CoreKnown ? "missing" : "warning";
+  const promptCoreTone = promptCoreReady ? "available" : promptCoreKnown ? "missing" : "warning";
   const workflowDependencies = environmentScan?.workflowDependencies ?? [];
   const nodeDependencyAvailable = nodeInstalled + (h3CoreReady ? 1 : 0) +
     (promptCoreReady ? 1 : 0) +
@@ -541,31 +550,37 @@ export function renderSettingsPage(
         <div class="scan-result">${s("nodes.installNote")}</div>
       </section>
       <div class="model-profile-list">
-        <article class="panel custom-node-card ${h3CoreReady ? "available" : "missing"}">
+        <article class="panel custom-node-card ${h3CoreTone}">
           <div class="custom-node-copy">
             <div class="model-title"><h3>${s("nodes.h3Title")}</h3><span class="model-badge">${s("nodes.h3Badge")}</span></div>
             <p>${s("nodes.h3Description")}</p>
             <div class="component-list">
-              ${h3CoreNodes.map((node) => `<div class="component-row ${node.available ? "found" : "missing"}"><span class="component-state">${icon(node.available ? "circle-check" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`).join("") || `<div class="component-row missing"><span class="component-state">${icon("circle-alert")}</span><div><strong>${s("nodes.waitingCore")}</strong></div></div>`}
+              ${h3CoreNodes.map((node) => {
+                const tone = node.available ? "found" : h3CoreKnown ? "missing" : "warning";
+                return `<div class="component-row ${tone}"><span class="component-state">${icon(node.available ? "circle-check" : tone === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`;
+              }).join("") || `<div class="component-row warning"><span class="component-state">${icon("circle-help")}</span><div><strong>${s("nodes.waitingCore")}</strong></div></div>`}
             </div>
             <span class="muted">${s("nodes.minimumVersion")} <code>v0.31.0</code> · ${s("nodes.coreLog")} <code>${escape(environmentScan?.comfyCompatibility.h3MinimumRevision ?? "")}</code></span>
             ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>${s("nodes.coreLog")}</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
           </div>
           <div class="custom-node-actions">
-            <span class="model-availability ${h3CoreReady ? "available" : "missing"}">${h3CoreReady ? `${icon("circle-check")} ${s("nodes.loaded")}` : h3CoreKnown ? `${icon("circle-alert")} ${s("nodes.coreMissing")}` : `${icon("circle-help")} ${s("nodes.notChecked")}`}</span>
+            <span class="model-availability ${h3CoreTone}">${h3CoreReady ? `${icon("circle-check")} ${s("nodes.loaded")}` : h3CoreKnown ? `${icon("circle-alert")} ${s("nodes.coreMissing")}` : `${icon("circle-help")} ${s("nodes.notChecked")}`}</span>
             ${h3CoreReady ? "" : `<button class="primary button-with-icon" id="repair-h3-core" ${viewModel.coreDependencyRepairing ? "disabled" : ""}>${icon(viewModel.coreDependencyRepairing ? "refresh-cw" : "shield-check")}${viewModel.coreDependencyRepairing ? s("nodes.processing") : h3CoreKnown ? s("nodes.repairUpdate") : s("nodes.startCheck")}</button>`}
           </div>
         </article>
-        <article class="panel custom-node-card ${promptCoreReady ? "available" : "missing"}">
+        <article class="panel custom-node-card ${promptCoreTone}">
           <div class="custom-node-copy">
             <div class="model-title"><h3>${s("nodes.qwenTitle")}</h3><span class="model-badge">${s("nodes.qwenBadge")}</span></div>
             <p>${s("nodes.qwenDescription")}</p>
             <div class="component-list">
-              ${promptCoreNodes.map((node) => `<div class="component-row ${node.available ? "found" : "missing"}"><span class="component-state">${icon(node.available ? "circle-check" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`).join("") || `<div class="component-row missing"><span class="component-state">${icon("circle-alert")}</span><div><strong>${s("nodes.waitingQwen")}</strong></div></div>`}
+              ${promptCoreNodes.map((node) => {
+                const tone = node.available ? "found" : promptCoreKnown ? "missing" : "warning";
+                return `<div class="component-row ${tone}"><span class="component-state">${icon(node.available ? "circle-check" : tone === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`;
+              }).join("") || `<div class="component-row warning"><span class="component-state">${icon("circle-help")}</span><div><strong>${s("nodes.waitingQwen")}</strong></div></div>`}
             </div>
           </div>
           <div class="custom-node-actions">
-            <span class="model-availability ${promptCoreReady ? "available" : "missing"}">${promptCoreReady ? `${icon("circle-check")} ${s("nodes.loaded")}` : promptCoreKnown ? `${icon("circle-alert")} ${s("nodes.coreMissing")}` : `${icon("circle-help")} ${s("nodes.notChecked")}`}</span>
+            <span class="model-availability ${promptCoreTone}">${promptCoreReady ? `${icon("circle-check")} ${s("nodes.loaded")}` : promptCoreKnown ? `${icon("circle-alert")} ${s("nodes.coreMissing")}` : `${icon("circle-help")} ${s("nodes.notChecked")}`}</span>
           </div>
         </article>
         ${workflowDependencies.map((workflow) => `
@@ -594,7 +609,7 @@ export function renderSettingsPage(
                 ? s("nodes.finalizing")
                 : "";
           return `
-          <article class="panel custom-node-card ${node.loaded ? "available" : "missing"}">
+          <article class="panel custom-node-card ${customNodeStatusTone(node, Boolean(installStatus))}">
             <div class="custom-node-copy">
               <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.bulkInstall === false ? ` · ${s("nodes.manualInstall")}` : ""}${node.version ? ` · v${escape(node.version)}` : ""}</span></div>
               <p>${escape(node.purpose)}</p>
@@ -606,7 +621,7 @@ export function renderSettingsPage(
               ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`custom-node:${node.id}`)}">${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${installStatus ? "missing" : node.loaded ? node.updateAvailable ? "warning" : "available" : "missing"}">${installStatus ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}` : node.updateAvailable && node.loaded ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}` : node.loaded ? `${icon("circle-check")} ${node.runtimeVerified ? s("nodes.runtimeVerified") : s("nodes.fileCheckPassed")}` : node.installed ? `${icon("circle-alert")} ${s("nodes.installedRepair")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
+              <span class="model-availability ${customNodeStatusTone(node, Boolean(installStatus))}">${installStatus ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}` : node.updateAvailable && node.loaded ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}` : node.loaded ? `${icon(node.runtimeVerified ? "circle-check" : "circle-help")} ${node.runtimeVerified ? s("nodes.runtimeVerified") : s("nodes.fileCheckPassed")}` : node.installed ? `${icon("circle-alert")} ${s("nodes.installedRepair")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
               <button class="${node.updateAvailable || !node.installed || !node.loaded ? "primary" : "secondary"} button-with-icon" data-install-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : node.installed ? "refresh-cw" : "download")}${installStatus || (node.updateAvailable ? s("nodes.updateRestart") : node.installed && !node.loaded ? s("nodes.updateRecheck") : node.installed ? s("nodes.checkUpdate") : s("nodes.installRestart"))}</button>
             </div>
           </article>`;
@@ -619,6 +634,11 @@ export function renderSettingsPage(
     </section>`;
 
   const attention = environmentScan?.attentionAcceleration;
+  const attentionTone = attention?.ready
+    ? "available"
+    : attention?.supported === false
+      ? "missing"
+      : "warning";
   const pythonSourceLabels: Record<string, string> = {
     selected: s("accel.sourceSelected"),
     "comfy-venv": s("accel.sourceComfyVenv"),
@@ -643,10 +663,10 @@ export function renderSettingsPage(
     : s("accel.autoDetect");
   const accelerationPanel = `
     <section class="settings-panel acceleration-panel">
-      <section class="panel settings-section acceleration-section acceleration-strategy-panel ${attention?.ready ? "available" : "missing"}">
+      <section class="panel settings-section acceleration-section acceleration-strategy-panel ${attentionTone}">
         <div class="section-heading">
           <div><h2>${s("accel.strategyTitle")}</h2><span class="muted">${s("accel.strategyDescription")}</span></div>
-          <span class="model-availability ${attention?.ready ? "available" : "missing"}">${attention?.ready ? `${icon("circle-check")} ${s("accel.ready")}` : attention?.supported ? `${icon("circle-alert")} ${s("accel.pending")}` : `${icon("circle-alert")} ${s("accel.unsupported")}`}</span>
+          <span class="model-availability ${attentionTone}">${attention?.ready ? `${icon("circle-check")} ${s("accel.ready")}` : attention?.supported === false ? `${icon("circle-alert")} ${s("accel.unsupported")}` : `${icon("circle-help")} ${s("accel.pending")}`}</span>
         </div>
         <div class="acceleration-strategy-grid">
           <label class="acceleration-mode-field">${fieldLabelWithTip(s("accel.mode"), s("accel.modeTip"))}
@@ -657,7 +677,7 @@ export function renderSettingsPage(
             </select>
           </label>
           <div class="acceleration-summary">
-            <span class="acceleration-summary-icon">${icon(attention?.ready ? "circle-check" : "circle-alert")}</span>
+            <span class="acceleration-summary-icon">${icon(attention?.ready ? "circle-check" : attentionTone === "warning" ? "circle-help" : "circle-alert")}</span>
             <div><strong>${escape(attention?.detail ?? s("accel.waitingScan"))}</strong><span class="acceleration-fallback-tip">${fieldLabelWithTip(s("accel.fallbackLabel"), s("accel.fallback"))}</span></div>
           </div>
         </div>
@@ -677,10 +697,10 @@ export function renderSettingsPage(
           </div>
         </div>
       </section>
-      <section class="panel settings-section acceleration-section acceleration-components-panel">
+      <section class="panel settings-section acceleration-section acceleration-components-panel ${attentionTone}">
         <div class="section-heading">
           <div><h2>${s("accel.componentsTitle")}</h2><span class="muted">${s("accel.componentsDescription")}</span></div>
-          <span class="model-availability ${attention?.ready ? "available" : "missing"}">${attention?.ready ? `${icon("circle-check")} ${s("accel.ready")}` : s("accel.pending")}</span>
+          <span class="model-availability ${attentionTone}">${attention?.ready ? `${icon("circle-check")} ${s("accel.ready")}` : attentionTone === "missing" ? `${icon("circle-alert")} ${s("accel.unsupported")}` : `${icon("circle-help")} ${s("accel.pending")}`}</span>
         </div>
         <div class="attention-runtime-grid">
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimePython"), s("accel.runtimePythonTip"))}</div><strong class="runtime-value">${escape(attention?.pythonVersion || s("accel.notFound"))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>

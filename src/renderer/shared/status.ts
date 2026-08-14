@@ -4,11 +4,52 @@ import {
 } from "../../core/prompt-models";
 import { createTranslator, type Translate } from "../../core/i18n";
 import { uiKeys } from "../../core/i18n-keys";
-import type { EnvironmentScanResult, ModelScanProfile, Settings } from "../../types";
+import type {
+  EnvironmentItem,
+  EnvironmentScanResult,
+  CustomNodeStatus,
+  ModelScanProfile,
+  Settings
+} from "../../types";
+
+export type SettingsStatusTone = "available" | "warning" | "missing";
 
 export interface PromptModelStatus {
   ready: boolean;
   detail: string;
+}
+
+/**
+ * Settings uses a deliberately small status vocabulary.  A file scan can be
+ * complete while runtime validation is still waiting for ComfyUI, so that
+ * state must not be rendered as an error.
+ */
+export function modelProfileStatusTone(
+  profile: ModelScanProfile,
+  workflowReady: boolean
+): SettingsStatusTone {
+  if (!profile.available) return "missing";
+  if (profile.missingCustomNodeIds?.length) return "missing";
+  if (profile.runtimeVerified === true && profile.runtimeReady === false) return "missing";
+  if (profile.integrated === false || profile.runtimeVerified === false) return "warning";
+  return workflowReady ? "available" : "warning";
+}
+
+export function customNodeStatusTone(
+  node: CustomNodeStatus,
+  installPending = false
+): SettingsStatusTone {
+  if (installPending) return "warning";
+  if (node.loadError) return "missing";
+  if (!node.installed) return "missing";
+  if (!node.loaded || !node.runtimeVerified || node.updateAvailable) return "warning";
+  return "available";
+}
+
+export function environmentItemStatusTone(item: EnvironmentItem): SettingsStatusTone {
+  if (item.status) return item.status;
+  if (item.ok) return "available";
+  return item.optional ? "warning" : "missing";
 }
 
 export function promptModelStatus(

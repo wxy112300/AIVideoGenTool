@@ -9,6 +9,7 @@ import type {
   ImageEditDraft,
   ImageGenerationQueueTask,
   ImageGenerationRun,
+  QueueLifecycle,
   QueueTask
 } from "../src/types.js";
 import { createDefaultState } from "../src/core/defaults.js";
@@ -127,6 +128,22 @@ const taskStatuses = new Set([
   "failed",
   "cancelled"
 ]);
+
+const queueLifecycles = new Set<QueueLifecycle>([
+  "idle",
+  "starting",
+  "running",
+  "pausing",
+  "cancelling",
+  "cleaning",
+  "error"
+]);
+
+function normalizedQueueLifecycle(value: unknown): QueueLifecycle {
+  return queueLifecycles.has(String(value) as QueueLifecycle)
+    ? value as QueueLifecycle
+    : "idle";
+}
 
 function normalizedTaskStatus(value: unknown): ImageGenerationRun["status"] {
   return taskStatuses.has(String(value))
@@ -344,6 +361,9 @@ export class JsonStore {
             }
           : {})
       });
+      const savedQueueLifecycle = normalizedQueueLifecycle(
+        (saved as { queueLifecycle?: unknown }).queueLifecycle
+      );
       this.state = {
         ...defaultState,
         ...saved,
@@ -364,12 +384,23 @@ export class JsonStore {
             : defaultState.settings.h3LivePreview
         )),
         history: (saved.history ?? []).map(migrateHistoryAsset),
-        imageHistory
+        imageHistory,
+        // A queue lifecycle is process-local. Never restore a stale running or
+        // cleanup state after an app restart; interrupted tasks are migrated
+        // separately to a safe waiting state above.
+        queueLifecycle: "idle",
+        queueLifecycleTaskId: undefined,
+        // Queue timing is process-local. Never restore an old session's
+        // timestamp after the app has been restarted.
+        queueStartedAt: undefined
       };
       const savedUiLocale = (saved.settings as { uiLocale?: unknown } | undefined)?.uiLocale;
       const normalizedUiLocale = normalizeUiLocale(savedUiLocale);
       this.state.settings.uiLocale = normalizedUiLocale;
       let needsPersist = saved.queueRunning === true ||
+        savedQueueLifecycle !== "idle" ||
+        typeof saved.queueStartedAt === "string" ||
+        typeof (saved as { queueLifecycle?: unknown }).queueLifecycle !== "string" ||
         savedSchemaVersion < 10 ||
         !hasIndependentExtensionPromptState ||
         savedUiLocale !== normalizedUiLocale;

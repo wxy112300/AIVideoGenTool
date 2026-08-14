@@ -1,4 +1,4 @@
-import type { AppState, HistoryFile, ImageGenerationQueueTask, QueueTask, Settings, TaskPerformanceStats } from "../src/types.js";
+import type { AppState, HistoryFile, ImageGenerationQueueTask, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats } from "../src/types.js";
 import { isImageGenerationQueueTask } from "../src/core/queue.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
 import {
@@ -35,6 +35,7 @@ export interface QueueExecutorDependencies {
   worker: QueueWorkerController;
   sendState(state: AppState): void;
   sendPreview(payload: { taskId: string; dataUrl: string }): void;
+  setQueueLifecycle(lifecycle: QueueLifecycle, taskId?: string): Promise<AppState>;
   updateTask(taskId: string, patch: Partial<QueueTask>): Promise<AppState>;
   ensureComfyUiReady(taskId: string): Promise<void>;
   resolveTaskOutputDirectory(): Promise<string>;
@@ -54,6 +55,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     worker: queueWorkerController,
     sendState,
     sendPreview,
+    setQueueLifecycle,
     updateTask,
     ensureComfyUiReady,
     resolveTaskOutputDirectory,
@@ -211,6 +213,14 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     while (store.get().queueRunning) {
       const task = store.get().queue.find((item) => item.status === "waiting");
       if (!task) break;
+      await setQueueLifecycle("running", task.id);
+      // Pause/cancel can arrive between selecting the next task and this
+      // lifecycle update. Re-check the run flag before starting any model.
+      if (!store.get().queueRunning) break;
+      const stillWaiting = store.get().queue.some(
+        (candidate) => candidate.id === task.id && candidate.status === "waiting"
+      );
+      if (!stillWaiting) continue;
       if (isImageGenerationQueueTask(task)) {
         await executeImageGenerationQueueTask(task);
         continue;
@@ -241,6 +251,32 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       let performanceLogTimer: ReturnType<typeof setInterval> | undefined;
       let performanceLogInFlight = false;
       const performanceWarnings = new Set<string>();
+      let h3LivePreviewActive = false;
+      let h3LivePreviewFrames = 0;
+      let h3PreviewFirstFrameDelaySeconds: number | undefined;
+      let h3PreviewStartedAt = 0;
+      let h3PreviewOutcomeLogged = false;
+      const logH3PreviewOutcome = (outcome: "completed" | "failed" | "cancelled"): void => {
+        if (!h3LivePreviewActive || h3PreviewOutcomeLogged) return;
+        h3PreviewOutcomeLogged = true;
+        const meta = {
+          taskId: task.id,
+          modelId: task.modelId,
+          outcome,
+          frames: h3LivePreviewFrames,
+          firstFrameDelaySeconds: h3PreviewFirstFrameDelaySeconds ?? null
+        };
+        if (h3LivePreviewFrames === 0) {
+          logger.warn(
+            "comfy",
+            "h3-live-preview-no-frame",
+            "H3 TAE live preview was enabled, but no preview frame reached the app",
+            meta
+          );
+        } else {
+          logger.info("comfy", "h3-live-preview-summary", "H3 TAE live preview summary", meta);
+        }
+      };
       try {
         if (task.taskType === "generation") {
           const safety = generationSafetyForTask(task, store.get().settings.uiLocale);
@@ -397,6 +433,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           activeController.signal
         );
         const { promptId, clientId, nodeTypes } = submitted;
+        h3LivePreviewActive = submitted.h3LivePreviewActive;
+        if (h3LivePreviewActive) h3PreviewStartedAt = Date.now();
         if (submitted.h3LivePreviewRequested && !submitted.h3LivePreviewActive) {
           logger.warn(
             "comfy",
@@ -455,13 +493,23 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               });
             }
           },
-          (dataUrl) =>
+          (dataUrl, source) => {
+            if (source === "h3-tae") {
+              h3LivePreviewFrames += 1;
+              if (h3LivePreviewFrames === 1) {
+                h3PreviewFirstFrameDelaySeconds = h3PreviewStartedAt > 0
+                  ? Math.round((Date.now() - h3PreviewStartedAt) / 1000)
+                  : undefined;
+              }
+            }
             sendPreview({
               taskId: task.id,
               dataUrl
-            }),
+            });
+          },
           () => Date.now() - lastGpuComputeAt < 10_000
         );
+        logH3PreviewOutcome("completed");
         logger.info("queue", "task-output-ready", "ComfyUI task completed", {
           taskId: task.id,
           taskType: task.taskType,
@@ -544,6 +592,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       } catch (error) {
         const aborted = activeController.signal.aborted;
         const stalled = error instanceof TaskStalledError;
+        logH3PreviewOutcome(aborted ? "cancelled" : "failed");
         if (!taskPerformanceStats && taskPerformanceMonitor) {
           taskPerformanceStats = taskPerformanceMonitor.stop();
           taskPerformanceMonitor = undefined;
@@ -571,6 +620,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           stalled,
           performanceStats: taskPerformanceStats
         });
+        const recovered = store.get();
+        if (!recovered.queueRunning && recovered.queueLifecycle === "running") {
+          await setQueueLifecycle("error", task.id);
+        }
       } finally {
         const finalStage = taskStageStartedAt.get(task.id);
         if (finalStage) {
@@ -591,6 +644,15 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     }
     const next = await store.update((state) => {
       state.queueRunning = false;
+      state.queueStartedAt = undefined;
+      if (
+        state.queueLifecycle !== "cancelling" &&
+        state.queueLifecycle !== "cleaning" &&
+        state.queueLifecycle !== "error"
+      ) {
+        state.queueLifecycle = "idle";
+        state.queueLifecycleTaskId = undefined;
+      }
     });
     sendState(next);
   }

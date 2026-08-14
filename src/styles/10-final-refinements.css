@@ -15,7 +15,17 @@ body {
 .settings-content > .settings-panel { gap: 12px; }
 .settings-content .settings-section { padding: 18px; border-radius: 12px; box-shadow: 0 8px 22px rgba(0, 0, 0, .11); }
 .settings-content .prompt-runtime-dependency.available { border-color: color-mix(in srgb, var(--success) 28%, var(--border)); }
+.settings-content .prompt-runtime-dependency.warning { border-color: color-mix(in srgb, var(--warning) 32%, var(--border)); }
 .settings-content .prompt-runtime-dependency.missing { border-color: color-mix(in srgb, var(--danger) 24%, var(--border)); }
+.settings-content .comfy-compatibility.available,
+.settings-content .acceleration-strategy-panel.available,
+.settings-content .acceleration-components-panel.available { border-color: color-mix(in srgb, var(--success) 28%, var(--border)); }
+.settings-content .comfy-compatibility.warning,
+.settings-content .acceleration-strategy-panel.warning,
+.settings-content .acceleration-components-panel.warning { border-color: color-mix(in srgb, var(--warning) 32%, var(--border)); }
+.settings-content .comfy-compatibility.missing,
+.settings-content .acceleration-strategy-panel.missing,
+.settings-content .acceleration-components-panel.missing { border-color: color-mix(in srgb, var(--danger) 24%, var(--border)); }
 .settings-content .model-profile-list { grid-template-columns: 1fr; gap: 12px; }
 .settings-content .model-profile,
 .settings-content .custom-node-card,
@@ -1009,4 +1019,403 @@ body.image-markup-open {
 @media (max-width: 720px) {
   .asset-library-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .asset-library-settings-row { align-items: stretch; flex-direction: column; }
+}
+
+/* Queue P1: keep the command surface visible without letting telemetry
+   overpower the task list. The topbar already owns the first sticky layer. */
+.queue-page-heading {
+  position: sticky;
+  top: 64px;
+  z-index: 8;
+  min-height: 0;
+  margin-bottom: 14px;
+  padding: 12px 2px;
+  border-bottom: 1px solid rgba(92, 111, 138, .48);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  box-shadow: 0 10px 24px rgba(4, 8, 14, .16);
+  backdrop-filter: blur(16px);
+}
+
+.queue-page-heading-main { flex: 1 1 auto; }
+.queue-heading-line {
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.queue-title-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.queue-title-group h1 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -.02em;
+}
+
+.queue-title-group .model-badge {
+  white-space: nowrap;
+}
+
+.queue-heading-line > .queue-runtime-status {
+  flex: 0 1 auto;
+}
+
+.queue-heading-line > .queue-overview {
+  margin-left: auto;
+}
+
+.queue-overview-item {
+  gap: 4px;
+  padding-left: 10px;
+}
+
+.queue-overview-item span {
+  font-size: 10px;
+  letter-spacing: .02em;
+}
+
+.queue-overview-item strong {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.queue-runtime-badge {
+  min-height: 24px;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 10px;
+}
+
+.queue-runtime-badge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .9;
+}
+
+.queue-heading-actions {
+  flex: 0 0 auto;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.queue-heading-actions .queue-preview-toggle {
+  min-width: auto;
+  padding-inline: 7px;
+}
+
+.queue-primary-action {
+  min-width: 116px;
+  justify-content: center;
+}
+
+.queue-primary-action[data-queue-primary-mode="end"] {
+  border-color: rgba(244, 189, 106, .42);
+  color: #f1cb89;
+  background: rgba(150, 101, 27, .14);
+}
+
+.queue-performance-grid {
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.queue-performance-grid .performance-card {
+  padding: 9px 12px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.queue-performance-grid .performance-card > span {
+  font-size: 10px;
+  letter-spacing: .04em;
+}
+
+.queue-performance-grid .performance-card strong {
+  margin-top: 2px;
+  font-size: 17px;
+}
+
+.queue-performance-grid .performance-card small {
+  min-height: 13px;
+  margin-top: 1px;
+  font-size: 9px;
+}
+
+.queue-performance-grid .metric-bar {
+  height: 3px;
+  margin-top: 6px;
+}
+
+.live-preview-live-dot,
+.live-preview-spinner {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  left: 10px;
+  display: block;
+}
+
+.live-preview-live-dot {
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(10, 27, 20, .75);
+  border-radius: 50%;
+  background: #6fe6a7;
+  box-shadow: 0 0 0 3px rgba(111, 230, 167, .18), 0 0 14px rgba(111, 230, 167, .75);
+}
+
+.live-preview-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(138, 180, 255, .28);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: queue-live-preview-spin .8s linear infinite;
+}
+
+@keyframes queue-live-preview-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 900px) {
+  .queue-heading-line > .queue-overview { margin-left: 0; }
+  .queue-page-heading { align-items: flex-start; }
+  .queue-heading-actions { align-self: center; }
+}
+
+/* Queue P2: keep task content readable while making actions compact and direct. */
+.task-card:not(.task-card-with-preview):not(.expanded) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(176px, 260px);
+  align-items: center;
+}
+
+.queue-task-actions {
+  min-width: 0;
+  width: 260px;
+  max-width: 100%;
+  flex: 0 0 260px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  align-content: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.task-card-with-preview .queue-task-actions {
+  width: 260px;
+  max-width: 260px;
+}
+
+.queue-reorder-controls {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.queue-reorder-controls .icon-button {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 6px;
+}
+
+.queue-task-actions .queue-action-primary {
+  min-width: 0;
+  min-height: 34px;
+  width: 106px;
+  max-width: 106px;
+  flex: 0 1 106px;
+  overflow: hidden;
+  padding: 7px 9px;
+}
+
+.task-card.failed .queue-task-actions .queue-action-primary,
+.task-card.cancelled .queue-task-actions .queue-action-primary {
+  width: auto;
+  max-width: none;
+  flex: 1 1 0;
+}
+
+.queue-task-actions .queue-action-primary .queue-action-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-task-actions .queue-action-quiet {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  flex: 0 0 34px;
+  padding-inline: 8px;
+}
+
+.queue-task-actions .queue-action-quiet .queue-action-label {
+  display: none;
+}
+
+.queue-task-actions .queue-action-reset {
+  border-color: rgba(244, 189, 106, .42);
+  color: #f1cb89;
+  background: rgba(150, 101, 27, .12);
+}
+
+.queue-task-actions button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid color-mix(in srgb, var(--primary) 82%, white);
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .task-card:not(.task-card-with-preview):not(.expanded) {
+    grid-template-columns: 1fr;
+  }
+
+  .task-card:not(.task-card-with-preview):not(.expanded) .queue-task-actions,
+  .task-card-with-preview .queue-task-actions {
+    width: 100%;
+    max-width: none;
+    flex-basis: auto;
+    justify-content: flex-start;
+  }
+}
+
+/* Queue header: title, service state, and runtime summary share one baseline. */
+.queue-heading-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.queue-title-group {
+  gap: 8px;
+}
+
+.queue-task-count-badge {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-heading-divider {
+  width: 1px;
+  height: 24px;
+  flex: 0 0 1px;
+  background: rgba(92, 111, 138, .52);
+}
+
+.queue-heading-line > .queue-runtime-status {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.queue-runtime-status .queue-runtime-badge {
+  min-height: 22px;
+  padding: 2px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-run-summary {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-left: auto;
+  padding-left: 12px;
+  border-left: 1px solid rgba(92, 111, 138, .52);
+}
+
+.queue-run-summary[hidden] {
+  display: none;
+}
+
+.queue-run-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: #8f99a8;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.queue-run-metric strong,
+.queue-run-elapsed > span {
+  color: #e6edf7;
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-task-count-badge[data-queue-state="idle"] {
+  border-color: rgba(112, 159, 237, .38);
+  color: #a9c9ff;
+  background: rgba(105, 157, 243, .1);
+}
+
+.queue-task-count-badge[data-queue-state="pending"] {
+  border-color: rgba(244, 189, 106, .5);
+  color: #f1cb89;
+  background: rgba(150, 101, 27, .16);
+}
+
+.queue-task-count-badge[data-queue-state="active"] {
+  border-color: rgba(242, 155, 83, .55);
+  color: #ffc184;
+  background: rgba(184, 91, 25, .18);
+}
+
+.queue-task-count-badge[data-queue-state="error"] {
+  border-color: rgba(255, 139, 114, .55);
+  color: #ffad9b;
+  background: rgba(155, 54, 44, .16);
+}
+
+.queue-runtime-badge[data-status="connected"] {
+  border-color: rgba(242, 155, 83, .5);
+  color: #ffc184;
+  background: rgba(184, 91, 25, .14);
+}
+
+.queue-runtime-badge[data-status="starting"],
+.queue-runtime-badge[data-status="ending"],
+.queue-runtime-badge[data-status="cancelling"],
+.queue-runtime-badge[data-status="cleaning"],
+.queue-runtime-badge[data-status="waiting"] {
+  border-color: rgba(244, 189, 106, .5);
+  color: #f1cb89;
+  background: rgba(150, 101, 27, .14);
+}
+
+.queue-runtime-badge[data-status="error"] {
+  border-color: rgba(255, 139, 114, .55);
+  color: #ffad9b;
+  background: rgba(155, 54, 44, .16);
+}
+
+@media (max-width: 900px) {
+  .queue-heading-line {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .queue-heading-divider {
+    height: 22px;
+  }
+
+  .queue-run-summary {
+    margin-left: 0;
+  }
 }

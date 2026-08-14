@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron";
-import type { AppState, QueueTask, Settings } from "../src/types.js";
+import type { AppState, QueueLifecycle, QueueTask, Settings } from "../src/types.js";
 import type { JsonStore } from "./store.js";
 import type { AppLogger } from "./services/app-logger.js";
 
@@ -57,12 +57,40 @@ export interface QueueControlIpcDependencies {
 
 export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void {
   const { ipc, store, logger, worker, sendState } = deps;
+  const setQueueLifecycle = async (
+    lifecycle: QueueLifecycle,
+    taskId?: string
+  ): Promise<AppState> => {
+    const next = await store.update((state) => {
+      state.queueLifecycle = lifecycle;
+      state.queueLifecycleTaskId = taskId;
+    });
+    sendState(next);
+    return next;
+  };
+
   ipc.handle("queue:start", async () => {
     if (deps.nativePromptBusy()) {
       throw new Error("当前正在生成提示词，请等待扩写完成后再开始视频任务。 ");
     }
+    const waitingTasks = store.get().queue.filter((task) => task.status === "waiting");
+    if (!waitingTasks.length) {
+      const next = await store.update((state) => {
+        state.queueRunning = false;
+        state.queueStartedAt = undefined;
+        state.queueLifecycle = "idle";
+        state.queueLifecycleTaskId = undefined;
+      });
+      sendState(next);
+      return next;
+    }
     const next = await store.update((state) => {
       state.queueRunning = true;
+      // Keep the timestamp while resuming a paused queue; a new timestamp is
+      // created only after the previous queue session has fully ended.
+      state.queueStartedAt ??= new Date().toISOString();
+      state.queueLifecycle = "starting";
+      state.queueLifecycleTaskId = undefined;
     });
     logger.info("queue", "started", "Queue processing started", {
       waitingTasks: next.queue.filter((task) => task.status === "waiting").length
@@ -75,6 +103,9 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
   ipc.handle("queue:pause", async () => {
     const next = await store.update((state) => {
       state.queueRunning = false;
+      const running = state.queue.find((task) => task.status === "running");
+      state.queueLifecycle = running ? "pausing" : "idle";
+      state.queueLifecycleTaskId = running?.id;
     });
     logger.info("queue", "paused", "Queue processing paused");
     sendState(next);
@@ -89,6 +120,8 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
       const runningWorker = worker.runningWorker;
       const next = await store.update((state) => {
         state.queueRunning = false;
+        state.queueLifecycle = "cancelling";
+        state.queueLifecycleTaskId = taskId;
         const current = state.queue.find((item) => item.id === taskId);
         if (current && current.status === "running") {
           current.status = "cancelled";
@@ -99,7 +132,25 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
       });
       sendState(next);
       worker.abort(new Error("用户取消任务"));
-      void deps.cleanupCancelledTask(taskId, settings, runningWorker);
+      void (async () => {
+        try {
+          await setQueueLifecycle("cleaning", taskId);
+          await deps.cleanupCancelledTask(taskId, settings, runningWorker);
+          const current = store.get();
+          if (
+            current.queueLifecycle === "cleaning" &&
+            current.queueLifecycleTaskId === taskId
+          ) {
+            await setQueueLifecycle("idle");
+          }
+        } catch (error) {
+          logger.error("queue", "cancel-cleanup-lifecycle-failed", "Queue cancellation lifecycle cleanup failed", {
+            taskId,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          await setQueueLifecycle("error", taskId).catch(() => undefined);
+        }
+      })();
       return next;
     }
     return deps.updateTask(taskId, {

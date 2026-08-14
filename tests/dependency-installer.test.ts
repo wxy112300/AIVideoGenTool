@@ -111,7 +111,7 @@ describe("dependency installer", () => {
     expect(findComfyRoot).not.toHaveBeenCalled();
   });
 
-  it("fails the optional Qwen3.6 node before cloning when CUDA Toolkit is unavailable", async () => {
+  it("installs the optional Qwen3.6 node with the shared prebuilt backend and no CUDA Toolkit", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-multimodal-preflight-"));
     temporaryDirectories.push(comfyRoot);
     const processCalls: string[][] = [];
@@ -126,6 +126,22 @@ describe("dependency installer", () => {
       renameWithRetry: async () => undefined,
       runLoggedProcess: async (_executable, args) => {
         processCalls.push(args);
+        if (args[0] === "clone") {
+          await fs.mkdir(args.at(-1)!, { recursive: true });
+          return "clone complete";
+        }
+        if (args[0] === "-c") {
+          const probeCount = processCalls.filter((call) => call[0] === "-c").length;
+          return JSON.stringify({
+            pythonVersion: "3.12.11",
+            packageVersion: probeCount > 1 ? "0.3.46+cu128" : "",
+            importable: probeCount > 1,
+            gpuOffload: probeCount > 1,
+            dynamicBackend: probeCount > 1,
+            torchVersion: "2.8.0+cu129",
+            cudaVersion: "12.9"
+          });
+        }
         return "";
       }
     };
@@ -136,10 +152,13 @@ describe("dependency installer", () => {
       runtime
     );
 
-    expect(result.ok).toBe(false);
-    expect(result.message).toContain("CUDA Toolkit");
-    expect(result.message).toContain("nvcc");
-    expect(processCalls).toEqual([]);
+    expect(result.ok).toBe(true);
+    expect(processCalls.some((args) => args.includes("nvcc"))).toBe(false);
+    expect(processCalls.some((args) => args.some((arg) => arg.includes("git+https://github.com/JamePeng"))))
+      .toBe(false);
+    expect(processCalls.some((args) => args.some((arg) => arg.includes("v0.3.46-cu128-win-20260808"))))
+      .toBe(process.platform === "win32");
+    expect(result.log).toContain("共用的 JamePeng llama-cpp-python 后端");
   });
 
   it("installs H3 GGUF beside the legacy GGUF package without replacing it", async () => {

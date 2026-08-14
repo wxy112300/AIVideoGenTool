@@ -7,13 +7,56 @@ import {
   enhancePromptWithH3PromptWriter,
   extractImageEditPromptFromWriter,
   promptWriterModelForSelection,
-  releaseH3PromptWriter
+  releaseH3PromptWriter,
+  validateH3PromptWriterRuntime
 } from "../electron/services/h3-prompt-writer.js";
 import { managedPromptModelDefinitions } from "../src/core/prompt-models.js";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("ComfyUI H3 Prompt Writer adapter", () => {
+  it("turns a native 0xC000001D diagnostic into an actionable repair message", () => {
+    expect(() => validateH3PromptWriterRuntime({
+      status: "crashed",
+      return_code_hex: "0xC000001D",
+      message: "The native runtime crashed during the isolated compatibility check."
+    })).toThrow(/动态 CPU 后端/iu);
+  });
+
+  it("rewrites a model-load 0xC000001D response even when the lightweight probe passed", async () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "google/gemma-4-12b-q5";
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/h3studio/status")) return Response.json({ version: "0.3.1" });
+      if (url.endsWith("/h3studio/models")) return Response.json({ models: [{
+        id: "D:/ComfyUI/models/LLM/gemma-4-12b-it-Q5_K_M.gguf",
+        path: "D:/ComfyUI/models/LLM/gemma-4-12b-it-Q5_K_M.gguf",
+        runtime_ready: true
+      }] });
+      if (url.endsWith("/h3studio/runtime/gguf/diagnostics")) {
+        return Response.json({ diagnostics: { status: "ok", gpu_offload: true } });
+      }
+      if (url.endsWith("/h3studio/generate")) {
+        return Response.json({
+          error: {
+            message: "The GGUF model could not be loaded.",
+            details: { exception: "[WinError -1073741795] Windows Error 0xc000001d" }
+          }
+        }, { status: 500 });
+      }
+      if (url.includes("/h3studio/media?session_id=")) return Response.json({ cleared: true });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(enhancePromptWithH3PromptWriter({
+      prompt: "让人物走向镜头",
+      modelId: "minimax_h3_ref2va",
+      imagePaths: []
+    }, settings, new AbortController().signal)).rejects.toThrow(/动态 CPU 后端/iu);
+  });
+
   it("uses the same Gemma loader for a plain image-edit Prompt and extracts only the edit field", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "h3-image-writer-"));
     const image = path.join(directory, "reference.png");

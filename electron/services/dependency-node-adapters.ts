@@ -113,6 +113,77 @@ export function patchLtxAudioVaeCompatibility(source: string): string {
   return patched;
 }
 
+const llamaCppKvTypeFallback = (indent: string) => [
+  `${indent}try:`,
+  `${indent}    from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0`,
+  `${indent}except ImportError:`,
+  `${indent}    from llama_cpp._ggml import GGMLType`,
+  `${indent}    GGML_TYPE_F16 = GGMLType.GGML_TYPE_F16`,
+  `${indent}    GGML_TYPE_Q8_0 = GGMLType.GGML_TYPE_Q8_0`
+].join("\n");
+
+export function patchH3PromptWriterLlamaCppCompatibility(source: string): string {
+  return source
+    .replace(
+      /^(\s*)from llama_cpp\._ggml import GGML_TYPE_F16, GGML_TYPE_Q8_0$/gmu,
+      (_match, indent: string) => [
+        `${indent}from llama_cpp._ggml import GGMLType`,
+        `${indent}GGML_TYPE_F16 = GGMLType.GGML_TYPE_F16`,
+        `${indent}GGML_TYPE_Q8_0 = GGMLType.GGML_TYPE_Q8_0`
+      ].join("\n")
+    )
+    .replace(
+      /^(\s*)from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0, Llama, LogitsProcessorList$/mu,
+      (_match, indent: string) => [
+        `${indent}from llama_cpp import Llama, LogitsProcessorList`,
+        llamaCppKvTypeFallback(indent)
+      ].join("\n")
+    )
+    .replace(
+      /^(\s*)from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0, Llama$/mu,
+      (_match, indent: string) => [
+        `${indent}from llama_cpp import Llama`,
+        llamaCppKvTypeFallback(indent)
+      ].join("\n")
+    );
+}
+
+export async function prepareH3PromptWriter(
+  targetDirectory: string,
+  report: (message: string) => void
+): Promise<void> {
+  const files = [
+    path.join(targetDirectory, "backend", "models", "gguf_backend.py"),
+    path.join(targetDirectory, "backend", "runtime_diagnostics.py")
+  ];
+  let changed = false;
+  for (const filename of files) {
+    const source = await fs.readFile(filename, "utf8");
+    const patched = patchH3PromptWriterLlamaCppCompatibility(source);
+    if (
+      patched.includes("from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0, Llama")
+    ) {
+      throw new Error(
+        "MiniMax H3 Prompt Writer 源码结构与 llama-cpp-python 兼容适配不匹配，已停止修改。"
+      );
+    }
+    if (!patched.includes("from llama_cpp._ggml import GGMLType")) {
+      throw new Error(
+        "MiniMax H3 Prompt Writer 未包含新版 llama-cpp-python KV 类型回退，已停止修改。"
+      );
+    }
+    if (patched !== source) {
+      await fs.writeFile(filename, patched, "utf8");
+      changed = true;
+    }
+  }
+  report(
+    changed
+      ? "已应用 llama-cpp-python 0.3.39+ KV 类型兼容层"
+      : "H3 Prompt Writer 已兼容当前 llama-cpp-python API"
+  );
+}
+
 const h3GgufInitSource = `WEB_DIRECTORY = "./web"
 
 try:
