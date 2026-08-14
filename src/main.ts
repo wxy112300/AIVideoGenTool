@@ -1955,7 +1955,7 @@ function addImageSlot(): void {
     role: pictureNumber === 1 ? "base" : "auto"
   };
   patchImageDraft({
-    pictures: [...pictures, slot],
+    pictures: [...pictures, slot].sort((left, right) => left.pictureNumber - right.pictureNumber),
     nextPictureNumber: pictureNumber + 1
   });
   render();
@@ -1993,7 +1993,7 @@ function addImagePicture(path: string, replacePictureId?: string): void {
     role: pictureNumber === 1 ? "base" : "auto"
   };
   patchImageDraft({
-    pictures: [...pictures, picture],
+    pictures: [...pictures, picture].sort((left, right) => left.pictureNumber - right.pictureNumber),
     nextPictureNumber: pictureNumber + 1
   });
   render();

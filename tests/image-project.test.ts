@@ -262,7 +262,7 @@ describe("image project pure functions", () => {
     ]);
   });
 
-  it("preserves stable Picture gaps and never reuses an old number", () => {
+  it("preserves existing Picture numbers and reuses the lowest missing slot", () => {
     const draft = normalizeImageEditDraft({
       pictures: [
         { id: "picture-1", pictureNumber: 1, absolutePath: "base.png", width: 1, height: 1 },
@@ -272,8 +272,8 @@ describe("image project pure functions", () => {
     });
 
     expect(draft.pictures.map((picture) => picture.pictureNumber)).toEqual([1, 3]);
-    expect(nextImagePictureNumber(draft)).toBe(4);
-    expect(nextImagePictureNumber({ ...draft, nextPictureNumber: 2 })).toBe(4);
+    expect(nextImagePictureNumber(draft)).toBe(2);
+    expect(nextImagePictureNumber({ ...draft, nextPictureNumber: 2 })).toBe(2);
   });
 
   it("clears prompt text contaminated by the image page template", () => {

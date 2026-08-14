@@ -409,11 +409,17 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
 export function nextImagePictureNumber(
   draft: Pick<ImageEditDraft, "nextPictureNumber" | "pictures">
 ): number {
-  const largestExisting = draft.pictures.reduce(
-    (largest, picture) => Math.max(largest, picture.pictureNumber),
-    0
+  // Picture numbers are user-facing slot labels. Keep numbers already assigned
+  // to existing references stable, but reuse the first gap left by a removed
+  // slot instead of making the visible labels grow forever.
+  const usedNumbers = new Set(
+    draft.pictures
+      .map((picture) => picture.pictureNumber)
+      .filter((number) => Number.isInteger(number) && number > 0)
   );
-  return Math.max(1, draft.nextPictureNumber, largestExisting + 1);
+  let candidate = 1;
+  while (usedNumbers.has(candidate)) candidate += 1;
+  return candidate;
 }
 
 export function imageEditDraftFromQueueTask(

@@ -115,7 +115,15 @@ export function mountImageEditController(
               : item
           )
         : draft.pictures.filter((item) => item.id !== pictureId);
-      options.patchImageDraft({ pictures });
+      // Keep existing Picture numbers stable so prompt references do not change
+      // silently. The next slot will reuse the lowest missing number.
+      options.patchImageDraft({
+        pictures,
+        nextPictureNumber: Math.max(
+          1,
+          pictures.reduce((largest, item) => Math.max(largest, item.pictureNumber), 0) + 1
+        )
+      });
       context.requestRender();
     }, { signal });
   });
