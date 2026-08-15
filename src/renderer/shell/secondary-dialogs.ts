@@ -18,7 +18,7 @@ import type {
 type IconRenderer = (name: string, className?: string) => string;
 type HtmlEscaper = (value: unknown) => string;
 
-type UpscaleModelId = "seedvr2" | "flashvsr" | "realesrgan";
+type UpscaleModelId = "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan";
 type UpscaleTargetHeight = 720 | 1080 | 1440 | 2160;
 type UpscaleTileMode = "auto" | "safe" | "fast";
 
@@ -301,9 +301,10 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     0;
   const vramWarning = detectedVramBytes > 0 &&
     estimate.vramMaxGb * 1024 ** 3 > detectedVramBytes;
-  const supportedIds = new Set<string>(["seedvr2", "flashvsr", "realesrgan"]);
+  const supportedIds = new Set<string>(["seedvr2", "seedvr2-native-int8", "flashvsr", "realesrgan"]);
   const fallbackProfiles: UpscaleModelProfileOption[] = [
     { id: "seedvr2", name: "SeedVR2", available: true },
+    { id: "seedvr2-native-int8", name: "SeedVR2 3B INT8 ConvRot · 原生", available: true },
     { id: "flashvsr", name: "FlashVSR", available: true },
     { id: "realesrgan", name: "Real-ESRGAN x4plus", available: true }
   ];

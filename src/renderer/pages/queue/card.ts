@@ -34,6 +34,8 @@ export interface QueueCardRenderOptions {
   queueTaskRemainingSeconds(task: QueueTask): number | null;
   queueEstimateText(seconds: number | null): string;
   elapsedText(startedAt?: string): string;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
 }
 
 export function queueTaskInput(task: QueueTask): QueueTaskInput | null {
@@ -169,7 +171,7 @@ export function renderQueueTaskCard(
         ${task.error ? `<p class="error">${options.escapeHtml(task.error)}</p>` : ""}
       </div>
       <div class="task-actions queue-task-actions">
-        ${task.status === "waiting" ? `<div class="queue-reorder-controls" aria-label="${t(uiKeys.queue.card.moveUp)} / ${t(uiKeys.queue.card.moveDown)}"><button class="icon-button" data-move="${task.id}" data-direction="-1" aria-label="${t(uiKeys.queue.card.moveUp)}" aria-keyshortcuts="ArrowUp" title="${t(uiKeys.queue.card.moveUp)} (↑)">${options.icon("move-up")}</button><button class="icon-button" data-move="${task.id}" data-direction="1" aria-label="${t(uiKeys.queue.card.moveDown)}" aria-keyshortcuts="ArrowDown" title="${t(uiKeys.queue.card.moveDown)} (↓)">${options.icon("move-down")}</button></div>` : ""}
+        ${task.status === "waiting" ? `<div class="queue-reorder-controls" aria-label="${t(uiKeys.queue.card.moveUp)} / ${t(uiKeys.queue.card.moveDown)}"><button class="icon-button" data-move="${task.id}" data-direction="-1" aria-label="${t(uiKeys.queue.card.moveUp)}" aria-keyshortcuts="ArrowUp" title="${t(uiKeys.queue.card.moveUp)} (↑)" ${options.canMoveUp === false ? "disabled" : ""}>${options.icon("move-up")}</button><button class="icon-button" data-move="${task.id}" data-direction="1" aria-label="${t(uiKeys.queue.card.moveDown)}" aria-keyshortcuts="ArrowDown" title="${t(uiKeys.queue.card.moveDown)} (↓)" ${options.canMoveDown === false ? "disabled" : ""}>${options.icon("move-down")}</button></div>` : ""}
         ${task.status === "waiting" || task.status === "failed" || task.status === "cancelled"
           ? task.taskType === "upscale"
             ? `<button class="secondary button-with-icon queue-action-primary" data-edit-upscale-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editUpscaleTitle)}">${options.icon("sliders-horizontal")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.edit)}</span></button>`

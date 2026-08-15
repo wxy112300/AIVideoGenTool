@@ -1,4 +1,9 @@
 import type { UpscaleQueueTask, UpscaleRequest } from "../types.js";
+import {
+  seedVr2NativeModelFilename,
+  seedVr2NativeRequiredNodes,
+  seedVr2NativeVaeFilename
+} from "./seedvr2-native.js";
 
 type ApiNode = {
   class_type: string;
@@ -6,7 +11,7 @@ type ApiNode = {
 };
 
 export interface UpscaleResourceEstimateInput {
-  modelId: "seedvr2" | "flashvsr" | "realesrgan";
+  modelId: "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan";
   sourceWidth: number;
   sourceHeight: number;
   targetWidth: number;
@@ -48,6 +53,16 @@ const upscaleEstimateProfiles = {
     vramPerAreaMaxGb: 1.5,
     secondsPerFrameMin: 1.2,
     secondsPerFrameMax: 1.9
+  },
+  "seedvr2-native-int8": {
+    // Initial estimate based on the published one-step INT8 profile. Recalibrate
+    // after a local smoke run with the same source and output dimensions.
+    baseVramMinGb: 10,
+    baseVramMaxGb: 15,
+    vramPerAreaMinGb: 0.65,
+    vramPerAreaMaxGb: 1.15,
+    secondsPerFrameMin: 0.9,
+    secondsPerFrameMax: 1.6
   }
 } as const;
 
@@ -231,6 +246,137 @@ const seedVr2RequiredNodes = [
   "SeedVR2LoadVAEModel"
 ] as const;
 
+function renderNativeSeedVr2Workflow(
+  task: UpscaleQueueTask,
+  sourceVideo: string
+): Record<string, ApiNode> {
+  const [targetWidth, targetHeight] = upscaleDimensions(
+    task.sourceWidth,
+    task.sourceHeight,
+    task.targetHeight
+  );
+  return {
+    "1": {
+      class_type: "LoadVideo",
+      inputs: { file: sourceVideo }
+    },
+    "2": {
+      class_type: "GetVideoComponents",
+      inputs: { video: ["1", 0] }
+    },
+    "3": {
+      class_type: "ImageScale",
+      inputs: {
+        image: ["2", 0],
+        upscale_method: "lanczos",
+        width: targetWidth,
+        height: targetHeight,
+        crop: "center"
+      }
+    },
+    "4": {
+      class_type: "SeedVR2Preprocess",
+      inputs: { resized_images: ["3", 0] }
+    },
+    "5": {
+      class_type: "VAELoader",
+      inputs: { vae_name: seedVr2NativeVaeFilename }
+    },
+    "6": {
+      class_type: "VAEEncodeTiled",
+      inputs: {
+        pixels: ["4", 0],
+        vae: ["5", 0],
+        tile_size: 512,
+        overlap: 128,
+        temporal_size: 64,
+        temporal_overlap: 8
+      }
+    },
+    "7": {
+      class_type: "UNETLoader",
+      inputs: {
+        unet_name: seedVr2NativeModelFilename,
+        weight_dtype: "default"
+      }
+    },
+    "8": {
+      class_type: "SeedVR2TemporalChunk",
+      inputs: {
+        latent: ["6", 0],
+        temporal_overlap: 0,
+        chunking_mode: "auto"
+      }
+    },
+    "9": {
+      class_type: "SeedVR2Conditioning",
+      inputs: {
+        model: ["7", 0],
+        vae_conditioning: ["8", 0]
+      }
+    },
+    "10": {
+      class_type: "KSampler",
+      inputs: {
+        model: ["7", 0],
+        seed: task.seed,
+        steps: 1,
+        cfg: 1,
+        sampler_name: "euler",
+        scheduler: "simple",
+        positive: ["9", 0],
+        negative: ["9", 1],
+        latent_image: ["8", 0],
+        denoise: 1
+      }
+    },
+    "11": {
+      class_type: "SeedVR2TemporalMerge",
+      inputs: {
+        latents: ["10", 0],
+        temporal_overlap: ["8", 1]
+      }
+    },
+    "12": {
+      class_type: "VAEDecodeTiled",
+      inputs: {
+        samples: ["11", 0],
+        vae: ["5", 0],
+        tile_size: 512,
+        overlap: 128,
+        temporal_size: 64,
+        temporal_overlap: 8
+      }
+    },
+    "13": {
+      class_type: "SeedVR2PostProcessing",
+      inputs: {
+        images: ["12", 0],
+        original_resized_images: ["3", 0],
+        color_correction_method: "none"
+      }
+    },
+    "14": {
+      class_type: "CreateVideo",
+      inputs: {
+        images: ["13", 0],
+        audio: ["2", 1],
+        fps: ["2", 2],
+        bit_depth: ["2", 3]
+      }
+    },
+    "15": {
+      class_type: "SaveVideo",
+      inputs: {
+        video: ["14", 0],
+        filename_prefix: task.outputFilename.replace(/\.mp4$/i, ""),
+        format: "mp4",
+        codec: "auto"
+      }
+    }
+  };
+}
+
 function seedVr2Profile(task: UpscaleQueueTask): {
   batchSize: number;
   blocksToSwap: number;
@@ -273,14 +419,25 @@ export function renderUpscaleWorkflow(
   const availableNodes = objectInfo && typeof objectInfo === "object" && !Array.isArray(objectInfo)
     ? new Set(Object.keys(objectInfo as Record<string, unknown>))
     : new Set<string>();
-  const missingSeedVr2Nodes = task.modelId === "seedvr2"
-    ? seedVr2RequiredNodes.filter((node) => !availableNodes.has(node))
-    : [];
+  const requiredSeedVr2Nodes = task.modelId === "seedvr2-native-int8"
+    ? seedVr2NativeRequiredNodes
+    : task.modelId === "seedvr2"
+      ? seedVr2RequiredNodes
+      : [];
+  const missingSeedVr2Nodes = requiredSeedVr2Nodes.filter((node) => !availableNodes.has(node));
   if (missingSeedVr2Nodes.length) {
+    const nodeLabel = task.modelId === "seedvr2-native-int8"
+      ? "原生 SeedVR2 节点"
+      : "SeedVR2 节点模块";
     throw new Error(
-      `SeedVR2 节点版本过旧或尚未加载，缺少新版模块：${missingSeedVr2Nodes.join(", ")}。` +
-      "请在设置 → 节点与工作流中更新 SeedVR2，并重启 ComfyUI。"
+      `${nodeLabel}版本过旧或尚未加载，缺少：${missingSeedVr2Nodes.join(", ")}。` +
+      (task.modelId === "seedvr2-native-int8"
+        ? "请升级到支持原生 SeedVR2 工作流的 ComfyUI 核心后重启并复检。"
+        : "请在设置 → 节点与工作流中更新 SeedVR2，并重启 ComfyUI。")
     );
+  }
+  if (task.modelId === "seedvr2-native-int8") {
+    return renderNativeSeedVr2Workflow(task, sourceVideo);
   }
   const modernSeedVr2 = task.modelId === "seedvr2";
   const useExternalBatching = !modernSeedVr2;

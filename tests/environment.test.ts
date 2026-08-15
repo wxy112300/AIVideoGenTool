@@ -589,6 +589,56 @@ describe("ComfyUI environment candidates", () => {
     expect(profiles.find((profile) => profile.id === "sulphur2")?.available).toBe(false);
   });
 
+  it("detects the native SeedVR2 INT8 ConvRot profile independently", () => {
+    const incomplete = evaluateModelProfiles([
+      "diffusion_models\\seedvr2_3b_int8_convrot.safetensors"
+    ]).find((profile) => profile.id === "seedvr2-native-int8");
+    expect(incomplete).toMatchObject({
+      category: "upscale",
+      available: false,
+      integrated: true,
+      runtimeVerified: false,
+      runtimeReady: false
+    });
+
+    const files = [
+      "diffusion_models\\seedvr2_3b_int8_convrot.safetensors",
+      "vae\\seedvr2_ema_vae_fp16.safetensors"
+    ];
+    const complete = evaluateModelProfiles(files).find((profile) => profile.id === "seedvr2-native-int8");
+    expect(complete).toMatchObject({ available: true, integrated: true });
+    expect(complete?.components.map((component) => component.matches[0])).toEqual([
+      "diffusion_models/seedvr2_3b_int8_convrot.safetensors",
+      "vae/seedvr2_ema_vae_fp16.safetensors"
+    ]);
+
+    const runtimeNodes = new Set(complete?.runtimeMissingNodes ?? []);
+    expect(runtimeNodes.size).toBe(0);
+    const ready = evaluateModelProfiles(files, "q3_k_m", new Set([
+      "LoadVideo",
+      "GetVideoComponents",
+      "ImageScale",
+      "SeedVR2Preprocess",
+      "VAELoader",
+      "VAEEncodeTiled",
+      "UNETLoader",
+      "SeedVR2TemporalChunk",
+      "SeedVR2Conditioning",
+      "KSampler",
+      "SeedVR2TemporalMerge",
+      "VAEDecodeTiled",
+      "SeedVR2PostProcessing",
+      "CreateVideo",
+      "SaveVideo"
+    ])).find((profile) => profile.id === "seedvr2-native-int8");
+    expect(ready).toMatchObject({
+      available: true,
+      runtimeVerified: true,
+      runtimeReady: true,
+      runtimeMissingNodes: []
+    });
+  });
+
   it("scans ComfyUI prompt encoders from the standard text_encoders directory", () => {
     const legacy = evaluateModelProfiles([
       "prompt_models\\qwen3.5-9b\\Qwen3.5-9B-Q4_K_M.gguf",

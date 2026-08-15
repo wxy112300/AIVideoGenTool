@@ -845,8 +845,23 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
   if (classType === "VHS_LoadVideo") {
     return { start: 2, end: 5, label: "读取源视频", tracksSteps: false };
   }
+  if (classType === "LoadVideo") {
+    return { start: 2, end: 5, label: "读取源视频", tracksSteps: false };
+  }
   if (classType === "VHS_VideoInfoSource") {
     return { start: 5, end: 7, label: "分析视频信息", tracksSteps: false };
+  }
+  if (classType === "GetVideoComponents") {
+    return { start: 5, end: 7, label: "分析视频信息", tracksSteps: false };
+  }
+  if (classType === "SeedVR2Preprocess") {
+    return { start: 7, end: 10, label: "准备 SeedVR2 输入", tracksSteps: false };
+  }
+  if (classType === "VAEEncodeTiled") {
+    return { start: 10, end: 18, label: "编码视频 VAE", tracksSteps: true };
+  }
+  if (classType === "SeedVR2TemporalChunk" || classType === "SeedVR2Conditioning") {
+    return { start: 18, end: 22, label: "准备 SeedVR2 时序条件", tracksSteps: false };
   }
   if (classType === "SeedVR2LoadDiTModel") {
     return { start: 4, end: 8, label: "加载 SeedVR2 DiT", tracksSteps: false };
@@ -862,6 +877,12 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
   }
   if (classType === "SeedVR2BlockSwap") {
     return { start: 8, end: 12, label: "配置 SeedVR2 显存交换", tracksSteps: false };
+  }
+  if (classType === "SeedVR2TemporalMerge") {
+    return { start: 76, end: 80, label: "合并 SeedVR2 时序块", tracksSteps: false };
+  }
+  if (classType === "SeedVR2PostProcessing") {
+    return { start: 88, end: 92, label: "校正 SeedVR2 输出", tracksSteps: false };
   }
   if (classType === "AILab_FlashVSR" || classType === "ImageUpscaleWithModel") {
     return { start: 12, end: 76, label: "视频超分辨率", tracksSteps: false };

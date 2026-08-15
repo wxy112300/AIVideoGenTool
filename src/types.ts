@@ -412,7 +412,7 @@ export interface UpscaleRequest {
   duration: number;
   fps: number;
   targetHeight: UpscaleQueueTask["targetHeight"];
-  modelId: "seedvr2" | "flashvsr" | "realesrgan";
+  modelId: "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan";
   tileMode: UpscaleQueueTask["tileMode"];
   faceRestore: boolean;
 }

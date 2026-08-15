@@ -27,7 +27,7 @@ import {
 import { createQueueLiveStatus } from "./renderer/pages/queue/live-status";
 import { mountQueueController } from "./renderer/pages/queue/controller";
 import { loadQueueInputPreviews as loadQueueInputPreviewsForPage } from "./renderer/pages/queue/input-previews";
-import { renderQueuePage } from "./renderer/pages/queue/page";
+import { renderQueuePage, type QueueMoveAvailability } from "./renderer/pages/queue/page";
 import { renderSettingsPage } from "./renderer/pages/settings/page";
 import { mountSettingsAssembly } from "./renderer/pages/settings/assembly";
 import { createRenderCoordinator, type RenderCoordinator } from "./renderer/render-coordinator";
@@ -726,7 +726,7 @@ function queuePage(): string {
   return renderQueuePage(state, {
     t: rendererApp.context.t,
     performanceMetrics,
-    queueRemainingSeconds: (tasks) => calculateQueueRemainingSeconds(tasks, state.history),
+    queueRemainingSeconds: (tasks) => calculateQueueRemainingSeconds(tasks, state.history, state.imageHistory),
     queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
     performanceCard,
     renderTaskCard: queueTaskCard,
@@ -734,7 +734,11 @@ function queuePage(): string {
   });
 }
 
-function queueTaskCard(task: QueueTask, queuePosition: number): string {
+function queueTaskCard(
+  task: QueueTask,
+  queuePosition: number,
+  moveAvailability?: QueueMoveAvailability
+): string {
   return renderQueueTaskCard(task, queuePosition, {
     t: rendererApp.context.t,
     taskPreviews,
@@ -745,9 +749,11 @@ function queueTaskCard(task: QueueTask, queuePosition: number): string {
     modelName: (id) => modelName(id, state.settings.uiLocale),
     frameRateSummary,
     queueStageElapsedText: (queueTask) => queueStageElapsedText(queueTask, rendererApp.context.t),
-    queueTaskRemainingSeconds: (queueTask) => calculateQueueTaskRemainingSeconds(queueTask, state.history),
+    queueTaskRemainingSeconds: (queueTask) => calculateQueueTaskRemainingSeconds(queueTask, state.history, state.imageHistory),
     queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
-    elapsedText: (startedAt) => elapsedText(startedAt, rendererApp.context.t)
+    elapsedText: (startedAt) => elapsedText(startedAt, rendererApp.context.t),
+    canMoveUp: moveAvailability?.canMoveUp,
+    canMoveDown: moveAvailability?.canMoveDown
   });
 }
 

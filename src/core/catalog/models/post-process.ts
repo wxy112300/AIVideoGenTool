@@ -1,7 +1,58 @@
 import { component, entry, guide } from "./catalog-helpers.js";
 import type { CatalogModelEntry } from "../types.js";
+import {
+  seedVr2NativeModelFilename,
+  seedVr2NativeRequiredNodes,
+  seedVr2NativeVaeFilename
+} from "../../seedvr2-native.js";
 
 export const postProcessModelEntries: CatalogModelEntry[] = [
+  entry({ id: "seedvr2-native-int8", family: "seedvr2", category: "upscale", adapterId: "seedvr2-native-int8", order: 110, inputModes: ["video"], scan: {
+    vram: "INT8 · 1 step · 512 tile · 长视频需时间分段",
+    runtimeNodeTypes: seedVr2NativeRequiredNodes,
+    components: [
+      component(
+        "SeedVR2 3B INT8 ConvRot",
+        `diffusion_models/${seedVr2NativeModelFilename}`,
+        new RegExp(`(?:^|\\/)diffusion_models\\/${seedVr2NativeModelFilename.replaceAll(".", "\\.")}$`, "i"),
+        guide(
+          "Comfy-Org / SeedVR2",
+          "https://huggingface.co/Comfy-Org/SeedVR2/tree/main",
+          "diffusion_models",
+          seedVr2NativeModelFilename,
+          "原生 ComfyUI SeedVR2 3B INT8 ConvRot 权重；需要支持 SeedVR2 原生节点的 ComfyUI 核心。"
+        )
+      ),
+      component(
+        "SeedVR2 EMA VAE FP16",
+        `vae/${seedVr2NativeVaeFilename}`,
+        new RegExp(`(?:^|\\/)vae\\/${seedVr2NativeVaeFilename.replaceAll(".", "\\.")}$`, "i"),
+        guide(
+          "Comfy-Org / SeedVR2",
+          "https://huggingface.co/Comfy-Org/SeedVR2/tree/main",
+          "vae",
+          seedVr2NativeVaeFilename,
+          "与原生 3B INT8 工作流配套的 FP16 EMA VAE。"
+        )
+      )
+    ]
+  } },
+    {
+      name: "SeedVR2 3B INT8 ConvRot · 原生",
+      badge: "4090 原生",
+      description: "ComfyUI 原生 SeedVR2 单步超分路径，使用 INT8 ConvRot 与 FP16 EMA VAE；长视频按时间分段以控制显存。"
+    },
+    {
+      name: "SeedVR2 3B INT8 ConvRot · Native",
+      badge: "Native 4090",
+      description: "Native ComfyUI one-step SeedVR2 path using INT8 ConvRot and an FP16 EMA VAE; segment long videos to bound VRAM."
+    },
+    {
+      name: "SeedVR2 3B INT8 ConvRot · 原生",
+      badge: "4090 原生",
+      description: "ComfyUI 原生 SeedVR2 單步超分路徑，使用 INT8 ConvRot 與 FP16 EMA VAE；長影片按時間分段以控制顯存。"
+    }
+  ),
   entry({ id: "seedvr2", family: "seedvr2", category: "upscale", adapterId: "seedvr2", order: 100, inputModes: ["video"], scan: { vram: "预计峰值 18–23 GB", components: [
     component("SeedVR2 主模型", "SEEDVR2/seedvr2_ema_3b 或 7b", /(?:^|\/)seedvr2\/.*seedvr2_ema_(?:3b|7b).*\.(safetensors|pt)$/i, guide("numz / SeedVR2_comfyUI", "https://huggingface.co/numz/SeedVR2_comfyUI/tree/main", "SEEDVR2", "seedvr2_ema_3b_fp8_e4m3fn.safetensors")),
     component("SeedVR2 VAE", "SEEDVR2/ema_vae*", /seedvr2\/.*ema_vae.*\.(safetensors|pt)$/i, guide("numz / SeedVR2_comfyUI", "https://huggingface.co/numz/SeedVR2_comfyUI/tree/main", "SEEDVR2", "ema_vae_fp16.safetensors"))

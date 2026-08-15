@@ -175,6 +175,46 @@ describe("upscale workflows", () => {
     expect(workflow["8"]?.inputs.image_pass).toEqual(["9", 0]);
   });
 
+  it("builds the native SeedVR2 INT8 ConvRot API workflow", () => {
+    const nativeTask = { ...task("seedvr2-native-int8") };
+    const workflow = renderUpscaleWorkflow(nativeTask, "source.mp4", models, {
+      LoadVideo: {},
+      GetVideoComponents: {},
+      ImageScale: {},
+      SeedVR2Preprocess: {},
+      VAELoader: {},
+      VAEEncodeTiled: {},
+      UNETLoader: {},
+      SeedVR2TemporalChunk: {},
+      SeedVR2Conditioning: {},
+      KSampler: {},
+      SeedVR2TemporalMerge: {},
+      VAEDecodeTiled: {},
+      SeedVR2PostProcessing: {},
+      CreateVideo: {},
+      SaveVideo: {}
+    });
+    expect(workflow["1"]).toMatchObject({ class_type: "LoadVideo", inputs: { file: "source.mp4" } });
+    expect(workflow["6"]).toMatchObject({
+      class_type: "VAEEncodeTiled",
+      inputs: { tile_size: 512, overlap: 128, temporal_size: 64, temporal_overlap: 8 }
+    });
+    expect(workflow["7"]?.inputs).toMatchObject({
+      unet_name: "seedvr2_3b_int8_convrot.safetensors",
+      weight_dtype: "default"
+    });
+    expect(workflow["10"]?.inputs).toMatchObject({
+      steps: 1,
+      cfg: 1,
+      sampler_name: "euler",
+      scheduler: "simple",
+      denoise: 1
+    });
+    expect(workflow["12"]?.inputs).toMatchObject({ tile_size: 512, temporal_size: 64 });
+    expect(workflow["15"]).toMatchObject({ class_type: "SaveVideo" });
+    expect(workflow["6"]?.class_type).not.toBe("SeedVR2LoadVAEModel");
+  });
+
   it("always builds FlashVSR with the low-VRAM preset", () => {
     const flashTask = { ...task("flashvsr"), tileMode: "fast" as const };
     const workflow = renderUpscaleWorkflow(flashTask, "source.mp4", models);

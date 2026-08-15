@@ -249,7 +249,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       assetId: asset.id,
       versionId: version.id,
       targetHeight: targetShortEdge,
-      modelId: (["seedvr2", "flashvsr", "realesrgan"] as const).includes(configuredModel as "seedvr2" | "flashvsr" | "realesrgan")
+      modelId: (["seedvr2", "seedvr2-native-int8", "flashvsr", "realesrgan"] as const).includes(configuredModel as "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan")
         ? configuredModel as UpscaleDialogState["modelId"]
         : "seedvr2",
       tileMode: state.settings.upscaleTileMode

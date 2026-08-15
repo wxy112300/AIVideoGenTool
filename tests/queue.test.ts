@@ -74,6 +74,24 @@ describe("queue ordering", () => {
     ]);
   });
 
+  it("keeps an active task as a hard boundary in either direction", () => {
+    const queue = [
+      task("before", "wan"),
+      task("running", "wan", "running"),
+      task("after", "wan")
+    ];
+    expect(moveWaitingTask(queue, "before", 1).map((item) => item.id)).toEqual([
+      "before",
+      "running",
+      "after"
+    ]);
+    expect(moveWaitingTask(queue, "after", -1).map((item) => item.id)).toEqual([
+      "before",
+      "running",
+      "after"
+    ]);
+  });
+
   it("syncs queued video inputs to the migrated history version path", () => {
     const history = [{
       id: "asset-1",

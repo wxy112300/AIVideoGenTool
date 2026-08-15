@@ -19,8 +19,41 @@ export interface QueuePageOptions {
     suffix: string,
     detail?: string
   ): string;
-  renderTaskCard(task: QueueTask, queuePosition: number): string;
+  renderTaskCard(task: QueueTask, queuePosition: number, moveAvailability?: QueueMoveAvailability): string;
   icon(name: string, className?: string): string;
+}
+
+export interface QueueMoveAvailability {
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+}
+
+function queueMoveAvailability(
+  tasks: ReadonlyArray<QueueTask>,
+  index: number
+): QueueMoveAvailability {
+  const task = tasks[index];
+  if (!task || task.status !== "waiting") {
+    return { canMoveUp: false, canMoveDown: false };
+  }
+  const runningIndex = tasks.findIndex((candidate) => candidate.status === "running");
+  // A stale queue may contain a waiting item before the active task. Keep it
+  // visible, but do not expose controls that could make that ordering worse.
+  if (runningIndex >= 0 && index < runningIndex) {
+    return { canMoveUp: false, canMoveDown: false };
+  }
+  const waitingIndexes = tasks
+    .map((candidate, candidateIndex) => candidate.status === "waiting" ? candidateIndex : -1)
+    .filter((candidateIndex) => candidateIndex >= 0);
+  const waitingIndex = waitingIndexes.indexOf(index);
+  const previousWaiting = waitingIndex > 0 ? waitingIndexes[waitingIndex - 1] : undefined;
+  const nextWaiting = waitingIndex >= 0 && waitingIndex < waitingIndexes.length - 1
+    ? waitingIndexes[waitingIndex + 1]
+    : undefined;
+  return {
+    canMoveUp: previousWaiting != null && (runningIndex < 0 || previousWaiting > runningIndex),
+    canMoveDown: nextWaiting != null && (runningIndex < 0 || index > runningIndex)
+  };
 }
 
 export function renderQueuePage(
@@ -88,7 +121,7 @@ export function renderQueuePage(
     </section>
     ${state.queue.length === 0
         ? `<div class="empty panel"><h2>${options.t(uiKeys.queue.emptyTitle)}</h2><p>${options.t(uiKeys.queue.emptyDescription)}</p><button class="secondary button-with-icon" data-page="create">${options.icon("plus")}${options.t(uiKeys.queue.create)}</button></div>`
-      : `<section class="queue-section"><div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.executionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.executionDescription)}</span></div><span class="model-badge">${options.t(uiKeys.queue.count, { count: activeTasks.length })}</span></div><div class="task-list">${activeTasks.length ? activeTasks.map((task, index) => options.renderTaskCard(task, index + 1)).join("") : `<div class="empty panel queue-section-empty"><h2>${options.t(uiKeys.queue.waitingEmptyTitle)}</h2><p>${options.t(uiKeys.queue.waitingEmptyDescription)}</p></div>`}</div></section>${attentionTasks.length ? `<section class="queue-section queue-attention-section"><div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.attentionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.attentionDescription)}</span></div><span class="model-badge warning-badge">${options.t(uiKeys.queue.count, { count: attentionTasks.length })}</span></div><div class="task-list">${attentionTasks.map((task) => options.renderTaskCard(task, 0)).join("")}</div></section>` : ""}`}
+      : `<section class="queue-section"><div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.executionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.executionDescription)}</span></div><span class="model-badge">${options.t(uiKeys.queue.count, { count: activeTasks.length })}</span></div><div class="task-list">${activeTasks.length ? activeTasks.map((task, index) => options.renderTaskCard(task, index + 1, queueMoveAvailability(activeTasks, index))).join("") : `<div class="empty panel queue-section-empty"><h2>${options.t(uiKeys.queue.waitingEmptyTitle)}</h2><p>${options.t(uiKeys.queue.waitingEmptyDescription)}</p></div>`}</div></section>${attentionTasks.length ? `<section class="queue-section queue-attention-section"><div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.attentionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.attentionDescription)}</span></div><span class="model-badge warning-badge">${options.t(uiKeys.queue.count, { count: attentionTasks.length })}</span></div><div class="task-list">${attentionTasks.map((task) => options.renderTaskCard(task, 0)).join("")}</div></section>` : ""}`}
     `;
 }
 

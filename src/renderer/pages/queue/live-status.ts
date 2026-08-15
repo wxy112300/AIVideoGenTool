@@ -174,7 +174,7 @@ export function patchQueueLiveDom(state: AppState, t: Translate): boolean {
   if (comfyElement) comfyElement.title = comfy.label;
 
   const running = state.queue.find((task) => task.status === "running");
-  const remainingSeconds = queueRemainingSeconds(activeTasks, state.history);
+  const remainingSeconds = queueRemainingSeconds(activeTasks, state.history, state.imageHistory);
   const etaElement = document.querySelector<HTMLElement>("#queue-eta");
   if (etaElement) etaElement.textContent = queueEstimateText(remainingSeconds, t);
   if (etaElement) {
@@ -204,7 +204,7 @@ export function patchQueueLiveDom(state: AppState, t: Translate): boolean {
   elapsed.textContent = elapsedText(running.startedAt, t);
   stageElapsed.textContent = queueStageElapsedText(running, t);
   runningEta.textContent = t(uiKeys.queue.card.eta, {
-    time: queueEstimateText(queueTaskRemainingSeconds(running, state.history), t)
+    time: queueEstimateText(queueTaskRemainingSeconds(running, state.history, state.imageHistory), t)
   });
   progressLabel.textContent = `${Math.round(progress)}%`;
   progressBar.style.width = `${progress}%`;

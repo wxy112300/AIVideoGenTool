@@ -119,6 +119,41 @@ export function orderVideoProfiles<T extends { id: string }>(profiles: ReadonlyA
   );
 }
 
+/**
+ * A model selector is scoped to the current creation mode. In particular,
+ * video extension is not a generic video capability: the selected model must
+ * explicitly declare support for the extension workflow (or be backed by a
+ * workflow that has already been inspected). Keeping this rule here prevents
+ * unsupported models from appearing as selectable options and avoids a late
+ * failure after the user has filled the rest of the form.
+ */
+export function modelSupportsCreateInputMode(
+  modelId: string,
+  inputMode: Draft["inputMode"],
+  selected: boolean,
+  workflowPath: string,
+  workflowCapabilities: Readonly<Record<string, WorkflowCapabilities>>,
+  bundledWorkflows: Readonly<Record<string, BundledWorkflow>>
+): boolean {
+  const definition = modelCatalog.get(modelId)?.definition;
+  const declaredInputModes = definition?.inputModes;
+  if (declaredInputModes && !declaredInputModes.includes(inputMode)) return false;
+  if (inputMode !== "video") return true;
+
+  const declaredExtensionSupport = definition?.capabilities?.supportsVideoExtension;
+  if (declaredExtensionSupport !== undefined) return declaredExtensionSupport;
+
+  // Older catalog entries and user-supplied workflows may not have a catalog
+  // capability. Preserve the already validated workflow fallback for those
+  // entries, but never infer extension support from a display name alone.
+  if (isMiniMaxH3BoundaryExtensionModel(modelId) || isMiniMaxH3R2vModel(modelId)) {
+    return true;
+  }
+  return selected
+    ? workflowCapabilities[workflowPath]?.supportsVideoExtension === true
+    : bundledWorkflows[`${modelId}:${inputMode}`]?.supportsVideoExtension === true;
+}
+
 export function createModelOptionViewModels(
   draft: Draft,
   environmentScan: EnvironmentScanResult | null,
@@ -139,46 +174,52 @@ export function createModelOptionViewModels(
         available: true,
         integrated: true
       }));
-  return profiles.map((profile) => {
-    const selected = draft.modelId === profile.id;
-    const catalogSupportsVideoExtension = modelCatalog.get(profile.id)?.definition.capabilities?.supportsVideoExtension;
-    const supportsVideoExtension =
-      draft.inputMode === "video" && catalogSupportsVideoExtension !== undefined
-        ? catalogSupportsVideoExtension
-        : draft.inputMode === "video" && (
-        isMiniMaxH3BoundaryExtensionModel(profile.id) || isMiniMaxH3R2vModel(profile.id)
-      )
-        ? true
-        : selected
-          ? workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true
-          : bundledWorkflows[`${profile.id}:${draft.inputMode}`]?.supportsVideoExtension === true;
-    const unavailable = !profile.available ||
-      profile.integrated === false ||
-      (draft.inputMode === "video" && !supportsVideoExtension);
-    const suffix = !profile.available
-      ? t(uiKeys.create.modelStatus.missingComponent)
-      : profile.integrated === false
-        ? t(uiKeys.create.modelStatus.workflowPending)
-        : draft.inputMode === "video" && !supportsVideoExtension
-          ? t(uiKeys.create.modelStatus.extensionCheckFailed)
-          : "";
-    const catalogCapabilities = modelCatalog.get(profile.id)?.definition.capabilities;
-    const modeLabel = draft.inputMode === "video"
-      ? catalogCapabilities?.supportsReferenceSlots
-        ? t(uiKeys.create.modelStatus.motionContextRecommended)
-        : catalogCapabilities?.supportsEndFrame
-          ? t(uiKeys.create.modelStatus.endFrameCompatible)
-          : ""
-      : "";
-    return {
-      id: profile.id,
-      name: profile.name,
-      selected,
-      unavailable,
-      modeLabel,
-      suffix
-    };
-  });
+  return profiles
+    .filter((profile) => modelSupportsCreateInputMode(
+      profile.id,
+      draft.inputMode,
+      draft.modelId === profile.id,
+      draft.workflowPath,
+      workflowCapabilities,
+      bundledWorkflows
+    ))
+    .map((profile) => {
+      const selected = draft.modelId === profile.id;
+      const supportsVideoExtension = modelSupportsCreateInputMode(
+        profile.id,
+        draft.inputMode,
+        selected,
+        draft.workflowPath,
+        workflowCapabilities,
+        bundledWorkflows
+      );
+      const unavailable = !profile.available ||
+        profile.integrated === false ||
+        (draft.inputMode === "video" && !supportsVideoExtension);
+      const suffix = !profile.available
+        ? t(uiKeys.create.modelStatus.missingComponent)
+        : profile.integrated === false
+          ? t(uiKeys.create.modelStatus.workflowPending)
+          : draft.inputMode === "video" && !supportsVideoExtension
+            ? t(uiKeys.create.modelStatus.extensionCheckFailed)
+            : "";
+      const catalogCapabilities = modelCatalog.get(profile.id)?.definition.capabilities;
+      const modeLabel = draft.inputMode === "video"
+        ? catalogCapabilities?.supportsReferenceSlots
+          ? t(uiKeys.create.modelStatus.motionContextRecommended)
+          : catalogCapabilities?.supportsEndFrame
+            ? t(uiKeys.create.modelStatus.endFrameCompatible)
+            : ""
+        : "";
+      return {
+        id: profile.id,
+        name: profile.name,
+        selected,
+        unavailable,
+        modeLabel,
+        suffix
+      };
+    });
 }
 
 export function promptSnippetOptions(

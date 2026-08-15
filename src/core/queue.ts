@@ -66,11 +66,21 @@ export function moveWaitingTask(
   const next = [...queue];
   const index = next.findIndex((task) => task.id === taskId);
   if (index < 0 || next[index]?.status !== "waiting") return next;
+
+  // The currently running task is a hard execution boundary. A persisted or
+  // concurrently updated queue can temporarily contain waiting items on both
+  // sides of it, but a reorder must never move an item across that boundary:
+  // the executor always consumes the first waiting item it finds and the
+  // active task must remain the one already in flight.
+  const runningIndex = next.findIndex((task) => task.status === "running");
+  if (runningIndex >= 0 && index < runningIndex) return next;
+
   let target = index + direction;
   while (target >= 0 && target < next.length && next[target]?.status !== "waiting") {
     target += direction;
   }
   if (target < 0 || target >= next.length) return next;
+  if (runningIndex >= 0 && target < runningIndex) return next;
   [next[index], next[target]] = [next[target]!, next[index]!];
   return next;
 }

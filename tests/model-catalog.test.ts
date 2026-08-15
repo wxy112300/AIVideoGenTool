@@ -47,6 +47,7 @@ describe("model catalog", () => {
       "flux2-klein-4b"
     ]);
     expect(modelCatalog.list("upscale").map((entry) => entry.definition.id)).toEqual([
+      "seedvr2-native-int8",
       "seedvr2",
       "flashvsr",
       "realesrgan"
