@@ -603,6 +603,7 @@ export const zhCNCatalog = {
     [uiKeys.history.filter.all]: "全部",
     [uiKeys.history.filter.favoriteOnly]: "只看收藏",
     [uiKeys.history.filter.rating]: "评分",
+    [uiKeys.history.filter.ratingUnset]: "未评分",
     [uiKeys.history.filter.ratingAny]: "不限评分",
     [uiKeys.history.filter.ratingMin]: "最低 {value} 分",
     [uiKeys.history.filter.ratingMax]: "最高 {value} 分",

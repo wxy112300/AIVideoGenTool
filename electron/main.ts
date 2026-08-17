@@ -43,6 +43,7 @@ import type {
   WindowCloseResponse
 } from "../src/types.js";
 import { normalizeUiLocale } from "../src/core/i18n.js";
+import { isHistoryRating } from "../src/core/history-filter.js";
 import {
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
@@ -2889,8 +2890,8 @@ function registerIpc(): void {
     if (favorite !== undefined && typeof favorite !== "boolean") {
       throw new Error("收藏状态无效。");
     }
-    if (rating !== undefined && rating !== null && ![1, 2, 3, 4, 5].includes(rating)) {
-      throw new Error("评分必须是 1 到 5 分。");
+    if (rating !== undefined && rating !== null && !isHistoryRating(rating)) {
+      throw new Error("评分必须是 0.5 到 5 分，支持半星。");
     }
     const next = await store.update((state) => {
       const video = state.history.find((item) => item.id === assetId);

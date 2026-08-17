@@ -24,6 +24,7 @@ export function renderHistoryHeading(
     historyKind: HistoryKind;
     historyLayout: "masonry" | "album";
     description: string;
+    historyFilter?: string;
   },
   options: Pick<HistoryFragmentRenderOptions, "t" | "icon" | "escapeHtml">
 ): string {
@@ -36,6 +37,7 @@ export function renderHistoryHeading(
         <button class="${historyKind === "image" ? "active" : ""}" role="tab" aria-selected="${historyKind === "image"}" data-history-kind="image">${options.icon("image")}${options.t(uiKeys.history.image)}</button>
       </div>
       <div class="history-view-tools">
+        ${viewModel.historyFilter ?? ""}
         <div class="button-row"><button class="${historyLayout === "masonry" ? "secondary" : "ghost"} button-with-icon" data-history-layout="masonry">${options.icon("columns-3")}${options.t(uiKeys.history.layoutMasonry)}</button><button class="${historyLayout === "album" ? "secondary" : "ghost"} button-with-icon" data-history-layout="album">${options.icon("layout-grid")}${options.t(uiKeys.history.layoutAlbum)}</button></div>
       </div>
     </section>`;

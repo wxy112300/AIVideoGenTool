@@ -2,9 +2,9 @@ import {
   defaultHistoryFilter,
   normalizeHistoryFilter,
   type HistoryFilterState,
-  type HistoryRating,
   type HistorySort
 } from "../../../core/history-filter";
+import type { HistoryRating } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 
 export interface HistoryFilterControllerOptions {
@@ -21,9 +21,19 @@ function stop(event: Event): void {
 
 function ratingValue(value: string): HistoryRating | null {
   const number = Number(value);
-  return number >= 1 && number <= 5 && Number.isInteger(number)
+  return number >= 0.5 && number <= 5 && Number.isInteger(number * 2)
     ? number as HistoryRating
     : null;
+}
+
+function syncPanelDom(root: ParentNode, open: boolean): void {
+  const panel = root.querySelector<HTMLElement>("[data-history-filter-panel]");
+  const toggle = root.querySelector<HTMLButtonElement>("[data-history-filter-toggle]");
+  if (panel) {
+    panel.hidden = !open;
+    panel.classList.toggle("is-open", open);
+  }
+  toggle?.setAttribute("aria-expanded", String(open));
 }
 
 export function mountHistoryFilterController(
@@ -41,8 +51,17 @@ export function mountHistoryFilterController(
 
   root.querySelector<HTMLButtonElement>("[data-history-filter-toggle]")?.addEventListener("click", (event) => {
     stop(event);
-    options.setPanelOpen(!options.getPanelOpen());
-    context.requestRender();
+    const open = !options.getPanelOpen();
+    options.setPanelOpen(open);
+    syncPanelDom(root, open);
+  }, { signal });
+
+  document.addEventListener("pointerdown", (event) => {
+    if (!options.getPanelOpen()) return;
+    const target = event.target;
+    if (target instanceof Node && root.querySelector("[data-history-filter-anchor]")?.contains(target)) return;
+    options.setPanelOpen(false);
+    syncPanelDom(root, false);
   }, { signal });
 
   root.querySelectorAll<HTMLElement>("[data-history-filter-field]").forEach((field) => {

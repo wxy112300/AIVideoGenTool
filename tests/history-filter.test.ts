@@ -61,6 +61,16 @@ describe("history curation filters", () => {
     }).map((item) => item.id)).toEqual(["a"]);
   });
 
+  it("accepts half-star ratings and keeps them in rating order", () => {
+    const records = [
+      video("half", { rating: 3.5 }),
+      video("full", { rating: 4 }),
+      video("unrated", { rating: null })
+    ];
+    expect(filterHistoryAssets(records, { minRating: 3.5 }).map((item) => item.id)).toEqual(["full", "half"]);
+    expect(filterHistoryAssets(records, { sort: "rating-desc" }).map((item) => item.id)).toEqual(["full", "half", "unrated"]);
+  });
+
   it("uses the same deterministic order for detail navigation", () => {
     const records = [video("a", { rating: 4 }), video("b", { rating: 5 }), video("c", { rating: 5 })];
     expect(filterHistoryAssets(records, { sort: "rating-desc" }).map((item) => item.id)).toEqual(["b", "c", "a"]);

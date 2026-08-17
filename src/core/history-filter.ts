@@ -1,4 +1,4 @@
-import type { HistoryAsset, ImageHistoryProject } from "../types.js";
+import type { HistoryAsset, HistoryRating, ImageHistoryProject } from "../types.js";
 
 export type HistorySort =
   | "newest"
@@ -7,8 +7,6 @@ export type HistorySort =
   | "rating-asc"
   | "duration-desc"
   | "duration-asc";
-
-export type HistoryRating = 1 | 2 | 3 | 4 | 5;
 
 export interface HistoryFilterState {
   favoriteOnly: boolean;
@@ -37,8 +35,8 @@ const sortValues: HistorySort[] = [
   "duration-asc"
 ];
 
-function validRating(value: unknown): value is HistoryRating {
-  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5;
+export function isHistoryRating(value: unknown): value is HistoryRating {
+  return typeof value === "number" && value >= 0.5 && value <= 5 && Number.isInteger(value * 2);
 }
 
 function validSort(value: unknown): value is HistorySort {
@@ -53,8 +51,8 @@ function normalizedNumber(value: unknown): number | null {
 }
 
 export function normalizeHistoryFilter(value: Partial<HistoryFilterState> | null | undefined): HistoryFilterState {
-  let minRating = validRating(value?.minRating) ? value!.minRating : null;
-  let maxRating = validRating(value?.maxRating) ? value!.maxRating : null;
+  let minRating = isHistoryRating(value?.minRating) ? value!.minRating : null;
+  let maxRating = isHistoryRating(value?.maxRating) ? value!.maxRating : null;
   if (minRating !== null && maxRating !== null && minRating > maxRating) {
     [minRating, maxRating] = [maxRating, minRating];
   }
@@ -83,7 +81,7 @@ function dateValue(value: string): number {
 }
 
 function ratingValue(value: number | null | undefined): number {
-  return typeof value === "number" && validRating(value) ? value : 0;
+  return typeof value === "number" && isHistoryRating(value) ? value : 0;
 }
 
 function compareNumbers(left: number, right: number, direction: 1 | -1): number {
@@ -101,8 +99,8 @@ function compareHistoryItems(
   let result = 0;
   if (sort === "oldest") result = compareNumbers(leftTime, rightTime, 1);
   else if (sort === "rating-desc" || sort === "rating-asc") {
-    const leftRated = validRating(left.rating);
-    const rightRated = validRating(right.rating);
+    const leftRated = isHistoryRating(left.rating);
+    const rightRated = isHistoryRating(right.rating);
     if (leftRated !== rightRated) result = leftRated ? -1 : 1;
     else result = compareNumbers(ratingValue(left.rating), ratingValue(right.rating), sort === "rating-desc" ? -1 : 1);
   }

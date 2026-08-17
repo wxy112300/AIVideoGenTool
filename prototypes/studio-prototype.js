@@ -31,7 +31,19 @@
   root.querySelectorAll('[data-history-kind]').forEach((button) => button.addEventListener('click', () => switchHistoryKind(button.dataset.historyKind)));
   root.querySelector('[data-history-filter-toggle]')?.addEventListener('click', () => {
     const panel = root.querySelector('[data-history-filter-panel]');
-    if (panel) panel.hidden = !panel.hidden;
+    const toggle = root.querySelector('[data-history-filter-toggle]');
+    if (panel) {
+      panel.hidden = !panel.hidden;
+      toggle?.setAttribute('aria-expanded', String(!panel.hidden));
+    }
+  });
+  document.addEventListener('click', (event) => {
+    const anchor = root.querySelector('.history-filter-demo');
+    const panel = root.querySelector('[data-history-filter-panel]');
+    if (panel && anchor && !anchor.contains(event.target)) {
+      panel.hidden = true;
+      root.querySelector('[data-history-filter-toggle]')?.setAttribute('aria-expanded', 'false');
+    }
   });
   let activeCreateMode = 'image';
   const selectedText = (panel, selector, fallback = '') => {

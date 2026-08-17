@@ -557,7 +557,8 @@ export interface HistoryAsset {
   versions: AssetVersion[];
 }
 
-export type HistoryRating = 1 | 2 | 3 | 4 | 5;
+/** User curation rating. Half-star increments keep the control useful for close calls. */
+export type HistoryRating = 0.5 | 1 | 1.5 | 2 | 2.5 | 3 | 3.5 | 4 | 4.5 | 5;
 
 export interface HistoryMetadataPatch {
   favorite?: boolean;

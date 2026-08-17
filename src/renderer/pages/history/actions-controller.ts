@@ -1,4 +1,4 @@
-import type { AppState, HistoryMetadataPatch } from "../../../types";
+import type { AppState, HistoryMetadataPatch, HistoryRating } from "../../../types";
 import { uiKeys } from "../../../core/i18n-keys";
 import { videoPromptForLoras } from "../../../core/video-loras";
 import type { RendererCleanup, RendererContext } from "../../contracts";
@@ -23,6 +23,27 @@ export interface HistoryActionsControllerOptions {
 function stopAction(event: Event): void {
   event.preventDefault();
   event.stopImmediatePropagation();
+}
+
+function clampRating(value: number): HistoryRating | null {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const rounded = Math.round(value * 2) / 2;
+  return rounded >= 0.5 && rounded <= 5 ? rounded as HistoryRating : null;
+}
+
+function updateRatingVisual(control: HTMLElement, rating: HistoryRating | null, unsetLabel: string): void {
+  const value = rating ?? 0;
+  control.querySelectorAll<HTMLElement>("[data-history-rating-star]").forEach((star) => {
+    const starValue = Number(star.dataset.historyRatingValue);
+    star.classList.toggle("is-full", value >= starValue);
+    star.classList.toggle("is-half", value === starValue - 0.5);
+    star.setAttribute("aria-pressed", String(value >= starValue));
+  });
+  const label = control.querySelector<HTMLElement>("[data-history-rating-value-label]");
+  if (label) label.textContent = value ? `${value} / 5` : unsetLabel;
+  const clear = control.querySelector<HTMLButtonElement>("[data-history-rating-clear]");
+  if (clear) clear.disabled = value === 0;
+  control.dataset.historyRatingPreview = String(value);
 }
 
 export function mountHistoryActionsController(
@@ -64,22 +85,62 @@ export function mountHistoryActionsController(
     }, { signal });
   });
 
-  root.querySelectorAll<HTMLSelectElement>("[data-history-rating]").forEach((select) => {
-    select.addEventListener("click", (event) => event.stopPropagation(), { signal });
-    select.addEventListener("change", async (event) => {
+  const commitRating = async (assetId: string, rating: HistoryRating | null) => {
+    try {
+      options.setState(await options.updateHistoryMetadata(assetId, { rating }));
+      context.requestRender();
+    } catch (error) {
+      context.notify(error instanceof Error ? error.message : "评分更新失败。", { renderPage: false, kind: "error" });
+    }
+  };
+
+  root.querySelectorAll<HTMLElement>("[data-history-rating-control]").forEach((control) => {
+    const unsetLabel = t(uiKeys.history.filter.ratingUnset);
+    const readPreview = () => clampRating(Number(control.dataset.historyRatingPreview ?? control.dataset.historyRatingCurrent ?? 0));
+    const previewFromPointer = (button: HTMLElement, event: PointerEvent): HistoryRating => {
+      const value = Number(button.dataset.historyRatingValue);
+      const rect = button.getBoundingClientRect();
+      return clampRating(value - (event.clientX - rect.left < rect.width / 2 ? 0.5 : 0)) ?? 0.5;
+    };
+    control.querySelectorAll<HTMLElement>("[data-history-rating-star]").forEach((button) => {
+      button.addEventListener("pointermove", (event) => {
+        updateRatingVisual(control, previewFromPointer(button, event), unsetLabel);
+      }, { signal });
+      button.addEventListener("click", async (event) => {
+        stopAction(event);
+        const assetId = button.dataset.historyRatingStar;
+        if (!assetId) return;
+        const rating = previewFromPointer(button, event as PointerEvent);
+        control.dataset.historyRatingCurrent = String(rating);
+        await commitRating(assetId, rating);
+      }, { signal });
+      button.addEventListener("keydown", (event) => {
+        const key = event.key;
+        if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "Enter", " "].includes(key)) return;
+        stopAction(event);
+        const assetId = button.dataset.historyRatingStar;
+        if (!assetId) return;
+        const current = readPreview() ?? 0;
+        if (key === "Enter" || key === " ") {
+          const rating = readPreview();
+          void commitRating(assetId, rating);
+          control.dataset.historyRatingCurrent = String(rating ?? 0);
+          return;
+        }
+        const next = key === "Home" ? null : key === "End" ? 5 : clampRating(current + ((key === "ArrowLeft" || key === "ArrowDown") ? -0.5 : 0.5));
+        updateRatingVisual(control, next, unsetLabel);
+      }, { signal });
+    });
+    control.addEventListener("pointerleave", () => {
+      updateRatingVisual(control, clampRating(Number(control.dataset.historyRatingCurrent ?? 0)), unsetLabel);
+    }, { signal });
+  });
+
+  root.querySelectorAll<HTMLButtonElement>("[data-history-rating-clear]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
       stopAction(event);
-      const assetId = select.dataset.historyRating;
-      if (!assetId) return;
-      const value = Number(select.value);
-      const rating = Number.isInteger(value) && value >= 1 && value <= 5
-        ? value as HistoryMetadataPatch["rating"]
-        : null;
-      try {
-        options.setState(await options.updateHistoryMetadata(assetId, { rating }));
-        context.requestRender();
-      } catch (error) {
-        context.notify(error instanceof Error ? error.message : "评分更新失败。", { renderPage: false, kind: "error" });
-      }
+      const assetId = button.dataset.historyRatingClear;
+      if (assetId) await commitRating(assetId, null);
     }, { signal });
   });
 

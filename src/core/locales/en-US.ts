@@ -603,6 +603,7 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.history.filter.all]: "All",
 	[uiKeys.history.filter.favoriteOnly]: "Favorites only",
 	[uiKeys.history.filter.rating]: "Rating",
+	[uiKeys.history.filter.ratingUnset]: "Not rated",
 	[uiKeys.history.filter.ratingAny]: "Any rating",
 	[uiKeys.history.filter.ratingMin]: "At least {value}",
 	[uiKeys.history.filter.ratingMax]: "At most {value}",

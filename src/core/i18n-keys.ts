@@ -647,6 +647,7 @@ export const uiKeys = {
       all: "history.filter.all",
       favoriteOnly: "history.filter.favoriteOnly",
       rating: "history.filter.rating",
+      ratingUnset: "history.filter.ratingUnset",
       ratingAny: "history.filter.ratingAny",
       ratingMin: "history.filter.ratingMin",
       ratingMax: "history.filter.ratingMax",

@@ -1148,14 +1148,36 @@ svg.lucide {
 .model-runtime-card>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.model-runtime-card p{margin:0;line-height:1.55}
 .image-generation-grid{align-items:start}.range-field{gap:9px}.range-heading,.range-scale{display:flex;align-items:center;justify-content:space-between;gap:12px}.range-heading strong{color:var(--accent);font-size:15px}.range-field input[type="range"]{width:100%;height:5px;padding:0;border:0;accent-color:var(--accent);cursor:pointer}.range-scale{color:var(--muted);font-size:11px}.field-note{color:var(--muted);font-size:11px;line-height:1.45;font-weight:400}
 @media(max-width:900px){.image-model-row{grid-template-columns:1fr}}
-.history-filter-demo { margin: -12px 0 18px; }
-.history-filter-demo-bar { display:flex; align-items:center; gap:12px; min-height:34px; }
-.history-filter-demo-bar > .muted { margin-right:auto; }
-.history-filter-demo-panel { display:flex; flex-wrap:wrap; align-items:center; gap:12px 18px; margin-top:8px; padding:10px 12px; border:1px solid var(--studio-border); border-radius:10px; background:rgba(20,25,34,.88); color:var(--studio-muted); font-size:12px; }
+.history-filter-demo { position:relative; z-index:12; display:inline-flex; margin:0; }
+.history-filter-demo-bar { display:flex; align-items:center; gap:8px; min-height:30px; }
+.history-filter-demo-bar > .muted { min-width:34px; font-variant-numeric:tabular-nums; text-align:right; }
+.history-filter-demo-panel { position:absolute; top:36px; right:0; display:grid; gap:0; width:min(430px,calc(100vw - 24px)); padding:14px; border:1px solid var(--studio-border); border-radius:14px; background:rgba(20,25,34,.97); box-shadow:0 14px 34px rgba(0,0,0,.32); color:var(--studio-muted); font-size:12px; }
 .history-filter-demo-panel[hidden] { display:none; }
-.history-card-curation-demo { position:absolute; right:8px; bottom:8px; display:flex; align-items:center; gap:4px; padding:3px; border:1px solid rgba(255,255,255,.12); border-radius:8px; background:rgba(8,11,16,.78); }
-.history-card-curation-demo .icon-btn { color:#f6bd4f; }
-.history-card-curation-demo select { width:47px; min-height:26px; border:0; border-radius:6px; background:transparent; color:var(--studio-text); font-size:10px; }
+.history-filter-demo-panel svg { width:13px; height:13px; color:#f06b78; fill:currentColor; vertical-align:-2px; }
+.filter-panel-heading { display:flex; justify-content:space-between; gap:12px; padding-bottom:11px; border-bottom:1px solid var(--studio-border); color:var(--studio-text); }
+.filter-panel-row { display:grid; grid-template-columns:1fr; gap:0; padding:0; border:0; }
+.filter-panel-row label, .filter-panel-row > button { display:flex; align-items:center; justify-content:space-between; gap:16px; min-width:0; min-height:48px; padding:10px 0; border-bottom:1px solid var(--studio-border); }
+.filter-panel-row select { min-width:0; width:210px; max-width:58%; }
+.filter-panel-switch { color:var(--studio-text); }
+.filter-panel-switch-copy { display:inline-flex; align-items:center; gap:8px; }
+.filter-panel-switch-copy svg { color:#f06b78; fill:currentColor; }
+.filter-ios-switch { position:relative; flex:0 0 auto; width:42px; height:24px; border-radius:999px; background:#38404c; box-shadow:inset 0 0 0 1px rgba(255,255,255,.08); transition:background-color .16s ease; }
+.filter-ios-switch::after { position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.32); content:""; transition:transform .16s ease; }
+.filter-panel-switch input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.filter-panel-switch input:checked + .filter-ios-switch { background:var(--studio-accent); }
+.filter-panel-switch input:checked + .filter-ios-switch::after { transform:translateX(18px); }
+.filter-panel-switch input:focus-visible + .filter-ios-switch { outline:2px solid var(--studio-accent); outline-offset:2px; }
+.filter-panel-footer { display:flex; justify-content:flex-end; padding-top:12px; }
+.history-card-curation-demo { position:absolute; right:8px; bottom:8px; display:inline-flex; align-items:center; gap:4px; min-height:20px; padding:2px 6px; border:1px solid rgba(255,255,255,.12); border-radius:7px; background:rgba(8,11,16,.78); color:#f6bd4f; font-size:10px; pointer-events:none; }
+.history-card-curation-demo svg { width:12px; height:12px; color:#f06b78; fill:currentColor; }
+.history-detail-curation-demo { display:flex; align-items:center; gap:10px; margin-top:12px; }
+.history-detail-curation-demo .icon-btn { color:#f06b78; }
+.history-detail-curation-demo .icon-btn svg { fill:currentColor; }
+.history-rating-demo { display:inline-flex; align-items:center; gap:2px; color:#667285; }
+.history-rating-demo button { border:0; background:transparent; padding:0 2px; color:inherit; font-size:22px; line-height:1; }
+.history-rating-demo button.is-full { color:#f6bd4f; }
+.history-rating-demo button.is-half { background:linear-gradient(90deg,#f6bd4f 50%,#667285 50%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.history-rating-demo span { margin-left:5px; color:var(--studio-text); font-size:12px; }
 
     html { background: var(--background); }
     body {
@@ -1179,10 +1201,33 @@ svg.lucide {
 <div class="studio-prototype">
   <header class="studio-topbar"><a class="studio-brand" href="./create.html"><span class="brand-mark"><i data-lucide="play"></i></span><span>Local Video Studio</span></a><nav class="studio-nav"><a href="./create.html">创建</a><a href="./queue.html">队列</a><a href="./history.html" aria-current="page">历史</a><a href="./settings.html">设置</a></nav></header>
   <main class="studio-body">
-    <section class="page-head"><div><div class="page-title"><h1>历史作品</h1><span class="badge" data-history-count>8 个视频</span></div><p class="muted" data-history-description>封面读取持久缓存；悬停才加载并播放原视频，退出后回到稳定封面。</p></div><div class="actions history-toolbar"><div class="segmented" role="tablist" aria-label="作品类型"><button class="active" data-history-kind="video"><i data-lucide="clapperboard"></i>视频</button><button data-history-kind="image"><i data-lucide="image"></i>图片</button></div><button class="btn primary" data-layout="masonry"><i data-lucide="columns-3"></i>瀑布流</button><button class="btn" data-layout="album"><i data-lucide="layout-grid"></i>相册</button></div></section>
-    <section class="history-filter-demo"><div class="history-filter-demo-bar"><button class="btn" data-history-filter-toggle><i data-lucide="sliders-horizontal"></i>筛选</button><span class="muted tiny">显示 8 / 8</span><label class="muted tiny">排序 <select data-history-filter-field="sort"><option>最新在前</option><option>评分从高到低</option><option>时长从长到短</option></select></label></div><div class="history-filter-demo-panel" data-history-filter-panel hidden><label><input type="checkbox" data-history-filter-field="favoriteOnly">★ 只看收藏</label><label>评分 <select><option>不限评分</option><option>至少 4 分</option><option>至少 3 分</option></select></label><label>时长至少 <select><option>不限时长</option><option>10 秒</option><option>30 秒</option></select></label><label>模型 <select><option>全部</option><option>MiniMax H3</option><option>H3 R2V</option></select></label><button class="btn" data-history-filter-clear>清除筛选</button></div></section>
+    <section class="page-head">
+      <div><div class="page-title"><h1>历史作品</h1><span class="badge" data-history-count>8 个视频</span></div><p class="muted" data-history-description>封面读取持久缓存；悬停才加载并播放原视频，退出后回到稳定封面。</p></div>
+      <div class="actions history-toolbar">
+        <div class="segmented" role="tablist" aria-label="作品类型"><button class="active" data-history-kind="video"><i data-lucide="clapperboard"></i>视频</button><button data-history-kind="image"><i data-lucide="image"></i>图片</button></div>
+        <div class="history-filter-demo">
+          <div class="history-filter-demo-bar"><button class="btn icon-only" data-history-filter-toggle aria-label="筛选" title="筛选"><i data-lucide="sliders-horizontal"></i></button><span class="muted tiny">8/8</span></div>
+          <div class="history-filter-demo-panel" data-history-filter-panel hidden>
+            <div class="filter-panel-heading"><strong>筛选与排序</strong><span>8/8</span></div>
+            <div class="filter-panel-row">
+              <label>排序 <select data-history-filter-field="sort"><option>最新在前</option><option>评分从高到低</option><option>时长从长到短</option></select></label>
+              <label class="filter-panel-switch"><span class="filter-panel-switch-copy"><i data-lucide="heart"></i><span>只看收藏</span></span><input type="checkbox" data-history-filter-field="favoriteOnly"><span class="filter-ios-switch" aria-hidden="true"></span></label>
+            </div>
+            <div class="filter-panel-row">
+              <label>评分 <span><select><option>不限评分</option><option>至少 4 分</option><option>至少 3 分</option></select> – <select><option>不限评分</option><option>最高 4 分</option><option>最高 5 分</option></select></span></label>
+              <label>时长至少 <select><option>不限时长</option><option>10 秒</option><option>30 秒</option></select></label>
+            </div>
+            <div class="filter-panel-row">
+              <label>模型 <select><option>全部</option><option>MiniMax H3</option><option>H3 R2V</option></select></label>
+            </div>
+            <div class="filter-panel-footer"><button class="btn" data-history-filter-clear>清除筛选</button></div>
+          </div>
+        </div>
+        <button class="btn primary" data-layout="masonry"><i data-lucide="columns-3"></i>瀑布流</button><button class="btn" data-layout="album"><i data-lucide="layout-grid"></i>相册</button>
+      </div>
+    </section>
     <section class="gallery" data-history-panel="video">
-      <article class="panel gallery-card" data-context-card onclick="location.href='./history-detail.html'"><div class="gallery-media"><div class="media-chips"><span class="media-chip">MiniMax H3</span><span class="media-chip">768p</span><span class="media-chip">2 个版本</span></div><div class="history-card-curation-demo"><button class="icon-btn" data-demo-favorite title="收藏"><i data-lucide="star"></i></button><select aria-label="评分"><option>—</option><option>5 ★</option><option>4 ★</option></select></div></div><div class="gallery-copy"><h3>黄昏机场的人物转身</h3><code>H3-黄昏机场人物-20260809-214031.mp4</code><div class="section-head tiny muted"><span>8/9 21:56</span><span>渲染 22:14</span></div></div></article>
+      <article class="panel gallery-card" data-context-card onclick="location.href='./history-detail.html'"><div class="gallery-media"><div class="media-chips"><span class="media-chip">MiniMax H3</span><span class="media-chip">768p</span><span class="media-chip">2 个版本</span></div><span class="history-card-curation-demo" aria-label="4.5 分 · 收藏"><span>4.5 ★</span><i data-lucide="heart"></i></span></div><div class="gallery-copy"><h3>黄昏机场的人物转身</h3><code>H3-黄昏机场人物-20260809-214031.mp4</code><div class="section-head tiny muted"><span>8/9 21:56</span><span>渲染 22:14</span></div></div></article>
       <article class="panel gallery-card" data-context-card onclick="location.href='./history-detail.html'"><div class="gallery-media"><div class="media-chips"><span class="media-chip">H3 R2V</span><span class="media-chip">720p</span><span class="media-chip">1 个版本</span></div></div><div class="gallery-copy"><h3>人物与霓虹街道</h3><code>H3-人物与霓虹街道-20260809-180201.mp4</code><div class="section-head tiny muted"><span>8/9 18:24</span><span>渲染 19:48</span></div></div></article>
       <article class="panel gallery-card" data-context-card onclick="location.href='./history-detail.html'"><div class="gallery-media"><div class="media-chips"><span class="media-chip">Sulphur 2</span><span class="media-chip">480p</span><span class="media-chip">旧模型记录</span></div></div><div class="gallery-copy"><h3>海边慢镜头</h3><code>Sulphur2-海边慢镜头-20260728-121843.mp4</code><div class="section-head tiny muted"><span>7/28 12:31</span><span>渲染 06:42</span></div></div></article>
       <article class="panel gallery-card" data-context-card><div class="gallery-media"><div class="media-chips"><span class="media-chip">MiniMax H3 Turbo</span><span class="media-chip">720p</span></div></div><div class="gallery-copy"><h3>高速列车窗边</h3><code>H3T-高速列车窗边-20260808-093300.mp4</code><div class="section-head tiny muted"><span>8/8 09:39</span><span>渲染 02:51</span></div></div></article>
@@ -1239,7 +1284,19 @@ svg.lucide {
   root.querySelectorAll('[data-history-kind]').forEach((button) => button.addEventListener('click', () => switchHistoryKind(button.dataset.historyKind)));
   root.querySelector('[data-history-filter-toggle]')?.addEventListener('click', () => {
     const panel = root.querySelector('[data-history-filter-panel]');
-    if (panel) panel.hidden = !panel.hidden;
+    const toggle = root.querySelector('[data-history-filter-toggle]');
+    if (panel) {
+      panel.hidden = !panel.hidden;
+      toggle?.setAttribute('aria-expanded', String(!panel.hidden));
+    }
+  });
+  document.addEventListener('click', (event) => {
+    const anchor = root.querySelector('.history-filter-demo');
+    const panel = root.querySelector('[data-history-filter-panel]');
+    if (panel && anchor && !anchor.contains(event.target)) {
+      panel.hidden = true;
+      root.querySelector('[data-history-filter-toggle]')?.setAttribute('aria-expanded', 'false');
+    }
   });
   let activeCreateMode = 'image';
   const selectedText = (panel, selector, fallback = '') => {
