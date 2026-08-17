@@ -142,6 +142,35 @@ describe("LM Studio prompt enhancement requests", () => {
     readFile.mockRestore();
   });
 
+  it("sends an empty reference-auto request as a varied H3 visual instruction", async () => {
+    const readFile = vi.spyOn(fs, "readFile").mockResolvedValue(Buffer.from("image"));
+    const body = await buildLmStudioChatRequest(
+      {
+        prompt: "",
+        modelId: "minimax_h3_fl2va",
+        mode: "h3-vision",
+        promptStrategy: "reference-auto",
+        autoPromptSeedId: "material-response",
+        autoPromptVariationId: "variation-11",
+        h3PromptMode: "I2VA",
+        h3DurationSeconds: 5,
+        imagePaths: ["reference.png"]
+      },
+      createDefaultSettings(),
+      "qwen/qwen3.5-9b"
+    );
+
+    expect(body.messages[1]?.content).toEqual([
+      expect.objectContaining({ type: "text", text: expect.stringContaining("Reference-driven H3 auto-creation mode") }),
+      expect.objectContaining({ type: "image_url" })
+    ]);
+    expect(body.messages[1]?.content).toEqual([
+      expect.objectContaining({ type: "text", text: expect.stringContaining("Variation token: variation-11") }),
+      expect.objectContaining({ type: "image_url" })
+    ]);
+    readFile.mockRestore();
+  });
+
   it("sends image references with a plain image-edit contract", async () => {
     const readFile = vi.spyOn(fs, "readFile").mockResolvedValue(Buffer.from("image"));
     const body = await buildLmStudioChatRequest(

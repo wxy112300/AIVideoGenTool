@@ -4,6 +4,8 @@ import type {
   DependencyInstallProgress,
   HistoryMigrationProgress,
   ImageAssetLibraryProgress,
+  PromptProgress,
+  PromptProgressStage,
   TaskPreview,
   WindowCloseRequest
 } from "../types";
@@ -33,6 +35,7 @@ export interface RendererEventOptions {
   getDraftDirty(): boolean;
   getDraftSaveInFlight(): number;
   setPromptRuntimeLoaded(value: boolean): void;
+  setPromptProgress(progress: PromptProgress | null): void;
   rememberModalFocus(): void;
   setPendingWindowCloseRequest(request: WindowCloseRequest): void;
   setWindowCloseResponseBusy(value: boolean): void;
@@ -66,6 +69,55 @@ function updateImageAssetLibraryProgress(progress: ImageAssetLibraryProgress, t:
   if (phase) phase.textContent = imageAssetPhaseLabel(progress.phase, t);
   const count = document.querySelector<HTMLElement>("#image-assets-progress-count");
   if (count) count.textContent = progress.total ? `${progress.current} / ${progress.total}` : t(uiKeys.assetLibrary.preparing);
+}
+
+const promptProgressStageKeys: Record<PromptProgressStage, string> = {
+  preparing: uiKeys.create.promptProgress.preparing,
+  checking: uiKeys.create.promptProgress.checking,
+  uploading: uiKeys.create.promptProgress.uploading,
+  "loading-model": uiKeys.create.promptProgress.loadingModel,
+  analyzing: uiKeys.create.promptProgress.analyzing,
+  generating: uiKeys.create.promptProgress.generating,
+  validating: uiKeys.create.promptProgress.validating,
+  unloading: uiKeys.create.promptProgress.unloading
+};
+
+function promptElapsedText(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  return hours > 0
+    ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+}
+
+function updatePromptProgressDom(progress: PromptProgress | null, t: Translate): void {
+  const button = document.querySelector<HTMLButtonElement>("#enhance-prompt");
+  if (!button) return;
+  const label = button.querySelector<HTMLElement>("[data-prompt-progress-label]");
+  const bar = button.querySelector<HTMLElement>("[data-prompt-progress-bar]");
+  const active = progress?.status === "running";
+  button.classList.toggle("prompt-progress-active", active);
+  button.setAttribute("aria-busy", String(active));
+  if (!progress) return;
+  const elapsed = promptElapsedText(progress.elapsedMs);
+  const stage = t(promptProgressStageKeys[progress.stage]);
+  const detail = progress.detail?.trim();
+  const amount = progress.progress == null ? "" : ` · ${Math.round(progress.progress)}%`;
+  const suffix = progress.status === "running"
+    ? `${t(uiKeys.create.promptProgress.elapsed, { time: elapsed })}${amount}`
+    : progress.status === "cancelled"
+      ? t(uiKeys.create.promptProgress.cancel)
+      : detail || stage;
+  button.title = `${stage} · ${suffix}`;
+  if (label) label.textContent = active ? elapsed : suffix;
+  if (bar) {
+    bar.classList.toggle("indeterminate", progress.progress == null && active);
+    bar.style.width = progress.progress == null
+      ? active ? "34%" : "0%"
+      : `${Math.max(0, Math.min(100, progress.progress))}%`;
+  }
 }
 
 function updateTaskPreview(
@@ -129,6 +181,23 @@ function pruneTaskPreviews(
 export function registerRendererEvents(
   options: RendererEventOptions
 ): RendererCleanup {
+  let promptProgressTimer: number | undefined;
+  const stopPromptProgressTimer = () => {
+    if (promptProgressTimer === undefined) return;
+    window.clearInterval(promptProgressTimer);
+    promptProgressTimer = undefined;
+  };
+  const startPromptProgressTimer = (progress: PromptProgress) => {
+    stopPromptProgressTimer();
+    promptProgressTimer = window.setInterval(() => {
+      const current = {
+        ...progress,
+        elapsedMs: Date.now() - progress.startedAt
+      };
+      options.setPromptProgress(current);
+      updatePromptProgressDom(current, options.t);
+    }, 1000);
+  };
   const unsubscribers = [
     options.studio.onWindowCloseRequest((request) => {
       options.rememberModalFocus();
@@ -182,6 +251,17 @@ export function registerRendererEvents(
       ) return;
       options.requestRender();
     }),
+    options.studio.onPromptProgress((progress) => {
+      if (progress.status === "running") {
+        options.setPromptProgress(progress);
+        updatePromptProgressDom(progress, options.t);
+        startPromptProgressTimer(progress);
+      } else {
+        stopPromptProgressTimer();
+        options.setPromptProgress(null);
+        updatePromptProgressDom(progress, options.t);
+      }
+    }),
     options.studio.onHistoryMigrationProgress((progress) => {
       options.setHistoryMigrationProgress(progress);
       if (options.hasPendingDirectoryMigration()) options.requestRender();
@@ -231,6 +311,7 @@ export function registerRendererEvents(
   window.addEventListener("unhandledrejection", onUnhandledRejection);
 
   return () => {
+    stopPromptProgressTimer();
     unsubscribers.forEach((unsubscribe) => unsubscribe());
     window.removeEventListener("error", onError);
     window.removeEventListener("unhandledrejection", onUnhandledRejection);

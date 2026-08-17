@@ -72,5 +72,10 @@ export function promptSnippetFor(id: string): string {
   return h3SnippetDefinitions.find((snippet) => snippet.id === id)?.text ?? "";
 }
 
+export {
+  createDefaultH3AutoPromptSeedInstructions,
+  h3AutoPromptSeedFor,
+  h3AutoPromptSeeds
+} from "./auto-seeds.js";
 export { createDefaultH3PromptPresets, defaultH3PromptPresets } from "./content.js";
 export type { H3PromptPack } from "../types.js";

@@ -7,6 +7,7 @@ import type {
   EnvironmentIssue,
   HistoryMigrationProgress,
   ImageAssetLibraryProgress,
+  PromptProgress,
   Settings,
   SettingsSaveMode,
   WindowCloseRequest,
@@ -67,6 +68,7 @@ const api: AppApi = {
   openExternal: (url: string) => ipcRenderer.invoke("shell:open-external", url),
   enhancePrompt: (request: EnhanceRequest) =>
     ipcRenderer.invoke("prompt:enhance", request),
+  cancelPrompt: () => ipcRenderer.invoke("prompt:cancel"),
   startPromptModel: () => ipcRenderer.invoke("prompt:start"),
   releasePromptModel: () => ipcRenderer.invoke("prompt:release"),
   testConnection: (kind, settings) =>
@@ -123,6 +125,12 @@ const api: AppApi = {
       callback(preview as Parameters<typeof callback>[0]);
     ipcRenderer.on("task:preview", listener);
     return () => ipcRenderer.removeListener("task:preview", listener);
+  },
+  onPromptProgress: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: unknown) =>
+      callback(progress as PromptProgress);
+    ipcRenderer.on("prompt:progress", listener);
+    return () => ipcRenderer.removeListener("prompt:progress", listener);
   },
   onWindowCloseRequest: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, request: unknown) =>

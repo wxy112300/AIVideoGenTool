@@ -1,4 +1,4 @@
-import type { EnhanceRequest, Settings } from "../../src/types.js";
+import type { EnhanceRequest, PromptProgressReporter, Settings } from "../../src/types.js";
 import {
   comfyMultimodalPromptModel
 } from "../../src/core/prompt-models.js";
@@ -6,6 +6,10 @@ import {
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
+import {
+  isH3ReferenceAutoPrompt,
+  validateH3ReferenceAutoPrompt
+} from "../../src/core/h3-auto-prompter.js";
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
 import { missingWorkflowNodeTypes } from "../../src/core/workflow.js";
 import {
@@ -122,9 +126,12 @@ export async function enhancePromptWithMultimodalComfyUi(
   request: EnhanceRequest,
   settings: Settings,
   signal: AbortSignal,
-  warmup = false
+  warmup = false,
+  onProgress?: PromptProgressReporter
 ): Promise<string> {
-  if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
+  if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
+  validateH3ReferenceAutoPrompt(request);
+  onProgress?.("checking", 5);
   const definition = comfyMultimodalPromptModel(settings.promptModelId);
   if (!definition) throw new Error("当前选择的提示词模型不是 Qwen3.6 ComfyUI 多模态模型。");
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
@@ -139,6 +146,7 @@ export async function enhancePromptWithMultimodalComfyUi(
         .slice(0, 12)
         .map((filePath, index) => uploadInput(baseUrl, filePath, signal, `参考图 ${index + 1}`))
     );
+      onProgress?.("uploading", 18);
     const prompt = buildMultimodalPromptWorkflow(request, uploadedImages, settings, warmup);
     const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
     if (missingNodes.length) {
@@ -164,9 +172,13 @@ export async function enhancePromptWithMultimodalComfyUi(
       settings,
       5,
       signal,
-      () => undefined,
+      (value, stage) => {
+        const normalized = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+        onProgress?.("generating", Math.min(90, 25 + Math.round(normalized * 0.65)), stage);
+      },
       () => undefined
     );
+    onProgress?.("validating", 94);
     const output = extractStringNodeOutput(history, ["preview", "vision-llm"]);
     if (warmup) return output;
     if (request.mode === "image-edit") {

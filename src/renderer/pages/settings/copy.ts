@@ -79,6 +79,13 @@ type SettingsCopyKey =
   | "prompt.currentPreset"
   | "prompt.ruleHeader"
   | "prompt.h3Note"
+  | "prompt.autoVideoPresetTitle"
+  | "prompt.autoVideoPresetDescription"
+  | "prompt.autoVideoPresetSelection"
+  | "prompt.autoVideoPresetRandom"
+  | "prompt.autoVideoPresetRandomHint"
+  | "prompt.autoVideoPresetRule"
+  | "prompt.autoVideoPresetNote"
   | "prompt.imagePresetTitle"
   | "prompt.imagePresetDescription"
   | "prompt.imageNote"
@@ -298,6 +305,13 @@ const zhCN: SettingsCopyCatalog = {
   "prompt.currentPreset": "当前编辑预设",
   "prompt.ruleHeader": "预设规则头",
   "prompt.h3Note": "规则头可自由修改；内置的 H3 官方基线会继续强制参考标签、首尾帧关系、连续性、音频和输出格式。修改后点击设置页顶部“保存设置”，创建页下次扩写立即使用。",
+  "prompt.autoVideoPresetTitle": "无提示词视频预设",
+  "prompt.autoVideoPresetDescription": "当 H3 Prompt 为空时，从参考画面设计动作、镜头和互动；与普通视频提示词预设分开。",
+  "prompt.autoVideoPresetSelection": "默认起稿方向",
+  "prompt.autoVideoPresetRandom": "自动随机轮换",
+  "prompt.autoVideoPresetRandomHint": "每次清空 Prompt 后优先选择尚未使用的起稿方向，并生成新的变化。",
+  "prompt.autoVideoPresetRule": "起稿指令",
+  "prompt.autoVideoPresetNote": "选择具体方向后会固定创意方向，但每次点击仍会使用新的变化标识；修改后保存设置即可生效。",
   "prompt.imagePresetTitle": "图片提示词预设",
   "prompt.imagePresetDescription": "只影响图片“优化提示词”时的整理策略，不改变 Qwen Image 的生成参数。",
   "prompt.imageNote": "规则头会作为图片 Prompt 优化器的策略说明；最终发送给 Qwen Image 的 Prompt 不会包含这段设置文本。",
@@ -496,6 +510,13 @@ const zhTW: SettingsCopyCatalog = {
   "prompt.currentPreset": "目前編輯預設",
   "prompt.ruleHeader": "預設規則標頭",
   "prompt.h3Note": "規則標頭可自由修改；內建 H3 官方基線仍會強制參考標籤、首尾影格關係、連續性、音訊與輸出格式。修改後點擊設定頁頂端的「儲存設定」，建立頁下次擴寫立即使用。",
+  "prompt.autoVideoPresetTitle": "無提示詞影片預設",
+  "prompt.autoVideoPresetDescription": "當 H3 Prompt 為空時，根據參考畫面設計動作、鏡頭和互動；與一般影片提示詞預設分開。",
+  "prompt.autoVideoPresetSelection": "預設起稿方向",
+  "prompt.autoVideoPresetRandom": "自動隨機輪換",
+  "prompt.autoVideoPresetRandomHint": "每次清空 Prompt 後優先選擇尚未使用的起稿方向，並產生新的變化。",
+  "prompt.autoVideoPresetRule": "起稿指令",
+  "prompt.autoVideoPresetNote": "選擇具體方向後會固定創意方向，但每次點擊仍會使用新的變化標識；修改後儲存設定即可生效。",
   "prompt.imagePresetTitle": "圖片提示詞預設",
   "prompt.imagePresetDescription": "只影響圖片「最佳化提示詞」時的整理策略，不改變 Qwen Image 的生成參數。",
   "prompt.imageNote": "規則標頭會作為圖片 Prompt 最佳化器的策略說明；最後傳給 Qwen Image 的 Prompt 不會包含這段設定文字。",
@@ -712,6 +733,13 @@ const enUS: SettingsCopyCatalog = {
   "prompt.currentPreset": "Preset being edited",
   "prompt.ruleHeader": "Preset rule header",
   "prompt.h3Note": "The rule header is editable; the built-in H3 baseline still enforces reference tags, start/end-frame relationships, continuity, audio, and output format. Save Settings to use changes on the next expansion.",
+  "prompt.autoVideoPresetTitle": "No-prompt video presets",
+  "prompt.autoVideoPresetDescription": "When the H3 Prompt is blank, design motion, camera, and interaction from the reference media. This is separate from normal video prompt presets.",
+  "prompt.autoVideoPresetSelection": "Default drafting direction",
+  "prompt.autoVideoPresetRandom": "Automatic random rotation",
+  "prompt.autoVideoPresetRandomHint": "After the Prompt is cleared, prefer an unused direction and create a new variation.",
+  "prompt.autoVideoPresetRule": "Drafting instruction",
+  "prompt.autoVideoPresetNote": "A fixed direction keeps the creative approach while each click still receives a new variation token. Save Settings to apply changes.",
   "prompt.imagePresetTitle": "Image prompt presets",
   "prompt.imagePresetDescription": "Only affects how the image Optimize Prompt action organizes instructions; it does not change Qwen Image generation parameters.",
   "prompt.imageNote": "The rule header guides the image Prompt optimizer; it is not included in the final Prompt sent to Qwen Image.",

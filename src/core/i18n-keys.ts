@@ -1203,6 +1203,19 @@ export const uiKeys = {
       workflowSafetyFailed: "create.validation.workflowSafetyFailed",
       chooseApiWorkflow: "create.validation.chooseApiWorkflow"
     },
+    promptProgress: {
+      preparing: "create.promptProgress.preparing",
+      checking: "create.promptProgress.checking",
+      uploading: "create.promptProgress.uploading",
+      loadingModel: "create.promptProgress.loadingModel",
+      analyzing: "create.promptProgress.analyzing",
+      generating: "create.promptProgress.generating",
+      validating: "create.promptProgress.validating",
+      unloading: "create.promptProgress.unloading",
+      cancel: "create.promptProgress.cancel",
+      elapsed: "create.promptProgress.elapsed",
+      indeterminate: "create.promptProgress.indeterminate"
+    },
     interaction: {
       clipboardFormats: "create.interaction.clipboardFormats",
       replacedPicture: "create.interaction.replacedPicture",

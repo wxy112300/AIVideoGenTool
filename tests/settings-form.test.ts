@@ -24,4 +24,27 @@ describe("settings form", () => {
       globalThis.document = previousDocument;
     }
   });
+
+  it("reads the selected auto-video seed and its edited instruction", () => {
+    const previousDocument = globalThis.document;
+    globalThis.document = {
+      querySelector: vi.fn((selector: string) => {
+        if (selector === "#h3-auto-prompt-seed-setting") return { value: "camera-discovery" };
+        if (selector === "#h3-auto-prompt-seed-text") return { value: "CUSTOM AUTO DIRECTION" };
+        return null;
+      })
+    } as unknown as Document;
+
+    try {
+      const settings = readSettingsFromForm(
+        createDefaultSettings(),
+        "official-storyboard",
+        "faithful"
+      );
+      expect(settings.h3AutoPromptSeedId).toBe("camera-discovery");
+      expect(settings.h3AutoPromptSeedInstructions["camera-discovery"]).toBe("CUSTOM AUTO DIRECTION");
+    } finally {
+      globalThis.document = previousDocument;
+    }
+  });
 });

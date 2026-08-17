@@ -6,6 +6,7 @@ import type {
   ImagePromptPreset,
   ImageReferenceRole,
   PromptVersion,
+  PromptProgress,
   VideoLoraPurpose,
   VideoLoraSelection
 } from "../../../types";
@@ -73,12 +74,14 @@ export interface VideoCreatePageViewModel {
   promptVersionCount: number;
   promptRuntimeBusy: boolean;
   promptEnhancing: boolean;
+  promptProgress: PromptProgress | null;
   extending: boolean;
   isR2V: boolean;
   isMiniMaxH3: boolean;
   h3Mode?: H3PromptMode;
   enhanceMode: "faithful" | "sulphur-native" | "h3-vision";
   h3PromptEnhanceTitle: string;
+  referenceAutoPromptAvailable: boolean;
   releasePromptControlTitle: string;
   releasePromptControlIconName: string;
   releasePromptControlDisabled: boolean;
@@ -130,6 +133,12 @@ function renderPromptModeInfo(
   escapeHtml: (value: string) => string
 ): string {
   return `<span class="field-info prompt-mode-info" id="prompt-enhance-mode-info" tabindex="0" aria-label="${escapeHtml(tip)}">${icon("info")}<span class="field-info-tip" id="prompt-enhance-mode-tip" role="tooltip">${escapeHtml(tip)}</span></span>`;
+}
+
+function promptElapsedText(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 export type CreatePageViewModel = ImageEditPageViewModel | VideoCreatePageViewModel;
@@ -348,7 +357,10 @@ export function renderCreatePage(
                   <option value="faithful" ${viewModel.enhanceMode === "faithful" ? "selected" : ""}>${promptUi.t("faithfulEnhance")}</option>`}
           </select>
              <button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" title="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-busy="${viewModel.promptRuntimeBusy}">${icon(viewModel.releasePromptControlIconName)}</button>
-             <button class="secondary button-with-icon" id="enhance-prompt" ${viewModel.promptAiDisabled ? "disabled" : ""} title="${escapeHtml(viewModel.promptEnhanceButtonTitle)}">${icon("sparkles")}${viewModel.promptEnhancing ? promptUi.t("optimizing") : promptUi.t("optimizePrompt")}</button>
+             <button class="secondary button-with-icon prompt-enhance-button ${viewModel.promptEnhancing ? "prompt-progress-active" : ""}" id="enhance-prompt" ${viewModel.promptAiDisabled && !viewModel.promptEnhancing ? "disabled" : ""} title="${escapeHtml(viewModel.promptEnhanceButtonTitle)}" aria-busy="${viewModel.promptEnhancing}">
+               <span class="prompt-progress-track" aria-hidden="true"><span class="prompt-progress-bar ${viewModel.promptProgress?.progress == null && viewModel.promptEnhancing ? "indeterminate" : ""}" data-prompt-progress-bar style="width:${viewModel.promptProgress?.progress ?? 0}%"></span></span>
+               <span class="prompt-enhance-content">${icon(viewModel.promptEnhancing ? "x" : "sparkles")}<span data-prompt-progress-label>${viewModel.promptEnhancing ? promptElapsedText(viewModel.promptProgress?.elapsedMs ?? 0) : viewModel.referenceAutoPromptAvailable && !viewModel.prompt.text.trim() ? promptUi.t("autoPrompt") : promptUi.t("optimizePrompt")}</span></span>
+             </button>
         </div>
       </div>
       <div class="prompt-editor-shell">

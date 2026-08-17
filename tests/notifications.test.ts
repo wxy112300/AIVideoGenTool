@@ -109,6 +109,7 @@ describe("renderer notifications", () => {
       onHistoryMigrationProgress: subscribe,
       onImageAssetLibraryProgress: subscribe,
       onTaskPreview: subscribe,
+      onPromptProgress: subscribe,
       onAttentionInstallLog: subscribe,
       onDependencyInstallLog: subscribe,
       reportRendererError: async () => undefined
@@ -125,6 +126,7 @@ describe("renderer notifications", () => {
       getDraftDirty: () => false,
       getDraftSaveInFlight: () => 0,
       setPromptRuntimeLoaded: vi.fn(),
+      setPromptProgress: vi.fn(),
       rememberModalFocus: vi.fn(),
       setPendingWindowCloseRequest: vi.fn(),
       setWindowCloseResponseBusy: vi.fn(),

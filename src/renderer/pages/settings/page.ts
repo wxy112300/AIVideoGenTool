@@ -7,6 +7,7 @@ import type {
   ModelScanProfile,
   Settings
 } from "../../../types";
+import type { H3AutoPromptSeed } from "../../../core/prompts/h3/auto-seeds";
 import type { SettingsTab } from "../../contracts";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
@@ -85,6 +86,7 @@ export interface SettingsPageViewModel {
 export interface SettingsPageOptions {
   t: Translate;
   defaultH3PromptPresets: Record<H3PromptPreset, string>;
+  h3AutoPromptSeeds: readonly H3AutoPromptSeed[];
   defaultImagePromptPresets: Record<ImagePromptPreset, string>;
   h3PromptPresetDescriptions: Record<H3PromptPreset, string>;
   imagePromptPresetLabels: Record<ImagePromptPreset, string>;
@@ -185,6 +187,12 @@ export function renderSettingsPage(
   const defaultImagePromptPresets = options.defaultImagePromptPresets;
   const selectedImagePromptPresetText = settings.imagePromptPresets[viewModel.settingsImagePromptPreset] ??
     defaultImagePromptPresets[viewModel.settingsImagePromptPreset];
+  const selectedAutoPromptSeed = options.h3AutoPromptSeeds.find(
+    (seed) => seed.id === settings.h3AutoPromptSeedId
+  );
+  const selectedAutoPromptSeedText = selectedAutoPromptSeed
+    ? settings.h3AutoPromptSeedInstructions[selectedAutoPromptSeed.id] ?? selectedAutoPromptSeed.instruction
+    : "";
   const videoAvailable = videoProfiles.filter(
     (profile) => profile.available && profile.integrated
   ).length;
@@ -497,6 +505,13 @@ export function renderSettingsPage(
         <p class="muted proxy-hint">${escape(options.h3PromptPresetDescriptions[viewModel.settingsH3PromptPreset])}</p>
         <label>${s("prompt.ruleHeader")}<textarea id="h3-prompt-preset-text" rows="7">${escape(selectedH3PresetText)}</textarea></label>
         <p class="muted proxy-hint">${s("prompt.h3Note")}</p>
+      </section>
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>${s("prompt.autoVideoPresetTitle")}</h2><span class="muted">${s("prompt.autoVideoPresetDescription")}</span></div><button class="secondary button-with-icon" id="restore-h3-auto-prompt-seeds">${icon("rotate-ccw")}${s("prompt.restore")}</button></div>
+        <label>${s("prompt.autoVideoPresetSelection")}<select id="h3-auto-prompt-seed-setting"><option value="" ${!selectedAutoPromptSeed ? "selected" : ""}>${s("prompt.autoVideoPresetRandom")}</option>${options.h3AutoPromptSeeds.map((seed) => `<option value="${escape(seed.id)}" ${selectedAutoPromptSeed?.id === seed.id ? "selected" : ""}>${escape(seed.label)}</option>`).join("")}</select></label>
+        <p class="muted proxy-hint">${escape(selectedAutoPromptSeed?.instruction ?? s("prompt.autoVideoPresetRandomHint"))}</p>
+        ${selectedAutoPromptSeed ? `<label>${s("prompt.autoVideoPresetRule")}<textarea id="h3-auto-prompt-seed-text" rows="7">${escape(selectedAutoPromptSeedText)}</textarea></label>` : ""}
+        <p class="muted proxy-hint">${s("prompt.autoVideoPresetNote")}</p>
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${s("prompt.imagePresetTitle")}</h2><span class="muted">${s("prompt.imagePresetDescription")}</span></div><button class="secondary button-with-icon" id="restore-image-prompt-presets">${icon("rotate-ccw")}${s("prompt.restore")}</button></div>

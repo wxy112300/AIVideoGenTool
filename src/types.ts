@@ -27,6 +27,7 @@ export interface PromptVersion {
   label: string;
   text: string;
   createdAt: string;
+  autoPromptSeedId?: string;
 }
 
 export type H3ReferenceRole =
@@ -243,6 +244,8 @@ export interface Settings {
   promptUseLmStudio: boolean;
   promptRuntime: PromptRuntime;
   promptModelId: string;
+  h3AutoPromptSeedId: string;
+  h3AutoPromptSeedInstructions: Record<string, string>;
   promptModelDirectory: string;
   promptLlamaServerPath: string;
   promptLlamaPort: number;
@@ -822,6 +825,10 @@ export interface EnhanceRequest {
   prompt: string;
   modelId: string;
   mode?: PromptEnhanceMode;
+  promptStrategy?: "rewrite" | "reference-auto";
+  autoPromptSeedId?: string;
+  autoPromptSeedInstruction?: string;
+  autoPromptVariationId?: string;
   imageEditEnhanceMode?: ImagePromptPreset;
   imageEditPresetText?: string;
   imagePath?: string;
@@ -833,6 +840,35 @@ export interface EnhanceRequest {
   referenceMediaPaths?: string[];
   referenceContext?: string;
 }
+
+export type PromptProgressStage =
+  | "preparing"
+  | "checking"
+  | "uploading"
+  | "loading-model"
+  | "analyzing"
+  | "generating"
+  | "validating"
+  | "unloading";
+
+export type PromptProgressStatus = "running" | "completed" | "failed" | "cancelled";
+
+export interface PromptProgress {
+  status: PromptProgressStatus;
+  stage: PromptProgressStage;
+  progress: number | null;
+  startedAt: number;
+  elapsedMs: number;
+  modelId: string;
+  detail?: string;
+  error?: string;
+}
+
+export type PromptProgressReporter = (
+  stage: PromptProgressStage,
+  progress?: number | null,
+  detail?: string
+) => void;
 
 export interface BundledWorkflow {
   modelId: string;
@@ -1019,6 +1055,7 @@ export interface AppApi {
   copyFile(path: string): Promise<ConnectionResult>;
   openExternal(url: string): Promise<boolean>;
   enhancePrompt(request: EnhanceRequest): Promise<string>;
+  cancelPrompt(): Promise<ConnectionResult>;
   startPromptModel(): Promise<ConnectionResult>;
   releasePromptModel(): Promise<ConnectionResult>;
   testConnection(kind: ConnectionKind, settings: Settings): Promise<ConnectionResult>;
@@ -1064,6 +1101,7 @@ export interface AppApi {
   deleteImageHistoryVersion(projectId: string, versionId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
+  onPromptProgress(callback: (progress: PromptProgress) => void): () => void;
   onWindowCloseRequest(callback: (request: WindowCloseRequest) => void): () => void;
   onAttentionInstallLog(callback: (message: string) => void): () => void;
   onDependencyInstallLog(

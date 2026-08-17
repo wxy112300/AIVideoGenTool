@@ -38,7 +38,9 @@ describe("draft defaults", () => {
     expect(createDefaultSettings().ltxExtensionTimeoutMinutes).toBe(20);
     expect(createDefaultSettings().lmStudioInstallDirectory).toBe("");
     expect(createDefaultSettings().promptUseLmStudio).toBe(false);
-    expect(createDefaultSettings().promptModelId).toBe("qwen/qwen3.5-4b");
+    expect(createDefaultSettings().promptModelId).toBe("community/gemma-4-e4b-unconcerned-q5");
+    expect(createDefaultSettings().h3AutoPromptSeedId).toBe("");
+    expect(Object.keys(createDefaultSettings().h3AutoPromptSeedInstructions).length).toBeGreaterThan(10);
     expect(createDefaultSettings().promptModelDirectory).toBe("");
     expect(createDefaultSettings().imageOutputDirectory).toBe("");
     expect(createDefaultSettings().imageInputLibraryDirectory).toBe("");

@@ -1,5 +1,60 @@
-import type { H3PromptMode } from "../types.js";
-import { h3EffectiveDurationSeconds } from "./h3-prompt.js";
+import type { EnhanceRequest, H3PromptMode } from "../types.js";
+import { h3EffectiveDurationSeconds, inferH3PromptMode } from "./h3-prompt.js";
+import { h3AutoPromptSeedFor, type H3AutoPromptSeed } from "./prompts/h3/auto-seeds.js";
+
+export function h3PromptModeForRequest(request: EnhanceRequest): H3PromptMode {
+  if (request.h3PromptMode) return request.h3PromptMode;
+  const imageCount = request.imagePaths?.length ?? 0;
+  return inferH3PromptMode(
+    Boolean(request.imagePath || imageCount > 0),
+    imageCount > 1
+  );
+}
+
+export function hasH3ReferenceMedia(request: EnhanceRequest): boolean {
+  return [
+    request.imagePath,
+    ...(request.imagePaths ?? []),
+    ...(request.referenceMediaPaths ?? [])
+  ].some((value) => Boolean(value?.trim()));
+}
+
+export function isH3ReferenceAutoPrompt(request: EnhanceRequest): boolean {
+  return request.promptStrategy === "reference-auto";
+}
+
+export function validateH3ReferenceAutoPrompt(request: EnhanceRequest): void {
+  if (!isH3ReferenceAutoPrompt(request)) return;
+  if (request.mode !== "h3-vision") {
+    throw new Error("参考图自动起稿仅支持 H3 视觉提示词模式。");
+  }
+  if (!hasH3ReferenceMedia(request)) {
+    throw new Error("参考图自动起稿需要至少一份参考图片或视频。");
+  }
+}
+
+export function h3AutoPromptInstruction(
+  request: EnhanceRequest,
+  seed?: H3AutoPromptSeed
+): string {
+  const mode = h3PromptModeForRequest(request);
+  const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds ?? 5);
+  const selectedSeed = seed ?? h3AutoPromptSeedFor(mode, request.autoPromptSeedId);
+  const variationId = request.autoPromptVariationId?.trim() || "new variation";
+  const referenceContext = request.referenceContext?.trim();
+  return [
+    "Reference-driven H3 auto-creation mode: the user intentionally left the creative prompt blank.",
+    "Inspect the attached reference media silently before writing. Treat visible identity, composition, objects, lighting, spatial layout, visible text, and reference roles as factual evidence.",
+    `Create an original but physically grounded motion concept for the complete ${duration.toFixed(2)}-second clip in ${mode} mode. The goal is to make the reference scene come alive when the user has no story idea.`,
+    `Creative direction seed: ${request.autoPromptSeedInstruction?.trim() || selectedSeed.instruction}`,
+    `Variation token: ${variationId}. Use it to choose a different concrete action, timing, camera path, or secondary reaction from previous runs while remaining faithful to the same reference facts.`,
+    ...(referenceContext ? [`Reference role map:\n${referenceContext}`] : []),
+    "Do not invent people, props, locations, visible text, dialogue, weather, or story facts that are not visible or required by the selected creative direction. If a seed does not fit the image, adapt it to the strongest visible subject or omit that part.",
+    "Spend most of the output on observable motion, cause and effect, camera behavior, physical response, timing, and a settled final state. Do not return a caption, visual inventory, analysis, safety disclaimer, or generic negative prompt.",
+    "Unless the user explicitly supplied an audio request, do not invent non-diegetic music; use N/A for non_diegetic_music while allowing only sound effects or ambience causally supported by the scene.",
+    "Return only the complete final H3 prompt in the required mode-specific format."
+  ].join("\n\n");
+}
 
 /**
  * The reusable part of the community Auto Prompter contract.

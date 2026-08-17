@@ -7,6 +7,7 @@ import type {
   ImageEditDraft,
   ImagePromptPreset,
   PerformanceMetrics,
+  PromptProgress,
   PromptEnhanceMode,
   Settings,
   WorkflowCapabilities
@@ -79,6 +80,7 @@ export interface CreateViewModelDependencies {
   promptStarting: boolean;
   promptReleasing: boolean;
   promptRuntimeLoaded: boolean;
+  promptProgress: PromptProgress | null;
   h3PromptBuilder: H3PromptBuilderInput;
   enqueueBusy: boolean;
   promptRuntimeControlTitle(settings?: Settings): string;
@@ -326,6 +328,7 @@ export function buildVideoCreatePageViewModel(
     promptStarting,
     promptReleasing,
     promptRuntimeLoaded,
+    promptProgress,
     h3PromptBuilder,
     enqueueBusy
   } = options;
@@ -334,6 +337,11 @@ export function buildVideoCreatePageViewModel(
   const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
   const isR2V = isMiniMaxH3R2vModel(draft.modelId);
   const h3Mode = isMiniMaxH3 ? h3PromptModeForDraft(draft) : undefined;
+  const referenceAutoPromptAvailable = isMiniMaxH3 && (
+    isR2V
+      ? draft.h3ReferenceSlots.some((slot) => Boolean(slot.mediaPath))
+      : Boolean(draft.startImagePath || draft.endImagePath)
+  );
   const activeH3PromptPreset = h3Mode
     ? h3PromptPresetForMode(h3Mode, h3PromptPreset)
     : h3PromptPreset;
@@ -466,6 +474,7 @@ export function buildVideoCreatePageViewModel(
     promptVersionCount,
     promptRuntimeBusy,
     promptEnhancing,
+    promptProgress,
     extending,
     isR2V,
     isMiniMaxH3,
@@ -474,6 +483,7 @@ export function buildVideoCreatePageViewModel(
     h3PromptEnhanceTitle: isMiniMaxH3
       ? h3PromptPack.presetDescriptions[activeH3PromptPreset]
       : h3PromptPack.ui.t("enhanceMode"),
+    referenceAutoPromptAvailable,
     promptUi: h3PromptPack.ui,
     releasePromptControlTitle: options.promptRuntimeControlTitle(),
     releasePromptControlIconName: options.promptRuntimeControlIcon(),
@@ -483,6 +493,8 @@ export function buildVideoCreatePageViewModel(
       ? t(uiKeys.create.validation.promptTaskRunning)
       : promptAiDisabled
         ? h3PromptPack.ui.t("optimizing")
+        : referenceAutoPromptAvailable && !prompt.text.trim()
+          ? h3PromptPack.ui.t("autoPromptHint")
         : isGemmaPromptModel(state.settings.promptModelId)
           ? t(uiKeys.create.validation.gemmaOptimize)
           : t(uiKeys.create.validation.promptOptimize),

@@ -6,6 +6,7 @@ import type {
   PromptEnhanceMode
 } from "../../../types";
 import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
+import { h3AutoPromptSeedFor } from "../../../core/prompts/h3/auto-seeds";
 import {
   createH3PromptFromBuilder,
   createH3PromptTemplate
@@ -213,14 +214,42 @@ export function mountCreatePromptController(
 
   root.querySelector("#enhance-prompt")?.addEventListener("click", async (event) => {
     event.stopImmediatePropagation();
-    if (options.isPromptEnhancing()) return;
+    if (options.isPromptEnhancing()) {
+      try {
+        await options.context.studio.cancelPrompt();
+      } catch (error) {
+        options.context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+      }
+      return;
+    }
     const draft = getDraft();
     if (!draft) return;
+    const isCurrentH3 = isMiniMaxH3Model(draft.modelId);
+    const h3Mode = h3PromptModeForDraft(draft);
+    const currentPrompt = activePrompt(draft, options.context.getState()?.settings.uiLocale).text;
+    const referenceMediaPaths = isMiniMaxH3R2vModel(draft.modelId)
+      ? draft.h3ReferenceSlots.map((slot) => slot.mediaPath).filter(Boolean)
+      : [draft.startImagePath, draft.endImagePath].filter(Boolean);
+    if (isCurrentH3 && !currentPrompt.trim() && referenceMediaPaths.length === 0) {
+      options.context.notify(promptUi().t("autoPromptMissingMedia"), { kind: "error" });
+      return;
+    }
+    const promptSettings = options.context.getState()?.settings;
+    const configuredAutoPromptSeedId = promptSettings?.h3AutoPromptSeedId?.trim() || undefined;
+    const autoPromptSeed = isCurrentH3 && !currentPrompt.trim() && referenceMediaPaths.length > 0
+      ? h3AutoPromptSeedFor(
+          h3Mode,
+          configuredAutoPromptSeedId,
+          configuredAutoPromptSeedId
+            ? []
+            : promptVersionsForDraft(draft)
+                .map((version) => version.autoPromptSeedId)
+                .filter((value): value is string => Boolean(value))
+        )
+      : undefined;
     options.setPromptEnhancing(true);
     options.context.requestRender();
     try {
-      const isCurrentH3 = isMiniMaxH3Model(draft.modelId);
-      const h3Mode = h3PromptModeForDraft(draft);
       const selectedEnhanceMode = options.getPromptEnhanceMode();
       const requestMode: PromptEnhanceMode = isCurrentH3
         ? "h3-vision"
@@ -243,9 +272,15 @@ export function mountCreatePromptController(
               ? "<Picture 1> = last frame"
               : "";
       const text = await options.context.studio.enhancePrompt({
-        prompt: activePrompt(draft, options.context.getState()?.settings.uiLocale).text,
+        prompt: currentPrompt,
         modelId: draft.modelId,
         mode: requestMode,
+        promptStrategy: autoPromptSeed ? "reference-auto" : undefined,
+        autoPromptSeedId: autoPromptSeed?.id,
+        autoPromptSeedInstruction: autoPromptSeed
+          ? promptSettings?.h3AutoPromptSeedInstructions?.[autoPromptSeed.id]
+          : undefined,
+        autoPromptVariationId: autoPromptSeed ? crypto.randomUUID() : undefined,
         imagePath: draft.startImagePath || undefined,
         imagePaths: isH3Vision ? h3ImagePaths : undefined,
         h3PromptMode: h3Mode,
@@ -256,9 +291,7 @@ export function mountCreatePromptController(
         h3AspectRatio: draft.ratio === "source"
           ? draft.sourceHeight > draft.sourceWidth ? "9:16" : "16:9"
           : draft.ratio,
-        referenceMediaPaths: isMiniMaxH3R2vModel(draft.modelId)
-          ? draft.h3ReferenceSlots.map((slot) => slot.mediaPath).filter(Boolean)
-          : [draft.startImagePath, draft.endImagePath].filter(Boolean),
+        referenceMediaPaths,
         referenceContext: isH3Vision ? referenceContext : undefined
       });
       options.setPromptRuntimeLoaded(true);
@@ -273,7 +306,8 @@ export function mountCreatePromptController(
           id: crypto.randomUUID(),
           label: promptUi().t("expandedVersion", { count: nextPromptVersions.filter((item) => item.label.startsWith(promptUi().t("expandedVersion", { count: "" }).trim())).length + 1 }),
           text,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          ...(autoPromptSeed ? { autoPromptSeedId: autoPromptSeed.id } : {})
         }
       ];
       options.patchDraft(promptPatchForDraft(nextDraft, versions, versions.length - 1));

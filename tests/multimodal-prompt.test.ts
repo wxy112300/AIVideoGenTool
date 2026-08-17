@@ -32,4 +32,29 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     expect(workflow["image-batch-1"]).toBeUndefined();
     expect(workflow.preview.inputs.source).toEqual(["vision-llm", 0]);
   });
+
+  it("passes a blank reference-auto request as a visual generation instruction", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "qwen/qwen3.6-27b-uncensored-q4";
+    const workflow = buildMultimodalPromptWorkflow(
+      {
+        prompt: "",
+        modelId: "minimax_h3_fl2va",
+        mode: "h3-vision",
+        promptStrategy: "reference-auto",
+        autoPromptSeedId: "playful-surprise",
+        autoPromptVariationId: "variation-9",
+        h3PromptMode: "I2VA",
+        h3DurationSeconds: 5,
+        imagePaths: ["reference.png"]
+      },
+      ["studio-input-reference.png"],
+      settings
+    );
+
+    const prompt = String(workflow["vision-llm"]?.inputs.prompt);
+    expect(prompt).toContain("Reference-driven H3 auto-creation mode");
+    expect(prompt).toContain("Variation token: variation-9");
+    expect(prompt).toContain("playful response");
+  });
 });

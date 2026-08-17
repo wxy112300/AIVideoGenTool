@@ -10,6 +10,11 @@ import type {
 import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
 import {
+  h3AutoPromptInstruction,
+  isH3ReferenceAutoPrompt,
+  validateH3ReferenceAutoPrompt
+} from "../../src/core/h3-auto-prompter.js";
+import {
   normalizeQwenImageEditPromptOutput,
   qwenImageEditPromptContract,
   qwenImageEditPromptUserContent
@@ -280,8 +285,12 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
       ? "No image reference is attached; the following user intent is the source material for the T2VA timeline."
       : "The attached image(s) are the reference material in the order described below.",
     ...(referenceContext ? [`Reference map:\n${referenceContext}`] : []),
-    "User request (preserve its concrete words and meaning):",
-    request.prompt.trim(),
+    ...(isH3ReferenceAutoPrompt(request)
+      ? [h3AutoPromptInstruction(request)]
+      : [
+          "User request (preserve its concrete words and meaning):",
+          request.prompt.trim()
+        ]),
     ...(hardConstraints ? [hardConstraints] : [])
   ].filter(Boolean).join("\n\n");
 }
@@ -392,7 +401,8 @@ export async function enhancePrompt(
   if (!settings.promptUseLmStudio) {
     throw new Error("当前已关闭 LM Studio；主应用会通过 ComfyUI 原生 TextGenerate 执行提示词扩写。你仍可以使用 H3 内置模板和结构化构建器。 ");
   }
-  if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
+  if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
+  validateH3ReferenceAutoPrompt(request);
   const mode: PromptEnhanceMode = request.mode ?? "sulphur-native";
   const availableModels = settings.lmStudioModel.trim()
     ? []

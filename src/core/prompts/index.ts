@@ -1,5 +1,6 @@
 export {
   createDefaultH3PromptPresets,
+  createDefaultH3AutoPromptSeedInstructions,
   defaultH3PromptPresets,
   h3PromptPackFor,
   h3PromptPresetForMode,

@@ -1,7 +1,8 @@
 import type { AppState, Draft, Settings } from "../types.js";
 import {
   createDefaultH3PromptPresets,
-  createDefaultQwenImagePromptPresets
+  createDefaultQwenImagePromptPresets,
+  createDefaultH3AutoPromptSeedInstructions
 } from "./prompts/index.js";
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
 
@@ -74,7 +75,9 @@ export function createDefaultSettings(): Settings {
     lmStudioInstallDirectory: "",
     promptUseLmStudio: false,
     promptRuntime: "comfyui",
-    promptModelId: "qwen/qwen3.5-4b",
+    promptModelId: "community/gemma-4-e4b-unconcerned-q5",
+    h3AutoPromptSeedId: "",
+    h3AutoPromptSeedInstructions: createDefaultH3AutoPromptSeedInstructions(),
     promptModelDirectory: "",
     promptLlamaServerPath: "",
     promptLlamaPort: 8091,
@@ -117,7 +120,7 @@ export function createDefaultSettings(): Settings {
 
 export function createDefaultState(): AppState {
   return {
-    schemaVersion: 10,
+    schemaVersion: 11,
     draft: createDefaultDraft(),
     imageDraft: createDefaultImageEditDraft(),
     settings: createDefaultSettings(),

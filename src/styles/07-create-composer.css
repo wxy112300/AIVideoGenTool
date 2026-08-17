@@ -53,6 +53,19 @@
 }
 .prompt-action-controls .prompt-enhance-mode { width: 100%; min-width: 0; }
 .prompt-action-controls #enhance-prompt { white-space: nowrap; }
+.prompt-enhance-button { position: relative; overflow: hidden; isolation: isolate; min-width: 128px; }
+.prompt-enhance-content { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.prompt-enhance-content .ui-icon { width: 15px; height: 15px; }
+.prompt-progress-track { position: absolute; z-index: 0; right: 0; bottom: 0; left: 0; display: none; height: 3px; overflow: hidden; background: color-mix(in srgb, var(--primary) 18%, transparent); }
+.prompt-progress-active .prompt-progress-track { display: block; }
+.prompt-progress-bar { display: block; height: 100%; min-width: 0; background: var(--primary); transition: width .25s ease; }
+.prompt-progress-bar.indeterminate { width: 34%; animation: prompt-progress-slide 1.2s ease-in-out infinite; }
+.prompt-progress-active { cursor: pointer; }
+@keyframes prompt-progress-slide {
+  0% { transform: translateX(-110%); }
+  50% { transform: translateX(110%); }
+  100% { transform: translateX(280%); }
+}
 
 .composer-settings {
   display: grid;

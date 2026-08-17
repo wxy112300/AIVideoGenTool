@@ -31,6 +31,9 @@ import type {
   ImageMarkupSaveRequest,
   LocalServiceKind,
   NotificationKind,
+  PromptProgress,
+  PromptProgressReporter,
+  PromptProgressStage,
   QueueLifecycle,
   QueueTask,
   Settings,
@@ -39,6 +42,10 @@ import type {
   WindowCloseResponse
 } from "../src/types.js";
 import { normalizeUiLocale } from "../src/core/i18n.js";
+import {
+  isH3ReferenceAutoPrompt,
+  validateH3ReferenceAutoPrompt
+} from "../src/core/h3-auto-prompter.js";
 import { historyVideoPaths } from "../src/core/history-delete.js";
 import { createHistoryCoverCacheKey } from "../src/core/history-cover.js";
 import { historyFileCandidates } from "../src/core/history-media.js";
@@ -220,6 +227,61 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const appLogger = getApplicationLogger();
 let fatalProcessErrorHandled = false;
 const taskStageStartedAt = new Map<string, { stage: string; startedAt: number }>();
+
+function createPromptProgressController(
+  modelId: string,
+  startedAt: number
+): {
+  update: PromptProgressReporter;
+  finish(status: PromptProgress["status"], stage: PromptProgressStage, error?: string): void;
+} {
+  let lastProgress = 0;
+  let lastSentAt = 0;
+  let lastStage: PromptProgressStage = "preparing";
+  const send = (
+    status: PromptProgress["status"],
+    stage: PromptProgressStage,
+    progress: number | null,
+    detail?: string,
+    error?: string
+  ) => {
+    const elapsedMs = Date.now() - startedAt;
+    const payload: PromptProgress = {
+      status,
+      stage,
+      progress,
+      startedAt,
+      elapsedMs,
+      modelId,
+      ...(detail ? { detail } : {}),
+      ...(error ? { error } : {})
+    };
+    mainWindow?.webContents.send("prompt:progress", payload);
+    appLogger.info("prompt", "progress", "Prompt enhancement progress", {
+      stage,
+      status,
+      progress,
+      elapsedMs
+    });
+  };
+  const update: PromptProgressReporter = (stage, progress = null, detail) => {
+    const now = Date.now();
+    if (now - lastSentAt < 250 && stage === lastStage) return;
+    lastSentAt = now;
+    lastStage = stage;
+    const normalized = progress == null
+      ? null
+      : Math.min(99, Math.max(lastProgress, Math.max(0, progress)));
+    if (normalized != null) lastProgress = normalized;
+    send("running", stage, normalized, detail);
+  };
+  return {
+    update,
+    finish(status, stage, error) {
+      send(status, stage, status === "completed" ? 100 : lastProgress, undefined, error);
+    }
+  };
+}
 
 if (appliedChromiumWorkarounds.length) {
   appLogger.info(
@@ -2294,8 +2356,11 @@ function registerIpc(): void {
       referenceImageCount: request.imagePaths?.length ?? (request.imagePath ? 1 : 0),
       durationSeconds: request.h3DurationSeconds
     });
+    validateH3ReferenceAutoPrompt(request);
+    const promptProgress = createPromptProgressController(settings.promptModelId, startedAt);
+    promptProgress.update("preparing", 0);
     if (promptBackend === "h3-prompt-writer") {
-      if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
+      if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
       if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
         throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
       }
@@ -2303,12 +2368,19 @@ function registerIpc(): void {
       const controller = new AbortController();
       nativePromptController = controller;
       const worker = (async () => {
+        promptProgress.update("checking", 5);
         await ensureComfyUiReadyForPrompt(settings);
-        return enhancePromptWithH3PromptWriter(request, settings, controller.signal);
+        return enhancePromptWithH3PromptWriter(
+          request,
+          settings,
+          controller.signal,
+          promptProgress.update
+        );
       })();
       nativePromptWorker = worker;
       try {
         const result = await worker;
+        promptProgress.finish("completed", "unloading");
         appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
           runtime,
           durationMs: Date.now() - startedAt,
@@ -2316,6 +2388,11 @@ function registerIpc(): void {
         });
         return result;
       } catch (error) {
+        promptProgress.finish(
+          controller.signal.aborted ? "cancelled" : "failed",
+          controller.signal.aborted ? "unloading" : "validating",
+          error instanceof Error ? error.message : String(error)
+        );
         appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
           runtime,
           durationMs: Date.now() - startedAt,
@@ -2328,7 +2405,7 @@ function registerIpc(): void {
       }
     }
     if (promptBackend === "comfyui-multimodal") {
-      if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
+      if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
       if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
         throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
       }
@@ -2336,13 +2413,21 @@ function registerIpc(): void {
       const controller = new AbortController();
       nativePromptController = controller;
       const worker = (async () => {
+        promptProgress.update("checking", 5);
         await ensureComfyUiReadyForPrompt(settings);
         await validateNativePromptRuntime(settings);
-        return enhancePromptWithMultimodalComfyUi(request, settings, controller.signal);
+        return enhancePromptWithMultimodalComfyUi(
+          request,
+          settings,
+          controller.signal,
+          false,
+          promptProgress.update
+        );
       })();
       nativePromptWorker = worker;
       try {
         const result = await worker;
+        promptProgress.finish("completed", "unloading");
         appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
           runtime,
           durationMs: Date.now() - startedAt,
@@ -2350,6 +2435,11 @@ function registerIpc(): void {
         });
         return result;
       } catch (error) {
+        promptProgress.finish(
+          controller.signal.aborted ? "cancelled" : "failed",
+          controller.signal.aborted ? "unloading" : "validating",
+          error instanceof Error ? error.message : String(error)
+        );
         appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
           runtime,
           durationMs: Date.now() - startedAt,
@@ -2364,7 +2454,7 @@ function registerIpc(): void {
     if (promptBackend !== "native-text-generate") {
       throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
     }
-    if (!request.prompt.trim()) throw new Error("请先输入需要扩写的提示词");
+    if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
     if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
       throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
     }
@@ -2372,13 +2462,21 @@ function registerIpc(): void {
     const controller = new AbortController();
     nativePromptController = controller;
     const worker = (async () => {
+      promptProgress.update("checking", 5);
       await ensureComfyUiReadyForPrompt(settings);
       await validateNativePromptRuntime(settings);
-      return enhancePromptWithComfyUi(request, settings, controller.signal);
+      return enhancePromptWithComfyUi(
+        request,
+        settings,
+        controller.signal,
+        false,
+        promptProgress.update
+      );
     })();
     nativePromptWorker = worker;
     try {
       const result = await worker;
+      promptProgress.finish("completed", "unloading");
       appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
         runtime,
         durationMs: Date.now() - startedAt,
@@ -2386,6 +2484,11 @@ function registerIpc(): void {
       });
       return result;
     } catch (error) {
+      promptProgress.finish(
+        controller.signal.aborted ? "cancelled" : "failed",
+        controller.signal.aborted ? "unloading" : "validating",
+        error instanceof Error ? error.message : String(error)
+      );
       appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
         runtime,
         durationMs: Date.now() - startedAt,
@@ -2396,6 +2499,16 @@ function registerIpc(): void {
       if (nativePromptWorker === worker) nativePromptWorker = null;
       if (nativePromptController === controller) nativePromptController = null;
     }
+  });
+  ipcMain.handle("prompt:cancel", async () => {
+    const controller = nativePromptController;
+    if (!controller) return { ok: false, message: "当前没有正在运行的提示词任务。" };
+    controller.abort();
+    const settings = store.get().settings;
+    if (promptModelBackend(settings.promptModelId) !== "h3-prompt-writer") {
+      await interrupt(settings).catch(() => undefined);
+    }
+    return { ok: true, message: "正在取消提示词任务…" };
   });
   ipcMain.handle("prompt:release", async () => {
     const startedAt = Date.now();

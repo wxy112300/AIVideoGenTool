@@ -104,6 +104,7 @@ import {
   loadPromptPacks,
   qwenImagePromptPackFor
 } from "./renderer/prompt-packs";
+import { h3AutoPromptSeeds } from "./core/prompts/h3/auto-seeds";
 import {
   activePromptIndexForDraft,
   clearPromptVersion,
@@ -179,6 +180,7 @@ import type {
   ModelScanProfile,
   PerformanceMetrics,
   PromptEnhanceMode,
+  PromptProgress,
   QueueTask,
   Settings,
   SettingsSaveMode,
@@ -296,6 +298,7 @@ let promptEnhancing = false;
 let promptStarting = false;
 let promptReleasing = false;
 let promptRuntimeLoaded = false;
+let promptProgress: PromptProgress | null = null;
 const promptEditHistory = new PromptEditHistory();
 
 let h3PromptBuilder = createDefaultH3PromptBuilder();
@@ -700,6 +703,7 @@ function createViewModelDependencies(): CreateViewModelDependencies {
     promptStarting,
     promptReleasing,
     promptRuntimeLoaded,
+    promptProgress,
     h3PromptBuilder,
     enqueueBusy: ui.enqueueBusy,
     promptRuntimeControlTitle,
@@ -1023,6 +1027,7 @@ function settingsPage(): string {
     {
       t: rendererApp.context.t,
       defaultH3PromptPresets: h3PromptPackFor(state.settings.uiLocale).defaultPresets,
+      h3AutoPromptSeeds,
       defaultImagePromptPresets: qwenImagePromptPackFor(state.settings.uiLocale).defaultPresets,
       h3PromptPresetDescriptions: h3PromptPackFor(state.settings.uiLocale).presetDescriptions,
       imagePromptPresetLabels: qwenImagePromptPackFor(state.settings.uiLocale).presetLabels,
@@ -2617,6 +2622,9 @@ registerRendererEvents({
   getDraftSaveInFlight: () => draftSaveInFlight,
   setPromptRuntimeLoaded: (value) => {
     promptRuntimeLoaded = value;
+  },
+  setPromptProgress: (progress) => {
+    promptProgress = progress;
   },
   rememberModalFocus,
   setPendingWindowCloseRequest: (request) => {

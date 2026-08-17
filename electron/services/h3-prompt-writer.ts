@@ -1,7 +1,12 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { EnhanceRequest, H3PromptMode, Settings } from "../../src/types.js";
+import type { EnhanceRequest, H3PromptMode, PromptProgressReporter, Settings } from "../../src/types.js";
 import { managedPromptModel } from "../../src/core/prompt-models.js";
+import {
+  h3AutoPromptInstruction,
+  isH3ReferenceAutoPrompt,
+  validateH3ReferenceAutoPrompt
+} from "../../src/core/h3-auto-prompter.js";
 import {
   normalizeQwenImageEditPromptOutput,
   qwenImageEditPromptContract
@@ -42,11 +47,17 @@ function baseUrl(settings: Pick<Settings, "comfyUrl">): string {
 async function writerRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as WriterErrorBody;
+    const rawBody = await response.text().catch(() => "");
+    let body: WriterErrorBody = {};
+    try {
+      body = rawBody ? JSON.parse(rawBody) as WriterErrorBody : {};
+    } catch {
+      // Older Writer versions can return an HTML/plain-text 500 page.
+    }
     if (response.status === 404 && url.includes("/h3studio/")) {
       throw new Error("当前 ComfyUI 未加载 MiniMax H3 Prompt Writer。请在设置 → 节点与工作流中一键安装/更新，然后重启 ComfyUI。");
     }
-    const message = body.error?.message || `HTTP ${response.status}`;
+    const message = body.error?.message || rawBody.trim() || `HTTP ${response.status}`;
     const details = body.error?.details ? `（${JSON.stringify(body.error.details)}）` : "";
     if (/(?:0xC000001D|-1073741795|illegal instruction|非法指令)/iu.test(`${message}${details}`)) {
       throw new Error(
@@ -197,9 +208,12 @@ export async function releaseH3PromptWriter(
 export async function enhancePromptWithH3PromptWriter(
   request: EnhanceRequest,
   settings: Settings,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onProgress?: PromptProgressReporter
 ): Promise<string> {
-  if (!request.prompt.trim()) throw new Error("请先输入需要优化的提示词");
+  if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要优化的提示词");
+  validateH3ReferenceAutoPrompt(request);
+  onProgress?.("checking", 5);
   const imageEdit = request.mode === "image-edit";
   const root = baseUrl(settings);
   const mode = writerMode(request.h3PromptMode, imageEdit);
@@ -216,9 +230,14 @@ export async function enhancePromptWithH3PromptWriter(
     const model = promptWriterModelForSelection(models, settings.promptModelId);
     validateH3PromptWriterRuntime(diagnostics);
     await uploadMedia(root, sessionId, mode, mediaPaths, signal);
-    const creativeBrief = [request.prompt.trim(), request.referenceContext?.trim()]
-      .filter(Boolean)
-      .join("\n\n参考素材角色：\n");
+    onProgress?.("uploading", 18);
+    onProgress?.("loading-model", 24);
+    const creativeBrief = isH3ReferenceAutoPrompt(request)
+      ? h3AutoPromptInstruction(request)
+      : [request.prompt.trim(), request.referenceContext?.trim()]
+          .filter(Boolean)
+          .join("\n\n参考素材角色：\n");
+    onProgress?.("generating", null);
     const result = await writerRequest<{ prompt?: string }>(`${root}/h3studio/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -237,11 +256,13 @@ export async function enhancePromptWithH3PromptWriter(
       }),
       signal
     });
+    onProgress?.("validating", 94);
     if (!result.prompt?.trim()) throw new Error("H3 Prompt Writer 没有返回可用的提示词。");
     return imageEdit
       ? extractImageEditPromptFromWriter(result.prompt)
       : result.prompt.trim();
   } finally {
+    onProgress?.("unloading", 98);
     signal.removeEventListener("abort", cancel);
     void fetch(`${root}/h3studio/media?session_id=${encodeURIComponent(sessionId)}`, {
       method: "DELETE",

@@ -57,6 +57,35 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
     }, settings, new AbortController().signal)).rejects.toThrow(/动态 CPU 后端/iu);
   });
 
+  it("preserves a plain-text server error instead of reducing it to HTTP 500", async () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "google/gemma-4-12b-q5";
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/h3studio/status")) return Response.json({ version: "0.3.2" });
+      if (url.endsWith("/h3studio/models")) return Response.json({ models: [{
+        id: "D:/ComfyUI/models/LLM/gemma-4-12b-it-Q5_K_M.gguf",
+        path: "D:/ComfyUI/models/LLM/gemma-4-12b-it-Q5_K_M.gguf",
+        runtime_ready: true
+      }] });
+      if (url.endsWith("/h3studio/runtime/gguf/diagnostics")) {
+        return Response.json({ diagnostics: { status: "ok", gpu_offload: true } });
+      }
+      if (url.endsWith("/h3studio/generate")) {
+        return new Response("Server got itself in trouble", { status: 500 });
+      }
+      if (url.includes("/h3studio/media?session_id=")) return Response.json({ cleared: true });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(enhancePromptWithH3PromptWriter({
+      prompt: "让人物走向镜头",
+      modelId: "minimax_h3_ref2va",
+      referenceMediaPaths: []
+    }, settings, new AbortController().signal)).rejects.toThrow(/Server got itself in trouble/);
+  });
+
   it("uses the same Gemma loader for a plain image-edit Prompt and extracts only the edit field", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "h3-image-writer-"));
     const image = path.join(directory, "reference.png");
@@ -169,6 +198,55 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
         duration_seconds: 5,
         aspect_ratio: "16:9"
       });
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("turns an empty reference-auto request into a creative brief for the writer", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "h3-auto-writer-"));
+    const image = path.join(directory, "reference.png");
+    await fs.writeFile(image, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "google/gemma-4-12b-q5";
+    let generateBody: Record<string, unknown> = {};
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/h3studio/status")) return Response.json({ version: "0.2.0" });
+      if (url.endsWith("/h3studio/models")) return Response.json({ models: [{
+        id: "D:/ComfyUI/models/LLM/gemma-4-12b-it-Q5_K_M.gguf",
+        path: "D:/ComfyUI/models/LLM/gemma-4-12b-it-Q5_K_M.gguf",
+        runtime_ready: true
+      }] });
+      if (url.endsWith("/h3studio/runtime/gguf/diagnostics")) {
+        return Response.json({ diagnostics: { status: "ok", gpu_offload: true } });
+      }
+      if (url.endsWith("/h3studio/media/upload")) return Response.json({ session_id: "session", assets: [{ id: "asset" }] }, { status: 201 });
+      if (url.endsWith("/h3studio/generate")) {
+        generateBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ prompt: "integrated_multimodal_description: [Shot 1] The subject moves.\noverall_soundscape: N/A\nnon_diegetic_music: N/A" });
+      }
+      if (url.includes("/h3studio/media?session_id=")) return Response.json({ cleared: true });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(enhancePromptWithH3PromptWriter({
+        prompt: "",
+        modelId: "minimax_h3_fl2va",
+        mode: "h3-vision",
+        promptStrategy: "reference-auto",
+        autoPromptSeedId: "cause-and-effect",
+        autoPromptVariationId: "variation-13",
+        h3PromptMode: "I2VA",
+        h3DurationSeconds: 5,
+        referenceMediaPaths: [image]
+      }, settings, new AbortController().signal)).resolves.toContain("integrated_multimodal_description");
+
+      expect(String(generateBody.creative_brief)).toContain("Reference-driven H3 auto-creation mode");
+      expect(String(generateBody.creative_brief)).toContain("Variation token: variation-13");
+      expect(generateBody.mode).toBe("I2VA");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

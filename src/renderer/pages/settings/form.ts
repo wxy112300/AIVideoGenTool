@@ -30,6 +30,14 @@ export function readSettingsFromForm(
     ...base.imagePromptPresets,
     [imagePromptPreset]: value("image-prompt-preset-text", base.imagePromptPresets[imagePromptPreset])
   };
+  const h3AutoPromptSeedId = value("h3-auto-prompt-seed-setting", base.h3AutoPromptSeedId);
+  const h3AutoPromptSeedInstructions = { ...base.h3AutoPromptSeedInstructions };
+  if (h3AutoPromptSeedId) {
+    h3AutoPromptSeedInstructions[h3AutoPromptSeedId] = value(
+      "h3-auto-prompt-seed-text",
+      base.h3AutoPromptSeedInstructions[h3AutoPromptSeedId] ?? ""
+    );
+  }
   return {
     comfyUrl: value("comfy-url", base.comfyUrl),
     comfyInstallDirectory: value("comfy-install-directory", base.comfyInstallDirectory),
@@ -40,6 +48,8 @@ export function readSettingsFromForm(
     promptRuntime: "comfyui",
     promptUseLmStudio: false,
     promptModelId: value("prompt-model-id", base.promptModelId),
+    h3AutoPromptSeedId,
+    h3AutoPromptSeedInstructions,
     promptModelDirectory: value("prompt-model-directory", base.promptModelDirectory),
     promptLlamaServerPath: value("prompt-llama-server-path", base.promptLlamaServerPath),
     promptLlamaPort: base.promptLlamaPort,

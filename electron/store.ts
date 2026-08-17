@@ -339,6 +339,17 @@ export class JsonStore {
         })
       ) as typeof defaultState.settings.h3PromptPresets;
       const imagePromptPresets = normalizeQwenImagePromptPresets(saved.settings?.imagePromptPresets);
+      const savedAutoPromptSeedInstructions = saved.settings?.h3AutoPromptSeedInstructions;
+      const h3AutoPromptSeedInstructions = Object.fromEntries(
+        Object.entries(defaultState.settings.h3AutoPromptSeedInstructions).map(([id, fallback]) => {
+          const value = savedAutoPromptSeedInstructions?.[id];
+          return [id, typeof value === "string" && value.trim() ? value : fallback];
+        })
+      );
+      const savedAutoPromptSeedId = typeof saved.settings?.h3AutoPromptSeedId === "string" &&
+        Object.prototype.hasOwnProperty.call(defaultState.settings.h3AutoPromptSeedInstructions, saved.settings.h3AutoPromptSeedId)
+        ? saved.settings.h3AutoPromptSeedId
+        : "";
       const imageHistory = normalizeImageHistory(saved.imageHistory);
       const savedDraft = saved.draft;
       const hasIndependentExtensionPromptState = Array.isArray(savedDraft?.extensionPromptVersions) &&
@@ -373,10 +384,12 @@ export class JsonStore {
           ...defaultState.settings,
           ...savedSettings,
           h3PromptPresets,
-          imagePromptPresets
+          imagePromptPresets,
+          h3AutoPromptSeedId: savedAutoPromptSeedId,
+          h3AutoPromptSeedInstructions
         },
         queueRunning: false,
-        schemaVersion: 10,
+        schemaVersion: 11,
         queue: (saved.queue ?? []).map((task) => migrateQueueTask(
           task,
           typeof savedSettings.h3LivePreview === "boolean"
@@ -401,9 +414,11 @@ export class JsonStore {
         savedQueueLifecycle !== "idle" ||
         typeof saved.queueStartedAt === "string" ||
         typeof (saved as { queueLifecycle?: unknown }).queueLifecycle !== "string" ||
-        savedSchemaVersion < 10 ||
+        savedSchemaVersion < 11 ||
         !hasIndependentExtensionPromptState ||
-        savedUiLocale !== normalizedUiLocale;
+        savedUiLocale !== normalizedUiLocale ||
+        saved.settings?.h3AutoPromptSeedId !== savedAutoPromptSeedId ||
+        JSON.stringify(saved.settings?.h3AutoPromptSeedInstructions) !== JSON.stringify(h3AutoPromptSeedInstructions);
       if (typeof saved.settings?.imageOutputDirectory !== "string") {
         this.state.settings.imageOutputDirectory = "";
         needsPersist = true;

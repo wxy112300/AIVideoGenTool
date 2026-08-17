@@ -1,6 +1,7 @@
 import { createDefaultQwenImagePromptPresets } from "../../prompt-packs";
 import { imageModelCapabilityFor } from "../../../core/image-workflow";
 import { createDefaultH3PromptPresets } from "../../prompt-packs";
+import { createDefaultH3AutoPromptSeedInstructions } from "../../../core/prompts/h3/auto-seeds";
 import { isManagedPromptModel } from "../../../core/prompt-models";
 import type {
   H3PromptPreset,
@@ -87,6 +88,16 @@ export function mountSettingsFieldsController(
     options.setSettingsDraft({
       ...options.formSettings(),
       h3PromptPresets: createDefaultH3PromptPresets()
+    });
+    context.requestRender();
+    context.notify(context.t(uiKeys.settings.actions.h3PresetRestored));
+  }, { signal });
+
+  root.querySelector("#restore-h3-auto-prompt-seeds")?.addEventListener("click", () => {
+    options.setSettingsDraft({
+      ...options.formSettings(),
+      h3AutoPromptSeedId: "",
+      h3AutoPromptSeedInstructions: createDefaultH3AutoPromptSeedInstructions()
     });
     context.requestRender();
     context.notify(context.t(uiKeys.settings.actions.h3PresetRestored));
