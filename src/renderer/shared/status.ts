@@ -40,6 +40,8 @@ export function customNodeStatusTone(
   installPending = false
 ): SettingsStatusTone {
   if (installPending) return "warning";
+  if (node.compatibilityState === "error") return "missing";
+  if (node.compatibilityState === "warning") return "warning";
   if (node.loadError) return "missing";
   if (!node.installed) return "missing";
   if (!node.loaded || !node.runtimeVerified || node.updateAvailable) return "warning";

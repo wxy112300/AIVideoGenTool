@@ -322,7 +322,7 @@ code:not(pre code) {
   background: var(--card);
 }
 
-#widget > :not(.card) {
+#widget > :not(.card, .progress) {
   width: 100% !important;
   max-width: none !important;
   margin: 0 !important;
@@ -386,6 +386,22 @@ code:not(pre code) {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+.progress {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
 }
 
 .viz-badge {
@@ -830,10 +846,10 @@ textarea.form-control {
 }
 
 .btn:not(.btn-primary, .viz-tile):is(
-    [aria-pressed="true"],
-    [aria-selected="true"],
-    .is-selected
-  ) {
+  [aria-pressed="true"],
+  [aria-selected="true"],
+  .is-selected
+) {
   border-color: var(--primary);
   color: var(--primary-foreground);
   background: var(--primary);
@@ -905,6 +921,8 @@ svg.lucide {
 .studio-prototype .studio-nav a:hover, .studio-prototype .studio-nav a[aria-current="page"] { color:var(--studio-text); background:#202b3c; }
 .studio-prototype .studio-body { padding:22px; display:grid; gap:16px; }
 .studio-prototype .page-head { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:58px; }
+.studio-prototype .create-page-head { position:sticky; top:64px; z-index:15; min-height:54px; padding:9px 0; border-bottom:1px solid #273246; background:#090c12e8; backdrop-filter:blur(14px); }
+.studio-prototype .create-page-head p { max-width:620px; }
 .studio-prototype .page-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .studio-prototype h1, .studio-prototype h2, .studio-prototype h3, .studio-prototype p { margin:0; }
 .studio-prototype h1 { font-size:23px; line-height:1.2; letter-spacing:-.025em; }
@@ -926,6 +944,8 @@ svg.lucide {
 .studio-prototype .badge.warn { color:#ffd594; border-color:#674d2b; background:#2a2112; }
 .studio-prototype .badge.bad { color:#ffaaaa; border-color:#65363d; background:#2a171b; }
 .studio-prototype .panel { padding:18px; border:1px solid var(--studio-border); border-radius:15px; background:linear-gradient(160deg,var(--studio-panel),#0f141d); box-shadow:0 12px 30px #0000001e; min-width:0; }
+.studio-prototype .info-icon { width:28px; height:28px; padding:0; display:inline-grid; place-items:center; color:#9ec3ff; border:1px solid #38557b; border-radius:50%; background:#102039; cursor:help; }
+.studio-prototype .info-icon svg { width:15px; height:15px; }
 .studio-prototype .grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .studio-prototype .grid-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
 .studio-prototype .grid-4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
@@ -950,7 +970,20 @@ svg.lucide {
 .studio-prototype .image-markup-overlay{position:fixed;z-index:1000;inset:0;display:grid;grid-template-rows:64px minmax(0,1fr);color:var(--studio-text);background:#080b10}.studio-prototype .image-markup-overlay[hidden]{display:none}.studio-prototype .image-markup-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 18px;border-bottom:1px solid #2b3545;background:#0d121a}.studio-prototype .image-markup-header>div:first-child{display:grid;gap:3px}.studio-prototype .image-markup-body{min-height:0;display:grid;grid-template-columns:58px minmax(0,1fr) 280px}.studio-prototype .image-markup-tools{display:flex;flex-direction:column;align-items:center;gap:7px;padding:12px 10px;border-right:1px solid #273141;background:#0d121a}.studio-prototype .markup-tool-divider{width:28px;height:1px;margin:3px 0;background:#303b4d}.studio-prototype .image-markup-stage{position:relative;min-width:0;min-height:0;display:grid;place-items:center;overflow:hidden;background:#090d13}.studio-prototype .image-markup-canvas{width:min(76vw,1100px);aspect-ratio:16/10;border:1px solid #344258;box-shadow:0 18px 60px #0009;background:linear-gradient(165deg,#b96f4c 0 28%,#4d6070 29% 55%,#1a2028 56%)}.studio-prototype .markup-demo-scene{position:relative;width:100%;height:100%}.studio-prototype .markup-demo-box{position:absolute;left:61%;top:36%;width:18%;height:20%;display:grid;place-items:start;padding:5px;border:7px solid #ff4f55;color:white;font-size:22px;font-weight:800}.studio-prototype .markup-demo-arrow{position:absolute;left:47%;top:44%;color:#ff4f55;font-size:74px;font-weight:800}.studio-prototype .markup-demo-note{position:absolute;left:43%;top:62%;padding:5px 8px;color:white;background:#d63238;font-weight:750}.studio-prototype .markup-zoom{position:absolute;right:14px;bottom:14px;display:flex;align-items:center;gap:6px;padding:6px;border:1px solid #303b4d;border-radius:10px;background:#101720e8}.studio-prototype .image-markup-inspector{min-width:0;display:grid;align-content:start;gap:14px;padding:16px;border-left:1px solid #273141;background:#0d121a}.studio-prototype .markup-note-card{display:grid;grid-template-columns:28px minmax(0,1fr);gap:9px}.studio-prototype .markup-note-card textarea{min-height:100px}.studio-prototype .markup-note-index{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:white;background:#d63238;font-weight:800}
 .studio-prototype .markup-demo-mask{position:absolute;left:55%;top:34%;width:25%;height:29%;border:2px solid #ff8186;border-radius:48% 55% 42% 58%;background:#ff4f5578;box-shadow:0 0 0 1px #ff4f5538}
 .studio-prototype .control-section { display:grid; gap:12px; padding-top:14px; margin-top:14px; border-top:1px solid #273246; }
+.studio-prototype .prompt-helper { padding-top:12px; }
+.studio-prototype .advanced-settings { display:grid; gap:12px; padding:11px 12px; border:1px solid #2b394d; border-radius:10px; background:#0d141e; }
+.studio-prototype .advanced-settings > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; color:#c9d7ec; cursor:pointer; list-style:none; }
+.studio-prototype .advanced-settings > summary::-webkit-details-marker { display:none; }
+.studio-prototype .advanced-settings > summary::before { content:'+'; width:19px; height:19px; display:inline-grid; place-items:center; border:1px solid #42536c; border-radius:6px; color:#9fbce2; font-weight:700; }
+.studio-prototype .advanced-settings[open] > summary::before { content:'−'; }
+.studio-prototype .advanced-settings > summary strong { margin-right:auto; }
 .studio-prototype .summary-strip { padding:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid #30405a; border-radius:10px; background:#0c1420; }
+.studio-prototype .create-action-bar { position:sticky; bottom:14px; z-index:12; min-height:52px; padding:8px 10px 8px 14px; display:flex; align-items:center; justify-content:space-between; gap:16px; border:1px solid #426ea8; border-radius:11px; background:#101b2aeF; box-shadow:0 12px 28px #0008; backdrop-filter:blur(14px); }
+.studio-prototype .action-context { display:grid; gap:2px; min-width:0; }
+.studio-prototype .action-context strong { font-size:13px; }
+.studio-prototype .action-context span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.studio-prototype .create-action-bar .actions { flex:0 0 auto; justify-content:flex-end; }
+.studio-prototype .create-action-bar .btn.primary { min-width:118px; }
 .studio-prototype .queue-list { display:grid; gap:10px; }
 .studio-prototype .queue-card { padding:14px; display:grid; gap:12px; border:1px solid #2c394c; border-radius:13px; background:#101720; }
 .studio-prototype .queue-card.running { border-color:#4b78b9; background:linear-gradient(145deg,#13233a,#101720); }
@@ -1089,6 +1122,7 @@ svg.lucide {
 }
 @media (max-width:650px) {
   .studio-prototype .studio-topbar, .studio-prototype .page-head { align-items:flex-start; flex-direction:column; }
+  .studio-prototype .create-page-head { position:static; }
   .studio-prototype .studio-nav { width:100%; overflow:auto; }
   .studio-prototype .studio-nav a { flex:1; }
   .studio-prototype .studio-body { padding:14px; }
@@ -1102,6 +1136,10 @@ svg.lucide {
   .studio-prototype .handoff-banner, .studio-prototype .image-stage-toolbar { align-items:flex-start; flex-direction:column; }
   .studio-prototype .intent-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .studio-prototype .quick-insert-row { grid-template-columns:1fr; }
+  .studio-prototype .create-action-bar { align-items:flex-start; flex-direction:column; }
+  .studio-prototype .create-action-bar .actions { width:100%; justify-content:stretch; }
+  .studio-prototype .create-action-bar .actions .btn.primary { flex:1; }
+  .studio-prototype .advanced-settings > summary { align-items:flex-start; }
   .studio-prototype .image-seed-field{grid-column:auto}.studio-prototype .continue-actions{grid-template-columns:1fr}
   .studio-prototype .image-stage { min-height:430px; }
 }
@@ -1175,12 +1213,65 @@ svg.lucide {
     }
   };
   root.querySelectorAll('[data-history-kind]').forEach((button) => button.addEventListener('click', () => switchHistoryKind(button.dataset.historyKind)));
+  let activeCreateMode = 'image';
+  const selectedText = (panel, selector, fallback = '') => {
+    const element = panel?.querySelector(selector);
+    return element?.selectedOptions?.[0]?.textContent?.trim() || element?.value?.trim() || fallback;
+  };
+  const shortModelName = (value) => value.replace(/ ·.*$/u, '').trim();
+  const compactValue = (value) => value.split(' · ')[0].trim();
+  const updateCreateActionContext = (mode = activeCreateMode) => {
+    const panel = root.querySelector(`[data-mode-panel="${mode}"]`);
+    const actionBar = panel?.querySelector('.create-action-bar');
+    if (!panel || !actionBar) return;
+    let title = '图生视频';
+    let context = 'H3 R2V · 768p · 10 秒 · 24 FPS · Seed 固定';
+    if (mode === 'video') {
+      title = '视频续写';
+      const model = shortModelName(selectedText(panel, '[data-summary-model]', 'MiniMax H3 FL2VA'));
+      const quality = compactValue(selectedText(panel, '[data-summary-quality]', '768p'));
+      const duration = selectedText(panel, '[data-summary-duration]', '5 秒');
+      const fps = compactValue(selectedText(panel, '[data-summary-fps]', '24 FPS'));
+      context = `${model} · 新增 ${duration} · ${quality} · ${fps}`;
+    } else if (mode === 'image-edit') {
+      title = '图片处理';
+      const modelId = panel.querySelector('[data-image-model]')?.value || 'qwen';
+      const model = shortModelName(selectedText(panel, '[data-image-model]', 'Qwen Image Edit 2511'));
+      const format = selectedText(panel, '[data-image-format]', 'PNG');
+      const count = panel.querySelector('[data-image-count]')?.value || '6';
+      const seed = panel.querySelector('[data-image-seed-input]')?.value?.trim() ? 'Seed 固定' : 'Seed 随机';
+      context = modelId === 'lama'
+        ? 'LaMa · 原图尺寸 · PNG · Mask 必需'
+        : `${model} · ${format.split(' · ')[0]} · ${count} 张 · ${seed}`;
+    } else {
+      const model = shortModelName(selectedText(panel, '[data-summary-model]', 'MiniMax H3 R2V'));
+      const quality = compactValue(selectedText(panel, '[data-summary-quality]', '768p'));
+      const duration = selectedText(panel, '[data-summary-duration]', '10 秒');
+      const fps = compactValue(selectedText(panel, '[data-summary-fps]', '24 FPS'));
+      const spectrum = selectedText(panel, '[data-summary-spectrum]', '关闭 · 原生完整计算');
+      const seed = panel.querySelector('[data-summary-seed]')?.value?.trim();
+      const spectrumLabel = spectrum.startsWith('关闭') ? 'Spectrum 关' : 'Spectrum 开';
+      context = `${model} · ${quality} · ${duration} · ${fps} · ${spectrumLabel} · ${seed ? 'Seed 固定' : 'Seed 随机'}`;
+    }
+    const titleNode = actionBar.querySelector('[data-action-title]');
+    const contextNode = actionBar.querySelector('[data-action-context]');
+    if (titleNode) titleNode.textContent = title;
+    if (contextNode) contextNode.textContent = context;
+  };
+  const switchCreateMode = (mode) => {
+    activeCreateMode = mode;
+    root.querySelectorAll('[data-mode-panel]').forEach((panel) => { panel.hidden = panel.dataset.modePanel !== mode; });
+    root.querySelectorAll('[data-input-mode]').forEach((item) => item.classList.toggle('primary', item.dataset.inputMode === mode));
+    updateCreateActionContext(mode);
+  };
   root.querySelectorAll('[data-input-mode]').forEach((button) => {
-    button.addEventListener('click', () => {
-      root.querySelectorAll('[data-mode-panel]').forEach((panel) => panel.hidden = panel.dataset.modePanel !== button.dataset.inputMode);
-      root.querySelectorAll('[data-input-mode]').forEach((item) => item.classList.toggle('primary', item === button));
-    });
+    button.addEventListener('click', () => switchCreateMode(button.dataset.inputMode));
   });
+  root.querySelectorAll('[data-summary-model],[data-summary-quality],[data-summary-duration],[data-summary-fps],[data-summary-spectrum],[data-summary-seed],[data-image-model],[data-image-format],[data-image-count],[data-image-seed-input]').forEach((field) => {
+    field.addEventListener('input', () => updateCreateActionContext());
+    field.addEventListener('change', () => updateCreateActionContext());
+  });
+  updateCreateActionContext();
   const spectrumMode = root.querySelector('[data-spectrum-mode]');
   const syncSpectrumModelAware = () => {
     const field = root.querySelector('[data-spectrum-model-aware]');
@@ -1371,6 +1462,7 @@ svg.lucide {
     if (outputSummary) outputSummary.textContent = isLama
       ? 'PNG · 保持原图尺寸 · 只处理 Mask 覆盖区域'
       : `${format} · 输出约 1536 × 1024 · 结果归入“黄昏机场人物素材”`;
+    if (activeCreateMode === 'image-edit') updateCreateActionContext('image-edit');
   };
   root.querySelector('[data-image-count]')?.addEventListener('input', renderImageBatchSettings);
   root.querySelector('[data-image-format]')?.addEventListener('change', renderImageBatchSettings);
@@ -1452,6 +1544,20 @@ svg.lucide {
   root.querySelectorAll('[data-demo-action]').forEach((button) => button.addEventListener('click', () => {
     const status = root.querySelector('[data-demo-status]');
     if (status) status.textContent = button.dataset.demoAction ?? '原型操作已触发';
+  }));
+  root.querySelectorAll('[data-demo-enqueue]').forEach((button) => button.addEventListener('click', () => {
+    const panel = button.closest('[data-mode-panel]');
+    const status = panel?.querySelector('[data-action-status]');
+    if (status) {
+      status.textContent = '已加入队列';
+      status.classList.remove('warn', 'bad');
+      status.classList.add('ok');
+    }
+    button.innerHTML = '<i data-lucide="check"></i>已加入队列';
+    button.classList.remove('primary');
+    button.classList.add('secondary');
+    updateCreateActionContext(panel?.dataset.modePanel || activeCreateMode);
+    if (window.lucide) window.lucide.createIcons();
   }));
   const params = new URLSearchParams(location.search);
   const requestedMode = params.get('mode');

@@ -739,6 +739,12 @@ interface H3PreviewEvent {
   totalSteps?: number;
 }
 
+export interface PreviewFrameMetadata {
+  step?: number;
+  totalSteps?: number;
+  sequence?: number;
+}
+
 function h3PreviewEvent(message: unknown): H3PreviewEvent | null {
   if (!message || typeof message !== "object" || Array.isArray(message)) return null;
   const value = message as ComfySocketMessage;
@@ -758,6 +764,15 @@ export function h3PreviewEventDataUrl(message: unknown): string | null {
   const preview = h3PreviewEvent(message);
   if (!preview) return null;
   return preview.dataUrl;
+}
+
+export function h3PreviewEventMetadata(message: unknown): PreviewFrameMetadata | null {
+  const preview = h3PreviewEvent(message);
+  if (!preview) return null;
+  return {
+    step: preview.step,
+    totalSteps: preview.totalSteps
+  };
 }
 
 function socketUrl(httpUrl: string, clientId: string): string {
@@ -1029,7 +1044,11 @@ export async function waitForTask(
   activityTimeoutMinutes: number,
   signal: AbortSignal,
   onProgress: (value: number, stage: string) => void,
-  onPreview: (dataUrl: string, source?: "h3-tae" | "comfy") => void,
+  onPreview: (
+    dataUrl: string,
+    source?: "h3-tae" | "comfy",
+    metadata?: PreviewFrameMetadata
+  ) => void,
   isComputeActive: () => boolean = () => false
 ): Promise<unknown> {
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
@@ -1045,6 +1064,7 @@ export async function waitForTask(
   let lastActivityAt = Date.now();
   let lastServiceResponseAt = Date.now();
   let h3PreviewFrameCount = 0;
+  let previewSequence = 0;
   let activeNodeId = "";
   let lastReportedProgress = 2;
   let lastReportedStage = "";
@@ -1079,7 +1099,7 @@ export async function waitForTask(
           const preview = await previewDataUrl(event.data);
           if (preview) {
             lastActivityAt = Date.now();
-            onPreview(preview, "comfy");
+            onPreview(preview, "comfy", { sequence: ++previewSequence });
           }
           return;
         }
@@ -1105,7 +1125,11 @@ export async function waitForTask(
           } else if (h3PreviewFrameCount % 5 === 0) {
             logger.debug("comfy", "h3-live-preview-frame", "H3 TAE live preview frame received", logMeta);
           }
-          onPreview(h3Preview.dataUrl, "h3-tae");
+          onPreview(h3Preview.dataUrl, "h3-tae", {
+            step: h3Preview.step,
+            totalSteps: h3Preview.totalSteps,
+            sequence: ++previewSequence
+          });
           return;
         }
         if (
@@ -1186,7 +1210,7 @@ export async function waitForTask(
             baseUrl,
             message.data
           );
-          if (preview) onPreview(preview, "comfy");
+          if (preview) onPreview(preview, "comfy", { sequence: ++previewSequence });
         }
       } catch {
         // Unknown extension messages are ignored.

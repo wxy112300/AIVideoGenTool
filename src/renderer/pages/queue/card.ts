@@ -1,6 +1,7 @@
 import { imageModelCapabilityFor } from "../../../core/image-workflow";
 import {
   isMiniMaxH3Model,
+  isMiniMaxH3R2vModel,
   normalizeH3Steps
 } from "../../../core/workflow";
 import { upscaleDimensions } from "../../../core/upscale";
@@ -11,7 +12,8 @@ import { videoPromptForLoras } from "../../../core/video-loras";
 
 export type QueueTaskInput =
   | { kind: "image"; path: string }
-  | { kind: "video"; path: string };
+  | { kind: "video"; path: string }
+  | { kind: "placeholder" };
 
 export type QueueActionBusy = {
   taskId: string;
@@ -45,6 +47,15 @@ export function queueTaskInput(task: QueueTask): QueueTaskInput | null {
   if (task.taskType === "generation" && task.startImagePath) {
     return { kind: "image", path: task.startImagePath };
   }
+  if (
+    task.taskType === "generation" &&
+    isMiniMaxH3Model(task.modelId) &&
+    !isMiniMaxH3R2vModel(task.modelId) &&
+    !task.startImagePath &&
+    !task.endImagePath
+  ) {
+    return { kind: "placeholder" };
+  }
   if (task.taskType === "extension" && task.sourceVideoPath) {
     return { kind: "video", path: task.sourceVideoPath };
   }
@@ -55,7 +66,7 @@ export function queueTaskInput(task: QueueTask): QueueTaskInput | null {
 }
 
 export function queueTaskInputUrl(task: QueueTask): string {
-  return queueTaskInput(task)
+  return queueTaskInput(task)?.kind === "video"
     ? `studio-media://queue/${encodeURIComponent(task.id)}`
     : "";
 }
@@ -128,6 +139,9 @@ export function renderQueueTaskCard(
       isMiniMaxH3Model(task.modelId);
     const input = queueTaskInput(task);
     const inputVideoUrl = input?.kind === "video" ? queueTaskInputUrl(task) : "";
+    const inputPlaceholder = input?.kind === "placeholder"
+      ? t(uiKeys.queue.card.noReferenceImage)
+      : "";
     return `
       <article class="task-card panel running expanded">
         <div class="expanded-task-head">
@@ -140,7 +154,7 @@ export function renderQueueTaskCard(
             <span class="live-preview-spinner" data-live-preview-spinner="${options.escapeHtml(task.id)}" role="status" aria-label="${t(uiKeys.queue.card.livePreviewLoading)}" title="${t(uiKeys.queue.card.livePreviewLoading)}" style="${livePreviewRequested && !preview ? "" : "display:none"}"></span>
             <img id="live-preview-image-${options.escapeHtml(task.id)}" data-live-preview-image="${options.escapeHtml(task.id)}" data-live-preview-active="${preview ? "true" : "false"}" ${input?.kind === "image" ? `data-queue-input-image="${options.escapeHtml(task.id)}"` : ""} alt="${input ? t(uiKeys.queue.card.userInputPreview) : t(uiKeys.queue.card.comfyPreview)}" src="${preview ? options.escapeHtml(preview) : ""}" style="${preview ? "" : "display:none"}">
             ${inputVideoUrl ? `<video data-queue-input-video="${options.escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}" style="${preview ? "display:none" : ""}"></video>` : ""}
-            <div id="live-preview-empty-${options.escapeHtml(task.id)}" data-live-preview-empty="${options.escapeHtml(task.id)}" style="${preview || inputVideoUrl ? "display:none" : ""}"><span>${options.icon(input ? input.kind === "image" ? "image" : "film" : "film")}</span></div>
+            <div id="live-preview-empty-${options.escapeHtml(task.id)}" data-live-preview-empty="${options.escapeHtml(task.id)}" style="${preview || inputVideoUrl ? "display:none" : ""}"><span>${options.icon(input ? input.kind === "image" ? "image" : "film" : "film")}</span>${inputPlaceholder ? `<small>${options.escapeHtml(inputPlaceholder)}</small>` : ""}</div>
           </div>
           <div class="running-copy">
             <span class="eyebrow">${t(uiKeys.queue.card.currentStep)} · <span id="running-stage">${options.escapeHtml(task.stage ?? t(uiKeys.queue.card.preparing))}</span></span>
@@ -159,7 +173,7 @@ export function renderQueueTaskCard(
   const input = queueTaskInput(task);
   const inputVideoUrl = input?.kind === "video" ? queueTaskInputUrl(task) : "";
   const inputPreview = input
-    ? `<div class="task-input-preview" data-queue-input-preview="${options.escapeHtml(task.id)}">${input.kind === "image" ? `<img data-queue-input-image="${options.escapeHtml(task.id)}" alt="${t(uiKeys.queue.card.inputImage)}" style="display:none">` : `<video data-queue-input-video="${options.escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}"></video>`}<div data-queue-input-empty><span>${options.icon(input.kind === "image" ? "image" : "film")}</span><small>${input.kind === "image" ? t(uiKeys.queue.card.inputImage) : t(uiKeys.queue.card.sourceVideo)}</small></div></div>`
+    ? `<div class="task-input-preview" data-queue-input-preview="${options.escapeHtml(task.id)}">${input.kind === "image" ? `<img data-queue-input-image="${options.escapeHtml(task.id)}" alt="${t(uiKeys.queue.card.inputImage)}" style="display:none">` : input.kind === "video" ? `<video data-queue-input-video="${options.escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}"></video>` : ""}<div data-queue-input-empty><span>${options.icon(input.kind === "image" ? "image" : "film")}</span><small>${input.kind === "image" ? t(uiKeys.queue.card.inputImage) : input.kind === "video" ? t(uiKeys.queue.card.sourceVideo) : t(uiKeys.queue.card.noReferenceImage)}</small></div></div>`
     : "";
   return `
     <article class="task-card panel ${task.status}${inputPreview ? " task-card-with-preview" : ""}">

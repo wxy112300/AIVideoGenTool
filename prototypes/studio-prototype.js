@@ -29,12 +29,65 @@
     }
   };
   root.querySelectorAll('[data-history-kind]').forEach((button) => button.addEventListener('click', () => switchHistoryKind(button.dataset.historyKind)));
+  let activeCreateMode = 'image';
+  const selectedText = (panel, selector, fallback = '') => {
+    const element = panel?.querySelector(selector);
+    return element?.selectedOptions?.[0]?.textContent?.trim() || element?.value?.trim() || fallback;
+  };
+  const shortModelName = (value) => value.replace(/ ·.*$/u, '').trim();
+  const compactValue = (value) => value.split(' · ')[0].trim();
+  const updateCreateActionContext = (mode = activeCreateMode) => {
+    const panel = root.querySelector(`[data-mode-panel="${mode}"]`);
+    const actionBar = panel?.querySelector('.create-action-bar');
+    if (!panel || !actionBar) return;
+    let title = '图生视频';
+    let context = 'H3 R2V · 768p · 10 秒 · 24 FPS · Seed 固定';
+    if (mode === 'video') {
+      title = '视频续写';
+      const model = shortModelName(selectedText(panel, '[data-summary-model]', 'MiniMax H3 FL2VA'));
+      const quality = compactValue(selectedText(panel, '[data-summary-quality]', '768p'));
+      const duration = selectedText(panel, '[data-summary-duration]', '5 秒');
+      const fps = compactValue(selectedText(panel, '[data-summary-fps]', '24 FPS'));
+      context = `${model} · 新增 ${duration} · ${quality} · ${fps}`;
+    } else if (mode === 'image-edit') {
+      title = '图片处理';
+      const modelId = panel.querySelector('[data-image-model]')?.value || 'qwen';
+      const model = shortModelName(selectedText(panel, '[data-image-model]', 'Qwen Image Edit 2511'));
+      const format = selectedText(panel, '[data-image-format]', 'PNG');
+      const count = panel.querySelector('[data-image-count]')?.value || '6';
+      const seed = panel.querySelector('[data-image-seed-input]')?.value?.trim() ? 'Seed 固定' : 'Seed 随机';
+      context = modelId === 'lama'
+        ? 'LaMa · 原图尺寸 · PNG · Mask 必需'
+        : `${model} · ${format.split(' · ')[0]} · ${count} 张 · ${seed}`;
+    } else {
+      const model = shortModelName(selectedText(panel, '[data-summary-model]', 'MiniMax H3 R2V'));
+      const quality = compactValue(selectedText(panel, '[data-summary-quality]', '768p'));
+      const duration = selectedText(panel, '[data-summary-duration]', '10 秒');
+      const fps = compactValue(selectedText(panel, '[data-summary-fps]', '24 FPS'));
+      const spectrum = selectedText(panel, '[data-summary-spectrum]', '关闭 · 原生完整计算');
+      const seed = panel.querySelector('[data-summary-seed]')?.value?.trim();
+      const spectrumLabel = spectrum.startsWith('关闭') ? 'Spectrum 关' : 'Spectrum 开';
+      context = `${model} · ${quality} · ${duration} · ${fps} · ${spectrumLabel} · ${seed ? 'Seed 固定' : 'Seed 随机'}`;
+    }
+    const titleNode = actionBar.querySelector('[data-action-title]');
+    const contextNode = actionBar.querySelector('[data-action-context]');
+    if (titleNode) titleNode.textContent = title;
+    if (contextNode) contextNode.textContent = context;
+  };
+  const switchCreateMode = (mode) => {
+    activeCreateMode = mode;
+    root.querySelectorAll('[data-mode-panel]').forEach((panel) => { panel.hidden = panel.dataset.modePanel !== mode; });
+    root.querySelectorAll('[data-input-mode]').forEach((item) => item.classList.toggle('primary', item.dataset.inputMode === mode));
+    updateCreateActionContext(mode);
+  };
   root.querySelectorAll('[data-input-mode]').forEach((button) => {
-    button.addEventListener('click', () => {
-      root.querySelectorAll('[data-mode-panel]').forEach((panel) => panel.hidden = panel.dataset.modePanel !== button.dataset.inputMode);
-      root.querySelectorAll('[data-input-mode]').forEach((item) => item.classList.toggle('primary', item === button));
-    });
+    button.addEventListener('click', () => switchCreateMode(button.dataset.inputMode));
   });
+  root.querySelectorAll('[data-summary-model],[data-summary-quality],[data-summary-duration],[data-summary-fps],[data-summary-spectrum],[data-summary-seed],[data-image-model],[data-image-format],[data-image-count],[data-image-seed-input]').forEach((field) => {
+    field.addEventListener('input', () => updateCreateActionContext());
+    field.addEventListener('change', () => updateCreateActionContext());
+  });
+  updateCreateActionContext();
   const spectrumMode = root.querySelector('[data-spectrum-mode]');
   const syncSpectrumModelAware = () => {
     const field = root.querySelector('[data-spectrum-model-aware]');
@@ -225,6 +278,7 @@
     if (outputSummary) outputSummary.textContent = isLama
       ? 'PNG · 保持原图尺寸 · 只处理 Mask 覆盖区域'
       : `${format} · 输出约 1536 × 1024 · 结果归入“黄昏机场人物素材”`;
+    if (activeCreateMode === 'image-edit') updateCreateActionContext('image-edit');
   };
   root.querySelector('[data-image-count]')?.addEventListener('input', renderImageBatchSettings);
   root.querySelector('[data-image-format]')?.addEventListener('change', renderImageBatchSettings);
@@ -306,6 +360,20 @@
   root.querySelectorAll('[data-demo-action]').forEach((button) => button.addEventListener('click', () => {
     const status = root.querySelector('[data-demo-status]');
     if (status) status.textContent = button.dataset.demoAction ?? '原型操作已触发';
+  }));
+  root.querySelectorAll('[data-demo-enqueue]').forEach((button) => button.addEventListener('click', () => {
+    const panel = button.closest('[data-mode-panel]');
+    const status = panel?.querySelector('[data-action-status]');
+    if (status) {
+      status.textContent = '已加入队列';
+      status.classList.remove('warn', 'bad');
+      status.classList.add('ok');
+    }
+    button.innerHTML = '<i data-lucide="check"></i>已加入队列';
+    button.classList.remove('primary');
+    button.classList.add('secondary');
+    updateCreateActionContext(panel?.dataset.modePanel || activeCreateMode);
+    if (window.lucide) window.lucide.createIcons();
   }));
   const params = new URLSearchParams(location.search);
   const requestedMode = params.get('mode');

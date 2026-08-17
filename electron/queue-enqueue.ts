@@ -18,6 +18,7 @@ import {
   isMiniMaxH3Model,
   isMiniMaxH3Q3GgufModel,
   isMiniMaxH3R2vModel,
+  h3WorkflowPathForInput,
   normalizeH3Steps,
   validateApiWorkflow,
   workflowSupportsEndImage,
@@ -162,12 +163,19 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     draft.steps = normalizeH3Steps(draft.steps, draft.modelId, draft.videoLoras);
     if (draft.inputMode !== "image") throw new Error("视频续写必须使用独立的 extension 队列任务");
     const isR2V = isMiniMaxH3R2vModel(draft.modelId);
-    if (!isR2V && !draft.startImagePath) throw new Error("请先选择首帧图片");
+    const hasReference = Boolean(draft.startImagePath || draft.endImagePath);
+    const isH3TextToVideo = isMiniMaxH3Model(draft.modelId) && !isR2V && !hasReference;
+    if (!isR2V && !isH3TextToVideo && !draft.startImagePath) throw new Error("请先选择首帧图片");
     if (isR2V && (!draft.h3ReferenceSlots.length || draft.h3ReferenceSlots.some((slot) => !slot.mediaPath))) {
       throw new Error("R2V 的每个 Slot 都必须先添加图片或视频。");
     }
     if (!promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择该模型的 ComfyUI API 工作流");
+    const resolvedWorkflowPath = h3WorkflowPathForInput(
+      draft.workflowPath,
+      draft.modelId,
+      hasReference
+    );
     const safety = generationSafetyForTask(draft, store.get().settings.uiLocale);
     if (!safety.safe) throw new Error(safety.message);
     if (isMiniMaxH3Q3GgufModel(draft.modelId) && draft.videoLoras.length) {
@@ -185,7 +193,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         ? "H3 Q3 GGUF 3080 实验档不支持 Spectrum，请关闭后再提交。"
         : "当前模型不支持 Spectrum，请关闭后再提交。");
     }
-    const workflow = await readWorkflow(draft.workflowPath, "工作流");
+    const workflow = await readWorkflow(resolvedWorkflowPath, "工作流");
     const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
     const h3UsesSageAttention = isMiniMaxH3Model(draft.modelId) &&
@@ -254,28 +262,32 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       ? draft.h3ReferenceSlots.filter((slot) => slot.mediaType === "image").map((slot) => slot.mediaPath)
       : [draft.startImagePath, draft.endImagePath]
     ).filter((candidate): candidate is string => Boolean(candidate.trim()));
-    const library = await deps.effectiveImageInputLibraryDirectory(store.get().settings);
-    const operationId = randomUUID().slice(0, 8);
-    logger.info("assets", "video-input-image-archive-started", "开始归档视频任务输入图片", { operationId, referenceCount: sourcePaths.length });
     const preparedDraft = structuredClone(draft);
-    try {
-      const archived = await archiveImagePaths(sourcePaths, library);
-      const replacements = new Map(sourcePaths.map((source, index) => [source, archived[index]!]));
-      preparedDraft.startImagePath = replacements.get(preparedDraft.startImagePath) ?? preparedDraft.startImagePath;
-      preparedDraft.endImagePath = replacements.get(preparedDraft.endImagePath) ?? preparedDraft.endImagePath;
-      preparedDraft.h3ReferenceSlots = preparedDraft.h3ReferenceSlots.map((slot) => slot.mediaType === "image"
-        ? { ...slot, mediaPath: replacements.get(slot.mediaPath) ?? slot.mediaPath } : slot);
-      logger.info("assets", "video-input-image-archive-completed", "视频任务输入图片已归档并校验", {
-        operationId, referenceCount: sourcePaths.length, uniqueAssets: new Set(archived).size
-      });
-    } catch (error) {
-      logger.error("assets", "video-input-image-archive-failed", "视频任务输入图片归档失败，任务未加入队列", {
-        operationId, error: safeLogErrorMessage(error)
-      });
-      throw error;
+    if (sourcePaths.length) {
+      const library = await deps.effectiveImageInputLibraryDirectory(store.get().settings);
+      const operationId = randomUUID().slice(0, 8);
+      logger.info("assets", "video-input-image-archive-started", "开始归档视频任务输入图片", { operationId, referenceCount: sourcePaths.length });
+      try {
+        const archived = await archiveImagePaths(sourcePaths, library);
+        const replacements = new Map(sourcePaths.map((source, index) => [source, archived[index]!]));
+        preparedDraft.startImagePath = replacements.get(preparedDraft.startImagePath) ?? preparedDraft.startImagePath;
+        preparedDraft.endImagePath = replacements.get(preparedDraft.endImagePath) ?? preparedDraft.endImagePath;
+        preparedDraft.h3ReferenceSlots = preparedDraft.h3ReferenceSlots.map((slot) => slot.mediaType === "image"
+          ? { ...slot, mediaPath: replacements.get(slot.mediaPath) ?? slot.mediaPath } : slot);
+        logger.info("assets", "video-input-image-archive-completed", "视频任务输入图片已归档并校验", {
+          operationId, referenceCount: sourcePaths.length, uniqueAssets: new Set(archived).size
+        });
+      } catch (error) {
+        logger.error("assets", "video-input-image-archive-failed", "视频任务输入图片归档失败，任务未加入队列", {
+          operationId, error: safeLogErrorMessage(error)
+        });
+        throw error;
+      }
     }
     const next = await store.update((state) => {
-      state.queue.push(queueTaskFromDraft(preparedDraft, state));
+      const taskDraft = structuredClone(preparedDraft);
+      taskDraft.workflowPath = resolvedWorkflowPath;
+      state.queue.push(queueTaskFromDraft(taskDraft, state));
       state.draft = preparedDraft;
     });
     const task = next.queue.at(-1);

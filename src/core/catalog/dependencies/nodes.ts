@@ -5,6 +5,7 @@ export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
 export const SPECTRUM_RECOMMENDED_VERSION = "0.2.15";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
+export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.3.2";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
 
 export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
@@ -135,7 +136,15 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   aliases: ["comfyui-minimaxh3-prompt-writer"],
   runtimeEndpoint: "/h3studio/status",
   minimumVersion: MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION,
-  runtimeRequirement: "Gemma GGUF 需要当前 ComfyUI Python 中的 llama-cpp-python CUDA 后端；请在设置 → 提示词扩展的运行依赖卡片中一键安装和自检，不要重复安装第二个版本。",
+  recommendedVersion: MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION,
+  compatibilityEvidence: [{
+    verifiedAt: "2026-08-17",
+    sourceUrl: "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer",
+    note: "0.3.2 的 GGUF 适配与当前 Prompt Writer 安装器兼容；本项目只记录静态/API 证据，不把社区版本当作运行通过。",
+    commit: "0.3.2",
+    checks: ["static", "object-info"]
+  }],
+  runtimeRequirement: "上游 0.3.2 的 Direct GGUF 依赖由本应用统一安装；Gemma GGUF 需要当前 ComfyUI Python 中的共享 llama-cpp-python CUDA 后端。更新节点不会覆盖已通过自检的后端；请在设置 → 提示词扩展的运行依赖卡片中一键安装和自检，不要重复安装第二个版本。",
   required: false
 }, {
   id: "h3-motion-context",
@@ -161,6 +170,14 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   nodeTypes: ["SpectrumApplyMiniMaxH3"],
   minimumVersion: SPECTRUM_MINIMUM_VERSION,
   recommendedVersion: SPECTRUM_RECOMMENDED_VERSION,
+  compatibilityEvidence: [{
+    verifiedAt: "2026-08-17",
+    sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3",
+    note: "Spectrum 的最低版本、Turbo 共存和 model_aware_mode 约束已纳入本项目工作流基线；推荐版本不是硬性最低版本。",
+    comfyUi: "0.33.1",
+    workflowIds: ["minimax_h3_i2v", "minimax_h3_r2v"],
+    checks: ["static"]
+  }],
   required: false
 }];
 

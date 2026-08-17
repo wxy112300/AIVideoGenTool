@@ -9,6 +9,7 @@ export async function loadQueueInputPreviews(context: RendererContext): Promise<
   await Promise.all(tasks.map(async (task) => {
     const input = queueTaskInput(task);
     if (!input) return;
+    if (input.kind === "placeholder") return;
     if (input.kind === "video") {
       root.querySelectorAll<HTMLVideoElement>(
         `[data-queue-input-video="${task.id}"]`

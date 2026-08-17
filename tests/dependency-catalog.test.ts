@@ -26,6 +26,8 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("minimax-h3-prompt-writer")).toMatchObject({
       runtimeEndpoint: "/h3studio/status",
       minimumVersion: "0.3.1",
+      recommendedVersion: "0.3.2",
+      compatibilityEvidence: [{ checks: ["static", "object-info"] }],
       required: false
     });
     expect(customNodeDefinition("comfyui-multimodal-prompt-nodes")).toMatchObject({
@@ -53,6 +55,10 @@ describe("dependency catalog", () => {
       nodeTypes: ["InpaintCropImproved", "InpaintStitchImproved"],
       repositoryUrl: "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git",
       required: false
+    });
+    expect(customNodeDefinition("spectrum-minimax-h3")?.compatibilityEvidence?.[0]).toMatchObject({
+      comfyUi: "0.33.1",
+      checks: ["static"]
     });
   });
 

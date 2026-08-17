@@ -3,6 +3,7 @@ import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { persistVideoHistoryResult } from "../electron/queue-history";
 import { QueueWorkerController } from "../electron/queue-worker";
+import { queueTaskInput } from "../src/renderer/pages/queue/card";
 import { queueLayoutSignature } from "../src/renderer/pages/queue/helpers";
 
 describe("queue history persistence", () => {
@@ -50,6 +51,26 @@ describe("queue history persistence", () => {
       seed: 42,
       comfyPromptId: "prompt-1"
     });
+  });
+});
+
+describe("H3 T2VA queue presentation", () => {
+  it("snapshots the T2VA workflow and exposes a no-reference placeholder", () => {
+    const state = createDefaultState();
+    const task = queueTaskFromDraft({
+      ...createDefaultDraft(),
+      modelId: "minimax_h3_fl2va",
+      startImagePath: "",
+      endImagePath: "",
+      workflowPath: "C:/ComfyUI/workflows/minimax_h3_i2v_api.json"
+    }, state, {
+      now: () => new Date("2026-08-12T12:00:00.000Z"),
+      id: () => "task-t2va",
+      random: () => 0.5
+    });
+
+    expect(task.workflowPath).toBe("C:/ComfyUI/workflows/minimax_h3_t2va_api.json");
+    expect(queueTaskInput(task)).toEqual({ kind: "placeholder" });
   });
 });
 

@@ -28,6 +28,7 @@ Rebuild the standalone pages after editing a fragment:
 - The prototypes describe behavior already present in the application; sample paths and telemetry are illustrative.
 - Image editing is currently an approved interaction prototype. Model choices and parameter ranges remain illustrative until the first ComfyUI image workflows are selected and validated.
 - Community NSFW/uncensored H3 derivatives are not represented as installable options while the ecosystem remains unstable.
+- Phase 2A (2026-08-17) adds a compact creation action bar, progressive disclosure for low-frequency controls, and sticky queue actions across all three modes. This is prototype-only until the renderer implementation is reviewed.
 
 ## Automatic output naming
 

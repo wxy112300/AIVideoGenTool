@@ -97,6 +97,9 @@ function updateTaskPreview(
     image.src = preview.dataUrl;
     image.style.display = "";
     image.dataset.livePreviewActive = "true";
+    image.dataset.livePreviewSource = preview.source ?? "unknown";
+    if (preview.step !== undefined) image.dataset.livePreviewStep = String(preview.step);
+    if (preview.totalSteps !== undefined) image.dataset.livePreviewTotalSteps = String(preview.totalSteps);
   }
   if (indicator) indicator.style.display = "";
   if (spinner) spinner.style.display = "none";

@@ -1,4 +1,4 @@
-import type { AppState, HistoryFile, ImageGenerationQueueTask, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats } from "../src/types.js";
+import type { AppState, HistoryFile, ImageGenerationQueueTask, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview } from "../src/types.js";
 import { isImageGenerationQueueTask } from "../src/core/queue.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
 import {
@@ -34,7 +34,7 @@ export interface QueueExecutorDependencies {
   logger: AppLogger;
   worker: QueueWorkerController;
   sendState(state: AppState): void;
-  sendPreview(payload: { taskId: string; dataUrl: string }): void;
+  sendPreview(payload: TaskPreview): void;
   setQueueLifecycle(lifecycle: QueueLifecycle, taskId?: string): Promise<AppState>;
   updateTask(taskId: string, patch: Partial<QueueTask>): Promise<AppState>;
   ensureComfyUiReady(taskId: string): Promise<void>;
@@ -124,10 +124,12 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
                 stage: `第 ${run.index + 1} / ${totalRuns} 张 · ${stage}`
               });
             },
-            (dataUrl) => {
+            (dataUrl, source, metadata) => {
               sendPreview({
                 taskId: task.id,
-                dataUrl
+                dataUrl,
+                source,
+                ...metadata
               });
             },
             () => true
@@ -493,7 +495,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               });
             }
           },
-          (dataUrl, source) => {
+          (dataUrl, source, metadata) => {
             if (source === "h3-tae") {
               h3LivePreviewFrames += 1;
               if (h3LivePreviewFrames === 1) {
@@ -504,7 +506,9 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             }
             sendPreview({
               taskId: task.id,
-              dataUrl
+              dataUrl,
+              source,
+              ...metadata
             });
           },
           () => Date.now() - lastGpuComputeAt < 10_000

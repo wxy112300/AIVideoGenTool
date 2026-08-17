@@ -19,7 +19,11 @@ import {
 } from "./image-workflow.js";
 import { uniqueUpscaleFilename, upscaleDimensions } from "./upscale.js";
 import { videoLoraSelection } from "./video-loras.js";
-import { isMiniMaxH3Fl2vaModel, isMiniMaxH3R2vModel } from "./workflow.js";
+import {
+  h3WorkflowPathForInput,
+  isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3R2vModel
+} from "./workflow.js";
 
 export interface QueueTaskFactoryClock {
   now(): Date;
@@ -91,7 +95,11 @@ export function queueTaskFromDraft(
     endImagePath: draft.endImagePath,
     modelId: draft.modelId,
     videoLoras: draft.videoLoras.map((lora) => videoLoraSelection(lora)),
-    workflowPath: draft.workflowPath,
+    workflowPath: h3WorkflowPathForInput(
+      draft.workflowPath,
+      draft.modelId,
+      Boolean(draft.startImagePath || draft.endImagePath)
+    ),
     ratio: draft.ratio,
     resolution: draft.resolution,
     duration: draft.duration,

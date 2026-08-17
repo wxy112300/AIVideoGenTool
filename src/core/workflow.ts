@@ -102,6 +102,29 @@ export function isMiniMaxH3Model(modelId: string): boolean {
   return modelCatalog.isFamily(modelId, "minimax-h3");
 }
 
+const h3WorkflowPairs = [
+  ["minimax_h3_i2v_api.json", "minimax_h3_t2va_api.json"],
+  ["minimax_h3_fl2va_turbo_api.json", "minimax_h3_t2va_turbo_api.json"],
+  ["minimax_h3_i2v_gguf_q3_api.json", "minimax_h3_t2va_gguf_q3_api.json"]
+] as const;
+
+export function h3WorkflowPathForInput(
+  workflowPath: string,
+  modelId: string,
+  hasReference: boolean
+): string {
+  if (!isMiniMaxH3Model(modelId) || isMiniMaxH3R2vModel(modelId)) return workflowPath;
+  const separatorIndex = Math.max(workflowPath.lastIndexOf("/"), workflowPath.lastIndexOf("\\"));
+  const filename = workflowPath.slice(separatorIndex + 1);
+  const pair = hasReference
+    ? h3WorkflowPairs.find(([, textOnlyFilename]) => textOnlyFilename === filename)
+    : h3WorkflowPairs.find(([imageFilename]) => imageFilename === filename);
+  const targetFilename = hasReference ? pair?.[0] : pair?.[1];
+  return targetFilename
+    ? `${workflowPath.slice(0, separatorIndex + 1)}${targetFilename}`
+    : workflowPath;
+}
+
 export function isMiniMaxH3Q3GgufModel(modelId: string): boolean {
   return modelCatalog.get(modelId)?.definition.runtimeProfile === "h3-q3-3080";
 }
@@ -1456,7 +1479,15 @@ export function validateApiWorkflow(
   const hasH3ReferenceVideo = [...placeholders].some((token) =>
     /^H3_REF_VIDEO_\d+$/u.test(token)
   );
-  if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage && !hasH3ReferenceVideo) {
+  const hasTextOnlyH3Conditioning = entries.some(([, value]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const node = value as Record<string, unknown>;
+    if (node.class_type !== "MiniMaxH3ImageToVideo") return false;
+    const inputs = node.inputs;
+    return inputs !== null && typeof inputs === "object" && !Array.isArray(inputs) &&
+      !("first_frame" in inputs) && !("last_frame" in inputs);
+  });
+  if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage && !hasH3ReferenceVideo && !hasTextOnlyH3Conditioning) {
     errors.push(message("mediaPlaceholderMissing"));
   }
   if (!placeholders.has("SEED")) warnings.push(message("seedPlaceholderMissing"));

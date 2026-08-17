@@ -148,26 +148,45 @@ export function patchH3PromptWriterLlamaCppCompatibility(source: string): string
     );
 }
 
+function hasLegacyLlamaKvImport(source: string): boolean {
+  return /from\s+llama_cpp(?:\._ggml)?\s+import[^\r\n]*\bGGML_TYPE_(?:F16|Q8_0)\b/u.test(source);
+}
+
+function hasLlamaKvCompatibilityShim(source: string): boolean {
+  return source.includes("from llama_cpp._ggml import GGMLType") &&
+    source.includes("GGML_TYPE_F16 = GGMLType.GGML_TYPE_F16") &&
+    source.includes("GGML_TYPE_Q8_0 = GGMLType.GGML_TYPE_Q8_0");
+}
+
 export async function prepareH3PromptWriter(
   targetDirectory: string,
   report: (message: string) => void
 ): Promise<void> {
+  // The 0.3.x extension keeps the GGUF adapter in this location, while the
+  // diagnostics module no longer imports GGML KV constants at all.  Treat the
+  // latter as optional and only patch files that actually contain the legacy
+  // import; requiring the shim in every file made a 0.3.2 update fail before
+  // Python dependencies were even checked.
   const files = [
-    path.join(targetDirectory, "backend", "models", "gguf_backend.py"),
-    path.join(targetDirectory, "backend", "runtime_diagnostics.py")
+    { filename: path.join(targetDirectory, "backend", "models", "gguf_backend.py"), required: true },
+    { filename: path.join(targetDirectory, "backend", "runtime_diagnostics.py"), required: false }
   ];
   let changed = false;
-  for (const filename of files) {
-    const source = await fs.readFile(filename, "utf8");
+  let patchedFiles = 0;
+  for (const { filename, required } of files) {
+    const source = await fs.readFile(filename, "utf8").catch((error) => {
+      if (required) throw error;
+      report("H3 Prompt Writer 未提供独立运行时诊断文件，跳过兼容补丁（不影响生成接口）");
+      return null;
+    });
+    if (source === null) continue;
     const patched = patchH3PromptWriterLlamaCppCompatibility(source);
-    if (
-      patched.includes("from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0, Llama")
-    ) {
+    if (hasLegacyLlamaKvImport(patched) && !hasLlamaKvCompatibilityShim(patched)) {
       throw new Error(
         "MiniMax H3 Prompt Writer 源码结构与 llama-cpp-python 兼容适配不匹配，已停止修改。"
       );
     }
-    if (!patched.includes("from llama_cpp._ggml import GGMLType")) {
+    if (hasLegacyLlamaKvImport(source) && !hasLlamaKvCompatibilityShim(patched)) {
       throw new Error(
         "MiniMax H3 Prompt Writer 未包含新版 llama-cpp-python KV 类型回退，已停止修改。"
       );
@@ -175,12 +194,13 @@ export async function prepareH3PromptWriter(
     if (patched !== source) {
       await fs.writeFile(filename, patched, "utf8");
       changed = true;
+      patchedFiles += 1;
     }
   }
   report(
     changed
-      ? "已应用 llama-cpp-python 0.3.39+ KV 类型兼容层"
-      : "H3 Prompt Writer 已兼容当前 llama-cpp-python API"
+      ? `已为 ${patchedFiles} 个 H3 Prompt Writer 文件应用 llama-cpp-python 0.3.39+ KV 类型兼容层`
+      : "H3 Prompt Writer 已兼容当前 llama-cpp-python API（无需修改上游源码）"
   );
 }
 

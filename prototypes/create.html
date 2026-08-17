@@ -3,8 +3,8 @@
     <a class="studio-brand" href="./create.html"><span class="brand-mark"><i data-lucide="play"></i></span><span>Local Video Studio</span></a>
     <nav class="studio-nav" aria-label="主导航"><a href="./create.html" aria-current="page">创建</a><a href="./queue.html">队列 <span class="badge">3</span></a><a href="./history.html">历史</a><a href="./settings.html">设置</a></nav>
   </header>
-  <main class="studio-body">
-    <section class="page-head">
+  <main class="studio-body create-page">
+    <section class="page-head create-page-head">
       <div><div class="page-title"><h1>创建</h1><span class="badge ok">自动保存</span></div><p class="muted">先生产图片素材，再将满意版本送入 H3 图生视频或多参考流程。</p></div>
       <div class="actions mode-switch" role="group" aria-label="创建模式"><button class="btn primary" data-input-mode="image"><i data-lucide="clapperboard"></i>图生视频</button><button class="btn" data-input-mode="video"><i data-lucide="video"></i>视频续写</button><button class="btn" data-input-mode="image-edit"><i data-lucide="wand-sparkles"></i>图片处理</button></div>
     </section>
@@ -35,30 +35,35 @@ At 00:04.000, cut to a close-up as warm runway light crosses the face.
 overall_soundscape: 远处喷气发动机、微风和衣料摩擦声。
 non_diegetic_music: 克制的电影感弦乐。</textarea>
           <div class="actions"><label class="field" style="min-width:230px">快速插入<select><option>选择镜头、动作、声音或对白片段</option><option>缓慢推进镜头</option><option>环境声音</option><option>对白标签</option></select></label><button class="btn"><i data-lucide="plus"></i>插入</button><span class="badge ok">结构检查通过</span></div>
-          <details class="control-section" open>
+          <details class="control-section prompt-helper">
             <summary><strong>H3 提示词助手</strong> <span class="badge">R2V 多参考</span></summary>
             <div class="grid-3"><div class="fact"><span>参考标签</span><strong>Picture / Video 顺序已匹配</strong></div><div class="fact"><span>时间轴</span><strong>包含明确切镜点</strong></div><div class="fact"><span>声音</span><strong>现场声与音乐已分离</strong></div></div>
             <div class="actions"><button class="btn"><i data-lucide="list-ordered"></i>使用结构模板</button><button class="btn"><i data-lucide="panels-top-left"></i>打开结构化构建器</button></div>
           </details>
           <div class="control-section">
-            <div class="section-head"><div><h2>输出设置</h2><p class="muted tiny">参数会作为不可变快照保存到任务与历史</p></div></div>
+            <div class="section-head"><div><h2>核心输出</h2><p class="muted tiny">只显示会直接改变这次任务的决定</p></div><button class="info-icon" title="加入队列时会把全部参数保存为不可变快照。"><i data-lucide="info"></i></button></div>
             <div class="grid-3">
-              <label class="field">模型<select><option>MiniMax H3 R2V · 多参考 INT8</option><option>MiniMax H3 R2V · 多参考 INT4</option><option>MiniMax H3 FL2VA</option><option>MiniMax H3 LightX2V Turbo</option><option>Sulphur 2 GGUF</option></select></label>
+              <label class="field">模型<select data-summary-model><option>MiniMax H3 R2V · 多参考 INT8</option><option>MiniMax H3 R2V · 多参考 INT4</option><option>MiniMax H3 FL2VA</option><option>MiniMax H3 LightX2V Turbo</option><option>Sulphur 2 GGUF</option></select></label>
               <label class="field">画面比例<select><option>16:9</option><option>9:16</option><option>1:1</option><option>4:3</option></select></label>
-              <label class="field">清晰度<select><option>768p · 高显存开放档</option><option>720p</option><option>540p</option><option>480p · 低显存起步</option></select></label>
-              <label class="field">采样步数（H3）<select><option>20 · 标准质量</option><option>16 · 平衡预览</option><option>12 · 快速预览</option></select></label>
-              <label class="field">Spectrum 加速<select data-spectrum-mode><option value="off">关闭 · 原生完整计算</option><option value="balanced">平衡 · 使用系统内存缓存</option></select></label>
-              <label class="field" data-spectrum-model-aware hidden>模型感知预测<select><option>关闭 · 标准 Spectrum</option><option>Schedule · 保守调度</option><option>Schedule + Confidence</option><option>Full · 调度、置信度与残差修正</option></select></label>
-              <label class="field">时长<select><option>10 秒</option><option>15 秒</option><option>8 秒</option><option>5 秒</option></select></label>
-              <label class="field">目标帧率<select><option>24 FPS · H3 原生</option></select></label>
-              <label class="field">动作幅度<select><option>自然</option><option>轻微</option><option>强烈</option></select></label>
-              <label class="field">随机 Seed<input value="7161563643789542"></label>
+              <label class="field">清晰度<select data-summary-quality><option>768p · 高显存开放档</option><option>720p</option><option>540p</option><option>480p · 低显存起步</option></select></label>
+              <label class="field">时长<select data-summary-duration><option>10 秒</option><option>15 秒</option><option>8 秒</option><option>5 秒</option></select></label>
+              <label class="field">目标帧率<select data-summary-fps><option>24 FPS · H3 原生</option></select></label>
             </div>
+            <details class="advanced-settings">
+              <summary><strong>增强与复现</strong><span class="muted tiny">Steps、Spectrum、动作、Seed</span></summary>
+              <div class="grid-3">
+                <label class="field">采样步数（H3）<select data-summary-steps><option>20 · 标准质量</option><option>16 · 平衡预览</option><option>12 · 快速预览</option></select></label>
+                <label class="field">Spectrum 加速<select data-spectrum-mode data-summary-spectrum><option value="off">关闭 · 原生完整计算</option><option value="balanced">平衡 · 使用系统内存缓存</option></select></label>
+                <label class="field" data-spectrum-model-aware hidden>模型感知预测<select><option>关闭 · 标准 Spectrum</option><option>Schedule · 保守调度</option><option>Schedule + Confidence</option><option>Full · 调度、置信度与残差修正</option></select></label>
+                <label class="field">动作幅度<select><option>自然</option><option>轻微</option><option>强烈</option></select></label>
+                <label class="field">随机 Seed<input data-summary-seed value="7161563643789542"></label>
+              </div>
+            </details>
             <div class="summary-strip"><div><strong>H3 原生 24 FPS · 同步立体声音频</strong><p class="muted tiny">240 个模型帧 · 预计显存峰值 20–22 GB</p></div><span class="badge ok">RTX 4090 安全预算内</span></div>
-            <div class="actions" style="justify-content:flex-end"><button class="btn danger" data-open-dialog="clear-dialog"><i data-lucide="trash-2"></i>清空</button><button class="btn primary"><i data-lucide="list-plus"></i>加入队列</button></div>
           </div>
         </section>
       </div>
+      <div class="create-action-bar" data-mode-action="image"><div class="action-context"><strong data-action-title>图生视频</strong><span class="muted tiny" data-action-context>H3 R2V · 768p · 10 秒 · 24 FPS · Seed 固定</span></div><div class="actions"><span class="badge ok" data-action-status>可加入队列</span><button class="btn danger" data-open-dialog="clear-dialog"><i data-lucide="trash-2"></i>清空</button><button class="btn primary" data-demo-enqueue="image"><i data-lucide="list-plus"></i>加入队列</button></div></div>
     </section>
 
     <section data-mode-panel="image-edit" hidden>
@@ -91,20 +96,21 @@ non_diegetic_music: 克制的电影感弦乐。</textarea>
               <label class="field">质量<select data-image-quality><option>原生质量</option><option>Lightning · 快速</option></select></label>
               <label class="field">输出格式<select data-image-format><option value="png">PNG · 无损</option><option value="jpeg">JPEG · 较小文件</option><option value="webp">WebP · 高压缩率</option></select></label>
               <label class="field range-field"><span class="range-heading"><span>生成数量</span><strong data-image-count-value>6 张</strong></span><input type="range" min="1" max="10" step="1" value="6" data-image-count><span class="range-scale"><span>1</span><span>一个任务，逐张生成</span><span>10</span></span></label>
-              <label class="field image-seed-field" data-lama-hidden>Seed · 留空随机<div class="seed-input-row"><input data-image-seed-input inputmode="numeric" placeholder="每张随机"><button class="btn icon-btn" data-random-image-seed title="生成随机 Seed"><i data-lucide="dices"></i></button><button class="btn icon-btn" data-clear-image-seed title="清空并恢复随机"><i data-lucide="x"></i></button></div></label>
+              <label class="field image-seed-field" data-lama-hidden>Seed · 留空随机<div class="seed-input-row"><input data-image-seed-input data-summary-seed inputmode="numeric" placeholder="每张随机"><button class="btn icon-btn" data-random-image-seed title="生成随机 Seed"><i data-lucide="dices"></i></button><button class="btn icon-btn" data-clear-image-seed title="清空并恢复随机"><i data-lucide="x"></i></button></div></label>
             </div>
             <div class="summary-strip"><div><strong data-image-batch-summary>一个任务 · 6 个随机 Seed 顺序生成</strong><p class="muted tiny" data-image-output-summary>PNG · 输出约 1536 × 1024 · 结果归入“黄昏机场人物素材”</p></div><span class="badge ok">RTX 4090 顺序执行</span></div>
-            <div class="actions" style="justify-content:flex-end"><button class="btn danger" data-open-dialog="clear-image-dialog"><i data-lucide="trash-2"></i>清空</button><button class="btn primary"><i data-lucide="list-plus"></i>作为一个批次加入队列</button></div>
           </div>
         </section>
       </div>
+      <div class="create-action-bar" data-mode-action="image-edit"><div class="action-context"><strong data-action-title>图片处理</strong><span class="muted tiny" data-action-context>Qwen Image Edit · PNG · 6 张 · Seed 随机</span></div><div class="actions"><span class="badge ok" data-action-status>可加入队列</span><button class="btn danger" data-open-dialog="clear-image-dialog"><i data-lucide="trash-2"></i>清空</button><button class="btn primary" data-demo-enqueue="image-edit"><i data-lucide="list-plus"></i>加入队列</button></div></div>
     </section>
 
     <section data-mode-panel="video" hidden>
       <div class="workspace">
         <section class="panel"><div class="section-head"><div><h2>输入视频</h2><p class="muted tiny">裁出要保留的片段，从范围末帧继续生成</p></div><button class="btn danger"><i data-lucide="x"></i>移除视频</button></div><div class="media-well has-media"><div class="media-placeholder"><i data-lucide="film"></i><strong>source-airport.mp4</strong><span>00:00.0 — 00:08.4 · 拖动手柄时暂停预览</span></div></div><div class="summary-strip" style="margin-top:12px"><span>保留 <strong>8.4 秒</strong></span><span>新增 <strong>5 秒</strong></span><span>预计成片 <strong>13.4 秒</strong></span></div></section>
-        <section class="panel"><div class="section-head"><div><h2>描述接下来发生什么</h2><p class="muted tiny">H3 使用结尾帧接续并保留原生音轨；边界动作可能变化</p></div><button class="btn primary"><i data-lucide="sparkles"></i>优化 H3 提示词</button></div><textarea>[Shot 1] 从保留片段末帧继续。人物向跑道走去，镜头平稳跟随，并保持上一段的环境声空间感。</textarea><div class="grid-3" style="margin-top:14px"><label class="field">模型<select><option>MiniMax H3 FL2VA</option><option>MiniMax H3 INT4</option><option>MiniMax H3 Turbo</option></select></label><label class="field">新增时长<select><option>5 秒</option><option>10 秒</option></select></label><label class="field">清晰度<select><option>768p</option><option>720p</option></select></label></div><div class="actions" style="justify-content:flex-end;margin-top:14px"><button class="btn primary"><i data-lucide="list-plus"></i>加入队列</button></div></section>
+        <section class="panel"><div class="section-head"><div><h2>描述接下来发生什么</h2><p class="muted tiny">H3 使用结尾帧接续并保留原生音轨；边界动作可能变化</p></div><button class="btn primary"><i data-lucide="sparkles"></i>优化 H3 提示词</button></div><textarea>[Shot 1] 从保留片段末帧继续。人物向跑道走去，镜头平稳跟随，并保持上一段的环境声空间感。</textarea><div class="grid-3" style="margin-top:14px"><label class="field">模型<select data-summary-model><option>MiniMax H3 FL2VA</option><option>MiniMax H3 INT4</option><option>MiniMax H3 Turbo</option></select></label><label class="field">新增时长<select data-summary-duration><option>5 秒</option><option>10 秒</option></select></label><label class="field">清晰度<select data-summary-quality><option>768p</option><option>720p</option></select></label><label class="field">目标帧率<select data-summary-fps><option>24 FPS</option><option>30 FPS</option></select></label></div></section>
       </div>
+      <div class="create-action-bar" data-mode-action="video"><div class="action-context"><strong data-action-title>视频续写</strong><span class="muted tiny" data-action-context>H3 FL2VA · 新增 5 秒 · 768p · 24 FPS</span></div><div class="actions"><span class="badge ok" data-action-status>可加入队列</span><button class="btn danger"><i data-lucide="x"></i>清空</button><button class="btn primary" data-demo-enqueue="video"><i data-lucide="list-plus"></i>加入队列</button></div></div>
     </section>
   </main>
   <div class="dialog-backdrop" id="clear-dialog"><section class="dialog" role="dialog" aria-modal="true"><div><span class="badge warn">不可撤销</span><h2 style="margin-top:9px">清空当前创作？</h2></div><p class="muted">参考素材、提示词版本和当前参数都会恢复默认；已经加入队列的任务不受影响。</p><div class="actions" style="justify-content:flex-end"><button class="btn" data-close-dialog>取消</button><button class="btn danger" data-close-dialog>确认清空</button></div></section></div>

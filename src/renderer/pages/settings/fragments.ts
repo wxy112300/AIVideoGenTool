@@ -204,8 +204,19 @@ export function renderSettingsComfyCompatibilityPanel(
   const versionLabel = compatibility.version
     ? `v${compatibility.version}`
     : options.t(uiKeys.settings.compatibility.versionUnknown);
-  const ready = Boolean(compatibility.version || compatibility.revision || compatibility.checkedFrom);
-  const statusTone = ready ? "available" : "warning";
+  const compatibilityState = compatibility.compatibilityState ?? (
+    compatibility.version || compatibility.revision || compatibility.checkedFrom
+      ? "supported"
+      : "unknown"
+  );
+  const ready = compatibilityState !== "unknown";
+  const statusTone = compatibilityState === "error"
+    ? "missing"
+    : compatibilityState === "warning"
+      ? "warning"
+      : ready
+        ? "available"
+        : "warning";
   const versionMismatch = compatibility.checkedFrom === "api" &&
     Boolean(selectedInstallation?.version) &&
     Boolean(compatibility.version) &&
@@ -221,7 +232,7 @@ export function renderSettingsComfyCompatibilityPanel(
           <span class="muted">${t(uiKeys.settings.compatibility.description)}</span>
         </div>
         <div class="compatibility-actions">
-            <span class="model-availability ${statusTone}">${ready ? `${icon("circle-check")} ${t(uiKeys.settings.compatibility.recognized)}` : `${icon("circle-help")} ${t(uiKeys.settings.compatibility.waitingService)}`}</span>
+            <span class="model-availability ${statusTone}">${compatibilityState === "error" ? `${icon("circle-alert")} ${t(uiKeys.settings.compatibility.incompatible)}` : compatibilityState === "warning" ? `${icon("circle-help")} ${t(uiKeys.settings.compatibility.advisory)}` : ready ? `${icon("circle-check")} ${t(uiKeys.settings.compatibility.recognized)}` : `${icon("circle-help")} ${t(uiKeys.settings.compatibility.waitingService)}`}</span>
           <button class="primary button-with-icon" id="update-comfyui" ${viewModel.comfyUpdating || compatibility.updateMode === "unsupported" ? "disabled" : ""}>${icon(viewModel.comfyUpdating ? "refresh-cw" : "download")}${viewModel.comfyUpdating ? t(uiKeys.settings.compatibility.processing) : compatibility.updateMode === "desktop" ? t(uiKeys.settings.compatibility.openOfficialUpdater) : t(uiKeys.settings.compatibility.manualUpdate)}</button>
         </div>
       </div>
@@ -233,6 +244,7 @@ export function renderSettingsComfyCompatibilityPanel(
         <div><span>${t(uiKeys.settings.compatibility.detectionSource)}</span><strong>${compatibility.checkedFrom === "api" ? t(uiKeys.settings.compatibility.runningService) : compatibility.checkedFrom === "source" ? t(uiKeys.settings.compatibility.localCoreSource) : t(uiKeys.settings.compatibility.waitingStart)}</strong></div>
       </div>
       ${versionMismatch ? `<div class="service-status warning">${escape(t(uiKeys.settings.compatibility.mismatchWarning, { serviceVersion: versionLabel, localVersion: `v${selectedInstallation?.version ?? t(uiKeys.settings.compatibility.versionUnknown)}` }))}</div>` : ""}
+      ${compatibility.compatibilityNotice && compatibilityState !== "supported" ? `<div class="service-status ${compatibilityState === "error" ? "error" : "warning"}">${escape(compatibility.compatibilityNotice)}</div>` : ""}
       <p class="muted">${escape(compatibility.updateHint)}</p>
       ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>${t(uiKeys.settings.compatibility.updateLog)}</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
     </section>`;

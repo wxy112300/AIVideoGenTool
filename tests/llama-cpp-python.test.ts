@@ -119,6 +119,61 @@ describe("llama-cpp-python runtime", () => {
     expect(processCalls).toHaveLength(1);
   });
 
+  it("serializes concurrent repairs for the same ComfyUI Python", async () => {
+    const processCalls: string[][] = [];
+    let probeCount = 0;
+    let pipRunning = false;
+    let overlappingPip = false;
+    const runtime: LlamaCppPythonRuntime = {
+      downloadEnvironment: () => ({}),
+      proxyLogLabel: () => "代理：关闭",
+      findComfyRoot: async () => "C:\\ComfyUI",
+      findComfyPython: async () => "C:\\ComfyUI\\.venv\\Scripts\\python.exe",
+      runLoggedProcess: async (_executable, args) => {
+        processCalls.push(args);
+        if (args[0] === "-c") {
+          probeCount += 1;
+          return JSON.stringify(probeCount === 1
+            ? {
+                pythonVersion: "3.12.11",
+                packageVersion: "",
+                importable: false,
+                gpuOffload: null,
+                torchVersion: "2.10.0+cu130",
+                cudaVersion: "13.0"
+              }
+            : {
+                pythonVersion: "3.12.11",
+                packageVersion: "0.3.46+cu130",
+                importable: true,
+                gpuOffload: true,
+                dynamicBackend: true,
+                torchVersion: "2.10.0+cu130",
+                cudaVersion: "13.0"
+              });
+        }
+        if (args.includes("pip")) {
+          if (pipRunning) overlappingPip = true;
+          pipRunning = true;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          pipRunning = false;
+        }
+        return "pip complete";
+      }
+    };
+
+    const settings = createDefaultState().settings;
+    const [first, second] = await Promise.all([
+      installLlamaCppPythonPackage(settings, runtime),
+      installLlamaCppPythonPackage(settings, runtime)
+    ]);
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(overlappingPip).toBe(false);
+    expect(processCalls.filter((args) => args.includes("pip"))).toHaveLength(1);
+  });
+
   it("installs the matching wheel and verifies the imported CUDA backend", async () => {
     const processCalls: string[][] = [];
     let probeCount = 0;

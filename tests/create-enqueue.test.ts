@@ -99,6 +99,11 @@ describe("create enqueue preflight checks", () => {
     expect(videoCheck({ promptText: "camera pushes in" })).toBe("");
   });
 
+  it("allows an H3 T2VA task without a start image", () => {
+    expect(videoCheck({ startImagePath: "", allowTextOnly: true })).toBe("");
+    expect(videoCheck({ startImagePath: "", allowTextOnly: false })).toBe("请先选择首帧图片");
+  });
+
   it("checks video-extension trim and prompt conditions in order", () => {
     expect(videoCheck({
       extending: true,

@@ -129,6 +129,7 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.queue.card.runningHint]: "The current task will keep running; later tasks are paused.",
 	[uiKeys.queue.card.inputImage]: "User input image",
 	[uiKeys.queue.card.sourceVideo]: "Source video",
+	[uiKeys.queue.card.noReferenceImage]: "No reference image · T2VA",
 	[uiKeys.queue.card.moveUp]: "Move up",
 	[uiKeys.queue.card.moveDown]: "Move down",
 	[uiKeys.queue.card.editUpscaleTitle]: "Bring back upscale settings and requeue",

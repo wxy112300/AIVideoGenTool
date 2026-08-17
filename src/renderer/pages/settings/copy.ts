@@ -128,12 +128,15 @@ type SettingsCopyKey =
   | "nodes.manualInstall"
   | "nodes.prerequisite"
   | "nodes.localVersion"
+  | "nodes.revision"
   | "nodes.versionUnread"
   | "nodes.latestRelease"
   | "nodes.recommendedVersion"
   | "nodes.rescanOnline"
   | "nodes.runtimeMemory"
   | "nodes.needsUpdate"
+  | "nodes.compatibilityWarning"
+  | "nodes.compatibilityError"
   | "nodes.runtimeVerified"
   | "nodes.fileCheckPassed"
   | "nodes.installedRepair"
@@ -276,7 +279,7 @@ const zhCN: SettingsCopyCatalog = {
   "prompt.waitingScan": "等待首次扫描",
   "prompt.note": "Qwen Safetensors 使用 ComfyUI 官方 models/text_encoders 分类；Gemma GGUF 使用 H3 Prompt Writer 扩展注册的大写 models/LLM/独立子目录，主模型与匹配的 mmproj 必须放在一起。扩写完成会自动卸载，不需要安装或启动 llama-server、LM Studio。",
   "prompt.runtimeTitle": "Gemma GGUF 运行依赖",
-  "prompt.runtimeDescription": "H3 Prompt Writer 与可选 MultiModal 节点共用当前 ComfyUI Python 中的 llama-cpp-python；这里独立检测并安装 CUDA 后端。修复不兼容后端时会替换当前版本，请不要让两个节点各自重复安装。",
+  "prompt.runtimeDescription": "H3 Prompt Writer 与可选 MultiModal 节点共用当前 ComfyUI Python 中的 llama-cpp-python；这里独立检测并安装 CUDA 后端。节点更新不会覆盖已通过自检的后端，只有点击修复时才会替换不兼容版本，请不要让两个节点各自重复安装。",
   "prompt.runtimeReady": "CUDA 后端已就绪",
   "prompt.runtimeMissing": "未安装",
   "prompt.runtimeCpu": "已安装但不是 CUDA 后端",
@@ -344,12 +347,15 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.manualInstall": "需单独安装",
   "nodes.prerequisite": "运行/安装说明：",
   "nodes.localVersion": "本机版本：",
+  "nodes.revision": "提交：",
   "nodes.versionUnread": "未读取到版本号",
   "nodes.latestRelease": "最新发布：",
   "nodes.recommendedVersion": "推荐版本：",
   "nodes.rescanOnline": "联网后重新扫描",
   "nodes.runtimeMemory": "运行时固定使用系统内存，不额外下载模型。",
   "nodes.needsUpdate": "需要更新",
+  "nodes.compatibilityWarning": "兼容性待确认",
+  "nodes.compatibilityError": "兼容性错误",
   "nodes.runtimeVerified": "运行时已验证",
   "nodes.fileCheckPassed": "文件检查通过",
   "nodes.installedRepair": "已安装，需修复",
@@ -539,12 +545,15 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.manualInstall": "需單獨安裝",
   "nodes.prerequisite": "執行/安裝說明：",
   "nodes.localVersion": "本機版本：",
+  "nodes.revision": "提交：",
   "nodes.versionUnread": "未讀取到版本號",
   "nodes.latestRelease": "最新發布：",
   "nodes.recommendedVersion": "建議版本：",
   "nodes.rescanOnline": "連線後重新掃描",
   "nodes.runtimeMemory": "執行時固定使用系統記憶體，不額外下載模型。",
   "nodes.needsUpdate": "需要更新",
+  "nodes.compatibilityWarning": "相容性待確認",
+  "nodes.compatibilityError": "相容性錯誤",
   "nodes.runtimeVerified": "執行時已驗證",
   "nodes.fileCheckPassed": "檔案檢查通過",
   "nodes.installedRepair": "已安裝，需要修復",
@@ -684,7 +693,7 @@ const enUS: SettingsCopyCatalog = {
   "prompt.waitingScan": "Waiting for first scan",
   "prompt.note": "Qwen Safetensors use ComfyUI's models/text_encoders category; Gemma GGUF uses the H3 Prompt Writer extension's uppercase models/LLM/independent-subdirectory layout. The main model and matching mmproj must stay together. The model unloads after expansion; llama-server and LM Studio are not required.",
   "prompt.runtimeTitle": "Gemma GGUF runtime",
-  "prompt.runtimeDescription": "H3 Prompt Writer and the optional MultiModal node share llama-cpp-python in the selected ComfyUI Python. This card detects and installs the CUDA backend independently; repairing an incompatible build replaces the current package.",
+  "prompt.runtimeDescription": "H3 Prompt Writer and the optional MultiModal node share llama-cpp-python in the selected ComfyUI Python. This card detects and installs the CUDA backend independently; node updates keep a verified backend, while an explicit repair replaces only an incompatible package.",
   "prompt.runtimeReady": "CUDA backend ready",
   "prompt.runtimeMissing": "Not installed",
   "prompt.runtimeCpu": "Installed, but not a CUDA backend",
@@ -752,12 +761,15 @@ const enUS: SettingsCopyCatalog = {
   "nodes.manualInstall": "Install separately",
   "nodes.prerequisite": "Runtime/install note: ",
   "nodes.localVersion": "Local version: ",
+  "nodes.revision": "Commit: ",
   "nodes.versionUnread": "Version not read",
   "nodes.latestRelease": "Latest release: ",
   "nodes.recommendedVersion": "Recommended: ",
   "nodes.rescanOnline": "Rescan after connecting",
   "nodes.runtimeMemory": "Uses system memory at runtime and does not download extra models.",
   "nodes.needsUpdate": "Needs update",
+  "nodes.compatibilityWarning": "Compatibility pending",
+  "nodes.compatibilityError": "Compatibility error",
   "nodes.runtimeVerified": "Runtime verified",
   "nodes.fileCheckPassed": "File check passed",
   "nodes.installedRepair": "Installed; repair needed",

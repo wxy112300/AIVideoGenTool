@@ -15,5 +15,8 @@ export type {
   CatalogCustomNodeFeature,
   CatalogCustomNodeFeatureId,
   CatalogWorkflowDependencyDefinition,
-  CatalogWorkflowDependencyId
+  CatalogWorkflowDependencyId,
+  DependencyBadRange,
+  DependencyCompatibilityCheck,
+  DependencyCompatibilityEvidence
 } from "./types.js";

@@ -135,6 +135,7 @@ export interface VideoEnqueueBlockReasonInput {
   spectrumReady: boolean;
   r2vSlotsReady: boolean;
   startImagePath: string;
+  allowTextOnly?: boolean;
   turboCoreBlockReason: string;
   turboLoraBlockReason: string;
   selectedLoraBlockReason: string;
@@ -163,7 +164,7 @@ export function videoEnqueueBlockReason(
                     ? t(uiKeys.create.validation.spectrumMissing)
                     : "";
   }
-  return !input.isR2V && !input.startImagePath
+  return !input.isR2V && !input.allowTextOnly && !input.startImagePath
     ? t(uiKeys.create.validation.startFrameMissing)
     : !input.promptText.trim()
       ? t(uiKeys.create.validation.promptMissing)
@@ -453,6 +454,7 @@ export function buildVideoCreatePageViewModel(
     spectrumReady,
     r2vSlotsReady,
     startImagePath: draft.startImagePath,
+    allowTextOnly: h3Mode === "T2VA",
     turboCoreBlockReason,
     turboLoraBlockReason,
     selectedLoraBlockReason

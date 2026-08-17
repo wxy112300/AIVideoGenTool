@@ -15,7 +15,41 @@ export interface CatalogCustomNodeDefinition {
   bulkInstall?: boolean;
   /** Feature-scoped nodes used by optional workflow paths. */
   features?: readonly CatalogCustomNodeFeature[];
+  /** Evidence collected for this definition; informational and never an install prerequisite by itself. */
+  compatibilityEvidence?: readonly DependencyCompatibilityEvidence[];
+  /** Explicitly known incompatible version/revision ranges. */
+  knownBadRanges?: readonly DependencyBadRange[];
   required: boolean;
+}
+
+export type DependencyCompatibilityCheck =
+  | "static"
+  | "object-info"
+  | "minimal-run";
+
+export interface DependencyCompatibilityEvidence {
+  verifiedAt: string;
+  sourceUrl: string;
+  note: string;
+  comfyUi?: string;
+  python?: string;
+  pytorch?: string;
+  cuda?: string;
+  commit?: string;
+  workflowIds?: readonly string[];
+  checks?: readonly DependencyCompatibilityCheck[];
+}
+
+export interface DependencyBadRange {
+  versionFrom?: string;
+  versionTo?: string;
+  revisionFrom?: string;
+  revisionTo?: string;
+  reason: string;
+  severity: "warning" | "error";
+  sourceUrl: string;
+  fixedByVersion?: string;
+  fixedByRevision?: string;
 }
 
 export type CatalogCustomNodeFeatureId =

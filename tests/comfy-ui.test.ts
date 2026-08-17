@@ -10,6 +10,7 @@ import {
   historyEntryClientId,
   historyEntryHasUnfinishedBatch,
   h3PreviewEventDataUrl,
+  h3PreviewEventMetadata,
   h3PreviewTinyVaeFromObjectInfo,
   nodeStage,
   progressForNode,
@@ -51,6 +52,10 @@ describe("H3 live preview runtime discovery", () => {
       data: { image: "data:image/webp;base64,YWJj", mime: "image/webp" }
     })).toBe("data:image/webp;base64,YWJj");
     expect(h3PreviewEventDataUrl({ type: "progress", data: {} })).toBeNull();
+    expect(h3PreviewEventMetadata({
+      type: "kj_preview_override",
+      data: { image: "abc", step: 7, total: 24 }
+    })).toEqual({ step: 7, totalSteps: 24 });
   });
 });
 

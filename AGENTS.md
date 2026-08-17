@@ -162,6 +162,12 @@ For any repository change, classify the impact before completion. When bumping:
 
 ### Shared Worktree and Multi-Agent Safety
 
+- Prefer delegating deterministic, bounded work to sub-agents when sub-agent tooling is available. Good candidates include repository/file inventory, static comparisons, fixture extraction, localized copy inventories, focused test additions, mechanical refactors within an owned module, and independent read-only research. This keeps the primary context focused on product decisions, integration, and verification.
+- Match model cost and reasoning effort to the task. Use a fast, lower-cost model with high or maximum effort for well-specified mechanical work; reserve the strongest model for ambiguous architecture, workflow correctness, persisted-state changes, cross-module integration, and final review. Do not use a stronger model merely because it is available.
+- Delegate by deliverable and file ownership, not by a broad feature name. Each sub-agent brief must state the source of truth, files it may edit, files it must not edit, expected evidence/tests, and the format of its handoff. Prefer read-only investigation before assigning implementation.
+- Keep the primary agent responsible for reading applicable contracts, resolving conflicting conclusions, integrating changes, reviewing the complete diff, and running the final verification tier. A sub-agent result is evidence or a proposed patch, not proof that the product behavior works.
+- Do not delegate ambiguous UX judgment, destructive data operations, public/persisted contract changes, or final runtime claims without a primary-agent decision. When a task is too small to offset coordination cost, complete it directly instead of spawning a sub-agent.
+- Parallelize only tasks with disjoint ownership. If two work packages converge on a hotspot or shared type, finish the read-only work in parallel, then serialize implementation through one owner.
 - Re-read every target file immediately before editing it. Never apply a patch prepared from an older conversation snapshot without comparing it to the current worktree.
 - If a target file changed after the task began, stop and reconcile the current diff first. Preserve newer fields, schema versions, migrations, adapters, tests, and user changes instead of replaying stale code.
 - Do not let multiple agents concurrently own hotspot files such as `src/main.ts`, `electron/main.ts`, `electron/store.ts`, `src/types.ts`, or shared workflow adapters. Use separate Git worktrees/branches or assign one owner per hotspot.

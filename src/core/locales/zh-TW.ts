@@ -129,6 +129,7 @@ export const zhTWCatalog = {
     [uiKeys.queue.card.runningHint]: "目前任務仍會繼續執行，後續任務已暫停。",
     [uiKeys.queue.card.inputImage]: "使用者輸入圖片",
     [uiKeys.queue.card.sourceVideo]: "源影片",
+    [uiKeys.queue.card.noReferenceImage]: "無參考圖 · T2VA",
     [uiKeys.queue.card.moveUp]: "上移",
     [uiKeys.queue.card.moveDown]: "下移",
     [uiKeys.queue.card.editUpscaleTitle]: "帶回提升設定並重新加入佇列",

@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.22.1**。本阶段跟进 MiniMax H3 官方 Turbo v1.0/Ref2V LoRA、Spectrum v0.2.15 推荐线和按功能拆分的 KJNodes 依赖，同时保留旧版 SeedVR2、Turbo 和历史记录兼容。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.23.0**。本阶段接入 MiniMax H3 T2VA：创建页在没有首尾参考图时可直接提交，队列使用对应的 text-only 工作流并显示无参考图占位；同时保留 FL2VA、R2V、Turbo、Q3 GGUF 和历史记录兼容。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -22,7 +22,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 
 | 类别 | 当前主要支持 |
 | --- | --- |
-| 视频生成 | MiniMax H3 FL2VA（INT8、INT4、实验性 Q3 GGUF）、MiniMax H3 R2V（INT8、INT4）、Sulphur 2 / LTX 2.3；另保留 Wan 2.2 14B + NSFW 兼容配置 |
+| 视频生成 | MiniMax H3 T2VA/FL2VA（INT8、INT4、实验性 Q3 GGUF）、MiniMax H3 R2V（INT8、INT4）、Sulphur 2 / LTX 2.3；另保留 Wan 2.2 14B + NSFW 兼容配置 |
 | 图片处理 | Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
 | 视频增强 | SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
 | H3 LoRA | LightX2V Turbo v1.0（8-step/768p 4-step）、Ref2V Turbo、Realism People、PinkFluffyBunny NSFW |

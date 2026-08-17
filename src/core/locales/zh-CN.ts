@@ -129,6 +129,7 @@ export const zhCNCatalog = {
     [uiKeys.queue.card.runningHint]: "当前任务仍会继续运行，后续任务已暂停。",
     [uiKeys.queue.card.inputImage]: "用户输入图片",
     [uiKeys.queue.card.sourceVideo]: "源视频",
+    [uiKeys.queue.card.noReferenceImage]: "无参考图 · T2VA",
     [uiKeys.queue.card.moveUp]: "上移",
     [uiKeys.queue.card.moveDown]: "下移",
     [uiKeys.queue.card.editUpscaleTitle]: "带回提升设置并重新加入队列",

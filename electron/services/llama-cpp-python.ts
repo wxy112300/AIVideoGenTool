@@ -331,12 +331,28 @@ export function llamaCppWheelSelectionForCuda(
   };
 }
 
-export async function installLlamaCppPythonPackage(
+type LlamaCppInstallResult = { ok: boolean; message: string; log?: string };
+
+/**
+ * Both H3 Prompt Writer and MultiModal Prompt Nodes load this package from the
+ * same ComfyUI Python environment. Keep one in-process install transaction so
+ * two cards cannot pip-replace the shared native DLLs at the same time.
+ */
+const sharedLlamaInstallLocks = new Map<string, Promise<LlamaCppInstallResult>>();
+
+function sharedLlamaInstallKey(settings: Settings): string {
+  return [
+    settings.comfyInstallDirectory.trim().toLowerCase(),
+    settings.comfyPythonPath.trim().toLowerCase()
+  ].join("\u0000");
+}
+
+async function installLlamaCppPythonPackageUnlocked(
   settings: Settings,
   runtime: LlamaCppPythonRuntime,
   onLog?: (message: string) => void,
   options: { forceReinstall?: boolean } = {}
-): Promise<{ ok: boolean; message: string; log?: string }> {
+): Promise<LlamaCppInstallResult> {
   const log: string[] = [];
   const report = (message: string) => {
     const normalized = message.trim();
@@ -459,5 +475,33 @@ export async function installLlamaCppPythonPackage(
       message: processError.message || "llama-cpp-python 安装失败",
       log: log.join("\n\n")
     };
+  }
+}
+
+export async function installLlamaCppPythonPackage(
+  settings: Settings,
+  runtime: LlamaCppPythonRuntime,
+  onLog?: (message: string) => void,
+  options: { forceReinstall?: boolean } = {}
+): Promise<LlamaCppInstallResult> {
+  const key = sharedLlamaInstallKey(settings);
+  const running = sharedLlamaInstallLocks.get(key);
+  if (running) {
+    onLog?.("检测到同一 ComfyUI 的共享 llama-cpp-python 正在安装/修复，等待现有事务完成，不会重复替换 DLL……");
+    return running;
+  }
+  const operation = installLlamaCppPythonPackageUnlocked(
+    settings,
+    runtime,
+    onLog,
+    options
+  );
+  sharedLlamaInstallLocks.set(key, operation);
+  try {
+    return await operation;
+  } finally {
+    if (sharedLlamaInstallLocks.get(key) === operation) {
+      sharedLlamaInstallLocks.delete(key);
+    }
   }
 }
