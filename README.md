@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.22.0**。本阶段跟进 MiniMax H3 官方 Turbo v1.0/Ref2V LoRA、Spectrum v0.2.15 推荐线和按功能拆分的 KJNodes 依赖，同时保留旧版 SeedVR2、Turbo 和历史记录兼容。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.22.1**。本阶段跟进 MiniMax H3 官方 Turbo v1.0/Ref2V LoRA、Spectrum v0.2.15 推荐线和按功能拆分的 KJNodes 依赖，同时保留旧版 SeedVR2、Turbo 和历史记录兼容。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -43,7 +43,7 @@ Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部
 
 通常无需单独安装完整 CUDA Toolkit。优先使用 ComfyUI 自身 Python/PyTorch 所带的 CUDA runtime；只有某个自定义 CUDA 扩展明确要求编译工具链时才额外安装。
 
-Qwen3.6 MultiModal 是例外：其本地 GGUF vision 后端使用节点作者推荐的 JamePeng `llama-cpp-python` GPU 构建。若没有匹配的预编译 wheel，安装器可能需要 Visual Studio Build Tools、CMake 和 CUDA Toolkit；具体日志和前置条件会显示在设置 → 节点与工作流。
+Qwen3.6 MultiModal 与 MiniMax H3 Prompt Writer 共用同一个 JamePeng `llama-cpp-python` GPU 构建。安装器会按所选 ComfyUI 的 Python/CUDA 版本选择预编译 wheel；不支持的组合会在下载前明确提示，不会偷偷源码编译或安装第二个 llama 服务。节点更新不会覆盖已经通过 CUDA 自检的共享后端，具体日志和前置条件会显示在设置 → 节点与工作流。
 
 ### 2. 克隆并启动 GUI
 

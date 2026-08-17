@@ -7,10 +7,15 @@ import {
   normalizeReleaseVersion
 } from "../../src/core/release-version.js";
 import type { CustomNodeStatus, Settings } from "../../src/types.js";
+import type {
+  CatalogCustomNodeDefinition,
+  DependencyBadRange
+} from "../../src/core/catalog/dependencies/types.js";
 import {
   ltxAudioVaeCompatible,
   videoHelperBatchCompatible
 } from "./dependency-compatibility.js";
+import { readComfyGitRevision } from "./comfy-discovery.js";
 
 async function readPythonProjectVersion(directory: string): Promise<string> {
   if (!directory) return "";
@@ -19,6 +24,69 @@ async function readPythonProjectVersion(directory: string): Promise<string> {
       source.match(/^version\s*=\s*["']([^"']+)["']/m)?.[1] ?? ""
     ))
     .catch(() => "");
+}
+
+function badRangeMatches(
+  range: DependencyBadRange,
+  version: string,
+  revision: string
+): boolean {
+  const revisionMatch = Boolean(revision) && (
+    range.revisionFrom === revision ||
+    range.revisionTo === revision ||
+    Boolean(range.revisionFrom && range.revisionTo &&
+      range.revisionFrom <= revision && revision <= range.revisionTo)
+  );
+  if (revisionMatch) return true;
+  if (!version || (!range.versionFrom && !range.versionTo)) return false;
+  const atLeastFrom = !range.versionFrom || compareReleaseVersions(version, range.versionFrom) >= 0;
+  const atMostTo = !range.versionTo || compareReleaseVersions(version, range.versionTo) <= 0;
+  return atLeastFrom && atMostTo;
+}
+
+function compatibilityForNode(
+  definition: CatalogCustomNodeDefinition,
+  installed: boolean,
+  version: string,
+  revision: string,
+  runtimeVerified: boolean,
+  loadError: string,
+  updateAvailable: boolean,
+  compatibilityNotice: string
+): Pick<CustomNodeStatus, "compatibilityState" | "compatibilityNotice"> {
+  if (!installed) return { compatibilityState: "unknown", compatibilityNotice: "" };
+  if (loadError) {
+    const pendingRestart = /尚未加载|重启/u.test(loadError);
+    return {
+      compatibilityState: pendingRestart ? "warning" : "error",
+      compatibilityNotice
+    };
+  }
+  const knownBad = definition.knownBadRanges?.find((range) =>
+    badRangeMatches(range, version, revision)
+  );
+  if (knownBad) return { compatibilityState: "error", compatibilityNotice: knownBad.reason };
+  if (!version && definition.minimumVersion) {
+    const versionNotice = `已安装但未读取到版本号；最低支持 v${definition.minimumVersion}，请在 Git 元数据可用时重新扫描。`;
+    return {
+      compatibilityState: "warning",
+      compatibilityNotice: [versionNotice, compatibilityNotice].filter(Boolean).join("；")
+    };
+  }
+  if (definition.minimumVersion && version &&
+      compareReleaseVersions(version, definition.minimumVersion) < 0) {
+    return {
+      compatibilityState: "error",
+      compatibilityNotice: `版本过低：当前 v${version}，最低支持 v${definition.minimumVersion}。`
+    };
+  }
+  if (updateAvailable || !runtimeVerified || compatibilityNotice) {
+    return { compatibilityState: "warning", compatibilityNotice };
+  }
+  return {
+    compatibilityState: "supported",
+    compatibilityNotice: "版本与节点状态已读取；最终工作流兼容性仍由运行时检查确认。"
+  };
 }
 
 export function availableComfyNodeIds(objectInfo: unknown): Set<string> {
@@ -60,10 +128,96 @@ export async function readLatestComfyLog(
     : { content: "", modifiedAt: 0 };
 }
 
+interface H3PromptWriterRuntimeProbe {
+  loaded: boolean | null;
+  error: string;
+  notice: string;
+}
+
+async function inspectH3PromptWriterRuntime(
+  serviceRoot: string,
+  runtimeEndpoint: string
+): Promise<H3PromptWriterRuntimeProbe> {
+  if (!serviceRoot || !runtimeEndpoint) {
+    return { loaded: null, error: "", notice: "" };
+  }
+  try {
+    const statusResponse = await fetch(`${serviceRoot}${runtimeEndpoint}`, {
+      signal: AbortSignal.timeout(5_000)
+    });
+    if (!statusResponse.ok) {
+      return {
+        loaded: false,
+        error: `MiniMax H3 Prompt Writer 运行接口不可用（HTTP ${statusResponse.status}）`,
+        notice: ""
+      };
+    }
+    const modelsResponse = await fetch(`${serviceRoot}/h3studio/models`, {
+      signal: AbortSignal.timeout(5_000)
+    });
+    if (!modelsResponse.ok) {
+      return {
+        loaded: false,
+        error: `MiniMax H3 Prompt Writer 模型接口不可用（HTTP ${modelsResponse.status}）`,
+        notice: ""
+      };
+    }
+    const modelBody = await modelsResponse.json().catch(() => ({})) as {
+      models?: unknown;
+    };
+    const modelCount = Array.isArray(modelBody.models) ? modelBody.models.length : 0;
+    let error = "";
+    const diagnosticsResponse = await fetch(
+      `${serviceRoot}/h3studio/runtime/gguf/diagnostics`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh: true }),
+        signal: AbortSignal.timeout(20_000)
+      }
+    ).catch(() => null);
+    if (diagnosticsResponse?.ok) {
+      const diagnosticsBody = await diagnosticsResponse.json().catch(() => ({})) as {
+        diagnostics?: {
+          status?: unknown;
+          message?: unknown;
+          error?: unknown;
+          return_code_hex?: unknown;
+        };
+      };
+      const diagnostics = diagnosticsBody.diagnostics;
+      const status = String(diagnostics?.status ?? "").toLowerCase();
+      const detail = [diagnostics?.message, diagnostics?.error]
+        .filter((value) => typeof value === "string" && value.trim())
+        .join("：");
+      const code = String(diagnostics?.return_code_hex ?? "").toUpperCase();
+      if (status === "crashed" && (code === "0XC000001D" || /illegal instruction|非法指令/iu.test(detail))) {
+        error = `H3 Prompt Writer GGUF 运行库崩溃：${code || "0xC000001D"}${detail ? `（${detail}）` : ""}`;
+      } else if (["crashed", "timeout", "invalid_response"].includes(status)) {
+        error = `H3 Prompt Writer 运行时自检失败：${detail || status}`;
+      }
+    }
+    return {
+      loaded: !error,
+      error,
+      notice: modelCount
+        ? `H3 Prompt Writer 运行接口已响应，发现 ${modelCount} 个模型`
+        : "H3 Prompt Writer 节点已加载，但当前没有发现 GGUF 模型；节点本身无需重复安装"
+    };
+  } catch (error) {
+    return {
+      loaded: false,
+      error: `MiniMax H3 Prompt Writer 运行时检查失败：${error instanceof Error ? error.message : String(error)}`,
+      notice: ""
+    };
+  }
+}
+
 export async function scanCustomNodes(
   comfyRoot: string,
   settings: Settings,
-  latestSpectrumVersion = ""
+  latestSpectrumVersion = "",
+  runtimeBaseUrl = ""
 ): Promise<CustomNodeStatus[]> {
   const customNodesDirectory = comfyRoot
     ? path.join(comfyRoot, "custom_nodes")
@@ -78,8 +232,9 @@ export async function scanCustomNodes(
   );
   const log = (await readLatestComfyLog(comfyRoot)).content;
   const logLines = log.split(/\r?\n/);
+  const serviceRoot = (runtimeBaseUrl || settings.comfyUrl).replace(/\/+$/, "");
   const serviceNodeIds = await fetch(
-    `${settings.comfyUrl.replace(/\/+$/, "")}/object_info`,
+    `${serviceRoot}/object_info`,
     { signal: AbortSignal.timeout(5_000) }
   )
     .then(async (response) => response.ok
@@ -89,11 +244,20 @@ export async function scanCustomNodes(
   const promptWriterEndpoint = customNodeCatalog.find(
     (definition) => definition.id === "minimax-h3-prompt-writer"
   )?.runtimeEndpoint;
-  const h3PromptWriterLoaded = serviceNodeIds === null || !promptWriterEndpoint
-    ? null
-    : await fetch(`${settings.comfyUrl.replace(/\/+$/, "")}${promptWriterEndpoint}`, {
-        signal: AbortSignal.timeout(5_000)
-      }).then((response) => response.ok).catch(() => false);
+  const h3PromptWriterRuntime = await inspectH3PromptWriterRuntime(
+    serviceNodeIds === null || !promptWriterEndpoint ? "" : serviceRoot,
+    promptWriterEndpoint || ""
+  );
+
+  const revisionCache = new Map<string, Promise<string>>();
+  const readRevision = (directory: string): Promise<string> => {
+    if (!directory) return Promise.resolve("");
+    const cached = revisionCache.get(directory);
+    if (cached) return cached;
+    const pending = readComfyGitRevision(directory);
+    revisionCache.set(directory, pending);
+    return pending;
+  };
 
   return Promise.all(customNodeCatalog.map(async (definition) => {
     const matchedName = definition.aliases.find((alias) =>
@@ -117,6 +281,7 @@ export async function scanCustomNodes(
           ?.replace(/^.*?Cannot import /, "Cannot import ")
       : "";
     let compatibilityError = "";
+    let compatibilityNotice = "";
     let updateNotice = "";
     let optionalUpdateRecommended = false;
     if (definition.id === "video-helper-suite" && directory) {
@@ -171,15 +336,19 @@ export async function scanCustomNodes(
     if (!compatibilityError && belowMinimumVersion) {
       compatibilityError = version
         ? `版本过低：当前 v${version}，最低支持 v${definition.minimumVersion}`
-        : `无法读取版本；最低支持 v${definition.minimumVersion}，请更新节点后复检`;
+        : "";
+      compatibilityNotice = version
+        ? ""
+        : `已安装但未读取到版本号；最低支持 v${definition.minimumVersion}，请重新扫描确认。`;
     }
     const latestVersion = definition.id === "spectrum-minimax-h3"
       ? latestSpectrumVersion
       : "";
+    const detectedRevision = await readRevision(directory);
     const requiredNodeTypes = definition.nodeTypes;
     const runtimeVerified = serviceNodeIds !== null;
     const registered = definition.runtimeEndpoint
-      ? h3PromptWriterLoaded !== false
+      ? h3PromptWriterRuntime.loaded !== false
       : !runtimeVerified || !requiredNodeTypes ||
         requiredNodeTypes.every((nodeType) => serviceNodeIds.has(nodeType));
     const pendingRestartError = Boolean(directory) && !compatibilityError &&
@@ -187,7 +356,24 @@ export async function scanCustomNodes(
       ? "节点文件已安装，但当前 ComfyUI 服务尚未加载全部必需模块；请重启服务后复检"
       : "";
     const loadError = compatibilityError || importErrorLine ||
+      (definition.id === "minimax-h3-prompt-writer" && directory ? h3PromptWriterRuntime.error : "") ||
       (failed ? "最近一次启动时导入失败" : "") || pendingRestartError;
+    const updateAvailable = Boolean(
+      compatibilityError || optionalUpdateRecommended ||
+      (definition.recommendedVersion && (!version ||
+        compareReleaseVersions(version, definition.recommendedVersion) < 0)) ||
+      (version && latestVersion && compareReleaseVersions(version, latestVersion) < 0)
+    );
+    const compatibility = compatibilityForNode(
+      definition,
+      Boolean(directory),
+      version,
+      detectedRevision,
+      runtimeVerified,
+      loadError,
+      updateAvailable,
+      compatibilityNotice || updateNotice || pendingRestartError
+    );
     return {
       id: definition.id,
       name: definition.name,
@@ -198,20 +384,25 @@ export async function scanCustomNodes(
       runtimeVerified,
       loadError,
       updateNotice,
+      runtimeNotice: definition.id === "minimax-h3-prompt-writer"
+        ? h3PromptWriterRuntime.notice
+        : "",
       directory,
       required: definition.required,
       version,
       minimumVersion: definition.minimumVersion ?? "",
       recommendedVersion: definition.recommendedVersion ?? "",
       latestVersion,
+      detectedRevision,
+      compatibilityState: compatibility.compatibilityState,
+      compatibilityNotice: compatibility.compatibilityNotice,
+      compatibilityEvidence: definition.compatibilityEvidence
+        ? [...definition.compatibilityEvidence]
+        : [],
+      knownBadRanges: definition.knownBadRanges ? [...definition.knownBadRanges] : [],
       runtimeRequirement: definition.runtimeRequirement ?? "",
       bulkInstall: definition.bulkInstall !== false,
-      updateAvailable: Boolean(
-        compatibilityError || optionalUpdateRecommended ||
-        (definition.recommendedVersion && (!version ||
-          compareReleaseVersions(version, definition.recommendedVersion) < 0)) ||
-        (version && latestVersion && compareReleaseVersions(version, latestVersion) < 0)
-      )
+      updateAvailable
     };
   }));
 }

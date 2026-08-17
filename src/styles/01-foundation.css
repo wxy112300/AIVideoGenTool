@@ -456,6 +456,7 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .custom-node-actions { flex: 0 0 auto; display: grid; justify-items: end; gap: 9px; }
 .node-error { display: block; margin-top: 7px; color: var(--danger); font-size: 11px; }
 .node-update-notice { display: block; margin-top: 7px; color: var(--warning); font-size: 11px; }
+.node-runtime-notice { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; }
 .node-log { margin-top: 10px; }
 .node-log summary { font-size: 12px; }
 .node-log pre { max-height: 220px; margin: 7px 0 0; padding: 10px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }

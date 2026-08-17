@@ -1192,9 +1192,9 @@ const customNodeInstallManager = new CustomNodeInstallQueue({
       message: `${name}: ${message}`
     }),
     restartFailed: (message) => uiText(uiKeys.settings.actions.nodeRestartFailed, { message }),
-    readyCheckFailed: (name) => uiText(
+    readyCheckFailed: (name, detail) => uiText(
       uiKeys.settings.actions.nodeBatchReadyCheckFailed,
-      { name }
+      { name, detail: detail || "节点未注册或运行时未返回详情" }
     ),
     completed: (success, failed) => uiText(
       uiKeys.settings.actions.nodeBatchCompleted,

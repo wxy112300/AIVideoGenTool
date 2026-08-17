@@ -7,6 +7,10 @@ import {
   withWindowsGitLongPaths,
   type DependencyInstallerRuntime
 } from "../electron/services/dependency-installer";
+import {
+  patchH3PromptWriterLlamaCppCompatibility,
+  prepareH3PromptWriter
+} from "../electron/services/dependency-node-adapters";
 import { createDefaultState } from "../src/core/defaults";
 
 const temporaryDirectories: string[] = [];
@@ -24,6 +28,29 @@ async function exists(filename: string): Promise<boolean> {
 }
 
 describe("dependency installer", () => {
+  it("does not require the 0.3.2 diagnostics module to contain a GGML shim", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-adapter-"));
+    temporaryDirectories.push(directory);
+    await fs.mkdir(path.join(directory, "backend", "models"), { recursive: true });
+    await fs.writeFile(
+      path.join(directory, "backend", "models", "gguf_backend.py"),
+      "            from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0, Llama\n"
+    );
+    await fs.writeFile(
+      path.join(directory, "backend", "runtime_diagnostics.py"),
+      "from llama_cpp import llama_cpp\n"
+    );
+    const report = vi.fn();
+
+    await prepareH3PromptWriter(directory, report);
+
+    expect(await fs.readFile(
+      path.join(directory, "backend", "models", "gguf_backend.py"),
+      "utf8"
+    )).toContain("from llama_cpp._ggml import GGMLType");
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("1 个 H3 Prompt Writer 文件"));
+  });
+
   it("passes Git long-path configuration to Windows child processes", () => {
     const environment = {
       PATH: "C:\\Git\\cmd",
@@ -159,6 +186,203 @@ describe("dependency installer", () => {
     expect(processCalls.some((args) => args.some((arg) => arg.includes("v0.3.46-cu128-win-20260808"))))
       .toBe(process.platform === "win32");
     expect(result.log).toContain("共用的 JamePeng llama-cpp-python 后端");
+  });
+
+  it("never lets H3 Prompt Writer requirements replace the shared llama backend", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-shared-runtime-"));
+    temporaryDirectories.push(comfyRoot);
+    const processCalls: string[][] = [];
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async () => "git.exe",
+      findComfyPython: async () => "python.exe",
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args, options) => {
+        processCalls.push(args);
+        if (args[0] === "clone") {
+          const target = args.at(-1)!;
+          await fs.mkdir(path.join(target, "backend", "models"), { recursive: true });
+          await fs.writeFile(
+            path.join(target, "backend", "models", "gguf_backend.py"),
+            "            from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0, Llama\n"
+          );
+          await fs.writeFile(
+            path.join(target, "requirements.txt"),
+            "llama-cpp-python>=0.3.34,<0.4\npillow>=10.0.0\n"
+          );
+          return "clone complete";
+        }
+        if (args[0] === "-c") {
+          return JSON.stringify({
+            pythonVersion: "3.12.11",
+            packageVersion: "0.3.46+cu128",
+            importable: true,
+            gpuOffload: true,
+            dynamicBackend: true,
+            torchVersion: "2.8.0+cu129",
+            cudaVersion: "12.9"
+          });
+        }
+        options.onLog?.("pip complete");
+        return "pip complete";
+      }
+    };
+
+    const result = await installCustomNodePackage(
+      "minimax-h3-prompt-writer",
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok).toBe(true);
+    const pipCalls = processCalls.filter((args) => args.includes("pip"));
+    expect(pipCalls).toHaveLength(1);
+    expect(pipCalls[0]).not.toContain("-r");
+    expect(pipCalls[0].some((arg) => /llama-cpp-python/iu.test(arg))).toBe(false);
+    expect(result.log).toContain("跳过节点 requirements.txt 中的 1 项 llama-cpp-python 要求");
+    expect(result.log).toContain("共享 llama-cpp-python 由统一运行时管理");
+  });
+
+  it("backs up a dirty H3 Prompt Writer checkout instead of pulling over compatibility patches", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-dirty-update-"));
+    temporaryDirectories.push(comfyRoot);
+    const targetDirectory = path.join(
+      comfyRoot,
+      "custom_nodes",
+      "ComfyUI-MiniMaxH3-Prompt-Writer"
+    );
+    await fs.mkdir(path.join(targetDirectory, ".git"), { recursive: true });
+    await fs.writeFile(path.join(targetDirectory, "app-local-change.txt"), "keep me");
+    const processCalls: string[][] = [];
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async () => "git.exe",
+      findComfyPython: async () => "python.exe",
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args) => {
+        processCalls.push(args);
+        if (args.includes("remote")) {
+          return "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git";
+        }
+        if (args.includes("status")) {
+          return " M backend/models/gguf_backend.py\n";
+        }
+        if (args[0] === "clone") {
+          const cloneDirectory = args.at(-1)!;
+          await fs.mkdir(path.join(cloneDirectory, "backend", "models"), { recursive: true });
+          await fs.writeFile(
+            path.join(cloneDirectory, "backend", "models", "gguf_backend.py"),
+            "from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0, Llama\n"
+          );
+          return "clone complete";
+        }
+        if (args[0] === "-c") {
+          return JSON.stringify({
+            pythonVersion: "3.12.11",
+            packageVersion: "0.3.46+cu128",
+            importable: true,
+            gpuOffload: true,
+            dynamicBackend: true,
+            torchVersion: "2.8.0+cu129",
+            cudaVersion: "12.9"
+          });
+        }
+        return "";
+      }
+    };
+
+    const result = await installCustomNodePackage(
+      "minimax-h3-prompt-writer",
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok).toBe(true);
+    expect(processCalls.some((args) => args.includes("status"))).toBe(true);
+    expect(processCalls.some((args) => args.includes("pull"))).toBe(false);
+    expect(processCalls.some((args) => args[0] === "clone")).toBe(true);
+    expect(result.log).toContain("检测到节点目录存在本地修改");
+    expect((await fs.readdir(path.join(comfyRoot, "node-backups"))).some((name) =>
+      name.startsWith("ComfyUI-MiniMaxH3-Prompt-Writer-")
+    )).toBe(true);
+    expect(await exists(path.join(
+      targetDirectory,
+      "backend",
+      "models",
+      "gguf_backend.py"
+    ))).toBe(true);
+  });
+
+  it("reuses the app-patched H3 checkout when the upstream HEAD did not change", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-patched-current-"));
+    temporaryDirectories.push(comfyRoot);
+    const targetDirectory = path.join(
+      comfyRoot,
+      "custom_nodes",
+      "ComfyUI-MiniMaxH3-Prompt-Writer"
+    );
+    const baseline = "from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0, Llama\n";
+    await fs.mkdir(path.join(targetDirectory, ".git", "refs"), { recursive: true });
+    await fs.mkdir(path.join(targetDirectory, "backend", "models"), { recursive: true });
+    await fs.writeFile(
+      path.join(targetDirectory, "backend", "models", "gguf_backend.py"),
+      patchH3PromptWriterLlamaCppCompatibility(baseline)
+    );
+    const processCalls: string[][] = [];
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async () => "git.exe",
+      findComfyPython: async () => "python.exe",
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args) => {
+        processCalls.push(args);
+        if (args.includes("remote")) {
+          return "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git";
+        }
+        if (args.includes("status")) {
+          return " M backend/models/gguf_backend.py\n";
+        }
+        if (args.includes("show")) return baseline;
+        if (args.includes("rev-parse")) return "abc1234";
+        if (args.includes("ls-remote")) return "abc1234\tHEAD\n";
+        if (args[0] === "-c") {
+          return JSON.stringify({
+            pythonVersion: "3.12.11",
+            packageVersion: "0.3.46+cu128",
+            importable: true,
+            gpuOffload: true,
+            dynamicBackend: true,
+            torchVersion: "2.8.0+cu129",
+            cudaVersion: "12.9"
+          });
+        }
+        return "";
+      }
+    };
+
+    const result = await installCustomNodePackage(
+      "minimax-h3-prompt-writer",
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok).toBe(true);
+    expect(processCalls.some((args) => args[0] === "clone")).toBe(false);
+    expect(processCalls.some((args) => args.includes("pull"))).toBe(false);
+    expect(result.log).toContain("上游没有新提交；保留当前目录，不重复克隆");
+    expect(await exists(path.join(comfyRoot, "node-backups"))).toBe(false);
   });
 
   it("installs H3 GGUF beside the legacy GGUF package without replacing it", async () => {

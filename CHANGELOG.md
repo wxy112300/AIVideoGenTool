@@ -10,6 +10,19 @@
 
 暂无。
 
+## 0.22.1 — 2026-08-17
+
+- H3 P1 低风险兼容吸纳：节点扫描同时记录版本与 Git revision，版本未知改为黄色待确认，Catalog 增加兼容证据/已知风险字段，设置页展示核心风险提示和节点兼容状态。
+- H3 实时预览消息补充来源、Step、总 Step 与序列号元数据，普通 ComfyUI 预览和 KJ TAE 预览在任务边界可区分；不改变原有预览降级和生成流程。
+- Prompt Writer 依赖升级准备：跟进上游 0.3.2 的目录/版本元数据，兼容新版诊断模块，不再要求每个文件都携带旧版 GGML KV 导入。
+- H3 Prompt Writer 与 Qwen3.6 MultiModal 的 `llama-cpp-python` 统一为同一安装事务；节点 `requirements.txt` 中可能覆盖共享后端的条目会被过滤，已有 CUDA 自检通过时更新节点不会重复下载或替换运行库。
+- 为共享 llama 运行库增加同一 ComfyUI Python 的并发安装锁，并补充节点更新、兼容补丁和运行库自检测试。
+- Vite 构建按设置页边界拆分低频模块，避免主渲染 chunk 超过 500 kB；不提高告警阈值，也不改变运行时功能。
+- 修复 MiniMax H3 Prompt Writer 一键更新被自身 `GGMLType` 兼容补丁阻塞的问题：更新前检查节点仓库是否有本地修改，发现修改时改用备份后干净副本替换，不再直接执行会失败的 `git pull`。
+- 优化 H3 Prompt Writer 更新：识别仅由本程序生成的兼容补丁，且上游 HEAD 未变化时复用当前目录，不再重复克隆和创建备份；上游有新提交时仍执行备份、干净替换和补丁重放。
+- 节点批次重启后增加 H3 Prompt Writer `/status`、`/models`、GGUF diagnostics 与共享 llama-cpp-python 运行时复检；失败原因会写入节点卡片日志和批次复检通知。
+- 修复 H3 Prompt Writer 运行时复检成功后仍显示“兼容性待确认”：模型探针结果改为中性的运行时证据，不再把成功提示误判为兼容性警告。
+
 ## 0.22.0 — 2026-08-17
 
 - 跟进 MiniMax H3 社区工作流：新增官方 LightX2V Turbo v1.0 8-step、768p 4-step 与 Ref2V 4-step LoRA 的目录、扫描、兼容提示和多语言说明。

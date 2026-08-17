@@ -4,6 +4,7 @@ import path from "node:path";
 import { customNodeDefinition } from "../../src/core/catalog/index.js";
 import type { Settings } from "../../src/types.js";
 import {
+  patchH3PromptWriterLlamaCppCompatibility,
   prepareH3PromptWriter,
   prepareH3Gguf,
   prepareLtxVideo,
@@ -40,6 +41,114 @@ function installationFailureMessage(error: unknown, details: string): string {
     return `${fallback}（检测到 Windows Git 长路径错误；安装器已自动启用进程级 longpaths。若仍失败，请启用系统长路径支持后重试。）`;
   }
   return fallback;
+}
+
+function sharedLlamaRequirementPackages(source: string): {
+  packages: string[];
+  skippedLlama: number;
+  skippedOptions: number;
+} {
+  const packages: string[] = [];
+  let skippedLlama = 0;
+  let skippedOptions = 0;
+  for (const rawLine of source.split(/\r?\n/u)) {
+    const line = rawLine.replace(/\s+#.*$/u, "").trim();
+    if (!line || line.startsWith("#")) continue;
+    if (/llama-cpp-python/iu.test(line)) {
+      skippedLlama += 1;
+      continue;
+    }
+    // Include files and index flags are intentionally not passed through the
+    // shared-runtime path. The registered prompt nodes only use ordinary
+    // package requirements; leaving these options out prevents a node update
+    // from changing pip's global index or pulling a second backend.
+    if (line.startsWith("-") || line.startsWith("--")) {
+      skippedOptions += 1;
+      continue;
+    }
+    packages.push(line);
+  }
+  return { packages, skippedLlama, skippedOptions };
+}
+
+const h3PromptWriterPatchFiles = [
+  "backend/models/gguf_backend.py",
+  "backend/runtime_diagnostics.py"
+] as const;
+
+function normalizeGitSource(source: string): string {
+  return source.replace(/\r\n?/gu, "\n").replace(/\s+$/u, "");
+}
+
+function gitStatusPath(line: string): string {
+  const value = line.slice(3).trim().replace(/^"|"$/gu, "");
+  const renameSeparator = value.lastIndexOf(" -> ");
+  return renameSeparator >= 0 ? value.slice(renameSeparator + 4) : value;
+}
+
+/**
+ * The H3 compatibility shim is intentionally applied inside the node checkout
+ * because the upstream Python imports need to see it at runtime. That makes
+ * Git report the checkout as dirty. Compare the current files with the exact
+ * output of our patch against HEAD so a future update can distinguish this
+ * known change from a user's/manual edit.
+ */
+async function h3PromptWriterHasOnlyAppPatch(
+  targetDirectory: string,
+  statusOutput: string,
+  git: string,
+  runtime: DependencyInstallerRuntime,
+  commandEnvironment: NodeJS.ProcessEnv
+): Promise<boolean> {
+  const paths = statusOutput
+    .split(/\r?\n/u)
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .map(gitStatusPath);
+  if (!paths.length || paths.some((filename) => !h3PromptWriterPatchFiles.includes(filename as typeof h3PromptWriterPatchFiles[number]))) {
+    return false;
+  }
+  for (const filename of paths) {
+    const current = await fs.readFile(path.join(targetDirectory, filename), "utf8").catch(() => null);
+    if (current === null) return false;
+    let baseline = "";
+    try {
+      baseline = await runtime.runLoggedProcess(
+        git,
+        ["-C", targetDirectory, "show", `HEAD:${filename}`],
+        { timeoutMs: 30_000, env: commandEnvironment }
+      );
+    } catch {
+      return false;
+    }
+    const expected = patchH3PromptWriterLlamaCppCompatibility(baseline);
+    if (normalizeGitSource(current) !== normalizeGitSource(expected)) return false;
+  }
+  return true;
+}
+
+async function h3PromptWriterUpstreamUnchanged(
+  targetDirectory: string,
+  git: string,
+  runtime: DependencyInstallerRuntime,
+  commandEnvironment: NodeJS.ProcessEnv
+): Promise<boolean | null> {
+  try {
+    const localHead = (await runtime.runLoggedProcess(
+      git,
+      ["-C", targetDirectory, "rev-parse", "HEAD"],
+      { timeoutMs: 30_000, env: commandEnvironment }
+    )).trim().toLowerCase();
+    const remoteHead = (await runtime.runLoggedProcess(
+      git,
+      ["-C", targetDirectory, "ls-remote", "origin", "HEAD"],
+      { timeoutMs: 45_000, env: commandEnvironment }
+    )).trim().match(/^([0-9a-f]{7,40})\s+/imu)?.[1]?.toLowerCase() ?? "";
+    if (!/^[0-9a-f]{7,40}$/iu.test(localHead) || !remoteHead) return null;
+    return localHead === remoteHead;
+  } catch {
+    return null;
+  }
 }
 
 export interface DependencyInstallerRuntime {
@@ -94,6 +203,8 @@ export async function installCustomNodePackage(
     const comfyRoot = await runtime.findComfyRoot(settings);
     if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
     const isMultimodalPromptNodes = definition.id === "comfyui-multimodal-prompt-nodes";
+    const usesSharedLlamaRuntime = isMultimodalPromptNodes ||
+      definition.id === "minimax-h3-prompt-writer";
     const customNodesDirectory = path.join(comfyRoot, "custom_nodes");
     const targetDirectory = path.join(customNodesDirectory, definition.directoryName);
     const git = await runtime.findExecutable("git.exe");
@@ -105,6 +216,9 @@ export async function installCustomNodePackage(
     if (await runtime.exists(targetDirectory)) {
       const isGitDirectory = await runtime.exists(path.join(targetDirectory, ".git"));
       let repositoryMatches = false;
+      let repositoryStatusChecked = false;
+      let repositoryDirty = false;
+      let reuseAppPatchedRepository = false;
       if (isGitDirectory && definition.id !== "seedvr2") {
         const origin = await runtime.runLoggedProcess(
           git,
@@ -115,6 +229,65 @@ export async function installCustomNodePackage(
           normalizedRepositoryUrl(definition.repositoryUrl);
       }
       if (isGitDirectory && repositoryMatches && definition.id !== "seedvr2") {
+        try {
+          const status = await runtime.runLoggedProcess(
+            git,
+            ["-C", targetDirectory, "status", "--porcelain", "--untracked-files=all"],
+            { timeoutMs: 30_000, env: commandEnvironment }
+          );
+          repositoryStatusChecked = true;
+          repositoryDirty = Boolean(status.trim());
+          if (repositoryDirty) {
+            const appPatchOnly = definition.id === "minimax-h3-prompt-writer" &&
+              await h3PromptWriterHasOnlyAppPatch(
+                targetDirectory,
+                status,
+                git,
+                runtime,
+                commandEnvironment
+              );
+            if (appPatchOnly) {
+              const upstreamUnchanged = await h3PromptWriterUpstreamUnchanged(
+                targetDirectory,
+                git,
+                runtime,
+                commandEnvironment
+              );
+              if (upstreamUnchanged === true) {
+                reuseAppPatchedRepository = true;
+                report(
+                  "检测到的修改仅是本程序兼容层，且上游没有新提交；保留当前目录，不重复克隆"
+                );
+              } else if (upstreamUnchanged === false) {
+                report("检测到 H3 Prompt Writer 上游有新提交，将备份旧目录并安装新副本");
+              } else {
+                report("无法确认 H3 Prompt Writer 上游提交；为安全起见，将备份旧目录后更新");
+              }
+            } else {
+              report(
+                "检测到节点目录存在本地修改（可能来自兼容补丁）；不会直接覆盖原目录，改用安全副本更新并保留备份"
+              );
+            }
+          }
+        } catch {
+          // A status probe failure must never turn into an in-place pull. The
+          // replacement path below is copy/backup based and is recoverable.
+          report(
+            "无法读取节点仓库的本地状态；为避免覆盖本地修改，改用安全副本更新并保留备份"
+          );
+        }
+      }
+      if (reuseAppPatchedRepository) {
+        // The directory already contains the exact app-managed compatibility
+        // patch and the remote HEAD is unchanged. Continue with the normal
+        // dependency/runtime checks below without creating another backup.
+      } else if (
+        isGitDirectory &&
+        repositoryMatches &&
+        repositoryStatusChecked &&
+        !repositoryDirty &&
+        definition.id !== "seedvr2"
+      ) {
         report(`更新 ${definition.repositoryUrl}`);
         const gitOutput = await runtime.runLoggedProcess(git, ["-C", targetDirectory, "pull", "--ff-only"], {
           timeoutMs: 300_000,
@@ -130,7 +303,11 @@ export async function installCustomNodePackage(
           `${definition.directoryName}-${Date.now()}`
         );
         report(
-          !repositoryMatches && isGitDirectory
+          repositoryDirty
+            ? "检测到节点仓库有本地修改，先备份旧目录并安装干净副本（不会丢失原目录）"
+            : isGitDirectory && repositoryMatches && !repositoryStatusChecked
+            ? "无法确认节点仓库状态，先备份旧目录并安装干净副本（不会覆盖本地修改）"
+            : !repositoryMatches && isGitDirectory
             ? `检测到节点仓库已切换，备份旧目录并安装 ${definition.repositoryUrl}`
             : definition.id === "seedvr2"
             ? "SeedVR2 使用破坏性新版接口：下载干净上游副本并备份替换旧目录"
@@ -231,25 +408,59 @@ export async function installCustomNodePackage(
     if (await runtime.exists(requirements)) {
       const python = await runtime.findComfyPython(settings, comfyRoot);
       if (!python) throw new Error("节点已下载，但没有找到所选 ComfyUI 的 Python 环境。");
-      // MultiModal Prompt Nodes lists llama-cpp-python in requirements.txt,
-      // but its README explicitly warns that the normal PyPI build can
-      // overwrite the JamePeng build required for Qwen3.6 vision. Install
-      // only the lightweight dependencies here; the backend is installed in
-      // the dedicated block below.
-      const requirementArgs = isMultimodalPromptNodes
-        ? ["-m", "pip", "install", "dashscope>=1.20.0", "pillow>=10.0.0", "numpy>=1.24.0"]
-        : ["-m", "pip", "install", "-r", requirements];
-      report(
-        isMultimodalPromptNodes
-          ? "安装 MultiModal Prompt Nodes 的轻量依赖（跳过普通 llama-cpp-python，避免覆盖 Qwen3.6 后端）"
-          : `安装 Python 依赖 ${requirements}`
-      );
-      const pipOutput = await runtime.runLoggedProcess(python, requirementArgs, {
-        timeoutMs: 900_000,
-        env: commandEnvironment,
-        onLog: report
-      });
-      if (!pipOutput) report("pip：依赖已满足");
+      if (usesSharedLlamaRuntime) {
+        const requirementSource = await fs.readFile(requirements, "utf8");
+        const filtered = sharedLlamaRequirementPackages(requirementSource);
+        const packages = [...new Map(
+          (isMultimodalPromptNodes
+            ? ["dashscope>=1.20.0", "pillow>=10.0.0", "numpy>=1.24.0", ...filtered.packages]
+            : filtered.packages
+          ).map((value) => [value.toLowerCase(), value] as const)
+        ).values()];
+        if (filtered.skippedLlama > 0) {
+          report(
+            `已跳过节点 requirements.txt 中的 ${filtered.skippedLlama} 项 llama-cpp-python 要求，避免覆盖共享后端`
+          );
+        }
+        if (filtered.skippedOptions > 0) {
+          report(`已跳过 ${filtered.skippedOptions} 项节点级 pip 参数；共享运行时不接管全局索引设置`);
+        }
+        if (packages.length > 0) {
+          report(
+            isMultimodalPromptNodes
+              ? "安装 MultiModal Prompt Nodes 的轻量依赖（llama-cpp-python 由共享运行时统一管理）"
+              : "安装 H3 Prompt Writer 的非 llama Python 依赖（共享 llama-cpp-python 由统一运行时管理）"
+          );
+          const pipOutput = await runtime.runLoggedProcess(
+            python,
+            ["-m", "pip", "install", ...packages],
+            {
+              timeoutMs: 900_000,
+              env: commandEnvironment,
+              onLog: report
+            }
+          );
+          if (!pipOutput) report("pip：依赖已满足");
+        } else {
+          report(
+            isMultimodalPromptNodes
+              ? "MultiModal Prompt Nodes 没有额外 Python 依赖，使用共享 llama-cpp-python 后端"
+              : "H3 Prompt Writer 的 requirements.txt 为空；不会因更新节点改动共享 llama-cpp-python"
+          );
+        }
+      } else {
+        report(`安装 Python 依赖 ${requirements}`);
+        const pipOutput = await runtime.runLoggedProcess(
+          python,
+          ["-m", "pip", "install", "-r", requirements],
+          {
+            timeoutMs: 900_000,
+            env: commandEnvironment,
+            onLog: report
+          }
+        );
+        if (!pipOutput) report("pip：依赖已满足");
+      }
     } else {
       if (isMultimodalPromptNodes) {
         const python = await runtime.findComfyPython(settings, comfyRoot);

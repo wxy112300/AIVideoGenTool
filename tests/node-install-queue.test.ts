@@ -56,9 +56,31 @@ function messages() {
     restartLog: (message: string) => `restart ${message}`,
     installFailed: (name: string, message: string) => `failed ${name}: ${message}`,
     restartFailed: (message: string) => `restart failed: ${message}`,
-    readyCheckFailed: (name: string) => `verify failed: ${name}`,
+    readyCheckFailed: (name: string, detail?: string) => `verify failed: ${name}${detail ? `: ${detail}` : ""}`,
     completed: (success: number, failed: number) => `completed ${success}/${failed}`
   };
+}
+
+function scanWithNodeRuntimeFailure(nodeId: string, detail: string): EnvironmentScanResult {
+  return {
+    customNodes: [{
+      id: nodeId,
+      name: nodeId,
+      purpose: "test",
+      repositoryUrl: "https://example.test/node.git",
+      installed: true,
+      loaded: false,
+      runtimeVerified: true,
+      loadError: detail,
+      directory: `C:\\ComfyUI\\custom_nodes\\${nodeId}`,
+      required: false,
+      version: "1.0.0",
+      minimumVersion: "",
+      recommendedVersion: "",
+      latestVersion: "1.0.0",
+      updateAvailable: false
+    }]
+  } as EnvironmentScanResult;
 }
 
 describe("CustomNodeInstallQueue", () => {
@@ -167,5 +189,32 @@ describe("CustomNodeInstallQueue", () => {
     expect(receivedDirectories).toEqual(["C:\\Comfy-A", "C:\\Comfy-A"]);
     expect(notify).toHaveBeenCalledWith("failed broken: pip failed", "error");
     expect(notify).toHaveBeenLastCalledWith("completed 1/1", "warning");
+  });
+
+  it("keeps the runtime verification detail in the batch failure notification", async () => {
+    const settings = createDefaultState().settings;
+    const logs: Record<string, string> = {};
+    const notify = vi.fn();
+    const queue = new CustomNodeInstallQueue({
+      install: async () => ({ ok: true, message: "installed" }),
+      restart: async () => ({ ok: true, message: "restarted" }),
+      scan: async () => scanWithNodeRuntimeFailure("minimax-h3-prompt-writer", "共享 llama-cpp-python 未就绪"),
+      nodeName: (nodeId) => nodeId,
+      getLog: (nodeId) => logs[nodeId] ?? "",
+      setLog: (nodeId, log) => { logs[nodeId] = log; },
+      setEnvironmentScan: vi.fn(),
+      notify,
+      onSnapshot: vi.fn(),
+      messages: messages()
+    });
+
+    queue.enqueue("minimax-h3-prompt-writer", settings);
+    await queue.waitForIdle();
+
+    expect(notify).toHaveBeenCalledWith(
+      "verify failed: minimax-h3-prompt-writer: 共享 llama-cpp-python 未就绪",
+      "error"
+    );
+    expect(logs["minimax-h3-prompt-writer"]).toContain("共享 llama-cpp-python 未就绪");
   });
 });

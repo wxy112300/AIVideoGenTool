@@ -20,7 +20,7 @@ export interface CustomNodeInstallQueueMessages {
   restartLog(message: string): string;
   installFailed(name: string, message: string): string;
   restartFailed(message: string): string;
-  readyCheckFailed(name: string): string;
+  readyCheckFailed(name: string, detail?: string): string;
   completed(successCount: number, failureCount: number): string;
 }
 
@@ -160,10 +160,13 @@ export class CustomNodeInstallQueue {
           const scan = await this.dependencies.scan(settings);
           this.dependencies.setEnvironmentScan(scan);
           for (const nodeId of successfulNodeIds) {
-            if (scan.customNodes.find((node) => node.id === nodeId)?.loaded) continue;
+            const nodeStatus = scan.customNodes.find((node) => node.id === nodeId);
+            if (nodeStatus?.loaded) continue;
             failedNodeIds.add(nodeId);
+            const detail = nodeStatus?.loadError || nodeStatus?.compatibilityNotice || "";
             const message = this.dependencies.messages.readyCheckFailed(
-              this.dependencies.nodeName(nodeId)
+              this.dependencies.nodeName(nodeId),
+              detail
             );
             this.appendLog(nodeId, message);
             this.dependencies.notify(message, "error");

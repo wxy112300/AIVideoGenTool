@@ -651,6 +651,10 @@ export interface ComfyUiCompatibility {
   checkedFrom: "api" | "source" | "";
   updateMode: "desktop" | "git" | "unsupported";
   updateHint: string;
+  /** Additive compatibility evidence; old scan payloads may omit these fields. */
+  compatibilityState?: "supported" | "warning" | "error" | "unknown";
+  compatibilityNotice?: string;
+  knownBadRanges?: import("./core/catalog/dependencies/types.js").DependencyBadRange[];
 }
 
 export interface ComfyUiInstallationSummary {
@@ -717,6 +721,8 @@ export interface CustomNodeStatus {
   runtimeVerified: boolean;
   loadError: string;
   updateNotice?: string;
+  /** Informational runtime evidence; does not downgrade compatibility state. */
+  runtimeNotice?: string;
   directory: string;
   required: boolean;
   version: string;
@@ -724,6 +730,13 @@ export interface CustomNodeStatus {
   recommendedVersion: string;
   latestVersion: string;
   updateAvailable: boolean;
+  /** Git revision detected independently from the package version, when available. */
+  detectedRevision?: string;
+  /** Additive machine-readable state used by Settings; legacy scans omit it. */
+  compatibilityState?: "supported" | "warning" | "error" | "unknown";
+  compatibilityNotice?: string;
+  compatibilityEvidence?: import("./core/catalog/dependencies/types.js").DependencyCompatibilityEvidence[];
+  knownBadRanges?: import("./core/catalog/dependencies/types.js").DependencyBadRange[];
   /** Python/system prerequisite shown in Settings; absent on legacy scan payloads. */
   runtimeRequirement?: string;
   /** Optional external-toolchain nodes can be excluded from bulk installation. */
@@ -887,6 +900,11 @@ export interface AppLogSnapshot {
 export interface TaskPreview {
   taskId: string;
   dataUrl: string;
+  /** Observer source; ordinary ComfyUI previews remain distinguishable from H3 TAE frames. */
+  source?: "h3-tae" | "comfy";
+  step?: number;
+  totalSteps?: number;
+  sequence?: number;
 }
 
 export interface WindowCloseRequest {

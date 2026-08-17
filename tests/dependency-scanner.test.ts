@@ -1,13 +1,14 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { scanCustomNodes } from "../electron/services/dependency-scanner";
 import { createDefaultState } from "../src/core/defaults";
 
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) =>
       fs.rm(directory, { recursive: true, force: true })
@@ -16,6 +17,57 @@ afterEach(async () => {
 });
 
 describe("dependency scanner", () => {
+  it("runs the H3 Prompt Writer status, model, and diagnostics probe after service startup", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-runtime-scan-"));
+    temporaryDirectories.push(comfyRoot);
+    const writerDirectory = path.join(
+      comfyRoot,
+      "custom_nodes",
+      "ComfyUI-MiniMaxH3-Prompt-Writer"
+    );
+    await fs.mkdir(writerDirectory, { recursive: true });
+    await fs.writeFile(
+      path.join(writerDirectory, "pyproject.toml"),
+      '[project]\nversion = "0.3.2"\n',
+      "utf8"
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/object_info")) {
+        return new Response(JSON.stringify({}), { status: 200 });
+      }
+      if (url.endsWith("/h3studio/status")) {
+        return new Response(JSON.stringify({ version: "0.3.2" }), { status: 200 });
+      }
+      if (url.endsWith("/h3studio/models")) {
+        return new Response(JSON.stringify({ models: [{ id: "gemma.gguf" }] }), { status: 200 });
+      }
+      if (url.endsWith("/h3studio/runtime/gguf/diagnostics")) {
+        return new Response(JSON.stringify({ diagnostics: { status: "ready" } }), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const statuses = await scanCustomNodes(
+      comfyRoot,
+      { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:8188" },
+      "",
+      "http://127.0.0.1:8188"
+    );
+    const writer = statuses.find((status) => status.id === "minimax-h3-prompt-writer");
+
+    expect(writer).toMatchObject({
+      installed: true,
+      runtimeVerified: true,
+      loaded: true,
+      loadError: "",
+      updateNotice: "",
+      compatibilityState: "supported",
+      runtimeNotice: expect.stringContaining("发现 1 个模型")
+    });
+    expect(writer?.compatibilityNotice).toContain("版本与节点状态已读取");
+  });
+
   it("recognizes installed nodes while ComfyUI is offline", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-node-scan-"));
     temporaryDirectories.push(comfyRoot);
@@ -109,6 +161,31 @@ describe("dependency scanner", () => {
       latestVersion: "0.2.7",
       updateAvailable: true,
       loadError: ""
+    });
+  });
+
+  it("keeps an installed node with an unreadable version in a warning state", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-version-warning-"));
+    temporaryDirectories.push(comfyRoot);
+    const spectrumDirectory = path.join(
+      comfyRoot,
+      "custom_nodes",
+      "ComfyUI-Spectrum-MiniMax-H3"
+    );
+    await fs.mkdir(spectrumDirectory, { recursive: true });
+
+    const statuses = await scanCustomNodes(comfyRoot, {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:1"
+    });
+    const spectrum = statuses.find((status) => status.id === "spectrum-minimax-h3");
+
+    expect(spectrum).toMatchObject({
+      installed: true,
+      loadError: "",
+      compatibilityState: "warning",
+      compatibilityNotice: expect.stringContaining("未读取到版本号"),
+      updateAvailable: true
     });
   });
 });

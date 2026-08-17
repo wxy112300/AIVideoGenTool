@@ -54,8 +54,10 @@ import {
 } from "./dependency-workflows.js";
 import {
   evaluateMiniMaxH3CoreSupport,
+  evaluateMiniMaxH3CompatibilityState,
   evaluatePromptCoreSupport,
   minimaxH3CoreNodes,
+  minimaxH3KnownBadCoreRanges,
   MINIMAX_H3_MINIMUM_COMFY_REVISION,
   MINIMAX_H3_MINIMUM_COMFY_VERSION,
   MINIMAX_H3_RECOMMENDED_COMFY_VERSION,
@@ -102,7 +104,9 @@ export {
 } from "./dependency-node-adapters.js";
 export {
   evaluateMiniMaxH3CoreSupport,
+  evaluateMiniMaxH3CompatibilityState,
   evaluatePromptCoreSupport,
+  minimaxH3KnownBadCoreRanges,
   MINIMAX_H3_MINIMUM_COMFY_REVISION,
   MINIMAX_H3_MINIMUM_COMFY_VERSION,
   MINIMAX_H3_RECOMMENDED_COMFY_VERSION
@@ -2291,6 +2295,7 @@ async function inspectComfyCompatibility(
   const h3CoreSupported = coreNodes.every((node) => node.available);
   const promptNodes = evaluatePromptCoreSupport(objectInfo);
   const promptCoreSupported = promptNodes.every((node) => node.available);
+  const compatibility = evaluateMiniMaxH3CompatibilityState(version, revision, checkedFrom);
   const updateMode: ComfyUiCompatibility["updateMode"] = installation?.type === "desktop"
     ? "desktop"
     : sourceDirectory && await exists(path.join(sourceDirectory, ".git"))
@@ -2313,7 +2318,10 @@ async function inspectComfyCompatibility(
     promptCoreNodes: promptNodes,
     checkedFrom,
     updateMode,
-    updateHint
+    updateHint,
+    compatibilityState: compatibility.compatibilityState,
+    compatibilityNotice: compatibility.compatibilityNotice,
+    knownBadRanges: [...minimaxH3KnownBadCoreRanges]
   };
 }
 
@@ -3490,7 +3498,12 @@ export async function scanEnvironment(
   const latestSpectrumVersionPromise = latestSpectrumReleaseVersion(settings);
   const [customNodes, workflowDependencies, attentionAcceleration, llamaCppPython] = await Promise.all([
     latestSpectrumVersionPromise.then((latestSpectrumVersion) =>
-      scanCustomNodes(comfyRoot, settings, latestSpectrumVersion)
+      scanCustomNodes(
+        comfyRoot,
+        settings,
+        latestSpectrumVersion,
+        runtimeComfyBaseUrl || settings.comfyUrl
+      )
     ),
     scanWorkflowDependencies(comfyRoot),
     inspectAttentionAcceleration(
@@ -3504,7 +3517,25 @@ export async function scanEnvironment(
       runLoggedProcess
     )
   ]);
-  const customNodesById = new Map(customNodes.map((node) => [node.id, node]));
+  const runtimeValidatedCustomNodes = customNodes.map((node) => {
+    if (
+      node.id !== "minimax-h3-prompt-writer" ||
+      !runtimeComfyBaseUrl ||
+      !node.loaded ||
+      llamaCppPython.ready
+    ) {
+      return node;
+    }
+    const detail = llamaCppPython.detail || llamaCppPython.error || "共享 llama-cpp-python 尚未就绪";
+    return {
+      ...node,
+      loaded: false,
+      loadError: `H3 Prompt Writer 共享 llama-cpp-python 未通过运行时自检：${detail}`,
+      compatibilityState: "error" as const,
+      compatibilityNotice: "节点接口已响应，但共享 llama-cpp-python 未就绪；请在设置 → 提示词扩写中修复运行依赖。"
+    };
+  });
+  const customNodesById = new Map(runtimeValidatedCustomNodes.map((node) => [node.id, node]));
   const modelProfiles = scannedModelProfiles.map((profile) => {
     const requiredCustomNodeIds = profile.requiredCustomNodeIds ?? [];
     const missingCustomNodeIds = requiredCustomNodeIds.filter(
@@ -3610,7 +3641,7 @@ export async function scanEnvironment(
     attentionAcceleration,
     items,
     modelProfiles,
-    customNodes,
+    customNodes: runtimeValidatedCustomNodes,
     workflowDependencies,
     issues
   };
