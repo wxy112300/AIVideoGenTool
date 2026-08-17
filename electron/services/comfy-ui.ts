@@ -57,6 +57,7 @@ import {
 } from "../../src/core/image-workflow.js";
 import { customNodeDefinition, modelCatalog } from "../../src/core/catalog/index.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
+import { ComfyLogBridge } from "./comfy-log-bridge.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -1069,6 +1070,10 @@ export async function waitForTask(
 ): Promise<unknown> {
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const logger = getApplicationLogger();
+  const comfyLogBridge = new ComfyLogBridge(logger, settings.comfyInstallDirectory, {
+    promptId
+  });
+  await comfyLogBridge.prime();
   const loggedProgress = new Map<string, number>();
   logger.info("comfy", "wait-started", "Waiting for ComfyUI task", {
     promptId,
@@ -1082,6 +1087,8 @@ export async function waitForTask(
   let h3PreviewFrameCount = 0;
   let previewSequence = 0;
   let activeNodeId = "";
+  let taskCompleted = false;
+  let lastComfyLogSyncAt = 0;
   let lastReportedProgress = 2;
   let lastReportedStage = "";
   const reportProgress = (
@@ -1204,6 +1211,7 @@ export async function waitForTask(
             nodeId: typeof message.data?.node === "string" ? message.data.node : activeNodeId,
             classType: nodeTypes[typeof message.data?.node === "string" ? message.data.node : activeNodeId] ?? "unknown"
           });
+          void comfyLogBridge.captureFailure("execution_error");
         }
         if (message.type === "execution_interrupted") {
           executionError = "ComfyUI 任务已中止";
@@ -1238,6 +1246,10 @@ export async function waitForTask(
   try {
     while (!signal.aborted) {
       if (executionError) throw new Error(executionError);
+      if (Date.now() - lastComfyLogSyncAt >= 5_000) {
+        lastComfyLogSyncAt = Date.now();
+        await comfyLogBridge.syncIncremental("task");
+      }
       if (Date.now() - lastServiceResponseAt > serviceSilenceLimit()) {
         logger.error("comfy", "service-unresponsive", "ComfyUI service stopped responding", {
           promptId,
@@ -1285,6 +1297,7 @@ export async function waitForTask(
       for (const entry of entries) {
         const failure = historyFailure(entry);
         if (failure) {
+          await comfyLogBridge.captureFailure("history_failure");
           logger.error("comfy", "history-failure", safeLogErrorMessage(failure), { promptId });
           throw new Error(failure);
         }
@@ -1299,6 +1312,7 @@ export async function waitForTask(
           nodeCount: Object.keys(nodeTypes).length
         });
         reportProgress(100, "已完成", true);
+        taskCompleted = true;
         return completed;
       }
       await new Promise<void>((resolve, reject) => {
@@ -1315,6 +1329,11 @@ export async function waitForTask(
     }
     throw signal.reason;
   } finally {
+    if (taskCompleted) {
+      await comfyLogBridge.syncIncremental("task_finished");
+    } else {
+      await comfyLogBridge.captureFailure("task_failed");
+    }
     socket?.close();
   }
 }

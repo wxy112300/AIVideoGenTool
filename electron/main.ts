@@ -122,6 +122,7 @@ import {
 } from "./services/h3-prompt-writer.js";
 import { getPerformanceMetrics } from "./services/performance.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
+import { captureComfyUiLogFailure } from "./services/comfy-log-bridge.js";
 import {
   cleanupVideoHistoryMigration,
   isPathWithinDirectory,
@@ -1360,6 +1361,13 @@ async function validateNativePromptRuntime(settings: Settings): Promise<void> {
       `提示词模型尚未就绪${missing ? `，缺少：${missing}` : ""}。请把模型放入 ${isComfyMultimodalPromptModel(settings.promptModelId) ? "ComfyUI/models/LLM 的对应子目录" : "ComfyUI/models/text_encoders"} 后重新扫描。`
     );
   }
+  if (isGemmaPromptModel(settings.promptModelId) && !scan.llamaCppPython.ready) {
+    const runtime = scan.llamaCppPython;
+    const detail = runtime.detail || runtime.error || "未通过 CUDA/导入自检";
+    throw new Error(
+      `Gemma H3 Prompt Writer 的共享 llama-cpp-python 尚未就绪：${detail}。请在设置 → 提示词扩写中对当前选中的 ComfyUI Python 执行“重新安装/修复”，然后重启 ComfyUI。`
+    );
+  }
   if (isComfyMultimodalPromptModel(settings.promptModelId)) {
     if (profile.missingCustomNodeIds?.length) {
       throw new Error(
@@ -2286,7 +2294,11 @@ function registerIpc(): void {
     const runtime = promptRuntimeForSettings(settings);
     const promptBackend = promptModelBackend(settings.promptModelId);
     const startedAt = Date.now();
-    appLogger.info("prompt", "service-start-requested", "Prompt service start requested", { runtime });
+    appLogger.info("prompt", "service-start-requested", "Prompt service start requested", {
+      runtime,
+      promptModelId: settings.promptModelId,
+      promptBackend
+    });
     if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
       return { ok: false, message: "当前有视频任务正在运行，暂不能启动提示词模型。" };
     }
@@ -2298,6 +2310,7 @@ function registerIpc(): void {
     const worker = (async () => {
       if (promptBackend === "h3-prompt-writer") {
         await ensureComfyUiReadyForPrompt(settings);
+        await validateNativePromptRuntime(settings);
         const status = await testH3PromptWriter(settings, controller.signal);
         promptWriterModelForSelection(status.models, settings.promptModelId);
         validateH3PromptWriterRuntime(status.diagnostics);
@@ -2332,8 +2345,16 @@ function registerIpc(): void {
           : "Qwen 提示词模型已启动并加载到 ComfyUI。"
       };
     } catch (error) {
+      await captureComfyUiLogFailure(
+        appLogger,
+        settings,
+        "prompt_service_start_failed",
+        { modelId: settings.promptModelId }
+      ).catch(() => undefined);
       appLogger.error("prompt", "service-start-failed", safeLogErrorMessage(error), {
         runtime,
+        promptModelId: settings.promptModelId,
+        promptBackend,
         durationMs: Date.now() - startedAt,
         ...errorLogMeta(error)
       });
@@ -2350,6 +2371,8 @@ function registerIpc(): void {
     const startedAt = Date.now();
     appLogger.info("prompt", "enhance-started", "Prompt enhancement started", {
       runtime,
+      promptModelId: settings.promptModelId,
+      promptBackend,
       modelId: request.modelId,
       mode: request.mode,
       h3PromptMode: request.h3PromptMode,
@@ -2370,6 +2393,7 @@ function registerIpc(): void {
       const worker = (async () => {
         promptProgress.update("checking", 5);
         await ensureComfyUiReadyForPrompt(settings);
+        await validateNativePromptRuntime(settings);
         return enhancePromptWithH3PromptWriter(
           request,
           settings,
@@ -2393,8 +2417,16 @@ function registerIpc(): void {
           controller.signal.aborted ? "unloading" : "validating",
           error instanceof Error ? error.message : String(error)
         );
+        await captureComfyUiLogFailure(
+          appLogger,
+          settings,
+          "prompt_enhance_failed",
+          { modelId: settings.promptModelId }
+        ).catch(() => undefined);
         appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
           runtime,
+          promptModelId: settings.promptModelId,
+          promptBackend,
           durationMs: Date.now() - startedAt,
           ...errorLogMeta(error)
         });
@@ -2440,8 +2472,16 @@ function registerIpc(): void {
           controller.signal.aborted ? "unloading" : "validating",
           error instanceof Error ? error.message : String(error)
         );
+        await captureComfyUiLogFailure(
+          appLogger,
+          settings,
+          "prompt_enhance_failed",
+          { modelId: settings.promptModelId }
+        ).catch(() => undefined);
         appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
           runtime,
+          promptModelId: settings.promptModelId,
+          promptBackend,
           durationMs: Date.now() - startedAt,
           ...errorLogMeta(error)
         });
@@ -2489,8 +2529,16 @@ function registerIpc(): void {
         controller.signal.aborted ? "unloading" : "validating",
         error instanceof Error ? error.message : String(error)
       );
+      await captureComfyUiLogFailure(
+        appLogger,
+        settings,
+        "prompt_enhance_failed",
+        { modelId: settings.promptModelId }
+      ).catch(() => undefined);
       appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
         runtime,
+        promptModelId: settings.promptModelId,
+        promptBackend,
         durationMs: Date.now() - startedAt,
         ...errorLogMeta(error)
       });

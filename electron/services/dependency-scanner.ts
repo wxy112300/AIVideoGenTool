@@ -95,37 +95,81 @@ export function availableComfyNodeIds(objectInfo: unknown): Set<string> {
     : new Set<string>();
 }
 
-export async function readLatestComfyLog(
+export interface ComfyLogFileInfo {
+  filename: string;
+  size: number;
+  modifiedAt: number;
+}
+
+/**
+ * Find the log file belonging to the selected ComfyUI installation.
+ *
+ * ComfyUI Desktop and manual/portable installs use different locations, so
+ * the scanner keeps the same candidate order used by the environment panel.
+ * The filename is intentionally returned separately from the content so the
+ * runtime log bridge can tail a growing file without rereading the whole log.
+ */
+export async function latestComfyLogFile(
   comfyRoot: string
-): Promise<{ content: string; modifiedAt: number }> {
+): Promise<ComfyLogFileInfo | null> {
   const appData =
     process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
-  const candidates = [path.join(appData, "ComfyUI", "logs", "comfyui.log")];
+  const candidates: Array<{ filename: string; priority: number }> = [];
   const userDirectory = comfyRoot ? path.join(comfyRoot, "user") : "";
   if (userDirectory) {
     const entries = await fs.readdir(userDirectory, { withFileTypes: true }).catch(() => []);
     candidates.push(
       ...entries
         .filter((entry) => entry.isFile() && /^comfyui.*\.log$/i.test(entry.name))
-        .map((entry) => path.join(userDirectory, entry.name))
+        .map((entry) => ({
+          filename: path.join(userDirectory, entry.name),
+          priority: 0
+        }))
     );
   }
+  if (comfyRoot) {
+    candidates.push({
+      filename: path.join(comfyRoot, "logs", "comfyui.log"),
+      priority: 0
+    });
+  }
+  candidates.push({
+    filename: path.join(appData, "ComfyUI", "logs", "comfyui.log"),
+    priority: 1
+  });
   const available = (
     await Promise.all(
-      candidates.map(async (filename) => ({
-        filename,
-        stat: await fs.stat(filename).catch(() => null)
+      candidates.map(async (candidate) => ({
+        ...candidate,
+        stat: await fs.stat(candidate.filename).catch(() => null)
       }))
     )
   )
     .filter((item) => item.stat?.isFile() && (item.stat.size ?? 0) > 0)
-    .sort((left, right) => (right.stat?.mtimeMs ?? 0) - (left.stat?.mtimeMs ?? 0));
-  return available[0]
+    .sort((left, right) =>
+      left.priority - right.priority ||
+      (right.stat?.mtimeMs ?? 0) - (left.stat?.mtimeMs ?? 0)
+    );
+  const selected = available[0];
+  return selected?.stat
     ? {
-        content: await fs.readFile(available[0].filename, "utf8").catch(() => ""),
-        modifiedAt: available[0].stat?.mtimeMs ?? 0
+        filename: selected.filename,
+        size: selected.stat.size ?? 0,
+        modifiedAt: selected.stat.mtimeMs ?? 0
       }
-    : { content: "", modifiedAt: 0 };
+    : null;
+}
+
+export async function readLatestComfyLog(
+  comfyRoot: string
+): Promise<{ content: string; modifiedAt: number; filename?: string }> {
+  const selected = await latestComfyLogFile(comfyRoot);
+  if (!selected) return { content: "", modifiedAt: 0 };
+  return {
+    content: await fs.readFile(selected.filename, "utf8").catch(() => ""),
+    modifiedAt: selected.modifiedAt,
+    filename: selected.filename
+  };
 }
 
 interface H3PromptWriterRuntimeProbe {

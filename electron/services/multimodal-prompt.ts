@@ -90,7 +90,11 @@ export function buildMultimodalPromptWorkflow(
       ? imageEditPromptInstruction(request)
       : h3PromptInstruction(request, settings.h3PromptPresets);
   const maxTokens = warmup
-    ? 8
+    // VisionLLMNode validates this input against its runtime schema.  Recent
+    // MultiModal Prompt Nodes use a minimum of 64 tokens, so the warmup must
+    // stay inside the same contract as a normal request instead of relying on
+    // the old experimental value of 8.
+    ? 64
     : request.mode === "image-edit"
       ? 768
       : mode === "R2V"

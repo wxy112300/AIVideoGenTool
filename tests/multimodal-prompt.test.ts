@@ -57,4 +57,21 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     expect(prompt).toContain("Variation token: variation-9");
     expect(prompt).toContain("playful response");
   });
+
+  it("keeps the warmup request within the VisionLLM minimum token range", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "qwen/qwen3.6-27b-uncensored-q4";
+    const workflow = buildMultimodalPromptWorkflow(
+      {
+        prompt: "加载提示词模型并返回 READY。",
+        modelId: "prompt-runtime-warmup",
+        h3PromptMode: "I2VA"
+      },
+      [],
+      settings,
+      true
+    );
+
+    expect(workflow["vision-llm"]?.inputs.max_tokens).toBe(64);
+  });
 });

@@ -17,7 +17,7 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
         new RegExp(`(?:^|\\/)diffusion_models\\/${seedVr2NativeModelFilename.replaceAll(".", "\\.")}$`, "i"),
         guide(
           "Comfy-Org / SeedVR2",
-          "https://huggingface.co/Comfy-Org/SeedVR2/tree/main",
+          `https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/${seedVr2NativeModelFilename}?download=true`,
           "diffusion_models",
           seedVr2NativeModelFilename,
           "原生 ComfyUI SeedVR2 3B INT8 ConvRot 权重；需要支持 SeedVR2 原生节点的 ComfyUI 核心。"
@@ -29,7 +29,7 @@ export const postProcessModelEntries: CatalogModelEntry[] = [
         new RegExp(`(?:^|\\/)vae\\/${seedVr2NativeVaeFilename.replaceAll(".", "\\.")}$`, "i"),
         guide(
           "Comfy-Org / SeedVR2",
-          "https://huggingface.co/Comfy-Org/SeedVR2/tree/main",
+          `https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/${seedVr2NativeVaeFilename}?download=true`,
           "vae",
           seedVr2NativeVaeFilename,
           "与原生 3B INT8 工作流配套的 FP16 EMA VAE。"

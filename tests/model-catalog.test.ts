@@ -69,6 +69,14 @@ describe("model catalog", () => {
       .toBeUndefined();
   });
 
+  it("points native SeedVR2 downloads directly at the required files", () => {
+    const components = modelCatalog.get("seedvr2-native-int8")?.definition.scan?.components ?? [];
+    expect(components.map((component) => component.installGuide?.downloadUrl)).toEqual([
+      "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors?download=true",
+      "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors?download=true"
+    ]);
+  });
+
   it("derives LoRA scanning and runtime metadata from the same definitions", () => {
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id))
       .toEqual([...VIDEO_LORA_DEFINITIONS]
