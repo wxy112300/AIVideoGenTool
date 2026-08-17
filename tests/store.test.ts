@@ -223,7 +223,7 @@ describe("queue lock recovery", () => {
     try {
       const loaded = await new JsonStore(filename).load();
       expect(loaded.settings.promptModelId).toBe("community/gemma-4-12b-uncensored-q4");
-      expect(loaded.schemaVersion).toBe(11);
+      expect(loaded.schemaVersion).toBe(12);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
@@ -331,7 +331,7 @@ describe("queue lock recovery", () => {
     try {
       const store = new JsonStore(filename);
       const loaded = await store.load();
-      expect(loaded.schemaVersion).toBe(11);
+      expect(loaded.schemaVersion).toBe(12);
       expect(loaded.imageDraft.mode).toBe("image-edit");
       expect(loaded.imageDraft.modelId).toBe("qwen-image-edit-2511");
       expect(loaded.draft.extensionPromptVersions).toHaveLength(1);
@@ -345,13 +345,13 @@ describe("queue lock recovery", () => {
         settings: { imageOutputDirectory: string };
         imageHistory: unknown[];
       };
-      expect(persisted.schemaVersion).toBe(11);
+      expect(persisted.schemaVersion).toBe(12);
       expect(persisted.imageDraft.mode).toBe("image-edit");
       expect(persisted.settings.imageOutputDirectory).toBe("");
       expect(persisted.imageHistory).toEqual([]);
 
       const reloaded = await new JsonStore(filename).load();
-      expect(reloaded.schemaVersion).toBe(11);
+      expect(reloaded.schemaVersion).toBe(12);
       expect(reloaded.imageDraft.mode).toBe("image-edit");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
@@ -369,7 +369,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(11);
+      expect(loaded.schemaVersion).toBe(12);
       expect(loaded.settings.defaultImageQualityProfile).toBe("balanced-20");
       expect(loaded.imageDraft.qualityProfile).toBe("balanced-20");
     } finally {
@@ -415,7 +415,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(11);
+      expect(loaded.schemaVersion).toBe(12);
       expect(loaded.draft.modelId).toBe("minimax_h3_fl2va");
       expect(loaded.draft.videoLoras).toEqual([
         expect.objectContaining({

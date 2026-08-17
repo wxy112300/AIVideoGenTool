@@ -1,4 +1,4 @@
-import type { AppState } from "../../../types";
+import type { AppState, HistoryMetadataPatch } from "../../../types";
 import { uiKeys } from "../../../core/i18n-keys";
 import { videoPromptForLoras } from "../../../core/video-loras";
 import type { RendererCleanup, RendererContext } from "../../contracts";
@@ -17,6 +17,7 @@ export interface HistoryActionsControllerOptions {
   continueVideoHistory(assetId: string, versionId: string): Promise<void>;
   continueImageEdit(projectId: string, versionId: string): Promise<void>;
   continueImageToVideo(projectId: string, versionId: string): Promise<void>;
+  updateHistoryMetadata(assetId: string, patch: HistoryMetadataPatch): Promise<AppState>;
 }
 
 function stopAction(event: Event): void {
@@ -43,6 +44,42 @@ export function mountHistoryActionsController(
       stopAction(event);
       const assetId = button.dataset.deleteHistory;
       if (assetId) options.requestHistoryDeletion(assetId);
+    }, { signal });
+  });
+
+  root.querySelectorAll<HTMLButtonElement>("[data-history-favorite]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      stopAction(event);
+      const assetId = button.dataset.historyFavorite;
+      if (!assetId) return;
+      const current = context.getState()?.history.find((item) => item.id === assetId) ??
+        context.getState()?.imageHistory.find((item) => item.id === assetId);
+      if (!current) return;
+      try {
+        options.setState(await options.updateHistoryMetadata(assetId, { favorite: !current.favorite }));
+        context.requestRender();
+      } catch (error) {
+        context.notify(error instanceof Error ? error.message : "收藏状态更新失败。", { renderPage: false, kind: "error" });
+      }
+    }, { signal });
+  });
+
+  root.querySelectorAll<HTMLSelectElement>("[data-history-rating]").forEach((select) => {
+    select.addEventListener("click", (event) => event.stopPropagation(), { signal });
+    select.addEventListener("change", async (event) => {
+      stopAction(event);
+      const assetId = select.dataset.historyRating;
+      if (!assetId) return;
+      const value = Number(select.value);
+      const rating = Number.isInteger(value) && value >= 1 && value <= 5
+        ? value as HistoryMetadataPatch["rating"]
+        : null;
+      try {
+        options.setState(await options.updateHistoryMetadata(assetId, { rating }));
+        context.requestRender();
+      } catch (error) {
+        context.notify(error instanceof Error ? error.message : "评分更新失败。", { renderPage: false, kind: "error" });
+      }
     }, { signal });
   });
 

@@ -1148,6 +1148,14 @@ svg.lucide {
 .model-runtime-card>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.model-runtime-card p{margin:0;line-height:1.55}
 .image-generation-grid{align-items:start}.range-field{gap:9px}.range-heading,.range-scale{display:flex;align-items:center;justify-content:space-between;gap:12px}.range-heading strong{color:var(--accent);font-size:15px}.range-field input[type="range"]{width:100%;height:5px;padding:0;border:0;accent-color:var(--accent);cursor:pointer}.range-scale{color:var(--muted);font-size:11px}.field-note{color:var(--muted);font-size:11px;line-height:1.45;font-weight:400}
 @media(max-width:900px){.image-model-row{grid-template-columns:1fr}}
+.history-filter-demo { margin: -12px 0 18px; }
+.history-filter-demo-bar { display:flex; align-items:center; gap:12px; min-height:34px; }
+.history-filter-demo-bar > .muted { margin-right:auto; }
+.history-filter-demo-panel { display:flex; flex-wrap:wrap; align-items:center; gap:12px 18px; margin-top:8px; padding:10px 12px; border:1px solid var(--studio-border); border-radius:10px; background:rgba(20,25,34,.88); color:var(--studio-muted); font-size:12px; }
+.history-filter-demo-panel[hidden] { display:none; }
+.history-card-curation-demo { position:absolute; right:8px; bottom:8px; display:flex; align-items:center; gap:4px; padding:3px; border:1px solid rgba(255,255,255,.12); border-radius:8px; background:rgba(8,11,16,.78); }
+.history-card-curation-demo .icon-btn { color:#f6bd4f; }
+.history-card-curation-demo select { width:47px; min-height:26px; border:0; border-radius:6px; background:transparent; color:var(--studio-text); font-size:10px; }
 
     html { background: var(--background); }
     body {
@@ -1226,6 +1234,10 @@ svg.lucide {
     }
   };
   root.querySelectorAll('[data-history-kind]').forEach((button) => button.addEventListener('click', () => switchHistoryKind(button.dataset.historyKind)));
+  root.querySelector('[data-history-filter-toggle]')?.addEventListener('click', () => {
+    const panel = root.querySelector('[data-history-filter-panel]');
+    if (panel) panel.hidden = !panel.hidden;
+  });
   let activeCreateMode = 'image';
   const selectedText = (panel, selector, fallback = '') => {
     const element = panel?.querySelector(selector);

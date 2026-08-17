@@ -72,6 +72,10 @@ import {
   versionShortEdge,
   versionVideoIndex
 } from "./renderer/pages/history/helpers";
+import {
+  historyFilterModelIds,
+  normalizeHistoryFilter
+} from "./core/history-filter";
 import { createHistoryMediaRuntime } from "./renderer/pages/history/media-helpers";
 import {
   renderCreatePage,
@@ -849,6 +853,8 @@ function createHistoryPageViewModel(): HistoryPageViewModel {
     state,
     historyKind,
     historyLayout: historyLayoutController.getLayout(),
+    historyFilter: ui.historyFilter,
+    historyFilterPanelOpen: ui.historyFilterPanelOpen,
     selectedHistoryAssetId: ui.selectedHistoryAssetId,
     selectedHistoryVersionId: ui.selectedHistoryVersionId
   };
@@ -868,6 +874,11 @@ const historyPageOptions: HistoryPageOptions = {
   formatElapsedDuration: (seconds) => formatElapsedDuration(seconds, uiText),
   historyAssetsByNewest,
   imageProjectsByNewest,
+  historyFilterModelIds: (currentState, kind) => historyFilterModelIds(
+    currentState.history,
+    currentState.imageHistory,
+    kind
+  ),
   preferredVersion,
   currentHistoryVersion,
   historyMediaUrl,
@@ -1554,7 +1565,7 @@ function returnToLastHistoryDetail(): void {
 
 function navigateHistoryDetail(direction: -1 | 1): void {
   if (page !== "history-detail") return;
-  const orderedHistory = historyAssetsByNewest(state.history);
+  const orderedHistory = historyAssetsByNewest(state.history, ui.historyFilter);
   const currentIndex = orderedHistory.findIndex(
     (item) => item.id === ui.selectedHistoryAssetId
   );
@@ -1565,7 +1576,7 @@ function navigateHistoryDetail(direction: -1 | 1): void {
 
 function navigateImageHistoryDetail(direction: -1 | 1): void {
   if (page !== "image-history-detail") return;
-  const orderedProjects = imageProjectsByNewest(state.imageHistory);
+  const orderedProjects = imageProjectsByNewest(state.imageHistory, ui.historyFilter);
   const currentIndex = orderedProjects.findIndex((item) => item.id === ui.selectedHistoryAssetId);
   const nextProject = orderedProjects[currentIndex + direction];
   if (!nextProject) return;
@@ -2278,7 +2289,12 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     context: rendererApp.context,
     playback,
     navigation: {
-      setHistoryKind,
+      setHistoryKind: (kind) => {
+        setHistoryKind(kind);
+        if (kind === "image" && ui.historyFilter.minDuration !== null) {
+          ui.historyFilter = normalizeHistoryFilter({ ...ui.historyFilter, minDuration: null });
+        }
+      },
       resetHistoryScroll: () => {
         historyLayoutController.resetScroll();
       },
@@ -2329,6 +2345,17 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
         const project = state.imageHistory.find((item) => item.id === projectId);
         const version = project?.versions.find((item) => item.id === versionId);
         if (project && version) await historyActions.continueImageToVideo(project, version);
+      },
+      updateHistoryMetadata: (assetId, patch) => window.studio.updateHistoryMetadata(assetId, patch)
+    },
+    filter: {
+      getFilter: () => ui.historyFilter,
+      setFilter: (filter) => {
+        ui.historyFilter = normalizeHistoryFilter(filter);
+      },
+      getPanelOpen: () => ui.historyFilterPanelOpen,
+      setPanelOpen: (open) => {
+        ui.historyFilterPanelOpen = open;
       }
     },
     historyLayout: historyLayoutController.getLayout(),

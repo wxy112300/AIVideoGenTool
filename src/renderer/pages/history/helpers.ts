@@ -9,6 +9,13 @@ import { uiKeys } from "../../../core/i18n-keys";
 import { createHistoryCoverCacheKey } from "../../../core/history-cover";
 import { imageModelCapabilityFor } from "../../../core/image-workflow";
 import { imageProjectCoverVersion } from "../../../core/image-project";
+import {
+  defaultHistoryFilter,
+  filterHistoryAssets,
+  filterImageHistoryProjects,
+  historyFilterModelIds,
+  type HistoryFilterState
+} from "../../../core/history-filter";
 
 export function versionVideoIndex(version: AssetVersion): number {
   const videoPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
@@ -61,29 +68,21 @@ export function historyMediaUrl(
     : `studio-media://history/${encodeURIComponent(asset.id)}/${encodeURIComponent(version.id)}/${index}`;
 }
 
-export function historyAssetsByNewest(history: ReadonlyArray<HistoryAsset>): HistoryAsset[] {
-  return [...history].sort((left, right) => {
-    const leftTime = Date.parse(left.updatedAt || left.createdAt);
-    const rightTime = Date.parse(right.updatedAt || right.createdAt);
-    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
-      return rightTime - leftTime;
-    }
-    return 0;
-  });
+export function historyAssetsByNewest(
+  history: ReadonlyArray<HistoryAsset>,
+  filter: Partial<HistoryFilterState> = defaultHistoryFilter
+): HistoryAsset[] {
+  return filterHistoryAssets(history, filter);
 }
 
 export function imageProjectsByNewest(
-  imageHistory: ReadonlyArray<ImageHistoryProject>
+  imageHistory: ReadonlyArray<ImageHistoryProject>,
+  filter: Partial<HistoryFilterState> = defaultHistoryFilter
 ): ImageHistoryProject[] {
-  return [...imageHistory].sort((left, right) => {
-    const leftTime = Date.parse(left.updatedAt || left.createdAt);
-    const rightTime = Date.parse(right.updatedAt || right.createdAt);
-    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
-      return rightTime - leftTime;
-    }
-    return 0;
-  });
+  return filterImageHistoryProjects(imageHistory, filter);
 }
+
+export { historyFilterModelIds };
 
 export function preferredImageVersion(project: ImageHistoryProject): ImageAssetVersion {
   return imageProjectCoverVersion(project) ??
@@ -226,6 +225,8 @@ export function historyStateChanged(
     if (
       previousAsset.id !== asset.id ||
       previousAsset.updatedAt !== asset.updatedAt ||
+      previousAsset.favorite !== asset.favorite ||
+      previousAsset.rating !== asset.rating ||
       previousAsset.defaultVersionId !== asset.defaultVersionId ||
       previousAsset.versions.length !== asset.versions.length
     ) {
@@ -252,6 +253,8 @@ export function imageHistoryStateChanged(
     if (
       previousProject.id !== project.id ||
       previousProject.updatedAt !== project.updatedAt ||
+      previousProject.favorite !== project.favorite ||
+      previousProject.rating !== project.rating ||
       previousProject.coverMode !== project.coverMode ||
       previousProject.coverVersionId !== project.coverVersionId ||
       previousProject.versions.length !== project.versions.length

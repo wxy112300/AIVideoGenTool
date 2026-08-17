@@ -6,6 +6,7 @@ import type {
   EnhanceRequest,
   EnvironmentIssue,
   HistoryMigrationProgress,
+  HistoryMetadataPatch,
   ImageAssetLibraryProgress,
   PromptProgress,
   Settings,
@@ -110,6 +111,8 @@ const api: AppApi = {
   resetTask: (taskId: string) => ipcRenderer.invoke("queue:reset", taskId),
   deleteHistoryAsset: (assetId: string) =>
     ipcRenderer.invoke("history:delete", assetId),
+  updateHistoryMetadata: (assetId: string, patch: HistoryMetadataPatch) =>
+    ipcRenderer.invoke("history:update-metadata", assetId, patch),
   setImageHistoryCover: (projectId: string, versionId?: string) =>
     ipcRenderer.invoke("image-history:set-cover", projectId, versionId),
   deleteImageHistoryVersion: (projectId: string, versionId: string) =>

@@ -29,6 +29,10 @@
     }
   };
   root.querySelectorAll('[data-history-kind]').forEach((button) => button.addEventListener('click', () => switchHistoryKind(button.dataset.historyKind)));
+  root.querySelector('[data-history-filter-toggle]')?.addEventListener('click', () => {
+    const panel = root.querySelector('[data-history-filter-panel]');
+    if (panel) panel.hidden = !panel.hidden;
+  });
   let activeCreateMode = 'image';
   const selectedText = (panel, selector, fallback = '') => {
     const element = panel?.querySelector(selector);

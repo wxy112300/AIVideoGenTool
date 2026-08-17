@@ -1,0 +1,176 @@
+import type { HistoryAsset, ImageHistoryProject } from "../types.js";
+
+export type HistorySort =
+  | "newest"
+  | "oldest"
+  | "rating-desc"
+  | "rating-asc"
+  | "duration-desc"
+  | "duration-asc";
+
+export type HistoryRating = 1 | 2 | 3 | 4 | 5;
+
+export interface HistoryFilterState {
+  favoriteOnly: boolean;
+  minRating: HistoryRating | null;
+  maxRating: HistoryRating | null;
+  minDuration: number | null;
+  modelId: string;
+  sort: HistorySort;
+}
+
+export const defaultHistoryFilter: HistoryFilterState = {
+  favoriteOnly: false,
+  minRating: null,
+  maxRating: null,
+  minDuration: null,
+  modelId: "",
+  sort: "newest"
+};
+
+const sortValues: HistorySort[] = [
+  "newest",
+  "oldest",
+  "rating-desc",
+  "rating-asc",
+  "duration-desc",
+  "duration-asc"
+];
+
+function validRating(value: unknown): value is HistoryRating {
+  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5;
+}
+
+function validSort(value: unknown): value is HistorySort {
+  return typeof value === "string" && sortValues.includes(value as HistorySort);
+}
+
+function normalizedNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return Math.round(value);
+  }
+  return null;
+}
+
+export function normalizeHistoryFilter(value: Partial<HistoryFilterState> | null | undefined): HistoryFilterState {
+  let minRating = validRating(value?.minRating) ? value!.minRating : null;
+  let maxRating = validRating(value?.maxRating) ? value!.maxRating : null;
+  if (minRating !== null && maxRating !== null && minRating > maxRating) {
+    [minRating, maxRating] = [maxRating, minRating];
+  }
+  return {
+    favoriteOnly: value?.favoriteOnly === true,
+    minRating,
+    maxRating,
+    minDuration: normalizedNumber(value?.minDuration),
+    modelId: typeof value?.modelId === "string" ? value.modelId.trim() : "",
+    sort: validSort(value?.sort) ? value!.sort : "newest"
+  };
+}
+
+export function historyFilterIsActive(filter: HistoryFilterState): boolean {
+  return filter.favoriteOnly ||
+    filter.minRating !== null ||
+    filter.maxRating !== null ||
+    filter.minDuration !== null ||
+    Boolean(filter.modelId) ||
+    filter.sort !== "newest";
+}
+
+function dateValue(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function ratingValue(value: number | null | undefined): number {
+  return typeof value === "number" && validRating(value) ? value : 0;
+}
+
+function compareNumbers(left: number, right: number, direction: 1 | -1): number {
+  if (left === right) return 0;
+  return left > right ? direction : -direction;
+}
+
+function compareHistoryItems(
+  left: { id: string; updatedAt: string; createdAt: string; rating?: HistoryRating | null; duration?: number },
+  right: { id: string; updatedAt: string; createdAt: string; rating?: HistoryRating | null; duration?: number },
+  sort: HistorySort
+): number {
+  const leftTime = dateValue(left.updatedAt || left.createdAt);
+  const rightTime = dateValue(right.updatedAt || right.createdAt);
+  let result = 0;
+  if (sort === "oldest") result = compareNumbers(leftTime, rightTime, 1);
+  else if (sort === "rating-desc" || sort === "rating-asc") {
+    const leftRated = validRating(left.rating);
+    const rightRated = validRating(right.rating);
+    if (leftRated !== rightRated) result = leftRated ? -1 : 1;
+    else result = compareNumbers(ratingValue(left.rating), ratingValue(right.rating), sort === "rating-desc" ? -1 : 1);
+  }
+  else if (sort === "duration-desc") result = compareNumbers(left.duration ?? 0, right.duration ?? 0, -1);
+  else if (sort === "duration-asc") result = compareNumbers(left.duration ?? 0, right.duration ?? 0, 1);
+  else result = compareNumbers(leftTime, rightTime, -1);
+  if (result !== 0) return result;
+  // Keep ties deterministic, so detail Page Up/Page Down never jumps around.
+  return left.id.localeCompare(right.id);
+}
+
+function matchesCommon(
+  item: { favorite?: boolean; rating?: HistoryRating | null; modelId?: string },
+  filter: HistoryFilterState
+): boolean {
+  if (filter.favoriteOnly && item.favorite !== true) return false;
+  const rating = ratingValue(item.rating);
+  if (filter.minRating !== null && rating < filter.minRating) return false;
+  if (filter.maxRating !== null && (rating === 0 || rating > filter.maxRating)) return false;
+  if (filter.modelId && item.modelId !== filter.modelId) return false;
+  return true;
+}
+
+export function filterHistoryAssets(
+  history: ReadonlyArray<HistoryAsset>,
+  rawFilter?: Partial<HistoryFilterState>
+): HistoryAsset[] {
+  const filter = normalizeHistoryFilter(rawFilter);
+  return history
+    .filter((asset) => matchesCommon(asset, filter))
+    .filter((asset) => filter.minDuration === null || asset.duration >= filter.minDuration)
+    .sort((left, right) => compareHistoryItems(left, right, filter.sort));
+}
+
+export function filterImageHistoryProjects(
+  projects: ReadonlyArray<ImageHistoryProject>,
+  rawFilter?: Partial<HistoryFilterState>
+): ImageHistoryProject[] {
+  const filter = normalizeHistoryFilter(rawFilter);
+  return projects
+    .filter((project) => {
+      if (!matchesCommon({ favorite: project.favorite, rating: project.rating }, filter)) return false;
+      return !filter.modelId || project.versions.some((version) =>
+        version.kind !== "source" && version.modelId === filter.modelId
+      );
+    })
+    .sort((left, right) => compareHistoryItems({
+      id: left.id,
+      updatedAt: left.updatedAt,
+      createdAt: left.createdAt,
+      rating: left.rating
+    }, {
+      id: right.id,
+      updatedAt: right.updatedAt,
+      createdAt: right.createdAt,
+      rating: right.rating
+    }, filter.sort));
+}
+
+export function historyFilterModelIds(
+  history: ReadonlyArray<HistoryAsset>,
+  imageHistory: ReadonlyArray<ImageHistoryProject>,
+  kind: "video" | "image"
+): string[] {
+  const values = kind === "video"
+    ? history.map((asset) => asset.modelId)
+    : imageHistory.flatMap((project) => project.versions
+        .filter((version) => version.kind !== "source")
+        .map((version) => version.modelId));
+  return [...new Set(values.filter((value): value is string => Boolean(value)))].sort((left, right) => left.localeCompare(right));
+}

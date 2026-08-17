@@ -7,6 +7,11 @@ import type {
 } from "../../../types";
 import type { HistoryKind } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
+import {
+  historyFilterIsActive,
+  type HistoryFilterState,
+  type HistorySort
+} from "../../../core/history-filter";
 import { videoPromptForLoras } from "../../../core/video-loras";
 import {
   renderHistoryHeading,
@@ -23,6 +28,8 @@ export interface HistoryPageViewModel {
   state: AppState;
   historyKind: HistoryKind;
   historyLayout: HistoryPageLayout;
+  historyFilter: HistoryFilterState;
+  historyFilterPanelOpen: boolean;
   selectedHistoryAssetId: string;
   selectedHistoryVersionId: string;
 }
@@ -46,8 +53,9 @@ export interface HistoryPageOptions {
   formatFullHistoryTime(value: string): string;
   formatVideoDuration(seconds: number): string;
   formatElapsedDuration(seconds: number): string;
-  historyAssetsByNewest(history: AppState["history"]): AppState["history"];
-  imageProjectsByNewest(imageHistory: AppState["imageHistory"]): ImageHistoryProject[];
+  historyAssetsByNewest(history: AppState["history"], filter?: HistoryFilterState): AppState["history"];
+  imageProjectsByNewest(imageHistory: AppState["imageHistory"], filter?: HistoryFilterState): ImageHistoryProject[];
+  historyFilterModelIds(state: AppState, kind: HistoryKind): string[];
   preferredVersion(asset: HistoryAsset): AssetVersion;
   currentHistoryVersion(asset: HistoryAsset, selectedHistoryVersionId: string): AssetVersion;
   historyMediaUrl(asset: HistoryAsset, version?: AssetVersion): string;
@@ -67,6 +75,63 @@ export interface HistoryPageOptions {
   imageHistoryGenerationSummary(version: ImageAssetVersion): ImageHistoryGenerationSummary;
 }
 
+function ratingOptions(
+  options: Pick<HistoryPageOptions, "t">,
+  selected: number | null,
+  placeholder: string,
+  attribute: string
+): string {
+  return `<select class="history-filter-select" data-history-filter-field="${attribute}" aria-label="${options.t(uiKeys.history.filter.rating)}">${[
+    `<option value="">${options.t(placeholder)}</option>`,
+    ...[1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${selected === value ? "selected" : ""}>${value} ★</option>`)
+  ].join("")}</select>`;
+}
+
+function historySortOptions(
+  options: Pick<HistoryPageOptions, "t">,
+  selected: HistorySort,
+  includeDuration: boolean
+): string {
+  const values: Array<[HistorySort, string]> = [
+    ["newest", uiKeys.history.filter.sortNewest],
+    ["oldest", uiKeys.history.filter.sortOldest],
+    ["rating-desc", uiKeys.history.filter.sortRatingDesc],
+    ["rating-asc", uiKeys.history.filter.sortRatingAsc]
+  ];
+  if (includeDuration) {
+    values.push(
+      ["duration-desc", uiKeys.history.filter.sortDurationDesc],
+      ["duration-asc", uiKeys.history.filter.sortDurationAsc]
+    );
+  }
+  return values.map(([value, key]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${options.t(key)}</option>`).join("");
+}
+
+function renderHistoryFilter(
+  viewModel: HistoryPageViewModel,
+  options: HistoryPageOptions,
+  totalCount: number,
+  visibleCount: number,
+  modelIds: string[]
+): string {
+  const filter = viewModel.historyFilter;
+  const active = historyFilterIsActive(filter);
+  const isVideo = viewModel.historyKind === "video";
+  return `
+    <div class="history-filter-bar">
+      <button type="button" class="ghost button-with-icon history-filter-toggle" data-history-filter-toggle aria-expanded="${viewModel.historyFilterPanelOpen}">${options.icon("sliders-horizontal")}${options.t(uiKeys.history.filter.button)}${active ? `<span class="history-filter-active-dot" title="${options.t(uiKeys.history.filter.active)}"></span>` : ""}</button>
+      <span class="history-filter-result">${options.t(uiKeys.history.filter.result, { visible: visibleCount, total: totalCount })}</span>
+      <label class="history-sort-control"><span>${options.t(uiKeys.history.filter.sort)}</span><select data-history-filter-field="sort" aria-label="${options.t(uiKeys.history.filter.sort)}">${historySortOptions(options, filter.sort, isVideo)}</select></label>
+    </div>
+    <div class="history-filter-panel${viewModel.historyFilterPanelOpen ? " is-open" : ""}" data-history-filter-panel ${viewModel.historyFilterPanelOpen ? "" : "hidden"}>
+      <label class="history-filter-check"><input type="checkbox" data-history-filter-field="favoriteOnly" ${filter.favoriteOnly ? "checked" : ""}>${options.icon("star")}<span>${options.t(uiKeys.history.filter.favoriteOnly)}</span></label>
+      <div class="history-filter-field"><span>${options.t(uiKeys.history.filter.rating)}</span><div class="history-filter-range">${ratingOptions(options, filter.minRating, "history.filter.ratingAny", "minRating")}<span>–</span>${ratingOptions(options, filter.maxRating, "history.filter.ratingAny", "maxRating")}</div></div>
+      ${isVideo ? `<label class="history-filter-field"><span>${options.t(uiKeys.history.filter.durationMin)}</span><select class="history-filter-select" data-history-filter-field="minDuration"><option value="">${options.t(uiKeys.history.filter.durationAny)}</option>${[1, 3, 5, 10, 15, 30, 60].map((value) => `<option value="${value}" ${filter.minDuration === value ? "selected" : ""}>${value} 秒</option>`).join("")}</select></label>` : ""}
+      <label class="history-filter-field"><span>${options.t(uiKeys.history.filter.model)}</span><select class="history-filter-select history-filter-model" data-history-filter-field="modelId"><option value="">${options.t(uiKeys.history.filter.all)}</option>${modelIds.map((id) => `<option value="${options.escapeHtml(id)}" ${filter.modelId === id ? "selected" : ""}>${options.escapeHtml(options.modelName(id))}</option>`).join("")}</select></label>
+      <button type="button" class="ghost history-filter-clear" data-history-filter-clear ${active ? "" : "disabled"}>${options.icon("x")}${options.t(uiKeys.history.filter.clear)}</button>
+    </div>`;
+}
+
 function historyComputeMode(version: AssetVersion, options: HistoryPageOptions): string {
   if (version.spectrumMode === "off") {
     return options.t(uiKeys.history.page.nativeCompute);
@@ -84,7 +149,8 @@ export function renderImageHistoryPage(
   viewModel: HistoryPageViewModel,
   options: HistoryPageOptions
 ): string {
-  const projects = options.imageProjectsByNewest(viewModel.state.imageHistory);
+  const projects = options.imageProjectsByNewest(viewModel.state.imageHistory, viewModel.historyFilter);
+  const modelIds = options.historyFilterModelIds(viewModel.state, "image");
   const cards = projects.map((project, historyOrder) => {
     const version = options.preferredImageVersion(project);
     const mediaUrl = options.imageHistoryMediaUrl(project, version);
@@ -101,6 +167,10 @@ export function renderImageHistoryPage(
             <span class="media-chip">${version.width > 0 && version.height > 0 ? `${version.width} × ${version.height}` : options.t(uiKeys.history.card.unknownSize)}</span>
             <span class="media-chip history-version-count-chip">${options.t(uiKeys.history.card.versionCount, { count: project.versions.length })}</span>
           </div>
+          <div class="history-card-curation" data-history-curation>
+            <button type="button" class="history-favorite-button ${project.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(project.id)}" aria-pressed="${project.favorite}" aria-label="${options.t(uiKeys.history.filter.favoriteOnly)}" title="${options.t(uiKeys.history.filter.favoriteOnly)}">${options.icon("star")}</button>
+            <select class="history-card-rating" data-history-rating="${options.escapeHtml(project.id)}" aria-label="${options.t(uiKeys.history.filter.rating)}"><option value="">—</option>${[1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${project.rating === value ? "selected" : ""}>${value} ★</option>`).join("")}</select>
+          </div>
           <span class="image-project-kind">${options.icon("workflow")}${iterationCount ? options.t(uiKeys.history.card.iterationCount, { count: iterationCount }) : options.t(uiKeys.history.card.originalAsset)}</span>
         </div>
         <div class="history-gallery-copy">
@@ -112,14 +182,15 @@ export function renderImageHistoryPage(
   }).join("");
   return `
     ${renderHistoryHeading({
-      activeCount: viewModel.state.imageHistory.length,
+      activeCount: projects.length,
       historyKind: viewModel.historyKind,
       historyLayout: viewModel.historyLayout,
       description: options.t(uiKeys.history.imageDescription)
     }, options)}
+    ${renderHistoryFilter(viewModel, options, viewModel.state.imageHistory.length, projects.length, modelIds)}
     <section class="history-gallery ${viewModel.historyLayout}">
       ${projects.length === 0
-        ? `<div class="empty panel"><h2>${options.t(uiKeys.history.card.imageEmptyTitle)}</h2><p>${options.t(uiKeys.history.card.imageEmptyDescription)}</p></div>`
+        ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.imageEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.imageEmptyDescription)}</p></div>`
         : cards}
     </section>`;
 }
@@ -128,7 +199,8 @@ export function renderHistoryPage(
   viewModel: HistoryPageViewModel,
   options: HistoryPageOptions
 ): string {
-  const orderedAssets = options.historyAssetsByNewest(viewModel.state.history);
+  const orderedAssets = options.historyAssetsByNewest(viewModel.state.history, viewModel.historyFilter);
+  const modelIds = options.historyFilterModelIds(viewModel.state, "video");
   const cards = orderedAssets.map((asset, historyOrder) => {
     const version = options.preferredVersion(asset);
     const historyTitle = asset.title.trim() || asset.prompt.trim() || options.t(uiKeys.history.card.untitledVideo);
@@ -152,6 +224,10 @@ export function renderHistoryPage(
             <span class="media-chip history-version-count-chip">${options.t(uiKeys.history.card.versionCount, { count: asset.versions.length })}</span>
             <span class="media-chip">${options.formatVideoDuration(asset.duration)}</span>
           </div>
+          <div class="history-card-curation" data-history-curation>
+            <button type="button" class="history-favorite-button ${asset.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(asset.id)}" aria-pressed="${asset.favorite}" aria-label="${options.t(uiKeys.history.filter.favoriteOnly)}" title="${options.t(uiKeys.history.filter.favoriteOnly)}">${options.icon("star")}</button>
+            <select class="history-card-rating" data-history-rating="${options.escapeHtml(asset.id)}" aria-label="${options.t(uiKeys.history.filter.rating)}"><option value="">—</option>${[1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${asset.rating === value ? "selected" : ""}>${value} ★</option>`).join("")}</select>
+          </div>
           ${mediaUrl ? `<span class="history-preview-state">${options.icon("play")}${options.t(uiKeys.history.card.previewing)}</span><button type="button" class="history-preview-progress" role="slider" aria-label="${options.t(uiKeys.history.card.adjustPreview)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="${options.t(uiKeys.history.card.waitingVideoLoad)}"><i></i></button>` : ""}
         </div>
         <div class="history-gallery-copy">
@@ -163,14 +239,15 @@ export function renderHistoryPage(
   }).join("");
   return `
     ${renderHistoryHeading({
-      activeCount: viewModel.state.history.length,
+      activeCount: orderedAssets.length,
       historyKind: viewModel.historyKind,
       historyLayout: viewModel.historyLayout,
       description: options.t(uiKeys.history.videoDescription)
     }, options)}
+    ${renderHistoryFilter(viewModel, options, viewModel.state.history.length, orderedAssets.length, modelIds)}
     <section class="history-gallery ${viewModel.historyLayout}">
-      ${viewModel.state.history.length === 0
-        ? `<div class="empty panel"><h2>${options.t(uiKeys.history.card.videoEmptyTitle)}</h2><p>${options.t(uiKeys.history.card.videoEmptyDescription)}</p></div>`
+      ${orderedAssets.length === 0
+        ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.videoEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.videoEmptyDescription)}</p></div>`
         : cards}
     </section>`;
 }
@@ -186,7 +263,7 @@ export function renderHistoryDetailPage(
   const videoIndex = options.versionVideoIndex(version);
   const mediaUrl = options.historyMediaUrl(asset, version);
   const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
-  const orderedHistory = options.historyAssetsByNewest(viewModel.state.history);
+  const orderedHistory = options.historyAssetsByNewest(viewModel.state.history, viewModel.historyFilter);
   const historyIndex = orderedHistory.findIndex((item) => item.id === asset.id);
   const previousAsset = historyIndex > 0 ? orderedHistory[historyIndex - 1] : undefined;
   const nextAsset = historyIndex >= 0 ? orderedHistory[historyIndex + 1] : undefined;
@@ -206,7 +283,7 @@ export function renderHistoryDetailPage(
       <button class="secondary button-with-icon history-detail-back-button" data-page="history">${options.icon("arrow-left")}${options.t(uiKeys.history.page.back)}</button>
       <div class="history-detail-tools">
         <span>${options.t(uiKeys.history.page.readonlySnapshot)}</span>
-        <span class="history-detail-position" aria-label="${options.t(uiKeys.history.page.position, { current: historyIndex + 1, total: viewModel.state.history.length })}">${options.t(uiKeys.history.page.position, { current: historyIndex + 1, total: viewModel.state.history.length })}</span>
+        <span class="history-detail-position" aria-label="${options.t(uiKeys.history.page.position, { current: historyIndex + 1, total: orderedHistory.length })}">${options.t(uiKeys.history.page.position, { current: historyIndex + 1, total: orderedHistory.length })}</span>
         <div class="history-detail-navigation" aria-label="${options.t(uiKeys.history.page.switchHistory)}">
           <button class="ghost history-detail-nav-button" data-history-navigation="-1" aria-keyshortcuts="PageUp" ${previousAsset ? "" : "disabled"} title="${previousAsset ? `${options.t(uiKeys.history.page.previous)}：${options.escapeHtml(previousAsset.title)} · Page Up` : options.t(uiKeys.history.page.firstItem)}"><span class="history-detail-nav-label">${options.icon("arrow-left")}${options.t(uiKeys.history.page.previous)}</span><span class="history-detail-nav-shortcut"><kbd>Page Up</kbd></span></button>
           <button class="ghost history-detail-nav-button" data-history-navigation="1" aria-keyshortcuts="PageDown" ${nextAsset ? "" : "disabled"} title="${nextAsset ? `${options.t(uiKeys.history.page.next)}：${options.escapeHtml(nextAsset.title)} · Page Down` : options.t(uiKeys.history.page.lastItem)}"><span class="history-detail-nav-label">${options.t(uiKeys.history.page.next)}${options.icon("arrow-right")}</span><span class="history-detail-nav-shortcut"><kbd>Page Down</kbd></span></button>
@@ -227,6 +304,7 @@ export function renderHistoryDetailPage(
           <div class="history-title-line"><h1 class="history-detail-title" title="${options.escapeHtml(detailTitle)}"><span class="history-card-title-track"><span>${options.escapeHtml(detailTitle)}</span><span aria-hidden="true">${options.escapeHtml(detailTitle)}</span></span></h1><span class="status running">${options.t(uiKeys.history.page.completed)}</span></div>
           <code>${options.escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code>
           <div class="history-summary-badges"><span class="model-badge">${options.escapeHtml(options.modelName(version.modelId))}</span><span>${version.kind === "original" ? options.t(uiKeys.history.page.originalGeneration) : options.t(uiKeys.history.page.upscaleVersion)}</span></div>
+          <div class="history-detail-curation"><button type="button" class="history-favorite-button ${asset.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(asset.id)}" aria-pressed="${asset.favorite}" aria-label="${options.t(uiKeys.history.filter.favoriteOnly)}" title="${options.t(uiKeys.history.filter.favoriteOnly)}">${options.icon("star")}</button><label>${options.t(uiKeys.history.filter.rating)} <select class="history-card-rating" data-history-rating="${options.escapeHtml(asset.id)}" aria-label="${options.t(uiKeys.history.filter.rating)}"><option value="">—</option>${[1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${asset.rating === value ? "selected" : ""}>${value} ★</option>`).join("")}</select></label></div>
           </div>
           <div class="history-overview-facts">
           <div><span>${options.t(uiKeys.history.page.completedAt)}</span><strong>${completedAt}</strong></div>
@@ -296,7 +374,7 @@ export function renderImageHistoryDetailPage(
   const versionIndex = project.versions.findIndex((item) => item.id === version.id);
   const previousVersion = project.versions[versionIndex + 1];
   const nextVersion = project.versions[versionIndex - 1];
-  const orderedProjects = options.imageProjectsByNewest(viewModel.state.imageHistory);
+  const orderedProjects = options.imageProjectsByNewest(viewModel.state.imageHistory, viewModel.historyFilter);
   const projectIndex = orderedProjects.findIndex((item) => item.id === project.id);
   const previousProject = projectIndex > 0 ? orderedProjects[projectIndex - 1] : undefined;
   const nextProject = projectIndex >= 0 ? orderedProjects[projectIndex + 1] : undefined;
@@ -349,6 +427,7 @@ export function renderImageHistoryDetailPage(
         <section class="panel image-history-summary">
           <div class="status-line"><span class="badge ok">${options.t(uiKeys.history.version, { version: version.versionNumber })}${pinnedVersion?.id === version.id ? ` · ${options.t(uiKeys.history.page.currentCover)}` : ""}</span><span class="badge">PNG</span></div>
           <h2>${options.escapeHtml(title)}</h2>
+          <div class="history-detail-curation"><button type="button" class="history-favorite-button ${project.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(project.id)}" aria-pressed="${project.favorite}" aria-label="${options.t(uiKeys.history.filter.favoriteOnly)}" title="${options.t(uiKeys.history.filter.favoriteOnly)}">${options.icon("star")}</button><label>${options.t(uiKeys.history.filter.rating)} <select class="history-card-rating" data-history-rating="${options.escapeHtml(project.id)}" aria-label="${options.t(uiKeys.history.filter.rating)}"><option value="">—</option>${[1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${project.rating === value ? "selected" : ""}>${value} ★</option>`).join("")}</select></label></div>
           <p class="muted tiny">${options.escapeHtml(version.prompt || (version.kind === "source" ? options.t(uiKeys.history.page.imageOriginalPrompt) : options.t(uiKeys.history.page.unsavedEditPrompt)))}</p>
           <div class="image-history-facts"><div><span>${options.t(uiKeys.history.page.model)}</span><strong>${options.escapeHtml(version.kind === "source" ? options.t(uiKeys.history.card.originalImage) : options.modelName(version.modelId))}</strong></div><div><span>${options.t(uiKeys.history.page.seed)}</span><strong>${version.seed ?? options.t(uiKeys.runtime.random)}</strong></div><div><span>${options.t(uiKeys.history.page.resolution)}</span><strong>${version.width} × ${version.height}</strong></div><div><span>${options.t(uiKeys.history.page.outputFormat)}</span><strong>${version.format.toUpperCase()}</strong></div><div><span>${options.t(uiKeys.history.page.generatedAt)}</span><strong>${options.escapeHtml(options.formatFullHistoryTime(version.createdAt))}</strong></div><div><span>${options.t(uiKeys.history.page.elapsed)}</span><strong>${elapsedSeconds == null ? options.t(uiKeys.history.detail.legacyNotSaved) : options.escapeHtml(options.formatElapsedDuration(elapsedSeconds))}</strong></div></div>
           <div class="image-history-quick-actions"><button class="primary button-with-icon" data-image-continue-video-project="${options.escapeHtml(project.id)}" data-image-continue-video-version="${options.escapeHtml(version.id)}">${options.icon("video")}${options.t(uiKeys.history.page.startVideo)}</button><button class="secondary button-with-icon" data-image-continue-edit-project="${options.escapeHtml(project.id)}" data-image-continue-edit-version="${options.escapeHtml(version.id)}">${options.icon("wand-sparkles")}${options.t(uiKeys.history.page.continueEdit)}</button>${filePath ? `<button class="secondary button-with-icon" data-copy-image="${options.escapeHtml(filePath)}">${options.icon("copy")}${options.t(uiKeys.history.page.copyImage)}</button><button class="secondary button-with-icon" data-copy-file="${options.escapeHtml(filePath)}">${options.icon("copy")}${options.t(uiKeys.history.menu.copyFile)}</button><button class="secondary button-with-icon" data-show-file="${options.escapeHtml(filePath)}">${options.icon("folder-open")}${options.t(uiKeys.history.page.openLocation)}</button>` : ""}<button class="secondary button-with-icon" data-image-set-cover="${options.escapeHtml(project.id)}" data-image-cover-version="${pinnedVersion?.id === version.id ? "" : version.id}">${options.icon("image")}${pinnedVersion?.id === version.id ? options.t(uiKeys.history.page.restoreAutoCover) : options.t(uiKeys.history.page.setCover)}</button><button class="secondary danger button-with-icon" data-delete-image-version="${options.escapeHtml(project.id)}" data-image-version-delete-id="${options.escapeHtml(version.id)}" ${version.kind === "source" ? "disabled" : ""}>${options.icon("trash-2")}${version.kind === "source" ? options.t(uiKeys.history.page.originalCannotDelete) : options.t(uiKeys.history.page.deleteCurrentVersion)}</button><button class="secondary danger button-with-icon" data-delete-history="${options.escapeHtml(project.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteImageProject)}</button></div>

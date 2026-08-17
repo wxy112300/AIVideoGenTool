@@ -218,6 +218,10 @@ function normalizeImageHistoryProject(value: unknown): ImageHistoryProject | nul
       : "未命名图片",
     createdAt: fallbackCreatedAt,
     updatedAt,
+    favorite: source.favorite === true,
+    rating: source.rating === 1 || source.rating === 2 || source.rating === 3 || source.rating === 4 || source.rating === 5
+      ? source.rating
+      : null,
     coverMode,
     ...(typeof source.coverVersionId === "string" && source.coverVersionId.trim()
       ? { coverVersionId: source.coverVersionId }

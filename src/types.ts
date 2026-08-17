@@ -466,6 +466,9 @@ export interface ImageHistoryProject {
   title: string;
   createdAt: string;
   updatedAt: string;
+  /** User curation metadata; absent in legacy files and normalized on load. */
+  favorite: boolean;
+  rating: HistoryRating | null;
   coverMode: "auto" | "pinned";
   coverVersionId?: string;
   nextVersionNumber: number;
@@ -514,6 +517,9 @@ export interface HistoryAsset {
   outputFilename: string;
   createdAt: string;
   modelId: string;
+  /** User curation metadata; absent in legacy files and normalized on load. */
+  favorite: boolean;
+  rating: HistoryRating | null;
   videoLoras?: VideoLoraSelection[];
   duration: number;
   resolution: number;
@@ -549,6 +555,13 @@ export interface HistoryAsset {
   updatedAt: string;
   defaultVersionId?: string;
   versions: AssetVersion[];
+}
+
+export type HistoryRating = 1 | 2 | 3 | 4 | 5;
+
+export interface HistoryMetadataPatch {
+  favorite?: boolean;
+  rating?: HistoryRating | null;
 }
 
 export interface AppState {
@@ -1097,6 +1110,7 @@ export interface AppApi {
   duplicateTask(taskId: string): Promise<AppState>;
   resetTask(taskId: string): Promise<AppState>;
   deleteHistoryAsset(assetId: string): Promise<AppState>;
+  updateHistoryMetadata(assetId: string, patch: HistoryMetadataPatch): Promise<AppState>;
   setImageHistoryCover(projectId: string, versionId?: string): Promise<AppState>;
   deleteImageHistoryVersion(projectId: string, versionId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;

@@ -120,7 +120,7 @@ export function createDefaultSettings(): Settings {
 
 export function createDefaultState(): AppState {
   return {
-    schemaVersion: 11,
+    schemaVersion: 12,
     draft: createDefaultDraft(),
     imageDraft: createDefaultImageEditDraft(),
     settings: createDefaultSettings(),

@@ -8,6 +8,7 @@ import type { Page } from "./contracts";
 import type { ConfirmationRequest } from "./shell/confirmation-service";
 import type { UpscaleDialogState, ImageAssetLibraryDialogState } from "./shell/secondary-dialogs";
 import type { AppNotification } from "./notifications";
+import { defaultHistoryFilter, type HistoryFilterState } from "../core/history-filter";
 
 export interface RendererUiState {
   appVersion: string;
@@ -18,6 +19,8 @@ export interface RendererUiState {
   flashMessageTimer: number | undefined;
   selectedHistoryAssetId: string;
   selectedHistoryVersionId: string;
+  historyFilter: HistoryFilterState;
+  historyFilterPanelOpen: boolean;
   historyForwardTarget: { assetId: string; versionId: string } | null;
   upscaleDialog: UpscaleDialogState | null;
   pendingConfirmation: ConfirmationRequest | null;
@@ -51,6 +54,8 @@ export function createRendererUiState(): RendererUiState {
     flashMessageTimer: undefined,
     selectedHistoryAssetId: "",
     selectedHistoryVersionId: "",
+    historyFilter: { ...defaultHistoryFilter },
+    historyFilterPanelOpen: false,
     historyForwardTarget: null,
     upscaleDialog: null,
     pendingConfirmation: null,

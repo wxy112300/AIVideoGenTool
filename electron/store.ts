@@ -271,6 +271,10 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
       modelId,
       videoLoras,
       mediaKind: "video",
+      favorite: asset.favorite === true,
+      rating: asset.rating === 1 || asset.rating === 2 || asset.rating === 3 || asset.rating === 4 || asset.rating === 5
+        ? asset.rating
+        : null,
       files,
       updatedAt: asset.updatedAt ?? asset.createdAt,
       versions: asset.versions.map((version) => ({
@@ -304,6 +308,10 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
     modelId,
     videoLoras,
     mediaKind: "video",
+    favorite: asset.favorite === true,
+    rating: asset.rating === 1 || asset.rating === 2 || asset.rating === 3 || asset.rating === 4 || asset.rating === 5
+      ? asset.rating
+      : null,
     files,
     updatedAt: asset.updatedAt ?? asset.createdAt,
     defaultVersionId: version.id,
@@ -351,6 +359,7 @@ export class JsonStore {
         ? saved.settings.h3AutoPromptSeedId
         : "";
       const imageHistory = normalizeImageHistory(saved.imageHistory);
+      const history = (saved.history ?? []).map(migrateHistoryAsset);
       const savedDraft = saved.draft;
       const hasIndependentExtensionPromptState = Array.isArray(savedDraft?.extensionPromptVersions) &&
         savedDraft.extensionPromptVersions.length > 0 &&
@@ -389,14 +398,14 @@ export class JsonStore {
           h3AutoPromptSeedInstructions
         },
         queueRunning: false,
-        schemaVersion: 11,
+        schemaVersion: 12,
         queue: (saved.queue ?? []).map((task) => migrateQueueTask(
           task,
           typeof savedSettings.h3LivePreview === "boolean"
             ? savedSettings.h3LivePreview
             : defaultState.settings.h3LivePreview
         )),
-        history: (saved.history ?? []).map(migrateHistoryAsset),
+        history,
         imageHistory,
         // A queue lifecycle is process-local. Never restore a stale running or
         // cleanup state after an app restart; interrupted tasks are migrated
@@ -414,7 +423,7 @@ export class JsonStore {
         savedQueueLifecycle !== "idle" ||
         typeof saved.queueStartedAt === "string" ||
         typeof (saved as { queueLifecycle?: unknown }).queueLifecycle !== "string" ||
-        savedSchemaVersion < 11 ||
+        savedSchemaVersion < 12 ||
         !hasIndependentExtensionPromptState ||
         savedUiLocale !== normalizedUiLocale ||
         saved.settings?.h3AutoPromptSeedId !== savedAutoPromptSeedId ||
@@ -440,6 +449,9 @@ export class JsonStore {
         }
       }
       if (JSON.stringify(imageHistory) !== JSON.stringify(saved.imageHistory)) {
+        needsPersist = true;
+      }
+      if (JSON.stringify(history) !== JSON.stringify(saved.history)) {
         needsPersist = true;
       }
       const normalizedH3ReferenceSlots = normalizeH3ReferenceSlots(

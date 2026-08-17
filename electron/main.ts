@@ -23,6 +23,7 @@ import type {
   EnvironmentIssue,
   HistoryAsset,
   HistoryFile,
+  HistoryMetadataPatch,
   HistoryMigrationProgress,
   ImageAssetLibraryProgress,
   ImageCropSaveRequest,
@@ -2878,6 +2879,34 @@ function registerIpc(): void {
       });
       throw error;
     }
+  });
+  ipcMain.handle("history:update-metadata", async (_event, assetId: string, patch: HistoryMetadataPatch) => {
+    if (typeof assetId !== "string" || !assetId.trim() || !patch || typeof patch !== "object") {
+      throw new Error("历史记录参数无效。");
+    }
+    const favorite = patch.favorite;
+    const rating = patch.rating;
+    if (favorite !== undefined && typeof favorite !== "boolean") {
+      throw new Error("收藏状态无效。");
+    }
+    if (rating !== undefined && rating !== null && ![1, 2, 3, 4, 5].includes(rating)) {
+      throw new Error("评分必须是 1 到 5 分。");
+    }
+    const next = await store.update((state) => {
+      const video = state.history.find((item) => item.id === assetId);
+      const image = state.imageHistory.find((item) => item.id === assetId);
+      const target = video ?? image;
+      if (!target) throw new Error("历史记录不存在。");
+      if (favorite !== undefined) target.favorite = favorite;
+      if (rating !== undefined) target.rating = rating;
+    });
+    appLogger.info("history", "metadata-updated", "History curation metadata updated", {
+      assetId,
+      ...(favorite !== undefined ? { favorite } : {}),
+      ...(rating !== undefined ? { rating } : {})
+    });
+    sendState(next);
+    return next;
   });
   ipcMain.handle("image-history:set-cover", async (_event, projectId: string, versionId?: string) => {
     const next = await store.update((state) => {

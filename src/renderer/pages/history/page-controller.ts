@@ -15,6 +15,10 @@ import {
   mountImageHistoryLightbox,
   type ImageHistoryLightboxControllerOptions
 } from "./lightbox-controller";
+import {
+  mountHistoryFilterController,
+  type HistoryFilterControllerOptions
+} from "./filter-controller";
 
 export interface HistoryPlaybackSnapshot {
   assetId: string;
@@ -31,6 +35,7 @@ export interface HistoryPageControllerOptions {
   navigation: HistoryNavigationControllerOptions;
   media: HistoryMediaControllerOptions;
   actions: HistoryActionsControllerOptions;
+  filter: HistoryFilterControllerOptions;
   historyLayout: "masonry" | "album";
   isImageHistoryDetail: boolean;
   bindHistoryMasonry(): void;
@@ -48,6 +53,7 @@ export function mountHistoryPageController(
 ): RendererCleanup {
   const cleanups: RendererCleanup[] = [
     mountHistoryNavigationController(options.context, options.navigation),
+    mountHistoryFilterController(options.context, options.filter),
     mountHistoryMediaController(options.context, options.media),
     mountHistoryActionsController(options.context, options.actions),
     mountImageHistoryLightbox(options.context, options.imageLightbox)
@@ -88,6 +94,11 @@ export function mountHistoryPageController(
 
   document.querySelectorAll<HTMLElement>(".history-media-badges").forEach((badges) => {
     badges.addEventListener("click", (event) => {
+      event.stopPropagation();
+    }, { signal });
+  });
+  document.querySelectorAll<HTMLElement>("[data-history-curation], .history-detail-curation").forEach((curation) => {
+    curation.addEventListener("click", (event) => {
       event.stopPropagation();
     }, { signal });
   });
