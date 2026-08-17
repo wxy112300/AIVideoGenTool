@@ -105,7 +105,7 @@ describe("dependency scanner", () => {
       loaded: true,
       version: "0.2.6",
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.7",
+      recommendedVersion: "0.2.15",
       latestVersion: "0.2.7",
       updateAvailable: true,
       loadError: ""

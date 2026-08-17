@@ -2,6 +2,52 @@ import type { CatalogLoraLocale } from "./locales.js";
 
 export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
 
+  "minimax-h3-lightx2v-turbo-8step-v1": {
+    guide: {
+      summary: "官方 LightX2V v1.0 FL2VA Turbo LoRA，把標準 H3 路徑壓縮到 8 步。",
+      recommendedStrength: "預設 0.75；建議 0.65–0.85。優先用於穩定的 480p/576p 測試。",
+      effects: "明顯縮短取樣時間，但極低步數或過高強度可能減少運動、細節與音訊穩定性。",
+      stacking: "效能 LoRA 放在內容或人物 LoRA 前面；不要與其他 Turbo LoRA 同時疊加。",
+      compatibility: "僅 MiniMax H3 FL2VA 圖生影片；需要 ER-SDE、Beta 與 Sigma Shift Turbo 工作流。",
+      source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 權重"
+    },
+    rules: {
+      incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+      turboSpectrum: "Turbo v1.0 可與 Spectrum v0.2.6+ 疊加；遇到品質退化時先關閉 Spectrum 對照。",
+      orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
+    }
+  },
+  "minimax-h3-lightx2v-turbo-4step-768p-v1": {
+    guide: {
+      summary: "官方 LightX2V v1.0 768p FL2VA Turbo LoRA，針對 768p 四步取樣最佳化。",
+      recommendedStrength: "預設 0.75；建議 0.65–0.85。先在 768p 使用，不要與 8-step v1.0 同時疊加。",
+      effects: "在 768p 下速度最快，但四步對 Prompt、Seed 與運動穩定性更敏感。",
+      stacking: "效能 LoRA 放在人物、內容或風格 LoRA 前面；一次只選一個 Turbo 變體。",
+      compatibility: "僅 MiniMax H3 FL2VA 圖生影片的 768p 路徑；不適用於 R2V 或影片續寫。",
+      source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 權重"
+    },
+    rules: {
+      incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+      turboSpectrum: "768p Turbo 可與 Spectrum v0.2.6+ 疊加；先保留關閉 Spectrum 的基準結果。",
+      orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
+    }
+  },
+  "minimax-h3-ref2v-turbo-4step-v01": {
+    guide: {
+      summary: "官方 Ref2VA 多參考圖 Turbo LoRA，把 H3 R2V 路徑壓縮到 4 步。",
+      recommendedStrength: "預設 0.75；建議 0.65–0.85。首次使用應和標準 20 步 R2V 做同 Seed 對照。",
+      effects: "減少 R2V 取樣時間，但多參考圖一致性、動作與音訊對四步更敏感。",
+      stacking: "放在 R2V 內容或人物 LoRA 前面；不要與 FL2VA Turbo 變體疊加。",
+      compatibility: "僅 MiniMax H3 Ref2VA 多參考圖圖生影片；不適用於 FL2VA 首幀或影片續寫。",
+      source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 權重"
+    },
+    rules: {
+      incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+      turboSpectrum: "Ref2V Turbo 與 Spectrum 的組合需要逐任務驗證；若出現時序退化，先關閉 Spectrum。",
+      orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
+    }
+  },
+
   "minimax-h3-lightx2v-turbo-4step": {
     guide: {
       summary: "把 H3 FL2VA 從標準約 20 步切換到 LightX2V Turbo 6–8 步取樣，用更少步驟縮短生成時間。",

@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.21.0**。本阶段在保留旧版 SeedVR2 兼容路径的基础上，新增 ComfyUI 原生 SeedVR2 3B INT8 ConvRot 工作流，并继续完善队列生命周期、ComfyUI 状态、TAE 实时预览和模型/节点运行时校验。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.22.0**。本阶段跟进 MiniMax H3 官方 Turbo v1.0/Ref2V LoRA、Spectrum v0.2.15 推荐线和按功能拆分的 KJNodes 依赖，同时保留旧版 SeedVR2、Turbo 和历史记录兼容。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -25,7 +25,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 | 视频生成 | MiniMax H3 FL2VA（INT8、INT4、实验性 Q3 GGUF）、MiniMax H3 R2V（INT8、INT4）、Sulphur 2 / LTX 2.3；另保留 Wan 2.2 14B + NSFW 兼容配置 |
 | 图片处理 | Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
 | 视频增强 | SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
-| H3 LoRA | LightX2V Turbo、Realism People、PinkFluffyBunny NSFW |
+| H3 LoRA | LightX2V Turbo v1.0（8-step/768p 4-step）、Ref2V Turbo、Realism People、PinkFluffyBunny NSFW |
 | Prompt | Qwen3.5 2B/4B、Qwen3.6 27B Q4 MultiModal、MiniMax H3 Prompt Writer 的 Gemma 4 GGUF 配置 |
 
 Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部分已经从新建任务列表淘汰；旧队列和历史仍保留原模型名称。当前显式保留的 Wan 2.2 14B + NSFW 兼容配置及未来变化，以 catalog 的 `retired` 标记为准。

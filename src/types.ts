@@ -641,7 +641,9 @@ export interface ComfyUiCoreNodeStatus {
 export interface ComfyUiCompatibility {
   version: string;
   revision: string;
+  h3MinimumVersion: string;
   h3MinimumRevision: string;
+  h3RecommendedVersion: string;
   h3CoreSupported: boolean;
   coreNodes: ComfyUiCoreNodeStatus[];
   promptCoreSupported: boolean;

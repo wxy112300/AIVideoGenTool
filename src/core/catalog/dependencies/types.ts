@@ -13,7 +13,21 @@ export interface CatalogCustomNodeDefinition {
   runtimeRequirement?: string;
   /** Optional nodes with external toolchains can opt out of the bulk installer. */
   bulkInstall?: boolean;
+  /** Feature-scoped nodes used by optional workflow paths. */
+  features?: readonly CatalogCustomNodeFeature[];
   required: boolean;
+}
+
+export type CatalogCustomNodeFeatureId =
+  | "h3-sage-attention"
+  | "h3-live-preview"
+  | "vram-debug";
+
+export interface CatalogCustomNodeFeature {
+  id: CatalogCustomNodeFeatureId;
+  name: string;
+  nodeTypes: readonly string[];
+  description: string;
 }
 
 export type CatalogWorkflowDependencyId = "minimax_h3_i2v" | "qwen36_h3_prompt_enhancer";

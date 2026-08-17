@@ -5,9 +5,15 @@ import {
   H3_PINK_FLUFFY_BUNNY_LORA_ID,
   H3_REALISM_PEOPLE_LORA_FILENAME,
   H3_REALISM_PEOPLE_LORA_ID,
+  H3_REF2V_TURBO_LORA_ID,
+  H3_REF2V_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
+  H3_TURBO_LORA_IDS,
+  H3_TURBO_768P_V1_LORA_ID,
+  H3_TURBO_8STEP_V1_LORA_ID,
   LEGACY_H3_TURBO_MODEL_ID,
+  LEGACY_H3_REF2V_TURBO_MODEL_ID,
   VIDEO_LORA_DEFINITIONS
 } from "./catalog/loras/definitions.js";
 import type {
@@ -22,8 +28,14 @@ export {
   H3_PINK_FLUFFY_BUNNY_LORA_ID,
   H3_REALISM_PEOPLE_LORA_FILENAME,
   H3_REALISM_PEOPLE_LORA_ID,
+  H3_REF2V_TURBO_LORA_FILENAME,
+  H3_REF2V_TURBO_LORA_ID,
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
+  H3_TURBO_LORA_IDS,
+  H3_TURBO_768P_V1_LORA_ID,
+  H3_TURBO_8STEP_V1_LORA_ID,
+  LEGACY_H3_REF2V_TURBO_MODEL_ID,
   LEGACY_H3_TURBO_MODEL_ID
 };
 export type {
@@ -67,8 +79,32 @@ function requiredBuiltinVideoLora(id: string): BuiltinVideoLora {
 }
 
 export const H3_TURBO_LORA = requiredBuiltinVideoLora(H3_TURBO_LORA_ID);
+export const H3_TURBO_8STEP_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_8STEP_V1_LORA_ID);
+export const H3_TURBO_768P_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_768P_V1_LORA_ID);
+export const H3_REF2V_TURBO_LORA = requiredBuiltinVideoLora(H3_REF2V_TURBO_LORA_ID);
 export const H3_REALISM_PEOPLE_LORA = requiredBuiltinVideoLora(H3_REALISM_PEOPLE_LORA_ID);
 export const H3_PINK_FLUFFY_BUNNY_LORA = requiredBuiltinVideoLora(H3_PINK_FLUFFY_BUNNY_LORA_ID);
+
+const turboLoraIdSet = new Set<string>(H3_TURBO_LORA_IDS);
+
+export function isH3TurboLoraId(id: string): boolean {
+  return turboLoraIdSet.has(id);
+}
+
+export function isH3Ref2vTurboLoraId(id: string): boolean {
+  return id === H3_REF2V_TURBO_LORA_ID;
+}
+
+export function h3TurboLoraForSelection(
+  loras: readonly VideoLoraSelection[] | undefined,
+  modelId = ""
+): BuiltinVideoLora | undefined {
+  return (loras ?? [])
+    .map((lora) => videoLoraDefinition(lora.id))
+    .find((lora): lora is BuiltinVideoLora =>
+      Boolean(lora && isH3TurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, modelId))
+    );
+}
 
 export function detectedVideoLoraFilename(profile: ModelScanProfile | undefined): string {
   const match = profile?.components.flatMap((component) => component.matches)[0];
@@ -287,14 +323,25 @@ export function isH3TurboEnabled(value: {
   videoLoras?: readonly VideoLoraSelection[];
 }): boolean {
   return value.modelId === LEGACY_H3_TURBO_MODEL_ID ||
-    (baseVideoModelId(value.modelId) === H3_FL2VA_MODEL_ID &&
-      hasVideoLora(value.videoLoras, H3_TURBO_LORA_ID));
+    value.modelId === LEGACY_H3_REF2V_TURBO_MODEL_ID ||
+    Boolean(h3TurboLoraForSelection(value.videoLoras, baseVideoModelId(value.modelId)));
+}
+
+export function isH3Ref2vTurboEnabled(value: {
+  modelId: string;
+  videoLoras?: readonly VideoLoraSelection[];
+}): boolean {
+  return value.modelId === LEGACY_H3_REF2V_TURBO_MODEL_ID ||
+    Boolean((value.videoLoras ?? []).some((lora) =>
+      isH3Ref2vTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, baseVideoModelId(value.modelId))
+    ));
 }
 
 export function bundledWorkflowModelId(value: {
   modelId: string;
   videoLoras?: readonly VideoLoraSelection[];
 }): string {
+  if (isH3Ref2vTurboEnabled(value)) return baseVideoModelId(value.modelId);
   return isH3TurboEnabled(value)
     ? LEGACY_H3_TURBO_MODEL_ID
     : baseVideoModelId(value.modelId);

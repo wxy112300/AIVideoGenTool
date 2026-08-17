@@ -8,6 +8,9 @@ import type {
 import {
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
+  isH3Ref2vTurboEnabled,
+  isH3TurboLoraId,
+  videoLoraCompatibleWithModel,
   videoLoraFilename,
   videoPromptForLoras
 } from "./video-loras.js";
@@ -91,7 +94,8 @@ export function isMiniMaxH3TurboModel(modelId: string): boolean {
 }
 
 export function isMiniMaxH3R2vModel(modelId: string): boolean {
-  return modelCatalog.get(modelId)?.definition.variant === "r2v";
+  return modelCatalog.get(modelId)?.definition.variant === "r2v" ||
+    modelId === "minimax_h3_ref2va_turbo";
 }
 
 export function isMiniMaxH3Model(modelId: string): boolean {
@@ -271,6 +275,47 @@ function applyVideoLoraStack(
   for (const target of targets) target.inputs!.model = output;
 }
 
+/**
+ * Ref2VA Turbo uses the same native H3 sampler contract as FL2VA Turbo, but
+ * the bundled R2V graph starts from the standard 20-step sampler. Keep that
+ * graph as the baseline and apply only the Turbo sampler patch when the
+ * dedicated Ref2V LoRA is selected. This avoids a second copy of the large
+ * nine-reference workflow and keeps custom R2V workflows usable.
+ */
+function applyMiniMaxH3Ref2vTurboSampling(
+  workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
+  task: GenerationQueueTask | ExtensionQueueTask
+): void {
+  if (!isH3Ref2vTurboEnabled(task)) return;
+  const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
+  const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
+  const consumers = Object.values(workflow).filter((node) =>
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
+    Array.isArray(node.inputs?.model)
+  );
+  if (!sampler?.inputs || !schedulers.length || !consumers.length) return;
+  sampler.inputs.sampler_name = "euler";
+  for (const scheduler of schedulers) scheduler.inputs!.scheduler = "beta";
+  const currentModel = consumers[0]?.inputs?.model;
+  if (!Array.isArray(currentModel) || typeof currentModel[0] !== "string") return;
+  if (consumers.some((node) => JSON.stringify(node.inputs?.model) !== JSON.stringify(currentModel))) return;
+  const existing = Object.entries(workflow).find(([, node]) =>
+    node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3"
+  );
+  const nodeId = existing?.[0] ?? String(
+    Math.max(0, ...Object.keys(workflow).map((id) => Number.parseInt(id, 10) || 0)) + 1
+  );
+  workflow[nodeId] = {
+    class_type: existing?.[1].class_type ?? "MiniMaxH3SigmaShift",
+    inputs: {
+      model: currentModel,
+      shift_video: 12,
+      shift_audio: 3
+    }
+  };
+  for (const node of consumers) node.inputs!.model = [nodeId, 0];
+}
+
 export function normalizeH3Steps(
   value: unknown,
   modelId = "",
@@ -338,7 +383,13 @@ export function workflowSupportsEndImage(source: unknown): boolean {
   return JSON.stringify(source).includes("{{END_IMAGE}}");
 }
 
-export function workflowSupportsH3TurboSampling(source: unknown): boolean {
+export function workflowSupportsH3TurboSampling(
+  source: unknown,
+  options: {
+    modelId?: string;
+    videoLoras?: GenerationQueueTask["videoLoras"];
+  } = {}
+): boolean {
   if (!source || typeof source !== "object" || Array.isArray(source)) return false;
   const nodes = Object.values(source as Record<string, unknown>).filter(
     (node): node is Record<string, unknown> =>
@@ -351,11 +402,23 @@ export function workflowSupportsH3TurboSampling(source: unknown): boolean {
       return Boolean(inputs) && typeof inputs === "object" && !Array.isArray(inputs) &&
         predicate(inputs as Record<string, unknown>);
     });
-  return hasNode("KSamplerSelect", (inputs) => inputs.sampler_name === "er_sde") &&
+  const nativeTurbo = hasNode("KSamplerSelect", (inputs) => inputs.sampler_name === "er_sde") &&
     hasNode("BasicScheduler", (inputs) => inputs.scheduler === "beta") &&
-    hasNode("MiniMaxH3SigmaShift", (inputs) =>
-      typeof inputs.shift_video === "number" && typeof inputs.shift_audio === "number"
+    nodes.some((node) =>
+      (node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3") &&
+      Boolean(node.inputs) && typeof node.inputs === "object" && !Array.isArray(node.inputs) &&
+      typeof (node.inputs as Record<string, unknown>).shift_video === "number" &&
+      typeof (node.inputs as Record<string, unknown>).shift_audio === "number"
     );
+  if (nativeTurbo) return true;
+  if (!isH3Ref2vTurboEnabled({
+    modelId: options.modelId ?? "",
+    videoLoras: options.videoLoras
+  })) return false;
+  return hasNode("MiniMaxH3ReferenceToVideo", () => true) &&
+    hasNode("KSamplerSelect", () => true) &&
+    hasNode("BasicScheduler", () => true) &&
+    hasNode("BasicGuider", (inputs) => Array.isArray(inputs.model));
 }
 
 export function workflowSupportsVideoExtension(source: unknown): boolean {
@@ -1077,7 +1140,9 @@ export function renderWorkflow(
     OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, ""),
     H3_DIFFUSION_MODEL: h3Assets?.diffusionModel ?? "",
     H3_TEXT_ENCODER: h3Assets?.textEncoder ?? "",
-    H3_TURBO_LORA: videoLoraFilename(task.videoLoras, H3_TURBO_LORA_ID) ||
+    H3_TURBO_LORA: task.videoLoras?.find((lora) =>
+      isH3TurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
+    )?.filename || videoLoraFilename(task.videoLoras, H3_TURBO_LORA_ID) ||
       (isMiniMaxH3TurboModel(task.modelId) ? H3_TURBO_LORA_FILENAME : ""),
     HIGH_MODEL: modelAssets?.high ?? "",
     LOW_MODEL: modelAssets?.low ?? "",
@@ -1167,6 +1232,7 @@ export function renderWorkflow(
       delete workflow[sageNodeId];
     }
   }
+  applyMiniMaxH3Ref2vTurboSampling(workflow, task);
   if (shouldApplySpectrum({
     modelId: task.modelId,
     inputMode: task.taskType === "extension" ? "video" : "image",

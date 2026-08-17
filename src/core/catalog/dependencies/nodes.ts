@@ -3,7 +3,7 @@ import type { CatalogCustomNodeDefinition } from "./types.js";
 export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
-export const SPECTRUM_RECOMMENDED_VERSION = "0.2.7";
+export const SPECTRUM_RECOMMENDED_VERSION = "0.2.15";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
 
@@ -89,7 +89,23 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   directoryName: "comfyui-kjnodes",
   aliases: ["comfyui-kjnodes"],
   nodeTypes: ["VRAM_Debug", "PathchSageAttentionKJ"],
-  required: true
+  features: [{
+    id: "h3-sage-attention",
+    name: "H3 SageAttention",
+    nodeTypes: ["PathchSageAttentionKJ"],
+    description: "仅在 H3 Attention 选择 SageAttention 时需要。"
+  }, {
+    id: "h3-live-preview",
+    name: "H3 TAE 实时预览",
+    nodeTypes: ["ModelPreviewOverrideKJ"],
+    description: "仅在启用 H3 实时预览时尝试使用；缺少时预览自动降级，不阻塞生成。"
+  }, {
+    id: "vram-debug",
+    name: "显存调试",
+    nodeTypes: ["VRAM_Debug"],
+    description: "用于运行统计与显存调试，不是生成必需节点。"
+  }],
+  required: false
 }, {
   id: "frame-interpolation",
   name: "ComfyUI Frame Interpolation",
@@ -138,7 +154,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
 }, {
   id: "spectrum-minimax-h3",
   name: "Spectrum MiniMax H3",
-  purpose: "预测部分 H3 采样步骤；支持标准 FL2VA / R2V，并在推荐版本上支持 LightX2V Turbo",
+  purpose: "预测部分 H3 采样步骤；支持标准 FL2VA / R2V、LightX2V Turbo，并在推荐版本上可选互操作 H3 Continuum",
   repositoryUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
   directoryName: "ComfyUI-Spectrum-MiniMax-H3",
   aliases: ["comfyui-spectrum-minimax-h3"],

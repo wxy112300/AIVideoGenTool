@@ -3,6 +3,7 @@ import { availableComfyNodeIds } from "./dependency-scanner.js";
 
 export const MINIMAX_H3_MINIMUM_COMFY_REVISION = "43cb4ff";
 export const MINIMAX_H3_MINIMUM_COMFY_VERSION = "0.31.0";
+export const MINIMAX_H3_RECOMMENDED_COMFY_VERSION = "0.33.1";
 
 export const minimaxH3CoreNodes = [
   { id: "MiniMaxH3ImageToVideo", label: "H3 FL2VA 首帧 / 首尾帧图生视频" },
@@ -38,7 +39,9 @@ export function evaluateMiniMaxH3CoreSupport(
   const available = availableComfyNodeIds(objectInfo);
   return minimaxH3CoreNodes.map((node) => ({
     ...node,
-    available: available.has(node.id)
+    available: node.id === "MiniMaxH3SigmaShift"
+      ? available.has("MiniMaxH3SigmaShift") || available.has("ModelSamplingMiniMaxH3")
+      : available.has(node.id)
   }));
 }
 

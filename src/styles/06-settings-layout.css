@@ -20,6 +20,19 @@
   padding: 9px 10px;
 }
 
+/* The label is a layout wrapper, not an icon. Keep the original tab typography. */
+.settings-tab > .settings-tab-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  text-align: left;
+}
+
 .settings-content,
 .settings-content > .settings-panel,
 .settings-content .settings-section {

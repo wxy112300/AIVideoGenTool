@@ -15,6 +15,7 @@ import {
   extensionWorkflowSafetyErrors,
   generationSafetyForTask,
   isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3Model,
   isMiniMaxH3Q3GgufModel,
   isMiniMaxH3R2vModel,
   normalizeH3Steps,
@@ -187,7 +188,9 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     const workflow = await readWorkflow(draft.workflowPath, "工作流");
     const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
-    const dependencyScan = draft.videoLoras.length || draft.spectrumMode === "balanced"
+    const h3UsesSageAttention = isMiniMaxH3Model(draft.modelId) &&
+      store.get().settings.h3AttentionMode !== "pytorch";
+    const dependencyScan = draft.videoLoras.length || draft.spectrumMode === "balanced" || h3UsesSageAttention
       ? await scanEnvironment(store.get().settings)
       : undefined;
     if (draft.videoLoras.length) {
@@ -232,8 +235,17 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         throw new Error(`模型感知预测需要 Spectrum v${SPECTRUM_MODEL_AWARE_MINIMUM_VERSION}+；当前 ${spectrum.version ? `v${spectrum.version}` : "版本未知"}。`);
       }
     }
-    if (isH3TurboEnabled(draft) && !workflowSupportsH3TurboSampling(workflow)) {
-      throw new Error("LightX2V Turbo 需要 ER-SDE、Beta 调度器和 MiniMaxH3SigmaShift；请使用内置 Turbo 工作流或匹配这些要求的自定义工作流。");
+    if (h3UsesSageAttention) {
+      const kjNodes = dependencyScan?.customNodes.find((node) => node.id === "kjnodes");
+      if (!kjNodes?.installed) {
+        throw new Error("当前 H3 Attention 模式需要 ComfyUI-KJNodes 的 SageAttention 节点；请先安装节点，或切换到 PyTorch 模式。");
+      }
+    }
+    if (isH3TurboEnabled(draft) && !workflowSupportsH3TurboSampling(workflow, {
+      modelId: draft.modelId,
+      videoLoras: draft.videoLoras
+    })) {
+      throw new Error("LightX2V Turbo 需要 ER-SDE、Beta 调度器和 MiniMaxH3SigmaShift（当前显示名 ModelSamplingMiniMaxH3）；R2V Turbo 还需要标准 MiniMaxH3ReferenceToVideo 工作流。");
     }
     if (draft.endImagePath && !workflowSupportsEndImage(workflow)) {
       throw new Error("当前工作流不支持尾帧。请选择包含 {{END_IMAGE}} 占位符的自定义 API 工作流，或移除尾帧。");

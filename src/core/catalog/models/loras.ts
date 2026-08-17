@@ -2,6 +2,21 @@ import type { CatalogModelEntry } from "../types.js";
 import { VIDEO_LORA_DEFINITIONS } from "../loras/definitions.js";
 
 const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
+  "minimax-h3-lightx2v-turbo-8step-v1": {
+    "zh-CN": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 专属 · 性能", description: "官方 v1.0 FL2VA Turbo LoRA，默认 8 步，优先稳定和速度平衡。" },
+    "zh-TW": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 專屬 · 效能", description: "官方 v1.0 FL2VA Turbo LoRA，預設 8 步，優先穩定與速度平衡。" },
+    "en-US": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 only · performance", description: "Official v1.0 FL2VA Turbo LoRA with an eight-step default for a stable speed/quality balance." }
+  },
+  "minimax-h3-lightx2v-turbo-4step-768p-v1": {
+    "zh-CN": { name: "LightX2V Turbo 4-Step v1.0 · 768p", badge: "H3 专属 · 768p 性能", description: "官方 v1.0 768p FL2VA Turbo LoRA，专为 768p 四步路径准备。" },
+    "zh-TW": { name: "LightX2V Turbo 4-Step v1.0 · 768p", badge: "H3 專屬 · 768p 效能", description: "官方 v1.0 768p FL2VA Turbo LoRA，專為 768p 四步路徑準備。" },
+    "en-US": { name: "LightX2V Turbo 4-Step v1.0 · 768p", badge: "H3 only · 768p performance", description: "Official v1.0 FL2VA Turbo LoRA for the dedicated 768p four-step path." }
+  },
+  "minimax-h3-ref2v-turbo-4step-v01": {
+    "zh-CN": { name: "LightX2V Ref2V Turbo 4-Step v0.1", badge: "H3 R2V 专属 · 性能", description: "官方 Ref2VA 多参考图 Turbo LoRA，仅用于 R2V 四步路径。" },
+    "zh-TW": { name: "LightX2V Ref2V Turbo 4-Step v0.1", badge: "H3 R2V 專屬 · 效能", description: "官方 Ref2VA 多參考圖 Turbo LoRA，僅用於 R2V 四步路徑。" },
+    "en-US": { name: "LightX2V Ref2V Turbo 4-Step v0.1", badge: "H3 R2V only · performance", description: "Official Ref2VA multi-reference Turbo LoRA for the dedicated four-step R2V path." }
+  },
   "minimax-h3-lightx2v-turbo-4step": {
     "zh-CN": { name: "LightX2V Turbo 4-Step", badge: "H3 专属 · 性能", description: "MiniMax H3 FL2VA 的蒸馏 LoRA，把约 20 步采样压缩到 6–8 步。" },
     "zh-TW": { name: "LightX2V Turbo 4-Step", badge: "H3 專屬 · 效能", description: "MiniMax H3 FL2VA 的蒸餾 LoRA，把約 20 步取樣壓縮到 6–8 步。" },

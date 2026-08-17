@@ -193,6 +193,9 @@ export function renderSettingsPage(
   const imageWorkflowsReady = imageProfiles.filter((profile) => options.isImageWorkflowReady(profile)).length;
   const upscaleAvailable = upscaleProfiles.filter((profile) => profile.available).length;
   const promptAvailable = promptProfiles.filter((profile) => profile.available).length;
+  const nodeUpdatesAvailable = Boolean(
+    environmentScan?.customNodes.some((node) => node.updateAvailable)
+  );
   const llamaCppPython = environmentScan?.llamaCppPython;
   const promptWriterNode = environmentScan?.customNodes.find(
     (node) => node.id === "minimax-h3-prompt-writer"
@@ -560,7 +563,7 @@ export function renderSettingsPage(
                 return `<div class="component-row ${tone}"><span class="component-state">${icon(node.available ? "circle-check" : tone === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`;
               }).join("") || `<div class="component-row warning"><span class="component-state">${icon("circle-help")}</span><div><strong>${s("nodes.waitingCore")}</strong></div></div>`}
             </div>
-            <span class="muted">${s("nodes.minimumVersion")} <code>v0.31.0</code> · ${s("nodes.coreLog")} <code>${escape(environmentScan?.comfyCompatibility.h3MinimumRevision ?? "")}</code></span>
+            <span class="muted">${s("nodes.minimumVersion")} <code>v${escape(environmentScan?.comfyCompatibility.h3MinimumVersion ?? "0.31.0")}</code> · ${s("nodes.recommendedVersion")} <code>v${escape(environmentScan?.comfyCompatibility.h3RecommendedVersion ?? "0.33.1")}</code> · ${s("nodes.coreLog")} <code>${escape(environmentScan?.comfyCompatibility.h3MinimumRevision ?? "")}</code></span>
             ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>${s("nodes.coreLog")}</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
           </div>
           <div class="custom-node-actions">
@@ -762,7 +765,28 @@ export function renderSettingsPage(
           ["prompt", "sparkles", uiKeys.settings.tabPrompt],
           ["upscale", "maximize-2", uiKeys.settings.tabUpscale],
           ["logs", "file-text", uiKeys.settings.tabLogs]
-        ] as const).map(([id, iconName, labelKey]) => `<button class="settings-tab ${viewModel.settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span>${t(labelKey)}${id === "video" && environmentScan ? `<small>${videoAvailable}/${videoProfiles.length}</small>` : ""}${id === "lora" && environmentScan ? `<small>${loraAvailable}/${loraProfiles.length}</small>` : ""}${id === "image" && environmentScan ? `<small>${imageComponentsReady}/${imageProfiles.length}</small>` : ""}${id === "nodes" && environmentScan ? `<small>${nodeDependencyAvailable}/${nodeDependencyTotal}</small>` : ""}${id === "prompt" && environmentScan ? `<small>${promptAvailable}/${promptProfiles.length}</small>` : ""}${id === "upscale" && environmentScan ? `<small>${upscaleAvailable}/${upscaleProfiles.length}</small>` : ""}</button>`).join("")}
+        ] as const).map(([id, iconName, labelKey]) => {
+          const count = id === "video" && environmentScan
+            ? `${videoAvailable}/${videoProfiles.length}`
+            : id === "lora" && environmentScan
+              ? `${loraAvailable}/${loraProfiles.length}`
+              : id === "image" && environmentScan
+                ? `${imageComponentsReady}/${imageProfiles.length}`
+                : id === "nodes" && environmentScan
+                  ? `${nodeDependencyAvailable}/${nodeDependencyTotal}`
+                  : id === "prompt" && environmentScan
+                    ? `${promptAvailable}/${promptProfiles.length}`
+                    : id === "upscale" && environmentScan
+                      ? `${upscaleAvailable}/${upscaleProfiles.length}`
+                      : "";
+          const updateDot = id === "nodes" && nodeUpdatesAvailable
+            ? `<span class="settings-update-dot" role="img" aria-label="${escape(s("nodes.needsUpdate"))}" title="${escape(s("nodes.needsUpdate"))}"></span>`
+            : "";
+          const metadata = count
+            ? `<span class="settings-tab-meta"><small>${count}</small></span>`
+            : "";
+          return `<button class="settings-tab ${viewModel.settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span><span class="settings-tab-label">${t(labelKey)}${updateDot}</span>${metadata}</button>`;
+        }).join("")}
       </nav>
       <div class="settings-content">${activePanel}</div>
     </div>

@@ -6,6 +6,7 @@ import type {
 } from "../types.js";
 import { modelCatalog } from "./catalog/index.js";
 import {
+  isH3Ref2vTurboEnabled,
   isH3TurboEnabled,
   videoLoraConfigurationIssues
 } from "./video-loras.js";
@@ -52,6 +53,10 @@ export function resolveVideoGenerationPolicy(
     modelId: input.modelId,
     videoLoras: input.videoLoras
   });
+  const ref2vTurboEnabled = isH3Ref2vTurboEnabled({
+    modelId: input.modelId,
+    videoLoras: input.videoLoras
+  });
   const supportedByModel = definition?.capabilities?.supportsSpectrum === true;
   const motionContext = input.inputMode === "video" && definition?.variant === "r2v";
   const reason: VideoPolicySpectrumReason = !supportedByModel
@@ -66,8 +71,10 @@ export function resolveVideoGenerationPolicy(
       mode: turboEnabled ? "turbo" : "standard",
       options: definition?.capabilities?.generationSteps ??
         (turboEnabled ? turboStepOptions : standardStepOptions),
-      defaultValue: definition?.capabilities?.defaultGenerationSteps ??
-        (turboEnabled ? 8 : 20),
+      defaultValue: ref2vTurboEnabled
+        ? 4
+        : definition?.capabilities?.defaultGenerationSteps ??
+          (turboEnabled ? 8 : 20),
       maxValue: definition?.capabilities?.maxGenerationSteps ??
         (turboEnabled ? 8 : 20)
     },

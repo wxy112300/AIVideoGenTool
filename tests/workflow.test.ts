@@ -227,6 +227,32 @@ describe("renderWorkflow", () => {
     expect(turboSpectrum["10"]?.inputs?.model).toEqual([turboSpectrumNode?.[0], 0]);
   });
 
+  it("accepts the standard H3 R2V graph for the dedicated Ref2V Turbo LoRA", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_r2v_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as unknown;
+    expect(workflowSupportsH3TurboSampling(source, {
+      modelId: "minimax_h3_ref2va",
+      videoLoras: [{
+        id: "minimax-h3-ref2v-turbo-4step-v01",
+        name: "LightX2V Ref2V Turbo 4-Step v0.1",
+        filename: "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+        strength: 0.75,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: ["minimax_h3_ref2va"],
+        compatibleInputModes: ["image"],
+        purpose: "performance"
+      }]
+    })).toBe(true);
+    expect(workflowSupportsH3TurboSampling(source, {
+      modelId: "minimax_h3_ref2va",
+      videoLoras: []
+    })).toBe(false);
+  });
+
   it("preserves custom workflow LoRAs and appends selected LoRAs after them", () => {
     const source = JSON.parse(
       readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")

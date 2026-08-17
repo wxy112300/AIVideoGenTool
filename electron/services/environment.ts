@@ -58,6 +58,7 @@ import {
   minimaxH3CoreNodes,
   MINIMAX_H3_MINIMUM_COMFY_REVISION,
   MINIMAX_H3_MINIMUM_COMFY_VERSION,
+  MINIMAX_H3_RECOMMENDED_COMFY_VERSION,
   versionAtLeast
 } from "./comfy-compatibility.js";
 import {
@@ -103,7 +104,8 @@ export {
   evaluateMiniMaxH3CoreSupport,
   evaluatePromptCoreSupport,
   MINIMAX_H3_MINIMUM_COMFY_REVISION,
-  MINIMAX_H3_MINIMUM_COMFY_VERSION
+  MINIMAX_H3_MINIMUM_COMFY_VERSION,
+  MINIMAX_H3_RECOMMENDED_COMFY_VERSION
 } from "./comfy-compatibility.js";
 export {
   buildComfyCandidates,
@@ -2282,7 +2284,7 @@ async function inspectComfyCompatibility(
     ...evaluateMiniMaxH3CoreSupport(objectInfo),
     {
       id: "ModelSamplingAV",
-      label: "H3 原生双时钟音视频采样（ComfyUI v0.31.0+）",
+      label: `H3 原生双时钟音视频采样（ComfyUI v${MINIMAX_H3_MINIMUM_COMFY_VERSION}+；推荐 v${MINIMAX_H3_RECOMMENDED_COMFY_VERSION}）`,
       available: nativeH3AvSampling
     }
   ];
@@ -2302,7 +2304,9 @@ async function inspectComfyCompatibility(
   return {
     version,
     revision,
+    h3MinimumVersion: MINIMAX_H3_MINIMUM_COMFY_VERSION,
     h3MinimumRevision: MINIMAX_H3_MINIMUM_COMFY_REVISION,
+    h3RecommendedVersion: MINIMAX_H3_RECOMMENDED_COMFY_VERSION,
     h3CoreSupported,
     coreNodes,
     promptCoreSupported,

@@ -8,6 +8,16 @@
 
 ## 未发布
 
+暂无。
+
+## 0.22.0 — 2026-08-17
+
+- 跟进 MiniMax H3 社区工作流：新增官方 LightX2V Turbo v1.0 8-step、768p 4-step 与 Ref2V 4-step LoRA 的目录、扫描、兼容提示和多语言说明。
+- Ref2V Turbo 复用标准 H3 R2V 工作流，在提交时按 LoRA 动态注入 Sigma Shift、Euler/Beta 采样策略，不复制大型 R2V 工作流；旧版 FL2VA/R2V Turbo 模型 ID 继续可读。
+- Spectrum 推荐版本更新为 `v0.2.15`，`v0.2.1`/`v0.2.6`/`v0.2.7` 的最低兼容线保持不变。同步记录原生 ER-SDE 状态清理、KJNodes 预览回放保护和可选 H3 Continuum 元数据互操作；不把推荐版本或 Continuum 误当硬性依赖。设置侧栏在环境扫描发现节点低于推荐/上游版本时显示琥珀色更新提示点。
+- ComfyUI H3 核心节点兼容同时识别 `MiniMaxH3SigmaShift` 与官方显示名 `ModelSamplingMiniMaxH3`；KJNodes 改为按 SageAttention、TAE 实时预览和显存调试功能拆分，不再把可选预览节点当成所有任务的必需依赖。
+- H3 入队继续遵循“离线检查文件/目录，运行时检查服务注册”：存在节点目录即可入队，SageAttention 模式只要求安装 KJNodes；真实服务启动后再报告节点未加载或接口不兼容。
+
 ### 0.21.0 候选 — 2026-08-15
 
 - 创建页按当前模式筛选模型：视频续写只展示声明支持 Extend 的模型，避免把 I2V-only 或实验档位误显示为可用续写模型。

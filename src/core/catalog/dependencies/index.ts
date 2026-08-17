@@ -12,6 +12,8 @@ export {
 } from "./workflows.js";
 export type {
   CatalogCustomNodeDefinition,
+  CatalogCustomNodeFeature,
+  CatalogCustomNodeFeatureId,
   CatalogWorkflowDependencyDefinition,
   CatalogWorkflowDependencyId
 } from "./types.js";

@@ -113,7 +113,7 @@ Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件
 
 H3 Prompt Writer 与可选 MultiModal Prompt Nodes 共用同一个 Python 包名，不能在同一 ComfyUI 环境中各自安装两个版本。两个节点的安装入口和“修复运行依赖”现在都调用同一个安装器、固定版本和 CUDA 自检；安装其中一个不会再用 Git 源码构建覆盖另一个。模型权重不由此步骤下载，仍由提示词模型卡片中的模型目录检查负责。
 
-Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.7`，包含原生 ER-SDE 修复和可选的模型感知预测；设置页仍会查询上游最新发布并提供一键更新，但高于最低线的旧版不会只因“不是最新版”而被判定不可用。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。
+Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.15`，包含原生 ER-SDE 状态清理、KJNodes 预览回放保护，以及可选的 H3 Continuum 元数据互操作；设置页仍会查询上游最新发布并提供一键更新，但高于最低线的旧版不会只因“不是最新版”而被判定不可用。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。Spectrum 不要求额外模型权重，也不把 Continuum 变成硬依赖。
 
 注意：MiniMax H3 基础生成节点属于 ComfyUI 核心，不应伪装成第三方节点。如果核心节点缺失，应更新/切换正确的 ComfyUI 核心并重新扫描。
 
@@ -149,6 +149,8 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 - 共同依赖 H3 文本编码器、视频 VAE、音频 VAE 和足够新的 ComfyUI 核心节点。
 - R2V 支持多参考图片；Motion Context 是可选的 R2V 续写增强节点，不是基础 FL2VA 的必需项。
 - LightX2V Turbo、Realism People 和 PinkFluffyBunny 是 LoRA，不是独立视频模型；兼容模式、顺序、强度和冲突由 LoRA catalog 管理。LightX2V Turbo 使用原生 ER-SDE/Beta 路径，Spectrum `v0.2.6+` 可叠加；更早版本必须先更新。
+- H3 原生音视频采样的最低 ComfyUI 版本为 `v0.31.0`，当前推荐 `v0.33.1`；推荐版本是更新提示，不是离线入队的硬性阻挡。官方 Turbo v1.0 的 8-step、768p 4-step 和 Ref2V 4-step 权重都放入所选 ComfyUI 的 `models/loras`，不要再把它们当成独立基础模型。
+- KJNodes 按功能使用：H3 SageAttention 模式需要 `PathchSageAttentionKJ`，TAE 实时预览只额外尝试 `ModelPreviewOverrideKJ`，显存调试使用 `VRAM_Debug`；预览缺失时自动降级，不阻塞普通生成。
 - H3 实时预览是可选能力：更新 KJNodes 以获得 `ModelPreviewOverrideKJ`，并把 Kijai 的 `taeh3.safetensors` 放入 `models/vae_approx`。设置页会离线检查 KJNodes 的预览源码，服务启动后再通过 `/object_info` 验证节点注册；它只负责采样期间的低分辨率 RGB 预览，不替代 `models/vae` 中的最终视频 VAE。队列开关默认关闭，缺少节点或权重时保持原工作流运行。
 - SageAttention、Spectrum、Cache/Attention patch 是模型范围内的策略，不得泄漏到 Qwen、Sulphur 或其他工作流。
 

@@ -16,6 +16,51 @@ export interface CatalogLoraLocale {
 }
 
 const zhCN: Record<string, CatalogLoraLocale> = {
+  "minimax-h3-lightx2v-turbo-8step-v1": {
+    guide: {
+      summary: "官方 LightX2V v1.0 FL2VA Turbo LoRA，把标准 H3 路径压缩到 8 步。",
+      recommendedStrength: "默认 0.75；建议 0.65–0.85。优先用于稳定的 480p/576p 测试。",
+      effects: "明显缩短采样时间，但极低步数或过高强度可能减少运动、细节和音频稳定性。",
+      stacking: "性能 LoRA 放在内容或人物 LoRA 前面；不要与其他 Turbo LoRA 同时叠加。",
+      compatibility: "仅 MiniMax H3 FL2VA 图生视频；需要 ER-SDE、Beta 和 Sigma Shift Turbo 工作流。",
+      source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 权重"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      turboSpectrum: "Turbo v1.0 可与 Spectrum v0.2.6+ 叠加；遇到质量退化时先关闭 Spectrum 对照。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
+    }
+  },
+  "minimax-h3-lightx2v-turbo-4step-768p-v1": {
+    guide: {
+      summary: "官方 LightX2V v1.0 768p FL2VA Turbo LoRA，针对 768p 四步采样优化。",
+      recommendedStrength: "默认 0.75；建议 0.65–0.85。先在 768p 使用，不要与 8-step v1.0 同时叠加。",
+      effects: "在 768p 下速度最快，但四步对 Prompt、Seed 和运动稳定性更敏感。",
+      stacking: "性能 LoRA 放在人物、内容或风格 LoRA 前面；一次只选一个 Turbo 变体。",
+      compatibility: "仅 MiniMax H3 FL2VA 图生视频的 768p 路径；不用于 R2V 或视频续写。",
+      source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 权重"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      turboSpectrum: "768p Turbo 可与 Spectrum v0.2.6+ 叠加；先保留关闭 Spectrum 的基准结果。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
+    }
+  },
+  "minimax-h3-ref2v-turbo-4step-v01": {
+    guide: {
+      summary: "官方 Ref2VA 多参考图 Turbo LoRA，把 H3 R2V 路径压缩到 4 步。",
+      recommendedStrength: "默认 0.75；建议 0.65–0.85。首次使用应和标准 20 步 R2V 做同 Seed 对照。",
+      effects: "减少 R2V 采样时间，但多参考图一致性、动作和音频对四步更敏感。",
+      stacking: "放在 R2V 内容或人物 LoRA 前面；不要与 FL2VA Turbo 变体叠加。",
+      compatibility: "仅 MiniMax H3 Ref2VA 多参考图图生视频；不适用于 FL2VA 首帧或视频续写。",
+      source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 权重"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      turboSpectrum: "Ref2V Turbo 与 Spectrum 的组合需要逐任务验证；若出现时序退化，先关闭 Spectrum。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
+    }
+  },
   "minimax-h3-lightx2v-turbo-4step": {
     guide: {
       summary: "把 H3 FL2VA 从标准约 20 步切换到 LightX2V Turbo 6–8 步采样，用更少步骤缩短生成时间。",
@@ -65,6 +110,51 @@ const zhCN: Record<string, CatalogLoraLocale> = {
 };
 
 const enUS: Record<string, CatalogLoraLocale> = {
+  "minimax-h3-lightx2v-turbo-8step-v1": {
+    guide: {
+      summary: "Official LightX2V v1.0 FL2VA Turbo LoRA that compresses the standard H3 path to eight steps.",
+      recommendedStrength: "Default 0.75; start around 0.65–0.85. Prefer it for stable 480p/576p tests.",
+      effects: "Shortens sampling substantially, while very low steps or excessive strength can reduce motion, detail, and audio stability.",
+      stacking: "Load performance LoRAs before content or people LoRAs; never stack multiple Turbo variants together.",
+      compatibility: "MiniMax H3 FL2VA image-to-video only; requires the ER-SDE, Beta, and Sigma Shift Turbo workflow.",
+      source: "Official LightX2V / Minimax-h3-Turbo ComfyUI weight"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      turboSpectrum: "Turbo v1.0 can stack with Spectrum v0.2.6+; disable Spectrum for a baseline if quality drops.",
+      orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
+    }
+  },
+  "minimax-h3-lightx2v-turbo-4step-768p-v1": {
+    guide: {
+      summary: "Official LightX2V v1.0 768p FL2VA Turbo LoRA optimized for the dedicated 768p four-step path.",
+      recommendedStrength: "Default 0.75; start around 0.65–0.85. Use it at 768p and do not stack it with the eight-step v1.0 variant.",
+      effects: "Fastest at 768p, but four steps are more sensitive to Prompt, Seed, and motion stability.",
+      stacking: "Load it before people, content, or style LoRAs; select only one Turbo variant at a time.",
+      compatibility: "MiniMax H3 FL2VA image-to-video 768p only; not for R2V or video extension.",
+      source: "Official LightX2V / Minimax-h3-Turbo ComfyUI weight"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      turboSpectrum: "The 768p Turbo path can stack with Spectrum v0.2.6+; keep a Spectrum-off baseline first.",
+      orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
+    }
+  },
+  "minimax-h3-ref2v-turbo-4step-v01": {
+    guide: {
+      summary: "Official Ref2VA multi-reference Turbo LoRA that compresses the H3 R2V path to four steps.",
+      recommendedStrength: "Default 0.75; start around 0.65–0.85. Compare against standard 20-step R2V with the same Seed first.",
+      effects: "Reduces R2V sampling time, while multi-reference consistency, motion, and audio are more sensitive at four steps.",
+      stacking: "Load it before R2V content or people LoRAs; do not combine it with FL2VA Turbo variants.",
+      compatibility: "MiniMax H3 Ref2VA multi-reference image-to-video only; not for FL2VA first-frame or video extension.",
+      source: "Official LightX2V / Minimax-h3-Turbo ComfyUI weight"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      turboSpectrum: "Ref2V Turbo with Spectrum needs per-task validation; disable Spectrum first if temporal quality drops.",
+      orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
+    }
+  },
   "minimax-h3-lightx2v-turbo-4step": {
     guide: {
       summary: "Switches H3 FL2VA from standard roughly 20-step sampling to LightX2V Turbo 6–8-step sampling for shorter generation time.",

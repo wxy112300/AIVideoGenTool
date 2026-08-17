@@ -389,6 +389,9 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .settings-tab > span { display: grid; place-items: center; color: var(--primary); }
 .settings-tab > span .ui-icon { width: 17px; height: 17px; }
 .settings-tab small { min-width: 30px; padding: 2px 6px; border-radius: 99px; color: var(--muted); background: #141619; text-align: center; }
+.settings-tab > .settings-tab-label { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.settings-tab > .settings-tab-meta { display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: 0; color: inherit; }
+.settings-tab .settings-update-dot { display: inline-block; width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 14%, transparent); }
 .settings-content { min-width: 0; }
 .settings-panel { display: grid; gap: 14px; }
 .settings-section { padding: 20px; }

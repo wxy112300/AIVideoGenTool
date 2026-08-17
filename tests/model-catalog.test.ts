@@ -54,6 +54,9 @@ describe("model catalog", () => {
     ]);
     expect(modelCatalog.list("interpolation").map((entry) => entry.definition.id)).toEqual(["rife"]);
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).toEqual([
+      "minimax-h3-lightx2v-turbo-8step-v1",
+      "minimax-h3-lightx2v-turbo-4step-768p-v1",
+      "minimax-h3-ref2v-turbo-4step-v01",
       "minimax-h3-lightx2v-turbo-4step",
       "minimax-h3-realism-people",
       "minimax-h3-pink-fluffy-bunny-nsfw"
@@ -68,7 +71,9 @@ describe("model catalog", () => {
 
   it("derives LoRA scanning and runtime metadata from the same definitions", () => {
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id))
-      .toEqual(VIDEO_LORA_DEFINITIONS.map((lora) => lora.id));
+      .toEqual([...VIDEO_LORA_DEFINITIONS]
+        .sort((left, right) => right.catalogOrder - left.catalogOrder)
+        .map((lora) => lora.id));
     expect(BUILTIN_VIDEO_LORAS.map((lora) => ({
       id: lora.id,
       filename: lora.filename,

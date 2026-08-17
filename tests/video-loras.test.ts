@@ -16,6 +16,9 @@ describe("video LoRA catalog", () => {
   it("offers Turbo, Realism People, and PinkFluffyBunny as separate stackable H3 LoRAs", () => {
     expect(BUILTIN_VIDEO_LORAS.map((lora) => lora.id)).toEqual([
       H3_TURBO_LORA.id,
+      "minimax-h3-lightx2v-turbo-8step-v1",
+      "minimax-h3-lightx2v-turbo-4step-768p-v1",
+      "minimax-h3-ref2v-turbo-4step-v01",
       H3_REALISM_PEOPLE_LORA.id,
       H3_PINK_FLUFFY_BUNNY_LORA.id
     ]);
