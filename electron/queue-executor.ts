@@ -235,13 +235,30 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       const task = store.get().queue.find((item) => item.status === "waiting");
       if (!task) break;
       await setQueueLifecycle("running", task.id);
-      // Pause/cancel can arrive between selecting the next task and this
-      // lifecycle update. Re-check the run flag before starting any model.
-      if (!store.get().queueRunning) break;
-      const stillWaiting = store.get().queue.some(
-        (candidate) => candidate.id === task.id && candidate.status === "waiting"
-      );
-      if (!stillWaiting) continue;
+      // Claim the task conditionally in the same store mutation. A cancel can
+      // arrive after selection; an unconditional later update would otherwise
+      // resurrect the cancelled task as running.
+      let claimed = false;
+      const claimedState = await store.update((state) => {
+        const candidate = state.queue.find((item) => item.id === task.id);
+        if (!state.queueRunning || candidate?.status !== "waiting") return;
+        candidate.status = "running";
+        candidate.progress = 1;
+        candidate.stage = "准备任务";
+        candidate.startedAt = new Date().toISOString();
+        candidate.error = undefined;
+        candidate.updatedAt = new Date().toISOString();
+        claimed = true;
+      });
+      sendState(claimedState);
+      if (!claimed) {
+        if (!store.get().queueRunning) break;
+        continue;
+      }
+      // The store write is asynchronous. Re-check after it settles so a cancel
+      // handled in that gap cannot be overwritten by the execution branch.
+      const claimedTask = store.get().queue.find((item) => item.id === task.id);
+      if (!store.get().queueRunning || claimedTask?.status !== "running") continue;
       if (isImageGenerationQueueTask(task)) {
         await executeImageGenerationQueueTask(task);
         continue;

@@ -40,7 +40,8 @@ export async function launchDetached(
   executable: string,
   args: string[],
   cwd?: string,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void
 ): Promise<number> {
   return new Promise<number>((resolve, reject) => {
     const child = spawn(executable, args, {
@@ -51,6 +52,9 @@ export async function launchDetached(
       windowsHide: true
     });
     child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (child.pid) onExit?.(child.pid, code, signal);
+    });
     child.once("spawn", () => {
       if (!child.pid) {
         reject(new Error(`无法获取已启动进程 PID：${executable}`));

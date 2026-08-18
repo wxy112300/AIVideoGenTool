@@ -1,4 +1,4 @@
-import type { AppApi, AppState, PerformanceMetrics, QueueLifecycle } from "../../../types";
+import type { AppApi, AppState, ComfyRuntimeState, PerformanceMetrics, QueueLifecycle } from "../../../types";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import {
@@ -20,6 +20,7 @@ export interface QueueLiveStatusOptions {
   getState(): AppState | undefined;
   getPage(): Page;
   setPerformanceMetrics(metrics: PerformanceMetrics): void;
+  getComfyRuntimeState(): ComfyRuntimeState;
 }
 
 function setMetric(id: string, value: number | null, detail = ""): void {
@@ -113,14 +114,35 @@ function comfyStatus(
 export function queueComfyUiStatus(
   state: AppState,
   t: Translate,
-  comfyConnected?: boolean
+  runtime?: ComfyRuntimeState
 ): QueueComfyUiStatus {
   const lifecycle = state.queueLifecycle ?? "idle";
-  const running = state.queue.find((task) => task.status === "running");
+  if (runtime?.phase === "error") {
+    return comfyStatus("error", runtime.message || t(uiKeys.queue.comfyUi.error), t);
+  }
+  if (runtime?.phase === "degraded") {
+    return comfyStatus("error", runtime.message, t);
+  }
+  if (runtime?.phase === "starting") {
+    return comfyStatus("starting", runtime.message || t(uiKeys.queue.comfyUi.starting), t);
+  }
+  if (runtime?.phase === "restarting" || runtime?.phase === "stopping") {
+    return comfyStatus("ending", runtime.message, t);
+  }
+  if (runtime?.phase === "ready") {
+    return comfyStatus("connected", runtime.message || t(uiKeys.queue.comfyUi.connected), t);
+  }
+  if (runtime?.phase === "stopped") {
+    return comfyStatus(
+      state.queue.some((task) => task.status === "waiting") ? "waiting" : "unknown",
+      runtime.message,
+      t
+    );
+  }
   if (lifecycle === "error") {
     return comfyStatus("error", t(uiKeys.queue.comfyUi.error), t);
   }
-  if (lifecycle === "starting" || running?.stage?.includes("启动 ComfyUI")) {
+  if (lifecycle === "starting") {
     return comfyStatus("starting", t(uiKeys.queue.comfyUi.starting), t);
   }
   if (lifecycle === "cancelling") {
@@ -131,12 +153,6 @@ export function queueComfyUiStatus(
   }
   if (lifecycle === "pausing") {
     return comfyStatus("ending", t(uiKeys.queue.comfyUi.ending), t);
-  }
-  if (lifecycle === "running") {
-    return comfyStatus("connected", t(uiKeys.queue.comfyUi.connected), t);
-  }
-  if (comfyConnected === true) {
-    return comfyStatus("connected", t(uiKeys.queue.comfyUi.connected), t);
   }
   if (state.queue.some((task) => task.status === "waiting")) {
     return comfyStatus("waiting", t(uiKeys.queue.comfyUi.waiting), t);
@@ -209,9 +225,9 @@ function patchQueueElement(
 export function patchQueueLiveDom(
   state: AppState,
   t: Translate,
-  comfyConnected?: boolean
+  runtime?: ComfyRuntimeState
 ): boolean {
-  const comfy = queueComfyUiStatus(state, t, comfyConnected);
+  const comfy = queueComfyUiStatus(state, t, runtime);
   const operation = queueOperationStatus(state, t);
   const activeTasks = state.queue.filter((task) => task.status === "waiting" || task.status === "running");
   const headerTone = queueHeaderTone(state);
@@ -275,7 +291,6 @@ export function patchQueueLiveDom(
 export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
   let performancePolling = false;
   let pollingTimer: number | undefined;
-  let latestComfyConnected: boolean | undefined;
 
   const refresh = async (): Promise<void> => {
     if (performancePolling) return;
@@ -284,10 +299,9 @@ export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
     performancePolling = true;
     try {
       const metrics = await options.studio.getPerformanceMetrics(state.settings);
-      latestComfyConnected = metrics.comfyConnected;
       options.setPerformanceMetrics(metrics);
       if (options.getPage() !== "queue") return;
-      patchQueueLiveDom(options.getState() ?? state, options.t, latestComfyConnected);
+      patchQueueLiveDom(options.getState() ?? state, options.t, options.getComfyRuntimeState());
       setMetric("metric-cpu", metrics.cpuPercent);
       setMetric(
         "metric-memory",
@@ -320,7 +334,7 @@ export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
   const updateQueueStatus = (): void => {
     const state = options.getState();
     if (state && options.getPage() === "queue") {
-      patchQueueLiveDom(state, options.t, latestComfyConnected);
+      patchQueueLiveDom(state, options.t, options.getComfyRuntimeState());
     }
   };
 

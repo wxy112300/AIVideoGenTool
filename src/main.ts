@@ -164,6 +164,7 @@ import type {
   AppState,
   AssetVersion,
   BundledWorkflow,
+  ComfyRuntimeState,
   Draft,
   EnvironmentScanResult,
   H3PromptPreset,
@@ -295,6 +296,14 @@ const bundledWorkflowKey = (modelId: string, inputMode: Draft["inputMode"]) =>
 const workflowCapabilities: Record<string, WorkflowCapabilities> = {};
 const taskPreviews: Record<string, string> = {};
 let performanceMetrics: PerformanceMetrics | null = null;
+let comfyRuntime: ComfyRuntimeState = {
+  phase: "unknown",
+  ownership: "unknown",
+  endpoint: "",
+  message: "",
+  updatedAt: new Date(0).toISOString(),
+  operationId: 0
+};
 let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
 let h3PromptPreset: H3PromptPreset = "official-storyboard";
 let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
@@ -736,6 +745,7 @@ function queuePage(): string {
     t: rendererApp.context.t,
     escapeHtml,
     performanceMetrics,
+    comfyRuntime,
     queueRemainingSeconds: (tasks) => calculateQueueRemainingSeconds(tasks, state.history, state.imageHistory),
     queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
     performanceCard,
@@ -1002,7 +1012,7 @@ function settingsPage(): string {
       state,
       settingsDraft,
       environmentScan,
-      comfyConnected: performanceMetrics?.comfyConnected,
+      comfyConnected: comfyRuntime.phase === "ready",
       environmentScanning,
       environmentScanError,
       settingsTab,
@@ -1012,10 +1022,10 @@ function settingsPage(): string {
       promptStarting,
       promptEnhancing,
       promptReleasing,
-      serviceStarting,
-      serviceRestarting,
+      serviceStarting: serviceStarting ?? (comfyRuntime.phase === "starting" ? "comfy" : null),
+      serviceRestarting: serviceRestarting ?? (comfyRuntime.phase === "restarting" ? "comfy" : null),
       serviceForceStopping,
-      serviceStatusMessage,
+      serviceStatusMessage: serviceStatusMessage || comfyRuntime.message,
       comfyUpdating,
       comfyUpdateLog,
       environmentRepairing,
@@ -1229,6 +1239,7 @@ const queueLiveStatus = createQueueLiveStatus({
   t: rendererApp.context.t,
   getState: () => state,
   getPage: () => page,
+  getComfyRuntimeState: () => comfyRuntime,
   setPerformanceMetrics: (metrics) => {
     const connectionChanged = performanceMetrics?.comfyConnected !== metrics.comfyConnected;
     performanceMetrics = metrics;
@@ -2662,7 +2673,10 @@ registerRendererEvents({
   studio: window.studio,
   t: rendererApp.context.t,
   getState: () => state,
-  getComfyConnected: () => performanceMetrics?.comfyConnected,
+  getComfyRuntimeState: () => comfyRuntime,
+  setComfyRuntimeState: (runtime) => {
+    comfyRuntime = runtime;
+  },
   setState: setRendererState,
   getPage: () => page,
   getHistoryKind: () => historyKind,
@@ -2722,6 +2736,9 @@ registerRendererEvents({
 bootstrapRenderer({
   studio: window.studio,
   setState: setRendererState,
+  setComfyRuntimeState: (runtime) => {
+    comfyRuntime = runtime;
+  },
   getState: () => state,
   setAppVersion: (version) => {
     ui.appVersion = version;

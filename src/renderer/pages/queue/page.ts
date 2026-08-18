@@ -1,4 +1,4 @@
-import type { AppState, PerformanceMetrics, QueueTask } from "../../../types";
+import type { AppState, ComfyRuntimeState, PerformanceMetrics, QueueTask } from "../../../types";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import { elapsedText } from "../../shared/formatters";
@@ -12,6 +12,7 @@ export interface QueuePageOptions {
   t: Translate;
   escapeHtml(value: unknown): string;
   performanceMetrics: PerformanceMetrics | null;
+  comfyRuntime: ComfyRuntimeState;
   queueRemainingSeconds(tasks: QueueTask[]): number | null;
   queueEstimateText(seconds: number | null): string;
   performanceCard(
@@ -67,7 +68,7 @@ export function renderQueuePage(
   const attentionTasks = state.queue.filter((task) => task.status === "failed" || task.status === "cancelled");
   const remainingSeconds = options.queueRemainingSeconds(activeTasks);
   const lifecycle = state.queueLifecycle ?? "idle";
-  const comfyUi = queueComfyUiStatus(state, options.t, options.performanceMetrics?.comfyConnected);
+  const comfyUi = queueComfyUiStatus(state, options.t, options.comfyRuntime);
   const operation = queueOperationStatus(state, options.t);
   const headerTone = queueHeaderTone(state);
   const showRunSummary = Boolean(
@@ -89,6 +90,7 @@ export function renderQueuePage(
         ? operation.message
         : options.t(uiKeys.queue.start);
   const primaryDisabled = ["pausing", "cancelling", "cleaning", "error"].includes(lifecycle)
+    || ["starting", "restarting", "stopping"].includes(options.comfyRuntime.phase)
     || (!state.queueRunning && !running && !hasWaitingTasks);
   const metrics = options.performanceMetrics;
   return `

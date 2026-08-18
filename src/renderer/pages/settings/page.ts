@@ -132,7 +132,9 @@ export function renderSettingsPage(
       serviceStarting: viewModel.serviceStarting,
       serviceRestarting: viewModel.serviceRestarting,
       serviceForceStopping: viewModel.serviceForceStopping,
-      serviceStatusMessage: viewModel.serviceStatusMessage
+      serviceStatusMessage: viewModel.serviceStatusMessage,
+      queueRunning: viewModel.queueRunning,
+      hasRunningQueueTask: viewModel.hasRunningQueueTask
     },
     {
       ...sharedFragmentOptions,

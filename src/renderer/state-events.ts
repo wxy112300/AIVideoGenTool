@@ -1,6 +1,7 @@
 import type {
   AppApi,
   AppState,
+  ComfyRuntimeState,
   DependencyInstallProgress,
   HistoryMigrationProgress,
   ImageAssetLibraryProgress,
@@ -29,7 +30,8 @@ export interface RendererEventOptions {
   studio: AppApi;
   t: Translate;
   getState(): AppState | undefined;
-  getComfyConnected(): boolean | undefined;
+  getComfyRuntimeState(): ComfyRuntimeState;
+  setComfyRuntimeState(state: ComfyRuntimeState): void;
   setState(nextState: AppState): void;
   getPage(): Page;
   getHistoryKind(): HistoryKind;
@@ -240,7 +242,7 @@ export function registerRendererEvents(
       if (completion.queueCompleted) {
         options.notify(options.t(uiKeys.runtime.queueCompleted), { kind: "queue-complete" });
       }
-      if (queueStructureStable && patchQueueLiveDom(nextState, options.t, options.getComfyConnected())) return;
+      if (queueStructureStable && patchQueueLiveDom(nextState, options.t, options.getComfyRuntimeState())) return;
       if (isEditingFormControl() || options.getDraftSaveInFlight() > 0) return;
       const visibleHistoryChanged = options.getHistoryKind() === "image"
         ? imageHistoryChanged
@@ -251,6 +253,24 @@ export function registerRendererEvents(
         !visibleHistoryChanged
       ) return;
       options.requestRender();
+    }),
+    options.studio.onComfyRuntimeStateChanged((runtime) => {
+      const previous = options.getComfyRuntimeState();
+      options.setComfyRuntimeState(runtime);
+      const meaningfulTransition = previous.phase !== runtime.phase && (
+        previous.phase !== "unknown" || ["starting", "restarting", "degraded", "error"].includes(runtime.phase)
+      );
+      if (meaningfulTransition && ["starting", "restarting", "ready", "degraded", "stopped", "error"].includes(runtime.phase)) {
+        options.notify(runtime.message, {
+          kind: runtime.phase === "error" ? "error" : ["degraded", "stopped"].includes(runtime.phase) ? "warning" : "info"
+        });
+      }
+      const currentState = options.getState();
+      if (options.getPage() === "queue" && currentState) {
+        patchQueueLiveDom(currentState, options.t, runtime);
+      } else if (options.getPage() === "settings") {
+        options.requestRender();
+      }
     }),
     options.studio.onPromptProgress((progress) => {
       if (progress.status === "running") {

@@ -20,6 +20,14 @@ export function clearOwnedComfyProcessIds(): void {
   ownedComfyProcessIds.clear();
 }
 
+export function rememberOwnedComfyProcessId(processId: number): void {
+  if (Number.isInteger(processId) && processId > 0) ownedComfyProcessIds.add(processId);
+}
+
+export function forgetOwnedComfyProcessId(processId: number): void {
+  ownedComfyProcessIds.delete(processId);
+}
+
 export interface ComfyRuntimeServiceDependencies {
   findComfyRoot(settings: Settings): Promise<string>;
   findComfyInstallation(settings: Settings): Promise<ComfyInstallation | null>;
@@ -28,7 +36,8 @@ export interface ComfyRuntimeServiceDependencies {
     executable: string,
     args: string[],
     cwd?: string,
-    env?: NodeJS.ProcessEnv
+    env?: NodeJS.ProcessEnv,
+    onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void
   ): Promise<number>;
   isPortInUse(port: number): Promise<boolean>;
   downloadEnvironment(settings: Settings): NodeJS.ProcessEnv;
@@ -68,7 +77,8 @@ async function startComfyUiServiceImpl(
       installation.executable,
       [],
       installation.directory,
-      dependencies.downloadEnvironment(settings)
+      dependencies.downloadEnvironment(settings),
+      handleOwnedProcessExit
     );
     ownedComfyProcessIds.add(processId);
     return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
@@ -148,7 +158,8 @@ async function startComfyUiServiceImpl(
     python,
     args,
     sourceRoot,
-    dependencies.downloadEnvironment(settings)
+    dependencies.downloadEnvironment(settings),
+    handleOwnedProcessExit
   );
   ownedComfyProcessIds.add(processId);
   appLogger.info("comfy", "runtime-process-launched", "ComfyUI process launched", {
@@ -156,6 +167,19 @@ async function startComfyUiServiceImpl(
     port: endpoint.port
   });
   return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
+}
+
+function handleOwnedProcessExit(
+  processId: number,
+  code: number | null,
+  signal: NodeJS.Signals | null
+): void {
+  forgetOwnedComfyProcessId(processId);
+  appLogger.info("comfy", "owned-process-exited", "An app-started ComfyUI process exited", {
+    processId,
+    code,
+    signal: signal ?? ""
+  });
 }
 
 export async function startComfyUiService(

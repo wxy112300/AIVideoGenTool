@@ -132,7 +132,14 @@ describe("queue lifecycle status", () => {
   it("uses live ComfyUI connectivity while the queue is idle", () => {
     const state = createDefaultState();
     const translate = (key: string): string => key;
-    expect(queueComfyUiStatus(state, translate, true).tone).toBe("connected");
+    expect(queueComfyUiStatus(state, translate, {
+      phase: "ready",
+      ownership: "external",
+      endpoint: "http://127.0.0.1:8188",
+      message: "ready",
+      updatedAt: new Date().toISOString(),
+      operationId: 1
+    }).tone).toBe("connected");
   });
 
   it("shows cleanup progress and elapsed time while restart is blocked", () => {

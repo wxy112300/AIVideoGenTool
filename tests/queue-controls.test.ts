@@ -56,14 +56,17 @@ describe("queue rapid-operation guards", () => {
       {
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
         updateTask,
-        isComfyUiRunning: async () => false
+        getComfyRuntimeState: () => ({
+          phase: "stopped", ownership: "none", endpoint: "http://127.0.0.1:8188",
+          message: "未连接", updatedAt: new Date().toISOString(), operationId: 1
+        })
       },
       task.id,
       state.settings,
       null
     );
 
-    expect(task.stage).toBe("任务已取消，ComfyUI 已退出");
+    expect(task.stage).toBe("任务已取消，ComfyUI 未连接");
     expect(task.error).toBe("任务已取消");
     expect(updateTask).toHaveBeenCalledOnce();
   });
@@ -82,7 +85,10 @@ describe("queue rapid-operation guards", () => {
       {
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
         updateTask,
-        isComfyUiRunning: async () => false,
+        getComfyRuntimeState: () => ({
+          phase: "stopped", ownership: "none", endpoint: "http://127.0.0.1:8188",
+          message: "未连接", updatedAt: new Date().toISOString(), operationId: 1
+        }),
         isCancellationCurrent: () => false
       },
       task.id,
@@ -92,6 +98,46 @@ describe("queue rapid-operation guards", () => {
 
     expect(task.status).toBe("waiting");
     expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it("waits for an in-flight ComfyUI startup instead of reporting that it exited", async () => {
+    const state = createDefaultState();
+    const task = queuedTask(state);
+    task.status = "cancelled";
+    state.queue = [task];
+    let finishStartup!: (runtime: ReturnType<NonNullable<Parameters<typeof cleanupCancelledQueueTask>[0]["getComfyRuntimeState"]>>) => void;
+    const startupSettled = new Promise<ReturnType<NonNullable<Parameters<typeof cleanupCancelledQueueTask>[0]["getComfyRuntimeState"]>>>((resolve) => {
+      finishStartup = resolve;
+    });
+    const updateTask = vi.fn(async (_taskId: string, patch: Partial<QueueTask>) => {
+      Object.assign(task, patch);
+      return state;
+    });
+
+    const cleanup = cleanupCancelledQueueTask(
+      {
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+        updateTask,
+        getComfyRuntimeState: () => ({
+          phase: "starting", ownership: "app", endpoint: "http://127.0.0.1:8188",
+          message: "启动中", updatedAt: new Date().toISOString(), operationId: 2
+        }),
+        waitForComfyRuntimeSettled: async () => startupSettled,
+        hasSubmittedPrompt: () => false
+      },
+      task.id,
+      { ...state.settings, safeCancel: false },
+      Promise.resolve()
+    );
+
+    await Promise.resolve();
+    expect(updateTask).not.toHaveBeenCalled();
+    finishStartup({
+      phase: "ready", ownership: "app", endpoint: "http://127.0.0.1:8188",
+      message: "已就绪", updatedAt: new Date().toISOString(), operationId: 2
+    });
+    await cleanup;
+    expect(task.stage).not.toContain("已退出");
   });
 
   it("rejects reset while cancellation cleanup is still running", async () => {

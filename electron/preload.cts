@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AppApi,
+  ComfyRuntimeState,
   Draft,
   DependencyInstallProgress,
   EnhanceRequest,
@@ -17,6 +18,7 @@ import type {
 
 const api: AppApi = {
   getState: () => ipcRenderer.invoke("state:get"),
+  getComfyRuntimeState: () => ipcRenderer.invoke("comfy-runtime:get"),
   getAppVersion: () => ipcRenderer.invoke("app:version"),
   setSettingsDirty: (dirty: boolean) => ipcRenderer.invoke("renderer:set-settings-dirty", dirty),
   respondWindowClose: (response: WindowCloseResponse) =>
@@ -122,6 +124,12 @@ const api: AppApi = {
       callback(state as Parameters<typeof callback>[0]);
     ipcRenderer.on("state:changed", listener);
     return () => ipcRenderer.removeListener("state:changed", listener);
+  },
+  onComfyRuntimeStateChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: unknown) =>
+      callback(state as ComfyRuntimeState);
+    ipcRenderer.on("comfy-runtime:changed", listener);
+    return () => ipcRenderer.removeListener("comfy-runtime:changed", listener);
   },
   onTaskPreview: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, preview: unknown) =>

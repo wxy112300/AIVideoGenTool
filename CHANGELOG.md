@@ -10,6 +10,14 @@
 
 暂无。
 
+## 0.27.0 — 2026-08-18
+
+- 新增主进程唯一的 ComfyUI 运行时状态源，区分未知、停止、启动、就绪、接口降级、重启、停止中和错误，并通过独立 IPC 同步到 Queue、Settings 与顶部通知；运行时状态不写入持久队列/历史。
+- 修复“开始队列后立即取消”的两处竞态：取消后的 waiting task 不再被旧执行分支重新写成 running；取消发生在 ComfyUI 启动期间时会等待同一启动操作收敛，不再用瞬时空端口误报“ComfyUI 已退出”。
+- ComfyUI 健康探测与队列生命周期解耦：一次 API 探测失败只标记接口暂时不可用，不把队列 running 推断成服务已连接，也不把端口未监听等同于进程退出。
+- Desktop 启动完成后同时登记真实 listener PID，并将 Desktop 启动壳纳入进程盘点；自动恢复、退出和强停只处理应用明确拥有的进程，外部启动的 ComfyUI 保持不受影响。
+- 增加运行时状态 token、防迟到异步覆盖、启动中取消、降级语义、listener PID 所有权和跨模块展示的聚焦回归测试。
+
 ## 0.26.0 — 2026-08-18
 
 - 提示词模型新增 JonathanColetti Qwen3.8 27B Uncensored 非 MTP Q4 配置，使用配套 `vision-f16` 投影文件和 ComfyUI MultiModal Prompt Nodes；按 4090 的 8K 上下文路径登记为可选实验模型。

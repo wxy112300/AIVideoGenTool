@@ -20,6 +20,31 @@ export type QueueLifecycle =
   | "cleaning"
   | "error";
 
+export type ComfyRuntimePhase =
+  | "unknown"
+  | "stopped"
+  | "starting"
+  | "ready"
+  | "degraded"
+  | "restarting"
+  | "stopping"
+  | "error";
+
+export type ComfyRuntimeOwnership = "unknown" | "none" | "app" | "external";
+
+/**
+ * Process-local ComfyUI service state. This is intentionally delivered over a
+ * dedicated IPC stream instead of being persisted with queue/history data.
+ */
+export interface ComfyRuntimeState {
+  phase: ComfyRuntimePhase;
+  ownership: ComfyRuntimeOwnership;
+  endpoint: string;
+  message: string;
+  updatedAt: string;
+  operationId: number;
+}
+
 export type UiLocale = "zh-CN" | "zh-TW" | "en-US";
 
 export interface PromptVersion {
@@ -1044,6 +1069,7 @@ export interface ImageAssetLibraryResult {
 
 export interface AppApi {
   getState(): Promise<AppState>;
+  getComfyRuntimeState(): Promise<ComfyRuntimeState>;
   getAppVersion(): Promise<string>;
   setSettingsDirty(dirty: boolean): Promise<void>;
   respondWindowClose(response: WindowCloseResponse): Promise<void>;
@@ -1127,6 +1153,7 @@ export interface AppApi {
   setImageHistoryCover(projectId: string, versionId?: string): Promise<AppState>;
   deleteImageHistoryVersion(projectId: string, versionId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;
+  onComfyRuntimeStateChanged(callback: (state: ComfyRuntimeState) => void): () => void;
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
   onPromptProgress(callback: (progress: PromptProgress) => void): () => void;
   onWindowCloseRequest(callback: (request: WindowCloseRequest) => void): () => void;

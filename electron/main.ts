@@ -113,7 +113,6 @@ import {
   TaskStalledError,
   warmNativePromptModel
 } from "./services/comfy-ui.js";
-import { isLocalPortInUse, localEndpoint } from "./services/local-service-process.js";
 import {
   enhancePromptWithMultimodalComfyUi,
   warmMultimodalPromptModel
@@ -128,6 +127,7 @@ import {
 import { getPerformanceMetrics } from "./services/performance.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
 import { captureComfyUiLogFailure } from "./services/comfy-log-bridge.js";
+import { comfyRuntimeState } from "./services/comfy-runtime-state.js";
 import {
   cleanupVideoHistoryMigration,
   isPathWithinDirectory,
@@ -755,6 +755,16 @@ function sendState(state = store.get()): void {
   mainWindow?.webContents.send("state:changed", state);
 }
 
+comfyRuntimeState.subscribe((runtime) => {
+  appLogger.info("comfy", "runtime-state-changed", runtime.message, {
+    phase: runtime.phase,
+    ownership: runtime.ownership,
+    endpoint: runtime.endpoint,
+    operationId: runtime.operationId
+  });
+  mainWindow?.webContents.send("comfy-runtime:changed", runtime);
+});
+
 const videoOutputPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
 
 async function resolveTaskOutputDirectory(): Promise<string> {
@@ -902,10 +912,11 @@ function cleanupCancelledQueueTask(
     {
       logger: appLogger,
       updateTask,
-      isComfyUiRunning: async (currentSettings) => {
-        const endpoint = localEndpoint(currentSettings.comfyUrl, 8188);
-        return endpoint ? isLocalPortInUse(endpoint.port) : true;
-      },
+      getComfyRuntimeState: () => comfyRuntimeState.snapshot(),
+      waitForComfyRuntimeSettled: (timeoutMs) => comfyRuntimeState.waitForSettled(timeoutMs),
+      hasSubmittedPrompt: (currentTaskId) => Boolean(
+        store.get().queue.find((item) => item.id === currentTaskId)?.comfyPromptId
+      ),
       isCancellationCurrent: (currentTaskId) => {
         const current = store.get();
         const task = current.queue.find((item) => item.id === currentTaskId);
@@ -1692,6 +1703,7 @@ async function loggedOperation<T extends { ok: boolean; message: string }>(
 
 function registerIpc(): void {
   ipcMain.handle("state:get", () => store.get());
+  ipcMain.handle("comfy-runtime:get", () => comfyRuntimeState.snapshot());
   ipcMain.handle("app:version", () => app.getVersion());
   ipcMain.handle("renderer:set-settings-dirty", (_event, dirty: boolean) => {
     rendererHasUnsavedSettings = dirty === true;
@@ -1956,9 +1968,14 @@ function registerIpc(): void {
   ipcMain.handle("workflow:get-bundled", (_event, modelId: string, inputMode?: Draft["inputMode"]) =>
     bundledWorkflowFor(modelId, inputMode)
   );
-  ipcMain.handle("performance:get", (_event, settings: Settings) =>
-    getPerformanceMetrics(settings)
-  );
+  ipcMain.handle("performance:get", async (_event, settings: Settings) => {
+    const metrics = await getPerformanceMetrics(settings);
+    comfyRuntimeState.observeReachability(
+      metrics.comfyConnected,
+      settings.comfyUrl.replace(/\/+$/, "")
+    );
+    return metrics;
+  });
   ipcMain.handle("file:pick-directory", async (_event, defaultPath?: string, createIfMissing = false) => {
     const candidate = typeof defaultPath === "string" ? defaultPath.trim() : "";
     const candidatePath = candidate ? path.resolve(candidate) : "";
@@ -2777,6 +2794,17 @@ function registerIpc(): void {
   ipcMain.handle(
     "service:force-stop-comfy",
     async (_event, settings: Settings) => {
+      if (comfyRuntimeState.snapshot().ownership === "external") {
+        return {
+          ok: false,
+          message: "当前 ComfyUI 由外部进程管理，本应用不会终止它。"
+        };
+      }
+      const runtimeOperationId = comfyRuntimeState.begin(
+        "stopping",
+        settings.comfyUrl.replace(/\/+$/, ""),
+        "正在终止由应用管理的 ComfyUI。"
+      );
       appLogger.warn("service", "force-stop-requested", "ComfyUI force-stop requested");
       nativePromptController?.abort(new Error("ComfyUI 已被强制终止，提示词扩写已中止"));
       const worker = queueWorkerController.runningWorker;
@@ -2789,6 +2817,12 @@ function registerIpc(): void {
         await interrupt(settings).catch(() => undefined);
       }
       const result = await forceStopComfyProcesses(settings);
+      comfyRuntimeState.finish(
+        runtimeOperationId,
+        result.ok ? "stopped" : "error",
+        result.message,
+        result.ok ? "none" : comfyRuntimeState.snapshot().ownership
+      );
       appLogger.info(
         "service",
         result.ok ? "force-stop-succeeded" : "force-stop-failed",
@@ -2802,6 +2836,12 @@ function registerIpc(): void {
   ipcMain.handle(
     "service:restart",
     async (_event, kind: LocalServiceKind, settings: Settings) => {
+      if (queueWorkerController.runningWorker || nativePromptController) {
+        return {
+          ok: false,
+          message: "当前仍有队列或提示词任务占用 ComfyUI，请先完成或取消任务。"
+        };
+      }
       appLogger.info("service", "restart-requested", "Local service restart requested", { kind });
       const result = await restartLocalService(kind, settings);
       appLogger.info(

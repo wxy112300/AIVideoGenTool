@@ -2,12 +2,21 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   startComfyUiService,
+  rememberOwnedComfyProcessId,
+  ownedComfyProcessIdSnapshot,
+  clearOwnedComfyProcessIds,
   type ComfyRuntimeServiceDependencies
 } from "../electron/services/comfy-runtime-service";
 import { comfyUiSettingsForQueueTask } from "../electron/services/comfy-runtime-policy";
 import { createDefaultState } from "../src/core/defaults";
 
 describe("ComfyUI runtime service", () => {
+  it("retains the real listener PID after a Desktop launcher hands off", () => {
+    clearOwnedComfyProcessIds();
+    rememberOwnedComfyProcessId(81880);
+    expect(ownedComfyProcessIdSnapshot()).toContain(81880);
+    clearOwnedComfyProcessIds();
+  });
   it("selects memory settings from the queued model instead of persisted defaults", () => {
     const settings = {
       ...createDefaultState().settings,
@@ -104,7 +113,8 @@ describe("ComfyUI runtime service", () => {
       "D:\\Program Files\\ComfyUI\\Comfy Desktop.exe",
       [],
       "D:\\Program Files\\ComfyUI",
-      {}
+      {},
+      expect.any(Function)
     );
   });
 

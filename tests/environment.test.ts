@@ -659,6 +659,7 @@ describe("ComfyUI environment candidates", () => {
     expect(promptProfiles).toHaveLength(11);
     expect(promptProfiles.map((profile) => profile.id)).toEqual([
       "qwen/qwen3.6-27b-uncensored-q4",
+      "qwen/qwen3.8-27b-uncensored-q4",
       "community/gemma-4-e4b-unconcerned-q5",
       "community/gemma-4-12b-uncensored-q4",
       "community/gemma-4-26b-a4b-uncensored-q4",
@@ -666,7 +667,6 @@ describe("ComfyUI environment candidates", () => {
       "google/gemma-4-12b-q4",
       "google/gemma-4-12b-q5",
       "google/gemma-4-26b-a4b-q4",
-      "google/gemma-4-31b-q4",
       "qwen/qwen3.5-4b",
       "qwen/qwen3.5-2b"
     ]);

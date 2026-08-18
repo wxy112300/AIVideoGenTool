@@ -106,6 +106,7 @@ describe("renderer notifications", () => {
         onStateChanged = callback;
         return () => undefined;
       },
+      onComfyRuntimeStateChanged: subscribe,
       onHistoryMigrationProgress: subscribe,
       onImageAssetLibraryProgress: subscribe,
       onTaskPreview: subscribe,
@@ -120,6 +121,11 @@ describe("renderer notifications", () => {
       studio,
       t: (key, params) => params?.title ? `${key}:${params.title}` : key,
       getState: () => state,
+      getComfyRuntimeState: () => ({
+        phase: "unknown", ownership: "unknown", endpoint: "", message: "",
+        updatedAt: new Date(0).toISOString(), operationId: 0
+      }),
+      setComfyRuntimeState: vi.fn(),
       setState: (next) => { state = next; },
       getPage: () => "create",
       getHistoryKind: () => "video",

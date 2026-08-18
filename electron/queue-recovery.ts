@@ -1,4 +1,4 @@
-import type { AppState, QueueTask, Settings, TaskPerformanceStats } from "../src/types.js";
+import type { AppState, ComfyRuntimeState, QueueTask, Settings, TaskPerformanceStats } from "../src/types.js";
 import {
   classifyFailureForRecovery,
   nextAutomaticRetryAttempt,
@@ -20,7 +20,11 @@ async function waitWithTimeout(promise: Promise<unknown> | null, timeoutMs: numb
 }
 
 export async function cleanupCancelledQueueTask(
-  deps: Pick<QueueRecoveryDependencies, "logger" | "updateTask" | "isComfyUiRunning" | "isCancellationCurrent">,
+  deps: Pick<
+    QueueRecoveryDependencies,
+    "logger" | "updateTask" | "getComfyRuntimeState" |
+    "waitForComfyRuntimeSettled" | "hasSubmittedPrompt" | "isCancellationCurrent"
+  >,
   taskId: string,
   settings: Settings,
   worker: Promise<void> | null
@@ -33,20 +37,24 @@ export async function cleanupCancelledQueueTask(
     return true;
   };
   try {
-    const comfyUiRunning = deps.isComfyUiRunning
-      ? await deps.isComfyUiRunning(settings).catch(() => true)
-      : true;
+    let runtime = deps.getComfyRuntimeState?.();
+    if (runtime && ["starting", "restarting", "stopping"].includes(runtime.phase)) {
+      runtime = await deps.waitForComfyRuntimeSettled?.(125_000) ?? runtime;
+    }
     if (!cancellationIsCurrent()) return;
-    if (!comfyUiRunning) {
+    if (runtime && runtime.phase !== "ready") {
       await waitWithTimeout(worker, 15_000);
       await updateCancelledTask({
         status: "cancelled",
-        stage: "任务已取消，ComfyUI 已退出",
+        stage: runtime.phase === "error"
+          ? "任务已取消，ComfyUI 当前不可用"
+          : "任务已取消，ComfyUI 未连接",
         error: "任务已取消"
       });
       return;
     }
-    if (settings.safeCancel) {
+    const hasSubmittedPrompt = deps.hasSubmittedPrompt?.(taskId) ?? true;
+    if (settings.safeCancel && hasSubmittedPrompt) {
       await interrupt(settings).catch((error) => {
         deps.logger.warn("comfy", "cancel-interrupt-failed", "ComfyUI interrupt request failed during background cancellation cleanup", {
           taskId, error: safeLogErrorMessage(error)
@@ -93,7 +101,9 @@ export interface QueueRecoveryDependencies {
   logger: AppLogger;
   sendState(state: AppState): void;
   updateTask(taskId: string, patch: Partial<QueueTask>): Promise<AppState>;
-  isComfyUiRunning?(settings: Settings): Promise<boolean>;
+  getComfyRuntimeState?(): ComfyRuntimeState;
+  waitForComfyRuntimeSettled?(timeoutMs: number): Promise<ComfyRuntimeState>;
+  hasSubmittedPrompt?(taskId: string): boolean;
   isCancellationCurrent?(taskId: string): boolean;
   settingsForTask(task: QueueTask, settings: AppState["settings"]): AppState["settings"];
   errorMeta(error: unknown): Record<string, unknown>;

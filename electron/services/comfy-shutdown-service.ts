@@ -141,7 +141,7 @@ export async function allComfyProcessInfo(settings: Settings, dependencies: Comf
   const script = [
     "$python = $env:AIVIDEO_COMFY_PYTHON.ToLower();",
     "$items = Get-CimInstance Win32_Process | Where-Object {",
-    "  $_.Name -ieq 'ComfyUI.exe' -or",
+    "  $_.Name -ieq 'ComfyUI.exe' -or $_.Name -ieq 'Comfy Desktop.exe' -or",
     "  ($_.Name -match '^(python|pythonw)(\\.exe)?$' -and (",
     "    ($python -and $_.ExecutablePath -and $_.ExecutablePath.ToLower() -eq $python -and $_.CommandLine -match '(?i)main\\.py') -or",
     "    $_.CommandLine -match '(?i)ComfyUI'",

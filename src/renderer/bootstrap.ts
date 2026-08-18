@@ -2,6 +2,7 @@ import type {
   AppApi,
   AppState,
   BundledWorkflow,
+  ComfyRuntimeState,
   Draft,
   EnvironmentScanResult,
   WorkflowCapabilities
@@ -12,6 +13,7 @@ import { uiKeys } from "../core/i18n-keys";
 export interface RendererBootstrapOptions {
   studio: AppApi;
   setState(nextState: AppState): void;
+  setComfyRuntimeState(state: ComfyRuntimeState): void;
   getState(): AppState;
   setAppVersion(version: string): void;
   setEnvironmentScan(scan: EnvironmentScanResult | null): void;
@@ -30,7 +32,11 @@ export function bootstrapRenderer(options: RendererBootstrapOptions): void {
   void options.studio.getState().then(async (initialState) => {
     await loadUiLocale(initialState.settings.uiLocale).catch(() => undefined);
     options.setState(initialState);
-    const appVersion = await options.studio.getAppVersion();
+    const [appVersion, runtime] = await Promise.all([
+      options.studio.getAppVersion(),
+      options.studio.getComfyRuntimeState()
+    ]);
+    options.setComfyRuntimeState(runtime);
     options.setAppVersion(appVersion);
     document.title = `Local Video Studio v${appVersion}`;
     options.render();

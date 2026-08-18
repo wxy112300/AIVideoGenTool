@@ -28,6 +28,8 @@ export interface SettingsEnvironmentOverviewViewModel {
   serviceRestarting: LocalServiceKind | null;
   serviceForceStopping: boolean;
   serviceStatusMessage: string;
+  queueRunning: boolean;
+  hasRunningQueueTask: boolean;
 }
 
 export interface SettingsEnvironmentOverviewOptions extends SettingsFragmentRenderOptions {
@@ -142,8 +144,8 @@ export function renderSettingsEnvironmentOverview(
               <div class="environment-name"><strong>${escape(item.label)}</strong>${item.optional ? `<span class="optional-tag">${t(uiKeys.settings.system.optional)}</span>` : ""}</div>
               ${item.id === "comfyui-api"
                 ? item.ok
-                  ? `<button class="service-start secondary button-with-icon" data-restart-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping ? "disabled" : ""}>${icon("refresh-cw")}${t(viewModel.serviceRestarting === "comfy" ? uiKeys.settings.system.restartWaiting : uiKeys.settings.system.restartService)}</button>`
-                  : `<button class="service-start button-with-icon" data-start-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping ? "disabled" : ""}>${icon("play")}${t(viewModel.serviceStarting === "comfy" ? uiKeys.settings.system.startWaiting : uiKeys.settings.system.startService)}</button>`
+                  ? `<button class="service-start secondary button-with-icon" data-restart-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping || viewModel.queueRunning || viewModel.hasRunningQueueTask ? "disabled" : ""}>${icon("refresh-cw")}${t(viewModel.serviceRestarting === "comfy" ? uiKeys.settings.system.restartWaiting : uiKeys.settings.system.restartService)}</button>`
+                  : `<button class="service-start button-with-icon" data-start-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping || viewModel.queueRunning || viewModel.hasRunningQueueTask ? "disabled" : ""}>${icon("play")}${t(viewModel.serviceStarting === "comfy" ? uiKeys.settings.system.startWaiting : uiKeys.settings.system.startService)}</button>`
                 : ""}
               ${!item.ok && item.downloadUrl ? `<button class="environment-download secondary button-with-icon" data-open-environment-download="${escape(item.downloadUrl)}">${icon("external-link")} ${t(uiKeys.settings.system.openDependencyDownload)}</button>` : ""}
             </div>

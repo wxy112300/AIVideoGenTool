@@ -48,6 +48,7 @@ import {
   installLlamaCppPythonPackage,
   type LlamaCppPythonRuntime
 } from "./llama-cpp-python.js";
+import { comfyRuntimeState } from "./comfy-runtime-state.js";
 import {
   installWorkflowDependencyPackage,
   scanWorkflowDependencies
@@ -89,6 +90,7 @@ import {
 import {
   clearOwnedComfyProcessIds,
   ownedComfyProcessIdSnapshot,
+  rememberOwnedComfyProcessId,
   startComfyUiService
 } from "./comfy-runtime-service.js";
 import {
@@ -2791,9 +2793,16 @@ async function startComfyUi(settings: Settings): Promise<string> {
 export async function forceStopComfyProcesses(
   settings: Settings
 ): Promise<{ ok: boolean; message: string }> {
+  if (!ownedComfyProcessIdSnapshot().length) {
+    return {
+      ok: false,
+      message: "没有可确认由本应用启动的 ComfyUI 进程；为保护外部实例，未执行终止。"
+    };
+  }
   const result = await forceStopComfyProcessesWithDependencies(settings, {
     findComfyPython,
-    ownedProcessIds: ownedComfyProcessIdSnapshot
+    ownedProcessIds: ownedComfyProcessIdSnapshot,
+    ownedOnly: true
   });
   if (result.ok) clearOwnedComfyProcessIds();
   return result;
@@ -2927,10 +2936,19 @@ export async function startLocalService(
   kind: LocalServiceKind,
   settings: Settings
 ): Promise<{ ok: boolean; message: string }> {
+  const endpoint = settings.comfyUrl.replace(/\/+$/, "");
+  const local = localEndpoint(settings.comfyUrl, 8188);
+  const listenerExisted = local ? await isLocalPortInUse(local.port) : false;
+  const operationId = comfyRuntimeState.begin(
+    "starting",
+    endpoint,
+    "正在启动 ComfyUI，等待接口就绪。",
+    listenerExisted ? "external" : "app"
+  );
   try {
     const healthUrl = await startComfyUi(settings);
     const ready = await waitForService(healthUrl);
-    return ready
+    const result = ready
       ? {
           ok: true,
           message: `${kind === "comfy" ? "ComfyUI" : "LM Studio"} 服务已启动。`
@@ -2939,33 +2957,65 @@ export async function startLocalService(
           ok: false,
           message: "已等待 2 分钟，但接口仍未就绪。ComfyUI 可能仍在加载，请稍后重新扫描。"
         };
+    if (ready && !listenerExisted) await rememberOwnedComfyListener(settings);
+    comfyRuntimeState.finish(
+      operationId,
+      ready ? "ready" : "error",
+      result.message,
+      listenerExisted ? "external" : "app"
+    );
+    return result;
   } catch (error) {
-    return {
+    const result = {
       ok: false,
       message: error instanceof Error ? error.message : String(error)
     };
+    comfyRuntimeState.finish(operationId, "error", result.message);
+    return result;
   }
+}
+
+async function rememberOwnedComfyListener(settings: Settings): Promise<void> {
+  const endpoint = localEndpoint(settings.comfyUrl, 8188);
+  if (!endpoint) return;
+  const netstat = await execFileAsync(
+    "netstat.exe",
+    ["-ano", "-p", "tcp"],
+    { encoding: "utf8", timeout: 5000, windowsHide: true }
+  ).catch(() => ({ stdout: "" }));
+  const processId = listeningPid(netstat.stdout, endpoint.port);
+  if (processId) rememberOwnedComfyProcessId(processId);
 }
 
 export async function restartLocalService(
   kind: LocalServiceKind,
   settings: Settings
 ): Promise<{ ok: boolean; message: string }> {
+  const operationId = comfyRuntimeState.begin(
+    "restarting",
+    settings.comfyUrl.replace(/\/+$/, ""),
+    "正在重启 ComfyUI。"
+  );
   try {
     await stopComfyUi(settings);
     const healthUrl = await startComfyUi(settings);
     const ready = await waitForService(healthUrl);
-    return ready
+    const result = ready
       ? { ok: true, message: "ComfyUI 服务已重启并连接成功。" }
       : {
           ok: false,
           message: "ComfyUI 已重新启动，但等待 2 分钟后接口仍未就绪。"
         };
+    if (ready) await rememberOwnedComfyListener(settings);
+    comfyRuntimeState.finish(operationId, ready ? "ready" : "error", result.message, "app");
+    return result;
   } catch (error) {
-    return {
+    const result = {
       ok: false,
       message: error instanceof Error ? error.message : String(error)
     };
+    comfyRuntimeState.finish(operationId, "error", result.message);
+    return result;
   }
 }
 
