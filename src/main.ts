@@ -1491,6 +1491,8 @@ function updateHistoryDetailInPlace(): boolean {
   const nextBack = nextMarkup.querySelector<HTMLElement>(".history-detail-back");
   const currentSidebar = document.querySelector<HTMLElement>(".history-detail-sidebar");
   const nextSidebar = nextMarkup.querySelector<HTMLElement>(".history-detail-sidebar");
+  const currentTags = document.querySelector<HTMLElement>("[data-history-tags-root]");
+  const nextTags = nextMarkup.querySelector<HTMLElement>("[data-history-tags-root]");
   if (!nextPlayer || !nextVideo || !currentBack || !nextBack || !currentSidebar || !nextSidebar) {
     return false;
   }
@@ -1506,6 +1508,11 @@ function updateHistoryDetailInPlace(): boolean {
   currentVideo.load();
   currentBack.replaceWith(nextBack);
   currentSidebar.replaceWith(nextSidebar);
+  // The fast detail-navigation path preserves the player while swapping the
+  // surrounding detail UI. Tags live outside the sidebar, so they must be
+  // swapped explicitly as well; otherwise the old asset's tag controller and
+  // chips remain visible after Page Up/Page Down navigation.
+  if (currentTags && nextTags) currentTags.replaceWith(nextTags);
   // The shell controller owns the global Page Up/Page Down listeners.  The
   // fullscreen fast path only replaces the detail fragments, so rebinding the
   // shell here would leave the previous window listener alive and make each

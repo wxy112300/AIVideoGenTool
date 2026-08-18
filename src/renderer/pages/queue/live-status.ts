@@ -261,7 +261,9 @@ export function patchQueueLiveDom(
     state.queueStartedAt &&
     (state.queueRunning || (lifecycle !== "idle" && lifecycle !== "error"))
   );
-  if (runSummary) runSummary.hidden = !queueSessionActive;
+  // Keep the ETA visible for waiting/paused work even before a run has
+  // started. Only the elapsed counter depends on an active queue session.
+  if (runSummary) runSummary.hidden = !(activeTasks.length > 0 || queueSessionActive);
   const headerElapsed = document.querySelector<HTMLElement>("#queue-runtime-elapsed");
   if (headerElapsed) headerElapsed.textContent = queueSessionActive ? elapsedText(state.queueStartedAt, t) : "";
   const elapsed = document.querySelector<HTMLElement>("#running-elapsed");

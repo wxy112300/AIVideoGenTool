@@ -71,7 +71,10 @@ export function renderQueuePage(
   const comfyUi = queueComfyUiStatus(state, options.t, options.comfyRuntime);
   const operation = queueOperationStatus(state, options.t);
   const headerTone = queueHeaderTone(state);
-  const showRunSummary = Boolean(
+  // Keep the total ETA visible as soon as there is queued work. The elapsed
+  // counter stays empty until a queue run actually starts, but hiding the
+  // whole summary made a useful pre-run estimate disappear.
+  const showRunSummary = activeTasks.length > 0 || Boolean(
     state.queueStartedAt &&
     (state.queueRunning || (lifecycle !== "idle" && lifecycle !== "error"))
   );

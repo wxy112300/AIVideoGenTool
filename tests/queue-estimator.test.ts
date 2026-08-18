@@ -103,6 +103,48 @@ describe("queue duration estimator", () => {
     expect(estimateQueueTaskSeconds(task(), history)).toBe(110);
   });
 
+  it("scales a matching history sample by the newly generated duration", () => {
+    const sample = videoHistory(100, {
+      inputMode: "video",
+      duration: 15
+    });
+    sample.trimStartSeconds = 0;
+    sample.trimEndSeconds = 10;
+    sample.sourceVideoDuration = 10;
+    const history = {
+      video: [sample]
+    };
+    const extension = task({
+      taskType: "extension",
+      duration: 5,
+      sourceVideoPath: "source.mp4",
+      sourceVideoDuration: 10,
+      trimStartSeconds: 0,
+      trimEndSeconds: 10,
+      sourceWidth: 848,
+      sourceHeight: 480,
+      modelProfile: "q3_k_m",
+      maxGeneratedFrames: 49,
+      overlapFrames: 16,
+      unloadBetweenStages: true
+    }) as QueueTask;
+    expect(estimateQueueTaskSeconds(extension, history)).toBe(100);
+  });
+
+  it("uses workload scaling when history has a shorter run", () => {
+    const history = { video: [videoHistory(100)] };
+    const longer = task({ duration: 15 });
+    const estimate = estimateQueueTaskSeconds(longer, history);
+    expect(estimate).toBeGreaterThan(250);
+    expect(estimate).toBeLessThan(275);
+  });
+
+  it("borrows a same-family precision variant without mixing unrelated models", () => {
+    const history = { video: [videoHistory(100)] };
+    expect(estimateQueueTaskSeconds(task({ modelId: "minimax_h3_fl2va_int4" }), history)).toBe(100);
+    expect(estimateQueueTaskSeconds(task({ modelId: "unrelated-model" }), history)).toBeNull();
+  });
+
   it("blends history with observed progress without trusting a non-linear early step", () => {
     const history = { video: [videoHistory(100)] };
     const running = task({
@@ -181,5 +223,12 @@ describe("queue duration estimator", () => {
       { video: [], image: imageHistory },
       Date.parse("2026-08-15T00:02:00.000Z")
     )).toBeGreaterThan(5);
+  });
+
+  it("keeps a partial queue total visible while a new task is still learning", () => {
+    const history = { video: [videoHistory(100)] };
+    const known = task({ id: "known" });
+    const unknown = task({ id: "unknown", modelId: "new-model-without-history" });
+    expect(estimateQueueRemainingSeconds([known, unknown], history)).toBe(100);
   });
 });
