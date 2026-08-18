@@ -16,6 +16,7 @@ export interface SettingsViewModelDependencies {
   state: AppState;
   settingsDraft: Settings | null;
   environmentScan: EnvironmentScanResult | null;
+  comfyConnected?: boolean;
   environmentScanning: boolean;
   environmentScanError: string;
   settingsTab: SettingsTab;
@@ -54,23 +55,45 @@ export interface SettingsViewModelDependencies {
   promptRuntimeControlTitle(settings: Settings): string;
 }
 
+export function environmentScanWithLiveComfyUiStatus(
+  scan: EnvironmentScanResult | null,
+  comfyConnected: boolean | undefined
+): EnvironmentScanResult | null {
+  if (!scan || comfyConnected == null) return scan;
+  return {
+    ...scan,
+    items: scan.items.map((item) => item.id === "comfyui-api"
+      ? {
+          ...item,
+          ok: comfyConnected,
+          status: comfyConnected ? "available" : "warning",
+          detail: `${comfyConnected ? "运行中" : "未运行或无法连接"} · ${scan.comfyUrl}/system_stats`
+        }
+      : item)
+  };
+}
+
 export function buildSettingsPageViewModel(
   options: SettingsViewModelDependencies
 ): SettingsPageViewModel {
   const settings = options.settingsDraft ?? options.state.settings;
+  const environmentScan = environmentScanWithLiveComfyUiStatus(
+    options.environmentScan,
+    options.comfyConnected
+  );
   const promptRuntimeBusy = options.promptStarting ||
     options.promptEnhancing ||
     options.promptReleasing;
   return {
     settings,
     settingsDirty: options.settingsHaveUnsavedChanges(),
-    environmentScan: options.environmentScan,
+    environmentScan,
     environmentScanning: options.environmentScanning,
     environmentScanError: options.environmentScanError,
     settingsTab: options.settingsTab,
     settingsH3PromptPreset: options.settingsH3PromptPreset,
     settingsImagePromptPreset: options.settingsImagePromptPreset,
-    promptStatus: promptModelStatus(settings, options.environmentScan),
+    promptStatus: promptModelStatus(settings, environmentScan),
     promptRuntimeLoaded: options.promptRuntimeLoaded,
     promptRuntimeBusy,
     promptRuntimeControlIconName: options.promptRuntimeControlIcon(),

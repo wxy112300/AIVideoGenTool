@@ -5,6 +5,7 @@ import { persistVideoHistoryResult } from "../electron/queue-history";
 import { QueueWorkerController } from "../electron/queue-worker";
 import { queueTaskInput } from "../src/renderer/pages/queue/card";
 import { queueLayoutSignature } from "../src/renderer/pages/queue/helpers";
+import { queueComfyUiStatus, queueOperationStatus } from "../src/renderer/pages/queue/live-status";
 
 describe("queue history persistence", () => {
   it("atomically removes a completed generation task and records its history snapshot", () => {
@@ -120,9 +121,32 @@ describe("queue renderer layout signature", () => {
 
     state.queueLifecycle = "starting";
     state.queueLifecycleTaskId = task.id;
-    expect(queueLayoutSignature(state)).toBe(baseline);
+    expect(queueLayoutSignature(state)).not.toBe(baseline);
 
     task.status = "running";
     expect(queueLayoutSignature(state)).not.toBe(baseline);
+  });
+});
+
+describe("queue lifecycle status", () => {
+  it("uses live ComfyUI connectivity while the queue is idle", () => {
+    const state = createDefaultState();
+    const translate = (key: string): string => key;
+    expect(queueComfyUiStatus(state, translate, true).tone).toBe("connected");
+  });
+
+  it("shows cleanup progress and elapsed time while restart is blocked", () => {
+    const state = createDefaultState();
+    state.queueLifecycle = "cleaning";
+    state.queueLifecycleTaskId = "task-1";
+    state.queueLifecycleStartedAt = new Date(Date.now() - 12_000).toISOString();
+    const status = queueOperationStatus(state, (key, params) =>
+      `${key}:${String(params?.duration ?? "")}`
+    );
+
+    expect(status.visible).toBe(true);
+    expect(status.tone).toBe("pending");
+    expect(status.message).toContain("queue.operation.cleaning");
+    expect(status.message).not.toContain("NaN");
   });
 });

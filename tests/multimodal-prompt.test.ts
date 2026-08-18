@@ -1,8 +1,47 @@
 import { describe, expect, it } from "vitest";
-import { buildMultimodalPromptWorkflow } from "../electron/services/multimodal-prompt.js";
+import {
+  buildMultimodalPromptWorkflow,
+  multimodalActivityTimeoutMinutes,
+  multimodalDeviceFor
+} from "../electron/services/multimodal-prompt.js";
 import { createDefaultState } from "../src/core/defaults.js";
 
 describe("Qwen3.6 ComfyUI prompt workflow", () => {
+  it("falls back to CPU when Qwen3.6 does not have enough free VRAM", () => {
+    expect(multimodalDeviceFor(
+      "qwen/qwen3.6-27b-uncensored-q4",
+      4.5 * 1024 ** 3,
+      22.9 * 1024 ** 3
+    )).toBe("CPU");
+    expect(multimodalDeviceFor(
+      "qwen/qwen3.6-27b-uncensored-q4",
+      1 * 1024 ** 3,
+      22.9 * 1024 ** 3
+    )).toBe("CPU");
+    expect(multimodalActivityTimeoutMinutes(
+      "qwen/qwen3.6-27b-uncensored-q4",
+      "CPU"
+    )).toBe(20);
+  });
+
+  it("can render the VisionLLM workflow with an explicit CPU device", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "qwen/qwen3.6-27b-uncensored-q4";
+    const workflow = buildMultimodalPromptWorkflow(
+      {
+        prompt: "A person walks toward the camera.",
+        modelId: "minimax_h3_fl2va",
+        h3PromptMode: "I2VA"
+      },
+      ["studio-input-reference.png"],
+      settings,
+      false,
+      "CPU"
+    );
+
+    expect(workflow["vision-llm"]?.inputs.device).toBe("CPU");
+  });
+
   it("uses the VisionLLM node, the regular Q4 model, and GPU-safe prompt limits", () => {
     const settings = createDefaultState().settings;
     settings.promptModelId = "qwen/qwen3.6-27b-uncensored-q4";

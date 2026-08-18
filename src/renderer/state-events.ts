@@ -29,6 +29,7 @@ export interface RendererEventOptions {
   studio: AppApi;
   t: Translate;
   getState(): AppState | undefined;
+  getComfyConnected(): boolean | undefined;
   setState(nextState: AppState): void;
   getPage(): Page;
   getHistoryKind(): HistoryKind;
@@ -239,7 +240,7 @@ export function registerRendererEvents(
       if (completion.queueCompleted) {
         options.notify(options.t(uiKeys.runtime.queueCompleted), { kind: "queue-complete" });
       }
-      if (queueStructureStable && patchQueueLiveDom(nextState, options.t)) return;
+      if (queueStructureStable && patchQueueLiveDom(nextState, options.t, options.getComfyConnected())) return;
       if (isEditingFormControl() || options.getDraftSaveInFlight() > 0) return;
       const visibleHistoryChanged = options.getHistoryKind() === "image"
         ? imageHistoryChanged

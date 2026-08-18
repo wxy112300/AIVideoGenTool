@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectOwnedComfyProcessIds,
   collectComfyProcessIds,
   listeningPid,
   parseComfyProcessInfo
@@ -38,5 +39,23 @@ describe("ComfyUI shutdown service", () => {
 
     expect([...collectComfyProcessIds(processes, 4100)]).toEqual([4100, 4200]);
     expect([...collectComfyProcessIds(processes, 4300)]).toEqual([4100, 4200, 4300]);
+  });
+
+  it("selects only owned process descendants for automatic recovery", () => {
+    const processes = parseComfyProcessInfo(JSON.stringify([
+      { ProcessId: 4100, ParentProcessId: 3000, Name: "python.exe", CommandLine: "owned main.py" },
+      { ProcessId: 4200, ParentProcessId: 4100, Name: "python.exe", CommandLine: "owned worker" },
+      { ProcessId: 4300, ParentProcessId: 3000, Name: "python.exe", CommandLine: "external main.py" }
+    ]));
+
+    expect([...collectOwnedComfyProcessIds(processes, [4100])]).toEqual([4100, 4200]);
+  });
+
+  it("does not report an owned PID that has already exited", () => {
+    const processes = parseComfyProcessInfo(JSON.stringify([
+      { ProcessId: 4200, ParentProcessId: 4100, Name: "python.exe", CommandLine: "owned worker" }
+    ]));
+
+    expect([...collectOwnedComfyProcessIds(processes, [4100])]).toEqual([]);
   });
 });

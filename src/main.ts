@@ -734,6 +734,7 @@ function createPage(): string {
 function queuePage(): string {
   return renderQueuePage(state, {
     t: rendererApp.context.t,
+    escapeHtml,
     performanceMetrics,
     queueRemainingSeconds: (tasks) => calculateQueueRemainingSeconds(tasks, state.history, state.imageHistory),
     queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
@@ -752,6 +753,8 @@ function queueTaskCard(
     t: rendererApp.context.t,
     taskPreviews,
     queueRunning: state.queueRunning,
+    queueLifecycle: state.queueLifecycle,
+    queueLifecycleTaskId: state.queueLifecycleTaskId,
     queueActionBusy,
     icon,
     escapeHtml,
@@ -999,6 +1002,7 @@ function settingsPage(): string {
       state,
       settingsDraft,
       environmentScan,
+      comfyConnected: performanceMetrics?.comfyConnected,
       environmentScanning,
       environmentScanError,
       settingsTab,
@@ -1226,7 +1230,15 @@ const queueLiveStatus = createQueueLiveStatus({
   getState: () => state,
   getPage: () => page,
   setPerformanceMetrics: (metrics) => {
+    const connectionChanged = performanceMetrics?.comfyConnected !== metrics.comfyConnected;
     performanceMetrics = metrics;
+    if (connectionChanged && page === "settings") {
+      const activeElement = document.activeElement;
+      const editing = activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        activeElement instanceof HTMLSelectElement;
+      if (!editing) render();
+    }
   }
 });
 queueLiveStatus.start();
@@ -1286,7 +1298,8 @@ function showMessage(
 }
 
 function reportUserAction(action: string, meta?: Record<string, unknown>): void {
-  void window.studio.reportUserAction(action, meta).catch(() => undefined);
+  void action;
+  void meta;
 }
 
 function clearAppLogScreen(): void {
@@ -1325,7 +1338,7 @@ async function pollAppLogs(): Promise<void> {
   ) return;
   appLogPollingInFlight = true;
   try {
-    const snapshot = await window.studio.readAppLogs(500);
+    const snapshot = await window.studio.readAppLogs(2000);
     if (snapshot.text !== appLogs?.text) applyAppLogSnapshot(snapshot);
   } catch {
     // The panel keeps the last readable log while the main process is busy.
@@ -2485,7 +2498,7 @@ async function loadAppLogs(): Promise<void> {
   appLogsError = "";
   render();
   try {
-    applyAppLogSnapshot(await window.studio.readAppLogs(500));
+    applyAppLogSnapshot(await window.studio.readAppLogs(2000));
   } catch (error) {
     appLogsError = error instanceof Error ? error.message : String(error);
   } finally {
@@ -2649,6 +2662,7 @@ registerRendererEvents({
   studio: window.studio,
   t: rendererApp.context.t,
   getState: () => state,
+  getComfyConnected: () => performanceMetrics?.comfyConnected,
   setState: setRendererState,
   getPage: () => page,
   getHistoryKind: () => historyKind,

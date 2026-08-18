@@ -94,7 +94,7 @@ const modelHardwareRecommendations: Record<string, string> = {
   "google/gemma-4-12b-q4": "RTX 3060/4070 12GB 以上 · 系统 RAM 24GB 以上",
   "google/gemma-4-12b-q5": "RTX 4080/4090 16GB 以上 · 系统 RAM 24GB 以上",
   "google/gemma-4-26b-a4b-q4": "RTX 3090/4090 24GB 以上",
-  "google/gemma-4-31b-q4": "RTX 4090 32GB 以上或专业卡"
+  "qwen/qwen3.8-27b-uncensored-q4": "RTX 4090 24GB 以上 · 系统 RAM 32GB 以上"
 };
 
 function escapeValue(

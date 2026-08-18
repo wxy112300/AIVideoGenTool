@@ -46,6 +46,7 @@ describe("ComfyUI log bridge", () => {
     const snapshot = logger.recent();
     expect(snapshot.text).toContain("ComfyUI: Traceback (most recent call last):");
     expect(snapshot.text).toContain("ComfyUI: RuntimeError: Llama.eval failed");
+    expect(snapshot.text).toContain("[path]/node.py");
     expect(snapshot.text).not.toContain("private prompt text");
     expect(snapshot.text).not.toContain("C:\\private\\node.py");
   });

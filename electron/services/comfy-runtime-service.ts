@@ -10,6 +10,15 @@ import { localEndpoint } from "./local-service-process.js";
 import { getApplicationLogger } from "./app-logger.js";
 
 const appLogger = getApplicationLogger();
+const ownedComfyProcessIds = new Set<number>();
+
+export function ownedComfyProcessIdSnapshot(): readonly number[] {
+  return [...ownedComfyProcessIds];
+}
+
+export function clearOwnedComfyProcessIds(): void {
+  ownedComfyProcessIds.clear();
+}
 
 export interface ComfyRuntimeServiceDependencies {
   findComfyRoot(settings: Settings): Promise<string>;
@@ -20,7 +29,8 @@ export interface ComfyRuntimeServiceDependencies {
     args: string[],
     cwd?: string,
     env?: NodeJS.ProcessEnv
-  ): Promise<void>;
+  ): Promise<number>;
+  isPortInUse(port: number): Promise<boolean>;
   downloadEnvironment(settings: Settings): NodeJS.ProcessEnv;
   exists(filename: string): Promise<boolean>;
   findComfyPython(
@@ -34,7 +44,9 @@ export interface ComfyRuntimeServiceDependencies {
   ): { modelDirectory: string; outputDirectory: string };
 }
 
-export async function startComfyUiService(
+let pendingComfyUiStart: Promise<string> | null = null;
+
+async function startComfyUiServiceImpl(
   settings: Settings,
   dependencies: ComfyRuntimeServiceDependencies
 ): Promise<string> {
@@ -42,16 +54,23 @@ export async function startComfyUiService(
   if (!endpoint) {
     throw new Error("一键启动只支持本机 ComfyUI 地址（localhost 或 127.0.0.1）。");
   }
+  if (await dependencies.isPortInUse(endpoint.port)) {
+    appLogger.info("comfy", "startup-skipped-existing-listener", "ComfyUI startup skipped because the configured port is already in use", {
+      port: endpoint.port
+    });
+    return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
+  }
   const comfyRoot = await dependencies.findComfyRoot(settings);
   const installation = await dependencies.findComfyInstallation(settings);
   if (installation?.type === "desktop" && !installation.sourceDirectory) {
     await dependencies.applyComfyDesktopSettings(settings);
-    await dependencies.launchDetached(
+    const processId = await dependencies.launchDetached(
       installation.executable,
       [],
       installation.directory,
       dependencies.downloadEnvironment(settings)
     );
+    ownedComfyProcessIds.add(processId);
     return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
   }
   const sourceRoot = installation?.sourceDirectory || comfyRoot;
@@ -109,22 +128,46 @@ export async function startComfyUiService(
       "--output-directory",
       directories.outputDirectory,
       "--temp-directory",
-      path.join(comfyRoot, "temp"),
-      "--database-url",
-      `sqlite:///${path.join(comfyRoot, "user", "comfyui.db").replaceAll("\\", "/")}`
+      path.join(comfyRoot, "temp")
     );
   } else if (settings.outputDirectory.trim()) {
     args.push("--output-directory", directories.outputDirectory);
   }
+  const databaseRoot = comfyRoot || sourceRoot;
+  const databaseFilename = `comfyui.local-video-studio-${process.pid}-${endpoint.port}.db`;
+  args.push(
+    "--database-url",
+    `sqlite:///${path.join(databaseRoot, "user", databaseFilename).replaceAll("\\", "/")}`
+  );
   appLogger.info("comfy", "runtime-profile-launch", "Launching ComfyUI with an isolated runtime profile", {
     runtimeProfile,
-    memoryArgs
+    memoryArgs,
+    databaseFilename
   });
-  await dependencies.launchDetached(
+  const processId = await dependencies.launchDetached(
     python,
     args,
     sourceRoot,
     dependencies.downloadEnvironment(settings)
   );
+  ownedComfyProcessIds.add(processId);
+  appLogger.info("comfy", "runtime-process-launched", "ComfyUI process launched", {
+    processId,
+    port: endpoint.port
+  });
   return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
+}
+
+export async function startComfyUiService(
+  settings: Settings,
+  dependencies: ComfyRuntimeServiceDependencies
+): Promise<string> {
+  if (pendingComfyUiStart) return pendingComfyUiStart;
+  const start = startComfyUiServiceImpl(settings, dependencies);
+  pendingComfyUiStart = start;
+  try {
+    return await start;
+  } finally {
+    if (pendingComfyUiStart === start) pendingComfyUiStart = null;
+  }
 }

@@ -415,6 +415,7 @@ export class JsonStore {
         // separately to a safe waiting state above.
         queueLifecycle: "idle",
         queueLifecycleTaskId: undefined,
+        queueLifecycleStartedAt: undefined,
         // Queue timing is process-local. Never restore an old session's
         // timestamp after the app has been restarted.
         queueStartedAt: undefined
@@ -425,6 +426,7 @@ export class JsonStore {
       let needsPersist = saved.queueRunning === true ||
         savedQueueLifecycle !== "idle" ||
         typeof saved.queueStartedAt === "string" ||
+        typeof (saved as { queueLifecycleStartedAt?: unknown }).queueLifecycleStartedAt === "string" ||
         typeof (saved as { queueLifecycle?: unknown }).queueLifecycle !== "string" ||
         savedSchemaVersion < 12 ||
         !hasIndependentExtensionPromptState ||

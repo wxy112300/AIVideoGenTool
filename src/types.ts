@@ -581,6 +581,8 @@ export interface AppState {
   queueStartedAt?: string;
   queueLifecycle: QueueLifecycle;
   queueLifecycleTaskId?: string;
+  /** Process-local timestamp for the current queue lifecycle operation. */
+  queueLifecycleStartedAt?: string;
 }
 
 export type ConnectionKind = "comfy";
@@ -966,6 +968,10 @@ export interface TaskPreview {
 export interface WindowCloseRequest {
   kind: "unsaved-settings" | "running-work";
   hasUnsavedSettings?: boolean;
+  queueCleanupOnly?: boolean;
+  queueCleanupTimedOut?: boolean;
+  queueLifecycle?: QueueLifecycle;
+  queueLifecycleStartedAt?: string;
 }
 
 export type WindowCloseResponse =

@@ -110,8 +110,10 @@ import {
   enhancePromptWithComfyUi,
   testComfyUi,
   interrupt,
+  TaskStalledError,
   warmNativePromptModel
 } from "./services/comfy-ui.js";
+import { isLocalPortInUse, localEndpoint } from "./services/local-service-process.js";
 import {
   enhancePromptWithMultimodalComfyUi,
   warmMultimodalPromptModel
@@ -234,7 +236,8 @@ const taskStageStartedAt = new Map<string, { stage: string; startedAt: number }>
 
 function createPromptProgressController(
   modelId: string,
-  startedAt: number
+  startedAt: number,
+  operationId: string
 ): {
   update: PromptProgressReporter;
   finish(status: PromptProgress["status"], stage: PromptProgressStage, error?: string): void;
@@ -262,6 +265,8 @@ function createPromptProgressController(
     };
     mainWindow?.webContents.send("prompt:progress", payload);
     appLogger.info("prompt", "progress", "Prompt enhancement progress", {
+      operationId,
+      modelId,
       stage,
       status,
       progress,
@@ -307,9 +312,29 @@ try {
 
 function errorLogMeta(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
+    const details = error as Error & {
+      cause?: unknown;
+      code?: unknown;
+      errno?: unknown;
+      syscall?: unknown;
+      status?: unknown;
+      statusCode?: unknown;
+    };
     return {
       errorName: error.name,
-      errorStack: error.stack ?? ""
+      errorStack: error.stack ?? "",
+      ...(details.cause !== undefined
+        ? { errorCause: safeLogErrorMessage(details.cause) }
+        : {}),
+      ...(typeof details.code === "string" || typeof details.code === "number"
+        ? { errorCode: details.code }
+        : {}),
+      ...(typeof details.errno === "string" || typeof details.errno === "number"
+        ? { errorErrno: details.errno }
+        : {}),
+      ...(typeof details.syscall === "string" ? { errorSyscall: details.syscall } : {}),
+      ...(typeof details.status === "number" ? { errorStatus: details.status } : {}),
+      ...(typeof details.statusCode === "number" ? { errorStatusCode: details.statusCode } : {})
     };
   }
   return { errorType: typeof error };
@@ -874,17 +899,52 @@ function cleanupCancelledQueueTask(
   worker: Promise<void> | null
 ): Promise<void> {
   return cleanupCancelledQueueTaskInRecovery(
-    { logger: appLogger, updateTask },
+    {
+      logger: appLogger,
+      updateTask,
+      isComfyUiRunning: async (currentSettings) => {
+        const endpoint = localEndpoint(currentSettings.comfyUrl, 8188);
+        return endpoint ? isLocalPortInUse(endpoint.port) : true;
+      },
+      isCancellationCurrent: (currentTaskId) => {
+        const current = store.get();
+        const task = current.queue.find((item) => item.id === currentTaskId);
+        return current.queueLifecycleTaskId === currentTaskId &&
+          (current.queueLifecycle === "cancelling" || current.queueLifecycle === "cleaning") &&
+          task?.status === "cancelled";
+      }
+    },
     taskId,
     settings,
     worker
   );
 }
-async function interruptForExit(waitForWorker: boolean): Promise<{
+async function interruptForExit(
+  waitForWorker: boolean,
+  queueCleanupOnly = false
+): Promise<{
   interrupted: boolean;
   workerSettled: boolean;
 }> {
   const settings = store.get().settings;
+  if (queueCleanupOnly) {
+    const cleanupWorker = queueWorkerController.cleanupWorker;
+    if (!waitForWorker) {
+      const forced = await forceStopComfyProcesses(settings);
+      appLogger.info(
+        "service",
+        forced.ok ? "cleanup-force-stop-succeeded" : "cleanup-force-stop-failed",
+        forced.message,
+        { ok: forced.ok }
+      );
+      return { interrupted: forced.ok, workerSettled: false };
+    }
+    const cleanupSettled = await waitWithTimeout(cleanupWorker, 15_000);
+    return {
+      interrupted: true,
+      workerSettled: cleanupSettled && await waitWithTimeout(queueWorkerController.runningWorker, 15_000)
+    };
+  }
   const hadNativePrompt = Boolean(nativePromptWorker);
   const next = await store.update((state) => {
     state.queueRunning = false;
@@ -1042,12 +1102,37 @@ async function handleWindowClose(): Promise<void> {
     });
     return;
   }
-  const runningTask = store
-    .get()
-    .queue.find((task) => task.status === "running");
-  const hasRunningWork = Boolean(
-    runningTask || queueWorkerController.activeController || queueWorkerController.runningWorker || nativePromptWorker
+  const currentState = store.get();
+  const runningTask = currentState.queue.find((task) => task.status === "running");
+  const cleanupTask = currentState.queueLifecycleTaskId
+    ? currentState.queue.find((task) => task.id === currentState.queueLifecycleTaskId)
+    : undefined;
+  const queueCleanupOnly = !runningTask && !nativePromptWorker && (
+    currentState.queueLifecycle === "cancelling" ||
+    currentState.queueLifecycle === "cleaning" ||
+    Boolean(queueWorkerController.cleanupWorker) ||
+    (currentState.queueLifecycle === "error" &&
+      cleanupTask?.status === "cancelled" &&
+      Boolean(queueWorkerController.runningWorker || queueWorkerController.activeController))
   );
+  const hasRunningWork = Boolean(
+    runningTask || nativePromptWorker || (
+      !queueCleanupOnly &&
+      (queueWorkerController.activeController || queueWorkerController.runningWorker)
+    )
+  );
+  if (!hasRunningWork && queueCleanupOnly) {
+    closeFlowRunning = true;
+    pendingWindowCloseRequest = {
+      kind: "running-work",
+      hasUnsavedSettings: rendererHasUnsavedSettings,
+      queueCleanupOnly: true,
+      queueLifecycle: currentState.queueLifecycle,
+      queueLifecycleStartedAt: currentState.queueLifecycleStartedAt
+    };
+    mainWindow.webContents.send("window:close-requested", pendingWindowCloseRequest);
+    return;
+  }
   if (!hasRunningWork && !rendererHasUnsavedSettings) {
     await finishWindowClose();
     return;
@@ -1061,42 +1146,46 @@ async function handleWindowClose(): Promise<void> {
   closeFlowRunning = true;
   pendingWindowCloseRequest = {
     kind: "running-work",
-    hasUnsavedSettings: rendererHasUnsavedSettings
+    hasUnsavedSettings: rendererHasUnsavedSettings,
+    ...(queueCleanupOnly
+      ? {
+          queueCleanupOnly: true,
+          queueLifecycle: currentState.queueLifecycle,
+          queueLifecycleStartedAt: currentState.queueLifecycleStartedAt
+        }
+      : {})
   };
   mainWindow.webContents.send("window:close-requested", pendingWindowCloseRequest);
 }
 
 async function finishRunningWorkClose(
-  response: "finish-tasks" | "force-exit"
+  response: "finish-tasks" | "force-exit",
+  queueCleanupOnly = false
 ): Promise<void> {
   try {
     if (!mainWindow) return;
     mainWindow.setTitle(`正在结束任务并退出… · ${studioWindowTitle()}`);
     if (response === "force-exit") {
-      await interruptForExit(false);
+      await interruptForExit(false, queueCleanupOnly);
       await finishWindowClose();
       return;
     }
-    const result = await interruptForExit(true);
-    if (!result.interrupted || !result.workerSettled) {
-      const fallback = await dialog.showMessageBox(mainWindow, {
-        type: "warning",
-        title: "任务清理尚未完成",
-        message: "没有收到完整的任务中止确认。",
-        detail:
-          "可以继续等待，或强制退出。强制退出前会再次尝试通知 ComfyUI 中断当前计算。",
-        buttons: ["继续等待", "强制退出", "取消退出"],
-        defaultId: 0,
-        cancelId: 2,
-        noLink: true
-      });
-      if (fallback.response === 2) return;
-      if (fallback.response === 0) {
-        const retried = await interruptForExit(true);
-        if (!retried.interrupted || !retried.workerSettled) return;
-      } else {
-        await interruptForExit(false);
-      }
+    const result = await interruptForExit(true, queueCleanupOnly);
+    // A stopped ComfyUI cannot acknowledge /interrupt. Once the application
+    // worker and prompt worker have settled, there is no remaining work to
+    // block the window close even when the HTTP request failed.
+    if (!result.workerSettled) {
+      const currentState = store.get();
+      pendingWindowCloseRequest = {
+        kind: "running-work",
+        hasUnsavedSettings: rendererHasUnsavedSettings,
+        queueCleanupOnly,
+        queueCleanupTimedOut: true,
+        queueLifecycle: currentState.queueLifecycle,
+        queueLifecycleStartedAt: currentState.queueLifecycleStartedAt
+      };
+      mainWindow.webContents.send("window:close-requested", pendingWindowCloseRequest);
+      return;
     }
     await finishWindowClose();
   } finally {
@@ -1254,8 +1343,14 @@ async function setQueueLifecycle(
   taskId?: string
 ): Promise<AppState> {
   const next = await store.update((state) => {
+    const changed = state.queueLifecycle !== lifecycle || state.queueLifecycleTaskId !== taskId;
     state.queueLifecycle = lifecycle;
     state.queueLifecycleTaskId = taskId;
+    if (lifecycle === "idle") {
+      state.queueLifecycleStartedAt = undefined;
+    } else if (changed || !state.queueLifecycleStartedAt) {
+      state.queueLifecycleStartedAt = new Date().toISOString();
+    }
   });
   sendState(next);
   return next;
@@ -1275,11 +1370,23 @@ function isLocalComfyUrl(value: string): boolean {
   }
 }
 
-async function ensureComfyUiReady(taskId: string): Promise<void> {
+async function ensureComfyUiReady(taskId: string, signal?: AbortSignal): Promise<void> {
+  const throwIfCancelled = (): void => {
+    if (!signal?.aborted) return;
+    throw signal.reason instanceof Error ? signal.reason : new Error("队列任务已取消");
+  };
+  throwIfCancelled();
   const settings = store.get().settings;
   const queuedTask = store.get().queue.find((item) => item.id === taskId);
   const serviceSettings = comfyUiSettingsForQueueTask(queuedTask, settings);
-  const profile = await alignLocalComfyUiRuntimeProfile(serviceSettings);
+  let profile;
+  try {
+    profile = await alignLocalComfyUiRuntimeProfile(serviceSettings);
+  } catch (error) {
+    throwIfCancelled();
+    throw error;
+  }
+  throwIfCancelled();
   if (!profile.ok) {
     throw new Error(`ComfyUI 运行配置切换失败：${profile.message}`);
   }
@@ -1294,6 +1401,7 @@ async function ensureComfyUiReady(taskId: string): Promise<void> {
   }
   try {
     await testComfyUi(serviceSettings);
+    throwIfCancelled();
     return;
   } catch (connectionError) {
     appLogger.warn("service", "connection-unavailable", "ComfyUI was not ready", {
@@ -1312,6 +1420,7 @@ async function ensureComfyUiReady(taskId: string): Promise<void> {
     }
   }
 
+  throwIfCancelled();
   await updateTask(taskId, {
     progress: 1,
     stage: "正在启动 ComfyUI，等待服务就绪"
@@ -1329,6 +1438,7 @@ async function ensureComfyUiReady(taskId: string): Promise<void> {
   if (!started.ok) {
     throw new Error(`ComfyUI 自动启动失败：${started.message}`);
   }
+  throwIfCancelled();
   await testComfyUi(serviceSettings);
 }
 
@@ -1378,12 +1488,12 @@ async function validateNativePromptRuntime(settings: Settings): Promise<void> {
   if (isComfyMultimodalPromptModel(settings.promptModelId)) {
     if (profile.missingCustomNodeIds?.length) {
       throw new Error(
-        `Qwen3.6 提示词模型缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与工作流中安装。`
+        `多模态提示词模型缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与工作流中安装。`
       );
     }
     if (profile.runtimeVerified && profile.runtimeReady === false) {
       throw new Error(
-        `Qwen3.6 提示词节点尚未被当前 ComfyUI 加载：${profile.runtimeMissingNodes?.join("、") || "VisionLLMNode"}。请重启 ComfyUI 后重新扫描。`
+        `多模态提示词节点尚未被当前 ComfyUI 加载：${profile.runtimeMissingNodes?.join("、") || "VisionLLMNode"}。请重启 ComfyUI 后重新扫描。`
       );
     }
     return;
@@ -1414,6 +1524,21 @@ async function releasePromptRuntime(settings: Settings): Promise<number> {
     // An offline ComfyUI instance cannot be holding the native prompt model.
     return 0;
   }
+}
+
+async function recoverStalledPromptComfyUi(settings: Settings): Promise<void> {
+  await interrupt(settings).catch((error) => {
+    appLogger.warn("prompt", "stall-interrupt-failed", "Unable to interrupt the stalled prompt workflow", {
+      error: safeLogErrorMessage(error)
+    });
+  });
+  const recovery = await restartLocalService("comfy", settings);
+  appLogger.warn(
+    "prompt",
+    recovery.ok ? "stall-recovery-succeeded" : "stall-recovery-skipped",
+    recovery.message,
+    { recoveryOk: recovery.ok }
+  );
 }
 
 async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: string }> {
@@ -1586,7 +1711,7 @@ function registerIpc(): void {
         return;
       }
       if (request.kind === "running-work" && (response === "finish-tasks" || response === "force-exit")) {
-        await finishRunningWorkClose(response);
+        await finishRunningWorkClose(response, request.queueCleanupOnly === true);
         return;
       }
       closeFlowRunning = false;
@@ -1613,9 +1738,7 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "logs:user-action",
-    (_event, action: string, meta?: Record<string, unknown>) => {
-      appLogger.info("ui", "user-action", action, meta);
-    }
+    () => undefined
   );
   ipcMain.handle(
     "logs:notification",
@@ -2348,7 +2471,7 @@ function registerIpc(): void {
         message: promptBackend === "h3-prompt-writer"
           ? "ComfyUI H3 Prompt Writer 已就绪；模型会在扩写时按需加载，完成后自动卸载。"
           : promptBackend === "comfyui-multimodal"
-            ? "Qwen3.6 多模态提示词模型已通过 ComfyUI 节点验证；每次扩写后自动释放显存。"
+            ? "ComfyUI 多模态提示词模型已通过节点验证；每次扩写后自动释放显存。"
           : "Qwen 提示词模型已启动并加载到 ComfyUI。"
       };
     } catch (error) {
@@ -2376,18 +2499,25 @@ function registerIpc(): void {
     const runtime = promptRuntimeForSettings(settings);
     const promptBackend = promptModelBackend(settings.promptModelId);
     const startedAt = Date.now();
-    appLogger.info("prompt", "enhance-started", "Prompt enhancement started", {
+    const operationId = crypto.randomUUID();
+    const promptLogContext = {
+      operationId,
       runtime,
       promptModelId: settings.promptModelId,
       promptBackend,
       modelId: request.modelId,
-      mode: request.mode,
-      h3PromptMode: request.h3PromptMode,
+      mode: request.mode ?? "video",
+      h3PromptMode: request.h3PromptMode ?? "auto",
+      promptProvided: Boolean(request.prompt.trim()),
+      promptLength: request.prompt.length,
       referenceImageCount: request.imagePaths?.length ?? (request.imagePath ? 1 : 0),
-      durationSeconds: request.h3DurationSeconds
+      durationSeconds: request.h3DurationSeconds ?? null
+    };
+    appLogger.info("prompt", "enhance-started", "Prompt enhancement started", {
+      ...promptLogContext
     });
     validateH3ReferenceAutoPrompt(request);
-    const promptProgress = createPromptProgressController(settings.promptModelId, startedAt);
+    const promptProgress = createPromptProgressController(settings.promptModelId, startedAt, operationId);
     promptProgress.update("preparing", 0);
     if (promptBackend === "h3-prompt-writer") {
       if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
@@ -2413,12 +2543,15 @@ function registerIpc(): void {
         const result = await worker;
         promptProgress.finish("completed", "unloading");
         appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
-          runtime,
+          ...promptLogContext,
           durationMs: Date.now() - startedAt,
           outputLength: result.length
         });
         return result;
       } catch (error) {
+        if (error instanceof TaskStalledError) {
+          await recoverStalledPromptComfyUi(settings);
+        }
         promptProgress.finish(
           controller.signal.aborted ? "cancelled" : "failed",
           controller.signal.aborted ? "unloading" : "validating",
@@ -2428,12 +2561,10 @@ function registerIpc(): void {
           appLogger,
           settings,
           "prompt_enhance_failed",
-          { modelId: settings.promptModelId }
+          { modelId: settings.promptModelId, operationId }
         ).catch(() => undefined);
         appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
-          runtime,
-          promptModelId: settings.promptModelId,
-          promptBackend,
+          ...promptLogContext,
           durationMs: Date.now() - startedAt,
           ...errorLogMeta(error)
         });
@@ -2460,7 +2591,8 @@ function registerIpc(): void {
           settings,
           controller.signal,
           false,
-          promptProgress.update
+          promptProgress.update,
+          operationId
         );
       })();
       nativePromptWorker = worker;
@@ -2468,12 +2600,15 @@ function registerIpc(): void {
         const result = await worker;
         promptProgress.finish("completed", "unloading");
         appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
-          runtime,
+          ...promptLogContext,
           durationMs: Date.now() - startedAt,
           outputLength: result.length
         });
         return result;
       } catch (error) {
+        if (error instanceof TaskStalledError) {
+          await recoverStalledPromptComfyUi(settings);
+        }
         promptProgress.finish(
           controller.signal.aborted ? "cancelled" : "failed",
           controller.signal.aborted ? "unloading" : "validating",
@@ -2483,12 +2618,10 @@ function registerIpc(): void {
           appLogger,
           settings,
           "prompt_enhance_failed",
-          { modelId: settings.promptModelId }
+          { modelId: settings.promptModelId, operationId }
         ).catch(() => undefined);
         appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
-          runtime,
-          promptModelId: settings.promptModelId,
-          promptBackend,
+          ...promptLogContext,
           durationMs: Date.now() - startedAt,
           ...errorLogMeta(error)
         });
@@ -2525,7 +2658,7 @@ function registerIpc(): void {
       const result = await worker;
       promptProgress.finish("completed", "unloading");
       appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
-        runtime,
+        ...promptLogContext,
         durationMs: Date.now() - startedAt,
         outputLength: result.length
       });
@@ -2540,12 +2673,10 @@ function registerIpc(): void {
         appLogger,
         settings,
         "prompt_enhance_failed",
-        { modelId: settings.promptModelId }
+        { modelId: settings.promptModelId, operationId }
       ).catch(() => undefined);
       appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
-        runtime,
-        promptModelId: settings.promptModelId,
-        promptBackend,
+        ...promptLogContext,
         durationMs: Date.now() - startedAt,
         ...errorLogMeta(error)
       });
@@ -2823,7 +2954,12 @@ function registerIpc(): void {
     ipc: ipcMain,
     store,
     logger: appLogger,
-    sendState
+    sendState,
+    isQueueCleanupActive: () => Boolean(
+      queueWorkerController.cleanupWorker ||
+      queueWorkerController.runningWorker ||
+      queueWorkerController.activeController
+    )
   });
   registerQueueControlIpc({
     ipc: ipcMain,

@@ -49,6 +49,8 @@ function queueTaskLayoutSnapshot(task: QueueTask): unknown {
 export function queueLayoutSignature(state: AppState): string {
   return JSON.stringify({
     queueRunning: state.queueRunning,
+    queueLifecycle: state.queueLifecycle,
+    queueLifecycleTaskId: state.queueLifecycleTaskId,
     h3LivePreview: state.settings.h3LivePreview,
     uiLocale: state.settings.uiLocale,
     queue: state.queue.map(queueTaskLayoutSnapshot)

@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import type { AppLogLevel, AppLogRecord, AppLogSnapshot } from "../../src/types.js";
@@ -14,8 +15,8 @@ export interface AppLoggerOptions {
 const logFilePattern = /^app-(\d{4}-\d{2}-\d{2})\.log$/u;
 const defaultRetentionDays = 7;
 const defaultMaxFiles = 14;
-const defaultMaxRecords = 500;
-const sensitiveKeyPattern = /(?:prompt|negative|text|content|body|token|secret|password|file|path|filename|image|video|url)/iu;
+const defaultMaxRecords = 2000;
+const sensitiveKeyPattern = /(?:^|_)(?:prompt|negative_prompt|creative_brief|text|content|body|messages|token|secret|password|file|path|filename|image|video|url)(?:_|$)/iu;
 const windowsPathPattern = /(?:[A-Za-z]:\\|\\\\)[^\r\n"']+/gu;
 const unixPathPattern = /(?:^|\s)(?:\/Users\/|\/home\/|\/tmp\/|\/var\/|\/mnt\/)[^\r\n"']+/gu;
 const urlPattern = /https?:\/\/[^\s"']+/giu;
@@ -45,18 +46,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function normalizedLogKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/gu, "$1_$2")
+    .replace(/[^A-Za-z0-9]+/gu, "_")
+    .toLowerCase();
+}
+
+function isSensitiveKey(key: string): boolean {
+  const normalized = normalizedLogKey(key);
+  if (/(?:_id|_backend|_type|_mode|_status|_count|_number|_index|_seconds|_ms|_bytes|_percent)$/u.test(normalized)) {
+    return false;
+  }
+  return sensitiveKeyPattern.test(normalized);
+}
+
+function sanitizedPath(value: string): string {
+  const leadingWhitespace = value.match(/^\s/u)?.[0] ?? "";
+  const normalized = value.trim().replaceAll("\\", "/").replace(/[)\],.;]+$/u, "");
+  const basename = normalized.split("/").at(-1) ?? "";
+  return `${leadingWhitespace}[path]${basename ? `/${basename}` : ""}`;
+}
+
 function sanitizeMessage(value: string): string {
   return value
-    .replace(windowsPathPattern, "[path]")
-    .replace(unixPathPattern, " [path]")
+    .replace(windowsPathPattern, sanitizedPath)
+    .replace(unixPathPattern, sanitizedPath)
     .replace(urlPattern, "[url]")
     .replace(/\s+/gu, " ")
     .trim()
-    .slice(0, 500);
+    .slice(0, 1600);
 }
 
 function sanitizeValue(key: string, value: unknown, depth = 0): unknown {
-  if (sensitiveKeyPattern.test(key)) return "[redacted]";
+  if (isSensitiveKey(key)) return "[redacted]";
   if (depth > 2) return "[truncated]";
   if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     return typeof value === "string" ? sanitizeMessage(value) : value;
@@ -251,6 +274,7 @@ export class AppLogger {
   private readonly maxFiles: number;
   private readonly maxRecords: number;
   private readonly now: () => Date;
+  private readonly sessionId = randomUUID();
   private writesSinceCleanup = 0;
 
   constructor(options: AppLoggerOptions = {}) {
@@ -293,7 +317,11 @@ export class AppLogger {
     try {
       this.ensureDirectory();
       const writtenAt = this.now();
-      const sanitizedMeta = sanitizeMeta(meta);
+      const sanitizedMeta = sanitizeMeta({
+        ...meta,
+        processId: process.pid,
+        sessionId: this.sessionId
+      });
       const record: AppLogRecord = {
         timestamp: writtenAt.toISOString(),
         level,

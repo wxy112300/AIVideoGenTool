@@ -485,7 +485,7 @@ export async function installCustomNodePackage(
         forceReinstall: false
       });
       if (!backend.ok) throw new Error(backend.message);
-      report("Qwen3.6 多模态后端已通过自检；请重启 ComfyUI，设置页会继续验证 VisionLLMNode。");
+      report("多模态提示词后端已通过自检；请重启 ComfyUI，设置页会继续验证 VisionLLMNode。");
     }
     if (definition.id === "minimax-h3-prompt-writer") {
       report("正在安装并验证 H3 Prompt Writer 共用的 llama-cpp-python 后端……");

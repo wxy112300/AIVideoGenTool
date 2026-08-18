@@ -3,10 +3,10 @@ import type { AppLogger } from "./app-logger.js";
 import { latestComfyLogFile } from "./dependency-scanner.js";
 import type { Settings } from "../../src/types.js";
 
-const maxIncrementalReadBytes = 256 * 1024;
-const maxFailureReadBytes = 512 * 1024;
-const maxIncrementalLines = 120;
-const maxFailureLines = 240;
+const maxIncrementalReadBytes = 512 * 1024;
+const maxFailureReadBytes = 1024 * 1024;
+const maxIncrementalLines = 200;
+const maxFailureLines = 600;
 
 const relevantLinePattern = /(?:traceback|exception|error|failed|fatal|critical|warning|warn|out of memory|cuda|oom|llama|execution|executing|node|queue|loading|unload|model|cache|vision.?llm|prompt.?writer)/iu;
 const errorLinePattern = /(?:traceback|exception|\berror\b|failed|fatal|critical|out of memory|cuda error|cuda out of memory|\boom\b|illegal instruction|invalid response|http 5\d\d)/iu;
@@ -18,10 +18,18 @@ const sensitiveValuePattern = /(["']?(?:prompt|negative_prompt|creative_brief|te
 
 const lastFailureSnapshots = new Map<string, string>();
 
+function sanitizeLogPath(value: string): string {
+  const leadingWhitespace = value.match(/^\s/u)?.[0] ?? "";
+  const normalized = value.trim().replaceAll("\\", "/").replace(/[)\],.;]+$/u, "");
+  const basename = normalized.split("/").at(-1) ?? "";
+  return `${leadingWhitespace}[path]${basename ? `/${basename}` : ""}`;
+}
+
 export interface ComfyLogBridgeContext {
   taskId?: string;
   promptId?: string;
   modelId?: string;
+  operationId?: string;
 }
 
 export interface ComfyLogSyncResult {
@@ -44,7 +52,7 @@ function logLevelForLine(line: string): "info" | "warn" | "error" {
 export function sanitizeComfyLogLine(line: string): string {
   return line
     .replace(ansiEscapePattern, "")
-    .replace(pathPattern, "[path]")
+    .replace(pathPattern, sanitizeLogPath)
     .replace(urlPattern, "[url]")
     .replace(sensitiveValuePattern, "$1[redacted]")
     .replace(/\s+/gu, " ")
@@ -92,7 +100,8 @@ function contextMeta(context: ComfyLogBridgeContext, reason: string): Record<str
     reason,
     ...(context.taskId ? { taskId: context.taskId } : {}),
     ...(context.promptId ? { promptId: context.promptId } : {}),
-    ...(context.modelId ? { modelId: context.modelId } : {})
+    ...(context.modelId ? { modelId: context.modelId } : {}),
+    ...(context.operationId ? { operationId: context.operationId } : {})
   };
 }
 

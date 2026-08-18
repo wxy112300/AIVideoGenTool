@@ -81,11 +81,16 @@ import {
   type ComfyUiRuntimeProfile
 } from "./comfy-runtime-policy.js";
 import {
+  isLocalPortInUse,
   launchDetached,
   localEndpoint,
   waitForService
 } from "./local-service-process.js";
-import { startComfyUiService } from "./comfy-runtime-service.js";
+import {
+  clearOwnedComfyProcessIds,
+  ownedComfyProcessIdSnapshot,
+  startComfyUiService
+} from "./comfy-runtime-service.js";
 import {
   allComfyProcessInfo,
   forceStopComfyProcesses as forceStopComfyProcessesWithDependencies,
@@ -2775,6 +2780,7 @@ async function startComfyUi(settings: Settings): Promise<string> {
     findComfyInstallation,
     applyComfyDesktopSettings,
     launchDetached,
+    isPortInUse: (port) => isLocalPortInUse(port),
     downloadEnvironment,
     exists,
     findComfyPython,
@@ -2785,11 +2791,21 @@ async function startComfyUi(settings: Settings): Promise<string> {
 export async function forceStopComfyProcesses(
   settings: Settings
 ): Promise<{ ok: boolean; message: string }> {
-  return forceStopComfyProcessesWithDependencies(settings, { findComfyPython });
+  const result = await forceStopComfyProcessesWithDependencies(settings, {
+    findComfyPython,
+    ownedProcessIds: ownedComfyProcessIdSnapshot
+  });
+  if (result.ok) clearOwnedComfyProcessIds();
+  return result;
 }
 
 async function stopComfyUi(settings: Settings): Promise<void> {
-  return stopComfyUiService(settings, { findComfyPython });
+  await stopComfyUiService(settings, {
+    findComfyPython,
+    ownedProcessIds: ownedComfyProcessIdSnapshot,
+    ownedOnly: true
+  });
+  clearOwnedComfyProcessIds();
 }
 
 

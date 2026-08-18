@@ -12,6 +12,8 @@ import {
 } from "../../src/core/h3-auto-prompter.js";
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
 import { missingWorkflowNodeTypes } from "../../src/core/workflow.js";
+import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
+import { getPerformanceMetrics } from "./performance.js";
 import {
   extractStringNodeOutput,
   freeMemory,
@@ -23,6 +25,41 @@ import {
 } from "./comfy-ui.js";
 
 type PromptNode = { class_type: string; inputs: Record<string, unknown> };
+export type MultimodalDevice = "CPU" | "GPU";
+
+const gib = 1024 ** 3;
+const minimumFreeVramForMultimodalModel: Record<string, number> = {
+  "qwen/qwen3.6-27b-uncensored-q4": 20 * gib,
+  "qwen/qwen3.8-27b-uncensored-q4": 18 * gib
+};
+const cpuOnlyMultimodalModels = new Set([
+  "qwen/qwen3.6-27b-uncensored-q4",
+  "qwen/qwen3.8-27b-uncensored-q4"
+]);
+const appLogger = getApplicationLogger();
+
+export function multimodalDeviceFor(
+  modelId: string,
+  vramUsedBytes: number | null,
+  vramTotalBytes: number | null
+): MultimodalDevice {
+  if (cpuOnlyMultimodalModels.has(modelId)) return "CPU";
+  const minimumFreeVram = minimumFreeVramForMultimodalModel[modelId];
+  if (!minimumFreeVram) return "GPU";
+  if (vramUsedBytes == null || vramTotalBytes == null) {
+    return "CPU";
+  }
+  return vramTotalBytes - vramUsedBytes >= minimumFreeVram ? "GPU" : "CPU";
+}
+
+export function multimodalActivityTimeoutMinutes(
+  modelId: string,
+  device: MultimodalDevice
+): number {
+  if (device === "CPU") return 20;
+  if (modelId === "qwen/qwen3.6-27b-uncensored-q4") return 10;
+  return 5;
+}
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -73,11 +110,12 @@ export function buildMultimodalPromptWorkflow(
   request: EnhanceRequest,
   uploadedImages: readonly string[],
   settings: Settings,
-  warmup = false
+  warmup = false,
+  device: MultimodalDevice = "GPU"
 ): Record<string, PromptNode> {
   const definition = comfyMultimodalPromptModel(settings.promptModelId);
   if (!definition) {
-    throw new Error("当前选择的不是 Qwen3.6 ComfyUI 多模态提示词模型。");
+    throw new Error("当前选择的不是 ComfyUI 多模态提示词模型。");
   }
   const imageCount = request.imagePaths?.length ?? uploadedImages.length;
   const mode = request.h3PromptMode ?? inferH3PromptMode(
@@ -110,11 +148,11 @@ export function buildMultimodalPromptWorkflow(
         model: modelRelativePath(definition.targetDirectory, definition.modelFilename),
         mmproj: modelRelativePath(definition.targetDirectory, definition.mmprojFilename),
         max_tokens: maxTokens,
-        // 0.7 is the Qwen3.6 instruct recommendation; keep the existing
-        // setting as an intentional user-controlled range without allowing a
+        // Keep the existing multimodal recommendation as an intentional
+        // user-controlled range without allowing a
         // high-creativity prompt pass to destabilize H3 output.
         temperature: clamp(settings.promptCreativity, 0.2, 0.9),
-        device: "GPU"
+        device
       }
     },
     preview: {
@@ -131,15 +169,46 @@ export async function enhancePromptWithMultimodalComfyUi(
   settings: Settings,
   signal: AbortSignal,
   warmup = false,
-  onProgress?: PromptProgressReporter
+  onProgress?: PromptProgressReporter,
+  operationId = crypto.randomUUID()
 ): Promise<string> {
   if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
   validateH3ReferenceAutoPrompt(request);
   onProgress?.("checking", 5);
   const definition = comfyMultimodalPromptModel(settings.promptModelId);
-  if (!definition) throw new Error("当前选择的提示词模型不是 Qwen3.6 ComfyUI 多模态模型。");
+  if (!definition) throw new Error("当前选择的提示词模型不是 ComfyUI 多模态模型。");
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
+  const operationStartedAt = Date.now();
   try {
+    try {
+      await freeMemory(settings);
+    } catch (error) {
+      appLogger.warn("prompt", "multimodal-pre-release-failed", "Unable to release existing ComfyUI models before multimodal prompt generation", {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw new Error("无法在加载多模态提示词模型前释放 ComfyUI 已有模型；为避免显存冲突，本次扩写已停止。请先停止当前任务或重启 ComfyUI。", { cause: error });
+    }
+    const metrics = await getPerformanceMetrics(settings).catch(() => null);
+    const device = multimodalDeviceFor(
+      settings.promptModelId,
+      metrics?.vramUsedBytes ?? null,
+      metrics?.vramTotalBytes ?? null
+    );
+    appLogger.info("prompt", "multimodal-device-selected", "Selected multimodal prompt device", {
+      modelId: settings.promptModelId,
+      device,
+      vramUsedBytes: metrics?.vramUsedBytes ?? null,
+      vramTotalBytes: metrics?.vramTotalBytes ?? null
+    });
+    const activityTimeoutMinutes = multimodalActivityTimeoutMinutes(
+      settings.promptModelId,
+      device
+    );
+    onProgress?.(
+      "checking",
+      10,
+      device === "CPU" ? "GPU 显存余量不足，使用 CPU 推理以避免爆显存" : undefined
+    );
     const objectInfo = await jsonRequest<Record<string, unknown>>(
       `${baseUrl}/object_info`,
       { signal }
@@ -151,14 +220,20 @@ export async function enhancePromptWithMultimodalComfyUi(
         .map((filePath, index) => uploadInput(baseUrl, filePath, signal, `参考图 ${index + 1}`))
     );
       onProgress?.("uploading", 18);
-    const prompt = buildMultimodalPromptWorkflow(request, uploadedImages, settings, warmup);
+    const prompt = buildMultimodalPromptWorkflow(
+      request,
+      uploadedImages,
+      settings,
+      warmup,
+      device
+    );
     const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
     if (missingNodes.length) {
       throw new Error(
-        `当前 ComfyUI 未加载 Qwen3.6 提示词节点：${missingNodes.join("、")}。请安装/更新 ComfyUI MultiModal Prompt Nodes，并重启服务。`
+        `当前 ComfyUI 未加载多模态提示词节点：${missingNodes.join("、")}。请安装/更新 ComfyUI MultiModal Prompt Nodes，并重启服务。`
       );
     }
-    const clientId = `local-video-studio-qwen36-prompt-${crypto.randomUUID()}`;
+    const clientId = `local-video-studio-qwen36-prompt-${operationId}`;
     const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -169,21 +244,40 @@ export async function enhancePromptWithMultimodalComfyUi(
     const nodeTypes = Object.fromEntries(
       Object.entries(prompt).map(([id, value]) => [id, value.class_type])
     );
+    appLogger.info("prompt", "comfy-submitted", "Multimodal prompt workflow submitted", {
+      operationId,
+      promptId: result.prompt_id,
+      clientId,
+      modelId: settings.promptModelId,
+      device,
+      activityTimeoutMinutes,
+      nodeTypes: [...new Set(Object.values(nodeTypes))],
+      inputImageCount: uploadedImages.length,
+      maxTokens: prompt["vision-llm"]?.inputs.max_tokens ?? null
+    });
     const history = await waitForTask(
       result.prompt_id,
       clientId,
       nodeTypes,
       settings,
-      5,
+      activityTimeoutMinutes,
       signal,
       (value, stage) => {
         const normalized = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
         onProgress?.("generating", Math.min(90, 25 + Math.round(normalized * 0.65)), stage);
       },
-      () => undefined
+      () => undefined,
+      () => false,
+      { operationId, modelId: settings.promptModelId }
     );
     onProgress?.("validating", 94);
     const output = extractStringNodeOutput(history, ["preview", "vision-llm"]);
+    appLogger.info("prompt", "comfy-output-extracted", "Multimodal prompt output extracted", {
+      operationId,
+      modelId: settings.promptModelId,
+      outputLength: output.length,
+      elapsedMs: Date.now() - operationStartedAt
+    });
     if (warmup) return output;
     if (request.mode === "image-edit") {
       return normalizeQwenImageEditPromptOutput(output);
@@ -196,8 +290,22 @@ export async function enhancePromptWithMultimodalComfyUi(
     return normalizeH3PromptOutput(output, mode, request.h3DurationSeconds ?? 5);
   } finally {
     // VisionLLMNode unloads its own manager after execution. `/free` is the
-    // second safety boundary so H3 never inherits Qwen3.6's VRAM/context state.
-    await freeMemory(settings).catch(() => undefined);
+    // second safety boundary so H3 never inherits the prompt model's VRAM/context state.
+    const cleanupStartedAt = Date.now();
+    try {
+      await freeMemory(settings);
+      appLogger.info("prompt", "cleanup-finished", "Multimodal prompt model cleanup finished", {
+        operationId,
+        modelId: settings.promptModelId,
+        durationMs: Date.now() - cleanupStartedAt
+      });
+    } catch (error) {
+      appLogger.error("prompt", "cleanup-failed", safeLogErrorMessage(error), {
+        operationId,
+        modelId: settings.promptModelId,
+        durationMs: Date.now() - cleanupStartedAt
+      });
+    }
   }
 }
 

@@ -1121,6 +1121,38 @@ body.image-markup-open {
   background: rgba(150, 101, 27, .14);
 }
 
+.queue-operation-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  margin: -2px 0 12px;
+  padding: 7px 10px;
+  border: 1px solid rgba(124, 184, 255, .28);
+  border-radius: 8px;
+  color: #b9d7ff;
+  background: rgba(53, 91, 143, .12);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.queue-operation-status[hidden] { display: none; }
+
+.queue-operation-status[data-tone="error"] {
+  border-color: rgba(244, 126, 126, .4);
+  color: #ffb1b1;
+  background: rgba(138, 46, 54, .14);
+}
+
+.queue-operation-indicator {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 12%, transparent);
+}
+
 .queue-performance-grid {
   gap: 8px;
   margin-bottom: 14px;

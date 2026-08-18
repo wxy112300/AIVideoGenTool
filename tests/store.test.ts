@@ -358,6 +358,25 @@ describe("queue lock recovery", () => {
     }
   });
 
+  it("migrates the removed Gemma 31B selection without breaking persisted settings", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.settings.promptModelId = "google/gemma-4-31b-q4";
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.settings.promptModelId).toBe("qwen/qwen3.5-4b");
+      const persisted = JSON.parse(await fs.readFile(filename, "utf8")) as {
+        settings: { promptModelId: string };
+      };
+      expect(persisted.settings.promptModelId).toBe("qwen/qwen3.5-4b");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("fills the default extension model for states saved before the setting existed", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");

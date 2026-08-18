@@ -4,6 +4,7 @@ import { uiKeys } from "../../../core/i18n-keys";
 import {
   elapsedText,
   formatBytes,
+  formatElapsedDuration,
   queueEstimateText,
   queueStageElapsedText
 } from "../../shared/formatters";
@@ -111,7 +112,8 @@ function comfyStatus(
 
 export function queueComfyUiStatus(
   state: AppState,
-  t: Translate
+  t: Translate,
+  comfyConnected?: boolean
 ): QueueComfyUiStatus {
   const lifecycle = state.queueLifecycle ?? "idle";
   const running = state.queue.find((task) => task.status === "running");
@@ -133,10 +135,54 @@ export function queueComfyUiStatus(
   if (lifecycle === "running") {
     return comfyStatus("connected", t(uiKeys.queue.comfyUi.connected), t);
   }
+  if (comfyConnected === true) {
+    return comfyStatus("connected", t(uiKeys.queue.comfyUi.connected), t);
+  }
   if (state.queue.some((task) => task.status === "waiting")) {
     return comfyStatus("waiting", t(uiKeys.queue.comfyUi.waiting), t);
   }
   return comfyStatus("unknown", t(uiKeys.queue.comfyUi.unknown), t);
+}
+
+export interface QueueOperationStatus {
+  visible: boolean;
+  tone: "pending" | "error";
+  message: string;
+}
+
+export function queueOperationStatus(
+  state: AppState,
+  t: Translate
+): QueueOperationStatus {
+  const lifecycle = state.queueLifecycle ?? "idle";
+  if (lifecycle === "error") {
+    return {
+      visible: true,
+      tone: "error",
+      message: t(uiKeys.queue.operation.error)
+    };
+  }
+  const key = lifecycle === "starting"
+    ? uiKeys.queue.operation.starting
+    : lifecycle === "pausing"
+      ? uiKeys.queue.operation.pausing
+      : lifecycle === "cancelling"
+        ? uiKeys.queue.operation.cancelling
+        : lifecycle === "cleaning"
+          ? uiKeys.queue.operation.cleaning
+          : null;
+  if (!key) return { visible: false, tone: "pending", message: "" };
+  const startedAt = state.queueLifecycleStartedAt
+    ? Date.parse(state.queueLifecycleStartedAt)
+    : Number.NaN;
+  const duration = Number.isFinite(startedAt)
+    ? formatElapsedDuration(Math.max(0, (Date.now() - startedAt) / 1000), t)
+    : t(uiKeys.format.waitingTimer);
+  return {
+    visible: true,
+    tone: "pending",
+    message: t(key, { duration })
+  };
 }
 
 function patchQueueElement(
@@ -160,8 +206,13 @@ function patchQueueElement(
  * shell is not mounted (or is missing a required stable target), so the
  * caller should fall back to a normal render.
  */
-export function patchQueueLiveDom(state: AppState, t: Translate): boolean {
-  const comfy = queueComfyUiStatus(state, t);
+export function patchQueueLiveDom(
+  state: AppState,
+  t: Translate,
+  comfyConnected?: boolean
+): boolean {
+  const comfy = queueComfyUiStatus(state, t, comfyConnected);
+  const operation = queueOperationStatus(state, t);
   const activeTasks = state.queue.filter((task) => task.status === "waiting" || task.status === "running");
   const headerTone = queueHeaderTone(state);
   if (!patchQueueElement("#queue-active-count", t(uiKeys.queue.taskCount, { count: activeTasks.length }), {
@@ -172,6 +223,12 @@ export function patchQueueLiveDom(state: AppState, t: Translate): boolean {
   })) return false;
   const comfyElement = document.querySelector<HTMLElement>("#queue-comfy-status");
   if (comfyElement) comfyElement.title = comfy.label;
+  const operationElement = document.querySelector<HTMLElement>("#queue-operation-status");
+  const operationMessage = document.querySelector<HTMLElement>("#queue-operation-message");
+  if (!operationElement || !operationMessage) return false;
+  operationElement.hidden = !operation.visible;
+  operationElement.dataset.tone = operation.tone;
+  operationMessage.textContent = operation.message;
 
   const running = state.queue.find((task) => task.status === "running");
   const remainingSeconds = queueRemainingSeconds(activeTasks, state.history, state.imageHistory);
@@ -218,6 +275,7 @@ export function patchQueueLiveDom(state: AppState, t: Translate): boolean {
 export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
   let performancePolling = false;
   let pollingTimer: number | undefined;
+  let latestComfyConnected: boolean | undefined;
 
   const refresh = async (): Promise<void> => {
     if (performancePolling) return;
@@ -226,8 +284,10 @@ export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
     performancePolling = true;
     try {
       const metrics = await options.studio.getPerformanceMetrics(state.settings);
+      latestComfyConnected = metrics.comfyConnected;
       options.setPerformanceMetrics(metrics);
       if (options.getPage() !== "queue") return;
+      patchQueueLiveDom(options.getState() ?? state, options.t, latestComfyConnected);
       setMetric("metric-cpu", metrics.cpuPercent);
       setMetric(
         "metric-memory",
@@ -260,7 +320,7 @@ export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
   const updateQueueStatus = (): void => {
     const state = options.getState();
     if (state && options.getPage() === "queue") {
-      patchQueueLiveDom(state, options.t);
+      patchQueueLiveDom(state, options.t, latestComfyConnected);
     }
   };
 

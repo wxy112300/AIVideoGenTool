@@ -60,6 +60,13 @@ export const uiKeys = {
       error: "queue.comfyUi.short.error",
       unknown: "queue.comfyUi.short.unknown"
     },
+      operation: {
+        starting: "queue.operation.starting",
+        pausing: "queue.operation.pausing",
+        cancelling: "queue.operation.cancelling",
+        cleaning: "queue.operation.cleaning",
+        error: "queue.operation.error"
+      },
     summary: "queue.summary",
     automaticContinue: "queue.automaticContinue",
     pauseAfterCurrent: "queue.pauseAfterCurrent",
@@ -195,6 +202,12 @@ export const uiKeys = {
     runningTask: "dialog.window.runningTask",
     exitApp: "dialog.window.exitApp",
     currentTaskNotFinished: "dialog.window.currentTaskNotFinished",
+    queueCleanup: "dialog.window.queueCleanup",
+    queueCleanupTitle: "dialog.window.queueCleanupTitle",
+    queueCleanupDescription: "dialog.window.queueCleanupDescription",
+    queueCleanupWarning: "dialog.window.queueCleanupWarning",
+    queueCleanupTimedOutWarning: "dialog.window.queueCleanupTimedOutWarning",
+    waitForCleanupExit: "dialog.window.waitForCleanupExit",
     unsavedSettings: "dialog.window.unsavedSettings",
     runningTaskDescription: "dialog.window.runningTaskDescription",
     unsavedSettingsDescription: "dialog.window.unsavedSettingsDescription",

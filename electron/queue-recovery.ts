@@ -20,12 +20,32 @@ async function waitWithTimeout(promise: Promise<unknown> | null, timeoutMs: numb
 }
 
 export async function cleanupCancelledQueueTask(
-  deps: Pick<QueueRecoveryDependencies, "logger" | "updateTask">,
+  deps: Pick<QueueRecoveryDependencies, "logger" | "updateTask" | "isComfyUiRunning" | "isCancellationCurrent">,
   taskId: string,
   settings: Settings,
   worker: Promise<void> | null
 ): Promise<void> {
+  const cancellationIsCurrent = (): boolean =>
+    deps.isCancellationCurrent?.(taskId) ?? true;
+  const updateCancelledTask = async (patch: Partial<QueueTask>): Promise<boolean> => {
+    if (!cancellationIsCurrent()) return false;
+    await deps.updateTask(taskId, patch);
+    return true;
+  };
   try {
+    const comfyUiRunning = deps.isComfyUiRunning
+      ? await deps.isComfyUiRunning(settings).catch(() => true)
+      : true;
+    if (!cancellationIsCurrent()) return;
+    if (!comfyUiRunning) {
+      await waitWithTimeout(worker, 15_000);
+      await updateCancelledTask({
+        status: "cancelled",
+        stage: "任务已取消，ComfyUI 已退出",
+        error: "任务已取消"
+      });
+      return;
+    }
     if (settings.safeCancel) {
       await interrupt(settings).catch((error) => {
         deps.logger.warn("comfy", "cancel-interrupt-failed", "ComfyUI interrupt request failed during background cancellation cleanup", {
@@ -37,7 +57,11 @@ export async function cleanupCancelledQueueTask(
     if (settings.safeCancel && workerSettled) {
       try {
         await freeMemory(settings);
-        await deps.updateTask(taskId, { stage: "任务已取消，显存已释放", error: "任务已取消" });
+        await updateCancelledTask({
+          status: "cancelled",
+          stage: "任务已取消，显存已释放",
+          error: "任务已取消"
+        });
         return;
       } catch (error) {
         deps.logger.warn("comfy", "cancel-free-memory-failed", "ComfyUI memory release failed after task cancellation; falling back to restart", {
@@ -45,8 +69,10 @@ export async function cleanupCancelledQueueTask(
         });
       }
     }
+    if (!cancellationIsCurrent()) return;
     const recovery = await restartLocalService("comfy", settings);
-    await deps.updateTask(taskId, {
+    await updateCancelledTask({
+      status: "cancelled",
       stage: recovery.ok ? "任务已取消，ComfyUI 已后台重启" : "任务已取消，但 ComfyUI 清理失败",
       error: recovery.ok ? "任务已取消" : `任务已取消；ComfyUI 清理失败：${recovery.message}`
     });
@@ -54,7 +80,8 @@ export async function cleanupCancelledQueueTask(
     deps.logger.error("comfy", "cancel-cleanup-failed", "Background cancellation cleanup failed", {
       taskId, error: safeLogErrorMessage(error)
     });
-    await deps.updateTask(taskId, {
+    await updateCancelledTask({
+      status: "cancelled",
       stage: "任务已取消，但 ComfyUI 清理失败",
       error: `任务已取消；ComfyUI 清理失败：${safeLogErrorMessage(error)}`
     }).catch(() => undefined);
@@ -66,6 +93,8 @@ export interface QueueRecoveryDependencies {
   logger: AppLogger;
   sendState(state: AppState): void;
   updateTask(taskId: string, patch: Partial<QueueTask>): Promise<AppState>;
+  isComfyUiRunning?(settings: Settings): Promise<boolean>;
+  isCancellationCurrent?(taskId: string): boolean;
   settingsForTask(task: QueueTask, settings: AppState["settings"]): AppState["settings"];
   errorMeta(error: unknown): Record<string, unknown>;
 }

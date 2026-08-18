@@ -52,6 +52,21 @@ export const managedPromptModelDefinitions: readonly ManagedPromptModelDefinitio
     backend: "comfyui-multimodal"
   },
   {
+    id: "qwen/qwen3.8-27b-uncensored-q4",
+    name: "Qwen3.8 27B Q4 · Uncensored · JonathanColetti",
+    source: "JonathanColetti/Qwen3.8-27B-Uncensored-GGUF",
+    revision: "dee0a3164d9e11bbbebf5b63f52ba99443d14fc3",
+    modelFilename: "Qwen3.8-27B-Uncensored-noMTP-Q4_K_M.gguf",
+    mmprojFilename: "Qwen3.8-27B-Uncensored-vision-f16.gguf",
+    targetDirectory: "LLM/qwen3.8-27b-uncensored-q4",
+    contextSize: 8192,
+    badge: "Uncensored · Q4 · 4090",
+    description: "JonathanColetti 的 Qwen3.8 27B Uncensored Q4 GGUF；使用不带 MTP 的标准路径和配套视觉投影文件，通过 ComfyUI MultiModal Prompt Nodes 运行。",
+    vram: "Q4_K_M 约 15.4 GB + vision 约 0.93 GB；4090 单独运行",
+    licenseNote: "社区衍生模型，模型卡声明 Apache-2.0；请阅读模型卡。当前不启用 MTP，提示词完成后应释放模型显存。",
+    backend: "comfyui-multimodal"
+  },
+  {
     id: "community/gemma-4-e4b-unconcerned-q5",
     name: "Gemma 4 E4B Q5 · Uncensored",
     source: "llmfan46/gemma-4-E4B-it-ultra-uncensored-heretic-GGUF",
@@ -149,20 +164,6 @@ export const managedPromptModelDefinitions: readonly ManagedPromptModelDefinitio
     vram: "Q4_K_M · MoE",
     licenseNote: "Gemma 模型须遵守 Google Gemma 使用条款；GGUF 转换由 Unsloth 提供。"
   },
-  {
-    id: "google/gemma-4-31b-q4",
-    name: "Gemma 4 31B Q4 · 大显存实验档",
-    source: "unsloth/gemma-4-31B-it-GGUF",
-    revision: "c1ac76e99d5513b141e8adde7288b85c3f9c32ec",
-    modelFilename: "gemma-4-31B-it-UD-Q4_K_XL.gguf",
-    mmprojFilename: "mmproj-BF16.gguf",
-    targetDirectory: "LLM/gemma-4-31b-q4",
-    contextSize: 16384,
-    badge: "实验档 · Q4",
-    description: "更强的视觉细节档，但更慢且不保证比 26B-A4B 生成更好的 H3 Prompt。",
-    vram: "Q4_K_XL · 大上下文档",
-    licenseNote: "Gemma 模型须遵守 Google Gemma 使用条款；GGUF 转换由 Unsloth 提供。"
-  }
 ] as const;
 
 export function managedPromptModel(modelId: string): ManagedPromptModelDefinition | undefined {

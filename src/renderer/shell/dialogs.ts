@@ -1,6 +1,7 @@
 import type { WindowCloseRequest } from "../../types";
 import { uiKeys } from "../../core/i18n-keys";
 import type { Translate } from "../../core/i18n";
+import { formatElapsedDuration } from "../shared/formatters";
 
 export type ConfirmationRequest =
   | { kind: "clear-draft" }
@@ -99,21 +100,28 @@ export function renderWindowCloseDialog(options: WindowCloseDialogOptions): stri
   const request = options.request;
   if (!request) return "";
   const runningWork = request.kind === "running-work";
+  const queueCleanupOnly = runningWork && request.queueCleanupOnly === true;
   const hasUnsavedSettings = request.hasUnsavedSettings === true;
   const t = options.t;
+  const cleanupStartedAt = request.queueLifecycleStartedAt
+    ? Date.parse(request.queueLifecycleStartedAt)
+    : Number.NaN;
+  const cleanupDuration = Number.isFinite(cleanupStartedAt)
+    ? formatElapsedDuration(Math.max(0, (Date.now() - cleanupStartedAt) / 1000), t)
+    : t(uiKeys.format.waitingTimer);
   return `
     <div class="dialog-backdrop confirm-backdrop close-dialog-backdrop" id="window-close-backdrop">
       <section class="confirm-dialog close-dialog" role="alertdialog" aria-modal="true" aria-labelledby="window-close-title" aria-describedby="window-close-description" tabindex="-1">
         <div class="confirm-icon" aria-hidden="true">${options.icon("alert-triangle")}</div>
         <div class="confirm-copy">
-          <span class="eyebrow">${runningWork ? t(uiKeys.dialog.runningTask) : t(uiKeys.dialog.exitApp)}</span>
-          <h2 id="window-close-title">${runningWork ? t(uiKeys.dialog.currentTaskNotFinished) : t(uiKeys.dialog.unsavedSettings)}</h2>
-          <p id="window-close-description">${runningWork ? t(uiKeys.dialog.runningTaskDescription) : t(uiKeys.dialog.unsavedSettingsDescription)}</p>
-          <div class="confirm-warning">${runningWork ? `${hasUnsavedSettings ? t(uiKeys.dialog.unsavedWillDrop) : ""} ${t(uiKeys.dialog.serviceStays)}` : t(uiKeys.dialog.discardSettingsWarning)}</div>
+          <span class="eyebrow">${runningWork ? (queueCleanupOnly ? t(uiKeys.dialog.queueCleanup) : t(uiKeys.dialog.runningTask)) : t(uiKeys.dialog.exitApp)}</span>
+          <h2 id="window-close-title">${runningWork ? (queueCleanupOnly ? t(uiKeys.dialog.queueCleanupTitle) : t(uiKeys.dialog.currentTaskNotFinished)) : t(uiKeys.dialog.unsavedSettings)}</h2>
+          <p id="window-close-description">${runningWork ? (queueCleanupOnly ? t(uiKeys.dialog.queueCleanupDescription, { duration: cleanupDuration }) : t(uiKeys.dialog.runningTaskDescription)) : t(uiKeys.dialog.unsavedSettingsDescription)}</p>
+          <div class="confirm-warning">${runningWork ? queueCleanupOnly ? (request.queueCleanupTimedOut ? t(uiKeys.dialog.queueCleanupTimedOutWarning) : t(uiKeys.dialog.queueCleanupWarning)) : `${hasUnsavedSettings ? t(uiKeys.dialog.unsavedWillDrop) : ""} ${t(uiKeys.dialog.serviceStays)}` : t(uiKeys.dialog.discardSettingsWarning)}</div>
         </div>
         <div class="dialog-actions">
           <button class="secondary button-with-icon" id="cancel-window-close" ${options.responseBusy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.dialog.cancelExit)}</button>
-          ${runningWork ? `<button class="primary destructive button-with-icon" id="finish-window-close" ${options.responseBusy ? "disabled" : ""}>${options.icon("power")}${options.responseBusy ? t(uiKeys.dialog.processing) : t(uiKeys.dialog.finishTaskExit)}</button><button class="ghost danger button-with-icon" id="force-window-close" ${options.responseBusy ? "disabled" : ""}>${options.icon("ban")}${t(uiKeys.dialog.forceExit)}</button>` : `<button class="primary destructive button-with-icon" id="discard-window-close" ${options.responseBusy ? "disabled" : ""}>${options.icon("power")}${options.responseBusy ? t(uiKeys.dialog.processing) : t(uiKeys.dialog.discardAndExit)}</button>`}
+          ${runningWork ? `<button class="primary destructive button-with-icon" id="finish-window-close" ${options.responseBusy ? "disabled" : ""}>${options.icon("power")}${options.responseBusy ? t(uiKeys.dialog.processing) : queueCleanupOnly ? t(uiKeys.dialog.waitForCleanupExit) : t(uiKeys.dialog.finishTaskExit)}</button><button class="ghost danger button-with-icon" id="force-window-close" ${options.responseBusy ? "disabled" : ""}>${options.icon("ban")}${t(uiKeys.dialog.forceExit)}</button>` : `<button class="primary destructive button-with-icon" id="discard-window-close" ${options.responseBusy ? "disabled" : ""}>${options.icon("power")}${options.responseBusy ? t(uiKeys.dialog.processing) : t(uiKeys.dialog.discardAndExit)}</button>`}
         </div>
       </section>
     </div>`;

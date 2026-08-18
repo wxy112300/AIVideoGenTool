@@ -4,7 +4,8 @@ import {
   environmentItemStatusTone,
   modelProfileStatusTone
 } from "../src/renderer/shared/status";
-import type { CustomNodeStatus, EnvironmentItem, ModelScanProfile } from "../src/types";
+import { environmentScanWithLiveComfyUiStatus } from "../src/renderer/pages/settings/view-model";
+import type { CustomNodeStatus, EnvironmentItem, EnvironmentScanResult, ModelScanProfile } from "../src/types";
 
 function profile(overrides: Partial<ModelScanProfile> = {}): ModelScanProfile {
   return {
@@ -47,6 +48,24 @@ function node(overrides: Partial<CustomNodeStatus> = {}): CustomNodeStatus {
 }
 
 describe("settings status tones", () => {
+  it("projects live ComfyUI connectivity onto the cached environment scan", () => {
+    const scan = {
+      comfyUrl: "http://127.0.0.1:8188",
+      items: [
+        { id: "comfyui-api", label: "ComfyUI 服务", ok: false, detail: "旧的离线结果" },
+        { id: "nvidia", label: "NVIDIA", ok: true, detail: "已连接" }
+      ]
+    } as EnvironmentScanResult;
+
+    const live = environmentScanWithLiveComfyUiStatus(scan, true);
+    expect(live?.items.find((item) => item.id === "comfyui-api")).toMatchObject({
+      ok: true,
+      status: "available",
+      detail: "运行中 · http://127.0.0.1:8188/system_stats"
+    });
+    expect(scan.items[0]?.ok).toBe(false);
+  });
+
   it("uses warning for installed image files waiting for runtime validation", () => {
     expect(modelProfileStatusTone(profile({ runtimeVerified: false }), false)).toBe("warning");
     expect(modelProfileStatusTone(profile({ runtimeVerified: true, runtimeReady: true }), true)).toBe("available");

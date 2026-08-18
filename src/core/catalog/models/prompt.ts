@@ -9,6 +9,12 @@ const managedPromptEnglish: Record<string, { name: string; badge: string; descri
     description: "A community Q4 GGUF profile for ComfyUI MultiModal Prompt Nodes. It can read reference images and should run alone on a 24 GB RTX 4090.",
     licenseNote: "Community derivative; read the upstream model card. Use the regular Q4 quant, not an MTP variant, and release the prompt model before H3 generation."
   },
+  "qwen/qwen3.8-27b-uncensored-q4": {
+    name: "Qwen3.8 27B Q4 · Uncensored · JonathanColetti",
+    badge: "Uncensored · Q4 · 4090",
+    description: "A community Q4 GGUF profile with a matching vision projector for ComfyUI MultiModal Prompt Nodes. This app uses the non-MTP variant as the conservative 24 GB RTX 4090 path.",
+    licenseNote: "Community derivative; read JonathanColetti's model card. Use the non-MTP Q4 file and its matching vision projector; release the prompt model before H3 generation."
+  },
   "community/gemma-4-e4b-unconcerned-q5": {
     name: "Gemma 4 E4B Q5 · Uncensored",
     badge: "Uncensored · Q5",
@@ -51,12 +57,6 @@ const managedPromptEnglish: Record<string, { name: string; badge: string; descri
     description: "The H3 Prompt Writer author's quality/speed balance; release other models before running it.",
     licenseNote: "Gemma models are subject to the Google Gemma terms; the GGUF conversion is provided by Unsloth."
   },
-  "google/gemma-4-31b-q4": {
-    name: "Gemma 4 31B Q4 · High-VRAM experimental",
-    badge: "Experimental · Q4",
-    description: "A stronger visual-detail profile that is slower and not guaranteed to produce better H3 prompts than 26B-A4B.",
-    licenseNote: "Gemma models are subject to the Google Gemma terms; the GGUF conversion is provided by Unsloth."
-  }
 };
 
 const managedPromptTraditional: Record<string, { name: string; badge: string; description: string; licenseNote: string }> = {
@@ -65,6 +65,12 @@ const managedPromptTraditional: Record<string, { name: string; badge: string; de
     badge: "Uncensored · Q4 · 4090",
     description: "供 ComfyUI MultiModal Prompt Nodes 使用的社群 Q4 GGUF；可理解參考圖片，建議在 24GB RTX 4090 上單獨運行。",
     licenseNote: "社群衍生模型；請閱讀上游模型卡。使用普通 Q4，不使用 MTP 變體，H3 生成前應先釋放提示詞模型。"
+  },
+  "qwen/qwen3.8-27b-uncensored-q4": {
+    name: "Qwen3.8 27B Q4 · Uncensored · JonathanColetti",
+    badge: "Uncensored · Q4 · 4090",
+    description: "搭配視覺投影檔、供 ComfyUI MultiModal Prompt Nodes 使用的社群 Q4 GGUF；本應用採用不含 MTP 的保守 24GB RTX 4090 路徑。",
+    licenseNote: "社群衍生模型；請閱讀 JonathanColetti 模型卡。使用不含 MTP 的 Q4 與配套 vision 投影檔，H3 生成前應先釋放提示詞模型。"
   },
   "community/gemma-4-e4b-unconcerned-q5": {
     name: "Gemma 4 E4B Q5 · Uncensored",
@@ -108,12 +114,6 @@ const managedPromptTraditional: Record<string, { name: string; badge: string; de
     description: "H3 Prompt Writer 作者建議的品質／速度平衡設定；執行前需要釋放其他模型。",
     licenseNote: "Gemma 模型須遵守 Google Gemma 使用條款；GGUF 轉換由 Unsloth 提供。"
   },
-  "google/gemma-4-31b-q4": {
-    name: "Gemma 4 31B Q4 · 大顯存實驗設定",
-    badge: "實驗設定 · Q4",
-    description: "更強的視覺細節設定，但速度較慢，且不保證比 26B-A4B 生成更好的 H3 Prompt。",
-    licenseNote: "Gemma 模型須遵守 Google Gemma 使用條款；GGUF 轉換由 Unsloth 提供。"
-  }
 };
 
 const nativePromptEntries: CatalogModelEntry[] = [
@@ -137,7 +137,7 @@ const managedPromptEntries: CatalogModelEntry[] = managedPromptModelDefinitions.
   const makeGuide = (filename: string) => guide(sourceLabel, `${baseUrl}/${filename}?download=true`, model.targetDirectory, filename, notes);
   return entry({
     id: model.id,
-    family: model.backend === "comfyui-multimodal" ? "qwen36-prompt-writer" : "gemma-prompt-writer",
+    family: model.backend === "comfyui-multimodal" ? "comfyui-multimodal-prompt-writer" : "gemma-prompt-writer",
     category: "prompt",
     adapterId: model.backend ?? "h3-prompt-writer",
     order: 260 - index,

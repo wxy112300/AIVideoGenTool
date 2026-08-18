@@ -10,7 +10,7 @@ Local Video Studio 是 Electron + TypeScript + Vite 桌面应用。它负责素�
 
 - Qwen3.5 使用 ComfyUI 核心 `TextGenerate` 路径。
 - Gemma 4 使用 ComfyUI MiniMax H3 Prompt Writer 节点及其 ComfyUI Python 依赖。
-- Qwen3.6 27B Q4（可选）使用 `ComfyUI-MultiModal-Prompt-Nodes` 的 `VisionLLMNode`；它只依赖所选 ComfyUI 的 Python 环境，不需要 LM Studio、llama-server 或第二个服务。
+- Qwen3.6 / Qwen3.8 27B Q4（可选）使用 `ComfyUI-MultiModal-Prompt-Nodes` 的 `VisionLLMNode`；它只依赖所选 ComfyUI 的 Python 环境，不需要 LM Studio、llama-server 或第二个服务。Qwen3.8 当前登记的是 JonathanColetti 的非 MTP Uncensored Q4 与配套 vision 投影文件。
 - 旧状态中可能仍有 LM Studio/llama-server 字段用于兼容迁移，但当前 UI 不要求、也不推荐安装独立服务。
 
 ## 2. 五种不同的“已安装”
@@ -40,7 +40,7 @@ Local Video Studio 是 Electron + TypeScript + Vite 桌面应用。它负责素�
 - ComfyUI Desktop、Portable 或源码安装之一。
 - 与所选 ComfyUI 绑定的 Python/PyTorch/CUDA runtime。
 
-一般不需要为 ComfyUI 本体单独安装系统级完整 CUDA Toolkit。Portable 使用 `python_embeded`，Desktop/源码安装通常使用自己的 `.venv`。节点依赖必须安装进这套 Python，而不是随便一个系统 Python。Windows 的 Gemma Prompt Writer 与 Qwen3.6 MultiModal Prompt Nodes 共用固定的 JamePeng `llama-cpp-python` 预编译 GPU 后端；安装器不会静默改走 CPU，也不会在用户电脑上临时源码编译。
+一般不需要为 ComfyUI 本体单独安装系统级完整 CUDA Toolkit。Portable 使用 `python_embeded`，Desktop/源码安装通常使用自己的 `.venv`。节点依赖必须安装进这套 Python，而不是随便一个系统 Python。Windows 的 Gemma Prompt Writer 与 Qwen3.6/Qwen3.8 MultiModal Prompt Nodes 共用固定的 JamePeng `llama-cpp-python` 预编译 GPU 后端；安装器不会静默改走 CPU，也不会在用户电脑上临时源码编译。
 
 ## 4. ComfyUI 核心目录与数据目录
 
@@ -109,7 +109,7 @@ Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分
 
 工作流来源元数据集中在 `src/core/workflow-metadata.ts`。它覆盖 `workflows/` 下的全部 API JSON，记录 `/prompt` schema、推荐 ComfyUI 核心版本、使用的节点包和上游来源；API JSON 本身不放额外顶层字段，避免被 ComfyUI 当成节点解析。
 
-Qwen3.6 本地多模态路径有明确的 Python ABI 边界：节点仓库的普通 requirements 只安装轻量依赖，安装器会跳过其中可能覆盖后端的普通 `llama-cpp-python`，改用项目统一的固定 JamePeng GPU wheel。Windows 当前支持 Python 3.10–3.14；CUDA wheel 提供 12.4/12.6/12.8/13.0/13.1，并明确映射 12.5→12.4、12.7→12.6、12.9→12.8、13.2→13.1。超出矩阵时会在下载前失败并写明 Python/CUDA 版本，不会尝试 CPU fallback 或本地源码编译。设置页会把“节点目录已安装”“VisionLLMNode 已加载”“共享运行库自检”和“模型/mmproj 文件完整”分开显示，实际运行仍在 ComfyUI 启动后验证。4090 默认使用 Q4_K_M、8K 上下文、GPU 层，扩写完成后请求 ComfyUI `/free` 释放显存，再交给 H3。
+Qwen3.6/Qwen3.8 本地多模态路径有明确的 Python ABI 边界：节点仓库的普通 requirements 只安装轻量依赖，安装器会跳过其中可能覆盖后端的普通 `llama-cpp-python`，改用项目统一的固定 JamePeng GPU wheel。Windows 当前支持 Python 3.10–3.14；CUDA wheel 提供 12.4/12.6/12.8/13.0/13.1，并明确映射 12.5→12.4、12.7→12.6、12.9→12.8、13.2→13.1。超出矩阵时会在下载前失败并写明 Python/CUDA 版本，不会尝试 CPU fallback 或本地源码编译。设置页会把“节点目录已安装”“VisionLLMNode 已加载”“共享运行库自检”和“模型/vision 投影文件完整”分开显示，实际运行仍在 ComfyUI 启动后验证。4090 默认使用 Q4_K_M、8K 上下文、GPU 层，扩写完成后请求 ComfyUI `/free` 释放显存，再交给 H3；Qwen3.8 当前不启用 MTP/speculative 路径。
 
 ### Gemma / H3 Prompt Writer 的 llama-cpp-python
 

@@ -57,7 +57,7 @@ import {
 } from "../../src/core/image-workflow.js";
 import { customNodeDefinition, modelCatalog } from "../../src/core/catalog/index.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
-import { ComfyLogBridge } from "./comfy-log-bridge.js";
+import { ComfyLogBridge, type ComfyLogBridgeContext } from "./comfy-log-bridge.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -988,7 +988,7 @@ export function progressForNode(
 
 export class TaskStalledError extends Error {
   constructor(minutes: number, reason = "未上报节点进展") {
-    super(`任务连续 ${minutes} 分钟${reason}，已停止队列并重启 ComfyUI 释放显存。`);
+    super(`任务连续 ${minutes} 分钟${reason}。`);
     this.name = "TaskStalledError";
   }
 }
@@ -1066,19 +1066,25 @@ export async function waitForTask(
     source?: "h3-tae" | "comfy",
     metadata?: PreviewFrameMetadata
   ) => void,
-  isComputeActive: () => boolean = () => false
+  isComputeActive: () => boolean = () => false,
+  logContext: ComfyLogBridgeContext = {}
 ): Promise<unknown> {
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const logger = getApplicationLogger();
+  const waitStartedAt = Date.now();
   const comfyLogBridge = new ComfyLogBridge(logger, settings.comfyInstallDirectory, {
-    promptId
+    promptId,
+    ...logContext
   });
   await comfyLogBridge.prime();
   const loggedProgress = new Map<string, number>();
   logger.info("comfy", "wait-started", "Waiting for ComfyUI task", {
     promptId,
+    clientId,
     nodeCount: Object.keys(nodeTypes).length,
-    activityTimeoutMinutes
+    nodeTypes: [...new Set(Object.values(nodeTypes))],
+    activityTimeoutMinutes,
+    isComputeActive: isComputeActive()
   });
   let socket: WebSocket | undefined;
   let executionError = "";
@@ -1115,6 +1121,28 @@ export async function waitForTask(
   try {
     socket = new WebSocket(socketUrl(baseUrl, clientId));
     socket.binaryType = "arraybuffer";
+    socket.addEventListener("open", () => {
+      logger.debug("comfy", "websocket-open", "ComfyUI progress WebSocket connected", {
+        promptId,
+        clientId
+      });
+    });
+    socket.addEventListener("error", () => {
+      logger.warn("comfy", "websocket-error", "ComfyUI progress WebSocket reported an error", {
+        promptId,
+        clientId,
+        activeNodeId
+      });
+    });
+    socket.addEventListener("close", (event) => {
+      logger.info("comfy", "websocket-closed", "ComfyUI progress WebSocket closed", {
+        promptId,
+        clientId,
+        code: event.code,
+        reason: event.reason || "",
+        elapsedMs: Date.now() - waitStartedAt
+      });
+    });
     socket.addEventListener("message", async (event) => {
       try {
         const text = await socketMessageText(event.data);
@@ -1215,6 +1243,11 @@ export async function waitForTask(
         }
         if (message.type === "execution_interrupted") {
           executionError = "ComfyUI 任务已中止";
+          logger.warn("comfy", "execution-interrupted", executionError, {
+            promptId,
+            activeNodeId,
+            activeClassType: nodeTypes[activeNodeId] ?? "unknown"
+          });
         }
         if (message.type === "executed") {
           if (typeof message.data?.node === "string") {
@@ -1240,7 +1273,12 @@ export async function waitForTask(
         // Unknown extension messages are ignored.
       }
     });
-  } catch {
+  } catch (error) {
+    logger.error("comfy", "websocket-connect-failed", safeLogErrorMessage(error), {
+      promptId,
+      clientId,
+      elapsedMs: Date.now() - waitStartedAt
+    });
     socket = undefined;
   }
   try {
@@ -1329,6 +1367,15 @@ export async function waitForTask(
     }
     throw signal.reason;
   } finally {
+    logger.info("comfy", "wait-ended", "ComfyUI task wait ended", {
+      promptId,
+      clientId,
+      completed: taskCompleted,
+      elapsedMs: Date.now() - waitStartedAt,
+      activeNodeId,
+      activeClassType: nodeTypes[activeNodeId] ?? "unknown",
+      failure: executionError || ""
+    });
     if (taskCompleted) {
       await comfyLogBridge.syncIncremental("task_finished");
     } else {
@@ -1339,19 +1386,47 @@ export async function waitForTask(
 }
 
 export async function interrupt(settings: Settings): Promise<void> {
-  const response = await fetch(`${cleanBaseUrl(settings.comfyUrl)}/interrupt`, {
-    method: "POST",
-    signal: AbortSignal.timeout(10_000)
-  });
-  if (!response.ok) throw new Error(`中止任务失败：HTTP ${response.status}`);
+  const logger = getApplicationLogger();
+  const startedAt = Date.now();
+  logger.info("comfy", "interrupt-requested", "ComfyUI interrupt requested", {});
+  try {
+    const response = await fetch(`${cleanBaseUrl(settings.comfyUrl)}/interrupt`, {
+      method: "POST",
+      signal: AbortSignal.timeout(10_000)
+    });
+    if (!response.ok) throw new Error(`中止任务失败：HTTP ${response.status}`);
+    logger.info("comfy", "interrupt-succeeded", "ComfyUI interrupt accepted", {
+      durationMs: Date.now() - startedAt,
+      statusCode: response.status
+    });
+  } catch (error) {
+    logger.error("comfy", "interrupt-failed", safeLogErrorMessage(error), {
+      durationMs: Date.now() - startedAt
+    });
+    throw error;
+  }
 }
 
 export async function freeMemory(settings: Settings): Promise<void> {
-  const response = await fetch(`${cleanBaseUrl(settings.comfyUrl)}/free`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ unload_models: true, free_memory: true }),
-    signal: AbortSignal.timeout(10_000)
-  });
-  if (!response.ok) throw new Error(`释放显存失败：HTTP ${response.status}`);
+  const logger = getApplicationLogger();
+  const startedAt = Date.now();
+  logger.info("comfy", "memory-release-requested", "ComfyUI model unload requested", {});
+  try {
+    const response = await fetch(`${cleanBaseUrl(settings.comfyUrl)}/free`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unload_models: true, free_memory: true }),
+      signal: AbortSignal.timeout(10_000)
+    });
+    if (!response.ok) throw new Error(`释放显存失败：HTTP ${response.status}`);
+    logger.info("comfy", "memory-release-succeeded", "ComfyUI model unload accepted", {
+      durationMs: Date.now() - startedAt,
+      statusCode: response.status
+    });
+  } catch (error) {
+    logger.error("comfy", "memory-release-failed", safeLogErrorMessage(error), {
+      durationMs: Date.now() - startedAt
+    });
+    throw error;
+  }
 }

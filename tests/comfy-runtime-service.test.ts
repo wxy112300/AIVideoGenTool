@@ -24,7 +24,7 @@ describe("ComfyUI runtime service", () => {
   });
 
   it("builds a source launch from the selected data and core directories", async () => {
-    const launchDetached = vi.fn(async () => undefined);
+    const launchDetached = vi.fn(async () => 1234);
     const settings = {
       ...createDefaultState().settings,
       comfyUrl: "http://127.0.0.1:8288",
@@ -42,6 +42,7 @@ describe("ComfyUI runtime service", () => {
       }),
       applyComfyDesktopSettings: async () => undefined,
       launchDetached,
+      isPortInUse: async () => false,
       downloadEnvironment: () => ({ TEST_ENV: "1" }),
       exists: async (filename) => filename.endsWith("main.py"),
       findComfyPython: async () => "D:\\ComfyData\\.venv\\Scripts\\python.exe",
@@ -72,12 +73,12 @@ describe("ComfyUI runtime service", () => {
       "--output-directory", "D:\\ComfyData\\output"
     ]));
     expect(args).toContain(
-      `sqlite:///${path.join("D:\\ComfyData", "user", "comfyui.db").replaceAll("\\", "/")}`
+      `sqlite:///${path.join("D:\\ComfyData", "user", `comfyui.local-video-studio-${process.pid}-8288.db`).replaceAll("\\", "/")}`
     );
   });
 
   it("delegates shell-only Desktop installations to the official executable", async () => {
-    const launchDetached = vi.fn(async () => undefined);
+    const launchDetached = vi.fn(async () => 1234);
     const applyComfyDesktopSettings = vi.fn(async () => undefined);
     const settings = createDefaultState().settings;
     const dependencies: ComfyRuntimeServiceDependencies = {
@@ -90,6 +91,7 @@ describe("ComfyUI runtime service", () => {
       }),
       applyComfyDesktopSettings,
       launchDetached,
+      isPortInUse: async () => false,
       downloadEnvironment: () => ({}),
       exists: async () => false,
       findComfyPython: async () => "",
@@ -104,5 +106,67 @@ describe("ComfyUI runtime service", () => {
       "D:\\Program Files\\ComfyUI",
       {}
     );
+  });
+
+  it("does not launch a second ComfyUI when the configured port is already occupied", async () => {
+    const launchDetached = vi.fn(async () => 1234);
+    const settings = {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:8288"
+    };
+    const dependencies: ComfyRuntimeServiceDependencies = {
+      findComfyRoot: async () => { throw new Error("should not scan roots"); },
+      findComfyInstallation: async () => { throw new Error("should not scan installations"); },
+      applyComfyDesktopSettings: async () => undefined,
+      launchDetached,
+      isPortInUse: async () => true,
+      downloadEnvironment: () => ({}),
+      exists: async () => false,
+      findComfyPython: async () => "",
+      comfyDataDirectories: () => ({ modelDirectory: "", outputDirectory: "" })
+    };
+
+    await expect(startComfyUiService(settings, dependencies)).resolves.toBe(
+      "http://127.0.0.1:8288/system_stats"
+    );
+    expect(launchDetached).not.toHaveBeenCalled();
+  });
+
+  it("shares concurrent startup requests instead of launching twice", async () => {
+    const launchDetached = vi.fn(async () => 1234);
+    const settings = {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:8288"
+    };
+    const dependencies: ComfyRuntimeServiceDependencies = {
+      findComfyRoot: async () => "D:\\ComfyData",
+      findComfyInstallation: async () => ({
+        type: "manual",
+        directory: "D:\\ComfyCore",
+        sourceDirectory: "D:\\ComfyCore",
+        executable: ""
+      }),
+      applyComfyDesktopSettings: async () => undefined,
+      launchDetached,
+      isPortInUse: async () => false,
+      downloadEnvironment: () => ({}),
+      exists: async (filename) => filename.endsWith("main.py"),
+      findComfyPython: async () => "D:\\ComfyData\\.venv\\Scripts\\python.exe",
+      comfyDataDirectories: () => ({
+        modelDirectory: "D:\\ComfyData\\models",
+        outputDirectory: "D:\\ComfyData\\output"
+      })
+    };
+
+    const results = await Promise.all([
+      startComfyUiService(settings, dependencies),
+      startComfyUiService(settings, dependencies)
+    ]);
+
+    expect(results).toEqual([
+      "http://127.0.0.1:8288/system_stats",
+      "http://127.0.0.1:8288/system_stats"
+    ]);
+    expect(launchDetached).toHaveBeenCalledOnce();
   });
 });

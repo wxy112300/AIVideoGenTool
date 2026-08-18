@@ -39,6 +39,9 @@ describe("application logger", () => {
 
     logger.info("queue", "task.progress", "SeedVR2 超分辨率", {
       taskId: "task-123",
+      promptId: "prompt-456",
+      promptModelId: "qwen/qwen3.6-27b-uncensored-q4",
+      promptBackend: "comfyui-multimodal",
       taskType: "upscale",
       modelId: "seedvr2",
       progress: 42,
@@ -57,12 +60,17 @@ describe("application logger", () => {
       event: "task-progress",
       meta: {
         taskId: "task-123",
+        promptId: "prompt-456",
+        promptModelId: "qwen/qwen3.6-27b-uncensored-q4",
+        promptBackend: "comfyui-multimodal",
         modelId: "seedvr2",
         progress: 42,
         prompt: "[redacted]",
         sourceFilePath: "[redacted]"
       }
     });
+    expect(snapshot.records[0]?.meta?.processId).toBe(process.pid);
+    expect(snapshot.records[0]?.meta?.sessionId).toEqual(expect.any(String));
     expect(JSON.stringify(snapshot)).not.toContain("a private prompt");
     expect(JSON.stringify(snapshot)).not.toContain("private\\video.mp4");
   });

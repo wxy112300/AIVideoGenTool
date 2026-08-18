@@ -15,7 +15,9 @@ describe("prompt model runtime selection", () => {
     expect(managedPromptModelDefinitions).toHaveLength(9);
     for (const model of managedPromptModelDefinitions) {
       expect(promptModelBackend(model.id)).toBe(
-        model.id === "qwen/qwen3.6-27b-uncensored-q4" ? "comfyui-multimodal" : "h3-prompt-writer"
+        ["qwen/qwen3.6-27b-uncensored-q4", "qwen/qwen3.8-27b-uncensored-q4"].includes(model.id)
+          ? "comfyui-multimodal"
+          : "h3-prompt-writer"
       );
       expect(promptModelSupportsImageEdit(model.id)).toBe(true);
     }
@@ -83,6 +85,19 @@ describe("prompt model runtime selection", () => {
       modelFilename: "Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-DAU-NEO-MAX-NEO-Q4_K_M.gguf",
       mmprojFilename: "mmproj-BF16.gguf",
       targetDirectory: "LLM/qwen3.6-27b-uncensored-q4"
+    });
+  });
+
+  it("routes JonathanColetti Qwen3.8 through the non-MTP multimodal profile", () => {
+    const modelId = "qwen/qwen3.8-27b-uncensored-q4";
+    expect(isComfyMultimodalPromptModel(modelId)).toBe(true);
+    expect(isGemmaPromptModel(modelId)).toBe(false);
+    expect(managedPromptModel(modelId)).toMatchObject({
+      backend: "comfyui-multimodal",
+      source: "JonathanColetti/Qwen3.8-27B-Uncensored-GGUF",
+      modelFilename: "Qwen3.8-27B-Uncensored-noMTP-Q4_K_M.gguf",
+      mmprojFilename: "Qwen3.8-27B-Uncensored-vision-f16.gguf",
+      targetDirectory: "LLM/qwen3.8-27b-uncensored-q4"
     });
   });
 

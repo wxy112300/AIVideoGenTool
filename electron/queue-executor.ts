@@ -37,7 +37,7 @@ export interface QueueExecutorDependencies {
   sendPreview(payload: TaskPreview): void;
   setQueueLifecycle(lifecycle: QueueLifecycle, taskId?: string): Promise<AppState>;
   updateTask(taskId: string, patch: Partial<QueueTask>): Promise<AppState>;
-  ensureComfyUiReady(taskId: string): Promise<void>;
+  ensureComfyUiReady(taskId: string, signal?: AbortSignal): Promise<void>;
   resolveTaskOutputDirectory(): Promise<string>;
   requireExistingImageOutput(result: unknown, outputRoot: string, alternateRoots?: string[]): Promise<HistoryFile[]>;
   requireExistingVideoOutput(result: unknown, alternateRoots?: string[]): Promise<HistoryFile[]>;
@@ -72,6 +72,16 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     task: ImageGenerationQueueTask
   ): Promise<void> {
     const controller = queueWorkerController.beginTask();
+    const taskStartedAt = Date.now();
+    logger.info("queue", "task-started", "Image batch task execution started", {
+      taskId: task.id,
+      taskType: task.taskType,
+      modelId: task.modelId,
+      runCount: task.runs.length,
+      outputCount: task.outputCount,
+      qualityProfile: task.qualityProfile,
+      outputFormat: task.outputFormat
+    });
     try {
       await updateTask(task.id, {
         status: "running",
@@ -80,7 +90,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         startedAt: new Date().toISOString(),
         error: undefined
       });
-      await ensureComfyUiReady(task.id);
+      await ensureComfyUiReady(task.id, controller.signal);
       const totalRuns = Math.max(1, task.runs.length);
       for (const plannedRun of task.runs) {
         const current = store.get().queue.find((item) => item.id === task.id);
@@ -132,7 +142,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
                 ...metadata
               });
             },
-            () => true
+            () => true,
+            { taskId: task.id, modelId: task.modelId }
           );
           const files = await requireExistingImageOutput(
             result,
@@ -180,6 +191,13 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       const completed = await store.update((state) => {
         state.queue = state.queue.filter((item) => item.id !== task.id);
       });
+      logger.info("queue", "task-finished", "Image batch task finished successfully", {
+        taskId: task.id,
+        taskType: task.taskType,
+        modelId: task.modelId,
+        runCount: task.runs.length,
+        durationSeconds: Math.round((Date.now() - taskStartedAt) / 1000)
+      });
       sendState(completed);
     } catch (error) {
       const message = controller.signal.aborted
@@ -192,6 +210,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           taskId: task.id,
           modelId: task.modelId,
           error: message,
+          durationSeconds: Math.round((Date.now() - taskStartedAt) / 1000),
           ...errorLogMeta(error)
         });
       }
@@ -227,6 +246,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         await executeImageGenerationQueueTask(task);
         continue;
       }
+      const executionStartedAt = Date.now();
       logger.info("queue", "task-started", "Queue task execution started", {
         taskId: task.id,
         taskType: task.taskType,
@@ -235,6 +255,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         automaticRetryLimit: store.get().settings.autoRetryCount,
         duration: task.duration,
         fps: task.fps,
+        startedAt: new Date(executionStartedAt).toISOString(),
         attentionMode: task.taskType === "upscale" ? "not-applicable" : task.attentionMode ?? "sage",
         spectrumMode: task.taskType === "upscale" ? "not-applicable" : task.spectrumMode ?? "off",
         ...(task.taskType === "upscale"
@@ -404,7 +425,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             });
           }
         }
-        await ensureComfyUiReady(task.id);
+        await ensureComfyUiReady(task.id, activeController.signal);
         await updateTask(task.id, {
           progress: 1,
           stage: "提交工作流"
@@ -511,7 +532,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               ...metadata
             });
           },
-          () => Date.now() - lastGpuComputeAt < 10_000
+          () => Date.now() - lastGpuComputeAt < 10_000,
+          { taskId: task.id, modelId: task.modelId }
         );
         logH3PreviewOutcome("completed");
         logger.info("queue", "task-output-ready", "ComfyUI task completed", {
@@ -564,6 +586,15 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             sharedGpuMemoryPeakBytes: taskPerformanceStats.sharedGpuMemoryPeakBytes ?? null
           });
         }
+        logger.info("queue", "task-finished", "Queue task finished successfully", {
+          taskId: task.id,
+          taskType: task.taskType,
+          modelId: task.modelId,
+          promptId,
+          outputCount: files.length,
+          durationSeconds: Math.round(taskPerformanceStats?.durationSeconds ?? (Date.now() - executionStartedAt) / 1000),
+          performanceCaptured: Boolean(taskPerformanceStats)
+        });
         const next = await store.update((state) => {
           persistVideoHistoryResult(state, {
             task: completedTask,
@@ -610,6 +641,15 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             sharedGpuMemoryPeakBytes: taskPerformanceStats.sharedGpuMemoryPeakBytes ?? null
           });
         }
+        logger.error("queue", "task-failed", safeLogErrorMessage(error), {
+          taskId: task.id,
+          taskType: task.taskType,
+          modelId: task.modelId,
+          durationSeconds: Math.round(taskPerformanceStats?.durationSeconds ?? (Date.now() - executionStartedAt) / 1000),
+          aborted,
+          stalled,
+          ...errorLogMeta(error)
+        });
         await recoverQueueFailure({
           store,
           logger: logger,

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-
+import { createConnection } from "node:net";
 export function localEndpoint(rawUrl: string, fallbackPort: number): {
   host: string;
   port: number;
@@ -20,13 +20,29 @@ export function localEndpoint(rawUrl: string, fallbackPort: number): {
   }
 }
 
+export async function isLocalPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection({ host: "127.0.0.1", port });
+    let settled = false;
+    const finish = (value: boolean): void => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(value);
+    };
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+    socket.setTimeout(1_000, () => finish(false));
+  });
+}
+
 export async function launchDetached(
   executable: string,
   args: string[],
   cwd?: string,
   env: NodeJS.ProcessEnv = process.env
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
+): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
     const child = spawn(executable, args, {
       cwd,
       env,
@@ -36,8 +52,12 @@ export async function launchDetached(
     });
     child.once("error", reject);
     child.once("spawn", () => {
+      if (!child.pid) {
+        reject(new Error(`无法获取已启动进程 PID：${executable}`));
+        return;
+      }
       child.unref();
-      resolve();
+      resolve(child.pid);
     });
   });
 }

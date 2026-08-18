@@ -3,12 +3,14 @@ import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import { elapsedText } from "../../shared/formatters";
 import {
+  queueOperationStatus,
   queueComfyUiStatus,
   queueHeaderTone
 } from "./live-status";
 
 export interface QueuePageOptions {
   t: Translate;
+  escapeHtml(value: unknown): string;
   performanceMetrics: PerformanceMetrics | null;
   queueRemainingSeconds(tasks: QueueTask[]): number | null;
   queueEstimateText(seconds: number | null): string;
@@ -65,7 +67,8 @@ export function renderQueuePage(
   const attentionTasks = state.queue.filter((task) => task.status === "failed" || task.status === "cancelled");
   const remainingSeconds = options.queueRemainingSeconds(activeTasks);
   const lifecycle = state.queueLifecycle ?? "idle";
-  const comfyUi = queueComfyUiStatus(state, options.t);
+  const comfyUi = queueComfyUiStatus(state, options.t, options.performanceMetrics?.comfyConnected);
+  const operation = queueOperationStatus(state, options.t);
   const headerTone = queueHeaderTone(state);
   const showRunSummary = Boolean(
     state.queueStartedAt &&
@@ -82,8 +85,10 @@ export function renderQueuePage(
     ? options.t(uiKeys.queue.endHint)
     : running
       ? options.t(uiKeys.queue.continueQueue)
-      : options.t(uiKeys.queue.start);
-  const primaryDisabled = ["pausing", "cancelling", "cleaning"].includes(lifecycle)
+      : operation.visible
+        ? operation.message
+        : options.t(uiKeys.queue.start);
+  const primaryDisabled = ["pausing", "cancelling", "cleaning", "error"].includes(lifecycle)
     || (!state.queueRunning && !running && !hasWaitingTasks);
   const metrics = options.performanceMetrics;
   return `
@@ -113,6 +118,7 @@ export function renderQueuePage(
         <button class="${state.queueRunning ? "secondary" : "primary"} button-with-icon queue-primary-action" id="queue-primary-action" data-queue-primary-mode="${primaryMode}" title="${primaryTitle}" ${primaryDisabled ? "disabled" : ""}>${options.icon(state.queueRunning ? "pause" : "play")}<span id="queue-primary-label">${primaryLabel}</span></button>
       </div>
     </section>
+    <div class="queue-operation-status" id="queue-operation-status" data-tone="${operation.tone}" ${operation.visible ? "" : "hidden"} role="status" aria-live="polite"><span class="queue-operation-indicator" aria-hidden="true"></span><span id="queue-operation-message">${options.escapeHtml(operation.message)}</span></div>
     <section class="performance-grid queue-performance-grid" aria-label="${options.t(uiKeys.queue.performance)}">
       ${options.performanceCard(options.t(uiKeys.queue.cpu), "metric-cpu", metrics?.cpuPercent, "%")}
       ${options.performanceCard(options.t(uiKeys.queue.systemMemory), "metric-memory", metrics && metrics.memoryTotalBytes > 0 ? metrics.memoryUsedBytes / metrics.memoryTotalBytes * 100 : null, "%", metrics && metrics.memoryTotalBytes > 0 ? `${formatBytes(metrics.memoryUsedBytes)} / ${formatBytes(metrics.memoryTotalBytes)}` : "")}

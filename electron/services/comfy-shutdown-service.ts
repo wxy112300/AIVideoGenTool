@@ -10,6 +10,8 @@ const appLogger = getApplicationLogger();
 
 export interface ComfyShutdownDependencies {
   findComfyPython(settings: Settings): Promise<string>;
+  ownedProcessIds?: () => readonly number[];
+  ownedOnly?: boolean;
 }
 
 async function exists(filename: string): Promise<boolean> {
@@ -90,6 +92,28 @@ export function collectComfyProcessIds(
   return processIds;
 }
 
+export function collectOwnedComfyProcessIds(
+  processes: readonly ComfyProcessInfo[],
+  ownedProcessIds: readonly number[]
+): Set<number> {
+  const processById = new Map(processes.map((item) => [item.processId, item]));
+  const selected = new Set(
+    ownedProcessIds.filter((processId) =>
+      Number.isInteger(processId) && processId > 0 && processById.has(processId)
+    )
+  );
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const process of processById.values()) {
+      if (selected.has(process.processId) || !selected.has(process.parentProcessId)) continue;
+      selected.add(process.processId);
+      changed = true;
+    }
+  }
+  return selected;
+}
+
 export function parseComfyProcessInfo(output: string): ComfyProcessInfo[] {
   try {
     const parsed = JSON.parse(output.trim()) as unknown;
@@ -163,7 +187,11 @@ export async function forceStopComfyProcesses(
     ).catch(() => ({ stdout: "" }));
     listenerProcessId = listeningPid(netstat.stdout, endpoint.port);
   }
-  const processIds = collectComfyProcessIds(processes, listenerProcessId);
+  const ownedProcessIds = dependencies.ownedProcessIds?.() ?? [];
+  const ownedComfyProcessIds = collectOwnedComfyProcessIds(processes, ownedProcessIds);
+  const processIds = dependencies.ownedOnly
+    ? ownedComfyProcessIds
+    : collectComfyProcessIds(processes, listenerProcessId);
   appLogger.info("comfy", "force-stop-discovered", "ComfyUI processes selected for termination", {
     processIds: [...processIds],
     parentProcessIds: processes.map((item) => item.parentProcessId),
@@ -212,7 +240,10 @@ export async function forceStopComfyProcesses(
   }
   await new Promise((resolve) => setTimeout(resolve, 500));
   const survivingProcesses = await allComfyProcessInfo(settings, dependencies);
-  const survivingIds = new Set(survivingProcesses.map((item) => item.processId));
+  const survivingOwnedIds = collectOwnedComfyProcessIds(survivingProcesses, ownedProcessIds);
+  const survivingIds = dependencies.ownedOnly
+    ? survivingOwnedIds
+    : new Set(survivingProcesses.map((item) => item.processId));
   if (endpoint) {
     const netstat = await execFileAsync(
       "netstat.exe",
@@ -220,7 +251,9 @@ export async function forceStopComfyProcesses(
       { encoding: "utf8", timeout: 5000, windowsHide: true }
     ).catch(() => ({ stdout: "" }));
     const listening = listeningPid(netstat.stdout, endpoint.port);
-    if (listening) survivingIds.add(listening);
+    if (listening && (!dependencies.ownedOnly || survivingOwnedIds.has(listening))) {
+      survivingIds.add(listening);
+    }
   }
   if (survivingIds.size) {
     appLogger.warn("comfy", "force-stop-survivors", "ComfyUI processes survived forced termination", {
@@ -258,6 +291,12 @@ export async function stopComfyUiService(
   if (!endpoint) {
     throw new Error("重启只支持本机 ComfyUI 地址（localhost 或 127.0.0.1）。");
   }
+  const ownedProcessIds = dependencies.ownedProcessIds?.() ?? [];
+  if (dependencies.ownedOnly && !ownedProcessIds.length) {
+    throw new Error("当前 ComfyUI 由外部进程管理，应用不会自动终止它。");
+  }
+  const initialProcesses = await allComfyProcessInfo(settings, dependencies);
+  const ownedProcessSet = collectOwnedComfyProcessIds(initialProcesses, ownedProcessIds);
   const initialStop = await forceStopComfyProcesses(settings, dependencies);
   appLogger.info(
     "comfy",
@@ -288,6 +327,9 @@ export async function stopComfyUiService(
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
       continue;
+    }
+    if (dependencies.ownedOnly && !ownedProcessSet.has(pid)) {
+      throw new Error("检测到外部 ComfyUI 正在占用端口，应用不会自动终止它。");
     }
     portClearSince = 0;
     appLogger.warn("comfy", "listener-reappeared", "ComfyUI listener is still present during shutdown", {

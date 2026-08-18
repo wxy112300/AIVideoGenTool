@@ -15,13 +15,15 @@ export interface QueueMutationIpcDependencies {
   store: JsonStore;
   logger: AppLogger;
   sendState(state: AppState): void;
+  isQueueCleanupActive?: (taskId: string) => boolean;
 }
 
 export function registerQueueMutationIpc({
   ipc,
   store,
   logger,
-  sendState
+  sendState,
+  isQueueCleanupActive
 }: QueueMutationIpcDependencies): void {
   ipc.handle(
     "queue:update-upscale",
@@ -67,11 +69,29 @@ export function registerQueueMutationIpc({
   });
 
   ipc.handle("queue:reset", async (_event, taskId: string) => {
+    const current = store.get();
+    const cleanupActive = isQueueCleanupActive?.(taskId) ?? true;
+    if (
+      current.queueLifecycleTaskId === taskId &&
+      cleanupActive
+    ) {
+      throw new Error("任务仍在清理中，请等待取消操作完成后再重置。 ");
+    }
     let reset = false;
     const next = await store.update((state) => {
       const result = resetQueueTask(state.queue, taskId);
       state.queue = result.queue;
       reset = result.reset;
+      if (
+        reset &&
+        state.queueLifecycleTaskId === taskId &&
+        !cleanupActive
+      ) {
+        state.queueRunning = false;
+        state.queueLifecycle = "idle";
+        state.queueLifecycleTaskId = undefined;
+        state.queueLifecycleStartedAt = undefined;
+      }
     });
     if (reset) {
       logger.info(

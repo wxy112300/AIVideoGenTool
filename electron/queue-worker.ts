@@ -6,6 +6,7 @@ import type { AppLogger } from "./services/app-logger.js";
 export class QueueWorkerController {
   private worker: Promise<void> | null = null;
   private controller: AbortController | null = null;
+  private cleanup: Promise<void> | null = null;
 
   get runningWorker(): Promise<void> | null {
     return this.worker;
@@ -13,6 +14,17 @@ export class QueueWorkerController {
 
   get activeController(): AbortController | null {
     return this.controller;
+  }
+
+  get cleanupWorker(): Promise<void> | null {
+    return this.cleanup;
+  }
+
+  trackCleanup(cleanup: Promise<void>): void {
+    this.cleanup = cleanup;
+    void cleanup.finally(() => {
+      if (this.cleanup === cleanup) this.cleanup = null;
+    }).catch(() => undefined);
   }
 
   beginTask(): AbortController {
@@ -62,8 +74,14 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
     taskId?: string
   ): Promise<AppState> => {
     const next = await store.update((state) => {
+      const changed = state.queueLifecycle !== lifecycle || state.queueLifecycleTaskId !== taskId;
       state.queueLifecycle = lifecycle;
       state.queueLifecycleTaskId = taskId;
+      if (lifecycle === "idle") {
+        state.queueLifecycleStartedAt = undefined;
+      } else if (changed || !state.queueLifecycleStartedAt) {
+        state.queueLifecycleStartedAt = new Date().toISOString();
+      }
     });
     sendState(next);
     return next;
@@ -72,6 +90,17 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
   ipc.handle("queue:start", async () => {
     if (deps.nativePromptBusy()) {
       throw new Error("当前正在生成提示词，请等待扩写完成后再开始视频任务。 ");
+    }
+    const current = store.get();
+    if (worker.runningWorker || ["starting", "running", "pausing", "cancelling", "cleaning", "error"].includes(current.queueLifecycle)) {
+      logger.info("queue", "start-blocked", "Queue start was ignored while a previous queue operation is active", {
+        queueLifecycle: current.queueLifecycle,
+        queueLifecycleTaskId: current.queueLifecycleTaskId,
+        queueLifecycleStartedAt: current.queueLifecycleStartedAt ?? "",
+        workerActive: Boolean(worker.runningWorker)
+      });
+      sendState(current);
+      return current;
     }
     const waitingTasks = store.get().queue.filter((task) => task.status === "waiting");
     if (!waitingTasks.length) {
@@ -91,6 +120,7 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
       state.queueStartedAt ??= new Date().toISOString();
       state.queueLifecycle = "starting";
       state.queueLifecycleTaskId = undefined;
+      state.queueLifecycleStartedAt = new Date().toISOString();
     });
     logger.info("queue", "started", "Queue processing started", {
       waitingTasks: next.queue.filter((task) => task.status === "waiting").length
@@ -101,11 +131,14 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
   });
 
   ipc.handle("queue:pause", async () => {
+    const current = store.get();
+    if (["cancelling", "cleaning"].includes(current.queueLifecycle)) return current;
     const next = await store.update((state) => {
       state.queueRunning = false;
       const running = state.queue.find((task) => task.status === "running");
       state.queueLifecycle = running ? "pausing" : "idle";
       state.queueLifecycleTaskId = running?.id;
+      state.queueLifecycleStartedAt = running ? new Date().toISOString() : undefined;
     });
     logger.info("queue", "paused", "Queue processing paused");
     sendState(next);
@@ -115,6 +148,13 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
   ipc.handle("queue:cancel", async (_event, taskId: string) => {
     const task = store.get().queue.find((item) => item.id === taskId);
     if (!task) return store.get();
+    const current = store.get();
+    if (
+      current.queueLifecycleTaskId === taskId &&
+      ["cancelling", "cleaning"].includes(current.queueLifecycle)
+    ) {
+      return current;
+    }
     if (task.status === "running") {
       const settings = deps.settingsForTask(task, store.get().settings);
       const runningWorker = worker.runningWorker;
@@ -122,17 +162,18 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
         state.queueRunning = false;
         state.queueLifecycle = "cancelling";
         state.queueLifecycleTaskId = taskId;
+        state.queueLifecycleStartedAt = new Date().toISOString();
         const current = state.queue.find((item) => item.id === taskId);
         if (current && current.status === "running") {
           current.status = "cancelled";
-          current.stage = "任务已取消，正在后台清理 ComfyUI";
-          current.error = "任务已取消，正在后台清理 ComfyUI。";
+          current.stage = "正在取消任务，等待 ComfyUI 清理";
+          current.error = "正在取消任务，等待 ComfyUI 清理。";
           current.updatedAt = new Date().toISOString();
         }
       });
       sendState(next);
       worker.abort(new Error("用户取消任务"));
-      void (async () => {
+      const cleanup = (async () => {
         try {
           await setQueueLifecycle("cleaning", taskId);
           await deps.cleanupCancelledTask(taskId, settings, runningWorker);
@@ -151,6 +192,8 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
           await setQueueLifecycle("error", taskId).catch(() => undefined);
         }
       })();
+      worker.trackCleanup(cleanup);
+      void cleanup;
       return next;
     }
     return deps.updateTask(taskId, {

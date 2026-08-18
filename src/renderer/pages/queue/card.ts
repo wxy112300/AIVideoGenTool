@@ -5,7 +5,7 @@ import {
   normalizeH3Steps
 } from "../../../core/workflow";
 import { upscaleDimensions } from "../../../core/upscale";
-import type { Draft, QueueTask } from "../../../types";
+import type { Draft, QueueLifecycle, QueueTask } from "../../../types";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import { videoPromptForLoras } from "../../../core/video-loras";
@@ -24,6 +24,8 @@ export interface QueueCardRenderOptions {
   t: Translate;
   taskPreviews: Readonly<Record<string, string>>;
   queueRunning: boolean;
+  queueLifecycle?: QueueLifecycle;
+  queueLifecycleTaskId?: string;
   queueActionBusy: QueueActionBusy;
   icon(name: string, className?: string): string;
   escapeHtml(value: unknown): string;
@@ -125,6 +127,9 @@ export function renderQueueTaskCard(
       ? `<span>${t(uiKeys.queue.card.extension)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${t(uiKeys.queue.card.maxModelFrames, { count: task.maxGeneratedFrames })}</span><span>${t(uiKeys.queue.card.contextFrames, { count: task.overlapFrames })}</span>${h3ComputeSummary}`
       : `<span>${t(uiKeys.queue.card.upscale)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${upscaleOutput![0]} × ${upscaleOutput![1]}</span><span>${t(uiKeys.queue.card.batchUnload)}</span>`;
   const attentionTask = task.status === "failed" || task.status === "cancelled";
+  const queueCleanupActive =
+    options.queueLifecycleTaskId === task.id &&
+    (options.queueLifecycle === "cancelling" || options.queueLifecycle === "cleaning");
   const retrySummary = task.automaticRetryAttempt
     ? `<span class="queue-retry-status">${t(uiKeys.queue.card.autoRetry, { count: task.automaticRetryAttempt })}</span>`
     : "";
@@ -191,7 +196,7 @@ export function renderQueueTaskCard(
             ? `<button class="secondary button-with-icon queue-action-primary" data-edit-upscale-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editUpscaleTitle)}">${options.icon("sliders-horizontal")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.edit)}</span></button>`
             : `<button class="secondary button-with-icon queue-action-primary" data-edit-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editTitle)}">${options.icon("sliders-horizontal")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.edit)}</span></button>`
           : ""}
-        ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary button-with-icon queue-action-primary queue-action-reset" data-reset-task="${task.id}" title="${t(uiKeys.queue.card.resetTitle)}">${options.icon("rotate-ccw")}<span class="queue-action-label">${t(uiKeys.queue.card.reset)}</span></button>` : ""}
+        ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary button-with-icon queue-action-primary queue-action-reset" data-reset-task="${task.id}" ${queueCleanupActive ? "disabled" : ""} title="${t(uiKeys.queue.card.resetTitle)}">${options.icon("rotate-ccw")}<span class="queue-action-label">${t(uiKeys.queue.card.reset)}</span></button>` : ""}
         <button class="secondary button-with-icon queue-action-quiet" data-duplicate="${task.id}" aria-label="${t(uiKeys.queue.card.duplicate)}" title="${t(uiKeys.queue.card.duplicate)}">${options.icon("copy")}<span class="queue-action-label">${t(uiKeys.queue.card.duplicate)}</span></button>
         <button class="ghost danger button-with-icon queue-action-quiet" data-remove="${task.id}" aria-label="${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}" title="${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}" ${options.queueActionBusy?.taskId === task.id ? "disabled" : ""}>${options.icon("trash-2")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}</span></button>
       </div>

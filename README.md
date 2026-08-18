@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.25.5**。历史作品支持详情页收藏、半星评分和组合筛选，筛选面板采用紧凑单列布局且开合不触发整页重绘；缩略图保持只读信息展示，筛选上下文会同步到详情页导航。设置页的 H3 原生核心卡片在核心已识别时仍提供检查/更新入口；节点扫描补充上游版本缓存、VideoHelperSuite 节点声明和工作流来源元数据。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.26.0**。提示词辅助新增 JonathanColetti Qwen3.8 27B Uncensored 非 MTP Q4 多模态配置，并移除过大的 Gemma 4 31B Q4 选项；历史作品支持详情页收藏、半星评分和组合筛选，筛选面板采用紧凑单列布局且开合不触发整页重绘。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -14,7 +14,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 - 本地队列：单重型 GPU 阶段执行，支持暂停/取消、阶段进度、实时预览和性能摘要。
 - 作品历史：图片和视频分区、版本管理、完整提交参数、文件操作和继续创作。
 - 环境管理：离线扫描多个 ComfyUI 安装、核心/数据目录、模型、节点、工作流和 Python 环境。
-- 本地提示词辅助：通过所选 ComfyUI 运行 Qwen3.5、Qwen3.6 MultiModal 或 MiniMax H3 Prompt Writer/Gemma，不要求独立 LM Studio 或 llama-server。
+- 本地提示词辅助：通过所选 ComfyUI 运行 Qwen3.5、Qwen3.6/Qwen3.8 MultiModal 或 MiniMax H3 Prompt Writer/Gemma，不要求独立 LM Studio 或 llama-server。
 
 ## 支持范围
 
@@ -26,7 +26,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 | 图片处理 | Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
 | 视频增强 | SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
 | H3 LoRA | LightX2V Turbo v1.0（8-step/768p 4-step）、Ref2V Turbo、Realism People、PinkFluffyBunny NSFW |
-| Prompt | Qwen3.5 2B/4B、Qwen3.6 27B Q4 MultiModal、MiniMax H3 Prompt Writer 的 Gemma 4 GGUF 配置 |
+| Prompt | Qwen3.5 2B/4B、Qwen3.6/Qwen3.8 27B Q4 MultiModal、MiniMax H3 Prompt Writer 的 Gemma 4 GGUF 配置 |
 
 Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部分已经从新建任务列表淘汰；旧队列和历史仍保留原模型名称。当前显式保留的 Wan 2.2 14B + NSFW 兼容配置及未来变化，以 catalog 的 `retired` 标记为准。
 
@@ -43,7 +43,7 @@ Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部
 
 通常无需单独安装完整 CUDA Toolkit。优先使用 ComfyUI 自身 Python/PyTorch 所带的 CUDA runtime；只有某个自定义 CUDA 扩展明确要求编译工具链时才额外安装。
 
-Qwen3.6 MultiModal 与 MiniMax H3 Prompt Writer 共用同一个 JamePeng `llama-cpp-python` GPU 构建。安装器会按所选 ComfyUI 的 Python/CUDA 版本选择预编译 wheel；不支持的组合会在下载前明确提示，不会偷偷源码编译或安装第二个 llama 服务。节点更新不会覆盖已经通过 CUDA 自检的共享后端，具体日志和前置条件会显示在设置 → 节点与工作流。
+Qwen3.6/Qwen3.8 MultiModal 与 MiniMax H3 Prompt Writer 共用同一个 JamePeng `llama-cpp-python` GPU 构建。安装器会按所选 ComfyUI 的 Python/CUDA 版本选择预编译 wheel；不支持的组合会在下载前明确提示，不会偷偷源码编译或安装第二个 llama 服务。节点更新不会覆盖已经通过 CUDA 自检的共享后端，具体日志和前置条件会显示在设置 → 节点与工作流。
 
 ### 2. 克隆并启动 GUI
 

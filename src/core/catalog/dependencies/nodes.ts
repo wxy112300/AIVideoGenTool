@@ -138,14 +138,14 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
 }, {
   id: "comfyui-multimodal-prompt-nodes",
   name: "ComfyUI MultiModal Prompt Nodes",
-  purpose: "在 ComfyUI 内运行 Qwen3.6 GGUF 与 mmproj，按参考图片和文字生成提示词",
+  purpose: "在 ComfyUI 内运行 Qwen3.6/Qwen3.8 GGUF 与 vision 投影文件，按参考图片和文字生成提示词",
   repositoryUrl: "https://github.com/kantan-kanto/ComfyUI-MultiModal-Prompt-Nodes.git",
   directoryName: "ComfyUI-MultiModal-Prompt-Nodes",
   aliases: ["comfyui-multimodal-prompt-nodes", "ComfyUI-MultiModal-Prompt-Nodes"],
   releaseSource: "github-release",
   nodeTypes: ["VisionLLMNode"],
   minimumVersion: MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION,
-  runtimeRequirement: "可选节点：Qwen3.6 vision 与 Gemma Prompt Writer 共用固定的 JamePeng llama-cpp-python GPU 后端；Windows 使用预编译 wheel，不需要另装 CUDA Toolkit、Visual Studio 或 llama-server。支持 Python 3.10–3.14 和已登记的 CUDA 12/13 组合，安装后必须通过 CUDA 自检。",
+  runtimeRequirement: "可选节点：Qwen3.6/Qwen3.8 vision 与 Gemma Prompt Writer 共用固定的 JamePeng llama-cpp-python GPU 后端；Windows 使用预编译 wheel，不需要另装 CUDA Toolkit、Visual Studio 或 llama-server。支持 Python 3.10–3.14 和已登记的 CUDA 12/13 组合，安装后必须通过 CUDA 自检。",
   required: false
 }, {
   id: "minimax-h3-prompt-writer",
