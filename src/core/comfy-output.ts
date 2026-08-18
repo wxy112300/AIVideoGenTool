@@ -8,6 +8,12 @@ const outputCollectionKeys = new Set([
   "files"
 ]);
 
+const videoOutputPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
+
+export function isVideoOutputFilename(filename: string): boolean {
+  return videoOutputPattern.test(filename);
+}
+
 export function extractComfyOutputFiles(value: unknown): HistoryFile[] {
   const results: HistoryFile[] = [];
   const seen = new Set<string>();

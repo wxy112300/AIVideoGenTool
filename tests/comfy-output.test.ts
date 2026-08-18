@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  extractComfyOutputFiles
+  extractComfyOutputFiles,
+  isVideoOutputFilename
 } from "../src/core/comfy-output";
 import {
   attachAbsoluteOutputPaths,
@@ -38,6 +39,27 @@ describe("ComfyUI output parsing", () => {
     };
     const files = extractComfyOutputFiles(response);
     expect(files.map((file) => file.filename)).toEqual(["cover.png", "result.mp4"]);
+  });
+
+  it("recognizes SaveVideo MP4 files reported through the images collection", () => {
+    const response = {
+      outputs: {
+        "22": {
+          images: [{
+            filename: "H3-R2V-480p-13s-v01_00001_.mp4",
+            subfolder: "",
+            type: "output"
+          }],
+          animated: [true]
+        }
+      }
+    };
+
+    const files = extractComfyOutputFiles(response);
+
+    expect(files).toHaveLength(1);
+    expect(isVideoOutputFilename(files[0]!.filename)).toBe(true);
+    expect(isVideoOutputFilename("cover.png")).toBe(false);
   });
 
   it("attaches paths relative to the configured ComfyUI output directory", () => {

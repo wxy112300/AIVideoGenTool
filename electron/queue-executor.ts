@@ -1,5 +1,6 @@
 import type { AppState, HistoryFile, ImageGenerationQueueTask, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview } from "../src/types.js";
 import { isImageGenerationQueueTask } from "../src/core/queue.js";
+import { isVideoOutputFilename } from "../src/core/comfy-output.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
 import {
   activityTimeoutMinutesForTask,
@@ -27,7 +28,6 @@ import { recoverQueueFailure } from "./queue-recovery.js";
 import type { QueueWorkerController } from "./queue-worker.js";
 
 const performanceLogIntervalMs = 30_000;
-const videoOutputPattern = /\\.(mp4|webm|mov|m4v|mkv)$/i;
 
 export interface QueueExecutorDependencies {
   store: JsonStore;
@@ -571,7 +571,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         });
         if (completedTask.taskType === "extension") {
           const outputVideo = files.find(
-            (file) => file.absolutePath && videoOutputPattern.test(file.filename)
+            (file) => file.absolutePath && isVideoOutputFilename(file.filename)
           );
           if (!outputVideo?.absolutePath) {
             throw new Error("续写工作流没有返回可供 FFmpeg 拼接的视频文件");

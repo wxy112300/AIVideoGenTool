@@ -53,7 +53,8 @@ import { createHistoryCoverCacheKey } from "../src/core/history-cover.js";
 import { historyFileCandidates } from "../src/core/history-media.js";
 import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
 import {
-  extractComfyOutputFiles
+  extractComfyOutputFiles,
+  isVideoOutputFilename
 } from "../src/core/comfy-output.js";
 import { attachAbsoluteOutputPaths } from "../src/core/comfy-output-paths.js";
 import {
@@ -765,8 +766,6 @@ comfyRuntimeState.subscribe((runtime) => {
   mainWindow?.webContents.send("comfy-runtime:changed", runtime);
 });
 
-const videoOutputPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
-
 async function resolveTaskOutputDirectory(): Promise<string> {
   const configured = store.get().settings.outputDirectory.trim();
   const detected = await resolveComfyOutputDirectory(store.get().settings);
@@ -791,7 +790,7 @@ async function requireExistingVideoOutput(
     const files = attachAbsoluteOutputPaths(reportedFiles, root);
     lastFiles = files;
     const videoFiles = files.filter(
-      (file) => file.absolutePath && videoOutputPattern.test(file.filename)
+      (file) => file.absolutePath && isVideoOutputFilename(file.filename)
     );
     for (const file of videoFiles) {
       const resolved = await resolveExistingHistoryFile(file.absolutePath!);
