@@ -5,6 +5,7 @@ import {
 } from "../../../core/history-filter";
 import type { AppState, HistoryMetadataPatch } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { renderIcons } from "../../shared/icons";
 
 export interface HistoryTagsControllerOptions {
   setState(nextState: AppState): void;
@@ -57,6 +58,10 @@ export function mountHistoryTagsController(
     list.innerHTML = tags.length
       ? tags.map(chipMarkup).join("")
       : `<span class="history-tags-empty">${context.t("history.tags.empty")}</span>`;
+    // Tag chips are updated in place to preserve the media/player and focus
+    // state. The normal page render converts data-lucide placeholders, so do
+    // the same for the newly inserted remove buttons here.
+    renderIcons(list);
   };
 
   const renderSuggestions = (query = ""): void => {
