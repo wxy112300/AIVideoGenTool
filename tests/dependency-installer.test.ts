@@ -9,7 +9,9 @@ import {
 } from "../electron/services/dependency-installer";
 import {
   patchH3PromptWriterLlamaCppCompatibility,
-  prepareH3PromptWriter
+  patchMultimodalPromptContextSize,
+  prepareH3PromptWriter,
+  prepareMultimodalPromptNodes
 } from "../electron/services/dependency-node-adapters";
 import { createDefaultState } from "../src/core/defaults";
 
@@ -28,6 +30,46 @@ async function exists(filename: string): Promise<boolean> {
 }
 
 describe("dependency installer", () => {
+  it("makes H3 Prompt Writer cleanup compatible with llama-cpp-python 0.3.46", () => {
+    const source = [
+      "    def unload(self) -> None:",
+      "        if self.model is not None:",
+      "            self.model.close()",
+      "        if self.chat_handler is not None:",
+      "            self.chat_handler._exit_stack.close()",
+      "        self.model = None",
+      "        self.chat_handler = None",
+      "        self.model_id = None",
+      "        self.runtime_signature = None",
+      "        gc.collect()"
+    ].join("\n");
+
+    const patched = patchH3PromptWriterLlamaCppCompatibility(source);
+
+    expect(patched).toContain("chat_handler.close()");
+    expect(patched).toContain("getattr(chat_handler, \"_exit_stack\", None)");
+    expect(patched).not.toContain("self.chat_handler._exit_stack.close()");
+    expect(patchH3PromptWriterLlamaCppCompatibility(patched)).toBe(patched);
+  });
+
+  it("raises the MultiModal GGUF context from 4K to 8K", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-multimodal-adapter-"));
+    temporaryDirectories.push(directory);
+    const source = [
+      "def load_model(n_ctx: int = 4096):",
+      "    pass",
+      "def rewrite_prompt(n_ctx: int = 4096):",
+      "    pass"
+    ].join("\n");
+    await fs.writeFile(path.join(directory, "vision_llm_node.py"), source);
+
+    await prepareMultimodalPromptNodes(directory, vi.fn());
+    const patched = await fs.readFile(path.join(directory, "vision_llm_node.py"), "utf8");
+
+    expect(patched.match(/n_ctx: int = 8192/gu)).toHaveLength(2);
+    expect(patchMultimodalPromptContextSize(patched)).toBe(patched);
+  });
+
   it("does not require the 0.3.2 diagnostics module to contain a GGML shim", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-adapter-"));
     temporaryDirectories.push(directory);
@@ -154,7 +196,12 @@ describe("dependency installer", () => {
       runLoggedProcess: async (_executable, args) => {
         processCalls.push(args);
         if (args[0] === "clone") {
-          await fs.mkdir(args.at(-1)!, { recursive: true });
+          const target = args.at(-1)!;
+          await fs.mkdir(target, { recursive: true });
+          await fs.writeFile(
+            path.join(target, "vision_llm_node.py"),
+            "def load_model(n_ctx: int = 4096):\n    pass\ndef rewrite_prompt(n_ctx: int = 4096):\n    pass\n"
+          );
           return "clone complete";
         }
         if (args[0] === "-c") {

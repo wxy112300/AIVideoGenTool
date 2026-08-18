@@ -145,7 +145,54 @@ export function patchH3PromptWriterLlamaCppCompatibility(source: string): string
         `${indent}from llama_cpp import Llama`,
         llamaCppKvTypeFallback(indent)
       ].join("\n")
+    )
+    .replace(
+      /    def unload\(self\) -> None:\r?\n        if self\.model is not None:\r?\n            self\.model\.close\(\)\r?\n        if self\.chat_handler is not None:\r?\n            self\.chat_handler\._exit_stack\.close\(\)\r?\n        self\.model = None\r?\n        self\.chat_handler = None\r?\n        self\.model_id = None\r?\n        self\.runtime_signature = None\r?\n        gc\.collect\(\)/u,
+      [
+        "    def unload(self) -> None:",
+        "        # Llama.close() in llama-cpp-python 0.3.46+ also closes its",
+        "        # chat handler. Clear ownership first and make the secondary",
+        "        # handler close idempotent so cleanup cannot mask the real error.",
+        "        model = self.model",
+        "        chat_handler = self.chat_handler",
+        "        self.model = None",
+        "        self.chat_handler = None",
+        "        self.model_id = None",
+        "        self.runtime_signature = None",
+        "        try:",
+        "            if model is not None:",
+        "                model.close()",
+        "        finally:",
+        "            if chat_handler is not None and getattr(chat_handler, \"_exit_stack\", None) is not None:",
+        "                chat_handler.close()",
+        "            gc.collect()"
+      ].join("\n")
     );
+}
+
+export function patchMultimodalPromptContextSize(source: string): string {
+  return source.replace(/n_ctx: int = 4096/gu, "n_ctx: int = 8192");
+}
+
+export async function prepareMultimodalPromptNodes(
+  targetDirectory: string,
+  report: (message: string) => void
+): Promise<void> {
+  const filename = path.join(targetDirectory, "vision_llm_node.py");
+  const source = await fs.readFile(filename, "utf8");
+  const patched = patchMultimodalPromptContextSize(source);
+  const occurrences = patched.match(/n_ctx: int = 8192/gu)?.length ?? 0;
+  if (occurrences < 2 || patched.includes("n_ctx: int = 4096")) {
+    throw new Error(
+      "MultiModal Prompt Nodes 源码结构与 8K 上下文适配不匹配，已停止修改。"
+    );
+  }
+  if (patched !== source) {
+    await fs.writeFile(filename, patched, "utf8");
+    report("已将 MultiModal Prompt Nodes 的 GGUF 上下文从 4K 提升到 8K");
+  } else {
+    report("MultiModal Prompt Nodes 已使用 8K GGUF 上下文");
+  }
 }
 
 function hasLegacyLlamaKvImport(source: string): boolean {
@@ -189,6 +236,11 @@ export async function prepareH3PromptWriter(
     if (hasLegacyLlamaKvImport(source) && !hasLlamaKvCompatibilityShim(patched)) {
       throw new Error(
         "MiniMax H3 Prompt Writer 未包含新版 llama-cpp-python KV 类型回退，已停止修改。"
+      );
+    }
+    if (patched.includes("self.chat_handler._exit_stack.close()")) {
+      throw new Error(
+        "MiniMax H3 Prompt Writer 未能应用 llama-cpp-python 0.3.46 资源清理适配，已停止修改。"
       );
     }
     if (patched !== source) {

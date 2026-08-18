@@ -5,9 +5,11 @@ import { customNodeDefinition } from "../../src/core/catalog/index.js";
 import type { Settings } from "../../src/types.js";
 import {
   patchH3PromptWriterLlamaCppCompatibility,
+  patchMultimodalPromptContextSize,
   prepareH3PromptWriter,
   prepareH3Gguf,
   prepareLtxVideo,
+  prepareMultimodalPromptNodes,
   prepareVideoHelperSuite
 } from "./dependency-node-adapters.js";
 import { installLlamaCppPythonPackage } from "./llama-cpp-python.js";
@@ -75,6 +77,7 @@ const h3PromptWriterPatchFiles = [
   "backend/models/gguf_backend.py",
   "backend/runtime_diagnostics.py"
 ] as const;
+const multimodalPromptPatchFiles = ["vision_llm_node.py"] as const;
 
 function normalizeGitSource(source: string): string {
   return source.replace(/\r\n?/gu, "\n").replace(/\s+$/u, "");
@@ -93,19 +96,25 @@ function gitStatusPath(line: string): string {
  * output of our patch against HEAD so a future update can distinguish this
  * known change from a user's/manual edit.
  */
-async function h3PromptWriterHasOnlyAppPatch(
+async function nodeHasOnlyAppPatch(
+  nodeId: string,
   targetDirectory: string,
   statusOutput: string,
   git: string,
   runtime: DependencyInstallerRuntime,
   commandEnvironment: NodeJS.ProcessEnv
 ): Promise<boolean> {
+  const patchFiles: readonly string[] = nodeId === "minimax-h3-prompt-writer"
+    ? h3PromptWriterPatchFiles
+    : nodeId === "comfyui-multimodal-prompt-nodes"
+      ? multimodalPromptPatchFiles
+      : [];
   const paths = statusOutput
     .split(/\r?\n/u)
     .map((line) => line.trimEnd())
     .filter(Boolean)
     .map(gitStatusPath);
-  if (!paths.length || paths.some((filename) => !h3PromptWriterPatchFiles.includes(filename as typeof h3PromptWriterPatchFiles[number]))) {
+  if (!paths.length || paths.some((filename) => !patchFiles.includes(filename))) {
     return false;
   }
   for (const filename of paths) {
@@ -121,7 +130,9 @@ async function h3PromptWriterHasOnlyAppPatch(
     } catch {
       return false;
     }
-    const expected = patchH3PromptWriterLlamaCppCompatibility(baseline);
+    const expected = nodeId === "minimax-h3-prompt-writer"
+      ? patchH3PromptWriterLlamaCppCompatibility(baseline)
+      : patchMultimodalPromptContextSize(baseline);
     if (normalizeGitSource(current) !== normalizeGitSource(expected)) return false;
   }
   return true;
@@ -238,8 +249,12 @@ export async function installCustomNodePackage(
           repositoryStatusChecked = true;
           repositoryDirty = Boolean(status.trim());
           if (repositoryDirty) {
-            const appPatchOnly = definition.id === "minimax-h3-prompt-writer" &&
-              await h3PromptWriterHasOnlyAppPatch(
+            const appPatchOnly = [
+              "minimax-h3-prompt-writer",
+              "comfyui-multimodal-prompt-nodes"
+            ].includes(definition.id) &&
+              await nodeHasOnlyAppPatch(
+                definition.id,
                 targetDirectory,
                 status,
                 git,
@@ -402,6 +417,10 @@ export async function installCustomNodePackage(
     if (definition.id === "minimax-h3-prompt-writer") {
       report("正在检查 H3 Prompt Writer 的 llama-cpp-python API 兼容层……");
       await prepareH3PromptWriter(targetDirectory, report);
+    }
+    if (isMultimodalPromptNodes) {
+      report("正在检查 MultiModal Prompt Nodes 的 GGUF 上下文配置……");
+      await prepareMultimodalPromptNodes(targetDirectory, report);
     }
 
     const requirements = path.join(targetDirectory, "requirements.txt");
