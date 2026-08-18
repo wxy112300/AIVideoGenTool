@@ -10,6 +10,7 @@ import type { HistoryKind } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
 import {
   historyFilterIsActive,
+  historyTagKey,
   type HistoryFilterState,
   type HistorySort
 } from "../../../core/history-filter";
@@ -57,6 +58,7 @@ export interface HistoryPageOptions {
   historyAssetsByNewest(history: AppState["history"], filter?: HistoryFilterState): AppState["history"];
   imageProjectsByNewest(imageHistory: AppState["imageHistory"], filter?: HistoryFilterState): ImageHistoryProject[];
   historyFilterModelIds(state: AppState, kind: HistoryKind): string[];
+  historyFilterTagNames(state: AppState, kind: HistoryKind): string[];
   preferredVersion(asset: HistoryAsset): AssetVersion;
   currentHistoryVersion(asset: HistoryAsset, selectedHistoryVersionId: string): AssetVersion;
   historyMediaUrl(asset: HistoryAsset, version?: AssetVersion): string;
@@ -136,11 +138,13 @@ function renderHistoryFilter(
   options: HistoryPageOptions,
   totalCount: number,
   visibleCount: number,
-  modelIds: string[]
+  modelIds: string[],
+  tagNames: string[]
 ): string {
   const filter = viewModel.historyFilter;
   const active = historyFilterIsActive(filter);
   const isVideo = viewModel.historyKind === "video";
+  const selectedTags = new Set(filter.tags.map(historyTagKey));
   return `
     <div class="history-filter-anchor" data-history-filter-anchor>
       <div class="history-filter-bar">
@@ -155,10 +159,31 @@ function renderHistoryFilter(
           <label class="history-filter-field history-filter-rating-field"><span>${options.t(uiKeys.history.filter.rating)}</span><span class="history-filter-range">${ratingOptions(options, filter.minRating, "history.filter.ratingAny", "minRating")}<span aria-hidden="true">–</span>${ratingOptions(options, filter.maxRating, "history.filter.ratingAny", "maxRating")}</span></label>
           ${isVideo ? `<label class="history-filter-field"><span>${options.t(uiKeys.history.filter.durationMin)}</span><select class="history-filter-select" data-history-filter-field="minDuration"><option value="">${options.t(uiKeys.history.filter.durationAny)}</option>${[1, 3, 5, 10, 15, 30, 60].map((value) => `<option value="${value}" ${filter.minDuration === value ? "selected" : ""}>${value} 秒</option>`).join("")}</select></label>` : ""}
           <label class="history-filter-field"><span>${options.t(uiKeys.history.filter.model)}</span><select class="history-filter-select history-filter-model" data-history-filter-field="modelId"><option value="">${options.t(uiKeys.history.filter.all)}</option>${modelIds.map((id) => `<option value="${options.escapeHtml(id)}" ${filter.modelId === id ? "selected" : ""}>${options.escapeHtml(options.modelName(id))}</option>`).join("")}</select></label>
+          ${tagNames.length ? `<div class="history-filter-field history-filter-tags-field"><span>${options.t(uiKeys.history.filter.tags)}</span><div class="history-filter-tags" role="group" aria-label="${options.escapeHtml(options.t(uiKeys.history.filter.tags))}">${tagNames.map((tag) => `<button type="button" class="history-filter-tag ${selectedTags.has(historyTagKey(tag)) ? "is-selected" : ""}" data-history-filter-tag="${options.escapeHtml(tag)}" aria-pressed="${selectedTags.has(historyTagKey(tag))}">${options.escapeHtml(tag)}</button>`).join("")}</div></div>` : ""}
         </div>
         <div class="history-filter-panel-footer"><button type="button" class="ghost history-filter-clear" data-history-filter-clear ${active ? "" : "disabled"}>${options.icon("x")}${options.t(uiKeys.history.filter.clear)}</button></div>
       </div>
     </div>`;
+}
+
+function renderHistoryTags(
+  assetId: string,
+  tags: string[],
+  availableTags: string[],
+  options: Pick<HistoryPageOptions, "t" | "icon" | "escapeHtml">
+): string {
+  const tagMarkup = tags.length
+    ? tags.map((tag) => `<span class="history-tag-chip" data-history-tag-chip="${options.escapeHtml(tag)}"><button type="button" class="history-tag-chip-label" data-history-tag-edit="${options.escapeHtml(tag)}" title="${options.escapeHtml(options.t(uiKeys.history.tags.edit))}">${options.escapeHtml(tag)}</button><button type="button" class="history-tag-chip-remove" data-history-tag-remove="${options.escapeHtml(tag)}" aria-label="${options.escapeHtml(options.t(uiKeys.history.tags.remove))}" title="${options.escapeHtml(options.t(uiKeys.history.tags.remove))}">${options.icon("x")}</button></span>`).join("")
+    : `<span class="history-tags-empty">${options.t(uiKeys.history.tags.empty)}</span>`;
+  const suggestions = availableTags.filter((tag) => !tags.some((current) => historyTagKey(current) === historyTagKey(tag)));
+  return `<section class="panel history-detail-tags" data-history-tags-root data-history-tag-asset="${options.escapeHtml(assetId)}">
+    <div class="history-detail-tags-heading"><div><h2>${options.t(uiKeys.history.tags.title)}</h2><p class="muted tiny">${options.t(uiKeys.history.tags.description)}</p></div><button type="button" class="ghost button-with-icon history-tag-add" data-history-tag-add>${options.icon("plus")}${options.t(uiKeys.history.tags.add)}</button></div>
+    <div class="history-tag-list" data-history-tag-list>${tagMarkup}</div>
+    <div class="history-tag-editor" data-history-tag-editor hidden>
+      <div class="history-tag-editor-row"><input type="text" data-history-tag-input maxlength="64" placeholder="${options.escapeHtml(options.t(uiKeys.history.tags.placeholder))}" autocomplete="off"><button type="button" class="ghost history-tag-editor-cancel" data-history-tag-cancel>${options.t(uiKeys.history.tags.cancel)}</button></div>
+      <div class="history-tag-suggestions" data-history-tag-suggestions>${suggestions.map((tag) => `<button type="button" class="history-tag-suggestion" data-history-tag-suggestion="${options.escapeHtml(tag)}">${options.escapeHtml(tag)}</button>`).join("")}</div>
+    </div>
+  </section>`;
 }
 
 function historyComputeMode(version: AssetVersion, options: HistoryPageOptions): string {
@@ -180,6 +205,7 @@ export function renderImageHistoryPage(
 ): string {
   const projects = options.imageProjectsByNewest(viewModel.state.imageHistory, viewModel.historyFilter);
   const modelIds = options.historyFilterModelIds(viewModel.state, "image");
+  const tagNames = options.historyFilterTagNames(viewModel.state, "image");
   const cards = projects.map((project, historyOrder) => {
     const version = options.preferredImageVersion(project);
     const mediaUrl = options.imageHistoryMediaUrl(project, version);
@@ -212,7 +238,7 @@ export function renderImageHistoryPage(
       historyKind: viewModel.historyKind,
       historyLayout: viewModel.historyLayout,
       description: options.t(uiKeys.history.imageDescription),
-      historyFilter: renderHistoryFilter(viewModel, options, viewModel.state.imageHistory.length, projects.length, modelIds)
+      historyFilter: renderHistoryFilter(viewModel, options, viewModel.state.imageHistory.length, projects.length, modelIds, tagNames)
     }, options)}
     <section class="history-gallery ${viewModel.historyLayout}">
       ${projects.length === 0
@@ -227,6 +253,7 @@ export function renderHistoryPage(
 ): string {
   const orderedAssets = options.historyAssetsByNewest(viewModel.state.history, viewModel.historyFilter);
   const modelIds = options.historyFilterModelIds(viewModel.state, "video");
+  const tagNames = options.historyFilterTagNames(viewModel.state, "video");
   const cards = orderedAssets.map((asset, historyOrder) => {
     const version = options.preferredVersion(asset);
     const historyTitle = asset.title.trim() || asset.prompt.trim() || options.t(uiKeys.history.card.untitledVideo);
@@ -266,7 +293,7 @@ export function renderHistoryPage(
       historyKind: viewModel.historyKind,
       historyLayout: viewModel.historyLayout,
       description: options.t(uiKeys.history.videoDescription),
-      historyFilter: renderHistoryFilter(viewModel, options, viewModel.state.history.length, orderedAssets.length, modelIds)
+      historyFilter: renderHistoryFilter(viewModel, options, viewModel.state.history.length, orderedAssets.length, modelIds, tagNames)
     }, options)}
     <section class="history-gallery ${viewModel.historyLayout}">
       ${orderedAssets.length === 0
@@ -301,6 +328,7 @@ export function renderHistoryDetailPage(
   const elapsedSeconds = version.startedAt
     ? Math.max(0, (new Date(version.createdAt).getTime() - new Date(version.startedAt).getTime()) / 1000)
     : null;
+  const availableTags = options.historyFilterTagNames(viewModel.state, "video");
   return `
     <div class="history-detail-back">
       <button class="secondary button-with-icon history-detail-back-button" data-page="history">${options.icon("arrow-left")}${options.t(uiKeys.history.page.back)}</button>
@@ -350,6 +378,7 @@ export function renderHistoryDetailPage(
         </section>
       </aside>
     </section>
+    ${renderHistoryTags(asset.id, asset.tags, availableTags, options)}
     <section class="history-record-grid">
       <article class="panel history-record full">
         <div class="history-record-heading"><h2>${options.t(uiKeys.history.page.promptHeading)}</h2><button class="ghost button-with-icon" data-copy-prompt>${options.icon("copy")}${options.t(uiKeys.history.page.copyPrompt)}</button></div>
@@ -410,6 +439,7 @@ export function renderImageHistoryDetailPage(
   const elapsedSeconds = version.performanceStats?.durationSeconds ?? (version.startedAt
     ? Math.max(0, (Date.parse(version.createdAt) - Date.parse(version.startedAt)) / 1000)
     : null);
+  const availableTags = options.historyFilterTagNames(viewModel.state, "image");
   const filePath = version.file.absolutePath ?? "";
   const generationSummary = options.imageHistoryGenerationSummary(version);
   return `
@@ -458,6 +488,7 @@ export function renderImageHistoryDetailPage(
         <section class="panel image-history-version-panel"><div class="history-version-panel-heading"><strong>${options.t(uiKeys.history.page.imageProjectVersions)}</strong><span>${options.t(uiKeys.history.card.versionCount, { count: project.versions.length })}</span></div><p class="muted tiny">${parent ? options.t(uiKeys.history.page.currentBasedOn, { version: parent.versionNumber }) : version.kind === "source" ? options.t(uiKeys.history.page.initialImage) : options.t(uiKeys.history.page.noParent)}</p></section>
       </aside>
     </section>
+    ${renderHistoryTags(project.id, project.tags, availableTags, options)}
     <section class="history-record-grid image-history-record-grid">
       <article class="panel history-record full"><div class="history-record-heading"><h2>${options.t(uiKeys.history.page.editRequirements)}</h2><button class="ghost button-with-icon" data-copy-image-prompt>${options.icon("copy")}${options.t(uiKeys.history.page.copyPrompt)}</button></div><span class="muted">${options.t(uiKeys.history.page.promptSnapshot)}</span><div class="history-prompt-scroll" tabindex="0" aria-label="${options.t(uiKeys.history.page.editRequirements)}"><p class="history-prompt">${options.escapeHtml(version.prompt || options.t(uiKeys.history.page.imageOriginalPrompt))}</p></div></article>
       <article class="panel history-record"><h2>${options.t(uiKeys.history.page.versionSource)}</h2><dl><dt>${options.t(uiKeys.history.page.belongsProject)}</dt><dd>${options.escapeHtml(title)}</dd><dt>${options.t(uiKeys.history.page.parentVersion)}</dt><dd>${parent ? `v${parent.versionNumber}` : version.kind === "source" ? options.t(uiKeys.history.card.originalImage) : options.t(uiKeys.history.page.noParent)}</dd><dt>${options.t(uiKeys.history.page.versionNumber)}</dt><dd>${version.versionNumber} / ${project.versions.length}</dd><dt>${options.t(uiKeys.history.page.versionType)}</dt><dd>${version.kind === "source" ? options.t(uiKeys.history.page.originalMaterial) : version.kind === "upscale" ? options.t(uiKeys.history.page.upscaleVersion) : options.t(uiKeys.history.page.imageEdit)}</dd></dl></article>

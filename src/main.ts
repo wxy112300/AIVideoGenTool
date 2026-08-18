@@ -74,6 +74,7 @@ import {
 } from "./renderer/pages/history/helpers";
 import {
   historyFilterModelIds,
+  historyTagNames,
   normalizeHistoryFilter
 } from "./core/history-filter";
 import { createHistoryMediaRuntime } from "./renderer/pages/history/media-helpers";
@@ -889,6 +890,11 @@ const historyPageOptions: HistoryPageOptions = {
   historyAssetsByNewest,
   imageProjectsByNewest,
   historyFilterModelIds: (currentState, kind) => historyFilterModelIds(
+    currentState.history,
+    currentState.imageHistory,
+    kind
+  ),
+  historyFilterTagNames: (currentState, kind) => historyTagNames(
     currentState.history,
     currentState.imageHistory,
     kind
@@ -2388,6 +2394,14 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       setPanelOpen: (open) => {
         ui.historyFilterPanelOpen = open;
       }
+    },
+    tags: {
+      setState: (nextState) => {
+        setRendererState(nextState);
+      },
+      escapeHtml,
+      icon,
+      updateHistoryMetadata: (assetId, patch) => window.studio.updateHistoryMetadata(assetId, patch)
     },
     historyLayout: historyLayoutController.getLayout(),
     isImageHistoryDetail: page === "image-history-detail",

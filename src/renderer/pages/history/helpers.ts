@@ -233,7 +233,8 @@ function historyStateChangedInternal(
     }
     if (includeCuration && (
       previousAsset.favorite !== asset.favorite ||
-      previousAsset.rating !== asset.rating
+      previousAsset.rating !== asset.rating ||
+      JSON.stringify(previousAsset.tags ?? []) !== JSON.stringify(asset.tags ?? [])
     )) {
       return true;
     }
@@ -286,7 +287,8 @@ function imageHistoryStateChangedInternal(
     }
     if (includeCuration && (
       previousProject.favorite !== project.favorite ||
-      previousProject.rating !== project.rating
+      previousProject.rating !== project.rating ||
+      JSON.stringify(previousProject.tags ?? []) !== JSON.stringify(project.tags ?? [])
     )) {
       return true;
     }

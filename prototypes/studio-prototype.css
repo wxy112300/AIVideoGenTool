@@ -281,6 +281,13 @@
 .history-detail-curation-demo { display:flex; align-items:center; gap:10px; margin-top:12px; }
 .history-detail-curation-demo .icon-btn { color:#f06b78; }
 .history-detail-curation-demo .icon-btn svg { fill:currentColor; }
+.history-detail-tags-demo { display:grid; gap:12px; margin-top:14px; padding:14px 16px; }
+.history-detail-tags-demo .history-detail-tags-heading { margin:0; }
+.history-detail-tags-demo .history-tag-editor { max-width:520px; }
+.filter-panel-tags-demo label { align-items:flex-start; }
+.filter-panel-tag-list { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; max-width:270px; }
+.filter-panel-tag-list .history-filter-tag { min-height:27px; padding:4px 9px; border:1px solid var(--studio-border); border-radius:999px; background:rgba(8,14,24,.42); color:var(--studio-muted); cursor:pointer; font:inherit; font-size:11px; }
+.filter-panel-tag-list .history-filter-tag:hover,.filter-panel-tag-list .history-filter-tag.is-selected { border-color:#6fa7ff; background:rgba(82,144,238,.16); color:var(--studio-text); }
 .history-rating-demo { display:inline-flex; align-items:center; gap:2px; color:#667285; }
 .history-rating-demo button { border:0; background:transparent; padding:0 2px; color:inherit; font-size:22px; line-height:1; }
 .history-rating-demo button.is-full { color:#f6bd4f; }

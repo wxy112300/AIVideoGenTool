@@ -51,6 +51,7 @@ export function persistImageHistoryResult(
       updatedAt: result.completedAt,
       favorite: false,
       rating: null,
+      tags: [],
       coverMode: "auto",
       nextVersionNumber: 1,
       versions: []
@@ -153,6 +154,7 @@ export function persistVideoHistoryResult(
       outputFilename: task.outputFilename, createdAt: result.completedAt,
       updatedAt: result.completedAt, modelId: task.modelId,
       favorite: false, rating: null,
+      tags: [],
       videoLoras: task.videoLoras?.map((lora) => videoLoraSelection(lora)), duration: task.duration,
       resolution: task.resolution, steps: task.steps, fps: task.fps,
       frameInterpolation: task.frameInterpolation, ratio: task.ratio,
@@ -191,6 +193,7 @@ export function persistVideoHistoryResult(
       outputFilename: task.outputFilename, createdAt: result.completedAt,
       updatedAt: result.completedAt, modelId: task.modelId,
       favorite: false, rating: null,
+      tags: [],
       videoLoras: task.videoLoras?.map((lora) => videoLoraSelection(lora)), duration: totalDuration,
       resolution: task.resolution, steps: task.steps, fps: task.fps,
       frameInterpolation: task.frameInterpolation, ratio: "source",

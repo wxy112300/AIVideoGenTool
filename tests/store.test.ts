@@ -534,6 +534,7 @@ describe("queue lock recovery", () => {
         versionNumber: 1,
         kind: "edit"
       });
+      expect(loaded.imageHistory[0]?.tags).toEqual([]);
       const persisted = JSON.parse(await fs.readFile(filename, "utf8")) as {
         imageHistory: Array<{ versions: Array<{ kind: string; versionNumber: number }> }>;
       };

@@ -19,6 +19,7 @@ function videoAsset(overrides: Partial<HistoryAsset> = {}): HistoryAsset {
     modelId: "minimax_h3_fl2va",
     favorite: false,
     rating: null,
+    tags: [],
     duration: 1,
     resolution: 480,
     fps: 24,
@@ -41,6 +42,7 @@ function imageProject(overrides: Partial<ImageHistoryProject> = {}): ImageHistor
     updatedAt: "2026-01-01T00:00:00.000Z",
     favorite: false,
     rating: null,
+    tags: [],
     coverMode: "auto",
     nextVersionNumber: 1,
     versions: [],
@@ -67,6 +69,22 @@ describe("history render change classification", () => {
   it("treats image-project curation-only changes as in-place updates", () => {
     const previous = [imageProject()];
     const next = [imageProject({ favorite: true, rating: 3.5 })];
+
+    expect(imageHistoryStateChanged(previous, next)).toBe(true);
+    expect(imageHistoryContentStateChanged(previous, next)).toBe(false);
+  });
+
+  it("keeps tag edits in place without replacing the media view", () => {
+    const previous = [videoAsset({ tags: ["airport"] })];
+    const next = [videoAsset({ tags: ["airport", "favorite"] })];
+
+    expect(historyStateChanged(previous, next)).toBe(true);
+    expect(historyContentStateChanged(previous, next)).toBe(false);
+  });
+
+  it("keeps image tag edits in place without replacing the media view", () => {
+    const previous = [imageProject({ tags: ["portrait"] })];
+    const next = [imageProject({ tags: ["portrait", "retouch"] })];
 
     expect(imageHistoryStateChanged(previous, next)).toBe(true);
     expect(imageHistoryContentStateChanged(previous, next)).toBe(false);

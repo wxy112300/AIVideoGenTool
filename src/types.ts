@@ -497,6 +497,8 @@ export interface ImageHistoryProject {
   /** User curation metadata; absent in legacy files and normalized on load. */
   favorite: boolean;
   rating: HistoryRating | null;
+  /** User-defined labels. Tag matching is case-insensitive. */
+  tags: string[];
   coverMode: "auto" | "pinned";
   coverVersionId?: string;
   nextVersionNumber: number;
@@ -548,6 +550,8 @@ export interface HistoryAsset {
   /** User curation metadata; absent in legacy files and normalized on load. */
   favorite: boolean;
   rating: HistoryRating | null;
+  /** User-defined labels. Tag matching is case-insensitive. */
+  tags: string[];
   videoLoras?: VideoLoraSelection[];
   duration: number;
   resolution: number;
@@ -591,6 +595,7 @@ export type HistoryRating = 0.5 | 1 | 1.5 | 2 | 2.5 | 3 | 3.5 | 4 | 4.5 | 5;
 export interface HistoryMetadataPatch {
   favorite?: boolean;
   rating?: HistoryRating | null;
+  tags?: string[];
 }
 
 export interface AppState {

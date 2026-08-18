@@ -19,6 +19,10 @@ import {
   mountHistoryFilterController,
   type HistoryFilterControllerOptions
 } from "./filter-controller";
+import {
+  mountHistoryTagsController,
+  type HistoryTagsControllerOptions
+} from "./tags-controller";
 
 export interface HistoryPlaybackSnapshot {
   assetId: string;
@@ -36,6 +40,7 @@ export interface HistoryPageControllerOptions {
   media: HistoryMediaControllerOptions;
   actions: HistoryActionsControllerOptions;
   filter: HistoryFilterControllerOptions;
+  tags: HistoryTagsControllerOptions;
   historyLayout: "masonry" | "album";
   isImageHistoryDetail: boolean;
   bindHistoryMasonry(): void;
@@ -56,6 +61,7 @@ export function mountHistoryPageController(
     mountHistoryFilterController(options.context, options.filter),
     mountHistoryMediaController(options.context, options.media),
     mountHistoryActionsController(options.context, options.actions),
+    mountHistoryTagsController(options.context, options.tags),
     mountImageHistoryLightbox(options.context, options.imageLightbox)
   ];
   const events = new AbortController();

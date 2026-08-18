@@ -37,6 +37,10 @@
       toggle?.setAttribute('aria-expanded', String(!panel.hidden));
     }
   });
+  root.querySelectorAll('.filter-panel-tag-list .history-filter-tag').forEach((button) => button.addEventListener('click', () => {
+    const selected = button.classList.toggle('is-selected');
+    button.setAttribute('aria-pressed', String(selected));
+  }));
   document.addEventListener('click', (event) => {
     const anchor = root.querySelector('.history-filter-demo');
     const panel = root.querySelector('[data-history-filter-panel]');
@@ -337,6 +341,47 @@
     menu.classList.add('open');
   }));
   document.addEventListener('click', () => menu?.classList.remove('open'));
+  root.querySelectorAll('[data-prototype-tags]').forEach((tagRoot) => {
+    const list = tagRoot.querySelector('[data-prototype-tag-list]');
+    const editor = tagRoot.querySelector('[data-prototype-tag-editor]');
+    const input = tagRoot.querySelector('[data-prototype-tag-input]');
+    const empty = tagRoot.querySelector('[data-prototype-tag-empty]');
+    let editing = null;
+    const normalize = (value) => value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+    const key = (value) => normalize(value).toLocaleLowerCase();
+    const tags = () => [...tagRoot.querySelectorAll('[data-prototype-tag-edit]')].map((item) => item.dataset.prototypeTagEdit || item.textContent.trim());
+    const close = () => { editing = null; if (editor) editor.hidden = true; if (input) input.value = ''; };
+    const open = (value = '') => { if (!editor || !input) return; editor.hidden = false; input.value = value; input.focus(); input.select(); };
+    const updateEmpty = () => { if (empty) empty.hidden = tags().length > 0; };
+    const renderChip = (value) => { const chip = document.createElement('span'); chip.className = 'history-tag-chip'; chip.innerHTML = `<button class="history-tag-chip-label" data-prototype-tag-edit="${value.replace(/"/gu, '&quot;')}">${value}</button><button class="history-tag-chip-remove" data-prototype-tag-remove="${value.replace(/"/gu, '&quot;')}" aria-label="移除 ${value}"><i data-lucide="x"></i></button>`; return chip; };
+    const commit = () => {
+      const value = normalize(input?.value || '');
+      if (!value || !list) return;
+      const existing = tags();
+      const duplicate = existing.some((item) => key(item) === key(value) && key(item) !== key(editing || ''));
+      if (duplicate) return;
+      if (editing) {
+        const target = [...list.querySelectorAll('[data-prototype-tag-edit]')].find((item) => key(item.dataset.prototypeTagEdit || '') === key(editing));
+        if (target) { target.dataset.prototypeTagEdit = value; target.textContent = value; target.closest('.history-tag-chip')?.querySelector('[data-prototype-tag-remove]')?.setAttribute('data-prototype-tag-remove', value); }
+      } else {
+        list.insertBefore(renderChip(value), empty || null);
+        if (window.lucide) window.lucide.createIcons();
+      }
+      updateEmpty(); close();
+    };
+    tagRoot.addEventListener('click', (event) => {
+      const target = event.target.closest('[data-prototype-tag-add],[data-prototype-tag-cancel],[data-prototype-tag-edit],[data-prototype-tag-remove],[data-prototype-tag-suggestion]');
+      if (!target) return;
+      event.preventDefault();
+      if (target.matches('[data-prototype-tag-add]')) open();
+      else if (target.matches('[data-prototype-tag-cancel]')) close();
+      else if (target.matches('[data-prototype-tag-edit]')) { editing = target.dataset.prototypeTagEdit || ''; open(editing); }
+      else if (target.matches('[data-prototype-tag-remove]')) { target.closest('.history-tag-chip')?.remove(); updateEmpty(); }
+      else if (target.matches('[data-prototype-tag-suggestion]') && input) { input.value = target.dataset.prototypeTagSuggestion || ''; commit(); }
+    });
+    input?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); commit(); } if (event.key === 'Escape') { event.preventDefault(); close(); } });
+    updateEmpty();
+  });
   root.querySelectorAll('[data-open-dialog]').forEach((button) => button.addEventListener('click', () => root.querySelector(`#${button.dataset.openDialog}`)?.classList.add('open')));
   root.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => button.closest('.dialog-backdrop')?.classList.remove('open')));
   const markupOverlay = root.querySelector('[data-image-markup-overlay]');

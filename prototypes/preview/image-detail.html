@@ -1173,6 +1173,13 @@ svg.lucide {
 .history-detail-curation-demo { display:flex; align-items:center; gap:10px; margin-top:12px; }
 .history-detail-curation-demo .icon-btn { color:#f06b78; }
 .history-detail-curation-demo .icon-btn svg { fill:currentColor; }
+.history-detail-tags-demo { display:grid; gap:12px; margin-top:14px; padding:14px 16px; }
+.history-detail-tags-demo .history-detail-tags-heading { margin:0; }
+.history-detail-tags-demo .history-tag-editor { max-width:520px; }
+.filter-panel-tags-demo label { align-items:flex-start; }
+.filter-panel-tag-list { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; max-width:270px; }
+.filter-panel-tag-list .history-filter-tag { min-height:27px; padding:4px 9px; border:1px solid var(--studio-border); border-radius:999px; background:rgba(8,14,24,.42); color:var(--studio-muted); cursor:pointer; font:inherit; font-size:11px; }
+.filter-panel-tag-list .history-filter-tag:hover,.filter-panel-tag-list .history-filter-tag.is-selected { border-color:#6fa7ff; background:rgba(82,144,238,.16); color:var(--studio-text); }
 .history-rating-demo { display:inline-flex; align-items:center; gap:2px; color:#667285; }
 .history-rating-demo button { border:0; background:transparent; padding:0 2px; color:inherit; font-size:22px; line-height:1; }
 .history-rating-demo button.is-full { color:#f6bd4f; }
@@ -1232,6 +1239,11 @@ svg.lucide {
         <section class="panel"><div class="section-head"><h2>常用操作</h2></div><div class="detail-actions"><button class="btn" data-demo-action="已将图片像素复制到剪贴板"><i data-lucide="clipboard-copy"></i>复制图片</button><button class="btn" data-demo-action="已在 Windows 中复制图片文件"><i data-lucide="files"></i>复制文件</button><button class="btn"><i data-lucide="folder-open"></i>打开所在位置</button><button class="btn" data-open-dialog="upscale-image-version"><i data-lucide="maximize-2"></i>提升分辨率</button><button class="btn"><i data-lucide="image-up"></i>设为项目封面</button><button class="btn danger" data-open-dialog="delete-image-version"><i data-lucide="trash-2"></i>删除当前版本</button></div></section>
       </aside>
     </section>
+    <section class="panel history-detail-tags-demo" data-prototype-tags>
+      <div class="history-detail-tags-heading"><div><h2>标签</h2><p class="muted tiny">用于整理和筛选素材，不会改变图片内容。</p></div><button class="btn" data-prototype-tag-add><i data-lucide="plus"></i>添加标签</button></div>
+      <div class="history-tag-list" data-prototype-tag-list><span class="history-tag-chip"><button class="history-tag-chip-label" data-prototype-tag-edit="人物">人物</button><button class="history-tag-chip-remove" data-prototype-tag-remove="人物" aria-label="移除人物"><i data-lucide="x"></i></button></span><span class="history-tag-chip"><button class="history-tag-chip-label" data-prototype-tag-edit="光影修复">光影修复</button><button class="history-tag-chip-remove" data-prototype-tag-remove="光影修复" aria-label="移除光影修复"><i data-lucide="x"></i></button></span><span class="history-tags-empty" data-prototype-tag-empty hidden>还没有标签</span></div>
+      <div class="history-tag-editor" data-prototype-tag-editor hidden><div class="history-tag-editor-row"><input data-prototype-tag-input type="text" maxlength="64" placeholder="输入标签，按 Enter 添加"><button class="btn" data-prototype-tag-cancel>取消</button></div><div class="history-tag-suggestions"><button class="history-tag-suggestion" data-prototype-tag-suggestion="原图">原图</button><button class="history-tag-suggestion" data-prototype-tag-suggestion="精选">精选</button><button class="history-tag-suggestion" data-prototype-tag-suggestion="待复用">待复用</button></div></div>
+    </section>
     <section class="record-grid image-records">
       <article class="panel full"><div class="section-head"><div><h2>本次编辑要求</h2><p class="muted tiny">生成时保存的 Prompt 快照</p></div><button class="btn"><i data-lucide="copy"></i>复制 Prompt</button></div><p>保持人物身份、面部、服装和原始构图。修复人物与机场背景之间不自然的边缘、光线和景深关系；让人物右手自然抬起挥手。</p></article>
       <article class="panel"><h2>版本来源</h2><dl style="margin-top:12px"><dt>所属项目</dt><dd>黄昏机场人物素材</dd><dt>父版本</dt><dd>v10</dd><dt>版本编号</dt><dd>12 / 12</dd><dt>迭代关系</dt><dd>原图 → v10 → v12</dd></dl></article>
@@ -1287,6 +1299,10 @@ svg.lucide {
       toggle?.setAttribute('aria-expanded', String(!panel.hidden));
     }
   });
+  root.querySelectorAll('.filter-panel-tag-list .history-filter-tag').forEach((button) => button.addEventListener('click', () => {
+    const selected = button.classList.toggle('is-selected');
+    button.setAttribute('aria-pressed', String(selected));
+  }));
   document.addEventListener('click', (event) => {
     const anchor = root.querySelector('.history-filter-demo');
     const panel = root.querySelector('[data-history-filter-panel]');
@@ -1587,6 +1603,47 @@ svg.lucide {
     menu.classList.add('open');
   }));
   document.addEventListener('click', () => menu?.classList.remove('open'));
+  root.querySelectorAll('[data-prototype-tags]').forEach((tagRoot) => {
+    const list = tagRoot.querySelector('[data-prototype-tag-list]');
+    const editor = tagRoot.querySelector('[data-prototype-tag-editor]');
+    const input = tagRoot.querySelector('[data-prototype-tag-input]');
+    const empty = tagRoot.querySelector('[data-prototype-tag-empty]');
+    let editing = null;
+    const normalize = (value) => value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+    const key = (value) => normalize(value).toLocaleLowerCase();
+    const tags = () => [...tagRoot.querySelectorAll('[data-prototype-tag-edit]')].map((item) => item.dataset.prototypeTagEdit || item.textContent.trim());
+    const close = () => { editing = null; if (editor) editor.hidden = true; if (input) input.value = ''; };
+    const open = (value = '') => { if (!editor || !input) return; editor.hidden = false; input.value = value; input.focus(); input.select(); };
+    const updateEmpty = () => { if (empty) empty.hidden = tags().length > 0; };
+    const renderChip = (value) => { const chip = document.createElement('span'); chip.className = 'history-tag-chip'; chip.innerHTML = `<button class="history-tag-chip-label" data-prototype-tag-edit="${value.replace(/"/gu, '&quot;')}">${value}</button><button class="history-tag-chip-remove" data-prototype-tag-remove="${value.replace(/"/gu, '&quot;')}" aria-label="移除 ${value}"><i data-lucide="x"></i></button>`; return chip; };
+    const commit = () => {
+      const value = normalize(input?.value || '');
+      if (!value || !list) return;
+      const existing = tags();
+      const duplicate = existing.some((item) => key(item) === key(value) && key(item) !== key(editing || ''));
+      if (duplicate) return;
+      if (editing) {
+        const target = [...list.querySelectorAll('[data-prototype-tag-edit]')].find((item) => key(item.dataset.prototypeTagEdit || '') === key(editing));
+        if (target) { target.dataset.prototypeTagEdit = value; target.textContent = value; target.closest('.history-tag-chip')?.querySelector('[data-prototype-tag-remove]')?.setAttribute('data-prototype-tag-remove', value); }
+      } else {
+        list.insertBefore(renderChip(value), empty || null);
+        if (window.lucide) window.lucide.createIcons();
+      }
+      updateEmpty(); close();
+    };
+    tagRoot.addEventListener('click', (event) => {
+      const target = event.target.closest('[data-prototype-tag-add],[data-prototype-tag-cancel],[data-prototype-tag-edit],[data-prototype-tag-remove],[data-prototype-tag-suggestion]');
+      if (!target) return;
+      event.preventDefault();
+      if (target.matches('[data-prototype-tag-add]')) open();
+      else if (target.matches('[data-prototype-tag-cancel]')) close();
+      else if (target.matches('[data-prototype-tag-edit]')) { editing = target.dataset.prototypeTagEdit || ''; open(editing); }
+      else if (target.matches('[data-prototype-tag-remove]')) { target.closest('.history-tag-chip')?.remove(); updateEmpty(); }
+      else if (target.matches('[data-prototype-tag-suggestion]') && input) { input.value = target.dataset.prototypeTagSuggestion || ''; commit(); }
+    });
+    input?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); commit(); } if (event.key === 'Escape') { event.preventDefault(); close(); } });
+    updateEmpty();
+  });
   root.querySelectorAll('[data-open-dialog]').forEach((button) => button.addEventListener('click', () => root.querySelector(`#${button.dataset.openDialog}`)?.classList.add('open')));
   root.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => button.closest('.dialog-backdrop')?.classList.remove('open')));
   const markupOverlay = root.querySelector('[data-image-markup-overlay]');

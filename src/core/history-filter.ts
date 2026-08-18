@@ -14,6 +14,8 @@ export interface HistoryFilterState {
   maxRating: HistoryRating | null;
   minDuration: number | null;
   modelId: string;
+  /** Tags are matched as an intersection; every selected tag must be present. */
+  tags: string[];
   sort: HistorySort;
 }
 
@@ -23,6 +25,7 @@ export const defaultHistoryFilter: HistoryFilterState = {
   maxRating: null,
   minDuration: null,
   modelId: "",
+  tags: [],
   sort: "newest"
 };
 
@@ -37,6 +40,34 @@ const sortValues: HistorySort[] = [
 
 export function isHistoryRating(value: unknown): value is HistoryRating {
   return typeof value === "number" && value >= 0.5 && value <= 5 && Number.isInteger(value * 2);
+}
+
+/**
+ * Tags are user-facing strings, but their identity is case-insensitive and
+ * whitespace-normalized so `H3`, `h3`, and ` H3 ` cannot become duplicates.
+ */
+export function normalizeHistoryTag(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.normalize("NFKC").trim().replace(/\s+/gu, " ");
+  return normalized ? normalized : null;
+}
+
+export function historyTagKey(value: unknown): string {
+  return normalizeHistoryTag(value)?.toLowerCase() ?? "";
+}
+
+export function normalizeHistoryTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const candidate of value) {
+    const tag = normalizeHistoryTag(candidate);
+    const key = historyTagKey(tag);
+    if (!tag || !key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(tag);
+  }
+  return result;
 }
 
 function validSort(value: unknown): value is HistorySort {
@@ -62,6 +93,7 @@ export function normalizeHistoryFilter(value: Partial<HistoryFilterState> | null
     maxRating,
     minDuration: normalizedNumber(value?.minDuration),
     modelId: typeof value?.modelId === "string" ? value.modelId.trim() : "",
+    tags: normalizeHistoryTags(value?.tags),
     sort: validSort(value?.sort) ? value!.sort : "newest"
   };
 }
@@ -72,6 +104,7 @@ export function historyFilterIsActive(filter: HistoryFilterState): boolean {
     filter.maxRating !== null ||
     filter.minDuration !== null ||
     Boolean(filter.modelId) ||
+    filter.tags.length > 0 ||
     filter.sort !== "newest";
 }
 
@@ -113,7 +146,7 @@ function compareHistoryItems(
 }
 
 function matchesCommon(
-  item: { favorite?: boolean; rating?: HistoryRating | null; modelId?: string },
+  item: { favorite?: boolean; rating?: HistoryRating | null; modelId?: string; tags?: string[] },
   filter: HistoryFilterState
 ): boolean {
   if (filter.favoriteOnly && item.favorite !== true) return false;
@@ -121,6 +154,10 @@ function matchesCommon(
   if (filter.minRating !== null && rating < filter.minRating) return false;
   if (filter.maxRating !== null && (rating === 0 || rating > filter.maxRating)) return false;
   if (filter.modelId && item.modelId !== filter.modelId) return false;
+  if (filter.tags.length > 0) {
+    const itemTags = new Set(normalizeHistoryTags(item.tags).map(historyTagKey));
+    if (!filter.tags.every((tag) => itemTags.has(historyTagKey(tag)))) return false;
+  }
   return true;
 }
 
@@ -142,7 +179,7 @@ export function filterImageHistoryProjects(
   const filter = normalizeHistoryFilter(rawFilter);
   return projects
     .filter((project) => {
-      if (!matchesCommon({ favorite: project.favorite, rating: project.rating }, filter)) return false;
+      if (!matchesCommon({ favorite: project.favorite, rating: project.rating, tags: project.tags }, filter)) return false;
       return !filter.modelId || project.versions.some((version) =>
         version.kind !== "source" && version.modelId === filter.modelId
       );
@@ -158,6 +195,23 @@ export function filterImageHistoryProjects(
       createdAt: right.createdAt,
       rating: right.rating
     }, filter.sort));
+}
+
+export function historyTagNames(
+  history: ReadonlyArray<HistoryAsset>,
+  imageHistory: ReadonlyArray<ImageHistoryProject>,
+  kind: "video" | "image"
+): string[] {
+  const values = kind === "video"
+    ? history.flatMap((asset) => asset.tags ?? [])
+    : imageHistory.flatMap((project) => project.tags ?? []);
+  const byKey = new Map<string, string>();
+  for (const value of values) {
+    const tag = normalizeHistoryTag(value);
+    const key = historyTagKey(tag);
+    if (tag && key && !byKey.has(key)) byKey.set(key, tag);
+  }
+  return [...byKey.values()].sort((left, right) => left.localeCompare(right));
 }
 
 export function historyFilterModelIds(

@@ -3,7 +3,9 @@ import type { HistoryAsset, ImageHistoryProject } from "../src/types.js";
 import {
   filterHistoryAssets,
   filterImageHistoryProjects,
-  normalizeHistoryFilter
+  historyTagNames,
+  normalizeHistoryFilter,
+  normalizeHistoryTags
 } from "../src/core/history-filter.js";
 
 const video = (id: string, overrides: Partial<HistoryAsset> = {}): HistoryAsset => ({
@@ -17,6 +19,7 @@ const video = (id: string, overrides: Partial<HistoryAsset> = {}): HistoryAsset 
   modelId: overrides.modelId ?? "h3",
   favorite: overrides.favorite ?? false,
   rating: overrides.rating ?? null,
+  tags: overrides.tags ?? [],
   duration: overrides.duration ?? 1,
   resolution: 480,
   prompt: "",
@@ -36,6 +39,7 @@ const image = (id: string, overrides: Partial<ImageHistoryProject> = {}): ImageH
   updatedAt: "2026-08-11T00:00:00.000Z",
   favorite: false,
   rating: null,
+  tags: [],
   coverMode: "auto",
   nextVersionNumber: 2,
   versions: [{
@@ -81,9 +85,30 @@ describe("history curation filters", () => {
     expect(filterImageHistoryProjects(projects, { favoriteOnly: true, minRating: 4 }).map((item) => item.id)).toEqual(["a"]);
   });
 
+  it("matches all selected tags without treating case as identity", () => {
+    const records = [
+      video("a", { tags: ["H3", "Favorite"] }),
+      video("b", { tags: ["h3"] }),
+      video("c", { tags: ["Favorite"] })
+    ];
+    expect(filterHistoryAssets(records, { tags: ["h3", "favorite"] }).map((item) => item.id)).toEqual(["a"]);
+  });
+
+  it("normalizes duplicate tags while preserving the first display spelling", () => {
+    expect(normalizeHistoryTags([" H3 ", "h3", "  test   shot ", ""])).toEqual(["H3", "test shot"]);
+  });
+
+  it("builds case-insensitive tag suggestions for the active history kind", () => {
+    const names = historyTagNames([
+      video("a", { tags: ["H3", "精选"] }),
+      video("b", { tags: ["h3", "机场"] })
+    ], [], "video");
+    expect(names).toEqual(["机场", "精选", "H3"]);
+  });
+
   it("normalizes invalid persisted filter values", () => {
     expect(normalizeHistoryFilter({ minRating: 9 as never, sort: "unknown" as never })).toEqual({
-      favoriteOnly: false, minRating: null, maxRating: null, minDuration: null, modelId: "", sort: "newest"
+      favoriteOnly: false, minRating: null, maxRating: null, minDuration: null, modelId: "", tags: [], sort: "newest"
     });
   });
 });

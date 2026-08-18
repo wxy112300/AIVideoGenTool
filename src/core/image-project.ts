@@ -11,7 +11,7 @@ import type {
 } from "../types.js";
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
 import { normalizeImageTargetResolution } from "./image-workflow.js";
-import { isHistoryRating } from "./history-filter.js";
+import { isHistoryRating, normalizeHistoryTags } from "./history-filter.js";
 
 const imageOutputFormats: ImageOutputFormat[] = ["png", "jpeg", "webp"];
 const imageReferenceRoles: ImageReferenceRole[] = [
@@ -223,6 +223,7 @@ function normalizeImageHistoryProject(value: unknown): ImageHistoryProject | nul
     rating: isHistoryRating(source.rating)
       ? source.rating
       : null,
+    tags: normalizeHistoryTags(source.tags),
     coverMode,
     ...(typeof source.coverVersionId === "string" && source.coverVersionId.trim()
       ? { coverVersionId: source.coverVersionId }

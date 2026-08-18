@@ -49,6 +49,8 @@ Large entry files are an existing risk, not a pattern to expand. When work intro
 
 - The generated media file is the durable artifact. History metadata makes it discoverable and reproducible but must not fabricate media availability.
 - Video history and image-project history are distinct user-facing collections even if storage helpers are shared.
+- Favorite, rating, and user-defined tags are top-level history/project curation metadata. Tags are normalized on load and IPC writes (trimmed, whitespace-collapsed, case-insensitive identity) and default to an empty list for legacy records.
+- Curation metadata updates use the metadata IPC path and must not replace the primary media element; the renderer may patch the detail controls in place while playback continues.
 - Image projects keep all derived versions in one project lineage. The newest successful version becomes the default cover unless the user explicitly chooses another.
 - Path resolution must support existing records after restart and preserve legacy records through explicit fallback/migration logic.
 - Cover images are derived cache artifacts. A missing or stale cover may be regenerated without modifying the original media or history identity.

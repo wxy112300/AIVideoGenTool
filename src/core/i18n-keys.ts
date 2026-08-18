@@ -669,6 +669,7 @@ export const uiKeys = {
       durationMin: "history.filter.durationMin",
       durationAny: "history.filter.durationAny",
       model: "history.filter.model",
+      tags: "history.filter.tags",
       clear: "history.filter.clear",
       sort: "history.filter.sort",
       sortNewest: "history.filter.sortNewest",
@@ -799,6 +800,18 @@ export const uiKeys = {
       rendered: "history.card.rendered",
       videoEmptyTitle: "history.card.videoEmptyTitle",
       videoEmptyDescription: "history.card.videoEmptyDescription"
+    },
+    tags: {
+      title: "history.tags.title",
+      description: "history.tags.description",
+      add: "history.tags.add",
+      placeholder: "history.tags.placeholder",
+      empty: "history.tags.empty",
+      edit: "history.tags.edit",
+      remove: "history.tags.remove",
+      cancel: "history.tags.cancel",
+      duplicate: "history.tags.duplicate",
+      updateFailed: "history.tags.updateFailed"
     },
     page: {
       back: "history.page.back",

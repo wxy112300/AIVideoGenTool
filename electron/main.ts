@@ -43,7 +43,7 @@ import type {
   WindowCloseResponse
 } from "../src/types.js";
 import { normalizeUiLocale } from "../src/core/i18n.js";
-import { isHistoryRating } from "../src/core/history-filter.js";
+import { isHistoryRating, normalizeHistoryTags } from "../src/core/history-filter.js";
 import {
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
@@ -3068,12 +3068,17 @@ function registerIpc(): void {
     }
     const favorite = patch.favorite;
     const rating = patch.rating;
+    const tags = patch.tags;
     if (favorite !== undefined && typeof favorite !== "boolean") {
       throw new Error("收藏状态无效。");
     }
     if (rating !== undefined && rating !== null && !isHistoryRating(rating)) {
       throw new Error("评分必须是 0.5 到 5 分，支持半星。");
     }
+    if (tags !== undefined && !Array.isArray(tags)) {
+      throw new Error("历史标签格式无效。");
+    }
+    const normalizedTags = tags === undefined ? undefined : normalizeHistoryTags(tags);
     const next = await store.update((state) => {
       const video = state.history.find((item) => item.id === assetId);
       const image = state.imageHistory.find((item) => item.id === assetId);
@@ -3081,11 +3086,13 @@ function registerIpc(): void {
       if (!target) throw new Error("历史记录不存在。");
       if (favorite !== undefined) target.favorite = favorite;
       if (rating !== undefined) target.rating = rating;
+      if (normalizedTags !== undefined) target.tags = normalizedTags;
     });
     appLogger.info("history", "metadata-updated", "History curation metadata updated", {
       assetId,
       ...(favorite !== undefined ? { favorite } : {}),
-      ...(rating !== undefined ? { rating } : {})
+      ...(rating !== undefined ? { rating } : {}),
+      ...(normalizedTags !== undefined ? { tags: normalizedTags } : {})
     });
     sendState(next);
     return next;

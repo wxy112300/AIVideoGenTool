@@ -85,6 +85,8 @@ Hover preview failure must not destroy a valid static cover. Detail playback/vie
 
 - Image and video collections use distinct top-level tabs.
 - Layout column count responds to container width, not record count.
+- Tags are edited only on detail pages, below the primary media/viewer so they do not squeeze the media/sidebar columns; thumbnail cards remain quiet and show no tag list.
+- The tag editor uses pill tokens, free text committed with Enter, and suggestions from existing tags. Tag identity is case-insensitive; the filter can select multiple tags and matches records containing all selected tags.
 - Context menu actions are explicit: view details, copy file, copy path when supported, open containing folder, use/continue creation, and delete.
 - Loading covers display a progress affordance; missing media displays recovery guidance rather than an unexplained black tile.
 

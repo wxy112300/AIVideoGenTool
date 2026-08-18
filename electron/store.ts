@@ -20,7 +20,7 @@ import {
   managedPromptModelDefinitions
 } from "../src/core/prompt-models.js";
 import { normalizeImageEditDraft, normalizeImageHistory } from "../src/core/image-project.js";
-import { isHistoryRating } from "../src/core/history-filter.js";
+import { isHistoryRating, normalizeHistoryTags } from "../src/core/history-filter.js";
 import { copyPromptVersions, ensureDraftPromptState } from "../src/core/draft-prompts.js";
 import {
   generationSafetyForTask,
@@ -278,6 +278,7 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
       rating: isHistoryRating(asset.rating)
         ? asset.rating
         : null,
+      tags: normalizeHistoryTags((asset as HistoryAsset & { tags?: unknown }).tags),
       files,
       updatedAt: asset.updatedAt ?? asset.createdAt,
       versions: asset.versions.map((version) => ({
@@ -315,6 +316,7 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
     rating: isHistoryRating(asset.rating)
       ? asset.rating
       : null,
+    tags: normalizeHistoryTags((asset as HistoryAsset & { tags?: unknown }).tags),
     files,
     updatedAt: asset.updatedAt ?? asset.createdAt,
     defaultVersionId: version.id,

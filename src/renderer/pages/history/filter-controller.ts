@@ -1,6 +1,8 @@
 import {
   defaultHistoryFilter,
+  historyTagKey,
   normalizeHistoryFilter,
+  normalizeHistoryTags,
   type HistoryFilterState,
   type HistorySort
 } from "../../../core/history-filter";
@@ -81,6 +83,20 @@ export function mountHistoryFilterController(
       } else if (name === "sort") {
         commit({ sort: (field as HTMLSelectElement).value as HistorySort });
       }
+    }, { signal });
+  });
+
+  root.querySelectorAll<HTMLButtonElement>("[data-history-filter-tag]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      stop(event);
+      const value = button.dataset.historyFilterTag;
+      if (!value) return;
+      const current = normalizeHistoryTags(options.getFilter().tags);
+      const key = historyTagKey(value);
+      const next = current.some((tag) => historyTagKey(tag) === key)
+        ? current.filter((tag) => historyTagKey(tag) !== key)
+        : [...current, value];
+      commit({ tags: next });
     }, { signal });
   });
 
