@@ -20,7 +20,7 @@ const sulphurScan = (profile: "q2_distilled" | "q3_k_m" | "q4_k_m") => ({
     { label: "LTX 2.3 视频 VAE", expected: "vae/ltx-2-3-22b-VAE.safetensors", patterns: [/vae\/ltx-2-3-22b-vae\.safetensors$/i] },
     { label: "LTX 2.3 音频 VAE", expected: "checkpoints/ltx-2-3-22b-audio_vae.safetensors", patterns: [/checkpoints\/ltx-2-3-22b-audio_vae\.safetensors$/i] },
     ...(profile === "q2_distilled" ? [] : [{ label: "LTX 2.3 蒸馏 LoRA", expected: "loras/ltx-2.3-22b-distilled-lora-1.1*", patterns: [/loras\/ltx-2\.3-22b-distilled-lora-1\.1.*\.safetensors$/i] }]),
-    { label: "LTX 2.3 Latent Upscaler", expected: "latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.0.safetensors", patterns: [/latent_upscale_models\/ltx-2\.3-spatial-upscaler-x2-1\.0\.safetensors$/i] }
+    { label: "LTX 2.3 Latent Upscaler", expected: "latent_upscale_models/ltx-2-spatial-upscaler-x2-1.0.safetensors", patterns: [/latent_upscale_models\/ltx-2-spatial-upscaler-x2-1\.0\.safetensors$/i] }
   ]
 });
 

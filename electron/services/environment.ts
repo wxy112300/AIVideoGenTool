@@ -137,6 +137,13 @@ const comfyWheelsIndex = "https://comfy-org.github.io/wheels/";
 const llamaServerReleaseApiUrl =
   "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest";
 const llamaServerCudaVariants = ["12.4", "13.3"] as const;
+const githubReleaseCache = new Map<string, {
+  version: string;
+  checkedAt: number;
+}>();
+const githubReleaseRequests = new Map<string, Promise<string>>();
+const githubReleaseCacheTtlMs = 6 * 60 * 60 * 1000;
+const githubReleaseFailureCacheTtlMs = 60 * 1000;
 
 function formatGpuMemory(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
@@ -146,43 +153,88 @@ function normalizeReleaseVersion(value: string): string {
   return value.trim().replace(/^v/i, "");
 }
 
-async function latestSpectrumReleaseVersion(settings: Settings): Promise<string> {
-  const url = "https://api.github.com/repos/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/latest";
-  try {
-    let payload: { tag_name?: unknown };
-    if (settings.proxyEnabled && settings.proxyUrl.trim()) {
-      const curl = await findExecutable("curl.exe");
-      if (!curl) return "";
-      const args = [
-        "-fsSL",
-        "--max-time",
-        "5",
-        "--proxy",
-        normalizeProxyUrl(settings.proxyUrl),
-        "-H",
-        "Accept: application/vnd.github+json",
-        url
-      ];
-      const result = await execFileAsync(curl, args, {
-        encoding: "utf8",
-        timeout: 8_000,
-        windowsHide: true
-      });
-      payload = JSON.parse(result.stdout) as { tag_name?: unknown };
-    } else {
-      const response = await fetch(url, {
-        headers: { Accept: "application/vnd.github+json" },
-        signal: AbortSignal.timeout(3500)
-      });
-      if (!response.ok) return "";
-      payload = await response.json() as { tag_name?: unknown };
+async function latestGitHubReleaseVersion(
+  settings: Settings,
+  repository: string
+): Promise<string> {
+  const cacheKey = repository.trim().toLowerCase();
+  const cached = githubReleaseCache.get(cacheKey);
+  const cacheTtl = cached?.version
+    ? githubReleaseCacheTtlMs
+    : githubReleaseFailureCacheTtlMs;
+  if (cached && Date.now() - cached.checkedAt < cacheTtl) return cached.version;
+  const pending = githubReleaseRequests.get(cacheKey);
+  if (pending) return pending;
+
+  const request = (async () => {
+    const url = "https://api.github.com/repos/" + repository + "/releases/latest";
+    try {
+      let payload: { tag_name?: unknown };
+      if (settings.proxyEnabled && settings.proxyUrl.trim()) {
+        const curl = await findExecutable("curl.exe");
+        if (!curl) {
+          githubReleaseCache.set(cacheKey, { version: "", checkedAt: Date.now() });
+          return "";
+        }
+        const args = [
+          "-fsSL",
+          "--max-time",
+          "5",
+          "--proxy",
+          normalizeProxyUrl(settings.proxyUrl),
+          "-H",
+          "Accept: application/vnd.github+json",
+          url
+        ];
+        const result = await execFileAsync(curl, args, {
+          encoding: "utf8",
+          timeout: 8_000,
+          windowsHide: true
+        });
+        payload = JSON.parse(result.stdout) as { tag_name?: unknown };
+      } else {
+        const response = await fetch(url, {
+          headers: { Accept: "application/vnd.github+json" },
+          signal: AbortSignal.timeout(3500)
+        });
+        if (!response.ok) {
+          githubReleaseCache.set(cacheKey, { version: "", checkedAt: Date.now() });
+          return "";
+        }
+        payload = await response.json() as { tag_name?: unknown };
+      }
+      const version = typeof payload.tag_name === "string"
+        ? normalizeReleaseVersion(payload.tag_name)
+        : "";
+      githubReleaseCache.set(cacheKey, { version, checkedAt: Date.now() });
+      return version;
+    } catch {
+      githubReleaseCache.set(cacheKey, { version: "", checkedAt: Date.now() });
+      return "";
     }
-    return typeof payload.tag_name === "string"
-      ? normalizeReleaseVersion(payload.tag_name)
-      : "";
-  } catch {
-    return "";
+  })();
+  githubReleaseRequests.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    githubReleaseRequests.delete(cacheKey);
   }
+}
+
+async function latestCatalogNodeReleaseVersions(
+  settings: Settings
+): Promise<Record<string, string>> {
+  const entries = customNodeCatalog.filter((definition) =>
+    definition.releaseSource === "github-release"
+  );
+  const versions = await Promise.all(entries.map(async (definition) => {
+    const repository = definition.repositoryUrl
+      .replace(/^https?:\/\/github\.com\//i, "")
+      .replace(/\.git$/i, "")
+      .replace(/\/+$/u, "");
+    return [definition.id, await latestGitHubReleaseVersion(settings, repository)] as const;
+  }));
+  return Object.fromEntries(versions.filter(([, version]) => version));
 }
 
 
@@ -477,271 +529,271 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
   },
   "sulphur2:Sulphur 2 Q2_K distilled GGUF": {
     sourceLabel: "szwagros / sulphur-2-gguf",
-    downloadUrl: "https://huggingface.co/szwagros/sulphur-2-gguf/tree/main",
+    downloadUrl: "https://huggingface.co/szwagros/sulphur-2-gguf/resolve/main/sulphur-2-distilled-Q2_K.gguf",
     targetSubdirectory: "unet",
     recommendedFilename: "sulphur-2-distilled-Q2_K.gguf",
     notes: "约 7.93 GB 的 8GB 兼容档。依赖 CPU offload、足够的系统内存和页面文件；质量低于 Q3/Q4。"
   },
   "sulphur2:Sulphur 2 Q3_K_M dev GGUF": {
     sourceLabel: "vantagewithai / Sulphur-2-Base-GGUF",
-    downloadUrl: "https://huggingface.co/vantagewithai/Sulphur-2-Base-GGUF/tree/main",
+    downloadUrl: "https://huggingface.co/vantagewithai/Sulphur-2-Base-GGUF/resolve/main/sulphur_dev-Q3_K_M.gguf",
     targetSubdirectory: "unet",
     recommendedFilename: "sulphur_dev-Q3_K_M.gguf",
     notes: "约 11.13 GB，作为 24GB 显卡的默认均衡档。"
   },
   "sulphur2:Sulphur 2 Q4_K_M dev GGUF": {
     sourceLabel: "vantagewithai / Sulphur-2-Base-GGUF",
-    downloadUrl: "https://huggingface.co/vantagewithai/Sulphur-2-Base-GGUF/tree/main",
+    downloadUrl: "https://huggingface.co/vantagewithai/Sulphur-2-Base-GGUF/resolve/main/sulphur_dev-Q4_K_M.gguf",
     targetSubdirectory: "unet",
     recommendedFilename: "sulphur_dev-Q4_K_M.gguf",
     notes: "约 14.30 GB 的质量档。运行前应关闭占用显存的其他程序。"
   },
   "sulphur2:Gemma 3 文本编码器": {
     sourceLabel: "Comfy-Org / ltx-2",
-    downloadUrl: "https://huggingface.co/Comfy-Org/ltx-2/tree/main/split_files/text_encoders",
+    downloadUrl: "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "gemma_3_12B_it_fp4_mixed.safetensors"
   },
   "sulphur2:LTX 2.3 文本连接器": {
     sourceLabel: "vantagewithai / LTX-2.3-Split",
-    downloadUrl: "https://huggingface.co/vantagewithai/LTX-2.3-Split/tree/main/text_encoder",
+    downloadUrl: "https://huggingface.co/vantagewithai/LTX-2.3-Split/resolve/main/text_encoder/ltx-2-3-22b-text_encoder.safetensors",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "ltx-2-3-22b-text_encoder.safetensors"
   },
   "sulphur2:LTX 2.3 视频 VAE": {
     sourceLabel: "vantagewithai / LTX-2.3-Split",
-    downloadUrl: "https://huggingface.co/vantagewithai/LTX-2.3-Split/tree/main/vae",
+    downloadUrl: "https://huggingface.co/vantagewithai/LTX-2.3-Split/resolve/main/vae/ltx-2-3-22b-VAE.safetensors",
     targetSubdirectory: "vae",
     recommendedFilename: "ltx-2-3-22b-VAE.safetensors"
   },
   "sulphur2:LTX 2.3 音频 VAE": {
     sourceLabel: "vantagewithai / LTX-2.3-Split",
-    downloadUrl: "https://huggingface.co/vantagewithai/LTX-2.3-Split/tree/main/audio_vae",
+    downloadUrl: "https://huggingface.co/vantagewithai/LTX-2.3-Split/resolve/main/audio_vae/ltx-2-3-22b-audio_vae.safetensors",
     targetSubdirectory: "checkpoints",
     recommendedFilename: "ltx-2-3-22b-audio_vae.safetensors",
     notes: "必须放在 models/checkpoints，由 ComfyUI-LTXVideo 的 LowVRAMAudioVAELoader 读取；通用 VAELoader 无法识别音频 VAE。"
   },
   "sulphur2:LTX 2.3 蒸馏 LoRA": {
     sourceLabel: "SulphurAI / Sulphur-2-base",
-    downloadUrl: "https://huggingface.co/SulphurAI/Sulphur-2-base/tree/main/distill_loras",
+    downloadUrl: "https://huggingface.co/SulphurAI/Sulphur-2-base/resolve/main/distill_loras/ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors",
     targetSubdirectory: "loras",
     recommendedFilename: "ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors"
   },
   "sulphur2:LTX 2.3 Latent Upscaler": {
     sourceLabel: "Lightricks / LTX-2.3",
-    downloadUrl: "https://huggingface.co/Lightricks/LTX-2.3/tree/main",
+    downloadUrl: "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-spatial-upscaler-x2-1.0.safetensors",
     targetSubdirectory: "latent_upscale_models",
-    recommendedFilename: "ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
+    recommendedFilename: "ltx-2-spatial-upscaler-x2-1.0.safetensors"
   },
   "wan22_5b:Wan 2.2 5B 扩散模型": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/diffusion_models",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors",
     targetSubdirectory: "diffusion_models",
     recommendedFilename: "wan2.2_ti2v_5B_fp16.safetensors"
   },
   "wan22_5b:UMT5 文本编码器": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/text_encoders",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
   },
   "wan22_5b:Wan VAE": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors",
     targetSubdirectory: "vae",
     recommendedFilename: "wan2.2_vae.safetensors"
   },
   "hunyuan15:HunyuanVideo 1.5 I2V 模型": {
     sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/diffusion_models",
+    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/diffusion_models/hunyuanvideo1.5_720p_i2v_fp16.safetensors",
     targetSubdirectory: "diffusion_models",
     recommendedFilename: "hunyuanvideo1.5_720p_i2v_fp16.safetensors",
     notes: "内置工作流按官方 720p I2V FP16 权重配置；已放在 models/unet 中的同名文件也会被扫描到。"
   },
   "hunyuan15:HunyuanVideo 1.5 VAE": {
     sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/vae",
+    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/vae/hunyuanvideo15_vae_fp16.safetensors",
     targetSubdirectory: "vae",
     recommendedFilename: "hunyuanvideo15_vae_fp16.safetensors"
   },
   "hunyuan15:Qwen 2.5 VL 7B 文本编码器": {
     sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/text_encoders",
+    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "qwen_2.5_vl_7b_fp8_scaled.safetensors",
     notes: "下载页如有多个精度版本，4090 优先选择 FP8 scaled。"
   },
   "hunyuan15:ByT5 文本编码器": {
     sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/text_encoders",
+    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/byt5_small_glyphxl_fp16.safetensors",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "byt5_small_glyphxl_fp16.safetensors"
   },
   "hunyuan15:SigCLIP 视觉编码器": {
     sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/clip_vision",
+    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/clip_vision/sigclip_vision_patch14_384.safetensors",
     targetSubdirectory: "clip_vision",
     recommendedFilename: "sigclip_vision_patch14_384.safetensors"
   },
   "wan22_14b_nsfw:14B 高噪声模型": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/diffusion_models",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
     targetSubdirectory: "diffusion_models",
     recommendedFilename: "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"
   },
   "wan22_14b_nsfw:14B 低噪声模型": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/diffusion_models",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
     targetSubdirectory: "diffusion_models",
     recommendedFilename: "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"
   },
   "wan22_14b_nsfw:NSFW UMT5 编码器": {
     sourceLabel: "NSFW-API / NSFW-Wan-UMT5-XXL",
-    downloadUrl: "https://huggingface.co/NSFW-API/NSFW-Wan-UMT5-XXL/tree/main",
+    downloadUrl: "https://huggingface.co/NSFW-API/NSFW-Wan-UMT5-XXL/resolve/main/nsfw_wan_umt5-xxl_fp8_scaled.safetensors",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "nsfw_wan_umt5-xxl_fp8_scaled.safetensors"
   },
   "wan22_14b_nsfw:Wan VAE": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
     targetSubdirectory: "vae",
     recommendedFilename: "wan_2.1_vae.safetensors",
     notes: "Wan 2.2 14B I2V 官方工作流使用 Wan 2.1 VAE；不要与 5B 工作流的 wan2.2_vae 混用。"
   },
   "wan22_remix:Remix v3 High": {
     sourceLabel: "BigDannyPt / Wan-2.2-Remix-GGUF",
-    downloadUrl: "https://huggingface.co/BigDannyPt/Wan-2.2-Remix-GGUF/tree/main/I2V/v3.0/High",
+    downloadUrl: "https://huggingface.co/BigDannyPt/Wan-2.2-Remix-GGUF/resolve/main/I2V/v3.0/High/wan22RemixT2VI2V_i2vHighV30-Q5_K_M.gguf",
     targetSubdirectory: "unet",
     recommendedFilename: "wan22RemixT2VI2V_i2vHighV30-Q5_K_M.gguf"
   },
   "wan22_remix:Remix v3 Low": {
     sourceLabel: "BigDannyPt / Wan-2.2-Remix-GGUF",
-    downloadUrl: "https://huggingface.co/BigDannyPt/Wan-2.2-Remix-GGUF/tree/main/I2V/v3.0/Low",
+    downloadUrl: "https://huggingface.co/BigDannyPt/Wan-2.2-Remix-GGUF/resolve/main/I2V/v3.0/Low/wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf",
     targetSubdirectory: "unet",
     recommendedFilename: "wan22RemixT2VI2V_i2vLowV30-Q5_K_M.gguf"
   },
   "wan22_remix:UMT5 文本编码器": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/text_encoders",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
   },
   "wan22_remix:Wan VAE": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
     targetSubdirectory: "vae",
     recommendedFilename: "wan_2.1_vae.safetensors"
   },
   "wan22_smoothmix:SmoothMix High": {
     sourceLabel: "Bedovyy / smoothMixWan22-I2V-GGUF",
-    downloadUrl: "https://huggingface.co/Bedovyy/smoothMixWan22-I2V-GGUF/tree/main/HighNoise",
+    downloadUrl: "https://huggingface.co/Bedovyy/smoothMixWan22-I2V-GGUF/resolve/main/HighNoise/smoothMixWan22I2VT2V_i2vHigh-Q5_K_M.gguf",
     targetSubdirectory: "unet",
     recommendedFilename: "smoothMixWan22I2VT2V_i2vHigh-Q5_K_M.gguf"
   },
   "wan22_smoothmix:SmoothMix Low": {
     sourceLabel: "Bedovyy / smoothMixWan22-I2V-GGUF",
-    downloadUrl: "https://huggingface.co/Bedovyy/smoothMixWan22-I2V-GGUF/tree/main/LowNoise",
+    downloadUrl: "https://huggingface.co/Bedovyy/smoothMixWan22-I2V-GGUF/resolve/main/LowNoise/smoothMixWan22I2VT2V_i2vLow-Q5_K_M.gguf",
     targetSubdirectory: "unet",
     recommendedFilename: "smoothMixWan22I2VT2V_i2vLow-Q5_K_M.gguf"
   },
   "wan22_smoothmix:UMT5 文本编码器": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/text_encoders",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
   },
   "wan22_smoothmix:Wan VAE": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
     targetSubdirectory: "vae",
     recommendedFilename: "wan_2.1_vae.safetensors"
   },
   "wan22_dasiwa:DaSiWa v9 High": {
     sourceLabel: "darksidewalker / DaSiWa-WAN2.2-I2V",
-    downloadUrl: "https://huggingface.co/darksidewalker/DaSiWa-WAN2.2-I2V/tree/main/Distilled/GGUF/v09",
+    downloadUrl: "https://huggingface.co/darksidewalker/DaSiWa-WAN2.2-I2V/resolve/main/Distilled/GGUF/v09/DasiwaWAN22I2V14BSynthseduction_q4High.gguf",
     targetSubdirectory: "unet",
     recommendedFilename: "DasiwaWAN22I2V14BSynthseduction_q4High.gguf",
     notes: "该仓库可能要求登录 Hugging Face 并同意访问条款。"
   },
   "wan22_dasiwa:DaSiWa v9 Low": {
     sourceLabel: "darksidewalker / DaSiWa-WAN2.2-I2V",
-    downloadUrl: "https://huggingface.co/darksidewalker/DaSiWa-WAN2.2-I2V/tree/main/Distilled/GGUF/v09",
+    downloadUrl: "https://huggingface.co/darksidewalker/DaSiWa-WAN2.2-I2V/resolve/main/Distilled/GGUF/v09/DasiwaWAN22I2V14BSynthseduction_q4Low.gguf",
     targetSubdirectory: "unet",
     recommendedFilename: "DasiwaWAN22I2V14BSynthseduction_q4Low.gguf",
     notes: "High 与 Low 必须使用同一 v9、同一量化等级。"
   },
   "wan22_dasiwa:UMT5 文本编码器": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/text_encoders",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
     targetSubdirectory: "text_encoders",
     recommendedFilename: "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
   },
   "wan22_dasiwa:Wan VAE": {
     sourceLabel: "Comfy-Org / Wan_2.2_ComfyUI_Repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae",
+    downloadUrl: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
     targetSubdirectory: "vae",
     recommendedFilename: "wan_2.1_vae.safetensors"
   },
   "seedvr2:SeedVR2 主模型": {
     sourceLabel: "numz / SeedVR2_comfyUI",
-    downloadUrl: "https://huggingface.co/numz/SeedVR2_comfyUI/tree/main",
+    downloadUrl: "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_3b_fp8_e4m3fn.safetensors",
     targetSubdirectory: "SEEDVR2",
     recommendedFilename: "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
     notes: "当前项目安装的 SeedVR2 节点固定从 models/SEEDVR2 读取权重。"
   },
   "seedvr2:SeedVR2 VAE": {
     sourceLabel: "numz / SeedVR2_comfyUI",
-    downloadUrl: "https://huggingface.co/numz/SeedVR2_comfyUI/tree/main",
+    downloadUrl: "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors",
     targetSubdirectory: "SEEDVR2",
     recommendedFilename: "ema_vae_fp16.safetensors"
   },
   "flashvsr:FlashVSR 模型": {
     sourceLabel: "1038lab / FlashVSR",
-    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/tree/main",
+    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/resolve/main/FlashVSR1_1.safetensors",
     targetSubdirectory: "FlashVSR",
     recommendedFilename: "FlashVSR1_1.safetensors",
     notes: "FlashVSR 的 5 个权重必须放在同一个 models/FlashVSR 目录。"
   },
   "flashvsr:Wan 2.1 VAE": {
     sourceLabel: "1038lab / FlashVSR",
-    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/tree/main",
+    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/resolve/main/Wan2.1_VAE.safetensors",
     targetSubdirectory: "FlashVSR",
     recommendedFilename: "Wan2.1_VAE.safetensors"
   },
   "flashvsr:LQ Projection": {
     sourceLabel: "1038lab / FlashVSR",
-    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/tree/main",
+    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/resolve/main/LQ_proj_in.safetensors",
     targetSubdirectory: "FlashVSR",
     recommendedFilename: "LQ_proj_in.safetensors"
   },
   "flashvsr:TCDecoder": {
     sourceLabel: "1038lab / FlashVSR",
-    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/tree/main",
+    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/resolve/main/TCDecoder.safetensors",
     targetSubdirectory: "FlashVSR",
     recommendedFilename: "TCDecoder.safetensors"
   },
   "flashvsr:Prompt Embedding": {
     sourceLabel: "1038lab / FlashVSR",
-    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/tree/main",
+    downloadUrl: "https://huggingface.co/1038lab/FlashVSR/resolve/main/Prompt.safetensors",
     targetSubdirectory: "FlashVSR",
     recommendedFilename: "Prompt.safetensors"
   },
   "hunyuan15_sr:Hunyuan 1080p SR 模型": {
     sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/diffusion_models",
+    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/diffusion_models/hunyuanvideo1.5_1080p_sr_distilled_fp16.safetensors",
     targetSubdirectory: "diffusion_models",
     recommendedFilename: "hunyuanvideo1.5_1080p_sr_distilled_fp16.safetensors"
   },
   "hunyuan15_sr:Hunyuan 1080p Latent Upsampler": {
     sourceLabel: "Comfy-Org / HunyuanVideo_1.5_repackaged",
-    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files/latent_upscale_models",
+    downloadUrl: "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/latent_upscale_models/hunyuanvideo15_latent_upsampler_1080p.safetensors",
     targetSubdirectory: "latent_upscale_models",
     recommendedFilename: "hunyuanvideo15_latent_upsampler_1080p.safetensors",
     notes: "该后端只适用于 HunyuanVideo 1.5 的 latent 双阶段 SR，不是通用视频放大模型。"
   },
   "realesrgan:Real-ESRGAN x4 模型": {
     sourceLabel: "Real-ESRGAN 官方 Releases",
-    downloadUrl: "https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0",
+    downloadUrl: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
     targetSubdirectory: "upscale_models",
     recommendedFilename: "RealESRGAN_x4plus.pth"
   },
@@ -806,8 +858,8 @@ function sulphurComponentsFor(
   }
   components.push({
     label: "LTX 2.3 Latent Upscaler",
-    expected: "latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.0.safetensors",
-    patterns: [/latent_upscale_models\/ltx-2\.3-spatial-upscaler-x2-1\.0\.safetensors$/i]
+    expected: "latent_upscale_models/ltx-2-spatial-upscaler-x2-1.0.safetensors",
+    patterns: [/latent_upscale_models\/ltx-2-spatial-upscaler-x2-1\.0\.safetensors$/i]
   });
   return components;
 }
@@ -3495,14 +3547,16 @@ export async function scanEnvironment(
   );
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ??
     pythonRuntimes[0];
-  const latestSpectrumVersionPromise = latestSpectrumReleaseVersion(settings);
+  const latestNodeVersionsPromise = latestCatalogNodeReleaseVersions(settings);
   const [customNodes, workflowDependencies, attentionAcceleration, llamaCppPython] = await Promise.all([
-    latestSpectrumVersionPromise.then((latestSpectrumVersion) =>
+    latestNodeVersionsPromise.then((latestNodeVersions) =>
       scanCustomNodes(
         comfyRoot,
         settings,
-        latestSpectrumVersion,
-        runtimeComfyBaseUrl || settings.comfyUrl
+        latestNodeVersions["spectrum-minimax-h3"] ?? "",
+        runtimeComfyBaseUrl || settings.comfyUrl,
+        latestNodeVersions["h3-motion-context"] ?? "",
+        latestNodeVersions
       )
     ),
     scanWorkflowDependencies(comfyRoot),

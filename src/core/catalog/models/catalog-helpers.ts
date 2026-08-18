@@ -30,8 +30,8 @@ export function entry(
 }
 
 export const comfyWanSource = "Comfy-Org / Wan_2.2_ComfyUI_Repackaged";
-export const comfyWanBase = "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files";
+export const comfyWanBase = "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files";
 export const comfyHunyuanSource = "Comfy-Org / HunyuanVideo_1.5_repackaged";
-export const comfyHunyuanBase = "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/tree/main/split_files";
-export const comfyWanVae = guide(comfyWanSource, `${comfyWanBase}/vae`, "vae", "wan_2.1_vae.safetensors");
-export const comfyWanUmt5 = guide(comfyWanSource, `${comfyWanBase}/text_encoders`, "text_encoders", "umt5_xxl_fp8_e4m3fn_scaled.safetensors");
+export const comfyHunyuanBase = "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files";
+export const comfyWanVae = guide(comfyWanSource, `${comfyWanBase}/vae/wan_2.1_vae.safetensors`, "vae", "wan_2.1_vae.safetensors");
+export const comfyWanUmt5 = guide(comfyWanSource, `${comfyWanBase}/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors`, "text_encoders", "umt5_xxl_fp8_e4m3fn_scaled.safetensors");

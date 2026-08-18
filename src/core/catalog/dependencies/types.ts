@@ -5,10 +5,14 @@ export interface CatalogCustomNodeDefinition {
   repositoryUrl: string;
   directoryName: string;
   aliases: readonly string[];
+  /** Optional remote source used for a cached, non-blocking update check. */
+  releaseSource?: "github-release";
   nodeTypes?: readonly string[];
   runtimeEndpoint?: string;
   minimumVersion?: string;
   recommendedVersion?: string;
+  /** Optional release-aware version used to surface an update without making it a hard requirement. */
+  latestVersion?: string;
   /** Python-side runtime requirement when the node package's own version is not the constraint. */
   runtimeRequirement?: string;
   /** Optional nodes with external toolchains can opt out of the bulk installer. */

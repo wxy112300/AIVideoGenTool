@@ -10,6 +10,7 @@ import {
   frameCountForTask,
   generationFrameCountForTask,
   generationSafetyForTask,
+  motionContextMaxDurationSeconds,
   missingWorkflowNodeTypes,
   outputDimensions,
   outputFrameCountForTask,
@@ -961,8 +962,10 @@ describe("generation VRAM safety", () => {
       safe: true,
       generatedFrames: 350,
       maxGeneratedFrames: 362,
+      maxDurationSeconds: 13,
       minimumContextSeconds: 22 / 24
     });
+    expect(motionContextMaxDurationSeconds()).toBe(13);
     expect(extensionSafetyForTask({ ...h3MotionExtension, duration: 15 }).safe).toBe(false);
     expect(extensionSafetyForTask({
       ...h3MotionExtension,
@@ -1301,7 +1304,7 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     expect(rendered["8"]?.inputs.context_latent).toBeUndefined();
     expect(rendered["8"]?.inputs).toMatchObject({
       context_length: "22",
-      audio_context_length: 22,
+      audio_context_length: 24,
       context_frames: ["5", 0],
       context_audio: ["5", 2]
     });

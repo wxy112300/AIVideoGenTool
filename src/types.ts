@@ -256,6 +256,8 @@ export interface Settings {
   imageInputLibraryDirectory: string;
   modelDirectory: string;
   defaultVideoModel: string;
+  /** Default model selected when entering video-extension mode. */
+  defaultExtensionModel: string;
   defaultImageModel: string;
   defaultImageQualityProfile: string;
   imageOutputCount: number;
@@ -283,6 +285,7 @@ export interface Settings {
   realEsrganModel: string;
   proxyEnabled: boolean;
   proxyUrl: string;
+  hfMirrorEnabled: boolean;
 }
 
 interface QueueTaskBase {
@@ -747,6 +750,8 @@ export interface CustomNodeStatus {
   recommendedVersion: string;
   latestVersion: string;
   updateAvailable: boolean;
+  /** Other custom_nodes directories that appear to contain the same patch/node pack. */
+  duplicateDirectories?: string[];
   /** Git revision detected independently from the package version, when available. */
   detectedRevision?: string;
   /** Additive machine-readable state used by Settings; legacy scans omit it. */
@@ -890,6 +895,7 @@ export interface BundledWorkflow {
   path: string;
   supportsEndImage: boolean;
   supportsVideoExtension: boolean;
+  metadata?: import("./core/workflow-metadata.js").WorkflowSourceMetadata;
 }
 
 export interface WorkflowCapabilities {

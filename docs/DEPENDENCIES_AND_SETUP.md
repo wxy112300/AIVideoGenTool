@@ -105,11 +105,15 @@ Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分
 
 当前注册的节点族包括 GGUF、Video Helper Suite、LTXVideo、SeedVR2、FlashVSR、KJNodes、Frame Interpolation、ComfyUI MultiModal Prompt Nodes、MiniMax H3 Prompt Writer、H3 Motion Context 和 Spectrum。准确仓库、目录名、用途和 required/optional 状态以 `customNodeCatalog` 为准。
 
+节点目录中的 `releaseSource: "github-release"` 表示设置页会查询对应 GitHub Releases。查询结果按仓库缓存 6 小时；网络失败或仓库没有 Release 时只缓存 1 分钟，不会让离线扫描变成失败。这样“重新扫描”不会每次都触发全部仓库请求，已有本地文件和运行时 `/object_info` 状态也不会被远端网络结果覆盖。当前版本号来自节点 `pyproject.toml` 或已登记的推荐线，远端 Release 只用于更新提示，不会把推荐版本强制升级成最新版。
+
+工作流来源元数据集中在 `src/core/workflow-metadata.ts`。它覆盖 `workflows/` 下的全部 API JSON，记录 `/prompt` schema、推荐 ComfyUI 核心版本、使用的节点包和上游来源；API JSON 本身不放额外顶层字段，避免被 ComfyUI 当成节点解析。
+
 Qwen3.6 本地多模态路径有明确的 Python ABI 边界：节点仓库的普通 requirements 只安装轻量依赖，安装器会跳过其中可能覆盖后端的普通 `llama-cpp-python`，改用项目统一的固定 JamePeng GPU wheel。Windows 当前支持 Python 3.10–3.14；CUDA wheel 提供 12.4/12.6/12.8/13.0/13.1，并明确映射 12.5→12.4、12.7→12.6、12.9→12.8、13.2→13.1。超出矩阵时会在下载前失败并写明 Python/CUDA 版本，不会尝试 CPU fallback 或本地源码编译。设置页会把“节点目录已安装”“VisionLLMNode 已加载”“共享运行库自检”和“模型/mmproj 文件完整”分开显示，实际运行仍在 ComfyUI 启动后验证。4090 默认使用 Q4_K_M、8K 上下文、GPU 层，扩写完成后请求 ComfyUI `/free` 释放显存，再交给 H3。
 
 ### Gemma / H3 Prompt Writer 的 llama-cpp-python
 
-Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件是三个独立状态。当前上游 0.3.2 的基础节点不再携带必需 Python 依赖；Direct GGUF 的可选 `requirements-gguf.txt` 由本应用的共享运行时安装器接管。设置 → 提示词扩展会单独扫描所选 ComfyUI Python 中的 `llama-cpp-python`，并提供“一键安装并自检”。Windows 统一使用固定版本的 JamePeng CUDA/CPU 动态后端（`0.3.46`，CUDA 12.9 映射到已发布的 `cu128` wheel）；它在运行时选择兼容 CPU 实现，并加载独立 `ggml-cuda.dll`，避免旧静态 wheel 能导入却在加载 GGUF 时触发 `0xC000001D`。探针会显式注册动态后端后再判断 GPU offload，安装器只替换此包而不重装 ComfyUI 的 NumPy/Pillow 等公共依赖。约 299 MB 的 wheel 下载会在设置日志中显示百分比，慢速网络等待上限为 45 分钟。节点安装与运行依赖修复还会为 Prompt Writer 应用 `GGMLType` KV 常量兼容层，因为 `llama-cpp-python 0.3.39+` 不再从包顶层导出旧常量；0.3.2 的诊断模块若没有旧常量导入则不会被错误要求打补丁。更新前如果发现节点目录存在本地改动（包括应用自动写入的兼容层），安装器会先识别补丁指纹并查询上游 HEAD；只有上游有变化时才把旧目录移到 `node-backups`，再下载并校验干净副本，避免 `git pull` 因本地修改失败和重复创建备份。节点批次重启后还会检查 `/h3studio/status`、`/models`、GGUF diagnostics 与共享 llama 运行库。自检失败会保留完整 pip 日志和原生退出码，不会把 CPU 版或无法确认的包标记为就绪。
+Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件是三个独立状态。当前上游 0.3.2 的基础节点不再携带必需 Python 依赖；Direct GGUF 的可选 `requirements-gguf.txt` 由本应用的共享运行时安装器接管。设置 → 提示词扩展会单独扫描所选 ComfyUI Python 中的 `llama-cpp-python`，并提供“一键安装并自检”。Windows 统一使用固定版本的 JamePeng CUDA/CPU 动态后端（`0.3.46`，CUDA 12.9 映射到已发布的 `cu128` wheel）；它在运行时选择兼容 CPU 实现，并加载独立 `ggml-cuda.dll`，避免旧静态 wheel 能导入却在加载 GGUF 时触发 `0xC000001D`。探针会显式注册动态后端后再判断 GPU offload，安装器只替换此包而不重装 ComfyUI 的 NumPy/Pillow 等公共依赖。约 299 MB 的 wheel 下载会在设置日志中显示百分比，慢速网络等待上限为 45 分钟。节点安装与运行依赖修复还会为 Prompt Writer 应用 `GGMLType` KV 常量兼容层，因为 `llama-cpp-python 0.3.39+` 不再从包顶层导出旧常量；0.3.2 的诊断模块若没有旧常量导入则不会被错误要求打补丁。更新前如果发现节点目录存在本地改动（包括应用自动写入的兼容层），安装器会先识别补丁指纹并查询上游 HEAD；只有上游有变化时才把旧目录移到 `node-backups`，再下载并校验干净副本，避免 `git pull` 因本地修改失败和重复创建备份。节点批次重启后还会检查 `/h3studio/status`、`/models`、GGUF diagnostics 与共享 llama 运行库；如果 0.3.x 节点自带的轻量诊断探针显示 `gpu_offload:false`，设置页会把它作为提示而不是失败，最终以应用侧 torch-first 共享运行库自检和实际生成前检查为准。自检失败会保留完整 pip 日志和原生退出码，不会把 CPU 版或无法确认的包标记为就绪。
 
 H3 Prompt Writer 与可选 MultiModal Prompt Nodes 共用同一个 Python 包名，不能在同一 ComfyUI 环境中各自安装两个版本。两个节点的安装入口和“修复运行依赖”现在都调用同一个安装器、固定版本和 CUDA 自检；节点 `requirements.txt` 中的普通 `llama-cpp-python` 条目会被过滤，安装其中一个不会再用 PyPI 或 Git 源码构建覆盖另一个。相同 ComfyUI 的并发安装请求会合并为一个事务；已有 CUDA 自检通过的后端不会因更新 Prompt Writer 被重装。当前 Python/CUDA 不在预编译矩阵时，安装器会在下载前明确失败并保留日志，不会偷偷回退到 CPU 或启动第二个 llama 服务。模型权重不由此步骤下载，仍由提示词模型卡片中的模型目录检查负责。
 
@@ -147,7 +151,8 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 
 - FL2VA 与 R2V 使用不同扩散权重，不能互换。
 - 共同依赖 H3 文本编码器、视频 VAE、音频 VAE 和足够新的 ComfyUI 核心节点。
-- R2V 支持多参考图片；Motion Context 是可选的 R2V 续写增强节点，不是基础 FL2VA 的必需项。
+- R2V 支持多参考图片；Motion Context 是可选的 R2V 续写增强节点，不是基础 FL2VA 的必需项。当前推荐并作为最低兼容线的节点版本是 `v0.3.1`，兼容 ComfyUI `0.32/0.33`；它修复了 ComfyUI 0.33 的 H3 layout 变化，并保留 Ref2VA、latent 和音频连续能力。
+- Motion Context 工作流使用 `context_length=22`、`audio_context_length=24`、latent Save/Load 和 Trim `match_tail`。升级节点后，ComfyUI 画布中保存的旧 Motion Context 节点需要删除并重新添加；同一 `custom_nodes` 目录只能保留一个 Motion Context 副本，重命名 fork 也可能产生 patch 冲突。
 - LightX2V Turbo、Realism People 和 PinkFluffyBunny 是 LoRA，不是独立视频模型；兼容模式、顺序、强度和冲突由 LoRA catalog 管理。LightX2V Turbo 使用原生 ER-SDE/Beta 路径，Spectrum `v0.2.6+` 可叠加；更早版本必须先更新。
 - H3 原生音视频采样的最低 ComfyUI 版本为 `v0.31.0`，当前推荐 `v0.33.1`；推荐版本是更新提示，不是离线入队的硬性阻挡。官方 Turbo v1.0 的 8-step、768p 4-step 和 Ref2V 4-step 权重都放入所选 ComfyUI 的 `models/loras`，不要再把它们当成独立基础模型。
 - KJNodes 按功能使用：H3 SageAttention 模式需要 `PathchSageAttentionKJ`，TAE 实时预览只额外尝试 `ModelPreviewOverrideKJ`，显存调试使用 `VRAM_Debug`；预览缺失时自动降级，不阻塞普通生成。

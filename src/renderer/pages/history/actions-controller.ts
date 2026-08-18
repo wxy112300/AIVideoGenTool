@@ -68,6 +68,14 @@ export function mountHistoryActionsController(
     }, { signal });
   });
 
+  const patchFavoriteButtons = (assetId: string, favorite: boolean): void => {
+    root.querySelectorAll<HTMLButtonElement>("[data-history-favorite]").forEach((button) => {
+      if (button.dataset.historyFavorite !== assetId) return;
+      button.classList.toggle("is-favorite", favorite);
+      button.setAttribute("aria-pressed", String(favorite));
+    });
+  };
+
   root.querySelectorAll<HTMLButtonElement>("[data-history-favorite]").forEach((button) => {
     button.addEventListener("click", async (event) => {
       stopAction(event);
@@ -77,8 +85,11 @@ export function mountHistoryActionsController(
         context.getState()?.imageHistory.find((item) => item.id === assetId);
       if (!current) return;
       try {
-        options.setState(await options.updateHistoryMetadata(assetId, { favorite: !current.favorite }));
-        context.requestRender();
+        const favorite = !current.favorite;
+        options.setState(await options.updateHistoryMetadata(assetId, { favorite }));
+        // Curation is a local metadata mutation. Patch its controls in place
+        // so a playing detail video keeps its media element and audio state.
+        patchFavoriteButtons(assetId, favorite);
       } catch (error) {
         context.notify(error instanceof Error ? error.message : "收藏状态更新失败。", { renderPage: false, kind: "error" });
       }
@@ -88,7 +99,12 @@ export function mountHistoryActionsController(
   const commitRating = async (assetId: string, rating: HistoryRating | null) => {
     try {
       options.setState(await options.updateHistoryMetadata(assetId, { rating }));
-      context.requestRender();
+      root.querySelectorAll<HTMLElement>("[data-history-rating-control]").forEach((control) => {
+        if (control.dataset.historyRatingControl !== assetId) return;
+        const unsetLabel = t(uiKeys.history.filter.ratingUnset);
+        control.dataset.historyRatingCurrent = String(rating ?? 0);
+        updateRatingVisual(control, rating, unsetLabel);
+      });
     } catch (error) {
       context.notify(error instanceof Error ? error.message : "评分更新失败。", { renderPage: false, kind: "error" });
     }

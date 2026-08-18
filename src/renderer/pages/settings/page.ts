@@ -12,6 +12,7 @@ import type { SettingsTab } from "../../contracts";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import { modelCatalog } from "../../../core/catalog";
+import { compareReleaseVersions } from "../../../core/release-version";
 import {
   renderSettingsComfyCompatibilityPanel,
   renderSettingsEnvironmentIssuesPanel,
@@ -175,6 +176,17 @@ export function renderSettingsPage(
   const profiles = environmentScan?.modelProfiles ?? [];
   const videoProfiles = options.orderVideoProfiles(
     profiles.filter((profile) => profile.category === "video")
+  );
+  const videoSelectorProfiles = videoProfiles.length
+    ? videoProfiles
+    : modelCatalog.list("video").map((entry) => ({
+        id: entry.definition.id,
+        name: modelCatalog.localized(entry.definition.id, settings.uiLocale)?.name ?? entry.definition.id,
+        available: false,
+        integrated: entry.definition.scan?.integrated !== false
+      }));
+  const extensionProfiles = videoSelectorProfiles.filter((profile) =>
+    modelCatalog.get(profile.id)?.definition.capabilities?.supportsVideoExtension === true
   );
   const loraProfiles = profiles.filter((profile) => profile.category === "lora");
   const imageProfiles = profiles.filter((profile) => profile.category === "image");
@@ -378,6 +390,7 @@ export function renderSettingsPage(
         <div class="settings-grid two">
           <label class="ios-switch-field"><span class="policy-copy"><strong>${t(uiKeys.settings.system.enableProxy)}</strong><small>${t(uiKeys.settings.system.proxyResourceDescription)}</small></span><input id="proxy-enabled" type="checkbox" ${settings.proxyEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
           <label>${t(uiKeys.settings.system.proxyAddress)}<input id="proxy-url" value="${escape(settings.proxyUrl)}" placeholder="http://127.0.0.1:7890"></label>
+          <label class="ios-switch-field"><span class="policy-copy"><strong>${t(uiKeys.settings.system.useHfMirror)}</strong><small>${t(uiKeys.settings.system.hfMirrorDescription)}</small></span><input id="hf-mirror-enabled" type="checkbox" ${settings.hfMirrorEnabled ? "checked" : ""}><span class="ios-switch" aria-hidden="true"></span></label>
         </div>
         <p class="muted proxy-hint">${t(uiKeys.settings.system.proxyDefaultHint)}</p>
       </section>
@@ -402,13 +415,13 @@ export function renderSettingsPage(
       <section class="panel settings-section">
         <div class="section-heading">
           <div><h2>${s("video.title")}</h2><span class="muted">${s("video.description")}</span></div>
-          <label class="compact-label">${s("video.defaultModel")}<select id="default-video-model">
-            ${(videoProfiles.length ? videoProfiles : modelCatalog.list("video").map((entry) => ({
-              id: entry.definition.id,
-              name: modelCatalog.localized(entry.definition.id, settings.uiLocale)?.name ?? entry.definition.id,
-              available: false,
-              integrated: entry.definition.scan?.integrated !== false
-            }))).map((profile) => `<option value="${profile.id}" ${settings.defaultVideoModel === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? s("video.missingComponent") : profile.integrated === false ? s("video.workflowPending") : ""}</option>`).join("")}
+        </div>
+        <div class="settings-grid two default-video-model-grid">
+          <label>${s("video.defaultModel")}<select id="default-video-model">
+            ${videoSelectorProfiles.map((profile) => `<option value="${profile.id}" ${settings.defaultVideoModel === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? s("video.missingComponent") : profile.integrated === false ? s("video.workflowPending") : ""}</option>`).join("")}
+          </select></label>
+          <label>${s("video.defaultExtensionModel")}<select id="default-extension-model">
+            ${extensionProfiles.map((profile) => `<option value="${profile.id}" ${settings.defaultExtensionModel === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? s("video.missingComponent") : profile.integrated === false ? s("video.workflowPending") : ""}</option>`).join("")}
           </select></label>
         </div>
         <div class="scan-result">${viewModel.environmentScanning ? s("video.scanning") : environmentScan ? s("video.summary", { available: videoAvailable, pending: videoProfiles.length - videoAvailable }) : s("video.waitingScan")}</div>
@@ -583,7 +596,7 @@ export function renderSettingsPage(
           </div>
           <div class="custom-node-actions">
             <span class="model-availability ${h3CoreTone}">${h3CoreReady ? `${icon("circle-check")} ${s("nodes.loaded")}` : h3CoreKnown ? `${icon("circle-alert")} ${s("nodes.coreMissing")}` : `${icon("circle-help")} ${s("nodes.notChecked")}`}</span>
-            ${h3CoreReady ? "" : `<button class="primary button-with-icon" id="repair-h3-core" ${viewModel.coreDependencyRepairing ? "disabled" : ""}>${icon(viewModel.coreDependencyRepairing ? "refresh-cw" : "shield-check")}${viewModel.coreDependencyRepairing ? s("nodes.processing") : h3CoreKnown ? s("nodes.repairUpdate") : s("nodes.startCheck")}</button>`}
+            <button class="primary button-with-icon" id="repair-h3-core" ${viewModel.coreDependencyRepairing ? "disabled" : ""}>${icon(viewModel.coreDependencyRepairing ? "refresh-cw" : h3CoreReady ? "download" : "shield-check")}${viewModel.coreDependencyRepairing ? s("nodes.processing") : h3CoreReady ? s("nodes.checkUpdate") : h3CoreKnown ? s("nodes.repairUpdate") : s("nodes.startCheck")}</button>
           </div>
         </article>
         <article class="panel custom-node-card ${promptCoreTone}">
@@ -633,10 +646,12 @@ export function renderSettingsPage(
               <p>${escape(node.purpose)}</p>
               <code>${escape(node.directory || node.repositoryUrl)}</code>
               ${node.runtimeRequirement ? `<p class="muted"><strong>${s("nodes.prerequisite")}</strong> ${escape(node.runtimeRequirement)}</p>` : ""}
-              ${node.id === "spectrum-minimax-h3" ? `<p class="muted">${s("nodes.localVersion")}${node.version ? `v${escape(node.version)}` : node.installed ? s("nodes.versionUnread") : s("nodes.notInstalled")} · ${s("nodes.recommendedVersion")}${node.recommendedVersion ? `v${escape(node.recommendedVersion)}` : "—"} · ${s("nodes.latestRelease")}${node.latestVersion ? `v${escape(node.latestVersion)}` : s("nodes.rescanOnline")} · ${s("nodes.runtimeMemory")}</p>` : ""}
+              ${(node.latestVersion || node.recommendedVersion) ? `<p class="muted">${s("nodes.localVersion")}${node.version ? `v${escape(node.version)}` : node.installed ? s("nodes.versionUnread") : s("nodes.notInstalled")} · ${s("nodes.recommendedVersion")}${node.recommendedVersion ? `v${escape(node.recommendedVersion)}` : "—"} · ${s("nodes.latestRelease")}${node.latestVersion ? `v${escape(node.latestVersion)}` : s("nodes.rescanOnline")}${node.id === "spectrum-minimax-h3" ? ` · ${s("nodes.runtimeMemory")}` : ""}</p>` : ""}
               ${node.loadError ? `<span class="${node.compatibilityState === "warning" ? "node-update-notice" : "node-error"}">${escape(node.loadError)}</span>` : ""}
               ${node.updateNotice ? `<span class="node-update-notice">${escape(node.updateNotice)}</span>` : ""}
               ${node.runtimeNotice ? `<span class="node-runtime-notice">${escape(node.runtimeNotice)}</span>` : ""}
+              ${node.duplicateDirectories?.length ? `<span class="node-update-notice">${escape(s("nodes.duplicateCopies", { paths: node.duplicateDirectories.join("、") }))}</span>` : ""}
+              ${node.id === "h3-motion-context" && node.version && compareReleaseVersions(node.version, "0.3.1") >= 0 ? `<span class="node-update-notice">${s("nodes.motionContextMigration")}</span>` : ""}
               ${node.compatibilityNotice && node.compatibilityState !== "supported" && node.compatibilityNotice !== node.updateNotice ? `<span class="node-update-notice">${escape(node.compatibilityNotice)}</span>` : ""}
               ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`custom-node:${node.id}`)}">${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
             </div>

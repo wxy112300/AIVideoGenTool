@@ -24,6 +24,8 @@ import { isHistoryRating } from "../src/core/history-filter.js";
 import { copyPromptVersions, ensureDraftPromptState } from "../src/core/draft-prompts.js";
 import {
   generationSafetyForTask,
+  isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3R2vModel,
   isRetiredVideoModel,
   normalizeH3Steps
 } from "../src/core/workflow.js";
@@ -491,6 +493,16 @@ export class JsonStore {
       }
       if (this.state.settings.defaultVideoModel === LEGACY_H3_TURBO_MODEL_ID) {
         this.state.settings.defaultVideoModel = "minimax_h3_fl2va";
+        needsPersist = true;
+      }
+      const configuredExtensionModel = this.state.settings.defaultExtensionModel;
+      const extensionModelSupported = typeof configuredExtensionModel === "string" && (
+        isMiniMaxH3Fl2vaModel(configuredExtensionModel) ||
+        isMiniMaxH3R2vModel(configuredExtensionModel) ||
+        configuredExtensionModel === "sulphur2"
+      );
+      if (!extensionModelSupported) {
+        this.state.settings.defaultExtensionModel = "minimax_h3_ref2va";
         needsPersist = true;
       }
       if (typeof this.state.settings.defaultImageModel !== "string" || !this.state.settings.defaultImageModel.trim()) {

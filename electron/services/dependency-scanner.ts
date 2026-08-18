@@ -26,6 +26,62 @@ async function readPythonProjectVersion(directory: string): Promise<string> {
     .catch(() => "");
 }
 
+function normalizedRepositoryUrl(value: string): string {
+  return value
+    .trim()
+    .replace(/^git\+/, "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/^git@github\.com:/i, "github.com/")
+    .replace(/\.git$/i, "")
+    .replace(/\/+$/u, "")
+    .toLowerCase();
+}
+
+async function gitRemoteUrl(directory: string): Promise<string> {
+  const source = await fs.readFile(path.join(directory, ".git", "config"), "utf8")
+    .catch(() => "");
+  return source.match(/\[remote\s+"origin"\][\s\S]*?\n\s*url\s*=\s*([^\r\n]+)/i)?.[1]?.trim() ?? "";
+}
+
+async function directoryContainsMotionContextNodes(directory: string): Promise<boolean> {
+  const candidates = [
+    "nodes.py",
+    "patch_layout.py",
+    "__init__.py",
+    path.join("nodes", "motion_context_node.py")
+  ];
+  const sources = await Promise.all(candidates.map((filename) =>
+    fs.readFile(path.join(directory, filename), "utf8").catch(() => "")
+  ));
+  const combined = sources.join("\n");
+  return [
+    "MiniMaxH3MotionContext",
+    "MiniMaxH3MotionContextTrim",
+    "MiniMaxH3MotionContextSaveLatent",
+    "MiniMaxH3MotionContextLoadLatent"
+  ].some((nodeType) => combined.includes(nodeType));
+}
+
+async function findMotionContextDirectories(
+  entries: readonly import("node:fs").Dirent[],
+  customNodesDirectory: string
+): Promise<string[]> {
+  if (!customNodesDirectory) return [];
+  const repository = normalizedRepositoryUrl(
+    "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context.git"
+  );
+  const directories = entries.filter((entry) => entry.isDirectory());
+  const matches = await Promise.all(directories.map(async (entry) => {
+    const directory = path.join(customNodesDirectory, entry.name);
+    const exactName = entry.name.toLowerCase() === "comfyui-h3-motion-context";
+    if (exactName) return directory;
+    const remote = await gitRemoteUrl(directory);
+    if (remote && normalizedRepositoryUrl(remote) === repository) return directory;
+    return await directoryContainsMotionContextNodes(directory) ? directory : "";
+  }));
+  return matches.filter(Boolean);
+}
+
 function badRangeMatches(
   range: DependencyBadRange,
   version: string,
@@ -178,6 +234,35 @@ interface H3PromptWriterRuntimeProbe {
   notice: string;
 }
 
+interface H3PromptWriterRuntimeDiagnostics {
+  status?: unknown;
+  message?: unknown;
+  error?: unknown;
+  return_code_hex?: unknown;
+  gpu_offload?: unknown;
+  backend?: unknown;
+}
+
+/**
+ * The Prompt Writer 0.3.x diagnostic endpoint runs a small native probe which
+ * can report `gpu_offload: false` before the ComfyUI Python process has loaded
+ * its CUDA backend. That probe is useful evidence, but it must not override
+ * the app's torch-first shared llama-cpp-python probe (the latter is the
+ * authoritative check used before a Gemma/Qwen GGUF request).
+ */
+function promptWriterDiagnosticNotice(
+  diagnostics: H3PromptWriterRuntimeDiagnostics | undefined
+): string {
+  if (!diagnostics || String(diagnostics.status ?? "").toLowerCase() !== "ok") return "";
+  const backend = typeof diagnostics.backend === "string"
+    ? diagnostics.backend.trim()
+    : "";
+  if (diagnostics.gpu_offload === false && !backend) {
+    return "节点自带诊断探针未加载 CUDA 后端；应用侧共享 llama-cpp-python 自检作为最终运行依据，不代表当前生成接口失败。";
+  }
+  return "";
+}
+
 async function inspectH3PromptWriterRuntime(
   serviceRoot: string,
   runtimeEndpoint: string
@@ -220,14 +305,10 @@ async function inspectH3PromptWriterRuntime(
         signal: AbortSignal.timeout(20_000)
       }
     ).catch(() => null);
+    let diagnosticNotice = "";
     if (diagnosticsResponse?.ok) {
       const diagnosticsBody = await diagnosticsResponse.json().catch(() => ({})) as {
-        diagnostics?: {
-          status?: unknown;
-          message?: unknown;
-          error?: unknown;
-          return_code_hex?: unknown;
-        };
+        diagnostics?: H3PromptWriterRuntimeDiagnostics;
       };
       const diagnostics = diagnosticsBody.diagnostics;
       const status = String(diagnostics?.status ?? "").toLowerCase();
@@ -240,18 +321,25 @@ async function inspectH3PromptWriterRuntime(
       } else if (["crashed", "timeout", "invalid_response"].includes(status)) {
         error = `H3 Prompt Writer 运行时自检失败：${detail || status}`;
       }
+      diagnosticNotice = promptWriterDiagnosticNotice(diagnostics);
     }
     return {
       loaded: !error,
       error,
-      notice: modelCount
-        ? `H3 Prompt Writer 运行接口已响应，发现 ${modelCount} 个模型`
-        : "H3 Prompt Writer 节点已加载，但当前没有发现 GGUF 模型；节点本身无需重复安装"
+      notice: [
+        modelCount
+          ? `H3 Prompt Writer 运行接口已响应，发现 ${modelCount} 个模型`
+          : "H3 Prompt Writer 节点已加载，但当前没有发现 GGUF 模型；节点本身无需重复安装",
+        diagnosticNotice
+      ].filter(Boolean).join("；")
     };
-  } catch (error) {
+  } catch {
     return {
-      loaded: false,
-      error: `MiniMax H3 Prompt Writer 运行时检查失败：${error instanceof Error ? error.message : String(error)}`,
+      // A stopped/offline ComfyUI is an unknown state, not an import failure.
+      // Keep the file scan useful while allowing a connected service to prove
+      // the node through /h3studio/status and /h3studio/models below.
+      loaded: null,
+      error: "",
       notice: ""
     };
   }
@@ -261,7 +349,9 @@ export async function scanCustomNodes(
   comfyRoot: string,
   settings: Settings,
   latestSpectrumVersion = "",
-  runtimeBaseUrl = ""
+  runtimeBaseUrl = "",
+  latestMotionContextVersion = "",
+  latestNodeVersions: Readonly<Record<string, string>> = {}
 ): Promise<CustomNodeStatus[]> {
   const customNodesDirectory = comfyRoot
     ? path.join(comfyRoot, "custom_nodes")
@@ -274,6 +364,7 @@ export async function scanCustomNodes(
       .filter((entry) => entry.isDirectory())
       .map((entry) => [entry.name.toLowerCase(), path.join(customNodesDirectory, entry.name)])
   );
+  const motionContextDirectories = await findMotionContextDirectories(entries, customNodesDirectory);
   const log = (await readLatestComfyLog(comfyRoot)).content;
   const logLines = log.split(/\r?\n/);
   const serviceRoot = (runtimeBaseUrl || settings.comfyUrl).replace(/\/+$/, "");
@@ -289,7 +380,7 @@ export async function scanCustomNodes(
     (definition) => definition.id === "minimax-h3-prompt-writer"
   )?.runtimeEndpoint;
   const h3PromptWriterRuntime = await inspectH3PromptWriterRuntime(
-    serviceNodeIds === null || !promptWriterEndpoint ? "" : serviceRoot,
+    promptWriterEndpoint ? serviceRoot : "",
     promptWriterEndpoint || ""
   );
 
@@ -307,9 +398,15 @@ export async function scanCustomNodes(
     const matchedName = definition.aliases.find((alias) =>
       installedDirectories.has(alias.toLowerCase())
     );
-    const directory = matchedName
+    const exactDirectory = matchedName
       ? installedDirectories.get(matchedName.toLowerCase()) ?? ""
       : "";
+    const directory = definition.id === "h3-motion-context"
+      ? exactDirectory || motionContextDirectories[0] || ""
+      : exactDirectory;
+    const duplicateDirectories = definition.id === "h3-motion-context"
+      ? motionContextDirectories.filter((candidate) => candidate !== directory)
+      : [];
     const failed =
       Boolean(directory) &&
       (logLines.some((line) =>
@@ -385,19 +482,34 @@ export async function scanCustomNodes(
         ? ""
         : `已安装但未读取到版本号；最低支持 v${definition.minimumVersion}，请重新扫描确认。`;
     }
-    const latestVersion = definition.id === "spectrum-minimax-h3"
-      ? latestSpectrumVersion
-      : "";
+    // Keep the two positional values for callers from older builds while all
+    // catalog entries can now receive the same cached GitHub release lookup.
+    const latestVersion = latestNodeVersions[definition.id] ||
+      (definition.id === "spectrum-minimax-h3"
+        ? latestSpectrumVersion
+        : definition.id === "h3-motion-context"
+          ? latestMotionContextVersion
+          : "") || definition.latestVersion || "";
     const detectedRevision = await readRevision(directory);
     const requiredNodeTypes = definition.nodeTypes;
-    const runtimeVerified = serviceNodeIds !== null;
+    // Prompt Writer exposes a more specific runtime contract than
+    // /object_info. If its status/models endpoints respond, use that as
+    // runtime evidence even when ComfyUI's broad object-info request is
+    // temporarily unavailable during startup.
+    const runtimeVerified = serviceNodeIds !== null || (
+      definition.id === "minimax-h3-prompt-writer" &&
+      h3PromptWriterRuntime.loaded === true
+    );
     const registered = definition.runtimeEndpoint
       ? h3PromptWriterRuntime.loaded !== false
       : !runtimeVerified || !requiredNodeTypes ||
-        requiredNodeTypes.every((nodeType) => serviceNodeIds.has(nodeType));
+        (serviceNodeIds !== null && requiredNodeTypes.every((nodeType) => serviceNodeIds.has(nodeType)));
     const pendingRestartError = Boolean(directory) && !compatibilityError &&
       !failed && requiredNodeTypes && runtimeVerified && !registered
       ? "节点文件已安装，但当前 ComfyUI 服务尚未加载全部必需模块；请重启服务后复检"
+      : "";
+    const duplicateNotice = duplicateDirectories.length
+      ? `检测到 ${duplicateDirectories.length + 1} 个 H3 Motion Context 副本；只保留一个副本，否则运行时 patch 可能冲突。`
       : "";
     const loadError = compatibilityError || importErrorLine ||
       (definition.id === "minimax-h3-prompt-writer" && directory ? h3PromptWriterRuntime.error : "") ||
@@ -416,7 +528,7 @@ export async function scanCustomNodes(
       runtimeVerified,
       loadError,
       updateAvailable,
-      compatibilityNotice || updateNotice || pendingRestartError
+      compatibilityNotice || updateNotice || pendingRestartError || duplicateNotice
     );
     return {
       id: definition.id,
@@ -444,6 +556,7 @@ export async function scanCustomNodes(
         ? [...definition.compatibilityEvidence]
         : [],
       knownBadRanges: definition.knownBadRanges ? [...definition.knownBadRanges] : [],
+      duplicateDirectories,
       runtimeRequirement: definition.runtimeRequirement ?? "",
       bulkInstall: definition.bulkInstall !== false,
       updateAvailable

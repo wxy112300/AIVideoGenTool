@@ -720,6 +720,37 @@ export function activityTimeoutMinutesForTask(
   return 10;
 }
 
+/**
+ * Motion Context reserves a fixed prefix of the sampled sequence for the
+ * previous segment. Convert that frame budget into the largest whole-second
+ * duration the creation UI can safely offer.
+ */
+export function motionContextMaxDurationSeconds(
+  maxGeneratedFrames = 362,
+  contextFrames = 22,
+  maxDurationSeconds = 15
+): number {
+  const frameBudget = Number.isFinite(maxGeneratedFrames)
+    ? Math.max(1, Math.floor(maxGeneratedFrames))
+    : 362;
+  const reservedFrames = Number.isFinite(contextFrames)
+    ? Math.max(0, Math.floor(contextFrames))
+    : 22;
+  const upperBound = Number.isFinite(maxDurationSeconds)
+    ? Math.max(1, Math.floor(maxDurationSeconds))
+    : 15;
+  for (let duration = upperBound; duration >= 1; duration -= 1) {
+    const generatedFrames = generationFrameCountForTask({
+      modelId: "minimax_h3_ref2va",
+      duration,
+      fps: 24,
+      frameInterpolation: "off"
+    });
+    if (generatedFrames + reservedFrames <= frameBudget) return duration;
+  }
+  return 1;
+}
+
 export function extensionSafetyForTask(
   task: Pick<
     ExtensionQueueTask,
@@ -780,9 +811,15 @@ export function extensionSafetyForTask(
   if (isMiniMaxH3R2vModel(task.modelId)) {
     const contextFrames = 22;
     const generationSafety = generationSafetyForTask(task, locale);
+    const maxDurationSeconds = motionContextMaxDurationSeconds(
+      generationSafety.maxGeneratedFrames,
+      contextFrames,
+      generationSafety.maxDurationSeconds
+    );
     const sampledFrames = generationSafety.generatedFrames + contextFrames;
     const result = (safe: boolean, message: string): ExtensionSafety => ({
       ...generationSafety,
+      maxDurationSeconds,
       safe,
       generatedFrames: sampledFrames,
       minimumContextSeconds: contextFrames / 24,
@@ -1180,7 +1217,7 @@ export function renderWorkflow(
     LTX_AUDIO_VAE: "ltx-2-3-22b-audio_vae.safetensors",
     LTX_DISTILL_LORA:
       "ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors",
-    LTX_UPSCALER: "ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
+    LTX_UPSCALER: "ltx-2-spatial-upscaler-x2-1.0.safetensors"
   };
 
   const visit = (value: unknown): unknown => {

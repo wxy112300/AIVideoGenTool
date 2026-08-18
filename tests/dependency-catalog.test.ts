@@ -39,6 +39,7 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("comfyui-gguf")).toMatchObject({
       repositoryUrl: "https://github.com/city96/ComfyUI-GGUF.git",
       directoryName: "ComfyUI-GGUF",
+      releaseSource: "github-release",
       required: true
     });
     expect(customNodeDefinition("comfyui-gguf-h3")).toMatchObject({
@@ -56,6 +57,10 @@ describe("dependency catalog", () => {
       repositoryUrl: "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git",
       required: false
     });
+    expect(customNodeDefinition("video-helper-suite")?.nodeTypes).toEqual(expect.arrayContaining([
+      "VHS_LoadVideoFFmpeg",
+      "VHS_VideoInfoSource"
+    ]));
     expect(customNodeDefinition("spectrum-minimax-h3")?.compatibilityEvidence?.[0]).toMatchObject({
       comfyUi: "0.33.1",
       checks: ["static"]

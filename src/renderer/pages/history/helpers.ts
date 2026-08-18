@@ -214,9 +214,10 @@ export function historyMasonryColumnCount(width: number, gap = 10): number {
   return columns;
 }
 
-export function historyStateChanged(
+function historyStateChangedInternal(
   previous: ReadonlyArray<HistoryAsset> | undefined,
-  next: ReadonlyArray<HistoryAsset>
+  next: ReadonlyArray<HistoryAsset>,
+  includeCuration: boolean
 ): boolean {
   if (!previous || previous.length !== next.length) return true;
   return next.some((asset, index) => {
@@ -225,11 +226,15 @@ export function historyStateChanged(
     if (
       previousAsset.id !== asset.id ||
       previousAsset.updatedAt !== asset.updatedAt ||
-      previousAsset.favorite !== asset.favorite ||
-      previousAsset.rating !== asset.rating ||
       previousAsset.defaultVersionId !== asset.defaultVersionId ||
       previousAsset.versions.length !== asset.versions.length
     ) {
+      return true;
+    }
+    if (includeCuration && (
+      previousAsset.favorite !== asset.favorite ||
+      previousAsset.rating !== asset.rating
+    )) {
       return true;
     }
     return asset.versions.some((version, versionIndex) => {
@@ -242,9 +247,29 @@ export function historyStateChanged(
   });
 }
 
-export function imageHistoryStateChanged(
+export function historyStateChanged(
+  previous: ReadonlyArray<HistoryAsset> | undefined,
+  next: ReadonlyArray<HistoryAsset>
+): boolean {
+  return historyStateChangedInternal(previous, next, true);
+}
+
+/**
+ * Return whether the visible history media/details changed. Curation metadata
+ * is deliberately excluded so a favorite/rating write can update its small
+ * control in place without replacing a playing detail-page video.
+ */
+export function historyContentStateChanged(
+  previous: ReadonlyArray<HistoryAsset> | undefined,
+  next: ReadonlyArray<HistoryAsset>
+): boolean {
+  return historyStateChangedInternal(previous, next, false);
+}
+
+function imageHistoryStateChangedInternal(
   previous: ReadonlyArray<ImageHistoryProject> | undefined,
-  next: ReadonlyArray<ImageHistoryProject>
+  next: ReadonlyArray<ImageHistoryProject>,
+  includeCuration: boolean
 ): boolean {
   if (!previous || previous.length !== next.length) return true;
   return next.some((project, index) => {
@@ -253,12 +278,16 @@ export function imageHistoryStateChanged(
     if (
       previousProject.id !== project.id ||
       previousProject.updatedAt !== project.updatedAt ||
-      previousProject.favorite !== project.favorite ||
-      previousProject.rating !== project.rating ||
       previousProject.coverMode !== project.coverMode ||
       previousProject.coverVersionId !== project.coverVersionId ||
       previousProject.versions.length !== project.versions.length
     ) {
+      return true;
+    }
+    if (includeCuration && (
+      previousProject.favorite !== project.favorite ||
+      previousProject.rating !== project.rating
+    )) {
       return true;
     }
     return project.versions.some((version, versionIndex) => {
@@ -271,4 +300,19 @@ export function imageHistoryStateChanged(
         previousVersion.file.absolutePath !== version.file.absolutePath;
     });
   });
+}
+
+export function imageHistoryStateChanged(
+  previous: ReadonlyArray<ImageHistoryProject> | undefined,
+  next: ReadonlyArray<ImageHistoryProject>
+): boolean {
+  return imageHistoryStateChangedInternal(previous, next, true);
+}
+
+/** See {@link historyContentStateChanged} for why curation is excluded. */
+export function imageHistoryContentStateChanged(
+  previous: ReadonlyArray<ImageHistoryProject> | undefined,
+  next: ReadonlyArray<ImageHistoryProject>
+): boolean {
+  return imageHistoryStateChangedInternal(previous, next, false);
 }

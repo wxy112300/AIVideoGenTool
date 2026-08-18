@@ -12,8 +12,8 @@ import type {
 import type { HistoryKind, Page, RendererCleanup } from "./contracts";
 import type { Translate } from "../core/i18n";
 import {
-  historyStateChanged,
-  imageHistoryStateChanged
+  historyContentStateChanged,
+  imageHistoryContentStateChanged
 } from "./pages/history/helpers";
 import {
   imageAssetPhaseLabel,
@@ -211,8 +211,8 @@ export function registerRendererEvents(
         previousState !== undefined &&
         queueLayoutSignature(previousState) === queueLayoutSignature(nextState);
       const completion = queueCompletionChange(previousState, nextState);
-      const historyChanged = historyStateChanged(previousState?.history, nextState.history);
-      const imageHistoryChanged = imageHistoryStateChanged(
+      const historyChanged = historyContentStateChanged(previousState?.history, nextState.history);
+      const imageHistoryChanged = imageHistoryContentStateChanged(
         previousState?.imageHistory,
         nextState.imageHistory
       );

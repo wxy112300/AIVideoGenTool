@@ -445,6 +445,8 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.settings.system.proxyResourceDescription]: "Git, pip, workflow, and runtime downloads share this address",
 	[uiKeys.settings.system.proxyAddress]: "Proxy address",
 	[uiKeys.settings.system.proxyDefaultHint]: "Disabled by default. Use 127.0.0.1:7890 or a complete proxy URL. Node installs use it immediately; save and restart ComfyUI for runtime downloads.",
+	[uiKeys.settings.system.useHfMirror]: "Use mirror site for model downloads",
+	[uiKeys.settings.system.hfMirrorDescription]: "When enabled, Hugging Face model links in Settings open through hf-mirror.com.",
 	[uiKeys.settings.system.gpuPolicyTitle]: "GPU policy",
 	[uiKeys.settings.system.gpuWaiting]: "GPU detection pending",
 	[uiKeys.settings.system.gpuNotDetected]: "No NVIDIA GPU or driver detected",

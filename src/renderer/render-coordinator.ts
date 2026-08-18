@@ -75,6 +75,10 @@ function restoreHistoryPlayback(
     video.dataset.historyVersion !== snapshot.versionId
   ) return;
   const restore = () => {
+    // A render can be superseded before metadata arrives. Never restart a
+    // detached media element: doing so leaves an orphaned audio stream that
+    // survives page navigation and overlaps the next detail player.
+    if (!video.isConnected || !root.contains(video)) return;
     video.muted = snapshot.muted;
     video.playbackRate = snapshot.playbackRate;
     if (Number.isFinite(video.duration)) {
@@ -90,6 +94,12 @@ function restoreHistoryPlayback(
 function stopRenderedVideoPlayback(root: HTMLElement): void {
   root.querySelectorAll<HTMLVideoElement>("video").forEach((video) => {
     video.pause();
+    // Pausing alone is not sufficient for a media element that is about to be
+    // detached. Clear its source and abort pending decode/play promises so a
+    // late metadata callback cannot restart audio in the background.
+    video.removeAttribute("src");
+    video.querySelectorAll("source").forEach((source) => source.remove());
+    video.load();
   });
 }
 

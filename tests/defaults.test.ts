@@ -27,6 +27,7 @@ describe("draft defaults", () => {
     expect(createDefaultSettings().autoRetryCount).toBe(2);
     expect(createDefaultSettings().uiLocale).toBe("zh-CN");
     expect(createDefaultSettings().defaultVideoModel).toBe("minimax_h3_fl2va");
+    expect(createDefaultSettings().defaultExtensionModel).toBe("minimax_h3_ref2va");
     expect(createDefaultImageEditDraft().qualityProfile).toBe("balanced-20");
     expect(createDefaultImageEditDraft().targetResolution).toBe("source");
     expect(createDefaultSettings().defaultImageQualityProfile).toBe("balanced-20");
@@ -40,6 +41,7 @@ describe("draft defaults", () => {
     expect(createDefaultSettings().promptUseLmStudio).toBe(false);
     expect(createDefaultSettings().promptModelId).toBe("community/gemma-4-e4b-unconcerned-q5");
     expect(createDefaultSettings().h3AutoPromptSeedId).toBe("");
+    expect(createDefaultSettings().hfMirrorEnabled).toBe(false);
     expect(Object.keys(createDefaultSettings().h3AutoPromptSeedInstructions).length).toBeGreaterThan(10);
     expect(createDefaultSettings().promptModelDirectory).toBe("");
     expect(createDefaultSettings().imageOutputDirectory).toBe("");

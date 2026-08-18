@@ -274,7 +274,7 @@ non_diegetic_music: N/A",
     "8": {
       "class_type": "MiniMaxH3MotionContext",
       "inputs": {
-        "audio_context_length": 22,
+        "audio_context_length": 24,
         "audio_vae": [
           "4",
           0,
@@ -588,7 +588,7 @@ non_diegetic_music: N/A",
     "8": {
       "class_type": "MiniMaxH3MotionContext",
       "inputs": {
-        "audio_context_length": 22,
+        "audio_context_length": 24,
         "audio_vae": [
           "4",
           0,

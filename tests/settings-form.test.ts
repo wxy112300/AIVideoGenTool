@@ -47,4 +47,26 @@ describe("settings form", () => {
       globalThis.document = previousDocument;
     }
   });
+
+  it("reads the Hugging Face mirror toggle", () => {
+    const previousDocument = globalThis.document;
+    globalThis.document = {
+      querySelector: vi.fn((selector: string) =>
+        selector === "#hf-mirror-enabled"
+          ? { checked: true }
+          : null
+      )
+    } as unknown as Document;
+
+    try {
+      const settings = readSettingsFromForm(
+        createDefaultSettings(),
+        "official-storyboard",
+        "faithful"
+      );
+      expect(settings.hfMirrorEnabled).toBe(true);
+    } finally {
+      globalThis.document = previousDocument;
+    }
+  });
 });

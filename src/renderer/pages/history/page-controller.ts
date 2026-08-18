@@ -76,6 +76,7 @@ export function mountHistoryPageController(
   );
   if (detailVideo && !playbackMatches) {
     const startPlayback = () => {
+      if (!detailVideo.isConnected || !options.context.root.contains(detailVideo)) return;
       detailVideo.loop = true;
       try {
         detailVideo.currentTime = 0;

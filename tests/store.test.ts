@@ -358,6 +358,29 @@ describe("queue lock recovery", () => {
     }
   });
 
+  it("fills the default extension model for states saved before the setting existed", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    const { defaultExtensionModel: _defaultExtensionModel, ...legacySettings } = state.settings;
+    await fs.writeFile(filename, JSON.stringify({
+      ...state,
+      schemaVersion: 11,
+      settings: legacySettings
+    }), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.settings.defaultExtensionModel).toBe("minimax_h3_ref2va");
+      const persisted = JSON.parse(await fs.readFile(filename, "utf8")) as {
+        settings: { defaultExtensionModel?: string };
+      };
+      expect(persisted.settings.defaultExtensionModel).toBe("minimax_h3_ref2va");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("migrates the old Qwen native default to the official 20-step balanced profile", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");

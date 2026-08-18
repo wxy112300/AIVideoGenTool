@@ -479,6 +479,8 @@ export const uiKeys = {
       proxyResourceDescription: "settings.system.proxyResourceDescription",
       proxyAddress: "settings.system.proxyAddress",
       proxyDefaultHint: "settings.system.proxyDefaultHint",
+      useHfMirror: "settings.system.useHfMirror",
+      hfMirrorDescription: "settings.system.hfMirrorDescription",
       gpuPolicyTitle: "settings.system.gpuPolicyTitle",
       gpuWaiting: "settings.system.gpuWaiting",
       gpuNotDetected: "settings.system.gpuNotDetected",

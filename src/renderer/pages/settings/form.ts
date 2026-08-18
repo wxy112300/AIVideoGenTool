@@ -60,6 +60,7 @@ export function readSettingsFromForm(
     imageOutputDirectory: directoryValue("image-output-directory", base.imageOutputDirectory),
     imageInputLibraryDirectory: directoryValue("image-input-library-directory", base.imageInputLibraryDirectory),
     defaultVideoModel: value("default-video-model", base.defaultVideoModel),
+    defaultExtensionModel: value("default-extension-model", base.defaultExtensionModel),
     defaultImageModel: value("default-image-model", base.defaultImageModel),
     defaultImageQualityProfile: value("image-quality-profile", base.defaultImageQualityProfile),
     imageOutputCount: Math.min(10, Math.max(1, Number(value("image-output-count-number", String(base.imageOutputCount))))),
@@ -86,6 +87,7 @@ export function readSettingsFromForm(
     seedVr2Model: value("seedvr2-model", base.seedVr2Model),
     realEsrganModel: value("realesrgan-model", base.realEsrganModel),
     proxyEnabled: checked("proxy-enabled", base.proxyEnabled),
-    proxyUrl: value("proxy-url", base.proxyUrl)
+    proxyUrl: value("proxy-url", base.proxyUrl),
+    hfMirrorEnabled: checked("hf-mirror-enabled", base.hfMirrorEnabled)
   };
 }

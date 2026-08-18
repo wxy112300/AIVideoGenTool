@@ -71,6 +71,7 @@ import {
   workflowSupportsH3BoundaryExtension,
   workflowSupportsH3MotionContextExtension
 } from "../src/core/workflow.js";
+import { workflowMetadataForFilename } from "../src/core/workflow-metadata.js";
 import { JsonStore } from "./store.js";
 import { registerQueueMutationIpc } from "./queue-ipc.js";
 import { registerQueueEnqueueIpc } from "./queue-enqueue.js";
@@ -541,6 +542,10 @@ async function bundledWorkflowFor(
     q3_k_m: "Q3_K_M dev · 均衡",
     q4_k_m: "Q4_K_M dev · 质量"
   }[ltxProfile];
+  const attachWorkflowMetadata = (workflow: BundledWorkflow): BundledWorkflow => {
+    const metadata = workflowMetadataForFilename(workflow.path);
+    return metadata ? { ...workflow, metadata } : workflow;
+  };
   if (inputMode === "video") {
     if (modelId === "minimax_h3_fl2va_q3_gguf") {
       const filename = "minimax_h3_i2v_gguf_q3_api.json";
@@ -552,13 +557,13 @@ async function bundledWorkflowFor(
       for (const candidate of candidates) {
         if (!(await fs.stat(candidate).catch(() => null))) continue;
         const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
-        return {
+        return attachWorkflowMetadata({
           modelId,
           label: "内置 · MiniMax H3 Q3 GGUF · 3080 低显存实验（不支持续写）",
           path: candidate,
           supportsEndImage: workflowSupportsEndImage(source),
           supportsVideoExtension: false
-        };
+        });
       }
       return null;
     }
@@ -572,13 +577,13 @@ async function bundledWorkflowFor(
       for (const candidate of candidates) {
         if (!(await fs.stat(candidate).catch(() => null))) continue;
         const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
-        return {
+        return attachWorkflowMetadata({
           modelId,
           label: "内置 · MiniMax H3 R2V Motion Context · 运动与音频连续",
           path: candidate,
           supportsEndImage: false,
           supportsVideoExtension: workflowSupportsH3MotionContextExtension(source)
-        };
+        });
       }
       return null;
     }
@@ -592,13 +597,13 @@ async function bundledWorkflowFor(
       for (const candidate of candidates) {
         if (!(await fs.stat(candidate).catch(() => null))) continue;
         const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
-        return {
+        return attachWorkflowMetadata({
           modelId,
           label: "内置 · MiniMax H3 结尾帧接续 · 原生音视频",
           path: candidate,
           supportsEndImage: workflowSupportsEndImage(source),
           supportsVideoExtension: workflowSupportsH3BoundaryExtension(source)
-        };
+        });
       }
       return null;
     }
@@ -612,13 +617,13 @@ async function bundledWorkflowFor(
     for (const candidate of candidates) {
       if (!(await fs.stat(candidate).catch(() => null))) continue;
       const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
-      return {
+      return attachWorkflowMetadata({
         modelId,
         label: `内置 · Sulphur 2 原生续写 · ${ltxProfileLabel}`,
         path: candidate,
         supportsEndImage: false,
         supportsVideoExtension: extensionWorkflowSafetyErrors(source).length === 0
-      };
+      });
     }
     return null;
   }
@@ -691,13 +696,13 @@ async function bundledWorkflowFor(
   for (const candidate of candidates) {
     if (await fs.stat(candidate).catch(() => null)) {
       const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
-      return {
+      return attachWorkflowMetadata({
         modelId,
         label,
         path: candidate,
         supportsEndImage: workflowSupportsEndImage(source),
         supportsVideoExtension: extensionWorkflowSafetyErrors(source).length === 0
-      };
+      });
     }
   }
   return null;

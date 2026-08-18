@@ -12,9 +12,9 @@ import type {
 import type { CreationMode, RendererCleanup, RendererContext } from "../../contracts";
 import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
 import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, videoLoraCompatibleWithDraft, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
-import { generationSafetyForTask, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, normalizeH3Steps } from "../../../core/workflow";
+import { generationSafetyForTask, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
 import { h3ReferenceSlotCounts } from "../../../core/h3-reference";
-import { newH3ReferenceSlot } from "./helpers";
+import { extensionSafetyForDraft, modelSupportsCreateInputMode, newH3ReferenceSlot } from "./helpers";
 import { mountCreatePromptController, type CreatePromptControllerOptions } from "./prompt-controller";
 import { mountImageEditController, type ImageEditControllerOptions } from "./image-edit-controller";
 import { mountImageToVideoController } from "./image-to-video-controller";
@@ -98,14 +98,26 @@ export function mountCreatePageController(
       options.setCreationMode(inputMode === "video" ? "video-extension" : "image-to-video");
       const environmentScan = options.getEnvironmentScan();
       const modelId = inputMode === "video"
-        ? isMiniMaxH3R2vModel(state.draft.modelId) || isMiniMaxH3Fl2vaModel(state.draft.modelId)
-          ? state.draft.modelId
-          : (() => {
-              const node = environmentScan?.customNodes.find((item) => item.id === "h3-motion-context");
-              return node?.installed || node?.loaded;
-            })()
-            ? "minimax_h3_ref2va"
-            : "minimax_h3_fl2va"
+        ? (() => {
+            const configuredModel = state.settings.defaultExtensionModel;
+            if (configuredModel && modelSupportsCreateInputMode(
+              configuredModel,
+              "video",
+              false,
+              "",
+              options.workflowCapabilities,
+              options.bundledWorkflows
+            )) {
+              return configuredModel;
+            }
+            if (isMiniMaxH3R2vModel(state.draft.modelId) || isMiniMaxH3Fl2vaModel(state.draft.modelId)) {
+              return state.draft.modelId;
+            }
+            const node = environmentScan?.customNodes.find((item) => item.id === "h3-motion-context");
+            return node?.installed || node?.loaded
+              ? "minimax_h3_ref2va"
+              : "minimax_h3_fl2va";
+          })()
         : state.draft.modelId;
       const videoLoras = inputMode === "video" ? [] : state.draft.videoLoras;
       const workflowModelId = bundledWorkflowModelId({ modelId, videoLoras });
@@ -127,6 +139,12 @@ export function mountCreatePageController(
         ...(inputMode === "video"
           ? {
               ratio: "source" as const,
+              duration: isMiniMaxH3R2vModel(modelId)
+                ? Math.min(
+                    state.draft.duration,
+                    motionContextMaxDurationSeconds()
+                  )
+                : state.draft.duration,
               spectrumMode: isMiniMaxH3R2vModel(modelId)
                 ? "off" as const
                 : state.draft.spectrumMode
@@ -376,7 +394,9 @@ export function mountCreatePageController(
   const updateDuration = (value: string) => {
     const state = getState();
     if (!state) return;
-    const maxDuration = generationSafetyForTask(state.draft, state.settings.uiLocale).maxDurationSeconds;
+    const maxDuration = state.draft.inputMode === "video"
+      ? extensionSafetyForDraft(state.draft, state.settings).maxDurationSeconds
+      : generationSafetyForTask(state.draft, state.settings.uiLocale).maxDurationSeconds;
     const duration = Math.max(1, Math.min(maxDuration, Number(value) || 1));
     options.patchDraft({ duration });
     options.syncEnqueueUi();

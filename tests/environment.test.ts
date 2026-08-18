@@ -1056,6 +1056,15 @@ describe("ComfyUI environment candidates", () => {
     expect(rife?.available).toBe(true);
   });
 
+  it("uses concrete file URLs for scanned model downloads", () => {
+    const pageLinks = evaluateModelProfiles([])
+      .flatMap((profile) => profile.components)
+      .map((component) => component.installGuide?.downloadUrl)
+      .filter((url): url is string => Boolean(url && /\/tree\/|\/releases\/tag\//u.test(url)));
+
+    expect(pageLinks).toEqual([]);
+  });
+
   it("requires all five FlashVSR weights", () => {
     const incomplete = evaluateModelProfiles([
       "FlashVSR\\FlashVSR1_1.safetensors"
@@ -1070,6 +1079,15 @@ describe("ComfyUI environment candidates", () => {
 
     expect(incomplete.find((profile) => profile.id === "flashvsr")?.available).toBe(false);
     expect(complete.find((profile) => profile.id === "flashvsr")?.available).toBe(true);
+
+    const upstreamNames = evaluateModelProfiles([
+      "FlashVSR\\Wan2_1-T2V-1.1_3B_FlashVSR_fp32.safetensors",
+      "FlashVSR\\Wan2.1_VAE.safetensors",
+      "FlashVSR\\Wan2_1_FlashVSR_LQ_proj_model_bf16.safetensors",
+      "FlashVSR\\Wan2_1_FlashVSR_TCDecoder_fp32.safetensors",
+      "FlashVSR\\Prompt.safetensors"
+    ]);
+    expect(upstreamNames.find((profile) => profile.id === "flashvsr")?.available).toBe(true);
   });
 
   it("requires the selected Sulphur 2 GGUF split-component runtime set", () => {
@@ -1083,7 +1101,7 @@ describe("ComfyUI environment candidates", () => {
       "vae\\ltx-2-3-22b-VAE.safetensors",
       "checkpoints\\ltx-2-3-22b-audio_vae.safetensors",
       "loras\\ltx-2.3-22b-distilled-lora-1.1_fro90_ceil72_condsafe.safetensors",
-      "latent_upscale_models\\ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
+      "latent_upscale_models\\ltx-2-spatial-upscaler-x2-1.0.safetensors"
     ]);
 
     expect(incomplete.find((profile) => profile.id === "sulphur2")?.available).toBe(false);
@@ -1097,7 +1115,7 @@ describe("ComfyUI environment candidates", () => {
       "text_encoders\\ltx-2-3-22b-text_encoder.safetensors",
       "vae\\ltx-2-3-22b-VAE.safetensors",
       "checkpoints\\ltx-2-3-22b-audio_vae.safetensors",
-      "latent_upscale_models\\ltx-2.3-spatial-upscaler-x2-1.0.safetensors"
+      "latent_upscale_models\\ltx-2-spatial-upscaler-x2-1.0.safetensors"
     ], "q2_distilled");
 
     expect(profiles.find((profile) => profile.id === "sulphur2")?.available).toBe(true);

@@ -6,6 +6,7 @@ import type {
 import { directoryComparisonKey } from "./helpers";
 import type { SettingsInstallGuideSelection } from "./fragments";
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
 import { uiKeys } from "../../../core/i18n-keys";
 
 export interface SettingsPageControllerOptions {
@@ -97,7 +98,11 @@ export function mountSettingsPageController(
   root.querySelector("#open-install-download")?.addEventListener("click", async () => {
     const selected = options.getInstallGuide();
     if (!selected) return;
-    const opened = await options.context.studio.openExternal(selected.component.installGuide.downloadUrl);
+    const url = rewriteHuggingFaceDownloadUrl(
+      selected.component.installGuide.downloadUrl,
+      options.formSettings().hfMirrorEnabled
+    );
+    const opened = await options.context.studio.openExternal(url);
     if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed));
   }, { signal });
   root.querySelector("#open-install-directory")?.addEventListener("click", async (event) => {
@@ -109,8 +114,9 @@ export function mountSettingsPageController(
 
   root.querySelectorAll<HTMLButtonElement>("[data-open-environment-download]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const url = button.dataset.openEnvironmentDownload?.trim();
-      if (!url) return;
+      const sourceUrl = button.dataset.openEnvironmentDownload?.trim();
+      if (!sourceUrl) return;
+      const url = rewriteHuggingFaceDownloadUrl(sourceUrl, options.formSettings().hfMirrorEnabled);
       const opened = await options.context.studio.openExternal(url);
       if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed));
     }, { signal });

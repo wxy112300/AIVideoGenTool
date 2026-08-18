@@ -23,6 +23,15 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
     })).toThrow(/动态 CPU 后端/iu);
   });
 
+  it("does not treat the Prompt Writer probe's unloaded CUDA backend as a crash", () => {
+    expect(() => validateH3PromptWriterRuntime({
+      status: "ok",
+      gpu_offload: false,
+      backend: null,
+      message: "The native runtime compatibility check completed."
+    })).not.toThrow();
+  });
+
   it("rewrites a model-load 0xC000001D response even when the lightweight probe passed", async () => {
     const settings = createDefaultState().settings;
     settings.promptModelId = "google/gemma-4-12b-q5";

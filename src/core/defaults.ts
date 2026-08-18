@@ -88,6 +88,7 @@ export function createDefaultSettings(): Settings {
     imageInputLibraryDirectory: "",
     modelDirectory: "",
     defaultVideoModel: "minimax_h3_fl2va",
+    defaultExtensionModel: "minimax_h3_ref2va",
     defaultImageModel: "qwen-image-edit-2511",
     defaultImageQualityProfile: "balanced-20",
     imageOutputCount: 6,
@@ -115,6 +116,7 @@ export function createDefaultSettings(): Settings {
     realEsrganModel: "RealESRGAN_x4plus.safetensors",
     proxyEnabled: false,
     proxyUrl: "http://127.0.0.1:7890",
+    hfMirrorEnabled: false,
   };
 }
 

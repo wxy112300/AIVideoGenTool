@@ -77,6 +77,18 @@ describe("model catalog", () => {
     ]);
   });
 
+  it("keeps catalog model downloads on concrete files instead of repository pages", () => {
+    const components = modelCatalog.entries.flatMap(({ definition }) => [
+      ...(definition.scan?.components ?? []),
+      ...Object.values(definition.scanVariants ?? {}).flatMap((scan) => scan.components)
+    ]);
+    const pageLinks = components
+      .map((component) => component.installGuide?.downloadUrl)
+      .filter((url): url is string => Boolean(url && /\/tree\/|\/releases\/tag\//u.test(url)));
+
+    expect(pageLinks).toEqual([]);
+  });
+
   it("derives LoRA scanning and runtime metadata from the same definitions", () => {
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id))
       .toEqual([...VIDEO_LORA_DEFINITIONS]

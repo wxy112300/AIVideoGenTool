@@ -7,6 +7,8 @@ export const SPECTRUM_RECOMMENDED_VERSION = "0.2.15";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
 export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.3.2";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
+export const H3_MOTION_CONTEXT_MINIMUM_VERSION = "0.3.1";
+export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.3.1";
 
 export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   id: "inpaint-nodes",
@@ -15,6 +17,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/Acly/comfyui-inpaint-nodes.git",
   directoryName: "comfyui-inpaint-nodes",
   aliases: ["comfyui-inpaint-nodes"],
+  releaseSource: "github-release",
   nodeTypes: ["INPAINT_LoadInpaintModel", "INPAINT_ExpandMask", "INPAINT_InpaintWithModel"],
   required: false
 }, {
@@ -24,6 +27,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git",
   directoryName: "ComfyUI-Inpaint-CropAndStitch",
   aliases: ["comfyui-inpaint-cropandstitch", "ComfyUI-Inpaint-CropAndStitch", "comfyui-crop-and-stitch"],
+  releaseSource: "github-release",
   nodeTypes: ["InpaintCropImproved", "InpaintStitchImproved"],
   required: false
 }, {
@@ -33,6 +37,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/city96/ComfyUI-GGUF.git",
   directoryName: "ComfyUI-GGUF",
   aliases: ["comfyui-gguf"],
+  releaseSource: "github-release",
   nodeTypes: ["UnetLoaderGGUFAdvanced", "CLIPLoaderGGUF"],
   required: true
 }, {
@@ -42,6 +47,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/molbal/ComfyUI-GGUF.git",
   directoryName: "ComfyUI-GGUF-H3",
   aliases: ["comfyui-gguf-h3"],
+  releaseSource: "github-release",
   nodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF"],
   runtimeRequirement: "只注册 H3 专用 loader 名称，与通用 ComfyUI-GGUF 并存；Q3_K 扩散模型仍需 CPU/RAM offload。",
   required: false
@@ -52,7 +58,14 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
   directoryName: "comfyui-videohelpersuite",
   aliases: ["comfyui-videohelpersuite"],
-  nodeTypes: ["VHS_LoadVideo", "VHS_VideoCombine", "VHS_BatchManager"],
+  releaseSource: "github-release",
+  nodeTypes: [
+    "VHS_LoadVideo",
+    "VHS_LoadVideoFFmpeg",
+    "VHS_VideoCombine",
+    "VHS_VideoInfoSource",
+    "VHS_BatchManager"
+  ],
   required: true
 }, {
   id: "ltx-video",
@@ -61,6 +74,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/Lightricks/ComfyUI-LTXVideo.git",
   directoryName: "ComfyUI-LTXVideo",
   aliases: ["comfyui-ltxvideo"],
+  releaseSource: "github-release",
   nodeTypes: ["LTXVExtendSampler", "LTXVSpatioTemporalTiledVAEDecode"],
   required: false
 }, {
@@ -70,8 +84,10 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git",
   directoryName: "ComfyUI-SeedVR2_VideoUpscaler",
   aliases: ["comfyui-seedvr2_videoupscaler", "seedvr2_videoupscaler"],
+  releaseSource: "github-release",
   nodeTypes: ["SeedVR2LoadDiTModel", "SeedVR2LoadVAEModel", "SeedVR2VideoUpscaler"],
   minimumVersion: "2.5.24",
+  recommendedVersion: "2.5.24",
   required: true
 }, {
   id: "flashvsr",
@@ -80,6 +96,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/1038lab/ComfyUI-FlashVSR.git",
   directoryName: "ComfyUI-FlashVSR",
   aliases: ["comfyui-flashvsr"],
+  releaseSource: "github-release",
   nodeTypes: ["AILab_FlashVSR"],
   required: true
 }, {
@@ -89,6 +106,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/kijai/ComfyUI-KJNodes.git",
   directoryName: "comfyui-kjnodes",
   aliases: ["comfyui-kjnodes"],
+  releaseSource: "github-release",
   nodeTypes: ["VRAM_Debug", "PathchSageAttentionKJ"],
   features: [{
     id: "h3-sage-attention",
@@ -114,6 +132,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",
   directoryName: "ComfyUI-Frame-Interpolation",
   aliases: ["comfyui-frame-interpolation"],
+  releaseSource: "github-release",
   nodeTypes: ["RIFE VFI"],
   required: false
 }, {
@@ -123,6 +142,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/kantan-kanto/ComfyUI-MultiModal-Prompt-Nodes.git",
   directoryName: "ComfyUI-MultiModal-Prompt-Nodes",
   aliases: ["comfyui-multimodal-prompt-nodes", "ComfyUI-MultiModal-Prompt-Nodes"],
+  releaseSource: "github-release",
   nodeTypes: ["VisionLLMNode"],
   minimumVersion: MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION,
   runtimeRequirement: "可选节点：Qwen3.6 vision 与 Gemma Prompt Writer 共用固定的 JamePeng llama-cpp-python GPU 后端；Windows 使用预编译 wheel，不需要另装 CUDA Toolkit、Visual Studio 或 llama-server。支持 Python 3.10–3.14 和已登记的 CUDA 12/13 组合，安装后必须通过 CUDA 自检。",
@@ -134,6 +154,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git",
   directoryName: "ComfyUI-MiniMaxH3-Prompt-Writer",
   aliases: ["comfyui-minimaxh3-prompt-writer"],
+  releaseSource: "github-release",
   runtimeEndpoint: "/h3studio/status",
   minimumVersion: MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION,
   recommendedVersion: MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION,
@@ -153,12 +174,25 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context.git",
   directoryName: "ComfyUI-H3-Motion-Context",
   aliases: ["comfyui-h3-motion-context"],
+  releaseSource: "github-release",
   nodeTypes: [
     "MiniMaxH3MotionContext",
     "MiniMaxH3MotionContextTrim",
     "MiniMaxH3MotionContextSaveLatent",
     "MiniMaxH3MotionContextLoadLatent"
   ],
+  minimumVersion: H3_MOTION_CONTEXT_MINIMUM_VERSION,
+  recommendedVersion: H3_MOTION_CONTEXT_RECOMMENDED_VERSION,
+  latestVersion: H3_MOTION_CONTEXT_RECOMMENDED_VERSION,
+  compatibilityEvidence: [{
+    verifiedAt: "2026-08-18",
+    sourceUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context",
+    note: "v0.3.1 同时兼容 ComfyUI 0.32/0.33 的 H3 layout；修复 ComfyUI 0.33 的 PackedLayout frame_count 变化，并保留 Ref2VA 音频 latent。",
+    comfyUi: "0.33.1",
+    commit: "725a731",
+    workflowIds: ["minimax_h3_r2v"],
+    checks: ["static", "object-info"]
+  }],
   required: false
 }, {
   id: "spectrum-minimax-h3",
@@ -167,6 +201,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   repositoryUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
   directoryName: "ComfyUI-Spectrum-MiniMax-H3",
   aliases: ["comfyui-spectrum-minimax-h3"],
+  releaseSource: "github-release",
   nodeTypes: ["SpectrumApplyMiniMaxH3"],
   minimumVersion: SPECTRUM_MINIMUM_VERSION,
   recommendedVersion: SPECTRUM_RECOMMENDED_VERSION,

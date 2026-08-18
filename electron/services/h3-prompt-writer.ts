@@ -37,6 +37,8 @@ export interface H3PromptWriterRuntimeDiagnostics {
   error?: string;
   error_type?: string;
   gpu_offload?: boolean | null;
+  /** Optional backend name reported by newer Prompt Writer diagnostics. */
+  backend?: string | null;
   package_version?: string | null;
 }
 

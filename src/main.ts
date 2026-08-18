@@ -217,6 +217,7 @@ import {
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
   isRetiredVideoModel,
+  motionContextMaxDurationSeconds,
   normalizeH3Steps
 } from "./core/workflow";
 import { resolveVideoGenerationPolicy } from "./core/video-policy";
@@ -1534,6 +1535,12 @@ function returnToHistory(): void {
 }
 
 function navigateToCreationMode(mode: CreationMode): void {
+  if (mode === "video-extension" && isMiniMaxH3R2vModel(state.draft.modelId)) {
+    const maxDuration = motionContextMaxDurationSeconds();
+    if (state.draft.duration > maxDuration) {
+      patchDraft({ duration: maxDuration });
+    }
+  }
   setCreationMode(mode);
   setPage("create");
   ui.historyForwardTarget = null;

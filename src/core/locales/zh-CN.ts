@@ -445,6 +445,8 @@ export const zhCNCatalog = {
     [uiKeys.settings.system.proxyResourceDescription]: "Git、pip、工作流和运行时资源下载共用此地址",
     [uiKeys.settings.system.proxyAddress]: "代理地址",
     [uiKeys.settings.system.proxyDefaultHint]: "默认关闭。可填写 127.0.0.1:7890 或完整代理 URL。节点安装立即使用；ComfyUI 运行时下载需要保存后重启服务才能继承新代理。",
+    [uiKeys.settings.system.useHfMirror]: "使用镜像网站下载模型",
+    [uiKeys.settings.system.hfMirrorDescription]: "开启后，模型设置中的 Hugging Face 下载链接会自动替换为 hf-mirror.com。",
     [uiKeys.settings.system.gpuPolicyTitle]: "GPU 运行策略",
     [uiKeys.settings.system.gpuWaiting]: "GPU 待检测",
     [uiKeys.settings.system.gpuNotDetected]: "未检测到 NVIDIA 显卡或驱动",
