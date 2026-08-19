@@ -17,9 +17,11 @@ describe("ComfyUI runtime service", () => {
 
     expect(args.slice(0, 3)).toEqual(["-s", "-c", expect.any(String)]);
     expect(args[2]).toContain("open('CONOUT$', 'w'");
+    expect(args[2]).toContain("open(os.devnull, 'w'");
+    expect(args[2]).toContain("for stream_name in ('stdout', 'stderr'):");
     expect(args[2]).toContain("GetConsoleMode");
     expect(args[2]).toContain("SetConsoleMode");
-    expect(args[2]).toContain("msvcrt.get_osfhandle(stream.fileno())");
+    expect(args[2]).toContain("setattr(sys, name, stream)");
     expect(args[2]).toContain("mode.value | 0x0004");
     expect(args[2]).toContain("except Exception:");
     expect(args[2]).toContain("runpy.run_path(entry, run_name='__main__')");

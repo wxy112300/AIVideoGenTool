@@ -63,24 +63,27 @@ export interface ComfyRuntimeServiceDependencies {
 
 let pendingComfyUiStart: Promise<string> | null = null;
 
-// A detached Windows Python gets a visible console from the OS, but Electron's
-// inherited standard handles do not point at it. Rebind before ComfyUI wraps them.
+// A packaged Electron process may not own valid standard handles. Rebind each
+// stream before ComfyUI wraps it, with a safe sink when no console is available.
 const windowsConsoleBootstrap = [
-  "import ctypes, msvcrt, runpy, sys",
-  "try:",
-  "    sys.stdout = open('CONOUT$', 'w', encoding='utf-8', buffering=1)",
-  "    sys.stderr = open('CONOUT$', 'w', encoding='utf-8', buffering=1)",
-  "    get_console_mode = ctypes.windll.kernel32.GetConsoleMode",
-  "    get_console_mode.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32))",
-  "    set_console_mode = ctypes.windll.kernel32.SetConsoleMode",
-  "    set_console_mode.argtypes = (ctypes.c_void_p, ctypes.c_uint32)",
-  "    for stream in (sys.stdout, sys.stderr):",
+  "import ctypes, msvcrt, os, runpy, sys",
+  "get_console_mode = ctypes.windll.kernel32.GetConsoleMode",
+  "get_console_mode.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32))",
+  "set_console_mode = ctypes.windll.kernel32.SetConsoleMode",
+  "set_console_mode.argtypes = (ctypes.c_void_p, ctypes.c_uint32)",
+  "def bind_output_stream(name):",
+  "    try:",
+  "        stream = open('CONOUT$', 'w', encoding='utf-8', buffering=1)",
   "        handle = msvcrt.get_osfhandle(stream.fileno())",
   "        mode = ctypes.c_uint32()",
-  "        if handle and get_console_mode(handle, ctypes.byref(mode)):",
-  "            set_console_mode(handle, mode.value | 0x0004)",
-  "except Exception:",
-  "    pass",
+  "        if not handle or not get_console_mode(handle, ctypes.byref(mode)):",
+  "            raise OSError('No writable console handle')",
+  "        set_console_mode(handle, mode.value | 0x0004)",
+  "    except Exception:",
+  "        stream = open(os.devnull, 'w', encoding='utf-8')",
+  "    setattr(sys, name, stream)",
+  "for stream_name in ('stdout', 'stderr'):",
+  "    bind_output_stream(stream_name)",
   "entry = sys.argv[1]",
   "sys.argv = sys.argv[1:]",
   "runpy.run_path(entry, run_name='__main__')"

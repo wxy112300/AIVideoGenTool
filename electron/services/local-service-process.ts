@@ -88,9 +88,10 @@ export async function launchComfyUiVisible(
       cwd,
       env,
       detached: true,
-      // Python's normal stdout/stderr is intentionally inherited so the
-      // visible ComfyUI console shows the same startup log as a manual launch.
-      stdio: ["ignore", "inherit", "inherit"],
+      // Packaged GUI Electron processes have no reliable parent console
+      // handles. The Python bootstrap binds output to its new console and
+      // falls back to NUL when Windows does not provide one.
+      stdio: "ignore",
       windowsHide: false
     });
     child.once("error", reject);
