@@ -10,6 +10,7 @@ import {
 import {
   patchH3PromptWriterLlamaCppCompatibility,
   patchMultimodalPromptContextSize,
+  patchMultimodalPromptResidency,
   patchQwenVlComfyDesktopLogging,
   prepareH3PromptWriter,
   prepareMultimodalPromptNodes
@@ -57,10 +58,29 @@ describe("dependency installer", () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-multimodal-adapter-"));
     temporaryDirectories.push(directory);
     const source = [
+      "import atexit",
+      "",
       "def load_model(n_ctx: int = 4096):",
       "    pass",
       "def rewrite_prompt(n_ctx: int = 4096):",
-      "    pass"
+      "    pass",
+      "",
+      "class VisionLLMNode:",
+      "    @classmethod",
+      "    def INPUT_TYPES(cls):",
+      "        return {",
+      "            \"optional\": {",
+      "                \"image\": (\"IMAGE\",),",
+      "            }",
+      "        }",
+      "",
+      "    def rewrite(self, model: str, mmproj: str, prompt: str, max_tokens: int, temperature: float, device: str, image=None) -> tuple:",
+      "        try:",
+      "            return (prompt,)",
+      "        finally:",
+      "            cleanup()",
+      "",
+      "# ComfyUI Node Registration"
     ].join("\n");
     await fs.writeFile(path.join(directory, "vision_llm_node.py"), source);
 
@@ -68,7 +88,11 @@ describe("dependency installer", () => {
     const patched = await fs.readFile(path.join(directory, "vision_llm_node.py"), "utf8");
 
     expect(patched.match(/n_ctx: int = 8192/gu)).toHaveLength(2);
+    expect(patched).toContain('"keep_model_loaded": ("BOOLEAN", {"default": False})');
+    expect(patched).toContain("if not keep_model_loaded:");
+    expect(patched).toContain('/local-video-studio/multimodal-prompt/unload');
     expect(patchMultimodalPromptContextSize(patched)).toBe(patched);
+    expect(patchMultimodalPromptResidency(patched)).toBe(patched);
   });
 
   it("makes Qwen-VL logging tolerate ComfyUI Desktop's closed stdout", () => {

@@ -6,6 +6,7 @@ import type { Settings } from "../../src/types.js";
 import {
   patchH3PromptWriterLlamaCppCompatibility,
   patchMultimodalPromptContextSize,
+  patchMultimodalPromptResidency,
   patchQwenVlComfyDesktopLogging,
   prepareH3PromptWriter,
   prepareH3Gguf,
@@ -138,7 +139,7 @@ async function nodeHasOnlyAppPatch(
     const expected = nodeId === "minimax-h3-prompt-writer"
       ? patchH3PromptWriterLlamaCppCompatibility(baseline)
       : nodeId === "comfyui-multimodal-prompt-nodes"
-        ? patchMultimodalPromptContextSize(baseline)
+        ? patchMultimodalPromptResidency(patchMultimodalPromptContextSize(baseline))
         : patchQwenVlComfyDesktopLogging(baseline);
     if (normalizeGitSource(current) !== normalizeGitSource(expected)) return false;
   }

@@ -8,7 +8,8 @@ import {
   extractImageEditPromptFromWriter,
   promptWriterModelForSelection,
   releaseH3PromptWriter,
-  validateH3PromptWriterRuntime
+  validateH3PromptWriterRuntime,
+  warmH3PromptWriter
 } from "../electron/services/h3-prompt-writer.js";
 import { managedPromptModelDefinitions } from "../src/core/prompt-models.js";
 
@@ -162,7 +163,7 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
     }
   });
 
-  it("maps the selected Gemma file, uploads references and unloads after generation", async () => {
+  it("maps the selected Gemma file, uploads references and follows the requested retention policy", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "h3-writer-"));
     const image = path.join(directory, "reference.png");
     await fs.writeFile(image, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
@@ -198,12 +199,12 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
         h3DurationSeconds: 5,
         h3AspectRatio: "16:9",
         referenceMediaPaths: [image]
-      }, settings, new AbortController().signal);
+      }, settings, new AbortController().signal, undefined, false);
 
       expect(result).toBe("[0-5s] A continuous shot.");
       expect(generateBody).toMatchObject({
         mode: "Reference",
-        unload_after: true,
+        unload_after: false,
         model_id: "D:/ComfyUI/models/LLM/gemma/gemma-4-12b-it-Q5_K_M.gguf",
         duration_seconds: 5,
         aspect_ratio: "16:9"
@@ -211,6 +212,39 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
+  });
+
+  it("warms and retains the selected Gemma model", async () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "google/gemma-4-12b-q5";
+    let generateBody: Record<string, unknown> = {};
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/h3studio/status")) return Response.json({ version: "0.3.2" });
+      if (url.endsWith("/h3studio/models")) return Response.json({ models: [{
+        id: "D:/ComfyUI/models/LLM/gemma-4-12b-it-Q5_K_M.gguf",
+        path: "D:/ComfyUI/models/LLM/gemma-4-12b-it-Q5_K_M.gguf",
+        runtime_ready: true
+      }] });
+      if (url.endsWith("/h3studio/runtime/gguf/diagnostics")) {
+        return Response.json({ diagnostics: { status: "ok", gpu_offload: true } });
+      }
+      if (url.endsWith("/h3studio/generate")) {
+        generateBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ prompt: "[0-1s] A static scene." });
+      }
+      if (url.includes("/h3studio/media?session_id=")) return Response.json({ cleared: true });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await warmH3PromptWriter(settings, new AbortController().signal);
+
+    expect(generateBody).toMatchObject({
+      mode: "T2VA",
+      unload_after: false,
+      model_id: "D:/ComfyUI/models/LLM/gemma-4-12b-it-Q5_K_M.gguf"
+    });
   });
 
   it("turns an empty reference-auto request into a creative brief for the writer", async () => {

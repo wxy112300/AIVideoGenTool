@@ -165,7 +165,6 @@ type SettingsCopyKey =
   | "nodes.checkUpdate"
   | "nodes.installRestart"
   | "nodes.duplicateCopies"
-  | "nodes.motionContextMigration"
   | "nodes.empty"
   | "nodes.placeholderTitle"
   | "nodes.placeholderDescription"
@@ -406,7 +405,6 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.checkUpdate": "检查更新",
   "nodes.installRestart": "安装并重启",
   "nodes.duplicateCopies": "发现多个 H3 Motion Context 副本：{paths}。请只保留一个目录，再重启 ComfyUI。",
-  "nodes.motionContextMigration": "升级到 v0.3.1 后，ComfyUI 画布中保存的旧 Motion Context 节点需要删除并重新添加，避免控件值落到错误的输入槽。",
   "nodes.empty": "等待环境扫描结果",
   "nodes.placeholderTitle": "工作流占位符",
   "nodes.placeholderDescription": "提交自定义视频 ComfyUI API JSON 前会递归替换；图片工作流不使用这些占位符。",
@@ -623,7 +621,6 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.checkUpdate": "檢查更新",
   "nodes.installRestart": "安裝並重新啟動",
   "nodes.duplicateCopies": "發現多個 H3 Motion Context 副本：{paths}。請只保留一個資料夾，再重新啟動 ComfyUI。",
-  "nodes.motionContextMigration": "升級到 v0.3.1 後，ComfyUI 畫布中儲存的舊 Motion Context 節點需要刪除並重新新增，避免控制項值落到錯誤的輸入槽。",
   "nodes.empty": "等待環境掃描結果",
   "nodes.placeholderTitle": "工作流程佔位符",
   "nodes.placeholderDescription": "提交自訂影片 ComfyUI API JSON 前會遞迴替換；圖片工作流程不使用這些佔位符。",
@@ -861,7 +858,6 @@ const enUS: SettingsCopyCatalog = {
   "nodes.checkUpdate": "Check for updates",
   "nodes.installRestart": "Install and restart",
   "nodes.duplicateCopies": "Multiple H3 Motion Context copies detected: {paths}. Keep only one directory, then restart ComfyUI.",
-  "nodes.motionContextMigration": "After updating to v0.3.1, delete and re-add saved Motion Context nodes in the ComfyUI canvas so widget values do not land in the wrong inputs.",
   "nodes.empty": "Waiting for environment scan",
   "nodes.placeholderTitle": "Workflow placeholders",
   "nodes.placeholderDescription": "Custom video ComfyUI API JSON is recursively replaced before submission; image workflows do not use these placeholders.",

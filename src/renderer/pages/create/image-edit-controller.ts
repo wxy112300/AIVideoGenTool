@@ -280,7 +280,6 @@ export function mountImageEditController(
           imageMarkupPromptContext(pictures)
         ].filter(Boolean).join("\n\n")
       });
-      options.setPromptRuntimeLoaded(true);
       const nextDraft = getDraft();
       if (!nextDraft) return;
       options.invalidatePromptEditHistory();

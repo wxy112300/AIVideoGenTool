@@ -170,7 +170,7 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 - FL2VA 与 R2V 使用不同扩散权重，不能互换。
 - 共同依赖 H3 文本编码器、视频 VAE、音频 VAE 和足够新的 ComfyUI 核心节点。
 - R2V 支持多参考图片；Motion Context 是可选的 R2V 续写增强节点，不是基础 FL2VA 的必需项。当前推荐并作为最低兼容线的节点版本是 `v0.3.1`，兼容 ComfyUI `0.32/0.33`；它修复了 ComfyUI 0.33 的 H3 layout 变化，并保留 Ref2VA、latent 和音频连续能力。
-- Motion Context 工作流使用 `context_length=22`、`audio_context_length=24`、latent Save/Load 和 Trim `match_tail`。升级节点后，ComfyUI 画布中保存的旧 Motion Context 节点需要删除并重新添加；同一 `custom_nodes` 目录只能保留一个 Motion Context 副本，重命名 fork 也可能产生 patch 冲突。
+- Motion Context 工作流使用 `context_length=22`、`audio_context_length=24`、latent Save/Load 和 Trim `match_tail`。本应用构造的 API 工作流不需要删除并重新添加节点；上游迁移说明只适用于手工保存且 widget 位置来自旧节点 schema 的 ComfyUI 画布。同一 `custom_nodes` 目录只能保留一个 Motion Context 副本，重命名 fork 也可能产生 patch 冲突。
 - LightX2V Turbo、Realism People 和 PinkFluffyBunny 是 LoRA，不是独立视频模型；兼容模式、顺序、强度和冲突由 LoRA catalog 管理。LightX2V Turbo 使用原生 ER-SDE/Beta 路径，Spectrum `v0.2.6+` 可叠加；更早版本必须先更新。
 - H3 原生音视频采样的最低 ComfyUI 版本为 `v0.31.0`，当前推荐 `v0.33.1`；推荐版本是更新提示，不是离线入队的硬性阻挡。官方 Turbo v1.0 的 8-step、768p 4-step 和 Ref2V 4-step 权重都放入所选 ComfyUI 的 `models/loras`，不要再把它们当成独立基础模型。
 - KJNodes 按功能使用：H3 SageAttention 模式需要 `PathchSageAttentionKJ`，TAE 实时预览只额外尝试 `ModelPreviewOverrideKJ`，显存调试使用 `VRAM_Debug`；预览缺失时自动降级，不阻塞普通生成。

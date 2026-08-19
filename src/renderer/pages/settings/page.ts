@@ -690,7 +690,6 @@ export function renderSettingsPage(
               ${node.updateNotice ? `<span class="node-update-notice">${escape(node.updateNotice)}</span>` : ""}
               ${node.runtimeNotice ? `<span class="node-runtime-notice">${escape(node.runtimeNotice)}</span>` : ""}
               ${node.duplicateDirectories?.length ? `<span class="node-update-notice">${escape(s("nodes.duplicateCopies", { paths: node.duplicateDirectories.join("、") }))}</span>` : ""}
-              ${node.id === "h3-motion-context" && node.version && compareReleaseVersions(node.version, "0.3.1") >= 0 ? `<span class="node-update-notice">${s("nodes.motionContextMigration")}</span>` : ""}
               ${node.compatibilityNotice && node.compatibilityState !== "supported" && node.compatibilityNotice !== node.updateNotice ? `<span class="node-update-notice">${escape(node.compatibilityNotice)}</span>` : ""}
               ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`custom-node:${node.id}`)}">${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
             </div>

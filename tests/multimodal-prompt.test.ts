@@ -40,6 +40,7 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     );
 
     expect(workflow["vision-llm"]?.inputs.device).toBe("CPU");
+    expect(workflow["vision-llm"]?.inputs.keep_model_loaded).toBe(false);
   });
 
   it("uses the VisionLLM node, the regular Q4 model, and GPU-safe prompt limits", () => {
@@ -108,9 +109,12 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
       },
       [],
       settings,
+      true,
+      "GPU",
       true
     );
 
     expect(workflow["vision-llm"]?.inputs.max_tokens).toBe(64);
+    expect(workflow["vision-llm"]?.inputs.keep_model_loaded).toBe(true);
   });
 });

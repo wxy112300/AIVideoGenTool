@@ -8,6 +8,7 @@ import {
 } from "./comfy-runtime-policy.js";
 import { localEndpoint } from "./local-service-process.js";
 import { getApplicationLogger } from "./app-logger.js";
+import { forwardComfyProcessLogLine } from "./comfy-log-bridge.js";
 
 const appLogger = getApplicationLogger();
 const ownedComfyProcessIds = new Set<number>();
@@ -39,13 +40,14 @@ export interface ComfyRuntimeServiceDependencies {
     env?: NodeJS.ProcessEnv,
     onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void
   ): Promise<number>;
-  /** Optional visible-console launcher for app-owned ComfyUI Python. */
+  /** Optional output-capturing launcher for app-owned ComfyUI Python. */
   launchComfyUiVisible?(
     executable: string,
     args: string[],
     cwd?: string,
     env?: NodeJS.ProcessEnv,
-    onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void
+    onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void,
+    onOutput?: (processId: number, stream: "stdout" | "stderr", line: string) => void
   ): Promise<number>;
   isPortInUse(port: number): Promise<boolean>;
   downloadEnvironment(settings: Settings): NodeJS.ProcessEnv;
@@ -63,40 +65,10 @@ export interface ComfyRuntimeServiceDependencies {
 
 let pendingComfyUiStart: Promise<string> | null = null;
 
-// A packaged Electron process may not own valid standard handles. Rebind each
-// stream before ComfyUI wraps it, with a safe sink when no console is available.
-const windowsConsoleBootstrap = [
-  "import ctypes, msvcrt, os, runpy, sys",
-  "get_console_mode = ctypes.windll.kernel32.GetConsoleMode",
-  "get_console_mode.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32))",
-  "set_console_mode = ctypes.windll.kernel32.SetConsoleMode",
-  "set_console_mode.argtypes = (ctypes.c_void_p, ctypes.c_uint32)",
-  "def bind_output_stream(name):",
-  "    try:",
-  "        stream = open('CONOUT$', 'w', encoding='utf-8', buffering=1)",
-  "        handle = msvcrt.get_osfhandle(stream.fileno())",
-  "        mode = ctypes.c_uint32()",
-  "        if not handle or not get_console_mode(handle, ctypes.byref(mode)):",
-  "            raise OSError('No writable console handle')",
-  "        set_console_mode(handle, mode.value | 0x0004)",
-  "    except Exception:",
-  "        stream = open(os.devnull, 'w', encoding='utf-8')",
-  "    setattr(sys, name, stream)",
-  "    setattr(sys, '__' + name + '__', stream)",
-  "for stream_name in ('stdout', 'stderr'):",
-  "    bind_output_stream(stream_name)",
-  "entry = sys.argv[1]",
-  "sys.argv = sys.argv[1:]",
-  "runpy.run_path(entry, run_name='__main__')"
-].join("\n");
-
 export function comfyUiPythonEntryArgs(
-  mainPy: string,
-  platform: NodeJS.Platform = process.platform
+  mainPy: string
 ): string[] {
-  return platform === "win32"
-    ? ["-s", "-c", windowsConsoleBootstrap, mainPy]
-    : ["-s", mainPy];
+  return ["-s", mainPy];
 }
 
 async function startComfyUiServiceImpl(
@@ -197,17 +169,28 @@ async function startComfyUiServiceImpl(
     memoryArgs,
     databaseFilename
   });
-  const launchComfyUi = dependencies.launchComfyUiVisible ?? dependencies.launchDetached;
-  const processId = await launchComfyUi(
-    python,
-    args,
-    sourceRoot,
-    dependencies.downloadEnvironment(settings),
-    handleOwnedProcessExit
-  );
+  const environment = dependencies.downloadEnvironment(settings);
+  const processId = dependencies.launchComfyUiVisible
+    ? await dependencies.launchComfyUiVisible(
+        python,
+        args,
+        sourceRoot,
+        environment,
+        handleOwnedProcessExit,
+        (childProcessId, stream, line) => {
+          forwardComfyProcessLogLine(appLogger, childProcessId, stream, line);
+        }
+      )
+    : await dependencies.launchDetached(
+        python,
+        args,
+        sourceRoot,
+        environment,
+        handleOwnedProcessExit
+      );
   ownedComfyProcessIds.add(processId);
   appLogger.info("comfy", "runtime-process-launched", "ComfyUI process launched", {
-    processId,
+    childProcessId: processId,
     port: endpoint.port
   });
   return `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
@@ -220,7 +203,7 @@ function handleOwnedProcessExit(
 ): void {
   forgetOwnedComfyProcessId(processId);
   appLogger.info("comfy", "owned-process-exited", "An app-started ComfyUI process exited", {
-    processId,
+    childProcessId: processId,
     code,
     signal: signal ?? ""
   });

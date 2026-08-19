@@ -174,6 +174,61 @@ export function patchMultimodalPromptContextSize(source: string): string {
   return source.replace(/n_ctx: int = 4096/gu, "n_ctx: int = 8192");
 }
 
+export function patchMultimodalPromptResidency(source: string): string {
+  let patched = source;
+  if (!patched.includes('"keep_model_loaded": ("BOOLEAN"')) {
+    const classStart = patched.indexOf("class VisionLLMNode:");
+    const classEnd = patched.indexOf("# ComfyUI Node Registration", classStart);
+    if (classStart < 0 || classEnd < 0) {
+      throw new Error("MultiModal Prompt Nodes 缺少 VisionLLMNode 定义，无法应用模型驻留适配。");
+    }
+    let nodeSource = patched.slice(classStart, classEnd);
+    nodeSource = nodeSource.replace(
+      /(            "optional": \{\r?\n)(                "image":)/u,
+      '$1                "keep_model_loaded": ("BOOLEAN", {"default": False}),\n$2'
+    );
+    nodeSource = nodeSource.replace(
+      "temperature: float, device: str, image=None) -> tuple:",
+      "temperature: float, device: str, image=None, keep_model_loaded: bool = False) -> tuple:"
+    );
+    nodeSource = nodeSource.replace(
+      /(        finally:\r?\n)            cleanup\(\)/u,
+      "$1            if not keep_model_loaded:\n                cleanup()"
+    );
+    patched = `${patched.slice(0, classStart)}${nodeSource}${patched.slice(classEnd)}`;
+  }
+  if (!patched.includes('/local-video-studio/multimodal-prompt/unload')) {
+    const marker = "import atexit";
+    const markerIndex = patched.indexOf(marker);
+    if (markerIndex < 0) {
+      throw new Error("MultiModal Prompt Nodes 缺少退出清理注册点，无法添加显式卸载接口。");
+    }
+    const route = [
+      "try:",
+      "    from aiohttp import web as _lvs_web",
+      "    from server import PromptServer as _LvsPromptServer",
+      "",
+      "    @_LvsPromptServer.instance.routes.post(\"/local-video-studio/multimodal-prompt/unload\")",
+      "    async def _lvs_unload_multimodal_prompt(_request):",
+      "        cleanup()",
+      "        return _lvs_web.json_response({\"unload_requested\": True})",
+      "except ImportError:",
+      "    pass",
+      "",
+      ""
+    ].join("\n");
+    patched = `${patched.slice(0, markerIndex)}${route}${patched.slice(markerIndex)}`;
+  }
+  if (
+    !patched.includes('"keep_model_loaded": ("BOOLEAN"') ||
+    !patched.includes("if not keep_model_loaded:") ||
+    !patched.includes('/local-video-studio/multimodal-prompt/unload')
+  ) {
+    throw new Error("MultiModal Prompt Nodes 源码结构与模型驻留适配不匹配，已停止修改。");
+  }
+  return patched;
+}
+
 /**
  * ComfyUI Desktop can close stdout/stderr file descriptors after its embedded
  * console is detached. Protect both the node's bare ``print`` calls and
@@ -284,7 +339,9 @@ export async function prepareMultimodalPromptNodes(
 ): Promise<void> {
   const filename = path.join(targetDirectory, "vision_llm_node.py");
   const source = await fs.readFile(filename, "utf8");
-  const patched = patchMultimodalPromptContextSize(source);
+  const patched = patchMultimodalPromptResidency(
+    patchMultimodalPromptContextSize(source)
+  );
   const occurrences = patched.match(/n_ctx: int = 8192/gu)?.length ?? 0;
   if (occurrences < 2 || patched.includes("n_ctx: int = 4096")) {
     throw new Error(
@@ -293,9 +350,9 @@ export async function prepareMultimodalPromptNodes(
   }
   if (patched !== source) {
     await fs.writeFile(filename, patched, "utf8");
-    report("已将 MultiModal Prompt Nodes 的 GGUF 上下文从 4K 提升到 8K");
+    report("已为 MultiModal Prompt Nodes 应用 8K 上下文与提示词模型驻留适配");
   } else {
-    report("MultiModal Prompt Nodes 已使用 8K GGUF 上下文");
+    report("MultiModal Prompt Nodes 已使用 8K 上下文并支持显式驻留/卸载");
   }
 }
 

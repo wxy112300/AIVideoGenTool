@@ -119,6 +119,7 @@ import {
 } from "./services/comfy-ui.js";
 import {
   enhancePromptWithMultimodalComfyUi,
+  releaseMultimodalPromptModel,
   warmMultimodalPromptModel
 } from "./services/multimodal-prompt.js";
 import {
@@ -130,10 +131,8 @@ import {
 import { ensureQwenVlManagedMetadata } from "./services/qwenvl-model-assets.js";
 import {
   enhancePromptWithH3PromptWriter,
-  promptWriterModelForSelection,
   releaseH3PromptWriter,
-  testH3PromptWriter,
-  validateH3PromptWriterRuntime
+  warmH3PromptWriter
 } from "./services/h3-prompt-writer.js";
 import { getPerformanceMetrics } from "./services/performance.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
@@ -238,6 +237,17 @@ let pendingWindowCloseRequest: WindowCloseRequest | null = null;
 const queueWorkerController = new QueueWorkerController();
 let nativePromptController: AbortController | null = null;
 let nativePromptWorker: Promise<unknown> | null = null;
+let retainedPromptRuntime: {
+  backend: ReturnType<typeof promptModelBackend>;
+  modelId: string;
+} | null = null;
+
+function promptRuntimeLeaseMatches(
+  backend: ReturnType<typeof promptModelBackend>,
+  modelId: string
+): boolean {
+  return retainedPromptRuntime?.backend === backend && retainedPromptRuntime.modelId === modelId;
+}
 let allowWindowClose = false;
 let closeFlowRunning = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -1592,12 +1602,24 @@ async function validateNativePromptRuntime(settings: Settings): Promise<void> {
 }
 
 async function releasePromptRuntime(settings: Settings): Promise<number> {
-  if (isGemmaPromptModel(settings.promptModelId)) {
+  const backend = retainedPromptRuntime?.backend ?? promptModelBackend(settings.promptModelId);
+  retainedPromptRuntime = null;
+  if (backend === "h3-prompt-writer") {
     try {
       return await releaseH3PromptWriter(settings) ? 1 : 0;
     } catch {
       return 0;
     }
+  }
+  if (backend === "comfyui-multimodal") {
+    let released = 0;
+    try {
+      released = await releaseMultimodalPromptModel(settings) ? 1 : 0;
+    } catch {
+      // Older node installs do not expose the app-owned cleanup route yet.
+    }
+    await freeMemory(settings).catch(() => undefined);
+    return released;
   }
   try {
     await freeMemory(settings);
@@ -1631,17 +1653,14 @@ async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: st
   if (nativePromptWorker) {
     return { ok: false, message: "当前正在生成提示词，请等待本次扩写完成。" };
   }
-  if (isGemmaPromptModel(settings.promptModelId)) {
-    try {
-      const released = await releaseH3PromptWriter(settings);
-      return { ok: true, message: released ? "已请求 ComfyUI 卸载 H3 Prompt Writer 模型并释放显存。" : "当前没有已加载的 Prompt Writer 模型。" };
-    } catch {
-      return { ok: true, message: "ComfyUI 当前未运行，无需释放提示词模型。" };
-    }
-  }
   try {
-    await freeMemory(settings);
-    return { ok: true, message: "已请求 ComfyUI 卸载提示词模型并释放显存。" };
+    const released = await releasePromptRuntime(settings);
+    return {
+      ok: true,
+      message: released
+        ? "已卸载提示词模型并释放显存。"
+        : "当前没有已加载的提示词模型。"
+    };
   } catch {
     return { ok: true, message: "ComfyUI 当前未运行，无需释放提示词模型。" };
   }
@@ -2540,15 +2559,16 @@ function registerIpc(): void {
     if (nativePromptWorker) {
       return { ok: false, message: "提示词模型正在启动或使用中。" };
     }
+    if (retainedPromptRuntime !== null) {
+      await releasePromptRuntime(settings);
+    }
     const controller = new AbortController();
     nativePromptController = controller;
     const worker = (async () => {
       if (promptBackend === "h3-prompt-writer") {
         await ensureComfyUiReadyForPrompt(settings);
         await validateNativePromptRuntime(settings);
-        const status = await testH3PromptWriter(settings, controller.signal);
-        promptWriterModelForSelection(status.models, settings.promptModelId);
-        validateH3PromptWriterRuntime(status.diagnostics);
+        await warmH3PromptWriter(settings, controller.signal);
         return;
       }
       if (promptBackend === "comfyui-multimodal") {
@@ -2574,6 +2594,10 @@ function registerIpc(): void {
     nativePromptWorker = worker;
     try {
       await worker;
+      retainedPromptRuntime = {
+        backend: promptBackend,
+        modelId: settings.promptModelId
+      };
       appLogger.info("prompt", "service-ready", "Prompt service ready", {
         runtime,
         durationMs: Date.now() - startedAt
@@ -2581,14 +2605,23 @@ function registerIpc(): void {
       return {
         ok: true,
         message: promptBackend === "h3-prompt-writer"
-          ? "ComfyUI H3 Prompt Writer 已就绪；模型会在扩写时按需加载，完成后自动卸载。"
+          ? "ComfyUI H3 Prompt Writer 已加载并保持驻留；手动退出或开始队列时释放。"
           : promptBackend === "comfyui-multimodal"
-            ? "ComfyUI 多模态提示词模型已通过节点验证；每次扩写后自动释放显存。"
+            ? "ComfyUI 多模态提示词模型已加载并保持驻留；手动退出或开始队列时释放。"
           : promptBackend === "comfyui-qwenvl-lora"
-            ? "Qwen3-VL 8B + H3 Prompt Rewriter LoRA 已通过节点验证；每次扩写后自动释放显存。"
+            ? "Qwen3-VL 8B + H3 Prompt Rewriter LoRA 已加载并保持驻留；手动退出或开始队列时释放。"
           : "Qwen 提示词模型已启动并加载到 ComfyUI。"
       };
     } catch (error) {
+      retainedPromptRuntime = null;
+      if (promptBackend === "h3-prompt-writer") {
+        await releaseH3PromptWriter(settings).catch(() => undefined);
+      } else if (promptBackend === "comfyui-multimodal") {
+        await releaseMultimodalPromptModel(settings).catch(() => undefined);
+        await freeMemory(settings).catch(() => undefined);
+      } else {
+        await freeMemory(settings).catch(() => undefined);
+      }
       await captureComfyUiLogFailure(
         appLogger,
         settings,
@@ -2649,13 +2682,14 @@ function registerIpc(): void {
           request,
           settings,
           controller.signal,
-          promptProgress.update
+          promptProgress.update,
+          !promptRuntimeLeaseMatches(promptBackend, settings.promptModelId)
         );
       })();
       nativePromptWorker = worker;
       try {
         const result = await worker;
-        promptProgress.finish("completed", "unloading");
+        promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
         appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
           ...promptLogContext,
           durationMs: Date.now() - startedAt,
@@ -2706,13 +2740,14 @@ function registerIpc(): void {
           controller.signal,
           false,
           promptProgress.update,
-          operationId
+          operationId,
+          promptRuntimeLeaseMatches(promptBackend, settings.promptModelId)
         );
       })();
       nativePromptWorker = worker;
       try {
         const result = await worker;
-        promptProgress.finish("completed", "unloading");
+        promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
         appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
           ...promptLogContext,
           durationMs: Date.now() - startedAt,
@@ -2764,13 +2799,14 @@ function registerIpc(): void {
           controller.signal,
           false,
           promptProgress.update,
-          operationId
+          operationId,
+          promptRuntimeLeaseMatches(promptBackend, settings.promptModelId)
         );
       })();
       nativePromptWorker = worker;
       try {
         const result = await worker;
-        promptProgress.finish("completed", "unloading");
+        promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
         appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
           ...promptLogContext,
           durationMs: Date.now() - startedAt,
@@ -2817,18 +2853,23 @@ function registerIpc(): void {
       promptProgress.update("checking", 5);
       await ensureComfyUiReadyForPrompt(settings);
       await validateNativePromptRuntime(settings);
-      return enhancePromptWithComfyUi(
-        request,
-        settings,
-        controller.signal,
-        false,
-        promptProgress.update
-      );
+      const retainModel = promptRuntimeLeaseMatches(promptBackend, settings.promptModelId);
+      try {
+        return await enhancePromptWithComfyUi(
+          request,
+          settings,
+          controller.signal,
+          false,
+          promptProgress.update
+        );
+      } finally {
+        if (!retainModel) await freeMemory(settings).catch(() => undefined);
+      }
     })();
     nativePromptWorker = worker;
     try {
       const result = await worker;
-      promptProgress.finish("completed", "unloading");
+      promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
       appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
         ...promptLogContext,
         durationMs: Date.now() - startedAt,

@@ -9,29 +9,37 @@ import {
   type ComfyRuntimeServiceDependencies
 } from "../electron/services/comfy-runtime-service";
 import { comfyUiSettingsForQueueTask } from "../electron/services/comfy-runtime-policy";
+import { launchComfyUiVisible } from "../electron/services/local-service-process";
 import { createDefaultState } from "../src/core/defaults";
 
 describe("ComfyUI runtime service", () => {
-  it("rebinds Windows Python output to its visible console before running ComfyUI", () => {
-    const args = comfyUiPythonEntryArgs("D:\\ComfyCore\\main.py", "win32");
+  it("captures complete stdout, stderr, UTF-8, and unterminated tail lines", async () => {
+    const lines: Array<{ stream: "stdout" | "stderr"; line: string }> = [];
+    let finish!: () => void;
+    const closed = new Promise<void>((resolve) => { finish = resolve; });
 
-    expect(args.slice(0, 3)).toEqual(["-s", "-c", expect.any(String)]);
-    expect(args[2]).toContain("open('CONOUT$', 'w'");
-    expect(args[2]).toContain("open(os.devnull, 'w'");
-    expect(args[2]).toContain("for stream_name in ('stdout', 'stderr'):");
-    expect(args[2]).toContain("GetConsoleMode");
-    expect(args[2]).toContain("SetConsoleMode");
-    expect(args[2]).toContain("setattr(sys, name, stream)");
-    expect(args[2]).toContain("setattr(sys, '__' + name + '__', stream)");
-    expect(args[2]).toContain("mode.value | 0x0004");
-    expect(args[2]).toContain("except Exception:");
-    expect(args[2]).toContain("runpy.run_path(entry, run_name='__main__')");
-    expect(args[3]).toBe("D:\\ComfyCore\\main.py");
+    await launchComfyUiVisible(
+      process.execPath,
+      ["-e", "process.stdout.write('启动\\n尾行'); process.stderr.write('Traceback\\nValueError: failed')"],
+      process.cwd(),
+      process.env,
+      () => finish(),
+      (_processId, stream, line) => lines.push({ stream, line })
+    );
+    await closed;
+
+    expect(lines).toHaveLength(4);
+    expect(lines).toEqual(expect.arrayContaining([
+      { stream: "stdout", line: "启动" },
+      { stream: "stderr", line: "Traceback" },
+      { stream: "stdout", line: "尾行" },
+      { stream: "stderr", line: "ValueError: failed" }
+    ]));
   });
 
-  it("keeps the direct Python entry outside Windows", () => {
-    expect(comfyUiPythonEntryArgs("/opt/ComfyUI/main.py", "linux"))
-      .toEqual(["-s", "/opt/ComfyUI/main.py"]);
+  it("keeps Python on the stable stdio supplied by the process launcher", () => {
+    expect(comfyUiPythonEntryArgs("D:\\ComfyCore\\main.py"))
+      .toEqual(["-s", "D:\\ComfyCore\\main.py"]);
   });
 
   it("retains the real listener PID after a Desktop launcher hands off", () => {

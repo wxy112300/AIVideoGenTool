@@ -71,6 +71,7 @@ Large entry files are an existing risk, not a pattern to expand. When work intro
 - Do not terminate an independently started ComfyUI Desktop/service. Ownership must be explicit, not inferred only from port or executable name.
 - Updating or restarting an app-managed ComfyUI instance must restore connection state and report logs/progress.
 - Port `8188` is the application default, but configured endpoints remain valid.
+- Prompt-model residency is an explicit main-process lease. Starting the prompt model warms and retains it across prompt requests; manual release, the first queued generation, or application exit ends the lease and unloads it. A one-off prompt request without that lease releases its model when complete.
 
 ## IPC Contract
 

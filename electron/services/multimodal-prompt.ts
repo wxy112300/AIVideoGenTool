@@ -65,6 +65,18 @@ function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
+export async function releaseMultimodalPromptModel(
+  settings: Pick<Settings, "comfyUrl">
+): Promise<boolean> {
+  const response = await fetch(
+    `${cleanBaseUrl(settings.comfyUrl)}/local-video-studio/multimodal-prompt/unload`,
+    { method: "POST", signal: AbortSignal.timeout(15_000) }
+  );
+  if (!response.ok) throw new Error(`MultiModal Prompt 模型卸载失败（HTTP ${response.status}）`);
+  const body = await response.json() as { unload_requested?: boolean };
+  return Boolean(body.unload_requested);
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, Number.isFinite(value) ? value : minimum));
 }
@@ -111,7 +123,8 @@ export function buildMultimodalPromptWorkflow(
   uploadedImages: readonly string[],
   settings: Settings,
   warmup = false,
-  device: MultimodalDevice = "GPU"
+  device: MultimodalDevice = "GPU",
+  retainModel = false
 ): Record<string, PromptNode> {
   const definition = comfyMultimodalPromptModel(settings.promptModelId);
   if (!definition) {
@@ -152,7 +165,8 @@ export function buildMultimodalPromptWorkflow(
         // user-controlled range without allowing a
         // high-creativity prompt pass to destabilize H3 output.
         temperature: clamp(settings.promptCreativity, 0.2, 0.9),
-        device
+        device,
+        keep_model_loaded: retainModel
       }
     },
     preview: {
@@ -170,7 +184,8 @@ export async function enhancePromptWithMultimodalComfyUi(
   signal: AbortSignal,
   warmup = false,
   onProgress?: PromptProgressReporter,
-  operationId = crypto.randomUUID()
+  operationId = crypto.randomUUID(),
+  retainModel = false
 ): Promise<string> {
   if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
   validateH3ReferenceAutoPrompt(request);
@@ -180,13 +195,15 @@ export async function enhancePromptWithMultimodalComfyUi(
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const operationStartedAt = Date.now();
   try {
-    try {
-      await freeMemory(settings);
-    } catch (error) {
-      appLogger.warn("prompt", "multimodal-pre-release-failed", "Unable to release existing ComfyUI models before multimodal prompt generation", {
-        error: error instanceof Error ? error.message : String(error)
-      });
-      throw new Error("无法在加载多模态提示词模型前释放 ComfyUI 已有模型；为避免显存冲突，本次扩写已停止。请先停止当前任务或重启 ComfyUI。", { cause: error });
+    if (warmup || !retainModel) {
+      try {
+        await freeMemory(settings);
+      } catch (error) {
+        appLogger.warn("prompt", "multimodal-pre-release-failed", "Unable to release existing ComfyUI models before multimodal prompt generation", {
+          error: error instanceof Error ? error.message : String(error)
+        });
+        throw new Error("无法在加载多模态提示词模型前释放 ComfyUI 已有模型；为避免显存冲突，本次扩写已停止。请先停止当前任务或重启 ComfyUI。", { cause: error });
+      }
     }
     const metrics = await getPerformanceMetrics(settings).catch(() => null);
     const device = multimodalDeviceFor(
@@ -225,7 +242,8 @@ export async function enhancePromptWithMultimodalComfyUi(
       uploadedImages,
       settings,
       warmup,
-      device
+      device,
+      retainModel
     );
     const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
     if (missingNodes.length) {
@@ -289,22 +307,22 @@ export async function enhancePromptWithMultimodalComfyUi(
     );
     return normalizeH3PromptOutput(output, mode, request.h3DurationSeconds ?? 5);
   } finally {
-    // VisionLLMNode unloads its own manager after execution. `/free` is the
-    // second safety boundary so H3 never inherits the prompt model's VRAM/context state.
-    const cleanupStartedAt = Date.now();
-    try {
-      await freeMemory(settings);
-      appLogger.info("prompt", "cleanup-finished", "Multimodal prompt model cleanup finished", {
-        operationId,
-        modelId: settings.promptModelId,
-        durationMs: Date.now() - cleanupStartedAt
-      });
-    } catch (error) {
-      appLogger.error("prompt", "cleanup-failed", safeLogErrorMessage(error), {
-        operationId,
-        modelId: settings.promptModelId,
-        durationMs: Date.now() - cleanupStartedAt
-      });
+    if (!retainModel) {
+      const cleanupStartedAt = Date.now();
+      try {
+        await freeMemory(settings);
+        appLogger.info("prompt", "cleanup-finished", "Multimodal prompt model cleanup finished", {
+          operationId,
+          modelId: settings.promptModelId,
+          durationMs: Date.now() - cleanupStartedAt
+        });
+      } catch (error) {
+        appLogger.error("prompt", "cleanup-failed", safeLogErrorMessage(error), {
+          operationId,
+          modelId: settings.promptModelId,
+          durationMs: Date.now() - cleanupStartedAt
+        });
+      }
     }
   }
 }
@@ -322,6 +340,9 @@ export async function warmMultimodalPromptModel(
     },
     settings,
     signal,
+    true,
+    undefined,
+    crypto.randomUUID(),
     true
   );
 }

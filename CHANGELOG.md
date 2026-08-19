@@ -8,7 +8,16 @@
 
 ## 未发布
 
-暂无。
+## 0.29.5 — 2026-08-20
+
+- 移除节点与工作流页面长期显示的 Motion Context `v0.3.1` 旧画布迁移警告。本应用构造 API 工作流，不使用 ComfyUI 画布按位置保存的旧 widget 值；上游删除并重加节点的说明只适用于用户手工保存的旧版画布。
+- 统一修复所有本地提示词后端的模型生命周期：Gemma Prompt Writer、Qwen MultiModal、Qwen-VL Prompt Rewriter 与原生 TextGenerate 在显式启动后都会预热并驻留，连续扩写复用同一模型，直到手动释放、开始队列或退出应用；未显式启动的单次扩写仍在完成后释放显存。MultiModal 节点适配新增可选驻留输入与显式卸载接口，避免节点内部 `finally` 在每次请求后强制卸载。
+
+## 0.29.4 — 2026-08-19
+
+- 应用启动的 ComfyUI 改用稳定的 `stdout`/`stderr` 管道，启动脚本错误、节点导入失败、运行期警告和完整 Python traceback 会实时脱敏并写入 Local Video Studio 日志，带有子进程 PID 与流来源。
+- 移除依赖 `CONOUT$`/`NUL` 重绑定的 Python bootstrap，避免 ComfyUI `LogInterceptor` 包装共享 buffer 时出现生命周期问题；UTF-8 跨 chunk 内容和进程退出前未换行的尾部日志也会完整保留。
+- ComfyUI 启动超时或抛错时主动抓取磁盘日志尾部，并记录日志是否可用、抓取行数、错误行数和截断状态；外部启动实例继续使用磁盘日志桥。
 
 ## 0.29.3 — 2026-08-19
 

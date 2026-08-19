@@ -35,6 +35,7 @@ import {
 } from "../../src/core/catalog/index.js";
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
+import { captureComfyUiLogFailure } from "./comfy-log-bridge.js";
 import {
   availableComfyNodeIds,
   readLatestComfyLog,
@@ -3113,6 +3114,22 @@ async function startLocalServiceOperation(
           message: "已等待 2 分钟，但接口仍未就绪。ComfyUI 可能仍在加载，请稍后重新扫描。"
         };
     if (ready && ownership === "app") await rememberOwnedComfyListener(settings);
+    if (!ready) {
+      const diagnostics = await captureComfyUiLogFailure(
+        appLogger,
+        settings,
+        "service_start_timeout",
+        { operationId: String(operationId) }
+      );
+      appLogger.error("comfy", "service-start-timeout", result.message, {
+        operationId,
+        ownership,
+        logAvailable: diagnostics.available,
+        capturedLines: diagnostics.lines,
+        errorLines: diagnostics.errors,
+        logTruncated: diagnostics.truncated
+      });
+    }
     comfyRuntimeState.finish(
       operationId,
       ready ? "ready" : "error",
@@ -3125,6 +3142,21 @@ async function startLocalServiceOperation(
       ok: false,
       message: error instanceof Error ? error.message : String(error)
     };
+    const diagnostics = await captureComfyUiLogFailure(
+      appLogger,
+      settings,
+      "service_start_failed",
+      { operationId: String(operationId) }
+    );
+    appLogger.error("comfy", "service-start-failed", result.message, {
+      operationId,
+      ownership,
+      errorName: error instanceof Error ? error.name : "Error",
+      logAvailable: diagnostics.available,
+      capturedLines: diagnostics.lines,
+      errorLines: diagnostics.errors,
+      logTruncated: diagnostics.truncated
+    });
     comfyRuntimeState.finish(operationId, "error", result.message);
     return result;
   }

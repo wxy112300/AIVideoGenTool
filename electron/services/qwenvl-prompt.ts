@@ -264,7 +264,8 @@ export async function enhancePromptWithQwenVlPeft(
   signal: AbortSignal,
   warmup = false,
   onProgress?: PromptProgressReporter,
-  operationId = crypto.randomUUID()
+  operationId = crypto.randomUUID(),
+  retainModel = false
 ): Promise<string> {
   if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) {
     throw new Error("请先输入需要扩写的提示词");
@@ -277,7 +278,7 @@ export async function enhancePromptWithQwenVlPeft(
   try {
     onProgress?.("checking", 5);
     await ensureQwenVlManagedMetadata(settings, signal, onProgress);
-    await freeMemory(settings);
+    if (warmup || !retainModel) await freeMemory(settings);
     const objectInfo = await jsonRequest<Record<string, unknown>>(
       `${baseUrl}/object_info`,
       { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
@@ -348,17 +349,19 @@ export async function enhancePromptWithQwenVlPeft(
     });
     throw reportedError;
   } finally {
-    try {
-      await freeMemory(settings);
-      appLogger.info("prompt", "qwenvl-peft-cleanup-finished", "Qwen3-VL PEFT prompt model cleanup finished", {
-        operationId,
-        modelId: settings.promptModelId
-      });
-    } catch (error) {
-      appLogger.error("prompt", "qwenvl-peft-cleanup-failed", safeLogErrorMessage(error), {
-        operationId,
-        modelId: settings.promptModelId
-      });
+    if (!retainModel) {
+      try {
+        await freeMemory(settings);
+        appLogger.info("prompt", "qwenvl-peft-cleanup-finished", "Qwen3-VL PEFT prompt model cleanup finished", {
+          operationId,
+          modelId: settings.promptModelId
+        });
+      } catch (error) {
+        appLogger.error("prompt", "qwenvl-peft-cleanup-failed", safeLogErrorMessage(error), {
+          operationId,
+          modelId: settings.promptModelId
+        });
+      }
     }
   }
 }
@@ -376,6 +379,9 @@ export async function warmQwenVlPeftPromptModel(
     },
     settings,
     signal,
+    true,
+    undefined,
+    crypto.randomUUID(),
     true
   );
 }

@@ -3,7 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AppLogger } from "../electron/services/app-logger.js";
-import { ComfyLogBridge } from "../electron/services/comfy-log-bridge.js";
+import {
+  ComfyLogBridge,
+  forwardComfyProcessLogLine
+} from "../electron/services/comfy-log-bridge.js";
 
 const temporaryDirectories: string[] = [];
 const originalAppData = process.env.APPDATA;
@@ -19,6 +22,27 @@ afterEach(async () => {
 });
 
 describe("ComfyUI log bridge", () => {
+  it("forwards app-owned process output with severity and sanitization", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-comfy-process-log-"));
+    temporaryDirectories.push(root);
+    const logger = new AppLogger({ directory: path.join(root, "app-logs") });
+
+    forwardComfyProcessLogLine(logger, 81880, "stderr", "ValueError: I/O operation on closed file.");
+    forwardComfyProcessLogLine(logger, 81880, "stderr", "  File 'C:\\private\\app\\logger.py', line 73");
+
+    const snapshot = logger.recent();
+    expect(snapshot.text).toContain("ComfyUI.ProcessOutput");
+    expect(snapshot.text).toContain("ValueError: I/O operation on closed file.");
+    expect(snapshot.text).toContain("[path]/logger.py");
+    expect(snapshot.text).not.toContain("C:\\private\\app\\logger.py");
+    expect(snapshot.records[0]?.level).toBe("error");
+    expect(snapshot.records[0]?.meta).toMatchObject({
+      source: "ComfyUI",
+      childProcessId: 81880,
+      stream: "stderr"
+    });
+  });
+
   it("tails new ComfyUI lines into the application log without copying prompt content", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-comfy-log-"));
     temporaryDirectories.push(root);

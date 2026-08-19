@@ -156,7 +156,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   aliases: ["comfyui-qwenvl-lora", "comfyui_qwenvl_lora"],
   releaseSource: "github-release",
   nodeTypes: ["QwenVLModelLoader", "QwenVLLoRALoader", "QwenVLCaption"],
-  runtimeRequirement: "需要当前 ComfyUI Python 中的 transformers、peft、accelerate、safetensors、Pillow 和 bitsandbytes；4090 建议 4-bit + SDPA，并在扩写完成后释放模型。",
+  runtimeRequirement: "需要当前 ComfyUI Python 中的 transformers、peft、accelerate、safetensors、Pillow 和 bitsandbytes；4090 建议 4-bit + SDPA。显式启动后模型会在连续扩写期间驻留，并在手动退出、开始队列或关闭应用时释放。",
   compatibilityEvidence: [{
     verifiedAt: "2026-08-19",
     sourceUrl: "https://github.com/Dangocan/comfyui_qwenvl_lora",

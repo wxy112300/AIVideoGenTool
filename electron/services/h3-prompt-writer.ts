@@ -211,7 +211,8 @@ export async function enhancePromptWithH3PromptWriter(
   request: EnhanceRequest,
   settings: Settings,
   signal: AbortSignal,
-  onProgress?: PromptProgressReporter
+  onProgress?: PromptProgressReporter,
+  unloadAfter = true
 ): Promise<string> {
   if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要优化的提示词");
   validateH3ReferenceAutoPrompt(request);
@@ -252,7 +253,7 @@ export async function enhancePromptWithH3PromptWriter(
         aspect_ratio: request.h3AspectRatio || "16:9",
         duration_seconds: request.h3DurationSeconds || 5,
         thinking: false,
-        unload_after: true,
+        unload_after: unloadAfter,
         context_profile: "auto",
         kv_cache: "auto"
       }),
@@ -264,11 +265,24 @@ export async function enhancePromptWithH3PromptWriter(
       ? extractImageEditPromptFromWriter(result.prompt)
       : result.prompt.trim();
   } finally {
-    onProgress?.("unloading", 98);
+    onProgress?.(unloadAfter ? "unloading" : "validating", 98);
     signal.removeEventListener("abort", cancel);
     void fetch(`${root}/h3studio/media?session_id=${encodeURIComponent(sessionId)}`, {
       method: "DELETE",
       signal: AbortSignal.timeout(10_000)
     }).catch(() => undefined);
   }
+}
+
+export async function warmH3PromptWriter(
+  settings: Settings,
+  signal: AbortSignal
+): Promise<void> {
+  await enhancePromptWithH3PromptWriter({
+    prompt: "Write one minimal MiniMax H3 test prompt for a static scene.",
+    modelId: "prompt-runtime-warmup",
+    h3PromptMode: "T2VA",
+    h3DurationSeconds: 5,
+    h3AspectRatio: "16:9"
+  }, settings, signal, undefined, false);
 }

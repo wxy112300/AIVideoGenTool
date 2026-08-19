@@ -45,6 +45,30 @@ function logLevelForLine(line: string): "info" | "warn" | "error" {
   return "info";
 }
 
+export function forwardComfyProcessLogLine(
+  logger: AppLogger,
+  processId: number,
+  stream: "stdout" | "stderr",
+  rawLine: string
+): void {
+  const line = sanitizeComfyLogLine(rawLine);
+  if (!line) return;
+  const level = logLevelForLine(line);
+  const meta = {
+    source: "ComfyUI",
+    childProcessId: processId,
+    stream,
+    sourceLine: true
+  };
+  if (level === "error") {
+    logger.error("comfy", "process-output", `ComfyUI: ${line}`, meta);
+  } else if (level === "warn") {
+    logger.warn("comfy", "process-output", `ComfyUI: ${line}`, meta);
+  } else {
+    logger.info("comfy", "process-output", `ComfyUI: ${line}`, meta);
+  }
+}
+
 /**
  * Keep traceback details useful without copying prompts, media payloads, or
  * machine-specific paths into the application's retained log files.
