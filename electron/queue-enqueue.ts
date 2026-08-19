@@ -24,6 +24,7 @@ import {
   workflowSupportsEndImage,
   workflowSupportsH3BoundaryExtension,
   workflowSupportsH3MotionContextExtension,
+  workflowSupportsH3MotionContextReferences,
   workflowSupportsH3TurboSampling
 } from "../src/core/workflow.js";
 import {
@@ -36,6 +37,10 @@ import {
   SPECTRUM_TURBO_MINIMUM_VERSION
 } from "../src/core/catalog/index.js";
 import { resolveVideoGenerationPolicy } from "../src/core/video-policy.js";
+import {
+  ensureMotionContextSourceSlot,
+  h3ReferenceSlotCounts
+} from "../src/core/h3-reference.js";
 import { releaseVersionAtLeast } from "../src/core/release-version.js";
 import {
   extensionTaskFromDraft,
@@ -401,6 +406,21 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     if (!promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择视频续写 API 工作流");
     if (!(await fs.stat(draft.sourceVideoPath).catch(() => null))) throw new Error("源视频文件不存在，无法加入续写队列");
+    const motionContext = isMiniMaxH3R2vModel(draft.modelId);
+    const preparedDraft = structuredClone(draft);
+    if (motionContext) {
+      preparedDraft.h3ReferenceSlots = ensureMotionContextSourceSlot(
+        preparedDraft.h3ReferenceSlots,
+        preparedDraft.sourceVideoPath
+      );
+      const counts = h3ReferenceSlotCounts(preparedDraft.h3ReferenceSlots);
+      if (counts.imageCount > 9 || counts.videoCount > 3 || counts.total > 12) {
+        throw new Error("H3 Motion Context 最多支持 9 张图片、3 段视频，且总参考媒体不超过 12 个。");
+      }
+      if (!preparedDraft.h3ReferenceSlots.every((slot) => slot.mediaPath.trim())) {
+        throw new Error("Motion Context 的每个参考 Slot 都必须先添加图片或视频。");
+      }
+    }
     const workflow = await readWorkflow(draft.workflowPath, "续写工作流");
     const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
@@ -410,22 +430,63 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         ? workflowSupportsH3MotionContextExtension(workflow) ? [] : ["H3 Motion Context 工作流缺少 R2V、运动上下文、同步裁剪、latent 保存或视频输出节点"]
         : extensionWorkflowSafetyErrors(workflow, store.get().settings.uiLocale);
     if (safetyErrors.length) throw new Error(`续写工作流不符合原生续写低显存契约：${safetyErrors.join("；")}`);
+    if (motionContext) {
+      const imageCount = preparedDraft.h3ReferenceSlots.filter((slot) => slot.mediaType === "image").length;
+      const extraVideoCount = Math.max(0, preparedDraft.h3ReferenceSlots.filter((slot) => slot.mediaType === "video").length - 1);
+      if (!workflowSupportsH3MotionContextReferences(workflow, imageCount, extraVideoCount)) {
+        throw new Error("当前 Motion Context 工作流没有对应的参考 Slot 输入，请重新选择新版 minimax_h3_r2v_extend_api.json。");
+      }
+    }
+    if (motionContext) {
+      const imagePaths = preparedDraft.h3ReferenceSlots
+        .filter((slot) => slot.mediaType === "image")
+        .map((slot) => slot.mediaPath)
+        .filter(Boolean);
+      if (imagePaths.length) {
+        const library = await deps.effectiveImageInputLibraryDirectory(store.get().settings);
+        const operationId = randomUUID().slice(0, 8);
+        logger.info("assets", "extension-input-image-archive-started", "开始归档续写任务参考图片", {
+          operationId,
+          referenceCount: imagePaths.length
+        });
+        try {
+          const archived = await archiveImagePaths(imagePaths, library);
+          const replacements = new Map(imagePaths.map((source, index) => [source, archived[index]!])) as Map<string, string>;
+          preparedDraft.h3ReferenceSlots = preparedDraft.h3ReferenceSlots.map((slot) =>
+            slot.mediaType === "image"
+              ? { ...slot, mediaPath: replacements.get(slot.mediaPath) ?? slot.mediaPath }
+              : slot
+          );
+          logger.info("assets", "extension-input-image-archive-completed", "续写任务参考图片已归档并校验", {
+            operationId,
+            referenceCount: imagePaths.length,
+            uniqueAssets: new Set(archived).size
+          });
+        } catch (error) {
+          logger.error("assets", "extension-input-image-archive-failed", "续写任务参考图片归档失败，任务未加入队列", {
+            operationId,
+            error: safeLogErrorMessage(error)
+          });
+          throw error;
+        }
+      }
+    }
     const current = store.get();
-    const task = extensionTaskFromDraft(draft, current);
+    const task = extensionTaskFromDraft(preparedDraft, current);
     if (isMiniMaxH3R2vModel(task.modelId)) {
       const outputDirectory = await deps.resolveTaskOutputDirectory();
       task.h3ContextSavePrefix = `h3_context/${task.id}/clip`;
       task.h3ContextSavedPath = outputDirectory ? path.join(outputDirectory, "h3_context", task.id, "clip_00001.safetensors") : undefined;
-      task.h3ContextLatentPath = draft.h3ContextLatentPath &&
-        Math.abs(draft.trimEndSeconds - draft.sourceVideoDuration) < 0.05 &&
-        await fs.stat(draft.h3ContextLatentPath).catch(() => null)
-        ? draft.h3ContextLatentPath : undefined;
+      task.h3ContextLatentPath = preparedDraft.h3ContextLatentPath &&
+        Math.abs(preparedDraft.trimEndSeconds - preparedDraft.sourceVideoDuration) < 0.05 &&
+        await fs.stat(preparedDraft.h3ContextLatentPath).catch(() => null)
+        ? preparedDraft.h3ContextLatentPath : undefined;
     }
     const safety = extensionSafetyForTask(task, current.settings.uiLocale);
     if (!safety.safe) throw new Error(safety.message);
     const next = await store.update((state) => {
       state.queue.push(task);
-      state.draft = draft;
+      state.draft = preparedDraft;
     });
     logger.info("queue", "task-enqueued", "Extension task added to queue", {
       taskId: task.id, taskType: task.taskType, modelId: task.modelId, duration: task.duration, fps: task.fps

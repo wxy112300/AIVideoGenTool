@@ -255,13 +255,24 @@ describe("queue execution snapshots", () => {
       sourceVideoDuration: 12,
       trimEndSeconds: 12,
       workflowPath: "extend.json",
-      spectrumMode: "balanced" as const
+      spectrumMode: "balanced" as const,
+      h3ReferenceSlots: [{
+        id: "picture-ref",
+        mediaType: "image" as const,
+        mediaPath: "subject.png",
+        role: "subject" as const,
+        note: ""
+      }]
     };
     const queued = extensionTaskFromDraft(draft, state, clock());
 
     expect(queued.spectrumMode).toBe("off");
     expect(queued.maxGeneratedFrames).toBe(362);
     expect(queued.sourceVideoPath).toBe("source.mp4");
+    expect(queued.h3ReferenceSlots?.map((slot) => [slot.mediaType, slot.mediaPath])).toEqual([
+      ["video", "source.mp4"],
+      ["image", "subject.png"]
+    ]);
   });
 });
 

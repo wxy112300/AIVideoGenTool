@@ -74,6 +74,17 @@ type SettingsCopyKey =
   | "prompt.runtimeInstalling"
   | "prompt.runtimeLog"
   | "prompt.runtimeNodeMissing"
+  | "prompt.runtimeQwenNodeReady"
+  | "prompt.runtimeQwenNodeMissing"
+  | "prompt.runtimeQwenHint"
+  | "prompt.runtimeQwenTitle"
+  | "prompt.runtimeQwenBase"
+  | "prompt.runtimeQwenBaseReady"
+  | "prompt.runtimeQwenBaseMissing"
+  | "prompt.runtimeQwenNode"
+  | "prompt.runtimeQwenNodeLoaded"
+  | "prompt.runtimeQwenNodeInstalled"
+  | "prompt.runtimeQwenNodeMissingAction"
   | "prompt.videoPresetTitle"
   | "prompt.videoPresetDescription"
   | "prompt.restore"
@@ -288,7 +299,7 @@ const zhCN: SettingsCopyCatalog = {
   "prompt.scanning": "正在扫描 ComfyUI/models…",
   "prompt.summary": "找到 {count} 个提示词模型档位",
   "prompt.waitingScan": "等待首次扫描",
-  "prompt.note": "Qwen Safetensors 使用 ComfyUI 官方 models/text_encoders 分类；Gemma GGUF 使用 H3 Prompt Writer 扩展注册的大写 models/LLM/独立子目录，主模型与匹配的 mmproj 必须放在一起。扩写完成会自动卸载，不需要安装或启动 llama-server、LM Studio。",
+  "prompt.note": "Qwen3.5 Safetensors 使用 ComfyUI 官方 models/text_encoders 分类；Qwen3-VL 8B + H3 Rewriter LoRA 使用 models/LLM/Qwen-VL 与 models/LLM/Qwen-VL-LoRA 两个专用子目录；Gemma GGUF 使用大写 models/LLM/独立子目录。扩写完成会自动卸载，不需要安装或启动 llama-server、LM Studio。",
   "prompt.runtimeTitle": "Gemma GGUF 运行依赖",
   "prompt.runtimeDescription": "H3 Prompt Writer 与可选 MultiModal 节点共用当前 ComfyUI Python 中的 llama-cpp-python；这里独立检测并安装 CUDA 后端。节点更新不会覆盖已通过自检的后端，只有点击修复时才会替换不兼容版本，请不要让两个节点各自重复安装。",
   "prompt.runtimeReady": "CUDA 后端已就绪",
@@ -303,6 +314,17 @@ const zhCN: SettingsCopyCatalog = {
   "prompt.runtimeInstalling": "正在安装并自检…",
   "prompt.runtimeLog": "运行依赖安装日志",
   "prompt.runtimeNodeMissing": "Prompt Writer 节点尚未加载；安装依赖后请重启 ComfyUI 并重新扫描。",
+  "prompt.runtimeQwenNodeReady": "Qwen-VL LoRA 节点已加载；提示词增强会在任务完成后释放基座和适配器。",
+  "prompt.runtimeQwenNodeMissing": "Qwen-VL LoRA 节点尚未加载；请在“节点与工作流”中安装后重启 ComfyUI 并重新扫描。",
+  "prompt.runtimeQwenHint": "该模型使用 Qwen3-VL 8B + PEFT LoRA，不需要 llama-cpp-python、llama-server 或 mmproj；节点安装和 Python 依赖由 ComfyUI 管理。",
+  "prompt.runtimeQwenTitle": "H3 Prompt Rewriter 运行状态",
+  "prompt.runtimeQwenBase": "Qwen3-VL 8B 基座 + H3 Rewriter LoRA",
+  "prompt.runtimeQwenBaseReady": "文件已找到，启动时由 ComfyUI 加载",
+  "prompt.runtimeQwenBaseMissing": "请先补齐设置卡片中的基座和 LoRA 文件",
+  "prompt.runtimeQwenNode": "ComfyUI Qwen-VL LoRA 节点",
+  "prompt.runtimeQwenNodeLoaded": "QwenVLModelLoader · QwenVLLoRALoader · QwenVLCaption",
+  "prompt.runtimeQwenNodeInstalled": "节点已安装，等待 ComfyUI 启动并验证",
+  "prompt.runtimeQwenNodeMissingAction": "请在“节点与工作流”中安装",
   "prompt.videoPresetTitle": "视频提示词预设",
   "prompt.videoPresetDescription": "预设会把原始文字和参考图整理成完整的 H3 视频提示词，覆盖主体、场景、动作、镜头、声音、对白和连续性。",
   "prompt.restore": "恢复默认",
@@ -375,7 +397,7 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.compatibilityWarning": "兼容性待确认",
   "nodes.compatibilityError": "兼容性错误",
   "nodes.runtimeVerified": "运行时已验证",
-  "nodes.fileCheckPassed": "文件检查通过",
+  "nodes.fileCheckPassed": "文件检查通过 · 启动后验证",
   "nodes.installedRepair": "已安装，需修复",
   "nodes.updateRestart": "更新并重启",
   "nodes.updateRecheck": "更新/重启复检",
@@ -510,7 +532,15 @@ const zhTW: SettingsCopyCatalog = {
   "prompt.scanning": "正在掃描 ComfyUI/models…",
   "prompt.summary": "找到 {count} 個提示詞模型檔位",
   "prompt.waitingScan": "等待首次掃描",
-  "prompt.note": "Qwen Safetensors 使用 ComfyUI 官方 models/text_encoders 分類；Gemma GGUF 使用 H3 Prompt Writer 擴充註冊的大寫 models/LLM/獨立子目錄，主模型與相符的 mmproj 必須放在一起。擴寫完成會自動卸載，不需要安裝或啟動 llama-server、LM Studio。",
+  "prompt.note": "Qwen3.5 Safetensors 使用 ComfyUI 官方 models/text_encoders 分類；Qwen3-VL 8B + H3 Rewriter LoRA 使用 models/LLM/Qwen-VL 與 models/LLM/Qwen-VL-LoRA 兩個專用子目錄；Gemma GGUF 使用大寫 models/LLM 獨立子目錄。擴寫完成會自動卸載，不需要安裝或啟動 llama-server、LM Studio。",
+  "prompt.runtimeQwenTitle": "H3 Prompt Rewriter 執行狀態",
+  "prompt.runtimeQwenBase": "Qwen3-VL 8B 基座 + H3 Rewriter LoRA",
+  "prompt.runtimeQwenBaseReady": "檔案已找到，啟動時由 ComfyUI 載入",
+  "prompt.runtimeQwenBaseMissing": "請先補齊設定卡片中的基座和 LoRA 檔案",
+  "prompt.runtimeQwenNode": "ComfyUI Qwen-VL LoRA 節點",
+  "prompt.runtimeQwenNodeLoaded": "QwenVLModelLoader · QwenVLLoRALoader · QwenVLCaption",
+  "prompt.runtimeQwenNodeInstalled": "節點已安裝，等待 ComfyUI 啟動並驗證",
+  "prompt.runtimeQwenNodeMissingAction": "請在「節點與工作流」中安裝",
   "prompt.videoPresetTitle": "影片提示詞預設",
   "prompt.videoPresetDescription": "預設會將原始文字與參考圖整理成完整的 H3 影片提示詞，涵蓋主體、場景、動作、鏡頭、聲音、對白與連續性。",
   "prompt.restore": "還原預設",
@@ -583,7 +613,7 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.compatibilityWarning": "相容性待確認",
   "nodes.compatibilityError": "相容性錯誤",
   "nodes.runtimeVerified": "執行時已驗證",
-  "nodes.fileCheckPassed": "檔案檢查通過",
+  "nodes.fileCheckPassed": "檔案檢查通過 · 啟動後驗證",
   "nodes.installedRepair": "已安裝，需要修復",
   "nodes.updateRestart": "更新並重新啟動",
   "nodes.updateRecheck": "更新/重新啟動複檢",
@@ -722,7 +752,7 @@ const enUS: SettingsCopyCatalog = {
   "prompt.scanning": "Scanning ComfyUI/models…",
   "prompt.summary": "{count} prompt model profiles found",
   "prompt.waitingScan": "Waiting for first scan",
-  "prompt.note": "Qwen Safetensors use ComfyUI's models/text_encoders category; Gemma GGUF uses the H3 Prompt Writer extension's uppercase models/LLM/independent-subdirectory layout. The main model and matching mmproj must stay together. The model unloads after expansion; llama-server and LM Studio are not required.",
+  "prompt.note": "Qwen3.5 Safetensors use ComfyUI's models/text_encoders category; Qwen3-VL 8B + H3 Rewriter LoRA use the dedicated models/LLM/Qwen-VL and models/LLM/Qwen-VL-LoRA subdirectories; Gemma GGUF uses an independent uppercase models/LLM subdirectory. Models unload after expansion; llama-server and LM Studio are not required.",
   "prompt.runtimeTitle": "Gemma GGUF runtime",
   "prompt.runtimeDescription": "H3 Prompt Writer and the optional MultiModal node share llama-cpp-python in the selected ComfyUI Python. This card detects and installs the CUDA backend independently; node updates keep a verified backend, while an explicit repair replaces only an incompatible package.",
   "prompt.runtimeReady": "CUDA backend ready",
@@ -737,6 +767,17 @@ const enUS: SettingsCopyCatalog = {
   "prompt.runtimeInstalling": "Installing and testing…",
   "prompt.runtimeLog": "Runtime installation log",
   "prompt.runtimeNodeMissing": "The Prompt Writer node is not loaded; restart ComfyUI and rescan after installing the runtime.",
+  "prompt.runtimeQwenNodeReady": "The Qwen-VL LoRA nodes are loaded; the base and adapter are released after enhancement.",
+  "prompt.runtimeQwenNodeMissing": "The Qwen-VL LoRA nodes are not loaded; install them in Nodes & Workflows, restart ComfyUI, and rescan.",
+  "prompt.runtimeQwenHint": "This model uses Qwen3-VL 8B + a PEFT LoRA. It does not need llama-cpp-python, llama-server, or an mmproj; ComfyUI manages the nodes and Python dependencies.",
+  "prompt.runtimeQwenTitle": "H3 Prompt Rewriter runtime status",
+  "prompt.runtimeQwenBase": "Qwen3-VL 8B base + H3 Rewriter LoRA",
+  "prompt.runtimeQwenBaseReady": "Files found; ComfyUI loads them when the workflow starts",
+  "prompt.runtimeQwenBaseMissing": "Complete the base and LoRA files shown in the model card",
+  "prompt.runtimeQwenNode": "ComfyUI Qwen-VL LoRA nodes",
+  "prompt.runtimeQwenNodeLoaded": "QwenVLModelLoader · QwenVLLoRALoader · QwenVLCaption",
+  "prompt.runtimeQwenNodeInstalled": "Nodes installed; waiting for ComfyUI runtime validation",
+  "prompt.runtimeQwenNodeMissingAction": "Install it in Nodes & Workflows",
   "prompt.videoPresetTitle": "Video prompt presets",
   "prompt.videoPresetDescription": "Presets organize original text and reference images into a complete H3 video prompt covering subject, scene, action, camera, sound, dialogue, and continuity.",
   "prompt.restore": "Restore defaults",
@@ -809,7 +850,7 @@ const enUS: SettingsCopyCatalog = {
   "nodes.compatibilityWarning": "Compatibility pending",
   "nodes.compatibilityError": "Compatibility error",
   "nodes.runtimeVerified": "Runtime verified",
-  "nodes.fileCheckPassed": "File check passed",
+  "nodes.fileCheckPassed": "File check passed · runtime check after startup",
   "nodes.installedRepair": "Installed; repair needed",
   "nodes.updateRestart": "Update and restart",
   "nodes.updateRecheck": "Update/restart and recheck",

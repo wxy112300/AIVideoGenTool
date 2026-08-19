@@ -56,6 +56,7 @@ function messages() {
     restartLog: (message: string) => `restart ${message}`,
     installFailed: (name: string, message: string) => `failed ${name}: ${message}`,
     restartFailed: (message: string) => `restart failed: ${message}`,
+    manualRestartRequired: (message: string) => `manual restart: ${message}`,
     readyCheckFailed: (name: string, detail?: string) => `verify failed: ${name}${detail ? `: ${detail}` : ""}`,
     completed: (success: number, failed: number) => `completed ${success}/${failed}`
   };
@@ -189,6 +190,38 @@ describe("CustomNodeInstallQueue", () => {
     expect(receivedDirectories).toEqual(["C:\\Comfy-A", "C:\\Comfy-A"]);
     expect(notify).toHaveBeenCalledWith("failed broken: pip failed", "error");
     expect(notify).toHaveBeenLastCalledWith("completed 1/1", "warning");
+  });
+
+  it("keeps installed nodes successful when an external ComfyUI needs a manual restart", async () => {
+    const settings = createDefaultState().settings;
+    const notify = vi.fn();
+    const scan = vi.fn(async () => scanWithLoadedNodes("node-a"));
+    const queue = new CustomNodeInstallQueue({
+      install: async () => ({ ok: true, message: "installed" }),
+      restart: async () => ({
+        ok: false,
+        manualRestartRequired: true,
+        message: "restart it manually"
+      }),
+      scan,
+      nodeName: (nodeId) => nodeId,
+      getLog: () => "",
+      setLog: vi.fn(),
+      setEnvironmentScan: vi.fn(),
+      notify,
+      onSnapshot: vi.fn(),
+      messages: messages()
+    });
+
+    queue.enqueue("node-a", settings);
+    await queue.waitForIdle();
+
+    expect(scan).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(
+      "manual restart: restart it manually",
+      "warning"
+    );
+    expect(notify).toHaveBeenLastCalledWith("completed 1/0", "info");
   });
 
   it("keeps the runtime verification detail in the batch failure notification", async () => {

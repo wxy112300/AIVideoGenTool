@@ -23,6 +23,7 @@ import {
   workflowSupportsEndImage,
   workflowSupportsH3BoundaryExtension,
   workflowSupportsH3MotionContextExtension,
+  workflowSupportsH3MotionContextReferences,
   workflowSupportsH3TurboSampling,
   workflowSupportsVideoExtension
 } from "../src/core/workflow";
@@ -988,6 +989,21 @@ describe("generation VRAM safety", () => {
     })).toEqual([1344, 768]);
   });
 
+  it("keeps Motion Context on an even H3 VAE latent grid", () => {
+    const h3MotionExtension: ExtensionQueueTask = {
+      ...extensionTask,
+      modelId: "minimax_h3_ref2va",
+      ratio: "source",
+      sourceWidth: 1920,
+      sourceHeight: 1080,
+      resolution: 480
+    };
+    // 848×464 (the legacy video cap) produces 53×29 spatial latents and
+    // crashes H3's condition patchifier. Native H3 sizing keeps both axes
+    // even at the VAE latent scale.
+    expect(extensionOutputDimensions(h3MotionExtension)).toEqual([864, 480]);
+  });
+
   it("allows the official 121-frame Wan 5B baseline", () => {
     const safety = generationSafetyForTask({
       ...task,
@@ -1295,6 +1311,7 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
 
     expect(workflowSupportsH3MotionContextExtension(source)).toBe(true);
+    expect(workflowSupportsH3MotionContextReferences(source, 1, 1)).toBe(true);
     expect(rendered["5"]?.inputs).toMatchObject({
       video: "uploaded/context.mp4",
       frame_load_cap: 22
@@ -1318,6 +1335,57 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     expect(latentRendered["7"]?.inputs.latent_path).toContain("clip_00001.safetensors");
     expect(latentRendered["8"]?.inputs.context_latent).toEqual(["7", 0]);
     expect(JSON.stringify(latentRendered)).not.toContain("{{");
+  });
+
+  it("injects Motion Context image and extra-video slots after the locked source video", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_r2v_extend_api.json", import.meta.url),
+        "utf8"
+      )
+    );
+    const rendered = renderWorkflow(source, {
+      ...extensionTask,
+      modelId: "minimax_h3_ref2va",
+      resolution: 480,
+      h3ReferenceSlots: [
+        {
+          id: "source",
+          mediaType: "video",
+          mediaPath: "source.mp4",
+          role: "motion",
+          note: ""
+        },
+        {
+          id: "image",
+          mediaType: "image",
+          mediaPath: "subject.png",
+          role: "subject",
+          note: ""
+        },
+        {
+          id: "video",
+          mediaType: "video",
+          mediaPath: "reference.mp4",
+          role: "scene",
+          note: ""
+        }
+      ]
+    }, {
+      sourceVideo: "uploaded/context.mp4",
+      h3ReferenceImages: ["uploaded/subject.png"],
+      h3ReferenceVideos: ["", "uploaded/reference.mp4"]
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(rendered["6"]?.inputs["ref_images.ref_image_0"]).toEqual(["23", 0]);
+    expect(rendered["6"]?.inputs["ref_videos.ref_video_0"]).toEqual(["5", 0]);
+    expect(rendered["6"]?.inputs["ref_videos.ref_video_1"]).toEqual(["32", 0]);
+    expect(rendered["23"]?.inputs.image).toBe("uploaded/subject.png");
+    expect(rendered["32"]?.inputs.video).toBe("uploaded/reference.mp4");
+    expect(rendered["24"]).toBeUndefined();
+    expect(Object.values(rendered).some((node) =>
+      node.class_type === "VHS_LoadVideoFFmpeg" && node.inputs.video === ""
+    )).toBe(false);
   });
 
   it("renders the distilled Q2 graph without a distill LoRA", () => {

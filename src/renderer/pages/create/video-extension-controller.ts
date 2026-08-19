@@ -1,6 +1,8 @@
 import type { Draft } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
+import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
+import { isMiniMaxH3R2vModel } from "../../../core/workflow";
 
 export interface VideoExtensionControllerOptions {
   selectDraftVideo(filename: string): Promise<void>;
@@ -27,6 +29,7 @@ export function mountVideoExtensionController(
 
   root.querySelector("#remove-video")?.addEventListener("click", (event) => {
     event.stopImmediatePropagation();
+    const draft = getDraft();
     options.patchDraft({
       sourceVideoPath: "",
       sourceVideoDuration: 0,
@@ -36,7 +39,10 @@ export function mountVideoExtensionController(
       sourceVersionId: undefined,
       h3ContextLatentPath: undefined,
       sourceWidth: 0,
-      sourceHeight: 0
+      sourceHeight: 0,
+      ...(draft && isMiniMaxH3R2vModel(draft.modelId)
+        ? { h3ReferenceSlots: ensureMotionContextSourceSlot(draft.h3ReferenceSlots, "") }
+        : {})
     });
     context.requestRender();
   }, { signal });

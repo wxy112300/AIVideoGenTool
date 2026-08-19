@@ -148,6 +148,23 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   runtimeRequirement: "可选节点：Qwen3.6/Qwen3.8 vision 与 Gemma Prompt Writer 共用固定的 JamePeng llama-cpp-python GPU 后端；Windows 使用预编译 wheel，不需要另装 CUDA Toolkit、Visual Studio 或 llama-server。支持 Python 3.10–3.14 和已登记的 CUDA 12/13 组合，安装后必须通过 CUDA 自检。",
   required: false
 }, {
+  id: "comfyui-qwenvl-lora",
+  name: "ComfyUI Qwen-VL LoRA",
+  purpose: "在 ComfyUI 内加载 Qwen3-VL 基座与 PEFT Prompt LoRA，输出 H3 提示词文本",
+  repositoryUrl: "https://github.com/Dangocan/comfyui_qwenvl_lora.git",
+  directoryName: "comfyui_qwenvl_lora",
+  aliases: ["comfyui-qwenvl-lora", "comfyui_qwenvl_lora"],
+  releaseSource: "github-release",
+  nodeTypes: ["QwenVLModelLoader", "QwenVLLoRALoader", "QwenVLCaption"],
+  runtimeRequirement: "需要当前 ComfyUI Python 中的 transformers、peft、accelerate、safetensors、Pillow 和 bitsandbytes；4090 建议 4-bit + SDPA，并在扩写完成后释放模型。",
+  compatibilityEvidence: [{
+    verifiedAt: "2026-08-19",
+    sourceUrl: "https://github.com/Dangocan/comfyui_qwenvl_lora",
+    note: "节点提供 Qwen-VL Model Loader、Qwen-VL LoRA Loader 与 Qwen-VL Caption；当前条目用于 Qwen3-VL-8B-Instruct + MiniMax H3 Prompt Rewriter LoRA 的工作流。",
+    checks: ["static", "object-info"]
+  }],
+  required: false
+}, {
   id: "minimax-h3-prompt-writer",
   name: "MiniMax H3 Prompt Writer",
   purpose: "在 ComfyUI 内运行 Gemma 4，多模态理解素材并生成 H3 官方格式提示词",

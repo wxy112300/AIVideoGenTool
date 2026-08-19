@@ -12,7 +12,10 @@ import {
   newH3ReferenceSlot,
   updatePromptWordCounter
 } from "./helpers";
-import { h3ReferenceSlotCounts } from "../../../core/h3-reference";
+import {
+  ensureMotionContextSourceSlot,
+  h3ReferenceSlotCounts
+} from "../../../core/h3-reference";
 import { isMiniMaxH3Model } from "../../../core/workflow";
 import { uiKeys } from "../../../core/i18n-keys";
 import { h3PromptPackFor } from "../../prompt-packs";
@@ -22,6 +25,8 @@ export interface H3ReferencesControllerOptions {
   patchDraft(patch: Partial<Draft>): void;
   requestRender(): void;
   notify(message: string): void;
+  /** In Motion Context, slot 1 is the source video and cannot be edited here. */
+  lockedFirstVideo?: boolean;
 }
 
 export function mountH3ReferencesController(
@@ -32,9 +37,16 @@ export function mountH3ReferencesController(
   const signal = events.signal;
   const root = context.root;
   const t = context.t;
+  const isLockedFirstSlot = (draft: Draft | undefined, slotId: string): boolean =>
+    Boolean(options.lockedFirstVideo && draft?.h3ReferenceSlots[0]?.id === slotId);
   const updateSlot = (slotId: string, patch: Partial<H3ReferenceSlot>) => {
     const draft = options.getDraft();
     if (!draft) return;
+    if (isLockedFirstSlot(draft, slotId) && (
+      patch.mediaType !== undefined ||
+      patch.mediaPath !== undefined ||
+      patch.role !== undefined
+    )) return;
     options.patchDraft({
       h3ReferenceSlots: draft.h3ReferenceSlots.map((slot) =>
         slot.id === slotId ? { ...slot, ...patch } : slot
@@ -44,10 +56,13 @@ export function mountH3ReferencesController(
   const addSlot = () => {
     const draft = options.getDraft();
     if (!draft) return;
-    const counts = h3ReferenceSlotCounts(draft.h3ReferenceSlots);
+    const slots = options.lockedFirstVideo
+      ? ensureMotionContextSourceSlot(draft.h3ReferenceSlots, draft.sourceVideoPath)
+      : draft.h3ReferenceSlots;
+    const counts = h3ReferenceSlotCounts(slots);
     if (counts.total >= 12) return;
     options.patchDraft({
-      h3ReferenceSlots: [...draft.h3ReferenceSlots, newH3ReferenceSlot("", counts.imageCount < 9 ? "image" : "video")]
+      h3ReferenceSlots: [...slots, newH3ReferenceSlot("", counts.imageCount < 9 ? "image" : "video")]
     });
     options.requestRender();
   };
@@ -59,6 +74,7 @@ export function mountH3ReferencesController(
       const draft = options.getDraft();
       const slotId = button.dataset.removeH3Slot;
       if (!draft || !slotId) return;
+      if (isLockedFirstSlot(draft, slotId)) return;
       options.patchDraft({ h3ReferenceSlots: draft.h3ReferenceSlots.filter((slot) => slot.id !== slotId) });
       options.requestRender();
     }, { signal });
@@ -69,6 +85,7 @@ export function mountH3ReferencesController(
       event.stopPropagation();
       const slotId = button.dataset.clearH3Slot;
       if (!slotId) return;
+      if (isLockedFirstSlot(options.getDraft(), slotId)) return;
       updateSlot(slotId, { mediaPath: "" });
       options.requestRender();
     }, { signal });
@@ -97,6 +114,10 @@ export function mountH3ReferencesController(
       const nextType = select.value as H3ReferenceMediaType;
       const currentSlot = draft?.h3ReferenceSlots.find((slot) => slot.id === slotId);
       if (!draft || !slotId || !currentSlot || currentSlot.mediaType === nextType) return;
+      if (isLockedFirstSlot(draft, slotId)) {
+        select.value = "video";
+        return;
+      }
       const counts = h3ReferenceSlotCounts(draft.h3ReferenceSlots);
       if (nextType === "image" && counts.imageCount >= 9) {
         select.value = currentSlot.mediaType;
@@ -120,6 +141,7 @@ export function mountH3ReferencesController(
       event.preventDefault();
       const slotId = button.dataset.pickH3Slot;
       if (!slotId) return;
+      if (isLockedFirstSlot(options.getDraft(), slotId)) return;
       const mediaType = button.dataset.h3SlotMediaType === "video" ? "video" : "image";
       const filename = mediaType === "video"
         ? await context.studio.pickVideo()
@@ -165,6 +187,7 @@ export function mountH3ReferencesController(
       const slotId = zone.dataset.dropH3Slot;
       const slot = options.getDraft()?.h3ReferenceSlots.find((item) => item.id === slotId);
       if (!file || !slotId || !slot) return;
+      if (isLockedFirstSlot(options.getDraft(), slotId)) return;
       const isVideo = slot.mediaType === "video";
       const isSupported = isVideo
         ? file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|mkv|gif)$/i.test(file.name)

@@ -100,8 +100,11 @@ export function renderQueueTaskCard(
     : task.taskType === "generation"
     ? executionPrompt
     : task.taskType === "extension"
-      ? `${executionPrompt} · ${t(uiKeys.queue.card.extensionRetain, { start: task.trimStartSeconds.toFixed(1), end: task.trimEndSeconds.toFixed(1) })}`
+      ? executionPrompt
       : `${task.sourceFilename} → ${task.outputFilename}`;
+  const extensionRetainSummary = task.taskType === "extension"
+    ? `<span>${t(uiKeys.queue.card.extensionRetain, { start: task.trimStartSeconds.toFixed(1), end: task.trimEndSeconds.toFixed(1) })}</span>`
+    : "";
   const upscaleOutput = task.taskType === "upscale"
     ? upscaleDimensions(task.sourceWidth, task.sourceHeight, task.targetHeight)
     : null;
@@ -124,7 +127,7 @@ export function renderQueueTaskCard(
     : task.taskType === "generation"
     ? `<span>${options.escapeHtml(options.modelName(task.modelId))}</span>${loraSummary}<span>${task.resolution}p</span><span>${task.duration}${t(uiKeys.queue.card.seconds)}</span><span>${options.frameRateSummary(task.fps, task.frameInterpolation)}</span>${h3ComputeSummary}<span>Seed ${options.escapeHtml(seedText)}</span>`
     : task.taskType === "extension"
-      ? `<span>${t(uiKeys.queue.card.extension)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${t(uiKeys.queue.card.maxModelFrames, { count: task.maxGeneratedFrames })}</span><span>${t(uiKeys.queue.card.contextFrames, { count: task.overlapFrames })}</span>${h3ComputeSummary}`
+      ? `<span>${t(uiKeys.queue.card.extension)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${t(uiKeys.queue.card.maxModelFrames, { count: task.maxGeneratedFrames })}</span><span>${t(uiKeys.queue.card.contextFrames, { count: task.overlapFrames })}</span>${extensionRetainSummary}${h3ComputeSummary}`
       : `<span>${t(uiKeys.queue.card.upscale)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${upscaleOutput![0]} × ${upscaleOutput![1]}</span><span>${t(uiKeys.queue.card.batchUnload)}</span>`;
   const attentionTask = task.status === "failed" || task.status === "cancelled";
   const queueCleanupActive =

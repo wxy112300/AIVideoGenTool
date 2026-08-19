@@ -6,10 +6,12 @@ import type { Settings } from "../../src/types.js";
 import {
   patchH3PromptWriterLlamaCppCompatibility,
   patchMultimodalPromptContextSize,
+  patchQwenVlComfyDesktopLogging,
   prepareH3PromptWriter,
   prepareH3Gguf,
   prepareLtxVideo,
   prepareMultimodalPromptNodes,
+  prepareQwenVlComfyDesktopLogging,
   prepareVideoHelperSuite
 } from "./dependency-node-adapters.js";
 import { installLlamaCppPythonPackage } from "./llama-cpp-python.js";
@@ -78,6 +80,7 @@ const h3PromptWriterPatchFiles = [
   "backend/runtime_diagnostics.py"
 ] as const;
 const multimodalPromptPatchFiles = ["vision_llm_node.py"] as const;
+const qwenVlPatchFiles = ["nodes.py"] as const;
 
 function normalizeGitSource(source: string): string {
   return source.replace(/\r\n?/gu, "\n").replace(/\s+$/u, "");
@@ -108,6 +111,8 @@ async function nodeHasOnlyAppPatch(
     ? h3PromptWriterPatchFiles
     : nodeId === "comfyui-multimodal-prompt-nodes"
       ? multimodalPromptPatchFiles
+      : nodeId === "comfyui-qwenvl-lora"
+        ? qwenVlPatchFiles
       : [];
   const paths = statusOutput
     .split(/\r?\n/u)
@@ -132,7 +137,9 @@ async function nodeHasOnlyAppPatch(
     }
     const expected = nodeId === "minimax-h3-prompt-writer"
       ? patchH3PromptWriterLlamaCppCompatibility(baseline)
-      : patchMultimodalPromptContextSize(baseline);
+      : nodeId === "comfyui-multimodal-prompt-nodes"
+        ? patchMultimodalPromptContextSize(baseline)
+        : patchQwenVlComfyDesktopLogging(baseline);
     if (normalizeGitSource(current) !== normalizeGitSource(expected)) return false;
   }
   return true;
@@ -214,6 +221,7 @@ export async function installCustomNodePackage(
     const comfyRoot = await runtime.findComfyRoot(settings);
     if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
     const isMultimodalPromptNodes = definition.id === "comfyui-multimodal-prompt-nodes";
+    const isQwenVlPeftNode = definition.id === "comfyui-qwenvl-lora";
     const usesSharedLlamaRuntime = isMultimodalPromptNodes ||
       definition.id === "minimax-h3-prompt-writer";
     const customNodesDirectory = path.join(comfyRoot, "custom_nodes");
@@ -251,7 +259,8 @@ export async function installCustomNodePackage(
           if (repositoryDirty) {
             const appPatchOnly = [
               "minimax-h3-prompt-writer",
-              "comfyui-multimodal-prompt-nodes"
+              "comfyui-multimodal-prompt-nodes",
+              "comfyui-qwenvl-lora"
             ].includes(definition.id) &&
               await nodeHasOnlyAppPatch(
                 definition.id,
@@ -422,6 +431,10 @@ export async function installCustomNodePackage(
       report("正在检查 MultiModal Prompt Nodes 的 GGUF 上下文配置……");
       await prepareMultimodalPromptNodes(targetDirectory, report);
     }
+    if (isQwenVlPeftNode) {
+      report("正在检查 Qwen-VL LoRA 的 ComfyUI Desktop 日志兼容层……");
+      await prepareQwenVlComfyDesktopLogging(targetDirectory, report);
+    }
 
     const requirements = path.join(targetDirectory, "requirements.txt");
     if (await runtime.exists(requirements)) {
@@ -513,6 +526,22 @@ export async function installCustomNodePackage(
       });
       if (!backend.ok) throw new Error(backend.message);
       report("H3 Prompt Writer 的 llama-cpp-python 后端已通过自检。");
+    }
+    if (isQwenVlPeftNode) {
+      const python = await runtime.findComfyPython(settings, comfyRoot);
+      if (!python) throw new Error("Qwen-VL LoRA 节点已下载，但没有找到所选 ComfyUI 的 Python 环境。");
+      report("正在补齐 Qwen-VL LoRA 的运行依赖（不安装 llama-cpp-python）……");
+      const pipOutput = await runtime.runLoggedProcess(
+        python,
+        ["-m", "pip", "install", "transformers>=4.57.1", "peft>=0.18.0", "accelerate>=1.10.0", "safetensors>=0.5.0", "pillow>=10.0.0", "bitsandbytes"],
+        {
+          timeoutMs: 900_000,
+          env: commandEnvironment,
+          onLog: report
+        }
+      );
+      if (!pipOutput) report("Qwen-VL LoRA 依赖已满足");
+      report("Qwen-VL LoRA 依赖处理完成；请重启 ComfyUI 后重新扫描节点。 ");
     }
     return {
       ok: true,

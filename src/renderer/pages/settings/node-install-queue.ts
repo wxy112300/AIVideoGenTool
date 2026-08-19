@@ -20,6 +20,7 @@ export interface CustomNodeInstallQueueMessages {
   restartLog(message: string): string;
   installFailed(name: string, message: string): string;
   restartFailed(message: string): string;
+  manualRestartRequired(message: string): string;
   readyCheckFailed(name: string, detail?: string): string;
   completed(successCount: number, failureCount: number): string;
 }
@@ -140,7 +141,7 @@ export class CustomNodeInstallQueue {
     if (successfulNodeIds.length) {
       this.phase = "restarting";
       this.emit();
-      const restarted = await this.dependencies.restart(settings).catch((error) => ({
+      const restarted: ConnectionResult = await this.dependencies.restart(settings).catch((error) => ({
         ok: false,
         message: error instanceof Error ? error.message : String(error)
       }));
@@ -148,11 +149,18 @@ export class CustomNodeInstallQueue {
         this.appendLog(nodeId, this.dependencies.messages.restartLog(restarted.message));
       }
       if (!restarted.ok) {
-        successfulNodeIds.forEach((nodeId) => failedNodeIds.add(nodeId));
-        this.dependencies.notify(
-          this.dependencies.messages.restartFailed(restarted.message),
-          "error"
-        );
+        if (restarted.manualRestartRequired) {
+          this.dependencies.notify(
+            this.dependencies.messages.manualRestartRequired(restarted.message),
+            "warning"
+          );
+        } else {
+          successfulNodeIds.forEach((nodeId) => failedNodeIds.add(nodeId));
+          this.dependencies.notify(
+            this.dependencies.messages.restartFailed(restarted.message),
+            "error"
+          );
+        }
       } else {
         this.phase = "scanning";
         this.emit();

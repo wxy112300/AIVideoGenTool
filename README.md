@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.28.2**。修复 Extend 工作流成功生成 MP4 后，被队列执行器错误的扩展名正则排除、无法进入 FFmpeg 拼接的问题；同时兼容新版 `SaveVideo` 通过 `images` 集合返回视频文件。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.29.1**。设置中已加入官方 [MiniMax H3 Prompt Rewriter LoRA 8B](https://huggingface.co/lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B) 的下载扫描卡：它绑定 Qwen3-VL-8B-Instruct，由 ComfyUI Qwen-VL LoRA 节点加载。用户只需准备大体积 safetensors，配置/tokenizer 等 JSON 由应用首次运行时按需管理。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -14,7 +14,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 - 本地队列：单重型 GPU 阶段执行，支持暂停/取消、阶段进度、实时预览和性能摘要。
 - 作品历史：图片和视频分区、版本管理、完整提交参数、文件操作和继续创作。
 - 环境管理：离线扫描多个 ComfyUI 安装、核心/数据目录、模型、节点、工作流和 Python 环境。
-- 本地提示词辅助：通过所选 ComfyUI 运行 Qwen3.5、Qwen3.6/Qwen3.8 MultiModal 或 MiniMax H3 Prompt Writer/Gemma，不要求独立 LM Studio 或 llama-server。
+- 本地提示词辅助：通过所选 ComfyUI 运行 Qwen3.5、Qwen3.6/Qwen3.8 MultiModal、Qwen3-VL 8B + H3 Prompt Rewriter LoRA 和 MiniMax H3 Prompt Writer/Gemma。
 
 ## 支持范围
 
@@ -26,7 +26,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 | 图片处理 | Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
 | 视频增强 | SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
 | H3 LoRA | LightX2V Turbo v1.0（8-step/768p 4-step）、Ref2V Turbo、Realism People、PinkFluffyBunny NSFW |
-| Prompt | Qwen3.5 2B/4B、Qwen3.6/Qwen3.8 27B Q4 MultiModal、MiniMax H3 Prompt Writer 的 Gemma 4 GGUF 配置 |
+| Prompt | Qwen3.5 2B/4B、Qwen3.6/Qwen3.8 27B Q4 MultiModal、Qwen3-VL 8B + MiniMax H3 Prompt Rewriter LoRA、MiniMax H3 Prompt Writer 的 Gemma 4 GGUF |
 
 Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部分已经从新建任务列表淘汰；旧队列和历史仍保留原模型名称。当前显式保留的 Wan 2.2 14B + NSFW 兼容配置及未来变化，以 catalog 的 `retired` 标记为准。
 
@@ -44,6 +44,8 @@ Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部
 通常无需单独安装完整 CUDA Toolkit。优先使用 ComfyUI 自身 Python/PyTorch 所带的 CUDA runtime；只有某个自定义 CUDA 扩展明确要求编译工具链时才额外安装。
 
 Qwen3.6/Qwen3.8 MultiModal 与 MiniMax H3 Prompt Writer 共用同一个 JamePeng `llama-cpp-python` GPU 构建。安装器会按所选 ComfyUI 的 Python/CUDA 版本选择预编译 wheel；不支持的组合会在下载前明确提示，不会偷偷源码编译或安装第二个 llama 服务。节点更新不会覆盖已经通过 CUDA 自检的共享后端，具体日志和前置条件会显示在设置 → 节点与工作流。
+
+官方 [`lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B`](https://huggingface.co/lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B) 是绑定 `Qwen/Qwen3-VL-8B-Instruct` 的 PEFT 适配器。它与 Qwen-VL 节点一起读取参考图片/视频并重写 H3 提示词；不能套到 Qwen3.6、Qwen3.8 GGUF 或 H3 视频模型。设置页分别扫描 Qwen3-VL 基座文件、adapter 文件和节点依赖。
 
 ### 2. 克隆并启动 GUI
 

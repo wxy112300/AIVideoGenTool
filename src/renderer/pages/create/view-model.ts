@@ -33,7 +33,11 @@ import {
 } from "../../../core/image-workflow";
 import { normalizeImageEditDraft } from "../../../core/image-project";
 import { promptModelSupportsImageEdit, isGemmaPromptModel } from "../../../core/prompt-models";
-import { h3ReferenceSlotCounts } from "../../../core/h3-reference";
+import {
+  ensureMotionContextSourceSlot,
+  h3ReferenceSlotCounts,
+  motionContextReferenceSlotsReady
+} from "../../../core/h3-reference";
 import {
   generationSafetyForTask,
   isMiniMaxH3Fl2vaModel,
@@ -162,6 +166,8 @@ export function videoEnqueueBlockReason(
                 ? input.safetyMessage
                 : !input.h3MotionContextReady
                   ? t(uiKeys.create.validation.motionContextMissing)
+                  : !input.r2vSlotsReady
+                    ? t(uiKeys.create.validation.r2vSlotMissing)
                   : !input.spectrumReady
                     ? t(uiKeys.create.validation.spectrumMissing)
                     : "";
@@ -336,10 +342,17 @@ export function buildVideoCreatePageViewModel(
   const h3PromptPack = h3PromptPackFor(state.settings.uiLocale);
   const isMiniMaxH3 = isMiniMaxH3Model(draft.modelId);
   const isR2V = isMiniMaxH3R2vModel(draft.modelId);
+  const extending = draft.inputMode === "video";
+  const referenceSlots = extending && isR2V
+    ? ensureMotionContextSourceSlot(draft.h3ReferenceSlots, draft.sourceVideoPath)
+    : draft.h3ReferenceSlots;
+  if (extending && isR2V && JSON.stringify(referenceSlots) !== JSON.stringify(draft.h3ReferenceSlots)) {
+    draft.h3ReferenceSlots = referenceSlots;
+  }
   const h3Mode = isMiniMaxH3 ? h3PromptModeForDraft(draft) : undefined;
   const referenceAutoPromptAvailable = isMiniMaxH3 && (
     isR2V
-      ? draft.h3ReferenceSlots.some((slot) => Boolean(slot.mediaPath))
+      ? referenceSlots.some((slot) => Boolean(slot.mediaPath))
       : Boolean(draft.startImagePath || draft.endImagePath)
   );
   const activeH3PromptPreset = h3Mode
@@ -403,7 +416,6 @@ export function buildVideoCreatePageViewModel(
   const resolutionOptions = isMiniMaxH3
     ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? [480, 540, 720, 768]
     : [480, 540, 720];
-  const extending = draft.inputMode === "video";
   const h3MotionContextNode = environmentScan?.customNodes.find(
     (node) => node.id === "h3-motion-context"
   );
@@ -430,11 +442,12 @@ export function buildVideoCreatePageViewModel(
     ? draft.trimEndSeconds / draft.sourceVideoDuration * 100
     : 100;
   const videoReady = Boolean(draft.sourceVideoPath && draft.sourceVideoDuration > 0);
-  const r2vCounts = h3ReferenceSlotCounts(draft.h3ReferenceSlots);
-  const r2vSlotsReady = extending || !isR2V || (
-    draft.h3ReferenceSlots.length > 0 &&
-    draft.h3ReferenceSlots.every((slot) => Boolean(slot.mediaPath))
-  );
+  const r2vCounts = h3ReferenceSlotCounts(referenceSlots);
+  const r2vSlotsReady = !isR2V
+    ? true
+    : extending
+      ? motionContextReferenceSlotsReady(referenceSlots, draft.sourceVideoPath)
+      : referenceSlots.length > 0 && referenceSlots.every((slot) => Boolean(slot.mediaPath));
   const turboCoreBlockReason = turboEnabled &&
     Boolean(environmentScan?.comfyCompatibility.checkedFrom) &&
     !environmentScan?.comfyCompatibility.h3CoreSupported

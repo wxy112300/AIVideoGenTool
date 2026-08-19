@@ -18,6 +18,7 @@ import {
   isMiniMaxH3LivePreviewSupported,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
+  workflowSupportsH3MotionContextReferences,
   workflowSupportsEndImage
 } from "../../src/core/workflow.js";
 import { nativePromptModelFiles } from "../../src/core/prompt-models.js";
@@ -447,6 +448,14 @@ export async function submitTask(
     if (task.taskType === "extension") {
       const h3Boundary = isMiniMaxH3Fl2vaModel(task.modelId);
       const h3MotionContext = isMiniMaxH3R2vModel(task.modelId);
+      if (h3MotionContext) {
+        const slots = task.h3ReferenceSlots ?? [];
+        const imageCount = slots.filter((slot) => slot.mediaType === "image").length;
+        const extraVideoCount = Math.max(0, slots.filter((slot) => slot.mediaType === "video").length - 1);
+        if (!workflowSupportsH3MotionContextReferences(source, imageCount, extraVideoCount)) {
+          throw new Error("当前 Motion Context 工作流不支持任务中的参考 Slot，请重新选择新版续写工作流。");
+        }
+      }
       const prepared = h3Boundary
         ? await prepareH3BoundaryFrame(task, signal)
         : h3MotionContext
@@ -463,6 +472,28 @@ export async function submitTask(
               ? "H3 运动与音频上下文"
               : "续写上下文"
         );
+        const motionReferenceSlots = h3MotionContext ? task.h3ReferenceSlots ?? [] : [];
+        const motionVideoSlots = motionReferenceSlots.filter((slot) => slot.mediaType === "video");
+        if (h3MotionContext && (
+          motionVideoSlots[0]?.mediaPath !== task.sourceVideoPath ||
+          motionReferenceSlots.some((slot) => !slot.mediaPath)
+        )) {
+          throw new Error("Motion Context 参考 Slot 无效：Slot 1 必须是当前源视频，其他 Slot 也必须有文件。");
+        }
+        const [extraReferenceImages, extraReferenceVideos] = h3MotionContext
+          ? await Promise.all([
+              Promise.all(
+                motionReferenceSlots
+                  .filter((slot) => slot.mediaType === "image")
+                  .map((slot, index) => uploadInput(baseUrl, slot.mediaPath, signal, `Motion Context 参考图 ${index + 1}`))
+              ),
+              Promise.all(
+                motionVideoSlots
+                  .slice(1)
+                  .map((slot, index) => uploadInput(baseUrl, slot.mediaPath, signal, `Motion Context 参考视频 ${index + 2}`))
+              )
+            ])
+          : [[], []] as [string[], string[]];
         prompt = renderWorkflow(source, workflowTaskForComfyOutput(task, settings), {
           ...(h3Boundary
             ? { inputImage: uploadedInput }
@@ -470,7 +501,10 @@ export async function submitTask(
           ...(h3MotionContext
             ? {
                 h3ContextLatentPath: task.h3ContextLatentPath ?? "",
-                h3ContextSavePrefix: task.h3ContextSavePrefix ?? `h3_context/${task.id}/clip`
+                h3ContextSavePrefix: task.h3ContextSavePrefix ?? `h3_context/${task.id}/clip`,
+                h3ReferenceImages: extraReferenceImages,
+                // H3_REF_VIDEO_0 is reserved by the workflow's source context.
+                h3ReferenceVideos: ["", ...extraReferenceVideos]
               }
             : {}),
           vramTotalBytes,
@@ -1045,7 +1079,12 @@ export function historyFailure(value: unknown): string {
       const text = [exceptionType, exceptionMessage]
         .filter((item): item is string => typeof item === "string" && Boolean(item))
         .join(": ");
-      if (text) return text;
+      if (text) {
+        if (/bad file descriptor|errno\s*9|0x?9\b/iu.test(text)) {
+          return `${text}；ComfyUI Desktop 的日志句柄已失效，请重启 ComfyUI；若使用 Qwen-VL LoRA，请在设置 → 节点与工作流中执行一键修复`;
+        }
+        return text;
+      }
     }
   }
   return typeof statusString === "string"

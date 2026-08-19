@@ -10,6 +10,20 @@
 
 暂无。
 
+## 0.29.1 — 2026-08-19
+
+- 修复应用启动的 ComfyUI 在后续健康探测或重复启动请求中被误判为外部实例的问题；可通过应用专用数据库启动标记安全恢复旧会话遗留实例的所有权，正常退出时只清理应用明确拥有的进程。
+- 节点文件安装成功但外部 ComfyUI 无法自动重启时，不再将节点安装统计为失败；改为保留安装成功结果并提示手动重启后复检。
+- 完善 H3 Motion Context 续写的多 Slot 引用校验与文件上传，限制 Slot 1 为源视频并在提交前拒绝不完整的参考文件。
+- 修复 Qwen-VL Prompt Rewriter 的模型枚举、节点运行时校验和跨 ComfyUI 数据目录识别；Qwen-VL 节点的 ComfyUI Desktop 日志兼容层现在由应用安装器按环境应用，离线扫描也会提示需要修复的节点。
+- 增强节点安装/更新、ComfyUI 运行时、环境扫描和队列状态的日志与错误提示，并补充对应的工作流、历史和运行时回归测试。
+
+## 0.29.0 — 2026-08-19
+
+- 修正 `MiniMax H3 Prompt Rewriter LoRA 8B` 的来源和下载地址：官方仓库是 [`lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B`](https://huggingface.co/lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B)，基座是 `Qwen/Qwen3-VL-8B-Instruct`。
+- 设置页只把 Qwen3-VL 8B 的 4 个权重分片和 8B LoRA 的 `adapter_model.safetensors` 作为用户必需组件；配置/tokenizer/预处理 JSON 与 LoRA `adapter_config.json` 改由应用内置清单，在首次实际扩写前按需自动下载并写入明确目标目录。
+- 恢复 ComfyUI Qwen-VL LoRA 工作流绑定，并区分离线文件扫描与启动后的 `/object_info` 节点验证；不再把 27B 文本 PEFT 路径混入这个 8B 模型。
+
 ## 0.28.2 — 2026-08-19
 
 - 修复队列执行器在模块拆分时错误转义视频扩展名正则，导致 Extend 工作流虽已成功生成并验证 MP4，仍在 FFmpeg 拼接前被误判为“没有返回视频文件”的问题。

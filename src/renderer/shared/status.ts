@@ -1,6 +1,7 @@
 import {
   isComfyMultimodalPromptModel,
-  isGemmaPromptModel
+  isGemmaPromptModel,
+  isQwenVlPeftPromptModel
 } from "../../core/prompt-models";
 import { createTranslator, type Translate } from "../../core/i18n";
 import { uiKeys } from "../../core/i18n-keys";
@@ -80,8 +81,10 @@ export function promptModelStatus(
   }
   return {
     ready: true,
-    detail: isComfyMultimodalPromptModel(settings.promptModelId)
-      ? t(uiKeys.status.promptQwenMultimodal)
+    detail: isQwenVlPeftPromptModel(settings.promptModelId)
+      ? t(uiKeys.status.promptQwenVlPeft)
+      : isComfyMultimodalPromptModel(settings.promptModelId)
+        ? t(uiKeys.status.promptQwenMultimodal)
       : isGemmaPromptModel(settings.promptModelId)
         ? t(uiKeys.status.promptGemma)
         : t(uiKeys.status.promptQwen)

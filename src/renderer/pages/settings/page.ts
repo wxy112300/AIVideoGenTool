@@ -100,6 +100,7 @@ export interface SettingsPageOptions {
   getImageQualityProfiles(modelId: string): ImageQualityProfileOption[];
   isGemmaPromptModel(modelId: string): boolean;
   isComfyMultimodalPromptModel(modelId: string): boolean;
+  isQwenVlPeftPromptModel(modelId: string): boolean;
   videoLoraInfoButton(profileId: string): string;
   isImageWorkflowReady(profile?: ModelScanProfile): boolean;
   isImageModelSelectable(profile?: ModelScanProfile): boolean;
@@ -163,6 +164,7 @@ export function renderSettingsPage(
       ...sharedFragmentOptions,
       isGemmaPromptModel: options.isGemmaPromptModel,
       isComfyMultimodalPromptModel: options.isComfyMultimodalPromptModel,
+      isQwenVlPeftPromptModel: options.isQwenVlPeftPromptModel,
       videoLoraInfoButton: options.videoLoraInfoButton,
       isImageWorkflowReady: options.isImageWorkflowReady,
       imageWorkflowStatus: options.imageWorkflowStatus
@@ -238,6 +240,55 @@ export function renderSettingsPage(
     : !environmentScan || llamaCppPython?.installed
       ? "warning"
       : "missing";
+  const selectedQwenVlProfile = promptProfiles.find(
+    (profile) => options.isQwenVlPeftPromptModel(profile.id)
+  );
+  const qwenVlNode = environmentScan?.customNodes.find(
+    (node) => node.id === "comfyui-qwenvl-lora"
+  );
+  const qwenVlRuntimeClass = !environmentScan || !selectedQwenVlProfile || selectedQwenVlProfile.integrated === false
+    ? "warning"
+    : !selectedQwenVlProfile.available || qwenVlNode && !qwenVlNode.installed
+      ? "missing"
+      : selectedQwenVlProfile.runtimeVerified && selectedQwenVlProfile.runtimeReady && qwenVlNode?.loaded
+        ? "available"
+        : "warning";
+  const qwenVlRuntimeLabel = !environmentScan
+    ? s("prompt.runtimeWaiting")
+    : qwenVlRuntimeClass === "available"
+      ? s("prompt.runtimeQwenNodeReady")
+      : qwenVlRuntimeClass === "missing"
+        ? s("prompt.runtimeQwenNodeMissing")
+        : s("prompt.runtimeUnknown");
+  const promptRuntimePanel = options.isQwenVlPeftPromptModel(settings.promptModelId)
+    ? `
+      <section class="panel settings-section prompt-runtime-dependency ${qwenVlRuntimeClass}">
+        <div class="section-heading">
+          <div><h2>${s("prompt.runtimeQwenTitle")}</h2><span class="muted">${s("prompt.runtimeQwenHint")}</span></div>
+          <span class="model-availability ${qwenVlRuntimeClass}">${icon(qwenVlRuntimeClass === "available" ? "circle-check" : qwenVlRuntimeClass === "warning" ? "circle-help" : "circle-alert")} ${qwenVlRuntimeLabel}</span>
+        </div>
+        <div class="component-list">
+          <div class="component-row ${selectedQwenVlProfile?.available ? "found" : "missing"}"><span class="component-state">${icon(selectedQwenVlProfile?.available ? "circle-check" : "circle-alert")}</span><div><strong>${s("prompt.runtimeQwenBase")}</strong><code>${escape(selectedQwenVlProfile?.available ? s("prompt.runtimeQwenBaseReady") : s("prompt.runtimeQwenBaseMissing"))}</code></div></div>
+          <div class="component-row ${qwenVlNode?.loaded ? "found" : qwenVlNode?.installed ? "warning" : "missing"}"><span class="component-state">${icon(qwenVlNode?.loaded ? "circle-check" : qwenVlNode?.installed ? "circle-help" : "circle-alert")}</span><div><strong>${s("prompt.runtimeQwenNode")}</strong><code>${escape(qwenVlNode?.loaded ? s("prompt.runtimeQwenNodeLoaded") : qwenVlNode?.installed ? s("prompt.runtimeQwenNodeInstalled") : s("prompt.runtimeQwenNodeMissingAction"))}</code></div></div>
+        </div>
+      </section>`
+    : `
+      <section class="panel settings-section prompt-runtime-dependency ${llamaRuntimeClass}">
+        <div class="section-heading">
+          <div><h2>${s("prompt.runtimeTitle")}</h2><span class="muted">${s("prompt.runtimeDescription")}</span></div>
+          <span class="model-availability ${llamaRuntimeClass}">${icon(llamaRuntimeClass === "available" ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")} ${llamaRuntimeLabel}</span>
+        </div>
+        <div class="component-list">
+          <div class="component-row ${llamaCppPython?.ready ? "found" : llamaRuntimeClass === "warning" ? "warning" : "missing"}"><span class="component-state">${icon(llamaCppPython?.ready ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>llama-cpp-python</strong><code>${escape(llamaCppPython?.nativeCrash ? llamaCppPython.detail : llamaCppPython?.packageVersion ? `v${llamaCppPython.packageVersion}` : llamaCppPython?.detail || s("prompt.runtimeWaiting"))}</code></div></div>
+          <div class="component-row ${llamaCppPython?.pythonPath ? "found" : llamaRuntimeClass === "warning" ? "warning" : "missing"}"><span class="component-state">${icon(llamaCppPython?.pythonPath ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${s("prompt.runtimePython")}</strong><code>${escape(llamaCppPython?.pythonPath || s("prompt.runtimeWaiting"))}${llamaCppPython?.pythonVersion ? ` · Python ${escape(llamaCppPython.pythonVersion)}` : ""}</code></div></div>
+          <div class="component-row ${llamaCppPython?.cudaVersion ? "found" : llamaRuntimeClass === "warning" ? "warning" : "missing"}"><span class="component-state">${icon(llamaCppPython?.cudaVersion ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${s("prompt.runtimeTorch")}</strong><code>${escape([llamaCppPython?.torchVersion, llamaCppPython?.cudaVersion ? `CUDA ${llamaCppPython.cudaVersion}` : ""].filter(Boolean).join(" · ") || s("prompt.runtimeWaiting"))}</code></div></div>
+        </div>
+        ${environmentScan && !promptWriterNode?.loaded ? `<p class="muted proxy-hint">${s("prompt.runtimeNodeMissing")}</p>` : ""}
+        <div class="button-row">
+          <button class="${llamaCppPython?.ready ? "secondary" : "primary"} button-with-icon" id="install-llama-cpp-python" ${viewModel.llamaCppPythonInstalling || viewModel.hasRunningQueueTask || viewModel.queueRunning || !environmentScan?.comfyRoot ? "disabled" : ""}>${icon(viewModel.llamaCppPythonInstalling ? "refresh-cw" : llamaCppPython?.ready ? "refresh-cw" : "download")}${viewModel.llamaCppPythonInstalling ? s("prompt.runtimeInstalling") : llamaCppPython?.ready ? s("prompt.runtimeRepair") : s("prompt.runtimeInstall")}</button>
+        </div>
+        ${(viewModel.llamaCppPythonLog || viewModel.llamaCppPythonInstalling) ? `<details class="node-log" open><summary>${s("prompt.runtimeLog")}</summary><pre data-dependency-install-log="python-runtime:llama-cpp-python">${escape(viewModel.llamaCppPythonLog || s("prompt.runtimeInstalling"))}</pre></details>` : ""}
+      </section>`;
   const gpu = environmentScan?.items.find((item) => item.id === "nvidia");
   const gpuDevices = environmentScan?.gpus ?? [];
   const gpuSummary = gpuDevices.length
@@ -490,7 +541,7 @@ export function renderSettingsPage(
     <section class="settings-panel">
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${s("prompt.title")}</h2><span class="muted">${s("prompt.description")}</span></div><div class="button-row"><span class="model-badge">${s("prompt.badge")}</span><button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model" ${viewModel.promptRuntimeBusy || viewModel.queueRunning || (!viewModel.promptRuntimeLoaded && !viewModel.promptStatus.ready) ? "disabled" : ""} aria-label="${escape(viewModel.promptRuntimeControlTitle)}" title="${escape(viewModel.promptRuntimeControlTitle)}" aria-busy="${viewModel.promptRuntimeBusy}">${icon(viewModel.promptRuntimeControlIconName)}</button></div></div>
-        <label>${s("prompt.defaultModel")}<select id="prompt-model-id">${promptProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.promptModelId === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escape(profile.name)}${profile.available ? "" : s("prompt.missingComponent")} ${s("prompt.videoImage")}</option>`).join("")}</select></label>
+        <label>${s("prompt.defaultModel")}<select id="prompt-model-id">${promptProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.promptModelId === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? s("prompt.missingComponent") : ""} ${s("prompt.videoImage")}</option>`).join("")}</select></label>
         <div class="settings-grid two">
           <label>${s("prompt.language")}<select id="prompt-language"><option value="auto" ${settings.promptLanguage === "auto" ? "selected" : ""}>${s("prompt.followInput")}</option><option value="zh" ${settings.promptLanguage === "zh" ? "selected" : ""}>${s("prompt.chinese")}</option><option value="en" ${settings.promptLanguage === "en" ? "selected" : ""}>${s("prompt.english")}</option></select></label>
           <label>${s("prompt.creativity")}<select id="prompt-creativity"><option value="0.3" ${settings.promptCreativity === 0.3 ? "selected" : ""}>${s("prompt.restrained")} · 0.3</option><option value="0.7" ${settings.promptCreativity === 0.7 ? "selected" : ""}>${s("prompt.balanced")} · 0.7</option><option value="1" ${settings.promptCreativity === 1 ? "selected" : ""}>${s("prompt.rich")} · 1.0</option></select></label>
@@ -498,22 +549,7 @@ export function renderSettingsPage(
         <div class="scan-result">${viewModel.environmentScanning ? s("prompt.scanning") : environmentScan ? s("prompt.summary", { count: promptAvailable }) : s("prompt.waitingScan")}</div>
         <p class="muted proxy-hint">${s("prompt.note")}</p>
       </section>
-      <section class="panel settings-section prompt-runtime-dependency ${llamaRuntimeClass}">
-        <div class="section-heading">
-          <div><h2>${s("prompt.runtimeTitle")}</h2><span class="muted">${s("prompt.runtimeDescription")}</span></div>
-          <span class="model-availability ${llamaRuntimeClass}">${icon(llamaRuntimeClass === "available" ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")} ${llamaRuntimeLabel}</span>
-        </div>
-        <div class="component-list">
-          <div class="component-row ${llamaCppPython?.ready ? "found" : llamaRuntimeClass === "warning" ? "warning" : "missing"}"><span class="component-state">${icon(llamaCppPython?.ready ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>llama-cpp-python</strong><code>${escape(llamaCppPython?.nativeCrash ? llamaCppPython.detail : llamaCppPython?.packageVersion ? `v${llamaCppPython.packageVersion}` : llamaCppPython?.detail || s("prompt.runtimeWaiting"))}</code></div></div>
-          <div class="component-row ${llamaCppPython?.pythonPath ? "found" : llamaRuntimeClass === "warning" ? "warning" : "missing"}"><span class="component-state">${icon(llamaCppPython?.pythonPath ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${s("prompt.runtimePython")}</strong><code>${escape(llamaCppPython?.pythonPath || s("prompt.runtimeWaiting"))}${llamaCppPython?.pythonVersion ? ` · Python ${escape(llamaCppPython.pythonVersion)}` : ""}</code></div></div>
-          <div class="component-row ${llamaCppPython?.cudaVersion ? "found" : llamaRuntimeClass === "warning" ? "warning" : "missing"}"><span class="component-state">${icon(llamaCppPython?.cudaVersion ? "circle-check" : llamaRuntimeClass === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${s("prompt.runtimeTorch")}</strong><code>${escape([llamaCppPython?.torchVersion, llamaCppPython?.cudaVersion ? `CUDA ${llamaCppPython.cudaVersion}` : ""].filter(Boolean).join(" · ") || s("prompt.runtimeWaiting"))}</code></div></div>
-        </div>
-        ${environmentScan && !promptWriterNode?.loaded ? `<p class="muted proxy-hint">${s("prompt.runtimeNodeMissing")}</p>` : ""}
-        <div class="button-row">
-          <button class="${llamaCppPython?.ready ? "secondary" : "primary"} button-with-icon" id="install-llama-cpp-python" ${viewModel.llamaCppPythonInstalling || viewModel.hasRunningQueueTask || viewModel.queueRunning || !environmentScan?.comfyRoot ? "disabled" : ""}>${icon(viewModel.llamaCppPythonInstalling ? "refresh-cw" : llamaCppPython?.ready ? "refresh-cw" : "download")}${viewModel.llamaCppPythonInstalling ? s("prompt.runtimeInstalling") : llamaCppPython?.ready ? s("prompt.runtimeRepair") : s("prompt.runtimeInstall")}</button>
-        </div>
-        ${(viewModel.llamaCppPythonLog || viewModel.llamaCppPythonInstalling) ? `<details class="node-log" open><summary>${s("prompt.runtimeLog")}</summary><pre data-dependency-install-log="python-runtime:llama-cpp-python">${escape(viewModel.llamaCppPythonLog || s("prompt.runtimeInstalling"))}</pre></details>` : ""}
-      </section>
+      ${promptRuntimePanel}
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${s("prompt.videoPresetTitle")}</h2><span class="muted">${s("prompt.videoPresetDescription")}</span></div><button class="secondary button-with-icon" id="restore-h3-prompt-presets">${icon("rotate-ccw")}${s("prompt.restore")}</button></div>
         <label>${s("prompt.currentPreset")}<select id="h3-prompt-preset-setting">${options.h3PromptPresetOptions(viewModel.settingsH3PromptPreset, true)}</select></label>
@@ -658,7 +694,7 @@ export function renderSettingsPage(
               ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`custom-node:${node.id}`)}">${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${customNodeStatusTone(node, Boolean(installStatus))}">${installStatus ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}` : node.compatibilityState === "error" ? `${icon("circle-alert")} ${s("nodes.compatibilityError")}` : node.updateAvailable && node.loaded ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}` : node.compatibilityState === "warning" ? `${icon("circle-help")} ${s("nodes.compatibilityWarning")}` : node.loaded ? `${icon(node.runtimeVerified ? "circle-check" : "circle-help")} ${node.runtimeVerified ? s("nodes.runtimeVerified") : s("nodes.fileCheckPassed")}` : node.installed ? `${icon("circle-alert")} ${s("nodes.installedRepair")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
+              <span class="model-availability ${customNodeStatusTone(node, Boolean(installStatus))}">${installStatus ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}` : node.compatibilityState === "error" ? `${icon("circle-alert")} ${s("nodes.compatibilityError")}` : node.updateAvailable && node.loaded ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}` : node.loaded && !node.runtimeVerified && !node.compatibilityNotice ? `${icon("circle-help")} ${s("nodes.fileCheckPassed")}` : node.compatibilityState === "warning" ? `${icon("circle-help")} ${s("nodes.compatibilityWarning")}` : node.loaded ? `${icon(node.runtimeVerified ? "circle-check" : "circle-help")} ${node.runtimeVerified ? s("nodes.runtimeVerified") : s("nodes.fileCheckPassed")}` : node.installed ? `${icon("circle-alert")} ${s("nodes.installedRepair")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
               <button class="${node.updateAvailable || !node.installed || !node.loaded ? "primary" : "secondary"} button-with-icon" data-install-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : node.installed ? "refresh-cw" : "download")}${installStatus || (node.updateAvailable ? s("nodes.updateRestart") : node.installed && !node.loaded ? s("nodes.updateRecheck") : node.installed ? s("nodes.checkUpdate") : s("nodes.installRestart"))}</button>
             </div>
           </article>`;

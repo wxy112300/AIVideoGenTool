@@ -151,6 +151,7 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
 
   it("resolves every managed Gemma tier by its exact GGUF filename", () => {
     for (const definition of managedPromptModelDefinitions) {
+      if (definition.backend === "comfyui-qwenvl-lora") continue;
       expect(promptWriterModelForSelection([
         {
           id: `D:/ComfyUI/models/LLM/${definition.modelFilename}`,

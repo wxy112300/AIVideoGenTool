@@ -36,6 +36,11 @@ describe("dependency catalog", () => {
       runtimeRequirement: expect.stringContaining("Python 3.10–3.14"),
       required: false
     });
+    expect(customNodeDefinition("comfyui-qwenvl-lora")).toMatchObject({
+      repositoryUrl: "https://github.com/Dangocan/comfyui_qwenvl_lora.git",
+      nodeTypes: ["QwenVLModelLoader", "QwenVLLoRALoader", "QwenVLCaption"],
+      required: false
+    });
     expect(customNodeDefinition("comfyui-gguf")).toMatchObject({
       repositoryUrl: "https://github.com/city96/ComfyUI-GGUF.git",
       directoryName: "ComfyUI-GGUF",

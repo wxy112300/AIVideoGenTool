@@ -21,6 +21,7 @@ import {
   parseComfyProcessInfo,
   parseComfyProcessIds,
   isWindowsPythonAlias,
+  isAppManagedComfyCommandLine,
   kjNodesAttentionSourceCompatible,
   parseNvidiaGpuQuery,
   parseComfyDesktop2Registry,
@@ -40,6 +41,21 @@ import {
 } from "../src/core/image-workflow.js";
 
 describe("SageAttention environment selection", () => {
+  it("recognizes only the app-specific ComfyUI database marker for the configured port", () => {
+    expect(isAppManagedComfyCommandLine(
+      "python main.py --port 8188 --database-url sqlite:///C:/Comfy/user/comfyui.local-video-studio-25484-8188.db",
+      8188
+    )).toBe(true);
+    expect(isAppManagedComfyCommandLine(
+      "python main.py --port 8188 --database-url sqlite:///C:/Comfy/user/comfy.db",
+      8188
+    )).toBe(false);
+    expect(isAppManagedComfyCommandLine(
+      "python main.py --port 8189 --database-url sqlite:///C:/Comfy/user/comfyui.local-video-studio-25484-8189.db",
+      8188
+    )).toBe(false);
+  });
+
   it("requires the KJNodes large-stride guard added for modern attention runtimes", () => {
     const legacy = "class PathchSageAttentionKJ: optimized_attention_override";
     const guarded = `${legacy}\nif stride >= 2**31:\n q, k, v = q.contiguous(), k.contiguous(), v.contiguous()`;
@@ -656,8 +672,9 @@ describe("ComfyUI environment candidates", () => {
     const completeProfile = complete.find((profile) => profile.id === "qwen/qwen3.5-4b");
     const fastProfile = completeFast.find((profile) => profile.id === "qwen/qwen3.5-2b");
 
-    expect(promptProfiles).toHaveLength(11);
+    expect(promptProfiles).toHaveLength(12);
     expect(promptProfiles.map((profile) => profile.id)).toEqual([
+      "lightx2v/minimax-h3-prompt-rewriter-8b",
       "qwen/qwen3.6-27b-uncensored-q4",
       "qwen/qwen3.8-27b-uncensored-q4",
       "community/gemma-4-e4b-unconcerned-q5",

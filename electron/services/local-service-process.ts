@@ -66,6 +66,48 @@ export async function launchDetached(
   });
 }
 
+/**
+ * Start the app-owned ComfyUI Python process with a real console attached.
+ *
+ * The generic detached launcher intentionally discards stdio for background
+ * helpers. ComfyUI is different: its import/model-loading output is the most
+ * useful feedback during a cold start, and a blank Python window makes a
+ * healthy (but slow) startup look frozen. Keep this separate from the generic
+ * launcher so LM Studio, update helpers, and externally started services keep
+ * their existing hidden-process behavior.
+ */
+export async function launchComfyUiVisible(
+  executable: string,
+  args: string[],
+  cwd?: string,
+  env: NodeJS.ProcessEnv = process.env,
+  onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void
+): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    const child = spawn(executable, args, {
+      cwd,
+      env,
+      detached: true,
+      // Python's normal stdout/stderr is intentionally inherited so the
+      // visible ComfyUI console shows the same startup log as a manual launch.
+      stdio: ["ignore", "inherit", "inherit"],
+      windowsHide: false
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (child.pid) onExit?.(child.pid, code, signal);
+    });
+    child.once("spawn", () => {
+      if (!child.pid) {
+        reject(new Error(`无法获取已启动进程 PID：${executable}`));
+        return;
+      }
+      child.unref();
+      resolve(child.pid);
+    });
+  });
+}
+
 export async function waitForService(
   url: string,
   timeoutMs = 120_000

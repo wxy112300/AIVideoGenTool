@@ -103,7 +103,7 @@ npm.cmd run dev
 
 Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分钟，共用的 `llama-cpp-python` Windows wheel 下载与自检为 45 分钟。安装日志显示下载百分比；超时会终止对应子进程树并保留已收到的日志，避免无限显示“处理中”。
 
-当前注册的节点族包括 GGUF、Video Helper Suite、LTXVideo、SeedVR2、FlashVSR、KJNodes、Frame Interpolation、ComfyUI MultiModal Prompt Nodes、MiniMax H3 Prompt Writer、H3 Motion Context 和 Spectrum。准确仓库、目录名、用途和 required/optional 状态以 `customNodeCatalog` 为准。
+当前注册的节点族包括 GGUF、Video Helper Suite、LTXVideo、SeedVR2、FlashVSR、KJNodes、Frame Interpolation、ComfyUI MultiModal Prompt Nodes、ComfyUI Qwen-VL LoRA、MiniMax H3 Prompt Writer、H3 Motion Context 和 Spectrum。准确仓库、目录名、用途和 required/optional 状态以 `customNodeCatalog` 为准。
 
 节点目录中的 `releaseSource: "github-release"` 表示设置页会查询对应 GitHub Releases。查询结果按仓库缓存 6 小时；网络失败或仓库没有 Release 时只缓存 1 分钟，不会让离线扫描变成失败。这样“重新扫描”不会每次都触发全部仓库请求，已有本地文件和运行时 `/object_info` 状态也不会被远端网络结果覆盖。当前版本号来自节点 `pyproject.toml` 或已登记的推荐线，远端 Release 只用于更新提示，不会把推荐版本强制升级成最新版。
 
@@ -116,6 +116,24 @@ Qwen3.6/Qwen3.8 本地多模态路径有明确的 Python ABI 边界：节点仓�
 Gemma 4 的 H3 Prompt Writer 运行时与节点目录、GGUF/mmproj 模型文件是三个独立状态。当前上游 0.3.2 的基础节点不再携带必需 Python 依赖；Direct GGUF 的可选 `requirements-gguf.txt` 由本应用的共享运行时安装器接管。设置 → 提示词扩展会单独扫描所选 ComfyUI Python 中的 `llama-cpp-python`，并提供“一键安装并自检”。Windows 统一使用固定版本的 JamePeng CUDA/CPU 动态后端（`0.3.46`，CUDA 12.9 映射到已发布的 `cu128` wheel）；它在运行时选择兼容 CPU 实现，并加载独立 `ggml-cuda.dll`，避免旧静态 wheel 能导入却在加载 GGUF 时触发 `0xC000001D`。探针会显式注册动态后端后再判断 GPU offload，安装器只替换此包而不重装 ComfyUI 的 NumPy/Pillow 等公共依赖。约 299 MB 的 wheel 下载会在设置日志中显示百分比，慢速网络等待上限为 45 分钟。节点安装与运行依赖修复还会为 Prompt Writer 应用 `GGMLType` KV 常量兼容层，并把 GGUF 模型与多模态 chat handler 的清理改为幂等流程；`Llama.close()` 已关闭 handler 时不会再次释放同一资源、覆盖生成结果或留下虚假的 loaded 状态。更新前如果发现节点目录存在本地改动（包括应用自动写入的兼容层），安装器会先识别补丁指纹并查询上游 HEAD；只有上游有变化时才把旧目录移到 `node-backups`，再下载并校验干净副本，避免 `git pull` 因本地修改失败和重复创建备份。节点批次重启后还会检查 `/h3studio/status`、`/models`、GGUF diagnostics 与共享 llama 运行库；如果 0.3.x 节点自带的轻量诊断探针显示 `gpu_offload:false`，设置页会把它作为提示而不是失败，最终以应用侧 torch-first 共享运行库自检和实际生成前检查为准。自检失败会保留完整 pip 日志和原生退出码，不会把 CPU 版或无法确认的包标记为就绪。
 
 H3 Prompt Writer 与可选 MultiModal Prompt Nodes 共用同一个 Python 包名，不能在同一 ComfyUI 环境中各自安装两个版本。两个节点的安装入口和“修复运行依赖”现在都调用同一个安装器、固定版本和 CUDA 自检；节点 `requirements.txt` 中的普通 `llama-cpp-python` 条目会被过滤，安装其中一个不会再用 PyPI 或 Git 源码构建覆盖另一个。相同 ComfyUI 的并发安装请求会合并为一个事务；已有 CUDA 自检通过的后端不会因更新 Prompt Writer 被重装。当前 Python/CUDA 不在预编译矩阵时，安装器会在下载前明确失败并保留日志，不会偷偷回退到 CPU 或启动第二个 llama 服务。模型权重不由此步骤下载，仍由提示词模型卡片中的模型目录检查负责。
+
+### MiniMax H3 Prompt Rewriter LoRA 8B（Qwen3-VL）
+
+这是与 Gemma/GGUF 路径并列的绑定 PEFT 组合：基座是 `Qwen/Qwen3-VL-8B-Instruct`，适配器是官方 [`lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B`](https://huggingface.co/lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B)。它通过 ComfyUI Qwen-VL LoRA 节点读取参考图片/视频并重写 H3 Prompt；不能把 adapter 套到 Qwen3.6、Qwen3.8 GGUF 或 H3 视频扩散模型上。
+
+文件目录：
+
+```text
+<ComfyUI data>/models/LLM/Qwen-VL/qwen3-vl-8b-instruct/
+  model-00001-of-00004.safetensors ... model-00004-of-00004.safetensors
+
+<ComfyUI data>/models/LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b/
+  adapter_model.safetensors
+```
+
+设置页只把这些大体积 safetensors 作为用户必需组件。Qwen 的 `config.json`、权重索引、tokenizer、图像/视频预处理文件以及 LoRA 的 `adapter_config.json` 由应用内置清单，在首次实际扩写前自动下载到上述目录；它们不会被要求用户逐个寻找或手动下载。自动准备失败会保留具体日志，并提示检查网络/代理。启动 ComfyUI 后还要通过 `/object_info` 确认 `QwenVLModelLoader`、`QwenVLLoRALoader` 和 `QwenVLCaption` 已加载。设置页会分别显示文件扫描与节点运行时验证，不把“文件存在”误当成“工作流已经跑通”。
+
+ComfyUI Desktop 某些版本在嵌入式控制台关闭后会让节点的普通 `print()` 抛出 `[Errno 9] Bad file descriptor`，这发生在模型加载前，并不代表权重损坏。重新扫描时如果发现 Qwen-VL 节点仍使用该输出方式，设置页会把它标为“需修复”并提供“一键补齐/更新”；安装器会针对当前选择的 ComfyUI **数据目录**应用可重复的兼容层，保留节点更新策略，不写入机器固定路径。应用后必须重启 ComfyUI，再进行运行时复检。
 
 Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.15`，包含原生 ER-SDE 状态清理、KJNodes 预览回放保护，以及可选的 H3 Continuum 元数据互操作；设置页仍会查询上游最新发布并提供一键更新，但高于最低线的旧版不会只因“不是最新版”而被判定不可用。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。Spectrum 不要求额外模型权重，也不把 Continuum 变成硬依赖。
 

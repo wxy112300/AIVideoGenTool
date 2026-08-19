@@ -525,4 +525,21 @@ describe("ComfyUI meta-batch history", () => {
       })
     ).toBe("torch.OutOfMemoryError: CUDA out of memory");
   });
+
+  it("explains the ComfyUI Desktop stdout-handle failure", () => {
+    expect(
+      historyFailure({
+        status: {
+          status_str: "error",
+          messages: [[
+            "execution_error",
+            {
+              exception_type: "OSError",
+              exception_message: "[Errno 9] Bad file descriptor"
+            }
+          ]]
+        }
+      })
+    ).toContain("ComfyUI Desktop 的日志句柄已失效");
+  });
 });

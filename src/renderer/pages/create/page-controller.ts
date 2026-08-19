@@ -13,7 +13,7 @@ import type { CreationMode, RendererCleanup, RendererContext } from "../../contr
 import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
 import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, videoLoraCompatibleWithDraft, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
 import { generationSafetyForTask, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
-import { h3ReferenceSlotCounts } from "../../../core/h3-reference";
+import { ensureMotionContextSourceSlot, h3ReferenceSlotCounts } from "../../../core/h3-reference";
 import { extensionSafetyForDraft, modelSupportsCreateInputMode, newH3ReferenceSlot } from "./helpers";
 import { mountCreatePromptController, type CreatePromptControllerOptions } from "./prompt-controller";
 import { mountImageEditController, type ImageEditControllerOptions } from "./image-edit-controller";
@@ -95,31 +95,44 @@ export function mountCreatePageController(
       const state = getState();
       if (!state) return;
       const inputMode = requestedMode === "video" ? "video" : "image";
+      const wasVideoExtension = state.draft.inputMode === "video";
+      // Switching to image creation intentionally clears video-only fields on
+      // the active draft. Restore the last unfinished extension draft when the
+      // user comes back, so a history continuation (including its source slot)
+      // is not lost just because they inspected another creation mode.
+      const restoringVideoDraft = inputMode === "video" && !wasVideoExtension
+        ? state.videoExtensionDraft
+        : undefined;
+      const videoSourceDraft = restoringVideoDraft ?? state.draft;
       options.setCreationMode(inputMode === "video" ? "video-extension" : "image-to-video");
       const environmentScan = options.getEnvironmentScan();
       const modelId = inputMode === "video"
-        ? (() => {
-            const configuredModel = state.settings.defaultExtensionModel;
-            if (configuredModel && modelSupportsCreateInputMode(
-              configuredModel,
-              "video",
-              false,
-              "",
-              options.workflowCapabilities,
-              options.bundledWorkflows
-            )) {
-              return configuredModel;
-            }
-            if (isMiniMaxH3R2vModel(state.draft.modelId) || isMiniMaxH3Fl2vaModel(state.draft.modelId)) {
-              return state.draft.modelId;
-            }
-            const node = environmentScan?.customNodes.find((item) => item.id === "h3-motion-context");
-            return node?.installed || node?.loaded
-              ? "minimax_h3_ref2va"
-              : "minimax_h3_fl2va";
-          })()
-        : state.draft.modelId;
-      const videoLoras = inputMode === "video" ? [] : state.draft.videoLoras;
+        ? restoringVideoDraft
+          ? restoringVideoDraft.modelId
+          : (() => {
+              const configuredModel = state.settings.defaultExtensionModel;
+              if (configuredModel && modelSupportsCreateInputMode(
+                configuredModel,
+                "video",
+                false,
+                "",
+                options.workflowCapabilities,
+                options.bundledWorkflows
+              )) {
+                return configuredModel;
+              }
+              if (isMiniMaxH3R2vModel(state.draft.modelId) || isMiniMaxH3Fl2vaModel(state.draft.modelId)) {
+                return state.draft.modelId;
+              }
+              const node = environmentScan?.customNodes.find((item) => item.id === "h3-motion-context");
+              return node?.installed || node?.loaded
+                ? "minimax_h3_ref2va"
+                : "minimax_h3_fl2va";
+            })()
+          : state.draft.modelId;
+      const videoLoras = inputMode === "video"
+        ? (restoringVideoDraft ? restoringVideoDraft.videoLoras.map((lora) => ({ ...lora })) : [])
+        : state.draft.videoLoras;
       const workflowModelId = bundledWorkflowModelId({ modelId, videoLoras });
       const key = options.bundledWorkflowKey(workflowModelId, inputMode);
       const bundled = options.bundledWorkflows[key] ??
@@ -131,25 +144,62 @@ export function mountCreatePageController(
           supportsVideoExtension: bundled.supportsVideoExtension
         };
       }
+      const nextMotionSlots = inputMode === "video" && isMiniMaxH3R2vModel(modelId)
+        ? ensureMotionContextSourceSlot(
+            restoringVideoDraft || wasVideoExtension ? videoSourceDraft.h3ReferenceSlots : [],
+            restoringVideoDraft || wasVideoExtension ? videoSourceDraft.sourceVideoPath : ""
+          )
+        : inputMode === "image" && !wasVideoExtension
+          ? state.draft.h3ReferenceSlots
+          : [];
       options.patchDraft({
+        ...(restoringVideoDraft ? structuredClone(restoringVideoDraft) : {}),
         inputMode,
         modelId,
         videoLoras,
-        workflowPath: bundled?.path ?? "",
+        workflowPath: bundled?.path ?? (restoringVideoDraft ? restoringVideoDraft.workflowPath : ""),
+        h3ReferenceSlots: nextMotionSlots,
         ...(inputMode === "video"
           ? {
+              startImagePath: "",
+              endImagePath: "",
+              ...(wasVideoExtension || restoringVideoDraft
+                ? {}
+                : {
+                    sourceVideoPath: "",
+                    sourceVideoDuration: 0,
+                    trimStartSeconds: 0,
+                    trimEndSeconds: 0,
+                    sourceAssetId: undefined,
+                    sourceVersionId: undefined,
+                    h3ContextLatentPath: undefined,
+                    sourceWidth: 0,
+                    sourceHeight: 0
+                  }),
               ratio: "source" as const,
               duration: isMiniMaxH3R2vModel(modelId)
                 ? Math.min(
-                    state.draft.duration,
+                    videoSourceDraft.duration,
                     motionContextMaxDurationSeconds()
                   )
-                : state.draft.duration,
+                : videoSourceDraft.duration,
               spectrumMode: isMiniMaxH3R2vModel(modelId)
                 ? "off" as const
-                : state.draft.spectrumMode
+                : videoSourceDraft.spectrumMode
             }
-          : {})
+          : wasVideoExtension
+            ? {
+                sourceVideoPath: "",
+                sourceVideoDuration: 0,
+                trimStartSeconds: 0,
+                trimEndSeconds: 0,
+                sourceAssetId: undefined,
+                sourceVersionId: undefined,
+                h3ContextLatentPath: undefined,
+                sourceWidth: 0,
+                sourceHeight: 0
+              }
+            : {})
       });
       options.context.requestRender();
     }, { signal });
@@ -317,9 +367,11 @@ export function mountCreatePageController(
         const nextIsR2V = isMiniMaxH3R2vModel(value);
         const oldWasR2V = isMiniMaxH3R2vModel(state.draft.modelId);
         const existingSlots = state.draft.h3ReferenceSlots;
-        const slotsForR2V = nextIsR2V && state.draft.inputMode !== "video" && !existingSlots.length
-          ? [state.draft.startImagePath, state.draft.endImagePath].filter(Boolean).map((imagePath) => newH3ReferenceSlot(imagePath))
-          : existingSlots;
+        const slotsForR2V = nextIsR2V && state.draft.inputMode === "video"
+          ? ensureMotionContextSourceSlot(existingSlots, state.draft.sourceVideoPath)
+          : nextIsR2V && state.draft.inputMode !== "video" && !existingSlots.length
+            ? [state.draft.startImagePath, state.draft.endImagePath].filter(Boolean).map((imagePath) => newH3ReferenceSlot(imagePath))
+            : existingSlots;
         const restoredStartImage = oldWasR2V
           ? existingSlots.find((slot) => slot.mediaType === "image")?.mediaPath ?? ""
           : state.draft.startImagePath;

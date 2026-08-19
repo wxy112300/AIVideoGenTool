@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   startComfyUiService,
+  comfyUiPythonEntryArgs,
   rememberOwnedComfyProcessId,
   ownedComfyProcessIdSnapshot,
   clearOwnedComfyProcessIds,
@@ -11,6 +12,25 @@ import { comfyUiSettingsForQueueTask } from "../electron/services/comfy-runtime-
 import { createDefaultState } from "../src/core/defaults";
 
 describe("ComfyUI runtime service", () => {
+  it("rebinds Windows Python output to its visible console before running ComfyUI", () => {
+    const args = comfyUiPythonEntryArgs("D:\\ComfyCore\\main.py", "win32");
+
+    expect(args.slice(0, 3)).toEqual(["-s", "-c", expect.any(String)]);
+    expect(args[2]).toContain("open('CONOUT$', 'w'");
+    expect(args[2]).toContain("GetConsoleMode");
+    expect(args[2]).toContain("SetConsoleMode");
+    expect(args[2]).toContain("msvcrt.get_osfhandle(stream.fileno())");
+    expect(args[2]).toContain("mode.value | 0x0004");
+    expect(args[2]).toContain("except Exception:");
+    expect(args[2]).toContain("runpy.run_path(entry, run_name='__main__')");
+    expect(args[3]).toBe("D:\\ComfyCore\\main.py");
+  });
+
+  it("keeps the direct Python entry outside Windows", () => {
+    expect(comfyUiPythonEntryArgs("/opt/ComfyUI/main.py", "linux"))
+      .toEqual(["-s", "/opt/ComfyUI/main.py"]);
+  });
+
   it("retains the real listener PID after a Desktop launcher hands off", () => {
     clearOwnedComfyProcessIds();
     rememberOwnedComfyProcessId(81880);

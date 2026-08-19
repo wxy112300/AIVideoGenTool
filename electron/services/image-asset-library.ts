@@ -112,7 +112,7 @@ function referenceHandles(state: AppState): ReferenceHandle[] {
   addVideoInputReferences(state.draft);
   for (const task of state.queue) {
     if (task.taskType === "image-generation") task.pictures.forEach(addReference);
-    else if (task.taskType === "generation") addVideoInputReferences(task);
+    else if (task.taskType === "generation" || task.taskType === "extension") addVideoInputReferences(task);
   }
   for (const project of state.imageHistory) {
     for (const version of project.versions) {

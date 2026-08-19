@@ -89,6 +89,7 @@ import {
 import {
   isComfyMultimodalPromptModel,
   isGemmaPromptModel,
+  isQwenVlPeftPromptModel,
   promptRuntimeForSettings
 } from "../src/core/prompt-models.js";
 import { comfyUiSettingsForQueueTask } from "./services/comfy-runtime-policy.js";
@@ -99,6 +100,7 @@ import {
   installWorkflowDependency,
   alignLocalComfyUiRuntimeProfile,
   forceStopComfyProcesses,
+  reconcileConfiguredComfyListenerOwnership,
   repairEnvironmentIssue,
   resolveComfyOutputDirectory,
   restartLocalService,
@@ -110,6 +112,7 @@ import {
   freeMemory,
   enhancePromptWithComfyUi,
   testComfyUi,
+  jsonRequest,
   interrupt,
   TaskStalledError,
   warmNativePromptModel
@@ -118,6 +121,13 @@ import {
   enhancePromptWithMultimodalComfyUi,
   warmMultimodalPromptModel
 } from "./services/multimodal-prompt.js";
+import {
+  enhancePromptWithQwenVlPeft,
+  warmQwenVlPeftPromptModel,
+  validateQwenVlRuntimeChoices,
+  QwenVlRuntimeValidationError
+} from "./services/qwenvl-prompt.js";
+import { ensureQwenVlManagedMetadata } from "./services/qwenvl-model-assets.js";
 import {
   enhancePromptWithH3PromptWriter,
   promptWriterModelForSelection,
@@ -1092,7 +1102,17 @@ function applyVideoMigrationPaths(
 
 async function finishWindowClose(): Promise<void> {
   appLogger.info("app", "shutdown", "Application shutdown started");
-  await releasePromptRuntime(store.get().settings);
+  const settings = store.get().settings;
+  await releasePromptRuntime(settings);
+  const stopped = await forceStopComfyProcesses(settings).catch((error) => ({
+    ok: false,
+    message: error instanceof Error ? error.message : String(error)
+  }));
+  appLogger.info(
+    "app",
+    stopped.ok ? "owned-comfy-stopped" : "owned-comfy-stop-skipped",
+    stopped.message
+  );
   rendererHasUnsavedSettings = false;
   pendingWindowCloseRequest = null;
   allowWindowClose = true;
@@ -1474,6 +1494,44 @@ async function ensureComfyUiReadyForPrompt(settings: Settings): Promise<void> {
   await testComfyUi(settings);
 }
 
+async function validateQwenVlPromptNodeRuntime(settings: Settings): Promise<void> {
+  const baseUrl = settings.comfyUrl.replace(/\/+$/u, "");
+  let objectInfo = await jsonRequest<Record<string, unknown>>(
+    `${baseUrl}/object_info`,
+    { signal: AbortSignal.timeout(15_000) }
+  );
+  try {
+    validateQwenVlRuntimeChoices(objectInfo, settings);
+    return;
+  } catch (error) {
+    // Dangocan's node snapshots the dropdown at Python import time.  If the
+    // model was installed while an app-owned ComfyUI was already running,
+    // refresh that process once.  restartLocalService refuses to terminate an
+    // independently started runtime and returns a manual-restart result.
+    if (!(error instanceof QwenVlRuntimeValidationError) || !error.needsRuntimeRefresh) {
+      throw error;
+    }
+    appLogger.warn("prompt", "qwenvl-runtime-enum-stale", error.message, {
+      nodeType: error.nodeType,
+      inputName: error.inputName,
+      expected: error.expected,
+      choices: error.choices
+    });
+    const refresh = await restartLocalService("comfy", settings);
+    appLogger.info("prompt", refresh.ok ? "qwenvl-runtime-refresh-succeeded" : "qwenvl-runtime-refresh-skipped", refresh.message, {
+      manualRestartRequired: refresh.manualRestartRequired === true
+    });
+    if (!refresh.ok) {
+      throw new Error(`${error.message} ${refresh.message}`);
+    }
+    objectInfo = await jsonRequest<Record<string, unknown>>(
+      `${baseUrl}/object_info`,
+      { signal: AbortSignal.timeout(15_000) }
+    );
+    validateQwenVlRuntimeChoices(objectInfo, settings);
+  }
+}
+
 async function validateNativePromptRuntime(settings: Settings): Promise<void> {
   const scan = await scanEnvironment(settings);
   const profile = scan.modelProfiles.find(
@@ -1485,7 +1543,7 @@ async function validateNativePromptRuntime(settings: Settings): Promise<void> {
       .map((component) => component.expected)
       .join("、");
     throw new Error(
-      `提示词模型尚未就绪${missing ? `，缺少：${missing}` : ""}。请把模型放入 ${isComfyMultimodalPromptModel(settings.promptModelId) ? "ComfyUI/models/LLM 的对应子目录" : "ComfyUI/models/text_encoders"} 后重新扫描。`
+      `提示词模型尚未就绪${missing ? `，缺少：${missing}` : ""}。请把模型放入 ${isQwenVlPeftPromptModel(settings.promptModelId) ? "ComfyUI/models/LLM/Qwen-VL/qwen3-vl-8b-instruct 与 ComfyUI/models/LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b" : isComfyMultimodalPromptModel(settings.promptModelId) ? "ComfyUI/models/LLM 的对应子目录" : "ComfyUI/models/text_encoders"} 后重新扫描。`
     );
   }
   if (isGemmaPromptModel(settings.promptModelId) && !scan.llamaCppPython.ready) {
@@ -1506,6 +1564,20 @@ async function validateNativePromptRuntime(settings: Settings): Promise<void> {
         `多模态提示词节点尚未被当前 ComfyUI 加载：${profile.runtimeMissingNodes?.join("、") || "VisionLLMNode"}。请重启 ComfyUI 后重新扫描。`
       );
     }
+    return;
+  }
+  if (isQwenVlPeftPromptModel(settings.promptModelId)) {
+    if (profile.missingCustomNodeIds?.length) {
+      throw new Error(
+        `Qwen3-VL Prompt LoRA 缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与工作流中安装。`
+      );
+    }
+    if (profile.runtimeVerified && profile.runtimeReady === false) {
+      throw new Error(
+        `Qwen3-VL Prompt LoRA 节点尚未被当前 ComfyUI 加载：${profile.runtimeMissingNodes?.join("、") || "QwenVLModelLoader / QwenVLLoRALoader / QwenVLCaption"}。请重启 ComfyUI 后重新扫描。`
+      );
+    }
+    await validateQwenVlPromptNodeRuntime(settings);
     return;
   }
   if (!scan.comfyCompatibility.promptCoreSupported) {
@@ -1767,6 +1839,15 @@ function registerIpc(): void {
   );
   ipcMain.handle("draft:save", async (_event, draft: Draft) => {
     const next = await store.update((state) => {
+      // Keep a separate persisted snapshot for the extension composer.  The
+      // renderer intentionally clears video-only fields while showing the
+      // image-to-video composer, so the last source video and Motion Context
+      // slots must survive that mode switch.
+      if (draft.inputMode === "video") {
+        state.videoExtensionDraft = structuredClone(draft);
+      } else if (state.draft.inputMode === "video") {
+        state.videoExtensionDraft = structuredClone(state.draft);
+      }
       state.draft = draft;
     });
     sendState(next);
@@ -1969,9 +2050,15 @@ function registerIpc(): void {
   );
   ipcMain.handle("performance:get", async (_event, settings: Settings) => {
     const metrics = await getPerformanceMetrics(settings);
+    const currentOwnership = comfyRuntimeState.snapshot().ownership;
+    const ownership = metrics.comfyConnected && currentOwnership === "unknown" &&
+      await reconcileConfiguredComfyListenerOwnership(settings)
+      ? "app"
+      : currentOwnership;
     comfyRuntimeState.observeReachability(
       metrics.comfyConnected,
-      settings.comfyUrl.replace(/\/+$/, "")
+      settings.comfyUrl.replace(/\/+$/, ""),
+      ownership
     );
     return metrics;
   });
@@ -2084,6 +2171,8 @@ function registerIpc(): void {
           } else if (task.taskType === "generation" && preparedTask?.taskType === "generation") {
             task.startImagePath = preparedTask.startImagePath;
             task.endImagePath = preparedTask.endImagePath;
+            task.h3ReferenceSlots = preparedTask.h3ReferenceSlots?.map((slot) => ({ ...slot }));
+          } else if (task.taskType === "extension" && preparedTask?.taskType === "extension") {
             task.h3ReferenceSlots = preparedTask.h3ReferenceSlots?.map((slot) => ({ ...slot }));
           }
         }
@@ -2468,6 +2557,13 @@ function registerIpc(): void {
         await warmMultimodalPromptModel(settings, controller.signal);
         return;
       }
+      if (promptBackend === "comfyui-qwenvl-lora") {
+        await ensureQwenVlManagedMetadata(settings, controller.signal);
+        await ensureComfyUiReadyForPrompt(settings);
+        await validateNativePromptRuntime(settings);
+        await warmQwenVlPeftPromptModel(settings, controller.signal);
+        return;
+      }
       if (promptBackend !== "native-text-generate") {
         throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
       }
@@ -2488,6 +2584,8 @@ function registerIpc(): void {
           ? "ComfyUI H3 Prompt Writer 已就绪；模型会在扩写时按需加载，完成后自动卸载。"
           : promptBackend === "comfyui-multimodal"
             ? "ComfyUI 多模态提示词模型已通过节点验证；每次扩写后自动释放显存。"
+          : promptBackend === "comfyui-qwenvl-lora"
+            ? "Qwen3-VL 8B + H3 Prompt Rewriter LoRA 已通过节点验证；每次扩写后自动释放显存。"
           : "Qwen 提示词模型已启动并加载到 ComfyUI。"
       };
     } catch (error) {
@@ -2603,6 +2701,64 @@ function registerIpc(): void {
         await ensureComfyUiReadyForPrompt(settings);
         await validateNativePromptRuntime(settings);
         return enhancePromptWithMultimodalComfyUi(
+          request,
+          settings,
+          controller.signal,
+          false,
+          promptProgress.update,
+          operationId
+        );
+      })();
+      nativePromptWorker = worker;
+      try {
+        const result = await worker;
+        promptProgress.finish("completed", "unloading");
+        appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
+          ...promptLogContext,
+          durationMs: Date.now() - startedAt,
+          outputLength: result.length
+        });
+        return result;
+      } catch (error) {
+        if (error instanceof TaskStalledError) {
+          await recoverStalledPromptComfyUi(settings);
+        }
+        promptProgress.finish(
+          controller.signal.aborted ? "cancelled" : "failed",
+          controller.signal.aborted ? "unloading" : "validating",
+          error instanceof Error ? error.message : String(error)
+        );
+        await captureComfyUiLogFailure(
+          appLogger,
+          settings,
+          "prompt_enhance_failed",
+          { modelId: settings.promptModelId, operationId }
+        ).catch(() => undefined);
+        appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
+          ...promptLogContext,
+          durationMs: Date.now() - startedAt,
+          ...errorLogMeta(error)
+        });
+        throw error;
+      } finally {
+        if (nativePromptWorker === worker) nativePromptWorker = null;
+        if (nativePromptController === controller) nativePromptController = null;
+      }
+    }
+    if (promptBackend === "comfyui-qwenvl-lora") {
+      if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
+      if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
+        throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
+      }
+      if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
+      const controller = new AbortController();
+      nativePromptController = controller;
+      const worker = (async () => {
+        promptProgress.update("checking", 5);
+        await ensureQwenVlManagedMetadata(settings, controller.signal, promptProgress.update);
+        await ensureComfyUiReadyForPrompt(settings);
+        await validateNativePromptRuntime(settings);
+        return enhancePromptWithQwenVlPeft(
           request,
           settings,
           controller.signal,

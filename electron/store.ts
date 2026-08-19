@@ -15,7 +15,7 @@ import type {
 import { createDefaultState } from "../src/core/defaults.js";
 import { normalizeUiLocale } from "../src/core/i18n.js";
 import { normalizeQwenImagePromptPresets } from "../src/core/qwen-image-prompt.js";
-import { normalizeH3ReferenceSlots } from "../src/core/h3-reference.js";
+import { ensureMotionContextSourceSlot, normalizeH3ReferenceSlots } from "../src/core/h3-reference.js";
 import {
   managedPromptModelDefinitions
 } from "../src/core/prompt-models.js";
@@ -219,6 +219,12 @@ function migrateQueueTask(
     legacyModelId
   );
   if (task.taskType === "extension") {
+    const normalizedSlots = isMiniMaxH3R2vModel(modelId)
+      ? ensureMotionContextSourceSlot(
+          normalizeH3ReferenceSlots((task as QueueTask & { h3ReferenceSlots?: unknown }).h3ReferenceSlots),
+          task.sourceVideoPath
+        )
+      : undefined;
     return {
       ...task,
       modelId,
@@ -230,6 +236,7 @@ function migrateQueueTask(
         : defaultH3LivePreview,
       spectrumMode: task.spectrumMode ?? "off",
       spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
+      ...(normalizedSlots ? { h3ReferenceSlots: normalizedSlots } : {}),
       automaticRetryAttempt
     };
   }
@@ -386,6 +393,15 @@ export class JsonStore {
             }
           : {})
       });
+      const savedVideoExtensionDraft = saved.videoExtensionDraft;
+      const mergedVideoExtensionDraft = savedVideoExtensionDraft?.inputMode === "video"
+        ? ensureDraftPromptState({
+            ...defaultState.draft,
+            ...savedVideoExtensionDraft,
+            inputMode: "video",
+            h3ReferenceSlots: normalizeH3ReferenceSlots(savedVideoExtensionDraft.h3ReferenceSlots)
+          })
+        : undefined;
       const savedQueueLifecycle = normalizedQueueLifecycle(
         (saved as { queueLifecycle?: unknown }).queueLifecycle
       );
@@ -393,6 +409,7 @@ export class JsonStore {
         ...defaultState,
         ...saved,
         draft: mergedDraft,
+        videoExtensionDraft: mergedVideoExtensionDraft,
         imageDraft: normalizeImageEditDraft(saved.imageDraft),
         settings: {
           ...defaultState.settings,
@@ -464,8 +481,15 @@ export class JsonStore {
       const normalizedH3ReferenceSlots = normalizeH3ReferenceSlots(
         this.state.draft.h3ReferenceSlots
       );
-      if (JSON.stringify(normalizedH3ReferenceSlots) !== JSON.stringify(this.state.draft.h3ReferenceSlots)) {
-        this.state.draft.h3ReferenceSlots = normalizedH3ReferenceSlots;
+      const draftMotionSlots = this.state.draft.inputMode === "video" &&
+        isMiniMaxH3R2vModel(this.state.draft.modelId)
+        ? ensureMotionContextSourceSlot(
+            normalizedH3ReferenceSlots,
+            this.state.draft.sourceVideoPath
+          )
+        : normalizedH3ReferenceSlots;
+      if (JSON.stringify(draftMotionSlots) !== JSON.stringify(this.state.draft.h3ReferenceSlots)) {
+        this.state.draft.h3ReferenceSlots = draftMotionSlots;
         needsPersist = true;
       }
       const legacyDraftModelId = this.state.draft.modelId;

@@ -174,6 +174,110 @@ export function patchMultimodalPromptContextSize(source: string): string {
   return source.replace(/n_ctx: int = 4096/gu, "n_ctx: int = 8192");
 }
 
+/**
+ * ComfyUI Desktop can close stdout/stderr file descriptors after its embedded
+ * console is detached. Protect both the node's bare ``print`` calls and
+ * third-party model-loading progress writers while preserving healthy streams.
+ */
+export function qwenVlNeedsComfyDesktopLoggingShim(source: string): boolean {
+  if (!source.includes("class QwenVLModelLoader")) return false;
+  return /^[\t ]*print[\t ]*\(/mu.test(source) ||
+    !source.includes("def _qwenvl_prepare_console_streams(") ||
+    !source.includes("            stream.flush()") ||
+    !/^[\t ]{8}_qwenvl_prepare_console_streams\(\)\r?$/mu.test(source);
+}
+
+export function patchQwenVlComfyDesktopLogging(source: string): string {
+  if (!qwenVlNeedsComfyDesktopLoggingShim(source)) {
+    return source;
+  }
+  // Rewrite only calls that start a Python statement. This avoids touching
+  // strings/comments and keeps the helper's builtins.print implementation
+  // untouched when the patch is checked or applied more than once.
+  let replaced = source.replace(/(^|\r?\n)([\t ]*)print[\t ]*\(/gmu, "$1$2_qwenvl_log(");
+  const marker = "import folder_paths";
+  const markerIndex = replaced.indexOf(marker);
+  if (markerIndex < 0) {
+    throw new Error(
+      "ComfyUI Qwen-VL LoRA 源码缺少 folder_paths 导入，已停止应用 Desktop 日志兼容层。"
+    );
+  }
+  const lineEnd = replaced.indexOf("\n", markerIndex);
+  const insertAt = lineEnd >= 0 ? lineEnd + 1 : replaced.length;
+  const helpers: string[] = [];
+  if (!replaced.includes("def _qwenvl_prepare_console_streams(")) {
+    helpers.push(
+      "",
+      "def _qwenvl_prepare_console_streams():",
+      "    import os",
+      "    import sys",
+      "    for stream_name in (\"stdout\", \"stderr\"):",
+      "        stream = getattr(sys, stream_name, None)",
+      "        try:",
+      "            if stream is None:",
+      "                raise OSError(9, \"Bad file descriptor\")",
+      "            os.fstat(stream.fileno())",
+      "            stream.flush()",
+      "        except (OSError, ValueError, AttributeError):",
+      "            setattr(sys, stream_name, open(os.devnull, \"w\", encoding=\"utf-8\"))",
+      ""
+    );
+  }
+  if (!replaced.includes("def _qwenvl_log(")) {
+    helpers.push(
+      "def _qwenvl_log(*args, **kwargs):",
+      "    try:",
+      "        import builtins",
+      "        builtins.print(*args, **kwargs)",
+      "    except OSError as exc:",
+      "        if getattr(exc, \"errno\", None) != 9:",
+      "            raise",
+      ""
+    );
+  }
+  if (helpers.length > 0) {
+    replaced = `${replaced.slice(0, insertAt)}${helpers.join("\n")}${replaced.slice(insertAt)}`;
+  }
+  if (!replaced.includes("            stream.flush()")) {
+    replaced = replaced.replace(
+      /(def _qwenvl_prepare_console_streams\(\):[\s\S]*?^[\t ]{12}os\.fstat\(stream\.fileno\(\)\)\r?\n)/mu,
+      "$1            stream.flush()\n"
+    );
+  }
+  if (!/^[\t ]{8}_qwenvl_prepare_console_streams\(\)\r?$/mu.test(replaced)) {
+    replaced = replaced.replace(
+      /(class QwenVLModelLoader:[\s\S]*?\n    def load\([^\n]*\):\r?\n)/u,
+      "$1        _qwenvl_prepare_console_streams()\n"
+    );
+  }
+  if (!/^[\t ]{8}_qwenvl_prepare_console_streams\(\)\r?$/mu.test(replaced)) {
+    throw new Error(
+      "ComfyUI Qwen-VL LoRA 源码结构与 Desktop 日志兼容层不匹配，已停止修改。"
+    );
+  }
+  if (!replaced.includes("            stream.flush()")) {
+    throw new Error(
+      "ComfyUI Qwen-VL LoRA 的 Desktop 日志兼容层无法升级 flush 检查，已停止修改。"
+    );
+  }
+  return replaced;
+}
+
+export async function prepareQwenVlComfyDesktopLogging(
+  targetDirectory: string,
+  report: (message: string) => void
+): Promise<void> {
+  const filename = path.join(targetDirectory, "nodes.py");
+  const source = await fs.readFile(filename, "utf8");
+  const patched = patchQwenVlComfyDesktopLogging(source);
+  if (patched !== source) {
+    await fs.writeFile(filename, patched, "utf8");
+    report("已为 Qwen-VL LoRA 节点应用 ComfyUI Desktop Bad file descriptor 兼容层");
+  } else {
+    report("Qwen-VL LoRA 节点已包含 ComfyUI Desktop 日志兼容层");
+  }
+}
+
 export async function prepareMultimodalPromptNodes(
   targetDirectory: string,
   report: (message: string) => void

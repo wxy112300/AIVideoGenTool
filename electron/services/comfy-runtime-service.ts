@@ -39,6 +39,14 @@ export interface ComfyRuntimeServiceDependencies {
     env?: NodeJS.ProcessEnv,
     onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void
   ): Promise<number>;
+  /** Optional visible-console launcher for app-owned ComfyUI Python. */
+  launchComfyUiVisible?(
+    executable: string,
+    args: string[],
+    cwd?: string,
+    env?: NodeJS.ProcessEnv,
+    onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void
+  ): Promise<number>;
   isPortInUse(port: number): Promise<boolean>;
   downloadEnvironment(settings: Settings): NodeJS.ProcessEnv;
   exists(filename: string): Promise<boolean>;
@@ -54,6 +62,38 @@ export interface ComfyRuntimeServiceDependencies {
 }
 
 let pendingComfyUiStart: Promise<string> | null = null;
+
+// A detached Windows Python gets a visible console from the OS, but Electron's
+// inherited standard handles do not point at it. Rebind before ComfyUI wraps them.
+const windowsConsoleBootstrap = [
+  "import ctypes, msvcrt, runpy, sys",
+  "try:",
+  "    sys.stdout = open('CONOUT$', 'w', encoding='utf-8', buffering=1)",
+  "    sys.stderr = open('CONOUT$', 'w', encoding='utf-8', buffering=1)",
+  "    get_console_mode = ctypes.windll.kernel32.GetConsoleMode",
+  "    get_console_mode.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32))",
+  "    set_console_mode = ctypes.windll.kernel32.SetConsoleMode",
+  "    set_console_mode.argtypes = (ctypes.c_void_p, ctypes.c_uint32)",
+  "    for stream in (sys.stdout, sys.stderr):",
+  "        handle = msvcrt.get_osfhandle(stream.fileno())",
+  "        mode = ctypes.c_uint32()",
+  "        if handle and get_console_mode(handle, ctypes.byref(mode)):",
+  "            set_console_mode(handle, mode.value | 0x0004)",
+  "except Exception:",
+  "    pass",
+  "entry = sys.argv[1]",
+  "sys.argv = sys.argv[1:]",
+  "runpy.run_path(entry, run_name='__main__')"
+].join("\n");
+
+export function comfyUiPythonEntryArgs(
+  mainPy: string,
+  platform: NodeJS.Platform = process.platform
+): string[] {
+  return platform === "win32"
+    ? ["-s", "-c", windowsConsoleBootstrap, mainPy]
+    : ["-s", mainPy];
+}
 
 async function startComfyUiServiceImpl(
   settings: Settings,
@@ -107,8 +147,7 @@ async function startComfyUiServiceImpl(
   const runtimeProfile = comfyUiRuntimeProfileForSettings(settings);
   const memoryArgs = comfyUiMemoryArgs(settings);
   const args = [
-    "-s",
-    mainPy,
+    ...comfyUiPythonEntryArgs(mainPy),
     "--listen",
     endpoint.host,
     "--port",
@@ -154,7 +193,8 @@ async function startComfyUiServiceImpl(
     memoryArgs,
     databaseFilename
   });
-  const processId = await dependencies.launchDetached(
+  const launchComfyUi = dependencies.launchComfyUiVisible ?? dependencies.launchDetached;
+  const processId = await launchComfyUi(
     python,
     args,
     sourceRoot,

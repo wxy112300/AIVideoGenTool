@@ -414,6 +414,8 @@ export interface ExtensionQueueTask extends VideoQueueTaskBase {
   h3ContextLatentPath?: string;
   h3ContextSavePrefix?: string;
   h3ContextSavedPath?: string;
+  /** Motion Context keeps the source video in slot 1 and optional refs after it. */
+  h3ReferenceSlots?: H3ReferenceSlot[];
   sourceWidth: number;
   sourceHeight: number;
   ratio: Draft["ratio"];
@@ -601,6 +603,13 @@ export interface HistoryMetadataPatch {
 export interface AppState {
   schemaVersion: number;
   draft: Draft;
+  /**
+   * Last in-progress video extension draft.  The visible `draft` remains
+   * scoped to the currently selected creation mode, while this snapshot lets
+   * switching to image creation preserve an unfinished extension source and
+   * its Motion Context slots.
+   */
+  videoExtensionDraft?: Draft;
   imageDraft: ImageEditDraft;
   settings: Settings;
   queue: QueueTask[];
@@ -621,6 +630,8 @@ export type LocalServiceKind = "comfy";
 export interface ConnectionResult {
   ok: boolean;
   message: string;
+  /** The requested file operation succeeded, but an externally managed service must be restarted by the user. */
+  manualRestartRequired?: boolean;
   log?: string;
   executablePath?: string;
 }

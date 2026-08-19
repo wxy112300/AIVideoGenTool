@@ -600,6 +600,22 @@ export function workflowSupportsH3MotionContextExtension(source: unknown): boole
     classTypes.has("SaveVideo");
 }
 
+export function workflowSupportsH3MotionContextReferences(
+  source: unknown,
+  imageCount: number,
+  extraVideoCount: number
+): boolean {
+  if (!workflowSupportsH3MotionContextExtension(source)) return false;
+  const serialized = JSON.stringify(source);
+  for (let index = 0; index < Math.max(0, imageCount); index += 1) {
+    if (!serialized.includes(`{{H3_REF_IMAGE_${index}}}`)) return false;
+  }
+  for (let index = 1; index <= Math.max(0, extraVideoCount); index += 1) {
+    if (!serialized.includes(`{{H3_REF_VIDEO_${index}}}`)) return false;
+  }
+  return true;
+}
+
 export function generationFrameCountForTask(
   task: Pick<
     GenerationQueueTask,
@@ -1128,7 +1144,13 @@ export function outputDimensions(
 export function extensionOutputDimensions(
   task: ExtensionQueueTask
 ): [number, number] {
-  if (isMiniMaxH3Fl2vaModel(task.modelId)) {
+  // Motion Context (Ref2VA) uses the same H3 VAE spatial grid as native
+  // I2V/T2V.  Routing it through the legacy video cap can turn a 480p 16:9
+  // task into 848×464, which encodes to odd 53×29 spatial latents.  ComfyUI
+  // pads the target latent but not reference latents, so that shape is not
+  // patchifiable and fails inside SamplerCustomAdvanced. Keep every H3
+  // extension variant on the native 32px canvas policy instead.
+  if (isMiniMaxH3Fl2vaModel(task.modelId) || isMiniMaxH3R2vModel(task.modelId)) {
     return miniMaxH3Dimensions(task);
   }
   return legacyVideoDimensions(task);

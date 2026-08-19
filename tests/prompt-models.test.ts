@@ -5,6 +5,7 @@ import {
   managedPromptModel,
   managedPromptModelDefinitions,
   isComfyMultimodalPromptModel,
+  isQwenVlPeftPromptModel,
   promptModelBackend,
   promptModelSupportsImageEdit,
   promptRuntimeForSettings
@@ -12,10 +13,12 @@ import {
 
 describe("prompt model runtime selection", () => {
   it("routes all selectable prompt models to a real backend", () => {
-    expect(managedPromptModelDefinitions).toHaveLength(9);
+    expect(managedPromptModelDefinitions).toHaveLength(10);
     for (const model of managedPromptModelDefinitions) {
       expect(promptModelBackend(model.id)).toBe(
-        ["qwen/qwen3.6-27b-uncensored-q4", "qwen/qwen3.8-27b-uncensored-q4"].includes(model.id)
+        model.id === "lightx2v/minimax-h3-prompt-rewriter-8b"
+          ? "comfyui-qwenvl-lora"
+          : ["qwen/qwen3.6-27b-uncensored-q4", "qwen/qwen3.8-27b-uncensored-q4"].includes(model.id)
           ? "comfyui-multimodal"
           : "h3-prompt-writer"
       );
@@ -98,6 +101,19 @@ describe("prompt model runtime selection", () => {
       modelFilename: "Qwen3.8-27B-Uncensored-noMTP-Q4_K_M.gguf",
       mmprojFilename: "Qwen3.8-27B-Uncensored-vision-f16.gguf",
       targetDirectory: "LLM/qwen3.8-27b-uncensored-q4"
+    });
+  });
+
+  it("keeps the H3 Prompt Rewriter LoRA bound to its official Qwen3-VL 8B base", () => {
+    const modelId = "lightx2v/minimax-h3-prompt-rewriter-8b";
+    expect(isQwenVlPeftPromptModel(modelId)).toBe(true);
+    expect(isComfyMultimodalPromptModel(modelId)).toBe(false);
+    expect(isGemmaPromptModel(modelId)).toBe(false);
+    expect(managedPromptModel(modelId)).toMatchObject({
+      backend: "comfyui-qwenvl-lora",
+      format: "peft",
+      baseModelSource: "Qwen/Qwen3-VL-8B-Instruct",
+      adapterSource: "lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B"
     });
   });
 

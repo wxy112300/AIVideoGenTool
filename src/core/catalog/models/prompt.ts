@@ -3,6 +3,12 @@ import { entry, component, guide } from "./catalog-helpers.js";
 import type { CatalogModelEntry } from "../types.js";
 
 const managedPromptEnglish: Record<string, { name: string; badge: string; description: string; licenseNote: string }> = {
+  "lightx2v/minimax-h3-prompt-rewriter-8b": {
+    name: "MiniMax H3 Prompt Rewriter LoRA · Qwen3-VL 8B",
+    badge: "Qwen3-VL 8B · PEFT LoRA · ComfyUI",
+    description: "The official LightX2V adapter targets Qwen3-VL-8B-Instruct and can consume image/video references for H3 prompt rewriting through the ComfyUI Qwen-VL LoRA nodes.",
+    licenseNote: "The base model and adapter have separate licenses. Keep this adapter bound to Qwen3-VL-8B-Instruct; do not apply it to Qwen3.6/Qwen3.8 GGUF models."
+  },
   "qwen/qwen3.6-27b-uncensored-q4": {
     name: "Qwen3.6 27B Q4 · Uncensored · ComfyUI",
     badge: "Uncensored · Q4 · 4090",
@@ -60,6 +66,12 @@ const managedPromptEnglish: Record<string, { name: string; badge: string; descri
 };
 
 const managedPromptTraditional: Record<string, { name: string; badge: string; description: string; licenseNote: string }> = {
+  "lightx2v/minimax-h3-prompt-rewriter-8b": {
+    name: "MiniMax H3 Prompt Rewriter LoRA · Qwen3-VL 8B",
+    badge: "Qwen3-VL 8B · PEFT LoRA · ComfyUI",
+    description: "官方 LightX2V 适配器绑定 Qwen3-VL-8B-Instruct，可读取图片／视频参考并通过 ComfyUI Qwen-VL LoRA 节点重写 H3 提示词。",
+    licenseNote: "基座与适配器分别受各自许可约束；请保持它们绑定到 Qwen3-VL-8B-Instruct，不要套用到 Qwen3.6／Qwen3.8 GGUF。"
+  },
   "qwen/qwen3.6-27b-uncensored-q4": {
     name: "Qwen3.6 27B Q4 · Uncensored · ComfyUI",
     badge: "Uncensored · Q4 · 4090",
@@ -130,6 +142,65 @@ const nativePromptEntries: CatalogModelEntry[] = [
 const managedPromptEntries: CatalogModelEntry[] = managedPromptModelDefinitions.map((model, index) => {
   const english = managedPromptEnglish[model.id]!;
   const traditional = managedPromptTraditional[model.id]!;
+  if (model.backend === "comfyui-qwenvl-lora") {
+    const baseSource = model.baseModelSource ?? model.source;
+    const baseDirectory = model.baseModelDirectory ?? model.targetDirectory;
+    const adapterSource = model.adapterSource ?? "lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B";
+    const adapterDirectory = model.adapterDirectory ?? "LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b";
+    const baseUrl = `https://huggingface.co/${baseSource}/resolve/${model.revision ?? "main"}`;
+    const adapterUrl = `https://huggingface.co/${adapterSource}/resolve/main`;
+    const basePattern = baseDirectory.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const adapterPattern = adapterDirectory.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const baseNotes = "这是 Qwen3-VL-8B-Instruct 基座权重；请把 4 个 safetensors 分片放在所选 ComfyUI 的 models/LLM/Qwen-VL/qwen3-vl-8b-instruct。JSON 配置、权重索引、tokenizer 与图像/视频预处理文件由 Local Video Studio 在首次运行前自动准备，不需要手动下载。";
+    const adapterNotes = "这是绑定 Qwen3-VL-8B-Instruct 的 MiniMax H3 Prompt Rewriter PEFT LoRA 权重；请放在 models/LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b。LoRA 配置由 Local Video Studio 自动准备。";
+    // JSON metadata is managed by electron/services/qwenvl-model-assets.ts;
+    // keep the catalog surface limited to the large weight files.
+    const baseFiles: readonly (readonly [string, string])[] = [];
+    return entry({
+      id: model.id,
+      family: "qwen-vl-peft-prompt-rewriter",
+      category: "prompt",
+      adapterId: "comfyui-qwenvl-lora",
+      order: 310 - index,
+      inputModes: ["image", "video"],
+      scan: {
+        managedBy: "comfyui",
+        vram: model.vram,
+        integrated: true,
+        requiredCustomNodeIds: ["comfyui-qwenvl-lora"],
+        runtimeNodeTypes: ["QwenVLModelLoader", "QwenVLLoRALoader", "QwenVLCaption"],
+        components: [
+          ...baseFiles.map(([filename, label]) => component(
+            label,
+            `${baseDirectory}/${filename}`,
+            new RegExp(`${basePattern}/${filename.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "i"),
+            guide("Qwen · Qwen3-VL-8B-Instruct", `${baseUrl}/${filename}?download=true`, baseDirectory, filename, baseNotes)
+          )),
+          ...[1, 2, 3, 4].map((shard) => {
+            const filename = `model-${String(shard).padStart(5, "0")}-of-00004.safetensors`;
+            return component(`Qwen3-VL 8B 权重分片 ${shard}/4`, `${baseDirectory}/${filename}`, new RegExp(`${basePattern}/${filename.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "i"), guide("Qwen · Qwen3-VL-8B-Instruct", `${baseUrl}/${filename}?download=true`, baseDirectory, filename, baseNotes));
+          }),
+          component("H3 Prompt Rewriter LoRA 配置", `${adapterDirectory}/adapter_config.json`, new RegExp(`${adapterPattern}/adapter_config\\.json$`, "i"), guide("LightX2V · MiniMax-H3-Prompt-Rewriter-LoRA-8B", `${adapterUrl}/adapter_config.json?download=true`, adapterDirectory, "adapter_config.json", adapterNotes)),
+          component("H3 Prompt Rewriter LoRA 权重", `${adapterDirectory}/adapter_model.safetensors`, new RegExp(`${adapterPattern}/adapter_model\\.safetensors$`, "i"), guide("LightX2V · MiniMax-H3-Prompt-Rewriter-LoRA-8B", `${adapterUrl}/adapter_model.safetensors?download=true`, adapterDirectory, "adapter_model.safetensors", adapterNotes))
+        ].filter((item) => item.expected.toLowerCase().endsWith(".safetensors"))
+      }
+    }, {
+      name: model.name,
+      badge: model.badge,
+      description: model.description,
+      limitations: [model.licenseNote]
+    }, {
+      name: english.name,
+      badge: english.badge,
+      description: english.description,
+      limitations: [english.licenseNote]
+    }, {
+      name: traditional.name,
+      badge: traditional.badge,
+      description: traditional.description,
+      limitations: [traditional.licenseNote]
+    });
+  }
   const baseUrl = `https://huggingface.co/${model.source}${model.revision ? `/resolve/${model.revision}` : "/resolve/main"}`;
   const directoryPattern = model.targetDirectory.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
   const sourceLabel = `${model.source} · ${model.badge}`;

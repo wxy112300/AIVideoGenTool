@@ -16,7 +16,10 @@ import {
   firstSupportedImageModelId,
   imageModelCapabilityFor
 } from "../../../core/image-workflow";
-import { normalizeH3Steps, isRetiredVideoModel } from "../../../core/workflow";
+import { normalizeH3Steps, isMiniMaxH3R2vModel, isRetiredVideoModel } from "../../../core/workflow";
+import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
+import { modelCatalog } from "../../../core/catalog";
+import { nearestSupportedVideoResolution } from "../../../core/video-resolution";
 import { modelName } from "../../shared/labels";
 import { currentHistoryVersion, preferredVersion, versionShortEdge, versionVideoIndex } from "./helpers";
 import type { UpscaleDialogState } from "../../shell/secondary-dialogs";
@@ -39,6 +42,10 @@ export interface HistoryActionsOptions {
       width: number;
       height: number;
       h3ContextLatentPath?: string;
+      /** Resolution to restore when continuing from a history video. */
+      resolution?: number;
+      /** History continuation starts a fresh random seed. */
+      resetSeed?: boolean;
     },
     renderAfterSave?: boolean
   ): Promise<void>;
@@ -97,6 +104,9 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       return;
     }
     const version = preferredVersion(asset);
+    const requestedResolution = Number.isFinite(asset.resolution) && asset.resolution > 0
+      ? asset.resolution
+      : versionShortEdge(version);
     const isExtension = asset.inputMode === "video" || Boolean(asset.sourceVideoPath);
     const sourceVideoDuration = asset.sourceVideoDuration ?? asset.trimEndSeconds ?? 0;
     const historyPromptVersion = {
@@ -123,10 +133,21 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       trimEndSeconds: isExtension ? asset.trimEndSeconds ?? sourceVideoDuration : 0,
       sourceAssetId: asset.sourceAssetId,
       sourceVersionId: asset.sourceVersionId,
-      h3ReferenceSlots: isExtension ? [] : (asset.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
+      h3ReferenceSlots: isExtension && isMiniMaxH3R2vModel(asset.modelId)
+        ? ensureMotionContextSourceSlot(
+            (asset.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
+            asset.sourceVideoPath ?? ""
+          )
+        : isExtension
+          ? []
+          : (asset.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
       videoLoras: asset.videoLoras?.map((lora) => ({ ...lora })) ?? [],
       ratio: asset.ratio ?? state.draft.ratio,
-      resolution: ([480, 540, 720, 768].includes(asset.resolution) ? asset.resolution : state.draft.resolution) as Draft["resolution"],
+      resolution: nearestSupportedVideoResolution(
+        requestedResolution,
+        modelCatalog.get(asset.modelId)?.definition.capabilities?.resolutions ?? [480, 540, 720, 768],
+        state.draft.resolution
+      ) as Draft["resolution"],
       duration: asset.duration,
       steps: normalizeH3Steps(asset.steps, asset.modelId, asset.videoLoras),
       fps: ([8, 12, 16, 24, 25, 30].includes(asset.fps ?? 24) ? asset.fps ?? 24 : 24) as Draft["fps"],
@@ -202,10 +223,12 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       sourceAssetId: project.id,
       sourceVersionId: version.id,
       endImagePath: "",
+      h3ReferenceSlots: [],
       sourceVideoPath: "",
       sourceVideoDuration: 0,
       trimStartSeconds: 0,
       trimEndSeconds: 0,
+      h3ContextLatentPath: undefined,
       ratio: "source"
     });
     options.reportUserAction("image-history-continue-video", { projectId: project.id, versionId: version.id });
@@ -228,7 +251,11 @@ export function createHistoryActions(options: HistoryActionsOptions) {
         duration: version.duration,
         width: version.width,
         height: version.height,
-        h3ContextLatentPath: version.h3ContextLatentPath
+        h3ContextLatentPath: version.h3ContextLatentPath,
+        resolution: Number.isFinite(asset.resolution) && asset.resolution > 0
+          ? asset.resolution
+          : versionShortEdge(version),
+        resetSeed: true
       }, false);
       options.navigateToCreationMode("video-extension");
     } catch (error) {

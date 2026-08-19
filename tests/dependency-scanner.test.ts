@@ -184,6 +184,32 @@ describe("dependency scanner", () => {
     expect(kjNodes?.updateNotice).toContain("H3 TAE 实时预览节点");
   });
 
+  it("marks an unpatched Qwen-VL node for the Desktop stdout repair while offline", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-qwenvl-scan-"));
+    temporaryDirectories.push(comfyRoot);
+    const nodeDirectory = path.join(comfyRoot, "custom_nodes", "comfyui_qwenvl_lora");
+    await fs.mkdir(nodeDirectory, { recursive: true });
+    await fs.writeFile(
+      path.join(nodeDirectory, "nodes.py"),
+      "class QwenVLModelLoader:\n    pass\n\n    print('loading')\n",
+      "utf8"
+    );
+
+    const statuses = await scanCustomNodes(comfyRoot, {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:1"
+    });
+    const qwenVl = statuses.find((status) => status.id === "comfyui-qwenvl-lora");
+
+    expect(qwenVl).toMatchObject({
+      installed: true,
+      loaded: true,
+      updateAvailable: true,
+      compatibilityState: "warning"
+    });
+    expect(qwenVl?.updateNotice).toContain("Bad file descriptor");
+  });
+
   it("keeps a supported Spectrum version usable while recommending the pinned baseline", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-spectrum-scan-"));
     temporaryDirectories.push(comfyRoot);

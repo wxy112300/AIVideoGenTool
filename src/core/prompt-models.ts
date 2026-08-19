@@ -1,7 +1,8 @@
 export type PromptModelBackend =
   | "h3-prompt-writer"
   | "native-text-generate"
-  | "comfyui-multimodal";
+  | "comfyui-multimodal"
+  | "comfyui-qwenvl-lora";
 
 export interface ManagedPromptModelDefinition {
   id: string;
@@ -22,6 +23,16 @@ export interface ManagedPromptModelDefinition {
    * adapter for backwards-compatible persisted settings.
    */
   backend?: Exclude<PromptModelBackend, "native-text-generate">;
+  /** Model packaging format. GGUF is the legacy Prompt Writer path; PEFT is a
+   * bound base-model + adapter path and must not be treated as a generic LoRA. */
+  format?: "gguf" | "peft";
+  /** PEFT prompt models keep the base model and adapter in separate folders. */
+  baseModelSource?: string;
+  baseModelDirectory?: string;
+  baseModelName?: string;
+  adapterSource?: string;
+  adapterDirectory?: string;
+  adapterName?: string;
 }
 
 export const nativePromptModelFiles = {
@@ -36,6 +47,28 @@ export const unconcernedPromptModelFilename = "Qwen3.5-4B-Uncensored-HauhauCS-Ag
 export const unconcernedPromptMmprojFilename = "mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf";
 
 export const managedPromptModelDefinitions: readonly ManagedPromptModelDefinition[] = [
+  {
+    id: "lightx2v/minimax-h3-prompt-rewriter-8b",
+    name: "MiniMax H3 Prompt Rewriter LoRA · Qwen3-VL 8B",
+    source: "Qwen/Qwen3-VL-8B-Instruct",
+    revision: "main",
+    modelFilename: "model-00001-of-00004.safetensors",
+    mmprojFilename: "adapter_model.safetensors",
+    targetDirectory: "LLM/Qwen-VL/qwen3-vl-8b-instruct",
+    contextSize: 8192,
+    badge: "Qwen3-VL 8B · PEFT LoRA · ComfyUI",
+    description: "官方 H3 Prompt Rewriter LoRA 绑定 Qwen3-VL-8B-Instruct，可读取参考图片/视频并输出适合 H3 的提示词。基座与适配器由 ComfyUI Qwen-VL 节点加载。",
+    vram: "Qwen3-VL 8B BF16 约 17.5 GB；4090 建议 4-bit / CPU offload",
+    licenseNote: "基座与 LoRA 分属各自许可；adapter 只能用于匹配的 Qwen3-VL-8B-Instruct 基座，不要套到 Qwen3.6/Qwen3.8 GGUF 或 H3 视频模型。",
+    backend: "comfyui-qwenvl-lora",
+    format: "peft",
+    baseModelSource: "Qwen/Qwen3-VL-8B-Instruct",
+    baseModelDirectory: "LLM/Qwen-VL/qwen3-vl-8b-instruct",
+    baseModelName: "qwen3-vl-8b-instruct",
+    adapterSource: "lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B",
+    adapterDirectory: "LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b",
+    adapterName: "minimax-h3-prompt-rewriter-8b"
+  },
   {
     id: "qwen/qwen3.6-27b-uncensored-q4",
     name: "Qwen3.6 27B Q4 · Uncensored · ComfyUI",
@@ -176,11 +209,15 @@ export function isManagedPromptModel(modelId: string): boolean {
 
 export function isGemmaPromptModel(modelId: string): boolean {
   const model = managedPromptModel(modelId);
-  return Boolean(model && model.backend !== "comfyui-multimodal");
+  return Boolean(model && (!model.backend || model.backend === "h3-prompt-writer"));
 }
 
 export function isComfyMultimodalPromptModel(modelId: string): boolean {
   return managedPromptModel(modelId)?.backend === "comfyui-multimodal";
+}
+
+export function isQwenVlPeftPromptModel(modelId: string): boolean {
+  return managedPromptModel(modelId)?.backend === "comfyui-qwenvl-lora";
 }
 
 export function comfyMultimodalPromptModel(
@@ -188,6 +225,13 @@ export function comfyMultimodalPromptModel(
 ): ManagedPromptModelDefinition | undefined {
   const model = managedPromptModel(modelId);
   return model?.backend === "comfyui-multimodal" ? model : undefined;
+}
+
+export function qwenVlPeftPromptModel(
+  modelId: string
+): ManagedPromptModelDefinition | undefined {
+  const model = managedPromptModel(modelId);
+  return model?.backend === "comfyui-qwenvl-lora" ? model : undefined;
 }
 
 export function promptModelBackend(modelId: string): PromptModelBackend | null {

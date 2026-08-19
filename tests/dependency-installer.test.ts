@@ -10,6 +10,7 @@ import {
 import {
   patchH3PromptWriterLlamaCppCompatibility,
   patchMultimodalPromptContextSize,
+  patchQwenVlComfyDesktopLogging,
   prepareH3PromptWriter,
   prepareMultimodalPromptNodes
 } from "../electron/services/dependency-node-adapters";
@@ -68,6 +69,79 @@ describe("dependency installer", () => {
 
     expect(patched.match(/n_ctx: int = 8192/gu)).toHaveLength(2);
     expect(patchMultimodalPromptContextSize(patched)).toBe(patched);
+  });
+
+  it("makes Qwen-VL logging tolerate ComfyUI Desktop's closed stdout", () => {
+    const source = [
+      "import folder_paths",
+      "",
+      "class QwenVLModelLoader:",
+      "    def load(self):",
+      "        print('[QwenVL] loading')"
+    ].join("\n");
+    const patched = patchQwenVlComfyDesktopLogging(source);
+
+    expect(patched).toContain("def _qwenvl_prepare_console_streams():");
+    expect(patched).toContain('for stream_name in ("stdout", "stderr")');
+    expect(patched).toContain("os.fstat(stream.fileno())");
+    expect(patched).toContain("stream.flush()");
+    expect(patched).toContain("        _qwenvl_prepare_console_streams()\n");
+    expect(patched).toContain("def _qwenvl_log(*args, **kwargs):");
+    expect(patched).toContain("builtins.print(*args, **kwargs)");
+    expect(patched).toContain("_qwenvl_log('[QwenVL] loading')");
+    expect(patched).toContain('getattr(exc, "errno", None) != 9');
+    expect(patchQwenVlComfyDesktopLogging(patched)).toBe(patched);
+  });
+
+  it("upgrades the old Qwen-VL print-only Desktop shim", () => {
+    const source = [
+      "import os",
+      "import folder_paths",
+      "",
+      "def _qwenvl_log(*args, **kwargs):",
+      "    try:",
+      "        import builtins",
+      "        builtins.print(*args, **kwargs)",
+      "    except OSError as exc:",
+      "        if getattr(exc, 'errno', None) != 9:",
+      "            raise",
+      "",
+      "class QwenVLModelLoader:",
+      "    def load(self):",
+      "        _qwenvl_log('[QwenVL] loading')"
+    ].join("\n");
+
+    const patched = patchQwenVlComfyDesktopLogging(source);
+
+    expect(patched).toContain("def _qwenvl_prepare_console_streams():");
+    expect(patched).toContain("        _qwenvl_prepare_console_streams()\n");
+    expect(patched.match(/def _qwenvl_log\(/gu)).toHaveLength(1);
+    expect(patchQwenVlComfyDesktopLogging(patched)).toBe(patched);
+  });
+
+  it("upgrades the Qwen-VL Desktop stream shim to test logger flush", () => {
+    const source = [
+      "import folder_paths",
+      "",
+      "def _qwenvl_prepare_console_streams():",
+      "    import os",
+      "    import sys",
+      "    for stream_name in (\"stdout\", \"stderr\"):",
+      "        stream = getattr(sys, stream_name, None)",
+      "        try:",
+      "            os.fstat(stream.fileno())",
+      "        except (OSError, ValueError, AttributeError):",
+      "            setattr(sys, stream_name, open(os.devnull, \"w\"))",
+      "",
+      "class QwenVLModelLoader:",
+      "    def load(self):",
+      "        _qwenvl_prepare_console_streams()"
+    ].join("\n");
+
+    const patched = patchQwenVlComfyDesktopLogging(source);
+
+    expect(patched).toContain("            os.fstat(stream.fileno())\n            stream.flush()");
+    expect(patchQwenVlComfyDesktopLogging(patched)).toBe(patched);
   });
 
   it("does not require the 0.3.2 diagnostics module to contain a GGML shim", async () => {

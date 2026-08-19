@@ -38,7 +38,7 @@ describe("model catalog", () => {
   });
 
   it("covers every model category used by environment scanning", () => {
-    expect(modelCatalog.list("prompt")).toHaveLength(11);
+    expect(modelCatalog.list("prompt")).toHaveLength(12);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
       "birefnet-background-removal",
       "lama-inpaint",

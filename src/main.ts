@@ -210,7 +210,8 @@ import {
 } from "./core/image-workflow";
 import {
   isComfyMultimodalPromptModel,
-  isGemmaPromptModel
+  isGemmaPromptModel,
+  isQwenVlPeftPromptModel
 } from "./core/prompt-models";
 import {
   generationSafetyForTask,
@@ -223,8 +224,10 @@ import {
   normalizeH3Steps
 } from "./core/workflow";
 import { resolveVideoGenerationPolicy } from "./core/video-policy";
-import { SPECTRUM_TURBO_MINIMUM_VERSION } from "./core/catalog";
+import { modelCatalog, SPECTRUM_TURBO_MINIMUM_VERSION } from "./core/catalog";
 import { releaseVersionAtLeast } from "./core/release-version";
+import { nearestSupportedVideoResolution } from "./core/video-resolution";
+import { ensureMotionContextSourceSlot } from "./core/h3-reference";
 import {
   createUpscaleFilename,
   estimateUpscaleResources,
@@ -819,7 +822,11 @@ function draftFromQueueTask(task: QueueTask): Draft | null {
           }],
           activePromptVersion: 0
         }),
-    h3ReferenceSlots: extension ? [] : (task.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
+    h3ReferenceSlots: extension
+      ? task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
+        ? ensureMotionContextSourceSlot(task.h3ReferenceSlots ?? [], task.sourceVideoPath)
+        : []
+      : (task.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
     modelId: task.modelId,
     videoLoras: task.videoLoras?.map((lora) => ({ ...lora })) ?? [],
     workflowPath: task.workflowPath,
@@ -1072,6 +1079,7 @@ function settingsPage(): string {
       getImageQualityProfiles: (modelId) => imageModelCapabilityFor(modelId).qualityProfiles,
       isGemmaPromptModel,
       isComfyMultimodalPromptModel,
+      isQwenVlPeftPromptModel,
       videoLoraInfoButton: (profileId) => {
         const lora = BUILTIN_VIDEO_LORAS.find((item) => item.id === profileId);
         return lora ? videoLoraInfoButton(lora, uiText, state.settings.uiLocale) : "";
@@ -1229,6 +1237,10 @@ const customNodeInstallManager = new CustomNodeInstallQueue({
       message: `${name}: ${message}`
     }),
     restartFailed: (message) => uiText(uiKeys.settings.actions.nodeRestartFailed, { message }),
+    manualRestartRequired: (message) => uiText(
+      uiKeys.settings.actions.nodeManualRestartRequired,
+      { message }
+    ),
     readyCheckFailed: (name, detail) => uiText(
       uiKeys.settings.actions.nodeBatchReadyCheckFailed,
       { name, detail: detail || "节点未注册或运行时未返回详情" }
@@ -1845,11 +1857,22 @@ async function saveDraftImmediately(draft: Draft): Promise<void> {
   window.clearTimeout(draftSaveTimer);
   draftRevision += 1;
   draftDirty = false;
+  if (draft.inputMode === "video") {
+    state.videoExtensionDraft = structuredClone(draft);
+  } else if (state.draft.inputMode === "video") {
+    state.videoExtensionDraft = structuredClone(state.draft);
+  }
   setRendererState(await window.studio.saveDraft(draft));
 }
 
 function patchDraft(patch: Partial<Draft>): void {
+  if (patch.inputMode === "image" && state.draft.inputMode === "video") {
+    state.videoExtensionDraft = structuredClone(state.draft);
+  }
   state.draft = { ...state.draft, ...patch };
+  if (state.draft.inputMode === "video") {
+    state.videoExtensionDraft = structuredClone(state.draft);
+  }
   draftRevision += 1;
   draftDirty = true;
   scheduleDraftSave();
@@ -2081,7 +2104,8 @@ function bindH3ReferenceSlots(): void {
     getDraft: () => state?.draft,
     patchDraft,
     requestRender: render,
-    notify: (message) => showMessage(message, false)
+    notify: (message) => showMessage(message, false),
+    lockedFirstVideo: Boolean(state?.draft.inputMode === "video" && isMiniMaxH3R2vModel(state.draft.modelId))
   }));
 }
 
@@ -2094,12 +2118,18 @@ async function selectDraftVideo(
     width: number;
     height: number;
     h3ContextLatentPath?: string;
+    resolution?: number;
+    resetSeed?: boolean;
   },
   renderAfterSave = true
 ): Promise<void> {
+  const preserveMotionContextDraft = state.draft.inputMode === "video" &&
+    isMiniMaxH3R2vModel(state.draft.modelId);
   const draft: Draft = {
     ...state.draft,
     inputMode: "video",
+    startImagePath: "",
+    endImagePath: "",
     sourceVideoPath: filename,
     sourceVideoDuration: source?.duration ?? 0,
     trimStartSeconds: 0,
@@ -2109,7 +2139,25 @@ async function selectDraftVideo(
     h3ContextLatentPath: source?.h3ContextLatentPath,
     sourceWidth: source?.width ?? 0,
     sourceHeight: source?.height ?? 0,
-    ratio: "source"
+    ratio: "source",
+    h3ReferenceSlots: isMiniMaxH3R2vModel(state.draft.modelId)
+      ? ensureMotionContextSourceSlot(
+          preserveMotionContextDraft ? state.draft.h3ReferenceSlots : [],
+          filename
+        )
+      : [],
+    ...(source?.resolution != null
+      ? {
+          resolution: nearestSupportedVideoResolution(
+            source.resolution,
+            modelCatalog.get(state.draft.modelId)?.definition.capabilities?.resolutions ??
+              modelCatalog.get(state.settings.defaultExtensionModel)?.definition.capabilities?.resolutions ??
+              [480, 540, 720, 768],
+            state.draft.resolution
+          ) as Draft["resolution"]
+        }
+      : {}),
+    ...(source?.resetSeed ? { seed: null } : {})
   };
   await saveDraftImmediately(draft);
   if (renderAfterSave) render();

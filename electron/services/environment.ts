@@ -83,6 +83,7 @@ import {
 } from "./comfy-runtime-policy.js";
 import {
   isLocalPortInUse,
+  launchComfyUiVisible,
   launchDetached,
   localEndpoint,
   waitForService
@@ -319,7 +320,12 @@ interface ModelProfileDefinition {
   }>;
 }
 
-const gemmaPromptModelDefinitions = managedPromptModelDefinitions;
+const gemmaPromptModelDefinitions = managedPromptModelDefinitions.filter(
+  (model) => model.backend !== "comfyui-qwenvl-lora"
+);
+const qwenVlPeftPromptModelDefinition = managedPromptModelDefinitions.find(
+  (model) => model.backend === "comfyui-qwenvl-lora"
+);
 
 function escapedPattern(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
@@ -348,8 +354,68 @@ const gemmaInstallGuides = Object.fromEntries(
   })
 ) as Record<string, ModelComponentStatus["installGuide"]>;
 
+const qwenVlPeftInstallGuides = qwenVlPeftPromptModelDefinition
+  ? (() => {
+      const modelId = qwenVlPeftPromptModelDefinition.id;
+      const baseDirectory = qwenVlPeftPromptModelDefinition.baseModelDirectory ?? "LLM/Qwen-VL/qwen3-vl-8b-instruct";
+      const adapterDirectory = qwenVlPeftPromptModelDefinition.adapterDirectory ?? "LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b";
+      const baseUrl = "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct/resolve/main";
+      const adapterUrl = "https://huggingface.co/lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B/resolve/main";
+      const qwenGuide = (filename: string, notes: string) => ({
+        sourceLabel: "Qwen · Qwen3-VL-8B-Instruct",
+        downloadUrl: `${baseUrl}/${filename}?download=true`,
+        targetSubdirectory: baseDirectory,
+        recommendedFilename: filename,
+        notes
+      });
+      const shardGuides = Object.fromEntries([1, 2, 3, 4].map((shard) => {
+        const filename = `model-${String(shard).padStart(5, "0")}-of-00004.safetensors`;
+        return [`${modelId}:Qwen3-VL 8B 权重分片 ${shard}/4`, qwenGuide(
+          filename,
+          "这是 Qwen3-VL 8B 的权重分片；4 个分片必须全部放在同一基座目录，缺任一分片都不能运行。"
+        )];
+      }));
+      return {
+        [`${modelId}:Qwen3-VL 8B 配置`]: qwenGuide(
+          "config.json",
+          "这是 Qwen3-VL-8B-Instruct 基座配置。还需要下载权重索引、4 个权重分片、tokenizer 与图像/视频预处理文件。"
+        ),
+        [`${modelId}:Qwen3-VL 8B 生成配置`]: qwenGuide(
+          "generation_config.json",
+          "请与 Qwen3-VL 8B 的权重、tokenizer 和处理器文件放在同一个基座目录。"
+        ),
+        [`${modelId}:Qwen3-VL 8B 权重索引`]: qwenGuide(
+          "model.safetensors.index.json",
+          "权重索引必须和 config.json、4 个 safetensors 分片、tokenizer 与预处理文件放在同一个基座目录。"
+        ),
+        [`${modelId}:Qwen3-VL 8B tokenizer`]: qwenGuide("tokenizer.json", "Qwen3-VL 8B tokenizer 文件。"),
+        [`${modelId}:Qwen3-VL 8B tokenizer 配置`]: qwenGuide("tokenizer_config.json", "Qwen3-VL 8B tokenizer 配置。"),
+        [`${modelId}:Qwen3-VL 8B preprocessor`]: qwenGuide("preprocessor_config.json", "Qwen3-VL 8B 图像预处理配置。"),
+        [`${modelId}:Qwen3-VL 8B video preprocessor`]: qwenGuide("video_preprocessor_config.json", "Qwen3-VL 8B 视频预处理配置。"),
+        [`${modelId}:Qwen3-VL 8B chat template`]: qwenGuide("chat_template.json", "Qwen3-VL 8B 对话模板文件。"),
+        [`${modelId}:Qwen3-VL 8B vocab`]: qwenGuide("vocab.json", "Qwen3-VL 8B tokenizer vocab 文件。"),
+        ...shardGuides,
+        [`${modelId}:H3 Prompt Rewriter LoRA 配置`]: {
+          sourceLabel: "LightX2V · MiniMax-H3-Prompt-Rewriter-LoRA-8B",
+          downloadUrl: `${adapterUrl}/adapter_config.json?download=true`,
+          targetSubdirectory: adapterDirectory,
+          recommendedFilename: "adapter_config.json",
+          notes: "这是绑定 Qwen3-VL-8B-Instruct 的 PEFT LoRA 配置，不能用于 Qwen3.6、Qwen3.8 GGUF 或 Gemma。"
+        },
+        [`${modelId}:H3 Prompt Rewriter LoRA 权重`]: {
+          sourceLabel: "LightX2V · MiniMax-H3-Prompt-Rewriter-LoRA-8B",
+          downloadUrl: `${adapterUrl}/adapter_model.safetensors?download=true`,
+          targetSubdirectory: adapterDirectory,
+          recommendedFilename: "adapter_model.safetensors",
+          notes: "请与 adapter_config.json 放在同一个 LoRA 子目录；运行时由 ComfyUI Qwen-VL LoRA 节点加载。"
+        }
+      };
+    })()
+  : {};
+
 const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
   ...gemmaInstallGuides,
+  ...qwenVlPeftInstallGuides,
   "qwen/qwen3.5-2b:Qwen3.5 2B ComfyUI 文本编码器": {
     sourceLabel: "Hugging Face · Comfy-Org/Qwen3.5",
     downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors?download=true",
@@ -897,6 +963,74 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
       ]
     };
   }),
+  ...(qwenVlPeftPromptModelDefinition ? [{
+    id: qwenVlPeftPromptModelDefinition.id,
+    name: qwenVlPeftPromptModelDefinition.name,
+    category: "prompt" as const,
+    managedBy: "comfyui" as const,
+    badge: qwenVlPeftPromptModelDefinition.badge,
+    description: qwenVlPeftPromptModelDefinition.description,
+    vram: qwenVlPeftPromptModelDefinition.vram,
+    integrated: true,
+    requiredCustomNodeIds: ["comfyui-qwenvl-lora"],
+    runtimeNodeTypes: ["QwenVLModelLoader", "QwenVLLoRALoader", "QwenVLCaption"],
+    components: [
+      {
+        label: "Qwen3-VL 8B 配置",
+        expected: `${qwenVlPeftPromptModelDefinition.baseModelDirectory ?? "LLM/Qwen-VL/qwen3-vl-8b-instruct"}/config.json`,
+        patterns: [/LLM\/Qwen-VL\/qwen3-vl-8b-instruct\/config\.json$/i],
+        installGuide: installGuides[`${qwenVlPeftPromptModelDefinition.id}:Qwen3-VL 8B 配置`]
+      },
+      {
+        label: "Qwen3-VL 8B 生成配置",
+        expected: `${qwenVlPeftPromptModelDefinition.baseModelDirectory ?? "LLM/Qwen-VL/qwen3-vl-8b-instruct"}/generation_config.json`,
+        patterns: [/LLM\/Qwen-VL\/qwen3-vl-8b-instruct\/generation_config\.json$/i],
+        installGuide: installGuides[`${qwenVlPeftPromptModelDefinition.id}:Qwen3-VL 8B 生成配置`]
+      },
+      {
+        label: "Qwen3-VL 8B 权重索引",
+        expected: `${qwenVlPeftPromptModelDefinition.baseModelDirectory ?? "LLM/Qwen-VL/qwen3-vl-8b-instruct"}/model.safetensors.index.json`,
+        patterns: [/LLM\/Qwen-VL\/qwen3-vl-8b-instruct\/model\.safetensors\.index\.json$/i],
+        installGuide: installGuides[`${qwenVlPeftPromptModelDefinition.id}:Qwen3-VL 8B 权重索引`]
+      },
+      ...[
+        ["tokenizer.json", "Qwen3-VL 8B tokenizer"],
+        ["tokenizer_config.json", "Qwen3-VL 8B tokenizer 配置"],
+        ["preprocessor_config.json", "Qwen3-VL 8B preprocessor"],
+        ["video_preprocessor_config.json", "Qwen3-VL 8B video preprocessor"],
+        ["chat_template.json", "Qwen3-VL 8B chat template"],
+        ["vocab.json", "Qwen3-VL 8B vocab"]
+      ].map(([filename, label]) => ({
+        label,
+        expected: `${qwenVlPeftPromptModelDefinition.baseModelDirectory ?? "LLM/Qwen-VL/qwen3-vl-8b-instruct"}/${filename}`,
+        patterns: [new RegExp(`LLM/Qwen-VL/qwen3-vl-8b-instruct/${filename.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "i")],
+        installGuide: installGuides[`${qwenVlPeftPromptModelDefinition.id}:${label}`]
+      })),
+      ...[1, 2, 3, 4].map((shard) => {
+        const filename = `model-${String(shard).padStart(5, "0")}-of-00004.safetensors`;
+        return {
+          label: `Qwen3-VL 8B 权重分片 ${shard}/4`,
+          expected: `${qwenVlPeftPromptModelDefinition.baseModelDirectory ?? "LLM/Qwen-VL/qwen3-vl-8b-instruct"}/${filename}`,
+          patterns: [new RegExp(`LLM/Qwen-VL/qwen3-vl-8b-instruct/${filename.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "i")],
+          installGuide: installGuides[`${qwenVlPeftPromptModelDefinition.id}:Qwen3-VL 8B 权重分片 ${shard}/4`]
+        };
+      }),
+      {
+        label: "H3 Prompt Rewriter LoRA 配置",
+        expected: `${qwenVlPeftPromptModelDefinition.adapterDirectory ?? "LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b"}/adapter_config.json`,
+        patterns: [/LLM\/Qwen-VL-LoRA\/minimax-h3-prompt-rewriter-8b\/adapter_config\.json$/i],
+        installGuide: installGuides[`${qwenVlPeftPromptModelDefinition.id}:H3 Prompt Rewriter LoRA 配置`]
+      },
+      {
+        label: "H3 Prompt Rewriter LoRA 权重",
+        expected: `${qwenVlPeftPromptModelDefinition.adapterDirectory ?? "LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b"}/adapter_model.safetensors`,
+        patterns: [/LLM\/Qwen-VL-LoRA\/minimax-h3-prompt-rewriter-8b\/adapter_model\.safetensors$/i],
+        installGuide: installGuides[`${qwenVlPeftPromptModelDefinition.id}:H3 Prompt Rewriter LoRA 权重`]
+      }
+    // JSON metadata is prepared by the app before runtime; only large weights
+    // participate in the offline “user files present” decision.
+    ].filter((item) => item.expected.toLowerCase().endsWith(".safetensors"))
+  }] : []),
   {
     id: "qwen/qwen3.5-4b",
     name: "Qwen3.5 4B · H3 提示词助手",
@@ -1744,13 +1878,13 @@ export async function scanLlamaServer(
   return fromPath ? llamaServerStatus(fromPath, "path") : llamaServerStatus("", "");
 }
 
-async function downloadFileWithCurl(
+export async function downloadFileWithCurl(
   url: string,
   destination: string,
   settings: Settings
 ): Promise<void> {
   const curl = await findExecutable("curl.exe");
-  if (!curl) throw new Error("没有找到 curl，无法下载 llama-server。请安装 Windows 10/11 自带 curl 或手动下载。" );
+  if (!curl) throw new Error("没有找到 curl，无法自动下载资源。请安装 Windows 10/11 自带 curl，或检查网络后重试。" );
   const args = ["-fL", "--retry", "2", "--connect-timeout", "20", url, "--output", destination];
   if (settings.proxyEnabled) {
     args.splice(1, 0, "--proxy", normalizeProxyUrl(settings.proxyUrl));
@@ -2782,6 +2916,7 @@ async function startComfyUi(settings: Settings): Promise<string> {
     findComfyInstallation,
     applyComfyDesktopSettings,
     launchDetached,
+    launchComfyUiVisible,
     isPortInUse: (port) => isLocalPortInUse(port),
     downloadEnvironment,
     exists,
@@ -2935,15 +3070,35 @@ async function startLmStudio(settings: Settings): Promise<string> {
 export async function startLocalService(
   kind: LocalServiceKind,
   settings: Settings
-): Promise<{ ok: boolean; message: string }> {
+): Promise<ConnectionResult> {
+  if (pendingLocalComfyStart) return pendingLocalComfyStart;
+  const operation = startLocalServiceOperation(kind, settings);
+  pendingLocalComfyStart = operation;
+  try {
+    return await operation;
+  } finally {
+    if (pendingLocalComfyStart === operation) pendingLocalComfyStart = null;
+  }
+}
+
+let pendingLocalComfyStart: Promise<ConnectionResult> | null = null;
+
+async function startLocalServiceOperation(
+  kind: LocalServiceKind,
+  settings: Settings
+): Promise<ConnectionResult> {
   const endpoint = settings.comfyUrl.replace(/\/+$/, "");
   const local = localEndpoint(settings.comfyUrl, 8188);
   const listenerExisted = local ? await isLocalPortInUse(local.port) : false;
+  const listenerOwned = listenerExisted
+    ? await reconcileConfiguredComfyListenerOwnership(settings)
+    : false;
+  const ownership = listenerExisted && !listenerOwned ? "external" : "app";
   const operationId = comfyRuntimeState.begin(
     "starting",
     endpoint,
     "正在启动 ComfyUI，等待接口就绪。",
-    listenerExisted ? "external" : "app"
+    ownership
   );
   try {
     const healthUrl = await startComfyUi(settings);
@@ -2957,12 +3112,12 @@ export async function startLocalService(
           ok: false,
           message: "已等待 2 分钟，但接口仍未就绪。ComfyUI 可能仍在加载，请稍后重新扫描。"
         };
-    if (ready && !listenerExisted) await rememberOwnedComfyListener(settings);
+    if (ready && ownership === "app") await rememberOwnedComfyListener(settings);
     comfyRuntimeState.finish(
       operationId,
       ready ? "ready" : "error",
       result.message,
-      listenerExisted ? "external" : "app"
+      ownership
     );
     return result;
   } catch (error) {
@@ -2973,6 +3128,47 @@ export async function startLocalService(
     comfyRuntimeState.finish(operationId, "error", result.message);
     return result;
   }
+}
+
+export async function reconcileConfiguredComfyListenerOwnership(
+  settings: Settings
+): Promise<boolean> {
+  const endpoint = localEndpoint(settings.comfyUrl, 8188);
+  if (!endpoint) return false;
+  const netstat = await execFileAsync(
+    "netstat.exe",
+    ["-ano", "-p", "tcp"],
+    { encoding: "utf8", timeout: 5000, windowsHide: true }
+  ).catch(() => ({ stdout: "" }));
+  const processId = listeningPid(netstat.stdout, endpoint.port);
+  if (!processId) return false;
+  if (ownedComfyProcessIdSnapshot().includes(processId)) return true;
+
+  const processes = await allComfyProcessInfo(settings, { findComfyPython });
+  const listener = processes.find((process) => process.processId === processId);
+  if (!listener || !isAppManagedComfyCommandLine(listener.commandLine, endpoint.port)) {
+    return false;
+  }
+
+  for (const process of processes) {
+    if (isAppManagedComfyCommandLine(process.commandLine, endpoint.port)) {
+      rememberOwnedComfyProcessId(process.processId);
+    }
+  }
+  appLogger.info(
+    "comfy",
+    "legacy-owned-runtime-reconciled",
+    "Recovered ownership of a ComfyUI runtime launched by an earlier app session",
+    { listenerProcessId: processId, port: endpoint.port }
+  );
+  return true;
+}
+
+export function isAppManagedComfyCommandLine(commandLine: string, port: number): boolean {
+  return new RegExp(
+    `comfyui\\.local-video-studio-\\d+-${port}\\.db(?:\\s|["']|$)`,
+    "i"
+  ).test(commandLine);
 }
 
 async function rememberOwnedComfyListener(settings: Settings): Promise<void> {
@@ -2990,7 +3186,18 @@ async function rememberOwnedComfyListener(settings: Settings): Promise<void> {
 export async function restartLocalService(
   kind: LocalServiceKind,
   settings: Settings
-): Promise<{ ok: boolean; message: string }> {
+): Promise<ConnectionResult> {
+  const listenerOwned = await reconcileConfiguredComfyListenerOwnership(settings);
+  if (!ownedComfyProcessIdSnapshot().length && !listenerOwned) {
+    const endpoint = localEndpoint(settings.comfyUrl, 8188);
+    const listenerExists = endpoint ? await isLocalPortInUse(endpoint.port) : true;
+    if (!listenerExists) return startLocalService(kind, settings);
+    return {
+      ok: false,
+      manualRestartRequired: true,
+      message: "当前 ComfyUI 由外部进程管理；节点文件已经写入，请手动重启 ComfyUI 后重新扫描。"
+    };
+  }
   const operationId = comfyRuntimeState.begin(
     "restarting",
     settings.comfyUrl.replace(/\/+$/, ""),

@@ -19,6 +19,7 @@ import {
 } from "./image-workflow.js";
 import { uniqueUpscaleFilename, upscaleDimensions } from "./upscale.js";
 import { videoLoraSelection } from "./video-loras.js";
+import { ensureMotionContextSourceSlot } from "./h3-reference.js";
 import {
   h3WorkflowPathForInput,
   isMiniMaxH3Fl2vaModel,
@@ -195,6 +196,9 @@ export function extensionTaskFromDraft(
   const now = clock.now().toISOString();
   const isH3 = isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId);
   const resolution = isH3 ? draft.resolution : state.settings.ltxExtensionResolution;
+  const h3ReferenceSlots = isMiniMaxH3R2vModel(draft.modelId)
+    ? ensureMotionContextSourceSlot(draft.h3ReferenceSlots, draft.sourceVideoPath)
+    : undefined;
   return {
     id: clock.id(),
     taskType: "extension",
@@ -215,6 +219,7 @@ export function extensionTaskFromDraft(
     trimEndSeconds: draft.trimEndSeconds,
     sourceAssetId: draft.sourceAssetId,
     sourceVersionId: draft.sourceVersionId,
+    ...(h3ReferenceSlots ? { h3ReferenceSlots } : {}),
     sourceWidth: draft.sourceWidth,
     sourceHeight: draft.sourceHeight,
     modelId: draft.modelId,

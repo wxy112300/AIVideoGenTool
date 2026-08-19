@@ -3,7 +3,8 @@
 .create-page-heading {
   position: sticky;
   top: 64px;
-  z-index: 9;
+  /* Keep the fixed mode rail above scrolled composer controls/tooltips. */
+  z-index: 20;
   min-height: 60px;
   margin-bottom: 12px;
   padding: 8px 2px;

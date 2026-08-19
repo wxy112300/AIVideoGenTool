@@ -16,6 +16,7 @@ import {
   videoHelperBatchCompatible
 } from "./dependency-compatibility.js";
 import { readComfyGitRevision } from "./comfy-discovery.js";
+import { qwenVlNeedsComfyDesktopLoggingShim } from "./dependency-node-adapters.js";
 
 async function readPythonProjectVersion(directory: string): Promise<string> {
   if (!directory) return "";
@@ -136,12 +137,19 @@ function compatibilityForNode(
       compatibilityNotice: `版本过低：当前 v${version}，最低支持 v${definition.minimumVersion}。`
     };
   }
-  if (updateAvailable || !runtimeVerified || compatibilityNotice) {
+  if (updateAvailable || compatibilityNotice) {
     return { compatibilityState: "warning", compatibilityNotice };
   }
   return {
     compatibilityState: "supported",
-    compatibilityNotice: "版本与节点状态已读取；最终工作流兼容性仍由运行时检查确认。"
+    // A stopped ComfyUI cannot prove registration, but the local package and
+    // version checks are still enough to report a static pass. The renderer
+    // keeps the tone yellow while runtimeVerified is false and labels it as
+    // “file check passed · verify after startup” instead of a generic
+    // compatibility warning.
+    compatibilityNotice: runtimeVerified
+      ? "版本与节点状态已读取；最终工作流兼容性仍由运行时检查确认。"
+      : ""
   };
 }
 
@@ -468,6 +476,21 @@ export async function scanCustomNodes(
         : serviceNodeIds !== null && !serviceNodeIds.has("ModelPreviewOverrideKJ")
           ? "H3 TAE 实时预览文件已安装，但当前服务尚未加载；重启 ComfyUI 后可用"
           : "";
+    } else if (definition.id === "comfyui-qwenvl-lora" && directory) {
+      const source = await fs
+        .readFile(path.join(directory, "nodes.py"), "utf8")
+        .catch(() => "");
+      if (source && qwenVlNeedsComfyDesktopLoggingShim(source)) {
+        // This is a file-level compatibility check, not runtime proof. It
+        // lets an offline scan explain why the node can be installed yet fail
+        // later on ComfyUI Desktop, and gives the installer a deterministic
+        // repair target for every machine/data directory.
+        const notice =
+          "节点仍直接写入 stdout；ComfyUI Desktop 可能触发 Bad file descriptor，请执行一键修复并重启服务";
+        compatibilityNotice = notice;
+        updateNotice = notice;
+        optionalUpdateRecommended = true;
+      }
     }
     const version = await readPythonProjectVersion(directory);
     const belowMinimumVersion = Boolean(

@@ -66,6 +66,44 @@ describe("Windows state file replacement", () => {
 });
 
 describe("queue lock recovery", () => {
+  it("restores the persisted video extension draft snapshot", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.videoExtensionDraft = {
+      ...state.draft,
+      inputMode: "video",
+      sourceVideoPath: "C:\\ComfyUI\\input\\continuation.mp4",
+      h3ReferenceSlots: [{
+        id: "source-slot",
+        mediaType: "video",
+        mediaPath: "C:\\ComfyUI\\input\\continuation.mp4",
+        role: "motion",
+        note: ""
+      }]
+    };
+    state.draft = {
+      ...state.draft,
+      inputMode: "image",
+      sourceVideoPath: "",
+      h3ReferenceSlots: []
+    };
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.videoExtensionDraft?.inputMode).toBe("video");
+      expect(loaded.videoExtensionDraft?.sourceVideoPath).toBe(
+        "C:\\ComfyUI\\input\\continuation.mp4"
+      );
+      expect(loaded.videoExtensionDraft?.h3ReferenceSlots[0]?.mediaPath).toBe(
+        "C:\\ComfyUI\\input\\continuation.mp4"
+      );
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("persists queueRunning=false when reopening after an interrupted run", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");

@@ -14,6 +14,7 @@ import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
 import type { Translate } from "../../../core/i18n";
 import type { PromptUi } from "../../../core/prompts/types.js";
 import { uiKeys } from "../../../core/i18n-keys";
+import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
 import {
   renderCreateModelOptions,
   renderH3PromptBuilderMarkup,
@@ -283,7 +284,10 @@ export function renderCreatePage(
       <div class="section-heading">
         <div><h2>${t(viewModel.extending ? uiKeys.create.videoInputTitle : viewModel.isR2V ? uiKeys.create.r2vReferencesTitle : uiKeys.create.referencesTitle)}</h2><span class="muted">${viewModel.extending ? t(uiKeys.create.videoMedia.extensionRangeSummary) : viewModel.isR2V ? t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount }) : viewModel.supportsEndImage ? t(uiKeys.create.videoMedia.supportsEndFrames) : t(uiKeys.create.videoMedia.supportsStartFrame)}</span></div>
         ${viewModel.extending
-          ? viewModel.draft.sourceVideoPath ? `<button class="secondary button-with-icon" id="remove-video">${icon("x")}${t(uiKeys.create.removeVideo)}</button>` : ""
+          ? `<div class="section-heading-actions">
+              ${viewModel.isR2V && viewModel.draft.sourceVideoPath && viewModel.r2vTotalCount < 12 ? `<button class="secondary button-with-icon" id="add-h3-reference-slot" type="button">${icon("plus")}${t(uiKeys.create.addSlot)} <small>${viewModel.r2vTotalCount}/12</small></button>` : ""}
+              ${viewModel.draft.sourceVideoPath ? `<button class="secondary button-with-icon" id="remove-video">${icon("x")}${t(uiKeys.create.removeVideo)}</button>` : ""}
+            </div>`
           : viewModel.isR2V
             ? viewModel.r2vTotalCount < 12 ? `<button class="secondary button-with-icon" id="add-h3-reference-slot" type="button">${icon("plus")}${t(uiKeys.create.addSlot)} <small>${viewModel.r2vTotalCount}/12</small></button>` : ""
             : `<button class="secondary button-with-icon" id="toggle-end" ${!viewModel.supportsEndImage && !viewModel.draft.endImagePath ? "disabled" : ""}>${icon(viewModel.draft.endImagePath ? "x" : "images")}${viewModel.draft.endImagePath ? t(uiKeys.create.removeEndFrame) : t(uiKeys.create.addEndFrame)}</button>`}
@@ -337,6 +341,15 @@ export function renderCreatePage(
             </div>`
           : ""}
           </div>`}
+      ${viewModel.extending && viewModel.isR2V && viewModel.r2vTotalCount > 1 ? `<section class="h3-motion-context-references">
+        <div class="section-heading">
+          <div><h2>${t(uiKeys.create.r2vReferencesTitle)}</h2><span class="muted">${t(uiKeys.create.videoMedia.r2vSummary, { images: viewModel.r2vImageCount, videos: viewModel.r2vVideoCount })}</span></div>
+        </div>
+        ${renderH3ReferenceSlotsMarkup(
+          ensureMotionContextSourceSlot(viewModel.draft.h3ReferenceSlots, viewModel.draft.sourceVideoPath),
+          { icon, escapeHtml, h3ReferenceRoleLabels: options.h3ReferenceRoleLabels, t, lockedFirstVideo: true }
+        )}
+      </section>` : ""}
       </section>
       <section class="panel composer">
       <div class="section-heading composer-heading">

@@ -49,8 +49,81 @@
       "height": "{{HEIGHT}}",
       "length": "{{FRAMES}}",
       "ref_image_size": "match",
+      "ref_images.ref_image_0": ["23", 0],
+      "ref_images.ref_image_1": ["24", 0],
+      "ref_images.ref_image_2": ["25", 0],
+      "ref_images.ref_image_3": ["26", 0],
+      "ref_images.ref_image_4": ["27", 0],
+      "ref_images.ref_image_5": ["28", 0],
+      "ref_images.ref_image_6": ["29", 0],
+      "ref_images.ref_image_7": ["30", 0],
+      "ref_images.ref_image_8": ["31", 0],
       "ref_videos.ref_video_0": ["5", 0],
-      "ref_video_audios.ref_video_audio_0": ["5", 2]
+      "ref_video_audios.ref_video_audio_0": ["5", 2],
+      "ref_videos.ref_video_1": ["32", 0],
+      "ref_video_audios.ref_video_audio_1": ["32", 2],
+      "ref_videos.ref_video_2": ["33", 0],
+      "ref_video_audios.ref_video_audio_2": ["33", 2]
+    }
+  },
+  "23": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "{{H3_REF_IMAGE_0}}" }
+  },
+  "24": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "{{H3_REF_IMAGE_1}}" }
+  },
+  "25": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "{{H3_REF_IMAGE_2}}" }
+  },
+  "26": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "{{H3_REF_IMAGE_3}}" }
+  },
+  "27": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "{{H3_REF_IMAGE_4}}" }
+  },
+  "28": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "{{H3_REF_IMAGE_5}}" }
+  },
+  "29": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "{{H3_REF_IMAGE_6}}" }
+  },
+  "30": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "{{H3_REF_IMAGE_7}}" }
+  },
+  "31": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "{{H3_REF_IMAGE_8}}" }
+  },
+  "32": {
+    "class_type": "VHS_LoadVideoFFmpeg",
+    "inputs": {
+      "video": "{{H3_REF_VIDEO_1}}",
+      "force_rate": 24,
+      "custom_width": "{{WIDTH}}",
+      "custom_height": "{{HEIGHT}}",
+      "frame_load_cap": 362,
+      "start_time": 0,
+      "format": "None"
+    }
+  },
+  "33": {
+    "class_type": "VHS_LoadVideoFFmpeg",
+    "inputs": {
+      "video": "{{H3_REF_VIDEO_2}}",
+      "force_rate": 24,
+      "custom_width": "{{WIDTH}}",
+      "custom_height": "{{HEIGHT}}",
+      "frame_load_cap": 362,
+      "start_time": 0,
+      "format": "None"
     }
   },
   "7": {

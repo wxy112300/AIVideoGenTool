@@ -51,6 +51,7 @@ export interface SettingsComfyCompatibilityPanelViewModel {
 export interface SettingsModelScanCardOptions extends SettingsFragmentRenderOptions {
   isGemmaPromptModel(modelId: string): boolean;
   isComfyMultimodalPromptModel(modelId: string): boolean;
+  isQwenVlPeftPromptModel(modelId: string): boolean;
   videoLoraInfoButton(profileId: string): string;
   isImageWorkflowReady(profile?: ModelScanProfile): boolean;
   imageWorkflowStatus(profile?: ModelScanProfile): string;
@@ -96,7 +97,8 @@ const modelHardwareRecommendations: Record<string, string> = {
   "google/gemma-4-12b-q4": "RTX 3060/4070 12GB 以上 · 系统 RAM 24GB 以上",
   "google/gemma-4-12b-q5": "RTX 4080/4090 16GB 以上 · 系统 RAM 24GB 以上",
   "google/gemma-4-26b-a4b-q4": "RTX 3090/4090 24GB 以上",
-  "qwen/qwen3.8-27b-uncensored-q4": "RTX 4090 24GB 以上 · 系统 RAM 32GB 以上"
+  "qwen/qwen3.8-27b-uncensored-q4": "RTX 4090 24GB 以上 · 系统 RAM 32GB 以上",
+  "lightx2v/minimax-h3-prompt-rewriter-8b": "RTX 4090 24GB 推荐 · 4-bit 约 8–10GB 显存 · 系统 RAM 32GB 以上"
 };
 
 function escapeValue(
@@ -261,6 +263,7 @@ export function renderSettingsModelScanCard(
   const isLlamaProfile = profile.managedBy === "llama-server";
   const isGemmaProfile = isPromptProfile && options.isGemmaPromptModel(profile.id);
   const isMultimodalProfile = isPromptProfile && options.isComfyMultimodalPromptModel(profile.id);
+  const isQwenVlPeftProfile = isPromptProfile && options.isQwenVlPeftPromptModel(profile.id);
   const runtimeUnavailable = profile.runtimeVerified === true && profile.runtimeReady === false;
   const hardwareRecommendation = modelHardwareRecommendation(profile);
   const loraInfoButton = profile.category === "lora"
@@ -285,6 +288,8 @@ export function renderSettingsModelScanCard(
         ? "GGUF + mmproj 文件完整；由应用自管理 llama-server"
         : isMultimodalProfile
           ? "LLM GGUF + mmproj 文件完整；通过 ComfyUI MultiModal Prompt Nodes 处理 H3 提示词"
+          : isQwenVlPeftProfile
+          ? "Qwen3-VL 8B + PEFT LoRA 文件完整；通过 ComfyUI Qwen-VL LoRA 处理 H3 提示词"
           : isGemmaProfile
           ? "LLM GGUF + mmproj 文件完整；通过 ComfyUI Prompt Writer 处理视频和图片提示词"
           : "ComfyUI text_encoders 文件完整；可通过原生 TextGenerate 进行本地扩写"
@@ -296,10 +301,12 @@ export function renderSettingsModelScanCard(
             ? "组件完整，可用于配置"
             : "依赖已完整；生成工作流将在下一阶段接入"
     : isPromptProfile
-      ? isLlamaProfile
+        ? isLlamaProfile
         ? "补齐 GGUF + mmproj，并配置 llama-server.exe 后才能使用"
         : isMultimodalProfile
           ? "补齐 Qwen3.6 GGUF、mmproj 与 MultiModal Prompt Nodes 后才能接入本地扩写"
+          : isQwenVlPeftProfile
+          ? "补齐 Qwen3-VL 8B 基座、H3 Prompt Rewriter LoRA 与 Qwen-VL LoRA 节点后才能使用"
           : "补齐对应的 ComfyUI text_encoders 文件后才能接入本地扩写"
       : "补齐所有必需组件后才能启用";
   const escape = (value: string | number | null | undefined) => escapeValue(options, value);
