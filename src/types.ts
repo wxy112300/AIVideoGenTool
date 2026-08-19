@@ -782,6 +782,8 @@ export interface CustomNodeStatus {
   installed: boolean;
   loaded: boolean;
   runtimeVerified: boolean;
+  /** Required node classes absent from the current /object_info response. */
+  runtimeMissingNodeTypes?: string[];
   loadError: string;
   updateNotice?: string;
   /** Informational runtime evidence; does not downgrade compatibility state. */

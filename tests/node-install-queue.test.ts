@@ -85,15 +85,15 @@ function scanWithNodeRuntimeFailure(nodeId: string, detail: string): Environment
 }
 
 describe("CustomNodeInstallQueue", () => {
-  it("bulk-selects only missing, unloaded, or outdated nodes until everything is healthy", () => {
+  it("bulk-selects only missing or catalog-outdated nodes", () => {
     const nodes = [
       nodeStatus("healthy"),
       nodeStatus("missing", { installed: false, loaded: false }),
       nodeStatus("unloaded", { loaded: false }),
       nodeStatus("outdated", { updateAvailable: true })
     ];
-    expect(customNodeIdsForBulkAction(nodes)).toEqual(["missing", "unloaded", "outdated"]);
-    expect(customNodeIdsForBulkAction(nodes.slice(0, 1))).toEqual(["healthy"]);
+    expect(customNodeIdsForBulkAction(nodes)).toEqual(["missing", "outdated"]);
+    expect(customNodeIdsForBulkAction(nodes.slice(0, 1))).toEqual([]);
   });
 
   it("keeps optional system-toolchain nodes out of the bulk installer", () => {
@@ -224,7 +224,7 @@ describe("CustomNodeInstallQueue", () => {
     expect(notify).toHaveBeenLastCalledWith("completed 1/0", "info");
   });
 
-  it("keeps the runtime verification detail in the batch failure notification", async () => {
+  it("reports runtime verification separately without turning installation into failure", async () => {
     const settings = createDefaultState().settings;
     const logs: Record<string, string> = {};
     const notify = vi.fn();
@@ -246,8 +246,9 @@ describe("CustomNodeInstallQueue", () => {
 
     expect(notify).toHaveBeenCalledWith(
       "verify failed: minimax-h3-prompt-writer: 共享 llama-cpp-python 未就绪",
-      "error"
+      "warning"
     );
     expect(logs["minimax-h3-prompt-writer"]).toContain("共享 llama-cpp-python 未就绪");
+    expect(notify).toHaveBeenLastCalledWith("completed 1/0", "info");
   });
 });

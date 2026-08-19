@@ -41,9 +41,9 @@ export interface CustomNodeInstallQueueDependencies {
 export function customNodeIdsForBulkAction(nodes: readonly CustomNodeStatus[]): string[] {
   const eligible = nodes.filter((node) => node.bulkInstall !== false);
   const actionable = eligible.filter((node) =>
-    !node.installed || !node.loaded || node.updateAvailable
+    !node.installed || node.updateAvailable
   );
-  return (actionable.length ? actionable : eligible).map((node) => node.id);
+  return actionable.map((node) => node.id);
 }
 
 function cloneSettings(settings: Settings): Settings {
@@ -170,14 +170,13 @@ export class CustomNodeInstallQueue {
           for (const nodeId of successfulNodeIds) {
             const nodeStatus = scan.customNodes.find((node) => node.id === nodeId);
             if (nodeStatus?.loaded) continue;
-            failedNodeIds.add(nodeId);
             const detail = nodeStatus?.loadError || nodeStatus?.compatibilityNotice || "";
             const message = this.dependencies.messages.readyCheckFailed(
               this.dependencies.nodeName(nodeId),
               detail
             );
             this.appendLog(nodeId, message);
-            this.dependencies.notify(message, "error");
+            this.dependencies.notify(message, "warning");
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

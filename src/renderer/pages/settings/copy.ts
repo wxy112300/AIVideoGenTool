@@ -157,6 +157,7 @@ type SettingsCopyKey =
   | "nodes.compatibilityWarning"
   | "nodes.compatibilityError"
   | "nodes.runtimeVerified"
+  | "nodes.runtimeMissing"
   | "nodes.fileCheckPassed"
   | "nodes.installedRepair"
   | "nodes.updateRestart"
@@ -354,9 +355,9 @@ const zhCN: SettingsCopyCatalog = {
   "upscale.empty": "尚无模型扫描结果",
   "nodes.title": "节点与工作流依赖",
   "nodes.description": "换电脑后按项目清单复现 ComfyUI 节点环境",
-  "nodes.installNote": "安装只使用项目内置仓库清单；一键安装会跳过带系统级编译前置的可选节点，这类节点请按卡片说明单独安装。完成后重启 ComfyUI，再重新扫描。",
+  "nodes.installNote": "只安装缺失、低于项目推荐版本或需要兼容修复的节点；批次完成后自动重启 ComfyUI 一次并复检。运行时未注册不会触发重复安装。",
   "nodes.installAll": "安装 / 更新缺失节点",
-  "nodes.updateAll": "更新全部节点",
+  "nodes.updateAll": "已达到推荐状态",
   "nodes.h3Title": "MiniMax H3 原生音视频核心",
   "nodes.h3Badge": "ComfyUI v0.31.0+ · 推荐 v0.33.1",
   "nodes.h3Description": "LightX2V Turbo 直接使用 ComfyUI 原生 LoRA 与音视频采样，不需要额外的 Turbo custom node；版本过低时请更新所选 ComfyUI 并重启复检。",
@@ -397,7 +398,8 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.compatibilityWarning": "兼容性待确认",
   "nodes.compatibilityError": "兼容性错误",
   "nodes.runtimeVerified": "运行时已验证",
-  "nodes.fileCheckPassed": "文件检查通过 · 启动后验证",
+  "nodes.runtimeMissing": "已安装 · 运行时未注册",
+  "nodes.fileCheckPassed": "文件与版本检查通过",
   "nodes.installedRepair": "已安装，需修复",
   "nodes.updateRestart": "更新并重启",
   "nodes.updateRecheck": "更新/重启复检",
@@ -570,9 +572,9 @@ const zhTW: SettingsCopyCatalog = {
   "upscale.empty": "尚無模型掃描結果",
   "nodes.title": "節點與工作流程依賴",
   "nodes.description": "換電腦後依照專案清單重現 ComfyUI 節點環境",
-  "nodes.installNote": "安裝只使用專案內建儲存庫清單；一鍵安裝會跳過帶系統級編譯前置的選用節點，請依卡片說明單獨安裝。完成後重新啟動 ComfyUI，再重新掃描。",
+  "nodes.installNote": "只安裝缺少、低於專案建議版本或需要相容性修復的節點；批次完成後自動重新啟動 ComfyUI 一次並複檢。執行階段未註冊不會觸發重複安裝。",
   "nodes.installAll": "安裝 / 更新缺少節點",
-  "nodes.updateAll": "更新全部節點",
+  "nodes.updateAll": "已達到建議狀態",
   "nodes.h3Title": "MiniMax H3 原生影音核心",
   "nodes.h3Badge": "ComfyUI v0.31.0+ · 推薦 v0.33.1",
   "nodes.h3Description": "LightX2V Turbo 直接使用 ComfyUI 原生 LoRA 與影音採樣，不需要額外的 Turbo custom node；版本過低時請更新所選 ComfyUI 並重新啟動複檢。",
@@ -613,7 +615,8 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.compatibilityWarning": "相容性待確認",
   "nodes.compatibilityError": "相容性錯誤",
   "nodes.runtimeVerified": "執行時已驗證",
-  "nodes.fileCheckPassed": "檔案檢查通過 · 啟動後驗證",
+  "nodes.runtimeMissing": "已安裝 · 執行階段未註冊",
+  "nodes.fileCheckPassed": "檔案與版本檢查通過",
   "nodes.installedRepair": "已安裝，需要修復",
   "nodes.updateRestart": "更新並重新啟動",
   "nodes.updateRecheck": "更新/重新啟動複檢",
@@ -807,9 +810,9 @@ const enUS: SettingsCopyCatalog = {
   "upscale.empty": "No model scan results",
   "nodes.title": "Nodes and workflow dependencies",
   "nodes.description": "Recreate the ComfyUI node environment from the project checklist on another computer",
-  "nodes.installNote": "Installation uses only the project repository list; one-click install skips optional nodes with system build prerequisites. Install those from their cards, then restart ComfyUI and rescan.",
+  "nodes.installNote": "Only missing nodes, nodes below the project recommendation, and compatibility repairs are installed. The batch restarts ComfyUI once and rescans; missing runtime registration does not trigger reinstallation.",
   "nodes.installAll": "Install / update missing nodes",
-  "nodes.updateAll": "Update all nodes",
+  "nodes.updateAll": "Recommended state reached",
   "nodes.h3Title": "MiniMax H3 native audio/video core",
   "nodes.h3Badge": "ComfyUI v0.31.0+ · recommended v0.33.1",
   "nodes.h3Description": "LightX2V Turbo uses ComfyUI native LoRA and audio/video sampling without an extra Turbo custom node; update the selected ComfyUI and restart to recheck when the version is too old.",
@@ -850,7 +853,8 @@ const enUS: SettingsCopyCatalog = {
   "nodes.compatibilityWarning": "Compatibility pending",
   "nodes.compatibilityError": "Compatibility error",
   "nodes.runtimeVerified": "Runtime verified",
-  "nodes.fileCheckPassed": "File check passed · runtime check after startup",
+  "nodes.runtimeMissing": "Installed · not registered at runtime",
+  "nodes.fileCheckPassed": "File and version checks passed",
   "nodes.installedRepair": "Installed; repair needed",
   "nodes.updateRestart": "Update and restart",
   "nodes.updateRecheck": "Update/restart and recheck",

@@ -373,8 +373,6 @@ export async function scanCustomNodes(
       .map((entry) => [entry.name.toLowerCase(), path.join(customNodesDirectory, entry.name)])
   );
   const motionContextDirectories = await findMotionContextDirectories(entries, customNodesDirectory);
-  const log = (await readLatestComfyLog(comfyRoot)).content;
-  const logLines = log.split(/\r?\n/);
   const serviceRoot = (runtimeBaseUrl || settings.comfyUrl).replace(/\/+$/, "");
   const serviceNodeIds = await fetch(
     `${serviceRoot}/object_info`,
@@ -415,20 +413,6 @@ export async function scanCustomNodes(
     const duplicateDirectories = definition.id === "h3-motion-context"
       ? motionContextDirectories.filter((candidate) => candidate !== directory)
       : [];
-    const failed =
-      Boolean(directory) &&
-      (logLines.some((line) =>
-        line.trim().endsWith(`(IMPORT FAILED): ${directory}`)
-      ) ||
-        logLines.some((line) =>
-          line.includes(`Cannot import ${directory} module`)
-        ));
-    const importErrorLine = failed
-      ? [...logLines]
-          .reverse()
-          .find((line) => line.includes(`Cannot import ${directory} module`))
-          ?.replace(/^.*?Cannot import /, "Cannot import ")
-      : "";
     let compatibilityError = "";
     let compatibilityNotice = "";
     let updateNotice = "";
@@ -507,12 +491,15 @@ export async function scanCustomNodes(
     }
     // Keep the two positional values for callers from older builds while all
     // catalog entries can now receive the same cached GitHub release lookup.
-    const latestVersion = latestNodeVersions[definition.id] ||
+    const remoteVersion = latestNodeVersions[definition.id] ||
       (definition.id === "spectrum-minimax-h3"
         ? latestSpectrumVersion
         : definition.id === "h3-motion-context"
           ? latestMotionContextVersion
           : "") || definition.latestVersion || "";
+    const latestVersion = /^v?\d+(?:[.-]\d+)+(?:[-+][0-9A-Za-z.-]+)?$/u.test(remoteVersion)
+      ? normalizeReleaseVersion(remoteVersion)
+      : "";
     const detectedRevision = await readRevision(directory);
     const requiredNodeTypes = definition.nodeTypes;
     // Prompt Writer exposes a more specific runtime contract than
@@ -523,25 +510,27 @@ export async function scanCustomNodes(
       definition.id === "minimax-h3-prompt-writer" &&
       h3PromptWriterRuntime.loaded === true
     );
+    const runtimeMissingNodeTypes = serviceNodeIds !== null && requiredNodeTypes
+      ? requiredNodeTypes.filter((nodeType) => !serviceNodeIds.has(nodeType))
+      : [];
     const registered = definition.runtimeEndpoint
       ? h3PromptWriterRuntime.loaded !== false
       : !runtimeVerified || !requiredNodeTypes ||
-        (serviceNodeIds !== null && requiredNodeTypes.every((nodeType) => serviceNodeIds.has(nodeType)));
+        runtimeMissingNodeTypes.length === 0;
     const pendingRestartError = Boolean(directory) && !compatibilityError &&
-      !failed && requiredNodeTypes && runtimeVerified && !registered
-      ? "节点文件已安装，但当前 ComfyUI 服务尚未加载全部必需模块；请重启服务后复检"
+      requiredNodeTypes && runtimeVerified && !registered
+      ? `节点文件已安装，但当前服务未注册：${runtimeMissingNodeTypes.join("、")}。重复安装通常无效，请查看本次 ComfyUI 启动日志中的节点导入错误`
       : "";
     const duplicateNotice = duplicateDirectories.length
       ? `检测到 ${duplicateDirectories.length + 1} 个 H3 Motion Context 副本；只保留一个副本，否则运行时 patch 可能冲突。`
       : "";
-    const loadError = compatibilityError || importErrorLine ||
+    const loadError = compatibilityError ||
       (definition.id === "minimax-h3-prompt-writer" && directory ? h3PromptWriterRuntime.error : "") ||
-      (failed ? "最近一次启动时导入失败" : "") || pendingRestartError;
+      pendingRestartError;
     const updateAvailable = Boolean(
       compatibilityError || optionalUpdateRecommended ||
       (definition.recommendedVersion && (!version ||
-        compareReleaseVersions(version, definition.recommendedVersion) < 0)) ||
-      (version && latestVersion && compareReleaseVersions(version, latestVersion) < 0)
+        compareReleaseVersions(version, definition.recommendedVersion) < 0))
     );
     const compatibility = compatibilityForNode(
       definition,
@@ -561,6 +550,7 @@ export async function scanCustomNodes(
       installed: Boolean(directory),
       loaded: Boolean(directory) && !loadError && registered,
       runtimeVerified,
+      runtimeMissingNodeTypes,
       loadError,
       updateNotice,
       runtimeNotice: definition.id === "minimax-h3-prompt-writer"

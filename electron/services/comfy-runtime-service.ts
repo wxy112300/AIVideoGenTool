@@ -82,6 +82,7 @@ const windowsConsoleBootstrap = [
   "    except Exception:",
   "        stream = open(os.devnull, 'w', encoding='utf-8')",
   "    setattr(sys, name, stream)",
+  "    setattr(sys, '__' + name + '__', stream)",
   "for stream_name in ('stdout', 'stderr'):",
   "    bind_output_stream(stream_name)",
   "entry = sys.argv[1]",

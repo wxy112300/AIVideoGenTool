@@ -99,13 +99,13 @@ npm.cmd run dev
 
 可以连续点击多个节点加入等待队列。应用会锁定该批次开始时所选的 ComfyUI 实例和 Python，串行执行每个节点的 Git/pip 操作；单项失败会写入对应卡片日志并继续下一项，不会让后续节点永远等待。批次末尾统一重启和复扫，卡片会区分“排队中”“处理中”和“正在重启并复检”。重启/复检阶段不再接受新的节点，避免节点被安装到另一套环境。
 
-面板顶端的“一键安装 / 更新缺失节点”会只加入未安装、未加载或有更新提示的 Custom Nodes；全部健康时按钮切换为“更新全部节点”。两种操作都复用同一串行队列，不会把 ComfyUI 核心升级或内置工作流文件混入节点批次。
+面板顶端的一键操作只加入未安装、低于 catalog 推荐版本或需要应用兼容修复的 Custom Nodes。文件已安装但当前 `/object_info` 未注册节点类型时只显示运行时告警，不再自动加入重装队列；重复安装通常不能修复 Python 导入错误。所有实际安装项复用同一串行队列，并在批次末尾最多重启一次，不会把 ComfyUI 核心升级或内置工作流文件混入节点批次。
 
 Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分钟，共用的 `llama-cpp-python` Windows wheel 下载与自检为 45 分钟。安装日志显示下载百分比；超时会终止对应子进程树并保留已收到的日志，避免无限显示“处理中”。
 
 当前注册的节点族包括 GGUF、Video Helper Suite、LTXVideo、SeedVR2、FlashVSR、KJNodes、Frame Interpolation、ComfyUI MultiModal Prompt Nodes、ComfyUI Qwen-VL LoRA、MiniMax H3 Prompt Writer、H3 Motion Context 和 Spectrum。准确仓库、目录名、用途和 required/optional 状态以 `customNodeCatalog` 为准。
 
-节点目录中的 `releaseSource: "github-release"` 表示设置页会查询对应 GitHub Releases。查询结果按仓库缓存 6 小时；网络失败或仓库没有 Release 时只缓存 1 分钟，不会让离线扫描变成失败。这样“重新扫描”不会每次都触发全部仓库请求，已有本地文件和运行时 `/object_info` 状态也不会被远端网络结果覆盖。当前版本号来自节点 `pyproject.toml` 或已登记的推荐线，远端 Release 只用于更新提示，不会把推荐版本强制升级成最新版。
+节点目录中的 `releaseSource: "github-release"` 表示设置页会查询对应 GitHub Releases。查询结果按仓库缓存 6 小时；网络失败或仓库没有 Release 时只缓存 1 分钟，不会让离线扫描变成失败。远端 Release 只作为“最新发布”信息展示，不参与 `updateAvailable`、兼容性颜色或批量安装选择；非版本标签会被忽略。可执行更新只由应用 catalog 中随版本发布的推荐版本、最低兼容线和兼容修复规则决定。
 
 工作流来源元数据集中在 `src/core/workflow-metadata.ts`。它覆盖 `workflows/` 下的全部 API JSON，记录 `/prompt` schema、推荐 ComfyUI 核心版本、使用的节点包和上游来源；API JSON 本身不放额外顶层字段，避免被 ComfyUI 当成节点解析。
 
@@ -135,7 +135,7 @@ H3 Prompt Writer 与可选 MultiModal Prompt Nodes 共用同一个 Python 包名
 
 ComfyUI Desktop 某些版本在嵌入式控制台关闭后会让节点的普通 `print()` 抛出 `[Errno 9] Bad file descriptor`，这发生在模型加载前，并不代表权重损坏。重新扫描时如果发现 Qwen-VL 节点仍使用该输出方式，设置页会把它标为“需修复”并提供“一键补齐/更新”；安装器会针对当前选择的 ComfyUI **数据目录**应用可重复的兼容层，保留节点更新策略，不写入机器固定路径。应用后必须重启 ComfyUI，再进行运行时复检。
 
-Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.15`，包含原生 ER-SDE 状态清理、KJNodes 预览回放保护，以及可选的 H3 Continuum 元数据互操作；设置页仍会查询上游最新发布并提供一键更新，但高于最低线的旧版不会只因“不是最新版”而被判定不可用。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。Spectrum 不要求额外模型权重，也不把 Continuum 变成硬依赖。
+Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.15`，包含原生 ER-SDE 状态清理、KJNodes 预览回放保护，以及可选的 H3 Continuum 元数据互操作；设置页会展示上游最新发布，但不会仅因它高于 catalog 推荐线就触发更新。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。Spectrum 不要求额外模型权重，也不把 Continuum 变成硬依赖。
 
 注意：MiniMax H3 基础生成节点属于 ComfyUI 核心，不应伪装成第三方节点。如果核心节点缺失，应更新/切换正确的 ComfyUI 核心并重新扫描。
 

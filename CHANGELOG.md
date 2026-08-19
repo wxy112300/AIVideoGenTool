@@ -10,6 +10,11 @@
 
 暂无。
 
+## 0.29.3 — 2026-08-19
+
+- 修复 `0.29.2` Windows 标准流兼容层遗漏底层 buffer 所有权的问题：ComfyUI `LogInterceptor` 替换 `sys.stdout`/`sys.stderr` 后，原 wrapper 被回收并关闭共享句柄，最终在 `tqdm` 采样进度条刷新时触发 `I/O operation on closed file`。
+- Python bootstrap 现在同时维护 `sys.__stdout__`/`sys.__stderr__` 原始流引用，使 ComfyUI 日志包装器接管公开流后底层控制台或 `NUL` 句柄继续有效。
+
 ## 0.29.2 — 2026-08-19
 
 - 修复 Windows 分发版从无控制台的 Electron GUI 启动 ComfyUI 时，将无效的父进程 `stdout`/`stderr` 句柄继承给 Python，导致 H3、SeedVR2 等工作流进入采样节点后统一报 `I/O operation on closed file` 的回归。

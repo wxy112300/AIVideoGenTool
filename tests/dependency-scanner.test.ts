@@ -210,7 +210,7 @@ describe("dependency scanner", () => {
     expect(qwenVl?.updateNotice).toContain("Bad file descriptor");
   });
 
-  it("keeps a supported Spectrum version usable while recommending the pinned baseline", async () => {
+  it("keeps remote releases informational when the catalog recommendation is newer", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-spectrum-scan-"));
     temporaryDirectories.push(comfyRoot);
     const spectrumDirectory = path.join(
@@ -238,12 +238,12 @@ describe("dependency scanner", () => {
       minimumVersion: "0.2.1",
       recommendedVersion: "0.2.15",
       latestVersion: "0.2.7",
-      updateAvailable: true,
+      updateAvailable: false,
       loadError: ""
     });
   });
 
-  it("uses the generic cached release map for every catalog node", async () => {
+  it("shows generic cached releases without making them actionable updates", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-generic-node-release-"));
     temporaryDirectories.push(comfyRoot);
     const multimodalDirectory = path.join(
@@ -271,8 +271,27 @@ describe("dependency scanner", () => {
     expect(multimodal).toMatchObject({
       version: "1.0.15",
       latestVersion: "1.0.16",
-      updateAvailable: true
+      updateAvailable: false
     });
+  });
+
+  it("ignores non-version GitHub release names", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-release-name-scan-"));
+    temporaryDirectories.push(comfyRoot);
+    await fs.mkdir(path.join(comfyRoot, "custom_nodes", "ComfyUI-Frame-Interpolation"), {
+      recursive: true
+    });
+
+    const statuses = await scanCustomNodes(
+      comfyRoot,
+      { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:1" },
+      "",
+      "",
+      "",
+      { "frame-interpolation": "models" }
+    );
+
+    expect(statuses.find((status) => status.id === "frame-interpolation")?.latestVersion).toBe("");
   });
 
   it("keeps an installed node with an unreadable version in a warning state", async () => {

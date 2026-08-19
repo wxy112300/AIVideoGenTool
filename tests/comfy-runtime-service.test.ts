@@ -22,6 +22,7 @@ describe("ComfyUI runtime service", () => {
     expect(args[2]).toContain("GetConsoleMode");
     expect(args[2]).toContain("SetConsoleMode");
     expect(args[2]).toContain("setattr(sys, name, stream)");
+    expect(args[2]).toContain("setattr(sys, '__' + name + '__', stream)");
     expect(args[2]).toContain("mode.value | 0x0004");
     expect(args[2]).toContain("except Exception:");
     expect(args[2]).toContain("runpy.run_path(entry, run_name='__main__')");

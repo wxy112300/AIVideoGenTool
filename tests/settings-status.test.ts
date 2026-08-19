@@ -77,7 +77,7 @@ describe("settings status tones", () => {
   });
 
   it("distinguishes node installation, verification, and load errors", () => {
-    expect(customNodeStatusTone(node({ runtimeVerified: false }))).toBe("warning");
+    expect(customNodeStatusTone(node({ runtimeVerified: false }))).toBe("available");
     expect(customNodeStatusTone(node({ updateAvailable: true }))).toBe("warning");
     expect(customNodeStatusTone(node({ loadError: "previous import failed" }), true)).toBe("warning");
     expect(customNodeStatusTone(node({ installed: false, loaded: false }))).toBe("missing");

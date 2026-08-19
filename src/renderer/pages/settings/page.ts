@@ -590,7 +590,7 @@ export function renderSettingsPage(
     </section>`;
 
   const nodeInstalled = environmentScan?.customNodes.filter(
-    (node) => node.loaded
+    (node) => node.installed
   ).length ?? 0;
   const h3CoreNodes = environmentScan?.comfyCompatibility.coreNodes ?? [];
   const h3CoreKnown = Boolean(environmentScan && environmentScan.comfyCompatibility.checkedFrom !== "");
@@ -610,7 +610,7 @@ export function renderSettingsPage(
   const bulkNodeIds = customNodeIdsForBulkAction(customNodes);
   const bulkCustomNodes = customNodes.filter((node) => node.bulkInstall !== false);
   const allCustomNodesHealthy = bulkCustomNodes.length > 0 && bulkCustomNodes.every((node) =>
-    node.installed && node.loaded && !node.updateAvailable
+    node.installed && !node.updateAvailable
   );
   const nodePanel = `
     <section class="settings-panel">
@@ -670,6 +670,7 @@ export function renderSettingsPage(
           const queued = queuedIndex >= 0;
           const active = viewModel.customNodeInstalling === node.id;
           const installBlocked = customNodeInstallGloballyBlocked || active || queued;
+          const installActionable = !node.installed || node.updateAvailable;
           const installStatus = active
             ? s("nodes.processing")
             : queued
@@ -694,8 +695,8 @@ export function renderSettingsPage(
               ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`custom-node:${node.id}`)}">${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${customNodeStatusTone(node, Boolean(installStatus))}">${installStatus ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}` : node.compatibilityState === "error" ? `${icon("circle-alert")} ${s("nodes.compatibilityError")}` : node.updateAvailable && node.loaded ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}` : node.loaded && !node.runtimeVerified && !node.compatibilityNotice ? `${icon("circle-help")} ${s("nodes.fileCheckPassed")}` : node.compatibilityState === "warning" ? `${icon("circle-help")} ${s("nodes.compatibilityWarning")}` : node.loaded ? `${icon(node.runtimeVerified ? "circle-check" : "circle-help")} ${node.runtimeVerified ? s("nodes.runtimeVerified") : s("nodes.fileCheckPassed")}` : node.installed ? `${icon("circle-alert")} ${s("nodes.installedRepair")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
-              <button class="${node.updateAvailable || !node.installed || !node.loaded ? "primary" : "secondary"} button-with-icon" data-install-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : node.installed ? "refresh-cw" : "download")}${installStatus || (node.updateAvailable ? s("nodes.updateRestart") : node.installed && !node.loaded ? s("nodes.updateRecheck") : node.installed ? s("nodes.checkUpdate") : s("nodes.installRestart"))}</button>
+              <span class="model-availability ${customNodeStatusTone(node, Boolean(installStatus))}">${installStatus ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}` : node.compatibilityState === "error" ? `${icon("circle-alert")} ${s("nodes.compatibilityError")}` : node.updateAvailable && node.loaded ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}` : node.runtimeVerified && node.runtimeMissingNodeTypes?.length ? `${icon("circle-alert")} ${s("nodes.runtimeMissing")}` : node.loaded && !node.runtimeVerified && !node.compatibilityNotice ? `${icon("circle-check")} ${s("nodes.fileCheckPassed")}` : node.compatibilityState === "warning" ? `${icon("circle-help")} ${s("nodes.compatibilityWarning")}` : node.loaded ? `${icon("circle-check")} ${node.runtimeVerified ? s("nodes.runtimeVerified") : s("nodes.fileCheckPassed")}` : node.installed ? `${icon("circle-alert")} ${s("nodes.installedRepair")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
+              <button class="${installActionable ? "primary" : "secondary"} button-with-icon" ${installActionable ? `data-install-node="${escape(node.id)}"` : `data-rescan-node="${escape(node.id)}"`} ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : installActionable ? node.installed ? "refresh-cw" : "download" : "scan-search")}${installStatus || (node.updateAvailable ? s("nodes.updateRestart") : node.installed ? t(uiKeys.settings.rescan) : s("nodes.installRestart"))}</button>
             </div>
           </article>`;
         }).join("") || `<div class="panel environment-empty">${s("nodes.empty")}</div>`}

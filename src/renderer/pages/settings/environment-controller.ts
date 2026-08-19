@@ -270,6 +270,21 @@ export function mountSettingsEnvironmentController(
     }, { signal });
   });
 
+  root.querySelectorAll<HTMLButtonElement>("[data-rescan-node]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopImmediatePropagation();
+      const settings = options.formSettings();
+      options.setSettingsDraft(settings);
+      button.disabled = true;
+      try {
+        options.setEnvironmentScan(await context.studio.scanEnvironment(settings));
+      } catch (error) {
+        context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+      }
+      requestSettingsRender();
+    }, { signal });
+  });
+
   root.querySelector<HTMLButtonElement>("#install-all-custom-nodes")?.addEventListener("click", () => {
     const state = context.getState();
     if (state?.queue.some((task) => task.status === "running")) {

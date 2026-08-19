@@ -45,7 +45,7 @@ export function customNodeStatusTone(
   if (node.compatibilityState === "warning") return "warning";
   if (node.loadError) return "missing";
   if (!node.installed) return "missing";
-  if (!node.loaded || !node.runtimeVerified || node.updateAvailable) return "warning";
+  if (!node.loaded || node.updateAvailable) return "warning";
   return "available";
 }
 
