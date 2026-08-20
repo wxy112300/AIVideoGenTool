@@ -137,7 +137,7 @@ describe("UX/UI semantic token foundation", () => {
     expect(visualRefreshSource).toContain("background: var(--ux-nav-active-indicator)");
   });
 
-  it("declares the seven-level P04 type scale without migrating components", () => {
+  it("declares and routes the seven-level P04 heading scale", () => {
     const typeRoles = [
       "--ux-type-page",
       "--ux-type-section",
@@ -150,11 +150,15 @@ describe("UX/UI semantic token foundation", () => {
     for (const role of typeRoles) {
       expect(tokenSource).toContain(`${role}:`);
     }
-    expect(tokenSource).toContain("--ux-type-page: clamp(25px, 2.3vw, 31px);");
+    expect(tokenSource).toContain("--ux-type-page: clamp(20px, 1.65vw, 23px);");
     expect(tokenSource).toContain("--ux-type-technical: .86em;");
-    expect(foundationSource).not.toContain("var(--ux-type-");
-    expect(visualRefreshSource).not.toContain("var(--ux-type-");
-    expect(densitySource).not.toContain("var(--ux-type-");
+    expect(foundationSource).toContain("h1 { margin-bottom: 6px; font-size: var(--ux-type-page); }");
+    expect(foundationSource).toContain("h2 { margin-bottom: 4px; font-size: var(--ux-type-section); }");
+    expect(visualRefreshSource).toContain("font-size: var(--ux-type-page);");
+    expect(visualRefreshSource).toContain("font-size: var(--ux-type-section);");
+    expect(visualRefreshSource).toContain("font-size: var(--ux-type-object);");
+    expect(densitySource).toContain("font-size: var(--ux-type-page);");
+    expect(visualRefreshSource).toContain(".task-main h3 { margin-top: 1px; font-size: 14px; }");
     expect(finalRefinementsSource).not.toContain("var(--ux-type-");
   });
 

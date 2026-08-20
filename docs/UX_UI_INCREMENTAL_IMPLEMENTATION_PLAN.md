@@ -1,6 +1,6 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16 七级 type token 声明、P05 导航语义与 P08 Image Edit 首个窄窗修复已完成，后续完整交互 gate 待补
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L17 type token 声明与 shared heading 迁移、P05 导航语义与 P08 Image Edit 首个窄窗修复已完成，后续完整交互 gate 待补
 > 制定日期：2026-08-20  
 > 当前版本：0.30.2
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
@@ -274,7 +274,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：100%/125%/150% 缩放；简中、繁中、英文；长路径和长模型名；无新增截断；`npm.cmd run verify`。
 
-**当前状态（2026-08-20）**：P04/L16 已完成：在 `src/styles/00-tokens.css` 明确冻结 Page/Section/Object/Body/Label/Meta/Technical 七级 type roles，保留当前 renderer 基线值；未迁移任何组件 selector、字号或布局。focused token tests `9/9`、typecheck 通过，下一 package 为 L17。
+**当前状态（2026-08-20）**：P04/L16–L17 已完成：L16 在 `src/styles/00-tokens.css` 明确冻结 Page/Section/Object/Body/Label/Meta/Technical 七级 type roles；L17 依据当前 renderer 最终 cascade 将 page 基线校正为 `clamp(20px, 1.65vw, 23px)`，并把共享 `h1/h2/h3` 与 History gallery object heading 迁移到对应 roles。详情标题、弹窗标题、任务卡、album 紧凑标题等特例保持原有密度；未改变 DOM、布局、断点或交互。focused token tests `9/9`、typecheck、build、三 locale 各 `136/136` current-renderer screenshots、代表视口 diagnose 与中英文输入焦点 smoke 通过；因保持当前最终 cascade，版本仍为 `0.30.2`，下一 package 为 L18。
 
 ### P05 — Shell、主导航与 sticky 几何
 

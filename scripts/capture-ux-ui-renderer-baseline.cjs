@@ -26,13 +26,14 @@ Options:
   --output     Override the output directory (default: temp/ux-ui-baseline/renderer).
   --fixture     Capture only the named fixture.
   --viewport    Capture only the named viewport.
+  --locale      Capture with zh-CN, zh-TW, or en-US UI copy (default: zh-CN).
   --diagnose    Print document overflow and the widest renderer elements.
   --smoke       Run the isolated Create prompt focus/input smoke check.
 `);
 }
 
 function parseArgs(argv) {
-  const options = { dryRun: false, output: null, fixture: null, viewport: null, diagnose: false, smoke: false };
+  const options = { dryRun: false, output: null, fixture: null, viewport: null, locale: "zh-CN", diagnose: false, smoke: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--help" || argument === "-h") options.help = true;
@@ -48,6 +49,11 @@ function parseArgs(argv) {
     } else if (argument === "--viewport") {
       options.viewport = argv[++index];
       if (!options.viewport) throw new Error("--viewport requires an id");
+    } else if (argument === "--locale") {
+      options.locale = argv[++index];
+      if (!options.locale || !["zh-CN", "zh-TW", "en-US"].includes(options.locale)) {
+        throw new Error("--locale must be zh-CN, zh-TW, or en-US");
+      }
     } else throw new Error(`Unknown option: ${argument}`);
   }
   return options;
@@ -116,7 +122,7 @@ async function waitForDom(window, expression, label) {
   throw new Error(`Renderer did not become ready: ${label}`);
 }
 
-async function prepareSyntheticState() {
+async function prepareSyntheticState(locale = "zh-CN") {
   await fsp.mkdir(userDataRoot, { recursive: true });
   const defaultsPath = path.join(workspace, "dist", "electron", "src", "core", "defaults.js");
   if (!fs.existsSync(defaultsPath)) {
@@ -124,6 +130,7 @@ async function prepareSyntheticState() {
   }
   const { createDefaultState } = await import(pathToFileURL(defaultsPath).href);
   const state = createDefaultState();
+  state.settings.uiLocale = locale;
   const fixtureMediaRoot = path.join(userDataRoot, "fixture-media");
   await fsp.mkdir(fixtureMediaRoot, { recursive: true });
   const imagePath = path.join(fixtureMediaRoot, "fixture-image.png");
@@ -560,7 +567,7 @@ if (options.help) {
   (async () => {
     try {
       console.log("[renderer-capture] preparing state");
-      const state = await prepareSyntheticState();
+      const state = await prepareSyntheticState(options.locale);
       console.log("[renderer-capture] state ready");
       const preloadPath = await writeMockPreload(state);
       console.log("[renderer-capture] preload ready");

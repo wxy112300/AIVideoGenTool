@@ -123,9 +123,9 @@
   --ux-focus-control-glow: rgba(101, 151, 255, .12);
   --ux-elevation-panel: none;
 
-  /* P04/L16 type scale: seven roles are declared first; selectors migrate in
-   * L17/L18 so this package keeps the current renderer visually unchanged. */
-  --ux-type-page: clamp(25px, 2.3vw, 31px);
+  /* P04/L16 type scale: seven roles are declared first; L17 maps the shared
+   * heading selectors to the final values produced by the current cascade. */
+  --ux-type-page: clamp(20px, 1.65vw, 23px);
   --ux-type-section: 17px;
   --ux-type-object: 15px;
   --ux-type-body: 14px;

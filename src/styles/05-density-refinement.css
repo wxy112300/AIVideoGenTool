@@ -1,7 +1,7 @@
 
 /* Desktop density refinement: favor working space over decorative page chrome. */
 h1 {
-  font-size: clamp(20px, 1.65vw, 23px);
+  font-size: var(--ux-type-page);
   line-height: 1.2;
 }
 

@@ -40,9 +40,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   outline-offset: var(--ux-focus-ring-offset);
 }
 h1, h2, h3 { color: var(--ux-content-heading); letter-spacing: -.018em; }
-h1 { margin: 0 0 7px; font-size: clamp(25px, 2.3vw, 31px); font-weight: 680; line-height: 1.18; }
-h2 { margin: 0 0 5px; font-size: 17px; font-weight: 650; line-height: 1.3; }
-h3 { margin: 0 0 5px; font-size: 15px; font-weight: 630; line-height: 1.35; }
+h1 { margin: 0 0 7px; font-size: var(--ux-type-page); font-weight: 680; line-height: 1.18; }
+h2 { margin: 0 0 5px; font-size: var(--ux-type-section); font-weight: 650; line-height: 1.3; }
+h3 { margin: 0 0 5px; font-size: var(--ux-type-object); font-weight: 630; line-height: 1.35; }
 p { color: var(--ux-content-secondary); line-height: 1.65; }
 code { color: var(--ux-content-technical); font-size: .86em; }
 
@@ -533,7 +533,7 @@ select { padding-inline: 12px; }
 .history-media-badges { gap: 5px; }
 .media-chip, .history-preview-state { border-color: rgba(255,255,255,.11); background: rgba(8,11,16,.72); font-size: 10px; }
 .history-gallery-copy { gap: 6px; padding: 10px 12px 9px; }
-.history-gallery-copy h3 { font-size: 15px; }
+.history-gallery-copy h3 { font-size: var(--ux-type-object); }
 .history-card-filename { display: block; min-width: 0; overflow: hidden; color: #8490a0; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .history-card-title, .history-detail-title { overflow: hidden; white-space: nowrap; text-overflow: clip; }
 .history-card-title-track { display: inline-flex; width: max-content; max-width: 100%; }
