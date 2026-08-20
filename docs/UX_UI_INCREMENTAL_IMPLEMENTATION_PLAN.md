@@ -1,8 +1,8 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性、P12 History 键盘语义、P13 图片媒体状态、P14 Lightbox modal/focus 与 P15 视频/图片详情构图已 verified/integrated，P16 Settings current-renderer evidence/proposal 已完成，等待 G15 结构批准，下一可执行 phase 为 P17
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性、P12 History 键盘语义、P13 图片媒体状态、P14 Lightbox modal/focus 与 P15 视频/图片详情构图已 verified/integrated，P16 Settings current-renderer evidence/proposal 与 G15 结构批准已完成，P17 Settings 分类/保存/扫描动作层级已 verified/integrated，下一可执行 phase 为 P18
 > 制定日期：2026-08-20  
-> 当前版本：0.38.0
+> 当前版本：0.39.0
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -475,7 +475,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：current renderer capture/review；800/900/1280/1440；offline、scanning、installing、partial、error 五类状态。
 
-**当前状态（2026-08-21）**：P16 的 G14 clean-base 前置已满足：P15 已提交并推送，`main` 与 `origin/main` 同步且工作树干净。L50/L51 已完成：当前 9 分类、语言区、安装能力和 preserve list 已记录于 `docs/UX_UI_P16_RENDERER_PROPOSAL.md`；capture harness 新增独立 `--settings-states` 矩阵，offline、scanning、installing、partial、confirmed error 五种状态在 `1440×900`、`1280×800`、`900×800`、`760×800` 共 20 张 current-renderer 截图通过，20/20 diagnose 无页面横溢出。installing 通过真实 `CustomNodeInstallQueue` controller 进入 processing；error fixture 明确为 confirmed environment/compatibility error 与 repair/update recovery，不宣称真实 ComfyUI 失败。当前等待 G15 对 <=900 compact category 与 save/rescan 结构的批准；L52–L60 不得提前执行。
+**当前状态（2026-08-21）**：P16 的 G14 clean-base 前置已满足，G15 已依据当前 renderer proposal/evidence 批准并进入实现。L50/L51 已完成：当前 9 分类、语言区、安装能力和 preserve list 已记录于 `docs/UX_UI_P16_RENDERER_PROPOSAL.md`；capture harness 新增独立 `--settings-states` 矩阵，offline、scanning、installing、partial、confirmed error 五种状态在 `1440×900`、`1280×800`、`900×800`、`760×800` 共 20 张 current-renderer 截图通过，20/20 diagnose 无页面横溢出。installing 通过真实 `CustomNodeInstallQueue` controller 进入 processing；error fixture 明确为 confirmed environment/compatibility error 与 repair/update recovery，不宣称真实 ComfyUI 失败。P16 已 `verified/integrated`，下一 phase 为 P17。
 
 ### P17 — Settings 分类、保存与扫描动作层级
 
@@ -492,6 +492,8 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 **测试**：`settings-form`、`settings-selectors`、`settings-save-coordinator`、`settings-status`、`environment-refresh-coordinator`。
 
 **Gate**：scan/save/discard/切分类/长表单输入；800/900首屏看到当前设置；`npm.cmd run verify`。
+
+**当前状态（2026-08-21）**：P17 已 `verified/integrated`。宽屏继续使用 9 分类 sticky sidebar；`<=900px` 改为单行、可横向滚动的 compact category strip，不再出现 3×3 或 9 行导航墙。Settings 分类补齐 `tablist`/`tab`/`tabpanel`、`aria-selected`、`aria-controls`、roving `tabindex` 和 Arrow/Home/End，切换后恢复当前 tab 焦点与页面滚动位置。页头仅保留 saved/unsaved、discard、save；rescan 移入“本机环境” action group，扫描和保存显示局部 status/`aria-busy`，现有 SettingsSaveCoordinator、EnvironmentRefreshCoordinator、CustomNodeInstallQueue、IPC、持久化和字段 selector 未变。新增 Settings accessibility markup test；900×800/760×800 keyboard smoke、1440×900/1280×800/900×800/760×800 current-renderer diagnose、offline/scanning/installing/partial/confirmed-error 20 状态截图与 `npm.cmd run verify`（87 files / 652 tests、production build、20 组对比度检查）通过。下一 phase 为 P18。
 
 ### P18 — Settings 内容层级、本地化与恢复反馈
 

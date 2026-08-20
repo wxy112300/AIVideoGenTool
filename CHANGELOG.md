@@ -8,6 +8,13 @@
 
 ## 未发布
 
+## 0.39.0 — 2026-08-21
+
+- 完成 P17 Settings 分类与动作层级：宽屏保留 9 分类 sticky sidebar，`<=900px` 改为单行可横向滚动的 compact category strip，不再出现 3×3 或 9 行导航墙。
+- 为 Settings 分类补齐 `tablist`/`tab`/`tabpanel`、`aria-selected`、`aria-controls`、roving `tabindex` 与 Arrow/Home/End 键盘切换；切换后保留当前 tab 焦点与页面滚动位置。
+- 页头保留 saved/unsaved、discard、save；rescan 移入“本机环境” action group，扫描/保存显示局部 status 与 `aria-busy`。不改变 SettingsSaveCoordinator、EnvironmentRefreshCoordinator、CustomNodeInstallQueue、IPC、持久化、默认值或字段 selector。
+- 当前 renderer 900×800/760×800 keyboard smoke、1440×900/1280×800/900×800/760×800 diagnose、Settings offline/scanning/installing/partial/confirmed-error 20 张状态截图，以及 `npm.cmd run verify`（87 files / 652 tests、production build、20 组对比度检查）通过。
+
 ## 0.38.0 — 2026-08-21
 
 - 完成 P15 History 视频/图片详情页构图：保留 viewer 与版本区域，将 inspector 动作收敛为 dominant primary、常用 secondary 与原生 More disclosure；900px 及以下增加窄屏 compact action entry。

@@ -13,6 +13,19 @@
   gap: 4px;
 }
 
+.settings-environment-actions {
+  min-width: 0;
+  justify-self: end;
+  align-items: center;
+}
+
+.settings-action-status {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .settings-tab {
   min-width: 0;
   min-height: 44px;
@@ -185,14 +198,41 @@
 
   .settings-sidebar {
     position: static;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    align-items: stretch;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+  }
+
+  .settings-tab {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: max-content;
+    min-height: 40px;
+    grid-template-columns: 18px auto auto;
+    padding: 8px 10px;
+    scroll-margin-inline: 8px;
+  }
+
+  .settings-tab > .settings-tab-label {
+    white-space: nowrap;
   }
 }
 
 @media (max-width: 760px) {
   .settings-sidebar {
-    grid-template-columns: 1fr;
+    gap: 3px;
+    padding: 6px;
+  }
+
+  .settings-tab {
+    min-height: 38px;
+    padding: 7px 9px;
+    font-size: 12px;
   }
 
   .settings-section {
@@ -208,6 +248,10 @@
   .settings-section .section-heading > .model-badge,
   .settings-section .section-heading > .model-availability,
   .settings-section .section-heading > .compatibility-actions {
+    justify-self: start;
+  }
+
+  .settings-environment-actions {
     justify-self: start;
   }
 

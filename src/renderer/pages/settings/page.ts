@@ -54,6 +54,7 @@ interface PromptStatusViewModel {
 export interface SettingsPageViewModel {
   settings: Settings;
   settingsDirty: boolean;
+  settingsSaving: boolean;
   environmentScan: EnvironmentScanResult | null;
   comfyConnected?: boolean;
   environmentScanning: boolean;
@@ -356,8 +357,14 @@ export function renderSettingsPage(
         <label>${t(uiKeys.settings.localeLabel)}<select id="ui-locale"><option value="zh-CN" ${settings.uiLocale === "zh-CN" ? "selected" : ""}>${t(uiKeys.settings.localeChinese)}</option><option value="zh-TW" ${settings.uiLocale === "zh-TW" ? "selected" : ""}>${t(uiKeys.settings.localeTraditionalChinese)}</option><option value="en-US" ${settings.uiLocale === "en-US" ? "selected" : ""}>${t(uiKeys.settings.localeEnglish)}</option></select></label>
         <p class="muted proxy-hint">${t(uiKeys.settings.localePending)}</p>
       </section>
-      <section class="panel settings-section">
-        <div class="section-heading"><div><h2>${t(uiKeys.settings.system.environmentTitle)}</h2><span class="muted">${t(uiKeys.settings.system.environmentDescription)}</span></div></div>
+      <section id="settings-environment-section" class="panel settings-section" aria-busy="${viewModel.environmentScanning}">
+        <div class="section-heading">
+          <div><h2>${t(uiKeys.settings.system.environmentTitle)}</h2><span class="muted">${t(uiKeys.settings.system.environmentDescription)}</span></div>
+          <div class="button-row settings-environment-actions">
+            <span class="settings-action-status" role="status" aria-live="polite">${viewModel.environmentScanning ? t(uiKeys.settings.scanning) : ""}</span>
+            <button class="secondary button-with-icon" id="scan-environment" aria-controls="settings-environment-section" aria-busy="${viewModel.environmentScanning}" ${viewModel.environmentScanning ? "disabled" : ""}>${icon(viewModel.environmentScanning ? "refresh-cw" : "scan-search")}${viewModel.environmentScanning ? t(uiKeys.settings.scanning) : t(uiKeys.settings.rescan)}</button>
+          </div>
+        </div>
         ${environmentOverview}
       </section>
       ${comfyCompatibilityPanel}
@@ -832,10 +839,10 @@ export function renderSettingsPage(
   return `
     <section class="page-heading settings-heading">
       <div><div class="heading-line"><h1>${t(uiKeys.settings.title)}</h1>${gpuDevices.length ? `<span class="model-badge">${escape(gpuBadge)}</span>` : ""}</div><p>${t(uiKeys.settings.description)}</p></div>
-      <div class="button-row settings-heading-actions"><span class="save-state ${viewModel.settingsDirty ? "dirty" : ""}">${viewModel.settingsDirty ? t(uiKeys.settings.unsaved) : t(uiKeys.settings.saved)}</span><button class="secondary button-with-icon" id="scan-environment" ${viewModel.environmentScanning ? "disabled" : ""}>${icon(viewModel.environmentScanning ? "refresh-cw" : "scan-search")}${viewModel.environmentScanning ? t(uiKeys.settings.scanning) : t(uiKeys.settings.rescan)}</button><button class="secondary button-with-icon" id="discard-settings" ${viewModel.settingsDirty ? "" : "disabled"}>${icon("rotate-ccw")}${t(uiKeys.settings.discard)}</button><button class="primary button-with-icon" id="save-settings" ${viewModel.settingsDirty ? "" : "disabled"}>${icon("save")}${t(uiKeys.settings.save)}</button></div>
+      <div class="button-row settings-heading-actions"><span class="save-state ${viewModel.settingsDirty ? "dirty" : ""}" role="status" aria-live="polite">${viewModel.settingsSaving ? t(uiKeys.settings.saving) : viewModel.settingsDirty ? t(uiKeys.settings.unsaved) : t(uiKeys.settings.saved)}</span><button class="secondary button-with-icon" id="discard-settings" ${viewModel.settingsDirty && !viewModel.settingsSaving ? "" : "disabled"}>${icon("rotate-ccw")}${t(uiKeys.settings.discard)}</button><button class="primary button-with-icon ${viewModel.settingsSaving ? "busy" : ""}" id="save-settings" aria-busy="${viewModel.settingsSaving}" ${viewModel.settingsDirty && !viewModel.settingsSaving ? "" : "disabled"}>${icon(viewModel.settingsSaving ? "refresh-cw" : "save")}${viewModel.settingsSaving ? t(uiKeys.settings.saving) : t(uiKeys.settings.save)}</button></div>
     </section>
     <div class="settings-layout">
-      <nav class="settings-sidebar" aria-label="${t(uiKeys.settings.categories)}">
+      <nav id="settings-category-tabs" class="settings-sidebar" role="tablist" aria-label="${t(uiKeys.settings.categories)}">
         ${([
           ["system", "settings", uiKeys.settings.tabSystem],
           ["acceleration", "zap", uiKeys.settings.tabAcceleration],
@@ -866,10 +873,11 @@ export function renderSettingsPage(
           const metadata = count
             ? `<span class="settings-tab-meta"><small>${count}</small></span>`
             : "";
-          return `<button class="settings-tab ${viewModel.settingsTab === id ? "active" : ""}" data-settings-tab="${id}"><span>${icon(iconName)}</span><span class="settings-tab-label">${t(labelKey)}${updateDot}</span>${metadata}</button>`;
+          const active = viewModel.settingsTab === id;
+          return `<button id="settings-tab-${id}" class="settings-tab ${active ? "active" : ""}" role="tab" aria-selected="${active}" aria-controls="settings-panel-${id}" tabindex="${active ? "0" : "-1"}" data-settings-tab="${id}"><span>${icon(iconName)}</span><span class="settings-tab-label">${t(labelKey)}${updateDot}</span>${metadata}</button>`;
         }).join("")}
       </nav>
-      <div class="settings-content">${activePanel}</div>
+      <div id="settings-panel-${viewModel.settingsTab}" class="settings-content" role="tabpanel" aria-labelledby="settings-tab-${viewModel.settingsTab}" tabindex="0" aria-busy="${viewModel.settingsSaving || viewModel.environmentScanning}">${activePanel}</div>
     </div>
     ${installGuideDialog}`;
 }

@@ -15,6 +15,7 @@ import type { CustomNodeInstallPhase } from "./node-install-queue";
 export interface SettingsViewModelDependencies {
   state: AppState;
   settingsDraft: Settings | null;
+  settingsSaving: boolean;
   environmentScan: EnvironmentScanResult | null;
   comfyConnected?: boolean;
   environmentScanning: boolean;
@@ -65,6 +66,7 @@ export function buildSettingsPageViewModel(
   return {
     settings,
     settingsDirty: options.settingsHaveUnsavedChanges(),
+    settingsSaving: options.settingsSaving,
     environmentScan: options.environmentScan,
     comfyConnected: options.comfyConnected,
     environmentScanning: options.environmentScanning,

@@ -1061,6 +1061,86 @@ async function runHistoryDetailInteractionSmoke(window, fixture, viewport) {
   if (!passed) throw new Error(`History detail interaction smoke failed: ${JSON.stringify({ evidence, checks })}`);
 }
 
+async function runSettingsInteractionSmoke(window, fixture, viewport) {
+  const initial = await executeJavaScript(window, `(() => {
+    const tabs = [...document.querySelectorAll('[role="tab"][data-settings-tab]')];
+    const sidebar = document.querySelector('.settings-sidebar');
+    const rows = tabs.map((tab) => Math.round(tab.getBoundingClientRect().top));
+    const environmentSection = document.querySelector('#settings-environment-section')?.closest('.settings-section');
+    const scanButton = document.querySelector('#scan-environment');
+    return {
+      tabCount: tabs.length,
+      tabStops: tabs.filter((tab) => tab.getAttribute('tabindex') === '0').length,
+      selectedCount: tabs.filter((tab) => tab.getAttribute('aria-selected') === 'true').length,
+      activeId: document.querySelector('[role="tab"][aria-selected="true"]')?.id ?? '',
+      panelLabel: document.querySelector('[role="tabpanel"]')?.getAttribute('aria-labelledby') ?? '',
+      rows: [...new Set(rows)],
+      sidebarDisplay: sidebar ? getComputedStyle(sidebar).display : '',
+      sidebarWrap: sidebar ? getComputedStyle(sidebar).flexWrap : '',
+      scanInEnvironment: Boolean(environmentSection && scanButton && environmentSection.contains(scanButton)),
+      scanInHeading: Boolean(document.querySelector('.settings-heading #scan-environment')),
+      documentScrollWidth: document.documentElement.scrollWidth,
+      documentClientWidth: document.documentElement.clientWidth
+    };
+  })()`);
+  const arrow = await executeJavaScript(window, `(() => {
+    const active = document.querySelector('[role="tab"][aria-selected="true"]');
+    if (!active) return { found: false, defaultPrevented: false };
+    active.focus();
+    const event = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+    active.dispatchEvent(event);
+    return { found: true, defaultPrevented: event.defaultPrevented };
+  })()`);
+  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-acceleration[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-acceleration'", `${fixture.id} settings arrow`);
+  const home = await executeJavaScript(window, `(() => {
+    const active = document.querySelector('[role="tab"][aria-selected="true"]');
+    if (!active) return false;
+    const event = new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true });
+    active.dispatchEvent(event);
+    return event.defaultPrevented;
+  })()`);
+  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-system[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-system'", `${fixture.id} settings home`);
+  const end = await executeJavaScript(window, `(() => {
+    const active = document.querySelector('[role="tab"][aria-selected="true"]');
+    if (!active) return false;
+    const event = new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true });
+    active.dispatchEvent(event);
+    return event.defaultPrevented;
+  })()`);
+  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-logs[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-logs'", `${fixture.id} settings end`);
+  await executeJavaScript(window, `(() => {
+    const active = document.querySelector('[role="tab"][aria-selected="true"]');
+    if (!active) return false;
+    active.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-system[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-system'", `${fixture.id} settings restore`);
+  await wait(160);
+  const final = await executeJavaScript(window, `({
+    activeId: document.querySelector('[role="tab"][aria-selected="true"]')?.id ?? '',
+    panelLabel: document.querySelector('[role="tabpanel"]')?.getAttribute('aria-labelledby') ?? '',
+    tabStops: document.querySelectorAll('[role="tab"][tabindex="0"]').length,
+    sidebarDisplay: getComputedStyle(document.querySelector('.settings-sidebar')).display,
+    sidebarWrap: getComputedStyle(document.querySelector('.settings-sidebar')).flexWrap,
+    documentScrollWidth: document.documentElement.scrollWidth,
+    documentClientWidth: document.documentElement.clientWidth
+  })`);
+  const compact = viewport.width <= 900;
+  const checks = {
+    semantics: initial.tabCount === 9 && initial.tabStops === 1 && initial.selectedCount === 1 && initial.panelLabel === initial.activeId,
+    compactSingleRow: !compact || (initial.sidebarDisplay === 'flex' && initial.sidebarWrap !== 'wrap' && initial.rows.length === 1),
+    actionContext: initial.scanInEnvironment && !initial.scanInHeading,
+    arrow: arrow.found && arrow.defaultPrevented,
+    home: home === true,
+    end: end === true,
+    focusRestored: final.activeId === 'settings-tab-system' && final.panelLabel === 'settings-tab-system' && final.tabStops === 1,
+    noHorizontalOverflow: final.documentScrollWidth <= final.documentClientWidth + 1
+  };
+  const passed = Object.values(checks).every(Boolean);
+  console.log(`[renderer-smoke] ${fixture.id} ${viewport.id} settings ${JSON.stringify({ initial, arrow, home, end, final, checks, passed })}`);
+  if (!passed) throw new Error(`Settings interaction smoke failed: ${JSON.stringify({ initial, arrow, home, end, final, checks })}`);
+}
+
 async function runInteractionSmoke(window, fixture, viewport) {
   if (fixture.route === "queue" && viewport.id === "900x800") {
     await runQueueInteractionSmoke(window, fixture, viewport);
@@ -1072,6 +1152,10 @@ async function runInteractionSmoke(window, fixture, viewport) {
   }
   if ((fixture.id === "video-detail" || fixture.id === "image-detail") && (viewport.id === "900x800" || viewport.id === "760x800")) {
     await runHistoryDetailInteractionSmoke(window, fixture, viewport);
+    return;
+  }
+  if (fixture.id === "settings-system" && (viewport.id === "900x800" || viewport.id === "760x800")) {
+    await runSettingsInteractionSmoke(window, fixture, viewport);
     return;
   }
   if (fixture.id !== "create-image-edit" || viewport.id !== "900x800") return;

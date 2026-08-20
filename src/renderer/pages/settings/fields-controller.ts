@@ -129,14 +129,55 @@ export function mountSettingsFieldsController(
     context.requestRender();
   }, { signal });
 
-  root.querySelectorAll<HTMLElement>("[data-settings-tab]").forEach((button) => {
+  const restoreSettingsTabView = (nextTab: SettingsTab, scrollLeft: number, scrollTop: number): void => {
+    let attempts = 0;
+    const restore = () => {
+      attempts += 1;
+      if (context.getRoute().page !== "settings") return;
+      const target = root.querySelector<HTMLButtonElement>(`#settings-tab-${nextTab}[aria-selected="true"]`);
+      if (!target) {
+        if (attempts < 60) window.requestAnimationFrame(restore);
+        return;
+      }
+      target.focus({ preventScroll: true });
+      target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      window.scrollTo({ left: scrollLeft, top: scrollTop, behavior: "auto" });
+    };
+    window.requestAnimationFrame(restore);
+  };
+
+  const selectSettingsTab = (nextTab: SettingsTab, preserveFocus: boolean) => {
+    const scrollLeft = window.scrollX;
+    const scrollTop = window.scrollY;
+    options.setSettingsDraft(options.formSettings());
+    options.setSettingsTab(nextTab);
+    context.reportUserAction("settings-tab", { tab: nextTab });
+    context.requestRender();
+    if (preserveFocus) restoreSettingsTabView(nextTab, scrollLeft, scrollTop);
+  };
+
+  const settingsTabs = Array.from(root.querySelectorAll<HTMLButtonElement>("[data-settings-tab]"));
+  settingsTabs.forEach((button, index) => {
     button.addEventListener("click", () => {
       const nextTab = button.dataset.settingsTab as SettingsTab | undefined;
       if (!nextTab) return;
-      options.setSettingsDraft(options.formSettings());
-      options.setSettingsTab(nextTab);
-      context.reportUserAction("settings-tab", { tab: nextTab });
-      context.requestRender();
+      selectSettingsTab(nextTab, true);
+    }, { signal });
+    button.addEventListener("keydown", (event) => {
+      const key = event.key;
+      const nextIndex = key === "Home"
+        ? 0
+        : key === "End"
+          ? settingsTabs.length - 1
+          : key === "ArrowRight" || key === "ArrowDown"
+            ? (index + 1) % settingsTabs.length
+            : key === "ArrowLeft" || key === "ArrowUp"
+              ? (index - 1 + settingsTabs.length) % settingsTabs.length
+              : -1;
+      if (nextIndex < 0 || !settingsTabs[nextIndex]) return;
+      event.preventDefault();
+      const nextTab = settingsTabs[nextIndex].dataset.settingsTab as SettingsTab | undefined;
+      if (nextTab) selectSettingsTab(nextTab, true);
     }, { signal });
   });
 

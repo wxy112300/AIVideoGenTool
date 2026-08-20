@@ -413,6 +413,7 @@ export const uiKeys = {
     description: "settings.description",
     unsaved: "settings.unsaved",
     saved: "settings.saved",
+    saving: "settings.saving",
     rescan: "settings.rescan",
     scanning: "settings.scanning",
     discard: "settings.discard",

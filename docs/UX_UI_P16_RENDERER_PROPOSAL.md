@@ -2,7 +2,7 @@
 
 日期：2026-08-21
 
-状态：`evidence complete / G15 approval pending`。本 phase 只盘点当前 renderer、补隔离 fixture 和记录结构提案；没有修改 Settings 生产 renderer、runtime、IPC 或持久化行为。当前应用版本为 `0.38.0`。
+状态：`evidence complete / G15 approved / P17 implemented`。本 phase 只盘点当前 renderer、补隔离 fixture 和记录结构提案；P17 已按本提案实现分类、保存与扫描动作层级，未修改 Settings runtime、IPC 或持久化行为。当前应用版本为 `0.39.0`。
 
 ## 来源与边界
 
@@ -120,6 +120,8 @@ npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --settings-states -
 
 ## G15 acceptance gate
 
+状态：`accepted and implemented in P17`。
+
 - `1440×900`、`1280×800`：sidebar 保持 sticky，内容列起点稳定，heading actions 可达。
 - `900×800`：不再出现 3×3 导航墙；当前 panel 在首屏进入，scan/save/discard/save 仍可达。
 - `760×800`：不再出现 9 行分类墙；compact category control 单行可滚动或 popover 可达，页面无横向溢出。
@@ -128,8 +130,9 @@ npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --settings-states -
 
 ## Handoff
 
-- Base：`53e98aa`（P15，`0.38.0`，`origin/main` clean）。
+- Base：`53e98aa`（P15，`0.38.0`，`origin/main` clean）。P17 版本为 `0.39.0`。
 - P16 变更范围：`scripts/capture-ux-ui-renderer-baseline.cjs`、`docs/ux-ui-renderer-baseline.manifest.json` 与本 proposal；无 `src/` production renderer 变更。
 - Static/current-renderer evidence：dry-run、20 张 Settings state captures、20/20 无页面横溢出 diagnose、代表性截图人工检查。
 - 未验证：真实本机安装/更新、真实多 ComfyUI 选择持久化、真实节点安装 subprocess、transport failure 的 retry policy；这些属于 runtime/manual gate。
-- 推荐下一步：G15 批准本 proposal 后进入 P17，先实现 tab roles，再实现 <=900 compact category strip，最后拆分 rescan 与 save action group。
+- P17 implementation evidence：`1440×900`、`1280×800`、`900×800`、`760×800` diagnose 无页面横溢出；`900×800`/`760×800` Arrow/Home/End keyboard smoke 通过；rescan 已位于 environment action group；保存 busy/status 与原有 save selector/coordinator 保持兼容。
+- 下一步：进入 P18，处理 Settings 内容层级、evidence strip、本地化 inventory 与异步恢复反馈；不回放旧 prototype 的颜色或布局。

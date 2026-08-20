@@ -263,6 +263,7 @@ let imageDraftSaveTimer: number | undefined;
 let imageDraftRevision = 0;
 let environmentScan: EnvironmentScanResult | null = null;
 let environmentScanning = false;
+let settingsSaving = false;
 let environmentScanError = "";
 let serviceStarting: LocalServiceKind | null = null;
 let serviceRestarting: LocalServiceKind | null = null;
@@ -1003,9 +1004,15 @@ function syncSettingsDirtyUi(): void {
   if (setSettingsDirty) void setSettingsDirty(dirty).catch(() => undefined);
   const status = document.querySelector<HTMLElement>(".settings-heading-actions .save-state");
   status?.classList.toggle("dirty", dirty);
-  if (status) status.textContent = dirty ? uiText(uiKeys.runtime.unsavedChanges) : uiText(uiKeys.runtime.saved);
-  document.querySelector<HTMLButtonElement>("#discard-settings")?.toggleAttribute("disabled", !dirty);
-  document.querySelector<HTMLButtonElement>("#save-settings")?.toggleAttribute("disabled", !dirty);
+  if (status) status.textContent = settingsSaving
+    ? uiText(uiKeys.settings.saving)
+    : dirty
+      ? uiText(uiKeys.runtime.unsavedChanges)
+      : uiText(uiKeys.runtime.saved);
+  document.querySelector<HTMLButtonElement>("#discard-settings")?.toggleAttribute("disabled", !dirty || settingsSaving);
+  const saveButton = document.querySelector<HTMLButtonElement>("#save-settings");
+  saveButton?.toggleAttribute("disabled", !dirty || settingsSaving);
+  saveButton?.setAttribute("aria-busy", String(settingsSaving));
 }
 
 function settingsPage(): string {
@@ -1013,6 +1020,7 @@ function settingsPage(): string {
     buildSettingsPageViewModel({
       state,
       settingsDraft,
+      settingsSaving,
       environmentScan,
       comfyConnected: comfyRuntime.phase === "unknown"
         ? undefined
@@ -2568,6 +2576,17 @@ async function runEnvironmentScan(
   return environmentRefreshCoordinator.refresh(settings, reason);
 }
 
+async function requestSaveSettings(settings: Settings): Promise<"saved" | "migration-required"> {
+  settingsSaving = true;
+  render();
+  try {
+    return await settingsSaveCoordinator.requestSave(settings);
+  } finally {
+    settingsSaving = false;
+    render();
+  }
+}
+
 const settingsSaveCoordinator = new SettingsSaveCoordinator({
   getState: () => state,
   getEnvironmentScan: () => environmentScan,
@@ -2741,7 +2760,7 @@ function bindSettings(): void {
       runEnvironmentScan,
       loadAppLogs: () => void loadAppLogs(),
       togglePromptModel: togglePromptModelFromUi,
-      requestSaveSettings: (settings) => settingsSaveCoordinator.requestSave(settings),
+      requestSaveSettings,
       openImageAssetLibrary: () => {
         rememberModalFocus();
         ui.imageAssetLibraryDialog = {
