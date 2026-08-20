@@ -2,7 +2,7 @@
 
 > 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P08 Image Edit 首个窄窗修复已完成，后续完整交互 gate 待补
 > 制定日期：2026-08-20  
-> 当前版本：0.31.0
+> 当前版本：0.31.3
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -312,7 +312,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：模拟扫描失败、文件打开失败、Prompt 优化失败、任务完成并发；键盘可执行恢复；`npm.cmd run verify`。
 
-**当前状态（2026-08-20）**：P06/L26–L28 已完成首个通知 package：`src/renderer/notifications.ts` 为 error 建立持久策略，为 info/warning/完成态保留语义时长，增加同源去重、error 优先级保护和瞬时 action callback；shell flash 增加可聚焦的关闭按钮与事件委托，Prompt 优化失败已接入“打开设置”恢复路径，关闭/action 只更新局部 DOM。相关 focused tests `12/12`、typecheck 已通过；P06 仍未 `verified/integrated`，L29 的调用点分流、并发恢复 smoke 和 G07 runtime gate 尚未完成。
+**当前状态（2026-08-20）**：P06/L26–L29 已完成首个通知 package：`src/renderer/notifications.ts` 为 error 建立持久策略，为 info/warning/完成态保留语义时长，增加同源去重、error 优先级保护和瞬时 action callback；shell flash 增加可聚焦的关闭按钮与事件委托，Prompt 优化失败已接入“打开设置”恢复路径，Settings 的下载/目录/日志打开失败已明确路由为 error，关闭/action 只更新局部 DOM。L29 controller focused tests `2/2`、通知聚焦 suite `11/11`、typecheck 已通过；P06 仍未 `verified/integrated`，并发恢复 smoke 和 G07 runtime gate 尚未完成。
 
 ### P07 — Create 窄窗口构图 renderer review
 

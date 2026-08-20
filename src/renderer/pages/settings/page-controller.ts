@@ -95,13 +95,13 @@ export function mountSettingsPageController(
       options.formSettings().hfMirrorEnabled
     );
     const opened = await options.context.studio.openExternal(url);
-    if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed));
+    if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
   }, { signal });
   root.querySelector("#open-install-directory")?.addEventListener("click", async (event) => {
     const directory = (event.currentTarget as HTMLButtonElement).dataset.installDirectory?.trim();
     if (!directory) return;
     const opened = await options.context.studio.openDirectory(directory);
-    if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.openDirectoryFailed));
+    if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" });
   }, { signal });
 
   root.querySelectorAll<HTMLButtonElement>("[data-open-environment-download]").forEach((button) => {
@@ -110,7 +110,7 @@ export function mountSettingsPageController(
       if (!sourceUrl) return;
       const url = rewriteHuggingFaceDownloadUrl(sourceUrl, options.formSettings().hfMirrorEnabled);
       const opened = await options.context.studio.openExternal(url);
-      if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed));
+      if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
     }, { signal });
   });
 

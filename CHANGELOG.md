@@ -8,6 +8,11 @@
 
 ## 未发布
 
+## 0.31.3 — 2026-08-20
+
+- 完成 P06/L29：Settings 的模型下载、安装目录、环境下载、应用日志目录和崩溃目录打开失败统一路由为 error 通知，并补充 controller focused tests `2/2`；不改变目录、IPC、持久化或安装流程。
+- P06 仍待并发恢复 smoke 与 G07 runtime gate；P07 当前 renderer 窄窗 proposal 仍等待 G08 批准。
+
 ## 0.31.2 — 2026-08-20
 
 - 完成 P06/L27–L28：全局通知支持瞬时的 Retry/View logs/Open Settings 类 action 结构和键盘事件委托，并接入一条明确的 Prompt 优化失败 → 打开设置恢复路径；action callback 不写入持久化状态、不改变 IPC 或 workflow payload。

@@ -27,7 +27,7 @@ export function mountSettingsLogsController(
   ) => {
     context.reportUserAction(action);
     const opened = await context.studio.openAppLogDirectory(kind);
-    if (!opened) context.notify(failureMessage);
+    if (!opened) context.notify(failureMessage, { kind: "error" });
   };
 
   root.querySelector("#open-app-log-directory")?.addEventListener("click", (event) => {
