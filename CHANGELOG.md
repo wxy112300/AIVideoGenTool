@@ -11,7 +11,7 @@
 ## 0.31.3 — 2026-08-20
 
 - 完成 P06/L29：Settings 的模型下载、安装目录、环境下载、应用日志目录和崩溃目录打开失败统一路由为 error 通知，并补充 controller focused tests `2/2`；不改变目录、IPC、持久化或安装流程。
-- P06 仍待并发恢复 smoke 与 G07 runtime gate；P07 当前 renderer 窄窗 proposal 仍等待 G08 批准。
+- G07 runtime smoke 已在隔离 Electron + 当前 Vite renderer 中通过：并发完成/失败保留 error alert，关闭按钮恢复页面操作，Prompt 优化失败可通过 Open Settings action 到达 Settings 且通知清除；P06 现标为 `verified/integrated`。P07 当前 renderer 窄窗 proposal 仍等待 G08 批准。
 
 ## 0.31.2 — 2026-08-20
 
