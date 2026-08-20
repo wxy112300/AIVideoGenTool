@@ -1,12 +1,45 @@
 import { describe, expect, it } from "vitest";
+import { createDefaultDraft } from "../src/core/defaults";
 import { H3_TURBO_LORA } from "../src/core/video-loras";
 import {
   normalizeVideoSteps,
   resolveVideoGenerationPolicy,
-  shouldApplySpectrum
+  shouldApplySpectrum,
+  shouldEnableSpectrumByDefault
 } from "../src/core/video-policy";
 
 describe("video generation policy", () => {
+  it("enables Spectrum after offline installation unless the user has chosen a value", () => {
+    const draft = {
+      ...createDefaultDraft(),
+      spectrumMode: "off" as const,
+      spectrumModeUserSet: false
+    };
+    const installedButOffline = { installed: true, loaded: false, version: "0.2.16" };
+
+    expect(shouldEnableSpectrumByDefault(draft, installedButOffline)).toBe(true);
+    expect(shouldEnableSpectrumByDefault({ ...draft, spectrumModeUserSet: true }, installedButOffline)).toBe(false);
+    expect(shouldEnableSpectrumByDefault(draft, { installed: false, loaded: false, version: "0.2.16" })).toBe(false);
+    expect(shouldEnableSpectrumByDefault(draft, { installed: false, loaded: true, version: "0.2.16" })).toBe(false);
+  });
+
+  it("keeps incompatible Turbo and Motion Context profiles from auto-enabling Spectrum", () => {
+    const turboDraft = {
+      ...createDefaultDraft(),
+      spectrumMode: "off" as const,
+      spectrumModeUserSet: false,
+      videoLoras: [H3_TURBO_LORA]
+    };
+    expect(shouldEnableSpectrumByDefault(turboDraft, { installed: true, loaded: false, version: "0.2.5" })).toBe(false);
+    expect(shouldEnableSpectrumByDefault(turboDraft, { installed: true, loaded: false, version: "0.2.6" })).toBe(true);
+    expect(shouldEnableSpectrumByDefault({
+      ...turboDraft,
+      modelId: "minimax_h3_ref2va",
+      inputMode: "video",
+      videoLoras: []
+    }, { installed: true, loaded: false, version: "0.2.16" })).toBe(false);
+  });
+
   it("switches Turbo to low-step options while keeping Spectrum available", () => {
     const policy = resolveVideoGenerationPolicy({
       modelId: "minimax_h3_fl2va",

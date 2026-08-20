@@ -1,10 +1,12 @@
 import type {
+  CustomNodeStatus,
   Draft,
   H3StepCount,
   UiLocale,
   VideoLoraSelection
 } from "../types.js";
-import { modelCatalog } from "./catalog/index.js";
+import { modelCatalog, SPECTRUM_TURBO_MINIMUM_VERSION } from "./catalog/index.js";
+import { releaseVersionAtLeast } from "./release-version.js";
 import {
   isH3Ref2vTurboEnabled,
   isH3TurboEnabled,
@@ -111,4 +113,24 @@ export function normalizeVideoSteps(
 export function shouldApplySpectrum(input: VideoGenerationPolicyInput): boolean {
   return input.spectrumMode === "balanced" &&
     resolveVideoGenerationPolicy(input).spectrum.allowed;
+}
+
+export function shouldEnableSpectrumByDefault(
+  draft: Pick<Draft, "modelId" | "inputMode" | "spectrumMode" | "spectrumModeUserSet" | "videoLoras">,
+  spectrumNode: Pick<CustomNodeStatus, "installed" | "loaded" | "version"> | null | undefined
+): boolean {
+  if (draft.spectrumModeUserSet || draft.spectrumMode === "balanced") return false;
+  // Offline installation evidence is enough for the default. Runtime loaded
+  // status remains a separate enqueue/readiness gate.
+  if (!spectrumNode?.installed) return false;
+  if (isH3TurboEnabled(draft) && !releaseVersionAtLeast(
+    spectrumNode.version,
+    SPECTRUM_TURBO_MINIMUM_VERSION
+  )) return false;
+  return resolveVideoGenerationPolicy({
+    modelId: draft.modelId,
+    inputMode: draft.inputMode,
+    spectrumMode: draft.spectrumMode,
+    videoLoras: draft.videoLoras
+  }).spectrum.allowed;
 }

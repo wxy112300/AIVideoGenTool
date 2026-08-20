@@ -2,7 +2,7 @@
 
 > 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue runtime gate 进行中，随后进入 P11 proposal review
 > 制定日期：2026-08-20  
-> 当前版本：0.32.1
+> 当前版本：0.32.2
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 

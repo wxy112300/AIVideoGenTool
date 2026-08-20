@@ -10,6 +10,10 @@
 
 - G11 Queue runtime gate 增加隔离 executor/control 回归覆盖：成功任务的 History 收敛、claim 前取消不抢回任务、ComfyUI readiness abort 不提交 workflow、active worker abort/cleanup 生命周期和暂停期间不重叠恢复；本次未启动或提交真实 ComfyUI 任务。
 
+## 0.32.2 — 2026-08-21
+
+- 修正 Spectrum 默认策略：兼容 Spectrum 节点已安装但尚未被当前 ComfyUI runtime 加载时，只要用户没有历史选择，创建页仍默认开启；用户手动关闭/开启后保持记忆，Turbo 版本兼容性和 Motion Context 禁用规则不变。
+
 ## 0.32.1 — 2026-08-21
 
 - 根据真实使用反馈，将 Queue 的 CPU/RAM/GPU/VRAM 性能总览恢复到页面顶部；active task 仍保留阶段、进度、预览、elapsed、暂停/取消和恢复主路径，实时性能 patch 改为只更新顶部唯一的一组指标。

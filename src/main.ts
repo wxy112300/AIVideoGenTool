@@ -228,9 +228,8 @@ import {
   motionContextMaxDurationSeconds,
   normalizeH3Steps
 } from "./core/workflow";
-import { resolveVideoGenerationPolicy } from "./core/video-policy";
-import { modelCatalog, SPECTRUM_TURBO_MINIMUM_VERSION } from "./core/catalog";
-import { releaseVersionAtLeast } from "./core/release-version";
+import { resolveVideoGenerationPolicy, shouldEnableSpectrumByDefault } from "./core/video-policy";
+import { modelCatalog } from "./core/catalog";
 import { nearestSupportedVideoResolution } from "./core/video-resolution";
 import { ensureMotionContextSourceSlot } from "./core/h3-reference";
 import {
@@ -987,23 +986,7 @@ function enableSpectrumByDefaultIfAvailable(): void {
     (node) => node.id === "spectrum-minimax-h3"
   );
   const draft = state?.draft;
-  if (
-    !draft ||
-    draft.spectrumModeUserSet ||
-    draft.spectrumMode === "balanced" ||
-    !spectrumNode?.installed ||
-    !spectrumNode.loaded ||
-    (isH3TurboEnabled(draft) && !releaseVersionAtLeast(
-      spectrumNode.version,
-      SPECTRUM_TURBO_MINIMUM_VERSION
-    )) ||
-    !resolveVideoGenerationPolicy({
-      modelId: draft.modelId,
-      inputMode: draft.inputMode,
-      spectrumMode: draft.spectrumMode,
-      videoLoras: draft.videoLoras
-    }).spectrum.allowed
-  ) return;
+  if (!draft || !shouldEnableSpectrumByDefault(draft, spectrumNode)) return;
   patchDraft({ spectrumMode: "balanced" });
 }
 
