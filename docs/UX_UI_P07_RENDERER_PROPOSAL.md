@@ -2,7 +2,7 @@
 
 状态：`proposed`，等待 G08 人工/强模型批准。本文只基于当前 `src/renderer/`、`src/styles/` 和真实 renderer fixture；不使用 `prototypes/` 的旧设计，也不在本 package 修改生产 renderer。
 
-更新日期：2026-08-20；当前 package version：`0.31.3`。
+更新日期：2026-08-20；当前 package version：`0.31.4`。
 
 ## 1. Source map 与 preserve list
 

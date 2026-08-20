@@ -2,7 +2,7 @@
 
 > 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，P08 Image Edit 首个窄窗修复已完成，后续 Create/Queue/History/Settings 交互 gate 待补
 > 制定日期：2026-08-20  
-> 当前版本：0.31.3
+> 当前版本：0.31.4
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -347,7 +347,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：连续输入、selection、Ctrl+Z/Y/Shift+Z、清空恢复、拖放、click-to-select、模式切换、提交、双击防重；三模式与关键视口；`npm.cmd run verify`。
 
-**当前状态（2026-08-20）**：首个步骤 `breakpoint/min-width` 已实现。`src/styles/10-final-refinements.css` 只调整 Image Edit 的窄窗网格、摘要和 Seed 控件收缩，没有修改 DOM、控件 id、workflow payload 或提交语义；`900/901/1120/1121/761/760×800` 的文档级 `scrollWidth` 均与视口一致。隔离 renderer smoke 已验证 `900×800` 输入后值与焦点在状态刷新后保留；相关 focused tests `54/54`、全量 `verify` 及 `136/136` screenshot capture 通过。Ctrl+Z/Y、拖放、提交、双击防重和 Queue running 尚未完成，因此 P08 仍不是 `verified/integrated`。
+**当前状态（2026-08-20）**：首个步骤 `breakpoint/min-width` 已实现，并补上当前 renderer 素材区的窄屏文字边界：标题摘要使用可收缩省略，`添加 Slot` 保持单行，素材卡标题和角色选择器不会再被压成单字纵排或互相覆盖。`src/styles/10-final-refinements.css` 没有修改 DOM、控件 id、workflow payload 或提交语义；`900/901/1120/1121/761/760×800` 的文档级 `scrollWidth` 均与视口一致。隔离 renderer smoke 已验证 `900×800` 输入后值与焦点在状态刷新后保留；本次修改后 `npm.cmd run verify` 通过（81 files / 624 tests、production build、20 组对比度检查）。Ctrl+Z/Y、拖放、提交、双击防重和 Queue running 尚未完成，因此 P08 仍不是 `verified/integrated`。
 
 ### P09 — Queue 任务优先构图 renderer review
 

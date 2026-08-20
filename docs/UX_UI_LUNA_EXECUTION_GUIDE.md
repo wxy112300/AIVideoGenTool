@@ -40,7 +40,7 @@ P00–P20 的依赖、preserve list 和集成 gate 已经清楚，但部分 Phas
 - P09 proposal 已写入 `docs/UX_UI_P09_RENDERER_PROPOSAL.md`：基于当前 Queue fixture 和 1440/900 renderer evidence 选择 active task 优先、telemetry 紧凑披露、900px 操作可达、760px 单列；G10 仍待 running/empty/failed 六状态批准，P10 不得越过该 gate 直接修改 Queue renderer；
 - P11 proposal 已写入 `docs/UX_UI_P11_RENDERER_PROPOSAL.md`：基于当前 History 视频/图片 masonry/album fixture 选择 toolbar 分组、解除 900px 固定高度和 container-width 列轨；L38/L39 仍待复核，P12–P15 不得被 proposal 越权实现；
 - P05 的 top-level nav `aria-current` 已实现，不能重复执行相同修改；
-- P08 的 Image Edit 首个 overflow 修复已实现，不能直接重跑 L30；其余 Create gate仍待完成；
+- P08 的 Image Edit 首个 overflow 修复及素材区窄屏文字边界加固已实现，不能直接重跑 L30；其余 Create gate仍待完成；
 - Settings/runtime 工作仍在变化，G14 未满足前不得派发 L50–L60。
 
 本指南是任务目录，不是“全部尚未执行”的 todo list。任何已实现 package 的后续工作必须使用新的 base和明确的 delta task。
