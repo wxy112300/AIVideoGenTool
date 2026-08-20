@@ -8,12 +8,12 @@ body {
     var(--bg);
 }
 .panel {
-  border-radius: 13px;
+  border-radius: var(--ux-radius-panel);
   background: var(--ux-surface-base);
   box-shadow: var(--ux-elevation-panel);
 }
 .settings-content > .settings-panel { gap: 12px; }
-.settings-content .settings-section { padding: 18px; border-radius: 12px; box-shadow: var(--ux-elevation-panel); }
+.settings-content .settings-section { padding: 18px; border-radius: var(--ux-radius-object); box-shadow: var(--ux-elevation-panel); }
 .settings-content .prompt-runtime-dependency.available { border-color: color-mix(in srgb, var(--success) 28%, var(--border)); }
 .settings-content .prompt-runtime-dependency.warning { border-color: color-mix(in srgb, var(--warning) 32%, var(--border)); }
 .settings-content .prompt-runtime-dependency.missing { border-color: color-mix(in srgb, var(--danger) 24%, var(--border)); }

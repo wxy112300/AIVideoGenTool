@@ -190,12 +190,27 @@ describe("UX/UI semantic token foundation", () => {
     expect(visualRefreshSource).toContain("font-variant-numeric: tabular-nums;");
   });
 
+  it("routes the approved P04 radius families through semantic roles", () => {
+    expect(tokenSource).toContain("--ux-radius-control: 10px;");
+    expect(tokenSource).toContain("--ux-radius-object: 12px;");
+    expect(tokenSource).toContain("--ux-radius-panel: 13px;");
+    expect(tokenSource).toContain("--ux-radius-modal: 16px;");
+    expect(foundationSource).toContain("border-radius: var(--ux-radius-control);");
+    expect(foundationSource).toContain("border-radius: var(--ux-radius-object);");
+    expect(foundationSource).toContain("border-radius: var(--ux-radius-panel);");
+    expect(foundationSource).toContain("border-radius: var(--ux-radius-modal);");
+    expect(visualRefreshSource).toContain("border-radius: var(--ux-radius-panel);");
+    expect(visualRefreshSource).toContain("border-radius: var(--ux-radius-control);");
+    expect(finalRefinementsSource).toContain("border-radius: var(--ux-radius-panel);");
+    expect(finalRefinementsSource).toContain("border-radius: var(--ux-radius-object);");
+  });
+
   it("flattens ordinary panels while preserving overlay elevation", () => {
     expect(tokenSource).toContain("--ux-elevation-panel: none;");
-    expect(foundationSource).toContain(".panel { min-width: 0; border: 1px solid var(--border); border-radius: 17px; background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--ux-elevation-panel); }");
+    expect(foundationSource).toContain(".panel { min-width: 0; border: 1px solid var(--border); border-radius: var(--ux-radius-panel); background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--ux-elevation-panel); }");
     expect(foundationSource).toContain("box-shadow: var(--ux-elevation-panel); }");
     expect(visualRefreshSource).toContain("box-shadow: var(--ux-elevation-panel);");
-    expect(finalRefinementsSource).toContain(".settings-content .settings-section { padding: 18px; border-radius: 12px; box-shadow: var(--ux-elevation-panel); }");
+    expect(finalRefinementsSource).toContain(".settings-content .settings-section { padding: 18px; border-radius: var(--ux-radius-object); box-shadow: var(--ux-elevation-panel); }");
     expect(historyCurationSource).toContain("box-shadow: 0 14px 34px rgba(0, 0, 0, .34);");
     expect(foundationSource).toContain("box-shadow: 0 24px 80px rgba(0, 0, 0, .5);");
     expect(foundationSource).toContain("box-shadow: 0 28px 100px rgba(0, 0, 0, .7);");

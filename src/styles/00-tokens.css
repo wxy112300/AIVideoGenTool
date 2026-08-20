@@ -135,7 +135,8 @@
   --ux-type-meta: 11px;
   --ux-type-technical: .86em;
 
-  /* Space and radius roles: declarations only in P02; selectors migrate later. */
+  /* P04/L20 space and radius roles: selectors migrate in focused component
+   * families while retaining the effective current-renderer values. */
   --ux-space-1: 4px;
   --ux-space-2: 8px;
   --ux-space-3: 12px;
@@ -145,7 +146,7 @@
   --ux-space-7: 32px;
   --ux-radius-control: 10px;
   --ux-radius-object: 12px;
-  --ux-radius-panel: 16px;
+  --ux-radius-panel: 13px;
   --ux-radius-modal: 16px;
 
   /* Shared geometry roles. */
