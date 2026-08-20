@@ -1,8 +1,8 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性已 verified/integrated，下一 phase 为 P12
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性与 P12 History 键盘语义已 verified/integrated，下一 phase 为 P13
 > 制定日期：2026-08-20  
-> 当前版本：0.33.0
+> 当前版本：0.34.0
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -406,6 +406,8 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 - 子控件事件不触发整卡打开。
 
 **Gate**：仅键盘完成筛选、打开、菜单、取消删除、返回原卡；Accessibility Tree角色/名称/状态正确；`npm.cmd run verify`。
+
+**当前状态（2026-08-21）**：P12 已 `verified/integrated`。视频/图片 History 卡片补齐 `role="button"`、Enter/Space 和 More 入口，子控件不会触发整卡打开；kind tabs 使用单一 Tab stop、`aria-selected`/`aria-controls`/`tabpanel`，支持 Arrow/Home/End 并在重渲染后恢复焦点；More、Shift+F10/Menu key 的 context menu 支持 Arrow/Home/End、Escape 和 return focus；layout/version 状态补齐 `aria-pressed`。当前 renderer 的视频/图片混合 8 项 900×800 fixture、筛选/无结果/清除、masonry/album、菜单、卡片打开、版本选择、删除取消与详情返回 smoke 均通过；1440×900、900×800、760×800 的视频/图片 album diagnose 无横向溢出（仅保留预期模型 chip 文本省略），focused accessibility/layout/state tests `11/11`、`npm.cmd run verify`（85 files / 645 tests、production build、20 组对比度检查）通过。下一 phase 为 P13。
 
 ### P13 — 图片媒体 loading/error/retry 状态
 

@@ -33,12 +33,12 @@ export function renderHistoryHeading(
     <section class="history-heading">
       <div class="history-heading-title"><div class="heading-line"><h1>${options.t(uiKeys.history.title)}</h1><span class="badge">${options.t(historyKind === "video" ? uiKeys.history.videoCount : uiKeys.history.imageProjectCount, { count: activeCount })}</span></div><p>${options.escapeHtml(description)}</p></div>
       <div class="history-kind-tabs" role="tablist" aria-label="${options.t(uiKeys.history.kindTabsLabel)}">
-        <button class="${historyKind === "video" ? "active" : ""}" role="tab" aria-selected="${historyKind === "video"}" data-history-kind="video">${options.icon("film")}${options.t(uiKeys.history.video)}</button>
-        <button class="${historyKind === "image" ? "active" : ""}" role="tab" aria-selected="${historyKind === "image"}" data-history-kind="image">${options.icon("image")}${options.t(uiKeys.history.image)}</button>
+        <button id="history-tab-video" class="${historyKind === "video" ? "active" : ""}" role="tab" aria-selected="${historyKind === "video"}" aria-controls="history-panel-video" tabindex="${historyKind === "video" ? "0" : "-1"}" data-history-kind="video">${options.icon("film")}${options.t(uiKeys.history.video)}</button>
+        <button id="history-tab-image" class="${historyKind === "image" ? "active" : ""}" role="tab" aria-selected="${historyKind === "image"}" aria-controls="history-panel-image" tabindex="${historyKind === "image" ? "0" : "-1"}" data-history-kind="image">${options.icon("image")}${options.t(uiKeys.history.image)}</button>
       </div>
       <div class="history-view-tools">
         ${viewModel.historyFilter ?? ""}
-        <div class="button-row"><button class="${historyLayout === "masonry" ? "secondary" : "ghost"} button-with-icon" data-history-layout="masonry">${options.icon("columns-3")}${options.t(uiKeys.history.layoutMasonry)}</button><button class="${historyLayout === "album" ? "secondary" : "ghost"} button-with-icon" data-history-layout="album">${options.icon("layout-grid")}${options.t(uiKeys.history.layoutAlbum)}</button></div>
+        <div class="button-row" role="group" aria-label="${options.t(uiKeys.history.layoutMasonry)} / ${options.t(uiKeys.history.layoutAlbum)}"><button type="button" class="${historyLayout === "masonry" ? "secondary" : "ghost"} button-with-icon" aria-pressed="${historyLayout === "masonry"}" data-history-layout="masonry">${options.icon("columns-3")}${options.t(uiKeys.history.layoutMasonry)}</button><button type="button" class="${historyLayout === "album" ? "secondary" : "ghost"} button-with-icon" aria-pressed="${historyLayout === "album"}" data-history-layout="album">${options.icon("layout-grid")}${options.t(uiKeys.history.layoutAlbum)}</button></div>
       </div>
     </section>`;
 }

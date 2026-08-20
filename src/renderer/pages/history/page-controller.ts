@@ -49,8 +49,22 @@ export interface HistoryPageControllerOptions {
   bindHistoryTitleMarquees(): void;
   restoreHistoryLayoutAnchor(): void;
   imageLightbox: ImageHistoryLightboxControllerOptions;
-  openHistoryContextMenu(assetId: string, clientX: number, clientY: number): void;
-  openImageHistoryContextMenu(projectId: string, clientX: number, clientY: number): void;
+  openHistoryContextMenu(assetId: string, clientX: number, clientY: number, returnFocus?: HTMLElement): void;
+  openImageHistoryContextMenu(projectId: string, clientX: number, clientY: number, returnFocus?: HTMLElement): void;
+}
+
+function isHistoryMenuKey(event: KeyboardEvent): boolean {
+  return (event.key === "F10" && event.shiftKey) ||
+    event.key === "ContextMenu" ||
+    event.code === "ContextMenu";
+}
+
+function contextMenuPoint(trigger: HTMLElement): { clientX: number; clientY: number } {
+  const rect = trigger.getBoundingClientRect();
+  return {
+    clientX: Math.max(8, Math.min(window.innerWidth - 8, rect.right - 8)),
+    clientY: Math.max(8, Math.min(window.innerHeight - 8, rect.bottom - 8))
+  };
 }
 
 export function mountHistoryPageController(
@@ -115,9 +129,38 @@ export function mountHistoryPageController(
       const assetId = card.dataset.history;
       if (!assetId) return;
       if (card.dataset.historyKind === "image") {
-        options.openImageHistoryContextMenu(assetId, event.clientX, event.clientY);
+        options.openImageHistoryContextMenu(assetId, event.clientX, event.clientY, card);
       } else {
-        options.openHistoryContextMenu(assetId, event.clientX, event.clientY);
+        options.openHistoryContextMenu(assetId, event.clientX, event.clientY, card);
+      }
+    }, { signal });
+    card.addEventListener("keydown", (event) => {
+      if (event.target !== card || !isHistoryMenuKey(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const point = contextMenuPoint(card);
+      const assetId = card.dataset.history;
+      if (!assetId) return;
+      if (card.dataset.historyKind === "image") {
+        options.openImageHistoryContextMenu(assetId, point.clientX, point.clientY, card);
+      } else {
+        options.openHistoryContextMenu(assetId, point.clientX, point.clientY, card);
+      }
+    }, { signal });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-history-more]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const card = button.closest<HTMLElement>("[data-history]");
+      const assetId = card?.dataset.history;
+      if (!card || !assetId) return;
+      const point = contextMenuPoint(button);
+      if (card.dataset.historyKind === "image") {
+        options.openImageHistoryContextMenu(assetId, point.clientX, point.clientY, button);
+      } else {
+        options.openHistoryContextMenu(assetId, point.clientX, point.clientY, button);
       }
     }, { signal });
   });

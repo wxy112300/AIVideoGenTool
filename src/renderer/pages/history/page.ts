@@ -212,7 +212,7 @@ export function renderImageHistoryPage(
     const title = project.title.trim() || options.t(uiKeys.history.card.untitledImage);
     const iterationCount = Math.max(0, project.versions.filter((item) => item.kind !== "source").length);
     return `
-      <article class="history-gallery-item panel image-history-gallery-item" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" tabindex="0" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}" title="${options.escapeHtml(title)}">
+      <article class="history-gallery-item panel image-history-gallery-item" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}" title="${options.escapeHtml(title)}">
         <div class="history-media image-history-media" style="--media-ratio:${version.width || 1} / ${version.height || 1}">
           ${mediaUrl
             ? `<img src="${options.escapeHtml(mediaUrl)}" loading="lazy" alt="${options.escapeHtml(title)}" data-image-history-preview data-image-history-cache-key="${options.escapeHtml(options.imageHistoryThumbnailCacheKey(project, version))}" data-image-history-source="${options.escapeHtml(version.file.absolutePath ?? "")}">`
@@ -229,6 +229,7 @@ export function renderImageHistoryPage(
           <h3 class="history-card-title" title="${options.escapeHtml(title)}"><span class="history-card-title-track"><span>${options.escapeHtml(title)}</span><span aria-hidden="true">${options.escapeHtml(title)}</span></span></h3>
           <code class="history-card-filename">${options.escapeHtml(version.file.filename)}</code>
           <div class="history-card-meta"><span>${options.escapeHtml(options.formatFullHistoryTime(project.updatedAt || version.createdAt))}</span><span>${options.t(uiKeys.history.card.latestVersion, { version: version.versionNumber })}</span></div>
+          <button type="button" class="ghost icon-button history-card-more" data-history-more aria-label="${options.escapeHtml(options.t(uiKeys.history.menu.shortcutActions))}" title="${options.escapeHtml(options.t(uiKeys.history.menu.shortcutActions))}">${options.icon("ellipsis")}</button>
         </div>
       </article>`;
   }).join("");
@@ -240,7 +241,7 @@ export function renderImageHistoryPage(
       description: options.t(uiKeys.history.imageDescription),
       historyFilter: renderHistoryFilter(viewModel, options, viewModel.state.imageHistory.length, projects.length, modelIds, tagNames)
     }, options)}
-    <section class="history-gallery ${viewModel.historyLayout}">
+    <section id="history-panel-image" class="history-gallery ${viewModel.historyLayout}" role="tabpanel" aria-labelledby="history-tab-image">
       ${projects.length === 0
         ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.imageEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.imageEmptyDescription)}</p></div>`
         : cards}
@@ -263,7 +264,7 @@ export function renderHistoryPage(
     const coverSeed = options.historyCoverSeed(asset.id, version.id);
     const coverTime = options.historyInitialCoverTime(asset.duration, coverSeed);
     return `
-      <article class="history-gallery-item panel" data-history="${asset.id}" data-open-history="${asset.id}" data-history-kind="video" data-history-order="${historyOrder}" tabindex="0" aria-label="${options.escapeHtml(historyTitle)}，${options.t(uiKeys.history.card.openDetailsContext)}" title="${options.escapeHtml(historyTitle)}">
+      <article class="history-gallery-item panel" data-history="${asset.id}" data-open-history="${asset.id}" data-history-kind="video" data-history-order="${historyOrder}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(historyTitle)}，${options.t(uiKeys.history.card.openDetailsContext)}" title="${options.escapeHtml(historyTitle)}">
         <div class="history-media${mediaUrl ? " media-loading" : ""}" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${options.escapeHtml(coverKey)}" data-cover-source="${options.escapeHtml(version.files[videoIndex]?.absolutePath ?? "")}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="none" data-history-src="${options.escapeHtml(mediaUrl)}"></video>`
@@ -284,6 +285,7 @@ export function renderHistoryPage(
           <h3 class="history-card-title" title="${options.escapeHtml(historyTitle)}"><span class="history-card-title-track"><span>${options.escapeHtml(historyTitle)}</span><span aria-hidden="true">${options.escapeHtml(historyTitle)}</span></span></h3>
           <code class="history-card-filename">${options.escapeHtml(version.files[videoIndex]?.filename ?? version.outputFilename)}</code>
           <div class="history-card-meta"><span>${options.escapeHtml(options.formatFullHistoryTime(version.createdAt))}</span><span>${options.t(uiKeys.history.card.rendered, { duration: options.escapeHtml(options.historyRenderDuration(version)) })}</span></div>
+          <button type="button" class="ghost icon-button history-card-more" data-history-more aria-label="${options.escapeHtml(options.t(uiKeys.history.menu.shortcutActions))}" title="${options.escapeHtml(options.t(uiKeys.history.menu.shortcutActions))}">${options.icon("ellipsis")}</button>
         </div>
       </article>`;
   }).join("");
@@ -295,7 +297,7 @@ export function renderHistoryPage(
       description: options.t(uiKeys.history.videoDescription),
       historyFilter: renderHistoryFilter(viewModel, options, viewModel.state.history.length, orderedAssets.length, modelIds, tagNames)
     }, options)}
-    <section class="history-gallery ${viewModel.historyLayout}">
+    <section id="history-panel-video" class="history-gallery ${viewModel.historyLayout}" role="tabpanel" aria-labelledby="history-tab-video">
       ${orderedAssets.length === 0
         ? `<div class="empty panel"><h2>${historyFilterIsActive(viewModel.historyFilter) ? options.t(uiKeys.history.filter.noResults) : options.t(uiKeys.history.card.videoEmptyTitle)}</h2><p>${historyFilterIsActive(viewModel.historyFilter) ? "" : options.t(uiKeys.history.card.videoEmptyDescription)}</p></div>`
         : cards}
@@ -374,7 +376,7 @@ export function renderHistoryDetailPage(
         </section>
         <section class="panel history-version-panel">
           <div class="history-version-panel-heading"><strong>${options.t(uiKeys.history.page.videoVersions)}</strong><span>${options.t(uiKeys.history.card.versionCount, { count: asset.versions.length })}</span></div>
-            <div class="version-switcher history-summary-version-switcher">${asset.versions.map((item) => `<button class="${item.id === version.id ? "primary" : "ghost"}" data-version-id="${item.id}" title="${item.kind === "original" ? `${options.t(uiKeys.history.page.originalGeneration)} · ${item.width} × ${item.height}` : `${options.modelName(item.modelId)} · ${item.width} × ${item.height}`}"${item.kind === "original" ? `>${options.t(uiKeys.history.card.originalShort)} · ${options.historyResolutionLabel(asset, item)}` : `>${options.t(uiKeys.history.card.upscaleShort)} · ${options.historyResolutionLabel(asset, item)}`}</button>`).join("")}</div>
+            <div class="version-switcher history-summary-version-switcher" role="group" aria-label="${options.t(uiKeys.history.page.videoVersions)}">${asset.versions.map((item) => `<button type="button" class="${item.id === version.id ? "primary" : "ghost"}" data-version-id="${item.id}" aria-pressed="${item.id === version.id}" title="${item.kind === "original" ? `${options.t(uiKeys.history.page.originalGeneration)} · ${item.width} × ${item.height}` : `${options.modelName(item.modelId)} · ${item.width} × ${item.height}`}"${item.kind === "original" ? `>${options.t(uiKeys.history.card.originalShort)} · ${options.historyResolutionLabel(asset, item)}` : `>${options.t(uiKeys.history.card.upscaleShort)} · ${options.historyResolutionLabel(asset, item)}`}</button>`).join("")}</div>
         </section>
       </aside>
     </section>
@@ -459,8 +461,8 @@ export function renderImageHistoryDetailPage(
         <div class="image-history-viewer-grid">
           <aside class="image-history-version-rail">
             <div><h2>${options.t(uiKeys.history.page.versions)}</h2><p class="muted tiny">${options.t(uiKeys.history.page.newestFirst)}</p></div>
-            <div class="image-history-version-list">
-              ${project.versions.map((item) => `<button class="image-history-version-thumb ${item.id === version.id ? "active" : ""}" data-image-version-id="${options.escapeHtml(item.id)}" title="${options.t(uiKeys.history.version, { version: item.versionNumber })} · ${item.width} × ${item.height}">${options.imageHistoryMediaUrl(project, item) ? `<img src="${options.escapeHtml(options.imageHistoryMediaUrl(project, item))}" loading="lazy" alt="">` : ""}<span>${String(item.versionNumber).padStart(2, "0")}</span>${item.id === pinnedVersion?.id ? options.icon("circle-check") : ""}</button>`).join("")}
+            <div class="image-history-version-list" role="group" aria-label="${options.t(uiKeys.history.page.versions)}">
+              ${project.versions.map((item) => `<button type="button" class="image-history-version-thumb ${item.id === version.id ? "active" : ""}" data-image-version-id="${options.escapeHtml(item.id)}" aria-pressed="${item.id === version.id}" title="${options.t(uiKeys.history.version, { version: item.versionNumber })} · ${item.width} × ${item.height}">${options.imageHistoryMediaUrl(project, item) ? `<img src="${options.escapeHtml(options.imageHistoryMediaUrl(project, item))}" loading="lazy" alt="">` : ""}<span>${String(item.versionNumber).padStart(2, "0")}</span>${item.id === pinnedVersion?.id ? options.icon("circle-check") : ""}</button>`).join("")}
             </div>
           </aside>
           <section class="image-history-stage-panel">

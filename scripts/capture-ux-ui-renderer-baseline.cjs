@@ -132,7 +132,7 @@ async function waitForDom(window, expression, label) {
   }
   let diagnostics = "unavailable";
   try {
-    diagnostics = JSON.stringify(await executeJavaScript(window, "({ url: location.href, readyState: document.readyState, hasStudio: Boolean(window.studio), body: document.body?.innerText?.slice(0, 300) })"));
+    diagnostics = JSON.stringify(await executeJavaScript(window, "({ url: location.href, readyState: document.readyState, hasStudio: Boolean(window.studio), activeId: document.activeElement?.id ?? '', activeTag: document.activeElement?.tagName ?? '', selectedTab: document.querySelector('[role=tab][aria-selected=true]')?.id ?? '', body: document.body?.innerText?.slice(0, 300) })"));
   } catch (error) {
     diagnostics = error instanceof Error ? error.message : String(error);
   }
@@ -593,6 +593,54 @@ async function runHistoryInteractionSmoke(window, fixture, viewport) {
   const cardSelectorLiteral = JSON.stringify(cardSelector);
   const detailSelector = isImage ? ".image-history-detail-layout" : ".history-detail-hero";
   const detailSelectorLiteral = JSON.stringify(detailSelector);
+  const initialKind = isImage ? "image" : "video";
+  const oppositeKind = isImage ? "video" : "image";
+  const tabDirection = isImage ? "ArrowLeft" : "ArrowRight";
+  const tabToOpposite = await executeJavaScript(window, `(() => {
+    const active = document.querySelector('[role="tab"][aria-selected="true"]');
+    if (!active) return { found: false, defaultPrevented: false };
+    active.focus();
+    const event = new KeyboardEvent("keydown", { key: ${JSON.stringify(tabDirection)}, bubbles: true, cancelable: true });
+    active.dispatchEvent(event);
+    return { found: true, defaultPrevented: event.defaultPrevented };
+  })()`);
+  await waitForDom(window, `Boolean(document.querySelector('[data-history-kind="${oppositeKind}"][role="tab"][aria-selected="true"]')) && document.activeElement?.id === 'history-tab-${oppositeKind}'`, `${fixture.id} tab arrow`);
+  const oppositeTab = await executeJavaScript(window, `({
+    activeId: document.activeElement?.id ?? "",
+    tabStops: document.querySelectorAll('[role="tab"][tabindex="0"]').length,
+    panel: document.querySelector('[role="tabpanel"]')?.getAttribute("aria-labelledby") ?? ""
+  })`);
+  const tabHome = await executeJavaScript(window, `(() => {
+    const active = document.querySelector('[role="tab"][aria-selected="true"]');
+    if (!active) return false;
+    const event = new KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true });
+    active.dispatchEvent(event);
+    return event.defaultPrevented;
+  })()`);
+  await waitForDom(window, `Boolean(document.querySelector('[data-history-kind="video"][role="tab"][aria-selected="true"]')) && document.activeElement?.id === 'history-tab-video'`, `${fixture.id} tab home`);
+  const tabEnd = await executeJavaScript(window, `(() => {
+    const active = document.querySelector('[role="tab"][aria-selected="true"]');
+    if (!active) return false;
+    const event = new KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true });
+    active.dispatchEvent(event);
+    return event.defaultPrevented;
+  })()`);
+  await waitForDom(window, `Boolean(document.querySelector('[data-history-kind="image"][role="tab"][aria-selected="true"]')) && document.activeElement?.id === 'history-tab-image'`, `${fixture.id} tab end`);
+  if (initialKind === "video") {
+    await executeJavaScript(window, `(() => {
+      const active = document.querySelector('[role="tab"][aria-selected="true"]');
+      if (!active) return false;
+      active.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+    await waitForDom(window, `Boolean(document.querySelector('[data-history-kind="video"][role="tab"][aria-selected="true"]')) && document.activeElement?.id === 'history-tab-video'`, `${fixture.id} tab restore`);
+  }
+  const tabRestored = await executeJavaScript(window, `({
+    activeKind: document.querySelector('[role="tab"][aria-selected="true"]')?.dataset.historyKind ?? "",
+    activeId: document.activeElement?.id ?? "",
+    tabStops: document.querySelectorAll('[role="tab"][tabindex="0"]').length,
+    panel: document.querySelector('[role="tabpanel"]')?.getAttribute("aria-labelledby") ?? ""
+  })`);
   const openFilter = await executeJavaScript(window, `(() => {
     const button = document.querySelector("[data-history-filter-toggle]");
     if (!button) return false;
@@ -645,14 +693,91 @@ async function runHistoryInteractionSmoke(window, fixture, viewport) {
   const masonryClicked = await switchLayout("masonry");
   const albumClicked = await switchLayout("album");
 
-  const opened = await executeJavaScript(window, `(() => {
+  const moreMenuOpened = await executeJavaScript(window, `(() => {
+    const button = document.querySelector('[data-history-more]');
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  await waitForDom(window, "Boolean(document.querySelector('.history-context-menu[role=menu]'))", `${fixture.id} More menu`);
+  const menuNavigation = await executeJavaScript(window, `(() => {
+    const menu = document.querySelector('.history-context-menu[role=menu]');
+    const items = [...(menu?.querySelectorAll('button[role="menuitem"]:not(:disabled)') ?? [])];
+    const first = items[0];
+    if (!first || items.length < 2) return { count: items.length, down: false, home: false, end: false };
+    first.focus();
+    const down = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });
+    first.dispatchEvent(down);
+    const downTarget = document.activeElement === items[1];
+    const home = new KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true });
+    document.activeElement?.dispatchEvent(home);
+    const homeTarget = document.activeElement === first;
+    const end = new KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true });
+    document.activeElement?.dispatchEvent(end);
+    const endTarget = document.activeElement === items[items.length - 1];
+    return { count: items.length, down: down.defaultPrevented && downTarget, home: home.defaultPrevented && homeTarget, end: end.defaultPrevented && endTarget };
+  })()`);
+  const moreMenuEscape = await executeJavaScript(window, `(() => {
+    const item = document.activeElement;
+    if (!(item instanceof HTMLElement)) return false;
+    const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    item.dispatchEvent(event);
+    return event.defaultPrevented;
+  })()`);
+  await waitForDom(window, "!document.querySelector('.history-context-menu')", `${fixture.id} More menu close`);
+  const moreFocus = await executeJavaScript(window, "document.activeElement?.matches('[data-history-more]') === true");
+
+  const cardMenuOpened = await executeJavaScript(window, `(() => {
     const card = document.querySelector(${cardSelectorLiteral});
     if (!card) return false;
-    card.click();
+    card.focus();
+    const event = new KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true, cancelable: true });
+    card.dispatchEvent(event);
+    return event.defaultPrevented;
+  })()`);
+  await waitForDom(window, "Boolean(document.querySelector('.history-context-menu[role=menu]'))", `${fixture.id} Shift F10 menu`);
+  const cardMenuEscape = await executeJavaScript(window, `(() => {
+    const item = document.querySelector('.history-context-menu button[role="menuitem"]');
+    if (!item) return false;
+    item.focus();
+    const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    item.dispatchEvent(event);
+    return event.defaultPrevented;
+  })()`);
+  await waitForDom(window, "!document.querySelector('.history-context-menu')", `${fixture.id} Shift F10 menu close`);
+  const cardMenuFocus = await executeJavaScript(window, `document.activeElement?.matches(${JSON.stringify(cardSelector)}) === true`);
+
+  const spaceOpened = await executeJavaScript(window, `(() => {
+    const card = document.querySelector(${cardSelectorLiteral});
+    if (!card) return { found: false, keydownPrevented: false, keyupPrevented: false };
+    card.focus();
+    const keydown = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    card.dispatchEvent(keydown);
+    const keyup = new KeyboardEvent("keyup", { key: " ", bubbles: true, cancelable: true });
+    card.dispatchEvent(keyup);
+    return { found: true, keydownPrevented: keydown.defaultPrevented, keyupPrevented: keyup.defaultPrevented };
+  })()`);
+  await waitForDom(window, `Boolean(document.querySelector(${detailSelectorLiteral}))`, `${fixture.id} Space card activation`);
+  const spaceDetailOpened = await executeJavaScript(window, `Boolean(document.querySelector(${detailSelectorLiteral}))`);
+  const spaceReturned = await executeJavaScript(window, `(() => {
+    const button = document.querySelector('.history-detail-back-button');
+    if (!button) return false;
+    button.click();
     return true;
+  })()`);
+  await waitForDom(window, `Boolean(document.querySelector(${cardSelectorLiteral}))`, `${fixture.id} Space card return`);
+
+  const opened = await executeJavaScript(window, `(() => {
+    const card = document.querySelector(${cardSelectorLiteral});
+    if (!card) return { found: false, defaultPrevented: false };
+    card.focus();
+    const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    card.dispatchEvent(event);
+    return { found: true, defaultPrevented: event.defaultPrevented };
   })()`);
   await waitForDom(window, `Boolean(document.querySelector(${detailSelectorLiteral}))`, `${fixture.id} detail`);
   const detailOpened = await executeJavaScript(window, `Boolean(document.querySelector(${detailSelectorLiteral}))`);
+  const versionSelection = await executeJavaScript(window, `Boolean(document.querySelector(${JSON.stringify(isImage ? ".image-history-version-list [aria-pressed=\"true\"]" : ".history-summary-version-switcher [aria-pressed=\"true\"]")}))`);
   const deleteRequested = await executeJavaScript(window, `(() => {
     const button = document.querySelector("[data-delete-history]");
     if (!button) return false;
@@ -679,24 +804,31 @@ async function runHistoryInteractionSmoke(window, fixture, viewport) {
     heading: Boolean(document.querySelector('.history-heading')),
     historyNavSelected: Boolean(document.querySelector('.nav-button[data-page="history"][aria-current="page"]')),
     card: Boolean(document.querySelector(${cardSelectorLiteral})),
-    layout: document.querySelector('.history-gallery')?.classList.contains('album') === true
+    layout: document.querySelector('.history-gallery')?.classList.contains('album') === true,
+    layoutPressed: document.querySelector('[data-history-layout="album"]')?.getAttribute('aria-pressed') === 'true'
   })`);
   const checks = {
+    tabsArrow: tabToOpposite.found && tabToOpposite.defaultPrevented && oppositeTab.activeId === `history-tab-${oppositeKind}` && oppositeTab.tabStops === 1 && oppositeTab.panel === `history-tab-${oppositeKind}`,
+    tabsHomeEnd: tabHome === true && tabEnd === true && tabRestored.activeKind === initialKind && tabRestored.activeId === `history-tab-${initialKind}` && tabRestored.tabStops === 1 && tabRestored.panel === `history-tab-${initialKind}`,
     filterPanelOpened: openFilter === true,
     filterApplied: filterApplied === true,
     noResults: noResults.empty && noResults.result.startsWith("0/"),
     filterCleared: clearFilter === true && filterCleared.card && filterCleared.activeDot === false,
     filterClosed: closeFilter === true,
     masonryLayout: masonryClicked === true,
-    albumLayout: albumClicked === true,
-    detailOpened: opened === true && detailOpened,
+    albumLayout: albumClicked === true && after.layoutPressed,
+    moreMenu: moreMenuOpened === true && menuNavigation.count >= 2 && menuNavigation.down && menuNavigation.home && menuNavigation.end && moreMenuEscape === true && moreFocus,
+    cardMenu: cardMenuOpened === true && cardMenuEscape === true && cardMenuFocus,
+    cardSpace: spaceOpened.found && spaceOpened.keydownPrevented && spaceOpened.keyupPrevented && spaceDetailOpened && spaceReturned === true,
+    cardEnter: opened.found && opened.defaultPrevented && detailOpened,
+    versionSelection,
     deleteConfirmation: deleteRequested === true && deleteConfirmation,
     deleteCancelled: deleteCancelled === true,
     detailReturned: returned === true && after.heading && after.historyNavSelected && after.card && after.layout
   };
   const passed = Object.values(checks).every(Boolean);
-  console.log(`[renderer-smoke] ${fixture.id} ${viewport.id} history ${JSON.stringify({ noResults, filterCleared, after, checks, passed })}`);
-  if (!passed) throw new Error(`History interaction smoke failed: ${JSON.stringify({ noResults, filterCleared, after, checks })}`);
+  console.log(`[renderer-smoke] ${fixture.id} ${viewport.id} history ${JSON.stringify({ noResults, filterCleared, after, tabs: { tabToOpposite, oppositeTab, tabHome, tabEnd, tabRestored }, menus: { menuNavigation, moreMenuEscape, moreFocus, cardMenuOpened, cardMenuEscape, cardMenuFocus }, cards: { spaceOpened, spaceDetailOpened, spaceReturned, opened }, versionSelection, checks, passed })}`);
+  if (!passed) throw new Error(`History interaction smoke failed: ${JSON.stringify({ noResults, filterCleared, after, tabs: { tabToOpposite, oppositeTab, tabHome, tabEnd, tabRestored }, menus: { menuNavigation, moreMenuEscape, moreFocus, cardMenuOpened, cardMenuEscape, cardMenuFocus }, cards: { spaceOpened, spaceDetailOpened, spaceReturned, opened }, versionSelection, checks })}`);
 }
 
 async function runInteractionSmoke(window, fixture, viewport) {
@@ -946,9 +1078,10 @@ async function captureAll(options, preloadPath) {
     const window = new BrowserWindow({
       width: viewport.width,
       height: viewport.height,
-      show: false,
+      show: options.smoke,
       webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false, sandbox: false }
     });
+    if (options.smoke) window.focus();
     window.webContents.on("console-message", (_event, level, message, line, sourceId) => {
       console.log(`[renderer-console:${level}] ${message} (${sourceId}:${line})`);
     });

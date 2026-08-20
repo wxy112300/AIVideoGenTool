@@ -8,6 +8,10 @@
 
 ## 未发布
 
+## 0.34.0 — 2026-08-21
+
+- 完成 P12 History 键盘语义：视频/图片卡片成为可聚焦主入口，支持 Enter/Space，More 按钮和 Shift+F10/Menu key 可打开快捷菜单，子控件不会误触发整卡打开。
+- History kind tabs 改为单一 Tab stop，支持 Arrow/Home/End、受控 `tabpanel` 和重渲染后的焦点恢复；context menu 支持 Arrow/Home/End、Escape 与 return focus；layout/version 选择状态补齐 `aria-pressed`。当前 renderer 视频/图片混合 8 项 900×800 keyboard smoke、1440/900/760 viewport diagnose 与 focused accessibility/layout/state tests 通过；`npm.cmd run verify` 通过（85 files / 645 tests、production build、20 组对比度检查）。
 
 ## 0.33.0 — 2026-08-21
 

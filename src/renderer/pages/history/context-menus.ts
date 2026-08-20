@@ -31,8 +31,8 @@ export interface HistoryContextMenusOptions {
 }
 
 export interface HistoryContextMenus {
-  openHistory(assetId: string, clientX: number, clientY: number): void;
-  openImageHistory(projectId: string, clientX: number, clientY: number): void;
+  openHistory(assetId: string, clientX: number, clientY: number, returnFocus?: HTMLElement): void;
+  openImageHistory(projectId: string, clientX: number, clientY: number, returnFocus?: HTMLElement): void;
   close(): void;
 }
 
@@ -42,12 +42,16 @@ export function createHistoryContextMenus(
 ): HistoryContextMenus {
   let menuElement: HTMLElement | null = null;
   let menuEvents: AbortController | null = null;
+  let menuReturnFocus: HTMLElement | null = null;
 
-  const close = () => {
+  const close = (restoreFocus = true) => {
+    const returnFocus = menuReturnFocus;
+    menuReturnFocus = null;
     menuEvents?.abort();
     menuEvents = null;
     menuElement?.remove();
     menuElement = null;
+    if (restoreFocus && returnFocus?.isConnected) returnFocus.focus();
   };
 
   const showMenu = (
@@ -55,9 +59,10 @@ export function createHistoryContextMenus(
     clientX: number,
     clientY: number,
     onAction: (action: string) => Promise<void> | void,
-    actionSelector: string
+    actionSelector: string,
+    returnFocus?: HTMLElement
   ) => {
-    close();
+    close(false);
     menu.style.left = `${clientX}px`;
     menu.style.top = `${clientY}px`;
     document.body.append(menu);
@@ -68,7 +73,16 @@ export function createHistoryContextMenus(
     const rect = menu.getBoundingClientRect();
     menu.style.left = `${Math.max(8, Math.min(clientX, window.innerWidth - rect.width - 8))}px`;
     menu.style.top = `${Math.max(8, Math.min(clientY, window.innerHeight - rect.height - 8))}px`;
-    menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    menuReturnFocus = returnFocus ?? null;
+    const menuItems = [...menu.querySelectorAll<HTMLButtonElement>("button[role=menuitem]")];
+    const enabledMenuItems = menuItems.filter((item) => !item.disabled);
+    const focusMenuItem = (index: number) => {
+      if (!enabledMenuItems.length) return;
+      const nextIndex = (index + enabledMenuItems.length) % enabledMenuItems.length;
+      enabledMenuItems.forEach((item, itemIndex) => item.tabIndex = itemIndex === nextIndex ? 0 : -1);
+      enabledMenuItems[nextIndex]?.focus();
+    };
+    focusMenuItem(0);
     menu.addEventListener("contextmenu", (event) => event.preventDefault(), { signal: events.signal });
     menu.addEventListener("click", async (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>(actionSelector);
@@ -80,15 +94,34 @@ export function createHistoryContextMenus(
     document.addEventListener("pointerdown", (event) => {
       if (!menu.contains(event.target as Node)) close();
     }, { capture: true, signal: events.signal });
+    menu.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        return;
+      }
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
+      event.preventDefault();
+      event.stopPropagation();
+      const current = document.activeElement as HTMLButtonElement | null;
+      const currentIndex = Math.max(0, enabledMenuItems.indexOf(current as HTMLButtonElement));
+      const nextIndex = event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? enabledMenuItems.length - 1
+          : currentIndex + (event.key === "ArrowUp" ? -1 : 1);
+      focusMenuItem(nextIndex);
+    }, { signal: events.signal });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") close();
     }, { signal: events.signal });
-    window.addEventListener("blur", close, { signal: events.signal });
-    window.addEventListener("resize", close, { signal: events.signal });
-    window.addEventListener("scroll", close, { capture: true, signal: events.signal });
+    window.addEventListener("blur", () => close(), { signal: events.signal });
+    window.addEventListener("resize", () => close(), { signal: events.signal });
+    window.addEventListener("scroll", () => close(), { capture: true, signal: events.signal });
   };
 
-  const openHistory = (assetId: string, clientX: number, clientY: number) => {
+  const openHistory = (assetId: string, clientX: number, clientY: number, returnFocus?: HTMLElement) => {
     const t = context.t;
     const asset = options.getState()?.history.find((item) => item.id === assetId);
     if (!asset) return;
@@ -128,10 +161,10 @@ export function createHistoryContextMenus(
       } else if (action === "delete") {
         options.requestHistoryDeletion(assetId);
       }
-    }, "[data-history-action]");
+    }, "[data-history-action]", returnFocus);
   };
 
-  const openImageHistory = (projectId: string, clientX: number, clientY: number) => {
+  const openImageHistory = (projectId: string, clientX: number, clientY: number, returnFocus?: HTMLElement) => {
     const t = context.t;
     const project = options.getState()?.imageHistory.find((item) => item.id === projectId);
     if (!project) return;
@@ -168,7 +201,7 @@ export function createHistoryContextMenus(
       } else if (action === "delete") {
         options.requestHistoryDeletion(projectId);
       }
-    }, "[data-image-history-action]");
+    }, "[data-image-history-action]", returnFocus);
   };
 
   return { openHistory, openImageHistory, close };
