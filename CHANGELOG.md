@@ -8,6 +8,8 @@
 
 ## 未发布
 
+- G11 Queue runtime gate 增加隔离 executor 回归覆盖：成功任务的 History 收敛、claim 前取消不抢回任务、ComfyUI readiness abort 不提交 workflow；本次未启动或提交真实 ComfyUI 任务。
+
 ## 0.32.0 — 2026-08-20
 
 - 完成 P09/G10 Queue 当前 renderer 复核与 P10 任务优先构图：running/paused 状态先显示任务阶段、总进度、局部进度、elapsed、预览和暂停/取消入口，CPU/RAM/GPU/VRAM telemetry 移到 active task 后的紧凑 evidence strip；无运行任务时改用单行紧凑环境 strip，空队列不再伪装运行卡。
