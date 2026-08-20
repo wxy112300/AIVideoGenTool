@@ -52,6 +52,16 @@ import {
 } from "./llama-cpp-python.js";
 import { comfyRuntimeState } from "./comfy-runtime-state.js";
 import {
+  backupSqliteDatabaseFamily,
+  buildComfyDatabaseMigrationScript,
+  diagnoseComfyDatabaseFailure,
+  isPathInsideDirectory,
+  probeWritableDirectory,
+  quarantineSqliteDatabaseFamily,
+  restoreSqliteDatabaseBackups,
+  type ComfyDatabaseDiagnosis
+} from "./comfy-database-repair.js";
+import {
   installWorkflowDependencyPackage,
   scanWorkflowDependencies
 } from "./dependency-workflows.js";
@@ -91,6 +101,7 @@ import {
   waitForService
 } from "./local-service-process.js";
 import {
+  appManagedComfyDatabaseFilename,
   clearOwnedComfyProcessIds,
   ownedComfyProcessIdSnapshot,
   rememberOwnedComfyProcessId,
@@ -2067,14 +2078,21 @@ export function shouldReportComfyDatabaseIssue(input: {
   if (now - input.logModifiedAt > recentStartupWindowMs) return false;
   if (input.databaseModifiedAt > input.logModifiedAt) return false;
 
+  const diagnosis = diagnoseComfyDatabaseFailure(input.logContent);
+  if (!diagnosis) return false;
   const databaseErrors = [
     "Failed to initialize database",
+    "Could not acquire lock on database",
+    "unable to open database file",
     "Can't locate revision identified by",
-    "unable to open database file"
+    "No such index:",
+    "database disk image is malformed",
+    "attempt to write a readonly database",
+    "disk I/O error"
   ];
-  const lastErrorIndex = Math.max(
-    ...databaseErrors.map((message) => input.logContent.toLowerCase().lastIndexOf(message.toLowerCase()))
-  );
+  const lastErrorIndex = Math.max(...databaseErrors.map((message) =>
+    input.logContent.toLowerCase().lastIndexOf(message.toLowerCase())
+  ));
   if (lastErrorIndex < 0) return false;
 
   const logAfterError = input.logContent.slice(lastErrorIndex);
@@ -2106,8 +2124,16 @@ async function scanEnvironmentIssues(
     }
   }
   const log = await readLatestComfyLog(comfyRoot);
+  const fallbackDatabase = path.join(comfyRoot, "user", "comfyui.db");
+  const diagnosis = diagnoseComfyDatabaseFailure(log.content, fallbackDatabase);
+  const diagnosedDatabase = diagnosis?.databasePath && isPathInsideDirectory(
+    diagnosis.databasePath,
+    path.join(comfyRoot, "user")
+  )
+    ? diagnosis.databasePath
+    : fallbackDatabase;
   const databaseStat = comfyRoot
-    ? await fs.stat(path.join(comfyRoot, "user", "comfyui.db")).catch(() => null)
+    ? await fs.stat(diagnosedDatabase).catch(() => null)
     : null;
   if (shouldReportComfyDatabaseIssue({
     logContent: log.content,
@@ -2118,10 +2144,12 @@ async function scanEnvironmentIssues(
     issues.push({
       id: "comfy-database",
       label: "ComfyUI 数据库初始化失败",
-      detail: "数据库迁移版本或文件状态异常；修复时会先备份原数据库，再重建索引并重启服务。",
+      detail: diagnosis
+        ? `${diagnosis.summary} 自动修复会先验证目录和依赖、备份真实数据库，再按故障类型重试或重建。`
+        : "数据库初始化异常；自动修复会先诊断并备份，再执行恢复。",
       severity: "warning",
       repairable: true,
-      repairLabel: "备份并重建"
+      repairLabel: "智能修复"
     });
   }
   return issues;
@@ -3331,6 +3359,80 @@ export async function updateComfyUi(
   }
 }
 
+function databaseRepairTimestamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+async function installComfyDatabaseDependencies(
+  python: string,
+  sourceDirectory: string,
+  settings: Settings,
+  repairLog: string[]
+): Promise<void> {
+  const requirementsPath = path.join(sourceDirectory, "requirements.txt");
+  const requirements = await fs.readFile(requirementsPath, "utf8").catch(() => "");
+  const databaseRequirements = requirements
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => /^(?:alembic|sqlalchemy|filelock)(?:\b|[<>=!~])/iu.test(line));
+  const packages = databaseRequirements.length
+    ? databaseRequirements
+    : ["alembic", "SQLAlchemy>=2.0.0", "filelock"];
+  repairLog.push(`补齐数据库依赖：${packages.join("、")}`);
+  const output = await runLoggedProcess(
+    python,
+    [
+      "-m",
+      "pip",
+      "install",
+      "--disable-pip-version-check",
+      "--no-input",
+      "--upgrade",
+      ...packages
+    ],
+    {
+      env: downloadEnvironment(settings),
+      timeoutMs: 900_000
+    }
+  );
+  if (output) repairLog.push(output);
+}
+
+async function initializeAndCheckComfyDatabase(
+  python: string,
+  sourceDirectory: string,
+  databasePath: string,
+  settings: Settings
+): Promise<string> {
+  const script = buildComfyDatabaseMigrationScript(sourceDirectory, databasePath);
+  return runLoggedProcess(
+    python,
+    ["-c", script],
+    {
+      cwd: sourceDirectory,
+      env: downloadEnvironment(settings),
+      timeoutMs: 180_000
+    }
+  );
+}
+
+function databaseRepairDetail(diagnosis: ComfyDatabaseDiagnosis): string {
+  switch (diagnosis.kind) {
+    case "locked":
+      return "检测到数据库被其他进程占用；不会修改原库，将验证应用隔离数据库启动。";
+    case "missing-dependencies":
+      return "检测到数据库依赖缺失；将使用所选 ComfyUI Python 补齐匹配依赖后重试迁移。";
+    case "unavailable-path":
+      return "检测到数据库目录不可用；将创建目录并执行可写性检查。";
+    case "migration":
+      return "检测到迁移版本异常；将先备份并无损重试，失败后才隔离旧库并新建。";
+    case "corrupt":
+      return "检测到 SQLite 损坏；将保留完整备份并创建新库。";
+    default:
+      return "将先备份并执行无损迁移检查；未知错误不会自动丢弃原数据库。";
+  }
+}
+
 export async function repairEnvironmentIssue(
   issueId: EnvironmentIssue["id"],
   settings: Settings
@@ -3375,35 +3477,148 @@ export async function repairEnvironmentIssue(
     }
 
     if (issueId === "comfy-database") {
+      const installation = await findComfyInstallation(settings);
+      const sourceDirectory = installation?.sourceDirectory ?? "";
+      if (!sourceDirectory || !(await exists(path.join(sourceDirectory, "alembic.ini")))) {
+        throw new Error("没有找到所选 ComfyUI 的数据库迁移脚本，请先确认核心安装目录。");
+      }
+      const python = await findComfyPython(settings, comfyRoot, installation);
+      if (!python) throw new Error("没有找到所选 ComfyUI 的 Python 环境。");
+      const userDirectory = path.join(comfyRoot, "user");
+      const defaultDatabase = path.join(userDirectory, "comfyui.db");
+      const latestLog = await readLatestComfyLog(comfyRoot);
+      const diagnosis = diagnoseComfyDatabaseFailure(latestLog.content, defaultDatabase) ?? {
+        kind: "unknown",
+        databasePath: defaultDatabase,
+        explicitDatabasePath: false,
+        summary: "当前日志没有保留完整错误，将执行无损数据库检查。"
+      } satisfies ComfyDatabaseDiagnosis;
+      const databasePath = path.resolve(diagnosis.databasePath || defaultDatabase);
+      const allowedDatabaseRoots = [
+        userDirectory,
+        path.join(sourceDirectory, "user")
+      ];
+      if (!allowedDatabaseRoots.some((directory) => isPathInsideDirectory(databasePath, directory))) {
+        throw new Error(
+          `日志中的数据库不属于所选 ComfyUI 数据/核心目录，已拒绝自动修改：${databasePath}`
+        );
+      }
+      repairLog.push(`诊断：${diagnosis.summary}`);
+      repairLog.push(databaseRepairDetail(diagnosis));
+      repairLog.push(`目标数据库：${databasePath}`);
+
       const healthUrl = `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
       const running = await fetch(healthUrl, {
         signal: AbortSignal.timeout(2000)
       }).then((response) => response.ok).catch(() => false);
       if (running) {
-        repairLog.push("停止当前 ComfyUI 服务");
+        return {
+          ok: true,
+          message: "ComfyUI 当前已连接，数据库初始化错误属于历史日志，无需修复。",
+          log: repairLog.join("\n")
+        };
+      }
+      if (ownedComfyProcessIdSnapshot().length) {
+        repairLog.push("停止仍由应用拥有但接口未就绪的 ComfyUI 进程");
         await stopComfyUi(settings);
       }
-      const userDirectory = path.join(comfyRoot, "user");
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      for (const filename of ["comfyui.db", "comfyui.db.lock"]) {
-        const source = path.join(userDirectory, filename);
-        if (!(await exists(source))) continue;
-        const backup = path.join(userDirectory, `${filename}.backup-${timestamp}`);
-        await fs.rename(source, backup);
-        repairLog.push(`已备份 ${source} -> ${backup}`);
+
+      if (diagnosis.kind === "locked") {
+        const started = await startLocalService("comfy", settings);
+        if (!started.ok) {
+          throw new Error(
+            `${started.message} 原数据库仍可能被外部 ComfyUI 占用，应用没有终止该进程。`
+          );
+        }
+        const endpoint = localEndpoint(settings.comfyUrl, 8188);
+        const isolatedDatabase = endpoint
+          ? path.join(userDirectory, appManagedComfyDatabaseFilename(endpoint.port))
+          : "";
+        if (isolatedDatabase && !(await exists(isolatedDatabase))) {
+          throw new Error("ComfyUI 已连接，但应用隔离数据库没有生成。");
+        }
+        repairLog.push(`原数据库保持不变；应用已使用隔离数据库：${isolatedDatabase}`);
+        return {
+          ok: true,
+          message: "检测到其他进程占用原数据库；未修改原库，应用已通过隔离数据库恢复服务。",
+          log: repairLog.join("\n")
+        };
       }
-      const nextHealthUrl = await startComfyUi(settings);
-      const ready = await waitForService(nextHealthUrl);
-      if (!ready) throw new Error("数据库已备份，但 ComfyUI 重启后 2 分钟内未就绪。");
-      const rebuiltDatabase = path.join(userDirectory, "comfyui.db");
-      const databaseReady = await exists(rebuiltDatabase);
-      if (!databaseReady) {
-        throw new Error("ComfyUI API 已恢复，但新数据库文件没有生成。");
+
+      await probeWritableDirectory(path.dirname(databasePath));
+      repairLog.push("数据库目录可写性检查通过");
+      if (diagnosis.kind === "missing-dependencies") {
+        await installComfyDatabaseDependencies(
+          python,
+          sourceDirectory,
+          settings,
+          repairLog
+        );
       }
-      repairLog.push("ComfyUI 已重建数据库并恢复连接");
+
+      const timestamp = databaseRepairTimestamp();
+      const backups = await backupSqliteDatabaseFamily(databasePath, timestamp);
+      for (const entry of backups) {
+        repairLog.push(`已复制备份 ${entry.sourcePath} -> ${entry.backupPath}`);
+      }
+
+      let databaseCheck = "";
+      try {
+        databaseCheck = await initializeAndCheckComfyDatabase(
+          python,
+          sourceDirectory,
+          databasePath,
+          settings
+        );
+        repairLog.push(`数据库无损迁移与 quick_check 通过：${databaseCheck}`);
+      } catch (initializationError) {
+        const resetAllowed = diagnosis.kind === "migration" || diagnosis.kind === "corrupt";
+        repairLog.push(
+          `无损修复失败：${initializationError instanceof Error ? initializationError.message : String(initializationError)}`
+        );
+        if (!resetAllowed) {
+          await quarantineSqliteDatabaseFamily(
+            databasePath,
+            `${timestamp}-repair-attempt`
+          ).catch(() => []);
+          await restoreSqliteDatabaseBackups(backups);
+          repairLog.push("无损检查未通过，已恢复检查前的数据库文件");
+          throw new Error("无损数据库修复失败；已恢复原数据库，请查看修复日志。");
+        }
+        const quarantined = await quarantineSqliteDatabaseFamily(databasePath, timestamp);
+        repairLog.push(...quarantined.map((filename) => `已隔离故障文件：${filename}`));
+        try {
+          databaseCheck = await initializeAndCheckComfyDatabase(
+            python,
+            sourceDirectory,
+            databasePath,
+            settings
+          );
+          repairLog.push(`新数据库迁移与 quick_check 通过：${databaseCheck}`);
+        } catch (resetError) {
+          await quarantineSqliteDatabaseFamily(
+            databasePath,
+            `${timestamp}-repair-attempt`
+          ).catch(() => []);
+          await restoreSqliteDatabaseBackups(backups);
+          repairLog.push("新建数据库失败，已从备份恢复原数据库文件");
+          throw resetError;
+        }
+      }
+
+      const started = await startLocalService("comfy", settings);
+      if (!started.ok) throw new Error(`数据库修复完成，但 ComfyUI 启动失败：${started.message}`);
+      const endpoint = localEndpoint(settings.comfyUrl, 8188);
+      const activeDatabase = endpoint
+        ? path.join(userDirectory, appManagedComfyDatabaseFilename(endpoint.port))
+        : databasePath;
+      if (!(await exists(activeDatabase))) {
+        throw new Error(`ComfyUI API 已恢复，但实际启动数据库没有生成：${activeDatabase}`);
+      }
+      repairLog.push(`ComfyUI 已连接；实际启动数据库：${activeDatabase}`);
       return {
         ok: true,
-        message: "ComfyUI 数据库已备份重建，服务已恢复。",
+        message: "ComfyUI 数据库已完成分类修复、备份和完整性检查，服务已恢复。",
         log: repairLog.join("\n")
       };
     }
@@ -3424,8 +3639,8 @@ export async function repairEnvironmentIssue(
       if (!running) {
         try {
           repairLog.push("修复未完成，尝试恢复启动 ComfyUI");
-          const recoveryUrl = await startComfyUi(settings);
-          await waitForService(recoveryUrl);
+          const recovery = await startLocalService("comfy", settings);
+          if (!recovery.ok) throw new Error(recovery.message);
         } catch (recoveryError) {
           repairLog.push(
             `恢复启动失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`

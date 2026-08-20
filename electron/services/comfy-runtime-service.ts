@@ -12,6 +12,13 @@ import { getApplicationLogger } from "./app-logger.js";
 const appLogger = getApplicationLogger();
 const ownedComfyProcessIds = new Set<number>();
 
+export function appManagedComfyDatabaseFilename(
+  port: number,
+  ownerProcessId = process.pid
+): string {
+  return `comfyui.local-video-studio-${ownerProcessId}-${port}.db`;
+}
+
 export function ownedComfyProcessIdSnapshot(): readonly number[] {
   return [...ownedComfyProcessIds];
 }
@@ -185,7 +192,7 @@ async function startComfyUiServiceImpl(
     args.push("--output-directory", directories.outputDirectory);
   }
   const databaseRoot = comfyRoot || sourceRoot;
-  const databaseFilename = `comfyui.local-video-studio-${process.pid}-${endpoint.port}.db`;
+  const databaseFilename = appManagedComfyDatabaseFilename(endpoint.port);
   args.push(
     "--database-url",
     `sqlite:///${path.join(databaseRoot, "user", databaseFilename).replaceAll("\\", "/")}`

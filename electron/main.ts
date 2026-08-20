@@ -3100,7 +3100,19 @@ function registerIpc(): void {
       "environment",
       "repair",
       "Environment repair started",
-      () => repairEnvironmentIssue(issueId, settings),
+      () => {
+        if (issueId === "comfy-database" && (
+          store.get().queueRunning ||
+          queueWorkerController.runningWorker ||
+          nativePromptController
+        )) {
+          return Promise.resolve({
+            ok: false,
+            message: "当前仍有队列或提示词任务占用 ComfyUI，请先完成或取消任务后再修复数据库。"
+          });
+        }
+        return repairEnvironmentIssue(issueId, settings);
+      },
       { issueId }
     )
   );
