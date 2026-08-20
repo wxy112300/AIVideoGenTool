@@ -4,12 +4,14 @@
 > 目的：把 P00–P20 集成 Phase 拆成较弱模型也能可靠执行的单一 work package  
 > 原则：Luna 负责确定性实现；强模型/人工负责审美、架构、冲突、运行结论和最终集成
 
+> Source of truth：当前 `src/renderer/`、`src/styles/`、`docs/UX_UI_RENDERER_BASELINE.md` 与真实 renderer capture。`prototypes/` 是早期历史材料，不是任务输入、批准证据或同步目标，除非用户单独要求维护。
+
 ## 1. 复查结论
 
 P00–P20 的依赖、preserve list 和集成 gate 已经清楚，但部分 Phase 对较弱模型仍然过宽。不能直接把“完成 P03”“现代化 Queue”或“优化 Settings UI”交给 Luna，因为这些提示仍要求模型自行决定：
 
 - 哪些颜色属于品牌、交互、状态或装饰；
-- 哪一套 prototype/renderer 是目标；
+- 哪一套当前 renderer fixture/CSS 是目标；
 - 是否允许改变 DOM、schema、IPC 或 persisted state；
 - 哪个 selector 是 canonical owner；
 - 视觉差异是预期变化还是回归；
@@ -23,6 +25,19 @@ P00–P20 的依赖、preserve list 和集成 gate 已经清楚，但部分 Phas
 - `Gxx` 是强模型/人工 gate，不交给 Luna 做最终判断；
 - Luna 不得完成一个 package 后自动开始下一个。
 
+### 1.1 当前执行账本
+
+派发前必须以 `docs/UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md` 顶部状态和各 Phase 的“当前状态”为准，不能仅凭本指南编号判断任务未做：
+
+- P00 current renderer baseline 已 `verified`，已有 `UX_UI_RENDERER_BASELINE.md`、manifest、capture harness 和136张截图；L00/L01只在 reviewer 明确要求重新基线时派发；
+- G01“当前 renderer 是设计来源”已完成；具体 palette/type/radius 变化仍需 G02 current-renderer visual gate；
+- P02 语义 token 骨架已实现；在 reviewer 对现有 diff 完成 package mapping 前，不得重新派发 L06–L09；
+- P05 的 top-level nav `aria-current` 已实现，不能重复执行相同修改；
+- P08 的 Image Edit 首个 overflow 修复已实现，不能直接重跑 L30；其余 Create gate仍待完成；
+- Settings/runtime 工作仍在变化，G14 未满足前不得派发 L50–L60。
+
+本指南是任务目录，不是“全部尚未执行”的 todo list。任何已实现 package 的后续工作必须使用新的 base和明确的 delta task。
+
 ## 2. Luna 能做与不能做
 
 ### 2.1 适合交给 Luna
@@ -34,13 +49,13 @@ P00–P20 的依赖、preserve list 和集成 gate 已经清楚，但部分 Phas
 - 按明确 locale key 清单迁移硬编码文案；
 - 增加指定 focused tests；
 - 运行给定命令并如实记录结果；
-- 更新一个 prototype fragment 或一个页面拥有的 CSS；
+- 更新一个当前 renderer fixture/evidence、一个指定页面 fragment 或一个页面拥有的 CSS；
 - 生成 inventory、selector map、截图 manifest 和 handoff。
 
 ### 2.2 不交给 Luna 独立决定
 
 - 选择最终配色、字体、视觉方向或判断“是否高级”；
-- 在 approved prototype 与 renderer 冲突时选择 source of truth；
+- 在 approved current-renderer artifact 与当前代码冲突时自行选择 source of truth；
 - 设计新的 persisted schema、IPC、notification public model 或 migration；
 - 解决 shared hotspot 的并发冲突；
 - 修改 workflow、model、node、runtime、GPU 或 ComfyUI 策略；
@@ -57,7 +72,7 @@ P00–P20 的依赖、preserve list 和集成 gate 已经清楚，但部分 Phas
 2. 目标文件内容与 package 的 base/handoff 不一致；
 3. 需要修改 package 未授权的文件才能继续；
 4. 需要改变 DOM id、`data-*`、IPC、persisted type、workflow payload 或 locale public key；
-5. approved token/prototype/截图不存在或互相冲突；
+5. approved token、当前 renderer fixture 或截图 evidence 不存在或互相冲突；
 6. focused test 在编辑前已经失败；
 7. 实现后出现输入失焦、selection 丢失、横向滚动、功能路径变化或测试失败；
 8. 需要“凭感觉”选择颜色、间距、动作优先级或隐藏内容；
@@ -89,18 +104,18 @@ Expected handoff format:
 
 ## 5. 原子 Work Package 清单
 
-### Batch A — 基线与视觉批准
+### Batch A — 当前 renderer 基线与视觉批准
 
 | ID | Parent | Luna 的唯一输出 | 写入范围 | 验证 | Review |
 | --- | --- | --- | --- | --- | --- |
-| L00 | P00 | 页面/状态/locale/viewport manifest | 新增一个 `docs/` manifest | 路径存在、条目齐全 | 普通复核 |
-| L01 | P00 | 固定 viewport 截图脚本，不改产品 | 新增专用 `scripts/` 文件 | 脚本帮助/干跑；不安装依赖 | 强复核 |
+| L00 | P00 | 当前 renderer 页面/状态/locale/viewport manifest | `docs/UX_UI_RENDERER_BASELINE.md` 或对应 manifest | 路径存在、条目齐全 | 普通复核 |
+| L01 | P00 | 当前 renderer 固定 viewport capture 脚本，不改产品 | 专用 renderer capture `scripts/` 文件 | `--dry-run`；不安装依赖 | 强复核 |
 | L02 | P00 | 当前 CSS 指标 inventory | 新增一个 `docs/` 报告或 fixture | 数字可由命令重算 | 普通复核 |
-| G01 | P01 | 批准 palette、type scale、radius、surface 规则 | 人工/强模型决定 | 形成冻结 token 表 | **不可交 Luna** |
-| L03 | P01 | 根据 G01 新增 prototype theme token layer | `prototypes/studio-prototype.css` 或批准的新 token 文件 | `npm.cmd run prototype:build` | 强复核 |
-| L04 | P01 | 将 theme layer 应用于五个指定 canary，不改结构 | 指定 prototype fragments/shared CSS | prototype build | 强复核 |
-| L05 | P01 | 生成 current/new、原色/灰度、两视口对照 | 截图输出目录/manifest | 数量和命名匹配 | 普通复核 |
-| G02 | P01 | 批准/驳回 Cinematic Graphite | 人工/强模型视觉判断 | 写明保留和修订 token | **不可交 Luna** |
+| G01 | P01 | 确认当前 renderer 是设计来源并冻结 preserve list | 用户/强模型 | `UX_UI_RENDERER_BASELINE.md` 与 proposal；当前已完成 | **不可交 Luna** |
+| L03 | P01 | 根据当前 renderer 基线整理 canary preserve/change proposal，不写生产 CSS | `docs/UX_UI_P01_RENDERER_PROPOSAL.md`、renderer capture evidence | 每项引用当前截图/selector | 强复核 |
+| L04 | P01 | 对当前 Create/Queue/History/Details/Settings 做状态与断点审计，不改结构 | `docs/`、隔离 current-renderer fixture/截图 | 关键视口与状态齐全 | 强复核 |
+| L05 | P01 | 生成当前 renderer 基线与隔离候选分支的原色/灰度/媒体状态对照 | renderer evidence/manifest | 数量和命名匹配 | 普通复核 |
+| G02 | P01 | 基于当前 renderer 批准 palette、type scale、radius、surface 变更 | 人工/强模型决定 | 形成冻结 current-renderer token mapping；旧 prototype 不参与 | **不可交 Luna** |
 
 ### Batch B1 — 零差异 token 骨架
 
@@ -155,7 +170,7 @@ Expected handoff format:
 
 | ID | Parent | Luna 的唯一输出 | 写入范围 | 验证 | Review |
 | --- | --- | --- | --- | --- | --- |
-| G08 | P07 | 批准三模式 900px 构图与 DOM 顺序 | 人工/强模型 | prototype截图 | **不可交 Luna** |
+| G08 | P07 | 基于当前 Create renderer 批准三模式 900px 构图与 DOM 顺序 | 人工/强模型 | current renderer fixture/capture | **不可交 Luna** |
 | L30 | P08 | 只修 Image Edit 761–约926px overflow | `10-final-refinements.css` 中批准 selector或迁移后的 Create owner | 760/761/800/900/926/960截图 | 普通复核 |
 | L31 | P08 | 只实现普通 Create 的批准 breakpoint/grid | Create page-owned CSS | 三模式截图 | 强复核 |
 | L32 | P08 | 按批准 markup 增加素材摘要，不改变 payload | 指定 Create fragment/controller | focused controller test | 强复核 |
@@ -166,7 +181,7 @@ Expected handoff format:
 
 | ID | Parent | Luna 的唯一输出 | 写入范围 | 验证 | Review |
 | --- | --- | --- | --- | --- | --- |
-| G10 | P09 | 批准 running/empty/failed Queue prototype | 人工/强模型 | 状态截图 | **不可交 Luna** |
+| G10 | P09 | 基于当前 Queue renderer 批准 running/empty/failed 构图 | 人工/强模型 | current renderer fixture/capture；live running 单列证据边界 | **不可交 Luna** |
 | L34 | P10 | 将 telemetry markup 移入 active task，不改指标来源 | `queue/page.ts`、`card.ts` 中明确函数 | queue focused tests | 强复核 |
 | L35 | P10 | 样式化 active telemetry/progressive disclosure | Queue-owned CSS | running/paused/failed截图 | 强复核 |
 | L36 | P10 | 只修900px pending action wrap/overflow | Queue-owned responsive selectors | 800/900截图 | 普通复核 |
@@ -186,7 +201,7 @@ Expected handoff format:
 | L44 | P13 | 接入 gallery/detail 图片状态 | page/fragments + media controller | media failure tests | 强复核 |
 | L45 | P13 | 接入 version rail/lightbox 图片状态 | rail/lightbox fragments/controller | media failure tests | 强复核 |
 | L46 | P14 | Lightbox复用 focus helper：trap/inert/Escape/return | lightbox controller + test | keyboard test | 强复核 |
-| G12 | P15 | 批准视频/图片详情动作与记录构图 | 人工/强模型 | prototype截图 | **不可交 Luna** |
+| G12 | P15 | 基于当前 renderer 批准视频/图片详情动作与记录构图 | 人工/强模型 | current renderer fixture/capture | **不可交 Luna** |
 | L47 | P15 | 只实现视频详情主动作/More层级 | history detail renderer + style | action smoke | 强复核 |
 | L48 | P15 | 只实现图片详情主动作/More层级 | image detail renderer + style | action smoke | 强复核 |
 | L49 | P15 | 下方生成记录由等权 cards改分组，不删字段 | detail fragments/styles | snapshot/截图 | 强复核 |
@@ -197,9 +212,9 @@ Expected handoff format:
 | ID | Parent | Luna 的唯一输出 | 写入范围 | 验证 | Review |
 | --- | --- | --- | --- | --- | --- |
 | G14 | P16 | 确认 Settings/runtime 当前工作已形成 clean base | 用户/集成 owner | commit + handoff | **不可交 Luna** |
-| L50 | P16 | prototype同步为9分类与当前已实现能力 | `prototypes/settings.html` | prototype build | 强复核 |
-| L51 | P16 | prototype增加五种固定 Settings 状态 | prototype fragment/data | prototype build | 普通复核 |
-| G15 | P16 | 批准 Settings 窄窗导航与保存结构 | 人工/强模型 | 800/900/1280截图 | **不可交 Luna** |
+| L50 | P16 | 记录当前 Settings renderer 的9分类与已实现能力 | Settings renderer baseline/proposal docs | current renderer capture/manifest | 强复核 |
+| L51 | P16 | 为当前 Settings renderer 捕获 offline/scanning/installing/partial/error 五种状态 | renderer fixture/capture manifest | capture matrix | 普通复核 |
+| G15 | P16 | 基于当前 Settings renderer 批准窄窗导航与保存结构 | 人工/强模型 | 800/900/1280 current renderer截图 | **不可交 Luna** |
 | L52 | P17 | 实现 tab roles/aria-selected/controls，不改视觉 | Settings page/fields controller + test | keyboard test | 强复核 |
 | L53 | P17 | 实现 <=900批准的 compact category layout | `06-settings-layout.css` | 800/900截图 | 强复核 |
 | L54 | P17 | 将 scan移入 environment action group | 指定 Settings fragment/page | save/scan tests | 强复核 |
@@ -230,7 +245,7 @@ Expected handoff format:
 
 - 只有一个可描述的结果；
 - 通常不超过1–4个生产文件；
-- 不跨 renderer、Electron、prototype 三种所有权边界；
+- 不跨 renderer、Electron、evidence/fixture 三种所有权边界；
 - 不同时做结构变化和视觉变化；
 - 不同时做功能实现和 CSS 收敛；
 - focused test 在一个命令中可运行；
@@ -322,7 +337,7 @@ Before editing:
 After editing:
 - review git diff --name-status and full diff
 - {focused test command}
-- {typecheck/prototype build/screenshot command}
+- {typecheck/renderer capture/screenshot command}
 
 Stop without editing if the approved artifact is missing, target files have unexplained changes, or completing the task requires files outside Writable files.
 
@@ -347,11 +362,10 @@ Luna 输出是候选 patch，不是完成证明。Reviewer 必须：
 
 1. L00 — baseline manifest；
 2. L02 — CSS指标 inventory；
-3. G01 — 由强模型/人工冻结视觉 token；
-4. L03 — prototype token layer；
-5. L05 — 对照截图；
-6. G02 — 视觉批准；
-7. L06–L08 — 零视觉差异 token 骨架；
-8. G03 — 集成验证。
+3. L03/L04 — 当前 renderer canary proposal 与状态/断点审计；
+4. G01 — 由强模型/人工冻结 renderer-informed visual direction；
+5. L05 — renderer 对照截图；
+6. L06–L08 — 零视觉差异 token 骨架；
+7. G03 — 集成验证。
 
 如果 Luna 在以上任务中能稳定遵守文件边界、停止条件和 handoff，再逐步进入单页 renderer package。P19 CSS 收敛、P06 schema、P18 Settings 和 P20 最终验收始终需要强 reviewer。

@@ -51,6 +51,33 @@ body {
   grid-template-columns: minmax(320px, .82fr) minmax(520px, 1.18fr);
 }
 
+@media (max-width: 1120px) {
+  /* Keep Image Edit's two work areas usable at the 900px canary width. The
+     generic Create layout stacks at this breakpoint, but the image editor
+     needs the prompt and reference context visible together. */
+  .image-edit-workspace {
+    grid-template-columns: minmax(250px, .72fr) minmax(0, 1.28fr);
+  }
+  .image-edit-workspace > .media-panel { position: static; }
+  .image-edit-composer .interpolation-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .image-edit-settings-grid .settings-field,
+  .image-edit-settings-grid .seed-control,
+  .image-edit-settings-grid .seed-control > * {
+    min-width: 0;
+  }
+  .image-edit-settings-grid .seed-control {
+    width: 100%;
+    gap: 5px;
+  }
+  .image-edit-settings-grid .seed-control input[type="number"] {
+    width: auto;
+    flex: 1 1 auto;
+  }
+}
+
 .image-edit-references {
   padding: 0;
   border: 0;

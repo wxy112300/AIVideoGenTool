@@ -11,9 +11,9 @@ When sources disagree, use this order:
 1. The user's latest explicit instruction or correction.
 2. Behavior the user has explicitly accepted and that is currently working.
 3. The contracts in `docs/ARCHITECTURE_CONTRACT.md`, `docs/UX_CONTRACT.md`, and `docs/WORKFLOW_CONTRACT.md`.
-4. Approved prototypes under `prototypes/`.
-5. Current implementation and tests.
-6. Research notes, implementation plans, and historical handoff documents.
+4. Current implementation, tests, and current-renderer fixture/screenshot evidence.
+5. Explicitly maintained design artifacts approved for the current renderer.
+6. Historical prototypes under `prototypes/`, research notes, implementation plans, and historical handoff documents.
 
 Do not treat a prototype, research document, example workflow, or static validation as proof that a runtime feature is complete.
 
@@ -74,7 +74,7 @@ Before editing:
 1. Inspect `git status` and preserve unrelated user changes.
 2. Identify the direct target, adjacent surfaces, and a short **preserve list**.
 3. Read the relevant contract and the implementation/tests for the affected path.
-4. For a substantial new UI area or interaction redesign, update the prototype first unless the user explicitly asks for direct implementation. Small fixes may go directly to the app, then must be synchronized back to the prototype when the prototype represents that behavior.
+4. For a substantial UI area or interaction redesign, first establish a proposal from the current renderer DOM, states, breakpoints, fixture/screenshot evidence, and preserve list. Implement against the current renderer after approval. Update a historical prototype only when the user explicitly asks to maintain or review it; prototype synchronization is not a production gate.
 
 While editing:
 
@@ -124,7 +124,7 @@ For UI work, "looks better" is not an acceptance criterion. Use `docs/UX_CONTRAC
 - loading, empty, unavailable, success, and error states;
 - keyboard/focus behavior and controls that remain reachable on long pages;
 - both waterfall/gallery or image/video variants when sharing a component;
-- the approved prototype and live renderer at the required viewport sizes.
+- the current renderer and its approved fixture/screenshot evidence at the required viewport sizes; check a historical prototype only when the task explicitly includes maintaining it.
 
 Do not add arbitrary one-off colors, spacing, radii, or nested bordered containers when an existing token or hierarchy solves the problem.
 
@@ -176,6 +176,6 @@ For any repository change, classify the impact before completion. When bumping:
 ## Repository Conventions
 
 - Keep IPC and persisted-state changes backward compatible unless the requested release includes an explicit migration plan.
-- Generated prototype pages under `prototypes/preview/` must be rebuilt with `npm.cmd run prototype:build`; edit the source fragments/shared assets, not only generated output.
+- When a task explicitly maintains historical prototype pages, rebuild generated output under `prototypes/preview/` with `npm.cmd run prototype:build`; edit the source fragments/shared assets, not only generated output. Prototype rebuilding is not a production UI gate.
 - Never commit local model weights, generated media, machine-specific ComfyUI paths, secrets, or temporary logs.
 - Preserve line endings and existing user changes; do not use destructive Git commands to clean the worktree.

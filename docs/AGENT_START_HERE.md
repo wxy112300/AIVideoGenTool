@@ -7,7 +7,7 @@ This guide is the shortest reliable route into Local Video Studio. Read the cont
 | Request | Read first | Primary implementation |
 | --- | --- | --- |
 | Queue, history, paths, IPC, persistence, process exit | `ARCHITECTURE_CONTRACT.md` | `electron/main.ts`, `electron/store.ts`, `electron/services/`, `src/core/` |
-| Layout, interaction, focus, media states | `UX_CONTRACT.md` | `src/renderer/`, `src/styles/`, then the matching prototype |
+| Layout, interaction, focus, media states | `UX_CONTRACT.md` | `src/renderer/`, `src/styles/`, current renderer evidence; prototypes are historical |
 | Model, LoRA, workflow, GPU/memory policy | `WORKFLOW_CONTRACT.md` | `src/core/catalog/`, workflow adapters, `workflows/` |
 | ComfyUI discovery, nodes, Python, installation | `DEPENDENCIES_AND_SETUP.md` | `electron/services/environment.ts`, Settings environment controller |
 | Image workspace | `IMAGE_WORKSPACE_IMPLEMENTATION_PLAN.md` | image draft/workflow/history modules |

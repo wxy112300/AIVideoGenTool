@@ -1,10 +1,12 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：待执行  
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P05 导航语义与 P08 Image Edit 首个窄窗修复已实现，完整交互 gate 待补
 > 制定日期：2026-08-20  
-> 当前版本：0.29.5  
+> 当前版本：0.30.0
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
-> 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer、approved prototypes
+> 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
+
+> **2026-08-20 source correction**：用户已明确 prototype 使用的是旧设计。后续所有视觉判断、proposal、截图验收和生产实现都必须以当前 `src/renderer/`、`src/styles/`、真实 Electron/Vite renderer fixture 为准；旧 prototype 不再是 source of truth，也不再提供 visual approval evidence。
 
 > 使用 Luna 等较弱模型执行时，不要直接派发整个 Phase；使用 `docs/UX_UI_LUNA_EXECUTION_GUIDE.md` 中的 `Lxx` 原子 package，并由 `Gxx` 强 reviewer gate 验收。
 
@@ -14,11 +16,11 @@
 
 最终方向是：
 
-- 视觉上从通用蓝色 AI SaaS 转为 **Cinematic Graphite / 暖石墨媒体工作台**；
+- 以当前深色、蓝色 action/accent、媒体主导的 renderer 为基线，逐步收敛为清晰的媒体工作台；任何颜色、材质或品牌方向变化都必须从真实 renderer 的 canary 页面和状态出发并单独批准；
 - 构图上让每页只有一个主要任务和一个主要视觉热点；
 - 交互上补齐恢复路径、键盘、焦点、异步状态和窗口适应；
 - 工程上把当前多层 CSS 补丁收敛为有所有权的 token、component 和 page composition；
-- 每个 phase 都独立完成 prototype、实现、自动检查、运行态 smoke 和交接，不用“大重构完成后再统一测试”。
+- 每个 phase 都独立完成 renderer evidence、实现、自动检查、运行态 smoke 和交接；prototype 只有在明确同步后才可作为辅助草图，不能替代 renderer 验收。
 
 本文件回答“由谁、按什么顺序、改哪些文件、保留什么、怎样验收”。问题依据和审美论证见 `docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`。
 
@@ -45,8 +47,8 @@
 
 当前工作树存在大量未提交的 Settings、runtime、environment、locales、tests 和 prototype 改动。因此：
 
-- P00 完成前，不允许直接开始 renderer/CSS 生产实现；
-- 可以在独立 clean worktree 中做只读审计或 prototype proposal；
+- P00 renderer-rebase 完成前，不允许直接开始 renderer/CSS 生产实现；
+- 可以在独立 clean worktree 中做只读审计或 renderer-based proposal；
 - Settings 相关 phase 必须基于当前改动完成、提交或明确 handoff 后的新基线；
 - 不允许为了获得 clean tree 使用 `git reset --hard`、`git checkout --` 或删除用户文件；
 - 每个实现 agent 开始时记录 base commit、`git status --short` 和它拥有的文件；发现目标文件在 phase 期间变化，立即停止并重新对比。
@@ -57,9 +59,9 @@
 
 每个 phase 只允许以下状态：
 
-`planned → prototype-ready → approved → implemented → verified → integrated`
+`planned → evidence-ready → approved → implemented → verified → integrated`
 
-- prototype-only phase 可从 `approved` 直接到 `integrated`；
+- evidence-only phase 可从 `approved` 直接到 `integrated`；
 - 没有人工视觉批准，不得把新的艺术方向迁移进 renderer；
 - 没有运行态 smoke，不得把 renderer phase 标为 `verified`；
 - `npm.cmd run verify` 只证明测试和构建，不证明视觉与键盘行为。
@@ -68,11 +70,11 @@ Phase 是集成与验收单位。实现任务若交给较弱模型，必须继�
 
 ### 4.2 一次只集成一个视觉 phase
 
-可以并行进行只读审计、测试清单和不相交的 prototype 内容准备，但以下热点只能有一个 owner：
+可以并行进行只读审计、测试清单和不相交的 renderer evidence 准备，但以下热点只能有一个 owner：
 
 - `src/style.css`；
 - `src/styles/01-foundation.css`、`02-visual-refresh.css`、`05-density-refinement.css`、`10-final-refinements.css`；
-- `prototypes/studio-prototype.css` 与 build script；
+- 历史 `prototypes/studio-prototype.css` 只允许独立 reference maintenance，不进入生产视觉 gate；
 - `src/main.ts`、`src/types.ts`、`electron/main.ts`；
 - Settings 页面/controller 与当前环境刷新改动。
 
@@ -81,17 +83,17 @@ Phase 是集成与验收单位。实现任务若交给较弱模型，必须继�
 ### 4.3 每个 phase 的标准开始检查
 
 1. 阅读 `AGENTS.md`、`docs/UX_CONTRACT.md` 和本 phase；
-2. 阅读本 phase 列出的 renderer、CSS、prototype 和 tests；
+2. 阅读本 phase 列出的 renderer、CSS、fixture 和 tests；prototype 仅在明确需要历史对照时阅读；
 3. 记录 `git status --short` 与 base commit；
 4. 写出 phase-specific preserve list；
 5. 确认只存在一个文件 owner；
-6. 若是 substantial UI，先更新 prototype source，不只改 `prototypes/preview/`；
+6. 若是 substantial UI，先从当前 renderer fixture、DOM、CSS 和截图建立 proposal；不得把旧 `prototypes/preview/` 当作设计依据；
 7. 在编辑前重读目标文件，确认没有比计划更新的字段、controller 或 schema。
 
 ### 4.4 每个 phase 的标准完成检查
 
 1. `git diff --name-status` 无意外文件、删除或格式化扩散；
-2. prototype source 与 renderer 的目标行为同步；
+2. renderer source、fixture、截图 evidence 与目标行为一致；prototype 仅在明确维护时同步，并不得被当作实现证据；
 3. focused tests 通过；
 4. production phase 运行 `npm.cmd run verify`；
 5. 完成本 phase的视口、状态和交互 smoke；
@@ -102,8 +104,8 @@ Phase 是集成与验收单位。实现任务若交给较弱模型，必须继�
 ## 5. 总体依赖图
 
 ```text
-P00 基线
- └─ P01 视觉定向 prototype
+P00 当前 renderer 基线
+ └─ P01 当前 renderer 视觉定向 review
      └─ P02 语义 token 骨架（无视觉变化）
          ├─ P03 配色与材质迁移
          ├─ P04 排版、间距、圆角
@@ -117,29 +119,29 @@ P00 基线
                        └─ P20 全量验证与发布准备
 ```
 
-P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared prototype CSS、global tokens 或 renderer shared shell，就必须串行。
+P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global tokens 或 renderer shared shell，就必须串行。旧 prototype 不参与 approval gate。
 
 ## 6. Phase 索引
 
 | Phase | 目标 | 类型 | 前置 | 主要 gate |
 | --- | --- | --- | --- | --- |
-| P00 | 冻结可复现基线 | 文档/截图 | 无 | baseline manifest |
-| P01 | 批准 Cinematic Graphite | prototype-only | P00 | visual approval |
+| P00 | 冻结当前 renderer 可复现基线 | 文档/截图 | 无 | renderer baseline manifest |
+| P01 | 基于当前 renderer 批准视觉方向 | renderer review | P00 | current-renderer visual approval |
 | P02 | 建立语义 token，保持像素不变 | shared CSS | P01 | screenshot parity + verify |
 | P03 | 迁移配色与材质 | shared CSS | P02 | 五页视觉对照 + verify |
 | P04 | 迁移字体、间距、圆角 | shared CSS | P03 | 125%/150% + verify |
 | P05 | 修复 Shell、导航和 sticky | shared shell | P04 | scroll/breakpoint smoke |
 | P06 | 可恢复的通知与反馈路由 | renderer behavior | P05 | notification tests + smoke |
-| P07 | Create 窄窗构图批准 | prototype-only | P05 | 900×800 approval |
+| P07 | 基于当前 Create renderer 批准窄窗构图 | renderer review | P05 | 900×800 approval |
 | P08 | 实现 Create 构图与溢出修复 | renderer/page CSS | P07 | typing/undo/submit + verify |
-| P09 | Queue 任务优先构图批准 | prototype-only | P05 | running/empty/error approval |
+| P09 | 基于当前 Queue renderer 批准任务优先构图 | renderer review | P05 | running/empty/error approval |
 | P10 | 实现 Queue 任务优先层级 | renderer/page CSS | P09 | queue controls + verify |
-| P11 | History toolbar/album 构图 | prototype + renderer | P05 | filter/delete/layout + verify |
+| P11 | History toolbar/album 构图 | renderer review + implementation | P05 | filter/delete/layout + verify |
 | P12 | History 卡片与菜单键盘语义 | renderer interaction | P11 | keyboard smoke + verify |
 | P13 | 图片媒体异步状态 | renderer interaction | P12 | media failure matrix + verify |
 | P14 | Lightbox modal/focus | renderer interaction | P13 | focus trap/return focus + verify |
-| P15 | 视频/图片详情构图 | prototype + renderer | P14 | viewer/version/action + verify |
-| P16 | Settings prototype 同步 | prototype-only | P05 + clean Settings baseline | prototype rebuild |
+| P15 | 视频/图片详情构图 | renderer review + implementation | P14 | viewer/version/action + verify |
+| P16 | 基于当前 Settings renderer 批准结构 | renderer review | P05 + clean Settings baseline | current-renderer review |
 | P17 | Settings 分类与保存动作 | renderer/page CSS | P16 | save/scan/focus + verify |
 | P18 | Settings 内容层级、本地化与状态 | renderer/page CSS | P17 | offline/install/i18n + verify |
 | P19 | CSS 所有权与重复规则收敛 | refactor | P06–P18 | no-visual-diff + verify |
@@ -151,23 +153,23 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared p
 
 | Phase | 默认拥有文件 | 默认不可触碰 |
 | --- | --- | --- |
-| P00 | `docs/`、专用截图/fixture scripts | renderer、Electron、workflow |
-| P01 | `prototypes/*`、`prototypes/studio-prototype.css` | `src/` |
+| P00 | `docs/`、专用截图/fixture scripts | renderer UI、Electron、workflow |
+| P01 | `docs/UX_UI_RENDERER_BASELINE.md`、renderer capture fixture/evidence | `prototypes/*`、production `src/` |
 | P02 | `src/style.css`、canonical token source、token test | page controllers、DOM |
 | P03 | token source、shared button/input/nav/status visual rules | controller、IPC、page order |
 | P04 | type/space/radius rules及对应 token tests | grid/breakpoint、renderer logic |
 | P05 | `src/renderer/shell/*`、topbar/page-heading shared styles | page business controller |
 | P06 | `src/renderer/notifications.ts`、notification shell view/controller、focused tests；必要时单 owner 进入 `src/main.ts` | workflow、settings persistence |
-| P07 | `prototypes/create.html`、prototype Create styles/README | renderer |
+| P07 | current Create renderer fixture/evidence、proposal docs | `prototypes/create.html`、workflow、queue payload |
 | P08 | `src/renderer/pages/create/*`、`07-create-composer.css`、`09-create-header.css`、明确的 Create responsive rules | workflow adapter、queue payload types |
-| P09 | `prototypes/queue.html`、prototype Queue styles/README | renderer |
+| P09 | current Queue renderer fixture/evidence、proposal docs | `prototypes/queue.html`、queue state machine、IPC |
 | P10 | `src/renderer/pages/queue/*`、Queue-owned rules | queue state machine、IPC contract |
 | P11 | History fragments/layout controller、History gallery/toolbar rules | media loader、Lightbox |
 | P12 | History navigation/context menu/tabs controllers及 tests | gallery geometry、media path logic |
 | P13 | History media controller/helpers、image media fragments及 tests | deletion/persistence schema |
 | P14 | `lightbox-controller.ts`、Lightbox fragments/styles/tests | shared media path resolver |
-| P15 | History detail page/fragments与 detail-owned styles/prototypes | history record schema、file IPC |
-| P16 | `prototypes/settings.html`、prototype Settings styles/README | renderer/locale/runtime |
+| P15 | History detail page/fragments与 detail-owned styles、renderer evidence | history record schema、file IPC |
+| P16 | current Settings renderer fixture/evidence、proposal docs | `prototypes/settings.html`、renderer/locale/runtime |
 | P17 | Settings page/fields/page-controller、`06-settings-layout.css`、focused tests | store schema、environment services |
 | P18 | Settings fragments/copy/view-model、locale files、Settings status styles/tests | Electron runtime policy、installer behavior |
 | P19 | `src/styles/*`、`src/style.css`；只能一个 owner | DOM、controllers、功能 tests重写 |
@@ -179,46 +181,49 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared p
 
 **目的**：建立后续所有视觉和交互判断的可重复基准，不改产品行为。
 
-**允许修改**：`docs/`、截图/验证脚本、prototype fixture 数据；不得修改 renderer UI。
+**允许修改**：`docs/`、截图/验证脚本、隔离的 renderer fixture 数据；不得修改 renderer UI。
 
 **工作**：
 
 - 保存 Create 三模式、Queue running/empty/failed、History 视频/图片两布局、两种 Details、Settings 关键分类的 fixture 状态；
 - 固定 1440×900、1280×800、900×800、760×800，以及1121/1120、901/900、761/760断点对照；
-- 建立页面 manifest：prototype status、renderer status、数据状态、locale、预期主动作；
+- 建立当前 renderer 页面 manifest：真实入口、数据状态、locale、预期主动作和证据边界；旧 prototype manifest 单独标为 historical；
 - 记录当前颜色/排版债务基线：unique hex、primary usage、9/10/11px、跨文件重复 selectors；
 - 对当前脏工作树建立只读 handoff，不把未完成 Settings 行为当作 baseline passed。
 
-**Gate**：`npm.cmd run prototype:build`；所有 baseline 可重新生成；manifest 标注 `implemented/prototype-only/planned/unverified`。
+**Gate**：`npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --dry-run`；renderer baseline 可重新生成；manifest 明确静态 capture、运行态 smoke 和未验证边界。历史 prototype 不进入此 gate。
+
+**当前状态（2026-08-20）**：旧 prototype 参考基线已降级；当前 renderer rebase 为 `verified`。已生成 `docs/UX_UI_RENDERER_BASELINE.md`、`docs/ux-ui-renderer-baseline.manifest.json`，并用真实 Vite renderer + 隔离 mock preload 捕获 136 张标准/断点截图；`queue-mixed` 明确标记为合成 waiting + failed fixture，未作为 live running 证据。用户指令已确认当前 renderer 是 P01 的视觉来源，proposal 记录于 `docs/UX_UI_P01_RENDERER_PROPOSAL.md`，因此进入 P02 零视觉变化 token 骨架。
 
 **回退**：仅删除本 phase 新增的基线资产；不涉及产品代码。
 
-### P01 — Cinematic Graphite 视觉定向 prototype
+### P01 — 当前 renderer 视觉定向 review
 
-**目的**：只判断颜色、材质、字体和节奏，不同时改变页面结构。
+**目的**：只基于当前 renderer 判断颜色、材质、字体、密度和节奏，不同时改变页面结构或把旧 prototype 设计迁移进生产代码。
 
-**允许修改**：prototype source/shared visual tokens；不得修改 `src/`。
+**允许修改**：renderer baseline evidence、proposal 文档和隔离 fixture；不得修改生产 `src/`，不得把旧 prototype 当作候选实现。
 
 **工作**：
 
-- 创建 current/new 可切换的 prototype token layer；
-- 应用暖石墨 canvas、暖银 action accent、语义 status、哑光 surfaces；
-- 取消蓝紫环境光、蓝色品牌 glow 和非语义蓝边；
-- 建立 Page/Section/Object/Body/Label/Meta/Technical 七种类型角色；
-- 建立8/12/16px三档主要 radius和8px空间节奏；
-- 在五个 canary 页面输出原色、灰度、轻度模糊和三类媒体换图对照。
+- 以真实 renderer 的 Create、Queue、History/Details、Settings canary 截图建立 preserve/change 清单；
+- 记录当前蓝色 action/status、深色 surface、媒体比例、信息密度和断点构图，先判断哪些问题是真实 UI 问题；
+- 设计候选调整时只写 renderer-informed tokens/rules，不先写 prototype-only 主题层；
+- 覆盖原色、灰度、轻度模糊和三类媒体状态，确认每页的主任务、主视觉热点和恢复路径；
+- 检查 loading、empty、unavailable、success、error、disabled、focused 以及 900×800/760×800 行为。
 
-**不得做**：重排 DOM、删除功能、隐藏技术证据、把 prototype-only 行为伪装成 implemented。
+**不得做**：重排 DOM、删除功能、隐藏技术证据、把 prototype-only 行为伪装成 implemented，或把旧 prototype 的艺术方向直接迁移到 `src/`。
 
-**Gate**：人工批准视觉方向；主任务在灰度下仍清楚；模糊后每页只有一个 accent 热点；文本/状态完成静态对比度初筛。
+**Gate**：人工基于当前 renderer 截图批准视觉方向；主任务在灰度下仍清楚；模糊后每页只有一个 accent 热点；文本/状态完成静态对比度初筛；没有 prototype approval 替代 renderer approval。
 
-**回退**：删除 new theme layer，current prototype 完全不变。
+**回退**：删除本 phase 的 proposal/evidence，不触碰生产 renderer；旧 prototype 保持历史参考状态。
+
+**当前状态（2026-08-20）**：旧 `Cinematic Graphite` prototype 候选已 `superseded`；用户已确认当前 renderer 为视觉来源，P01 source direction 已批准。`docs/UX_UI_P01_RENDERER_PROPOSAL.md` 冻结 preserve list 和 P02 输入；不得将旧 graphite token、截图或 URL 作为 P02 输入。
 
 ### P02 — 语义 token 骨架，零视觉变化
 
 **目的**：为迁移提供单一语义来源，先不改变任何像素。
 
-**主要文件**：`src/style.css`、一个 canonical token source、prototype token mapping。
+**主要文件**：`src/style.css`、一个 canonical token source、renderer baseline mapping。
 
 **工作**：
 
@@ -227,13 +232,15 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared p
 - 为主题色添加 lint/静态检查策略，禁止新组件继续写裸 hex；
 - 不移动 component selector，不改变 cascade order。
 
-**Gate**：P00 全套截图与 baseline 无感知差异；`npm.cmd run verify`；至少 Create typing、Queue running、History media、Settings save smoke 不变。
+**Gate**：当前 renderer 的 136 张截图与 baseline 无感知差异；`npm.cmd run verify`；至少 Create typing、Queue running、History media、Settings save smoke 不变。
 
 **停止条件**：任何布局尺寸、颜色或 focus ring 变化都说明 phase 超范围，先修复 parity 再继续。
 
+**当前状态（2026-08-20）**：`implemented / static validation passed`。已新增 `src/styles/00-tokens.css`、入口 import 和 `tests/ux-ui-tokens.test.ts`；语义角色只 alias 当前 renderer 变量。focused token tests `3/3`、renderer capture `136/136`、完整 `npm.cmd run verify`（80 files / 605 tests）均通过。由于本 phase 未重复执行 Create typing、Queue running、History media、Settings save 的完整交互 smoke，暂不把 P02 标为 `verified/integrated`。
+
 ### P03 — 配色与材质迁移
 
-**目的**：把 renderer 从泛蓝主题迁移到已批准的 Cinematic Graphite，不改 DOM 和功能。
+**目的**：把 renderer 从当前基线迁移到 P01 已批准的 renderer-informed visual direction，不改 DOM 和功能。
 
 **主要文件**：canonical tokens、shared buttons/inputs/panels/nav/status styles；不改 controller。
 
@@ -246,7 +253,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared p
 - 普通 panel 移除 glow/普遍阴影，overlay 保留 elevation；
 - 保留可见 focus 和状态冗余信号。
 
-**Gate**：五页 canary 与 P01 一致；所有状态可辨；Windows 高对比度不因自定义色消失；`npm.cmd run verify`。
+**Gate**：五页 canary 与当前 P01 approval artifact 一致；所有状态可辨；Windows 高对比度不因自定义色消失；`npm.cmd run verify`。
 
 **回退**：恢复 token values 即可回到旧外观；不得留下半套局部蓝色覆盖。
 
@@ -281,6 +288,8 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared p
 
 **Gate**：所有主页面与 Details 在关键断点上下滚动；History detail 保持 History current；close dialog 不受影响；`npm.cmd run verify`。
 
+**当前状态（2026-08-20）**：已在 `src/renderer/shell/page.ts` 为 active top-level nav 补上 `aria-current="page"`，并用 renderer shell focused tests 覆盖 Settings 与 History detail 的选中语义；sticky/scroll/close-dialog 的完整 smoke 仍待执行，因此不标为 `verified`。
+
 ### P06 — 全局通知、局部反馈与恢复动作
 
 **目的**：让失败可追溯、可恢复，同时减少全局 flash 对页面构图的打断。
@@ -299,9 +308,9 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared p
 
 **Gate**：模拟扫描失败、文件打开失败、Prompt 优化失败、任务完成并发；键盘可执行恢复；`npm.cmd run verify`。
 
-### P07 — Create 窄窗口构图 prototype
+### P07 — Create 窄窗口构图 renderer review
 
-**目的**：批准 Create 在中窄窗口的阅读顺序，不改 renderer。
+**目的**：基于当前 Create renderer 的真实 DOM、截图和状态，批准中窄窗口的阅读顺序，不先改生产 renderer。
 
 **工作**：
 
@@ -310,7 +319,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared p
 - 已选素材在窄窗显示紧凑摘要，可展开编辑；
 - sticky submit 不遮挡 Prompt/error；
 - Image Edit 在761–约926px不横向溢出；
-- 三种创建模式都要有 prototype，不只验证 H3。
+- 三种创建模式都要有当前 renderer fixture/evidence，不只验证 H3。
 
 **Gate**：900×800 首屏同时看见当前素材状态、Prompt 起始区和提交上下文；Tab 顺序与视觉顺序一致；人工批准。
 
@@ -330,7 +339,9 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared p
 
 **Gate**：连续输入、selection、Ctrl+Z/Y/Shift+Z、清空恢复、拖放、click-to-select、模式切换、提交、双击防重；三模式与关键视口；`npm.cmd run verify`。
 
-### P09 — Queue 任务优先构图 prototype
+**当前状态（2026-08-20）**：首个步骤 `breakpoint/min-width` 已实现。`src/styles/10-final-refinements.css` 只调整 Image Edit 的窄窗网格、摘要和 Seed 控件收缩，没有修改 DOM、控件 id、workflow payload 或提交语义；`900/901/1120/1121/761/760×800` 的文档级 `scrollWidth` 均与视口一致。隔离 renderer smoke 已验证 `900×800` 输入后值与焦点在状态刷新后保留；相关 focused tests `54/54`、全量 `verify` 及 `136/136` screenshot capture 通过。Ctrl+Z/Y、拖放、提交、双击防重和 Queue running 尚未完成，因此 P08 仍不是 `verified/integrated`。
+
+### P09 — Queue 任务优先构图 renderer review
 
 **目的**：让 active task 成为 header 后第一个主体。
 
@@ -427,22 +438,22 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared p
 
 **Gate**：视频/图片、单/多版本、缺失媒体、长记录；继续创作、复制、定位、删除、超分；`npm.cmd run verify`。
 
-### P16 — Settings prototype 与 renderer 能力同步
+### P16 — Settings renderer 结构 review
 
 **前置**：当前 Settings/runtime 未提交工作已经有明确基线和 owner。
 
-**目的**：先消除8/9分类、语言区和安装能力的 prototype 漂移。
+**目的**：基于当前 Settings renderer 和已接受的 runtime 能力，先批准8/9分类、语言区和安装能力的真实结构。
 
-**允许修改**：`prototypes/settings.html`、shared prototype assets/README；不改 renderer。
+**允许修改**：当前 Settings renderer fixture/evidence、proposal 文档；不改 renderer 生产代码，不修改 runtime 能力。
 
 **工作**：
 
-- prototype 精确反映当前9分类与已接受的新区域；
-- 建立宽屏 sidebar、中窄 compact category、保存动作、环境扫描和安装队列状态；
-- 标记真实 implemented 与 planned 行为；
-- 先批准结构，再进入 Settings renderer。
+- 以真实页面精确记录当前9分类与已接受的新区域；
+- 覆盖宽屏 sidebar、中窄 compact category、保存动作、环境扫描和安装队列状态；
+- 标记真实 implemented、planned、offline 和 runtime-dependent 行为；
+- 先批准 renderer 结构，再进入 Settings page implementation。
 
-**Gate**：`npm.cmd run prototype:build`；800/900/1280/1440；offline、scanning、installing、partial、error 五类状态。
+**Gate**：current renderer capture/review；800/900/1280/1440；offline、scanning、installing、partial、error 五类状态。
 
 ### P17 — Settings 分类、保存与扫描动作层级
 
@@ -500,7 +511,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared p
 
 **自动化**：
 
-- `npm.cmd run prototype:build`；
+- current renderer screenshot matrix；
 - `npm.cmd run verify`；
 - `npm.cmd run verify:markup-visual`（若受影响环境可用）；
 - hardcoded locale、theme literal、current nav、accessible name 静态检查；
@@ -520,7 +531,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 shared p
 
 **文档与版本**：
 
-- 同步 `UX_CONTRACT`、prototype README、implementation status；
+- 同步 `UX_CONTRACT`、renderer baseline 和 implementation status；只有单独维护历史 prototype 时才更新 prototype README，并继续标记 historical；
 - 只有实际运行过的路径写“passed”，静态检查写“static validation passed”；
 - 集成 agent 根据最终范围决定 patch/minor，不允许各 phase 独立 bump；
 - 若发布，统一更新 `package.json`、lockfile、README 与 `CHANGELOG.md`。
@@ -551,7 +562,7 @@ Phase:
 Base commit / worktree:
 Owned files:
 Preserve list:
-Prototype status:
+Renderer baseline / approved evidence:
 Files changed:
 Behavior intentionally changed:
 Behavior explicitly preserved:
@@ -567,9 +578,9 @@ Recommended next phase:
 
 建议给实现 agent 的任务描述必须明确：
 
-- 只完成一个 Phase；
-- 不自行扩展到下一 Phase；
-- prototype 和 renderer 的 source of truth；
+- 只完成一个 Phase；使用 Luna 时只完成一个 `Lxx` package；
+- 不自行扩展到下一 Phase/package；
+- current renderer、fixture 和 approval artifact 的 source of truth；prototype 仅作历史参考；
 - 可编辑/不可编辑文件；
 - focused tests 和完整 gate；
 - 如果目标文件发生变化，停止并回报，不重放旧 patch。
@@ -581,14 +592,14 @@ Recommended next phase:
 - shared CSS phase 与 page phase 不交错合并；
 - 失败时回退整个 phase，不用新的尾部 override 掩盖回归；
 - 任何 persisted state、IPC、workflow 或 runtime 变化都视为越界，除非用户批准新的独立计划；
-- prototype 未批准、full verify 失败、运行态 smoke 缺失、焦点丢失、横向滚动或功能路径变化，任一项均阻止进入下一 phase；
+- renderer proposal 未批准、full verify 失败、运行态 smoke 缺失、焦点丢失、横向滚动或功能路径变化，任一项均阻止进入下一 phase；
 - 文档、截图和测试属于 phase 交付物，不是可选收尾。
 
 ## 11. 建议的执行批次
 
 为了控制集成压力，建议按以下批次交给其他 agent：
 
-1. **Batch A — 基线与艺术方向**：P00–P01；只改文档/prototype。
+1. **Batch A — renderer 基线与视觉方向**：P00–P01；只改文档、fixture/evidence，不改生产 renderer。
 2. **Batch B — 视觉基础设施**：P02–P05；单一 shared CSS/shell owner，严格串行。
 3. **Batch C — 恢复与核心创作**：P06–P08；notification owner 与 Create owner 可分别准备，串行合并。
 4. **Batch D — 运行监控**：P09–P10；Queue 单一 owner。

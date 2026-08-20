@@ -44,7 +44,8 @@ export function renderShell(options: ShellPageOptions): string {
                 : "";
               const active = options.page === item ||
                 (item === "history" && historyShell);
-              return `<button class="nav-button ${active ? "active" : ""}" data-page="${item}">${options.escapeHtml(options.t(labels[item]))}${badge}</button>`;
+              const current = active ? ` aria-current="page"` : "";
+              return `<button class="nav-button ${active ? "active" : ""}" data-page="${item}"${current}>${options.escapeHtml(options.t(labels[item]))}${badge}</button>`;
             })
             .join("")}
         </nav>

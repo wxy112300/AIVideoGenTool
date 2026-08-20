@@ -1,6 +1,6 @@
-# UI prototypes
+# Historical UI prototypes
 
-> Baseline synchronized with the implemented desktop UI on 2026-08-09. New modules should be designed here first, then implemented against the approved prototype.
+> Baseline synchronized with the implemented desktop UI on 2026-08-09. These files are now historical reference material; new modules must be designed and validated against the current renderer under `src/` first.
 
 The approved image-workspace implementation phases and cross-agent ownership are documented in `docs/IMAGE_WORKSPACE_IMPLEMENTATION_PLAN.md`.
 
@@ -13,22 +13,29 @@ The approved image-workspace implementation phases and cross-agent ownership are
 - `settings.html`: system/runtime configuration plus separate video and image-editing models, shared workflow dependencies, multimodal prompt presets, upscale and diagnostics logs.
 - `studio-prototype.css` / `studio-prototype.js`: shared visual and interaction baseline used by every prototype page.
 
+## Visual review status
+
+These prototype pages are historical reference material. The current renderer under
+`src/renderer/` and `src/styles/` is the source of truth for UX/UI execution; do not
+use prototype screenshots as approval evidence or assume prototype behavior is live.
+
 These files are HTML fragments intended for product interaction review.
 
 The top navigation links all primary pages. History detail intentionally keeps History selected.
 
 Open `preview/history.html` to review the standalone history page. The standalone pages in `preview/` link to one another and include all required CSS without an iframe.
 
-Rebuild the standalone pages after editing a fragment:
+Rebuild the standalone pages only when maintaining historical reference pages:
 
-`node scripts/build-prototypes.mjs`
+`npm.cmd run prototype:build`
 
-## Current prototype boundary
+## Historical prototype boundary
 
-- The prototypes describe behavior already present in the application; sample paths and telemetry are illustrative.
-- Image editing is currently an approved interaction prototype. Model choices and parameter ranges remain illustrative until the first ComfyUI image workflows are selected and validated.
+- The prototypes describe an older interaction snapshot; sample paths and telemetry are illustrative and cannot prove current renderer behavior.
+- Current renderer DOM, CSS, screenshots, runtime smoke and the UX contracts are authoritative for implementation and acceptance.
+- The image-editing page is an older interaction snapshot, not current approval evidence. Model choices and parameter ranges shown here remain illustrative.
 - Community NSFW/uncensored H3 derivatives are not represented as installable options while the ecosystem remains unstable.
-- Phase 2A (2026-08-17) adds a compact creation action bar, progressive disclosure for low-frequency controls, and sticky queue actions across all three modes. This is prototype-only until the renderer implementation is reviewed.
+- Phase 2A (2026-08-17) is retained as historical prototype context only; its compact creation action bar, progressive disclosure and sticky queue actions must be re-evaluated against the current renderer before reuse.
 
 ## Automatic output naming
 

@@ -1,0 +1,60 @@
+/*
+ * Semantic UX/UI token map.
+ *
+ * P02 intentionally aliases the current renderer values instead of changing
+ * them. Later visual phases may update this role map one phase at a time;
+ * page selectors should not create a second theme source.
+ */
+:root {
+  /* Surfaces and separators */
+  --ux-canvas: var(--bg);
+  --ux-surface-base: var(--panel);
+  --ux-surface-object: var(--panel-2);
+  --ux-surface-raised: var(--panel-3, var(--panel-2));
+  --ux-separator-subtle: var(--border);
+  --ux-separator-strong: var(--border-strong, var(--border));
+
+  /* Content */
+  --ux-content-primary: var(--text, #eef2f8);
+  --ux-content-secondary: var(--muted);
+  --ux-content-inverse: #07111f;
+
+  /* Actions and semantic feedback */
+  --ux-action-primary: var(--primary);
+  --ux-action-primary-strong: var(--primary-strong);
+  --ux-action-primary-surface: var(--primary-surface, transparent);
+  --ux-status-danger: var(--danger);
+  --ux-status-success: var(--success);
+  --ux-status-warning: var(--warning, #f4bd6a);
+
+  /* Focus and elevation */
+  --ux-focus-ring: rgba(138, 180, 255, .9);
+  --ux-focus-ring-offset: 2px;
+  --ux-elevation-panel: var(--shadow, 0 18px 48px rgba(0, 0, 0, .22));
+
+  /* Type roles: values match the current renderer before P04 changes them. */
+  --ux-type-page: clamp(25px, 2.3vw, 31px);
+  --ux-type-section: 17px;
+  --ux-type-object: 15px;
+  --ux-type-body: 14px;
+  --ux-type-label: 13px;
+  --ux-type-meta: 11px;
+  --ux-type-technical: .86em;
+
+  /* Space and radius roles: declarations only in P02; selectors migrate later. */
+  --ux-space-1: 4px;
+  --ux-space-2: 8px;
+  --ux-space-3: 12px;
+  --ux-space-4: 16px;
+  --ux-space-5: 20px;
+  --ux-space-6: 24px;
+  --ux-space-7: 32px;
+  --ux-radius-control: 10px;
+  --ux-radius-object: 12px;
+  --ux-radius-panel: 16px;
+  --ux-radius-modal: 16px;
+
+  /* Shared geometry roles. */
+  --ux-topbar-height: 72px;
+  --ux-page-sticky-offset: 88px;
+}

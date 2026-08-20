@@ -1,0 +1,46 @@
+{
+  "phase": "P00-renderer-rebase",
+  "title": "Current renderer UX/UI baseline",
+  "sourceCommit": "f4653727004e6d4cc2be1ceb7d8b4d0e749bf560",
+  "sourceVersion": "0.30.0",
+  "locale": "zh-CN",
+  "sourceKind": "renderer",
+  "sourceState": "working tree after P02 token aliases, P05 nav semantics, and P08 Image Edit narrow-window rules",
+  "rendererEntry": "dist/renderer/index.html",
+  "captureOutputRoot": "temp/ux-ui-baseline/renderer",
+  "stateFixture": "isolated synthetic state; no user data is read or changed",
+  "viewportGroups": {
+    "standard": ["1440x900", "1280x800", "900x800", "760x800"],
+    "breakpoints": ["1121x800", "1120x800", "901x800", "761x800", "900x800", "760x800"]
+  },
+  "viewports": [
+    { "id": "1440x900", "width": 1440, "height": 900 },
+    { "id": "1280x800", "width": 1280, "height": 800 },
+    { "id": "1121x800", "width": 1121, "height": 800 },
+    { "id": "1120x800", "width": 1120, "height": 800 },
+    { "id": "901x800", "width": 901, "height": 800 },
+    { "id": "900x800", "width": 900, "height": 800 },
+    { "id": "761x800", "width": 761, "height": 800 },
+    { "id": "760x800", "width": 760, "height": 800 }
+  ],
+  "fixtures": [
+    { "id": "create-image-to-video", "route": "create", "setup": { "kind": "create-mode", "value": "image" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "create-video-extension", "route": "create", "setup": { "kind": "create-mode", "value": "video" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "create-image-edit", "route": "create", "setup": { "kind": "create-mode", "value": "image-edit" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "queue-mixed", "route": "queue", "setup": { "kind": "queue-state", "value": "mixed" }, "viewportGroups": ["standard", "breakpoints"], "notes": "Synthetic waiting + failed queue; live running state remains a separate runtime smoke." },
+    { "id": "history-video-masonry", "route": "history", "setup": { "kind": "history", "historyKind": "video", "layout": "masonry" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "history-video-album", "route": "history", "setup": { "kind": "history", "historyKind": "video", "layout": "album" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "history-image-masonry", "route": "history", "setup": { "kind": "history", "historyKind": "image", "layout": "masonry" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "history-image-album", "route": "history", "setup": { "kind": "history", "historyKind": "image", "layout": "album" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "video-detail", "route": "history-detail", "setup": { "kind": "history-detail", "historyKind": "video" }, "viewportGroups": ["standard"] },
+    { "id": "image-detail", "route": "image-history-detail", "setup": { "kind": "history-detail", "historyKind": "image" }, "viewportGroups": ["standard"] },
+    { "id": "settings-system", "route": "settings", "setup": { "kind": "settings-tab", "value": "system" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "settings-acceleration", "route": "settings", "setup": { "kind": "settings-tab", "value": "acceleration" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "settings-video", "route": "settings", "setup": { "kind": "settings-tab", "value": "video" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "settings-image", "route": "settings", "setup": { "kind": "settings-tab", "value": "image" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "settings-nodes", "route": "settings", "setup": { "kind": "settings-tab", "value": "nodes" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "settings-prompt", "route": "settings", "setup": { "kind": "settings-tab", "value": "prompt" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "settings-upscale", "route": "settings", "setup": { "kind": "settings-tab", "value": "upscale" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "settings-logs", "route": "settings", "setup": { "kind": "settings-tab", "value": "logs" }, "viewportGroups": ["standard", "breakpoints"] }
+  ]
+}

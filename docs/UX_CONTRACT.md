@@ -8,10 +8,11 @@ The application is a focused local creative workstation: calm, dense enough for 
 
 ## Source and Prototype Workflow
 
-- `prototypes/` is the interaction and layout reference for approved designs.
-- Substantial new modules, navigation changes, or page restructuring should be resolved in the prototype first unless the user asks for direct implementation.
-- Small production fixes may be implemented first, but the matching prototype must be synchronized when it represents that behavior.
-- Edit prototype source fragments and shared assets, then run `npm.cmd run prototype:build`; do not patch only `prototypes/preview/`.
+- The current renderer under `src/renderer/` and `src/styles/`, together with renderer screenshot/fixture evidence, is the interaction and layout source of truth for current work.
+- The repository's existing `prototypes/` pages are historical reference material because the user has explicitly identified them as an older design. Their screenshots and behavior are not approval evidence.
+- Substantial new modules, navigation changes, or page restructuring must first be resolved against the current renderer DOM, states, breakpoints and preserve list unless the user explicitly requests a new prototype.
+- Small production fixes may be implemented directly in the current renderer; update a prototype only when it is deliberately being maintained as historical/reference material.
+- When maintaining prototype source fragments and shared assets, run `npm.cmd run prototype:build`; do not patch only `prototypes/preview/`.
 - A prototype demonstrates intent. It does not prove persistence, IPC, model support, or runtime success.
 
 ## Layout Grammar
@@ -118,7 +119,7 @@ Hover preview failure must not destroy a valid static cover. Detail playback/vie
 
 For shared renderer or substantial CSS work:
 
-1. Run the app or the relevant standalone prototype.
+1. Run the app or the relevant current-renderer fixture/capture harness. Use a standalone prototype only when the user explicitly asks to maintain or review that historical artifact.
 2. Inspect at approximately `1280 x 800` and `1440 x 900`; also shrink until the first responsive breakpoint to catch overflow.
 3. Check Create, Queue, History, Settings, and every detail page touched by shared selectors.
 4. Use keyboard input in editable controls, scroll long content, open dialogs/context menus, and exercise loading/empty/error states affected by the change.

@@ -2,10 +2,12 @@
 
 > 状态：规划草案  
 > 审阅日期：2026-08-20  
-> 产品：Local Video Studio 0.29.5（Windows Electron）  
+> 产品：Local Video Studio 0.30.0（Windows Electron）
 > 范围：Create、Queue、History、视频/图片详情、Settings、全局壳层与反馈机制
 
 > 渐进实施、agent 文件所有权和逐阶段验收见 `docs/UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md`；Luna 等较弱模型使用 `docs/UX_UI_LUNA_EXECUTION_GUIDE.md` 的原子 package。
+>
+> 历史审美研究文档：2026-08-20 用户明确 prototype 使用旧设计，当前 UX/UI 实现必须以 `src/renderer/`、`src/styles/` 和真实 renderer evidence 为准；本文的 Cinematic Graphite 方案不自动构成当前视觉方向。
 
 ## 1. 结论
 
@@ -20,7 +22,7 @@
 5. 10–11px 辅助文字、重复边框和状态徽章过多，削弱阅读与扫描；
 6. Queue 遥测、详情记录和 Settings 状态形成等权“卡片墙”，主工作区不够安静；
 7. 高亮蓝同时承担品牌、主操作、选中、焦点、信息和装饰，形成通用 AI SaaS 观感；
-8. 原型、当前实现和 UX 契约之间需要建立可持续的同步与验收机制。
+8. 当前 renderer、运行截图、UX 契约和实施状态之间需要建立可持续的同步与验收机制；早期 prototype 不再参与批准。
 
 本项目是 Windows Electron 应用，因此只能称为 **Apple-inspired**，不能称为 HIG-compliant。Apple HIG 用于指导层级、克制、反馈、可恢复性、键盘效率和窗口适应；具体 HTML 语义、Windows 输入习惯及 Electron 行为仍以宿主平台和 Web 可访问性为边界。
 
@@ -31,7 +33,7 @@
 本次采用社区 Codex skill [`design-with-apple-hig`](https://github.com/Sunwood-ai-labs/design-with-apple-hig) 的 evidence-first 方法：
 
 - Apple 官方 HIG 决定 Apple 设计主张；
-- 当前代码、原型和渲染结果只证明可观察事实；
+- 当前 renderer 代码与真实 renderer capture 是当前 UI 的观察证据；早期 prototype 只证明历史设计，不证明当前界面；
 - 社区 skill 和设计经验只作为发现问题的工具；
 - 不把 Apple 移动端尺寸直接当作 Windows/Web 合规阈值；
 - 每项正式结论区分官方指导、观察、静态审计和启发式判断。
@@ -60,10 +62,10 @@
 
 ### 2.3 仓库证据
 
-- 已读取 `docs/AGENT_START_HERE.md`、`docs/UX_CONTRACT.md` 和 `prototypes/README.md`；
-- 已审阅 `src/renderer/`、`src/styles/`、`prototypes/` 及相关测试；
-- 已将 standalone prototypes 直接渲染为 1280×800、1440×900，并在 Create、History、Settings 上补充 800×800 检查；本轮排版复核又逐页检查 Create、Queue、History、视频详情、图片详情和 Settings 的 900×800 构图；
-- 已静态核对真实 renderer 的 DOM 顺序、grid/min-width、sticky offset、responsive breakpoint 和运行时 inline layout；prototype 截图只证明原型构图，不代替真实 renderer 验收；
+- 已读取 `docs/AGENT_START_HERE.md`、`docs/UX_CONTRACT.md`、`docs/UX_UI_RENDERER_BASELINE.md` 和当前实施计划；
+- 已审阅 `src/renderer/`、`src/styles/` 及相关测试，并静态核对 DOM 顺序、grid/min-width、sticky offset、responsive breakpoint 和运行时 inline layout；
+- 当前可复现视觉基线是 `docs/UX_UI_RENDERER_BASELINE.md` 记录的136张真实 Vite renderer capture，覆盖标准视口与断点；合成 fixture 不冒充 live running 证据；
+- 早期 standalone prototype 截图仅保留为历史研究材料，本文件中由它产生的旧观察必须由当前 renderer evidence 复核后才可进入实施；
 - Settings 与运行时相关文件当前存在其他未提交改动，本计划以 2026-08-20 当前磁盘快照为准，不把尚未完成的代码当作已验收行为；
 - 本轮没有完成真实 Electron 的屏幕阅读器、Windows 高对比度、200% 缩放或完整键盘走查，因此这些均保留为后续验收项。
 
@@ -274,12 +276,14 @@
 
 ## 6. Frontend Design 排版专项审查
 
-### 6.1 固定视口构图结论
+### 6.1 当前 renderer 固定视口构图结论
+
+以下结论以 `docs/UX_UI_RENDERER_BASELINE.md` 的 current renderer capture 和当前源码为准；旧 prototype 对照已从批准证据中移除。Queue live running 等基线未真实运行的状态继续标为待 runtime smoke。
 
 | 页面 | 1280×800 | 900×800 | 排版判断 |
 | --- | --- | --- | --- |
 | Create | 双列关系清楚，但来源提示、Slots、Prompt、输出摘要和底栏形成多层边界 | 素材列表占满首屏，Prompt 不可见，sticky 提交条覆盖底部内容 | `Major`：窄窗阅读顺序与主任务相反，见 5.1 |
-| Queue | 当前任务展开结构本身清楚 | prototype 首屏被 preview、进度和六项遥测占满；真实 renderer 又先渲染四张全局遥测卡，再渲染任务 | `Major`：运行任务与系统遥测形成两个视觉中心 |
+| Queue | 当前任务展开结构本身清楚；baseline 的 waiting + failed 是合成 fixture | 当前源码先渲染四张全局遥测卡，再渲染任务；live running 尚待独立 runtime smoke | `Major`：运行任务与系统遥测形成两个视觉中心 |
 | History | 媒体封面占主导，方向正确；顶部工具偏密 | 结果数、类型、筛选和布局切换碎成两行，第一排作品被工具区下推 | `Moderate`：工具带需按任务关系重组，见 5.12 |
 | 视频详情 | 大 viewer + inspector 方向正确，但 inspector 内事实和动作同权 | viewer 独占首屏，标题、主动作和恢复动作落到折叠线后 | `Moderate`：保留媒体主导，同时常驻一个下一步动作 |
 | 图片详情 | viewer 与版本轨形成一个统一查看对象，值得保留 | 垂直版本轨继续占用横向空间，操作 inspector 落到首屏之外 | `Moderate`：中窄窗需在版本可辨识度与动作可达性间重新分配 |
@@ -294,7 +298,7 @@
 
 ### 6.3 Major — Queue 把系统遥测放在当前任务之前
 
-- **证据**：`OBSERVATION`。真实 renderer 在 `src/renderer/pages/queue/page.ts` 先输出 `.queue-performance-grid` 四张 CPU/RAM/GPU/VRAM 卡，再输出 active task；approved prototype 则把 preview 和 metrics 放进 running task。两者已经分叉。
+- **证据**：`OBSERVATION`。当前 renderer 在 `src/renderer/pages/queue/page.ts` 先输出 `.queue-performance-grid` 四张 CPU/RAM/GPU/VRAM 卡，再输出 active task；这与“当前任务优先”的 UX 目标冲突。旧 prototype 的不同顺序不再作为实现依据。
 - **影响**：Header 之后的第一主体变成设备仪表盘，而不是当前阶段、总体进度、预览和恢复控制；用户需跨越第二个视觉中心才能找到任务。
 - **修复**：把运行期遥测折回 active task 的 expanded region；默认只常驻影响判断的 GPU/VRAM、阶段和 ETA，其余通过展开查看。无任务时使用紧凑环境状态，不保留四卡矩阵。
 - **验证**：有任务时 header 后第一个主体永远是 active task；空队列首先显示 empty/recovery；遥测更新不改变任务卡尺寸或抢焦点。
@@ -322,7 +326,7 @@
 
 ### 6.7 Moderate — Detail inspector 与下方记录形成第二个“卡片页面”
 
-- **证据**：`OBSERVATION + HEURISTIC`。视频详情把摘要、六个 facts 和最多六个 quick actions 放进与播放器同高且可内部滚动的 sidebar；视频/图片 viewer 下方又用二列等权 panel 展示参数、输出、LoRA、输入、性能和文件。900×800 prototype 中，viewer 占满首屏，动作完全落在其后。
+- **证据**：`OBSERVATION + HEURISTIC`。当前视频详情把摘要、六个 facts 和最多六个 quick actions 放进与播放器同高且可内部滚动的 sidebar；视频/图片 viewer 下方又用二列等权 panel 展示参数、输出、LoRA、输入、性能和文件。900×800 current renderer capture 用于判断 viewer 与动作可达性。
 - **影响**：媒体查看是清楚的，但下一步动作在短窗口不可达；离开 viewer 后页面从“媒体工作台”切换为无主次的记录卡片墙，并出现页面滚动 + inspector 内滚动双层结构。
 - **修复**：inspector 常驻一个 dominant action 和 2–3 个高频动作，其余进入 More 或下方；下方合并为单一“生成记录”section，内部使用 description list、divider 和 disclosure，只有真实文件对象保留卡片。
 - **验证**：1280×800 不滚 inspector 即可触达主操作；900×800 有紧凑动作入口；键盘不会陷入双层滚动，长记录仍可复制和定位。
@@ -334,20 +338,20 @@
 - **修复**：按 tokens → base → shared components → page composition → colocated responsive overrides 收敛；先做无视觉变化的所有权重构，再调整设计。Spacing 统一到 4/8/12/16/24/32，几何例外需注释。
 - **验证**：共享组件只有一个 canonical geometry block；不再用新尾部文件修补；固定视口 screenshot diff 在重构阶段保持稳定。
 
-### 6.9 Moderate — Prototype 已不能可靠代表真实排版
+### 6.9 Major — 早期 Prototype 不是当前实现目标
 
-- **证据**：`OBSERVATION`。Create prototype 仍是两张同权大 panel，renderer 已把 media column 去卡片化；Queue prototype 把遥测放在 running card，renderer 将其放在任务列表之前；Image detail 的版本轨、stage 高度和 inspector 比例也分别使用不同尺寸体系；Settings prototype 只有8个分类，renderer 有9个。
-- **影响**：依据 prototype 批准的排版不一定进入应用，依据 prototype 截图提出的问题也可能误判真实 renderer；当前无法形成可信视觉回归基线。
-- **修复**：每个实施切片先明确选择 renderer 或 approved prototype 作为目标 thesis，再同步另一侧；preview 必须 rebuild。给 prototype 页面标记 implemented/prototype-only/planned 状态。
-- **验证**：同一固定数据在 1280×800、1440×900 的主网格、顺序、sticky、动作层级和关键尺寸一致；差异必须有明确状态标签。
+- **证据**：`OBSERVATION + USER DIRECTION`。Create、Queue、Image detail 和 Settings 的旧 prototype 与当前 renderer 的结构、分类和能力已经明显不同；用户已明确 prototype 是早期临时材料。
+- **影响**：若继续要求先改 prototype 或用 prototype screenshot 批准，会把已经工作的当前能力向旧设计回退，并给较弱执行模型制造错误 source of truth。
+- **修复**：当前 `src/renderer/`、`src/styles/`、真实 renderer fixture/capture 和已接受行为是唯一当前 UI 基线。Prototype 默认归档为 historical；只有用户单独要求维护时才更新，且不进入 production gate。
+- **验证**：所有 proposal、Luna package 和 reviewer gate 都引用 current renderer baseline/selector/fixture；计划中不存在“同步 prototype 后再实现”的必需步骤。
 
-## 7. 视觉艺术方向：Cinematic Graphite
+## 7. 历史视觉研究候选：Cinematic Graphite（需 current renderer 重审）
 
 ### 7.1 当前配色为什么显得普通
 
 问题不只是“蓝色太亮”，而是 **色彩角色没有边界**：
 
-- `src/styles/01-foundation.css` 的 `--primary` 从 `#7cb8ff` 开始，随后在 `02-visual-refresh.css` 改为更亮的 `#8ab4ff`；prototype 又使用 `#87b7ff / #4c8ff7`，没有单一视觉基线；
+- `src/styles/01-foundation.css` 的 `--primary` 从 `#7cb8ff` 开始，随后在 `02-visual-refresh.css` 改为更亮的 `#8ab4ff`；current renderer 内部已经存在多层 token 覆盖，没有单一视觉来源；旧 prototype 色值不再纳入当前基线；
 - 蓝色同时用于品牌图标、主按钮、导航 active、badge、focus ring、拖放、信息提示、代码、缩略图、scrollbar 和背景光晕；用户无法从颜色判断它是在表达“可操作”“当前”“信息”还是纯装饰；
 - 当前 `src/styles/` 至少有301个不同的 hex literal；`--primary` 系列直接引用75次，并参与26次与 primary 有关的 `color-mix`。颜色系统实际由大量局部修补组成；
 - 高亮蓝、紫色环境光、青绿环境光和暖橙状态同时出现，色温没有明确主轴；在暗背景上亮蓝面积较大，容易产生廉价的发光感；
@@ -355,9 +359,9 @@
 
 Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致语义，并用背景、前景、separator 等角色表达层级。Frontend Design 方法同样要求只在一个地方花费视觉大胆度。本产品应该让用户的图片和视频成为页面中最丰富的颜色，UI 本身退到安静、精密的工作台角色。
 
-### 7.2 建议方向：暖石墨 + 香槟石色
+### 7.2 历史候选方向：暖石墨 + 香槟石色
 
-推荐采用 **Cinematic Graphite / 暖石墨电影工作台**：近中性的深色 canvas 带极轻微暖度，文字是柔和骨白，唯一品牌/行动强调色是低饱和香槟石色。它不是“黑金奢华风”，也不使用金属渐变；高级感来自低饱和、少角色、大面积安静中性色和精准明度差。
+历史研究曾提出 **Cinematic Graphite / 暖石墨电影工作台**：近中性的深色 canvas 带极轻微暖度，文字是柔和骨白，品牌/行动强调色采用低饱和香槟石色。该方向只作为研究假设；不能脱离当前 renderer 直接采用，必须在 current-renderer canary 上与现有蓝色体系逐项比较后重新批准。
 
 这一方向适合本产品的原因：
 
@@ -369,7 +373,7 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 
 ### 7.3 建议色板与语义角色
 
-以下是用于 prototype 的起始值，不是未经视觉验证即可直接全局替换的最终值：
+以下是历史研究阶段提出的候选值，不得直接全局替换；它们只有在当前 renderer canary 上重新提案、对照和批准后才可能进入 P03：
 
 | 角色 | 建议值 | 用途 |
 | --- | --- | --- |
@@ -449,29 +453,30 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 
 ### 7.8 视觉方向验收方法
 
-1. 先建立 token-only 的 Cinematic Graphite prototype，不同时重写页面结构；
-2. 在 Create、Queue running、History gallery、Image detail、Settings 各选一个代表状态；
-3. 对比 current / new 的原尺寸截图、灰度截图和轻度模糊截图：灰度下仍必须看出主任务，模糊后 accent 只能形成一个主要视觉热点；
+1. 从当前 renderer baseline 创建隔离的 token-only 候选分支，不同时重写页面结构；
+2. 在当前 Create、Queue running、History gallery、Image detail、Settings renderer fixture 中各选一个代表状态；
+3. 使用真实 renderer capture 对比 current / candidate 的原尺寸、灰度和轻度模糊截图：灰度下仍必须看出主任务，模糊后 accent 只能形成一个主要视觉热点；
 4. 换入高饱和、低调、近白三类真实媒体，确认 UI 不向媒体投射蓝色或暖色偏差；
 5. 检查 normal、hover、focus、pressed、selected、disabled、busy 和四种 semantic status；
 6. 做 sRGB 对比度静态检查，再在 Windows 100%/125%/150%、高对比度和不同亮度显示器上实看；
-7. prototype 批准后才迁移 renderer tokens；先移除旧硬编码颜色，再允许页面级例外，避免新旧主题叠加。
+7. current-renderer visual gate 批准后才迁移 production tokens；先移除旧硬编码颜色，再允许页面级例外，避免新旧主题叠加。旧 prototype 不参与 gate。
 
 ## 8. 分阶段实施计划
 
+> 本节是早期研究层的高阶分组，不可直接派发给 agent，也不表示当前执行状态。实际 Phase、current renderer evidence、已完成步骤和 Luna package 仅以 `docs/UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md` 与 `docs/UX_UI_LUNA_EXECUTION_GUIDE.md` 为准。
+
 ### Phase 0 — 建立可重复的 UX 基线
 
-目标：先让“当前界面是什么”可稳定复现，避免原型、代码和计划继续分叉。
+目标：先让“当前界面是什么”可稳定复现，避免 current renderer、代码和计划继续分叉。
 
-- 为 standalone prototypes 增加固定数据状态：default、empty、loading、error、offline；
-- 增加 1440×900、1280×800、900×800、最小宽度及关键断点两侧截图脚本；
+- 为 current renderer capture 增加固定数据状态：default、empty、loading、error、offline；
+- 增加 1440×900、1280×800、900×800、最小宽度及关键断点两侧 renderer 截图脚本；
 - 记录页面截图清单与焦点/键盘清单；
-- 明确 phase 2A prototype-only 功能哪些已进入 renderer；
-- 为 Queue、Create、Image detail、Settings 记录 prototype 与 renderer 的构图差异，先选定目标再实施；
-- 制作 current / Cinematic Graphite token-only 对照，不同时改变结构，以便单独判断配色、字体和材质；
+- 记录 Queue、Create、Image detail、Settings 当前 renderer 的真实 DOM、能力、状态和构图；
+- 基于 current renderer 制作 current / candidate token-only 对照，不同时改变结构，以便单独判断配色、字体和材质；
 - 将本计划中当前快照发现转成可追踪 issue 或 checklist。
 
-验收：`npm.cmd run prototype:build` 后页面可重现；截图不依赖人工拖窗；原型 README 明确每项是 implemented、prototype-only 还是 planned；视觉方向在代表性五页完成原尺寸、灰度和媒体换图对照。
+验收：`docs/UX_UI_RENDERER_BASELINE.md` 的 capture matrix 可重现；截图不依赖人工拖窗；manifest 明确 implemented、fixture-only、runtime-unverified；视觉方向在代表性五页完成原尺寸、灰度和媒体换图对照。
 
 ### Phase 1 — P0/P1 任务流与恢复性
 
@@ -485,7 +490,7 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 - Settings 窄窗口分类与保存区重构；
 - 移除 renderer 中硬编码本地化文本；
 - 补齐图片历史 loading、missing、error、retry 状态；
-- 同步更新受影响原型，再进入 renderer。
+- 每项直接以 current renderer evidence、修改后的 source 和运行 gate闭环；不要求同步旧 prototype。
 
 验收：Create、Settings 在 800/900 宽首屏满足任务目标；图片媒体损坏不再显示无解释空白；所有模拟错误都有恢复出口；三语言无混文；不改变已排队任务快照和 Settings 离线扫描语义。
 
@@ -509,7 +514,7 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 目标：在不削弱专家信息的前提下减少视觉噪声。
 
 - 合并散落字号为类型令牌；
-- 将 canvas/surface/text/accent/semantic/elevation 建为角色令牌，prototype 批准后再迁移 renderer；
+- 将 canvas/surface/text/accent/semantic/elevation 建为角色令牌，current-renderer visual gate 批准后再迁移 production renderer；
 - 用暖石墨与香槟石色替换通用 primary blue；信息蓝、成功绿、警告橙和危险红不得承担品牌或选中语义；
 - 移除品牌蓝色 gradient/glow、页面蓝紫环境光和非语义蓝边，普通 surface 回归哑光中性色；
 - 收敛为 Page/Section/Object/Body/Label/Meta/Technical 七种排版角色，不继续新增裸字号和全局字距；
@@ -538,11 +543,13 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 
 ## 9. 文件与所有权建议
 
+> 下表只描述风险区域；实际可写文件以主实施计划和单个 `Lxx` package 为准。
+
 避免多人同时编辑热点文件。建议按以下顺序串行集成：
 
 | 工作包 | 主要文件 | 邻接检查 |
 | --- | --- | --- |
-| UX 基线与原型 | `prototypes/*`, `scripts/build-prototypes.mjs` | preview rebuild、固定视口截图 |
+| Current renderer 基线 | `docs/UX_UI_RENDERER_BASELINE.md`, renderer capture harness/manifest | 固定视口、fixture边界、真实运行状态声明 |
 | 通知模型 | `src/renderer/notifications.ts`, `src/main.ts`, `src/renderer/shell/page.ts` | 并发通知、错误恢复、ARIA live |
 | Create 重排 | `src/renderer/pages/create/*`, `src/styles/07-create-composer.css`, responsive styles | typing、undo/redo、mode switch、queue submit |
 | Queue 主体层级 | `src/renderer/pages/queue/page.ts`, Queue component/styles | active task、preview、progress、telemetry、empty state |
@@ -557,7 +564,6 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 
 ### 10.1 自动化
 
-- `npm.cmd run prototype:build`；
 - 受影响的 Vitest controller/state tests；
 - `npm.cmd run typecheck`；
 - 共享状态、renderer 或 IPC 变化完成后运行 `npm.cmd run verify`；
@@ -582,7 +588,7 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 
 一个阶段只有在以下条件同时满足时才完成：
 
-1. 原型与 renderer 行为一致；
+1. current renderer source、fixture/capture 和已接受行为一致；
 2. 原始问题和邻接回归均验证；
 3. 自动检查通过；
 4. 代表性视口和状态有渲染证据；
@@ -599,16 +605,16 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 - 不在没有运行证据时宣称 HIG 合规、可访问性通过或体验已经完成；
 - 不让新 UX 工作覆盖当前 Settings、ComfyUI 安装和运行时策略的未提交改动。
 
-## 12. 建议的首个实施切片
+## 12. 历史首切片建议（已被主实施计划取代）
 
-先做一个 **prototype-only 视觉定向切片**，批准视觉语言后再开始 renderer 结构改造：
+先做一个 **current-renderer evidence 视觉定向切片**，批准视觉语言后再开始 production renderer 结构改造：
 
-1. 把 Cinematic Graphite 建为独立 prototype token layer，不覆盖当前 token；
-2. 为 Create、Queue running、History gallery、Image detail、Settings environment 各准备一个固定状态；
-3. 同时输出 current / new、原色 / 灰度、1280×800 / 900×800 对照；
+1. 以当前 renderer token、DOM 和136张 baseline capture为起点，冻结 preserve/change 清单；
+2. 为当前 Create、Queue running、History gallery、Image detail、Settings environment fixture 各准备一个固定状态；
+3. 在隔离候选分支输出 current / candidate、原色 / 灰度、1280×800 / 900×800 renderer 对照；
 4. 检查主热点、媒体色彩中立性、文字层级、border 密度、primary 唯一性和所有交互状态；
 5. 记录需要保留或调整的具体 token，不以“更高级”作为唯一验收意见；
-6. 视觉方向批准后，将 Create Prompt 优先、Image Edit 溢出、sticky offset 和持久 error 作为第一个 renderer 垂直切片；
+6. current-renderer visual gate 批准后，将 Create Prompt 优先、Image Edit 溢出、sticky offset 和持久 error 作为第一个 renderer 垂直切片；
 7. 完成 Create typing/focus/undo/queue tests、notification tests 和关键断点截图，再进入 Queue/Settings 重构。
 
 这种顺序可以把“颜色不对”和“结构不对”分开评审，避免在页面重排期间反复推翻配色，也避免一次性给当前脏工作树增加大范围 CSS 风险。
