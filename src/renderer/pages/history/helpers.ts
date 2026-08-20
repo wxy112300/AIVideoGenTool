@@ -224,7 +224,14 @@ export function historyAlbumColumnCount(width: number, gap = 8): number {
   if (!Number.isFinite(width) || width <= 0) return 0;
   const safeGap = Number.isFinite(gap) ? Math.max(0, gap) : 8;
   const minimumCardWidth = 180;
-  return Math.max(1, Math.floor((width + safeGap) / (minimumCardWidth + safeGap)));
+  const maximumCardWidth = 300;
+  let columns = Math.max(1, Math.floor((width + safeGap) / (maximumCardWidth + safeGap)));
+  const cardWidth = (columnCount: number) =>
+    (width - safeGap * (columnCount - 1)) / columnCount;
+
+  while (cardWidth(columns) > maximumCardWidth) columns += 1;
+  while (columns > 1 && cardWidth(columns) < minimumCardWidth) columns -= 1;
+  return columns;
 }
 
 function historyStateChangedInternal(

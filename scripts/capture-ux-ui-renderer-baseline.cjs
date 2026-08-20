@@ -30,7 +30,7 @@ Options:
   --zoom       Capture at page zoom 1, 1.25, or 1.5 (default: 1).
   --diagnose    Print document overflow and the widest renderer elements.
   --smoke       Run the isolated Create, Queue, or History interaction smoke check.
-  --history-count Capture History fixtures with 1 or 8 records (default: 1).
+  --history-count Capture History fixtures with 1 or 8 mixed-ratio records (default: 1).
   --queue-state Override a queue-state fixture: mixed, running, paused, failed, recoverable, empty, or multiple-pending.
 `);
 }
@@ -295,26 +295,42 @@ async function prepareSyntheticState(locale = "zh-CN", historyCount = 1) {
   }];
   if (historyCount > 1) {
     const cloneFixture = (value) => JSON.parse(JSON.stringify(value));
+    const fixtureRatios = [
+      { width: 848, height: 480 },
+      { width: 480, height: 848 },
+      { width: 1024, height: 576 },
+      { width: 640, height: 640 },
+      { width: 1280, height: 720 },
+      { width: 720, height: 1280 },
+      { width: 1024, height: 768 },
+      { width: 768, height: 1024 }
+    ];
     const videoSeed = state.history[0];
     state.history = Array.from({ length: historyCount }, (_, index) => {
       const suffix = index + 1;
+      const ratio = fixtureRatios[index % fixtureRatios.length];
       const asset = cloneFixture(videoSeed);
       asset.id = `${videoSeed.id}-${suffix}`;
       asset.taskId = `${videoSeed.taskId}-${suffix}`;
       asset.title = `${videoSeed.title} ${suffix}`;
       asset.comfyPromptId = `${videoSeed.comfyPromptId}-${suffix}`;
       asset.defaultVersionId = `${videoSeed.defaultVersionId}-${suffix}`;
+      asset.sourceWidth = ratio.width;
+      asset.sourceHeight = ratio.height;
       asset.versions = asset.versions.map((version) => ({
         ...version,
         id: `${version.id}-${suffix}`,
         taskId: `${version.taskId}-${suffix}`,
-        comfyPromptId: `${version.comfyPromptId}-${suffix}`
+        comfyPromptId: `${version.comfyPromptId}-${suffix}`,
+        width: ratio.width,
+        height: ratio.height
       }));
       return asset;
     });
     const imageSeed = state.imageHistory[0];
     state.imageHistory = Array.from({ length: historyCount }, (_, index) => {
       const suffix = index + 1;
+      const ratio = fixtureRatios[index % fixtureRatios.length];
       const project = cloneFixture(imageSeed);
       const versionIds = new Map(imageSeed.versions.map((version) => [version.id, `${version.id}-${suffix}`]));
       project.id = `${imageSeed.id}-${suffix}`;
@@ -325,7 +341,14 @@ async function prepareSyntheticState(locale = "zh-CN", historyCount = 1) {
         parentVersionId: version.parentVersionId ? versionIds.get(version.parentVersionId) : undefined,
         taskId: version.taskId ? `${version.taskId}-${suffix}` : version.taskId,
         runId: version.runId ? `${version.runId}-${suffix}` : version.runId,
-        comfyPromptId: version.comfyPromptId ? `${version.comfyPromptId}-${suffix}` : version.comfyPromptId
+        comfyPromptId: version.comfyPromptId ? `${version.comfyPromptId}-${suffix}` : version.comfyPromptId,
+        width: ratio.width,
+        height: ratio.height,
+        references: version.references?.map((reference) => ({
+          ...reference,
+          width: ratio.width,
+          height: ratio.height
+        }))
       }));
       return project;
     });

@@ -9,10 +9,23 @@ describe("history gallery layout calculations", () => {
     const wide = historyAlbumColumnCount(1200);
     const compact = historyAlbumColumnCount(528);
 
-    expect(wide).toBe(6);
+    expect(wide).toBe(4);
     expect(compact).toBe(2);
+    expect(historyAlbumColumnCount(806)).toBe(3);
     expect(historyAlbumColumnCount(1200, 8)).toBe(wide);
-    expect(historyAlbumColumnCount(1200, 32)).toBe(5);
+    expect(historyAlbumColumnCount(1200, 32)).toBe(4);
+  });
+
+  it("keeps album cards inside the adaptive width range", () => {
+    const width = 1200;
+    const gap = 8;
+    const columns = historyAlbumColumnCount(width, gap);
+    const cardWidth = (width - gap * (columns - 1)) / columns;
+
+    expect(cardWidth).toBeGreaterThanOrEqual(180);
+    expect(cardWidth).toBeLessThanOrEqual(300);
+    expect((width - gap * 2) / 3).toBeGreaterThan(300);
+    expect(historyAlbumColumnCount(360)).toBe(1);
   });
 
   it("keeps the narrow album fallback readable", () => {
