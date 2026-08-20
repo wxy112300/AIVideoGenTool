@@ -1,6 +1,6 @@
 # P07 当前 renderer 的 Create 窄窗口构图提案
 
-状态：`proposed`，等待 G08 人工/强模型批准。本文只基于当前 `src/renderer/`、`src/styles/` 和真实 renderer fixture；不使用 `prototypes/` 的旧设计，也不在本 package 修改生产 renderer。
+状态：`approved`（G08，2026-08-20）。本文只基于当前 `src/renderer/`、`src/styles/` 和真实 renderer fixture；不使用 `prototypes/` 的旧设计，也不在本 package 修改生产 renderer。
 
 更新日期：2026-08-20；当前 package version：`0.31.5`。
 
@@ -31,7 +31,7 @@
 | 视频续写 | 输入视频与续写 Prompt 双主区 | 输入视频预览/空态先占据主体，续写 Prompt 和错误反馈靠后 | 与图生视频使用同一窄窗构图规则，保留“输入视频摘要 → 续写 Prompt”语义 |
 | 图片处理 | 参考图片与 Image Edit Prompt 双主区 | 当前 `10-final-refinements.css` 已让 `.image-edit-workspace` 在 max-1120 维持 `minmax(250px, .72fr) minmax(0, 1.28fr)`，900px 仍能同时看到参考图和 Prompt | 作为当前 renderer 的可行 canary；只把已验证的紧凑列宽和 safe-area 规则扩展到其他 Create 模式 |
 
-证据说明：标准 capture harness 在本轮尝试中仍会遇到 `loadURL` 后单次 `executeJavaScript` DOM wait 超时；这与之前记录的 route-after-click wait race 一致，不能当作产品失败。G08 前仍必须用同一 Vite renderer 和隔离 preload 重新跑三 fixture 的真实截图/DOM diagnose，不能只凭旧截图或静态 CSS 通过。
+证据说明：capture harness 已将隐藏 BrowserWindow 的 settle 改为有界定时等待，并移除依赖窗口可见性的截图调用；同一 Vite renderer 与隔离 preload 已重新跑完三 fixture × 8 视口截图。900×800 与 760×800 的三模式 diagnose 均确认文档 `scrollWidth` 等于 `clientWidth`，900×800 interaction smoke 通过；截图仍只证明 current renderer 结构与交互，不等价于真实 ComfyUI 生成成功。
 
 ## 3. Proposed composition decision
 
@@ -72,14 +72,14 @@ P07 选择“紧凑双列”方案，而不是在窄窗把 Prompt 视觉顺序�
 
 ## 5. G08 approval checklist
 
-G08 只有在以下证据齐全后才可标记 `approved`：
+G08 已依据以下证据标记 `approved`：
 
 1. 三种 fixture 在 1440×900、1280×800、1121×800、1120×800、901×800、900×800、761×800、760×800 均有当前 renderer 截图；
 2. 900×800 首屏同时可见当前素材状态、Prompt 起始区和提交上下文；
 3. sticky submit 不覆盖 Prompt textarea、`[data-enqueue-feedback]`、disabled reason 或最后一个可见表单控件；
 4. `document.documentElement.scrollWidth === document.documentElement.clientWidth`，并记录最宽 DOM 元素；
 5. 三模式的 Tab 顺序与视觉顺序一致，mode switch、输入、清空、drag/drop、submit 和 double-click guard smoke 通过；
-6. focused Create tests、`npm.cmd run verify` 通过，且明确哪些结论是静态/fixture smoke，哪些尚未由真实 ComfyUI 生成证明。
+6. focused Create tests、`npm.cmd run verify` 通过，且明确哪些结论是静态/fixture smoke，哪些尚未由真实 ComfyUI 生成证明；P08 的 runtime smoke 另外覆盖清空恢复、三种快捷键、素材 click/drop、模式切换和三个提交入口的双击防重。
 
 ## 6. Non-goals for P07
 

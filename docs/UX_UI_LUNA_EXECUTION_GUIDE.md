@@ -36,11 +36,11 @@ P00–P20 的依赖、preserve list 和集成 gate 已经清楚，但部分 Phas
 - P04/L16–L21 已完成：L16 声明 Page/Section/Object/Body/Label/Meta/Technical 七级 type roles；L17 按当前 renderer 最终 cascade 校正 page 基线并迁移共享 `h1/h2/h3` 与 History gallery object heading；L18 迁移根 body、form label、shared meta copy 与 global code technical selectors，并为 current-renderer capture harness 增加 100%/125%/150% page zoom 证据；L19 为 Queue/History/运行态的 progress/time/metric/count/position 动态数值补齐 `font-variant-numeric: tabular-nums`；L20 将当前 renderer 的 control/object/panel/modal 圆角值接入 `--ux-radius-*` roles，面板保留有效的 13px；L21 将 performance-grid 的 12px gap 与 16px bottom spacing 接入 `--ux-space-3/4`，保持 DOM、布局与 responsive 规则不变；保留详情/弹窗/任务卡/log/badge/album 紧凑特例。focused token tests `13/13`、`npm.cmd run verify`（80 files / 615 tests、production build、20 组对比度检查）通过；现有 Queue/History/Settings current-renderer canary 作为等值迁移的视觉基线，L20/L21 阶段版本仍为 `0.30.2`；随后 P05/L22–L24 形成可见的 sticky 几何差异，当前版本升为 `0.31.0`，下一集成为 G05；
 - P05/L22–L24 与 G05 已完成：L22 将 72px topbar 接入 `--ux-topbar-height`，将 page sticky offset 对齐为 72px，并在 760px 以下 topbar normal-flow 断点将 offset 归零；L23 将 Create/Queue heading 接入共享 sticky offset，Create 的层级降到 topbar 之下，Queue 在窄屏显式归零；L24 将 History heading、History detail 返回条和 Settings heading 接入同一 token，并保留窄屏 top:0 规则。P05 相关 focused token tests `16/16`、`npm.cmd run verify`（80 files / 618 tests、production build、20 组对比度检查）通过；同一 Vite renderer 与隔离 preload 的 runtime probe 已覆盖 1440×900、900×800、760×800、761×800 的主页面/Details sticky 几何、无横溢出和 History detail close-dialog；标准 capture harness 的 route 后单次 `executeJavaScript` DOM wait 竞态单独记录，不作为产品失败。P05/G05 标为 `verified/integrated`，下一 Phase 为 P06；
 - P06/L26–L29 与 G07 已完成：error 持久、消息可关闭、同源去重、error 优先级保护和瞬时 action callback，Prompt 优化失败已接入“打开设置”，Settings 的下载/目录/日志打开失败已路由为 error；L29 controller focused tests `2/2`、通知聚焦 suite `11/11`、`npm.cmd run verify`（81 files / 624 tests）通过，隔离 Electron + 当前 Vite renderer runtime smoke 已验证并发完成/失败、dismiss 和 Settings recovery。P06 现为 `verified/integrated`，同时已开始 P07 当前 renderer proposal；
-- P07 proposal 已写入 `docs/UX_UI_P07_RENDERER_PROPOSAL.md`：基于当前三种 Create fixture 选择 901–1120/900 紧凑双列、1280+ 保留双主区、760 以下单列 fallback 与 submit safe-area 检查；G08 仍待人工/强模型批准，P08 不得越过该 gate 直接修改生产 renderer；
+- P07 proposal 已写入 `docs/UX_UI_P07_RENDERER_PROPOSAL.md`：基于当前三种 Create fixture 选择 901–1120/900 紧凑双列、1280+ 保留双主区、760 以下单列 fallback 与 submit safe-area 检查；G08 已依据当前 renderer 三模式 × 8 视口截图、diagnose 和隔离交互 smoke 批准；
 - P09 proposal 已写入 `docs/UX_UI_P09_RENDERER_PROPOSAL.md`：基于当前 Queue fixture 和 1440/900 renderer evidence 选择 active task 优先、telemetry 紧凑披露、900px 操作可达、760px 单列；G10 仍待 running/empty/failed 六状态批准，P10 不得越过该 gate 直接修改 Queue renderer；
 - P11 proposal 已写入 `docs/UX_UI_P11_RENDERER_PROPOSAL.md`：基于当前 History 视频/图片 masonry/album fixture 选择 toolbar 分组、解除 900px 固定高度和 container-width 列轨；L38/L39 仍待复核，P12–P15 不得被 proposal 越权实现；
 - P05 的 top-level nav `aria-current` 已实现，不能重复执行相同修改；
-- P08 的 Image Edit 首个 overflow 修复、素材区窄屏文字边界加固及 sticky submit safe-area 已实现，不能直接重跑 L30；其余 Create gate仍待完成；
+- P08 已 `verified/integrated`：Image Edit overflow、素材区窄窗文字边界和 sticky submit safe-area 已落地，current renderer 三模式 × 8 视口截图与 900×800 交互 smoke 已通过；后续只进入 P09/P10 Queue gate，不重复派发 L30–L33；
 - Settings/runtime 工作仍在变化，G14 未满足前不得派发 L50–L60。
 
 本指南是任务目录，不是“全部尚未执行”的 todo list。任何已实现 package 的后续工作必须使用新的 base和明确的 delta task。
@@ -177,12 +177,12 @@ Expected handoff format:
 
 | ID | Parent | Luna 的唯一输出 | 写入范围 | 验证 | Review |
 | --- | --- | --- | --- | --- | --- |
-| G08 | P07 | 基于当前 Create renderer 批准三模式 900px 构图与 DOM 顺序 | 人工/强模型 | current renderer fixture/capture | **不可交 Luna** |
-| L30 | P08 | 只修 Image Edit 761–约926px overflow | `10-final-refinements.css` 中批准 selector或迁移后的 Create owner | 760/761/800/900/926/960截图 | 普通复核 |
-| L31 | P08 | 只实现普通 Create 的批准 breakpoint/grid | Create page-owned CSS | 三模式截图 | 强复核 |
-| L32 | P08 | 按批准 markup 增加素材摘要，不改变 payload | 指定 Create fragment/controller | focused controller test | 强复核 |
-| L33 | P08 | 只修 sticky submit safe area/遮挡 | submit row selectors | error/disabled/long content截图 | 普通复核 |
-| G09 | P08 | Create 输入、撤销、切换和提交批准 | 集成 agent | full verify + runtime smoke | **不可交 Luna** |
+| G08 | P07 | 基于当前 Create renderer 批准三模式 900px 构图与 DOM 顺序（已批准） | 人工/强模型 | current renderer fixture/capture | **不可交 Luna** |
+| L30 | P08 | 只修 Image Edit 761–约926px overflow（已完成） | `10-final-refinements.css` 中批准 selector或迁移后的 Create owner | 760/761/800/900/926/960截图 | 普通复核 |
+| L31 | P08 | 只实现普通 Create 的批准 breakpoint/grid（已完成） | Create page-owned CSS | 三模式截图 | 强复核 |
+| L32 | P08 | 按批准 markup 增加素材摘要，不改变 payload（已完成） | 指定 Create fragment/controller | focused controller test | 强复核 |
+| L33 | P08 | 只修 sticky submit safe area/遮挡（已完成） | submit row selectors | error/disabled/long content截图 | 普通复核 |
+| G09 | P08 | Create 输入、撤销、切换和提交批准（已通过） | 集成 agent | full verify + runtime smoke | **不可交 Luna** |
 
 ### Batch E — Queue
 

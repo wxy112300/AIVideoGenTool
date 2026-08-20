@@ -419,7 +419,6 @@ async function setupFixture(window, fixture) {
     settings: ".settings-layout"
   };
   await waitForDom(window, `Boolean(document.querySelector(${JSON.stringify(selectors[fixture.route])}))`, fixture.id);
-  await executeJavaScript(window, "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   await wait(160);
 }
 
@@ -462,36 +461,146 @@ async function diagnoseLayout(window) {
 
 async function runInteractionSmoke(window, fixture, viewport) {
   if (fixture.id !== "create-image-edit" || viewport.id !== "900x800") return;
-  const marker = " [renderer smoke]";
-  const before = await executeJavaScript(window, `(() => {
+  const settle = async (expression, label) => {
+    await waitForDom(window, expression, label);
+    await wait(180);
+  };
+  const dispatchDrop = (selector, filename, type) => executeJavaScript(window, `(() => {
+    const zone = document.querySelector(${JSON.stringify(selector)});
+    if (!zone) return { found: false, dragOver: false };
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(["fixture"], ${JSON.stringify(filename)}, { type: ${JSON.stringify(type)} }));
+    zone.dispatchEvent(new DragEvent("dragenter", { bubbles: true, cancelable: true, dataTransfer }));
+    const dragOver = zone.classList.contains("drag-over");
+    zone.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+    return { found: true, dragOver };
+  })()`);
+  const submitTwice = (selector) => executeJavaScript(window, `(() => {
+    const button = document.querySelector(${JSON.stringify(selector)});
+    if (!button) return false;
+    button.disabled = false;
+    button.removeAttribute("disabled");
+    const dispatch = () => button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    dispatch();
+    dispatch();
+    return true;
+  })()`);
+  const shortcut = (selector, key, shiftKey = false) => executeJavaScript(window, `(() => {
+    const field = document.querySelector(${JSON.stringify(selector)});
+    if (!field) return false;
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(key)}, ctrlKey: true, shiftKey: ${JSON.stringify(shiftKey)}, bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  const imageEditMarker = " [renderer smoke]";
+  const imageEditBefore = await executeJavaScript(window, `(() => {
     const field = document.querySelector("#image-edit-prompt-input");
     if (!field) return null;
     field.focus();
     field.setSelectionRange(field.value.length, field.value.length);
     const initial = field.value;
-    field.setRangeText(${JSON.stringify(marker)}, field.selectionStart, field.selectionEnd, "end");
-    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: ${JSON.stringify(marker)} }));
-    return { initial, expected: initial + ${JSON.stringify(marker)}, activeElement: document.activeElement?.id ?? "" };
+    field.setRangeText(${JSON.stringify(imageEditMarker)}, field.selectionStart, field.selectionEnd, "end");
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: ${JSON.stringify(imageEditMarker)} }));
+    return { initial, expected: initial + ${JSON.stringify(imageEditMarker)}, activeElement: document.activeElement?.id ?? "" };
   })()`);
-  if (!before) throw new Error("Create Image Edit prompt field was not found during smoke check");
+  if (!imageEditBefore) throw new Error("Create Image Edit prompt field was not found during smoke check");
   await wait(240);
-  const after = await executeJavaScript(window, `(() => {
+  const imageEditAfter = await executeJavaScript(window, `(() => {
     const field = document.querySelector("#image-edit-prompt-input");
     return { value: field?.value ?? "", activeElement: document.activeElement?.id ?? "" };
   })()`);
-  const passed = after.value === before.expected && after.activeElement === "image-edit-prompt-input";
-  console.log(`[renderer-smoke] ${fixture.id} ${viewport.id} ${JSON.stringify({ ...before, ...after, passed })}`);
-  if (!passed) throw new Error(`Create prompt focus/input smoke failed: ${JSON.stringify({ ...before, ...after })}`);
+  const imageEditClear = await executeJavaScript(window, `(() => {
+    const button = document.querySelector("#clear-image-prompt");
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  await settle("document.querySelector('#image-edit-prompt-input')?.value === ''", "image edit clear");
+  const imageEditUndo = await shortcut("#image-edit-prompt-input", "z");
+  await settle(`document.querySelector("#image-edit-prompt-input")?.value === ${JSON.stringify(imageEditBefore.expected)}`, "image edit undo");
+  const imageEditRedo = await shortcut("#image-edit-prompt-input", "y");
+  await settle("document.querySelector('#image-edit-prompt-input')?.value === ''", "image edit redo");
+  const imageEditUndoAgain = await shortcut("#image-edit-prompt-input", "z");
+  await settle(`document.querySelector("#image-edit-prompt-input")?.value === ${JSON.stringify(imageEditBefore.expected)}`, "image edit undo again");
+  const imageEditShiftRedo = await shortcut("#image-edit-prompt-input", "z", true);
+  await settle("document.querySelector('#image-edit-prompt-input')?.value === ''", "image edit shift redo");
+
+  await executeJavaScript(window, "window.studio.setFixturePickerEnabled?.(true); true");
+  await executeJavaScript(window, "document.querySelector('#image-picture-drop-zone')?.click(); true");
+  await settle("Boolean(document.querySelector('[data-image-picture-card].has-picture'))", "image edit click-to-select");
+  const imageEditClickSelect = await executeJavaScript(window, "Boolean(document.querySelector('[data-image-picture-card].has-picture'))");
+  const imageEditDrop = await dispatchDrop("#image-picture-drop-zone", "fixture-image.png", "image/png");
+  await settle("document.querySelectorAll('[data-image-picture-card]').length >= 2", "image edit drag/drop");
+  const imageEditSubmit = await submitTwice("#enqueue-image-edit");
+  await wait(260);
+
+  await clickAndWait(window, '[data-input-mode="image"]', "Boolean(document.querySelector('[data-input-mode=\"image\"][aria-pressed=\"true\"]'))", "renderer smoke image mode");
+  await executeJavaScript(window, "document.querySelector('#pick-start')?.click(); true");
+  await settle("Boolean(document.querySelector('#pick-start.has-image'))", "image click-to-select");
+  const imageClickSelect = await executeJavaScript(window, "Boolean(document.querySelector('#pick-start.has-image'))");
+  const imageDrop = await dispatchDrop("#pick-start", "fixture-image.png", "image/png");
+  await settle("Boolean(document.querySelector('#pick-start.has-image'))", "image drag/drop");
+  const imagePromptMarker = " [image prompt smoke]";
+  const imagePromptBefore = await executeJavaScript(window, `(() => {
+    const field = document.querySelector("#prompt-input");
+    if (!field) return null;
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+    const initial = field.value;
+    field.setRangeText(${JSON.stringify(imagePromptMarker)}, field.selectionStart, field.selectionEnd, "end");
+    field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: ${JSON.stringify(imagePromptMarker)} }));
+    return { expected: initial + ${JSON.stringify(imagePromptMarker)}, activeElement: document.activeElement?.id ?? "" };
+  })()`);
+  await wait(240);
+  const imagePromptAfter = await executeJavaScript(window, "({ value: document.querySelector('#prompt-input')?.value ?? '', activeElement: document.activeElement?.id ?? '' })");
+  const imageSubmit = await submitTwice("#enqueue");
+  await wait(260);
+
+  await clickAndWait(window, '[data-input-mode="video"]', "Boolean(document.querySelector('[data-input-mode=\"video\"][aria-pressed=\"true\"]'))", "renderer smoke video mode");
+  const videoDrop = await dispatchDrop("[data-drop-video]", "fixture-video.mp4", "video/mp4");
+  await settle("Boolean(document.querySelector('#source-video'))", "video drag/drop");
+  const videoSubmit = await submitTwice("#enqueue");
+  await wait(260);
+  await clickAndWait(window, '[data-input-mode="image-edit"]', "Boolean(document.querySelector('[data-input-mode=\"image-edit\"][aria-pressed=\"true\"]'))", "renderer smoke image edit return");
+  const modeReturn = await executeJavaScript(window, "Boolean(document.querySelector('[data-input-mode=\"image-edit\"][aria-pressed=\"true\"]'))");
+  const stats = await executeJavaScript(window, "window.studio.getFixtureStats?.() ?? null");
+  const checks = {
+    imageEditInputFocus: imageEditAfter.value === imageEditBefore.expected && imageEditAfter.activeElement === "image-edit-prompt-input",
+    imageEditClear: imageEditClear === true,
+    imageEditUndo: imageEditUndo === true,
+    imageEditRedo: imageEditRedo === true,
+    imageEditUndoAgain: imageEditUndoAgain === true,
+    imageEditShiftRedo: imageEditShiftRedo === true,
+    imageEditClickSelect,
+    imageEditDragDrop: imageEditDrop.found === true && imageEditDrop.dragOver === true,
+    imageEditSubmitOnce: imageEditSubmit === true && stats?.imageEdit === 1,
+    imageModeInputFocus: imagePromptBefore?.activeElement === "prompt-input" && imagePromptAfter.value === imagePromptBefore.expected && imagePromptAfter.activeElement === "prompt-input",
+    imageClickSelect,
+    imageDragDrop: imageDrop.dragOver === true,
+    imageSubmitOnce: imageSubmit === true && stats?.enqueue === 1,
+    videoDragDrop: videoDrop.found === true && videoDrop.dragOver === true,
+    videoSubmitOnce: videoSubmit === true && stats?.enqueueExtension === 1,
+    modeReturn
+  };
+  const passed = Object.values(checks).every(Boolean);
+  console.log(`[renderer-smoke] ${fixture.id} ${viewport.id} ${JSON.stringify({ checks, stats, passed })}`);
+  if (!passed) throw new Error(`Create interaction smoke failed: ${JSON.stringify({ checks, stats })}`);
 }
 
 async function writeMockPreload(state) {
   const preloadPath = path.join(userDataRoot, "renderer-fixture-preload.cjs");
   const imageDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  const fixtureImagePath = state.imageHistory?.[0]?.versions?.[0]?.file?.absolutePath ?? "";
+  const fixtureVideoPath = state.history?.[0]?.files?.[0]?.absolutePath ?? "";
   const source = `const { contextBridge } = require("electron");
 let currentState = ${JSON.stringify(state)};
 const imageDataUrl = ${JSON.stringify(imageDataUrl)};
+const fixtureImagePath = ${JSON.stringify(fixtureImagePath)};
+const fixtureVideoPath = ${JSON.stringify(fixtureVideoPath)};
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const stateListeners = new Set();
+const fixtureStats = { enqueue: 0, enqueueExtension: 0, imageEdit: 0 };
+let fixturePickerEnabled = false;
+const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const runtimeState = { phase: "stopped", ownership: "none", endpoint: "", message: "ComfyUI 未运行", updatedAt: new Date().toISOString(), operationId: 0 };
 const result = (message = "capture fixture") => ({ ok: true, message });
 const emitState = () => stateListeners.forEach((listener) => listener(clone(currentState)));
@@ -503,10 +612,10 @@ const emptyLibraryScan = { libraryDirectory: "", totalReferences: 0, managedRefe
 const api = {
   getState: async () => clone(currentState), getComfyRuntimeState: async () => clone(runtimeState), getAppVersion: async () => ${JSON.stringify(packageJson.version)}, setSettingsDirty: async () => {}, respondWindowClose: async () => {},
   saveDraft: async (draft) => { currentState.draft = clone(draft); emitState(); return clone(currentState); }, saveImageDraft: async (draft) => { currentState.imageDraft = clone(draft); emitState(); return clone(currentState); }, saveSettings: async (settings) => { currentState.settings = clone(settings); emitState(); return clone(currentState); }, setQueueH3LivePreview: async (enabled) => { currentState.settings.h3LivePreview = enabled; emitState(); return clone(currentState); },
-  pickImage: async () => null, pickVideo: async () => null, getDroppedFilePath: (file) => file?.path ?? "", saveClipboardImage: async () => "", readImageMarkup: async () => null, saveImageMarkup: async () => ({}), saveImageMask: async () => ({}), saveImageCrop: async () => null, pickWorkflow: async () => null, pickPython: async () => null, inspectWorkflow: async () => ({ supportsEndImage: false, supportsVideoExtension: false }), getBundledWorkflow: async () => null,
+  pickImage: async () => fixturePickerEnabled ? fixtureImagePath : null, pickVideo: async () => fixturePickerEnabled ? fixtureVideoPath : null, setFixturePickerEnabled: (enabled) => { fixturePickerEnabled = Boolean(enabled); return fixturePickerEnabled; }, getFixtureStats: () => clone(fixtureStats), getDroppedFilePath: (file) => file?.path || (file?.name === "fixture-image.png" ? fixtureImagePath : file?.name === "fixture-video.mp4" ? fixtureVideoPath : ""), saveClipboardImage: async () => "", readImageMarkup: async () => null, saveImageMarkup: async () => ({}), saveImageMask: async () => ({}), saveImageCrop: async () => null, pickWorkflow: async () => null, pickPython: async () => null, inspectWorkflow: async () => ({ supportsEndImage: false, supportsVideoExtension: false }), getBundledWorkflow: async () => null,
   getPerformanceMetrics: async () => metrics(), readAppLogs: async () => ({ directory: "", retentionDays: 7, records: [], text: "" }), openAppLogDirectory: async () => true, reportRendererError: async () => {}, reportUserAction: async () => {}, reportNotification: async () => {}, pickDirectory: async () => null, readImage: async () => imageDataUrl, readHistoryCover: async () => imageDataUrl, saveHistoryCover: async () => true, showItemInFolder: async () => true, openDirectory: async () => true, copyFile: async () => result(), openExternal: async () => true,
   enhancePrompt: async () => "", cancelPrompt: async () => result(), startPromptModel: async () => result(), releasePromptModel: async () => result(), testConnection: async () => result(), scanEnvironment: async (settings) => emptyScan(settings), startLocalService: async () => result(), restartLocalService: async () => result(), forceStopComfyProcesses: async () => result(), updateComfyUi: async () => result(), repairEnvironmentIssue: async () => result(), installCustomNode: async () => result(), installWorkflowDependency: async () => result(), installLlamaCppPython: async () => result(), installAttentionAcceleration: async () => result(),
-  enqueue: async () => clone(currentState), enqueueExtension: async () => clone(currentState), enqueueImageEdit: async () => clone(currentState), enqueueUpscale: async () => clone(currentState), updateUpscaleTask: async () => clone(currentState), removeTask: async () => clone(currentState), startQueue: async () => clone(currentState), pauseQueue: async () => clone(currentState), cancelTask: async () => clone(currentState), moveTask: async () => clone(currentState), duplicateTask: async () => clone(currentState), resetTask: async () => clone(currentState), deleteHistoryAsset: async () => clone(currentState), updateHistoryMetadata: async () => clone(currentState), setImageHistoryCover: async () => clone(currentState), deleteImageHistoryVersion: async () => clone(currentState),
+  enqueue: async () => { fixtureStats.enqueue += 1; await delay(80); return clone(currentState); }, enqueueExtension: async () => { fixtureStats.enqueueExtension += 1; await delay(80); return clone(currentState); }, enqueueImageEdit: async () => { fixtureStats.imageEdit += 1; await delay(80); return clone(currentState); }, enqueueUpscale: async () => clone(currentState), updateUpscaleTask: async () => clone(currentState), removeTask: async () => clone(currentState), startQueue: async () => clone(currentState), pauseQueue: async () => clone(currentState), cancelTask: async () => clone(currentState), moveTask: async () => clone(currentState), duplicateTask: async () => clone(currentState), resetTask: async () => clone(currentState), deleteHistoryAsset: async () => clone(currentState), updateHistoryMetadata: async () => clone(currentState), setImageHistoryCover: async () => clone(currentState), deleteImageHistoryVersion: async () => clone(currentState),
   onStateChanged: (listener) => { stateListeners.add(listener); return () => stateListeners.delete(listener); }, onComfyRuntimeStateChanged: () => () => {}, onTaskPreview: () => () => {}, onPromptProgress: () => () => {}, onWindowCloseRequest: () => () => {}, onAttentionInstallLog: () => () => {}, onDependencyInstallLog: () => () => {}, onHistoryMigrationProgress: () => () => {}, scanImageAssetLibrary: async () => clone(emptyLibraryScan), organizeImageAssetLibrary: async () => ({ scan: clone(emptyLibraryScan), archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles: 0, cleanedDirectories: 0, cleanedBytes: 0 }), cleanupImageAssetLibrary: async () => ({ scan: clone(emptyLibraryScan), archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles: 0, cleanedDirectories: 0, cleanedBytes: 0 }), onImageAssetLibraryProgress: () => () => {}
 };
 contextBridge.exposeInMainWorld("studio", api);`;
@@ -536,7 +645,6 @@ async function captureAll(options, preloadPath) {
     window.webContents.on("unresponsive", () => console.error("[renderer-capture] renderer unresponsive"));
     window.webContents.on("responsive", () => console.log("[renderer-capture] renderer responsive"));
     window.setMinimumSize(320, 320);
-    window.show();
     try {
       for (const { fixture } of viewportEntries) {
         console.log(`[renderer-capture] loading ${fixture.id} ${viewport.id}`);

@@ -1,6 +1,6 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，P08 Image Edit 首个窄窗修复及 sticky submit safe-area 已完成，后续 Create/Queue/History/Settings 交互 gate 待补
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，下一阶段为 Queue proposal/approval（P09/P10）
 > 制定日期：2026-08-20  
 > 当前版本：0.31.5
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
@@ -329,7 +329,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：900×800 首屏同时看见当前素材状态、Prompt 起始区和提交上下文；Tab 顺序与视觉顺序一致；人工批准。
 
-**当前状态（2026-08-20）**：`docs/UX_UI_P07_RENDERER_PROPOSAL.md` 已基于当前三种 Create fixture、真实 renderer capture 和现有 Image Edit 窄窗规则提出 G08 候选：901–1120/900 采用紧凑双列，1280+ 保持素材/Prompt 双主区，760 以下保留单列 fallback 并增加 submit safe-area 检查。当前 P07 仍为 `proposed`，标准 capture harness 的已知 DOM wait race 需在 G08 前用隔离 renderer smoke 重新取证；没有修改生产 renderer，P08 不能越过人工批准直接开始。
+**当前状态（2026-08-20）**：`docs/UX_UI_P07_RENDERER_PROPOSAL.md` 的 G08 已批准：基于当前 renderer 三种 Create fixture 的 24 张截图（1440×900、1280×800、1121×800、1120×800、901×800、900×800、761×800、760×800），确认 901–1120/900 紧凑双列、1280+ 双主区、760 以下单列 fallback 与 submit safe-area 方向；没有使用旧 prototype 作为证据。capture harness 已改为隐藏窗口的稳定定时 settle，避免仅由 `requestAnimationFrame` 造成的 DOM wait race；P07 进入 `approved`，P08 可执行。
 
 ### P08 — Create renderer 渐进实现
 
@@ -347,7 +347,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：连续输入、selection、Ctrl+Z/Y/Shift+Z、清空恢复、拖放、click-to-select、模式切换、提交、双击防重；三模式与关键视口；`npm.cmd run verify`。
 
-**当前状态（2026-08-20）**：`breakpoint/min-width`、素材区窄屏文字边界和 Image Edit sticky submit safe-area 已实现：标题摘要使用可收缩省略，`添加 Slot` 保持单行，素材卡标题和角色选择器不会再被压成单字纵排或互相覆盖；901–1120px 及 760px 以下为提交条保留当前 flow 内的安全视觉间距。`src/styles/10-final-refinements.css` 没有修改 DOM、控件 id、workflow payload 或提交语义；`900/901/1120/1121/761/760×800` 的文档级 `scrollWidth` 均与视口一致。隔离 renderer smoke 已验证 `900×800` 输入后值与焦点在状态刷新后保留；safe-area 静态契约测试与 `npm.cmd run verify` 通过（81 files / 625 tests、production build、20 组对比度检查）。标准 capture harness 仍在 mode-click 后的既有 `executeJavaScript` wait race 处失败，未声称新截图已通过；Ctrl+Z/Y、拖放、提交、双击防重和 Queue running 尚未完成，因此 P08 仍不是 `verified/integrated`。
+**当前状态（2026-08-20）**：P08 已 `verified/integrated`。`breakpoint/min-width`、素材区窄屏文字边界和 Image Edit sticky submit safe-area 已实现：标题摘要使用可收缩省略，`添加 Slot` 保持单行，素材卡标题、标签与角色选择器不会再被压成单字纵排或互相覆盖；901–1120px 及 760px 以下为提交条保留当前 flow 内的安全视觉间距。`src/styles/10-final-refinements.css` 没有修改 DOM、控件 id、workflow payload 或提交语义；三种 Create 模式在 8 个关键视口均完成当前 renderer 截图，900/760×800 的 diagnose 确认 `documentScrollWidth === documentClientWidth`。隔离 renderer smoke 已覆盖连续输入与焦点、清空恢复、Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z、三模式切换、图片 click-to-select、图片/视频 drag/drop，以及三个提交入口的双击只调用一次；synthetic preload 统计为 image edit/image/video extension 各 `1` 次。safe-area 静态契约测试与 `npm.cmd run verify` 通过（81 files / 625 tests、production build、20 组对比度检查）。没有执行真实 ComfyUI 生成；Queue running 属于下一阶段 P09/P10，不作为 P08 未完成项。
 
 ### P09 — Queue 任务优先构图 renderer review
 
