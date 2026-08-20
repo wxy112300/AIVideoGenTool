@@ -139,9 +139,9 @@
      intentionally a layout-only change: no page render or focus reset. */
   top: 10px;
   padding: 12px 16px;
-  border-color: rgba(116,165,244,.45);
-  color: #e8f1ff;
-  background: rgba(29,49,76,.95);
+  border-color: var(--ux-status-info-notice-border-soft);
+  color: var(--ux-status-info-notice-text);
+  background: var(--ux-status-info-notice-surface-soft);
   box-shadow: 0 16px 44px rgba(0,0,0,.3);
   opacity: 0;
   visibility: hidden;
@@ -154,13 +154,13 @@
 }
 .flash.visible { opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, 0); transition-delay: 0s; }
 .flash::before { display: inline-grid; width: 18px; height: 18px; margin-right: 9px; place-items: center; border-radius: 50%; font-size: 12px; font-weight: 800; vertical-align: -1px; content: "i"; }
-.flash-info { border-color: rgba(116,165,244,.5); color: #e8f1ff; background: rgba(29,49,76,.97); }
-.flash-info::before { color: #0c1625; background: #83b6ff; }
-.flash-warning { border-color: rgba(244,189,106,.58); color: #fff3d9; background: rgba(69,49,21,.97); }
-.flash-warning::before { color: #2b1b05; background: #f4bd6a; content: "!"; }
-.flash-error { border-color: rgba(255,112,112,.62); color: #ffe9e9; background: rgba(75,29,33,.97); }
-.flash-error::before { color: #321015; background: #ff7d82; content: "!"; }
-.flash-task-complete { border-color: rgba(83,211,150,.58); color: #e3fff1; background: rgba(22,65,47,.97); }
-.flash-task-complete::before { color: #0c291c; background: #62d99d; content: "✓"; }
-.flash-queue-complete { border-color: rgba(133,180,255,.64); color: #eef5ff; background: rgba(28,54,88,.98); }
-.flash-queue-complete::before { color: #10233d; background: #9ac4ff; content: "✓"; box-shadow: 3px 0 0 rgba(154,196,255,.42); }
+.flash-info { border-color: var(--ux-status-info-notice-border); color: var(--ux-status-info-notice-text); background: var(--ux-status-info-notice-surface); }
+.flash-info::before { color: var(--ux-status-info-notice-icon-text); background: var(--ux-status-info-notice-icon); }
+.flash-warning { border-color: var(--ux-status-warning-notice-border); color: var(--ux-status-warning-notice-text); background: var(--ux-status-warning-notice-surface); }
+.flash-warning::before { color: var(--ux-status-warning-notice-icon-text); background: var(--ux-status-warning-notice-icon); content: "!"; }
+.flash-error { border-color: var(--ux-status-danger-notice-border); color: var(--ux-status-danger-notice-text); background: var(--ux-status-danger-notice-surface); }
+.flash-error::before { color: var(--ux-status-danger-notice-icon-text); background: var(--ux-status-danger-notice-icon); content: "!"; }
+.flash-task-complete { border-color: var(--ux-status-success-notice-border); color: var(--ux-status-success-notice-text); background: var(--ux-status-success-notice-surface); }
+.flash-task-complete::before { color: var(--ux-status-success-notice-icon-text); background: var(--ux-status-success-notice-icon); content: "✓"; }
+.flash-queue-complete { border-color: var(--ux-status-info-complete-border); color: var(--ux-status-info-complete-text); background: var(--ux-status-info-complete-surface); }
+.flash-queue-complete::before { color: var(--ux-status-info-complete-icon-text); background: var(--ux-status-info-complete-icon); content: "✓"; box-shadow: var(--ux-status-info-complete-icon-shadow); }

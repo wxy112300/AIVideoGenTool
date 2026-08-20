@@ -13,7 +13,7 @@
 - 源版本：`0.30.0`（以 `package.json` 为准）；
 - manifest：[`ux-ui-renderer-baseline.manifest.json`](./ux-ui-renderer-baseline.manifest.json)。
 
-manifest 的 source commit 是本轮 rebase 的基准 commit；最新 136 张截图来自同一工作树，包含 P02 语义 token 别名、P03/L10 shared surface 迁移、P03/L11 text/separator 迁移、P03/L12 action/focus 迁移、P05 `aria-current` 语义和 P08 Image Edit 窄窗规则。后续 renderer CSS 变更后应重新生成并更新基准记录。
+manifest 的 source commit 是本轮 rebase 的基准 commit；最新 136 张截图来自同一工作树，包含 P02 语义 token 别名、P03/L10 shared surface 迁移、P03/L11 text/separator 迁移、P03/L12 action/focus 迁移、P03/L13 status/badge 语义迁移、P05 `aria-current` 语义和 P08 Image Edit 窄窗规则。L13 保留当前 renderer 的状态值，因此截图只作为 zero-visual-diff 的结构与状态证据；后续 renderer CSS 变更后应重新生成并更新基准记录。
 
 截图 harness 使用临时 userData、mock preload 和合成 fixture，只读取当前 renderer，不读取或修改用户任务、历史记录、设置或模型文件。因此它证明的是当前 renderer 在固定状态下的视觉/DOM基线，不等同于 ComfyUI 运行态 smoke。
 
@@ -72,6 +72,6 @@ npm.cmd run verify:ux-ui-contrast
 
 ## 证据边界
 
-- 已验证：renderer capture 脚本、manifest、136 张固定尺寸截图、当前页面与断点的静态视觉基线、P03/L11 的 20 组文字/背景对比度检查，以及 P03/L12 的 action/focus token selector 静态检查。
+- 已验证：renderer capture 脚本、manifest、136 张固定尺寸截图、当前页面与断点的静态视觉基线、P03/L11 的 20 组文字/背景对比度检查、P03/L12 的 action/focus token selector 静态检查，以及 P03/L13 的四状态 status/badge selector matrix。
 - 尚未由本基线证明：ComfyUI 真实生成、队列长生命周期、文件权限/路径恢复、全键盘路径、Windows 缩放/高对比度和 Reduced Motion。
 - prototype 的旧 P00/P01 截图与暖石墨候选已降级为历史记录；它们不能作为后续 phase 的 approval gate。

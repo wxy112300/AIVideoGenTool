@@ -44,9 +44,60 @@
   --ux-action-ghost-hover-surface: rgba(255, 255, 255, .045);
   --ux-action-icon-text: #bdc6d2;
   --ux-action-pressed-transform: translateY(1px);
-  --ux-status-danger: var(--danger);
+
+  /* Shared status and badge states. L13 keeps the current renderer values
+   * while moving success/warning/danger/info ownership out of selectors. */
+  --ux-status-info: var(--primary);
   --ux-status-success: var(--success);
   --ux-status-warning: var(--warning, #f4bd6a);
+  --ux-status-danger: var(--danger);
+
+  --ux-status-badge-text: #09111e;
+  --ux-status-info-text: #a9c9ff;
+  --ux-status-info-surface: rgba(105,157,243,.12);
+  --ux-status-info-surface-soft: rgba(105,157,243,.08);
+  --ux-status-info-border: rgba(112,159,237,.25);
+  --ux-status-danger-text: #ff9a9d;
+  --ux-status-danger-surface: rgba(255,120,124,.09);
+  --ux-status-warning-text: #f1cb89;
+  --ux-status-warning-surface: rgba(150,101,27,.14);
+  --ux-status-warning-border: rgba(244,189,106,.5);
+  --ux-status-warning-badge-border: rgba(244,189,106,.3);
+  --ux-status-warning-badge-surface: rgba(244,189,106,.08);
+  --ux-status-success-ring: rgba(114,214,160,.09);
+  --ux-status-warning-border-soft: rgba(244,189,106,.35);
+  --ux-status-warning-ring-soft: rgba(244,189,106,.1);
+
+  /* Notice variants retain their current four-state contrast and icon
+   * treatment. Component-specific badges can use the inline roles above. */
+  --ux-status-info-notice-border: rgba(116,165,244,.5);
+  --ux-status-info-notice-text: #e8f1ff;
+  --ux-status-info-notice-surface: rgba(29,49,76,.97);
+  --ux-status-info-notice-icon-text: #0c1625;
+  --ux-status-info-notice-icon: #83b6ff;
+  --ux-status-info-notice-border-soft: rgba(116,165,244,.45);
+  --ux-status-info-notice-surface-soft: rgba(29,49,76,.95);
+  --ux-status-warning-notice-border: rgba(244,189,106,.58);
+  --ux-status-warning-notice-text: #fff3d9;
+  --ux-status-warning-notice-surface: rgba(69,49,21,.97);
+  --ux-status-warning-notice-icon-text: #2b1b05;
+  --ux-status-warning-notice-icon: #f4bd6a;
+  --ux-status-danger-notice-border: rgba(255,112,112,.62);
+  --ux-status-danger-notice-text: #ffe9e9;
+  --ux-status-danger-notice-surface: rgba(75,29,33,.97);
+  --ux-status-danger-notice-icon-text: #321015;
+  --ux-status-danger-notice-icon: #ff7d82;
+  --ux-status-success-notice-border: rgba(83,211,150,.58);
+  --ux-status-success-notice-text: #e3fff1;
+  --ux-status-success-notice-surface: rgba(22,65,47,.97);
+  --ux-status-success-notice-icon-text: #0c291c;
+  --ux-status-success-notice-icon: #62d99d;
+  --ux-status-info-complete-border: rgba(133,180,255,.64);
+  --ux-status-info-complete-text: #eef5ff;
+  --ux-status-info-complete-surface: rgba(28,54,88,.98);
+  --ux-status-info-complete-icon-text: #10233d;
+  --ux-status-info-complete-icon: #9ac4ff;
+  --ux-status-info-complete-icon-shadow: 3px 0 0 rgba(154,196,255,.42);
 
   /* Focus and elevation */
   --ux-focus-ring: rgba(138, 180, 255, .9);

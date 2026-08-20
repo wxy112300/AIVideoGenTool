@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 
 const tokenSource = readFileSync(new URL("../src/styles/00-tokens.css", import.meta.url), "utf8");
 const styleEntry = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const foundationSource = readFileSync(new URL("../src/styles/01-foundation.css", import.meta.url), "utf8");
 const visualRefreshSource = readFileSync(new URL("../src/styles/02-visual-refresh.css", import.meta.url), "utf8");
+const accelerationSource = readFileSync(new URL("../src/styles/03-acceleration.css", import.meta.url), "utf8");
 
 const semanticRoles = [
   "--ux-canvas",
@@ -24,9 +26,23 @@ const semanticRoles = [
   "--ux-action-pressed-transform",
   "--ux-action-primary",
   "--ux-action-primary-strong",
+  "--ux-status-info",
   "--ux-status-danger",
   "--ux-status-success",
   "--ux-status-warning",
+  "--ux-status-badge-text",
+  "--ux-status-info-text",
+  "--ux-status-info-surface",
+  "--ux-status-info-border",
+  "--ux-status-danger-text",
+  "--ux-status-danger-surface",
+  "--ux-status-warning-text",
+  "--ux-status-warning-surface",
+  "--ux-status-success-ring",
+  "--ux-status-info-notice-border",
+  "--ux-status-warning-notice-border",
+  "--ux-status-danger-notice-border",
+  "--ux-status-success-notice-border",
   "--ux-focus-ring",
   "--ux-focus-ring-width",
   "--ux-focus-control-border",
@@ -44,7 +60,7 @@ describe("UX/UI semantic token foundation", () => {
     expect(styleEntry.indexOf('@import "./styles/01-foundation.css";')).toBeGreaterThan(0);
   });
 
-  it("declares every P02 role without replacing current legacy values", () => {
+  it("declares every semantic role without replacing current legacy values", () => {
     for (const role of semanticRoles) {
       expect(tokenSource).toContain(`${role}:`);
     }
@@ -74,5 +90,19 @@ describe("UX/UI semantic token foundation", () => {
     expect(visualRefreshSource).toContain("background: var(--ux-action-primary-hover-fill)");
     expect(visualRefreshSource).toContain("border-color: var(--ux-focus-control-border)");
     expect(visualRefreshSource).toContain("var(--ux-focus-control-glow)");
+  });
+
+  it("routes the four-state status and badge matrix through semantic roles", () => {
+    expect(visualRefreshSource).toContain("color: var(--ux-status-badge-text)");
+    expect(visualRefreshSource).toContain("background: var(--ux-status-info)");
+    expect(visualRefreshSource).toContain("background: var(--ux-status-danger-surface)");
+    expect(visualRefreshSource).toContain("background: var(--ux-status-info-surface-soft)");
+    expect(foundationSource).toContain(".warning-badge { color: var(--ux-status-warning)");
+    expect(foundationSource).toContain(".model-availability.available { color: var(--ux-status-success)");
+    expect(foundationSource).toContain(".model-availability.missing { color: var(--ux-status-danger)");
+    expect(accelerationSource).toContain(".flash-info { border-color: var(--ux-status-info-notice-border)");
+    expect(accelerationSource).toContain(".flash-warning { border-color: var(--ux-status-warning-notice-border)");
+    expect(accelerationSource).toContain(".flash-error { border-color: var(--ux-status-danger-notice-border)");
+    expect(accelerationSource).toContain(".flash-task-complete { border-color: var(--ux-status-success-notice-border)");
   });
 });
