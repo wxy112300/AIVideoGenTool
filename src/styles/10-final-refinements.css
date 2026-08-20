@@ -9,7 +9,7 @@ body {
 }
 .panel {
   border-radius: 13px;
-  background: #151a21;
+  background: var(--ux-surface-base);
   box-shadow: 0 10px 28px rgba(0, 0, 0, .14);
 }
 .settings-content > .settings-panel { gap: 12px; }

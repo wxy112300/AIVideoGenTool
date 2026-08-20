@@ -2,11 +2,12 @@
  * Semantic UX/UI token map.
  *
  * P02 intentionally aliases the current renderer values instead of changing
- * them. Later visual phases may update this role map one phase at a time;
- * page selectors should not create a second theme source.
+ * them. P03 migrates shared selectors to these roles one surface family at a
+ * time; page selectors should not create a second theme source.
  */
 :root {
-  /* Surfaces and separators */
+  /* Surfaces and separators. These roles retain the current renderer palette
+   * while P03/L10 moves ownership out of selector-local color literals. */
   --ux-canvas: var(--bg);
   --ux-surface-base: var(--panel);
   --ux-surface-object: var(--panel-2);
