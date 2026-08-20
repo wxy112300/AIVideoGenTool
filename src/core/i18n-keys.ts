@@ -2,7 +2,8 @@ export const uiKeys = {
   app: {
     brand: "app.brand",
     backToCreate: "app.backToCreate",
-    returnTop: "app.returnTop"
+    returnTop: "app.returnTop",
+    dismissNotification: "app.dismissNotification"
   },
   nav: {
     ariaLabel: "nav.ariaLabel",

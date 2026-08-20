@@ -14,7 +14,11 @@ import {
 } from "./renderer/renderer-state";
 import { rendererUiState as ui } from "./renderer/ui-state";
 import type { CreationMode, HistoryKind, Page, RendererNotifyOptions } from "./renderer/contracts";
-import { notificationDuration } from "./renderer/notifications";
+import {
+  createNotification,
+  notificationAlreadyPending,
+  notificationShouldPreserveError
+} from "./renderer/notifications";
 import {
   queueTaskInput,
   queueTaskInputUrl,
@@ -1296,7 +1300,9 @@ queueLiveStatus.start();
 function syncFlashMessage(): void {
   const flash = document.querySelector<HTMLElement>("#app-flash");
   if (!flash) return;
-  flash.textContent = ui.flashMessage;
+  const message = flash.querySelector<HTMLElement>("[data-flash-message]");
+  if (message) message.textContent = ui.flashMessage;
+  else flash.textContent = ui.flashMessage;
   const kind = ui.flashNotification?.kind ?? "info";
   flash.dataset.kind = kind;
   flash.className = `flash flash-${kind}${ui.flashMessage ? " visible" : ""}`;
@@ -1310,12 +1316,23 @@ function displayNextNotification(): void {
   ui.flashNotification = next;
   ui.flashMessage = next?.message ?? "";
   window.clearTimeout(ui.flashMessageTimer);
+  ui.flashMessageTimer = undefined;
   syncFlashMessage();
-  if (!next) return;
+  if (!next || next.persistent) return;
   ui.flashMessageTimer = window.setTimeout(() => {
     if (ui.flashNotification?.id !== next.id) return;
     displayNextNotification();
   }, next.durationMs);
+}
+
+function dismissNotification(id?: number): void {
+  if (id !== undefined && ui.flashNotification?.id !== id) return;
+  window.clearTimeout(ui.flashMessageTimer);
+  ui.flashMessageTimer = undefined;
+  ui.flashNotification = null;
+  ui.flashMessage = "";
+  syncFlashMessage();
+  displayNextNotification();
 }
 
 function showMessage(
@@ -1324,12 +1341,19 @@ function showMessage(
 ): void {
   const options = typeof legacyOrOptions === "object" ? legacyOrOptions : undefined;
   const kind = options?.kind ?? "info";
-  const notification = {
-    id: ui.nextFlashNotificationId++,
+  const notification = createNotification(
+    ui.nextFlashNotificationId++,
     message,
     kind,
-    durationMs: options?.durationMs ?? notificationDuration[kind]
-  };
+    options?.durationMs
+  );
+  if (notificationAlreadyPending(notification, ui.flashNotification, ui.flashNotificationQueue)) return;
+  if (notificationShouldPreserveError(ui.flashNotification, kind)) {
+    if (kind === "info") return;
+    ui.flashNotificationQueue.push(notification);
+    void window.studio.reportNotification(kind, message).catch(() => undefined);
+    return;
+  }
   void window.studio.reportNotification(kind, message).catch(() => undefined);
   if (kind === "task-complete" || kind === "queue-complete") {
     ui.flashNotificationQueue.push(notification);
@@ -1341,6 +1365,7 @@ function showMessage(
   ui.flashMessage = message;
   window.clearTimeout(ui.flashMessageTimer);
   syncFlashMessage();
+  if (notification.persistent) return;
   ui.flashMessageTimer = window.setTimeout(() => {
     if (ui.flashNotification?.id !== notification.id) return;
     displayNextNotification();
@@ -1834,6 +1859,7 @@ function bindShell(): void {
       ui.historyForwardTarget = null;
     },
     setPage,
+    dismissNotification,
     reportUserAction,
     render,
     bindConfirmationDialog,

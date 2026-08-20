@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
-import { notificationDuration, queueCompletionChange } from "../src/renderer/notifications";
+import {
+  createNotification,
+  notificationAlreadyPending,
+  notificationDuration,
+  notificationPersistent,
+  notificationShouldPreserveError,
+  queueCompletionChange
+} from "../src/renderer/notifications";
 import { registerRendererEvents } from "../src/renderer/state-events";
 import { mountSettingsServiceController } from "../src/renderer/pages/settings/service-controller";
 import type { RendererContext } from "../src/renderer/contracts";
@@ -15,6 +22,25 @@ describe("renderer notifications", () => {
     expect(notificationDuration.error).toBeGreaterThan(notificationDuration.warning);
     expect(notificationDuration["task-complete"]).toBeGreaterThan(notificationDuration.info);
     expect(notificationDuration["queue-complete"]).toBeGreaterThan(notificationDuration.info);
+  });
+
+  it("keeps errors persistent while allowing other notices to auto-dismiss", () => {
+    expect(notificationPersistent.error).toBe(true);
+    expect(notificationPersistent.info).toBe(false);
+    expect(notificationPersistent.warning).toBe(false);
+    expect(createNotification(1, "scan failed", "error").durationMs).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it("deduplicates the same source message and preserves a visible error", () => {
+    const current = createNotification(1, "扫描失败", "error");
+    const duplicate = createNotification(2, "扫描失败", "error");
+    const queued = createNotification(3, "队列完成", "queue-complete");
+
+    expect(notificationAlreadyPending(duplicate, current, [])).toBe(true);
+    expect(notificationAlreadyPending(queued, current, [])).toBe(false);
+    expect(notificationShouldPreserveError(current, "info")).toBe(true);
+    expect(notificationShouldPreserveError(current, "warning")).toBe(true);
+    expect(notificationShouldPreserveError(current, "error")).toBe(false);
   });
 
   it("detects a newly persisted video task without treating initial state as completion", () => {

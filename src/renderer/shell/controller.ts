@@ -14,6 +14,7 @@ export interface ShellControllerOptions {
   setHistoryScrollRestorePending(value: boolean): void;
   clearHistoryForwardTarget(): void;
   setPage(page: Page): void;
+  dismissNotification(): void;
   reportUserAction(action: string, meta?: Record<string, unknown>): void;
   render(): void;
   bindConfirmationDialog(): void;
@@ -61,6 +62,11 @@ export function mountShellController(
       }
     }, { signal });
   });
+
+  document.querySelector<HTMLButtonElement>("#dismiss-app-flash")?.addEventListener("click", () => {
+    options.reportUserAction("dismiss-notification");
+    options.dismissNotification();
+  }, { signal });
 
   if (page === "history-detail" || page === "image-history-detail") {
     const handleKeyboardBack = (event: KeyboardEvent) => {

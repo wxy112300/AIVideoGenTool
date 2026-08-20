@@ -9,6 +9,7 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.app.brand]: "Local Video Studio",
 	[uiKeys.app.backToCreate]: "Back to Create",
 	[uiKeys.app.returnTop]: "Back to top",
+	[uiKeys.app.dismissNotification]: "Dismiss notification",
 	[uiKeys.nav.create]: "Create",
 	[uiKeys.nav.queue]: "Queue",
 	[uiKeys.nav.history]: "History",

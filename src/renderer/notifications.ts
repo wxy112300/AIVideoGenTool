@@ -5,15 +5,65 @@ export interface AppNotification {
   message: string;
   kind: NotificationKind;
   durationMs: number;
+  persistent: boolean;
+  dedupeKey: string;
 }
 
 export const notificationDuration: Record<NotificationKind, number> = {
   info: 6_000,
   warning: 7_500,
-  error: 10_000,
+  error: Number.POSITIVE_INFINITY,
   "task-complete": 8_000,
   "queue-complete": 9_000
 };
+
+export const notificationPersistent: Record<NotificationKind, boolean> = {
+  info: false,
+  warning: false,
+  error: true,
+  "task-complete": false,
+  "queue-complete": false
+};
+
+export function notificationDedupeKey(
+  message: string,
+  kind: NotificationKind
+): string {
+  return `${kind}\u0000${message.trim()}`;
+}
+
+export function createNotification(
+  id: number,
+  message: string,
+  kind: NotificationKind,
+  durationMs = notificationDuration[kind]
+): AppNotification {
+  return {
+    id,
+    message,
+    kind,
+    durationMs,
+    persistent: notificationPersistent[kind],
+    dedupeKey: notificationDedupeKey(message, kind)
+  };
+}
+
+export function notificationAlreadyPending(
+  candidate: AppNotification,
+  current: AppNotification | null,
+  queue: ReadonlyArray<AppNotification>
+): boolean {
+  return [current, ...queue].some((notification) =>
+    notification?.dedupeKey === candidate.dedupeKey
+  );
+}
+
+export function notificationShouldPreserveError(
+  current: AppNotification | null,
+  nextKind: NotificationKind
+): boolean {
+  return current?.kind === "error" && nextKind !== "error";
+}
 
 export interface QueueCompletionChange {
   completedTasks: Array<{ taskId: string; title: string }>;

@@ -9,6 +9,7 @@ export const zhTWCatalog = {
     [uiKeys.app.brand]: "Local Video Studio",
     [uiKeys.app.backToCreate]: "返回建立頁",
     [uiKeys.app.returnTop]: "返回頂部",
+    [uiKeys.app.dismissNotification]: "關閉通知",
     [uiKeys.nav.create]: "建立",
     [uiKeys.nav.queue]: "佇列",
     [uiKeys.nav.history]: "歷史",

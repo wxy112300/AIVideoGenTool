@@ -40,4 +40,28 @@ describe("renderer shell navigation semantics", () => {
     expect(html).not.toContain('data-page="create" aria-current="page"');
     expect(html).not.toContain('data-page="settings" aria-current="page"');
   });
+
+  it("renders a keyboard-reachable dismiss control for global notices", () => {
+    const translator = createTranslator("zh-CN");
+    const html = renderShell({
+      page: "create",
+      appVersion: "0.31.0",
+      queueCount: 0,
+      flashMessage: "扫描失败",
+      flashKind: "error",
+      content: "<div>content</div>",
+      t: translator.t,
+      icon: () => "<svg></svg>",
+      escapeHtml: (value) => String(value),
+      confirmationDialog: "",
+      directoryMigrationDialog: "",
+      imageAssetLibraryDialog: "",
+      windowCloseDialog: "",
+      upscaleDialog: ""
+    });
+
+    expect(html).toContain('id="dismiss-app-flash"');
+    expect(html).toContain('aria-label="关闭通知"');
+    expect(html).toContain('data-flash-message>扫描失败</span>');
+  });
 });

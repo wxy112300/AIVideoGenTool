@@ -8,6 +8,11 @@
 
 ## 未发布
 
+## 0.31.1 — 2026-08-20
+
+- 完成 P06/L26 通知反馈第一包：info、warning、任务完成和队列完成消息按语义自动消失，error 默认持久显示并可通过键盘可达的关闭按钮恢复页面操作。
+- 全局通知增加同源消息去重和 error 优先级保护；低价值 info 不再覆盖正在展示的错误。未改变 IPC、持久化状态、队列快照或工作流 payload；P06 的 Retry、View logs、Open Settings 等业务恢复 actions 仍待后续 package。
+
 ## 0.31.0 — 2026-08-20
 
 - 完成当前 renderer 的 shared visual foundation：P04 的 type roles、tabular numbers、radius/spacing token 迁移与 P05 的 72px topbar/sticky geometry 统一；Create、Queue、History、Settings 及 History detail 的 sticky 标题和返回条共享 offset，760px 以下 topbar 进入 normal flow 时 offset 归零。
