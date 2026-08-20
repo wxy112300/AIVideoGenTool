@@ -7,6 +7,7 @@ import {
   mountHistoryMediaController,
   type HistoryMediaControllerOptions
 } from "./media-controller";
+import { mountImageHistoryMediaController } from "./image-media-controller";
 import {
   mountHistoryActionsController,
   type HistoryActionsControllerOptions
@@ -74,6 +75,9 @@ export function mountHistoryPageController(
     mountHistoryNavigationController(options.context, options.navigation),
     mountHistoryFilterController(options.context, options.filter),
     mountHistoryMediaController(options.context, options.media),
+    mountImageHistoryMediaController(options.context, {
+      loadImageHistoryThumbnail: options.media.loadImageHistoryThumbnail
+    }),
     mountHistoryActionsController(options.context, options.actions),
     mountHistoryTagsController(options.context, options.tags),
     mountImageHistoryLightbox(options.context, options.imageLightbox)

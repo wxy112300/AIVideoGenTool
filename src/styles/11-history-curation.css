@@ -251,6 +251,53 @@
 
 .history-card-more .ui-icon { width: 15px; height: 15px; }
 
+/* P13: image surfaces keep a readable state over the existing checkerboard
+   while retaining a valid previous thumbnail when a later load fails. */
+.image-media-status {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel-strong, #10151d) 86%, transparent);
+  text-align: center;
+  pointer-events: none;
+}
+.image-media-status[hidden] { display: none; }
+.image-media-status-actions > [hidden] { display: none; }
+.image-media-status-symbol { display: inline-grid; width: 28px; height: 28px; place-items: center; color: var(--primary); }
+.image-media-status-symbol > .ui-icon { width: 24px; height: 24px; }
+.image-media-spinner {
+  display: none;
+  width: 22px;
+  height: 22px;
+  border: 2px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: history-image-media-spin .75s linear infinite;
+}
+[data-image-media-state="loading"] .image-media-spinner { display: inline-block; }
+[data-image-media-state="loading"] .image-media-status-symbol > .ui-icon { display: none; }
+.image-media-status-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; pointer-events: auto; }
+.image-media-status-actions button { min-height: 28px; padding: 4px 8px; font-size: 11px; }
+.image-media-status-actions .ui-icon { width: 14px; height: 14px; }
+[data-image-media-state="loading"] > [data-image-media-image] { opacity: .32; }
+[data-image-media-state="error"]:not([data-image-media-has-ready="true"]) > [data-image-media-image],
+[data-image-media-state="unavailable"] > [data-image-media-image] { opacity: 0; }
+.image-history-version-thumb .image-media-status { gap: 3px; padding: 4px; font-size: 9px; }
+.image-history-version-thumb .image-media-status-symbol { width: 18px; height: 18px; }
+.image-history-version-thumb .image-media-status-symbol > .ui-icon { width: 15px; height: 15px; }
+.image-history-version-thumb .image-media-spinner { width: 14px; height: 14px; border-width: 1.5px; }
+.image-history-version-thumb .image-media-status small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes history-image-media-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .image-media-spinner { animation-duration: 1.6s; }
+}
+
 .history-detail-curation {
   display: flex;
   align-items: center;

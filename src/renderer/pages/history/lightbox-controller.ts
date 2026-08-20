@@ -91,6 +91,10 @@ export function mountImageHistoryLightbox(
       versionId: targetVersion.id,
       direction
     });
+    const mediaSurface = image.closest<HTMLElement>("[data-image-media]");
+    mediaSurface?.setAttribute("data-image-media-source", targetVersion.file.absolutePath ?? "");
+    image.dataset.imageMediaUrl = mediaUrl;
+    image.dispatchEvent(new Event("image-media-source-change"));
     image.src = mediaUrl;
     image.alt = `${project.title.trim() || context.t(uiKeys.history.card.untitledImage)} · ${context.t(uiKeys.history.version, { version: targetVersion.versionNumber })}`;
     reset();

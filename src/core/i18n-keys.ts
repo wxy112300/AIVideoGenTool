@@ -793,7 +793,11 @@ export const uiKeys = {
     media: {
       unknownResolution: "history.media.unknownResolution",
       coverReadFailed: "history.media.coverReadFailed",
-      coverSaveFailed: "history.media.coverSaveFailed"
+      coverSaveFailed: "history.media.coverSaveFailed",
+      imageLoading: "history.media.imageLoading",
+      imageLoadFailed: "history.media.imageLoadFailed",
+      retryImage: "history.media.retryImage",
+      locateImage: "history.media.locateImage"
     },
     card: {
       missingImage: "history.card.missingImage",

@@ -428,9 +428,20 @@ async function clickAndWait(window, selector, expression, label) {
   const alreadyActive = await executeJavaScript(window, `(() => { const element = document.querySelector(${JSON.stringify(selector)}); return Boolean(element && (element.classList.contains("active") || element.classList.contains("secondary") || element.getAttribute("aria-pressed") === "true" || element.getAttribute("aria-selected") === "true")); })()`);
   if (alreadyActive) return;
   console.log(`[renderer-capture] action ${label}`);
-  await executeJavaScript(window, `setTimeout(() => document.querySelector(${JSON.stringify(selector)})?.click(), 0); true`);
-  if (expression) await waitForDom(window, expression, label);
-  await wait(80);
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await wait(attempt === 0 ? 120 : 220);
+    await executeJavaScript(window, `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) return false; element.click(); return true; })()`);
+    if (!expression) return;
+    try {
+      await waitForDom(window, expression, label);
+      await wait(80);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError) throw lastError;
 }
 
 async function setupFixture(window, fixture, options) {
@@ -692,6 +703,40 @@ async function runHistoryInteractionSmoke(window, fixture, viewport) {
   };
   const masonryClicked = await switchLayout("masonry");
   const albumClicked = await switchLayout("album");
+  let imageMediaReady = true;
+  let imageMediaFailure = true;
+  let imageMediaRetry = true;
+  let imageMediaDetailError = true;
+  let imageMediaLightboxError = true;
+  if (isImage) {
+    await waitForDom(window, `document.querySelector('[data-image-media-surface="gallery"]')?.dataset.imageMediaState === 'ready'`, `${fixture.id} gallery image media ready`);
+    imageMediaReady = await executeJavaScript(window, `(() => {
+      const surface = document.querySelector('[data-image-media-surface="gallery"]');
+      const image = surface?.querySelector('[data-image-media-image]');
+      return Boolean(surface && image && surface.dataset.imageMediaState === 'ready' && surface.dataset.imageMediaHasReady === 'true');
+    })()`);
+    const galleryFailure = await executeJavaScript(window, `(() => {
+      const surface = document.querySelector('[data-image-media-surface="gallery"]');
+      const image = surface?.querySelector('[data-image-media-image]');
+      if (!surface || !(image instanceof HTMLImageElement)) return { failed: false, restored: false };
+      image.dispatchEvent(new Event('error'));
+      const status = surface.querySelector('[data-image-media-status]');
+      const failed = surface.dataset.imageMediaState === 'error' &&
+        surface.dataset.imageMediaHasReady === 'true' &&
+        status instanceof HTMLElement && !status.hidden;
+      image.dispatchEvent(new Event('load'));
+      return { failed, restored: surface.dataset.imageMediaState === 'ready' && status?.hidden === true };
+    })()`);
+    imageMediaFailure = galleryFailure.failed && galleryFailure.restored;
+    const retryClicked = await executeJavaScript(window, `(() => {
+      const button = document.querySelector('[data-image-media-surface="gallery"] [data-image-media-retry]');
+      if (!(button instanceof HTMLButtonElement)) return false;
+      button.click();
+      return document.querySelector('[data-image-media-surface="gallery"]')?.dataset.imageMediaState === 'loading';
+    })()`);
+    await waitForDom(window, `document.querySelector('[data-image-media-surface="gallery"]')?.dataset.imageMediaState === 'ready'`, `${fixture.id} gallery image media retry`);
+    imageMediaRetry = retryClicked && await executeJavaScript(window, `document.querySelector('[data-image-media-surface="gallery"]')?.dataset.imageMediaState === 'ready'`);
+  }
 
   const moreMenuOpened = await executeJavaScript(window, `(() => {
     const button = document.querySelector('[data-history-more]');
@@ -778,6 +823,49 @@ async function runHistoryInteractionSmoke(window, fixture, viewport) {
   await waitForDom(window, `Boolean(document.querySelector(${detailSelectorLiteral}))`, `${fixture.id} detail`);
   const detailOpened = await executeJavaScript(window, `Boolean(document.querySelector(${detailSelectorLiteral}))`);
   const versionSelection = await executeJavaScript(window, `Boolean(document.querySelector(${JSON.stringify(isImage ? ".image-history-version-list [aria-pressed=\"true\"]" : ".history-summary-version-switcher [aria-pressed=\"true\"]")}))`);
+  if (isImage) {
+    imageMediaDetailError = await executeJavaScript(window, `(() => {
+      const surface = document.querySelector('.image-history-stage[data-image-media]');
+      const image = surface?.querySelector('[data-image-media-image]');
+      if (!surface || !(image instanceof HTMLImageElement)) return false;
+      image.dispatchEvent(new Event('error'));
+      const status = surface.querySelector('[data-image-media-status]');
+      const retry = surface.querySelector('[data-image-media-retry]');
+      const locate = surface.querySelector('[data-image-media-locate]');
+      return surface.dataset.imageMediaState === 'error' &&
+        status instanceof HTMLElement && !status.hidden &&
+        retry instanceof HTMLButtonElement && !retry.hidden &&
+        locate instanceof HTMLButtonElement && !locate.hidden;
+    })()`);
+    const lightboxOpened = await executeJavaScript(window, `(() => {
+      const button = document.querySelector('[data-open-image-lightbox]');
+      if (!(button instanceof HTMLButtonElement) || button.disabled) return false;
+      button.click();
+      return true;
+    })()`);
+    await waitForDom(window, "Boolean(document.querySelector('[data-image-lightbox]:not([hidden])'))", `${fixture.id} image lightbox open`);
+    imageMediaLightboxError = lightboxOpened && await executeJavaScript(window, `(() => {
+      const surface = document.querySelector('[data-image-media-surface="lightbox"]');
+      const image = surface?.querySelector('[data-image-media-image]');
+      if (!surface || !(image instanceof HTMLImageElement)) return false;
+      image.dispatchEvent(new Event('error'));
+      const status = surface.querySelector('[data-image-media-status]');
+      const retry = surface.querySelector('[data-image-media-retry]');
+      const locate = surface.querySelector('[data-image-media-locate]');
+      return surface.dataset.imageMediaState === 'error' &&
+        status instanceof HTMLElement && !status.hidden &&
+        retry instanceof HTMLButtonElement && !retry.hidden &&
+        locate instanceof HTMLButtonElement && !locate.hidden;
+    })()`);
+    const lightboxClosed = await executeJavaScript(window, `(() => {
+      const button = document.querySelector('[data-image-lightbox-close]');
+      if (!(button instanceof HTMLElement)) return false;
+      button.click();
+      return true;
+    })()`);
+    await waitForDom(window, "Boolean(document.querySelector('[data-image-lightbox][hidden]'))", `${fixture.id} image lightbox close`);
+    imageMediaLightboxError = imageMediaLightboxError && lightboxClosed;
+  }
   const deleteRequested = await executeJavaScript(window, `(() => {
     const button = document.querySelector("[data-delete-history]");
     if (!button) return false;
@@ -822,6 +910,11 @@ async function runHistoryInteractionSmoke(window, fixture, viewport) {
     cardSpace: spaceOpened.found && spaceOpened.keydownPrevented && spaceOpened.keyupPrevented && spaceDetailOpened && spaceReturned === true,
     cardEnter: opened.found && opened.defaultPrevented && detailOpened,
     versionSelection,
+    imageMediaReady,
+    imageMediaFailure,
+    imageMediaRetry,
+    imageMediaDetailError,
+    imageMediaLightboxError,
     deleteConfirmation: deleteRequested === true && deleteConfirmation,
     deleteCancelled: deleteCancelled === true,
     detailReturned: returned === true && after.heading && after.historyNavSelected && after.card && after.layout
@@ -1097,6 +1190,12 @@ async function captureAll(options, preloadPath) {
         await window.loadURL(process.env.UX_UI_RENDERER_URL || "http://127.0.0.1:5173/");
         window.webContents.setZoomFactor(options.zoom);
         await waitForDom(window, "Boolean(document.querySelector('.app-shell'))", `${fixture.id} initial shell`);
+        if (options.smoke) {
+          window.show();
+          window.focus();
+          window.focusOnWebView();
+          window.webContents.focus();
+        }
         await setupFixture(window, fixture, options);
         if (options.diagnose) console.log(`[renderer-diagnose] ${fixture.id} ${viewport.id} ${JSON.stringify(await diagnoseLayout(window))}`);
         if (options.smoke) await runInteractionSmoke(window, fixture, viewport);

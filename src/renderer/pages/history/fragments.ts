@@ -43,10 +43,22 @@ export function renderHistoryHeading(
     </section>`;
 }
 
+export function renderImageMediaStatus(
+  options: Pick<HistoryFragmentRenderOptions, "t" | "icon">,
+  includeActions = true
+): string {
+  return `<div class="image-media-status" data-image-media-status role="status" aria-live="polite">
+      <div class="image-media-status-symbol" aria-hidden="true"><i class="image-media-spinner"></i>${options.icon("image")}</div>
+      <small data-image-media-status-label>${options.t(uiKeys.history.media.imageLoading)}</small>
+      ${includeActions ? `<div class="image-media-status-actions"><button type="button" class="ghost button-with-icon" data-image-media-retry>${options.icon("refresh-cw")}${options.t(uiKeys.history.media.retryImage)}</button><button type="button" class="ghost button-with-icon" data-image-media-locate>${options.icon("folder-open")}${options.t(uiKeys.history.media.locateImage)}</button></div>` : ""}
+    </div>`;
+}
+
 export function renderImageLightboxMarkup(
   viewModel: {
     title: string;
     mediaUrl: string;
+    sourcePath?: string;
     versionNumber: number;
     width: number;
     height: number;
@@ -60,8 +72,9 @@ export function renderImageLightboxMarkup(
           <div><strong id="image-lightbox-title">${options.escapeHtml(viewModel.title)}</strong><span>${options.t(uiKeys.history.version, { version: viewModel.versionNumber })} · ${viewModel.width} × ${viewModel.height}</span></div>
           <div class="button-row"><button class="secondary button-with-icon" data-image-lightbox-reset>${options.icon("rotate-ccw")}${options.t(uiKeys.history.lightboxReset)}</button><button class="icon-button" data-image-lightbox-close aria-label="${options.t(uiKeys.history.lightboxClose)}" title="${options.t(uiKeys.history.lightboxClose)}">${options.icon("x")}</button></div>
         </header>
-        <div class="image-lightbox-stage" data-image-lightbox-stage>
-          <img src="${options.escapeHtml(viewModel.mediaUrl)}" alt="${options.escapeHtml(viewModel.title)} · ${options.t(uiKeys.history.version, { version: viewModel.versionNumber })}" data-image-lightbox-image draggable="false">
+        <div class="image-lightbox-stage" data-image-lightbox-stage data-image-media data-image-media-surface="lightbox" data-image-media-source="${options.escapeHtml(viewModel.sourcePath ?? "")}">
+          <img src="${options.escapeHtml(viewModel.mediaUrl)}" data-image-media-url="${options.escapeHtml(viewModel.mediaUrl)}" alt="${options.escapeHtml(viewModel.title)} · ${options.t(uiKeys.history.version, { version: viewModel.versionNumber })}" data-image-lightbox-image data-image-media-image draggable="false">
+          ${renderImageMediaStatus(options)}
         </div>
         <p class="image-lightbox-hint">${options.t(uiKeys.history.lightboxHint)}</p>
       </section>

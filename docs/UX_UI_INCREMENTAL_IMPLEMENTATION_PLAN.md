@@ -424,6 +424,8 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：慢加载、源文件删除、权限失败、缓存损坏、重试成功；四个图片 surface 一致；`npm.cmd run verify`。
 
+**当前状态（2026-08-21）**：P13 已 `verified/integrated`。新增共享 `image-media-state` 与 History image media controller，gallery、detail、version rail、Lightbox 均接入 loading/ready/unavailable/error 状态；重试使用 gallery 缓存加载或当前媒体探针，定位操作沿用既有 `showItemInFolder` 与文件缺失通知；成功 source 会保留，后续加载失败不会清空旧缩略图。未改变 `studio-media://history/{project}/{version}/0` 路径规则，也未改动视频媒体 controller。focused state/markup tests 与全量 `npm.cmd run verify`（86 files / 649 tests、production build、20 组对比度检查）通过；当前 renderer 8 项混合宽高比的 900×800 keyboard/media smoke、1440×900/900×800/760×800 diagnose 和 image detail failure screenshot 通过。下一 phase 为 P14。
+
 ### P14 — Lightbox modal 与焦点生命周期
 
 **目的**：让 `aria-modal` 与真实行为一致。

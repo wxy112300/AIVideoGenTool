@@ -17,6 +17,7 @@ import {
 import { videoPromptForLoras } from "../../../core/video-loras";
 import {
   renderHistoryHeading,
+  renderImageMediaStatus,
   renderImageLightboxMarkup,
   renderImageReferenceSnapshotMarkup,
   renderPerformanceStatsMarkup,
@@ -209,14 +210,16 @@ export function renderImageHistoryPage(
   const cards = projects.map((project, historyOrder) => {
     const version = options.preferredImageVersion(project);
     const mediaUrl = options.imageHistoryMediaUrl(project, version);
+    const sourcePath = version.file.absolutePath ?? "";
     const title = project.title.trim() || options.t(uiKeys.history.card.untitledImage);
     const iterationCount = Math.max(0, project.versions.filter((item) => item.kind !== "source").length);
     return `
       <article class="history-gallery-item panel image-history-gallery-item" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}" title="${options.escapeHtml(title)}">
-        <div class="history-media image-history-media" style="--media-ratio:${version.width || 1} / ${version.height || 1}">
+        <div class="history-media image-history-media ${mediaUrl ? "image-media-loading" : "image-media-unavailable"}" data-image-media data-image-media-surface="gallery" data-image-media-source="${options.escapeHtml(sourcePath)}" style="--media-ratio:${version.width || 1} / ${version.height || 1}">
           ${mediaUrl
-            ? `<img src="${options.escapeHtml(mediaUrl)}" loading="lazy" alt="${options.escapeHtml(title)}" data-image-history-preview data-image-history-cache-key="${options.escapeHtml(options.imageHistoryThumbnailCacheKey(project, version))}" data-image-history-source="${options.escapeHtml(version.file.absolutePath ?? "")}">`
-            : `<div class="history-media-fallback"><span>${options.icon("image")}</span><small>${options.t(uiKeys.history.card.missingImage)}</small></div>`}
+            ? `<img src="${options.escapeHtml(mediaUrl)}" data-image-media-url="${options.escapeHtml(mediaUrl)}" loading="lazy" alt="${options.escapeHtml(title)}" data-image-history-preview data-image-media-image data-image-history-cache-key="${options.escapeHtml(options.imageHistoryThumbnailCacheKey(project, version))}" data-image-history-source="${options.escapeHtml(sourcePath)}">`
+            : ""}
+          ${renderImageMediaStatus(options)}
           <div class="history-media-badges">
             <span class="media-chip history-model-chip">${options.escapeHtml(version.kind === "source" ? options.t(uiKeys.history.card.originalImage) : options.modelName(version.modelId))}</span>
             <span class="media-chip">${version.width > 0 && version.height > 0 ? `${version.width} × ${version.height}` : options.t(uiKeys.history.card.unknownSize)}</span>
@@ -418,6 +421,18 @@ export function renderHistoryDetailPage(
     </section>`;
 }
 
+function renderImageHistoryVersionThumb(
+  project: ImageHistoryProject,
+  item: ImageAssetVersion,
+  pinnedVersion: ImageAssetVersion | undefined,
+  selectedVersionId: string,
+  options: HistoryPageOptions
+): string {
+  const mediaUrl = options.imageHistoryMediaUrl(project, item);
+  const sourcePath = item.file.absolutePath ?? "";
+  return `<button type="button" class="image-history-version-thumb ${item.id === selectedVersionId ? "active" : ""}" data-image-version-id="${options.escapeHtml(item.id)}" data-image-media data-image-media-surface="rail" data-image-media-source="${options.escapeHtml(sourcePath)}" aria-pressed="${item.id === selectedVersionId}" title="${options.t(uiKeys.history.version, { version: item.versionNumber })} · ${item.width} × ${item.height}">${mediaUrl ? `<img src="${options.escapeHtml(mediaUrl)}" data-image-media-url="${options.escapeHtml(mediaUrl)}" data-image-media-image loading="lazy" alt="">` : ""}${renderImageMediaStatus(options, false)}<span>${String(item.versionNumber).padStart(2, "0")}</span>${item.id === pinnedVersion?.id ? options.icon("circle-check") : ""}</button>`;
+}
+
 export function renderImageHistoryDetailPage(
   viewModel: HistoryPageViewModel,
   options: HistoryPageOptions
@@ -462,13 +477,14 @@ export function renderImageHistoryDetailPage(
           <aside class="image-history-version-rail">
             <div><h2>${options.t(uiKeys.history.page.versions)}</h2><p class="muted tiny">${options.t(uiKeys.history.page.newestFirst)}</p></div>
             <div class="image-history-version-list" role="group" aria-label="${options.t(uiKeys.history.page.versions)}">
-              ${project.versions.map((item) => `<button type="button" class="image-history-version-thumb ${item.id === version.id ? "active" : ""}" data-image-version-id="${options.escapeHtml(item.id)}" aria-pressed="${item.id === version.id}" title="${options.t(uiKeys.history.version, { version: item.versionNumber })} · ${item.width} × ${item.height}">${options.imageHistoryMediaUrl(project, item) ? `<img src="${options.escapeHtml(options.imageHistoryMediaUrl(project, item))}" loading="lazy" alt="">` : ""}<span>${String(item.versionNumber).padStart(2, "0")}</span>${item.id === pinnedVersion?.id ? options.icon("circle-check") : ""}</button>`).join("")}
+              ${project.versions.map((item) => renderImageHistoryVersionThumb(project, item, pinnedVersion, version.id, options)).join("")}
             </div>
           </aside>
           <section class="image-history-stage-panel">
             <div class="image-history-stage-toolbar"><div><strong>${options.escapeHtml(version.file.filename)}</strong><p class="muted tiny">${options.t(uiKeys.history.version, { version: version.versionNumber })} · Seed ${version.seed ?? options.t(uiKeys.runtime.random)} · ${options.escapeHtml(version.kind === "source" ? options.t(uiKeys.history.card.originalImage) : options.modelName(version.modelId))}</p></div></div>
-            <div class="image-history-stage ${version.width > version.height ? "is-wide" : "is-tall"}" data-image-stage="fit" data-image-orientation="${version.width > version.height ? "wide" : "tall"}" style="--image-aspect:${version.width || 1} / ${version.height || 1}">
-              ${mediaUrl ? `<img src="${options.escapeHtml(mediaUrl)}" alt="${options.escapeHtml(title)} · ${options.t(uiKeys.history.version, { version: version.versionNumber })}" data-image-history-stage-image>` : `<div class="history-media-fallback"><span>${options.icon("image")}</span><strong>${options.t(uiKeys.history.page.imageUnavailable)}</strong><small>${options.t(uiKeys.history.page.checkOutputDirectory)}</small></div>`}
+            <div class="image-history-stage ${mediaUrl ? "image-media-loading" : "image-media-unavailable"} ${version.width > version.height ? "is-wide" : "is-tall"}" data-image-media data-image-media-surface="detail" data-image-media-source="${options.escapeHtml(filePath)}" data-image-stage="fit" data-image-orientation="${version.width > version.height ? "wide" : "tall"}" style="--image-aspect:${version.width || 1} / ${version.height || 1}">
+              ${mediaUrl ? `<img src="${options.escapeHtml(mediaUrl)}" data-image-media-url="${options.escapeHtml(mediaUrl)}" alt="${options.escapeHtml(title)} · ${options.t(uiKeys.history.version, { version: version.versionNumber })}" data-image-history-stage-image data-image-media-image>` : ""}
+              ${renderImageMediaStatus(options)}
             </div>
             <div class="image-history-stage-controls" aria-label="${options.t(uiKeys.history.page.switchProjects)}">
               <button class="icon-button image-history-stage-nav" data-image-version-navigation="-1" ${previousVersion ? "" : "disabled"} title="${previousVersion ? `${options.t(uiKeys.history.page.previous)}：${options.t(uiKeys.history.version, { version: previousVersion.versionNumber })}` : options.t(uiKeys.history.page.earliestVersion)}" aria-label="${options.t(uiKeys.history.page.previous)}${options.t(uiKeys.history.page.versions)}">${options.icon("arrow-left")}</button>
@@ -501,6 +517,7 @@ export function renderImageHistoryDetailPage(
     ${mediaUrl ? renderImageLightboxMarkup({
       title,
       mediaUrl,
+      sourcePath: filePath,
       versionNumber: version.versionNumber,
       width: version.width,
       height: version.height

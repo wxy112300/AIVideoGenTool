@@ -8,6 +8,11 @@
 
 ## 未发布
 
+## 0.35.0 — 2026-08-21
+
+- 完成 P13 图片历史媒体状态：gallery、detail、version rail 和 Lightbox 复用同一套 loading、ready、unavailable、error 状态，提供重试与文件定位入口；图片源路径规则保持不变，视频既有 loading/error 行为不变。
+- 图片失败时保留已成功显示的旧缩略图/封面，并同步处理 Lightbox 版本切换的源路径和状态；补齐简中、繁中、英文文案。当前 renderer 的混合宽高比 8 项 900×800 keyboard/media smoke、1440×900/900×800/760×800 diagnose 与截图、focused image-media/accessibility tests 及 `npm.cmd run verify`（86 files / 649 tests、production build、20 组对比度检查）通过。
+
 ## 0.34.0 — 2026-08-21
 
 - 完成 P12 History 键盘语义：视频/图片卡片成为可聚焦主入口，支持 Enter/Space，More 按钮和 Shift+F10/Menu key 可打开快捷菜单，子控件不会误触发整卡打开。
