@@ -1536,7 +1536,7 @@ body.image-markup-open {
   }
 }
 
-/* Queue P10: keep active work ahead of environment telemetry. */
+/* Queue P10 correction: keep the environment performance overview at the top. */
 .queue-active-task {
   min-width: 0;
   display: grid;
@@ -1545,71 +1545,6 @@ body.image-markup-open {
 
 .queue-active-task > .task-card {
   margin-bottom: 0;
-}
-
-.queue-active-telemetry {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-  margin: 0;
-}
-
-.queue-active-telemetry .performance-card {
-  padding: 8px 10px;
-  border-radius: 9px;
-  box-shadow: none;
-  background: color-mix(in srgb, var(--panel) 90%, transparent);
-}
-
-.queue-active-telemetry .performance-card > span {
-  font-size: 9px;
-}
-
-.queue-active-telemetry .performance-card strong {
-  margin-top: 2px;
-  font-size: 16px;
-}
-
-.queue-active-telemetry .performance-card small {
-  min-height: 12px;
-  margin-top: 1px;
-  font-size: 9px;
-}
-
-.queue-active-telemetry .metric-bar {
-  height: 3px;
-  margin-top: 5px;
-}
-
-.queue-idle-performance-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-  margin-bottom: 14px;
-}
-
-.queue-idle-performance-grid .performance-card {
-  padding: 8px 10px;
-  border-radius: 9px;
-  box-shadow: none;
-}
-
-.queue-idle-performance-grid .performance-card > span {
-  font-size: 9px;
-}
-
-.queue-idle-performance-grid .performance-card strong {
-  margin-top: 2px;
-  font-size: 16px;
-}
-
-.queue-idle-performance-grid .performance-card small {
-  min-height: 12px;
-  margin-top: 1px;
-  font-size: 9px;
-}
-
-.queue-idle-performance-grid .metric-bar {
-  height: 3px;
-  margin-top: 5px;
 }
 
 .queue-execution-section.queue-has-active > .queue-section-heading {
@@ -1654,10 +1589,6 @@ body.image-markup-open {
 }
 
 @media (max-width: 900px) {
-  .queue-active-telemetry {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .queue-active-task .running-layout {
     grid-template-areas: "copy" "preview";
   }
@@ -1680,11 +1611,5 @@ body.image-markup-open {
   .queue-active-task .live-preview {
     min-height: 210px;
     max-height: 260px;
-  }
-}
-
-@media (max-width: 560px) {
-  .queue-idle-performance-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

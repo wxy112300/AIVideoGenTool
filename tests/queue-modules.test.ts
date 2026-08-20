@@ -42,7 +42,7 @@ function queueFixtureTask(state: ReturnType<typeof createDefaultState>, id: stri
 }
 
 describe("queue renderer task priority", () => {
-  it("places the active task and its telemetry before pending work", () => {
+  it("keeps the environment telemetry at the top and the active task before pending work", () => {
     const state = createDefaultState();
     const running = queueFixtureTask(state, "running-task");
     const waiting = queueFixtureTask(state, "waiting-task");
@@ -52,29 +52,33 @@ describe("queue renderer task priority", () => {
     state.queueLifecycle = "running";
 
     const markup = renderQueuePage(state, queuePageOptions());
+    const topTelemetryIndex = markup.indexOf("queue-top-performance-grid");
     const activeTaskIndex = markup.indexOf('class="task-card running expanded"');
-    const telemetryIndex = markup.indexOf("queue-active-telemetry");
     const pendingIndex = markup.indexOf("queue-pending-list");
 
+    expect(topTelemetryIndex).toBeGreaterThan(-1);
     expect(activeTaskIndex).toBeGreaterThan(-1);
-    expect(activeTaskIndex).toBeLessThan(telemetryIndex);
-    expect(telemetryIndex).toBeLessThan(pendingIndex);
+    expect(topTelemetryIndex).toBeLessThan(activeTaskIndex);
+    expect(activeTaskIndex).toBeLessThan(pendingIndex);
+    expect(markup).not.toContain("queue-active-telemetry");
     expect(markup).not.toContain("queue-idle-performance-grid");
     expect((markup.match(/id="metric-cpu"/g) ?? []).length).toBe(1);
   });
 
-  it("keeps idle telemetry compact and preserves the real empty state", () => {
+  it("keeps top telemetry in waiting and empty states without faking a running task", () => {
     const state = createDefaultState();
     state.queue = [queueFixtureTask(state, "waiting-task")];
     const waitingMarkup = renderQueuePage(state, queuePageOptions());
-    expect(waitingMarkup.indexOf("queue-idle-performance-grid")).toBeLessThan(waitingMarkup.indexOf("queue-execution-section"));
+    expect(waitingMarkup.indexOf("queue-top-performance-grid")).toBeLessThan(waitingMarkup.indexOf("queue-execution-section"));
     expect(waitingMarkup).not.toContain("queue-active-telemetry");
+    expect(waitingMarkup).not.toContain("queue-idle-performance-grid");
 
     state.queue = [];
     const emptyMarkup = renderQueuePage(state, queuePageOptions());
-    expect(emptyMarkup).toContain("queue-idle-performance-grid");
+    expect(emptyMarkup).toContain("queue-top-performance-grid");
     expect(emptyMarkup).toContain("queue-empty-state");
     expect(emptyMarkup).not.toContain("queue-active-telemetry");
+    expect(emptyMarkup).not.toContain("queue-idle-performance-grid");
   });
 });
 

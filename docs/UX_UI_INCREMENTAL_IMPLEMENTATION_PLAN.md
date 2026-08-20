@@ -1,8 +1,8 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图已实现，G11 Queue runtime gate 进行中，随后进入 P11 proposal review
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue runtime gate 进行中，随后进入 P11 proposal review
 > 制定日期：2026-08-20  
-> 当前版本：0.32.0
+> 当前版本：0.32.1
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -351,21 +351,21 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 ### P09 — Queue 任务优先构图 renderer review
 
-**目的**：让 active task 成为 header 后第一个主体。
+**目的**：让 active task 成为执行区第一个主体，同时保留顶部环境性能总览的快速可见性。
 
 **工作**：
 
-- 把 CPU/RAM/GPU/VRAM 归入 expanded active task；
+- 将 CPU/RAM/GPU/VRAM 作为 Queue 顶部统一环境总览，不在 active task 内重复渲染；
 - 默认显示阶段、总进度、局部进度、preview、elapsed、ETA和关键 GPU/VRAM；
-- 次要 telemetry 渐进披露；空闲时只显示紧凑环境状态；
+- active task 保持阶段、进度、preview、elapsed、ETA 和主要控制的连续阅读路径；四状态共享同一顶部性能位置；
 - 保留 pause/resume/cancel/recovery 的安全层级；
 - 900px pending actions 不挤压标题，低频动作进入 More 或第二行。
 
 **Gate**：running、paused、failed、recoverable、empty、multiple pending 六种状态批准。
 
-**当前状态（2026-08-20）**：G10 已批准 `docs/UX_UI_P09_RENDERER_PROPOSAL.md` 的任务优先构图。capture harness 已支持 running、paused、failed、recoverable、empty、multiple-pending 六种 Queue state；8 个唯一视口的 current-renderer diagnose 均无文档横溢出，900×800 隔离 running smoke 已验证 progress/stage/elapsed/preview/telemetry patch 与 pause/cancel 入口。P10 已实现：active task 位于执行区第一主体，telemetry 进入 active task 后的紧凑 evidence strip，idle/empty 使用紧凑环境 strip，running card 以状态/控制优先的 DOM 顺序覆盖 900/760px。P10 focused Queue tests 与 `npm.cmd run verify` 通过（81 files / 627 tests、production build、20 组对比度检查）。G11 已新增 executor/control 隔离 gate，覆盖成功 History 收敛、claim 前取消竞态、readiness abort 不提交、active worker abort/cleanup 生命周期和暂停期间不重叠恢复五条边界；本机 `127.0.0.1:8188` 不可达，未执行真实 ComfyUI GPU 生成，真实 runtime gate 仍保留为环境依赖。
+**当前状态（2026-08-21）**：G10 已批准 `docs/UX_UI_P09_RENDERER_PROPOSAL.md` 的任务优先构图。capture harness 已支持 running、paused、failed、recoverable、empty、multiple-pending 六种 Queue state；8 个唯一视口的 current-renderer diagnose 均无文档横溢出，900×800 隔离 running smoke 已验证 progress/stage/elapsed/preview/telemetry patch 与 pause/cancel 入口。P10 已实现：四张 CPU/RAM/GPU/VRAM 性能卡统一位于 Queue 顶部，active task 位于执行区第一主体，running card 以状态/控制优先的 DOM 顺序覆盖 900/760px；本次顶部位置修正不改队列顺序、状态机、IPC、任务快照或实时 patch 目标。P10 focused Queue tests 与 `npm.cmd run verify` 通过（82 files / 632 tests、production build、20 组对比度检查）。G11 已新增 executor/control 隔离 gate，覆盖成功 History 收敛、claim 前取消竞态、readiness abort 不提交、active worker abort/cleanup 生命周期和暂停期间不重叠恢复五条边界；本机 `127.0.0.1:8188` 不可达，未执行真实 ComfyUI GPU 生成，真实 runtime gate 仍保留为环境依赖。
 
-### P10 — Queue renderer 任务优先实现
+### P10 — Queue renderer 任务优先实现与顶部性能总览
 
 **主要文件**：`src/renderer/pages/queue/page.ts`、`card.ts`、live status/controller 和 Queue-owned CSS。
 
@@ -373,7 +373,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **测试**：`queue-controls`、`queue`、`queue-modules`、`queue-estimator`、`performance`、`recovery`。
 
-**Gate**：header 后第一主体是 active/empty；遥测刷新不重建表单、不抖动卡片、不抢焦点；暂停/继续/取消/重排/恢复实际 smoke；`npm.cmd run verify`。
+**Gate**：execution section 的第一主体是 active/empty，顶部性能总览保持稳定；遥测刷新不重建表单、不抖动卡片、不抢焦点；暂停/继续/取消/重排/恢复实际 smoke；`npm.cmd run verify`。
 
 ### P11 — History toolbar、瀑布流和相册稳定性
 

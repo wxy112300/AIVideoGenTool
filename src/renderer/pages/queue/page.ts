@@ -133,12 +133,10 @@ export function renderQueuePage(
         ${executionHeading}
         <div class="queue-active-task">
           ${options.renderTaskCard(running, runningIndex + 1, queueMoveAvailability(activeTasks, runningIndex))}
-          ${renderQueuePerformanceGrid(options, "queue-active-telemetry")}
         </div>
         <div class="task-list queue-pending-list">${waitingMarkup}</div>
       </section>`
-    : `${renderQueuePerformanceGrid(options, "queue-idle-performance-grid")}
-      ${state.queue.length === 0
+    : `${state.queue.length === 0
         ? `<div class="empty panel queue-empty-state"><h2>${options.t(uiKeys.queue.emptyTitle)}</h2><p>${options.t(uiKeys.queue.emptyDescription)}</p><button class="secondary button-with-icon" data-page="create">${options.icon("plus")}${options.t(uiKeys.queue.create)}</button></div>`
         : `<section class="queue-section queue-execution-section">${executionHeading}<div class="task-list">${activeTasks.length ? waitingMarkup : renderWaitingEmpty(options)}</div></section>`}`;
   return `
@@ -169,6 +167,7 @@ export function renderQueuePage(
       </div>
     </section>
     <div class="queue-operation-status" id="queue-operation-status" data-tone="${operation.tone}" ${operation.visible ? "" : "hidden"} role="status" aria-live="polite"><span class="queue-operation-indicator" aria-hidden="true"></span><span id="queue-operation-message">${options.escapeHtml(operation.message)}</span></div>
+    ${renderQueuePerformanceGrid(options, "queue-top-performance-grid")}
     ${queueBody}
     ${attentionTasks.length ? `<section class="queue-section queue-attention-section"><div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.attentionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.attentionDescription)}</span></div><span class="model-badge warning-badge">${options.t(uiKeys.queue.count, { count: attentionTasks.length })}</span></div><div class="task-list">${attentionTasks.map((task) => options.renderTaskCard(task, 0)).join("")}</div></section>` : ""}
     `;
