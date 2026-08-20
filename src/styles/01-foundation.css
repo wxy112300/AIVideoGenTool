@@ -77,7 +77,7 @@ nav { display: flex; gap: 5px; }
 .enqueue-button.busy { cursor: wait; opacity: .82; }
 .enqueue-button.busy .enqueue-spinner { animation: enqueue-spin .85s linear infinite; }
 @keyframes enqueue-spin { to { transform: rotate(360deg); } }
-.panel { min-width: 0; border: 1px solid var(--border); border-radius: 17px; background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: 0 14px 40px rgba(0,0,0,.14); }
+.panel { min-width: 0; border: 1px solid var(--border); border-radius: 17px; background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--ux-elevation-panel); }
 .page-heading, .section-heading, .submit-row, .workflow-field, .task-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .page-heading { min-height: 88px; padding: 14px 0; }
 .page-heading p, .section-heading p { margin-bottom: 0; color: var(--muted); }
@@ -205,7 +205,7 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: 13px; }
 .queue-runtime-badge[data-lifecycle="running"], .queue-runtime-badge[data-status="connected"] { border-color: rgba(93, 205, 161, .42); color: #9ee5c4; background: rgba(56, 148, 111, .14); }
 .queue-runtime-badge[data-lifecycle="starting"], .queue-runtime-badge[data-lifecycle="pausing"], .queue-runtime-badge[data-lifecycle="cancelling"], .queue-runtime-badge[data-lifecycle="cleaning"], .queue-runtime-badge[data-status="starting"], .queue-runtime-badge[data-status="cleaning"] { border-color: rgba(244, 189, 106, .45); color: #f1cb89; background: rgba(150, 101, 27, .14); }
 .queue-runtime-badge[data-lifecycle="error"], .queue-runtime-badge[data-status="error"] { border-color: rgba(255, 139, 114, .5); color: #ffad9b; background: rgba(155, 54, 44, .15); }
-.task-card.expanded { display: block; padding: 18px; border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); box-shadow: 0 16px 48px rgba(31, 104, 190, .13); }
+.task-card.expanded { display: block; padding: 18px; border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); box-shadow: var(--ux-elevation-panel); }
 .expanded-task-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 15px; }
 .expanded-task-head h3 { margin: 0; overflow-wrap: anywhere; }
 .running-progress-value { display: grid; justify-items: end; gap: 2px; flex: none; }

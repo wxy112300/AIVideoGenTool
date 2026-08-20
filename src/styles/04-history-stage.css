@@ -11,7 +11,7 @@
   background:
     radial-gradient(circle at 50% 42%, rgba(43,53,68,.34), transparent 46%),
     #07090c;
-  box-shadow: 0 24px 60px rgba(0,0,0,.3);
+  box-shadow: var(--ux-elevation-panel);
 }
 .history-player video { background: transparent; }
 .version-toolbar { position: relative; z-index: 1; margin-top: 0; border-radius: 12px; }

@@ -8,6 +8,10 @@
 
 ## 未发布
 
+## 0.30.2 — 2026-08-20
+
+- 收敛当前 renderer 的 panel/overlay 材质：普通 panel、任务卡、性能卡、History 卡片、History viewer、Settings 分区和侧栏移除装饰性阴影；tooltip、flash、context menu、dialog、lightbox、confirm、cropper 与 asset-library 等 overlay 保留 elevation，不改变 DOM、controller、payload、布局或交互语义。
+
 ## 0.30.1 — 2026-08-20
 
 - 收敛当前 renderer 的品牌与导航 shell：品牌标记、顶栏和活动导航改用语义化 brand/nav 角色，移除装饰性 glow；活动导航保留清晰的背景、边界和下划线反馈，不改变 DOM、controller、payload 或布局。

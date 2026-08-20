@@ -132,7 +132,7 @@ main { padding-top: 6px; }
   border-color: rgba(59, 68, 82, .72);
   border-radius: 16px;
   background: linear-gradient(180deg, rgba(21,25,33,.98), rgba(17,21,28,.98));
-  box-shadow: var(--shadow);
+  box-shadow: var(--ux-elevation-panel);
 }
 .primary, .secondary, .ghost, .icon-button {
   min-height: 40px;
@@ -453,7 +453,7 @@ select { padding-inline: 12px; }
 .submit-row .primary { min-width: 122px; }
 
 .performance-grid { gap: 12px; margin-bottom: 16px; }
-.performance-card { padding: 16px 17px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.13); }
+.performance-card { padding: 16px 17px; border-radius: 14px; box-shadow: var(--ux-elevation-panel); }
 .performance-card > span { color: #8f99a8; font-size: 10px; font-weight: 680; letter-spacing: .08em; text-transform: uppercase; }
 .performance-card strong { margin-top: 5px; font-size: 23px; font-weight: 650; letter-spacing: -.03em; }
 .metric-bar { height: 5px; margin-top: 11px; background: #292f39; }
@@ -506,7 +506,7 @@ select { padding-inline: 12px; }
 .status { margin-bottom: 8px; padding: 4px 8px; font-weight: 650; }
 .status.running { color: var(--ux-status-info-text); background: var(--ux-status-info-surface); }
 .status.failed, .status.cancelled { background: var(--ux-status-danger-surface); }
-.task-card.expanded { padding: 22px; border-color: rgba(116,165,244,.48); box-shadow: 0 20px 56px rgba(33,85,154,.15); }
+.task-card.expanded { padding: 22px; border-color: rgba(116,165,244,.48); box-shadow: var(--ux-elevation-panel); }
 .expanded-task-head { margin-bottom: 18px; }
 .running-progress-value > strong { font-size: 22px; font-weight: 640; }
 .running-layout { gap: 22px; }
@@ -526,8 +526,8 @@ select { padding-inline: 12px; }
 .history-view-tools label { min-width: 144px; }
 .history-gallery.masonry { gap: 18px; }
 .history-gallery.album { gap: 18px; }
-.history-gallery-item { margin-bottom: 18px; border-radius: 15px; box-shadow: 0 14px 36px rgba(0,0,0,.18); transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
-.history-gallery-item:hover { transform: translateY(-2px); border-color: #45536a; box-shadow: 0 20px 48px rgba(0,0,0,.26); }
+.history-gallery-item { margin-bottom: 18px; border-radius: 15px; box-shadow: var(--ux-elevation-panel); transition: transform .18s ease, border-color .18s ease; }
+.history-gallery-item:hover { transform: translateY(-2px); border-color: #45536a; box-shadow: var(--ux-elevation-panel); }
 .history-media { background: #080a0d; }
 .history-media::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(0,0,0,.12), transparent 42%, rgba(0,0,0,.2)); }
 .history-media-badges { gap: 5px; }
@@ -584,7 +584,7 @@ select { padding-inline: 12px; }
 .history-detail-nav-shortcut kbd { padding: 2px 4px; border: 1px solid rgba(96,110,130,.62); border-bottom-width: 2px; border-radius: 4px; color: #b9c7d9; background: #151b24; font: 9px/1.1 "Cascadia Mono", Consolas, monospace; }
 .history-detail-hero { grid-template-columns: minmax(0, 1.58fr) minmax(310px, .72fr); gap: 20px; }
 .history-player-column { gap: 12px; }
-.history-player { border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,.3); }
+.history-player { border-radius: 16px; box-shadow: var(--ux-elevation-panel); }
 .version-toolbar { min-height: 52px; padding: 12px 14px; }
 .history-summary { gap: 17px; padding: 21px; }
 .history-title-line h1 { width: 0; min-width: 0; font-size: 23px; }
@@ -611,7 +611,7 @@ pre { border: 1px solid #292f39; background: #0c0f14; font-size: 11px; line-heig
   padding: 9px;
   border-color: rgba(59,68,82,.72);
   background: color-mix(in srgb, var(--ux-surface-base) 90%, transparent);
-  box-shadow: 0 14px 38px rgba(0,0,0,.18);
+  box-shadow: var(--ux-elevation-panel);
 }
 .settings-tab { min-height: 47px; padding: 10px 11px; border-radius: 9px; font-size: 13px; font-weight: 570; }
 .settings-tab:hover { color: #e7ebf2; background: var(--ux-surface-object); }

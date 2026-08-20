@@ -10,10 +10,10 @@
 - 样式：`src/style.css` → `src/styles/`；
 - 页面：Create、Queue、History/Details、Settings；
 - 源 commit：`f4653727004e6d4cc2be1ceb7d8b4d0e749bf560`；
-- 源版本：`0.30.1`（以 `package.json` 为准）；
+- 源版本：`0.30.2`（以 `package.json` 为准）；
 - manifest：[`ux-ui-renderer-baseline.manifest.json`](./ux-ui-renderer-baseline.manifest.json)。
 
-manifest 的 source commit 是本轮 rebase 的基准 commit；最新 136 张截图来自同一工作树，包含 P02 语义 token 别名、P03/L10 shared surface 迁移、P03/L11 text/separator 迁移、P03/L12 action/focus 迁移、P03/L13 status/badge 语义迁移、P03/L14 brand/nav shell 迁移、P05 `aria-current` 语义和 P08 Image Edit 窄窗规则。L14 移除了顶栏、品牌标记和活动导航的装饰性 glow，保留活动导航的背景、边界与下划线反馈；因此这组截图记录了当前版本 `0.30.1` 的可见 shell 差异，而不再是 L13 的 zero-visual-diff 证据。后续 renderer CSS 变更后应重新生成并更新基准记录。
+manifest 的 source commit 是本轮 rebase 的基准 commit；最新 136 张截图来自同一工作树，包含 P02 语义 token 别名、P03/L10 shared surface 迁移、P03/L11 text/separator 迁移、P03/L12 action/focus 迁移、P03/L13 status/badge 语义迁移、P03/L14 brand/nav shell 迁移、P03/L15 panel/elevation 迁移、P05 `aria-current` 语义和 P08 Image Edit 窄窗规则。L14 移除了顶栏、品牌标记和活动导航的装饰性 glow，保留活动导航的背景、边界与下划线反馈；L15 移除了普通 panel 的装饰性阴影，同时保留 dialog、popover、tooltip、context menu、lightbox、confirm、cropper 和 asset-library 等 overlay elevation；因此这组截图记录了当前版本 `0.30.2` 的可见 shell 与 panel/overlay 材质差异，而不再是 L13 的 zero-visual-diff 证据。后续 renderer CSS 变更后应重新生成并更新基准记录。
 
 截图 harness 使用临时 userData、mock preload 和合成 fixture，只读取当前 renderer，不读取或修改用户任务、历史记录、设置或模型文件。因此它证明的是当前 renderer 在固定状态下的视觉/DOM基线，不等同于 ComfyUI 运行态 smoke。
 

@@ -114,13 +114,14 @@
   --ux-status-info-complete-icon: #9ac4ff;
   --ux-status-info-complete-icon-shadow: 3px 0 0 rgba(154,196,255,.42);
 
-  /* Focus and elevation */
+  /* Focus and elevation. L15 keeps ordinary content surfaces flat; overlays
+   * own their elevation so dialogs and popovers remain visually above them. */
   --ux-focus-ring: rgba(138, 180, 255, .9);
   --ux-focus-ring-width: 2px;
   --ux-focus-ring-offset: 2px;
   --ux-focus-control-border: #6d9ce8;
   --ux-focus-control-glow: rgba(101, 151, 255, .12);
-  --ux-elevation-panel: var(--shadow, 0 18px 48px rgba(0, 0, 0, .22));
+  --ux-elevation-panel: none;
 
   /* Type roles: values match the current renderer before P04 changes them. */
   --ux-type-page: clamp(25px, 2.3vw, 31px);

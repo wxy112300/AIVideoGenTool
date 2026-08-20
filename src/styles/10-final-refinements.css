@@ -10,10 +10,10 @@ body {
 .panel {
   border-radius: 13px;
   background: var(--ux-surface-base);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, .14);
+  box-shadow: var(--ux-elevation-panel);
 }
 .settings-content > .settings-panel { gap: 12px; }
-.settings-content .settings-section { padding: 18px; border-radius: 12px; box-shadow: 0 8px 22px rgba(0, 0, 0, .11); }
+.settings-content .settings-section { padding: 18px; border-radius: 12px; box-shadow: var(--ux-elevation-panel); }
 .settings-content .prompt-runtime-dependency.available { border-color: color-mix(in srgb, var(--success) 28%, var(--border)); }
 .settings-content .prompt-runtime-dependency.warning { border-color: color-mix(in srgb, var(--warning) 32%, var(--border)); }
 .settings-content .prompt-runtime-dependency.missing { border-color: color-mix(in srgb, var(--danger) 24%, var(--border)); }

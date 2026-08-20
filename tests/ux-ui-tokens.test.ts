@@ -7,6 +7,9 @@ const styleEntry = readFileSync(new URL("../src/style.css", import.meta.url), "u
 const foundationSource = readFileSync(new URL("../src/styles/01-foundation.css", import.meta.url), "utf8");
 const visualRefreshSource = readFileSync(new URL("../src/styles/02-visual-refresh.css", import.meta.url), "utf8");
 const accelerationSource = readFileSync(new URL("../src/styles/03-acceleration.css", import.meta.url), "utf8");
+const densitySource = readFileSync(new URL("../src/styles/05-density-refinement.css", import.meta.url), "utf8");
+const historyCurationSource = readFileSync(new URL("../src/styles/11-history-curation.css", import.meta.url), "utf8");
+const finalRefinementsSource = readFileSync(new URL("../src/styles/10-final-refinements.css", import.meta.url), "utf8");
 
 const semanticRoles = [
   "--ux-canvas",
@@ -132,5 +135,17 @@ describe("UX/UI semantic token foundation", () => {
     expect(activeNav).toContain("border-color: var(--ux-nav-active-border)");
     expect(activeNav).toContain("box-shadow: none");
     expect(visualRefreshSource).toContain("background: var(--ux-nav-active-indicator)");
+  });
+
+  it("flattens ordinary panels while preserving overlay elevation", () => {
+    expect(tokenSource).toContain("--ux-elevation-panel: none;");
+    expect(foundationSource).toContain(".panel { min-width: 0; border: 1px solid var(--border); border-radius: 17px; background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--ux-elevation-panel); }");
+    expect(foundationSource).toContain("box-shadow: var(--ux-elevation-panel); }");
+    expect(visualRefreshSource).toContain("box-shadow: var(--ux-elevation-panel);");
+    expect(finalRefinementsSource).toContain(".settings-content .settings-section { padding: 18px; border-radius: 12px; box-shadow: var(--ux-elevation-panel); }");
+    expect(historyCurationSource).toContain("box-shadow: 0 14px 34px rgba(0, 0, 0, .34);");
+    expect(foundationSource).toContain("box-shadow: 0 24px 80px rgba(0, 0, 0, .5);");
+    expect(foundationSource).toContain("box-shadow: 0 28px 100px rgba(0, 0, 0, .7);");
+    expect(densitySource).toContain("box-shadow: 0 28px 90px rgba(0, 0, 0, .58);");
   });
 });
