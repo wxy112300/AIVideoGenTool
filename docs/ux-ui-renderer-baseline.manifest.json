@@ -42,5 +42,12 @@
     { "id": "settings-prompt", "route": "settings", "setup": { "kind": "settings-tab", "value": "prompt" }, "viewportGroups": ["standard", "breakpoints"] },
     { "id": "settings-upscale", "route": "settings", "setup": { "kind": "settings-tab", "value": "upscale" }, "viewportGroups": ["standard", "breakpoints"] },
     { "id": "settings-logs", "route": "settings", "setup": { "kind": "settings-tab", "value": "logs" }, "viewportGroups": ["standard", "breakpoints"] }
+  ],
+  "settingsStateFixtures": [
+    { "id": "settings-state-offline", "route": "settings", "settingsState": "offline", "setup": { "kind": "settings-tab", "value": "system" }, "viewportGroups": ["standard"], "notes": "Offline scan complete: ComfyUI stopped; file/service evidence remains neutral." },
+    { "id": "settings-state-scanning", "route": "settings", "settingsState": "scanning", "setup": { "kind": "settings-tab", "value": "system" }, "viewportGroups": ["standard"], "notes": "Environment scan remains pending to expose the loading state." },
+    { "id": "settings-state-installing", "route": "settings", "settingsState": "installing", "setup": { "kind": "settings-tab", "value": "nodes" }, "viewportGroups": ["standard"], "notes": "A missing custom node is held in the real install queue's installing phase." },
+    { "id": "settings-state-partial", "route": "settings", "settingsState": "partial", "setup": { "kind": "settings-tab", "value": "system" }, "viewportGroups": ["standard"], "notes": "Partial scan: multiple installations, ready/missing model evidence, optional warning and repairable issue." },
+    { "id": "settings-state-error", "route": "settings", "settingsState": "error", "setup": { "kind": "settings-tab", "value": "system" }, "viewportGroups": ["standard"], "notes": "Confirmed environment/compatibility error with repair and update recovery; synthetic evidence, not a ComfyUI runtime claim." }
   ]
 }

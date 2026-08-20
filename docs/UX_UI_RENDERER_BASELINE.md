@@ -57,6 +57,8 @@ npm.cmd run verify:ux-ui-contrast
 - Details：视频详情、图片详情；
 - Settings：system、acceleration、video、image、nodes、prompt、upscale、logs。
 
+P16 另有独立的 `settingsStateFixtures`，不计入上述 136 张 baseline：运行 `npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --settings-states --diagnose` 可捕获 offline、scanning、installing、partial、confirmed error 五种 Settings 状态在标准四视口下的 20 张隔离证据。它们用于 Settings review，不替代真实 ComfyUI、安装 subprocess 或 runtime smoke。
+
 ## 当前 UI 观察与 preserve list
 
 当前基线呈现的是深色近黑画布、蓝色 action/accent、真实媒体主导的 Create/History/Details，以及蓝色反馈和状态层。后续升级可以改善层级、密度、键盘和恢复路径，但必须以这些真实页面的 DOM、断点和可见行为为起点，不得把旧 prototype 的暖石墨方案直接迁移进 renderer。
