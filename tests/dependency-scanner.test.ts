@@ -2,7 +2,10 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { scanCustomNodes } from "../electron/services/dependency-scanner";
+import {
+  readLocalNodeVersion,
+  scanCustomNodes
+} from "../electron/services/dependency-scanner";
 import { createDefaultState } from "../src/core/defaults";
 
 const temporaryDirectories: string[] = [];
@@ -17,6 +20,23 @@ afterEach(async () => {
 });
 
 describe("dependency scanner", () => {
+  it("reads local node versions from package-owned metadata in priority order", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-node-version-"));
+    temporaryDirectories.push(root);
+    const fixtures = [
+      ["pyproject", "pyproject.toml", '[project]\nversion = "1.2.3"\n', "1.2.3"],
+      ["package", "package.json", '{"version":"2.3.4"}', "2.3.4"],
+      ["version-file", "VERSION", "v3.4.5\n", "3.4.5"],
+      ["python", "__init__.py", '__version__ = "4.5.6"\n', "4.5.6"]
+    ] as const;
+    for (const [name, filename, content, expected] of fixtures) {
+      const directory = path.join(root, name);
+      await fs.mkdir(directory);
+      await fs.writeFile(path.join(directory, filename), content, "utf8");
+      expect(await readLocalNodeVersion(directory)).toMatchObject({ version: expected });
+    }
+  });
+
   it("runs the H3 Prompt Writer status, model, and diagnostics probe after service startup", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-runtime-scan-"));
     temporaryDirectories.push(comfyRoot);
@@ -210,7 +230,7 @@ describe("dependency scanner", () => {
     expect(qwenVl?.updateNotice).toContain("Bad file descriptor");
   });
 
-  it("keeps remote releases informational when the catalog recommendation is newer", async () => {
+  it("offers an update when the installed node is below the catalog recommendation", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-spectrum-scan-"));
     temporaryDirectories.push(comfyRoot);
     const spectrumDirectory = path.join(
@@ -236,11 +256,12 @@ describe("dependency scanner", () => {
       loaded: true,
       version: "0.2.6",
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.15",
+      recommendedVersion: "0.2.16",
       latestVersion: "0.2.7",
-      updateAvailable: false,
+      updateAvailable: true,
       loadError: ""
     });
+    expect(spectrum?.updateNotice).toContain("当前 v0.2.6，推荐 v0.2.16");
   });
 
   it("shows generic cached releases without making them actionable updates", async () => {
@@ -344,7 +365,7 @@ describe("dependency scanner", () => {
     const statuses = await scanCustomNodes(comfyRoot, {
       ...createDefaultState().settings,
       comfyUrl: "http://127.0.0.1:1"
-    }, "0.2.15", "", "0.3.1");
+    }, "0.2.16", "", "0.3.1");
     const motionContext = statuses.find((status) => status.id === "h3-motion-context");
 
     expect(motionContext).toMatchObject({

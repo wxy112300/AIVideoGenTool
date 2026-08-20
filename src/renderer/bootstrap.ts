@@ -4,11 +4,10 @@ import type {
   BundledWorkflow,
   ComfyRuntimeState,
   Draft,
-  EnvironmentScanResult,
+  Settings,
   WorkflowCapabilities
 } from "../types";
-import { createTranslator, loadUiLocale } from "../core/i18n";
-import { uiKeys } from "../core/i18n-keys";
+import { loadUiLocale } from "../core/i18n";
 
 export interface RendererBootstrapOptions {
   studio: AppApi;
@@ -16,13 +15,11 @@ export interface RendererBootstrapOptions {
   setComfyRuntimeState(state: ComfyRuntimeState): void;
   getState(): AppState;
   setAppVersion(version: string): void;
-  setEnvironmentScan(scan: EnvironmentScanResult | null): void;
-  setEnvironmentScanError(message: string): void;
+  refreshEnvironment(settings: Settings): Promise<unknown>;
   bundledWorkflows: Record<string, BundledWorkflow>;
   workflowCapabilities: Record<string, WorkflowCapabilities>;
   bundledWorkflowKey(modelId: string, inputMode: Draft["inputMode"]): string;
   bundledWorkflowModelId(draft: Draft): string;
-  enableSpectrumByDefaultIfAvailable(): void;
   patchDraft(patch: Partial<Draft>): void;
   render(): void;
   refreshPerformanceMetrics(): Promise<void>;
@@ -41,24 +38,13 @@ export function bootstrapRenderer(options: RendererBootstrapOptions): void {
     document.title = `Local Video Studio v${appVersion}`;
     options.render();
     void options.refreshPerformanceMetrics();
-    void Promise.allSettled([
-      options.studio.getBundledWorkflow(
-        options.bundledWorkflowModelId(initialState.draft),
-        initialState.draft.inputMode
-      ),
-      options.studio.scanEnvironment(initialState.settings)
-    ]).then(([bundledResult, scanResult]) => {
-      if (scanResult.status === "fulfilled") {
-        options.setEnvironmentScanError("");
-        options.setEnvironmentScan(scanResult.value);
-        options.enableSpectrumByDefaultIfAvailable();
-      } else {
-        options.setEnvironmentScanError(
-          createTranslator(initialState.settings.uiLocale).t(uiKeys.runtime.startupScanFailed, { error: scanResult.reason instanceof Error ? scanResult.reason.message : String(scanResult.reason) })
-        );
-      }
-      if (bundledResult.status === "fulfilled" && bundledResult.value) {
-        const bundled = bundledResult.value;
+    void options.refreshEnvironment(initialState.settings);
+
+    void options.studio.getBundledWorkflow(
+      options.bundledWorkflowModelId(initialState.draft),
+      initialState.draft.inputMode
+    ).then((bundled) => {
+      if (bundled) {
         options.bundledWorkflows[
           options.bundledWorkflowKey(bundled.modelId, initialState.draft.inputMode)
         ] = bundled;
@@ -70,15 +56,11 @@ export function bootstrapRenderer(options: RendererBootstrapOptions): void {
           options.patchDraft({ workflowPath: bundled.path });
         }
       }
-      if (bundledResult.status === "rejected") {
+    }).catch((error) => {
         void options.studio.reportRendererError(
-          bundledResult.reason instanceof Error
-            ? bundledResult.reason.message
-            : String(bundledResult.reason),
+          error instanceof Error ? error.message : String(error),
           { source: "bundled-workflow-load" }
         ).catch(() => undefined);
-      }
-      options.render();
-    });
+    }).finally(() => options.render());
   });
 }

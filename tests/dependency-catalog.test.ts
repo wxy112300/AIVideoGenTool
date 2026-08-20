@@ -66,8 +66,13 @@ describe("dependency catalog", () => {
       "VHS_LoadVideoFFmpeg",
       "VHS_VideoInfoSource"
     ]));
+    expect(customNodeDefinition("spectrum-minimax-h3")).toMatchObject({
+      minimumVersion: "0.2.1",
+      recommendedVersion: "0.2.16"
+    });
     expect(customNodeDefinition("spectrum-minimax-h3")?.compatibilityEvidence?.[0]).toMatchObject({
       comfyUi: "0.33.1",
+      commit: "567768f",
       checks: ["static"]
     });
   });

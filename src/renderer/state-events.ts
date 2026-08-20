@@ -95,15 +95,7 @@ function promptElapsedText(milliseconds: number): string {
     : `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
 }
 
-function updatePromptProgressDom(progress: PromptProgress | null, t: Translate): void {
-  const button = document.querySelector<HTMLButtonElement>("#enhance-prompt");
-  if (!button) return;
-  const label = button.querySelector<HTMLElement>("[data-prompt-progress-label]");
-  const bar = button.querySelector<HTMLElement>("[data-prompt-progress-bar]");
-  const active = progress?.status === "running";
-  button.classList.toggle("prompt-progress-active", active);
-  button.setAttribute("aria-busy", String(active));
-  if (!progress) return;
+function promptProgressStatusText(progress: PromptProgress, t: Translate): string {
   const elapsed = promptElapsedText(progress.elapsedMs);
   const stage = t(promptProgressStageKeys[progress.stage]);
   const detail = progress.detail?.trim();
@@ -113,7 +105,32 @@ function updatePromptProgressDom(progress: PromptProgress | null, t: Translate):
     : progress.status === "cancelled"
       ? t(uiKeys.create.promptProgress.cancel)
       : detail || stage;
-  button.title = `${stage} · ${suffix}`;
+  return `${stage} · ${suffix}`;
+}
+
+function updatePromptProgressDom(progress: PromptProgress | null, t: Translate): void {
+  const button = document.querySelector<HTMLButtonElement>("#enhance-prompt");
+  if (!button) return;
+  const label = button.querySelector<HTMLElement>("[data-prompt-progress-label]");
+  const bar = button.querySelector<HTMLElement>("[data-prompt-progress-bar]");
+  const tooltip = document.querySelector<HTMLElement>("[data-prompt-progress-tooltip]");
+  const active = progress?.status === "running";
+  button.classList.toggle("prompt-progress-active", active);
+  button.setAttribute("aria-busy", String(active));
+  if (!progress) return;
+  const elapsed = promptElapsedText(progress.elapsedMs);
+  const accessibleStatus = promptProgressStatusText(progress, t);
+  const suffix = accessibleStatus.slice(accessibleStatus.indexOf(" · ") + 3);
+  button.setAttribute("aria-label", accessibleStatus);
+  if (active) {
+    button.removeAttribute("title");
+    button.setAttribute("aria-describedby", "prompt-progress-tooltip");
+    if (tooltip) tooltip.textContent = accessibleStatus;
+  } else {
+    button.removeAttribute("aria-describedby");
+    button.title = accessibleStatus;
+    if (tooltip) tooltip.textContent = "";
+  }
   if (label) label.textContent = active ? elapsed : suffix;
   if (bar) {
     bar.classList.toggle("indeterminate", progress.progress == null && active);
@@ -198,7 +215,15 @@ export function registerRendererEvents(
         elapsedMs: Date.now() - progress.startedAt
       };
       options.setPromptProgress(current);
-      updatePromptProgressDom(current, options.t);
+      const label = document.querySelector<HTMLElement>(
+        "#enhance-prompt [data-prompt-progress-label]"
+      );
+      if (label) label.textContent = promptElapsedText(current.elapsedMs);
+      const status = promptProgressStatusText(current, options.t);
+      const button = document.querySelector<HTMLButtonElement>("#enhance-prompt");
+      const tooltip = document.querySelector<HTMLElement>("[data-prompt-progress-tooltip]");
+      if (button) button.setAttribute("aria-label", status);
+      if (tooltip) tooltip.textContent = status;
     }, 1000);
   };
   const unsubscribers = [

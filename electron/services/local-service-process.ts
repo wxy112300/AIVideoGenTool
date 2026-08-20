@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import { createConnection } from "node:net";
-import { StringDecoder } from "node:string_decoder";
 export function localEndpoint(rawUrl: string, fallbackPort: number): {
   host: string;
   port: number;
@@ -68,52 +67,31 @@ export async function launchDetached(
 }
 
 /**
- * Start app-owned ComfyUI Python with stable, captured output streams.
+ * Start app-owned ComfyUI Python with a visible Windows console.
  *
  * The generic detached launcher intentionally discards stdio for background
  * helpers. ComfyUI is different: startup, import, and model-loading output is
- * required diagnostics. Keep this separate so its pipes are continuously
- * drained while unrelated helpers retain their hidden-process behavior.
+ * required diagnostics. The Python bootstrap binds these inherited streams to
+ * the new console while unrelated helpers retain their hidden-process behavior.
  */
 export async function launchComfyUiVisible(
   executable: string,
   args: string[],
   cwd?: string,
   env: NodeJS.ProcessEnv = process.env,
-  onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void,
-  onOutput?: (processId: number, stream: "stdout" | "stderr", line: string) => void
+  onExit?: (processId: number, code: number | null, signal: NodeJS.Signals | null) => void
 ): Promise<number> {
   return new Promise<number>((resolve, reject) => {
     const child = spawn(executable, args, {
       cwd,
       env,
       detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true
+      stdio: ["ignore", "inherit", "inherit"],
+      windowsHide: false
     });
-    const remainders = { stdout: "", stderr: "" };
-    const decoders = {
-      stdout: new StringDecoder("utf8"),
-      stderr: new StringDecoder("utf8")
-    };
-    const forward = (stream: "stdout" | "stderr", chunk: Buffer): void => {
-      const text = remainders[stream] + decoders[stream].write(chunk);
-      const lines = text.split(/\r\n|[\r\n]/u);
-      remainders[stream] = lines.pop() ?? "";
-      if (!child.pid) return;
-      for (const line of lines) onOutput?.(child.pid, stream, line);
-    };
-    child.stdout?.on("data", (chunk: Buffer) => forward("stdout", chunk));
-    child.stderr?.on("data", (chunk: Buffer) => forward("stderr", chunk));
     child.once("error", reject);
-    child.once("close", (code, signal) => {
-      if (child.pid) {
-        for (const stream of ["stdout", "stderr"] as const) {
-          remainders[stream] += decoders[stream].end();
-          if (remainders[stream]) onOutput?.(child.pid, stream, remainders[stream]);
-        }
-        onExit?.(child.pid, code, signal);
-      }
+    child.once("exit", (code, signal) => {
+      if (child.pid) onExit?.(child.pid, code, signal);
     });
     child.once("spawn", () => {
       if (!child.pid) {

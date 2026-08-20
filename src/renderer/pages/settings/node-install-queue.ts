@@ -28,11 +28,10 @@ export interface CustomNodeInstallQueueMessages {
 export interface CustomNodeInstallQueueDependencies {
   install(nodeId: string, settings: Settings): Promise<ConnectionResult>;
   restart(settings: Settings): Promise<ConnectionResult>;
-  scan(settings: Settings): Promise<EnvironmentScanResult>;
+  scan(settings: Settings): Promise<EnvironmentScanResult | null>;
   nodeName(nodeId: string): string;
   getLog(nodeId: string): string;
   setLog(nodeId: string, log: string): void;
-  setEnvironmentScan(scan: EnvironmentScanResult): void;
   notify(message: string, kind: "info" | "warning" | "error"): void;
   onSnapshot(snapshot: CustomNodeInstallQueueSnapshot): void;
   messages: CustomNodeInstallQueueMessages;
@@ -44,6 +43,22 @@ export function customNodeIdsForBulkAction(nodes: readonly CustomNodeStatus[]): 
     !node.installed || node.updateAvailable
   );
   return actionable.map((node) => node.id);
+}
+
+export type CustomNodeBulkActionMode = "none" | "install" | "update" | "mixed";
+
+export function customNodeBulkActionMode(
+  nodes: readonly CustomNodeStatus[]
+): CustomNodeBulkActionMode {
+  const actionable = nodes.filter((node) =>
+    node.bulkInstall !== false && (!node.installed || node.updateAvailable)
+  );
+  const hasMissing = actionable.some((node) => !node.installed);
+  const hasUpdates = actionable.some((node) => node.installed && node.updateAvailable);
+  if (hasMissing && hasUpdates) return "mixed";
+  if (hasMissing) return "install";
+  if (hasUpdates) return "update";
+  return "none";
 }
 
 function cloneSettings(settings: Settings): Settings {
@@ -166,17 +181,20 @@ export class CustomNodeInstallQueue {
         this.emit();
         try {
           const scan = await this.dependencies.scan(settings);
-          this.dependencies.setEnvironmentScan(scan);
-          for (const nodeId of successfulNodeIds) {
-            const nodeStatus = scan.customNodes.find((node) => node.id === nodeId);
-            if (nodeStatus?.loaded) continue;
-            const detail = nodeStatus?.loadError || nodeStatus?.compatibilityNotice || "";
-            const message = this.dependencies.messages.readyCheckFailed(
-              this.dependencies.nodeName(nodeId),
-              detail
-            );
-            this.appendLog(nodeId, message);
-            this.dependencies.notify(message, "warning");
+          if (!scan) {
+            successfulNodeIds.forEach((nodeId) => failedNodeIds.add(nodeId));
+          } else {
+            for (const nodeId of successfulNodeIds) {
+              const nodeStatus = scan.customNodes.find((node) => node.id === nodeId);
+              if (nodeStatus?.loaded) continue;
+              const detail = nodeStatus?.loadError || nodeStatus?.compatibilityNotice || "";
+              const message = this.dependencies.messages.readyCheckFailed(
+                this.dependencies.nodeName(nodeId),
+                detail
+              );
+              this.appendLog(nodeId, message);
+              this.dependencies.notify(message, "warning");
+            }
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

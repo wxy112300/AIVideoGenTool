@@ -294,6 +294,7 @@ export function mountCreatePromptController(
         referenceMediaPaths,
         referenceContext: isH3Vision ? referenceContext : undefined
       });
+      options.setPromptRuntimeLoaded(true);
       const nextDraft = getDraft();
       if (!nextDraft) return;
       options.invalidatePromptEditHistory();

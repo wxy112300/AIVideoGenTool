@@ -12,6 +12,7 @@ import type {
   EnvironmentItem,
   EnvironmentItemId,
   EnvironmentScanResult,
+  EnvironmentScanScope,
   GpuDeviceInfo,
   LlamaServerStatus,
   LlamaCppPythonStatus,
@@ -1040,7 +1041,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     badge: "BF16 · 多模态",
     description: "同时处理文字和参考图/视频，并按 H3 提示词规则生成更适合视频生成的描述。",
     vram: "BF16 · 文件约 9.3 GB",
-    integrated: false,
+    integrated: true,
+    runtimeNodeTypes: ["CLIPLoader", "TextGenerate"],
     components: [
       {
         label: "Qwen3.5 4B ComfyUI 文本编码器",
@@ -1057,7 +1059,8 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     badge: "BF16 · 快速",
     description: "更快的文字和参考图理解备选，适合快速迭代。",
     vram: "BF16 · 文件约 4.55 GB",
-    integrated: false,
+    integrated: true,
+    runtimeNodeTypes: ["CLIPLoader", "TextGenerate"],
     components: [
       {
         label: "Qwen3.5 2B ComfyUI 文本编码器",
@@ -3772,7 +3775,94 @@ export async function installWorkflowDependency(
   }, onLog);
 }
 
-export async function scanEnvironment(
+function validateCustomNodeRuntime(
+  customNodes: CustomNodeStatus[],
+  llamaCppPython: LlamaCppPythonStatus,
+  runtimeComfyBaseUrl: string
+): CustomNodeStatus[] {
+  return customNodes.map((node) => {
+    if (
+      node.id !== "minimax-h3-prompt-writer" ||
+      !runtimeComfyBaseUrl ||
+      !node.loaded ||
+      llamaCppPython.ready
+    ) {
+      return node;
+    }
+    const detail = llamaCppPython.detail || llamaCppPython.error || "共享 llama-cpp-python 尚未就绪";
+    return {
+      ...node,
+      loaded: false,
+      loadError: `H3 Prompt Writer 共享 llama-cpp-python 未通过运行时自检：${detail}`,
+      compatibilityState: "error" as const,
+      compatibilityNotice: "节点接口已响应，但共享 llama-cpp-python 未就绪；请在设置 → 提示词扩写中修复运行依赖。"
+    };
+  });
+}
+
+function mergeModelProfilesWithCustomNodes(
+  scannedModelProfiles: ModelScanProfile[],
+  customNodes: CustomNodeStatus[]
+): ModelScanProfile[] {
+  const customNodesById = new Map(customNodes.map((node) => [node.id, node]));
+  return scannedModelProfiles.map((profile) => {
+    const requiredCustomNodeIds = profile.requiredCustomNodeIds ?? [];
+    const requiredCustomNodes = requiredCustomNodeIds
+      .map((id) => customNodesById.get(id))
+      .filter((node): node is CustomNodeStatus => Boolean(node));
+    const missingCustomNodeIds = requiredCustomNodeIds.filter(
+      (id) => !customNodesById.get(id)?.installed
+    );
+    const customNodeCompatibility: ModelScanProfile["customNodeCompatibility"] = missingCustomNodeIds.length
+      ? "error"
+      : requiredCustomNodes.some((node) => node.compatibilityState === "error")
+        ? "error"
+        : requiredCustomNodes.some((node) => node.compatibilityState === "warning")
+          ? "warning"
+          : requiredCustomNodes.some((node) =>
+              !node.compatibilityState || node.compatibilityState === "unknown"
+            )
+            ? "unknown"
+            : "supported";
+    return requiredCustomNodeIds.length
+      ? {
+          ...profile,
+          missingCustomNodeIds,
+          missingCustomNodeNames: missingCustomNodeIds.map((id) => customNodesById.get(id)?.name ?? id),
+          customNodeCompatibility
+        }
+      : profile;
+  });
+}
+
+export function refreshModelProfileRuntimeEvidence(
+  profiles: ModelScanProfile[],
+  settings: Settings,
+  runtimeNodeIds?: ReadonlySet<string>
+): ModelScanProfile[] {
+  const catalogDefinitions = catalogModelProfileDefinitionsFor(settings.ltxExtensionModelProfile);
+  const catalogIds = new Set(catalogDefinitions.map((profile) => profile.id));
+  const definitions = [
+    ...modelProfileDefinitions.filter((profile) => !catalogIds.has(profile.id)),
+    ...catalogDefinitions
+  ];
+  const definitionsById = new Map(definitions.map((profile) => [profile.id, profile]));
+  return profiles.map((profile) => {
+    const runtimeNodeTypes = definitionsById.get(profile.id)?.runtimeNodeTypes;
+    if (!runtimeNodeTypes) return profile;
+    const runtimeMissingNodes = runtimeNodeIds
+      ? runtimeNodeTypes.filter((nodeType) => !runtimeNodeIds.has(nodeType))
+      : [];
+    return {
+      ...profile,
+      runtimeVerified: runtimeNodeIds !== undefined,
+      runtimeReady: runtimeNodeIds !== undefined && runtimeMissingNodes.length === 0,
+      runtimeMissingNodes
+    };
+  });
+}
+
+async function scanFullEnvironment(
   settings: Settings
 ): Promise<EnvironmentScanResult> {
   const userHome = os.homedir();
@@ -3876,38 +3966,15 @@ export async function scanEnvironment(
       runLoggedProcess
     )
   ]);
-  const runtimeValidatedCustomNodes = customNodes.map((node) => {
-    if (
-      node.id !== "minimax-h3-prompt-writer" ||
-      !runtimeComfyBaseUrl ||
-      !node.loaded ||
-      llamaCppPython.ready
-    ) {
-      return node;
-    }
-    const detail = llamaCppPython.detail || llamaCppPython.error || "共享 llama-cpp-python 尚未就绪";
-    return {
-      ...node,
-      loaded: false,
-      loadError: `H3 Prompt Writer 共享 llama-cpp-python 未通过运行时自检：${detail}`,
-      compatibilityState: "error" as const,
-      compatibilityNotice: "节点接口已响应，但共享 llama-cpp-python 未就绪；请在设置 → 提示词扩写中修复运行依赖。"
-    };
-  });
-  const customNodesById = new Map(runtimeValidatedCustomNodes.map((node) => [node.id, node]));
-  const modelProfiles = scannedModelProfiles.map((profile) => {
-    const requiredCustomNodeIds = profile.requiredCustomNodeIds ?? [];
-    const missingCustomNodeIds = requiredCustomNodeIds.filter(
-      (id) => !customNodesById.get(id)?.installed
-    );
-    return requiredCustomNodeIds.length
-      ? {
-          ...profile,
-          missingCustomNodeIds,
-          missingCustomNodeNames: missingCustomNodeIds.map((id) => customNodesById.get(id)?.name ?? id)
-        }
-      : profile;
-  });
+  const runtimeValidatedCustomNodes = validateCustomNodeRuntime(
+    customNodes,
+    llamaCppPython,
+    runtimeComfyBaseUrl
+  );
+  const modelProfiles = mergeModelProfilesWithCustomNodes(
+    scannedModelProfiles,
+    runtimeValidatedCustomNodes
+  );
   const llamaServer: LlamaServerStatus = {
     found: false,
     path: "",
@@ -4004,4 +4071,182 @@ export async function scanEnvironment(
     workflowDependencies,
     issues
   };
+}
+
+const environmentScanCache = new Map<string, EnvironmentScanResult>();
+
+function cacheEnvironmentScan(key: string, scan: EnvironmentScanResult): void {
+  environmentScanCache.delete(key);
+  environmentScanCache.set(key, scan);
+  while (environmentScanCache.size > 4) {
+    const oldestKey = environmentScanCache.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    environmentScanCache.delete(oldestKey);
+  }
+}
+
+function environmentScanCacheKey(settings: Settings): string {
+  return JSON.stringify({
+    comfyInstallDirectory: settings.comfyInstallDirectory,
+    comfyPythonPath: settings.comfyPythonPath,
+    comfyUrl: settings.comfyUrl,
+    modelDirectory: settings.modelDirectory,
+    promptModelDirectory: settings.promptModelDirectory,
+    outputDirectory: settings.outputDirectory,
+    ltxExtensionModelProfile: settings.ltxExtensionModelProfile,
+    proxyEnabled: settings.proxyEnabled,
+    proxyUrl: settings.proxyUrl
+  });
+}
+
+async function scanEnvironmentDependencies(
+  settings: Settings,
+  previous: EnvironmentScanResult,
+  scope: Exclude<EnvironmentScanScope, "full">
+): Promise<EnvironmentScanResult | null> {
+  const [comfyRoot, comfyInstallations] = await Promise.all([
+    findComfyRoot(settings),
+    discoverComfyInstallations(settings)
+  ]);
+  if (path.resolve(comfyRoot || "") !== path.resolve(previous.comfyRoot || "")) return null;
+  const installationSummary = comfyInstallations.find((installation) => installation.selected) ??
+    comfyInstallations[0];
+  const comfyInstallation: ComfyInstallation | null = installationSummary
+    ? {
+        type: installationSummary.type,
+        directory: installationSummary.directory,
+        sourceDirectory: installationSummary.sourceDirectory,
+        executable: installationSummary.executable
+      }
+    : null;
+  const configuredComfyBaseUrl = settings.comfyUrl.replace(/\/+$/, "");
+  const desktopComfyBaseUrl = "http://127.0.0.1:8000";
+  const runtimeComfyBaseUrl = await firstReachableServiceBase(
+    [
+      configuredComfyBaseUrl,
+      ...(comfyInstallation?.type === "desktop" ? [desktopComfyBaseUrl] : [])
+    ],
+    "/object_info"
+  );
+  const runtimeNodeIds = runtimeComfyBaseUrl
+    ? await fetch(`${runtimeComfyBaseUrl}/object_info`, {
+        signal: AbortSignal.timeout(8000)
+      })
+        .then(async (response) => response.ok
+          ? availableComfyNodeIds(await response.json())
+          : undefined)
+        .catch(() => undefined)
+    : undefined;
+  const runtimeOnly = scope === "runtime";
+  const pythonRuntimes = runtimeOnly
+    ? previous.pythonRuntimes
+    : await discoverPythonRuntimes(settings, comfyRoot, comfyInstallation);
+  const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ?? pythonRuntimes[0];
+  const latestNodeVersionsPromise = runtimeOnly
+    ? Promise.resolve(Object.fromEntries(
+        previous.customNodes
+          .filter((node) => node.latestVersion)
+          .map((node) => [node.id, node.latestVersion])
+      ))
+    : latestCatalogNodeReleaseVersions(settings);
+  const [customNodes, workflowDependencies, attentionAcceleration, llamaCppPython] = await Promise.all([
+    latestNodeVersionsPromise.then((latestNodeVersions) =>
+      scanCustomNodes(
+        comfyRoot,
+        settings,
+        latestNodeVersions["spectrum-minimax-h3"] ?? "",
+        runtimeComfyBaseUrl || settings.comfyUrl,
+        latestNodeVersions["h3-motion-context"] ?? "",
+        latestNodeVersions
+      )
+    ),
+    runtimeOnly
+      ? Promise.resolve(previous.workflowDependencies)
+      : scanWorkflowDependencies(comfyRoot),
+    runtimeOnly
+      ? Promise.resolve(previous.attentionAcceleration)
+      : inspectAttentionAcceleration(
+          settings,
+          comfyRoot,
+          comfyInstallation,
+          selectedPython?.path ?? ""
+        ),
+    runtimeOnly
+      ? Promise.resolve(previous.llamaCppPython)
+      : inspectLlamaCppPython(selectedPython?.path ?? "", runLoggedProcess)
+  ]);
+  const runtimeValidatedCustomNodes = validateCustomNodeRuntime(
+    customNodes,
+    llamaCppPython,
+    runtimeComfyBaseUrl
+  );
+  const runtimeProfiles = refreshModelProfileRuntimeEvidence(
+    previous.modelProfiles,
+    settings,
+    runtimeNodeIds
+  );
+  const modelProfiles = mergeModelProfilesWithCustomNodes(
+    runtimeProfiles,
+    runtimeValidatedCustomNodes
+  );
+  const issues = await scanEnvironmentIssues(comfyRoot, Boolean(runtimeComfyBaseUrl));
+  const reachableComfyBaseUrl = await firstReachableServiceBase(
+    [
+      runtimeComfyBaseUrl,
+      configuredComfyBaseUrl,
+      ...(comfyInstallation?.type === "desktop" ? [desktopComfyBaseUrl] : [])
+    ],
+    "/system_stats"
+  );
+  const detectedComfyBaseUrl = reachableComfyBaseUrl || configuredComfyBaseUrl;
+  const comfyCompatibility = await inspectComfyCompatibility(
+    detectedComfyBaseUrl,
+    comfyInstallation
+  );
+  const comfyApiItem = await localServiceItem(
+    "comfyui-api",
+    "ComfyUI 服务",
+    `${detectedComfyBaseUrl}/system_stats`
+  );
+  const items = previous.items.some((item) => item.id === "comfyui-api")
+    ? previous.items.map((item) => item.id === "comfyui-api" ? comfyApiItem : item)
+    : [...previous.items, comfyApiItem];
+  return {
+    ...previous,
+    scannedAt: new Date().toISOString(),
+    comfyUrl: detectedComfyBaseUrl,
+    comfyInstallDirectory: comfyInstallation?.directory ?? previous.comfyInstallDirectory,
+    comfySourceDirectory: comfyInstallation?.sourceDirectory ?? previous.comfySourceDirectory,
+    comfyInstallType: comfyInstallation?.type ?? previous.comfyInstallType,
+    comfyInstallations,
+    pythonRuntimes,
+    llamaCppPython,
+    comfyCompatibility,
+    attentionAcceleration,
+    items,
+    modelProfiles,
+    customNodes: runtimeValidatedCustomNodes,
+    workflowDependencies,
+    issues
+  };
+}
+
+export async function scanEnvironment(
+  settings: Settings,
+  scope: EnvironmentScanScope = "full"
+): Promise<EnvironmentScanResult> {
+  const cacheKey = environmentScanCacheKey(settings);
+  if (scope !== "full") {
+    const previous = environmentScanCache.get(cacheKey);
+    if (previous) {
+      const partial = await scanEnvironmentDependencies(settings, previous, scope);
+      if (partial) {
+        cacheEnvironmentScan(cacheKey, partial);
+        return partial;
+      }
+    }
+  }
+  const full = await scanFullEnvironment(settings);
+  cacheEnvironmentScan(cacheKey, full);
+  return full;
 }

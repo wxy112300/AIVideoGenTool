@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import { notificationDuration, queueCompletionChange } from "../src/renderer/notifications";
 import { registerRendererEvents } from "../src/renderer/state-events";
-import { mountSettingsEnvironmentController } from "../src/renderer/pages/settings/environment-controller";
+import { mountSettingsServiceController } from "../src/renderer/pages/settings/service-controller";
 import type { RendererContext } from "../src/renderer/contracts";
-import type { AppApi, AppState, ConnectionResult } from "../src/types";
+import type { AppApi, AppState, ConnectionResult, EnvironmentScanResult } from "../src/types";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -215,10 +215,10 @@ describe("renderer notifications", () => {
       requestRender
     } as unknown as RendererContext;
     const noop = () => undefined;
-    const cleanup = mountSettingsEnvironmentController(context, {
+    const cleanup = mountSettingsServiceController(context, {
       formSettings: () => state.settings,
       getEnvironmentScan: () => null,
-      setEnvironmentScan: noop,
+      refreshEnvironment: async () => ({} as EnvironmentScanResult),
       setSettingsDraft: noop,
       setServiceStarting: noop,
       setServiceRestarting: noop,
@@ -226,16 +226,7 @@ describe("renderer notifications", () => {
       setComfyUpdating: noop,
       getComfyUpdateLog: () => "",
       setComfyUpdateLog: noop,
-      setAttentionAccelerationInstalling: noop,
-      getAttentionAccelerationLog: () => "",
-      setAttentionAccelerationLog: noop,
       setCoreDependencyRepairing: noop,
-      setEnvironmentRepairing: noop,
-      setEnvironmentRepairLog: noop,
-      enqueueCustomNodeInstall: () => ({ accepted: true, position: 1 }),
-      setWorkflowDependencyInstalling: noop,
-      getWorkflowDependencyLog: () => "",
-      setWorkflowDependencyLog: noop,
       requestForceStopConfirmation: noop,
       rememberModalFocus: noop
     });

@@ -31,12 +31,14 @@ import { renderQueuePage, type QueueMoveAvailability } from "./renderer/pages/qu
 import { renderSettingsPage } from "./renderer/pages/settings/page";
 import { mountSettingsAssembly } from "./renderer/pages/settings/assembly";
 import { createRenderCoordinator, type RenderCoordinator } from "./renderer/render-coordinator";
+import { EnvironmentRefreshCoordinator, type EnvironmentRefreshReason } from "./renderer/environment-refresh-coordinator";
 import { readSettingsFromForm } from "./renderer/pages/settings/form";
 import {
   buildSettingsPageViewModel,
   type SettingsViewModelDependencies
 } from "./renderer/pages/settings/view-model";
 import { createAppLogContextMenu } from "./renderer/pages/settings/log-context-menu";
+import { SettingsSaveCoordinator } from "./renderer/pages/settings/settings-save-coordinator";
 import {
   CustomNodeInstallQueue,
   type CustomNodeInstallPhase
@@ -143,7 +145,6 @@ import { videoLoraInfoButton } from "./renderer/shared/markup";
 import {
   imageWorkflowStatus,
   isImageModelSelectable,
-  isImageWorkflowReady,
   promptModelStatus
 } from "./renderer/shared/status";
 import { appLogTerminalHtml, visibleAppLogText } from "./renderer/shared/logs";
@@ -530,7 +531,7 @@ async function chooseDirectoryMigration(mode: SettingsSaveMode | "cancel"): Prom
   ui.historyMigrationProgress = null;
   render();
   try {
-    await saveSettingsFromUi(request.nextSettings, mode);
+    await settingsSaveCoordinator.save(request.nextSettings, mode);
     const warningCount = (ui.historyMigrationProgress as HistoryMigrationProgress | null)?.warningCount ?? 0;
     ui.pendingDirectoryMigration = null;
     ui.directoryMigrationBusy = false;
@@ -1025,7 +1026,9 @@ function settingsPage(): string {
       state,
       settingsDraft,
       environmentScan,
-      comfyConnected: comfyRuntime.phase === "ready",
+      comfyConnected: comfyRuntime.phase === "unknown"
+        ? undefined
+        : comfyRuntime.phase === "ready",
       environmentScanning,
       environmentScanError,
       settingsTab,
@@ -1084,7 +1087,6 @@ function settingsPage(): string {
         const lora = BUILTIN_VIDEO_LORAS.find((item) => item.id === profileId);
         return lora ? videoLoraInfoButton(lora, uiText, state.settings.uiLocale) : "";
       },
-      isImageWorkflowReady,
       isImageModelSelectable,
       imageWorkflowStatus,
       h3PromptPresetOptions: (selected, includeMultiReference) => h3PromptPresetOptions(selected, includeMultiReference, state.settings.uiLocale),
@@ -1202,17 +1204,36 @@ const historyContextMenus = createHistoryContextMenus(rendererApp.context, {
   requestHistoryDeletion
 });
 const appLogContextMenu = createAppLogContextMenu(rendererApp.context, clearAppLogScreen);
+const environmentRefreshCoordinator = new EnvironmentRefreshCoordinator({
+  scan: (settings, scope) => window.studio.scanEnvironment(settings, scope),
+  setScanning: (value) => {
+    environmentScanning = value;
+  },
+  setError: (message) => {
+    environmentScanError = message;
+  },
+  commit: (scan) => {
+    environmentScan = scan;
+  },
+  afterCommit: enableSpectrumByDefaultIfAvailable,
+  notify: showMessage,
+  scanningMessage: () => uiText(uiKeys.runtime.environmentScanning),
+  completedMessage: () => uiText(uiKeys.runtime.environmentScanCompleted),
+  failedMessage: (error, reason) => uiText(
+    reason === "startup" ? uiKeys.runtime.startupScanFailed : uiKeys.runtime.environmentScanFailed,
+    { error: error instanceof Error ? error.message : String(error) }
+  ),
+  requestRender: render,
+  reportScan: (reason) => reportUserAction("scan-environment", { reason })
+});
 const customNodeInstallManager = new CustomNodeInstallQueue({
   install: (nodeId, settings) => window.studio.installCustomNode(nodeId, settings),
   restart: (settings) => window.studio.restartLocalService("comfy", settings),
-  scan: (settings) => window.studio.scanEnvironment(settings),
+  scan: (settings) => environmentRefreshCoordinator.refresh(settings, "dependency-change"),
   nodeName: (nodeId) => environmentScan?.customNodes.find((node) => node.id === nodeId)?.name ?? nodeId,
   getLog: (nodeId) => customNodeLogs[nodeId] ?? "",
   setLog: (nodeId, log) => {
     customNodeLogs = { ...customNodeLogs, [nodeId]: log };
-  },
-  setEnvironmentScan: (scan) => {
-    environmentScan = scan;
   },
   notify: (message, kind) => showMessage(message, { kind }),
   onSnapshot: (snapshot) => {
@@ -1705,7 +1726,9 @@ async function acceptConfirmation(): Promise<void> {
     setServiceStatusMessage: (message) => {
       serviceStatusMessage = message;
     },
-    scanEnvironment: runEnvironmentScan,
+    scanEnvironment: async (settings) => {
+      await runEnvironmentScan(settings);
+    },
     setSettingsDraft: (settings) => {
       settingsDraft = settings;
     },
@@ -2190,7 +2213,8 @@ function syncVideoEnqueueUi(): void {
   const feedback = document.querySelector<HTMLElement>("[data-enqueue-feedback]");
   if (feedback) {
     feedback.hidden = !reason;
-    feedback.textContent = reason;
+    const message = feedback.querySelector<HTMLElement>("span");
+    if (message) message.textContent = reason;
   }
 }
 
@@ -2210,14 +2234,23 @@ function syncImageEditEnqueueUi(): void {
     button.title = reason || uiText(uiKeys.runtime.imageEnqueue);
     button.dataset.enqueueBlockReason = reason;
   }
-  const summary = document.querySelector<HTMLElement>(".image-edit-composer .interpolation-summary");
-  const summaryTitle = summary?.querySelector<HTMLElement>("strong");
-  if (summary && summaryTitle) {
+  const feedback = document.querySelector<HTMLElement>("[data-enqueue-feedback]");
+  if (feedback) {
+    feedback.hidden = !reason;
+    const message = feedback.querySelector<HTMLElement>("span");
+    if (message) message.textContent = reason;
+  }
+  const summaryTitle = document.querySelector<HTMLElement>(
+    ".image-edit-composer .interpolation-summary strong"
+  );
+  if (summaryTitle) {
     const count = Math.min(10, Math.max(1, draft.outputCount));
-    summary.classList.toggle("unsafe", Boolean(reason));
-    summaryTitle.textContent = reason || (imageProfile?.id === "lama-inpaint"
+    summaryTitle.textContent = imageProfile?.id === "lama-inpaint"
       ? `生成 ${count} 张局部修补结果`
-      : uiText(uiKeys.create.imageEdit.summary, { count, seedMode: draft.seed == null ? uiText(uiKeys.runtime.random) : uiText(uiKeys.runtime.same) }));
+      : uiText(uiKeys.create.imageEdit.summary, {
+          count,
+          seedMode: draft.seed == null ? uiText(uiKeys.runtime.random) : uiText(uiKeys.runtime.same)
+        });
   }
 }
 
@@ -2488,88 +2521,57 @@ function formSettings(): Settings {
   );
 }
 
-async function saveSettingsFromUi(
-  nextSettings: Settings,
-  mode: SettingsSaveMode = "apply"
-): Promise<void> {
-  const previousSettings = state.settings;
-  const previousProfile = previousSettings.ltxExtensionModelProfile;
-  const imageModelChanged = previousSettings.defaultImageModel !== nextSettings.defaultImageModel;
-  const pathsChanged = previousSettings.comfyInstallDirectory !== nextSettings.comfyInstallDirectory ||
-    previousSettings.comfyPythonPath !== nextSettings.comfyPythonPath ||
-    previousSettings.modelDirectory !== nextSettings.modelDirectory ||
-    previousSettings.outputDirectory !== nextSettings.outputDirectory ||
-    previousSettings.imageOutputDirectory !== nextSettings.imageOutputDirectory ||
-    previousSettings.imageInputLibraryDirectory !== nextSettings.imageInputLibraryDirectory ||
-    previousSettings.lmStudioInstallDirectory !== nextSettings.lmStudioInstallDirectory ||
-    previousSettings.promptModelDirectory !== nextSettings.promptModelDirectory ||
-    previousSettings.promptLlamaServerPath !== nextSettings.promptLlamaServerPath;
-  const proxyChanged = previousSettings.proxyEnabled !== nextSettings.proxyEnabled ||
-    previousSettings.proxyUrl !== nextSettings.proxyUrl;
-  await loadUiLocale(nextSettings.uiLocale);
-  const savedState = await window.studio.saveSettings(nextSettings, mode);
-  settingsDraft = null;
-  setRendererState(savedState);
-  syncSettingsDirtyUi();
-  if (imageModelChanged && state.imageDraft.modelId === previousSettings.defaultImageModel) {
-    const capability = imageModelCapabilityFor(nextSettings.defaultImageModel);
-    const qualityProfile = capability.qualityProfiles.some(
-      (profile) => profile.id === state.imageDraft.qualityProfile
-    )
-      ? state.imageDraft.qualityProfile
-      : capability.qualityProfiles[0]?.id ?? "native";
-    setRendererState(await window.studio.saveImageDraft({
-      ...state.imageDraft,
-      modelId: nextSettings.defaultImageModel,
-      qualityProfile
-    }));
-  }
-  if (state.settings.ltxExtensionModelProfile !== previousProfile) {
-    delete bundledWorkflows[bundledWorkflowKey("sulphur2", "image")];
-    delete bundledWorkflows[bundledWorkflowKey("sulphur2", "video")];
-    if (state.draft.modelId === "sulphur2") {
-      const bundled = await window.studio.getBundledWorkflow(
-        "sulphur2",
-        state.draft.inputMode
-      );
-      if (bundled) {
-        bundledWorkflows[
-          bundledWorkflowKey("sulphur2", state.draft.inputMode)
-        ] = bundled;
-        setRendererState(await window.studio.saveDraft({
-          ...state.draft,
-          workflowPath: bundled.path
-        }));
-      }
-    }
-  }
-  if (pathsChanged || state.settings.ltxExtensionModelProfile !== previousProfile) {
-    await runEnvironmentScan(state.settings);
-  }
-  showMessage(proxyChanged
-    ? uiText(uiKeys.runtime.settingsProxySaved)
-    : mode === "migrate-video-history"
-      ? uiText(uiKeys.runtime.settingsMigrationSaved)
-      : uiText(uiKeys.runtime.settingsNextTaskSaved));
-  render();
+async function runEnvironmentScan(
+  settings: Settings,
+  reason: EnvironmentRefreshReason = "manual"
+): Promise<EnvironmentScanResult | null> {
+  return environmentRefreshCoordinator.refresh(settings, reason);
 }
 
-async function runEnvironmentScan(settings: Settings): Promise<void> {
-  reportUserAction("scan-environment");
-  environmentScanning = true;
-  environmentScanError = "";
-  render();
-  try {
-    environmentScan = await window.studio.scanEnvironment(settings);
-    enableSpectrumByDefaultIfAvailable();
-  } catch (error) {
-    environmentScanError = uiText(uiKeys.runtime.environmentScanFailed, { error: error instanceof Error ? error.message : String(error) });
-    showMessage(environmentScanError, { kind: "error" });
-  } finally {
-    environmentScanning = false;
+const settingsSaveCoordinator = new SettingsSaveCoordinator({
+  getState: () => state,
+  getEnvironmentScan: () => environmentScan,
+  loadLocale: async (locale) => {
+    await loadUiLocale(locale);
+  },
+  saveSettings: (settings, mode) => window.studio.saveSettings(settings, mode),
+  saveImageDraft: (draft) => window.studio.saveImageDraft(draft),
+  saveDraft: (draft) => window.studio.saveDraft(draft),
+  getBundledWorkflow: (modelId, inputMode) => window.studio.getBundledWorkflow(modelId, inputMode),
+  setState: setRendererState,
+  clearSettingsDraft: () => {
+    settingsDraft = null;
+  },
+  syncSettingsDirtyUi,
+  deleteBundledWorkflow: (modelId, inputMode) => {
+    delete bundledWorkflows[bundledWorkflowKey(modelId, inputMode)];
+  },
+  cacheBundledWorkflow: (workflow, inputMode) => {
+    bundledWorkflows[bundledWorkflowKey(workflow.modelId, inputMode)] = workflow;
+  },
+  refreshEnvironment: (settings) => runEnvironmentScan(settings, "settings-change"),
+  requestDirectoryMigration: (previousSettings, nextSettings, oldDirectory, newDirectory) => {
+    rememberModalFocus();
+    ui.pendingDirectoryMigration = {
+      target: "video",
+      previousSettings,
+      nextSettings,
+      oldDirectory,
+      newDirectory
+    };
+    ui.directoryMigrationBusy = false;
+    ui.historyMigrationProgress = null;
     render();
-  }
-}
+  },
+  notifySaved: (proxyChanged, mode) => {
+    showMessage(proxyChanged
+      ? uiText(uiKeys.runtime.settingsProxySaved)
+      : mode === "migrate-video-history"
+        ? uiText(uiKeys.runtime.settingsMigrationSaved)
+        : uiText(uiKeys.runtime.settingsNextTaskSaved));
+  },
+  requestRender: render
+});
 
 async function loadAppLogs(): Promise<void> {
   if (appLogsLoading) return;
@@ -2616,9 +2618,7 @@ function bindSettings(): void {
     environment: {
       formSettings,
       getEnvironmentScan: () => environmentScan,
-      setEnvironmentScan: (scan) => {
-        environmentScan = scan;
-      },
+      refreshEnvironment: runEnvironmentScan,
       setSettingsDraft: (draft) => {
         settingsDraft = draft;
       },
@@ -2701,23 +2701,7 @@ function bindSettings(): void {
       runEnvironmentScan,
       loadAppLogs: () => void loadAppLogs(),
       togglePromptModel: togglePromptModelFromUi,
-      saveSettingsFromUi,
-      saveSettingsDirect: async (settings) => {
-        await loadUiLocale(settings.uiLocale);
-        setRendererState(await window.studio.saveSettings(settings));
-      },
-      requestDirectoryMigration: (previousSettings, nextSettings, oldDirectory, newDirectory) => {
-        ui.pendingDirectoryMigration = {
-          target: "video",
-          previousSettings,
-          nextSettings,
-          oldDirectory,
-          newDirectory
-        };
-        ui.directoryMigrationBusy = false;
-        ui.historyMigrationProgress = null;
-        render();
-      },
+      requestSaveSettings: (settings) => settingsSaveCoordinator.requestSave(settings),
       openImageAssetLibrary: () => {
         rememberModalFocus();
         ui.imageAssetLibraryDialog = {
@@ -2812,17 +2796,11 @@ bootstrapRenderer({
   setAppVersion: (version) => {
     ui.appVersion = version;
   },
-  setEnvironmentScan: (scan) => {
-    environmentScan = scan;
-  },
-  setEnvironmentScanError: (message) => {
-    environmentScanError = message;
-  },
+  refreshEnvironment: (settings) => runEnvironmentScan(settings, "startup"),
   bundledWorkflows,
   workflowCapabilities,
   bundledWorkflowKey,
   bundledWorkflowModelId,
-  enableSpectrumByDefaultIfAvailable,
   patchDraft,
   render,
   refreshPerformanceMetrics: () => queueLiveStatus.refresh()

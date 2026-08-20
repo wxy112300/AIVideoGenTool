@@ -240,7 +240,7 @@ describe("dependency installer", () => {
       onLog
     );
 
-    expect(result.ok).toBe(true);
+    expect(result.ok, `${result.message}\n${result.log ?? ""}`).toBe(true);
     expect(processCalls).toEqual([
       expect.arrayContaining(["clone", "--depth", "1"])
     ]);
@@ -298,7 +298,31 @@ describe("dependency installer", () => {
           await fs.mkdir(target, { recursive: true });
           await fs.writeFile(
             path.join(target, "vision_llm_node.py"),
-            "def load_model(n_ctx: int = 4096):\n    pass\ndef rewrite_prompt(n_ctx: int = 4096):\n    pass\n"
+            [
+              "import atexit",
+              "",
+              "def load_model(n_ctx: int = 4096):",
+              "    pass",
+              "def rewrite_prompt(n_ctx: int = 4096):",
+              "    pass",
+              "",
+              "class VisionLLMNode:",
+              "    @classmethod",
+              "    def INPUT_TYPES(cls):",
+              "        return {",
+              "            \"optional\": {",
+              "                \"image\": (\"IMAGE\",),",
+              "            }",
+              "        }",
+              "",
+              "    def rewrite(self, model: str, mmproj: str, prompt: str, max_tokens: int, temperature: float, device: str, image=None) -> tuple:",
+              "        try:",
+              "            return (prompt,)",
+              "        finally:",
+              "            cleanup()",
+              "",
+              "# ComfyUI Node Registration"
+            ].join("\n")
           );
           return "clone complete";
         }
@@ -324,7 +348,7 @@ describe("dependency installer", () => {
       runtime
     );
 
-    expect(result.ok).toBe(true);
+    expect(result.ok, `${result.message}\n${result.log ?? ""}`).toBe(true);
     expect(processCalls.some((args) => args.includes("nvcc"))).toBe(false);
     expect(processCalls.some((args) => args.some((arg) => arg.includes("git+https://github.com/JamePeng"))))
       .toBe(false);

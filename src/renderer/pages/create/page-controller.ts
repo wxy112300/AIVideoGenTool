@@ -129,10 +129,14 @@ export function mountCreatePageController(
                 ? "minimax_h3_ref2va"
                 : "minimax_h3_fl2va";
             })()
-          : state.draft.modelId;
+          : wasVideoExtension
+            ? state.settings.defaultVideoModel
+            : state.draft.modelId;
       const videoLoras = inputMode === "video"
         ? (restoringVideoDraft ? restoringVideoDraft.videoLoras.map((lora) => ({ ...lora })) : [])
-        : state.draft.videoLoras;
+        : wasVideoExtension
+          ? []
+          : state.draft.videoLoras;
       const workflowModelId = bundledWorkflowModelId({ modelId, videoLoras });
       const key = options.bundledWorkflowKey(workflowModelId, inputMode);
       const bundled = options.bundledWorkflows[key] ??

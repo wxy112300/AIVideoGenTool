@@ -6,6 +6,7 @@ import type {
   DependencyInstallProgress,
   EnhanceRequest,
   EnvironmentIssue,
+  EnvironmentScanScope,
   HistoryMigrationProgress,
   HistoryMetadataPatch,
   ImageAssetLibraryProgress,
@@ -76,8 +77,8 @@ const api: AppApi = {
   releasePromptModel: () => ipcRenderer.invoke("prompt:release"),
   testConnection: (kind, settings) =>
     ipcRenderer.invoke("connection:test", kind, settings),
-  scanEnvironment: (settings: Settings) =>
-    ipcRenderer.invoke("environment:scan", settings),
+  scanEnvironment: (settings: Settings, scope?: EnvironmentScanScope) =>
+    ipcRenderer.invoke("environment:scan", settings, scope),
   startLocalService: (kind, settings) =>
     ipcRenderer.invoke("service:start", kind, settings),
   restartLocalService: (kind, settings) =>

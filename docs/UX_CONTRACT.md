@@ -53,6 +53,9 @@ The application is a focused local creative workstation: calm, dense enough for 
 
 ## Async and Media States
 
+- Environment scanning is an application-wide lifecycle, not a Settings-only state. Startup and later rescans must show a cross-page scanning notice and replace it immediately with completion or failure feedback when the scan itself settles.
+- Overlapping environment scans use the newest request as the visible result. A slower stale scan must not overwrite a newer path selection, status, completion notice, or error.
+
 Every asynchronous media surface must distinguish:
 
 - **Loading:** neutral media background plus visible spinner or skeleton; do not show an error while cache generation is still in progress.
@@ -68,6 +71,8 @@ Hover preview failure must not destroy a valid static cover. Detail playback/vie
 ### Create
 
 - The current media input and prompt are the dominant decisions; advanced generation controls remain compact.
+- Every create mode renders its current queue-blocking reason inside the sticky submit bar beside the queue action, so the user can diagnose a disabled action without scrolling to the end of the form.
+- Image-to-video and video-extension mode switches resolve their own configured default model independently. An extension model or LoRA selection must not overwrite the image-to-video model when returning to that composer.
 - Each prompt composer exposes a clear-current-version action; deleting the last version leaves one blank editable version.
 - Prompt text editing preserves native textarea undo/redo: `Ctrl+Z`, `Ctrl+Y`, and `Ctrl+Shift+Z` remain available; clearing a prompt version adds an application-level undo/redo transaction for the same shortcuts.
 - Prompt assistance updates the same primary prompt editor and supports alternatives/undo where present. Do not introduce a second competing prompt box.
@@ -103,6 +108,9 @@ Hover preview failure must not destroy a valid static cover. Detail playback/vie
 - Show only information that supports a decision or recovery action.
 - Separate system/path, acceleration, video models, image models, nodes/workflows, prompt assistance, and upscaling by user goal.
 - Offline file detection is useful and must not be presented as failure merely because ComfyUI is stopped.
+- Model cards report file presence, custom-node installation, and runtime validation as separate evidence. Complete weights remain ready while ComfyUI is offline; only a confirmed missing file/node or failed online check is an error.
+- Prompt-assistance cards use the same evidence rules as video, image, and upscale cards. An installed node with runtime validation pending remains statically ready; implemented native `CLIPLoader + TextGenerate` profiles must not be labeled as pending integration.
+- Every catalog custom-node card reports its locally scanned package version and metadata source. Repositories without a published package version report their scanned Git commit instead; UI copy must not substitute a hardcoded local version.
 - Missing dependencies include an info action with source and exact target location; installation/update actions expose logs.
 - Multiple ComfyUI installations show path and version evidence and allow explicit selection.
 

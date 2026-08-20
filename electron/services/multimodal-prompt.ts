@@ -280,9 +280,13 @@ export async function enhancePromptWithMultimodalComfyUi(
       settings,
       activityTimeoutMinutes,
       signal,
-      (value, stage) => {
+      (value, stage, determinate) => {
         const normalized = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
-        onProgress?.("generating", Math.min(90, 25 + Math.round(normalized * 0.65)), stage);
+        onProgress?.(
+          "generating",
+          determinate ? Math.min(90, 25 + Math.round(normalized * 0.65)) : null,
+          stage
+        );
       },
       () => undefined,
       () => false,

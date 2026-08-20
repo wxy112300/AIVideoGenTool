@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import {
   CustomNodeInstallQueue,
+  customNodeBulkActionMode,
   customNodeIdsForBulkAction
 } from "../src/renderer/pages/settings/node-install-queue";
 import type { CustomNodeStatus, EnvironmentScanResult } from "../src/types";
@@ -94,6 +95,10 @@ describe("CustomNodeInstallQueue", () => {
     ];
     expect(customNodeIdsForBulkAction(nodes)).toEqual(["missing", "outdated"]);
     expect(customNodeIdsForBulkAction(nodes.slice(0, 1))).toEqual([]);
+    expect(customNodeBulkActionMode(nodes)).toBe("mixed");
+    expect(customNodeBulkActionMode([nodes[0], nodes[1]])).toBe("install");
+    expect(customNodeBulkActionMode([nodes[0], nodes[3]])).toBe("update");
+    expect(customNodeBulkActionMode(nodes.slice(0, 1))).toBe("none");
   });
 
   it("keeps optional system-toolchain nodes out of the bulk installer", () => {
@@ -132,7 +137,6 @@ describe("CustomNodeInstallQueue", () => {
       nodeName: (nodeId) => nodeId,
       getLog: (nodeId) => logs[nodeId] ?? "",
       setLog: (nodeId, log) => { logs[nodeId] = log; },
-      setEnvironmentScan: vi.fn(),
       notify,
       onSnapshot: vi.fn(),
       messages: messages()
@@ -177,7 +181,6 @@ describe("CustomNodeInstallQueue", () => {
       nodeName: (nodeId) => nodeId,
       getLog: (nodeId) => logs[nodeId] ?? "",
       setLog: (nodeId, log) => { logs[nodeId] = log; },
-      setEnvironmentScan: vi.fn(),
       notify,
       onSnapshot: vi.fn(),
       messages: messages()
@@ -207,7 +210,6 @@ describe("CustomNodeInstallQueue", () => {
       nodeName: (nodeId) => nodeId,
       getLog: () => "",
       setLog: vi.fn(),
-      setEnvironmentScan: vi.fn(),
       notify,
       onSnapshot: vi.fn(),
       messages: messages()
@@ -235,7 +237,6 @@ describe("CustomNodeInstallQueue", () => {
       nodeName: (nodeId) => nodeId,
       getLog: (nodeId) => logs[nodeId] ?? "",
       setLog: (nodeId, log) => { logs[nodeId] = log; },
-      setEnvironmentScan: vi.fn(),
       notify,
       onSnapshot: vi.fn(),
       messages: messages()

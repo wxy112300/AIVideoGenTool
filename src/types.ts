@@ -768,6 +768,7 @@ export interface ModelScanProfile {
   requiredCustomNodeIds?: string[];
   missingCustomNodeIds?: string[];
   missingCustomNodeNames?: string[];
+  customNodeCompatibility?: "supported" | "warning" | "error" | "unknown";
   runtimeVerified?: boolean;
   runtimeReady?: boolean;
   runtimeMissingNodes?: string[];
@@ -791,6 +792,8 @@ export interface CustomNodeStatus {
   directory: string;
   required: boolean;
   version: string;
+  /** Local package file used to detect version, or .git/HEAD for unversioned repositories. */
+  versionSource?: string;
   minimumVersion: string;
   recommendedVersion: string;
   latestVersion: string;
@@ -842,6 +845,8 @@ export interface EnvironmentScanResult {
   workflowDependencies: WorkflowDependencyStatus[];
   issues: EnvironmentIssue[];
 }
+
+export type EnvironmentScanScope = "full" | "runtime" | "dependencies";
 
 export interface PythonRuntimeCandidate {
   path: string;
@@ -1129,7 +1134,10 @@ export interface AppApi {
   startPromptModel(): Promise<ConnectionResult>;
   releasePromptModel(): Promise<ConnectionResult>;
   testConnection(kind: ConnectionKind, settings: Settings): Promise<ConnectionResult>;
-  scanEnvironment(settings: Settings): Promise<EnvironmentScanResult>;
+  scanEnvironment(
+    settings: Settings,
+    scope?: EnvironmentScanScope
+  ): Promise<EnvironmentScanResult>;
   startLocalService(
     kind: LocalServiceKind,
     settings: Settings

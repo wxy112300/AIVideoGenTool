@@ -25,6 +25,8 @@ Local Video Studio 是 Electron + TypeScript + Vite 桌面应用。它负责素�
 
 设置页把离线识别和运行时验证分开。ComfyUI 未启动时仍可管理路径、模型和节点；“文件检查通过”不能写成“运行时已验证”。
 
+应用启动、用户手动扫描和关键路径变更执行完整环境扫描。服务启停只刷新 API、ComfyUI 核心兼容性与节点注册状态；节点、Python 或加速依赖安装后执行依赖刷新，并复用最近完整扫描中的模型文件、GPU 和系统工具证据。若应用尚无相同设置与 ComfyUI 数据根的完整快照，局部刷新会自动回退完整扫描。
+
 ## 3. 必需软件
 
 ### 应用开发/运行
@@ -135,7 +137,7 @@ H3 Prompt Writer 与可选 MultiModal Prompt Nodes 共用同一个 Python 包名
 
 ComfyUI Desktop 某些版本在嵌入式控制台关闭后会让节点的普通 `print()` 抛出 `[Errno 9] Bad file descriptor`，这发生在模型加载前，并不代表权重损坏。重新扫描时如果发现 Qwen-VL 节点仍使用该输出方式，设置页会把它标为“需修复”并提供“一键补齐/更新”；安装器会针对当前选择的 ComfyUI **数据目录**应用可重复的兼容层，保留节点更新策略，不写入机器固定路径。应用后必须重启 ComfyUI，再进行运行时复检。
 
-Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.15`，包含原生 ER-SDE 状态清理、KJNodes 预览回放保护，以及可选的 H3 Continuum 元数据互操作；设置页会展示上游最新发布，但不会仅因它高于 catalog 推荐线就触发更新。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。Spectrum 不要求额外模型权重，也不把 Continuum 变成硬依赖。
+Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.16`，保留原生 ER-SDE、KJNodes 预览回放和 H3 Continuum 兼容，并新增 Untwisting RoPE H3 外部补丁契约支持，以及隔离的生成后研究进程与有界崩溃/超时清理。设置页会展示上游最新发布，但不会仅因它高于 catalog 推荐线就触发更新。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。Spectrum 不要求额外模型权重，也不把 Continuum、Diff-Aid 或 Untwisting RoPE 变成硬依赖。
 
 注意：MiniMax H3 基础生成节点属于 ComfyUI 核心，不应伪装成第三方节点。如果核心节点缺失，应更新/切换正确的 ComfyUI 核心并重新扫描。
 

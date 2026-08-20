@@ -40,6 +40,7 @@ A model or workflow is product integrated only when applicable items are complet
 - Keep provenance in `src/core/workflow-metadata.ts`. Every bundled API graph has a manifest entry with the ComfyUI API schema version, recommended core version, custom-node package ids, relative source path, upstream URL when applicable, and the date of the last static review. The JSON graph itself must remain a pure `/prompt` payload; do not add a top-level metadata key that ComfyUI could interpret as a node.
 - When changing a shared input such as width, height, frame count, seed, sampler, or output prefix, search every bundled workflow and adapter that consumes it.
 - Preserve a known-good baseline workflow when introducing an experimental acceleration path unless the user explicitly asks to remove it.
+- Native Qwen3.5 2B/4B prompt enhancement is a product-integrated ComfyUI path constructed as `CLIPLoader -> TextGenerate`. Settings detects the encoder file offline and validates both core node types when ComfyUI is online; an offline runtime check is pending evidence, not an integration failure.
 
 ## Runtime Profiles and Isolation
 
@@ -56,6 +57,8 @@ Each workflow family owns its runtime profile, including where applicable:
 
 Applying a profile is transactional: compare desired and actual state, stop or drain owned work safely, apply/restart only when needed, reconnect, and confirm readiness before submission. On completion or model-family switch, restore/unload anything the profile patched so it cannot leak into the next task.
 
+Prompt models use the non-persisted `prompt-resident` profile with a bounded ComfyUI node cache. Explicit startup or the first successful enhancement acquires the process-local lease; the model remains retained until manual release, queue submission, or application exit. A video/image task profile using `--cache-none` must be replaced before prompt warmup; otherwise the loader reruns for every enhancement even while the main process lease claims the model is resident. Queue submission switches back to the queued model profile before execution.
+
 Do not assume lower dedicated VRAM usage is automatically safer or faster. Record dedicated VRAM, shared GPU memory, system RAM/pagefile, per-step time, and load/unload events when diagnosing long-running degradation.
 
 ## Resource and Quality Policy
@@ -66,7 +69,7 @@ Do not assume lower dedicated VRAM usage is automatically safer or faster. Recor
 - Cache/attention/turbo features are opt-in per compatible workflow. Their quality and determinism must be evaluated against the same source, prompt, seed, dimensions, frames, steps, and output settings.
 - Spectrum MiniMax H3 uses `v0.2.1` as the minimum safe standard baseline and a pinned recommended version rather than requiring whatever release happens to be newest. The settings scan may offer a newer release without marking a supported installed version unusable.
 - LightX2V Turbo may stack with Spectrum only on Spectrum `v0.2.6+`, which supports the native ComfyUI ER-SDE path used by the bundled Turbo workflow. H3 Motion Context extension still disables Spectrum.
-- Spectrum `model_aware_mode` is available only on `v0.2.7+`, remains opt-in/default-off, and must be serialized into the immutable task snapshot. The current recommended Spectrum release is `v0.2.15`; do not make that recommendation a hard minimum. Omit the node input entirely when mode is `off` so older supported Spectrum workflows remain compatible. `v0.2.11` fixes native ER-SDE forecast-state cleanup, `v0.2.14` protects KJNodes preview callbacks during replay, and `v0.2.15` adds optional H3 Continuum metadata interoperability without making Continuum a dependency. Keep the existing no-cache/EasyCache exclusion and fail-closed behavior for unknown contracts.
+- Spectrum `model_aware_mode` is available only on `v0.2.7+`, remains opt-in/default-off, and must be serialized into the immutable task snapshot. The current recommended Spectrum release is `v0.2.16`; do not make that recommendation a hard minimum. Omit the node input entirely when mode is `off` so older supported Spectrum workflows remain compatible. `v0.2.11` fixes native ER-SDE forecast-state cleanup, `v0.2.14` protects KJNodes preview callbacks during replay, `v0.2.15` adds optional H3 Continuum metadata interoperability, and `v0.2.16` adds optional Untwisting RoPE visual-reference patch contracts plus isolated, bounded post-run research cleanup. None of Continuum, Diff-Aid, or Untwisting RoPE is a hard dependency. Keep the existing no-cache/EasyCache exclusion and fail-closed behavior for unknown contracts.
 - MiniMax H3 live preview uses KJNodes `ModelPreviewOverrideKJ` plus `models/vae_approx/taeh3.safetensors`. It is an operational observer, not the final video VAE: insert it after LoRA/attention/cache model patches and immediately before every scheduler/guider consumer. The queue control is default-off because each sampler callback performs a tiny decode and latent-to-CPU transfer. KJNodes encodes previews asynchronously with a bounded queue and may drop busy intermediate frames, so the UI must show a loading state and must not promise one visible frame per step. The product profile is one frame, 512px maximum side, JPEG quality 72; animated multi-frame previews are not enabled by default.
 - H3 live preview is optional and must never make an otherwise runnable task fail. If either the runtime node or `taeh3.safetensors` is unavailable, submit the original workflow unchanged and report the unavailable preview separately from generation readiness.
 - Offload by itself should not be described as lowering quality. If quality changes, inspect sampler parameters, cache state, patches, precision, and node execution path.
@@ -101,6 +104,8 @@ Represent dependency state along independent axes:
 - minimal execution verified.
 
 Offline scans should provide useful results and installation actions. If runtime verification is unavailable, say so without downgrading a known on-disk installation to an error.
+
+Settings uses these evidence rules consistently: model weights and other asset files are confirmed by path scans; custom-node installation and compatible versions are confirmed from the selected installation on disk; node-class registration and input contracts require a running ComfyUI `/object_info`; a real generation is the only execution proof. Pending runtime validation is neutral information, not a failure and not proof of execution.
 
 Installation/update actions must:
 

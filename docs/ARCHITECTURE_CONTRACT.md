@@ -62,16 +62,24 @@ Large entry files are an existing risk, not a pattern to expand. When work intro
 - File-based discovery works while ComfyUI is stopped. API verification augments discovery after a service is reachable.
 - Multiple installations must remain visible and selectable. Never silently change the user's selected installation because another scan result looks newer.
 - Store portable identifiers and paths where required, but never bake one developer machine's username or drive into defaults.
+- Renderer environment refreshes are owned by one coordinator. Startup, manual scans, service changes, and dependency actions request a refresh through it; only the latest request may commit the shared scan snapshot or lifecycle state.
+- Environment scans have explicit `full`, `runtime`, and `dependencies` scopes. Runtime refreshes reuse file/GPU/system evidence and recheck service, core, and node registration; dependency refreshes additionally recheck Python, llama, acceleration, and workflow packages. Missing or incompatible cached baselines always fall back to a full scan.
+- An environment scan snapshot is immutable renderer evidence with its own `scannedAt`. Live ComfyUI connectivity remains separate runtime state; Settings may combine both through a pure display selector but must not rewrite API items, model evidence, or timestamps in the stored scan snapshot.
+- Settings persistence is owned by one save coordinator. Every save source uses the same output-directory migration gate and the same post-save model, workflow, locale, and environment-refresh effects; UI controllers must not call the save IPC directly.
+- Settings templates render semantic view state; prompt runtime, core/custom-node status, acceleration runtime, derived directories, GPU policy, and dependency-action availability are computed by pure selectors instead of reinterpreting raw scan fields in markup.
+- Settings service lifecycle, environment repair, and node/workflow package actions are mounted by dedicated controllers. The page composition layer supplies shared state callbacks to each independent controller; no controller owns another controller's listener or option contract.
 
 ## Process and Runtime Ownership
 
 - Track every process started by this application, including development helpers and model-related child processes.
+- App-owned source/Python ComfyUI starts with a visible Windows console whose stdout/stderr remain writable for ComfyUI wrappers and progress output. Disk log tailing and failure capture supplement that console; they do not replace it with a blank or hidden process.
 - On normal exit, stop owned watchers/children and cancel or interrupt owned active generation as agreed by the user.
 - When an active task exists, request confirmation before closing; a confirmed forced exit still performs best-effort cleanup.
 - Do not terminate an independently started ComfyUI Desktop/service. Ownership must be explicit, not inferred only from port or executable name.
 - Updating or restarting an app-managed ComfyUI instance must restore connection state and report logs/progress.
 - Port `8188` is the application default, but configured endpoints remain valid.
 - Prompt-model residency is an explicit main-process lease. Starting the prompt model warms and retains it across prompt requests; manual release, the first queued generation, or application exit ends the lease and unloads it. A one-off prompt request without that lease releases its model when complete.
+- Prompt residency uses a dedicated, non-persisted ComfyUI runtime profile with a bounded node cache. Prompt startup aligns an app-owned ComfyUI process to that profile before warmup; queue startup aligns it back to the queued model profile, so task-scoped `--cache-none` policy cannot silently disable prompt reuse.
 
 ## IPC Contract
 

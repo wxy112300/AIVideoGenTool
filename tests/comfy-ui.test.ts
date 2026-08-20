@@ -386,6 +386,17 @@ describe("native Qwen prompt workflow", () => {
 });
 
 describe("ComfyUI task progress", () => {
+  it("keeps input loading before model loaders", () => {
+    expect(nodeStage("LoadImage")).toMatchObject({
+      start: 2,
+      end: 4,
+      tracksSteps: false
+    });
+    expect(nodeStage("QwenVLModelLoader").start).toBeGreaterThanOrEqual(
+      nodeStage("LoadImage").end
+    );
+  });
+
   it("maps upscale nodes across compute and output stages", () => {
     expect(nodeStage("SeedVR2VideoUpscaler")).toMatchObject({
       start: 12,

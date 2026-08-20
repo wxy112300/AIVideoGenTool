@@ -29,16 +29,67 @@ import {
   patchLtxAudioVaeCompatibility,
   patchVideoHelperBatchCompatibility,
   renameWithRetry,
+  refreshModelProfileRuntimeEvidence,
   runLoggedProcess,
   selectLlamaServerReleaseAssets,
   shouldReportComfyDatabaseIssue,
   tritonRequirementForTorch,
   videoHelperBatchCompatible
 } from "../electron/services/environment.js";
+import { comfyUiSettingsForPromptRuntime } from "../electron/services/comfy-runtime-policy.js";
 import {
   birefnetRequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes
 } from "../src/core/image-workflow.js";
+import { createDefaultSettings } from "../src/core/defaults.js";
+import type { ModelScanProfile } from "../src/types.js";
+
+describe("scoped environment runtime evidence", () => {
+  it("preserves file evidence while refreshing runtime nodes", () => {
+    const profile = {
+      id: "qwen/qwen3.5-2b",
+      name: "Qwen3.5 2B",
+      category: "prompt",
+      badge: "",
+      description: "",
+      vram: "",
+      available: true,
+      integrated: true,
+      components: [{
+        label: "encoder",
+        found: true,
+        expected: "text_encoders/qwen3.5_2b_bf16.safetensors",
+        matches: ["text_encoders/qwen3.5_2b_bf16.safetensors"],
+        installGuide: {
+          sourceLabel: "test",
+          downloadUrl: "https://example.com/model",
+          targetSubdirectory: "text_encoders",
+          recommendedFilename: "qwen3.5_2b_bf16.safetensors"
+        }
+      }]
+    } satisfies ModelScanProfile;
+    const settings = createDefaultSettings();
+
+    const missing = refreshModelProfileRuntimeEvidence(
+      [profile],
+      settings,
+      new Set(["CLIPLoader"])
+    )[0]!;
+    expect(missing.components).toEqual(profile.components);
+    expect(missing.available).toBe(true);
+    expect(missing.runtimeVerified).toBe(true);
+    expect(missing.runtimeReady).toBe(false);
+    expect(missing.runtimeMissingNodes).toEqual(["TextGenerate"]);
+
+    const ready = refreshModelProfileRuntimeEvidence(
+      [missing],
+      settings,
+      new Set(["CLIPLoader", "TextGenerate"])
+    )[0]!;
+    expect(ready.runtimeReady).toBe(true);
+    expect(ready.runtimeMissingNodes).toEqual([]);
+  });
+});
 
 describe("SageAttention environment selection", () => {
   it("recognizes only the app-specific ComfyUI database marker for the configured port", () => {
@@ -398,6 +449,9 @@ describe("ComfyUI environment candidates", () => {
     expect(comfyUiRuntimeProfileForSettings({
       defaultImageModel: ""
     })).toBe("standard");
+    expect(comfyUiRuntimeProfileForSettings(
+      comfyUiSettingsForPromptRuntime(createDefaultSettings())
+    )).toBe("prompt-resident");
     expect(comfyUiRuntimeProfileForSettings({
       defaultImageModel: "",
       defaultVideoModel: "minimax_h3_fl2va_q3_gguf"
@@ -415,6 +469,20 @@ describe("ComfyUI environment candidates", () => {
     expect(comfyUiRuntimeProfileFromCommandLine(
       "python main.py --listen 127.0.0.1"
     )).toBe("unknown");
+    expect(comfyUiRuntimeProfileFromCommandLine(
+      "python main.py --cache-lru 1 --listen 127.0.0.1"
+    )).toBe("prompt-resident");
+  });
+
+  it("uses a bounded node cache for explicitly retained prompt models", () => {
+    const args = comfyUiMemoryArgs(
+      comfyUiSettingsForPromptRuntime(createDefaultSettings())
+    );
+
+    expect(args).toEqual(expect.arrayContaining(["--cache-lru", "1"]));
+    expect(args).not.toContain("--cache-none");
+    expect(args).not.toContain("--disable-pinned-memory");
+    expect(args).not.toContain("--disable-async-offload");
   });
 
   it("detects VideoHelperSuite builds that support six-value ComfyUI queues", () => {
@@ -692,17 +760,20 @@ describe("ComfyUI environment candidates", () => {
     expect(incompleteProfile).toMatchObject({
       category: "prompt",
       available: false,
-      integrated: false
+      integrated: true,
+      runtimeVerified: false
     });
     expect(completeProfile).toMatchObject({
       category: "prompt",
       available: true,
-      integrated: false
+      integrated: true,
+      runtimeVerified: false
     });
     expect(fastProfile).toMatchObject({
       category: "prompt",
       available: true,
-      integrated: false
+      integrated: true,
+      runtimeVerified: false
     });
     expect(fastProfile?.components[0]?.installGuide).toMatchObject({
       downloadUrl: "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors?download=true",

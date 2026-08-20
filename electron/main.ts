@@ -21,6 +21,7 @@ import type {
   Draft,
   EnhanceRequest,
   EnvironmentIssue,
+  EnvironmentScanScope,
   HistoryAsset,
   HistoryFile,
   HistoryMetadataPatch,
@@ -92,7 +93,10 @@ import {
   isQwenVlPeftPromptModel,
   promptRuntimeForSettings
 } from "../src/core/prompt-models.js";
-import { comfyUiSettingsForQueueTask } from "./services/comfy-runtime-policy.js";
+import {
+  comfyUiSettingsForPromptRuntime,
+  comfyUiSettingsForQueueTask
+} from "./services/comfy-runtime-policy.js";
 import {
   installAttentionAcceleration,
   installCustomNode,
@@ -247,6 +251,17 @@ function promptRuntimeLeaseMatches(
   modelId: string
 ): boolean {
   return retainedPromptRuntime?.backend === backend && retainedPromptRuntime.modelId === modelId;
+}
+
+async function beginPromptRuntimeLease(
+  settings: Settings,
+  backend: ReturnType<typeof promptModelBackend>,
+  modelId: string
+): Promise<boolean> {
+  if (promptRuntimeLeaseMatches(backend, modelId)) return true;
+  if (retainedPromptRuntime !== null) await releasePromptRuntime(settings);
+  retainedPromptRuntime = { backend, modelId };
+  return false;
 }
 let allowWindowClose = false;
 let closeFlowRunning = false;
@@ -1483,8 +1498,19 @@ async function ensureComfyUiReady(taskId: string, signal?: AbortSignal): Promise
 }
 
 async function ensureComfyUiReadyForPrompt(settings: Settings): Promise<void> {
+  const serviceSettings = comfyUiSettingsForPromptRuntime(settings);
+  const profile = await alignLocalComfyUiRuntimeProfile(serviceSettings);
+  if (!profile.ok) {
+    throw new Error(`ComfyUI 提示词运行配置切换失败：${profile.message}`);
+  }
+  if (profile.restarted) {
+    appLogger.info("service", "prompt-runtime-profile-aligned", "ComfyUI runtime profile was aligned for prompt model residency", {
+      previousProfile: profile.previousProfile,
+      desiredProfile: profile.desiredProfile
+    });
+  }
   try {
-    await testComfyUi(settings);
+    await testComfyUi(serviceSettings);
     return;
   } catch (connectionError) {
     appLogger.warn("service", "prompt-connection-unavailable", "ComfyUI was not ready for prompt runtime", {
@@ -1499,9 +1525,9 @@ async function ensureComfyUiReadyForPrompt(settings: Settings): Promise<void> {
       );
     }
   }
-  const started = await startLocalService("comfy", settings);
+  const started = await startLocalService("comfy", serviceSettings);
   if (!started.ok) throw new Error(`ComfyUI 自动启动失败：${started.message}`);
-  await testComfyUi(settings);
+  await testComfyUi(serviceSettings);
 }
 
 async function validateQwenVlPromptNodeRuntime(settings: Settings): Promise<void> {
@@ -2672,6 +2698,7 @@ function registerIpc(): void {
         throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
       }
       if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
+      const leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
       const controller = new AbortController();
       nativePromptController = controller;
       const worker = (async () => {
@@ -2697,14 +2724,15 @@ function registerIpc(): void {
         });
         return result;
       } catch (error) {
-        if (error instanceof TaskStalledError) {
-          await recoverStalledPromptComfyUi(settings);
-        }
         promptProgress.finish(
           controller.signal.aborted ? "cancelled" : "failed",
           controller.signal.aborted ? "unloading" : "validating",
           error instanceof Error ? error.message : String(error)
         );
+        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
+        if (error instanceof TaskStalledError) {
+          await recoverStalledPromptComfyUi(settings);
+        }
         await captureComfyUiLogFailure(
           appLogger,
           settings,
@@ -2728,6 +2756,7 @@ function registerIpc(): void {
         throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
       }
       if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
+      const leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
       const controller = new AbortController();
       nativePromptController = controller;
       const worker = (async () => {
@@ -2755,14 +2784,15 @@ function registerIpc(): void {
         });
         return result;
       } catch (error) {
-        if (error instanceof TaskStalledError) {
-          await recoverStalledPromptComfyUi(settings);
-        }
         promptProgress.finish(
           controller.signal.aborted ? "cancelled" : "failed",
           controller.signal.aborted ? "unloading" : "validating",
           error instanceof Error ? error.message : String(error)
         );
+        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
+        if (error instanceof TaskStalledError) {
+          await recoverStalledPromptComfyUi(settings);
+        }
         await captureComfyUiLogFailure(
           appLogger,
           settings,
@@ -2786,6 +2816,7 @@ function registerIpc(): void {
         throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
       }
       if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
+      const leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
       const controller = new AbortController();
       nativePromptController = controller;
       const worker = (async () => {
@@ -2814,14 +2845,15 @@ function registerIpc(): void {
         });
         return result;
       } catch (error) {
-        if (error instanceof TaskStalledError) {
-          await recoverStalledPromptComfyUi(settings);
-        }
         promptProgress.finish(
           controller.signal.aborted ? "cancelled" : "failed",
           controller.signal.aborted ? "unloading" : "validating",
           error instanceof Error ? error.message : String(error)
         );
+        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
+        if (error instanceof TaskStalledError) {
+          await recoverStalledPromptComfyUi(settings);
+        }
         await captureComfyUiLogFailure(
           appLogger,
           settings,
@@ -2847,24 +2879,20 @@ function registerIpc(): void {
       throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
     }
     if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
+    const leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
     const controller = new AbortController();
     nativePromptController = controller;
     const worker = (async () => {
       promptProgress.update("checking", 5);
       await ensureComfyUiReadyForPrompt(settings);
       await validateNativePromptRuntime(settings);
-      const retainModel = promptRuntimeLeaseMatches(promptBackend, settings.promptModelId);
-      try {
-        return await enhancePromptWithComfyUi(
-          request,
-          settings,
-          controller.signal,
-          false,
-          promptProgress.update
-        );
-      } finally {
-        if (!retainModel) await freeMemory(settings).catch(() => undefined);
-      }
+      return enhancePromptWithComfyUi(
+        request,
+        settings,
+        controller.signal,
+        false,
+        promptProgress.update
+      );
     })();
     nativePromptWorker = worker;
     try {
@@ -2882,6 +2910,7 @@ function registerIpc(): void {
         controller.signal.aborted ? "unloading" : "validating",
         error instanceof Error ? error.message : String(error)
       );
+      if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
       await captureComfyUiLogFailure(
         appLogger,
         settings,
@@ -2948,13 +2977,20 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "environment:scan",
-    async (_event, settings: Settings) => {
+    async (_event, settings: Settings, requestedScope: unknown) => {
+      const scope: EnvironmentScanScope = requestedScope === "runtime" ||
+        requestedScope === "dependencies"
+        ? requestedScope
+        : "full";
       const startedAt = Date.now();
-      appLogger.info("environment", "scan-started", "Environment scan started");
+      appLogger.info("environment", "scan-started", "Environment scan started", {
+        requestedScope: scope
+      });
       try {
-        const result = await scanEnvironment(settings);
+        const result = await scanEnvironment(settings, scope);
         appLogger.info("environment", "scan-finished", "Environment scan finished", {
           durationMs: Date.now() - startedAt,
+          requestedScope: scope,
           checkedFrom: result.comfyCompatibility.checkedFrom,
           gpuCount: result.gpus.length,
           modelProfiles: result.modelProfiles.length,

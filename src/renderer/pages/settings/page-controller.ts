@@ -3,7 +3,6 @@ import type {
   ModelComponentStatus,
   Settings
 } from "../../../types";
-import { directoryComparisonKey } from "./helpers";
 import type { SettingsInstallGuideSelection } from "./fragments";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { rewriteHuggingFaceDownloadUrl } from "../../../core/download-url";
@@ -18,17 +17,10 @@ export interface SettingsPageControllerOptions {
   getInstallGuide(): SettingsInstallGuideSelection | null;
   settingsHaveUnsavedChanges(): boolean;
   syncSettingsDirtyUi(): void;
-  runEnvironmentScan(settings: Settings): Promise<void>;
+  runEnvironmentScan(settings: Settings): Promise<EnvironmentScanResult | null>;
   loadAppLogs(): void;
   togglePromptModel(): Promise<void>;
-  saveSettingsFromUi(settings: Settings): Promise<void>;
-  saveSettingsDirect(settings: Settings): Promise<void>;
-  requestDirectoryMigration(
-    previousSettings: Settings,
-    nextSettings: Settings,
-    oldDirectory: string,
-    newDirectory: string
-  ): void;
+  requestSaveSettings(settings: Settings): Promise<"saved" | "migration-required">;
   openImageAssetLibrary(): void;
   rememberModalFocus(): void;
   restoreModalFocus(): void;
@@ -131,18 +123,9 @@ export function mountSettingsPageController(
   root.querySelector("#save-settings")?.addEventListener("click", async () => {
     const state = options.context.getState();
     if (!state) return;
-    const previousSettings = state.settings;
     const nextSettings = options.formSettings();
-    const scan = options.getEnvironmentScan();
-    const oldDirectory = previousSettings.outputDirectory || scan?.outputDirectory || "";
-    const newDirectory = nextSettings.outputDirectory || scan?.outputDirectory || "";
-    if (directoryComparisonKey(oldDirectory) !== directoryComparisonKey(newDirectory)) {
-      options.rememberModalFocus();
-      options.requestDirectoryMigration(previousSettings, nextSettings, oldDirectory, newDirectory);
-      return;
-    }
     try {
-      await options.saveSettingsFromUi(nextSettings);
+      await options.requestSaveSettings(nextSettings);
     } catch (error) {
       options.context.notify(error instanceof Error ? error.message : String(error), { renderPage: false, kind: "error" });
     }
@@ -172,14 +155,15 @@ export function mountSettingsPageController(
     const scan = options.getEnvironmentScan();
     if (!scan?.comfyRoot) return;
     const current = options.formSettings();
-    await options.saveSettingsDirect({
+    const result = await options.requestSaveSettings({
       ...current,
       comfyInstallDirectory: scan.comfyInstallDirectory || current.comfyInstallDirectory,
       modelDirectory: scan.modelDirectory,
       outputDirectory: scan.outputDirectory
     });
-    options.setSettingsDraft(null);
-    options.context.notify(options.context.t(uiKeys.settings.actions.scannedPathsApplied));
+    if (result === "saved") {
+      options.context.notify(options.context.t(uiKeys.settings.actions.scannedPathsApplied));
+    }
   }, { signal });
 
   root.querySelector("#pick-comfy-install-directory")?.addEventListener("click", async () => {
@@ -266,14 +250,13 @@ export function mountSettingsPageController(
       if (!directory) return;
       const input = root.querySelector<HTMLInputElement>("#lm-install-directory");
       if (input) input.value = directory;
-      await options.saveSettingsDirect({
+      const result = await options.requestSaveSettings({
         ...options.formSettings(),
         lmStudioInstallDirectory: directory
       });
-      options.setSettingsDraft(null);
-      const state = options.context.getState();
-      if (state) await options.runEnvironmentScan(state.settings);
-      options.context.notify(options.context.t(uiKeys.settings.actions.lmStudioSaved));
+      if (result === "saved") {
+        options.context.notify(options.context.t(uiKeys.settings.actions.lmStudioSaved));
+      }
     }, { signal });
   });
 

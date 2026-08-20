@@ -211,7 +211,7 @@ export function historyTagNames(
     const key = historyTagKey(tag);
     if (tag && key && !byKey.has(key)) byKey.set(key, tag);
   }
-  return [...byKey.values()].sort((left, right) => left.localeCompare(right));
+  return [...byKey.values()].sort((left, right) => left.localeCompare(right, "zh-CN"));
 }
 
 export function historyFilterModelIds(

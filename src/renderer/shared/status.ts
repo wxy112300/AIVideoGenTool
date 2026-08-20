@@ -20,20 +20,55 @@ export interface PromptModelStatus {
   detail: string;
 }
 
+export interface ModelProfileEvidence {
+  files: "ready" | "missing";
+  nodePackage: "not-required" | "ready" | "warning" | "incompatible" | "missing";
+  runtime: "not-required" | "pending" | "ready" | "missing";
+  integration: "ready" | "pending";
+}
+
+export function modelProfileEvidence(profile: ModelScanProfile): ModelProfileEvidence {
+  return {
+    files: profile.available ? "ready" : "missing",
+    nodePackage: !profile.requiredCustomNodeIds?.length
+      ? "not-required"
+      : profile.missingCustomNodeIds?.length
+        ? "missing"
+        : profile.customNodeCompatibility === "error"
+          ? "incompatible"
+          : profile.customNodeCompatibility === "warning"
+            ? "warning"
+            : "ready",
+    runtime: profile.runtimeVerified === undefined
+      ? "not-required"
+      : profile.runtimeVerified === false
+        ? "pending"
+        : profile.runtimeReady
+          ? "ready"
+          : "missing",
+    integration: profile.integrated ? "ready" : "pending"
+  };
+}
+
 /**
  * Settings uses a deliberately small status vocabulary.  A file scan can be
  * complete while runtime validation is still waiting for ComfyUI, so that
  * state must not be rendered as an error.
  */
 export function modelProfileStatusTone(
-  profile: ModelScanProfile,
-  workflowReady: boolean
+  profile: ModelScanProfile
 ): SettingsStatusTone {
-  if (!profile.available) return "missing";
-  if (profile.missingCustomNodeIds?.length) return "missing";
-  if (profile.runtimeVerified === true && profile.runtimeReady === false) return "missing";
-  if (profile.integrated === false || profile.runtimeVerified === false) return "warning";
-  return workflowReady ? "available" : "warning";
+  const evidence = modelProfileEvidence(profile);
+  if (
+    evidence.files === "missing" ||
+    evidence.nodePackage === "missing" ||
+    evidence.nodePackage === "incompatible" ||
+    evidence.runtime === "missing"
+  ) {
+    return "missing";
+  }
+  if (evidence.nodePackage === "warning" || evidence.integration === "pending") return "warning";
+  return "available";
 }
 
 export function customNodeStatusTone(
@@ -79,6 +114,22 @@ export function promptModelStatus(
       detail: `${t(uiKeys.status.promptIncomplete, { missing: missing ? `：${t(uiKeys.status.promptMissing, { missing })}` : "" })}`
     };
   }
+  const evidence = modelProfileEvidence(profile);
+  if (evidence.nodePackage === "missing") {
+    const nodes = profile.missingCustomNodeNames?.join("、") ||
+      profile.missingCustomNodeIds?.join("、") ||
+      profile.requiredCustomNodeIds?.join("、") || "-";
+    return {
+      ready: false,
+      detail: t(uiKeys.status.promptMissingNodes, { nodes })
+    };
+  }
+  if (evidence.nodePackage === "incompatible" || evidence.runtime === "missing") {
+    return { ready: false, detail: t(uiKeys.status.promptRuntimeFailed) };
+  }
+  if (evidence.integration === "pending") {
+    return { ready: false, detail: t(uiKeys.status.promptPendingIntegration) };
+  }
   return {
     ready: true,
     detail: isQwenVlPeftPromptModel(settings.promptModelId)
@@ -89,16 +140,6 @@ export function promptModelStatus(
         ? t(uiKeys.status.promptGemma)
         : t(uiKeys.status.promptQwen)
   };
-}
-
-export function isImageWorkflowReady(profile?: ModelScanProfile): boolean {
-  return Boolean(
-    profile?.category === "image" &&
-    profile.available &&
-    profile.integrated &&
-    profile.runtimeVerified &&
-    profile.runtimeReady
-  );
 }
 
 export function isImageModelSelectable(profile?: ModelScanProfile): boolean {
@@ -112,7 +153,7 @@ export function imageWorkflowStatus(profile?: ModelScanProfile, t: Translate = c
   if (profile.missingCustomNodeNames?.length) {
     return t(uiKeys.status.imageMissingNodes, { nodes: profile.missingCustomNodeNames.join("、") });
   }
-  if (!profile.runtimeVerified) return t(uiKeys.status.imageNotStarted);
+  if (!profile.runtimeVerified) return t(uiKeys.status.imageRuntimePending);
   if (!profile.runtimeReady) {
     return profile.runtimeMissingNodes?.length
       ? t(uiKeys.status.imageMissingNodes, { nodes: profile.runtimeMissingNodes.join("、") })

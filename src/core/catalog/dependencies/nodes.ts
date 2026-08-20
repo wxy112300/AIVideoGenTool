@@ -3,7 +3,7 @@ import type { CatalogCustomNodeDefinition } from "./types.js";
 export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
-export const SPECTRUM_RECOMMENDED_VERSION = "0.2.15";
+export const SPECTRUM_RECOMMENDED_VERSION = "0.2.16";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
 export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.3.2";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
@@ -214,7 +214,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
 }, {
   id: "spectrum-minimax-h3",
   name: "Spectrum MiniMax H3",
-  purpose: "预测部分 H3 采样步骤；支持标准 FL2VA / R2V、LightX2V Turbo，并在推荐版本上可选互操作 H3 Continuum",
+  purpose: "预测部分 H3 采样步骤；支持标准 FL2VA / R2V、LightX2V Turbo，并可选互操作 H3 Continuum、Diff-Aid 与 Untwisting RoPE",
   repositoryUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
   directoryName: "ComfyUI-Spectrum-MiniMax-H3",
   aliases: ["comfyui-spectrum-minimax-h3"],
@@ -223,10 +223,11 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   minimumVersion: SPECTRUM_MINIMUM_VERSION,
   recommendedVersion: SPECTRUM_RECOMMENDED_VERSION,
   compatibilityEvidence: [{
-    verifiedAt: "2026-08-17",
+    verifiedAt: "2026-08-20",
     sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3",
-    note: "Spectrum 的最低版本、Turbo 共存和 model_aware_mode 约束已纳入本项目工作流基线；推荐版本不是硬性最低版本。",
+    note: "v0.2.16 保留既有节点输入、预测默认值与采样节奏，新增 Untwisting RoPE H3 外部补丁契约兼容，并将可选生成后研究分析隔离到有界子进程；最低版本、Turbo 共存和 model_aware_mode 门槛保持不变。",
     comfyUi: "0.33.1",
+    commit: "567768f",
     workflowIds: ["minimax_h3_i2v", "minimax_h3_r2v"],
     checks: ["static"]
   }],

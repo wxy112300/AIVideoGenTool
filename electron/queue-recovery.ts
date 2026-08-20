@@ -62,6 +62,14 @@ export async function cleanupCancelledQueueTask(
       });
     }
     const workerSettled = await waitWithTimeout(worker, 15_000);
+    if (!hasSubmittedPrompt && workerSettled) {
+      await updateCancelledTask({
+        status: "cancelled",
+        stage: "任务已取消，尚未提交到 ComfyUI",
+        error: "任务已取消"
+      });
+      return;
+    }
     if (settings.safeCancel && workerSettled) {
       try {
         await freeMemory(settings);

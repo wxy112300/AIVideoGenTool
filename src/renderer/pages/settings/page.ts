@@ -23,11 +23,22 @@ import {
 } from "./fragments";
 import { settingsText } from "./copy";
 import { fieldLabelWithTip } from "../../shared/markup";
-import { customNodeStatusTone } from "../../shared/status";
 import {
+  customNodeBulkActionMode,
   customNodeIdsForBulkAction,
   type CustomNodeInstallPhase
 } from "./node-install-queue";
+import {
+  coreNodeRowTone,
+  deriveAccelerationState,
+  deriveCoreNodeState,
+  deriveCustomNodeCardState,
+  deriveEnvironmentOverviewItems,
+  derivePromptRuntimeState,
+  deriveSettingsDependencyActionState,
+  deriveSettingsDirectories,
+  deriveSettingsGpuState
+} from "./selectors";
 
 interface ImageQualityProfileOption {
   id: string;
@@ -44,6 +55,7 @@ export interface SettingsPageViewModel {
   settings: Settings;
   settingsDirty: boolean;
   environmentScan: EnvironmentScanResult | null;
+  comfyConnected?: boolean;
   environmentScanning: boolean;
   environmentScanError: string;
   settingsTab: SettingsTab;
@@ -102,7 +114,6 @@ export interface SettingsPageOptions {
   isComfyMultimodalPromptModel(modelId: string): boolean;
   isQwenVlPeftPromptModel(modelId: string): boolean;
   videoLoraInfoButton(profileId: string): string;
-  isImageWorkflowReady(profile?: ModelScanProfile): boolean;
   isImageModelSelectable(profile?: ModelScanProfile): boolean;
   imageWorkflowStatus(profile?: ModelScanProfile): string;
   h3PromptPresetOptions(selected: H3PromptPreset, includeMultiReference: boolean): string;
@@ -128,6 +139,10 @@ export function renderSettingsPage(
   const environmentOverview = renderSettingsEnvironmentOverview(
     {
       environmentScan,
+      environmentItems: deriveEnvironmentOverviewItems(
+        environmentScan,
+        viewModel.comfyConnected
+      ),
       environmentScanning: viewModel.environmentScanning,
       environmentScanError: viewModel.environmentScanError,
       serviceStarting: viewModel.serviceStarting,
@@ -166,7 +181,6 @@ export function renderSettingsPage(
       isComfyMultimodalPromptModel: options.isComfyMultimodalPromptModel,
       isQwenVlPeftPromptModel: options.isQwenVlPeftPromptModel,
       videoLoraInfoButton: options.videoLoraInfoButton,
-      isImageWorkflowReady: options.isImageWorkflowReady,
       imageWorkflowStatus: options.imageWorkflowStatus
     }
   );
@@ -214,53 +228,55 @@ export function renderSettingsPage(
   ).length;
   const loraAvailable = loraProfiles.filter((profile) => profile.available).length;
   const imageComponentsReady = imageProfiles.filter((profile) => profile.available).length;
-  const imageWorkflowsReady = imageProfiles.filter((profile) => options.isImageWorkflowReady(profile)).length;
   const upscaleAvailable = upscaleProfiles.filter((profile) => profile.available).length;
   const promptAvailable = promptProfiles.filter((profile) => profile.available).length;
-  const nodeUpdatesAvailable = Boolean(
-    environmentScan?.customNodes.some((node) => node.updateAvailable)
+  const dependencyActionState = deriveSettingsDependencyActionState({
+    environmentScan,
+    customNodeInstallPhase: viewModel.customNodeInstallPhase,
+    workflowDependencyInstalling: viewModel.workflowDependencyInstalling,
+    queueRunning: viewModel.queueRunning,
+    hasRunningQueueTask: viewModel.hasRunningQueueTask
+  });
+  const {
+    nodeUpdatesAvailable,
+    customNodeInstallFinalizing,
+    customNodeInstallGloballyBlocked
+  } = dependencyActionState;
+  const promptRuntime = derivePromptRuntimeState(
+    settings,
+    environmentScan,
+    promptProfiles,
+    {
+      isQwenVlPeftPromptModel: options.isQwenVlPeftPromptModel,
+      isGemmaPromptModel: options.isGemmaPromptModel,
+      isComfyMultimodalPromptModel: options.isComfyMultimodalPromptModel
+    }
   );
-  const llamaCppPython = environmentScan?.llamaCppPython;
-  const promptWriterNode = environmentScan?.customNodes.find(
-    (node) => node.id === "minimax-h3-prompt-writer"
-  );
-  const llamaRuntimeLabel = !environmentScan
+  const llamaCppPython = promptRuntime.llamaCppPython;
+  const promptWriterNode = promptRuntime.promptWriterNode;
+  const selectedQwenVlProfile = promptRuntime.qwenVlProfile;
+  const qwenVlNode = promptRuntime.qwenVlNode;
+  const llamaRuntimeClass = promptRuntime.kind === "llama-cpp" ? promptRuntime.tone : "warning";
+  const llamaRuntimeLabel = promptRuntime.label === "waiting"
     ? s("prompt.runtimeWaiting")
-    : llamaCppPython?.ready
+    : promptRuntime.label === "ready"
       ? s("prompt.runtimeReady")
-      : llamaCppPython?.gpuOffload === false
+      : promptRuntime.label === "cpu"
         ? s("prompt.runtimeCpu")
-        : llamaCppPython?.installed
-          ? s("prompt.runtimeUnknown")
-          : s("prompt.runtimeMissing");
-  const llamaRuntimeClass = llamaCppPython?.nativeCrash
-    ? "missing"
-    : llamaCppPython?.ready
-    ? "available"
-    : !environmentScan || llamaCppPython?.installed
-      ? "warning"
-      : "missing";
-  const selectedQwenVlProfile = promptProfiles.find(
-    (profile) => options.isQwenVlPeftPromptModel(profile.id)
-  );
-  const qwenVlNode = environmentScan?.customNodes.find(
-    (node) => node.id === "comfyui-qwenvl-lora"
-  );
-  const qwenVlRuntimeClass = !environmentScan || !selectedQwenVlProfile || selectedQwenVlProfile.integrated === false
-    ? "warning"
-    : !selectedQwenVlProfile.available || qwenVlNode && !qwenVlNode.installed
-      ? "missing"
-      : selectedQwenVlProfile.runtimeVerified && selectedQwenVlProfile.runtimeReady && qwenVlNode?.loaded
-        ? "available"
-        : "warning";
-  const qwenVlRuntimeLabel = !environmentScan
+        : promptRuntime.label === "missing"
+          ? s("prompt.runtimeMissing")
+          : s("prompt.runtimeUnknown");
+  const qwenVlRuntimeClass = promptRuntime.kind === "qwen-vl" ? promptRuntime.tone : "warning";
+  const qwenVlRuntimeLabel = promptRuntime.label === "waiting"
     ? s("prompt.runtimeWaiting")
-    : qwenVlRuntimeClass === "available"
+    : promptRuntime.label === "ready"
       ? s("prompt.runtimeQwenNodeReady")
-      : qwenVlRuntimeClass === "missing"
+      : promptRuntime.label === "missing"
         ? s("prompt.runtimeQwenNodeMissing")
         : s("prompt.runtimeUnknown");
-  const promptRuntimePanel = options.isQwenVlPeftPromptModel(settings.promptModelId)
+  const promptRuntimePanel = promptRuntime.kind === "native-comfy"
+    ? ""
+    : promptRuntime.kind === "qwen-vl"
     ? `
       <section class="panel settings-section prompt-runtime-dependency ${qwenVlRuntimeClass}">
         <div class="section-heading">
@@ -289,8 +305,9 @@ export function renderSettingsPage(
         </div>
         ${(viewModel.llamaCppPythonLog || viewModel.llamaCppPythonInstalling) ? `<details class="node-log" open><summary>${s("prompt.runtimeLog")}</summary><pre data-dependency-install-log="python-runtime:llama-cpp-python">${escape(viewModel.llamaCppPythonLog || s("prompt.runtimeInstalling"))}</pre></details>` : ""}
       </section>`;
-  const gpu = environmentScan?.items.find((item) => item.id === "nvidia");
-  const gpuDevices = environmentScan?.gpus ?? [];
+  const gpuState = deriveSettingsGpuState(settings, environmentScan);
+  const gpu = gpuState.item;
+  const gpuDevices = gpuState.devices;
   const gpuSummary = gpuDevices.length
     ? gpuDevices.map((device) => `${device.name} · ${options.formatBytes(device.vramTotalBytes)}`).join("；")
     : gpu?.ok || gpu?.status === "warning"
@@ -303,12 +320,7 @@ export function renderSettingsPage(
       ? `${gpuDevices[0]!.name} · ${options.formatBytes(gpuDevices[0]!.vramTotalBytes)}`
       : t(uiKeys.settings.system.gpuCount, { count: gpuDevices.length })
     : t(uiKeys.settings.system.gpuWaiting);
-  const reserveVramBytes = Math.max(
-    0,
-    (Number.isFinite(settings.vramReserveGb)
-      ? Math.max(0.5, Math.min(1, settings.vramReserveGb))
-      : 1)
-  ) * 1024 ** 3;
+  const reserveVramBytes = gpuState.reserveVramBytes;
   const gpuBudgetSummary = gpuDevices.length
     ? gpuDevices.map((device) => t(uiKeys.settings.system.gpuBudgetSummary, {
         total: options.formatBytes(device.vramTotalBytes),
@@ -324,41 +336,18 @@ export function renderSettingsPage(
           <code class="runtime-detail">${options.formatBytes(device.vramTotalBytes)} ${t(uiKeys.settings.system.totalVram)} · ${options.formatBytes(Math.max(0, device.vramTotalBytes - reserveVramBytes))} ${t(uiKeys.settings.system.workBudget)} · ${t(uiKeys.settings.system.driver)} ${escape(device.driverVersion || t(uiKeys.settings.compatibility.versionUnknown))}</code>
         </article>`).join("")}</div>`
     : `<div class="scan-result">${escape(gpuSummary)}</div>`;
-  const comfyInstallations = environmentScan?.comfyInstallations ?? [];
-  const effectiveComfyInstallDirectory =
-    environmentScan?.comfyInstallDirectory || settings.comfyInstallDirectory;
-  const selectedComfyInstallation = comfyInstallations.find(
-    (installation) => installation.selected || (
-      Boolean(effectiveComfyInstallDirectory) &&
-      installation.directory.toLowerCase() === effectiveComfyInstallDirectory.toLowerCase()
-    )
-  ) ?? comfyInstallations[0];
-  const effectiveComfyCoreDirectory =
-    environmentScan?.comfySourceDirectory || selectedComfyInstallation?.sourceDirectory || "";
-  const effectiveComfyDataDirectory = environmentScan?.comfyRoot || "";
-  const effectiveModelDirectory =
-    settings.modelDirectory || environmentScan?.modelDirectory || "";
-  const comfyOutputRoot = environmentScan?.comfyRoot
-    ? `${environmentScan.comfyRoot.replace(/[\\/]+$/u, "")}\\output`
-    : environmentScan?.outputDirectory || "";
-  const autoVideoOutputDirectory = comfyOutputRoot
-    ? `${comfyOutputRoot.replace(/[\\/]+$/u, "")}\\Videos`
-    : "";
-  const autoImageOutputDirectory = comfyOutputRoot
-    ? `${comfyOutputRoot.replace(/[\\/]+$/u, "")}\\Images`
-    : "";
-  const autoImageInputLibraryDirectory = environmentScan?.comfyRoot
-    ? `${environmentScan.comfyRoot.replace(/[\\/]+$/u, "")}\\input\\LocalVideoStudio`
-    : "";
-  const videoOutputDirectoryValue = settings.outputDirectory || autoVideoOutputDirectory;
+  const directoryState = deriveSettingsDirectories(settings, environmentScan);
+  const comfyInstallations = directoryState.comfyInstallations;
+  const effectiveComfyInstallDirectory = directoryState.comfyInstallDirectory;
+  const effectiveComfyCoreDirectory = directoryState.comfyCoreDirectory;
+  const effectiveComfyDataDirectory = directoryState.comfyDataDirectory;
+  const effectiveModelDirectory = directoryState.modelDirectory;
+  const autoVideoOutputDirectory = directoryState.autoVideoOutputDirectory;
+  const autoImageOutputDirectory = directoryState.autoImageOutputDirectory;
+  const autoImageInputLibraryDirectory = directoryState.autoImageInputLibraryDirectory;
+  const videoOutputDirectoryValue = directoryState.videoOutputDirectory;
   const imageOutputDirectoryPlaceholder = autoImageOutputDirectory ||
     t(uiKeys.settings.system.autoDirectoryPlaceholder, { folder: "Images" });
-  const customNodeInstallFinalizing = viewModel.customNodeInstallPhase === "restarting" ||
-    viewModel.customNodeInstallPhase === "scanning";
-  const customNodeInstallGloballyBlocked = Boolean(
-    customNodeInstallFinalizing || viewModel.workflowDependencyInstalling ||
-    viewModel.queueRunning || viewModel.hasRunningQueueTask
-  );
 
   const systemPanel = `
     <section class="settings-panel">
@@ -531,7 +520,7 @@ export function renderSettingsPage(
           </select></label>
           <label>${s("image.defaultCount")}<div class="inline-field"><input id="image-output-count" type="range" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><input id="image-output-count-number" type="number" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><span>${s("image.countUnit")}</span></div></label>
         </div>
-        <div class="scan-result">${viewModel.environmentScanning ? s("image.scanning") : environmentScan ? s("image.summary", { components: imageComponentsReady, workflows: imageWorkflowsReady }) : s("image.waitingScan")}</div>
+        <div class="scan-result">${viewModel.environmentScanning ? s("image.scanning") : environmentScan ? s("image.summary", { ready: imageComponentsReady, total: imageProfiles.length }) : s("image.waitingScan")}</div>
         <p class="muted proxy-hint">${s("image.note")}</p>
       </section>
       <div class="model-profile-list">${imageProfiles.length ? imageProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("image.empty")}</div>`}</div>
@@ -589,33 +578,32 @@ export function renderSettingsPage(
       <div class="model-profile-list">${upscaleProfiles.length ? upscaleProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("upscale.empty")}</div>`}</div>
     </section>`;
 
-  const nodeInstalled = environmentScan?.customNodes.filter(
-    (node) => node.installed
-  ).length ?? 0;
-  const h3CoreNodes = environmentScan?.comfyCompatibility.coreNodes ?? [];
-  const h3CoreKnown = Boolean(environmentScan && environmentScan.comfyCompatibility.checkedFrom !== "");
-  const h3CoreReady = environmentScan?.comfyCompatibility.h3CoreSupported ?? false;
-  const promptCoreNodes = environmentScan?.comfyCompatibility.promptCoreNodes ?? [];
-  const promptCoreKnown = Boolean(environmentScan && environmentScan.comfyCompatibility.checkedFrom !== "");
-  const promptCoreReady = promptCoreNodes.length > 0 && promptCoreNodes.every((node) => node.available);
-  const h3CoreTone = h3CoreReady ? "available" : h3CoreKnown ? "missing" : "warning";
-  const promptCoreTone = promptCoreReady ? "available" : promptCoreKnown ? "missing" : "warning";
-  const workflowDependencies = environmentScan?.workflowDependencies ?? [];
-  const nodeDependencyAvailable = nodeInstalled + (h3CoreReady ? 1 : 0) +
-    (promptCoreReady ? 1 : 0) +
-    workflowDependencies.filter((workflow) => workflow.installed).length;
-  const nodeDependencyTotal = (environmentScan?.customNodes.length ?? 0) + 2 +
-    workflowDependencies.length;
-  const customNodes = environmentScan?.customNodes ?? [];
+  const coreNodeState = deriveCoreNodeState(environmentScan);
+  const h3CoreNodes = coreNodeState.h3Nodes;
+  const h3CoreKnown = coreNodeState.known;
+  const h3CoreReady = coreNodeState.h3Ready;
+  const promptCoreNodes = coreNodeState.promptNodes;
+  const promptCoreKnown = coreNodeState.known;
+  const promptCoreReady = coreNodeState.promptReady;
+  const h3CoreTone = coreNodeState.h3Tone;
+  const promptCoreTone = coreNodeState.promptTone;
+  const workflowDependencies = coreNodeState.workflowDependencies;
+  const nodeDependencyAvailable = coreNodeState.availableCount;
+  const nodeDependencyTotal = coreNodeState.totalCount;
+  const customNodes = coreNodeState.customNodes;
   const bulkNodeIds = customNodeIdsForBulkAction(customNodes);
-  const bulkCustomNodes = customNodes.filter((node) => node.bulkInstall !== false);
-  const allCustomNodesHealthy = bulkCustomNodes.length > 0 && bulkCustomNodes.every((node) =>
-    node.installed && !node.updateAvailable
-  );
+  const bulkActionMode = customNodeBulkActionMode(customNodes);
+  const bulkActionLabel = bulkActionMode === "update"
+    ? s("nodes.updateAvailable")
+    : bulkActionMode === "install"
+      ? s("nodes.installMissing")
+      : bulkActionMode === "mixed"
+        ? s("nodes.installAll")
+        : s("nodes.updateAll");
   const nodePanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>${s("nodes.title")}</h2><span class="muted">${s("nodes.description")}</span></div><div class="button-row"><span class="model-badge">${nodeDependencyAvailable}/${nodeDependencyTotal} ${s("nodes.installed")}</span><button class="primary button-with-icon" id="install-all-custom-nodes" ${!bulkNodeIds.length || customNodeInstallGloballyBlocked || viewModel.customNodeInstallPhase !== "idle" ? "disabled" : ""}>${icon(allCustomNodesHealthy ? "refresh-cw" : "download")}${allCustomNodesHealthy ? s("nodes.updateAll") : s("nodes.installAll")} <span class="button-count">${bulkNodeIds.length}</span></button></div></div>
+        <div class="section-heading"><div><h2>${s("nodes.title")}</h2><span class="muted">${s("nodes.description")}</span></div><div class="button-row"><span class="model-badge">${nodeDependencyAvailable}/${nodeDependencyTotal} ${s("nodes.installed")}</span><button class="primary button-with-icon" id="install-all-custom-nodes" ${!bulkNodeIds.length || customNodeInstallGloballyBlocked || viewModel.customNodeInstallPhase !== "idle" ? "disabled" : ""}>${icon(bulkActionMode === "update" ? "refresh-cw" : bulkActionMode === "none" ? "circle-check" : "download")}${bulkActionLabel} <span class="button-count">${bulkNodeIds.length}</span></button></div></div>
         <div class="scan-result">${s("nodes.installNote")}</div>
       </section>
       <div class="model-profile-list">
@@ -625,7 +613,7 @@ export function renderSettingsPage(
             <p>${s("nodes.h3Description")}</p>
             <div class="component-list">
               ${h3CoreNodes.map((node) => {
-                const tone = node.available ? "found" : h3CoreKnown ? "missing" : "warning";
+                const tone = coreNodeRowTone(node.available, h3CoreKnown);
                 return `<div class="component-row ${tone}"><span class="component-state">${icon(node.available ? "circle-check" : tone === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`;
               }).join("") || `<div class="component-row warning"><span class="component-state">${icon("circle-help")}</span><div><strong>${s("nodes.waitingCore")}</strong></div></div>`}
             </div>
@@ -643,7 +631,7 @@ export function renderSettingsPage(
             <p>${s("nodes.qwenDescription")}</p>
             <div class="component-list">
               ${promptCoreNodes.map((node) => {
-                const tone = node.available ? "found" : promptCoreKnown ? "missing" : "warning";
+                const tone = coreNodeRowTone(node.available, promptCoreKnown);
                 return `<div class="component-row ${tone}"><span class="component-state">${icon(node.available ? "circle-check" : tone === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`;
               }).join("") || `<div class="component-row warning"><span class="component-state">${icon("circle-help")}</span><div><strong>${s("nodes.waitingQwen")}</strong></div></div>`}
             </div>
@@ -667,25 +655,57 @@ export function renderSettingsPage(
           </article>`).join("")}
         ${customNodes.map((node) => {
           const queuedIndex = viewModel.customNodeInstallQueue.indexOf(node.id);
-          const queued = queuedIndex >= 0;
           const active = viewModel.customNodeInstalling === node.id;
-          const installBlocked = customNodeInstallGloballyBlocked || active || queued;
-          const installActionable = !node.installed || node.updateAvailable;
-          const installStatus = active
+          const cardState = deriveCustomNodeCardState({
+            node,
+            queuedIndex,
+            active,
+            finalizing: customNodeInstallFinalizing,
+            inFinalizingBatch: viewModel.customNodeInstallBatch.includes(node.id),
+            globallyBlocked: customNodeInstallGloballyBlocked
+          });
+          const queued = cardState.queued;
+          const installBlocked = cardState.installBlocked;
+          const installActionable = cardState.installActionable;
+          const localVersion = node.version
+            ? `v${escape(node.version)}`
+            : node.detectedRevision
+              ? `commit ${escape(node.detectedRevision)}`
+              : node.installed
+                ? s("nodes.versionUnread")
+                : s("nodes.notInstalled");
+          const installStatus = cardState.phase === "processing"
             ? s("nodes.processing")
-            : queued
+            : cardState.phase === "queued"
               ? s("nodes.waitingPosition", { position: queuedIndex + 1 })
-              : customNodeInstallFinalizing && viewModel.customNodeInstallBatch.includes(node.id)
+              : cardState.phase === "finalizing"
                 ? s("nodes.finalizing")
                 : "";
+          const statusMarkup = cardState.status === "processing" || cardState.status === "queued" || cardState.status === "finalizing"
+            ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}`
+            : cardState.status === "compatibility-error"
+              ? `${icon("circle-alert")} ${s("nodes.compatibilityError")}`
+              : cardState.status === "update"
+                ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}`
+                : cardState.status === "runtime-missing"
+                  ? `${icon("circle-alert")} ${s("nodes.runtimeMissing")}`
+                  : cardState.status === "file-ready"
+                    ? `${icon("circle-check")} ${s("nodes.fileCheckPassed")}`
+                    : cardState.status === "compatibility-warning"
+                      ? `${icon("circle-help")} ${s("nodes.compatibilityWarning")}`
+                      : cardState.status === "runtime-ready"
+                        ? `${icon("circle-check")} ${s("nodes.runtimeVerified")}`
+                        : cardState.status === "repair"
+                          ? `${icon("circle-alert")} ${s("nodes.installedRepair")}`
+                          : `${icon("circle-alert")} ${s("nodes.notInstalled")}`;
           return `
-          <article class="panel custom-node-card ${customNodeStatusTone(node, Boolean(installStatus))}">
+          <article class="panel custom-node-card ${cardState.tone}">
             <div class="custom-node-copy">
-              <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.bulkInstall === false ? ` · ${s("nodes.manualInstall")}` : ""}${node.version ? ` · v${escape(node.version)}` : ""}${node.detectedRevision ? ` · ${s("nodes.revision")}${escape(node.detectedRevision)}` : ""}</span></div>
+              <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.bulkInstall === false ? ` · ${s("nodes.manualInstall")}` : ""}</span></div>
               <p>${escape(node.purpose)}</p>
               <code>${escape(node.directory || node.repositoryUrl)}</code>
               ${node.runtimeRequirement ? `<p class="muted"><strong>${s("nodes.prerequisite")}</strong> ${escape(node.runtimeRequirement)}</p>` : ""}
-              ${(node.latestVersion || node.recommendedVersion) ? `<p class="muted">${s("nodes.localVersion")}${node.version ? `v${escape(node.version)}` : node.installed ? s("nodes.versionUnread") : s("nodes.notInstalled")} · ${s("nodes.recommendedVersion")}${node.recommendedVersion ? `v${escape(node.recommendedVersion)}` : "—"} · ${s("nodes.latestRelease")}${node.latestVersion ? `v${escape(node.latestVersion)}` : s("nodes.rescanOnline")}${node.id === "spectrum-minimax-h3" ? ` · ${s("nodes.runtimeMemory")}` : ""}</p>` : ""}
+              <p class="muted">${s("nodes.localVersion")}${localVersion} · ${s("nodes.versionSource")}<code>${escape(node.versionSource || "—")}</code>${node.recommendedVersion ? ` · ${s("nodes.recommendedVersion")}v${escape(node.recommendedVersion)}` : ""}${node.latestVersion ? ` · ${s("nodes.latestRelease")}v${escape(node.latestVersion)}` : ""}${node.id === "spectrum-minimax-h3" ? ` · ${s("nodes.runtimeMemory")}` : ""}</p>
               ${node.loadError ? `<span class="${node.compatibilityState === "warning" ? "node-update-notice" : "node-error"}">${escape(node.loadError)}</span>` : ""}
               ${node.updateNotice ? `<span class="node-update-notice">${escape(node.updateNotice)}</span>` : ""}
               ${node.runtimeNotice ? `<span class="node-runtime-notice">${escape(node.runtimeNotice)}</span>` : ""}
@@ -694,7 +714,7 @@ export function renderSettingsPage(
               ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`custom-node:${node.id}`)}">${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${customNodeStatusTone(node, Boolean(installStatus))}">${installStatus ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}` : node.compatibilityState === "error" ? `${icon("circle-alert")} ${s("nodes.compatibilityError")}` : node.updateAvailable && node.loaded ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}` : node.runtimeVerified && node.runtimeMissingNodeTypes?.length ? `${icon("circle-alert")} ${s("nodes.runtimeMissing")}` : node.loaded && !node.runtimeVerified && !node.compatibilityNotice ? `${icon("circle-check")} ${s("nodes.fileCheckPassed")}` : node.compatibilityState === "warning" ? `${icon("circle-help")} ${s("nodes.compatibilityWarning")}` : node.loaded ? `${icon("circle-check")} ${node.runtimeVerified ? s("nodes.runtimeVerified") : s("nodes.fileCheckPassed")}` : node.installed ? `${icon("circle-alert")} ${s("nodes.installedRepair")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
+              <span class="model-availability ${cardState.tone}">${statusMarkup}</span>
               <button class="${installActionable ? "primary" : "secondary"} button-with-icon" ${installActionable ? `data-install-node="${escape(node.id)}"` : `data-rescan-node="${escape(node.id)}"`} ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : installActionable ? node.installed ? "refresh-cw" : "download" : "scan-search")}${installStatus || (node.updateAvailable ? s("nodes.updateRestart") : node.installed ? t(uiKeys.settings.rescan) : s("nodes.installRestart"))}</button>
             </div>
           </article>`;
@@ -706,12 +726,10 @@ export function renderSettingsPage(
       </section>
     </section>`;
 
-  const attention = environmentScan?.attentionAcceleration;
-  const attentionTone = attention?.ready
-    ? "available"
-    : attention?.supported === false
-      ? "missing"
-      : "warning";
+  const accelerationState = deriveAccelerationState(settings, environmentScan);
+  const attention = accelerationState.attention;
+  const attentionTone = accelerationState.tone;
+  const attentionStatus = accelerationState.status;
   const pythonSourceLabels: Record<string, string> = {
     selected: s("accel.sourceSelected"),
     "comfy-venv": s("accel.sourceComfyVenv"),
@@ -720,26 +738,19 @@ export function renderSettingsPage(
     "py-launcher": s("accel.sourceLauncher"),
     other: s("accel.sourceOther")
   };
-  const pythonRuntimes = environmentScan?.pythonRuntimes ?? [];
-  const detectedPythonPath = attention?.pythonPath ||
-    pythonRuntimes.find((runtime) => runtime.selected)?.path ||
-    pythonRuntimes[0]?.path ||
-    "";
-  const effectivePythonPath = settings.comfyPythonPath || detectedPythonPath;
-  const selectedPythonRuntime = pythonRuntimes.find(
-    (runtime) => runtime.path.toLowerCase() === effectivePythonPath.toLowerCase()
-  );
-  const pythonSelectionLabel = settings.comfyPythonPath
-    ? selectedPythonRuntime?.source === "comfy-venv"
-      ? s("accel.sourceComfyVenv")
-      : s("accel.sourceSelected")
-    : s("accel.autoDetect");
+  const pythonRuntimes = accelerationState.pythonRuntimes;
+  const effectivePythonPath = accelerationState.effectivePythonPath;
+  const pythonSelectionLabel = accelerationState.pythonSelection === "comfy-venv"
+    ? s("accel.sourceComfyVenv")
+    : accelerationState.pythonSelection === "selected"
+      ? s("accel.sourceSelected")
+      : s("accel.autoDetect");
   const accelerationPanel = `
     <section class="settings-panel acceleration-panel">
       <section class="panel settings-section acceleration-section acceleration-strategy-panel ${attentionTone}">
         <div class="section-heading">
           <div><h2>${s("accel.strategyTitle")}</h2><span class="muted">${s("accel.strategyDescription")}</span></div>
-          <span class="model-availability ${attentionTone}">${attention?.ready ? `${icon("circle-check")} ${s("accel.ready")}` : attention?.supported === false ? `${icon("circle-alert")} ${s("accel.unsupported")}` : `${icon("circle-help")} ${s("accel.pending")}`}</span>
+          <span class="model-availability ${attentionTone}">${attentionStatus === "ready" ? `${icon("circle-check")} ${s("accel.ready")}` : attentionStatus === "unsupported" ? `${icon("circle-alert")} ${s("accel.unsupported")}` : `${icon("circle-help")} ${s("accel.pending")}`}</span>
         </div>
         <div class="acceleration-strategy-grid">
           <label class="acceleration-mode-field">${fieldLabelWithTip(s("accel.mode"), s("accel.modeTip"))}
@@ -750,7 +761,7 @@ export function renderSettingsPage(
             </select>
           </label>
           <div class="acceleration-summary">
-            <span class="acceleration-summary-icon">${icon(attention?.ready ? "circle-check" : attentionTone === "warning" ? "circle-help" : "circle-alert")}</span>
+            <span class="acceleration-summary-icon">${icon(attentionStatus === "ready" ? "circle-check" : attentionStatus === "pending" ? "circle-help" : "circle-alert")}</span>
             <div><strong>${escape(attention?.detail ?? s("accel.waitingScan"))}</strong><span class="acceleration-fallback-tip">${fieldLabelWithTip(s("accel.fallbackLabel"), s("accel.fallback"))}</span></div>
           </div>
         </div>
@@ -773,7 +784,7 @@ export function renderSettingsPage(
       <section class="panel settings-section acceleration-section acceleration-components-panel ${attentionTone}">
         <div class="section-heading">
           <div><h2>${s("accel.componentsTitle")}</h2><span class="muted">${s("accel.componentsDescription")}</span></div>
-          <span class="model-availability ${attentionTone}">${attention?.ready ? `${icon("circle-check")} ${s("accel.ready")}` : attentionTone === "missing" ? `${icon("circle-alert")} ${s("accel.unsupported")}` : `${icon("circle-help")} ${s("accel.pending")}`}</span>
+          <span class="model-availability ${attentionTone}">${attentionStatus === "ready" ? `${icon("circle-check")} ${s("accel.ready")}` : attentionStatus === "unsupported" ? `${icon("circle-alert")} ${s("accel.unsupported")}` : `${icon("circle-help")} ${s("accel.pending")}`}</span>
         </div>
         <div class="attention-runtime-grid">
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimePython"), s("accel.runtimePythonTip"))}</div><strong class="runtime-value">${escape(attention?.pythonVersion || s("accel.notFound"))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>
@@ -782,7 +793,7 @@ export function renderSettingsPage(
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeKj"), s("accel.runtimeKjTip"))}</div><strong class="runtime-value">${escape(attention?.tritonVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? s("accel.kjAvailable") : attention?.kjNodesInstalled ? s("accel.kjUpdate") : s("accel.kjMissing")}</code></article>
         </div>
         <div class="acceleration-actions">
-          <button class="primary button-with-icon" id="install-attention-acceleration" ${viewModel.attentionAccelerationInstalling || !attention?.supported ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : attention?.ready ? s("accel.repair") : s("accel.install")}</button>
+          <button class="primary button-with-icon" id="install-attention-acceleration" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : accelerationState.installAction === "repair" ? s("accel.repair") : s("accel.install")}</button>
           <div>${fieldLabelWithTip(s("accel.stopComfy"), s("accel.restartComfy"))}</div>
         </div>
         ${viewModel.attentionAccelerationLog ? `<details class="node-log" open><summary>${s("accel.log")}</summary><pre id="attention-install-log">${escape(viewModel.attentionAccelerationLog)}</pre></details>` : ""}

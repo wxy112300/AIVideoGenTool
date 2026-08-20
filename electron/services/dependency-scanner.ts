@@ -18,13 +18,48 @@ import {
 import { readComfyGitRevision } from "./comfy-discovery.js";
 import { qwenVlNeedsComfyDesktopLoggingShim } from "./dependency-node-adapters.js";
 
-async function readPythonProjectVersion(directory: string): Promise<string> {
-  if (!directory) return "";
-  return fs.readFile(path.join(directory, "pyproject.toml"), "utf8")
-    .then((source) => normalizeReleaseVersion(
-      source.match(/^version\s*=\s*["']([^"']+)["']/m)?.[1] ?? ""
-    ))
-    .catch(() => "");
+export interface LocalNodeVersion {
+  version: string;
+  source: string;
+}
+
+export async function readLocalNodeVersion(directory: string): Promise<LocalNodeVersion> {
+  if (!directory) return { version: "", source: "" };
+  const readText = (filename: string) =>
+    fs.readFile(path.join(directory, filename), "utf8").catch(() => "");
+
+  const pyproject = await readText("pyproject.toml");
+  const pyprojectVersion = normalizeReleaseVersion(
+    pyproject.match(/^version\s*=\s*["']([^"']+)["']/m)?.[1] ?? ""
+  );
+  if (pyprojectVersion) return { version: pyprojectVersion, source: "pyproject.toml" };
+
+  const packageJson = await readText("package.json");
+  if (packageJson) {
+    try {
+      const packageVersion = normalizeReleaseVersion(
+        String((JSON.parse(packageJson) as { version?: unknown }).version ?? "")
+      );
+      if (packageVersion) return { version: packageVersion, source: "package.json" };
+    } catch {
+      // Continue to other package-owned version sources.
+    }
+  }
+
+  for (const filename of ["VERSION", "VERSION.txt", "version.txt"]) {
+    const version = normalizeReleaseVersion((await readText(filename)).split(/\r?\n/u)[0] ?? "");
+    if (version) return { version, source: filename };
+  }
+
+  for (const filename of ["__init__.py", "nodes.py"]) {
+    const source = await readText(filename);
+    const version = normalizeReleaseVersion(
+      source.match(/^(?:__version__|VERSION)\s*=\s*["']([^"']+)["']/m)?.[1] ?? ""
+    );
+    if (version) return { version, source: filename };
+  }
+
+  return { version: "", source: "" };
 }
 
 function normalizedRepositoryUrl(value: string): string {
@@ -143,10 +178,8 @@ function compatibilityForNode(
   return {
     compatibilityState: "supported",
     // A stopped ComfyUI cannot prove registration, but the local package and
-    // version checks are still enough to report a static pass. The renderer
-    // keeps the tone yellow while runtimeVerified is false and labels it as
-    // “file check passed · verify after startup” instead of a generic
-    // compatibility warning.
+    // version checks are enough for a green static pass. Runtime registration
+    // remains a separate pending evidence axis until ComfyUI is available.
     compatibilityNotice: runtimeVerified
       ? "版本与节点状态已读取；最终工作流兼容性仍由运行时检查确认。"
       : ""
@@ -476,7 +509,18 @@ export async function scanCustomNodes(
         optionalUpdateRecommended = true;
       }
     }
-    const version = await readPythonProjectVersion(directory);
+    const localVersion = await readLocalNodeVersion(directory);
+    const version = localVersion.version;
+    const belowRecommendedVersion = Boolean(
+      directory && version && definition.recommendedVersion &&
+      compareReleaseVersions(version, definition.recommendedVersion) < 0
+    );
+    if (belowRecommendedVersion) {
+      updateNotice = [
+        updateNotice,
+        `发现项目推荐版本更新：当前 v${version}，推荐 v${definition.recommendedVersion}`
+      ].filter(Boolean).join("；");
+    }
     const belowMinimumVersion = Boolean(
       directory && definition.minimumVersion &&
       (!version || compareReleaseVersions(version, definition.minimumVersion) < 0)
@@ -529,8 +573,7 @@ export async function scanCustomNodes(
       pendingRestartError;
     const updateAvailable = Boolean(
       compatibilityError || optionalUpdateRecommended ||
-      (definition.recommendedVersion && (!version ||
-        compareReleaseVersions(version, definition.recommendedVersion) < 0))
+      (definition.recommendedVersion && !version) || belowRecommendedVersion
     );
     const compatibility = compatibilityForNode(
       definition,
@@ -540,7 +583,9 @@ export async function scanCustomNodes(
       runtimeVerified,
       loadError,
       updateAvailable,
-      compatibilityNotice || updateNotice || pendingRestartError || duplicateNotice
+      [compatibilityNotice, updateNotice, pendingRestartError, duplicateNotice]
+        .filter(Boolean)
+        .join("；")
     );
     return {
       id: definition.id,
@@ -559,6 +604,7 @@ export async function scanCustomNodes(
       directory,
       required: definition.required,
       version,
+      versionSource: localVersion.source || (detectedRevision ? ".git/HEAD" : ""),
       minimumVersion: definition.minimumVersion ?? "",
       recommendedVersion: definition.recommendedVersion ?? "",
       latestVersion,

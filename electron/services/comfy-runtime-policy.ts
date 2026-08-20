@@ -1,6 +1,25 @@
 import path from "node:path";
 import type { QueueTask, Settings } from "../../src/types.js";
 
+export type ComfyUiRuntimeProfile =
+  | "standard"
+  | "prompt-resident"
+  | "qwen-image"
+  | "h3-q3-3080";
+
+type RuntimeProfileSettings = Partial<
+  Pick<Settings, "defaultImageModel" | "defaultVideoModel" | "vramReserveGb">
+> & {
+  comfyRuntimeProfileOverride?: ComfyUiRuntimeProfile;
+};
+
+export function comfyUiSettingsForPromptRuntime(settings: Settings): Settings {
+  return {
+    ...settings,
+    comfyRuntimeProfileOverride: "prompt-resident"
+  } as Settings;
+}
+
 export function comfyUiSettingsForQueueTask(
   task: Pick<QueueTask, "taskType" | "modelId"> | undefined,
   settings: Settings
@@ -19,27 +38,27 @@ export function comfyUiSettingsForQueueTask(
 }
 
 export function comfyUiMemoryArgs(
-  settings: Pick<Settings, "vramReserveGb"> &
-    Partial<Pick<Settings, "defaultImageModel" | "defaultVideoModel">>
+  settings: RuntimeProfileSettings
 ): string[] {
-  const configuredReserve = Number.isFinite(settings.vramReserveGb)
-    ? settings.vramReserveGb
+  const requestedReserve = settings.vramReserveGb;
+  const configuredReserve = typeof requestedReserve === "number" && Number.isFinite(requestedReserve)
+    ? requestedReserve
     : 1;
-  const isQwenImage = settings.defaultImageModel === "qwen-image-edit-2511";
-  const isH3Q3 = settings.defaultVideoModel === "minimax_h3_fl2va_q3_gguf";
+  const runtimeProfile = comfyUiRuntimeProfileForSettings(settings);
   const args = [
-    "--cache-none",
+    runtimeProfile === "prompt-resident" ? "--cache-lru" : "--cache-none",
+    ...(runtimeProfile === "prompt-resident" ? ["1"] : []),
     "--reserve-vram",
     String(Math.max(0.5, Math.min(1, configuredReserve)))
   ];
-  if (isQwenImage) {
+  if (runtimeProfile === "qwen-image") {
     args.push(
       "--cpu-vae",
       "--disable-smart-memory",
       "--vram-headroom",
       "0.5"
     );
-  } else if (isH3Q3) {
+  } else if (runtimeProfile === "h3-q3-3080") {
     args.push(
       "--lowvram",
       "--cpu-vae",
@@ -47,17 +66,16 @@ export function comfyUiMemoryArgs(
       "--disable-pinned-memory",
       "--disable-async-offload"
     );
-  } else {
+  } else if (runtimeProfile === "standard") {
     args.push("--disable-pinned-memory", "--disable-async-offload");
   }
   return args;
 }
 
-export type ComfyUiRuntimeProfile = "standard" | "qwen-image" | "h3-q3-3080";
-
 export function comfyUiRuntimeProfileForSettings(
-  settings: Partial<Pick<Settings, "defaultImageModel" | "defaultVideoModel">>
+  settings: RuntimeProfileSettings
 ): ComfyUiRuntimeProfile {
+  if (settings.comfyRuntimeProfileOverride) return settings.comfyRuntimeProfileOverride;
   if (settings.defaultVideoModel === "minimax_h3_fl2va_q3_gguf") return "h3-q3-3080";
   return settings.defaultImageModel === "qwen-image-edit-2511"
     ? "qwen-image"
@@ -68,6 +86,7 @@ export function comfyUiRuntimeProfileFromCommandLine(
   commandLine: string
 ): ComfyUiRuntimeProfile | "unknown" {
   const normalized = commandLine.toLowerCase();
+  if (normalized.includes("--cache-lru")) return "prompt-resident";
   if (
     normalized.includes("--lowvram") &&
     normalized.includes("--cpu-vae") &&

@@ -339,9 +339,13 @@ export async function enhancePromptWithComfyUi(
     settings,
     5,
     signal,
-    (value, stage) => {
+    (value, stage, determinate) => {
       const normalized = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
-      onProgress?.("generating", Math.min(90, 25 + Math.round(normalized * 0.65)), stage);
+      onProgress?.(
+        "generating",
+        determinate ? Math.min(90, 25 + Math.round(normalized * 0.65)) : null,
+        stage
+      );
     },
     () => undefined
   );
@@ -956,6 +960,9 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
   if (classType === "ImageScale") {
     return { start: 76, end: 80, label: "调整输出尺寸", tracksSteps: false };
   }
+  if (classType === "LoadImage") {
+    return { start: 2, end: 4, label: "读取输入图片", tracksSteps: false };
+  }
   if (classType.includes("Loader")) {
     return { start: 4, end: 10, label: "加载模型", tracksSteps: false };
   }
@@ -1099,7 +1106,7 @@ export async function waitForTask(
   settings: Settings,
   activityTimeoutMinutes: number,
   signal: AbortSignal,
-  onProgress: (value: number, stage: string) => void,
+  onProgress: (value: number, stage: string, determinate: boolean) => void,
   onPreview: (
     dataUrl: string,
     source?: "h3-tae" | "comfy",
@@ -1126,6 +1133,9 @@ export async function waitForTask(
     isComputeActive: isComputeActive()
   });
   let socket: WebSocket | undefined;
+  let socketConnected = false;
+  let socketDisconnected = false;
+  let consecutiveServiceFailures = 0;
   let executionError = "";
   let lastActivityAt = Date.now();
   let lastServiceResponseAt = Date.now();
@@ -1139,7 +1149,8 @@ export async function waitForTask(
   const reportProgress = (
     value: number,
     stage: string,
-    complete = false
+    complete = false,
+    determinate = false
   ): void => {
     const bounded = complete
       ? 100
@@ -1150,7 +1161,7 @@ export async function waitForTask(
       ? bounded
       : Math.max(lastReportedProgress, bounded);
     lastReportedStage = stage;
-    onProgress(lastReportedProgress, stage);
+    onProgress(lastReportedProgress, stage, determinate);
   };
   const activityTimeoutMs = activityTimeoutMinutes * 60_000;
   const serviceSilenceLimit = () =>
@@ -1161,6 +1172,8 @@ export async function waitForTask(
     socket = new WebSocket(socketUrl(baseUrl, clientId));
     socket.binaryType = "arraybuffer";
     socket.addEventListener("open", () => {
+      socketConnected = true;
+      socketDisconnected = false;
       logger.debug("comfy", "websocket-open", "ComfyUI progress WebSocket connected", {
         promptId,
         clientId
@@ -1174,6 +1187,7 @@ export async function waitForTask(
       });
     });
     socket.addEventListener("close", (event) => {
+      socketDisconnected = true;
       logger.info("comfy", "websocket-closed", "ComfyUI progress WebSocket closed", {
         promptId,
         clientId,
@@ -1267,7 +1281,12 @@ export async function waitForTask(
               message.data.value,
               message.data.max
             );
-            reportProgress(stage.progress, stage.label);
+            reportProgress(
+              stage.progress,
+              stage.label,
+              false,
+              nodeStage(nodeTypes[nodeId]).tracksSteps
+            );
           }
         }
         if (message.type === "execution_error") {
@@ -1351,9 +1370,14 @@ export async function waitForTask(
           `${baseUrl}/history?max_items=200`,
           { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) }
         );
+        consecutiveServiceFailures = 0;
         lastServiceResponseAt = Date.now();
       } catch (error) {
         if (signal.aborted) throw signal.reason;
+        consecutiveServiceFailures += 1;
+        if (socketConnected && socketDisconnected && consecutiveServiceFailures >= 2) {
+          throw new TaskStalledError(3, "ComfyUI 已停止或连接中断");
+        }
         if (Date.now() - lastServiceResponseAt > serviceSilenceLimit()) {
           throw new TaskStalledError(3, "无法连接 ComfyUI");
         }

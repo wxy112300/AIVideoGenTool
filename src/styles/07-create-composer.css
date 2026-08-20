@@ -52,6 +52,7 @@
   gap: 6px;
 }
 .prompt-action-controls .prompt-enhance-mode { width: 100%; min-width: 0; }
+.prompt-action-controls .prompt-mode-control { position: relative; }
 .prompt-action-controls #enhance-prompt { white-space: nowrap; }
 .prompt-enhance-button { position: relative; overflow: hidden; isolation: isolate; min-width: 128px; }
 .prompt-enhance-content { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
@@ -61,6 +62,9 @@
 .prompt-progress-bar { display: block; height: 100%; min-width: 0; background: var(--primary); transition: width .25s ease; }
 .prompt-progress-bar.indeterminate { width: 34%; animation: prompt-progress-slide 1.2s ease-in-out infinite; }
 .prompt-progress-active { cursor: pointer; }
+.prompt-progress-tooltip { position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: max-content; max-width: min(320px, 72vw); padding: 9px 11px; border: 1px solid rgba(91, 117, 155, .72); border-radius: 8px; color: #dbe8fa; background: #151d28; box-shadow: 0 10px 28px rgba(0, 0, 0, .42); font-size: 11px; font-weight: 450; line-height: 1.5; opacity: 0; pointer-events: none; transform: translateY(-3px); transition: opacity .12s ease, transform .12s ease; }
+#enhance-prompt.prompt-progress-active:hover + .prompt-progress-tooltip,
+#enhance-prompt.prompt-progress-active:focus-visible + .prompt-progress-tooltip { opacity: 1; transform: translateY(0); }
 @keyframes prompt-progress-slide {
   0% { transform: translateX(-110%); }
   50% { transform: translateX(110%); }
@@ -221,6 +225,21 @@
   justify-content: space-between;
   align-items: center;
 }
+.composer-submit-status {
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.composer-submit-status[hidden] { display: none; }
+.composer-submit-status .ui-icon { flex: 0 0 auto; width: 15px; height: 15px; }
+.composer-submit-status span { min-width: 0; overflow-wrap: anywhere; }
+.composer-submit-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; margin-left: auto; }
 
 @media (max-width: 760px) {
   .composer-control-grid {
@@ -240,10 +259,17 @@
 
   .composer-submit-row {
     align-items: stretch;
+    flex-direction: column;
   }
 
-  .composer-submit-row > button {
+  .composer-submit-actions {
     width: 100%;
+    margin-left: 0;
+  }
+
+  .composer-submit-actions > button {
+    min-width: 0;
+    flex: 1 1 0;
     justify-content: center;
   }
 }

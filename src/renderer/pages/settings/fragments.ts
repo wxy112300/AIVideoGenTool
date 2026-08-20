@@ -7,9 +7,10 @@ import type {
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import {
-  environmentItemStatusTone,
+  modelProfileEvidence,
   modelProfileStatusTone
 } from "../../shared/status";
+import type { SettingsEnvironmentItemState } from "./selectors";
 
 type IconRenderer = (name: string, className?: string) => string;
 type EscapeHtml = (value: string) => string;
@@ -22,6 +23,7 @@ interface SettingsFragmentRenderOptions {
 
 export interface SettingsEnvironmentOverviewViewModel {
   environmentScan: EnvironmentScanResult | null;
+  environmentItems: SettingsEnvironmentItemState[];
   environmentScanning: boolean;
   environmentScanError: string;
   serviceStarting: LocalServiceKind | null;
@@ -53,7 +55,6 @@ export interface SettingsModelScanCardOptions extends SettingsFragmentRenderOpti
   isComfyMultimodalPromptModel(modelId: string): boolean;
   isQwenVlPeftPromptModel(modelId: string): boolean;
   videoLoraInfoButton(profileId: string): string;
-  isImageWorkflowReady(profile?: ModelScanProfile): boolean;
   imageWorkflowStatus(profile?: ModelScanProfile): string;
 }
 
@@ -138,8 +139,8 @@ export function renderSettingsEnvironmentOverview(
       <span class="scan-time">${escape(t(uiKeys.settings.system.scannedAt, { time: options.formatScanTime(environmentScan.scannedAt) }))}</span>
     </div>
     <div class="environment-grid">
-      ${environmentScan.items.map((item) => `
-        <article class="environment-item ${environmentItemStatusTone(item)}">
+      ${viewModel.environmentItems.map((item) => `
+        <article class="environment-item ${item.tone}">
           <span class="environment-state">${icon(item.ok ? "circle-check" : item.optional ? "circle-help" : "circle-alert")}</span>
           <div>
             <div class="environment-item-heading">
@@ -264,24 +265,50 @@ export function renderSettingsModelScanCard(
   const isGemmaProfile = isPromptProfile && options.isGemmaPromptModel(profile.id);
   const isMultimodalProfile = isPromptProfile && options.isComfyMultimodalPromptModel(profile.id);
   const isQwenVlPeftProfile = isPromptProfile && options.isQwenVlPeftPromptModel(profile.id);
-  const runtimeUnavailable = profile.runtimeVerified === true && profile.runtimeReady === false;
+  const evidence = modelProfileEvidence(profile);
   const hardwareRecommendation = modelHardwareRecommendation(profile);
   const loraInfoButton = profile.category === "lora"
     ? options.videoLoraInfoButton(profile.id)
     : "";
-  const isReady = profile.category === "image"
-    ? options.isImageWorkflowReady(profile)
-    : profile.available && !runtimeUnavailable;
-  const statusTone = modelProfileStatusTone(profile, isReady);
-  const readyLabel = isPromptProfile
-    ? options.t(uiKeys.settings.system.scanCardFileComplete)
-    : statusTone === "available"
-      ? options.t(uiKeys.settings.system.scanCardAvailable)
-      : runtimeUnavailable
+  const statusTone = modelProfileStatusTone(profile);
+  const readyLabel = evidence.nodePackage === "missing"
+    ? options.t(uiKeys.settings.system.scanCardNodeMissing)
+    : evidence.nodePackage === "incompatible"
+      ? options.t(uiKeys.settings.system.scanCardNodeIncompatible)
+      : evidence.nodePackage === "warning"
+        ? options.t(uiKeys.settings.system.scanCardNodeAttention)
+    : evidence.runtime === "missing"
+      ? options.t(uiKeys.settings.system.scanCardRuntimeUnavailable)
+      : evidence.integration === "pending"
+        ? options.t(uiKeys.settings.system.scanCardIntegrationPending)
+        : evidence.runtime === "ready"
+          ? options.t(uiKeys.settings.system.scanCardAvailable)
+          : evidence.nodePackage === "ready"
+            ? options.t(uiKeys.settings.system.scanCardStaticReady)
+          : options.t(uiKeys.settings.system.scanCardFileComplete);
+  const nodeEvidence = evidence.nodePackage === "ready"
+    ? options.t(uiKeys.settings.system.scanCardNodeReady)
+    : evidence.nodePackage === "missing"
+      ? options.t(uiKeys.settings.system.scanCardNodeMissing)
+      : evidence.nodePackage === "incompatible"
+        ? options.t(uiKeys.settings.system.scanCardNodeIncompatible)
+        : evidence.nodePackage === "warning"
+          ? options.t(uiKeys.settings.system.scanCardNodeAttention)
+          : options.t(uiKeys.settings.system.scanCardNodeNotRequired);
+  const runtimeEvidence = evidence.runtime === "ready"
+    ? options.t(uiKeys.settings.system.scanCardRuntimeReady)
+    : evidence.runtime === "pending"
+      ? options.t(uiKeys.settings.system.scanCardRuntimePending)
+      : evidence.runtime === "missing"
         ? options.t(uiKeys.settings.system.scanCardRuntimeUnavailable)
-        : profile.category === "image"
-          ? options.imageWorkflowStatus(profile)
-          : options.t(uiKeys.settings.system.scanCardComponentComplete);
+        : options.t(uiKeys.settings.system.scanCardRuntimeNotRequired);
+  const evidenceLabel = options.t(uiKeys.settings.system.scanCardEvidence, {
+    files: evidence.files === "ready"
+      ? options.t(uiKeys.settings.system.scanCardFileReady)
+      : options.t(uiKeys.settings.system.scanCardFileMissing),
+    nodes: nodeEvidence,
+    runtime: runtimeEvidence
+  });
   const metaLabel = profile.available
     ? isPromptProfile
         ? isLlamaProfile
@@ -291,14 +318,14 @@ export function renderSettingsModelScanCard(
           : isQwenVlPeftProfile
           ? "Qwen3-VL 8B + PEFT LoRA 文件完整；通过 ComfyUI Qwen-VL LoRA 处理 H3 提示词"
           : isGemmaProfile
-          ? "LLM GGUF + mmproj 文件完整；通过 ComfyUI Prompt Writer 处理视频和图片提示词"
-          : "ComfyUI text_encoders 文件完整；可通过原生 TextGenerate 进行本地扩写"
+          ? "LLM GGUF + mmproj 文件已就绪；通过 ComfyUI Prompt Writer 处理视频和图片提示词"
+          : "ComfyUI text_encoders 文件已就绪；可通过原生 TextGenerate 进行本地扩写"
       : profile.category === "image"
         ? options.imageWorkflowStatus(profile)
-        : runtimeUnavailable
+        : evidence.runtime === "missing"
           ? `缺少运行节点：${profile.runtimeMissingNodes?.join("、") || "请启动 ComfyUI 后重新扫描"}`
           : profile.integrated
-            ? "组件完整，可用于配置"
+            ? "文件扫描通过，可用于配置"
             : "依赖已完整；生成工作流将在下一阶段接入"
     : isPromptProfile
         ? isLlamaProfile
@@ -320,7 +347,7 @@ export function renderSettingsModelScanCard(
         </div>
         <span class="model-availability ${statusTone}">${profile.available ? `${icon(statusTone === "available" ? "circle-check" : statusTone === "warning" ? "circle-help" : "circle-alert")} ${escape(readyLabel)}` : `${icon("circle-alert")} ${options.t(uiKeys.settings.system.scanCardMissingCount, { count: missingCount })}`}</span>
       </div>
-      <div class="model-meta-line"><span>${options.t(uiKeys.settings.system.scanCardResourcePolicy)} · ${escape(profile.vram)}</span><span class="model-hardware-recommendation">${options.t(uiKeys.settings.system.scanCardRecommendedHardware)} · ${escape(hardwareRecommendation)}</span><span>${metaLabel}</span></div>
+      <div class="model-meta-line"><span>${options.t(uiKeys.settings.system.scanCardResourcePolicy)} · ${escape(profile.vram)}</span><span class="model-hardware-recommendation">${options.t(uiKeys.settings.system.scanCardRecommendedHardware)} · ${escape(hardwareRecommendation)}</span><span>${escape(evidenceLabel)}</span><span>${metaLabel}</span></div>
       <div class="component-list">
         ${profile.components.map((component, componentIndex) => `
           <div class="component-row ${component.found ? "found" : component.optional ? "warning" : "missing"}">

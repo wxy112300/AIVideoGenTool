@@ -12,13 +12,23 @@ import {
   type SettingsLogsControllerOptions
 } from "./logs-controller";
 import {
+  mountSettingsNodeDependencyController,
+  type SettingsNodeDependencyControllerOptions
+} from "./node-dependency-controller";
+import {
   mountSettingsPageController,
   type SettingsPageControllerOptions
 } from "./page-controller";
+import {
+  mountSettingsServiceController,
+  type SettingsServiceControllerOptions
+} from "./service-controller";
 
 export interface SettingsControllersOptions {
   fields: SettingsFieldsControllerOptions;
-  environment: SettingsEnvironmentControllerOptions;
+  environment: SettingsEnvironmentControllerOptions &
+    SettingsNodeDependencyControllerOptions &
+    SettingsServiceControllerOptions;
   logs: SettingsLogsControllerOptions;
   page: SettingsPageControllerOptions;
 }
@@ -29,7 +39,9 @@ export function mountSettingsControllers(
 ): RendererCleanup {
   const cleanups = [
     mountSettingsFieldsController(context, options.fields),
+    mountSettingsServiceController(context, options.environment),
     mountSettingsEnvironmentController(context, options.environment),
+    mountSettingsNodeDependencyController(context, options.environment),
     mountSettingsLogsController(context, options.logs),
     mountSettingsPageController(options.page)
   ];
