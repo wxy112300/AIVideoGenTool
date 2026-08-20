@@ -205,6 +205,12 @@ describe("UX/UI semantic token foundation", () => {
     expect(finalRefinementsSource).toContain("border-radius: var(--ux-radius-object);");
   });
 
+  it("routes the approved performance-grid spacing family through space roles", () => {
+    expect(tokenSource).toContain("--ux-space-3: 12px;");
+    expect(tokenSource).toContain("--ux-space-4: 16px;");
+    expect(visualRefreshSource).toContain(".performance-grid { gap: var(--ux-space-3); margin-bottom: var(--ux-space-4); }");
+  });
+
   it("flattens ordinary panels while preserving overlay elevation", () => {
     expect(tokenSource).toContain("--ux-elevation-panel: none;");
     expect(foundationSource).toContain(".panel { min-width: 0; border: 1px solid var(--border); border-radius: var(--ux-radius-panel); background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--ux-elevation-panel); }");

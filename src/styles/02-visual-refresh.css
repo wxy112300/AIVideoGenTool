@@ -452,7 +452,7 @@ select { padding-inline: 12px; }
 .submit-row { margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(56,65,78,.48); }
 .submit-row .primary { min-width: 122px; }
 
-.performance-grid { gap: 12px; margin-bottom: 16px; }
+.performance-grid { gap: var(--ux-space-3); margin-bottom: var(--ux-space-4); }
 .performance-card { padding: 16px 17px; border-radius: 14px; box-shadow: var(--ux-elevation-panel); }
 .performance-card > span { color: #8f99a8; font-size: 10px; font-weight: 680; letter-spacing: .08em; text-transform: uppercase; }
 .performance-card strong { margin-top: 5px; font-size: 23px; font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
