@@ -1107,6 +1107,7 @@ body.image-markup-open {
 .queue-overview-item strong {
   font-size: 15px;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .queue-runtime-badge {

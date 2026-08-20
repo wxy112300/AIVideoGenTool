@@ -176,6 +176,20 @@ describe("UX/UI semantic token foundation", () => {
     expect(densitySource).toContain("font-size: var(--ux-type-meta);");
   });
 
+  it("keeps Queue, History, and runtime numbers tabular without changing their layout roles", () => {
+    expect(foundationSource).toContain(".queue-rank strong { color: #b9c7d8; font: 700 19px/1 \"Cascadia Mono\", Consolas, monospace; letter-spacing: .02em; font-variant-numeric: tabular-nums; }");
+    expect(foundationSource).toContain(".running-progress-value > strong { color: var(--primary); font-size: 20px; font-variant-numeric: tabular-nums; }");
+    expect(foundationSource).toContain(".performance-card strong { display: block; margin-top: 4px; font-size: 20px; font-variant-numeric: tabular-nums; }");
+    expect(foundationSource).toContain(".history-snapshot-index { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: #bcd5ff; background: rgba(88, 137, 218, .18); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }");
+    expect(visualRefreshSource).toContain(".performance-card strong { margin-top: 5px; font-size: 23px; font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }");
+    expect(visualRefreshSource).toContain(".running-progress-value > strong { font-size: 22px; font-weight: 640; font-variant-numeric: tabular-nums; }");
+    expect(visualRefreshSource).toContain(".history-detail-position { padding: 5px 9px; border: 1px solid rgba(112,159,237,.25); border-radius: 8px; color: #a9c9ff; background: rgba(105,157,243,.08); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }");
+    expect(finalRefinementsSource).toContain(".queue-overview-item strong {\n  font-size: 15px;\n  line-height: 1;\n  font-variant-numeric: tabular-nums;\n}");
+    expect(finalRefinementsSource).toContain(".queue-run-metric strong,");
+    expect(finalRefinementsSource).toContain("font-variant-numeric: tabular-nums;");
+    expect(visualRefreshSource).toContain("font-variant-numeric: tabular-nums;");
+  });
+
   it("flattens ordinary panels while preserving overlay elevation", () => {
     expect(tokenSource).toContain("--ux-elevation-panel: none;");
     expect(foundationSource).toContain(".panel { min-width: 0; border: 1px solid var(--border); border-radius: 17px; background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--ux-elevation-panel); }");

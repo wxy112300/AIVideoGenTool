@@ -455,7 +455,7 @@ select { padding-inline: 12px; }
 .performance-grid { gap: 12px; margin-bottom: 16px; }
 .performance-card { padding: 16px 17px; border-radius: 14px; box-shadow: var(--ux-elevation-panel); }
 .performance-card > span { color: #8f99a8; font-size: 10px; font-weight: 680; letter-spacing: .08em; text-transform: uppercase; }
-.performance-card strong { margin-top: 5px; font-size: 23px; font-weight: 650; letter-spacing: -.03em; }
+.performance-card strong { margin-top: 5px; font-size: 23px; font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
 .metric-bar { height: 5px; margin-top: 11px; background: #292f39; }
 .metric-bar i { background: linear-gradient(90deg, #679dff, #9fbfff); }
 .task-list { gap: 14px; }
@@ -508,7 +508,7 @@ select { padding-inline: 12px; }
 .status.failed, .status.cancelled { background: var(--ux-status-danger-surface); }
 .task-card.expanded { padding: 22px; border-color: rgba(116,165,244,.48); box-shadow: var(--ux-elevation-panel); }
 .expanded-task-head { margin-bottom: 18px; }
-.running-progress-value > strong { font-size: 22px; font-weight: 640; }
+.running-progress-value > strong { font-size: 22px; font-weight: 640; font-variant-numeric: tabular-nums; }
 .running-layout { gap: 22px; }
 .live-preview { min-height: 270px; border-color: #303948; background: #090c11; }
 .running-copy { padding: 4px 2px; }

@@ -187,7 +187,7 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: var(--ux-type-label)
 .queue-task-heading { min-width: 0; display: grid; grid-template-columns: 46px minmax(0, 1fr); align-items: center; gap: 11px; }
 .queue-rank { position: relative; min-height: 38px; display: grid; align-content: center; gap: 2px; padding-right: 10px; border-right: 1px solid rgba(82,98,120,.62); }
 .queue-rank::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: -18px; width: 2px; border-radius: 2px; background: #556276; opacity: .75; }
-.queue-rank strong { color: #b9c7d8; font: 700 19px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .02em; }
+.queue-rank strong { color: #b9c7d8; font: 700 19px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
 .queue-rank small { color: #7f8da1; font-size: 9px; letter-spacing: .08em; }
 .queue-rank.running { border-color: rgba(124,184,255,.7); }
 .queue-rank.running::before { background: var(--ux-status-info); box-shadow: 0 0 10px rgba(124,184,255,.55); }
@@ -210,11 +210,11 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: var(--ux-type-label)
 .expanded-task-head h3 { margin: 0; overflow-wrap: anywhere; }
 .running-progress-value { display: grid; justify-items: end; gap: 2px; flex: none; }
 .running-progress-value > span { color: var(--muted); font-size: 10px; }
-.running-progress-value > strong { color: var(--primary); font-size: 20px; }
+.running-progress-value > strong { color: var(--primary); font-size: 20px; font-variant-numeric: tabular-nums; }
 .performance-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
 .performance-card { min-width: 0; padding: 13px 14px; }
 .performance-card > span { color: var(--muted); font-size: 11px; }
-.performance-card strong { display: block; margin-top: 4px; font-size: 20px; }
+.performance-card strong { display: block; margin-top: 4px; font-size: 20px; font-variant-numeric: tabular-nums; }
 .performance-card small { min-height: 16px; display: block; margin-top: 2px; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .metric-bar { height: 4px; margin-top: 8px; overflow: hidden; border-radius: 99px; background: #30343a; }
 .metric-bar i { height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, var(--primary), #8bc5ff); transition: width .3s ease; }
@@ -560,7 +560,7 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: var(--ux-type-label)
 .history-empty-note { margin: 0; color: var(--muted); font-size: 12px; }
 .history-snapshot-list { display: grid; gap: 9px; }
 .history-snapshot-item { min-width: 0; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 11px; padding: 11px 12px; border: 1px solid rgba(58, 68, 82, .72); border-radius: 11px; background: #10141a; }
-.history-snapshot-index { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: #bcd5ff; background: rgba(88, 137, 218, .18); font-size: 11px; font-weight: 700; }
+.history-snapshot-index { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: #bcd5ff; background: rgba(88, 137, 218, .18); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .history-snapshot-item > div { min-width: 0; }
 .history-snapshot-item p { margin: 3px 0 6px; color: var(--muted); font-size: 11px; white-space: pre-wrap; }
 .history-snapshot-item code { display: block; overflow-wrap: anywhere; color: #aebbd0; font-size: 11px; }

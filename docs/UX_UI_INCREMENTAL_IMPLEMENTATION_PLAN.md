@@ -1,6 +1,6 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L18 type token 声明与 shared heading/body/label/meta/technical 迁移、P05 导航语义与 P08 Image Edit 首个窄窗修复已完成，后续完整交互 gate 待补
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P08 Image Edit 首个窄窗修复已完成，后续完整交互 gate 待补
 > 制定日期：2026-08-20  
 > 当前版本：0.30.2
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
@@ -274,7 +274,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：100%/125%/150% 缩放；简中、繁中、英文；长路径和长模型名；无新增截断；`npm.cmd run verify`。
 
-**当前状态（2026-08-20）**：P04/L16–L18 已完成：L16 在 `src/styles/00-tokens.css` 明确冻结 Page/Section/Object/Body/Label/Meta/Technical 七级 type roles；L17 依据当前 renderer 最终 cascade 将 page 基线校正为 `clamp(20px, 1.65vw, 23px)`，并把共享 `h1/h2/h3` 与 History gallery object heading 迁移到对应 roles；L18 将真实最终值接入根 body、全局/form label、共享 meta copy 与 global code technical selectors，并把 `--zoom 1|1.25|1.5` 加入 current-renderer capture harness。详情标题、弹窗标题、任务卡、日志、badge、album 紧凑标题等特例保持原有密度；未改变 DOM、布局、断点或交互。focused token tests `10/10`、typecheck、zh-CN 三组各 `136/136`（100%/125%/150%）、zh-TW 与 en-US 各 `136/136`（125%）current-renderer screenshots、代表视口 diagnose、视觉抽检与中英文 125% 输入焦点 smoke 通过；diagnose 仍显示既有窄窗/zoom 场景的 control/internal overflow，150% 在低于最小 CSS 宽度时也会出现 document scroll，本 package 未新增独立布局规则或 overflow 修复。因保持当前最终 cascade，版本仍为 `0.30.2`，下一 package 为 L19。
+**当前状态（2026-08-20）**：P04/L16–L19 已完成：L16 在 `src/styles/00-tokens.css` 明确冻结 Page/Section/Object/Body/Label/Meta/Technical 七级 type roles；L17 依据当前 renderer 最终 cascade 将 page 基线校正为 `clamp(20px, 1.65vw, 23px)`，并把共享 `h1/h2/h3` 与 History gallery object heading 迁移到对应 roles；L18 将真实最终值接入根 body、全局/form label、共享 meta copy 与 global code technical selectors，并把 `--zoom 1|1.25|1.5` 加入 current-renderer capture harness；L19 为 Queue/History/运行态的 progress、time、metric、count、position 动态数值补齐显式 `font-variant-numeric: tabular-nums`，保留现有字号、间距、布局、DOM 和响应式规则。详情标题、弹窗标题、任务卡、日志、badge、album 紧凑标题等特例保持原有密度。focused token tests `11/11`、typecheck、`npm.cmd run verify`（80 files / 613 tests、production build、20 组对比度检查）通过；L19 的 Queue 1440/900、History 视频/图片图廊与视频/图片 Details current-renderer 动态值截图和 diagnose 通过，900 宽 Queue/History 无新增 overflow。诊断中仍可见既有 Queue action label 内部溢出与图片详情模型名截断，本 package 未扩大范围处理。视觉差异属于数字排列节奏的细微一致性调整，版本仍为 `0.30.2`，下一 package 为 L20。
 
 ### P05 — Shell、主导航与 sticky 几何
 
