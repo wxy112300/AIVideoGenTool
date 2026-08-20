@@ -460,7 +460,8 @@ function restoreModalFocus(): void {
 function bindModalFocus(
   dialog: HTMLElement,
   close: () => void,
-  initialSelector?: string
+  initialSelector?: string,
+  focusOnBind = true
 ): void {
   const focusableSelector = "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex=\"-1\"])";
   const focusInitial = () => {
@@ -498,7 +499,7 @@ function bindModalFocus(
       first.focus();
     }
   });
-  if (ui.modalInitialFocusPending || ui.modalControlFocusSelector) {
+  if (focusOnBind && (ui.modalInitialFocusPending || ui.modalControlFocusSelector)) {
     ui.modalInitialFocusPending = false;
     focusInitial();
   }
@@ -2537,6 +2538,9 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     imageLightbox: {
       getSelectedHistoryAssetId: () => ui.selectedHistoryAssetId,
       getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
+      rememberModalFocus,
+      restoreModalFocus,
+      bindModalFocus,
       setSelectedHistoryVersionId: (versionId) => {
         ui.selectedHistoryVersionId = versionId;
       },

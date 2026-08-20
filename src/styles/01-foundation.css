@@ -687,6 +687,16 @@ body.image-lightbox-open { overflow: hidden; }
   .image-lightbox-toolbar .button-with-icon:not([data-image-lightbox-reset]) { font-size: 0; }
   .image-lightbox-toolbar .button-with-icon:not([data-image-lightbox-reset]) .ui-icon { margin: 0; }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .image-lightbox,
+  .image-lightbox * {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .001ms !important;
+  }
+}
 details { margin-top: 18px; }
 summary { cursor: pointer; color: var(--muted); }
 pre { max-height: 360px; overflow: auto; padding: 14px; border-radius: 10px; background: #111214; color: #bbc6d4; }

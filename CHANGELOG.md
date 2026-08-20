@@ -8,6 +8,11 @@
 
 ## 未发布
 
+## 0.37.0 — 2026-08-21
+
+- 完成 P14 图片 History Lightbox 的 modal/focus 生命周期：打开时记录触发按钮并隔离背景，支持首末控件 Tab/Shift+Tab 循环、Escape 关闭和 return focus；版本切换保持 Lightbox dialog，不因边界按钮 disabled 丢失焦点；Reduced Motion 下关闭非必要过渡。
+- 不改变图片媒体路径、缩放/拖动、方向键版本切换、视频历史逻辑或队列/IPC/持久化行为。当前 renderer 图片/视频混合 8 项 900×800 smoke、focused accessibility/layout tests、`npm.cmd run verify`（86 files / 649 tests、production build、20 组对比度检查）通过。
+
 ## 0.36.0 — 2026-08-21
 
 - 增强设置页 ComfyUI 数据库自动修复：从启动日志定位真实数据库，区分锁占用、依赖缺失、目录不可写、迁移不兼容和 SQLite 损坏；修复前备份数据库及 WAL/SHM/锁文件，先执行无损 Alembic 迁移与完整性检查，仅对明确的迁移/损坏故障隔离旧库重建，失败时恢复备份。队列或提示词任务占用期间拒绝修复，外部进程占用数据库时不终止外部服务。

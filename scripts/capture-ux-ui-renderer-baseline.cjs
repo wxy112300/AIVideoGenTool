@@ -708,6 +708,10 @@ async function runHistoryInteractionSmoke(window, fixture, viewport) {
   let imageMediaRetry = true;
   let imageMediaDetailError = true;
   let imageMediaLightboxError = true;
+  let imageLightboxFocus = true;
+  let lightboxFocusState = { opened: true, backgroundInert: true, forwardLoop: true, backwardLoop: true, versionFocus: true };
+  let lightboxEscape = { dispatched: true, defaultPrevented: true };
+  let lightboxReturnedFocus = true;
   if (isImage) {
     await waitForDom(window, `document.querySelector('[data-image-media-surface="gallery"]')?.dataset.imageMediaState === 'ready'`, `${fixture.id} gallery image media ready`);
     imageMediaReady = await executeJavaScript(window, `(() => {
@@ -844,6 +848,38 @@ async function runHistoryInteractionSmoke(window, fixture, viewport) {
       return true;
     })()`);
     await waitForDom(window, "Boolean(document.querySelector('[data-image-lightbox]:not([hidden])'))", `${fixture.id} image lightbox open`);
+    await wait(80);
+    lightboxFocusState = await executeJavaScript(window, `(() => {
+      const lightbox = document.querySelector('[data-image-lightbox]');
+      const dialog = lightbox?.querySelector('[role="dialog"]');
+      const close = lightbox?.querySelector('button[data-image-lightbox-close]');
+      const focusables = [...(dialog?.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])') ?? [])]
+        .filter((element) => element instanceof HTMLElement && element.getClientRects().length > 0);
+      const first = focusables[0];
+      const last = focusables.at(-1);
+      if (!(lightbox instanceof HTMLElement) || !(dialog instanceof HTMLElement) || !(close instanceof HTMLElement) || !first || !last || focusables.length < 2) {
+        return { opened: false, backgroundInert: false, forwardLoop: false, backwardLoop: false, versionFocus: false };
+      }
+      const opened = document.activeElement === close;
+      const backgroundInert = document.querySelector('.topbar')?.inert === true && lightbox.inert === false;
+      last.focus();
+      const forward = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      last.dispatchEvent(forward);
+      const forwardLoop = forward.defaultPrevented && document.activeElement === first;
+      first.focus();
+      const backward = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
+      first.dispatchEvent(backward);
+      const backwardLoop = backward.defaultPrevented && document.activeElement === last;
+      const versionButton = [...dialog.querySelectorAll('[data-image-lightbox-version-navigation]:not(:disabled)')][0];
+      if (versionButton instanceof HTMLElement) {
+        versionButton.focus();
+        versionButton.click();
+      }
+      const versionFocus = versionButton instanceof HTMLElement &&
+        [...dialog.querySelectorAll('[data-image-lightbox-version-navigation]:not(:disabled)')].some((element) => document.activeElement === element) &&
+        lightbox.hidden === false;
+      return { opened, backgroundInert, forwardLoop, backwardLoop, versionFocus };
+    })()`);
     imageMediaLightboxError = lightboxOpened && await executeJavaScript(window, `(() => {
       const surface = document.querySelector('[data-image-media-surface="lightbox"]');
       const image = surface?.querySelector('[data-image-media-image]');
@@ -857,14 +893,20 @@ async function runHistoryInteractionSmoke(window, fixture, viewport) {
         retry instanceof HTMLButtonElement && !retry.hidden &&
         locate instanceof HTMLButtonElement && !locate.hidden;
     })()`);
-    const lightboxClosed = await executeJavaScript(window, `(() => {
-      const button = document.querySelector('[data-image-lightbox-close]');
-      if (!(button instanceof HTMLElement)) return false;
-      button.click();
-      return true;
+    lightboxEscape = await executeJavaScript(window, `(() => {
+      const dialog = document.querySelector('[data-image-lightbox] [role="dialog"]');
+      if (!(dialog instanceof HTMLElement)) return { dispatched: false, defaultPrevented: false };
+      const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+      dialog.dispatchEvent(event);
+      return { dispatched: true, defaultPrevented: event.defaultPrevented };
     })()`);
     await waitForDom(window, "Boolean(document.querySelector('[data-image-lightbox][hidden]'))", `${fixture.id} image lightbox close`);
-    imageMediaLightboxError = imageMediaLightboxError && lightboxClosed;
+    await wait(80);
+    lightboxReturnedFocus = await executeJavaScript(window, "document.activeElement?.matches('[data-open-image-lightbox]') === true");
+    imageLightboxFocus = lightboxOpened && lightboxFocusState.opened && lightboxFocusState.backgroundInert &&
+      lightboxFocusState.forwardLoop && lightboxFocusState.backwardLoop && lightboxFocusState.versionFocus &&
+      lightboxEscape.dispatched && lightboxEscape.defaultPrevented && lightboxReturnedFocus;
+    imageMediaLightboxError = imageMediaLightboxError && lightboxEscape.dispatched;
   }
   const deleteRequested = await executeJavaScript(window, `(() => {
     const button = document.querySelector("[data-delete-history]");
@@ -915,13 +957,15 @@ async function runHistoryInteractionSmoke(window, fixture, viewport) {
     imageMediaRetry,
     imageMediaDetailError,
     imageMediaLightboxError,
+    imageLightboxFocus,
     deleteConfirmation: deleteRequested === true && deleteConfirmation,
     deleteCancelled: deleteCancelled === true,
     detailReturned: returned === true && after.heading && after.historyNavSelected && after.card && after.layout
   };
   const passed = Object.values(checks).every(Boolean);
-  console.log(`[renderer-smoke] ${fixture.id} ${viewport.id} history ${JSON.stringify({ noResults, filterCleared, after, tabs: { tabToOpposite, oppositeTab, tabHome, tabEnd, tabRestored }, menus: { menuNavigation, moreMenuEscape, moreFocus, cardMenuOpened, cardMenuEscape, cardMenuFocus }, cards: { spaceOpened, spaceDetailOpened, spaceReturned, opened }, versionSelection, checks, passed })}`);
-  if (!passed) throw new Error(`History interaction smoke failed: ${JSON.stringify({ noResults, filterCleared, after, tabs: { tabToOpposite, oppositeTab, tabHome, tabEnd, tabRestored }, menus: { menuNavigation, moreMenuEscape, moreFocus, cardMenuOpened, cardMenuEscape, cardMenuFocus }, cards: { spaceOpened, spaceDetailOpened, spaceReturned, opened }, versionSelection, checks })}`);
+  const lightboxEvidence = isImage ? { focus: lightboxFocusState, escape: lightboxEscape, returnedFocus: lightboxReturnedFocus } : null;
+  console.log(`[renderer-smoke] ${fixture.id} ${viewport.id} history ${JSON.stringify({ noResults, filterCleared, after, tabs: { tabToOpposite, oppositeTab, tabHome, tabEnd, tabRestored }, menus: { menuNavigation, moreMenuEscape, moreFocus, cardMenuOpened, cardMenuEscape, cardMenuFocus }, cards: { spaceOpened, spaceDetailOpened, spaceReturned, opened }, versionSelection, lightbox: lightboxEvidence, checks, passed })}`);
+  if (!passed) throw new Error(`History interaction smoke failed: ${JSON.stringify({ noResults, filterCleared, after, tabs: { tabToOpposite, oppositeTab, tabHome, tabEnd, tabRestored }, menus: { menuNavigation, moreMenuEscape, moreFocus, cardMenuOpened, cardMenuEscape, cardMenuFocus }, cards: { spaceOpened, spaceDetailOpened, spaceReturned, opened }, versionSelection, lightbox: lightboxEvidence, checks })}`);
 }
 
 async function runInteractionSmoke(window, fixture, viewport) {

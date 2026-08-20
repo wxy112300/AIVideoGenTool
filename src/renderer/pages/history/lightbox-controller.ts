@@ -6,8 +6,30 @@ import { uiKeys } from "../../../core/i18n-keys";
 export interface ImageHistoryLightboxControllerOptions {
   getSelectedHistoryAssetId(): string;
   getSelectedHistoryVersionId(): string;
+  rememberModalFocus(): void;
+  restoreModalFocus(): void;
+  bindModalFocus(dialog: HTMLElement, close: () => void, initialSelector?: string, focusOnBind?: boolean): void;
   setSelectedHistoryVersionId(versionId: string): void;
   setHistoryForwardTarget(target: { assetId: string; versionId: string }): void;
+}
+
+function inertLightboxBackground(dialog: HTMLElement, root: HTMLElement): () => void {
+  const previous = new Map<HTMLElement, boolean>();
+  let branch: HTMLElement | null = dialog;
+  while (branch && branch !== root) {
+    const ancestor: HTMLElement | null = branch.parentElement;
+    if (!ancestor) break;
+    for (const child of Array.from(ancestor.children)) {
+      if (child === branch || !(child instanceof HTMLElement)) continue;
+      if (previous.has(child)) continue;
+      previous.set(child, child.inert);
+      child.inert = true;
+    }
+    branch = ancestor;
+  }
+  return () => {
+    for (const [element, wasInert] of previous) element.inert = wasInert;
+  };
 }
 
 export function mountImageHistoryLightbox(
@@ -40,6 +62,7 @@ export function mountImageHistoryLightbox(
   let lastPointerX = 0;
   let lastPointerY = 0;
   let lightboxVersionChanged = false;
+  let releaseBackgroundInert: (() => void) | null = null;
   const clampScale = (value: number) => Math.min(5, Math.max(1, value));
   const updateTransform = () => {
     image.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0) scale(${scale})`;
@@ -98,30 +121,47 @@ export function mountImageHistoryLightbox(
     image.src = mediaUrl;
     image.alt = `${project.title.trim() || context.t(uiKeys.history.card.untitledImage)} · ${context.t(uiKeys.history.version, { version: targetVersion.versionNumber })}`;
     reset();
+    const wasVersionNavigationFocused = document.activeElement instanceof HTMLElement && document.activeElement.matches("[data-image-lightbox-version-navigation]");
     syncVersionNavigation();
+    if (wasVersionNavigationFocused) {
+      const focused = versionFooter.querySelector<HTMLButtonElement>(":focus");
+      const fallback = [...versionFooter.querySelectorAll<HTMLButtonElement>("[data-image-lightbox-version-navigation]")]
+        .find((button) => !button.disabled);
+      (focused && !focused.disabled ? focused : fallback)?.focus();
+    }
   };
   const close = () => {
+    releaseBackgroundInert?.();
+    releaseBackgroundInert = null;
     lightbox.hidden = true;
     document.body.classList.remove("image-lightbox-open");
     if (lightboxVersionChanged) {
       lightboxVersionChanged = false;
       context.requestRender();
+      options.restoreModalFocus();
       window.requestAnimationFrame(() => {
         root.querySelector<HTMLButtonElement>("[data-open-image-lightbox]")?.focus();
       });
       return;
     }
-    openButton.focus();
+    options.restoreModalFocus();
   };
   const open = () => {
+    options.rememberModalFocus();
     lightbox.hidden = false;
     document.body.classList.add("image-lightbox-open");
+    releaseBackgroundInert?.();
+    releaseBackgroundInert = inertLightboxBackground(dialog, root);
     lightboxVersionChanged = false;
     syncVersionNavigation();
     reset();
-    window.requestAnimationFrame(() => dialog.focus());
+    window.requestAnimationFrame(() => {
+      const initial = lightbox.querySelector<HTMLElement>("button[data-image-lightbox-close]");
+      (initial ?? dialog).focus();
+    });
   };
 
+  options.bindModalFocus(dialog, close, "button[data-image-lightbox-close]", false);
   openButton.addEventListener("click", open, { signal });
   versionFooter.querySelectorAll<HTMLButtonElement>("[data-image-lightbox-version-navigation]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -191,6 +231,8 @@ export function mountImageHistoryLightbox(
 
   return () => {
     events.abort();
+    releaseBackgroundInert?.();
+    releaseBackgroundInert = null;
     lightbox.hidden = true;
     document.body.classList.remove("image-lightbox-open");
   };

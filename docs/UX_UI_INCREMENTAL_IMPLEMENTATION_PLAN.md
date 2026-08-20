@@ -1,8 +1,8 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性与 P12 History 键盘语义已 verified/integrated，下一 phase 为 P13
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性、P12 History 键盘语义、P13 图片媒体状态与 P14 Lightbox modal/focus 已 verified/integrated，下一 phase 为 P15
 > 制定日期：2026-08-20  
-> 当前版本：0.34.0
+> 当前版本：0.37.0
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -438,6 +438,8 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 - Reduced Motion 下关闭非必要过渡。
 
 **Gate**：首末控件循环、背景不可达、连续切版本后回焦正确；鼠标缩放/拖动/方向键仍工作；`npm.cmd run verify`。
+
+**当前状态（2026-08-21）**：P14 已 `verified/integrated`。Lightbox 复用 shell `bindModalFocus`，打开时记录触发按钮并将外部背景设为 inert，关闭时通过 Escape/关闭控件恢复 return focus；首末控件支持 Tab/Shift+Tab 循环，版本切换不重建 dialog，并在边界按钮变为 disabled 时将焦点留在仍可用的版本控制上；`prefers-reduced-motion: reduce` 下关闭 Lightbox 非必要动画和过渡。未改变图片媒体路径、缩放/拖动、方向键版本切换或视频历史逻辑。当前 renderer 图片 8 项混合宽高比 900×800 smoke 已覆盖初始焦点、背景 inert、双向 Tab 循环、版本切换保焦、Escape 和 return focus；视频 8 项 900×800 History smoke、focused accessibility/layout tests `7/7`、`npm.cmd run typecheck` 与 `npm.cmd run verify`（86 files / 649 tests、production build、20 组对比度检查）通过。下一 phase 为 P15。
 
 ### P15 — 视频/图片详情的 viewer、inspector 与动作层级
 

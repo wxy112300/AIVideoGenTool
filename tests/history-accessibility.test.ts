@@ -140,5 +140,8 @@ describe("History accessibility markup", () => {
     expect(lightbox).toContain('data-image-media-surface="lightbox"');
     expect(lightbox).toContain('data-image-media-source="C:\\fixtures\\fixture.png"');
     expect(lightbox).toContain('data-image-media-status');
+    expect(lightbox).toContain('role="dialog" aria-modal="true"');
+    expect(lightbox).toContain('tabindex="-1"');
+    expect(lightbox).toContain('data-image-lightbox-close');
   });
 });
