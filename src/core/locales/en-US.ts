@@ -879,6 +879,7 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.history.page.versionNumber]: "Version number",
 	[uiKeys.history.page.originalMaterial]: "Original asset",
 	[uiKeys.history.page.imageEdit]: "Image edit",
+	[uiKeys.history.page.generationRecord]: "Generation record",
 	[uiKeys.history.page.generationInfo]: "Generation info",
 	[uiKeys.history.page.modelFile]: "Model file",
 	[uiKeys.history.page.qualityProfile]: "Quality profile",

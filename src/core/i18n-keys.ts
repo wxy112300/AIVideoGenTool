@@ -937,6 +937,7 @@ export const uiKeys = {
       versionNumber: "history.page.versionNumber",
       originalMaterial: "history.page.originalMaterial",
       imageEdit: "history.page.imageEdit",
+      generationRecord: "history.page.generationRecord",
       generationInfo: "history.page.generationInfo",
       modelFile: "history.page.modelFile",
       qualityProfile: "history.page.qualityProfile",

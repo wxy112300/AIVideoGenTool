@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { AppState, ImageAssetVersion, ImageHistoryProject } from "../src/types";
+import type { AppState, AssetVersion, HistoryAsset, ImageAssetVersion, ImageHistoryProject } from "../src/types";
 import { defaultHistoryFilter } from "../src/core/history-filter";
 import { renderHistoryHeading, renderImageLightboxMarkup } from "../src/renderer/pages/history/fragments";
 import {
+  renderHistoryDetailPage,
+  renderImageHistoryDetailPage,
   renderImageHistoryPage,
   type HistoryPageOptions,
   type HistoryPageViewModel
@@ -143,5 +145,148 @@ describe("History accessibility markup", () => {
     expect(lightbox).toContain('role="dialog" aria-modal="true"');
     expect(lightbox).toContain('tabindex="-1"');
     expect(lightbox).toContain('data-image-lightbox-close');
+  });
+
+  it("keeps detail actions grouped without changing their existing selectors", () => {
+    const videoVersion = {
+      id: "video-version-detail",
+      taskId: "video-task-detail",
+      kind: "original",
+      createdAt: "2026-08-21T00:00:00.000Z",
+      outputFilename: "fixture.mp4",
+      modelId: "minimax_h3_fl2va",
+      width: 848,
+      height: 480,
+      duration: 5,
+      fps: 24,
+      workflowPath: "fixture-workflow.json",
+      comfyPromptId: "video-prompt-detail",
+      comfyOutputs: {},
+      files: [{ filename: "fixture.mp4", subfolder: "", type: "output", absolutePath: "C:\\fixtures\\fixture.mp4" }]
+    } as unknown as AssetVersion;
+    const videoAsset = {
+      mediaKind: "video",
+      id: "video-asset-detail",
+      taskId: "video-task-detail",
+      title: "Detail fixture",
+      outputFilename: "fixture.mp4",
+      createdAt: videoVersion.createdAt,
+      updatedAt: videoVersion.createdAt,
+      modelId: videoVersion.modelId,
+      favorite: false,
+      rating: null,
+      tags: [],
+      duration: 5,
+      resolution: 480,
+      fps: 24,
+      prompt: "A detail fixture",
+      seed: 12,
+      comfyPromptId: "video-prompt-detail",
+      comfyOutputs: {},
+      files: videoVersion.files,
+      versions: [videoVersion]
+    } as unknown as HistoryAsset;
+    const imageSource = {
+      id: "image-source-detail",
+      versionNumber: 1,
+      kind: "source",
+      createdAt: videoVersion.createdAt,
+      modelId: "source",
+      workflowPath: "",
+      prompt: "",
+      promptVersion: 0,
+      references: [],
+      width: 640,
+      height: 480,
+      format: "png",
+      file: { filename: "fixture.png", subfolder: "", type: "input", absolutePath: "C:\\fixtures\\fixture.png" }
+    } as unknown as ImageAssetVersion;
+    const imageEdit = {
+      ...imageSource,
+      id: "image-edit-detail",
+      versionNumber: 2,
+      kind: "edit",
+      parentVersionId: imageSource.id,
+      modelId: "qwen-image-edit-2511",
+      prompt: "Edit fixture",
+      file: { filename: "fixture-edit.png", subfolder: "", type: "output", absolutePath: "C:\\fixtures\\fixture-edit.png" }
+    } as unknown as ImageAssetVersion;
+    const imageProject = {
+      mediaKind: "image",
+      id: "image-project-detail",
+      title: "Image detail fixture",
+      createdAt: videoVersion.createdAt,
+      updatedAt: videoVersion.createdAt,
+      favorite: false,
+      rating: null,
+      tags: [],
+      coverMode: "auto",
+      nextVersionNumber: 3,
+      versions: [imageSource, imageEdit]
+    } as unknown as ImageHistoryProject;
+    const state = {
+      history: [videoAsset],
+      imageHistory: [imageProject],
+      settings: { outputDirectory: "C:\\fixtures" }
+    } as unknown as AppState;
+    const detailOptions: HistoryPageOptions = {
+      ...renderOptions,
+      formatBytes: () => "0 B",
+      videoLoraPurposeLabel: () => "style",
+      h3ReferenceRoleLabel: () => "reference",
+      imageReferenceRoleLabel: () => "base",
+      formatVideoDuration: () => "5s",
+      formatElapsedDuration: () => "1s",
+      historyAssetsByNewest: (history) => history,
+      imageProjectsByNewest: (projects) => projects,
+      preferredVersion: () => videoVersion,
+      currentHistoryVersion: () => videoVersion,
+      historyMediaUrl: () => "studio-media://history/video-asset-detail/video-version-detail/0",
+      historyCoverCacheKey: () => "",
+      historyCoverSeed: () => 0,
+      historyInitialCoverTime: () => 0,
+      historyResolutionLabel: () => "480p",
+      historyRenderDuration: () => "5s",
+      versionVideoIndex: () => 0,
+      versionShortEdge: (version) => Math.min(version.width, version.height),
+      preferredImageVersion: () => imageEdit,
+      currentImageHistoryVersion: () => imageEdit,
+      imageHistoryMediaUrl: () => "studio-media://history/image-project-detail/image-edit-detail/0",
+      imageHistoryThumbnailCacheKey: () => "",
+      imageProjectCoverVersion: () => imageSource,
+      isRetiredVideoModel: () => false,
+      imageHistoryGenerationSummary: () => ({ qualityLabel: "balanced", loraLabel: "none" })
+    };
+    const videoViewModel = {
+      state,
+      historyKind: "video",
+      historyLayout: "masonry",
+      historyFilter: defaultHistoryFilter,
+      historyFilterPanelOpen: false,
+      selectedHistoryAssetId: videoAsset.id,
+      selectedHistoryVersionId: videoVersion.id
+    } as HistoryPageViewModel;
+    const imageViewModel = {
+      ...videoViewModel,
+      historyKind: "image",
+      selectedHistoryAssetId: imageProject.id,
+      selectedHistoryVersionId: imageEdit.id
+    } as HistoryPageViewModel;
+    const videoPage = renderHistoryDetailPage(videoViewModel, detailOptions);
+    const imagePage = renderImageHistoryDetailPage(imageViewModel, detailOptions);
+
+    expect(videoPage).toContain('class="history-detail-action-primary"');
+    expect(videoPage).toContain('class="history-detail-more"');
+    expect(videoPage).toContain('data-open-upscale');
+    expect(videoPage).toContain('data-continue-history="video-asset-detail"');
+    expect(videoPage).toContain('class="history-detail-compact-actions"');
+    expect(videoPage).toContain('class="history-record-section"');
+    expect(imagePage).toContain('class="history-detail-action-primary"');
+    expect(imagePage).toContain('class="history-detail-more"');
+    expect(imagePage.match(/data-image-continue-video-project=/g)).toHaveLength(2);
+    expect(imagePage.match(/data-image-continue-edit-project=/g)).toHaveLength(2);
+    expect(imagePage).toContain('data-image-version-id="image-edit-detail"');
+    expect(imagePage).toContain('class="history-detail-compact-actions"');
+    expect(imagePage).toContain('class="history-record-section"');
   });
 });

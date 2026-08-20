@@ -114,3 +114,108 @@
   .history-overview-facts { grid-template-columns: 1fr; }
   .history-summary-footer { align-items: stretch; flex-direction: column; }
 }
+
+/* P15: make the detail inspector read as one primary path, a short set of
+   frequent actions, and a native disclosure for destructive/utility actions. */
+.history-detail-back { margin-inline: 0; }
+.history-detail-hero,
+.image-history-detail-layout { min-width: 0; }
+.history-detail-quick-actions,
+.image-history-quick-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  min-width: 0;
+}
+.history-detail-action-primary,
+.history-detail-action-secondary,
+.history-detail-more-actions { min-width: 0; display: grid; gap: 7px; }
+.history-detail-action-secondary,
+.history-detail-more-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.history-detail-quick-actions button,
+.image-history-quick-actions button,
+.history-detail-more summary {
+  width: 100%;
+  min-height: 39px;
+  padding: 7px 9px;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.25;
+  white-space: normal;
+}
+.history-detail-more {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+}
+.history-detail-more > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  list-style: none;
+}
+.history-detail-more > summary::-webkit-details-marker { display: none; }
+.history-detail-more > summary::marker { content: ""; }
+.history-detail-more[open] > summary {
+  border-color: color-mix(in srgb, var(--primary) 54%, var(--border));
+  color: #e8edf5;
+  background: color-mix(in srgb, var(--primary) 12%, var(--panel));
+}
+.history-detail-more-actions { padding-top: 7px; }
+.history-detail-more-actions button { min-width: 0; }
+.history-detail-compact-actions { display: none; min-width: 0; }
+.history-record-section { min-width: 0; margin-top: 24px; }
+.history-record-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.history-record-section-heading h2 { min-width: 0; margin: 0; }
+.history-record-section-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-record-section .history-record-grid { margin-top: 0; }
+
+@media (max-width: 900px) {
+  .history-detail-hero {
+    grid-template-areas: "media" "compact" "inspector";
+  }
+  .history-player-column { grid-area: media; }
+  .history-detail-sidebar { grid-area: inspector; }
+  .image-history-detail-layout {
+    grid-template-areas: "viewer" "compact" "inspector";
+  }
+  .image-history-viewer-panel { grid-area: viewer; }
+  .image-history-detail-sidebar { grid-area: inspector; }
+  .history-detail-compact-actions {
+    display: grid;
+    grid-area: compact;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 8px 0 2px;
+  }
+  .history-detail-compact-actions button {
+    width: 100%;
+    min-height: 42px;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 520px) {
+  .history-detail-action-secondary,
+  .history-detail-more-actions,
+  .history-detail-compact-actions { grid-template-columns: 1fr; }
+  .history-record-section-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .history-record-section-meta { text-align: left; }
+}

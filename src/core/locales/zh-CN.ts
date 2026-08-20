@@ -879,6 +879,7 @@ export const zhCNCatalog = {
     [uiKeys.history.page.versionNumber]: "版本编号",
     [uiKeys.history.page.originalMaterial]: "原始素材",
     [uiKeys.history.page.imageEdit]: "图片编辑",
+    [uiKeys.history.page.generationRecord]: "生成记录",
     [uiKeys.history.page.generationInfo]: "生成信息",
     [uiKeys.history.page.modelFile]: "模型文件",
     [uiKeys.history.page.qualityProfile]: "质量档",

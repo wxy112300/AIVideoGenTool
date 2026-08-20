@@ -1,8 +1,8 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性、P12 History 键盘语义、P13 图片媒体状态与 P14 Lightbox modal/focus 已 verified/integrated，下一 phase 为 P15
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性、P12 History 键盘语义、P13 图片媒体状态、P14 Lightbox modal/focus 与 P15 视频/图片详情构图已 verified/integrated，下一 phase 为 P16
 > 制定日期：2026-08-20  
-> 当前版本：0.37.0
+> 当前版本：0.38.0
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -455,6 +455,8 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 - 返回条保持 sticky，History nav 保持 current。
 
 **Gate**：视频/图片、单/多版本、缺失媒体、长记录；继续创作、复制、定位、删除、超分；`npm.cmd run verify`。
+
+**当前状态（2026-08-21）**：P15 已 `verified/integrated`。当前 renderer 详情页保留 viewer/版本区域与既有媒体、队列、历史语义，视频和图片 inspector 采用 primary/secondary/More 层级；900px 及以下提供 compact action entry，返回条取消负外边距造成的内部横溢出；prompt、生成参数、输出、LoRA、输入、性能和文件快照统一归入 Generation record section，字段与 action selector 不变。视频/图片详情在 1440×900、900×800、760×800 完成 diagnose/smoke，图片缺失媒体 error、单/多版本、长记录、More 键盘可达均覆盖；History 混合 8 项 keyboard/media smoke、Queue running smoke、focused markup tests 与 `npm.cmd run verify` 通过（当前 0.38.0）。下一 phase 为 P16。
 
 ### P16 — Settings renderer 结构 review
 

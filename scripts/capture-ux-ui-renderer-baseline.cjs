@@ -29,7 +29,7 @@ Options:
   --locale      Capture with zh-CN, zh-TW, or en-US UI copy (default: zh-CN).
   --zoom       Capture at page zoom 1, 1.25, or 1.5 (default: 1).
   --diagnose    Print document overflow and the widest renderer elements.
-  --smoke       Run the isolated Create, Queue, or History interaction smoke check.
+  --smoke       Run the isolated Create, Queue, History, or History detail interaction smoke check.
   --history-count Capture History fixtures with 1 or 8 mixed-ratio records (default: 1).
   --queue-state Override a queue-state fixture: mixed, running, paused, failed, recoverable, empty, or multiple-pending.
 `);
@@ -968,6 +968,73 @@ async function runHistoryInteractionSmoke(window, fixture, viewport) {
   if (!passed) throw new Error(`History interaction smoke failed: ${JSON.stringify({ noResults, filterCleared, after, tabs: { tabToOpposite, oppositeTab, tabHome, tabEnd, tabRestored }, menus: { menuNavigation, moreMenuEscape, moreFocus, cardMenuOpened, cardMenuEscape, cardMenuFocus }, cards: { spaceOpened, spaceDetailOpened, spaceReturned, opened }, versionSelection, lightbox: lightboxEvidence, checks })}`);
 }
 
+async function runHistoryDetailInteractionSmoke(window, fixture, viewport) {
+  const isImage = fixture.id === "image-detail";
+  const evidence = await executeJavaScript(window, `(() => {
+    const isImage = ${JSON.stringify(isImage)};
+    const visible = (element) => element instanceof HTMLElement && element.getClientRects().length > 0;
+    const root = document.querySelector(${JSON.stringify(isImage ? ".image-history-detail-layout" : ".history-detail-hero")});
+    const compact = root?.querySelector(".history-detail-compact-actions");
+    const more = root?.querySelector(".history-detail-more");
+    const summary = more?.querySelector("summary");
+    const recordSection = document.querySelector(".history-record-section");
+    const main = document.querySelector("main");
+    const actionSelectors = ${JSON.stringify(isImage
+      ? ["[data-image-continue-video-project]", "[data-image-continue-edit-project]", "[data-copy-image]", "[data-copy-file]", "[data-show-file]", "[data-image-set-cover]", "[data-delete-image-version]", "[data-delete-history]", "[data-image-version-id]"]
+      : ["[data-continue-history]", "[data-edit-history]", "[data-copy-file]", "[data-show-file]", "[data-open-upscale]", "[data-delete-history]", ".history-summary-version-switcher [data-version-id]"])};
+    const selectorsPresent = Object.fromEntries(actionSelectors.map((selector) => [selector, Boolean(document.querySelector(selector))]));
+    const compactBefore = {
+      present: Boolean(compact),
+      visible: visible(compact),
+      actionCount: compact?.querySelectorAll("button").length ?? 0,
+      primary: visible(compact?.querySelector("button.primary"))
+    };
+    const summaryFocusable = summary instanceof HTMLElement && summary.tabIndex >= 0;
+    if (more instanceof HTMLDetailsElement) more.open = false;
+    if (summary instanceof HTMLElement) {
+      summary.focus();
+      summary.click();
+    }
+    const moreAfterOpen = {
+      present: more instanceof HTMLDetailsElement,
+      open: more instanceof HTMLDetailsElement && more.open,
+      actionVisible: visible(more?.querySelector(".history-detail-more-actions button")),
+      focusOnSummary: document.activeElement === summary
+    };
+    const stage = isImage ? document.querySelector(".image-history-stage[data-image-media]") : null;
+    return {
+      compact: compactBefore,
+      summaryFocusable,
+      more: moreAfterOpen,
+      records: {
+        present: Boolean(recordSection),
+        grid: Boolean(recordSection?.querySelector(".history-record-grid")),
+        articleCount: recordSection?.querySelectorAll(".history-record").length ?? 0
+      },
+      selectorsPresent,
+      versionCount: document.querySelectorAll(isImage ? "[data-image-version-id]" : ".history-summary-version-switcher [data-version-id]").length,
+      mediaState: stage?.dataset.imageMediaState ?? "not-applicable",
+      noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1 && (!main || main.scrollWidth <= main.clientWidth + 1)
+    };
+  })()`);
+  const selectorValues = Object.values(evidence.selectorsPresent);
+  const checks = {
+    compactPresent: evidence.compact.present,
+    compactVisible: evidence.compact.visible,
+    compactActions: evidence.compact.actionCount >= 2 && evidence.compact.primary,
+    summaryFocusable: evidence.summaryFocusable,
+    moreDisclosure: evidence.more.present && evidence.more.open && evidence.more.actionVisible && evidence.more.focusOnSummary,
+    generationRecord: evidence.records.present && evidence.records.grid && evidence.records.articleCount >= (isImage ? 4 : 6),
+    actionSelectors: selectorValues.length > 0 && selectorValues.every(Boolean),
+    multipleVersions: evidence.versionCount >= (isImage ? 2 : 1),
+    imageMediaState: !isImage || ["ready", "error", "loading", "unavailable"].includes(evidence.mediaState),
+    noHorizontalOverflow: evidence.noHorizontalOverflow
+  };
+  const passed = Object.values(checks).every(Boolean);
+  console.log(`[renderer-smoke] ${fixture.id} ${viewport.id} history-detail ${JSON.stringify({ evidence, checks, passed })}`);
+  if (!passed) throw new Error(`History detail interaction smoke failed: ${JSON.stringify({ evidence, checks })}`);
+}
+
 async function runInteractionSmoke(window, fixture, viewport) {
   if (fixture.route === "queue" && viewport.id === "900x800") {
     await runQueueInteractionSmoke(window, fixture, viewport);
@@ -975,6 +1042,10 @@ async function runInteractionSmoke(window, fixture, viewport) {
   }
   if ((fixture.id === "history-video-album" || fixture.id === "history-image-album") && viewport.id === "900x800") {
     await runHistoryInteractionSmoke(window, fixture, viewport);
+    return;
+  }
+  if ((fixture.id === "video-detail" || fixture.id === "image-detail") && (viewport.id === "900x800" || viewport.id === "760x800")) {
+    await runHistoryDetailInteractionSmoke(window, fixture, viewport);
     return;
   }
   if (fixture.id !== "create-image-edit" || viewport.id !== "900x800") return;

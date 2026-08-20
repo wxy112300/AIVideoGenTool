@@ -8,6 +8,12 @@
 
 ## 未发布
 
+## 0.38.0 — 2026-08-21
+
+- 完成 P15 History 视频/图片详情页构图：保留 viewer 与版本区域，将 inspector 动作收敛为 dominant primary、常用 secondary 与原生 More disclosure；900px 及以下增加窄屏 compact action entry。
+- 将 prompt、参数、输出、LoRA、输入、性能与文件快照放入 Generation record 分组，不删除既有字段；保留原有 action selector、媒体 URL、版本切换、队列/IPC/持久化与视频播放逻辑。
+- 当前 renderer 的视频/图片详情 1440×900、900×800、760×800 diagnose/smoke，图片缺失媒体 error 状态，History 混合 8 项交互 smoke，队列 running smoke，focused markup tests 与 `npm.cmd run verify` 均通过。
+
 ## 0.37.0 — 2026-08-21
 
 - 完成 P14 图片 History Lightbox 的 modal/focus 生命周期：打开时记录触发按钮并隔离背景，支持首末控件 Tab/Shift+Tab 循环、Escape 关闭和 return focus；版本切换保持 Lightbox dialog，不因边界按钮 disabled 丢失焦点；Reduced Motion 下关闭非必要过渡。

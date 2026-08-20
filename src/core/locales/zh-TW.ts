@@ -879,6 +879,7 @@ export const zhTWCatalog = {
     [uiKeys.history.page.versionNumber]: "版本編號",
     [uiKeys.history.page.originalMaterial]: "原始素材",
     [uiKeys.history.page.imageEdit]: "圖片編輯",
+    [uiKeys.history.page.generationRecord]: "生成記錄",
     [uiKeys.history.page.generationInfo]: "生成資訊",
     [uiKeys.history.page.modelFile]: "模型檔案",
     [uiKeys.history.page.qualityProfile]: "質量檔",
