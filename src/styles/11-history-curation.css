@@ -432,3 +432,103 @@
   .history-tag-add { justify-self: start; }
   .history-filter-tags { justify-content: flex-start; }
 }
+
+/* P11: keep the existing History heading rhythm: title, type tabs,
+   filter/count, and layout choice share one row while the heading height stays
+   content-driven at compact widths. */
+@media (min-width: 761px) and (max-width: 1120px) {
+  .history-heading {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-rows: auto;
+    grid-template-areas: "title kind tools";
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    gap: 10px;
+    padding-block: 12px;
+    align-items: center;
+  }
+
+  .history-heading-title {
+    grid-area: title;
+  }
+
+  .history-heading > .history-kind-tabs {
+    grid-area: kind;
+    justify-self: center;
+  }
+
+  .history-heading > .history-view-tools {
+    grid-area: tools;
+    width: auto;
+    height: auto;
+    min-height: 34px;
+    justify-self: end;
+    align-items: center;
+    flex-wrap: nowrap;
+  }
+}
+
+/* Keep the anchored filter panel inside the current content viewport at
+   medium and narrow widths instead of allowing its right edge to overflow. */
+@media (max-width: 1120px) {
+  .history-filter-panel {
+    right: auto;
+    left: 0;
+    width: min(430px, calc(100vw - 32px));
+  }
+}
+
+@media (max-width: 760px) {
+  .history-heading {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-rows: auto;
+    grid-template-areas: "title kind tools";
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    gap: 8px;
+    padding-block: 12px;
+  }
+
+  .history-heading-title {
+    grid-area: title;
+  }
+
+  .history-heading > .history-kind-tabs {
+    grid-area: kind;
+    width: auto;
+    max-width: 100%;
+    justify-self: center;
+  }
+
+  .history-heading > .history-view-tools {
+    grid-area: tools;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    align-items: center;
+    justify-self: end;
+    flex-direction: row;
+    flex-wrap: nowrap;
+  }
+
+  .history-heading > .history-view-tools .button-row {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 560px) {
+  .history-heading {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "title title"
+      "kind tools";
+    gap: 10px 12px;
+  }
+
+  .history-heading > .history-kind-tabs {
+    justify-self: start;
+  }
+}

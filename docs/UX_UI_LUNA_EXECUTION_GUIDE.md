@@ -37,8 +37,8 @@ P00–P20 的依赖、preserve list 和集成 gate 已经清楚，但部分 Phas
 - P05/L22–L24 与 G05 已完成：L22 将 72px topbar 接入 `--ux-topbar-height`，将 page sticky offset 对齐为 72px，并在 760px 以下 topbar normal-flow 断点将 offset 归零；L23 将 Create/Queue heading 接入共享 sticky offset，Create 的层级降到 topbar 之下，Queue 在窄屏显式归零；L24 将 History heading、History detail 返回条和 Settings heading 接入同一 token，并保留窄屏 top:0 规则。P05 相关 focused token tests `16/16`、`npm.cmd run verify`（80 files / 618 tests、production build、20 组对比度检查）通过；同一 Vite renderer 与隔离 preload 的 runtime probe 已覆盖 1440×900、900×800、760×800、761×800 的主页面/Details sticky 几何、无横溢出和 History detail close-dialog；标准 capture harness 的 route 后单次 `executeJavaScript` DOM wait 竞态单独记录，不作为产品失败。P05/G05 标为 `verified/integrated`，下一 Phase 为 P06；
 - P06/L26–L29 与 G07 已完成：error 持久、消息可关闭、同源去重、error 优先级保护和瞬时 action callback，Prompt 优化失败已接入“打开设置”，Settings 的下载/目录/日志打开失败已路由为 error；L29 controller focused tests `2/2`、通知聚焦 suite `11/11`、`npm.cmd run verify`（81 files / 624 tests）通过，隔离 Electron + 当前 Vite renderer runtime smoke 已验证并发完成/失败、dismiss 和 Settings recovery。P06 现为 `verified/integrated`，同时已开始 P07 当前 renderer proposal；
 - P07 proposal 已写入 `docs/UX_UI_P07_RENDERER_PROPOSAL.md`：基于当前三种 Create fixture 选择 901–1120/900 紧凑双列、1280+ 保留双主区、760 以下单列 fallback 与 submit safe-area 检查；G08 已依据当前 renderer 三模式 × 8 视口截图、diagnose 和隔离交互 smoke 批准；
-- P09/G10 已批准 `docs/UX_UI_P09_RENDERER_PROPOSAL.md`：基于当前 Queue fixture 和 8 个唯一视口 evidence 选择 active task 优先、telemetry 紧凑披露、900px 操作可达、760px 单列；隔离 running smoke 已证明 progress/preview/elapsed/telemetry patch 与 pause/cancel 入口。P10 已按批准 proposal 修改 current Queue renderer；根据 2026-08-21 真实使用复核，四张 CPU/RAM/GPU/VRAM 性能卡已恢复到 Queue 顶部，active task 仍保持执行区第一主体；G11 已先通过 executor/control 隔离 gate（成功完成、claim 前取消竞态、readiness abort、active worker cleanup、暂停恢复不重叠），真实 ComfyUI runtime gate 待本机服务可用后再执行；
-- P11 proposal 已写入 `docs/UX_UI_P11_RENDERER_PROPOSAL.md`：基于当前 History 视频/图片 masonry/album fixture 选择 toolbar 分组、解除 900px 固定高度和 container-width 列轨；L38/L39 仍待复核，P12–P15 不得被 proposal 越权实现；
+- P09/G10 已批准 `docs/UX_UI_P09_RENDERER_PROPOSAL.md`：基于当前 Queue fixture 和 8 个唯一视口 evidence 选择 active task 优先、telemetry 紧凑披露、900px 操作可达、760px 单列；隔离 running smoke 已证明 progress/preview/elapsed/telemetry patch 与 pause/cancel 入口。P10 已按批准 proposal 修改 current Queue renderer；根据 2026-08-21 真实使用复核，四张 CPU/RAM/GPU/VRAM 性能卡已恢复到 Queue 顶部，active task 仍保持执行区第一主体；G11 已通过 executor/control 隔离 gate（成功完成、claim 前取消竞态、readiness abort、active worker cleanup、暂停恢复不重叠），用户随后已在真实 ComfyUI 环境完成实际运行复核，未发现明显问题；
+- P11 proposal 已写入并完成复核：基于当前 History 视频/图片 masonry/album fixture 落地 toolbar 分组、解除 900px 固定高度和 container-width 列轨；capture harness 新增 1/8 项 fixture 对照及 History filter/layout/detail/delete smoke，P11 已 `verified/integrated`。P12–P15 仍不得被 P11 越权实现；
 - P05 的 top-level nav `aria-current` 已实现，不能重复执行相同修改；
 - P08 已 `verified/integrated`：Image Edit overflow、素材区窄窗文字边界和 sticky submit safe-area 已落地，current renderer 三模式 × 8 视口截图与 900×800 交互 smoke 已通过；后续只进入 P09/P10 Queue gate，不重复派发 L30–L33；
 - Settings/runtime 工作仍在变化，G14 未满足前不得派发 L50–L60。
@@ -199,7 +199,7 @@ Expected handoff format:
 
 | ID | Parent | Luna 的唯一输出 | 写入范围 | 验证 | Review |
 | --- | --- | --- | --- | --- | --- |
-| L38 | P11 | 解除 History <=760固定68px并按批准分组 | History heading selectors | 901→560截图 | 普通复核 |
+| L38 | P11 | 保持 History title/tabs/filter/layout 同一行并解除 <=760固定68px | History heading selectors | 901→760截图 | 普通复核 |
 | L39 | P11 | album 列数改为 container width，不按 cards.length | `layout-controller.ts` + focused test | 8→1项测试 | 强复核 |
 | L40 | P12 | 卡片补 Enter/Space且隔离子控件 | navigation controller + test | keyboard test | 普通复核 |
 | L41 | P12 | History type tabs补 roving focus/Arrow/Home/End | tabs/navigation controller + test | keyboard test | 强复核 |

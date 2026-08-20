@@ -8,7 +8,12 @@
 
 ## 未发布
 
-- G11 Queue runtime gate 增加隔离 executor/control 回归覆盖：成功任务的 History 收敛、claim 前取消不抢回任务、ComfyUI readiness abort 不提交 workflow、active worker abort/cleanup 生命周期和暂停期间不重叠恢复；本次未启动或提交真实 ComfyUI 任务。
+
+## 0.33.0 — 2026-08-21
+
+- 完成 P11 History toolbar/gallery 稳定性：标题、History tabs、筛选计数和 masonry/album 在 901–760px 保持同一 toolbar 行，同时解除固定高度，筛选面板在中窄屏保持在内容视口内；不改变 History tabs、卡片主入口、媒体状态或详情路由。
+- 相册列轨改为只由当前 History 容器宽度计算，不再因过滤或删除记录而放大剩余卡片；视频/图片 8 项与 1 项 fixture 对照保持相同列轨，筛选无结果/清除、masonry/album、详情返回和删除确认 smoke 通过。
+- G11 Queue runtime gate 增加 executor/control 隔离回归覆盖；真实 ComfyUI 运行已由用户实际复核，未发现明显问题。隔离 gate 与用户 runtime 复核均未改变队列状态机、任务快照或 History 元数据语义。
 
 ## 0.32.2 — 2026-08-21
 

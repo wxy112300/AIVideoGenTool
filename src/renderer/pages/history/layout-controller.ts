@@ -1,6 +1,7 @@
 import type { RendererCleanup, RendererContext, Page } from "../../contracts";
 import {
   historyCardsByOrder,
+  historyAlbumColumnCount,
   historyMasonryColumnCount
 } from "./helpers";
 
@@ -121,25 +122,13 @@ export function createHistoryLayoutController(
   };
 
   const layoutAlbum = (gallery: HTMLElement): void => {
-    const cards = historyCardsByOrder(gallery);
-    if (!cards.length || gallery.clientWidth <= 0) return;
+    if (gallery.clientWidth <= 0) return;
     const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 8;
-    const minimumCardWidth = 180;
-    const maximumCardWidth = 300;
     const availableWidth = gallery.clientWidth;
-    const maximumRowWidth = cards.length * maximumCardWidth + (cards.length - 1) * gap;
-    let columnCount = cards.length;
-    let cardWidth = maximumCardWidth;
-    if (maximumRowWidth > availableWidth) {
-      columnCount = Math.min(
-        cards.length,
-        Math.max(1, Math.floor((availableWidth + gap) / (minimumCardWidth + gap)))
-      );
-      cardWidth = (availableWidth - (columnCount - 1) * gap) / columnCount;
-    }
-    cardWidth = Math.max(1, Math.min(maximumCardWidth, cardWidth));
-    gallery.style.gridTemplateColumns = `repeat(${columnCount}, ${cardWidth}px)`;
-    gallery.style.justifyContent = "start";
+    const columnCount = historyAlbumColumnCount(availableWidth, gap);
+    if (!columnCount) return;
+    gallery.style.gridTemplateColumns = `repeat(${columnCount}, minmax(0, 1fr))`;
+    gallery.style.justifyContent = "stretch";
   };
 
   const bindMasonry = () => {

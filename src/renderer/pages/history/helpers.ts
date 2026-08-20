@@ -214,6 +214,19 @@ export function historyMasonryColumnCount(width: number, gap = 10): number {
   return columns;
 }
 
+/**
+ * Album tracks belong to the available gallery width, never to the number of
+ * records currently visible. Keeping this calculation independent from the
+ * card collection prevents filtering or deleting a record from widening the
+ * remaining cards.
+ */
+export function historyAlbumColumnCount(width: number, gap = 8): number {
+  if (!Number.isFinite(width) || width <= 0) return 0;
+  const safeGap = Number.isFinite(gap) ? Math.max(0, gap) : 8;
+  const minimumCardWidth = 180;
+  return Math.max(1, Math.floor((width + safeGap) / (minimumCardWidth + safeGap)));
+}
+
 function historyStateChangedInternal(
   previous: ReadonlyArray<HistoryAsset> | undefined,
   next: ReadonlyArray<HistoryAsset>,

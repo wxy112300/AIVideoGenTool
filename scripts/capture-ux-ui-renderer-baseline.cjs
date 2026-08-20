@@ -29,13 +29,14 @@ Options:
   --locale      Capture with zh-CN, zh-TW, or en-US UI copy (default: zh-CN).
   --zoom       Capture at page zoom 1, 1.25, or 1.5 (default: 1).
   --diagnose    Print document overflow and the widest renderer elements.
-  --smoke       Run the isolated Create or Queue interaction smoke check.
+  --smoke       Run the isolated Create, Queue, or History interaction smoke check.
+  --history-count Capture History fixtures with 1 or 8 records (default: 1).
   --queue-state Override a queue-state fixture: mixed, running, paused, failed, recoverable, empty, or multiple-pending.
 `);
 }
 
 function parseArgs(argv) {
-  const options = { dryRun: false, output: null, fixture: null, viewport: null, locale: "zh-CN", zoom: 1, diagnose: false, smoke: false, queueState: null };
+  const options = { dryRun: false, output: null, fixture: null, viewport: null, locale: "zh-CN", zoom: 1, diagnose: false, smoke: false, historyCount: 1, queueState: null };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--help" || argument === "-h") options.help = true;
@@ -60,6 +61,11 @@ function parseArgs(argv) {
       options.zoom = Number(argv[++index]);
       if (![1, 1.25, 1.5].includes(options.zoom)) {
         throw new Error("--zoom must be 1, 1.25, or 1.5");
+      }
+    } else if (argument === "--history-count") {
+      options.historyCount = Number(argv[++index]);
+      if (![1, 8].includes(options.historyCount)) {
+        throw new Error("--history-count must be 1 or 8");
       }
     } else if (argument === "--queue-state") {
       options.queueState = argv[++index];
@@ -134,7 +140,7 @@ async function waitForDom(window, expression, label) {
   throw new Error(`Renderer did not become ready: ${label}`);
 }
 
-async function prepareSyntheticState(locale = "zh-CN") {
+async function prepareSyntheticState(locale = "zh-CN", historyCount = 1) {
   await fsp.mkdir(userDataRoot, { recursive: true });
   const defaultsPath = path.join(workspace, "dist", "electron", "src", "core", "defaults.js");
   if (!fs.existsSync(defaultsPath)) {
@@ -287,6 +293,43 @@ async function prepareSyntheticState(locale = "zh-CN") {
       }
     ]
   }];
+  if (historyCount > 1) {
+    const cloneFixture = (value) => JSON.parse(JSON.stringify(value));
+    const videoSeed = state.history[0];
+    state.history = Array.from({ length: historyCount }, (_, index) => {
+      const suffix = index + 1;
+      const asset = cloneFixture(videoSeed);
+      asset.id = `${videoSeed.id}-${suffix}`;
+      asset.taskId = `${videoSeed.taskId}-${suffix}`;
+      asset.title = `${videoSeed.title} ${suffix}`;
+      asset.comfyPromptId = `${videoSeed.comfyPromptId}-${suffix}`;
+      asset.defaultVersionId = `${videoSeed.defaultVersionId}-${suffix}`;
+      asset.versions = asset.versions.map((version) => ({
+        ...version,
+        id: `${version.id}-${suffix}`,
+        taskId: `${version.taskId}-${suffix}`,
+        comfyPromptId: `${version.comfyPromptId}-${suffix}`
+      }));
+      return asset;
+    });
+    const imageSeed = state.imageHistory[0];
+    state.imageHistory = Array.from({ length: historyCount }, (_, index) => {
+      const suffix = index + 1;
+      const project = cloneFixture(imageSeed);
+      const versionIds = new Map(imageSeed.versions.map((version) => [version.id, `${version.id}-${suffix}`]));
+      project.id = `${imageSeed.id}-${suffix}`;
+      project.title = `${imageSeed.title} ${suffix}`;
+      project.versions = project.versions.map((version) => ({
+        ...version,
+        id: `${version.id}-${suffix}`,
+        parentVersionId: version.parentVersionId ? versionIds.get(version.parentVersionId) : undefined,
+        taskId: version.taskId ? `${version.taskId}-${suffix}` : version.taskId,
+        runId: version.runId ? `${version.runId}-${suffix}` : version.runId,
+        comfyPromptId: version.comfyPromptId ? `${version.comfyPromptId}-${suffix}` : version.comfyPromptId
+      }));
+      return project;
+    });
+  }
   state.queue = [
     {
       id: "fixture-waiting-task",
@@ -462,6 +505,12 @@ async function diagnoseLayout(window) {
       documentScrollWidth: document.documentElement.scrollWidth,
       bodyClientWidth: document.body.clientWidth,
       bodyScrollWidth: document.body.scrollWidth,
+      historyGalleries: [...document.querySelectorAll('.history-gallery')].map((gallery) => ({
+        className: gallery.className,
+        cardCount: gallery.querySelectorAll('.history-gallery-item').length,
+        clientWidth: gallery.clientWidth,
+        gridTemplateColumns: getComputedStyle(gallery).gridTemplateColumns
+      })),
       overflowing: elements
         .filter((item) => item.right > viewportWidth + 1 || item.left < -1 || item.scrollWidth > item.clientWidth + 1)
         .sort((left, right) => Math.max(right.right - viewportWidth, right.scrollWidth - right.clientWidth) - Math.max(left.right - viewportWidth, left.scrollWidth - left.clientWidth))
@@ -515,9 +564,125 @@ async function runQueueInteractionSmoke(window, fixture, viewport) {
   if (!passed) throw new Error(`Queue running interaction smoke failed: ${JSON.stringify({ before, after, checks })}`);
 }
 
+async function runHistoryInteractionSmoke(window, fixture, viewport) {
+  const isImage = fixture.id === "history-image-album";
+  const cardSelector = isImage ? "[data-open-image-history]" : "[data-open-history]";
+  const cardSelectorLiteral = JSON.stringify(cardSelector);
+  const detailSelector = isImage ? ".image-history-detail-layout" : ".history-detail-hero";
+  const detailSelectorLiteral = JSON.stringify(detailSelector);
+  const openFilter = await executeJavaScript(window, `(() => {
+    const button = document.querySelector("[data-history-filter-toggle]");
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  await waitForDom(window, "Boolean(document.querySelector('[data-history-filter-panel]:not([hidden])'))", `${fixture.id} filter panel`);
+  const filterApplied = await executeJavaScript(window, `(() => {
+    const field = document.querySelector('[data-history-filter-field="minRating"]');
+    if (!field) return false;
+    field.value = "5";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
+  await waitForDom(window, "Boolean(document.querySelector('.history-gallery .empty'))", `${fixture.id} no results`);
+  const noResults = await executeJavaScript(window, `(() => ({
+    empty: Boolean(document.querySelector('.history-gallery .empty')),
+    result: document.querySelector('.history-filter-result')?.textContent?.trim() ?? ""
+  }))()`);
+  const clearFilter = await executeJavaScript(window, `(() => {
+    const button = document.querySelector("[data-history-filter-clear]");
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  await waitForDom(window, `Boolean(document.querySelector(${cardSelectorLiteral}))`, `${fixture.id} clear filter`);
+  const filterCleared = await executeJavaScript(window, `(() => ({
+    card: Boolean(document.querySelector(${cardSelectorLiteral})),
+    activeDot: Boolean(document.querySelector('.history-filter-active-dot'))
+  }))()`);
+  const closeFilter = await executeJavaScript(window, `(() => {
+    const panel = document.querySelector('[data-history-filter-panel]');
+    const button = document.querySelector('[data-history-filter-toggle]');
+    if (!panel || !button || panel.hidden) return true;
+    button.click();
+    return true;
+  })()`);
+  await waitForDom(window, "Boolean(document.querySelector('[data-history-filter-panel][hidden]'))", `${fixture.id} filter panel close`);
+
+  const switchLayout = async (layout) => {
+    const clicked = await executeJavaScript(window, `(() => {
+      const button = document.querySelector('[data-history-layout="${layout}"]');
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    await waitForDom(window, `document.querySelector('.history-gallery')?.classList.contains(${JSON.stringify(layout)})`, `${fixture.id} ${layout} layout`);
+    return clicked;
+  };
+  const masonryClicked = await switchLayout("masonry");
+  const albumClicked = await switchLayout("album");
+
+  const opened = await executeJavaScript(window, `(() => {
+    const card = document.querySelector(${cardSelectorLiteral});
+    if (!card) return false;
+    card.click();
+    return true;
+  })()`);
+  await waitForDom(window, `Boolean(document.querySelector(${detailSelectorLiteral}))`, `${fixture.id} detail`);
+  const detailOpened = await executeJavaScript(window, `Boolean(document.querySelector(${detailSelectorLiteral}))`);
+  const deleteRequested = await executeJavaScript(window, `(() => {
+    const button = document.querySelector("[data-delete-history]");
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  await waitForDom(window, "Boolean(document.querySelector('#confirm-backdrop'))", `${fixture.id} delete confirmation`);
+  const deleteConfirmation = await executeJavaScript(window, `Boolean(document.querySelector('#confirm-backdrop') && document.querySelector('#accept-confirmation'))`);
+  const deleteCancelled = await executeJavaScript(window, `(() => {
+    const button = document.querySelector("#cancel-confirmation");
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  await waitForDom(window, `Boolean(document.querySelector(${detailSelectorLiteral})) && !document.querySelector('#confirm-backdrop')`, `${fixture.id} delete cancel`);
+  const returned = await executeJavaScript(window, `(() => {
+    const button = document.querySelector(".history-detail-back-button");
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  await waitForDom(window, "Boolean(document.querySelector('.history-heading')) && Boolean(document.querySelector('.nav-button[data-page=\"history\"][aria-current=\"page\"]'))", `${fixture.id} detail return`);
+  const after = await executeJavaScript(window, `({
+    heading: Boolean(document.querySelector('.history-heading')),
+    historyNavSelected: Boolean(document.querySelector('.nav-button[data-page="history"][aria-current="page"]')),
+    card: Boolean(document.querySelector(${cardSelectorLiteral})),
+    layout: document.querySelector('.history-gallery')?.classList.contains('album') === true
+  })`);
+  const checks = {
+    filterPanelOpened: openFilter === true,
+    filterApplied: filterApplied === true,
+    noResults: noResults.empty && noResults.result.startsWith("0/"),
+    filterCleared: clearFilter === true && filterCleared.card && filterCleared.activeDot === false,
+    filterClosed: closeFilter === true,
+    masonryLayout: masonryClicked === true,
+    albumLayout: albumClicked === true,
+    detailOpened: opened === true && detailOpened,
+    deleteConfirmation: deleteRequested === true && deleteConfirmation,
+    deleteCancelled: deleteCancelled === true,
+    detailReturned: returned === true && after.heading && after.historyNavSelected && after.card && after.layout
+  };
+  const passed = Object.values(checks).every(Boolean);
+  console.log(`[renderer-smoke] ${fixture.id} ${viewport.id} history ${JSON.stringify({ noResults, filterCleared, after, checks, passed })}`);
+  if (!passed) throw new Error(`History interaction smoke failed: ${JSON.stringify({ noResults, filterCleared, after, checks })}`);
+}
+
 async function runInteractionSmoke(window, fixture, viewport) {
   if (fixture.route === "queue" && viewport.id === "900x800") {
     await runQueueInteractionSmoke(window, fixture, viewport);
+    return;
+  }
+  if ((fixture.id === "history-video-album" || fixture.id === "history-image-album") && viewport.id === "900x800") {
+    await runHistoryInteractionSmoke(window, fixture, viewport);
     return;
   }
   if (fixture.id !== "create-image-edit" || viewport.id !== "900x800") return;
@@ -807,7 +972,7 @@ if (options.help) {
   (async () => {
     try {
       console.log("[renderer-capture] preparing state");
-      const state = await prepareSyntheticState(options.locale);
+      const state = await prepareSyntheticState(options.locale, options.historyCount);
       console.log("[renderer-capture] state ready");
       const preloadPath = await writeMockPreload(state);
       console.log("[renderer-capture] preload ready");

@@ -1,8 +1,8 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue runtime gate 进行中，随后进入 P11 proposal review
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性已 verified/integrated，下一 phase 为 P12
 > 制定日期：2026-08-20  
-> 当前版本：0.32.2
+> 当前版本：0.33.0
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -363,7 +363,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：running、paused、failed、recoverable、empty、multiple pending 六种状态批准。
 
-**当前状态（2026-08-21）**：G10 已批准 `docs/UX_UI_P09_RENDERER_PROPOSAL.md` 的任务优先构图。capture harness 已支持 running、paused、failed、recoverable、empty、multiple-pending 六种 Queue state；8 个唯一视口的 current-renderer diagnose 均无文档横溢出，900×800 隔离 running smoke 已验证 progress/stage/elapsed/preview/telemetry patch 与 pause/cancel 入口。P10 已实现：四张 CPU/RAM/GPU/VRAM 性能卡统一位于 Queue 顶部，active task 位于执行区第一主体，running card 以状态/控制优先的 DOM 顺序覆盖 900/760px；本次顶部位置修正不改队列顺序、状态机、IPC、任务快照或实时 patch 目标。P10 focused Queue tests 与 `npm.cmd run verify` 通过（82 files / 632 tests、production build、20 组对比度检查）。G11 已新增 executor/control 隔离 gate，覆盖成功 History 收敛、claim 前取消竞态、readiness abort 不提交、active worker abort/cleanup 生命周期和暂停期间不重叠恢复五条边界；本机 `127.0.0.1:8188` 不可达，未执行真实 ComfyUI GPU 生成，真实 runtime gate 仍保留为环境依赖。
+**当前状态（2026-08-21）**：G10 已批准 `docs/UX_UI_P09_RENDERER_PROPOSAL.md` 的任务优先构图。capture harness 已支持 running、paused、failed、recoverable、empty、multiple-pending 六种 Queue state；8 个唯一视口的 current-renderer diagnose 均无文档横溢出，900×800 隔离 running smoke 已验证 progress/stage/elapsed/preview/telemetry patch 与 pause/cancel 入口。P10 已实现：四张 CPU/RAM/GPU/VRAM 性能卡统一位于 Queue 顶部，active task 位于执行区第一主体，running card 以状态/控制优先的 DOM 顺序覆盖 900/760px；本次顶部位置修正不改队列顺序、状态机、IPC、任务快照或实时 patch 目标。P10 focused Queue tests 与 `npm.cmd run verify` 通过（82 files / 632 tests、production build、20 组对比度检查）。G11 已通过 executor/control 隔离 gate，覆盖成功 History 收敛、claim 前取消竞态、readiness abort 不提交、active worker abort/cleanup 生命周期和暂停期间不重叠恢复五条边界；用户随后已在真实 ComfyUI 环境完成实际运行复核，未发现明显问题，G11 的 runtime blocker 已解除。具体运行环境与 GPU 结果仍以用户本机实测为准。
 
 ### P10 — Queue renderer 任务优先实现与顶部性能总览
 
@@ -381,7 +381,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **工作**：
 
-- 900px 左右稳定分为 title/type 与 filter/layout 两个关系组；
+- 900px 左右保持历史作品标题、视频/图片 tabs、筛选计数和 masonry/album 在同一 toolbar 行；
 - 760px 以下解除68px固定 height/max-height；
 - album 列数只由 container width 决定，删除/过滤不放大剩余卡片；
 - 保持 masonry stability、用户 layout choice 和当前 filter；
@@ -391,7 +391,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：从8项删至1项列轨稳定；瀑布流/相册切换、过滤、删除、返回详情无布局跳变；`npm.cmd run verify`。
 
-**当前状态（2026-08-20）**：`docs/UX_UI_P11_RENDERER_PROPOSAL.md` 已基于当前视频/图片 masonry/album fixture、toolbar DOM/CSS 和 1440/900 renderer evidence 提出候选：1121px 以上保留单行三组关系，901–1120/900px 分为 title/type 与 filter/layout 两组并解除固定 68px，760px 以下自然高度堆叠；gallery 列轨改由 container width 决定，不由 `cards.length` 决定。当前 P11 仍为 `proposed`，L38/L39 等待复核；没有修改 History 生产 renderer。
+**当前状态（2026-08-21）**：P11 已 `verified/integrated`。`src/renderer/pages/history/helpers.ts` 新增按容器宽度计算 album 列数的纯 helper，`layout-controller.ts` 将 album track 改为 `repeat(n, minmax(0, 1fr))`，不再使用 `cards.length`；`src/styles/11-history-curation.css` 保持标题、kind tabs、filter/count、masonry/album 在同一 toolbar 行，解除 900px 左右 inherited fixed toolbar height，并将 filter panel 锚定在当前内容视口内；760px 也保持同一行，极窄宽度才安全降为标题行 + 控制行。视频/图片 album 在 `1440/1280/1121/1120/901/900/761/760 × 800/900` current-renderer capture 与 diagnose 通过；900×800 的 8 项/1 项对照显示相同 `195.5px × 4` 列轨，760×800 不再出现 toolbar overlap，document/body 无横向溢出（仅保留预期的媒体模型 chip 文本省略）。capture harness 已加入 History filter/no-result/clear、masonry/album、详情返回、History parent nav selected、删除确认/取消 smoke，视频和图片路径均通过；`npm.cmd test -- tests/history-layout.test.ts tests/history-state.test.ts`、`npm.cmd run typecheck`、`npm.cmd run verify` 通过（83 files / 637 tests、production build、20 组对比度检查）。P11 没有改变 History DOM/IPC/persisted state/media path 或 P12–P15 语义，下一 phase 为 P12。
 
 ### P12 — History 卡片、tabs、menus 的键盘语义
 
