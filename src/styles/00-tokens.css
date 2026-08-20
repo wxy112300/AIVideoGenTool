@@ -123,7 +123,8 @@
   --ux-focus-control-glow: rgba(101, 151, 255, .12);
   --ux-elevation-panel: none;
 
-  /* Type roles: values match the current renderer before P04 changes them. */
+  /* P04/L16 type scale: seven roles are declared first; selectors migrate in
+   * L17/L18 so this package keeps the current renderer visually unchanged. */
   --ux-type-page: clamp(25px, 2.3vw, 31px);
   --ux-type-section: 17px;
   --ux-type-object: 15px;

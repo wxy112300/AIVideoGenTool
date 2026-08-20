@@ -1,6 +1,6 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P05 导航语义与 P08 Image Edit 首个窄窗修复已完成，后续完整交互 gate 待补
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16 七级 type token 声明、P05 导航语义与 P08 Image Edit 首个窄窗修复已完成，后续完整交互 gate 待补
 > 制定日期：2026-08-20  
 > 当前版本：0.30.2
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
@@ -273,6 +273,8 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 - 不在此 phase 改 grid、DOM 顺序或 responsive breakpoint。
 
 **Gate**：100%/125%/150% 缩放；简中、繁中、英文；长路径和长模型名；无新增截断；`npm.cmd run verify`。
+
+**当前状态（2026-08-20）**：P04/L16 已完成：在 `src/styles/00-tokens.css` 明确冻结 Page/Section/Object/Body/Label/Meta/Technical 七级 type roles，保留当前 renderer 基线值；未迁移任何组件 selector、字号或布局。focused token tests `9/9`、typecheck 通过，下一 package 为 L17。
 
 ### P05 — Shell、主导航与 sticky 几何
 

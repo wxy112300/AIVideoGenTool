@@ -137,6 +137,27 @@ describe("UX/UI semantic token foundation", () => {
     expect(visualRefreshSource).toContain("background: var(--ux-nav-active-indicator)");
   });
 
+  it("declares the seven-level P04 type scale without migrating components", () => {
+    const typeRoles = [
+      "--ux-type-page",
+      "--ux-type-section",
+      "--ux-type-object",
+      "--ux-type-body",
+      "--ux-type-label",
+      "--ux-type-meta",
+      "--ux-type-technical",
+    ];
+    for (const role of typeRoles) {
+      expect(tokenSource).toContain(`${role}:`);
+    }
+    expect(tokenSource).toContain("--ux-type-page: clamp(25px, 2.3vw, 31px);");
+    expect(tokenSource).toContain("--ux-type-technical: .86em;");
+    expect(foundationSource).not.toContain("var(--ux-type-");
+    expect(visualRefreshSource).not.toContain("var(--ux-type-");
+    expect(densitySource).not.toContain("var(--ux-type-");
+    expect(finalRefinementsSource).not.toContain("var(--ux-type-");
+  });
+
   it("flattens ordinary panels while preserving overlay elevation", () => {
     expect(tokenSource).toContain("--ux-elevation-panel: none;");
     expect(foundationSource).toContain(".panel { min-width: 0; border: 1px solid var(--border); border-radius: 17px; background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--ux-elevation-panel); }");

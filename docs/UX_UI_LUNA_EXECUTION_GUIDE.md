@@ -33,6 +33,7 @@ P00–P20 的依赖、preserve list 和集成 gate 已经清楚，但部分 Phas
 - G01“当前 renderer 是设计来源”已完成；G02 已先冻结 surface mapping，具体 action/focus/progress/status、type 和 radius 变化仍需 current-renderer visual gate；
 - P02 语义 token 骨架已实现；在 reviewer 对现有 diff 完成 package mapping 前，不得重新派发 L06–L09；
 - P03/L10 shared surface、P03/L11 text/separator、P03/L12 action/focus、P03/L13 status/badge、P03/L14 brand/nav 与 P03/L15 panel/elevation 迁移已实现，并通过 G04 current-renderer 五页视觉/状态复核：current-renderer capture、全矩阵 diagnose、900×800 输入焦点 smoke、四状态 selector matrix、disabled submit canary、L14 shell 与 L15 panel canary、20 组对比度检查和 `npm.cmd run verify`；L14 移除顶栏、品牌标记和活动导航的装饰性 glow，保留活动导航的边界与下划线反馈；L15 移除普通 panel 的装饰性阴影并保留 overlay elevation，版本为 `0.30.2`；P03 已 `verified/integrated`，不得重复派发 L10–L15，下一 Phase 为 P04；
+- P04/L16 七级 type token 声明已完成：Page/Section/Object/Body/Label/Meta/Technical 角色保留当前基线值，未迁移组件 selector；focused token tests `9/9`、typecheck 通过，下一 package 为 L17；
 - P05 的 top-level nav `aria-current` 已实现，不能重复执行相同修改；
 - P08 的 Image Edit 首个 overflow 修复已实现，不能直接重跑 L30；其余 Create gate仍待完成；
 - Settings/runtime 工作仍在变化，G14 未满足前不得派发 L50–L60。
