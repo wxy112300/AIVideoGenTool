@@ -228,6 +228,13 @@ describe("UX/UI semantic token foundation", () => {
     expect(finalRefinementsSource).toContain(".queue-page-heading { top: 0; }");
   });
 
+  it("routes History and Settings headings through the shared sticky offset", () => {
+    expect(densitySource).toContain("  top: var(--ux-page-sticky-offset);");
+    expect(visualRefreshSource).toContain("  top: var(--ux-page-sticky-offset);");
+    expect(densitySource).toMatch(/\.history-heading\s*\{\s*top: 0;/);
+    expect(densitySource).toMatch(/\.settings-heading\s*\{\s*top: 0;/);
+  });
+
   it("flattens ordinary panels while preserving overlay elevation", () => {
     expect(tokenSource).toContain("--ux-elevation-panel: none;");
     expect(foundationSource).toContain(".panel { min-width: 0; border: 1px solid var(--border); border-radius: var(--ux-radius-panel); background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--ux-elevation-panel); }");

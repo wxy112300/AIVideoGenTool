@@ -2,7 +2,7 @@
 
 > 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P08 Image Edit 首个窄窗修复已完成，后续完整交互 gate 待补
 > 制定日期：2026-08-20  
-> 当前版本：0.30.2
+> 当前版本：0.31.0
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -274,7 +274,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：100%/125%/150% 缩放；简中、繁中、英文；长路径和长模型名；无新增截断；`npm.cmd run verify`。
 
-**当前状态（2026-08-20）**：P04/L16–L21 已完成：L16 在 `src/styles/00-tokens.css` 明确冻结 Page/Section/Object/Body/Label/Meta/Technical 七级 type roles；L17 依据当前 renderer 最终 cascade 将 page 基线校正为 `clamp(20px, 1.65vw, 23px)`，并把共享 `h1/h2/h3` 与 History gallery object heading 迁移到对应 roles；L18 将真实最终值接入根 body、全局/form label、共享 meta copy 与 global code technical selectors，并把 `--zoom 1|1.25|1.5` 加入 current-renderer capture harness；L19 为 Queue/History/运行态的 progress、time、metric、count、position 动态数值补齐显式 `font-variant-numeric: tabular-nums`；L20 将当前 renderer 最终 cascade 中的 control/object/panel/modal 圆角值接入 `--ux-radius-*` roles，面板保持有效的 13px；L21 将 performance-grid 的 12px gap 与 16px bottom spacing 接入 `--ux-space-3/4`，不改变 DOM、布局数值或响应式规则。详情标题、弹窗标题、任务卡、日志、badge、album 紧凑标题等特例保持原有密度。focused token tests `13/13`、`npm.cmd run verify`（80 files / 615 tests、production build、20 组对比度检查）通过；L19 的 Queue 1440/900、History 视频/图片图廊与视频/图片 Details current-renderer 动态值截图和 diagnose 仍作为本轮相邻视觉基线，L20/L21 均为等值语义迁移。诊断中仍可见既有 Queue action label 内部溢出与图片详情模型名截断，本批次未扩大范围处理。视觉差异仍不足以触发版本升级，版本保持 `0.30.2`，下一 package 为 L22。
+**当前状态（2026-08-20）**：P04/L16–L21 已完成：L16 在 `src/styles/00-tokens.css` 明确冻结 Page/Section/Object/Body/Label/Meta/Technical 七级 type roles；L17 依据当前 renderer 最终 cascade 将 page 基线校正为 `clamp(20px, 1.65vw, 23px)`，并把共享 `h1/h2/h3` 与 History gallery object heading 迁移到对应 roles；L18 将真实最终值接入根 body、全局/form label、共享 meta copy 与 global code technical selectors，并把 `--zoom 1|1.25|1.5` 加入 current-renderer capture harness；L19 为 Queue/History/运行态的 progress、time、metric、count、position 动态数值补齐显式 `font-variant-numeric: tabular-nums`；L20 将当前 renderer 最终 cascade 中的 control/object/panel/modal 圆角值接入 `--ux-radius-*` roles，面板保持有效的 13px；L21 将 performance-grid 的 12px gap 与 16px bottom spacing 接入 `--ux-space-3/4`，不改变 DOM、布局数值或响应式规则。详情标题、弹窗标题、任务卡、日志、badge、album 紧凑标题等特例保持原有密度。focused token tests `13/13`、`npm.cmd run verify`（80 files / 615 tests、production build、20 组对比度检查）通过；L19 的 Queue 1440/900、History 视频/图片图廊与视频/图片 Details current-renderer 动态值截图和 diagnose 仍作为本轮相邻视觉基线，L20/L21 均为等值语义迁移。L20/L21 阶段版本仍为 `0.30.2`；随后 P05/L22–L24 的 sticky 几何修复形成可见的滚动层级差异，版本升为 `0.31.0`，下一集成 gate 为 G05。
 
 ### P05 — Shell、主导航与 sticky 几何
 
@@ -292,7 +292,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：所有主页面与 Details 在关键断点上下滚动；History detail 保持 History current；close dialog 不受影响；`npm.cmd run verify`。
 
-**当前状态（2026-08-20）**：已在 `src/renderer/shell/page.ts` 为 active top-level nav 补上 `aria-current="page"`，并用 renderer shell focused tests 覆盖 Settings 与 History detail 的选中语义。P05/L22 已将当前 renderer 的 72px topbar 接入 `--ux-topbar-height`，将 page sticky offset 对齐为 72px，并在 topbar 变为 normal-flow 的 760px 以下断点将 offset 归零；P05/L23 已将 Create/Queue heading 接入共享 sticky offset，Create 的层级降到 topbar 之下，Queue 在窄屏显式归零。History/Settings heading 的 selector 迁移与 sticky/scroll/close-dialog 的完整 smoke 仍待执行，因此 P05 不标为 `verified`。
+**当前状态（2026-08-20）**：已在 `src/renderer/shell/page.ts` 为 active top-level nav 补上 `aria-current="page"`，并用 renderer shell focused tests 覆盖 Settings 与 History detail 的选中语义。P05/L22 已将当前 renderer 的 72px topbar 接入 `--ux-topbar-height`，将 page sticky offset 对齐为 72px，并在 topbar 变为 normal-flow 的 760px 以下断点将 offset 归零；P05/L23 已将 Create/Queue heading 接入共享 sticky offset，Create 的层级降到 topbar 之下，Queue 在窄屏显式归零；P05/L24 已将 History heading、History detail 返回条和 Settings heading 接入同一 token，并保留窄屏 top:0 规则。P05 相关 focused token tests `16/16`、`npm.cmd run verify`（80 files / 618 tests、production build、20 组对比度检查）通过；四个主页面与 Details 的上下滚动、close-dialog 和断点 smoke 仍待执行，因此 P05 不标为 `verified`。
 
 ### P06 — 全局通知、局部反馈与恢复动作
 

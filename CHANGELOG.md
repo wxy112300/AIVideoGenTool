@@ -8,6 +8,11 @@
 
 ## 未发布
 
+## 0.31.0 — 2026-08-20
+
+- 完成当前 renderer 的 shared visual foundation：P04 的 type roles、tabular numbers、radius/spacing token 迁移与 P05 的 72px topbar/sticky geometry 统一；Create、Queue、History、Settings 及 History detail 的 sticky 标题和返回条共享 offset，760px 以下 topbar 进入 normal flow 时 offset 归零。
+- 修正 Create sticky rail 的层级，使 topbar 始终位于 page heading 之上；Queue 窄窗口不再保留过时的 64px sticky 空带。未改变 DOM、controller、payload、持久化结构或模型工作流。
+
 ## 0.30.2 — 2026-08-20
 
 - 收敛当前 renderer 的 panel/overlay 材质：普通 panel、任务卡、性能卡、History 卡片、History viewer、Settings 分区和侧栏移除装饰性阴影；tooltip、flash、context menu、dialog、lightbox、confirm、cropper 与 asset-library 等 overlay 保留 elevation，不改变 DOM、controller、payload、布局或交互语义。
