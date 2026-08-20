@@ -228,6 +228,13 @@ describe("UX/UI semantic token foundation", () => {
     expect(finalRefinementsSource).toContain(".queue-page-heading { top: 0; }");
   });
 
+  it("reserves a narrow Image Edit lane for the sticky submit rail", () => {
+    expect(finalRefinementsSource).toContain("--image-edit-submit-safe-area: calc(2 * var(--ux-space-6) + var(--ux-space-5));");
+    expect(finalRefinementsSource).toContain("margin-bottom: var(--image-edit-submit-safe-area);");
+    expect(finalRefinementsSource).toContain("scroll-margin-block-end: var(--image-edit-submit-safe-area);");
+    expect(finalRefinementsSource).toContain("--image-edit-submit-safe-area: calc(2 * var(--ux-space-6) + 2 * var(--ux-space-5) + var(--ux-space-2));");
+  });
+
   it("routes History and Settings headings through the shared sticky offset", () => {
     expect(densitySource).toContain("  top: var(--ux-page-sticky-offset);");
     expect(visualRefreshSource).toContain("  top: var(--ux-page-sticky-offset);");

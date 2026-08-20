@@ -76,6 +76,22 @@ body {
     width: auto;
     flex: 1 1 auto;
   }
+
+  .image-edit-composer {
+    --image-edit-submit-safe-area: calc(2 * var(--ux-space-6) + var(--ux-space-5));
+  }
+
+  /* The bottom-sticky submit rail must occupy a reserved visual lane. Without
+     it, the rail can cover the output controls while the page is still at its
+     initial scroll position. Keep the lane in the current flow so the DOM,
+     tab order, and submit semantics remain unchanged. */
+  .image-edit-composer .settings-summary {
+    margin-bottom: var(--image-edit-submit-safe-area);
+  }
+
+  .image-edit-composer .composer-submit-row {
+    scroll-margin-block-end: var(--image-edit-submit-safe-area);
+  }
 }
 
 .image-edit-references {
@@ -748,6 +764,10 @@ body.image-markup-open {
 }
 
 @media (max-width: 760px) {
+  .image-edit-composer {
+    --image-edit-submit-safe-area: calc(2 * var(--ux-space-6) + 2 * var(--ux-space-5) + var(--ux-space-2));
+  }
+
   .image-edit-page-heading .input-mode-switch {
     width: 100%;
   }
