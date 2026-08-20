@@ -29,12 +29,13 @@ Options:
   --locale      Capture with zh-CN, zh-TW, or en-US UI copy (default: zh-CN).
   --zoom       Capture at page zoom 1, 1.25, or 1.5 (default: 1).
   --diagnose    Print document overflow and the widest renderer elements.
-  --smoke       Run the isolated Create prompt focus/input smoke check.
+  --smoke       Run the isolated Create or Queue interaction smoke check.
+  --queue-state Override a queue-state fixture: mixed, running, paused, failed, recoverable, empty, or multiple-pending.
 `);
 }
 
 function parseArgs(argv) {
-  const options = { dryRun: false, output: null, fixture: null, viewport: null, locale: "zh-CN", zoom: 1, diagnose: false, smoke: false };
+  const options = { dryRun: false, output: null, fixture: null, viewport: null, locale: "zh-CN", zoom: 1, diagnose: false, smoke: false, queueState: null };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--help" || argument === "-h") options.help = true;
@@ -59,6 +60,11 @@ function parseArgs(argv) {
       options.zoom = Number(argv[++index]);
       if (![1, 1.25, 1.5].includes(options.zoom)) {
         throw new Error("--zoom must be 1, 1.25, or 1.5");
+      }
+    } else if (argument === "--queue-state") {
+      options.queueState = argv[++index];
+      if (!options.queueState || !["mixed", "running", "paused", "failed", "recoverable", "empty", "multiple-pending"].includes(options.queueState)) {
+        throw new Error("--queue-state must be mixed, running, paused, failed, recoverable, empty, or multiple-pending");
       }
     } else throw new Error(`Unknown option: ${argument}`);
   }
@@ -361,7 +367,7 @@ async function clickAndWait(window, selector, expression, label) {
   await wait(80);
 }
 
-async function setupFixture(window, fixture) {
+async function setupFixture(window, fixture, options) {
   const setup = fixture.setup ?? { kind: "static" };
   const routeSelectors = {
     create: [".nav-button[data-page=\"create\"]", ".create-page-heading"],
@@ -380,6 +386,11 @@ async function setupFixture(window, fixture) {
       `Boolean(document.querySelector('[data-input-mode="${setup.value}"][aria-pressed="true"]'))`,
       `${fixture.id} mode`
     );
+  }
+  if (setup.kind === "queue-state") {
+    const queueState = options.queueState ?? setup.value;
+    await executeJavaScript(window, `window.studio.setQueueFixture?.(${JSON.stringify(queueState)}); true`);
+    await wait(180);
   }
   if (setup.kind === "history") {
     await clickAndWait(
@@ -459,7 +470,56 @@ async function diagnoseLayout(window) {
   })()`);
 }
 
+async function runQueueInteractionSmoke(window, fixture, viewport) {
+  const queueState = await executeJavaScript(window, "window.studio.getFixtureQueueState?.() ?? null");
+  if (queueState !== "running") return;
+  const before = await executeJavaScript(window, `(() => ({
+    runningCard: Boolean(document.querySelector(".task-card.running.expanded")),
+    progress: document.querySelector("#running-progress-label")?.textContent ?? "",
+    stage: document.querySelector("#running-stage")?.textContent ?? "",
+    elapsed: document.querySelector("#running-elapsed")?.textContent ?? "",
+    previewActive: document.querySelector("[data-live-preview-image]")?.dataset.livePreviewActive === "true",
+    metricCpu: document.querySelector("#metric-cpu")?.textContent ?? ""
+  }))()`);
+  const emitted = await executeJavaScript(window, "window.studio.emitFixtureRunningSmoke?.() === true");
+  await waitForDom(
+    window,
+    "document.querySelector('[data-live-preview-image]')?.dataset.livePreviewActive === 'true' && document.querySelector('#running-progress-label')?.textContent === '67%' && document.querySelector('#running-stage')?.textContent === '渲染关键帧'",
+    "queue running progress and preview patch"
+  );
+  await wait(2_250);
+  const after = await executeJavaScript(window, `(() => ({
+    runningCard: Boolean(document.querySelector(".task-card.running.expanded")),
+    progress: document.querySelector("#running-progress-label")?.textContent ?? "",
+    stage: document.querySelector("#running-stage")?.textContent ?? "",
+    elapsed: document.querySelector("#running-elapsed")?.textContent ?? "",
+    previewActive: document.querySelector("[data-live-preview-image]")?.dataset.livePreviewActive === "true",
+    previewSource: document.querySelector("[data-live-preview-image]")?.dataset.livePreviewSource ?? "",
+    metricCpu: document.querySelector("#metric-cpu")?.textContent ?? "",
+    pause: Boolean(document.querySelector("#pause-queue")),
+    cancel: Boolean(document.querySelector("[data-cancel]"))
+  }))()`);
+  const checks = {
+    runningStateEmitted: emitted,
+    runningCard: before.runningCard && after.runningCard,
+    progressPatched: after.progress === "67%",
+    stagePatched: after.stage === "渲染关键帧",
+    elapsedVisible: after.elapsed !== "" && after.elapsed !== "等待中",
+    previewPatched: after.previewActive && after.previewSource === "h3-tae",
+    telemetryUpdated: after.metricCpu !== "" && after.metricCpu !== "—",
+    pauseReachable: after.pause,
+    cancelReachable: after.cancel
+  };
+  const passed = Object.values(checks).every(Boolean);
+  console.log(`[renderer-smoke] ${fixture.id} ${viewport.id} queue-running ${JSON.stringify({ before, after, checks, passed })}`);
+  if (!passed) throw new Error(`Queue running interaction smoke failed: ${JSON.stringify({ before, after, checks })}`);
+}
+
 async function runInteractionSmoke(window, fixture, viewport) {
+  if (fixture.route === "queue" && viewport.id === "900x800") {
+    await runQueueInteractionSmoke(window, fixture, viewport);
+    return;
+  }
   if (fixture.id !== "create-image-edit" || viewport.id !== "900x800") return;
   const settle = async (expression, label) => {
     await waitForDom(window, expression, label);
@@ -598,25 +658,90 @@ const fixtureImagePath = ${JSON.stringify(fixtureImagePath)};
 const fixtureVideoPath = ${JSON.stringify(fixtureVideoPath)};
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const stateListeners = new Set();
+const runtimeListeners = new Set();
+const taskPreviewListeners = new Set();
 const fixtureStats = { enqueue: 0, enqueueExtension: 0, imageEdit: 0 };
 let fixturePickerEnabled = false;
+let currentQueueFixture = "mixed";
+let metricSample = 0;
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-const runtimeState = { phase: "stopped", ownership: "none", endpoint: "", message: "ComfyUI 未运行", updatedAt: new Date().toISOString(), operationId: 0 };
+let runtimeState = { phase: "stopped", ownership: "none", endpoint: "", message: "ComfyUI 未运行", updatedAt: new Date().toISOString(), operationId: 0 };
 const result = (message = "capture fixture") => ({ ok: true, message });
 const emitState = () => stateListeners.forEach((listener) => listener(clone(currentState)));
-const metrics = () => ({ sampledAt: new Date().toISOString(), cpuPercent: 12, memoryUsedBytes: 0, memoryTotalBytes: 0, gpuPercent: null, vramUsedBytes: null, vramTotalBytes: null, gpuTemperature: null, comfyConnected: false });
+const metrics = () => {
+  metricSample += 1;
+  return { sampledAt: new Date().toISOString(), cpuPercent: 12 + metricSample, memoryUsedBytes: 4 * 1024 * 1024 * 1024, memoryTotalBytes: 16 * 1024 * 1024 * 1024, gpuPercent: 28 + metricSample, vramUsedBytes: 3 * 1024 * 1024 * 1024, vramTotalBytes: 12 * 1024 * 1024 * 1024, gpuTemperature: 56, comfyConnected: currentQueueFixture === "running" };
+};
+const fixtureQueueBase = clone(currentState.queue);
+const queueTask = (id, status, overrides = {}) => Object.assign({}, clone(fixtureQueueBase.find((task) => task.id === id) || fixtureQueueBase[0] || {}), { id, status, updatedAt: new Date().toISOString() }, overrides);
+const setQueueFixture = (kind) => {
+  const waiting = queueTask("fixture-waiting-task", "waiting");
+  const failed = queueTask("fixture-failed-task", "failed");
+  const running = Object.assign({}, waiting, {
+    id: "fixture-running-task",
+    status: "running",
+    outputFilename: "city-night-running.mp4",
+    prompt: "A slow cinematic camera move through a rainy city street with changing light.",
+    progress: 42,
+    stage: "加载模型",
+    stageStartedAt: new Date(Date.now() - 8_000).toISOString(),
+    startedAt: new Date(Date.now() - 75_000).toISOString(),
+    updatedAt: new Date().toISOString(),
+    h3LivePreview: true,
+    comfyPromptId: "fixture-running-prompt"
+  });
+  const pendingTwo = Object.assign({}, waiting, { id: "fixture-pending-task-2", outputFilename: "portrait-window-queued.mp4", seed: 1844 });
+  const pendingThree = Object.assign({}, waiting, { id: "fixture-pending-task-3", outputFilename: "wide-establishing-shot.mp4", seed: 1845 });
+  const queueByKind = {
+    mixed: [waiting, failed],
+    running: [running, waiting],
+    paused: [running, waiting],
+    failed: [failed],
+    recoverable: [failed, waiting],
+    empty: [],
+    "multiple-pending": [waiting, pendingTwo, pendingThree]
+  };
+  currentQueueFixture = queueByKind[kind] ? kind : "mixed";
+  currentState.queue = clone(queueByKind[currentQueueFixture]);
+  currentState.queueRunning = currentQueueFixture === "running";
+  currentState.queueStartedAt = currentQueueFixture === "running" || currentQueueFixture === "paused" ? new Date(Date.now() - 75_000).toISOString() : undefined;
+  currentState.queueLifecycle = currentQueueFixture === "running" ? "running" : currentQueueFixture === "failed" ? "error" : "idle";
+  currentState.queueLifecycleTaskId = undefined;
+  currentState.queueLifecycleStartedAt = undefined;
+  currentState.settings.h3LivePreview = currentQueueFixture === "running";
+  runtimeState = Object.assign({}, runtimeState, {
+    phase: currentQueueFixture === "running" ? "ready" : "stopped",
+    ownership: currentQueueFixture === "running" ? "app" : "none",
+    message: currentQueueFixture === "running" ? "Fixture ComfyUI ready" : "ComfyUI 未运行",
+    updatedAt: new Date().toISOString()
+  });
+  emitState();
+  runtimeListeners.forEach((listener) => listener(clone(runtimeState)));
+  return currentQueueFixture;
+};
+const emitFixtureRunningSmoke = () => {
+  const runningTask = currentState.queue.find((task) => task.status === "running");
+  if (!runningTask) return false;
+  currentState.queue = currentState.queue.map((task) => task.id === runningTask.id
+    ? Object.assign({}, task, { progress: 67, stage: "渲染关键帧", stageStartedAt: new Date(Date.now() - 5_000).toISOString(), updatedAt: new Date().toISOString() })
+    : task);
+  emitState();
+  taskPreviewListeners.forEach((listener) => listener({ taskId: runningTask.id, dataUrl: imageDataUrl, source: "h3-tae", step: 12, totalSteps: 20, sequence: 1 }));
+  return true;
+};
 const emptyScan = (settings) => ({
   scannedAt: new Date().toISOString(), userHome: "", comfyRoot: "", comfyUrl: settings.comfyUrl, comfyInstallDirectory: settings.comfyInstallDirectory, comfySourceDirectory: "", comfyInstallType: "", comfyInstallations: [], pythonRuntimes: [], gpus: [], modelDirectory: settings.modelDirectory, outputDirectory: settings.outputDirectory, llamaServer: { found: false, path: "", directory: "", source: "" }, llamaCppPython: { packageName: "llama-cpp-python", pythonPath: "", pythonVersion: "", packageVersion: "", torchVersion: "", cudaVersion: "", installed: false, importable: false, gpuOffload: null, ready: false, detail: "", error: "" }, comfyCompatibility: { version: "", revision: "", h3MinimumVersion: "", h3MinimumRevision: "", h3RecommendedVersion: "", h3CoreSupported: false, coreNodes: [], promptCoreSupported: false, promptCoreNodes: [], checkedFrom: "", updateMode: "unsupported", updateHint: "", compatibilityState: "unknown" }, attentionAcceleration: { pythonPath: "", pythonVersion: "", torchVersion: "", cudaVersion: "", gpuName: "", gpuArchitecture: "", sageAttentionVersion: "", tritonVersion: "", kjNodesInstalled: false, kjNodesCompatible: false, recommendedSageVersion: "", recommendedWheel: "", supported: false, ready: false, detail: "" }, items: [], modelProfiles: [], customNodes: [], workflowDependencies: [], issues: []
 });
 const emptyLibraryScan = { libraryDirectory: "", totalReferences: 0, managedReferences: 0, archiveCandidates: 0, missingReferences: [], orphanFiles: [], archiveBytes: 0, orphanBytes: 0 };
 const api = {
   getState: async () => clone(currentState), getComfyRuntimeState: async () => clone(runtimeState), getAppVersion: async () => ${JSON.stringify(packageJson.version)}, setSettingsDirty: async () => {}, respondWindowClose: async () => {},
+  getFixtureQueueState: () => currentQueueFixture, setQueueFixture, emitFixtureRunningSmoke,
   saveDraft: async (draft) => { currentState.draft = clone(draft); emitState(); return clone(currentState); }, saveImageDraft: async (draft) => { currentState.imageDraft = clone(draft); emitState(); return clone(currentState); }, saveSettings: async (settings) => { currentState.settings = clone(settings); emitState(); return clone(currentState); }, setQueueH3LivePreview: async (enabled) => { currentState.settings.h3LivePreview = enabled; emitState(); return clone(currentState); },
   pickImage: async () => fixturePickerEnabled ? fixtureImagePath : null, pickVideo: async () => fixturePickerEnabled ? fixtureVideoPath : null, setFixturePickerEnabled: (enabled) => { fixturePickerEnabled = Boolean(enabled); return fixturePickerEnabled; }, getFixtureStats: () => clone(fixtureStats), getDroppedFilePath: (file) => file?.path || (file?.name === "fixture-image.png" ? fixtureImagePath : file?.name === "fixture-video.mp4" ? fixtureVideoPath : ""), saveClipboardImage: async () => "", readImageMarkup: async () => null, saveImageMarkup: async () => ({}), saveImageMask: async () => ({}), saveImageCrop: async () => null, pickWorkflow: async () => null, pickPython: async () => null, inspectWorkflow: async () => ({ supportsEndImage: false, supportsVideoExtension: false }), getBundledWorkflow: async () => null,
   getPerformanceMetrics: async () => metrics(), readAppLogs: async () => ({ directory: "", retentionDays: 7, records: [], text: "" }), openAppLogDirectory: async () => true, reportRendererError: async () => {}, reportUserAction: async () => {}, reportNotification: async () => {}, pickDirectory: async () => null, readImage: async () => imageDataUrl, readHistoryCover: async () => imageDataUrl, saveHistoryCover: async () => true, showItemInFolder: async () => true, openDirectory: async () => true, copyFile: async () => result(), openExternal: async () => true,
   enhancePrompt: async () => "", cancelPrompt: async () => result(), startPromptModel: async () => result(), releasePromptModel: async () => result(), testConnection: async () => result(), scanEnvironment: async (settings) => emptyScan(settings), startLocalService: async () => result(), restartLocalService: async () => result(), forceStopComfyProcesses: async () => result(), updateComfyUi: async () => result(), repairEnvironmentIssue: async () => result(), installCustomNode: async () => result(), installWorkflowDependency: async () => result(), installLlamaCppPython: async () => result(), installAttentionAcceleration: async () => result(),
   enqueue: async () => { fixtureStats.enqueue += 1; await delay(80); return clone(currentState); }, enqueueExtension: async () => { fixtureStats.enqueueExtension += 1; await delay(80); return clone(currentState); }, enqueueImageEdit: async () => { fixtureStats.imageEdit += 1; await delay(80); return clone(currentState); }, enqueueUpscale: async () => clone(currentState), updateUpscaleTask: async () => clone(currentState), removeTask: async () => clone(currentState), startQueue: async () => clone(currentState), pauseQueue: async () => clone(currentState), cancelTask: async () => clone(currentState), moveTask: async () => clone(currentState), duplicateTask: async () => clone(currentState), resetTask: async () => clone(currentState), deleteHistoryAsset: async () => clone(currentState), updateHistoryMetadata: async () => clone(currentState), setImageHistoryCover: async () => clone(currentState), deleteImageHistoryVersion: async () => clone(currentState),
-  onStateChanged: (listener) => { stateListeners.add(listener); return () => stateListeners.delete(listener); }, onComfyRuntimeStateChanged: () => () => {}, onTaskPreview: () => () => {}, onPromptProgress: () => () => {}, onWindowCloseRequest: () => () => {}, onAttentionInstallLog: () => () => {}, onDependencyInstallLog: () => () => {}, onHistoryMigrationProgress: () => () => {}, scanImageAssetLibrary: async () => clone(emptyLibraryScan), organizeImageAssetLibrary: async () => ({ scan: clone(emptyLibraryScan), archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles: 0, cleanedDirectories: 0, cleanedBytes: 0 }), cleanupImageAssetLibrary: async () => ({ scan: clone(emptyLibraryScan), archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles: 0, cleanedDirectories: 0, cleanedBytes: 0 }), onImageAssetLibraryProgress: () => () => {}
+  onStateChanged: (listener) => { stateListeners.add(listener); return () => stateListeners.delete(listener); }, onComfyRuntimeStateChanged: (listener) => { runtimeListeners.add(listener); return () => runtimeListeners.delete(listener); }, onTaskPreview: (listener) => { taskPreviewListeners.add(listener); return () => taskPreviewListeners.delete(listener); }, onPromptProgress: () => () => {}, onWindowCloseRequest: () => () => {}, onAttentionInstallLog: () => () => {}, onDependencyInstallLog: () => () => {}, onHistoryMigrationProgress: () => () => {}, scanImageAssetLibrary: async () => clone(emptyLibraryScan), organizeImageAssetLibrary: async () => ({ scan: clone(emptyLibraryScan), archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles: 0, cleanedDirectories: 0, cleanedBytes: 0 }), cleanupImageAssetLibrary: async () => ({ scan: clone(emptyLibraryScan), archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles: 0, cleanedDirectories: 0, cleanedBytes: 0 }), onImageAssetLibraryProgress: () => () => {}
 };
 contextBridge.exposeInMainWorld("studio", api);`;
   await fsp.writeFile(preloadPath, source, "utf8");
@@ -651,7 +776,7 @@ async function captureAll(options, preloadPath) {
         await window.loadURL(process.env.UX_UI_RENDERER_URL || "http://127.0.0.1:5173/");
         window.webContents.setZoomFactor(options.zoom);
         await waitForDom(window, "Boolean(document.querySelector('.app-shell'))", `${fixture.id} initial shell`);
-        await setupFixture(window, fixture);
+        await setupFixture(window, fixture, options);
         if (options.diagnose) console.log(`[renderer-diagnose] ${fixture.id} ${viewport.id} ${JSON.stringify(await diagnoseLayout(window))}`);
         if (options.smoke) await runInteractionSmoke(window, fixture, viewport);
         const screenshot = await window.webContents.capturePage();

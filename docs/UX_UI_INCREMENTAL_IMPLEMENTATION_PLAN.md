@@ -1,8 +1,8 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，下一阶段为 Queue proposal/approval（P09/P10）
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图已实现，下一阶段为 Queue runtime gate / P11 proposal
 > 制定日期：2026-08-20  
-> 当前版本：0.31.5
+> 当前版本：0.32.0
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -363,7 +363,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：running、paused、failed、recoverable、empty、multiple pending 六种状态批准。
 
-**当前状态（2026-08-20）**：`docs/UX_UI_P09_RENDERER_PROPOSAL.md` 已基于当前 Queue fixture、Queue DOM/CSS 和 1440/900 renderer evidence 提出任务优先候选：active task 位于 heading 后第一主体，telemetry 进入 active task 的紧凑 evidence strip，901–900px 保持操作可达，760px 以下单列。当前 P09 仍为 `proposed`，G10 前必须补隔离 running smoke；没有修改 Queue 生产 renderer。
+**当前状态（2026-08-20）**：G10 已批准 `docs/UX_UI_P09_RENDERER_PROPOSAL.md` 的任务优先构图。capture harness 已支持 running、paused、failed、recoverable、empty、multiple-pending 六种 Queue state；8 个唯一视口的 current-renderer diagnose 均无文档横溢出，900×800 隔离 running smoke 已验证 progress/stage/elapsed/preview/telemetry patch 与 pause/cancel 入口。P10 已实现：active task 位于执行区第一主体，telemetry 进入 active task 后的紧凑 evidence strip，idle/empty 使用紧凑环境 strip，running card 以状态/控制优先的 DOM 顺序覆盖 900/760px。P10 focused Queue tests 与 `npm.cmd run verify` 通过（81 files / 627 tests、production build、20 组对比度检查）；未执行真实 ComfyUI GPU 生成，G11 runtime gate 保留为环境依赖。
 
 ### P10 — Queue renderer 任务优先实现
 

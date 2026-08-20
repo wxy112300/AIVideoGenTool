@@ -8,6 +8,12 @@
 
 ## 未发布
 
+## 0.32.0 — 2026-08-20
+
+- 完成 P09/G10 Queue 当前 renderer 复核与 P10 任务优先构图：running/paused 状态先显示任务阶段、总进度、局部进度、elapsed、预览和暂停/取消入口，CPU/RAM/GPU/VRAM telemetry 移到 active task 后的紧凑 evidence strip；无运行任务时改用单行紧凑环境 strip，空队列不再伪装运行卡。
+- Queue 运行卡在窄窗口按状态与控制优先的 DOM 顺序渲染，760px 以下预览受控、pending/recovery actions 保持可达；失败/取消操作区修复宽屏内部文字截断和窄屏 action wrap。未改变队列顺序、状态机、估时算法、pause/cancel IPC、preview 语义、任务快照或 History 元数据。
+- 当前 renderer 隔离 fixture 新增 running、paused、failed、recoverable、empty、multiple-pending 六态及 running progress/preview/telemetry smoke；真实 ComfyUI GPU 生成仍未在本次 UI gate 中执行。
+
 ## 0.31.5 — 2026-08-20
 
 - 继续收敛当前 renderer 图片处理页的窄窗提交可达性：901–1120px 双栏和 760px 以下单栏为底部 sticky 提交条预留安全视觉区域，避免错误提示/加入队列操作覆盖输出分辨率等最后表单控件；不改变 DOM、控件 id、素材交互、队列 payload 或提交语义。

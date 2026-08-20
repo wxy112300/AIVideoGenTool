@@ -59,6 +59,30 @@ function queueMoveAvailability(
   };
 }
 
+function renderQueuePerformanceGrid(
+  options: QueuePageOptions,
+  className: string
+): string {
+  const metrics = options.performanceMetrics;
+  return `<section class="performance-grid queue-performance-grid ${className}" aria-label="${options.t(uiKeys.queue.performance)}">
+      ${options.performanceCard(options.t(uiKeys.queue.cpu), "metric-cpu", metrics?.cpuPercent, "%")}
+      ${options.performanceCard(options.t(uiKeys.queue.systemMemory), "metric-memory", metrics && metrics.memoryTotalBytes > 0 ? metrics.memoryUsedBytes / metrics.memoryTotalBytes * 100 : null, "%", metrics && metrics.memoryTotalBytes > 0 ? `${formatBytes(metrics.memoryUsedBytes)} / ${formatBytes(metrics.memoryTotalBytes)}` : "")}
+      ${options.performanceCard(options.t(uiKeys.queue.gpu), "metric-gpu", metrics?.gpuPercent, "%", metrics?.gpuTemperature != null ? `${metrics.gpuTemperature}°C` : "")}
+      ${options.performanceCard(options.t(uiKeys.queue.vram), "metric-vram", metrics?.vramUsedBytes != null && metrics.vramTotalBytes ? metrics.vramUsedBytes / metrics.vramTotalBytes * 100 : null, "%", metrics?.vramUsedBytes != null && metrics.vramTotalBytes != null ? `${formatBytes(metrics.vramUsedBytes)} / ${formatBytes(metrics.vramTotalBytes)}` : "")}
+    </section>`;
+}
+
+function renderQueueSectionHeading(
+  options: QueuePageOptions,
+  count: number
+): string {
+  return `<div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.executionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.executionDescription)}</span></div><span class="model-badge">${options.t(uiKeys.queue.count, { count })}</span></div>`;
+}
+
+function renderWaitingEmpty(options: QueuePageOptions): string {
+  return `<div class="empty panel queue-section-empty"><h2>${options.t(uiKeys.queue.waitingEmptyTitle)}</h2><p>${options.t(uiKeys.queue.waitingEmptyDescription)}</p></div>`;
+}
+
 export function renderQueuePage(
   state: AppState,
   options: QueuePageOptions
@@ -79,6 +103,8 @@ export function renderQueuePage(
     (state.queueRunning || (lifecycle !== "idle" && lifecycle !== "error"))
   );
   const hasWaitingTasks = state.queue.some((task) => task.status === "waiting");
+  const runningIndex = running ? activeTasks.indexOf(running) : -1;
+  const waitingTasks = activeTasks.filter((task) => task.status === "waiting");
   const primaryMode = state.queueRunning ? "end" : running ? "continue" : "start";
   const primaryLabel = state.queueRunning
     ? options.t(uiKeys.queue.end)
@@ -95,7 +121,26 @@ export function renderQueuePage(
   const primaryDisabled = ["pausing", "cancelling", "cleaning", "error"].includes(lifecycle)
     || ["starting", "restarting", "stopping"].includes(options.comfyRuntime.phase)
     || (!state.queueRunning && !running && !hasWaitingTasks);
-  const metrics = options.performanceMetrics;
+  const executionHeading = renderQueueSectionHeading(options, activeTasks.length);
+  const waitingMarkup = waitingTasks.length
+    ? waitingTasks.map((task) => {
+        const queuePosition = activeTasks.indexOf(task) + 1;
+        return options.renderTaskCard(task, queuePosition, queueMoveAvailability(activeTasks, queuePosition - 1));
+      }).join("")
+    : renderWaitingEmpty(options);
+  const queueBody = running
+    ? `<section class="queue-section queue-execution-section queue-has-active">
+        ${executionHeading}
+        <div class="queue-active-task">
+          ${options.renderTaskCard(running, runningIndex + 1, queueMoveAvailability(activeTasks, runningIndex))}
+          ${renderQueuePerformanceGrid(options, "queue-active-telemetry")}
+        </div>
+        <div class="task-list queue-pending-list">${waitingMarkup}</div>
+      </section>`
+    : `${renderQueuePerformanceGrid(options, "queue-idle-performance-grid")}
+      ${state.queue.length === 0
+        ? `<div class="empty panel queue-empty-state"><h2>${options.t(uiKeys.queue.emptyTitle)}</h2><p>${options.t(uiKeys.queue.emptyDescription)}</p><button class="secondary button-with-icon" data-page="create">${options.icon("plus")}${options.t(uiKeys.queue.create)}</button></div>`
+        : `<section class="queue-section queue-execution-section">${executionHeading}<div class="task-list">${activeTasks.length ? waitingMarkup : renderWaitingEmpty(options)}</div></section>`}`;
   return `
     <section class="page-heading queue-page-heading" aria-labelledby="queue-title">
       <div class="queue-page-heading-main">
@@ -124,15 +169,8 @@ export function renderQueuePage(
       </div>
     </section>
     <div class="queue-operation-status" id="queue-operation-status" data-tone="${operation.tone}" ${operation.visible ? "" : "hidden"} role="status" aria-live="polite"><span class="queue-operation-indicator" aria-hidden="true"></span><span id="queue-operation-message">${options.escapeHtml(operation.message)}</span></div>
-    <section class="performance-grid queue-performance-grid" aria-label="${options.t(uiKeys.queue.performance)}">
-      ${options.performanceCard(options.t(uiKeys.queue.cpu), "metric-cpu", metrics?.cpuPercent, "%")}
-      ${options.performanceCard(options.t(uiKeys.queue.systemMemory), "metric-memory", metrics && metrics.memoryTotalBytes > 0 ? metrics.memoryUsedBytes / metrics.memoryTotalBytes * 100 : null, "%", metrics && metrics.memoryTotalBytes > 0 ? `${formatBytes(metrics.memoryUsedBytes)} / ${formatBytes(metrics.memoryTotalBytes)}` : "")}
-      ${options.performanceCard(options.t(uiKeys.queue.gpu), "metric-gpu", metrics?.gpuPercent, "%", metrics?.gpuTemperature != null ? `${metrics.gpuTemperature}°C` : "")}
-      ${options.performanceCard(options.t(uiKeys.queue.vram), "metric-vram", metrics?.vramUsedBytes != null && metrics.vramTotalBytes ? metrics.vramUsedBytes / metrics.vramTotalBytes * 100 : null, "%", metrics?.vramUsedBytes != null && metrics.vramTotalBytes != null ? `${formatBytes(metrics.vramUsedBytes)} / ${formatBytes(metrics.vramTotalBytes)}` : "")}
-    </section>
-    ${state.queue.length === 0
-        ? `<div class="empty panel"><h2>${options.t(uiKeys.queue.emptyTitle)}</h2><p>${options.t(uiKeys.queue.emptyDescription)}</p><button class="secondary button-with-icon" data-page="create">${options.icon("plus")}${options.t(uiKeys.queue.create)}</button></div>`
-      : `<section class="queue-section"><div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.executionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.executionDescription)}</span></div><span class="model-badge">${options.t(uiKeys.queue.count, { count: activeTasks.length })}</span></div><div class="task-list">${activeTasks.length ? activeTasks.map((task, index) => options.renderTaskCard(task, index + 1, queueMoveAvailability(activeTasks, index))).join("") : `<div class="empty panel queue-section-empty"><h2>${options.t(uiKeys.queue.waitingEmptyTitle)}</h2><p>${options.t(uiKeys.queue.waitingEmptyDescription)}</p></div>`}</div></section>${attentionTasks.length ? `<section class="queue-section queue-attention-section"><div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.attentionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.attentionDescription)}</span></div><span class="model-badge warning-badge">${options.t(uiKeys.queue.count, { count: attentionTasks.length })}</span></div><div class="task-list">${attentionTasks.map((task) => options.renderTaskCard(task, 0)).join("")}</div></section>` : ""}`}
+    ${queueBody}
+    ${attentionTasks.length ? `<section class="queue-section queue-attention-section"><div class="queue-section-heading"><div><h2>${options.t(uiKeys.queue.attentionTitle)}</h2><span class="muted">${options.t(uiKeys.queue.attentionDescription)}</span></div><span class="model-badge warning-badge">${options.t(uiKeys.queue.count, { count: attentionTasks.length })}</span></div><div class="task-list">${attentionTasks.map((task) => options.renderTaskCard(task, 0)).join("")}</div></section>` : ""}
     `;
 }
 

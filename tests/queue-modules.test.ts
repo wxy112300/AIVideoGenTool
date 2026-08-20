@@ -6,6 +6,77 @@ import { QueueWorkerController } from "../electron/queue-worker";
 import { queueTaskInput } from "../src/renderer/pages/queue/card";
 import { queueLayoutSignature } from "../src/renderer/pages/queue/helpers";
 import { queueComfyUiStatus, queueOperationStatus } from "../src/renderer/pages/queue/live-status";
+import { renderQueuePage } from "../src/renderer/pages/queue/page";
+
+function queuePageOptions() {
+  return {
+    t: (key: string, params?: Record<string, string | number>) => `${key}${params ? JSON.stringify(params) : ""}`,
+    escapeHtml: (value: unknown) => String(value),
+    performanceMetrics: null,
+    comfyRuntime: {
+      phase: "stopped" as const,
+      ownership: "none" as const,
+      endpoint: "",
+      message: "",
+      updatedAt: "2026-08-12T12:00:00.000Z",
+      operationId: 0
+    },
+    queueRemainingSeconds: () => null,
+    queueEstimateText: () => "—",
+    performanceCard: (label: string, id: string) => `<article class="performance-card" id="${id}">${label}</article>`,
+    renderTaskCard: (task: { status: string }) => `<article class="task-card ${task.status}${task.status === "running" ? " expanded" : ""}"></article>`,
+    icon: () => ""
+  };
+}
+
+function queueFixtureTask(state: ReturnType<typeof createDefaultState>, id: string) {
+  return queueTaskFromDraft({
+    ...createDefaultDraft(),
+    startImagePath: "C:/input/start.png",
+    workflowPath: "workflow.json"
+  }, state, {
+    now: () => new Date("2026-08-12T12:00:00.000Z"),
+    id: () => id,
+    random: () => 0.5
+  });
+}
+
+describe("queue renderer task priority", () => {
+  it("places the active task and its telemetry before pending work", () => {
+    const state = createDefaultState();
+    const running = queueFixtureTask(state, "running-task");
+    const waiting = queueFixtureTask(state, "waiting-task");
+    running.status = "running";
+    state.queue = [running, waiting];
+    state.queueRunning = true;
+    state.queueLifecycle = "running";
+
+    const markup = renderQueuePage(state, queuePageOptions());
+    const activeTaskIndex = markup.indexOf('class="task-card running expanded"');
+    const telemetryIndex = markup.indexOf("queue-active-telemetry");
+    const pendingIndex = markup.indexOf("queue-pending-list");
+
+    expect(activeTaskIndex).toBeGreaterThan(-1);
+    expect(activeTaskIndex).toBeLessThan(telemetryIndex);
+    expect(telemetryIndex).toBeLessThan(pendingIndex);
+    expect(markup).not.toContain("queue-idle-performance-grid");
+    expect((markup.match(/id="metric-cpu"/g) ?? []).length).toBe(1);
+  });
+
+  it("keeps idle telemetry compact and preserves the real empty state", () => {
+    const state = createDefaultState();
+    state.queue = [queueFixtureTask(state, "waiting-task")];
+    const waitingMarkup = renderQueuePage(state, queuePageOptions());
+    expect(waitingMarkup.indexOf("queue-idle-performance-grid")).toBeLessThan(waitingMarkup.indexOf("queue-execution-section"));
+    expect(waitingMarkup).not.toContain("queue-active-telemetry");
+
+    state.queue = [];
+    const emptyMarkup = renderQueuePage(state, queuePageOptions());
+    expect(emptyMarkup).toContain("queue-idle-performance-grid");
+    expect(emptyMarkup).toContain("queue-empty-state");
+    expect(emptyMarkup).not.toContain("queue-active-telemetry");
+  });
+});
 
 describe("queue history persistence", () => {
   it("atomically removes a completed generation task and records its history snapshot", () => {

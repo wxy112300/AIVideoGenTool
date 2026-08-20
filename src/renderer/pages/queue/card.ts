@@ -150,6 +150,13 @@ export function renderQueueTaskCard(
     const inputPlaceholder = input?.kind === "placeholder"
       ? t(uiKeys.queue.card.noReferenceImage)
       : "";
+    const livePreviewMarkup = `<div class="live-preview${livePreviewRequested ? " live-preview-enabled" : ""}" data-live-preview-surface="${options.escapeHtml(task.id)}">
+            <span class="live-preview-live-dot" data-live-preview-indicator="${options.escapeHtml(task.id)}" aria-label="${t(uiKeys.queue.card.livePreviewActive)}" title="${t(uiKeys.queue.card.livePreviewActive)}" style="${preview ? "" : "display:none"}"></span>
+            <span class="live-preview-spinner" data-live-preview-spinner="${options.escapeHtml(task.id)}" role="status" aria-label="${t(uiKeys.queue.card.livePreviewLoading)}" title="${t(uiKeys.queue.card.livePreviewLoading)}" style="${livePreviewRequested && !preview ? "" : "display:none"}"></span>
+            <img id="live-preview-image-${options.escapeHtml(task.id)}" data-live-preview-image="${options.escapeHtml(task.id)}" data-live-preview-active="${preview ? "true" : "false"}" ${input?.kind === "image" ? `data-queue-input-image="${options.escapeHtml(task.id)}"` : ""} alt="${input ? t(uiKeys.queue.card.userInputPreview) : t(uiKeys.queue.card.comfyPreview)}" src="${preview ? options.escapeHtml(preview) : ""}" style="${preview ? "" : "display:none"}">
+            ${inputVideoUrl ? `<video data-queue-input-video="${options.escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}" style="${preview ? "display:none" : ""}"></video>` : ""}
+            <div id="live-preview-empty-${options.escapeHtml(task.id)}" data-live-preview-empty="${options.escapeHtml(task.id)}" style="${preview || inputVideoUrl ? "display:none" : ""}"><span>${options.icon(input ? input.kind === "image" ? "image" : "film" : "film")}</span>${inputPlaceholder ? `<small>${options.escapeHtml(inputPlaceholder)}</small>` : ""}</div>
+          </div>`;
     return `
       <article class="task-card panel running expanded">
         <div class="expanded-task-head">
@@ -157,13 +164,6 @@ export function renderQueueTaskCard(
           <div class="running-progress-value"><span>${t(uiKeys.queue.card.totalProgress)}</span><strong id="running-progress-label">${Math.round(task.progress ?? 0)}%</strong></div>
         </div>
         <div class="running-layout">
-          <div class="live-preview${livePreviewRequested ? " live-preview-enabled" : ""}" data-live-preview-surface="${options.escapeHtml(task.id)}">
-            <span class="live-preview-live-dot" data-live-preview-indicator="${options.escapeHtml(task.id)}" aria-label="${t(uiKeys.queue.card.livePreviewActive)}" title="${t(uiKeys.queue.card.livePreviewActive)}" style="${preview ? "" : "display:none"}"></span>
-            <span class="live-preview-spinner" data-live-preview-spinner="${options.escapeHtml(task.id)}" role="status" aria-label="${t(uiKeys.queue.card.livePreviewLoading)}" title="${t(uiKeys.queue.card.livePreviewLoading)}" style="${livePreviewRequested && !preview ? "" : "display:none"}"></span>
-            <img id="live-preview-image-${options.escapeHtml(task.id)}" data-live-preview-image="${options.escapeHtml(task.id)}" data-live-preview-active="${preview ? "true" : "false"}" ${input?.kind === "image" ? `data-queue-input-image="${options.escapeHtml(task.id)}"` : ""} alt="${input ? t(uiKeys.queue.card.userInputPreview) : t(uiKeys.queue.card.comfyPreview)}" src="${preview ? options.escapeHtml(preview) : ""}" style="${preview ? "" : "display:none"}">
-            ${inputVideoUrl ? `<video data-queue-input-video="${options.escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}" style="${preview ? "display:none" : ""}"></video>` : ""}
-            <div id="live-preview-empty-${options.escapeHtml(task.id)}" data-live-preview-empty="${options.escapeHtml(task.id)}" style="${preview || inputVideoUrl ? "display:none" : ""}"><span>${options.icon(input ? input.kind === "image" ? "image" : "film" : "film")}</span>${inputPlaceholder ? `<small>${options.escapeHtml(inputPlaceholder)}</small>` : ""}</div>
-          </div>
           <div class="running-copy">
             <span class="eyebrow">${t(uiKeys.queue.card.currentStep)} · <span id="running-stage">${options.escapeHtml(task.stage ?? t(uiKeys.queue.card.preparing))}</span></span>
             <div class="progress" role="progressbar" aria-label="${t(uiKeys.queue.card.taskProgress)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(task.progress ?? 0)}"><span id="running-progress-bar" style="width:${task.progress ?? 0}%"></span></div>
@@ -175,6 +175,7 @@ export function renderQueueTaskCard(
             </div>
             <p class="control-hint">${options.queueRunning ? t(uiKeys.queue.card.pauseHint) : t(uiKeys.queue.card.runningHint)}</p>
           </div>
+          ${livePreviewMarkup}
         </div>
       </article>`;
   }

@@ -1,8 +1,8 @@
 # P09 当前 renderer 的 Queue 任务优先构图提案
 
-状态：`proposed`，等待 G10 人工/强模型批准。本文只基于当前 `src/renderer/`、`src/styles/`、当前 renderer manifest 和真实 Vite/Electron fixture；不使用 `prototypes/` 的旧设计，也不在本 package 修改生产 renderer。
+状态：`approved`（G10，2026-08-20）。P10 已按本提案落地到当前 renderer；本文只基于当前 `src/renderer/`、`src/styles/`、当前 renderer manifest 和真实 Vite/Electron fixture，不使用 `prototypes/` 的旧设计。
 
-更新日期：2026-08-20；当前 package version：`0.31.5`。
+更新日期：2026-08-20；当前 package version：`0.32.0`。
 
 ## 1. Source map 与 preserve list
 
@@ -24,16 +24,22 @@ Queue 当前由以下生产 surface 组成：
 
 ## 2. Current renderer evidence
 
-manifest fixture `queue-mixed` 目前覆盖 `1440×900`、`1280×800`、`900×800`、`760×800` 及 `1121/1120/901/900/761/760` 断点。它是合成的 waiting + failed queue，manifest 已明确标注：真实 running state 仍待 runtime smoke。
+manifest fixture `queue-mixed` 覆盖 `1440×900`、`1280×800`、`900×800`、`760×800` 及 `1121/1120/901/900/761/760` 断点，默认仍是合成 waiting + failed queue。当前 capture harness 另外支持 `--queue-state running|paused|failed|recoverable|empty|multiple-pending`，六种状态均在同一组 8 个唯一视口取了 P09 诊断和 P10 当前 renderer 截图；真实 ComfyUI 生成仍未宣称完成。
 
-当前画面观察：
+P10 实施前的当前画面观察：
 
 - 1440px：heading 同时承载 queue count、ComfyUI 状态、ETA/elapsed、live preview 和开始按钮；四张 CPU/RAM/GPU/VRAM 卡先于“执行队列”，waiting card 与“需要处理” failed card 分成两个 section；
 - 900px：performance cards 变为 2×2，task preview/card 内容保持双列，操作按钮移动到整行，主要动作仍可达；长页面中 failed section 位于 waiting 内容之后；
 - 当前 baseline 没有证明 running card 的真实 preview、stage/progress、elapsed、pause/cancel 和 live telemetry 刷新，不能把 synthetic `queue-mixed` 当作 live running approval；
 - telemetry 目前在 active task 之前，用户进入 Queue 后首先看到环境数字而不是正在执行的任务；empty state 仍可直接进入 Create，但不需要四张完整 telemetry 卡占据主体。
 
-证据边界：标准 capture harness 的 route-after-load DOM wait race 仍需在 G10 前用隔离 renderer smoke 重新取证；截图是当前 renderer 的结构证据，不等价于真实 ComfyUI 生成成功。
+证据边界：截图是当前 renderer 的结构证据，不等价于真实 ComfyUI 生成成功。P09 的隔离 mock-preload running smoke 已补齐，不把它升级为 GPU/runtime 成功声明。
+
+P09/P10 evidence：
+
+- P09 旧构图证据保存在被忽略的 `temp/ux-ui-baseline/p09/queue-*` 目录：running、paused、failed、recoverable、empty、multiple-pending 六态均完成 8 视口 diagnose；所有状态的 `document.documentElement.scrollWidth` 均等于 `clientWidth`。failed/recoverable 的宽屏 action 内部截断在 P10 当前 renderer 复核中已修复。
+- P10 当前构图证据保存在被忽略的 `temp/ux-ui-baseline/p10/queue-*` 目录：running/paused 先显示 active task，telemetry 变为 active task 后的紧凑 strip；idle/empty 保留紧凑环境 strip；760px 以下 active task 为单列，失败恢复入口保持可达。
+- `--smoke --fixture queue-mixed --viewport 900x800 --queue-state running` 已通过隔离 running smoke：progress、stage、elapsed、H3 preview、CPU telemetry 更新以及 pause/cancel 入口均为 true。
 
 ## 3. Proposed composition
 
@@ -85,18 +91,18 @@ heading → operation status → active task → key telemetry → pending tasks
 
 ## 5. G10 approval checklist
 
-G10 只有在以下 evidence 齐全后才可标记 `approved`：
+G10 已批准；依据如下：
 
-1. 六种 queue state 在 `1440×900`、`1280×800`、`900×800`、`760×800` 以及 `1121/1120/901/900/761/760` 断点有当前 renderer 截图或 DOM diagnose；
-2. 至少一次真实或隔离 mock-preload running smoke 证明 active task 首先出现，包含 progress、preview、elapsed、pause/cancel 和 telemetry 更新；
-3. 900×800 首屏可见 active task 的状态、主要 progress 和 pause/cancel/recovery context，不被四张 telemetry 卡隔开；
-4. empty state 不伪装 running；failed/recoverable state 有可达恢复路径；
-5. `document.documentElement.scrollWidth === document.documentElement.clientWidth`，并记录最宽元素；
-6. queue controls、live DOM patch、focused inputs、notification completion/error 和 `npm.cmd run verify` 通过。
+1. 已取六种 queue state 在 `1440×900`、`1280×800`、`900×800`、`760×800` 以及 `1121/1120/901/900/761/760` 断点的当前 renderer 截图或 DOM diagnose；
+2. 隔离 mock-preload running smoke 已证明 active task 的 progress、preview、elapsed、pause/cancel 和 telemetry 更新；
+3. P10 当前 renderer 的 900×800 首屏先出现 active task 状态、progress 和 pause/cancel context，不再被四张 telemetry 卡隔开；
+4. empty state 不伪装 running；failed/recoverable state 保留 reset/edit/duplicate/remove 等可达入口；
+5. 六态 diagnose 均满足 `document.documentElement.scrollWidth === document.documentElement.clientWidth`，并记录内部最宽元素；
+6. Queue focused tests、live DOM patch smoke、`npm.cmd run verify`（81 files / 627 tests、production build、20 组对比度检查）通过。真实 ComfyUI GPU 生成和长生命周期仍是运行环境依赖。
 
 ## 6. Non-goals for P09
 
 - 不修改 queue state machine、估时算法、ComfyUI API、pause/cancel IPC、preview 开关语义或 task/history schema；
 - 不把旧 prototype 的 queue 构图、配色或文案作为候选实现；
-- 不在 G10 前修改 `src/renderer/pages/queue/` 或 Queue-owned CSS；
+- P09 阶段不在 G10 前修改 `src/renderer/pages/queue/` 或 Queue-owned CSS；P10 仅按本批准构图修改这些 current-renderer owner。
 - 不把 synthetic waiting + failed fixture 当作 live running 证据。
