@@ -271,4 +271,105 @@ describe("queue rapid-operation guards", () => {
       expect(state.queueLifecycle).toBe("idle");
     });
   });
+
+  it("aborts the active worker and keeps cleanup lifecycle until cleanup settles", async () => {
+    const state = createDefaultState();
+    const task = queuedTask(state);
+    task.status = "running";
+    state.queue = [task];
+    state.queueRunning = true;
+    state.queueLifecycle = "running";
+    let releaseWorker!: () => void;
+    const workerDone = new Promise<void>((resolve) => { releaseWorker = resolve; });
+    const worker = new QueueWorkerController();
+    worker.start(async () => workerDone);
+    const activeController = worker.beginTask();
+    let finishCleanup!: () => void;
+    const cleanupDone = new Promise<void>((resolve) => { finishCleanup = resolve; });
+    const cleanupCancelledTask = vi.fn(async () => {
+      await cleanupDone;
+    });
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueControlIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+      worker,
+      sendState: vi.fn(),
+      executeQueue: async () => undefined,
+      nativePromptBusy: () => false,
+      settingsForTask: (_task, settings) => settings,
+      cleanupCancelledTask,
+      updateTask: async () => state
+    });
+
+    const result = await handlers.get("queue:cancel")!({}, task.id) as AppState;
+    expect(result.queue[0]?.status).toBe("cancelled");
+    expect(activeController.signal.aborted).toBe(true);
+    await vi.waitFor(() => {
+      expect(state.queueLifecycle).toBe("cleaning");
+      expect(cleanupCancelledTask).toHaveBeenCalledOnce();
+      expect(worker.cleanupWorker).not.toBeNull();
+    });
+
+    releaseWorker();
+    await vi.waitFor(() => expect(worker.runningWorker).toBeNull());
+    finishCleanup();
+    await vi.waitFor(() => {
+      expect(state.queueLifecycle).toBe("idle");
+      expect(worker.cleanupWorker).toBeNull();
+    });
+  });
+
+  it("does not overlap a paused worker and resumes the same queue session", async () => {
+    const state = createDefaultState();
+    const task = queuedTask(state);
+    state.queue = [task];
+    state.queueStartedAt = "2026-08-20T12:00:00.000Z";
+    const worker = new QueueWorkerController();
+    let releaseFirst!: () => void;
+    const firstRun = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const executeQueue = vi.fn()
+      .mockImplementationOnce(async () => firstRun)
+      .mockResolvedValue(undefined);
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueControlIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+      worker,
+      sendState: vi.fn(),
+      executeQueue,
+      nativePromptBusy: () => false,
+      settingsForTask: (_task, settings) => settings,
+      cleanupCancelledTask: async () => undefined,
+      updateTask: async () => state
+    });
+
+    const started = await handlers.get("queue:start")!({}) as AppState;
+    expect(started.queueRunning).toBe(true);
+    expect(started.queueStartedAt).toBe("2026-08-20T12:00:00.000Z");
+    expect(executeQueue).toHaveBeenCalledOnce();
+
+    const paused = await handlers.get("queue:pause")!({}) as AppState;
+    expect(paused.queueRunning).toBe(false);
+    expect(paused.queueLifecycle).toBe("idle");
+    expect(paused.queueStartedAt).toBe("2026-08-20T12:00:00.000Z");
+
+    const blockedResume = await handlers.get("queue:start")!({}) as AppState;
+    expect(blockedResume.queueRunning).toBe(false);
+    expect(executeQueue).toHaveBeenCalledOnce();
+    expect(worker.runningWorker).not.toBeNull();
+
+    releaseFirst();
+    await vi.waitFor(() => expect(worker.runningWorker).toBeNull());
+
+    const resumed = await handlers.get("queue:start")!({}) as AppState;
+    expect(resumed.queueRunning).toBe(true);
+    expect(resumed.queueStartedAt).toBe("2026-08-20T12:00:00.000Z");
+    expect(executeQueue).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(worker.runningWorker).toBeNull());
+  });
 });

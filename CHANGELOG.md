@@ -8,7 +8,7 @@
 
 ## 未发布
 
-- G11 Queue runtime gate 增加隔离 executor 回归覆盖：成功任务的 History 收敛、claim 前取消不抢回任务、ComfyUI readiness abort 不提交 workflow；本次未启动或提交真实 ComfyUI 任务。
+- G11 Queue runtime gate 增加隔离 executor/control 回归覆盖：成功任务的 History 收敛、claim 前取消不抢回任务、ComfyUI readiness abort 不提交 workflow、active worker abort/cleanup 生命周期和暂停期间不重叠恢复；本次未启动或提交真实 ComfyUI 任务。
 
 ## 0.32.0 — 2026-08-20
 

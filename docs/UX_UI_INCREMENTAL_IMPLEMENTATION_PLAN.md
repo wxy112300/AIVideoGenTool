@@ -363,7 +363,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：running、paused、failed、recoverable、empty、multiple pending 六种状态批准。
 
-**当前状态（2026-08-20）**：G10 已批准 `docs/UX_UI_P09_RENDERER_PROPOSAL.md` 的任务优先构图。capture harness 已支持 running、paused、failed、recoverable、empty、multiple-pending 六种 Queue state；8 个唯一视口的 current-renderer diagnose 均无文档横溢出，900×800 隔离 running smoke 已验证 progress/stage/elapsed/preview/telemetry patch 与 pause/cancel 入口。P10 已实现：active task 位于执行区第一主体，telemetry 进入 active task 后的紧凑 evidence strip，idle/empty 使用紧凑环境 strip，running card 以状态/控制优先的 DOM 顺序覆盖 900/760px。P10 focused Queue tests 与 `npm.cmd run verify` 通过（81 files / 627 tests、production build、20 组对比度检查）。G11 已新增 `tests/queue-executor.test.ts` 隔离 executor gate，覆盖成功 History 收敛、claim 前取消竞态和 readiness abort 不提交三条边界；本机 `127.0.0.1:8188` 不可达，未执行真实 ComfyUI GPU 生成，真实 runtime gate 仍保留为环境依赖。
+**当前状态（2026-08-20）**：G10 已批准 `docs/UX_UI_P09_RENDERER_PROPOSAL.md` 的任务优先构图。capture harness 已支持 running、paused、failed、recoverable、empty、multiple-pending 六种 Queue state；8 个唯一视口的 current-renderer diagnose 均无文档横溢出，900×800 隔离 running smoke 已验证 progress/stage/elapsed/preview/telemetry patch 与 pause/cancel 入口。P10 已实现：active task 位于执行区第一主体，telemetry 进入 active task 后的紧凑 evidence strip，idle/empty 使用紧凑环境 strip，running card 以状态/控制优先的 DOM 顺序覆盖 900/760px。P10 focused Queue tests 与 `npm.cmd run verify` 通过（81 files / 627 tests、production build、20 组对比度检查）。G11 已新增 executor/control 隔离 gate，覆盖成功 History 收敛、claim 前取消竞态、readiness abort 不提交、active worker abort/cleanup 生命周期和暂停期间不重叠恢复五条边界；本机 `127.0.0.1:8188` 不可达，未执行真实 ComfyUI GPU 生成，真实 runtime gate 仍保留为环境依赖。
 
 ### P10 — Queue renderer 任务优先实现
 
