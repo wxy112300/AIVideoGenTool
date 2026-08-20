@@ -224,7 +224,7 @@ export function historyAlbumColumnCount(width: number, gap = 8): number {
   if (!Number.isFinite(width) || width <= 0) return 0;
   const safeGap = Number.isFinite(gap) ? Math.max(0, gap) : 8;
   const minimumCardWidth = 180;
-  const maximumCardWidth = 300;
+  const maximumCardWidth = 240;
   let columns = Math.max(1, Math.floor((width + safeGap) / (maximumCardWidth + safeGap)));
   const cardWidth = (columnCount: number) =>
     (width - safeGap * (columnCount - 1)) / columnCount;

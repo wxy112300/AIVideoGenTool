@@ -33,7 +33,7 @@ manifest 当前登记 `history-video-masonry`、`history-video-album`、`history
 - 当前 `.history-heading` 在 `max-width: 900px` 被设置为固定 `height/max-height: 68px`，与“toolbar 内容可换行、filter 可展开、焦点控件始终可达”的目标冲突；
 - 现有 cards 的 video masonry 保留原始比例，album 使用方形媒体；这些媒体主导比例与 loading/error/cover 层级应作为 preserve surface。
 
-P11 outcome：1121px 以上以及 760–561px 都保留 title/count、kind tabs、filter/count/layout 的单行关系，只解除中窄宽度的 inherited fixed toolbar height；<=560px 才安全降为标题行与控制行。album track 使用容器宽度计算，并在可行范围内保持约 `180–300px` 卡片宽度；混合宽高比的 `--history-count 8` 与 `--history-count 1` 在 900×800 的视频/图片对照中都得到相同的 `263.3px × 3` 列轨。masonry 保留媒体原始比例，在 1440/900/760 等关键窗口仍无页面横向溢出。P11 capture harness 还覆盖现有本地化 copy 下的 filter panel、no-result/clear、masonry/album、detail return、History parent nav selected 和 delete confirmation/cancel smoke；仅预期的模型 chip 文本省略会出现在诊断列表中，document/body 没有横向溢出。
+P11 outcome：1121px 以上以及 760–561px 都保留 title/count、kind tabs、filter/count/layout 的单行关系，只解除中窄宽度的 inherited fixed toolbar height；<=560px 才安全降为标题行与控制行。album track 使用容器宽度计算，并在可行范围内保持约 `180–240px` 的紧凑卡片宽度；混合宽高比的 `--history-count 8` 与 `--history-count 1` 在 900×800 的视频/图片对照中保持约 `196px × 4` 列轨，1440×900 约 `218px × 6`，760×800 约 `229px × 3`。masonry 保留媒体原始比例，在 1440/900/760 等关键窗口仍无页面横向溢出。P11 capture harness 还覆盖现有本地化 copy 下的 filter panel、no-result/clear、masonry/album、detail return、History parent nav selected 和 delete confirmation/cancel smoke；仅预期的模型 chip 文本省略会出现在诊断列表中，document/body 没有横向溢出。
 
 ## 3. Proposed composition
 

@@ -9,11 +9,11 @@ describe("history gallery layout calculations", () => {
     const wide = historyAlbumColumnCount(1200);
     const compact = historyAlbumColumnCount(528);
 
-    expect(wide).toBe(4);
+    expect(wide).toBe(5);
     expect(compact).toBe(2);
-    expect(historyAlbumColumnCount(806)).toBe(3);
+    expect(historyAlbumColumnCount(806)).toBe(4);
     expect(historyAlbumColumnCount(1200, 8)).toBe(wide);
-    expect(historyAlbumColumnCount(1200, 32)).toBe(4);
+    expect(historyAlbumColumnCount(1200, 32)).toBe(5);
   });
 
   it("keeps album cards inside the adaptive width range", () => {
@@ -23,8 +23,8 @@ describe("history gallery layout calculations", () => {
     const cardWidth = (width - gap * (columns - 1)) / columns;
 
     expect(cardWidth).toBeGreaterThanOrEqual(180);
-    expect(cardWidth).toBeLessThanOrEqual(300);
-    expect((width - gap * 2) / 3).toBeGreaterThan(300);
+    expect(cardWidth).toBeLessThanOrEqual(240);
+    expect((width - gap * 2) / 3).toBeGreaterThan(240);
     expect(historyAlbumColumnCount(360)).toBe(1);
   });
 
