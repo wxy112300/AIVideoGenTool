@@ -11,9 +11,10 @@
     "build": "npm run clean && npm run typecheck && vite build && tsc -p tsconfig.electron.json",
     "prototype:build": "node scripts/build-prototypes.mjs",
     "verify:markup-visual": "electron scripts/verify-image-markup-visual.cjs",
+    "verify:ux-ui-contrast": "node scripts/check-ux-ui-text-contrast.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "test": "vitest run --exclude \"dist/**\"",
-    "verify": "npm run test && npm run build",
+    "verify": "npm run test && npm run build && npm run verify:ux-ui-contrast",
     "start": "electron ."
   },
   "devDependencies": {

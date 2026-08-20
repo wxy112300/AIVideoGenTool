@@ -7,7 +7,7 @@
  */
 :root {
   /* Surfaces and separators. These roles retain the current renderer palette
-   * while P03/L10 moves ownership out of selector-local color literals. */
+   * while P03 moves ownership out of selector-local color literals. */
   --ux-canvas: var(--bg);
   --ux-surface-base: var(--panel);
   --ux-surface-object: var(--panel-2);
@@ -15,9 +15,13 @@
   --ux-separator-subtle: var(--border);
   --ux-separator-strong: var(--border-strong, var(--border));
 
-  /* Content */
+  /* Content. Secondary is readable supporting copy; tertiary is muted/meta;
+   * technical is reserved for paths, code and compact evidence. */
   --ux-content-primary: var(--text, #eef2f8);
-  --ux-content-secondary: var(--muted);
+  --ux-content-heading: #f5f7fb;
+  --ux-content-secondary: #c3cad5;
+  --ux-content-tertiary: var(--muted);
+  --ux-content-technical: #c9d9f1;
   --ux-content-inverse: #07111f;
 
   /* Actions and semantic feedback */

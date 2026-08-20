@@ -29,7 +29,7 @@ main { padding-top: 0; }
 
 .page-heading p {
   margin: 0;
-  color: #8792a2;
+  color: var(--ux-content-tertiary);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -42,7 +42,7 @@ main { padding-top: 0; }
   height: 68px;
   max-height: 68px;
   gap: 16px;
-  border-bottom: 1px solid rgba(54,63,76,.62);
+  border-bottom: 1px solid color-mix(in srgb, var(--ux-separator-subtle) 62%, transparent);
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   box-shadow: 0 10px 24px rgba(5,8,13,.16);
   backdrop-filter: blur(18px);
@@ -52,7 +52,7 @@ main { padding-top: 0; }
   position: sticky;
   top: 64px;
   z-index: 9;
-  border-bottom: 1px solid rgba(54,63,76,.62);
+  border-bottom: 1px solid color-mix(in srgb, var(--ux-separator-subtle) 62%, transparent);
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   box-shadow: 0 10px 24px rgba(5,8,13,.16);
   backdrop-filter: blur(18px);

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const tokenSource = readFileSync(new URL("../src/styles/00-tokens.css", import.meta.url), "utf8");
 const styleEntry = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const visualRefreshSource = readFileSync(new URL("../src/styles/02-visual-refresh.css", import.meta.url), "utf8");
 
 const semanticRoles = [
   "--ux-canvas",
@@ -11,8 +12,12 @@ const semanticRoles = [
   "--ux-surface-object",
   "--ux-surface-raised",
   "--ux-separator-subtle",
+  "--ux-separator-strong",
   "--ux-content-primary",
+  "--ux-content-heading",
   "--ux-content-secondary",
+  "--ux-content-tertiary",
+  "--ux-content-technical",
   "--ux-action-primary",
   "--ux-action-primary-strong",
   "--ux-status-danger",
@@ -44,5 +49,14 @@ describe("UX/UI semantic token foundation", () => {
     expect(tokenSource).toContain("--ux-surface-base: var(--panel)");
     expect(tokenSource).toContain("--ux-action-primary: var(--primary)");
     expect(tokenSource).toContain("--ux-status-danger: var(--danger)");
+  });
+
+  it("routes shared text and separator selectors through semantic roles", () => {
+    expect(visualRefreshSource).toContain("color: var(--ux-content-primary)");
+    expect(visualRefreshSource).toContain("color: var(--ux-content-secondary)");
+    expect(visualRefreshSource).toContain("color: var(--ux-content-tertiary)");
+    expect(visualRefreshSource).toContain("color: var(--ux-content-technical)");
+    expect(visualRefreshSource).toContain("var(--ux-separator-subtle)");
+    expect(visualRefreshSource).toContain("var(--ux-separator-strong)");
   });
 });

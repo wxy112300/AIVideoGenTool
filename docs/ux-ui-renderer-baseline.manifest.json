@@ -5,7 +5,7 @@
   "sourceVersion": "0.30.0",
   "locale": "zh-CN",
   "sourceKind": "renderer",
-  "sourceState": "working tree after P02 token aliases, P03/L10 shared surface migration, P05 nav semantics, and P08 Image Edit narrow-window rules",
+  "sourceState": "working tree after P02 token aliases, P03/L10 shared surface and P03/L11 text/separator migration, P05 nav semantics, and P08 Image Edit narrow-window rules",
   "rendererEntry": "dist/renderer/index.html",
   "captureOutputRoot": "temp/ux-ui-baseline/renderer",
   "stateFixture": "isolated synthetic state; no user data is read or changed",

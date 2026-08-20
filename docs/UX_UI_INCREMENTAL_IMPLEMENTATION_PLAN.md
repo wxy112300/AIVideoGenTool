@@ -1,6 +1,6 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10 shared surface 迁移、P05 导航语义与 P08 Image Edit 首个窄窗修复已实现，完整交互 gate 待补
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L11 shared surface/text/separator 迁移、P05 导航语义与 P08 Image Edit 首个窄窗修复已实现，完整交互 gate 待补
 > 制定日期：2026-08-20  
 > 当前版本：0.30.0
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
@@ -257,7 +257,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **回退**：恢复 token values 即可回到旧外观；不得留下半套局部蓝色覆盖。
 
-**当前状态（2026-08-20）**：G02 已先冻结当前 renderer 的 surface mapping：近黑 canvas、base/object/raised 分层保持现有冷色值，后续 action/focus/progress/status/brand 仍需单独审查。P03/L10 已实现，迁移 `body`、topbar/nav、active surface、panel、secondary/icon controls、Settings sidebar 与 ComfyUI evidence rows 到 `--ux-*` surface roles；未修改 DOM、controller、payload、状态色或布局。136/136 current-renderer screenshots、900×800 diagnose（文档级无横向滚动）、输入焦点 smoke 和 `npm.cmd run verify`（80 files / 605 tests）通过。P03 仍未标为 `verified/integrated`，L11–L15 与 G04 视觉 gate 待补。
+**当前状态（2026-08-20）**：G02 已先冻结当前 renderer 的 surface mapping：近黑 canvas、base/object/raised 分层保持现有冷色值，后续 action/focus/progress/status/brand 仍需单独审查。P03/L10–L11 已实现：L10 迁移 `body`、topbar/nav、active surface、panel、secondary/icon controls、Settings sidebar 与 ComfyUI evidence rows 到 `--ux-*` surface roles；L11 新增并迁移 heading/primary/secondary/tertiary/technical text roles 与 subtle/strong separators，未修改 DOM、controller、payload、状态色或布局。新增 `npm.cmd run verify:ux-ui-contrast` 检查 20 组文字/背景组合，最低对比度 5.46:1；136/136 current-renderer screenshots、900×800 diagnose（文档级无横向滚动）、输入焦点 smoke 和 `npm.cmd run verify`（80 files / 606 tests）通过。P03 仍未标为 `verified/integrated`，L12–L15 与 G04 视觉 gate 待补。
 
 ### P04 — 排版、间距、圆角和数字节奏
 
