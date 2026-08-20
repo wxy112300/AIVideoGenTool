@@ -3,7 +3,8 @@ export const uiKeys = {
     brand: "app.brand",
     backToCreate: "app.backToCreate",
     returnTop: "app.returnTop",
-    dismissNotification: "app.dismissNotification"
+    dismissNotification: "app.dismissNotification",
+    openSettings: "app.openSettings"
   },
   nav: {
     ariaLabel: "nav.ariaLabel",

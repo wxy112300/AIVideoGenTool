@@ -15,6 +15,7 @@ export interface ShellControllerOptions {
   clearHistoryForwardTarget(): void;
   setPage(page: Page): void;
   dismissNotification(): void;
+  runNotificationAction(actionId: string): void;
   reportUserAction(action: string, meta?: Record<string, unknown>): void;
   render(): void;
   bindConfirmationDialog(): void;
@@ -66,6 +67,16 @@ export function mountShellController(
   document.querySelector<HTMLButtonElement>("#dismiss-app-flash")?.addEventListener("click", () => {
     options.reportUserAction("dismiss-notification");
     options.dismissNotification();
+  }, { signal });
+  document.querySelector<HTMLElement>("#app-flash")?.addEventListener("click", (event) => {
+    const target = event.target instanceof HTMLElement
+      ? event.target.closest<HTMLButtonElement>("[data-notification-action]")
+      : null;
+    const actionId = target?.dataset.notificationAction;
+    if (!actionId) return;
+    event.preventDefault();
+    options.reportUserAction("notification-action", { action: actionId });
+    options.runNotificationAction(actionId);
   }, { signal });
 
   if (page === "history-detail" || page === "image-history-detail") {

@@ -1,5 +1,13 @@
 import type { AppState, NotificationKind } from "../types";
 
+export interface NotificationAction {
+  id: string;
+  label: string;
+  tone?: "primary" | "secondary";
+  dismissOnInvoke?: boolean;
+  run(): void | Promise<void>;
+}
+
 export interface AppNotification {
   id: number;
   message: string;
@@ -7,6 +15,7 @@ export interface AppNotification {
   durationMs: number;
   persistent: boolean;
   dedupeKey: string;
+  actions: NotificationAction[];
 }
 
 export const notificationDuration: Record<NotificationKind, number> = {
@@ -36,7 +45,8 @@ export function createNotification(
   id: number,
   message: string,
   kind: NotificationKind,
-  durationMs = notificationDuration[kind]
+  durationMs = notificationDuration[kind],
+  actions: ReadonlyArray<NotificationAction> = []
 ): AppNotification {
   return {
     id,
@@ -44,7 +54,8 @@ export function createNotification(
     kind,
     durationMs,
     persistent: notificationPersistent[kind],
-    dedupeKey: notificationDedupeKey(message, kind)
+    dedupeKey: notificationDedupeKey(message, kind),
+    actions: [...actions]
   };
 }
 

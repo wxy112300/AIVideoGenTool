@@ -1303,6 +1303,17 @@ function syncFlashMessage(): void {
   const message = flash.querySelector<HTMLElement>("[data-flash-message]");
   if (message) message.textContent = ui.flashMessage;
   else flash.textContent = ui.flashMessage;
+  const actionContainer = flash.querySelector<HTMLElement>("[data-flash-actions]");
+  if (actionContainer) {
+    actionContainer.replaceChildren(...(ui.flashNotification?.actions ?? []).map((action) => {
+      const button = document.createElement("button");
+      button.className = `${action.tone ?? "secondary"} flash-action`;
+      button.type = "button";
+      button.dataset.notificationAction = action.id;
+      button.textContent = action.label;
+      return button;
+    }));
+  }
   const kind = ui.flashNotification?.kind ?? "info";
   flash.dataset.kind = kind;
   flash.className = `flash flash-${kind}${ui.flashMessage ? " visible" : ""}`;
@@ -1335,6 +1346,20 @@ function dismissNotification(id?: number): void {
   displayNextNotification();
 }
 
+function runNotificationAction(actionId: string): void {
+  const notification = ui.flashNotification;
+  const action = notification?.actions.find((candidate) => candidate.id === actionId);
+  if (!notification || !action) return;
+  if (action.dismissOnInvoke !== false) dismissNotification(notification.id);
+  try {
+    void Promise.resolve(action.run()).catch((error) => {
+      showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
+    });
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
+  }
+}
+
 function showMessage(
   message: string,
   legacyOrOptions?: boolean | RendererNotifyOptions
@@ -1345,7 +1370,8 @@ function showMessage(
     ui.nextFlashNotificationId++,
     message,
     kind,
-    options?.durationMs
+    options?.durationMs,
+    options?.actions
   );
   if (notificationAlreadyPending(notification, ui.flashNotification, ui.flashNotificationQueue)) return;
   if (notificationShouldPreserveError(ui.flashNotification, kind)) {
@@ -1860,6 +1886,7 @@ function bindShell(): void {
     },
     setPage,
     dismissNotification,
+    runNotificationAction,
     reportUserAction,
     render,
     bindConfirmationDialog,

@@ -2,7 +2,7 @@
 
 状态：`proposed`，等待 G08 人工/强模型批准。本文只基于当前 `src/renderer/`、`src/styles/` 和真实 renderer fixture；不使用 `prototypes/` 的旧设计，也不在本 package 修改生产 renderer。
 
-更新日期：2026-08-20；当前 package version：`0.31.1`。
+更新日期：2026-08-20；当前 package version：`0.31.2`。
 
 ## 1. Source map 与 preserve list
 
@@ -87,4 +87,3 @@ G08 只有在以下证据齐全后才可标记 `approved`：
 - 不把旧 prototype 的暖石墨配色、按钮、文案或布局顺序当作候选实现；
 - 不借机重做 Create 的 Prompt 助手、素材库、模型选择或提交逻辑；
 - 不因当前截图 harness 的等待竞态声称运行态生成成功或失败。
-

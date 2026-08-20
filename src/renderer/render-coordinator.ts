@@ -139,6 +139,7 @@ export function createRenderCoordinator(
           queueCount: state.queue.length,
           flashMessage: ui.flashMessage,
           flashKind: ui.flashNotification?.kind ?? "info",
+          flashActions: ui.flashNotification?.actions ?? [],
           content,
           t: options.t,
           icon: options.icon,

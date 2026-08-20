@@ -312,7 +312,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：模拟扫描失败、文件打开失败、Prompt 优化失败、任务完成并发；键盘可执行恢复；`npm.cmd run verify`。
 
-**当前状态（2026-08-20）**：P06/L26 已完成第一包：`src/renderer/notifications.ts` 为 error 建立持久策略，为 info/warning/完成态保留语义时长，并增加同源去重与 error 优先级保护；shell flash 增加可聚焦的关闭按钮，关闭只更新通知状态，不触发页面重绘。相关 focused tests `11/11`、typecheck 已通过；P06 仍未 `verified/integrated`，Retry、View logs、Open Settings、并发恢复 smoke 和明确业务 action callback 尚未接入。
+**当前状态（2026-08-20）**：P06/L26–L28 已完成首个通知 package：`src/renderer/notifications.ts` 为 error 建立持久策略，为 info/warning/完成态保留语义时长，增加同源去重、error 优先级保护和瞬时 action callback；shell flash 增加可聚焦的关闭按钮与事件委托，Prompt 优化失败已接入“打开设置”恢复路径，关闭/action 只更新局部 DOM。相关 focused tests `12/12`、typecheck 已通过；P06 仍未 `verified/integrated`，L29 的调用点分流、并发恢复 smoke 和 G07 runtime gate 尚未完成。
 
 ### P07 — Create 窄窗口构图 renderer review
 

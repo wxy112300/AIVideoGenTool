@@ -43,6 +43,21 @@ describe("renderer notifications", () => {
     expect(notificationShouldPreserveError(current, "error")).toBe(false);
   });
 
+  it("keeps transient action callbacks attached to the notification snapshot", () => {
+    const run = vi.fn();
+    const notification = createNotification(1, "优化失败", "error", undefined, [{
+      id: "open-settings",
+      label: "打开设置",
+      tone: "primary",
+      run
+    }]);
+
+    expect(notification.actions).toHaveLength(1);
+    expect(notification.actions[0]).toMatchObject({ id: "open-settings", label: "打开设置", tone: "primary" });
+    notification.actions[0]?.run();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it("detects a newly persisted video task without treating initial state as completion", () => {
     const previous = createDefaultState();
     const next = structuredClone(previous);

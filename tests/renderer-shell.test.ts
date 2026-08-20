@@ -49,6 +49,7 @@ describe("renderer shell navigation semantics", () => {
       queueCount: 0,
       flashMessage: "扫描失败",
       flashKind: "error",
+      flashActions: [{ id: "open-settings", label: "打开设置", tone: "primary", run: () => undefined }],
       content: "<div>content</div>",
       t: translator.t,
       icon: () => "<svg></svg>",
@@ -63,5 +64,7 @@ describe("renderer shell navigation semantics", () => {
     expect(html).toContain('id="dismiss-app-flash"');
     expect(html).toContain('aria-label="关闭通知"');
     expect(html).toContain('data-flash-message>扫描失败</span>');
+    expect(html).toContain('data-notification-action="open-settings"');
+    expect(html).toContain(">打开设置</button>");
   });
 });

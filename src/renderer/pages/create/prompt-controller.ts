@@ -19,6 +19,7 @@ import {
 import { h3PromptPackFor, h3PromptPresetForMode, promptSnippetFor } from "../../prompt-packs";
 import { isMiniMaxH3Model, isMiniMaxH3R2vModel } from "../../../core/workflow";
 import type { RendererCleanup, RendererContext } from "../../contracts";
+import { uiKeys } from "../../../core/i18n-keys";
 import {
   activePrompt,
   h3PromptModeForDraft,
@@ -312,7 +313,15 @@ export function mountCreatePromptController(
       ];
       options.patchDraft(promptPatchForDraft(nextDraft, versions, versions.length - 1));
     } catch (error) {
-      options.context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+      options.context.notify(error instanceof Error ? error.message : String(error), {
+        kind: "error",
+        actions: [{
+          id: "open-settings",
+          label: options.context.t(uiKeys.app.openSettings),
+          tone: "primary",
+          run: () => options.context.navigate("settings")
+        }]
+      });
     } finally {
       options.setPromptEnhancing(false);
       options.context.requestRender();

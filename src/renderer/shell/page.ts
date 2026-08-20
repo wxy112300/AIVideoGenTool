@@ -1,5 +1,6 @@
 import type { Page } from "../contracts";
 import type { NotificationKind } from "../../types";
+import type { NotificationAction } from "../notifications";
 import type { Translate } from "../../core/i18n";
 import { uiKeys } from "../../core/i18n-keys";
 
@@ -9,6 +10,7 @@ export interface ShellPageOptions {
   queueCount: number;
   flashMessage: string;
   flashKind: NotificationKind;
+  flashActions?: ReadonlyArray<NotificationAction>;
   content: string;
   t: Translate;
   icon(name: string, className?: string): string;
@@ -24,6 +26,9 @@ export function renderShell(options: ShellPageOptions): string {
   const historyShell = options.page === "history" ||
     options.page === "history-detail" ||
     options.page === "image-history-detail";
+  const flashActions = (options.flashActions ?? []).map((action) =>
+    `<button class="${action.tone ?? "secondary"} flash-action" type="button" data-notification-action="${options.escapeHtml(action.id)}">${options.escapeHtml(action.label)}</button>`
+  ).join("");
   return `
     <div class="app-shell ${historyShell ? "history-shell" : ""}">
       <header class="topbar">
@@ -50,7 +55,7 @@ export function renderShell(options: ShellPageOptions): string {
             .join("")}
         </nav>
       </header>
-      <div class="flash flash-${options.flashKind} ${options.flashMessage ? "visible" : ""}" id="app-flash" data-kind="${options.flashKind}" role="${options.flashKind === "error" ? "alert" : "status"}" aria-live="${options.flashKind === "error" ? "assertive" : "polite"}"><span class="flash-message" data-flash-message>${options.escapeHtml(options.flashMessage)}</span><button class="icon-button flash-dismiss" id="dismiss-app-flash" type="button" aria-label="${options.escapeHtml(options.t(uiKeys.app.dismissNotification))}" title="${options.escapeHtml(options.t(uiKeys.app.dismissNotification))}">${options.icon("x")}</button></div>
+      <div class="flash flash-${options.flashKind} ${options.flashMessage ? "visible" : ""}" id="app-flash" data-kind="${options.flashKind}" role="${options.flashKind === "error" ? "alert" : "status"}" aria-live="${options.flashKind === "error" ? "assertive" : "polite"}"><span class="flash-message" data-flash-message>${options.escapeHtml(options.flashMessage)}</span><span class="flash-actions" data-flash-actions>${flashActions}</span><button class="icon-button flash-dismiss" id="dismiss-app-flash" type="button" aria-label="${options.escapeHtml(options.t(uiKeys.app.dismissNotification))}" title="${options.escapeHtml(options.t(uiKeys.app.dismissNotification))}">${options.icon("x")}</button></div>
       <main>${options.content}</main>
     </div>
     <button class="history-back-top" id="history-back-top" type="button" aria-label="${options.escapeHtml(options.t(uiKeys.app.returnTop))}" title="${options.escapeHtml(options.t(uiKeys.app.returnTop))}">${options.icon("arrow-up")}</button>

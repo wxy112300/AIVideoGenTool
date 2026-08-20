@@ -8,6 +8,11 @@
 
 ## 未发布
 
+## 0.31.2 — 2026-08-20
+
+- 完成 P06/L27–L28：全局通知支持瞬时的 Retry/View logs/Open Settings 类 action 结构和键盘事件委托，并接入一条明确的 Prompt 优化失败 → 打开设置恢复路径；action callback 不写入持久化状态、不改变 IPC 或 workflow payload。
+- 通知 action 与关闭按钮保持局部 DOM 更新，错误仍可追溯且不会被普通页面刷新打断；P06/L29 的调用点分流、并发恢复和 G07 runtime smoke 仍待完成。
+
 ## 0.31.1 — 2026-08-20
 
 - 完成 P06/L26 通知反馈第一包：info、warning、任务完成和队列完成消息按语义自动消失，error 默认持久显示并可通过键盘可达的关闭按钮恢复页面操作。
