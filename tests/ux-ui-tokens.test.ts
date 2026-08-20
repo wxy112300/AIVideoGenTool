@@ -18,12 +18,19 @@ const semanticRoles = [
   "--ux-content-secondary",
   "--ux-content-tertiary",
   "--ux-content-technical",
+  "--ux-action-primary-fill",
+  "--ux-action-primary-hover-fill",
+  "--ux-action-secondary-hover-surface",
+  "--ux-action-pressed-transform",
   "--ux-action-primary",
   "--ux-action-primary-strong",
   "--ux-status-danger",
   "--ux-status-success",
   "--ux-status-warning",
   "--ux-focus-ring",
+  "--ux-focus-ring-width",
+  "--ux-focus-control-border",
+  "--ux-focus-control-glow",
   "--ux-elevation-panel",
   "--ux-type-page",
   "--ux-space-4",
@@ -58,5 +65,14 @@ describe("UX/UI semantic token foundation", () => {
     expect(visualRefreshSource).toContain("color: var(--ux-content-technical)");
     expect(visualRefreshSource).toContain("var(--ux-separator-subtle)");
     expect(visualRefreshSource).toContain("var(--ux-separator-strong)");
+  });
+
+  it("routes shared action and focus selectors through semantic roles", () => {
+    expect(visualRefreshSource).toContain("transform: var(--ux-action-pressed-transform)");
+    expect(visualRefreshSource).toContain("outline: var(--ux-focus-ring-width) solid var(--ux-focus-ring)");
+    expect(visualRefreshSource).toContain("background: var(--ux-action-primary-fill)");
+    expect(visualRefreshSource).toContain("background: var(--ux-action-primary-hover-fill)");
+    expect(visualRefreshSource).toContain("border-color: var(--ux-focus-control-border)");
+    expect(visualRefreshSource).toContain("var(--ux-focus-control-glow)");
   });
 });

@@ -34,10 +34,10 @@ body {
 ::selection { color: var(--ux-content-inverse); background: var(--primary); }
 button, input, select, textarea { letter-spacing: inherit; }
 button { transition: color .14s ease, background .14s ease, border-color .14s ease, transform .14s ease, box-shadow .14s ease; }
-button:not(:disabled):active { transform: translateY(1px); }
+button:not(:disabled):active { transform: var(--ux-action-pressed-transform); }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible {
-  outline: 2px solid rgba(138, 180, 255, .9);
-  outline-offset: 2px;
+  outline: var(--ux-focus-ring-width) solid var(--ux-focus-ring);
+  outline-offset: var(--ux-focus-ring-offset);
 }
 h1, h2, h3 { color: var(--ux-content-heading); letter-spacing: -.018em; }
 h1 { margin: 0 0 7px; font-size: clamp(25px, 2.3vw, 31px); font-weight: 680; line-height: 1.18; }
@@ -140,17 +140,21 @@ main { padding-top: 6px; }
   font-weight: 590;
 }
 .primary {
-  color: #07111f;
-  background: linear-gradient(180deg, #9cc1ff, #76a8fb);
-  box-shadow: 0 7px 18px rgba(60, 119, 218, .18);
+  color: var(--ux-action-primary-text);
+  background: var(--ux-action-primary-fill);
+  box-shadow: var(--ux-action-primary-shadow);
 }
-.primary:hover { color: #050c16; background: linear-gradient(180deg, #b0ceff, #8db8ff); box-shadow: 0 9px 24px rgba(60,119,218,.25); }
-.secondary { border-color: #353e4c; color: #e3e8ef; background: var(--ux-surface-raised); }
-.secondary:hover { border-color: #526073; background: #272e3a; }
-.ghost { color: #aeb7c4; }
-.ghost:hover { color: #eef2f8; background: rgba(255,255,255,.045); }
+.primary:hover {
+  color: var(--ux-action-primary-hover-text);
+  background: var(--ux-action-primary-hover-fill);
+  box-shadow: var(--ux-action-primary-hover-shadow);
+}
+.secondary { border-color: var(--ux-action-secondary-border); color: var(--ux-action-secondary-text); background: var(--ux-surface-raised); }
+.secondary:hover { border-color: var(--ux-action-secondary-hover-border); background: var(--ux-action-secondary-hover-surface); }
+.ghost { color: var(--ux-action-ghost-text); }
+.ghost:hover { color: var(--ux-action-ghost-hover-text); background: var(--ux-action-ghost-hover-surface); }
 .danger { color: #ff9a9d !important; }
-.icon-button { color: #bdc6d2; background: var(--ux-surface-object); }
+.icon-button { color: var(--ux-action-icon-text); background: var(--ux-surface-object); }
 
 textarea, input, select {
   border-color: #303846;
@@ -161,8 +165,8 @@ textarea, input, select {
 }
 textarea:hover, input:hover, select:hover { border-color: #414c5d; }
 textarea:focus, input:focus, select:focus {
-  border-color: #6d9ce8;
-  box-shadow: 0 0 0 3px rgba(101,151,255,.12);
+  border-color: var(--ux-focus-control-border);
+  box-shadow: 0 0 0 3px var(--ux-focus-control-glow);
 }
 textarea { min-height: 148px; padding: 14px 15px; line-height: 1.7; resize: vertical; }
 .prompt-editor-shell {

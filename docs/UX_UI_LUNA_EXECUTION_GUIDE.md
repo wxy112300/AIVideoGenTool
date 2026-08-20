@@ -32,7 +32,7 @@ P00–P20 的依赖、preserve list 和集成 gate 已经清楚，但部分 Phas
 - P00 current renderer baseline 已 `verified`，已有 `UX_UI_RENDERER_BASELINE.md`、manifest、capture harness 和136张截图；L00/L01只在 reviewer 明确要求重新基线时派发；
 - G01“当前 renderer 是设计来源”已完成；G02 已先冻结 surface mapping，具体 action/focus/progress/status/brand、type 和 radius 变化仍需 current-renderer visual gate；
 - P02 语义 token 骨架已实现；在 reviewer 对现有 diff 完成 package mapping 前，不得重新派发 L06–L09；
-- P03/L10 shared surface 与 P03/L11 text/separator 迁移已实现并通过 current-renderer capture、900×800 diagnose/smoke、20 组对比度检查与 `npm.cmd run verify`；不得重复派发 L10/L11，下一 package 从 L12 开始；
+- P03/L10 shared surface、P03/L11 text/separator 与 P03/L12 action/focus 迁移已实现并通过 current-renderer capture、900×800 diagnose/smoke、disabled submit canary、20 组对比度检查与 `npm.cmd run verify`；不得重复派发 L10–L12，下一 package 从 L13 开始；
 - P05 的 top-level nav `aria-current` 已实现，不能重复执行相同修改；
 - P08 的 Image Edit 首个 overflow 修复已实现，不能直接重跑 L30；其余 Create gate仍待完成；
 - Settings/runtime 工作仍在变化，G14 未满足前不得派发 L50–L60。

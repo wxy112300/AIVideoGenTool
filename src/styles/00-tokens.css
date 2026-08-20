@@ -24,17 +24,36 @@
   --ux-content-technical: #c9d9f1;
   --ux-content-inverse: #07111f;
 
-  /* Actions and semantic feedback */
+  /* Shared action states. L12 keeps the current renderer values while
+   * moving interaction ownership out of shared selector-local literals. */
   --ux-action-primary: var(--primary);
   --ux-action-primary-strong: var(--primary-strong);
   --ux-action-primary-surface: var(--primary-surface, transparent);
+  --ux-action-primary-text: var(--ux-content-inverse);
+  --ux-action-primary-fill: linear-gradient(180deg, #9cc1ff, #76a8fb);
+  --ux-action-primary-hover-text: #050c16;
+  --ux-action-primary-hover-fill: linear-gradient(180deg, #b0ceff, #8db8ff);
+  --ux-action-primary-shadow: 0 7px 18px rgba(60, 119, 218, .18);
+  --ux-action-primary-hover-shadow: 0 9px 24px rgba(60, 119, 218, .25);
+  --ux-action-secondary-border: #353e4c;
+  --ux-action-secondary-text: #e3e8ef;
+  --ux-action-secondary-hover-border: #526073;
+  --ux-action-secondary-hover-surface: #272e3a;
+  --ux-action-ghost-text: #aeb7c4;
+  --ux-action-ghost-hover-text: var(--ux-content-primary);
+  --ux-action-ghost-hover-surface: rgba(255, 255, 255, .045);
+  --ux-action-icon-text: #bdc6d2;
+  --ux-action-pressed-transform: translateY(1px);
   --ux-status-danger: var(--danger);
   --ux-status-success: var(--success);
   --ux-status-warning: var(--warning, #f4bd6a);
 
   /* Focus and elevation */
   --ux-focus-ring: rgba(138, 180, 255, .9);
+  --ux-focus-ring-width: 2px;
   --ux-focus-ring-offset: 2px;
+  --ux-focus-control-border: #6d9ce8;
+  --ux-focus-control-glow: rgba(101, 151, 255, .12);
   --ux-elevation-panel: var(--shadow, 0 18px 48px rgba(0, 0, 0, .22));
 
   /* Type roles: values match the current renderer before P04 changes them. */
