@@ -6,6 +6,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 const workspace = path.resolve(__dirname, "..");
+const packageJson = JSON.parse(fs.readFileSync(path.join(workspace, "package.json"), "utf8"));
 const manifestPath = path.join(workspace, "docs", "ux-ui-renderer-baseline.manifest.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const userDataRoot = path.join(os.tmpdir(), "local-video-studio-ux-renderer", `run-${process.pid}`);
@@ -487,7 +488,7 @@ const emptyScan = (settings) => ({
 });
 const emptyLibraryScan = { libraryDirectory: "", totalReferences: 0, managedReferences: 0, archiveCandidates: 0, missingReferences: [], orphanFiles: [], archiveBytes: 0, orphanBytes: 0 };
 const api = {
-  getState: async () => clone(currentState), getComfyRuntimeState: async () => clone(runtimeState), getAppVersion: async () => "0.30.0", setSettingsDirty: async () => {}, respondWindowClose: async () => {},
+  getState: async () => clone(currentState), getComfyRuntimeState: async () => clone(runtimeState), getAppVersion: async () => ${JSON.stringify(packageJson.version)}, setSettingsDirty: async () => {}, respondWindowClose: async () => {},
   saveDraft: async (draft) => { currentState.draft = clone(draft); emitState(); return clone(currentState); }, saveImageDraft: async (draft) => { currentState.imageDraft = clone(draft); emitState(); return clone(currentState); }, saveSettings: async (settings) => { currentState.settings = clone(settings); emitState(); return clone(currentState); }, setQueueH3LivePreview: async (enabled) => { currentState.settings.h3LivePreview = enabled; emitState(); return clone(currentState); },
   pickImage: async () => null, pickVideo: async () => null, getDroppedFilePath: (file) => file?.path ?? "", saveClipboardImage: async () => "", readImageMarkup: async () => null, saveImageMarkup: async () => ({}), saveImageMask: async () => ({}), saveImageCrop: async () => null, pickWorkflow: async () => null, pickPython: async () => null, inspectWorkflow: async () => ({ supportsEndImage: false, supportsVideoExtension: false }), getBundledWorkflow: async () => null,
   getPerformanceMetrics: async () => metrics(), readAppLogs: async () => ({ directory: "", retentionDays: 7, records: [], text: "" }), openAppLogDirectory: async () => true, reportRendererError: async () => {}, reportUserAction: async () => {}, reportNotification: async () => {}, pickDirectory: async () => null, readImage: async () => imageDataUrl, readHistoryCover: async () => imageDataUrl, saveHistoryCover: async () => true, showItemInFolder: async () => true, openDirectory: async () => true, copyFile: async () => result(), openExternal: async () => true,

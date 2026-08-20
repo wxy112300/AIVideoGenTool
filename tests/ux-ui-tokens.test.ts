@@ -26,6 +26,18 @@ const semanticRoles = [
   "--ux-action-pressed-transform",
   "--ux-action-primary",
   "--ux-action-primary-strong",
+  "--ux-brand-mark-text",
+  "--ux-brand-mark-surface",
+  "--ux-brand-hover-surface",
+  "--ux-nav-shell-border",
+  "--ux-nav-shell-surface",
+  "--ux-nav-text",
+  "--ux-nav-hover-text",
+  "--ux-nav-hover-surface",
+  "--ux-nav-active-text",
+  "--ux-nav-active-surface",
+  "--ux-nav-active-border",
+  "--ux-nav-active-indicator",
   "--ux-status-info",
   "--ux-status-danger",
   "--ux-status-success",
@@ -104,5 +116,21 @@ describe("UX/UI semantic token foundation", () => {
     expect(accelerationSource).toContain(".flash-warning { border-color: var(--ux-status-warning-notice-border)");
     expect(accelerationSource).toContain(".flash-error { border-color: var(--ux-status-danger-notice-border)");
     expect(accelerationSource).toContain(".flash-task-complete { border-color: var(--ux-status-success-notice-border)");
+  });
+
+  it("routes brand and navigation decoration through shell roles without glow", () => {
+    const topbar = visualRefreshSource.match(/\.topbar \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const brandMark = visualRefreshSource.match(/\.brand-mark \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const activeNav = visualRefreshSource.match(/\.nav-button\.active \{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(visualRefreshSource).toContain("background: var(--ux-brand-hover-surface)");
+    expect(brandMark).toContain("background: var(--ux-brand-mark-surface)");
+    expect(brandMark).toContain("box-shadow: none");
+    expect(topbar).toContain("box-shadow: none");
+    expect(visualRefreshSource).toContain("border: 1px solid var(--ux-nav-shell-border)");
+    expect(visualRefreshSource).toContain("background: var(--ux-nav-shell-surface)");
+    expect(visualRefreshSource).toContain("background: var(--ux-nav-hover-surface)");
+    expect(activeNav).toContain("border-color: var(--ux-nav-active-border)");
+    expect(activeNav).toContain("box-shadow: none");
+    expect(visualRefreshSource).toContain("background: var(--ux-nav-active-indicator)");
   });
 });

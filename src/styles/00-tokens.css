@@ -45,6 +45,21 @@
   --ux-action-icon-text: #bdc6d2;
   --ux-action-pressed-transform: translateY(1px);
 
+  /* Brand and navigation roles. L14 keeps selected/hover feedback but
+   * removes decorative glow from the shell and reuses action surfaces. */
+  --ux-brand-mark-text: var(--ux-content-inverse);
+  --ux-brand-mark-surface: var(--ux-action-primary-fill);
+  --ux-brand-hover-surface: var(--ux-action-ghost-hover-surface);
+  --ux-nav-shell-border: color-mix(in srgb, var(--ux-separator-strong) 48%, transparent);
+  --ux-nav-shell-surface: color-mix(in srgb, var(--ux-surface-object) 72%, transparent);
+  --ux-nav-text: var(--ux-content-tertiary);
+  --ux-nav-hover-text: var(--ux-content-primary);
+  --ux-nav-hover-surface: var(--ux-action-ghost-hover-surface);
+  --ux-nav-active-text: var(--ux-content-heading);
+  --ux-nav-active-surface: var(--ux-surface-raised);
+  --ux-nav-active-border: color-mix(in srgb, var(--ux-status-info) 18%, transparent);
+  --ux-nav-active-indicator: var(--ux-action-primary);
+
   /* Shared status and badge states. L13 keeps the current renderer values
    * while moving success/warning/danger/info ownership out of selectors. */
   --ux-status-info: var(--primary);

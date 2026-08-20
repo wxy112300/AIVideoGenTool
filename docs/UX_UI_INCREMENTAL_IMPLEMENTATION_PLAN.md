@@ -1,8 +1,8 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L13 shared surface/text/separator/action/status 迁移、P05 导航语义与 P08 Image Edit 首个窄窗修复已实现，完整交互 gate 待补
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L14 shared surface/text/separator/action/status/brand-nav 迁移、P05 导航语义与 P08 Image Edit 首个窄窗修复已实现，完整交互 gate 待补
 > 制定日期：2026-08-20  
-> 当前版本：0.30.0
+> 当前版本：0.30.1
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -257,7 +257,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **回退**：恢复 token values 即可回到旧外观；不得留下半套局部蓝色覆盖。
 
-**当前状态（2026-08-20）**：G02 已先冻结当前 renderer 的 surface mapping：近黑 canvas、base/object/raised 分层保持现有冷色值，后续 progress/brand 仍需单独审查。P03/L10–L13 已实现：L10 迁移 `body`、topbar/nav、active surface、panel、secondary/icon controls、Settings sidebar 与 ComfyUI evidence rows 到 `--ux-*` surface roles；L11 新增并迁移 heading/primary/secondary/tertiary/technical text roles 与 subtle/strong separators；L12 将 shared primary/secondary/ghost/icon actions、pressed transform、global focus ring 与 input focus glow 迁移到语义 roles；L13 将 shared badge、save state、task status、availability badge 与四类 flash notice 迁移到 success/warning/danger/info semantic roles，保留当前 renderer 的颜色、透明度、状态含义、DOM、controller、payload 和布局。L13 为语义 zero-visual-diff，本轮版本仍为 `0.30.0`。新增 `npm.cmd run verify:ux-ui-contrast` 检查 20 组文字/背景组合，最低对比度 5.46:1；136/136 current-renderer screenshots、全矩阵 diagnose、`create-image-edit 900×800` 输入焦点 smoke、四状态 selector matrix、disabled submit canary 和 `npm.cmd run verify`（80 files / 608 tests）通过。P03 仍未标为 `verified/integrated`，L14–L15 与 G04 视觉 gate 待补。
+**当前状态（2026-08-20）**：G02 已先冻结当前 renderer 的 surface mapping：近黑 canvas、base/object/raised 分层保持现有冷色值，后续 progress 仍需单独审查。P03/L10–L14 已实现：L10 迁移 `body`、topbar/nav、active surface、panel、secondary/icon controls、Settings sidebar 与 ComfyUI evidence rows 到 `--ux-*` surface roles；L11 新增并迁移 heading/primary/secondary/tertiary/technical text roles 与 subtle/strong separators；L12 将 shared primary/secondary/ghost/icon actions、pressed transform、global focus ring 与 input focus glow 迁移到语义 roles；L13 将 shared badge、save state、task status、availability badge 与四类 flash notice 迁移到 success/warning/danger/info semantic roles；L14 将 brand mark、topbar 和 active nav 的装饰颜色迁移到 brand/nav roles，移除装饰性 glow，保留活动导航的背景、边界、下划线和状态反馈。L14 是首个可见 shell 差异，本轮版本升为 `0.30.1`；未改变 DOM、controller、payload、布局或交互语义。`136/136` current-renderer screenshots、全矩阵 diagnose、`create-image-edit 900×800` 输入焦点 smoke、L14 shell canary、focused token tests、`npm.cmd run verify`（80 files / 609 tests）和 20 组对比度检查通过。P03 仍未标为 `verified/integrated`，下一 package 为 L15，之后进入 G04 视觉 gate。
 
 ### P04 — 排版、间距、圆角和数字节奏
 

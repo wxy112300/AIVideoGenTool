@@ -53,39 +53,40 @@ code { color: var(--ux-content-technical); font-size: .86em; }
   padding: 12px 34px;
   border-color: color-mix(in srgb, var(--ux-separator-strong) 48%, transparent);
   background: color-mix(in srgb, var(--ux-canvas) 86%, transparent);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, .12);
+  box-shadow: none;
 }
 .brand { gap: 11px; padding: 7px 9px 7px 4px; border-radius: 11px; font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
-.brand:hover { background: rgba(255,255,255,.035); }
+.brand:hover { background: var(--ux-brand-hover-surface); }
 .brand-mark {
   width: 31px;
   height: 31px;
   border-radius: 10px;
-  color: #07101e;
-  background: linear-gradient(145deg, #a6c7ff, #699eff);
-  box-shadow: 0 6px 18px rgba(75, 132, 230, .24);
+  color: var(--ux-brand-mark-text);
+  background: var(--ux-brand-mark-surface);
+  box-shadow: none;
 }
 nav {
   gap: 4px;
   padding: 4px;
-  border: 1px solid color-mix(in srgb, var(--ux-separator-strong) 48%, transparent);
+  border: 1px solid var(--ux-nav-shell-border);
   border-radius: 13px;
-  background: color-mix(in srgb, var(--ux-surface-object) 72%, transparent);
+  background: var(--ux-nav-shell-surface);
 }
 .nav-button {
   position: relative;
   min-height: 38px;
   padding: 8px 15px;
   border-radius: 9px;
-  color: var(--ux-content-tertiary);
+  color: var(--ux-nav-text);
   font-size: 13px;
   font-weight: 570;
 }
-.nav-button:hover { color: #e5eaf2; background: rgba(255,255,255,.04); }
+.nav-button:hover { color: var(--ux-nav-hover-text); background: var(--ux-nav-hover-surface); }
 .nav-button.active {
-  color: #f3f7ff;
-  background: var(--ux-surface-raised);
-  box-shadow: inset 0 0 0 1px rgba(138,180,255,.16), 0 4px 12px rgba(0,0,0,.14);
+  color: var(--ux-nav-active-text);
+  background: var(--ux-nav-active-surface);
+  border-color: var(--ux-nav-active-border);
+  box-shadow: none;
 }
 .nav-button.active::after {
   content: "";
@@ -95,7 +96,7 @@ nav {
   bottom: 4px;
   height: 2px;
   border-radius: 2px;
-  background: var(--primary);
+  background: var(--ux-nav-active-indicator);
 }
 .badge {
   margin-left: 7px;
