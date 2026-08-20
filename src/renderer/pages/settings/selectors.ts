@@ -17,6 +17,7 @@ import type { CustomNodeInstallPhase } from "./node-install-queue";
 
 export interface SettingsEnvironmentItemState extends EnvironmentItem {
   tone: SettingsStatusTone;
+  liveState?: "running" | "unavailable";
 }
 
 export function deriveEnvironmentOverviewItems(
@@ -30,12 +31,13 @@ export function deriveEnvironmentOverviewItems(
           ...item,
           ok: comfyConnected,
           status: comfyConnected ? "available" : "warning",
-          detail: `${comfyConnected ? "运行中" : "未运行或无法连接"} · ${environmentScan?.comfyUrl}/system_stats`
+          detail: `${environmentScan?.comfyUrl}/system_stats`
         }
       : item;
     return {
       ...projectedItem,
-      tone: environmentItemStatusTone(projectedItem)
+      tone: environmentItemStatusTone(projectedItem),
+      ...(hasLiveStatus ? { liveState: comfyConnected ? "running" : "unavailable" } : {})
     };
   });
 }

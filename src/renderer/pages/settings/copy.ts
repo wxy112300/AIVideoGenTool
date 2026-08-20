@@ -1,7 +1,23 @@
-import type { UiLocale } from "../../../types";
+import type { ModelScanProfile, UiLocale } from "../../../types";
 
 type SettingsCopyKey =
   | "video.title"
+  | "model.meta.llamaReady"
+  | "model.meta.multimodalReady"
+  | "model.meta.qwenReady"
+  | "model.meta.gemmaReady"
+  | "model.meta.nativeReady"
+  | "model.meta.runtimeMissing"
+  | "model.meta.runtimeMissingHint"
+  | "model.meta.fileReady"
+  | "model.meta.workflowPending"
+  | "model.meta.llamaMissing"
+  | "model.meta.multimodalMissing"
+  | "model.meta.qwenMissing"
+  | "model.meta.nativeMissing"
+  | "model.meta.genericMissing"
+  | "model.component.optional"
+  | "model.component.viewInfo"
   | "video.description"
   | "video.defaultModel"
   | "video.defaultExtensionModel"
@@ -237,7 +253,9 @@ type SettingsCopyKey =
   | "shared.recommended"
   | "shared.slower"
   | "shared.fast"
-  | "shared.longer";
+  | "shared.longer"
+  | "shared.listSeparator"
+  | "shared.labelSeparator";
 
 type Params = Record<string, string | number>;
 
@@ -245,6 +263,22 @@ type SettingsCopyCatalog = Record<SettingsCopyKey, string>;
 
 const zhCN: SettingsCopyCatalog = {
   "video.title": "视频模型",
+  "model.meta.llamaReady": "GGUF + mmproj 文件完整；由应用自管理 llama-server",
+  "model.meta.multimodalReady": "LLM GGUF + mmproj 文件完整；通过 ComfyUI MultiModal Prompt Nodes 处理 H3 提示词",
+  "model.meta.qwenReady": "Qwen3-VL 8B + PEFT LoRA 文件完整；通过 ComfyUI Qwen-VL LoRA 处理 H3 提示词",
+  "model.meta.gemmaReady": "LLM GGUF + mmproj 文件已就绪；通过 ComfyUI Prompt Writer 处理视频和图片提示词",
+  "model.meta.nativeReady": "ComfyUI text_encoders 文件已就绪；可通过原生 TextGenerate 进行本地扩写",
+  "model.meta.runtimeMissing": "缺少运行节点：{nodes}",
+  "model.meta.runtimeMissingHint": "请启动 ComfyUI 后重新扫描",
+  "model.meta.fileReady": "文件扫描通过，可用于配置",
+  "model.meta.workflowPending": "依赖已完整；生成工作流将在下一阶段接入",
+  "model.meta.llamaMissing": "补齐 GGUF + mmproj，并配置 llama-server.exe 后才能使用",
+  "model.meta.multimodalMissing": "补齐 Qwen3.6 GGUF、mmproj 与 MultiModal Prompt Nodes 后才能接入本地扩写",
+  "model.meta.qwenMissing": "补齐 Qwen3-VL 8B 基座、H3 Prompt Rewriter LoRA 与 Qwen-VL LoRA 节点后才能使用",
+  "model.meta.nativeMissing": "补齐对应的 ComfyUI text_encoders 文件后才能接入本地扩写",
+  "model.meta.genericMissing": "补齐所有必需组件后才能启用",
+  "model.component.optional": "可选，4 步 Lightning 档需要：",
+  "model.component.viewInfo": "查看 {label} 的{info}",
   "video.description": "根据真实文件组件判断是否可用，不仅检查单个 checkpoint 名称。",
   "video.defaultModel": "默认模型",
   "video.defaultExtensionModel": "默认续写模型",
@@ -480,12 +514,30 @@ const zhCN: SettingsCopyCatalog = {
   "shared.recommended": "推荐",
   "shared.slower": "较慢",
   "shared.fast": "快速",
-  "shared.longer": "较长"
+  "shared.longer": "较长",
+  "shared.listSeparator": "、",
+  "shared.labelSeparator": "："
 };
 
 const zhTW: SettingsCopyCatalog = {
   ...zhCN,
   "video.title": "影片模型",
+  "model.meta.llamaReady": "GGUF + mmproj 檔案完整；由應用程式自主管理 llama-server",
+  "model.meta.multimodalReady": "LLM GGUF + mmproj 檔案完整；透過 ComfyUI MultiModal Prompt Nodes 處理 H3 提示詞",
+  "model.meta.qwenReady": "Qwen3-VL 8B + PEFT LoRA 檔案完整；透過 ComfyUI Qwen-VL LoRA 處理 H3 提示詞",
+  "model.meta.gemmaReady": "LLM GGUF + mmproj 檔案已就緒；透過 ComfyUI Prompt Writer 處理影片和圖片提示詞",
+  "model.meta.nativeReady": "ComfyUI text_encoders 檔案已就緒；可透過原生 TextGenerate 進行本機擴寫",
+  "model.meta.runtimeMissing": "缺少執行節點：{nodes}",
+  "model.meta.runtimeMissingHint": "請啟動 ComfyUI 後重新掃描",
+  "model.meta.fileReady": "檔案掃描通過，可用於設定",
+  "model.meta.workflowPending": "依賴已完整；生成工作流程將在下一階段接入",
+  "model.meta.llamaMissing": "補齊 GGUF + mmproj，並設定 llama-server.exe 後才能使用",
+  "model.meta.multimodalMissing": "補齊 Qwen3.6 GGUF、mmproj 與 MultiModal Prompt Nodes 後才能接入本機擴寫",
+  "model.meta.qwenMissing": "補齊 Qwen3-VL 8B 基座、H3 Prompt Rewriter LoRA 與 Qwen-VL LoRA 節點後才能使用",
+  "model.meta.nativeMissing": "補齊對應的 ComfyUI text_encoders 檔案後才能接入本機擴寫",
+  "model.meta.genericMissing": "補齊所有必要元件後才能啟用",
+  "model.component.optional": "可選，4 步 Lightning 檔需要：",
+  "model.component.viewInfo": "檢視 {label} 的{info}",
   "video.description": "依據實際檔案元件判斷是否可用，不只檢查單一 checkpoint 名稱。",
   "video.defaultModel": "預設模型",
   "video.defaultExtensionModel": "預設續寫模型",
@@ -699,11 +751,29 @@ const zhTW: SettingsCopyCatalog = {
   "shared.recommended": "推薦",
   "shared.slower": "較慢",
   "shared.fast": "快速",
-  "shared.longer": "較長"
+  "shared.longer": "較長",
+  "shared.listSeparator": "、",
+  "shared.labelSeparator": "："
 };
 
 const enUS: SettingsCopyCatalog = {
   "video.title": "Video models",
+  "model.meta.llamaReady": "GGUF + mmproj files complete; llama-server is managed by the app",
+  "model.meta.multimodalReady": "LLM GGUF + mmproj files complete; H3 prompts use ComfyUI MultiModal Prompt Nodes",
+  "model.meta.qwenReady": "Qwen3-VL 8B + PEFT LoRA files complete; H3 prompts use ComfyUI Qwen-VL LoRA",
+  "model.meta.gemmaReady": "LLM GGUF + mmproj files ready; video and image prompts use ComfyUI Prompt Writer",
+  "model.meta.nativeReady": "ComfyUI text_encoders files are ready; native TextGenerate can expand prompts locally",
+  "model.meta.runtimeMissing": "Runtime nodes missing: {nodes}",
+  "model.meta.runtimeMissingHint": "Start ComfyUI and scan again",
+  "model.meta.fileReady": "File scan passed; ready for configuration",
+  "model.meta.workflowPending": "Dependencies are complete; the generation workflow is planned for the next phase",
+  "model.meta.llamaMissing": "Add GGUF + mmproj and configure llama-server.exe before use",
+  "model.meta.multimodalMissing": "Add Qwen3.6 GGUF, mmproj, and MultiModal Prompt Nodes before local expansion can be used",
+  "model.meta.qwenMissing": "Add the Qwen3-VL 8B base, H3 Prompt Rewriter LoRA, and Qwen-VL LoRA node before use",
+  "model.meta.nativeMissing": "Add the required ComfyUI text_encoders files before local expansion can be used",
+  "model.meta.genericMissing": "Add all required components before enabling this model",
+  "model.component.optional": "Optional; required for the 4-step Lightning preset:",
+  "model.component.viewInfo": "View download and installation instructions for {label}",
   "video.description": "Availability is based on real file components, not only a checkpoint name.",
   "video.defaultModel": "Default model",
   "video.defaultExtensionModel": "Default extension model",
@@ -939,8 +1009,143 @@ const enUS: SettingsCopyCatalog = {
   "shared.recommended": "Recommended",
   "shared.slower": "Slower",
   "shared.fast": "Fast",
-  "shared.longer": "Longer"
+  "shared.longer": "Longer",
+  "shared.listSeparator": ", ",
+  "shared.labelSeparator": ": "
 };
+
+const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
+  "zh-CN": {
+    "qwen/qwen3.5-4b": "RTX 3060 12GB 以上 · 系统 RAM 16GB 以上",
+    "qwen/qwen3.5-2b": "RTX 2060 6GB 以上 · 系统 RAM 16GB 以上",
+    "qwen-image-edit-2511": "RTX 3090/4090 24GB 以上 · CPU/offload",
+    "flux2-klein-4b": "RTX 4080/4090 16GB 以上",
+    minimax_h3_fl2va: "RTX 3090/4090 24GB 以上 · 系统 RAM 64GB 推荐",
+    minimax_h3_fl2va_int4: "RTX 4070/4080 16GB 推荐 · 12GB 仅实验",
+    minimax_h3_fl2va_q3_gguf: "RTX 3080 10GB 实验 · 480p/5秒/32GB RAM 起步",
+    minimax_h3_fl2va_turbo: "RTX 3090/4090 24GB 以上 · Turbo 不降低基础显存",
+    minimax_h3_ref2va: "RTX 3090/4090 24GB 以上 · 多参考需更多 RAM",
+    minimax_h3_ref2va_int4: "RTX 4070/4080 16GB 推荐 · 12GB 仅实验",
+    sulphur2: "RTX 3060 12GB 以上 · 系统 RAM 32GB 以上",
+    wan22_5b: "RTX 3080 12GB/4070 12GB 以上 · 16GB 推荐",
+    hunyuan15: "RTX 3090/4090 24GB 以上",
+    wan22_14b_nsfw: "RTX 3090/4090 24GB 以上 · 保守卸载",
+    wan22_remix: "RTX 3090/4090 24GB 以上",
+    wan22_smoothmix: "RTX 3090/4090 24GB 以上",
+    wan22_dasiwa: "RTX 3090/4090 24GB 以上",
+    seedvr2: "RTX 3090/4090 24GB 以上",
+    flashvsr: "RTX 4080/4090 16GB 以上",
+    hunyuan15_sr: "RTX 4090 24GB 以上 · 两阶段模型卸载",
+    realesrgan: "RTX 2060/3060 6GB 以上",
+    rife: "RTX 2060/3060 6GB 以上",
+    "community/gemma-4-e4b-unconcerned-q5": "RTX 3060 12GB 以上 · 系统 RAM 16GB 以上",
+    "community/gemma-4-12b-uncensored-q4": "RTX 3060/4070 12GB 以上 · 系统 RAM 24GB 以上",
+    "community/gemma-4-26b-a4b-uncensored-q4": "RTX 3090/4090 24GB 以上",
+    "google/gemma-4-e4b-q3": "RTX 3060 8GB/12GB 以上 · 系统 RAM 16GB 以上",
+    "google/gemma-4-12b-q4": "RTX 3060/4070 12GB 以上 · 系统 RAM 24GB 以上",
+    "google/gemma-4-12b-q5": "RTX 4080/4090 16GB 以上 · 系统 RAM 24GB 以上",
+    "google/gemma-4-26b-a4b-q4": "RTX 3090/4090 24GB 以上",
+    "qwen/qwen3.8-27b-uncensored-q4": "RTX 4090 24GB 以上 · 系统 RAM 32GB 以上",
+    "lightx2v/minimax-h3-prompt-rewriter-8b": "RTX 4090 24GB 推荐 · 4-bit 约 8–10GB 显存 · 系统 RAM 32GB 以上"
+  },
+  "zh-TW": {
+    "qwen/qwen3.5-4b": "RTX 3060 12GB 以上 · 系統 RAM 16GB 以上",
+    "qwen/qwen3.5-2b": "RTX 2060 6GB 以上 · 系統 RAM 16GB 以上",
+    "qwen-image-edit-2511": "RTX 3090/4090 24GB 以上 · CPU/offload",
+    "flux2-klein-4b": "RTX 4080/4090 16GB 以上",
+    minimax_h3_fl2va: "RTX 3090/4090 24GB 以上 · 系統 RAM 64GB 推薦",
+    minimax_h3_fl2va_int4: "RTX 4070/4080 16GB 推薦 · 12GB 僅實驗",
+    minimax_h3_fl2va_q3_gguf: "RTX 3080 10GB 實驗 · 480p/5秒/32GB RAM 起步",
+    minimax_h3_fl2va_turbo: "RTX 3090/4090 24GB 以上 · Turbo 不降低基礎顯存",
+    minimax_h3_ref2va: "RTX 3090/4090 24GB 以上 · 多參考需要更多 RAM",
+    minimax_h3_ref2va_int4: "RTX 4070/4080 16GB 推薦 · 12GB 僅實驗",
+    sulphur2: "RTX 3060 12GB 以上 · 系統 RAM 32GB 以上",
+    wan22_5b: "RTX 3080 12GB/4070 12GB 以上 · 16GB 推薦",
+    hunyuan15: "RTX 3090/4090 24GB 以上",
+    wan22_14b_nsfw: "RTX 3090/4090 24GB 以上 · 保守卸載",
+    wan22_remix: "RTX 3090/4090 24GB 以上",
+    wan22_smoothmix: "RTX 3090/4090 24GB 以上",
+    wan22_dasiwa: "RTX 3090/4090 24GB 以上",
+    seedvr2: "RTX 3090/4090 24GB 以上",
+    flashvsr: "RTX 4080/4090 16GB 以上",
+    hunyuan15_sr: "RTX 4090 24GB 以上 · 兩階段模型卸載",
+    realesrgan: "RTX 2060/3060 6GB 以上",
+    rife: "RTX 2060/3060 6GB 以上",
+    "community/gemma-4-e4b-unconcerned-q5": "RTX 3060 12GB 以上 · 系統 RAM 16GB 以上",
+    "community/gemma-4-12b-uncensored-q4": "RTX 3060/4070 12GB 以上 · 系統 RAM 24GB 以上",
+    "community/gemma-4-26b-a4b-uncensored-q4": "RTX 3090/4090 24GB 以上",
+    "google/gemma-4-e4b-q3": "RTX 3060 8GB/12GB 以上 · 系統 RAM 16GB 以上",
+    "google/gemma-4-12b-q4": "RTX 3060/4070 12GB 以上 · 系統 RAM 24GB 以上",
+    "google/gemma-4-12b-q5": "RTX 4080/4090 16GB 以上 · 系統 RAM 24GB 以上",
+    "google/gemma-4-26b-a4b-q4": "RTX 3090/4090 24GB 以上",
+    "qwen/qwen3.8-27b-uncensored-q4": "RTX 4090 24GB 以上 · 系統 RAM 32GB 以上",
+    "lightx2v/minimax-h3-prompt-rewriter-8b": "RTX 4090 24GB 推薦 · 4-bit 約 8–10GB 顯存 · 系統 RAM 32GB 以上"
+  },
+  "en-US": {
+    "qwen/qwen3.5-4b": "RTX 3060 12GB or higher · System RAM 16GB or higher",
+    "qwen/qwen3.5-2b": "RTX 2060 6GB or higher · System RAM 16GB or higher",
+    "qwen-image-edit-2511": "RTX 3090/4090 24GB or higher · CPU/offload",
+    "flux2-klein-4b": "RTX 4080/4090 16GB or higher",
+    minimax_h3_fl2va: "RTX 3090/4090 24GB or higher · 64GB system RAM recommended",
+    minimax_h3_fl2va_int4: "RTX 4070/4080 16GB recommended · 12GB experimental only",
+    minimax_h3_fl2va_q3_gguf: "RTX 3080 10GB experimental · 480p/5s/32GB RAM starting point",
+    minimax_h3_fl2va_turbo: "RTX 3090/4090 24GB or higher · Turbo does not reduce base VRAM",
+    minimax_h3_ref2va: "RTX 3090/4090 24GB or higher · multiple references need more RAM",
+    minimax_h3_ref2va_int4: "RTX 4070/4080 16GB recommended · 12GB experimental only",
+    sulphur2: "RTX 3060 12GB or higher · System RAM 32GB or higher",
+    wan22_5b: "RTX 3080 12GB/4070 12GB or higher · 16GB recommended",
+    hunyuan15: "RTX 3090/4090 24GB or higher",
+    wan22_14b_nsfw: "RTX 3090/4090 24GB or higher · conservative offload",
+    wan22_remix: "RTX 3090/4090 24GB or higher",
+    wan22_smoothmix: "RTX 3090/4090 24GB or higher",
+    wan22_dasiwa: "RTX 3090/4090 24GB or higher",
+    seedvr2: "RTX 3090/4090 24GB or higher",
+    flashvsr: "RTX 4080/4090 16GB or higher",
+    hunyuan15_sr: "RTX 4090 24GB or higher · two-stage model offload",
+    realesrgan: "RTX 2060/3060 6GB or higher",
+    rife: "RTX 2060/3060 6GB or higher",
+    "community/gemma-4-e4b-unconcerned-q5": "RTX 3060 12GB or higher · System RAM 16GB or higher",
+    "community/gemma-4-12b-uncensored-q4": "RTX 3060/4070 12GB or higher · System RAM 24GB or higher",
+    "community/gemma-4-26b-a4b-uncensored-q4": "RTX 3090/4090 24GB or higher",
+    "google/gemma-4-e4b-q3": "RTX 3060 8GB/12GB or higher · System RAM 16GB or higher",
+    "google/gemma-4-12b-q4": "RTX 3060/4070 12GB or higher · System RAM 24GB or higher",
+    "google/gemma-4-12b-q5": "RTX 4080/4090 16GB or higher · System RAM 24GB or higher",
+    "google/gemma-4-26b-a4b-q4": "RTX 3090/4090 24GB or higher",
+    "qwen/qwen3.8-27b-uncensored-q4": "RTX 4090 24GB or higher · System RAM 32GB or higher",
+    "lightx2v/minimax-h3-prompt-rewriter-8b": "RTX 4090 24GB recommended · 4-bit uses about 8–10GB VRAM · System RAM 32GB or higher"
+  }
+};
+
+const modelHardwareDefaults: Record<UiLocale, Record<string, string>> = {
+  "zh-CN": {
+    video: "RTX 3080 12GB 以上 · 系统 RAM 32GB 以上",
+    image: "RTX 3060 12GB 以上",
+    prompt: "RTX 3060 12GB 以上 · 系统 RAM 16GB 以上",
+    default: "RTX 2060 6GB 以上"
+  },
+  "zh-TW": {
+    video: "RTX 3080 12GB 以上 · 系統 RAM 32GB 以上",
+    image: "RTX 3060 12GB 以上",
+    prompt: "RTX 3060 12GB 以上 · 系統 RAM 16GB 以上",
+    default: "RTX 2060 6GB 以上"
+  },
+  "en-US": {
+    video: "RTX 3080 12GB or higher · System RAM 32GB or higher",
+    image: "RTX 3060 12GB or higher",
+    prompt: "RTX 3060 12GB or higher · System RAM 16GB or higher",
+    default: "RTX 2060 6GB or higher"
+  }
+};
+
+export function settingsModelHardwareRecommendation(
+  locale: UiLocale | undefined,
+  profile: Pick<ModelScanProfile, "id" | "category">
+): string {
+  const activeLocale = locale ?? "zh-CN";
+  const recommendations = modelHardwareRecommendations[activeLocale];
+  const defaults = modelHardwareDefaults[activeLocale];
+  return recommendations[profile.id] ?? defaults[profile.category] ?? defaults.default ?? "";
+}
 
 function interpolate(text: string, params: Params): string {
   return text.replace(/\{([A-Za-z0-9_.-]+)\}/gu, (match, key: string) => {

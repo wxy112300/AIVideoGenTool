@@ -501,6 +501,8 @@ export const zhCNCatalog = {
     [uiKeys.settings.system.currentUserDirectory]: "当前用户目录",
     [uiKeys.settings.system.scannedAt]: "扫描于 {time}",
     [uiKeys.settings.system.optional]: "可选",
+    [uiKeys.settings.system.serviceRunning]: "运行中",
+    [uiKeys.settings.system.serviceUnavailable]: "未运行或无法连接",
     [uiKeys.settings.system.openDependencyDownload]: "下载安装",
     [uiKeys.settings.system.restartWaiting]: "重启中…最多等待 2 分钟",
     [uiKeys.settings.system.restartService]: "重启服务",

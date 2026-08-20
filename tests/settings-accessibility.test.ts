@@ -94,6 +94,9 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('aria-labelledby="settings-tab-system"');
     expect(markup.match(/id="scan-environment"/g)).toHaveLength(1);
     expect(markup.indexOf('id="settings-environment-section"')).toBeLessThan(markup.indexOf('id="scan-environment"'));
+    expect(markup).toContain('id="connection-result" class="connection-result muted" role="status" aria-live="polite"');
+    expect(markup).toContain('id="force-stop-comfy"');
+    expect(markup).toContain('class="secondary destructive button-with-icon" id="force-stop-comfy"');
   });
 
   it("marks the local save state without changing the save selector", () => {

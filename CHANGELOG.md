@@ -8,6 +8,13 @@
 
 ## 未发布
 
+## 0.40.0 — 2026-08-21
+
+- 完成 P18 Settings 内容层级：环境扫描结果从并列状态卡收敛为紧凑 evidence list，保留服务启动、依赖下载、路径和状态语义；模型 files/node/runtime 证据继续分开。
+- 将 Settings 模型证据、硬件建议、组件说明和列表分隔符纳入 zh-CN、zh-TW、en-US 文案层；当前 renderer Settings 生产源码不再散落硬编码简体中文。
+- 为扫描、连接测试、服务启停、环境修复、ComfyUI 更新、节点/工作流/运行时安装补齐局部 `status` / `aria-busy` / `alert` 反馈；强制停止改为隔离的 secondary destructive 操作，不改变原有 selector、队列、IPC、持久化或服务生命周期逻辑。
+- 当前 renderer 状态矩阵、Settings 900×800/760×800 keyboard smoke、Settings focused tests 与 `npm.cmd run verify`（88 files / 654 tests、production build、20 组对比度检查）通过；未将 synthetic fixture 当作真实 ComfyUI 生成结论。
+
 ## 0.39.0 — 2026-08-21
 
 - 完成 P17 Settings 分类与动作层级：宽屏保留 9 分类 sticky sidebar，`<=900px` 改为单行可横向滚动的 compact category strip，不再出现 3×3 或 9 行导航墙。

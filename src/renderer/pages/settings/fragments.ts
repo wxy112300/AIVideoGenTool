@@ -2,10 +2,15 @@ import type {
   EnvironmentScanResult,
   LocalServiceKind,
   ModelComponentStatus,
-  ModelScanProfile
+  ModelScanProfile,
+  UiLocale
 } from "../../../types";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
+import {
+  settingsModelHardwareRecommendation,
+  settingsText
+} from "./copy";
 import {
   modelProfileEvidence,
   modelProfileStatusTone
@@ -19,6 +24,7 @@ interface SettingsFragmentRenderOptions {
   icon: IconRenderer;
   escapeHtml: EscapeHtml;
   t: Translate;
+  locale: UiLocale | undefined;
 }
 
 export interface SettingsEnvironmentOverviewViewModel {
@@ -68,57 +74,11 @@ export interface SettingsInstallGuideDialogViewModel {
   configuredModelDirectory: string;
 }
 
-const modelHardwareRecommendations: Record<string, string> = {
-  "qwen/qwen3.5-4b": "RTX 3060 12GB 以上 · 系统 RAM 16GB 以上",
-  "qwen/qwen3.5-2b": "RTX 2060 6GB 以上 · 系统 RAM 16GB 以上",
-  "qwen-image-edit-2511": "RTX 3090/4090 24GB 以上 · CPU/offload",
-  "flux2-klein-4b": "RTX 4080/4090 16GB 以上",
-  minimax_h3_fl2va: "RTX 3090/4090 24GB 以上 · 系统 RAM 64GB 推荐",
-  minimax_h3_fl2va_int4: "RTX 4070/4080 16GB 推荐 · 12GB 仅实验",
-  minimax_h3_fl2va_q3_gguf: "RTX 3080 10GB 实验 · 480p/5秒/32GB RAM 起步",
-  minimax_h3_fl2va_turbo: "RTX 3090/4090 24GB 以上 · Turbo 不降低基础显存",
-  minimax_h3_ref2va: "RTX 3090/4090 24GB 以上 · 多参考需更多 RAM",
-  minimax_h3_ref2va_int4: "RTX 4070/4080 16GB 推荐 · 12GB 仅实验",
-  sulphur2: "RTX 3060 12GB 以上 · 系统 RAM 32GB 以上",
-  wan22_5b: "RTX 3080 12GB/4070 12GB 以上 · 16GB 推荐",
-  hunyuan15: "RTX 3090/4090 24GB 以上",
-  wan22_14b_nsfw: "RTX 3090/4090 24GB 以上 · 保守卸载",
-  wan22_remix: "RTX 3090/4090 24GB 以上",
-  wan22_smoothmix: "RTX 3090/4090 24GB 以上",
-  wan22_dasiwa: "RTX 3090/4090 24GB 以上",
-  seedvr2: "RTX 3090/4090 24GB 以上",
-  flashvsr: "RTX 4080/4090 16GB 以上",
-  hunyuan15_sr: "RTX 4090 24GB 以上 · 两阶段模型卸载",
-  realesrgan: "RTX 2060/3060 6GB 以上",
-  rife: "RTX 2060/3060 6GB 以上",
-  "community/gemma-4-e4b-unconcerned-q5": "RTX 3060 12GB 以上 · 系统 RAM 16GB 以上",
-  "community/gemma-4-12b-uncensored-q4": "RTX 3060/4070 12GB 以上 · 系统 RAM 24GB 以上",
-  "community/gemma-4-26b-a4b-uncensored-q4": "RTX 3090/4090 24GB 以上",
-  "google/gemma-4-e4b-q3": "RTX 3060 8GB/12GB 以上 · 系统 RAM 16GB 以上",
-  "google/gemma-4-12b-q4": "RTX 3060/4070 12GB 以上 · 系统 RAM 24GB 以上",
-  "google/gemma-4-12b-q5": "RTX 4080/4090 16GB 以上 · 系统 RAM 24GB 以上",
-  "google/gemma-4-26b-a4b-q4": "RTX 3090/4090 24GB 以上",
-  "qwen/qwen3.8-27b-uncensored-q4": "RTX 4090 24GB 以上 · 系统 RAM 32GB 以上",
-  "lightx2v/minimax-h3-prompt-rewriter-8b": "RTX 4090 24GB 推荐 · 4-bit 约 8–10GB 显存 · 系统 RAM 32GB 以上"
-};
-
 function escapeValue(
   options: SettingsFragmentRenderOptions,
   value: string | number | null | undefined
 ): string {
   return options.escapeHtml(value == null ? "" : String(value));
-}
-
-function modelHardwareRecommendation(profile: ModelScanProfile): string {
-  return modelHardwareRecommendations[profile.id] ?? (
-    profile.category === "video"
-      ? "RTX 3080 12GB 以上 · 系统 RAM 32GB 以上"
-      : profile.category === "image"
-        ? "RTX 3060 12GB 以上"
-        : profile.category === "prompt"
-          ? "RTX 3060 12GB 以上 · 系统 RAM 16GB 以上"
-          : "RTX 2060 6GB 以上"
-  );
 }
 
 export function renderSettingsEnvironmentOverview(
@@ -130,34 +90,46 @@ export function renderSettingsEnvironmentOverview(
   const icon = (name: string, className?: string) => options.icon(name, className);
   const t = options.t;
   if (!environmentScan) {
-    return `${viewModel.environmentScanError ? `<div class="service-status warning">${escape(viewModel.environmentScanError)}</div>` : ""}<div class="environment-empty">${viewModel.environmentScanning ? `<span class="scan-spinner"></span><div><strong>${t(uiKeys.settings.system.scanningEnvironment)}</strong><p>${t(uiKeys.settings.system.scanningEnvironmentDescription)}</p></div>` : `<div><strong>${t(uiKeys.settings.system.notScanned)}</strong><p>${t(uiKeys.settings.system.rescanInstruction)}</p></div>`}</div>`;
+    return `${viewModel.environmentScanError ? `<div class="service-status warning" role="alert">${escape(viewModel.environmentScanError)}</div>` : ""}<div class="environment-empty" role="status" aria-live="polite">${viewModel.environmentScanning ? `<span class="scan-spinner"></span><div><strong>${t(uiKeys.settings.system.scanningEnvironment)}</strong><p>${t(uiKeys.settings.system.scanningEnvironmentDescription)}</p></div>` : `<div><strong>${t(uiKeys.settings.system.notScanned)}</strong><p>${t(uiKeys.settings.system.rescanInstruction)}</p></div>`}</div>`;
   }
   return `
-    ${viewModel.environmentScanError ? `<div class="service-status warning">${escape(viewModel.environmentScanError)}</div>` : ""}
+    ${viewModel.environmentScanError ? `<div class="service-status warning" role="alert">${escape(viewModel.environmentScanError)}</div>` : ""}
     <div class="environment-summary">
       <div><span class="muted">${t(uiKeys.settings.system.currentUserDirectory)}</span><code title="${escape(environmentScan.userHome)}">${escape(environmentScan.userHome)}</code></div>
       <span class="scan-time">${escape(t(uiKeys.settings.system.scannedAt, { time: options.formatScanTime(environmentScan.scannedAt) }))}</span>
     </div>
-    <div class="environment-grid">
-      ${viewModel.environmentItems.map((item) => `
-        <article class="environment-item ${item.tone}">
+    <div class="environment-evidence-list">
+      ${viewModel.environmentItems.map((item) => {
+        const liveLabel = item.liveState === "running"
+          ? t(uiKeys.settings.system.serviceRunning)
+          : item.liveState === "unavailable"
+            ? t(uiKeys.settings.system.serviceUnavailable)
+            : "";
+        const detail = liveLabel ? `${liveLabel} · ${item.detail}` : item.detail;
+        const serviceBusy = viewModel.serviceStarting === "comfy" || viewModel.serviceRestarting === "comfy";
+        const serviceAction = item.id === "comfyui-api"
+          ? item.ok
+            ? `<button class="service-start secondary button-with-icon" data-restart-service="comfy" aria-busy="${viewModel.serviceRestarting === "comfy"}" ${serviceBusy || viewModel.serviceForceStopping || viewModel.queueRunning || viewModel.hasRunningQueueTask ? "disabled" : ""}>${icon("refresh-cw")}${t(viewModel.serviceRestarting === "comfy" ? uiKeys.settings.system.restartWaiting : uiKeys.settings.system.restartService)}</button>`
+            : `<button class="service-start button-with-icon" data-start-service="comfy" aria-busy="${viewModel.serviceStarting === "comfy"}" ${serviceBusy || viewModel.serviceForceStopping || viewModel.queueRunning || viewModel.hasRunningQueueTask ? "disabled" : ""}>${icon("play")}${t(viewModel.serviceStarting === "comfy" ? uiKeys.settings.system.startWaiting : uiKeys.settings.system.startService)}</button>`
+          : "";
+        const downloadAction = !item.ok && item.downloadUrl
+          ? `<button class="environment-download secondary button-with-icon" data-open-environment-download="${escape(item.downloadUrl)}">${icon("external-link")} ${t(uiKeys.settings.system.openDependencyDownload)}</button>`
+          : "";
+        return `
+        <article class="environment-item environment-evidence ${item.tone}">
           <span class="environment-state">${icon(item.ok ? "circle-check" : item.optional ? "circle-help" : "circle-alert")}</span>
-          <div>
-            <div class="environment-item-heading">
-              <div class="environment-name"><strong>${escape(item.label)}</strong>${item.optional ? `<span class="optional-tag">${t(uiKeys.settings.system.optional)}</span>` : ""}</div>
-              ${item.id === "comfyui-api"
-                ? item.ok
-                  ? `<button class="service-start secondary button-with-icon" data-restart-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping || viewModel.queueRunning || viewModel.hasRunningQueueTask ? "disabled" : ""}>${icon("refresh-cw")}${t(viewModel.serviceRestarting === "comfy" ? uiKeys.settings.system.restartWaiting : uiKeys.settings.system.restartService)}</button>`
-                  : `<button class="service-start button-with-icon" data-start-service="comfy" ${viewModel.serviceStarting || viewModel.serviceRestarting || viewModel.serviceForceStopping || viewModel.queueRunning || viewModel.hasRunningQueueTask ? "disabled" : ""}>${icon("play")}${t(viewModel.serviceStarting === "comfy" ? uiKeys.settings.system.startWaiting : uiKeys.settings.system.startService)}</button>`
-                : ""}
-              ${!item.ok && item.downloadUrl ? `<button class="environment-download secondary button-with-icon" data-open-environment-download="${escape(item.downloadUrl)}">${icon("external-link")} ${t(uiKeys.settings.system.openDependencyDownload)}</button>` : ""}
-            </div>
-            <p>${escape(item.detail)}</p>
+          <div class="environment-evidence-label">
+            <div class="environment-name"><strong>${escape(item.label)}</strong>${item.optional ? `<span class="optional-tag">${t(uiKeys.settings.system.optional)}</span>` : ""}</div>
+          </div>
+          <div class="environment-evidence-detail">
+            <p>${escape(detail)}</p>
             ${item.path ? `<code title="${escape(item.path)}">${escape(item.path)}</code>` : ""}
           </div>
-        </article>`).join("")}
+          <div class="environment-evidence-actions">${serviceAction}${downloadAction}</div>
+        </article>`;
+      }).join("")}
     </div>
-    ${viewModel.serviceStatusMessage ? `<div class="service-status ${viewModel.serviceStarting || viewModel.serviceRestarting ? "working" : ""}">${escape(viewModel.serviceStatusMessage)}</div>` : ""}
+    ${viewModel.serviceStatusMessage ? `<div class="service-status ${viewModel.serviceStarting || viewModel.serviceRestarting ? "working" : ""}" role="status" aria-live="polite" aria-atomic="true">${escape(viewModel.serviceStatusMessage)}</div>` : ""}
     ${environmentScan.comfyRoot || environmentScan.comfyInstallDirectory ? `
       <div class="detected-path">
         <div><span class="eyebrow">${t(uiKeys.settings.system.detectedComfyUi, { type:
@@ -166,7 +138,7 @@ export function renderSettingsEnvironmentOverview(
           environmentScan.comfyInstallType === "manual" ? t(uiKeys.settings.system.manualInstall) : t(uiKeys.settings.system.dataDirectory)
         })}</span>
         <strong>${escape(environmentScan.comfyInstallDirectory || environmentScan.comfyRoot)}</strong>
-        <p class="muted">${t(uiKeys.settings.system.coreSource)}：${escape(environmentScan.comfySourceDirectory || t(uiKeys.settings.system.notFoundPath))}<br>${t(uiKeys.settings.system.dataDirectory)}：${escape(environmentScan.comfyRoot || t(uiKeys.settings.system.initializationWaiting))}<br>${t(uiKeys.settings.system.service)}：${escape(environmentScan.comfyUrl)}<br>${t(uiKeys.settings.system.modelPath)}：${escape(environmentScan.modelDirectory || t(uiKeys.settings.system.initializationWaiting))}<br>${t(uiKeys.settings.system.outputPath)}：${escape(environmentScan.outputDirectory || t(uiKeys.settings.system.initializationWaiting))}</p></div>
+        <p class="muted">${t(uiKeys.settings.system.coreSource)}${settingsText(options.locale, "shared.labelSeparator")}${escape(environmentScan.comfySourceDirectory || t(uiKeys.settings.system.notFoundPath))}<br>${t(uiKeys.settings.system.dataDirectory)}${settingsText(options.locale, "shared.labelSeparator")}${escape(environmentScan.comfyRoot || t(uiKeys.settings.system.initializationWaiting))}<br>${t(uiKeys.settings.system.service)}${settingsText(options.locale, "shared.labelSeparator")}${escape(environmentScan.comfyUrl)}<br>${t(uiKeys.settings.system.modelPath)}${settingsText(options.locale, "shared.labelSeparator")}${escape(environmentScan.modelDirectory || t(uiKeys.settings.system.initializationWaiting))}<br>${t(uiKeys.settings.system.outputPath)}${settingsText(options.locale, "shared.labelSeparator")}${escape(environmentScan.outputDirectory || t(uiKeys.settings.system.initializationWaiting))}</p></div>
         <button class="secondary button-with-icon" id="use-scanned-comfy">${icon("check")}${t(uiKeys.settings.system.useScannedPaths)}</button>
       </div>` : ""}`;
 }
@@ -191,7 +163,7 @@ export function renderSettingsEnvironmentIssuesPanel(
               <p class="muted">${escape(issue.detail)}</p>
               ${viewModel.environmentRepairLogs[issue.id] ? `<details class="node-log" open><summary>${t(uiKeys.settings.system.repairLog)}</summary><pre>${escape(viewModel.environmentRepairLogs[issue.id])}</pre></details>` : ""}
             </div>
-            ${issue.repairable ? `<button class="primary button-with-icon" data-repair-issue="${escape(issue.id)}" ${viewModel.environmentRepairing ? "disabled" : ""}>${icon(viewModel.environmentRepairing === issue.id ? "refresh-cw" : "shield-check")}${viewModel.environmentRepairing === issue.id ? t(uiKeys.settings.system.repairing) : escape(issue.repairLabel)}</button>` : ""}
+            ${issue.repairable ? `<button class="primary button-with-icon" data-repair-issue="${escape(issue.id)}" aria-busy="${viewModel.environmentRepairing === issue.id}" ${viewModel.environmentRepairing ? "disabled" : ""}>${icon(viewModel.environmentRepairing === issue.id ? "refresh-cw" : "shield-check")}${viewModel.environmentRepairing === issue.id ? t(uiKeys.settings.system.repairing) : escape(issue.repairLabel)}</button>` : ""}
           </article>`).join("")}
       </div>
     </section>`;
@@ -238,7 +210,7 @@ export function renderSettingsComfyCompatibilityPanel(
         </div>
         <div class="compatibility-actions">
             <span class="model-availability ${statusTone}">${compatibilityState === "error" ? `${icon("circle-alert")} ${t(uiKeys.settings.compatibility.incompatible)}` : compatibilityState === "warning" ? `${icon("circle-help")} ${t(uiKeys.settings.compatibility.advisory)}` : ready ? `${icon("circle-check")} ${t(uiKeys.settings.compatibility.recognized)}` : `${icon("circle-help")} ${t(uiKeys.settings.compatibility.waitingService)}`}</span>
-          <button class="primary button-with-icon" id="update-comfyui" ${viewModel.comfyUpdating || compatibility.updateMode === "unsupported" ? "disabled" : ""}>${icon(viewModel.comfyUpdating ? "refresh-cw" : "download")}${viewModel.comfyUpdating ? t(uiKeys.settings.compatibility.processing) : compatibility.updateMode === "desktop" ? t(uiKeys.settings.compatibility.openOfficialUpdater) : t(uiKeys.settings.compatibility.manualUpdate)}</button>
+          <button class="primary button-with-icon" id="update-comfyui" aria-busy="${viewModel.comfyUpdating}" ${viewModel.comfyUpdating || compatibility.updateMode === "unsupported" ? "disabled" : ""}>${icon(viewModel.comfyUpdating ? "refresh-cw" : "download")}${viewModel.comfyUpdating ? t(uiKeys.settings.compatibility.processing) : compatibility.updateMode === "desktop" ? t(uiKeys.settings.compatibility.openOfficialUpdater) : t(uiKeys.settings.compatibility.manualUpdate)}</button>
         </div>
       </div>
       <div class="compatibility-version">
@@ -266,7 +238,7 @@ export function renderSettingsModelScanCard(
   const isMultimodalProfile = isPromptProfile && options.isComfyMultimodalPromptModel(profile.id);
   const isQwenVlPeftProfile = isPromptProfile && options.isQwenVlPeftPromptModel(profile.id);
   const evidence = modelProfileEvidence(profile);
-  const hardwareRecommendation = modelHardwareRecommendation(profile);
+  const hardwareRecommendation = settingsModelHardwareRecommendation(options.locale, profile);
   const loraInfoButton = profile.category === "lora"
     ? options.videoLoraInfoButton(profile.id)
     : "";
@@ -312,30 +284,32 @@ export function renderSettingsModelScanCard(
   const metaLabel = profile.available
     ? isPromptProfile
         ? isLlamaProfile
-        ? "GGUF + mmproj 文件完整；由应用自管理 llama-server"
-        : isMultimodalProfile
-          ? "LLM GGUF + mmproj 文件完整；通过 ComfyUI MultiModal Prompt Nodes 处理 H3 提示词"
-          : isQwenVlPeftProfile
-          ? "Qwen3-VL 8B + PEFT LoRA 文件完整；通过 ComfyUI Qwen-VL LoRA 处理 H3 提示词"
-          : isGemmaProfile
-          ? "LLM GGUF + mmproj 文件已就绪；通过 ComfyUI Prompt Writer 处理视频和图片提示词"
-          : "ComfyUI text_encoders 文件已就绪；可通过原生 TextGenerate 进行本地扩写"
-      : profile.category === "image"
-        ? options.imageWorkflowStatus(profile)
-        : evidence.runtime === "missing"
-          ? `缺少运行节点：${profile.runtimeMissingNodes?.join("、") || "请启动 ComfyUI 后重新扫描"}`
-          : profile.integrated
-            ? "文件扫描通过，可用于配置"
-            : "依赖已完整；生成工作流将在下一阶段接入"
+          ? settingsText(options.locale, "model.meta.llamaReady")
+          : isMultimodalProfile
+            ? settingsText(options.locale, "model.meta.multimodalReady")
+            : isQwenVlPeftProfile
+              ? settingsText(options.locale, "model.meta.qwenReady")
+              : isGemmaProfile
+                ? settingsText(options.locale, "model.meta.gemmaReady")
+                : settingsText(options.locale, "model.meta.nativeReady")
+        : profile.category === "image"
+          ? options.imageWorkflowStatus(profile)
+          : evidence.runtime === "missing"
+            ? settingsText(options.locale, "model.meta.runtimeMissing", {
+                nodes: profile.runtimeMissingNodes?.join(settingsText(options.locale, "shared.listSeparator")) || settingsText(options.locale, "model.meta.runtimeMissingHint")
+              })
+            : profile.integrated
+              ? settingsText(options.locale, "model.meta.fileReady")
+              : settingsText(options.locale, "model.meta.workflowPending")
     : isPromptProfile
         ? isLlamaProfile
-        ? "补齐 GGUF + mmproj，并配置 llama-server.exe 后才能使用"
-        : isMultimodalProfile
-          ? "补齐 Qwen3.6 GGUF、mmproj 与 MultiModal Prompt Nodes 后才能接入本地扩写"
-          : isQwenVlPeftProfile
-          ? "补齐 Qwen3-VL 8B 基座、H3 Prompt Rewriter LoRA 与 Qwen-VL LoRA 节点后才能使用"
-          : "补齐对应的 ComfyUI text_encoders 文件后才能接入本地扩写"
-      : "补齐所有必需组件后才能启用";
+          ? settingsText(options.locale, "model.meta.llamaMissing")
+          : isMultimodalProfile
+            ? settingsText(options.locale, "model.meta.multimodalMissing")
+            : isQwenVlPeftProfile
+              ? settingsText(options.locale, "model.meta.qwenMissing")
+              : settingsText(options.locale, "model.meta.nativeMissing")
+        : settingsText(options.locale, "model.meta.genericMissing");
   const escape = (value: string | number | null | undefined) => escapeValue(options, value);
   const icon = (name: string, className?: string) => options.icon(name, className);
   return `
@@ -355,9 +329,9 @@ export function renderSettingsModelScanCard(
             <div><strong>${escape(component.label)}</strong>
               ${component.found
                 ? `<code title="${escape(component.matches.join("\n"))}">${escape(component.matches.join(" · "))}</code>`
-                : `<span>${component.optional ? "可选，4 步 Lightning 档需要：" : options.t(uiKeys.settings.system.scanCardMissing)}${escape(component.expected)}</span>`}
+                : `<span>${component.optional ? settingsText(options.locale, "model.component.optional") : options.t(uiKeys.settings.system.scanCardMissing)}${escape(component.expected)}</span>`}
               </div>
-              ${component.found ? "" : `<button class="component-info" data-install-profile="${escape(profile.id)}" data-install-component="${componentIndex}" aria-label="查看 ${escape(component.label)} 的${options.t(uiKeys.settings.system.scanCardInstallInfo)}" title="${options.t(uiKeys.settings.system.scanCardInstallInfo)}">${icon("info")}</button>`}
+              ${component.found ? "" : `<button class="component-info" data-install-profile="${escape(profile.id)}" data-install-component="${componentIndex}" aria-label="${escape(settingsText(options.locale, "model.component.viewInfo", { label: component.label, info: options.t(uiKeys.settings.system.scanCardInstallInfo) }))}" title="${options.t(uiKeys.settings.system.scanCardInstallInfo)}">${icon("info")}</button>`}
           </div>`).join("")}
       </div>
     </article>`;

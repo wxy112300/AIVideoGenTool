@@ -501,6 +501,8 @@ export const zhTWCatalog = {
     [uiKeys.settings.system.currentUserDirectory]: "目前使用者目錄",
     [uiKeys.settings.system.scannedAt]: "掃描於 {time}",
     [uiKeys.settings.system.optional]: "可選",
+    [uiKeys.settings.system.serviceRunning]: "執行中",
+    [uiKeys.settings.system.serviceUnavailable]: "未執行或無法連線",
     [uiKeys.settings.system.openDependencyDownload]: "下載安裝",
     [uiKeys.settings.system.restartWaiting]: "重新啟動中…最多等待 2 分鐘",
     [uiKeys.settings.system.restartService]: "重新啟動服務",

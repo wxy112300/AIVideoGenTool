@@ -501,6 +501,8 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.settings.system.currentUserDirectory]: "Current user directory",
 	[uiKeys.settings.system.scannedAt]: "Scanned {time}",
 	[uiKeys.settings.system.optional]: "Optional",
+	[uiKeys.settings.system.serviceRunning]: "Running",
+	[uiKeys.settings.system.serviceUnavailable]: "Offline or unreachable",
 	[uiKeys.settings.system.openDependencyDownload]: "Download / install",
 	[uiKeys.settings.system.restartWaiting]: "Restarting… up to 2 minutes",
 	[uiKeys.settings.system.restartService]: "Restart service",

@@ -1079,6 +1079,9 @@ async function runSettingsInteractionSmoke(window, fixture, viewport) {
       sidebarWrap: sidebar ? getComputedStyle(sidebar).flexWrap : '',
       scanInEnvironment: Boolean(environmentSection && scanButton && environmentSection.contains(scanButton)),
       scanInHeading: Boolean(document.querySelector('.settings-heading #scan-environment')),
+      environmentEvidenceList: Boolean(document.querySelector('.environment-evidence-list')),
+      connectionStatus: document.querySelector('#connection-result')?.getAttribute('role') ?? '',
+      forceStopSecondary: Boolean(document.querySelector('#force-stop-comfy.secondary.destructive:not(.primary)')),
       documentScrollWidth: document.documentElement.scrollWidth,
       documentClientWidth: document.documentElement.clientWidth
     };
@@ -1134,6 +1137,7 @@ async function runSettingsInteractionSmoke(window, fixture, viewport) {
     home: home === true,
     end: end === true,
     focusRestored: final.activeId === 'settings-tab-system' && final.panelLabel === 'settings-tab-system' && final.tabStops === 1,
+    evidenceAndActions: initial.environmentEvidenceList && initial.connectionStatus === 'status' && initial.forceStopSecondary,
     noHorizontalOverflow: final.documentScrollWidth <= final.documentClientWidth + 1
   };
   const passed = Object.values(checks).every(Boolean);

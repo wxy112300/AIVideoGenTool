@@ -94,14 +94,16 @@ describe("settings status tones", () => {
       ok: true,
       status: "available",
       tone: "available",
-      detail: "运行中 · http://127.0.0.1:8188/system_stats"
+      detail: "http://127.0.0.1:8188/system_stats",
+      liveState: "running"
     });
     const offlineItems = deriveEnvironmentOverviewItems(scan, false);
     expect(offlineItems.find((item) => item.id === "comfyui-api")).toMatchObject({
       ok: false,
       status: "warning",
       tone: "warning",
-      detail: "未运行或无法连接 · http://127.0.0.1:8188/system_stats"
+      detail: "http://127.0.0.1:8188/system_stats",
+      liveState: "unavailable"
     });
     expect(offlineItems.find((item) => item.id === "nvidia")).toMatchObject({
       ok: true,

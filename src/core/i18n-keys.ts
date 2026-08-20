@@ -537,6 +537,8 @@ export const uiKeys = {
       currentUserDirectory: "settings.system.currentUserDirectory",
       scannedAt: "settings.system.scannedAt",
       optional: "settings.system.optional",
+      serviceRunning: "settings.system.serviceRunning",
+      serviceUnavailable: "settings.system.serviceUnavailable",
       openDependencyDownload: "settings.system.openDependencyDownload",
       restartWaiting: "settings.system.restartWaiting",
       restartService: "settings.system.restartService",

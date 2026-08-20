@@ -61,6 +61,85 @@
   padding: 20px;
 }
 
+.environment-evidence-list {
+  border-top: 1px solid rgba(56, 65, 78, .46);
+}
+
+.environment-item.environment-evidence {
+  display: grid;
+  grid-template-columns: 30px minmax(150px, .34fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(56, 65, 78, .38);
+  border-radius: 0;
+  background: transparent;
+}
+
+.environment-item.environment-evidence:last-child {
+  border-bottom: 0;
+}
+
+.environment-item.environment-evidence.available,
+.environment-item.environment-evidence.warning,
+.environment-item.environment-evidence.missing {
+  border-inline: 0;
+  border-top: 0;
+}
+
+.environment-evidence-label,
+.environment-evidence-detail,
+.environment-evidence-actions {
+  min-width: 0;
+}
+
+.environment-evidence-detail p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.environment-evidence-detail code {
+  margin-top: 5px;
+}
+
+.environment-evidence-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.environment-evidence-actions:empty {
+  display: none;
+}
+
+.danger-zone {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(160, 85, 81, .32);
+}
+
+.danger-zone > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.danger-zone strong {
+  color: #f0b2aa;
+  font-size: 12px;
+}
+
+.danger-zone .danger-hint {
+  margin: 0;
+  line-height: 1.5;
+}
+
 .settings-section > .section-heading,
 .settings-section .section-heading {
   display: grid;
@@ -253,6 +332,31 @@
 
   .settings-environment-actions {
     justify-self: start;
+  }
+
+  .environment-item.environment-evidence {
+    grid-template-columns: 30px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .environment-evidence-label,
+  .environment-evidence-detail,
+  .environment-evidence-actions {
+    grid-column: 2;
+  }
+
+  .environment-evidence-actions {
+    justify-content: flex-start;
+    margin-top: 2px;
+  }
+
+  .danger-zone {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .danger-zone button {
+    align-self: flex-start;
   }
 
   .settings-section .settings-grid,

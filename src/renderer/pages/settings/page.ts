@@ -135,7 +135,8 @@ export function renderSettingsPage(
   const sharedFragmentOptions = {
     icon: options.icon,
     escapeHtml: options.escapeHtml,
-    t
+    t,
+    locale: settings.uiLocale
   };
   const environmentOverview = renderSettingsEnvironmentOverview(
     {
@@ -302,7 +303,7 @@ export function renderSettingsPage(
         </div>
         ${environmentScan && !promptWriterNode?.loaded ? `<p class="muted proxy-hint">${s("prompt.runtimeNodeMissing")}</p>` : ""}
         <div class="button-row">
-          <button class="${llamaCppPython?.ready ? "secondary" : "primary"} button-with-icon" id="install-llama-cpp-python" ${viewModel.llamaCppPythonInstalling || viewModel.hasRunningQueueTask || viewModel.queueRunning || !environmentScan?.comfyRoot ? "disabled" : ""}>${icon(viewModel.llamaCppPythonInstalling ? "refresh-cw" : llamaCppPython?.ready ? "refresh-cw" : "download")}${viewModel.llamaCppPythonInstalling ? s("prompt.runtimeInstalling") : llamaCppPython?.ready ? s("prompt.runtimeRepair") : s("prompt.runtimeInstall")}</button>
+          <button class="${llamaCppPython?.ready ? "secondary" : "primary"} button-with-icon" id="install-llama-cpp-python" aria-busy="${viewModel.llamaCppPythonInstalling}" ${viewModel.llamaCppPythonInstalling || viewModel.hasRunningQueueTask || viewModel.queueRunning || !environmentScan?.comfyRoot ? "disabled" : ""}>${icon(viewModel.llamaCppPythonInstalling ? "refresh-cw" : llamaCppPython?.ready ? "refresh-cw" : "download")}${viewModel.llamaCppPythonInstalling ? s("prompt.runtimeInstalling") : llamaCppPython?.ready ? s("prompt.runtimeRepair") : s("prompt.runtimeInstall")}</button>
         </div>
         ${(viewModel.llamaCppPythonLog || viewModel.llamaCppPythonInstalling) ? `<details class="node-log" open><summary>${s("prompt.runtimeLog")}</summary><pre data-dependency-install-log="python-runtime:llama-cpp-python">${escape(viewModel.llamaCppPythonLog || s("prompt.runtimeInstalling"))}</pre></details>` : ""}
       </section>`;
@@ -310,7 +311,7 @@ export function renderSettingsPage(
   const gpu = gpuState.item;
   const gpuDevices = gpuState.devices;
   const gpuSummary = gpuDevices.length
-    ? gpuDevices.map((device) => `${device.name} · ${options.formatBytes(device.vramTotalBytes)}`).join("；")
+    ? gpuDevices.map((device) => `${device.name} · ${options.formatBytes(device.vramTotalBytes)}`).join(s("shared.listSeparator"))
     : gpu?.ok || gpu?.status === "warning"
       ? gpu.detail
       : environmentScan
@@ -327,7 +328,7 @@ export function renderSettingsPage(
         total: options.formatBytes(device.vramTotalBytes),
         reserve: options.formatBytes(reserveVramBytes),
         budget: options.formatBytes(Math.max(0, device.vramTotalBytes - reserveVramBytes))
-      })).join("；")
+      })).join(s("shared.listSeparator"))
     : t(uiKeys.settings.system.gpuBudgetWaiting);
   const gpuCards = gpuDevices.length
     ? `<div class="gpu-device-list">${gpuDevices.map((device) => `
@@ -410,11 +411,14 @@ export function renderSettingsPage(
         </div>` : `<p class="muted proxy-hint">${t(uiKeys.settings.system.noInstallFoundDescription)}</p>`}
       </section>
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>${t(uiKeys.settings.system.connectionTitle)}</h2><span class="muted">${t(uiKeys.settings.system.connectionDescription)}</span></div><div class="connection-actions"><button class="secondary button-with-icon" data-test="comfy" ${viewModel.serviceForceStopping ? "disabled" : ""}>${icon("zap")}${t(uiKeys.settings.system.testConnection)}</button><button class="primary destructive button-with-icon" id="force-stop-comfy" ${viewModel.serviceForceStopping || viewModel.serviceBusy ? "disabled" : ""}>${icon(viewModel.serviceForceStopping ? "refresh-cw" : "ban")}${t(viewModel.serviceForceStopping ? uiKeys.settings.system.forceStopping : uiKeys.settings.system.forceStop)}</button></div></div>
+        <div class="section-heading"><div><h2>${t(uiKeys.settings.system.connectionTitle)}</h2><span class="muted">${t(uiKeys.settings.system.connectionDescription)}</span></div><div class="connection-actions"><button class="secondary button-with-icon" data-test="comfy" ${viewModel.serviceForceStopping ? "disabled" : ""}>${icon("zap")}${t(uiKeys.settings.system.testConnection)}</button></div></div>
         <label>${t(uiKeys.settings.system.serviceAddress)}<input id="comfy-url" value="${escape(settings.comfyUrl)}" placeholder="http://127.0.0.1:8188"></label>
         <p class="muted proxy-hint">${t(uiKeys.settings.system.connectionDefaultHint)}</p>
-        <p class="muted proxy-hint danger-hint">${t(uiKeys.settings.system.forceStopHint)}</p>
-        <div id="connection-result" class="connection-result muted">${t(uiKeys.settings.system.connectionNotTested)}</div>
+        <div class="danger-zone">
+          <div><strong>${t(uiKeys.settings.system.forceStop)}</strong><span class="muted danger-hint">${t(uiKeys.settings.system.forceStopHint)}</span></div>
+          <button class="secondary destructive button-with-icon" id="force-stop-comfy" ${viewModel.serviceForceStopping || viewModel.serviceBusy ? "disabled" : ""}>${icon(viewModel.serviceForceStopping ? "refresh-cw" : "ban")}${t(viewModel.serviceForceStopping ? uiKeys.settings.system.forceStopping : uiKeys.settings.system.forceStop)}</button>
+        </div>
+        <div id="connection-result" class="connection-result muted" role="status" aria-live="polite" aria-atomic="true">${t(uiKeys.settings.system.connectionNotTested)}</div>
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${t(uiKeys.settings.system.filePathsTitle)}</h2><span class="muted">${t(uiKeys.settings.system.filePathsDescription)}</span></div></div>
@@ -473,7 +477,7 @@ export function renderSettingsPage(
             ${extensionProfiles.map((profile) => `<option value="${profile.id}" ${settings.defaultExtensionModel === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? s("video.missingComponent") : profile.integrated === false ? s("video.workflowPending") : ""}</option>`).join("")}
           </select></label>
         </div>
-        <div class="scan-result">${viewModel.environmentScanning ? s("video.scanning") : environmentScan ? s("video.summary", { available: videoAvailable, pending: videoProfiles.length - videoAvailable }) : s("video.waitingScan")}</div>
+        <div class="scan-result" role="status" aria-live="polite">${viewModel.environmentScanning ? s("video.scanning") : environmentScan ? s("video.summary", { available: videoAvailable, pending: videoProfiles.length - videoAvailable }) : s("video.waitingScan")}</div>
       </section>
       <div class="model-profile-list">${videoProfiles.length ? videoProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("video.empty")}</div>`}</div>
       <section class="panel settings-section">
@@ -527,7 +531,7 @@ export function renderSettingsPage(
           </select></label>
           <label>${s("image.defaultCount")}<div class="inline-field"><input id="image-output-count" type="range" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><input id="image-output-count-number" type="number" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><span>${s("image.countUnit")}</span></div></label>
         </div>
-        <div class="scan-result">${viewModel.environmentScanning ? s("image.scanning") : environmentScan ? s("image.summary", { ready: imageComponentsReady, total: imageProfiles.length }) : s("image.waitingScan")}</div>
+        <div class="scan-result" role="status" aria-live="polite">${viewModel.environmentScanning ? s("image.scanning") : environmentScan ? s("image.summary", { ready: imageComponentsReady, total: imageProfiles.length }) : s("image.waitingScan")}</div>
         <p class="muted proxy-hint">${s("image.note")}</p>
       </section>
       <div class="model-profile-list">${imageProfiles.length ? imageProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("image.empty")}</div>`}</div>
@@ -542,7 +546,7 @@ export function renderSettingsPage(
           <label>${s("prompt.language")}<select id="prompt-language"><option value="auto" ${settings.promptLanguage === "auto" ? "selected" : ""}>${s("prompt.followInput")}</option><option value="zh" ${settings.promptLanguage === "zh" ? "selected" : ""}>${s("prompt.chinese")}</option><option value="en" ${settings.promptLanguage === "en" ? "selected" : ""}>${s("prompt.english")}</option></select></label>
           <label>${s("prompt.creativity")}<select id="prompt-creativity"><option value="0.3" ${settings.promptCreativity === 0.3 ? "selected" : ""}>${s("prompt.restrained")} · 0.3</option><option value="0.7" ${settings.promptCreativity === 0.7 ? "selected" : ""}>${s("prompt.balanced")} · 0.7</option><option value="1" ${settings.promptCreativity === 1 ? "selected" : ""}>${s("prompt.rich")} · 1.0</option></select></label>
         </div>
-        <div class="scan-result">${viewModel.environmentScanning ? s("prompt.scanning") : environmentScan ? s("prompt.summary", { count: promptAvailable }) : s("prompt.waitingScan")}</div>
+        <div class="scan-result" role="status" aria-live="polite">${viewModel.environmentScanning ? s("prompt.scanning") : environmentScan ? s("prompt.summary", { count: promptAvailable }) : s("prompt.waitingScan")}</div>
         <p class="muted proxy-hint">${s("prompt.note")}</p>
       </section>
       ${promptRuntimePanel}
@@ -576,7 +580,7 @@ export function renderSettingsPage(
         <div class="section-heading"><div><h2>${s("upscale.title")}</h2><span class="muted">${s("upscale.description")}</span></div>
           <label class="compact-label">${s("upscale.defaultModel")}<select id="default-upscale-model">${upscaleProfiles.map((profile) => `<option value="${profile.id}" ${settings.defaultUpscaleModel === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escape(profile.name)}${profile.available ? "" : s("upscale.missingComponent")}</option>`).join("")}</select></label>
         </div>
-        <div class="scan-result">${viewModel.environmentScanning ? s("upscale.scanning") : environmentScan ? s("upscale.summary", { available: upscaleAvailable, pending: upscaleProfiles.length - upscaleAvailable }) : s("upscale.waitingScan")}</div>
+        <div class="scan-result" role="status" aria-live="polite">${viewModel.environmentScanning ? s("upscale.scanning") : environmentScan ? s("upscale.summary", { available: upscaleAvailable, pending: upscaleProfiles.length - upscaleAvailable }) : s("upscale.waitingScan")}</div>
         <div class="settings-grid two">
           <label>${s("upscale.seedWeight")}<input id="seedvr2-model" value="${escape(settings.seedVr2Model)}"></label>
           <label>${s("upscale.realesrganWeight")}<input id="realesrgan-model" value="${escape(settings.realEsrganModel)}"></label>
@@ -610,8 +614,8 @@ export function renderSettingsPage(
   const nodePanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>${s("nodes.title")}</h2><span class="muted">${s("nodes.description")}</span></div><div class="button-row"><span class="model-badge">${nodeDependencyAvailable}/${nodeDependencyTotal} ${s("nodes.installed")}</span><button class="primary button-with-icon" id="install-all-custom-nodes" ${!bulkNodeIds.length || customNodeInstallGloballyBlocked || viewModel.customNodeInstallPhase !== "idle" ? "disabled" : ""}>${icon(bulkActionMode === "update" ? "refresh-cw" : bulkActionMode === "none" ? "circle-check" : "download")}${bulkActionLabel} <span class="button-count">${bulkNodeIds.length}</span></button></div></div>
-        <div class="scan-result">${s("nodes.installNote")}</div>
+        <div class="section-heading"><div><h2>${s("nodes.title")}</h2><span class="muted">${s("nodes.description")}</span></div><div class="button-row"><span class="model-badge">${nodeDependencyAvailable}/${nodeDependencyTotal} ${s("nodes.installed")}</span><button class="primary button-with-icon" id="install-all-custom-nodes" aria-busy="${viewModel.customNodeInstallPhase !== "idle"}" ${!bulkNodeIds.length || customNodeInstallGloballyBlocked || viewModel.customNodeInstallPhase !== "idle" ? "disabled" : ""}>${icon(bulkActionMode === "update" ? "refresh-cw" : bulkActionMode === "none" ? "circle-check" : "download")}${bulkActionLabel} <span class="button-count">${bulkNodeIds.length}</span></button></div></div>
+        <div class="scan-result" role="status" aria-live="polite">${s("nodes.installNote")}</div>
       </section>
       <div class="model-profile-list">
         <article class="panel custom-node-card ${h3CoreTone}">
@@ -628,8 +632,8 @@ export function renderSettingsPage(
             ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>${s("nodes.coreLog")}</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
           </div>
           <div class="custom-node-actions">
-            <span class="model-availability ${h3CoreTone}">${h3CoreReady ? `${icon("circle-check")} ${s("nodes.loaded")}` : h3CoreKnown ? `${icon("circle-alert")} ${s("nodes.coreMissing")}` : `${icon("circle-help")} ${s("nodes.notChecked")}`}</span>
-            <button class="primary button-with-icon" id="repair-h3-core" ${viewModel.coreDependencyRepairing ? "disabled" : ""}>${icon(viewModel.coreDependencyRepairing ? "refresh-cw" : h3CoreReady ? "download" : "shield-check")}${viewModel.coreDependencyRepairing ? s("nodes.processing") : h3CoreReady ? s("nodes.checkUpdate") : h3CoreKnown ? s("nodes.repairUpdate") : s("nodes.startCheck")}</button>
+            <span class="model-availability ${h3CoreTone}" role="status" aria-live="polite">${h3CoreReady ? `${icon("circle-check")} ${s("nodes.loaded")}` : h3CoreKnown ? `${icon("circle-alert")} ${s("nodes.coreMissing")}` : `${icon("circle-help")} ${s("nodes.notChecked")}`}</span>
+            <button class="primary button-with-icon" id="repair-h3-core" aria-busy="${viewModel.coreDependencyRepairing}" ${viewModel.coreDependencyRepairing ? "disabled" : ""}>${icon(viewModel.coreDependencyRepairing ? "refresh-cw" : h3CoreReady ? "download" : "shield-check")}${viewModel.coreDependencyRepairing ? s("nodes.processing") : h3CoreReady ? s("nodes.checkUpdate") : h3CoreKnown ? s("nodes.repairUpdate") : s("nodes.startCheck")}</button>
           </div>
         </article>
         <article class="panel custom-node-card ${promptCoreTone}">
@@ -657,7 +661,7 @@ export function renderSettingsPage(
             </div>
             <div class="custom-node-actions">
               <span class="model-availability ${workflow.installed ? "available" : "missing"}">${workflow.installed ? `${icon("circle-check")} ${s("nodes.installed")}` : `${icon("circle-alert")} ${s("nodes.notInstalled")}`}</span>
-              <button class="${workflow.installed ? "secondary" : "primary"} button-with-icon" data-install-workflow="${escape(workflow.id)}" ${viewModel.workflowDependencyInstalling || viewModel.customNodeInstallPhase !== "idle" ? "disabled" : ""}>${icon(viewModel.workflowDependencyInstalling === workflow.id ? "refresh-cw" : "download")}${viewModel.workflowDependencyInstalling === workflow.id ? s("nodes.installing") : workflow.installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>
+              <button class="${workflow.installed ? "secondary" : "primary"} button-with-icon" data-install-workflow="${escape(workflow.id)}" aria-busy="${viewModel.workflowDependencyInstalling === workflow.id}" ${viewModel.workflowDependencyInstalling || viewModel.customNodeInstallPhase !== "idle" ? "disabled" : ""}>${icon(viewModel.workflowDependencyInstalling === workflow.id ? "refresh-cw" : "download")}${viewModel.workflowDependencyInstalling === workflow.id ? s("nodes.installing") : workflow.installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>
             </div>
           </article>`).join("")}
         ${customNodes.map((node) => {
@@ -716,13 +720,13 @@ export function renderSettingsPage(
               ${node.loadError ? `<span class="${node.compatibilityState === "warning" ? "node-update-notice" : "node-error"}">${escape(node.loadError)}</span>` : ""}
               ${node.updateNotice ? `<span class="node-update-notice">${escape(node.updateNotice)}</span>` : ""}
               ${node.runtimeNotice ? `<span class="node-runtime-notice">${escape(node.runtimeNotice)}</span>` : ""}
-              ${node.duplicateDirectories?.length ? `<span class="node-update-notice">${escape(s("nodes.duplicateCopies", { paths: node.duplicateDirectories.join("、") }))}</span>` : ""}
+              ${node.duplicateDirectories?.length ? `<span class="node-update-notice">${escape(s("nodes.duplicateCopies", { paths: node.duplicateDirectories.join(s("shared.listSeparator")) }))}</span>` : ""}
               ${node.compatibilityNotice && node.compatibilityState !== "supported" && node.compatibilityNotice !== node.updateNotice ? `<span class="node-update-notice">${escape(node.compatibilityNotice)}</span>` : ""}
               ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`custom-node:${node.id}`)}">${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
             </div>
             <div class="custom-node-actions">
-              <span class="model-availability ${cardState.tone}">${statusMarkup}</span>
-              <button class="${installActionable ? "primary" : "secondary"} button-with-icon" ${installActionable ? `data-install-node="${escape(node.id)}"` : `data-rescan-node="${escape(node.id)}"`} ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : installActionable ? node.installed ? "refresh-cw" : "download" : "scan-search")}${installStatus || (node.updateAvailable ? s("nodes.updateRestart") : node.installed ? t(uiKeys.settings.rescan) : s("nodes.installRestart"))}</button>
+              <span class="model-availability ${cardState.tone}" role="status" aria-live="polite">${statusMarkup}</span>
+              <button class="${installActionable ? "primary" : "secondary"} button-with-icon" aria-busy="${active || queued || cardState.phase === "finalizing"}" ${installActionable ? `data-install-node="${escape(node.id)}"` : `data-rescan-node="${escape(node.id)}"`} ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : installActionable ? node.installed ? "refresh-cw" : "download" : "scan-search")}${installStatus || (node.updateAvailable ? s("nodes.updateRestart") : node.installed ? t(uiKeys.settings.rescan) : s("nodes.installRestart"))}</button>
             </div>
           </article>`;
         }).join("") || `<div class="panel environment-empty">${s("nodes.empty")}</div>`}
@@ -800,7 +804,7 @@ export function renderSettingsPage(
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeKj"), s("accel.runtimeKjTip"))}</div><strong class="runtime-value">${escape(attention?.tritonVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? s("accel.kjAvailable") : attention?.kjNodesInstalled ? s("accel.kjUpdate") : s("accel.kjMissing")}</code></article>
         </div>
         <div class="acceleration-actions">
-          <button class="primary button-with-icon" id="install-attention-acceleration" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : accelerationState.installAction === "repair" ? s("accel.repair") : s("accel.install")}</button>
+          <button class="primary button-with-icon" id="install-attention-acceleration" aria-busy="${viewModel.attentionAccelerationInstalling}" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : accelerationState.installAction === "repair" ? s("accel.repair") : s("accel.install")}</button>
           <div>${fieldLabelWithTip(s("accel.stopComfy"), s("accel.restartComfy"))}</div>
         </div>
         ${viewModel.attentionAccelerationLog ? `<details class="node-log" open><summary>${s("accel.log")}</summary><pre id="attention-install-log">${escape(viewModel.attentionAccelerationLog)}</pre></details>` : ""}
@@ -818,7 +822,7 @@ export function renderSettingsPage(
           <div class="app-log-directory-actions"><span>${t(uiKeys.settings.logsDirectory)}</span><div><button class="secondary button-with-icon" id="open-app-log-directory">${icon("folder-open")}${t(uiKeys.settings.logsDirectoryOpen)}</button><button class="secondary button-with-icon" id="open-app-crash-directory">${icon("folder-open")}${t(uiKeys.settings.logsCrashDump)}</button></div></div>
           <div class="app-log-stats"><div class="app-log-stat"><span>${t(uiKeys.settings.logsRetention)}</span><strong>${viewModel.appLogs?.retentionDays ?? 7} ${t(uiKeys.settings.system.days)}</strong></div><div class="app-log-stat"><span>${t(uiKeys.settings.logsRecords)}</span><strong id="app-log-count">${viewModel.appLogs?.records.length ?? 0}</strong></div></div>
         </div>
-        ${viewModel.appLogsError ? `<p class="error">${escape(viewModel.appLogsError)}</p>` : ""}
+        ${viewModel.appLogsError ? `<p class="error" role="alert">${escape(viewModel.appLogsError)}</p>` : ""}
         ${viewModel.appLogs?.text
           ? `<pre class="app-log-terminal" id="app-log-terminal">${options.renderAppLogTerminal(viewModel.appLogs.text)}</pre>`
           : `<div class="environment-empty">${viewModel.appLogsLoading ? t(uiKeys.settings.logsReading) : t(uiKeys.settings.logsEmpty)}</div>`}
