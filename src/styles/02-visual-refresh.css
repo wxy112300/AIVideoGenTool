@@ -48,7 +48,7 @@ code { color: var(--ux-content-technical); font-size: var(--ux-type-technical); 
 
 .app-shell { max-width: 1440px; padding: 0 34px 72px; }
 .topbar {
-  min-height: 72px;
+  min-height: var(--ux-topbar-height);
   margin: 0 -34px;
   padding: 12px 34px;
   border-color: color-mix(in srgb, var(--ux-separator-strong) 48%, transparent);

@@ -88,6 +88,7 @@
 }
 
 @media (max-width: 760px) {
+  :root { --ux-page-sticky-offset: 0px; }
   body { min-width: 360px; }
   .app-shell { padding-inline: 16px; }
   .app-shell.history-shell { padding-inline: 16px; }

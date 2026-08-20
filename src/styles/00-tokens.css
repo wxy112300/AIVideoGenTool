@@ -149,7 +149,9 @@
   --ux-radius-panel: 13px;
   --ux-radius-modal: 16px;
 
-  /* Shared geometry roles. */
+  /* P05 shared shell geometry: page sticky headings align to the 72px
+   * current-renderer topbar; responsive overrides zero this when the topbar
+   * becomes part of normal flow. */
   --ux-topbar-height: 72px;
-  --ux-page-sticky-offset: 88px;
+  --ux-page-sticky-offset: 72px;
 }

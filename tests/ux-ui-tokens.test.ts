@@ -7,6 +7,7 @@ const styleEntry = readFileSync(new URL("../src/style.css", import.meta.url), "u
 const foundationSource = readFileSync(new URL("../src/styles/01-foundation.css", import.meta.url), "utf8");
 const visualRefreshSource = readFileSync(new URL("../src/styles/02-visual-refresh.css", import.meta.url), "utf8");
 const accelerationSource = readFileSync(new URL("../src/styles/03-acceleration.css", import.meta.url), "utf8");
+const historyStageSource = readFileSync(new URL("../src/styles/04-history-stage.css", import.meta.url), "utf8");
 const densitySource = readFileSync(new URL("../src/styles/05-density-refinement.css", import.meta.url), "utf8");
 const historyCurationSource = readFileSync(new URL("../src/styles/11-history-curation.css", import.meta.url), "utf8");
 const finalRefinementsSource = readFileSync(new URL("../src/styles/10-final-refinements.css", import.meta.url), "utf8");
@@ -209,6 +210,14 @@ describe("UX/UI semantic token foundation", () => {
     expect(tokenSource).toContain("--ux-space-3: 12px;");
     expect(tokenSource).toContain("--ux-space-4: 16px;");
     expect(visualRefreshSource).toContain(".performance-grid { gap: var(--ux-space-3); margin-bottom: var(--ux-space-4); }");
+  });
+
+  it("routes shared shell height and responsive sticky offsets through geometry roles", () => {
+    expect(tokenSource).toContain("--ux-topbar-height: 72px;");
+    expect(tokenSource).toContain("--ux-page-sticky-offset: 72px;");
+    expect(foundationSource).toContain(".topbar { position: sticky; top: 0; z-index: 10; min-height: var(--ux-topbar-height);");
+    expect(visualRefreshSource).toContain("  min-height: var(--ux-topbar-height);");
+    expect(historyStageSource).toContain(":root { --ux-page-sticky-offset: 0px; }");
   });
 
   it("flattens ordinary panels while preserving overlay elevation", () => {

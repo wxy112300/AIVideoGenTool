@@ -292,7 +292,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：所有主页面与 Details 在关键断点上下滚动；History detail 保持 History current；close dialog 不受影响；`npm.cmd run verify`。
 
-**当前状态（2026-08-20）**：已在 `src/renderer/shell/page.ts` 为 active top-level nav 补上 `aria-current="page"`，并用 renderer shell focused tests 覆盖 Settings 与 History detail 的选中语义；sticky/scroll/close-dialog 的完整 smoke 仍待执行，因此不标为 `verified`。
+**当前状态（2026-08-20）**：已在 `src/renderer/shell/page.ts` 为 active top-level nav 补上 `aria-current="page"`，并用 renderer shell focused tests 覆盖 Settings 与 History detail 的选中语义。P05/L22 已将当前 renderer 的 72px topbar 接入 `--ux-topbar-height`，将 page sticky offset 对齐为 72px，并在 topbar 变为 normal-flow 的 760px 以下断点将 offset 归零；topbar 的 z-index 仍高于后续 page heading。Create/Queue/History/Settings heading 的 selector 迁移与 sticky/scroll/close-dialog 的完整 smoke 仍待执行，因此 P05 不标为 `verified`。
 
 ### P06 — 全局通知、局部反馈与恢复动作
 
