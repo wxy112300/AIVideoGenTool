@@ -329,6 +329,8 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：900×800 首屏同时看见当前素材状态、Prompt 起始区和提交上下文；Tab 顺序与视觉顺序一致；人工批准。
 
+**当前状态（2026-08-20）**：`docs/UX_UI_P07_RENDERER_PROPOSAL.md` 已基于当前三种 Create fixture、真实 renderer capture 和现有 Image Edit 窄窗规则提出 G08 候选：901–1120/900 采用紧凑双列，1280+ 保持素材/Prompt 双主区，760 以下保留单列 fallback 并增加 submit safe-area 检查。当前 P07 仍为 `proposed`，标准 capture harness 的已知 DOM wait race 需在 G08 前用隔离 renderer smoke 重新取证；没有修改生产 renderer，P08 不能越过人工批准直接开始。
+
 ### P08 — Create renderer 渐进实现
 
 **主要文件**：Create page/fragments/controllers 与 Create-owned CSS；不得修改 workflow payload。
