@@ -205,7 +205,7 @@ main { padding-top: 0; }
 }
 
 .image-remove span {
-  font-size: 11px;
+  font-size: var(--ux-type-meta);
   font-weight: 600;
 }
 
@@ -401,7 +401,7 @@ main { padding-top: 0; }
 .submit-feedback {
   margin: 12px 0 0;
   color: #ff9a9d !important;
-  font-size: 11px;
+  font-size: var(--ux-type-meta);
   line-height: 1.5;
 }
 
@@ -1025,7 +1025,7 @@ main { padding-top: 0; }
 .policy-copy small {
   overflow-wrap: anywhere;
   color: #8996a8;
-  font-size: 11px;
+  font-size: var(--ux-type-meta);
   line-height: 1.45;
 }
 

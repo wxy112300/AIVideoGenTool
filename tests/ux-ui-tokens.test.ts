@@ -162,6 +162,20 @@ describe("UX/UI semantic token foundation", () => {
     expect(finalRefinementsSource).not.toContain("var(--ux-type-");
   });
 
+  it("routes body, label, meta, and technical text roles through shared selectors", () => {
+    expect(tokenSource).toContain("--ux-type-body: 14px;");
+    expect(tokenSource).toContain("--ux-type-label: 12px;");
+    expect(tokenSource).toContain("--ux-type-meta: 11px;");
+    expect(tokenSource).toContain("--ux-type-technical: .86em;");
+    expect(visualRefreshSource).toContain("font-size: var(--ux-type-body);");
+    expect(visualRefreshSource).toContain("font-size: var(--ux-type-label);");
+    expect(visualRefreshSource).toContain("font-size: var(--ux-type-meta);");
+    expect(visualRefreshSource).toContain("font-size: var(--ux-type-technical);");
+    expect(foundationSource).toContain("font-size: var(--ux-type-label);");
+    expect(foundationSource).toContain("font-size: var(--ux-type-meta);");
+    expect(densitySource).toContain("font-size: var(--ux-type-meta);");
+  });
+
   it("flattens ordinary panels while preserving overlay elevation", () => {
     expect(tokenSource).toContain("--ux-elevation-panel: none;");
     expect(foundationSource).toContain(".panel { min-width: 0; border: 1px solid var(--border); border-radius: 17px; background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--ux-elevation-panel); }");

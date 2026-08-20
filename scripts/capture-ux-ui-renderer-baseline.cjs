@@ -27,13 +27,14 @@ Options:
   --fixture     Capture only the named fixture.
   --viewport    Capture only the named viewport.
   --locale      Capture with zh-CN, zh-TW, or en-US UI copy (default: zh-CN).
+  --zoom       Capture at page zoom 1, 1.25, or 1.5 (default: 1).
   --diagnose    Print document overflow and the widest renderer elements.
   --smoke       Run the isolated Create prompt focus/input smoke check.
 `);
 }
 
 function parseArgs(argv) {
-  const options = { dryRun: false, output: null, fixture: null, viewport: null, locale: "zh-CN", diagnose: false, smoke: false };
+  const options = { dryRun: false, output: null, fixture: null, viewport: null, locale: "zh-CN", zoom: 1, diagnose: false, smoke: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--help" || argument === "-h") options.help = true;
@@ -53,6 +54,11 @@ function parseArgs(argv) {
       options.locale = argv[++index];
       if (!options.locale || !["zh-CN", "zh-TW", "en-US"].includes(options.locale)) {
         throw new Error("--locale must be zh-CN, zh-TW, or en-US");
+      }
+    } else if (argument === "--zoom") {
+      options.zoom = Number(argv[++index]);
+      if (![1, 1.25, 1.5].includes(options.zoom)) {
+        throw new Error("--zoom must be 1, 1.25, or 1.5");
       }
     } else throw new Error(`Unknown option: ${argument}`);
   }
@@ -535,6 +541,7 @@ async function captureAll(options, preloadPath) {
       for (const { fixture } of viewportEntries) {
         console.log(`[renderer-capture] loading ${fixture.id} ${viewport.id}`);
         await window.loadURL(process.env.UX_UI_RENDERER_URL || "http://127.0.0.1:5173/");
+        window.webContents.setZoomFactor(options.zoom);
         await waitForDom(window, "Boolean(document.querySelector('.app-shell'))", `${fixture.id} initial shell`);
         await setupFixture(window, fixture);
         if (options.diagnose) console.log(`[renderer-diagnose] ${fixture.id} ${viewport.id} ${JSON.stringify(await diagnoseLayout(window))}`);

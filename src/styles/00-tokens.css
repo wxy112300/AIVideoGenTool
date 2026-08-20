@@ -124,12 +124,14 @@
   --ux-elevation-panel: none;
 
   /* P04/L16 type scale: seven roles are declared first; L17 maps the shared
-   * heading selectors to the final values produced by the current cascade. */
+   * heading selectors and L18 maps shared text selectors to final current-
+   * renderer values. The label role is 12px because that is the effective
+   * value of the current visual-refresh cascade. */
   --ux-type-page: clamp(20px, 1.65vw, 23px);
   --ux-type-section: 17px;
   --ux-type-object: 15px;
   --ux-type-body: 14px;
-  --ux-type-label: 13px;
+  --ux-type-label: 12px;
   --ux-type-meta: 11px;
   --ux-type-technical: .86em;
 
