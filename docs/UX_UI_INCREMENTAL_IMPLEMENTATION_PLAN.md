@@ -363,6 +363,8 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：running、paused、failed、recoverable、empty、multiple pending 六种状态批准。
 
+**当前状态（2026-08-20）**：`docs/UX_UI_P09_RENDERER_PROPOSAL.md` 已基于当前 Queue fixture、Queue DOM/CSS 和 1440/900 renderer evidence 提出任务优先候选：active task 位于 heading 后第一主体，telemetry 进入 active task 的紧凑 evidence strip，901–900px 保持操作可达，760px 以下单列。当前 P09 仍为 `proposed`，G10 前必须补隔离 running smoke；没有修改 Queue 生产 renderer。
+
 ### P10 — Queue renderer 任务优先实现
 
 **主要文件**：`src/renderer/pages/queue/page.ts`、`card.ts`、live status/controller 和 Queue-owned CSS。
@@ -388,6 +390,8 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 **测试**：`history-filter`、`history-state`、`history-delete`、renderer foundation。
 
 **Gate**：从8项删至1项列轨稳定；瀑布流/相册切换、过滤、删除、返回详情无布局跳变；`npm.cmd run verify`。
+
+**当前状态（2026-08-20）**：`docs/UX_UI_P11_RENDERER_PROPOSAL.md` 已基于当前视频/图片 masonry/album fixture、toolbar DOM/CSS 和 1440/900 renderer evidence 提出候选：1121px 以上保留单行三组关系，901–1120/900px 分为 title/type 与 filter/layout 两组并解除固定 68px，760px 以下自然高度堆叠；gallery 列轨改由 container width 决定，不由 `cards.length` 决定。当前 P11 仍为 `proposed`，L38/L39 等待复核；没有修改 History 生产 renderer。
 
 ### P12 — History 卡片、tabs、menus 的键盘语义
 
