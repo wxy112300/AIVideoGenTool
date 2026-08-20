@@ -9,6 +9,7 @@ const visualRefreshSource = readFileSync(new URL("../src/styles/02-visual-refres
 const accelerationSource = readFileSync(new URL("../src/styles/03-acceleration.css", import.meta.url), "utf8");
 const historyStageSource = readFileSync(new URL("../src/styles/04-history-stage.css", import.meta.url), "utf8");
 const densitySource = readFileSync(new URL("../src/styles/05-density-refinement.css", import.meta.url), "utf8");
+const createHeaderSource = readFileSync(new URL("../src/styles/09-create-header.css", import.meta.url), "utf8");
 const historyCurationSource = readFileSync(new URL("../src/styles/11-history-curation.css", import.meta.url), "utf8");
 const finalRefinementsSource = readFileSync(new URL("../src/styles/10-final-refinements.css", import.meta.url), "utf8");
 
@@ -218,6 +219,13 @@ describe("UX/UI semantic token foundation", () => {
     expect(foundationSource).toContain(".topbar { position: sticky; top: 0; z-index: 10; min-height: var(--ux-topbar-height);");
     expect(visualRefreshSource).toContain("  min-height: var(--ux-topbar-height);");
     expect(historyStageSource).toContain(":root { --ux-page-sticky-offset: 0px; }");
+  });
+
+  it("routes Create and Queue headings through the shared sticky offset", () => {
+    expect(createHeaderSource).toContain("  top: var(--ux-page-sticky-offset);");
+    expect(createHeaderSource).toContain("  z-index: 9;");
+    expect(finalRefinementsSource).toContain("  top: var(--ux-page-sticky-offset);");
+    expect(finalRefinementsSource).toContain(".queue-page-heading { top: 0; }");
   });
 
   it("flattens ordinary panels while preserving overlay elevation", () => {

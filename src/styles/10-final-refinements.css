@@ -1052,7 +1052,7 @@ body.image-markup-open {
    overpower the task list. The topbar already owns the first sticky layer. */
 .queue-page-heading {
   position: sticky;
-  top: 64px;
+  top: var(--ux-page-sticky-offset);
   z-index: 8;
   min-height: 0;
   margin-bottom: 14px;
@@ -1108,6 +1108,10 @@ body.image-markup-open {
   font-size: 15px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .queue-page-heading { top: 0; }
 }
 
 .queue-runtime-badge {

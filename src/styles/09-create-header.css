@@ -2,9 +2,9 @@
 /* The create header is a compact control rail, not a separate content panel. */
 .create-page-heading {
   position: sticky;
-  top: 64px;
-  /* Keep the fixed mode rail above scrolled composer controls/tooltips. */
-  z-index: 20;
+  top: var(--ux-page-sticky-offset);
+  /* Keep the mode rail below the topbar and above normal composer content. */
+  z-index: 9;
   min-height: 60px;
   margin-bottom: 12px;
   padding: 8px 2px;
