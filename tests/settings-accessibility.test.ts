@@ -83,7 +83,7 @@ function viewModel(overrides: Partial<SettingsPageViewModel> = {}): SettingsPage
 }
 
 describe("Settings accessibility markup", () => {
-  it("exposes a roving tablist and keeps the scan action with its environment context", () => {
+  it("exposes a roving tablist and keeps the scan action reachable from the page header", () => {
     const markup = renderSettingsPage(viewModel(), renderOptions);
 
     expect(markup).toContain('id="settings-category-tabs"');
@@ -94,10 +94,18 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('id="settings-panel-system" class="settings-content" role="tabpanel"');
     expect(markup).toContain('aria-labelledby="settings-tab-system"');
     expect(markup.match(/id="scan-environment"/g)).toHaveLength(1);
-    expect(markup.indexOf('id="settings-environment-section"')).toBeLessThan(markup.indexOf('id="scan-environment"'));
+    expect(markup.indexOf('id="scan-environment"')).toBeLessThan(markup.indexOf('id="settings-environment-section"'));
     expect(markup).toContain('id="connection-result" class="connection-result muted" role="status" aria-live="polite"');
     expect(markup).toContain('id="force-stop-comfy"');
     expect(markup).toContain('class="secondary destructive button-with-icon" id="force-stop-comfy"');
+  });
+
+  it("keeps the manual scan action available on non-system Settings tabs", () => {
+    const markup = renderSettingsPage(viewModel({ settingsTab: "lora" }), renderOptions);
+
+    expect(markup).toContain('id="settings-panel-lora" class="settings-content" role="tabpanel"');
+    expect(markup).toContain('id="scan-environment"');
+    expect(markup).not.toContain('id="settings-environment-section"');
   });
 
   it("marks the local save state without changing the save selector", () => {
