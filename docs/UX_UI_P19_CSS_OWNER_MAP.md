@@ -1,6 +1,6 @@
 # P19 CSS selector owner map
 
-> Status: L61 completed; G17 approved the Create breakpoint and Settings navigation/shell geometry packages. The Settings section shell, heading, and content-card packages plus the History gallery/toolbar, History detail, and Queue composition packages are complete with current-renderer evidence. L64 removed one confirmed duplicate History album override and retained all other `!important` declarations with active ownership; P20 QA remains. This document remains an owner inventory and execution record, not a visual-direction approval.
+> Status: L61 completed; G17 approved the Create breakpoint and Settings navigation/shell geometry packages. The Settings section shell, heading, and content-card packages plus the History gallery/toolbar, History detail, and Queue composition packages are complete with current-renderer evidence. L64 removed one confirmed duplicate History album override and retained all other `!important` declarations with active ownership. P20/L65–L66 QA artifacts now live in `docs/UX_UI_P20_QA_REPORT.md` and `docs/UX_UI_P20_SCREENSHOT_MANIFEST.json`; G18 final runtime/release gate remains. This document remains an owner inventory and execution record, not a visual-direction approval.
 >
 > Base: `75b20b1` (`v0.40.0`), current renderer and `src/style.css` import order. Historical prototypes are excluded.
 

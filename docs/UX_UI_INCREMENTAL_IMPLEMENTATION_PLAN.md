@@ -566,6 +566,8 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **完成定义**：所有 phase 均为 `integrated`；没有未归属的视觉覆盖；没有用“稍后统一修”掩盖的阻塞问题；所有未验证项有 owner 和明确后续计划。
 
+**当前状态（2026-08-21）**：P20/L65–L66 自动化交付已完成。当前 renderer 生成了 zh-CN 全量 18 fixture × 8 viewport（136 张）、en-US/zh-TW 各 18 fixture × 2 关键 viewport（各 36 张）、Settings offline/scanning/installing/partial/error × 4 viewport（20 张）以及 125%/150% × 18 fixture（36 张）manifest；P20 产物记录在 `docs/UX_UI_P20_QA_REPORT.md` 和 `docs/UX_UI_P20_SCREENSHOT_MANIFEST.json`。150% 复核发现的 Create 摘要页面级横溢出已在 `07-create-composer.css` 的窄屏 owner 规则中修复，并由 focused token test 锁定；修复后 Create、Queue、History、Details、Settings 的 document/body 宽度在 150% canary 中一致。版本按可见 UX bug fix 升为 `0.40.1`。`npm.cmd run verify`（88 files / 656 tests、production build、20 组对比度检查）和 `npm.cmd run verify:markup-visual` 通过；synthetic renderer evidence 不替代真实 ComfyUI 生成。当前只剩 G18：用户/集成 owner 的真实运行态、完整键盘路径、系统高对比度/Reduced Motion、关闭生命周期和最终发布结论。
+
 ## 8. 跨 Phase 回归矩阵
 
 | 变更类型 | 必查相邻行为 |

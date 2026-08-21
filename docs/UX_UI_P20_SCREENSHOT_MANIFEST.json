@@ -1,0 +1,148 @@
+{
+  "phase": "P20",
+  "status": {
+    "L65": "completed",
+    "L66": "completed",
+    "G18": "pending"
+  },
+  "version": "0.40.1",
+  "generatedAt": "2026-08-21",
+  "baseCommit": "077bc4d",
+  "sourceOfTruth": "current-renderer",
+  "historicalPrototypesIncluded": false,
+  "artifactRoot": "temp/ux-ui-baseline",
+  "fixtures": [
+    "create-image-to-video",
+    "create-video-extension",
+    "create-image-edit",
+    "queue-mixed",
+    "history-video-masonry",
+    "history-video-album",
+    "history-image-masonry",
+    "history-image-album",
+    "video-detail",
+    "image-detail",
+    "settings-system",
+    "settings-acceleration",
+    "settings-video",
+    "settings-image",
+    "settings-nodes",
+    "settings-prompt",
+    "settings-upscale",
+    "settings-logs"
+  ],
+  "viewports": [
+    "1440x900",
+    "1280x800",
+    "900x800",
+    "760x800",
+    "1121x800",
+    "1120x800",
+    "901x800",
+    "761x800"
+  ],
+  "localeMatrix": [
+    {
+      "locale": "zh-CN",
+      "coverage": "full",
+      "historyCount": 1,
+      "viewportIds": [
+        "1440x900",
+        "1280x800",
+        "900x800",
+        "760x800",
+        "1121x800",
+        "1120x800",
+        "901x800",
+        "761x800"
+      ],
+      "fixtureCount": 18,
+      "screenshotCount": 136,
+      "output": "temp/ux-ui-baseline/p20-final-zh-CN-full"
+    },
+    {
+      "locale": "en-US",
+      "coverage": "key-wide-and-narrow",
+      "historyCount": 1,
+      "viewportIds": ["1440x900", "760x800"],
+      "fixtureCount": 18,
+      "screenshotCount": 36,
+      "outputs": [
+        "temp/ux-ui-baseline/p20-final-en-US-1440",
+        "temp/ux-ui-baseline/p20-final-en-US-760"
+      ]
+    },
+    {
+      "locale": "zh-TW",
+      "coverage": "key-wide-and-narrow",
+      "historyCount": 1,
+      "viewportIds": ["1440x900", "760x800"],
+      "fixtureCount": 18,
+      "screenshotCount": 36,
+      "outputs": [
+        "temp/ux-ui-baseline/p20-final-zh-TW-1440",
+        "temp/ux-ui-baseline/p20-final-zh-TW-760"
+      ]
+    }
+  ],
+  "stateMatrix": [
+    {
+      "surface": "Settings",
+      "states": ["offline", "scanning", "installing", "partial", "error"],
+      "viewportIds": ["1440x900", "1280x800", "900x800", "760x800"],
+      "screenshotCount": 20,
+      "output": "temp/ux-ui-baseline/p20-final-settings-states"
+    }
+  ],
+  "zoomMatrix": [
+    {
+      "zoom": 1.25,
+      "locale": "zh-CN",
+      "viewportId": "900x800",
+      "fixtureCount": 18,
+      "screenshotCount": 18,
+      "output": "temp/ux-ui-baseline/p20-final-zoom-125"
+    },
+    {
+      "zoom": 1.5,
+      "locale": "zh-CN",
+      "viewportId": "900x800",
+      "fixtureCount": 18,
+      "screenshotCount": 18,
+      "output": "temp/ux-ui-baseline/p20-final-zoom-150"
+    }
+  ],
+  "supplementalEvidence": [
+    {
+      "phase": "P19",
+      "surface": "Queue",
+      "states": 7,
+      "viewportCount": 8,
+      "screenshotCount": 56,
+      "output": "temp/ux-ui-baseline/p19-queue-after"
+    },
+    {
+      "phase": "P19",
+      "surface": "History",
+      "fixtures": 4,
+      "historyCount": 8,
+      "viewportCount": 8,
+      "screenshotCount": 32,
+      "output": "temp/ux-ui-baseline/p19-l64-history-after"
+    }
+  ],
+  "verification": {
+    "testFiles": 88,
+    "tests": 656,
+    "typecheck": "passed",
+    "productionBuild": "passed",
+    "textContrastPairs": 20,
+    "markupVisualExitCode": 0,
+    "manualRuntimeGeneration": "not claimed"
+  },
+  "diagnosticNotes": [
+    "document/body page-level widths matched on the post-fix 150% Create, Queue, History, Details and Settings canaries.",
+    "The capture diagnose output still reports intentional internal clipping/scrolling for tooltips, long model chips, long detail labels and the Settings compact category strip; these are not page-level overflow.",
+    "The 150% matrix initially exposed a real Create page overflow; the final artifact was regenerated after the narrow summary rule was fixed."
+  ]
+}

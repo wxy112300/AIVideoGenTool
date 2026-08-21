@@ -8,6 +8,12 @@
 
 ## 未发布
 
+## 0.40.1 — 2026-08-21（开发阶段补录）
+
+- 完成 P19 CSS owner 收敛后的 P20 当前 renderer QA：18 个 fixture 覆盖 1440/1280/900/760 及断点边界，补齐 zh-CN 全量、en-US/zh-TW 关键视口、Settings 五状态和 125%/150% 缩放 screenshot manifest。
+- 修复 125%/150% 缩放下 Create `.interpolation-summary` 仍沿用固定双列轨道造成的 document/body 横向滚动；窄屏恢复单列摘要，不改变 DOM、提交语义、工作流 payload 或队列逻辑。
+- `npm.cmd run verify` 通过（88 files / 656 tests、production build、20 组对比度检查）；`verify:markup-visual` 退出码为 0。截图与状态 fixture 为当前 renderer 静态/合成证据，G18 的真实 ComfyUI、完整键盘和关闭生命周期仍需最终人工验收。
+
 ## 0.40.0 — 2026-08-21
 
 - 完成 P18 Settings 内容层级：环境扫描结果从并列状态卡收敛为紧凑 evidence list，保留服务启动、依赖下载、路径和状态语义；模型 files/node/runtime 证据继续分开。

@@ -10,6 +10,7 @@ const accelerationSource = readFileSync(new URL("../src/styles/03-acceleration.c
 const historyStageSource = readFileSync(new URL("../src/styles/04-history-stage.css", import.meta.url), "utf8");
 const densitySource = readFileSync(new URL("../src/styles/05-density-refinement.css", import.meta.url), "utf8");
 const settingsLayoutSource = readFileSync(new URL("../src/styles/06-settings-layout.css", import.meta.url), "utf8");
+const createComposerSource = readFileSync(new URL("../src/styles/07-create-composer.css", import.meta.url), "utf8");
 const createHeaderSource = readFileSync(new URL("../src/styles/09-create-header.css", import.meta.url), "utf8");
 const historyCurationSource = readFileSync(new URL("../src/styles/11-history-curation.css", import.meta.url), "utf8");
 const finalRefinementsSource = readFileSync(new URL("../src/styles/10-final-refinements.css", import.meta.url), "utf8");
@@ -234,6 +235,10 @@ describe("UX/UI semantic token foundation", () => {
     expect(finalRefinementsSource).toContain("margin-bottom: var(--image-edit-submit-safe-area);");
     expect(finalRefinementsSource).toContain("scroll-margin-block-end: var(--image-edit-submit-safe-area);");
     expect(finalRefinementsSource).toContain("--image-edit-submit-safe-area: calc(2 * var(--ux-space-6) + 2 * var(--ux-space-5) + var(--ux-space-2));");
+  });
+
+  it("keeps the Create summary single-column at narrow zoomed viewports", () => {
+    expect(createComposerSource).toContain(".composer-settings .settings-summary {\n    grid-template-columns: minmax(0, 1fr);\n  }");
   });
 
   it("routes History and Settings headings through the shared sticky offset", () => {

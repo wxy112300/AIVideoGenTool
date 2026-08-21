@@ -257,6 +257,13 @@
     grid-template-columns: 1fr;
   }
 
+  /* The shared visual-refresh rule is declared after foundation's narrow
+     breakpoint. Reassert the single-column summary here so browser zoom does
+     not turn the fixed summary tracks into page-level horizontal overflow. */
+  .composer-settings .settings-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .video-lora-stack-heading { align-items: stretch; flex-direction: column; }
   .video-lora-add { width: 100%; }
   .video-lora-row { grid-template-columns: minmax(0, 1fr) auto; }
