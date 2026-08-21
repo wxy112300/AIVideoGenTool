@@ -1257,6 +1257,7 @@ export const zhTWCatalog = {
     [uiKeys.create.interaction.loraFileMissing]: "{name} 尚未檢測到可用檔案，請先在設定 → LoRA 中安裝或重新掃描。",
     [uiKeys.create.interaction.manualEdit]: "手動編輯",
     [uiKeys.create.interaction.imageOptimizedVersion]: "圖片最佳化 {count}",
+    [uiKeys.create.interaction.promptEnhanceCompleted]: "{page}提示詞增強已完成，結果已寫回該創作頁。",
     [uiKeys.create.interaction.imageQueueAdded]: "已加入圖片佇列：{filename}",
     [uiKeys.create.interaction.trimAdded]: "{value} 秒",
     [uiKeys.create.interaction.trimApproxTotal]: "約 {value} 秒",

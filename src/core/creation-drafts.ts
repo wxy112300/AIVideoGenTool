@@ -52,3 +52,15 @@ export function patchCreationDraftForMode(
   else snapshotCreationDraft(state, nextDraft);
   return nextDraft;
 }
+
+export function preserveLocalCreationDrafts(
+  incomingState: AppState,
+  localState: AppState
+): AppState {
+  return {
+    ...incomingState,
+    draft: localState.draft,
+    imageToVideoDraft: localState.imageToVideoDraft,
+    videoExtensionDraft: localState.videoExtensionDraft
+  };
+}

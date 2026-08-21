@@ -30,6 +30,7 @@ import {
   promptOperationBelongsTo,
   promptOperationIsActive
 } from "../core/prompt-runtime-state";
+import { preserveLocalCreationDrafts } from "../core/creation-drafts";
 
 export interface RendererEventOptions {
   studio: AppApi;
@@ -261,13 +262,11 @@ export function registerRendererEvents(
         previousState?.imageHistory,
         nextState.imageHistory
       );
-      const localDraft = previousState?.draft;
-      options.setState({
-        ...nextState,
-        draft: localDraft && (options.getDraftDirty() || options.getDraftSaveInFlight() > 0)
-          ? localDraft
-          : nextState.draft
-      });
+      const preserveLocalDrafts = previousState !== undefined &&
+        (options.getDraftDirty() || options.getDraftSaveInFlight() > 0);
+      options.setState(preserveLocalDrafts
+        ? preserveLocalCreationDrafts(nextState, previousState)
+        : nextState);
       pruneTaskPreviews(nextState, options);
       if (nextState.queueRunning) options.setPromptRuntimeLoaded(false);
       for (const task of completion.completedTasks) {

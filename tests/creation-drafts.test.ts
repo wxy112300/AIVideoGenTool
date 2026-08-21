@@ -3,7 +3,8 @@ import { createDefaultState } from "../src/core/defaults";
 import {
   activateCreationDraft,
   creationDraftForMode,
-  patchCreationDraftForMode
+  patchCreationDraftForMode,
+  preserveLocalCreationDrafts
 } from "../src/core/creation-drafts";
 
 describe("creation draft isolation", () => {
@@ -118,5 +119,67 @@ describe("creation draft isolation", () => {
     expect(state.draft.sourceVideoPath).toBe("extension.mp4");
     expect(state.imageToVideoDraft?.promptVersions.at(-1)?.text).toBe("enhanced image prompt");
     expect(state.imageToVideoDraft?.activePromptVersion).toBe(1);
+  });
+
+  it("preserves all FL2VA and Motion Extend slots across stale save events", () => {
+    const localState = createDefaultState();
+    localState.imageToVideoDraft = {
+      ...localState.draft,
+      inputMode: "image",
+      modelId: "minimax_h3_fl2va",
+      h3ReferenceSlots: [{
+        id: "fl2va-slot-1",
+        mediaType: "image",
+        mediaPath: "fl2va-slot-1.png",
+        role: "subject",
+        note: ""
+      }, {
+        id: "fl2va-slot-2",
+        mediaType: "image",
+        mediaPath: "fl2va-slot-2.png",
+        role: "scene",
+        note: "keep scene"
+      }]
+    };
+    localState.videoExtensionDraft = {
+      ...localState.draft,
+      inputMode: "video",
+      modelId: "minimax_h3_ref2va",
+      sourceVideoPath: "motion-extend.mp4",
+      h3ReferenceSlots: [{
+        id: "motion-slot-1",
+        mediaType: "video",
+        mediaPath: "motion-extend.mp4",
+        role: "motion",
+        note: ""
+      }, {
+        id: "motion-slot-2",
+        mediaType: "image",
+        mediaPath: "motion-character.png",
+        role: "subject",
+        note: "keep character"
+      }, {
+        id: "motion-slot-3",
+        mediaType: "video",
+        mediaPath: "motion-reference.mp4",
+        role: "camera",
+        note: "keep camera"
+      }]
+    };
+    const staleIncomingState = structuredClone(localState);
+    staleIncomingState.imageToVideoDraft!.h3ReferenceSlots = [];
+    staleIncomingState.videoExtensionDraft!.h3ReferenceSlots = [];
+
+    const merged = preserveLocalCreationDrafts(staleIncomingState, localState);
+
+    expect(merged.imageToVideoDraft?.h3ReferenceSlots.map((slot) => slot.mediaPath)).toEqual([
+      "fl2va-slot-1.png",
+      "fl2va-slot-2.png"
+    ]);
+    expect(merged.videoExtensionDraft?.h3ReferenceSlots.map((slot) => slot.mediaPath)).toEqual([
+      "motion-extend.mp4",
+      "motion-character.png",
+      "motion-reference.mp4"
+    ]);
   });
 });

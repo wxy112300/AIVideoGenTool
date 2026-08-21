@@ -1335,6 +1335,7 @@ export const uiKeys = {
       loraFileMissing: "create.interaction.loraFileMissing",
       manualEdit: "create.interaction.manualEdit",
       imageOptimizedVersion: "create.interaction.imageOptimizedVersion",
+      promptEnhanceCompleted: "create.interaction.promptEnhanceCompleted",
       imageQueueAdded: "create.interaction.imageQueueAdded",
       trimAdded: "create.interaction.trimAdded",
       trimApproxTotal: "create.interaction.trimApproxTotal",

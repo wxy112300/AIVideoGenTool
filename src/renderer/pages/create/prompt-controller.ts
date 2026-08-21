@@ -331,6 +331,11 @@ export function mountCreatePromptController(
         ];
         return promptPatchForDraft(nextDraft, versions, versions.length - 1);
       });
+      options.context.notify(options.context.t(uiKeys.create.interaction.promptEnhanceCompleted, {
+        page: options.context.t(requestOrigin === "video-extension"
+          ? uiKeys.create.videoExtension
+          : uiKeys.create.imageToVideo)
+      }), { kind: "task-complete" });
     } catch (error) {
       if (!isPromptCancellationError(error)) options.context.notify(error instanceof Error ? error.message : String(error), {
         kind: "error",

@@ -1257,6 +1257,7 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.create.interaction.loraFileMissing]: "No usable file found for {name}; install or rescan it in Settings → LoRA.",
 	[uiKeys.create.interaction.manualEdit]: "Manual edit",
 	[uiKeys.create.interaction.imageOptimizedVersion]: "Image optimization {count}",
+	[uiKeys.create.interaction.promptEnhanceCompleted]: "Prompt enhancement completed for {page}; the result was written back to that workspace.",
 	[uiKeys.create.interaction.imageQueueAdded]: "Added to image queue: {filename}",
 	[uiKeys.create.interaction.trimAdded]: "{value} seconds",
 	[uiKeys.create.interaction.trimApproxTotal]: "About {value} seconds",

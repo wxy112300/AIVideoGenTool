@@ -1257,6 +1257,7 @@ export const zhCNCatalog = {
     [uiKeys.create.interaction.loraFileMissing]: "{name} 尚未检测到可用文件，请先在设置 → LoRA 中安装或重新扫描。",
     [uiKeys.create.interaction.manualEdit]: "手动编辑",
     [uiKeys.create.interaction.imageOptimizedVersion]: "图片优化 {count}",
+    [uiKeys.create.interaction.promptEnhanceCompleted]: "{page}提示词增强已完成，结果已写回该创作页。",
     [uiKeys.create.interaction.imageQueueAdded]: "已加入图片队列：{filename}",
     [uiKeys.create.interaction.trimAdded]: "{value} 秒",
     [uiKeys.create.interaction.trimApproxTotal]: "约 {value} 秒",

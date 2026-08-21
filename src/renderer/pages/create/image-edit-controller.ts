@@ -303,6 +303,9 @@ export function mountImageEditController(
         }
       ];
       options.patchImageDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
+      context.notify(t(uiKeys.create.interaction.promptEnhanceCompleted, {
+        page: t(uiKeys.create.imageEditMode)
+      }), { kind: "task-complete" });
     } catch (error) {
       if (!isPromptCancellationError(error)) {
         context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
