@@ -27,7 +27,7 @@ export const minimaxH3Fl2vaQ3Gguf: CatalogModelEntry = {
       supportsLivePreview: false,
       maxDurationSeconds: 5,
       maxGeneratedFrames: 124,
-      resolutions: [480],
+      resolutions: [360, 480],
       generationSteps: [4, 6, 8],
       defaultGenerationSteps: 8,
       maxGenerationSteps: 8

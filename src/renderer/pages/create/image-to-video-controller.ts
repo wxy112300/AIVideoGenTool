@@ -54,6 +54,28 @@ function bindFrameDrop(
   }, { signal });
 }
 
+function bindFramePicker(
+  context: RendererContext,
+  root: HTMLElement,
+  selector: string,
+  field: "startImagePath" | "endImagePath",
+  options: ImageToVideoControllerOptions,
+  signal: AbortSignal
+): void {
+  const zone = root.querySelector<HTMLElement>(selector);
+  if (!zone || zone.classList.contains("has-image")) return;
+  zone.addEventListener("click", async (event) => {
+    event.stopImmediatePropagation();
+    const filename = await context.studio.pickImage();
+    if (!filename) return;
+    options.patchDraft({
+      [field]: filename,
+      ...(field === "startImagePath" ? { sourceWidth: 0, sourceHeight: 0 } : {})
+    });
+    context.requestRender();
+  }, { signal });
+}
+
 export function mountImageToVideoController(
   context: RendererContext,
   options: ImageToVideoControllerOptions
@@ -62,21 +84,8 @@ export function mountImageToVideoController(
   const signal = events.signal;
   const root = context.root;
 
-  root.querySelector("#pick-start")?.addEventListener("click", async (event) => {
-    event.stopImmediatePropagation();
-    const filename = await context.studio.pickImage();
-    if (!filename) return;
-    options.patchDraft({ startImagePath: filename, sourceWidth: 0, sourceHeight: 0 });
-    context.requestRender();
-  }, { signal });
-
-  root.querySelector("#pick-end")?.addEventListener("click", async (event) => {
-    event.stopImmediatePropagation();
-    const filename = await context.studio.pickImage();
-    if (!filename) return;
-    options.patchDraft({ endImagePath: filename });
-    context.requestRender();
-  }, { signal });
+  bindFramePicker(context, root, "#pick-start", "startImagePath", options, signal);
+  bindFramePicker(context, root, "#pick-end", "endImagePath", options, signal);
 
   root.querySelector("#toggle-end")?.addEventListener("click", async (event) => {
     event.stopImmediatePropagation();

@@ -147,7 +147,7 @@ describe("History accessibility markup", () => {
     expect(lightbox).toContain('data-image-lightbox-close');
   });
 
-  it("keeps detail actions grouped without changing their existing selectors", () => {
+  it("keeps detail actions visible without changing their existing selectors", () => {
     const videoVersion = {
       id: "video-version-detail",
       taskId: "video-task-detail",
@@ -163,6 +163,15 @@ describe("History accessibility markup", () => {
       comfyPromptId: "video-prompt-detail",
       comfyOutputs: {},
       files: [{ filename: "fixture.mp4", subfolder: "", type: "output", absolutePath: "C:\\fixtures\\fixture.mp4" }]
+    } as unknown as AssetVersion;
+    const videoUpscale = {
+      ...videoVersion,
+      id: "video-upscale-detail",
+      kind: "upscale",
+      outputFilename: "fixture-4k.mp4",
+      width: 1920,
+      height: 1080,
+      files: [{ filename: "fixture-4k.mp4", subfolder: "", type: "output", absolutePath: "C:\\fixtures\\fixture-4k.mp4" }]
     } as unknown as AssetVersion;
     const videoAsset = {
       mediaKind: "video",
@@ -184,7 +193,8 @@ describe("History accessibility markup", () => {
       comfyPromptId: "video-prompt-detail",
       comfyOutputs: {},
       files: videoVersion.files,
-      versions: [videoVersion]
+      defaultVersionId: videoVersion.id,
+      versions: [videoVersion, videoUpscale]
     } as unknown as HistoryAsset;
     const imageSource = {
       id: "image-source-detail",
@@ -276,17 +286,21 @@ describe("History accessibility markup", () => {
     const imagePage = renderImageHistoryDetailPage(imageViewModel, detailOptions);
 
     expect(videoPage).toContain('class="history-detail-action-primary"');
-    expect(videoPage).toContain('class="history-detail-more"');
+    expect(videoPage).not.toContain('class="history-detail-more"');
     expect(videoPage).toContain('data-open-upscale');
     expect(videoPage).toContain('data-continue-history="video-asset-detail"');
-    expect(videoPage).toContain('class="history-detail-compact-actions"');
+    expect(videoPage).toContain('data-delete-history-version="video-asset-detail"');
+    expect(videoPage).toContain('data-delete-history="video-asset-detail"');
+    expect(videoPage).not.toContain('class="history-detail-compact-actions"');
     expect(videoPage).toContain('class="history-record-section"');
     expect(imagePage).toContain('class="history-detail-action-primary"');
-    expect(imagePage).toContain('class="history-detail-more"');
-    expect(imagePage.match(/data-image-continue-video-project=/g)).toHaveLength(2);
-    expect(imagePage.match(/data-image-continue-edit-project=/g)).toHaveLength(2);
+    expect(imagePage).not.toContain('class="history-detail-more"');
+    expect(imagePage.match(/data-image-continue-video-project=/g)).toHaveLength(1);
+    expect(imagePage.match(/data-image-continue-edit-project=/g)).toHaveLength(1);
+    expect(imagePage).toContain('data-delete-image-version="image-project-detail"');
+    expect(imagePage).toContain('data-delete-history="image-project-detail"');
     expect(imagePage).toContain('data-image-version-id="image-edit-detail"');
-    expect(imagePage).toContain('class="history-detail-compact-actions"');
+    expect(imagePage).not.toContain('class="history-detail-compact-actions"');
     expect(imagePage).toContain('class="history-record-section"');
   });
 });

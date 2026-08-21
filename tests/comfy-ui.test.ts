@@ -151,9 +151,13 @@ describe("native Qwen prompt workflow", () => {
     expect(workflow["image-batch-1"]).toMatchObject({
       class_type: "ImageBatch",
       inputs: {
-        image1: ["load-image-0", 0],
-        image2: ["load-image-1", 0]
+        image1: ["image-budget-0", 0],
+        image2: ["image-budget-1", 0]
       }
+    });
+    expect(workflow["image-budget-0"]).toMatchObject({
+      class_type: "ImageScaleToTotalPixels",
+      inputs: { image: ["load-image-0", 0], megapixels: 1, resolution_steps: 32 }
     });
     expect(workflow["text-generate"]?.inputs.image).toEqual(["image-batch-1", 0]);
     expect(workflow["text-generate"]?.inputs.sampling_mode).toBe("on");

@@ -19,6 +19,7 @@ export class ComfyRuntimeStateController {
   private state = initialState();
   private readonly listeners = new Set<RuntimeListener>();
   private operationCounter = 0;
+  private consecutiveUnreachableChecks = 0;
   private settleWaiters = new Set<(state: ComfyRuntimeState) => void>();
 
   snapshot(): ComfyRuntimeState {
@@ -52,6 +53,22 @@ export class ComfyRuntimeStateController {
     return this.snapshot();
   }
 
+  markStopped(
+    endpoint: string,
+    message: string,
+    ownership: ComfyRuntimeOwnership = "none"
+  ): ComfyRuntimeState {
+    const operationId = ++this.operationCounter;
+    this.replace({
+      phase: "stopped",
+      endpoint,
+      message,
+      ownership,
+      operationId
+    });
+    return this.snapshot();
+  }
+
   observeReachability(
     reachable: boolean,
     endpoint: string,
@@ -61,6 +78,7 @@ export class ComfyRuntimeStateController {
       return this.snapshot();
     }
     if (reachable) {
+      this.consecutiveUnreachableChecks = 0;
       this.replace({
         phase: "ready",
         endpoint,
@@ -68,15 +86,16 @@ export class ComfyRuntimeStateController {
         message: "ComfyUI 已连接并可用。"
       });
     } else {
+      this.consecutiveUnreachableChecks += 1;
       const previouslyObserved = this.state.phase === "ready" ||
         this.state.phase === "degraded" ||
         this.state.ownership === "app" ||
         this.state.ownership === "external";
       this.replace({
-        phase: previouslyObserved ? "degraded" : "stopped",
+        phase: previouslyObserved && this.consecutiveUnreachableChecks < 2 ? "degraded" : "stopped",
         endpoint,
         ownership,
-        message: previouslyObserved
+        message: previouslyObserved && this.consecutiveUnreachableChecks < 2
           ? "ComfyUI 接口暂时不可用，正在继续检查。"
           : "ComfyUI 当前未连接。"
       });

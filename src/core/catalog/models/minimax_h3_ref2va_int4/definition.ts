@@ -27,7 +27,7 @@ export const minimaxH3Ref2vaInt4: CatalogModelEntry = {
       maxReferenceImages: 9,
       maxDurationSeconds: 15,
       maxGeneratedFrames: 362,
-      resolutions: [480, 540, 720, 768]
+      resolutions: [360, 480, 540, 720, 768]
     },
     scan: {
       vram: "pruned INT4 · RAM offload · 多参考",

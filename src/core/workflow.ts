@@ -1048,6 +1048,7 @@ const ratios: Record<string, [number, number]> = {
   "9:16": [9, 16],
   "1:1": [1, 1],
   "4:3": [4, 3],
+  "3:4": [3, 4],
   source: [16, 9]
 };
 
@@ -1113,14 +1114,8 @@ function miniMaxH3Dimensions(task: DimensionTask): [number, number] {
       ? [task.sourceWidth, task.sourceHeight]
       : ratios[task.ratio] ?? ratios.source!;
   const ratio = rw / rh;
-  let width = ratio >= 1 ? task.resolution * ratio : task.resolution;
-  let height = ratio >= 1 ? task.resolution : task.resolution / ratio;
-  const maxPixels = 768 * 1344;
-  if (width * height > maxPixels) {
-    const scale = Math.sqrt(maxPixels / (width * height));
-    width *= scale;
-    height *= scale;
-  }
+  const width = ratio >= 1 ? task.resolution * ratio : task.resolution;
+  const height = ratio >= 1 ? task.resolution : task.resolution / ratio;
   return [
     Math.max(32, Math.round(width / 32) * 32),
     Math.max(32, Math.round(height / 32) * 32)

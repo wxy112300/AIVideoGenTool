@@ -53,7 +53,7 @@ Preserve these unless the user explicitly requests a contract change:
 - Settings can inspect files while ComfyUI is offline. Runtime/API validation may add information but must not unnecessarily block offline management.
 - Only one heavy GPU generation or post-processing stage runs at a time.
 - Model-specific patches, memory flags, nodes, and defaults are scoped to that workflow. H3, Qwen image, Sulphur, SeedVR2, and retained legacy Wan/Hunyuan records must not leak runtime policy into one another.
-- Closing the app stops its own watchers, child processes, and active generation. It does not terminate a ComfyUI instance the user started independently.
+- While the app is running, the configured local ComfyUI endpoint is application-managed and single-instance. Startup takes over an existing local listener; closing the app stops that managed runtime. Remote ComfyUI endpoints remain connection-only.
 - Existing fallback paths explicitly requested by the user remain available until the user asks to remove or replace them.
 - History detail pages keep their parent navigation selected and keep return/primary actions reachable without scrolling to the page top.
 
@@ -102,7 +102,7 @@ The following changes require these neighboring checks:
 - Persisted types, paths, or IPC payloads: defaults, migration, restart recovery, old queue/history records, and preload typings.
 - Environment scanning or dependency cards: offline scan, multiple ComfyUI installations, selected installation, online validation, install/update state, and actionable logs.
 - Dependency installation: live stage/output feedback, bounded subprocess execution, retained failure logs, safe backup/replace behavior, selected ComfyUI Python, and restart/runtime recheck.
-- Process or queue lifetime: normal exit, active-task confirmation, forced exit, child-process cleanup, and externally started ComfyUI preservation.
+- Process or queue lifetime: startup takeover, local single-instance enforcement, normal exit, active-task confirmation, forced exit, and child-process cleanup. Remote ComfyUI services must remain untouched.
 
 ## Verification Matrix
 

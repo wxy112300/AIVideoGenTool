@@ -73,9 +73,9 @@ Large entry files are an existing risk, not a pattern to expand. When work intro
 
 - Track every process started by this application, including development helpers and model-related child processes.
 - App-owned source/Python ComfyUI starts with a visible Windows console whose stdout/stderr remain writable for ComfyUI wrappers and progress output. Disk log tailing and failure capture supplement that console; they do not replace it with a blank or hidden process.
-- On normal exit, stop owned watchers/children and cancel or interrupt owned active generation as agreed by the user.
+- On normal exit, stop owned watchers/children and cancel or interrupt active generation as agreed by the user.
 - When an active task exists, request confirmation before closing; a confirmed forced exit still performs best-effort cleanup.
-- Do not terminate an independently started ComfyUI Desktop/service. Ownership must be explicit, not inferred only from port or executable name.
+- A local ComfyUI endpoint selected by the user is application-managed while Local Video Studio is running. Before starting or restarting it, terminate other local ComfyUI process trees discovered for the selected installation or configured listener, then launch exactly one managed instance. Remote endpoints are connection-only and are never terminated by this application.
 - Updating or restarting an app-managed ComfyUI instance must restore connection state and report logs/progress.
 - Port `8188` is the application default, but configured endpoints remain valid.
 - Prompt-model residency is an explicit main-process lease. Starting the prompt model warms and retains it across prompt requests; manual release, the first queued generation, or application exit ends the lease and unloads it. A one-off prompt request without that lease releases its model when complete.

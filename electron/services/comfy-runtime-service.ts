@@ -69,6 +69,17 @@ export interface ComfyRuntimeServiceDependencies {
 }
 
 let pendingComfyUiStart: Promise<string> | null = null;
+let ownedProcessExitListener: ((event: {
+  processId: number;
+  code: number | null;
+  signal: NodeJS.Signals | null;
+}) => void) | null = null;
+
+export function setOwnedComfyProcessExitListener(
+  listener: typeof ownedProcessExitListener
+): void {
+  ownedProcessExitListener = listener;
+}
 
 const windowsConsoleBootstrap = [
   "import ctypes, msvcrt, os, runpy, sys",
@@ -230,6 +241,7 @@ function handleOwnedProcessExit(
     code,
     signal: signal ?? ""
   });
+  ownedProcessExitListener?.({ processId, code, signal });
 }
 
 export async function startComfyUiService(

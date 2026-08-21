@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { nearestSupportedVideoResolution } from "../src/core/video-resolution";
 
 describe("nearestSupportedVideoResolution", () => {
-  const h3 = [480, 540, 720, 768] as const;
+  const h3 = [360, 480, 540, 720, 768] as const;
 
   it("keeps a supported history resolution", () => {
     expect(nearestSupportedVideoResolution(768, h3, 480)).toBe(768);
@@ -13,7 +13,7 @@ describe("nearestSupportedVideoResolution", () => {
   });
 
   it("uses the lowest option when history is below the model range", () => {
-    expect(nearestSupportedVideoResolution(360, h3, 480)).toBe(480);
+    expect(nearestSupportedVideoResolution(240, h3, 480)).toBe(360);
   });
 
   it("prefers the higher option on an exact tie", () => {

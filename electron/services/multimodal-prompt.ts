@@ -100,17 +100,30 @@ function appendImageNodes(
   let imageNodeId = "load-image-0";
   uploadedImages.forEach((filename, index) => {
     const nodeId = `load-image-${index}`;
+    const budgetNodeId = `image-budget-${index}`;
     workflow[nodeId] = {
       class_type: "LoadImage",
       inputs: { image: filename }
     };
-    if (index === 0) return;
+    workflow[budgetNodeId] = {
+      class_type: "ImageScaleToTotalPixels",
+      inputs: {
+        image: [nodeId, 0],
+        upscale_method: "lanczos",
+        megapixels: 1,
+        resolution_steps: 32
+      }
+    };
+    if (index === 0) {
+      imageNodeId = budgetNodeId;
+      return;
+    }
     const batchNodeId = `image-batch-${index}`;
     workflow[batchNodeId] = {
       class_type: "ImageBatch",
       inputs: {
         image1: [imageNodeId, 0],
-        image2: [nodeId, 0]
+        image2: [budgetNodeId, 0]
       }
     };
     imageNodeId = batchNodeId;
@@ -184,8 +197,9 @@ export async function enhancePromptWithMultimodalComfyUi(
   signal: AbortSignal,
   warmup = false,
   onProgress?: PromptProgressReporter,
-  operationId = crypto.randomUUID(),
-  retainModel = false
+  operationId: string = crypto.randomUUID(),
+  retainModel = false,
+  onSubmitted?: (promptId: string) => void
 ): Promise<string> {
   if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
   validateH3ReferenceAutoPrompt(request);
@@ -259,6 +273,7 @@ export async function enhancePromptWithMultimodalComfyUi(
       signal
     });
     if (!result.prompt_id) throw new Error("ComfyUI 未返回提示词 Prompt ID");
+    onSubmitted?.(result.prompt_id);
     const nodeTypes = Object.fromEntries(
       Object.entries(prompt).map(([id, value]) => [id, value.class_type])
     );

@@ -155,6 +155,12 @@ const appLogger = getApplicationLogger();
 
 const sageAttentionVersion = "2.2.0";
 const comfyWheelsIndex = "https://comfy-org.github.io/wheels/";
+const pytorchCu130Index = "https://download.pytorch.org/whl/cu130";
+const h3TorchRuntime = {
+  torch: "2.9.1",
+  torchvision: "0.24.1",
+  torchaudio: "2.9.1"
+} as const;
 const llamaServerReleaseApiUrl =
   "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest";
 const llamaServerCudaVariants = ["12.4", "13.3"] as const;
@@ -208,8 +214,6 @@ async function latestGitHubReleaseVersion(
           url
         ];
         const result = await execFileAsync(curl, args, {
-          encoding: "utf8",
-          timeout: 8_000,
           windowsHide: true
         });
         payload = JSON.parse(result.stdout) as { tag_name?: unknown };
@@ -2270,6 +2274,8 @@ interface AttentionPythonProbe {
   gpuArchitecture?: string;
   sageAttentionVersion?: string;
   tritonVersion?: string;
+  comfyKitchenVersion?: string;
+  comfyKitchenBackends?: string[];
 }
 
 export function attentionWheelForProbe(
@@ -2324,6 +2330,14 @@ export function attentionWheelForProbe(
   };
 }
 
+export function comfyKitchenConvRotCudaOptimized(cudaVersion: string): boolean {
+  const match = cudaVersion.match(/^(\d+)\.(\d+)/);
+  if (!match) return false;
+  return Number(match[1]) > 13 || (
+    Number(match[1]) === 13 && Number(match[2]) >= 0
+  );
+}
+
 async function inspectAttentionPython(python: string): Promise<AttentionPythonProbe> {
   if (!python) return {};
   const script = [
@@ -2331,7 +2345,7 @@ async function inspectAttentionPython(python: string): Promise<AttentionPythonPr
     "def version(name):",
     "    try: return md.version(name)",
     "    except md.PackageNotFoundError: return ''",
-    "result={'pythonVersion':platform.python_version(),'sageAttentionVersion':version('sageattention'),'tritonVersion':version('triton-windows') or version('triton')}",
+    "result={'pythonVersion':platform.python_version(),'sageAttentionVersion':version('sageattention'),'tritonVersion':version('triton-windows') or version('triton'),'comfyKitchenVersion':version('comfy-kitchen'),'comfyKitchenBackends':[]}",
     "try:",
     "    import torch",
     "    result['torchVersion']=torch.__version__",
@@ -2341,6 +2355,10 @@ async function inspectAttentionPython(python: string): Promise<AttentionPythonPr
     "        cap=torch.cuda.get_device_capability(0)",
     "        result['gpuArchitecture']=f'{cap[0]}.{cap[1]}'",
     "except Exception as error: result['probeError']=str(error)",
+    "try:",
+    "    import comfy_kitchen as ck",
+    "    result['comfyKitchenBackends']=[str(name) for name in ck.list_backends()]",
+    "except Exception as error: result['comfyKitchenProbeError']=str(error)",
     "print(json.dumps(result))"
   ].join("\n");
   try {
@@ -2403,8 +2421,11 @@ async function inspectAttentionAcceleration(
   const tritonReady = Boolean(probe.tritonVersion);
   const gpuArchitecture = Number.parseFloat(probe.gpuArchitecture ?? "");
   const gpuSupported = Number.isFinite(gpuArchitecture) && gpuArchitecture >= 8;
+  const convRotCudaOptimized = comfyKitchenConvRotCudaOptimized(probe.cudaVersion ?? "") &&
+    (probe.comfyKitchenBackends ?? []).some((backend) => backend.toLowerCase() === "cuda");
   const ready = Boolean(
-    pythonPath && wheel && gpuSupported && sageReady && tritonReady && kjNodesCompatible
+    pythonPath && wheel && gpuSupported && sageReady && tritonReady && kjNodesCompatible &&
+    convRotCudaOptimized
   );
   const missing = [
     !pythonPath ? "ComfyUI Python" : "",
@@ -2412,7 +2433,11 @@ async function inspectAttentionAcceleration(
     !wheel ? "匹配的 Windows wheel" : "",
     !sageReady ? `SageAttention ${sageAttentionVersion}` : "",
     !tritonReady ? "Triton" : "",
-    !kjNodesCompatible ? "含大 stride 地址保护的新版 KJNodes" : ""
+    !kjNodesCompatible ? "含大 stride 地址保护的新版 KJNodes" : "",
+    !convRotCudaOptimized
+      ? `H3 INT8 ConvRot CUDA 内核（当前 comfy-kitchen ${probe.comfyKitchenVersion || "未安装"} / ` +
+        `${(probe.comfyKitchenBackends ?? []).join(", ") || "无可用 backend"}）`
+      : ""
   ].filter(Boolean);
   return {
     pythonPath,
@@ -2423,13 +2448,16 @@ async function inspectAttentionAcceleration(
     gpuArchitecture: probe.gpuArchitecture ?? "",
     sageAttentionVersion: probe.sageAttentionVersion ?? "",
     tritonVersion: probe.tritonVersion ?? "",
+    comfyKitchenVersion: probe.comfyKitchenVersion ?? "",
+    comfyKitchenBackends: probe.comfyKitchenBackends ?? [],
+    convRotCudaOptimized,
     kjNodesInstalled,
     kjNodesCompatible,
     recommendedSageVersion: wheel?.version ?? "",
     recommendedWheel: wheel?.filename ?? "",
     supported: Boolean(pythonPath && wheel && gpuSupported),
     ready,
-    detail: ready ? "H3 模型级 SageAttention CUDA FP16 已就绪" :
+    detail: ready ? "H3 模型级 SageAttention CUDA FP16 与 INT8 ConvRot CUDA 优化已就绪" :
       missing.length ? `待补齐：${missing.join("、")}` : "无法识别 Attention 运行环境"
   };
 }
@@ -2960,16 +2988,16 @@ async function startComfyUi(settings: Settings): Promise<string> {
 export async function forceStopComfyProcesses(
   settings: Settings
 ): Promise<{ ok: boolean; message: string }> {
-  if (!ownedComfyProcessIdSnapshot().length) {
+  if (!localEndpoint(settings.comfyUrl, 8188)) {
     return {
       ok: false,
-      message: "没有可确认由本应用启动的 ComfyUI 进程；为保护外部实例，未执行终止。"
+      message: "远程 ComfyUI 仅支持连接，应用不会终止远程或本机进程。"
     };
   }
   const result = await forceStopComfyProcessesWithDependencies(settings, {
     findComfyPython,
     ownedProcessIds: ownedComfyProcessIdSnapshot,
-    ownedOnly: true
+    ownedOnly: false
   });
   if (result.ok) clearOwnedComfyProcessIds();
   return result;
@@ -2979,7 +3007,7 @@ async function stopComfyUi(settings: Settings): Promise<void> {
   await stopComfyUiService(settings, {
     findComfyPython,
     ownedProcessIds: ownedComfyProcessIdSnapshot,
-    ownedOnly: true
+    ownedOnly: false
   });
   clearOwnedComfyProcessIds();
 }
@@ -3023,24 +3051,24 @@ export async function alignLocalComfyUiRuntimeProfile(
   }
 
   const processes = await allComfyProcessInfo(settings, { findComfyPython });
+  const listenerOwned = await reconcileConfiguredComfyListenerOwnership(settings);
   const listener = processes.find((item) => item.processId === listenerPid);
   const previousProfile = comfyUiRuntimeProfileFromCommandLine(
     listener?.commandLine ?? ""
   );
-  if (previousProfile === "unknown" || previousProfile === desiredProfile) {
+  if (listenerOwned && previousProfile === desiredProfile) {
     return {
       ok: true,
       restarted: false,
       desiredProfile,
       previousProfile,
-      message: previousProfile === "unknown"
-        ? "The running ComfyUI process is externally managed; its runtime profile was left unchanged."
-        : `ComfyUI is already using the ${desiredProfile} runtime profile.`
+      message: `ComfyUI is already using the ${desiredProfile} runtime profile.`
     };
   }
 
   appLogger.info("comfy", "runtime-profile-switch-started", "Switching the ComfyUI runtime profile", {
     processId: listenerPid,
+    listenerOwned,
     previousProfile,
     desiredProfile
   });
@@ -3125,7 +3153,21 @@ async function startLocalServiceOperation(
   const listenerOwned = listenerExisted
     ? await reconcileConfiguredComfyListenerOwnership(settings)
     : false;
-  const ownership = listenerExisted && !listenerOwned ? "external" : "app";
+  if (listenerExisted && !listenerOwned) {
+    appLogger.warn("comfy", "local-runtime-takeover-started", "Taking control of the configured local ComfyUI endpoint", {
+      endpoint,
+      port: local?.port ?? null
+    });
+    try {
+      await stopComfyUi(settings);
+    } catch (error) {
+      return {
+        ok: false,
+        message: `无法接管本地 ComfyUI：${safeLogErrorMessage(error)}`
+      };
+    }
+  }
+  const ownership = "app";
   const operationId = comfyRuntimeState.begin(
     "starting",
     endpoint,
@@ -3250,16 +3292,10 @@ export async function restartLocalService(
   kind: LocalServiceKind,
   settings: Settings
 ): Promise<ConnectionResult> {
-  const listenerOwned = await reconcileConfiguredComfyListenerOwnership(settings);
-  if (!ownedComfyProcessIdSnapshot().length && !listenerOwned) {
-    const endpoint = localEndpoint(settings.comfyUrl, 8188);
-    const listenerExists = endpoint ? await isLocalPortInUse(endpoint.port) : true;
-    if (!listenerExists) return startLocalService(kind, settings);
-    return {
-      ok: false,
-      manualRestartRequired: true,
-      message: "当前 ComfyUI 由外部进程管理；节点文件已经写入，请手动重启 ComfyUI 后重新扫描。"
-    };
+  const endpoint = localEndpoint(settings.comfyUrl, 8188);
+  const listenerExists = endpoint ? await isLocalPortInUse(endpoint.port) : true;
+  if (!listenerExists && !ownedComfyProcessIdSnapshot().length) {
+    return startLocalService(kind, settings);
   }
   const operationId = comfyRuntimeState.begin(
     "restarting",
@@ -3831,6 +3867,49 @@ export async function runLoggedProcess(
   });
 }
 
+export function createPipDownloadProgressReporter(
+  report: (message: string) => void,
+  now: () => number = Date.now
+): (message: string) => void {
+  let totalBytes = 0;
+  let lastBytes = 0;
+  let lastPercent = -1;
+  let lastReportedAt = now();
+  return (message: string) => {
+    const progress = message.trim().match(/^Progress\s+(\d+)\s+of\s+(\d+)$/u);
+    if (!progress) {
+      report(message);
+      return;
+    }
+    const current = Number(progress[1]);
+    const total = Number(progress[2]);
+    if (!Number.isFinite(current) || !Number.isFinite(total) || total <= 0) return;
+    const timestamp = now();
+    if (total !== totalBytes || current < lastBytes) {
+      totalBytes = total;
+      lastBytes = 0;
+      lastPercent = -1;
+      lastReportedAt = timestamp;
+    }
+    const percent = Math.min(100, Math.floor((current / total) * 100));
+    const elapsedMs = timestamp - lastReportedAt;
+    if (percent < 100 && lastPercent >= 0 && elapsedMs < 1_000) return;
+    const bytesPerSecond = elapsedMs > 0
+      ? ((current - lastBytes) * 1_000) / elapsedMs
+      : 0;
+    lastBytes = current;
+    lastPercent = percent;
+    lastReportedAt = timestamp;
+    const speed = bytesPerSecond > 0
+      ? ` · ${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`
+      : "";
+    report(
+      `下载进度：${percent}% · ${(current / 1024 / 1024).toFixed(1)} / ` +
+      `${(total / 1024 / 1024).toFixed(1)} MB${speed}`
+    );
+  };
+}
+
 export async function installAttentionAcceleration(
   settings: Settings,
   onLog?: (message: string) => void
@@ -3857,8 +3936,11 @@ export async function installAttentionAcceleration(
         `SageAttention 2.2 需要 SM 8.0+ NVIDIA GPU；当前检测结果为 ${before.gpuName || "未知 GPU"} / SM ${before.gpuArchitecture || "未知"}。`
       );
     }
-    const wheel = attentionWheelForProbe(before);
-    if (!wheel) {
+    const needsCudaRuntimeUpgrade = !comfyKitchenConvRotCudaOptimized(before.cudaVersion ?? "");
+    const needsComfyKitchenRepair = !(before.comfyKitchenBackends ?? [])
+      .some((backend) => backend.toLowerCase() === "cuda") || before.comfyKitchenVersion !== "0.2.31";
+    const initialWheel = attentionWheelForProbe(before);
+    if (!initialWheel && !needsCudaRuntimeUpgrade) {
       throw new Error(
         `没有找到适用于 Python ${before.pythonVersion || "未知"} / ` +
         `PyTorch ${before.torchVersion || "未知"} / CUDA ${before.cudaVersion || "未知"} 的官方 Windows wheel。`
@@ -3866,7 +3948,14 @@ export async function installAttentionAcceleration(
     }
     report(`ComfyUI Python：${python}`);
     report(`运行时：Python ${before.pythonVersion} · PyTorch ${before.torchVersion} · CUDA ${before.cudaVersion}`);
-    report(`目标：${wheel.filename}`);
+    if (needsCudaRuntimeUpgrade) {
+      report(
+        `检测到 H3 INT8 ConvRot 正在使用 eager fallback；目标运行时：` +
+        `PyTorch ${h3TorchRuntime.torch} / CUDA 13.0。`
+      );
+    } else if (initialWheel) {
+      report(`目标：${initialWheel.filename}`);
+    }
 
     const healthUrl = `${settings.comfyUrl.replace(/\/+$/, "")}/system_stats`;
     wasRunning = await fetch(healthUrl, {
@@ -3894,13 +3983,80 @@ export async function installAttentionAcceleration(
     }
 
     const environment = downloadEnvironment(settings);
-    const commonPipArgs = ["-m", "pip", "install", "--disable-pip-version-check", "--no-input"];
-    const tritonRequirement = tritonRequirementForTorch(before.torchVersion ?? "");
+    const commonPipArgs = [
+      "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--progress-bar=raw"
+    ];
+    if (needsCudaRuntimeUpgrade || needsComfyKitchenRepair) {
+      const snapshot = await runLoggedProcess(
+        python,
+        ["-m", "pip", "freeze", "--disable-pip-version-check"],
+        { env: environment, timeoutMs: 120_000 }
+      );
+      const snapshotPath = path.join(comfyRoot, `h3-runtime-before-cu130-${Date.now()}.txt`);
+      await fs.writeFile(snapshotPath, `${snapshot}\n`, "utf8");
+      report(`升级前 Python 包快照：${snapshotPath}`);
+      if (needsCudaRuntimeUpgrade) {
+        report("正在从 PyTorch 官方 cu130 索引升级 torch、torchvision 与 torchaudio……");
+        await runLoggedProcess(
+          python,
+          [
+            ...commonPipArgs,
+            "--upgrade",
+            "--index-url",
+            pytorchCu130Index,
+            `torch==${h3TorchRuntime.torch}`,
+            `torchvision==${h3TorchRuntime.torchvision}`,
+            `torchaudio==${h3TorchRuntime.torchaudio}`
+          ],
+          {
+            env: environment,
+            timeoutMs: 2_700_000,
+            onLog: createPipDownloadProgressReporter(report)
+          }
+        );
+        report("PyTorch cu130 运行时升级完成");
+      }
+      report("正在升级 ComfyUI 官方 comfy-kitchen CUDA 内核……");
+      await runLoggedProcess(
+        python,
+        [...commonPipArgs, "--upgrade", "comfy-kitchen==0.2.31"],
+        {
+          env: environment,
+          timeoutMs: 900_000,
+          onLog: createPipDownloadProgressReporter(report)
+        }
+      );
+      report("comfy-kitchen 安装完成");
+    }
+
+    const target = await inspectAttentionPython(python);
+    const wheel = attentionWheelForProbe(target);
+    if (!wheel) {
+      throw new Error(
+        `升级后没有找到适用于 Python ${target.pythonVersion || "未知"} / ` +
+        `PyTorch ${target.torchVersion || "未知"} / CUDA ${target.cudaVersion || "未知"} 的 SageAttention wheel。`
+      );
+    }
+    const targetHasComfyKitchenCuda = (target.comfyKitchenBackends ?? [])
+      .some((backend) => backend.toLowerCase() === "cuda");
+    if (!comfyKitchenConvRotCudaOptimized(target.cudaVersion ?? "") || !targetHasComfyKitchenCuda) {
+      throw new Error(
+        `升级后 H3 ConvRot CUDA 内核仍未就绪：PyTorch CUDA ${target.cudaVersion || "未知"}，` +
+        `comfy-kitchen ${target.comfyKitchenVersion || "未安装"}，` +
+        `backend ${(target.comfyKitchenBackends ?? []).join(", ") || "无"}。`
+      );
+    }
+    report(`目标：${wheel.filename}`);
+    const tritonRequirement = tritonRequirementForTorch(target.torchVersion ?? "");
     report(`正在安装 ${tritonRequirement}……`);
     await runLoggedProcess(
       python,
       [...commonPipArgs, "--upgrade", tritonRequirement],
-      { env: environment, timeoutMs: 900_000, onLog }
+      {
+        env: environment,
+        timeoutMs: 900_000,
+        onLog: createPipDownloadProgressReporter(report)
+      }
     );
     report("Triton 安装完成");
 
@@ -3914,7 +4070,11 @@ export async function installAttentionAcceleration(
         wheel.url,
         `sageattention==${wheel.version}`
       ],
-      { env: environment, timeoutMs: 900_000, onLog }
+      {
+        env: environment,
+        timeoutMs: 900_000,
+        onLog: createPipDownloadProgressReporter(report)
+      }
     );
     report("SageAttention 安装完成");
 

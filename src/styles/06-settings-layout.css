@@ -134,7 +134,13 @@
 .node-runtime-notice { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; }
 .node-log { margin-top: 10px; }
 .node-log summary { font-size: 12px; }
-.node-log pre { max-height: 220px; margin: 7px 0 0; padding: 10px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-log pre { max-height: 220px; margin: 7px 0 0; padding: 10px; overflow: auto; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.attention-install-progress { display: grid; gap: 7px; margin-top: 12px; }
+.attention-install-progress[hidden] { display: none; }
+.attention-install-progress .progress { margin: 0; }
+.attention-install-progress .progress.indeterminate span { width: 34%; animation: attention-progress-slide 1.2s ease-in-out infinite; }
+.attention-install-progress strong { color: var(--muted); font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
+@keyframes attention-progress-slide { from { transform: translateX(-110%); } to { transform: translateX(310%); } }
 
 .issue-list { display: grid; gap: 10px; }
 .issue-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--panel) 88%, black); }

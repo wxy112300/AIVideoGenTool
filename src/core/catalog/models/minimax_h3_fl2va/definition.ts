@@ -26,7 +26,7 @@ export const minimaxH3Fl2va: CatalogModelEntry = {
       supportsSpectrum: true,
       maxDurationSeconds: 15,
       maxGeneratedFrames: 362,
-      resolutions: [480, 540, 720, 768]
+      resolutions: [360, 480, 540, 720, 768]
     },
     scan: {
       vram: "pruned INT8 · DynamicVRAM · 阶段卸载",

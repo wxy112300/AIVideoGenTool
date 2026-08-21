@@ -1,3 +1,5 @@
+import type { PromptRuntimeState } from "./core/prompt-runtime-state.js";
+
 export type TaskStatus =
   | "waiting"
   | "running"
@@ -226,8 +228,8 @@ export interface Draft {
   modelId: string;
   videoLoras: VideoLoraSelection[];
   workflowPath: string;
-  ratio: "source" | "16:9" | "9:16" | "1:1" | "4:3";
-  resolution: 480 | 540 | 720 | 768;
+  ratio: "source" | "16:9" | "9:16" | "1:1" | "4:3" | "3:4";
+  resolution: 360 | 480 | 540 | 720 | 768;
   duration: number;
   steps: H3StepCount;
   fps: 8 | 12 | 16 | 24 | 25 | 30;
@@ -864,6 +866,9 @@ export interface AttentionAccelerationStatus {
   gpuArchitecture: string;
   sageAttentionVersion: string;
   tritonVersion: string;
+  comfyKitchenVersion?: string;
+  comfyKitchenBackends?: string[];
+  convRotCudaOptimized?: boolean;
   kjNodesInstalled: boolean;
   kjNodesCompatible: boolean;
   recommendedSageVersion: string;
@@ -923,6 +928,8 @@ export type PromptProgressStage =
 export type PromptProgressStatus = "running" | "completed" | "failed" | "cancelled";
 
 export interface PromptProgress {
+  operationId: string;
+  origin: "video-create" | "image-edit";
   status: PromptProgressStatus;
   stage: PromptProgressStage;
   progress: number | null;
@@ -1093,6 +1100,7 @@ export interface ImageAssetLibraryResult {
 export interface AppApi {
   getState(): Promise<AppState>;
   getComfyRuntimeState(): Promise<ComfyRuntimeState>;
+  getPromptRuntimeState(): Promise<PromptRuntimeState>;
   getAppVersion(): Promise<string>;
   setSettingsDirty(dirty: boolean): Promise<void>;
   respondWindowClose(response: WindowCloseResponse): Promise<void>;
@@ -1175,11 +1183,13 @@ export interface AppApi {
   duplicateTask(taskId: string): Promise<AppState>;
   resetTask(taskId: string): Promise<AppState>;
   deleteHistoryAsset(assetId: string): Promise<AppState>;
+  deleteHistoryVersion(assetId: string, versionId: string): Promise<AppState>;
   updateHistoryMetadata(assetId: string, patch: HistoryMetadataPatch): Promise<AppState>;
   setImageHistoryCover(projectId: string, versionId?: string): Promise<AppState>;
   deleteImageHistoryVersion(projectId: string, versionId: string): Promise<AppState>;
   onStateChanged(callback: (state: AppState) => void): () => void;
   onComfyRuntimeStateChanged(callback: (state: ComfyRuntimeState) => void): () => void;
+  onPromptRuntimeStateChanged(callback: (state: PromptRuntimeState) => void): () => void;
   onTaskPreview(callback: (preview: TaskPreview) => void): () => void;
   onPromptProgress(callback: (progress: PromptProgress) => void): () => void;
   onWindowCloseRequest(callback: (request: WindowCloseRequest) => void): () => void;

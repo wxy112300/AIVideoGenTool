@@ -11,6 +11,8 @@ const historyStageSource = readFileSync(new URL("../src/styles/04-history-stage.
 const densitySource = readFileSync(new URL("../src/styles/05-density-refinement.css", import.meta.url), "utf8");
 const settingsLayoutSource = readFileSync(new URL("../src/styles/06-settings-layout.css", import.meta.url), "utf8");
 const createComposerSource = readFileSync(new URL("../src/styles/07-create-composer.css", import.meta.url), "utf8");
+const createPageSource = readFileSync(new URL("../src/renderer/pages/create/page.ts", import.meta.url), "utf8");
+const imageToVideoControllerSource = readFileSync(new URL("../src/renderer/pages/create/image-to-video-controller.ts", import.meta.url), "utf8");
 const createHeaderSource = readFileSync(new URL("../src/styles/09-create-header.css", import.meta.url), "utf8");
 const historyCurationSource = readFileSync(new URL("../src/styles/11-history-curation.css", import.meta.url), "utf8");
 const finalRefinementsSource = readFileSync(new URL("../src/styles/10-final-refinements.css", import.meta.url), "utf8");
@@ -239,6 +241,20 @@ describe("UX/UI semantic token foundation", () => {
 
   it("keeps the Create summary single-column at narrow zoomed viewports", () => {
     expect(createComposerSource).toContain(".composer-settings .settings-summary {\n    grid-template-columns: minmax(0, 1fr);\n  }");
+  });
+
+  it("keeps standard Create image previews aligned to the source ratio", () => {
+    expect(createComposerSource).toContain(".create-workspace:not(.r2v-workspace) .media-grid > .media-slot > .drop-zone.has-image {");
+    expect(createComposerSource).toContain("  min-height: 0;\n  aspect-ratio: var(--image-ratio, 16 / 9);\n  max-height: 640px;\n}");
+    expect(createComposerSource).toContain(".create-workspace:not(.r2v-workspace) .media-grid > .media-slot > .drop-zone.has-image img {");
+    expect(createComposerSource).toContain("  max-height: 640px;\n}");
+  });
+
+  it("makes filled Create frame slots drop-only while empty slots remain pickers", () => {
+    expect(createPageSource).toContain("<div class=\"drop-zone has-image\" id=\"pick-start\"");
+    expect(createPageSource).toContain("<div class=\"drop-zone has-image\" id=\"pick-end\"");
+    expect(createPageSource).toContain("<button class=\"drop-zone\" id=\"pick-start\"");
+    expect(imageToVideoControllerSource).toContain("if (!zone || zone.classList.contains(\"has-image\")) return;");
   });
 
   it("routes History and Settings headings through the shared sticky offset", () => {

@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.40.1**。本版本完成 P20 当前 renderer 自动化 QA，并修复 125%/150% 缩放下 Create 摘要布局造成的页面级横向滚动；同时保留既有 Settings、History、Queue、工作流与持久化逻辑。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.41.3**。本版本补齐 MiniMax H3 的 360p–768p 档位与 3:4/任意来源比例支持，并将分辨率统一为真实短边语义：长边按比例计算并对齐到 32 像素，不再按固定总像素预算缩小非 16:9 画布；同时补充 H3 Windows/NVIDIA 运行时兼容基线、ComfyUI Desktop 修复提示和完整安装指引。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -28,26 +28,49 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 | H3 LoRA | LightX2V Turbo v1.0（8-step/768p 4-step）、Ref2V Turbo、Realism People、PinkFluffyBunny NSFW |
 | Prompt | Qwen3.5 2B/4B、Qwen3.6/Qwen3.8 27B Q4 MultiModal、Qwen3-VL 8B + MiniMax H3 Prompt Rewriter LoRA、MiniMax H3 Prompt Writer 的 Gemma 4 GGUF |
 
+表中的“支持”表示相关 UI、队列快照和 ComfyUI 工作流已经纳入当前集成范围。实际可用性仍取决于模型文件、节点版本、Python 依赖、PyTorch/CUDA 运行时和硬件资源；各组合应以设置页检查结果及真实最小任务为准。H3 768p 对运行时兼容性较为敏感，不匹配的 CUDA 扩展可能回退到通用实现，从而增加显存占用或降低执行性能。
+
 Wan 2.2 的常规/合并配置、HunyuanVideo 1.5 及其他旧模型中的大部分已经从新建任务列表淘汰；旧队列和历史仍保留原模型名称。当前显式保留的 Wan 2.2 14B + NSFW 兼容配置及未来变化，以 catalog 的 `retired` 标记为准。
 
 ## 快速开始
 
-### 1. 准备基础环境
+### 1. 安装基础环境和 ComfyUI
 
 - Windows 10/11。
 - Node.js 22 LTS 或更高版本。
 - Git（节点安装/更新需要）。
-- ComfyUI Desktop、Portable 或源码安装之一。
 - NVIDIA 驱动；H3 推荐 24GB 级显存和充足系统内存。
 - FFmpeg；视频裁帧、续写和部分后处理需要。
 
+从官方渠道安装一种 ComfyUI 发行方式：
+
+- [下载 ComfyUI Desktop](https://www.comfy.org/download)：推荐给首次使用者，可管理实例、ComfyUI 核心和 PyTorch。
+- [ComfyUI Desktop for Windows 安装说明](https://docs.comfy.org/installation/desktop/windows)。
+- [ComfyUI Portable for Windows 安装说明](https://docs.comfy.org/installation/comfyui_portable_windows)：适合需要便携目录的用户。
+
+MiniMax H3 原生音视频节点要求 ComfyUI `0.31.0` 或更高版本，当前推荐基线为 `0.33.1`。Desktop 用户可在实例的 **Update** 页面选择核心更新频道并检查更新；应用设置页也会显示所选实例的版本、兼容状态和更新入口。
+
 通常无需单独安装完整 CUDA Toolkit。优先使用 ComfyUI 自身 Python/PyTorch 所带的 CUDA runtime；只有某个自定义 CUDA 扩展明确要求编译工具链时才额外安装。
+
+### H3 运行时兼容性
+
+H3 的 CUDA 扩展要求 PyTorch、CUDA runtime 和扩展 wheel 的 ABI 相互匹配。当前 Windows/NVIDIA 验证基线如下：
+
+- `torch 2.9.1+cu130`
+- `torchvision 0.24.1+cu130`
+- `torchaudio 2.9.1+cu130`
+- `comfy-kitchen 0.2.31`，运行时探针能够识别 `cuda` backend
+- 启用 SageAttention 时，使用与 Torch 2.9/cu130 匹配的 Triton 和 SageAttention wheel
+
+已知 `torch 2.8.0+cu129` 不满足当前 comfy-kitchen H3 INT8 ConvRot CUDA 内核的 CUDA 13.0 要求。ComfyUI 本身仍可启动，但该内核会使用 `eager` fallback；这类环境不属于上述验证基线，且在 768p 任务中可能产生更高的显存占用。设置页同时检查软件包版本和实际 backend，不以软件包可导入作为 CUDA 内核就绪的依据。
+
+使用 ComfyUI Desktop 时，建议优先通过实例更新页选择 `2.9.1+cu130`，再返回本应用重新扫描并补齐 comfy-kitchen 及所选 Attention 后端的依赖。H3 修复器使用该实例的同一个 `.venv` 和 PyTorch 官方 cu130 wheel；由修复器直接更改 PyTorch 后，Desktop 可能将当前组合标记为外部安装。
 
 Qwen3.6/Qwen3.8 MultiModal 与 MiniMax H3 Prompt Writer 共用同一个 JamePeng `llama-cpp-python` GPU 构建。安装器会按所选 ComfyUI 的 Python/CUDA 版本选择预编译 wheel；不支持的组合会在下载前明确提示，不会偷偷源码编译或安装第二个 llama 服务。节点更新不会覆盖已经通过 CUDA 自检的共享后端，具体日志和前置条件会显示在设置 → 节点与工作流。
 
 官方 [`lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B`](https://huggingface.co/lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B) 是绑定 `Qwen/Qwen3-VL-8B-Instruct` 的 PEFT 适配器。它与 Qwen-VL 节点一起读取参考图片/视频并重写 H3 提示词；不能套到 Qwen3.6、Qwen3.8 GGUF 或 H3 视频模型。设置页分别扫描 Qwen3-VL 基座文件、adapter 文件和节点依赖。
 
-### 2. 克隆并启动 GUI
+### 2. 克隆并启动 Local Video Studio
 
 ```powershell
 git clone https://github.com/wxy112300/AIVideoGenTool.git
@@ -74,32 +97,63 @@ npm 下载需要本机代理时可使用：
 start-ui-proxy.bat http://127.0.0.1:7890
 ```
 
-### 3. 在设置中选择正确的 ComfyUI
+### 3. 完成首次环境配置
 
-打开“设置 → 系统与路径”：
+启动界面后打开 **设置 → 系统与路径**：
 
-1. 选择实际使用的 ComfyUI 安装。Desktop 启动器目录、核心目录和数据/节点目录可能不同。
-2. 确认接口地址；默认是 `http://127.0.0.1:8188`。
-3. 确认模型目录、视频/图片输出目录和输入素材库。
-4. 执行重新扫描。离线扫描不要求先启动 ComfyUI；运行时节点验证才需要服务。
+1. 从扫描结果中选择实际使用的 ComfyUI 实例。Desktop 启动器、核心源码和数据目录可能位于不同位置。
+2. 核对 ComfyUI 核心目录、数据/节点目录和 Python 解释器是否属于同一实例。
+3. 确认接口地址；默认是 `http://127.0.0.1:8188`。
+4. 确认模型目录、视频/图片输出目录和输入素材库。
+5. 点击 **重新扫描**。离线扫描可检查文件和版本；启动 ComfyUI 后再次扫描，才能验证运行时节点。
 
 同一台电脑存在多个 ComfyUI 时，务必确认“所选安装”和当前连接的服务是同一个实例。否则模型可能扫描成功，节点却安装到了另一套目录。
 
-### 4. 按顺序补齐工作流依赖
+### 4. 使用应用内安装和修复功能
+
+设置页提供以下自动化操作：
+
+| 设置分类 | 可执行操作 |
+| --- | --- |
+| 系统与路径 | 扫描 ComfyUI 实例、检查核心版本；Desktop 安装通过官方更新入口管理核心 |
+| 节点与工作流 | 一键安装或更新 catalog 登记的 Custom Nodes 及其 Python requirements；安装可在 ComfyUI 中查看的参考工作流 |
+| 性能与加速 | 检查 PyTorch/CUDA、comfy-kitchen backend、Triton、SageAttention 和 KJNodes；按当前环境执行 H3 修复和 CUDA 自检 |
+| 提示词扩展 | 为可选的本地提示词模型安装节点和共享 `llama-cpp-python` GPU 运行依赖 |
+
+这些操作会显示实时阶段和日志，并在需要时重启应用管理的 ComfyUI。以下内容仍需用户处理：
+
+- ComfyUI 本体应从官方渠道安装；应用不会静默创建新的 ComfyUI 发行版。
+- 扩散模型、文本编码器、VAE 和 LoRA 等大型权重需要按模型卡片提供的来源下载。
+- 模型卡片中的 **i** 按钮会显示下载地址、推荐文件名和相对于 ComfyUI `models` 的目标子目录。
+
+节点页顶部的一键操作只处理缺失、低于 catalog 推荐版本或需要兼容修复的已登记节点。MiniMax H3 基础生成节点属于 ComfyUI 核心；如果这些节点缺失，应先更新 ComfyUI，而不是安装名称相似的第三方节点。
+
+### 5. 完成第一个 MiniMax H3 任务
+
+以下流程以 24GB 级 NVIDIA GPU 和 **MiniMax H3 FL2VA · INT8** 为推荐起点：
+
+1. 在 **设置 → 系统与路径** 选择 ComfyUI `0.31.0+` 实例并完成扫描；建议使用当前推荐基线 `0.33.1`。
+2. 在 **设置 → 性能与加速** 检查 H3 运行时。Desktop 用户优先在 Desktop 中选择 `PyTorch 2.9.1+cu130`，再返回应用重新扫描；随后按需执行 H3 环境修复。
+3. 打开 **设置 → 视频模型**，找到 **MiniMax H3 FL2VA · INT8**。对每个缺失的必需组件点击 **i**：
+	- 下载 FL2VA INT8 扩散模型并放入卡片显示的 `models/diffusion_models` 目录；
+	- 下载 H3 文本编码器并放入 `models/text_encoders`；
+	- 下载视频 VAE 和音频 VAE 并放入 `models/vae`；
+	- TAE 实时预览权重属于可选组件，不影响基础生成。
+4. 保留卡片给出的推荐文件名。文件复制完成后点击 **重新扫描**，确认必需组件均已识别。
+5. 在 **设置 → 节点与工作流** 安装扫描结果标记为缺失的节点。SageAttention 模式需要 KJNodes；Spectrum、TAE 实时预览和 H3 Motion Context 均为可选能力，不是基础 FL2VA 首次生成的前置条件。
+6. 启动 ComfyUI，并再次扫描，确认 H3 核心节点通过运行时验证。
+7. 打开 **创建 → 视频**，选择 **MiniMax H3 FL2VA · INT8**。添加首帧图片，或不添加图片以使用 T2VA；输入提示词并选择较短时长。768p 是官方质量基线；显存不足时可选择 360p/480p 低显存实验档，540p/720p 也保留为中间档位，但较低分辨率的结果不代表 H3 的标准质量。
+8. 加入队列，在队列页查看 ComfyUI 阶段、采样进度、显存和安装/运行日志。首次任务成功输出后，再逐步增加时长或启用 Turbo、Spectrum 和实时预览。
+
+FL2VA 与 R2V 使用不同的扩散模型。需要多参考图片或视频时，应改选 **MiniMax H3 R2V**，并按其模型卡片下载 Ref2VA 权重；不要复用 FL2VA 扩散模型。LightX2V Turbo 及 768p 4-step 文件是 LoRA，应放入 `models/loras`，不能替代基础扩散模型。
+
+### 6. 理解就绪状态
 
 一个模型能够生成，至少需要以下三层同时成立：
 
 1. **模型组件**：扩散模型、文本/视觉编码器、VAE、LoRA 等文件位于 catalog 指定目录。
 2. **节点与 Python 依赖**：ComfyUI 核心节点版本满足要求；第三方节点已安装，并在所选 ComfyUI Python 中安装了 `requirements.txt`。
 3. **工作流与运行时验证**：应用有对应的 API workflow/adapter，启动任务时 ComfyUI `/object_info` 能看到真实节点。
-
-推荐操作顺序：
-
-1. 在“设置 → 节点与工作流”先安装或更新缺失节点。
-2. 查看安装卡片中的实时日志。`git`、`pip`、兼容补丁、超时和错误都会留在卡片内；完成后按提示重启/复检 ComfyUI。
-3. 在视频模型、图片模型、LoRA 或增强页点击缺失组件的信息图标，按显示的来源、推荐文件名和目标子目录下载权重。
-4. 再次离线扫描。服务启动后进行运行时复检。
-5. 用低分辨率、短时长或单张候选完成一次最小真实测试，再提高负载。
 
 节点可以由应用一键安装；大型模型权重目前通常由用户从设置页给出的官方/社区来源手动下载。不要把模型文件放进仓库。
 
@@ -134,9 +188,10 @@ npm.cmd run verify
 
 - 暂无正式 Windows 安装包，当前从源码启动。
 - ComfyUI 和社区节点持续变化；设置页的离线扫描、运行时验证与真实最小测试缺一不可。
+- H3 的 PyTorch、CUDA runtime 和 comfy-kitchen backend 需要联合验证；启用 SageAttention 时还需验证匹配的 Triton 与 SageAttention wheel。软件包可导入不等同于 CUDA 内核已经启用。
 - 不同量化、LoRA、Attention、Cache 或 Offload 组合可能改变显存、速度和质量；应用只在对应工作流范围内应用策略，不承诺任意组合兼容。
 - 实验性模型或社区转换的“可识别”不代表已经在所有硬件上通过运行测试。
 
 ## License
 
-仓库暂未声明开源许可证。公开使用、再分发或贡献前，请由维护者补充明确的 `LICENSE` 文件；各模型、LoRA 和第三方节点继续受各自许可证约束。
+本项目采用 [MIT License](LICENSE)。模型权重、LoRA、ComfyUI 和第三方节点不随本项目重新授权，仍分别受其来源项目和发布页面所列许可证及使用条款约束。

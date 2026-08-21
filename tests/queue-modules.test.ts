@@ -3,7 +3,7 @@ import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { persistVideoHistoryResult } from "../electron/queue-history";
 import { QueueWorkerController } from "../electron/queue-worker";
-import { queueTaskInput } from "../src/renderer/pages/queue/card";
+import { queueTaskInput, renderQueueTaskCard } from "../src/renderer/pages/queue/card";
 import { queueLayoutSignature } from "../src/renderer/pages/queue/helpers";
 import { queueComfyUiStatus, queueOperationStatus } from "../src/renderer/pages/queue/live-status";
 import { renderQueuePage } from "../src/renderer/pages/queue/page";
@@ -79,6 +79,27 @@ describe("queue renderer task priority", () => {
     expect(emptyMarkup).toContain("queue-empty-state");
     expect(emptyMarkup).not.toContain("queue-active-telemetry");
     expect(emptyMarkup).not.toContain("queue-idle-performance-grid");
+  });
+
+  it("marks non-running image inputs for the square preview layout", () => {
+    const state = createDefaultState();
+    const task = queueFixtureTask(state, "image-preview-task");
+    const markup = renderQueueTaskCard(task, 1, {
+      t: (key) => key,
+      taskPreviews: {},
+      queueRunning: false,
+      queueActionBusy: null,
+      icon: () => "",
+      escapeHtml: (value) => String(value),
+      modelName: (id) => id,
+      frameRateSummary: () => "24 FPS",
+      queueStageElapsedText: () => "—",
+      queueTaskRemainingSeconds: () => null,
+      queueEstimateText: () => "—",
+      elapsedText: () => "—"
+    });
+
+    expect(markup).toContain('class="task-input-preview task-input-preview-image"');
   });
 });
 

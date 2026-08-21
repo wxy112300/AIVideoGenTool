@@ -66,8 +66,12 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
         max_tokens: 1536,
         temperature: 0.9,
         device: "GPU",
-        image: ["load-image-0", 0]
+        image: ["image-budget-0", 0]
       }
+    });
+    expect(workflow["image-budget-0"]).toMatchObject({
+      class_type: "ImageScaleToTotalPixels",
+      inputs: { image: ["load-image-0", 0], megapixels: 1, resolution_steps: 32 }
     });
     expect(workflow["image-batch-1"]).toBeUndefined();
     expect(workflow.preview.inputs.source).toEqual(["vision-llm", 0]);

@@ -7,6 +7,7 @@ export type ConfirmationRequest =
   | { kind: "clear-draft" }
   | { kind: "delete-history"; assetId: string; title: string }
   | { kind: "delete-image-version"; projectId: string; versionId: string; title: string }
+  | { kind: "delete-video-version"; assetId: string; versionId: string; title: string }
   | { kind: "remove-queue-task"; taskId: string; title: string }
   | { kind: "cancel-queue-task"; taskId: string; title: string }
   | { kind: "discard-settings"; nextPage: string }
@@ -34,13 +35,15 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
   if (!request) return "";
   const deleting = request.kind === "delete-history";
   const deletingImageVersion = request.kind === "delete-image-version";
+  const deletingVideoVersion = request.kind === "delete-video-version";
+  const deletingVersion = deletingImageVersion || deletingVideoVersion;
   const deletingImage = deleting && options.imageHistoryIds.has(request.assetId);
   const removingQueueTask = request.kind === "remove-queue-task";
   const cancellingQueueTask = request.kind === "cancel-queue-task";
   const discardingSettings = request.kind === "discard-settings";
   const forceStoppingComfy = request.kind === "force-stop-comfy";
   const t = options.t;
-  const title = deletingImageVersion
+  const title = deletingVersion
     ? t(uiKeys.dialog.deleteVersionTitle, { title: request.title })
     : deleting
     ? t(deletingImage ? uiKeys.dialog.deleteImageTitle : uiKeys.dialog.deleteVideoTitle, { title: request.title })
@@ -53,8 +56,8 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
           : forceStoppingComfy
             ? t(uiKeys.dialog.forceStopTitle)
             : t(uiKeys.dialog.clearDraftTitle);
-  const description = deletingImageVersion
-    ? t(uiKeys.dialog.deleteVersionDescription)
+  const description = deletingVersion
+    ? t(deletingVideoVersion ? uiKeys.dialog.deleteVideoVersionDescription : uiKeys.dialog.deleteVersionDescription)
     : deleting
     ? deletingImage
       ? t(uiKeys.dialog.deleteImageDescription)
@@ -76,8 +79,8 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
           <span class="eyebrow">${t(uiKeys.dialog.irreversible)}</span>
           <h2 id="confirm-title">${options.escapeHtml(title)}</h2>
           <p id="confirm-description">${options.escapeHtml(description)}</p>
-          ${deletingImageVersion
-            ? `<div class="confirm-warning">${t(uiKeys.dialog.deleteVersionWarning)}</div>`
+          ${deletingVersion
+            ? `<div class="confirm-warning">${t(deletingVideoVersion ? uiKeys.dialog.deleteVideoVersionWarning : uiKeys.dialog.deleteVersionWarning)}</div>`
             : deleting
             ? `<div class="confirm-warning">${t(deletingImage ? uiKeys.dialog.deleteImageWarning : uiKeys.dialog.deleteVideoWarning)}</div>`
             : removingQueueTask || cancellingQueueTask
@@ -90,7 +93,7 @@ export function renderConfirmationDialog(options: ConfirmationDialogOptions): st
         </div>
         <div class="dialog-actions">
           <button class="secondary button-with-icon" id="cancel-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.dialog.cancel)}</button>
-          <button class="primary destructive button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingImageVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
+          <button class="primary destructive button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
         </div>
       </section>
     </div>`;

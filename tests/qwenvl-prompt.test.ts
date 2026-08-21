@@ -53,12 +53,17 @@ describe("MiniMax H3 Prompt Rewriter LoRA 8B", () => {
     settings.promptModelId = modelId;
     const workflow = buildQwenVlPeftPromptWorkflow(
       { prompt: "A person walks toward the camera.", modelId: "minimax_h3_fl2va", h3PromptMode: "T2VA" },
-      null,
+      "studio-input-reference.png",
       settings
     );
     expect(workflow["qwenvl-model"]?.inputs.model_name).toBe("qwen3-vl-8b-instruct");
     expect(workflow["qwenvl-lora"]?.inputs.lora_name).toBe("minimax-h3-prompt-rewriter-8b");
     expect(workflow["qwenvl-caption"]?.class_type).toBe("QwenVLCaption");
+    expect(workflow["qwenvl-image-budget"]).toMatchObject({
+      class_type: "ImageScaleToTotalPixels",
+      inputs: { image: ["qwenvl-image", 0], megapixels: 1, resolution_steps: 32 }
+    });
+    expect(workflow["qwenvl-caption"]?.inputs.image).toEqual(["qwenvl-image-budget", 0]);
   });
 
   it("keeps JSON metadata application-managed instead of exposing it as a download requirement", () => {

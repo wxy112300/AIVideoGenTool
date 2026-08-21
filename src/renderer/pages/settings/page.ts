@@ -540,7 +540,7 @@ export function renderSettingsPage(
   const promptPanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
-        <div class="section-heading"><div><h2>${s("prompt.title")}</h2><span class="muted">${s("prompt.description")}</span></div><div class="button-row"><span class="model-badge">${s("prompt.badge")}</span><button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model" ${viewModel.promptRuntimeBusy || viewModel.queueRunning || (!viewModel.promptRuntimeLoaded && !viewModel.promptStatus.ready) ? "disabled" : ""} aria-label="${escape(viewModel.promptRuntimeControlTitle)}" title="${escape(viewModel.promptRuntimeControlTitle)}" aria-busy="${viewModel.promptRuntimeBusy}">${icon(viewModel.promptRuntimeControlIconName)}</button></div></div>
+        <div class="section-heading"><div><h2>${s("prompt.title")}</h2><span class="muted">${s("prompt.description")}</span></div><div class="button-row"><span class="model-badge">${s("prompt.badge")}</span><button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeControlIconName === "refresh-cw" ? "busy" : ""}" id="release-prompt-model" ${viewModel.promptRuntimeBusy || viewModel.queueRunning || (!viewModel.promptRuntimeLoaded && !viewModel.promptStatus.ready) ? "disabled" : ""} aria-label="${escape(viewModel.promptRuntimeControlTitle)}" title="${escape(viewModel.promptRuntimeControlTitle)}" aria-busy="${viewModel.promptRuntimeControlIconName === "refresh-cw"}">${icon(viewModel.promptRuntimeControlIconName)}</button></div></div>
         <label>${s("prompt.defaultModel")}<select id="prompt-model-id">${promptProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.promptModelId === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? s("prompt.missingComponent") : ""} ${s("prompt.videoImage")}</option>`).join("")}</select></label>
         <div class="settings-grid two">
           <label>${s("prompt.language")}<select id="prompt-language"><option value="auto" ${settings.promptLanguage === "auto" ? "selected" : ""}>${s("prompt.followInput")}</option><option value="zh" ${settings.promptLanguage === "zh" ? "selected" : ""}>${s("prompt.chinese")}</option><option value="en" ${settings.promptLanguage === "en" ? "selected" : ""}>${s("prompt.english")}</option></select></label>
@@ -628,7 +628,7 @@ export function renderSettingsPage(
                 return `<div class="component-row ${tone}"><span class="component-state">${icon(node.available ? "circle-check" : tone === "warning" ? "circle-help" : "circle-alert")}</span><div><strong>${escape(node.label)}</strong><code>${escape(node.id)}</code></div></div>`;
               }).join("") || `<div class="component-row warning"><span class="component-state">${icon("circle-help")}</span><div><strong>${s("nodes.waitingCore")}</strong></div></div>`}
             </div>
-            <span class="muted">${s("nodes.minimumVersion")} <code>v${escape(environmentScan?.comfyCompatibility.h3MinimumVersion ?? "0.31.0")}</code> · ${s("nodes.recommendedVersion")} <code>v${escape(environmentScan?.comfyCompatibility.h3RecommendedVersion ?? "0.33.1")}</code> · ${s("nodes.coreLog")} <code>${escape(environmentScan?.comfyCompatibility.h3MinimumRevision ?? "")}</code></span>
+            <span class="muted">${s("nodes.minimumVersion")} <code>v${escape(environmentScan?.comfyCompatibility?.h3MinimumVersion ?? "0.31.0")}</code> · ${s("nodes.recommendedVersion")} <code>v${escape(environmentScan?.comfyCompatibility?.h3RecommendedVersion ?? "0.33.1")}</code> · ${s("nodes.coreLog")} <code>${escape(environmentScan?.comfyCompatibility?.h3MinimumRevision ?? "")}</code></span>
             ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>${s("nodes.coreLog")}</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
           </div>
           <div class="custom-node-actions">
@@ -741,6 +741,8 @@ export function renderSettingsPage(
   const attention = accelerationState.attention;
   const attentionTone = accelerationState.tone;
   const attentionStatus = accelerationState.status;
+  const attentionInstallLines = viewModel.attentionAccelerationLog.split(/\r?\n/).filter(Boolean);
+  const attentionInstallStage = attentionInstallLines.at(-1) ?? s("accel.preparing");
   const pythonSourceLabels: Record<string, string> = {
     selected: s("accel.sourceSelected"),
     "comfy-venv": s("accel.sourceComfyVenv"),
@@ -799,15 +801,22 @@ export function renderSettingsPage(
         </div>
         <div class="attention-runtime-grid">
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimePython"), s("accel.runtimePythonTip"))}</div><strong class="runtime-value">${escape(attention?.pythonVersion || s("accel.notFound"))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>
-          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeTorch"), s("accel.runtimeTorchTip"))}</div><strong class="runtime-value">${escape(attention?.torchVersion || s("accel.unknown"))}</strong><code class="runtime-detail">${s("accel.cuda")} ${escape(attention?.cudaVersion || s("accel.unknown"))} · ${s("accel.sm")} ${escape(attention?.gpuArchitecture || s("accel.unknown"))}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeTorch"), s("accel.runtimeTorchTip"))}</div><strong class="runtime-value">${escape(attention?.torchVersion || s("accel.unknown"))}</strong><code class="runtime-detail">${s("accel.cuda")} ${escape(attention?.cudaVersion || s("accel.unknown"))} · ${s("accel.sm")} ${escape(attention?.gpuArchitecture || s("accel.unknown"))}</code><code class="runtime-detail">comfy-kitchen ${escape(attention?.comfyKitchenVersion || s("accel.notInstalled"))} · ${(attention?.comfyKitchenBackends ?? []).map(escape).join(", ") || "eager fallback"}</code></article>
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeSage"), s("accel.runtimeSageTip"))}</div><strong class="runtime-value">${escape(attention?.sageAttentionVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail" title="${escape(attention?.recommendedWheel || "")}">${escape(attention?.recommendedWheel || s("accel.noWheel"))}</code></article>
           <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeKj"), s("accel.runtimeKjTip"))}</div><strong class="runtime-value">${escape(attention?.tritonVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? s("accel.kjAvailable") : attention?.kjNodesInstalled ? s("accel.kjUpdate") : s("accel.kjMissing")}</code></article>
         </div>
         <div class="acceleration-actions">
           <button class="primary button-with-icon" id="install-attention-acceleration" aria-busy="${viewModel.attentionAccelerationInstalling}" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : accelerationState.installAction === "repair" ? s("accel.repair") : s("accel.install")}</button>
-          <div>${fieldLabelWithTip(s("accel.stopComfy"), s("accel.restartComfy"))}</div>
+          <div>${environmentScan?.comfyInstallType === "desktop" ? `<strong>${s("accel.desktopTorchTitle")}</strong><span>${s("accel.desktopTorchHint")}</span>` : ""}${fieldLabelWithTip(s("accel.stopComfy"), s("accel.restartComfy"))}</div>
         </div>
-        ${viewModel.attentionAccelerationLog ? `<details class="node-log" open><summary>${s("accel.log")}</summary><pre id="attention-install-log">${escape(viewModel.attentionAccelerationLog)}</pre></details>` : ""}
+        <div class="attention-install-progress" id="attention-install-progress" aria-live="polite" ${viewModel.attentionAccelerationInstalling ? "" : "hidden"}>
+          <div class="progress indeterminate" role="progressbar" aria-label="${s("accel.progress")}" aria-valuemin="0" aria-valuemax="100"><span></span></div>
+          <strong id="attention-install-stage">${escape(attentionInstallStage)}</strong>
+        </div>
+        <details class="node-log" id="attention-install-log-details" ${viewModel.attentionAccelerationInstalling || viewModel.attentionAccelerationLog ? "open" : ""} ${viewModel.attentionAccelerationInstalling || viewModel.attentionAccelerationLog ? "" : "hidden"}>
+          <summary>${s("accel.log")}</summary>
+          <pre id="attention-install-log">${escape(viewModel.attentionAccelerationLog)}</pre>
+        </details>
       </section>
     </section>`;
 
@@ -873,7 +882,9 @@ export function renderSettingsPage(
                       : "";
           const updateDot = id === "nodes" && nodeUpdatesAvailable
             ? `<span class="settings-update-dot" role="img" aria-label="${escape(s("nodes.needsUpdate"))}" title="${escape(s("nodes.needsUpdate"))}"></span>`
-            : "";
+            : id === "acceleration" && Boolean(environmentScan) && attentionStatus !== "ready"
+              ? `<span class="settings-update-dot" role="img" aria-label="${escape(s("accel.pending"))}" title="${escape(s("accel.pending"))}"></span>`
+              : "";
           const metadata = count
             ? `<span class="settings-tab-meta"><small>${count}</small></span>`
             : "";

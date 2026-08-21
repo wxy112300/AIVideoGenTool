@@ -19,7 +19,7 @@ export const minimaxH3Fl2vaTurbo: CatalogModelEntry = {
       supportsVideoExtension: true,
       maxDurationSeconds: 15,
       maxGeneratedFrames: 362,
-      resolutions: [480, 540, 720, 768]
+      resolutions: [360, 480, 540, 720, 768]
     }
   },
   locales: {

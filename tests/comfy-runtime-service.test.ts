@@ -4,6 +4,7 @@ import {
   startComfyUiService,
   comfyUiPythonEntryArgs,
   rememberOwnedComfyProcessId,
+  setOwnedComfyProcessExitListener,
   ownedComfyProcessIdSnapshot,
   clearOwnedComfyProcessIds,
   type ComfyRuntimeServiceDependencies
@@ -46,6 +47,8 @@ describe("ComfyUI runtime service", () => {
 
   it("builds a source launch from the selected data and core directories", async () => {
     const launchDetached = vi.fn(async () => 1234);
+    const onOwnedExit = vi.fn();
+    setOwnedComfyProcessExitListener(onOwnedExit);
     const settings = {
       ...createDefaultState().settings,
       comfyUrl: "http://127.0.0.1:8288",
@@ -80,9 +83,10 @@ describe("ComfyUI runtime service", () => {
       string,
       string[],
       string,
-      NodeJS.ProcessEnv
+      NodeJS.ProcessEnv,
+      (processId: number, code: number | null, signal: NodeJS.Signals | null) => void
     ]>;
-    const [python, args, cwd, env] = launchCalls[0]!;
+    const [python, args, cwd, env, onExit] = launchCalls[0]!;
     expect(python).toContain("python.exe");
     expect(cwd).toBe("D:\\ComfyCore");
     expect(env).toEqual({ TEST_ENV: "1" });
@@ -96,6 +100,9 @@ describe("ComfyUI runtime service", () => {
     expect(args).toContain(
       `sqlite:///${path.join("D:\\ComfyData", "user", `comfyui.local-video-studio-${process.pid}-8288.db`).replaceAll("\\", "/")}`
     );
+    onExit(1234, 1, null);
+    expect(onOwnedExit).toHaveBeenCalledWith({ processId: 1234, code: 1, signal: null });
+    setOwnedComfyProcessExitListener(null);
   });
 
   it("delegates shell-only Desktop installations to the official executable", async () => {

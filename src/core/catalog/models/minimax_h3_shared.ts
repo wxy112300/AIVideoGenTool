@@ -142,7 +142,7 @@ export const h3Q3GgufModel = h3Component({
     `${h3Q3BaseUrl}/minimax_h3_fl2va_pruned-Q3_K.gguf`,
     "unet",
     "minimax_h3_fl2va_pruned-Q3_K.gguf",
-    "社区 Q3 GGUF 扩散模型，文件约 8.16 GiB。3080 10GB 仅作为 480p、124 帧、8 步以内和 CPU/RAM offload 实验档；需要独立的 H3-aware ComfyUI-GGUF 包，不能与原生 UNETLoader 混用。"
+    "社区 Q3 GGUF 扩散模型，文件约 8.16 GiB。3080 10GB 仅作为 360p/480p、124 帧、8 步以内和 CPU/RAM offload 实验档；需要独立的 H3-aware ComfyUI-GGUF 包，不能与原生 UNETLoader 混用。"
   )
 });
 

@@ -56,6 +56,11 @@ export const imageReferenceRolePromptLabels = {
   auto: "automatic reference"
 };
 
+export function isPromptCancellationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /提示词任务已取消|prompt task (?:was )?cancelled|operation was aborted/iu.test(message);
+}
+
 export function activePrompt(draft: Draft, locale: UiLocale = "zh-CN"): PromptVersion {
   const promptVersions = promptVersionsForDraft(draft);
   const activePromptVersion = activePromptIndexForDraft(draft);
@@ -417,6 +422,7 @@ export async function loadImagePreview(
         sourceWidth: image.naturalWidth,
         sourceHeight: image.naturalHeight
       });
+      context.requestRender();
     }
   }, { once: true });
   image.src = dataUrl;

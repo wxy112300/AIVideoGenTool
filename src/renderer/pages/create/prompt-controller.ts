@@ -25,6 +25,7 @@ import {
   h3PromptModeForDraft,
   h3ReferenceTag,
   insertPromptSnippet,
+  isPromptCancellationError,
   resizePromptInput,
   updatePromptWordCounter
 } from "./helpers";
@@ -217,7 +218,8 @@ export function mountCreatePromptController(
     event.stopImmediatePropagation();
     if (options.isPromptEnhancing()) {
       try {
-        await options.context.studio.cancelPrompt();
+        const result = await options.context.studio.cancelPrompt();
+        if (!result.ok) throw new Error(result.message);
       } catch (error) {
         options.context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
       }
@@ -313,7 +315,7 @@ export function mountCreatePromptController(
       ];
       options.patchDraft(promptPatchForDraft(nextDraft, versions, versions.length - 1));
     } catch (error) {
-      options.context.notify(error instanceof Error ? error.message : String(error), {
+      if (!isPromptCancellationError(error)) options.context.notify(error instanceof Error ? error.message : String(error), {
         kind: "error",
         actions: [{
           id: "open-settings",

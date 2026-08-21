@@ -38,8 +38,8 @@
 /* P19: own the image History detail stage here. The declarations and
    responsive thresholds are unchanged; shared image media primitives remain
    in foundation. */
-.image-history-detail-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(320px, .72fr); gap: 18px; height: min(590px, calc(100vh - 180px)); min-height: 460px; align-items: stretch; }
-.image-history-viewer-panel { min-width: 0; min-height: 0; height: 100%; align-self: stretch; padding: 14px; overflow: hidden; }
+.image-history-detail-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(320px, .72fr); gap: 18px; height: auto; min-height: 0; align-items: start; }
+.image-history-viewer-panel { min-width: 0; min-height: 0; height: min(590px, calc(100vh - 180px)); align-self: start; padding: 14px; overflow: hidden; }
 .image-history-viewer-grid { min-width: 0; min-height: 0; height: 100%; display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 14px; align-items: stretch; }
 .image-history-version-rail { min-width: 0; min-height: 0; height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; padding: 5px 0; }
 .image-history-version-rail h2 { margin: 0; font-size: 13px; }
@@ -69,8 +69,8 @@
 .image-history-open-viewer { flex: 0 0 auto; white-space: nowrap; }
 .image-history-stage-controls { display: flex; align-items: center; justify-content: center; gap: 10px; }
 .image-history-stage-nav { width: 42px; min-width: 42px; padding-inline: 8px; }
-.image-history-detail-sidebar { min-width: 0; min-height: 0; height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto; align-content: stretch; gap: 12px; }
-.image-history-summary { min-width: 0; min-height: 0; display: grid; gap: 12px; padding: 17px; overflow: hidden; }
+.image-history-detail-sidebar { min-width: 0; min-height: 0; height: auto; display: grid; grid-template-rows: none; align-content: start; gap: 12px; }
+.image-history-summary { min-width: 0; min-height: 0; display: grid; gap: 12px; padding: 17px; overflow: visible; }
 .image-history-summary h2 { margin: 0; overflow-wrap: anywhere; }
 .image-history-summary > p { max-height: 78px; margin: 0; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; line-clamp: 4; -webkit-line-clamp: 4; line-height: 1.5; }
 .image-history-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
@@ -165,7 +165,7 @@
 
 /* Preserve the useful player/inspector split while sizing the stage from the
    available window height, which is especially important for portrait video. */
-.history-detail-hero { grid-template-columns: minmax(0, 1.55fr) minmax(320px, .72fr); gap: 18px; align-items: stretch; }
+.history-detail-hero { grid-template-columns: minmax(0, 1.55fr) minmax(320px, .72fr); gap: 18px; align-items: start; }
 .history-player-column { min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
 .history-player {
   width: 100%;
@@ -181,7 +181,8 @@
 .version-toolbar { position: relative; z-index: 1; margin-top: 0; border-radius: 12px; }
 .history-detail-sidebar {
   min-width: 0;
-  max-height: clamp(380px, calc(100vh - 190px), 780px);
+  height: auto;
+  max-height: none;
   display: grid;
   align-content: start;
   gap: 12px;
@@ -193,7 +194,7 @@
   flex-direction: column;
   gap: 10px;
   padding: 16px;
-  overflow-y: auto;
+  overflow: visible;
 }
 .history-summary-copy { min-width: 0; display: grid; gap: 6px; }
 .history-summary-copy > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -257,26 +258,26 @@
   .history-summary-footer { align-items: stretch; flex-direction: column; }
 }
 
-/* P15: make the detail inspector read as one primary path, a short set of
-   frequent actions, and a native disclosure for destructive/utility actions. */
+/* Keep the detail inspector on one visible action path. Utility and destructive
+   actions remain reachable without an extra disclosure or scroll container. */
 .history-detail-back { margin-inline: 0; }
 .history-detail-hero,
 .image-history-detail-layout { min-width: 0; }
 .history-detail-quick-actions,
 .image-history-quick-actions {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   min-width: 0;
 }
-.history-detail-action-primary,
+.history-detail-action-primary {
+  min-width: 0;
+  grid-column: 1 / -1;
+}
 .history-detail-action-secondary,
-.history-detail-more-actions { min-width: 0; display: grid; gap: 7px; }
-.history-detail-action-secondary,
-.history-detail-more-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.history-detail-more-actions { display: contents; }
 .history-detail-quick-actions button,
-.image-history-quick-actions button,
-.history-detail-more summary {
+.image-history-quick-actions button {
   width: 100%;
   min-height: 39px;
   padding: 7px 9px;
@@ -285,28 +286,8 @@
   line-height: 1.25;
   white-space: normal;
 }
-.history-detail-more {
-  min-width: 0;
-  border: 0;
-  padding: 0;
-}
-.history-detail-more > summary {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  cursor: pointer;
-  list-style: none;
-}
-.history-detail-more > summary::-webkit-details-marker { display: none; }
-.history-detail-more > summary::marker { content: ""; }
-.history-detail-more[open] > summary {
-  border-color: color-mix(in srgb, var(--primary) 54%, var(--border));
-  color: #e8edf5;
-  background: color-mix(in srgb, var(--primary) 12%, var(--panel));
-}
-.history-detail-more-actions { padding-top: 7px; }
 .history-detail-more-actions button { min-width: 0; }
-.history-detail-compact-actions { display: none; min-width: 0; }
+.image-history-quick-actions .history-delete-project-action { grid-column: 1 / -1; }
 .history-record-section { min-width: 0; margin-top: 24px; }
 .history-record-section-heading {
   display: flex;
@@ -329,35 +310,20 @@
 
 @media (max-width: 900px) {
   .history-detail-hero {
-    grid-template-areas: "media" "compact" "inspector";
+    grid-template-areas: "media" "inspector";
   }
   .history-player-column { grid-area: media; }
   .history-detail-sidebar { grid-area: inspector; }
   .image-history-detail-layout {
-    grid-template-areas: "viewer" "compact" "inspector";
+    grid-template-areas: "viewer" "inspector";
   }
   .image-history-viewer-panel { grid-area: viewer; }
   .image-history-detail-sidebar { grid-area: inspector; }
-  .history-detail-compact-actions {
-    display: grid;
-    grid-area: compact;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    padding: 8px 0 2px;
-  }
-  .history-detail-compact-actions button {
-    width: 100%;
-    min-height: 42px;
-    justify-content: center;
-    text-align: center;
-    white-space: normal;
-  }
 }
 
 @media (max-width: 520px) {
-  .history-detail-action-secondary,
-  .history-detail-more-actions,
-  .history-detail-compact-actions { grid-template-columns: 1fr; }
+  .history-detail-quick-actions,
+  .image-history-quick-actions { grid-template-columns: 1fr; }
   .history-record-section-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .history-record-section-meta { text-align: left; }
 }

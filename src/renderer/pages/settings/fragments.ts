@@ -175,9 +175,9 @@ export function renderSettingsComfyCompatibilityPanel(
 ): string {
   const compatibility = viewModel.environmentScan?.comfyCompatibility;
   if (!compatibility) return "";
-  const selectedInstallation = viewModel.environmentScan?.comfyInstallations.find(
+  const selectedInstallation = viewModel.environmentScan?.comfyInstallations?.find(
     (installation) => installation.selected
-  ) ?? viewModel.environmentScan?.comfyInstallations[0];
+  ) ?? viewModel.environmentScan?.comfyInstallations?.[0];
   const versionLabel = compatibility.version
     ? `v${compatibility.version}`
     : options.t(uiKeys.settings.compatibility.versionUnknown);

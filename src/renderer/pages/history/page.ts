@@ -339,6 +339,9 @@ export function renderHistoryDetailPage(
   const videoCopyAction = videoFile?.absolutePath ? `<button class="secondary button-with-icon" data-copy-file="${options.escapeHtml(videoFile.absolutePath)}" aria-label="${options.t(uiKeys.history.menu.copyFile)}" title="${options.t(uiKeys.history.menu.copyFile)}">${options.icon("copy")}${options.t(uiKeys.history.menu.copyFile)}</button>` : "";
   const videoLocateAction = videoFile?.absolutePath ? `<button class="secondary button-with-icon history-file-action" data-show-file="${options.escapeHtml(videoFile.absolutePath)}" aria-label="${options.t(uiKeys.history.menu.openFolder)}" title="${options.t(uiKeys.history.page.locateFile)}">${options.icon("folder-open")}${options.t(uiKeys.history.page.locateFile)}</button>` : "";
   const videoUpscaleAction = `<button class="secondary button-with-icon" data-open-upscale ${videoFile?.absolutePath && options.versionShortEdge(version) < 2160 ? "" : "disabled"}>${options.icon("maximize-2")}${options.versionShortEdge(version) >= 2160 ? options.t(uiKeys.history.page.current4k) : options.t(uiKeys.history.page.improveResolution)}</button>`;
+  const videoDeleteVersionAction = asset.versions.length > 1
+    ? `<button class="secondary danger history-delete-version-button button-with-icon" data-delete-history-version="${options.escapeHtml(asset.id)}" data-history-version-delete-id="${options.escapeHtml(version.id)}" aria-label="${options.t(uiKeys.history.page.deleteCurrentVersion)}" title="${options.t(uiKeys.history.page.deleteCurrentVersion)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteCurrentVersion)}</button>`
+    : "";
   const videoDeleteAction = `<button class="secondary danger history-delete-button button-with-icon" data-delete-history="${asset.id}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteVideoRecord)}</button>`;
   const videoHasContinueAction = Boolean(videoContinueAction("primary"));
   const videoPrimaryAction = videoHasContinueAction ? videoContinueAction("primary") : videoEditAction("primary");
@@ -347,8 +350,7 @@ export function renderHistoryDetailPage(
     videoLocateAction,
     videoUpscaleAction
   ].filter(Boolean).join("");
-  const videoMoreActions = [videoCopyAction, videoDeleteAction].filter(Boolean).join("");
-  const videoCompactActions = [videoPrimaryAction, videoLocateAction].filter(Boolean).join("");
+  const videoMoreActions = [videoCopyAction, videoDeleteVersionAction, videoDeleteAction].filter(Boolean).join("");
   return `
     <div class="history-detail-back">
       <button class="secondary button-with-icon history-detail-back-button" data-page="history">${options.icon("arrow-left")}${options.t(uiKeys.history.page.back)}</button>
@@ -388,7 +390,7 @@ export function renderHistoryDetailPage(
           <div class="history-detail-quick-actions">
            ${videoPrimaryAction ? `<div class="history-detail-action-primary">${videoPrimaryAction}</div>` : ""}
           ${videoSecondaryActions ? `<div class="history-detail-action-secondary">${videoSecondaryActions}</div>` : ""}
-            ${videoMoreActions ? `<details class="history-detail-more"><summary class="secondary button-with-icon">${options.icon("ellipsis")}${options.t(uiKeys.history.menu.shortcutActions)}</summary><div class="history-detail-more-actions">${videoMoreActions}</div></details>` : ""}
+            ${videoMoreActions ? `<div class="history-detail-more-actions" role="group" aria-label="${options.t(uiKeys.history.menu.shortcutActions)}">${videoMoreActions}</div>` : ""}
           </div>
         </section>
         <section class="panel history-version-panel">
@@ -396,7 +398,6 @@ export function renderHistoryDetailPage(
             <div class="version-switcher history-summary-version-switcher" role="group" aria-label="${options.t(uiKeys.history.page.videoVersions)}">${asset.versions.map((item) => `<button type="button" class="${item.id === version.id ? "primary" : "ghost"}" data-version-id="${item.id}" aria-pressed="${item.id === version.id}" title="${item.kind === "original" ? `${options.t(uiKeys.history.page.originalGeneration)} · ${item.width} × ${item.height}` : `${options.modelName(item.modelId)} · ${item.width} × ${item.height}`}"${item.kind === "original" ? `>${options.t(uiKeys.history.card.originalShort)} · ${options.historyResolutionLabel(asset, item)}` : `>${options.t(uiKeys.history.card.upscaleShort)} · ${options.historyResolutionLabel(asset, item)}`}</button>`).join("")}</div>
         </section>
       </aside>
-      ${videoCompactActions ? `<div class="history-detail-compact-actions" role="group" aria-label="${options.t(uiKeys.history.menu.shortcutActions)}">${videoCompactActions}</div>` : ""}
     </section>
     ${renderHistoryTags(asset.id, asset.tags, availableTags, options)}
     <section class="history-record-section" aria-labelledby="history-generation-record-title">
@@ -484,11 +485,10 @@ export function renderImageHistoryDetailPage(
   const imageLocateAction = filePath ? `<button class="secondary button-with-icon" data-show-file="${options.escapeHtml(filePath)}">${options.icon("folder-open")}${options.t(uiKeys.history.page.openLocation)}</button>` : "";
   const imageSetCoverAction = `<button class="secondary button-with-icon" data-image-set-cover="${options.escapeHtml(project.id)}" data-image-cover-version="${pinnedVersion?.id === version.id ? "" : options.escapeHtml(version.id)}">${options.icon("image")}${pinnedVersion?.id === version.id ? options.t(uiKeys.history.page.restoreAutoCover) : options.t(uiKeys.history.page.setCover)}</button>`;
   const imageDeleteVersionAction = `<button class="secondary danger button-with-icon" data-delete-image-version="${options.escapeHtml(project.id)}" data-image-version-delete-id="${options.escapeHtml(version.id)}" ${version.kind === "source" ? "disabled" : ""}>${options.icon("trash-2")}${version.kind === "source" ? options.t(uiKeys.history.page.originalCannotDelete) : options.t(uiKeys.history.page.deleteCurrentVersion)}</button>`;
-  const imageDeleteProjectAction = `<button class="secondary danger button-with-icon" data-delete-history="${options.escapeHtml(project.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteImageProject)}</button>`;
+  const imageDeleteProjectAction = `<button class="secondary danger history-delete-project-action button-with-icon" data-delete-history="${options.escapeHtml(project.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteImageProject)}</button>`;
   const imagePrimaryAction = imageStartVideoAction("primary");
   const imageSecondaryActions = [imageContinueEditAction("secondary"), imageCopyImageAction, imageLocateAction].filter(Boolean).join("");
   const imageMoreActions = [imageCopyFileAction, imageSetCoverAction, imageDeleteVersionAction, imageDeleteProjectAction].filter(Boolean).join("");
-  const imageCompactActions = [imagePrimaryAction, imageContinueEditAction("secondary"), imageLocateAction].filter(Boolean).join("");
   return `
     <div class="history-detail-back">
       <button class="secondary button-with-icon history-detail-back-button" data-page="history">${options.icon("arrow-left")}${options.t(uiKeys.history.page.imageBack)}</button>
@@ -534,12 +534,11 @@ export function renderImageHistoryDetailPage(
            <div class="history-detail-quick-actions">
              <div class="history-detail-action-primary">${imagePrimaryAction}</div>
              ${imageSecondaryActions ? `<div class="history-detail-action-secondary">${imageSecondaryActions}</div>` : ""}
-             ${imageMoreActions ? `<details class="history-detail-more"><summary class="secondary button-with-icon">${options.icon("ellipsis")}${options.t(uiKeys.history.menu.shortcutActions)}</summary><div class="history-detail-more-actions">${imageMoreActions}</div></details>` : ""}
+             ${imageMoreActions ? `<div class="history-detail-more-actions" role="group" aria-label="${options.t(uiKeys.history.menu.shortcutActions)}">${imageMoreActions}</div>` : ""}
            </div>
         </section>
         <section class="panel image-history-version-panel"><div class="history-version-panel-heading"><strong>${options.t(uiKeys.history.page.imageProjectVersions)}</strong><span>${options.t(uiKeys.history.card.versionCount, { count: project.versions.length })}</span></div><p class="muted tiny">${parent ? options.t(uiKeys.history.page.currentBasedOn, { version: parent.versionNumber }) : version.kind === "source" ? options.t(uiKeys.history.page.initialImage) : options.t(uiKeys.history.page.noParent)}</p></section>
        </aside>
-       <div class="history-detail-compact-actions" role="group" aria-label="${options.t(uiKeys.history.menu.shortcutActions)}">${imageCompactActions}</div>
     </section>
     ${renderHistoryTags(project.id, project.tags, availableTags, options)}
     <section class="history-record-section" aria-labelledby="history-generation-record-title">

@@ -105,7 +105,7 @@ export function derivePromptRuntimeState(
       tone,
       label,
       llamaCppPython,
-      promptWriterNode: environmentScan?.customNodes.find(
+      promptWriterNode: environmentScan?.customNodes?.find(
         (node) => node.id === "minimax-h3-prompt-writer"
       )
     };
@@ -114,7 +114,7 @@ export function derivePromptRuntimeState(
   const qwenVlProfile = selectedProfile ?? promptProfiles.find(
     (profile) => classifiers.isQwenVlPeftPromptModel(profile.id)
   );
-  const qwenVlNode = environmentScan?.customNodes.find(
+  const qwenVlNode = environmentScan?.customNodes?.find(
     (node) => node.id === "comfyui-qwenvl-lora"
   );
   const evidence = qwenVlProfile ? modelProfileEvidence(qwenVlProfile) : null;
@@ -218,7 +218,7 @@ export function deriveSettingsDependencyActionState(options: {
     options.customNodeInstallPhase === "scanning";
   return {
     nodeUpdatesAvailable: Boolean(
-      options.environmentScan?.customNodes.some((node) => node.updateAvailable)
+      options.environmentScan?.customNodes?.some((node) => node.updateAvailable)
     ),
     customNodeInstallFinalizing,
     customNodeInstallGloballyBlocked: Boolean(
@@ -243,16 +243,16 @@ export function deriveSettingsGpuState(
 ) {
   return {
     devices: environmentScan?.gpus ?? [],
-    item: environmentScan?.items.find((item) => item.id === "nvidia"),
+    item: environmentScan?.items?.find((item) => item.id === "nvidia"),
     reserveVramBytes: deriveVramReserveBytes(settings.vramReserveGb)
   };
 }
 
 export function deriveCoreNodeState(environmentScan: EnvironmentScanResult | null) {
-  const known = Boolean(environmentScan?.comfyCompatibility.checkedFrom);
-  const h3Nodes = environmentScan?.comfyCompatibility.coreNodes ?? [];
-  const h3Ready = environmentScan?.comfyCompatibility.h3CoreSupported ?? false;
-  const promptNodes = environmentScan?.comfyCompatibility.promptCoreNodes ?? [];
+  const known = Boolean(environmentScan?.comfyCompatibility?.checkedFrom);
+  const h3Nodes = environmentScan?.comfyCompatibility?.coreNodes ?? [];
+  const h3Ready = environmentScan?.comfyCompatibility?.h3CoreSupported ?? false;
+  const promptNodes = environmentScan?.comfyCompatibility?.promptCoreNodes ?? [];
   const promptReady = promptNodes.length > 0 && promptNodes.every((node) => node.available);
   const workflowDependencies = environmentScan?.workflowDependencies ?? [];
   const customNodes = environmentScan?.customNodes ?? [];

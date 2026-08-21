@@ -232,19 +232,29 @@ export function buildNativePromptWorkflow(
   if (uploadedImages.length > 0) {
     uploadedImages.forEach((filename, index) => {
       const nodeId = `load-image-${index}`;
+      const budgetNodeId = `image-budget-${index}`;
       workflow[nodeId] = {
         class_type: "LoadImage",
         inputs: { image: filename }
       };
+      workflow[budgetNodeId] = {
+        class_type: "ImageScaleToTotalPixels",
+        inputs: {
+          image: [nodeId, 0],
+          upscale_method: "lanczos",
+          megapixels: 1,
+          resolution_steps: 32
+        }
+      };
     });
-    let imageNodeId = "load-image-0";
+    let imageNodeId = "image-budget-0";
     for (let index = 1; index < uploadedImages.length; index += 1) {
       const batchNodeId = `image-batch-${index}`;
       workflow[batchNodeId] = {
         class_type: "ImageBatch",
         inputs: {
           image1: [imageNodeId, 0],
-          image2: [`load-image-${index}`, 0]
+          image2: [`image-budget-${index}`, 0]
         }
       };
       imageNodeId = batchNodeId;
@@ -291,7 +301,8 @@ export async function enhancePromptWithComfyUi(
   settings: Settings,
   signal: AbortSignal,
   warmup = false,
-  onProgress?: PromptProgressReporter
+  onProgress?: PromptProgressReporter,
+  onSubmitted?: (promptId: string) => void
 ): Promise<string> {
   if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
   validateH3ReferenceAutoPrompt(request);
@@ -329,6 +340,7 @@ export async function enhancePromptWithComfyUi(
     signal
   });
   if (!result.prompt_id) throw new Error("ComfyUI 未返回提示词 Prompt ID");
+  onSubmitted?.(result.prompt_id);
   const nodeTypes = Object.fromEntries(
     Object.entries(prompt).map(([id, value]) => [id, value.class_type])
   );
@@ -1468,6 +1480,32 @@ export async function interrupt(settings: Settings): Promise<void> {
     });
     throw error;
   }
+}
+
+export async function waitForPromptToLeaveQueue(
+  settings: Settings,
+  promptId: string,
+  timeoutMs: number
+): Promise<boolean> {
+  const baseUrl = cleanBaseUrl(settings.comfyUrl);
+  const deadline = Date.now() + timeoutMs;
+  do {
+    const queue = await jsonRequest<{
+      queue_running?: unknown[];
+      queue_pending?: unknown[];
+    }>(`${baseUrl}/queue`, { signal: AbortSignal.timeout(10_000) });
+    const entries = [
+      ...(Array.isArray(queue.queue_running) ? queue.queue_running : []),
+      ...(Array.isArray(queue.queue_pending) ? queue.queue_pending : [])
+    ];
+    const promptQueued = entries.some((entry) =>
+      Array.isArray(entry) && entry[1] === promptId
+    );
+    if (!promptQueued) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+  } while (Date.now() <= deadline);
+  return false;
 }
 
 export async function freeMemory(settings: Settings): Promise<void> {

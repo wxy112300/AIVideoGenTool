@@ -3,7 +3,7 @@ import { imageModelCapabilityFor, normalizeImageTargetResolution } from "../../.
 import { createDefaultImageEditDraft } from "../../../core/draft-defaults";
 import type { AppState, ImageEditDraft, ImagePromptPreset, ImageReferenceRole } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
-import { activeImagePrompt } from "./helpers";
+import { activeImagePrompt, isPromptCancellationError } from "./helpers";
 import { uiKeys } from "../../../core/i18n-keys";
 
 export interface ImageEditControllerOptions {
@@ -253,7 +253,15 @@ export function mountImageEditController(
   }, { signal });
   root.querySelector("#enhance-prompt")?.addEventListener("click", async (event) => {
     event.stopImmediatePropagation();
-    if (options.isPromptEnhancing()) return;
+    if (options.isPromptEnhancing()) {
+      try {
+        const result = await context.studio.cancelPrompt();
+        if (!result.ok) throw new Error(result.message);
+      } catch (error) {
+        context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+      }
+      return;
+    }
     const draft = getDraft();
     if (!draft) return;
     const requestPrompt = activeImagePrompt(draft, context.getState()?.settings.uiLocale).text.trim();
@@ -295,7 +303,9 @@ export function mountImageEditController(
       ];
       options.patchImageDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
     } catch (error) {
-      context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+      if (!isPromptCancellationError(error)) {
+        context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+      }
     } finally {
       options.setPromptEnhancing(false);
       context.requestRender();

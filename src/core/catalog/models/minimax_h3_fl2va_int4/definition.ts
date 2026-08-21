@@ -26,7 +26,7 @@ export const minimaxH3Fl2vaInt4: CatalogModelEntry = {
       supportsSpectrum: true,
       maxDurationSeconds: 15,
       maxGeneratedFrames: 362,
-      resolutions: [480, 540, 720, 768]
+      resolutions: [360, 480, 540, 720, 768]
     },
     scan: {
       vram: "pruned INT4 · RAM offload",

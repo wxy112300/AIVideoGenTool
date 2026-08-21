@@ -7,6 +7,7 @@ export type ConfirmationRequest =
   | { kind: "clear-draft" }
   | { kind: "delete-history"; assetId: string; title: string }
   | { kind: "delete-image-version"; projectId: string; versionId: string; title: string }
+  | { kind: "delete-video-version"; assetId: string; versionId: string; title: string }
   | { kind: "remove-queue-task"; taskId: string; title: string }
   | { kind: "cancel-queue-task"; taskId: string; title: string }
   | { kind: "discard-settings"; nextPage: Page }
@@ -122,6 +123,12 @@ export async function acceptConfirmation(
         options.setPage("history");
       }
       options.notify(t(uiKeys.runtime.imageVersionDeleted));
+    } else if (request.kind === "delete-video-version") {
+      options.releaseHistoryVideo(request.assetId);
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
+      options.setState(await context.studio.deleteHistoryVersion(request.assetId, request.versionId));
+      options.setSelectedHistoryVersionId("");
+      options.notify(t(uiKeys.runtime.historyVersionDeleted));
     }
     options.setRequest(null);
     options.setBusy(false);

@@ -49,10 +49,18 @@ import {
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
 } from "../src/core/h3-auto-prompter.js";
-import { historyVideoPaths } from "../src/core/history-delete.js";
+import {
+  historyVideoPaths,
+  historyVideoVersionPaths,
+  removeHistoryVideoVersion
+} from "../src/core/history-delete.js";
 import { createHistoryCoverCacheKey } from "../src/core/history-cover.js";
 import { historyFileCandidates } from "../src/core/history-media.js";
 import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
+import {
+  comfyPromptQueueLocation,
+  comfyQueueContainsAnyPromptId
+} from "../src/core/comfy-queue.js";
 import {
   extractComfyOutputFiles,
   isVideoOutputFilename
@@ -118,7 +126,6 @@ import {
   testComfyUi,
   jsonRequest,
   interrupt,
-  TaskStalledError,
   warmNativePromptModel
 } from "./services/comfy-ui.js";
 import {
@@ -142,6 +149,8 @@ import { getPerformanceMetrics } from "./services/performance.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
 import { captureComfyUiLogFailure } from "./services/comfy-log-bridge.js";
 import { comfyRuntimeState } from "./services/comfy-runtime-state.js";
+import { PromptRuntimeManager } from "./services/prompt-runtime-manager.js";
+import { setOwnedComfyProcessExitListener } from "./services/comfy-runtime-service.js";
 import {
   cleanupVideoHistoryMigration,
   isPathWithinDirectory,
@@ -241,6 +250,7 @@ let pendingWindowCloseRequest: WindowCloseRequest | null = null;
 const queueWorkerController = new QueueWorkerController();
 let nativePromptController: AbortController | null = null;
 let nativePromptWorker: Promise<unknown> | null = null;
+let promptCancellationWorker: Promise<{ recovered: boolean; settled: boolean }> | null = null;
 let retainedPromptRuntime: {
   backend: ReturnType<typeof promptModelBackend>;
   modelId: string;
@@ -273,7 +283,8 @@ const taskStageStartedAt = new Map<string, { stage: string; startedAt: number }>
 function createPromptProgressController(
   modelId: string,
   startedAt: number,
-  operationId: string
+  operationId: string,
+  origin: "video-create" | "image-edit"
 ): {
   update: PromptProgressReporter;
   finish(status: PromptProgress["status"], stage: PromptProgressStage, error?: string): void;
@@ -290,6 +301,8 @@ function createPromptProgressController(
   ) => {
     const elapsedMs = Date.now() - startedAt;
     const payload: PromptProgress = {
+      operationId,
+      origin,
       status,
       stage,
       progress,
@@ -791,6 +804,31 @@ function sendState(state = store.get()): void {
   mainWindow?.webContents.send("state:changed", state);
 }
 
+const promptRuntimeManager = new PromptRuntimeManager(comfyRuntimeState.snapshot());
+
+promptRuntimeManager.subscribe((runtime) => {
+  mainWindow?.webContents.send("prompt-runtime:changed", runtime);
+});
+
+setOwnedComfyProcessExitListener(({ processId, code, signal }) => {
+  const runtime = comfyRuntimeState.snapshot();
+  if (runtime.phase === "restarting" || runtime.phase === "stopping") {
+    appLogger.info("comfy", "owned-process-exit-expected", "Ignored the expected exit of a ComfyUI process during an explicit lifecycle operation", {
+      childProcessId: processId,
+      phase: runtime.phase,
+      operationId: runtime.operationId
+    });
+    return;
+  }
+  retainedPromptRuntime = null;
+  nativePromptController?.abort(new Error("ComfyUI 已退出。"));
+  comfyRuntimeState.markStopped(
+    runtime.endpoint,
+    `ComfyUI 进程已退出（PID ${processId}${code === null ? "" : `，退出码 ${code}`}${signal ? `，信号 ${signal}` : ""}）。`,
+    "none"
+  );
+});
+
 comfyRuntimeState.subscribe((runtime) => {
   appLogger.info("comfy", "runtime-state-changed", runtime.message, {
     phase: runtime.phase,
@@ -798,6 +836,11 @@ comfyRuntimeState.subscribe((runtime) => {
     endpoint: runtime.endpoint,
     operationId: runtime.operationId
   });
+  if (runtime.phase === "stopped" || runtime.phase === "error") {
+    retainedPromptRuntime = null;
+    nativePromptController?.abort(new Error(runtime.message));
+  }
+  promptRuntimeManager.observeService(runtime);
   mainWindow?.webContents.send("comfy-runtime:changed", runtime);
 });
 
@@ -951,6 +994,8 @@ function cleanupCancelledQueueTask(
       hasSubmittedPrompt: (currentTaskId) => Boolean(
         store.get().queue.find((item) => item.id === currentTaskId)?.comfyPromptId
       ),
+      getSubmittedPromptId: (currentTaskId) =>
+        store.get().queue.find((item) => item.id === currentTaskId)?.comfyPromptId,
       isCancellationCurrent: (currentTaskId) => {
         const current = store.get();
         const task = current.queue.find((item) => item.id === currentTaskId);
@@ -1497,9 +1542,17 @@ async function ensureComfyUiReady(taskId: string, signal?: AbortSignal): Promise
   await testComfyUi(serviceSettings);
 }
 
-async function ensureComfyUiReadyForPrompt(settings: Settings): Promise<void> {
+async function ensureComfyUiReadyForPrompt(
+  settings: Settings,
+  signal?: AbortSignal
+): Promise<void> {
+  const throwIfCancelled = (): void => {
+    if (signal?.aborted) throw signal.reason;
+  };
+  throwIfCancelled();
   const serviceSettings = comfyUiSettingsForPromptRuntime(settings);
   const profile = await alignLocalComfyUiRuntimeProfile(serviceSettings);
+  throwIfCancelled();
   if (!profile.ok) {
     throw new Error(`ComfyUI 提示词运行配置切换失败：${profile.message}`);
   }
@@ -1511,6 +1564,7 @@ async function ensureComfyUiReadyForPrompt(settings: Settings): Promise<void> {
   }
   try {
     await testComfyUi(serviceSettings);
+    throwIfCancelled();
     return;
   } catch (connectionError) {
     appLogger.warn("service", "prompt-connection-unavailable", "ComfyUI was not ready for prompt runtime", {
@@ -1525,14 +1579,17 @@ async function ensureComfyUiReadyForPrompt(settings: Settings): Promise<void> {
       );
     }
   }
+  throwIfCancelled();
   const started = await startLocalService("comfy", serviceSettings);
+  throwIfCancelled();
   if (!started.ok) throw new Error(`ComfyUI 自动启动失败：${started.message}`);
   await testComfyUi(serviceSettings);
+  throwIfCancelled();
 }
 
 async function validateQwenVlPromptNodeRuntime(settings: Settings): Promise<void> {
   const baseUrl = settings.comfyUrl.replace(/\/+$/u, "");
-  let objectInfo = await jsonRequest<Record<string, unknown>>(
+  const objectInfo = await jsonRequest<Record<string, unknown>>(
     `${baseUrl}/object_info`,
     { signal: AbortSignal.timeout(15_000) }
   );
@@ -1540,10 +1597,6 @@ async function validateQwenVlPromptNodeRuntime(settings: Settings): Promise<void
     validateQwenVlRuntimeChoices(objectInfo, settings);
     return;
   } catch (error) {
-    // Dangocan's node snapshots the dropdown at Python import time.  If the
-    // model was installed while an app-owned ComfyUI was already running,
-    // refresh that process once.  restartLocalService refuses to terminate an
-    // independently started runtime and returns a manual-restart result.
     if (!(error instanceof QwenVlRuntimeValidationError) || !error.needsRuntimeRefresh) {
       throw error;
     }
@@ -1553,18 +1606,7 @@ async function validateQwenVlPromptNodeRuntime(settings: Settings): Promise<void
       expected: error.expected,
       choices: error.choices
     });
-    const refresh = await restartLocalService("comfy", settings);
-    appLogger.info("prompt", refresh.ok ? "qwenvl-runtime-refresh-succeeded" : "qwenvl-runtime-refresh-skipped", refresh.message, {
-      manualRestartRequired: refresh.manualRestartRequired === true
-    });
-    if (!refresh.ok) {
-      throw new Error(`${error.message} ${refresh.message}`);
-    }
-    objectInfo = await jsonRequest<Record<string, unknown>>(
-      `${baseUrl}/object_info`,
-      { signal: AbortSignal.timeout(15_000) }
-    );
-    validateQwenVlRuntimeChoices(objectInfo, settings);
+    throw new Error(`${error.message} 节点或模型刚更新后，请在设置中显式重启 ComfyUI；提示词任务不会自动重启服务。`);
   }
 }
 
@@ -1656,19 +1698,134 @@ async function releasePromptRuntime(settings: Settings): Promise<number> {
   }
 }
 
-async function recoverStalledPromptComfyUi(settings: Settings): Promise<void> {
-  await interrupt(settings).catch((error) => {
-    appLogger.warn("prompt", "stall-interrupt-failed", "Unable to interrupt the stalled prompt workflow", {
-      error: safeLogErrorMessage(error)
-    });
+async function warmSelectedPromptRuntime(
+  settings: Settings,
+  promptBackend: ReturnType<typeof promptModelBackend>,
+  signal: AbortSignal
+): Promise<void> {
+  if (promptBackend === "h3-prompt-writer") {
+    await ensureComfyUiReadyForPrompt(settings, signal);
+    await validateNativePromptRuntime(settings);
+    await warmH3PromptWriter(settings, signal);
+    return;
+  }
+  if (promptBackend === "comfyui-multimodal") {
+    await ensureComfyUiReadyForPrompt(settings, signal);
+    await validateNativePromptRuntime(settings);
+    await warmMultimodalPromptModel(settings, signal);
+    return;
+  }
+  if (promptBackend === "comfyui-qwenvl-lora") {
+    await ensureQwenVlManagedMetadata(settings, signal);
+    await ensureComfyUiReadyForPrompt(settings, signal);
+    await validateNativePromptRuntime(settings);
+    await warmQwenVlPeftPromptModel(settings, signal);
+    return;
+  }
+  if (promptBackend !== "native-text-generate") {
+    throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
+  }
+  await ensureComfyUiReadyForPrompt(settings, signal);
+  await validateNativePromptRuntime(settings);
+  await warmNativePromptModel(settings, signal);
+}
+
+async function appPromptQueueSnapshot(settings: Settings): Promise<unknown> {
+  return jsonRequest(`${settings.comfyUrl.replace(/\/+$/, "")}/queue`, {
+    signal: AbortSignal.timeout(5_000)
   });
-  const recovery = await restartLocalService("comfy", settings);
-  appLogger.warn(
-    "prompt",
-    recovery.ok ? "stall-recovery-succeeded" : "stall-recovery-skipped",
-    recovery.message,
-    { recoveryOk: recovery.ok }
-  );
+}
+
+async function waitForPromptIdsToStop(
+  settings: Settings,
+  promptIds: ReadonlySet<string>,
+  timeoutMs: number
+): Promise<boolean> {
+  if (!promptIds.size) return false;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const snapshot = await appPromptQueueSnapshot(settings).catch(() => null);
+    if (snapshot && !comfyQueueContainsAnyPromptId(snapshot, promptIds)) return true;
+    await new Promise<void>((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+}
+
+async function waitForWorkerToStop(worker: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+  return Promise.race([
+    worker.then(() => true, () => true),
+    new Promise<false>((resolve) => setTimeout(() => resolve(false), timeoutMs))
+  ]);
+}
+
+async function waitForPromptCancellation(): Promise<boolean> {
+  const cancellation = promptCancellationWorker;
+  if (!cancellation) return true;
+  return cancellation.then((result) => result.settled, () => false);
+}
+
+async function deleteQueuedPrompt(settings: Settings, promptId: string): Promise<void> {
+  await jsonRequest(`${settings.comfyUrl.replace(/\/+$/, "")}/queue`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ delete: [promptId] }),
+    signal: AbortSignal.timeout(10_000)
+  });
+}
+
+async function cancelActivePromptRuntime(
+  settings: Settings,
+  _retainModel: boolean
+): Promise<{ recovered: boolean; settled: boolean }> {
+  if (promptCancellationWorker) return promptCancellationWorker;
+  const worker = nativePromptWorker;
+  if (!worker) throw new Error("当前没有正在运行的提示词任务。");
+  const promptBackend = promptModelBackend(settings.promptModelId);
+  const cancellation = promptRuntimeManager.requestCancellation();
+  promptCancellationWorker = (async () => {
+    if (promptBackend === "h3-prompt-writer" || !cancellation.promptId) {
+      const settled = await waitForWorkerToStop(worker, 10_000);
+      return { recovered: false, settled };
+    }
+    const snapshot = await appPromptQueueSnapshot(settings).catch(() => null);
+    const location = comfyPromptQueueLocation(snapshot, cancellation.promptId);
+    if (location === "pending") {
+      await deleteQueuedPrompt(settings, cancellation.promptId);
+    } else if (location === "running") {
+      await interrupt(settings);
+    }
+    const stopped = location === "absent" || await waitForPromptIdsToStop(
+      settings,
+      new Set([cancellation.promptId]),
+      15_000
+    );
+    if (!stopped) {
+      appLogger.warn("prompt", "cancel-pending", "Prompt cancellation is still pending; ComfyUI was left running", {
+        operationId: cancellation.operationId,
+        promptId: cancellation.promptId,
+        promptBackend
+      });
+      void waitForPromptIdsToStop(
+        settings,
+        new Set([cancellation.promptId]),
+        120_000
+      ).then((eventuallyStopped) => {
+        if (eventuallyStopped) {
+          promptRuntimeManager.finishOperation(
+            cancellation.operationId,
+            "cancelled",
+            "user-requested"
+          );
+        }
+      });
+    }
+    return { recovered: false, settled: stopped };
+  })();
+  try {
+    return await promptCancellationWorker;
+  } finally {
+    promptCancellationWorker = null;
+  }
 }
 
 async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: string }> {
@@ -1676,18 +1833,24 @@ async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: st
   if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
     return { ok: false, message: "当前有视频任务正在运行，暂不能释放提示词模型。" };
   }
-  if (nativePromptWorker) {
-    return { ok: false, message: "当前正在生成提示词，请等待本次扩写完成。" };
+  if (nativePromptWorker || promptCancellationWorker) {
+    const cancellation = await cancelActivePromptRuntime(settings, false);
+    if (!cancellation.settled) {
+      return { ok: false, message: "提示词任务仍在中止中；确认停止后才能卸载模型。" };
+    }
   }
+  promptRuntimeManager.setModel("unloading", settings.promptModelId);
   try {
     const released = await releasePromptRuntime(settings);
+    promptRuntimeManager.setModel("unloaded");
     return {
       ok: true,
       message: released
-        ? "已卸载提示词模型并释放显存。"
+        ? "已停止提示词模型并释放显存。"
         : "当前没有已加载的提示词模型。"
     };
   } catch {
+    promptRuntimeManager.setModel("unloaded");
     return { ok: true, message: "ComfyUI 当前未运行，无需释放提示词模型。" };
   }
 }
@@ -1820,6 +1983,7 @@ async function loggedOperation<T extends { ok: boolean; message: string }>(
 function registerIpc(): void {
   ipcMain.handle("state:get", () => store.get());
   ipcMain.handle("comfy-runtime:get", () => comfyRuntimeState.snapshot());
+  ipcMain.handle("prompt-runtime:get", () => promptRuntimeManager.snapshot());
   ipcMain.handle("app:version", () => app.getVersion());
   ipcMain.handle("renderer:set-settings-dirty", (_event, dirty: boolean) => {
     rendererHasUnsavedSettings = dirty === true;
@@ -2582,7 +2746,7 @@ function registerIpc(): void {
     if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
       return { ok: false, message: "当前有视频任务正在运行，暂不能启动提示词模型。" };
     }
-    if (nativePromptWorker) {
+    if (nativePromptWorker || promptCancellationWorker) {
       return { ok: false, message: "提示词模型正在启动或使用中。" };
     }
     if (retainedPromptRuntime !== null) {
@@ -2590,33 +2754,8 @@ function registerIpc(): void {
     }
     const controller = new AbortController();
     nativePromptController = controller;
-    const worker = (async () => {
-      if (promptBackend === "h3-prompt-writer") {
-        await ensureComfyUiReadyForPrompt(settings);
-        await validateNativePromptRuntime(settings);
-        await warmH3PromptWriter(settings, controller.signal);
-        return;
-      }
-      if (promptBackend === "comfyui-multimodal") {
-        await ensureComfyUiReadyForPrompt(settings);
-        await validateNativePromptRuntime(settings);
-        await warmMultimodalPromptModel(settings, controller.signal);
-        return;
-      }
-      if (promptBackend === "comfyui-qwenvl-lora") {
-        await ensureQwenVlManagedMetadata(settings, controller.signal);
-        await ensureComfyUiReadyForPrompt(settings);
-        await validateNativePromptRuntime(settings);
-        await warmQwenVlPeftPromptModel(settings, controller.signal);
-        return;
-      }
-      if (promptBackend !== "native-text-generate") {
-        throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
-      }
-      await ensureComfyUiReadyForPrompt(settings);
-      await validateNativePromptRuntime(settings);
-      await warmNativePromptModel(settings, controller.signal);
-    })();
+    promptRuntimeManager.setModel("warming", settings.promptModelId);
+    const worker = warmSelectedPromptRuntime(settings, promptBackend, controller.signal);
     nativePromptWorker = worker;
     try {
       await worker;
@@ -2624,6 +2763,7 @@ function registerIpc(): void {
         backend: promptBackend,
         modelId: settings.promptModelId
       };
+      promptRuntimeManager.setModel("resident", settings.promptModelId);
       appLogger.info("prompt", "service-ready", "Prompt service ready", {
         runtime,
         durationMs: Date.now() - startedAt
@@ -2640,6 +2780,7 @@ function registerIpc(): void {
       };
     } catch (error) {
       retainedPromptRuntime = null;
+      promptRuntimeManager.setModel("unloaded");
       if (promptBackend === "h3-prompt-writer") {
         await releaseH3PromptWriter(settings).catch(() => undefined);
       } else if (promptBackend === "comfyui-multimodal") {
@@ -2672,7 +2813,26 @@ function registerIpc(): void {
     const runtime = promptRuntimeForSettings(settings);
     const promptBackend = promptModelBackend(settings.promptModelId);
     const startedAt = Date.now();
-    const operationId = crypto.randomUUID();
+    validateH3ReferenceAutoPrompt(request);
+    if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) {
+      throw new Error("请先输入需要扩写的提示词");
+    }
+    if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
+      throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。");
+    }
+    if (nativePromptWorker || promptCancellationWorker) {
+      throw new Error("当前提示词任务正在运行或取消中，请稍候。");
+    }
+    if (!promptBackend) {
+      throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
+    }
+    const operation = promptRuntimeManager.beginOperation(
+      request.mode === "image-edit" ? "image-edit" : "video-create",
+      true
+    );
+    const operationId = operation.operationId;
+    const controller = operation.controller;
+    nativePromptController = controller;
     const promptLogContext = {
       operationId,
       runtime,
@@ -2689,22 +2849,22 @@ function registerIpc(): void {
     appLogger.info("prompt", "enhance-started", "Prompt enhancement started", {
       ...promptLogContext
     });
-    validateH3ReferenceAutoPrompt(request);
-    const promptProgress = createPromptProgressController(settings.promptModelId, startedAt, operationId);
+    const promptProgress = createPromptProgressController(
+      settings.promptModelId,
+      startedAt,
+      operationId,
+      request.mode === "image-edit" ? "image-edit" : "video-create"
+    );
     promptProgress.update("preparing", 0);
     if (promptBackend === "h3-prompt-writer") {
-      if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
-      if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
-        throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
-      }
-      if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
-      const leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
-      const controller = new AbortController();
-      nativePromptController = controller;
+      let leaseAlreadyRetained = false;
       const worker = (async () => {
+        leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
         promptProgress.update("checking", 5);
-        await ensureComfyUiReadyForPrompt(settings);
+        await ensureComfyUiReadyForPrompt(settings, controller.signal);
+        promptRuntimeManager.setOperationPhase(operationId, "warming-model");
         await validateNativePromptRuntime(settings);
+        promptRuntimeManager.setOperationPhase(operationId, "submitting");
         return enhancePromptWithH3PromptWriter(
           request,
           settings,
@@ -2716,6 +2876,8 @@ function registerIpc(): void {
       nativePromptWorker = worker;
       try {
         const result = await worker;
+        promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
+        promptRuntimeManager.finishOperation(operationId, "completed");
         promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
         appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
           ...promptLogContext,
@@ -2724,15 +2886,21 @@ function registerIpc(): void {
         });
         return result;
       } catch (error) {
-        promptProgress.finish(
-          controller.signal.aborted ? "cancelled" : "failed",
-          controller.signal.aborted ? "unloading" : "validating",
-          error instanceof Error ? error.message : String(error)
-        );
-        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
-        if (error instanceof TaskStalledError) {
-          await recoverStalledPromptComfyUi(settings);
+        if (controller.signal.aborted) {
+          promptProgress.update("validating", null, "正在取消提示词任务");
+          if (await waitForPromptCancellation()) {
+            promptRuntimeManager.finishOperation(operationId, "cancelled", "user-requested");
+            promptProgress.finish("cancelled", "validating", "提示词任务已取消");
+          }
+          appLogger.info("prompt", "enhance-cancelled", "Prompt enhancement cancelled", {
+            ...promptLogContext,
+            durationMs: Date.now() - startedAt
+          });
+          throw error;
         }
+        promptProgress.finish("failed", "validating", error instanceof Error ? error.message : String(error));
+        promptRuntimeManager.finishOperation(operationId, "failed", error instanceof Error ? error.message : String(error));
+        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
         await captureComfyUiLogFailure(
           appLogger,
           settings,
@@ -2751,18 +2919,14 @@ function registerIpc(): void {
       }
     }
     if (promptBackend === "comfyui-multimodal") {
-      if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
-      if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
-        throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
-      }
-      if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
-      const leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
-      const controller = new AbortController();
-      nativePromptController = controller;
+      let leaseAlreadyRetained = false;
       const worker = (async () => {
+        leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
         promptProgress.update("checking", 5);
-        await ensureComfyUiReadyForPrompt(settings);
+        await ensureComfyUiReadyForPrompt(settings, controller.signal);
+        promptRuntimeManager.setOperationPhase(operationId, "warming-model");
         await validateNativePromptRuntime(settings);
+        promptRuntimeManager.setOperationPhase(operationId, "submitting");
         return enhancePromptWithMultimodalComfyUi(
           request,
           settings,
@@ -2770,12 +2934,15 @@ function registerIpc(): void {
           false,
           promptProgress.update,
           operationId,
-          promptRuntimeLeaseMatches(promptBackend, settings.promptModelId)
+          promptRuntimeLeaseMatches(promptBackend, settings.promptModelId),
+          (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
         );
       })();
       nativePromptWorker = worker;
       try {
         const result = await worker;
+        promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
+        promptRuntimeManager.finishOperation(operationId, "completed");
         promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
         appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
           ...promptLogContext,
@@ -2784,15 +2951,21 @@ function registerIpc(): void {
         });
         return result;
       } catch (error) {
-        promptProgress.finish(
-          controller.signal.aborted ? "cancelled" : "failed",
-          controller.signal.aborted ? "unloading" : "validating",
-          error instanceof Error ? error.message : String(error)
-        );
-        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
-        if (error instanceof TaskStalledError) {
-          await recoverStalledPromptComfyUi(settings);
+        if (controller.signal.aborted) {
+          promptProgress.update("validating", null, "正在取消提示词任务");
+          if (await waitForPromptCancellation()) {
+            promptRuntimeManager.finishOperation(operationId, "cancelled", "user-requested");
+            promptProgress.finish("cancelled", "validating", "提示词任务已取消");
+          }
+          appLogger.info("prompt", "enhance-cancelled", "Prompt enhancement cancelled", {
+            ...promptLogContext,
+            durationMs: Date.now() - startedAt
+          });
+          throw error;
         }
+        promptProgress.finish("failed", "validating", error instanceof Error ? error.message : String(error));
+        promptRuntimeManager.finishOperation(operationId, "failed", error instanceof Error ? error.message : String(error));
+        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
         await captureComfyUiLogFailure(
           appLogger,
           settings,
@@ -2811,19 +2984,15 @@ function registerIpc(): void {
       }
     }
     if (promptBackend === "comfyui-qwenvl-lora") {
-      if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
-      if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
-        throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
-      }
-      if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
-      const leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
-      const controller = new AbortController();
-      nativePromptController = controller;
+      let leaseAlreadyRetained = false;
       const worker = (async () => {
+        leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
         promptProgress.update("checking", 5);
         await ensureQwenVlManagedMetadata(settings, controller.signal, promptProgress.update);
-        await ensureComfyUiReadyForPrompt(settings);
+        await ensureComfyUiReadyForPrompt(settings, controller.signal);
+        promptRuntimeManager.setOperationPhase(operationId, "warming-model");
         await validateNativePromptRuntime(settings);
+        promptRuntimeManager.setOperationPhase(operationId, "submitting");
         return enhancePromptWithQwenVlPeft(
           request,
           settings,
@@ -2831,12 +3000,15 @@ function registerIpc(): void {
           false,
           promptProgress.update,
           operationId,
-          promptRuntimeLeaseMatches(promptBackend, settings.promptModelId)
+          promptRuntimeLeaseMatches(promptBackend, settings.promptModelId),
+          (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
         );
       })();
       nativePromptWorker = worker;
       try {
         const result = await worker;
+        promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
+        promptRuntimeManager.finishOperation(operationId, "completed");
         promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
         appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
           ...promptLogContext,
@@ -2845,15 +3017,21 @@ function registerIpc(): void {
         });
         return result;
       } catch (error) {
-        promptProgress.finish(
-          controller.signal.aborted ? "cancelled" : "failed",
-          controller.signal.aborted ? "unloading" : "validating",
-          error instanceof Error ? error.message : String(error)
-        );
-        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
-        if (error instanceof TaskStalledError) {
-          await recoverStalledPromptComfyUi(settings);
+        if (controller.signal.aborted) {
+          promptProgress.update("validating", null, "正在取消提示词任务");
+          if (await waitForPromptCancellation()) {
+            promptRuntimeManager.finishOperation(operationId, "cancelled", "user-requested");
+            promptProgress.finish("cancelled", "validating", "提示词任务已取消");
+          }
+          appLogger.info("prompt", "enhance-cancelled", "Prompt enhancement cancelled", {
+            ...promptLogContext,
+            durationMs: Date.now() - startedAt
+          });
+          throw error;
         }
+        promptProgress.finish("failed", "validating", error instanceof Error ? error.message : String(error));
+        promptRuntimeManager.finishOperation(operationId, "failed", error instanceof Error ? error.message : String(error));
+        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
         await captureComfyUiLogFailure(
           appLogger,
           settings,
@@ -2871,32 +3049,28 @@ function registerIpc(): void {
         if (nativePromptController === controller) nativePromptController = null;
       }
     }
-    if (promptBackend !== "native-text-generate") {
-      throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
-    }
-    if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) throw new Error("请先输入需要扩写的提示词");
-    if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
-      throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。 ");
-    }
-    if (nativePromptWorker) throw new Error("当前正在生成提示词，请等待本次扩写完成。");
-    const leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
-    const controller = new AbortController();
-    nativePromptController = controller;
+    let leaseAlreadyRetained = false;
     const worker = (async () => {
+      leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
       promptProgress.update("checking", 5);
-      await ensureComfyUiReadyForPrompt(settings);
+      await ensureComfyUiReadyForPrompt(settings, controller.signal);
+      promptRuntimeManager.setOperationPhase(operationId, "warming-model");
       await validateNativePromptRuntime(settings);
+      promptRuntimeManager.setOperationPhase(operationId, "submitting");
       return enhancePromptWithComfyUi(
         request,
         settings,
         controller.signal,
         false,
-        promptProgress.update
+        promptProgress.update,
+        (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
       );
     })();
     nativePromptWorker = worker;
     try {
       const result = await worker;
+      promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
+      promptRuntimeManager.finishOperation(operationId, "completed");
       promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
       appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
         ...promptLogContext,
@@ -2905,11 +3079,20 @@ function registerIpc(): void {
       });
       return result;
     } catch (error) {
-      promptProgress.finish(
-        controller.signal.aborted ? "cancelled" : "failed",
-        controller.signal.aborted ? "unloading" : "validating",
-        error instanceof Error ? error.message : String(error)
-      );
+      if (controller.signal.aborted) {
+        promptProgress.update("validating", null, "正在取消提示词任务");
+        if (await waitForPromptCancellation()) {
+          promptRuntimeManager.finishOperation(operationId, "cancelled", "user-requested");
+          promptProgress.finish("cancelled", "validating", "提示词任务已取消");
+        }
+        appLogger.info("prompt", "enhance-cancelled", "Prompt enhancement cancelled", {
+          ...promptLogContext,
+          durationMs: Date.now() - startedAt
+        });
+        throw error;
+      }
+      promptProgress.finish("failed", "validating", error instanceof Error ? error.message : String(error));
+      promptRuntimeManager.finishOperation(operationId, "failed", error instanceof Error ? error.message : String(error));
       if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
       await captureComfyUiLogFailure(
         appLogger,
@@ -2929,14 +3112,21 @@ function registerIpc(): void {
     }
   });
   ipcMain.handle("prompt:cancel", async () => {
-    const controller = nativePromptController;
-    if (!controller) return { ok: false, message: "当前没有正在运行的提示词任务。" };
-    controller.abort();
     const settings = store.get().settings;
-    if (promptModelBackend(settings.promptModelId) !== "h3-prompt-writer") {
-      await interrupt(settings).catch(() => undefined);
+    try {
+      const result = await cancelActivePromptRuntime(settings, true);
+      return {
+        ok: true,
+        message: result.settled
+          ? "提示词任务已取消，模型保持运行。"
+          : "已请求取消提示词任务；模型会在任务确认中止后保持运行。"
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : String(error)
+      };
     }
-    return { ok: true, message: "正在取消提示词任务…" };
   });
   ipcMain.handle("prompt:release", async () => {
     const startedAt = Date.now();
@@ -3026,16 +3216,10 @@ function registerIpc(): void {
   ipcMain.handle(
     "service:force-stop-comfy",
     async (_event, settings: Settings) => {
-      if (comfyRuntimeState.snapshot().ownership === "external") {
-        return {
-          ok: false,
-          message: "当前 ComfyUI 由外部进程管理，本应用不会终止它。"
-        };
-      }
       const runtimeOperationId = comfyRuntimeState.begin(
         "stopping",
         settings.comfyUrl.replace(/\/+$/, ""),
-        "正在终止由应用管理的 ComfyUI。"
+        "正在终止本地 ComfyUI。"
       );
       appLogger.warn("service", "force-stop-requested", "ComfyUI force-stop requested");
       nativePromptController?.abort(new Error("ComfyUI 已被强制终止，提示词扩写已中止"));
@@ -3106,7 +3290,7 @@ function registerIpc(): void {
           queueWorkerController.runningWorker ||
           nativePromptController
         )) {
-          return Promise.resolve({
+          return Promise.resolve<{ ok: boolean; message: string }>({
             ok: false,
             message: "当前仍有队列或提示词任务占用 ComfyUI，请先完成或取消任务后再修复数据库。"
           });
@@ -3174,16 +3358,30 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "attention-acceleration:install",
-    (event, settings: Settings) => loggedOperation(
-      "environment",
-      "attention-install",
-      "Attention acceleration installation started",
-      () => installAttentionAcceleration(settings, (message) => {
-        if (!event.sender.isDestroyed()) {
-          event.sender.send("attention-acceleration:log", message);
-        }
-      })
-    )
+    (event, settings: Settings) => {
+      if (
+        store.get().queueRunning ||
+        queueWorkerController.activeController ||
+        queueWorkerController.runningWorker ||
+        nativePromptWorker ||
+        promptCancellationWorker
+      ) {
+        return {
+          ok: false,
+          message: "当前有生成或提示词任务正在运行，停止任务后才能升级 H3 运行环境。"
+        };
+      }
+      return loggedOperation(
+        "environment",
+        "attention-install",
+        "Attention acceleration installation started",
+        () => installAttentionAcceleration(settings, (message) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send("attention-acceleration:log", message);
+          }
+        })
+      );
+    }
   );
   registerQueueEnqueueIpc({
     ipc: ipcMain,
@@ -3341,6 +3539,57 @@ function registerIpc(): void {
     sendState(next);
     return next;
   });
+  ipcMain.handle("history:delete-version", async (_event, assetId: string, versionId: string) => {
+    const startedAt = Date.now();
+    const current = store.get();
+    const asset = current.history.find((item) => item.id === assetId);
+    const version = asset?.versions.find((item) => item.id === versionId);
+    if (!asset || !version) throw new Error("视频记录或版本不存在。");
+    if (asset.versions.length <= 1) {
+      throw new Error("视频记录至少需要保留一个版本；如需全部删除，请删除整条记录。");
+    }
+    const versionPaths = historyVideoVersionPaths(version, current.settings.outputDirectory);
+    const otherVersionPaths = new Set(
+      asset.versions
+        .filter((item) => item.id !== versionId)
+        .flatMap((item) => historyVideoVersionPaths(item, current.settings.outputDirectory))
+    );
+    const filesToDelete = versionPaths.filter((filename) => !otherVersionPaths.has(filename));
+    appLogger.info("history", "video-version-delete-started", "开始删除视频版本和生成文件", {
+      assetId,
+      versionId,
+      filename: version.outputFilename
+    });
+    try {
+      for (const filename of filesToDelete) {
+        await fs.unlink(filename).catch((error) => {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw new Error(`无法删除视频文件 ${path.basename(filename)}：${error instanceof Error ? error.message : String(error)}`);
+          }
+        });
+      }
+      const next = await store.update((state) => {
+        const target = state.history.find((item) => item.id === assetId);
+        if (!target) throw new Error("视频记录不存在。");
+        Object.assign(target, removeHistoryVideoVersion(target, versionId));
+      });
+      appLogger.info("history", "video-version-delete-succeeded", "视频版本和生成文件已删除", {
+        assetId,
+        versionId,
+        durationMs: Date.now() - startedAt
+      });
+      sendState(next);
+      return next;
+    } catch (error) {
+      appLogger.error("history", "video-version-delete-failed", safeLogErrorMessage(error), {
+        assetId,
+        versionId,
+        durationMs: Date.now() - startedAt,
+        ...errorLogMeta(error)
+      });
+      throw error;
+    }
+  });
   ipcMain.handle("image-history:set-cover", async (_event, projectId: string, versionId?: string) => {
     const next = await store.update((state) => {
       const project = state.imageHistory.find((item) => item.id === projectId);
@@ -3441,6 +3690,21 @@ app.whenReady().then(async () => {
   registerMediaProtocol();
   registerIpc();
   createWindow();
+  void alignLocalComfyUiRuntimeProfile(store.get().settings).then((result) => {
+    appLogger.info(
+      "comfy",
+      result.ok ? "startup-runtime-takeover-succeeded" : "startup-runtime-takeover-failed",
+      result.message,
+      {
+        ok: result.ok,
+        restarted: result.restarted,
+        previousProfile: result.previousProfile,
+        desiredProfile: result.desiredProfile
+      }
+    );
+  }).catch((error) => {
+    appLogger.error("comfy", "startup-runtime-takeover-failed", safeLogErrorMessage(error));
+  });
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

@@ -140,6 +140,45 @@ describe("queue rapid-operation guards", () => {
     expect(task.stage).not.toContain("已退出");
   });
 
+  it("restarts ComfyUI when the submitted prompt remains active after interruption", async () => {
+    const state = createDefaultState();
+    const task = queuedTask(state);
+    task.status = "cancelled";
+    task.comfyPromptId = "prompt-still-running";
+    state.queue = [task];
+    const interruptComfyUi = vi.fn(async () => undefined);
+    const freeComfyMemory = vi.fn(async () => undefined);
+    const restartComfyUi = vi.fn(async () => ({ ok: true, message: "restarted" }));
+    const updateTask = vi.fn(async (_taskId: string, patch: Partial<QueueTask>) => {
+      Object.assign(task, patch);
+      return state;
+    });
+
+    await cleanupCancelledQueueTask(
+      {
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+        updateTask,
+        getComfyRuntimeState: () => ({
+          phase: "ready", ownership: "app", endpoint: "http://127.0.0.1:8188",
+          message: "已就绪", updatedAt: new Date().toISOString(), operationId: 3
+        }),
+        getSubmittedPromptId: () => task.comfyPromptId,
+        waitForSubmittedPromptToStop: async () => false,
+        interruptComfyUi,
+        freeComfyMemory,
+        restartComfyUi
+      },
+      task.id,
+      { ...state.settings, safeCancel: true },
+      Promise.resolve()
+    );
+
+    expect(interruptComfyUi).toHaveBeenCalledOnce();
+    expect(freeComfyMemory).not.toHaveBeenCalled();
+    expect(restartComfyUi).toHaveBeenCalledOnce();
+    expect(task.stage).toBe("任务已取消，ComfyUI 已后台重启");
+  });
+
   it("rejects reset while cancellation cleanup is still running", async () => {
     const state = createDefaultState();
     const task = queuedTask(state);

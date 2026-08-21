@@ -218,8 +218,8 @@ export function renderImageEditPage(
               <option value="detail-enhance" data-description="${escapeHtml(viewModel.imageDetailEnhanceTitle)}" ${viewModel.imageEnhanceMode === "detail-enhance" ? "selected" : ""}>${t(uiKeys.create.imageEdit.detailEnhance)}</option>
               <option value="faithful" data-description="${escapeHtml(viewModel.imageFaithfulEnhanceTitle)}" ${viewModel.imageEnhanceMode === "faithful" ? "selected" : ""}>${t(uiKeys.create.imageEdit.faithful)}</option>
             </select>${renderPromptModeInfo(viewModel.imagePromptEnhanceTitle, icon, escapeHtml)}</div>
-            <button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" title="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-busy="${viewModel.promptRuntimeBusy}">${icon(viewModel.releasePromptControlIconName)}</button>
-            <button class="secondary button-with-icon" id="enhance-prompt" ${viewModel.imagePromptAiDisabled ? "disabled" : ""} title="${escapeHtml(viewModel.imagePromptOptimizeTitle)}">${icon("sparkles")}${viewModel.promptEnhancing ? t(uiKeys.create.imageEdit.optimizing) : t(uiKeys.create.imageEdit.optimizePrompt)}</button>
+            <button class="icon-button prompt-runtime-button ${viewModel.releasePromptControlIconName === "refresh-cw" ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" title="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-busy="${viewModel.releasePromptControlIconName === "refresh-cw"}">${icon(viewModel.releasePromptControlIconName)}</button>
+            <button class="secondary button-with-icon" id="enhance-prompt" ${viewModel.imagePromptAiDisabled && !viewModel.promptEnhancing ? "disabled" : ""} title="${escapeHtml(viewModel.promptEnhancing ? `${t(uiKeys.create.imageEdit.optimizing)} · ${t(uiKeys.create.promptProgress.cancel)}` : viewModel.imagePromptOptimizeTitle)}" aria-busy="${viewModel.promptEnhancing}">${icon(viewModel.promptEnhancing ? "x" : "sparkles")}${viewModel.promptEnhancing ? t(uiKeys.create.imageEdit.optimizing) : t(uiKeys.create.imageEdit.optimizePrompt)}</button>
           </div>
         </div>`}
         ${viewModel.promptless ? "" : `
@@ -327,16 +327,18 @@ export function renderCreatePage(
             })
           : `<div class="media-grid ${viewModel.draft.endImagePath ? "paired" : ""}">
         <div class="media-slot">
-          <button class="drop-zone ${viewModel.draft.startImagePath ? "has-image" : ""}" id="pick-start" data-drop-frame="start" data-paste-frame="start" data-drop-label="${t(viewModel.draft.startImagePath ? uiKeys.create.videoMedia.replaceStartFrame : uiKeys.create.videoMedia.addStartFrame)}">
-            ${viewModel.draft.startImagePath
-              ? `<img id="start-preview" alt="${t(uiKeys.create.videoMedia.startPreview)}"><span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span>`
-                : `<span class="drop-icon">${icon("image")}</span><strong>${t(uiKeys.create.videoMedia.chooseOrDropStart)}</strong><span>${t(uiKeys.create.videoMedia.imageFormats)}</span>`}
-          </button>
+          ${viewModel.draft.startImagePath
+            ? `<div class="drop-zone has-image" id="pick-start" data-drop-frame="start" data-paste-frame="start" data-drop-label="${t(uiKeys.create.videoMedia.replaceStartFrame)}">
+                <img id="start-preview" alt="${t(uiKeys.create.videoMedia.startPreview)}"><span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span>
+              </div>`
+            : `<button class="drop-zone" id="pick-start" data-drop-frame="start" data-paste-frame="start" data-drop-label="${t(uiKeys.create.videoMedia.addStartFrame)}">
+                <span class="drop-icon">${icon("image")}</span><strong>${t(uiKeys.create.videoMedia.chooseOrDropStart)}</strong><span>${t(uiKeys.create.videoMedia.imageFormats)}</span>
+              </button>`}
               ${viewModel.draft.startImagePath ? `<button class="image-remove button-with-icon" data-clear-frame="start" aria-label="${t(uiKeys.create.videoMedia.deleteStartFrame)}" title="${t(uiKeys.create.videoMedia.deleteStartFrame)}">${icon("x")}<span>${t(uiKeys.create.imageEdit.clear)}</span></button>` : ""}
         </div>
         ${viewModel.draft.endImagePath
           ? `<div class="media-slot">
-              <button class="drop-zone has-image" id="pick-end" data-drop-frame="end" data-paste-frame="end" data-drop-label="${t(uiKeys.create.videoMedia.replaceEndFrame)}"><img id="end-preview" alt="${t(uiKeys.create.videoMedia.endPreview)}"><span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span></button>
+              <div class="drop-zone has-image" id="pick-end" data-drop-frame="end" data-paste-frame="end" data-drop-label="${t(uiKeys.create.videoMedia.replaceEndFrame)}"><img id="end-preview" alt="${t(uiKeys.create.videoMedia.endPreview)}"><span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span></div>
               <button class="image-remove button-with-icon" data-clear-frame="end" aria-label="${t(uiKeys.create.videoMedia.deleteEndFrame)}" title="${t(uiKeys.create.videoMedia.deleteEndFrame)}">${icon("x")}<span>${t(uiKeys.create.imageEdit.clear)}</span></button>
             </div>`
           : ""}
@@ -369,7 +371,7 @@ export function renderCreatePage(
                 : `<option value="sulphur-native" ${viewModel.enhanceMode === "sulphur-native" ? "selected" : ""}>${promptUi.t("sulphurNativeEnhance")}</option>
                   <option value="faithful" ${viewModel.enhanceMode === "faithful" ? "selected" : ""}>${promptUi.t("faithfulEnhance")}</option>`}
           </select>
-             <button class="icon-button prompt-runtime-button ${viewModel.promptRuntimeBusy ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" title="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-busy="${viewModel.promptRuntimeBusy}">${icon(viewModel.releasePromptControlIconName)}</button>
+             <button class="icon-button prompt-runtime-button ${viewModel.releasePromptControlIconName === "refresh-cw" ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" title="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-busy="${viewModel.releasePromptControlIconName === "refresh-cw"}">${icon(viewModel.releasePromptControlIconName)}</button>
              <button class="secondary button-with-icon prompt-enhance-button ${viewModel.promptEnhancing ? "prompt-progress-active" : ""}" id="enhance-prompt" ${viewModel.promptAiDisabled && !viewModel.promptEnhancing ? "disabled" : ""} ${viewModel.promptEnhancing ? "aria-describedby=\"prompt-progress-tooltip\"" : `title="${escapeHtml(viewModel.promptEnhanceButtonTitle)}"`} aria-busy="${viewModel.promptEnhancing}">
                <span class="prompt-progress-track" aria-hidden="true"><span class="prompt-progress-bar ${viewModel.promptProgress?.progress == null && viewModel.promptEnhancing ? "indeterminate" : ""}" data-prompt-progress-bar style="width:${viewModel.promptProgress?.progress ?? 0}%"></span></span>
                <span class="prompt-enhance-content">${icon(viewModel.promptEnhancing ? "x" : "sparkles")}<span data-prompt-progress-label>${viewModel.promptEnhancing ? promptElapsedText(viewModel.promptProgress?.elapsedMs ?? 0) : viewModel.referenceAutoPromptAvailable && !viewModel.prompt.text.trim() ? promptUi.t("autoPrompt") : promptUi.t("optimizePrompt")}</span></span>
@@ -427,7 +429,7 @@ export function renderCreatePage(
         </label>
         <label class="settings-field settings-ratio">${t(uiKeys.create.videoSettings.ratio)}
           <select id="ratio" ${viewModel.extending ? "disabled" : ""}>
-            ${["source", "16:9", "9:16", "1:1", "4:3"].map((ratio) =>
+            ${["source", "16:9", "9:16", "1:1", "4:3", "3:4"].map((ratio) =>
               `<option value="${ratio}" ${viewModel.draft.ratio === ratio ? "selected" : ""}>${ratio === "source" ? viewModel.extending ? t(uiKeys.create.videoSettings.followInputVideo) : t(uiKeys.create.videoSettings.originalImageRatio) : ratio}</option>`
             ).join("")}
           </select>

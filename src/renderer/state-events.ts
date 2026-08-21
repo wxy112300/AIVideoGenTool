@@ -10,7 +10,7 @@ import type {
   TaskPreview,
   WindowCloseRequest
 } from "../types";
-import type { HistoryKind, Page, RendererCleanup } from "./contracts";
+import type { CreationMode, HistoryKind, Page, RendererCleanup } from "./contracts";
 import type { Translate } from "../core/i18n";
 import {
   historyContentStateChanged,
@@ -25,6 +25,11 @@ import { queueCompletionChange } from "./notifications";
 import type { RendererNotifyOptions } from "./contracts";
 import { queueLayoutSignature } from "./pages/queue/helpers";
 import { patchQueueLiveDom } from "./pages/queue/live-status";
+import type { PromptRuntimeState } from "../core/prompt-runtime-state";
+import {
+  promptOperationBelongsTo,
+  promptOperationIsActive
+} from "../core/prompt-runtime-state";
 
 export interface RendererEventOptions {
   studio: AppApi;
@@ -32,6 +37,9 @@ export interface RendererEventOptions {
   getState(): AppState | undefined;
   getComfyRuntimeState(): ComfyRuntimeState;
   setComfyRuntimeState(state: ComfyRuntimeState): void;
+  setPromptRuntimeState(state: PromptRuntimeState): void;
+  getPromptRuntimeState(): PromptRuntimeState;
+  getCreationMode(): CreationMode;
   setState(nextState: AppState): void;
   getPage(): Page;
   getHistoryKind(): HistoryKind;
@@ -123,9 +131,14 @@ function updatePromptProgressDom(progress: PromptProgress | null, t: Translate):
   const suffix = accessibleStatus.slice(accessibleStatus.indexOf(" · ") + 3);
   button.setAttribute("aria-label", accessibleStatus);
   if (active) {
-    button.removeAttribute("title");
-    button.setAttribute("aria-describedby", "prompt-progress-tooltip");
-    if (tooltip) tooltip.textContent = accessibleStatus;
+    if (tooltip) {
+      button.removeAttribute("title");
+      button.setAttribute("aria-describedby", "prompt-progress-tooltip");
+      tooltip.textContent = accessibleStatus;
+    } else {
+      button.removeAttribute("aria-describedby");
+      button.title = accessibleStatus;
+    }
   } else {
     button.removeAttribute("aria-describedby");
     button.title = accessibleStatus;
@@ -210,6 +223,8 @@ export function registerRendererEvents(
   const startPromptProgressTimer = (progress: PromptProgress) => {
     stopPromptProgressTimer();
     promptProgressTimer = window.setInterval(() => {
+      const origin = options.getCreationMode() === "image-edit" ? "image-edit" : "video-create";
+      if (!promptOperationBelongsTo(options.getPromptRuntimeState(), origin)) return;
       const current = {
         ...progress,
         elapsedMs: Date.now() - progress.startedAt
@@ -224,6 +239,7 @@ export function registerRendererEvents(
       const tooltip = document.querySelector<HTMLElement>("[data-prompt-progress-tooltip]");
       if (button) button.setAttribute("aria-label", status);
       if (tooltip) tooltip.textContent = status;
+      else if (button) button.title = status;
     }, 1000);
   };
   const unsubscribers = [
@@ -297,15 +313,29 @@ export function registerRendererEvents(
         options.requestRender();
       }
     }),
+    options.studio.onPromptRuntimeStateChanged((runtime) => {
+      options.setPromptRuntimeState(runtime);
+      if (!promptOperationIsActive(runtime)) {
+        stopPromptProgressTimer();
+        options.setPromptProgress(null);
+      }
+      if (["create", "settings"].includes(options.getPage())) options.requestRender();
+    }),
     options.studio.onPromptProgress((progress) => {
+      const origin = options.getCreationMode() === "image-edit" ? "image-edit" : "video-create";
+      const runtime = options.getPromptRuntimeState();
+      const ownsPrompt = promptOperationBelongsTo(runtime, origin) &&
+        runtime.operation.operationId === progress.operationId &&
+        progress.origin === origin;
+      if (runtime.operation.operationId !== progress.operationId) return;
       if (progress.status === "running") {
         options.setPromptProgress(progress);
-        updatePromptProgressDom(progress, options.t);
+        if (ownsPrompt) updatePromptProgressDom(progress, options.t);
         startPromptProgressTimer(progress);
       } else {
         stopPromptProgressTimer();
         options.setPromptProgress(null);
-        updatePromptProgressDom(progress, options.t);
+        if (ownsPrompt) updatePromptProgressDom(progress, options.t);
       }
     }),
     options.studio.onHistoryMigrationProgress((progress) => {
@@ -320,6 +350,30 @@ export function registerRendererEvents(
     options.studio.onAttentionInstallLog((message) => {
       const log = options.appendAttentionAccelerationLog(message);
       const logElement = document.querySelector<HTMLElement>("#attention-install-log");
+      const logDetails = document.querySelector<HTMLDetailsElement>("#attention-install-log-details");
+      const progressElement = document.querySelector<HTMLElement>("#attention-install-progress");
+      const stageElement = document.querySelector<HTMLElement>("#attention-install-stage");
+      const progressBar = progressElement?.querySelector<HTMLElement>(".progress");
+      const progressFill = progressBar?.querySelector<HTMLElement>("span");
+      const downloadProgress = message.match(/下载进度：(\d+)%/u);
+      if (logDetails) {
+        logDetails.hidden = false;
+        logDetails.open = true;
+      }
+      if (progressElement) progressElement.hidden = false;
+      if (stageElement) stageElement.textContent = message;
+      if (progressBar && progressFill) {
+        if (downloadProgress) {
+          const percent = Math.min(100, Math.max(0, Number(downloadProgress[1])));
+          progressBar.classList.remove("indeterminate");
+          progressBar.setAttribute("aria-valuenow", String(percent));
+          progressFill.style.width = `${percent}%`;
+        } else {
+          progressBar.classList.add("indeterminate");
+          progressBar.removeAttribute("aria-valuenow");
+          progressFill.style.removeProperty("width");
+        }
+      }
       if (logElement) {
         logElement.textContent = log;
         logElement.scrollTop = logElement.scrollHeight;

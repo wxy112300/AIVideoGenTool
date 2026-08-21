@@ -28,6 +28,14 @@ describe("ComfyUI runtime state controller", () => {
     expect(controller.snapshot()).toMatchObject({ phase: "degraded", ownership: "app" });
   });
 
+  it("marks a service stopped after a second consecutive failed probe", () => {
+    const controller = new ComfyRuntimeStateController();
+    controller.observeReachability(true, "http://127.0.0.1:8188", "external");
+    controller.observeReachability(false, "http://127.0.0.1:8188", "external");
+    controller.observeReachability(false, "http://127.0.0.1:8188", "external");
+    expect(controller.snapshot()).toMatchObject({ phase: "stopped", ownership: "external" });
+  });
+
   it("publishes transitions and resolves startup waiters only after settling", async () => {
     vi.useFakeTimers();
     const controller = new ComfyRuntimeStateController();

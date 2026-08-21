@@ -832,7 +832,7 @@ non_diegetic_music: N/A",
     "7": {
       "class_type": "KSamplerSelect",
       "inputs": {
-        "sampler_name": "euler",
+        "sampler_name": "res_multistep",
       },
     },
     "8": {
@@ -1072,7 +1072,7 @@ non_diegetic_music: N/A",
     "7": {
       "class_type": "KSamplerSelect",
       "inputs": {
-        "sampler_name": "euler",
+        "sampler_name": "res_multistep",
       },
     },
     "8": {
@@ -1284,7 +1284,7 @@ non_diegetic_music: N/A",
     "7": {
       "class_type": "KSamplerSelect",
       "inputs": {
-        "sampler_name": "euler",
+        "sampler_name": "res_multistep",
       },
     },
     "8": {

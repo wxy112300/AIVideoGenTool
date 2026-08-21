@@ -1,6 +1,13 @@
 import "./style.css";
 import { createRendererApp } from "./renderer/app";
 import { bootstrapRenderer } from "./renderer/bootstrap";
+import {
+  createPromptRuntimeState,
+  promptOperationBelongsTo,
+  promptOperationIsActive,
+  type PromptRuntimeState
+} from "./core/prompt-runtime-state";
+import { projectPromptRuntimeView } from "./core/prompt-runtime-view";
 import { registerRendererEvents } from "./renderer/state-events";
 import {
   creationMode,
@@ -313,6 +320,7 @@ let comfyRuntime: ComfyRuntimeState = {
   updatedAt: new Date(0).toISOString(),
   operationId: 0
 };
+let promptRuntime: PromptRuntimeState = createPromptRuntimeState(comfyRuntime);
 let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
 let h3PromptPreset: H3PromptPreset = "official-storyboard";
 let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
@@ -680,10 +688,10 @@ function upscaleDialogHtml(): string {
 }
 
 function promptRuntimeControlIcon(): string {
-  return promptStarting || promptEnhancing || promptReleasing
+  return promptStarting || promptReleasing
     ? "refresh-cw"
-    : promptRuntimeLoaded
-      ? "power"
+    : promptRuntimeLoaded || promptEnhancing
+      ? "square"
       : "play";
 }
 
@@ -691,7 +699,7 @@ function promptRuntimeControlTitle(settings = state.settings): string {
   return promptStarting
     ? uiText(uiKeys.runtime.promptStarting)
     : promptEnhancing
-    ? uiText(uiKeys.runtime.promptRunning)
+    ? uiText(uiKeys.runtime.releasePrompt)
     : promptReleasing
       ? uiText(uiKeys.runtime.promptReleasing)
       : promptRuntimeLoaded
@@ -714,6 +722,9 @@ const createPageOptions: CreatePageOptions = {
 };
 
 function createViewModelDependencies(): CreateViewModelDependencies {
+  const origin = creationMode === "image-edit" ? "image-edit" : "video-create";
+  const promptRuntimeView = projectPromptRuntimeView(promptRuntime, origin);
+  const ownsActivePrompt = promptOperationBelongsTo(promptRuntime, origin);
   return {
     t: uiText,
     state,
@@ -723,15 +734,16 @@ function createViewModelDependencies(): CreateViewModelDependencies {
     bundledWorkflows,
     promptEnhanceMode,
     h3PromptPreset,
-    promptEnhancing,
-    promptStarting,
-    promptReleasing,
-    promptRuntimeLoaded,
-    promptProgress,
+    promptEnhancing: promptRuntimeView.right.action === "cancel",
+    promptStarting: promptRuntime.service.phase === "starting" || promptRuntime.model.phase === "warming",
+    promptReleasing: promptRuntime.model.phase === "unloading",
+    promptRuntimeLoaded: promptRuntime.model.phase === "resident",
+    promptProgress: ownsActivePrompt ? promptProgress : null,
     h3PromptBuilder,
     enqueueBusy: ui.enqueueBusy,
     promptRuntimeControlTitle,
-    promptRuntimeControlIcon
+    promptRuntimeControlIcon,
+    promptRuntimeView
   };
 }
 
@@ -792,7 +804,7 @@ function queueTaskCard(
 function draftFromQueueTask(task: QueueTask): Draft | null {
   if (task.taskType === "upscale" || task.taskType === "image-generation" || task.status === "running") return null;
   const now = new Date().toISOString();
-  const resolution = [480, 540, 720, 768].includes(task.resolution)
+  const resolution = [360, 480, 540, 720, 768].includes(task.resolution)
     ? task.resolution as Draft["resolution"]
     : 480;
   const extension = task.taskType === "extension";
@@ -1455,13 +1467,14 @@ function syncAppLogPolling(): void {
 }
 
 async function releasePromptModelFromUi(): Promise<void> {
-  if (promptReleasing) return;
+  if (promptRuntime.model.phase === "unloading") return;
   reportUserAction("release-prompt-service");
   promptReleasing = true;
   render();
   try {
     const result = await window.studio.releasePromptModel();
-    if (result.ok) promptRuntimeLoaded = false;
+    if (!result.ok) throw new Error(result.message);
+    promptRuntimeLoaded = false;
     showMessage(result.message);
   } catch (error) {
     showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
@@ -1472,7 +1485,7 @@ async function releasePromptModelFromUi(): Promise<void> {
 }
 
 async function startPromptModelFromUi(): Promise<void> {
-  if (promptStarting) return;
+  if (promptRuntime.model.phase === "warming" || promptRuntime.service.phase === "starting") return;
   reportUserAction("start-prompt-service");
   promptStarting = true;
   render();
@@ -1490,7 +1503,7 @@ async function startPromptModelFromUi(): Promise<void> {
 }
 
 async function togglePromptModelFromUi(): Promise<void> {
-  if (promptRuntimeLoaded) {
+  if (promptRuntime.model.phase === "resident" || promptOperationIsActive(promptRuntime)) {
     await releasePromptModelFromUi();
   } else {
     await startPromptModelFromUi();
@@ -1507,6 +1520,24 @@ function requestHistoryDeletion(assetId: string): void {
     kind: "delete-history",
     assetId,
     title
+  };
+  ui.confirmationBusy = false;
+  render();
+}
+
+function requestHistoryVersionDeletion(assetId: string, versionId: string): void {
+  const asset = state.history.find((item) => item.id === assetId);
+  const version = asset?.versions.find((item) => item.id === versionId);
+  if (!asset || !version || asset.versions.length <= 1) return;
+  rememberModalFocus();
+  ui.pendingConfirmation = {
+    kind: "delete-video-version",
+    assetId,
+    versionId,
+    title: uiText(uiKeys.runtime.historyVersionTitle, {
+      title: asset.title,
+      version: `${version.width} × ${version.height}`
+    })
   };
   ui.confirmationBusy = false;
   render();
@@ -2220,7 +2251,7 @@ async function selectDraftVideo(
             source.resolution,
             modelCatalog.get(state.draft.modelId)?.definition.capabilities?.resolutions ??
               modelCatalog.get(state.settings.defaultExtensionModel)?.definition.capabilities?.resolutions ??
-              [480, 540, 720, 768],
+              [360, 480, 540, 720, 768],
             state.draft.resolution
           ) as Draft["resolution"]
         }
@@ -2333,7 +2364,7 @@ function bindCreate(): void {
       setPromptEnhanceMode: (mode) => {
         promptEnhanceMode = mode === "faithful" ? "faithful" : "sulphur-native";
       },
-      isPromptEnhancing: () => promptEnhancing,
+      isPromptEnhancing: () => promptOperationBelongsTo(promptRuntime, "image-edit"),
       setPromptEnhancing: (value) => {
         promptEnhancing = value;
       },
@@ -2363,7 +2394,7 @@ function bindCreate(): void {
       setH3PromptPreset: (preset) => {
         h3PromptPreset = preset;
       },
-      isPromptEnhancing: () => promptEnhancing,
+      isPromptEnhancing: () => promptOperationBelongsTo(promptRuntime, "video-create"),
       setPromptEnhancing: (value) => {
         promptEnhancing = value;
       },
@@ -2500,6 +2531,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
       openUpscaleDialog: historyActions.openUpscaleDialog,
       requestHistoryDeletion,
+      requestHistoryVersionDeletion,
       requestImageVersionDeletion,
       copyHistoryText: historyActions.copyHistoryText,
       copyHistoryFile: historyActions.copyHistoryFile,
@@ -2789,6 +2821,15 @@ registerRendererEvents({
   setComfyRuntimeState: (runtime) => {
     comfyRuntime = runtime;
   },
+  setPromptRuntimeState: (runtime) => {
+    promptRuntime = runtime;
+    promptRuntimeLoaded = runtime.model.phase === "resident";
+    promptStarting = runtime.service.phase === "starting" || runtime.model.phase === "warming";
+    promptReleasing = runtime.model.phase === "unloading";
+    promptEnhancing = promptOperationIsActive(runtime);
+  },
+  getPromptRuntimeState: () => promptRuntime,
+  getCreationMode: () => creationMode,
   setState: setRendererState,
   getPage: () => page,
   getHistoryKind: () => historyKind,
@@ -2850,6 +2891,13 @@ bootstrapRenderer({
   setState: setRendererState,
   setComfyRuntimeState: (runtime) => {
     comfyRuntime = runtime;
+  },
+  setPromptRuntimeState: (runtime) => {
+    promptRuntime = runtime;
+    promptRuntimeLoaded = runtime.model.phase === "resident";
+    promptStarting = runtime.service.phase === "starting" || runtime.model.phase === "warming";
+    promptReleasing = runtime.model.phase === "unloading";
+    promptEnhancing = promptOperationIsActive(runtime);
   },
   getState: () => state,
   setAppVersion: (version) => {

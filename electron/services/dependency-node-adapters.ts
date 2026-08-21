@@ -318,18 +318,65 @@ export function patchQwenVlComfyDesktopLogging(source: string): string {
   return replaced;
 }
 
+export function qwenVlNeedsCooperativeInterrupt(source: string): boolean {
+  return source.includes("class QwenVLCaption") &&
+    (!source.includes("class _LvsComfyInterruptStoppingCriteria(StoppingCriteria):") ||
+      !source.includes("stopping_criteria=_lvs_stopping_criteria"));
+}
+
+export function patchQwenVlCooperativeInterrupt(source: string): string {
+  const marker = "class _LvsComfyInterruptStoppingCriteria(StoppingCriteria):";
+  if (source.includes(marker) && source.includes("stopping_criteria=_lvs_stopping_criteria")) {
+    return source;
+  }
+  if (!source.includes("class QwenVLCaption") || !source.includes("generated_ids = m.generate(**inputs, max_new_tokens=max_new_tokens)")) {
+    throw new Error("ComfyUI Qwen-VL LoRA 源码结构与协作式中断适配不匹配，已停止修改。");
+  }
+  const importMarker = "import folder_paths";
+  const importIndex = source.indexOf(importMarker);
+  if (importIndex < 0) {
+    throw new Error("ComfyUI Qwen-VL LoRA 源码缺少 folder_paths 导入，无法添加协作式中断。");
+  }
+  const importEnd = source.indexOf("\n", importIndex);
+  const insertAt = importEnd >= 0 ? importEnd + 1 : source.length;
+  const helper = [
+    "from transformers import StoppingCriteria, StoppingCriteriaList",
+    "import comfy.model_management as comfy_model_management",
+    "",
+    marker,
+    "    def __call__(self, input_ids, scores, **kwargs):",
+    "        comfy_model_management.throw_exception_if_processing_interrupted()",
+    "        return False",
+    "",
+    "_lvs_stopping_criteria = StoppingCriteriaList([_LvsComfyInterruptStoppingCriteria()])",
+    "",
+    ""
+  ].join("\n");
+  let patched = `${source.slice(0, insertAt)}${helper}${source.slice(insertAt)}`;
+  patched = patched.replace(
+    "generated_ids = m.generate(**inputs, max_new_tokens=max_new_tokens)",
+    "generated_ids = m.generate(**inputs, max_new_tokens=max_new_tokens, stopping_criteria=_lvs_stopping_criteria)"
+  );
+  if (!patched.includes(marker) || !patched.includes("stopping_criteria=_lvs_stopping_criteria")) {
+    throw new Error("ComfyUI Qwen-VL LoRA 协作式中断适配未能完整应用。");
+  }
+  return patched;
+}
+
 export async function prepareQwenVlComfyDesktopLogging(
   targetDirectory: string,
   report: (message: string) => void
 ): Promise<void> {
   const filename = path.join(targetDirectory, "nodes.py");
   const source = await fs.readFile(filename, "utf8");
-  const patched = patchQwenVlComfyDesktopLogging(source);
+  const patched = patchQwenVlCooperativeInterrupt(
+    patchQwenVlComfyDesktopLogging(source)
+  );
   if (patched !== source) {
     await fs.writeFile(filename, patched, "utf8");
-    report("已为 Qwen-VL LoRA 节点应用 ComfyUI Desktop Bad file descriptor 兼容层");
+    report("已为 Qwen-VL LoRA 节点应用 Desktop 日志兼容层与协作式任务中断");
   } else {
-    report("Qwen-VL LoRA 节点已包含 ComfyUI Desktop 日志兼容层");
+    report("Qwen-VL LoRA 节点已包含 Desktop 日志兼容层与协作式任务中断");
   }
 }
 

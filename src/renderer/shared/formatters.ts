@@ -10,6 +10,7 @@ export function historyAspectRatio(ratio: Draft["ratio"] | undefined): string {
       "9:16": "9 / 16",
       "1:1": "1 / 1",
       "4:3": "4 / 3",
+      "3:4": "3 / 4",
       source: "16 / 9"
     }[ratio ?? "source"] ?? "16 / 9"
   );

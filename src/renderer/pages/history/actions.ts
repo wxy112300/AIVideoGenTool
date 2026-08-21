@@ -145,7 +145,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       ratio: asset.ratio ?? state.draft.ratio,
       resolution: nearestSupportedVideoResolution(
         requestedResolution,
-        modelCatalog.get(asset.modelId)?.definition.capabilities?.resolutions ?? [480, 540, 720, 768],
+        modelCatalog.get(asset.modelId)?.definition.capabilities?.resolutions ?? [360, 480, 540, 720, 768],
         state.draft.resolution
       ) as Draft["resolution"],
       duration: asset.duration,

@@ -409,7 +409,7 @@ describe("renderWorkflow", () => {
       steps: 20,
       denoise: 1
     });
-    expect(rendered["7"]?.inputs.sampler_name).toBe("euler");
+    expect(rendered["7"]?.inputs.sampler_name).toBe("res_multistep");
     // MiniMax H3 emits a NestedTensor. Its official VAEDecode path handles
     // that type, while core VAEDecodeTiled currently calls Tensor.to() with
     // the NestedTensor and fails before decoding.
@@ -507,7 +507,7 @@ describe("renderWorkflow", () => {
       vramTotalBytes: 24 * 1024 ** 3
     }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
     expect(heavy["6"]?.inputs).toMatchObject({
-      width: 1344,
+      width: 1376,
       height: 768,
       length: 362
     });
@@ -944,7 +944,7 @@ describe("generation VRAM safety", () => {
       maxDurationSeconds: 15,
       minimumContextSeconds: 1 / 24
     });
-    expect(extensionOutputDimensions(h3Extension)).toEqual([1344, 768]);
+    expect(extensionOutputDimensions(h3Extension)).toEqual([1376, 768]);
     expect(extensionSafetyForTask({ ...h3Extension, duration: 16 }).safe).toBe(false);
   });
 
@@ -986,7 +986,56 @@ describe("generation VRAM safety", () => {
       modelId: "minimax_h3_fl2va",
       resolution: 768,
       ratio: "16:9"
-    })).toEqual([1344, 768]);
+    })).toEqual([1376, 768]);
+  });
+
+  it("preserves arbitrary source image ratios on the H3 32-pixel grid", () => {
+    expect(outputDimensions({
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      resolution: 480,
+      ratio: "source",
+      sourceWidth: 1250,
+      sourceHeight: 1000
+    })).toEqual([608, 480]);
+    expect(outputDimensions({
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      resolution: 480,
+      ratio: "source",
+      sourceWidth: 1000,
+      sourceHeight: 1500
+    })).toEqual([480, 736]);
+    expect(outputDimensions({
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      resolution: 768,
+      ratio: "source",
+      sourceWidth: 21,
+      sourceHeight: 9
+    })).toEqual([1792, 768]);
+  });
+
+  it("keeps H3 resolution tiers distinct for extremely wide source images", () => {
+    const dimensions = ([360, 480, 540, 720, 768] as const).map((resolution) =>
+      outputDimensions({
+        ...task,
+        modelId: "minimax_h3_fl2va",
+        resolution,
+        ratio: "source",
+        sourceWidth: 2550,
+        sourceHeight: 1000
+      })
+    );
+
+    expect(dimensions).toEqual([
+      [928, 352],
+      [1216, 480],
+      [1376, 544],
+      [1824, 736],
+      [1952, 768]
+    ]);
+    expect(new Set(dimensions.map(([width, height]) => `${width}x${height}`)).size).toBe(dimensions.length);
   });
 
   it("keeps Motion Context on an even H3 VAE latent grid", () => {
@@ -1488,7 +1537,13 @@ describe("MiniMax H3 Q3 GGUF workflow", () => {
     expect(JSON.stringify(rendered)).not.toContain("{{");
   });
 
-  it("rejects Q3 configurations outside the 3080 starting resolution and duration", () => {
+  it("accepts Q3 low-resolution tiers and rejects configurations outside their limits", () => {
+    expect(generationSafetyForTask({
+      ...task,
+      modelId: "minimax_h3_fl2va_q3_gguf",
+      resolution: 360,
+      duration: 5
+    }).safe).toBe(true);
     expect(generationSafetyForTask({
       ...task,
       modelId: "minimax_h3_fl2va_q3_gguf",

@@ -1149,12 +1149,22 @@ body.image-markup-open {
   border-radius: 11px;
   background: #0c1016;
 }
+.task-input-preview-image {
+  width: 150px;
+  height: 150px;
+  min-height: 0;
+  aspect-ratio: 1 / 1;
+  align-self: start;
+}
 .task-input-preview img,
 .task-input-preview video {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  object-fit: cover;
+}
+.task-input-preview-image img {
   object-fit: cover;
 }
 .task-input-preview [data-queue-input-empty] {
@@ -1183,6 +1193,11 @@ body.image-markup-open {
     width: 128px;
   }
 
+  .task-card-with-preview .task-input-preview-image {
+    width: 128px;
+    height: 128px;
+  }
+
   .task-card-with-preview .task-actions {
     grid-column: 1 / -1;
     justify-content: flex-start;
@@ -1197,6 +1212,12 @@ body.image-markup-open {
   .task-card-with-preview .task-input-preview {
     width: min(260px, 100%);
     min-height: 140px;
+  }
+
+  .task-card-with-preview .task-input-preview-image {
+    width: min(260px, 100%);
+    height: auto;
+    min-height: 0;
   }
 
   .task-card-with-preview .task-actions {

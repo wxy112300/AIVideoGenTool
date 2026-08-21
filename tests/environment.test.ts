@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   attentionWheelForProbe,
+  comfyKitchenConvRotCudaOptimized,
+  createPipDownloadProgressReporter,
   availableVramBytesForReserve,
   buildComfyCandidates,
   buildComfyDesktopCandidates,
@@ -142,9 +144,26 @@ describe("SageAttention environment selection", () => {
     expect(tritonRequirementForTorch("2.8.0+cu129")).toBe(
       "triton-windows>=3.4,<3.5"
     );
+    expect(attentionWheelForProbe({
+      pythonVersion: "3.12.11",
+      torchVersion: "2.9.1+cu130",
+      cudaVersion: "13.0"
+    })).toMatchObject({
+      version: "2.2.0+cu130torch2.9",
+      filename: "sageattention-2.2.0+cu130torch2.9-cp312-cp312-win_amd64.whl"
+    });
+    expect(tritonRequirementForTorch("2.9.1+cu130")).toBe(
+      "triton-windows>=3.5,<3.6"
+    );
     expect(tritonRequirementForTorch("2.4.1+cu124")).toBe(
       "triton-windows>=3.0,<3.1"
     );
+  });
+
+  it("reports the CUDA requirement for optimized INT8 ConvRot kernels", () => {
+    expect(comfyKitchenConvRotCudaOptimized("12.9")).toBe(false);
+    expect(comfyKitchenConvRotCudaOptimized("13.0")).toBe(true);
+    expect(comfyKitchenConvRotCudaOptimized("13.1")).toBe(true);
   });
 
   it("rejects runtime combinations not published in the official wheel matrix", () => {
@@ -162,6 +181,23 @@ describe("SageAttention environment selection", () => {
 });
 
 describe("dependency installer subprocess feedback", () => {
+  it("reports pip download percentage, bytes, and speed", () => {
+    const messages: string[] = [];
+    const timestamps = [0, 1_000, 2_000];
+    const reporter = createPipDownloadProgressReporter(
+      (message) => messages.push(message),
+      () => timestamps.shift() ?? 2_000
+    );
+
+    reporter("Progress 10485760 of 104857600");
+    reporter("Progress 31457280 of 104857600");
+
+    expect(messages).toEqual([
+      "下载进度：10% · 10.0 / 100.0 MB",
+      "下载进度：30% · 30.0 / 100.0 MB · 20.0 MB/s"
+    ]);
+  });
+
   it("streams command output before returning the collected log", async () => {
     const messages: string[] = [];
     const output = await runLoggedProcess(

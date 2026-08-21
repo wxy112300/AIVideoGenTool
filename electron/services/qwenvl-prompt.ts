@@ -243,7 +243,16 @@ export function buildQwenVlPeftPromptWorkflow(
       class_type: "LoadImage",
       inputs: { image: uploadedImage }
     };
-    workflow["qwenvl-caption"]!.inputs.image = ["qwenvl-image", 0];
+    workflow["qwenvl-image-budget"] = {
+      class_type: "ImageScaleToTotalPixels",
+      inputs: {
+        image: ["qwenvl-image", 0],
+        upscale_method: "lanczos",
+        megapixels: 1,
+        resolution_steps: 32
+      }
+    };
+    workflow["qwenvl-caption"]!.inputs.image = ["qwenvl-image-budget", 0];
   } else {
     workflow["qwenvl-image"] = {
       class_type: "EmptyImage",
@@ -264,8 +273,9 @@ export async function enhancePromptWithQwenVlPeft(
   signal: AbortSignal,
   warmup = false,
   onProgress?: PromptProgressReporter,
-  operationId = crypto.randomUUID(),
-  retainModel = false
+  operationId: string = crypto.randomUUID(),
+  retainModel = false,
+  onSubmitted?: (promptId: string) => void
 ): Promise<string> {
   if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) {
     throw new Error("请先输入需要扩写的提示词");
@@ -304,6 +314,7 @@ export async function enhancePromptWithQwenVlPeft(
       signal
     });
     if (!result.prompt_id) throw new Error("ComfyUI 未返回 Qwen3-VL 提示词 Prompt ID");
+    onSubmitted?.(result.prompt_id);
     const nodeTypes = Object.fromEntries(
       Object.entries(prompt).map(([id, value]) => [id, value.class_type])
     );

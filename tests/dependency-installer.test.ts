@@ -12,10 +12,36 @@ import {
   patchMultimodalPromptContextSize,
   patchMultimodalPromptResidency,
   patchQwenVlComfyDesktopLogging,
+  patchQwenVlCooperativeInterrupt,
   prepareH3PromptWriter,
   prepareMultimodalPromptNodes
 } from "../electron/services/dependency-node-adapters";
 import { createDefaultState } from "../src/core/defaults";
+
+describe("Qwen-VL cooperative interrupt adapter", () => {
+  const source = [
+    "from transformers import AutoProcessor, BitsAndBytesConfig",
+    "import folder_paths",
+    "",
+    "class QwenVLCaption:",
+    "    def caption(self, model, image, prompt, max_new_tokens):",
+    "        with torch.no_grad():",
+    "            generated_ids = m.generate(**inputs, max_new_tokens=max_new_tokens)",
+    ""
+  ].join("\n");
+
+  it("checks the official ComfyUI interrupt flag during token generation", () => {
+    const patched = patchQwenVlCooperativeInterrupt(source);
+    expect(patched).toContain("throw_exception_if_processing_interrupted()");
+    expect(patched).toContain("stopping_criteria=_lvs_stopping_criteria");
+    expect(patchQwenVlCooperativeInterrupt(patched)).toBe(patched);
+  });
+
+  it("refuses to alter an unknown node layout", () => {
+    expect(() => patchQwenVlCooperativeInterrupt("import folder_paths\nclass QwenVLCaption: pass\n"))
+      .toThrow("源码结构与协作式中断适配不匹配");
+  });
+});
 
 const temporaryDirectories: string[] = [];
 

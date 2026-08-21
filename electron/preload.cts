@@ -16,10 +16,12 @@ import type {
   WindowCloseRequest,
   WindowCloseResponse
 } from "../src/types.js";
+import type { PromptRuntimeState } from "../src/core/prompt-runtime-state.js";
 
 const api: AppApi = {
   getState: () => ipcRenderer.invoke("state:get"),
   getComfyRuntimeState: () => ipcRenderer.invoke("comfy-runtime:get"),
+  getPromptRuntimeState: () => ipcRenderer.invoke("prompt-runtime:get"),
   getAppVersion: () => ipcRenderer.invoke("app:version"),
   setSettingsDirty: (dirty: boolean) => ipcRenderer.invoke("renderer:set-settings-dirty", dirty),
   respondWindowClose: (response: WindowCloseResponse) =>
@@ -114,6 +116,8 @@ const api: AppApi = {
   resetTask: (taskId: string) => ipcRenderer.invoke("queue:reset", taskId),
   deleteHistoryAsset: (assetId: string) =>
     ipcRenderer.invoke("history:delete", assetId),
+  deleteHistoryVersion: (assetId: string, versionId: string) =>
+    ipcRenderer.invoke("history:delete-version", assetId, versionId),
   updateHistoryMetadata: (assetId: string, patch: HistoryMetadataPatch) =>
     ipcRenderer.invoke("history:update-metadata", assetId, patch),
   setImageHistoryCover: (projectId: string, versionId?: string) =>
@@ -143,6 +147,12 @@ const api: AppApi = {
       callback(progress as PromptProgress);
     ipcRenderer.on("prompt:progress", listener);
     return () => ipcRenderer.removeListener("prompt:progress", listener);
+  },
+  onPromptRuntimeStateChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: unknown) =>
+      callback(state as PromptRuntimeState);
+    ipcRenderer.on("prompt-runtime:changed", listener);
+    return () => ipcRenderer.removeListener("prompt-runtime:changed", listener);
   },
   onWindowCloseRequest: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, request: unknown) =>

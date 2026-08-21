@@ -312,6 +312,19 @@
   padding: 0;
 }
 
+/* Standard image-to-video frames follow the source image ratio. Keep the
+   height cap on both the slot and its preview so they never diverge and leave
+   an empty tail below a portrait image. */
+.create-workspace:not(.r2v-workspace) .media-grid > .media-slot > .drop-zone.has-image {
+  min-height: 0;
+  aspect-ratio: var(--image-ratio, 16 / 9);
+  max-height: 640px;
+}
+
+.create-workspace:not(.r2v-workspace) .media-grid > .media-slot > .drop-zone.has-image img {
+  max-height: 640px;
+}
+
 .h3-reference-media-shell {
   position: relative;
   min-width: 0;

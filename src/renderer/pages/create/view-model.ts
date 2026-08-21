@@ -54,7 +54,6 @@ import {
 } from "../../../core/video-loras";
 import { normalizeVideoSteps, resolveVideoGenerationPolicy } from "../../../core/video-policy";
 import { escapeHtml } from "../../shared/dom";
-import { formatBytes } from "../../shared/formatters";
 import { fieldLabelWithTip } from "../../shared/markup";
 import { imageWorkflowStatus, isImageModelSelectable, promptModelStatus } from "../../shared/status";
 import { modelName } from "../../shared/labels";
@@ -70,6 +69,7 @@ import {
   promptSnippetOptions
 } from "./helpers";
 import type { ImageEditPageViewModel, VideoCreatePageViewModel } from "./page";
+import type { PromptRuntimeViewProjection } from "../../../core/prompt-runtime-view";
 
 export interface CreateViewModelDependencies {
   t: Translate;
@@ -89,6 +89,7 @@ export interface CreateViewModelDependencies {
   enqueueBusy: boolean;
   promptRuntimeControlTitle(settings?: Settings): string;
   promptRuntimeControlIcon(): string;
+  promptRuntimeView: PromptRuntimeViewProjection;
 }
 
 export function imageEditEnqueueBlockReason(
@@ -201,6 +202,7 @@ export function buildImageEditPageViewModel(
     promptStarting,
     promptReleasing,
     promptRuntimeLoaded,
+    promptRuntimeView,
     enqueueBusy
   } = options;
   const draft = normalizeImageEditDraft(state.imageDraft);
@@ -238,9 +240,9 @@ export function buildImageEditPageViewModel(
     (profile) => profile.id === draft.modelId
   );
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
-  const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
+  const promptRuntimeBusy = promptRuntimeView.left.busy || promptRuntimeView.right.busy;
   const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
-  const imagePromptAiDisabled = promptRuntimeBusy || state.queueRunning || !prompt.text.trim() || !imagePromptModelSupportsImageEdit;
+  const imagePromptAiDisabled = promptRuntimeView.right.disabled || state.queueRunning || !prompt.text.trim() || !imagePromptModelSupportsImageEdit;
   const imageEnhanceMode: ImagePromptPreset = promptEnhanceMode === "faithful"
     ? "faithful"
     : "detail-enhance";
@@ -291,8 +293,8 @@ export function buildImageEditPageViewModel(
     imagePromptOptimizeTitle,
     imagePromptAiDisabled,
     releasePromptControlTitle: options.promptRuntimeControlTitle(),
-    releasePromptControlIconName: options.promptRuntimeControlIcon(),
-    releasePromptControlDisabled: promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready),
+    releasePromptControlIconName: promptRuntimeView.left.icon,
+    releasePromptControlDisabled: promptRuntimeView.left.disabled || state.queueRunning,
     markupGuideCount,
     imageModelInputCount,
     enqueueBlockReason,
@@ -335,6 +337,7 @@ export function buildVideoCreatePageViewModel(
     promptReleasing,
     promptRuntimeLoaded,
     promptProgress,
+    promptRuntimeView,
     h3PromptBuilder,
     enqueueBusy
   } = options;
@@ -362,8 +365,8 @@ export function buildVideoCreatePageViewModel(
     ? promptEnhanceMode === "faithful" ? "faithful" : "h3-vision"
     : promptEnhanceMode === "faithful" ? "faithful" : "sulphur-native";
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
-  const promptRuntimeBusy = promptStarting || promptEnhancing || promptReleasing;
-  const promptAiDisabled = promptRuntimeBusy || state.queueRunning;
+  const promptRuntimeBusy = promptRuntimeView.left.busy || promptRuntimeView.right.busy;
+  const promptAiDisabled = promptRuntimeView.right.disabled || state.queueRunning;
   const videoPolicy = resolveVideoGenerationPolicy({
     modelId: draft.modelId,
     inputMode: draft.inputMode,
@@ -412,9 +415,8 @@ export function buildVideoCreatePageViewModel(
     spectrumEligible && spectrumLoaded &&
     (draft.spectrumModelAwareMode === "off" || spectrumModelAwareSupported)
   );
-  const detectedVramTotalBytes = environmentScan?.gpus[0]?.vramTotalBytes ?? performanceMetrics?.vramTotalBytes ?? 0;
   const resolutionOptions = isMiniMaxH3
-    ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? [480, 540, 720, 768]
+    ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? [360, 480, 540, 720, 768]
     : [480, 540, 720];
   const h3MotionContextNode = environmentScan?.customNodes.find(
     (node) => node.id === "h3-motion-context"
@@ -499,8 +501,8 @@ export function buildVideoCreatePageViewModel(
     referenceAutoPromptAvailable,
     promptUi: h3PromptPack.ui,
     releasePromptControlTitle: options.promptRuntimeControlTitle(),
-    releasePromptControlIconName: options.promptRuntimeControlIcon(),
-    releasePromptControlDisabled: promptRuntimeBusy || state.queueRunning || (!promptRuntimeLoaded && !promptStatus.ready),
+    releasePromptControlIconName: promptRuntimeView.left.icon,
+    releasePromptControlDisabled: promptRuntimeView.left.disabled || state.queueRunning,
     promptAiDisabled,
     promptEnhanceButtonTitle: promptAiDisabled && state.queueRunning
       ? t(uiKeys.create.validation.promptTaskRunning)
@@ -536,27 +538,13 @@ export function buildVideoCreatePageViewModel(
       t
     ),
     resolutionOptionsMarkup: extending && !isMiniMaxH3
-      ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p · ${t(uiKeys.create.options.ggufConservative)}</option>`
+      ? `<option value="${state.settings.ltxExtensionResolution}" selected>${state.settings.ltxExtensionResolution}p</option>`
       : resolutionOptions.map((value) => {
           const [width, height] = outputDimensions({
             ...draft,
             resolution: value as Draft["resolution"]
           });
-          const recommended =
-            draft.modelId === "sulphur2" &&
-            value === 720 &&
-            detectedVramTotalBytes >= 20 * 1024 ** 3;
-          const h3Label = isMiniMaxH3
-            ? value === 480
-              ? t(uiKeys.create.options.h3LowVram)
-              : value === 768
-                ? t(uiKeys.create.options.h3HighVram)
-                : ""
-            : "";
-          const vramLabel = recommended && detectedVramTotalBytes > 0
-            ? t(uiKeys.create.options.vramRecommended, { value: formatBytes(detectedVramTotalBytes) })
-            : "";
-          return `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p · ${width}×${height}${vramLabel}${h3Label}</option>`;
+          return `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p · ${width}×${height}</option>`;
         }).join(""),
     stepsOptionsMarkup: videoPolicy.steps.options.map((value) => {
       const label = turboEnabled

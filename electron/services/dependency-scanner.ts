@@ -16,7 +16,10 @@ import {
   videoHelperBatchCompatible
 } from "./dependency-compatibility.js";
 import { readComfyGitRevision } from "./comfy-discovery.js";
-import { qwenVlNeedsComfyDesktopLoggingShim } from "./dependency-node-adapters.js";
+import {
+  qwenVlNeedsComfyDesktopLoggingShim,
+  qwenVlNeedsCooperativeInterrupt
+} from "./dependency-node-adapters.js";
 
 export interface LocalNodeVersion {
   version: string;
@@ -497,13 +500,14 @@ export async function scanCustomNodes(
       const source = await fs
         .readFile(path.join(directory, "nodes.py"), "utf8")
         .catch(() => "");
-      if (source && qwenVlNeedsComfyDesktopLoggingShim(source)) {
+      if (source && (qwenVlNeedsComfyDesktopLoggingShim(source) || qwenVlNeedsCooperativeInterrupt(source))) {
         // This is a file-level compatibility check, not runtime proof. It
         // lets an offline scan explain why the node can be installed yet fail
         // later on ComfyUI Desktop, and gives the installer a deterministic
         // repair target for every machine/data directory.
-        const notice =
-          "节点仍直接写入 stdout；ComfyUI Desktop 可能触发 Bad file descriptor，请执行一键修复并重启服务";
+        const notice = qwenVlNeedsCooperativeInterrupt(source)
+          ? "节点缺少提示词生成的协作式中断支持；取消可能无法及时生效，请执行一键修复并重启服务"
+          : "节点仍直接写入 stdout；ComfyUI Desktop 可能触发 Bad file descriptor，请执行一键修复并重启服务";
         compatibilityNotice = notice;
         updateNotice = notice;
         optionalUpdateRecommended = true;

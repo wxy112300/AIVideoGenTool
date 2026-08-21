@@ -7,7 +7,7 @@ import {
 import { isMiniMaxH3Model } from "../src/core/workflow.js";
 import type { JsonStore } from "./store.js";
 import { forceStopComfyProcesses, restartLocalService } from "./services/environment.js";
-import { freeMemory, interrupt } from "./services/comfy-ui.js";
+import { freeMemory, interrupt, waitForPromptToLeaveQueue } from "./services/comfy-ui.js";
 import type { AppLogger } from "./services/app-logger.js";
 import { safeLogErrorMessage } from "./services/app-logger.js";
 
@@ -23,7 +23,9 @@ export async function cleanupCancelledQueueTask(
   deps: Pick<
     QueueRecoveryDependencies,
     "logger" | "updateTask" | "getComfyRuntimeState" |
-    "waitForComfyRuntimeSettled" | "hasSubmittedPrompt" | "isCancellationCurrent"
+    "waitForComfyRuntimeSettled" | "hasSubmittedPrompt" | "getSubmittedPromptId" |
+    "waitForSubmittedPromptToStop" | "interruptComfyUi" | "freeComfyMemory" |
+    "restartComfyUi" | "isCancellationCurrent"
   >,
   taskId: string,
   settings: Settings,
@@ -53,9 +55,10 @@ export async function cleanupCancelledQueueTask(
       });
       return;
     }
-    const hasSubmittedPrompt = deps.hasSubmittedPrompt?.(taskId) ?? true;
+    const promptId = deps.getSubmittedPromptId?.(taskId);
+    const hasSubmittedPrompt = Boolean(promptId) || (deps.hasSubmittedPrompt?.(taskId) ?? true);
     if (settings.safeCancel && hasSubmittedPrompt) {
-      await interrupt(settings).catch((error) => {
+      await (deps.interruptComfyUi ?? interrupt)(settings).catch((error) => {
         deps.logger.warn("comfy", "cancel-interrupt-failed", "ComfyUI interrupt request failed during background cancellation cleanup", {
           taskId, error: safeLogErrorMessage(error)
         });
@@ -70,9 +73,19 @@ export async function cleanupCancelledQueueTask(
       });
       return;
     }
-    if (settings.safeCancel && workerSettled) {
+    const promptStopped = promptId
+      ? await (deps.waitForSubmittedPromptToStop ?? waitForPromptToLeaveQueue)(settings, promptId, 15_000)
+      : workerSettled;
+    if (!promptStopped) {
+      deps.logger.warn("comfy", "cancel-prompt-still-running", "ComfyUI prompt remained active after interruption; restarting the owned runtime", {
+        taskId,
+        promptId: promptId ?? "",
+        workerSettled
+      });
+    }
+    if (settings.safeCancel && workerSettled && promptStopped) {
       try {
-        await freeMemory(settings);
+        await (deps.freeComfyMemory ?? freeMemory)(settings);
         await updateCancelledTask({
           status: "cancelled",
           stage: "任务已取消，显存已释放",
@@ -86,7 +99,7 @@ export async function cleanupCancelledQueueTask(
       }
     }
     if (!cancellationIsCurrent()) return;
-    const recovery = await restartLocalService("comfy", settings);
+    const recovery = await (deps.restartComfyUi ?? restartLocalService)("comfy", settings);
     await updateCancelledTask({
       status: "cancelled",
       stage: recovery.ok ? "任务已取消，ComfyUI 已后台重启" : "任务已取消，但 ComfyUI 清理失败",
@@ -112,6 +125,11 @@ export interface QueueRecoveryDependencies {
   getComfyRuntimeState?(): ComfyRuntimeState;
   waitForComfyRuntimeSettled?(timeoutMs: number): Promise<ComfyRuntimeState>;
   hasSubmittedPrompt?(taskId: string): boolean;
+  getSubmittedPromptId?(taskId: string): string | undefined;
+  waitForSubmittedPromptToStop?(settings: Settings, promptId: string, timeoutMs: number): Promise<boolean>;
+  interruptComfyUi?(settings: Settings): Promise<void>;
+  freeComfyMemory?(settings: Settings): Promise<void>;
+  restartComfyUi?(kind: "comfy", settings: Settings): Promise<{ ok: boolean; message: string }>;
   isCancellationCurrent?(taskId: string): boolean;
   settingsForTask(task: QueueTask, settings: AppState["settings"]): AppState["settings"];
   errorMeta(error: unknown): Record<string, unknown>;

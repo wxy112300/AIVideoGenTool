@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
+import { createPromptRuntimeState } from "../src/core/prompt-runtime-state";
 import {
   createNotification,
   notificationAlreadyPending,
@@ -148,6 +149,7 @@ describe("renderer notifications", () => {
         return () => undefined;
       },
       onComfyRuntimeStateChanged: subscribe,
+      onPromptRuntimeStateChanged: subscribe,
       onHistoryMigrationProgress: subscribe,
       onImageAssetLibraryProgress: subscribe,
       onTaskPreview: subscribe,
@@ -167,6 +169,9 @@ describe("renderer notifications", () => {
         updatedAt: new Date(0).toISOString(), operationId: 0
       }),
       setComfyRuntimeState: vi.fn(),
+      setPromptRuntimeState: vi.fn(),
+      getPromptRuntimeState: () => createPromptRuntimeState(),
+      getCreationMode: () => "video",
       setState: (next) => { state = next; },
       getPage: () => "create",
       getHistoryKind: () => "video",

@@ -8,11 +8,13 @@ import type {
   WorkflowCapabilities
 } from "../types";
 import { loadUiLocale } from "../core/i18n";
+import type { PromptRuntimeState } from "../core/prompt-runtime-state";
 
 export interface RendererBootstrapOptions {
   studio: AppApi;
   setState(nextState: AppState): void;
   setComfyRuntimeState(state: ComfyRuntimeState): void;
+  setPromptRuntimeState(state: PromptRuntimeState): void;
   getState(): AppState;
   setAppVersion(version: string): void;
   refreshEnvironment(settings: Settings): Promise<unknown>;
@@ -29,11 +31,13 @@ export function bootstrapRenderer(options: RendererBootstrapOptions): void {
   void options.studio.getState().then(async (initialState) => {
     await loadUiLocale(initialState.settings.uiLocale).catch(() => undefined);
     options.setState(initialState);
-    const [appVersion, runtime] = await Promise.all([
+    const [appVersion, runtime, promptRuntime] = await Promise.all([
       options.studio.getAppVersion(),
-      options.studio.getComfyRuntimeState()
+      options.studio.getComfyRuntimeState(),
+      options.studio.getPromptRuntimeState()
     ]);
     options.setComfyRuntimeState(runtime);
+    options.setPromptRuntimeState(promptRuntime);
     options.setAppVersion(appVersion);
     document.title = `Local Video Studio v${appVersion}`;
     options.render();
