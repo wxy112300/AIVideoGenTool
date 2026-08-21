@@ -36,6 +36,7 @@ export interface RendererEventOptions {
   t: Translate;
   getState(): AppState | undefined;
   getComfyRuntimeState(): ComfyRuntimeState;
+  getEnvironmentScanning?(): boolean;
   setComfyRuntimeState(state: ComfyRuntimeState): void;
   setPromptRuntimeState(state: PromptRuntimeState): void;
   getPromptRuntimeState(): PromptRuntimeState;
@@ -283,7 +284,12 @@ export function registerRendererEvents(
       if (completion.queueCompleted) {
         options.notify(options.t(uiKeys.runtime.queueCompleted), { kind: "queue-complete" });
       }
-      if (queueStructureStable && patchQueueLiveDom(nextState, options.t, options.getComfyRuntimeState())) return;
+      if (queueStructureStable && patchQueueLiveDom(
+        nextState,
+        options.t,
+        options.getComfyRuntimeState(),
+        options.getEnvironmentScanning?.() ?? false
+      )) return;
       if (isEditingFormControl() || options.getDraftSaveInFlight() > 0) return;
       const visibleHistoryChanged = options.getHistoryKind() === "image"
         ? imageHistoryChanged
@@ -308,7 +314,12 @@ export function registerRendererEvents(
       }
       const currentState = options.getState();
       if (options.getPage() === "queue" && currentState) {
-        patchQueueLiveDom(currentState, options.t, runtime);
+        patchQueueLiveDom(
+          currentState,
+          options.t,
+          runtime,
+          options.getEnvironmentScanning?.() ?? false
+        );
       } else if (options.getPage() === "settings") {
         options.requestRender();
       }

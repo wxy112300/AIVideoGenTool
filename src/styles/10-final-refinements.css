@@ -1129,7 +1129,7 @@ body.image-markup-open {
 .queue-runtime-status { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .queue-runtime-badge { display: inline-flex; align-items: center; min-height: 28px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: #15171a; font-size: 11px; white-space: nowrap; }
 .queue-runtime-badge[data-lifecycle="running"], .queue-runtime-badge[data-status="connected"] { border-color: rgba(93, 205, 161, .42); color: #9ee5c4; background: rgba(56, 148, 111, .14); }
-.queue-runtime-badge[data-lifecycle="starting"], .queue-runtime-badge[data-lifecycle="pausing"], .queue-runtime-badge[data-lifecycle="cancelling"], .queue-runtime-badge[data-lifecycle="cleaning"], .queue-runtime-badge[data-status="starting"], .queue-runtime-badge[data-status="cleaning"] { border-color: rgba(244, 189, 106, .45); color: #f1cb89; background: rgba(150, 101, 27, .14); }
+.queue-runtime-badge[data-lifecycle="starting"], .queue-runtime-badge[data-lifecycle="pausing"], .queue-runtime-badge[data-lifecycle="cancelling"], .queue-runtime-badge[data-lifecycle="cleaning"], .queue-runtime-badge[data-status="initializing"], .queue-runtime-badge[data-status="starting"], .queue-runtime-badge[data-status="cleaning"] { border-color: rgba(244, 189, 106, .45); color: #f1cb89; background: rgba(150, 101, 27, .14); }
 .queue-runtime-badge[data-lifecycle="error"], .queue-runtime-badge[data-status="error"] { border-color: rgba(255, 139, 114, .5); color: #ffad9b; background: rgba(155, 54, 44, .15); }
 
 .task-card.task-card-with-preview {
@@ -1654,6 +1654,7 @@ body.image-markup-open {
 .queue-runtime-badge[data-status="ending"],
 .queue-runtime-badge[data-status="cancelling"],
 .queue-runtime-badge[data-status="cleaning"],
+.queue-runtime-badge[data-status="initializing"],
 .queue-runtime-badge[data-status="waiting"] {
   border-color: rgba(244, 189, 106, .5);
   color: #f1cb89;

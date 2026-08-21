@@ -21,6 +21,7 @@ export interface QueueLiveStatusOptions {
   getPage(): Page;
   setPerformanceMetrics(metrics: PerformanceMetrics): void;
   getComfyRuntimeState(): ComfyRuntimeState;
+  getEnvironmentScanning?(): boolean;
 }
 
 function setMetric(id: string, value: number | null, detail = ""): void {
@@ -74,7 +75,7 @@ export function queueLifecycleShortText(
 export interface QueueComfyUiStatus {
   label: string;
   shortLabel: string;
-  tone: "connected" | "starting" | "ending" | "cancelling" | "cleaning" | "waiting" | "error" | "unknown";
+  tone: "connected" | "initializing" | "starting" | "ending" | "cancelling" | "cleaning" | "waiting" | "error" | "unknown";
 }
 
 export type QueueHeaderTone = "idle" | "pending" | "active" | "error";
@@ -93,6 +94,7 @@ function comfyUiShortKey(
 ): string {
   switch (tone) {
     case "connected": return uiKeys.queue.comfyUiShort.connected;
+    case "initializing": return uiKeys.queue.comfyUiShort.initializing;
     case "starting": return uiKeys.queue.comfyUiShort.starting;
     case "ending": return uiKeys.queue.comfyUiShort.ending;
     case "cancelling": return uiKeys.queue.comfyUiShort.cancelling;
@@ -114,9 +116,21 @@ function comfyStatus(
 export function queueComfyUiStatus(
   state: AppState,
   t: Translate,
-  runtime?: ComfyRuntimeState
+  runtime?: ComfyRuntimeState,
+  environmentScanning = false
 ): QueueComfyUiStatus {
   const lifecycle = state.queueLifecycle ?? "idle";
+  const queueIsIdle = lifecycle === "idle" &&
+    !state.queueRunning &&
+    !state.queue.some((task) => task.status === "running");
+  const runtimeIsUnsettled = !runtime ||
+    runtime.phase === "unknown" ||
+    runtime.phase === "stopped" ||
+    runtime.phase === "degraded" ||
+    runtime.phase === "error";
+  if (environmentScanning && queueIsIdle && runtimeIsUnsettled) {
+    return comfyStatus("initializing", t(uiKeys.queue.comfyUi.initializing), t);
+  }
   if (runtime?.phase === "error") {
     return comfyStatus("error", runtime.message || t(uiKeys.queue.comfyUi.error), t);
   }
@@ -225,9 +239,10 @@ function patchQueueElement(
 export function patchQueueLiveDom(
   state: AppState,
   t: Translate,
-  runtime?: ComfyRuntimeState
+  runtime?: ComfyRuntimeState,
+  environmentScanning = false
 ): boolean {
-  const comfy = queueComfyUiStatus(state, t, runtime);
+  const comfy = queueComfyUiStatus(state, t, runtime, environmentScanning);
   const operation = queueOperationStatus(state, t);
   const activeTasks = state.queue.filter((task) => task.status === "waiting" || task.status === "running");
   const headerTone = queueHeaderTone(state);
@@ -303,7 +318,12 @@ export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
       const metrics = await options.studio.getPerformanceMetrics(state.settings);
       options.setPerformanceMetrics(metrics);
       if (options.getPage() !== "queue") return;
-      patchQueueLiveDom(options.getState() ?? state, options.t, options.getComfyRuntimeState());
+      patchQueueLiveDom(
+        options.getState() ?? state,
+        options.t,
+        options.getComfyRuntimeState(),
+        options.getEnvironmentScanning?.() ?? false
+      );
       setMetric("metric-cpu", metrics.cpuPercent);
       setMetric(
         "metric-memory",
@@ -336,7 +356,12 @@ export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
   const updateQueueStatus = (): void => {
     const state = options.getState();
     if (state && options.getPage() === "queue") {
-      patchQueueLiveDom(state, options.t, options.getComfyRuntimeState());
+      patchQueueLiveDom(
+        state,
+        options.t,
+        options.getComfyRuntimeState(),
+        options.getEnvironmentScanning?.() ?? false
+      );
     }
   };
 

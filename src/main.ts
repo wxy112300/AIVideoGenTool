@@ -768,6 +768,7 @@ function queuePage(): string {
     escapeHtml,
     performanceMetrics,
     comfyRuntime,
+    environmentScanning,
     queueRemainingSeconds: (tasks) => calculateQueueRemainingSeconds(tasks, state.history, state.imageHistory),
     queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
     performanceCard,
@@ -1290,6 +1291,7 @@ const queueLiveStatus = createQueueLiveStatus({
   getState: () => state,
   getPage: () => page,
   getComfyRuntimeState: () => comfyRuntime,
+  getEnvironmentScanning: () => environmentScanning,
   setPerformanceMetrics: (metrics) => {
     const connectionChanged = performanceMetrics?.comfyConnected !== metrics.comfyConnected;
     performanceMetrics = metrics;
@@ -2821,6 +2823,7 @@ registerRendererEvents({
   t: rendererApp.context.t,
   getState: () => state,
   getComfyRuntimeState: () => comfyRuntime,
+  getEnvironmentScanning: () => environmentScanning,
   setComfyRuntimeState: (runtime) => {
     comfyRuntime = runtime;
   },

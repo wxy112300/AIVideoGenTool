@@ -13,6 +13,7 @@ export interface QueuePageOptions {
   escapeHtml(value: unknown): string;
   performanceMetrics: PerformanceMetrics | null;
   comfyRuntime: ComfyRuntimeState;
+  environmentScanning?: boolean;
   queueRemainingSeconds(tasks: QueueTask[]): number | null;
   queueEstimateText(seconds: number | null): string;
   performanceCard(
@@ -92,7 +93,12 @@ export function renderQueuePage(
   const attentionTasks = state.queue.filter((task) => task.status === "failed" || task.status === "cancelled");
   const remainingSeconds = options.queueRemainingSeconds(activeTasks);
   const lifecycle = state.queueLifecycle ?? "idle";
-  const comfyUi = queueComfyUiStatus(state, options.t, options.comfyRuntime);
+  const comfyUi = queueComfyUiStatus(
+    state,
+    options.t,
+    options.comfyRuntime,
+    options.environmentScanning ?? false
+  );
   const operation = queueOperationStatus(state, options.t);
   const headerTone = queueHeaderTone(state);
   // Keep the total ETA visible as soon as there is queued work. The elapsed

@@ -238,6 +238,39 @@ describe("queue lifecycle status", () => {
     }).tone).toBe("connected");
   });
 
+  it("shows initialization instead of a runtime error while the startup scan is active", () => {
+    const state = createDefaultState();
+    const translate = (key: string): string => key;
+    const status = queueComfyUiStatus(state, translate, {
+      phase: "error",
+      ownership: "app",
+      endpoint: "http://127.0.0.1:8188",
+      message: "runtime is still settling",
+      updatedAt: new Date().toISOString(),
+      operationId: 2
+    }, true);
+
+    expect(status.tone).toBe("initializing");
+    expect(status.label).toBe("queue.comfyUi.initializing");
+    expect(status.shortLabel).toBe("ComfyUI queue.comfyUi.short.initializing");
+  });
+
+  it("keeps a real queue lifecycle error visible during an environment scan", () => {
+    const state = createDefaultState();
+    state.queueLifecycle = "error";
+    const status = queueComfyUiStatus(state, (key) => key, {
+      phase: "error",
+      ownership: "app",
+      endpoint: "http://127.0.0.1:8188",
+      message: "runtime error",
+      updatedAt: new Date().toISOString(),
+      operationId: 3
+    }, true);
+
+    expect(status.tone).toBe("error");
+    expect(status.label).toBe("runtime error");
+  });
+
   it("shows cleanup progress and elapsed time while restart is blocked", () => {
     const state = createDefaultState();
     state.queueLifecycle = "cleaning";

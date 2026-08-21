@@ -44,6 +44,7 @@ export const uiKeys = {
     },
     comfyUi: {
       connected: "queue.comfyUi.connected",
+      initializing: "queue.comfyUi.initializing",
       starting: "queue.comfyUi.starting",
       ending: "queue.comfyUi.ending",
       cancelling: "queue.comfyUi.cancelling",
@@ -54,6 +55,7 @@ export const uiKeys = {
     },
     comfyUiShort: {
       connected: "queue.comfyUi.short.connected",
+      initializing: "queue.comfyUi.short.initializing",
       starting: "queue.comfyUi.short.starting",
       ending: "queue.comfyUi.short.ending",
       cancelling: "queue.comfyUi.short.cancelling",
