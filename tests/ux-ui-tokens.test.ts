@@ -237,9 +237,9 @@ describe("UX/UI semantic token foundation", () => {
   });
 
   it("routes History and Settings headings through the shared sticky offset", () => {
-    expect(densitySource).toContain("  top: var(--ux-page-sticky-offset);");
+    expect(historyCurationSource).toContain("  top: var(--ux-page-sticky-offset);");
     expect(visualRefreshSource).toContain("  top: var(--ux-page-sticky-offset);");
-    expect(densitySource).toMatch(/\.history-heading\s*\{\s*top: 0;/);
+    expect(historyCurationSource).toMatch(/\.history-heading\s*\{\s*top: 0;/);
     expect(densitySource).toMatch(/\.settings-heading\s*\{\s*top: 0;/);
   });
 

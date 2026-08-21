@@ -520,20 +520,10 @@ select { padding-inline: 12px; }
 .empty { min-height: 280px; display: grid; place-content: center; justify-items: center; padding: 60px 24px; }
 .empty p { color: var(--muted); }
 
-.history-heading { min-height: 126px; padding: 25px 2px 22px; margin-bottom: 20px; border-bottom: 1px solid rgba(54,63,76,.38); }
-.history-heading p { font-size: 13px; }
-.history-view-tools { gap: 14px; }
-.history-view-tools label { min-width: 144px; }
-.history-gallery.masonry { gap: 18px; }
-.history-gallery.album { gap: 18px; }
-.history-gallery-item { margin-bottom: 18px; border-radius: 15px; box-shadow: var(--ux-elevation-panel); transition: transform .18s ease, border-color .18s ease; }
-.history-gallery-item:hover { transform: translateY(-2px); border-color: #45536a; box-shadow: var(--ux-elevation-panel); }
 .history-media { background: #080a0d; }
 .history-media::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(0,0,0,.12), transparent 42%, rgba(0,0,0,.2)); }
 .history-media-badges { gap: 5px; }
 .media-chip, .history-preview-state { border-color: rgba(255,255,255,.11); background: rgba(8,11,16,.72); font-size: 10px; }
-.history-gallery-copy { gap: 6px; padding: 10px 12px 9px; }
-.history-gallery-copy h3 { font-size: var(--ux-type-object); }
 .history-card-filename { display: block; min-width: 0; overflow: hidden; color: #8490a0; font-size: var(--ux-type-meta); text-overflow: ellipsis; white-space: nowrap; }
 .history-card-title, .history-detail-title { overflow: hidden; white-space: nowrap; text-overflow: clip; }
 .history-card-title-track { display: inline-flex; width: max-content; max-width: 100%; }
@@ -551,9 +541,6 @@ select { padding-inline: 12px; }
   .history-card-title.is-overflowing:hover .history-card-title-track,
   .history-detail-title.is-overflowing:hover .history-card-title-track { animation: none; }
 }
-.history-gallery-copy code { color: #8490a0; }
-.history-item-meta { gap: 7px 11px; }
-.history-item-actions { padding-top: 5px; border-top: 1px solid color-mix(in srgb, var(--ux-separator-subtle) 40%, transparent); }
 .model-badge { border-color: var(--ux-status-info-border); color: var(--ux-status-info-text); background: var(--ux-status-info-surface-soft); font-weight: 620; }
 
 .history-detail-back {

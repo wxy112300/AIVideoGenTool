@@ -66,8 +66,6 @@
   .app-shell { padding-inline: 24px; }
   .topbar { margin-inline: -24px; padding-inline: 24px; }
   .page-heading { min-height: 100px; }
-  .history-gallery.masonry { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .history-gallery.album { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .task-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .history-detail-hero { grid-template-columns: 1fr; }
   .history-detail-sidebar { max-height: none; }
@@ -85,15 +83,9 @@
   .nav-button { flex: 1; padding-inline: 8px; }
   .history-detail-back { top: 0; }
   .history-detail-tools { align-items: flex-end; flex-direction: column; gap: 7px; }
-  .history-heading { grid-template-columns: 1fr; align-items: stretch; }
-  .history-heading > .history-kind-tabs { width: min(100%, 360px); justify-self: center; }
-  .history-heading > .history-view-tools { justify-self: stretch; }
-  .history-heading > .history-view-tools .button-row { justify-content: flex-end; }
   .page-heading { min-height: auto; padding-block: 22px; }
   .media-panel, .composer, .environment-panel, .settings-page, .token-help { padding: 18px; }
   .drop-zone { min-height: 290px; }
-  .history-view-tools { align-items: flex-end; }
-  .history-gallery.album { grid-template-columns: 1fr; }
   .task-stat-grid { grid-template-columns: 1fr; }
   .history-player { height: clamp(300px, 56vh, 560px); }
   .history-summary { padding: 18px; }
