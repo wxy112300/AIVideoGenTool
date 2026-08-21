@@ -66,14 +66,6 @@
   .app-shell { padding-inline: 24px; }
   .topbar { margin-inline: -24px; padding-inline: 24px; }
   .page-heading { min-height: 100px; }
-  .settings-layout { grid-template-columns: 1fr; gap: 17px; }
-  .settings-sidebar {
-    position: static;
-    top: auto;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .settings-tab { justify-content: center; }
   .history-gallery.masonry { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .history-gallery.album { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .task-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

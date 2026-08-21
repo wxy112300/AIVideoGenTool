@@ -294,6 +294,7 @@
     min-height: 40px;
     grid-template-columns: 18px auto auto;
     padding: 8px 10px;
+    justify-content: center;
     scroll-margin-inline: 8px;
   }
 

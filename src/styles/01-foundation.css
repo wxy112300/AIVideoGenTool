@@ -712,8 +712,6 @@ pre { max-height: 360px; overflow: auto; padding: 14px; border-radius: 10px; bac
   .history-gallery.masonry { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .history-gallery.album { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .history-detail-hero { grid-template-columns: 1fr; }
-  .settings-layout { grid-template-columns: 1fr; }
-  .settings-sidebar { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .performance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .running-layout { grid-template-columns: 1fr; }
 }
@@ -737,7 +735,6 @@ pre { max-height: 360px; overflow: auto; padding: 14px; border-radius: 10px; bac
   .media-grid.paired { grid-template-columns: 1fr; }
   .task-actions { justify-content: flex-start; }
   .environment-summary, .detected-path { align-items: stretch; flex-direction: column; }
-  .settings-sidebar { grid-template-columns: 1fr; }
   .model-profile-head { align-items: stretch; flex-direction: column; }
   .custom-node-card { flex-direction: column; }
   .custom-node-actions { width: 100%; grid-auto-flow: column; align-items: center; justify-content: space-between; }
