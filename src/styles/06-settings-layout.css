@@ -1,16 +1,23 @@
 
 /* Settings layout contract: one stable sidebar, one aligned content column. */
 .settings-layout {
+  display: grid;
   grid-template-columns: minmax(200px, 230px) minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
 
 .settings-sidebar {
+  position: sticky;
+  display: grid;
   width: 100%;
   top: 146px;
   padding: 8px;
   gap: 4px;
+  border: 1px solid rgba(59, 68, 82, .72);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ux-surface-base) 90%, transparent);
+  box-shadow: var(--ux-elevation-panel);
 }
 
 .settings-environment-actions {

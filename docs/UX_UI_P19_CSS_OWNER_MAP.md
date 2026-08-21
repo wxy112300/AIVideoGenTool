@@ -1,6 +1,6 @@
 # P19 CSS selector owner map
 
-> Status: L61 completed; G17 approved the first Create breakpoint package. Remaining page families still require targeted review before their CSS moves. This document is an inventory and proposed move order, not a visual-direction approval.
+> Status: L61 completed; G17 approved the Create breakpoint and Settings navigation/shell geometry packages. Remaining component families still require targeted review before their CSS moves. This document is an inventory and proposed move order, not a visual-direction approval.
 >
 > Base: `75b20b1` (`v0.40.0`), current renderer and `src/style.css` import order. Historical prototypes are excluded.
 
@@ -63,9 +63,9 @@ The current `!important` inventory is also mixed across `01`, `02`, `05`, and `1
 
 ## Proposed move order
 
-1. G17 reviews this map and freezes the owner and order; no visual or DOM decision is delegated to a mechanical CSS move.
-2. Move one Create breakpoint family from `04` to `07`, preserving declarations exactly. A rehearsal on the current `v0.40.0` renderer already produced 24 before/after Create captures with identical SHA-256 sets; the rehearsal was reverted and is not itself an approval.
-3. Move Settings geometry and responsive blocks into `06`, including only Settings-owned selectors; keep shared primitives in `01`.
+1. G17 reviews this map and freezes the owner and order for each package; no visual or DOM decision is delegated to a mechanical CSS move.
+2. Completed: move the Create breakpoint family from `01`/`04` to `07`, preserving declarations exactly. The current `v0.40.0` renderer produced 24 before/after Create captures with identical SHA-256 sets.
+3. Completed in two bounded batches: move Settings navigation responsive declarations and the desktop `.settings-layout`/`.settings-sidebar` geometry into `06`; keep shared tab primitives and content components for their own packages.
 4. Move History gallery/toolbar and then History detail families, one family per parity run.
 5. Move Queue composition, retaining shared task primitives in `01`.
 6. Run L64 cleanup only after each family has zero unintended live references, no duplicate owner remains, and the P00 screenshot matrix is unchanged.

@@ -604,15 +604,6 @@ summary { color: #9ea8b7; font-size: var(--ux-type-label); }
 pre { border: 1px solid #292f39; background: #0c0f14; font-size: 11px; line-height: 1.55; }
 
 .settings-heading { margin-bottom: 22px; }
-.settings-layout { grid-template-columns: 230px minmax(0, 1fr); gap: 24px; }
-.settings-sidebar {
-  top: 94px;
-  gap: 5px;
-  padding: 9px;
-  border-color: rgba(59,68,82,.72);
-  background: color-mix(in srgb, var(--ux-surface-base) 90%, transparent);
-  box-shadow: var(--ux-elevation-panel);
-}
 .settings-tab { min-height: 47px; padding: 10px 11px; border-radius: 9px; font-size: 13px; font-weight: 570; }
 .settings-tab:hover { color: #e7ebf2; background: var(--ux-surface-object); }
 .settings-tab.active { border-color: rgba(115,163,242,.28); color: #dce9ff; background: rgba(92,139,218,.13); }

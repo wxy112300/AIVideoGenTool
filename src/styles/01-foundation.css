@@ -381,8 +381,6 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: var(--ux-type-label)
 .settings-heading .heading-line { display: flex; align-items: center; gap: 10px; }
 .settings-heading > .button-row { flex: 0 0 auto; }
 .settings-heading > .button-row > button { flex: 0 0 auto; white-space: nowrap; }
-.settings-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 18px; align-items: start; }
-.settings-sidebar { position: sticky; top: 82px; display: grid; gap: 7px; padding: 8px; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--panel) 94%, transparent); }
 .settings-tab { width: 100%; min-height: 44px; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid transparent; border-radius: 10px; color: var(--muted); background: transparent; text-align: left; }
 .settings-tab:hover { color: inherit; background: var(--panel-2); }
 .settings-tab.active { border-color: color-mix(in srgb, var(--primary) 24%, var(--border)); color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--panel-2)); }
