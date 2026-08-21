@@ -391,8 +391,6 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: var(--ux-type-label)
 .settings-tab > .settings-tab-meta { display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: 0; color: inherit; }
 .settings-tab .settings-update-dot { display: inline-block; width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 14%, transparent); }
 .settings-content { min-width: 0; }
-.settings-panel { display: grid; gap: 14px; }
-.settings-section { padding: 20px; }
 .settings-section > :last-child { margin-bottom: 0; }
 .settings-section .section-heading .compact-label { min-width: 250px; }
 .compact-label { flex: 0 0 auto; }

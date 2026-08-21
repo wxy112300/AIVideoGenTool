@@ -1,6 +1,6 @@
 # P19 CSS selector owner map
 
-> Status: L61 completed; G17 approved the Create breakpoint and Settings navigation/shell geometry packages. Remaining component families still require targeted review before their CSS moves. This document is an inventory and proposed move order, not a visual-direction approval.
+> Status: L61 completed; G17 approved the Create breakpoint and Settings navigation/shell geometry packages. The Settings section shell package is also complete with current-renderer parity evidence. Remaining Settings content families, History, and Queue still require targeted review before their CSS moves. This document is an inventory and proposed move order, not a visual-direction approval.
 >
 > Base: `75b20b1` (`v0.40.0`), current renderer and `src/style.css` import order. Historical prototypes are excluded.
 
@@ -37,7 +37,9 @@ The target owner is proposed for G17 review. “Keep shared base” means only t
 | `.create-workspace`, `.create-workspace > .media-panel` and Create `1120/760` breakpoints | `01`, `02`, `04`, `05`; `04` currently owns Create breakpoints by accident | `07-create-composer.css` | L63 Create breakpoint family |
 | `.create-page-heading`, `.create-page-actions`, mode rail | `09`, with Image Edit-specific refinements in `10` | `09-create-header.css` plus an explicitly scoped Image Edit owner | L63 boundary review |
 | `.composer-*`, `.h3-*`, `.r2v-*` | `07`, `08`, with a small number of shared field primitives | `07-create-composer.css` / `08-prompt-helper.css` by component | L62 component family |
-| `.settings-layout`, `.settings-sidebar`, `.settings-tab`, `.settings-panel`, `.settings-section` | `01`, `02`, `04`, `05`, `06` | `06-settings-layout.css` | L63 Settings geometry family |
+| `.settings-layout`, `.settings-sidebar` | `06` after the completed navigation/shell geometry moves | `06-settings-layout.css` | L63 Settings geometry family — completed |
+| `.settings-tab` responsive layout | `01` shared tab primitive plus `06` page-owned responsive rules | `06-settings-layout.css` | L63 Settings navigation family — completed |
+| `.settings-panel`, `.settings-section` shell | `06` with the completed shell move; section-heading refinements remain in `01`/`02` | `06-settings-layout.css` | Settings section shell — completed; content subcomponents remain |
 | `.settings-content` component layout, `.model-profile`, `.custom-node-card`, `.issue-card`, app logs and Python runtime layout | `06` and `10` | `06-settings-layout.css`; keep status colors semantic | L62 Settings component family |
 | `.environment-grid`, `.environment-item` legacy catalogue rules | `01`, `02`; new `.environment-evidence-list` is in `06` | `06-settings-layout.css`, then delete only after live DOM/reference check | L64 legacy cleanup |
 | `.history-gallery*`, `.history-heading`, gallery toolbar and album/masonry breakpoints | `01`, `02`, `04`, `05`, `11` | `11-history-curation.css`; shared media primitives remain in `01` | L63 History gallery family |
@@ -66,9 +68,11 @@ The current `!important` inventory is also mixed across `01`, `02`, `05`, and `1
 1. G17 reviews this map and freezes the owner and order for each package; no visual or DOM decision is delegated to a mechanical CSS move.
 2. Completed: move the Create breakpoint family from `01`/`04` to `07`, preserving declarations exactly. The current `v0.40.0` renderer produced 24 before/after Create captures with identical SHA-256 sets.
 3. Completed in two bounded batches: move Settings navigation responsive declarations and the desktop `.settings-layout`/`.settings-sidebar` geometry into `06`; keep shared tab primitives and content components for their own packages.
-4. Move History gallery/toolbar and then History detail families, one family per parity run.
-5. Move Queue composition, retaining shared task primitives in `01`.
-6. Run L64 cleanup only after each family has zero unintended live references, no duplicate owner remains, and the P00 screenshot matrix is unchanged.
+4. Completed: move the `.settings-panel` grid shell and `.settings-section` base padding into `06`; keep section-heading and content-card refinements for their own package. The 20-state current-renderer matrix showed no document/body horizontal overflow; expected compact-tab scrolling remains isolated to the category strip.
+5. Move the remaining Settings content component family (section headings, model profiles, custom-node cards, issue cards) as one bounded package with parity evidence.
+6. Move History gallery/toolbar and then History detail families, one family per parity run.
+7. Move Queue composition, retaining shared task primitives in `01`.
+8. Run L64 cleanup only after each family has zero unintended live references, no duplicate owner remains, and the P00 screenshot matrix is unchanged.
 
 ## Preserve list and gates
 

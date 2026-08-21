@@ -1,6 +1,6 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性、P12 History 键盘语义、P13 图片媒体状态、P14 Lightbox modal/focus 与 P15 视频/图片详情构图已 verified/integrated，P16 Settings current-renderer evidence/proposal 与 G15 结构批准已完成，P17 Settings 分类/保存/扫描动作层级已 verified/integrated，P18 Settings 内容层级、本地化与恢复反馈已 verified/integrated，P19/L61 CSS owner map 已完成，G17 已批准 Create 与 Settings shell 首批 package，L63 Create breakpoint、Settings navigation、Settings shell geometry 已 parity/verify 通过
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性、P12 History 键盘语义、P13 图片媒体状态、P14 Lightbox modal/focus 与 P15 视频/图片详情构图已 verified/integrated，P16 Settings current-renderer evidence/proposal 与 G15 结构批准已完成，P17 Settings 分类/保存/扫描动作层级已 verified/integrated，P18 Settings 内容层级、本地化与恢复反馈已 verified/integrated，P19/L61 CSS owner map 已完成，G17 已批准 Create 与 Settings shell 首批 package，L63 Create breakpoint、Settings navigation、Settings shell geometry、Settings section shell 已 parity/verify 通过
 > 制定日期：2026-08-20  
 > 当前版本：0.40.0
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
@@ -531,7 +531,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：P00 全套 screenshot diff 无感知变化；重复 selector 和裸主题色指标明显下降；`npm.cmd run verify`。
 
-**当前状态（2026-08-21）**：L61 已完成 `docs/UX_UI_P19_CSS_OWNER_MAP.md`，覆盖 shared shell、Create、Settings、History、Queue 的重复 selector 与 responsive ownership。G17 已批准首批 package；Create 1120/760px 响应式声明已从 `01`/`04` 移入 `07-create-composer.css`，Settings navigation responsive 声明已归入 `06-settings-layout.css`，Settings 桌面 `.settings-layout`/`.settings-sidebar` 最终生效值也已归入 `06`，不改变值、DOM 或功能。Create 24 张 before/after 截图 SHA-256 集合一致；Settings 20 状态矩阵 diagnose 无页面横溢出，`npm.cmd run verify` 为 88 files / 654 tests、production build、20 组对比度检查通过。下一步是 Settings content component family，随后再处理 History/Queue。
+**当前状态（2026-08-21）**：L61 已完成 `docs/UX_UI_P19_CSS_OWNER_MAP.md`，覆盖 shared shell、Create、Settings、History、Queue 的重复 selector 与 responsive ownership。G17 已批准首批 package；Create 1120/760px 响应式声明已从 `01`/`04` 移入 `07-create-composer.css`，Settings navigation responsive 声明、桌面 `.settings-layout`/`.settings-sidebar` 最终生效值，以及 `.settings-panel`/`.settings-section` section shell 已归入 `06-settings-layout.css`，不改变值、DOM 或功能。Create 24 张 before/after 截图 SHA-256 集合一致；Settings section shell 20 状态 current-renderer 截图中 document/body 无横溢出，900×800/760×800 的预期 category strip 横向滚动保持不变；`npm.cmd run verify` 为 88 files / 654 tests、production build、20 组对比度检查通过。下一步是 Settings content component family，随后再处理 History/Queue。
 
 ### P20 — 全量验证、契约同步与发布准备
 
