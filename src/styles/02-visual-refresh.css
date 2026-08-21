@@ -609,7 +609,6 @@ pre { border: 1px solid #292f39; background: #0c0f14; font-size: 11px; line-heig
 .settings-tab.active { border-color: rgba(115,163,242,.28); color: #dce9ff; background: rgba(92,139,218,.13); }
 .settings-tab > span { color: #8fb7fb; font-size: 15px; }
 .settings-tab small { background: #0e1218; font-size: 10px; }
-.settings-section .section-heading { padding-bottom: 14px; border-bottom: 1px solid rgba(56,65,78,.46); }
 .switch-field { min-height: 47px; padding: 11px 13px; border-color: #303846; }
 .scan-result, .connection-result { border: 1px solid rgba(55,65,79,.58); background: #10151b; }
 .environment-summary { margin-bottom: 18px; }
