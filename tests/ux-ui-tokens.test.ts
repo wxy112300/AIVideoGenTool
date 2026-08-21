@@ -180,7 +180,7 @@ describe("UX/UI semantic token foundation", () => {
   });
 
   it("keeps Queue, History, and runtime numbers tabular without changing their layout roles", () => {
-    expect(foundationSource).toContain(".queue-rank strong { color: #b9c7d8; font: 700 19px/1 \"Cascadia Mono\", Consolas, monospace; letter-spacing: .02em; font-variant-numeric: tabular-nums; }");
+    expect(finalRefinementsSource).toContain(".queue-rank strong { color: #b9c7d8; font: 700 19px/1 \"Cascadia Mono\", Consolas, monospace; letter-spacing: .02em; font-variant-numeric: tabular-nums; }");
     expect(foundationSource).toContain(".running-progress-value > strong { color: var(--primary); font-size: 20px; font-variant-numeric: tabular-nums; }");
     expect(foundationSource).toContain(".performance-card strong { display: block; margin-top: 4px; font-size: 20px; font-variant-numeric: tabular-nums; }");
     expect(foundationSource).toContain(".history-snapshot-index { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: #bcd5ff; background: rgba(88, 137, 218, .18); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }");

@@ -1,6 +1,6 @@
 # P19 CSS selector owner map
 
-> Status: L61 completed; G17 approved the Create breakpoint and Settings navigation/shell geometry packages. The Settings section shell, heading, and content-card packages plus the History gallery/toolbar and History detail packages are complete with current-renderer evidence. Queue still requires targeted review before its CSS move. This document is an inventory and proposed move order, not a visual-direction approval.
+> Status: L61 completed; G17 approved the Create breakpoint and Settings navigation/shell geometry packages. The Settings section shell, heading, and content-card packages plus the History gallery/toolbar, History detail, and Queue composition packages are complete with current-renderer evidence. P19 now moves to the bounded L64 cleanup review; this document remains an owner inventory and execution record, not a visual-direction approval.
 >
 > Base: `75b20b1` (`v0.40.0`), current renderer and `src/style.css` import order. Historical prototypes are excluded.
 
@@ -24,7 +24,7 @@ P19 keeps that cascade as evidence. A rule may move only after its computed resu
 | `07-create-composer.css` | Create composer and Create page-owned responsive layout | target owner for Create frame breakpoints |
 | `08-prompt-helper.css` | prompt-helper component family | keep component ownership |
 | `09-create-header.css` | Create page heading and mode rail | current canonical owner |
-| `10-final-refinements.css` | current Queue composition and remaining Image Edit refinements | split by page family; do not add another final stylesheet |
+| `10-final-refinements.css` | canonical Queue composition and remaining Image Edit refinements | split by page family; do not add another final stylesheet |
 | `11-history-curation.css` | History gallery, toolbar and curation composition | target owner for History gallery/toolbar family |
 
 ## Selector-family map
@@ -44,7 +44,7 @@ The target owner is proposed for G17 review. “Keep shared base” means only t
 | `.environment-grid`, `.environment-item` legacy catalogue rules | `01`, `02`; new `.environment-evidence-list` is in `06` | `06-settings-layout.css`, then delete only after live DOM/reference check | L64 legacy cleanup |
 | `.history-gallery*`, `.history-heading`, gallery toolbar and album/masonry breakpoints | `11` after the completed move; shared media primitives remain in `01` and detail rules remain in `04` | `11-history-curation.css` | L63 History gallery/toolbar family — completed |
 | `.history-detail-*`, `.image-history-detail-*`, `.history-player`, `.history-summary`, record sections | `04` after the completed detail move; shared media primitives/lightbox remain in `01`, curation/status refinements remain in `11`, and shared title marquee rules remain in `02` | `04-history-stage.css` | L63 History detail family — completed |
-| `.queue-page-heading`, `.queue-heading-line`, `.queue-overview`, runtime badges and Queue performance/task composition | `01`, `05`, `10` | Queue-owned region in `10-final-refinements.css`; shared task/card primitives remain in `01` | L63 Queue family |
+| `.queue-page-heading`, `.queue-heading-line`, `.queue-overview`, runtime badges and Queue performance/task composition | `10` after the Queue move; semantic type/status rules and shared task/card/performance primitives remain in `01` | Queue-owned region in `10-final-refinements.css`; shared task/card/performance primitives remain in `01` | L63 Queue family — completed |
 | `@media (max-width: 1120/900/760px)` blocks | mixed page families, especially `04` | each breakpoint belongs beside the selector family it changes | L63 boundary cleanup |
 
 ## Confirmed hotspots for G17
@@ -57,8 +57,8 @@ settings-sidebar       06
 settings-layout        06
 environment-grid       01 / 02 / 06 (legacy markup must be checked)
 history-gallery        11
-queue-page-heading     01 / 05 / 10
-queue-overview         01 / 05 / 10
+queue-page-heading     10
+queue-overview         01 / 10
 ```
 
 The current `!important` inventory is also mixed across `01`, `02`, `05`, and `10`. It is not a blanket-delete target: reduced-motion rules and any precedence that is still required remain until a selector-specific parity check proves they are obsolete. L64 may remove only entries explicitly listed by G17 and confirmed unused or redundant.
@@ -72,8 +72,8 @@ The current `!important` inventory is also mixed across `01`, `02`, `05`, and `1
 5. Completed: move the Settings content-card family (model profiles, component rows, custom-node cards, issue cards, and their narrow-screen rules) into `06`; the 1440×900/760×800 video, nodes, and prompt canaries plus the Settings matrix had no document/body overflow, and `npm.cmd run verify` passed.
 6. Completed: move History gallery/toolbar composition, heading, and album/masonry breakpoints into `11`; the 8-record mixed-ratio matrix (32 captures across four History fixtures and eight widths) retained the adaptive columns and had no document/body horizontal overflow, and both album interaction smoke checks passed.
 7. Completed: move the History video inspector/stage refinements and image detail stage/version rail/responsive rules from `01`/`02` into `04`; the four-width video/image detail matrix (8 captures) retained its computed layout and expected internal text clipping, and both 900px detail interaction smokes passed.
-8. Move Queue composition, retaining shared task primitives in `01`.
-9. Run L64 cleanup only after each family has zero unintended live references, no duplicate owner remains, and the P00 screenshot matrix is unchanged.
+8. Completed: move Queue page/task/preview composition and Queue-only responsive rules from `01`/`02`/`05` into the Queue-owned region of `10`; retain shared task/card/performance primitives plus semantic type/status rules in `01`. The seven Queue states (`mixed`, `running`, `paused`, `failed`, `recoverable`, `empty`, `multiple-pending`) × eight widths produced 56 current-renderer captures with no document/body horizontal overflow; running smoke at 900px and 760px retained progress/stage/elapsed/preview/telemetry updates and pause/cancel reachability.
+9. Next: run L64 cleanup only after each family has zero unintended live references, no duplicate owner remains, and the P00 screenshot matrix is unchanged.
 
 ## Preserve list and gates
 

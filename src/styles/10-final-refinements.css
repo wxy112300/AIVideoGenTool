@@ -1092,6 +1092,138 @@ body.image-markup-open {
   .asset-library-settings-row { align-items: stretch; flex-direction: column; }
 }
 
+/* Queue composition: keep page, task, preview, and queue-only responsive rules
+   together so the queue package has one canonical CSS owner. */
+.queue-section { display: grid; gap: 12px; margin-bottom: 18px; }
+.queue-page-heading { min-height: 76px; }
+.queue-page-heading-main { min-width: 0; }
+.queue-heading-line { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+.queue-heading-line h1 { margin: 0; }
+.queue-overview { display: flex; align-items: baseline; gap: 12px; margin: 0; flex-wrap: wrap; }
+.queue-overview-item { min-width: 0; display: inline-flex; align-items: baseline; gap: 5px; padding-left: 12px; border-left: 1px solid rgba(138,180,255,.42); }
+.queue-overview-item:first-child { padding-left: 0; border-left: 0; }
+.queue-overview-item small { color: #7f8da0; font-size: 10px; white-space: nowrap; }
+.queue-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.queue-section-heading > div { min-width: 0; }
+.queue-section-heading h2 { margin: 0; }
+.queue-section-heading .muted { font-size: 12px; }
+.queue-section-empty { min-height: 150px; padding: 32px 20px; }
+.queue-attention-section { padding-top: 4px; border-top: 1px solid rgba(92, 70, 76, .55); }
+.queue-retry-status { color: var(--ux-status-warning); }
+.queue-task-heading { min-width: 0; display: grid; grid-template-columns: 46px minmax(0, 1fr); align-items: center; gap: 11px; }
+.queue-rank { position: relative; min-height: 38px; display: grid; align-content: center; gap: 2px; padding-right: 10px; border-right: 1px solid rgba(82,98,120,.62); }
+.queue-rank::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: -18px; width: 2px; border-radius: 2px; background: #556276; opacity: .75; }
+.queue-rank strong { color: #b9c7d8; font: 700 19px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+.queue-rank small { color: #7f8da1; font-size: 9px; letter-spacing: .08em; }
+.queue-rank.running { border-color: rgba(124,184,255,.7); }
+.queue-rank.running::before { background: var(--ux-status-info); box-shadow: 0 0 10px rgba(124,184,255,.55); }
+.queue-rank.running strong, .queue-rank.running small { color: var(--ux-status-info); }
+.queue-rank.failed, .queue-rank.cancelled { border-color: rgba(255,139,114,.58); }
+.queue-rank.failed::before, .queue-rank.cancelled::before { background: var(--ux-status-danger); }
+.queue-rank.failed strong, .queue-rank.failed small, .queue-rank.cancelled strong, .queue-rank.cancelled small { color: var(--ux-status-danger); }
+.queue-rank.attention { border-color: rgba(244, 189, 106, .55); }
+.queue-rank.attention::before { background: var(--ux-status-warning); }
+.queue-rank.attention strong, .queue-rank.attention small { color: var(--ux-status-warning); }
+.queue-task-heading > div:last-child { min-width: 0; }
+.queue-mode { align-self: center; padding: 7px 10px; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); background: #15171a; font-size: 12px; }
+.queue-runtime-status { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.queue-runtime-badge { display: inline-flex; align-items: center; min-height: 28px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: #15171a; font-size: 11px; white-space: nowrap; }
+.queue-runtime-badge[data-lifecycle="running"], .queue-runtime-badge[data-status="connected"] { border-color: rgba(93, 205, 161, .42); color: #9ee5c4; background: rgba(56, 148, 111, .14); }
+.queue-runtime-badge[data-lifecycle="starting"], .queue-runtime-badge[data-lifecycle="pausing"], .queue-runtime-badge[data-lifecycle="cancelling"], .queue-runtime-badge[data-lifecycle="cleaning"], .queue-runtime-badge[data-status="starting"], .queue-runtime-badge[data-status="cleaning"] { border-color: rgba(244, 189, 106, .45); color: #f1cb89; background: rgba(150, 101, 27, .14); }
+.queue-runtime-badge[data-lifecycle="error"], .queue-runtime-badge[data-status="error"] { border-color: rgba(255, 139, 114, .5); color: #ffad9b; background: rgba(155, 54, 44, .15); }
+
+.task-card.task-card-with-preview {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 16px;
+}
+.task-input-preview {
+  position: relative;
+  width: 150px;
+  min-height: 96px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border: 1px solid #303846;
+  border-radius: 11px;
+  background: #0c1016;
+}
+.task-input-preview img,
+.task-input-preview video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.task-input-preview [data-queue-input-empty] {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  gap: 5px;
+  color: #7f8da1;
+  font-size: 11px;
+}
+.task-input-preview [data-queue-input-empty][hidden] { display: none; }
+.task-input-preview [data-queue-input-empty] .ui-icon {
+  width: 22px;
+  height: 22px;
+  color: var(--primary);
+}
+
+@media (max-width: 900px) {
+  .queue-overview { gap: 8px; }
+  .task-card.task-card-with-preview {
+    grid-template-columns: 128px minmax(0, 1fr);
+  }
+
+  .task-card-with-preview .task-input-preview {
+    width: 128px;
+  }
+
+  .task-card-with-preview .task-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .task-card.task-card-with-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .task-card-with-preview .task-input-preview {
+    width: min(260px, 100%);
+    min-height: 140px;
+  }
+
+  .task-card-with-preview .task-actions {
+    grid-column: auto;
+  }
+}
+
+.queue-preview-toggle.ios-switch-field {
+  min-height: 36px;
+  gap: 8px;
+  padding: 6px 9px;
+  border-color: transparent;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+}
+
+.queue-preview-toggle.ios-switch-field:hover {
+  border-color: var(--border);
+  background: #151a22;
+}
+
+.queue-preview-toggle .ios-switch {
+  transform: scale(.82);
+  transform-origin: center;
+}
+
 /* Queue P1: keep the command surface visible without letting telemetry
    overpower the task list. The topbar already owns the first sticky layer. */
 .queue-page-heading {

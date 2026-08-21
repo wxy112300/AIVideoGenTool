@@ -336,37 +336,10 @@ main { padding-top: 0; }
 }
 
 @media (max-width: 900px) {
-  .queue-overview { gap: 8px; }
-  .task-card.task-card-with-preview {
-    grid-template-columns: 128px minmax(0, 1fr);
-  }
-
-  .task-card-with-preview .task-input-preview {
-    width: 128px;
-  }
-
-  .task-card-with-preview .task-actions {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-  }
-
   .page-heading { min-height: 64px; }
 }
 
 @media (max-width: 760px) {
-  .task-card.task-card-with-preview {
-    grid-template-columns: 1fr;
-  }
-
-  .task-card-with-preview .task-input-preview {
-    width: min(260px, 100%);
-    min-height: 140px;
-  }
-
-  .task-card-with-preview .task-actions {
-    grid-column: auto;
-  }
-
   .page-heading {
     align-items: stretch;
     padding-block: 13px;
@@ -682,26 +655,6 @@ main { padding-top: 0; }
 
 .ios-switch-field input:checked + .ios-switch::after {
   transform: translateX(19px);
-}
-
-.queue-preview-toggle.ios-switch-field {
-  min-height: 36px;
-  gap: 8px;
-  padding: 6px 9px;
-  border-color: transparent;
-  color: var(--muted);
-  background: transparent;
-  font-size: 12px;
-}
-
-.queue-preview-toggle.ios-switch-field:hover {
-  border-color: var(--border);
-  background: #151a22;
-}
-
-.queue-preview-toggle .ios-switch {
-  transform: scale(.82);
-  transform-origin: center;
 }
 
 .policy-copy {
