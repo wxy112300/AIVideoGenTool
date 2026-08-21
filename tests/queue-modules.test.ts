@@ -6,6 +6,7 @@ import { QueueWorkerController } from "../electron/queue-worker";
 import { queueTaskInput, renderQueueTaskCard } from "../src/renderer/pages/queue/card";
 import { queueLayoutSignature } from "../src/renderer/pages/queue/helpers";
 import { queueComfyUiStatus, queueOperationStatus } from "../src/renderer/pages/queue/live-status";
+import { revealQueueInputVideo } from "../src/renderer/pages/queue/input-previews";
 import { renderQueuePage } from "../src/renderer/pages/queue/page";
 
 function queuePageOptions() {
@@ -147,6 +148,24 @@ describe("queue renderer task priority", () => {
     expect(markup).toContain('queue.card.seedVrSegment{"current":3,"total":7}');
     expect(markup).toContain('queue.card.seedVrSegmentDetail{"progress":42,"completed":2}');
     expect(markup).toContain('id="seedvr2-segment-progress-bar" style="width:42%"');
+  });
+
+  it("reveals the running SeedVR2 source video and hides its preview placeholder", () => {
+    const setAttribute = vi.fn();
+    const querySelector = vi.fn(() => ({ setAttribute }));
+    const video = {
+      currentTime: 12,
+      closest: vi.fn(() => ({ querySelector }))
+    } as unknown as HTMLVideoElement;
+
+    revealQueueInputVideo(video);
+
+    expect(video.currentTime).toBe(0);
+    expect(video.closest).toHaveBeenCalledWith("[data-queue-input-preview], .live-preview");
+    expect(querySelector).toHaveBeenCalledWith(
+      "[data-queue-input-empty], [data-live-preview-empty]"
+    );
+    expect(setAttribute).toHaveBeenCalledWith("hidden", "");
   });
 });
 

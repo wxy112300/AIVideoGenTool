@@ -219,7 +219,6 @@ function seedVr2AdaptiveMemoryBudgetBytes(
 
 function seedVr2VramFrameLimit(
   targetPixels: number,
-  tileMode: UpscaleQueueTask["tileMode"],
   resources?: NativeSeedVr2ResourceSnapshot
 ): number {
   if (!resources?.vramAvailableBytes || resources.vramAvailableBytes <= 0) {
@@ -227,19 +226,15 @@ function seedVr2VramFrameLimit(
   }
   const availableGib = resources.vramAvailableBytes / 1024 ** 3;
   const megapixels = Math.max(0.1, targetPixels / 1e6);
-  // Mirrors the native core's published auto-chunk activation law. The outer
-  // segment may contain several internal chunks, but bounding that count keeps
-  // decoded frames and post-processing tensors from accumulating indefinitely.
+  // Mirrors the native core's published auto-chunk activation law. This is a
+  // diagnostic for one internal chunk; the native node owns this VRAM limit.
   const reservedGib = 8.5 + 4 * 0.55;
   const latentFrames = Math.max(
     1,
     Math.floor(Math.max(0.55, availableGib - reservedGib) / (0.55 * megapixels))
   );
   const pixelFramesPerInternalChunk = Math.max(1, 4 * (latentFrames - 1) + 1);
-  const internalChunks = tileMode === "safe" ? 8 : tileMode === "fast" ? 16 : 12;
-  return seedVr2CompatibleFrameCount(
-    Math.max(17, pixelFramesPerInternalChunk * internalChunks)
-  );
+  return seedVr2CompatibleFrameCount(pixelFramesPerInternalChunk);
 }
 
 function seedVr2CompatibleFrameCount(value: number): number {
@@ -270,11 +265,10 @@ export function nativeSeedVr2SegmentPlan(
   ));
   const vramFrameLimit = seedVr2VramFrameLimit(
     targetWidth * targetHeight,
-    task.tileMode,
     resources
   );
   const framesPerSegment = seedVr2CompatibleFrameCount(
-    preferredFramesPerSegment ?? Math.min(memoryFrameLimit, vramFrameLimit)
+    preferredFramesPerSegment ?? memoryFrameLimit
   );
   if (totalFrames <= framesPerSegment) return null;
   const segments: NativeSeedVr2Segment[] = [];

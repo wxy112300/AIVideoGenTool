@@ -110,11 +110,10 @@ describe("upscale resource estimates", () => {
 describe("native SeedVR2 long-video segmentation", () => {
   it("bounds a portrait 4K IMAGE batch and keeps segments on frame boundaries", () => {
     const plan = nativeSeedVr2SegmentPlan({
-      ...task("seedvr2-native-int8"),
+      modelId: "seedvr2-native-int8",
       sourceWidth: 768,
       sourceHeight: 1152,
       targetHeight: 2160,
-      targetWidth: 2160,
       duration: 28,
       fps: 24,
       tileMode: "auto"
@@ -146,7 +145,7 @@ describe("native SeedVR2 long-video segmentation", () => {
     expect(safe!.framesPerSegment).toBeLessThan(fast!.framesPerSegment);
   });
 
-  it("combines measured RAM, VRAM, and output pixels when planning segments", () => {
+  it("uses RAM for outer segments and reports the native VRAM chunk estimate", () => {
     const adaptiveTask = {
       ...task("seedvr2-native-int8"),
       sourceWidth: 768,
@@ -176,10 +175,11 @@ describe("native SeedVR2 long-video segmentation", () => {
       vramAvailableBytes: 7 * 1024 ** 3
     });
 
-    expect(roomy?.framesPerSegment).toBe(105);
-    expect(roomy?.segments).toHaveLength(7);
+    expect(roomy?.framesPerSegment).toBe(393);
+    expect(roomy?.segments).toHaveLength(2);
     expect(constrainedRam!.framesPerSegment).toBeLessThan(roomy!.framesPerSegment);
-    expect(constrainedVram!.framesPerSegment).toBeLessThan(roomy!.framesPerSegment);
+    expect(constrainedVram?.framesPerSegment).toBe(roomy?.framesPerSegment);
+    expect(constrainedVram?.vramFrameLimit).toBeLessThan(roomy!.vramFrameLimit);
     expect(roomy).toMatchObject({
       planVersion: 2,
       targetWidth: 2160,
@@ -235,8 +235,8 @@ describe("upscale workflows", () => {
       sourceWidth: 480,
       sourceHeight: 864,
       targetWidth: 720,
-      targetHeight: 720
-    };
+      targetHeight: 720 as const
+    } satisfies UpscaleQueueTask;
     const workflow = renderUpscaleWorkflow(portraitTask, "source.mp4", models);
     expect(workflow["5"]?.inputs).toMatchObject({ width: 720, height: 1296 });
   });
@@ -363,8 +363,8 @@ describe("upscale workflows", () => {
       sourceWidth: 480,
       sourceHeight: 704,
       targetWidth: 2160,
-      targetHeight: 2160
-    };
+      targetHeight: 2160 as const
+    } satisfies UpscaleQueueTask;
     const workflow = renderUpscaleWorkflow(portraitTask, "source.mp4", models);
     expect(workflow["4"]?.inputs.scale).toBe(4);
   });

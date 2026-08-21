@@ -1,6 +1,17 @@
 import type { RendererContext } from "../../contracts";
 import { queueTaskInput } from "./card";
 
+export function revealQueueInputVideo(video: HTMLVideoElement): void {
+  try {
+    video.currentTime = 0;
+  } catch {
+    // Some containers expose the first frame only after metadata settles.
+  }
+  video.closest<HTMLElement>("[data-queue-input-preview], .live-preview")
+    ?.querySelector<HTMLElement>("[data-queue-input-empty], [data-live-preview-empty]")
+    ?.setAttribute("hidden", "");
+}
+
 export async function loadQueueInputPreviews(context: RendererContext): Promise<void> {
   const state = context.getState();
   if (!state) return;
@@ -14,18 +25,8 @@ export async function loadQueueInputPreviews(context: RendererContext): Promise<
       root.querySelectorAll<HTMLVideoElement>(
         `[data-queue-input-video="${task.id}"]`
       ).forEach((video) => {
-        const revealVideo = () => {
-          try {
-            video.currentTime = 0;
-          } catch {
-            // Some containers expose the first frame only after metadata settles.
-          }
-          video.closest<HTMLElement>("[data-queue-input-preview], .live-preview")
-            ?.querySelector<HTMLElement>("[data-queue-input-empty]")
-            ?.setAttribute("hidden", "");
-        };
-        if (video.readyState >= 2) revealVideo();
-        else video.addEventListener("loadeddata", revealVideo, { once: true });
+        if (video.readyState >= 2) revealQueueInputVideo(video);
+        else video.addEventListener("loadeddata", () => revealQueueInputVideo(video), { once: true });
       });
       return;
     }
