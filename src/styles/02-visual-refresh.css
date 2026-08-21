@@ -616,8 +616,6 @@ pre { border: 1px solid #292f39; background: #0c0f14; font-size: 11px; line-heig
 .environment-grid { gap: 12px; }
 .environment-item { padding: 15px; border-color: rgba(58,67,81,.7); background: #10151b; }
 .environment-state { background: #1d2430; }
-.model-profile { padding: 20px; }
-.component-list { gap: 8px; }
 
 .comfy-installation-list {
   display: grid;

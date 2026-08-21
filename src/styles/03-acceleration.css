@@ -128,9 +128,6 @@
   .acceleration-actions { grid-template-columns: 1fr; align-items: stretch; }
   .acceleration-actions button { justify-self: start; }
 }
-.component-row { padding: 10px 11px; background: #10151b; }
-.custom-node-card { padding: 19px 20px; }
-.issue-card { padding: 16px; background: #10151b; }
 .detected-path { padding: 16px; background: rgba(78,126,204,.08); }
 .flash {
   z-index: 220;

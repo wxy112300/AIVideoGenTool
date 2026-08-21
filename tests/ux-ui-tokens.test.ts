@@ -9,6 +9,7 @@ const visualRefreshSource = readFileSync(new URL("../src/styles/02-visual-refres
 const accelerationSource = readFileSync(new URL("../src/styles/03-acceleration.css", import.meta.url), "utf8");
 const historyStageSource = readFileSync(new URL("../src/styles/04-history-stage.css", import.meta.url), "utf8");
 const densitySource = readFileSync(new URL("../src/styles/05-density-refinement.css", import.meta.url), "utf8");
+const settingsLayoutSource = readFileSync(new URL("../src/styles/06-settings-layout.css", import.meta.url), "utf8");
 const createHeaderSource = readFileSync(new URL("../src/styles/09-create-header.css", import.meta.url), "utf8");
 const historyCurationSource = readFileSync(new URL("../src/styles/11-history-curation.css", import.meta.url), "utf8");
 const finalRefinementsSource = readFileSync(new URL("../src/styles/10-final-refinements.css", import.meta.url), "utf8");
@@ -115,8 +116,8 @@ describe("UX/UI semantic token foundation", () => {
     expect(visualRefreshSource).toContain("background: var(--ux-status-danger-surface)");
     expect(visualRefreshSource).toContain("background: var(--ux-status-info-surface-soft)");
     expect(foundationSource).toContain(".warning-badge { color: var(--ux-status-warning)");
-    expect(foundationSource).toContain(".model-availability.available { color: var(--ux-status-success)");
-    expect(foundationSource).toContain(".model-availability.missing { color: var(--ux-status-danger)");
+    expect(settingsLayoutSource).toContain(".model-availability.available { color: var(--ux-status-success)");
+    expect(settingsLayoutSource).toContain(".model-availability.missing { color: var(--ux-status-danger)");
     expect(accelerationSource).toContain(".flash-info { border-color: var(--ux-status-info-notice-border)");
     expect(accelerationSource).toContain(".flash-warning { border-color: var(--ux-status-warning-notice-border)");
     expect(accelerationSource).toContain(".flash-error { border-color: var(--ux-status-danger-notice-border)");

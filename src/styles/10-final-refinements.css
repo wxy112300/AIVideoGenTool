@@ -26,18 +26,10 @@ body {
 .settings-content .comfy-compatibility.missing,
 .settings-content .acceleration-strategy-panel.missing,
 .settings-content .acceleration-components-panel.missing { border-color: color-mix(in srgb, var(--danger) 24%, var(--border)); }
-.settings-content .model-profile-list { grid-template-columns: 1fr; gap: 12px; }
-.settings-content .model-profile,
-.settings-content .custom-node-card,
-.settings-content .issue-card { height: 100%; padding: 15px; box-shadow: none; }
-.settings-content .component-row { padding: 8px 9px; }
-.settings-content .model-profile-head p,
-.settings-content .custom-node-copy p { font-size: 11px; line-height: 1.5; }
 .settings-content .primary:not(.destructive) { border-color: #353e4c; color: #e3e8ef; background: #202631; box-shadow: none; }
 .settings-content .primary:not(.destructive):hover { border-color: #526073; background: #272e3a; }
 
 @media (max-width: 1120px) {
-  .settings-content .model-profile-list { grid-template-columns: 1fr; }
   .composer-heading { grid-template-columns: 1fr; align-items: start; }
   .prompt-action-controls { margin-top: 0; }
 }
