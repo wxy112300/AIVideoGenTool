@@ -186,7 +186,7 @@ describe("UX/UI semantic token foundation", () => {
     expect(foundationSource).toContain(".history-snapshot-index { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: #bcd5ff; background: rgba(88, 137, 218, .18); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }");
     expect(visualRefreshSource).toContain(".performance-card strong { margin-top: 5px; font-size: 23px; font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }");
     expect(visualRefreshSource).toContain(".running-progress-value > strong { font-size: 22px; font-weight: 640; font-variant-numeric: tabular-nums; }");
-    expect(visualRefreshSource).toContain(".history-detail-position { padding: 5px 9px; border: 1px solid rgba(112,159,237,.25); border-radius: 8px; color: #a9c9ff; background: rgba(105,157,243,.08); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }");
+    expect(historyStageSource).toContain(".history-detail-position { padding: 5px 9px; border: 1px solid rgba(112,159,237,.25); border-radius: 8px; color: #a9c9ff; background: rgba(105,157,243,.08); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }");
     expect(finalRefinementsSource).toContain(".queue-overview-item strong {\n  font-size: 15px;\n  line-height: 1;\n  font-variant-numeric: tabular-nums;\n}");
     expect(finalRefinementsSource).toContain(".queue-run-metric strong,");
     expect(finalRefinementsSource).toContain("font-variant-numeric: tabular-nums;");
@@ -238,7 +238,7 @@ describe("UX/UI semantic token foundation", () => {
 
   it("routes History and Settings headings through the shared sticky offset", () => {
     expect(historyCurationSource).toContain("  top: var(--ux-page-sticky-offset);");
-    expect(visualRefreshSource).toContain("  top: var(--ux-page-sticky-offset);");
+    expect(historyStageSource).toContain("  top: var(--ux-page-sticky-offset);");
     expect(historyCurationSource).toMatch(/\.history-heading\s*\{\s*top: 0;/);
     expect(densitySource).toMatch(/\.settings-heading\s*\{\s*top: 0;/);
   });

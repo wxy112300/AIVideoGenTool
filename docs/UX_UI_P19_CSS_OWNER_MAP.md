@@ -1,6 +1,6 @@
 # P19 CSS selector owner map
 
-> Status: L61 completed; G17 approved the Create breakpoint and Settings navigation/shell geometry packages. The Settings section shell, heading, and content-card packages plus the History gallery/toolbar package are complete with current-renderer evidence. History detail and Queue still require targeted review before their CSS moves. This document is an inventory and proposed move order, not a visual-direction approval.
+> Status: L61 completed; G17 approved the Create breakpoint and Settings navigation/shell geometry packages. The Settings section shell, heading, and content-card packages plus the History gallery/toolbar and History detail packages are complete with current-renderer evidence. Queue still requires targeted review before its CSS move. This document is an inventory and proposed move order, not a visual-direction approval.
 >
 > Base: `75b20b1` (`v0.40.0`), current renderer and `src/style.css` import order. Historical prototypes are excluded.
 
@@ -43,7 +43,7 @@ The target owner is proposed for G17 review. “Keep shared base” means only t
 | `.settings-content` component layout, `.model-profile`, `.custom-node-card`, `.issue-card`, app logs and Python runtime layout | `06` after the content-card move; Settings card overrides removed from `10` | `06-settings-layout.css`; keep status colors semantic | L62 Settings content component family — card package completed |
 | `.environment-grid`, `.environment-item` legacy catalogue rules | `01`, `02`; new `.environment-evidence-list` is in `06` | `06-settings-layout.css`, then delete only after live DOM/reference check | L64 legacy cleanup |
 | `.history-gallery*`, `.history-heading`, gallery toolbar and album/masonry breakpoints | `11` after the completed move; shared media primitives remain in `01` and detail rules remain in `04` | `11-history-curation.css` | L63 History gallery/toolbar family — completed |
-| `.history-detail-*`, `.image-history-detail-*`, `.history-player`, `.history-summary`, record sections | `04` plus later P15 blocks in `10` | `04-history-stage.css` | L63 History detail family |
+| `.history-detail-*`, `.image-history-detail-*`, `.history-player`, `.history-summary`, record sections | `04` after the completed detail move; shared media primitives/lightbox remain in `01`, curation/status refinements remain in `11`, and shared title marquee rules remain in `02` | `04-history-stage.css` | L63 History detail family — completed |
 | `.queue-page-heading`, `.queue-heading-line`, `.queue-overview`, runtime badges and Queue performance/task composition | `01`, `05`, `10` | Queue-owned region in `10-final-refinements.css`; shared task/card primitives remain in `01` | L63 Queue family |
 | `@media (max-width: 1120/900/760px)` blocks | mixed page families, especially `04` | each breakpoint belongs beside the selector family it changes | L63 boundary cleanup |
 
@@ -70,9 +70,10 @@ The current `!important` inventory is also mixed across `01`, `02`, `05`, and `1
 3. Completed in two bounded batches: move Settings navigation responsive declarations and the desktop `.settings-layout`/`.settings-sidebar` geometry into `06`; keep shared tab primitives and content components for their own packages.
 4. Completed: move the `.settings-panel` grid shell, `.settings-section` base padding, and section-heading refinements into `06`. The 20-state current-renderer matrix showed no document/body horizontal overflow; expected compact-tab scrolling remains isolated to the category strip.
 5. Completed: move the Settings content-card family (model profiles, component rows, custom-node cards, issue cards, and their narrow-screen rules) into `06`; the 1440×900/760×800 video, nodes, and prompt canaries plus the Settings matrix had no document/body overflow, and `npm.cmd run verify` passed.
-6. Completed: move History gallery/toolbar composition, heading, and album/masonry breakpoints into `11`; the 8-record mixed-ratio matrix (32 captures across four History fixtures and eight widths) retained the adaptive columns and had no document/body horizontal overflow, and both album interaction smoke checks passed. Move the History detail family next.
-7. Move Queue composition, retaining shared task primitives in `01`.
-8. Run L64 cleanup only after each family has zero unintended live references, no duplicate owner remains, and the P00 screenshot matrix is unchanged.
+6. Completed: move History gallery/toolbar composition, heading, and album/masonry breakpoints into `11`; the 8-record mixed-ratio matrix (32 captures across four History fixtures and eight widths) retained the adaptive columns and had no document/body horizontal overflow, and both album interaction smoke checks passed.
+7. Completed: move the History video inspector/stage refinements and image detail stage/version rail/responsive rules from `01`/`02` into `04`; the four-width video/image detail matrix (8 captures) retained its computed layout and expected internal text clipping, and both 900px detail interaction smokes passed.
+8. Move Queue composition, retaining shared task primitives in `01`.
+9. Run L64 cleanup only after each family has zero unintended live references, no duplicate owner remains, and the P00 screenshot matrix is unchanged.
 
 ## Preserve list and gates
 

@@ -543,47 +543,6 @@ select { padding-inline: 12px; }
 }
 .model-badge { border-color: var(--ux-status-info-border); color: var(--ux-status-info-text); background: var(--ux-status-info-surface-soft); font-weight: 620; }
 
-.history-detail-back {
-  position: sticky;
-  z-index: 8;
-  top: var(--ux-page-sticky-offset);
-  min-height: 58px;
-  margin: 0 -12px 18px;
-  padding: 8px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ux-separator-strong) 65%, transparent);
-  background: rgba(11,13,18,.9);
-  backdrop-filter: blur(18px);
-}
-.history-detail-back .ghost { padding-left: 9px; }
-.history-detail-back-button { min-height: 40px; padding: 8px 13px; border-color: rgba(112,159,237,.38); color: #dce9ff; background: rgba(92,139,218,.14); box-shadow: 0 5px 16px rgba(33,85,154,.14); }
-.history-back-top { position: fixed; z-index: 20; right: 24px; bottom: 24px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(112,159,237,.42); border-radius: 50%; color: #dce9ff; background: rgba(23,35,53,.92); box-shadow: 0 12px 28px rgba(0,0,0,.32); opacity: 0; transform: translateY(10px); pointer-events: none; transition: opacity .18s ease, transform .18s ease, background .18s ease; }
-.history-back-top.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
-.history-back-top:hover { background: rgba(49,82,125,.96); }
-.history-back-top .ui-icon { width: 18px; height: 18px; }
-.history-detail-back-button:hover { border-color: rgba(139,181,255,.58); color: #f0f6ff; background: rgba(92,139,218,.23); }
-.history-detail-tools { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 14px; flex-wrap: wrap; }
-.history-detail-position { padding: 5px 9px; border: 1px solid rgba(112,159,237,.25); border-radius: 8px; color: #a9c9ff; background: rgba(105,157,243,.08); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.history-detail-navigation { display: grid; grid-template-columns: repeat(2, minmax(86px, 1fr)); gap: 6px; }
-.history-detail-nav-button { min-height: 52px; display: grid; justify-items: center; align-content: center; gap: 5px; padding: 6px 8px; white-space: nowrap; }
-.history-detail-nav-label { display: inline-flex; align-items: center; gap: 5px; line-height: 1; }
-.history-detail-nav-label .ui-icon { width: 15px; height: 15px; }
-.history-detail-nav-shortcut { color: #8391a3; font-size: 9px; line-height: 1; }
-.history-detail-nav-shortcut kbd { padding: 2px 4px; border: 1px solid rgba(96,110,130,.62); border-bottom-width: 2px; border-radius: 4px; color: #b9c7d9; background: #151b24; font: 9px/1.1 "Cascadia Mono", Consolas, monospace; }
-.history-detail-hero { grid-template-columns: minmax(0, 1.58fr) minmax(310px, .72fr); gap: 20px; }
-.history-player-column { gap: 12px; }
-.history-player { border-radius: 16px; box-shadow: var(--ux-elevation-panel); }
-.version-toolbar { min-height: 52px; padding: 12px 14px; }
-.history-summary { gap: 17px; padding: 21px; }
-.history-title-line h1 { width: 0; min-width: 0; font-size: 23px; }
-.history-summary-badges { padding: 10px 0 2px; }
-.history-summary-row { padding-top: 12px; }
-.history-summary-actions { gap: 9px; }
-.history-upscale { gap: 8px; padding-top: 16px; }
-.history-record-grid { gap: 16px; margin-top: 20px; }
-.history-record { gap: 14px; padding: 21px; }
-.history-record dl { gap: 10px 16px; line-height: 1.55; }
-.history-record dt { color: #8993a2; }
-.history-record dd { color: #d6dce5; }
 .history-prompt { color: #d8dee7; font-size: 13px; line-height: 1.75; }
 .output-file { padding: 13px 14px; border-color: rgba(58,68,82,.7); background: #10141a; }
 details { border-top: 1px solid rgba(56,65,78,.45); padding-top: 15px; }
