@@ -1,7 +1,7 @@
 # UX/UI P00 历史 prototype 参考基线
 
 > 状态：`historical / superseded`。这份文档只记录旧 prototype 的可复现参考，不是当前产品 UI 的视觉或交互依据。
-> 当前真实 renderer 基线见 [`UX_UI_RENDERER_BASELINE.md`](./UX_UI_RENDERER_BASELINE.md) 和 [`ux-ui-renderer-baseline.manifest.json`](./ux-ui-renderer-baseline.manifest.json)。
+> 当前真实 renderer 基线见 [`UX_UI_RENDERER_BASELINE.md`](../../UX_UI_RENDERER_BASELINE.md) 和 [`ux-ui-renderer-baseline.manifest.json`](../../ux-ui-renderer-baseline.manifest.json)。
 
 ## 基线元数据
 
@@ -13,7 +13,7 @@
 | 基线语言 | `zh-CN` |
 | 开始前工作树 | clean；未发现用户未提交改动 |
 | 机器可读 manifest | [`ux-ui-baseline.manifest.json`](./ux-ui-baseline.manifest.json)（历史 prototype） |
-| 当前 renderer manifest | [`ux-ui-renderer-baseline.manifest.json`](./ux-ui-renderer-baseline.manifest.json) |
+| 当前 renderer manifest | [`ux-ui-renderer-baseline.manifest.json`](../../ux-ui-renderer-baseline.manifest.json) |
 | 截图输出 | `temp/ux-ui-baseline/`（被 `.gitignore` 忽略；旧 prototype 与当前 renderer 分目录） |
 
 计划文档记录的 `0.29.5` 已落后于当前仓库版本；本基线不回写版本号，也不把版本差异当作 UI 行为结论。
@@ -33,7 +33,7 @@ npx.cmd electron scripts/capture-ux-ui-baseline.cjs --dry-run
 
 截图脚本只读取 `prototypes/preview/`，通过页面已有的 demo 控件切换状态。`queue-empty` 是脚本注入的最小合成 fixture，因为旧 prototype 没有静态空队列页面；它被 manifest 标为 `unverified`，不能当作 renderer 已实现的证据。
 
-当前 renderer 的截图使用独立脚本和独立输出目录，详见 [`UX_UI_RENDERER_BASELINE.md`](./UX_UI_RENDERER_BASELINE.md)。
+当前 renderer 的截图使用独立脚本和独立输出目录，详见 [`UX_UI_RENDERER_BASELINE.md`](../../UX_UI_RENDERER_BASELINE.md)。
 
 ## 视口矩阵
 

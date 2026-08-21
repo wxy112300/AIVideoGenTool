@@ -15,7 +15,7 @@
 
 ## 当前 renderer evidence
 
-依据 [`UX_UI_RENDERER_BASELINE.md`](./UX_UI_RENDERER_BASELINE.md) 的 136 张真实 renderer 截图，后续 canary 固定为：
+依据 [`UX_UI_RENDERER_BASELINE.md`](../../UX_UI_RENDERER_BASELINE.md) 的 136 张真实 renderer 截图，后续 canary 固定为：
 
 - Create：图生视频、视频续写、图片编辑；
 - Queue：waiting + failed，另加 live running runtime smoke；

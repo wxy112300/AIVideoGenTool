@@ -4,11 +4,11 @@
 > 制定日期：2026-08-20  
 > 当前版本：0.41.3
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
-> 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
+> 依据：`../../UX_CONTRACT.md`、`./APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
 > **2026-08-20 source correction**：用户已明确 prototype 使用的是旧设计。后续所有视觉判断、proposal、截图验收和生产实现都必须以当前 `src/renderer/`、`src/styles/`、真实 Electron/Vite renderer fixture 为准；旧 prototype 不再是 source of truth，也不再提供 visual approval evidence。
 
-> 使用 Luna 等较弱模型执行时，不要直接派发整个 Phase；使用 `docs/UX_UI_LUNA_EXECUTION_GUIDE.md` 中的 `Lxx` 原子 package，并由 `Gxx` 强 reviewer gate 验收。
+> 使用 Luna 等较弱模型执行时，不要直接派发整个 Phase；使用 `./UX_UI_LUNA_EXECUTION_GUIDE.md` 中的 `Lxx` 原子 package，并由 `Gxx` 强 reviewer gate 验收。
 
 ## 1. 目标
 
@@ -22,7 +22,7 @@
 - 工程上把当前多层 CSS 补丁收敛为有所有权的 token、component 和 page composition；
 - 每个 phase 都独立完成 renderer evidence、实现、自动检查、运行态 smoke 和交接；prototype 只有在明确同步后才可作为辅助草图，不能替代 renderer 验收。
 
-本文件回答“由谁、按什么顺序、改哪些文件、保留什么、怎样验收”。问题依据和审美论证见 `docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`。
+本文件回答“由谁、按什么顺序、改哪些文件、保留什么、怎样验收”。问题依据和审美论证见 `./APPLE_HIG_UX_IMPROVEMENT_PLAN.md`。
 
 ## 2. 不可破坏的功能边界
 
@@ -82,7 +82,7 @@ Phase 是集成与验收单位。实现任务若交给较弱模型，必须继�
 
 ### 4.3 每个 phase 的标准开始检查
 
-1. 阅读 `AGENTS.md`、`docs/UX_CONTRACT.md` 和本 phase；
+1. 阅读 `AGENTS.md`、`../../UX_CONTRACT.md` 和本 phase；
 2. 阅读本 phase 列出的 renderer、CSS、fixture 和 tests；prototype 仅在明确需要历史对照时阅读；
 3. 记录 `git status --short` 与 base commit；
 4. 写出 phase-specific preserve list；
@@ -154,7 +154,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 | Phase | 默认拥有文件 | 默认不可触碰 |
 | --- | --- | --- |
 | P00 | `docs/`、专用截图/fixture scripts | renderer UI、Electron、workflow |
-| P01 | `docs/UX_UI_RENDERER_BASELINE.md`、renderer capture fixture/evidence | `prototypes/*`、production `src/` |
+| P01 | `../../UX_UI_RENDERER_BASELINE.md`、renderer capture fixture/evidence | `prototypes/*`、production `src/` |
 | P02 | `src/style.css`、canonical token source、token test | page controllers、DOM |
 | P03 | token source、shared button/input/nav/status visual rules | controller、IPC、page order |
 | P04 | type/space/radius rules及对应 token tests | grid/breakpoint、renderer logic |
@@ -193,7 +193,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：`npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --dry-run`；renderer baseline 可重新生成；manifest 明确静态 capture、运行态 smoke 和未验证边界。历史 prototype 不进入此 gate。
 
-**当前状态（2026-08-20）**：旧 prototype 参考基线已降级；当前 renderer rebase 为 `verified`。已生成 `docs/UX_UI_RENDERER_BASELINE.md`、`docs/ux-ui-renderer-baseline.manifest.json`，并用真实 Vite renderer + 隔离 mock preload 捕获 136 张标准/断点截图；`queue-mixed` 明确标记为合成 waiting + failed fixture，未作为 live running 证据。用户指令已确认当前 renderer 是 P01 的视觉来源，proposal 记录于 `docs/UX_UI_P01_RENDERER_PROPOSAL.md`，因此进入 P02 零视觉变化 token 骨架。
+**当前状态（2026-08-20）**：旧 prototype 参考基线已降级；当前 renderer rebase 为 `verified`。已生成 `../../UX_UI_RENDERER_BASELINE.md`、`../../ux-ui-renderer-baseline.manifest.json`，并用真实 Vite renderer + 隔离 mock preload 捕获 136 张标准/断点截图；`queue-mixed` 明确标记为合成 waiting + failed fixture，未作为 live running 证据。用户指令已确认当前 renderer 是 P01 的视觉来源，proposal 记录于 `./UX_UI_P01_RENDERER_PROPOSAL.md`，因此进入 P02 零视觉变化 token 骨架。
 
 **回退**：仅删除本 phase 新增的基线资产；不涉及产品代码。
 
@@ -217,7 +217,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **回退**：删除本 phase 的 proposal/evidence，不触碰生产 renderer；旧 prototype 保持历史参考状态。
 
-**当前状态（2026-08-20）**：旧 `Cinematic Graphite` prototype 候选已 `superseded`；用户已确认当前 renderer 为视觉来源，P01 source direction 已批准。`docs/UX_UI_P01_RENDERER_PROPOSAL.md` 冻结 preserve list 和 P02 输入；不得将旧 graphite token、截图或 URL 作为 P02 输入。
+**当前状态（2026-08-20）**：旧 `Cinematic Graphite` prototype 候选已 `superseded`；用户已确认当前 renderer 为视觉来源，P01 source direction 已批准。`./UX_UI_P01_RENDERER_PROPOSAL.md` 冻结 preserve list 和 P02 输入；不得将旧 graphite token、截图或 URL 作为 P02 输入。
 
 ### P02 — 语义 token 骨架，零视觉变化
 
@@ -329,7 +329,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：900×800 首屏同时看见当前素材状态、Prompt 起始区和提交上下文；Tab 顺序与视觉顺序一致；人工批准。
 
-**当前状态（2026-08-20）**：`docs/UX_UI_P07_RENDERER_PROPOSAL.md` 的 G08 已批准：基于当前 renderer 三种 Create fixture 的 24 张截图（1440×900、1280×800、1121×800、1120×800、901×800、900×800、761×800、760×800），确认 901–1120/900 紧凑双列、1280+ 双主区、760 以下单列 fallback 与 submit safe-area 方向；没有使用旧 prototype 作为证据。capture harness 已改为隐藏窗口的稳定定时 settle，避免仅由 `requestAnimationFrame` 造成的 DOM wait race；P07 进入 `approved`，P08 可执行。
+**当前状态（2026-08-20）**：`./UX_UI_P07_RENDERER_PROPOSAL.md` 的 G08 已批准：基于当前 renderer 三种 Create fixture 的 24 张截图（1440×900、1280×800、1121×800、1120×800、901×800、900×800、761×800、760×800），确认 901–1120/900 紧凑双列、1280+ 双主区、760 以下单列 fallback 与 submit safe-area 方向；没有使用旧 prototype 作为证据。capture harness 已改为隐藏窗口的稳定定时 settle，避免仅由 `requestAnimationFrame` 造成的 DOM wait race；P07 进入 `approved`，P08 可执行。
 
 ### P08 — Create renderer 渐进实现
 
@@ -363,7 +363,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：running、paused、failed、recoverable、empty、multiple pending 六种状态批准。
 
-**当前状态（2026-08-21）**：G10 已批准 `docs/UX_UI_P09_RENDERER_PROPOSAL.md` 的任务优先构图。capture harness 已支持 running、paused、failed、recoverable、empty、multiple-pending 六种 Queue state；8 个唯一视口的 current-renderer diagnose 均无文档横溢出，900×800 隔离 running smoke 已验证 progress/stage/elapsed/preview/telemetry patch 与 pause/cancel 入口。P10 已实现：四张 CPU/RAM/GPU/VRAM 性能卡统一位于 Queue 顶部，active task 位于执行区第一主体，running card 以状态/控制优先的 DOM 顺序覆盖 900/760px；本次顶部位置修正不改队列顺序、状态机、IPC、任务快照或实时 patch 目标。P10 focused Queue tests 与 `npm.cmd run verify` 通过（82 files / 632 tests、production build、20 组对比度检查）。G11 已通过 executor/control 隔离 gate，覆盖成功 History 收敛、claim 前取消竞态、readiness abort 不提交、active worker abort/cleanup 生命周期和暂停期间不重叠恢复五条边界；用户随后已在真实 ComfyUI 环境完成实际运行复核，未发现明显问题，G11 的 runtime blocker 已解除。具体运行环境与 GPU 结果仍以用户本机实测为准。
+**当前状态（2026-08-21）**：G10 已批准 `./UX_UI_P09_RENDERER_PROPOSAL.md` 的任务优先构图。capture harness 已支持 running、paused、failed、recoverable、empty、multiple-pending 六种 Queue state；8 个唯一视口的 current-renderer diagnose 均无文档横溢出，900×800 隔离 running smoke 已验证 progress/stage/elapsed/preview/telemetry patch 与 pause/cancel 入口。P10 已实现：四张 CPU/RAM/GPU/VRAM 性能卡统一位于 Queue 顶部，active task 位于执行区第一主体，running card 以状态/控制优先的 DOM 顺序覆盖 900/760px；本次顶部位置修正不改队列顺序、状态机、IPC、任务快照或实时 patch 目标。P10 focused Queue tests 与 `npm.cmd run verify` 通过（82 files / 632 tests、production build、20 组对比度检查）。G11 已通过 executor/control 隔离 gate，覆盖成功 History 收敛、claim 前取消竞态、readiness abort 不提交、active worker abort/cleanup 生命周期和暂停期间不重叠恢复五条边界；用户随后已在真实 ComfyUI 环境完成实际运行复核，未发现明显问题，G11 的 runtime blocker 已解除。具体运行环境与 GPU 结果仍以用户本机实测为准。
 
 ### P10 — Queue renderer 任务优先实现与顶部性能总览
 
@@ -475,7 +475,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：current renderer capture/review；800/900/1280/1440；offline、scanning、installing、partial、error 五类状态。
 
-**当前状态（2026-08-21）**：P16 的 G14 clean-base 前置已满足，G15 已依据当前 renderer proposal/evidence 批准并进入实现。L50/L51 已完成：当前 9 分类、语言区、安装能力和 preserve list 已记录于 `docs/UX_UI_P16_RENDERER_PROPOSAL.md`；capture harness 新增独立 `--settings-states` 矩阵，offline、scanning、installing、partial、confirmed error 五种状态在 `1440×900`、`1280×800`、`900×800`、`760×800` 共 20 张 current-renderer 截图通过，20/20 diagnose 无页面横溢出。installing 通过真实 `CustomNodeInstallQueue` controller 进入 processing；error fixture 明确为 confirmed environment/compatibility error 与 repair/update recovery，不宣称真实 ComfyUI 失败。P16 已 `verified/integrated`，下一 phase 为 P17。
+**当前状态（2026-08-21）**：P16 的 G14 clean-base 前置已满足，G15 已依据当前 renderer proposal/evidence 批准并进入实现。L50/L51 已完成：当前 9 分类、语言区、安装能力和 preserve list 已记录于 `./UX_UI_P16_RENDERER_PROPOSAL.md`；capture harness 新增独立 `--settings-states` 矩阵，offline、scanning、installing、partial、confirmed error 五种状态在 `1440×900`、`1280×800`、`900×800`、`760×800` 共 20 张 current-renderer 截图通过，20/20 diagnose 无页面横溢出。installing 通过真实 `CustomNodeInstallQueue` controller 进入 processing；error fixture 明确为 confirmed environment/compatibility error 与 repair/update recovery，不宣称真实 ComfyUI 失败。P16 已 `verified/integrated`，下一 phase 为 P17。
 
 ### P17 — Settings 分类、保存与扫描动作层级
 
@@ -531,7 +531,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：P00 全套 screenshot diff 无感知变化；重复 selector 和裸主题色指标明显下降；`npm.cmd run verify`。
 
-**当前状态（2026-08-21）**：L61 已完成 `docs/UX_UI_P19_CSS_OWNER_MAP.md`，覆盖 shared shell、Create、Settings、History、Queue 的重复 selector 与 responsive ownership。G17 已批准首批 package；Create 1120/760px 响应式声明已从 `01`/`04` 移入 `07-create-composer.css`，Settings navigation responsive 声明、桌面 `.settings-layout`/`.settings-sidebar` 最终生效值、`.settings-panel`/`.settings-section` section shell 与 heading refinements，以及模型/组件/节点/问题 content cards 已归入 `06-settings-layout.css`；History heading、toolbar、gallery、album/masonry breakpoint 规则已归入 `11-history-curation.css`，History video inspector/stage refinements 与 image detail stage/version rail/responsive rules 已从 `01`/`02` 收回 `04-history-stage.css`；本轮将 Queue 页面、任务卡、输入预览和 Queue-only responsive rules 从 `01`/`02`/`05` 收回 `10-final-refinements.css`，共享 task/card/performance primitives 和语义 type/status rules保持在基础层，值、DOM、功能和媒体路径未变。Create 24 张 before/after 截图 SHA-256 集合一致；History 使用 8 条混合比例记录覆盖 video/image × masonry/album，在 1440/1280/1121/1120/901/900/761/760 宽度共 32 张 current-renderer capture，列数自适应与相册较小 tile 保持，document/body 无横溢出；History detail 在 1440/1280/900/760 四个宽度共 8 张 current-renderer capture，视频/图片构图、图片版本 rail 和详情响应式保持，预期的内部长文本截断保留；Queue `mixed`/`running`/`paused`/`failed`/`recoverable`/`empty`/`multiple-pending` 七状态 × 八宽度共 56 张 current-renderer capture 无 document/body 横溢出，900×800 与 760×800 running smoke 保持 progress/stage/elapsed/preview/telemetry 更新及 pause/cancel 可达；L64 删除 `11-history-curation.css` 中一个已确认重复的 album media override，其余 `!important` 经过 owner 复核后保留；四个 History fixture × 八宽度 capture、album interaction smoke 与 `npm.cmd run verify`（88 files / 654 tests、production build、20 组对比度检查）通过。P19 package/cleanup 已完成，下一步进入 P20/L65–L66 自动化 QA 与 screenshot manifest。
+**当前状态（2026-08-21）**：L61 已完成 `./UX_UI_P19_CSS_OWNER_MAP.md`，覆盖 shared shell、Create、Settings、History、Queue 的重复 selector 与 responsive ownership。G17 已批准首批 package；Create 1120/760px 响应式声明已从 `01`/`04` 移入 `07-create-composer.css`，Settings navigation responsive 声明、桌面 `.settings-layout`/`.settings-sidebar` 最终生效值、`.settings-panel`/`.settings-section` section shell 与 heading refinements，以及模型/组件/节点/问题 content cards 已归入 `06-settings-layout.css`；History heading、toolbar、gallery、album/masonry breakpoint 规则已归入 `11-history-curation.css`，History video inspector/stage refinements 与 image detail stage/version rail/responsive rules 已从 `01`/`02` 收回 `04-history-stage.css`；本轮将 Queue 页面、任务卡、输入预览和 Queue-only responsive rules 从 `01`/`02`/`05` 收回 `10-final-refinements.css`，共享 task/card/performance primitives 和语义 type/status rules保持在基础层，值、DOM、功能和媒体路径未变。Create 24 张 before/after 截图 SHA-256 集合一致；History 使用 8 条混合比例记录覆盖 video/image × masonry/album，在 1440/1280/1121/1120/901/900/761/760 宽度共 32 张 current-renderer capture，列数自适应与相册较小 tile 保持，document/body 无横溢出；History detail 在 1440/1280/900/760 四个宽度共 8 张 current-renderer capture，视频/图片构图、图片版本 rail 和详情响应式保持，预期的内部长文本截断保留；Queue `mixed`/`running`/`paused`/`failed`/`recoverable`/`empty`/`multiple-pending` 七状态 × 八宽度共 56 张 current-renderer capture 无 document/body 横溢出，900×800 与 760×800 running smoke 保持 progress/stage/elapsed/preview/telemetry 更新及 pause/cancel 可达；L64 删除 `11-history-curation.css` 中一个已确认重复的 album media override，其余 `!important` 经过 owner 复核后保留；四个 History fixture × 八宽度 capture、album interaction smoke 与 `npm.cmd run verify`（88 files / 654 tests、production build、20 组对比度检查）通过。P19 package/cleanup 已完成，下一步进入 P20/L65–L66 自动化 QA 与 screenshot manifest。
 
 ### P20 — 全量验证、契约同步与发布准备
 
@@ -566,7 +566,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **完成定义**：所有 phase 均为 `integrated`；没有未归属的视觉覆盖；没有用“稍后统一修”掩盖的阻塞问题；所有未验证项有 owner 和明确后续计划。
 
-**当前状态（2026-08-21）**：P20/L65–L66 自动化交付已完成。当前 renderer 生成了 zh-CN 全量 18 fixture × 8 viewport（136 张）、en-US/zh-TW 各 18 fixture × 2 关键 viewport（各 36 张）、Settings offline/scanning/installing/partial/error × 4 viewport（20 张）以及 125%/150% × 18 fixture（36 张）manifest；P20 产物记录在 `docs/UX_UI_P20_QA_REPORT.md` 和 `docs/UX_UI_P20_SCREENSHOT_MANIFEST.json`。150% 复核发现的 Create 摘要页面级横溢出已在 `07-create-composer.css` 的窄屏 owner 规则中修复，并由 focused token test 锁定；修复后 Create、Queue、History、Details、Settings 的 document/body 宽度在 150% canary 中一致。P20 截图矩阵保留为当前 renderer 证据，不把 synthetic capture 写成真实生成结论。
+**当前状态（2026-08-21）**：P20/L65–L66 自动化交付已完成。当前 renderer 生成了 zh-CN 全量 18 fixture × 8 viewport（136 张）、en-US/zh-TW 各 18 fixture × 2 关键 viewport（各 36 张）、Settings offline/scanning/installing/partial/error × 4 viewport（20 张）以及 125%/150% × 18 fixture（36 张）manifest；P20 产物记录在 `../../UX_UI_P20_QA_REPORT.md` 和 `../../UX_UI_P20_SCREENSHOT_MANIFEST.json`。150% 复核发现的 Create 摘要页面级横溢出已在 `07-create-composer.css` 的窄屏 owner 规则中修复，并由 focused token test 锁定；修复后 Create、Queue、History、Details、Settings 的 document/body 宽度在 150% canary 中一致。P20 截图矩阵保留为当前 renderer 证据，不把 synthetic capture 写成真实生成结论。
 
 G18 已由用户/集成 owner 完成人工与真实 ComfyUI 验收并确认通过；当前发布提交 `75c8445 release: v0.41.3` 已推送到 `origin/main`。发布前 agent-side `npm.cmd run verify` 通过（92 个 test files、722 项测试、production build、20 组对比度检查）。P20/G18 是本实施计划的最终集成与发布 gate，当前计划已收口；本计划不预设 P21。若后续继续做色彩、材质或视觉风格升级，应基于当前 renderer 新建 proposal 和独立 phase，不回放旧 prototype。
 

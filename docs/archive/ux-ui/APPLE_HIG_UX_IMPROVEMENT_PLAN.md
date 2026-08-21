@@ -5,7 +5,7 @@
 > 产品：Local Video Studio 0.30.0（Windows Electron）
 > 范围：Create、Queue、History、视频/图片详情、Settings、全局壳层与反馈机制
 
-> 渐进实施、agent 文件所有权和逐阶段验收见 `docs/UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md`；Luna 等较弱模型使用 `docs/UX_UI_LUNA_EXECUTION_GUIDE.md` 的原子 package。
+> 渐进实施、agent 文件所有权和逐阶段验收见 `./UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md`；Luna 等较弱模型使用 `./UX_UI_LUNA_EXECUTION_GUIDE.md` 的原子 package。
 >
 > 历史审美研究文档：2026-08-20 用户明确 prototype 使用旧设计，当前 UX/UI 实现必须以 `src/renderer/`、`src/styles/` 和真实 renderer evidence 为准；本文的 Cinematic Graphite 方案不自动构成当前视觉方向。
 
@@ -62,9 +62,9 @@
 
 ### 2.3 仓库证据
 
-- 已读取 `docs/AGENT_START_HERE.md`、`docs/UX_CONTRACT.md`、`docs/UX_UI_RENDERER_BASELINE.md` 和当前实施计划；
+- 已读取 `../../AGENT_START_HERE.md`、`../../UX_CONTRACT.md`、`../../UX_UI_RENDERER_BASELINE.md` 和当前实施计划；
 - 已审阅 `src/renderer/`、`src/styles/` 及相关测试，并静态核对 DOM 顺序、grid/min-width、sticky offset、responsive breakpoint 和运行时 inline layout；
-- 当前可复现视觉基线是 `docs/UX_UI_RENDERER_BASELINE.md` 记录的136张真实 Vite renderer capture，覆盖标准视口与断点；合成 fixture 不冒充 live running 证据；
+- 当前可复现视觉基线是 `../../UX_UI_RENDERER_BASELINE.md` 记录的136张真实 Vite renderer capture，覆盖标准视口与断点；合成 fixture 不冒充 live running 证据；
 - 早期 standalone prototype 截图仅保留为历史研究材料，本文件中由它产生的旧观察必须由当前 renderer evidence 复核后才可进入实施；
 - Settings 与运行时相关文件当前存在其他未提交改动，本计划以 2026-08-20 当前磁盘快照为准，不把尚未完成的代码当作已验收行为；
 - 本轮没有完成真实 Electron 的屏幕阅读器、Windows 高对比度、200% 缩放或完整键盘走查，因此这些均保留为后续验收项。
@@ -278,7 +278,7 @@
 
 ### 6.1 当前 renderer 固定视口构图结论
 
-以下结论以 `docs/UX_UI_RENDERER_BASELINE.md` 的 current renderer capture 和当前源码为准；旧 prototype 对照已从批准证据中移除。Queue live running 等基线未真实运行的状态继续标为待 runtime smoke。
+以下结论以 `../../UX_UI_RENDERER_BASELINE.md` 的 current renderer capture 和当前源码为准；旧 prototype 对照已从批准证据中移除。Queue live running 等基线未真实运行的状态继续标为待 runtime smoke。
 
 | 页面 | 1280×800 | 900×800 | 排版判断 |
 | --- | --- | --- | --- |
@@ -463,7 +463,7 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 
 ## 8. 分阶段实施计划
 
-> 本节是早期研究层的高阶分组，不可直接派发给 agent，也不表示当前执行状态。实际 Phase、current renderer evidence、已完成步骤和 Luna package 仅以 `docs/UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md` 与 `docs/UX_UI_LUNA_EXECUTION_GUIDE.md` 为准。
+> 本节是早期研究层的高阶分组，不可直接派发给 agent，也不表示当前执行状态。实际 Phase、current renderer evidence、已完成步骤和 Luna package 仅以 `./UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md` 与 `./UX_UI_LUNA_EXECUTION_GUIDE.md` 为准。
 
 ### Phase 0 — 建立可重复的 UX 基线
 
@@ -476,7 +476,7 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 - 基于 current renderer 制作 current / candidate token-only 对照，不同时改变结构，以便单独判断配色、字体和材质；
 - 将本计划中当前快照发现转成可追踪 issue 或 checklist。
 
-验收：`docs/UX_UI_RENDERER_BASELINE.md` 的 capture matrix 可重现；截图不依赖人工拖窗；manifest 明确 implemented、fixture-only、runtime-unverified；视觉方向在代表性五页完成原尺寸、灰度和媒体换图对照。
+验收：`../../UX_UI_RENDERER_BASELINE.md` 的 capture matrix 可重现；截图不依赖人工拖窗；manifest 明确 implemented、fixture-only、runtime-unverified；视觉方向在代表性五页完成原尺寸、灰度和媒体换图对照。
 
 ### Phase 1 — P0/P1 任务流与恢复性
 
@@ -539,7 +539,7 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 - 检查图片/视频、瀑布流/相册、详情版本轨、长路径和长本地化；
 - 建立截图差异与键盘 smoke test，避免视觉修补回退焦点。
 
-验收：按 `docs/UX_CONTRACT.md` 的 UI gate 完成手工检查；自动化与人工证据分别记录；未测试项不能写成“已通过”。
+验收：按 `../../UX_CONTRACT.md` 的 UI gate 完成手工检查；自动化与人工证据分别记录；未测试项不能写成“已通过”。
 
 ## 9. 文件与所有权建议
 
@@ -549,7 +549,7 @@ Apple HIG 的核心启发不是使用 Apple Blue，而是让颜色保持一致�
 
 | 工作包 | 主要文件 | 邻接检查 |
 | --- | --- | --- |
-| Current renderer 基线 | `docs/UX_UI_RENDERER_BASELINE.md`, renderer capture harness/manifest | 固定视口、fixture边界、真实运行状态声明 |
+| Current renderer 基线 | `../../UX_UI_RENDERER_BASELINE.md`, renderer capture harness/manifest | 固定视口、fixture边界、真实运行状态声明 |
 | 通知模型 | `src/renderer/notifications.ts`, `src/main.ts`, `src/renderer/shell/page.ts` | 并发通知、错误恢复、ARIA live |
 | Create 重排 | `src/renderer/pages/create/*`, `src/styles/07-create-composer.css`, responsive styles | typing、undo/redo、mode switch、queue submit |
 | Queue 主体层级 | `src/renderer/pages/queue/page.ts`, Queue component/styles | active task、preview、progress、telemetry、empty state |

@@ -1,10 +1,10 @@
 # UX / UI Luna 原子任务执行指南
 
-> 状态：与 `docs/UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md` 配套使用  
+> 状态：与 `./UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md` 配套使用
 > 目的：把 P00–P20 集成 Phase 拆成较弱模型也能可靠执行的单一 work package  
 > 原则：Luna 负责确定性实现；强模型/人工负责审美、架构、冲突、运行结论和最终集成
 
-> Source of truth：当前 `src/renderer/`、`src/styles/`、`docs/UX_UI_RENDERER_BASELINE.md` 与真实 renderer capture。`prototypes/` 是早期历史材料，不是任务输入、批准证据或同步目标，除非用户单独要求维护。
+> Source of truth：当前 `src/renderer/`、`src/styles/`、`../../UX_UI_RENDERER_BASELINE.md` 与真实 renderer capture。`prototypes/` 是早期历史材料，不是任务输入、批准证据或同步目标，除非用户单独要求维护。
 
 ## 1. 复查结论
 
@@ -27,7 +27,7 @@ P00–P20 的依赖、preserve list 和集成 gate 已经清楚，但部分 Phas
 
 ### 1.1 当前执行账本
 
-派发前必须以 `docs/UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md` 顶部状态和各 Phase 的“当前状态”为准，不能仅凭本指南编号判断任务未做：
+派发前必须以 `./UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md` 顶部状态和各 Phase 的“当前状态”为准，不能仅凭本指南编号判断任务未做：
 
 - P00 current renderer baseline 已 `verified`，已有 `UX_UI_RENDERER_BASELINE.md`、manifest、capture harness 和136张截图；L00/L01只在 reviewer 明确要求重新基线时派发；
 - G01“当前 renderer 是设计来源”已完成；G02 已先冻结 surface mapping，具体 action/focus/progress/status、type 和 radius 变化仍需 current-renderer visual gate；
@@ -36,18 +36,18 @@ P00–P20 的依赖、preserve list 和集成 gate 已经清楚，但部分 Phas
 - P04/L16–L21 已完成：L16 声明 Page/Section/Object/Body/Label/Meta/Technical 七级 type roles；L17 按当前 renderer 最终 cascade 校正 page 基线并迁移共享 `h1/h2/h3` 与 History gallery object heading；L18 迁移根 body、form label、shared meta copy 与 global code technical selectors，并为 current-renderer capture harness 增加 100%/125%/150% page zoom 证据；L19 为 Queue/History/运行态的 progress/time/metric/count/position 动态数值补齐 `font-variant-numeric: tabular-nums`；L20 将当前 renderer 的 control/object/panel/modal 圆角值接入 `--ux-radius-*` roles，面板保留有效的 13px；L21 将 performance-grid 的 12px gap 与 16px bottom spacing 接入 `--ux-space-3/4`，保持 DOM、布局与 responsive 规则不变；保留详情/弹窗/任务卡/log/badge/album 紧凑特例。focused token tests `13/13`、`npm.cmd run verify`（80 files / 615 tests、production build、20 组对比度检查）通过；现有 Queue/History/Settings current-renderer canary 作为等值迁移的视觉基线，L20/L21 阶段版本仍为 `0.30.2`；随后 P05/L22–L24 形成可见的 sticky 几何差异，当前版本升为 `0.31.0`，下一集成为 G05；
 - P05/L22–L24 与 G05 已完成：L22 将 72px topbar 接入 `--ux-topbar-height`，将 page sticky offset 对齐为 72px，并在 760px 以下 topbar normal-flow 断点将 offset 归零；L23 将 Create/Queue heading 接入共享 sticky offset，Create 的层级降到 topbar 之下，Queue 在窄屏显式归零；L24 将 History heading、History detail 返回条和 Settings heading 接入同一 token，并保留窄屏 top:0 规则。P05 相关 focused token tests `16/16`、`npm.cmd run verify`（80 files / 618 tests、production build、20 组对比度检查）通过；同一 Vite renderer 与隔离 preload 的 runtime probe 已覆盖 1440×900、900×800、760×800、761×800 的主页面/Details sticky 几何、无横溢出和 History detail close-dialog；标准 capture harness 的 route 后单次 `executeJavaScript` DOM wait 竞态单独记录，不作为产品失败。P05/G05 标为 `verified/integrated`，下一 Phase 为 P06；
 - P06/L26–L29 与 G07 已完成：error 持久、消息可关闭、同源去重、error 优先级保护和瞬时 action callback，Prompt 优化失败已接入“打开设置”，Settings 的下载/目录/日志打开失败已路由为 error；L29 controller focused tests `2/2`、通知聚焦 suite `11/11`、`npm.cmd run verify`（81 files / 624 tests）通过，隔离 Electron + 当前 Vite renderer runtime smoke 已验证并发完成/失败、dismiss 和 Settings recovery。P06 现为 `verified/integrated`，同时已开始 P07 当前 renderer proposal；
-- P07 proposal 已写入 `docs/UX_UI_P07_RENDERER_PROPOSAL.md`：基于当前三种 Create fixture 选择 901–1120/900 紧凑双列、1280+ 保留双主区、760 以下单列 fallback 与 submit safe-area 检查；G08 已依据当前 renderer 三模式 × 8 视口截图、diagnose 和隔离交互 smoke 批准；
-- P09/G10 已批准 `docs/UX_UI_P09_RENDERER_PROPOSAL.md`：基于当前 Queue fixture 和 8 个唯一视口 evidence 选择 active task 优先、telemetry 紧凑披露、900px 操作可达、760px 单列；隔离 running smoke 已证明 progress/preview/elapsed/telemetry patch 与 pause/cancel 入口。P10 已按批准 proposal 修改 current Queue renderer；根据 2026-08-21 真实使用复核，四张 CPU/RAM/GPU/VRAM 性能卡已恢复到 Queue 顶部，active task 仍保持执行区第一主体；G11 已通过 executor/control 隔离 gate（成功完成、claim 前取消竞态、readiness abort、active worker cleanup、暂停恢复不重叠），用户随后已在真实 ComfyUI 环境完成实际运行复核，未发现明显问题；
+- P07 proposal 已写入 `./UX_UI_P07_RENDERER_PROPOSAL.md`：基于当前三种 Create fixture 选择 901–1120/900 紧凑双列、1280+ 保留双主区、760 以下单列 fallback 与 submit safe-area 检查；G08 已依据当前 renderer 三模式 × 8 视口截图、diagnose 和隔离交互 smoke 批准；
+- P09/G10 已批准 `./UX_UI_P09_RENDERER_PROPOSAL.md`：基于当前 Queue fixture 和 8 个唯一视口 evidence 选择 active task 优先、telemetry 紧凑披露、900px 操作可达、760px 单列；隔离 running smoke 已证明 progress/preview/elapsed/telemetry patch 与 pause/cancel 入口。P10 已按批准 proposal 修改 current Queue renderer；根据 2026-08-21 真实使用复核，四张 CPU/RAM/GPU/VRAM 性能卡已恢复到 Queue 顶部，active task 仍保持执行区第一主体；G11 已通过 executor/control 隔离 gate（成功完成、claim 前取消竞态、readiness abort、active worker cleanup、暂停恢复不重叠），用户随后已在真实 ComfyUI 环境完成实际运行复核，未发现明显问题；
 - P11 proposal 已写入并完成复核：基于当前 History 视频/图片 masonry/album fixture 落地 toolbar 分组、解除 900px 固定高度和 container-width 列轨；capture harness 新增混合宽高比 1/8 项 fixture 对照及 History filter/layout/detail/delete smoke，P11 已 `verified/integrated`。P12/L40–L42 现已完成：History 卡片 Enter/Space、kind tabs 的 roving focus/Arrow/Home/End、More/Shift+F10/Menu key context menu、菜单键盘导航和 return focus、layout/version pressed state 均已接入；视频/图片混合 8 项 900×800 current-renderer keyboard smoke、1440/900/760 三组 viewport diagnose 与 focused accessibility tests 通过，`npm.cmd run verify` 为 85 files / 645 tests，P12 已 `verified/integrated`。P13/L43–L45 现已完成：gallery、detail、version rail、Lightbox 统一接入 loading/ready/unavailable/error、重试、文件定位和旧缩略图保留；路径规则和视频媒体行为不变。8 项混合宽高比 900×800 keyboard/media smoke、1440/900/760 diagnose、image detail failure screenshot、focused tests 与 `npm.cmd run verify`（86 files / 649 tests）通过，P13 已 `verified/integrated`。P14/L46–L48 现已完成：Lightbox 复用 shell focus helper，记录触发者、隔离背景 inert、实现 Tab/Shift+Tab 循环、Escape/关闭与 return focus；版本切换保持 dialog 和版本控制焦点，Reduced Motion 关闭非必要过渡。图片与视频 8 项 900×800 current-renderer smoke、focused tests、`npm.cmd run verify`（86 files / 649 tests）通过，P14 已 `verified/integrated`，下一 Phase 为 P15；
 - P15/L47–L49 现已完成：详情页保留 viewer/版本区域与既有媒体、队列、历史语义，视频和图片 inspector 收敛为 primary/secondary/More，900px 及以下增加 compact action entry；prompt、参数、输出、LoRA、输入、性能和文件快照统一进入 Generation record section，不删除字段。当前 renderer 视频/图片详情 1440×900、900×800、760×800 diagnose/smoke、图片缺失媒体 error、More 键盘可达、History 混合 8 项 keyboard/media smoke、Queue running smoke、focused markup tests 与 `npm.cmd run verify` 均通过；P15 已 `verified/integrated`，G13 History/Details 全路径已完成，下一 Phase 为 P16。
 - G14 已满足：P15 提交 `53e98aa` 并推送后，`main` 与 `origin/main` 同步且工作树干净，Settings/runtime 当前 owner 有明确 clean base。
-- P16/L50–L51 已完成：`docs/UX_UI_P16_RENDERER_PROPOSAL.md` 记录当前 renderer 的9分类、语言区、安装能力、状态边界和 preserve list；capture harness 增加独立 `--settings-states` 矩阵，offline/scanning/installing/partial/confirmed-error 五状态在 `1440×900`、`1280×800`、`900×800`、`760×800` 共20张截图通过，20/20 diagnose 无页面横溢出。installing 通过真实 `CustomNodeInstallQueue` controller 进入 processing；confirmed-error fixture 明确为 synthetic compatibility/environment error + recovery，不宣称真实 ComfyUI 运行失败。G15 已依据这组 current-renderer evidence 批准 P17 结构。
+- P16/L50–L51 已完成：`./UX_UI_P16_RENDERER_PROPOSAL.md` 记录当前 renderer 的9分类、语言区、安装能力、状态边界和 preserve list；capture harness 增加独立 `--settings-states` 矩阵，offline/scanning/installing/partial/confirmed-error 五状态在 `1440×900`、`1280×800`、`900×800`、`760×800` 共20张截图通过，20/20 diagnose 无页面横溢出。installing 通过真实 `CustomNodeInstallQueue` controller 进入 processing；confirmed-error fixture 明确为 synthetic compatibility/environment error + recovery，不宣称真实 ComfyUI 运行失败。G15 已依据这组 current-renderer evidence 批准 P17 结构。
 - P05 的 top-level nav `aria-current` 已实现，不能重复执行相同修改；
 - P08 已 `verified/integrated`：Image Edit overflow、素材区窄窗文字边界和 sticky submit safe-area 已落地，current renderer 三模式 × 8 视口截图与 900×800 交互 smoke 已通过；后续只进入 P09/P10 Queue gate，不重复派发 L30–L33；
 - P17/L52–L55 已完成：Settings tab 补齐 `tablist`/`tab`/`tabpanel`、`aria-selected`/`aria-controls`、roving `tabindex` 与 Arrow/Home/End；`<=900px` 使用单行横向 compact category strip；rescan 移入本机环境 action group；页头保留 dirty/discard/save，并为保存/扫描提供局部 status/`aria-busy`。现有保存、扫描、安装队列、IPC、持久化与字段 selector 未变。P17 已 `verified/integrated`。
-- P18/L56–L60 已完成：环境状态改为单列 evidence list，模型证据/硬件建议/组件说明与列表分隔符进入三语 Settings copy catalog；扫描、连接测试、服务启停、修复/更新、节点/工作流/Python/加速安装和日志错误补齐局部 status/busy/error 语义；强制停止隔离为 secondary destructive 区域。`docs/UX_UI_P18_SETTINGS_COPY_INVENTORY.md` 记录了 copy 与反馈边界；Settings status/localization/accessibility focused tests、900×800/760×800 keyboard smoke、1440×900/1280×800/900×800/760×800 20 状态截图与 diagnose、`npm.cmd run verify`（88 files / 654 tests、production build、20 组对比度检查）通过。P18 已 `verified/integrated`，G16 的 Settings 集成 gate 已完成；状态矩阵为 synthetic renderer evidence，未宣称真实 ComfyUI 生成，下一 Phase 为 P19。P17/P18 实现继续以当前 renderer 为源，不得回放旧 prototype。
-- P19/L61 已完成，G17 已批准首批 package：`docs/UX_UI_P19_CSS_OWNER_MAP.md` 记录了当前 `src/style.css` import order、shared/component/page/responsive 层级、重复 selector、canonical owner 和移动顺序；L63 已将 Create 的 1120/760px 响应式声明从 `01`/`04` 移入 `07-create-composer.css`，将 Settings navigation、桌面 shell geometry、section shell、section-heading refinements 与 content cards 归入 `06-settings-layout.css`，并将 History heading/toolbar/gallery/album-masonry breakpoint 规则归入 `11-history-curation.css`；本轮将 History video inspector/stage refinements 与 image detail stage/version rail/responsive rules 从 `01`/`02` 收回 `04-history-stage.css`，再将 Queue 页面、任务卡、输入预览和 Queue-only responsive rules 从 `01`/`02`/`05` 收回 `10-final-refinements.css`，共享 task/card/performance primitives 与语义 type/status rules仍由基础层持有，值和 DOM 未变；L64 删除一个确认重复的 History album media override，并用 owner test 保持该规则单一。Create 3 个 fixture × 8 个视口共 24 张 before/after 截图 SHA-256 parity 通过；History 8 条混合比例记录覆盖 video/image × masonry/album，在 8 个宽度共 32 张 capture，列数自适应、相册 tile 尺寸和 document/body overflow 诊断保持；History detail 在 1440/1280/900/760 四个宽度共 8 张 capture，视频/图片构图和图片版本 rail 保持，900×800 详情交互 smoke 通过；Queue 七状态 × 八宽度共 56 张 capture，900×800 与 760×800 running smoke 保持进度/阶段/耗时/预览/遥测 patch 及 pause/cancel 可达；`npm.cmd run verify`（88 files / 654 tests、production build、20 组对比度检查）通过。P19 package/cleanup 已完成，下一步进入 P20/L65–L66 自动化 QA 与 screenshot manifest。
-- P20/L65–L66 与 G18 已完成：`docs/UX_UI_P20_QA_REPORT.md` 与 `docs/UX_UI_P20_SCREENSHOT_MANIFEST.json` 记录 zh-CN 全量 136 张、en-US/zh-TW 各 36 张、Settings 五状态 20 张和 125%/150% 各 18 张 current-renderer evidence；150% 检查暴露的 Create 摘要页面级横溢出已通过 `07-create-composer.css` 窄屏 owner 规则修复，并用 focused token test 防回归。用户/集成 owner 已确认真实 ComfyUI、完整键盘、系统辅助功能、关闭生命周期和发布验收通过；`v0.41.3` 提交 `75c8445` 已推送到 `origin/main`，发布前 `npm.cmd run verify` 通过（92 个 test files、722 项测试、production build、20 组对比度检查）。UI/UX 主线已收口，不再自动派发 P21。
+- P18/L56–L60 已完成：环境状态改为单列 evidence list，模型证据/硬件建议/组件说明与列表分隔符进入三语 Settings copy catalog；扫描、连接测试、服务启停、修复/更新、节点/工作流/Python/加速安装和日志错误补齐局部 status/busy/error 语义；强制停止隔离为 secondary destructive 区域。`./UX_UI_P18_SETTINGS_COPY_INVENTORY.md` 记录了 copy 与反馈边界；Settings status/localization/accessibility focused tests、900×800/760×800 keyboard smoke、1440×900/1280×800/900×800/760×800 20 状态截图与 diagnose、`npm.cmd run verify`（88 files / 654 tests、production build、20 组对比度检查）通过。P18 已 `verified/integrated`，G16 的 Settings 集成 gate 已完成；状态矩阵为 synthetic renderer evidence，未宣称真实 ComfyUI 生成，下一 Phase 为 P19。P17/P18 实现继续以当前 renderer 为源，不得回放旧 prototype。
+- P19/L61 已完成，G17 已批准首批 package：`./UX_UI_P19_CSS_OWNER_MAP.md` 记录了当前 `src/style.css` import order、shared/component/page/responsive 层级、重复 selector、canonical owner 和移动顺序；L63 已将 Create 的 1120/760px 响应式声明从 `01`/`04` 移入 `07-create-composer.css`，将 Settings navigation、桌面 shell geometry、section shell、section-heading refinements 与 content cards 归入 `06-settings-layout.css`，并将 History heading/toolbar/gallery/album-masonry breakpoint 规则归入 `11-history-curation.css`；本轮将 History video inspector/stage refinements 与 image detail stage/version rail/responsive rules 从 `01`/`02` 收回 `04-history-stage.css`，再将 Queue 页面、任务卡、输入预览和 Queue-only responsive rules 从 `01`/`02`/`05` 收回 `10-final-refinements.css`，共享 task/card/performance primitives 与语义 type/status rules仍由基础层持有，值和 DOM 未变；L64 删除一个确认重复的 History album media override，并用 owner test 保持该规则单一。Create 3 个 fixture × 8 个视口共 24 张 before/after 截图 SHA-256 parity 通过；History 8 条混合比例记录覆盖 video/image × masonry/album，在 8 个宽度共 32 张 capture，列数自适应、相册 tile 尺寸和 document/body overflow 诊断保持；History detail 在 1440/1280/900/760 四个宽度共 8 张 capture，视频/图片构图和图片版本 rail 保持，900×800 详情交互 smoke 通过；Queue 七状态 × 八宽度共 56 张 capture，900×800 与 760×800 running smoke 保持进度/阶段/耗时/预览/遥测 patch 及 pause/cancel 可达；`npm.cmd run verify`（88 files / 654 tests、production build、20 组对比度检查）通过。P19 package/cleanup 已完成，下一步进入 P20/L65–L66 自动化 QA 与 screenshot manifest。
+- P20/L65–L66 与 G18 已完成：`../../UX_UI_P20_QA_REPORT.md` 与 `../../UX_UI_P20_SCREENSHOT_MANIFEST.json` 记录 zh-CN 全量 136 张、en-US/zh-TW 各 36 张、Settings 五状态 20 张和 125%/150% 各 18 张 current-renderer evidence；150% 检查暴露的 Create 摘要页面级横溢出已通过 `07-create-composer.css` 窄屏 owner 规则修复，并用 focused token test 防回归。用户/集成 owner 已确认真实 ComfyUI、完整键盘、系统辅助功能、关闭生命周期和发布验收通过；`v0.41.3` 提交 `75c8445` 已推送到 `origin/main`，发布前 `npm.cmd run verify` 通过（92 个 test files、722 项测试、production build、20 组对比度检查）。UI/UX 主线已收口，不再自动派发 P21。
 
 本指南是任务目录，不是“全部尚未执行”的 todo list。任何已实现 package 的后续工作必须使用新的 base和明确的 delta task。
 
@@ -121,11 +121,11 @@ Expected handoff format:
 
 | ID | Parent | Luna 的唯一输出 | 写入范围 | 验证 | Review |
 | --- | --- | --- | --- | --- | --- |
-| L00 | P00 | 当前 renderer 页面/状态/locale/viewport manifest | `docs/UX_UI_RENDERER_BASELINE.md` 或对应 manifest | 路径存在、条目齐全 | 普通复核 |
+| L00 | P00 | 当前 renderer 页面/状态/locale/viewport manifest | `../../UX_UI_RENDERER_BASELINE.md` 或对应 manifest | 路径存在、条目齐全 | 普通复核 |
 | L01 | P00 | 当前 renderer 固定 viewport capture 脚本，不改产品 | 专用 renderer capture `scripts/` 文件 | `--dry-run`；不安装依赖 | 强复核 |
 | L02 | P00 | 当前 CSS 指标 inventory | 新增一个 `docs/` 报告或 fixture | 数字可由命令重算 | 普通复核 |
 | G01 | P01 | 确认当前 renderer 是设计来源并冻结 preserve list | 用户/强模型 | `UX_UI_RENDERER_BASELINE.md` 与 proposal；当前已完成 | **不可交 Luna** |
-| L03 | P01 | 根据当前 renderer 基线整理 canary preserve/change proposal，不写生产 CSS | `docs/UX_UI_P01_RENDERER_PROPOSAL.md`、renderer capture evidence | 每项引用当前截图/selector | 强复核 |
+| L03 | P01 | 根据当前 renderer 基线整理 canary preserve/change proposal，不写生产 CSS | `./UX_UI_P01_RENDERER_PROPOSAL.md`、renderer capture evidence | 每项引用当前截图/selector | 强复核 |
 | L04 | P01 | 对当前 Create/Queue/History/Details/Settings 做状态与断点审计，不改结构 | `docs/`、隔离 current-renderer fixture/截图 | 关键视口与状态齐全 | 强复核 |
 | L05 | P01 | 生成当前 renderer 基线与隔离候选分支的原色/灰度/媒体状态对照 | renderer evidence/manifest | 数量和命名匹配 | 普通复核 |
 | G02 | P01 | 基于当前 renderer 批准 palette、type scale、radius、surface 变更 | 人工/强模型决定 | 形成冻结 current-renderer token mapping；旧 prototype 不参与 | **不可交 Luna** |
@@ -330,9 +330,9 @@ Writable files:
 
 Read-only context:
 - AGENTS.md
-- docs/UX_CONTRACT.md
-- docs/UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md 中 {Pxx}
-- docs/UX_UI_LUNA_EXECUTION_GUIDE.md 中 {Lxx}
+- ../../UX_CONTRACT.md
+- ./UX_UI_INCREMENTAL_IMPLEMENTATION_PLAN.md 中 {Pxx}
+- ./UX_UI_LUNA_EXECUTION_GUIDE.md 中 {Lxx}
 
 Forbidden files:
 - {exact hotspots}

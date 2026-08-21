@@ -6,11 +6,11 @@
 
 用户已明确：prototype 是旧设计，实际设计必须以当前 UI 为准。因此本文件只保留历史记录，不再作为 P02 或生产 CSS 的输入。当前设计来源改为：
 
-- [`UX_UI_RENDERER_BASELINE.md`](./UX_UI_RENDERER_BASELINE.md)；
-- [`ux-ui-renderer-baseline.manifest.json`](./ux-ui-renderer-baseline.manifest.json)；
+- [`UX_UI_RENDERER_BASELINE.md`](../../UX_UI_RENDERER_BASELINE.md)；
+- [`ux-ui-renderer-baseline.manifest.json`](../../ux-ui-renderer-baseline.manifest.json)；
 - `src/renderer/` 的真实页面结构与行为；
 - `src/styles/` 的当前 cascade、tokens 和断点规则；
-- `docs/UX_CONTRACT.md` 及其规定的 preserve list。
+- `../../UX_CONTRACT.md` 及其规定的 preserve list。
 
 ## 已撤回的 prototype 改动
 

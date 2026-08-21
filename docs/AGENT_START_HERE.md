@@ -14,6 +14,8 @@ This guide is the shortest reliable route into Local Video Studio. Read the cont
 
 Inspect `git status` before reading or editing hotspot files. This repository is often edited by multiple agents; current disk content wins over an old conversation snapshot.
 
+已完成、被取代或仅用于历史追溯的计划见 [`archive/README.md`](archive/README.md)；归档内容不是当前实现的 source of truth。
+
 ## 2. Sources of truth in code
 
 - Model definitions, variants, components, download targets and localized metadata: `src/core/catalog/models/` and `src/core/catalog/index.ts`.

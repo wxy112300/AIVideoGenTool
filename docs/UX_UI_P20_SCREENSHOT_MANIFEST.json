@@ -3,11 +3,14 @@
   "status": {
     "L65": "completed",
     "L66": "completed",
-    "G18": "pending"
+    "G18": "completed"
   },
   "version": "0.40.1",
   "generatedAt": "2026-08-21",
   "baseCommit": "077bc4d",
+  "releaseVersion": "0.41.3",
+  "releaseCommit": "75c8445",
+  "closedAt": "2026-08-21",
   "sourceOfTruth": "current-renderer",
   "historicalPrototypesIncluded": false,
   "artifactRoot": "temp/ux-ui-baseline",
