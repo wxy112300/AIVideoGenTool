@@ -702,8 +702,6 @@ summary { cursor: pointer; color: var(--muted); }
 pre { max-height: 360px; overflow: auto; padding: 14px; border-radius: 10px; background: #111214; color: #bbc6d4; }
 
 @media (max-width: 1120px) {
-  .create-workspace { grid-template-columns: 1fr; }
-  .create-workspace > .media-panel { position: static; }
   .drop-zone { min-height: 310px; }
   .history-gallery.album { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

@@ -1,6 +1,6 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性、P12 History 键盘语义、P13 图片媒体状态、P14 Lightbox modal/focus 与 P15 视频/图片详情构图已 verified/integrated，P16 Settings current-renderer evidence/proposal 与 G15 结构批准已完成，P17 Settings 分类/保存/扫描动作层级已 verified/integrated，P18 Settings 内容层级、本地化与恢复反馈已 verified/integrated，P19/L61 CSS owner map 已完成，G17 待批准
+> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性、P12 History 键盘语义、P13 图片媒体状态、P14 Lightbox modal/focus 与 P15 视频/图片详情构图已 verified/integrated，P16 Settings current-renderer evidence/proposal 与 G15 结构批准已完成，P17 Settings 分类/保存/扫描动作层级已 verified/integrated，P18 Settings 内容层级、本地化与恢复反馈已 verified/integrated，P19/L61 CSS owner map 已完成，G17 已批准首个 Create breakpoint package，L63 Create breakpoint family 已 parity/verify 通过
 > 制定日期：2026-08-20  
 > 当前版本：0.40.0
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
@@ -531,7 +531,7 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **Gate**：P00 全套 screenshot diff 无感知变化；重复 selector 和裸主题色指标明显下降；`npm.cmd run verify`。
 
-**当前状态（2026-08-21）**：L61 已完成 `docs/UX_UI_P19_CSS_OWNER_MAP.md`，覆盖 shared shell、Create、Settings、History、Queue 的重复 selector 与 responsive ownership；生产 CSS 未因 owner map 改动。Create breakpoint 的 24 张当前 renderer before/after rehearsal 通过 SHA-256 parity，但该演练已回退，必须等待 G17 批准后才能执行 L63。下一步是 G17 复核 owner map 与移动顺序。
+**当前状态（2026-08-21）**：L61 已完成 `docs/UX_UI_P19_CSS_OWNER_MAP.md`，覆盖 shared shell、Create、Settings、History、Queue 的重复 selector 与 responsive ownership。G17 已批准首个 Create breakpoint package；`01-foundation.css` 与 `04-history-stage.css` 中的 Create 1120/760px 响应式声明已移入 `07-create-composer.css`，不改变值、DOM 或功能。当前 renderer 3 个 Create fixture × 8 个视口共 24 张 before/after 截图 SHA-256 集合一致，`npm.cmd run verify` 为 88 files / 654 tests、production build、20 组对比度检查通过。下一步是按同一边界复核并处理 Settings geometry family。
 
 ### P20 — 全量验证、契约同步与发布准备
 

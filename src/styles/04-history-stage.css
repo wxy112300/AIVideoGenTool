@@ -62,11 +62,6 @@
 .history-summary-version-switcher { justify-content: flex-start; gap: 5px; }
 .history-summary-version-switcher button { min-height: 29px; padding: 4px 9px; font-size: 11px; }
 
-@media (max-width: 1120px) {
-  .create-workspace { grid-template-columns: 1fr; gap: 18px; }
-  .create-workspace > .media-panel { position: static; }
-}
-
 @media (max-width: 900px) {
   .app-shell { padding-inline: 24px; }
   .topbar { margin-inline: -24px; padding-inline: 24px; }
@@ -103,7 +98,6 @@
   .history-heading > .history-view-tools { justify-self: stretch; }
   .history-heading > .history-view-tools .button-row { justify-content: flex-end; }
   .page-heading { min-height: auto; padding-block: 22px; }
-  .create-workspace { display: grid; grid-template-columns: 1fr; }
   .media-panel, .composer, .environment-panel, .settings-page, .token-help { padding: 18px; }
   .drop-zone { min-height: 290px; }
   .history-view-tools { align-items: flex-end; }

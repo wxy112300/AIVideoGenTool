@@ -1,4 +1,15 @@
 
+/* Create-owned responsive frame rules. Keep values unchanged while making
+   the Create page the canonical owner of its breakpoint behavior. */
+@media (max-width: 1120px) {
+  .create-workspace { grid-template-columns: 1fr; gap: 18px; }
+  .create-workspace > .media-panel { position: static; }
+}
+
+@media (max-width: 760px) {
+  .create-workspace { display: grid; grid-template-columns: 1fr; }
+}
+
 /* Keep the composer readable as more H3 controls are added. */
 .composer-heading {
   display: grid;

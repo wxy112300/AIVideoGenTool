@@ -1,6 +1,6 @@
 # P19 CSS selector owner map
 
-> Status: L61 completed; G17 approval is still required before production CSS is moved. This document is an inventory and proposed move order, not a visual-direction approval.
+> Status: L61 completed; G17 approved the first Create breakpoint package. Remaining page families still require targeted review before their CSS moves. This document is an inventory and proposed move order, not a visual-direction approval.
 >
 > Base: `75b20b1` (`v0.40.0`), current renderer and `src/style.css` import order. Historical prototypes are excluded.
 
