@@ -1014,13 +1014,16 @@ function syncSettingsDirtyUi(): void {
   const dirty = settingsHaveUnsavedChanges();
   const setSettingsDirty = window.studio.setSettingsDirty;
   if (setSettingsDirty) void setSettingsDirty(dirty).catch(() => undefined);
+  const actionBar = document.querySelector<HTMLElement>(".settings-heading-actions");
+  actionBar?.classList.toggle("is-dirty", dirty || settingsSaving);
+  actionBar?.classList.toggle("is-clean", !dirty && !settingsSaving);
   const status = document.querySelector<HTMLElement>(".settings-heading-actions .save-state");
   status?.classList.toggle("dirty", dirty);
   if (status) status.textContent = settingsSaving
     ? uiText(uiKeys.settings.saving)
     : dirty
       ? uiText(uiKeys.runtime.unsavedChanges)
-      : uiText(uiKeys.runtime.saved);
+      : "";
   document.querySelector<HTMLButtonElement>("#discard-settings")?.toggleAttribute("disabled", !dirty || settingsSaving);
   const saveButton = document.querySelector<HTMLButtonElement>("#save-settings");
   saveButton?.toggleAttribute("disabled", !dirty || settingsSaving);

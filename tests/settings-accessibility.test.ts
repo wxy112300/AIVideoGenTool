@@ -95,6 +95,10 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('aria-labelledby="settings-tab-system"');
     expect(markup.match(/id="scan-environment"/g)).toHaveLength(1);
     expect(markup.indexOf('id="scan-environment"')).toBeLessThan(markup.indexOf('id="settings-environment-section"'));
+    expect(markup).toContain('class="button-row settings-heading-actions is-clean"');
+    expect(markup).toContain('class="settings-tool-actions"');
+    expect(markup).toContain('class="settings-commit-actions"');
+    expect(markup).not.toContain('>settings.saved</span>');
     expect(markup).toContain('id="connection-result" class="connection-result muted" role="status" aria-live="polite"');
     expect(markup).toContain('id="force-stop-comfy"');
     expect(markup).toContain('class="secondary destructive button-with-icon" id="force-stop-comfy"');
@@ -111,10 +115,23 @@ describe("Settings accessibility markup", () => {
   it("marks the local save state without changing the save selector", () => {
     const markup = renderSettingsPage(viewModel({ settingsDirty: true, settingsSaving: true }), renderOptions);
 
-    expect(markup).toContain('class="save-state dirty" role="status" aria-live="polite">settings.saving</span>');
+    expect(markup).toContain('class="button-row settings-heading-actions is-dirty"');
+    expect(markup).toContain('class="save-state dirty" role="status" aria-live="polite" aria-atomic="true">settings.saving</span>');
     expect(markup).toContain('id="save-settings" aria-busy="true"');
     expect(markup).toContain('id="settings-panel-system" class="settings-content" role="tabpanel"');
     expect(markup).toContain('aria-busy="true"');
+  });
+
+  it("keeps the primary save action after the discard action in the commit group", () => {
+    const markup = renderSettingsPage(viewModel({ settingsDirty: true }), renderOptions);
+
+    const commitStart = markup.indexOf('class="settings-commit-actions"');
+    const discardIndex = markup.indexOf('id="discard-settings"');
+    const saveIndex = markup.indexOf('id="save-settings"');
+
+    expect(commitStart).toBeGreaterThan(-1);
+    expect(commitStart).toBeLessThan(discardIndex);
+    expect(discardIndex).toBeLessThan(saveIndex);
   });
 
   it("keeps H3 upgrade feedback mounted and marks acceleration repairs in the sidebar", () => {

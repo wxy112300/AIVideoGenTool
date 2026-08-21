@@ -26,6 +26,45 @@
   align-items: center;
 }
 
+.settings-heading-actions {
+  min-width: 0;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.settings-heading > .settings-heading-actions {
+  flex: 0 1 auto;
+}
+
+.settings-tool-actions,
+.settings-commit-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-commit-actions {
+  padding-left: 12px;
+  border-left: 1px solid color-mix(in srgb, var(--ux-separator-subtle) 72%, transparent);
+}
+
+.settings-heading-actions.is-clean .settings-commit-actions {
+  display: none;
+}
+
+.settings-heading-actions .button-with-icon {
+  white-space: nowrap;
+}
+
+.settings-heading-actions .save-state {
+  white-space: nowrap;
+}
+
+.settings-heading-actions .save-state:empty {
+  display: none;
+}
+
 .settings-action-status {
   min-width: 0;
   color: var(--muted);
@@ -362,6 +401,15 @@
 }
 
 @media (max-width: 900px) {
+  .settings-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-heading > .settings-heading-actions {
+    width: 100%;
+  }
+
   .settings-layout {
     grid-template-columns: 1fr;
     gap: 16px;
@@ -392,6 +440,40 @@
 
   .settings-tab > .settings-tab-label {
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .settings-heading-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .settings-tool-actions,
+  .settings-commit-actions {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 560px) {
+  .settings-heading-actions {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .settings-tool-actions,
+  .settings-commit-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .settings-commit-actions {
+    padding-top: 8px;
+    padding-left: 0;
+    border-top: 1px solid color-mix(in srgb, var(--ux-separator-subtle) 72%, transparent);
+    border-left: 0;
   }
 }
 
