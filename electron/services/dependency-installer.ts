@@ -6,6 +6,8 @@ import type { Settings } from "../../src/types.js";
 import {
   patchH3PromptWriterLlamaCppCompatibility,
   patchMultimodalPromptContextSize,
+  patchMultimodalPromptProjectorDiscovery,
+  patchMultimodalPromptQwen38Recognition,
   patchMultimodalPromptResidency,
   patchQwenVlComfyDesktopLogging,
   prepareH3PromptWriter,
@@ -80,7 +82,7 @@ const h3PromptWriterPatchFiles = [
   "backend/models/gguf_backend.py",
   "backend/runtime_diagnostics.py"
 ] as const;
-const multimodalPromptPatchFiles = ["vision_llm_node.py"] as const;
+const multimodalPromptPatchFiles = ["vision_llm_node.py", "local_gguf_utils.py"] as const;
 const qwenVlPatchFiles = ["nodes.py"] as const;
 
 function normalizeGitSource(source: string): string {
@@ -139,7 +141,13 @@ async function nodeHasOnlyAppPatch(
     const expected = nodeId === "minimax-h3-prompt-writer"
       ? patchH3PromptWriterLlamaCppCompatibility(baseline)
       : nodeId === "comfyui-multimodal-prompt-nodes"
-        ? patchMultimodalPromptResidency(patchMultimodalPromptContextSize(baseline))
+        ? filename === "local_gguf_utils.py"
+          ? patchMultimodalPromptProjectorDiscovery(baseline)
+          : patchMultimodalPromptResidency(
+              patchMultimodalPromptQwen38Recognition(
+                patchMultimodalPromptContextSize(baseline)
+              )
+            )
         : patchQwenVlComfyDesktopLogging(baseline);
     if (normalizeGitSource(current) !== normalizeGitSource(expected)) return false;
   }

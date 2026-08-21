@@ -240,9 +240,9 @@ export function buildImageEditPageViewModel(
     (profile) => profile.id === draft.modelId
   );
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
-  const promptRuntimeBusy = promptRuntimeView.left.busy || promptRuntimeView.right.busy;
+  const promptRuntimeBusy = promptStarting || promptRuntimeView.left.busy || promptRuntimeView.right.busy;
   const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
-  const imagePromptAiDisabled = promptRuntimeView.right.disabled || state.queueRunning || !prompt.text.trim() || !imagePromptModelSupportsImageEdit;
+  const imagePromptAiDisabled = promptStarting || promptRuntimeView.right.disabled || state.queueRunning || !prompt.text.trim() || !imagePromptModelSupportsImageEdit;
   const imageEnhanceMode: ImagePromptPreset = promptEnhanceMode === "faithful"
     ? "faithful"
     : "detail-enhance";
@@ -294,7 +294,7 @@ export function buildImageEditPageViewModel(
     imagePromptAiDisabled,
     releasePromptControlTitle: options.promptRuntimeControlTitle(),
     releasePromptControlIconName: promptRuntimeView.left.icon,
-    releasePromptControlDisabled: promptRuntimeView.left.disabled || state.queueRunning,
+    releasePromptControlDisabled: promptStarting || promptRuntimeView.left.disabled || state.queueRunning,
     markupGuideCount,
     imageModelInputCount,
     enqueueBlockReason,
@@ -365,8 +365,8 @@ export function buildVideoCreatePageViewModel(
     ? promptEnhanceMode === "faithful" ? "faithful" : "h3-vision"
     : promptEnhanceMode === "faithful" ? "faithful" : "sulphur-native";
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
-  const promptRuntimeBusy = promptRuntimeView.left.busy || promptRuntimeView.right.busy;
-  const promptAiDisabled = promptRuntimeView.right.disabled || state.queueRunning;
+  const promptRuntimeBusy = promptStarting || promptRuntimeView.left.busy || promptRuntimeView.right.busy;
+  const promptAiDisabled = promptStarting || promptRuntimeView.right.disabled || state.queueRunning;
   const videoPolicy = resolveVideoGenerationPolicy({
     modelId: draft.modelId,
     inputMode: draft.inputMode,
@@ -502,7 +502,7 @@ export function buildVideoCreatePageViewModel(
     promptUi: h3PromptPack.ui,
     releasePromptControlTitle: options.promptRuntimeControlTitle(),
     releasePromptControlIconName: promptRuntimeView.left.icon,
-    releasePromptControlDisabled: promptRuntimeView.left.disabled || state.queueRunning,
+    releasePromptControlDisabled: promptStarting || promptRuntimeView.left.disabled || state.queueRunning,
     promptAiDisabled,
     promptEnhanceButtonTitle: promptAiDisabled && state.queueRunning
       ? t(uiKeys.create.validation.promptTaskRunning)

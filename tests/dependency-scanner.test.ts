@@ -230,6 +230,52 @@ describe("dependency scanner", () => {
     expect(qwenVl?.updateNotice).toContain("Bad file descriptor");
   });
 
+  it("marks MultiModal Prompt Nodes without Qwen3.8 projector discovery for repair", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-multimodal-scan-"));
+    temporaryDirectories.push(comfyRoot);
+    const nodeDirectory = path.join(
+      comfyRoot,
+      "custom_nodes",
+      "ComfyUI-MultiModal-Prompt-Nodes"
+    );
+    await fs.mkdir(nodeDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(
+        path.join(nodeDirectory, "pyproject.toml"),
+        '[project]\nversion = "1.0.15"\n',
+        "utf8"
+      ),
+      fs.writeFile(
+        path.join(nodeDirectory, "vision_llm_node.py"),
+        "def _infer_is_qwen35(model_name_lower):\n    return 'qwen3.6' in model_name_lower\n",
+        "utf8"
+      ),
+      fs.writeFile(
+        path.join(nodeDirectory, "local_gguf_utils.py"),
+        "def discover_local_gguf_models():\n    pass\n",
+        "utf8"
+      )
+    ]);
+
+    const statuses = await scanCustomNodes(comfyRoot, {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:1"
+    });
+    const multimodal = statuses.find(
+      (status) => status.id === "comfyui-multimodal-prompt-nodes"
+    );
+
+    expect(multimodal).toMatchObject({
+      installed: true,
+      loaded: true,
+      updateAvailable: true,
+      compatibilityState: "warning"
+    });
+    expect(multimodal?.updateNotice).toContain("Qwen3.8");
+    expect(multimodal?.updateNotice).toContain("一键修复");
+    expect(multimodal?.compatibilityNotice).toBe(multimodal?.updateNotice);
+  });
+
   it("offers an update when the installed node is below the catalog recommendation", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-spectrum-scan-"));
     temporaryDirectories.push(comfyRoot);

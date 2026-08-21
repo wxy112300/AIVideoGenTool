@@ -1727,30 +1727,36 @@ async function warmSelectedPromptRuntime(
   promptBackend: ReturnType<typeof promptModelBackend>,
   signal: AbortSignal
 ): Promise<void> {
-  if (promptBackend === "h3-prompt-writer") {
+  const prepareRuntime = async (): Promise<void> => {
     await ensureComfyUiReadyForPrompt(settings, signal);
+    // `prompt:start` may begin while the service is stopped. The prompt state
+    // machine intentionally rejects a warming model on a stopped service, so
+    // publish the model transition again after ComfyUI is actually ready.
+    // This keeps both the Settings control and Create enhancement action
+    // blocked until the warmup workflow has really completed.
+    promptRuntimeManager.setModel("warming", settings.promptModelId);
     await validateNativePromptRuntime(settings);
+  };
+  if (promptBackend === "h3-prompt-writer") {
+    await prepareRuntime();
     await warmH3PromptWriter(settings, signal);
     return;
   }
   if (promptBackend === "comfyui-multimodal") {
-    await ensureComfyUiReadyForPrompt(settings, signal);
-    await validateNativePromptRuntime(settings);
+    await prepareRuntime();
     await warmMultimodalPromptModel(settings, signal);
     return;
   }
   if (promptBackend === "comfyui-qwenvl-lora") {
     await ensureQwenVlManagedMetadata(settings, signal);
-    await ensureComfyUiReadyForPrompt(settings, signal);
-    await validateNativePromptRuntime(settings);
+    await prepareRuntime();
     await warmQwenVlPeftPromptModel(settings, signal);
     return;
   }
   if (promptBackend !== "native-text-generate") {
     throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
   }
-  await ensureComfyUiReadyForPrompt(settings, signal);
-  await validateNativePromptRuntime(settings);
+  await prepareRuntime();
   await warmNativePromptModel(settings, signal);
 }
 

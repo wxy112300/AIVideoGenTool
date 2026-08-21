@@ -26,16 +26,17 @@ import {
 
 type PromptNode = { class_type: string; inputs: Record<string, unknown> };
 export type MultimodalDevice = "CPU" | "GPU";
+export interface MultimodalRuntimeSelection {
+  model: string;
+  mmproj: string;
+}
 
 const gib = 1024 ** 3;
 const minimumFreeVramForMultimodalModel: Record<string, number> = {
   "qwen/qwen3.6-27b-uncensored-q4": 20 * gib,
-  "qwen/qwen3.8-27b-uncensored-q4": 18 * gib
+  "qwen/qwen3.8-27b-uncensored-q4": 20 * gib
 };
-const cpuOnlyMultimodalModels = new Set([
-  "qwen/qwen3.6-27b-uncensored-q4",
-  "qwen/qwen3.8-27b-uncensored-q4"
-]);
+let retainedMultimodalDevice: { modelId: string; device: MultimodalDevice } | null = null;
 const appLogger = getApplicationLogger();
 
 export function multimodalDeviceFor(
@@ -43,7 +44,6 @@ export function multimodalDeviceFor(
   vramUsedBytes: number | null,
   vramTotalBytes: number | null
 ): MultimodalDevice {
-  if (cpuOnlyMultimodalModels.has(modelId)) return "CPU";
   const minimumFreeVram = minimumFreeVramForMultimodalModel[modelId];
   if (!minimumFreeVram) return "GPU";
   if (vramUsedBytes == null || vramTotalBytes == null) {
@@ -68,6 +68,7 @@ function cleanBaseUrl(url: string): string {
 export async function releaseMultimodalPromptModel(
   settings: Pick<Settings, "comfyUrl">
 ): Promise<boolean> {
+  retainedMultimodalDevice = null;
   const response = await fetch(
     `${cleanBaseUrl(settings.comfyUrl)}/local-video-studio/multimodal-prompt/unload`,
     { method: "POST", signal: AbortSignal.timeout(15_000) }
@@ -83,6 +84,48 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 function modelRelativePath(directory: string, filename: string): string {
   return `${directory.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "")}/${filename}`;
+}
+
+function objectInfoEnumValues(
+  objectInfo: Record<string, unknown>,
+  nodeType: string,
+  inputName: string
+): string[] {
+  const node = objectInfo[nodeType];
+  if (!node || typeof node !== "object") return [];
+  const input = (node as { input?: unknown }).input;
+  if (!input || typeof input !== "object") return [];
+  const sections = input as { required?: unknown; optional?: unknown };
+  for (const section of [sections.required, sections.optional]) {
+    if (!section || typeof section !== "object") continue;
+    const config = (section as Record<string, unknown>)[inputName];
+    if (!Array.isArray(config) || !Array.isArray(config[0])) continue;
+    return config[0].filter((value): value is string => typeof value === "string");
+  }
+  return [];
+}
+
+export function multimodalRuntimeSelection(
+  objectInfo: Record<string, unknown>,
+  modelId: string
+): MultimodalRuntimeSelection {
+  const definition = comfyMultimodalPromptModel(modelId);
+  if (!definition) throw new Error("当前选择的提示词模型不是 ComfyUI 多模态模型。");
+  const model = modelRelativePath(definition.targetDirectory, definition.modelFilename);
+  const mmproj = modelRelativePath(definition.targetDirectory, definition.mmprojFilename);
+  const acceptedModels = objectInfoEnumValues(objectInfo, "VisionLLMNode", "model");
+  const acceptedMmprojs = objectInfoEnumValues(objectInfo, "VisionLLMNode", "mmproj");
+  if (!acceptedModels.includes(model)) {
+    throw new Error(
+      `VisionLLMNode 尚未注册所选主模型：${model}。请确认文件位于登记目录，随后在设置页更新/重新安装 ComfyUI MultiModal Prompt Nodes 并重启 ComfyUI。`
+    );
+  }
+  if (!acceptedMmprojs.includes(mmproj)) {
+    throw new Error(
+      `VisionLLMNode 尚未注册所选视觉投影文件：${mmproj}。该文件虽然可能已存在，但旧节点只识别 mmproj 前缀，无法安全用于 Qwen3.8。请在设置页更新/重新安装 ComfyUI MultiModal Prompt Nodes 并重启 ComfyUI。`
+    );
+  }
+  return { model, mmproj };
 }
 
 function promptTargetLanguage(settings: Settings): "auto" | "zh" | "en" {
@@ -137,7 +180,8 @@ export function buildMultimodalPromptWorkflow(
   settings: Settings,
   warmup = false,
   device: MultimodalDevice = "GPU",
-  retainModel = false
+  retainModel = false,
+  runtimeSelection?: MultimodalRuntimeSelection
 ): Record<string, PromptNode> {
   const definition = comfyMultimodalPromptModel(settings.promptModelId);
   if (!definition) {
@@ -171,8 +215,8 @@ export function buildMultimodalPromptWorkflow(
         prompt,
         style: "raw",
         target_language: promptTargetLanguage(settings),
-        model: modelRelativePath(definition.targetDirectory, definition.modelFilename),
-        mmproj: modelRelativePath(definition.targetDirectory, definition.mmprojFilename),
+        model: runtimeSelection?.model ?? modelRelativePath(definition.targetDirectory, definition.modelFilename),
+        mmproj: runtimeSelection?.mmproj ?? modelRelativePath(definition.targetDirectory, definition.mmprojFilename),
         max_tokens: maxTokens,
         // Keep the existing multimodal recommendation as an intentional
         // user-controlled range without allowing a
@@ -219,8 +263,14 @@ export async function enhancePromptWithMultimodalComfyUi(
         throw new Error("无法在加载多模态提示词模型前释放 ComfyUI 已有模型；为避免显存冲突，本次扩写已停止。请先停止当前任务或重启 ComfyUI。", { cause: error });
       }
     }
-    const metrics = await getPerformanceMetrics(settings).catch(() => null);
-    const device = multimodalDeviceFor(
+    const residentDevice = retainModel &&
+      retainedMultimodalDevice?.modelId === settings.promptModelId
+      ? retainedMultimodalDevice.device
+      : null;
+    const metrics = residentDevice
+      ? null
+      : await getPerformanceMetrics(settings).catch(() => null);
+    const device = residentDevice ?? multimodalDeviceFor(
       settings.promptModelId,
       metrics?.vramUsedBytes ?? null,
       metrics?.vramTotalBytes ?? null
@@ -228,6 +278,7 @@ export async function enhancePromptWithMultimodalComfyUi(
     appLogger.info("prompt", "multimodal-device-selected", "Selected multimodal prompt device", {
       modelId: settings.promptModelId,
       device,
+      selection: residentDevice ? "retained" : "measured",
       vramUsedBytes: metrics?.vramUsedBytes ?? null,
       vramTotalBytes: metrics?.vramTotalBytes ?? null
     });
@@ -244,6 +295,10 @@ export async function enhancePromptWithMultimodalComfyUi(
       `${baseUrl}/object_info`,
       { signal }
     );
+    const runtimeSelection = multimodalRuntimeSelection(
+      objectInfo,
+      settings.promptModelId
+    );
     const uploadedImages = await Promise.all(
       (request.imagePaths ?? (request.imagePath ? [request.imagePath] : []))
         .filter(Boolean)
@@ -257,7 +312,8 @@ export async function enhancePromptWithMultimodalComfyUi(
       settings,
       warmup,
       device,
-      retainModel
+      retainModel,
+      runtimeSelection
     );
     const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
     if (missingNodes.length) {
@@ -265,7 +321,7 @@ export async function enhancePromptWithMultimodalComfyUi(
         `当前 ComfyUI 未加载多模态提示词节点：${missingNodes.join("、")}。请安装/更新 ComfyUI MultiModal Prompt Nodes，并重启服务。`
       );
     }
-    const clientId = `local-video-studio-qwen36-prompt-${operationId}`;
+    const clientId = `local-video-studio-multimodal-prompt-${operationId}`;
     const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -309,6 +365,9 @@ export async function enhancePromptWithMultimodalComfyUi(
     );
     onProgress?.("validating", 94);
     const output = extractStringNodeOutput(history, ["preview", "vision-llm"]);
+    if (retainModel) {
+      retainedMultimodalDevice = { modelId: settings.promptModelId, device };
+    }
     appLogger.info("prompt", "comfy-output-extracted", "Multimodal prompt output extracted", {
       operationId,
       modelId: settings.promptModelId,

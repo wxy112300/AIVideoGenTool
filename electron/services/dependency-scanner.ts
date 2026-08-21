@@ -165,7 +165,7 @@ function compatibilityForNode(
     const versionNotice = `已安装但未读取到版本号；最低支持 v${definition.minimumVersion}，请在 Git 元数据可用时重新扫描。`;
     return {
       compatibilityState: "warning",
-      compatibilityNotice: [versionNotice, compatibilityNotice].filter(Boolean).join("；")
+      compatibilityNotice: joinUniqueNotices(versionNotice, compatibilityNotice)
     };
   }
   if (definition.minimumVersion && version &&
@@ -187,6 +187,10 @@ function compatibilityForNode(
       ? "版本与节点状态已读取；最终工作流兼容性仍由运行时检查确认。"
       : ""
   };
+}
+
+function joinUniqueNotices(...notices: string[]): string {
+  return [...new Set(notices.filter(Boolean))].join("；");
 }
 
 export function availableComfyNodeIds(objectInfo: unknown): Set<string> {
@@ -512,6 +516,23 @@ export async function scanCustomNodes(
         updateNotice = notice;
         optionalUpdateRecommended = true;
       }
+    } else if (definition.id === "comfyui-multimodal-prompt-nodes" && directory) {
+      const [visionSource, discoverySource] = await Promise.all([
+        fs.readFile(path.join(directory, "vision_llm_node.py"), "utf8").catch(() => ""),
+        fs.readFile(path.join(directory, "local_gguf_utils.py"), "utf8").catch(() => "")
+      ]);
+      const qwen38Compatible = !visionSource || (
+        visionSource.includes('("qwen3.8" in model_name_lower)') &&
+        visionSource.includes('"qwen38", "qwen3.8"')
+      );
+      const projectorDiscoveryCompatible = !discoverySource ||
+        discoverySource.includes("def _is_mmproj_filename(");
+      if (!qwen38Compatible || !projectorDiscoveryCompatible) {
+        const notice = "节点尚未适配 Qwen3.8 的 vision 投影文件；文件可能已存在但不会出现在 VisionLLMNode 列表中，请执行一键修复并重启 ComfyUI";
+        compatibilityNotice = notice;
+        updateNotice = notice;
+        optionalUpdateRecommended = true;
+      }
     }
     const localVersion = await readLocalNodeVersion(directory);
     const version = localVersion.version;
@@ -587,9 +608,12 @@ export async function scanCustomNodes(
       runtimeVerified,
       loadError,
       updateAvailable,
-      [compatibilityNotice, updateNotice, pendingRestartError, duplicateNotice]
-        .filter(Boolean)
-        .join("；")
+      joinUniqueNotices(
+        compatibilityNotice,
+        updateNotice,
+        pendingRestartError,
+        duplicateNotice
+      )
     );
     return {
       id: definition.id,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertPromptRuntimeState,
   createPromptRuntimeState,
+  promptModelStartupIsActive,
   promptCancellationMode,
   promptOperationBelongsTo,
   promptOperationIsActive,
@@ -36,6 +37,32 @@ function begin(
 }
 
 describe("prompt runtime state machine", () => {
+  it("keeps manual startup pending across the service-ready handoff until model warmup settles", () => {
+    let state = createPromptRuntimeState(service("stopped"));
+    expect(promptModelStartupIsActive(state, true)).toBe(true);
+
+    state = reducePromptRuntime(state, {
+      type: "service-updated",
+      service: service("ready", 2)
+    });
+    expect(promptModelStartupIsActive(state, true)).toBe(true);
+    expect(promptModelStartupIsActive(state, false)).toBe(false);
+
+    state = reducePromptRuntime(state, {
+      type: "model-updated",
+      modelPhase: "warming",
+      modelId: "qwen3.8"
+    });
+    expect(promptModelStartupIsActive(state, false)).toBe(true);
+
+    state = reducePromptRuntime(state, {
+      type: "model-updated",
+      modelPhase: "resident",
+      modelId: "qwen3.8"
+    });
+    expect(promptModelStartupIsActive(state, false)).toBe(false);
+  });
+
   it("starts with independent service, model, and idle operation sections", () => {
     const state = createPromptRuntimeState();
     expect(state).toEqual({

@@ -3,6 +3,7 @@ import { createRendererApp } from "./renderer/app";
 import { bootstrapRenderer } from "./renderer/bootstrap";
 import {
   createPromptRuntimeState,
+  promptModelStartupIsActive,
   promptOperationBelongsTo,
   promptOperationIsActive,
   type PromptRuntimeState
@@ -327,6 +328,7 @@ let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
 let settingsImagePromptPreset: ImagePromptPreset = "faithful";
 let promptEnhancing = false;
 let promptStarting = false;
+let promptStartRequestPending = false;
 let promptReleasing = false;
 let promptRuntimeLoaded = false;
 let promptProgress: PromptProgress | null = null;
@@ -735,7 +737,7 @@ function createViewModelDependencies(): CreateViewModelDependencies {
     promptEnhanceMode,
     h3PromptPreset,
     promptEnhancing: promptRuntimeView.right.action === "cancel",
-    promptStarting: promptRuntime.service.phase === "starting" || promptRuntime.model.phase === "warming",
+    promptStarting,
     promptReleasing: promptRuntime.model.phase === "unloading",
     promptRuntimeLoaded: promptRuntime.model.phase === "resident",
     promptProgress: ownsActivePrompt ? promptProgress : null,
@@ -1492,6 +1494,7 @@ async function releasePromptModelFromUi(): Promise<void> {
 async function startPromptModelFromUi(): Promise<void> {
   if (promptRuntime.model.phase === "warming" || promptRuntime.service.phase === "starting") return;
   reportUserAction("start-prompt-service");
+  promptStartRequestPending = true;
   promptStarting = true;
   render();
   try {
@@ -1502,7 +1505,8 @@ async function startPromptModelFromUi(): Promise<void> {
   } catch (error) {
     showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
   } finally {
-    promptStarting = false;
+    promptStartRequestPending = false;
+    promptStarting = promptModelStartupIsActive(promptRuntime);
     render();
   }
 }
@@ -2830,7 +2834,7 @@ registerRendererEvents({
   setPromptRuntimeState: (runtime) => {
     promptRuntime = runtime;
     promptRuntimeLoaded = runtime.model.phase === "resident";
-    promptStarting = runtime.service.phase === "starting" || runtime.model.phase === "warming";
+    promptStarting = promptModelStartupIsActive(runtime, promptStartRequestPending);
     promptReleasing = runtime.model.phase === "unloading";
     promptEnhancing = promptOperationIsActive(runtime);
   },
@@ -2901,7 +2905,7 @@ bootstrapRenderer({
   setPromptRuntimeState: (runtime) => {
     promptRuntime = runtime;
     promptRuntimeLoaded = runtime.model.phase === "resident";
-    promptStarting = runtime.service.phase === "starting" || runtime.model.phase === "warming";
+    promptStarting = promptModelStartupIsActive(runtime, promptStartRequestPending);
     promptReleasing = runtime.model.phase === "unloading";
     promptEnhancing = promptOperationIsActive(runtime);
   },

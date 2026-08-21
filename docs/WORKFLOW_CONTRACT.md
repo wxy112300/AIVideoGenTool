@@ -41,6 +41,7 @@ A model or workflow is product integrated only when applicable items are complet
 - When changing a shared input such as width, height, frame count, seed, sampler, or output prefix, search every bundled workflow and adapter that consumes it.
 - Preserve a known-good baseline workflow when introducing an experimental acceleration path unless the user explicitly asks to remove it.
 - Native Qwen3.5 2B/4B prompt enhancement is a product-integrated ComfyUI path constructed as `CLIPLoader -> TextGenerate`. Settings detects the encoder file offline and validates both core node types when ComfyUI is online; an offline runtime check is pending evidence, not an integration failure.
+- Qwen3.6/Qwen3.8 GGUF prompt enhancement uses `VisionLLMNode` with an exact model and vision-projector pair. Qwen3.8's current upstream GGUF reports the Qwen3.5 architecture but names its projector `*-vision-*.gguf`; the application-owned node adapter must register that filename as an mmproj, exclude it from the main-model list, and route Qwen3.8 through the Qwen3.5 vision handler. Before upload or `/prompt` submission, validate both exact enum values against the running `/object_info`; never substitute another model family's projector or silently fall back to text-only mode.
 
 ## Runtime Profiles and Isolation
 

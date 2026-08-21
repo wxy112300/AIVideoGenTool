@@ -520,6 +520,14 @@ export function promptOperationIsActive(state: PromptRuntimeState): boolean {
   return isActiveOperation(state.operation);
 }
 
+export function promptModelStartupIsActive(
+  state: PromptRuntimeState,
+  requestPending = false
+): boolean {
+  return requestPending || state.service.phase === "starting" ||
+    state.service.phase === "restarting" || state.model.phase === "warming";
+}
+
 export function promptCancellationMode(
   state: PromptRuntimeState
 ): PromptCancellationMode {

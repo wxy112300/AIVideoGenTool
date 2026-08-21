@@ -10,6 +10,8 @@ import {
 import {
   patchH3PromptWriterLlamaCppCompatibility,
   patchMultimodalPromptContextSize,
+  patchMultimodalPromptProjectorDiscovery,
+  patchMultimodalPromptQwen38Recognition,
   patchMultimodalPromptResidency,
   patchQwenVlComfyDesktopLogging,
   patchQwenVlCooperativeInterrupt,
@@ -109,9 +111,22 @@ describe("dependency installer", () => {
       "# ComfyUI Node Registration"
     ].join("\n");
     await fs.writeFile(path.join(directory, "vision_llm_node.py"), source);
+    await fs.writeFile(path.join(directory, "local_gguf_utils.py"), [
+      "def discover_local_gguf_models(qwen_only=False):",
+      "    for file_name in []:",
+      "        if file_name.startswith(\"mmproj\"):",
+      "            continue",
+      "",
+      "def discover_local_mmproj_files():",
+      "    for file_name in []:",
+      "        if file_name.startswith(\"mmproj\"):",
+      "            pass",
+      ""
+    ].join("\n"));
 
     await prepareMultimodalPromptNodes(directory, vi.fn());
     const patched = await fs.readFile(path.join(directory, "vision_llm_node.py"), "utf8");
+    const patchedDiscovery = await fs.readFile(path.join(directory, "local_gguf_utils.py"), "utf8");
 
     expect(patched.match(/n_ctx: int = 8192/gu)).toHaveLength(2);
     expect(patched).toContain('"keep_model_loaded": ("BOOLEAN", {"default": False})');
@@ -119,6 +134,25 @@ describe("dependency installer", () => {
     expect(patched).toContain('/local-video-studio/multimodal-prompt/unload');
     expect(patchMultimodalPromptContextSize(patched)).toBe(patched);
     expect(patchMultimodalPromptResidency(patched)).toBe(patched);
+    expect(patchedDiscovery).toContain("def _is_mmproj_filename");
+    expect(patchedDiscovery).toContain('"-vision-" in lower');
+    expect(patchMultimodalPromptProjectorDiscovery(patchedDiscovery)).toBe(patchedDiscovery);
+  });
+
+  it("teaches the MultiModal node that Qwen3.8 uses the Qwen3.5 handler family", () => {
+    const source = [
+      "    def _infer_is_qwen35(self, model_path: str) -> bool:",
+      "        model_name_lower = os.path.basename(model_path).lower()",
+      '        return ("qwen35" in model_name_lower) or ("qwen3.5" in model_name_lower) or ("qwen36" in model_name_lower) or ("qwen3.6" in model_name_lower)',
+      '        families = ["qwen2", "qwen3vl", "qwen3-vl", "qwen35", "qwen3.5", "qwen36", "qwen3.6"]',
+      '            if f.startswith("mmproj-") and f.endswith(".gguf")'
+    ].join("\n");
+
+    const patched = patchMultimodalPromptQwen38Recognition(source);
+    expect(patched).toContain('("qwen3.8" in model_name_lower)');
+    expect(patched).toContain('"qwen38", "qwen3.8"]');
+    expect(patched).toContain('or "-vision-" in f.lower()');
+    expect(patchMultimodalPromptQwen38Recognition(patched)).toBe(patched);
   });
 
   it("makes Qwen-VL logging tolerate ComfyUI Desktop's closed stdout", () => {
@@ -350,6 +384,18 @@ describe("dependency installer", () => {
               "# ComfyUI Node Registration"
             ].join("\n")
           );
+          await fs.writeFile(path.join(target, "local_gguf_utils.py"), [
+            "def discover_local_gguf_models(qwen_only=False):",
+            "    for file_name in []:",
+            "        if file_name.startswith(\"mmproj\"):",
+            "            continue",
+            "",
+            "def discover_local_mmproj_files():",
+            "    for file_name in []:",
+            "        if file_name.startswith(\"mmproj\"):",
+            "            pass",
+            ""
+          ].join("\n"));
           return "clone complete";
         }
         if (args[0] === "-c") {

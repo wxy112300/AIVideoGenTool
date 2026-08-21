@@ -2,12 +2,52 @@ import { describe, expect, it } from "vitest";
 import {
   buildMultimodalPromptWorkflow,
   multimodalActivityTimeoutMinutes,
-  multimodalDeviceFor
+  multimodalDeviceFor,
+  multimodalRuntimeSelection
 } from "../electron/services/multimodal-prompt.js";
 import { createDefaultState } from "../src/core/defaults.js";
 
 describe("Qwen3.6 ComfyUI prompt workflow", () => {
-  it("falls back to CPU when Qwen3.6 does not have enough free VRAM", () => {
+  it("accepts Qwen3.8 only when both runtime enum values are registered", () => {
+    const model = "LLM/qwen3.8-27b-uncensored-q4/Qwen3.8-27B-Uncensored-noMTP-Q4_K_M.gguf";
+    const mmproj = "LLM/qwen3.8-27b-uncensored-q4/Qwen3.8-27B-Uncensored-vision-f16.gguf";
+    const objectInfo = {
+      VisionLLMNode: {
+        input: {
+          required: {
+            model: [[model], {}],
+            mmproj: [[mmproj, "(Auto-detect)", "(Not required)"], {}]
+          }
+        }
+      }
+    };
+
+    expect(multimodalRuntimeSelection(
+      objectInfo,
+      "qwen/qwen3.8-27b-uncensored-q4"
+    )).toEqual({ model, mmproj });
+  });
+
+  it("reports an actionable Qwen3.8 projector registration error before submission", () => {
+    const model = "LLM/qwen3.8-27b-uncensored-q4/Qwen3.8-27B-Uncensored-noMTP-Q4_K_M.gguf";
+    expect(() => multimodalRuntimeSelection({
+      VisionLLMNode: {
+        input: {
+          required: {
+            model: [[model], {}],
+            mmproj: [[
+              "LLM/qwen3.6-27b-uncensored-q4/mmproj-BF16.gguf",
+              "(Auto-detect)",
+              "(Not required)"
+            ], {}]
+          }
+        }
+      }
+    }, "qwen/qwen3.8-27b-uncensored-q4"))
+      .toThrow("旧节点只识别 mmproj 前缀");
+  });
+
+  it("uses measured free VRAM instead of forcing Qwen3.6/Qwen3.8 onto CPU", () => {
     expect(multimodalDeviceFor(
       "qwen/qwen3.6-27b-uncensored-q4",
       4.5 * 1024 ** 3,
@@ -17,6 +57,16 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
       "qwen/qwen3.6-27b-uncensored-q4",
       1 * 1024 ** 3,
       22.9 * 1024 ** 3
+    )).toBe("GPU");
+    expect(multimodalDeviceFor(
+      "qwen/qwen3.8-27b-uncensored-q4",
+      1.8 * 1024 ** 3,
+      24 * 1024 ** 3
+    )).toBe("GPU");
+    expect(multimodalDeviceFor(
+      "qwen/qwen3.8-27b-uncensored-q4",
+      null,
+      null
     )).toBe("CPU");
     expect(multimodalActivityTimeoutMinutes(
       "qwen/qwen3.6-27b-uncensored-q4",

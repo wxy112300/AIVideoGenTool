@@ -174,6 +174,64 @@ export function patchMultimodalPromptContextSize(source: string): string {
   return source.replace(/n_ctx: int = 4096/gu, "n_ctx: int = 8192");
 }
 
+export function patchMultimodalPromptQwen38Recognition(source: string): string {
+  let patched = source;
+  if (
+    patched.includes("def _infer_is_qwen35") &&
+    !patched.includes('("qwen3.8" in model_name_lower)')
+  ) {
+    patched = patched.replace(
+      '("qwen35" in model_name_lower) or ("qwen3.5" in model_name_lower) or ("qwen36" in model_name_lower) or ("qwen3.6" in model_name_lower)',
+      '("qwen35" in model_name_lower) or ("qwen3.5" in model_name_lower) or ("qwen36" in model_name_lower) or ("qwen3.6" in model_name_lower) or ("qwen38" in model_name_lower) or ("qwen3.8" in model_name_lower)'
+    );
+    if (!patched.includes('("qwen3.8" in model_name_lower)')) {
+      throw new Error("MultiModal Prompt Nodes 无法添加 Qwen3.8 架构识别，已停止修改。");
+    }
+  }
+  if (patched.includes('families = ["qwen2"')) {
+    patched = patched.replace(
+      '"qwen36", "qwen3.6"]',
+      '"qwen36", "qwen3.6", "qwen38", "qwen3.8"]'
+    );
+    if (!patched.includes('"qwen38", "qwen3.8"]')) {
+      throw new Error("MultiModal Prompt Nodes 无法添加 Qwen3.8 mmproj 自动识别，已停止修改。");
+    }
+  }
+  if (patched.includes('if f.startswith("mmproj-") and f.endswith(".gguf")')) {
+    patched = patched.replace(
+      'if f.startswith("mmproj-") and f.endswith(".gguf")',
+      'if (f.startswith("mmproj-") or "-vision-" in f.lower()) and f.endswith(".gguf")'
+    );
+  }
+  return patched;
+}
+
+export function patchMultimodalPromptProjectorDiscovery(source: string): string {
+  if (source.includes("def _is_mmproj_filename(")) return source;
+  const marker = "def discover_local_gguf_models(";
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex < 0) {
+    throw new Error("MultiModal Prompt Nodes 缺少本地 GGUF 扫描器，无法添加 vision 投影文件兼容。");
+  }
+  const helper = [
+    "def _is_mmproj_filename(file_name: str) -> bool:",
+    "    lower = file_name.lower()",
+    "    return lower.startswith(\"mmproj\") or (\"-vision-\" in lower and lower.endswith(\".gguf\"))",
+    "",
+    ""
+  ].join("\n");
+  const withHelper = `${source.slice(0, markerIndex)}${helper}${source.slice(markerIndex)}`;
+  const patched = withHelper.replace(
+    /file_name\.startswith\("mmproj"\)/gu,
+    "_is_mmproj_filename(file_name)"
+  );
+  const occurrences = patched.match(/_is_mmproj_filename\(file_name\)/gu)?.length ?? 0;
+  if (occurrences < 2) {
+    throw new Error("MultiModal Prompt Nodes 的模型/mmproj 扫描结构不兼容，已停止修改。");
+  }
+  return patched;
+}
+
 export function patchMultimodalPromptResidency(source: string): string {
   let patched = source;
   if (!patched.includes('"keep_model_loaded": ("BOOLEAN"')) {
@@ -385,21 +443,33 @@ export async function prepareMultimodalPromptNodes(
   report: (message: string) => void
 ): Promise<void> {
   const filename = path.join(targetDirectory, "vision_llm_node.py");
-  const source = await fs.readFile(filename, "utf8");
+  const discoveryFilename = path.join(targetDirectory, "local_gguf_utils.py");
+  const [source, discoverySource] = await Promise.all([
+    fs.readFile(filename, "utf8"),
+    fs.readFile(discoveryFilename, "utf8")
+  ]);
   const patched = patchMultimodalPromptResidency(
-    patchMultimodalPromptContextSize(source)
+    patchMultimodalPromptQwen38Recognition(
+      patchMultimodalPromptContextSize(source)
+    )
   );
+  const patchedDiscovery = patchMultimodalPromptProjectorDiscovery(discoverySource);
   const occurrences = patched.match(/n_ctx: int = 8192/gu)?.length ?? 0;
   if (occurrences < 2 || patched.includes("n_ctx: int = 4096")) {
     throw new Error(
       "MultiModal Prompt Nodes 源码结构与 8K 上下文适配不匹配，已停止修改。"
     );
   }
-  if (patched !== source) {
-    await fs.writeFile(filename, patched, "utf8");
-    report("已为 MultiModal Prompt Nodes 应用 8K 上下文与提示词模型驻留适配");
+  if (patched !== source || patchedDiscovery !== discoverySource) {
+    await Promise.all([
+      patched !== source ? fs.writeFile(filename, patched, "utf8") : Promise.resolve(),
+      patchedDiscovery !== discoverySource
+        ? fs.writeFile(discoveryFilename, patchedDiscovery, "utf8")
+        : Promise.resolve()
+    ]);
+    report("已为 MultiModal Prompt Nodes 应用 8K 上下文、模型驻留及 Qwen3.8 vision 投影兼容");
   } else {
-    report("MultiModal Prompt Nodes 已使用 8K 上下文并支持显式驻留/卸载");
+    report("MultiModal Prompt Nodes 已使用 8K 上下文并支持显式驻留/卸载与 Qwen3.8 vision 投影");
   }
 }
 

@@ -111,7 +111,7 @@ Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分
 
 工作流来源元数据集中在 `src/core/workflow-metadata.ts`。它覆盖 `workflows/` 下的全部 API JSON，记录 `/prompt` schema、推荐 ComfyUI 核心版本、使用的节点包和上游来源；API JSON 本身不放额外顶层字段，避免被 ComfyUI 当成节点解析。
 
-Qwen3.6/Qwen3.8 本地多模态路径有明确的 Python ABI 边界：节点仓库的普通 requirements 只安装轻量依赖，安装器会跳过其中可能覆盖后端的普通 `llama-cpp-python`，改用项目统一的固定 JamePeng GPU wheel。Windows 当前支持 Python 3.10–3.14；CUDA wheel 提供 12.4/12.6/12.8/13.0/13.1，并明确映射 12.5→12.4、12.7→12.6、12.9→12.8、13.2→13.1。超出矩阵时会在下载前失败并写明 Python/CUDA 版本，不会尝试 CPU fallback 或本地源码编译。设置页会把“节点目录已安装”“VisionLLMNode 已加载”“共享运行库自检”和“模型/vision 投影文件完整”分开显示，实际运行仍在 ComfyUI 启动后验证。4090 默认使用 Q4_K_M、8K 上下文、GPU 层；安装器会把仍固定在 4K 的节点实现适配到 8K，避免 H3 长指令和视觉 token 挤占全部输出空间。扩写完成后请求 ComfyUI `/free` 释放显存，再交给 H3；Qwen3.8 当前不启用 MTP/speculative 路径。
+Qwen3.6/Qwen3.8 本地多模态路径有明确的 Python ABI 边界：节点仓库的普通 requirements 只安装轻量依赖，安装器会跳过其中可能覆盖后端的普通 `llama-cpp-python`，改用项目统一的固定 JamePeng GPU wheel。Windows 当前支持 Python 3.10–3.14；CUDA wheel 提供 12.4/12.6/12.8/13.0/13.1，并明确映射 12.5→12.4、12.7→12.6、12.9→12.8、13.2→13.1。超出矩阵时会在下载前失败并写明 Python/CUDA 版本，不会尝试 CPU fallback 或本地源码编译。设置页会把“节点目录已安装”“VisionLLMNode 已加载”“共享运行库自检”和“模型/vision 投影文件完整”分开显示，实际运行仍在 ComfyUI 启动后验证。4090 默认使用 Q4_K_M、8K 上下文，并在释放其他模型后按实时空闲显存选择设备：至少 20 GiB 时启用全部 GPU 层，余量不足或遥测不可用时才使用 CPU；不得用固定 CPU 清单覆盖这一判断。安装器会把仍固定在 4K 的节点实现适配到 8K，避免 H3 长指令和视觉 token 挤占全部输出空间。Qwen3.8 上游将视觉投影命名为 `Qwen3.8-...-vision-f16.gguf`，而节点原版只登记 `mmproj*` 文件且尚未识别 Qwen3.8 名称；一键安装/修复会把该文件登记为 mmproj、从主模型列表排除，并按其 `qwen35` 架构使用 Qwen3.5 vision handler。设置离线扫描会提示旧节点需要修复，运行时还会在上传图片和提交工作流前核对 `/object_info` 的精确枚举值。扩写完成后请求 ComfyUI `/free` 释放显存，再交给 H3；Qwen3.8 当前不启用 MTP/speculative 路径。
 
 ### Gemma / H3 Prompt Writer 的 llama-cpp-python
 
