@@ -98,6 +98,7 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('class="button-row settings-heading-actions is-clean"');
     expect(markup).toContain('class="settings-tool-actions"');
     expect(markup).toContain('class="settings-commit-actions"');
+    expect(markup.indexOf('class="settings-commit-actions"')).toBeLessThan(markup.indexOf('id="scan-environment"'));
     expect(markup).not.toContain('>settings.saved</span>');
     expect(markup).toContain('id="connection-result" class="connection-result muted" role="status" aria-live="polite"');
     expect(markup).toContain('id="force-stop-comfy"');

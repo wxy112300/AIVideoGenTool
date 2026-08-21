@@ -850,13 +850,13 @@ export function renderSettingsPage(
     <section class="page-heading settings-heading">
       <div><div class="heading-line"><h1>${t(uiKeys.settings.title)}</h1>${gpuDevices.length ? `<span class="model-badge">${escape(gpuBadge)}</span>` : ""}</div><p>${t(uiKeys.settings.description)}</p></div>
       <div class="button-row settings-heading-actions ${viewModel.settingsDirty || viewModel.settingsSaving ? "is-dirty" : "is-clean"}">
-        <div class="settings-tool-actions">
-          <button class="secondary button-with-icon" id="scan-environment" aria-busy="${viewModel.environmentScanning}" ${viewModel.environmentScanning ? "disabled" : ""}>${icon(viewModel.environmentScanning ? "refresh-cw" : "scan-search")}${viewModel.environmentScanning ? t(uiKeys.settings.scanning) : t(uiKeys.settings.rescan)}</button>
-        </div>
         <div class="settings-commit-actions">
           <span class="save-state ${viewModel.settingsDirty ? "dirty" : ""}" role="status" aria-live="polite" aria-atomic="true">${viewModel.settingsSaving ? t(uiKeys.settings.saving) : viewModel.settingsDirty ? t(uiKeys.settings.unsaved) : ""}</span>
           <button class="secondary button-with-icon" id="discard-settings" ${viewModel.settingsDirty && !viewModel.settingsSaving ? "" : "disabled"}>${icon("rotate-ccw")}${t(uiKeys.settings.discard)}</button>
           <button class="primary button-with-icon ${viewModel.settingsSaving ? "busy" : ""}" id="save-settings" aria-busy="${viewModel.settingsSaving}" ${viewModel.settingsDirty && !viewModel.settingsSaving ? "" : "disabled"}>${icon(viewModel.settingsSaving ? "refresh-cw" : "save")}${viewModel.settingsSaving ? t(uiKeys.settings.saving) : t(uiKeys.settings.save)}</button>
+        </div>
+        <div class="settings-tool-actions">
+          <button class="secondary button-with-icon" id="scan-environment" aria-busy="${viewModel.environmentScanning}" ${viewModel.environmentScanning ? "disabled" : ""}>${icon(viewModel.environmentScanning ? "refresh-cw" : "scan-search")}${viewModel.environmentScanning ? t(uiKeys.settings.scanning) : t(uiKeys.settings.rescan)}</button>
         </div>
       </div>
     </section>
