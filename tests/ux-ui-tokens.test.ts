@@ -243,6 +243,10 @@ describe("UX/UI semantic token foundation", () => {
     expect(densitySource).toMatch(/\.settings-heading\s*\{\s*top: 0;/);
   });
 
+  it("keeps the History album media override singular after L64 cleanup", () => {
+    expect(historyCurationSource.match(/\.history-gallery\.album \.history-media \{ aspect-ratio: 1 \/ 1 !important;/g) ?? []).toHaveLength(1);
+  });
+
   it("flattens ordinary panels while preserving overlay elevation", () => {
     expect(tokenSource).toContain("--ux-elevation-panel: none;");
     expect(foundationSource).toContain(".panel { min-width: 0; border: 1px solid var(--border); border-radius: var(--ux-radius-panel); background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--ux-elevation-panel); }");

@@ -246,7 +246,6 @@
   gap: 8px;
 }
 .history-gallery.album .history-gallery-item { align-self: start; grid-template-rows: auto 70px; margin: 0; }
-.history-gallery.album .history-media { aspect-ratio: 1 / 1 !important; }
 .history-gallery.album .history-media-badges { inset: 6px 6px auto; gap: 3px; }
 .history-gallery.album .media-chip { padding: 3px 5px; font-size: 9px; }
 .history-gallery.album .history-model-chip { min-width: 0; flex: 0 1 auto; max-width: 55%; margin-right: auto; }

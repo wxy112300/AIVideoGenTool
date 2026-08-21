@@ -1,6 +1,6 @@
 # P19 CSS selector owner map
 
-> Status: L61 completed; G17 approved the Create breakpoint and Settings navigation/shell geometry packages. The Settings section shell, heading, and content-card packages plus the History gallery/toolbar, History detail, and Queue composition packages are complete with current-renderer evidence. P19 now moves to the bounded L64 cleanup review; this document remains an owner inventory and execution record, not a visual-direction approval.
+> Status: L61 completed; G17 approved the Create breakpoint and Settings navigation/shell geometry packages. The Settings section shell, heading, and content-card packages plus the History gallery/toolbar, History detail, and Queue composition packages are complete with current-renderer evidence. L64 removed one confirmed duplicate History album override and retained all other `!important` declarations with active ownership; P20 QA remains. This document remains an owner inventory and execution record, not a visual-direction approval.
 >
 > Base: `75b20b1` (`v0.40.0`), current renderer and `src/style.css` import order. Historical prototypes are excluded.
 
@@ -73,7 +73,8 @@ The current `!important` inventory is also mixed across `01`, `02`, `05`, and `1
 6. Completed: move History gallery/toolbar composition, heading, and album/masonry breakpoints into `11`; the 8-record mixed-ratio matrix (32 captures across four History fixtures and eight widths) retained the adaptive columns and had no document/body horizontal overflow, and both album interaction smoke checks passed.
 7. Completed: move the History video inspector/stage refinements and image detail stage/version rail/responsive rules from `01`/`02` into `04`; the four-width video/image detail matrix (8 captures) retained its computed layout and expected internal text clipping, and both 900px detail interaction smokes passed.
 8. Completed: move Queue page/task/preview composition and Queue-only responsive rules from `01`/`02`/`05` into the Queue-owned region of `10`; retain shared task/card/performance primitives plus semantic type/status rules in `01`. The seven Queue states (`mixed`, `running`, `paused`, `failed`, `recoverable`, `empty`, `multiple-pending`) × eight widths produced 56 current-renderer captures with no document/body horizontal overflow; running smoke at 900px and 760px retained progress/stage/elapsed/preview/telemetry updates and pause/cancel reachability.
-9. Next: run L64 cleanup only after each family has zero unintended live references, no duplicate owner remains, and the P00 screenshot matrix is unchanged.
+9. Completed bounded L64 cleanup: removed the second identical `.history-gallery.album .history-media` override from `11-history-curation.css`; the remaining `!important` declarations were reviewed and retained because they still enforce an active cascade boundary. Four History fixtures × eight widths retained the expected gallery columns, document/body overflow status, and album interaction smoke; the owner test now asserts the album media override is singular.
+10. Next: P20/L65–L66 automated QA matrix and screenshot manifest; G18 remains the final runtime/visual/keyboard/release gate.
 
 ## Preserve list and gates
 
