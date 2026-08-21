@@ -80,7 +80,7 @@ describe("draft defaults", () => {
 
     expect(cleared.startImagePath).toBe("");
     expect(cleared.endImagePath).toBe("");
-    expect(cleared.inputMode).toBe("image");
+    expect(cleared.inputMode).toBe("video");
     expect(cleared.sourceVideoPath).toBe("");
     expect(cleared.sourceVideoDuration).toBe(0);
     expect(cleared.trimStartSeconds).toBe(0);

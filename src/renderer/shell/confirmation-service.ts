@@ -1,10 +1,9 @@
 import type { AppState, Settings } from "../../types";
-import type { Page, RendererContext, RendererNotifyOptions } from "../contracts";
-import { createClearedDraft } from "../../core/draft-defaults";
+import type { CreationMode, Page, RendererContext, RendererNotifyOptions } from "../contracts";
 import { uiKeys } from "../../core/i18n-keys";
 
 export type ConfirmationRequest =
-  | { kind: "clear-draft" }
+  | { kind: "clear-draft"; mode: Exclude<CreationMode, "image-edit"> }
   | { kind: "delete-history"; assetId: string; title: string }
   | { kind: "delete-image-version"; projectId: string; versionId: string; title: string }
   | { kind: "delete-video-version"; assetId: string; versionId: string; title: string }
@@ -21,9 +20,7 @@ export interface ConfirmationServiceOptions {
   getState(): AppState;
   setState(nextState: AppState): void;
   getFormSettings(): Settings;
-  clearDraftSaveTimer(): void;
-  setDraftDirty(value: boolean): void;
-  bumpDraftRevision(): void;
+  clearCreationDraft(mode: Exclude<CreationMode, "image-edit">): void;
   setServiceForceStopping(value: boolean): void;
   setServiceStatusMessage(message: string): void;
   scanEnvironment(settings: Settings): Promise<void>;
@@ -59,12 +56,7 @@ export async function acceptConfirmation(
   if (cancelButton) cancelButton.disabled = true;
   try {
     if (request.kind === "clear-draft") {
-      options.clearDraftSaveTimer();
-      options.bumpDraftRevision();
-      options.setDraftDirty(false);
-      options.setState(await context.studio.saveDraft(
-        createClearedDraft(options.getState().draft)
-      ));
+      options.clearCreationDraft(request.mode);
     } else if (request.kind === "force-stop-comfy") {
       options.setServiceForceStopping(true);
       options.setServiceStatusMessage(t(uiKeys.runtime.forceStopStatus));

@@ -211,7 +211,9 @@ import type {
 import { createClearedDraft } from "./core/draft-defaults";
 import {
   activateCreationDraft,
-  patchCreationDraftForMode
+  creationDraftForMode,
+  patchCreationDraftForMode,
+  preserveLocalCreationDrafts
 } from "./core/creation-drafts";
 import {
   imageEditDraftFromQueueTask,
@@ -1023,13 +1025,18 @@ function imageHistoryDetailPage(): string {
   return renderImageHistoryDetailPage(createHistoryPageViewModel(), historyPageOptions);
 }
 
-function enableSpectrumByDefaultIfAvailable(): void {
+function enableSpectrumByDefaultIfAvailable(
+  mode?: Exclude<CreationMode, "image-edit">
+): void {
   const spectrumNode = environmentScan?.customNodes.find(
     (node) => node.id === "spectrum-minimax-h3"
   );
-  const draft = state?.draft;
+  const draft = mode
+    ? creationDraftForMode(state, mode === "video-extension" ? "video" : "image")
+    : state?.draft;
   if (!draft || !shouldEnableSpectrumByDefault(draft, spectrumNode)) return;
-  patchDraft({ spectrumMode: "balanced" });
+  if (mode) patchDraftForMode(mode, () => ({ spectrumMode: "balanced" }));
+  else patchDraft({ spectrumMode: "balanced" });
 }
 
 
@@ -1254,7 +1261,7 @@ const environmentRefreshCoordinator = new EnvironmentRefreshCoordinator({
   commit: (scan) => {
     environmentScan = scan;
   },
-  afterCommit: enableSpectrumByDefaultIfAvailable,
+  afterCommit: () => enableSpectrumByDefaultIfAvailable(),
   notify: showMessage,
   scanningMessage: () => uiText(uiKeys.runtime.environmentScanning),
   completedMessage: () => uiText(uiKeys.runtime.environmentScanCompleted),
@@ -1819,14 +1826,8 @@ async function acceptConfirmation(): Promise<void> {
     getState: () => state,
     setState: setRendererState,
     getFormSettings: formSettings,
-    clearDraftSaveTimer: () => {
-      window.clearTimeout(draftSaveTimer);
-    },
-    setDraftDirty: (value) => {
-      draftDirty = value;
-    },
-    bumpDraftRevision: () => {
-      draftRevision += 1;
+    clearCreationDraft: (mode) => {
+      patchDraftForMode(mode, (draft) => createClearedDraft(draft));
     },
     setServiceForceStopping: (value) => {
       serviceForceStopping = value;
@@ -1999,12 +2000,20 @@ function scheduleImageDraftSave(): void {
 async function saveDraftImmediately(draft: Draft): Promise<void> {
   window.clearTimeout(draftSaveTimer);
   draftRevision += 1;
+  const revision = draftRevision;
   draftDirty = false;
   activateCreationDraft(state, draft);
-  setRendererState(await window.studio.saveDraft(draft, {
-    imageToVideoDraft: state.imageToVideoDraft,
-    videoExtensionDraft: state.videoExtensionDraft
-  }));
+  draftSaveInFlight += 1;
+  try {
+    const savedState = await window.studio.saveDraft(state.draft, {
+      imageToVideoDraft: state.imageToVideoDraft,
+      videoExtensionDraft: state.videoExtensionDraft
+    });
+    setRendererState(preserveLocalCreationDrafts(savedState, state));
+    if (revision === draftRevision) draftDirty = false;
+  } finally {
+    draftSaveInFlight -= 1;
+  }
 }
 
 function patchDraft(patch: Partial<Draft>): void {
@@ -2476,7 +2485,10 @@ function bindCreate(): void {
     setEnqueueBusyUi,
     requestClearDraftConfirmation: () => {
       rememberModalFocus();
-      ui.pendingConfirmation = { kind: "clear-draft" };
+      ui.pendingConfirmation = {
+        kind: "clear-draft",
+        mode: creationMode === "video-extension" ? "video-extension" : "image-to-video"
+      };
       ui.confirmationBusy = false;
       render();
     }

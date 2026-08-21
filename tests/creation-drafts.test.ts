@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
+import { createClearedDraft } from "../src/core/draft-defaults";
 import {
   activateCreationDraft,
   creationDraftForMode,
@@ -167,6 +168,8 @@ describe("creation draft isolation", () => {
       }]
     };
     const staleIncomingState = structuredClone(localState);
+    localState.draft = structuredClone(localState.imageToVideoDraft);
+    staleIncomingState.draft = structuredClone(localState.videoExtensionDraft);
     staleIncomingState.imageToVideoDraft!.h3ReferenceSlots = [];
     staleIncomingState.videoExtensionDraft!.h3ReferenceSlots = [];
 
@@ -181,5 +184,54 @@ describe("creation draft isolation", () => {
       "motion-character.png",
       "motion-reference.mp4"
     ]);
+    expect(merged.draft.modelId).toBe("minimax_h3_fl2va");
+    expect(merged.imageToVideoDraft?.modelId).toBe("minimax_h3_fl2va");
+    expect(merged.videoExtensionDraft?.modelId).toBe("minimax_h3_ref2va");
+
+    patchCreationDraftForMode(merged, "video", () => ({
+      modelId: "minimax_h3_ref2va_q4"
+    }), false);
+
+    expect(merged.draft.modelId).toBe("minimax_h3_fl2va");
+    expect(merged.imageToVideoDraft?.modelId).toBe("minimax_h3_fl2va");
+    expect(merged.videoExtensionDraft?.modelId).toBe("minimax_h3_ref2va_q4");
+  });
+
+  it("clears only the active Motion Extend workspace", () => {
+    const state = createDefaultState();
+    activateCreationDraft(state, {
+      ...state.draft,
+      inputMode: "image",
+      modelId: "minimax_h3_fl2va",
+      h3ReferenceSlots: [{
+        id: "fl2va-slot-1",
+        mediaType: "image",
+        mediaPath: "fl2va.png",
+        role: "subject",
+        note: ""
+      }]
+    });
+    activateCreationDraft(state, {
+      ...state.draft,
+      inputMode: "video",
+      modelId: "minimax_h3_ref2va",
+      sourceVideoPath: "extend.mp4",
+      h3ReferenceSlots: [{
+        id: "extend-slot-1",
+        mediaType: "video",
+        mediaPath: "extend.mp4",
+        role: "motion",
+        note: ""
+      }]
+    });
+
+    patchCreationDraftForMode(state, "video", (draft) => createClearedDraft(draft), true);
+
+    expect(state.draft.inputMode).toBe("video");
+    expect(state.draft.modelId).toBe("minimax_h3_ref2va");
+    expect(state.draft.sourceVideoPath).toBe("");
+    expect(state.draft.h3ReferenceSlots).toEqual([]);
+    expect(state.imageToVideoDraft?.modelId).toBe("minimax_h3_fl2va");
+    expect(state.imageToVideoDraft?.h3ReferenceSlots[0]?.mediaPath).toBe("fl2va.png");
   });
 });

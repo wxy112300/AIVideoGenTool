@@ -37,7 +37,7 @@ export interface CreatePageControllerOptions {
   ): void;
   patchImageDraft(patch: Partial<ImageEditDraft>): void;
   syncEnqueueUi(): void;
-  enableSpectrumByDefaultIfAvailable(): void;
+  enableSpectrumByDefaultIfAvailable(mode?: Exclude<CreationMode, "image-edit">): void;
   selectDraftVideo(filename: string): Promise<void>;
   formatTrimTime(seconds: number): string;
   imageEdit: Omit<ImageEditControllerOptions, "setState" | "patchImageDraft" | "resizePromptInput" | "updateImagePromptWordCounter" | "setPromptEnhanceMode" | "setPromptEnhancing" | "setPromptRuntimeLoaded" | "togglePromptModel" | "isEnqueueBusy" | "setEnqueueBusy" | "setEnqueueBusyUi"> & {
@@ -378,6 +378,9 @@ export function mountCreatePageController(
       if (!state) return;
       const value = (event.target as HTMLInputElement | HTMLSelectElement).value;
       if (id === "model") {
+        const requestMode = state.draft.inputMode === "video"
+          ? "video-extension"
+          : "image-to-video";
         const oldKey = options.bundledWorkflowKey(bundledWorkflowModelId(state.draft), state.draft.inputMode);
         const nextKey = options.bundledWorkflowKey(value, state.draft.inputMode);
         const oldBundledPath = options.bundledWorkflows[oldKey]?.path;
@@ -404,7 +407,7 @@ export function mountCreatePageController(
             supportsVideoExtension: bundled.supportsVideoExtension
           };
         }
-        options.patchDraft({
+        options.patchDraftForMode(requestMode, () => ({
           modelId: value,
           videoLoras: [],
           h3ReferenceSlots: slotsForR2V,
@@ -426,8 +429,8 @@ export function mountCreatePageController(
             : {}),
           ...(!bundled?.supportsEndImage && !nextIsR2V ? { endImagePath: "" } : {}),
           workflowPath: bundled?.path ?? (state.draft.workflowPath === oldBundledPath ? "" : state.draft.workflowPath)
-        });
-        options.enableSpectrumByDefaultIfAvailable();
+        }));
+        options.enableSpectrumByDefaultIfAvailable(requestMode);
         options.context.requestRender();
         return;
       }

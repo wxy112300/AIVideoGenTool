@@ -27,7 +27,6 @@ export function createDefaultImageEditDraft(): ImageEditDraft {
 export function createClearedDraft(current: Draft): Draft {
   return {
     ...current,
-    inputMode: "image",
     startImagePath: "",
     sourceWidth: 0,
     sourceHeight: 0,
