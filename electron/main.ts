@@ -65,7 +65,11 @@ import {
   extractComfyOutputFiles,
   isVideoOutputFilename
 } from "../src/core/comfy-output.js";
-import { attachAbsoluteOutputPaths } from "../src/core/comfy-output-paths.js";
+import {
+  attachAbsoluteOutputPaths,
+  isSegmentedSeedVr2Output,
+  restoreSegmentedSeedVr2OutputPaths
+} from "../src/core/comfy-output-paths.js";
 import {
   syncQueueVideoInputPaths
 } from "../src/core/queue.js";
@@ -946,6 +950,7 @@ async function restoreHistoryOutputPaths(): Promise<void> {
   const outputDirectory = await resolveTaskOutputDirectory();
   if (!outputDirectory) return;
 
+  let repairedSegmentedSeedVr2Versions = 0;
   await store.update((state) => {
     for (const asset of state.history) {
       const originalAssetFiles = extractComfyOutputFiles(asset.comfyOutputs);
@@ -956,15 +961,34 @@ async function restoreHistoryOutputPaths(): Promise<void> {
       );
       for (const version of asset.versions) {
         const originalVersionFiles = extractComfyOutputFiles(version.comfyOutputs);
-        version.files = restoreRecordedHistoryFiles(
-          originalVersionFiles.length ? originalVersionFiles : version.files,
-          version.files,
-          outputDirectory
-        );
+        if (isSegmentedSeedVr2Output(version.comfyOutputs)) {
+          const before = version.files.map((file) => `${file.filename}\0${file.absolutePath ?? ""}`);
+          version.files = restoreSegmentedSeedVr2OutputPaths(
+            version.files,
+            originalVersionFiles,
+            outputDirectory
+          );
+          const after = version.files.map((file) => `${file.filename}\0${file.absolutePath ?? ""}`);
+          if (before.join("\n") !== after.join("\n")) repairedSegmentedSeedVr2Versions += 1;
+        } else {
+          version.files = restoreRecordedHistoryFiles(
+            originalVersionFiles.length ? originalVersionFiles : version.files,
+            version.files,
+            outputDirectory
+          );
+        }
       }
     }
     state.queue = syncQueueVideoInputPaths(state.queue, state.history);
   });
+  if (repairedSegmentedSeedVr2Versions > 0) {
+    appLogger.info(
+      "history",
+      "seedvr2-merged-paths-restored",
+      "已恢复被旧启动逻辑覆写的 SeedVR2 合并视频路径",
+      { repairedVersionCount: repairedSegmentedSeedVr2Versions }
+    );
+  }
 }
 
 async function waitWithTimeout(

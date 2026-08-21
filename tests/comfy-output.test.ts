@@ -5,6 +5,8 @@ import {
 } from "../src/core/comfy-output";
 import {
   attachAbsoluteOutputPaths,
+  isSegmentedSeedVr2Output,
+  restoreSegmentedSeedVr2OutputPaths,
   safeOutputFilePath
 } from "../src/core/comfy-output-paths";
 
@@ -77,5 +79,51 @@ describe("ComfyUI output parsing", () => {
     expect(attachAbsoluteOutputPaths([
       { filename: "..\\..\\outside.png", subfolder: "studio", type: "output" }
     ], "C:\\ComfyUI\\output")[0]?.absolutePath).toBeUndefined();
+  });
+
+  it("recognizes native segmented SeedVR2 result metadata", () => {
+    expect(isSegmentedSeedVr2Output({ segmentedSeedVr2: true })).toBe(true);
+    expect(isSegmentedSeedVr2Output({ segmentedSeedVr2: false })).toBe(false);
+    expect(isSegmentedSeedVr2Output(null)).toBe(false);
+  });
+
+  it("keeps the durable merged SeedVR2 file instead of raw segment reports", () => {
+    const restored = restoreSegmentedSeedVr2OutputPaths(
+      [{
+        filename: "clip-4K-v01_00001_.mp4",
+        subfolder: "",
+        type: "output",
+        absolutePath: "C:\\ComfyUI\\output\\clip-4K-v01_00001_.mp4"
+      }],
+      [{
+        filename: "clip-4K-v01.__lvs-segment-0001_00001_.mp4",
+        subfolder: "",
+        type: "output"
+      }],
+      "C:\\ComfyUI\\output"
+    );
+
+    expect(restored).toEqual([expect.objectContaining({
+      filename: "clip-4K-v01_00001_.mp4",
+      absolutePath: "C:\\ComfyUI\\output\\clip-4K-v01_00001_.mp4"
+    })]);
+  });
+
+  it("collapses previously persisted SeedVR2 segment paths back to one merged file", () => {
+    const restored = restoreSegmentedSeedVr2OutputPaths(
+      [1, 2, 3].map((index) => ({
+        filename: `clip-4K-v01.__lvs-segment-000${index}_00001_.mp4`,
+        subfolder: "",
+        type: "output",
+        absolutePath: `C:\\ComfyUI\\output\\clip-4K-v01.__lvs-segment-000${index}_00001_.mp4`
+      })),
+      [],
+      "C:\\ComfyUI\\output"
+    );
+
+    expect(restored).toEqual([expect.objectContaining({
+      filename: "clip-4K-v01_00001_.mp4",
+      absolutePath: "C:\\ComfyUI\\output\\clip-4K-v01_00001_.mp4"
+    })]);
   });
 });
