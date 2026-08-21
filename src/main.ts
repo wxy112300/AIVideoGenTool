@@ -105,6 +105,7 @@ import {
   imageEditEnqueueBlockReason,
   type CreateViewModelDependencies
 } from "./renderer/pages/create/view-model";
+import type { H3PromptBuilderInput } from "./core/h3-prompt";
 import {
   createDefaultH3PromptBuilder,
   h3PromptPresetOptions,
@@ -208,6 +209,10 @@ import type {
   WorkflowCapabilities
 } from "./types";
 import { createClearedDraft } from "./core/draft-defaults";
+import {
+  activateCreationDraft,
+  patchCreationDraftForMode
+} from "./core/creation-drafts";
 import {
   imageEditDraftFromQueueTask,
   imageEditPicturesForVersion,
@@ -322,8 +327,29 @@ let comfyRuntime: ComfyRuntimeState = {
   operationId: 0
 };
 let promptRuntime: PromptRuntimeState = createPromptRuntimeState(comfyRuntime);
-let promptEnhanceMode: PromptEnhanceMode = "sulphur-native";
-let h3PromptPreset: H3PromptPreset = "official-storyboard";
+interface CreationModeUiState {
+  promptEnhanceMode: PromptEnhanceMode;
+  h3PromptPreset: H3PromptPreset;
+  h3PromptBuilder: H3PromptBuilderInput;
+}
+const creationModeUiState: Record<CreationMode, CreationModeUiState> = {
+  "image-to-video": {
+    promptEnhanceMode: "sulphur-native",
+    h3PromptPreset: "official-storyboard",
+    h3PromptBuilder: createDefaultH3PromptBuilder()
+  },
+  "video-extension": {
+    promptEnhanceMode: "sulphur-native",
+    h3PromptPreset: "official-storyboard",
+    h3PromptBuilder: createDefaultH3PromptBuilder()
+  },
+  "image-edit": {
+    promptEnhanceMode: "sulphur-native",
+    h3PromptPreset: "official-storyboard",
+    h3PromptBuilder: createDefaultH3PromptBuilder()
+  }
+};
+const activeCreationModeUiState = (): CreationModeUiState => creationModeUiState[creationMode];
 let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
 let settingsImagePromptPreset: ImagePromptPreset = "faithful";
 let promptEnhancing = false;
@@ -333,8 +359,6 @@ let promptReleasing = false;
 let promptRuntimeLoaded = false;
 let promptProgress: PromptProgress | null = null;
 const promptEditHistory = new PromptEditHistory();
-
-let h3PromptBuilder = createDefaultH3PromptBuilder();
 
 function uiText(
   key: string,
@@ -724,7 +748,8 @@ const createPageOptions: CreatePageOptions = {
 };
 
 function createViewModelDependencies(): CreateViewModelDependencies {
-  const origin = creationMode === "image-edit" ? "image-edit" : "video-create";
+  const origin = creationMode;
+  const modeUiState = activeCreationModeUiState();
   const promptRuntimeView = projectPromptRuntimeView(promptRuntime, origin);
   const ownsActivePrompt = promptOperationBelongsTo(promptRuntime, origin);
   return {
@@ -734,14 +759,14 @@ function createViewModelDependencies(): CreateViewModelDependencies {
     performanceMetrics,
     workflowCapabilities,
     bundledWorkflows,
-    promptEnhanceMode,
-    h3PromptPreset,
+    promptEnhanceMode: modeUiState.promptEnhanceMode,
+    h3PromptPreset: modeUiState.h3PromptPreset,
     promptEnhancing: promptRuntimeView.right.action === "cancel",
     promptStarting,
     promptReleasing: promptRuntime.model.phase === "unloading",
     promptRuntimeLoaded: promptRuntime.model.phase === "resident",
     promptProgress: ownsActivePrompt ? promptProgress : null,
-    h3PromptBuilder,
+    h3PromptBuilder: modeUiState.h3PromptBuilder,
     enqueueBusy: ui.enqueueBusy,
     promptRuntimeControlTitle,
     promptRuntimeControlIcon,
@@ -1935,9 +1960,19 @@ function scheduleDraftSave(): void {
     const draftToSave = state.draft;
     draftSaveInFlight += 1;
     try {
-      const savedState = await window.studio.saveDraft(draftToSave);
+      const savedState = await window.studio.saveDraft(draftToSave, {
+        imageToVideoDraft: state.imageToVideoDraft,
+        videoExtensionDraft: state.videoExtensionDraft
+      });
       const localDraft = state.draft;
-      setRendererState({ ...savedState, draft: localDraft });
+      const localImageToVideoDraft = state.imageToVideoDraft;
+      const localVideoExtensionDraft = state.videoExtensionDraft;
+      setRendererState({
+        ...savedState,
+        draft: localDraft,
+        imageToVideoDraft: localImageToVideoDraft,
+        videoExtensionDraft: localVideoExtensionDraft
+      });
       if (revision === draftRevision) draftDirty = false;
     } finally {
       draftSaveInFlight -= 1;
@@ -1965,22 +2000,32 @@ async function saveDraftImmediately(draft: Draft): Promise<void> {
   window.clearTimeout(draftSaveTimer);
   draftRevision += 1;
   draftDirty = false;
-  if (draft.inputMode === "video") {
-    state.videoExtensionDraft = structuredClone(draft);
-  } else if (state.draft.inputMode === "video") {
-    state.videoExtensionDraft = structuredClone(state.draft);
-  }
-  setRendererState(await window.studio.saveDraft(draft));
+  activateCreationDraft(state, draft);
+  setRendererState(await window.studio.saveDraft(draft, {
+    imageToVideoDraft: state.imageToVideoDraft,
+    videoExtensionDraft: state.videoExtensionDraft
+  }));
 }
 
 function patchDraft(patch: Partial<Draft>): void {
-  if (patch.inputMode === "image" && state.draft.inputMode === "video") {
-    state.videoExtensionDraft = structuredClone(state.draft);
-  }
-  state.draft = { ...state.draft, ...patch };
-  if (state.draft.inputMode === "video") {
-    state.videoExtensionDraft = structuredClone(state.draft);
-  }
+  activateCreationDraft(state, { ...state.draft, ...patch });
+  draftRevision += 1;
+  draftDirty = true;
+  scheduleDraftSave();
+}
+
+function patchDraftForMode(
+  mode: Exclude<CreationMode, "image-edit">,
+  update: (draft: Draft) => Partial<Draft>
+): void {
+  const inputMode = mode === "video-extension" ? "video" : "image";
+  const nextDraft = patchCreationDraftForMode(
+    state,
+    inputMode,
+    update,
+    creationMode === mode
+  );
+  if (!nextDraft) return;
   draftRevision += 1;
   draftDirty = true;
   scheduleDraftSave();
@@ -2354,6 +2399,7 @@ function bindCreate(): void {
     bundledWorkflowKey,
     setRendererState,
     patchDraft,
+    patchDraftForMode,
     patchImageDraft,
     syncEnqueueUi: syncVideoEnqueueUi,
     enableSpectrumByDefaultIfAvailable,
@@ -2369,9 +2415,9 @@ function bindCreate(): void {
       resizePromptInput,
       updateImagePromptWordCounter,
       syncEnqueueUi: syncImageEditEnqueueUi,
-      getPromptEnhanceMode: () => promptEnhanceMode === "faithful" ? "faithful" : "detail-enhance",
+      getPromptEnhanceMode: () => activeCreationModeUiState().promptEnhanceMode === "faithful" ? "faithful" : "detail-enhance",
       setPromptEnhanceMode: (mode) => {
-        promptEnhanceMode = mode === "faithful" ? "faithful" : "sulphur-native";
+        activeCreationModeUiState().promptEnhanceMode = mode === "faithful" ? "faithful" : "sulphur-native";
       },
       isPromptEnhancing: () => promptOperationBelongsTo(promptRuntime, "image-edit"),
       setPromptEnhancing: (value) => {
@@ -2395,15 +2441,15 @@ function bindCreate(): void {
     createPrompt: {
       h3ReferenceRoleLabels: h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels,
       h3ReferenceRolePromptLabels,
-      getPromptEnhanceMode: () => promptEnhanceMode,
+      getPromptEnhanceMode: () => activeCreationModeUiState().promptEnhanceMode,
       setPromptEnhanceMode: (mode) => {
-        promptEnhanceMode = mode;
+        activeCreationModeUiState().promptEnhanceMode = mode;
       },
-      getH3PromptPreset: () => h3PromptPreset,
+      getH3PromptPreset: () => activeCreationModeUiState().h3PromptPreset,
       setH3PromptPreset: (preset) => {
-        h3PromptPreset = preset;
+        activeCreationModeUiState().h3PromptPreset = preset;
       },
-      isPromptEnhancing: () => promptOperationBelongsTo(promptRuntime, "video-create"),
+      isPromptEnhancing: () => promptOperationBelongsTo(promptRuntime, creationMode),
       setPromptEnhancing: (value) => {
         promptEnhancing = value;
       },
@@ -2415,9 +2461,9 @@ function bindCreate(): void {
       redoPromptEdit: () => redoPromptEdit("video"),
       invalidatePromptEditHistory: () => invalidatePromptEditHistory("video"),
       togglePromptModel: togglePromptModelFromUi,
-      getH3PromptBuilder: () => h3PromptBuilder,
+      getH3PromptBuilder: () => activeCreationModeUiState().h3PromptBuilder,
       setH3PromptBuilder: (builder) => {
-        h3PromptBuilder = builder;
+        activeCreationModeUiState().h3PromptBuilder = builder;
       },
       createDefaultH3PromptBuilder,
       syncPromptEnqueueUi,

@@ -85,7 +85,7 @@ describe("projectPromptRuntimeView", () => {
     ["stopped", "unknown"],
     ["stopped", "resident"]
   ] as const)("recovers both controls after ComfyUI is %s with model %s", (service, model) => {
-    const view = projectPromptRuntimeView(snapshot(service, model), "video-create");
+    const view = projectPromptRuntimeView(snapshot(service, model), "image-to-video");
 
     expect(view.left).toMatchObject({
       icon: "play",
@@ -117,7 +117,7 @@ describe("projectPromptRuntimeView", () => {
   });
 
   it("shows a static stop affordance when the model is resident", () => {
-    const view = projectPromptRuntimeView(snapshot("ready", "resident"), "video-create");
+    const view = projectPromptRuntimeView(snapshot("ready", "resident"), "image-to-video");
 
     expect(view.left).toMatchObject({
       icon: "square",
@@ -134,7 +134,7 @@ describe("projectPromptRuntimeView", () => {
     ["restarting", "resident"],
     ["stopping", "resident"]
   ] as const)("blocks both buttons during service %s", (service, model) => {
-    const view = projectPromptRuntimeView(snapshot(service, model), "video-create");
+    const view = projectPromptRuntimeView(snapshot(service, model), "image-to-video");
 
     expect(view.left).toMatchObject({ icon: "refresh-cw", disabled: true, busy: true, intent: "none" });
     expect(view.right).toMatchObject({ disabled: true, busy: true, action: "none", showElapsed: false });
@@ -163,8 +163,8 @@ describe("projectPromptRuntimeView", () => {
     "running"
   ] as const)("lets the owner cancel a video task during %s", (phase) => {
     const view = projectPromptRuntimeView(
-      snapshot("starting", "warming", operation("video-create", phase)),
-      "video-create"
+      snapshot("starting", "warming", operation("image-to-video", phase)),
+      "image-to-video"
     );
 
     expect(view.left).toMatchObject({ icon: "square", disabled: false, busy: false, intent: "stop" });
@@ -196,12 +196,12 @@ describe("projectPromptRuntimeView", () => {
 
   it("disables the other creation page without leaking elapsed time", () => {
     const videoTask = projectPromptRuntimeView(
-      snapshot("ready", "resident", operation("video-create", "running")),
-      "image-edit"
+      snapshot("ready", "resident", operation("image-to-video", "running")),
+      "video-extension"
     );
     const imageTask = projectPromptRuntimeView(
-      snapshot("ready", "resident", operation("image-edit", "running")),
-      "video-create"
+      snapshot("ready", "resident", operation("video-extension", "running")),
+      "image-to-video"
     );
 
     for (const view of [videoTask, imageTask]) {
@@ -219,11 +219,11 @@ describe("projectPromptRuntimeView", () => {
 
   it("serializes cancellation before unload and does not offer duplicate actions", () => {
     const cancelling = projectPromptRuntimeView(
-      snapshot("ready", "resident", operation("video-create", "cancel-requested")),
-      "video-create"
+      snapshot("ready", "resident", operation("image-to-video", "cancel-requested")),
+      "image-to-video"
     );
     const unloading = projectPromptRuntimeView(
-      snapshot("ready", "unloading", operation("video-create", "running")),
+      snapshot("ready", "unloading", operation("image-to-video", "running")),
       "image-edit"
     );
 
@@ -236,7 +236,7 @@ describe("projectPromptRuntimeView", () => {
   it("ignores a stale operation after a forced service close", () => {
     const view = projectPromptRuntimeView(
       snapshot("stopped", "unloaded", operation("image-edit", "running")),
-      "video-create"
+      "image-to-video"
     );
 
     expect(view.left).toMatchObject({ icon: "play", disabled: false, busy: false, intent: "start" });
@@ -249,7 +249,7 @@ describe("projectPromptRuntimeView", () => {
     ["error", "unknown"],
     ["unknown", "unloaded"]
   ] as const)("marks service %s unavailable without inventing an operation", (service, model) => {
-    const view = projectPromptRuntimeView(snapshot(service, model), "video-create");
+    const view = projectPromptRuntimeView(snapshot(service, model), "image-to-video");
 
     expect(view.left).toMatchObject({ icon: "play", disabled: true, busy: false, intent: "none", title: "prompt-runtime.unavailable" });
     expect(view.right).toMatchObject({ icon: "sparkles", disabled: true, busy: false, action: "none", showElapsed: false, title: "prompt-runtime.unavailable" });

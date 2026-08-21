@@ -1,4 +1,7 @@
-import type { PromptRuntimeState } from "./core/prompt-runtime-state.js";
+import type {
+  PromptOperationOrigin,
+  PromptRuntimeState
+} from "./core/prompt-runtime-state.js";
 
 export type TaskStatus =
   | "waiting"
@@ -644,12 +647,14 @@ export interface HistoryMetadataPatch {
 
 export interface AppState {
   schemaVersion: number;
+  /** Currently visible video-creation draft. */
   draft: Draft;
+  /** Complete image-to-video composer snapshot, independent from extension. */
+  imageToVideoDraft?: Draft;
   /**
-   * Last in-progress video extension draft.  The visible `draft` remains
-   * scoped to the currently selected creation mode, while this snapshot lets
-   * switching to image creation preserve an unfinished extension source and
-   * its Motion Context slots.
+   * Complete video-extension composer snapshot. The visible `draft` is only
+   * the active projection; both composer snapshots own all of their model,
+   * media, prompt, and generation parameters independently.
    */
   videoExtensionDraft?: Draft;
   imageDraft: ImageEditDraft;
@@ -935,9 +940,16 @@ export type H3PromptPreset =
 
 export type H3PromptMode = "T2VA" | "I2VA" | "FL2VA" | "L2VA" | "R2V";
 
+export interface PromptExtensionSource {
+  filePath: string;
+  trimStartSeconds: number;
+  trimEndSeconds: number;
+}
+
 export interface EnhanceRequest {
   prompt: string;
   modelId: string;
+  origin?: PromptOperationOrigin;
   mode?: PromptEnhanceMode;
   promptStrategy?: "rewrite" | "reference-auto";
   autoPromptSeedId?: string;
@@ -953,6 +965,7 @@ export interface EnhanceRequest {
   h3AspectRatio?: string;
   referenceMediaPaths?: string[];
   referenceContext?: string;
+  extensionSource?: PromptExtensionSource;
 }
 
 export type PromptProgressStage =
@@ -969,7 +982,7 @@ export type PromptProgressStatus = "running" | "completed" | "failed" | "cancell
 
 export interface PromptProgress {
   operationId: string;
-  origin: "video-create" | "image-edit";
+  origin: PromptOperationOrigin;
   status: PromptProgressStatus;
   stage: PromptProgressStage;
   progress: number | null;
@@ -1137,6 +1150,11 @@ export interface ImageAssetLibraryResult {
   cleanedBytes: number;
 }
 
+export interface CreationDraftSnapshots {
+  imageToVideoDraft?: Draft;
+  videoExtensionDraft?: Draft;
+}
+
 export interface AppApi {
   getState(): Promise<AppState>;
   getComfyRuntimeState(): Promise<ComfyRuntimeState>;
@@ -1144,7 +1162,7 @@ export interface AppApi {
   getAppVersion(): Promise<string>;
   setSettingsDirty(dirty: boolean): Promise<void>;
   respondWindowClose(response: WindowCloseResponse): Promise<void>;
-  saveDraft(draft: Draft): Promise<AppState>;
+  saveDraft(draft: Draft, snapshots?: CreationDraftSnapshots): Promise<AppState>;
   saveImageDraft(draft: ImageEditDraft): Promise<AppState>;
   saveSettings(settings: Settings, mode?: SettingsSaveMode): Promise<AppState>;
   setQueueH3LivePreview(enabled: boolean): Promise<AppState>;

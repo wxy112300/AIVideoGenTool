@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { ExtensionQueueTask } from "../../src/types.js";
+import type { ExtensionQueueTask, PromptExtensionSource } from "../../src/types.js";
 import {
   extensionContextDuration,
   extensionOutputDimensions,
@@ -123,6 +123,50 @@ export async function prepareH3BoundaryFrame(
     filePath,
     cleanup: () => fs.rm(directory, { recursive: true, force: true })
   };
+}
+
+export async function preparePromptExtensionFrame(
+  source: PromptExtensionSource,
+  operationId: string,
+  signal: AbortSignal
+): Promise<{ filePath: string; cleanup(): Promise<void> }> {
+  if (!source.filePath.trim()) throw new Error("续写提示词增强缺少源视频路径");
+  if (!Number.isFinite(source.trimStartSeconds) ||
+      !Number.isFinite(source.trimEndSeconds) ||
+      source.trimEndSeconds <= source.trimStartSeconds) {
+    throw new Error("续写提示词增强的裁剪区间无效");
+  }
+  const sourceStat = await fs.stat(source.filePath).catch(() => null);
+  if (!sourceStat?.isFile()) throw new Error("续写提示词增强找不到源视频文件");
+  const directory = temporaryDirectory(`prompt-${operationId}`);
+  await fs.rm(directory, { recursive: true, force: true });
+  await fs.mkdir(directory, { recursive: true });
+  const filePath = path.join(directory, "extension-boundary.png");
+  const frameTime = promptExtensionFrameTime(source);
+  try {
+    await run("ffmpeg", [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-ss", String(frameTime),
+      "-i", source.filePath,
+      "-frames:v", "1",
+      filePath
+    ], signal);
+    const stat = await fs.stat(filePath);
+    if (stat.size <= 0) throw new Error("FFmpeg 没有提取出可用的续写末帧");
+    return {
+      filePath,
+      cleanup: () => fs.rm(directory, { recursive: true, force: true })
+    };
+  } catch (error) {
+    await fs.rm(directory, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+export function promptExtensionFrameTime(
+  source: Pick<PromptExtensionSource, "trimStartSeconds" | "trimEndSeconds">
+): number {
+  return Math.max(source.trimStartSeconds, source.trimEndSeconds - 1 / 24);
 }
 
 export async function prepareH3MotionContext(

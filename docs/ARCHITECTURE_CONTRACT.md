@@ -38,8 +38,9 @@ Large entry files are an existing risk, not a pattern to expand. When work intro
 
 ### Draft and queue
 
-- A creation draft is mutable UI state.
-- Image-to-video and video-extension Create modes own separate prompt-version state; legacy drafts without an extension prompt state are migrated by copying the existing prompt once.
+- Each of the three Create modes owns independent mutable UI state. Image-to-video and video-extension keep complete, separately persisted draft snapshots for model, workflow, media, prompt versions, references, LoRAs, dimensions, duration, sampling, interpolation, motion, seed, and acceleration choices; the visible `draft` is only the active projection. Image editing continues to own `imageDraft`. Switching modes must restore the target snapshot without copying parameters from the page being left.
+- An asynchronous prompt operation is owned by the exact Create mode that started it. Completion updates and persists that mode's latest draft snapshot even after navigation. Only the owner projects elapsed progress and cancellation; other Create modes disable prompt enhancement while keeping the shared prompt-model stop/unload control synchronized and available.
+- Legacy drafts without separate image-to-video/video-extension snapshots are migrated by preserving the active mode as its snapshot and creating the missing mode from defaults. Legacy drafts without an extension prompt state are migrated by copying the existing prompt once.
 - Submission creates a complete execution snapshot: model, mode, prompt, inputs, output settings, seed, workflow options, runtime profile, and display metadata needed later.
 - Later draft changes cannot alter queued or running work.
 - A multi-output image batch can be one logical queue task while retaining individual output/version identity.

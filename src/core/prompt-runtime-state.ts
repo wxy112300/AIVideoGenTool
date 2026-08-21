@@ -46,7 +46,7 @@ export interface PromptModelState {
   readonly modelId: string | null;
 }
 
-export type PromptOperationOrigin = "video-create" | "image-edit";
+export type PromptOperationOrigin = "image-to-video" | "video-extension" | "image-edit";
 
 export type PromptOperationPhase =
   | "idle"
@@ -591,7 +591,7 @@ export function assertPromptRuntimeState(state: PromptRuntimeState): void {
   if (!nonEmpty(operation.operationId)) {
     throw new Error("Invalid prompt runtime state: operation requires an ID");
   }
-  if (operation.origin !== "video-create" && operation.origin !== "image-edit") {
+  if (!(["image-to-video", "video-extension", "image-edit"] as const).includes(operation.origin)) {
     throw new Error("Invalid prompt runtime state: operation requires an origin");
   }
   if (!validTimestamp(operation.startedAt)) {

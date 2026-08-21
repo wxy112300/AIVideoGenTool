@@ -10,6 +10,20 @@ import {
 } from "../src/core/prompts/h3/auto-seeds.js";
 
 describe("H3 reference-driven auto prompting", () => {
+  it("accepts a cropped extension video as visual grounding before frame extraction", () => {
+    expect(() => validateH3ReferenceAutoPrompt({
+      prompt: "",
+      modelId: "minimax_h3_ref2va",
+      mode: "h3-vision",
+      promptStrategy: "reference-auto",
+      extensionSource: {
+        filePath: "source.mp4",
+        trimStartSeconds: 2,
+        trimEndSeconds: 8
+      }
+    })).not.toThrow();
+  });
+
   it("selects a different seed while unused seeds remain", () => {
     const first = h3AutoPromptSeedFor("I2VA", undefined, [], () => 0);
     const second = h3AutoPromptSeedFor("I2VA", undefined, [first.id], () => 0);

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AppApi,
   ComfyRuntimeState,
+  CreationDraftSnapshots,
   Draft,
   DependencyInstallProgress,
   EnhanceRequest,
@@ -26,7 +27,8 @@ const api: AppApi = {
   setSettingsDirty: (dirty: boolean) => ipcRenderer.invoke("renderer:set-settings-dirty", dirty),
   respondWindowClose: (response: WindowCloseResponse) =>
     ipcRenderer.invoke("window:close-response", response),
-  saveDraft: (draft: Draft) => ipcRenderer.invoke("draft:save", draft),
+  saveDraft: (draft: Draft, snapshots?: CreationDraftSnapshots) =>
+    ipcRenderer.invoke("draft:save", draft, snapshots),
   saveImageDraft: (draft) => ipcRenderer.invoke("image-draft:save", draft),
   saveSettings: (settings: Settings, mode?: SettingsSaveMode) =>
     ipcRenderer.invoke("settings:save", settings, mode),

@@ -277,6 +277,7 @@ export function mountImageEditController(
       const text = await context.studio.enhancePrompt({
         prompt: requestPrompt,
         modelId: context.getState()?.settings.promptModelId ?? "",
+        origin: "image-edit",
         mode: "image-edit",
         imageEditEnhanceMode: enhanceMode,
         imageEditPresetText: context.getState()?.settings.imagePromptPresets[enhanceMode] ?? "",

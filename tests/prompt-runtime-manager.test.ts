@@ -19,7 +19,7 @@ function service(
 describe("PromptRuntimeManager", () => {
   it("owns one operation and exposes the exact submitted prompt ID", () => {
     const manager = new PromptRuntimeManager(service());
-    const lease = manager.beginOperation("video-create", true, "submitting");
+    const lease = manager.beginOperation("image-to-video", true, "submitting");
     manager.markSubmitted(lease.operationId, "prompt-42");
 
     const cancellation = manager.requestCancellation();
@@ -49,7 +49,7 @@ describe("PromptRuntimeManager", () => {
     const listener = vi.fn();
     manager.subscribe(listener);
     manager.setModel("resident", "qwen-vl");
-    const lease = manager.beginOperation("video-create", true, "submitting");
+    const lease = manager.beginOperation("image-to-video", true, "submitting");
 
     manager.observeService(service("stopped", 2));
 
@@ -64,7 +64,7 @@ describe("PromptRuntimeManager", () => {
 
   it("rejects a second concurrent prompt operation", () => {
     const manager = new PromptRuntimeManager(service());
-    manager.beginOperation("video-create", true);
+    manager.beginOperation("image-to-video", true);
     expect(() => manager.beginOperation("image-edit", true)).toThrow(
       "当前已有提示词任务正在运行。"
     );

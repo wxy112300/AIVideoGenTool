@@ -18,7 +18,7 @@ import {
 } from "../../../core/draft-prompts";
 import { h3PromptPackFor, h3PromptPresetForMode, promptSnippetFor } from "../../prompt-packs";
 import { isMiniMaxH3Model, isMiniMaxH3R2vModel } from "../../../core/workflow";
-import type { RendererCleanup, RendererContext } from "../../contracts";
+import type { CreationMode, RendererCleanup, RendererContext } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
 import {
   activePrompt,
@@ -33,6 +33,10 @@ import {
 export interface CreatePromptControllerOptions {
   context: RendererContext;
   patchDraft(patch: Partial<Draft>): void;
+  patchDraftForMode(
+    mode: Exclude<CreationMode, "image-edit">,
+    update: (draft: Draft) => Partial<Draft>
+  ): void;
   setWorkflowCapability(path: string, capability: { supportsEndImage: boolean; supportsVideoExtension: boolean }): void;
   syncPromptEnqueueUi(promptText: string): void;
   updateH3PromptCheck(promptText: string, hasEndImage: boolean, mode?: H3PromptMode, hasVideoReference?: boolean): void;
@@ -233,13 +237,18 @@ export function mountCreatePromptController(
     const referenceMediaPaths = isMiniMaxH3R2vModel(draft.modelId)
       ? draft.h3ReferenceSlots.map((slot) => slot.mediaPath).filter(Boolean)
       : [draft.startImagePath, draft.endImagePath].filter(Boolean);
-    if (isCurrentH3 && !currentPrompt.trim() && referenceMediaPaths.length === 0) {
+    const isExtension = draft.inputMode === "video";
+    const requestOrigin = isExtension ? "video-extension" : "image-to-video";
+    const hasExtensionBoundary = isExtension && Boolean(draft.sourceVideoPath) &&
+      draft.trimEndSeconds > draft.trimStartSeconds;
+    if (isCurrentH3 && !currentPrompt.trim() && referenceMediaPaths.length === 0 && !hasExtensionBoundary) {
       options.context.notify(promptUi().t("autoPromptMissingMedia"), { kind: "error" });
       return;
     }
     const promptSettings = options.context.getState()?.settings;
     const configuredAutoPromptSeedId = promptSettings?.h3AutoPromptSeedId?.trim() || undefined;
-    const autoPromptSeed = isCurrentH3 && !currentPrompt.trim() && referenceMediaPaths.length > 0
+    const autoPromptSeed = isCurrentH3 && !currentPrompt.trim() &&
+      (referenceMediaPaths.length > 0 || hasExtensionBoundary)
       ? h3AutoPromptSeedFor(
           h3Mode,
           configuredAutoPromptSeedId,
@@ -277,6 +286,7 @@ export function mountCreatePromptController(
       const text = await options.context.studio.enhancePrompt({
         prompt: currentPrompt,
         modelId: draft.modelId,
+        origin: requestOrigin,
         mode: requestMode,
         promptStrategy: autoPromptSeed ? "reference-auto" : undefined,
         autoPromptSeedId: autoPromptSeed?.id,
@@ -295,25 +305,32 @@ export function mountCreatePromptController(
           ? draft.sourceHeight > draft.sourceWidth ? "9:16" : "16:9"
           : draft.ratio,
         referenceMediaPaths,
-        referenceContext: isH3Vision ? referenceContext : undefined
+        referenceContext: isH3Vision ? referenceContext : undefined,
+        extensionSource: isExtension && draft.sourceVideoPath
+          ? {
+              filePath: draft.sourceVideoPath,
+              trimStartSeconds: draft.trimStartSeconds,
+              trimEndSeconds: draft.trimEndSeconds
+            }
+          : undefined
       });
       options.setPromptRuntimeLoaded(true);
-      const nextDraft = getDraft();
-      if (!nextDraft) return;
       options.invalidatePromptEditHistory();
-      const nextPromptVersions = promptVersionsForDraft(nextDraft);
-      const nextActivePromptVersion = activePromptIndexForDraft(nextDraft);
-      const versions = [
-        ...nextPromptVersions.slice(0, nextActivePromptVersion + 1),
-        {
-          id: crypto.randomUUID(),
-          label: promptUi().t("expandedVersion", { count: nextPromptVersions.filter((item) => item.label.startsWith(promptUi().t("expandedVersion", { count: "" }).trim())).length + 1 }),
-          text,
-          createdAt: new Date().toISOString(),
-          ...(autoPromptSeed ? { autoPromptSeedId: autoPromptSeed.id } : {})
-        }
-      ];
-      options.patchDraft(promptPatchForDraft(nextDraft, versions, versions.length - 1));
+      options.patchDraftForMode(requestOrigin, (nextDraft) => {
+        const nextPromptVersions = promptVersionsForDraft(nextDraft);
+        const nextActivePromptVersion = activePromptIndexForDraft(nextDraft);
+        const versions = [
+          ...nextPromptVersions.slice(0, nextActivePromptVersion + 1),
+          {
+            id: crypto.randomUUID(),
+            label: promptUi().t("expandedVersion", { count: nextPromptVersions.filter((item) => item.label.startsWith(promptUi().t("expandedVersion", { count: "" }).trim())).length + 1 }),
+            text,
+            createdAt: new Date().toISOString(),
+            ...(autoPromptSeed ? { autoPromptSeedId: autoPromptSeed.id } : {})
+          }
+        ];
+        return promptPatchForDraft(nextDraft, versions, versions.length - 1);
+      });
     } catch (error) {
       if (!isPromptCancellationError(error)) options.context.notify(error instanceof Error ? error.message : String(error), {
         kind: "error",

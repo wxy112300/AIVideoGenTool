@@ -353,10 +353,13 @@ export function buildVideoCreatePageViewModel(
     draft.h3ReferenceSlots = referenceSlots;
   }
   const h3Mode = isMiniMaxH3 ? h3PromptModeForDraft(draft) : undefined;
+  const extensionBoundaryAvailable = extending && Boolean(draft.sourceVideoPath) &&
+    draft.trimEndSeconds > draft.trimStartSeconds;
   const referenceAutoPromptAvailable = isMiniMaxH3 && (
-    isR2V
+    extensionBoundaryAvailable || (isR2V
       ? referenceSlots.some((slot) => Boolean(slot.mediaPath))
       : Boolean(draft.startImagePath || draft.endImagePath)
+    )
   );
   const activeH3PromptPreset = h3Mode
     ? h3PromptPresetForMode(h3Mode, h3PromptPreset)

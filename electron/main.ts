@@ -18,6 +18,7 @@ import type {
   AppState,
   BundledWorkflow,
   ConnectionKind,
+  CreationDraftSnapshots,
   Draft,
   EnhanceRequest,
   EnvironmentIssue,
@@ -44,6 +45,7 @@ import type {
   WindowCloseResponse
 } from "../src/types.js";
 import { normalizeUiLocale } from "../src/core/i18n.js";
+import { activateCreationDraft } from "../src/core/creation-drafts.js";
 import { isHistoryRating, normalizeHistoryTags } from "../src/core/history-filter.js";
 import {
   isH3ReferenceAutoPrompt,
@@ -149,11 +151,13 @@ import {
   releaseH3PromptWriter,
   warmH3PromptWriter
 } from "./services/h3-prompt-writer.js";
+import { withPromptExtensionMedia } from "./services/prompt-extension-media.js";
 import { getPerformanceMetrics } from "./services/performance.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
 import { captureComfyUiLogFailure } from "./services/comfy-log-bridge.js";
 import { comfyRuntimeState } from "./services/comfy-runtime-state.js";
 import { PromptRuntimeManager } from "./services/prompt-runtime-manager.js";
+import type { PromptOperationOrigin } from "../src/core/prompt-runtime-state.js";
 import { setOwnedComfyProcessExitListener } from "./services/comfy-runtime-service.js";
 import {
   cleanupVideoHistoryMigration,
@@ -288,7 +292,7 @@ function createPromptProgressController(
   modelId: string,
   startedAt: number,
   operationId: string,
-  origin: "video-create" | "image-edit"
+  origin: PromptOperationOrigin
 ): {
   update: PromptProgressReporter;
   finish(status: PromptProgress["status"], stage: PromptProgressStage, error?: string): void;
@@ -2076,18 +2080,15 @@ function registerIpc(): void {
       }
     }
   );
-  ipcMain.handle("draft:save", async (_event, draft: Draft) => {
+  ipcMain.handle("draft:save", async (_event, draft: Draft, snapshots?: CreationDraftSnapshots) => {
     const next = await store.update((state) => {
-      // Keep a separate persisted snapshot for the extension composer.  The
-      // renderer intentionally clears video-only fields while showing the
-      // image-to-video composer, so the last source video and Motion Context
-      // slots must survive that mode switch.
-      if (draft.inputMode === "video") {
-        state.videoExtensionDraft = structuredClone(draft);
-      } else if (state.draft.inputMode === "video") {
-        state.videoExtensionDraft = structuredClone(state.draft);
+      activateCreationDraft(state, draft);
+      if (snapshots?.imageToVideoDraft?.inputMode === "image") {
+        state.imageToVideoDraft = structuredClone(snapshots.imageToVideoDraft);
       }
-      state.draft = draft;
+      if (snapshots?.videoExtensionDraft?.inputMode === "video") {
+        state.videoExtensionDraft = structuredClone(snapshots.videoExtensionDraft);
+      }
     });
     sendState(next);
     return next;
@@ -2843,6 +2844,13 @@ function registerIpc(): void {
     const runtime = promptRuntimeForSettings(settings);
     const promptBackend = promptModelBackend(settings.promptModelId);
     const startedAt = Date.now();
+    const promptOrigin: PromptOperationOrigin = request.origin ?? (
+      request.mode === "image-edit"
+        ? "image-edit"
+        : request.extensionSource
+          ? "video-extension"
+          : "image-to-video"
+    );
     validateH3ReferenceAutoPrompt(request);
     if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) {
       throw new Error("请先输入需要扩写的提示词");
@@ -2857,7 +2865,7 @@ function registerIpc(): void {
       throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
     }
     const operation = promptRuntimeManager.beginOperation(
-      request.mode === "image-edit" ? "image-edit" : "video-create",
+      promptOrigin,
       true
     );
     const operationId = operation.operationId;
@@ -2883,7 +2891,7 @@ function registerIpc(): void {
       settings.promptModelId,
       startedAt,
       operationId,
-      request.mode === "image-edit" ? "image-edit" : "video-create"
+      promptOrigin
     );
     promptProgress.update("preparing", 0);
     if (promptBackend === "h3-prompt-writer") {
@@ -2895,12 +2903,17 @@ function registerIpc(): void {
         promptRuntimeManager.setOperationPhase(operationId, "warming-model");
         await validateNativePromptRuntime(settings);
         promptRuntimeManager.setOperationPhase(operationId, "submitting");
-        return enhancePromptWithH3PromptWriter(
+        return withPromptExtensionMedia(
           request,
-          settings,
+          operationId,
           controller.signal,
-          promptProgress.update,
-          !promptRuntimeLeaseMatches(promptBackend, settings.promptModelId)
+          (preparedRequest) => enhancePromptWithH3PromptWriter(
+            preparedRequest,
+            settings,
+            controller.signal,
+            promptProgress.update,
+            !promptRuntimeLeaseMatches(promptBackend, settings.promptModelId)
+          )
         );
       })();
       nativePromptWorker = worker;
@@ -2957,15 +2970,20 @@ function registerIpc(): void {
         promptRuntimeManager.setOperationPhase(operationId, "warming-model");
         await validateNativePromptRuntime(settings);
         promptRuntimeManager.setOperationPhase(operationId, "submitting");
-        return enhancePromptWithMultimodalComfyUi(
+        return withPromptExtensionMedia(
           request,
-          settings,
-          controller.signal,
-          false,
-          promptProgress.update,
           operationId,
-          promptRuntimeLeaseMatches(promptBackend, settings.promptModelId),
-          (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
+          controller.signal,
+          (preparedRequest) => enhancePromptWithMultimodalComfyUi(
+            preparedRequest,
+            settings,
+            controller.signal,
+            false,
+            promptProgress.update,
+            operationId,
+            promptRuntimeLeaseMatches(promptBackend, settings.promptModelId),
+            (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
+          )
         );
       })();
       nativePromptWorker = worker;
@@ -3023,15 +3041,20 @@ function registerIpc(): void {
         promptRuntimeManager.setOperationPhase(operationId, "warming-model");
         await validateNativePromptRuntime(settings);
         promptRuntimeManager.setOperationPhase(operationId, "submitting");
-        return enhancePromptWithQwenVlPeft(
+        return withPromptExtensionMedia(
           request,
-          settings,
-          controller.signal,
-          false,
-          promptProgress.update,
           operationId,
-          promptRuntimeLeaseMatches(promptBackend, settings.promptModelId),
-          (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
+          controller.signal,
+          (preparedRequest) => enhancePromptWithQwenVlPeft(
+            preparedRequest,
+            settings,
+            controller.signal,
+            false,
+            promptProgress.update,
+            operationId,
+            promptRuntimeLeaseMatches(promptBackend, settings.promptModelId),
+            (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
+          )
         );
       })();
       nativePromptWorker = worker;
@@ -3087,13 +3110,18 @@ function registerIpc(): void {
       promptRuntimeManager.setOperationPhase(operationId, "warming-model");
       await validateNativePromptRuntime(settings);
       promptRuntimeManager.setOperationPhase(operationId, "submitting");
-      return enhancePromptWithComfyUi(
+      return withPromptExtensionMedia(
         request,
-        settings,
+        operationId,
         controller.signal,
-        false,
-        promptProgress.update,
-        (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
+        (preparedRequest) => enhancePromptWithComfyUi(
+          preparedRequest,
+          settings,
+          controller.signal,
+          false,
+          promptProgress.update,
+          (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
+        )
       );
     })();
     nativePromptWorker = worker;

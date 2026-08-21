@@ -12,11 +12,18 @@ export function h3PromptModeForRequest(request: EnhanceRequest): H3PromptMode {
 }
 
 export function hasH3ReferenceMedia(request: EnhanceRequest): boolean {
-  return [
+  const hasAttachedMedia = [
     request.imagePath,
     ...(request.imagePaths ?? []),
     ...(request.referenceMediaPaths ?? [])
   ].some((value) => Boolean(value?.trim()));
+  const extensionSource = request.extensionSource;
+  return hasAttachedMedia || Boolean(
+    extensionSource?.filePath.trim() &&
+    Number.isFinite(extensionSource.trimStartSeconds) &&
+    Number.isFinite(extensionSource.trimEndSeconds) &&
+    extensionSource.trimEndSeconds > extensionSource.trimStartSeconds
+  );
 }
 
 export function isH3ReferenceAutoPrompt(request: EnhanceRequest): boolean {

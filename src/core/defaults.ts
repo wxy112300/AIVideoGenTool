@@ -121,9 +121,11 @@ export function createDefaultSettings(): Settings {
 }
 
 export function createDefaultState(): AppState {
+  const draft = createDefaultDraft();
   return {
-    schemaVersion: 12,
-    draft: createDefaultDraft(),
+    schemaVersion: 13,
+    draft,
+    imageToVideoDraft: structuredClone(draft),
     imageDraft: createDefaultImageEditDraft(),
     settings: createDefaultSettings(),
     queue: [],

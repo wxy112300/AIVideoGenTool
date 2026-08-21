@@ -224,7 +224,7 @@ export function registerRendererEvents(
   const startPromptProgressTimer = (progress: PromptProgress) => {
     stopPromptProgressTimer();
     promptProgressTimer = window.setInterval(() => {
-      const origin = options.getCreationMode() === "image-edit" ? "image-edit" : "video-create";
+      const origin = options.getCreationMode();
       if (!promptOperationBelongsTo(options.getPromptRuntimeState(), origin)) return;
       const current = {
         ...progress,
@@ -333,7 +333,7 @@ export function registerRendererEvents(
       if (["create", "settings"].includes(options.getPage())) options.requestRender();
     }),
     options.studio.onPromptProgress((progress) => {
-      const origin = options.getCreationMode() === "image-edit" ? "image-edit" : "video-create";
+      const origin = options.getCreationMode();
       const runtime = options.getPromptRuntimeState();
       const ownsPrompt = promptOperationBelongsTo(runtime, origin) &&
         runtime.operation.operationId === progress.operationId &&

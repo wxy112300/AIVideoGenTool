@@ -104,6 +104,36 @@ describe("queue lock recovery", () => {
     }
   });
 
+  it("migrates separate creation parameter snapshots", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.draft = {
+      ...state.draft,
+      inputMode: "video",
+      modelId: "sulphur2",
+      duration: 6,
+      sourceVideoPath: "C:\\input\\source.mp4"
+    };
+    state.imageToVideoDraft = undefined;
+    state.videoExtensionDraft = undefined;
+    await fs.writeFile(filename, JSON.stringify({ ...state, schemaVersion: 12 }), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.schemaVersion).toBe(13);
+      expect(loaded.draft.modelId).toBe("sulphur2");
+      expect(loaded.videoExtensionDraft?.modelId).toBe("sulphur2");
+      expect(loaded.imageToVideoDraft).toMatchObject({
+        inputMode: "image",
+        modelId: "minimax_h3_fl2va",
+        duration: 5
+      });
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("persists queueRunning=false when reopening after an interrupted run", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
@@ -261,7 +291,7 @@ describe("queue lock recovery", () => {
     try {
       const loaded = await new JsonStore(filename).load();
       expect(loaded.settings.promptModelId).toBe("community/gemma-4-12b-uncensored-q4");
-      expect(loaded.schemaVersion).toBe(12);
+      expect(loaded.schemaVersion).toBe(13);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
@@ -369,7 +399,7 @@ describe("queue lock recovery", () => {
     try {
       const store = new JsonStore(filename);
       const loaded = await store.load();
-      expect(loaded.schemaVersion).toBe(12);
+      expect(loaded.schemaVersion).toBe(13);
       expect(loaded.imageDraft.mode).toBe("image-edit");
       expect(loaded.imageDraft.modelId).toBe("qwen-image-edit-2511");
       expect(loaded.draft.extensionPromptVersions).toHaveLength(1);
@@ -383,13 +413,13 @@ describe("queue lock recovery", () => {
         settings: { imageOutputDirectory: string };
         imageHistory: unknown[];
       };
-      expect(persisted.schemaVersion).toBe(12);
+      expect(persisted.schemaVersion).toBe(13);
       expect(persisted.imageDraft.mode).toBe("image-edit");
       expect(persisted.settings.imageOutputDirectory).toBe("");
       expect(persisted.imageHistory).toEqual([]);
 
       const reloaded = await new JsonStore(filename).load();
-      expect(reloaded.schemaVersion).toBe(12);
+      expect(reloaded.schemaVersion).toBe(13);
       expect(reloaded.imageDraft.mode).toBe("image-edit");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
@@ -449,7 +479,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(12);
+      expect(loaded.schemaVersion).toBe(13);
       expect(loaded.settings.defaultImageQualityProfile).toBe("balanced-20");
       expect(loaded.imageDraft.qualityProfile).toBe("balanced-20");
     } finally {
@@ -495,7 +525,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(12);
+      expect(loaded.schemaVersion).toBe(13);
       expect(loaded.draft.modelId).toBe("minimax_h3_fl2va");
       expect(loaded.draft.videoLoras).toEqual([
         expect.objectContaining({
@@ -539,32 +569,34 @@ describe("queue lock recovery", () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
     const state = createDefaultState();
-    state.imageHistory = [{
-      mediaKind: "image",
-      id: "project-legacy",
-      title: "旧图片项目",
-      createdAt: "2026-08-10T00:00:00.000Z",
-      updatedAt: "2026-08-10T00:00:02.000Z",
-      coverMode: "auto",
-      nextVersionNumber: 1,
-      versions: [{
-        id: "generated-source",
-        versionNumber: 0,
-        kind: "source",
-        taskId: "task-1",
-        createdAt: "2026-08-10T00:00:01.000Z",
-        modelId: "qwen-image-edit-2511",
-        workflowPath: "builtin:image/qwen-image-edit-2511",
-        prompt: "修复",
-        promptVersion: 1,
-        references: [],
-        width: 1024,
-        height: 1024,
-        format: "png",
-        file: { filename: "edit.png", subfolder: "", type: "output" }
+    await fs.writeFile(filename, JSON.stringify({
+      ...state,
+      imageHistory: [{
+        mediaKind: "image",
+        id: "project-legacy",
+        title: "旧图片项目",
+        createdAt: "2026-08-10T00:00:00.000Z",
+        updatedAt: "2026-08-10T00:00:02.000Z",
+        coverMode: "auto",
+        nextVersionNumber: 1,
+        versions: [{
+          id: "generated-source",
+          versionNumber: 0,
+          kind: "source",
+          taskId: "task-1",
+          createdAt: "2026-08-10T00:00:01.000Z",
+          modelId: "qwen-image-edit-2511",
+          workflowPath: "builtin:image/qwen-image-edit-2511",
+          prompt: "修复",
+          promptVersion: 1,
+          references: [],
+          width: 1024,
+          height: 1024,
+          format: "png",
+          file: { filename: "edit.png", subfolder: "", type: "output" }
+        }]
       }]
-    }];
-    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+    }), "utf8");
 
     try {
       const loaded = await new JsonStore(filename).load();

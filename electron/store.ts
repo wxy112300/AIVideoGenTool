@@ -394,6 +394,17 @@ export class JsonStore {
           : {})
       });
       const savedVideoExtensionDraft = saved.videoExtensionDraft;
+      const savedImageToVideoDraft = saved.imageToVideoDraft;
+      const mergedImageToVideoDraft = savedImageToVideoDraft?.inputMode === "image"
+        ? ensureDraftPromptState({
+            ...defaultState.draft,
+            ...savedImageToVideoDraft,
+            inputMode: "image",
+            h3ReferenceSlots: normalizeH3ReferenceSlots(savedImageToVideoDraft.h3ReferenceSlots)
+          })
+        : mergedDraft.inputMode === "image"
+          ? structuredClone(mergedDraft)
+          : structuredClone(defaultState.imageToVideoDraft ?? defaultState.draft);
       const mergedVideoExtensionDraft = savedVideoExtensionDraft?.inputMode === "video"
         ? ensureDraftPromptState({
             ...defaultState.draft,
@@ -401,7 +412,9 @@ export class JsonStore {
             inputMode: "video",
             h3ReferenceSlots: normalizeH3ReferenceSlots(savedVideoExtensionDraft.h3ReferenceSlots)
           })
-        : undefined;
+        : mergedDraft.inputMode === "video"
+          ? structuredClone(mergedDraft)
+          : undefined;
       const savedQueueLifecycle = normalizedQueueLifecycle(
         (saved as { queueLifecycle?: unknown }).queueLifecycle
       );
@@ -409,6 +422,7 @@ export class JsonStore {
         ...defaultState,
         ...saved,
         draft: mergedDraft,
+        imageToVideoDraft: mergedImageToVideoDraft,
         videoExtensionDraft: mergedVideoExtensionDraft,
         imageDraft: normalizeImageEditDraft(saved.imageDraft),
         settings: {
@@ -420,7 +434,7 @@ export class JsonStore {
           h3AutoPromptSeedInstructions
         },
         queueRunning: false,
-        schemaVersion: 12,
+        schemaVersion: 13,
         queue: (saved.queue ?? []).map((task) => migrateQueueTask(
           task,
           typeof savedSettings.h3LivePreview === "boolean"

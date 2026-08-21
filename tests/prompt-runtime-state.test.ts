@@ -29,7 +29,7 @@ function begin(
   return reducePromptRuntime(state, {
     type: "begin-operation",
     operationId,
-    origin: "video-create",
+    origin: "image-to-video",
     startedAt: 100,
     retainModel: true,
     ...(phase ? { phase } : {})
@@ -112,7 +112,7 @@ describe("prompt runtime state machine", () => {
     expect(state.operation).toMatchObject({
       phase: "submitting",
       operationId: "video-1",
-      origin: "video-create",
+      origin: "image-to-video",
       promptId: null,
       startedAt: 100,
       retainModel: true
@@ -131,12 +131,12 @@ describe("prompt runtime state machine", () => {
     expect(state.operation).toMatchObject({
       phase: "running",
       operationId: "video-1",
-      origin: "video-create",
+      origin: "image-to-video",
       promptId: "prompt-1",
       startedAt: 100,
       retainModel: true
     });
-    expect(promptOperationBelongsTo(state, "video-create")).toBe(true);
+    expect(promptOperationBelongsTo(state, "image-to-video")).toBe(true);
     expect(promptOperationBelongsTo(state, "image-edit")).toBe(false);
   });
 

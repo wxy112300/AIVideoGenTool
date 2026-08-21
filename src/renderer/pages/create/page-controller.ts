@@ -20,6 +20,7 @@ import { mountImageEditController, type ImageEditControllerOptions } from "./ima
 import { mountImageToVideoController } from "./image-to-video-controller";
 import { mountVideoExtensionController } from "./video-extension-controller";
 import { uiKeys } from "../../../core/i18n-keys";
+import { creationDraftForMode } from "../../../core/creation-drafts";
 
 export interface CreatePageControllerOptions {
   context: RendererContext;
@@ -30,6 +31,10 @@ export interface CreatePageControllerOptions {
   bundledWorkflowKey(modelId: string, inputMode: Draft["inputMode"]): string;
   setRendererState(nextState: AppState): void;
   patchDraft(patch: Partial<Draft>): void;
+  patchDraftForMode(
+    mode: Exclude<CreationMode, "image-edit">,
+    update: (draft: Draft) => Partial<Draft>
+  ): void;
   patchImageDraft(patch: Partial<ImageEditDraft>): void;
   syncEnqueueUi(): void;
   enableSpectrumByDefaultIfAvailable(): void;
@@ -51,7 +56,7 @@ export interface CreatePageControllerOptions {
     setEnqueueBusy(value: boolean): void;
     setEnqueueBusyUi(busy: boolean): void;
   };
-  createPrompt: Omit<CreatePromptControllerOptions, "context" | "patchDraft" | "setWorkflowCapability" | "syncPromptEnqueueUi" | "updateH3PromptCheck" | "isPromptEnhancing" | "setPromptEnhancing" | "setPromptRuntimeLoaded" | "togglePromptModel" | "getH3PromptBuilder" | "setH3PromptBuilder" | "getPromptEnhanceMode" | "setPromptEnhanceMode" | "getH3PromptPreset" | "setH3PromptPreset"> & {
+  createPrompt: Omit<CreatePromptControllerOptions, "context" | "patchDraft" | "patchDraftForMode" | "setWorkflowCapability" | "syncPromptEnqueueUi" | "updateH3PromptCheck" | "isPromptEnhancing" | "setPromptEnhancing" | "setPromptRuntimeLoaded" | "togglePromptModel" | "getH3PromptBuilder" | "setH3PromptBuilder" | "getPromptEnhanceMode" | "setPromptEnhanceMode" | "getH3PromptPreset" | "setH3PromptPreset"> & {
     syncPromptEnqueueUi(promptText: string): void;
     updateH3PromptCheck(promptText: string, hasEndImage: boolean, mode?: import("../../../types").H3PromptMode, hasVideoReference?: boolean): void;
     getPromptEnhanceMode(): PromptEnhanceMode;
@@ -95,6 +100,13 @@ export function mountCreatePageController(
       const state = getState();
       if (!state) return;
       const inputMode = requestedMode === "video" ? "video" : "image";
+      const storedDraft = creationDraftForMode(state, inputMode);
+      if (storedDraft) {
+        options.setCreationMode(inputMode === "video" ? "video-extension" : "image-to-video");
+        options.patchDraft(storedDraft);
+        options.context.requestRender();
+        return;
+      }
       const wasVideoExtension = state.draft.inputMode === "video";
       // Switching to image creation intentionally clears video-only fields on
       // the active draft. Restore the last unfinished extension draft when the
@@ -251,6 +263,7 @@ export function mountCreatePageController(
     ...options.createPrompt,
     context: options.context,
     patchDraft: options.patchDraft,
+    patchDraftForMode: options.patchDraftForMode,
     setWorkflowCapability: (path, capability) => {
       options.workflowCapabilities[path] = capability;
     },

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { AppState, Draft, ImageEditDraft, Settings, UpscaleRequest } from "../src/types.js";
 import { isImageGenerationQueueTask } from "../src/core/queue.js";
+import { activateCreationDraft } from "../src/core/creation-drafts.js";
 import { findImageProjectLineage, normalizeImageEditDraft } from "../src/core/image-project.js";
 import {
   imageLightningComponentFound,
@@ -293,7 +294,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       const taskDraft = structuredClone(preparedDraft);
       taskDraft.workflowPath = resolvedWorkflowPath;
       state.queue.push(queueTaskFromDraft(taskDraft, state));
-      state.draft = preparedDraft;
+      activateCreationDraft(state, preparedDraft);
     });
     const task = next.queue.at(-1);
     if (task && !isImageGenerationQueueTask(task)) logger.info("queue", "task-enqueued", "Generation task added to queue", {
@@ -486,7 +487,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     if (!safety.safe) throw new Error(safety.message);
     const next = await store.update((state) => {
       state.queue.push(task);
-      state.draft = preparedDraft;
+      activateCreationDraft(state, preparedDraft);
     });
     logger.info("queue", "task-enqueued", "Extension task added to queue", {
       taskId: task.id, taskType: task.taskType, modelId: task.modelId, duration: task.duration, fps: task.fps
