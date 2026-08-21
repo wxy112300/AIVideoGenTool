@@ -401,6 +401,46 @@ export interface UpscaleQueueTask extends VideoQueueTaskBase {
   targetHeight: 720 | 1080 | 1440 | 2160;
   tileMode: "auto" | "safe" | "fast";
   faceRestore: boolean;
+  /**
+   * Runtime checkpoint for the native SeedVR2 long-video adapter. It is
+   * deliberately separate from the immutable upscale parameters so a failed
+   * task can resume completed segments after recovery or an app restart.
+   */
+  seedVr2Checkpoint?: SeedVr2UpscaleCheckpoint;
+  seedVr2Progress?: SeedVr2UpscaleProgress;
+}
+
+export interface SeedVr2UpscaleProgress {
+  phase: "planning" | "segments" | "merging" | "cleaning";
+  currentSegment: number;
+  totalSegments: number;
+  completedSegments: number;
+  segmentProgress: number;
+  temporaryFileCount?: number;
+}
+
+export interface SeedVr2UpscaleSegmentCheckpoint {
+  index: number;
+  startFrame: number;
+  frameCount: number;
+  promptId: string;
+  file: HistoryFile;
+}
+
+export interface SeedVr2UpscaleCheckpoint {
+  planVersion: 1 | 2;
+  framesPerSegment: number;
+  totalFrames: number;
+  totalSegments: number;
+  targetWidth?: number;
+  targetHeight?: number;
+  systemMemoryTotalBytes?: number;
+  systemMemoryAvailableBytes?: number;
+  vramTotalBytes?: number | null;
+  vramAvailableBytes?: number | null;
+  preprocessingBudgetBytes?: number;
+  vramFrameLimit?: number;
+  completed: SeedVr2UpscaleSegmentCheckpoint[];
 }
 
 export interface ExtensionQueueTask extends VideoQueueTaskBase {

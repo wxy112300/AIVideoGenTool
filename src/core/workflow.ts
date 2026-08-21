@@ -732,6 +732,7 @@ export function activityTimeoutMinutesForTask(
   ltxExtensionTimeoutMinutes: number
 ): number {
   if (isMiniMaxH3Model(task.modelId)) return 90;
+  if (task.modelId === "seedvr2-native-int8") return 90;
   if (task.taskType === "extension") return ltxExtensionTimeoutMinutes;
   return 10;
 }

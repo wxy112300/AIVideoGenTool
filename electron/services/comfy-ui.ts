@@ -412,13 +412,18 @@ function workflowTaskForComfyOutput<T extends GenerationQueueTask | ExtensionQue
 export async function submitTask(
   task: QueueTask,
   settings: Settings,
-  signal: AbortSignal
+  signal: AbortSignal,
+  options: {
+    uploadedUpscaleSource?: string;
+    nativeSeedVr2Segment?: { startTime: number; duration: number };
+  } = {}
 ): Promise<{
   promptId: string;
   clientId: string;
   nodeTypes: Record<string, string>;
   h3LivePreviewRequested: boolean;
   h3LivePreviewActive: boolean;
+  uploadedUpscaleSource?: string;
 }> {
   if (!task.workflowPath) {
     throw new Error("任务没有配置 ComfyUI API 工作流 JSON");
@@ -455,6 +460,7 @@ export async function submitTask(
     ? h3PreviewTinyVaeFromObjectInfo(objectInfo)
     : "";
   let prompt: unknown;
+  let uploadedUpscaleSource: string | undefined;
   if (task.taskType === "generation" || task.taskType === "extension") {
     const sourceText = await fs.readFile(task.workflowPath, {
       encoding: "utf8",
@@ -579,16 +585,17 @@ export async function submitTask(
       });
     }
   } else if (task.taskType === "upscale") {
-      const sourceVideo = await uploadInput(
+      const sourceVideo = options.uploadedUpscaleSource ?? await uploadInput(
         baseUrl,
         task.sourceFilePath,
         signal,
         "源视频"
       );
+      uploadedUpscaleSource = sourceVideo;
       prompt = renderUpscaleWorkflow(task, sourceVideo, {
         seedVr2: settings.seedVr2Model,
         realEsrgan: settings.realEsrganModel
-      }, objectInfo);
+      }, objectInfo, options.nativeSeedVr2Segment);
   } else {
     throw new Error("图片任务必须通过 submitImageTask 提交。");
   }
@@ -624,7 +631,8 @@ export async function submitTask(
     clientId,
     nodeTypes,
     h3LivePreviewRequested,
-    h3LivePreviewActive: Boolean(h3PreviewTinyVae)
+    h3LivePreviewActive: Boolean(h3PreviewTinyVae),
+    ...(uploadedUpscaleSource ? { uploadedUpscaleSource } : {})
   };
 }
 
@@ -1368,6 +1376,16 @@ export async function waitForTask(
         throw new TaskStalledError(3, "无法连接 ComfyUI");
       }
       if (Date.now() - lastActivityAt > activityTimeoutMs) {
+        if (isComputeActive()) {
+          logger.info("comfy", "task-compute-keepalive", "GPU compute is still active; extending the node activity deadline", {
+            promptId,
+            idleSeconds: Math.round((Date.now() - lastActivityAt) / 1000),
+            activeNodeId,
+            activeClassType: nodeTypes[activeNodeId] ?? "unknown"
+          });
+          lastActivityAt = Date.now();
+          continue;
+        }
         logger.error("comfy", "task-stalled", "ComfyUI task produced no node activity", {
           promptId,
           idleSeconds: Math.round((Date.now() - lastActivityAt) / 1000),

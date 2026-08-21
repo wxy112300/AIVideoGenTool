@@ -101,6 +101,53 @@ describe("queue renderer task priority", () => {
 
     expect(markup).toContain('class="task-input-preview task-input-preview-image"');
   });
+
+  it("shows native SeedVR2 total progress and current segment progress separately", () => {
+    const task = {
+      ...queueFixtureTask(createDefaultState(), "seedvr2-progress"),
+      taskType: "upscale" as const,
+      modelId: "seedvr2-native-int8",
+      status: "running" as const,
+      sourceAssetId: "asset",
+      sourceVersionId: "version",
+      sourceFilePath: "C:/input/source.mp4",
+      sourceFilename: "source.mp4",
+      sourceWidth: 768,
+      sourceHeight: 1152,
+      targetWidth: 2160,
+      targetHeight: 2160 as const,
+      tileMode: "auto" as const,
+      faceRestore: false,
+      progress: 37,
+      seedVr2Progress: {
+        phase: "segments" as const,
+        currentSegment: 3,
+        totalSegments: 7,
+        completedSegments: 2,
+        segmentProgress: 42
+      }
+    };
+    const markup = renderQueueTaskCard(task, 1, {
+      t: (key, params) => `${key}${params ? JSON.stringify(params) : ""}`,
+      taskPreviews: {},
+      queueRunning: true,
+      queueActionBusy: null,
+      icon: () => "",
+      escapeHtml: (value) => String(value),
+      modelName: (id) => id,
+      frameRateSummary: () => "24 FPS",
+      queueStageElapsedText: () => "—",
+      queueTaskRemainingSeconds: () => null,
+      queueEstimateText: () => "—",
+      elapsedText: () => "—"
+    });
+
+    expect(markup).toContain('id="running-progress-label">37%</strong>');
+    expect(markup).toContain('id="seedvr2-segment-progress"');
+    expect(markup).toContain('queue.card.seedVrSegment{"current":3,"total":7}');
+    expect(markup).toContain('queue.card.seedVrSegmentDetail{"progress":42,"completed":2}');
+    expect(markup).toContain('id="seedvr2-segment-progress-bar" style="width:42%"');
+  });
 });
 
 describe("queue history persistence", () => {

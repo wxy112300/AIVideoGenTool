@@ -10,6 +10,41 @@ type ApiNode = {
   inputs: Record<string, unknown>;
 };
 
+export interface NativeSeedVr2Segment {
+  index: number;
+  startFrame: number;
+  frameCount: number;
+  startTime: number;
+  duration: number;
+}
+
+export interface NativeSeedVr2SegmentPlan {
+  planVersion: 2;
+  framesPerSegment: number;
+  totalFrames: number;
+  targetWidth: number;
+  targetHeight: number;
+  systemMemoryTotalBytes?: number;
+  systemMemoryAvailableBytes?: number;
+  vramTotalBytes?: number | null;
+  vramAvailableBytes?: number | null;
+  preprocessingBudgetBytes: number;
+  vramFrameLimit: number;
+  segments: NativeSeedVr2Segment[];
+}
+
+export interface NativeSeedVr2ResourceSnapshot {
+  systemMemoryTotalBytes: number;
+  systemMemoryAvailableBytes: number;
+  vramTotalBytes: number | null;
+  vramAvailableBytes: number | null;
+}
+
+export interface NativeSeedVr2WorkflowSegment {
+  startTime: number;
+  duration: number;
+}
+
 export interface UpscaleResourceEstimateInput {
   modelId: "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan";
   sourceWidth: number;
@@ -149,6 +184,130 @@ export function upscaleDimensions(
     : [targetShortEdge, targetLongEdge];
 }
 
+function seedVr2SegmentMemoryBudgetBytes(tileMode: UpscaleQueueTask["tileMode"]): number {
+  // The native graph expands the IMAGE batch before VAE/latent chunking. Keep
+  // that float RGB batch bounded even on machines with very large pagefiles;
+  // the official latent auto-chunker then independently protects VRAM.
+  const gib = tileMode === "safe" ? 4 : tileMode === "fast" ? 8 : 6;
+  return gib * 1024 ** 3;
+}
+
+function seedVr2AdaptiveMemoryBudgetBytes(
+  tileMode: UpscaleQueueTask["tileMode"],
+  resources?: NativeSeedVr2ResourceSnapshot
+): number {
+  if (!resources || resources.systemMemoryAvailableBytes <= 0) {
+    return seedVr2SegmentMemoryBudgetBytes(tileMode);
+  }
+  const reserveBytes = Math.max(
+    8 * 1024 ** 3,
+    resources.systemMemoryTotalBytes * 0.15
+  );
+  const availableAfterReserve = Math.max(
+    1 * 1024 ** 3,
+    resources.systemMemoryAvailableBytes - reserveBytes
+  );
+  const modeShare = tileMode === "safe" ? 0.45 : tileMode === "fast" ? 0.8 : 0.65;
+  // ImageScale, SeedVR preprocessing, VAE input/output and video containers
+  // coexist for part of the graph. Convert host headroom back to a raw float
+  // RGB budget with a conservative measured working-set multiplier.
+  return Math.max(
+    1 * 1024 ** 3,
+    availableAfterReserve * modeShare / 2.75
+  );
+}
+
+function seedVr2VramFrameLimit(
+  targetPixels: number,
+  tileMode: UpscaleQueueTask["tileMode"],
+  resources?: NativeSeedVr2ResourceSnapshot
+): number {
+  if (!resources?.vramAvailableBytes || resources.vramAvailableBytes <= 0) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const availableGib = resources.vramAvailableBytes / 1024 ** 3;
+  const megapixels = Math.max(0.1, targetPixels / 1e6);
+  // Mirrors the native core's published auto-chunk activation law. The outer
+  // segment may contain several internal chunks, but bounding that count keeps
+  // decoded frames and post-processing tensors from accumulating indefinitely.
+  const reservedGib = 8.5 + 4 * 0.55;
+  const latentFrames = Math.max(
+    1,
+    Math.floor(Math.max(0.55, availableGib - reservedGib) / (0.55 * megapixels))
+  );
+  const pixelFramesPerInternalChunk = Math.max(1, 4 * (latentFrames - 1) + 1);
+  const internalChunks = tileMode === "safe" ? 8 : tileMode === "fast" ? 16 : 12;
+  return seedVr2CompatibleFrameCount(
+    Math.max(17, pixelFramesPerInternalChunk * internalChunks)
+  );
+}
+
+function seedVr2CompatibleFrameCount(value: number): number {
+  const bounded = Math.max(5, Math.floor(value));
+  return Math.max(5, Math.floor((bounded - 1) / 4) * 4 + 1);
+}
+
+export function nativeSeedVr2SegmentPlan(
+  task: Pick<
+    UpscaleQueueTask,
+    "modelId" | "sourceWidth" | "sourceHeight" | "targetHeight" | "duration" | "fps" | "tileMode"
+  >,
+  resources?: NativeSeedVr2ResourceSnapshot,
+  preferredFramesPerSegment?: number
+): NativeSeedVr2SegmentPlan | null {
+  if (task.modelId !== "seedvr2-native-int8") return null;
+  const fps = Math.max(1, task.fps);
+  const totalFrames = Math.max(1, Math.ceil(Math.max(0, task.duration) * fps));
+  const [targetWidth, targetHeight] = upscaleDimensions(
+    task.sourceWidth,
+    task.sourceHeight,
+    task.targetHeight
+  );
+  const bytesPerFloatRgbFrame = targetWidth * targetHeight * 3 * 4;
+  const preprocessingBudgetBytes = seedVr2AdaptiveMemoryBudgetBytes(task.tileMode, resources);
+  const memoryFrameLimit = seedVr2CompatibleFrameCount(Math.floor(
+    preprocessingBudgetBytes / Math.max(1, bytesPerFloatRgbFrame)
+  ));
+  const vramFrameLimit = seedVr2VramFrameLimit(
+    targetWidth * targetHeight,
+    task.tileMode,
+    resources
+  );
+  const framesPerSegment = seedVr2CompatibleFrameCount(
+    preferredFramesPerSegment ?? Math.min(memoryFrameLimit, vramFrameLimit)
+  );
+  if (totalFrames <= framesPerSegment) return null;
+  const segments: NativeSeedVr2Segment[] = [];
+  for (let startFrame = 0; startFrame < totalFrames; startFrame += framesPerSegment) {
+    const frameCount = Math.min(framesPerSegment, totalFrames - startFrame);
+    segments.push({
+      index: segments.length,
+      startFrame,
+      frameCount,
+      startTime: startFrame / fps,
+      duration: frameCount / fps
+    });
+  }
+  return {
+    planVersion: 2,
+    framesPerSegment,
+    totalFrames,
+    targetWidth,
+    targetHeight,
+    ...(resources
+      ? {
+          systemMemoryTotalBytes: resources.systemMemoryTotalBytes,
+          systemMemoryAvailableBytes: resources.systemMemoryAvailableBytes,
+          vramTotalBytes: resources.vramTotalBytes,
+          vramAvailableBytes: resources.vramAvailableBytes
+        }
+      : {}),
+    preprocessingBudgetBytes,
+    vramFrameLimit,
+    segments
+  };
+}
+
 export function createUpscaleFilename(
   sourceFilename: string,
   targetHeight: UpscaleRequest["targetHeight"]
@@ -248,7 +407,8 @@ const seedVr2RequiredNodes = [
 
 function renderNativeSeedVr2Workflow(
   task: UpscaleQueueTask,
-  sourceVideo: string
+  sourceVideo: string,
+  segment?: NativeSeedVr2WorkflowSegment
 ): Record<string, ApiNode> {
   const [targetWidth, targetHeight] = upscaleDimensions(
     task.sourceWidth,
@@ -260,9 +420,22 @@ function renderNativeSeedVr2Workflow(
       class_type: "LoadVideo",
       inputs: { file: sourceVideo }
     },
+    ...(segment
+      ? {
+          "video-slice": {
+            class_type: "Video Slice",
+            inputs: {
+              video: ["1", 0],
+              start_time: segment.startTime,
+              duration: segment.duration,
+              strict_duration: false
+            }
+          }
+        }
+      : {}),
     "2": {
       class_type: "GetVideoComponents",
-      inputs: { video: ["1", 0] }
+      inputs: { video: [segment ? "video-slice" : "1", 0] }
     },
     "3": {
       class_type: "ImageScale",
@@ -413,7 +586,8 @@ export function renderUpscaleWorkflow(
   task: UpscaleQueueTask,
   sourceVideo: string,
   models: { seedVr2: string; realEsrgan: string },
-  objectInfo?: unknown
+  objectInfo?: unknown,
+  nativeSeedVr2Segment?: NativeSeedVr2WorkflowSegment
 ): Record<string, ApiNode> {
   const sourceShortEdge = Math.max(1, Math.min(task.sourceWidth, task.sourceHeight));
   const availableNodes = objectInfo && typeof objectInfo === "object" && !Array.isArray(objectInfo)
@@ -437,7 +611,7 @@ export function renderUpscaleWorkflow(
     );
   }
   if (task.modelId === "seedvr2-native-int8") {
-    return renderNativeSeedVr2Workflow(task, sourceVideo);
+    return renderNativeSeedVr2Workflow(task, sourceVideo, nativeSeedVr2Segment);
   }
   const modernSeedVr2 = task.modelId === "seedvr2";
   const useExternalBatching = !modernSeedVr2;

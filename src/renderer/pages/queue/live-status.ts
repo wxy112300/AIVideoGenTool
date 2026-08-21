@@ -13,6 +13,7 @@ import {
   queueTaskRemainingSeconds
 } from "./helpers";
 import type { Page } from "../../contracts";
+import { seedVr2ProgressView } from "./card";
 
 export interface QueueLiveStatusOptions {
   studio: AppApi;
@@ -302,6 +303,20 @@ export function patchQueueLiveDom(
   progressContainer?.setAttribute("aria-valuenow", String(Math.round(progress)));
   const stage = document.querySelector<HTMLElement>("#running-stage");
   if (stage) stage.textContent = running.stage ?? t(uiKeys.queue.card.preparing);
+  if (running.taskType === "upscale" && running.modelId === "seedvr2-native-int8") {
+    const container = document.querySelector<HTMLElement>("#seedvr2-segment-progress");
+    const label = document.querySelector<HTMLElement>("#seedvr2-segment-label");
+    const detail = document.querySelector<HTMLElement>("#seedvr2-segment-detail");
+    const localBar = document.querySelector<HTMLElement>("#seedvr2-segment-progress-bar");
+    if (!container || !label || !detail || !localBar) return false;
+    const view = seedVr2ProgressView(running, t);
+    container.hidden = !view.visible;
+    label.textContent = view.label;
+    detail.textContent = view.detail;
+    localBar.style.width = `${view.localProgress}%`;
+    localBar.closest<HTMLElement>("[role=progressbar]")
+      ?.setAttribute("aria-valuenow", String(Math.round(view.localProgress)));
+  }
   return true;
 }
 

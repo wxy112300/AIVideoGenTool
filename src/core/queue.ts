@@ -107,6 +107,8 @@ export function updateQueuedUpscaleTask(
     return {
       ...task,
       ...patch,
+      seedVr2Checkpoint: undefined,
+      seedVr2Progress: undefined,
       tileMode: patch.tileMode ?? task.tileMode,
       ...(resetFailure ? {
         status: "waiting" as const,
@@ -170,7 +172,10 @@ export function duplicateQueueTask(
     progress: 0,
     error: undefined,
     stage: undefined,
-    automaticRetryAttempt: undefined
+    automaticRetryAttempt: undefined,
+    ...(source.taskType === "upscale"
+      ? { seedVr2Checkpoint: undefined, seedVr2Progress: undefined }
+      : {})
   }];
 }
 
@@ -194,7 +199,8 @@ export function resetQueueTask(
       error: undefined,
       stage: undefined,
       startedAt: undefined,
-      automaticRetryAttempt: undefined
+      automaticRetryAttempt: undefined,
+      ...(task.taskType === "upscale" ? { seedVr2Progress: undefined } : {})
     };
   });
   return { queue: next, reset };

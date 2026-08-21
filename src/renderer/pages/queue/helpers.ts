@@ -17,7 +17,9 @@ const volatileTaskFields = new Set([
   "stageStartedAt",
   "updatedAt",
   "comfyPromptId",
-  "performanceStats"
+  "performanceStats",
+  "seedVr2Checkpoint",
+  "seedVr2Progress"
 ]);
 
 function queueTaskLayoutSnapshot(task: QueueTask): unknown {

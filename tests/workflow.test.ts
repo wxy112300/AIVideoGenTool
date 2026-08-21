@@ -91,6 +91,10 @@ describe("activityTimeoutMinutesForTask", () => {
     expect(activityTimeoutMinutesForTask({ ...extensionTask, modelId: "minimax_h3_fl2va" }, 30)).toBe(90);
   });
 
+  it("allows native SeedVR2 video nodes to exceed the generic ten-minute node deadline", () => {
+    expect(activityTimeoutMinutesForTask({ ...task, taskType: "upscale", modelId: "seedvr2-native-int8" }, 30)).toBe(90);
+  });
+
   it("keeps the configured timeout for other extension models", () => {
     expect(activityTimeoutMinutesForTask(extensionTask, 45)).toBe(45);
   });

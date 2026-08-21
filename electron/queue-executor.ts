@@ -13,12 +13,17 @@ import {
 import { hashImageFile } from "./services/image-asset-library.js";
 import {
   freeMemory,
+  type PreviewFrameMetadata,
   submitImageTask,
   submitTask,
   TaskStalledError,
   waitForTask
 } from "./services/comfy-ui.js";
 import { finalizeExtensionOutput } from "./services/extension-media.js";
+import {
+  cleanupNativeSeedVr2Intermediates,
+  executeNativeSeedVr2Upscale
+} from "./services/seedvr2-upscale.js";
 import { startTaskPerformanceMonitor, type TaskPerformanceMonitor } from "./services/performance.js";
 import { startAdaptiveVramWatchdog, type VramWatchdogMonitor } from "./services/vram-watchdog.js";
 import { safeLogErrorMessage, type AppLogger } from "./services/app-logger.js";
@@ -467,91 +472,123 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             }
           }
         );
-        const submitted = await submitTask(
-          task,
-          store.get().settings,
-          activeController.signal
-        );
-        const { promptId, clientId, nodeTypes } = submitted;
-        h3LivePreviewActive = submitted.h3LivePreviewActive;
-        if (h3LivePreviewActive) h3PreviewStartedAt = Date.now();
-        if (submitted.h3LivePreviewRequested && !submitted.h3LivePreviewActive) {
-          logger.warn(
-            "comfy",
-            "h3-live-preview-unavailable",
-            "H3 live preview was requested but KJNodes ModelPreviewOverrideKJ or taeh3.safetensors is unavailable; generation continues without preview",
+        const previewHandler = (
+          dataUrl: string,
+          source?: "h3-tae" | "comfy",
+          metadata?: PreviewFrameMetadata
+        ): void => {
+          if (source === "h3-tae") {
+            h3LivePreviewFrames += 1;
+            if (h3LivePreviewFrames === 1) {
+              h3PreviewFirstFrameDelaySeconds = h3PreviewStartedAt > 0
+                ? Math.round((Date.now() - h3PreviewStartedAt) / 1000)
+                : undefined;
+            }
+          }
+          sendPreview({ taskId: task.id, dataUrl, source, ...metadata });
+        };
+        const isComputeActive = (): boolean => Date.now() - lastGpuComputeAt < 10_000;
+        const segmentedSeedVr2 = task.taskType === "upscale"
+          ? await executeNativeSeedVr2Upscale(task, {
+              settings: store.get().settings,
+              logger,
+              signal: activeController.signal,
+              updateTask: (taskId, patch) => updateTask(taskId, patch),
+              getTask: (taskId) => {
+                const current = store.get().queue.find((item) => item.id === taskId);
+                return current?.taskType === "upscale" ? current : undefined;
+              },
+              requireExistingVideoOutput,
+              isComputeActive,
+              onPreview: previewHandler
+            })
+          : null;
+        let promptId: string;
+        let result: unknown;
+        let files: HistoryFile[];
+        let seedVr2IntermediatePaths: string[] = [];
+        if (segmentedSeedVr2) {
+          promptId = segmentedSeedVr2.promptId;
+          result = segmentedSeedVr2.comfyOutputs;
+          files = segmentedSeedVr2.files;
+          seedVr2IntermediatePaths = segmentedSeedVr2.intermediatePaths;
+        } else {
+          const submitted = await submitTask(
+            task,
+            store.get().settings,
+            activeController.signal
+          );
+          ({ promptId } = submitted);
+          const { clientId, nodeTypes } = submitted;
+          h3LivePreviewActive = submitted.h3LivePreviewActive;
+          if (h3LivePreviewActive) h3PreviewStartedAt = Date.now();
+          if (submitted.h3LivePreviewRequested && !submitted.h3LivePreviewActive) {
+            logger.warn(
+              "comfy",
+              "h3-live-preview-unavailable",
+              "H3 live preview was requested but KJNodes ModelPreviewOverrideKJ or taeh3.safetensors is unavailable; generation continues without preview",
+              { taskId: task.id, modelId: task.modelId }
+            );
+          } else if (submitted.h3LivePreviewActive) {
+            logger.info("comfy", "h3-live-preview-enabled", "H3 TAE live preview enabled", {
+              taskId: task.id,
+              modelId: task.modelId,
+              maxResolution: 512,
+              previewFrames: 1
+            });
+          }
+          logger.info("comfy", "prompt-submitted", "Workflow submitted to ComfyUI", {
+            taskId: task.id,
+            taskType: task.taskType,
+            modelId: task.modelId,
+            promptId,
+            nodeCount: Object.keys(nodeTypes).length
+          });
+          await updateTask(task.id, {
+            comfyPromptId: promptId,
+            progress: 2,
+            stage: "等待 ComfyUI"
+          });
+          let lastLoggedProgress = -5;
+          let lastLoggedStage = "";
+          result = await waitForTask(
+            promptId,
+            clientId,
+            nodeTypes,
+            store.get().settings,
+            activityTimeoutMinutesForTask(
+              task,
+              store.get().settings.ltxExtensionTimeoutMinutes
+            ),
+            activeController.signal,
+            (progress, stage) => {
+              void updateTask(task.id, { progress, stage });
+              const roundedProgress = Math.round(progress);
+              if (
+                stage !== lastLoggedStage ||
+                roundedProgress >= lastLoggedProgress + 5 ||
+                progress >= 100
+              ) {
+                lastLoggedProgress = roundedProgress;
+                lastLoggedStage = stage;
+                logger.info("queue", "task-progress", "Queue task progress", {
+                  taskId: task.id,
+                  taskType: task.taskType,
+                  modelId: task.modelId,
+                  progress: roundedProgress,
+                  stage
+                });
+              }
+            },
+            previewHandler,
+            isComputeActive,
             { taskId: task.id, modelId: task.modelId }
           );
-        } else if (submitted.h3LivePreviewActive) {
-          logger.info("comfy", "h3-live-preview-enabled", "H3 TAE live preview enabled", {
-            taskId: task.id,
-            modelId: task.modelId,
-            maxResolution: 512,
-            previewFrames: 1
-          });
+          files = await requireExistingVideoOutput(
+            result,
+            [store.get().settings.outputDirectory]
+          );
         }
-        logger.info("comfy", "prompt-submitted", "Workflow submitted to ComfyUI", {
-          taskId: task.id,
-          taskType: task.taskType,
-          modelId: task.modelId,
-          promptId,
-          nodeCount: Object.keys(nodeTypes).length
-        });
-        await updateTask(task.id, {
-          comfyPromptId: promptId,
-          progress: 2,
-          stage: "等待 ComfyUI"
-        });
-        let lastLoggedProgress = -5;
-        let lastLoggedStage = "";
-        const result = await waitForTask(
-          promptId,
-          clientId,
-          nodeTypes,
-          store.get().settings,
-          activityTimeoutMinutesForTask(
-            task,
-            store.get().settings.ltxExtensionTimeoutMinutes
-          ),
-          activeController.signal,
-          (progress, stage) => {
-            void updateTask(task.id, { progress, stage });
-            const roundedProgress = Math.round(progress);
-            if (
-              stage !== lastLoggedStage ||
-              roundedProgress >= lastLoggedProgress + 5 ||
-              progress >= 100
-            ) {
-              lastLoggedProgress = roundedProgress;
-              lastLoggedStage = stage;
-              logger.info("queue", "task-progress", "Queue task progress", {
-                taskId: task.id,
-                taskType: task.taskType,
-                modelId: task.modelId,
-                progress: roundedProgress,
-                stage
-              });
-            }
-          },
-          (dataUrl, source, metadata) => {
-            if (source === "h3-tae") {
-              h3LivePreviewFrames += 1;
-              if (h3LivePreviewFrames === 1) {
-                h3PreviewFirstFrameDelaySeconds = h3PreviewStartedAt > 0
-                  ? Math.round((Date.now() - h3PreviewStartedAt) / 1000)
-                  : undefined;
-              }
-            }
-            sendPreview({
-              taskId: task.id,
-              dataUrl,
-              source,
-              ...metadata
-            });
-          },
-          () => Date.now() - lastGpuComputeAt < 10_000,
-          { taskId: task.id, modelId: task.modelId }
-        );
         logH3PreviewOutcome("completed");
         logger.info("queue", "task-output-ready", "ComfyUI task completed", {
           taskId: task.id,
@@ -561,10 +598,6 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         const completedTask = store.get().queue.find((item) => item.id === task.id);
         if (!completedTask || isImageGenerationQueueTask(completedTask)) continue;
         const completedAt = new Date().toISOString();
-        const files = await requireExistingVideoOutput(
-          result,
-          [store.get().settings.outputDirectory]
-        );
         logger.info("queue", "output-validated", "Task output validated", {
           taskId: task.id,
           outputCount: files.length
@@ -589,6 +622,33 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             outputVideo.absolutePath,
             activeController.signal
           );
+        }
+        if (seedVr2IntermediatePaths.length && completedTask.taskType === "upscale") {
+          await updateTask(task.id, {
+            seedVr2Progress: {
+              phase: "cleaning",
+              currentSegment: completedTask.seedVr2Checkpoint?.totalSegments ?? seedVr2IntermediatePaths.length,
+              totalSegments: completedTask.seedVr2Checkpoint?.totalSegments ?? seedVr2IntermediatePaths.length,
+              completedSegments: completedTask.seedVr2Checkpoint?.totalSegments ?? seedVr2IntermediatePaths.length,
+              segmentProgress: 100,
+              temporaryFileCount: seedVr2IntermediatePaths.length
+            },
+            progress: 99,
+            stage: `合并完成 · 清理 ${seedVr2IntermediatePaths.length} 个临时切片文件`
+          });
+          const cleanup = await cleanupNativeSeedVr2Intermediates(seedVr2IntermediatePaths);
+          logger.info("queue", "seedvr2-intermediates-cleaned", "Native SeedVR2 temporary segment cleanup finished", {
+            taskId: task.id,
+            temporaryFileCount: seedVr2IntermediatePaths.length,
+            removedCount: cleanup.removed,
+            failedCount: cleanup.failed
+          });
+          if (cleanup.failed > 0) {
+            logger.warn("queue", "seedvr2-intermediate-cleanup-incomplete", "Some native SeedVR2 temporary segments could not be removed", {
+              taskId: task.id,
+              failedCount: cleanup.failed
+            });
+          }
         }
         if (taskPerformanceMonitor) {
           taskPerformanceStats = taskPerformanceMonitor.stop();

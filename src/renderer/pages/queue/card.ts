@@ -42,6 +42,57 @@ export interface QueueCardRenderOptions {
   canMoveDown?: boolean;
 }
 
+export interface SeedVr2ProgressView {
+  visible: boolean;
+  label: string;
+  detail: string;
+  localProgress: number;
+}
+
+export function seedVr2ProgressView(task: QueueTask, t: Translate): SeedVr2ProgressView {
+  if (task.taskType !== "upscale" || task.modelId !== "seedvr2-native-int8" || !task.seedVr2Progress) {
+    return { visible: false, label: "", detail: "", localProgress: 0 };
+  }
+  const progress = task.seedVr2Progress;
+  const localProgress = Math.max(0, Math.min(100, progress.segmentProgress));
+  if (progress.phase === "planning") {
+    return {
+      visible: true,
+      label: t(uiKeys.queue.card.seedVrPlanning),
+      detail: "",
+      localProgress: 0
+    };
+  }
+  if (progress.phase === "merging") {
+    return {
+      visible: true,
+      label: t(uiKeys.queue.card.seedVrMerging, { total: progress.totalSegments }),
+      detail: "",
+      localProgress: 100
+    };
+  }
+  if (progress.phase === "cleaning") {
+    return {
+      visible: true,
+      label: t(uiKeys.queue.card.seedVrCleaning, { count: progress.temporaryFileCount ?? progress.totalSegments }),
+      detail: "",
+      localProgress: 100
+    };
+  }
+  return {
+    visible: true,
+    label: t(uiKeys.queue.card.seedVrSegment, {
+      current: progress.currentSegment,
+      total: progress.totalSegments
+    }),
+    detail: t(uiKeys.queue.card.seedVrSegmentDetail, {
+      progress: Math.round(localProgress),
+      completed: progress.completedSegments
+    }),
+    localProgress
+  };
+}
+
 export function queueTaskInput(task: QueueTask): QueueTaskInput | null {
   if (task.taskType === "image-generation" && task.pictures[0]?.absolutePath) {
     return { kind: "image", path: task.pictures[0].absolutePath };
@@ -140,6 +191,7 @@ export function renderQueueTaskCard(
     ? `<strong>${String(queuePosition).padStart(2, "0")}</strong><small>${t(uiKeys.queue.card.rank)}</small>`
     : `<strong>!</strong><small>${t(uiKeys.queue.card.needsAttention)}</small>`;
   if (task.status === "running") {
+    const seedVrProgress = seedVr2ProgressView(task, t);
     const preview = options.taskPreviews[task.id] ?? "";
     const livePreviewRequested =
       (task.taskType === "generation" || task.taskType === "extension") &&
@@ -167,6 +219,7 @@ export function renderQueueTaskCard(
           <div class="running-copy">
             <span class="eyebrow">${t(uiKeys.queue.card.currentStep)} · <span id="running-stage">${options.escapeHtml(task.stage ?? t(uiKeys.queue.card.preparing))}</span></span>
             <div class="progress" role="progressbar" aria-label="${t(uiKeys.queue.card.taskProgress)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(task.progress ?? 0)}"><span id="running-progress-bar" style="width:${task.progress ?? 0}%"></span></div>
+            ${task.taskType === "upscale" && task.modelId === "seedvr2-native-int8" ? `<div id="seedvr2-segment-progress" class="seedvr2-segment-progress" ${seedVrProgress.visible ? "" : "hidden"}><div class="seedvr2-segment-progress-copy"><strong id="seedvr2-segment-label">${options.escapeHtml(seedVrProgress.label)}</strong><span id="seedvr2-segment-detail">${options.escapeHtml(seedVrProgress.detail)}</span></div><div class="progress seedvr2-local-progress" role="progressbar" aria-label="${t(uiKeys.queue.card.seedVrLocalProgress)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(seedVrProgress.localProgress)}"><span id="seedvr2-segment-progress-bar" style="width:${seedVrProgress.localProgress}%"></span></div></div>` : ""}
             <p class="task-description">${options.escapeHtml(description)}</p>
             <div class="task-meta">${metadata}<span id="running-stage-elapsed">${options.queueStageElapsedText(task)}</span><span id="running-eta">${t(uiKeys.queue.card.eta, { time: options.queueEstimateText(options.queueTaskRemainingSeconds(task)) })}</span></div>
             <div class="running-controls">

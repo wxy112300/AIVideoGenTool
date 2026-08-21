@@ -299,7 +299,14 @@ describe("queue mutations", () => {
       tileMode: "safe" as const,
       faceRestore: false,
       error: "failed",
-      comfyPromptId: "prompt"
+      comfyPromptId: "prompt",
+      seedVr2Checkpoint: {
+        planVersion: 1 as const,
+        framesPerSegment: 49,
+        totalFrames: 96,
+        totalSegments: 2,
+        completed: []
+      }
     };
     const updated = updateQueuedUpscaleTask([failed], "upscale", {
       targetWidth: 2560,
@@ -314,6 +321,7 @@ describe("queue mutations", () => {
     expect(updated).toMatchObject({ status: "waiting", progress: 0, updatedAt: "updated" });
     expect(updated?.error).toBeUndefined();
     expect(updated?.comfyPromptId).toBeUndefined();
+    expect(updated?.taskType === "upscale" ? updated.seedVr2Checkpoint : undefined).toBeUndefined();
   });
 
   it("duplicates snapshots with a new identity and optionally a new seed", () => {
@@ -331,5 +339,33 @@ describe("queue mutations", () => {
     expect(result.reset).toBe(true);
     expect(result.queue[0]).toMatchObject({ status: "waiting", progress: 0, updatedAt: "reset-at" });
     expect(result.queue[0]?.error).toBeUndefined();
+  });
+
+  it("preserves native SeedVR2 segment checkpoints when only resetting status", () => {
+    const checkpoint = {
+      planVersion: 1 as const,
+      framesPerSegment: 49,
+      totalFrames: 96,
+      totalSegments: 2,
+      completed: []
+    };
+    const failed = {
+      ...task("failed-upscale", "seedvr2-native-int8", "failed"),
+      taskType: "upscale" as const,
+      sourceFilename: "source.mp4",
+      sourceFilePath: "source.mp4",
+      sourceAssetId: "asset",
+      sourceVersionId: "version",
+      sourceWidth: 1280,
+      sourceHeight: 720,
+      targetWidth: 3840,
+      targetHeight: 2160 as const,
+      tileMode: "auto" as const,
+      faceRestore: false,
+      seedVr2Checkpoint: checkpoint
+    };
+    const result = resetQueueTask([failed], failed.id, "reset-at");
+    const reset = result.queue[0];
+    expect(reset).toMatchObject({ status: "waiting", seedVr2Checkpoint: checkpoint });
   });
 });

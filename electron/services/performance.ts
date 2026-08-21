@@ -103,6 +103,23 @@ async function nvidiaMetrics(): Promise<{
   }
 }
 
+export async function getComputeResourceSnapshot(): Promise<{
+  systemMemoryTotalBytes: number;
+  systemMemoryAvailableBytes: number;
+  vramTotalBytes: number | null;
+  vramAvailableBytes: number | null;
+}> {
+  const gpu = await nvidiaMetrics();
+  return {
+    systemMemoryTotalBytes: os.totalmem(),
+    systemMemoryAvailableBytes: os.freemem(),
+    vramTotalBytes: gpu.vramTotalBytes,
+    vramAvailableBytes: gpu.vramTotalBytes != null && gpu.vramUsedBytes != null
+      ? Math.max(0, gpu.vramTotalBytes - gpu.vramUsedBytes)
+      : null
+  };
+}
+
 export async function getPerformanceMetrics(
   settings: Settings
 ): Promise<PerformanceMetrics> {

@@ -2,20 +2,24 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-const tokenSource = readFileSync(new URL("../src/styles/00-tokens.css", import.meta.url), "utf8");
-const styleEntry = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
-const foundationSource = readFileSync(new URL("../src/styles/01-foundation.css", import.meta.url), "utf8");
-const visualRefreshSource = readFileSync(new URL("../src/styles/02-visual-refresh.css", import.meta.url), "utf8");
-const accelerationSource = readFileSync(new URL("../src/styles/03-acceleration.css", import.meta.url), "utf8");
-const historyStageSource = readFileSync(new URL("../src/styles/04-history-stage.css", import.meta.url), "utf8");
-const densitySource = readFileSync(new URL("../src/styles/05-density-refinement.css", import.meta.url), "utf8");
-const settingsLayoutSource = readFileSync(new URL("../src/styles/06-settings-layout.css", import.meta.url), "utf8");
-const createComposerSource = readFileSync(new URL("../src/styles/07-create-composer.css", import.meta.url), "utf8");
-const createPageSource = readFileSync(new URL("../src/renderer/pages/create/page.ts", import.meta.url), "utf8");
-const imageToVideoControllerSource = readFileSync(new URL("../src/renderer/pages/create/image-to-video-controller.ts", import.meta.url), "utf8");
-const createHeaderSource = readFileSync(new URL("../src/styles/09-create-header.css", import.meta.url), "utf8");
-const historyCurationSource = readFileSync(new URL("../src/styles/11-history-curation.css", import.meta.url), "utf8");
-const finalRefinementsSource = readFileSync(new URL("../src/styles/10-final-refinements.css", import.meta.url), "utf8");
+function source(relativePath: string): string {
+  return readFileSync(new URL(relativePath, import.meta.url), "utf8").replace(/\r\n?/gu, "\n");
+}
+
+const tokenSource = source("../src/styles/00-tokens.css");
+const styleEntry = source("../src/style.css");
+const foundationSource = source("../src/styles/01-foundation.css");
+const visualRefreshSource = source("../src/styles/02-visual-refresh.css");
+const accelerationSource = source("../src/styles/03-acceleration.css");
+const historyStageSource = source("../src/styles/04-history-stage.css");
+const densitySource = source("../src/styles/05-density-refinement.css");
+const settingsLayoutSource = source("../src/styles/06-settings-layout.css");
+const createComposerSource = source("../src/styles/07-create-composer.css");
+const createPageSource = source("../src/renderer/pages/create/page.ts");
+const imageToVideoControllerSource = source("../src/renderer/pages/create/image-to-video-controller.ts");
+const createHeaderSource = source("../src/styles/09-create-header.css");
+const historyCurationSource = source("../src/styles/11-history-curation.css");
+const finalRefinementsSource = source("../src/styles/10-final-refinements.css");
 
 const semanticRoles = [
   "--ux-canvas",
@@ -194,6 +198,13 @@ describe("UX/UI semantic token foundation", () => {
     expect(finalRefinementsSource).toContain(".queue-run-metric strong,");
     expect(finalRefinementsSource).toContain("font-variant-numeric: tabular-nums;");
     expect(visualRefreshSource).toContain("font-variant-numeric: tabular-nums;");
+  });
+
+  it("keeps native SeedVR2 segment progress subordinate to the task total", () => {
+    expect(finalRefinementsSource).toContain(".seedvr2-segment-progress {");
+    expect(finalRefinementsSource).toContain("background: var(--ux-surface-object);");
+    expect(finalRefinementsSource).toContain(".seedvr2-segment-progress .seedvr2-local-progress {");
+    expect(finalRefinementsSource).toContain("height: 4px;");
   });
 
   it("routes the approved P04 radius families through semantic roles", () => {
