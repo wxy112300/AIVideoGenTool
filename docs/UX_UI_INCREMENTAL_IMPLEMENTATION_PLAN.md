@@ -1,8 +1,8 @@
 # UX / UI 渐进式升级实施计划
 
-> 状态：执行中；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性、P12 History 键盘语义、P13 图片媒体状态、P14 Lightbox modal/focus 与 P15 视频/图片详情构图已 verified/integrated，P16 Settings current-renderer evidence/proposal 与 G15 结构批准已完成，P17 Settings 分类/保存/扫描动作层级已 verified/integrated，P18 Settings 内容层级、本地化与恢复反馈已 verified/integrated，P19/L61 CSS owner map 已完成，G17 已批准 Create 与 Settings shell 首批 package，L63 Create breakpoint、Settings navigation、Settings shell geometry、Settings section shell/heading、L62 Settings content card、History detail 与 Queue composition 已 parity/verify 通过
+> 状态：已完成（P20/G18 已于 2026-08-21 收口）；P00 renderer-rebase 已 verified，P01 已按用户指令确认当前 renderer 为视觉来源，P02 语义 token 骨架已实现，P03/L10–L15 shared surface/text/separator/action/status/brand-nav/panel-elevation 迁移与 G04 五页视觉/状态批准、P04/L16–L19 type token 声明与 shared heading/body/label/meta/technical/tabular-number 迁移、P05 导航语义与 P06 全局反馈/恢复已完成，G08 已批准，P08 Create 已 verified/integrated，G10 已批准，P10 Queue 任务优先构图及顶部性能总览修正已实现，G11 Queue executor/control 隔离 gate 与用户真实 ComfyUI 运行复核已通过，P11 History toolbar/gallery 稳定性、P12 History 键盘语义、P13 图片媒体状态、P14 Lightbox modal/focus 与 P15 视频/图片详情构图已 verified/integrated，P16 Settings current-renderer evidence/proposal 与 G15 结构批准已完成，P17 Settings 分类/保存/扫描动作层级已 verified/integrated，P18 Settings 内容层级、本地化与恢复反馈已 verified/integrated，P19/L61 CSS owner map 已完成，G17 已批准 Create 与 Settings shell 首批 package，L63 Create breakpoint、Settings navigation、Settings shell geometry、Settings section shell/heading、L62 Settings content card、History detail 与 Queue composition 已 parity/verify 通过
 > 制定日期：2026-08-20  
-> 当前版本：0.40.0
+> 当前版本：0.41.3
 > 面向对象：后续实现 agent、集成 agent、人工验收者  
 > 依据：`docs/UX_CONTRACT.md`、`docs/APPLE_HIG_UX_IMPROVEMENT_PLAN.md`、当前 renderer；`prototypes/` 仅作历史参考
 
@@ -566,7 +566,9 @@ P06、P07、P09、P11、P16 的 proposal 可并行准备；只要触碰 global t
 
 **完成定义**：所有 phase 均为 `integrated`；没有未归属的视觉覆盖；没有用“稍后统一修”掩盖的阻塞问题；所有未验证项有 owner 和明确后续计划。
 
-**当前状态（2026-08-21）**：P20/L65–L66 自动化交付已完成。当前 renderer 生成了 zh-CN 全量 18 fixture × 8 viewport（136 张）、en-US/zh-TW 各 18 fixture × 2 关键 viewport（各 36 张）、Settings offline/scanning/installing/partial/error × 4 viewport（20 张）以及 125%/150% × 18 fixture（36 张）manifest；P20 产物记录在 `docs/UX_UI_P20_QA_REPORT.md` 和 `docs/UX_UI_P20_SCREENSHOT_MANIFEST.json`。150% 复核发现的 Create 摘要页面级横溢出已在 `07-create-composer.css` 的窄屏 owner 规则中修复，并由 focused token test 锁定；修复后 Create、Queue、History、Details、Settings 的 document/body 宽度在 150% canary 中一致。版本按可见 UX bug fix 升为 `0.40.1`。`npm.cmd run verify`（88 files / 656 tests、production build、20 组对比度检查）和 `npm.cmd run verify:markup-visual` 通过；synthetic renderer evidence 不替代真实 ComfyUI 生成。当前只剩 G18：用户/集成 owner 的真实运行态、完整键盘路径、系统高对比度/Reduced Motion、关闭生命周期和最终发布结论。
+**当前状态（2026-08-21）**：P20/L65–L66 自动化交付已完成。当前 renderer 生成了 zh-CN 全量 18 fixture × 8 viewport（136 张）、en-US/zh-TW 各 18 fixture × 2 关键 viewport（各 36 张）、Settings offline/scanning/installing/partial/error × 4 viewport（20 张）以及 125%/150% × 18 fixture（36 张）manifest；P20 产物记录在 `docs/UX_UI_P20_QA_REPORT.md` 和 `docs/UX_UI_P20_SCREENSHOT_MANIFEST.json`。150% 复核发现的 Create 摘要页面级横溢出已在 `07-create-composer.css` 的窄屏 owner 规则中修复，并由 focused token test 锁定；修复后 Create、Queue、History、Details、Settings 的 document/body 宽度在 150% canary 中一致。P20 截图矩阵保留为当前 renderer 证据，不把 synthetic capture 写成真实生成结论。
+
+G18 已由用户/集成 owner 完成人工与真实 ComfyUI 验收并确认通过；当前发布提交 `75c8445 release: v0.41.3` 已推送到 `origin/main`。发布前 agent-side `npm.cmd run verify` 通过（92 个 test files、722 项测试、production build、20 组对比度检查）。P20/G18 是本实施计划的最终集成与发布 gate，当前计划已收口；本计划不预设 P21。若后续继续做色彩、材质或视觉风格升级，应基于当前 renderer 新建 proposal 和独立 phase，不回放旧 prototype。
 
 ## 8. 跨 Phase 回归矩阵
 

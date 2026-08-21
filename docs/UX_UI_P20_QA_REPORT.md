@@ -1,10 +1,10 @@
 # P20 当前 renderer QA report
 
-日期：2026-08-21 · 版本：`0.40.1` · source of truth：当前 `src/renderer/` 与 `src/styles/` · 历史 prototype 不参与验收
+日期：2026-08-21 · P20 证据基线版本：`0.40.1` · 最终收口版本：`0.41.3` · source of truth：当前 `src/renderer/` 与 `src/styles/` · 历史 prototype 不参与验收
 
 ## 结论
 
-P20 的 L65/L66 自动化交付已完成，G18 仍待用户/集成 owner 完成真实运行态、完整键盘与发布验收。QA 期间发现并修复了一个真实的缩放布局问题：150% zoom、900×800 canary 下 Create 的 `.interpolation-summary` 仍使用固定双列轨道，导致 document/body 出现横向滚动。修复已收回 `src/styles/07-create-composer.css` 的窄屏 owner 规则，没有修改 DOM、controller、队列状态机、工作流 payload、持久化或媒体路径。
+P20 的 L65/L66 自动化交付与 G18 最终验收均已完成。QA 期间发现并修复了一个真实的缩放布局问题：150% zoom、900×800 canary 下 Create 的 `.interpolation-summary` 仍使用固定双列轨道，导致 document/body 出现横向滚动。修复已收回 `src/styles/07-create-composer.css` 的窄屏 owner 规则，没有修改 DOM、controller、队列状态机、工作流 payload、持久化或媒体路径。
 
 ## 当前 renderer screenshot matrix
 
@@ -35,17 +35,18 @@ P19 的相邻证据继续保留：Queue 七状态 × 八视口 56 张，History 
 
 150% 修复后的 Create 三模式，以及 Queue、History、视频/图片 Details、Settings canary 均重新检查了 `documentScrollWidth/bodyScrollWidth` 与对应 client width，页面级宽度一致。diagnose 中剩余的 `overflowing` 项属于组件内部边界：信息 tooltip、长模型 chip、详情长标签和 Settings 可横向滚动的 compact category strip；它们没有扩大 document/body 滚动层，不作为页面级失败。
 
-## 证据边界与 G18
+## G18 收口记录
 
-当前 capture harness 使用 synthetic preload/fixture，证明的是 renderer 构图、状态分支、键盘 smoke 和 DOM 诊断，不等同于真实 ComfyUI 生成。真实 ComfyUI 运行此前由用户完成并反馈未发现明显问题，但本轮 P20 不把它重新声明为 agent 侧 runtime pass。
+- 用户/集成 owner 已在真实 ComfyUI 环境完成 G18 全量测试，并确认 Create、Queue、History、Details、Settings 及发布路径通过。
+- 当前发布提交为 `75c8445 release: v0.41.3`，已推送到 `origin/main`。
+- 发布前 agent-side `npm.cmd run verify` 通过：92 个 test files、722 项测试、production build 和 20 组对比度检查。
 
-仍需 G18 人工/集成验收：
+本报告中的 264 张截图来自 P20 的 `0.40.1` current-renderer QA 矩阵，继续作为结构、状态和响应式证据保存；`0.41.3` 的后续修复不被追溯伪装成这组截图的内容。
 
-- 真实 ComfyUI 的 start/pause/resume/cancel/reorder/recover/live preview 全路径；
-- Create → Queue → History → Detail → Continue 的纯键盘连续路径；
-- Windows 高对比度、Reduced Motion、长路径/长模型名和 100%/125%/150% 实机检查；
-- 应用正常关闭、活动任务确认、强制关闭、外部 ComfyUI 保留；
-- Settings 多安装、保存/丢弃、安装/更新、服务和日志真实操作；
-- 最终是否发布 `0.40.1` 的集成结论。
+## 证据边界
 
-在上述人工 gate 完成前，P20 自动化 QA 不写成“全部 runtime passed”，也不再继续扩展 UI 视觉范围。
+当前 capture harness 使用 synthetic preload/fixture，证明的是 renderer 构图、状态分支、键盘 smoke 和 DOM 诊断，不等同于真实 ComfyUI 生成。真实 ComfyUI、Windows 辅助功能和关闭生命周期的结论来自用户在 G18 中完成的实机验收，而不是这组 synthetic artifact。
+
+上述人工/集成 gate 已由用户确认完成。synthetic renderer evidence 仍只证明构图、状态分支、键盘 smoke 和 DOM 诊断；真实 ComfyUI、Windows 辅助功能和关闭生命周期的结论以用户的 G18 实机验收为准。
+
+P20/G18 已关闭；后续若继续调整视觉风格，应另开基于当前 renderer 的 proposal/phase，不在本报告上继续追加未批准的视觉范围。
