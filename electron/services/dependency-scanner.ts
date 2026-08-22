@@ -17,6 +17,7 @@ import {
 } from "./dependency-compatibility.js";
 import { readComfyGitRevision } from "./comfy-discovery.js";
 import {
+  multimodalPromptRecognizesQwen38,
   qwenVlNeedsComfyDesktopLoggingShim,
   qwenVlNeedsCooperativeInterrupt
 } from "./dependency-node-adapters.js";
@@ -521,10 +522,8 @@ export async function scanCustomNodes(
         fs.readFile(path.join(directory, "vision_llm_node.py"), "utf8").catch(() => ""),
         fs.readFile(path.join(directory, "local_gguf_utils.py"), "utf8").catch(() => "")
       ]);
-      const qwen38Compatible = !visionSource || (
-        visionSource.includes('("qwen3.8" in model_name_lower)') &&
-        visionSource.includes('"qwen38", "qwen3.8"')
-      );
+      const qwen38Compatible = !visionSource ||
+        multimodalPromptRecognizesQwen38(visionSource);
       const projectorDiscoveryCompatible = !discoverySource ||
         discoverySource.includes("def _is_mmproj_filename(");
       if (!qwen38Compatible || !projectorDiscoveryCompatible) {

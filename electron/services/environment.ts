@@ -36,6 +36,7 @@ import {
 } from "../../src/core/catalog/index.js";
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
+import { buildEnvironmentScanDiagnostics } from "./environment-scan-diagnostics.js";
 import { captureComfyUiLogFailure } from "./comfy-log-bridge.js";
 import {
   availableComfyNodeIds,
@@ -4610,6 +4611,45 @@ export async function scanEnvironment(
   settings: Settings,
   scope: EnvironmentScanScope = "full"
 ): Promise<EnvironmentScanResult> {
+  const recordDiagnostics = (result: EnvironmentScanResult): EnvironmentScanResult => {
+    const diagnostics = buildEnvironmentScanDiagnostics(result);
+    appLogger.info(
+      "environment",
+      "scan-inventory",
+      "Environment versions and dependency inventory",
+      { requestedScope: scope, ...diagnostics.inventory }
+    );
+    const findingsMeta = {
+      requestedScope: scope,
+      errorCount: diagnostics.errors.length,
+      warningCount: diagnostics.warnings.length,
+      errors: diagnostics.errors,
+      warnings: diagnostics.warnings
+    };
+    if (diagnostics.errors.length) {
+      appLogger.error(
+        "environment",
+        "scan-findings",
+        "Environment scan found errors or missing required dependencies",
+        findingsMeta
+      );
+    } else if (diagnostics.warnings.length) {
+      appLogger.warn(
+        "environment",
+        "scan-findings",
+        "Environment scan found warnings or optional missing dependencies",
+        findingsMeta
+      );
+    } else {
+      appLogger.info(
+        "environment",
+        "scan-findings",
+        "Environment scan found no dependency issues",
+        findingsMeta
+      );
+    }
+    return result;
+  };
   const cacheKey = environmentScanCacheKey(settings);
   if (scope !== "full") {
     const previous = environmentScanCache.get(cacheKey);
@@ -4617,11 +4657,11 @@ export async function scanEnvironment(
       const partial = await scanEnvironmentDependencies(settings, previous, scope);
       if (partial) {
         cacheEnvironmentScan(cacheKey, partial);
-        return partial;
+        return recordDiagnostics(partial);
       }
     }
   }
   const full = await scanFullEnvironment(settings);
   cacheEnvironmentScan(cacheKey, full);
-  return full;
+  return recordDiagnostics(full);
 }

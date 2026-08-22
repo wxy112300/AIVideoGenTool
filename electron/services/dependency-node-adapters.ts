@@ -174,17 +174,35 @@ export function patchMultimodalPromptContextSize(source: string): string {
   return source.replace(/n_ctx: int = 4096/gu, "n_ctx: int = 8192");
 }
 
+function multimodalQwen35Method(source: string): string {
+  const methodMatch = /^([\t ]+)def _infer_is_qwen35\([^\r\n]*\)[^\r\n:]*:/mu.exec(source);
+  if (!methodMatch || methodMatch.index === undefined) return "";
+  const start = methodMatch.index;
+  const indent = methodMatch[1];
+  const remainder = source.slice(start + methodMatch[0].length);
+  const nextMethod = new RegExp(`^${indent}def `, "mu").exec(remainder);
+  const end = nextMethod?.index === undefined
+    ? source.length
+    : start + methodMatch[0].length + nextMethod.index;
+  return source.slice(start, end);
+}
+
+export function multimodalPromptRecognizesQwen38(source: string): boolean {
+  const method = multimodalQwen35Method(source);
+  return /["']qwen38["']/u.test(method) && /["']qwen3\.8["']/u.test(method);
+}
+
 export function patchMultimodalPromptQwen38Recognition(source: string): string {
   let patched = source;
   if (
     patched.includes("def _infer_is_qwen35") &&
-    !patched.includes('("qwen3.8" in model_name_lower)')
+    !multimodalPromptRecognizesQwen38(patched)
   ) {
     patched = patched.replace(
       '("qwen35" in model_name_lower) or ("qwen3.5" in model_name_lower) or ("qwen36" in model_name_lower) or ("qwen3.6" in model_name_lower)',
       '("qwen35" in model_name_lower) or ("qwen3.5" in model_name_lower) or ("qwen36" in model_name_lower) or ("qwen3.6" in model_name_lower) or ("qwen38" in model_name_lower) or ("qwen3.8" in model_name_lower)'
     );
-    if (!patched.includes('("qwen3.8" in model_name_lower)')) {
+    if (!multimodalPromptRecognizesQwen38(patched)) {
       throw new Error("MultiModal Prompt Nodes 无法添加 Qwen3.8 架构识别，已停止修改。");
     }
   }

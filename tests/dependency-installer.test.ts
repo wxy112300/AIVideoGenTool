@@ -155,6 +155,26 @@ describe("dependency installer", () => {
     expect(patchMultimodalPromptQwen38Recognition(patched)).toBe(patched);
   });
 
+  it("accepts the current upstream tuple-based Qwen3.8 recognition", () => {
+    const source = [
+      "    def _infer_is_qwen35(self, model_path: str) -> bool:",
+      "        model_name_lower = os.path.basename(model_path).lower()",
+      "        return any(",
+      "            family_name in model_name_lower",
+      '            for family_name in ("qwen35", "qwen3.5", "qwen36", "qwen3.6", "qwen38", "qwen3.8")',
+      "        )",
+      "",
+      "    def _auto_detect_mmproj(self, model_path: str):",
+      '        families = ["qwen2", "qwen35", "qwen3.5", "qwen36", "qwen3.6", "qwen38", "qwen3.8"]',
+      '        mmproj_files = [f for f in os.listdir(model_dir) if f.startswith("mmproj-") and f.endswith(".gguf")]'
+    ].join("\n");
+
+    const patched = patchMultimodalPromptQwen38Recognition(source);
+    expect(patched).toContain('or "-vision-" in f.lower()');
+    expect(patched).toContain('for family_name in ("qwen35", "qwen3.5", "qwen36", "qwen3.6", "qwen38", "qwen3.8")');
+    expect(patchMultimodalPromptQwen38Recognition(patched)).toBe(patched);
+  });
+
   it("makes Qwen-VL logging tolerate ComfyUI Desktop's closed stdout", () => {
     const source = [
       "import folder_paths",
