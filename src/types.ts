@@ -863,7 +863,7 @@ export interface CustomNodeStatus {
 }
 
 export interface EnvironmentIssue {
-  id: "fantasytalking-unicodeescape" | "comfy-database";
+  id: "fantasytalking-unicodeescape" | "comfy-database" | "comfy-core-pyav";
   label: string;
   detail: string;
   severity: "error" | "warning";

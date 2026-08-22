@@ -66,6 +66,11 @@ export interface ComfyRuntimeServiceDependencies {
     settings: Settings,
     comfyRoot: string
   ): { modelDirectory: string; outputDirectory: string };
+  /** Optional pre-launch repair for source-based ComfyUI runtimes. */
+  preflightComfyCoreDependencies?(
+    sourceDirectory: string,
+    pythonPath: string
+  ): Promise<{ ok: boolean; message: string }>;
 }
 
 let pendingComfyUiStart: Promise<string> | null = null;
@@ -155,6 +160,12 @@ async function startComfyUiServiceImpl(
   const python = await dependencies.findComfyPython(settings, comfyRoot, installation);
   if (!python) {
     throw new Error("找到了 ComfyUI main.py，但没有找到可用的 Python 运行环境。");
+  }
+  if (dependencies.preflightComfyCoreDependencies) {
+    const preflight = await dependencies.preflightComfyCoreDependencies(sourceRoot, python);
+    if (!preflight.ok) {
+      throw new Error(`ComfyUI 核心依赖检查未通过：${preflight.message}`);
+    }
   }
 
   const bundledFrontend = path.join(

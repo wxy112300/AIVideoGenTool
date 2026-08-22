@@ -47,6 +47,7 @@ describe("ComfyUI runtime service", () => {
 
   it("builds a source launch from the selected data and core directories", async () => {
     const launchDetached = vi.fn(async () => 1234);
+    const preflightComfyCoreDependencies = vi.fn(async () => ({ ok: true, message: "" }));
     const onOwnedExit = vi.fn();
     setOwnedComfyProcessExitListener(onOwnedExit);
     const settings = {
@@ -73,7 +74,8 @@ describe("ComfyUI runtime service", () => {
       comfyDataDirectories: () => ({
         modelDirectory: "D:\\ComfyData\\models",
         outputDirectory: "D:\\ComfyData\\output"
-      })
+      }),
+      preflightComfyCoreDependencies
     };
 
     await expect(startComfyUiService(settings, dependencies)).resolves.toBe(
@@ -88,6 +90,10 @@ describe("ComfyUI runtime service", () => {
     ]>;
     const [python, args, cwd, env, onExit] = launchCalls[0]!;
     expect(python).toContain("python.exe");
+    expect(preflightComfyCoreDependencies).toHaveBeenCalledWith(
+      "D:\\ComfyCore",
+      "D:\\ComfyData\\.venv\\Scripts\\python.exe"
+    );
     expect(cwd).toBe("D:\\ComfyCore");
     expect(env).toEqual({ TEST_ENV: "1" });
     expect(args).toEqual(expect.arrayContaining([
@@ -135,6 +141,37 @@ describe("ComfyUI runtime service", () => {
       {},
       expect.any(Function)
     );
+  });
+
+  it("does not launch a source runtime when the dependency preflight cannot repair it", async () => {
+    const launchDetached = vi.fn(async () => 1234);
+    const settings = {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:8288"
+    };
+    const dependencies: ComfyRuntimeServiceDependencies = {
+      findComfyRoot: async () => "D:\\ComfyData",
+      findComfyInstallation: async () => ({
+        type: "manual",
+        directory: "D:\\ComfyCore",
+        sourceDirectory: "D:\\ComfyCore",
+        executable: ""
+      }),
+      applyComfyDesktopSettings: async () => undefined,
+      launchDetached,
+      isPortInUse: async () => false,
+      downloadEnvironment: () => ({}),
+      exists: async (filename) => filename.endsWith("main.py"),
+      findComfyPython: async () => "D:\\ComfyData\\.venv\\Scripts\\python.exe",
+      comfyDataDirectories: () => ({ modelDirectory: "", outputDirectory: "" }),
+      preflightComfyCoreDependencies: async () => ({
+        ok: false,
+        message: "无法下载 PyAV"
+      })
+    };
+
+    await expect(startComfyUiService(settings, dependencies)).rejects.toThrow("无法下载 PyAV");
+    expect(launchDetached).not.toHaveBeenCalled();
   });
 
   it("does not launch a second ComfyUI when the configured port is already occupied", async () => {

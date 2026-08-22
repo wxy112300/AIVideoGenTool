@@ -109,6 +109,10 @@ import {
   startComfyUiService
 } from "./comfy-runtime-service.js";
 import {
+  inspectComfyCorePythonDependency,
+  repairComfyCorePythonDependency
+} from "./comfy-core-dependencies.js";
+import {
   allComfyProcessInfo,
   forceStopComfyProcesses as forceStopComfyProcessesWithDependencies,
   listeningPid,
@@ -309,6 +313,24 @@ function downloadEnvironment(settings: Settings): NodeJS.ProcessEnv {
     https_proxy: proxy,
     all_proxy: proxy
   };
+}
+
+function comfyPyavRepairEnvironment(settings: Settings): NodeJS.ProcessEnv {
+  const environment = downloadEnvironment(settings);
+  if (settings.proxyEnabled) return environment;
+  for (const key of [
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "PIP_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "pip_proxy"
+  ]) {
+    delete environment[key];
+  }
+  return environment;
 }
 
 function proxyLogLabel(settings: Settings): string {
@@ -2106,7 +2128,9 @@ export function shouldReportComfyDatabaseIssue(input: {
 
 async function scanEnvironmentIssues(
   comfyRoot: string,
-  comfyServiceReachable: boolean
+  comfyServiceReachable: boolean,
+  sourceDirectory = "",
+  pythonPath = ""
 ): Promise<EnvironmentIssue[]> {
   const issues: EnvironmentIssue[] = [];
   if (comfyRoot) {
@@ -2125,6 +2149,24 @@ async function scanEnvironmentIssues(
         severity: "error",
         repairable: true,
         repairLabel: "自动修复源码"
+      });
+    }
+  }
+  if (sourceDirectory) {
+    const coreDependency = await inspectComfyCorePythonDependency(
+      sourceDirectory,
+      pythonPath,
+      runLoggedProcess,
+      process.env
+    );
+    if (coreDependency.featureDetected && coreDependency.needsRepair) {
+      issues.push({
+        id: "comfy-core-pyav",
+        label: "ComfyUI 核心视频依赖不兼容",
+        detail: coreDependency.detail,
+        severity: "error",
+        repairable: Boolean(pythonPath),
+        repairLabel: "自动修复 PyAV"
       });
     }
   }
@@ -2982,7 +3024,17 @@ async function startComfyUi(settings: Settings): Promise<string> {
     downloadEnvironment,
     exists,
     findComfyPython,
-    comfyDataDirectories
+    comfyDataDirectories,
+    preflightComfyCoreDependencies: async (sourceDirectory, pythonPath) => {
+      const result = await repairComfyCorePythonDependency(
+        sourceDirectory,
+        pythonPath,
+        comfyPyavRepairEnvironment(settings),
+        runLoggedProcess,
+        (message) => appLogger.info("comfy", "core-pyav-auto-repair", message)
+      );
+      return { ok: result.ok, message: result.message };
+    }
   });
 }
 
@@ -3470,6 +3522,102 @@ function databaseRepairDetail(diagnosis: ComfyDatabaseDiagnosis): string {
   }
 }
 
+async function stopOwnedComfyUiForDependencyRepair(settings: Settings): Promise<void> {
+  await stopComfyUiService(settings, {
+    findComfyPython,
+    ownedProcessIds: ownedComfyProcessIdSnapshot,
+    ownedOnly: true
+  });
+  clearOwnedComfyProcessIds();
+}
+
+async function repairComfyCorePyavIssue(
+  settings: Settings,
+  comfyRoot: string,
+  repairLog: string[]
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  const installation = await findComfyInstallation(settings);
+  const sourceDirectory = installation?.sourceDirectory ?? "";
+  if (!sourceDirectory) {
+    throw new Error("没有找到所选 ComfyUI 的核心源码目录，无法检查新版视频依赖。");
+  }
+  const python = await findComfyPython(settings, comfyRoot, installation);
+  if (!python) throw new Error("没有找到所选 ComfyUI 的 Python 环境，无法自动修复 PyAV。");
+
+  let wasRunning = false;
+  const endpoint = localEndpoint(settings.comfyUrl, 8188);
+  if (endpoint) {
+    const listenerExists = await isLocalPortInUse(endpoint.port);
+    let ownedRuntime = ownedComfyProcessIdSnapshot().length > 0;
+    if (listenerExists && !ownedRuntime) {
+      ownedRuntime = await reconcileConfiguredComfyListenerOwnership(settings);
+    }
+    if (listenerExists && !ownedRuntime) {
+      throw new Error("检测到外部 ComfyUI 正在占用本机端口；为避免误终止其他进程，请先停止它再自动修复。");
+    }
+    if (ownedRuntime) {
+      repairLog.push("停止应用管理的 ComfyUI，避免替换 PyAV 时锁定 Python 扩展文件");
+      await stopOwnedComfyUiForDependencyRepair(settings);
+      wasRunning = true;
+    }
+  }
+
+  try {
+    const result = await repairComfyCorePythonDependency(
+      sourceDirectory,
+      python,
+      comfyPyavRepairEnvironment(settings),
+      runLoggedProcess,
+      (message) => repairLog.push(message)
+    );
+    if (!result.ok) {
+      if (wasRunning) {
+        const recovery = await startLocalService("comfy", settings);
+        repairLog.push(
+          recovery.ok
+            ? "PyAV 修复失败，但 ComfyUI 已恢复启动。"
+            : `PyAV 修复失败，ComfyUI 恢复启动失败：${recovery.message}`
+        );
+      }
+      return {
+        ok: false,
+        message: result.message,
+        log: repairLog.join("\n")
+      };
+    }
+    if (wasRunning) {
+      const started = await startLocalService("comfy", settings);
+      if (!started.ok) {
+        throw new Error(`PyAV 已修复，但 ComfyUI 重启失败：${started.message}`);
+      }
+      repairLog.push("PyAV 修复完成，ComfyUI 已重新启动并通过接口等待。");
+    }
+    return {
+      ok: true,
+      message: wasRunning
+        ? "PyAV 已自动修复，ComfyUI 已重启并恢复服务。"
+        : result.message,
+      log: repairLog.join("\n")
+    };
+  } catch (error) {
+    if (wasRunning) {
+      try {
+        const recovery = await startLocalService("comfy", settings);
+        repairLog.push(
+          recovery.ok
+            ? "修复过程异常，但 ComfyUI 已恢复启动。"
+            : `修复过程异常，ComfyUI 恢复启动失败：${recovery.message}`
+        );
+      } catch (recoveryError) {
+        repairLog.push(
+          `修复过程异常，恢复启动失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`
+        );
+      }
+    }
+    throw error;
+  }
+}
+
 export async function repairEnvironmentIssue(
   issueId: EnvironmentIssue["id"],
   settings: Settings
@@ -3511,6 +3659,10 @@ export async function repairEnvironmentIssue(
         message: "FantasyTalking 源码已修复。请重启 ComfyUI 以重新加载节点。",
         log: repairLog.join("\n")
       };
+    }
+
+    if (issueId === "comfy-core-pyav") {
+      return await repairComfyCorePyavIssue(settings, comfyRoot, repairLog);
     }
 
     if (issueId === "comfy-database") {
@@ -4357,7 +4509,12 @@ async function scanFullEnvironment(
     directory: "",
     source: ""
   };
-  const issues = await scanEnvironmentIssues(comfyRoot, Boolean(runtimeComfyBaseUrl));
+  const issues = await scanEnvironmentIssues(
+    comfyRoot,
+    Boolean(runtimeComfyBaseUrl),
+    comfyInstallation?.sourceDirectory ?? "",
+    selectedPython?.path ?? ""
+  );
   const comfyItem: EnvironmentItem = comfyRoot || comfyInstallation
     ? {
         id: "comfyui",
@@ -4565,7 +4722,12 @@ async function scanEnvironmentDependencies(
     runtimeProfiles,
     runtimeValidatedCustomNodes
   );
-  const issues = await scanEnvironmentIssues(comfyRoot, Boolean(runtimeComfyBaseUrl));
+  const issues = await scanEnvironmentIssues(
+    comfyRoot,
+    Boolean(runtimeComfyBaseUrl),
+    comfyInstallation?.sourceDirectory ?? "",
+    selectedPython?.path ?? ""
+  );
   const reachableComfyBaseUrl = await firstReachableServiceBase(
     [
       runtimeComfyBaseUrl,
