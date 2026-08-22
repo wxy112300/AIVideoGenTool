@@ -65,7 +65,7 @@ export function mountCreatePromptController(
     if (!filename) return;
     options.setWorkflowCapability(
       filename,
-      await options.context.studio.inspectWorkflow(filename)
+      await options.context.studio.inspectWorkflow(filename, getDraft()?.modelId)
     );
     options.patchDraft({ workflowPath: filename });
     options.context.requestRender();

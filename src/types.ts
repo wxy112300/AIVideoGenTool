@@ -1178,7 +1178,7 @@ export interface AppApi {
   saveImageCrop(request: ImageCropSaveRequest): Promise<ImageCropData | null>;
   pickWorkflow(): Promise<string | null>;
   pickPython(): Promise<string | null>;
-  inspectWorkflow(path: string): Promise<WorkflowCapabilities>;
+  inspectWorkflow(path: string, modelId?: string): Promise<WorkflowCapabilities>;
   getBundledWorkflow(
     modelId: string,
     inputMode?: Draft["inputMode"]

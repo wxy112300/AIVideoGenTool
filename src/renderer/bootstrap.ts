@@ -47,7 +47,7 @@ export function bootstrapRenderer(options: RendererBootstrapOptions): void {
     void options.studio.getBundledWorkflow(
       options.bundledWorkflowModelId(initialState.draft),
       initialState.draft.inputMode
-    ).then((bundled) => {
+    ).then(async (bundled) => {
       if (bundled) {
         options.bundledWorkflows[
           options.bundledWorkflowKey(bundled.modelId, initialState.draft.inputMode)
@@ -56,8 +56,27 @@ export function bootstrapRenderer(options: RendererBootstrapOptions): void {
           supportsEndImage: bundled.supportsEndImage,
           supportsVideoExtension: bundled.supportsVideoExtension
         };
-        if (!options.getState().draft.workflowPath) {
+        const currentDraft = options.getState().draft;
+        if (
+          !currentDraft.workflowPath &&
+          currentDraft.modelId === initialState.draft.modelId &&
+          currentDraft.inputMode === initialState.draft.inputMode
+        ) {
           options.patchDraft({ workflowPath: bundled.path });
+        }
+      }
+      const workflowPath = initialState.draft.workflowPath;
+      if (workflowPath && workflowPath !== bundled?.path) {
+        const capability = await options.studio.inspectWorkflow(
+          workflowPath,
+          initialState.draft.modelId
+        );
+        const currentDraft = options.getState().draft;
+        if (
+          currentDraft.workflowPath === workflowPath &&
+          currentDraft.modelId === initialState.draft.modelId
+        ) {
+          options.workflowCapabilities[workflowPath] = capability;
         }
       }
     }).catch((error) => {

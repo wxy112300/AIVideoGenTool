@@ -128,10 +128,16 @@ export function multimodalRuntimeSelection(
   return { model, mmproj };
 }
 
-function promptTargetLanguage(settings: Settings): "auto" | "zh" | "en" {
-  return settings.promptLanguage === "zh" || settings.promptLanguage === "en"
-    ? settings.promptLanguage
-    : "auto";
+export function multimodalPromptTargetLanguage(
+  request: EnhanceRequest,
+  settings: Pick<Settings, "promptLanguage" | "uiLocale">
+): "zh" | "en" {
+  if (settings.promptLanguage === "zh" || settings.promptLanguage === "en") {
+    return settings.promptLanguage;
+  }
+  const userText = request.prompt.trim() || request.referenceContext?.trim() || "";
+  if (userText) return /\p{Script=Han}/u.test(userText) ? "zh" : "en";
+  return settings.uiLocale?.startsWith("zh") ? "zh" : "en";
 }
 
 function appendImageNodes(
@@ -192,11 +198,22 @@ export function buildMultimodalPromptWorkflow(
     Boolean(request.imagePath || imageCount > 0),
     imageCount > 1
   );
-  const prompt = warmup
+  const targetLanguage = warmup
+    ? "en"
+    : multimodalPromptTargetLanguage(request, settings);
+  const basePrompt = warmup
     ? "Reply with READY only."
     : request.mode === "image-edit"
       ? imageEditPromptInstruction(request)
       : h3PromptInstruction(request, settings.h3PromptPresets);
+  const prompt = warmup
+    ? basePrompt
+    : [
+        basePrompt,
+        targetLanguage === "zh"
+          ? "Output language override: write the final prompt content in Chinese while keeping required H3 field names, reference tags, dialogue language tags, and quoted visible text unchanged. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface."
+          : "Output language override: write the final prompt in English. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface."
+      ].join("\n\n");
   const maxTokens = warmup
     // VisionLLMNode validates this input against its runtime schema.  Recent
     // MultiModal Prompt Nodes use a minimum of 64 tokens, so the warmup must
@@ -214,7 +231,7 @@ export function buildMultimodalPromptWorkflow(
       inputs: {
         prompt,
         style: "raw",
-        target_language: promptTargetLanguage(settings),
+        target_language: targetLanguage,
         model: runtimeSelection?.model ?? modelRelativePath(definition.targetDirectory, definition.modelFilename),
         mmproj: runtimeSelection?.mmproj ?? modelRelativePath(definition.targetDirectory, definition.mmprojFilename),
         max_tokens: maxTokens,

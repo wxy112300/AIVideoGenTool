@@ -1996,18 +1996,55 @@ function scheduleImageDraftSave(): void {
   }, 350);
 }
 
+async function ensureDraftWorkflowCapability(draft: Draft): Promise<void> {
+  try {
+    const workflowModelId = bundledWorkflowModelId(draft);
+    const key = bundledWorkflowKey(workflowModelId, draft.inputMode);
+    const bundled = bundledWorkflows[key] ??
+      await window.studio.getBundledWorkflow(workflowModelId, draft.inputMode);
+    if (bundled) {
+      bundledWorkflows[key] = bundled;
+      workflowCapabilities[bundled.path] = {
+        supportsEndImage: bundled.supportsEndImage,
+        supportsVideoExtension: bundled.supportsVideoExtension
+      };
+    }
+    if (draft.workflowPath && draft.workflowPath !== bundled?.path) {
+      const capability = await window.studio.inspectWorkflow(
+        draft.workflowPath,
+        draft.modelId
+      );
+      if (
+        state.draft.workflowPath === draft.workflowPath &&
+        state.draft.modelId === draft.modelId
+      ) {
+        workflowCapabilities[draft.workflowPath] = capability;
+      }
+    }
+  } catch (error) {
+    await window.studio.reportRendererError(
+      error instanceof Error ? error.message : String(error),
+      { source: "draft-workflow-capability" }
+    ).catch(() => undefined);
+  }
+}
+
 async function saveDraftImmediately(draft: Draft): Promise<void> {
   window.clearTimeout(draftSaveTimer);
   draftRevision += 1;
   const revision = draftRevision;
   draftDirty = false;
   activateCreationDraft(state, draft);
+  const workflowCapabilityPromise = ensureDraftWorkflowCapability(draft);
   draftSaveInFlight += 1;
   try {
-    const savedState = await window.studio.saveDraft(state.draft, {
-      imageToVideoDraft: state.imageToVideoDraft,
-      videoExtensionDraft: state.videoExtensionDraft
-    });
+    const [savedState] = await Promise.all([
+      window.studio.saveDraft(state.draft, {
+        imageToVideoDraft: state.imageToVideoDraft,
+        videoExtensionDraft: state.videoExtensionDraft
+      }),
+      workflowCapabilityPromise
+    ]);
     setRendererState(preserveLocalCreationDrafts(savedState, state));
     if (revision === draftRevision) draftDirty = false;
   } finally {

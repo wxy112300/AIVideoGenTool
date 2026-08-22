@@ -21,6 +21,8 @@ import { mountVideoExtensionController } from "./video-extension-controller";
 import { uiKeys } from "../../../core/i18n-keys";
 import { creationDraftForMode } from "../../../core/creation-drafts";
 
+let creationModeTransitionRevision = 0;
+
 export interface CreatePageControllerOptions {
   context: RendererContext;
   setCreationMode(mode: CreationMode): void;
@@ -88,6 +90,7 @@ export function mountCreatePageController(
 
   root.querySelectorAll<HTMLElement>("[data-input-mode]").forEach((button) => {
     button.addEventListener("click", async () => {
+      const transitionRevision = ++creationModeTransitionRevision;
       const requestedMode = button.dataset.inputMode;
       if (requestedMode === "image-edit") {
         options.setCreationMode("image-edit");
@@ -99,6 +102,25 @@ export function mountCreatePageController(
       const inputMode = requestedMode === "video" ? "video" : "image";
       const storedDraft = creationDraftForMode(state, inputMode);
       if (storedDraft) {
+        const workflowModelId = bundledWorkflowModelId(storedDraft);
+        const key = options.bundledWorkflowKey(workflowModelId, inputMode);
+        const bundled = options.bundledWorkflows[key] ??
+          await options.context.studio.getBundledWorkflow(workflowModelId, inputMode);
+        if (bundled) {
+          options.bundledWorkflows[key] = bundled;
+          options.workflowCapabilities[bundled.path] = {
+            supportsEndImage: bundled.supportsEndImage,
+            supportsVideoExtension: bundled.supportsVideoExtension
+          };
+        }
+        if (storedDraft.workflowPath && storedDraft.workflowPath !== bundled?.path) {
+          options.workflowCapabilities[storedDraft.workflowPath] =
+            await options.context.studio.inspectWorkflow(
+              storedDraft.workflowPath,
+              storedDraft.modelId
+            );
+        }
+        if (transitionRevision !== creationModeTransitionRevision) return;
         options.setCreationMode(inputMode === "video" ? "video-extension" : "image-to-video");
         options.patchDraft(storedDraft);
         options.context.requestRender();
@@ -157,6 +179,7 @@ export function mountCreatePageController(
           supportsVideoExtension: bundled.supportsVideoExtension
         };
       }
+      if (transitionRevision !== creationModeTransitionRevision) return;
       const nextMotionSlots = inputMode === "video" && isMiniMaxH3R2vModel(modelId)
         ? ensureMotionContextSourceSlot(
             restoringVideoDraft || wasVideoExtension ? videoSourceDraft.h3ReferenceSlots : [],

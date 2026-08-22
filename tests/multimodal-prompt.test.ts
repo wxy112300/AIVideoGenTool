@@ -3,11 +3,32 @@ import {
   buildMultimodalPromptWorkflow,
   multimodalActivityTimeoutMinutes,
   multimodalDeviceFor,
+  multimodalPromptTargetLanguage,
   multimodalRuntimeSelection
 } from "../electron/services/multimodal-prompt.js";
 import { createDefaultState } from "../src/core/defaults.js";
 
 describe("Qwen3.6 ComfyUI prompt workflow", () => {
+  it("resolves automatic output language from user text instead of the English system prompt", () => {
+    const settings = createDefaultState().settings;
+    settings.promptLanguage = "auto";
+
+    expect(multimodalPromptTargetLanguage({
+      prompt: "人物缓慢转身，镜头向前推进。",
+      modelId: "minimax_h3_fl2va"
+    }, settings)).toBe("zh");
+    expect(multimodalPromptTargetLanguage({
+      prompt: "The subject turns while the camera pushes in.",
+      modelId: "minimax_h3_fl2va"
+    }, settings)).toBe("en");
+
+    settings.promptLanguage = "en";
+    expect(multimodalPromptTargetLanguage({
+      prompt: "人物缓慢转身。",
+      modelId: "minimax_h3_fl2va"
+    }, settings)).toBe("en");
+  });
+
   it("accepts Qwen3.8 only when both runtime enum values are registered", () => {
     const model = "LLM/qwen3.8-27b-uncensored-q4/Qwen3.8-27B-Uncensored-noMTP-Q4_K_M.gguf";
     const mmproj = "LLM/qwen3.8-27b-uncensored-q4/Qwen3.8-27B-Uncensored-vision-f16.gguf";
@@ -119,12 +140,28 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
         image: ["image-budget-0", 0]
       }
     });
+    expect(workflow["vision-llm"]?.inputs.prompt).toContain("do not include analysis");
     expect(workflow["image-budget-0"]).toMatchObject({
       class_type: "ImageScaleToTotalPixels",
       inputs: { image: ["load-image-0", 0], megapixels: 1, resolution_steps: 32 }
     });
     expect(workflow["image-batch-1"]).toBeUndefined();
     expect(workflow.preview.inputs.source).toEqual(["vision-llm", 0]);
+  });
+
+  it("passes a concrete Chinese target language for automatic Chinese input", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "qwen/qwen3.8-27b-uncensored-q4";
+    settings.promptLanguage = "auto";
+    const workflow = buildMultimodalPromptWorkflow({
+      prompt: "人物看向镜头，然后缓慢后退。",
+      modelId: "minimax_h3_fl2va",
+      mode: "h3-vision",
+      h3PromptMode: "I2VA"
+    }, ["reference.png"], settings);
+
+    expect(workflow["vision-llm"]?.inputs.target_language).toBe("zh");
+    expect(workflow["vision-llm"]?.inputs.prompt).toContain("write the final prompt content in Chinese");
   });
 
   it("passes a blank reference-auto request as a visual generation instruction", () => {

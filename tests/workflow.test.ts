@@ -21,6 +21,7 @@ import {
   isMiniMaxH3TurboModel,
   validateApiWorkflow,
   workflowSupportsEndImage,
+  workflowSupportsExtensionForModel,
   workflowSupportsH3BoundaryExtension,
   workflowSupportsH3MotionContextExtension,
   workflowSupportsH3MotionContextReferences,
@@ -1306,6 +1307,7 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     expect(rendered["14"]?.inputs.frame_overlap).toBe(16);
     expect(rendered["16"]?.inputs.working_device).toBe("cpu");
     expect(JSON.stringify(rendered)).not.toContain("{{");
+    expect(workflowSupportsExtensionForModel(source, "sulphur2")).toBe(true);
   });
 
   it("renders the H3 I2V graph as a boundary-frame extension", () => {
@@ -1330,6 +1332,9 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
 
     expect(workflowSupportsH3BoundaryExtension(source)).toBe(true);
+    expect(extensionWorkflowSafetyErrors(source)).not.toEqual([]);
+    expect(workflowSupportsExtensionForModel(source, "minimax_h3_fl2va")).toBe(true);
+    expect(workflowSupportsExtensionForModel(source, "minimax_h3_ref2va")).toBe(false);
     expect(rendered["5"]?.inputs.image).toBe("uploaded/boundary.png");
     expect(rendered["6"]?.inputs).toMatchObject({
       width: 864,
@@ -1364,6 +1369,9 @@ describe("Sulphur 2 / LTX 2.3 workflow compatibility", () => {
     }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
 
     expect(workflowSupportsH3MotionContextExtension(source)).toBe(true);
+  expect(extensionWorkflowSafetyErrors(source)).not.toEqual([]);
+  expect(workflowSupportsExtensionForModel(source, "minimax_h3_ref2va")).toBe(true);
+  expect(workflowSupportsExtensionForModel(source, "minimax_h3_fl2va")).toBe(false);
     expect(workflowSupportsH3MotionContextReferences(source, 1, 1)).toBe(true);
     expect(rendered["5"]?.inputs).toMatchObject({
       video: "uploaded/context.mp4",

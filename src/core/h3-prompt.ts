@@ -129,11 +129,23 @@ export function h3PromptSectionSkeleton(
 }
 
 function stripLeadingH3AlignmentInstructions(promptText: string): string {
-  let prompt = promptText.trim();
+  let prompt = promptText
+    .replace(/<(?:think|analysis)>[\s\S]*?<\/(?:think|analysis)>/giu, "")
+    .trim();
   prompt = prompt.replace(/^```(?:text|markdown)?\s*/iu, "");
   prompt = prompt.replace(/\s*```$/u, "").trim();
   const alignmentLine = /^(?:For the target video, at 0\.00 seconds into the target video, <Picture 1> \(from \[Shot 1\]\) is fully referenced\.|How the reference pictures align with the target video —[^\r\n]+)\s*/iu;
   return prompt.replace(alignmentLine, "").trim();
+}
+
+function stripH3OutputPreamble(promptText: string, mode: H3PromptMode): string {
+  const firstSection = mode === "R2V"
+    ? "subject_definitions"
+    : "integrated_multimodal_description";
+  const section = new RegExp(`^[*# \\t]*${firstSection}[ \\t]*:`, "imu").exec(promptText);
+  return section?.index === undefined
+    ? promptText.trim()
+    : promptText.slice(section.index).trim();
 }
 
 export function normalizeH3PromptOutput(
@@ -141,7 +153,10 @@ export function normalizeH3PromptOutput(
   mode: H3PromptMode,
   durationSeconds: number
 ): string {
-  const body = stripLeadingH3AlignmentInstructions(promptText);
+  const body = stripH3OutputPreamble(
+    stripLeadingH3AlignmentInstructions(promptText),
+    mode
+  );
   const alignment = h3AlignmentInstruction(mode, durationSeconds);
   if (!alignment) return body;
   return `${alignment}\n\n${body}`.trim();

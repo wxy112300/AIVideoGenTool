@@ -46,4 +46,23 @@ describe("MiniMax H3 prompt templates", () => {
     expect(normalizeH3PromptOutput(body, "I2VA", 5)).toBe(`${i2vaInstruction}\n\n${body}`);
   });
 
+  it("removes tagged and untagged reasoning before the first H3 output field", () => {
+    const body = [
+      "integrated_multimodal_description: [Shot 1] 人物缓慢转身。",
+      "overall_soundscape: 安静的室内环境声。",
+      "non_diegetic_music: N/A"
+    ].join("\n\n");
+
+    expect(normalizeH3PromptOutput(
+      `Looking at this request, I need to map out six beats across 13.67 seconds.\n\n${body}`,
+      "T2VA",
+      13.67
+    )).toBe(body);
+    expect(normalizeH3PromptOutput(
+      `<analysis>internal plan</analysis>\n${body}`,
+      "T2VA",
+      13.67
+    )).toBe(body);
+  });
+
 });

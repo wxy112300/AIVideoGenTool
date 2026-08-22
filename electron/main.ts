@@ -84,6 +84,7 @@ import {
   isMiniMaxH3R2vModel,
   isMiniMaxH3Model,
   workflowSupportsEndImage,
+  workflowSupportsExtensionForModel,
   workflowSupportsH3BoundaryExtension,
   workflowSupportsH3MotionContextExtension
 } from "../src/core/workflow.js";
@@ -2271,15 +2272,18 @@ function registerIpc(): void {
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
-  ipcMain.handle("workflow:inspect", async (_event, workflowPath: string) => {
+  ipcMain.handle("workflow:inspect", async (_event, workflowPath: string, modelId?: string) => {
     const startedAt = Date.now();
     const source = JSON.parse(await fs.readFile(workflowPath, "utf8")) as unknown;
     const result = {
       supportsEndImage: workflowSupportsEndImage(source),
-      supportsVideoExtension: extensionWorkflowSafetyErrors(source).length === 0
+      supportsVideoExtension: modelId
+        ? workflowSupportsExtensionForModel(source, modelId)
+        : extensionWorkflowSafetyErrors(source).length === 0
     };
     appLogger.info("workflow", "inspected", "Workflow inspected", {
       durationMs: Date.now() - startedAt,
+      modelId,
       supportsEndImage: result.supportsEndImage,
       supportsVideoExtension: result.supportsVideoExtension
     });

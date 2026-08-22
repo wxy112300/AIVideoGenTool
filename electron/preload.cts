@@ -45,8 +45,8 @@ const api: AppApi = {
   saveImageCrop: (request) => ipcRenderer.invoke("image-crop:save", request),
   pickWorkflow: () => ipcRenderer.invoke("file:pick-workflow"),
   pickPython: () => ipcRenderer.invoke("file:pick-python"),
-  inspectWorkflow: (path: string) =>
-    ipcRenderer.invoke("workflow:inspect", path),
+  inspectWorkflow: (path: string, modelId?: string) =>
+    ipcRenderer.invoke("workflow:inspect", path, modelId),
   getBundledWorkflow: (modelId: string, inputMode?: Draft["inputMode"]) =>
     ipcRenderer.invoke("workflow:get-bundled", modelId, inputMode),
   getPerformanceMetrics: (settings: Settings) =>

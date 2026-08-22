@@ -600,6 +600,19 @@ export function workflowSupportsH3MotionContextExtension(source: unknown): boole
     classTypes.has("SaveVideo");
 }
 
+export function workflowSupportsExtensionForModel(
+  source: unknown,
+  modelId: string
+): boolean {
+  if (isMiniMaxH3Fl2vaModel(modelId)) {
+    return workflowSupportsH3BoundaryExtension(source);
+  }
+  if (isMiniMaxH3R2vModel(modelId)) {
+    return workflowSupportsH3MotionContextExtension(source);
+  }
+  return extensionWorkflowSafetyErrors(source).length === 0;
+}
+
 export function workflowSupportsH3MotionContextReferences(
   source: unknown,
   imageCount: number,
