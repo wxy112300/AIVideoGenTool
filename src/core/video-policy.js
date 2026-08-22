@@ -1,0 +1,82 @@
+import { modelCatalog, SPECTRUM_TURBO_MINIMUM_VERSION } from "./catalog/index.js";
+import { releaseVersionAtLeast } from "./release-version.js";
+import { isH3Ref2vTurboEnabled, isH3TurboEnabled, videoLoraConfigurationIssues } from "./video-loras.js";
+const standardStepOptions = [20, 16, 12];
+const turboStepOptions = [4, 6, 8];
+export function resolveVideoGenerationPolicy(input) {
+    const definition = modelCatalog.get(input.modelId)?.definition;
+    const isH3 = definition?.family === "minimax-h3";
+    const turboEnabled = isH3TurboEnabled({
+        modelId: input.modelId,
+        videoLoras: input.videoLoras
+    });
+    const ref2vTurboEnabled = isH3Ref2vTurboEnabled({
+        modelId: input.modelId,
+        videoLoras: input.videoLoras
+    });
+    const supportedByModel = definition?.capabilities?.supportsSpectrum === true;
+    const motionContext = input.inputMode === "video" && definition?.variant === "r2v";
+    const reason = !supportedByModel
+        ? "unsupported-model"
+        : motionContext
+            ? "motion-context"
+            : null;
+    return {
+        isH3,
+        turboEnabled,
+        steps: {
+            mode: turboEnabled ? "turbo" : "standard",
+            options: definition?.capabilities?.generationSteps ??
+                (turboEnabled ? turboStepOptions : standardStepOptions),
+            defaultValue: ref2vTurboEnabled
+                ? 4
+                : definition?.capabilities?.defaultGenerationSteps ??
+                    (turboEnabled ? 8 : 20),
+            maxValue: definition?.capabilities?.maxGenerationSteps ??
+                (turboEnabled ? 8 : 20)
+        },
+        spectrum: {
+            supportedByModel,
+            allowed: reason === null,
+            reason
+        },
+        issues: videoLoraConfigurationIssues({
+            modelId: input.modelId,
+            inputMode: input.inputMode,
+            spectrumMode: input.spectrumMode ?? "off",
+            attentionMode: input.attentionMode ?? "sage",
+            videoLoras: input.videoLoras ?? [],
+            locale: input.locale
+        })
+    };
+}
+export function normalizeVideoSteps(value, policy) {
+    const normalized = (value === 4 || value === 6 || value === 8 || value === 10 ||
+        value === 12 || value === 16 || value === 20) &&
+        policy.steps.options.includes(value)
+        ? value
+        : policy.steps.defaultValue;
+    return normalized > policy.steps.maxValue
+        ? policy.steps.maxValue
+        : normalized;
+}
+export function shouldApplySpectrum(input) {
+    return input.spectrumMode === "balanced" &&
+        resolveVideoGenerationPolicy(input).spectrum.allowed;
+}
+export function shouldEnableSpectrumByDefault(draft, spectrumNode) {
+    if (draft.spectrumModeUserSet || draft.spectrumMode === "balanced")
+        return false;
+    // Offline installation evidence is enough for the default. Runtime loaded
+    // status remains a separate enqueue/readiness gate.
+    if (!spectrumNode?.installed)
+        return false;
+    if (isH3TurboEnabled(draft) && !releaseVersionAtLeast(spectrumNode.version, SPECTRUM_TURBO_MINIMUM_VERSION))
+        return false;
+    return resolveVideoGenerationPolicy({
+        modelId: draft.modelId,
+        inputMode: draft.inputMode,
+        spectrumMode: draft.spectrumMode,
+        videoLoras: draft.videoLoras
+    }).spectrum.allowed;
+}

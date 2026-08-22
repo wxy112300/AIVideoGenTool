@@ -103,6 +103,8 @@ process.once("exit", cleanup);
 const startedAt = Date.now();
 const vite = start(process.execPath, [
   path.join(projectDirectory, "node_modules", "vite", "bin", "vite.js"),
+  "--config",
+  path.join(projectDirectory, "vite.config.ts"),
   "--host",
   "127.0.0.1",
   "--port",

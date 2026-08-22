@@ -98,6 +98,12 @@ export function normalizeHistoryFilter(value: Partial<HistoryFilterState> | null
   };
 }
 
+export function historyFilterSignature(value: Partial<HistoryFilterState> | null | undefined): string {
+  const filter = normalizeHistoryFilter(value);
+  const tags = filter.tags.map((tag) => historyTagKey(tag)).sort();
+  return JSON.stringify({ ...filter, tags });
+}
+
 export function historyFilterIsActive(filter: HistoryFilterState): boolean {
   return filter.favoriteOnly ||
     filter.minRating !== null ||

@@ -6,9 +6,13 @@ import {
   initialImageMediaState,
   type ImageMediaState
 } from "./image-media-state";
+import {
+  createHistoryMediaScheduler,
+  type HistoryMediaTaskPriority
+} from "./media-scheduler";
 
 export interface ImageHistoryMediaControllerOptions {
-  loadImageHistoryThumbnail(image: HTMLImageElement): Promise<void>;
+  loadImageHistoryThumbnail(image: HTMLImageElement, signal?: AbortSignal): Promise<boolean>;
 }
 
 function imageMediaSource(image: HTMLImageElement | null): string {
@@ -22,6 +26,11 @@ export function mountImageHistoryMediaController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+  const thumbnailScheduler = createHistoryMediaScheduler(3);
+  const gallerySchedules = new Map<HTMLElement, {
+    schedule(priority: HistoryMediaTaskPriority): void;
+    cancel(): void;
+  }>();
 
   root.querySelectorAll<HTMLElement>("[data-image-media]").forEach((surface) => {
     const image = surface.querySelector<HTMLImageElement>("[data-image-media-image]");
@@ -83,6 +92,35 @@ export function mountImageHistoryMediaController(
       setState(initialImageMediaState(imageMediaSource(image)));
     };
 
+    const enqueueThumbnail = (
+      priority: HistoryMediaTaskPriority,
+      request?: number
+    ): void => {
+      if (!image) return;
+      const key = image.dataset.imageHistoryCacheKey?.trim() ||
+        image.dataset.imageHistorySource?.trim() ||
+        image.dataset.imageMediaUrl?.trim() || "";
+      if (!key) return;
+      if (request !== undefined) thumbnailScheduler.cancel(key);
+      thumbnailScheduler.enqueue(key, async (taskSignal) => {
+        let loaded = false;
+        try {
+          loaded = await options.loadImageHistoryThumbnail(image, taskSignal);
+        } catch {
+          loaded = false;
+        }
+        if (taskSignal.aborted || !surface.isConnected) return false;
+        if (loaded && image.complete) handleLoad();
+        if (
+          !loaded &&
+          image.dataset.imageHistorySource?.trim()
+        ) {
+          setState("error");
+        }
+        return loaded;
+      }, priority);
+    };
+
     const retry = () => {
       const sourceUrl = imageMediaSource(image);
       if (!image || !sourceUrl) {
@@ -92,12 +130,7 @@ export function mountImageHistoryMediaController(
       const request = ++retryRequest;
       setState("loading");
       if (surfaceKind === "gallery") {
-        void options.loadImageHistoryThumbnail(image).then(() => {
-          if (request !== retryRequest || !surface.isConnected) return;
-          if (image.complete) handleLoad();
-        }).catch(() => {
-          if (request === retryRequest && surface.isConnected) setState("error");
-        });
+        enqueueThumbnail("interactive", request);
         return;
       }
       const probe = new Image();
@@ -141,8 +174,47 @@ export function mountImageHistoryMediaController(
     } else {
       setState(state);
       if (image.complete) handleLoad();
+      if (surfaceKind === "gallery") {
+        const thumbnailKey = () => image.dataset.imageHistoryCacheKey?.trim() ||
+          image.dataset.imageHistorySource?.trim() ||
+          image.dataset.imageMediaUrl?.trim() || "";
+        gallerySchedules.set(surface, {
+          schedule: (priority) => enqueueThumbnail(priority),
+          cancel: () => {
+            const key = thumbnailKey();
+            if (key) thumbnailScheduler.cancel(key);
+          }
+        });
+      }
     }
   });
 
-  return () => events.abort();
+  const gallerySurfaces = [...gallerySchedules.keys()];
+  let galleryObserver: IntersectionObserver | null = null;
+  if (typeof IntersectionObserver === "undefined") {
+    gallerySurfaces.forEach((surface) => gallerySchedules.get(surface)?.schedule("prefetch"));
+  } else {
+    galleryObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const surface = entry.target as HTMLElement;
+        const schedule = gallerySchedules.get(surface);
+        if (!entry.isIntersecting) {
+          schedule?.cancel();
+          return;
+        }
+        const bounds = entry.boundingClientRect;
+        const priority = bounds.bottom > 0 && bounds.top < window.innerHeight
+          ? "viewport"
+          : "prefetch";
+        schedule?.schedule(priority);
+      });
+    }, { rootMargin: "600px 0px", threshold: 0 });
+    gallerySurfaces.forEach((surface) => galleryObserver?.observe(surface));
+  }
+
+  return () => {
+    events.abort();
+    galleryObserver?.disconnect();
+    thumbnailScheduler.dispose();
+  };
 }

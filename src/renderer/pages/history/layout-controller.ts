@@ -1,5 +1,6 @@
-import type { RendererCleanup, RendererContext, Page } from "../../contracts";
+import type { HistoryKind, RendererCleanup, RendererContext } from "../../contracts";
 import {
+  assignHistoryMasonryColumns,
   historyCardsByOrder,
   historyAlbumColumnCount,
   historyMasonryColumnCount
@@ -8,11 +9,45 @@ import {
 export type HistoryLayout = "masonry" | "album";
 type HistoryAnchor = { assetId: string; offsetFromCenter: number };
 
+export interface HistoryScrollSnapshot {
+  scrollY: number;
+  assetId: string | null;
+  offsetFromViewportCenter: number;
+  historyKind: HistoryKind;
+  layout: HistoryLayout;
+  filterSignature: string;
+}
+
+export function historyScrollAnchorIsValid(
+  snapshot: HistoryScrollSnapshot,
+  historyKind: HistoryKind,
+  layout: HistoryLayout,
+  filterSignature: string,
+  assetExists: boolean
+): boolean {
+  return Boolean(snapshot.assetId) &&
+    assetExists &&
+    snapshot.historyKind === historyKind &&
+    snapshot.layout === layout &&
+    snapshot.filterSignature === filterSignature;
+}
+
+export function clampHistoryScrollPosition(
+  scrollY: number,
+  documentHeight: number,
+  viewportHeight: number
+): number {
+  const position = Number.isFinite(scrollY) ? Math.max(0, scrollY) : 0;
+  const height = Number.isFinite(documentHeight) ? Math.max(0, documentHeight) : 0;
+  const viewport = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0;
+  return Math.min(position, Math.max(0, height - viewport));
+}
+
 export interface HistoryLayoutController {
   getLayout(): HistoryLayout;
   setScrollRestorePending(value: boolean): void;
   resetScroll(): void;
-  captureScrollPosition(): void;
+  captureHistoryScrollPosition(): void;
   beforeRender(): void;
   bindViewportControls(): RendererCleanup;
   bindMasonry(): void;
@@ -26,18 +61,25 @@ export interface HistoryLayoutController {
 
 export function createHistoryLayoutController(
   context: RendererContext,
-  reportUserAction: (action: string, meta?: Record<string, unknown>) => void
+  reportUserAction: (action: string, meta?: Record<string, unknown>) => void,
+  getHistoryFilterSignature: () => string = () => ""
 ): HistoryLayoutController {
   let layout: HistoryLayout = "masonry";
   let scrollPosition = 0;
+  let historyScrollSnapshot: HistoryScrollSnapshot | null = null;
+  let renderedHistoryFilterSignature = getHistoryFilterSignature();
   let scrollRestorePending = false;
   let layoutAnchor: HistoryAnchor | null = null;
   let layoutRestoreFrame: number | null = null;
+  let scrollRestoreFrame: number | null = null;
+  let scrollRestoreObserver: ResizeObserver | null = null;
   let viewportEvents: AbortController | null = null;
   let masonryResizeObserver: ResizeObserver | null = null;
   let albumResizeObserver: ResizeObserver | null = null;
   let imageViewerResizeObserver: ResizeObserver | null = null;
   let titleResizeObserver: ResizeObserver | null = null;
+  let titleMeasureFrame: number | null = null;
+  let titleEvents: AbortController | null = null;
 
   const captureLayoutAnchor = (): HistoryAnchor | null => {
     if (window.scrollY <= 1) return null;
@@ -84,15 +126,92 @@ export function createHistoryLayoutController(
     });
   };
 
+  const cancelPendingScrollRestore = () => {
+    if (scrollRestoreFrame !== null) {
+      window.cancelAnimationFrame(scrollRestoreFrame);
+      scrollRestoreFrame = null;
+    }
+    scrollRestoreObserver?.disconnect();
+    scrollRestoreObserver = null;
+  };
+
   const restoreScrollPosition = () => {
-    const position = Math.max(0, scrollPosition);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
+    cancelPendingScrollRestore();
+    const snapshot = historyScrollSnapshot;
+    scrollRestoreFrame = window.requestAnimationFrame(() => {
+      scrollRestoreFrame = null;
+      if (context.getRoute().page !== "history") {
+        scrollRestorePending = false;
+        return;
+      }
+      const documentHeight = Math.max(
+        document.documentElement?.scrollHeight ?? 0,
+        document.body?.scrollHeight ?? 0
+      );
+      const position = clampHistoryScrollPosition(
+        snapshot?.scrollY ?? scrollPosition,
+        documentHeight,
+        window.innerHeight
+      );
+      window.scrollTo({ top: position, behavior: "auto" });
+      scrollRestoreFrame = window.requestAnimationFrame(() => {
+        scrollRestoreFrame = null;
         if (context.getRoute().page !== "history") {
           scrollRestorePending = false;
           return;
         }
-        window.scrollTo({ top: position, behavior: "auto" });
+        const currentRoute = context.getRoute();
+        const currentFilterSignature = getHistoryFilterSignature();
+        const target = snapshot?.assetId
+          ? [...document.querySelectorAll<HTMLElement>(".history-gallery-item")]
+            .find((item) => item.dataset.history === snapshot.assetId)
+          : undefined;
+        if (!snapshot || !target || !historyScrollAnchorIsValid(
+          snapshot,
+          currentRoute.historyKind,
+          layout,
+          currentFilterSignature,
+          Boolean(target)
+        )) {
+          renderedHistoryFilterSignature = currentFilterSignature;
+          scrollRestorePending = false;
+          return;
+        }
+        const desiredCenter = window.innerHeight / 2 + snapshot.offsetFromViewportCenter;
+        const correctAnchor = () => {
+          if (context.getRoute().page !== "history" || !target.isConnected) return;
+          const rect = target.getBoundingClientRect();
+          const delta = rect.top + rect.height / 2 - desiredCenter;
+          if (Math.abs(delta) >= 1) window.scrollBy({ top: delta, behavior: "auto" });
+        };
+        correctAnchor();
+        if (typeof ResizeObserver !== "undefined") {
+          let correctionUsed = false;
+          const gallery = target.closest<HTMLElement>(".history-gallery") ?? target;
+          let firstResizeNotification = true;
+          let observedHeight = gallery.getBoundingClientRect().height;
+          const observer = new ResizeObserver(() => {
+            const nextHeight = gallery.getBoundingClientRect().height;
+            if (firstResizeNotification) {
+              firstResizeNotification = false;
+              observedHeight = nextHeight;
+              return;
+            }
+            if (Math.abs(nextHeight - observedHeight) < 1) return;
+            observedHeight = nextHeight;
+            if (correctionUsed) return;
+            correctionUsed = true;
+            observer.disconnect();
+            if (scrollRestoreObserver === observer) scrollRestoreObserver = null;
+            scrollRestoreFrame = window.requestAnimationFrame(() => {
+              scrollRestoreFrame = null;
+              correctAnchor();
+            });
+          });
+          scrollRestoreObserver = observer;
+          observer.observe(gallery);
+        }
+        renderedHistoryFilterSignature = currentFilterSignature;
         scrollRestorePending = false;
       });
     });
@@ -103,21 +222,23 @@ export function createHistoryLayoutController(
     if (!cards.length) return 0;
     const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 10;
     const columnCount = historyMasonryColumnCount(gallery.clientWidth, gap);
+    const cardHeights = cards.map((card) => card.getBoundingClientRect().height);
+    const assignments = assignHistoryMasonryColumns(cardHeights, columnCount, gap);
     const columns = Array.from({ length: columnCount }, () => {
       const column = document.createElement("div");
       column.className = "history-masonry-column";
       return column;
     });
+    assignments.forEach((cardIndexes, columnIndex) => {
+      const column = columns[columnIndex];
+      if (!column) return;
+      cardIndexes.forEach((cardIndex) => {
+        const card = cards[cardIndex];
+        if (card) column.append(card);
+      });
+    });
     gallery.style.setProperty("--masonry-columns", String(columnCount));
     gallery.replaceChildren(...columns);
-    for (const card of cards) {
-      const shortestColumn = columns.reduce((shortest, column) =>
-        column.getBoundingClientRect().height < shortest.getBoundingClientRect().height
-          ? column
-          : shortest
-      );
-      shortestColumn.append(card);
-    }
     return columnCount;
   };
 
@@ -181,19 +302,52 @@ export function createHistoryLayoutController(
   const bindTitleMarquees = () => {
     const titles = [...document.querySelectorAll<HTMLElement>(".history-card-title, .history-detail-title")];
     if (!titles.length) return;
-    const update = () => {
-      for (const title of titles) {
+    const events = new AbortController();
+    titleEvents = events;
+    const titleSet = new Set(titles);
+    let initialMeasurementComplete = false;
+    let initialResizeNotification = true;
+    const measureTitle = (title: HTMLElement) => {
+      if (events.signal.aborted || !title.isConnected) return;
+      const text = title.querySelector<HTMLElement>(".history-card-title-track > span");
+      const textWidth = text?.getBoundingClientRect().width ?? 0;
+      const overflowing = textWidth > title.clientWidth;
+      if (!overflowing) {
         title.classList.remove("is-overflowing");
         title.style.removeProperty("--marquee-distance");
-        const text = title.querySelector<HTMLElement>(".history-card-title-track > span");
-        if (!text || text.getBoundingClientRect().width <= title.clientWidth) continue;
-        title.style.setProperty("--marquee-distance", `${text.getBoundingClientRect().width + 36}px`);
-        title.classList.add("is-overflowing");
+        return;
       }
+      title.style.setProperty("--marquee-distance", `${textWidth + 36}px`);
+      title.classList.add("is-overflowing");
     };
-    window.requestAnimationFrame(update);
+    let initialIndex = 0;
+    const measureBatch = () => {
+      titleMeasureFrame = null;
+      if (events.signal.aborted) return;
+      const nextIndex = Math.min(titles.length, initialIndex + 32);
+      for (; initialIndex < nextIndex; initialIndex += 1) {
+        const title = titles[initialIndex];
+        if (title) measureTitle(title);
+      }
+      if (initialIndex >= titles.length) initialMeasurementComplete = true;
+      if (initialIndex < titles.length) titleMeasureFrame = window.requestAnimationFrame(measureBatch);
+    };
+    titleMeasureFrame = window.requestAnimationFrame(measureBatch);
+    titles.forEach((title) => {
+      title.addEventListener("mouseenter", () => measureTitle(title), { signal: events.signal });
+    });
     if (typeof ResizeObserver !== "undefined") {
-      titleResizeObserver = new ResizeObserver(update);
+      titleResizeObserver = new ResizeObserver((entries) => {
+        if (initialResizeNotification) {
+          initialResizeNotification = false;
+          return;
+        }
+        if (!initialMeasurementComplete) return;
+        entries.forEach((entry) => {
+          const title = entry.target as HTMLElement;
+          if (titleSet.has(title)) measureTitle(title);
+        });
+      });
       titles.forEach((title) => titleResizeObserver?.observe(title));
     }
   };
@@ -204,19 +358,43 @@ export function createHistoryLayoutController(
       scrollRestorePending = value;
     },
     resetScroll: () => {
+      cancelPendingScrollRestore();
       scrollPosition = 0;
-      scrollRestorePending = false;
+      historyScrollSnapshot = null;
+      scrollRestorePending = true;
     },
-    captureScrollPosition: () => {
-      if (context.getRoute().page === "history" && !scrollRestorePending) scrollPosition = window.scrollY;
+    captureHistoryScrollPosition: () => {
+      if (context.getRoute().page !== "history" || scrollRestorePending) return;
+      const anchor = captureLayoutAnchor();
+      scrollPosition = window.scrollY;
+      historyScrollSnapshot = {
+        scrollY: window.scrollY,
+        assetId: anchor?.assetId ?? null,
+        offsetFromViewportCenter: anchor?.offsetFromCenter ?? 0,
+        historyKind: context.getRoute().historyKind,
+        layout,
+        filterSignature: renderedHistoryFilterSignature
+      };
     },
     beforeRender: () => {
+      cancelPendingScrollRestore();
       if (layoutRestoreFrame !== null) {
         window.cancelAnimationFrame(layoutRestoreFrame);
         layoutRestoreFrame = null;
       }
       layoutAnchor = null;
-      if (context.getRoute().page === "history" && !scrollRestorePending) scrollPosition = window.scrollY;
+      if (context.getRoute().page === "history" && !scrollRestorePending) {
+        const anchor = captureLayoutAnchor();
+        scrollPosition = window.scrollY;
+        historyScrollSnapshot = {
+          scrollY: window.scrollY,
+          assetId: anchor?.assetId ?? null,
+          offsetFromViewportCenter: anchor?.offsetFromCenter ?? 0,
+          historyKind: context.getRoute().historyKind,
+          layout,
+          filterSignature: renderedHistoryFilterSignature
+        };
+      }
       viewportEvents?.abort();
       viewportEvents = null;
       masonryResizeObserver?.disconnect();
@@ -227,6 +405,12 @@ export function createHistoryLayoutController(
       imageViewerResizeObserver = null;
       titleResizeObserver?.disconnect();
       titleResizeObserver = null;
+      if (titleMeasureFrame !== null) {
+        window.cancelAnimationFrame(titleMeasureFrame);
+        titleMeasureFrame = null;
+      }
+      titleEvents?.abort();
+      titleEvents = null;
     },
     bindViewportControls: () => {
       const events = new AbortController();

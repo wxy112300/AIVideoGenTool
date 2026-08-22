@@ -26,6 +26,7 @@ Read only the contract relevant to the work, plus any directly linked reference 
 - Models, ComfyUI nodes, workflow JSON, parameters, GPU policy: `docs/WORKFLOW_CONTRACT.md`.
 - Environment and dependency details: `docs/DEPENDENCIES_AND_SETUP.md`.
 - Image workspace implementation status: `docs/IMAGE_WORKSPACE_IMPLEMENTATION_PLAN.md`.
+- History large-dataset rendering, media scheduling, and scroll restoration: `docs/HISTORY_PERFORMANCE_OPTIMIZATION_PLAN.md`.
 - New contributors and agents should begin with `docs/AGENT_START_HERE.md`. It maps product requests to the authoritative code, tests, and runtime checks.
 
 `docs/LOCAL_CODEX_HANDOFF.md` and research documents are supporting history, not authoritative current requirements. Machine-specific paths in them are examples only.

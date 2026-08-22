@@ -87,6 +87,7 @@ import {
   versionVideoIndex
 } from "./renderer/pages/history/helpers";
 import {
+  historyFilterSignature,
   historyFilterModelIds,
   historyTagNames,
   normalizeHistoryFilter
@@ -1212,7 +1213,11 @@ const historyMediaRuntime = createHistoryMediaRuntime(
   rendererApp.context,
   () => page === "history"
 );
-const historyLayoutController = createHistoryLayoutController(rendererApp.context, reportUserAction);
+const historyLayoutController = createHistoryLayoutController(
+  rendererApp.context,
+  reportUserAction,
+  () => historyFilterSignature(ui.historyFilter)
+);
 const historyActions = createHistoryActions({
   context: rendererApp.context,
   setState: setRendererState,
@@ -1671,7 +1676,7 @@ function updateHistoryDetailInPlace(): boolean {
 
 function openHistoryDetail(assetId: string, versionId?: string): void {
   const preserveFullscreen = page === "history-detail" && historyPlayerIsFullscreen();
-  if (page === "history") historyLayoutController.captureScrollPosition();
+  if (page === "history") historyLayoutController.captureHistoryScrollPosition();
   reportUserAction("history-open-detail", { assetId, versionId });
   setHistoryKind("video");
   ui.selectedHistoryAssetId = assetId;
@@ -1694,6 +1699,7 @@ function openHistoryDetail(assetId: string, versionId?: string): void {
 function openImageHistoryDetail(projectId: string, versionId?: string): void {
   const project = state.imageHistory.find((item) => item.id === projectId);
   if (!project) return;
+  if (page === "history") historyLayoutController.captureHistoryScrollPosition();
   reportUserAction("image-history-open-detail", { projectId, versionId });
   setHistoryKind("image");
   ui.selectedHistoryAssetId = projectId;
@@ -1930,7 +1936,7 @@ function bindShell(): void {
     returnToLastHistoryDetail,
     navigateHistoryDetail,
     navigateImageHistoryDetail,
-    setHistoryScrollPosition: () => historyLayoutController.captureScrollPosition(),
+    captureHistoryScrollPosition: historyLayoutController.captureHistoryScrollPosition,
     setHistoryScrollRestorePending: historyLayoutController.setScrollRestorePending,
     clearHistoryForwardTarget: () => {
       ui.historyForwardTarget = null;

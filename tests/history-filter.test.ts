@@ -3,10 +3,11 @@ import type { HistoryAsset, ImageHistoryProject } from "../src/types.js";
 import {
   filterHistoryAssets,
   filterImageHistoryProjects,
+  historyFilterSignature,
   historyTagNames,
   normalizeHistoryFilter,
   normalizeHistoryTags
-} from "../src/core/history-filter.js";
+} from "../src/core/history-filter.ts";
 
 const video = (id: string, overrides: Partial<HistoryAsset> = {}): HistoryAsset => ({
   mediaKind: "video",
@@ -96,6 +97,11 @@ describe("history curation filters", () => {
 
   it("normalizes duplicate tags while preserving the first display spelling", () => {
     expect(normalizeHistoryTags([" H3 ", "h3", "  test   shot ", ""])).toEqual(["H3", "test shot"]);
+  });
+
+  it("uses a stable signature when selected tag order changes", () => {
+    expect(historyFilterSignature({ tags: ["Favorite", "H3"] }))
+      .toBe(historyFilterSignature({ tags: ["h3", "favorite"] }));
   });
 
   it("builds case-insensitive tag suggestions for the active history kind", () => {

@@ -1,0 +1,796 @@
+import { Canvas, Ellipse, FabricImage, FabricText, Group, IText, Line, PencilBrush, Rect, Triangle } from "fabric/es";
+import Cropper from "cropperjs";
+import "cropperjs/dist/cropper.css";
+const toolLabels = {
+    select: "选择",
+    brush: "画笔",
+    highlight: "高亮",
+    rectangle: "矩形",
+    ellipse: "椭圆",
+    arrow: "箭头",
+    text: "文字",
+    eraser: "删除"
+};
+const annotationProperties = [
+    "annotationId",
+    "annotationLabel",
+    "annotationKind",
+    "annotationNote",
+    "annotationSource"
+];
+function escapeMarkup(value) {
+    return value.replace(/[&<>'"]/g, (character) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "'": "&#39;",
+        '"': "&quot;"
+    })[character] ?? character);
+}
+function annotationObjects(canvas) {
+    return canvas.getObjects()
+        .filter((object) => !object.annotationSource)
+        .filter((object) => Boolean(object.annotationId));
+}
+function annotationLabel(index) {
+    return index < 26 ? String.fromCharCode(65 + index) : String(index + 1);
+}
+function defaultNote(kind) {
+    return kind === "arrow"
+        ? "按箭头指示调整位置或方向"
+        : kind === "text"
+            ? "按标注文字执行修改"
+            : kind === "highlight"
+                ? "重点修改高亮区域"
+                : "只修改标记区域";
+}
+function dataUrlFilename(filename) {
+    return filename.split(/[\\/]/u).pop() ?? filename;
+}
+function normalizeCropSelection(crop) {
+    const sourceWidth = Math.max(1, Math.trunc(crop.sourceWidth));
+    const sourceHeight = Math.max(1, Math.trunc(crop.sourceHeight));
+    const x = Math.max(0, Math.min(sourceWidth - 1, Math.trunc(crop.x)));
+    const y = Math.max(0, Math.min(sourceHeight - 1, Math.trunc(crop.y)));
+    return {
+        sourceWidth,
+        sourceHeight,
+        x,
+        y,
+        width: Math.max(1, Math.min(sourceWidth - x, Math.trunc(crop.width))),
+        height: Math.max(1, Math.min(sourceHeight - y, Math.trunc(crop.height)))
+    };
+}
+function isFullCrop(crop) {
+    return crop.x === 0 && crop.y === 0 &&
+        crop.width === crop.sourceWidth && crop.height === crop.sourceHeight;
+}
+function cropDataUrl(source, crop) {
+    const canvas = document.createElement("canvas");
+    canvas.width = crop.width;
+    canvas.height = crop.height;
+    const context = canvas.getContext("2d");
+    if (!context)
+        throw new Error("当前环境无法创建裁剪画布");
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+    return canvas.toDataURL("image/png");
+}
+async function imageFromDataUrl(dataUrl) {
+    const image = document.createElement("img");
+    image.src = dataUrl;
+    await image.decode();
+    if (!image.naturalWidth || !image.naturalHeight)
+        throw new Error("无法读取裁剪结果尺寸");
+    return image;
+}
+async function dataUrlToArrayBuffer(dataUrl) {
+    const response = await fetch(dataUrl);
+    return response.arrayBuffer();
+}
+export async function openImageMarkupEditor(options) {
+    const maskMode = options.mode === "mask";
+    const originalSourceElement = document.createElement("img");
+    originalSourceElement.src = options.sourceDataUrl;
+    await originalSourceElement.decode();
+    if (!originalSourceElement.naturalWidth || !originalSourceElement.naturalHeight) {
+        throw new Error("无法读取 Picture 尺寸");
+    }
+    let storedDocumentCrop = null;
+    if (!options.existingCrop && options.existingDocument) {
+        try {
+            const stored = JSON.parse(options.existingDocument);
+            storedDocumentCrop = stored.version === 2 && stored.crop ? stored.crop : null;
+        }
+        catch {
+            storedDocumentCrop = null;
+        }
+    }
+    const requestedCrop = options.existingCrop ?? storedDocumentCrop;
+    const originalCrop = requestedCrop &&
+        requestedCrop.sourceWidth === originalSourceElement.naturalWidth &&
+        requestedCrop.sourceHeight === originalSourceElement.naturalHeight
+        ? normalizeCropSelection(requestedCrop)
+        : null;
+    let currentCrop = originalCrop && !isFullCrop(originalCrop) ? originalCrop : null;
+    let currentSourceDataUrl = currentCrop
+        ? cropDataUrl(originalSourceElement, currentCrop)
+        : options.sourceDataUrl;
+    let sourceElement = currentCrop
+        ? await imageFromDataUrl(currentSourceDataUrl)
+        : originalSourceElement;
+    const overlay = document.createElement("div");
+    overlay.className = "image-markup-overlay";
+    overlay.innerHTML = `
+    <header class="image-markup-header">
+      <div><strong>${maskMode ? "绘制移除区域" : `标记 Picture ${options.pictureNumber}`}</strong><span>${escapeMarkup(dataUrlFilename(options.filename))} · 原图不会被修改</span></div>
+      <div class="button-row"><button class="secondary" data-markup-cancel>取消</button><button class="primary" data-markup-save>${maskMode ? "保存 Mask" : "保存标记"}</button></div>
+    </header>
+    <div class="image-markup-body">
+      <aside class="image-markup-tools" aria-label="标记工具">
+        <button data-markup-crop title="裁剪">裁剪</button>
+        ${(maskMode
+        ? ["select", "brush", "highlight", "eraser"]
+        : ["select", "brush", "highlight", "rectangle", "ellipse", "arrow", "text", "eraser"]).map((tool) => `<button class="${tool === (maskMode ? "highlight" : "select") ? "active" : ""}" data-markup-tool="${tool}" title="${toolLabels[tool]}">${toolLabels[tool]}</button>`).join("")}
+        <span class="markup-tool-divider"></span>
+        <button data-markup-undo title="撤销">撤销</button><button data-markup-redo title="重做">重做</button>
+      </aside>
+      <main class="image-markup-stage"><div class="image-markup-canvas-shell"><canvas data-markup-canvas></canvas></div><div class="markup-zoom"><button data-markup-zoom-out>−</button><span data-markup-zoom-value>100%</span><button data-markup-zoom-in>＋</button><button data-markup-fit>适应窗口</button></div></main>
+      <aside class="image-markup-inspector">
+        <div><strong>${maskMode ? "Mask 说明" : "标记说明"}</strong><p>${maskMode ? "用半透明高亮覆盖要移除的物体。可以绘制多个区域；保存后只向模型发送独立黑白 Mask。" : "区域自动编号，说明会同时进入 Prompt。"}滚轮缩放；选择工具下拖动画面平移，也可用中键或 Space + 拖动。</p></div>
+        <div class="markup-note-list" data-markup-note-list ${maskMode ? "hidden" : ""}></div>
+        <div class="markup-style-controls"><label ${maskMode ? "hidden" : ""}>颜色<input type="color" data-markup-color value="#ff4f55"></label><label>线宽<input type="range" data-markup-width min="2" max="${maskMode ? 96 : 28}" value="${maskMode ? 18 : 8}"></label></div>
+        <p class="markup-removal-hint">${maskMode ? "高亮颜色只是界面覆盖层，不会写入原图或生成结果。" : "最终提示会要求模型移除框线、箭头、编号和标注文字。"}</p>
+      </aside>
+    </div>
+    <div class="image-cropper-dialog" data-image-cropper-dialog hidden>
+      <div class="image-cropper-panel">
+        <header><div><strong>裁剪 Picture ${options.pictureNumber}</strong><span>裁剪不会修改原图，保存后标记和 Mask 都以裁剪后的画布为准。</span></div><button class="secondary" data-cropper-cancel>取消</button></header>
+        <div class="image-cropper-stage"><img data-image-cropper-image alt="待裁剪图片"></div>
+        <footer><label>比例<select data-cropper-aspect><option value="free">自由</option><option value="original">原图比例</option><option value="1">1 : 1</option><option value="1.3333333333">4 : 3</option><option value="1.7777777778">16 : 9</option><option value="0.5625">9 : 16</option></select></label><button class="secondary" data-cropper-reset>还原原图</button><span class="image-cropper-size" data-cropper-size></span><button class="primary" data-cropper-apply>应用裁剪</button></footer>
+      </div>
+    </div>`;
+    document.body.append(overlay);
+    document.body.classList.add("image-markup-open");
+    const canvasElement = overlay.querySelector("[data-markup-canvas]");
+    const stage = overlay.querySelector(".image-markup-stage");
+    const canvasShell = overlay.querySelector(".image-markup-canvas-shell");
+    const noteList = overlay.querySelector("[data-markup-note-list]");
+    const colorInput = overlay.querySelector("[data-markup-color]");
+    const widthInput = overlay.querySelector("[data-markup-width]");
+    const zoomValue = overlay.querySelector("[data-markup-zoom-value]");
+    const canvas = new Canvas(canvasElement, {
+        width: sourceElement.naturalWidth,
+        height: sourceElement.naturalHeight,
+        enableRetinaScaling: false,
+        preserveObjectStacking: true,
+        selection: true
+    });
+    // Reuse the already decoded element. Loading the same data URL again through
+    // Fabric can report a device-scaled bitmap size in Electron on high-DPI
+    // displays, while HTMLImageElement.naturalWidth remains in CSS pixels. The
+    // ratio then becomes 0.5 and leaves three quarters of the canvas empty.
+    let sourceImage = new FabricImage(sourceElement, {
+        width: sourceElement.naturalWidth,
+        height: sourceElement.naturalHeight
+    });
+    sourceImage.set({
+        left: 0,
+        top: 0,
+        originX: "left",
+        originY: "top",
+        scaleX: 1,
+        scaleY: 1,
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hoverCursor: "default"
+    });
+    sourceImage.annotationSource = true;
+    const cropDialog = overlay.querySelector("[data-image-cropper-dialog]");
+    const cropImage = overlay.querySelector("[data-image-cropper-image]");
+    const cropAspect = overlay.querySelector("[data-cropper-aspect]");
+    const cropSize = overlay.querySelector("[data-cropper-size]");
+    let cropper = null;
+    let loading = true;
+    if (options.existingDocument) {
+        try {
+            const stored = JSON.parse(options.existingDocument);
+            if ((stored.version === 1 || stored.version === 2) && stored.canvas)
+                await canvas.loadFromJSON(stored.canvas);
+        }
+        catch {
+            // A damaged sidecar must never prevent opening the clean source image.
+        }
+    }
+    canvas.insertAt(0, sourceImage);
+    loading = false;
+    let activeTool = maskMode ? "highlight" : "select";
+    let draftObject = null;
+    let draftArrow = null;
+    let pointerStart = { x: 0, y: 0 };
+    let displayScale = 1;
+    let spacePressed = false;
+    let panState = null;
+    let annotationSequence = annotationObjects(canvas).length;
+    const undoStack = [];
+    const redoStack = [];
+    let restoringHistory = false;
+    const updateCropSize = () => {
+        if (!cropper)
+            return;
+        const data = cropper.getData(true);
+        cropSize.textContent = `${Math.max(1, Math.round(data.width))} × ${Math.max(1, Math.round(data.height))}`;
+    };
+    const closeCropper = () => {
+        cropper?.destroy();
+        cropper = null;
+        cropDialog.hidden = true;
+        cropImage.onload = null;
+        cropImage.removeAttribute("src");
+    };
+    const applyCrop = async (selection) => {
+        const previous = currentCrop ?? {
+            x: 0,
+            y: 0,
+            width: originalSourceElement.naturalWidth,
+            height: originalSourceElement.naturalHeight,
+            sourceWidth: originalSourceElement.naturalWidth,
+            sourceHeight: originalSourceElement.naturalHeight
+        };
+        const next = isFullCrop(selection) ? null : selection;
+        const nextDisplay = next ?? {
+            x: 0,
+            y: 0,
+            width: originalSourceElement.naturalWidth,
+            height: originalSourceElement.naturalHeight,
+            sourceWidth: originalSourceElement.naturalWidth,
+            sourceHeight: originalSourceElement.naturalHeight
+        };
+        const offsetX = previous.x - nextDisplay.x;
+        const offsetY = previous.y - nextDisplay.y;
+        annotationObjects(canvas).forEach((object) => {
+            object.set({
+                left: (object.left ?? 0) + offsetX,
+                top: (object.top ?? 0) + offsetY
+            });
+            object.setCoords();
+        });
+        currentCrop = next;
+        currentSourceDataUrl = currentCrop
+            ? cropDataUrl(originalSourceElement, currentCrop)
+            : options.sourceDataUrl;
+        sourceElement = currentCrop
+            ? await imageFromDataUrl(currentSourceDataUrl)
+            : originalSourceElement;
+        canvas.remove(sourceImage);
+        sourceImage = new FabricImage(sourceElement, {
+            width: sourceElement.naturalWidth,
+            height: sourceElement.naturalHeight,
+            left: 0,
+            top: 0,
+            originX: "left",
+            originY: "top",
+            scaleX: 1,
+            scaleY: 1,
+            selectable: false,
+            evented: false,
+            hasControls: false,
+            hoverCursor: "default"
+        });
+        sourceImage.annotationSource = true;
+        canvas.setDimensions({ width: sourceElement.naturalWidth, height: sourceElement.naturalHeight });
+        canvas.insertAt(0, sourceImage);
+        canvas.calcOffset();
+        applyDisplayScale(Math.min(displayScale, 1));
+        renderNotes();
+        canvas.requestRenderAll();
+    };
+    const openCropper = () => {
+        if (cropper)
+            return;
+        cropDialog.hidden = false;
+        cropImage.onload = () => {
+            const initial = currentCrop ?? {
+                x: 0,
+                y: 0,
+                width: originalSourceElement.naturalWidth,
+                height: originalSourceElement.naturalHeight
+            };
+            cropper = new Cropper(cropImage, {
+                viewMode: 1,
+                dragMode: "crop",
+                autoCropArea: 1,
+                background: false,
+                responsive: true,
+                restore: false,
+                checkOrientation: false,
+                guides: true,
+                center: true,
+                cropBoxMovable: true,
+                cropBoxResizable: true,
+                data: initial,
+                crop: updateCropSize
+            });
+            updateCropSize();
+        };
+        cropImage.src = options.sourceDataUrl;
+    };
+    const serializableCanvas = () => {
+        const serialized = canvas.toObject(annotationProperties);
+        serialized.objects = (serialized.objects ?? []).filter((object) => !object.annotationSource);
+        delete serialized.backgroundImage;
+        return serialized;
+    };
+    const snapshot = () => JSON.stringify(serializableCanvas());
+    const pushHistory = () => {
+        if (loading || restoringHistory)
+            return;
+        const next = snapshot();
+        if (undoStack.at(-1) === next)
+            return;
+        undoStack.push(next);
+        if (undoStack.length > 60)
+            undoStack.shift();
+        redoStack.length = 0;
+    };
+    undoStack.push(snapshot());
+    const applyDisplayScale = (nextScale, anchor) => {
+        const previousScale = displayScale;
+        const previousShellRect = canvasShell.getBoundingClientRect();
+        const anchorInSource = anchor
+            ? {
+                x: (anchor.clientX - previousShellRect.left) / Math.max(.001, previousScale),
+                y: (anchor.clientY - previousShellRect.top) / Math.max(.001, previousScale)
+            }
+            : null;
+        displayScale = Math.max(.08, Math.min(2, nextScale));
+        const displayWidth = Math.max(1, Math.round(sourceElement.naturalWidth * displayScale));
+        const displayHeight = Math.max(1, Math.round(sourceElement.naturalHeight * displayScale));
+        // Keep Fabric's CSS canvas at its logical source size and scale the complete
+        // wrapper once. Combining cssOnly dimensions with a sized parent can make
+        // Chromium apply the fit ratio to both the wrapper and its canvas layers.
+        canvas.wrapperEl.style.width = `${sourceElement.naturalWidth}px`;
+        canvas.wrapperEl.style.height = `${sourceElement.naturalHeight}px`;
+        canvas.wrapperEl.style.transform = `scale(${displayScale})`;
+        canvas.wrapperEl.style.transformOrigin = "left top";
+        canvas.lowerCanvasEl.style.width = `${sourceElement.naturalWidth}px`;
+        canvas.lowerCanvasEl.style.height = `${sourceElement.naturalHeight}px`;
+        canvas.upperCanvasEl.style.width = `${sourceElement.naturalWidth}px`;
+        canvas.upperCanvasEl.style.height = `${sourceElement.naturalHeight}px`;
+        canvasShell.style.width = `${displayWidth}px`;
+        canvasShell.style.height = `${displayHeight}px`;
+        zoomValue.textContent = `${Math.round(displayScale * 100)}%`;
+        canvas.calcOffset();
+        if (anchor && anchorInSource) {
+            const nextShellRect = canvasShell.getBoundingClientRect();
+            stage.scrollLeft += nextShellRect.left + anchorInSource.x * displayScale - anchor.clientX;
+            stage.scrollTop += nextShellRect.top + anchorInSource.y * displayScale - anchor.clientY;
+            canvas.calcOffset();
+        }
+    };
+    const fitCanvas = () => {
+        const availableWidth = Math.max(240, stage.clientWidth - 70);
+        const availableHeight = Math.max(180, stage.clientHeight - 90);
+        applyDisplayScale(Math.min(1, availableWidth / sourceElement.naturalWidth, availableHeight / sourceElement.naturalHeight));
+    };
+    const renderNotes = () => {
+        const unique = new Map();
+        for (const object of annotationObjects(canvas)) {
+            if (object.annotationId && !unique.has(object.annotationId))
+                unique.set(object.annotationId, object);
+        }
+        noteList.innerHTML = maskMode
+            ? ""
+            : unique.size
+                ? [...unique.values()].map((object) => `<label class="markup-note-card"><span>${escapeMarkup(object.annotationLabel ?? "?")}</span><textarea data-markup-note="${escapeMarkup(object.annotationId ?? "")}">${escapeMarkup(object.annotationNote ?? defaultNote(object.annotationKind ?? "rectangle"))}</textarea></label>`).join("")
+                : `<div class="markup-note-empty">画出区域、箭头或文字后，可在这里补充具体要求。</div>`;
+        noteList.querySelectorAll("[data-markup-note]").forEach((input) => {
+            input.addEventListener("input", () => {
+                const annotationId = input.dataset.markupNote;
+                for (const object of annotationObjects(canvas)) {
+                    if (object.annotationId === annotationId)
+                        object.annotationNote = input.value;
+                }
+            });
+            input.addEventListener("change", pushHistory);
+        });
+    };
+    const decorate = (object, kind) => {
+        object.annotationId = crypto.randomUUID();
+        object.annotationLabel = annotationLabel(annotationSequence++);
+        object.annotationKind = kind;
+        object.annotationNote = defaultNote(kind);
+        object.set({ transparentCorners: false, cornerColor: "#7cb8ff", borderColor: "#7cb8ff" });
+        return object;
+    };
+    const labelFor = (object) => new FabricText(object.annotationLabel ?? "?", { left: 8, top: 6, originX: "left", originY: "top", fill: "#ffffff", fontSize: 26, fontWeight: 800, backgroundColor: colorInput.value, selectable: false, evented: false });
+    const finalizeRegion = (object, kind) => {
+        canvas.remove(object);
+        const width = Math.max(1, object.width * Math.abs(object.scaleX));
+        const height = Math.max(1, object.height * Math.abs(object.scaleY));
+        const shape = kind === "rectangle"
+            ? new Rect({ left: 0, top: 0, originX: "left", originY: "top", width, height, fill: "transparent", stroke: colorInput.value, strokeWidth: Number(widthInput.value), strokeUniform: true })
+            : new Ellipse({ left: 0, top: 0, originX: "left", originY: "top", rx: width / 2, ry: height / 2, fill: "transparent", stroke: colorInput.value, strokeWidth: Number(widthInput.value), strokeUniform: true });
+        const group = new Group([shape, labelFor(object)], { left: object.left, top: object.top, originX: "left", originY: "top" });
+        group.annotationLabel = object.annotationLabel;
+        group.annotationId = object.annotationId;
+        group.annotationKind = kind;
+        group.annotationNote = object.annotationNote;
+        group.set({ transparentCorners: false, cornerColor: "#7cb8ff", borderColor: "#7cb8ff" });
+        canvas.add(group);
+        canvas.setActiveObject(group);
+        renderNotes();
+        pushHistory();
+    };
+    const selectTool = (tool) => {
+        activeTool = tool;
+        canvas.isDrawingMode = tool === "brush" || tool === "highlight";
+        canvas.selection = tool === "select";
+        canvas.defaultCursor = tool === "select" ? "grab" : "crosshair";
+        canvas.forEachObject((object) => {
+            if (object.annotationSource)
+                return;
+            object.selectable = tool === "select" || tool === "eraser";
+            object.evented = tool === "select" || tool === "eraser";
+        });
+        if (canvas.isDrawingMode) {
+            const brush = new PencilBrush(canvas);
+            brush.color = tool === "highlight" ? `${colorInput.value}66` : colorInput.value;
+            brush.width = Number(widthInput.value) * (tool === "highlight" ? 3 : 1);
+            canvas.freeDrawingBrush = brush;
+        }
+        overlay.querySelectorAll("[data-markup-tool]").forEach((button) => button.classList.toggle("active", button.dataset.markupTool === tool));
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+    };
+    const restoreSnapshot = async (serialized) => {
+        restoringHistory = true;
+        await canvas.loadFromJSON(serialized);
+        canvas.insertAt(0, sourceImage);
+        restoringHistory = false;
+        annotationSequence = Math.max(annotationSequence, annotationObjects(canvas).length);
+        selectTool(maskMode ? "highlight" : "select");
+        renderNotes();
+    };
+    canvas.on("path:created", (event) => {
+        const path = decorate(event.path, activeTool === "highlight" ? "highlight" : "brush");
+        path.strokeUniform = true;
+        renderNotes();
+        pushHistory();
+    });
+    canvas.on("object:modified", () => pushHistory());
+    canvas.on("mouse:down", (event) => {
+        const pointerEvent = event.e;
+        const shouldPan = pointerEvent.button === 1 || spacePressed || (activeTool === "select" && pointerEvent.button === 0 && !event.target);
+        if (shouldPan) {
+            pointerEvent.preventDefault();
+            panState = {
+                clientX: pointerEvent.clientX,
+                clientY: pointerEvent.clientY,
+                scrollLeft: stage.scrollLeft,
+                scrollTop: stage.scrollTop
+            };
+            canvas.selection = false;
+            canvas.defaultCursor = "grabbing";
+            canvas.setCursor("grabbing");
+            return;
+        }
+        if (activeTool === "eraser") {
+            const target = event.target;
+            if (target?.annotationId) {
+                canvas.getObjects().filter((object) => object.annotationId === target.annotationId).forEach((object) => canvas.remove(object));
+                renderNotes();
+                pushHistory();
+            }
+            return;
+        }
+        if (activeTool === "text") {
+            const point = canvas.getScenePoint(event.e);
+            const text = decorate(new IText("输入说明", {
+                left: point.x,
+                top: point.y,
+                originX: "left",
+                originY: "top",
+                fill: colorInput.value,
+                stroke: "rgba(0, 0, 0, .72)",
+                strokeWidth: 1.5,
+                strokeUniform: true,
+                paintFirst: "stroke",
+                fontSize: Math.max(28, Number(widthInput.value) * 4),
+                fontWeight: 700,
+                backgroundColor: "transparent"
+            }), "text");
+            canvas.add(text);
+            canvas.setActiveObject(text);
+            text.enterEditing();
+            text.selectAll();
+            renderNotes();
+            pushHistory();
+            selectTool(maskMode ? "highlight" : "select");
+            return;
+        }
+        if (activeTool !== "rectangle" && activeTool !== "ellipse" && activeTool !== "arrow")
+            return;
+        const point = canvas.getScenePoint(event.e);
+        pointerStart = { x: point.x, y: point.y };
+        if (activeTool === "arrow") {
+            const strokeWidth = Number(widthInput.value);
+            const line = new Line([point.x, point.y, point.x, point.y], {
+                stroke: colorInput.value,
+                strokeWidth,
+                strokeUniform: true,
+                selectable: false,
+                evented: false
+            });
+            const head = new Triangle({
+                left: point.x,
+                top: point.y,
+                width: strokeWidth * 3,
+                height: strokeWidth * 3.8,
+                fill: colorInput.value,
+                angle: 90,
+                originX: "center",
+                originY: "center",
+                selectable: false,
+                evented: false
+            });
+            draftArrow = { line, head };
+            canvas.add(line, head);
+            return;
+        }
+        draftObject = activeTool === "ellipse"
+            ? new Ellipse({ left: point.x, top: point.y, originX: "left", originY: "top", rx: 1, ry: 1, fill: "transparent", stroke: colorInput.value, strokeWidth: Number(widthInput.value), selectable: false, evented: false })
+            : new Rect({ left: point.x, top: point.y, originX: "left", originY: "top", width: 1, height: 1, fill: "transparent", stroke: colorInput.value, strokeWidth: Number(widthInput.value), selectable: false, evented: false });
+        canvas.add(draftObject);
+    });
+    canvas.on("mouse:move", (event) => {
+        if (panState) {
+            const pointerEvent = event.e;
+            stage.scrollLeft = panState.scrollLeft - (pointerEvent.clientX - panState.clientX);
+            stage.scrollTop = panState.scrollTop - (pointerEvent.clientY - panState.clientY);
+            canvas.calcOffset();
+            return;
+        }
+        if (draftArrow) {
+            const point = canvas.getScenePoint(event.e);
+            const angle = Math.atan2(point.y - pointerStart.y, point.x - pointerStart.x) * 180 / Math.PI + 90;
+            draftArrow.line.set({ x1: pointerStart.x, y1: pointerStart.y, x2: point.x, y2: point.y });
+            draftArrow.head.set({ left: point.x, top: point.y, angle });
+            draftArrow.line.setCoords();
+            draftArrow.head.setCoords();
+            canvas.requestRenderAll();
+            return;
+        }
+        if (!draftObject)
+            return;
+        const point = canvas.getScenePoint(event.e);
+        const left = Math.min(pointerStart.x, point.x);
+        const top = Math.min(pointerStart.y, point.y);
+        const width = Math.max(1, Math.abs(point.x - pointerStart.x));
+        const height = Math.max(1, Math.abs(point.y - pointerStart.y));
+        if (draftObject instanceof Ellipse)
+            draftObject.set({ left, top, rx: width / 2, ry: height / 2 });
+        else
+            draftObject.set({ left, top, width, height });
+        canvas.requestRenderAll();
+    });
+    canvas.on("mouse:up", (event) => {
+        if (panState) {
+            panState = null;
+            canvas.selection = activeTool === "select";
+            canvas.isDrawingMode = activeTool === "brush" || activeTool === "highlight";
+            canvas.defaultCursor = activeTool === "select" ? "grab" : "crosshair";
+            canvas.setCursor(canvas.defaultCursor);
+            return;
+        }
+        if (draftArrow) {
+            const { line, head } = draftArrow;
+            draftArrow = null;
+            canvas.remove(line, head);
+            line.set({ selectable: true, evented: true });
+            head.set({ selectable: true, evented: true });
+            const group = decorate(new Group([line, head], {}), "arrow");
+            canvas.add(group);
+            canvas.setActiveObject(group);
+            renderNotes();
+            pushHistory();
+            selectTool("select");
+            return;
+        }
+        if (!draftObject)
+            return;
+        const object = draftObject;
+        draftObject = null;
+        const regionTool = activeTool;
+        decorate(object, regionTool);
+        finalizeRegion(object, regionTool);
+        selectTool("select");
+    });
+    const onStageWheel = (event) => {
+        event.preventDefault();
+        const zoomFactor = Math.exp(-event.deltaY * .0015);
+        applyDisplayScale(displayScale * zoomFactor, {
+            clientX: event.clientX,
+            clientY: event.clientY
+        });
+    };
+    stage.addEventListener("wheel", onStageWheel, { passive: false });
+    overlay.querySelector("[data-markup-crop]")?.addEventListener("click", openCropper);
+    overlay.querySelectorAll("[data-markup-tool]").forEach((button) => button.addEventListener("click", () => selectTool(button.dataset.markupTool)));
+    overlay.querySelector("[data-markup-zoom-in]")?.addEventListener("click", () => applyDisplayScale(displayScale * 1.2));
+    overlay.querySelector("[data-markup-zoom-out]")?.addEventListener("click", () => applyDisplayScale(displayScale / 1.2));
+    overlay.querySelector("[data-markup-fit]")?.addEventListener("click", fitCanvas);
+    overlay.querySelector("[data-cropper-cancel]")?.addEventListener("click", closeCropper);
+    overlay.querySelector("[data-cropper-reset]")?.addEventListener("click", () => {
+        if (!cropper)
+            return;
+        cropper.setData({
+            x: 0,
+            y: 0,
+            width: originalSourceElement.naturalWidth,
+            height: originalSourceElement.naturalHeight,
+            rotate: 0,
+            scaleX: 1,
+            scaleY: 1
+        });
+        updateCropSize();
+    });
+    cropAspect.addEventListener("change", () => {
+        if (!cropper)
+            return;
+        const value = cropAspect.value;
+        cropper.setAspectRatio(value === "free" ? NaN : value === "original"
+            ? originalSourceElement.naturalWidth / originalSourceElement.naturalHeight
+            : Number(value));
+        updateCropSize();
+    });
+    overlay.querySelector("[data-cropper-apply]")?.addEventListener("click", async () => {
+        if (!cropper)
+            return;
+        const data = cropper.getData(true);
+        const selection = normalizeCropSelection({
+            x: data.x,
+            y: data.y,
+            width: data.width,
+            height: data.height,
+            sourceWidth: originalSourceElement.naturalWidth,
+            sourceHeight: originalSourceElement.naturalHeight
+        });
+        try {
+            await applyCrop(selection);
+            closeCropper();
+            pushHistory();
+        }
+        catch (error) {
+            window.console.error("Failed to apply image crop", error);
+        }
+    });
+    overlay.querySelector("[data-markup-undo]")?.addEventListener("click", async () => {
+        if (undoStack.length <= 1)
+            return;
+        const current = undoStack.pop();
+        if (current)
+            redoStack.push(current);
+        await restoreSnapshot(undoStack.at(-1) ?? JSON.stringify({ objects: [] }));
+    });
+    overlay.querySelector("[data-markup-redo]")?.addEventListener("click", async () => {
+        const next = redoStack.pop();
+        if (!next)
+            return;
+        undoStack.push(next);
+        await restoreSnapshot(next);
+    });
+    colorInput.addEventListener("input", () => selectTool(activeTool));
+    widthInput.addEventListener("input", () => selectTool(activeTool));
+    renderNotes();
+    window.requestAnimationFrame(fitCanvas);
+    return new Promise((resolve) => {
+        let finished = false;
+        const finish = (result) => {
+            if (finished)
+                return;
+            finished = true;
+            window.removeEventListener("keydown", onKeyDown, true);
+            window.removeEventListener("keyup", onKeyUp, true);
+            stage.removeEventListener("wheel", onStageWheel);
+            closeCropper();
+            canvas.dispose();
+            overlay.remove();
+            document.body.classList.remove("image-markup-open");
+            resolve(result);
+        };
+        const onKeyDown = (event) => {
+            const editableTarget = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+            if (event.code === "Space" && !editableTarget) {
+                event.preventDefault();
+                spacePressed = true;
+                canvas.isDrawingMode = false;
+                canvas.selection = false;
+                canvas.defaultCursor = "grab";
+                canvas.setCursor("grab");
+            }
+            if (event.key === "Escape")
+                finish(null);
+            if (event.ctrlKey && event.key.toLowerCase() === "z") {
+                event.preventDefault();
+                overlay.querySelector("[data-markup-undo]")?.click();
+            }
+            if (event.ctrlKey && event.key.toLowerCase() === "y") {
+                event.preventDefault();
+                overlay.querySelector("[data-markup-redo]")?.click();
+            }
+            if ((event.key === "Delete" || event.key === "Backspace") && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) {
+                const selected = canvas.getActiveObjects();
+                selected.forEach((object) => canvas.remove(object));
+                canvas.discardActiveObject();
+                renderNotes();
+                pushHistory();
+            }
+        };
+        const onKeyUp = (event) => {
+            if (event.code !== "Space")
+                return;
+            spacePressed = false;
+            if (!panState) {
+                canvas.isDrawingMode = activeTool === "brush" || activeTool === "highlight";
+                canvas.selection = activeTool === "select";
+                canvas.defaultCursor = activeTool === "select" ? "grab" : "crosshair";
+                canvas.setCursor(canvas.defaultCursor);
+            }
+        };
+        window.addEventListener("keydown", onKeyDown, true);
+        window.addEventListener("keyup", onKeyUp, true);
+        overlay.querySelector("[data-markup-cancel]")?.addEventListener("click", () => finish(null));
+        overlay.querySelector("[data-markup-save]")?.addEventListener("click", async () => {
+            const objects = annotationObjects(canvas);
+            if (!objects.length) {
+                finish({
+                    document: "",
+                    renderedPng: new ArrayBuffer(0),
+                    summary: "",
+                    objectCount: 0,
+                    crop: currentCrop,
+                    ...(currentCrop ? { croppedPng: await dataUrlToArrayBuffer(currentSourceDataUrl) } : {})
+                });
+                return;
+            }
+            const unique = new Map();
+            for (const object of objects)
+                if (object.annotationId && !unique.has(object.annotationId))
+                    unique.set(object.annotationId, object);
+            const summary = maskMode
+                ? `${unique.size} 个移除区域`
+                : [...unique.values()].map((object) => `${object.annotationLabel ?? "?"}：${(object.annotationNote ?? defaultNote(object.annotationKind ?? "rectangle")).trim()}`).join("\n");
+            canvas.discardActiveObject();
+            canvas.requestRenderAll();
+            const document = {
+                version: 2,
+                sourceWidth: sourceElement.naturalWidth,
+                sourceHeight: sourceElement.naturalHeight,
+                crop: currentCrop,
+                canvas: serializableCanvas()
+            };
+            if (maskMode) {
+                sourceImage.visible = false;
+                canvas.backgroundColor = "#000000";
+                for (const object of objects) {
+                    object.set({ opacity: 1, stroke: "#ffffff", fill: "#ffffff" });
+                }
+                canvas.requestRenderAll();
+            }
+            const blob = await canvas.toBlob({ format: "png", multiplier: 1, enableRetinaScaling: false });
+            if (!blob)
+                throw new Error("无法导出标注图片");
+            finish({
+                document: JSON.stringify(document),
+                renderedPng: await blob.arrayBuffer(),
+                summary,
+                objectCount: unique.size,
+                crop: currentCrop,
+                ...(currentCrop ? { croppedPng: await dataUrlToArrayBuffer(currentSourceDataUrl) } : {})
+            });
+        });
+    });
+}

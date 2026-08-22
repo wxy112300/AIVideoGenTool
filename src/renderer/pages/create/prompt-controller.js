@@ -1,0 +1,282 @@
+import { h3AutoPromptSeedFor } from "../../../core/prompts/h3/auto-seeds";
+import { activePromptIndexForDraft, promptPatchForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
+import { h3PromptPackFor, h3PromptPresetForMode, promptSnippetFor } from "../../prompt-packs";
+import { isMiniMaxH3Model, isMiniMaxH3R2vModel } from "../../../core/workflow";
+import { uiKeys } from "../../../core/i18n-keys";
+import { activePrompt, h3PromptModeForDraft, h3ReferenceTag, insertPromptSnippet, isPromptCancellationError, resizePromptInput, updatePromptWordCounter } from "./helpers";
+export function mountCreatePromptController(options) {
+    const events = new AbortController();
+    const signal = events.signal;
+    const root = options.context.root;
+    const getDraft = () => options.context.getState()?.draft;
+    const promptUi = () => h3PromptPackFor(options.context.getState()?.settings.uiLocale).ui;
+    root.querySelector("#pick-workflow")?.addEventListener("click", async () => {
+        const filename = await options.context.studio.pickWorkflow();
+        if (!filename)
+            return;
+        options.setWorkflowCapability(filename, await options.context.studio.inspectWorkflow(filename));
+        options.patchDraft({ workflowPath: filename });
+        options.context.requestRender();
+    }, { signal });
+    const promptInput = root.querySelector("#prompt-input");
+    const promptSnippetSelect = root.querySelector("#prompt-snippet");
+    const insertSnippetButton = root.querySelector("#insert-prompt-snippet");
+    const updateSnippetButton = () => {
+        if (insertSnippetButton)
+            insertSnippetButton.disabled = !promptSnippetSelect?.value;
+    };
+    promptSnippetSelect?.addEventListener("change", updateSnippetButton, { signal });
+    insertSnippetButton?.addEventListener("click", () => {
+        if (!promptInput || !promptSnippetSelect)
+            return;
+        insertPromptSnippet(promptInput, promptSnippetFor(promptSnippetSelect.value));
+        promptSnippetSelect.value = "";
+        updateSnippetButton();
+    }, { signal });
+    promptInput?.addEventListener("input", () => {
+        const draft = getDraft();
+        if (!draft)
+            return;
+        options.invalidatePromptEditHistory();
+        resizePromptInput(promptInput);
+        const versions = [...promptVersionsForDraft(draft)];
+        const activePromptVersion = activePromptIndexForDraft(draft);
+        const current = versions[activePromptVersion];
+        let nextActivePromptVersion = activePromptVersion;
+        if (current?.label === promptUi().t("manualEditVersion")) {
+            versions[activePromptVersion] = { ...current, text: promptInput.value };
+        }
+        else {
+            versions.splice(activePromptVersion + 1);
+            versions.push({
+                id: crypto.randomUUID(),
+                label: promptUi().t("manualEditVersion"),
+                text: promptInput.value,
+                createdAt: new Date().toISOString()
+            });
+            nextActivePromptVersion = versions.length - 1;
+        }
+        options.patchDraft(promptPatchForDraft(draft, versions, nextActivePromptVersion));
+        options.syncPromptEnqueueUi(promptInput.value);
+        options.updateH3PromptCheck(promptInput.value, Boolean(draft.endImagePath), h3PromptModeForDraft(draft), draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"));
+        updatePromptWordCounter(promptInput.value, isMiniMaxH3Model(draft.modelId) ? h3PromptModeForDraft(draft) : undefined, draft.duration, promptUi());
+    }, { signal });
+    if (promptInput) {
+        resizePromptInput(promptInput);
+        window.requestAnimationFrame(() => resizePromptInput(promptInput));
+    }
+    const focusPromptInput = () => {
+        window.requestAnimationFrame(() => {
+            const nextInput = root.querySelector("#prompt-input");
+            if (!nextInput)
+                return;
+            nextInput.focus();
+            nextInput.setSelectionRange(nextInput.value.length, nextInput.value.length);
+        });
+    };
+    promptInput?.addEventListener("keydown", (event) => {
+        const modifier = event.ctrlKey || event.metaKey;
+        if (!modifier || event.altKey)
+            return;
+        const key = event.key.toLowerCase();
+        const undo = key === "z" && !event.shiftKey;
+        const redo = key === "y" || (key === "z" && event.shiftKey);
+        const handled = undo
+            ? options.undoPromptEdit()
+            : redo
+                ? options.redoPromptEdit()
+                : false;
+        if (!handled)
+            return;
+        event.preventDefault();
+        event.stopPropagation();
+        options.context.requestRender();
+        focusPromptInput();
+    }, { signal });
+    const initialDraft = getDraft();
+    updatePromptWordCounter(promptInput?.value ?? "", initialDraft && isMiniMaxH3Model(initialDraft.modelId) ? h3PromptModeForDraft(initialDraft) : undefined, initialDraft?.duration ?? 0, promptUi());
+    root.querySelector("#clear-prompt")?.addEventListener("click", (event) => {
+        event.stopImmediatePropagation();
+        const draft = getDraft();
+        if (!draft)
+            return;
+        options.clearPromptVersion();
+        options.context.requestRender();
+        focusPromptInput();
+    }, { signal });
+    root.querySelector("#prompt-prev")?.addEventListener("click", () => {
+        const draft = getDraft();
+        if (!draft)
+            return;
+        options.invalidatePromptEditHistory();
+        const promptVersions = [...promptVersionsForDraft(draft)];
+        const activePromptVersion = activePromptIndexForDraft(draft);
+        options.patchDraft(promptPatchForDraft(draft, promptVersions, Math.max(0, activePromptVersion - 1)));
+        options.context.requestRender();
+    }, { signal });
+    root.querySelector("#prompt-next")?.addEventListener("click", () => {
+        const draft = getDraft();
+        if (!draft)
+            return;
+        options.invalidatePromptEditHistory();
+        const promptVersions = [...promptVersionsForDraft(draft)];
+        const activePromptVersion = activePromptIndexForDraft(draft);
+        options.patchDraft(promptPatchForDraft(draft, promptVersions, Math.min(promptVersions.length - 1, activePromptVersion + 1)));
+        options.context.requestRender();
+    }, { signal });
+    root.querySelector("#prompt-enhance-mode")?.addEventListener("change", (event) => {
+        const draft = getDraft();
+        if (!draft)
+            return;
+        const value = event.currentTarget.value;
+        if (isMiniMaxH3Model(draft.modelId))
+            options.setH3PromptPreset(value);
+        else
+            options.setPromptEnhanceMode(value);
+        const select = event.currentTarget;
+        const description = select.selectedOptions[0]?.dataset.description ?? "";
+        const info = root.querySelector("#prompt-enhance-mode-info");
+        const tip = root.querySelector("#prompt-enhance-mode-tip");
+        if (info && description)
+            info.setAttribute("aria-label", description);
+        if (tip && description)
+            tip.textContent = description;
+    }, { signal });
+    root.querySelector("#release-prompt-model-create")?.addEventListener("click", () => {
+        void options.togglePromptModel();
+    }, { signal });
+    root.querySelector("#enhance-prompt")?.addEventListener("click", async (event) => {
+        event.stopImmediatePropagation();
+        if (options.isPromptEnhancing()) {
+            try {
+                const result = await options.context.studio.cancelPrompt();
+                if (!result.ok)
+                    throw new Error(result.message);
+            }
+            catch (error) {
+                options.context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+            }
+            return;
+        }
+        const draft = getDraft();
+        if (!draft)
+            return;
+        const isCurrentH3 = isMiniMaxH3Model(draft.modelId);
+        const h3Mode = h3PromptModeForDraft(draft);
+        const currentPrompt = activePrompt(draft, options.context.getState()?.settings.uiLocale).text;
+        const referenceMediaPaths = isMiniMaxH3R2vModel(draft.modelId)
+            ? draft.h3ReferenceSlots.map((slot) => slot.mediaPath).filter(Boolean)
+            : [draft.startImagePath, draft.endImagePath].filter(Boolean);
+        const isExtension = draft.inputMode === "video";
+        const requestOrigin = isExtension ? "video-extension" : "image-to-video";
+        const hasExtensionBoundary = isExtension && Boolean(draft.sourceVideoPath) &&
+            draft.trimEndSeconds > draft.trimStartSeconds;
+        if (isCurrentH3 && !currentPrompt.trim() && referenceMediaPaths.length === 0 && !hasExtensionBoundary) {
+            options.context.notify(promptUi().t("autoPromptMissingMedia"), { kind: "error" });
+            return;
+        }
+        const promptSettings = options.context.getState()?.settings;
+        const configuredAutoPromptSeedId = promptSettings?.h3AutoPromptSeedId?.trim() || undefined;
+        const autoPromptSeed = isCurrentH3 && !currentPrompt.trim() &&
+            (referenceMediaPaths.length > 0 || hasExtensionBoundary)
+            ? h3AutoPromptSeedFor(h3Mode, configuredAutoPromptSeedId, configuredAutoPromptSeedId
+                ? []
+                : promptVersionsForDraft(draft)
+                    .map((version) => version.autoPromptSeedId)
+                    .filter((value) => Boolean(value)))
+            : undefined;
+        options.setPromptEnhancing(true);
+        options.context.requestRender();
+        try {
+            const selectedEnhanceMode = options.getPromptEnhanceMode();
+            const requestMode = isCurrentH3
+                ? "h3-vision"
+                : selectedEnhanceMode === "h3-vision" ? "sulphur-native" : selectedEnhanceMode;
+            const isH3Vision = requestMode === "h3-vision";
+            const h3ImagePaths = isMiniMaxH3R2vModel(draft.modelId)
+                ? draft.h3ReferenceSlots
+                    .filter((slot) => slot.mediaType === "image" && slot.mediaPath)
+                    .map((slot) => slot.mediaPath)
+                : [draft.startImagePath, draft.endImagePath].filter(Boolean);
+            const referenceContext = isMiniMaxH3R2vModel(draft.modelId)
+                ? draft.h3ReferenceSlots.map((slot) => `${h3ReferenceTag(draft.h3ReferenceSlots, slot.id)} = ${options.h3ReferenceRolePromptLabels[slot.role]}${slot.note ? `; ${slot.note}` : ""}`).join("\n")
+                : h3Mode === "FL2VA"
+                    ? "<Picture 1> = first frame; <Picture 2> = last frame"
+                    : h3Mode === "I2VA"
+                        ? "<Picture 1> = first frame"
+                        : h3Mode === "L2VA"
+                            ? "<Picture 1> = last frame"
+                            : "";
+            const text = await options.context.studio.enhancePrompt({
+                prompt: currentPrompt,
+                modelId: draft.modelId,
+                origin: requestOrigin,
+                mode: requestMode,
+                promptStrategy: autoPromptSeed ? "reference-auto" : undefined,
+                autoPromptSeedId: autoPromptSeed?.id,
+                autoPromptSeedInstruction: autoPromptSeed
+                    ? promptSettings?.h3AutoPromptSeedInstructions?.[autoPromptSeed.id]
+                    : undefined,
+                autoPromptVariationId: autoPromptSeed ? crypto.randomUUID() : undefined,
+                imagePath: draft.startImagePath || undefined,
+                imagePaths: isH3Vision ? h3ImagePaths : undefined,
+                h3PromptMode: h3Mode,
+                h3PromptPreset: isCurrentH3
+                    ? h3PromptPresetForMode(h3Mode, options.getH3PromptPreset())
+                    : undefined,
+                h3DurationSeconds: draft.duration,
+                h3AspectRatio: draft.ratio === "source"
+                    ? draft.sourceHeight > draft.sourceWidth ? "9:16" : "16:9"
+                    : draft.ratio,
+                referenceMediaPaths,
+                referenceContext: isH3Vision ? referenceContext : undefined,
+                extensionSource: isExtension && draft.sourceVideoPath
+                    ? {
+                        filePath: draft.sourceVideoPath,
+                        trimStartSeconds: draft.trimStartSeconds,
+                        trimEndSeconds: draft.trimEndSeconds
+                    }
+                    : undefined
+            });
+            options.setPromptRuntimeLoaded(true);
+            options.invalidatePromptEditHistory();
+            options.patchDraftForMode(requestOrigin, (nextDraft) => {
+                const nextPromptVersions = promptVersionsForDraft(nextDraft);
+                const nextActivePromptVersion = activePromptIndexForDraft(nextDraft);
+                const versions = [
+                    ...nextPromptVersions.slice(0, nextActivePromptVersion + 1),
+                    {
+                        id: crypto.randomUUID(),
+                        label: promptUi().t("expandedVersion", { count: nextPromptVersions.filter((item) => item.label.startsWith(promptUi().t("expandedVersion", { count: "" }).trim())).length + 1 }),
+                        text,
+                        createdAt: new Date().toISOString(),
+                        ...(autoPromptSeed ? { autoPromptSeedId: autoPromptSeed.id } : {})
+                    }
+                ];
+                return promptPatchForDraft(nextDraft, versions, versions.length - 1);
+            });
+            options.context.notify(options.context.t(uiKeys.create.interaction.promptEnhanceCompleted, {
+                page: options.context.t(requestOrigin === "video-extension"
+                    ? uiKeys.create.videoExtension
+                    : uiKeys.create.imageToVideo)
+            }), { kind: "task-complete" });
+        }
+        catch (error) {
+            if (!isPromptCancellationError(error))
+                options.context.notify(error instanceof Error ? error.message : String(error), {
+                    kind: "error",
+                    actions: [{
+                            id: "open-settings",
+                            label: options.context.t(uiKeys.app.openSettings),
+                            tone: "primary",
+                            run: () => options.context.navigate("settings")
+                        }]
+                });
+        }
+        finally {
+            options.setPromptEnhancing(false);
+            options.context.requestRender();
+        }
+    }, { signal });
+    return () => events.abort();
+}

@@ -2,6 +2,9 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   base: "./",
+  resolve: {
+    extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts", ".json"]
+  },
   build: {
     outDir: "dist/renderer",
     emptyOutDir: true,

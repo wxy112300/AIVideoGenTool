@@ -1,0 +1,125 @@
+import { renderShell } from "./shell/page";
+import { renderIcons } from "./shared/icons";
+function captureHistoryPlayback(root, page) {
+    if (page !== "history-detail")
+        return null;
+    const video = root.querySelector(".history-player video");
+    if (!video)
+        return null;
+    return {
+        assetId: video.dataset.historyAsset ?? "",
+        versionId: video.dataset.historyVersion ?? "",
+        currentTime: video.currentTime,
+        paused: video.paused,
+        muted: video.muted,
+        playbackRate: video.playbackRate
+    };
+}
+function restoreHistoryPlayback(root, snapshot) {
+    if (!snapshot)
+        return;
+    const video = root.querySelector(".history-player video");
+    if (!video)
+        return;
+    if (video.dataset.historyAsset !== snapshot.assetId ||
+        video.dataset.historyVersion !== snapshot.versionId)
+        return;
+    const restore = () => {
+        // A render can be superseded before metadata arrives. Never restart a
+        // detached media element: doing so leaves an orphaned audio stream that
+        // survives page navigation and overlaps the next detail player.
+        if (!video.isConnected || !root.contains(video))
+            return;
+        video.muted = snapshot.muted;
+        video.playbackRate = snapshot.playbackRate;
+        if (Number.isFinite(video.duration)) {
+            video.currentTime = Math.min(snapshot.currentTime, video.duration);
+        }
+        if (snapshot.paused)
+            video.pause();
+        else
+            void video.play().catch(() => undefined);
+    };
+    if (video.readyState >= 1)
+        window.requestAnimationFrame(restore);
+    else
+        video.addEventListener("loadedmetadata", restore, { once: true });
+}
+function stopRenderedVideoPlayback(root) {
+    root.querySelectorAll("video").forEach((video) => {
+        video.pause();
+        // Pausing alone is not sufficient for a media element that is about to be
+        // detached. Clear its source and abort pending decode/play promises so a
+        // late metadata callback cannot restart audio in the background.
+        video.removeAttribute("src");
+        video.querySelectorAll("source").forEach((source) => source.remove());
+        video.load();
+    });
+}
+export function createRenderCoordinator(options) {
+    let renderRequest = 0;
+    return {
+        render() {
+            const request = ++renderRequest;
+            void (async () => {
+                const requestedPage = options.getPage();
+                if (requestedPage === "create" || requestedPage === "settings") {
+                    await options.ensurePromptPacks();
+                }
+                if (request !== renderRequest)
+                    return;
+                options.beforeRenderHistory();
+                const previousPage = options.getPage();
+                const playback = captureHistoryPlayback(options.root, previousPage);
+                stopRenderedVideoPlayback(options.root);
+                options.closeAppLogContextMenu();
+                const content = previousPage === "create" ? options.renderPages.create() :
+                    previousPage === "queue" ? options.renderPages.queue() :
+                        previousPage === "history" ? options.renderPages.history() :
+                            previousPage === "history-detail" ? options.renderPages.historyDetail() :
+                                previousPage === "image-history-detail" ? options.renderPages.imageHistoryDetail() :
+                                    options.renderPages.settings();
+                const page = options.getPage();
+                const state = options.getState();
+                const ui = options.getUiState();
+                options.root.innerHTML = renderShell({
+                    page,
+                    appVersion: ui.appVersion,
+                    queueCount: state.queue.length,
+                    flashMessage: ui.flashMessage,
+                    flashKind: ui.flashNotification?.kind ?? "info",
+                    flashActions: ui.flashNotification?.actions ?? [],
+                    content,
+                    t: options.t,
+                    icon: options.icon,
+                    escapeHtml: options.escapeHtml,
+                    confirmationDialog: options.renderConfirmationDialog(),
+                    directoryMigrationDialog: options.renderDirectoryMigrationDialog(),
+                    imageAssetLibraryDialog: options.renderImageAssetLibraryDialog(),
+                    windowCloseDialog: options.renderWindowCloseDialog(),
+                    upscaleDialog: options.renderUpscaleDialog()
+                });
+                renderIcons(options.root);
+                options.bindShell();
+                options.addPageCleanup(options.bindHistoryViewportControls());
+                options.bindUpscaleDialog();
+                if (page === "create")
+                    options.bindCreate();
+                else if (page === "queue")
+                    options.bindQueue();
+                else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
+                    options.bindHistory(playback);
+                }
+                else if (page === "settings") {
+                    options.bindSettings();
+                }
+                options.syncAppLogPolling();
+                if (page === "history")
+                    options.restoreHistoryScrollPosition();
+                restoreHistoryPlayback(options.root, playback);
+            })().catch((error) => {
+                console.error("Failed to render page dependencies", error);
+            });
+        }
+    };
+}

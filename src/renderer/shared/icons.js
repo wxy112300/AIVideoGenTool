@@ -1,0 +1,75 @@
+import { AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Ban, Brush, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CircleHelp, Columns3, Copy, Download, Ellipsis, ExternalLink, FileText, Film, FolderOpen, Gauge, Grid2X2, Heart, Image, Images, Info, LayoutGrid, ListOrdered, Maximize2, MemoryStick, Monitor, MoveDown, MoveUp, PackageOpen, Pause, Pencil, Play, Power, Plus, Puzzle, RefreshCw, RotateCcw, Save, ScanSearch, Server, Settings as SettingsIcon, ShieldAlert, ShieldCheck, Sparkles, SlidersHorizontal, Square, Star, Trash2, Upload, Video, WandSparkles, Workflow, X, Zap, createIcons } from "lucide";
+const lucideIconSet = {
+    AlertTriangle,
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    Ban,
+    Brush,
+    Check,
+    ChevronDown,
+    ChevronLeft,
+    ChevronRight,
+    CircleAlert,
+    CircleCheck,
+    CircleHelp,
+    Columns3,
+    Copy,
+    Download,
+    Ellipsis,
+    ExternalLink,
+    FileText,
+    Film,
+    FolderOpen,
+    Gauge,
+    Grid2X2,
+    Heart,
+    Image,
+    Images,
+    Info,
+    LayoutGrid,
+    ListOrdered,
+    Maximize2,
+    MemoryStick,
+    Monitor,
+    MoveDown,
+    MoveUp,
+    PackageOpen,
+    Pause,
+    Pencil,
+    Play,
+    Power,
+    Plus,
+    Puzzle,
+    RefreshCw,
+    RotateCcw,
+    Save,
+    ScanSearch,
+    Server,
+    Settings: SettingsIcon,
+    ShieldAlert,
+    ShieldCheck,
+    Sparkles,
+    SlidersHorizontal,
+    Square,
+    Star,
+    Trash2,
+    Upload,
+    Video,
+    WandSparkles,
+    Workflow,
+    X,
+    Zap
+};
+export function icon(name, className = "") {
+    return `<i data-lucide="${name}" class="ui-icon ${className}" aria-hidden="true"></i>`;
+}
+export function renderIcons(root) {
+    createIcons({
+        icons: lucideIconSet,
+        root,
+        attrs: {
+            "stroke-width": "1.8"
+        }
+    });
+}

@@ -10,7 +10,7 @@ export interface ShellControllerOptions {
   returnToLastHistoryDetail(): void;
   navigateHistoryDetail(direction: -1 | 1): void;
   navigateImageHistoryDetail(direction: -1 | 1): void;
-  setHistoryScrollPosition(position: number): void;
+  captureHistoryScrollPosition(): void;
   setHistoryScrollRestorePending(value: boolean): void;
   clearHistoryForwardTarget(): void;
   setPage(page: Page): void;
@@ -51,7 +51,7 @@ export function mountShellController(
         options.returnToHistory();
         return;
       }
-      if (previousPage === "history") options.setHistoryScrollPosition(window.scrollY);
+      if (previousPage === "history") options.captureHistoryScrollPosition();
       if (nextPage === "history" && previousPage !== "history") options.clearHistoryForwardTarget();
       if (nextPage !== "history") options.clearHistoryForwardTarget();
       if (nextPage === "history" && previousPage !== "history") options.setHistoryScrollRestorePending(true);

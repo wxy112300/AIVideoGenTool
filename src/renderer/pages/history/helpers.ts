@@ -195,6 +195,31 @@ export function historyCardsByOrder(gallery: HTMLElement): HTMLElement[] {
   );
 }
 
+export function assignHistoryMasonryColumns(
+  cardHeights: ReadonlyArray<number>,
+  columnCount: number,
+  gap = 10
+): number[][] {
+  const safeColumnCount = Math.max(0, Math.floor(columnCount));
+  const columns = Array.from({ length: safeColumnCount }, () => [] as number[]);
+  if (!safeColumnCount) return columns;
+  const columnHeights = Array.from({ length: safeColumnCount }, () => 0);
+  const safeGap = Number.isFinite(gap) ? Math.max(0, gap) : 0;
+  cardHeights.forEach((value, cardIndex) => {
+    let shortestColumn = 0;
+    for (let columnIndex = 1; columnIndex < safeColumnCount; columnIndex += 1) {
+      if (columnHeights[columnIndex]! < columnHeights[shortestColumn]!) {
+        shortestColumn = columnIndex;
+      }
+    }
+    const column = columns[shortestColumn]!;
+    const height = Number.isFinite(value) ? Math.max(0, value) : 0;
+    columnHeights[shortestColumn] = columnHeights[shortestColumn]! + height + (column.length ? safeGap : 0);
+    column.push(cardIndex);
+  });
+  return columns;
+}
+
 export function historyMasonryColumnCount(width: number, gap = 10): number {
   if (width <= 480) return 1;
   const minimumCardWidth = 300;

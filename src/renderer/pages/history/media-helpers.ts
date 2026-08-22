@@ -2,6 +2,10 @@ import type { RendererContext } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
 import type { HistoryMediaControllerOptions } from "./media-controller";
 import { historyCoverCandidates } from "./helpers";
+import {
+  createHistoryMediaScheduler,
+  type HistoryMediaTaskPriority
+} from "./media-scheduler";
 
 const HISTORY_COVER_MAX_EDGE = 640;
 const IMAGE_HISTORY_THUMBNAIL_MAX_EDGE = 640;
@@ -16,27 +20,34 @@ export function createHistoryMediaRuntime(
 ): HistoryMediaRuntime {
   const historyCoverDataUrls = new Map<string, string>();
   const imageHistoryThumbnailDataUrls = new Map<string, string>();
-  let historyCoverWarmupController: AbortController | null = null;
-  let historyCoverWarmupTimer: number | undefined;
+  const historyCoverCacheMisses = new Set<string>();
+  const historyCoverReads = new Map<string, Promise<{ value: string | null; failed: boolean }>>();
+  const historyCoverScheduler = createHistoryMediaScheduler(1);
 
-  const loadImageHistoryThumbnail = async (image: HTMLImageElement): Promise<void> => {
+  const loadImageHistoryThumbnail = async (
+    image: HTMLImageElement,
+    signal?: AbortSignal
+  ): Promise<boolean> => {
     const key = image.dataset.imageHistoryCacheKey ?? "";
     const sourcePath = image.dataset.imageHistorySource ?? "";
-    if (!key || !sourcePath || !image.isConnected) return;
+    const isActive = () => !signal?.aborted && image.isConnected;
+    if (!key || !sourcePath || !isActive()) return false;
     try {
       const cached = imageHistoryThumbnailDataUrls.get(key) ??
         await context.studio.readHistoryCover(key, sourcePath);
-      if (cached) {
+      if (cached && isActive()) {
         imageHistoryThumbnailDataUrls.set(key, cached);
-        if (image.isConnected) image.src = cached;
-        return;
+        image.src = cached;
+        return true;
       }
+      if (!isActive()) return false;
       const sourceData = await context.studio.readImage(sourcePath);
-      if (!sourceData || !image.isConnected) return;
+      if (!sourceData || !isActive()) return false;
       const source = document.createElement("img");
       source.src = sourceData;
+      if (!isActive()) return false;
       await source.decode();
-      if (!source.naturalWidth || !source.naturalHeight) return;
+      if (!source.naturalWidth || !source.naturalHeight || !isActive()) return false;
       const scale = Math.min(
         1,
         IMAGE_HISTORY_THUMBNAIL_MAX_EDGE / Math.max(source.naturalWidth, source.naturalHeight)
@@ -45,20 +56,23 @@ export function createHistoryMediaRuntime(
       canvas.width = Math.max(1, Math.round(source.naturalWidth * scale));
       canvas.height = Math.max(1, Math.round(source.naturalHeight * scale));
       const canvasContext = canvas.getContext("2d");
-      if (!canvasContext) return;
+      if (!canvasContext || !isActive()) return false;
       canvasContext.drawImage(source, 0, 0, canvas.width, canvas.height);
       // PNG keeps the alpha channel so transparent BiRefNet results remain
       // transparent in the history gallery instead of becoming black JPEGs.
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (!blob || blob.size > 2 * 1024 * 1024 || !image.isConnected) return;
-      const saved = await context.studio.saveHistoryCover(key, sourcePath, await blob.arrayBuffer());
-      if (!saved || !image.isConnected) return;
+      if (!blob || blob.size > 2 * 1024 * 1024 || !isActive()) return false;
+      const data = await blob.arrayBuffer();
+      if (!isActive()) return false;
+      const saved = await context.studio.saveHistoryCover(key, sourcePath, data);
+      if (!saved || !isActive()) return false;
       const savedUrl = await context.studio.readHistoryCover(key, sourcePath);
-      if (savedUrl) {
-        imageHistoryThumbnailDataUrls.set(key, savedUrl);
-        if (image.isConnected) image.src = savedUrl;
-      }
+      if (!savedUrl || !isActive()) return false;
+      imageHistoryThumbnailDataUrls.set(key, savedUrl);
+      image.src = savedUrl;
+      return true;
     } catch {
+      return false;
     }
   };
 
@@ -89,11 +103,14 @@ export function createHistoryMediaRuntime(
     };
     image.onload = showImage;
     image.onerror = () => {
-      if (image.src !== dataUrl) return;
+      if (!media.isConnected || !image.isConnected || image.src !== dataUrl) return;
       image.removeAttribute("src");
       media.classList.remove("has-history-cover");
       delete media.dataset.historyCoverCached;
-      if (key) historyCoverDataUrls.delete(key);
+      if (key) {
+        historyCoverDataUrls.delete(key);
+        historyCoverCacheMisses.delete(key);
+      }
       loadHistoryCardVideo(media);
     };
     image.src = dataUrl;
@@ -101,20 +118,48 @@ export function createHistoryMediaRuntime(
     return true;
   };
 
-  const loadHistoryCoverFromCache = async (media: HTMLElement): Promise<boolean> => {
+  const markHistoryCoverWarmupFailed = (media: HTMLElement, signal: AbortSignal): void => {
+    if (signal.aborted || !isHistoryListPage() || !media.isConnected) return;
+    if (media.dataset.historyCoverCached === "true") return;
+    media.classList.remove("media-loading");
+    media.classList.add("media-error");
+  };
+
+  const loadHistoryCoverFromCache = async (
+    media: HTMLElement,
+    signal?: AbortSignal
+  ): Promise<boolean> => {
     const key = media.dataset.coverKey;
     const sourcePath = media.dataset.coverSource;
     if (!key || !sourcePath) return false;
+    if (signal?.aborted || !media.isConnected) return false;
+    const cachedInMemory = historyCoverDataUrls.get(key);
+    if (cachedInMemory) return setHistoryCoverImage(media, cachedInMemory);
+    if (historyCoverCacheMisses.has(key)) return false;
+    let read = historyCoverReads.get(key);
+    if (!read) {
+      read = context.studio.readHistoryCover(key, sourcePath)
+        .then((value) => ({ value: value || null, failed: false }))
+        .catch((error) => {
+          void context.studio.reportRendererError(context.t(uiKeys.history.media.coverReadFailed), {
+            error: error instanceof Error ? error.message : String(error)
+          });
+          return { value: null, failed: true };
+        });
+      historyCoverReads.set(key, read);
+    }
     try {
-      const cached = historyCoverDataUrls.get(key) ??
-        await context.studio.readHistoryCover(key, sourcePath);
-      if (!cached) return false;
+      const result = await read;
+      if (historyCoverReads.get(key) === read) historyCoverReads.delete(key);
+      if (!result.value) {
+        if (!result.failed) historyCoverCacheMisses.add(key);
+        return false;
+      }
+      if (signal?.aborted || !media.isConnected) return false;
+      const cached = result.value;
       historyCoverDataUrls.set(key, cached);
       return setHistoryCoverImage(media, cached);
-    } catch (error) {
-      void context.studio.reportRendererError(context.t(uiKeys.history.media.coverReadFailed), {
-        error: error instanceof Error ? error.message : String(error)
-      });
+    } catch {
       return false;
     }
   };
@@ -214,10 +259,13 @@ export function createHistoryMediaRuntime(
     const blob = await historyCoverBlob(video);
     if (!blob || !isActive()) return;
     const data = await blob.arrayBuffer();
+    if (!isActive()) return;
     try {
       if (!await context.studio.saveHistoryCover(key, sourcePath, data) || !isActive()) return;
       const dataUrl = await historyBlobDataUrl(blob);
+      if (!isActive()) return;
       historyCoverDataUrls.set(key, dataUrl);
+      historyCoverCacheMisses.delete(key);
       setHistoryCoverImage(media, dataUrl);
     } catch (error) {
       void context.studio.reportRendererError(context.t(uiKeys.history.media.coverSaveFailed), {
@@ -230,7 +278,7 @@ export function createHistoryMediaRuntime(
     video: HTMLVideoElement,
     signal: AbortSignal
   ): Promise<boolean> => {
-    if (video.readyState >= 2) return Promise.resolve(true);
+    if (signal.aborted || video.readyState >= 2) return Promise.resolve(!signal.aborted);
     return new Promise((resolve) => {
       let settled = false;
       const finish = (ready: boolean) => {
@@ -253,17 +301,30 @@ export function createHistoryMediaRuntime(
     });
   };
 
-  const waitForHistorySeek = (video: HTMLVideoElement, time: number): Promise<void> => new Promise((resolve) => {
+  const waitForHistorySeek = (
+    video: HTMLVideoElement,
+    time: number,
+    signal?: AbortSignal
+  ): Promise<void> => new Promise((resolve) => {
     let settled = false;
+    let abortHandler: (() => void) | undefined;
+    let timeout: number | undefined;
     const finish = () => {
       if (settled) return;
       settled = true;
       video.removeEventListener("seeked", finish);
-      window.clearTimeout(timeout);
+      if (abortHandler && signal) signal.removeEventListener("abort", abortHandler);
+      if (timeout !== undefined) window.clearTimeout(timeout);
       resolve();
     };
-    const timeout = window.setTimeout(finish, 1200);
+    abortHandler = finish;
+    if (signal?.aborted) {
+      finish();
+      return;
+    }
+    timeout = window.setTimeout(finish, 1200);
     video.addEventListener("seeked", finish, { once: true });
+    signal?.addEventListener("abort", abortHandler, { once: true });
     try {
       video.currentTime = time;
     } catch {
@@ -276,14 +337,15 @@ export function createHistoryMediaRuntime(
     fallbackTime: number,
     duration: number,
     seed: number,
-    isActive: () => boolean
+    isActive: () => boolean,
+    signal?: AbortSignal
   ): Promise<number> => {
     const candidates = historyCoverCandidates(duration, seed);
     let bestTime = fallbackTime;
     let bestScore: number | null = null;
     for (const candidate of candidates) {
       if (!isActive()) return bestTime;
-      await waitForHistorySeek(video, candidate);
+      await waitForHistorySeek(video, candidate, signal);
       if (!isActive()) return bestTime;
       const score = historyCoverScore(video);
       if (score != null && (bestScore == null || score > bestScore)) {
@@ -292,73 +354,81 @@ export function createHistoryMediaRuntime(
       }
     }
     if (!isActive()) return bestTime;
-    await waitForHistorySeek(video, bestTime);
+    await waitForHistorySeek(video, bestTime, signal);
     return bestTime;
   };
 
   const warmHistoryCover = async (
     media: HTMLElement,
     signal: AbortSignal
-  ): Promise<void> => {
-    if (signal.aborted || media.dataset.historyCoverCached === "true") return;
+  ): Promise<boolean> => {
+    const isWarmupActive = () =>
+      !signal.aborted &&
+      isHistoryListPage() &&
+      media.isConnected &&
+      !media.matches(":hover") &&
+      !media.classList.contains("playing");
+    if (!isWarmupActive()) return false;
+    if (media.dataset.historyCoverCached === "true") return true;
     const source = media.querySelector<HTMLVideoElement>("video")?.dataset.historySrc;
     const key = media.dataset.coverKey;
-    if (!source || !key) return;
-    if (await loadHistoryCoverFromCache(media) || signal.aborted) return;
-    if (media.dataset.historyLoaded === "true" || media.matches(":hover") || media.classList.contains("playing")) return;
+    if (!source || !key) return false;
+    if (await loadHistoryCoverFromCache(media, signal) || signal.aborted) {
+      return media.dataset.historyCoverCached === "true";
+    }
+    if (!isWarmupActive() || media.dataset.historyLoaded === "true") return false;
+    media.classList.remove("media-error");
+    media.classList.add("media-loading");
     const video = document.createElement("video");
     video.muted = true;
     video.crossOrigin = "anonymous";
     video.preload = "auto";
     video.src = source;
+    let coverSaved = false;
     try {
-      if (!await waitForHistoryVideoData(video, signal) || signal.aborted) return;
+      if (!await waitForHistoryVideoData(video, signal) || signal.aborted) return false;
       const duration = Number(media.dataset.previewDuration) || video.duration;
       const fallbackTime = Number(media.dataset.coverTime) || 0;
       const seed = Number(media.dataset.coverSeed) || 0;
-      const isActive = () =>
-        !signal.aborted &&
-        isHistoryListPage() &&
-        media.isConnected &&
-        !media.matches(":hover") &&
-        !media.classList.contains("playing");
       const selectedTime = await chooseHistoryCoverTime(
         video,
         fallbackTime,
         duration,
         seed,
-        isActive
+        isWarmupActive,
+        signal
       );
-      if (!isActive()) return;
+      if (!isWarmupActive()) return false;
       media.dataset.coverTime = String(selectedTime);
-      await saveHistoryCover(media, video, isActive);
+      await saveHistoryCover(media, video, isWarmupActive);
+      coverSaved = historyCoverDataUrls.has(key);
+      return coverSaved;
     } finally {
       video.pause();
       video.removeAttribute("src");
       video.load();
+      if (!coverSaved && isWarmupActive()) markHistoryCoverWarmupFailed(media, signal);
     }
   };
 
   const stopHistoryCoverWarmup = (): void => {
-    historyCoverWarmupController?.abort();
-    historyCoverWarmupController = null;
-    window.clearTimeout(historyCoverWarmupTimer);
-    historyCoverWarmupTimer = undefined;
+    historyCoverScheduler.clear();
   };
 
-  const scheduleHistoryCoverWarmup = (mediaCards: HTMLElement[]): void => {
-    stopHistoryCoverWarmup();
-    const controller = new AbortController();
-    historyCoverWarmupController = controller;
-    historyCoverWarmupTimer = window.setTimeout(() => {
-      historyCoverWarmupTimer = undefined;
-      void (async () => {
-        for (const media of mediaCards) {
-          if (controller.signal.aborted) return;
-          await warmHistoryCover(media, controller.signal);
-        }
-      })();
-    }, 1200);
+  const scheduleHistoryCoverWarmup = (
+    mediaCards: HTMLElement[],
+    priority: HistoryMediaTaskPriority = "viewport"
+  ): void => {
+    mediaCards.forEach((media) => {
+      const key = media.dataset.coverKey?.trim();
+      if (!key) return;
+      historyCoverScheduler.enqueue(key, (signal) => warmHistoryCover(media, signal), priority);
+    });
+  };
+
+  const cancelHistoryCoverWarmup = (media: HTMLElement): void => {
+    const key = media.dataset.coverKey?.trim();
+    if (key) historyCoverScheduler.cancel(key);
   };
 
   return {
@@ -367,6 +437,7 @@ export function createHistoryMediaRuntime(
     loadHistoryCardVideo,
     releaseHistoryCardVideo,
     scheduleHistoryCoverWarmup,
+    cancelHistoryCoverWarmup,
     stopHistoryCoverWarmup,
     chooseHistoryCoverTime,
     saveHistoryCover,
