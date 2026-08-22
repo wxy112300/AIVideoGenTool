@@ -10,7 +10,6 @@ import type {
   WorkflowCapabilities
 } from "../../../types";
 import type { CreationMode, RendererCleanup, RendererContext } from "../../contracts";
-import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
 import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, videoLoraCompatibleWithDraft, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
 import { generationSafetyForTask, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
 import { ensureMotionContextSourceSlot, h3ReferenceSlotCounts } from "../../../core/h3-reference";
@@ -56,7 +55,7 @@ export interface CreatePageControllerOptions {
     setEnqueueBusy(value: boolean): void;
     setEnqueueBusyUi(busy: boolean): void;
   };
-  createPrompt: Omit<CreatePromptControllerOptions, "context" | "patchDraft" | "patchDraftForMode" | "setWorkflowCapability" | "syncPromptEnqueueUi" | "updateH3PromptCheck" | "isPromptEnhancing" | "setPromptEnhancing" | "setPromptRuntimeLoaded" | "togglePromptModel" | "getH3PromptBuilder" | "setH3PromptBuilder" | "getPromptEnhanceMode" | "setPromptEnhanceMode" | "getH3PromptPreset" | "setH3PromptPreset"> & {
+  createPrompt: Omit<CreatePromptControllerOptions, "context" | "patchDraft" | "patchDraftForMode" | "setWorkflowCapability" | "syncPromptEnqueueUi" | "updateH3PromptCheck" | "isPromptEnhancing" | "setPromptEnhancing" | "setPromptRuntimeLoaded" | "togglePromptModel" | "getPromptEnhanceMode" | "setPromptEnhanceMode" | "getH3PromptPreset" | "setH3PromptPreset"> & {
     syncPromptEnqueueUi(promptText: string): void;
     updateH3PromptCheck(promptText: string, hasEndImage: boolean, mode?: import("../../../types").H3PromptMode, hasVideoReference?: boolean): void;
     getPromptEnhanceMode(): PromptEnhanceMode;
@@ -71,8 +70,6 @@ export interface CreatePageControllerOptions {
     redoPromptEdit(): boolean;
     invalidatePromptEditHistory(): void;
     togglePromptModel(): Promise<void>;
-    getH3PromptBuilder(): H3PromptBuilderInput;
-    setH3PromptBuilder(builder: H3PromptBuilderInput): void;
   };
   isEnqueueBusy(): boolean;
   setEnqueueBusy(value: boolean): void;
@@ -271,8 +268,6 @@ export function mountCreatePageController(
     setPromptEnhancing: options.createPrompt.setPromptEnhancing,
     setPromptRuntimeLoaded: options.createPrompt.setPromptRuntimeLoaded,
     togglePromptModel: options.createPrompt.togglePromptModel,
-    getH3PromptBuilder: options.createPrompt.getH3PromptBuilder,
-    setH3PromptBuilder: options.createPrompt.setH3PromptBuilder,
     getPromptEnhanceMode: options.createPrompt.getPromptEnhanceMode,
     setPromptEnhanceMode: options.createPrompt.setPromptEnhanceMode,
     getH3PromptPreset: options.createPrompt.getH3PromptPreset,

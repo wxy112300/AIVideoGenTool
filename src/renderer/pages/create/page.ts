@@ -10,14 +10,12 @@ import type {
   VideoLoraPurpose,
   VideoLoraSelection
 } from "../../../types";
-import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
 import type { Translate } from "../../../core/i18n";
 import type { PromptUi } from "../../../core/prompts/types.js";
 import { uiKeys } from "../../../core/i18n-keys";
 import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
 import {
   renderCreateModelOptions,
-  renderH3PromptBuilderMarkup,
   renderH3ReferenceSlotsMarkup,
   renderImageEditPromptInstructionOptions,
   type CreateModelOptionViewModel
@@ -92,7 +90,6 @@ export interface VideoCreatePageViewModel {
   h3PromptPresetOptionsMarkup: string;
   promptSnippetOptionsMarkup: string;
   h3PromptCheckMarkup: string;
-  h3PromptBuilder: H3PromptBuilderInput;
   modelOptions: ReadonlyArray<CreateModelOptionViewModel>;
   resolutionOptionsMarkup: string;
   stepsOptionsMarkup: string;
@@ -246,27 +243,6 @@ export function renderCreatePage(
   const escapeHtml = options.escapeHtml;
   const t = options.t;
   const promptUi = viewModel.promptUi;
-  const promptModeLabel = viewModel.h3Mode === "R2V"
-    ? promptUi.t("modeR2v")
-    : viewModel.h3Mode === "FL2VA"
-      ? promptUi.t("modeFl2va")
-      : viewModel.h3Mode === "L2VA"
-        ? promptUi.t("modeL2va")
-        : viewModel.h3Mode === "T2VA"
-          ? promptUi.t("modeT2va")
-          : promptUi.t("modeI2va");
-  const referenceSectionTitle = viewModel.h3Mode === "R2V"
-    ? promptUi.t("referenceTagsTitle")
-    : viewModel.h3Mode === "T2VA"
-      ? promptUi.t("textTimelineTitle")
-      : promptUi.t("referenceAlignmentTitle");
-  const referenceSectionDescription = viewModel.h3Mode === "R2V"
-    ? promptUi.t("referenceR2vDescription")
-    : viewModel.h3Mode === "T2VA"
-      ? promptUi.t("referenceT2vaDescription")
-      : viewModel.h3Mode === "L2VA"
-        ? promptUi.t("referenceL2vaDescription")
-        : promptUi.t("referenceDefaultDescription");
   return `
     <section class="page-heading create-page-heading">
       <div class="page-heading-copy"><h1>${t(uiKeys.create.videoTitle)}</h1><p>${t(viewModel.extending ? uiKeys.create.extensionDescription : uiKeys.create.videoDescription)}</p></div>
@@ -394,30 +370,6 @@ export function renderCreatePage(
           ? promptUi.t(viewModel.draft.h3ContextLatentPath ? "extensionR2vLatentDescription" : "extensionR2vFallbackDescription")
           : promptUi.t("extensionBoundaryDescription")}</span>
       </div>` : ""}
-      ${viewModel.isMiniMaxH3 && !viewModel.extending ? `<details class="h3-prompt-helper">
-        <summary>
-          <span class="h3-helper-heading">
-            <strong>${promptUi.t("helperTitle")} <span class="model-badge">${promptUi.t("optional")}</span></strong>
-            <span>${promptUi.t("helperModeSubtitle", { mode: promptModeLabel })}</span>
-          </span>
-          <span class="h3-helper-toggle"><span class="when-closed">${promptUi.t("toggleOpen")}</span><span class="when-open">${promptUi.t("toggleClose")}</span>${icon("chevron-down")}</span>
-        </summary>
-        <div class="h3-helper-body">
-          <div class="h3-prompt-sections">
-            <div><strong>${referenceSectionTitle}</strong><span>${referenceSectionDescription}</span></div>
-            <div><strong>${promptUi.t("timelineTitle")}</strong><span>${promptUi.t("timelineDescription")}</span></div>
-            <div><strong>${promptUi.t("soundTitle")}</strong><span>${promptUi.t("soundDescription")}</span></div>
-          </div>
-          <div class="h3-helper-actions h3-helper-quick-actions">
-            <span>${promptUi.t("helperIntro")}</span>
-            <button class="secondary button-with-icon" id="h3-prompt-template" type="button">${icon("list-ordered")}${promptUi.t("useTemplate")}</button>
-          </div>
-          <details class="h3-builder-disclosure">
-            <summary><span><strong>${promptUi.t("builderTitle")}</strong><small>${promptUi.t("builderHint")}</small></span>${icon("chevron-down")}</summary>
-            ${renderH3PromptBuilderMarkup(viewModel.h3PromptBuilder, { icon, escapeHtml, t })}
-          </details>
-        </div>
-      </details>` : ""}
       <div class="composer-settings">
         <section class="composer-control-group composer-output-group">
           <div class="composer-group-heading"><div><strong>${t(uiKeys.create.videoSettings.outputTitle)}</strong><span>${t(uiKeys.create.videoSettings.outputDescription)}</span></div></div>

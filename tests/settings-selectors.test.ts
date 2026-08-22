@@ -168,6 +168,28 @@ describe("settings selectors", () => {
     });
   });
 
+  it("makes a fully unregistered installed node package repairable", () => {
+    const state = deriveCustomNodeCardState({
+      node: qwenNode({
+        installed: true,
+        loaded: false,
+        runtimeVerified: true,
+        runtimeMissingNodeTypes: ["NodeA", "NodeB"],
+        runtimeRepairable: true
+      }),
+      queuedIndex: -1,
+      active: false,
+      finalizing: false,
+      inFinalizingBatch: false,
+      globallyBlocked: false
+    });
+    expect(state).toMatchObject({
+      status: "runtime-missing",
+      installActionable: true,
+      runtimeRepairable: true
+    });
+  });
+
   it("keeps unknown core nodes neutral until compatibility is checked", () => {
     expect(deriveCoreNodeState(null)).toMatchObject({
       known: false,

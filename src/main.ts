@@ -105,9 +105,7 @@ import {
   imageEditEnqueueBlockReason,
   type CreateViewModelDependencies
 } from "./renderer/pages/create/view-model";
-import type { H3PromptBuilderInput } from "./core/h3-prompt";
 import {
-  createDefaultH3PromptBuilder,
   h3PromptPresetOptions,
   h3PromptModeForDraft,
   imageFileIsSupported,
@@ -332,23 +330,19 @@ let promptRuntime: PromptRuntimeState = createPromptRuntimeState(comfyRuntime);
 interface CreationModeUiState {
   promptEnhanceMode: PromptEnhanceMode;
   h3PromptPreset: H3PromptPreset;
-  h3PromptBuilder: H3PromptBuilderInput;
 }
 const creationModeUiState: Record<CreationMode, CreationModeUiState> = {
   "image-to-video": {
     promptEnhanceMode: "sulphur-native",
-    h3PromptPreset: "official-storyboard",
-    h3PromptBuilder: createDefaultH3PromptBuilder()
+    h3PromptPreset: "official-storyboard"
   },
   "video-extension": {
     promptEnhanceMode: "sulphur-native",
-    h3PromptPreset: "official-storyboard",
-    h3PromptBuilder: createDefaultH3PromptBuilder()
+    h3PromptPreset: "official-storyboard"
   },
   "image-edit": {
     promptEnhanceMode: "sulphur-native",
-    h3PromptPreset: "official-storyboard",
-    h3PromptBuilder: createDefaultH3PromptBuilder()
+    h3PromptPreset: "official-storyboard"
   }
 };
 const activeCreationModeUiState = (): CreationModeUiState => creationModeUiState[creationMode];
@@ -768,7 +762,6 @@ function createViewModelDependencies(): CreateViewModelDependencies {
     promptReleasing: promptRuntime.model.phase === "unloading",
     promptRuntimeLoaded: promptRuntime.model.phase === "resident",
     promptProgress: ownsActivePrompt ? promptProgress : null,
-    h3PromptBuilder: modeUiState.h3PromptBuilder,
     enqueueBusy: ui.enqueueBusy,
     promptRuntimeControlTitle,
     promptRuntimeControlIcon,
@@ -2470,11 +2463,6 @@ function bindCreate(): void {
       redoPromptEdit: () => redoPromptEdit("video"),
       invalidatePromptEditHistory: () => invalidatePromptEditHistory("video"),
       togglePromptModel: togglePromptModelFromUi,
-      getH3PromptBuilder: () => activeCreationModeUiState().h3PromptBuilder,
-      setH3PromptBuilder: (builder) => {
-        activeCreationModeUiState().h3PromptBuilder = builder;
-      },
-      createDefaultH3PromptBuilder,
       syncPromptEnqueueUi,
       updateH3PromptCheck
     },

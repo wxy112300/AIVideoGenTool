@@ -40,7 +40,7 @@ export interface CustomNodeInstallQueueDependencies {
 export function customNodeIdsForBulkAction(nodes: readonly CustomNodeStatus[]): string[] {
   const eligible = nodes.filter((node) => node.bulkInstall !== false);
   const actionable = eligible.filter((node) =>
-    !node.installed || node.updateAvailable
+    !node.installed || node.updateAvailable || node.runtimeRepairable
   );
   return actionable.map((node) => node.id);
 }
@@ -51,10 +51,14 @@ export function customNodeBulkActionMode(
   nodes: readonly CustomNodeStatus[]
 ): CustomNodeBulkActionMode {
   const actionable = nodes.filter((node) =>
-    node.bulkInstall !== false && (!node.installed || node.updateAvailable)
+    node.bulkInstall !== false && (
+      !node.installed || node.updateAvailable || node.runtimeRepairable
+    )
   );
   const hasMissing = actionable.some((node) => !node.installed);
-  const hasUpdates = actionable.some((node) => node.installed && node.updateAvailable);
+  const hasUpdates = actionable.some((node) =>
+    node.installed && (node.updateAvailable || node.runtimeRepairable)
+  );
   if (hasMissing && hasUpdates) return "mixed";
   if (hasMissing) return "install";
   if (hasUpdates) return "update";

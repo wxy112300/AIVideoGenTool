@@ -86,18 +86,24 @@ function scanWithNodeRuntimeFailure(nodeId: string, detail: string): Environment
 }
 
 describe("CustomNodeInstallQueue", () => {
-  it("bulk-selects only missing or catalog-outdated nodes", () => {
+  it("bulk-selects missing, catalog-outdated, or fully unregistered nodes", () => {
     const nodes = [
       nodeStatus("healthy"),
       nodeStatus("missing", { installed: false, loaded: false }),
       nodeStatus("unloaded", { loaded: false }),
-      nodeStatus("outdated", { updateAvailable: true })
+      nodeStatus("outdated", { updateAvailable: true }),
+      nodeStatus("runtime-broken", { loaded: false, runtimeRepairable: true })
     ];
-    expect(customNodeIdsForBulkAction(nodes)).toEqual(["missing", "outdated"]);
+    expect(customNodeIdsForBulkAction(nodes)).toEqual([
+      "missing",
+      "outdated",
+      "runtime-broken"
+    ]);
     expect(customNodeIdsForBulkAction(nodes.slice(0, 1))).toEqual([]);
     expect(customNodeBulkActionMode(nodes)).toBe("mixed");
     expect(customNodeBulkActionMode([nodes[0], nodes[1]])).toBe("install");
     expect(customNodeBulkActionMode([nodes[0], nodes[3]])).toBe("update");
+    expect(customNodeBulkActionMode([nodes[0], nodes[4]])).toBe("update");
     expect(customNodeBulkActionMode(nodes.slice(0, 1))).toBe("none");
   });
 

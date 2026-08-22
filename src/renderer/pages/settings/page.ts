@@ -723,7 +723,7 @@ export function renderSettingsPage(
             </div>
             <div class="custom-node-actions">
               <span class="model-availability ${cardState.tone}" role="status" aria-live="polite">${statusMarkup}</span>
-              <button class="${installActionable ? "primary" : "secondary"} button-with-icon" aria-busy="${active || queued || cardState.phase === "finalizing"}" ${installActionable ? `data-install-node="${escape(node.id)}"` : `data-rescan-node="${escape(node.id)}"`} ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : installActionable ? node.installed ? "refresh-cw" : "download" : "scan-search")}${installStatus || (node.updateAvailable ? s("nodes.updateRestart") : node.installed ? t(uiKeys.settings.rescan) : s("nodes.installRestart"))}</button>
+              <button class="${installActionable ? "primary" : "secondary"} button-with-icon" aria-busy="${active || queued || cardState.phase === "finalizing"}" ${installActionable ? `data-install-node="${escape(node.id)}"` : `data-rescan-node="${escape(node.id)}"`} ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : installActionable ? node.installed ? "refresh-cw" : "download" : "scan-search")}${installStatus || (node.updateAvailable || cardState.runtimeRepairable ? s("nodes.updateRestart") : node.installed ? t(uiKeys.settings.rescan) : s("nodes.installRestart"))}</button>
             </div>
           </article>`;
         }).join("") || `<div class="panel environment-empty">${s("nodes.empty")}</div>`}

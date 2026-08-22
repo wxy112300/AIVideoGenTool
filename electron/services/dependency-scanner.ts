@@ -582,13 +582,19 @@ export async function scanCustomNodes(
     const runtimeMissingNodeTypes = serviceNodeIds !== null && requiredNodeTypes
       ? requiredNodeTypes.filter((nodeType) => !serviceNodeIds.has(nodeType))
       : [];
+    const runtimeRepairable = Boolean(
+      directory && runtimeVerified && requiredNodeTypes?.length &&
+      runtimeMissingNodeTypes.length === requiredNodeTypes.length
+    );
     const registered = definition.runtimeEndpoint
       ? h3PromptWriterRuntime.loaded !== false
       : !runtimeVerified || !requiredNodeTypes ||
         runtimeMissingNodeTypes.length === 0;
     const pendingRestartError = Boolean(directory) && !compatibilityError &&
       requiredNodeTypes && runtimeVerified && !registered
-      ? `节点文件已安装，但当前服务未注册：${runtimeMissingNodeTypes.join("、")}。重复安装通常无效，请查看本次 ComfyUI 启动日志中的节点导入错误`
+      ? runtimeRepairable
+        ? `节点文件已安装，但当前服务未注册任何基础节点：${runtimeMissingNodeTypes.join("、")}。请执行修复/更新以重新安装节点依赖并重启复检；若仍失败，请查看本次 ComfyUI 启动日志中的节点导入错误`
+        : `节点文件已安装，但当前服务未注册：${runtimeMissingNodeTypes.join("、")}。重复安装通常无效，请查看本次 ComfyUI 启动日志中的节点导入错误`
       : "";
     const duplicateNotice = duplicateDirectories.length
       ? `检测到 ${duplicateDirectories.length + 1} 个 H3 Motion Context 副本；只保留一个副本，否则运行时 patch 可能冲突。`
@@ -624,6 +630,7 @@ export async function scanCustomNodes(
       loaded: Boolean(directory) && !loadError && registered,
       runtimeVerified,
       runtimeMissingNodeTypes,
+      runtimeRepairable,
       loadError,
       updateNotice,
       runtimeNotice: definition.id === "minimax-h3-prompt-writer"

@@ -16,6 +16,7 @@ const densitySource = source("../src/styles/05-density-refinement.css");
 const settingsLayoutSource = source("../src/styles/06-settings-layout.css");
 const createComposerSource = source("../src/styles/07-create-composer.css");
 const createPageSource = source("../src/renderer/pages/create/page.ts");
+const createPromptControllerSource = source("../src/renderer/pages/create/prompt-controller.ts");
 const imageToVideoControllerSource = source("../src/renderer/pages/create/image-to-video-controller.ts");
 const createHeaderSource = source("../src/styles/09-create-header.css");
 const historyCurationSource = source("../src/styles/11-history-curation.css");
@@ -266,6 +267,13 @@ describe("UX/UI semantic token foundation", () => {
     expect(createPageSource).toContain("<div class=\"drop-zone has-image\" id=\"pick-end\"");
     expect(createPageSource).toContain("<button class=\"drop-zone\" id=\"pick-start\"");
     expect(imageToVideoControllerSource).toContain("if (!zone || zone.classList.contains(\"has-image\")) return;");
+  });
+
+  it("keeps the legacy H3 assistant removed while retaining prompt enhancement", () => {
+    expect(createPageSource).not.toContain("h3-prompt-helper");
+    expect(createPageSource).not.toContain("h3-prompt-template");
+    expect(createPageSource).not.toContain("h3-builder-generate");
+    expect(createPromptControllerSource).toContain("#enhance-prompt");
   });
 
   it("routes History and Settings headings through the shared sticky offset", () => {

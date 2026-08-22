@@ -204,6 +204,71 @@ describe("dependency scanner", () => {
     expect(kjNodes?.updateNotice).toContain("H3 TAE 实时预览节点");
   });
 
+  it("marks a fully unregistered KJNodes package as runtime repairable", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-kjnodes-runtime-"));
+    temporaryDirectories.push(comfyRoot);
+    const kjNodesDirectory = path.join(comfyRoot, "custom_nodes", "comfyui-kjnodes");
+    await fs.mkdir(path.join(kjNodesDirectory, "nodes"), { recursive: true });
+    await fs.writeFile(
+      path.join(kjNodesDirectory, "nodes", "preview_override_node.py"),
+      "class ModelPreviewOverrideKJ:\n    pass\n",
+      "utf8"
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("/object_info")) {
+        return new Response(JSON.stringify({}), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const statuses = await scanCustomNodes(
+      comfyRoot,
+      { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:8188" },
+      "",
+      "http://127.0.0.1:8188"
+    );
+    const kjNodes = statuses.find((status) => status.id === "kjnodes");
+
+    expect(kjNodes).toMatchObject({
+      installed: true,
+      runtimeVerified: true,
+      loaded: false,
+      runtimeMissingNodeTypes: ["VRAM_Debug", "PathchSageAttentionKJ"],
+      runtimeRepairable: true
+    });
+  });
+
+  it("does not repair a package when at least one baseline node registered", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-kjnodes-partial-"));
+    temporaryDirectories.push(comfyRoot);
+    const kjNodesDirectory = path.join(comfyRoot, "custom_nodes", "comfyui-kjnodes");
+    await fs.mkdir(path.join(kjNodesDirectory, "nodes"), { recursive: true });
+    await fs.writeFile(
+      path.join(kjNodesDirectory, "nodes", "preview_override_node.py"),
+      "class ModelPreviewOverrideKJ:\n    pass\n",
+      "utf8"
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("/object_info")) {
+        return new Response(JSON.stringify({ VRAM_Debug: {} }), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const statuses = await scanCustomNodes(
+      comfyRoot,
+      { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:8188" },
+      "",
+      "http://127.0.0.1:8188"
+    );
+    const kjNodes = statuses.find((status) => status.id === "kjnodes");
+
+    expect(kjNodes).toMatchObject({
+      runtimeMissingNodeTypes: ["PathchSageAttentionKJ"],
+      runtimeRepairable: false
+    });
+  });
+
   it("marks an unpatched Qwen-VL node for the Desktop stdout repair while offline", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-qwenvl-scan-"));
     temporaryDirectories.push(comfyRoot);

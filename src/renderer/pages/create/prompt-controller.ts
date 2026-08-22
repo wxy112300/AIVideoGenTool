@@ -5,12 +5,7 @@ import type {
   H3ReferenceRole,
   PromptEnhanceMode
 } from "../../../types";
-import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
 import { h3AutoPromptSeedFor } from "../../../core/prompts/h3/auto-seeds";
-import {
-  createH3PromptFromBuilder,
-  createH3PromptTemplate
-} from "../../../core/h3-prompt";
 import {
   activePromptIndexForDraft,
   promptPatchForDraft,
@@ -54,9 +49,6 @@ export interface CreatePromptControllerOptions {
   redoPromptEdit(): boolean;
   invalidatePromptEditHistory(): void;
   togglePromptModel(): Promise<void>;
-  getH3PromptBuilder(): H3PromptBuilderInput;
-  setH3PromptBuilder(builder: H3PromptBuilderInput): void;
-  createDefaultH3PromptBuilder(): H3PromptBuilderInput;
 }
 
 export function mountCreatePromptController(
@@ -350,93 +342,6 @@ export function mountCreatePromptController(
       options.setPromptEnhancing(false);
       options.context.requestRender();
     }
-  }, { signal });
-
-  root.querySelector("#h3-prompt-template")?.addEventListener("click", () => {
-    const draft = getDraft();
-    if (!draft) return;
-    options.invalidatePromptEditHistory();
-    const template = createH3PromptTemplate(
-      activePrompt(draft, options.context.getState()?.settings.uiLocale).text,
-      draft.duration,
-      {
-        hasEndImage: Boolean(draft.endImagePath),
-        hasStartImage: Boolean(draft.startImagePath),
-        mode: h3PromptModeForDraft(draft),
-        referenceSlots: draft.h3ReferenceSlots.map((slot) => ({
-          mediaType: slot.mediaType,
-          role: options.h3ReferenceRolePromptLabels[slot.role],
-          note: slot.note
-        }))
-      }
-    );
-    const promptVersions = promptVersionsForDraft(draft);
-    const activePromptVersion = activePromptIndexForDraft(draft);
-    const versions = [
-      ...promptVersions.slice(0, activePromptVersion + 1),
-      {
-        id: crypto.randomUUID(),
-        label: promptUi().t("h3TemplateVersion"),
-        text: template.text,
-        createdAt: new Date().toISOString()
-      }
-    ];
-    options.patchDraft(promptPatchForDraft(draft, versions, versions.length - 1));
-    options.context.notify(promptUi().t("templateCreated", {
-      mode: template.mode,
-      duration: template.effectiveDurationSeconds.toFixed(2),
-      shots: template.shotCount
-    }));
-  }, { signal });
-
-  root.querySelectorAll<HTMLElement>("[data-h3-builder]").forEach((field) => {
-    const updateBuilder = (event: Event) => {
-      const key = (event.currentTarget as HTMLElement).dataset.h3Builder as keyof H3PromptBuilderInput | undefined;
-      if (!key) return;
-      const target = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-      options.setH3PromptBuilder({ ...options.getH3PromptBuilder(), [key]: target.value } as H3PromptBuilderInput);
-    };
-    field.addEventListener("input", updateBuilder, { signal });
-    field.addEventListener("change", updateBuilder, { signal });
-  });
-  root.querySelector("#h3-builder-reset")?.addEventListener("click", () => {
-    options.setH3PromptBuilder(options.createDefaultH3PromptBuilder());
-    options.context.requestRender();
-  }, { signal });
-  root.querySelector("#h3-builder-generate")?.addEventListener("click", () => {
-    const draft = getDraft();
-    if (!draft) return;
-    options.invalidatePromptEditHistory();
-    const template = createH3PromptFromBuilder(
-      options.getH3PromptBuilder(),
-      draft.duration,
-      {
-        hasEndImage: Boolean(draft.endImagePath),
-        hasStartImage: Boolean(draft.startImagePath),
-        mode: h3PromptModeForDraft(draft),
-        referenceSlots: draft.h3ReferenceSlots.map((slot) => ({
-          mediaType: slot.mediaType,
-          role: options.h3ReferenceRolePromptLabels[slot.role],
-          note: slot.note
-        }))
-      }
-    );
-    const promptVersions = promptVersionsForDraft(draft);
-    const activePromptVersion = activePromptIndexForDraft(draft);
-    const versions = [
-      ...promptVersions.slice(0, activePromptVersion + 1),
-      {
-        id: crypto.randomUUID(),
-        label: promptUi().t("h3BuilderVersion"),
-        text: template.text,
-        createdAt: new Date().toISOString()
-      }
-    ];
-    options.patchDraft(promptPatchForDraft(draft, versions, versions.length - 1));
-    options.context.notify(promptUi().t("builderCreated", {
-      mode: template.mode,
-      duration: template.effectiveDurationSeconds.toFixed(2)
-    }));
   }, { signal });
 
   return () => events.abort();

@@ -832,6 +832,8 @@ export interface CustomNodeStatus {
   runtimeVerified: boolean;
   /** Required node classes absent from the current /object_info response. */
   runtimeMissingNodeTypes?: string[];
+  /** The installed package registered none of its baseline node classes and can be safely repaired. */
+  runtimeRepairable?: boolean;
   loadError: string;
   updateNotice?: string;
   /** Informational runtime evidence; does not downgrade compatibility state. */

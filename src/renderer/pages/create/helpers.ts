@@ -12,7 +12,7 @@ import type {
   UiLocale,
   WorkflowCapabilities
 } from "../../../types";
-import { inferH3PromptMode, type H3PromptBuilderInput } from "../../../core/h3-prompt";
+import { inferH3PromptMode } from "../../../core/h3-prompt";
 import { checkH3Prompt } from "../../../core/h3-prompt-check";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import {
@@ -345,29 +345,6 @@ export function h3PromptPresetOptions(
     .filter((preset) => includeMultiReference || preset !== "multi-reference")
     .map((preset) => `<option value="${preset}" data-description="${escapeHtml(pack.presetDescriptions[preset])}" title="${escapeHtml(pack.presetDescriptions[preset])}" ${selected === preset ? "selected" : ""}>${escapeHtml(pack.presetLabels[preset])}</option>`)
     .join("");
-}
-
-export function createDefaultH3PromptBuilder(): H3PromptBuilderInput {
-  return {
-    style: "",
-    subject: "",
-    action: "",
-    continuity: "",
-    physicalLock: "",
-    cameraMotion: "static",
-    cameraAmplitude: "small",
-    cameraSpeed: "slow",
-    framing: "",
-    diegeticSound: "",
-    finalState: "",
-    soundscape: "",
-    music: "N/A",
-    dialogueSpeaker: "S1",
-    dialogueLanguage: "Chinese",
-    dialogueDelivery: "a clear, natural voice",
-    dialogueText: "",
-    onScreenText: ""
-  };
 }
 
 export function newH3ReferenceSlot(

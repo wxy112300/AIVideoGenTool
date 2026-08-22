@@ -12,7 +12,6 @@ import type {
   Settings,
   WorkflowCapabilities
 } from "../../../types";
-import type { H3PromptBuilderInput } from "../../../core/h3-prompt";
 import { createTranslator, type Translate } from "../../../core/i18n";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import { uiKeys } from "../../../core/i18n-keys";
@@ -85,7 +84,6 @@ export interface CreateViewModelDependencies {
   promptReleasing: boolean;
   promptRuntimeLoaded: boolean;
   promptProgress: PromptProgress | null;
-  h3PromptBuilder: H3PromptBuilderInput;
   enqueueBusy: boolean;
   promptRuntimeControlTitle(settings?: Settings): string;
   promptRuntimeControlIcon(): string;
@@ -338,7 +336,6 @@ export function buildVideoCreatePageViewModel(
     promptRuntimeLoaded,
     promptProgress,
     promptRuntimeView,
-    h3PromptBuilder,
     enqueueBusy
   } = options;
   const draft = state.draft;
@@ -532,7 +529,6 @@ export function buildVideoCreatePageViewModel(
           h3PromptPack.ui
         )
       : "",
-    h3PromptBuilder,
     modelOptions: createModelOptionViewModels(
       draft,
       environmentScan,

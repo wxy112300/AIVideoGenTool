@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.42.2**。本版本修复图生视频与视频续写之间的异步模型回写串页，并让“清空”操作只作用于发起的创作空间，不再切换模式或影响另一页状态。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.42.3**。本版本移除已被 Prompt 增强替代的 H3 手工提示词助手，并修复 Custom Node 文件已安装但整个节点包未注册时一键修复不会实际执行的问题。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -126,7 +126,7 @@ start-ui-proxy.bat http://127.0.0.1:7890
 - 扩散模型、文本编码器、VAE 和 LoRA 等大型权重需要按模型卡片提供的来源下载。
 - 模型卡片中的 **i** 按钮会显示下载地址、推荐文件名和相对于 ComfyUI `models` 的目标子目录。
 
-节点页顶部的一键操作只处理缺失、低于 catalog 推荐版本或需要兼容修复的已登记节点。MiniMax H3 基础生成节点属于 ComfyUI 核心；如果这些节点缺失，应先更新 ComfyUI，而不是安装名称相似的第三方节点。
+节点页顶部的一键操作处理缺失、低于 catalog 推荐版本、需要兼容修复，或文件已安装但整个节点包未注册的已登记节点；修复后会统一重启并复检。MiniMax H3 基础生成节点属于 ComfyUI 核心；如果这些节点缺失，应先更新 ComfyUI，而不是安装名称相似的第三方节点。
 
 ### 5. 完成第一个 MiniMax H3 任务
 

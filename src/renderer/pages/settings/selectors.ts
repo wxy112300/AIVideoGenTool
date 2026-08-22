@@ -218,7 +218,9 @@ export function deriveSettingsDependencyActionState(options: {
     options.customNodeInstallPhase === "scanning";
   return {
     nodeUpdatesAvailable: Boolean(
-      options.environmentScan?.customNodes?.some((node) => node.updateAvailable)
+      options.environmentScan?.customNodes?.some((node) =>
+        node.updateAvailable || node.runtimeRepairable
+      )
     ),
     customNodeInstallFinalizing,
     customNodeInstallGloballyBlocked: Boolean(
@@ -327,7 +329,10 @@ export function deriveCustomNodeCardState(options: {
     phase,
     status,
     tone: customNodeStatusTone(options.node, phase !== null),
-    installActionable: !options.node.installed || options.node.updateAvailable,
+    installActionable: !options.node.installed ||
+      options.node.updateAvailable ||
+      options.node.runtimeRepairable,
+    runtimeRepairable: options.node.runtimeRepairable === true,
     installBlocked: options.globallyBlocked || options.active || queued
   };
 }
