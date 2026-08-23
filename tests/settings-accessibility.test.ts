@@ -17,7 +17,7 @@ const renderOptions = {
   h3PromptPresetDescriptions: {},
   imagePromptPresetLabels: {},
   imagePromptPresetDescriptions: {},
-  icon: (name: string) => `<i data-lucide="${name}"></i>`,
+  icon: (name: string, className = "") => `<i data-lucide="${name}" class="ui-icon ${className}"></i>`,
   escapeHtml: (value: string) => value,
   formatBytes: () => "0 B",
   formatScanTime: () => "time",
@@ -121,6 +121,26 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('id="save-settings" aria-busy="true"');
     expect(markup).toContain('id="settings-panel-system" class="settings-content" role="tabpanel"');
     expect(markup).toContain('aria-busy="true"');
+  });
+
+  it("keeps an icon attached to the yellow service restart status", () => {
+    const environmentScan = {
+      scannedAt: "2026-08-23T00:00:00.000Z",
+      userHome: "C:\\Users\\Test",
+      items: [],
+      modelProfiles: [],
+      customNodes: [],
+      workflowDependencies: [],
+      issues: []
+    } as unknown as EnvironmentScanResult;
+    const markup = renderSettingsPage(viewModel({
+      environmentScan,
+      serviceRestarting: "comfy",
+      serviceStatusMessage: "正在重启并复检…"
+    }), renderOptions);
+
+    expect(markup).toContain('class="service-status working" role="status" aria-live="polite" aria-atomic="true"');
+    expect(markup).toContain('<span class="service-status-icon" aria-hidden="true"><i data-lucide="refresh-cw" class="ui-icon status-icon"></i></span><span class="service-status-copy">正在重启并复检…</span>');
   });
 
   it("keeps the primary save action after the discard action in the commit group", () => {

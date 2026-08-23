@@ -342,7 +342,9 @@ label { display: grid; gap: 7px; color: #dce0e6; font-size: var(--ux-type-label)
 .service-start:hover { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 15%, transparent); }
 .environment-download { flex: 0 0 auto; padding: 5px 9px; border-color: color-mix(in srgb, var(--warning) 42%, var(--border)); color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent); font-size: 11px; font-weight: 700; }
 .environment-download:hover { border-color: var(--warning); background: color-mix(in srgb, var(--warning) 15%, transparent); }
-.service-status { margin-top: 12px; padding: 10px 12px; border: 1px solid rgba(97, 165, 255, .28); border-radius: 10px; color: #b9d8ff; background: rgba(34, 93, 160, .12); font-size: 13px; }
+.service-status { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 10px 12px; border: 1px solid rgba(97, 165, 255, .28); border-radius: 10px; color: #b9d8ff; background: rgba(34, 93, 160, .12); font-size: 13px; }
+.service-status-icon { display: inline-flex; flex: 0 0 auto; margin-top: 1px; }
+.service-status-copy { min-width: 0; overflow-wrap: anywhere; line-height: 1.45; }
 .service-status.working { border-color: rgba(239, 175, 75, .35); color: #ffd58c; background: rgba(151, 93, 24, .12); }
 .service-status.warning { border-color: rgba(239, 175, 75, .35); color: #ffd58c; background: rgba(151, 93, 24, .12); }
 .environment-item p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }

@@ -8,6 +8,11 @@
 
 ## 未发布
 
+## 0.42.9 — 2026-08-23
+
+- 修复设置页服务启动、重启和环境检查状态提示缺少前置图标的问题，并为状态文字补充稳定的图标与布局。
+- 修复 ComfyUI 启动状态更新触发整页重绘时输入框焦点、光标选区和控件滚动位置丢失的问题。
+
 ## 0.42.8 — 2026-08-23
 
 - Spectrum MiniMax H3 推荐版本从 `v0.2.16` 更新为 `v0.2.17`：补完原生 H3 Continuum 互操作，支持混合 VIDEO/AUDIO mask 的 forecast，并让 learned-latent sampler-2 refinement 独立使用 actual-prefix 策略；旧 ComfyUI 核心缺少 `mask_row_values` 时安全降级。最低版本线、Turbo 共存、`model_aware_mode` 门槛和现有工作流默认值保持不变。

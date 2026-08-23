@@ -4,16 +4,21 @@ import { modelProfileEvidence, modelProfileStatusTone } from "../../shared/statu
 function escapeValue(options, value) {
     return options.escapeHtml(value == null ? "" : String(value));
 }
+function renderSettingsStatusNotice(options, message, tone, iconName, role = "status") {
+    const live = role === "alert" ? "assertive" : "polite";
+    return `<div class="service-status${tone ? ` ${tone}` : ""}" role="${role}" aria-live="${live}" aria-atomic="true"><span class="service-status-icon" aria-hidden="true">${options.icon(iconName, "status-icon")}</span><span class="service-status-copy">${escapeValue(options, message)}</span></div>`;
+}
 export function renderSettingsEnvironmentOverview(viewModel, options) {
     const { environmentScan } = viewModel;
     const escape = (value) => escapeValue(options, value);
     const icon = (name, className) => options.icon(name, className);
     const t = options.t;
+    const serviceStatusBusy = Boolean(viewModel.serviceStarting || viewModel.serviceRestarting);
     if (!environmentScan) {
-        return `${viewModel.environmentScanError ? `<div class="service-status warning" role="alert">${escape(viewModel.environmentScanError)}</div>` : ""}<div class="environment-empty" role="status" aria-live="polite">${viewModel.environmentScanning ? `<span class="scan-spinner"></span><div><strong>${t(uiKeys.settings.system.scanningEnvironment)}</strong><p>${t(uiKeys.settings.system.scanningEnvironmentDescription)}</p></div>` : `<div><strong>${t(uiKeys.settings.system.notScanned)}</strong><p>${t(uiKeys.settings.system.rescanInstruction)}</p></div>`}</div>`;
+        return `${viewModel.environmentScanError ? renderSettingsStatusNotice(options, viewModel.environmentScanError, "warning", "circle-alert", "alert") : ""}<div class="environment-empty" role="status" aria-live="polite">${viewModel.environmentScanning ? `<span class="scan-spinner"></span><div><strong>${t(uiKeys.settings.system.scanningEnvironment)}</strong><p>${t(uiKeys.settings.system.scanningEnvironmentDescription)}</p></div>` : `<div><strong>${t(uiKeys.settings.system.notScanned)}</strong><p>${t(uiKeys.settings.system.rescanInstruction)}</p></div>`}</div>`;
     }
     return `
-    ${viewModel.environmentScanError ? `<div class="service-status warning" role="alert">${escape(viewModel.environmentScanError)}</div>` : ""}
+    ${viewModel.environmentScanError ? renderSettingsStatusNotice(options, viewModel.environmentScanError, "warning", "circle-alert", "alert") : ""}
     <div class="environment-summary">
       <div><span class="muted">${t(uiKeys.settings.system.currentUserDirectory)}</span><code title="${escape(environmentScan.userHome)}">${escape(environmentScan.userHome)}</code></div>
       <span class="scan-time">${escape(t(uiKeys.settings.system.scannedAt, { time: options.formatScanTime(environmentScan.scannedAt) }))}</span>
@@ -49,7 +54,7 @@ export function renderSettingsEnvironmentOverview(viewModel, options) {
         </article>`;
     }).join("")}
     </div>
-    ${viewModel.serviceStatusMessage ? `<div class="service-status ${viewModel.serviceStarting || viewModel.serviceRestarting ? "working" : ""}" role="status" aria-live="polite" aria-atomic="true">${escape(viewModel.serviceStatusMessage)}</div>` : ""}
+    ${viewModel.serviceStatusMessage ? renderSettingsStatusNotice(options, viewModel.serviceStatusMessage, serviceStatusBusy ? "working" : "", serviceStatusBusy ? "refresh-cw" : "circle-help") : ""}
     ${environmentScan.comfyRoot || environmentScan.comfyInstallDirectory ? `
       <div class="detected-path">
         <div><span class="eyebrow">${t(uiKeys.settings.system.detectedComfyUi, { type: environmentScan.comfyInstallType === "desktop" ? t(uiKeys.settings.system.desktopInstall) :
@@ -129,8 +134,8 @@ export function renderSettingsComfyCompatibilityPanel(viewModel, options) {
         <div><span>${t(uiKeys.settings.compatibility.coreCommit)}</span><code>${escape(compatibility.revision || t(uiKeys.settings.compatibility.versionUnknown))}</code></div>
         <div><span>${t(uiKeys.settings.compatibility.detectionSource)}</span><strong>${compatibility.checkedFrom === "api" ? t(uiKeys.settings.compatibility.runningService) : compatibility.checkedFrom === "source" ? t(uiKeys.settings.compatibility.localCoreSource) : t(uiKeys.settings.compatibility.waitingStart)}</strong></div>
       </div>
-      ${versionMismatch ? `<div class="service-status warning">${escape(t(uiKeys.settings.compatibility.mismatchWarning, { serviceVersion: versionLabel, localVersion: `v${selectedInstallation?.version ?? t(uiKeys.settings.compatibility.versionUnknown)}` }))}</div>` : ""}
-      ${compatibility.compatibilityNotice && compatibilityState !== "supported" ? `<div class="service-status ${compatibilityState === "error" ? "error" : "warning"}">${escape(compatibility.compatibilityNotice)}</div>` : ""}
+      ${versionMismatch ? renderSettingsStatusNotice(options, t(uiKeys.settings.compatibility.mismatchWarning, { serviceVersion: versionLabel, localVersion: `v${selectedInstallation?.version ?? t(uiKeys.settings.compatibility.versionUnknown)}` }), "warning", "circle-alert") : ""}
+      ${compatibility.compatibilityNotice && compatibilityState !== "supported" ? renderSettingsStatusNotice(options, compatibility.compatibilityNotice, compatibilityState === "error" ? "error" : "warning", compatibilityState === "error" ? "circle-alert" : "circle-help", compatibilityState === "error" ? "alert" : "status") : ""}
       <p class="muted">${escape(compatibility.updateHint)}</p>
       ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>${t(uiKeys.settings.compatibility.updateLog)}</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
     </section>`;

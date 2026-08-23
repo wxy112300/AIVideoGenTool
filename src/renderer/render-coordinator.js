@@ -1,5 +1,62 @@
 import { renderShell } from "./shell/page";
 import { renderIcons } from "./shared/icons";
+function isRestorableFocusElement(element) {
+    return element instanceof HTMLInputElement ||
+        element instanceof HTMLTextAreaElement ||
+        element instanceof HTMLSelectElement ||
+        element instanceof HTMLButtonElement;
+}
+function captureFocus(root) {
+    const activeElement = document.activeElement;
+    if (!isRestorableFocusElement(activeElement) || !root.contains(activeElement))
+        return null;
+    if (!activeElement.id && !activeElement.name)
+        return null;
+    const isTextControl = activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement;
+    return {
+        id: activeElement.id,
+        name: activeElement.name,
+        tagName: activeElement.tagName.toLowerCase(),
+        selectionStart: isTextControl ? activeElement.selectionStart : null,
+        selectionEnd: isTextControl ? activeElement.selectionEnd : null,
+        selectionDirection: isTextControl ? activeElement.selectionDirection : null,
+        scrollLeft: activeElement.scrollLeft,
+        scrollTop: activeElement.scrollTop
+    };
+}
+function findFocusTarget(root, snapshot) {
+    if (snapshot.id) {
+        const target = document.getElementById(snapshot.id);
+        if (target && root.contains(target) &&
+            target.tagName.toLowerCase() === snapshot.tagName &&
+            isRestorableFocusElement(target))
+            return target;
+    }
+    if (!snapshot.name)
+        return null;
+    return Array.from(root.querySelectorAll("input, textarea, select, button")).find((candidate) => candidate.tagName.toLowerCase() === snapshot.tagName &&
+        candidate.name === snapshot.name) ?? null;
+}
+function restoreFocus(root, snapshot) {
+    if (!snapshot)
+        return;
+    const target = findFocusTarget(root, snapshot);
+    if (!target || ("disabled" in target && target.disabled))
+        return;
+    target.focus({ preventScroll: true });
+    if (snapshot.selectionStart !== null &&
+        (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+        try {
+            target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd ?? snapshot.selectionStart, snapshot.selectionDirection ?? "none");
+        }
+        catch {
+            // Some input types do not expose a selectable text range.
+        }
+    }
+    target.scrollLeft = snapshot.scrollLeft;
+    target.scrollTop = snapshot.scrollTop;
+}
 function captureHistoryPlayback(root, page) {
     if (page !== "history-detail")
         return null;
@@ -82,6 +139,7 @@ export function createRenderCoordinator(options) {
                 const page = options.getPage();
                 const state = options.getState();
                 const ui = options.getUiState();
+                const focus = captureFocus(options.root);
                 options.root.innerHTML = renderShell({
                     page,
                     appVersion: ui.appVersion,
@@ -117,6 +175,7 @@ export function createRenderCoordinator(options) {
                 if (page === "history")
                     options.restoreHistoryScrollPosition();
                 restoreHistoryPlayback(options.root, playback);
+                restoreFocus(options.root, focus);
             })().catch((error) => {
                 console.error("Failed to render page dependencies", error);
             });
