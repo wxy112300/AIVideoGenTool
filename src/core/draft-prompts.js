@@ -9,6 +9,9 @@ export function copyPromptVersions(promptVersions) {
         id: crypto.randomUUID()
     }));
 }
+export function appendPromptVersion(promptVersions, promptVersion) {
+    return [...promptVersions, promptVersion];
+}
 export function promptVersionsForDraft(draft) {
     if (draft.inputMode === "video" && draft.extensionPromptVersions?.length) {
         return draft.extensionPromptVersions;

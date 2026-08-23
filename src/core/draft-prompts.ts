@@ -25,6 +25,13 @@ export function copyPromptVersions(promptVersions: readonly PromptVersion[]): Pr
   }));
 }
 
+export function appendPromptVersion(
+  promptVersions: readonly PromptVersion[],
+  promptVersion: PromptVersion
+): PromptVersion[] {
+  return [...promptVersions, promptVersion];
+}
+
 export function promptVersionsForDraft(draft: DraftPromptSource): readonly PromptVersion[] {
   if (draft.inputMode === "video" && draft.extensionPromptVersions?.length) {
     return draft.extensionPromptVersions;

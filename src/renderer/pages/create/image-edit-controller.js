@@ -1,6 +1,7 @@
 import { imageMarkupPromptContext, imageReferenceInputPath } from "../../../core/image-workflow";
 import { imageModelCapabilityFor, normalizeImageTargetResolution } from "../../../core/image-workflow";
 import { createDefaultImageEditDraft } from "../../../core/draft-defaults";
+import { appendPromptVersion } from "../../../core/draft-prompts";
 import { activeImagePrompt, isPromptCancellationError } from "./helpers";
 import { uiKeys } from "../../../core/i18n-keys";
 export function mountImageEditController(context, options) {
@@ -265,15 +266,12 @@ export function mountImageEditController(context, options) {
             if (!nextDraft)
                 return;
             options.invalidatePromptEditHistory();
-            const versions = [
-                ...nextDraft.promptVersions.slice(0, nextDraft.activePromptVersion + 1),
-                {
-                    id: crypto.randomUUID(),
-                    label: t(uiKeys.create.interaction.imageOptimizedVersion, { count: nextDraft.promptVersions.filter((item) => item.label.startsWith(t(uiKeys.create.interaction.imageOptimizedVersion, { count: "" }).trim())).length + 1 }),
-                    text,
-                    createdAt: new Date().toISOString()
-                }
-            ];
+            const versions = appendPromptVersion(nextDraft.promptVersions, {
+                id: crypto.randomUUID(),
+                label: t(uiKeys.create.interaction.imageOptimizedVersion, { count: nextDraft.promptVersions.filter((item) => item.label.startsWith(t(uiKeys.create.interaction.imageOptimizedVersion, { count: "" }).trim())).length + 1 }),
+                text,
+                createdAt: new Date().toISOString()
+            });
             options.patchImageDraft({ promptVersions: versions, activePromptVersion: versions.length - 1 });
             context.notify(t(uiKeys.create.interaction.promptEnhanceCompleted, {
                 page: t(uiKeys.create.imageEditMode)

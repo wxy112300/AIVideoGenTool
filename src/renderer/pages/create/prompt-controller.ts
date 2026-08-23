@@ -8,6 +8,7 @@ import type {
 import { h3AutoPromptSeedFor } from "../../../core/prompts/h3/auto-seeds";
 import {
   activePromptIndexForDraft,
+  appendPromptVersion,
   promptPatchForDraft,
   promptVersionsForDraft
 } from "../../../core/draft-prompts";
@@ -310,17 +311,13 @@ export function mountCreatePromptController(
       options.invalidatePromptEditHistory();
       options.patchDraftForMode(requestOrigin, (nextDraft) => {
         const nextPromptVersions = promptVersionsForDraft(nextDraft);
-        const nextActivePromptVersion = activePromptIndexForDraft(nextDraft);
-        const versions = [
-          ...nextPromptVersions.slice(0, nextActivePromptVersion + 1),
-          {
-            id: crypto.randomUUID(),
-            label: promptUi().t("expandedVersion", { count: nextPromptVersions.filter((item) => item.label.startsWith(promptUi().t("expandedVersion", { count: "" }).trim())).length + 1 }),
-            text,
-            createdAt: new Date().toISOString(),
-            ...(autoPromptSeed ? { autoPromptSeedId: autoPromptSeed.id } : {})
-          }
-        ];
+        const versions = appendPromptVersion(nextPromptVersions, {
+          id: crypto.randomUUID(),
+          label: promptUi().t("expandedVersion", { count: nextPromptVersions.filter((item) => item.label.startsWith(promptUi().t("expandedVersion", { count: "" }).trim())).length + 1 }),
+          text,
+          createdAt: new Date().toISOString(),
+          ...(autoPromptSeed ? { autoPromptSeedId: autoPromptSeed.id } : {})
+        });
         return promptPatchForDraft(nextDraft, versions, versions.length - 1);
       });
       options.context.notify(options.context.t(uiKeys.create.interaction.promptEnhanceCompleted, {

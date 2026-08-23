@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createDefaultDraft } from "../src/core/defaults";
 import {
   activePromptIndexForDraft,
+  appendPromptVersion,
   clearPromptVersion,
   ensureDraftPromptState,
   promptPatchForDraft,
@@ -66,5 +67,16 @@ describe("draft prompt state", () => {
       promptVersions: [{ ...versions[0], text: "" }],
       activePromptVersion: 0
     });
+  });
+
+  it("appends a new enhancement after later versions instead of replacing them", () => {
+    const versions = [
+      { id: "one", label: "One", text: "first", createdAt: "now" },
+      { id: "two", label: "Two", text: "second", createdAt: "now" },
+      { id: "three", label: "Three", text: "third", createdAt: "now" }
+    ];
+    const next = { id: "four", label: "Four", text: "fourth", createdAt: "later" };
+
+    expect(appendPromptVersion(versions, next)).toEqual([...versions, next]);
   });
 });
