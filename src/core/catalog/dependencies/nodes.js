@@ -1,7 +1,7 @@
 export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
-export const SPECTRUM_RECOMMENDED_VERSION = "0.2.16";
+export const SPECTRUM_RECOMMENDED_VERSION = "0.2.17";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
 export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.3.2";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
@@ -220,14 +220,14 @@ export const customNodeCatalog = [{
         minimumVersion: SPECTRUM_MINIMUM_VERSION,
         recommendedVersion: SPECTRUM_RECOMMENDED_VERSION,
         compatibilityEvidence: [{
-                verifiedAt: "2026-08-20",
-                sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3",
-                note: "v0.2.16 保留既有节点输入、预测默认值与采样节奏，新增 Untwisting RoPE H3 外部补丁契约兼容，并将可选生成后研究分析隔离到有界子进程；最低版本、Turbo 共存和 model_aware_mode 门槛保持不变。",
+                verifiedAt: "2026-08-23",
+                sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.17",
+                note: "v0.2.17 补完 H3 Continuum 互操作：混合 VIDEO/AUDIO mask 可继续使用原生 H3 forecast，learned-latent sampler-2 refinement 不继承 sampler-1 的 Continuum actual-prefix；旧核心缺少 mask_row_values 时安全降级。保留 v0.2.16 的 Untwisting RoPE 外部补丁契约与隔离研究进程；最低版本、Turbo 共存和 model_aware_mode 门槛不变。",
                 comfyUi: "0.33.1",
-                commit: "567768f",
+                commit: "9dc51b7",
                 workflowIds: ["minimax_h3_i2v", "minimax_h3_r2v"],
                 checks: ["static"]
-            }],
+        }],
         required: false
     }];
 export function customNodeDefinition(id) {

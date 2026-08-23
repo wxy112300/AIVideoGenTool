@@ -8,6 +8,11 @@
 
 ## 未发布
 
+## 0.42.8 — 2026-08-23
+
+- Spectrum MiniMax H3 推荐版本从 `v0.2.16` 更新为 `v0.2.17`：补完原生 H3 Continuum 互操作，支持混合 VIDEO/AUDIO mask 的 forecast，并让 learned-latent sampler-2 refinement 独立使用 actual-prefix 策略；旧 ComfyUI 核心缺少 `mask_row_values` 时安全降级。最低版本线、Turbo 共存、`model_aware_mode` 门槛和现有工作流默认值保持不变。
+- 核对 Motion Context 上游 `v0.3.1` 的 ComfyUI 0.33 兼容更新；Motion Context Extend 仍需关闭 Spectrum，普通 R2V 初始生成不受此限制。
+
 ## 0.42.7 — 2026-08-22
 
 - 修复恢复已保存的视频续写草稿、从历史详情选择“在创建页调整”或选择自定义 H3 续写工作流后，Renderer 因能力缓存为空或沿用 Sulphur 旧工作流判据而错误提示“当前工作流未通过视频续写安全检查”的问题；FL2VA、Motion Context 与 Sulphur 现在按各自图结构检查，并防止异步模式恢复覆盖较新的页面选择。

@@ -367,12 +367,12 @@ describe("dependency scanner", () => {
       loaded: true,
       version: "0.2.6",
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.16",
+      recommendedVersion: "0.2.17",
       latestVersion: "0.2.7",
       updateAvailable: true,
       loadError: ""
     });
-    expect(spectrum?.updateNotice).toContain("当前 v0.2.6，推荐 v0.2.16");
+    expect(spectrum?.updateNotice).toContain("当前 v0.2.6，推荐 v0.2.17");
   });
 
   it("shows generic cached releases without making them actionable updates", async () => {

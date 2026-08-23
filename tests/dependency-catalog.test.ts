@@ -68,11 +68,11 @@ describe("dependency catalog", () => {
     ]));
     expect(customNodeDefinition("spectrum-minimax-h3")).toMatchObject({
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.16"
+      recommendedVersion: "0.2.17"
     });
     expect(customNodeDefinition("spectrum-minimax-h3")?.compatibilityEvidence?.[0]).toMatchObject({
       comfyUi: "0.33.1",
-      commit: "567768f",
+      commit: "9dc51b7",
       checks: ["static"]
     });
   });
