@@ -1,4 +1,4 @@
-import { H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, isH3Ref2vTurboEnabled, isH3TurboLoraId, videoLoraCompatibleWithModel, videoLoraFilename, videoPromptForLoras } from "./video-loras.js";
+import { H3_AFTER_MIDNIGHT_LORA_ID, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, isH3Ref2vTurboEnabled, isH3TurboFourStepV11LoraId, isH3TurboLoraId, videoLoraCompatibleWithModel, videoLoraFilename, videoPromptForLoras } from "./video-loras.js";
 import { modelCatalog } from "./catalog/index.js";
 import { normalizeVideoSteps, resolveVideoGenerationPolicy, shouldApplySpectrum } from "./video-policy.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
@@ -195,14 +195,18 @@ function applyVideoLoraStack(workflow, task, locale = "zh-CN") {
         target.inputs.model = output;
 }
 /**
- * Ref2VA Turbo uses the same native H3 sampler contract as FL2VA Turbo, but
- * the bundled R2V graph starts from the standard 20-step sampler. Keep that
- * graph as the baseline and apply only the Turbo sampler patch when the
- * dedicated Ref2V LoRA is selected. This avoids a second copy of the large
- * nine-reference workflow and keeps custom R2V workflows usable.
+ * The bundled H3 graphs are kept as conservative baselines and receive the
+ * model-specific Turbo sampler patch at render time. Ref2VA Turbo uses the
+ * original v0.1 shift, while the current official FL2VA v1.1 768p LoRA uses
+ * the updated shift and sampler contract. This keeps old persisted tasks
+ * renderable without allowing their settings to leak into the new path.
  */
 function applyMiniMaxH3Ref2vTurboSampling(workflow, task) {
-    if (!isH3Ref2vTurboEnabled(task))
+    const ref2vTurbo = isH3Ref2vTurboEnabled(task);
+    const fl2vaV11Turbo = isMiniMaxH3Fl2vaModel(task.modelId) &&
+        Boolean(task.videoLoras?.some((lora) => isH3TurboFourStepV11LoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)));
+    const afterMidnight = Boolean(task.videoLoras?.some((lora) => lora.id === H3_AFTER_MIDNIGHT_LORA_ID && videoLoraCompatibleWithModel(lora, task.modelId)));
+    if (!ref2vTurbo && !fl2vaV11Turbo && !afterMidnight)
         return;
     const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
     const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
@@ -213,6 +217,8 @@ function applyMiniMaxH3Ref2vTurboSampling(workflow, task) {
     sampler.inputs.sampler_name = "euler";
     for (const scheduler of schedulers)
         scheduler.inputs.scheduler = "beta";
+    if (!ref2vTurbo && !fl2vaV11Turbo)
+        return;
     const currentModel = consumers[0]?.inputs?.model;
     if (!Array.isArray(currentModel) || typeof currentModel[0] !== "string")
         return;
@@ -224,7 +230,7 @@ function applyMiniMaxH3Ref2vTurboSampling(workflow, task) {
         class_type: existing?.[1].class_type ?? "MiniMaxH3SigmaShift",
         inputs: {
             model: currentModel,
-            shift_video: 12,
+            shift_video: fl2vaV11Turbo ? 6 : 12,
             shift_audio: 3
         }
     };
@@ -307,6 +313,15 @@ export function workflowSupportsH3TurboSampling(source, options = {}) {
             typeof node.inputs.shift_video === "number" &&
             typeof node.inputs.shift_audio === "number");
     if (nativeTurbo)
+        return true;
+    const fl2vaV11Turbo = options.videoLoras?.some((lora) => isH3TurboFourStepV11LoraId(lora.id) && videoLoraCompatibleWithModel(lora, options.modelId ?? "")) === true;
+    if (fl2vaV11Turbo &&
+        hasNode("KSamplerSelect", (inputs) => inputs.sampler_name === "euler") &&
+        hasNode("BasicScheduler", (inputs) => inputs.scheduler === "beta") &&
+        nodes.some((node) => (node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3") &&
+            Boolean(node.inputs) && typeof node.inputs === "object" && !Array.isArray(node.inputs) &&
+            node.inputs.shift_video === 6 &&
+            node.inputs.shift_audio === 3))
         return true;
     if (!isH3Ref2vTurboEnabled({
         modelId: options.modelId ?? "",
@@ -436,6 +451,15 @@ export function workflowSupportsH3MotionContextExtension(source) {
         classTypes.has("MiniMaxH3MotionContextSaveLatent") &&
         classTypes.has("CreateVideo") &&
         classTypes.has("SaveVideo");
+}
+export function workflowSupportsExtensionForModel(source, modelId) {
+    if (isMiniMaxH3Fl2vaModel(modelId)) {
+        return workflowSupportsH3BoundaryExtension(source);
+    }
+    if (isMiniMaxH3R2vModel(modelId)) {
+        return workflowSupportsH3MotionContextExtension(source);
+    }
+    return extensionWorkflowSafetyErrors(source).length === 0;
 }
 export function workflowSupportsH3MotionContextReferences(source, imageCount, extraVideoCount) {
     if (!workflowSupportsH3MotionContextExtension(source))

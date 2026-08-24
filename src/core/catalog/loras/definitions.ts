@@ -27,16 +27,21 @@ export interface VideoLoraRules {
 
 export interface CatalogVideoLoraDefinition extends VideoLoraSelection {
   catalogOrder: number;
+  retired?: boolean;
   variant?: CatalogModelVariant;
   rules: VideoLoraRules;
   scan: CatalogModelScanDefinition;
 }
 
-export const H3_TURBO_LORA_ID = "minimax-h3-lightx2v-turbo-4step";
+/** The current default FL2VA Turbo adapter. */
+export const H3_TURBO_LORA_ID = "minimax-h3-lightx2v-turbo-4step-768p-v1.1";
 export const LEGACY_H3_TURBO_MODEL_ID = "minimax_h3_fl2va_turbo";
 export const LEGACY_H3_REF2V_TURBO_MODEL_ID = "minimax_h3_ref2va_turbo";
 export const H3_FL2VA_MODEL_ID = "minimax_h3_fl2va";
 export const H3_TURBO_LORA_FILENAME =
+  "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors";
+export const LEGACY_H3_TURBO_LORA_ID = "minimax-h3-lightx2v-turbo-4step";
+export const LEGACY_H3_TURBO_LORA_FILENAME =
   "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors";
 export const H3_TURBO_8STEP_V1_LORA_ID = "minimax-h3-lightx2v-turbo-8step-v1";
 export const H3_TURBO_8STEP_V1_LORA_FILENAME =
@@ -47,10 +52,12 @@ export const H3_TURBO_768P_V1_LORA_FILENAME =
 export const H3_REF2V_TURBO_LORA_ID = "minimax-h3-ref2v-turbo-4step-v01";
 export const H3_REF2V_TURBO_LORA_FILENAME =
   "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors";
+export const H3_AFTER_MIDNIGHT_LORA_ID = "minimax-h3-after-midnight-ref2va-nsfw";
+export const H3_AFTER_MIDNIGHT_LORA_FILENAME =
+  "AfterMidnight_ref2va_h3_sexytime_rank64-v1.2.safetensors";
 export const H3_TURBO_LORA_IDS = [
   H3_TURBO_LORA_ID,
   H3_TURBO_8STEP_V1_LORA_ID,
-  H3_TURBO_768P_V1_LORA_ID,
   H3_REF2V_TURBO_LORA_ID
 ] as const;
 export const H3_PINK_FLUFFY_BUNNY_LORA_ID = "minimax-h3-pink-fluffy-bunny-nsfw";
@@ -62,15 +69,15 @@ export const H3_REALISM_PEOPLE_LORA_FILENAME =
 
 export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
   id: H3_TURBO_LORA_ID,
-  name: "LightX2V Turbo 4-Step",
+  name: "LightX2V Turbo 4-Step v1.1 · 768p",
   filename: H3_TURBO_LORA_FILENAME,
-  strength: 0.75,
+  strength: 1,
   modelFamily: "minimax-h3",
   compatibleModelIds: [H3_FL2VA_MODEL_ID],
   compatibleInputModes: ["image"],
   purpose: "performance",
   promptPrefixes: [],
-  catalogOrder: 100,
+  catalogOrder: 112,
   variant: "turbo",
   rules: {
     orderPriority: 10,
@@ -79,17 +86,53 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
     workflowRequirement: "h3-turbo-sampling"
   },
   scan: {
-    vram: "LoRA · strength 0.75 · 4–8 steps",
+    vram: "LoRA · v1.1 · 4 steps · 768p · strength 1.0",
     integrated: true,
     components: [{
-      label: "MiniMax H3 LightX2V Turbo LoRA",
+      label: "MiniMax H3 LightX2V Turbo 4-Step v1.1 768p LoRA",
       expected: `loras/${H3_TURBO_LORA_FILENAME}`,
+      patterns: [/loras\/minimax_h3_fl2v_turbo_4step_v1\.1_768p_comfyui_bf16\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "LightX2V / Minimax-h3-Turbo",
+        downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/${H3_TURBO_LORA_FILENAME}`,
+        targetSubdirectory: "loras",
+        recommendedFilename: H3_TURBO_LORA_FILENAME,
+        notes: "官方最新 FL2VA 4 步 768p 权重。使用 video shift 6、audio shift 3、Euler；不要与其他 Turbo LoRA 同时叠加。"
+      }
+    }]
+  }
+}, {
+  id: LEGACY_H3_TURBO_LORA_ID,
+  name: "LightX2V Turbo 4-Step · legacy v0.1",
+  retired: true,
+  filename: LEGACY_H3_TURBO_LORA_FILENAME,
+  strength: 0.75,
+  modelFamily: "minimax-h3",
+  compatibleModelIds: [H3_FL2VA_MODEL_ID],
+  compatibleInputModes: ["image"],
+  purpose: "performance",
+  promptPrefixes: [],
+  catalogOrder: 1,
+  variant: "turbo",
+  rules: {
+    orderPriority: 10,
+    settingConflicts: [],
+    combinations: [],
+    workflowRequirement: "h3-turbo-sampling"
+  },
+  scan: {
+    vram: "LoRA · legacy v0.1 · 4–8 steps · strength 0.75",
+    integrated: true,
+    components: [{
+      label: "MiniMax H3 LightX2V Turbo legacy v0.1 LoRA",
+      expected: `loras/${LEGACY_H3_TURBO_LORA_FILENAME}`,
       patterns: [/loras\/minimax_h3_fl2v_lightx2v_turbo_4step_v0\.1_comfy_resized_avg_rank_21_bf16\.safetensors$/i],
       installGuide: {
         sourceLabel: "LightX2V / Kijai ComfyUI conversion",
-        downloadUrl: `https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/${H3_TURBO_LORA_FILENAME}`,
+        downloadUrl: `https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/${LEGACY_H3_TURBO_LORA_FILENAME}`,
         targetSubdirectory: "loras",
-        recommendedFilename: H3_TURBO_LORA_FILENAME
+        recommendedFilename: LEGACY_H3_TURBO_LORA_FILENAME,
+        notes: "旧版 v0.1，仅保留用于读取旧队列/历史记录；新任务请使用官方 v1.1 768p 4 步版本。"
       }
     }]
   }
@@ -130,6 +173,7 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
 }, {
   id: H3_TURBO_768P_V1_LORA_ID,
   name: "LightX2V Turbo 4-Step v1.0 · 768p",
+  retired: true,
   filename: H3_TURBO_768P_V1_LORA_FILENAME,
   strength: 0.75,
   modelFamily: "minimax-h3",
@@ -157,7 +201,7 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
         downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/${H3_TURBO_768P_V1_LORA_FILENAME}`,
         targetSubdirectory: "loras",
         recommendedFilename: H3_TURBO_768P_V1_LORA_FILENAME,
-        notes: "官方 v1.0 768p 4 步版本。优先用于 768p；低于 768p 仍建议与 8-step v1.0 做对照。"
+        notes: "已由官方 v1.1 768p 4 步版本替代；仅保留用于读取旧队列/历史记录。新任务请改用 v1.1。"
       }
     }]
   }
@@ -196,6 +240,42 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
     }]
   }
 }, {
+  id: H3_AFTER_MIDNIGHT_LORA_ID,
+  name: "AfterMidnight NSFW · Ref2VA v1.2",
+  filename: H3_AFTER_MIDNIGHT_LORA_FILENAME,
+  strength: 1,
+  modelFamily: "minimax-h3",
+  compatibleModelIds: ["minimax_h3_ref2va"],
+  compatibleInputModes: ["image"],
+  purpose: "content",
+  promptPrefixes: [],
+  catalogOrder: 97,
+  rules: {
+    orderPriority: 50,
+    settingConflicts: [],
+    combinations: [{
+      loraId: H3_REF2V_TURBO_LORA_ID,
+      severity: "warning",
+      localeKey: "afterMidnightTurbo"
+    }]
+  },
+  scan: {
+    vram: "Ref2VA NSFW · rank 64 · v1.2 · strength 1.0",
+    integrated: true,
+    components: [{
+      label: "AfterMidnight MiniMax H3 Ref2VA NSFW LoRA v1.2",
+      expected: `loras/${H3_AFTER_MIDNIGHT_LORA_FILENAME}`,
+      patterns: [/loras\/AfterMidnight_ref2va_h3_sexytime_rank64-v1\.2\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "SexGod1979 / AfterMidnight-MiniMax-H3-NSFW",
+        downloadUrl: `https://huggingface.co/SexGod1979/AfterMidnight-MiniMax-H3-NSFW/resolve/main/${H3_AFTER_MIDNIGHT_LORA_FILENAME}?download=true`,
+        targetSubdirectory: "loras",
+        recommendedFilename: H3_AFTER_MIDNIGHT_LORA_FILENAME,
+        notes: "当前确认的 Ref2VA NSFW v1.2 权重；建议强度 1.0，并使用 Euler + Beta。仅适用于 R2V，多参考图工作流不能直接移植到 FL2VA。"
+      }
+    }]
+  }
+}, {
   id: H3_REALISM_PEOPLE_LORA_ID,
   name: "MiniMax H3 Realism People",
   filename: H3_REALISM_PEOPLE_LORA_FILENAME,
@@ -214,9 +294,9 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
       severity: "warning",
       localeKey: "realismTurbo"
     }, {
-      loraId: H3_PINK_FLUFFY_BUNNY_LORA_ID,
+      loraId: H3_AFTER_MIDNIGHT_LORA_ID,
       severity: "warning",
-      localeKey: "realismPink"
+      localeKey: "realismAfterMidnight"
     }]
   },
   scan: {
@@ -238,6 +318,7 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
 }, {
   id: H3_PINK_FLUFFY_BUNNY_LORA_ID,
   name: "PinkFluffyBunny NSFW",
+  retired: true,
   filename: H3_PINK_FLUFFY_BUNNY_LORA_FILENAME,
   strength: 0.5,
   modelFamily: "minimax-h3",

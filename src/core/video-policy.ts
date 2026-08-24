@@ -9,6 +9,7 @@ import { modelCatalog, SPECTRUM_TURBO_MINIMUM_VERSION } from "./catalog/index.js
 import { releaseVersionAtLeast } from "./release-version.js";
 import {
   isH3Ref2vTurboEnabled,
+  isH3TurboFourStepV11LoraId,
   isH3TurboEnabled,
   videoLoraConfigurationIssues
 } from "./video-loras.js";
@@ -59,6 +60,9 @@ export function resolveVideoGenerationPolicy(
     modelId: input.modelId,
     videoLoras: input.videoLoras
   });
+  const fl2vaV11TurboEnabled = input.videoLoras?.some((lora) =>
+    isH3TurboFourStepV11LoraId(lora.id)
+  ) === true;
   const supportedByModel = definition?.capabilities?.supportsSpectrum === true;
   const motionContext = input.inputMode === "video" && definition?.variant === "r2v";
   const reason: VideoPolicySpectrumReason = !supportedByModel
@@ -72,13 +76,15 @@ export function resolveVideoGenerationPolicy(
     steps: {
       mode: turboEnabled ? "turbo" : "standard",
       options: definition?.capabilities?.generationSteps ??
-        (turboEnabled ? turboStepOptions : standardStepOptions),
-      defaultValue: ref2vTurboEnabled
+        (fl2vaV11TurboEnabled ? [4] : turboEnabled ? turboStepOptions : standardStepOptions),
+      defaultValue: fl2vaV11TurboEnabled || ref2vTurboEnabled
         ? 4
         : definition?.capabilities?.defaultGenerationSteps ??
           (turboEnabled ? 8 : 20),
-      maxValue: definition?.capabilities?.maxGenerationSteps ??
-        (turboEnabled ? 8 : 20)
+      maxValue: fl2vaV11TurboEnabled
+        ? 4
+        : definition?.capabilities?.maxGenerationSteps ??
+          (turboEnabled ? 8 : 20)
     },
     spectrum: {
       supportedByModel,

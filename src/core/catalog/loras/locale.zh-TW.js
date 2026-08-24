@@ -1,4 +1,19 @@
 export const zhTWLoraLocales = {
+    "minimax-h3-lightx2v-turbo-4step-768p-v1.1": {
+        guide: {
+            summary: "官方 LightX2V v1.1 FL2VA Turbo LoRA，針對 768p 四步路徑更新。",
+            recommendedStrength: "預設 1.0；依官方路徑使用。先固定 4 步、video shift 6、audio shift 3 與 Euler 做基準。",
+            effects: "在 768p 下減少取樣步數；四步對 Prompt、Seed、運動連續性與音訊穩定性更敏感，品質變化應與舊版本做同 Seed 對照。",
+            stacking: "效能 LoRA 放在人物或內容 LoRA 前面；不要與 8-step、舊版 v1.0 768p 或其他 Turbo 同時疊加。",
+            compatibility: "僅 MiniMax H3 FL2VA 圖生影片的 768p 路徑；不適用於 Ref2VA 或影片續寫。",
+            source: "LightX2V / Minimax-h3-Turbo 官方 v1.1 ComfyUI 權重"
+        },
+        rules: {
+            incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+            turboSpectrum: "v1.1 768p Turbo 與 Spectrum 的組合需要同 Seed 對照；出現畫面退化時先關閉 Spectrum。",
+            orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
+        }
+    },
     "minimax-h3-lightx2v-turbo-8step-v1": {
         guide: {
             summary: "官方 LightX2V v1.0 FL2VA Turbo LoRA，把標準 H3 路徑壓縮到 8 步。",
@@ -44,6 +59,21 @@ export const zhTWLoraLocales = {
             orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
         }
     },
+    "minimax-h3-after-midnight-ref2va-nsfw": {
+        guide: {
+            summary: "目前確認的 AfterMidnight v1.2 Ref2VA NSFW 內容 LoRA，僅用於 H3 多參考圖路徑。",
+            recommendedStrength: "預設 1.0；README 提供 sexytime 1.0 與 softer 0.8–1.0 兩檔，先固定 1.0 做基準。",
+            effects: "改變成人內容、身體細節與姿態響應；這是內容 LoRA，不會取代 Prompt，也不應移植到 FL2VA。",
+            stacking: "放在 Ref2V Turbo 後、Realism People 等人物 LoRA 後面；與 Turbo 組合時固定 Euler + Beta 並保留單 LoRA 對照。",
+            compatibility: "僅 MiniMax H3 Ref2VA 多參考圖圖生影片；不適用於 FL2VA 首幀、影片續寫或 INT4/GGUF。",
+            source: "SexGod1979 / AfterMidnight-MiniMax-H3-NSFW v1.2"
+        },
+        rules: {
+            incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+            afterMidnightTurbo: "AfterMidnight 僅用於 Ref2VA；與 Ref2V Turbo 組合時必須使用 Euler + Beta，並檢查音訊與時序穩定性。",
+            orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
+        }
+    },
     "minimax-h3-lightx2v-turbo-4step": {
         guide: {
             summary: "把 H3 FL2VA 從標準約 20 步切換到 LightX2V Turbo 6–8 步取樣，用更少步驟縮短生成時間。",
@@ -55,6 +85,7 @@ export const zhTWLoraLocales = {
         },
         rules: {
             incompatible: "{name} 不相容目前基礎模型或輸入模式。",
+            retired: "{name} 已停止用於新任務；請改用目前受支援的替代 LoRA。",
             turboSpectrum: "Spectrum v0.2.6+ 可與 LightX2V Turbo 的原生 ER-SDE 路徑疊加；更早版本請先更新。",
             orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入，內容、人物和風格 LoRA 後載入。"
         }
@@ -71,7 +102,7 @@ export const zhTWLoraLocales = {
         rules: {
             incompatible: "{name} 不相容目前基礎模型或輸入模式。",
             realismTurbo: "Realism People 可與 Turbo 疊加，但低步數可能削弱人物細節；建議 Turbo 在前，並與標準 20 步做同 Seed 對照。",
-            realismPink: "Realism People 與 PinkFluffyBunny 都會改變人物和身體細節；組合屬於未充分驗證路徑，建議分別降低強度並檢查膚色、手部和動作。",
+            realismAfterMidnight: "Realism People 與 AfterMidnight 都會改變人物和身體細節；組合屬於未充分驗證路徑，建議分別降低強度並檢查膚色、手部和動作。",
             orderSuggestion: "建議將 {current} 放在 {previous} 前面；推薦順序為效能 LoRA、人物/質量 LoRA、內容 LoRA。"
         }
     },
@@ -86,6 +117,7 @@ export const zhTWLoraLocales = {
         },
         rules: {
             incompatible: "{name} 不相容目前基礎模型或輸入模式。",
+            retired: "{name} 已停止用於新任務；請改用目前受支援的 Ref2VA NSFW LoRA。",
             pinkTurbo: "PinkFluffyBunny 與 Turbo 可以組合，但屬於未經充分驗證的 alpha 疊加；建議 Turbo 在前，並分別保留單 LoRA 對照結果。",
             orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入，內容、人物和風格 LoRA 後載入。"
         }

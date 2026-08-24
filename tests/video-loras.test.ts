@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_VIDEO_LORAS,
-  H3_PINK_FLUFFY_BUNNY_LORA,
+  H3_AFTER_MIDNIGHT_LORA,
   H3_REALISM_PEOPLE_LORA,
+  H3_REF2V_TURBO_LORA,
   H3_TURBO_LORA,
   normalizeVideoLoras,
   reorderVideoLoras,
@@ -13,14 +14,13 @@ import {
 } from "../src/core/video-loras";
 
 describe("video LoRA catalog", () => {
-  it("offers Turbo, Realism People, and PinkFluffyBunny as separate stackable H3 LoRAs", () => {
+  it("offers the current Turbo, Ref2VA NSFW, and Realism People H3 LoRAs", () => {
     expect(BUILTIN_VIDEO_LORAS.map((lora) => lora.id)).toEqual([
       H3_TURBO_LORA.id,
       "minimax-h3-lightx2v-turbo-8step-v1",
-      "minimax-h3-lightx2v-turbo-4step-768p-v1",
       "minimax-h3-ref2v-turbo-4step-v01",
-      H3_REALISM_PEOPLE_LORA.id,
-      H3_PINK_FLUFFY_BUNNY_LORA.id
+      H3_AFTER_MIDNIGHT_LORA.id,
+      H3_REALISM_PEOPLE_LORA.id
     ]);
     expect(H3_REALISM_PEOPLE_LORA).toMatchObject({
       strength: 0.8,
@@ -28,10 +28,10 @@ describe("video LoRA catalog", () => {
       compatibleModelIds: ["minimax_h3_fl2va", "minimax_h3_ref2va"],
       compatibleInputModes: ["image"]
     });
-    expect(H3_PINK_FLUFFY_BUNNY_LORA).toMatchObject({
-      strength: 0.5,
+    expect(H3_AFTER_MIDNIGHT_LORA).toMatchObject({
+      strength: 1,
       purpose: "content",
-      compatibleModelIds: ["minimax_h3_fl2va"],
+      compatibleModelIds: ["minimax_h3_ref2va"],
       compatibleInputModes: ["image"]
     });
     for (const lora of BUILTIN_VIDEO_LORAS) {
@@ -80,19 +80,19 @@ describe("video LoRA catalog", () => {
   it("normalizes both built-ins without merging their strengths", () => {
     expect(normalizeVideoLoras([
       { ...H3_TURBO_LORA, strength: 0.7 },
-      { ...H3_PINK_FLUFFY_BUNNY_LORA, strength: 0.45 }
+      { ...H3_AFTER_MIDNIGHT_LORA, strength: 0.85 }
     ])).toMatchObject([
       { id: H3_TURBO_LORA.id, strength: 0.7 },
-      { id: H3_PINK_FLUFFY_BUNNY_LORA.id, strength: 0.45 }
+      { id: H3_AFTER_MIDNIGHT_LORA.id, strength: 0.85 }
     ]);
   });
 
   it("preserves the detected ComfyUI-relative filename for built-in LoRAs", () => {
     expect(normalizeVideoLoras([{
-      ...H3_PINK_FLUFFY_BUNNY_LORA,
-      filename: "MiniMax-H3/PinkFluffyBunny-pruned-v1-rank128.safetensors"
+      ...H3_AFTER_MIDNIGHT_LORA,
+      filename: "MiniMax-H3/AfterMidnight_ref2va_h3_sexytime_rank64-v1.2.safetensors"
     }])[0]?.filename).toBe(
-      "MiniMax-H3/PinkFluffyBunny-pruned-v1-rank128.safetensors"
+      "MiniMax-H3/AfterMidnight_ref2va_h3_sexytime_rank64-v1.2.safetensors"
     );
   });
 
@@ -102,12 +102,12 @@ describe("video LoRA catalog", () => {
       inputMode: "image",
       spectrumMode: "balanced",
       attentionMode: "sage",
-      videoLoras: [H3_TURBO_LORA, H3_PINK_FLUFFY_BUNNY_LORA]
+      videoLoras: [H3_TURBO_LORA, H3_REALISM_PEOPLE_LORA]
     });
 
     expect(issues).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        code: `combination:${[H3_TURBO_LORA.id, H3_PINK_FLUFFY_BUNNY_LORA.id].sort().join(":")}`,
+        code: `combination:${[H3_TURBO_LORA.id, H3_REALISM_PEOPLE_LORA.id].sort().join(":")}`,
         severity: "warning"
       })
     ]));
@@ -122,46 +122,67 @@ describe("video LoRA catalog", () => {
       inputMode: "image",
       spectrumMode: "off",
       attentionMode: "sage",
-      videoLoras: [H3_TURBO_LORA, H3_REALISM_PEOPLE_LORA, H3_PINK_FLUFFY_BUNNY_LORA]
+      videoLoras: [H3_TURBO_LORA, H3_REALISM_PEOPLE_LORA]
     });
     expect(issues).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: `combination:${[H3_REALISM_PEOPLE_LORA.id, H3_TURBO_LORA.id].sort().join(":")}`,
         severity: "warning"
       }),
+    ]));
+  });
+
+  it("reports the retired PinkFluffyBunny selection as unavailable for new tasks", () => {
+    const issues = videoLoraConfigurationIssues({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      spectrumMode: "off",
+      attentionMode: "sage",
+      videoLoras: [{
+        id: "minimax-h3-pink-fluffy-bunny-nsfw",
+        name: "PinkFluffyBunny NSFW",
+        filename: "PinkFluffyBunny-pruned-v1-rank128.safetensors",
+        strength: 0.5,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: ["minimax_h3_fl2va"],
+        compatibleInputModes: ["image"],
+        purpose: "content"
+      }]
+    });
+    expect(issues).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        code: `combination:${[H3_PINK_FLUFFY_BUNNY_LORA.id, H3_REALISM_PEOPLE_LORA.id].sort().join(":")}`,
-        severity: "warning"
+        code: "retired:minimax-h3-pink-fluffy-bunny-nsfw",
+        severity: "error"
       })
     ]));
   });
 
   it("warns when LoRAs are loaded against their recommended order", () => {
     const issues = videoLoraConfigurationIssues({
-      modelId: "minimax_h3_fl2va",
+      modelId: "minimax_h3_ref2va",
       inputMode: "image",
       spectrumMode: "off",
       attentionMode: "sage",
-      videoLoras: [H3_PINK_FLUFFY_BUNNY_LORA, H3_TURBO_LORA]
+      videoLoras: [H3_AFTER_MIDNIGHT_LORA, H3_REF2V_TURBO_LORA]
     });
 
     expect(issues.some((issue) => issue.code.startsWith("order:"))).toBe(true);
   });
 
-  it("does not offer the NSFW LoRA to R2V or video extension drafts", () => {
+  it("offers the replacement NSFW LoRA only to R2V image drafts", () => {
     expect(videoLoraCompatibleWithDraft(
-      H3_PINK_FLUFFY_BUNNY_LORA,
-      "minimax_h3_fl2va",
+      H3_AFTER_MIDNIGHT_LORA,
+      "minimax_h3_ref2va",
       "image"
     )).toBe(true);
     expect(videoLoraCompatibleWithDraft(
-      H3_PINK_FLUFFY_BUNNY_LORA,
-      "minimax_h3_ref2va",
+      H3_AFTER_MIDNIGHT_LORA,
+      "minimax_h3_fl2va",
       "image"
     )).toBe(false);
     expect(videoLoraCompatibleWithDraft(
-      H3_PINK_FLUFFY_BUNNY_LORA,
-      "minimax_h3_fl2va",
+      H3_AFTER_MIDNIGHT_LORA,
+      "minimax_h3_ref2va",
       "video"
     )).toBe(false);
   });
@@ -175,17 +196,17 @@ describe("video LoRA catalog", () => {
   });
 
   it("reorders LoRAs immutably and keeps boundary moves stable", () => {
-    const original = [H3_TURBO_LORA, H3_PINK_FLUFFY_BUNNY_LORA].map((lora) => ({ ...lora }));
-    const reordered = reorderVideoLoras(original, H3_PINK_FLUFFY_BUNNY_LORA.id, -1);
+    const original = [H3_REF2V_TURBO_LORA, H3_AFTER_MIDNIGHT_LORA].map((lora) => ({ ...lora }));
+    const reordered = reorderVideoLoras(original, H3_AFTER_MIDNIGHT_LORA.id, -1);
 
     expect(reordered.map((lora) => lora.id)).toEqual([
-      H3_PINK_FLUFFY_BUNNY_LORA.id,
-      H3_TURBO_LORA.id
+      H3_AFTER_MIDNIGHT_LORA.id,
+      H3_REF2V_TURBO_LORA.id
     ]);
     expect(original.map((lora) => lora.id)).toEqual([
-      H3_TURBO_LORA.id,
-      H3_PINK_FLUFFY_BUNNY_LORA.id
+      H3_REF2V_TURBO_LORA.id,
+      H3_AFTER_MIDNIGHT_LORA.id
     ]);
-    expect(reorderVideoLoras(original, H3_TURBO_LORA.id, -1)).toEqual(original);
+    expect(reorderVideoLoras(original, H3_REF2V_TURBO_LORA.id, -1)).toEqual(original);
   });
 });

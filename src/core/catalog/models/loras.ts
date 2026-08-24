@@ -2,6 +2,11 @@ import type { CatalogModelEntry } from "../types.js";
 import { VIDEO_LORA_DEFINITIONS } from "../loras/definitions.js";
 
 const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
+  "minimax-h3-lightx2v-turbo-4step-768p-v1.1": {
+    "zh-CN": { name: "LightX2V Turbo 4-Step v1.1 · 768p", badge: "H3 专属 · 最新 768p", description: "官方最新 v1.1 FL2VA Turbo LoRA，配套 4 步、video shift 6 和 audio shift 3。" },
+    "zh-TW": { name: "LightX2V Turbo 4-Step v1.1 · 768p", badge: "H3 專屬 · 最新 768p", description: "官方最新 v1.1 FL2VA Turbo LoRA，搭配 4 步、video shift 6 與 audio shift 3。" },
+    "en-US": { name: "LightX2V Turbo 4-Step v1.1 · 768p", badge: "H3 only · latest 768p", description: "The latest official v1.1 FL2VA Turbo LoRA with the four-step, video-shift 6, audio-shift 3 path." }
+  },
   "minimax-h3-lightx2v-turbo-8step-v1": {
     "zh-CN": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 专属 · 性能", description: "官方 v1.0 FL2VA Turbo LoRA，默认 8 步，优先稳定和速度平衡。" },
     "zh-TW": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 專屬 · 效能", description: "官方 v1.0 FL2VA Turbo LoRA，預設 8 步，優先穩定與速度平衡。" },
@@ -16,6 +21,11 @@ const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
     "zh-CN": { name: "LightX2V Ref2V Turbo 4-Step v0.1", badge: "H3 R2V 专属 · 性能", description: "官方 Ref2VA 多参考图 Turbo LoRA，仅用于 R2V 四步路径。" },
     "zh-TW": { name: "LightX2V Ref2V Turbo 4-Step v0.1", badge: "H3 R2V 專屬 · 效能", description: "官方 Ref2VA 多參考圖 Turbo LoRA，僅用於 R2V 四步路徑。" },
     "en-US": { name: "LightX2V Ref2V Turbo 4-Step v0.1", badge: "H3 R2V only · performance", description: "Official Ref2VA multi-reference Turbo LoRA for the dedicated four-step R2V path." }
+  },
+  "minimax-h3-after-midnight-ref2va-nsfw": {
+    "zh-CN": { name: "AfterMidnight NSFW · Ref2VA v1.2", badge: "H3 R2V 专属 · NSFW", description: "当前确认的 AfterMidnight v1.2 内容 LoRA，仅适用于 MiniMax H3 Ref2VA。" },
+    "zh-TW": { name: "AfterMidnight NSFW · Ref2VA v1.2", badge: "H3 R2V 專屬 · NSFW", description: "目前確認的 AfterMidnight v1.2 內容 LoRA，僅適用於 MiniMax H3 Ref2VA。" },
+    "en-US": { name: "AfterMidnight NSFW · Ref2VA v1.2", badge: "H3 R2V only · NSFW", description: "The currently confirmed AfterMidnight v1.2 content LoRA for MiniMax H3 Ref2VA only." }
   },
   "minimax-h3-lightx2v-turbo-4step": {
     "zh-CN": { name: "LightX2V Turbo 4-Step", badge: "H3 专属 · 性能", description: "MiniMax H3 FL2VA 的蒸馏 LoRA，把约 20 步采样压缩到 6–8 步。" },
@@ -42,6 +52,7 @@ export const loraModelEntries: CatalogModelEntry[] = VIDEO_LORA_DEFINITIONS.map(
     category: "lora",
     adapterId: "video-lora",
     order: lora.catalogOrder,
+    retired: lora.retired,
     inputModes: lora.compatibleInputModes,
     scan: lora.scan
   },

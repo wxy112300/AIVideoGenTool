@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ExtensionQueueTask, QueueTask } from "../src/types";
-import { H3_REALISM_PEOPLE_LORA } from "../src/core/video-loras";
+import {
+  H3_AFTER_MIDNIGHT_LORA,
+  H3_REALISM_PEOPLE_LORA,
+  H3_TURBO_LORA
+} from "../src/core/video-loras";
 import {
   activityTimeoutMinutesForTask,
   extensionWorkflowSafetyErrors,
@@ -234,6 +238,53 @@ describe("renderWorkflow", () => {
     expect(turboSpectrum["10"]?.inputs?.model).toEqual([turboSpectrumNode?.[0], 0]);
   });
 
+  it("renders the official H3 FL2VA v1.1 Turbo sampler contract", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_fl2va_turbo_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      videoLoras: [H3_TURBO_LORA],
+      steps: 8,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    }, {
+      inputImage: "first.png",
+      endImage: "last.png",
+      vramTotalBytes: 24 * 1024 ** 3
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    const currentContract = JSON.parse(JSON.stringify(source)) as Record<string, {
+      class_type?: string;
+      inputs?: Record<string, unknown>;
+    }>;
+    currentContract["7"]!.inputs!.sampler_name = "euler";
+    currentContract["21"]!.inputs!.shift_video = 6;
+    expect(workflowSupportsH3TurboSampling(currentContract, {
+      modelId: "minimax_h3_fl2va",
+      videoLoras: [H3_TURBO_LORA]
+    })).toBe(true);
+
+    expect(rendered["20"]?.inputs).toMatchObject({
+      lora_name: "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+      strength_model: 1
+    });
+    expect(rendered["21"]?.inputs).toMatchObject({
+      shift_video: 6,
+      shift_audio: 3
+    });
+    expect(rendered["7"]?.inputs.sampler_name).toBe("euler");
+    expect(rendered["8"]?.inputs).toMatchObject({
+      model: ["21", 0],
+      scheduler: "beta",
+      steps: 4
+    });
+  });
+
   it("accepts the standard H3 R2V graph for the dedicated Ref2V Turbo LoRA", () => {
     const source = JSON.parse(
       readFileSync(
@@ -258,6 +309,30 @@ describe("renderWorkflow", () => {
       modelId: "minimax_h3_ref2va",
       videoLoras: []
     })).toBe(false);
+  });
+
+  it("applies AfterMidnight's Euler and Beta sampling contract without adding Turbo shift", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_r2v_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_ref2va",
+      videoLoras: [H3_AFTER_MIDNIGHT_LORA],
+      steps: 20,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    }, { inputImage: "reference.png" }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(rendered["15"]?.inputs.sampler_name).toBe("euler");
+    expect(rendered["17"]?.inputs.scheduler).toBe("beta");
+    expect(Object.values(rendered).some((node) =>
+      node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3"
+    )).toBe(false);
   });
 
   it("preserves custom workflow LoRAs and appends selected LoRAs after them", () => {

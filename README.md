@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.42.14**。本版本将确认、设置辅助和窗口操作弹窗移到独立 overlay 层，减少背景页面重绘并保持焦点；同时修复队列和历史删除后的滚动位置恢复。队列继续支持可视化拖拽排序、实时预计编号和键盘备用操作。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.43.0**。本版本更新 MiniMax H3 LoRA 目录：默认 FL2VA 4-step 切换至官方 LightX2V v1.1 768p，退役已知画质风险较高的旧 LoRA，并加入仅适用于 Ref2VA 的 AfterMidnight v1.2。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -25,7 +25,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 | 视频生成 | MiniMax H3 T2VA/FL2VA（INT8、INT4、实验性 Q3 GGUF）、MiniMax H3 R2V（INT8、INT4）、Sulphur 2 / LTX 2.3；另保留 Wan 2.2 14B + NSFW 兼容配置 |
 | 图片处理 | Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
 | 视频增强 | SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
-| H3 LoRA | LightX2V Turbo v1.0（8-step/768p 4-step）、Ref2V Turbo、Realism People、PinkFluffyBunny NSFW |
+| H3 LoRA | LightX2V Turbo v1.1（768p 4-step）/ v1.0（8-step）、Ref2V Turbo、Realism People、AfterMidnight Ref2VA NSFW |
 | Prompt | Qwen3.5 2B/4B、Qwen3.6/Qwen3.8 27B Q4 MultiModal、Qwen3-VL 8B + MiniMax H3 Prompt Rewriter LoRA、MiniMax H3 Prompt Writer 的 Gemma 4 GGUF |
 
 表中的“支持”表示相关 UI、队列快照和 ComfyUI 工作流已经纳入当前集成范围。实际可用性仍取决于模型文件、节点版本、Python 依赖、PyTorch/CUDA 运行时和硬件资源；各组合应以设置页检查结果及真实最小任务为准。H3 768p 对运行时兼容性较为敏感，不匹配的 CUDA 扩展可能回退到通用实现，从而增加显存占用或降低执行性能。
@@ -145,7 +145,7 @@ start-ui-proxy.bat http://127.0.0.1:7890
 7. 打开 **创建 → 视频**，选择 **MiniMax H3 FL2VA · INT8**。添加首帧图片，或不添加图片以使用 T2VA；输入提示词并选择较短时长。768p 是官方质量基线；显存不足时可选择 360p/480p 低显存实验档，540p/720p 也保留为中间档位，但较低分辨率的结果不代表 H3 的标准质量。
 8. 加入队列，在队列页查看 ComfyUI 阶段、采样进度、显存和安装/运行日志。首次任务成功输出后，再逐步增加时长或启用 Turbo、Spectrum 和实时预览。
 
-FL2VA 与 R2V 使用不同的扩散模型。需要多参考图片或视频时，应改选 **MiniMax H3 R2V**，并按其模型卡片下载 Ref2VA 权重；不要复用 FL2VA 扩散模型。LightX2V Turbo 及 768p 4-step 文件是 LoRA，应放入 `models/loras`，不能替代基础扩散模型。
+FL2VA 与 R2V 使用不同的扩散模型。需要多参考图片或视频时，应改选 **MiniMax H3 R2V**，并按其模型卡片下载 Ref2VA 权重；不要复用 FL2VA 扩散模型。LightX2V Turbo v1.1 768p/8-step 和 Ref2V 文件是 LoRA，应放入 `models/loras`，不能替代基础扩散模型；AfterMidnight 只适用于 Ref2VA。
 
 ### 6. 理解就绪状态
 

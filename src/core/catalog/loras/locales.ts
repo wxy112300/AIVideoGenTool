@@ -16,6 +16,21 @@ export interface CatalogLoraLocale {
 }
 
 const zhCN: Record<string, CatalogLoraLocale> = {
+  "minimax-h3-lightx2v-turbo-4step-768p-v1.1": {
+    guide: {
+      summary: "官方 LightX2V v1.1 FL2VA Turbo LoRA，针对 768p 四步路径更新。",
+      recommendedStrength: "默认 1.0；按官方路径使用。先固定 4 步、video shift 6、audio shift 3 和 Euler 做基准。",
+      effects: "在 768p 下减少采样步数；四步对 Prompt、Seed、运动连续性和音频稳定性更敏感，质量变化应与旧版本做同 Seed 对照。",
+      stacking: "性能 LoRA 放在人物或内容 LoRA 前面；不要与 8-step、旧版 v1.0 768p 或其他 Turbo 同时叠加。",
+      compatibility: "仅 MiniMax H3 FL2VA 图生视频的 768p 路径；不适用于 Ref2VA 或视频续写。",
+      source: "LightX2V / Minimax-h3-Turbo 官方 v1.1 ComfyUI 权重"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      turboSpectrum: "v1.1 768p Turbo 与 Spectrum 的组合需要同 Seed 对照；出现画面退化时先关闭 Spectrum。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
+    }
+  },
   "minimax-h3-lightx2v-turbo-8step-v1": {
     guide: {
       summary: "官方 LightX2V v1.0 FL2VA Turbo LoRA，把标准 H3 路径压缩到 8 步。",
@@ -61,6 +76,21 @@ const zhCN: Record<string, CatalogLoraLocale> = {
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
     }
   },
+  "minimax-h3-after-midnight-ref2va-nsfw": {
+    guide: {
+      summary: "当前确认的 AfterMidnight v1.2 Ref2VA NSFW 内容 LoRA，仅用于 H3 多参考图路径。",
+      recommendedStrength: "默认 1.0；README 提供 sexytime 1.0 和 softer 0.8–1.0 两档，先固定 1.0 做基准。",
+      effects: "改变成人内容、身体细节和姿态响应；这是内容 LoRA，不会替代 Prompt，也不应移植到 FL2VA。",
+      stacking: "放在 Ref2V Turbo 后、Realism People 等人物 LoRA 后面；与 Turbo 组合时固定 Euler + Beta 并保留单 LoRA 对照。",
+      compatibility: "仅 MiniMax H3 Ref2VA 多参考图图生视频；不适用于 FL2VA 首帧、视频续写或 INT4/GGUF。",
+      source: "SexGod1979 / AfterMidnight-MiniMax-H3-NSFW v1.2"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      afterMidnightTurbo: "AfterMidnight 仅用于 Ref2VA；与 Ref2V Turbo 组合时必须使用 Euler + Beta，并检查音频与时序稳定性。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
+    }
+  },
   "minimax-h3-lightx2v-turbo-4step": {
     guide: {
       summary: "把 H3 FL2VA 从标准约 20 步切换到 LightX2V Turbo 6–8 步采样，用更少步骤缩短生成时间。",
@@ -72,6 +102,7 @@ const zhCN: Record<string, CatalogLoraLocale> = {
     },
     rules: {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      retired: "{name} 已停止用于新任务；请改用当前受支持的 LoRA。",
       turboSpectrum: "Spectrum v0.2.6+ 可与 LightX2V Turbo 的原生 ER-SDE 路径叠加；更早版本请先更新。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，内容、人物和风格 LoRA 后加载。"
     }
@@ -88,7 +119,7 @@ const zhCN: Record<string, CatalogLoraLocale> = {
     rules: {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
       realismTurbo: "Realism People 可与 Turbo 叠加，但低步数可能削弱人物细节；建议 Turbo 在前，并与标准 20 步做同 Seed 对照。",
-      realismPink: "Realism People 与 PinkFluffyBunny 都会改变人物和身体细节；组合属于未充分验证路径，建议分别降低强度并检查肤色、手部和动作。",
+      realismAfterMidnight: "Realism People 与 AfterMidnight 都会改变人物和身体细节；组合属于未充分验证路径，建议分别降低强度并检查肤色、手部和动作。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；推荐顺序为性能 LoRA、人物/质量 LoRA、内容 LoRA。"
     }
   },
@@ -103,6 +134,7 @@ const zhCN: Record<string, CatalogLoraLocale> = {
     },
     rules: {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      retired: "{name} 已停止用于新任务；请改用当前受支持的 Ref2VA NSFW LoRA。",
       pinkTurbo: "PinkFluffyBunny 与 Turbo 可以组合，但属于未经充分验证的 alpha 叠加；建议 Turbo 在前，并分别保留单 LoRA 对照结果。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，内容、人物和风格 LoRA 后加载。"
     }
@@ -110,6 +142,21 @@ const zhCN: Record<string, CatalogLoraLocale> = {
 };
 
 const enUS: Record<string, CatalogLoraLocale> = {
+  "minimax-h3-lightx2v-turbo-4step-768p-v1.1": {
+    guide: {
+      summary: "The latest official LightX2V v1.1 FL2VA Turbo LoRA for the dedicated 768p four-step path.",
+      recommendedStrength: "Default 1.0; start with four steps, video shift 6, audio shift 3, and Euler as the baseline.",
+      effects: "Reduces the 768p sampling budget, while four steps are more sensitive to Prompt, Seed, temporal motion, and audio stability; compare with the old version using the same Seed.",
+      stacking: "Load it before people or content LoRAs; do not stack it with the eight-step, retired v1.0 768p, or another Turbo variant.",
+      compatibility: "MiniMax H3 FL2VA image-to-video 768p only; not for Ref2VA or video extension.",
+      source: "Official LightX2V / Minimax-h3-Turbo v1.1 ComfyUI weight"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      turboSpectrum: "The v1.1 768p Turbo path needs a same-Seed comparison with Spectrum; disable Spectrum first if image quality drops.",
+      orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
+    }
+  },
   "minimax-h3-lightx2v-turbo-8step-v1": {
     guide: {
       summary: "Official LightX2V v1.0 FL2VA Turbo LoRA that compresses the standard H3 path to eight steps.",
@@ -155,6 +202,21 @@ const enUS: Record<string, CatalogLoraLocale> = {
       orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
     }
   },
+  "minimax-h3-after-midnight-ref2va-nsfw": {
+    guide: {
+      summary: "The currently confirmed AfterMidnight v1.2 Ref2VA NSFW content LoRA for the H3 multi-reference path.",
+      recommendedStrength: "Default 1.0; the README describes a sexytime 1.0 flavor and a softer 0.8–1.0 range. Keep 1.0 as the baseline.",
+      effects: "Changes adult-content, body-detail, and pose response; it is a content LoRA, does not replace the Prompt, and must not be moved to FL2VA.",
+      stacking: "Place it after Ref2V Turbo and people LoRAs; when combined with Turbo, keep Euler + Beta and retain a single-LoRA comparison.",
+      compatibility: "MiniMax H3 Ref2VA multi-reference image-to-video only; not for FL2VA first-frame, video extension, or INT4/GGUF.",
+      source: "SexGod1979 / AfterMidnight-MiniMax-H3-NSFW v1.2"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      afterMidnightTurbo: "AfterMidnight is Ref2VA-only; when combined with Ref2V Turbo, use Euler + Beta and inspect audio and temporal stability.",
+      orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
+    }
+  },
   "minimax-h3-lightx2v-turbo-4step": {
     guide: {
       summary: "Switches H3 FL2VA from standard roughly 20-step sampling to LightX2V Turbo 6–8-step sampling for shorter generation time.",
@@ -166,6 +228,7 @@ const enUS: Record<string, CatalogLoraLocale> = {
     },
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
+      retired: "{name} is retired for new tasks; choose the currently supported replacement LoRA.",
       turboSpectrum: "Spectrum v0.2.6+ can stack with LightX2V Turbo's native ER-SDE path; update older versions first.",
       orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before content, character, and style LoRAs."
     }
@@ -182,7 +245,7 @@ const enUS: Record<string, CatalogLoraLocale> = {
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
       realismTurbo: "Realism People can stack with Turbo, but low-step sampling may reduce people detail; place Turbo first and compare against standard 20-step sampling with the same Seed.",
-      realismPink: "Realism People and PinkFluffyBunny both alter people and body detail. This stack is not fully validated; lower both strengths and inspect skin tone, hands, and motion.",
+      realismAfterMidnight: "Realism People and AfterMidnight both alter people and body detail. This stack is not fully validated; lower both strengths and inspect skin tone, hands, and motion.",
       orderSuggestion: "Place {current} before {previous}; the recommended order is performance, people/quality, then content LoRAs."
     }
   },
@@ -197,6 +260,7 @@ const enUS: Record<string, CatalogLoraLocale> = {
     },
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
+      retired: "{name} is retired for new tasks; choose the currently supported Ref2VA NSFW LoRA.",
       pinkTurbo: "PinkFluffyBunny can be combined with Turbo, but the alpha stack is not fully validated; place Turbo first and keep single-LoRA comparison results.",
       orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before content, character, and style LoRAs."
     }
@@ -206,14 +270,17 @@ const enUS: Record<string, CatalogLoraLocale> = {
 const genericRules: Record<UiLocale, Record<string, string>> = {
   "zh-CN": {
     incompatible: "{name} 不兼容当前基础模型或输入模式。",
+    retired: "{name} 已停止用于新任务；请改用当前受支持的替代 LoRA。",
     orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，内容、人物和风格 LoRA 后加载。"
   },
   "zh-TW": {
     incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+    retired: "{name} 已停止用於新任務；請改用目前受支援的替代 LoRA。",
     orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入，內容、人物和風格 LoRA 後載入。"
   },
   "en-US": {
     incompatible: "{name} is incompatible with the current base model or input mode.",
+    retired: "{name} is retired for new tasks; choose a currently supported replacement LoRA.",
     orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before content, character, and style LoRAs."
   }
 };

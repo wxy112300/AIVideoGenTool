@@ -1,6 +1,8 @@
 import type { ModelScanProfile, UiLocale, VideoLoraSelection } from "../types.js";
 import {
   H3_FL2VA_MODEL_ID,
+  H3_AFTER_MIDNIGHT_LORA_FILENAME,
+  H3_AFTER_MIDNIGHT_LORA_ID,
   H3_PINK_FLUFFY_BUNNY_LORA_FILENAME,
   H3_PINK_FLUFFY_BUNNY_LORA_ID,
   H3_REALISM_PEOPLE_LORA_FILENAME,
@@ -12,6 +14,7 @@ import {
   H3_TURBO_LORA_IDS,
   H3_TURBO_768P_V1_LORA_ID,
   H3_TURBO_8STEP_V1_LORA_ID,
+  LEGACY_H3_TURBO_LORA_ID,
   LEGACY_H3_TURBO_MODEL_ID,
   LEGACY_H3_REF2V_TURBO_MODEL_ID,
   VIDEO_LORA_DEFINITIONS
@@ -24,6 +27,8 @@ import { loraLocaleFor, loraRuleText } from "./catalog/loras/locales.js";
 
 export {
   H3_FL2VA_MODEL_ID,
+  H3_AFTER_MIDNIGHT_LORA_FILENAME,
+  H3_AFTER_MIDNIGHT_LORA_ID,
   H3_PINK_FLUFFY_BUNNY_LORA_FILENAME,
   H3_PINK_FLUFFY_BUNNY_LORA_ID,
   H3_REALISM_PEOPLE_LORA_FILENAME,
@@ -35,6 +40,7 @@ export {
   H3_TURBO_LORA_IDS,
   H3_TURBO_768P_V1_LORA_ID,
   H3_TURBO_8STEP_V1_LORA_ID,
+  LEGACY_H3_TURBO_LORA_ID,
   LEGACY_H3_REF2V_TURBO_MODEL_ID,
   LEGACY_H3_TURBO_MODEL_ID
 };
@@ -62,18 +68,23 @@ export interface VideoLoraConfigurationIssue {
 }
 
 export interface BuiltinVideoLora extends VideoLoraSelection {
+  retired?: boolean;
   guide: VideoLoraGuide;
   rules: VideoLoraRules;
 }
 
-export const BUILTIN_VIDEO_LORAS: readonly BuiltinVideoLora[] = VIDEO_LORA_DEFINITIONS.map((definition) => ({
+const allBuiltinVideoLoras: readonly BuiltinVideoLora[] = VIDEO_LORA_DEFINITIONS.map((definition) => ({
   ...videoLoraSelection(definition),
+  ...(definition.retired ? { retired: true } : {}),
   guide: { ...loraLocaleFor(definition.id)?.guide! },
   rules: definition.rules
 }));
 
+export const BUILTIN_VIDEO_LORAS: readonly BuiltinVideoLora[] = allBuiltinVideoLoras
+  .filter((lora) => lora.retired !== true);
+
 function requiredBuiltinVideoLora(id: string): BuiltinVideoLora {
-  const lora = BUILTIN_VIDEO_LORAS.find((candidate) => candidate.id === id);
+  const lora = allBuiltinVideoLoras.find((candidate) => candidate.id === id);
   if (!lora) throw new Error(`Missing built-in video LoRA definition: ${id}`);
   return lora;
 }
@@ -82,13 +93,22 @@ export const H3_TURBO_LORA = requiredBuiltinVideoLora(H3_TURBO_LORA_ID);
 export const H3_TURBO_8STEP_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_8STEP_V1_LORA_ID);
 export const H3_TURBO_768P_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_768P_V1_LORA_ID);
 export const H3_REF2V_TURBO_LORA = requiredBuiltinVideoLora(H3_REF2V_TURBO_LORA_ID);
+export const H3_AFTER_MIDNIGHT_LORA = requiredBuiltinVideoLora(H3_AFTER_MIDNIGHT_LORA_ID);
 export const H3_REALISM_PEOPLE_LORA = requiredBuiltinVideoLora(H3_REALISM_PEOPLE_LORA_ID);
 export const H3_PINK_FLUFFY_BUNNY_LORA = requiredBuiltinVideoLora(H3_PINK_FLUFFY_BUNNY_LORA_ID);
 
-const turboLoraIdSet = new Set<string>(H3_TURBO_LORA_IDS);
+const legacyTurboLoraIdSet = new Set<string>([
+  ...H3_TURBO_LORA_IDS,
+  LEGACY_H3_TURBO_LORA_ID,
+  H3_TURBO_768P_V1_LORA_ID
+]);
 
 export function isH3TurboLoraId(id: string): boolean {
-  return turboLoraIdSet.has(id);
+  return legacyTurboLoraIdSet.has(id);
+}
+
+export function isH3TurboFourStepV11LoraId(id: string): boolean {
+  return id === H3_TURBO_LORA_ID;
 }
 
 export function isH3Ref2vTurboLoraId(id: string): boolean {
@@ -147,7 +167,7 @@ export function videoLoraSelection(
 }
 
 export function videoLoraDefinition(id: string): BuiltinVideoLora | undefined {
-  return BUILTIN_VIDEO_LORAS.find((lora) => lora.id === id);
+  return allBuiltinVideoLoras.find((lora) => lora.id === id);
 }
 
 export function videoLoraConfigurationIssues(context: {
@@ -182,6 +202,14 @@ export function videoLoraConfigurationIssues(context: {
     }
     const definition = videoLoraDefinition(lora.id);
     if (!definition) return;
+    if (definition.retired) {
+      push({
+        code: `retired:${lora.id}`,
+        severity: "error",
+        loraIds: [lora.id],
+        message: loraRuleText(lora.id, "retired", context.locale).replace("{name}", lora.name)
+      });
+    }
     definition.rules.settingConflicts.forEach((conflict) => {
       if (!conflict.values.includes(settingValues[conflict.setting])) return;
       push({
@@ -256,7 +284,7 @@ export function normalizeVideoLoras(
     if (typeof candidate.id !== "string" || !candidate.id.trim() ||
       typeof candidate.name !== "string" || !candidate.name.trim() ||
       typeof candidate.filename !== "string" || !candidate.filename.trim()) return [];
-    const builtin = BUILTIN_VIDEO_LORAS.find((lora) => lora.id === candidate.id);
+    const builtin = allBuiltinVideoLoras.find((lora) => lora.id === candidate.id);
     const definition: VideoLoraSelection = builtin ?? {
         id: candidate.id.trim(),
         name: candidate.name.trim(),

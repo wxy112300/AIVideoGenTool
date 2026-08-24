@@ -49,9 +49,9 @@ describe("video generation policy", () => {
     });
 
     expect(policy.turboEnabled).toBe(true);
-    expect(policy.steps.options).toEqual([4, 6, 8]);
-    expect(policy.steps.maxValue).toBe(8);
-    expect(normalizeVideoSteps(20, policy)).toBe(8);
+    expect(policy.steps.options).toEqual([4]);
+    expect(policy.steps.maxValue).toBe(4);
+    expect(normalizeVideoSteps(20, policy)).toBe(4);
     expect(policy.spectrum.allowed).toBe(true);
     expect(policy.spectrum.reason).toBeNull();
     expect(shouldApplySpectrum({

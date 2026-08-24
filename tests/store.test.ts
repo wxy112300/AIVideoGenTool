@@ -529,13 +529,13 @@ describe("queue lock recovery", () => {
       expect(loaded.draft.modelId).toBe("minimax_h3_fl2va");
       expect(loaded.draft.videoLoras).toEqual([
         expect.objectContaining({
-          id: "minimax-h3-lightx2v-turbo-4step",
-          strength: 0.75,
+          id: "minimax-h3-lightx2v-turbo-4step-768p-v1.1",
+          strength: 1,
           modelFamily: "minimax-h3"
         })
       ]);
       expect(loaded.settings.defaultVideoModel).toBe("minimax_h3_fl2va");
-      expect(loaded.draft.steps).toBe(8);
+      expect(loaded.draft.steps).toBe(4);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

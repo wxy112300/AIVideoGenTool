@@ -259,7 +259,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       modelId: draft.modelId,
       videoLoras: draft.videoLoras
     })) {
-      throw new Error("LightX2V Turbo 需要 ER-SDE、Beta 调度器和 MiniMaxH3SigmaShift（当前显示名 ModelSamplingMiniMaxH3）；R2V Turbo 还需要标准 MiniMaxH3ReferenceToVideo 工作流。");
+      throw new Error("LightX2V Turbo 需要匹配所选版本的采样契约：v1.1 4-step 使用 Euler、Beta、video shift 6、audio shift 3；8-step/旧版路径使用 ER-SDE、Beta 和 Sigma Shift。R2V Turbo 还需要标准 MiniMaxH3ReferenceToVideo 工作流。");
     }
     if (draft.endImagePath && !workflowSupportsEndImage(workflow)) {
       throw new Error("当前工作流不支持尾帧。请选择包含 {{END_IMAGE}} 占位符的自定义 API 工作流，或移除尾帧。");

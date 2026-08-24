@@ -1,13 +1,16 @@
-import { H3_FL2VA_MODEL_ID, H3_PINK_FLUFFY_BUNNY_LORA_FILENAME, H3_PINK_FLUFFY_BUNNY_LORA_ID, H3_REALISM_PEOPLE_LORA_FILENAME, H3_REALISM_PEOPLE_LORA_ID, H3_REF2V_TURBO_LORA_ID, H3_REF2V_TURBO_LORA_FILENAME, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, H3_TURBO_LORA_IDS, H3_TURBO_768P_V1_LORA_ID, H3_TURBO_8STEP_V1_LORA_ID, LEGACY_H3_TURBO_MODEL_ID, LEGACY_H3_REF2V_TURBO_MODEL_ID, VIDEO_LORA_DEFINITIONS } from "./catalog/loras/definitions.js";
+import { H3_FL2VA_MODEL_ID, H3_AFTER_MIDNIGHT_LORA_FILENAME, H3_AFTER_MIDNIGHT_LORA_ID, H3_PINK_FLUFFY_BUNNY_LORA_FILENAME, H3_PINK_FLUFFY_BUNNY_LORA_ID, H3_REALISM_PEOPLE_LORA_FILENAME, H3_REALISM_PEOPLE_LORA_ID, H3_REF2V_TURBO_LORA_ID, H3_REF2V_TURBO_LORA_FILENAME, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, H3_TURBO_LORA_IDS, H3_TURBO_768P_V1_LORA_ID, H3_TURBO_8STEP_V1_LORA_ID, LEGACY_H3_TURBO_LORA_ID, LEGACY_H3_TURBO_MODEL_ID, LEGACY_H3_REF2V_TURBO_MODEL_ID, VIDEO_LORA_DEFINITIONS } from "./catalog/loras/definitions.js";
 import { loraLocaleFor, loraRuleText } from "./catalog/loras/locales.js";
-export { H3_FL2VA_MODEL_ID, H3_PINK_FLUFFY_BUNNY_LORA_FILENAME, H3_PINK_FLUFFY_BUNNY_LORA_ID, H3_REALISM_PEOPLE_LORA_FILENAME, H3_REALISM_PEOPLE_LORA_ID, H3_REF2V_TURBO_LORA_FILENAME, H3_REF2V_TURBO_LORA_ID, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, H3_TURBO_LORA_IDS, H3_TURBO_768P_V1_LORA_ID, H3_TURBO_8STEP_V1_LORA_ID, LEGACY_H3_REF2V_TURBO_MODEL_ID, LEGACY_H3_TURBO_MODEL_ID };
-export const BUILTIN_VIDEO_LORAS = VIDEO_LORA_DEFINITIONS.map((definition) => ({
+export { H3_FL2VA_MODEL_ID, H3_AFTER_MIDNIGHT_LORA_FILENAME, H3_AFTER_MIDNIGHT_LORA_ID, H3_PINK_FLUFFY_BUNNY_LORA_FILENAME, H3_PINK_FLUFFY_BUNNY_LORA_ID, H3_REALISM_PEOPLE_LORA_FILENAME, H3_REALISM_PEOPLE_LORA_ID, H3_REF2V_TURBO_LORA_FILENAME, H3_REF2V_TURBO_LORA_ID, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, H3_TURBO_LORA_IDS, H3_TURBO_768P_V1_LORA_ID, H3_TURBO_8STEP_V1_LORA_ID, LEGACY_H3_TURBO_LORA_ID, LEGACY_H3_REF2V_TURBO_MODEL_ID, LEGACY_H3_TURBO_MODEL_ID };
+const allBuiltinVideoLoras = VIDEO_LORA_DEFINITIONS.map((definition) => ({
     ...videoLoraSelection(definition),
+    ...(definition.retired ? { retired: true } : {}),
     guide: { ...loraLocaleFor(definition.id)?.guide },
     rules: definition.rules
 }));
+export const BUILTIN_VIDEO_LORAS = allBuiltinVideoLoras
+    .filter((lora) => lora.retired !== true);
 function requiredBuiltinVideoLora(id) {
-    const lora = BUILTIN_VIDEO_LORAS.find((candidate) => candidate.id === id);
+    const lora = allBuiltinVideoLoras.find((candidate) => candidate.id === id);
     if (!lora)
         throw new Error(`Missing built-in video LoRA definition: ${id}`);
     return lora;
@@ -16,11 +19,19 @@ export const H3_TURBO_LORA = requiredBuiltinVideoLora(H3_TURBO_LORA_ID);
 export const H3_TURBO_8STEP_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_8STEP_V1_LORA_ID);
 export const H3_TURBO_768P_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_768P_V1_LORA_ID);
 export const H3_REF2V_TURBO_LORA = requiredBuiltinVideoLora(H3_REF2V_TURBO_LORA_ID);
+export const H3_AFTER_MIDNIGHT_LORA = requiredBuiltinVideoLora(H3_AFTER_MIDNIGHT_LORA_ID);
 export const H3_REALISM_PEOPLE_LORA = requiredBuiltinVideoLora(H3_REALISM_PEOPLE_LORA_ID);
 export const H3_PINK_FLUFFY_BUNNY_LORA = requiredBuiltinVideoLora(H3_PINK_FLUFFY_BUNNY_LORA_ID);
-const turboLoraIdSet = new Set(H3_TURBO_LORA_IDS);
+const legacyTurboLoraIdSet = new Set([
+    ...H3_TURBO_LORA_IDS,
+    LEGACY_H3_TURBO_LORA_ID,
+    H3_TURBO_768P_V1_LORA_ID
+]);
 export function isH3TurboLoraId(id) {
-    return turboLoraIdSet.has(id);
+    return legacyTurboLoraIdSet.has(id);
+}
+export function isH3TurboFourStepV11LoraId(id) {
+    return id === H3_TURBO_LORA_ID;
 }
 export function isH3Ref2vTurboLoraId(id) {
     return id === H3_REF2V_TURBO_LORA_ID;
@@ -61,7 +72,7 @@ export function videoLoraSelection(definition, strength = definition.strength, f
     };
 }
 export function videoLoraDefinition(id) {
-    return BUILTIN_VIDEO_LORAS.find((lora) => lora.id === id);
+    return allBuiltinVideoLoras.find((lora) => lora.id === id);
 }
 export function videoLoraConfigurationIssues(context) {
     const issues = [];
@@ -89,6 +100,14 @@ export function videoLoraConfigurationIssues(context) {
         const definition = videoLoraDefinition(lora.id);
         if (!definition)
             return;
+        if (definition.retired) {
+            push({
+                code: `retired:${lora.id}`,
+                severity: "error",
+                loraIds: [lora.id],
+                message: loraRuleText(lora.id, "retired", context.locale).replace("{name}", lora.name)
+            });
+        }
         definition.rules.settingConflicts.forEach((conflict) => {
             if (!conflict.values.includes(settingValues[conflict.setting]))
                 return;
@@ -157,7 +176,7 @@ export function normalizeVideoLoras(value, legacyModelId = "") {
             typeof candidate.name !== "string" || !candidate.name.trim() ||
             typeof candidate.filename !== "string" || !candidate.filename.trim())
             return [];
-        const builtin = BUILTIN_VIDEO_LORAS.find((lora) => lora.id === candidate.id);
+        const builtin = allBuiltinVideoLoras.find((lora) => lora.id === candidate.id);
         const definition = builtin ?? {
             id: candidate.id.trim(),
             name: candidate.name.trim(),

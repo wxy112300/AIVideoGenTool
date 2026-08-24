@@ -497,20 +497,6 @@ const installGuides: Record<string, ModelComponentStatus["installGuide"]> = {
     recommendedFilename: "minimax_h3_audio_vae_fp32.safetensors",
     notes: "H3 原生立体声音频必须使用此 VAE；与视频 VAE 一起放在 models/vae。"
   },
-  "minimax-h3-lightx2v-turbo-4step:MiniMax H3 LightX2V Turbo LoRA": {
-    sourceLabel: "LightX2V / Kijai ComfyUI conversion",
-    downloadUrl: "https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
-    targetSubdirectory: "loras",
-    recommendedFilename: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
-    notes: "LightX2V Turbo LoRA；需要 ComfyUI v0.31.0+，建议 0.75 强度、ER-SDE、Beta 和 8 步。它只适配 MiniMax H3 FL2VA，不是独立基础模型。"
-  },
-  "minimax-h3-pink-fluffy-bunny-nsfw:PinkFluffyBunny NSFW LoRA": {
-    sourceLabel: "SexGod1979 / PinkFluffyBunny-MiniMax-H3",
-    downloadUrl: "https://huggingface.co/SexGod1979/PinkFluffyBunny-MiniMax-H3/resolve/main/PinkFluffyBunny-pruned-v1-rank128.safetensors?download=true",
-    targetSubdirectory: "loras",
-    recommendedFilename: "PinkFluffyBunny-pruned-v1-rank128.safetensors",
-    notes: "MiniMax H3 FL2VA 的可选 NSFW 内容 LoRA。当前应用使用 pruned INT8 底模，因此选择同体系的 pruned v1 rank128；作者建议从 0.5 强度开始，并标注为 alpha 质量。"
-  },
   "minimax_h3_fl2va_int4:MiniMax H3 FL2VA INT4 ConvRot 模型": {
     sourceLabel: "Merserk / MiniMax-H3-INT4-ConvRot",
     downloadUrl: "https://huggingface.co/Merserk/MiniMax-H3-INT4-ConvRot/resolve/main/minimax_h3_fl2va_pruned_int4_convrot.safetensors",
@@ -1266,41 +1252,6 @@ const modelProfileDefinitions: ModelProfileDefinition[] = [
     ]
   },
   {
-    id: "minimax-h3-lightx2v-turbo-4step",
-    name: "LightX2V Turbo 4-Step",
-    category: "lora",
-    badge: "H3 专属 · 性能",
-    description: "MiniMax H3 FL2VA 的蒸馏 LoRA，把约 20 步采样压缩到 6–8 步；不会降低基础模型的显存需求。",
-    vram: "LoRA · strength 0.75 · 4–8 steps",
-    integrated: true,
-    components: [
-      {
-        label: "MiniMax H3 LightX2V Turbo LoRA",
-        expected: "loras/minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors",
-        patterns: [/loras\/minimax_h3_fl2v_lightx2v_turbo_4step_v0\.1_comfy_resized_avg_rank_21_bf16\.safetensors$/i]
-      }
-    ]
-  },
-  {
-    id: "minimax-h3-pink-fluffy-bunny-nsfw",
-    name: "PinkFluffyBunny NSFW",
-    category: "lora",
-    badge: "H3 专属 · NSFW",
-    description: "MiniMax H3 FL2VA pruned 底模的社区 NSFW 内容 LoRA，可与性能 LoRA 按顺序叠加。",
-    vram: "pruned v1 · rank 128 · strength 0.5",
-    integrated: true,
-    components: [
-      {
-        label: "PinkFluffyBunny NSFW LoRA",
-        expected: "loras/PinkFluffyBunny-pruned-v1-rank128.safetensors",
-        patterns: [
-          /loras\/PinkFluffyBunny-pruned-v1-rank128\.safetensors$/i,
-          /loras\/PinkCherry[_-]PinkFluffyBunny-v1-rank128\.safetensors$/i
-        ]
-      }
-    ]
-  },
-  {
     id: "minimax_h3_ref2va",
     name: "MiniMax H3 R2V · 多参考 INT8",
     category: "video",
@@ -1687,6 +1638,7 @@ function catalogModelProfileDefinitionsFor(
   ltxModelProfile: Settings["ltxExtensionModelProfile"]
 ): ModelProfileDefinition[] {
   return [...modelCatalog.entries]
+    .filter((entry) => entry.definition.retired !== true)
     .sort((left, right) => right.definition.order - left.definition.order)
     .flatMap((entry) => {
   const scan = entry.definition.scanVariants?.[ltxModelProfile] ?? entry.definition.scan;

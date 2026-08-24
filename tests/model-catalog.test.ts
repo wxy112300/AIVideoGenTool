@@ -35,6 +35,14 @@ describe("model catalog", () => {
     expect(modelCatalog.get("minimax_h3_fl2va_turbo")?.definition.retired).toBe(true);
     expect(modelCatalog.list("video").some((entry) => entry.definition.id === "minimax_h3_fl2va_turbo"))
       .toBe(false);
+    expect(modelCatalog.get("minimax-h3-lightx2v-turbo-4step")?.definition.retired).toBe(true);
+    expect(modelCatalog.get("minimax-h3-lightx2v-turbo-4step-768p-v1")?.definition.retired).toBe(true);
+    expect(modelCatalog.get("minimax-h3-pink-fluffy-bunny-nsfw")?.definition.retired).toBe(true);
+    expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).not.toEqual(expect.arrayContaining([
+      "minimax-h3-lightx2v-turbo-4step",
+      "minimax-h3-lightx2v-turbo-4step-768p-v1",
+      "minimax-h3-pink-fluffy-bunny-nsfw"
+    ]));
   });
 
   it("covers every model category used by environment scanning", () => {
@@ -54,12 +62,11 @@ describe("model catalog", () => {
     ]);
     expect(modelCatalog.list("interpolation").map((entry) => entry.definition.id)).toEqual(["rife"]);
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).toEqual([
+      "minimax-h3-lightx2v-turbo-4step-768p-v1.1",
       "minimax-h3-lightx2v-turbo-8step-v1",
-      "minimax-h3-lightx2v-turbo-4step-768p-v1",
       "minimax-h3-ref2v-turbo-4step-v01",
-      "minimax-h3-lightx2v-turbo-4step",
-      "minimax-h3-realism-people",
-      "minimax-h3-pink-fluffy-bunny-nsfw"
+      "minimax-h3-after-midnight-ref2va-nsfw",
+      "minimax-h3-realism-people"
     ]);
     expect(modelCatalog.get("lama-inpaint")?.definition.scan?.requiredCustomNodeIds)
       .toEqual(["inpaint-nodes"]);
@@ -92,6 +99,7 @@ describe("model catalog", () => {
   it("derives LoRA scanning and runtime metadata from the same definitions", () => {
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id))
       .toEqual([...VIDEO_LORA_DEFINITIONS]
+        .filter((lora) => lora.retired !== true)
         .sort((left, right) => right.catalogOrder - left.catalogOrder)
         .map((lora) => lora.id));
     expect(BUILTIN_VIDEO_LORAS.map((lora) => ({
@@ -99,12 +107,14 @@ describe("model catalog", () => {
       filename: lora.filename,
       strength: lora.strength,
       promptPrefixes: lora.promptPrefixes
-    }))).toEqual(VIDEO_LORA_DEFINITIONS.map((lora) => ({
+    }))).toEqual(VIDEO_LORA_DEFINITIONS
+      .filter((lora) => lora.retired !== true)
+      .map((lora) => ({
       id: lora.id,
       filename: lora.filename,
       strength: lora.strength,
       promptPrefixes: lora.promptPrefixes
-    })));
+      })));
     for (const lora of VIDEO_LORA_DEFINITIONS) {
       expect(lora.scan.components.some((component) =>
         component.expected.replaceAll("\\", "/").endsWith(`loras/${lora.filename}`)
