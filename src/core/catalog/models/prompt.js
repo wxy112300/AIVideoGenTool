@@ -1,4 +1,4 @@
-import { managedPromptModelDefinitions } from "../../prompt-models.js";
+import { managedPromptModelDefinitions, promptModelCapabilityOrderValue } from "../../prompt-models.js";
 import { entry, component, guide } from "./catalog-helpers.js";
 const managedPromptEnglish = {
     "lightx2v/minimax-h3-prompt-rewriter-8b": {
@@ -90,15 +90,15 @@ const managedPromptTraditional = {
 };
 const nativePromptEntries = [
     entry({
-        id: "qwen/qwen3.5-4b", family: "qwen-prompt", category: "prompt", adapterId: "native-text-generate", order: 200, inputModes: ["image", "video"],
+        id: "qwen/qwen3.5-4b", family: "qwen-prompt", category: "prompt", adapterId: "native-text-generate", order: promptModelCapabilityOrderValue("qwen/qwen3.5-4b"), inputModes: ["image", "video"],
         scan: { managedBy: "comfyui", vram: "BF16 · 文件约 9.3 GB", integrated: true, runtimeNodeTypes: ["CLIPLoader", "TextGenerate"], components: [component("Qwen3.5 4B ComfyUI 文本编码器", "text_encoders/qwen3.5_4b_bf16.safetensors", /text_encoders\/qwen3\.5_4b_bf16\.safetensors$/i, guide("Hugging Face · Comfy-Org/Qwen3.5", "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_4b_bf16.safetensors?download=true", "text_encoders", "qwen3.5_4b_bf16.safetensors", "4090 推荐的原生提示词助手模型，同时支持文字生成和图片/视频理解。"))] }
     }, { name: "Qwen3.5 4B · H3 提示词助手", badge: "BF16 · 多模态", description: "同时处理文字和参考图/视频，并按 H3 提示词规则生成更适合视频生成的描述。" }, { name: "Qwen3.5 4B · H3 prompt assistant", badge: "BF16 · multimodal", description: "Processes text and reference images/video for H3-oriented prompt writing." }, { name: "Qwen3.5 4B · H3 提示詞助手", badge: "BF16 · 多模態", description: "同時處理文字和參考圖／影片，並依 H3 提示詞規則生成更適合影片生成的描述。" }),
     entry({
-        id: "qwen/qwen3.5-2b", family: "qwen-prompt", category: "prompt", adapterId: "native-text-generate", order: 190, inputModes: ["image", "video"],
+        id: "qwen/qwen3.5-2b", family: "qwen-prompt", category: "prompt", adapterId: "native-text-generate", order: promptModelCapabilityOrderValue("qwen/qwen3.5-2b"), inputModes: ["image", "video"],
         scan: { managedBy: "comfyui", vram: "BF16 · 文件约 4.55 GB", integrated: true, runtimeNodeTypes: ["CLIPLoader", "TextGenerate"], components: [component("Qwen3.5 2B ComfyUI 文本编码器", "text_encoders/qwen3.5_2b_bf16.safetensors", /text_encoders\/qwen3\.5_2b_bf16\.safetensors$/i, guide("Hugging Face · Comfy-Org/Qwen3.5", "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_2b_bf16.safetensors?download=true", "text_encoders", "qwen3.5_2b_bf16.safetensors", "更快、更省显存的提示词助手备选。"))] }
     }, { name: "Qwen3.5 2B · 快速提示词助手", badge: "BF16 · 快速", description: "更快的文字和参考图理解备选，适合快速迭代。" }, { name: "Qwen3.5 2B · fast prompt assistant", badge: "BF16 · fast", description: "A faster text and reference-understanding option for quick iteration." }, { name: "Qwen3.5 2B · 快速提示詞助手", badge: "BF16 · 快速", description: "更快的文字和參考圖理解選項，適合快速迭代。" })
 ];
-const managedPromptEntries = managedPromptModelDefinitions.map((model, index) => {
+const managedPromptEntries = managedPromptModelDefinitions.map((model) => {
     const english = managedPromptEnglish[model.id];
     const traditional = managedPromptTraditional[model.id];
     if (model.backend === "comfyui-qwenvl-lora") {
@@ -120,7 +120,7 @@ const managedPromptEntries = managedPromptModelDefinitions.map((model, index) =>
             family: "qwen-vl-peft-prompt-rewriter",
             category: "prompt",
             adapterId: "comfyui-qwenvl-lora",
-            order: 310 - index,
+            order: promptModelCapabilityOrderValue(model.id),
             inputModes: ["image", "video"],
             scan: {
                 managedBy: "comfyui",
@@ -165,7 +165,7 @@ const managedPromptEntries = managedPromptModelDefinitions.map((model, index) =>
         family: model.backend === "comfyui-multimodal" ? "comfyui-multimodal-prompt-writer" : "gemma-prompt-writer",
         category: "prompt",
         adapterId: model.backend ?? "h3-prompt-writer",
-        order: 260 - index,
+        order: promptModelCapabilityOrderValue(model.id),
         inputModes: ["image", "video"],
         scan: {
             managedBy: "comfyui",

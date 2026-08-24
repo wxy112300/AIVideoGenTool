@@ -778,13 +778,13 @@ describe("ComfyUI environment candidates", () => {
 
     expect(promptProfiles).toHaveLength(9);
     expect(promptProfiles.map((profile) => profile.id)).toEqual([
-      "lightx2v/minimax-h3-prompt-rewriter-8b",
       "qwen/qwen3.6-27b-uncensored-q4",
       "qwen/qwen3.8-27b-uncensored-q4",
-      "community/gemma-4-e4b-unconcerned-q5",
-      "community/gemma-4-12b-uncensored-q4",
       "community/gemma-4-26b-a4b-uncensored-q4",
+      "lightx2v/minimax-h3-prompt-rewriter-8b",
+      "community/gemma-4-12b-uncensored-q4",
       "google/gemma-4-12b-q5",
+      "community/gemma-4-e4b-unconcerned-q5",
       "qwen/qwen3.5-4b",
       "qwen/qwen3.5-2b"
     ]);

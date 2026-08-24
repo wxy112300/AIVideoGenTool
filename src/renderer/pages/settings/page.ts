@@ -12,6 +12,7 @@ import type { SettingsTab } from "../../contracts";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import { modelCatalog } from "../../../core/catalog";
+import { promptModelCapabilityOrderValue } from "../../../core/prompt-models";
 import { compareReleaseVersions } from "../../../core/release-version";
 import {
   renderSettingsComfyCompatibilityPanel,
@@ -203,7 +204,13 @@ export function renderSettingsPage(
   const loraProfiles = profiles.filter((profile) => profile.category === "lora");
   const imageProfiles = profiles.filter((profile) => profile.category === "image");
   const imageQualityProfiles = options.getImageQualityProfiles(settings.defaultImageModel);
-  const promptProfiles = profiles.filter((profile) => profile.category === "prompt");
+  const promptProfiles = profiles
+    .filter((profile) => profile.category === "prompt")
+    .sort((left, right) => {
+      const orderDifference = promptModelCapabilityOrderValue(right.id) -
+        promptModelCapabilityOrderValue(left.id);
+      return orderDifference || left.name.localeCompare(right.name);
+    });
   const upscaleProfiles = profiles.filter((profile) => profile.category === "upscale");
   const defaultPromptPresets = options.defaultH3PromptPresets;
   const selectedH3PresetText = settings.h3PromptPresets[viewModel.settingsH3PromptPreset] ??

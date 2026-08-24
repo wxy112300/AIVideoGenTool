@@ -46,6 +46,31 @@ export const unconcernedPromptModelSource = "HauhauCS/Qwen3.5-4B-Uncensored-Hauh
 export const unconcernedPromptModelFilename = "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf";
 export const unconcernedPromptMmprojFilename = "mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf";
 
+/**
+ * Prompt models are shown by capability, not by the order in which a scan
+ * happened to return their files. Keep this list explicit because model size,
+ * quantization and the specialized H3 adapter are not recoverable from an id.
+ */
+export const promptModelCapabilityOrder = [
+  "qwen/qwen3.6-27b-uncensored-q4",
+  "qwen/qwen3.8-27b-uncensored-q4",
+  "community/gemma-4-26b-a4b-uncensored-q4",
+  "lightx2v/minimax-h3-prompt-rewriter-8b",
+  "community/gemma-4-12b-uncensored-q4",
+  "google/gemma-4-12b-q5",
+  "community/gemma-4-e4b-unconcerned-q5",
+  "qwen/qwen3.5-4b",
+  "qwen/qwen3.5-2b"
+] as const;
+
+const promptModelCapabilityRanks = new Map<string, number>(
+  promptModelCapabilityOrder.map((modelId, index) => [modelId, promptModelCapabilityOrder.length - index])
+);
+
+export function promptModelCapabilityOrderValue(modelId: string): number {
+  return promptModelCapabilityRanks.get(modelId) ?? 0;
+}
+
 export const managedPromptModelDefinitions: readonly ManagedPromptModelDefinition[] = [
   {
     id: "lightx2v/minimax-h3-prompt-rewriter-8b",

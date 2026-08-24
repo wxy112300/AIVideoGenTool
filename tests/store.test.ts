@@ -284,6 +284,7 @@ describe("queue lock recovery", () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
     const fallbacks = [
+      ["lightx2v/minimax-h3-prompt-rewriter-27b", "qwen/qwen3.6-27b-uncensored-q4"],
       ["google/gemma-4-e4b-q3", "community/gemma-4-e4b-unconcerned-q5"],
       ["google/gemma-4-12b-q4", "google/gemma-4-12b-q5"],
       ["google/gemma-4-26b-a4b-q4", "community/gemma-4-26b-a4b-uncensored-q4"]

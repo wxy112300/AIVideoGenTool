@@ -50,6 +50,7 @@ function retryableStateFileError(error: unknown): boolean {
 }
 
 const retiredPromptModelFallbacks: Record<string, string> = {
+  "lightx2v/minimax-h3-prompt-rewriter-27b": "qwen/qwen3.6-27b-uncensored-q4",
   "google/gemma-4-e4b-q3": "community/gemma-4-e4b-unconcerned-q5",
   "google/gemma-4-12b-q4": "google/gemma-4-12b-q5",
   "google/gemma-4-26b-a4b-q4": "community/gemma-4-26b-a4b-uncensored-q4"

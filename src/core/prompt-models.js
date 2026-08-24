@@ -7,6 +7,21 @@ export const unconcernedPromptModelName = "Qwen3.5 4B Unconcerned · 应用自�
 export const unconcernedPromptModelSource = "HauhauCS/Qwen3.5-4B-Uncensored-HauhauCS-Aggressive";
 export const unconcernedPromptModelFilename = "Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-Q6_K.gguf";
 export const unconcernedPromptMmprojFilename = "mmproj-Qwen3.5-4B-Uncensored-HauhauCS-Aggressive-BF16.gguf";
+export const promptModelCapabilityOrder = [
+    "qwen/qwen3.6-27b-uncensored-q4",
+    "qwen/qwen3.8-27b-uncensored-q4",
+    "community/gemma-4-26b-a4b-uncensored-q4",
+    "lightx2v/minimax-h3-prompt-rewriter-8b",
+    "community/gemma-4-12b-uncensored-q4",
+    "google/gemma-4-12b-q5",
+    "community/gemma-4-e4b-unconcerned-q5",
+    "qwen/qwen3.5-4b",
+    "qwen/qwen3.5-2b"
+];
+const promptModelCapabilityRanks = new Map(promptModelCapabilityOrder.map((modelId, index) => [modelId, promptModelCapabilityOrder.length - index]));
+export function promptModelCapabilityOrderValue(modelId) {
+    return promptModelCapabilityRanks.get(modelId) ?? 0;
+}
 export const managedPromptModelDefinitions = [
     {
         id: "lightx2v/minimax-h3-prompt-rewriter-8b",
