@@ -40,13 +40,13 @@ export function mountSettingsPageController(options) {
             if (!profile || !component)
                 return;
             options.setInstallGuide({ profileName: profile.name, component });
-            options.context.requestRender();
+            (options.requestOverlayRender ?? options.context.requestRender)();
         }, { signal });
     });
     const closeInstallGuide = () => {
         options.setInstallGuide(null);
-        options.context.requestRender();
-        options.restoreModalFocus();
+        (options.requestOverlayRender ?? options.context.requestRender)();
+        options.restoreModalFocus?.();
     };
     root.querySelector("#close-install-guide")?.addEventListener("click", closeInstallGuide, { signal });
     root.querySelector("#dismiss-install-guide")?.addEventListener("click", closeInstallGuide, { signal });
@@ -56,12 +56,15 @@ export function mountSettingsPageController(options) {
     }, { signal });
     const installGuide = root.querySelector(".install-guide-dialog");
     if (installGuide)
-        options.bindModalFocus(installGuide, closeInstallGuide, "#dismiss-install-guide");
+        options.bindModalFocus?.(installGuide, closeInstallGuide, "#dismiss-install-guide");
     root.querySelector("#open-install-download")?.addEventListener("click", async () => {
         const selected = options.getInstallGuide();
         if (!selected)
             return;
-        const url = rewriteHuggingFaceDownloadUrl(selected.component.installGuide.downloadUrl, options.formSettings().hfMirrorEnabled);
+        const guide = selected.component.installGuide;
+        if (!guide)
+            return;
+        const url = rewriteHuggingFaceDownloadUrl(guide.downloadUrl, options.formSettings().hfMirrorEnabled);
         const opened = await options.context.studio.openExternal(url);
         if (!opened)
             options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });

@@ -5,6 +5,8 @@ import { versionVideoIndex } from "../pages/history/helpers";
 import { uiKeys } from "../../core/i18n-keys";
 
 export interface UpscaleControllerOptions {
+  root: HTMLElement;
+  renderOverlay(): void;
   getDialog(): UpscaleDialogState | null;
   setDialog(dialog: UpscaleDialogState | null): void;
   setRendererState(nextState: import("../../types").AppState): void;
@@ -21,11 +23,11 @@ export function mountUpscaleController(
 ): RendererCleanup {
   const events = new AbortController();
   const signal = events.signal;
-  const root = context.root;
+  const root = options.root;
   const t = context.t;
   const closeUpscale = () => {
     options.setDialog(null);
-    context.requestRender();
+    options.renderOverlay();
     options.restoreModalFocus();
   };
   root.querySelector("#close-upscale")?.addEventListener("click", closeUpscale, { signal });
@@ -45,7 +47,7 @@ export function mountUpscaleController(
         ...dialog,
         targetHeight: Number(button.dataset.upscaleHeight) as UpscaleDialogState["targetHeight"]
       });
-      context.requestRender();
+      options.renderOverlay();
     }, { signal });
   });
   root.querySelector("#upscale-model")?.addEventListener("change", (event) => {
@@ -56,7 +58,7 @@ export function mountUpscaleController(
       ...dialog,
       modelId: (event.currentTarget as HTMLSelectElement).value as UpscaleDialogState["modelId"]
     });
-    context.requestRender();
+    options.renderOverlay();
   }, { signal });
   root.querySelector("#upscale-tile")?.addEventListener("change", (event) => {
     const dialog = options.getDialog();
@@ -66,7 +68,7 @@ export function mountUpscaleController(
       ...dialog,
       tileMode: (event.currentTarget as HTMLSelectElement).value as UpscaleDialogState["tileMode"]
     });
-    context.requestRender();
+    options.renderOverlay();
   }, { signal });
   root.querySelector("#enqueue-upscale")?.addEventListener("click", async () => {
     const dialog = options.getDialog();

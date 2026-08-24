@@ -18,10 +18,6 @@ export interface ShellControllerOptions {
   runNotificationAction(actionId: string): void;
   reportUserAction(action: string, meta?: Record<string, unknown>): void;
   render(): void;
-  bindConfirmationDialog(): void;
-  bindDirectoryMigrationDialog(): void;
-  bindImageAssetLibraryDialog(): void;
-  bindWindowCloseDialog(): void;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -141,11 +137,5 @@ export function mountShellController(
     window.addEventListener("auxclick", handleMouseForward, { signal });
     window.addEventListener("mouseup", handleMouseForward, { signal });
   }
-
-  options.bindConfirmationDialog();
-  options.bindDirectoryMigrationDialog();
-  options.bindImageAssetLibraryDialog();
-  options.bindWindowCloseDialog();
-
   return () => events.abort();
 }

@@ -125,8 +125,10 @@ export function createRenderCoordinator(options) {
                 }
                 if (request !== renderRequest)
                     return;
-                options.beforeRenderHistory();
                 const previousPage = options.getPage();
+                options.beforeRenderHistory();
+                if (previousPage === "queue")
+                    options.beforeRenderQueue();
                 const playback = captureHistoryPlayback(options.root, previousPage);
                 stopRenderedVideoPlayback(options.root);
                 options.closeAppLogContextMenu();
@@ -150,17 +152,11 @@ export function createRenderCoordinator(options) {
                     content,
                     t: options.t,
                     icon: options.icon,
-                    escapeHtml: options.escapeHtml,
-                    confirmationDialog: options.renderConfirmationDialog(),
-                    directoryMigrationDialog: options.renderDirectoryMigrationDialog(),
-                    imageAssetLibraryDialog: options.renderImageAssetLibraryDialog(),
-                    windowCloseDialog: options.renderWindowCloseDialog(),
-                    upscaleDialog: options.renderUpscaleDialog()
+                    escapeHtml: options.escapeHtml
                 });
                 renderIcons(options.root);
                 options.bindShell();
                 options.addPageCleanup(options.bindHistoryViewportControls());
-                options.bindUpscaleDialog();
                 if (page === "create")
                     options.bindCreate();
                 else if (page === "queue")
@@ -171,7 +167,10 @@ export function createRenderCoordinator(options) {
                 else if (page === "settings") {
                     options.bindSettings();
                 }
+                options.renderOverlay();
                 options.syncAppLogPolling();
+                if (page === "queue" && previousPage === "queue")
+                    options.restoreQueueScrollPosition();
                 if (page === "history")
                     options.restoreHistoryScrollPosition();
                 restoreHistoryPlayback(options.root, playback);

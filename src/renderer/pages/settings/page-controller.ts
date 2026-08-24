@@ -23,8 +23,9 @@ export interface SettingsPageControllerOptions {
   requestSaveSettings(settings: Settings): Promise<"saved" | "migration-required">;
   openImageAssetLibrary(): void;
   rememberModalFocus(): void;
-  restoreModalFocus(): void;
-  bindModalFocus(dialog: HTMLElement, close: () => void, initialSelector?: string): void;
+  requestOverlayRender?(): void;
+  restoreModalFocus?(): void;
+  bindModalFocus?(dialog: HTMLElement, close: () => void, initialSelector?: string): void;
 }
 
 export function mountSettingsPageController(
@@ -71,14 +72,17 @@ export function mountSettingsPageController(
       const component = profile?.components[Number(button.dataset.installComponent)];
       if (!profile || !component) return;
       options.setInstallGuide({ profileName: profile.name, component });
-      options.context.requestRender();
+      (options.requestOverlayRender ?? options.context.requestRender)();
     }, { signal });
   });
 
+  // Kept as a compatibility path for callers that still render the guide
+  // inside the settings root. Production uses the persistent modal root in
+  // main.ts, so these queries are no-ops there.
   const closeInstallGuide = () => {
     options.setInstallGuide(null);
-    options.context.requestRender();
-    options.restoreModalFocus();
+    (options.requestOverlayRender ?? options.context.requestRender)();
+    options.restoreModalFocus?.();
   };
   root.querySelector("#close-install-guide")?.addEventListener("click", closeInstallGuide, { signal });
   root.querySelector("#dismiss-install-guide")?.addEventListener("click", closeInstallGuide, { signal });
@@ -86,12 +90,14 @@ export function mountSettingsPageController(
     if (event.target === event.currentTarget) closeInstallGuide();
   }, { signal });
   const installGuide = root.querySelector<HTMLElement>(".install-guide-dialog");
-  if (installGuide) options.bindModalFocus(installGuide, closeInstallGuide, "#dismiss-install-guide");
+  if (installGuide) options.bindModalFocus?.(installGuide, closeInstallGuide, "#dismiss-install-guide");
   root.querySelector("#open-install-download")?.addEventListener("click", async () => {
     const selected = options.getInstallGuide();
     if (!selected) return;
+    const guide = selected.component.installGuide;
+    if (!guide) return;
     const url = rewriteHuggingFaceDownloadUrl(
-      selected.component.installGuide.downloadUrl,
+      guide.downloadUrl,
       options.formSettings().hfMirrorEnabled
     );
     const opened = await options.context.studio.openExternal(url);

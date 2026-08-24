@@ -13,7 +13,9 @@ import { createQueueLiveStatus } from "./renderer/pages/queue/live-status";
 import { mountQueueController } from "./renderer/pages/queue/controller";
 import { loadQueueInputPreviews as loadQueueInputPreviewsForPage } from "./renderer/pages/queue/input-previews";
 import { renderQueuePage } from "./renderer/pages/queue/page";
+import { createQueueScrollController } from "./renderer/pages/queue/scroll-controller";
 import { renderSettingsPage } from "./renderer/pages/settings/page";
+import { renderSettingsInstallGuideDialog } from "./renderer/pages/settings/fragments";
 import { mountSettingsAssembly } from "./renderer/pages/settings/assembly";
 import { createRenderCoordinator } from "./renderer/render-coordinator";
 import { EnvironmentRefreshCoordinator } from "./renderer/environment-refresh-coordinator";
@@ -59,6 +61,7 @@ import { isComfyMultimodalPromptModel, isGemmaPromptModel, isQwenVlPeftPromptMod
 import { isMiniMaxH3R2vModel, isRetiredVideoModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "./core/workflow";
 import { shouldEnableSpectrumByDefault } from "./core/video-policy";
 import { modelCatalog } from "./core/catalog";
+import { rewriteHuggingFaceDownloadUrl } from "./core/download-url";
 import { nearestSupportedVideoResolution } from "./core/video-resolution";
 import { ensureMotionContextSourceSlot } from "./core/h3-reference";
 import { createUpscaleFilename, estimateUpscaleResources, upscaleDimensions } from "./core/upscale";
@@ -68,6 +71,7 @@ import { createTranslator, loadUiLocale } from "./core/i18n";
 import { uiKeys } from "./core/i18n-keys";
 import { BUILTIN_VIDEO_LORAS, bundledWorkflowModelId } from "./core/video-loras";
 const appElement = document.querySelector("#app");
+const modalRoot = document.querySelector("#modal-root");
 let draftSaveTimer;
 let draftRevision = 0;
 let draftSaveInFlight = 0;
@@ -250,6 +254,12 @@ function rememberModalControlFocus(element) {
         ui.modalControlFocusSelector = `[data-upscale-height="${CSS.escape(upscaleHeight)}"]`;
     }
 }
+function preserveModalControlFocus() {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && modalRoot.contains(active)) {
+        rememberModalControlFocus(active);
+    }
+}
 function restoreModalFocus() {
     const target = ui.modalReturnFocus;
     ui.modalReturnFocus = null;
@@ -326,14 +336,14 @@ async function chooseDirectoryMigration(mode) {
         };
         ui.pendingDirectoryMigration = null;
         ui.historyMigrationProgress = null;
-        render();
+        renderOverlay();
         restoreModalFocus();
         showMessage(uiText(uiKeys.runtime.directoryCancelled));
         return;
     }
     ui.directoryMigrationBusy = true;
     ui.historyMigrationProgress = null;
-    render();
+    renderOverlay();
     try {
         await settingsSaveCoordinator.save(request.nextSettings, mode);
         const warningCount = ui.historyMigrationProgress?.warningCount ?? 0;
@@ -351,27 +361,27 @@ async function chooseDirectoryMigration(mode) {
     catch (error) {
         ui.directoryMigrationBusy = false;
         showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
-        render();
+        renderOverlay();
     }
 }
 function bindDirectoryMigrationDialog() {
     if (!ui.pendingDirectoryMigration)
         return;
-    document.querySelector("#directory-apply")?.addEventListener("click", () => {
+    modalRoot.querySelector("#directory-apply")?.addEventListener("click", () => {
         void chooseDirectoryMigration("apply");
     });
-    document.querySelector("#directory-apply-migrate")?.addEventListener("click", () => {
+    modalRoot.querySelector("#directory-apply-migrate")?.addEventListener("click", () => {
         void chooseDirectoryMigration("migrate-video-history");
     });
-    document.querySelector("#directory-cancel")?.addEventListener("click", () => {
+    modalRoot.querySelector("#directory-cancel")?.addEventListener("click", () => {
         void chooseDirectoryMigration("cancel");
     });
-    document.querySelector("#directory-migration-backdrop")?.addEventListener("click", (event) => {
+    modalRoot.querySelector("#directory-migration-backdrop")?.addEventListener("click", (event) => {
         if (event.target === event.currentTarget && !ui.directoryMigrationBusy) {
             void chooseDirectoryMigration("cancel");
         }
     });
-    const dialog = document.querySelector(".directory-migration-dialog");
+    const dialog = modalRoot.querySelector(".directory-migration-dialog");
     if (dialog)
         bindModalFocus(dialog, () => void chooseDirectoryMigration("cancel"), "#directory-cancel");
 }
@@ -390,7 +400,7 @@ async function scanImageAssets() {
         return;
     ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: true, error: "", confirmCleanup: false, lastResult: null };
     ui.imageAssetLibraryProgress = null;
-    render();
+    renderOverlay();
     try {
         const scan = await window.studio.scanImageAssetLibrary();
         ui.imageAssetLibraryDialog = { scan, busy: false, error: "", confirmCleanup: false, selectedPaths: scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: null };
@@ -400,7 +410,7 @@ async function scanImageAssets() {
         ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: message };
         showMessage(message, { kind: "error" });
     }
-    render();
+    renderOverlay();
 }
 function bindImageAssetLibraryDialog() {
     const dialog = ui.imageAssetLibraryDialog;
@@ -411,21 +421,21 @@ function bindImageAssetLibraryDialog() {
             return;
         ui.imageAssetLibraryDialog = null;
         ui.imageAssetLibraryProgress = null;
-        render();
+        renderOverlay();
         restoreModalFocus();
     };
-    document.querySelector("#image-assets-close")?.addEventListener("click", close);
-    document.querySelector("#image-asset-library-backdrop")?.addEventListener("click", (event) => {
+    modalRoot.querySelector("#image-assets-close")?.addEventListener("click", close);
+    modalRoot.querySelector("#image-asset-library-backdrop")?.addEventListener("click", (event) => {
         if (event.target === event.currentTarget)
             close();
     });
-    document.querySelector("#image-assets-rescan")?.addEventListener("click", () => void scanImageAssets());
-    document.querySelector("#image-assets-organize")?.addEventListener("click", async () => {
+    modalRoot.querySelector("#image-assets-rescan")?.addEventListener("click", () => void scanImageAssets());
+    modalRoot.querySelector("#image-assets-organize")?.addEventListener("click", async () => {
         if (!ui.imageAssetLibraryDialog || ui.imageAssetLibraryDialog.busy)
             return;
         ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: true, error: "", lastResult: null };
         ui.imageAssetLibraryProgress = null;
-        render();
+        renderOverlay();
         try {
             const result = await window.studio.organizeImageAssetLibrary();
             ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "organize", formatAssetBytes, rendererApp.context.t) };
@@ -436,21 +446,21 @@ function bindImageAssetLibraryDialog() {
             ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: message };
             showMessage(message, { kind: "error" });
         }
-        render();
+        renderOverlay();
     });
-    document.querySelector("#image-assets-cleanup")?.addEventListener("click", async () => {
+    modalRoot.querySelector("#image-assets-cleanup")?.addEventListener("click", async () => {
         if (!ui.imageAssetLibraryDialog || ui.imageAssetLibraryDialog.busy)
             return;
         if (!ui.imageAssetLibraryDialog.confirmCleanup) {
-            const selectedPaths = [...document.querySelectorAll("[data-orphan-path]:checked")].map((item) => item.dataset.orphanPath || "").filter(Boolean);
+            const selectedPaths = [...modalRoot.querySelectorAll("[data-orphan-path]:checked")].map((item) => item.dataset.orphanPath || "").filter(Boolean);
             ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, confirmCleanup: true, selectedPaths };
-            render();
+            renderOverlay();
             return;
         }
         const paths = [...ui.imageAssetLibraryDialog.selectedPaths];
         ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: true, error: "", confirmCleanup: false, lastResult: null };
         ui.imageAssetLibraryProgress = null;
-        render();
+        renderOverlay();
         try {
             const result = await window.studio.cleanupImageAssetLibrary(paths);
             ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "cleanup", formatAssetBytes, rendererApp.context.t) };
@@ -461,9 +471,9 @@ function bindImageAssetLibraryDialog() {
             ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: message, confirmCleanup: false };
             showMessage(message, { kind: "error" });
         }
-        render();
+        renderOverlay();
     });
-    const element = document.querySelector(".image-asset-library-dialog");
+    const element = modalRoot.querySelector(".image-asset-library-dialog");
     if (element)
         bindModalFocus(element, close, "#image-assets-close");
 }
@@ -484,6 +494,54 @@ function upscaleDialogHtml() {
         versionShortEdge,
         t: rendererApp.context.t
     });
+}
+function installGuideDialogHtml() {
+    if (page !== "settings")
+        return "";
+    return renderSettingsInstallGuideDialog({
+        selectedInstallGuide,
+        configuredModelDirectory: environmentScan?.modelDirectory || settingsDraft?.modelDirectory || state.settings.modelDirectory || "ComfyUI\\models"
+    }, {
+        icon,
+        escapeHtml,
+        t: rendererApp.context.t,
+        locale: state.settings.uiLocale
+    });
+}
+function bindInstallGuideDialog() {
+    if (page !== "settings" || !selectedInstallGuide)
+        return;
+    const close = () => {
+        selectedInstallGuide = null;
+        renderOverlay();
+        restoreModalFocus();
+    };
+    modalRoot.querySelector("#close-install-guide")?.addEventListener("click", close);
+    modalRoot.querySelector("#dismiss-install-guide")?.addEventListener("click", close);
+    modalRoot.querySelector("#install-guide-backdrop")?.addEventListener("click", (event) => {
+        if (event.target === event.currentTarget)
+            close();
+    });
+    modalRoot.querySelector("#open-install-download")?.addEventListener("click", async () => {
+        const guide = selectedInstallGuide?.component.installGuide;
+        if (!guide)
+            return;
+        const url = rewriteHuggingFaceDownloadUrl(guide.downloadUrl, (settingsDraft ?? state.settings).hfMirrorEnabled);
+        const opened = await window.studio.openExternal(url);
+        if (!opened)
+            showMessage(uiText(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
+    });
+    modalRoot.querySelector("#open-install-directory")?.addEventListener("click", async (event) => {
+        const directory = event.currentTarget.dataset.installDirectory?.trim();
+        if (!directory)
+            return;
+        const opened = await window.studio.openDirectory(directory);
+        if (!opened)
+            showMessage(uiText(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" });
+    });
+    const dialog = modalRoot.querySelector(".install-guide-dialog");
+    if (dialog)
+        bindModalFocus(dialog, close, "#dismiss-install-guide");
 }
 function promptRuntimeControlIcon() {
     return promptStarting || promptReleasing
@@ -872,6 +930,48 @@ function settingsPage() {
 function render() {
     rendererApp.render();
 }
+let overlayCleanup = null;
+function confirmationDialogHtml() {
+    return renderConfirmationDialog({
+        request: ui.pendingConfirmation,
+        confirmationBusy: ui.confirmationBusy,
+        imageHistoryIds: new Set(state.imageHistory.map((item) => item.id)),
+        t: rendererApp.context.t,
+        icon,
+        escapeHtml
+    });
+}
+function windowCloseDialogHtml() {
+    return renderWindowCloseDialog({
+        request: ui.pendingWindowCloseRequest,
+        responseBusy: ui.windowCloseResponseBusy,
+        t: rendererApp.context.t,
+        icon,
+        escapeHtml
+    });
+}
+function renderOverlay() {
+    if (page !== "settings" && selectedInstallGuide)
+        selectedInstallGuide = null;
+    preserveModalControlFocus();
+    overlayCleanup?.();
+    overlayCleanup = null;
+    modalRoot.innerHTML = [
+        confirmationDialogHtml(),
+        directoryMigrationDialog(),
+        imageAssetLibraryDialogHtml(),
+        windowCloseDialogHtml(),
+        upscaleDialogHtml(),
+        installGuideDialogHtml()
+    ].join("");
+    renderIcons(modalRoot);
+    bindConfirmationDialog();
+    bindDirectoryMigrationDialog();
+    bindImageAssetLibraryDialog();
+    bindWindowCloseDialog();
+    bindInstallGuideDialog();
+    overlayCleanup = bindUpscaleDialog();
+}
 let renderCoordinator;
 const rendererApp = createRendererApp({
     root: appElement,
@@ -902,46 +1002,31 @@ function initializeRenderCoordinator() {
             historyDetail: historyDetailPage,
             imageHistoryDetail: imageHistoryDetailPage,
             settings: settingsPage
-        },
-        beforeRenderHistory: historyLayoutController.beforeRender,
-        closeAppLogContextMenu: appLogContextMenu.close,
-        ensurePromptPacks: loadPromptPacks,
-        bindShell,
-        bindUpscaleDialog,
-        bindCreate,
+    },
+    beforeRenderHistory: historyLayoutController.beforeRender,
+    closeAppLogContextMenu: appLogContextMenu.close,
+    ensurePromptPacks: loadPromptPacks,
+    bindShell,
+    renderOverlay,
+    beforeRenderQueue: queueScrollController.beforeRender,
+    bindCreate,
         bindQueue: () => {
             bindQueue();
             void loadQueueInputPreviewsForPage(rendererApp.context);
         },
-        bindHistory,
-        bindSettings,
-        bindHistoryViewportControls: historyLayoutController.bindViewportControls,
-        restoreHistoryScrollPosition: historyLayoutController.restoreScrollPosition,
+    bindHistory,
+    bindSettings,
+    bindHistoryViewportControls: historyLayoutController.bindViewportControls,
+    restoreQueueScrollPosition: queueScrollController.restoreScrollPosition,
+    restoreHistoryScrollPosition: historyLayoutController.restoreScrollPosition,
         syncAppLogPolling,
-        renderConfirmationDialog: () => renderConfirmationDialog({
-            request: ui.pendingConfirmation,
-            confirmationBusy: ui.confirmationBusy,
-            imageHistoryIds: new Set(state.imageHistory.map((item) => item.id)),
-            t: rendererApp.context.t,
-            icon,
-            escapeHtml
-        }),
-        renderDirectoryMigrationDialog: directoryMigrationDialog,
-        renderImageAssetLibraryDialog: imageAssetLibraryDialogHtml,
-        renderWindowCloseDialog: () => renderWindowCloseDialog({
-            request: ui.pendingWindowCloseRequest,
-            responseBusy: ui.windowCloseResponseBusy,
-            t: rendererApp.context.t,
-            icon,
-            escapeHtml
-        }),
-        renderUpscaleDialog: upscaleDialogHtml,
         icon,
         escapeHtml
     });
 }
 const historyMediaRuntime = createHistoryMediaRuntime(rendererApp.context, () => page === "history");
 const historyLayoutController = createHistoryLayoutController(rendererApp.context, reportUserAction, () => historyFilterSignature(ui.historyFilter));
+const queueScrollController = createQueueScrollController(() => page);
 const historyActions = createHistoryActions({
     context: rendererApp.context,
     setState: setRendererState,
@@ -1275,6 +1360,8 @@ function requestHistoryDeletion(assetId) {
     const title = asset?.title ?? project?.title;
     if (!title)
         return;
+    if (page === "history")
+        historyLayoutController.captureHistoryScrollPosition();
     rememberModalFocus();
     ui.pendingConfirmation = {
         kind: "delete-history",
@@ -1282,13 +1369,15 @@ function requestHistoryDeletion(assetId) {
         title
     };
     ui.confirmationBusy = false;
-    render();
+    renderOverlay();
 }
 function requestHistoryVersionDeletion(assetId, versionId) {
     const asset = state.history.find((item) => item.id === assetId);
     const version = asset?.versions.find((item) => item.id === versionId);
     if (!asset || !version || asset.versions.length <= 1)
         return;
+    if (page === "history")
+        historyLayoutController.captureHistoryScrollPosition();
     rememberModalFocus();
     ui.pendingConfirmation = {
         kind: "delete-video-version",
@@ -1300,13 +1389,15 @@ function requestHistoryVersionDeletion(assetId, versionId) {
         })
     };
     ui.confirmationBusy = false;
-    render();
+    renderOverlay();
 }
 function requestImageVersionDeletion(projectId, versionId) {
     const project = state.imageHistory.find((item) => item.id === projectId);
     const version = project?.versions.find((item) => item.id === versionId);
     if (!project || !version || version.kind === "source")
         return;
+    if (page === "history")
+        historyLayoutController.captureHistoryScrollPosition();
     rememberModalFocus();
     ui.pendingConfirmation = {
         kind: "delete-image-version",
@@ -1315,7 +1406,7 @@ function requestImageVersionDeletion(projectId, versionId) {
         title: uiText(uiKeys.runtime.historyVersionTitle, { title: project.title, version: version.versionNumber })
     };
     ui.confirmationBusy = false;
-    render();
+    renderOverlay();
 }
 function requestQueueTaskConfirmation(taskId, action) {
     const task = state.queue.find((item) => item.id === taskId);
@@ -1328,7 +1419,7 @@ function requestQueueTaskConfirmation(taskId, action) {
         title: task.outputFilename
     };
     ui.confirmationBusy = false;
-    render();
+    renderOverlay();
 }
 function historyPlayerIsFullscreen() {
     return Boolean(document.fullscreenElement?.closest(".history-player"));
@@ -1561,6 +1652,7 @@ async function acceptConfirmation() {
         },
         setPage,
         setHistoryKind,
+        setHistoryScrollRestorePending: historyLayoutController.setScrollRestorePending,
         setSelectedHistoryAssetId: (assetId) => {
             ui.selectedHistoryAssetId = assetId;
         },
@@ -1577,6 +1669,8 @@ async function acceptConfirmation() {
         rememberModalFocus,
         restoreModalFocus,
         render,
+        overlayRoot: modalRoot,
+        renderOverlay,
         notify: (message) => showMessage(message),
         getPage: () => page
     });
@@ -1588,18 +1682,18 @@ function bindConfirmationDialog() {
         if (ui.confirmationBusy)
             return;
         ui.pendingConfirmation = null;
-        render();
+        renderOverlay();
         restoreModalFocus();
     };
-    document.querySelector("#cancel-confirmation")?.addEventListener("click", close);
-    document.querySelector("#accept-confirmation")?.addEventListener("click", () => {
+    modalRoot.querySelector("#cancel-confirmation")?.addEventListener("click", close);
+    modalRoot.querySelector("#accept-confirmation")?.addEventListener("click", () => {
         void acceptConfirmation();
     });
-    document.querySelector("#confirm-backdrop")?.addEventListener("click", (event) => {
+    modalRoot.querySelector("#confirm-backdrop")?.addEventListener("click", (event) => {
         if (event.target === event.currentTarget)
             close();
     });
-    const dialog = document.querySelector(".confirm-dialog");
+    const dialog = modalRoot.querySelector(".confirm-dialog");
     if (dialog)
         bindModalFocus(dialog, close, "#cancel-confirmation");
 }
@@ -1613,37 +1707,38 @@ function bindWindowCloseDialog() {
             rememberModalControlFocus(document.activeElement);
         }
         ui.windowCloseResponseBusy = true;
-        render();
+        renderOverlay();
         try {
             await window.studio.respondWindowClose(response);
             if (response === "cancel") {
                 ui.pendingWindowCloseRequest = null;
                 ui.windowCloseResponseBusy = false;
-                render();
+                renderOverlay();
                 restoreModalFocus();
             }
         }
         catch (error) {
             ui.windowCloseResponseBusy = false;
             showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.exitRequestFailed), { kind: "error" });
+            renderOverlay();
         }
     };
     const cancel = () => void respond("cancel");
-    document.querySelector("#cancel-window-close")?.addEventListener("click", cancel);
-    document.querySelector("#window-close-backdrop")?.addEventListener("click", (event) => {
+    modalRoot.querySelector("#cancel-window-close")?.addEventListener("click", cancel);
+    modalRoot.querySelector("#window-close-backdrop")?.addEventListener("click", (event) => {
         if (event.target === event.currentTarget)
             cancel();
     });
-    document.querySelector("#discard-window-close")?.addEventListener("click", () => {
+    modalRoot.querySelector("#discard-window-close")?.addEventListener("click", () => {
         void respond("discard-settings");
     });
-    document.querySelector("#finish-window-close")?.addEventListener("click", () => {
+    modalRoot.querySelector("#finish-window-close")?.addEventListener("click", () => {
         void respond("finish-tasks");
     });
-    document.querySelector("#force-window-close")?.addEventListener("click", () => {
+    modalRoot.querySelector("#force-window-close")?.addEventListener("click", () => {
         void respond("force-exit");
     });
-    const dialog = document.querySelector(".close-dialog");
+    const dialog = modalRoot.querySelector(".close-dialog");
     if (dialog)
         bindModalFocus(dialog, cancel, "#cancel-window-close");
 }
@@ -1655,7 +1750,7 @@ function bindShell() {
         requestDiscardSettings: (nextPage) => {
             ui.pendingConfirmation = { kind: "discard-settings", nextPage };
             ui.confirmationBusy = false;
-            render();
+            renderOverlay();
         },
         returnToHistory,
         returnToLastHistoryDetail,
@@ -1670,11 +1765,7 @@ function bindShell() {
         dismissNotification,
         runNotificationAction,
         reportUserAction,
-        render,
-        bindConfirmationDialog,
-        bindDirectoryMigrationDialog,
-        bindImageAssetLibraryDialog,
-        bindWindowCloseDialog
+        render
     }));
 }
 function scheduleDraftSave() {
@@ -2163,7 +2254,7 @@ function bindCreate() {
                 mode: creationMode === "video-extension" ? "video-extension" : "image-to-video"
             };
             ui.confirmationBusy = false;
-            render();
+            renderOverlay();
         }
     }));
     if (creationMode === "image-edit") {
@@ -2204,13 +2295,15 @@ function bindQueue() {
                 modelId: task.modelId,
                 tileMode: task.tileMode
             };
-            render();
+            renderOverlay();
         },
         rememberModalFocus
     }));
 }
 function bindUpscaleDialog() {
-    rendererApp.addPageCleanup(mountUpscaleController(rendererApp.context, {
+    return mountUpscaleController(rendererApp.context, {
+        root: modalRoot,
+        renderOverlay,
         getDialog: () => ui.upscaleDialog,
         setDialog: (dialog) => {
             ui.upscaleDialog = dialog;
@@ -2221,7 +2314,7 @@ function bindUpscaleDialog() {
         restoreModalFocus,
         bindModalFocus,
         reportUserAction
-    }));
+    });
 }
 function bindHistory(playback = null) {
     rendererApp.addPageCleanup(mountHistoryAssembly({
@@ -2383,7 +2476,7 @@ const settingsSaveCoordinator = new SettingsSaveCoordinator({
         };
         ui.directoryMigrationBusy = false;
         ui.historyMigrationProgress = null;
-        render();
+        renderOverlay();
     },
     notifySaved: (proxyChanged, mode) => {
         showMessage(proxyChanged
@@ -2495,6 +2588,7 @@ function bindSettings() {
             requestForceStopConfirmation: () => {
                 ui.pendingConfirmation = { kind: "force-stop-comfy" };
                 ui.confirmationBusy = false;
+                renderOverlay();
             },
             rememberModalFocus
         },
@@ -2534,12 +2628,11 @@ function bindSettings() {
                     selectedPaths: [],
                     lastResult: null
                 };
-                render();
+                renderOverlay();
                 void scanImageAssets();
             },
             rememberModalFocus,
-            restoreModalFocus,
-            bindModalFocus
+            requestOverlayRender: renderOverlay
         }
     }));
 }
@@ -2616,7 +2709,8 @@ registerRendererEvents({
         return next;
     },
     notify: showMessage,
-    requestRender: render
+    requestRender: render,
+    requestOverlayRender: renderOverlay
 });
 bootstrapRenderer({
     studio: window.studio,

@@ -14,12 +14,7 @@ function render(page: "create" | "history-detail" | "settings") {
     content: "<div>content</div>",
     t: translator.t,
     icon: () => "",
-    escapeHtml: (value) => String(value),
-    confirmationDialog: "",
-    directoryMigrationDialog: "",
-    imageAssetLibraryDialog: "",
-    windowCloseDialog: "",
-    upscaleDialog: "",
+    escapeHtml: (value) => String(value)
   });
 }
 
@@ -53,12 +48,7 @@ describe("renderer shell navigation semantics", () => {
       content: "<div>content</div>",
       t: translator.t,
       icon: () => "<svg></svg>",
-      escapeHtml: (value) => String(value),
-      confirmationDialog: "",
-      directoryMigrationDialog: "",
-      imageAssetLibraryDialog: "",
-      windowCloseDialog: "",
-      upscaleDialog: ""
+      escapeHtml: (value) => String(value)
     });
 
     expect(html).toContain('id="dismiss-app-flash"');

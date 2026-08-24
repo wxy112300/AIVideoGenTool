@@ -63,7 +63,6 @@ export function mountSettingsServiceController(context, options) {
         options.rememberModalFocus();
         options.setSettingsDraft(options.formSettings());
         options.requestForceStopConfirmation();
-        context.requestRender();
     }, { signal });
     root.querySelector("#update-comfyui")?.addEventListener("click", async () => {
         const settings = options.formSettings();

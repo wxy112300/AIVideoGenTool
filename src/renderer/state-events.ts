@@ -62,6 +62,7 @@ export interface RendererEventOptions {
   appendDependencyInstallLog(progress: DependencyInstallProgress): string;
   notify(message: string, options?: RendererNotifyOptions): void;
   requestRender(): void;
+  requestOverlayRender?(): void;
 }
 
 function isEditingFormControl(): boolean {
@@ -251,7 +252,7 @@ export function registerRendererEvents(
       options.rememberModalFocus();
       options.setPendingWindowCloseRequest(request);
       options.setWindowCloseResponseBusy(false);
-      options.requestRender();
+      (options.requestOverlayRender ?? options.requestRender)();
     }),
     options.studio.onStateChanged((nextState) => {
       const previousState = options.getState();
@@ -361,7 +362,9 @@ export function registerRendererEvents(
     }),
     options.studio.onHistoryMigrationProgress((progress) => {
       options.setHistoryMigrationProgress(progress);
-      if (options.hasPendingDirectoryMigration()) options.requestRender();
+      if (options.hasPendingDirectoryMigration()) {
+        (options.requestOverlayRender ?? options.requestRender)();
+      }
     }),
     options.studio.onImageAssetLibraryProgress((progress) => {
       options.setImageAssetLibraryProgress(progress);

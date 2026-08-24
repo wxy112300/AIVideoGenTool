@@ -33,10 +33,5 @@ export function renderShell(options) {
       <div class="flash flash-${options.flashKind} ${options.flashMessage ? "visible" : ""}" id="app-flash" data-kind="${options.flashKind}" role="${options.flashKind === "error" ? "alert" : "status"}" aria-live="${options.flashKind === "error" ? "assertive" : "polite"}"><span class="flash-message" data-flash-message>${options.escapeHtml(options.flashMessage)}</span><span class="flash-actions" data-flash-actions>${flashActions}</span><button class="icon-button flash-dismiss" id="dismiss-app-flash" type="button" aria-label="${options.escapeHtml(options.t(uiKeys.app.dismissNotification))}" title="${options.escapeHtml(options.t(uiKeys.app.dismissNotification))}">${options.icon("x")}</button></div>
       <main>${options.content}</main>
     </div>
-    <button class="history-back-top" id="history-back-top" type="button" aria-label="${options.escapeHtml(options.t(uiKeys.app.returnTop))}" title="${options.escapeHtml(options.t(uiKeys.app.returnTop))}">${options.icon("arrow-up")}</button>
-    ${options.confirmationDialog}
-    ${options.directoryMigrationDialog}
-    ${options.imageAssetLibraryDialog}
-    ${options.windowCloseDialog}
-    ${options.upscaleDialog}`;
+    <button class="history-back-top" id="history-back-top" type="button" aria-label="${options.escapeHtml(options.t(uiKeys.app.returnTop))}" title="${options.escapeHtml(options.t(uiKeys.app.returnTop))}">${options.icon("arrow-up")}</button>`;
 }

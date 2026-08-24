@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import { createRenderCoordinator, type RenderCoordinatorOptions } from "../src/renderer/render-coordinator";
 import { createRendererUiState } from "../src/renderer/ui-state";
@@ -9,6 +9,7 @@ function createCoordinator(root: HTMLElement) {
   const state = createDefaultState();
   const ui = createRendererUiState();
   const noop = () => undefined;
+  const renderOverlay = vi.fn();
   const options: RenderCoordinatorOptions = {
     root,
     addPageCleanup: noop,
@@ -27,24 +28,21 @@ function createCoordinator(root: HTMLElement) {
     beforeRenderHistory: noop,
     closeAppLogContextMenu: noop,
     bindShell: noop,
-    bindUpscaleDialog: noop,
+    renderOverlay,
+    beforeRenderQueue: noop,
     bindCreate: noop,
     bindQueue: noop,
     bindHistory: noop,
     bindSettings: noop,
     bindHistoryViewportControls: () => noop,
+    restoreQueueScrollPosition: noop,
     restoreHistoryScrollPosition: noop,
     ensurePromptPacks: async () => undefined,
     syncAppLogPolling: noop,
-    renderConfirmationDialog: () => "",
-    renderDirectoryMigrationDialog: () => "",
-    renderImageAssetLibraryDialog: () => "",
-    renderWindowCloseDialog: () => "",
-    renderUpscaleDialog: () => "",
     icon: () => "",
     escapeHtml: (value: unknown) => String(value)
   };
-  return createRenderCoordinator(options);
+  return { coordinator: createRenderCoordinator(options), renderOverlay };
 }
 
 describe("render coordinator focus preservation", () => {
@@ -57,7 +55,8 @@ describe("render coordinator focus preservation", () => {
     input.focus();
     input.setSelectionRange(1, 4, "forward");
 
-    createCoordinator(root).render();
+    const { coordinator, renderOverlay } = createCoordinator(root);
+    coordinator.render();
     await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
     const restored = root.querySelector<HTMLInputElement>("#settings-test-input");
@@ -66,5 +65,7 @@ describe("render coordinator focus preservation", () => {
     expect(restored?.selectionStart).toBe(1);
     expect(restored?.selectionEnd).toBe(4);
     expect(restored?.selectionDirection).toBe("forward");
+    expect(renderOverlay).toHaveBeenCalledTimes(1);
+    expect(root.querySelector(".dialog-backdrop")).toBeNull();
   });
 });

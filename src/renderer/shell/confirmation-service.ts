@@ -27,6 +27,7 @@ export interface ConfirmationServiceOptions {
   setSettingsDraft(settings: Settings | null): void;
   setPage(page: Page): void;
   setHistoryKind(kind: "video" | "image"): void;
+  setHistoryScrollRestorePending(value: boolean): void;
   setSelectedHistoryAssetId(assetId: string): void;
   setSelectedHistoryVersionId(versionId: string): void;
   clearImageHistoryThumbnailCache(): void;
@@ -34,7 +35,9 @@ export interface ConfirmationServiceOptions {
   releaseHistoryVideo(assetId: string): void;
   rememberModalFocus(): void;
   restoreModalFocus(): void;
+  overlayRoot: HTMLElement;
   render(): void;
+  renderOverlay(): void;
   notify(message: string, options?: RendererNotifyOptions): void;
   getPage(): Page;
 }
@@ -46,9 +49,13 @@ export async function acceptConfirmation(
   const request = options.getRequest();
   const t = context.t;
   if (!request || options.isBusy()) return;
+  const preserveHistoryScrollOnReturn =
+    (request.kind === "delete-history" &&
+      (options.getPage() === "history-detail" || options.getPage() === "image-history-detail"));
+  if (preserveHistoryScrollOnReturn) options.setHistoryScrollRestorePending(true);
   options.setBusy(true);
-  const acceptButton = context.root.querySelector<HTMLButtonElement>("#accept-confirmation");
-  const cancelButton = context.root.querySelector<HTMLButtonElement>("#cancel-confirmation");
+  const acceptButton = options.overlayRoot.querySelector<HTMLButtonElement>("#accept-confirmation");
+  const cancelButton = options.overlayRoot.querySelector<HTMLButtonElement>("#cancel-confirmation");
   if (acceptButton) {
     acceptButton.disabled = true;
     acceptButton.textContent = t(uiKeys.dialog.processing);
@@ -101,6 +108,7 @@ export async function acceptConfirmation(
       options.setSelectedHistoryAssetId("");
       if (options.getPage() === "history-detail" || options.getPage() === "image-history-detail") {
         if (options.getPage() === "image-history-detail") options.setHistoryKind("image");
+        options.setHistoryScrollRestorePending(true);
         options.setPage("history");
       }
       options.notify(t(uiKeys.runtime.historyAssetDeleted, { title: request.title }));
@@ -112,6 +120,7 @@ export async function acceptConfirmation(
       if (!remainingProject) {
         options.setSelectedHistoryAssetId("");
         options.setHistoryKind("image");
+        options.setHistoryScrollRestorePending(true);
         options.setPage("history");
       }
       options.notify(t(uiKeys.runtime.imageVersionDeleted));
@@ -129,7 +138,9 @@ export async function acceptConfirmation(
   } catch (error) {
     options.setQueueActionBusy(null);
     if (request.kind === "force-stop-comfy") options.setServiceForceStopping(false);
+    if (preserveHistoryScrollOnReturn) options.setHistoryScrollRestorePending(false);
     options.setBusy(false);
     options.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+    options.renderOverlay();
   }
 }

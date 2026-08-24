@@ -17,7 +17,6 @@ import {
   renderSettingsComfyCompatibilityPanel,
   renderSettingsEnvironmentIssuesPanel,
   renderSettingsEnvironmentOverview,
-  renderSettingsInstallGuideDialog,
   renderSettingsModelScanCard,
   type SettingsInstallGuideSelection
 } from "./fragments";
@@ -185,13 +184,6 @@ export function renderSettingsPage(
       videoLoraInfoButton: options.videoLoraInfoButton,
       imageWorkflowStatus: options.imageWorkflowStatus
     }
-  );
-  const installGuideDialog = renderSettingsInstallGuideDialog(
-    {
-      selectedInstallGuide: viewModel.selectedInstallGuide,
-      configuredModelDirectory: viewModel.installGuideModelDirectory
-    },
-    sharedFragmentOptions
   );
   const profiles = environmentScan?.modelProfiles ?? [];
   const videoProfiles = options.orderVideoProfiles(
@@ -899,6 +891,5 @@ export function renderSettingsPage(
         }).join("")}
       </nav>
       <div id="settings-panel-${viewModel.settingsTab}" class="settings-content" role="tabpanel" aria-labelledby="settings-tab-${viewModel.settingsTab}" tabindex="0" aria-busy="${viewModel.settingsSaving || viewModel.environmentScanning}">${activePanel}</div>
-    </div>
-    ${installGuideDialog}`;
+    </div>`;
 }

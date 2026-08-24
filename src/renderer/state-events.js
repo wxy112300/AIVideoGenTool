@@ -182,7 +182,7 @@ export function registerRendererEvents(options) {
             options.rememberModalFocus();
             options.setPendingWindowCloseRequest(request);
             options.setWindowCloseResponseBusy(false);
-            options.requestRender();
+            (options.requestOverlayRender ?? options.requestRender)();
         }),
         options.studio.onStateChanged((nextState) => {
             const previousState = options.getState();
@@ -281,8 +281,9 @@ export function registerRendererEvents(options) {
         }),
         options.studio.onHistoryMigrationProgress((progress) => {
             options.setHistoryMigrationProgress(progress);
-            if (options.hasPendingDirectoryMigration())
-                options.requestRender();
+            if (options.hasPendingDirectoryMigration()) {
+                (options.requestOverlayRender ?? options.requestRender)();
+            }
         }),
         options.studio.onImageAssetLibraryProgress((progress) => {
             options.setImageAssetLibraryProgress(progress);

@@ -93,7 +93,6 @@ export function mountSettingsServiceController(
     options.rememberModalFocus();
     options.setSettingsDraft(options.formSettings());
     options.requestForceStopConfirmation();
-    context.requestRender();
   }, { signal });
 
   root.querySelector("#update-comfyui")?.addEventListener("click", async () => {

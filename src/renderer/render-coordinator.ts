@@ -24,20 +24,17 @@ export interface RenderCoordinatorOptions {
   beforeRenderHistory(): void;
   closeAppLogContextMenu(): void;
   bindShell(): void;
-  bindUpscaleDialog(): void;
+  renderOverlay(): void;
+  beforeRenderQueue(): void;
   bindCreate(): void;
   bindQueue(): void;
   bindHistory(playback: HistoryPlaybackSnapshot | null): void;
   bindSettings(): void;
   bindHistoryViewportControls(): RendererCleanup;
+  restoreQueueScrollPosition(): void;
   restoreHistoryScrollPosition(): void;
   ensurePromptPacks(): Promise<void>;
   syncAppLogPolling(): void;
-  renderConfirmationDialog(): string;
-  renderDirectoryMigrationDialog(): string;
-  renderImageAssetLibraryDialog(): string;
-  renderWindowCloseDialog(): string;
-  renderUpscaleDialog(): string;
   icon(name: string, className?: string): string;
   escapeHtml(value: unknown): string;
 }
@@ -207,8 +204,9 @@ export function createRenderCoordinator(
         }
         if (request !== renderRequest) return;
 
-        options.beforeRenderHistory();
         const previousPage = options.getPage();
+        options.beforeRenderHistory();
+        if (previousPage === "queue") options.beforeRenderQueue();
         const playback = captureHistoryPlayback(options.root, previousPage);
         stopRenderedVideoPlayback(options.root);
         options.closeAppLogContextMenu();
@@ -234,17 +232,11 @@ export function createRenderCoordinator(
           content,
           t: options.t,
           icon: options.icon,
-          escapeHtml: options.escapeHtml,
-          confirmationDialog: options.renderConfirmationDialog(),
-          directoryMigrationDialog: options.renderDirectoryMigrationDialog(),
-          imageAssetLibraryDialog: options.renderImageAssetLibraryDialog(),
-          windowCloseDialog: options.renderWindowCloseDialog(),
-          upscaleDialog: options.renderUpscaleDialog()
+          escapeHtml: options.escapeHtml
         });
         renderIcons(options.root);
         options.bindShell();
         options.addPageCleanup(options.bindHistoryViewportControls());
-        options.bindUpscaleDialog();
         if (page === "create") options.bindCreate();
         else if (page === "queue") options.bindQueue();
         else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
@@ -252,7 +244,9 @@ export function createRenderCoordinator(
         } else if (page === "settings") {
           options.bindSettings();
         }
+        options.renderOverlay();
         options.syncAppLogPolling();
+        if (page === "queue" && previousPage === "queue") options.restoreQueueScrollPosition();
         if (page === "history") options.restoreHistoryScrollPosition();
         restoreHistoryPlayback(options.root, playback);
         restoreFocus(options.root, focus);

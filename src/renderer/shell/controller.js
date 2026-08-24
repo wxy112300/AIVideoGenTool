@@ -126,9 +126,5 @@ export function mountShellController(options) {
         window.addEventListener("auxclick", handleMouseForward, { signal });
         window.addEventListener("mouseup", handleMouseForward, { signal });
     }
-    options.bindConfirmationDialog();
-    options.bindDirectoryMigrationDialog();
-    options.bindImageAssetLibraryDialog();
-    options.bindWindowCloseDialog();
     return () => events.abort();
 }

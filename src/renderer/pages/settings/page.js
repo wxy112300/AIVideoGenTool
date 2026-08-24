@@ -1,6 +1,6 @@
 import { uiKeys } from "../../../core/i18n-keys";
 import { modelCatalog } from "../../../core/catalog";
-import { renderSettingsComfyCompatibilityPanel, renderSettingsEnvironmentIssuesPanel, renderSettingsEnvironmentOverview, renderSettingsInstallGuideDialog, renderSettingsModelScanCard } from "./fragments";
+import { renderSettingsComfyCompatibilityPanel, renderSettingsEnvironmentIssuesPanel, renderSettingsEnvironmentOverview, renderSettingsModelScanCard } from "./fragments";
 import { settingsText } from "./copy";
 import { fieldLabelWithTip } from "../../shared/markup";
 import { customNodeBulkActionMode, customNodeIdsForBulkAction } from "./node-install-queue";
@@ -51,10 +51,6 @@ export function renderSettingsPage(viewModel, options) {
         videoLoraInfoButton: options.videoLoraInfoButton,
         imageWorkflowStatus: options.imageWorkflowStatus
     });
-    const installGuideDialog = renderSettingsInstallGuideDialog({
-        selectedInstallGuide: viewModel.selectedInstallGuide,
-        configuredModelDirectory: viewModel.installGuideModelDirectory
-    }, sharedFragmentOptions);
     const profiles = environmentScan?.modelProfiles ?? [];
     const videoProfiles = options.orderVideoProfiles(profiles.filter((profile) => profile.category === "video"));
     const videoSelectorProfiles = videoProfiles.length
@@ -732,6 +728,5 @@ export function renderSettingsPage(viewModel, options) {
     }).join("")}
       </nav>
       <div id="settings-panel-${viewModel.settingsTab}" class="settings-content" role="tabpanel" aria-labelledby="settings-tab-${viewModel.settingsTab}" tabindex="0" aria-busy="${viewModel.settingsSaving || viewModel.environmentScanning}">${activePanel}</div>
-    </div>
-    ${installGuideDialog}`;
+    </div>`;
 }

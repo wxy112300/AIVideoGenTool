@@ -4,11 +4,11 @@ import { uiKeys } from "../../core/i18n-keys";
 export function mountUpscaleController(context, options) {
     const events = new AbortController();
     const signal = events.signal;
-    const root = context.root;
+    const root = options.root;
     const t = context.t;
     const closeUpscale = () => {
         options.setDialog(null);
-        context.requestRender();
+        options.renderOverlay();
         options.restoreModalFocus();
     };
     root.querySelector("#close-upscale")?.addEventListener("click", closeUpscale, { signal });
@@ -30,7 +30,7 @@ export function mountUpscaleController(context, options) {
                 ...dialog,
                 targetHeight: Number(button.dataset.upscaleHeight)
             });
-            context.requestRender();
+            options.renderOverlay();
         }, { signal });
     });
     root.querySelector("#upscale-model")?.addEventListener("change", (event) => {
@@ -42,7 +42,7 @@ export function mountUpscaleController(context, options) {
             ...dialog,
             modelId: event.currentTarget.value
         });
-        context.requestRender();
+        options.renderOverlay();
     }, { signal });
     root.querySelector("#upscale-tile")?.addEventListener("change", (event) => {
         const dialog = options.getDialog();
@@ -53,7 +53,7 @@ export function mountUpscaleController(context, options) {
             ...dialog,
             tileMode: event.currentTarget.value
         });
-        context.requestRender();
+        options.renderOverlay();
     }, { signal });
     root.querySelector("#enqueue-upscale")?.addEventListener("click", async () => {
         const dialog = options.getDialog();

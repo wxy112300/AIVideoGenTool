@@ -4,9 +4,13 @@ export async function acceptConfirmation(context, options) {
     const t = context.t;
     if (!request || options.isBusy())
         return;
+    const preserveHistoryScrollOnReturn = request.kind === "delete-history" &&
+        (options.getPage() === "history-detail" || options.getPage() === "image-history-detail");
+    if (preserveHistoryScrollOnReturn)
+        options.setHistoryScrollRestorePending(true);
     options.setBusy(true);
-    const acceptButton = context.root.querySelector("#accept-confirmation");
-    const cancelButton = context.root.querySelector("#cancel-confirmation");
+    const acceptButton = options.overlayRoot.querySelector("#accept-confirmation");
+    const cancelButton = options.overlayRoot.querySelector("#cancel-confirmation");
     if (acceptButton) {
         acceptButton.disabled = true;
         acceptButton.textContent = t(uiKeys.dialog.processing);
@@ -68,6 +72,7 @@ export async function acceptConfirmation(context, options) {
             if (options.getPage() === "history-detail" || options.getPage() === "image-history-detail") {
                 if (options.getPage() === "image-history-detail")
                     options.setHistoryKind("image");
+                options.setHistoryScrollRestorePending(true);
                 options.setPage("history");
             }
             options.notify(t(uiKeys.runtime.historyAssetDeleted, { title: request.title }));
@@ -80,6 +85,7 @@ export async function acceptConfirmation(context, options) {
             if (!remainingProject) {
                 options.setSelectedHistoryAssetId("");
                 options.setHistoryKind("image");
+                options.setHistoryScrollRestorePending(true);
                 options.setPage("history");
             }
             options.notify(t(uiKeys.runtime.imageVersionDeleted));
@@ -100,7 +106,10 @@ export async function acceptConfirmation(context, options) {
         options.setQueueActionBusy(null);
         if (request.kind === "force-stop-comfy")
             options.setServiceForceStopping(false);
+        if (preserveHistoryScrollOnReturn)
+            options.setHistoryScrollRestorePending(false);
         options.setBusy(false);
         options.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+        options.renderOverlay();
     }
 }
