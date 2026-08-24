@@ -5,7 +5,8 @@ import {
   H3_CAMERA_MOTION_LORA,
   H3_AFTER_MIDNIGHT_LORA,
   H3_REALISM_PEOPLE_LORA,
-  H3_TURBO_LORA
+  H3_TURBO_LORA,
+  H3_TURBO_V4_LORA
 } from "../src/core/video-loras";
 import {
   activityTimeoutMinutesForTask,
@@ -313,6 +314,47 @@ describe("renderWorkflow", () => {
       model: ["21", 0],
       scheduler: "beta",
       steps: 4
+    });
+  });
+
+  it("renders the optional v4 step600 quality Turbo sampler contract", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_fl2va_turbo_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      videoLoras: [H3_TURBO_V4_LORA],
+      steps: 4,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    }, {
+      inputImage: "first.png",
+      endImage: "last.png",
+      vramTotalBytes: 24 * 1024 ** 3
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(workflowSupportsH3TurboSampling(rendered, {
+      modelId: "minimax_h3_fl2va",
+      videoLoras: [H3_TURBO_V4_LORA]
+    })).toBe(true);
+    expect(rendered["20"]?.inputs).toMatchObject({
+      lora_name: "minimax_h3_turbo_v4_step600_ema_pruned_comfyui.safetensors",
+      strength_model: 1
+    });
+    expect(rendered["21"]?.inputs).toMatchObject({
+      shift_video: 12,
+      shift_audio: 6
+    });
+    expect(rendered["7"]?.inputs.sampler_name).toBe("euler");
+    expect(rendered["8"]?.inputs).toMatchObject({
+      model: ["21", 0],
+      scheduler: "beta",
+      steps: 8
     });
   });
 

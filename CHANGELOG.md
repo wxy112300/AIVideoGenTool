@@ -8,6 +8,10 @@
 
 ## 未发布
 
+## 0.43.2 — 2026-08-24
+
+- 新增可选 MiniMax H3 Turbo v4 step600 EMA pruned LoRA：独立使用 6–8 步（默认 8 步）、Euler + Beta、video shift 12、audio shift 6 的质量优先路径；不与其他 Turbo 变体叠加，也不改变无 LoRA 或官方 v1.1 默认路径。
+
 ## 0.43.1 — 2026-08-24
 
 - 新增可选 MiniMax H3 Camera Motion v1 运镜 LoRA：仅开放给已验证的 FL2VA INT8 pruned ConvRot 图生视频，自动加入 `camera motion` 触发词，默认强度 0.8；不改变无 LoRA 默认路径或现有 Turbo/Ref2VA 策略。

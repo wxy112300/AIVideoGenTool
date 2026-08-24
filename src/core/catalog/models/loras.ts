@@ -12,6 +12,11 @@ const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
     "zh-TW": { name: "MiniMax H3 Camera Motion v1", badge: "H3 專屬 · 運鏡", description: "社群運鏡 LoRA，增強推近、拉遠、環繞、跟拍與航拍等鏡頭運動。" },
     "en-US": { name: "MiniMax H3 Camera Motion v1", badge: "H3 only · camera motion", description: "A community camera-motion LoRA for stronger push-ins, pull-outs, orbits, tracking shots, and aerial movement." }
   },
+  "minimax-h3-turbo-v4-step600-ema-pruned": {
+    "zh-CN": { name: "MiniMax H3 Turbo v4 · step600 EMA", badge: "H3 专属 · 质量 Turbo", description: "社区 v4 step600 EMA pruned Turbo，建议 8 步，支持 6–8 步质量路径。" },
+    "zh-TW": { name: "MiniMax H3 Turbo v4 · step600 EMA", badge: "H3 專屬 · 品質 Turbo", description: "社群 v4 step600 EMA pruned Turbo，建議 8 步，支援 6–8 步品質路徑。" },
+    "en-US": { name: "MiniMax H3 Turbo v4 · step600 EMA", badge: "H3 only · quality Turbo", description: "A community v4 step600 EMA pruned Turbo for a quality-first six-to-eight-step path, preferably eight steps." }
+  },
   "minimax-h3-lightx2v-turbo-8step-v1": {
     "zh-CN": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 专属 · 性能", description: "官方 v1.0 FL2VA Turbo LoRA，默认 8 步，优先稳定和速度平衡。" },
     "zh-TW": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 專屬 · 效能", description: "官方 v1.0 FL2VA Turbo LoRA，預設 8 步，優先穩定與速度平衡。" },

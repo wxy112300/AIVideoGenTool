@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultDraft } from "../src/core/defaults";
-import { H3_TURBO_LORA } from "../src/core/video-loras";
+import { H3_TURBO_LORA, H3_TURBO_V4_LORA } from "../src/core/video-loras";
 import {
   normalizeVideoSteps,
   resolveVideoGenerationPolicy,
@@ -60,6 +60,23 @@ describe("video generation policy", () => {
       spectrumMode: "balanced",
       videoLoras: [H3_TURBO_LORA]
     })).toBe(true);
+  });
+
+  it("keeps the v4 step600 quality Turbo on its dedicated six-to-eight-step policy", () => {
+    const policy = resolveVideoGenerationPolicy({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      spectrumMode: "balanced",
+      videoLoras: [H3_TURBO_V4_LORA]
+    });
+
+    expect(policy.turboEnabled).toBe(true);
+    expect(policy.steps.options).toEqual([6, 8]);
+    expect(policy.steps.defaultValue).toBe(8);
+    expect(policy.steps.maxValue).toBe(8);
+    expect(normalizeVideoSteps(4, policy)).toBe(8);
+    expect(normalizeVideoSteps(6, policy)).toBe(6);
+    expect(policy.spectrum.allowed).toBe(true);
   });
 
   it("keeps Spectrum available for standard H3 image generation", () => {

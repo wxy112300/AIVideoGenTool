@@ -64,6 +64,7 @@ describe("model catalog", () => {
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).toEqual([
       "minimax-h3-lightx2v-turbo-4step-768p-v1.1",
       "minimax-h3-camera-motion-v1",
+      "minimax-h3-turbo-v4-step600-ema-pruned",
       "minimax-h3-lightx2v-turbo-8step-v1",
       "minimax-h3-ref2v-turbo-4step-v01",
       "minimax-h3-after-midnight-ref2va-nsfw",

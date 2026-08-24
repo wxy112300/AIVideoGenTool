@@ -11,6 +11,8 @@ import {
   H3_REALISM_PEOPLE_LORA_ID,
   H3_REF2V_TURBO_LORA_ID,
   H3_REF2V_TURBO_LORA_FILENAME,
+  H3_TURBO_V4_LORA_FILENAME,
+  H3_TURBO_V4_LORA_ID,
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
   H3_TURBO_LORA_IDS,
@@ -39,6 +41,8 @@ export {
   H3_REALISM_PEOPLE_LORA_ID,
   H3_REF2V_TURBO_LORA_FILENAME,
   H3_REF2V_TURBO_LORA_ID,
+  H3_TURBO_V4_LORA_FILENAME,
+  H3_TURBO_V4_LORA_ID,
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
   H3_TURBO_LORA_IDS,
@@ -95,6 +99,7 @@ function requiredBuiltinVideoLora(id: string): BuiltinVideoLora {
 
 export const H3_TURBO_LORA = requiredBuiltinVideoLora(H3_TURBO_LORA_ID);
 export const H3_CAMERA_MOTION_LORA = requiredBuiltinVideoLora(H3_CAMERA_MOTION_LORA_ID);
+export const H3_TURBO_V4_LORA = requiredBuiltinVideoLora(H3_TURBO_V4_LORA_ID);
 export const H3_TURBO_8STEP_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_8STEP_V1_LORA_ID);
 export const H3_TURBO_768P_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_768P_V1_LORA_ID);
 export const H3_REF2V_TURBO_LORA = requiredBuiltinVideoLora(H3_REF2V_TURBO_LORA_ID);
@@ -114,6 +119,10 @@ export function isH3TurboLoraId(id: string): boolean {
 
 export function isH3TurboFourStepV11LoraId(id: string): boolean {
   return id === H3_TURBO_LORA_ID;
+}
+
+export function isH3TurboV4LoraId(id: string): boolean {
+  return id === H3_TURBO_V4_LORA_ID;
 }
 
 export function isH3Ref2vTurboLoraId(id: string): boolean {

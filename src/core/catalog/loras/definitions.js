@@ -6,6 +6,8 @@ export const H3_FL2VA_MODEL_ID = "minimax_h3_fl2va";
 export const H3_TURBO_LORA_FILENAME = "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors";
 export const H3_CAMERA_MOTION_LORA_ID = "minimax-h3-camera-motion-v1";
 export const H3_CAMERA_MOTION_LORA_FILENAME = "camera_motion_h3_lora_v1_3000_pruned.safetensors";
+export const H3_TURBO_V4_LORA_ID = "minimax-h3-turbo-v4-step600-ema-pruned";
+export const H3_TURBO_V4_LORA_FILENAME = "minimax_h3_turbo_v4_step600_ema_pruned_comfyui.safetensors";
 export const LEGACY_H3_TURBO_LORA_ID = "minimax-h3-lightx2v-turbo-4step";
 export const LEGACY_H3_TURBO_LORA_FILENAME = "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors";
 export const H3_TURBO_8STEP_V1_LORA_ID = "minimax-h3-lightx2v-turbo-8step-v1";
@@ -18,6 +20,7 @@ export const H3_AFTER_MIDNIGHT_LORA_ID = "minimax-h3-after-midnight-ref2va-nsfw"
 export const H3_AFTER_MIDNIGHT_LORA_FILENAME = "AfterMidnight_ref2va_h3_sexytime_rank64-v1.2.safetensors";
 export const H3_TURBO_LORA_IDS = [
     H3_TURBO_LORA_ID,
+    H3_TURBO_V4_LORA_ID,
     H3_TURBO_8STEP_V1_LORA_ID,
     H3_REF2V_TURBO_LORA_ID
 ];
@@ -56,6 +59,52 @@ export const VIDEO_LORA_DEFINITIONS = [{
                         targetSubdirectory: "loras",
                         recommendedFilename: H3_TURBO_LORA_FILENAME,
                         notes: "官方最新 FL2VA 4 步 768p 权重。使用 video shift 6、audio shift 3、Euler；不要与其他 Turbo LoRA 同时叠加。"
+                    }
+                }]
+        }
+    }, {
+        id: H3_TURBO_V4_LORA_ID,
+        name: "MiniMax H3 Turbo v4 · step600 EMA",
+        filename: H3_TURBO_V4_LORA_FILENAME,
+        strength: 1,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: [H3_FL2VA_MODEL_ID],
+        compatibleInputModes: ["image"],
+        purpose: "performance",
+        promptPrefixes: [],
+        catalogOrder: 110,
+        variant: "turbo",
+        rules: {
+            orderPriority: 10,
+            settingConflicts: [],
+            combinations: [{
+                    loraId: H3_TURBO_LORA_ID,
+                    severity: "error",
+                    localeKey: "turboVariant"
+                }, {
+                    loraId: H3_TURBO_8STEP_V1_LORA_ID,
+                    severity: "error",
+                    localeKey: "turboVariant"
+                }, {
+                    loraId: H3_REF2V_TURBO_LORA_ID,
+                    severity: "error",
+                    localeKey: "turboVariant"
+                }],
+            workflowRequirement: "h3-turbo-sampling"
+        },
+        scan: {
+            vram: "LoRA · v4 step600 EMA pruned · 6–8 steps · strength 1.0",
+            integrated: true,
+            components: [{
+                    label: "MiniMax H3 Turbo v4 step600 EMA pruned LoRA",
+                    expected: `loras/${H3_TURBO_V4_LORA_FILENAME}`,
+                    patterns: [/loras\/minimax_h3_turbo_v4_step600_ema_pruned_comfyui\.safetensors$/i],
+                    installGuide: {
+                        sourceLabel: "drbaph / MiniMax-H3-Turbo-Lora-ComfyUI",
+                        downloadUrl: `https://huggingface.co/drbaph/MiniMax-H3-Turbo-Lora-ComfyUI/resolve/main/${H3_TURBO_V4_LORA_FILENAME}?download=true`,
+                        targetSubdirectory: "loras",
+                        recommendedFilename: H3_TURBO_V4_LORA_FILENAME,
+                        notes: "社区 v4 step600 EMA pruned 转换。建议 8 步（可选 6–8 步），固定 Euler + Beta、video shift 12、audio shift 6；作者给出 audio shift 4–6。当前仅开放 H3 FL2VA pruned INT8 ConvRot 图生视频，不与其他 Turbo 变体叠加。"
                     }
                 }]
         }

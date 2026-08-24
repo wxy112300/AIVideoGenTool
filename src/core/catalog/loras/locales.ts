@@ -45,6 +45,21 @@ const zhCN: Record<string, CatalogLoraLocale> = {
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；运镜 LoRA 建议先单独验证，再与性能或人物 LoRA 组合。"
     }
   },
+  "minimax-h3-turbo-v4-step600-ema-pruned": {
+    guide: {
+      summary: "社区 MiniMax H3 Turbo v4 step600 EMA pruned 转换，面向 6–8 步质量优先路径。",
+      recommendedStrength: "默认 1.0；建议 6–8 步，优先 8 步；Euler + Beta、video shift 12、audio shift 6（作者给出 4–6）。",
+      effects: "相比 4-step 更重视细节、运动连续性和同步音频；仍需与官方 v1.1 做同 Seed 对照。",
+      stacking: "作为独立 Turbo 变体，不要与官方 v1.1、8-step v1.0 或其他 Turbo 同时叠加；建议放在人物或内容 LoRA 前。",
+      compatibility: "仅当前已验证的 MiniMax H3 FL2VA INT8 pruned ConvRot 图生视频；暂不开放 R2V、INT4、Q3 或视频续写。",
+      source: "drbaph / MiniMax-H3-Turbo-Lora-ComfyUI v4 step600 EMA pruned"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      turboVariant: "v4 step600 与其他 Turbo 变体不可同时使用；请保留单独对照。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，人物和内容 LoRA 后加载。"
+    }
+  },
   "minimax-h3-lightx2v-turbo-8step-v1": {
     guide: {
       summary: "官方 LightX2V v1.0 FL2VA Turbo LoRA，把标准 H3 路径压缩到 8 步。",
@@ -183,6 +198,21 @@ const enUS: Record<string, CatalogLoraLocale> = {
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
       orderSuggestion: "Place {current} before {previous}; validate the camera-motion LoRA alone before combining it with performance or people LoRAs."
+    }
+  },
+  "minimax-h3-turbo-v4-step600-ema-pruned": {
+    guide: {
+      summary: "A community MiniMax H3 Turbo v4 step600 EMA pruned conversion for a quality-first six-to-eight-step path.",
+      recommendedStrength: "Default 1.0; use six to eight steps, preferably eight, with Euler + Beta, video shift 12, and audio shift 6 (the author reports 4–6 for audio shift).",
+      effects: "Prioritizes detail, temporal continuity, and synchronized audio over the four-step path; compare it with the official v1.1 using the same Seed.",
+      stacking: "Treat it as a standalone Turbo variant; do not stack it with official v1.1, eight-step v1.0, or another Turbo variant. Load it before people or content LoRAs.",
+      compatibility: "Currently enabled only for the validated MiniMax H3 FL2VA INT8 pruned ConvRot image-to-video path; R2V, INT4, Q3, and video extension remain disabled.",
+      source: "drbaph / MiniMax-H3-Turbo-Lora-ComfyUI v4 step600 EMA pruned"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      turboVariant: "The v4 step600 variant cannot be combined with another Turbo variant; keep a separate comparison.",
+      orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before people and content LoRAs."
     }
   },
   "minimax-h3-lightx2v-turbo-8step-v1": {

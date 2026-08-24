@@ -33,6 +33,22 @@ export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
     }
   },
 
+  "minimax-h3-turbo-v4-step600-ema-pruned": {
+    guide: {
+      summary: "社群 MiniMax H3 Turbo v4 step600 EMA pruned 轉換，面向 6–8 步品質優先路徑。",
+      recommendedStrength: "預設 1.0；建議 6–8 步，優先 8 步；Euler + Beta、video shift 12、audio shift 6（作者給出 4–6）。",
+      effects: "相比 4-step 更重視細節、運動連續性與同步音訊；仍需與官方 v1.1 做同 Seed 對照。",
+      stacking: "作為獨立 Turbo 變體，不要與官方 v1.1、8-step v1.0 或其他 Turbo 同時疊加；建議放在人物或內容 LoRA 前。",
+      compatibility: "僅目前已驗證的 MiniMax H3 FL2VA INT8 pruned ConvRot 圖生影片；暫不開放 R2V、INT4、Q3 或影片續寫。",
+      source: "drbaph / MiniMax-H3-Turbo-Lora-ComfyUI v4 step600 EMA pruned"
+    },
+    rules: {
+      incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+      turboVariant: "v4 step600 不可與其他 Turbo 變體同時使用；請保留單獨對照。",
+      orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入，人物和內容 LoRA 後載入。"
+    }
+  },
+
   "minimax-h3-lightx2v-turbo-8step-v1": {
     guide: {
       summary: "官方 LightX2V v1.0 FL2VA Turbo LoRA，把標準 H3 路徑壓縮到 8 步。",

@@ -11,6 +11,7 @@ import {
   H3_TURBO_LORA_ID,
   isH3Ref2vTurboEnabled,
   isH3TurboFourStepV11LoraId,
+  isH3TurboV4LoraId,
   isH3TurboLoraId,
   videoLoraCompatibleWithModel,
   videoLoraFilename,
@@ -303,9 +304,10 @@ function applyVideoLoraStack(
 /**
  * The bundled H3 graphs are kept as conservative baselines and receive the
  * model-specific Turbo sampler patch at render time. Ref2VA Turbo uses the
- * original v0.1 shift, while the current official FL2VA v1.1 768p LoRA uses
- * the updated shift and sampler contract. This keeps old persisted tasks
- * renderable without allowing their settings to leak into the new path.
+ * original v0.1 shift, the current official FL2VA v1.1 768p LoRA uses the
+ * updated shift, and the optional v4 step600 quality variant uses its own
+ * 6–8-step shift contract. This keeps old persisted tasks renderable without
+ * allowing one Turbo variant's settings to leak into another path.
  */
 function applyMiniMaxH3Ref2vTurboSampling(
   workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
@@ -316,10 +318,14 @@ function applyMiniMaxH3Ref2vTurboSampling(
     Boolean(task.videoLoras?.some((lora) =>
       isH3TurboFourStepV11LoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
     ));
+  const fl2vaV4Turbo = isMiniMaxH3Fl2vaModel(task.modelId) &&
+    Boolean(task.videoLoras?.some((lora) =>
+      isH3TurboV4LoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
+    ));
   const afterMidnight = Boolean(task.videoLoras?.some((lora) =>
     lora.id === H3_AFTER_MIDNIGHT_LORA_ID && videoLoraCompatibleWithModel(lora, task.modelId)
   ));
-  if (!ref2vTurbo && !fl2vaV11Turbo && !afterMidnight) return;
+  if (!ref2vTurbo && !fl2vaV11Turbo && !fl2vaV4Turbo && !afterMidnight) return;
   const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
   const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
   const consumers = Object.values(workflow).filter((node) =>
@@ -329,7 +335,7 @@ function applyMiniMaxH3Ref2vTurboSampling(
   if (!sampler?.inputs || !schedulers.length || !consumers.length) return;
   sampler.inputs.sampler_name = "euler";
   for (const scheduler of schedulers) scheduler.inputs!.scheduler = "beta";
-  if (!ref2vTurbo && !fl2vaV11Turbo) return;
+  if (!ref2vTurbo && !fl2vaV11Turbo && !fl2vaV4Turbo) return;
   const currentModel = consumers[0]?.inputs?.model;
   if (!Array.isArray(currentModel) || typeof currentModel[0] !== "string") return;
   if (consumers.some((node) => JSON.stringify(node.inputs?.model) !== JSON.stringify(currentModel))) return;
@@ -344,7 +350,7 @@ function applyMiniMaxH3Ref2vTurboSampling(
     inputs: {
       model: currentModel,
       shift_video: fl2vaV11Turbo ? 6 : 12,
-      shift_audio: 3
+      shift_audio: fl2vaV11Turbo ? 3 : fl2vaV4Turbo ? 6 : 3
     }
   };
   for (const node of consumers) node.inputs!.model = [nodeId, 0];
@@ -456,6 +462,18 @@ export function workflowSupportsH3TurboSampling(
       Boolean(node.inputs) && typeof node.inputs === "object" && !Array.isArray(node.inputs) &&
       (node.inputs as Record<string, unknown>).shift_video === 6 &&
       (node.inputs as Record<string, unknown>).shift_audio === 3
+    )) return true;
+  const fl2vaV4Turbo = options.videoLoras?.some((lora) =>
+    isH3TurboV4LoraId(lora.id) && videoLoraCompatibleWithModel(lora, options.modelId ?? "")
+  ) === true;
+  if (fl2vaV4Turbo &&
+    hasNode("KSamplerSelect", (inputs) => inputs.sampler_name === "euler") &&
+    hasNode("BasicScheduler", (inputs) => inputs.scheduler === "beta") &&
+    nodes.some((node) =>
+      (node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3") &&
+      Boolean(node.inputs) && typeof node.inputs === "object" && !Array.isArray(node.inputs) &&
+      (node.inputs as Record<string, unknown>).shift_video === 12 &&
+      (node.inputs as Record<string, unknown>).shift_audio === 6
     )) return true;
   if (!isH3Ref2vTurboEnabled({
     modelId: options.modelId ?? "",

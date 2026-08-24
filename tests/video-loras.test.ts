@@ -6,6 +6,7 @@ import {
   H3_REALISM_PEOPLE_LORA,
   H3_REF2V_TURBO_LORA,
   H3_TURBO_LORA,
+  H3_TURBO_V4_LORA,
   normalizeVideoLoras,
   reorderVideoLoras,
   videoLoraSelection,
@@ -15,9 +16,10 @@ import {
 } from "../src/core/video-loras";
 
 describe("video LoRA catalog", () => {
-  it("offers the current Turbo, Camera Motion, Ref2VA NSFW, and Realism People H3 LoRAs", () => {
+  it("offers the current Turbo, Camera Motion, quality Turbo, Ref2VA NSFW, and Realism People H3 LoRAs", () => {
     expect(BUILTIN_VIDEO_LORAS.map((lora) => lora.id)).toEqual([
       H3_TURBO_LORA.id,
+      H3_TURBO_V4_LORA.id,
       H3_CAMERA_MOTION_LORA.id,
       "minimax-h3-lightx2v-turbo-8step-v1",
       "minimax-h3-ref2v-turbo-4step-v01",
@@ -34,6 +36,12 @@ describe("video LoRA catalog", () => {
       strength: 0.8,
       purpose: "motion",
       promptPrefixes: ["camera motion"],
+      compatibleModelIds: ["minimax_h3_fl2va"],
+      compatibleInputModes: ["image"]
+    });
+    expect(H3_TURBO_V4_LORA).toMatchObject({
+      strength: 1,
+      purpose: "performance",
       compatibleModelIds: ["minimax_h3_fl2va"],
       compatibleInputModes: ["image"]
     });
@@ -138,6 +146,23 @@ describe("video LoRA catalog", () => {
         code: `combination:${[H3_REALISM_PEOPLE_LORA.id, H3_TURBO_LORA.id].sort().join(":")}`,
         severity: "warning"
       }),
+    ]));
+  });
+
+  it("rejects stacking the v4 quality Turbo with another Turbo variant", () => {
+    const issues = videoLoraConfigurationIssues({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      spectrumMode: "off",
+      attentionMode: "sage",
+      videoLoras: [H3_TURBO_V4_LORA, H3_TURBO_LORA]
+    });
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: `combination:${[H3_TURBO_V4_LORA.id, H3_TURBO_LORA.id].sort().join(":")}`,
+        severity: "error"
+      })
     ]));
   });
 
