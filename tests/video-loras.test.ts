@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_VIDEO_LORAS,
+  H3_CAMERA_MOTION_LORA,
   H3_AFTER_MIDNIGHT_LORA,
   H3_REALISM_PEOPLE_LORA,
   H3_REF2V_TURBO_LORA,
@@ -14,9 +15,10 @@ import {
 } from "../src/core/video-loras";
 
 describe("video LoRA catalog", () => {
-  it("offers the current Turbo, Ref2VA NSFW, and Realism People H3 LoRAs", () => {
+  it("offers the current Turbo, Camera Motion, Ref2VA NSFW, and Realism People H3 LoRAs", () => {
     expect(BUILTIN_VIDEO_LORAS.map((lora) => lora.id)).toEqual([
       H3_TURBO_LORA.id,
+      H3_CAMERA_MOTION_LORA.id,
       "minimax-h3-lightx2v-turbo-8step-v1",
       "minimax-h3-ref2v-turbo-4step-v01",
       H3_AFTER_MIDNIGHT_LORA.id,
@@ -26,6 +28,13 @@ describe("video LoRA catalog", () => {
       strength: 0.8,
       purpose: "quality",
       compatibleModelIds: ["minimax_h3_fl2va", "minimax_h3_ref2va"],
+      compatibleInputModes: ["image"]
+    });
+    expect(H3_CAMERA_MOTION_LORA).toMatchObject({
+      strength: 0.8,
+      purpose: "motion",
+      promptPrefixes: ["camera motion"],
+      compatibleModelIds: ["minimax_h3_fl2va"],
       compatibleInputModes: ["image"]
     });
     expect(H3_AFTER_MIDNIGHT_LORA).toMatchObject({
@@ -130,6 +139,28 @@ describe("video LoRA catalog", () => {
         severity: "warning"
       }),
     ]));
+  });
+
+  it("adds the Camera Motion trigger without changing the user's Prompt", () => {
+    expect(videoPromptForLoras(
+      "a slow orbit around the subject",
+      [H3_CAMERA_MOTION_LORA]
+    )).toBe("camera motion, a slow orbit around the subject");
+    expect(videoLoraCompatibleWithDraft(
+      H3_CAMERA_MOTION_LORA,
+      "minimax_h3_fl2va",
+      "image"
+    )).toBe(true);
+    expect(videoLoraCompatibleWithDraft(
+      H3_CAMERA_MOTION_LORA,
+      "minimax_h3_fl2va_int4",
+      "image"
+    )).toBe(false);
+    expect(videoLoraCompatibleWithDraft(
+      H3_CAMERA_MOTION_LORA,
+      "minimax_h3_fl2va",
+      "video"
+    )).toBe(false);
   });
 
   it("reports the retired PinkFluffyBunny selection as unavailable for new tasks", () => {

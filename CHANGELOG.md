@@ -8,6 +8,10 @@
 
 ## 未发布
 
+## 0.43.1 — 2026-08-24
+
+- 新增可选 MiniMax H3 Camera Motion v1 运镜 LoRA：仅开放给已验证的 FL2VA INT8 pruned ConvRot 图生视频，自动加入 `camera motion` 触发词，默认强度 0.8；不改变无 LoRA 默认路径或现有 Turbo/Ref2VA 策略。
+
 ## 0.43.0 — 2026-08-24
 
 - 重新整理 MiniMax H3 LoRA：默认 FL2VA 4-step 切换至官方 LightX2V v1.1 768p 权重与 shift 6 / Euler 参数，旧版 v0.1、v1.0 768p 和 PinkFluffyBunny 仅保留为历史兼容记录，不再进入新任务或环境扫描。

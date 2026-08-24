@@ -4,6 +4,8 @@ export const LEGACY_H3_TURBO_MODEL_ID = "minimax_h3_fl2va_turbo";
 export const LEGACY_H3_REF2V_TURBO_MODEL_ID = "minimax_h3_ref2va_turbo";
 export const H3_FL2VA_MODEL_ID = "minimax_h3_fl2va";
 export const H3_TURBO_LORA_FILENAME = "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors";
+export const H3_CAMERA_MOTION_LORA_ID = "minimax-h3-camera-motion-v1";
+export const H3_CAMERA_MOTION_LORA_FILENAME = "camera_motion_h3_lora_v1_3000_pruned.safetensors";
 export const LEGACY_H3_TURBO_LORA_ID = "minimax-h3-lightx2v-turbo-4step";
 export const LEGACY_H3_TURBO_LORA_FILENAME = "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy_resized_avg_rank_21_bf16.safetensors";
 export const H3_TURBO_8STEP_V1_LORA_ID = "minimax-h3-lightx2v-turbo-8step-v1";
@@ -54,6 +56,39 @@ export const VIDEO_LORA_DEFINITIONS = [{
                         targetSubdirectory: "loras",
                         recommendedFilename: H3_TURBO_LORA_FILENAME,
                         notes: "官方最新 FL2VA 4 步 768p 权重。使用 video shift 6、audio shift 3、Euler；不要与其他 Turbo LoRA 同时叠加。"
+                    }
+                }]
+        }
+    }, {
+        id: H3_CAMERA_MOTION_LORA_ID,
+        name: "MiniMax H3 Camera Motion v1",
+        filename: H3_CAMERA_MOTION_LORA_FILENAME,
+        strength: 0.8,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: [H3_FL2VA_MODEL_ID],
+        compatibleInputModes: ["image"],
+        purpose: "motion",
+        promptPrefixes: ["camera motion"],
+        catalogOrder: 111,
+        variant: "fl2va",
+        rules: {
+            orderPriority: 20,
+            settingConflicts: [],
+            combinations: []
+        },
+        scan: {
+            vram: "LoRA · camera motion · v1 · strength 0.8",
+            integrated: true,
+            components: [{
+                    label: "MiniMax H3 Camera Motion LoRA v1 3000",
+                    expected: `loras/${H3_CAMERA_MOTION_LORA_FILENAME}`,
+                    patterns: [/loras\/camera_motion_h3_lora_v1_3000_pruned\.safetensors$/i],
+                    installGuide: {
+                        sourceLabel: "Jojocodex / minimax-h3-Camera-Motion-lora",
+                        downloadUrl: `https://huggingface.co/Jojocodex/minimax-h3-Camera-Motion-lora/resolve/main/${H3_CAMERA_MOTION_LORA_FILENAME}?download=true`,
+                        targetSubdirectory: "loras",
+                        recommendedFilename: H3_CAMERA_MOTION_LORA_FILENAME,
+                        notes: "社区 Camera Motion v1 3000 权重。执行 Prompt 会自动加入触发词 camera motion；建议强度 0.8–1.0。当前仅开放 H3 FL2VA pruned INT8 ConvRot 图生视频。"
                     }
                 }]
         }

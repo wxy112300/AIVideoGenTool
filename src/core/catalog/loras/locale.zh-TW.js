@@ -14,6 +14,20 @@ export const zhTWLoraLocales = {
             orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
         }
     },
+    "minimax-h3-camera-motion-v1": {
+        guide: {
+            summary: "社群 MiniMax H3 Camera Motion 運鏡 LoRA，增強推近、拉遠、環繞、跟拍與航拍等鏡頭運動。",
+            recommendedStrength: "預設 0.8；作者建議 0.8–1.0，超過 1.2 可能不穩定。",
+            effects: "透過 camera motion 觸發詞增強鏡頭運動控制，不改變基礎模型或音訊策略。",
+            stacking: "建議單獨作為運鏡 LoRA 使用；先與無 LoRA 基準對照，再考慮與 Turbo 或人物 LoRA 組合。",
+            compatibility: "僅目前已驗證的 MiniMax H3 FL2VA INT8 pruned ConvRot 圖生影片；暫不開放 INT4、Q3、R2V 或影片續寫。",
+            source: "Jojocodex / minimax-h3-Camera-Motion-lora v1 3000"
+        },
+        rules: {
+            incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+            orderSuggestion: "建議將 {current} 放在 {previous} 前面；運鏡 LoRA 建議先單獨驗證，再與效能或人物 LoRA 組合。"
+        }
+    },
     "minimax-h3-lightx2v-turbo-8step-v1": {
         guide: {
             summary: "官方 LightX2V v1.0 FL2VA Turbo LoRA，把標準 H3 路徑壓縮到 8 步。",

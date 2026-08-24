@@ -5,6 +5,11 @@ const catalogLocales = {
         "zh-TW": { name: "LightX2V Turbo 4-Step v1.1 · 768p", badge: "H3 專屬 · 最新 768p", description: "官方最新 v1.1 FL2VA Turbo LoRA，搭配 4 步、video shift 6 與 audio shift 3。" },
         "en-US": { name: "LightX2V Turbo 4-Step v1.1 · 768p", badge: "H3 only · latest 768p", description: "The latest official v1.1 FL2VA Turbo LoRA with the four-step, video-shift 6, audio-shift 3 path." }
     },
+    "minimax-h3-camera-motion-v1": {
+        "zh-CN": { name: "MiniMax H3 Camera Motion v1", badge: "H3 专属 · 运镜", description: "社区运镜 LoRA，增强推近、拉远、环绕、跟拍和航拍等镜头运动。" },
+        "zh-TW": { name: "MiniMax H3 Camera Motion v1", badge: "H3 專屬 · 運鏡", description: "社群運鏡 LoRA，增強推近、拉遠、環繞、跟拍與航拍等鏡頭運動。" },
+        "en-US": { name: "MiniMax H3 Camera Motion v1", badge: "H3 only · camera motion", description: "A community camera-motion LoRA for stronger push-ins, pull-outs, orbits, tracking shots, and aerial movement." }
+    },
     "minimax-h3-lightx2v-turbo-8step-v1": {
         "zh-CN": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 专属 · 性能", description: "官方 v1.0 FL2VA Turbo LoRA，默认 8 步，优先稳定和速度平衡。" },
         "zh-TW": { name: "LightX2V Turbo 8-Step v1.0", badge: "H3 專屬 · 效能", description: "官方 v1.0 FL2VA Turbo LoRA，預設 8 步，優先穩定與速度平衡。" },

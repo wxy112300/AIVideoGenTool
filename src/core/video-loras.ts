@@ -1,6 +1,8 @@
 import type { ModelScanProfile, UiLocale, VideoLoraSelection } from "../types.js";
 import {
   H3_FL2VA_MODEL_ID,
+  H3_CAMERA_MOTION_LORA_FILENAME,
+  H3_CAMERA_MOTION_LORA_ID,
   H3_AFTER_MIDNIGHT_LORA_FILENAME,
   H3_AFTER_MIDNIGHT_LORA_ID,
   H3_PINK_FLUFFY_BUNNY_LORA_FILENAME,
@@ -27,6 +29,8 @@ import { loraLocaleFor, loraRuleText } from "./catalog/loras/locales.js";
 
 export {
   H3_FL2VA_MODEL_ID,
+  H3_CAMERA_MOTION_LORA_FILENAME,
+  H3_CAMERA_MOTION_LORA_ID,
   H3_AFTER_MIDNIGHT_LORA_FILENAME,
   H3_AFTER_MIDNIGHT_LORA_ID,
   H3_PINK_FLUFFY_BUNNY_LORA_FILENAME,
@@ -90,6 +94,7 @@ function requiredBuiltinVideoLora(id: string): BuiltinVideoLora {
 }
 
 export const H3_TURBO_LORA = requiredBuiltinVideoLora(H3_TURBO_LORA_ID);
+export const H3_CAMERA_MOTION_LORA = requiredBuiltinVideoLora(H3_CAMERA_MOTION_LORA_ID);
 export const H3_TURBO_8STEP_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_8STEP_V1_LORA_ID);
 export const H3_TURBO_768P_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_768P_V1_LORA_ID);
 export const H3_REF2V_TURBO_LORA = requiredBuiltinVideoLora(H3_REF2V_TURBO_LORA_ID);

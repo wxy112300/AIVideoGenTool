@@ -15,6 +15,20 @@ const zhCN = {
             orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
         }
     },
+    "minimax-h3-camera-motion-v1": {
+        guide: {
+            summary: "社区 MiniMax H3 Camera Motion 运镜 LoRA，增强推近、拉远、环绕、跟拍和航拍等镜头运动。",
+            recommendedStrength: "默认 0.8；作者建议 0.8–1.0，超过 1.2 可能不稳定。",
+            effects: "通过 camera motion 触发词增强镜头运动控制，不改变基础模型或音频策略。",
+            stacking: "建议单独作为运镜 LoRA 使用；先与无 LoRA 基准对照，再考虑与 Turbo 或人物 LoRA 组合。",
+            compatibility: "仅当前已验证的 MiniMax H3 FL2VA INT8 pruned ConvRot 图生视频；暂不开放 INT4、Q3、R2V 或视频续写。",
+            source: "Jojocodex / minimax-h3-Camera-Motion-lora v1 3000"
+        },
+        rules: {
+            incompatible: "{name} 不兼容当前基础模型或输入模式。",
+            orderSuggestion: "建议将 {current} 放在 {previous} 前面；运镜 LoRA 建议先单独验证，再与性能或人物 LoRA 组合。"
+        }
+    },
     "minimax-h3-lightx2v-turbo-8step-v1": {
         guide: {
             summary: "官方 LightX2V v1.0 FL2VA Turbo LoRA，把标准 H3 路径压缩到 8 步。",
@@ -138,6 +152,20 @@ const enUS = {
             incompatible: "{name} is incompatible with the current base model or input mode.",
             turboSpectrum: "The v1.1 768p Turbo path needs a same-Seed comparison with Spectrum; disable Spectrum first if image quality drops.",
             orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
+        }
+    },
+    "minimax-h3-camera-motion-v1": {
+        guide: {
+            summary: "A community MiniMax H3 Camera Motion LoRA for stronger push-ins, pull-outs, orbits, tracking shots, and aerial camera movement.",
+            recommendedStrength: "Default 0.8; the author recommends 0.8–1.0, while values above 1.2 may become unstable.",
+            effects: "Uses the camera motion trigger to strengthen camera-movement control without changing the base model or audio policy.",
+            stacking: "Use it by itself first; compare against a no-LoRA baseline before combining it with Turbo or people LoRAs.",
+            compatibility: "Currently enabled only for the validated MiniMax H3 FL2VA INT8 pruned ConvRot image-to-video path; INT4, Q3, R2V, and video extension remain disabled.",
+            source: "Jojocodex / minimax-h3-Camera-Motion-lora v1 3000"
+        },
+        rules: {
+            incompatible: "{name} is incompatible with the current base model or input mode.",
+            orderSuggestion: "Place {current} before {previous}; validate the camera-motion LoRA alone before combining it with performance or people LoRAs."
         }
     },
     "minimax-h3-lightx2v-turbo-8step-v1": {
