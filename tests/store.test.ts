@@ -280,6 +280,29 @@ describe("queue lock recovery", () => {
     }
   });
 
+  it("maps removed prompt model selections to retained profiles", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const fallbacks = [
+      ["google/gemma-4-e4b-q3", "community/gemma-4-e4b-unconcerned-q5"],
+      ["google/gemma-4-12b-q4", "google/gemma-4-12b-q5"],
+      ["google/gemma-4-26b-a4b-q4", "community/gemma-4-26b-a4b-uncensored-q4"]
+    ] as const;
+
+    try {
+      for (const [removedModelId, fallbackModelId] of fallbacks) {
+        const state = createDefaultState();
+        state.settings.promptModelId = removedModelId;
+        await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+        const loaded = await new JsonStore(filename).load();
+        expect(loaded.settings.promptModelId).toBe(fallbackModelId);
+      }
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("preserves an existing Q4 Writer selection while adding new settings", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");

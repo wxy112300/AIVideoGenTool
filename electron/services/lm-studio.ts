@@ -26,6 +26,7 @@ import {
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
+import { extractH3DialogueLocks, h3DialogueLockInstruction } from "../../src/core/h3-dialogue.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -277,6 +278,7 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
   const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds);
   const referenceContext = request.referenceContext?.trim();
   const hardConstraints = h3ExplicitConstraintSummary(request.prompt);
+  const dialogueLocks = h3DialogueLockInstruction(request.prompt);
   return [
     `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
     h3DurationPlan(mode, Number(duration)),
@@ -291,7 +293,8 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
           "User request (preserve its concrete words and meaning):",
           request.prompt.trim()
         ]),
-    ...(hardConstraints ? [hardConstraints] : [])
+    ...(hardConstraints ? [hardConstraints] : []),
+    ...(dialogueLocks ? [dialogueLocks] : [])
   ].filter(Boolean).join("\n\n");
 }
 
@@ -472,6 +475,7 @@ export async function enhancePrompt(
   return normalizeH3PromptOutput(
     normalized,
     h3Mode,
-    request.h3DurationSeconds ?? 5
+    request.h3DurationSeconds ?? 5,
+    extractH3DialogueLocks(request.prompt)
   );
 }

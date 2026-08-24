@@ -1,4 +1,6 @@
 import type { H3PromptMode } from "../types.js";
+import type { H3DialogueLock } from "./h3-dialogue.js";
+import { restoreH3DialogueLocks } from "./h3-dialogue.js";
 
 export function inferH3PromptMode(
   hasStartImage: boolean,
@@ -151,12 +153,14 @@ function stripH3OutputPreamble(promptText: string, mode: H3PromptMode): string {
 export function normalizeH3PromptOutput(
   promptText: string,
   mode: H3PromptMode,
-  durationSeconds: number
+  durationSeconds: number,
+  dialogueLocks: readonly H3DialogueLock[] = []
 ): string {
-  const body = stripH3OutputPreamble(
+  const cleanedBody = stripH3OutputPreamble(
     stripLeadingH3AlignmentInstructions(promptText),
     mode
   );
+  const body = restoreH3DialogueLocks(cleanedBody, dialogueLocks);
   const alignment = h3AlignmentInstruction(mode, durationSeconds);
   if (!alignment) return body;
   return `${alignment}\n\n${body}`.trim();

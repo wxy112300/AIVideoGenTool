@@ -46,7 +46,7 @@ describe("model catalog", () => {
   });
 
   it("covers every model category used by environment scanning", () => {
-    expect(modelCatalog.list("prompt")).toHaveLength(12);
+    expect(modelCatalog.list("prompt")).toHaveLength(9);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
       "birefnet-background-removal",
       "lama-inpaint",
@@ -148,8 +148,8 @@ describe("model catalog", () => {
     expect(modelCatalog.localized("minimax-h3-realism-people", "zh-TW")).toMatchObject({
       badge: "H3 專屬 · 人物寫實"
     });
-    expect(modelCatalog.localized("google/gemma-4-26b-a4b-q4", "zh-TW")).toMatchObject({
-      badge: "社群推薦 · MoE Q4"
+    expect(modelCatalog.localized("community/gemma-4-26b-a4b-uncensored-q4", "zh-TW")).toMatchObject({
+      badge: "Uncensored · MoE Q4"
     });
   });
 });

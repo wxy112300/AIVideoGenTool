@@ -39,28 +39,10 @@ const managedPromptEnglish: Record<string, { name: string; badge: string; descri
     description: "The high-quality uncensored profile; only about 4B MoE parameters activate per step, but other models should still be released before loading.",
     licenseNote: "Community derivative. Read the model card and Gemma terms before use; use standard context on 24 GB GPUs."
   },
-  "google/gemma-4-e4b-q3": {
-    name: "Gemma 4 E4B Q3 · Community compatible",
-    badge: "Community compatible · Q3",
-    description: "A lightweight community-validated profile that understands images and video frames but may omit visual details.",
-    licenseNote: "Gemma models are subject to the Google Gemma terms; the GGUF conversion is provided by Unsloth."
-  },
-  "google/gemma-4-12b-q4": {
-    name: "Gemma 4 12B Q4 · Community compact",
-    badge: "Community compact · Q4",
-    description: "A compact community-validated multimodal profile for fast H3 prompt generation.",
-    licenseNote: "Gemma models are subject to the Google Gemma terms; the GGUF conversion is provided by Unsloth."
-  },
   "google/gemma-4-12b-q5": {
     name: "Gemma 4 12B Q5 · Community standard",
     badge: "Community standard · Q5",
     description: "A general-purpose community-validated multimodal profile balancing visual detail and context length.",
-    licenseNote: "Gemma models are subject to the Google Gemma terms; the GGUF conversion is provided by Unsloth."
-  },
-  "google/gemma-4-26b-a4b-q4": {
-    name: "Gemma 4 26B-A4B Q4 · Community pick for 4090",
-    badge: "Community pick · MoE Q4",
-    description: "The H3 Prompt Writer author's quality/speed balance; release other models before running it.",
     licenseNote: "Gemma models are subject to the Google Gemma terms; the GGUF conversion is provided by Unsloth."
   },
 };
@@ -102,28 +84,10 @@ const managedPromptTraditional: Record<string, { name: string; badge: string; de
     description: "Uncensored 品質上限設定；MoE 每次只啟用約 4B 參數，載入前仍需釋放其他模型。",
     licenseNote: "社群衍生模型；使用前請閱讀模型卡與 Gemma 使用條款。建議僅在 24GB 顯示卡上使用標準上下文。"
   },
-  "google/gemma-4-e4b-q3": {
-    name: "Gemma 4 E4B Q3 · 社群相容設定",
-    badge: "社群相容 · Q3",
-    description: "H3 Prompt Writer 社群驗證的輕量設定；能理解圖片和影片抽幀，但可能遺漏視覺細節。",
-    licenseNote: "Gemma 模型須遵守 Google Gemma 使用條款；GGUF 轉換由 Unsloth 提供。"
-  },
-  "google/gemma-4-12b-q4": {
-    name: "Gemma 4 12B Q4 · 社群精簡設定",
-    badge: "社群精簡 · Q4",
-    description: "社群驗證的精簡多模態設定，適合快速生成 H3 Prompt。",
-    licenseNote: "Gemma 模型須遵守 Google Gemma 使用條款；GGUF 轉換由 Unsloth 提供。"
-  },
   "google/gemma-4-12b-q5": {
     name: "Gemma 4 12B Q5 · 社群標準設定",
     badge: "社群標準 · Q5",
     description: "社群驗證的通用多模態設定；在視覺細節和上下文長度之間保持平衡。",
-    licenseNote: "Gemma 模型須遵守 Google Gemma 使用條款；GGUF 轉換由 Unsloth 提供。"
-  },
-  "google/gemma-4-26b-a4b-q4": {
-    name: "Gemma 4 26B-A4B Q4 · 4090 社群推薦",
-    badge: "社群推薦 · MoE Q4",
-    description: "H3 Prompt Writer 作者建議的品質／速度平衡設定；執行前需要釋放其他模型。",
     licenseNote: "Gemma 模型須遵守 Google Gemma 使用條款；GGUF 轉換由 Unsloth 提供。"
   },
 };

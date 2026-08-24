@@ -7,6 +7,11 @@ import {
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import {
+  extractH3DialogueLocks,
+  h3DialogueLockInstruction,
+  stripH3DialogueFromSource
+} from "../../src/core/h3-dialogue.js";
+import {
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
@@ -136,7 +141,9 @@ export function multimodalPromptTargetLanguage(
     return settings.promptLanguage;
   }
   const userText = request.prompt.trim() || request.referenceContext?.trim() || "";
-  if (userText) return /\p{Script=Han}/u.test(userText) ? "zh" : "en";
+  const dialogueLocks = extractH3DialogueLocks(userText);
+  const descriptiveText = stripH3DialogueFromSource(userText, dialogueLocks);
+  if (descriptiveText) return /\p{Script=Han}/u.test(descriptiveText) ? "zh" : "en";
   return settings.uiLocale?.startsWith("zh") ? "zh" : "en";
 }
 
@@ -211,8 +218,9 @@ export function buildMultimodalPromptWorkflow(
     : [
         basePrompt,
         targetLanguage === "zh"
-          ? "Output language override: write the final prompt content in Chinese while keeping required H3 field names, reference tags, dialogue language tags, and quoted visible text unchanged. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface."
-          : "Output language override: write the final prompt in English. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface."
+          ? "Output language override: write explanatory H3 prose and field descriptions in Chinese. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface."
+          : "Output language override: write explanatory H3 prose and field descriptions in English. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface.",
+        ...(request.mode === "image-edit" ? [] : [h3DialogueLockInstruction(request.prompt)])
       ].join("\n\n");
   const maxTokens = warmup
     // VisionLLMNode validates this input against its runtime schema.  Recent
@@ -400,7 +408,12 @@ export async function enhancePromptWithMultimodalComfyUi(
       Boolean(request.imagePath || imageCount > 0),
       imageCount > 1
     );
-    return normalizeH3PromptOutput(output, mode, request.h3DurationSeconds ?? 5);
+    return normalizeH3PromptOutput(
+      output,
+      mode,
+      request.h3DurationSeconds ?? 5,
+      extractH3DialogueLocks(request.prompt)
+    );
   } finally {
     if (!retainModel) {
       const cleanupStartedAt = Date.now();

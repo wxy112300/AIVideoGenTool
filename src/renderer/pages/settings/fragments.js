@@ -1,4 +1,6 @@
 import { uiKeys } from "../../../core/i18n-keys";
+import { loraLocaleFor } from "../../../core/catalog/loras/locales";
+import { videoLoraDefinition } from "../../../core/video-loras";
 import { settingsModelHardwareRecommendation, settingsText } from "./copy";
 import { modelProfileEvidence, modelProfileStatusTone } from "../../shared/status";
 function escapeValue(options, value) {
@@ -147,11 +149,12 @@ export function renderSettingsModelScanCard(profile, options) {
     const isGemmaProfile = isPromptProfile && options.isGemmaPromptModel(profile.id);
     const isMultimodalProfile = isPromptProfile && options.isComfyMultimodalPromptModel(profile.id);
     const isQwenVlPeftProfile = isPromptProfile && options.isQwenVlPeftPromptModel(profile.id);
+    const isLoraProfile = profile.category === "lora";
+    const loraGuide = isLoraProfile
+        ? loraLocaleFor(profile.id, options.locale)?.guide ?? videoLoraDefinition(profile.id)?.guide
+        : undefined;
     const evidence = modelProfileEvidence(profile);
     const hardwareRecommendation = settingsModelHardwareRecommendation(options.locale, profile);
-    const loraInfoButton = profile.category === "lora"
-        ? options.videoLoraInfoButton(profile.id)
-        : "";
     const statusTone = modelProfileStatusTone(profile);
     const readyLabel = evidence.nodePackage === "missing"
         ? options.t(uiKeys.settings.system.scanCardNodeMissing)
@@ -222,16 +225,23 @@ export function renderSettingsModelScanCard(profile, options) {
             : settingsText(options.locale, "model.meta.genericMissing");
     const escape = (value) => escapeValue(options, value);
     const icon = (name, className) => options.icon(name, className);
-    return `
-    <article class="panel model-profile ${statusTone}">
-      <div class="model-profile-head">
-        <div>
-          <div class="model-title"><h3>${escape(profile.name)}</h3>${loraInfoButton}<span class="model-badge">${escape(profile.badge)}</span></div>
-          <p class="muted">${escape(profile.description)}</p>
-        </div>
-        <span class="model-availability ${statusTone}">${profile.available ? `${icon(statusTone === "available" ? "circle-check" : statusTone === "warning" ? "circle-help" : "circle-alert")} ${escape(readyLabel)}` : `${icon("circle-alert")} ${options.t(uiKeys.settings.system.scanCardMissingCount, { count: missingCount })}`}</span>
-      </div>
-      <div class="model-meta-line"><span>${options.t(uiKeys.settings.system.scanCardResourcePolicy)} · ${escape(profile.vram)}</span><span class="model-hardware-recommendation">${options.t(uiKeys.settings.system.scanCardRecommendedHardware)} · ${escape(hardwareRecommendation)}</span><span>${escape(evidenceLabel)}</span><span>${metaLabel}</span></div>
+    const loraStatusLabel = missingCount > 0
+        ? options.t(uiKeys.settings.system.scanCardMissingCount, { count: missingCount })
+        : readyLabel;
+    const loraStatus = isLoraProfile && !profile.available ? `
+        <span class="model-availability missing">${icon("circle-alert")} ${escape(loraStatusLabel)}</span>` : "";
+    const modelOverview = isLoraProfile ? "" : `
+      <div class="model-meta-line"><span>${options.t(uiKeys.settings.system.scanCardResourcePolicy)} · ${escape(profile.vram)}</span><span class="model-hardware-recommendation">${options.t(uiKeys.settings.system.scanCardRecommendedHardware)} · ${escape(hardwareRecommendation)}</span><span>${escape(evidenceLabel)}</span><span>${metaLabel}</span></div>`;
+    const loraGuideDetails = isLoraProfile && loraGuide ? `
+      <details class="lora-profile-guide">
+        <summary>${escape(settingsText(options.locale, "lora.details"))}</summary>
+        <dl class="model-profile-guide">
+          <div><dt>${escape(options.t(uiKeys.shared.loraEffects))}</dt><dd>${escape(loraGuide.effects)}</dd></div>
+          <div><dt>${escape(options.t(uiKeys.shared.loraStacking))}</dt><dd>${escape(loraGuide.stacking)}</dd></div>
+          <div><dt>${escape(options.t(uiKeys.shared.loraCompatibility))}</dt><dd>${escape(loraGuide.compatibility)}</dd></div>
+        </dl>
+      </details>` : "";
+    const componentList = `
       <div class="component-list">
         ${profile.components.map((component, componentIndex) => `
           <div class="component-row ${component.found ? "found" : component.optional ? "warning" : "missing"}">
@@ -243,7 +253,25 @@ export function renderSettingsModelScanCard(profile, options) {
               </div>
               ${component.found ? "" : `<button class="component-info" data-install-profile="${escape(profile.id)}" data-install-component="${componentIndex}" aria-label="${escape(settingsText(options.locale, "model.component.viewInfo", { label: component.label, info: options.t(uiKeys.settings.system.scanCardInstallInfo) }))}" title="${options.t(uiKeys.settings.system.scanCardInstallInfo)}">${icon("info")}</button>`}
           </div>`).join("")}
+      </div>`;
+    return `
+    <article class="panel model-profile ${statusTone}${isLoraProfile ? " lora-profile" : ""}">
+      <div class="model-profile-head">
+        <div>
+          <div class="model-title"><h3>${escape(profile.name)}</h3><span class="model-badge">${escape(profile.badge)}</span></div>
+          ${isLoraProfile ? "" : `<p class="muted">${escape(profile.description)}</p>`}
+        </div>
+        ${isLoraProfile ? loraStatus : `<span class="model-availability ${statusTone}">${profile.available ? `${icon(statusTone === "available" ? "circle-check" : statusTone === "warning" ? "circle-help" : "circle-alert")} ${escape(readyLabel)}` : `${icon("circle-alert")} ${options.t(uiKeys.settings.system.scanCardMissingCount, { count: missingCount })}`}</span>`}
       </div>
+      ${isLoraProfile ? `
+        <div class="lora-profile-summary">
+          <p>${escape(profile.description)}</p>
+          <span class="lora-profile-hardware">${escape(hardwareRecommendation)}</span>
+        </div>
+        ${loraGuideDetails}
+        ${componentList}` : `
+        ${modelOverview}
+        ${componentList}`}
     </article>`;
 }
 export function renderSettingsInstallGuideDialog(viewModel, options) {

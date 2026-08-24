@@ -49,6 +49,12 @@ function retryableStateFileError(error: unknown): boolean {
   return code === "EPERM" || code === "EACCES" || code === "EBUSY";
 }
 
+const retiredPromptModelFallbacks: Record<string, string> = {
+  "google/gemma-4-e4b-q3": "community/gemma-4-e4b-unconcerned-q5",
+  "google/gemma-4-12b-q4": "google/gemma-4-12b-q5",
+  "google/gemma-4-26b-a4b-q4": "community/gemma-4-26b-a4b-uncensored-q4"
+};
+
 export async function replaceStateFile(
   temporary: string,
   destination: string,
@@ -591,12 +597,17 @@ export class JsonStore {
         this.state.draft.workflowPath = "";
         needsPersist = true;
       }
-        const supportedPromptModels = new Set([
-          "qwen/qwen3.5-4b",
-          "qwen/qwen3.5-2b",
-          ...managedPromptModelDefinitions.map((model) => model.id)
-        ]);
-        if (!supportedPromptModels.has(this.state.settings.promptModelId)) {
+      const retiredPromptModelFallback = retiredPromptModelFallbacks[this.state.settings.promptModelId];
+      if (retiredPromptModelFallback) {
+        this.state.settings.promptModelId = retiredPromptModelFallback;
+        needsPersist = true;
+      }
+      const supportedPromptModels = new Set([
+        "qwen/qwen3.5-4b",
+        "qwen/qwen3.5-2b",
+        ...managedPromptModelDefinitions.map((model) => model.id)
+      ]);
+      if (!supportedPromptModels.has(this.state.settings.promptModelId)) {
         this.state.settings.promptModelId = "qwen/qwen3.5-4b";
         needsPersist = true;
       }

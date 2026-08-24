@@ -1,3 +1,4 @@
+import { restoreH3DialogueLocks } from "./h3-dialogue.js";
 export function inferH3PromptMode(hasStartImage, hasEndImage, isR2V = false) {
     if (isR2V)
         return "R2V";
@@ -131,8 +132,9 @@ function stripH3OutputPreamble(promptText, mode) {
         ? promptText.trim()
         : promptText.slice(section.index).trim();
 }
-export function normalizeH3PromptOutput(promptText, mode, durationSeconds) {
-    const body = stripH3OutputPreamble(stripLeadingH3AlignmentInstructions(promptText), mode);
+export function normalizeH3PromptOutput(promptText, mode, durationSeconds, dialogueLocks = []) {
+    const cleanedBody = stripH3OutputPreamble(stripLeadingH3AlignmentInstructions(promptText), mode);
+    const body = restoreH3DialogueLocks(cleanedBody, dialogueLocks);
     const alignment = h3AlignmentInstruction(mode, durationSeconds);
     if (!alignment)
         return body;

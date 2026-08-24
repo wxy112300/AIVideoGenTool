@@ -13,7 +13,7 @@ import {
 
 describe("prompt model runtime selection", () => {
   it("routes all selectable prompt models to a real backend", () => {
-    expect(managedPromptModelDefinitions).toHaveLength(10);
+    expect(managedPromptModelDefinitions).toHaveLength(7);
     for (const model of managedPromptModelDefinitions) {
       expect(promptModelBackend(model.id)).toBe(
         model.id === "lightx2v/minimax-h3-prompt-rewriter-8b"
@@ -31,12 +31,12 @@ describe("prompt model runtime selection", () => {
   });
 
   it("runs Gemma 4 through the ComfyUI Prompt Writer without replacing Qwen", () => {
-    const modelId = "google/gemma-4-26b-a4b-q4";
+    const modelId = "google/gemma-4-12b-q5";
     expect(isGemmaPromptModel(modelId)).toBe(true);
     expect(isManagedPromptModel(modelId)).toBe(true);
     expect(managedPromptModel(modelId)).toMatchObject({
       contextSize: 16384,
-      modelFilename: "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+      modelFilename: "gemma-4-12b-it-Q5_K_M.gguf",
       mmprojFilename: "mmproj-BF16.gguf"
     });
     expect(promptRuntimeForSettings({

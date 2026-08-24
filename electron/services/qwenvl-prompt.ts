@@ -6,6 +6,7 @@ import {
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
+import { extractH3DialogueLocks } from "../../src/core/h3-dialogue.js";
 import {
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
@@ -354,7 +355,12 @@ export async function enhancePromptWithQwenVlPeft(
       Boolean(request.imagePath || imageCount > 0),
       imageCount > 1
     );
-    return normalizeH3PromptOutput(output, mode, request.h3DurationSeconds ?? 5);
+    return normalizeH3PromptOutput(
+      output,
+      mode,
+      request.h3DurationSeconds ?? 5,
+      extractH3DialogueLocks(request.prompt)
+    );
   } catch (error) {
     const reportedError = explainQwenVlRuntimeError(error);
     appLogger.error("prompt", "qwenvl-peft-failed", safeLogErrorMessage(reportedError), {

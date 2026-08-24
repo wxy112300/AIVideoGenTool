@@ -1,5 +1,10 @@
 import type { H3PromptMode } from "../types.js";
 import { inferH3PromptMode } from "./h3-prompt.js";
+import {
+  extractH3DialogueLocks,
+  type H3DialogueLock,
+  validateH3DialogueOutput
+} from "./h3-dialogue.js";
 
 export type H3PromptCheckLevel = "ok" | "warning";
 
@@ -21,6 +26,8 @@ export interface H3PromptCheckOptions {
   hasImageReference?: boolean;
   hasVideoReference?: boolean;
   durationSeconds?: number;
+  dialogueLocks?: readonly H3DialogueLock[];
+  sourcePrompt?: string;
 }
 
 const baseSections = [
@@ -247,10 +254,34 @@ export function checkH3Prompt(
         message: "检测到对白，但没有稳定说话人 ID，例如 (S1)"
       });
     }
-    if (!/<d>\s*\[[A-Za-z-]+\]/u.test(prompt)) {
+    if (!/<d>\s*\[[^\]\r\n]+\]/u.test(prompt)) {
       items.push({
         level: "warning",
         message: "对白建议使用 <d>[Chinese] ...</d> 或其它明确语言标签"
+      });
+    }
+  }
+  const dialogueLocks = options.dialogueLocks ?? (
+    options.sourcePrompt ? extractH3DialogueLocks(options.sourcePrompt) : []
+  );
+  if (dialogueLocks.length) {
+    const dialogueValidation = validateH3DialogueOutput(prompt, dialogueLocks);
+    if (dialogueValidation.missing.length) {
+      items.push({
+        level: "warning",
+        message: `有 ${dialogueValidation.missing.length} 条用户对白没有逐字保留，可能被遗漏或翻译`
+      });
+    }
+    if (dialogueValidation.duplicates.length) {
+      items.push({
+        level: "warning",
+        message: `有 ${dialogueValidation.duplicates.length} 条用户对白被重复输出；请保留每条锁定对白一次`
+      });
+    }
+    if (dialogueValidation.unexpected.length) {
+      items.push({
+        level: "warning",
+        message: `检测到 ${dialogueValidation.unexpected.length} 条未在用户输入中出现的对白；请删除模型自行新增的台词`
       });
     }
   }

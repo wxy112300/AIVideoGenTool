@@ -189,6 +189,18 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("Final user-intent lock");
   });
 
+  it("adds a compiler-owned dialogue ledger for foreign-language speech", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "A woman looks at the camera and says in Japanese: \"大丈夫？\"",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "T2VA"
+    });
+
+    expect(instruction).toContain("Compiler-owned dialogue ledger");
+    expect(instruction).toContain("<d>[Japanese] 大丈夫？</d>");
+    expect(instruction).toContain("target output language applies only to explanatory H3 prose");
+  });
+
   it("uses the reference-driven auto instruction for an empty H3 prompt", () => {
     const workflow = buildNativePromptWorkflow(
       {

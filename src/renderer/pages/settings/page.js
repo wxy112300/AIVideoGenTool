@@ -334,8 +334,6 @@ export function renderSettingsPage(viewModel, options) {
           <div><h2>${s("lora.title")}</h2><span class="muted">${s("lora.description")}</span></div>
           <span class="model-badge">${s("lora.available", { available: loraAvailable, total: loraProfiles.length })}</span>
         </div>
-        <div class="scan-result">${s("lora.scan")}</div>
-        <p class="muted proxy-hint">${s("lora.turbo")}</p>
       </section>
       <div class="model-profile-list">${loraProfiles.length ? loraProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("lora.empty")}</div>`}</div>
     </section>`;

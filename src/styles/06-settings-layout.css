@@ -170,6 +170,135 @@
   box-shadow: none;
 }
 
+/* LoRA is a single optional file, so keep its Settings row compact and
+   readable instead of giving it the same weight as a model profile. */
+.settings-content .lora-profile {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
+.lora-profile .model-profile-head {
+  align-items: center;
+  gap: 12px;
+}
+
+.lora-profile .model-title {
+  gap: 7px;
+}
+
+.lora-profile .model-badge {
+  min-height: 20px;
+  padding: 1px 7px;
+  font-size: 10px;
+}
+
+.lora-profile .model-availability {
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
+.lora-profile-summary {
+  min-width: 0;
+  color: #c8d2df;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.lora-profile-summary p {
+  display: inline;
+  margin: 0;
+}
+
+.lora-profile-hardware {
+  display: inline;
+  margin-left: 8px;
+  color: #b9d2f5;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+}
+
+.lora-profile-hardware::before {
+  margin-right: 8px;
+  color: var(--muted);
+  content: "·";
+}
+
+.lora-profile-guide {
+  min-width: 0;
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.lora-profile-guide summary {
+  width: fit-content;
+  padding: 0;
+  color: #a9c9ff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+  list-style: none;
+}
+
+.lora-profile-guide summary::-webkit-details-marker {
+  display: none;
+}
+
+.lora-profile-guide summary::before {
+  display: inline-block;
+  margin-right: 4px;
+  color: #7faef2;
+  content: ">";
+  transition: transform .14s ease;
+}
+
+.lora-profile-guide[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.lora-profile-guide summary:focus-visible {
+  outline: 1px solid rgba(124, 184, 255, .52);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.lora-profile-guide p {
+  margin: 0;
+}
+
+.lora-profile-guide .model-profile-guide {
+  display: grid;
+  gap: 0;
+  margin: 6px 0 0;
+  min-width: 0;
+}
+
+.lora-profile-guide .model-profile-guide > div {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 10px;
+  padding: 5px 0;
+  border-top: 1px solid rgba(56, 65, 78, .34);
+}
+
+.lora-profile-guide .model-profile-guide dt {
+  color: #8d9caf;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.lora-profile-guide .model-profile-guide dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .custom-node-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 17px 18px; }
 .custom-node-card.available { border-color: color-mix(in srgb, var(--ux-status-success) 28%, var(--border)); }
 .custom-node-card.warning { border-color: color-mix(in srgb, var(--ux-status-warning) 32%, var(--border)); }
@@ -572,6 +701,7 @@
   }
 
   .model-profile-head { align-items: stretch; flex-direction: column; }
+  .lora-profile .model-profile-head { align-items: flex-start; flex-direction: row; }
   .custom-node-card { flex-direction: column; }
   .custom-node-actions { width: 100%; grid-auto-flow: column; align-items: center; justify-content: space-between; }
   .model-availability { align-self: flex-start; }

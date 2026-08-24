@@ -10,6 +10,7 @@ import {
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
+import { extractH3DialogueLocks } from "../../src/core/h3-dialogue.js";
 import {
   isManagedPromptModel,
   managedPromptModel,
@@ -299,7 +300,12 @@ export async function enhancePromptWithLlamaServer(
     Boolean(request.imagePath || imageCount > 0),
     imageCount > 1
   );
-  return normalizeH3PromptOutput(normalizedContent, mode, request.h3DurationSeconds ?? 5);
+  return normalizeH3PromptOutput(
+    normalizedContent,
+    mode,
+    request.h3DurationSeconds ?? 5,
+    extractH3DialogueLocks(request.prompt)
+  );
 }
 
 export function llamaPromptServerStatus(): { running: boolean; port: number; output: string; modelId: string } {

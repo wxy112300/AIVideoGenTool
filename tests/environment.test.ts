@@ -776,7 +776,7 @@ describe("ComfyUI environment candidates", () => {
     const completeProfile = complete.find((profile) => profile.id === "qwen/qwen3.5-4b");
     const fastProfile = completeFast.find((profile) => profile.id === "qwen/qwen3.5-2b");
 
-    expect(promptProfiles).toHaveLength(12);
+    expect(promptProfiles).toHaveLength(9);
     expect(promptProfiles.map((profile) => profile.id)).toEqual([
       "lightx2v/minimax-h3-prompt-rewriter-8b",
       "qwen/qwen3.6-27b-uncensored-q4",
@@ -784,10 +784,7 @@ describe("ComfyUI environment candidates", () => {
       "community/gemma-4-e4b-unconcerned-q5",
       "community/gemma-4-12b-uncensored-q4",
       "community/gemma-4-26b-a4b-uncensored-q4",
-      "google/gemma-4-e4b-q3",
-      "google/gemma-4-12b-q4",
       "google/gemma-4-12b-q5",
-      "google/gemma-4-26b-a4b-q4",
       "qwen/qwen3.5-4b",
       "qwen/qwen3.5-2b"
     ]);
@@ -898,17 +895,17 @@ describe("ComfyUI environment candidates", () => {
 
   it("keeps Gemma 4 tiers separate by requiring a colocated model directory", () => {
     const profiles = evaluateModelProfiles([
-      "LLM\\gemma-4-26b-a4b-q4\\gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
-      "LLM\\gemma-4-26b-a4b-q4\\mmproj-BF16.gguf"
-    ]).filter((profile) => profile.id.startsWith("google/gemma-4-"));
+      "LLM\\gemma-4-26b-a4b-uncensored-q4\\gemma-4-26B-A4B-it-ultra-uncensored-heretic-Q4_K_M.gguf",
+      "LLM\\gemma-4-26b-a4b-uncensored-q4\\gemma-4-26B-A4B-it-mmproj-BF16.gguf"
+    ]).filter((profile) => profile.id === "community/gemma-4-26b-a4b-uncensored-q4" || profile.id === "google/gemma-4-12b-q5");
 
-    expect(profiles.find((profile) => profile.id === "google/gemma-4-26b-a4b-q4")).toMatchObject({
+    expect(profiles.find((profile) => profile.id === "community/gemma-4-26b-a4b-uncensored-q4")).toMatchObject({
       available: true,
       managedBy: "comfyui",
       integrated: true
     });
     expect(profiles.find((profile) => profile.id === "google/gemma-4-12b-q5")?.available).toBe(false);
-    expect(profiles.find((profile) => profile.id === "google/gemma-4-26b-a4b-q4")
+    expect(profiles.find((profile) => profile.id === "community/gemma-4-26b-a4b-uncensored-q4")
       ?.components.every((component) => component.installGuide.downloadUrl)).toBe(true);
   });
 

@@ -11,6 +11,11 @@ import {
   normalizeQwenImageEditPromptOutput,
   qwenImageEditPromptContract
 } from "../../src/core/qwen-image-prompt.js";
+import {
+  inferH3PromptMode,
+  normalizeH3PromptOutput
+} from "../../src/core/h3-prompt.js";
+import { extractH3DialogueLocks, h3DialogueLockInstruction } from "../../src/core/h3-dialogue.js";
 
 interface WriterModel {
   id: string;
@@ -235,11 +240,15 @@ export async function enhancePromptWithH3PromptWriter(
     await uploadMedia(root, sessionId, mode, mediaPaths, signal);
     onProgress?.("uploading", 18);
     onProgress?.("loading-model", 24);
-    const creativeBrief = isH3ReferenceAutoPrompt(request)
-      ? h3AutoPromptInstruction(request)
-      : [request.prompt.trim(), request.referenceContext?.trim()]
-          .filter(Boolean)
-          .join("\n\n参考素材角色：\n");
+    const dialogueLocks = h3DialogueLockInstruction(request.prompt);
+    const creativeBrief = [
+      isH3ReferenceAutoPrompt(request)
+        ? h3AutoPromptInstruction(request)
+        : [request.prompt.trim(), request.referenceContext?.trim()]
+            .filter(Boolean)
+            .join("\n\n参考素材角色：\n"),
+      dialogueLocks
+    ].filter(Boolean).join("\n\n");
     onProgress?.("generating", null);
     const result = await writerRequest<{ prompt?: string }>(`${root}/h3studio/generate`, {
       method: "POST",
@@ -261,9 +270,18 @@ export async function enhancePromptWithH3PromptWriter(
     });
     onProgress?.("validating", 94);
     if (!result.prompt?.trim()) throw new Error("H3 Prompt Writer 没有返回可用的提示词。");
-    return imageEdit
-      ? extractImageEditPromptFromWriter(result.prompt)
-      : result.prompt.trim();
+    if (imageEdit) return extractImageEditPromptFromWriter(result.prompt);
+    const imageCount = request.imagePaths?.length ?? 0;
+    const modeForOutput = request.h3PromptMode ?? inferH3PromptMode(
+      Boolean(request.imagePath || imageCount > 0),
+      imageCount > 1
+    );
+    return normalizeH3PromptOutput(
+      result.prompt.trim(),
+      modeForOutput,
+      request.h3DurationSeconds ?? 5,
+      extractH3DialogueLocks(request.prompt)
+    );
   } finally {
     onProgress?.(unloadAfter ? "unloading" : "validating", 98);
     signal.removeEventListener("abort", cancel);

@@ -76,6 +76,18 @@ describe("MiniMax H3 prompt checks", () => {
     expect(result.items.map((item) => item.message).join("\n")).toContain("overall_soundscape");
   });
 
+  it("checks exact multilingual dialogue against the source prompt", () => {
+    const result = checkH3Prompt(
+      "integrated_multimodal_description: [Shot 1] A woman says <d>[English] Hello.</d>\noverall_soundscape: Room tone.\nnon_diegetic_music: N/A",
+      {
+        mode: "T2VA",
+        sourcePrompt: "A woman says in Chinese: \"你好。\""
+      }
+    );
+
+    expect(result.items.map((item) => item.message).join("\n")).toContain("逐字保留");
+  });
+
   it("requires timestamps for later shots", () => {
     const result = checkH3Prompt(`${i2vaPrompt}\n[Shot 2] The camera cuts to a close-up.`);
 

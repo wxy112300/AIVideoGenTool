@@ -142,34 +142,6 @@ export const managedPromptModelDefinitions: readonly ManagedPromptModelDefinitio
     licenseNote: "社区衍生模型；使用前请阅读模型卡与 Gemma 使用条款。建议仅在 24GB 显卡上使用标准上下文。"
   },
   {
-    id: "google/gemma-4-e4b-q3",
-    name: "Gemma 4 E4B Q3 · 社区兼容档",
-    source: "unsloth/gemma-4-E4B-it-GGUF",
-    revision: "bfc15c382204943c3a8fff0c750b94ae2364d7a3",
-    modelFilename: "gemma-4-E4B-it-Q3_K_M.gguf",
-    mmprojFilename: "mmproj-BF16.gguf",
-    targetDirectory: "LLM/gemma-4-e4b-q3",
-    contextSize: 8192,
-    badge: "社区兼容 · Q3",
-    description: "H3 Prompt Writer 社区验证的轻量档；能理解图片和视频抽帧，但可能遗漏视觉细节。",
-    vram: "Q3_K_M · 轻量视觉档",
-    licenseNote: "Gemma 模型须遵守 Google Gemma 使用条款；GGUF 转换由 Unsloth 提供。"
-  },
-  {
-    id: "google/gemma-4-12b-q4",
-    name: "Gemma 4 12B Q4 · 社区紧凑档",
-    source: "unsloth/gemma-4-12b-it-GGUF",
-    revision: "fc034cfff751157913579611efad8462ac1be606",
-    modelFilename: "gemma-4-12b-it-Q4_K_S.gguf",
-    mmprojFilename: "mmproj-BF16.gguf",
-    targetDirectory: "LLM/gemma-4-12b-q4",
-    contextSize: 8192,
-    badge: "社区紧凑 · Q4",
-    description: "社区验证的紧凑多模态档，适合快速生成 H3 Prompt。",
-    vram: "Q4_K_S · 紧凑多模态档",
-    licenseNote: "Gemma 模型须遵守 Google Gemma 使用条款；GGUF 转换由 Unsloth 提供。"
-  },
-  {
     id: "google/gemma-4-12b-q5",
     name: "Gemma 4 12B Q5 · 社区标准档",
     source: "unsloth/gemma-4-12b-it-GGUF",
@@ -181,20 +153,6 @@ export const managedPromptModelDefinitions: readonly ManagedPromptModelDefinitio
     badge: "社区标准 · Q5",
     description: "社区验证的通用多模态档；在视觉细节和上下文长度之间保持平衡。",
     vram: "Q5_K_M · 标准多模态档",
-    licenseNote: "Gemma 模型须遵守 Google Gemma 使用条款；GGUF 转换由 Unsloth 提供。"
-  },
-  {
-    id: "google/gemma-4-26b-a4b-q4",
-    name: "Gemma 4 26B-A4B Q4 · 4090 社区推荐",
-    source: "unsloth/gemma-4-26B-A4B-it-GGUF",
-    revision: "c099eb48e663fd284577b04978a94ffccb261841",
-    modelFilename: "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
-    mmprojFilename: "mmproj-BF16.gguf",
-    targetDirectory: "LLM/gemma-4-26b-a4b-q4",
-    contextSize: 16384,
-    badge: "社区推荐 · MoE Q4",
-    description: "H3 Prompt Writer 作者的质量/速度平衡档；运行前需要释放其它模型。",
-    vram: "Q4_K_M · MoE",
     licenseNote: "Gemma 模型须遵守 Google Gemma 使用条款；GGUF 转换由 Unsloth 提供。"
   },
 ] as const;

@@ -29,6 +29,20 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     }, settings)).toBe("en");
   });
 
+  it("does not let multilingual dialogue change the descriptive output language", () => {
+    const settings = createDefaultState().settings;
+    settings.promptLanguage = "auto";
+
+    expect(multimodalPromptTargetLanguage({
+      prompt: "A woman looks at the camera and says in Chinese: \"你好。\"",
+      modelId: "minimax_h3_fl2va"
+    }, settings)).toBe("en");
+    expect(multimodalPromptTargetLanguage({
+      prompt: "人物看向镜头，用英语说：\"I am ready!\"",
+      modelId: "minimax_h3_fl2va"
+    }, settings)).toBe("zh");
+  });
+
   it("accepts Qwen3.8 only when both runtime enum values are registered", () => {
     const model = "LLM/qwen3.8-27b-uncensored-q4/Qwen3.8-27B-Uncensored-noMTP-Q4_K_M.gguf";
     const mmproj = "LLM/qwen3.8-27b-uncensored-q4/Qwen3.8-27B-Uncensored-vision-f16.gguf";
@@ -161,7 +175,24 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     }, ["reference.png"], settings);
 
     expect(workflow["vision-llm"]?.inputs.target_language).toBe("zh");
-    expect(workflow["vision-llm"]?.inputs.prompt).toContain("write the final prompt content in Chinese");
+    expect(workflow["vision-llm"]?.inputs.prompt).toContain("write explanatory H3 prose and field descriptions in Chinese");
+  });
+
+  it("passes an explicit dialogue ledger and protects foreign-language speech from the override", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "qwen/qwen3.8-27b-uncensored-q4";
+    settings.promptLanguage = "en";
+    const workflow = buildMultimodalPromptWorkflow({
+      prompt: "A woman looks at the camera and says in Chinese: \"你好。\"",
+      modelId: "minimax_h3_fl2va",
+      mode: "h3-vision",
+      h3PromptMode: "T2VA"
+    }, [], settings);
+    const prompt = String(workflow["vision-llm"]?.inputs.prompt);
+
+    expect(prompt).toContain("target output language applies only to explanatory H3 prose");
+    expect(prompt).toContain("<d>[Chinese] 你好。</d>");
+    expect(prompt).toContain("preserve each user's original language, characters, and punctuation exactly");
   });
 
   it("passes a blank reference-auto request as a visual generation instruction", () => {
