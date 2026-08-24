@@ -114,6 +114,8 @@ const api: AppApi = {
   cancelTask: (taskId: string) => ipcRenderer.invoke("queue:cancel", taskId),
   moveTask: (taskId: string, direction: -1 | 1) =>
     ipcRenderer.invoke("queue:move", taskId, direction),
+  reorderTask: (taskId: string, targetWaitingIndex: number) =>
+    ipcRenderer.invoke("queue:reorder", taskId, targetWaitingIndex),
   duplicateTask: (taskId: string) => ipcRenderer.invoke("queue:duplicate", taskId),
   resetTask: (taskId: string) => ipcRenderer.invoke("queue:reset", taskId),
   deleteHistoryAsset: (assetId: string) =>

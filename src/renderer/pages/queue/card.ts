@@ -38,8 +38,7 @@ export interface QueueCardRenderOptions {
   queueTaskRemainingSeconds(task: QueueTask): number | null;
   queueEstimateText(seconds: number | null): string;
   elapsedText(startedAt?: string): string;
-  canMoveUp?: boolean;
-  canMoveDown?: boolean;
+  canDrag?: boolean;
 }
 
 export interface SeedVr2ProgressView {
@@ -187,8 +186,14 @@ export function renderQueueTaskCard(
   const retrySummary = task.automaticRetryAttempt
     ? `<span class="queue-retry-status">${t(uiKeys.queue.card.autoRetry, { count: task.automaticRetryAttempt })}</span>`
     : "";
+  const rankValueAttributes = task.status === "waiting" && queuePosition > 0
+    ? ` data-queue-rank-value="${options.escapeHtml(task.id)}"`
+    : "";
+  const rankLabelAttributes = task.status === "waiting" && queuePosition > 0
+    ? ` data-queue-rank-label="${options.escapeHtml(task.id)}"`
+    : "";
   const rankMarkup = queuePosition > 0
-    ? `<strong>${String(queuePosition).padStart(2, "0")}</strong><small>${t(uiKeys.queue.card.rank)}</small>`
+    ? `<strong${rankValueAttributes}>${String(queuePosition).padStart(2, "0")}</strong><small>${t(uiKeys.queue.card.rank)}</small>`
     : `<strong>!</strong><small>${t(uiKeys.queue.card.needsAttention)}</small>`;
   if (task.status === "running") {
     const seedVrProgress = seedVr2ProgressView(task, t);
@@ -210,7 +215,7 @@ export function renderQueueTaskCard(
             <div id="live-preview-empty-${options.escapeHtml(task.id)}" data-live-preview-empty="${options.escapeHtml(task.id)}" style="${preview || inputVideoUrl ? "display:none" : ""}"><span>${options.icon(input ? input.kind === "image" ? "image" : "film" : "film")}</span>${inputPlaceholder ? `<small>${options.escapeHtml(inputPlaceholder)}</small>` : ""}</div>
           </div>`;
     return `
-      <article class="task-card panel running expanded">
+      <article class="task-card panel running expanded" data-queue-task-id="${options.escapeHtml(task.id)}">
         <div class="expanded-task-head">
           <div class="queue-task-heading"><div class="queue-rank running" aria-label="${t(uiKeys.queue.card.queuePosition, { count: queuePosition })}"><strong>${String(queuePosition).padStart(2, "0")}</strong><small>${t(uiKeys.queue.card.current)}</small></div><div><div class="running-status-line"><span class="status running">${t(uiKeys.queue.card.running)}</span><span class="running-elapsed-prominent" id="running-elapsed">${options.elapsedText(task.startedAt)}</span></div><h3>${options.escapeHtml(task.outputFilename)}</h3></div></div>
           <div class="running-progress-value"><span>${t(uiKeys.queue.card.totalProgress)}</span><strong id="running-progress-label">${Math.round(task.progress ?? 0)}%</strong></div>
@@ -237,17 +242,22 @@ export function renderQueueTaskCard(
   const inputPreview = input
     ? `<div class="task-input-preview${input.kind === "image" ? " task-input-preview-image" : ""}" data-queue-input-preview="${options.escapeHtml(task.id)}">${input.kind === "image" ? `<img data-queue-input-image="${options.escapeHtml(task.id)}" alt="${t(uiKeys.queue.card.inputImage)}" style="display:none">` : input.kind === "video" ? `<video data-queue-input-video="${options.escapeHtml(task.id)}" muted playsinline preload="metadata" src="${inputVideoUrl}"></video>` : ""}<div data-queue-input-empty><span>${options.icon(input.kind === "image" ? "image" : "film")}</span><small>${input.kind === "image" ? t(uiKeys.queue.card.inputImage) : input.kind === "video" ? t(uiKeys.queue.card.sourceVideo) : t(uiKeys.queue.card.noReferenceImage)}</small></div></div>`
     : "";
+  const reorderControls = task.status === "waiting"
+    ? options.canDrag === false
+      ? ""
+      : `<div class="queue-reorder-controls" aria-label="${t(uiKeys.queue.card.dragToReorder)}"><button type="button" class="queue-drag-handle" data-queue-drag-handle="${options.escapeHtml(task.id)}" aria-label="${t(uiKeys.queue.card.dragToReorder)}" aria-keyshortcuts="ArrowUp ArrowDown Home End" title="${t(uiKeys.queue.card.dragToReorder)}">${options.icon("grip-vertical")}</button></div>`
+    : "";
   return `
-    <article class="task-card panel ${task.status}${inputPreview ? " task-card-with-preview" : ""}">
+    <article class="task-card panel ${task.status}${inputPreview ? " task-card-with-preview" : ""}" data-queue-task-id="${options.escapeHtml(task.id)}">
       ${inputPreview}
       <div class="task-main">
-        <div class="queue-task-heading"><div class="queue-rank ${attentionTask ? "attention" : task.status}" aria-label="${attentionTask ? t(uiKeys.queue.card.needsAttention) : t(uiKeys.queue.card.queuePosition, { count: queuePosition })}">${rankMarkup}</div><div><span class="status ${task.status}">${statusLabel(task.status, t)}</span><h3>${options.escapeHtml(task.outputFilename)}</h3></div></div>
+        <div class="queue-task-heading"><div class="queue-rank ${attentionTask ? "attention" : task.status}"${rankLabelAttributes} aria-label="${attentionTask ? t(uiKeys.queue.card.needsAttention) : t(uiKeys.queue.card.queuePosition, { count: queuePosition })}">${rankMarkup}</div><div><span class="status ${task.status}">${statusLabel(task.status, t)}</span><h3>${options.escapeHtml(task.outputFilename)}</h3></div></div>
         <p class="task-description">${options.escapeHtml(description)}</p>
         <div class="task-meta">${metadata}${retrySummary}</div>
         ${task.error ? `<p class="error">${options.escapeHtml(task.error)}</p>` : ""}
       </div>
       <div class="task-actions queue-task-actions">
-        ${task.status === "waiting" ? `<div class="queue-reorder-controls" aria-label="${t(uiKeys.queue.card.moveUp)} / ${t(uiKeys.queue.card.moveDown)}"><button class="icon-button" data-move="${task.id}" data-direction="-1" aria-label="${t(uiKeys.queue.card.moveUp)}" aria-keyshortcuts="ArrowUp" title="${t(uiKeys.queue.card.moveUp)} (↑)" ${options.canMoveUp === false ? "disabled" : ""}>${options.icon("move-up")}</button><button class="icon-button" data-move="${task.id}" data-direction="1" aria-label="${t(uiKeys.queue.card.moveDown)}" aria-keyshortcuts="ArrowDown" title="${t(uiKeys.queue.card.moveDown)} (↓)" ${options.canMoveDown === false ? "disabled" : ""}>${options.icon("move-down")}</button></div>` : ""}
+        ${reorderControls}
         ${task.status === "waiting" || task.status === "failed" || task.status === "cancelled"
           ? task.taskType === "upscale"
             ? `<button class="secondary button-with-icon queue-action-primary" data-edit-upscale-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editUpscaleTitle)}">${options.icon("sliders-horizontal")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.edit)}</span></button>`

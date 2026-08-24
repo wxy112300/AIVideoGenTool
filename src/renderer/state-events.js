@@ -194,9 +194,14 @@ export function registerRendererEvents(options) {
             const imageHistoryChanged = imageHistoryContentStateChanged(previousState?.imageHistory, nextState.imageHistory);
             const preserveLocalDrafts = previousState !== undefined &&
                 (options.getDraftDirty() || options.getDraftSaveInFlight() > 0);
-            options.setState(preserveLocalDrafts
+            const preserveLocalImageDraft = previousState !== undefined &&
+                (options.getImageDraftDirty() || options.getImageDraftSaveInFlight() > 0);
+            const localState = preserveLocalDrafts
                 ? preserveLocalCreationDrafts(nextState, previousState)
-                : nextState);
+                : nextState;
+            options.setState(preserveLocalImageDraft && previousState
+                ? { ...localState, imageDraft: previousState.imageDraft }
+                : localState);
             pruneTaskPreviews(nextState, options);
             if (nextState.queueRunning)
                 options.setPromptRuntimeLoaded(false);
@@ -216,7 +221,7 @@ export function registerRendererEvents(options) {
             }
             if (queueStructureStable && patchQueueLiveDom(nextState, options.t, options.getComfyRuntimeState(), options.getEnvironmentScanning?.() ?? false))
                 return;
-            if (isEditingFormControl() || options.getDraftSaveInFlight() > 0)
+            if (isEditingFormControl() || options.getDraftSaveInFlight() > 0 || options.getImageDraftSaveInFlight() > 0)
                 return;
             const visibleHistoryChanged = options.getHistoryKind() === "image"
                 ? imageHistoryChanged

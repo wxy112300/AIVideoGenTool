@@ -1,43 +1,5 @@
 import { uiKeys } from "../../../core/i18n-keys";
-let queueMoveScrollAnchor = null;
-function captureQueueMoveAnchor(button, focusAfterMove = false) {
-    const taskId = button.dataset.move;
-    const direction = Number(button.dataset.direction);
-    if (!taskId || (direction !== -1 && direction !== 1))
-        return;
-    queueMoveScrollAnchor = {
-        taskId,
-        direction,
-        viewportTop: button.getBoundingClientRect().top,
-        focusAfterMove
-    };
-}
-function restoreQueueMoveAnchor(root) {
-    const anchor = queueMoveScrollAnchor;
-    if (!anchor)
-        return;
-    window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-            if (queueMoveScrollAnchor !== anchor)
-                return;
-            const button = [...root.querySelectorAll("[data-move]")]
-                .find((candidate) => candidate.dataset.move === anchor.taskId &&
-                Number(candidate.dataset.direction) === anchor.direction);
-            if (!button) {
-                queueMoveScrollAnchor = null;
-                return;
-            }
-            const delta = button.getBoundingClientRect().top - anchor.viewportTop;
-            if (Math.abs(delta) > 0.5) {
-                window.scrollBy({ top: delta, behavior: "auto" });
-            }
-            if (anchor.focusAfterMove) {
-                button.focus({ preventScroll: true });
-            }
-            queueMoveScrollAnchor = null;
-        });
-    });
-}
+import { mountQueueDragSort } from "./drag-sort";
 function currentState(context) {
     return context.getState() ?? null;
 }
@@ -46,6 +8,7 @@ export function mountQueueController(context, options) {
     const signal = events.signal;
     const root = context.root;
     const t = context.t;
+    const dragSortCleanup = mountQueueDragSort(context, options.setState);
     const startQueue = async () => {
         context.reportUserAction("queue-start");
         try {
@@ -120,41 +83,6 @@ export function mountQueueController(context, options) {
             options.requestConfirmation(taskId, "cancel");
         }, { signal });
     });
-    const moveTask = async (button, focusAfterMove = false) => {
-        const taskId = button.dataset.move;
-        const directionValue = button.dataset.direction;
-        const direction = Number(directionValue);
-        if (!taskId || (direction !== -1 && direction !== 1))
-            return;
-        captureQueueMoveAnchor(button, focusAfterMove);
-        context.reportUserAction("queue-move", { taskId, direction: directionValue });
-        options.setState(await context.studio.moveTask(taskId, direction));
-        context.requestRender();
-    };
-    root.querySelectorAll("[data-move]").forEach((button) => {
-        button.addEventListener("click", async () => {
-            await moveTask(button);
-        }, { signal });
-        button.addEventListener("keydown", async (event) => {
-            if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
-                return;
-            const direction = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
-            if (!direction)
-                return;
-            event.preventDefault();
-            const currentDirection = Number(button.dataset.direction);
-            if (currentDirection !== direction) {
-                const sibling = [...root.querySelectorAll("[data-move]")]
-                    .find((candidate) => candidate.dataset.move === button.dataset.move &&
-                    Number(candidate.dataset.direction) === direction);
-                if (sibling) {
-                    await moveTask(sibling, true);
-                }
-                return;
-            }
-            await moveTask(button, true);
-        }, { signal });
-    });
     root.querySelectorAll("[data-duplicate]").forEach((button) => {
         button.addEventListener("click", async () => {
             const taskId = button.dataset.duplicate;
@@ -204,6 +132,8 @@ export function mountQueueController(context, options) {
             }
         }, { signal });
     });
-    restoreQueueMoveAnchor(root);
-    return () => events.abort();
+    return () => {
+        events.abort();
+        dragSortCleanup();
+    };
 }

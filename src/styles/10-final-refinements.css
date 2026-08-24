@@ -1479,8 +1479,89 @@ body.image-markup-open {
 .queue-reorder-controls {
   flex: 0 0 auto;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 4px;
+}
+
+.queue-drag-handle {
+  width: 32px;
+  min-width: 32px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--ux-radius-control);
+  color: var(--ux-content-tertiary);
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  transition: color .12s ease, border-color .12s ease, background .12s ease;
+}
+
+.queue-drag-handle:hover,
+.queue-drag-handle:focus-visible {
+  border-color: var(--ux-action-secondary-hover-border);
+  color: var(--ux-content-primary);
+  background: var(--ux-action-ghost-hover-surface);
+}
+
+.queue-drag-handle:active { cursor: grabbing; }
+.queue-drag-handle .ui-icon { width: 16px; height: 16px; }
+
+.queue-drag-active,
+.queue-drag-active * {
+  user-select: none;
+}
+
+.task-card.queue-dragging {
+  opacity: .94;
+  border-color: color-mix(in srgb, var(--ux-action-primary) 72%, var(--ux-separator-strong));
+  box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--ux-action-primary) 20%, transparent);
+  cursor: grabbing;
+  pointer-events: none;
+  transition: none !important;
+}
+
+.task-list[data-queue-drop-list] > .task-card {
+  scroll-margin-block: 72px;
+}
+
+.task-list[data-queue-drop-list] > .queue-drag-placeholder {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px dashed color-mix(in srgb, var(--ux-action-primary) 72%, var(--ux-separator-strong));
+  border-radius: var(--ux-radius-panel);
+  background: color-mix(in srgb, var(--ux-action-primary) 8%, var(--ux-surface-base));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ux-action-primary) 12%, transparent);
+  pointer-events: none;
+  transition: background .14s ease, border-color .14s ease;
+}
+
+.task-list[data-queue-drop-list] > .queue-drag-placeholder::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset-inline: 14px;
+  top: 50%;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--ux-action-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ux-action-primary) 16%, transparent), 0 0 15px color-mix(in srgb, var(--ux-action-primary) 44%, transparent);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queue-drag-handle,
+  .task-list[data-queue-drop-list] > .queue-drag-placeholder {
+    transition-duration: 0ms;
+  }
 }
 
 .queue-reorder-controls .icon-button {

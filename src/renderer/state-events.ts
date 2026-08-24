@@ -47,6 +47,8 @@ export interface RendererEventOptions {
   getHistoryKind(): HistoryKind;
   getDraftDirty(): boolean;
   getDraftSaveInFlight(): number;
+  getImageDraftDirty(): boolean;
+  getImageDraftSaveInFlight(): number;
   setPromptRuntimeLoaded(value: boolean): void;
   setPromptProgress(progress: PromptProgress | null): void;
   rememberModalFocus(): void;
@@ -264,9 +266,14 @@ export function registerRendererEvents(
       );
       const preserveLocalDrafts = previousState !== undefined &&
         (options.getDraftDirty() || options.getDraftSaveInFlight() > 0);
-      options.setState(preserveLocalDrafts
+      const preserveLocalImageDraft = previousState !== undefined &&
+        (options.getImageDraftDirty() || options.getImageDraftSaveInFlight() > 0);
+      const localState = preserveLocalDrafts
         ? preserveLocalCreationDrafts(nextState, previousState)
-        : nextState);
+        : nextState;
+      options.setState(preserveLocalImageDraft && previousState
+        ? { ...localState, imageDraft: previousState.imageDraft }
+        : localState);
       pruneTaskPreviews(nextState, options);
       if (nextState.queueRunning) options.setPromptRuntimeLoaded(false);
       for (const task of completion.completedTasks) {
@@ -289,7 +296,11 @@ export function registerRendererEvents(
         options.getComfyRuntimeState(),
         options.getEnvironmentScanning?.() ?? false
       )) return;
-      if (isEditingFormControl() || options.getDraftSaveInFlight() > 0) return;
+      if (
+        isEditingFormControl() ||
+        options.getDraftSaveInFlight() > 0 ||
+        options.getImageDraftSaveInFlight() > 0
+      ) return;
       const visibleHistoryChanged = options.getHistoryKind() === "image"
         ? imageHistoryChanged
         : historyChanged;

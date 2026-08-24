@@ -412,3 +412,33 @@ describe("queue rapid-operation guards", () => {
     await vi.waitFor(() => expect(worker.runningWorker).toBeNull());
   });
 });
+
+describe("queue drag reorder IPC", () => {
+  it("commits one absolute waiting position without crossing the active task", async () => {
+    const state = createDefaultState();
+    const running = queuedTask(state);
+    const first = queuedTask(state);
+    const second = queuedTask(state);
+    const third = queuedTask(state);
+    running.id = "running";
+    running.status = "running";
+    first.id = "first";
+    second.id = "second";
+    third.id = "third";
+    state.queue = [running, first, second, third];
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueMutationIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn() } as never,
+      sendState: vi.fn()
+    });
+
+    const result = await handlers.get("queue:reorder")!({}, "third", 0) as AppState;
+
+    expect(result.queue.map((task) => task.id)).toEqual([
+      "running", "third", "first", "second"
+    ]);
+  });
+});

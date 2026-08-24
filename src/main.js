@@ -74,6 +74,8 @@ let draftSaveInFlight = 0;
 let draftDirty = false;
 let imageDraftSaveTimer;
 let imageDraftRevision = 0;
+let imageDraftSaveInFlight = 0;
+let imageDraftDirty = false;
 let environmentScan = null;
 let environmentScanning = false;
 let settingsSaving = false;
@@ -577,8 +579,7 @@ function queueTaskCard(task, queuePosition, moveAvailability) {
         queueTaskRemainingSeconds: (queueTask) => calculateQueueTaskRemainingSeconds(queueTask, state.history, state.imageHistory),
         queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
         elapsedText: (startedAt) => elapsedText(startedAt, rendererApp.context.t),
-        canMoveUp: moveAvailability?.canMoveUp,
-        canMoveDown: moveAvailability?.canMoveDown
+        canDrag: moveAvailability?.canDrag
     });
 }
 function draftFromQueueTask(task) {
@@ -1709,14 +1710,22 @@ function scheduleImageDraftSave() {
     imageDraftSaveTimer = window.setTimeout(async () => {
         const revision = imageDraftRevision;
         const draftToSave = state.imageDraft;
+        imageDraftSaveInFlight += 1;
         try {
             const savedState = await window.studio.saveImageDraft(draftToSave);
             if (revision === imageDraftRevision) {
-                setRendererState({ ...savedState, imageDraft: draftToSave });
+                setRendererState({
+                    ...preserveLocalCreationDrafts(savedState, state),
+                    imageDraft: draftToSave
+                });
+                imageDraftDirty = false;
             }
         }
         catch (error) {
             showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.imageDraftSaveFailed), { kind: "error" });
+        }
+        finally {
+            imageDraftSaveInFlight -= 1;
         }
     }, 350);
 }
@@ -1758,6 +1767,7 @@ function patchDraftForMode(mode, update) {
 function patchImageDraft(patch) {
     state.imageDraft = normalizeImageEditDraft({ ...state.imageDraft, ...patch });
     imageDraftRevision += 1;
+    imageDraftDirty = true;
     scheduleImageDraftSave();
 }
 async function loadImageEditPreviews() {

@@ -85,6 +85,49 @@ export function moveWaitingTask(
   return next;
 }
 
+/**
+ * Reorders a waiting task by its position among reorderable waiting tasks.
+ * Non-waiting records keep their slots, and the running task remains an
+ * execution boundary even if persisted data temporarily contains a stale
+ * waiting item before it.
+ */
+export function reorderWaitingTask(
+  queue: QueueTask[],
+  taskId: string,
+  targetWaitingIndex: number
+): QueueTask[] {
+  const next = [...queue];
+  if (!Number.isInteger(targetWaitingIndex)) return next;
+
+  const runningIndex = next.findIndex((task) => task.status === "running");
+  const reorderable = next
+    .map((task, index) => ({ task, index }))
+    .filter(({ task, index }) =>
+      task.status === "waiting" && (runningIndex < 0 || index > runningIndex)
+    );
+  const sourceIndex = reorderable.findIndex(({ task }) => task.id === taskId);
+  if (sourceIndex < 0 || reorderable.length < 2) return next;
+
+  const targetIndex = Math.max(
+    0,
+    Math.min(targetWaitingIndex, reorderable.length - 1)
+  );
+  if (targetIndex === sourceIndex) return next;
+
+  const reordered = reorderable.map(({ task }) => task);
+  const [moved] = reordered.splice(sourceIndex, 1);
+  if (!moved) return next;
+  reordered.splice(targetIndex, 0, moved);
+
+  let reorderableIndex = 0;
+  return next.map((task, index) => {
+    const slot = reorderable[reorderableIndex];
+    if (!slot || slot.index !== index) return task;
+    reorderableIndex += 1;
+    return reordered[reorderableIndex - 1]!;
+  });
+}
+
 export type UpscaleTaskPatch = Pick<
   UpscaleQueueTask,
   "targetWidth" | "targetHeight" | "modelId" | "workflowPath" |

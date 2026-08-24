@@ -124,7 +124,7 @@ describe("renderer notifications", () => {
     expect(queueCompletionChange(next, structuredClone(next)).failedTasks).toEqual([]);
   });
 
-  it("delivers completion notifications without rerendering a focused form", () => {
+  it("delivers completion notifications without rerendering a focused form or restoring local Prompt versions", () => {
     class FakeInput {}
     vi.stubGlobal("HTMLInputElement", FakeInput);
     vi.stubGlobal("HTMLTextAreaElement", class {});
@@ -140,6 +140,22 @@ describe("renderer notifications", () => {
 
     let state: AppState | undefined = createDefaultState();
     state.queueRunning = true;
+    state.imageDraft.promptVersions = [{
+      id: "local-prompt",
+      label: "本地保留",
+      text: "用户删除其他版本后保留的 Prompt",
+      createdAt: "now"
+    }];
+    state.imageDraft.activePromptVersion = 0;
+    state.draft.promptVersions = [{
+      id: "local-video-prompt",
+      label: "本地视频 Prompt",
+      text: "视频模式删除其他版本后保留的 Prompt",
+      createdAt: "now"
+    }];
+    state.draft.activePromptVersion = 0;
+    let draftDirty = false;
+    let imageDraftDirty = false;
     let onStateChanged: ((next: AppState) => void) | undefined;
     const subscribe = () => () => undefined;
     const studio = {
@@ -175,8 +191,10 @@ describe("renderer notifications", () => {
       setState: (next) => { state = next; },
       getPage: () => "create",
       getHistoryKind: () => "video",
-      getDraftDirty: () => false,
+      getDraftDirty: () => draftDirty,
       getDraftSaveInFlight: () => 0,
+      getImageDraftDirty: () => imageDraftDirty,
+      getImageDraftSaveInFlight: () => 0,
       setPromptRuntimeLoaded: vi.fn(),
       setPromptProgress: vi.fn(),
       rememberModalFocus: vi.fn(),
@@ -193,6 +211,26 @@ describe("renderer notifications", () => {
     });
     const next = structuredClone(state);
     next.queueRunning = false;
+    next.imageDraft.promptVersions = [
+      {
+        id: "deleted-prompt",
+        label: "已删除",
+        text: "不应被异步状态回传恢复",
+        createdAt: "old"
+      },
+      ...next.imageDraft.promptVersions
+    ];
+    next.imageDraft.activePromptVersion = 1;
+    next.draft.promptVersions = [
+      {
+        id: "deleted-video-prompt",
+        label: "已删除的视频 Prompt",
+        text: "不应被异步状态回传恢复",
+        createdAt: "old"
+      },
+      ...next.draft.promptVersions
+    ];
+    next.draft.activePromptVersion = 1;
     next.history.push({
       mediaKind: "video",
       id: "completed-asset",
@@ -216,10 +254,14 @@ describe("renderer notifications", () => {
       versions: []
     });
 
+    draftDirty = true;
+    imageDraftDirty = true;
     onStateChanged?.(next);
 
     expect(notify).toHaveBeenCalledTimes(2);
     expect(requestRender).not.toHaveBeenCalled();
+    expect(state.imageDraft.promptVersions.map((version) => version.id)).toEqual(["local-prompt"]);
+    expect(state.draft.promptVersions.map((version) => version.id)).toEqual(["local-video-prompt"]);
     cleanup();
   });
 

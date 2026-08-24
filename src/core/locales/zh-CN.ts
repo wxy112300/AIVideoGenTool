@@ -147,6 +147,7 @@ export const zhCNCatalog = {
     [uiKeys.queue.card.noReferenceImage]: "无参考图 · T2VA",
     [uiKeys.queue.card.moveUp]: "上移",
     [uiKeys.queue.card.moveDown]: "下移",
+    [uiKeys.queue.card.dragToReorder]: "拖动调整队列顺序（聚焦后可用 ↑/↓、Home/End）",
     [uiKeys.queue.card.editUpscaleTitle]: "带回提升设置并重新加入队列",
     [uiKeys.queue.card.editTitle]: "带回创建页调整参数并重新加入队列",
     [uiKeys.queue.card.opening]: "打开中…",

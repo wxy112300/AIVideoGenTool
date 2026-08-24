@@ -147,6 +147,7 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.queue.card.noReferenceImage]: "No reference image · T2VA",
 	[uiKeys.queue.card.moveUp]: "Move up",
 	[uiKeys.queue.card.moveDown]: "Move down",
+	[uiKeys.queue.card.dragToReorder]: "Drag to reorder (or use ↑/↓, Home/End when focused)",
 	[uiKeys.queue.card.editUpscaleTitle]: "Bring back upscale settings and requeue",
 	[uiKeys.queue.card.editTitle]: "Bring back settings to Create and requeue",
 	[uiKeys.queue.card.opening]: "Opening…",

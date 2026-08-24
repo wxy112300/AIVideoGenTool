@@ -28,8 +28,7 @@ export interface QueuePageOptions {
 }
 
 export interface QueueMoveAvailability {
-  canMoveUp: boolean;
-  canMoveDown: boolean;
+  canDrag: boolean;
 }
 
 function queueMoveAvailability(
@@ -38,25 +37,22 @@ function queueMoveAvailability(
 ): QueueMoveAvailability {
   const task = tasks[index];
   if (!task || task.status !== "waiting") {
-    return { canMoveUp: false, canMoveDown: false };
+    return { canDrag: false };
   }
   const runningIndex = tasks.findIndex((candidate) => candidate.status === "running");
   // A stale queue may contain a waiting item before the active task. Keep it
   // visible, but do not expose controls that could make that ordering worse.
   if (runningIndex >= 0 && index < runningIndex) {
-    return { canMoveUp: false, canMoveDown: false };
+    return { canDrag: false };
   }
   const waitingIndexes = tasks
     .map((candidate, candidateIndex) => candidate.status === "waiting" ? candidateIndex : -1)
     .filter((candidateIndex) => candidateIndex >= 0);
-  const waitingIndex = waitingIndexes.indexOf(index);
-  const previousWaiting = waitingIndex > 0 ? waitingIndexes[waitingIndex - 1] : undefined;
-  const nextWaiting = waitingIndex >= 0 && waitingIndex < waitingIndexes.length - 1
-    ? waitingIndexes[waitingIndex + 1]
-    : undefined;
+  const reorderableWaitingIndexes = waitingIndexes.filter((candidateIndex) =>
+    runningIndex < 0 || candidateIndex > runningIndex
+  );
   return {
-    canMoveUp: previousWaiting != null && (runningIndex < 0 || previousWaiting > runningIndex),
-    canMoveDown: nextWaiting != null && (runningIndex < 0 || index > runningIndex)
+    canDrag: reorderableWaitingIndexes.length > 1 && (runningIndex < 0 || index > runningIndex)
   };
 }
 
@@ -140,11 +136,11 @@ export function renderQueuePage(
         <div class="queue-active-task">
           ${options.renderTaskCard(running, runningIndex + 1, queueMoveAvailability(activeTasks, runningIndex))}
         </div>
-        <div class="task-list queue-pending-list">${waitingMarkup}</div>
+        <div class="task-list queue-pending-list" data-queue-drop-list="pending">${waitingMarkup}</div>
       </section>`
     : `${state.queue.length === 0
         ? `<div class="empty panel queue-empty-state"><h2>${options.t(uiKeys.queue.emptyTitle)}</h2><p>${options.t(uiKeys.queue.emptyDescription)}</p><button class="secondary button-with-icon" data-page="create">${options.icon("plus")}${options.t(uiKeys.queue.create)}</button></div>`
-        : `<section class="queue-section queue-execution-section">${executionHeading}<div class="task-list">${activeTasks.length ? waitingMarkup : renderWaitingEmpty(options)}</div></section>`}`;
+        : `<section class="queue-section queue-execution-section">${executionHeading}<div class="task-list" data-queue-drop-list="waiting">${activeTasks.length ? waitingMarkup : renderWaitingEmpty(options)}</div></section>`}`;
   return `
     <section class="page-heading queue-page-heading" aria-labelledby="queue-title">
       <div class="queue-page-heading-main">

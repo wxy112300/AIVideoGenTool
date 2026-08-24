@@ -4,6 +4,7 @@ import {
   duplicateQueueTask,
   moveWaitingTask,
   removeQueueTask,
+  reorderWaitingTask,
   resetQueueTask,
   updateQueuedUpscaleTask
 } from "../src/core/queue.js";
@@ -55,6 +56,17 @@ export function registerQueueMutationIpc({
   ipc.handle("queue:move", async (_event, taskId: string, direction: -1 | 1) => {
     const next = await store.update((state) => {
       state.queue = moveWaitingTask(state.queue, taskId, direction);
+    });
+    sendState(next);
+    return next;
+  });
+
+  ipc.handle("queue:reorder", async (_event, taskId: string, targetWaitingIndex: number) => {
+    if (typeof taskId !== "string" || !Number.isInteger(targetWaitingIndex)) {
+      throw new Error("无效的队列排序位置。");
+    }
+    const next = await store.update((state) => {
+      state.queue = reorderWaitingTask(state.queue, taskId, targetWaitingIndex);
     });
     sendState(next);
     return next;

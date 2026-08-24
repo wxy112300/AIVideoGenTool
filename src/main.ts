@@ -275,6 +275,8 @@ let draftSaveInFlight = 0;
 let draftDirty = false;
 let imageDraftSaveTimer: number | undefined;
 let imageDraftRevision = 0;
+let imageDraftSaveInFlight = 0;
+let imageDraftDirty = false;
 let environmentScan: EnvironmentScanResult | null = null;
 let environmentScanning = false;
 let settingsSaving = false;
@@ -820,8 +822,7 @@ function queueTaskCard(
     queueTaskRemainingSeconds: (queueTask) => calculateQueueTaskRemainingSeconds(queueTask, state.history, state.imageHistory),
     queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
     elapsedText: (startedAt) => elapsedText(startedAt, rendererApp.context.t),
-    canMoveUp: moveAvailability?.canMoveUp,
-    canMoveDown: moveAvailability?.canMoveDown
+    canDrag: moveAvailability?.canDrag
   });
 }
 
@@ -1985,13 +1986,20 @@ function scheduleImageDraftSave(): void {
   imageDraftSaveTimer = window.setTimeout(async () => {
     const revision = imageDraftRevision;
     const draftToSave = state.imageDraft;
+    imageDraftSaveInFlight += 1;
     try {
       const savedState = await window.studio.saveImageDraft(draftToSave);
       if (revision === imageDraftRevision) {
-        setRendererState({ ...savedState, imageDraft: draftToSave });
+        setRendererState({
+          ...preserveLocalCreationDrafts(savedState, state),
+          imageDraft: draftToSave
+        });
+        imageDraftDirty = false;
       }
     } catch (error) {
       showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.imageDraftSaveFailed), { kind: "error" });
+    } finally {
+      imageDraftSaveInFlight -= 1;
     }
   }, 350);
 }
@@ -2079,6 +2087,7 @@ function patchDraftForMode(
 function patchImageDraft(patch: Partial<ImageEditDraft>): void {
   state.imageDraft = normalizeImageEditDraft({ ...state.imageDraft, ...patch });
   imageDraftRevision += 1;
+  imageDraftDirty = true;
   scheduleImageDraftSave();
 }
 
@@ -2934,6 +2943,8 @@ registerRendererEvents({
   getHistoryKind: () => historyKind,
   getDraftDirty: () => draftDirty,
   getDraftSaveInFlight: () => draftSaveInFlight,
+  getImageDraftDirty: () => imageDraftDirty,
+  getImageDraftSaveInFlight: () => imageDraftSaveInFlight,
   setPromptRuntimeLoaded: (value) => {
     promptRuntimeLoaded = value;
   },

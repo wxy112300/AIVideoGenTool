@@ -101,6 +101,10 @@ describe("queue renderer task priority", () => {
     });
 
     expect(markup).toContain('class="task-input-preview task-input-preview-image"');
+    expect(markup).toContain('data-queue-drag-handle="image-preview-task"');
+    expect(markup).toContain('data-queue-rank-value="image-preview-task"');
+    expect(markup).toContain('data-queue-rank-label="image-preview-task"');
+    expect(markup).not.toContain("data-move=");
   });
 
   it("shows native SeedVR2 total progress and current segment progress separately", () => {

@@ -156,6 +156,7 @@ export const uiKeys = {
       noReferenceImage: "queue.card.noReferenceImage",
       moveUp: "queue.card.moveUp",
       moveDown: "queue.card.moveDown",
+      dragToReorder: "queue.card.dragToReorder",
       editUpscaleTitle: "queue.card.editUpscaleTitle",
       editTitle: "queue.card.editTitle",
       opening: "queue.card.opening",

@@ -1240,6 +1240,7 @@ export interface AppApi {
   pauseQueue(): Promise<AppState>;
   cancelTask(taskId: string): Promise<AppState>;
   moveTask(taskId: string, direction: -1 | 1): Promise<AppState>;
+  reorderTask(taskId: string, targetWaitingIndex: number): Promise<AppState>;
   duplicateTask(taskId: string): Promise<AppState>;
   resetTask(taskId: string): Promise<AppState>;
   deleteHistoryAsset(assetId: string): Promise<AppState>;

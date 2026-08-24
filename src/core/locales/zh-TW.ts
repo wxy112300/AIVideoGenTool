@@ -147,6 +147,7 @@ export const zhTWCatalog = {
     [uiKeys.queue.card.noReferenceImage]: "無參考圖 · T2VA",
     [uiKeys.queue.card.moveUp]: "上移",
     [uiKeys.queue.card.moveDown]: "下移",
+    [uiKeys.queue.card.dragToReorder]: "拖動調整佇列順序（聚焦後可用 ↑/↓、Home/End）",
     [uiKeys.queue.card.editUpscaleTitle]: "帶回提升設定並重新加入佇列",
     [uiKeys.queue.card.editTitle]: "帶回建立頁調整引數並重新加入佇列",
     [uiKeys.queue.card.opening]: "開啟中…",
