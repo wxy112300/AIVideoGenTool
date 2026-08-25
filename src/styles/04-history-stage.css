@@ -327,3 +327,297 @@
   .history-record-section-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .history-record-section-meta { text-align: left; }
 }
+
+/* The video detail player keeps app curation and transport in one compact
+   chrome layer. Media Chrome owns visibility; these rules only make its
+   surface inherit the existing History visual language. */
+.history-player {
+  --media-background-color: #080a0e;
+  --media-primary-color: #e8eef7;
+  --media-text-color: #dce6f2;
+  --media-control-background: transparent;
+  --media-control-hover-background: rgba(255, 255, 255, .08);
+  --media-control-height: 28px;
+  --media-control-padding: 6px;
+  --media-button-padding: 6px;
+  --media-button-icon-width: 16px;
+  --media-button-icon-height: 16px;
+  --media-control-transition-in: opacity .12s ease-out;
+  --media-control-transition-out: opacity .16s ease-in;
+  --media-focus-box-shadow: inset 0 0 0 1px var(--primary);
+  --media-tooltip-display: none;
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  aspect-ratio: var(--video-aspect, 16 / 9);
+  border-color: rgba(142, 161, 188, .2);
+  background: #080a0e;
+}
+.history-player video {
+  display: block;
+  background: #080a0e;
+}
+.history-player-info {
+  width: 100%;
+  min-width: 0;
+  padding: 16px 16px 34px;
+  color: #e8eef7;
+  line-height: 1.2;
+  background: linear-gradient(180deg, rgba(7, 10, 15, .86), rgba(7, 10, 15, .32) 58%, transparent);
+  pointer-events: none;
+}
+.history-player-title {
+  display: block;
+  max-width: min(760px, 78vw);
+  overflow: hidden;
+  color: #f0f5fc;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-player-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 6px;
+  color: rgba(225, 234, 246, .68);
+  font-size: 10px;
+}
+.history-player-meta span + span::before { content: "·"; margin-right: 10px; color: rgba(225, 234, 246, .42); }
+.history-player-inline-position {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  min-height: 30px;
+  padding: 0 4px;
+  color: #dbe7f8;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.history-player-utility-controls {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.history-player-control-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  min-height: 50px;
+  padding: 8px 11px 9px;
+  box-sizing: border-box;
+  border-top: 0;
+  background: linear-gradient(180deg, rgba(9, 13, 20, 0), rgba(9, 13, 20, .12) 30%, rgba(9, 13, 20, .64));
+  backdrop-filter: blur(5px);
+}
+.history-player-app-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+.history-player-nav-button,
+.history-player-favorite-button {
+  display: inline-grid;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #d8e2ef;
+  background: rgba(255, 255, 255, .045);
+}
+.history-player-nav-button .ui-icon,
+.history-player-favorite-button .ui-icon { width: 15px; height: 15px; }
+.history-player-nav-button:hover:not(:disabled),
+.history-player-nav-button:focus-visible,
+.history-player-favorite-button:hover,
+.history-player-favorite-button:focus-visible { border-color: rgba(160, 194, 244, .44); color: #fff; background: rgba(104, 157, 240, .16); }
+.history-player-nav-button:disabled { opacity: .32; cursor: default; }
+.history-player-favorite-button.is-favorite { color: #f06b78; background: rgba(240, 107, 120, .09); }
+.history-player-favorite-button .ui-icon { fill: currentColor; }
+.history-player-control-divider {
+  width: 1px;
+  height: 18px;
+  flex: 0 0 auto;
+  background: rgba(190, 208, 235, .16);
+}
+.history-player-transport-divider { margin-inline: 2px 1px; }
+.history-player-control-bar > media-time-display {
+  flex: 0 0 auto;
+  min-width: 68px;
+  color: #b8c7d9;
+  font-size: 11px;
+  letter-spacing: .01em;
+}
+.history-player-control-bar > media-time-range {
+  min-width: 64px;
+  flex: 1 1 64px;
+}
+.history-player-control-bar > media-play-button,
+.history-player-utility-group > media-fullscreen-button,
+.history-player-utility-group > media-settings-menu-button,
+.history-player-volume > media-mute-button {
+  display: inline-flex;
+  flex: 0 0 30px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  --media-button-padding: 0px;
+}
+.history-player-utility-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+.history-player-utility-group > media-fullscreen-button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #d8e2ef;
+  background: rgba(255, 255, 255, .045);
+  --media-control-background: rgba(255, 255, 255, .045);
+  --media-control-hover-background: rgba(104, 157, 240, .16);
+  --media-primary-color: #d8e2ef;
+  --media-text-color: #d8e2ef;
+}
+.history-player-utility-group > media-fullscreen-button:hover,
+.history-player-utility-group > media-fullscreen-button:focus-visible,
+.history-player-utility-group > media-settings-menu-button:hover,
+.history-player-utility-group > media-settings-menu-button:focus-visible,
+.history-player-utility-group > media-settings-menu-button[aria-expanded="true"] {
+  border-color: rgba(160, 194, 244, .44);
+  color: #fff;
+  --media-primary-color: #fff;
+  --media-text-color: #fff;
+}
+.history-player-utility-group > media-settings-menu-button {
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: #d8e2ef;
+  background: rgba(255, 255, 255, .045);
+  --media-control-background: rgba(255, 255, 255, .045);
+  --media-control-hover-background: rgba(104, 157, 240, .16);
+  --media-primary-color: #d8e2ef;
+  --media-text-color: #d8e2ef;
+}
+.history-player-utility-group > media-settings-menu-button [slot="icon"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.history-player-utility-group > media-settings-menu-button [slot="icon"] .ui-icon {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+}
+.history-player > media-settings-menu {
+  z-index: 8;
+  --media-settings-menu-background: rgba(9, 13, 20, .96);
+  --media-menu-border: 1px solid rgba(190, 208, 235, .2);
+  --media-menu-border-radius: 10px;
+  --media-menu-gap: 0;
+  --media-menu-item-hover-background: rgba(104, 157, 240, .16);
+  --media-menu-item-focus-shadow: inset 0 0 0 2px rgba(112, 159, 237, .5);
+  --media-menu-item-icon-height: 17px;
+  --media-menu-icon-height: 17px;
+  --media-menu-item-max-width: 180px;
+  --media-font-size: 12px;
+  --media-primary-color: #e8eef7;
+  --media-text-color: #e8eef7;
+}
+.history-player > media-settings-menu [slot="prefix"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+}
+.history-player > media-settings-menu [slot="prefix"] .ui-icon {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+}
+.history-player-volume {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 30px;
+  width: 30px;
+  min-width: 30px;
+}
+.history-player-volume > media-volume-range {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  /* The rotated slider meets the button's top edge, so the pointer can move
+     from the button into the range without crossing a dead gap. */
+  bottom: calc(100% + 30px);
+  width: 88px;
+  height: 28px;
+  min-width: 0;
+  flex: none;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateX(-50%) rotate(-90deg);
+  transform-origin: center;
+  transition: opacity .12s ease;
+}
+.history-player-volume:hover > media-volume-range,
+.history-player-volume:focus-within > media-volume-range {
+  opacity: 1;
+  pointer-events: auto;
+}
+.history-player-utility-divider { margin-inline: 2px 1px; }
+.history-player:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.history-player:fullscreen .history-player-control-bar { padding-inline: 16px; }
+
+@media (max-width: 760px) {
+  .history-player-control-bar { gap: 3px; padding-inline: 8px; }
+  .history-player-info { padding: 12px 10px 28px; }
+  .history-player-title { max-width: calc(100vw - 40px); font-size: 13px; }
+  .history-player-meta { gap: 4px 8px; font-size: 9px; }
+  .history-player-app-controls { gap: 2px; }
+  .history-player-nav-button,
+  .history-player-favorite-button {
+    width: 26px;
+    min-width: 26px;
+    height: 26px;
+    min-height: 26px;
+  }
+  .history-player-inline-position { min-width: 44px; min-height: 26px; font-size: 10px; }
+  .history-player-control-bar > media-time-display { min-width: 60px; font-size: 10px; }
+  .history-player-control-bar > media-time-range { min-width: 40px; flex-basis: 40px; }
+  .history-player-control-bar > media-play-button,
+  .history-player-utility-group > media-fullscreen-button,
+  .history-player-utility-group > media-settings-menu-button,
+  .history-player-volume > media-mute-button {
+    flex-basis: 26px;
+    width: 26px;
+    min-width: 26px;
+    height: 26px;
+  }
+  .history-player-utility-group { gap: 2px; }
+  .history-player-volume { flex-basis: 26px; width: 26px; min-width: 26px; }
+  .history-player-volume > media-volume-range { width: 76px; bottom: calc(100% + 24px); }
+}

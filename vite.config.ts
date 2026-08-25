@@ -26,6 +26,32 @@ export default defineConfig({
               test: /[\\/]src[\\/]core[\\/]i18n(?:-keys)?\.ts$/
             },
             {
+              // Keep the history surface out of the renderer entry. It is a
+              // substantial, low-frequency surface and is only needed after
+              // the user opens History.
+              name: "history",
+              test: /[\\/]src[\\/]renderer[\\/]pages[\\/]history[\\/]/,
+              priority: 2,
+              entriesAware: true,
+              includeDependenciesRecursively: false
+            },
+            {
+              // Create is the main workspace, but its model-specific controls
+              // should not enlarge the shell and queue entry point.
+              name: "create",
+              test: /[\\/]src[\\/]renderer[\\/]pages[\\/]create[\\/]/,
+              priority: 2,
+              entriesAware: true,
+              includeDependenciesRecursively: false
+            },
+            {
+              name: "queue",
+              test: /[\\/]src[\\/]renderer[\\/]pages[\\/]queue[\\/]/,
+              priority: 2,
+              entriesAware: true,
+              includeDependenciesRecursively: false
+            },
+            {
               // Settings is a large, low-frequency surface (environment scans,
               // dependency cards and install controllers). Keep it out of the
               // renderer entry chunk so a small settings change does not push

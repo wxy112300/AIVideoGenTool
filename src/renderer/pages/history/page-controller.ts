@@ -31,7 +31,9 @@ export interface HistoryPlaybackSnapshot {
   currentTime: number;
   paused: boolean;
   muted: boolean;
+  volume: number;
   playbackRate: number;
+  fullscreen: boolean;
 }
 
 export interface HistoryPageControllerOptions {
@@ -52,6 +54,125 @@ export interface HistoryPageControllerOptions {
   imageLightbox: ImageHistoryLightboxControllerOptions;
   openHistoryContextMenu(assetId: string, clientX: number, clientY: number, returnFocus?: HTMLElement): void;
   openImageHistoryContextMenu(projectId: string, clientX: number, clientY: number, returnFocus?: HTMLElement): void;
+}
+
+/**
+ * History review uses a duration-relative seek step so short generated clips
+ * do not lose most of their timeline on a single arrow press.
+ */
+export const HISTORY_PLAYER_ARROW_SEEK_PERCENT = 0.1;
+
+export function seekHistoryPlayerByPercentage(
+  video: HTMLVideoElement,
+  direction: -1 | 1,
+  percentage = HISTORY_PLAYER_ARROW_SEEK_PERCENT
+): boolean {
+  const duration = video.duration;
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(percentage) || percentage <= 0) {
+    return false;
+  }
+  const currentTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+  const targetTime = Math.min(
+    duration,
+    Math.max(0, currentTime + direction * duration * percentage)
+  );
+  if (targetTime === currentTime) return false;
+  try {
+    video.currentTime = targetTime;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function eventPathContainsTag(event: Event, tagName: string): boolean {
+  return event.composedPath().some((target) =>
+    target instanceof Element && target.tagName.toLowerCase() === tagName
+  );
+}
+
+function eventPathContainsElement(event: Event, element: HTMLElement): boolean {
+  return event.composedPath().some((target) =>
+    target instanceof Node && element.contains(target)
+  );
+}
+
+function isHistoryPlayerFullscreen(player: HTMLElement): boolean {
+  const fullscreenElement = document.fullscreenElement;
+  return fullscreenElement === player ||
+    Boolean(fullscreenElement && player.contains(fullscreenElement));
+}
+
+/**
+ * Toggle the history detail player's fullscreen target without relying on the
+ * browser's native video controls. Media Chrome observes the same fullscreen
+ * change, so its button and icon stay synchronized with this path.
+ */
+export function toggleHistoryPlayerFullscreen(player: HTMLElement): void {
+  const fullscreenElement = document.fullscreenElement;
+  const isFullscreen = fullscreenElement === player ||
+    Boolean(fullscreenElement && player.contains(fullscreenElement));
+  if (isFullscreen) {
+    if (typeof document.exitFullscreen === "function") {
+      void document.exitFullscreen().catch(() => undefined);
+    }
+    return;
+  }
+  if (typeof player.requestFullscreen === "function") {
+    void player.requestFullscreen().catch(() => undefined);
+  }
+}
+
+export function downloadHistoryPlayerVideo(video: HTMLVideoElement, filename: string): boolean {
+  const url = video.currentSrc || video.src;
+  const ownerDocument = video.ownerDocument;
+  if (!url || !ownerDocument.body) return false;
+
+  const anchor = ownerDocument.createElement("a");
+  anchor.href = url;
+  anchor.download = filename.trim() || "video";
+  anchor.hidden = true;
+  ownerDocument.body.append(anchor);
+  try {
+    anchor.click();
+  } catch {
+    anchor.remove();
+    return false;
+  }
+  anchor.remove();
+  return true;
+}
+
+export function toggleHistoryPlayerPictureInPicture(video: HTMLVideoElement): boolean {
+  type PictureInPictureDocument = Document & {
+    pictureInPictureElement?: Element | null;
+    exitPictureInPicture?: () => Promise<void>;
+  };
+  type PictureInPictureVideo = HTMLVideoElement & {
+    requestPictureInPicture?: () => Promise<unknown>;
+  };
+
+  const ownerDocument = video.ownerDocument as PictureInPictureDocument;
+  if (ownerDocument.pictureInPictureElement === video) {
+    if (typeof ownerDocument.exitPictureInPicture !== "function") return false;
+    void ownerDocument.exitPictureInPicture().catch(() => undefined);
+    return true;
+  }
+
+  const requestPictureInPicture = (video as PictureInPictureVideo).requestPictureInPicture;
+  if (typeof requestPictureInPicture !== "function") return false;
+  void requestPictureInPicture.call(video).catch(() => undefined);
+  return true;
+}
+
+function historyPlayerMenuAction(event: Event): "download" | "pip" | null {
+  const menuItem = event.composedPath().find((target): target is HTMLElement => {
+    if (!(target instanceof HTMLElement)) return false;
+    return target.dataset.historyPlayerMenuAction === "download" ||
+      target.dataset.historyPlayerMenuAction === "pip";
+  });
+  const action = menuItem?.dataset.historyPlayerMenuAction;
+  return action === "download" || action === "pip" ? action : null;
 }
 
 function isHistoryMenuKey(event: KeyboardEvent): boolean {
@@ -92,6 +213,51 @@ export function mountHistoryPageController(
   options.restoreHistoryLayoutAnchor();
 
   const detailVideo = document.querySelector<HTMLVideoElement>(".history-player video");
+  const detailPlayer = detailVideo?.closest<HTMLElement>(".history-player");
+  if (detailVideo && detailPlayer) {
+    detailVideo.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleHistoryPlayerFullscreen(detailPlayer);
+    }, { signal });
+
+    const settingsMenu = detailPlayer.querySelector<HTMLElement>("media-settings-menu");
+    if (settingsMenu) {
+      const handleMenuAction = (event: Event): boolean => {
+        const action = historyPlayerMenuAction(event);
+        if (!action) return false;
+        const handled = action === "download"
+          ? downloadHistoryPlayerVideo(detailVideo, detailVideo.dataset.historyDownloadFilename ?? "video")
+          : toggleHistoryPlayerPictureInPicture(detailVideo);
+        if (!handled) return false;
+        event.preventDefault();
+        settingsMenu.hidden = true;
+        return true;
+      };
+
+      settingsMenu.addEventListener("click", (event) => {
+        handleMenuAction(event);
+      }, { capture: true, signal });
+      settingsMenu.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        if (!handleMenuAction(event)) return;
+        event.stopPropagation();
+      }, { capture: true, signal });
+    }
+
+    document.addEventListener("keydown", (event) => {
+      if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (!isHistoryPlayerFullscreen(detailPlayer) && !eventPathContainsElement(event, detailPlayer)) return;
+      // Keep horizontal arrows available to the vertical volume slider when
+      // it owns focus. The player timeline uses percentage seeks.
+      if (eventPathContainsTag(event, "media-volume-range")) return;
+      const direction = event.key === "ArrowLeft" ? -1 : 1;
+      if (!seekHistoryPlayerByPercentage(detailVideo, direction)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    }, { capture: true, signal });
+  }
   const playbackMatches = Boolean(
     detailVideo &&
     options.playback &&

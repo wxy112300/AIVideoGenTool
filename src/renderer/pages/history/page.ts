@@ -46,6 +46,7 @@ export interface ImageHistoryGenerationSummary {
 
 export interface HistoryPageOptions {
   t: import("../../../core/i18n").Translate;
+  uiLocale?: string;
   icon(name: string, className?: string): string;
   escapeHtml(value: string): string;
   formatBytes(value: number): string;
@@ -112,6 +113,100 @@ function renderHistoryRatingControl(
     return `<button type="button" class="history-rating-star ${state}" data-history-rating-star="${options.escapeHtml(assetId)}" data-history-rating-value="${value}" aria-pressed="${current >= value}" aria-label="${value} ★">★</button>`;
   }).join("");
   return `<div class="history-rating-control" data-history-rating-control="${options.escapeHtml(assetId)}" data-history-rating-current="${current}" role="group" aria-label="${options.escapeHtml(options.t(uiKeys.history.filter.rating))}"><div class="history-rating-stars">${stars}</div><span class="history-rating-value" data-history-rating-value-label>${current ? `${current} / 5` : options.t(uiKeys.history.filter.ratingUnset)}</span><button type="button" class="history-rating-clear" data-history-rating-clear="${options.escapeHtml(assetId)}" ${current ? "" : "disabled"} aria-label="${options.escapeHtml(options.t(uiKeys.history.filter.clear))}" title="${options.escapeHtml(options.t(uiKeys.history.filter.clear))}">×</button></div>`;
+}
+
+function historyPlayerLanguage(options: Pick<HistoryPageOptions, "uiLocale">): string {
+  return options.uiLocale === "en-US" || options.uiLocale === "zh-TW"
+    ? options.uiLocale
+    : "zh-CN";
+}
+
+function renderHistoryVideoPlayer(
+  asset: HistoryAsset,
+  version: AssetVersion,
+  mediaUrl: string,
+  videoFileName: string,
+  detailTitle: string,
+  historyIndex: number,
+  historyCount: number,
+  previousAsset: HistoryAsset | undefined,
+  nextAsset: HistoryAsset | undefined,
+  options: HistoryPageOptions
+): string {
+  const positionLabel = options.t(uiKeys.history.page.position, {
+    current: historyIndex + 1,
+    total: historyCount
+  });
+  const favoriteLabel = options.t(
+    asset.favorite ? uiKeys.history.page.unfavorite : uiKeys.history.page.favorite
+  );
+  const previousLabel = options.t(uiKeys.history.page.previous);
+  const nextLabel = options.t(uiKeys.history.page.next);
+  const downloadLabel = options.t(uiKeys.history.page.download);
+  const playbackSpeedLabel = options.t(uiKeys.history.page.playbackSpeed);
+  const pictureInPictureLabel = options.t(uiKeys.history.page.pictureInPicture);
+  const previousTitle = previousAsset
+    ? `${previousLabel}：${options.escapeHtml(previousAsset.title)} · Page Up`
+    : options.t(uiKeys.history.page.firstItem);
+  const nextTitle = nextAsset
+    ? `${nextLabel}：${options.escapeHtml(nextAsset.title)} · Page Down`
+    : options.t(uiKeys.history.page.lastItem);
+  const playerMeta = [
+    options.modelName(version.modelId),
+    `${version.width} × ${version.height}`,
+    `${version.fps} FPS`,
+    version.ratio ?? options.historyResolutionLabel(asset, version)
+  ].filter((value): value is string => Boolean(value));
+  const playerMetaLabel = playerMeta.join(" · ");
+  const playerPositionLabel = `${historyIndex + 1} / ${historyCount}`;
+
+  return `<media-controller id="history-player" class="panel history-player" style="--video-aspect: ${version.width} / ${version.height}" autohide="1" lang="${historyPlayerLanguage(options)}" fullscreenelement="history-player" hotkeys="noarrowleft noarrowright" aria-label="${options.escapeHtml(detailTitle)}">
+    <video slot="media" loop playsinline preload="metadata" data-history-asset="${options.escapeHtml(asset.id)}" data-history-version="${options.escapeHtml(version.id)}" data-history-download-filename="${options.escapeHtml(videoFileName)}" src="${options.escapeHtml(mediaUrl)}"></video>
+    <media-settings-menu id="history-player-settings" hidden anchor="auto" class="history-player-settings-menu">
+      <media-chrome-menu-item data-history-player-menu-action="download">
+        <span slot="prefix">${options.icon("download")}</span>
+        ${options.escapeHtml(downloadLabel)}
+      </media-chrome-menu-item>
+      <media-settings-menu-item>
+        <span slot="prefix">${options.icon("gauge")}</span>
+        ${options.escapeHtml(playbackSpeedLabel)}
+        <media-playback-rate-menu slot="submenu" hidden rates="0.5 0.75 1 1.25 1.5 2">
+          <div slot="header">${options.escapeHtml(playbackSpeedLabel)}</div>
+        </media-playback-rate-menu>
+      </media-settings-menu-item>
+      <media-chrome-menu-item data-history-player-menu-action="pip">
+        <span slot="prefix">${options.icon("picture-in-picture-2")}</span>
+        ${options.escapeHtml(pictureInPictureLabel)}
+      </media-chrome-menu-item>
+    </media-settings-menu>
+    <div slot="top-chrome" class="history-player-info" data-history-player-info>
+      <strong class="history-player-title" title="${options.escapeHtml(detailTitle)}">${options.escapeHtml(detailTitle)}</strong>
+      <div class="history-player-meta" role="group" aria-label="${options.escapeHtml(playerMetaLabel)}">${playerMeta.map((value) => `<span>${options.escapeHtml(value)}</span>`).join("")}</div>
+    </div>
+    <media-control-bar class="history-player-control-bar">
+      <div class="history-player-app-controls" data-history-player-actions aria-label="${options.escapeHtml(options.t(uiKeys.history.page.switchHistory))}">
+        <button type="button" class="history-player-nav-button" data-history-navigation="-1" aria-keyshortcuts="PageUp" aria-label="${options.escapeHtml(previousLabel)}" ${previousAsset ? "" : "disabled"} title="${options.escapeHtml(previousTitle)}">${options.icon("arrow-left")}</button>
+        <span class="history-player-inline-position" aria-label="${options.escapeHtml(positionLabel)}">${options.escapeHtml(playerPositionLabel)}</span>
+        <button type="button" class="history-player-nav-button" data-history-navigation="1" aria-keyshortcuts="PageDown" aria-label="${options.escapeHtml(nextLabel)}" ${nextAsset ? "" : "disabled"} title="${options.escapeHtml(nextTitle)}">${options.icon("arrow-right")}</button>
+      </div>
+      <span class="history-player-control-divider history-player-transport-divider" aria-hidden="true"></span>
+      <media-play-button></media-play-button>
+      <media-time-display showduration notoggle></media-time-display>
+      <media-time-range></media-time-range>
+      <div class="history-player-volume">
+        <media-mute-button></media-mute-button>
+        <media-volume-range></media-volume-range>
+      </div>
+      <span class="history-player-control-divider history-player-utility-divider" aria-hidden="true"></span>
+      <div class="history-player-utility-group">
+        <div class="history-player-utility-controls" data-history-player-utility aria-label="${options.escapeHtml(favoriteLabel)}">
+          <button type="button" class="history-favorite-button history-player-favorite-button ${asset.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(asset.id)}" aria-pressed="${asset.favorite}" aria-label="${options.escapeHtml(favoriteLabel)}" title="${options.escapeHtml(favoriteLabel)}">${options.icon("heart")}</button>
+        </div>
+        <media-fullscreen-button></media-fullscreen-button>
+        <media-settings-menu-button notooltip></media-settings-menu-button>
+      </div>
+    </media-control-bar>
+  </media-controller>`;
 }
 
 function historySortOptions(
@@ -365,11 +460,9 @@ export function renderHistoryDetailPage(
     </div>
     <section class="history-detail-hero">
       <div class="history-player-column">
-        <div class="panel history-player" style="--video-aspect: ${version.width} / ${version.height}">
-          ${mediaUrl
-            ? `<video controls loop playsinline preload="metadata" data-history-asset="${asset.id}" data-history-version="${version.id}" src="${mediaUrl}"></video>`
-            : `<div class="history-media-fallback"><span>${options.icon("play")}</span><strong>${options.t(uiKeys.history.page.videoUnavailable)}</strong><small>${options.t(uiKeys.history.page.checkOutputDirectory)}</small></div>`}
-        </div>
+        ${mediaUrl
+          ? renderHistoryVideoPlayer(asset, version, mediaUrl, videoFile?.filename ?? version.outputFilename, detailTitle, historyIndex, orderedHistory.length, previousAsset, nextAsset, options)
+          : `<div class="panel history-player" style="--video-aspect: ${version.width} / ${version.height}"><div class="history-media-fallback"><span>${options.icon("play")}</span><strong>${options.t(uiKeys.history.page.videoUnavailable)}</strong><small>${options.t(uiKeys.history.page.checkOutputDirectory)}</small></div></div>`}
       </div>
       <aside class="history-detail-sidebar">
         <section class="panel history-summary">
@@ -377,7 +470,7 @@ export function renderHistoryDetailPage(
           <div class="history-title-line"><h1 class="history-detail-title" title="${options.escapeHtml(detailTitle)}"><span class="history-card-title-track"><span>${options.escapeHtml(detailTitle)}</span><span aria-hidden="true">${options.escapeHtml(detailTitle)}</span></span></h1><span class="status running">${options.t(uiKeys.history.page.completed)}</span></div>
           <code>${options.escapeHtml(videoFile?.filename ?? asset.outputFilename)}</code>
           <div class="history-summary-badges"><span class="model-badge">${options.escapeHtml(options.modelName(version.modelId))}</span><span>${version.kind === "original" ? options.t(uiKeys.history.page.originalGeneration) : options.t(uiKeys.history.page.upscaleVersion)}</span></div>
-          <div class="history-detail-curation"><button type="button" class="history-favorite-button ${asset.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(asset.id)}" aria-pressed="${asset.favorite}" aria-label="${options.t(uiKeys.history.filter.favoriteOnly)}" title="${options.t(uiKeys.history.filter.favoriteOnly)}">${options.icon("heart")}</button>${renderHistoryRatingControl(asset.id, asset.rating, options)}</div>
+          <div class="history-detail-curation"><button type="button" class="history-favorite-button ${asset.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(asset.id)}" aria-pressed="${asset.favorite}" aria-label="${options.t(asset.favorite ? uiKeys.history.page.unfavorite : uiKeys.history.page.favorite)}" title="${options.t(asset.favorite ? uiKeys.history.page.unfavorite : uiKeys.history.page.favorite)}">${options.icon("heart")}</button>${renderHistoryRatingControl(asset.id, asset.rating, options)}</div>
           </div>
           <div class="history-overview-facts">
           <div><span>${options.t(uiKeys.history.page.completedAt)}</span><strong>${completedAt}</strong></div>
@@ -528,7 +621,7 @@ export function renderImageHistoryDetailPage(
         <section class="panel image-history-summary">
           <div class="status-line"><span class="badge ok">${options.t(uiKeys.history.version, { version: version.versionNumber })}${pinnedVersion?.id === version.id ? ` · ${options.t(uiKeys.history.page.currentCover)}` : ""}</span><span class="badge">PNG</span></div>
           <h2>${options.escapeHtml(title)}</h2>
-          <div class="history-detail-curation"><button type="button" class="history-favorite-button ${project.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(project.id)}" aria-pressed="${project.favorite}" aria-label="${options.t(uiKeys.history.filter.favoriteOnly)}" title="${options.t(uiKeys.history.filter.favoriteOnly)}">${options.icon("heart")}</button>${renderHistoryRatingControl(project.id, project.rating, options)}</div>
+          <div class="history-detail-curation"><button type="button" class="history-favorite-button ${project.favorite ? "is-favorite" : ""}" data-history-favorite="${options.escapeHtml(project.id)}" aria-pressed="${project.favorite}" aria-label="${options.t(project.favorite ? uiKeys.history.page.unfavorite : uiKeys.history.page.favorite)}" title="${options.t(project.favorite ? uiKeys.history.page.unfavorite : uiKeys.history.page.favorite)}">${options.icon("heart")}</button>${renderHistoryRatingControl(project.id, project.rating, options)}</div>
           <p class="muted tiny">${options.escapeHtml(version.prompt || (version.kind === "source" ? options.t(uiKeys.history.page.imageOriginalPrompt) : options.t(uiKeys.history.page.unsavedEditPrompt)))}</p>
           <div class="image-history-facts"><div><span>${options.t(uiKeys.history.page.model)}</span><strong>${options.escapeHtml(version.kind === "source" ? options.t(uiKeys.history.card.originalImage) : options.modelName(version.modelId))}</strong></div><div><span>${options.t(uiKeys.history.page.seed)}</span><strong>${version.seed ?? options.t(uiKeys.runtime.random)}</strong></div><div><span>${options.t(uiKeys.history.page.resolution)}</span><strong>${version.width} × ${version.height}</strong></div><div><span>${options.t(uiKeys.history.page.outputFormat)}</span><strong>${version.format.toUpperCase()}</strong></div><div><span>${options.t(uiKeys.history.page.generatedAt)}</span><strong>${options.escapeHtml(options.formatFullHistoryTime(version.createdAt))}</strong></div><div><span>${options.t(uiKeys.history.page.elapsed)}</span><strong>${elapsedSeconds == null ? options.t(uiKeys.history.detail.legacyNotSaved) : options.escapeHtml(options.formatElapsedDuration(elapsedSeconds))}</strong></div></div>
            <div class="history-detail-quick-actions">

@@ -1,3 +1,7 @@
+import "media-chrome";
+import "media-chrome/menu";
+import "media-chrome/lang/zh-CN.js";
+import "media-chrome/lang/zh-TW.js";
 import "./style.css";
 import { createRendererApp } from "./renderer/app";
 import { bootstrapRenderer } from "./renderer/bootstrap";
@@ -21,7 +25,7 @@ import {
   state
 } from "./renderer/renderer-state";
 import { rendererUiState as ui } from "./renderer/ui-state";
-import type { CreationMode, HistoryKind, Page, RendererNotifyOptions } from "./renderer/contracts";
+import type { CreationMode, HistoryKind, Page, RendererCleanup, RendererNotifyOptions } from "./renderer/contracts";
 import {
   createNotification,
   notificationAlreadyPending,
@@ -65,6 +69,7 @@ import {
   historyFilterSignature,
   normalizeHistoryFilter
 } from "./core/history-filter";
+import { swapHistoryDetailFragments } from "./renderer/pages/history/detail-transition";
 import { createHistoryMediaRuntime } from "./renderer/pages/history/media-helpers";
 import {
   renderCreatePage,
@@ -1069,6 +1074,7 @@ function renderOverlay(): void {
 }
 
 let renderCoordinator: RenderCoordinator;
+let activeHistoryCleanup: RendererCleanup | null = null;
 const rendererApp = createRendererApp({
   root: appElement,
   studio: window.studio,
@@ -1577,52 +1583,34 @@ function historyPlayerIsFullscreen(): boolean {
 }
 
 function restoreHistoryPlayerFullscreen(): void {
-  const target = document.querySelector<HTMLVideoElement>(".history-player video") ??
-    document.querySelector<HTMLElement>(".history-player");
+  const target = document.querySelector<HTMLElement>(".history-player") ??
+    document.querySelector<HTMLVideoElement>(".history-player video");
   if (!target?.requestFullscreen) return;
   void target.requestFullscreen().catch(() => undefined);
 }
 
 function updateHistoryDetailInPlace(): boolean {
   const currentPlayer = document.querySelector<HTMLElement>(".history-player");
-  const currentVideo = currentPlayer?.querySelector<HTMLVideoElement>("video");
-  if (!currentPlayer || !currentVideo) return false;
+  if (!currentPlayer) return false;
 
   const nextMarkup = document.createElement("div");
   nextMarkup.innerHTML = historyAssembly.renderDetail(rendererApp.context, "video");
   const nextPlayer = nextMarkup.querySelector<HTMLElement>(".history-player");
-  const nextVideo = nextPlayer?.querySelector<HTMLVideoElement>("video");
-  const currentBack = document.querySelector<HTMLElement>(".history-detail-back");
-  const nextBack = nextMarkup.querySelector<HTMLElement>(".history-detail-back");
-  const currentSidebar = document.querySelector<HTMLElement>(".history-detail-sidebar");
-  const nextSidebar = nextMarkup.querySelector<HTMLElement>(".history-detail-sidebar");
-  const currentTags = document.querySelector<HTMLElement>("[data-history-tags-root]");
-  const nextTags = nextMarkup.querySelector<HTMLElement>("[data-history-tags-root]");
-  if (!nextPlayer || !nextVideo || !currentBack || !nextBack || !currentSidebar || !nextSidebar) {
+  if (!nextPlayer || !swapHistoryDetailFragments({
+    currentRoot: document,
+    nextRoot: nextMarkup,
+    currentPlayer,
+    nextPlayer
+  })) {
     return false;
   }
 
-  currentPlayer.setAttribute("style", nextPlayer.getAttribute("style") ?? "");
-  currentVideo.pause();
-  const nextSource = nextVideo.getAttribute("src");
-  if (nextSource) currentVideo.setAttribute("src", nextSource);
-  else currentVideo.removeAttribute("src");
-  currentVideo.dataset.historyAsset = nextVideo.dataset.historyAsset ?? "";
-  currentVideo.dataset.historyVersion = nextVideo.dataset.historyVersion ?? "";
-  currentVideo.loop = true;
-  currentVideo.load();
-  currentBack.replaceWith(nextBack);
-  currentSidebar.replaceWith(nextSidebar);
-  // The fast detail-navigation path preserves the player while swapping the
-  // surrounding detail UI. Tags live outside the sidebar, so they must be
-  // swapped explicitly as well; otherwise the old asset's tag controller and
-  // chips remain visible after Page Up/Page Down navigation.
-  if (currentTags && nextTags) currentTags.replaceWith(nextTags);
+  const nextBack = document.querySelector<HTMLElement>(".history-detail-back");
+  if (!nextBack) return false;
   // The shell controller owns the global Page Up/Page Down listeners.  The
-  // fullscreen fast path only replaces the detail fragments, so rebinding the
-  // shell here would leave the previous window listener alive and make each
-  // subsequent key press navigate more than once.  Bind only the newly-created
-  // back button; the existing shell listener remains the single global owner.
+  // fullscreen fast path only replaces detail fragments, so keep that shell
+  // binding untouched and let bindHistory rotate the detail-controller
+  // cleanup before attaching listeners to the newly-created fragments.
   nextBack.querySelector<HTMLButtonElement>("[data-page=history]")?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -2542,7 +2530,8 @@ function bindUpscaleDialog(): (() => void) {
 }
 
 function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
-  rendererApp.addPageCleanup(mountHistoryAssembly({
+  activeHistoryCleanup?.();
+  const cleanup = mountHistoryAssembly({
     context: rendererApp.context,
     playback,
     navigation: {
@@ -2646,7 +2635,16 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
     },
     openHistoryContextMenu: historyContextMenus.openHistory,
     openImageHistoryContextMenu: historyContextMenus.openImageHistory
-  }));
+  });
+  let disposed = false;
+  const managedCleanup: RendererCleanup = () => {
+    if (disposed) return;
+    disposed = true;
+    cleanup();
+    if (activeHistoryCleanup === managedCleanup) activeHistoryCleanup = null;
+  };
+  activeHistoryCleanup = managedCleanup;
+  rendererApp.addPageCleanup(managedCleanup);
 }
 
 function formSettings(): Settings {

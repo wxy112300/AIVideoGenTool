@@ -80,10 +80,23 @@ export function mountHistoryActionsController(
   });
 
   const patchFavoriteButtons = (assetId: string, favorite: boolean): void => {
+    const label = t(favorite ? uiKeys.history.page.unfavorite : uiKeys.history.page.favorite);
     root.querySelectorAll<HTMLButtonElement>("[data-history-favorite]").forEach((button) => {
       if (button.dataset.historyFavorite !== assetId) return;
       button.classList.toggle("is-favorite", favorite);
       button.setAttribute("aria-pressed", String(favorite));
+      button.setAttribute("aria-label", label);
+      button.title = label;
+      button.closest<HTMLElement>("[data-history-player-utility]")?.setAttribute("aria-label", label);
+    });
+  };
+
+  const favoriteUpdates = new Set<string>();
+  const setFavoriteBusy = (assetId: string, busy: boolean): void => {
+    root.querySelectorAll<HTMLButtonElement>("[data-history-favorite]").forEach((button) => {
+      if (button.dataset.historyFavorite !== assetId) return;
+      button.disabled = busy;
+      button.setAttribute("aria-busy", String(busy));
     });
   };
 
@@ -92,9 +105,12 @@ export function mountHistoryActionsController(
       stopAction(event);
       const assetId = button.dataset.historyFavorite;
       if (!assetId) return;
+      if (favoriteUpdates.has(assetId)) return;
       const current = context.getState()?.history.find((item) => item.id === assetId) ??
         context.getState()?.imageHistory.find((item) => item.id === assetId);
       if (!current) return;
+      favoriteUpdates.add(assetId);
+      setFavoriteBusy(assetId, true);
       try {
         const favorite = !current.favorite;
         options.setState(await options.updateHistoryMetadata(assetId, { favorite }));
@@ -103,6 +119,9 @@ export function mountHistoryActionsController(
         patchFavoriteButtons(assetId, favorite);
       } catch (error) {
         context.notify(error instanceof Error ? error.message : "收藏状态更新失败。", { renderPage: false, kind: "error" });
+      } finally {
+        favoriteUpdates.delete(assetId);
+        setFavoriteBusy(assetId, false);
       }
     }, { signal });
   });

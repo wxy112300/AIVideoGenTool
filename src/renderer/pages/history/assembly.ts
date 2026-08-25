@@ -91,6 +91,7 @@ function createHistoryPageOptions(
 ): HistoryPageOptions {
   return {
     t: context.t,
+    uiLocale: context.getState()?.settings.uiLocale,
     icon,
     escapeHtml,
     formatBytes,

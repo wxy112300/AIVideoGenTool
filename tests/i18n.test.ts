@@ -24,6 +24,9 @@ describe("UI locale foundation", () => {
     expect(translator.t(uiKeys.nav.create)).toBe("创建");
     expect(translator.t(uiKeys.settings.localeEnglish)).toBe("English");
     expect(translator.t(uiKeys.history.videoCount, { count: 4 })).toBe("4 个视频");
+    expect(translator.t(uiKeys.history.page.download)).toBe("下载");
+    expect(translator.t(uiKeys.history.page.playbackSpeed)).toBe("播放速度");
+    expect(translator.t(uiKeys.history.page.pictureInPicture)).toBe("画中画");
     expect(translator.t(uiKeys.create.imageToVideo)).toBe("图生视频");
     expect(translator.t("queue.remaining", { count: 3 }, "剩余 {count} 项")).toBe("剩余 3 项");
     expect(translator.t(uiKeys.queue.summary, { activeCount: 2, attentionCount: 1, status: "队列为空" }))

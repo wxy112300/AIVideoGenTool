@@ -140,14 +140,35 @@ function captureHistoryPlayback(
   if (page !== "history-detail") return null;
   const video = root.querySelector<HTMLVideoElement>(".history-player video");
   if (!video) return null;
+  const player = root.querySelector<HTMLElement>(".history-player");
+  const fullscreenElement = document.fullscreenElement;
   return {
     assetId: video.dataset.historyAsset ?? "",
     versionId: video.dataset.historyVersion ?? "",
     currentTime: video.currentTime,
     paused: video.paused,
     muted: video.muted,
-    playbackRate: video.playbackRate
+    volume: video.volume,
+    playbackRate: video.playbackRate,
+    fullscreen: Boolean(
+      player &&
+      fullscreenElement &&
+      (fullscreenElement === player || player.contains(fullscreenElement))
+    )
   };
+}
+
+function restoreHistoryPlayerFullscreen(
+  root: HTMLElement,
+  snapshot: HistoryPlaybackSnapshot
+): void {
+  if (!snapshot.fullscreen || document.fullscreenElement) return;
+  const player = root.querySelector<HTMLElement>(".history-player");
+  if (typeof player?.requestFullscreen !== "function") return;
+  // Fullscreen requests can be rejected when the render was triggered by an
+  // asynchronous state update rather than a user gesture. The current player
+  // remains usable in that case, so this is intentionally best effort.
+  void player.requestFullscreen().catch(() => undefined);
 }
 
 function restoreHistoryPlayback(
@@ -166,6 +187,9 @@ function restoreHistoryPlayback(
     // detached media element: doing so leaves an orphaned audio stream that
     // survives page navigation and overlaps the next detail player.
     if (!video.isConnected || !root.contains(video)) return;
+    if (Number.isFinite(snapshot.volume)) {
+      video.volume = Math.min(1, Math.max(0, snapshot.volume));
+    }
     video.muted = snapshot.muted;
     video.playbackRate = snapshot.playbackRate;
     if (Number.isFinite(video.duration)) {
@@ -248,6 +272,7 @@ export function createRenderCoordinator(
         options.syncAppLogPolling();
         if (page === "queue" && previousPage === "queue") options.restoreQueueScrollPosition();
         if (page === "history") options.restoreHistoryScrollPosition();
+        if (playback) restoreHistoryPlayerFullscreen(options.root, playback);
         restoreHistoryPlayback(options.root, playback);
         restoreFocus(options.root, focus);
       })().catch((error) => {
