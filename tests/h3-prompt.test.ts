@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   h3DurationPlan,
   h3ExplicitConstraintSummary,
+  h3PromptExpansionTokenBudget,
   normalizeH3PromptOutput
 } from "../src/core/h3-prompt.js";
 
@@ -15,6 +16,12 @@ describe("MiniMax H3 prompt templates", () => {
     expect(plan).toContain("Connect the first-frame state to the last-frame state");
     expect(plan).toContain("distance, scale, pace, acceleration");
     expect(plan).toContain("A walk or run from A to B must have enough continuous time");
+  });
+
+  it("keeps extra output headroom for long and reference-led prompts", () => {
+    expect(h3PromptExpansionTokenBudget("T2VA")).toBe(1280);
+    expect(h3PromptExpansionTokenBudget("R2V")).toBe(1792);
+    expect(h3PromptExpansionTokenBudget("FL2VA", 15)).toBe(1920);
   });
 
   it("extracts explicit audio and single-shot constraints from the user request", () => {

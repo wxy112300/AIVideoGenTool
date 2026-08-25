@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   countPromptWords,
-  recommendedH3PromptWords
+  h3PromptWordRange
 } from "../src/core/prompt-count.js";
 
 describe("prompt word counter", () => {
@@ -10,12 +10,12 @@ describe("prompt word counter", () => {
     expect(countPromptWords("女孩慢慢转身看向镜头")).toBeGreaterThan(3);
   });
 
-  it("uses a longer budget for R2V than ordinary H3 modes", () => {
-    expect(recommendedH3PromptWords("I2VA")).toBe(280);
-    expect(recommendedH3PromptWords("FL2VA")).toBe(280);
-    expect(recommendedH3PromptWords("L2VA")).toBe(280);
-    expect(recommendedH3PromptWords("R2V")).toBe(500);
-    expect(recommendedH3PromptWords("FL2VA", 15)).toBeGreaterThan(280);
-    expect(recommendedH3PromptWords("R2V", 15)).toBeGreaterThan(500);
+  it("uses a mode- and duration-aware soft writing range", () => {
+    expect(h3PromptWordRange("I2VA")).toEqual({ min: 250, max: 500 });
+    expect(h3PromptWordRange("FL2VA")).toEqual({ min: 250, max: 500 });
+    expect(h3PromptWordRange("L2VA")).toEqual({ min: 250, max: 500 });
+    expect(h3PromptWordRange("R2V")).toEqual({ min: 350, max: 500 });
+    expect(h3PromptWordRange("FL2VA", 15)).toEqual({ min: 550, max: 900 });
+    expect(h3PromptWordRange("R2V", 15)).toEqual({ min: 710, max: 900 });
   });
 });

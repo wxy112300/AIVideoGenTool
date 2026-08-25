@@ -4,6 +4,7 @@ import {
 } from "../../src/core/prompt-models.js";
 import {
   inferH3PromptMode,
+  h3PromptExpansionTokenBudget,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import {
@@ -230,9 +231,7 @@ export function buildMultimodalPromptWorkflow(
     ? 64
     : request.mode === "image-edit"
       ? 768
-      : mode === "R2V"
-        ? 1536
-        : 1024;
+      : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5);
   const workflow: Record<string, PromptNode> = {
     "vision-llm": {
       class_type: "VisionLLMNode",
@@ -243,9 +242,8 @@ export function buildMultimodalPromptWorkflow(
         model: runtimeSelection?.model ?? modelRelativePath(definition.targetDirectory, definition.modelFilename),
         mmproj: runtimeSelection?.mmproj ?? modelRelativePath(definition.targetDirectory, definition.mmprojFilename),
         max_tokens: maxTokens,
-        // Keep the existing multimodal recommendation as an intentional
-        // user-controlled range without allowing a
-        // high-creativity prompt pass to destabilize H3 output.
+        // Keep a bounded, duration-aware range while leaving enough headroom
+        // for dialogue, references, and longer H3 timelines.
         temperature: clamp(settings.promptCreativity, 0.2, 0.9),
         device,
         keep_model_loaded: retainModel

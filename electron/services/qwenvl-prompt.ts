@@ -4,6 +4,7 @@ import {
 } from "../../src/core/prompt-models.js";
 import {
   inferH3PromptMode,
+  h3PromptExpansionTokenBudget,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import {
@@ -238,7 +239,9 @@ export function buildQwenVlPeftPromptWorkflow(
       inputs: {
         model: ["qwenvl-lora", 0],
         prompt,
-        max_new_tokens: warmup ? 64 : mode === "R2V" ? 1536 : 1280
+        max_new_tokens: warmup
+          ? 64
+          : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5)
       }
     }
   };

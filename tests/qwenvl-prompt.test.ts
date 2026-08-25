@@ -59,6 +59,7 @@ describe("MiniMax H3 Prompt Rewriter LoRA 8B", () => {
     expect(workflow["qwenvl-model"]?.inputs.model_name).toBe("qwen3-vl-8b-instruct");
     expect(workflow["qwenvl-lora"]?.inputs.lora_name).toBe("minimax-h3-prompt-rewriter-8b");
     expect(workflow["qwenvl-caption"]?.class_type).toBe("QwenVLCaption");
+    expect(workflow["qwenvl-caption"]?.inputs.max_new_tokens).toBe(1280);
     expect(workflow["qwenvl-image-budget"]).toMatchObject({
       class_type: "ImageScaleToTotalPixels",
       inputs: { image: ["qwenvl-image", 0], megapixels: 1, resolution_steps: 32 }

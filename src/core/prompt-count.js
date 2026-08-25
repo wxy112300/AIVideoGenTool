@@ -10,11 +10,19 @@ export function countPromptWords(text) {
     }
     return count;
 }
-export function recommendedH3PromptWords(mode, durationSeconds = 5) {
+/**
+ * Returns a soft writing reference for the editor. H3 has no universal word
+ * ceiling here: the useful length depends on mode, duration, dialogue, shot
+ * count, and reference complexity. Keep this deliberately separate from the
+ * model output-token budget.
+ */
+export function h3PromptWordRange(mode, durationSeconds = 5) {
     const safeDuration = Number.isFinite(durationSeconds) && durationSeconds > 0
         ? durationSeconds
         : 5;
-    if (mode === "R2V")
-        return Math.max(500, Math.round(350 + safeDuration * 30));
-    return Math.max(280, Math.round(140 + safeDuration * 28));
+    const minimum = mode === "R2V"
+        ? Math.max(350, Math.round(170 + safeDuration * 36))
+        : Math.max(250, Math.round(100 + safeDuration * 30));
+    const maximum = Math.max(500, Math.round(300 + safeDuration * 40));
+    return { min: minimum, max: maximum };
 }

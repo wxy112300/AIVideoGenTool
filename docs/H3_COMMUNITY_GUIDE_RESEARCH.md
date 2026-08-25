@@ -124,9 +124,9 @@ non_diegetic_music:
 - 视觉内容：`fully_preserved`、`partially_preserved`、`attribute_transfer`、`weak_reference`
 - 音频内容：`fully_copy`、`partially_copy`、`reference`、`weak_reference`
 
-R2V 的 `detailed_description` 通常需要 350-500 个英文单词，并且要在首次出现时使用 Subject、Picture、Video、Audio 标签。
+R2V 的 `detailed_description` 对简单生成任务通常从 350-500 个英文单词开始，并且要在首次出现时使用 Subject、Picture、Video、Audio 标签；对白密集、参考关系复杂或时长更长时可以自然超过这个范围。
 
-当前应用已经有 R2V 六段结构、Slot 和标签编号；模板现在会根据参考作用区分可复用内容的 `<Subject N>` 和具体帧/构图锚点 `<Picture N>`，并在检查器中提示任务类型前缀和 retention 关系词。独立 Audio Slot 尚未接入界面，`detailed_description` 的 350-500 词目标也暂未强制。
+当前应用已经有 R2V 六段结构、Slot 和标签编号；模板现在会根据参考作用区分可复用内容的 `<Subject N>` 和具体帧/构图锚点 `<Picture N>`，并在检查器中提示任务类型前缀和 retention 关系词。独立 Audio Slot 尚未接入界面，`detailed_description` 的 350-500 词典型起始范围也暂未强制。
 
 ## 6. 加速资料
 
@@ -198,7 +198,7 @@ EasyCache 是 ComfyUI 内置节点，输出相对更保守；TeaCache 提速更�
 - summary 的任务关系前缀（`keyframe completion`、`reference generation`、`video editing`、`video continuation`、`audio reuse`、`audio reference`）；
 - 视觉关系词 `fully_preserved` / `partially_preserved` / `attribute_transfer` / `weak_reference` 与音频关系词 `fully_copy` / `partially_copy` / `reference` / `weak_reference`；
 - 稳定说话人 ID、`<d>[Language] ...</d>`、`<scenetrans>`、`<cutoff>` 和音频分层规则；
-- R2V 典型生成任务约 350–500 个有依据的英文单词，但禁止为凑字数发明参考图中不存在的内容。
+- R2V 简单生成任务可从约 350–500 个有依据的英文单词开始，但对白、多镜头、复杂参考关系和更长时长可以自然增加；禁止为凑字数发明参考图中不存在的内容。
 
 该 workflow 使用的 `LLMTextProcessor`、`AILab_ImageCompare`、`LoadVideoUI`、`VHS_LoadAudioUpload` 以及 rgthree bypass 组件，是它自己的 ComfyUI 方案。当前应用选择 `VisionLLMNode` + Qwen3.6 Q4 的解耦路径：图片直接交给多模态节点；视频/音频若当前后端无法读取，则只使用用户在参考角色中声明的描述，不伪造“已听到/已分析”的内容。这样保留了 Auto Prompter 的提示词质量逻辑，同时不把整套旧节点和旧模型锁死到 4090 默认运行路径。
 

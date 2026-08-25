@@ -5,7 +5,7 @@ import { extensionSafetyForTask, frameInterpolationMultiplier, generationFrameCo
 import { h3PromptPackFor, qwenImagePromptPackFor } from "../../prompt-packs";
 import { escapeHtml } from "../../shared/dom";
 import { uiKeys } from "../../../core/i18n-keys";
-import { countPromptWords, recommendedH3PromptWords } from "../../../core/prompt-count";
+import { countPromptWords, h3PromptWordRange } from "../../../core/prompt-count";
 import { modelCatalog } from "../../../core/catalog";
 export const h3ReferenceRolePromptLabels = {
     subject: "subject",
@@ -185,12 +185,13 @@ export function updatePromptWordCounter(promptText, mode, durationSeconds, ui = 
         counter.textContent = ui.t("wordCount", { count });
         return;
     }
-    const limit = recommendedH3PromptWords(mode, durationSeconds);
-    const overLimit = count > limit;
-    counter.className = `prompt-word-counter ${overLimit ? "warning" : ""}`;
-    counter.textContent = overLimit
-        ? ui.t("wordCountOverLimit", { count, limit })
-        : ui.t("wordCountSuggestion", { count, limit });
+    const range = h3PromptWordRange(mode, durationSeconds);
+    counter.className = "prompt-word-counter";
+    counter.textContent = ui.t("wordCountGuidance", {
+        count,
+        min: range.min,
+        max: range.max
+    });
 }
 export function updateImagePromptWordCounter(promptText, ui = h3PromptPackFor("zh-CN").ui) {
     const counter = document.querySelector("#image-prompt-word-counter");

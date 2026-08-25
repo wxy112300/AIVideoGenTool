@@ -39,8 +39,7 @@ export type H3PromptUiKey =
   | "manualEditVersion"
   | "expandedVersion"
   | "wordCount"
-  | "wordCountOverLimit"
-  | "wordCountSuggestion"
+  | "wordCountGuidance"
   | "imageWordCount"
   | "promptCheckTitle";
 

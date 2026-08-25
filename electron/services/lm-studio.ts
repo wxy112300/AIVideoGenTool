@@ -23,6 +23,7 @@ import {
   h3DurationPlan,
   h3EffectiveDurationSeconds as h3EffectiveDurationNumber,
   h3ExplicitConstraintSummary,
+  h3PromptExpansionTokenBudget,
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
@@ -344,9 +345,10 @@ export async function buildLmStudioChatRequest(
     return {
       model,
       temperature: 0.35,
-      max_tokens: h3Mode === "R2V"
-        ? 1800
-        : Math.min(1800, Math.max(1000, Math.ceil(h3EffectiveDurationNumber(request.h3DurationSeconds ?? 5) / 5.17) * 400)),
+      max_tokens: h3PromptExpansionTokenBudget(
+        h3Mode,
+        request.h3DurationSeconds ?? 5
+      ),
       messages: [
         { role: "system", content: h3VisionSystemPrompt(h3Mode, h3Preset, settings.h3PromptPresets[h3Preset]) },
         {

@@ -148,7 +148,7 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
       inputs: {
         model: "LLM/qwen3.6-27b-uncensored-q4/Qwen3.6-27B-Fable-Fus-711-UnHeretic-NM-DAU-NEO-MAX-NEO-Q4_K_M.gguf",
         mmproj: "LLM/qwen3.6-27b-uncensored-q4/mmproj-BF16.gguf",
-        max_tokens: 1536,
+        max_tokens: 1920,
         temperature: 0.9,
         device: "GPU",
         image: ["image-budget-0", 0]

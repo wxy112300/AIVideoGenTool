@@ -163,7 +163,7 @@ describe("native Qwen prompt workflow", () => {
     expect(workflow["text-generate"]?.inputs.sampling_mode).toBe("on");
     expect(workflow["text-generate"]?.inputs["sampling_mode.temperature"]).toBe(0.35);
     expect(workflow["text-generate"]?.inputs["sampling_mode.top_k"]).toBe(40);
-    expect(workflow["text-generate"]?.inputs.max_length).toBe(896);
+    expect(workflow["text-generate"]?.inputs.max_length).toBe(1280);
     expect(workflow.preview).toMatchObject({
       class_type: "PreviewAny",
       inputs: { source: ["text-generate", 0] }
@@ -184,7 +184,7 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("T2VA task rule");
     expect(instruction).not.toContain("For the target video, at 0.00 seconds into the target video");
     expect(instruction).toContain("Motion-first priority");
-    expect(instruction).toContain("Reference economy");
+    expect(instruction).toContain("Reference grounding");
     expect(instruction).toContain("User-intent preservation rule");
     expect(instruction).toContain("Final user-intent lock");
   });
@@ -348,7 +348,7 @@ describe("native Qwen prompt workflow", () => {
     );
 
     expect(instruction).toContain("Use three short shots and put the strongest camera beat first.");
-    expect(instruction).toContain("Compact H3 small-model contract");
+    expect(instruction).toContain("H3 small-model contract");
     expect(instruction).toContain("I2VA task rule");
   });
 

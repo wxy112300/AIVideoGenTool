@@ -71,7 +71,7 @@ export function h3AutoPrompterContract(mode, durationSeconds, referenceContext) 
             "Choose the summary prefix from the actual task relationship: [keyframe completion], [reference generation], [video editing], [video continuation], [audio reuse], and [audio reference]. Combine required types with +; the presence of a video or audio file alone does not select a type.",
             "In retention_analysis, use fully_preserved, partially_preserved, attribute_transfer, or weak_reference for visual labels; use fully_copy, partially_copy, reference, or weak_reference for audio labels. Do not treat an assistant-added action or background as a loss of reference fidelity.",
             "The detailed_description must turn those relationships into a continuous playback timeline; never dump an image caption or a list of disconnected objects.",
-            `For a typical reference-generation clip, target roughly 350-500 grounded English words in detailed_description across the ${duration.toFixed(2)}-second timeline. Never pad unsupported detail merely to reach a word count.`
+            `For a simple reference-generation clip, 350-500 grounded English words in detailed_description is a useful starting range across the ${duration.toFixed(2)}-second timeline, not a ceiling. Expand naturally when dialogue, multiple shots, complex reference roles, or the longer duration requires it; never pad unsupported detail or repeat facts merely to reach a word count.`
         ]
         : [
             "For I2VA/FL2VA/L2VA, keep the first/last frame alignment line exact and describe the transition rather than re-describing a frame as a static poster.",

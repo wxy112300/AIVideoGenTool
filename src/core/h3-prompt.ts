@@ -24,6 +24,23 @@ export function h3EffectiveDurationSeconds(durationSeconds: number): number {
   return alignedFrames / 24;
 }
 
+/**
+ * Output headroom for local H3 prompt rewriters. This is an adapter budget,
+ * not a limit on the final prompt: longer clips and R2V carry more fields,
+ * references, dialogue, and timeline detail.
+ */
+export function h3PromptExpansionTokenBudget(
+  mode: H3PromptMode,
+  durationSeconds = 5
+): number {
+  const durationSlices = Math.max(
+    1,
+    Math.ceil(h3EffectiveDurationSeconds(durationSeconds) / 5.17)
+  );
+  const minimum = mode === "R2V" ? 1792 : 1280;
+  return Math.min(2048, Math.max(minimum, durationSlices * 640));
+}
+
 export function h3ExplicitConstraintSummary(promptText: string): string {
   const prompt = promptText.trim();
   if (!prompt) return "";

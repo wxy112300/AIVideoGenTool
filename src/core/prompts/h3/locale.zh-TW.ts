@@ -24,8 +24,7 @@ export const uiLocale: PromptUiLocale = {
   manualEditVersion: "手動編輯",
   expandedVersion: "擴寫 {count}",
   wordCount: "目前 {count} 詞",
-  wordCountOverLimit: "目前 {count} 詞 · 已超過建議 {limit} 詞，仍可繼續輸入",
-  wordCountSuggestion: "目前 {count} 詞 · 建議不超過 {limit} 詞",
+  wordCountGuidance: "目前 {count} 詞 · 參考範圍 {min}–{max} 詞，複雜場景可繼續擴寫",
   imageWordCount: "目前 {count} 詞",
   promptCheckTitle: "H3 提示詞檢查"
 };

@@ -31,7 +31,7 @@ import { escapeHtml } from "../../shared/dom";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import type { RendererContext } from "../../contracts";
-import { countPromptWords, recommendedH3PromptWords } from "../../../core/prompt-count";
+import { countPromptWords, h3PromptWordRange } from "../../../core/prompt-count";
 import { modelCatalog } from "../../../core/catalog";
 import type { CreateModelOptionViewModel } from "./fragments";
 
@@ -279,12 +279,13 @@ export function updatePromptWordCounter(
     counter.textContent = ui.t("wordCount", { count });
     return;
   }
-  const limit = recommendedH3PromptWords(mode, durationSeconds);
-  const overLimit = count > limit;
-  counter.className = `prompt-word-counter ${overLimit ? "warning" : ""}`;
-  counter.textContent = overLimit
-    ? ui.t("wordCountOverLimit", { count, limit })
-    : ui.t("wordCountSuggestion", { count, limit });
+  const range = h3PromptWordRange(mode, durationSeconds);
+  counter.className = "prompt-word-counter";
+  counter.textContent = ui.t("wordCountGuidance", {
+    count,
+    min: range.min,
+    max: range.max
+  });
 }
 
 export function updateImagePromptWordCounter(

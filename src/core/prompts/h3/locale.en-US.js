@@ -21,8 +21,7 @@ export const uiLocale = {
     manualEditVersion: "Manual edit",
     expandedVersion: "Expanded {count}",
     wordCount: "{count} words",
-    wordCountOverLimit: "{count} words · above the suggested {limit}-word limit; you can continue typing",
-    wordCountSuggestion: "{count} words · suggested limit: {limit}",
+    wordCountGuidance: "{count} words · typical range {min}–{max}; complex scenes can run longer",
     imageWordCount: "{count} words",
     promptCheckTitle: "H3 prompt check"
 };

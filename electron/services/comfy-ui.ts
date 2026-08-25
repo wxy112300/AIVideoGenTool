@@ -41,6 +41,7 @@ import {
   h3DurationPlan,
   h3EffectiveDurationSeconds,
   h3ExplicitConstraintSummary,
+  h3PromptExpansionTokenBudget,
   h3PromptSectionSkeleton,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
@@ -214,9 +215,7 @@ export function buildNativePromptWorkflow(
           ? 8
           : request.mode === "image-edit"
             ? 896
-          : mode === "R2V"
-            ? 1536
-            : Math.min(1536, Math.max(896, Math.ceil(h3EffectiveDurationSeconds(request.h3DurationSeconds ?? 5) / 5.17) * 384)),
+            : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5),
         sampling_mode: "on",
         "sampling_mode.temperature": warmup ? 0.1 : 0.35,
         "sampling_mode.top_k": 40,

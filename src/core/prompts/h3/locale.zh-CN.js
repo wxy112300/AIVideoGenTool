@@ -21,8 +21,7 @@ export const uiLocale = {
     manualEditVersion: "手动编辑",
     expandedVersion: "扩写 {count}",
     wordCount: "当前 {count} 词",
-    wordCountOverLimit: "当前 {count} 词 · 已超过建议 {limit} 词，仍可继续输入",
-    wordCountSuggestion: "当前 {count} 词 · 建议不超过 {limit} 词",
+    wordCountGuidance: "当前 {count} 词 · 参考范围 {min}–{max} 词，复杂场景可继续扩写",
     imageWordCount: "当前 {count} 词",
     promptCheckTitle: "H3 提示词检查"
 };
