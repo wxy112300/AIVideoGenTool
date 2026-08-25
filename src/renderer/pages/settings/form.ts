@@ -1,4 +1,5 @@
 import type { H3PromptPreset, ImagePromptPreset, Settings } from "../../../types";
+import { imageOutputCountMax } from "../../../core/image-workflow";
 
 function value(id: string, fallback: string): string {
   return document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`)?.value.trim() ?? fallback;
@@ -63,7 +64,7 @@ export function readSettingsFromForm(
     defaultExtensionModel: value("default-extension-model", base.defaultExtensionModel),
     defaultImageModel: value("default-image-model", base.defaultImageModel),
     defaultImageQualityProfile: value("image-quality-profile", base.defaultImageQualityProfile),
-    imageOutputCount: Math.min(10, Math.max(1, Number(value("image-output-count-number", String(base.imageOutputCount))))),
+    imageOutputCount: Math.min(imageOutputCountMax, Math.max(1, Number(value("image-output-count-number", String(base.imageOutputCount))))),
     imageOutputFormat: "png",
     vramReserveGb: Number(value("vram-reserve", String(base.vramReserveGb))),
     h3AttentionMode: value("h3-attention-mode", base.h3AttentionMode) as Settings["h3AttentionMode"],

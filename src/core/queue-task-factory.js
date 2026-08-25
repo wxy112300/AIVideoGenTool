@@ -1,7 +1,7 @@
 import { activePromptIndexForDraft, promptVersionsForDraft } from "./draft-prompts.js";
 import { createOutputFilename } from "./filename.js";
 import { expandImageSeeds } from "./image-project.js";
-import { imageModelAdapterFor, imageOutputDimensions, normalizeImageTargetResolution } from "./image-workflow.js";
+import { imageModelAdapterFor, imageOutputDimensions, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
 import { uniqueUpscaleFilename, upscaleDimensions } from "./upscale.js";
 import { videoLoraSelection } from "./video-loras.js";
 import { ensureMotionContextSourceSlot } from "./h3-reference.js";
@@ -86,7 +86,8 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
     }));
     const basePicture = draft.pictures[0];
     const targetResolution = normalizeImageTargetResolution(draft.targetResolution, basePicture?.width ?? 0, basePicture?.height ?? 0);
-    const [outputWidth, outputHeight] = imageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0, adapter?.sourceResolutionOnly ? "source" : targetResolution, adapter?.textOnlyOutputWidth, adapter?.textOnlyOutputHeight);
+    const aspectRatio = adapter?.sourceResolutionOnly ? "source" : normalizeImageAspectRatio(draft.aspectRatio ?? "source");
+    const [outputWidth, outputHeight] = imageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0, adapter?.sourceResolutionOnly ? "source" : targetResolution, adapter?.textOnlyOutputWidth, adapter?.textOnlyOutputHeight, aspectRatio);
     const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
     return {
         id,
@@ -108,6 +109,7 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
         imageOutputSubfolder: outputTarget.subfolder,
         outputWidth,
         outputHeight,
+        aspectRatio,
         targetResolution: adapter?.sourceResolutionOnly ? "source" : targetResolution,
         ...(diffusionModelFilename ? { diffusionModelFilename } : {}),
         prompt: promptless ? "" : draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "",

@@ -106,6 +106,29 @@ export const hidreamO1RequiredNodeTypes = [
     "ImageCompositeMasked",
     "SaveImage"
 ];
+/** Native ComfyUI nodes used by the official OmniGen2 T2I/edit templates. */
+export const omnigen2RequiredNodeTypes = [
+    "UNETLoader",
+    "CLIPLoader",
+    "VAELoader",
+    "LoadImage",
+    "ImageScaleToTotalPixels",
+    "GetImageSize",
+    "VAEEncode",
+    "ReferenceLatent",
+    "CLIPTextEncode",
+    "EmptySD3LatentImage",
+    "BasicScheduler",
+    "KSamplerSelect",
+    "RandomNoise",
+    "DualCFGGuider",
+    "SamplerCustomAdvanced",
+    "VAEDecode",
+    "ImageScale",
+    "LoadImageMask",
+    "ImageCompositeMasked",
+    "SaveImage"
+];
 /** Native ComfyUI nodes used by the official BiRefNet background-removal template. */
 export const birefnetRequiredNodeTypes = [
     "LoadImage",

@@ -1,3 +1,18 @@
+export function sortProfilesByCatalogOrder(profiles, catalog, category) {
+    const orderById = new Map(catalog.list(category).map((entry, index) => [entry.definition.id, index]));
+    return [...profiles].sort((left, right) => {
+        const leftOrder = orderById.get(left.id);
+        const rightOrder = orderById.get(right.id);
+        if (leftOrder === undefined && rightOrder === undefined) {
+            return left.id.localeCompare(right.id);
+        }
+        if (leftOrder === undefined)
+            return 1;
+        if (rightOrder === undefined)
+            return -1;
+        return leftOrder - rightOrder;
+    });
+}
 export function createModelCatalog(entries) {
     const byId = new Map(entries.map((entry) => [entry.definition.id, entry]));
     return {

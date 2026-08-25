@@ -1,11 +1,11 @@
 import { createTranslator } from "../../../core/i18n";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import { uiKeys } from "../../../core/i18n-keys";
-import { modelCatalog } from "../../../core/catalog";
+import { modelCatalog, sortProfilesByCatalogOrder } from "../../../core/catalog";
 import { SPECTRUM_MODEL_AWARE_MINIMUM_VERSION, SPECTRUM_TURBO_MINIMUM_VERSION } from "../../../core/catalog";
 import { releaseVersionAtLeast } from "../../../core/release-version";
 import { h3PromptPackFor, h3PromptPresetForMode, qwenImagePromptPackFor } from "../../prompt-packs";
-import { imageModelCapabilityFor, imageLightningComponentFound, imageQualityProfileRequiresLightning, imageResolutionOptionsFor, normalizeImageTargetResolution, cachedImageProfileAllowsEnqueue } from "../../../core/image-workflow";
+import { imageModelCapabilityFor, imageLightningComponentFound, imageQualityProfileRequiresLightning, imageAspectRatioOptionsFor, imageResolutionOptionsFor, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution, cachedImageProfileAllowsEnqueue } from "../../../core/image-workflow";
 import { normalizeImageEditDraft } from "../../../core/image-project";
 import { promptModelSupportsImageEdit, isGemmaPromptModel } from "../../../core/prompt-models";
 import { ensureMotionContextSourceSlot, h3ReferenceSlotCounts, motionContextReferenceSlotsReady } from "../../../core/h3-reference";
@@ -95,9 +95,11 @@ export function buildImageEditPageViewModel(options) {
     const imageCapability = imageModelCapabilityFor(draft.modelId);
     const promptless = imageCapability.requiresPrompt === false;
     const basePicture = draft.pictures[0];
+    const selectedAspectRatio = normalizeImageAspectRatio(draft.aspectRatio ?? "source");
     const selectedTargetResolution = normalizeImageTargetResolution(draft.targetResolution, basePicture?.width ?? 0, basePicture?.height ?? 0);
-    const imageResolutionOptions = imageCapability.sourceResolutionOnly ? imageResolutionOptionsFor(basePicture?.width ?? 0, basePicture?.height ?? 0, imageCapability.textOnlyOutputWidth ?? 0, imageCapability.textOnlyOutputHeight ?? 0).slice(0, 1) : imageResolutionOptionsFor(basePicture?.width ?? 0, basePicture?.height ?? 0, imageCapability.textOnlyOutputWidth ?? 0, imageCapability.textOnlyOutputHeight ?? 0);
-    const imageModelProfiles = environmentScan?.modelProfiles.filter((profile) => profile.category === "image") ?? [];
+    const imageAspectRatioOptions = imageAspectRatioOptionsFor(basePicture?.width ?? 0, basePicture?.height ?? 0, imageCapability.textOnlyOutputWidth ?? 0, imageCapability.textOnlyOutputHeight ?? 0);
+    const imageResolutionOptions = imageResolutionOptionsFor(basePicture?.width ?? 0, basePicture?.height ?? 0, imageCapability.textOnlyOutputWidth ?? 0, imageCapability.textOnlyOutputHeight ?? 0, selectedAspectRatio);
+    const imageModelProfiles = sortProfilesByCatalogOrder(environmentScan?.modelProfiles.filter((profile) => profile.category === "image") ?? [], modelCatalog, "image");
     const imageModelOptions = imageModelProfiles.length
         ? imageModelProfiles
         : modelCatalog.list("image").map((entry) => ({
@@ -136,7 +138,7 @@ export function buildImageEditPageViewModel(options) {
         : 0;
     const imageModelInputCount = draft.pictures.length + markupGuideCount;
     const enqueueBlockReason = imageEditEnqueueBlockReason(draft, imageProfile, t);
-    const count = imageCapability.deterministic ? 1 : Math.min(10, Math.max(1, draft.outputCount));
+    const count = imageCapability.deterministic ? 1 : Math.min(imageOutputCountMax, Math.max(1, draft.outputCount));
     const backgroundRemoval = imageCapability.operation === "background-removal";
     const promptlessTitle = t(backgroundRemoval
         ? uiKeys.create.imageEdit.promptlessBackgroundRemovalTitle
@@ -159,9 +161,9 @@ export function buildImageEditPageViewModel(options) {
         imageCapabilityMaxPictures: imageCapability.maxPictures,
         imageModelOptionsMarkup: imageModelOptions.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.modelId === profile.id ? "selected" : ""} ${isImageModelSelectable(profile) ? "" : "disabled"}>${escapeHtml(profile.name)}${isImageModelSelectable(profile) ? "" : ` · ${escapeHtml(imageWorkflowStatus(profile, t))}`}</option>`).join(""),
         imageQualityOptionsMarkup: imageCapability.qualityProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${draft.qualityProfile === profile.id ? "selected" : ""} ${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? "disabled" : ""}>${escapeHtml(profile.label)}${profile.steps > 0 ? ` · ${profile.steps} ${t(uiKeys.create.videoSettings.stepsUnit)}` : ""}${imageQualityProfileRequiresLightning(profile.id) && !imageLightningComponentFound(imageProfile?.components ?? []) ? ` · ${t(uiKeys.create.videoSettings.missingLora)}` : ""}</option>`).join(""),
+        imageAspectRatioOptionsMarkup: imageAspectRatioOptions.map((option) => `<option value="${option.value}" ${selectedAspectRatio === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
         imageResolutionOptionsMarkup: imageResolutionOptions.map((option) => `<option value="${option.value}" ${selectedTargetResolution === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join(""),
         imageEnhanceMode,
-        imagePromptEnhanceTitle: imagePromptPack.presetDescriptions[imageEnhanceMode],
         imageDetailEnhanceTitle: imagePromptPack.presetDescriptions["detail-enhance"],
         imageFaithfulEnhanceTitle: imagePromptPack.presetDescriptions.faithful,
         imagePromptOptimizeTitle,
@@ -191,6 +193,8 @@ export function buildImageEditPageViewModel(options) {
         promptless,
         maskRequired: imageCapability.requiresMask === true,
         sourceResolutionOnly: imageCapability.sourceResolutionOnly === true,
+        imageAspectRatioVisible: imageCapability.sourceResolutionOnly !== true,
+        imageResolutionVisible: imageCapability.sourceResolutionOnly !== true,
         supportsTextOnly: imageCapability.supportsTextOnly === true,
         maskSupported: imageCapability.supportsMask === true,
         annotationSupported: imageCapability.supportsMarkup === true

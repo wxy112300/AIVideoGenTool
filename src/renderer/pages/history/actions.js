@@ -138,6 +138,8 @@ export function createHistoryActions(options) {
             parentVersionId: version.id,
             modelId,
             qualityProfile,
+            aspectRatio: version.aspectRatio ?? state.imageDraft.aspectRatio ?? "source",
+            targetResolution: version.targetResolution ?? state.imageDraft.targetResolution,
             pictures,
             promptVersions: [{
                     id: crypto.randomUUID(),

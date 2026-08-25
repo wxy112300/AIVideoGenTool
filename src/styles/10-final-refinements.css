@@ -736,7 +736,7 @@ body.image-markup-open {
 }
 
 .image-edit-settings-grid .range-field {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .image-edit-composer .settings-summary {

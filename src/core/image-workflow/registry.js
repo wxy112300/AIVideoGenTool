@@ -1,9 +1,10 @@
-import { birefnetBackgroundRemovalCapability, flux2Klein4bCapability, hidreamO1Capability, lamaInpaintCapability, qwenImageEdit2511Capability, qwenImageEdit2511CropStitchCapability, zImageCapability, zImageTurboCapability } from "./capabilities.js";
+import { birefnetBackgroundRemovalCapability, flux2Klein4bCapability, hidreamO1Capability, lamaInpaintCapability, omnigen2Capability, qwenImageEdit2511Capability, qwenImageEdit2511CropStitchCapability, zImageCapability, zImageTurboCapability } from "./capabilities.js";
 import { parseImageOutputs } from "./shared.js";
 import { compileQwenImageEditPrompt, compileQwenImageEditCropStitchPrompt, buildQwenImageEdit2511Workflow, buildQwenImageEdit2511CropStitchWorkflow, validateQwenImageEdit2511Workflow, validateQwenImageEdit2511CropStitchWorkflow } from "./qwen.js";
 import { compileFlux2Klein4bPrompt, buildFlux2Klein4bWorkflow, validateFlux2Klein4bWorkflow } from "./flux2-klein.js";
 import { compileZImagePrompt, buildZImageWorkflow, validateZImageWorkflow, buildZImageTurboWorkflow, validateZImageTurboWorkflow } from "./z-image.js";
 import { compileHiDreamO1Prompt, buildHiDreamO1Workflow, validateHiDreamO1Workflow } from "./hidream-o1.js";
+import { compileOmniGen2Prompt, buildOmniGen2Workflow, validateOmniGen2Workflow } from "./omnigen2.js";
 import { compileBirefnetInput, buildBirefnetBackgroundRemovalWorkflow, validateBirefnetWorkflow, compileLamaInpaintInput, buildLamaInpaintWorkflow, validateLamaInpaintWorkflow } from "./legacy.js";
 const parseOutputs = parseImageOutputs;
 export const qwenImageEdit2511Adapter = {
@@ -41,6 +42,13 @@ export const hidreamO1Adapter = {
     validateWorkflow: validateHiDreamO1Workflow,
     parseOutputs
 };
+export const omnigen2Adapter = {
+    ...omnigen2Capability,
+    compilePrompt: compileOmniGen2Prompt,
+    buildWorkflow: buildOmniGen2Workflow,
+    validateWorkflow: validateOmniGen2Workflow,
+    parseOutputs
+};
 export const lamaInpaintAdapter = {
     ...lamaInpaintCapability,
     compilePrompt: compileLamaInpaintInput,
@@ -69,6 +77,7 @@ export const imageModelAdapters = {
     [zImageAdapter.id]: zImageAdapter,
     [zImageTurboAdapter.id]: zImageTurboAdapter,
     [hidreamO1Adapter.id]: hidreamO1Adapter,
+    [omnigen2Adapter.id]: omnigen2Adapter,
     [lamaInpaintAdapter.id]: lamaInpaintAdapter,
     [birefnetBackgroundRemovalAdapter.id]: birefnetBackgroundRemovalAdapter
 };

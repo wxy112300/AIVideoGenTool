@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelCatalog } from "../src/core/catalog";
+import { modelCatalog, sortProfilesByCatalogOrder } from "../src/core/catalog";
 import { VIDEO_LORA_DEFINITIONS } from "../src/core/catalog/loras/definitions";
 import { BUILTIN_VIDEO_LORAS } from "../src/core/video-loras";
 
@@ -48,14 +48,15 @@ describe("model catalog", () => {
   it("covers every model category used by environment scanning", () => {
     expect(modelCatalog.list("prompt")).toHaveLength(9);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
+      "omnigen2",
       "hidream-o1-image",
-      "birefnet-background-removal",
-      "z-image-turbo",
       "z-image",
-      "lama-inpaint",
+      "flux2-klein-4b",
       "qwen-image-edit-2511",
+      "z-image-turbo",
       "qwen-image-edit-2511-crop-stitch",
-      "flux2-klein-4b"
+      "birefnet-background-removal",
+      "lama-inpaint"
     ]);
     expect(modelCatalog.list("upscale").map((entry) => entry.definition.id)).toEqual([
       "seedvr2-native-int8",
@@ -95,6 +96,35 @@ describe("model catalog", () => {
       .toEqual(expect.arrayContaining(["CheckpointLoaderSimple", "HiDreamO1ReferenceImages", "ImageCompositeMasked"]));
     expect(modelCatalog.get("hidream-o1-image")?.definition.scan?.components[0]?.installGuide?.downloadUrl)
       .toContain("hidream_o1_image_fp8_scaled.safetensors");
+    expect(modelCatalog.get("omnigen2")?.definition.scan?.components.map((component) => component.expected))
+      .toEqual([
+        "diffusion_models/omnigen2_fp16.safetensors",
+        "text_encoders/qwen_2.5_vl_fp16.safetensors",
+        "vae/ae.safetensors"
+      ]);
+    expect(modelCatalog.get("omnigen2")?.definition.scan?.runtimeNodeTypes)
+      .toEqual(expect.arrayContaining(["ReferenceLatent", "DualCFGGuider", "SamplerCustomAdvanced"]));
+    expect(modelCatalog.get("omnigen2")?.definition.scan?.components[0]?.installGuide?.downloadUrl)
+      .toContain("Omnigen2_ComfyUI_repackaged");
+  });
+
+  it("sorts scanned image profiles by catalog capability order", () => {
+    const profiles = [
+      { id: "lama-inpaint" },
+      { id: "unknown-image-model" },
+      { id: "omnigen2" },
+      { id: "z-image" },
+      { id: "flux2-klein-4b" }
+    ];
+
+    expect(sortProfilesByCatalogOrder(profiles, modelCatalog, "image").map((profile) => profile.id))
+      .toEqual([
+        "omnigen2",
+        "z-image",
+        "flux2-klein-4b",
+        "lama-inpaint",
+        "unknown-image-model"
+      ]);
   });
 
   it("points native SeedVR2 downloads directly at the required files", () => {

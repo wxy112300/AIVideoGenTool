@@ -133,14 +133,6 @@ export function mountCreatePromptController(options) {
             options.setH3PromptPreset(value);
         else
             options.setPromptEnhanceMode(value);
-        const select = event.currentTarget;
-        const description = select.selectedOptions[0]?.dataset.description ?? "";
-        const info = root.querySelector("#prompt-enhance-mode-info");
-        const tip = root.querySelector("#prompt-enhance-mode-tip");
-        if (info && description)
-            info.setAttribute("aria-label", description);
-        if (tip && description)
-            tip.textContent = description;
     }, { signal });
     root.querySelector("#release-prompt-model-create")?.addEventListener("click", () => {
         void options.togglePromptModel();

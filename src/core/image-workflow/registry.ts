@@ -4,6 +4,7 @@ import {
   flux2Klein4bCapability,
   hidreamO1Capability,
   lamaInpaintCapability,
+  omnigen2Capability,
   qwenImageEdit2511Capability,
   qwenImageEdit2511CropStitchCapability,
   zImageCapability,
@@ -35,6 +36,11 @@ import {
   buildHiDreamO1Workflow,
   validateHiDreamO1Workflow
 } from "./hidream-o1.js";
+import {
+  compileOmniGen2Prompt,
+  buildOmniGen2Workflow,
+  validateOmniGen2Workflow
+} from "./omnigen2.js";
 import {
   compileBirefnetInput,
   buildBirefnetBackgroundRemovalWorkflow,
@@ -86,6 +92,14 @@ export const hidreamO1Adapter: ImageModelAdapter = {
   parseOutputs
 };
 
+export const omnigen2Adapter: ImageModelAdapter = {
+  ...omnigen2Capability,
+  compilePrompt: compileOmniGen2Prompt,
+  buildWorkflow: buildOmniGen2Workflow,
+  validateWorkflow: validateOmniGen2Workflow,
+  parseOutputs
+};
+
 export const lamaInpaintAdapter: ImageModelAdapter = {
   ...lamaInpaintCapability,
   compilePrompt: compileLamaInpaintInput,
@@ -117,6 +131,7 @@ export const imageModelAdapters: Record<string, ImageModelAdapter> = {
   [zImageAdapter.id]: zImageAdapter,
   [zImageTurboAdapter.id]: zImageTurboAdapter,
   [hidreamO1Adapter.id]: hidreamO1Adapter,
+  [omnigen2Adapter.id]: omnigen2Adapter,
   [lamaInpaintAdapter.id]: lamaInpaintAdapter,
   [birefnetBackgroundRemovalAdapter.id]: birefnetBackgroundRemovalAdapter
 };

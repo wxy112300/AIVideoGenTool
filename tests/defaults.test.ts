@@ -29,6 +29,7 @@ describe("draft defaults", () => {
     expect(createDefaultSettings().defaultVideoModel).toBe("minimax_h3_fl2va");
     expect(createDefaultSettings().defaultExtensionModel).toBe("minimax_h3_ref2va");
     expect(createDefaultImageEditDraft().qualityProfile).toBe("balanced-20");
+    expect(createDefaultImageEditDraft().aspectRatio).toBe("source");
     expect(createDefaultImageEditDraft().targetResolution).toBe("source");
     expect(createDefaultSettings().defaultImageQualityProfile).toBe("balanced-20");
     expect(createDefaultSettings().ltxExtensionModelProfile).toBe("q3_k_m");

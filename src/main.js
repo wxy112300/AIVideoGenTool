@@ -7,12 +7,8 @@ import { registerRendererEvents } from "./renderer/state-events";
 import { creationMode, historyKind, page, setCreationMode, setHistoryKind, setPage, setRendererState, state } from "./renderer/renderer-state";
 import { rendererUiState as ui } from "./renderer/ui-state";
 import { createNotification, notificationAlreadyPending, notificationShouldPreserveError } from "./renderer/notifications";
-import { renderQueueTaskCard } from "./renderer/pages/queue/card";
-import { queueRemainingSeconds as calculateQueueRemainingSeconds, queueTaskRemainingSeconds as calculateQueueTaskRemainingSeconds } from "./renderer/pages/queue/helpers";
 import { createQueueLiveStatus } from "./renderer/pages/queue/live-status";
-import { mountQueueController } from "./renderer/pages/queue/controller";
-import { loadQueueInputPreviews as loadQueueInputPreviewsForPage } from "./renderer/pages/queue/input-previews";
-import { renderQueuePage } from "./renderer/pages/queue/page";
+import { createQueueAssembly } from "./renderer/pages/queue/assembly";
 import { createQueueScrollController } from "./renderer/pages/queue/scroll-controller";
 import { renderSettingsPage } from "./renderer/pages/settings/page";
 import { renderSettingsInstallGuideDialog } from "./renderer/pages/settings/fragments";
@@ -24,13 +20,12 @@ import { buildSettingsPageViewModel } from "./renderer/pages/settings/view-model
 import { createAppLogContextMenu } from "./renderer/pages/settings/log-context-menu";
 import { SettingsSaveCoordinator } from "./renderer/pages/settings/settings-save-coordinator";
 import { CustomNodeInstallQueue } from "./renderer/pages/settings/node-install-queue";
-import { renderHistoryDetailPage, renderHistoryPage, renderImageHistoryDetailPage, renderImageHistoryPage } from "./renderer/pages/history/page";
-import { mountHistoryAssembly } from "./renderer/pages/history/assembly";
+import { createHistoryAssembly, mountHistoryAssembly } from "./renderer/pages/history/assembly";
 import { createHistoryContextMenus } from "./renderer/pages/history/context-menus";
 import { createHistoryLayoutController } from "./renderer/pages/history/layout-controller";
 import { createHistoryActions } from "./renderer/pages/history/actions";
-import { currentHistoryVersion, currentImageHistoryVersion, historyAssetsByNewest, historyCoverCacheKey, historyCoverSeed, historyInitialCoverTime, historyMediaUrl, historyResolutionLabel, imageHistoryGenerationSummary, imageHistoryMediaUrl, imageHistoryThumbnailCacheKey, imageProjectsByNewest, preferredImageVersion, preferredVersion, versionShortEdge, versionVideoIndex } from "./renderer/pages/history/helpers";
-import { historyFilterSignature, historyFilterModelIds, historyTagNames, normalizeHistoryFilter } from "./core/history-filter";
+import { historyAssetsByNewest, imageProjectsByNewest, preferredImageVersion, preferredVersion, versionShortEdge } from "./renderer/pages/history/helpers";
+import { historyFilterSignature, normalizeHistoryFilter } from "./core/history-filter";
 import { createHistoryMediaRuntime } from "./renderer/pages/history/media-helpers";
 import { renderCreatePage, renderImageEditPage, } from "./renderer/pages/create/page";
 import { mountCreateAssembly } from "./renderer/pages/create/assembly";
@@ -42,7 +37,7 @@ import { h3AutoPromptSeeds } from "./core/prompts/h3/auto-seeds";
 import { activePromptIndexForDraft, clearPromptVersion, promptPatchForDraft, promptVersionsForDraft } from "./core/draft-prompts";
 import { PromptEditHistory } from "./core/prompt-edit-history";
 import { escapeHtml } from "./renderer/shared/dom";
-import { elapsedText, frameRateSummary, formatAssetBytes, formatBytes, formatElapsedDuration, formatFullHistoryTime, formatTrimTime, formatUpscaleEstimateRange, formatVideoDuration, historyRenderDuration, performanceCard, queueEstimateText, queueStageElapsedText } from "./renderer/shared/formatters";
+import { formatAssetBytes, formatBytes, formatElapsedDuration, formatFullHistoryTime, formatTrimTime, formatUpscaleEstimateRange, formatVideoDuration, historyRenderDuration, performanceCard } from "./renderer/shared/formatters";
 import { icon, renderIcons } from "./renderer/shared/icons";
 import { modelName, videoLoraPurposeLabel } from "./renderer/shared/labels";
 import { videoLoraInfoButton } from "./renderer/shared/markup";
@@ -53,12 +48,12 @@ import { mountUpscaleController } from "./renderer/shell/upscale-controller";
 import { acceptConfirmation as runConfirmation } from "./renderer/shell/confirmation-service";
 import { renderConfirmationDialog, renderWindowCloseDialog } from "./renderer/shell/dialogs";
 import { imageAssetResultSummary, renderDirectoryMigrationDialog, renderImageAssetLibraryDialog, renderUpscaleDialog } from "./renderer/shell/secondary-dialogs";
-import { createClearedDraft } from "./core/draft-defaults";
+import { createClearedDraft, createDefaultImageEditDraft } from "./core/draft-defaults";
 import { activateCreationDraft, creationDraftForMode, patchCreationDraftForMode, preserveLocalCreationDrafts } from "./core/creation-drafts";
-import { imageEditDraftFromQueueTask, imageProjectCoverVersion, nextImagePictureNumber, normalizeImageEditDraft } from "./core/image-project";
-import { imageModelCapabilityFor, imageReferenceInputPath, normalizeImageTargetResolution } from "./core/image-workflow";
+import { imageEditDraftFromQueueTask, nextImagePictureNumber, normalizeImageEditDraft } from "./core/image-project";
+import { imageModelCapabilityFor, imageOutputCountMax, imageReferenceInputPath, normalizeImageTargetResolution } from "./core/image-workflow";
 import { isComfyMultimodalPromptModel, isGemmaPromptModel, isQwenVlPeftPromptModel } from "./core/prompt-models";
-import { isMiniMaxH3R2vModel, isRetiredVideoModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "./core/workflow";
+import { isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "./core/workflow";
 import { shouldEnableSpectrumByDefault } from "./core/video-policy";
 import { modelCatalog } from "./core/catalog";
 import { rewriteHuggingFaceDownloadUrl } from "./core/download-url";
@@ -607,39 +602,6 @@ function createPage() {
         return imageEditPage();
     return renderCreatePage(buildVideoCreatePageViewModel(createViewModelDependencies()), createPageOptions);
 }
-function queuePage() {
-    return renderQueuePage(state, {
-        t: rendererApp.context.t,
-        escapeHtml,
-        performanceMetrics,
-        comfyRuntime,
-        environmentScanning,
-        queueRemainingSeconds: (tasks) => calculateQueueRemainingSeconds(tasks, state.history, state.imageHistory),
-        queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
-        performanceCard,
-        renderTaskCard: queueTaskCard,
-        icon
-    });
-}
-function queueTaskCard(task, queuePosition, moveAvailability) {
-    return renderQueueTaskCard(task, queuePosition, {
-        t: rendererApp.context.t,
-        taskPreviews,
-        queueRunning: state.queueRunning,
-        queueLifecycle: state.queueLifecycle,
-        queueLifecycleTaskId: state.queueLifecycleTaskId,
-        queueActionBusy,
-        icon,
-        escapeHtml,
-        modelName: (id) => modelName(id, state.settings.uiLocale),
-        frameRateSummary,
-        queueStageElapsedText: (queueTask) => queueStageElapsedText(queueTask, rendererApp.context.t),
-        queueTaskRemainingSeconds: (queueTask) => calculateQueueTaskRemainingSeconds(queueTask, state.history, state.imageHistory),
-        queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
-        elapsedText: (startedAt) => elapsedText(startedAt, rendererApp.context.t),
-        canDrag: moveAvailability?.canDrag
-    });
-}
 function draftFromQueueTask(task) {
     if (task.taskType === "upscale" || task.taskType === "image-generation" || task.status === "running")
         return null;
@@ -728,95 +690,6 @@ async function editQueueTask(taskId) {
         queueActionBusy = null;
         showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.cannotEditQueue), { kind: "error" });
     }
-}
-function createHistoryPageViewModel() {
-    return {
-        state,
-        historyKind,
-        historyLayout: historyLayoutController.getLayout(),
-        historyFilter: ui.historyFilter,
-        historyFilterPanelOpen: ui.historyFilterPanelOpen,
-        selectedHistoryAssetId: ui.selectedHistoryAssetId,
-        selectedHistoryVersionId: ui.selectedHistoryVersionId
-    };
-}
-const historyPageOptions = {
-    t: (key, params, fallback) => createTranslator(state.settings.uiLocale).t(key, params, fallback),
-    icon,
-    escapeHtml,
-    formatBytes,
-    videoLoraPurposeLabel: (purpose) => videoLoraPurposeLabel(purpose, uiText),
-    h3ReferenceRoleLabel: (role) => h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels[role],
-    imageReferenceRoleLabel: (role) => qwenImagePromptPackFor(state.settings.uiLocale).referenceRoleLabels[role],
-    modelName: (id) => modelName(id, state.settings.uiLocale),
-    formatFullHistoryTime,
-    formatVideoDuration,
-    formatElapsedDuration: (seconds) => formatElapsedDuration(seconds, uiText),
-    historyAssetsByNewest,
-    imageProjectsByNewest,
-    historyFilterModelIds: (currentState, kind) => historyFilterModelIds(currentState.history, currentState.imageHistory, kind),
-    historyFilterTagNames: (currentState, kind) => historyTagNames(currentState.history, currentState.imageHistory, kind),
-    preferredVersion,
-    currentHistoryVersion,
-    historyMediaUrl,
-    historyCoverCacheKey,
-    historyCoverSeed,
-    historyInitialCoverTime,
-    historyResolutionLabel: (asset, version) => historyResolutionLabel(asset, version, uiText),
-    historyRenderDuration: (version) => historyRenderDuration(version, uiText),
-    versionVideoIndex,
-    versionShortEdge,
-    preferredImageVersion,
-    currentImageHistoryVersion,
-    imageHistoryMediaUrl,
-    imageHistoryThumbnailCacheKey,
-    imageProjectCoverVersion,
-    isRetiredVideoModel,
-    imageHistoryGenerationSummary: (version) => imageHistoryGenerationSummary(version, uiText)
-};
-function imageHistoryPage() {
-    return renderImageHistoryPage(createHistoryPageViewModel(), historyPageOptions);
-}
-function historyPage() {
-    if (historyKind === "image")
-        return imageHistoryPage();
-    return renderHistoryPage(createHistoryPageViewModel(), historyPageOptions);
-}
-function bindHistoryMasonry() {
-    historyLayoutController.bindMasonry();
-}
-function bindHistoryAlbum() {
-    historyLayoutController.bindAlbum();
-}
-function bindImageHistoryViewer() {
-    historyLayoutController.bindImageHistoryViewer();
-}
-function switchHistoryLayout(nextLayout) {
-    historyLayoutController.switchLayout(nextLayout);
-}
-function bindHistoryTitleMarquees() {
-    historyLayoutController.bindTitleMarquees();
-}
-function historyDetailPage() {
-    const asset = state.history.find((item) => item.id === ui.selectedHistoryAssetId);
-    if (!asset) {
-        setPage("history");
-        return historyPage();
-    }
-    const version = currentHistoryVersion(asset, ui.selectedHistoryVersionId);
-    ui.selectedHistoryVersionId = version.id;
-    return renderHistoryDetailPage(createHistoryPageViewModel(), historyPageOptions);
-}
-function imageHistoryDetailPage() {
-    const project = state.imageHistory.find((item) => item.id === ui.selectedHistoryAssetId);
-    if (!project) {
-        setHistoryKind("image");
-        setPage("history");
-        return historyPage();
-    }
-    const version = currentImageHistoryVersion(project, ui.selectedHistoryVersionId);
-    ui.selectedHistoryVersionId = version.id;
-    return renderImageHistoryDetailPage(createHistoryPageViewModel(), historyPageOptions);
 }
 function enableSpectrumByDefaultIfAvailable(mode) {
     const spectrumNode = environmentScan?.customNodes.find((node) => node.id === "spectrum-minimax-h3");
@@ -997,10 +870,10 @@ function initializeRenderCoordinator() {
         t: rendererApp.context.t,
         renderPages: {
             create: createPage,
-            queue: queuePage,
-            history: historyPage,
-            historyDetail: historyDetailPage,
-            imageHistoryDetail: imageHistoryDetailPage,
+            queue: () => queueAssembly.render(rendererApp.context),
+            history: () => historyAssembly.renderList(rendererApp.context),
+            historyDetail: () => historyAssembly.renderDetail(rendererApp.context, "video"),
+            imageHistoryDetail: () => historyAssembly.renderDetail(rendererApp.context, "image"),
             settings: settingsPage
     },
     beforeRenderHistory: historyLayoutController.beforeRender,
@@ -1011,8 +884,7 @@ function initializeRenderCoordinator() {
     beforeRenderQueue: queueScrollController.beforeRender,
     bindCreate,
         bindQueue: () => {
-            bindQueue();
-            void loadQueueInputPreviewsForPage(rendererApp.context);
+            rendererApp.addPageCleanup(queueAssembly.mount(rendererApp.context));
         },
     bindHistory,
     bindSettings,
@@ -1027,6 +899,49 @@ function initializeRenderCoordinator() {
 const historyMediaRuntime = createHistoryMediaRuntime(rendererApp.context, () => page === "history");
 const historyLayoutController = createHistoryLayoutController(rendererApp.context, reportUserAction, () => historyFilterSignature(ui.historyFilter));
 const queueScrollController = createQueueScrollController(() => page);
+const queueAssembly = createQueueAssembly({
+    getState: () => state,
+    getPerformanceMetrics: () => performanceMetrics,
+    getComfyRuntime: () => comfyRuntime,
+    isEnvironmentScanning: () => environmentScanning,
+    getTaskPreviews: () => taskPreviews,
+    getQueueActionBusy: () => queueActionBusy,
+    setState: setRendererState,
+    setPromptRuntimeLoaded: (loaded) => {
+        promptRuntimeLoaded = loaded;
+    },
+    requestConfirmation: requestQueueTaskConfirmation,
+    editTask: (taskId) => {
+        void editQueueTask(taskId);
+    },
+    editUpscaleTask: (task) => {
+        const editingWaitingTask = task.status === "waiting";
+        ui.upscaleDialog = {
+            ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
+            assetId: task.sourceAssetId,
+            versionId: task.sourceVersionId,
+            targetHeight: task.targetHeight,
+            modelId: task.modelId,
+            tileMode: task.tileMode
+        };
+        renderOverlay();
+    },
+    rememberModalFocus
+});
+const historyAssembly = createHistoryAssembly({
+    getState: () => state,
+    getHistoryKind: () => historyKind,
+    getHistoryLayout: () => historyLayoutController.getLayout(),
+    getHistoryFilter: () => ui.historyFilter,
+    isHistoryFilterPanelOpen: () => ui.historyFilterPanelOpen,
+    getSelectedHistoryAssetId: () => ui.selectedHistoryAssetId,
+    getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
+    setSelectedHistoryVersionId: (versionId) => {
+        ui.selectedHistoryVersionId = versionId;
+    },
+    setHistoryKind,
+    navigateToHistory: () => setPage("history")
+});
 const historyActions = createHistoryActions({
     context: rendererApp.context,
     setState: setRendererState,
@@ -1437,7 +1352,7 @@ function updateHistoryDetailInPlace() {
     if (!currentPlayer || !currentVideo)
         return false;
     const nextMarkup = document.createElement("div");
-    nextMarkup.innerHTML = historyDetailPage();
+    nextMarkup.innerHTML = historyAssembly.renderDetail(rendererApp.context, "video");
     const nextPlayer = nextMarkup.querySelector(".history-player");
     const nextVideo = nextPlayer?.querySelector("video");
     const currentBack = document.querySelector(".history-detail-back");
@@ -1636,7 +1551,12 @@ async function acceptConfirmation() {
         setState: setRendererState,
         getFormSettings: formSettings,
         clearCreationDraft: (mode) => {
-            patchDraftForMode(mode, (draft) => createClearedDraft(draft));
+            if (mode === "image-edit") {
+                patchImageDraft(createDefaultImageEditDraft());
+            }
+            else {
+                patchDraftForMode(mode, (draft) => createClearedDraft(draft));
+            }
         },
         setServiceForceStopping: (value) => {
             serviceForceStopping = value;
@@ -2139,6 +2059,7 @@ function syncImageEditEnqueueUi() {
     const draft = state.imageDraft;
     const imageProfile = environmentScan?.modelProfiles.find((profile) => profile.id === draft.modelId);
     const reason = imageEditEnqueueBlockReason(draft, imageProfile, uiText);
+    const imageCapability = imageModelCapabilityFor(draft.modelId);
     const button = document.querySelector("#enqueue-image-edit");
     if (button) {
         button.disabled = Boolean(reason) || ui.enqueueBusy;
@@ -2154,9 +2075,11 @@ function syncImageEditEnqueueUi() {
     }
     const summaryTitle = document.querySelector(".image-edit-composer .interpolation-summary strong");
     if (summaryTitle) {
-        const count = Math.min(10, Math.max(1, draft.outputCount));
-        summaryTitle.textContent = imageProfile?.id === "lama-inpaint"
-            ? `生成 ${count} 张局部修补结果`
+        const count = imageCapability.deterministic ? 1 : Math.min(imageOutputCountMax, Math.max(1, draft.outputCount));
+        summaryTitle.textContent = imageCapability.requiresPrompt === false
+            ? uiText(imageCapability.operation === "background-removal"
+                ? uiKeys.create.imageEdit.promptlessBackgroundRemovalSummary
+                : uiKeys.create.imageEdit.promptlessLocalRemovalSummary, { count })
             : uiText(uiKeys.create.imageEdit.summary, {
                 count,
                 seedMode: draft.seed == null ? uiText(uiKeys.runtime.random) : uiText(uiKeys.runtime.same)
@@ -2215,7 +2138,13 @@ function bindCreate() {
             setEnqueueBusy: (value) => {
                 ui.enqueueBusy = value;
             },
-            setEnqueueBusyUi
+            setEnqueueBusyUi,
+            requestClearDraftConfirmation: () => {
+                rememberModalFocus();
+                ui.pendingConfirmation = { kind: "clear-draft", mode: "image-edit" };
+                ui.confirmationBusy = false;
+                renderOverlay();
+            }
         },
         createPrompt: {
             h3ReferenceRoleLabels: h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels,
@@ -2252,7 +2181,7 @@ function bindCreate() {
             rememberModalFocus();
             ui.pendingConfirmation = {
                 kind: "clear-draft",
-                mode: creationMode === "video-extension" ? "video-extension" : "image-to-video"
+                mode: creationMode
             };
             ui.confirmationBusy = false;
             renderOverlay();
@@ -2273,33 +2202,6 @@ function bindCreate() {
             }
         }
     }
-}
-function bindQueue() {
-    rendererApp.addPageCleanup(mountQueueController(rendererApp.context, {
-        setState: (nextState) => {
-            setRendererState(nextState);
-        },
-        setPromptRuntimeLoaded: (loaded) => {
-            promptRuntimeLoaded = loaded;
-        },
-        requestConfirmation: requestQueueTaskConfirmation,
-        editTask: (taskId) => {
-            void editQueueTask(taskId);
-        },
-        editUpscaleTask: (task) => {
-            const editingWaitingTask = task.status === "waiting";
-            ui.upscaleDialog = {
-                ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
-                assetId: task.sourceAssetId,
-                versionId: task.sourceVersionId,
-                targetHeight: task.targetHeight,
-                modelId: task.modelId,
-                tileMode: task.tileMode
-            };
-            renderOverlay();
-        },
-        rememberModalFocus
-    }));
 }
 function bindUpscaleDialog() {
     return mountUpscaleController(rendererApp.context, {

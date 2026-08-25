@@ -1,5 +1,5 @@
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
-import { normalizeImageTargetResolution } from "./image-workflow.js";
+import { imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
 import { isHistoryRating, normalizeHistoryTags } from "./history-filter.js";
 const imageOutputFormats = ["png", "jpeg", "webp"];
 const imageReferenceRoles = [
@@ -138,6 +138,9 @@ function normalizeImageAssetVersion(value, fallbackCreatedAt) {
             : {}),
         ...(typeof source.cfg === "number" && Number.isFinite(source.cfg)
             ? { cfg: source.cfg }
+            : {}),
+        ...(source.aspectRatio === "source" || typeof source.aspectRatio === "string"
+            ? { aspectRatio: normalizeImageAspectRatio(source.aspectRatio) }
             : {}),
         ...(source.targetResolution === "source" ||
             (typeof source.targetResolution === "number" && Number.isFinite(source.targetResolution))
@@ -334,7 +337,7 @@ export function normalizeImageEditDraft(value) {
         : [];
     const promptVersions = storedPromptVersions.length ? storedPromptVersions : defaults.promptVersions;
     const outputFormat = "png";
-    const outputCount = Math.min(10, Math.max(1, Math.trunc(typeof source.outputCount === "number" && Number.isFinite(source.outputCount)
+    const outputCount = Math.min(imageOutputCountMax, Math.max(1, Math.trunc(typeof source.outputCount === "number" && Number.isFinite(source.outputCount)
         ? source.outputCount
         : defaults.outputCount)));
     const activePromptVersion = Math.min(promptVersions.length - 1, Math.max(0, Math.trunc(source.activePromptVersion ?? defaults.activePromptVersion)));
@@ -363,6 +366,7 @@ export function normalizeImageEditDraft(value) {
         qualityProfile: typeof source.qualityProfile === "string" && source.qualityProfile.trim()
             ? source.qualityProfile
             : defaults.qualityProfile,
+        aspectRatio: normalizeImageAspectRatio(source.aspectRatio ?? defaults.aspectRatio),
         targetResolution: normalizeImageTargetResolution(source.targetResolution ?? defaults.targetResolution, pictures[0]?.width ?? 0, pictures[0]?.height ?? 0),
         outputCount,
         outputFormat,
@@ -403,6 +407,7 @@ export function imageEditDraftFromQueueTask(task, currentDraft) {
         activePromptVersion: 0,
         modelId: task.modelId,
         qualityProfile: task.qualityProfile,
+        aspectRatio: task.aspectRatio ?? "source",
         targetResolution: task.targetResolution ?? "source",
         outputCount: task.outputCount,
         outputFormat: "png",
@@ -494,7 +499,7 @@ export function expandImageSeeds(seed, outputCount, randomSeed = () => {
     crypto.getRandomValues(values);
     return values[0] ?? 0;
 }) {
-    const count = Math.min(10, Math.max(1, Math.trunc(outputCount)));
+    const count = Math.min(imageOutputCountMax, Math.max(1, Math.trunc(outputCount)));
     if (seed != null && Number.isFinite(seed)) {
         return Array.from({ length: count }, () => Math.trunc(seed));
     }

@@ -208,6 +208,28 @@ describe("queue execution snapshots", () => {
     expect(queued.workflowPath).toBe("builtin:image/z-image-turbo");
   });
 
+  it("snapshots an independent ratio and short-edge resolution for text-only generation", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "z-image-turbo";
+    draft.qualityProfile = "turbo-8";
+    draft.aspectRatio = "16:9";
+    draft.targetResolution = 720;
+    draft.pictures = [];
+    draft.promptVersions[0]!.text = "A quiet mountain village at dawn.";
+
+    const queued = imageTaskFromDraft(
+      draft,
+      "z_image_turbo_bf16.safetensors",
+      { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" },
+      clock(["task-z-image-ratio", "project-z-image-ratio", "run-z-image-ratio"])
+    );
+
+    expect(queued.aspectRatio).toBe("16:9");
+    expect(queued.targetResolution).toBe(720);
+    expect(queued.outputWidth).toBe(1280);
+    expect(queued.outputHeight).toBe(720);
+  });
+
   it("keeps a HiDream-O1 text-only task on its native 2048 fallback", () => {
     const draft = createDefaultImageEditDraft();
     draft.modelId = "hidream-o1-image";
@@ -226,6 +248,26 @@ describe("queue execution snapshots", () => {
     expect(queued.outputWidth).toBe(2048);
     expect(queued.outputHeight).toBe(2048);
     expect(queued.workflowPath).toBe("builtin:image/hidream-o1-image");
+  });
+
+  it("keeps an OmniGen2 text-only task on its native 1024 fallback", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "omnigen2";
+    draft.qualityProfile = "native";
+    draft.pictures = [];
+    draft.promptVersions[0]!.text = "A quiet mountain village at dawn.";
+
+    const queued = imageTaskFromDraft(
+      draft,
+      "omnigen2_fp16.safetensors",
+      { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" },
+      clock(["task-omnigen2", "project-omnigen2", "run-omnigen2"])
+    );
+
+    expect(queued.pictures).toEqual([]);
+    expect(queued.outputWidth).toBe(1024);
+    expect(queued.outputHeight).toBe(1024);
+    expect(queued.workflowPath).toBe("builtin:image/omnigen2");
   });
 
   it("never carries a hidden prompt into a promptless LaMa task snapshot", () => {
@@ -257,6 +299,10 @@ describe("queue execution snapshots", () => {
 
     expect(queued.prompt).toBe("");
     expect(queued.promptVersion).toBe(1);
+    expect(queued.outputCount).toBe(1);
+    expect(queued.aspectRatio).toBe("source");
+    expect(queued.outputWidth).toBe(1024);
+    expect(queued.outputHeight).toBe(768);
   });
 
   it("forces deterministic BiRefNet cutouts to one output even when the draft count is stale", () => {

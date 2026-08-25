@@ -1,5 +1,5 @@
 import { createDefaultQwenImagePromptPresets } from "../../prompt-packs";
-import { imageModelCapabilityFor } from "../../../core/image-workflow";
+import { imageModelCapabilityFor, imageOutputCountMax } from "../../../core/image-workflow";
 import { createDefaultH3PromptPresets } from "../../prompt-packs";
 import { createDefaultH3AutoPromptSeedInstructions } from "../../../core/prompts/h3/auto-seeds";
 import { isManagedPromptModel } from "../../../core/prompt-models";
@@ -43,7 +43,7 @@ export function mountSettingsFieldsController(
   const imageCountRange = root.querySelector<HTMLInputElement>("#image-output-count");
   const imageCountNumber = root.querySelector<HTMLInputElement>("#image-output-count-number");
   const syncImageCount = (value: string) => {
-    const count = Math.min(10, Math.max(1, Number(value) || 1));
+    const count = Math.min(imageOutputCountMax, Math.max(1, Number(value) || 1));
     if (imageCountRange) imageCountRange.value = String(count);
     if (imageCountNumber) imageCountNumber.value = String(count);
     options.setSettingsDraft(options.formSettings());

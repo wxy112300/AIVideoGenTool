@@ -5,6 +5,7 @@ import {
   buildBirefnetBackgroundRemovalWorkflow,
   buildFlux2Klein4bWorkflow,
   buildHiDreamO1Workflow,
+  buildOmniGen2Workflow,
   buildZImageTurboWorkflow,
   buildZImageWorkflow,
   buildQwenImageEdit2511Workflow,
@@ -12,6 +13,7 @@ import {
   cachedImageProfileAllowsEnqueue,
   compileFlux2Klein4bPrompt,
   compileHiDreamO1Prompt,
+  compileOmniGen2Prompt,
   compileZImagePrompt,
   compileQwenImageEditPrompt,
   compileQwenImageEditCropStitchPrompt,
@@ -19,16 +21,20 @@ import {
   flux2Klein4bRequiredNodeTypes,
   hidreamO1Capability,
   hidreamO1RequiredNodeTypes,
+  omnigen2Capability,
+  omnigen2RequiredNodeTypes,
   zImageCapability,
   zImageRequiredNodeTypes,
   zImageTurboCapability,
   zImageTurboRequiredNodeTypes,
   firstSupportedImageModelId,
   imageLightningComponentFound,
+  imageAspectRatioOptionsFor,
   imageMarkupPromptContext,
   imageOutputCandidateFromValue,
   imageOutputDimensions,
   imageResolutionOptionsFor,
+  normalizeImageAspectRatio,
   imageReferenceInputPath,
   buildLamaInpaintWorkflow,
   compileLamaInpaintInput,
@@ -41,6 +47,7 @@ import {
   renderImageWorkflow,
   validateFlux2Klein4bWorkflow,
   validateHiDreamO1Workflow,
+  validateOmniGen2Workflow,
   validateZImageTurboWorkflow,
   validateZImageWorkflow,
   validateLamaInpaintWorkflow,
@@ -111,6 +118,7 @@ describe("LaMa mask-only image workflow", () => {
     });
     expect(lamaInpaintCapability).toMatchObject({
       maxPictures: 1,
+      deterministic: true,
       requiresPrompt: false,
       requiresMask: true,
       sourceResolutionOnly: true
@@ -290,10 +298,28 @@ describe("Z-Image generation and reference workflow contract", () => {
     });
     expect(imageResolutionOptionsFor(0, 0, 1024, 1024).map((option) => option.value)).toEqual([
       "source",
+      2160,
+      1536,
+      1152,
+      1080,
+      1024,
+      768,
       720,
       640,
       480
     ]);
+    expect(imageAspectRatioOptionsFor(0, 0, 1024, 1024).map((option) => option.value)).toEqual([
+      "source",
+      "1:1",
+      "16:9",
+      "9:16",
+      "4:3",
+      "3:4",
+      "3:2",
+      "2:3"
+    ]);
+    expect(imageOutputDimensions(0, 0, 1024, 1024, 1024, "16:9")).toEqual([1824, 1024]);
+    expect(normalizeImageAspectRatio("invalid")).toBe("source");
   });
 });
 
@@ -394,6 +420,101 @@ describe("HiDream-O1-Image generation and reference workflow contract", () => {
   });
 });
 
+describe("OmniGen2 generation and multi-reference workflow contract", () => {
+  const run = { id: "run", index: 0, seed: 29, status: "running" as const };
+
+  it("uses the official dual-guidance T2I graph without a reference image", () => {
+    expect(omnigen2Capability).toMatchObject({
+      id: "omnigen2",
+      maxPictures: 2,
+      supportsTextOnly: true,
+      supportsMask: true,
+      supportsMarkup: true
+    });
+    expect(omnigen2Capability.qualityProfiles[0]).toMatchObject({
+      id: "native", steps: 20, cfg: 5, imageGuidance: 2
+    });
+    expect(omnigen2RequiredNodeTypes).toEqual(expect.arrayContaining([
+      "UNETLoader", "CLIPLoader", "ReferenceLatent", "DualCFGGuider", "SamplerCustomAdvanced"
+    ]));
+    const workflow = buildOmniGen2Workflow({
+      id: "omnigen2-text-task", taskType: "image-generation", status: "waiting",
+      createdAt: "2026-08-25T00:00:00.000Z", updatedAt: "2026-08-25T00:00:00.000Z",
+      outputFilename: "OmniGen2-test", projectId: "project", pictures: [],
+      outputWidth: 1024, outputHeight: 1024,
+      prompt: "A quiet mountain village at dawn.", promptVersion: 1, modelId: "omnigen2",
+      workflowPath: "builtin:image/omnigen2", qualityProfile: "native",
+      outputFormat: "png", outputCount: 1, runs: []
+    }, run);
+
+    expect(workflow.input1).toBeUndefined();
+    expect(workflow.clip?.inputs).toMatchObject({
+      clip_name: "qwen_2.5_vl_fp16.safetensors", type: "omnigen2", device: "default"
+    });
+    expect(workflow.latent?.inputs).toMatchObject({ width: 1024, height: 1024 });
+    expect(workflow.guider?.inputs).toMatchObject({
+      cfg_conds: 5, cfg_cond2_negative: 2, style: "regular"
+    });
+    expect(workflow.scheduler?.inputs).toMatchObject({ scheduler: "simple", steps: 20, denoise: 1 });
+    expect(validateOmniGen2Workflow(workflow)).toEqual([]);
+  });
+
+  it("chains two reference latents and composites a saved Mask over Picture 1", () => {
+    const masked = {
+      ...picture(1),
+      mask: {
+        documentPath: "mask.fabric.json",
+        maskPath: "mask.png",
+        revision: 1,
+        regionCount: 1,
+        updatedAt: "2026-08-25T00:00:00.000Z"
+      }
+    };
+    const workflow = buildOmniGen2Workflow({
+      id: "omnigen2-edit-task", taskType: "image-generation", status: "waiting",
+      createdAt: "2026-08-25T00:00:00.000Z", updatedAt: "2026-08-25T00:00:00.000Z",
+      outputFilename: "OmniGen2-edit", projectId: "project", pictures: [masked, picture(2)],
+      outputWidth: 1024, outputHeight: 1024,
+      prompt: "Use Picture 1 as the base and transfer the object from Picture 2 into it.", promptVersion: 1, modelId: "omnigen2",
+      workflowPath: "builtin:image/omnigen2", qualityProfile: "native",
+      outputFormat: "png", outputCount: 1, runs: []
+    }, run);
+
+    expect(workflow.input1?.inputs.image).toBe("{{IMAGE_0}}");
+    expect(workflow.input2?.inputs.image).toBe("{{IMAGE_1}}");
+    expect(workflow.scaledImage1?.inputs.megapixels).toBe(1);
+    expect(workflow.positiveReference2?.inputs.conditioning).toEqual(["positiveReference1", 0]);
+    expect(workflow.negativeReference2?.inputs.conditioning).toEqual(["negativeReference1", 0]);
+    expect(workflow.latent?.inputs.width).toEqual(["imageSize", 0]);
+    expect(workflow.mask?.inputs.image).toBe("{{MASK_0}}");
+    expect(workflow.composite?.inputs.destination).toEqual(["sourceImage", 0]);
+    expect(workflow.save?.inputs.images).toEqual(["composite", 0]);
+    expect(validateOmniGen2Workflow(
+      renderImageWorkflow(workflow, ["source.png", "object.png"], ["mask.png"])
+    )).toEqual([]);
+  });
+
+  it("uses a rendered annotation guide without exceeding the two-picture native limit", () => {
+    const marked = {
+      ...picture(1, "original.png"),
+      markup: {
+        documentPath: "guide.fabric.json",
+        renderedPath: "guide.png",
+        summary: "Only change the marked window.",
+        revision: 2,
+        objectCount: 1,
+        updatedAt: "2026-08-25T00:00:00.000Z"
+      }
+    };
+    const result = compileOmniGen2Prompt("Add a flower box to Picture 1.", [marked]);
+    expect(result.errors).toEqual([]);
+    expect(result.pictures).toHaveLength(1);
+    expect(result.pictures[0]?.absolutePath).toBe("guide.png");
+    expect(result.prompt).toContain("OmniGen2 reference and local-edit contract");
+    expect(result.prompt).toContain("Only change the marked window.");
+  });
+});
+
 describe("Qwen image edit workflow contract", () => {
   it("exposes a single-picture Crop/Stitch fusion capability", () => {
     expect(qwenImageEdit2511CropStitchCapability).toMatchObject({
@@ -473,19 +594,30 @@ describe("Qwen image edit workflow contract", () => {
     ])).toBe(true);
   });
 
-  it("offers source-relative output presets without exposing an upscale target", () => {
+  it("offers common output presets and keeps the ratio independent from resolution", () => {
     expect(imageResolutionOptionsFor(2816, 1152).map((option) => option.value)).toEqual([
       "source",
+      2160,
+      1536,
       1152,
       1080,
+      1024,
+      768,
       720,
       640,
       480
     ]);
     expect(imageOutputDimensions(2816, 1152, 1080)).toEqual([2640, 1080]);
-    expect(normalizeImageTargetResolution(2160, 2816, 1152)).toBe("source");
+    expect(normalizeImageTargetResolution(2160, 2816, 1152)).toBe(2160);
+    expect(imageOutputDimensions(2816, 1152, 1024, 0, 0, "16:9")).toEqual([1824, 1024]);
     expect(imageResolutionOptionsFor(1024, 1024).map((option) => option.value)).toEqual([
       "source",
+      2160,
+      1536,
+      1152,
+      1080,
+      1024,
+      768,
       720,
       640,
       480

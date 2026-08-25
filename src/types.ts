@@ -86,7 +86,8 @@ export interface H3ReferenceSlot {
 }
 
 export type ImageOutputFormat = "png" | "jpeg" | "webp";
-export type ImageTargetResolution = "source" | 2160 | 1152 | 1080 | 720 | 640 | 480;
+export type ImageTargetResolution = "source" | 2160 | 1536 | 1152 | 1080 | 1024 | 768 | 720 | 640 | 480;
+export type ImageAspectRatio = "source" | "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3";
 export type ImageReferenceRole =
   | "base"
   | "person"
@@ -188,6 +189,8 @@ export interface ImageEditDraft {
   activePromptVersion: number;
   modelId: string;
   qualityProfile: string;
+  /** Output canvas ratio. Legacy drafts omit this and normalize to source. */
+  aspectRatio?: ImageAspectRatio;
   targetResolution: ImageTargetResolution;
   outputCount: number;
   outputFormat: ImageOutputFormat;
@@ -365,6 +368,8 @@ export interface ImageGenerationQueueTask extends QueueTaskBase {
   imageOutputSubfolder?: string;
   outputWidth?: number;
   outputHeight?: number;
+  /** Queue-time snapshot of the output canvas ratio. */
+  aspectRatio?: ImageAspectRatio;
   targetResolution?: ImageTargetResolution;
   diffusionModelFilename?: string;
   prompt: string;
@@ -569,6 +574,7 @@ export interface ImageAssetVersion {
   qualityProfile?: string;
   steps?: number;
   cfg?: number;
+  aspectRatio?: ImageAspectRatio;
   targetResolution?: ImageTargetResolution;
   outputCount?: number;
   diffusionModelFilename?: string;

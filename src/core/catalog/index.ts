@@ -27,6 +27,7 @@ export const modelCatalog = createModelCatalog([
   ...loraModelEntries
 ]);
 
+export { sortProfilesByCatalogOrder } from "./model-catalog.js";
 export type { ModelCatalog } from "./model-catalog.js";
 export type {
   CatalogModelCapabilities,

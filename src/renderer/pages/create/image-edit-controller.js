@@ -1,6 +1,5 @@
 import { imageMarkupPromptContext, imageReferenceInputPath } from "../../../core/image-workflow";
-import { imageModelCapabilityFor, normalizeImageTargetResolution } from "../../../core/image-workflow";
-import { createDefaultImageEditDraft } from "../../../core/draft-defaults";
+import { imageModelCapabilityFor, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "../../../core/image-workflow";
 import { appendPromptVersion } from "../../../core/draft-prompts";
 import { activeImagePrompt, isPromptCancellationError } from "./helpers";
 import { uiKeys } from "../../../core/i18n-keys";
@@ -220,13 +219,6 @@ export function mountImageEditController(context, options) {
         options.setPromptEnhanceMode(select.value === "faithful"
             ? "faithful"
             : "detail-enhance");
-        const description = select.selectedOptions[0]?.dataset.description ?? "";
-        const info = root.querySelector("#prompt-enhance-mode-info");
-        const tip = root.querySelector("#prompt-enhance-mode-tip");
-        if (info && description)
-            info.setAttribute("aria-label", description);
-        if (tip && description)
-            tip.textContent = description;
     }, { signal });
     root.querySelector("#release-prompt-model-create")?.addEventListener("click", () => {
         void options.togglePromptModel();
@@ -315,7 +307,7 @@ export function mountImageEditController(context, options) {
             context.requestRender();
         }
     }, { signal });
-    for (const id of ["image-edit-model", "image-edit-quality", "image-edit-resolution", "image-edit-seed"]) {
+    for (const id of ["image-edit-model", "image-edit-quality", "image-edit-aspect-ratio", "image-edit-resolution", "image-edit-seed"]) {
         root.querySelector(`#${id}`)?.addEventListener("change", (event) => {
             const draft = getDraft();
             if (!draft)
@@ -330,22 +322,25 @@ export function mountImageEditController(context, options) {
                         : modelCapability?.qualityProfiles[0]?.id ?? "native",
                     ...(modelCapability?.maxPictures === 1 ? { pictures: draft.pictures.slice(0, 1) } : {}),
                     ...(modelCapability?.sourceResolutionOnly ? { targetResolution: "source" } : {}),
+                    ...(modelCapability?.sourceResolutionOnly ? { aspectRatio: "source" } : {}),
                     ...(modelCapability?.deterministic ? { outputCount: 1 } : {})
                 }
                 : id === "image-edit-quality"
                     ? { qualityProfile: value }
-                    : id === "image-edit-resolution"
-                        ? {
+                    : id === "image-edit-aspect-ratio"
+                        ? { aspectRatio: normalizeImageAspectRatio(value) }
+                        : id === "image-edit-resolution"
+                            ? {
                             targetResolution: normalizeImageTargetResolution(value, draft.pictures[0]?.width ?? 0, draft.pictures[0]?.height ?? 0)
-                        }
-                        : { seed: value ? Number(value) : null });
+                            }
+                            : { seed: value ? Number(value) : null });
             if (id !== "image-edit-seed")
                 context.requestRender();
         }, { signal });
     }
     const countInput = root.querySelector("#image-edit-count");
     countInput?.addEventListener("input", () => {
-        const outputCount = Math.min(10, Math.max(1, Number(countInput.value) || 1));
+        const outputCount = Math.min(imageOutputCountMax, Math.max(1, Number(countInput.value) || 1));
         options.patchImageDraft({ outputCount });
         const countValue = root.querySelector("#image-edit-count-value");
         if (countValue)
@@ -363,8 +358,7 @@ export function mountImageEditController(context, options) {
     }, { signal });
     root.querySelector("#clear-image-edit-draft")?.addEventListener("click", (event) => {
         event.stopImmediatePropagation();
-        options.patchImageDraft(createDefaultImageEditDraft());
-        context.requestRender();
+        options.requestClearDraftConfirmation();
     }, { signal });
     root.querySelector("#enqueue-image-edit")?.addEventListener("click", async (event) => {
         event.stopImmediatePropagation();

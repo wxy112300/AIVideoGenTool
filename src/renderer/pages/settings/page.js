@@ -1,5 +1,6 @@
 import { uiKeys } from "../../../core/i18n-keys";
-import { modelCatalog } from "../../../core/catalog";
+import { modelCatalog, sortProfilesByCatalogOrder } from "../../../core/catalog";
+import { imageOutputCountMax } from "../../../core/image-workflow";
 import { promptModelCapabilityOrderValue } from "../../../core/prompt-models";
 import { renderSettingsComfyCompatibilityPanel, renderSettingsEnvironmentIssuesPanel, renderSettingsEnvironmentOverview, renderSettingsModelScanCard } from "./fragments";
 import { settingsText } from "./copy";
@@ -64,7 +65,7 @@ export function renderSettingsPage(viewModel, options) {
         }));
     const extensionProfiles = videoSelectorProfiles.filter((profile) => modelCatalog.get(profile.id)?.definition.capabilities?.supportsVideoExtension === true);
     const loraProfiles = profiles.filter((profile) => profile.category === "lora");
-    const imageProfiles = profiles.filter((profile) => profile.category === "image");
+    const imageProfiles = sortProfilesByCatalogOrder(profiles.filter((profile) => profile.category === "image"), modelCatalog, "image");
     const imageQualityProfiles = options.getImageQualityProfiles(settings.defaultImageModel);
     const promptProfiles = profiles
         .filter((profile) => profile.category === "prompt")
@@ -367,10 +368,8 @@ export function renderSettingsPage(viewModel, options) {
           <label>${s("image.defaultQuality")}<select id="image-quality-profile">
             ${imageQualityProfiles.map((profile) => `<option value="${escape(profile.id)}" ${settings.defaultImageQualityProfile === profile.id ? "selected" : ""}>${escape(profile.label)} · ${profile.steps} ${s("sulphur.framesUnit")}</option>`).join("")}
           </select></label>
-          <label>${s("image.defaultCount")}<div class="inline-field"><input id="image-output-count" type="range" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><input id="image-output-count-number" type="number" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, settings.imageOutputCount))}"><span>${s("image.countUnit")}</span></div></label>
+          <label>${s("image.defaultCount")}<div class="inline-field"><input id="image-output-count" type="range" min="1" max="${imageOutputCountMax}" step="1" value="${Math.min(imageOutputCountMax, Math.max(1, settings.imageOutputCount))}"><input id="image-output-count-number" type="number" min="1" max="${imageOutputCountMax}" step="1" value="${Math.min(imageOutputCountMax, Math.max(1, settings.imageOutputCount))}"><span>${s("image.countUnit")}</span></div></label>
         </div>
-        <div class="scan-result" role="status" aria-live="polite">${viewModel.environmentScanning ? s("image.scanning") : environmentScan ? s("image.summary", { ready: imageComponentsReady, total: imageProfiles.length }) : s("image.waitingScan")}</div>
-        <p class="muted proxy-hint">${s("image.note")}</p>
       </section>
       <div class="model-profile-list">${imageProfiles.length ? imageProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("image.empty")}</div>`}</div>
     </section>`;

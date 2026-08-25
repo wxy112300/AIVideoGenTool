@@ -42,6 +42,7 @@ import { comfyUiSettingsForPromptRuntime } from "../electron/services/comfy-runt
 import {
   birefnetRequiredNodeTypes,
   hidreamO1RequiredNodeTypes,
+  omnigen2RequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes
 } from "../src/core/image-workflow.js";
 import { createDefaultSettings } from "../src/core/defaults.js";
@@ -1323,6 +1324,20 @@ describe("ComfyUI environment candidates", () => {
     });
     expect(profile?.runtimeMissingNodes).toEqual(
       expect.arrayContaining([...hidreamO1RequiredNodeTypes])
+    );
+  });
+
+  it("recognizes the OmniGen2 native model files and runtime contract", () => {
+    const profile = evaluateModelProfiles([
+      "diffusion_models\\omnigen2_fp16.safetensors",
+      "text_encoders\\qwen_2.5_vl_fp16.safetensors",
+      "vae\\ae.safetensors"
+    ], "q3_k_m", new Set()).find((item) => item.id === "omnigen2");
+
+    expect(profile?.available).toBe(true);
+    expect(profile?.components.map((item) => item.found)).toEqual([true, true, true]);
+    expect(profile?.runtimeMissingNodes).toEqual(
+      expect.arrayContaining([...omnigen2RequiredNodeTypes])
     );
   });
 });

@@ -1,3 +1,5 @@
+import { imageOutputCountMax } from "../../../core/image-workflow";
+
 function value(id, fallback) {
     return document.querySelector(`#${id}`)?.value.trim() ?? fallback;
 }
@@ -51,7 +53,7 @@ export function readSettingsFromForm(base, h3PromptPreset, imagePromptPreset) {
         defaultExtensionModel: value("default-extension-model", base.defaultExtensionModel),
         defaultImageModel: value("default-image-model", base.defaultImageModel),
         defaultImageQualityProfile: value("image-quality-profile", base.defaultImageQualityProfile),
-        imageOutputCount: Math.min(10, Math.max(1, Number(value("image-output-count-number", String(base.imageOutputCount))))),
+        imageOutputCount: Math.min(imageOutputCountMax, Math.max(1, Number(value("image-output-count-number", String(base.imageOutputCount))))),
         imageOutputFormat: "png",
         vramReserveGb: Number(value("vram-reserve", String(base.vramReserveGb))),
         h3AttentionMode: value("h3-attention-mode", base.h3AttentionMode),

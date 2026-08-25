@@ -101,4 +101,24 @@ describe("Qwen Image Edit prompt contract", () => {
     expect(content).toContain("one reference image is supplied as Picture 1");
     expect(content).toContain("低机位");
   });
+
+  it("selects the OmniGen2 contract for T2I, viewpoint, and two-picture composition", () => {
+    const request = {
+      prompt: "把 Picture 2 的人物放到 Picture 1 的场景中，并改成低机位。",
+      modelId: "qwen2.5-vl",
+      imageTargetModelId: "omnigen2",
+      mode: "image-edit" as const,
+      imagePaths: ["base.png", "person.png"],
+      referenceContext: "Picture 1 = base image\nPicture 2 = person"
+    };
+    const contract = imageEditPromptContractForTarget("omnigen2", "detail-enhance");
+    const content = imageEditPromptUserContentForTarget(request);
+    expect(contract).toContain("OmniGen2");
+    expect(contract).toContain("Picture 1 and Picture 2");
+    expect(contract).toContain("camera angle");
+    expect(contract).toContain("Mask");
+    expect(content).toContain("two reference images");
+    expect(content).toContain("Picture 2");
+    expect(content).toContain("低机位");
+  });
 });

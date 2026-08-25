@@ -52,10 +52,6 @@ type SettingsCopyKey =
   | "image.defaultQuality"
   | "image.defaultCount"
   | "image.countUnit"
-  | "image.scanning"
-  | "image.summary"
-  | "image.waitingScan"
-  | "image.note"
   | "image.empty"
   | "prompt.title"
   | "prompt.description"
@@ -316,10 +312,6 @@ const zhCN: SettingsCopyCatalog = {
   "image.defaultQuality": "默认质量档",
   "image.defaultCount": "默认生成数量",
   "image.countUnit": "张",
-  "image.scanning": "正在扫描图片模型组件和 ComfyUI 节点…",
-  "image.summary": "文件就绪 {ready}/{total}；运行验证要求见各模型的验证依据。Qwen 2511 当前最多支持 3 张 Picture",
-  "image.waitingScan": "等待首次扫描",
-  "image.note": "图片工作流固定输出 PNG，便于继续编辑和交给 H3 使用。Qwen 2511 会在下次启动 ComfyUI 时自动使用 CPU VAE、文本编码器卸载和更激进的显存回收；FLUX.2 Klein 4B 是 4090 的优先轻量候选。",
   "image.empty": "尚无图片模型扫描结果；请先确认模型目录后重新扫描。",
   "prompt.title": "本地提示词模型",
   "prompt.description": "统一由当前 ComfyUI 运行：Qwen 使用原生 TextGenerate，Gemma 4 使用 H3 Prompt Writer 扩展。",
@@ -573,10 +565,6 @@ const zhTW: SettingsCopyCatalog = {
   "image.defaultQuality": "預設品質檔位",
   "image.defaultCount": "預設生成數量",
   "image.countUnit": "張",
-  "image.scanning": "正在掃描圖片模型元件與 ComfyUI 節點…",
-  "image.summary": "檔案就緒 {ready}/{total}；執行驗證要求見各模型的驗證依據。Qwen 2511 目前最多支援 3 張 Picture",
-  "image.waitingScan": "等待首次掃描",
-  "image.note": "圖片工作流程固定輸出 PNG，方便繼續編輯並交給 H3 使用。Qwen 2511 下次啟動 ComfyUI 時會自動使用 CPU VAE、卸載文字編碼器並更積極回收顯存；FLUX.2 Klein 4B 是 4090 的優先輕量候選。",
   "image.empty": "尚無圖片模型掃描結果；請先確認模型目錄後重新掃描。",
   "prompt.title": "本機提示詞模型",
   "prompt.description": "統一由目前的 ComfyUI 執行：Qwen 使用原生 TextGenerate，Gemma 4 使用 H3 Prompt Writer 擴充。",
@@ -817,10 +805,6 @@ const enUS: SettingsCopyCatalog = {
   "image.defaultQuality": "Default quality profile",
   "image.defaultCount": "Default output count",
   "image.countUnit": "images",
-  "image.scanning": "Scanning image-model components and ComfyUI nodes…",
-  "image.summary": "Files ready: {ready}/{total}. See each model's validation evidence for runtime requirements. Qwen 2511 currently supports up to 3 Pictures",
-  "image.waitingScan": "Waiting for first scan",
-  "image.note": "Image workflows always output PNG for continued editing and H3 handoff. Qwen 2511 uses CPU VAE, text-encoder offload, and aggressive VRAM reclamation on the next ComfyUI start; FLUX.2 Klein 4B is the lightweight first choice for a 4090.",
   "image.empty": "No image model scan results; confirm the model directory and rescan.",
   "prompt.title": "Local prompt models",
   "prompt.description": "Runs through the current ComfyUI: Qwen uses native TextGenerate, while Gemma 4 uses the H3 Prompt Writer extension.",
@@ -1032,6 +1016,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "qwen/qwen3.5-2b": "RTX 2060 6GB 以上 · 系统 RAM 16GB 以上",
     "qwen-image-edit-2511": "RTX 3090/4090 24GB 以上 · CPU/offload",
     "flux2-klein-4b": "RTX 4080/4090 16GB 以上",
+    omnigen2: "RTX 4090 24GB 推荐 · FP16 · 20–50 步 · 最多 2 图",
     "hidream-o1-image": "RTX 4090 24GB 推荐 · FP8 scaled · Full 50 步",
     "z-image-turbo": "RTX 4090 24GB 推荐 · BF16 · 8 步",
     "z-image": "RTX 4090 24GB 推荐 · BF16 · 原生 30–40 步",
@@ -1065,6 +1050,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "qwen/qwen3.5-2b": "RTX 2060 6GB 以上 · 系統 RAM 16GB 以上",
     "qwen-image-edit-2511": "RTX 3090/4090 24GB 以上 · CPU/offload",
     "flux2-klein-4b": "RTX 4080/4090 16GB 以上",
+    omnigen2: "RTX 4090 24GB 推薦 · FP16 · 20–50 步 · 最多 2 圖",
     "hidream-o1-image": "RTX 4090 24GB 推薦 · FP8 scaled · Full 50 步",
     "z-image-turbo": "RTX 4090 24GB 推薦 · BF16 · 8 步",
     "z-image": "RTX 4090 24GB 推薦 · BF16 · 原生 30–40 步",
@@ -1098,6 +1084,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "qwen/qwen3.5-2b": "RTX 2060 6GB or higher · System RAM 16GB or higher",
     "qwen-image-edit-2511": "RTX 3090/4090 24GB or higher · CPU/offload",
     "flux2-klein-4b": "RTX 4080/4090 16GB or higher",
+    omnigen2: "RTX 4090 24GB recommended · FP16 · 20–50 steps · up to 2 images",
     "hidream-o1-image": "RTX 4090 24GB recommended · FP8 scaled · Full 50 steps",
     "z-image-turbo": "RTX 4090 24GB recommended · BF16 · 8 steps",
     "z-image": "RTX 4090 24GB recommended · BF16 · native 30–40 steps",

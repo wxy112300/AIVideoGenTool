@@ -89,7 +89,7 @@ describe("image project pure functions", () => {
     });
 
     expect(draft.mode).toBe("image-edit");
-    expect(draft.outputCount).toBe(10);
+    expect(draft.outputCount).toBe(6);
     expect(draft.outputFormat).toBe("png");
     expect(draft.seed).toBe(12);
     expect(draft.pictures[0]).toMatchObject({
@@ -136,13 +136,13 @@ describe("image project pure functions", () => {
     expect(draft.pictures[1]?.markup).toBeUndefined();
   });
 
-  it("falls back to the original size when a saved target exceeds the base image", () => {
+  it("preserves an explicit output resolution even when it exceeds the base image", () => {
     const draft = normalizeImageEditDraft({
       targetResolution: 2160,
       pictures: [{ id: "p1", pictureNumber: 1, absolutePath: "a.png", width: 1024, height: 1024 }]
     });
 
-    expect(draft.targetResolution).toBe("source");
+    expect(draft.targetResolution).toBe(2160);
   });
 
   it("uses the viewed generated file as Picture 1 when continuing an edit", () => {

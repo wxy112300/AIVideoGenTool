@@ -27,19 +27,8 @@ import {
   notificationAlreadyPending,
   notificationShouldPreserveError
 } from "./renderer/notifications";
-import {
-  queueTaskInput,
-  queueTaskInputUrl,
-  renderQueueTaskCard
-} from "./renderer/pages/queue/card";
-import {
-  queueRemainingSeconds as calculateQueueRemainingSeconds,
-  queueTaskRemainingSeconds as calculateQueueTaskRemainingSeconds
-} from "./renderer/pages/queue/helpers";
 import { createQueueLiveStatus } from "./renderer/pages/queue/live-status";
-import { mountQueueController } from "./renderer/pages/queue/controller";
-import { loadQueueInputPreviews as loadQueueInputPreviewsForPage } from "./renderer/pages/queue/input-previews";
-import { renderQueuePage, type QueueMoveAvailability } from "./renderer/pages/queue/page";
+import { createQueueAssembly } from "./renderer/pages/queue/assembly";
 import { createQueueScrollController } from "./renderer/pages/queue/scroll-controller";
 import { renderSettingsPage } from "./renderer/pages/settings/page";
 import { renderSettingsInstallGuideDialog } from "./renderer/pages/settings/fragments";
@@ -57,41 +46,23 @@ import {
   CustomNodeInstallQueue,
   type CustomNodeInstallPhase
 } from "./renderer/pages/settings/node-install-queue";
-import {
-  renderHistoryDetailPage,
-  renderHistoryPage,
-  renderImageHistoryDetailPage,
-  renderImageHistoryPage,
-  type HistoryPageOptions,
-  type HistoryPageViewModel
-} from "./renderer/pages/history/page";
 import { type HistoryPlaybackSnapshot } from "./renderer/pages/history/page-controller";
-import { mountHistoryAssembly } from "./renderer/pages/history/assembly";
+import {
+  createHistoryAssembly,
+  mountHistoryAssembly
+} from "./renderer/pages/history/assembly";
 import { createHistoryContextMenus } from "./renderer/pages/history/context-menus";
 import { createHistoryLayoutController } from "./renderer/pages/history/layout-controller";
 import { createHistoryActions } from "./renderer/pages/history/actions";
 import {
-  currentHistoryVersion,
-  currentImageHistoryVersion,
   historyAssetsByNewest,
-  historyCoverCacheKey,
-  historyCoverSeed,
-  historyInitialCoverTime,
-  historyMediaUrl,
-  historyResolutionLabel,
-  imageHistoryGenerationSummary,
-  imageHistoryMediaUrl,
-  imageHistoryThumbnailCacheKey,
   imageProjectsByNewest,
   preferredImageVersion,
   preferredVersion,
-  versionShortEdge,
-  versionVideoIndex
+  versionShortEdge
 } from "./renderer/pages/history/helpers";
 import {
   historyFilterSignature,
-  historyFilterModelIds,
-  historyTagNames,
   normalizeHistoryFilter
 } from "./core/history-filter";
 import { createHistoryMediaRuntime } from "./renderer/pages/history/media-helpers";
@@ -139,8 +110,6 @@ import {
 } from "./core/prompt-edit-history";
 import { escapeHtml } from "./renderer/shared/dom";
 import {
-  elapsedText,
-  frameRateSummary,
   formatAssetBytes,
   formatBytes,
   formatElapsedDuration,
@@ -150,8 +119,6 @@ import {
   formatVideoDuration,
   historyRenderDuration,
   performanceCard,
-  queueEstimateText,
-  queueStageElapsedText
 } from "./renderer/shared/formatters";
 import { icon, renderIcons } from "./renderer/shared/icons";
 import { modelName, videoLoraPurposeLabel } from "./renderer/shared/labels";
@@ -209,7 +176,7 @@ import type {
   WindowCloseRequest,
   WorkflowCapabilities
 } from "./types";
-import { createClearedDraft } from "./core/draft-defaults";
+import { createClearedDraft, createDefaultImageEditDraft } from "./core/draft-defaults";
 import {
   activateCreationDraft,
   creationDraftForMode,
@@ -219,13 +186,13 @@ import {
 import {
   imageEditDraftFromQueueTask,
   imageEditPicturesForVersion,
-  imageProjectCoverVersion,
   nextImagePictureNumber,
   normalizeImageEditDraft
 } from "./core/image-project";
 import {
   firstSupportedImageModelId,
   imageModelCapabilityFor,
+  imageOutputCountMax,
   imageReferenceInputPath,
   normalizeImageTargetResolution
 } from "./core/image-workflow";
@@ -240,7 +207,6 @@ import {
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
-  isRetiredVideoModel,
   motionContextMaxDurationSeconds,
   normalizeH3Steps
 } from "./core/workflow";
@@ -798,45 +764,6 @@ function createPage(): string {
   );
 }
 
-function queuePage(): string {
-  return renderQueuePage(state, {
-    t: rendererApp.context.t,
-    escapeHtml,
-    performanceMetrics,
-    comfyRuntime,
-    environmentScanning,
-    queueRemainingSeconds: (tasks) => calculateQueueRemainingSeconds(tasks, state.history, state.imageHistory),
-    queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
-    performanceCard,
-    renderTaskCard: queueTaskCard,
-    icon
-  });
-}
-
-function queueTaskCard(
-  task: QueueTask,
-  queuePosition: number,
-  moveAvailability?: QueueMoveAvailability
-): string {
-  return renderQueueTaskCard(task, queuePosition, {
-    t: rendererApp.context.t,
-    taskPreviews,
-    queueRunning: state.queueRunning,
-    queueLifecycle: state.queueLifecycle,
-    queueLifecycleTaskId: state.queueLifecycleTaskId,
-    queueActionBusy,
-    icon,
-    escapeHtml,
-    modelName: (id) => modelName(id, state.settings.uiLocale),
-    frameRateSummary,
-    queueStageElapsedText: (queueTask) => queueStageElapsedText(queueTask, rendererApp.context.t),
-    queueTaskRemainingSeconds: (queueTask) => calculateQueueTaskRemainingSeconds(queueTask, state.history, state.imageHistory),
-    queueEstimateText: (seconds) => queueEstimateText(seconds, rendererApp.context.t),
-    elapsedText: (startedAt) => elapsedText(startedAt, rendererApp.context.t),
-    canDrag: moveAvailability?.canDrag
-  });
-}
-
 function installGuideDialogHtml(): string {
   if (page !== "settings") return "";
   return renderSettingsInstallGuideDialog(
@@ -974,113 +901,6 @@ async function editQueueTask(taskId: string): Promise<void> {
     queueActionBusy = null;
     showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.cannotEditQueue), { kind: "error" });
   }
-}
-
-function createHistoryPageViewModel(): HistoryPageViewModel {
-  return {
-    state,
-    historyKind,
-    historyLayout: historyLayoutController.getLayout(),
-    historyFilter: ui.historyFilter,
-    historyFilterPanelOpen: ui.historyFilterPanelOpen,
-    selectedHistoryAssetId: ui.selectedHistoryAssetId,
-    selectedHistoryVersionId: ui.selectedHistoryVersionId
-  };
-}
-
-const historyPageOptions: HistoryPageOptions = {
-  t: (key, params, fallback) => createTranslator(state.settings.uiLocale).t(key, params, fallback),
-  icon,
-  escapeHtml,
-  formatBytes,
-  videoLoraPurposeLabel: (purpose) => videoLoraPurposeLabel(purpose, uiText),
-  h3ReferenceRoleLabel: (role) => h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels[role],
-  imageReferenceRoleLabel: (role) => qwenImagePromptPackFor(state.settings.uiLocale).referenceRoleLabels[role],
-  modelName: (id) => modelName(id, state.settings.uiLocale),
-  formatFullHistoryTime,
-  formatVideoDuration,
-  formatElapsedDuration: (seconds) => formatElapsedDuration(seconds, uiText),
-  historyAssetsByNewest,
-  imageProjectsByNewest,
-  historyFilterModelIds: (currentState, kind) => historyFilterModelIds(
-    currentState.history,
-    currentState.imageHistory,
-    kind
-  ),
-  historyFilterTagNames: (currentState, kind) => historyTagNames(
-    currentState.history,
-    currentState.imageHistory,
-    kind
-  ),
-  preferredVersion,
-  currentHistoryVersion,
-  historyMediaUrl,
-  historyCoverCacheKey,
-  historyCoverSeed,
-  historyInitialCoverTime,
-  historyResolutionLabel: (asset, version) => historyResolutionLabel(asset, version, uiText),
-  historyRenderDuration: (version) => historyRenderDuration(version, uiText),
-  versionVideoIndex,
-  versionShortEdge,
-  preferredImageVersion,
-  currentImageHistoryVersion,
-  imageHistoryMediaUrl,
-  imageHistoryThumbnailCacheKey,
-  imageProjectCoverVersion,
-  isRetiredVideoModel,
-  imageHistoryGenerationSummary: (version) => imageHistoryGenerationSummary(version, uiText)
-};
-
-function imageHistoryPage(): string {
-  return renderImageHistoryPage(createHistoryPageViewModel(), historyPageOptions);
-}
-
-function historyPage(): string {
-  if (historyKind === "image") return imageHistoryPage();
-  return renderHistoryPage(createHistoryPageViewModel(), historyPageOptions);
-}
-
-function bindHistoryMasonry(): void {
-  historyLayoutController.bindMasonry();
-}
-
-function bindHistoryAlbum(): void {
-  historyLayoutController.bindAlbum();
-}
-
-function bindImageHistoryViewer(): void {
-  historyLayoutController.bindImageHistoryViewer();
-}
-
-function switchHistoryLayout(nextLayout: "masonry" | "album"): void {
-  historyLayoutController.switchLayout(nextLayout);
-}
-
-function bindHistoryTitleMarquees(): void {
-  historyLayoutController.bindTitleMarquees();
-}
-
-function historyDetailPage(): string {
-  const asset = state.history.find((item) => item.id === ui.selectedHistoryAssetId);
-  if (!asset) {
-    setPage("history");
-    return historyPage();
-  }
-  const version = currentHistoryVersion(asset, ui.selectedHistoryVersionId);
-  ui.selectedHistoryVersionId = version.id;
-  return renderHistoryDetailPage(createHistoryPageViewModel(), historyPageOptions);
-}
-
-function imageHistoryDetailPage(): string {
-  const project = state.imageHistory.find((item) => item.id === ui.selectedHistoryAssetId);
-  if (!project) {
-    setHistoryKind("image");
-    setPage("history");
-    return historyPage();
-  }
-  const version = currentImageHistoryVersion(project, ui.selectedHistoryVersionId);
-  ui.selectedHistoryVersionId = version.id;
-  return renderImageHistoryDetailPage(createHistoryPageViewModel(), historyPageOptions);
 }
 
 function enableSpectrumByDefaultIfAvailable(
@@ -1274,10 +1094,10 @@ function initializeRenderCoordinator(): void {
   t: rendererApp.context.t,
   renderPages: {
     create: createPage,
-    queue: queuePage,
-    history: historyPage,
-    historyDetail: historyDetailPage,
-    imageHistoryDetail: imageHistoryDetailPage,
+    queue: () => queueAssembly.render(rendererApp.context),
+    history: () => historyAssembly.renderList(rendererApp.context),
+    historyDetail: () => historyAssembly.renderDetail(rendererApp.context, "video"),
+    imageHistoryDetail: () => historyAssembly.renderDetail(rendererApp.context, "image"),
     settings: settingsPage
   },
   beforeRenderHistory: historyLayoutController.beforeRender,
@@ -1288,8 +1108,7 @@ function initializeRenderCoordinator(): void {
   beforeRenderQueue: queueScrollController.beforeRender,
   bindCreate,
   bindQueue: () => {
-    bindQueue();
-    void loadQueueInputPreviewsForPage(rendererApp.context);
+    rendererApp.addPageCleanup(queueAssembly.mount(rendererApp.context));
   },
   bindHistory,
   bindSettings,
@@ -1312,6 +1131,49 @@ const historyLayoutController = createHistoryLayoutController(
   () => historyFilterSignature(ui.historyFilter)
 );
 const queueScrollController = createQueueScrollController(() => page);
+const queueAssembly = createQueueAssembly({
+  getState: () => state,
+  getPerformanceMetrics: () => performanceMetrics,
+  getComfyRuntime: () => comfyRuntime,
+  isEnvironmentScanning: () => environmentScanning,
+  getTaskPreviews: () => taskPreviews,
+  getQueueActionBusy: () => queueActionBusy,
+  setState: setRendererState,
+  setPromptRuntimeLoaded: (loaded) => {
+    promptRuntimeLoaded = loaded;
+  },
+  requestConfirmation: requestQueueTaskConfirmation,
+  editTask: (taskId) => {
+    void editQueueTask(taskId);
+  },
+  editUpscaleTask: (task) => {
+    const editingWaitingTask = task.status === "waiting";
+    ui.upscaleDialog = {
+      ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
+      assetId: task.sourceAssetId,
+      versionId: task.sourceVersionId,
+      targetHeight: task.targetHeight,
+      modelId: task.modelId as typeof ui.upscaleDialog extends { modelId: infer Model } ? Model : never,
+      tileMode: task.tileMode
+    };
+    renderOverlay();
+  },
+  rememberModalFocus
+});
+const historyAssembly = createHistoryAssembly({
+  getState: () => state,
+  getHistoryKind: () => historyKind,
+  getHistoryLayout: () => historyLayoutController.getLayout(),
+  getHistoryFilter: () => ui.historyFilter,
+  isHistoryFilterPanelOpen: () => ui.historyFilterPanelOpen,
+  getSelectedHistoryAssetId: () => ui.selectedHistoryAssetId,
+  getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
+  setSelectedHistoryVersionId: (versionId) => {
+    ui.selectedHistoryVersionId = versionId;
+  },
+  setHistoryKind,
+  navigateToHistory: () => setPage("history")
+});
 const historyActions = createHistoryActions({
   context: rendererApp.context,
   setState: setRendererState,
@@ -1727,7 +1589,7 @@ function updateHistoryDetailInPlace(): boolean {
   if (!currentPlayer || !currentVideo) return false;
 
   const nextMarkup = document.createElement("div");
-  nextMarkup.innerHTML = historyDetailPage();
+  nextMarkup.innerHTML = historyAssembly.renderDetail(rendererApp.context, "video");
   const nextPlayer = nextMarkup.querySelector<HTMLElement>(".history-player");
   const nextVideo = nextPlayer?.querySelector<HTMLVideoElement>("video");
   const currentBack = document.querySelector<HTMLElement>(".history-detail-back");
@@ -1923,7 +1785,11 @@ async function acceptConfirmation(): Promise<void> {
     setState: setRendererState,
     getFormSettings: formSettings,
     clearCreationDraft: (mode) => {
-      patchDraftForMode(mode, (draft) => createClearedDraft(draft));
+      if (mode === "image-edit") {
+        patchImageDraft(createDefaultImageEditDraft());
+      } else {
+        patchDraftForMode(mode, (draft) => createClearedDraft(draft));
+      }
     },
     setServiceForceStopping: (value) => {
       serviceForceStopping = value;
@@ -2512,6 +2378,7 @@ function syncImageEditEnqueueUi(): void {
     (profile) => profile.id === draft.modelId
   );
   const reason = imageEditEnqueueBlockReason(draft, imageProfile, uiText);
+  const imageCapability = imageModelCapabilityFor(draft.modelId);
   const button = document.querySelector<HTMLButtonElement>("#enqueue-image-edit");
   if (button) {
     button.disabled = Boolean(reason) || ui.enqueueBusy;
@@ -2528,13 +2395,15 @@ function syncImageEditEnqueueUi(): void {
     ".image-edit-composer .interpolation-summary strong"
   );
   if (summaryTitle) {
-    const count = Math.min(10, Math.max(1, draft.outputCount));
-    summaryTitle.textContent = imageProfile?.id === "lama-inpaint"
-      ? `生成 ${count} 张局部修补结果`
+    const count = imageCapability.deterministic ? 1 : Math.min(imageOutputCountMax, Math.max(1, draft.outputCount));
+    summaryTitle.textContent = imageCapability.requiresPrompt === false
+      ? uiText(imageCapability.operation === "background-removal"
+        ? uiKeys.create.imageEdit.promptlessBackgroundRemovalSummary
+        : uiKeys.create.imageEdit.promptlessLocalRemovalSummary, { count })
       : uiText(uiKeys.create.imageEdit.summary, {
-          count,
-          seedMode: draft.seed == null ? uiText(uiKeys.runtime.random) : uiText(uiKeys.runtime.same)
-        });
+        count,
+        seedMode: draft.seed == null ? uiText(uiKeys.runtime.random) : uiText(uiKeys.runtime.same)
+      });
   }
 }
 
@@ -2590,7 +2459,13 @@ function bindCreate(): void {
       setEnqueueBusy: (value) => {
         ui.enqueueBusy = value;
       },
-      setEnqueueBusyUi
+      setEnqueueBusyUi,
+      requestClearDraftConfirmation: () => {
+        rememberModalFocus();
+        ui.pendingConfirmation = { kind: "clear-draft", mode: "image-edit" };
+        ui.confirmationBusy = false;
+        renderOverlay();
+      }
     },
     createPrompt: {
       h3ReferenceRoleLabels: h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels,
@@ -2627,7 +2502,7 @@ function bindCreate(): void {
       rememberModalFocus();
       ui.pendingConfirmation = {
         kind: "clear-draft",
-        mode: creationMode === "video-extension" ? "video-extension" : "image-to-video"
+        mode: creationMode
       };
       ui.confirmationBusy = false;
       renderOverlay();
@@ -2647,34 +2522,6 @@ function bindCreate(): void {
       }
     }
   }
-}
-
-function bindQueue(): void {
-  rendererApp.addPageCleanup(mountQueueController(rendererApp.context, {
-    setState: (nextState) => {
-      setRendererState(nextState);
-    },
-    setPromptRuntimeLoaded: (loaded) => {
-      promptRuntimeLoaded = loaded;
-    },
-    requestConfirmation: requestQueueTaskConfirmation,
-    editTask: (taskId) => {
-      void editQueueTask(taskId);
-    },
-    editUpscaleTask: (task) => {
-      const editingWaitingTask = task.status === "waiting";
-      ui.upscaleDialog = {
-        ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
-        assetId: task.sourceAssetId,
-        versionId: task.sourceVersionId,
-        targetHeight: task.targetHeight,
-        modelId: task.modelId as typeof ui.upscaleDialog extends { modelId: infer Model } ? Model : never,
-        tileMode: task.tileMode
-      };
-      renderOverlay();
-    },
-    rememberModalFocus
-  }));
 }
 
 function bindUpscaleDialog(): (() => void) {

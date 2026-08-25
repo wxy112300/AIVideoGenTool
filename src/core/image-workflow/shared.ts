@@ -2,6 +2,7 @@ import type {
   ImageOutputFormat,
   ImageReference,
   ImageReferenceSnapshot,
+  ImageAspectRatio,
   ImageTargetResolution,
   ModelScanProfile
 } from "../../types.js";
@@ -23,13 +24,20 @@ export function cachedImageProfileAllowsEnqueue(
     !(profile.missingCustomNodeIds?.length)
   );
 }
-export const imageTargetResolutionValues = [2160, 1152, 1080, 720, 640, 480] as const;
+export const imageOutputCountMax = 6;
+export const imageTargetResolutionValues = [2160, 1536, 1152, 1080, 1024, 768, 720, 640, 480] as const;
+export const imageAspectRatioValues = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"] as const satisfies readonly Exclude<ImageAspectRatio, "source">[];
 
 export interface ImageResolutionOption {
   value: ImageTargetResolution;
   label: string;
   width: number;
   height: number;
+}
+
+export interface ImageAspectRatioOption {
+  value: ImageAspectRatio;
+  label: string;
 }
 
 function alignedImageDimension(value: number): number {
@@ -45,10 +53,28 @@ export function normalizeImageTargetResolution(
   const numeric = typeof value === "number" ? value : Number(value);
   const isSupported = imageTargetResolutionValues.some((candidate) => candidate === numeric);
   if (!isSupported) return "source";
-  const shortEdge = Math.min(sourceWidth, sourceHeight);
-  return sourceWidth > 0 && sourceHeight > 0 && numeric > shortEdge
-    ? "source"
-    : numeric as ImageTargetResolution;
+  return numeric as ImageTargetResolution;
+}
+
+function ratioValue(value: Exclude<ImageAspectRatio, "source">): number {
+  const parts = value.split(":");
+  const width = Number(parts[0] ?? 0);
+  const height = Number(parts[1] ?? 0);
+  return width / height;
+}
+
+function ratioLabelForDimensions(width: number, height: number): string {
+  if (!(width > 0 && height > 0)) return "原图比例";
+  const sourceRatio = width / height;
+  const match = imageAspectRatioValues.find((value) => Math.abs(sourceRatio - ratioValue(value)) < 0.01);
+  return match ?? `${width}×${height}`;
+}
+
+export function normalizeImageAspectRatio(value: unknown): ImageAspectRatio {
+  if (value === "source" || imageAspectRatioValues.some((candidate) => candidate === value)) {
+    return value as ImageAspectRatio;
+  }
+  return "source";
 }
 
 export function imageOutputDimensions(
@@ -56,7 +82,8 @@ export function imageOutputDimensions(
   sourceHeight: number,
   targetResolution: ImageTargetResolution,
   fallbackWidth = 0,
-  fallbackHeight = 0
+  fallbackHeight = 0,
+  aspectRatio: ImageAspectRatio = "source"
 ): [number, number] {
   const hasSource = Number.isFinite(sourceWidth) && Number.isFinite(sourceHeight) &&
     sourceWidth > 0 && sourceHeight > 0;
@@ -64,20 +91,50 @@ export function imageOutputDimensions(
     fallbackWidth > 0 && fallbackHeight > 0;
   const width = hasSource ? sourceWidth : hasFallback ? fallbackWidth : 0;
   const height = hasSource ? sourceHeight : hasFallback ? fallbackHeight : 0;
-  if (!width || !height || targetResolution === "source") {
+  if (!width || !height) {
     return [Math.max(0, Math.trunc(width)), Math.max(0, Math.trunc(height))];
   }
+  const normalizedAspectRatio = normalizeImageAspectRatio(aspectRatio);
+  if (targetResolution === "source" && normalizedAspectRatio === "source") {
+    return [Math.max(0, Math.trunc(width)), Math.max(0, Math.trunc(height))];
+  }
+  const sourceRatio = normalizedAspectRatio === "source"
+    ? width / height
+    : ratioValue(normalizedAspectRatio);
   const shortEdge = Math.min(width, height);
-  const normalizedTarget = normalizeImageTargetResolution(
-    targetResolution,
-    width,
-    height
-  );
-  if (normalizedTarget === "source") return [width, height];
-  const scale = normalizedTarget / shortEdge;
+  const normalizedTarget = normalizeImageTargetResolution(targetResolution);
+  const outputShortEdge = normalizedTarget === "source" ? shortEdge : normalizedTarget;
+  const outputWidth = sourceRatio >= 1
+    ? outputShortEdge * sourceRatio
+    : outputShortEdge;
+  const outputHeight = sourceRatio >= 1
+    ? outputShortEdge
+    : outputShortEdge / sourceRatio;
   return [
-    alignedImageDimension(width * scale),
-    alignedImageDimension(height * scale)
+    alignedImageDimension(outputWidth),
+    alignedImageDimension(outputHeight)
+  ];
+}
+
+export function imageAspectRatioOptionsFor(
+  sourceWidth = 0,
+  sourceHeight = 0,
+  fallbackWidth = 0,
+  fallbackHeight = 0
+): ImageAspectRatioOption[] {
+  const hasSource = sourceWidth > 0 && sourceHeight > 0;
+  const hasFallback = fallbackWidth > 0 && fallbackHeight > 0;
+  const sourceLabel = hasSource
+    ? `原图比例 · ${ratioLabelForDimensions(sourceWidth, sourceHeight)}`
+    : hasFallback
+      ? `默认比例 · ${ratioLabelForDimensions(fallbackWidth, fallbackHeight)}`
+      : "原图比例 · 上传后读取";
+  return [
+    { value: "source", label: sourceLabel },
+    ...imageAspectRatioValues.map((value) => ({
+      value,
+      label: `${value}${value === "1:1" ? " · 方形" : value === "16:9" || value === "3:2" ? " · 横向" : value === "9:16" || value === "2:3" ? " · 竖向" : ""}`
+    }))
   ];
 }
 
@@ -85,29 +142,33 @@ export function imageResolutionOptionsFor(
   sourceWidth = 0,
   sourceHeight = 0,
   fallbackWidth = 0,
-  fallbackHeight = 0
+  fallbackHeight = 0,
+  aspectRatio: ImageAspectRatio = "source"
 ): ImageResolutionOption[] {
   const hasSource = sourceWidth > 0 && sourceHeight > 0;
   const hasFallback = fallbackWidth > 0 && fallbackHeight > 0;
+  const sourceOptionDimensions = imageOutputDimensions(
+    sourceWidth,
+    sourceHeight,
+    "source",
+    fallbackWidth,
+    fallbackHeight,
+    aspectRatio
+  );
   const sourceLabel = hasSource
-    ? `原图 · ${sourceWidth}×${sourceHeight}`
+    ? `原图 · ${sourceOptionDimensions[0]}×${sourceOptionDimensions[1]}`
     : hasFallback
-      ? `默认 · ${fallbackWidth}×${fallbackHeight}`
+      ? `默认 · ${sourceOptionDimensions[0]}×${sourceOptionDimensions[1]}`
       : "原图 · 上传后读取";
   const options: ImageResolutionOption[] = [{
     value: "source",
     label: sourceLabel,
-    width: hasSource ? sourceWidth : fallbackWidth,
-    height: hasSource ? sourceHeight : fallbackHeight
+    width: sourceOptionDimensions[0],
+    height: sourceOptionDimensions[1]
   }];
-  const shortEdge = Math.min(
-    hasSource ? sourceWidth : fallbackWidth,
-    hasSource ? sourceHeight : fallbackHeight
-  );
   for (const target of imageTargetResolutionValues) {
-    if ((hasSource || hasFallback) && target > shortEdge) continue;
     const [width, height] = hasSource || hasFallback
-      ? imageOutputDimensions(sourceWidth, sourceHeight, target, fallbackWidth, fallbackHeight)
+      ? imageOutputDimensions(sourceWidth, sourceHeight, target, fallbackWidth, fallbackHeight, aspectRatio)
       : [0, 0];
     options.push({
       value: target,

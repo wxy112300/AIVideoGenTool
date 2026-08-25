@@ -17,6 +17,7 @@ export function createDefaultImageEditDraft(): ImageEditDraft {
     activePromptVersion: 0,
     modelId: "qwen-image-edit-2511",
     qualityProfile: "balanced-20",
+    aspectRatio: "source",
     targetResolution: "source",
     outputCount: 6,
     outputFormat: "png",

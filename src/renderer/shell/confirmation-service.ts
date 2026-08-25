@@ -3,7 +3,7 @@ import type { CreationMode, Page, RendererContext, RendererNotifyOptions } from 
 import { uiKeys } from "../../core/i18n-keys";
 
 export type ConfirmationRequest =
-  | { kind: "clear-draft"; mode: Exclude<CreationMode, "image-edit"> }
+  | { kind: "clear-draft"; mode: CreationMode }
   | { kind: "delete-history"; assetId: string; title: string }
   | { kind: "delete-image-version"; projectId: string; versionId: string; title: string }
   | { kind: "delete-video-version"; assetId: string; versionId: string; title: string }
@@ -20,7 +20,7 @@ export interface ConfirmationServiceOptions {
   getState(): AppState;
   setState(nextState: AppState): void;
   getFormSettings(): Settings;
-  clearCreationDraft(mode: Exclude<CreationMode, "image-edit">): void;
+  clearCreationDraft(mode: CreationMode): void;
   setServiceForceStopping(value: boolean): void;
   setServiceStatusMessage(message: string): void;
   scanEnvironment(settings: Settings): Promise<void>;

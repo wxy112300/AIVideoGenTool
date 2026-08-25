@@ -6,5 +6,6 @@ export * from "./image-workflow/qwen.js";
 export * from "./image-workflow/flux2-klein.js";
 export * from "./image-workflow/z-image.js";
 export * from "./image-workflow/hidream-o1.js";
+export * from "./image-workflow/omnigen2.js";
 export * from "./image-workflow/legacy.js";
 export * from "./image-workflow/registry.js";

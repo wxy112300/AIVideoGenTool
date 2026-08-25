@@ -69,6 +69,16 @@ describe("create enqueue preflight checks", () => {
     expect(imageEditEnqueueBlockReason(draft, readyImageProfile(draft.modelId))).toBe("");
   });
 
+  it("allows OmniGen2 text-to-image enqueue without a reference picture", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "omnigen2";
+    draft.qualityProfile = "native";
+    draft.pictures = [];
+    expect(imageEditEnqueueBlockReason(draft, readyImageProfile(draft.modelId))).toBe("请先填写图片编辑 Prompt");
+    draft.promptVersions[0]!.text = "A quiet mountain village at dawn.";
+    expect(imageEditEnqueueBlockReason(draft, readyImageProfile(draft.modelId))).toBe("");
+  });
+
   it("allows LaMa without a prompt only after a mask is saved", () => {
     const draft = createDefaultImageEditDraft();
     draft.modelId = "lama-inpaint";

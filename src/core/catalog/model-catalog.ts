@@ -13,6 +13,26 @@ export interface ModelCatalog {
   localized(modelId: string, locale?: UiLocale): CatalogModelLocale | undefined;
 }
 
+export function sortProfilesByCatalogOrder<T extends { id: string }>(
+  profiles: readonly T[],
+  catalog: ModelCatalog,
+  category: CatalogModelCategory
+): T[] {
+  const orderById = new Map(
+    catalog.list(category).map((entry, index) => [entry.definition.id, index] as const)
+  );
+  return [...profiles].sort((left, right) => {
+    const leftOrder = orderById.get(left.id);
+    const rightOrder = orderById.get(right.id);
+    if (leftOrder === undefined && rightOrder === undefined) {
+      return left.id.localeCompare(right.id);
+    }
+    if (leftOrder === undefined) return 1;
+    if (rightOrder === undefined) return -1;
+    return leftOrder - rightOrder;
+  });
+}
+
 export function createModelCatalog(entries: readonly CatalogModelEntry[]): ModelCatalog {
   const byId = new Map(entries.map((entry) => [entry.definition.id, entry]));
   return {

@@ -13,6 +13,9 @@ export const zImageTextEncoder = "qwen_3_4b.safetensors";
 export const zImageVae = "ae.safetensors";
 export const zImageTurboFunControlnetPatch = "Z-Image-Turbo-Fun-Controlnet-Union.safetensors";
 export const hidreamO1DiffusionModel = "hidream_o1_image_fp8_scaled.safetensors";
+export const omnigen2DiffusionModel = "omnigen2_fp16.safetensors";
+export const omnigen2TextEncoder = "qwen_2.5_vl_fp16.safetensors";
+export const omnigen2Vae = "ae.safetensors";
 
 export const qwenImageEdit2511Capability: ImageModelCapability = {
   id: "qwen-image-edit-2511",
@@ -99,6 +102,7 @@ export const lamaInpaintCapability: ImageModelCapability = {
   name: "LaMa 局部移除",
   maxPictures: 1,
   supportedFormats: ["png"],
+  deterministic: true,
   operation: "inpaint",
   requiresPrompt: false,
   requiresMask: true,
@@ -180,6 +184,37 @@ export const hidreamO1Capability: ImageModelCapability = {
       label: "Full 原生质量",
       steps: 50,
       cfg: 5,
+      lightning: false
+    }
+  ]
+};
+
+export const omnigen2Capability: ImageModelCapability = {
+  id: "omnigen2",
+  name: "OmniGen2",
+  maxPictures: 2,
+  supportedFormats: ["png"],
+  supportsTextOnly: true,
+  supportsMask: true,
+  supportsMarkup: true,
+  supportsSeed: true,
+  textOnlyOutputWidth: 1024,
+  textOnlyOutputHeight: 1024,
+  qualityProfiles: [
+    {
+      id: "native",
+      label: "原生质量",
+      steps: 20,
+      cfg: 5,
+      imageGuidance: 2,
+      lightning: false
+    },
+    {
+      id: "high-quality",
+      label: "高质量",
+      steps: 50,
+      cfg: 5,
+      imageGuidance: 2,
       lightning: false
     }
   ]

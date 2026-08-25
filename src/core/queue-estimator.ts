@@ -227,6 +227,7 @@ function imageSample(
   const model = modelInfo(version.modelId);
   const features = {
     qualityProfile: version.qualityProfile,
+    aspectRatio: version.aspectRatio,
     targetResolution: version.targetResolution,
     width: version.width,
     height: version.height,
@@ -314,6 +315,7 @@ function featureDistance(
 
   if (task.taskType === "image-generation") {
     compareText("qualityProfile", task.qualityProfile);
+    compareText("aspectRatio", task.aspectRatio);
     compareText("targetResolution", String(task.targetResolution ?? ""));
     compareNumber("width", task.outputWidth);
     compareNumber("height", task.outputHeight);

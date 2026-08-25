@@ -10,7 +10,7 @@ import type {
   ImageCropData
 } from "../types.js";
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
-import { normalizeImageTargetResolution } from "./image-workflow.js";
+import { imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution } from "./image-workflow.js";
 import { isHistoryRating, normalizeHistoryTags } from "./history-filter.js";
 
 const imageOutputFormats: ImageOutputFormat[] = ["png", "jpeg", "webp"];
@@ -153,6 +153,9 @@ function normalizeImageAssetVersion(
       : {}),
     ...(typeof source.cfg === "number" && Number.isFinite(source.cfg)
       ? { cfg: source.cfg }
+      : {}),
+    ...(source.aspectRatio === "source" || typeof source.aspectRatio === "string"
+      ? { aspectRatio: normalizeImageAspectRatio(source.aspectRatio) }
       : {}),
     ...(source.targetResolution === "source" ||
       (typeof source.targetResolution === "number" && Number.isFinite(source.targetResolution))
@@ -356,7 +359,7 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
   const promptVersions = storedPromptVersions.length ? storedPromptVersions : defaults.promptVersions;
   const outputFormat: ImageOutputFormat = "png";
   const outputCount = Math.min(
-    10,
+    imageOutputCountMax,
     Math.max(
       1,
       Math.trunc(
@@ -401,6 +404,7 @@ export function normalizeImageEditDraft(value: unknown): ImageEditDraft {
     qualityProfile: typeof source.qualityProfile === "string" && source.qualityProfile.trim()
       ? source.qualityProfile
       : defaults.qualityProfile,
+    aspectRatio: normalizeImageAspectRatio(source.aspectRatio ?? defaults.aspectRatio),
     targetResolution: normalizeImageTargetResolution(
       source.targetResolution ?? defaults.targetResolution,
       pictures[0]?.width ?? 0,
@@ -453,6 +457,7 @@ export function imageEditDraftFromQueueTask(
     activePromptVersion: 0,
     modelId: task.modelId,
     qualityProfile: task.qualityProfile,
+    aspectRatio: task.aspectRatio ?? "source",
     targetResolution: task.targetResolution ?? "source",
     outputCount: task.outputCount,
     outputFormat: "png",
@@ -567,7 +572,7 @@ export function expandImageSeeds(
     return values[0] ?? 0;
   }
 ): number[] {
-  const count = Math.min(10, Math.max(1, Math.trunc(outputCount)));
+  const count = Math.min(imageOutputCountMax, Math.max(1, Math.trunc(outputCount)));
   if (seed != null && Number.isFinite(seed)) {
     return Array.from({ length: count }, () => Math.trunc(seed));
   }

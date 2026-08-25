@@ -10,6 +10,8 @@ export interface ImageQualityProfile {
   label: string;
   steps: number;
   cfg: number;
+  /** Optional second guidance value used by dual-guidance edit models. */
+  imageGuidance?: number;
   lightning: boolean;
 }
 export interface ImageModelCapability {

@@ -15,6 +15,7 @@ import { expandImageSeeds } from "./image-project.js";
 import {
   imageModelAdapterFor,
   imageOutputDimensions,
+  normalizeImageAspectRatio,
   normalizeImageTargetResolution
 } from "./image-workflow.js";
 import { uniqueUpscaleFilename, upscaleDimensions } from "./upscale.js";
@@ -148,12 +149,16 @@ export function imageTaskFromDraft(
     basePicture?.width ?? 0,
     basePicture?.height ?? 0
   );
+  const aspectRatio = adapter?.sourceResolutionOnly
+    ? "source" as const
+    : normalizeImageAspectRatio(draft.aspectRatio ?? "source");
   const [outputWidth, outputHeight] = imageOutputDimensions(
     basePicture?.width ?? 0,
     basePicture?.height ?? 0,
     adapter?.sourceResolutionOnly ? "source" : targetResolution,
     adapter?.textOnlyOutputWidth,
-    adapter?.textOnlyOutputHeight
+    adapter?.textOnlyOutputHeight,
+    aspectRatio
   );
   const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
   return {
@@ -176,6 +181,7 @@ export function imageTaskFromDraft(
     imageOutputSubfolder: outputTarget.subfolder,
     outputWidth,
     outputHeight,
+    aspectRatio,
     targetResolution: adapter?.sourceResolutionOnly ? "source" : targetResolution,
     ...(diffusionModelFilename ? { diffusionModelFilename } : {}),
     prompt: promptless ? "" : draft.promptVersions[draft.activePromptVersion]?.text.trim() ?? "",

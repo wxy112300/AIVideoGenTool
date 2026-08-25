@@ -87,6 +87,7 @@ export function persistImageHistoryResult(
     references: queued.pictures.map((picture) => ({ ...picture })),
     qualityProfile: queued.qualityProfile,
     ...(quality && quality.steps > 0 ? { steps: quality.steps, cfg: quality.cfg } : {}),
+    aspectRatio: queued.aspectRatio,
     targetResolution: queued.targetResolution,
     outputCount: queued.outputCount,
     diffusionModelFilename: queued.diffusionModelFilename,
