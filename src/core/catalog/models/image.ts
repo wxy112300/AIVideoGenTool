@@ -1,6 +1,7 @@
 import {
   birefnetRequiredNodeTypes,
   flux2Klein4bRequiredNodeTypes,
+  hidreamO1RequiredNodeTypes,
   lamaInpaintRequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes,
   qwenImageEdit2511CropStitchRequiredNodeTypes,
@@ -11,6 +12,30 @@ import { component, entry, guide } from "./catalog-helpers.js";
 import type { CatalogModelEntry } from "../types.js";
 
 export const imageModelEntries: CatalogModelEntry[] = [
+  entry({
+    id: "hidream-o1-image", family: "hidream-o1", category: "image", adapterId: "hidream-o1-image", order: 121, inputModes: ["image"],
+    capabilities: { maxReferenceImages: 1, resolutions: [2160, 1152, 1080, 720, 640, 480] },
+    scan: { managedBy: "comfyui", vram: "FP8 scaled · 4090 24GB · Full 50 步", integrated: true, runtimeNodeTypes: hidreamO1RequiredNodeTypes, components: [
+      component(
+        "HiDream-O1-Image Full 扩散模型",
+        "checkpoints/hidream_o1_image_{fp8_scaled|mxfp8|bf16}.safetensors",
+        /checkpoints[\\/]hidream_o1_image_(?:fp8_scaled|mxfp8|bf16)\.safetensors$/i,
+        guide(
+          "Comfy-Org / HiDream-O1-Image",
+          "https://huggingface.co/Comfy-Org/HiDream-O1-Image/resolve/main/checkpoints/hidream_o1_image_fp8_scaled.safetensors",
+          "checkpoints",
+          "hidream_o1_image_fp8_scaled.safetensors",
+          "4090 优先使用 FP8 scaled；MXFP8/BF16 是可选精度变体。Full 模型用于编辑，官方建议 50 步。"
+        )
+      )
+    ] }
+  }, {
+    name: "HiDream-O1-Image · 原生生成/参考编辑", badge: "FP8 · Full 50 步 · 2048", description: "HiDream-O1-Image 原生像素空间工作流；无参考图走文生图，有参考图走官方单图 instruction edit，支持 Mask 合成回填、标注引导和裁剪输入。"
+  }, {
+    name: "HiDream-O1-Image · native generation/reference edit", badge: "FP8 · Full 50 steps · 2048", description: "Native pixel-space HiDream-O1-Image workflow. Text-only prompts use T2I; one reference uses the official instruction-edit path, with mask compositing, annotation guidance, and crop input support."
+  }, {
+    name: "HiDream-O1-Image · 原生生成／參考編輯", badge: "FP8 · Full 50 步 · 2048", description: "HiDream-O1-Image 原生像素空間工作流；無參考圖走文生圖，有參考圖走官方單圖 instruction edit，支援 Mask 合成回填、標註引導和裁剪輸入。"
+  }),
   entry({
     id: "birefnet-background-removal", family: "birefnet", category: "image", adapterId: "birefnet-background-removal", order: 120, inputModes: ["image"],
     capabilities: { maxReferenceImages: 1 },

@@ -82,4 +82,23 @@ describe("Qwen Image Edit prompt contract", () => {
       "Qwen-Image-Edit-2511"
     );
   });
+
+  it("selects the HiDream-O1 contract for layout, viewpoint, and local edits", () => {
+    const request = {
+      prompt: "把 Picture 1 改成低机位，并给招牌增加清晰的白色文字。",
+      modelId: "qwen2.5-vl",
+      imageTargetModelId: "hidream-o1-image",
+      mode: "image-edit" as const,
+      imagePaths: ["source.png"],
+      referenceContext: "Picture 1 = base image"
+    };
+    const contract = imageEditPromptContractForTarget("hidream-o1-image", "detail-enhance");
+    const content = imageEditPromptUserContentForTarget(request);
+    expect(contract).toContain("HiDream-O1-Image Full");
+    expect(contract).toContain("visible text");
+    expect(contract).toContain("camera angle");
+    expect(contract).toContain("Mask");
+    expect(content).toContain("one reference image is supplied as Picture 1");
+    expect(content).toContain("低机位");
+  });
 });

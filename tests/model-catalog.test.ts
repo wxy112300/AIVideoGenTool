@@ -48,6 +48,7 @@ describe("model catalog", () => {
   it("covers every model category used by environment scanning", () => {
     expect(modelCatalog.list("prompt")).toHaveLength(9);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
+      "hidream-o1-image",
       "birefnet-background-removal",
       "z-image-turbo",
       "z-image",
@@ -88,6 +89,12 @@ describe("model catalog", () => {
       .toEqual(expect.arrayContaining(["Canny", "ModelPatchLoader", "ZImageFunControlnet"]));
     expect(modelCatalog.get("z-image-turbo")?.definition.scan?.components.at(-1)?.optional)
       .toBe(true);
+    expect(modelCatalog.get("hidream-o1-image")?.definition.scan?.components.map((component) => component.expected))
+      .toEqual(["checkpoints/hidream_o1_image_{fp8_scaled|mxfp8|bf16}.safetensors"]);
+    expect(modelCatalog.get("hidream-o1-image")?.definition.scan?.runtimeNodeTypes)
+      .toEqual(expect.arrayContaining(["CheckpointLoaderSimple", "HiDreamO1ReferenceImages", "ImageCompositeMasked"]));
+    expect(modelCatalog.get("hidream-o1-image")?.definition.scan?.components[0]?.installGuide?.downloadUrl)
+      .toContain("hidream_o1_image_fp8_scaled.safetensors");
   });
 
   it("points native SeedVR2 downloads directly at the required files", () => {

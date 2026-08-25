@@ -4,17 +4,21 @@ import {
   birefnetRequiredNodeTypes,
   buildBirefnetBackgroundRemovalWorkflow,
   buildFlux2Klein4bWorkflow,
+  buildHiDreamO1Workflow,
   buildZImageTurboWorkflow,
   buildZImageWorkflow,
   buildQwenImageEdit2511Workflow,
   buildQwenImageEdit2511CropStitchWorkflow,
   cachedImageProfileAllowsEnqueue,
   compileFlux2Klein4bPrompt,
+  compileHiDreamO1Prompt,
   compileZImagePrompt,
   compileQwenImageEditPrompt,
   compileQwenImageEditCropStitchPrompt,
   flux2Klein4bCapability,
   flux2Klein4bRequiredNodeTypes,
+  hidreamO1Capability,
+  hidreamO1RequiredNodeTypes,
   zImageCapability,
   zImageRequiredNodeTypes,
   zImageTurboCapability,
@@ -36,6 +40,7 @@ import {
   qwenImageEdit2511CropStitchCapability,
   renderImageWorkflow,
   validateFlux2Klein4bWorkflow,
+  validateHiDreamO1Workflow,
   validateZImageTurboWorkflow,
   validateZImageWorkflow,
   validateLamaInpaintWorkflow,
@@ -289,6 +294,103 @@ describe("Z-Image generation and reference workflow contract", () => {
       640,
       480
     ]);
+  });
+});
+
+describe("HiDream-O1-Image generation and reference workflow contract", () => {
+  const run = { id: "run", index: 0, seed: 19, status: "running" as const };
+
+  it("uses the native Full pixel-space graph for text-only generation", () => {
+    expect(hidreamO1Capability).toMatchObject({
+      maxPictures: 1,
+      supportsTextOnly: true,
+      supportsMask: true,
+      supportsMarkup: true,
+      textOnlyOutputWidth: 2048,
+      textOnlyOutputHeight: 2048
+    });
+    expect(hidreamO1Capability.qualityProfiles[0]).toMatchObject({
+      id: "native", steps: 50, cfg: 5
+    });
+    expect(hidreamO1RequiredNodeTypes).toEqual(expect.arrayContaining([
+      "CheckpointLoaderSimple", "ModelNoiseScale", "HiDreamO1PatchSeamSmoothing",
+      "EmptyHiDreamO1LatentImage", "SamplerCustom", "ImageCompositeMasked"
+    ]));
+    const workflow = buildHiDreamO1Workflow({
+      id: "hidream-text-task", taskType: "image-generation", status: "waiting",
+      createdAt: "2026-08-25T00:00:00.000Z", updatedAt: "2026-08-25T00:00:00.000Z",
+      outputFilename: "HiDream-test", projectId: "project", pictures: [],
+      outputWidth: 2048, outputHeight: 2048,
+      prompt: "A quiet mountain village at dawn.", promptVersion: 1, modelId: "hidream-o1-image",
+      workflowPath: "builtin:image/hidream-o1-image", qualityProfile: "native",
+      outputFormat: "png", outputCount: 1, runs: []
+    }, run);
+
+    expect(workflow.input).toBeUndefined();
+    expect(workflow.checkpoint?.inputs.ckpt_name).toBe("hidream_o1_image_fp8_scaled.safetensors");
+    expect(workflow.scaledModel?.inputs.noise_scale).toBe(8);
+    expect(workflow.seamSmoothing?.inputs.passes).toBe("ramp_2_4");
+    expect(workflow.latent?.class_type).toBe("EmptyHiDreamO1LatentImage");
+    expect(workflow.latent?.inputs.width).toBe(2048);
+    expect(workflow.scheduler?.inputs.steps).toBe(50);
+    expect(workflow.sampler?.inputs.cfg).toBe(5);
+    expect(validateHiDreamO1Workflow(workflow)).toEqual([]);
+  });
+
+  it("routes one reference through the official autogrow input and keeps Mask compositing local", () => {
+    const masked = {
+      ...picture(1),
+      mask: {
+        documentPath: "mask.fabric.json",
+        maskPath: "mask.png",
+        revision: 1,
+        regionCount: 1,
+        updatedAt: "2026-08-25T00:00:00.000Z"
+      }
+    };
+    const workflow = buildHiDreamO1Workflow({
+      id: "hidream-mask-task", taskType: "image-generation", status: "waiting",
+      createdAt: "2026-08-25T00:00:00.000Z", updatedAt: "2026-08-25T00:00:00.000Z",
+      outputFilename: "HiDream-mask", projectId: "project", pictures: [masked],
+      outputWidth: 1024, outputHeight: 1024,
+      prompt: "Replace the marked sign with a wooden door.", promptVersion: 1, modelId: "hidream-o1-image",
+      workflowPath: "builtin:image/hidream-o1-image", qualityProfile: "native",
+      outputFormat: "png", outputCount: 1, runs: []
+    }, run);
+
+    expect(workflow.input?.inputs.image).toBe("{{IMAGE_0}}");
+    expect(workflow.reference?.inputs["images.image_1"]).toEqual(["input", 0]);
+    expect(workflow.sampler?.inputs.positive).toEqual(["reference", 0]);
+    expect(workflow.sampler?.inputs.negative).toEqual(["reference", 1]);
+    expect(workflow.mask?.inputs.image).toBe("{{MASK_0}}");
+    expect(workflow.composite?.class_type).toBe("ImageCompositeMasked");
+    expect(workflow.composite?.inputs.destination).toEqual(["sourceImage", 0]);
+    expect(workflow.composite?.inputs.source).toEqual(["exactSize", 0]);
+    expect(workflow.composite?.inputs.mask).toEqual(["mask", 0]);
+    expect(workflow.save?.inputs.images).toEqual(["composite", 0]);
+    expect(validateHiDreamO1Workflow(
+      renderImageWorkflow(workflow, ["source.png"], ["mask.png"])
+    )).toEqual([]);
+  });
+
+  it("uses one rendered annotation guide when there is no binary Mask", () => {
+    const marked = {
+      ...picture(1, "original.png"),
+      markup: {
+        documentPath: "guide.fabric.json",
+        renderedPath: "guide.png",
+        summary: "Only change the marked window.",
+        revision: 2,
+        objectCount: 1,
+        updatedAt: "2026-08-25T00:00:00.000Z"
+      }
+    };
+    const result = compileHiDreamO1Prompt("Add a flower box to Picture 1.", [marked]);
+    expect(result.errors).toEqual([]);
+    expect(result.pictures).toHaveLength(1);
+    expect(result.pictures[0]?.absolutePath).toBe("guide.png");
+    expect(result.prompt).toContain("HiDream-O1-Image reference and local-edit contract");
+    expect(result.prompt).toContain("Only change the marked window.");
   });
 });
 

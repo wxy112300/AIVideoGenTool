@@ -41,6 +41,7 @@ import {
 import { comfyUiSettingsForPromptRuntime } from "../electron/services/comfy-runtime-policy.js";
 import {
   birefnetRequiredNodeTypes,
+  hidreamO1RequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes
 } from "../src/core/image-workflow.js";
 import { createDefaultSettings } from "../src/core/defaults.js";
@@ -1307,6 +1308,21 @@ describe("ComfyUI environment candidates", () => {
     });
     expect(profile?.runtimeMissingNodes).toEqual(
       expect.arrayContaining(["Canny", "ModelPatchLoader", "ZImageFunControlnet"])
+    );
+  });
+
+  it("recognizes the HiDream-O1 Full checkpoint and native runtime contract", () => {
+    const profile = evaluateModelProfiles([
+      "checkpoints\\hidream_o1_image_fp8_scaled.safetensors"
+    ], "q3_k_m", new Set()).find((item) => item.id === "hidream-o1-image");
+
+    expect(profile?.available).toBe(true);
+    expect(profile?.components.find((item) => item.label.includes("HiDream-O1-Image"))).toMatchObject({
+      found: true,
+      matches: ["checkpoints/hidream_o1_image_fp8_scaled.safetensors"]
+    });
+    expect(profile?.runtimeMissingNodes).toEqual(
+      expect.arrayContaining([...hidreamO1RequiredNodeTypes])
     );
   });
 });

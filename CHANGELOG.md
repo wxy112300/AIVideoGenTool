@@ -6,6 +6,13 @@
 
 > 历史条目描述的是对应时间点已经落地的能力。后来被替换、隐藏或淘汰的模型与运行方案仍会保留在记录中，但不代表当前版本继续推荐使用。
 
+## 0.45.0 — 2026-08-25
+
+- 新增 HiDream-O1-Image 原生图片工作流：无参考图走文生图，有参考图走官方单图 instruction edit，默认 Full 50 步 / CFG 5，支持 FP8 scaled、MXFP8 和 BF16 checkpoint 扫描。
+- HiDream 复用图片工作区的通用裁剪、标注和 Mask；标注无 Mask 时使用单张渲染引导图，Mask 路径使用原图与生成结果的 `ImageCompositeMasked` 安全回填，未遮罩区域保持原图。
+- 新增 HiDream 专用图片 Prompt 增强契约，覆盖视角变换、材质/细节、长文本布局、可见文字保持和标注清理；补充模型目录、节点检查、4090 FP8 建议、队列尺寸回退和工作流测试。
+- `npm.cmd run verify` 通过；当前环境未提供可连接的 ComfyUI 实例，因此本版本记录为静态工作流验证，未宣称真实 GPU 冒烟通过。
+
 ## 0.44.0 — 2026-08-25
 
 - 新增 Z-Image 与 Z-Image-Turbo 图片模型目录、模型文件扫描、核心节点检查和 RTX 4090 24GB 硬件建议；Turbo 的 Fun ControlNet Union 权重仅在参考图路径中要求。

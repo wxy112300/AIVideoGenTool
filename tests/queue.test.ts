@@ -208,6 +208,26 @@ describe("queue execution snapshots", () => {
     expect(queued.workflowPath).toBe("builtin:image/z-image-turbo");
   });
 
+  it("keeps a HiDream-O1 text-only task on its native 2048 fallback", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "hidream-o1-image";
+    draft.qualityProfile = "native";
+    draft.pictures = [];
+    draft.promptVersions[0]!.text = "A quiet mountain village at dawn.";
+
+    const queued = imageTaskFromDraft(
+      draft,
+      "hidream_o1_image_fp8_scaled.safetensors",
+      { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" },
+      clock(["task-hidream", "project-hidream", "run-hidream"])
+    );
+
+    expect(queued.pictures).toEqual([]);
+    expect(queued.outputWidth).toBe(2048);
+    expect(queued.outputHeight).toBe(2048);
+    expect(queued.workflowPath).toBe("builtin:image/hidream-o1-image");
+  });
+
   it("never carries a hidden prompt into a promptless LaMa task snapshot", () => {
     const draft = createDefaultImageEditDraft();
     draft.modelId = "lama-inpaint";
