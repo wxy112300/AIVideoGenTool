@@ -42,6 +42,29 @@ export default defineConfig({
               name: "model-catalog",
               test: /[\\/]src[\\/]core[\\/]catalog[\\/]/,
               priority: 1
+            },
+            {
+              // Keep the shared image layer, registry and each model adapter
+              // in their own cache boundary. Adding a model should not grow
+              // the renderer entry or invalidate unrelated image adapters.
+              name: (moduleId) => {
+                const match = moduleId.match(/[\\/]src[\\/]core[\\/]image-workflow[\\/]([^\\/]+)\.(?:ts|js)$/);
+                return match ? `image-workflow-${match[1]}` : null;
+              },
+              test: /[\\/]src[\\/]core[\\/]image-workflow[\\/]/,
+              priority: 3,
+              entriesAware: true,
+              includeDependenciesRecursively: false
+            },
+            {
+              // The video workflow is another large, infrequently changed
+              // boundary. It is kept separate from the image workflow so
+              // model-specific growth remains isolated.
+              name: "video-workflow",
+              test: /[\\/]src[\\/]core[\\/]workflow\.ts$/,
+              priority: 2,
+              entriesAware: true,
+              includeDependenciesRecursively: false
             }
           ]
         }

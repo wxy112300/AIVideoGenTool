@@ -6,6 +6,12 @@
 
 > 历史条目描述的是对应时间点已经落地的能力。后来被替换、隐藏或淘汰的模型与运行方案仍会保留在记录中，但不代表当前版本继续推荐使用。
 
+## 0.45.1 — 2026-08-25
+
+- 将图片 Workflow 核心按公共契约、节点需求、能力定义、共享工具和模型实现拆分为独立模块；保留原有 `image-workflow` 导出门面，现有调用方和队列快照格式不变。
+- Catalog 的图片节点需求改为直接依赖独立节点清单，不再拉入完整图片 Workflow Builder；Qwen、FLUX.2 Klein、Z-Image、HiDream、LaMa 和 BiRefNet 分别形成独立构建边界。
+- Vite 构建按图片模型生成独立 chunk，入口包从超过 500 kB 的警告线降至约 455 kB；`npm.cmd run verify` 通过。
+
 ## 0.45.0 — 2026-08-25
 
 - 新增 HiDream-O1-Image 原生图片工作流：无参考图走文生图，有参考图走官方单图 instruction edit，默认 Full 50 步 / CFG 5，支持 FP8 scaled、MXFP8 和 BF16 checkpoint 扫描。

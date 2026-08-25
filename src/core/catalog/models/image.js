@@ -1,4 +1,4 @@
-import { birefnetRequiredNodeTypes, flux2Klein4bRequiredNodeTypes, hidreamO1RequiredNodeTypes, lamaInpaintRequiredNodeTypes, qwenImageEdit2511RequiredNodeTypes, qwenImageEdit2511CropStitchRequiredNodeTypes, zImageRequiredNodeTypes, zImageTurboRequiredNodeTypes } from "../../image-workflow.js";
+import { birefnetRequiredNodeTypes, flux2Klein4bRequiredNodeTypes, hidreamO1RequiredNodeTypes, lamaInpaintRequiredNodeTypes, qwenImageEdit2511RequiredNodeTypes, qwenImageEdit2511CropStitchRequiredNodeTypes, zImageRequiredNodeTypes, zImageTurboRequiredNodeTypes } from "../../image-workflow/node-requirements.js";
 import { component, entry, guide } from "./catalog-helpers.js";
 export const imageModelEntries = [
     entry({

@@ -7,7 +7,7 @@ import {
   qwenImageEdit2511CropStitchRequiredNodeTypes,
   zImageRequiredNodeTypes,
   zImageTurboRequiredNodeTypes
-} from "../../image-workflow.js";
+} from "../../image-workflow/node-requirements.js";
 import { component, entry, guide } from "./catalog-helpers.js";
 import type { CatalogModelEntry } from "../types.js";
 
