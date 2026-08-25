@@ -47,6 +47,7 @@ export interface ImageEditPageViewModel {
   imageDetailEnhanceTitle: string;
   imageFaithfulEnhanceTitle: string;
   imagePromptOptimizeTitle: string;
+  imagePromptEnhanceBlocked: boolean;
   imagePromptAiDisabled: boolean;
   releasePromptControlTitle: string;
   releasePromptControlIconName: string;
@@ -234,7 +235,7 @@ export function renderImageEditPage(
               <option value="faithful" title="${escapeHtml(viewModel.imageFaithfulEnhanceTitle)}" ${viewModel.imageEnhanceMode === "faithful" ? "selected" : ""}>${t(uiKeys.create.imageEdit.faithful)}</option>
             </select></div>
             <button class="icon-button prompt-runtime-button ${viewModel.releasePromptControlIconName === "refresh-cw" ? "busy" : ""}" id="release-prompt-model-create" ${viewModel.releasePromptControlDisabled ? "disabled" : ""} aria-label="${escapeHtml(viewModel.releasePromptControlTitle)}" title="${escapeHtml(viewModel.releasePromptControlTitle)}" aria-busy="${viewModel.releasePromptControlIconName === "refresh-cw"}">${icon(viewModel.releasePromptControlIconName)}</button>
-            <button class="secondary button-with-icon" id="enhance-prompt" ${viewModel.imagePromptAiDisabled && !viewModel.promptEnhancing ? "disabled" : ""} title="${escapeHtml(viewModel.promptEnhancing ? `${t(uiKeys.create.imageEdit.optimizing)} · ${t(uiKeys.create.promptProgress.cancel)}` : viewModel.imagePromptOptimizeTitle)}" aria-busy="${viewModel.promptEnhancing}">${icon(viewModel.promptEnhancing ? "x" : "sparkles")}${viewModel.promptEnhancing ? t(uiKeys.create.imageEdit.optimizing) : t(uiKeys.create.imageEdit.optimizePrompt)}</button>
+            <button class="secondary button-with-icon" id="enhance-prompt" data-prompt-enhance-blocked="${viewModel.imagePromptEnhanceBlocked ? "true" : "false"}" ${viewModel.imagePromptAiDisabled && !viewModel.promptEnhancing ? "disabled" : ""} title="${escapeHtml(viewModel.promptEnhancing ? `${t(uiKeys.create.imageEdit.optimizing)} · ${t(uiKeys.create.promptProgress.cancel)}` : viewModel.imagePromptOptimizeTitle)}" aria-busy="${viewModel.promptEnhancing}">${icon(viewModel.promptEnhancing ? "x" : "sparkles")}${viewModel.promptEnhancing ? t(uiKeys.create.imageEdit.optimizing) : t(uiKeys.create.imageEdit.optimizePrompt)}</button>
           </div>
         </div>`}
         ${viewModel.promptless ? "" : `

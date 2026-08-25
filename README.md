@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.46.0**。本版本新增 OmniGen2 图片工作流，并继续完善 HiDream-O1-Image、Z-Image 与 Z-Image-Turbo 图片工作流；图片 Workflow 实现、节点需求和能力注册按模型拆分，并隔离图片模型构建产物。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.46.1**。本版本修复图片模式提示词增强按钮在输入提示词后仍保持禁用的问题；OmniGen2 图片工作流及 HiDream-O1-Image、Z-Image 与 Z-Image-Turbo 图片工作流持续完善。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 

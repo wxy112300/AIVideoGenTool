@@ -165,6 +165,13 @@ export function mountImageEditController(
   const promptInput = root.querySelector<HTMLTextAreaElement>("#image-edit-prompt-input");
   const snippetSelect = root.querySelector<HTMLSelectElement>("#image-edit-instruction");
   const insertSnippet = root.querySelector<HTMLButtonElement>("#insert-image-edit-instruction");
+  const syncPromptEnhanceButton = () => {
+    const button = root.querySelector<HTMLButtonElement>("#enhance-prompt");
+    if (!button || !promptInput) return;
+    button.disabled = !options.isPromptEnhancing() && (
+      button.dataset.promptEnhanceBlocked === "true" || !promptInput.value.trim()
+    );
+  };
   const syncSnippetButton = () => {
     if (insertSnippet) insertSnippet.disabled = !snippetSelect?.value;
   };
@@ -203,11 +210,13 @@ export function mountImageEditController(
     options.resizePromptInput(promptInput);
     options.updateImagePromptWordCounter(promptInput.value);
     options.syncEnqueueUi();
+    syncPromptEnhanceButton();
   }, { signal });
   if (promptInput) {
     options.resizePromptInput(promptInput);
     window.requestAnimationFrame(() => options.resizePromptInput(promptInput));
     options.updateImagePromptWordCounter(promptInput.value);
+    syncPromptEnhanceButton();
   }
   const focusPromptInput = () => {
     window.requestAnimationFrame(() => {

@@ -257,7 +257,8 @@ export function buildImageEditPageViewModel(
   const promptStatus = promptModelStatus(state.settings, environmentScan, t);
   const promptRuntimeBusy = promptStarting || promptRuntimeView.left.busy || promptRuntimeView.right.busy;
   const imagePromptModelSupportsImageEdit = promptModelSupportsImageEdit(state.settings.promptModelId);
-  const imagePromptAiDisabled = promptStarting || promptRuntimeView.right.disabled || state.queueRunning || !prompt.text.trim() || !imagePromptModelSupportsImageEdit;
+  const imagePromptEnhanceBlocked = promptStarting || promptRuntimeView.right.disabled || state.queueRunning || !imagePromptModelSupportsImageEdit;
+  const imagePromptAiDisabled = imagePromptEnhanceBlocked || !prompt.text.trim();
   const imageEnhanceMode: ImagePromptPreset = promptEnhanceMode === "faithful"
     ? "faithful"
     : "detail-enhance";
@@ -306,6 +307,7 @@ export function buildImageEditPageViewModel(
     imageDetailEnhanceTitle: imagePromptPack.presetDescriptions["detail-enhance"],
     imageFaithfulEnhanceTitle: imagePromptPack.presetDescriptions.faithful,
     imagePromptOptimizeTitle,
+    imagePromptEnhanceBlocked,
     imagePromptAiDisabled,
     releasePromptControlTitle: options.promptRuntimeControlTitle(),
     releasePromptControlIconName: promptRuntimeView.left.icon,
