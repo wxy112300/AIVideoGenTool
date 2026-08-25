@@ -151,7 +151,9 @@ export function imageTaskFromDraft(
   const [outputWidth, outputHeight] = imageOutputDimensions(
     basePicture?.width ?? 0,
     basePicture?.height ?? 0,
-    adapter?.sourceResolutionOnly ? "source" : targetResolution
+    adapter?.sourceResolutionOnly ? "source" : targetResolution,
+    adapter?.textOnlyOutputWidth,
+    adapter?.textOnlyOutputHeight
   );
   const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
   return {

@@ -102,6 +102,15 @@ export function mountImageEditController(context, options) {
                 void options.editImagePictureMarkup(pictureId);
         }, { signal });
     });
+    root.querySelectorAll("[data-mask-image-picture]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            const pictureId = button.dataset.maskImagePicture;
+            if (pictureId)
+                void options.editImagePictureMarkup(pictureId, "mask");
+        }, { signal });
+    });
     root.querySelectorAll("[data-image-picture-role]").forEach((select) => {
         select.addEventListener("change", () => {
             const pictureId = select.dataset.imagePictureRole;
@@ -251,6 +260,7 @@ export function mountImageEditController(context, options) {
             const text = await context.studio.enhancePrompt({
                 prompt: requestPrompt,
                 modelId: context.getState()?.settings.promptModelId ?? "",
+                imageTargetModelId: draft.modelId,
                 origin: "image-edit",
                 mode: "image-edit",
                 imageEditEnhanceMode: enhanceMode,

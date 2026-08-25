@@ -133,7 +133,8 @@ function readImageDimensions(filename: string): { width: number; height: number 
 async function requireImageModelAssets(
   settings: Settings,
   modelId = settings.defaultImageModel,
-  qualityProfile = "native"
+  qualityProfile = "native",
+  hasReference = false
 ): Promise<string | undefined> {
   const scan = await scanEnvironment(settings);
   const profile = scan.modelProfiles.find((item) => item.id === modelId);
@@ -155,10 +156,21 @@ async function requireImageModelAssets(
   if (imageQualityProfileRequiresLightning(qualityProfile) && !imageLightningComponentFound(profile.components)) {
     throw new Error("当前选择了 Qwen Lightning 4 步档，但未找到 Lightning LoRA。请在设置 → 图片模型中打开下载说明并重新扫描。");
   }
+  if (hasReference && adapter.referenceModelComponentLabel) {
+    const referenceComponent = profile.components.find((component) =>
+      component.label.includes(adapter.referenceModelComponentLabel!)
+    );
+    if (!referenceComponent?.found) {
+      throw new Error(
+        `${adapter.name} 的参考图路径需要 ${adapter.referenceModelComponentLabel}。` +
+        "请在设置 → 图片模型中按下载说明安装后重新扫描；无参考图的文生图不需要该文件。"
+      );
+    }
+  }
   if (adapter.operation === "inpaint" || adapter.operation === "background-removal") return undefined;
   const diffusionModel = profile.components.find((component) => component.label.includes("扩散模型"))
     ?.matches[0]?.split(/[\\/]/u).pop();
-  if (!diffusionModel) throw new Error("Qwen Image Edit 2511 扩散模型文件未能从环境扫描结果中解析。");
+  if (!diffusionModel) throw new Error(`${adapter.name} 扩散模型文件未能从环境扫描结果中解析。`);
   return diffusionModel;
 }
 
@@ -312,10 +324,15 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       ...(adapter?.deterministic ? { outputCount: 1 } : {})
     });
     if (!adapter) throw new Error(`当前没有 ${normalized.modelId} 的图片模型适配器。`);
-    if (!normalized.pictures.length) throw new Error("请先添加至少一张 Picture 作为基础图片。");
+    const hasReference = normalized.pictures.length > 0;
+    if (!hasReference && !adapter.supportsTextOnly) {
+      throw new Error("请先添加至少一张 Picture 作为基础图片。");
+    }
     if (normalized.pictures.length > adapter.maxPictures) throw new Error(`当前 ${adapter.name} 工作流最多支持 ${adapter.maxPictures} 张 Picture。`);
-    const incomplete = normalized.pictures.find((picture) => !picture.absolutePath);
-    if (incomplete) throw new Error(`请先为 Slot ${incomplete.pictureNumber}（Picture ${incomplete.pictureNumber}）添加图片。`);
+    if (hasReference) {
+      const incomplete = normalized.pictures.find((picture) => !picture.absolutePath);
+      if (incomplete) throw new Error(`请先为 Slot ${incomplete.pictureNumber}（Picture ${incomplete.pictureNumber}）添加图片。`);
+    }
     const prompt = adapter.requiresPrompt === false
       ? ""
       : normalized.promptVersions[normalized.activePromptVersion]?.text.trim() ?? "";
@@ -323,14 +340,23 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     if (adapter.requiresMask && !normalized.pictures[0]?.mask?.regionCount) {
       throw new Error("请先在原图上绘制并保存 Mask。");
     }
-    const diffusionModelFilename = await requireImageModelAssets(store.get().settings, normalized.modelId, normalized.qualityProfile);
+    const diffusionModelFilename = await requireImageModelAssets(
+      store.get().settings,
+      normalized.modelId,
+      normalized.qualityProfile,
+      hasReference
+    );
     const outputTarget = await resolveImageOutputTarget(store.get().settings);
-    const library = await deps.effectiveImageInputLibraryDirectory(store.get().settings);
     const operationId = randomUUID().slice(0, 8);
     logger.info("assets", "image-input-archive-started", "开始归档图片任务输入素材", { operationId, referenceCount: normalized.pictures.length });
     let archivedPictures: typeof normalized.pictures;
     try {
-      archivedPictures = await archiveImageReferences(normalized.pictures, library);
+      archivedPictures = normalized.pictures.length
+        ? await archiveImageReferences(
+            normalized.pictures,
+            await deps.effectiveImageInputLibraryDirectory(store.get().settings)
+          )
+        : [];
       logger.info("assets", "image-input-archive-completed", "图片任务输入素材已归档并校验", {
         operationId, referenceCount: archivedPictures.length,
         uniqueAssets: new Set(archivedPictures.map((picture) => picture.contentHash).filter(Boolean)).size

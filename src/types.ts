@@ -951,6 +951,8 @@ export interface PromptExtensionSource {
 export interface EnhanceRequest {
   prompt: string;
   modelId: string;
+  /** Selected image model; modelId remains the prompt/vision runtime model. */
+  imageTargetModelId?: string;
   origin?: PromptOperationOrigin;
   mode?: PromptEnhanceMode;
   promptStrategy?: "rewrite" | "reference-auto";

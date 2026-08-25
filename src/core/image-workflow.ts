@@ -30,6 +30,17 @@ export interface ImageModelCapability {
   requiresMask?: boolean;
   supportsSeed?: boolean;
   sourceResolutionOnly?: boolean;
+  /** Allows the image page to submit a prompt without a reference Picture. */
+  supportsTextOnly?: boolean;
+  /** The model can consume a saved binary mask when a reference Picture exists. */
+  supportsMask?: boolean;
+  /** The model can use the annotation canvas as visual guidance. */
+  supportsMarkup?: boolean;
+  /** Fallback canvas used before a text-only task has a source image. */
+  textOnlyOutputWidth?: number;
+  textOnlyOutputHeight?: number;
+  /** Optional model-side component needed only for reference/control inputs. */
+  referenceModelComponentLabel?: string;
 }
 
 export function cachedImageProfileAllowsEnqueue(
@@ -132,6 +143,44 @@ export const lamaInpaintRequiredNodeTypes = [
   "SaveImage"
 ] as const;
 
+/** Native ComfyUI nodes used by Z-Image Base for T2I and optional img2img/inpaint. */
+export const zImageRequiredNodeTypes = [
+  "CLIPLoader",
+  "UNETLoader",
+  "VAELoader",
+  "CLIPTextEncode",
+  "EmptySD3LatentImage",
+  "ModelSamplingAuraFlow",
+  "KSampler",
+  "VAEDecode",
+  "ImageScale",
+  "SaveImage",
+  "LoadImage",
+  "VAEEncode",
+  "LoadImageMask",
+  "VAEEncodeForInpaint"
+] as const;
+
+/** Native ComfyUI nodes used by Z-Image Turbo, including Fun ControlNet inputs. */
+export const zImageTurboRequiredNodeTypes = [
+  "CLIPLoader",
+  "UNETLoader",
+  "VAELoader",
+  "CLIPTextEncode",
+  "ConditioningZeroOut",
+  "EmptySD3LatentImage",
+  "ModelSamplingAuraFlow",
+  "KSampler",
+  "VAEDecode",
+  "ImageScale",
+  "SaveImage",
+  "LoadImage",
+  "Canny",
+  "ModelPatchLoader",
+  "ZImageFunControlnet",
+  "LoadImageMask"
+] as const;
+
 /** Native ComfyUI nodes used by the official BiRefNet background-removal template. */
 export const birefnetRequiredNodeTypes = [
   "LoadImage",
@@ -149,6 +198,11 @@ const qwenImageLightningLora = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.
 const flux2Klein4bDiffusionModel = "flux-2-klein-base-4b-fp8.safetensors";
 const flux2Klein4bTextEncoder = "qwen_3_4b.safetensors";
 const flux2Klein4bVae = "flux2-vae.safetensors";
+const zImageDiffusionModel = "z_image_bf16.safetensors";
+const zImageTurboDiffusionModel = "z_image_turbo_bf16.safetensors";
+const zImageTextEncoder = "qwen_3_4b.safetensors";
+const zImageVae = "ae.safetensors";
+const zImageTurboFunControlnetPatch = "Z-Image-Turbo-Fun-Controlnet-Union.safetensors";
 
 const pictureReferencePattern = /(?:<\s*)?(?:picture|image|图片)\s*([1-9]\d*)(?:\s*>)?/giu;
 
@@ -183,54 +237,64 @@ export function normalizeImageTargetResolution(
 export function imageOutputDimensions(
   sourceWidth: number,
   sourceHeight: number,
-  targetResolution: ImageTargetResolution
+  targetResolution: ImageTargetResolution,
+  fallbackWidth = 0,
+  fallbackHeight = 0
 ): [number, number] {
-  if (
-    !Number.isFinite(sourceWidth) ||
-    !Number.isFinite(sourceHeight) ||
-    sourceWidth <= 0 ||
-    sourceHeight <= 0 ||
-    targetResolution === "source"
-  ) {
-    return [Math.max(0, Math.trunc(sourceWidth)), Math.max(0, Math.trunc(sourceHeight))];
+  const hasSource = Number.isFinite(sourceWidth) && Number.isFinite(sourceHeight) &&
+    sourceWidth > 0 && sourceHeight > 0;
+  const hasFallback = Number.isFinite(fallbackWidth) && Number.isFinite(fallbackHeight) &&
+    fallbackWidth > 0 && fallbackHeight > 0;
+  const width = hasSource ? sourceWidth : hasFallback ? fallbackWidth : 0;
+  const height = hasSource ? sourceHeight : hasFallback ? fallbackHeight : 0;
+  if (!width || !height || targetResolution === "source") {
+    return [Math.max(0, Math.trunc(width)), Math.max(0, Math.trunc(height))];
   }
-  const shortEdge = Math.min(sourceWidth, sourceHeight);
+  const shortEdge = Math.min(width, height);
   const normalizedTarget = normalizeImageTargetResolution(
     targetResolution,
-    sourceWidth,
-    sourceHeight
+    width,
+    height
   );
-  if (normalizedTarget === "source") return [sourceWidth, sourceHeight];
+  if (normalizedTarget === "source") return [width, height];
   const scale = normalizedTarget / shortEdge;
   return [
-    alignedImageDimension(sourceWidth * scale),
-    alignedImageDimension(sourceHeight * scale)
+    alignedImageDimension(width * scale),
+    alignedImageDimension(height * scale)
   ];
 }
 
 export function imageResolutionOptionsFor(
   sourceWidth = 0,
-  sourceHeight = 0
+  sourceHeight = 0,
+  fallbackWidth = 0,
+  fallbackHeight = 0
 ): ImageResolutionOption[] {
   const hasSource = sourceWidth > 0 && sourceHeight > 0;
+  const hasFallback = fallbackWidth > 0 && fallbackHeight > 0;
   const sourceLabel = hasSource
     ? `原图 · ${sourceWidth}×${sourceHeight}`
-    : "原图 · 上传后读取";
+    : hasFallback
+      ? `默认 · ${fallbackWidth}×${fallbackHeight}`
+      : "原图 · 上传后读取";
   const options: ImageResolutionOption[] = [{
     value: "source",
     label: sourceLabel,
-    width: sourceWidth,
-    height: sourceHeight
+    width: hasSource ? sourceWidth : fallbackWidth,
+    height: hasSource ? sourceHeight : fallbackHeight
   }];
-  const shortEdge = Math.min(sourceWidth, sourceHeight);
+  const shortEdge = Math.min(
+    hasSource ? sourceWidth : fallbackWidth,
+    hasSource ? sourceHeight : fallbackHeight
+  );
   for (const target of imageTargetResolutionValues) {
-    if (hasSource && target > shortEdge) continue;
-    const [width, height] = hasSource
-      ? imageOutputDimensions(sourceWidth, sourceHeight, target)
+    if ((hasSource || hasFallback) && target > shortEdge) continue;
+    const [width, height] = hasSource || hasFallback
+      ? imageOutputDimensions(sourceWidth, sourceHeight, target, fallbackWidth, fallbackHeight)
       : [0, 0];
     options.push({
       value: target,
-      label: hasSource ? `${target}p · ${width}×${height}` : `${target}p`,
+      label: hasSource || hasFallback ? `${target}p · ${width}×${height}` : `${target}p`,
       width,
       height
     });
@@ -333,6 +397,58 @@ export const lamaInpaintCapability: ImageModelCapability = {
     { id: "natural", label: "自然边缘", steps: 0, cfg: 0, lightning: false },
     { id: "tight", label: "紧贴 Mask", steps: 0, cfg: 0, lightning: false },
     { id: "wide", label: "扩大修补", steps: 0, cfg: 0, lightning: false }
+  ]
+};
+
+export const zImageCapability: ImageModelCapability = {
+  id: "z-image",
+  name: "Z-Image",
+  maxPictures: 1,
+  supportedFormats: ["png"],
+  supportsTextOnly: true,
+  supportsMask: true,
+  supportsMarkup: true,
+  supportsSeed: true,
+  textOnlyOutputWidth: 1024,
+  textOnlyOutputHeight: 1024,
+  qualityProfiles: [
+    {
+      id: "native",
+      label: "原生质量",
+      steps: 30,
+      cfg: 4,
+      lightning: false
+    },
+    {
+      id: "high-quality",
+      label: "高质量",
+      steps: 40,
+      cfg: 4,
+      lightning: false
+    }
+  ]
+};
+
+export const zImageTurboCapability: ImageModelCapability = {
+  id: "z-image-turbo",
+  name: "Z-Image-Turbo",
+  maxPictures: 1,
+  supportedFormats: ["png"],
+  supportsTextOnly: true,
+  supportsMask: true,
+  supportsMarkup: true,
+  supportsSeed: true,
+  textOnlyOutputWidth: 1024,
+  textOnlyOutputHeight: 1024,
+  referenceModelComponentLabel: "Z-Image-Turbo Fun ControlNet Union",
+  qualityProfiles: [
+    {
+      id: "turbo-8",
+      label: "Turbo 快速",
+      steps: 8,
+      cfg: 1,
+      lightning: false
+    }
   ]
 };
 
@@ -543,6 +659,79 @@ export function compileFlux2Klein4bPrompt(
   );
 }
 
+const zImageMarkupContract = [
+  "Annotation and Mask contract:",
+  "A saved Mask is a location-only edit boundary. Change the masked region and the minimum surrounding pixels needed for a natural result; preserve unmasked content.",
+  "Canvas annotations are also location-only guidance. Never reproduce colored marks, boxes, arrows, labels, notes, or annotation text in the output.",
+  "Keep the source subject identity, composition, lighting, and visible text unless the user's request explicitly changes them."
+].join("\n");
+
+function zImagePictureWithMarkupGuide(
+  picture: ImageReferenceSnapshot
+): ImageReferenceSnapshot {
+  return {
+    ...picture,
+    id: `${picture.id}-z-image-markup-r${picture.markup?.revision ?? 0}`,
+    pictureNumber: 1,
+    absolutePath: picture.markup?.renderedPath.trim() ?? picture.absolutePath,
+    crop: undefined,
+    markup: undefined
+  };
+}
+
+/**
+ * Z-Image has one visual input rather than Qwen's multi-picture contract. When
+ * a user marks a picture without a binary mask, upload the rendered annotation
+ * as that single visual guide and make the cleanup rule explicit in the text.
+ */
+export function compileZImagePrompt(
+  prompt: string,
+  pictures: ImageReferenceSnapshot[]
+): CompiledImagePrompt {
+  const ordered = orderedPictures(pictures);
+  const errors: string[] = [];
+  ordered
+    .filter((picture) => !picture.absolutePath.trim())
+    .forEach((picture) => errors.push(`Picture ${picture.pictureNumber} 尚未添加图片。`));
+  if (ordered.length > zImageCapability.maxPictures) {
+    errors.push("Z-Image 工作流最多支持一张 Picture。请先合成为一张底图。");
+  }
+  const picture = ordered.find((candidate) => candidate.absolutePath.trim());
+  const originalPictureNumber = picture?.pictureNumber;
+  const referencedPictureNumbers = new Set<number>();
+  const compiledPrompt = prompt.replace(pictureReferencePattern, (match, numberText: string) => {
+    const originalNumber = Number(numberText);
+    referencedPictureNumbers.add(originalNumber);
+    if (originalNumber !== originalPictureNumber) {
+      errors.push(`${match} 引用了不存在的 Picture ${originalNumber}。Z-Image 只接收 Picture 1。`);
+      return match;
+    }
+    return "Picture 1";
+  }).trim();
+  const hasMask = Boolean(picture?.mask?.regionCount && picture.mask.maskPath.trim());
+  const hasMarkupGuide = Boolean(
+    picture?.markup?.objectCount && picture.markup.renderedPath.trim()
+  );
+  const compiledPicture = picture
+    ? hasMarkupGuide && !hasMask
+      ? zImagePictureWithMarkupGuide(picture)
+      : { ...picture, pictureNumber: 1 }
+    : undefined;
+  const promptParts = [compiledPrompt];
+  if (hasMarkupGuide || hasMask) promptParts.push(zImageMarkupContract);
+  if (hasMarkupGuide) {
+    promptParts.push(
+      `Annotation notes for Picture 1: ${picture?.markup?.summary.trim() || `${picture?.markup?.objectCount ?? 0} marked target(s)`}.`
+    );
+  }
+  return {
+    prompt: promptParts.filter(Boolean).join("\n\n"),
+    pictures: compiledPicture ? [compiledPicture] : [],
+    referencedPictureNumbers: [...referencedPictureNumbers].sort((left, right) => left - right),
+    errors: [...new Set(errors)]
+  };
+}
+
 export function imageOutputFormatFromFilename(filename: string): ImageOutputFormat | undefined {
   const extension = filename.toLowerCase().split(".").pop();
   if (extension === "png") return "png";
@@ -667,6 +856,98 @@ export function validateFlux2Klein4bWorkflow(
   );
   if (unresolvedPlaceholders.length && !allowImagePlaceholders) {
     errors.push("FLUX.2 Klein 工作流仍包含未上传的 IMAGE 占位符。");
+  }
+  return [...new Set(errors)];
+}
+
+const zImageBaseCoreNodeTypes = [
+  "CLIPLoader",
+  "UNETLoader",
+  "VAELoader",
+  "CLIPTextEncode",
+  "ModelSamplingAuraFlow",
+  "KSampler",
+  "VAEDecode",
+  "ImageScale",
+  "SaveImage"
+] as const;
+
+const zImageTurboCoreNodeTypes = [
+  "CLIPLoader",
+  "UNETLoader",
+  "VAELoader",
+  "CLIPTextEncode",
+  "ConditioningZeroOut",
+  "EmptySD3LatentImage",
+  "ModelSamplingAuraFlow",
+  "KSampler",
+  "VAEDecode",
+  "ImageScale",
+  "SaveImage"
+] as const;
+
+function unresolvedImagePlaceholders(workflow: ComfyApiWorkflow): string[] {
+  return Object.values(workflow).flatMap((node) =>
+    Object.values(node.inputs).filter((value) =>
+      typeof value === "string" && /^\{\{(?:IMAGE|MASK)_\d+\}\}$/u.test(value)
+    )
+  ).map(String);
+}
+
+export function validateZImageWorkflow(
+  workflow: ComfyApiWorkflow,
+  _qualityProfile = "native",
+  allowImagePlaceholders = false
+): string[] {
+  const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
+  const errors = zImageBaseCoreNodeTypes
+    .filter((nodeType) => !nodeTypes.has(nodeType))
+    .map((nodeType) => `Z-Image 工作流缺少节点 ${nodeType}。`);
+  const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
+  const maskNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImageMask");
+  if (inputNodes.length > 1) errors.push("Z-Image 工作流最多包含 1 个 LoadImage 节点。");
+  if (maskNodes.length > 1) errors.push("Z-Image 工作流最多包含 1 个 LoadImageMask 节点。");
+  if (inputNodes.length === 0 && maskNodes.length > 0) {
+    errors.push("Z-Image 的 Mask 必须绑定一张参考 Picture。");
+  }
+  if (inputNodes.length === 0 && !nodeTypes.has("EmptySD3LatentImage")) {
+    errors.push("Z-Image 文生图工作流缺少节点 EmptySD3LatentImage。");
+  }
+  if (inputNodes.length === 1) {
+    if (maskNodes.length === 1 && !nodeTypes.has("VAEEncodeForInpaint")) {
+      errors.push("Z-Image Mask 工作流缺少节点 VAEEncodeForInpaint。");
+    } else if (maskNodes.length === 0 && !nodeTypes.has("VAEEncode")) {
+      errors.push("Z-Image 图生图工作流缺少节点 VAEEncode。");
+    }
+  }
+  if (!allowImagePlaceholders && unresolvedImagePlaceholders(workflow).length) {
+    errors.push("Z-Image 工作流仍包含未上传的图片或 Mask 占位符。");
+  }
+  return [...new Set(errors)];
+}
+
+export function validateZImageTurboWorkflow(
+  workflow: ComfyApiWorkflow,
+  _qualityProfile = "turbo-8",
+  allowImagePlaceholders = false
+): string[] {
+  const nodeTypes = new Set(Object.values(workflow).map((node) => node.class_type));
+  const errors = zImageTurboCoreNodeTypes
+    .filter((nodeType) => !nodeTypes.has(nodeType))
+    .map((nodeType) => `Z-Image-Turbo 工作流缺少节点 ${nodeType}。`);
+  const inputNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImage");
+  const maskNodes = Object.values(workflow).filter((node) => node.class_type === "LoadImageMask");
+  if (inputNodes.length > 1) errors.push("Z-Image-Turbo 工作流最多包含 1 个 LoadImage 节点。");
+  if (maskNodes.length > 1) errors.push("Z-Image-Turbo 工作流最多包含 1 个 LoadImageMask 节点。");
+  if (inputNodes.length === 1) {
+    for (const nodeType of ["Canny", "ModelPatchLoader", "ZImageFunControlnet"]) {
+      if (!nodeTypes.has(nodeType)) errors.push(`Z-Image-Turbo 参考图工作流缺少节点 ${nodeType}。`);
+    }
+  } else if (maskNodes.length) {
+    errors.push("Z-Image-Turbo 的 Mask 必须绑定一张参考 Picture。");
+  }
+  if (!allowImagePlaceholders && unresolvedImagePlaceholders(workflow).length) {
+    errors.push("Z-Image-Turbo 工作流仍包含未上传的图片或 Mask 占位符。");
   }
   return [...new Set(errors)];
 }
@@ -1159,6 +1440,288 @@ export function buildFlux2Klein4bWorkflow(
   };
 }
 
+function zImageQualityProfile(
+  capability: ImageModelCapability,
+  requestedId: string
+): ImageQualityProfile {
+  return capability.qualityProfiles.find((profile) => profile.id === requestedId) ??
+    capability.qualityProfiles[0]!;
+}
+
+function zImageOutputDimensions(
+  task: ImageGenerationQueueTask,
+  picture: ImageReferenceSnapshot | undefined,
+  capability: ImageModelCapability
+): [number, number] {
+  return [
+    exactImageDimension(task.outputWidth, picture?.width || capability.textOnlyOutputWidth || 1024),
+    exactImageDimension(task.outputHeight, picture?.height || capability.textOnlyOutputHeight || 1024)
+  ];
+}
+
+function zImageOutputPrefix(
+  task: ImageGenerationQueueTask,
+  run: ImageGenerationRun,
+  label: string
+): string {
+  return [
+    task.imageOutputSubfolder?.replace(/[\\/]+/gu, "/").replace(/^\/+|\/+$/gu, ""),
+    `${label}_${task.outputFilename}_${run.index + 1}`
+  ].filter(Boolean).join("/");
+}
+
+function zImageLoaderNodes(
+  task: ImageGenerationQueueTask,
+  modelFilename: string
+): ComfyApiWorkflow {
+  return {
+    clip: {
+      class_type: "CLIPLoader",
+      inputs: {
+        clip_name: zImageTextEncoder,
+        type: "lumina2",
+        device: "default"
+      }
+    },
+    vae: {
+      class_type: "VAELoader",
+      inputs: { vae_name: zImageVae }
+    },
+    model: {
+      class_type: "UNETLoader",
+      inputs: {
+        unet_name: task.diffusionModelFilename || modelFilename,
+        weight_dtype: "default"
+      }
+    }
+  };
+}
+
+export function buildZImageWorkflow(
+  task: ImageGenerationQueueTask,
+  run: ImageGenerationRun
+): ComfyApiWorkflow {
+  const compiled = compileZImagePrompt(task.prompt, task.pictures);
+  if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
+  const picture = compiled.pictures[0];
+  const hasMask = Boolean(picture?.mask?.regionCount && picture.mask.maskPath.trim());
+  const quality = zImageQualityProfile(zImageCapability, task.qualityProfile);
+  const [outputWidth, outputHeight] = zImageOutputDimensions(task, picture, zImageCapability);
+  const latentNodes: ComfyApiWorkflow = picture
+    ? {
+        input: {
+          class_type: "LoadImage",
+          inputs: { image: "{{IMAGE_0}}" }
+        },
+        sourceImage: {
+          class_type: "ImageScale",
+          inputs: {
+            image: ["input", 0],
+            upscale_method: "lanczos",
+            width: outputWidth,
+            height: outputHeight,
+            crop: "disabled"
+          }
+        },
+        ...(hasMask
+          ? {
+              mask: {
+                class_type: "LoadImageMask",
+                inputs: { image: "{{MASK_0}}", channel: "red" }
+              },
+              source: {
+                class_type: "VAEEncodeForInpaint",
+                inputs: {
+                  pixels: ["sourceImage", 0],
+                  vae: ["vae", 0],
+                  mask: ["mask", 0],
+                  grow_mask_by: 6
+                }
+              }
+            }
+          : {
+              source: {
+                class_type: "VAEEncode",
+                inputs: { pixels: ["sourceImage", 0], vae: ["vae", 0] }
+              }
+            })
+      }
+    : {
+        latent: {
+          class_type: "EmptySD3LatentImage",
+          inputs: { width: outputWidth, height: outputHeight, batch_size: 1 }
+        }
+      };
+  const workflow: ComfyApiWorkflow = {
+    ...zImageLoaderNodes(task, zImageDiffusionModel),
+    ...latentNodes,
+    positive: {
+      class_type: "CLIPTextEncode",
+      inputs: { clip: ["clip", 0], text: compiled.prompt }
+    },
+    negative: {
+      class_type: "CLIPTextEncode",
+      inputs: { clip: ["clip", 0], text: "" }
+    },
+    sampling: {
+      class_type: "ModelSamplingAuraFlow",
+      inputs: { model: ["model", 0], shift: 3 }
+    },
+    sampler: {
+      class_type: "KSampler",
+      inputs: {
+        model: ["sampling", 0],
+        positive: ["positive", 0],
+        negative: ["negative", 0],
+        latent_image: [picture ? "source" : "latent", 0],
+        seed: run.seed,
+        steps: quality.steps,
+        cfg: quality.cfg,
+        sampler_name: "res_multistep",
+        scheduler: "simple",
+        denoise: picture ? (hasMask ? 1 : 0.65) : 1
+      }
+    },
+    decoded: {
+      class_type: "VAEDecode",
+      inputs: { samples: ["sampler", 0], vae: ["vae", 0] }
+    },
+    exactSize: {
+      class_type: "ImageScale",
+      inputs: {
+        image: ["decoded", 0],
+        upscale_method: "lanczos",
+        width: outputWidth,
+        height: outputHeight,
+        crop: "disabled"
+      }
+    },
+    save: {
+      class_type: "SaveImage",
+      inputs: {
+        images: ["exactSize", 0],
+        filename_prefix: zImageOutputPrefix(task, run, "ZImage")
+      }
+    }
+  };
+  const errors = validateZImageWorkflow(workflow, quality.id, true);
+  if (errors.length) throw new Error(errors.join(" "));
+  return workflow;
+}
+
+export function buildZImageTurboWorkflow(
+  task: ImageGenerationQueueTask,
+  run: ImageGenerationRun
+): ComfyApiWorkflow {
+  const compiled = compileZImagePrompt(task.prompt, task.pictures);
+  if (compiled.errors.length) throw new Error(compiled.errors.join(" "));
+  const picture = compiled.pictures[0];
+  const hasMask = Boolean(picture?.mask?.regionCount && picture.mask.maskPath.trim());
+  const quality = zImageQualityProfile(zImageTurboCapability, task.qualityProfile);
+  const [outputWidth, outputHeight] = zImageOutputDimensions(task, picture, zImageTurboCapability);
+  const workflow: ComfyApiWorkflow = {
+    ...zImageLoaderNodes(task, zImageTurboDiffusionModel),
+    positive: {
+      class_type: "CLIPTextEncode",
+      inputs: { clip: ["clip", 0], text: compiled.prompt }
+    },
+    negativeSource: {
+      class_type: "ConditioningZeroOut",
+      inputs: { conditioning: ["positive", 0] }
+    },
+    latent: {
+      class_type: "EmptySD3LatentImage",
+      inputs: { width: outputWidth, height: outputHeight, batch_size: 1 }
+    },
+    sampling: {
+      class_type: "ModelSamplingAuraFlow",
+      inputs: { model: ["model", 0], shift: 3 }
+    },
+    sampler: {
+      class_type: "KSampler",
+      inputs: {
+        model: ["sampling", 0],
+        positive: ["positive", 0],
+        negative: ["negativeSource", 0],
+        latent_image: ["latent", 0],
+        seed: run.seed,
+        steps: quality.steps,
+        cfg: quality.cfg,
+        sampler_name: "res_multistep",
+        scheduler: "simple",
+        denoise: 1
+      }
+    },
+    decoded: {
+      class_type: "VAEDecode",
+      inputs: { samples: ["sampler", 0], vae: ["vae", 0] }
+    },
+    exactSize: {
+      class_type: "ImageScale",
+      inputs: {
+        image: ["decoded", 0],
+        upscale_method: "lanczos",
+        width: outputWidth,
+        height: outputHeight,
+        crop: "disabled"
+      }
+    },
+    save: {
+      class_type: "SaveImage",
+      inputs: {
+        images: ["exactSize", 0],
+        filename_prefix: zImageOutputPrefix(task, run, "ZImageTurbo")
+      }
+    }
+  };
+  if (picture) {
+    workflow.input = {
+      class_type: "LoadImage",
+      inputs: { image: "{{IMAGE_0}}" }
+    };
+    workflow.patch = {
+      class_type: "ModelPatchLoader",
+      inputs: { name: zImageTurboFunControlnetPatch }
+    };
+    workflow.control = {
+      class_type: "ZImageFunControlnet",
+      inputs: {
+        model: ["sampling", 0],
+        model_patch: ["patch", 0],
+        vae: ["vae", 0],
+        strength: 1,
+        image: ["controlGuide", 0],
+        ...(hasMask
+          ? {
+              inpaint_image: ["input", 0],
+              mask: ["mask", 0]
+            }
+          : {})
+      }
+    };
+    const sampler = workflow.sampler;
+    if (!sampler) throw new Error("Z-Image-Turbo 工作流缺少采样节点。");
+    sampler.inputs.model = ["control", 0];
+    workflow.controlGuide = {
+      class_type: "Canny",
+      inputs: {
+        image: ["input", 0],
+        low_threshold: 0.1,
+        high_threshold: 0.32
+      }
+    };
+    if (hasMask) {
+      workflow.mask = {
+        class_type: "LoadImageMask",
+        inputs: { image: "{{MASK_0}}", channel: "red" }
+      };
+    }
+  }
+  const errors = validateZImageTurboWorkflow(workflow, quality.id, true);
+  if (errors.length) throw new Error(errors.join(" "));
+  return workflow;
+}
+
 export function renderImageWorkflow(
   workflow: ComfyApiWorkflow,
   uploadedPictures: string[],
@@ -1207,6 +1770,30 @@ export const flux2Klein4bAdapter: ImageModelAdapter = {
   compilePrompt: compileFlux2Klein4bPrompt,
   buildWorkflow: buildFlux2Klein4bWorkflow,
   validateWorkflow: validateFlux2Klein4bWorkflow,
+  parseOutputs(history: unknown): ImageOutputCandidate[] {
+    return extractComfyOutputFiles(history)
+      .map((file) => imageOutputCandidateFromValue(file))
+      .filter((file): file is ImageOutputCandidate => file !== null);
+  }
+};
+
+export const zImageAdapter: ImageModelAdapter = {
+  ...zImageCapability,
+  compilePrompt: compileZImagePrompt,
+  buildWorkflow: buildZImageWorkflow,
+  validateWorkflow: validateZImageWorkflow,
+  parseOutputs(history: unknown): ImageOutputCandidate[] {
+    return extractComfyOutputFiles(history)
+      .map((file) => imageOutputCandidateFromValue(file))
+      .filter((file): file is ImageOutputCandidate => file !== null);
+  }
+};
+
+export const zImageTurboAdapter: ImageModelAdapter = {
+  ...zImageTurboCapability,
+  compilePrompt: compileZImagePrompt,
+  buildWorkflow: buildZImageTurboWorkflow,
+  validateWorkflow: validateZImageTurboWorkflow,
   parseOutputs(history: unknown): ImageOutputCandidate[] {
     return extractComfyOutputFiles(history)
       .map((file) => imageOutputCandidateFromValue(file))
@@ -1332,6 +1919,8 @@ export const imageModelAdapters: Record<string, ImageModelAdapter> = {
   [qwenImageEdit2511Adapter.id]: qwenImageEdit2511Adapter,
   [qwenImageEdit2511CropStitchAdapter.id]: qwenImageEdit2511CropStitchAdapter,
   [flux2Klein4bAdapter.id]: flux2Klein4bAdapter,
+  [zImageAdapter.id]: zImageAdapter,
+  [zImageTurboAdapter.id]: zImageTurboAdapter,
   [lamaInpaintAdapter.id]: lamaInpaintAdapter,
   [birefnetBackgroundRemovalCapability.id]: {
     ...birefnetBackgroundRemovalCapability,

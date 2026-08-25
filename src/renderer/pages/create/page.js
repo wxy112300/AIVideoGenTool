@@ -19,6 +19,21 @@ export function renderImageEditPage(viewModel, options) {
     const escapeHtml = options.escapeHtml;
     const t = options.t;
     const maskMode = viewModel.maskRequired;
+    const renderPictureTools = (picture) => {
+        if (!picture.absolutePath)
+            return "";
+        const buttons = [];
+        if (maskMode) {
+            buttons.push(`<button class="secondary button-with-icon" data-markup-image-picture="${escapeHtml(picture.id)}" aria-label="绘制移除区域" title="绘制或修改 Mask">${icon("brush")}<span>${picture.mask ? "修改 Mask" : "绘制 Mask"}</span></button>`);
+        }
+        else if (!viewModel.promptless) {
+            buttons.push(`<button class="icon-button" data-markup-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.imageEdit.markPicture, { index: picture.pictureNumber })}" title="${t(uiKeys.create.imageEdit.markImage)}">${icon("pencil")}</button>`);
+        }
+        if (!maskMode && viewModel.maskSupported) {
+            buttons.push(`<button class="icon-button" data-mask-image-picture="${escapeHtml(picture.id)}" aria-label="绘制 Mask" title="${picture.mask ? "修改 Mask" : "绘制 Mask"}">${icon("brush")}</button>`);
+        }
+        return buttons.join("");
+    };
     return `
     <section class="page-heading create-page-heading image-edit-page-heading">
       <div class="page-heading-copy"><h1>${t(uiKeys.create.imageEditTitle)}</h1><p>${t(uiKeys.create.imageEditDescription)}</p></div>
@@ -49,7 +64,7 @@ export function renderImageEditPage(viewModel, options) {
                 <code title="${escapeHtml(picture.absolutePath)}">${picture.absolutePath ? escapeHtml(picture.absolutePath.split(/[\\/]/u).pop() ?? picture.absolutePath) : t(uiKeys.create.imageEdit.notAdded)}</code>
                 ${maskMode ? `<span class="muted">${picture.mask ? "Mask 已保存，可以加入队列" : "需要绘制 Mask 后才能加入队列"}</span>` : `<label>${t(uiKeys.create.imageEdit.referenceRole)}<select data-image-picture-role="${escapeHtml(picture.id)}" ${picture.pictureNumber === 1 ? "disabled" : ""}>${imageReferenceRoleOptions(options, picture)}</select></label>`}
               </div>
-              <div class="image-picture-card-actions">${picture.absolutePath && (!viewModel.promptless || maskMode) ? `<button class="${maskMode ? "secondary button-with-icon" : "icon-button"}" data-markup-image-picture="${escapeHtml(picture.id)}" aria-label="${maskMode ? "绘制移除区域" : t(uiKeys.create.imageEdit.markPicture, { index: picture.pictureNumber })}" title="${maskMode ? "绘制或修改 Mask" : t(uiKeys.create.imageEdit.markImage)}">${icon(maskMode ? "brush" : "pencil")}${maskMode ? `<span>${picture.mask ? "修改 Mask" : "绘制 Mask"}</span>` : ""}</button>` : ""}<button class="icon-button danger" data-remove-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}" title="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}">${icon("trash-2")}</button></div>
+              <div class="image-picture-card-actions">${renderPictureTools(picture)}<button class="icon-button danger" data-remove-image-picture="${escapeHtml(picture.id)}" aria-label="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}" title="${t(uiKeys.create.imageEdit.deleteSlot, { index: picture.pictureNumber })}">${icon("trash-2")}</button></div>
             </article>`).join("") : `<div class="image-picture-empty"><span>${icon("images")}</span><strong>${t(uiKeys.create.imageEdit.emptyTitle)}</strong><small>${t(uiKeys.create.imageEdit.emptyDescription)}</small></div>`}
         </div>
         ${maskMode && viewModel.draft.pictures.some((picture) => picture.absolutePath) ? "" : `<button class="drop-zone image-picture-drop-zone" id="image-picture-drop-zone" data-image-picture-drop ${viewModel.draft.pictures.length >= viewModel.imageCapabilityMaxPictures ? "disabled" : ""}>

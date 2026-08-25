@@ -49,6 +49,8 @@ describe("model catalog", () => {
     expect(modelCatalog.list("prompt")).toHaveLength(9);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
       "birefnet-background-removal",
+      "z-image-turbo",
+      "z-image",
       "lama-inpaint",
       "qwen-image-edit-2511",
       "qwen-image-edit-2511-crop-stitch",
@@ -76,6 +78,16 @@ describe("model catalog", () => {
       .toEqual(["inpaint-cropandstitch"]);
     expect(modelCatalog.get("birefnet-background-removal")?.definition.scan?.requiredCustomNodeIds)
       .toBeUndefined();
+    expect(modelCatalog.get("z-image")?.definition.scan?.components.map((component) => component.expected))
+      .toEqual([
+        "diffusion_models/z_image_bf16.safetensors",
+        "text_encoders/qwen_3_4b.safetensors",
+        "vae/ae.safetensors"
+      ]);
+    expect(modelCatalog.get("z-image-turbo")?.definition.scan?.runtimeNodeTypes)
+      .toEqual(expect.arrayContaining(["Canny", "ModelPatchLoader", "ZImageFunControlnet"]));
+    expect(modelCatalog.get("z-image-turbo")?.definition.scan?.components.at(-1)?.optional)
+      .toBe(true);
   });
 
   it("points native SeedVR2 downloads directly at the required files", () => {

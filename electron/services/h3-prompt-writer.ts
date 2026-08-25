@@ -8,9 +8,9 @@ import {
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
 import {
-  normalizeQwenImageEditPromptOutput,
-  qwenImageEditPromptContract
+  normalizeQwenImageEditPromptOutput
 } from "../../src/core/qwen-image-prompt.js";
+import { imageEditPromptContractForTarget } from "../../src/core/image-prompt.js";
 import {
   inferH3PromptMode,
   normalizeH3PromptOutput
@@ -155,7 +155,8 @@ export function extractImageEditPromptFromWriter(value: string): string {
 }
 
 function imageEditSystemPrompt(request: EnhanceRequest): string {
-  return qwenImageEditPromptContract(
+  return imageEditPromptContractForTarget(
+    request.imageTargetModelId,
     request.imageEditEnhanceMode === "faithful" ? "faithful" : "detail-enhance",
     request.imageEditPresetText,
     "writer"

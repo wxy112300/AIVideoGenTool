@@ -4,14 +4,21 @@ import {
   birefnetRequiredNodeTypes,
   buildBirefnetBackgroundRemovalWorkflow,
   buildFlux2Klein4bWorkflow,
+  buildZImageTurboWorkflow,
+  buildZImageWorkflow,
   buildQwenImageEdit2511Workflow,
   buildQwenImageEdit2511CropStitchWorkflow,
   cachedImageProfileAllowsEnqueue,
   compileFlux2Klein4bPrompt,
+  compileZImagePrompt,
   compileQwenImageEditPrompt,
   compileQwenImageEditCropStitchPrompt,
   flux2Klein4bCapability,
   flux2Klein4bRequiredNodeTypes,
+  zImageCapability,
+  zImageRequiredNodeTypes,
+  zImageTurboCapability,
+  zImageTurboRequiredNodeTypes,
   firstSupportedImageModelId,
   imageLightningComponentFound,
   imageMarkupPromptContext,
@@ -29,6 +36,8 @@ import {
   qwenImageEdit2511CropStitchCapability,
   renderImageWorkflow,
   validateFlux2Klein4bWorkflow,
+  validateZImageTurboWorkflow,
+  validateZImageWorkflow,
   validateLamaInpaintWorkflow,
   validateQwenImageEdit2511Workflow,
   validateQwenImageEdit2511CropStitchWorkflow,
@@ -157,6 +166,129 @@ describe("BiRefNet deterministic background-removal workflow", () => {
     expect(workflow.transparentImage?.inputs.alpha).toEqual(["alphaMask", 0]);
     expect(workflow.save?.inputs.images).toEqual(["transparentImage", 0]);
     expect(validateBirefnetWorkflow(renderImageWorkflow(workflow, ["source.png"]))).toEqual([]);
+  });
+});
+
+describe("Z-Image generation and reference workflow contract", () => {
+  const run = { id: "run", index: 0, seed: 7, status: "running" as const };
+
+  it("supports text-only generation with the official native graph", () => {
+    expect(zImageCapability).toMatchObject({
+      maxPictures: 1,
+      supportsTextOnly: true,
+      supportsMask: true,
+      supportsMarkup: true
+    });
+    expect(zImageRequiredNodeTypes).toEqual(
+      expect.arrayContaining(["EmptySD3LatentImage", "CLIPTextEncode", "VAEEncodeForInpaint"])
+    );
+    const workflow = buildZImageWorkflow({
+      id: "z-image-task", taskType: "image-generation", status: "waiting",
+      createdAt: "2026-08-13T00:00:00.000Z", updatedAt: "2026-08-13T00:00:00.000Z",
+      outputFilename: "ZImage-test", projectId: "project", pictures: [],
+      outputWidth: 1024, outputHeight: 1024,
+      prompt: "A quiet mountain village at dawn.", promptVersion: 1, modelId: "z-image",
+      workflowPath: "builtin:image/z-image", qualityProfile: "native",
+      outputFormat: "png", outputCount: 1, runs: []
+    }, run);
+
+    expect(workflow.input).toBeUndefined();
+    expect(workflow.latent?.class_type).toBe("EmptySD3LatentImage");
+    expect(workflow.sampler?.inputs.steps).toBe(30);
+    expect(validateZImageWorkflow(workflow)).toEqual([]);
+  });
+
+  it("routes a reference and saved mask through the Base inpaint graph", () => {
+    const masked = {
+      ...picture(1),
+      mask: {
+        documentPath: "mask.fabric.json",
+        maskPath: "mask.png",
+        revision: 1,
+        regionCount: 1,
+        updatedAt: "2026-08-13T00:00:00.000Z"
+      }
+    };
+    const workflow = buildZImageWorkflow({
+      id: "z-image-mask-task", taskType: "image-generation", status: "waiting",
+      createdAt: "2026-08-13T00:00:00.000Z", updatedAt: "2026-08-13T00:00:00.000Z",
+      outputFilename: "ZImage-mask", projectId: "project", pictures: [masked],
+      outputWidth: 1024, outputHeight: 1024,
+      prompt: "Replace the marked sign with a wooden door.", promptVersion: 1, modelId: "z-image",
+      workflowPath: "builtin:image/z-image", qualityProfile: "native",
+      outputFormat: "png", outputCount: 1, runs: []
+    }, run);
+    expect(workflow.source?.class_type).toBe("VAEEncodeForInpaint");
+    expect(workflow.mask?.inputs.image).toBe("{{MASK_0}}");
+    expect(validateZImageWorkflow(
+      renderImageWorkflow(workflow, ["source.png"], ["mask.png"])
+    )).toEqual([]);
+  });
+
+  it("uses one annotated visual guide instead of inventing a second picture", () => {
+    const marked = {
+      ...picture(1, "original.png"),
+      markup: {
+        documentPath: "guide.fabric.json",
+        renderedPath: "guide.png",
+        summary: "Only change the marked window.",
+        revision: 2,
+        objectCount: 1,
+        updatedAt: "2026-08-11T00:00:00.000Z"
+      }
+    };
+    const result = compileZImagePrompt("Add a flower box to Picture 1.", [marked]);
+    expect(result.errors).toEqual([]);
+    expect(result.pictures).toHaveLength(1);
+    expect(result.pictures[0]?.absolutePath).toBe("guide.png");
+    expect(result.prompt).toContain("Annotation and Mask contract");
+    expect(result.prompt).toContain("Only change the marked window.");
+  });
+
+  it("uses the official Turbo control patch only for reference runs", () => {
+    expect(zImageTurboCapability.qualityProfiles[0]).toMatchObject({ steps: 8, cfg: 1 });
+    expect(zImageTurboRequiredNodeTypes).toEqual(
+      expect.arrayContaining(["Canny", "ModelPatchLoader", "ZImageFunControlnet", "ConditioningZeroOut"])
+    );
+    const baseTask: ImageGenerationQueueTask = {
+      id: "z-turbo-task", taskType: "image-generation", status: "waiting",
+      createdAt: "2026-08-13T00:00:00.000Z", updatedAt: "2026-08-13T00:00:00.000Z",
+      outputFilename: "ZImageTurbo-test", projectId: "project", pictures: [],
+      outputWidth: 1024, outputHeight: 1024,
+      prompt: "A clean studio product photo.", promptVersion: 1, modelId: "z-image-turbo",
+      workflowPath: "builtin:image/z-image-turbo", qualityProfile: "turbo-8",
+      outputFormat: "png", outputCount: 1, runs: []
+    };
+    const textOnly = buildZImageTurboWorkflow(baseTask, run);
+    expect(textOnly.patch).toBeUndefined();
+    expect(validateZImageTurboWorkflow(textOnly)).toEqual([]);
+
+    const reference = buildZImageTurboWorkflow({
+      ...baseTask,
+      pictures: [picture(1)],
+      prompt: "Change the camera to a low angle while keeping the subject."
+    }, run);
+    expect(reference.patch?.inputs.name).toBe("Z-Image-Turbo-Fun-Controlnet-Union.safetensors");
+    expect(reference.controlGuide?.class_type).toBe("Canny");
+    expect(reference.control?.inputs.image).toEqual(["controlGuide", 0]);
+    expect(validateZImageTurboWorkflow(
+      renderImageWorkflow(reference, ["source.png"])
+    )).toEqual([]);
+  });
+
+  it("provides a 1024 square fallback before a text-only source exists", () => {
+    expect(imageOutputDimensions(0, 0, "source", 1024, 1024)).toEqual([1024, 1024]);
+    expect(imageResolutionOptionsFor(0, 0, 1024, 1024)[0]).toMatchObject({
+      label: "默认 · 1024×1024",
+      width: 1024,
+      height: 1024
+    });
+    expect(imageResolutionOptionsFor(0, 0, 1024, 1024).map((option) => option.value)).toEqual([
+      "source",
+      720,
+      640,
+      480
+    ]);
   });
 });
 

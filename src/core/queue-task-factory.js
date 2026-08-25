@@ -86,7 +86,7 @@ export function imageTaskFromDraft(draft, diffusionModelFilename, outputTarget, 
     }));
     const basePicture = draft.pictures[0];
     const targetResolution = normalizeImageTargetResolution(draft.targetResolution, basePicture?.width ?? 0, basePicture?.height ?? 0);
-    const [outputWidth, outputHeight] = imageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0, adapter?.sourceResolutionOnly ? "source" : targetResolution);
+    const [outputWidth, outputHeight] = imageOutputDimensions(basePicture?.width ?? 0, basePicture?.height ?? 0, adapter?.sourceResolutionOnly ? "source" : targetResolution, adapter?.textOnlyOutputWidth, adapter?.textOnlyOutputHeight);
     const promptless = imageModelAdapterFor(draft.modelId)?.requiresPrompt === false;
     return {
         id,

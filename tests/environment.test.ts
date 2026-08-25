@@ -1292,6 +1292,23 @@ describe("ComfyUI environment candidates", () => {
       "https://huggingface.co/Comfy-Org/flux2-klein/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors"
     );
   });
+
+  it("keeps the Z-Image-Turbo control patch optional for text-only generation", () => {
+    const profile = evaluateModelProfiles([
+      "diffusion_models\\z_image_turbo_bf16.safetensors",
+      "text_encoders\\qwen_3_4b.safetensors",
+      "vae\\ae.safetensors"
+    ], "q3_k_m", new Set()).find((item) => item.id === "z-image-turbo");
+
+    expect(profile?.available).toBe(true);
+    expect(profile?.components.find((item) => item.label.includes("Fun ControlNet"))).toMatchObject({
+      found: false,
+      optional: true
+    });
+    expect(profile?.runtimeMissingNodes).toEqual(
+      expect.arrayContaining(["Canny", "ModelPatchLoader", "ZImageFunControlnet"])
+    );
+  });
 });
 
 describe("download proxy settings", () => {

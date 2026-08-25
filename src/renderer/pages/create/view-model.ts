@@ -102,8 +102,10 @@ export function imageEditEnqueueBlockReason(
     : 0;
   const imageModelInputCount = draft.pictures.length + markupGuideCount;
   const prompt = activeImagePrompt(draft);
-  return !draft.pictures.length
-    ? t(uiKeys.create.validation.imageAddSlot)
+  const referenceBlockReason = !draft.pictures.length
+    ? imageCapability.supportsTextOnly
+      ? ""
+      : t(uiKeys.create.validation.imageAddSlot)
     : !draft.pictures[0]?.absolutePath
       ? t(uiKeys.create.validation.imageBaseMissing)
       : incompletePicture
@@ -114,15 +116,16 @@ export function imageEditEnqueueBlockReason(
             ? t(uiKeys.create.validation.imageMarkupTooMany, { count: markupGuideCount })
             : imageCapability.requiresMask && !draft.pictures[0]?.mask?.regionCount
               ? "请先在原图上绘制并保存 Mask"
-            : imageCapability.requiresPrompt !== false && !prompt.text.trim()
-              ? t(uiKeys.create.validation.imagePromptMissing)
-              : imageProfile?.missingCustomNodeNames?.length
-                ? `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与工作流中安装。`
-              : !cachedImageProfileAllowsEnqueue(imageProfile)
-                ? !imageProfile?.available
-                  ? `${imageCapability.name} 模型文件不完整，请先在设置 → 图片模型中安装并重新扫描。`
-                  : t(uiKeys.create.validation.imageWorkflowMissing, { name: imageCapability.name })
-                : "";
+              : "";
+  return referenceBlockReason || imageCapability.requiresPrompt !== false && !prompt.text.trim()
+    ? referenceBlockReason || t(uiKeys.create.validation.imagePromptMissing)
+    : imageProfile?.missingCustomNodeNames?.length
+      ? `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与工作流中安装。`
+      : !cachedImageProfileAllowsEnqueue(imageProfile)
+        ? !imageProfile?.available
+          ? `${imageCapability.name} 模型文件不完整，请先在设置 → 图片模型中安装并重新扫描。`
+          : t(uiKeys.create.validation.imageWorkflowMissing, { name: imageCapability.name })
+        : "";
 }
 
 export interface VideoEnqueueBlockReasonInput {
@@ -214,10 +217,14 @@ export function buildImageEditPageViewModel(
   );
   const imageResolutionOptions = imageCapability.sourceResolutionOnly ? imageResolutionOptionsFor(
     basePicture?.width ?? 0,
-    basePicture?.height ?? 0
+    basePicture?.height ?? 0,
+    imageCapability.textOnlyOutputWidth ?? 0,
+    imageCapability.textOnlyOutputHeight ?? 0
   ).slice(0, 1) : imageResolutionOptionsFor(
     basePicture?.width ?? 0,
-    basePicture?.height ?? 0
+    basePicture?.height ?? 0,
+    imageCapability.textOnlyOutputWidth ?? 0,
+    imageCapability.textOnlyOutputHeight ?? 0
   );
   const imageModelProfiles = environmentScan?.modelProfiles.filter((profile) => profile.category === "image") ?? [];
   const imageModelOptions = imageModelProfiles.length
@@ -314,7 +321,10 @@ export function buildImageEditPageViewModel(
     enqueueBusy,
     promptless,
     maskRequired: imageCapability.requiresMask === true,
-    sourceResolutionOnly: imageCapability.sourceResolutionOnly === true
+    sourceResolutionOnly: imageCapability.sourceResolutionOnly === true,
+    supportsTextOnly: imageCapability.supportsTextOnly === true,
+    maskSupported: imageCapability.supportsMask === true,
+    annotationSupported: imageCapability.supportsMarkup === true
   };
 }
 

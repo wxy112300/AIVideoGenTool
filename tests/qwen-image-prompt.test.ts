@@ -6,7 +6,11 @@ import {
   qwenImageEditPromptContract,
   qwenImageEditPromptUserContent
 } from "../src/core/qwen-image-prompt.js";
-import { qwenImageEditEnhancerContract } from "../src/core/image-prompt.js";
+import {
+  imageEditPromptContractForTarget,
+  imageEditPromptUserContentForTarget,
+  qwenImageEditEnhancerContract
+} from "../src/core/image-prompt.js";
 
 describe("Qwen Image Edit prompt contract", () => {
   it("provides English faithful and detail-enhance rules", () => {
@@ -54,6 +58,28 @@ describe("Qwen Image Edit prompt contract", () => {
   it("keeps the legacy image prompt import aligned with the Qwen contract", () => {
     expect(qwenImageEditEnhancerContract("faithful", "CUSTOM RULE")).toBe(
       qwenImageEditPromptContract("faithful", "CUSTOM RULE")
+    );
+  });
+
+  it("selects a Z-Image-specific contract without changing the Qwen default", () => {
+    const request = {
+      prompt: "把视角改成低机位，并给窗台增加细致的木纹。",
+      modelId: "qwen2.5-vl",
+      imageTargetModelId: "z-image-turbo",
+      mode: "image-edit" as const,
+      imagePaths: ["source.png"],
+      referenceContext: "Picture 1 = base image"
+    };
+    const contract = imageEditPromptContractForTarget("z-image-turbo", "detail-enhance");
+    const content = imageEditPromptUserContentForTarget(request);
+    expect(contract).toContain("Z-Image and Z-Image-Turbo");
+    expect(contract).toContain("camera angle");
+    expect(contract).toContain("Mask");
+    expect(contract).toContain("negative prompts");
+    expect(content).toContain("one reference image is supplied as Picture 1");
+    expect(content).toContain("低机位");
+    expect(imageEditPromptContractForTarget("qwen-image-edit-2511", "faithful")).toContain(
+      "Qwen-Image-Edit-2511"
     );
   });
 });

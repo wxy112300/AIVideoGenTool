@@ -3,7 +3,9 @@ import {
   flux2Klein4bRequiredNodeTypes,
   lamaInpaintRequiredNodeTypes,
   qwenImageEdit2511RequiredNodeTypes,
-  qwenImageEdit2511CropStitchRequiredNodeTypes
+  qwenImageEdit2511CropStitchRequiredNodeTypes,
+  zImageRequiredNodeTypes,
+  zImageTurboRequiredNodeTypes
 } from "../../image-workflow.js";
 import { component, entry, guide } from "./catalog-helpers.js";
 import type { CatalogModelEntry } from "../types.js";
@@ -40,6 +42,25 @@ export const imageModelEntries: CatalogModelEntry[] = [
       component("Big LaMa 局部修补模型", "inpaint/big-lama.pt", /inpaint\/big-lama\.pt$/i, guide("Sanster / Big LaMa", "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt", "inpaint", "big-lama.pt", "仅移除 Mask 覆盖内容并修复背景；无需 Prompt。"))
     ] }
   }, { name: "LaMa · 局部移除", badge: "单图 + Mask · 原图尺寸", description: "涂抹需要移除的区域，使用 Big LaMa 自动修复背景；不读取 Prompt。" }, { name: "LaMa · object removal", badge: "One image + mask · source size", description: "Remove masked content and reconstruct the background with Big LaMa. No prompt is sent." }, { name: "LaMa · 局部移除", badge: "單圖 + Mask · 原圖尺寸", description: "塗抹需要移除的區域，使用 Big LaMa 自動修復背景；不讀取 Prompt。" }),
+  entry({
+    id: "z-image-turbo", family: "z-image", variant: "turbo", category: "image", adapterId: "z-image-turbo", order: 118, inputModes: ["image"],
+    capabilities: { maxReferenceImages: 1, resolutions: [2160, 1152, 1080, 720, 640, 480] },
+    scan: { managedBy: "comfyui", vram: "BF16 · 4090 24GB · 8 步", integrated: true, runtimeNodeTypes: zImageTurboRequiredNodeTypes, components: [
+      component("Z-Image-Turbo 扩散模型", "diffusion_models/z_image_turbo_bf16.safetensors", /diffusion_models[\\/]z_image_turbo_bf16\.safetensors$/i, guide("Comfy-Org / z_image_turbo", "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors", "diffusion_models", "z_image_turbo_bf16.safetensors")),
+      component("Z-Image Qwen3 4B 文本编码器", "text_encoders/qwen_3_4b.safetensors", /text_encoders[\\/]qwen_3_4b\.safetensors$/i, guide("Comfy-Org / z_image_turbo", "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors", "text_encoders", "qwen_3_4b.safetensors")),
+      component("Z-Image AE VAE", "vae/ae.safetensors", /vae[\\/]ae\.safetensors$/i, guide("Comfy-Org / z_image_turbo", "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors", "vae", "ae.safetensors")),
+      component("Z-Image-Turbo Fun ControlNet Union（参考图可选）", "model_patches/Z-Image-Turbo-Fun-Controlnet-Union.safetensors", /model_patches[\\/]Z-Image-Turbo-Fun-Controlnet-Union\.safetensors$/i, guide("Alibaba PAI / Z-Image-Turbo-Fun-Controlnet-Union", "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors", "model_patches", "Z-Image-Turbo-Fun-Controlnet-Union.safetensors", "仅在 Turbo 有参考图、标注或 Mask 时使用；无参考图的 8 步文生图不需要。"), true)
+    ] }
+  }, { name: "Z-Image-Turbo · 快速生成/参考控制", badge: "8 步 · T2I + 单图控制", description: "Z-Image-Turbo 的 8 步快速路径；无参考图直接文生图，有参考图使用官方 Fun ControlNet，可配合标注或 Mask。" }, { name: "Z-Image-Turbo · fast generation/control", badge: "8 steps · T2I + single-image control", description: "Fast 8-step Z-Image-Turbo generation. Text-only runs use the native path; reference runs use the official Fun ControlNet patch." }, { name: "Z-Image-Turbo · 快速生成／參考控制", badge: "8 步 · T2I + 單圖控制", description: "Z-Image-Turbo 的 8 步快速路徑；無參考圖直接文生圖，有參考圖使用官方 Fun ControlNet，可配合標註或 Mask。" }),
+  entry({
+    id: "z-image", family: "z-image", category: "image", adapterId: "z-image", order: 115, inputModes: ["image"],
+    capabilities: { maxReferenceImages: 1, resolutions: [2160, 1152, 1080, 720, 640, 480] },
+    scan: { managedBy: "comfyui", vram: "BF16 · 原生 30–40 步 · 4090 24GB", integrated: true, runtimeNodeTypes: zImageRequiredNodeTypes, components: [
+      component("Z-Image 扩散模型", "diffusion_models/z_image_bf16.safetensors", /diffusion_models[\\/]z_image_bf16\.safetensors$/i, guide("Comfy-Org / z_image", "https://huggingface.co/Comfy-Org/z_image/resolve/main/split_files/diffusion_models/z_image_bf16.safetensors", "diffusion_models", "z_image_bf16.safetensors")),
+      component("Z-Image Qwen3 4B 文本编码器", "text_encoders/qwen_3_4b.safetensors", /text_encoders[\\/]qwen_3_4b\.safetensors$/i, guide("Comfy-Org / z_image_turbo", "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors", "text_encoders", "qwen_3_4b.safetensors")),
+      component("Z-Image AE VAE", "vae/ae.safetensors", /vae[\\/]ae\.safetensors$/i, guide("Comfy-Org / z_image_turbo", "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors", "vae", "ae.safetensors"))
+    ] }
+  }, { name: "Z-Image · 原生生成/图生图", badge: "30–40 步 · T2I + img2img", description: "Z-Image 原生高质量路径；没有参考图时文生图，有参考图时按单图 img2img，带 Mask 时走原生 VAE Inpaint。" }, { name: "Z-Image · native generation/img2img", badge: "30–40 steps · T2I + img2img", description: "Native high-quality Z-Image path. Text-only prompts use T2I; one reference uses img2img, with optional native VAE inpainting." }, { name: "Z-Image · 原生生成／圖生圖", badge: "30–40 步 · T2I + img2img", description: "Z-Image 原生高品質路徑；沒有參考圖時文生圖，有參考圖時按單圖 img2img，帶 Mask 時走原生 VAE Inpaint。" }),
   entry({
     id: "qwen-image-edit-2511", family: "qwen-image-edit", category: "image", adapterId: "qwen-image-edit-2511", promptPackId: "qwen-image-edit", order: 100, inputModes: ["image"],
     capabilities: { maxReferenceImages: 3, resolutions: [2160, 1152, 1080, 720, 640, 480] },

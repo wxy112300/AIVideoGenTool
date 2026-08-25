@@ -188,6 +188,26 @@ describe("queue execution snapshots", () => {
     expect(queued.imageOutputSubfolder).toBe("Images");
   });
 
+  it("keeps a Z-Image text-only task runnable without a source picture", () => {
+    const draft = createDefaultImageEditDraft();
+    draft.modelId = "z-image-turbo";
+    draft.qualityProfile = "turbo-8";
+    draft.pictures = [];
+    draft.promptVersions[0]!.text = "A quiet mountain village at dawn.";
+
+    const queued = imageTaskFromDraft(
+      draft,
+      "z_image_turbo_bf16.safetensors",
+      { root: "C:/output", directory: "C:/output/Images", subfolder: "Images" },
+      clock(["task-z-image", "project-z-image", "run-z-image"])
+    );
+
+    expect(queued.pictures).toEqual([]);
+    expect(queued.outputWidth).toBe(1024);
+    expect(queued.outputHeight).toBe(1024);
+    expect(queued.workflowPath).toBe("builtin:image/z-image-turbo");
+  });
+
   it("never carries a hidden prompt into a promptless LaMa task snapshot", () => {
     const draft = createDefaultImageEditDraft();
     draft.modelId = "lama-inpaint";

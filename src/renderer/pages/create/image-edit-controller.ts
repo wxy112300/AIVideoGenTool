@@ -12,7 +12,7 @@ export interface ImageEditControllerOptions {
   patchImageDraft(patch: Partial<ImageEditDraft>): void;
   addImageSlot(): void;
   addImagePicture(path: string, replacePictureId?: string): void;
-  editImagePictureMarkup(pictureId: string): Promise<void>;
+  editImagePictureMarkup(pictureId: string, mode?: "annotation" | "mask"): Promise<void>;
   imageFileIsSupported(file: File): boolean;
   resizePromptInput(input: HTMLTextAreaElement): void;
   updateImagePromptWordCounter(text: string): void;
@@ -134,6 +134,14 @@ export function mountImageEditController(
       event.stopImmediatePropagation();
       const pictureId = button.dataset.markupImagePicture;
       if (pictureId) void options.editImagePictureMarkup(pictureId);
+    }, { signal });
+  });
+  root.querySelectorAll<HTMLElement>("[data-mask-image-picture]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const pictureId = button.dataset.maskImagePicture;
+      if (pictureId) void options.editImagePictureMarkup(pictureId, "mask");
     }, { signal });
   });
   root.querySelectorAll<HTMLSelectElement>("[data-image-picture-role]").forEach((select) => {
@@ -278,6 +286,7 @@ export function mountImageEditController(
       const text = await context.studio.enhancePrompt({
         prompt: requestPrompt,
         modelId: context.getState()?.settings.promptModelId ?? "",
+        imageTargetModelId: draft.modelId,
         origin: "image-edit",
         mode: "image-edit",
         imageEditEnhanceMode: enhanceMode,

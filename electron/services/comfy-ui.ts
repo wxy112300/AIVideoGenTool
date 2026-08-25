@@ -22,11 +22,11 @@ import {
   workflowSupportsEndImage
 } from "../../src/core/workflow.js";
 import { nativePromptModelFiles } from "../../src/core/prompt-models.js";
+import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
 import {
-  qwenImageEditPromptContract,
-  normalizeQwenImageEditPromptOutput,
-  qwenImageEditPromptUserContent
-} from "../../src/core/qwen-image-prompt.js";
+  imageEditPromptContractForTarget,
+  imageEditPromptUserContentForTarget
+} from "../../src/core/image-prompt.js";
 import { imageReferenceInputPath } from "../../src/core/image-workflow.js";
 import { renderUpscaleWorkflow } from "../../src/core/upscale.js";
 import {
@@ -175,8 +175,8 @@ export function h3PromptInstruction(
 export function imageEditPromptInstruction(request: EnhanceRequest): string {
   const preset = request.imageEditEnhanceMode === "faithful" ? "faithful" : "detail-enhance";
   return [
-    qwenImageEditPromptContract(preset, request.imageEditPresetText),
-    qwenImageEditPromptUserContent(request)
+    imageEditPromptContractForTarget(request.imageTargetModelId, preset, request.imageEditPresetText),
+    imageEditPromptUserContentForTarget(request)
   ].join("\n\n");
 }
 

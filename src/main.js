@@ -1912,11 +1912,12 @@ function sameImageCrop(left, right) {
         left.width === right.width && left.height === right.height &&
         left.sourceWidth === right.sourceWidth && left.sourceHeight === right.sourceHeight;
 }
-async function editImagePictureMarkup(pictureId) {
+async function editImagePictureMarkup(pictureId, requestedMode = "annotation") {
     const picture = state.imageDraft.pictures.find((item) => item.id === pictureId);
     if (!picture?.absolutePath)
         return;
-    const maskMode = imageModelCapabilityFor(state.imageDraft.modelId).requiresMask === true;
+    const maskMode = requestedMode === "mask" ||
+        (requestedMode === "annotation" && imageModelCapabilityFor(state.imageDraft.modelId).requiresMask === true);
     try {
         const { openImageMarkupEditor } = await import("./image-markup-editor");
         const [sourceDataUrl, existingDocument] = await Promise.all([

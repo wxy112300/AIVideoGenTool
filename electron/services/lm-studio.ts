@@ -15,10 +15,12 @@ import {
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
 import {
-  normalizeQwenImageEditPromptOutput,
-  qwenImageEditPromptContract,
-  qwenImageEditPromptUserContent
+  normalizeQwenImageEditPromptOutput
 } from "../../src/core/qwen-image-prompt.js";
+import {
+  imageEditPromptContractForTarget,
+  imageEditPromptUserContentForTarget
+} from "../../src/core/image-prompt.js";
 import {
   h3DurationPlan,
   h3EffectiveDurationSeconds as h3EffectiveDurationNumber,
@@ -322,14 +324,15 @@ export async function buildLmStudioChatRequest(
       messages: [
         {
           role: "system",
-          content: qwenImageEditPromptContract(
+          content: imageEditPromptContractForTarget(
+            request.imageTargetModelId,
             request.imageEditEnhanceMode === "faithful" ? "faithful" : "detail-enhance",
             request.imageEditPresetText
           )
         },
         {
           role: "user",
-          content: await nativeUserContent(qwenImageEditPromptUserContent(request), imagePaths)
+          content: await nativeUserContent(imageEditPromptUserContentForTarget(request), imagePaths)
         }
       ]
     };
