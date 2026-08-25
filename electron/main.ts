@@ -1699,32 +1699,36 @@ async function validateNativePromptRuntime(settings: Settings): Promise<void> {
 }
 
 async function releasePromptRuntime(settings: Settings): Promise<number> {
-  const backend = retainedPromptRuntime?.backend ?? promptModelBackend(settings.promptModelId);
+  const retained = retainedPromptRuntime;
+  const backend = retained?.backend ?? promptModelBackend(settings.promptModelId);
+  const modelId = retained?.modelId ?? settings.promptModelId;
   retainedPromptRuntime = null;
-  if (backend === "h3-prompt-writer") {
+  return promptRuntimeManager.releaseModel(modelId, async () => {
+    if (backend === "h3-prompt-writer") {
+      try {
+        return await releaseH3PromptWriter(settings) ? 1 : 0;
+      } catch {
+        return 0;
+      }
+    }
+    if (backend === "comfyui-multimodal") {
+      let released = 0;
+      try {
+        released = await releaseMultimodalPromptModel(settings) ? 1 : 0;
+      } catch {
+        // Older node installs do not expose the app-owned cleanup route yet.
+      }
+      await freeMemory(settings).catch(() => undefined);
+      return released;
+    }
     try {
-      return await releaseH3PromptWriter(settings) ? 1 : 0;
+      await freeMemory(settings);
+      return 1;
     } catch {
+      // An offline ComfyUI instance cannot be holding the native prompt model.
       return 0;
     }
-  }
-  if (backend === "comfyui-multimodal") {
-    let released = 0;
-    try {
-      released = await releaseMultimodalPromptModel(settings) ? 1 : 0;
-    } catch {
-      // Older node installs do not expose the app-owned cleanup route yet.
-    }
-    await freeMemory(settings).catch(() => undefined);
-    return released;
-  }
-  try {
-    await freeMemory(settings);
-    return 1;
-  } catch {
-    // An offline ComfyUI instance cannot be holding the native prompt model.
-    return 0;
-  }
+  });
 }
 
 async function warmSelectedPromptRuntime(
@@ -1874,10 +1878,8 @@ async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: st
       return { ok: false, message: "提示词任务仍在中止中；确认停止后才能卸载模型。" };
     }
   }
-  promptRuntimeManager.setModel("unloading", settings.promptModelId);
   try {
     const released = await releasePromptRuntime(settings);
-    promptRuntimeManager.setModel("unloaded");
     return {
       ok: true,
       message: released

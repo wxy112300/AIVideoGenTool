@@ -69,4 +69,31 @@ describe("PromptRuntimeManager", () => {
       "当前已有提示词任务正在运行。"
     );
   });
+
+  it("publishes the full model release transition around the injected cleanup", async () => {
+    const manager = new PromptRuntimeManager(service());
+    manager.setModel("resident", "qwen-vl");
+    const phases: string[] = [];
+    manager.subscribe((state) => phases.push(state.model.phase));
+    const release = vi.fn(async () => 1);
+
+    await expect(manager.releaseModel("qwen-vl", release)).resolves.toBe(1);
+
+    expect(release).toHaveBeenCalledOnce();
+    expect(phases).toEqual(["unloading", "unloaded"]);
+    expect(manager.snapshot().model).toEqual({ phase: "unloaded", modelId: null });
+  });
+
+  it("marks the model unloaded when injected cleanup fails", async () => {
+    const manager = new PromptRuntimeManager(service());
+    manager.setModel("resident", "qwen-vl");
+
+    await expect(
+      manager.releaseModel("qwen-vl", async () => {
+        throw new Error("release failed");
+      })
+    ).rejects.toThrow("release failed");
+
+    expect(manager.snapshot().model).toEqual({ phase: "unloaded", modelId: null });
+  });
 });

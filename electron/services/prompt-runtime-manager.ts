@@ -156,6 +156,15 @@ export class PromptRuntimeManager {
     });
   }
 
+  async releaseModel(modelId: string, release: () => Promise<number>): Promise<number> {
+    this.setModel("unloading", modelId);
+    try {
+      return await release();
+    } finally {
+      this.setModel("unloaded");
+    }
+  }
+
   private transition(event: Parameters<typeof reducePromptRuntime>[1]): void {
     const next = reducePromptRuntime(this.state, event);
     if (next === this.state) return;
