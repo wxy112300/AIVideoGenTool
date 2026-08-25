@@ -21,7 +21,7 @@
 | Phase 2：创建页操作体验 | 🟡 原型 A 已完成，待评审 | 已完成创建页三模式的紧凑任务操作条、渐进披露和 sticky 入队操作原型；尚未进入 renderer。 |
 | Phase 3：结果检查与继续创作 | ⏳ 待开始 | 复用现有 History/血缘，不建立第二套 Library。 |
 | Phase 4：Prompt 确定性底座 | ⏳ 待开始 | 现有 H3 Prompt/Writer 保持稳定，后续再统一编译管线。 |
-| Phase 5：H3 Studio Image / Keyframe / Audio Drive / Chain | 🟡 已确认范围，待分阶段实施 | H3 Studio Image 与 Chain/latent Extend 已提升为高价值能力；仍按独立 Catalog/Adapter/Queue/History 接入，不复制参考项目。 |
+| Phase 5：H3 Studio Image / Keyframe / Audio Drive / Chain | 🟡 已确认范围，待分阶段实施 | H3 Studio Image 与 Chain/latent Extend 已提升为高价值能力；仍按独立 Catalog/Adapter/Queue/History 接入，不复制参考项目。 Native Masked AV 长视频的专项接入边界见 [H3_NATIVE_MASKED_AV_LONG_VIDEO_PLAN.md](H3_NATIVE_MASKED_AV_LONG_VIDEO_PLAN.md)。 |
 | Phase 6：社区 LoRA 发现与导入 | ⏸ 按需立项 | 现有 Catalog LoRA 机制优先保持不变。 |
 
 Phase 1 的完成只代表低风险诊断和兼容性吸收完成，不代表 ALLINONE 的缓存、完整片段 TAE 预览、H3 Studio Image、Keyframe 或长视频 Chain 已迁移，也不代表新增了真实 GPU 能力。Phase 5 的“已确认范围”表示用户价值和吸纳方向已经确定，不表示运行时已完成。

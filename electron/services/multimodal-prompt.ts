@@ -8,8 +8,9 @@ import {
 } from "../../src/core/h3-prompt.js";
 import {
   extractH3DialogueLocks,
-  h3DialogueLockInstruction,
-  stripH3DialogueFromSource
+  extractH3VisibleTextLocks,
+  h3ContentLockInstruction,
+  stripH3ContentFromSource
 } from "../../src/core/h3-dialogue.js";
 import {
   isH3ReferenceAutoPrompt,
@@ -141,8 +142,7 @@ export function multimodalPromptTargetLanguage(
     return settings.promptLanguage;
   }
   const userText = request.prompt.trim() || request.referenceContext?.trim() || "";
-  const dialogueLocks = extractH3DialogueLocks(userText);
-  const descriptiveText = stripH3DialogueFromSource(userText, dialogueLocks);
+  const descriptiveText = stripH3ContentFromSource(userText);
   if (descriptiveText) return /\p{Script=Han}/u.test(descriptiveText) ? "zh" : "en";
   return settings.uiLocale?.startsWith("zh") ? "zh" : "en";
 }
@@ -220,7 +220,7 @@ export function buildMultimodalPromptWorkflow(
         targetLanguage === "zh"
           ? "Output language override: write explanatory H3 prose and field descriptions in Chinese. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface."
           : "Output language override: write explanatory H3 prose and field descriptions in English. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface.",
-        ...(request.mode === "image-edit" ? [] : [h3DialogueLockInstruction(request.prompt)])
+        ...(request.mode === "image-edit" ? [] : [h3ContentLockInstruction(request.prompt)])
       ].join("\n\n");
   const maxTokens = warmup
     // VisionLLMNode validates this input against its runtime schema.  Recent
@@ -412,7 +412,8 @@ export async function enhancePromptWithMultimodalComfyUi(
       output,
       mode,
       request.h3DurationSeconds ?? 5,
-      extractH3DialogueLocks(request.prompt)
+      extractH3DialogueLocks(request.prompt),
+      extractH3VisibleTextLocks(request.prompt)
     );
   } finally {
     if (!retainModel) {

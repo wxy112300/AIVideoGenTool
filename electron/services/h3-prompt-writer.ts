@@ -15,7 +15,11 @@ import {
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
-import { extractH3DialogueLocks, h3DialogueLockInstruction } from "../../src/core/h3-dialogue.js";
+import {
+  extractH3DialogueLocks,
+  extractH3VisibleTextLocks,
+  h3ContentLockInstruction
+} from "../../src/core/h3-dialogue.js";
 
 interface WriterModel {
   id: string;
@@ -240,14 +244,14 @@ export async function enhancePromptWithH3PromptWriter(
     await uploadMedia(root, sessionId, mode, mediaPaths, signal);
     onProgress?.("uploading", 18);
     onProgress?.("loading-model", 24);
-    const dialogueLocks = h3DialogueLockInstruction(request.prompt);
+    const contentLocks = h3ContentLockInstruction(request.prompt);
     const creativeBrief = [
       isH3ReferenceAutoPrompt(request)
         ? h3AutoPromptInstruction(request)
         : [request.prompt.trim(), request.referenceContext?.trim()]
             .filter(Boolean)
             .join("\n\n参考素材角色：\n"),
-      dialogueLocks
+      contentLocks
     ].filter(Boolean).join("\n\n");
     onProgress?.("generating", null);
     const result = await writerRequest<{ prompt?: string }>(`${root}/h3studio/generate`, {
@@ -280,7 +284,8 @@ export async function enhancePromptWithH3PromptWriter(
       result.prompt.trim(),
       modeForOutput,
       request.h3DurationSeconds ?? 5,
-      extractH3DialogueLocks(request.prompt)
+      extractH3DialogueLocks(request.prompt),
+      extractH3VisibleTextLocks(request.prompt)
     );
   } finally {
     onProgress?.(unloadAfter ? "unloading" : "validating", 98);

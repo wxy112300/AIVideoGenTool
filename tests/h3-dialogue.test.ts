@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractH3VisibleTextLocks,
   extractH3DialogueLocks,
+  h3ContentLockInstruction,
   h3DialogueLockInstruction,
   restoreH3DialogueLocks,
+  restoreH3VisibleTextLocks,
   stripH3DialogueFromSource,
   validateH3DialogueOutput
 } from "../src/core/h3-dialogue.js";
@@ -55,5 +58,35 @@ describe("MiniMax H3 dialogue locks", () => {
     expect(result.duplicates).toHaveLength(1);
     expect(result.unexpected).toHaveLength(1);
     expect(result.ok).toBe(false);
+  });
+
+  it("separates nearby spoken words from quoted visible text", () => {
+    const source = "A woman says in Chinese: \"你好。\" while a neon sign reads \"OPEN\".";
+    const dialogue = extractH3DialogueLocks(source);
+    const visibleText = extractH3VisibleTextLocks(source);
+
+    expect(dialogue.map((lock) => lock.text)).toEqual(["你好。"]);
+    expect(visibleText.map((lock) => lock.text)).toEqual(["OPEN"]);
+    expect(h3ContentLockInstruction(source)).toContain("Compiler-owned visible-text ledger");
+  });
+
+  it("preserves vocal form for voiceover and singing", () => {
+    const voiceover = extractH3DialogueLocks("An off-screen voiceover says in English: \"Welcome home.\"")[0];
+    const singing = extractH3DialogueLocks("The singer sings in Spanish: \"Gracias, mi amor.\"")[0];
+
+    expect(voiceover?.vocalMode).toBe("voiceover");
+    expect(singing?.vocalMode).toBe("singing");
+    expect(h3DialogueLockInstruction("An off-screen voiceover says: \"Welcome home.\"")).toContain("lips completely closed");
+  });
+
+  it("restores missing visible text into the timeline", () => {
+    const locks = extractH3VisibleTextLocks("A neon sign reads \"OPEN\".");
+    const output = [
+      "integrated_multimodal_description: [Shot 1] The subject enters the room.",
+      "overall_soundscape: Footsteps.",
+      "non_diegetic_music: N/A"
+    ].join("\n");
+
+    expect(restoreH3VisibleTextLocks(output, locks)).toContain('reads "OPEN"');
   });
 });

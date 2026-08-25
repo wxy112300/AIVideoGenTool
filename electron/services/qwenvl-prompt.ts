@@ -6,7 +6,10 @@ import {
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
-import { extractH3DialogueLocks } from "../../src/core/h3-dialogue.js";
+import {
+  extractH3DialogueLocks,
+  extractH3VisibleTextLocks
+} from "../../src/core/h3-dialogue.js";
 import {
   isH3ReferenceAutoPrompt,
   validateH3ReferenceAutoPrompt
@@ -359,7 +362,8 @@ export async function enhancePromptWithQwenVlPeft(
       output,
       mode,
       request.h3DurationSeconds ?? 5,
-      extractH3DialogueLocks(request.prompt)
+      extractH3DialogueLocks(request.prompt),
+      extractH3VisibleTextLocks(request.prompt)
     );
   } catch (error) {
     const reportedError = explainQwenVlRuntimeError(error);

@@ -10,7 +10,10 @@ import {
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
-import { extractH3DialogueLocks } from "../../src/core/h3-dialogue.js";
+import {
+  extractH3DialogueLocks,
+  extractH3VisibleTextLocks
+} from "../../src/core/h3-dialogue.js";
 import {
   isManagedPromptModel,
   managedPromptModel,
@@ -304,7 +307,8 @@ export async function enhancePromptWithLlamaServer(
     normalizedContent,
     mode,
     request.h3DurationSeconds ?? 5,
-    extractH3DialogueLocks(request.prompt)
+    extractH3DialogueLocks(request.prompt),
+    extractH3VisibleTextLocks(request.prompt)
   );
 }
 
