@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.47.0**。本版本重做历史视频详情页播放器：全屏控制栏支持前后切换、10% 快进/快退、播放、音量、收藏、下载、倍速和画中画，并按页面边界拆分 Renderer 构建 chunk。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.48.0**。本版本为历史视频详情页播放器增加无标题右键菜单，支持复制文件、打开目录、使用系统播放器、查看视频信息和全屏切换，并完善全屏信息 Overlay 与系统播放器联动；同时更新 H3 Prompt Writer 兼容补丁和推荐版本。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 

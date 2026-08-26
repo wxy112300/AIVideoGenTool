@@ -586,10 +586,12 @@
   width: 100vw;
   height: 100vh;
   aspect-ratio: auto;
+  overflow: visible;
   border: 0;
   border-radius: 0;
   box-shadow: none;
 }
+.history-player:fullscreen > .history-context-menu { z-index: 100; }
 .history-player:fullscreen .history-player-control-bar { padding-inline: 16px; }
 
 @media (max-width: 760px) {

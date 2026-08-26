@@ -167,6 +167,36 @@ export function patchH3PromptWriterLlamaCppCompatibility(source: string): string
         "                chat_handler.close()",
         "            gc.collect()"
       ].join("\n")
+    )
+    .replace(
+      /^(\s*)self\.chat_handler\._exit_stack\.close\(\)$/gmu,
+      (_match, indent: string) => [
+        `${indent}chat_handler = self.chat_handler`,
+        `${indent}if chat_handler is not None:`,
+        `${indent}    exit_stack = getattr(chat_handler, "_exit_stack", None)`,
+        `${indent}    if exit_stack is not None:`,
+        `${indent}        exit_stack.close()`
+      ].join("\n")
+    );
+}
+
+/**
+ * Backport the upstream 0.3.4 non-Thinking H3 output budget increase.
+ * Music mode intentionally keeps its separate 1536-token budget.
+ */
+export function patchH3PromptWriterOutputBudget(source: string): string {
+  return source
+    .replace(
+      /^(\s*STANDARD_OUTPUT_TOKENS\s*=\s*)1_?536\b/gmu,
+      (_match, prefix: string) => `${prefix}2_048`
+    )
+    .replace(
+      /^(\s*(?:MAX_OUTPUT_TOKENS|max_output_tokens)\s*[:=]\s*)1_?536\b/gmu,
+      (_match, prefix: string) => `${prefix}2_048`
+    )
+    .replace(
+      /(\bmax_tokens\s*=\s*)1_?536\b/gu,
+      (_match, prefix: string) => `${prefix}2_048`
     );
 }
 
@@ -497,33 +527,58 @@ function hasLegacyLlamaKvImport(source: string): boolean {
 
 function hasLlamaKvCompatibilityShim(source: string): boolean {
   return source.includes("from llama_cpp._ggml import GGMLType") &&
-    source.includes("GGML_TYPE_F16 = GGMLType.GGML_TYPE_F16") &&
-    source.includes("GGML_TYPE_Q8_0 = GGMLType.GGML_TYPE_Q8_0");
+    /GGML_TYPE_F16\s*=\s*GGMLType\.GGML_TYPE_F16(?:\.value)?/u.test(source) &&
+    /GGML_TYPE_Q8_0\s*=\s*GGMLType\.GGML_TYPE_Q8_0(?:\.value)?/u.test(source);
 }
 
 export async function prepareH3PromptWriter(
   targetDirectory: string,
   report: (message: string) => void
 ): Promise<void> {
-  // The 0.3.x extension keeps the GGUF adapter in this location, while the
-  // diagnostics module no longer imports GGML KV constants at all.  Treat the
-  // latter as optional and only patch files that actually contain the legacy
-  // import; requiring the shim in every file made a 0.3.2 update fail before
-  // Python dependencies were even checked.
-  const files = [
-    { filename: path.join(targetDirectory, "backend", "models", "gguf_backend.py"), required: true },
-    { filename: path.join(targetDirectory, "backend", "runtime_diagnostics.py"), required: false }
+  // 0.3.x releases have used both the flat GGUF adapter path and the older
+  // nested path shown by ComfyUI-MiniMaxH3-Prompt-Writer logs.  The context
+  // and pipeline files are optional because their names changed between
+  // releases; patch them when present and keep the backend itself required.
+  const backendCandidates = [
+    path.join(targetDirectory, "backend", "models", "gguf_backend.py"),
+    path.join(targetDirectory, "backend", "models", "gguf", "_backend.py")
+  ];
+  let backendFilename: string | null = null;
+  for (const candidate of backendCandidates) {
+    if (await fs.access(candidate).then(() => true).catch(() => false)) {
+      backendFilename = candidate;
+      break;
+    }
+  }
+  if (!backendFilename) {
+    throw new Error(
+      "MiniMax H3 Prompt Writer 缺少可识别的 GGUF 后端（支持 backend/models/gguf_backend.py 或 backend/models/gguf/_backend.py）。"
+    );
+  }
+  const files: Array<{ filename: string; required: boolean; reportMissing?: boolean }> = [
+    { filename: backendFilename, required: true },
+    { filename: path.join(targetDirectory, "backend", "context.py"), required: false },
+    { filename: path.join(targetDirectory, "backend", "h3_pipeline.py"), required: false },
+    {
+      filename: path.join(targetDirectory, "backend", "runtime_diagnostics.py"),
+      required: false,
+      reportMissing: true
+    }
   ];
   let changed = false;
   let patchedFiles = 0;
-  for (const { filename, required } of files) {
+  for (const { filename, required, reportMissing } of files) {
     const source = await fs.readFile(filename, "utf8").catch((error) => {
       if (required) throw error;
-      report("H3 Prompt Writer 未提供独立运行时诊断文件，跳过兼容补丁（不影响生成接口）");
+      if (reportMissing) {
+        report("H3 Prompt Writer 未提供独立运行时诊断文件，跳过兼容补丁（不影响生成接口）");
+      }
       return null;
     });
     if (source === null) continue;
-    const patched = patchH3PromptWriterLlamaCppCompatibility(source);
+    const patched = patchH3PromptWriterOutputBudget(
+      patchH3PromptWriterLlamaCppCompatibility(source)
+    );
     if (hasLegacyLlamaKvImport(patched) && !hasLlamaKvCompatibilityShim(patched)) {
       throw new Error(
         "MiniMax H3 Prompt Writer 源码结构与 llama-cpp-python 兼容适配不匹配，已停止修改。"
@@ -547,7 +602,7 @@ export async function prepareH3PromptWriter(
   }
   report(
     changed
-      ? `已为 ${patchedFiles} 个 H3 Prompt Writer 文件应用 llama-cpp-python 0.3.39+ KV 类型兼容层`
+      ? `已为 ${patchedFiles} 个 H3 Prompt Writer 文件应用 llama-cpp-python 兼容层与 0.3.4 输出预算修复`
       : "H3 Prompt Writer 已兼容当前 llama-cpp-python API（无需修改上游源码）"
   );
 }

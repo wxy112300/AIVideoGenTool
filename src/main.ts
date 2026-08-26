@@ -50,7 +50,10 @@ import {
   CustomNodeInstallQueue,
   type CustomNodeInstallPhase
 } from "./renderer/pages/settings/node-install-queue";
-import { type HistoryPlaybackSnapshot } from "./renderer/pages/history/page-controller";
+import {
+  toggleHistoryPlayerFullscreen,
+  type HistoryPlaybackSnapshot
+} from "./renderer/pages/history/page-controller";
 import {
   createHistoryAssembly,
   mountHistoryAssembly
@@ -1207,7 +1210,8 @@ const historyContextMenus = createHistoryContextMenus(rendererApp.context, {
   continueImageToVideo: historyActions.continueImageToVideo,
   copyHistoryFile: historyActions.copyHistoryFile,
   copyHistoryText: historyActions.copyHistoryText,
-  requestHistoryDeletion
+  requestHistoryDeletion,
+  toggleHistoryPlayerFullscreen
 });
 const appLogContextMenu = createAppLogContextMenu(rendererApp.context, clearAppLogScreen);
 const environmentRefreshCoordinator = new EnvironmentRefreshCoordinator({
@@ -2634,7 +2638,9 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       }
     },
     openHistoryContextMenu: historyContextMenus.openHistory,
-    openImageHistoryContextMenu: historyContextMenus.openImageHistory
+    openImageHistoryContextMenu: historyContextMenus.openImageHistory,
+    openHistoryPlayerContextMenu: historyContextMenus.openHistoryPlayer,
+    closeHistoryContextMenu: historyContextMenus.close
   });
   let disposed = false;
   const managedCleanup: RendererCleanup = () => {

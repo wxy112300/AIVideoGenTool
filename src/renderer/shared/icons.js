@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Ban, Brush, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CircleHelp, Columns3, Copy, Download, Ellipsis, ExternalLink, FileText, Film, FolderOpen, Gauge, GripVertical, Grid2X2, Heart, Image, Images, Info, LayoutGrid, ListOrdered, Maximize2, MemoryStick, Monitor, MoveDown, MoveUp, PackageOpen, Pause, Pencil, PictureInPicture2, Play, Power, Plus, Puzzle, RefreshCw, RotateCcw, Save, ScanSearch, Server, Settings as SettingsIcon, ShieldAlert, ShieldCheck, Sparkles, SlidersHorizontal, Square, Star, Trash2, Upload, Video, WandSparkles, Workflow, X, Zap, createIcons } from "lucide";
+import { AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Ban, Brush, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CircleHelp, Columns3, Copy, Download, Ellipsis, ExternalLink, FileText, Film, FolderOpen, Gauge, GripVertical, Grid2X2, Heart, Image, Images, Info, LayoutGrid, ListOrdered, Maximize2, Minimize2, MemoryStick, Monitor, MoveDown, MoveUp, PackageOpen, Pause, Pencil, PictureInPicture2, Play, Power, Plus, Puzzle, RefreshCw, RotateCcw, Save, ScanSearch, Server, Settings as SettingsIcon, ShieldAlert, ShieldCheck, Sparkles, SlidersHorizontal, Square, Star, Trash2, Upload, Video, WandSparkles, Workflow, X, Zap, createIcons } from "lucide";
 const lucideIconSet = {
     AlertTriangle,
     ArrowLeft,
@@ -31,6 +31,7 @@ const lucideIconSet = {
     LayoutGrid,
     ListOrdered,
     Maximize2,
+    Minimize2,
     MemoryStick,
     Monitor,
     MoveDown,

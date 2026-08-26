@@ -2719,6 +2719,50 @@ function registerIpc(): void {
     });
     return true;
   });
+  ipcMain.handle("file:open-system-player", async (_event, filename: string) => {
+    const requestedFilename = typeof filename === "string" ? filename : "";
+    const resolved = await resolveExistingHistoryFile(requestedFilename);
+    if (!resolved) {
+      appLogger.warn("history", "open-system-player-missing", "History file could not be found for system player", {
+        filename: requestedFilename
+      });
+      return {
+        ok: false,
+        message: "视频文件不存在，可能已被移动、重命名或删除。"
+      };
+    }
+    let errorMessage = "";
+    try {
+      errorMessage = await shell.openPath(resolved);
+    } catch (error) {
+      appLogger.warn("history", "open-system-player-failed", "System player could not open history file", {
+        filename: resolved,
+        error: safeLogErrorMessage(error)
+      });
+      return {
+        ok: false,
+        message: "系统播放器无法打开该视频文件。"
+      };
+    }
+    if (errorMessage) {
+      appLogger.warn("history", "open-system-player-failed", "System player could not open history file", {
+        filename: resolved,
+        error: errorMessage
+      });
+      return {
+        ok: false,
+        message: "系统播放器无法打开该视频文件。"
+      };
+    }
+    appLogger.info("history", "open-system-player-succeeded", "History file opened with the system player", {
+      filename: resolved,
+      repairedPath: !requestedFilename || path.resolve(requestedFilename) !== resolved
+    });
+    return {
+      ok: true,
+      message: "已使用系统播放器打开视频。"
+    };
+  });
   ipcMain.handle("file:copy", async (_event, filename: string) => {
     if (process.platform !== "win32") {
       return { ok: false, message: "复制文件目前仅支持 Windows。" };

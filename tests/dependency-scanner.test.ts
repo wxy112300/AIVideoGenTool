@@ -81,11 +81,11 @@ describe("dependency scanner", () => {
       runtimeVerified: true,
       loaded: true,
       loadError: "",
-      updateNotice: "",
-      compatibilityState: "supported",
+      updateNotice: expect.stringContaining("推荐 v0.4.1"),
+      compatibilityState: "warning",
       runtimeNotice: expect.stringContaining("发现 1 个模型")
     });
-    expect(writer?.compatibilityNotice).toContain("版本与节点状态已读取");
+    expect(writer?.compatibilityNotice).toContain("推荐 v0.4.1");
   });
 
   it("uses Prompt Writer runtime endpoints when object_info is temporarily unavailable", async () => {
@@ -136,7 +136,7 @@ describe("dependency scanner", () => {
       runtimeVerified: true,
       loaded: true,
       loadError: "",
-      compatibilityState: "supported",
+      compatibilityState: "warning",
       runtimeNotice: expect.stringContaining("未加载 CUDA 后端")
     });
   });

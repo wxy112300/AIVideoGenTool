@@ -1204,6 +1204,7 @@ export interface AppApi {
   showItemInFolder(path: string): Promise<boolean>;
   openDirectory(path: string): Promise<boolean>;
   copyFile(path: string): Promise<ConnectionResult>;
+  openSystemPlayer(path: string): Promise<ConnectionResult>;
   openExternal(url: string): Promise<boolean>;
   enhancePrompt(request: EnhanceRequest): Promise<string>;
   cancelPrompt(): Promise<ConnectionResult>;

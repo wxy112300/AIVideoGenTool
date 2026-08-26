@@ -54,6 +54,15 @@ export interface HistoryPageControllerOptions {
   imageLightbox: ImageHistoryLightboxControllerOptions;
   openHistoryContextMenu(assetId: string, clientX: number, clientY: number, returnFocus?: HTMLElement): void;
   openImageHistoryContextMenu(projectId: string, clientX: number, clientY: number, returnFocus?: HTMLElement): void;
+  openHistoryPlayerContextMenu?(
+    assetId: string,
+    versionId: string,
+    clientX: number,
+    clientY: number,
+    player: HTMLElement,
+    returnFocus?: HTMLElement
+  ): void;
+  closeHistoryContextMenu?(): void;
 }
 
 /**
@@ -245,6 +254,25 @@ export function mountHistoryPageController(
       }, { capture: true, signal });
     }
 
+    const openPlayerContextMenu = (clientX: number, clientY: number, returnFocus: HTMLElement = detailVideo) => {
+      const assetId = detailVideo.dataset.historyAsset;
+      const versionId = detailVideo.dataset.historyVersion;
+      if (!assetId || !versionId || !options.openHistoryPlayerContextMenu) return;
+      options.openHistoryPlayerContextMenu(assetId, versionId, clientX, clientY, detailPlayer, returnFocus);
+    };
+    detailPlayer.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openPlayerContextMenu(event.clientX, event.clientY);
+    }, { signal });
+    detailVideo.addEventListener("keydown", (event) => {
+      if (!isHistoryMenuKey(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const point = contextMenuPoint(detailVideo);
+      openPlayerContextMenu(point.clientX, point.clientY, detailVideo);
+    }, { signal });
+
     document.addEventListener("keydown", (event) => {
       if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -336,6 +364,7 @@ export function mountHistoryPageController(
   });
 
   return () => {
+    options.closeHistoryContextMenu?.();
     events.abort();
     cleanups.reverse().forEach((cleanup) => cleanup());
   };

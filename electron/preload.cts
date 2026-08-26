@@ -73,6 +73,7 @@ const api: AppApi = {
   showItemInFolder: (path: string) => ipcRenderer.invoke("file:show-in-folder", path),
   openDirectory: (path: string) => ipcRenderer.invoke("file:open-directory", path),
   copyFile: (path: string) => ipcRenderer.invoke("file:copy", path),
+  openSystemPlayer: (path: string) => ipcRenderer.invoke("file:open-system-player", path),
   openExternal: (url: string) => ipcRenderer.invoke("shell:open-external", url),
   enhancePrompt: (request: EnhanceRequest) =>
     ipcRenderer.invoke("prompt:enhance", request),

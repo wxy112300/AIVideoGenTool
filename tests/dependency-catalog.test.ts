@@ -26,7 +26,7 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("minimax-h3-prompt-writer")).toMatchObject({
       runtimeEndpoint: "/h3studio/status",
       minimumVersion: "0.3.1",
-      recommendedVersion: "0.3.2",
+      recommendedVersion: "0.4.1",
       compatibilityEvidence: [{ checks: ["static", "object-info"] }],
       required: false
     });

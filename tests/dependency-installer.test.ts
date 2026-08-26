@@ -9,6 +9,7 @@ import {
 } from "../electron/services/dependency-installer";
 import {
   patchH3PromptWriterLlamaCppCompatibility,
+  patchH3PromptWriterOutputBudget,
   patchMultimodalPromptContextSize,
   patchMultimodalPromptProjectorDiscovery,
   patchMultimodalPromptQwen38Recognition,
@@ -80,6 +81,65 @@ describe("dependency installer", () => {
     expect(patched).toContain("getattr(chat_handler, \"_exit_stack\", None)");
     expect(patched).not.toContain("self.chat_handler._exit_stack.close()");
     expect(patchH3PromptWriterLlamaCppCompatibility(patched)).toBe(patched);
+  });
+
+  it("accepts the newer upstream GGMLType value fallback", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-current-adapter-"));
+    temporaryDirectories.push(directory);
+    await fs.mkdir(path.join(directory, "backend", "models"), { recursive: true });
+    const backendFilename = path.join(directory, "backend", "models", "gguf_backend.py");
+    const source = [
+      "        from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0",
+      "        from llama_cpp._ggml import GGMLType",
+      "        GGML_TYPE_F16 = GGMLType.GGML_TYPE_F16.value",
+      "        GGML_TYPE_Q8_0 = GGMLType.GGML_TYPE_Q8_0.value"
+    ].join("\n");
+    await fs.writeFile(backendFilename, source);
+
+    await prepareH3PromptWriter(directory, vi.fn());
+
+    expect(await fs.readFile(backendFilename, "utf8")).toBe(source);
+  });
+
+  it("backports the H3 output budget and supports the nested GGUF backend path", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-output-budget-"));
+    temporaryDirectories.push(directory);
+    await fs.mkdir(path.join(directory, "backend", "models", "gguf"), { recursive: true });
+    await fs.writeFile(
+      path.join(directory, "backend", "models", "gguf", "_backend.py"),
+      [
+        "    def unload(self):",
+        "        self.model.close()",
+        "        self.chat_handler._exit_stack.close()",
+        "        self.model = None",
+        "        self.chat_handler = None"
+      ].join("\n")
+    );
+    await fs.writeFile(
+      path.join(directory, "backend", "context.py"),
+      "STANDARD_OUTPUT_TOKENS = 1_536\nMUSIC_OUTPUT_TOKENS = 1_536\n"
+    );
+    await fs.writeFile(
+      path.join(directory, "backend", "h3_pipeline.py"),
+      "        max_tokens=1_536,\n"
+    );
+
+    await prepareH3PromptWriter(directory, vi.fn());
+
+    const backend = await fs.readFile(
+      path.join(directory, "backend", "models", "gguf", "_backend.py"),
+      "utf8"
+    );
+    expect(backend).toContain('getattr(chat_handler, "_exit_stack", None)');
+    expect(backend).not.toContain("self.chat_handler._exit_stack.close()");
+    expect(await fs.readFile(path.join(directory, "backend", "context.py"), "utf8"))
+      .toContain("STANDARD_OUTPUT_TOKENS = 2_048");
+    expect(await fs.readFile(path.join(directory, "backend", "context.py"), "utf8"))
+      .toContain("MUSIC_OUTPUT_TOKENS = 1_536");
+    expect(await fs.readFile(path.join(directory, "backend", "h3_pipeline.py"), "utf8"))
+      .toContain("max_tokens=2_048");
+    expect(patchH3PromptWriterOutputBudget("STANDARD_OUTPUT_TOKENS = 2_048\n"))
+      .toBe("STANDARD_OUTPUT_TOKENS = 2_048\n");
   });
 
   it("raises the MultiModal GGUF context from 4K to 8K", async () => {

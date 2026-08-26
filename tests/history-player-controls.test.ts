@@ -93,7 +93,7 @@ describe("history player fullscreen controls", () => {
 
   it("wires the video double-click gesture to the player's fullscreen target", () => {
     const root = document.createElement("main");
-    root.innerHTML = `<div class="history-player"><video data-history-download-filename="downloaded-video.mp4"></video><media-settings-menu><media-chrome-menu-item data-history-player-menu-action="download">Download</media-chrome-menu-item></media-settings-menu></div>`;
+    root.innerHTML = `<div class="history-player"><video data-history-asset="video-1" data-history-version="version-1" data-history-download-filename="downloaded-video.mp4"></video><media-settings-menu><media-chrome-menu-item data-history-player-menu-action="download">Download</media-chrome-menu-item></media-settings-menu></div>`;
     document.body.append(root);
     const player = root.querySelector<HTMLElement>(".history-player");
     const video = root.querySelector<HTMLVideoElement>("video");
@@ -139,12 +139,23 @@ describe("history player fullscreen controls", () => {
       restoreHistoryLayoutAnchor: () => undefined,
       imageLightbox: {} as HistoryPageControllerOptions["imageLightbox"],
       openHistoryContextMenu: () => undefined,
-      openImageHistoryContextMenu: () => undefined
+      openImageHistoryContextMenu: () => undefined,
+      openHistoryPlayerContextMenu: vi.fn()
     } satisfies HistoryPageControllerOptions;
     const cleanup = mountHistoryPageController(options);
 
     video.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
+
+    video.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 20, clientY: 30 }));
+    expect(options.openHistoryPlayerContextMenu).toHaveBeenCalledWith(
+      "video-1",
+      "version-1",
+      20,
+      30,
+      player,
+      video
+    );
 
     downloadItem.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     expect(clickedAnchor?.download).toBe("downloaded-video.mp4");
