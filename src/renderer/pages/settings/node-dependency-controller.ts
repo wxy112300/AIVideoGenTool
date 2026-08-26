@@ -1,5 +1,6 @@
 import type {
   EnvironmentScanResult,
+  CustomNodeInstallMode,
   Settings,
   WorkflowDependencyStatus
 } from "../../../types";
@@ -18,8 +19,10 @@ export interface SettingsNodeDependencyControllerOptions {
   setSettingsDraft(settings: Settings): void;
   enqueueCustomNodeInstall(
     nodeId: string,
-    settings: Settings
+    settings: Settings,
+    mode?: CustomNodeInstallMode
   ): { accepted: boolean; position: number };
+  requestCustomNodeUninstall(nodeId: string, name: string): void;
   setWorkflowDependencyInstalling(workflowId: string): void;
   getWorkflowDependencyLog(workflowId: string): string;
   setWorkflowDependencyLog(workflowId: string, log: string): void;
@@ -32,14 +35,36 @@ export function mountSettingsNodeDependencyController(
   const events = new AbortController();
   const signal = events.signal;
   const root = context.root;
+  const nodeActionMenus = [
+    ...root.querySelectorAll<HTMLDetailsElement>(".node-action-menu")
+  ];
+  const closeNodeActionMenus = (except?: HTMLDetailsElement) => {
+    nodeActionMenus.forEach((menu) => {
+      if (menu !== except) menu.removeAttribute("open");
+    });
+  };
   const requestSettingsRender = () => {
     if (context.getRoute().page === "settings") context.requestRender();
   };
 
+  nodeActionMenus.forEach((menu) => {
+    menu.addEventListener("toggle", () => {
+      if (menu.open) closeNodeActionMenus(menu);
+    }, { signal });
+  });
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest(".node-action-menu")) {
+      closeNodeActionMenus();
+    }
+  }, { signal });
+
   root.querySelectorAll<HTMLButtonElement>("[data-install-node]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopImmediatePropagation();
+      closeNodeActionMenus();
       const nodeId = button.dataset.installNode;
+      const mode = (button.dataset.nodeOperation || "install") as CustomNodeInstallMode;
       const state = context.getState();
       if (!nodeId) return;
       if (state?.queue.some((task) => task.status === "running")) {
@@ -48,7 +73,7 @@ export function mountSettingsNodeDependencyController(
       }
       const settings = options.formSettings();
       options.setSettingsDraft(settings);
-      const queued = options.enqueueCustomNodeInstall(nodeId, settings);
+      const queued = options.enqueueCustomNodeInstall(nodeId, settings, mode);
       if (!queued.accepted) {
         context.notify(context.t(uiKeys.settings.actions.nodeAlreadyQueued), {
           kind: "warning",
@@ -58,9 +83,26 @@ export function mountSettingsNodeDependencyController(
     }, { signal });
   });
 
+  root.querySelectorAll<HTMLButtonElement>("[data-uninstall-node]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopImmediatePropagation();
+      const nodeId = button.dataset.uninstallNode;
+      const node = options.getEnvironmentScan()?.customNodes.find((item) => item.id === nodeId);
+      if (!nodeId || !node) return;
+      closeNodeActionMenus();
+      const state = context.getState();
+      if (state?.queue.some((task) => task.status === "running")) {
+        context.notify(context.t(uiKeys.settings.actions.runningTaskBlocked), { kind: "warning" });
+        return;
+      }
+      options.requestCustomNodeUninstall(nodeId, node.name);
+    }, { signal });
+  });
+
   root.querySelectorAll<HTMLButtonElement>("[data-rescan-node]").forEach((button) => {
     button.addEventListener("click", async (event) => {
       event.stopImmediatePropagation();
+      closeNodeActionMenus();
       const settings = options.formSettings();
       options.setSettingsDraft(settings);
       button.disabled = true;
@@ -98,6 +140,7 @@ export function mountSettingsNodeDependencyController(
   root.querySelectorAll<HTMLButtonElement>("[data-install-workflow]").forEach((button) => {
     button.addEventListener("click", async (event) => {
       event.stopImmediatePropagation();
+      closeNodeActionMenus();
       const workflowId = button.dataset.installWorkflow as WorkflowDependencyStatus["id"] | undefined;
       if (!workflowId) return;
       const settings = options.formSettings();

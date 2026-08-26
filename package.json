@@ -1,6 +1,6 @@
 {
   "name": "ai-video-gen-tool",
-  "version": "0.49.0",
+  "version": "0.49.3",
   "private": true,
   "description": "Local image and video creation studio powered by ComfyUI",
   "main": "dist/electron/electron/main.js",
@@ -9,6 +9,7 @@
     "dev": "node scripts/dev.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "npm run clean && npm run typecheck && vite build --config vite.config.ts && tsc -p tsconfig.electron.json",
+    "harness:comfy": "node scripts/local-runtime-harness.mjs",
     "prototype:build": "node scripts/build-prototypes.mjs",
     "verify:markup-visual": "electron scripts/verify-image-markup-visual.cjs",
     "verify:ux-ui-contrast": "node scripts/check-ux-ui-text-contrast.mjs",

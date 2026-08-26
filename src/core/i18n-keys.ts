@@ -178,6 +178,11 @@ export const uiKeys = {
   },
   dialog: {
     irreversible: "dialog.irreversible",
+    recoverable: "dialog.recoverable",
+    uninstallNodeTitle: "dialog.uninstallNode.title",
+    uninstallNodeDescription: "dialog.uninstallNode.description",
+    uninstallNodeWarning: "dialog.uninstallNode.warning",
+    uninstallNode: "dialog.uninstallNode",
     deleteVersionTitle: "dialog.deleteVersion.title",
     deleteVersionDescription: "dialog.deleteVersion.description",
     deleteVersionWarning: "dialog.deleteVersion.warning",

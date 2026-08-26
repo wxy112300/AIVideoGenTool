@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { customNodeDefinition } from "../../src/core/catalog/index.js";
-import type { Settings } from "../../src/types.js";
+import type { CustomNodeInstallMode, Settings } from "../../src/types.js";
 import {
   patchH3PromptWriterSource,
   patchMultimodalPromptContextSize,
@@ -183,6 +183,32 @@ async function h3PromptWriterUpstreamUnchanged(
   }
 }
 
+async function validateH3PromptWriterPythonSyntax(
+  targetDirectory: string,
+  python: string,
+  runtime: DependencyInstallerRuntime,
+  commandEnvironment: NodeJS.ProcessEnv
+): Promise<void> {
+  const filenames = (
+    await Promise.all(h3PromptWriterPatchFiles.map(async (filename) => {
+      const absolutePath = path.join(targetDirectory, filename);
+      return await runtime.exists(absolutePath) ? absolutePath : "";
+    }))
+  ).filter(Boolean);
+  if (!filenames.length) {
+    throw new Error("MiniMax H3 Prompt Writer 没有可校验的 Python 源码文件。");
+  }
+  await runtime.runLoggedProcess(
+    python,
+    [
+      "-c",
+      "import ast,pathlib,sys; [ast.parse(pathlib.Path(p).read_text(encoding='utf-8'), filename=p) for p in sys.argv[1:]]",
+      ...filenames
+    ],
+    { timeoutMs: 30_000, env: commandEnvironment }
+  );
+}
+
 export interface DependencyInstallerRuntime {
   downloadEnvironment(settings: Settings): NodeJS.ProcessEnv;
   proxyLogLabel(settings: Settings): string;
@@ -211,7 +237,8 @@ export async function installCustomNodePackage(
   nodeId: string,
   settings: Settings,
   runtime: DependencyInstallerRuntime,
-  onLog?: (message: string) => void
+  onLog?: (message: string) => void,
+  mode: CustomNodeInstallMode = "install"
 ): Promise<{ ok: boolean; message: string; log?: string }> {
   const definition = customNodeDefinition(nodeId);
   if (!definition) return { ok: false, message: "未知的节点包，已拒绝安装。" };
@@ -245,6 +272,7 @@ export async function installCustomNodePackage(
     await fs.mkdir(customNodesDirectory, { recursive: true });
     let videoHelperPrepared = false;
     let h3GgufPrepared = false;
+    let h3PromptWriterPrepared = false;
 
     if (await runtime.exists(targetDirectory)) {
       const isGitDirectory = await runtime.exists(path.join(targetDirectory, ".git"));
@@ -315,42 +343,14 @@ export async function installCustomNodePackage(
           );
         }
       }
-      if (reuseAppPatchedRepository) {
-        // The directory already contains the exact app-managed compatibility
-        // patch and the remote HEAD is unchanged. Continue with the normal
-        // dependency/runtime checks below without creating another backup.
-      } else if (
-        isGitDirectory &&
-        repositoryMatches &&
-        repositoryStatusChecked &&
-        !repositoryDirty &&
-        definition.id !== "seedvr2"
-      ) {
-        report(`更新 ${definition.repositoryUrl}`);
-        const gitOutput = await runtime.runLoggedProcess(git, ["-C", targetDirectory, "pull", "--ff-only"], {
-          timeoutMs: 300_000,
-          env: commandEnvironment,
-          onLog: report
-        });
-        if (!gitOutput) report("Git：已是最新版本");
-      } else {
+      const replaceExistingCheckout = async (reason: string): Promise<void> => {
         const replacementDirectory = `${targetDirectory}.update-${crypto.randomUUID()}`;
         const backupRoot = path.join(comfyRoot, "node-backups");
         const backupDirectory = path.join(
           backupRoot,
           `${definition.directoryName}-${Date.now()}`
         );
-        report(
-          repositoryDirty
-            ? "检测到节点仓库有本地修改，先备份旧目录并安装干净副本（不会丢失原目录）"
-            : isGitDirectory && repositoryMatches && !repositoryStatusChecked
-            ? "无法确认节点仓库状态，先备份旧目录并安装干净副本（不会覆盖本地修改）"
-            : !repositoryMatches && isGitDirectory
-            ? `检测到节点仓库已切换，备份旧目录并安装 ${definition.repositoryUrl}`
-            : definition.id === "seedvr2"
-            ? "SeedVR2 使用破坏性新版接口：下载干净上游副本并备份替换旧目录"
-            : "目录由 ComfyUI Manager 管理，下载上游副本后安全替换"
-        );
+        report(reason);
         try {
           const gitOutput = await runtime.runLoggedProcess(
             git,
@@ -370,6 +370,19 @@ export async function installCustomNodePackage(
             report("正在应用 Video Helper Suite 兼容补丁……");
             await prepareVideoHelperSuite(replacementDirectory, report);
             videoHelperPrepared = true;
+          } else if (definition.id === "minimax-h3-prompt-writer") {
+            report("正在检查 H3 Prompt Writer 的 llama-cpp-python API 兼容层……");
+            await prepareH3PromptWriter(replacementDirectory, report);
+            const python = await runtime.findComfyPython(settings, comfyRoot);
+            if (!python) throw new Error("节点已下载，但没有找到所选 ComfyUI 的 Python 环境。");
+            report("正在校验 H3 Prompt Writer 的 Python 源码语法……");
+            await validateH3PromptWriterPythonSyntax(
+              replacementDirectory,
+              python,
+              runtime,
+              commandEnvironment
+            );
+            h3PromptWriterPrepared = true;
           }
           await fs.mkdir(backupRoot, { recursive: true });
           await runtime.renameWithRetry(targetDirectory, backupDirectory);
@@ -410,6 +423,54 @@ export async function installCustomNodePackage(
             retryDelay: 200
           });
         }
+      };
+      if (mode === "reinstall") {
+        await replaceExistingCheckout(
+          "正在执行干净重装：先备份当前目录，再安装上游副本"
+        );
+      } else if (reuseAppPatchedRepository) {
+        // The directory already contains the exact app-managed compatibility
+        // patch and the remote HEAD is unchanged. Continue with the normal
+        // dependency/runtime checks below without creating another backup.
+      } else if (
+        isGitDirectory &&
+        repositoryMatches &&
+        repositoryStatusChecked &&
+        !repositoryDirty &&
+        definition.id !== "seedvr2"
+      ) {
+        report(`更新 ${definition.repositoryUrl}`);
+        try {
+          const gitOutput = await runtime.runLoggedProcess(git, ["-C", targetDirectory, "pull", "--ff-only"], {
+            timeoutMs: 300_000,
+            env: commandEnvironment,
+            onLog: report
+          });
+          if (!gitOutput) report("Git：已是最新版本");
+        } catch (error) {
+          const processError = error as Error & { stdout?: string; stderr?: string };
+          const details = [processError.message, processError.stdout, processError.stderr]
+            .filter(Boolean)
+            .join("\n");
+          if (!/fast-forward|non-fast-forward|diverging branches/iu.test(details)) {
+            throw error;
+          }
+          await replaceExistingCheckout(
+            "检测到本地分支与上游已分叉，无法安全快进；先备份旧目录并安装干净副本（不会丢失原目录）"
+          );
+        }
+      } else {
+        await replaceExistingCheckout(
+          repositoryDirty
+            ? "检测到节点仓库有本地修改，先备份旧目录并安装干净副本（不会丢失原目录）"
+            : isGitDirectory && repositoryMatches && !repositoryStatusChecked
+            ? "无法确认节点仓库状态，先备份旧目录并安装干净副本（不会覆盖本地修改）"
+            : !repositoryMatches && isGitDirectory
+            ? `检测到节点仓库已切换，备份旧目录并安装 ${definition.repositoryUrl}`
+            : definition.id === "seedvr2"
+            ? "SeedVR2 使用破坏性新版接口：下载干净上游副本并备份替换旧目录"
+            : "目录由 ComfyUI Manager 管理，下载上游副本后安全替换"
+        );
       }
     } else {
       report(`克隆 ${definition.repositoryUrl}`);
@@ -437,9 +498,18 @@ export async function installCustomNodePackage(
       report("正在检查 LTX Video 兼容层……");
       await prepareLtxVideo(targetDirectory, report);
     }
-    if (definition.id === "minimax-h3-prompt-writer") {
+    if (definition.id === "minimax-h3-prompt-writer" && !h3PromptWriterPrepared) {
       report("正在检查 H3 Prompt Writer 的 llama-cpp-python API 兼容层……");
       await prepareH3PromptWriter(targetDirectory, report);
+      const python = await runtime.findComfyPython(settings, comfyRoot);
+      if (!python) throw new Error("节点已下载，但没有找到所选 ComfyUI 的 Python 环境。");
+      report("正在校验 H3 Prompt Writer 的 Python 源码语法……");
+      await validateH3PromptWriterPythonSyntax(
+        targetDirectory,
+        python,
+        runtime,
+        commandEnvironment
+      );
     }
     if (isMultimodalPromptNodes) {
       report("正在检查 MultiModal Prompt Nodes 的 GGUF 上下文配置……");
@@ -574,6 +644,53 @@ export async function installCustomNodePackage(
       ok: false,
       message: installationFailureMessage(error, details),
       log: installLog.join("\n\n")
+    };
+  }
+}
+
+export async function uninstallCustomNodePackage(
+  nodeId: string,
+  settings: Settings,
+  runtime: Pick<DependencyInstallerRuntime, "findComfyRoot" | "renameWithRetry">
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  const definition = customNodeDefinition(nodeId);
+  if (!definition) return { ok: false, message: "未知的节点包，已拒绝卸载。" };
+  try {
+    const comfyRoot = await runtime.findComfyRoot(settings);
+    if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
+    const customNodesDirectory = path.join(comfyRoot, "custom_nodes");
+    const entries = await fs.readdir(customNodesDirectory, { withFileTypes: true }).catch(() => []);
+    const knownNames = new Set([
+      definition.directoryName,
+      ...definition.aliases
+    ].map((name) => name.toLowerCase()));
+    const installedDirectories = entries
+      .filter((entry) => entry.isDirectory() && knownNames.has(entry.name.toLowerCase()))
+      .map((entry) => path.join(customNodesDirectory, entry.name));
+    if (!installedDirectories.length) {
+      return { ok: false, message: `${definition.name} 未安装，无需卸载。` };
+    }
+    const backupRoot = path.join(comfyRoot, "node-backups", "uninstalled");
+    await fs.mkdir(backupRoot, { recursive: true });
+    const moved: string[] = [];
+    for (const [index, directory] of installedDirectories.entries()) {
+      const suffix = installedDirectories.length > 1 ? `-${index + 1}` : "";
+      const backupDirectory = path.join(
+        backupRoot,
+        `${path.basename(directory)}-${Date.now()}${suffix}`
+      );
+      await runtime.renameWithRetry(directory, backupDirectory);
+      moved.push(backupDirectory);
+    }
+    return {
+      ok: true,
+      message: `${definition.name} 已卸载并移入可恢复备份。`,
+      log: moved.map((directory) => `备份：${directory}`).join("\n")
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error)
     };
   }
 }

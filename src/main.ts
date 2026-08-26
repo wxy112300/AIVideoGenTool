@@ -1237,7 +1237,7 @@ const environmentRefreshCoordinator = new EnvironmentRefreshCoordinator({
   reportScan: (reason) => reportUserAction("scan-environment", { reason })
 });
 const customNodeInstallManager = new CustomNodeInstallQueue({
-  install: (nodeId, settings) => window.studio.installCustomNode(nodeId, settings),
+  install: (nodeId, settings, mode) => window.studio.installCustomNode(nodeId, settings, mode),
   restart: (settings) => window.studio.restartLocalService("comfy", settings),
   scan: (settings) => environmentRefreshCoordinator.refresh(settings, "dependency-change"),
   nodeName: (nodeId) => environmentScan?.customNodes.find((node) => node.id === nodeId)?.name ?? nodeId,
@@ -2812,8 +2812,14 @@ function bindSettings(): void {
       setEnvironmentRepairLog: (issueId, log) => {
         environmentRepairLogs = { ...environmentRepairLogs, [issueId]: log };
       },
-      enqueueCustomNodeInstall: (nodeId, settings) =>
-        customNodeInstallManager.enqueue(nodeId, settings),
+      enqueueCustomNodeInstall: (nodeId, settings, mode) =>
+        customNodeInstallManager.enqueue(nodeId, settings, mode),
+      requestCustomNodeUninstall: (nodeId, name) => {
+        rememberModalFocus();
+        ui.pendingConfirmation = { kind: "uninstall-custom-node", nodeId, name };
+        ui.confirmationBusy = false;
+        renderOverlay();
+      },
       setWorkflowDependencyInstalling: (workflowId) => {
         workflowDependencyInstalling = workflowId;
       },

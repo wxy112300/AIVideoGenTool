@@ -1,5 +1,6 @@
 import type {
   ConnectionResult,
+  CustomNodeInstallMode,
   CustomNodeStatus,
   EnvironmentScanResult,
   Settings
@@ -26,7 +27,11 @@ export interface CustomNodeInstallQueueMessages {
 }
 
 export interface CustomNodeInstallQueueDependencies {
-  install(nodeId: string, settings: Settings): Promise<ConnectionResult>;
+  install(
+    nodeId: string,
+    settings: Settings,
+    mode: CustomNodeInstallMode
+  ): Promise<ConnectionResult>;
   restart(settings: Settings): Promise<ConnectionResult>;
   scan(settings: Settings): Promise<EnvironmentScanResult | null>;
   nodeName(nodeId: string): string;
@@ -70,7 +75,7 @@ function cloneSettings(settings: Settings): Settings {
 }
 
 export class CustomNodeInstallQueue {
-  private readonly queuedNodeIds: string[] = [];
+  private readonly queuedItems: Array<{ nodeId: string; mode: CustomNodeInstallMode }> = [];
   private activeNodeId = "";
   private phase: CustomNodeInstallPhase = "idle";
   private readonly batchNodeIds: string[] = [];
@@ -83,12 +88,16 @@ export class CustomNodeInstallQueue {
     return {
       phase: this.phase,
       activeNodeId: this.activeNodeId,
-      queuedNodeIds: [...this.queuedNodeIds],
+      queuedNodeIds: this.queuedItems.map((item) => item.nodeId),
       batchNodeIds: [...this.batchNodeIds]
     };
   }
 
-  enqueue(nodeId: string, settings: Settings): { accepted: boolean; position: number } {
+  enqueue(
+    nodeId: string,
+    settings: Settings,
+    mode: CustomNodeInstallMode = "install"
+  ): { accepted: boolean; position: number } {
     if (!nodeId || this.batchNodeIds.includes(nodeId)) {
       return { accepted: false, position: 0 };
     }
@@ -96,9 +105,9 @@ export class CustomNodeInstallQueue {
       return { accepted: false, position: 0 };
     }
     if (!this.batchSettings) this.batchSettings = cloneSettings(settings);
-    this.queuedNodeIds.push(nodeId);
+    this.queuedItems.push({ nodeId, mode });
     this.batchNodeIds.push(nodeId);
-    const position = (this.activeNodeId ? 1 : 0) + this.queuedNodeIds.length;
+    const position = (this.activeNodeId ? 1 : 0) + this.queuedItems.length;
     this.appendLog(nodeId, this.dependencies.messages.queued(
       this.dependencies.nodeName(nodeId),
       position
@@ -134,14 +143,14 @@ export class CustomNodeInstallQueue {
     this.phase = "installing";
     this.emit();
 
-    while (this.queuedNodeIds.length) {
-      const nodeId = this.queuedNodeIds.shift()!;
+    while (this.queuedItems.length) {
+      const { nodeId, mode } = this.queuedItems.shift()!;
       const name = this.dependencies.nodeName(nodeId);
       this.activeNodeId = nodeId;
       this.appendLog(nodeId, this.dependencies.messages.processing);
       this.emit();
       try {
-        const result = await this.dependencies.install(nodeId, settings);
+        const result = await this.dependencies.install(nodeId, settings, mode);
         this.appendLog(nodeId, result.log || result.message);
         if (!result.ok) throw new Error(result.message);
         successfulNodeIds.push(nodeId);

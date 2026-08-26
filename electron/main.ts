@@ -33,6 +33,7 @@ import type {
   ImageMaskSaveRequest,
   ImageMarkupSaveRequest,
   LocalServiceKind,
+  CustomNodeInstallMode,
   NotificationKind,
   PromptProgress,
   PromptProgressReporter,
@@ -116,6 +117,7 @@ import {
 import {
   installAttentionAcceleration,
   installCustomNode,
+  uninstallCustomNode,
   installLlamaCppPython,
   installWorkflowDependency,
   alignLocalComfyUiRuntimeProfile,
@@ -3423,7 +3425,7 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "custom-node:install",
-    (event, nodeId: string, settings: Settings) => loggedOperation(
+    (event, nodeId: string, settings: Settings, mode?: CustomNodeInstallMode) => loggedOperation(
       "environment",
       "custom-node-install",
       "Custom node installation started",
@@ -3436,7 +3438,17 @@ function registerIpc(): void {
             message
           });
         }
-      }),
+      }, mode),
+      { nodeId, mode: mode ?? "install" }
+    )
+  );
+  ipcMain.handle(
+    "custom-node:uninstall",
+    (_event, nodeId: string, settings: Settings) => loggedOperation(
+      "environment",
+      "custom-node-uninstall",
+      "Custom node uninstallation started",
+      () => uninstallCustomNode(nodeId, settings),
       { nodeId }
     )
   );

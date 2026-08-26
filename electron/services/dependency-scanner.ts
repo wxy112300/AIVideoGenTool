@@ -277,7 +277,7 @@ export async function readLatestComfyLog(
   };
 }
 
-interface H3PromptWriterRuntimeProbe {
+export interface H3PromptWriterRuntimeProbe {
   loaded: boolean | null;
   error: string;
   notice: string;
@@ -312,7 +312,7 @@ function promptWriterDiagnosticNotice(
   return "";
 }
 
-async function inspectH3PromptWriterRuntime(
+export async function inspectH3PromptWriterRuntime(
   serviceRoot: string,
   runtimeEndpoint: string
 ): Promise<H3PromptWriterRuntimeProbe> {
@@ -581,7 +581,9 @@ export async function scanCustomNodes(
     const runtimeMissingNodeTypes = serviceNodeIds !== null && requiredNodeTypes
       ? requiredNodeTypes.filter((nodeType) => !serviceNodeIds.has(nodeType))
       : [];
-    const runtimeRepairable = Boolean(
+    const endpointRuntimeFailed = definition.id === "minimax-h3-prompt-writer" &&
+      Boolean(directory) && runtimeVerified && h3PromptWriterRuntime.loaded === false;
+    const runtimeRepairable = endpointRuntimeFailed || Boolean(
       directory && runtimeVerified && requiredNodeTypes?.length &&
       runtimeMissingNodeTypes.length === requiredNodeTypes.length
     );

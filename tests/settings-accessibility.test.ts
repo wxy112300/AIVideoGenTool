@@ -211,7 +211,43 @@ describe("Settings accessibility markup", () => {
     expect(installingMarkup).toContain('id="settings-tab-acceleration"');
     expect(installingMarkup).toContain('class="settings-tab-label">settings.tab.acceleration<span class="settings-update-dot" role="img" aria-label="待安装/修复" title="待安装/修复"></span>');
     expect(installingMarkup).toContain("检测到 ComfyUI Desktop");
-    expect(installingMarkup).toContain("建议先在 Desktop 中将 PyTorch 切换为 2.10.0+cu130");
+    expect(installingMarkup).toContain("最低支持 PyTorch 2.10/cu130，2.10.0 是稳定回退");
     expect(idleMarkup).not.toContain("检测到 ComfyUI Desktop");
+  });
+
+  it("uses one split action for a failed node and keeps uninstall in its menu", () => {
+    const environmentScan = {
+      scannedAt: "2026-08-26T00:00:00.000Z",
+      userHome: "C:\\Users\\Test",
+      items: [],
+      modelProfiles: [],
+      workflowDependencies: [],
+      issues: [],
+      customNodes: [{
+        id: "minimax-h3-prompt-writer",
+        name: "MiniMax H3 Prompt Writer",
+        purpose: "Prompt writer",
+        repositoryUrl: "https://example.invalid/prompt-writer.git",
+        installed: true,
+        loaded: false,
+        runtimeVerified: true,
+        runtimeRepairable: true,
+        loadError: "HTTP 404",
+        directory: "C:\\ComfyUI\\custom_nodes\\PromptWriter",
+        required: false,
+        version: "0.4.1",
+        minimumVersion: "0.4.1",
+        recommendedVersion: "0.4.1",
+        latestVersion: "0.4.1",
+        updateAvailable: false
+      }]
+    } as unknown as EnvironmentScanResult;
+
+    const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
+
+    expect(markup).toContain('data-install-node="minimax-h3-prompt-writer" data-node-operation="repair"');
+    expect(markup).toContain('class="node-action-menu"');
+    expect(markup).toContain('data-uninstall-node="minimax-h3-prompt-writer"');
+    expect(markup).not.toContain('data-rescan-node="minimax-h3-prompt-writer"');
   });
 });

@@ -178,6 +178,10 @@ type SettingsCopyKey =
   | "nodes.updateRecheck"
   | "nodes.checkUpdate"
   | "nodes.installRestart"
+  | "nodes.repair"
+  | "nodes.update"
+  | "nodes.uninstall"
+  | "nodes.moreActions"
   | "nodes.duplicateCopies"
   | "nodes.empty"
   | "nodes.placeholderTitle"
@@ -438,6 +442,10 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.updateRecheck": "更新/重启复检",
   "nodes.checkUpdate": "检查更新",
   "nodes.installRestart": "安装并重启",
+  "nodes.repair": "修复",
+  "nodes.update": "更新",
+  "nodes.uninstall": "卸载",
+  "nodes.moreActions": "更多节点操作",
   "nodes.duplicateCopies": "发现多个 H3 Motion Context 副本：{paths}。请只保留一个目录，再重启 ComfyUI。",
   "nodes.empty": "等待环境扫描结果",
   "nodes.placeholderTitle": "工作流占位符",
@@ -674,6 +682,10 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.updateRecheck": "更新/重新啟動複檢",
   "nodes.checkUpdate": "檢查更新",
   "nodes.installRestart": "安裝並重新啟動",
+  "nodes.repair": "修復",
+  "nodes.update": "更新",
+  "nodes.uninstall": "解除安裝",
+  "nodes.moreActions": "更多節點操作",
   "nodes.duplicateCopies": "發現多個 H3 Motion Context 副本：{paths}。請只保留一個資料夾，再重新啟動 ComfyUI。",
   "nodes.empty": "等待環境掃描結果",
   "nodes.placeholderTitle": "工作流程佔位符",
@@ -931,6 +943,10 @@ const enUS: SettingsCopyCatalog = {
   "nodes.updateRecheck": "Update/restart and recheck",
   "nodes.checkUpdate": "Check for updates",
   "nodes.installRestart": "Install and restart",
+  "nodes.repair": "Repair",
+  "nodes.update": "Update",
+  "nodes.uninstall": "Uninstall",
+  "nodes.moreActions": "More node actions",
   "nodes.duplicateCopies": "Multiple H3 Motion Context copies detected: {paths}. Keep only one directory, then restart ComfyUI.",
   "nodes.empty": "Waiting for environment scan",
   "nodes.placeholderTitle": "Workflow placeholders",

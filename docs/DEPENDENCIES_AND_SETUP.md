@@ -82,6 +82,17 @@ npm.cmd run dev
 
 根目录 `scripts/setup.ps1` 可用于命令行环境检查；日常用户优先使用应用设置页，因为它会保存所选实例和路径。
 
+本地开发、自动诊断和代理协作优先使用运行时 harness，而不是通过桌面界面点击。先执行 `npm.cmd run build`，然后可直接复用应用保存的所选 ComfyUI 设置：
+
+```powershell
+npm.cmd run harness:comfy -- probe-prompt-writer
+npm.cmd run harness:comfy -- scan --json
+npm.cmd run harness:comfy -- restart-comfy
+npm.cmd run harness:comfy -- repair-prompt-writer
+```
+
+`probe-prompt-writer` 是默认的只读操作，直接检查 `/h3studio/status`、模型接口和 GGUF diagnostics。`restart-comfy` 复用应用的本地进程所有权和启停服务；CLI harness 使用已有的隐藏 detached launcher，避免命令结束时关闭它启动的 ComfyUI，Electron 应用仍保留可见控制台。`repair-prompt-writer` 复用节点安装器、安全备份、兼容补丁、Python 语法校验、重启和运行时复检。可用 `--state <studio-state.json>` 指向另一份明确的应用状态，或用 `--json` 取得机器可读结果。只有这些服务接口无法覆盖且任务确实依赖 GUI 状态时，才应使用桌面自动化。
+
 ## 6. 模型、节点和工作流的正确安装顺序
 
 ### 6.1 选择并扫描实例

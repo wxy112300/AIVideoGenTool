@@ -227,7 +227,7 @@ export function patchH3PromptWriterGemmaChatHandler(source: string): string {
         `${indent}    self.chat_handler.enable_thinking = (`,
         `${indent}        thinking and model_info.get("template_controls", {}).get("enable_thinking") is True`,
         `${indent}    )`
-      ].join("\n")
+      ].join("\n") + "\n"
     );
   }
   return patched;

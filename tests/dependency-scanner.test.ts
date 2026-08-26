@@ -141,6 +141,45 @@ describe("dependency scanner", () => {
     });
   });
 
+  it("marks an installed Prompt Writer with an HTTP endpoint failure as repairable", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-runtime-failed-"));
+    temporaryDirectories.push(comfyRoot);
+    const writerDirectory = path.join(
+      comfyRoot,
+      "custom_nodes",
+      "ComfyUI-MiniMaxH3-Prompt-Writer"
+    );
+    await fs.mkdir(writerDirectory, { recursive: true });
+    await fs.writeFile(
+      path.join(writerDirectory, "pyproject.toml"),
+      '[project]\nversion = "0.4.1"\n',
+      "utf8"
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/object_info")) {
+        return new Response(JSON.stringify({}), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const statuses = await scanCustomNodes(
+      comfyRoot,
+      { ...createDefaultState().settings, comfyUrl: "http://127.0.0.1:8188" },
+      "",
+      "http://127.0.0.1:8188"
+    );
+    const writer = statuses.find((status) => status.id === "minimax-h3-prompt-writer");
+
+    expect(writer).toMatchObject({
+      installed: true,
+      loaded: false,
+      runtimeVerified: true,
+      runtimeRepairable: true,
+      loadError: "MiniMax H3 Prompt Writer 运行接口不可用（HTTP 404）"
+    });
+  });
+
   it("recognizes installed nodes while ComfyUI is offline", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-node-scan-"));
     temporaryDirectories.push(comfyRoot);

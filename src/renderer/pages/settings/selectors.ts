@@ -329,9 +329,15 @@ export function deriveCustomNodeCardState(options: {
     phase,
     status,
     tone: customNodeStatusTone(options.node, phase !== null),
-    installActionable: !options.node.installed ||
-      options.node.updateAvailable ||
-      options.node.runtimeRepairable,
+    primaryOperation: !options.node.installed
+      ? "install" as const
+      : options.node.runtimeRepairable || Boolean(options.node.loadError) ||
+        options.node.compatibilityState === "error"
+        ? "repair" as const
+        : options.node.updateAvailable
+          ? "update" as const
+          : "reinstall" as const,
+    installActionable: true,
     runtimeRepairable: options.node.runtimeRepairable === true,
     installBlocked: options.globallyBlocked || options.active || queued
   };

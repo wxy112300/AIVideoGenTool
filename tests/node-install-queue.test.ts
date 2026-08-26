@@ -167,6 +167,30 @@ describe("CustomNodeInstallQueue", () => {
     expect(notify).toHaveBeenLastCalledWith("completed 3/0", "info");
   });
 
+  it("forwards the requested maintenance operation to the installer", async () => {
+    const settings = createDefaultState().settings;
+    const modes: string[] = [];
+    const queue = new CustomNodeInstallQueue({
+      install: async (_nodeId, _settings, mode) => {
+        modes.push(mode);
+        return { ok: true, message: "installed" };
+      },
+      restart: async () => ({ ok: true, message: "restarted" }),
+      scan: async () => scanWithLoadedNodes("node-a"),
+      nodeName: (nodeId) => nodeId,
+      getLog: () => "",
+      setLog: vi.fn(),
+      notify: vi.fn(),
+      onSnapshot: vi.fn(),
+      messages: messages()
+    });
+
+    queue.enqueue("node-a", settings, "reinstall");
+    await queue.waitForIdle();
+
+    expect(modes).toEqual(["reinstall"]);
+  });
+
   it("continues after one install fails and keeps the batch settings snapshot", async () => {
     const firstSettings = createDefaultState().settings;
     firstSettings.comfyInstallDirectory = "C:\\Comfy-A";

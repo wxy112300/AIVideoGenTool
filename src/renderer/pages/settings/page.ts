@@ -677,7 +677,7 @@ export function renderSettingsPage(
           });
           const queued = cardState.queued;
           const installBlocked = cardState.installBlocked;
-          const installActionable = cardState.installActionable;
+          const primaryOperation = cardState.primaryOperation;
           const localVersion = node.version
             ? `v${escape(node.version)}`
             : node.detectedRevision
@@ -726,7 +726,10 @@ export function renderSettingsPage(
             </div>
             <div class="custom-node-actions">
               <span class="model-availability ${cardState.tone}" role="status" aria-live="polite">${statusMarkup}</span>
-              <button class="${installActionable ? "primary" : "secondary"} button-with-icon" aria-busy="${active || queued || cardState.phase === "finalizing"}" ${installActionable ? `data-install-node="${escape(node.id)}"` : `data-rescan-node="${escape(node.id)}"`} ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : installActionable ? node.installed ? "refresh-cw" : "download" : "scan-search")}${installStatus || (node.updateAvailable || cardState.runtimeRepairable ? s("nodes.updateRestart") : node.installed ? t(uiKeys.settings.rescan) : s("nodes.installRestart"))}</button>
+              <div class="node-action-split">
+                <button class="primary button-with-icon node-action-main" aria-busy="${active || queued || cardState.phase === "finalizing"}" data-install-node="${escape(node.id)}" data-node-operation="${primaryOperation}" ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : primaryOperation === "install" ? "download" : primaryOperation === "repair" ? "wrench" : "refresh-cw")}${installStatus || (primaryOperation === "install" ? s("nodes.oneClickInstall") : primaryOperation === "repair" ? s("nodes.repair") : primaryOperation === "update" ? s("nodes.update") : s("nodes.reinstall"))}</button>
+                ${node.installed ? `<details class="node-action-menu"><summary aria-label="${s("nodes.moreActions")}" title="${s("nodes.moreActions")}">${icon("chevron-down")}</summary><div class="node-action-menu-popover"><button class="destructive-menu-action button-with-icon" data-uninstall-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon("trash-2")}${s("nodes.uninstall")}</button></div></details>` : ""}
+              </div>
             </div>
           </article>`;
         }).join("") || `<div class="panel environment-empty">${s("nodes.empty")}</div>`}

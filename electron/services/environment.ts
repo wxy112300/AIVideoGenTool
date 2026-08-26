@@ -7,6 +7,7 @@ import type {
   AttentionAccelerationStatus,
   ConnectionResult,
   ComfyUiCompatibility,
+  CustomNodeInstallMode,
   CustomNodeStatus,
   EnvironmentIssue,
   EnvironmentItem,
@@ -44,7 +45,10 @@ import {
   scanCustomNodes
 } from "./dependency-scanner.js";
 import { discoverCudaToolkit } from "./cuda-toolkit.js";
-import { installCustomNodePackage } from "./dependency-installer.js";
+import {
+  installCustomNodePackage,
+  uninstallCustomNodePackage
+} from "./dependency-installer.js";
 import { prepareH3PromptWriter } from "./dependency-node-adapters.js";
 import {
   inspectLlamaCppPython,
@@ -3024,12 +3028,13 @@ async function applyComfyDesktopSettings(settings: Settings): Promise<void> {
 
 
 async function startComfyUi(settings: Settings): Promise<string> {
+  const useHeadlessHarness = process.env.LOCAL_VIDEO_STUDIO_RUNTIME_HARNESS === "1";
   return startComfyUiService(settings, {
     findComfyRoot,
     findComfyInstallation,
     applyComfyDesktopSettings,
     launchDetached,
-    launchComfyUiVisible,
+    ...(!useHeadlessHarness ? { launchComfyUiVisible } : {}),
     isPortInUse: (port) => isLocalPortInUse(port),
     downloadEnvironment,
     exists,
@@ -3858,7 +3863,8 @@ export async function repairEnvironmentIssue(
 export async function installCustomNode(
   nodeId: string,
   settings: Settings,
-  onLog?: (message: string) => void
+  onLog?: (message: string) => void,
+  mode: CustomNodeInstallMode = "install"
 ): Promise<{ ok: boolean; message: string; log?: string }> {
   return installCustomNodePackage(nodeId, settings, {
     downloadEnvironment,
@@ -3870,7 +3876,17 @@ export async function installCustomNode(
     retryableRenameError,
     renameWithRetry,
     runLoggedProcess
-  }, onLog);
+  }, onLog, mode);
+}
+
+export async function uninstallCustomNode(
+  nodeId: string,
+  settings: Settings
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  return uninstallCustomNodePackage(nodeId, settings, {
+    findComfyRoot,
+    renameWithRetry
+  });
 }
 
 export async function inspectLlamaCppPythonRuntime(

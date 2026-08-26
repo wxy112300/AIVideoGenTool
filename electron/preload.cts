@@ -94,8 +94,10 @@ const api: AppApi = {
     ipcRenderer.invoke("comfyui:update", settings),
   repairEnvironmentIssue: (issueId: EnvironmentIssue["id"], settings) =>
     ipcRenderer.invoke("environment:repair", issueId, settings),
-  installCustomNode: (nodeId, settings) =>
-    ipcRenderer.invoke("custom-node:install", nodeId, settings),
+  installCustomNode: (nodeId, settings, mode) =>
+    ipcRenderer.invoke("custom-node:install", nodeId, settings, mode),
+  uninstallCustomNode: (nodeId, settings) =>
+    ipcRenderer.invoke("custom-node:uninstall", nodeId, settings),
   installWorkflowDependency: (workflowId, settings) =>
     ipcRenderer.invoke("workflow-dependency:install", workflowId, settings),
   installLlamaCppPython: (settings) =>

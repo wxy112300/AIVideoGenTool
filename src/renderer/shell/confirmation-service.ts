@@ -10,7 +10,8 @@ export type ConfirmationRequest =
   | { kind: "remove-queue-task"; taskId: string; title: string }
   | { kind: "cancel-queue-task"; taskId: string; title: string }
   | { kind: "discard-settings"; nextPage: Page }
-  | { kind: "force-stop-comfy" };
+  | { kind: "force-stop-comfy" }
+  | { kind: "uninstall-custom-node"; nodeId: string; name: string };
 
 export interface ConfirmationServiceOptions {
   getRequest(): ConfirmationRequest | null;
@@ -73,6 +74,19 @@ export async function acceptConfirmation(
       options.setServiceStatusMessage(result.message);
       await options.scanEnvironment(settings);
       if (!result.ok) throw new Error(result.message);
+      options.setRequest(null);
+      options.setBusy(false);
+      options.notify(result.message);
+      options.render();
+      options.restoreModalFocus();
+      return;
+    } else if (request.kind === "uninstall-custom-node") {
+      const settings = options.getFormSettings();
+      const result = await context.studio.uninstallCustomNode(request.nodeId, settings);
+      if (!result.ok) throw new Error(result.message);
+      const restarted = await context.studio.restartLocalService("comfy", settings);
+      if (!restarted.ok) throw new Error(restarted.message);
+      await options.scanEnvironment(settings);
       options.setRequest(null);
       options.setBusy(false);
       options.notify(result.message);

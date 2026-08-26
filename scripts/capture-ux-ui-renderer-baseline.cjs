@@ -579,6 +579,32 @@ async function diagnoseLayout(window) {
   })()`);
 }
 
+async function diagnoseNodeActionMenu(window) {
+  return executeJavaScript(window, `(() => {
+    const split = document.querySelector('.node-action-split');
+    const main = split?.querySelector('.node-action-main');
+    const menu = split?.querySelector('.node-action-menu');
+    const summary = menu?.querySelector(':scope > summary');
+    if (!(main instanceof HTMLButtonElement) || !(menu instanceof HTMLDetailsElement) || !(summary instanceof HTMLElement)) return null;
+    const splitRect = split.getBoundingClientRect();
+    const mainRect = main.getBoundingClientRect();
+    const summaryRect = summary.getBoundingClientRect();
+    const before = {
+      split: Math.round(splitRect.height),
+      main: Math.round(mainRect.height),
+      summary: Math.round(summaryRect.height),
+      mainTopDelta: Math.round(mainRect.top - splitRect.top),
+      summaryTopDelta: Math.round(summaryRect.top - splitRect.top)
+    };
+    menu.open = true;
+    main.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const closesOnOtherButton = !menu.open;
+    menu.open = true;
+    document.querySelector('.custom-node-copy')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return { before, closesOnOtherButton, closesOnOutsideClick: !menu.open };
+  })()`);
+}
+
 async function runQueueInteractionSmoke(window, fixture, viewport) {
   const queueState = await executeJavaScript(window, "window.studio.getFixtureQueueState?.() ?? null");
   if (queueState !== "running") return;
@@ -1391,6 +1417,7 @@ const settingsScan = (settings) => {
   const modelDirectory = settings.modelDirectory || root + "/models";
   const installGuide = { sourceLabel: "Hugging Face fixture", downloadUrl: "https://huggingface.co/fixture/model", targetSubdirectory: "text_encoders", recommendedFilename: "fixture-model.safetensors", notes: "Synthetic P16 evidence only." };
   const missingNode = { id: "comfyui-qwenvl-lora", name: "Qwen VL LoRA Nodes", purpose: "H3 提示词增强节点", repositoryUrl: "https://github.com/fixture/ComfyUI-QwenVL-LoRA", installed: false, loaded: false, runtimeVerified: false, loadError: "", directory: root + "/custom_nodes/ComfyUI-QwenVL-LoRA", required: true, version: "", versionSource: "", minimumVersion: "1.0.0", recommendedVersion: "1.2.0", latestVersion: "1.2.0", updateAvailable: false, compatibilityState: "unknown", bulkInstall: true };
+  const installedNode = { id: "minimax-h3-prompt-writer", name: "MiniMax H3 Prompt Writer", purpose: "H3 提示词写作节点", repositoryUrl: "https://github.com/fixture/ComfyUI-MiniMaxH3-Prompt-Writer", installed: true, loaded: true, runtimeVerified: true, runtimeRepairable: false, loadError: "", directory: root + "/custom_nodes/ComfyUI-MiniMaxH3-Prompt-Writer", required: false, version: "0.4.1", versionSource: "pyproject.toml", minimumVersion: "0.4.1", recommendedVersion: "0.4.1", latestVersion: "0.4.1", updateAvailable: false, compatibilityState: "supported", bulkInstall: true };
   const videoProfile = { id: "minimax_h3_fl2va", name: "MiniMax H3", category: "video", managedBy: "comfyui", badge: "GGUF", description: "H3 视频模型 fixture", vram: "约 12 GB", available: true, integrated: true, components: [{ label: "Transformer", found: true, expected: "fixture-h3.safetensors", matches: [modelDirectory + "/diffusion_models/fixture-h3.safetensors"], installGuide }] };
   const promptProfile = { id: "qwen-vl", name: "Qwen VL Prompt", category: "prompt", managedBy: "comfyui", badge: "Prompt", description: "提示词增强 fixture", vram: "约 8 GB", available: false, integrated: true, requiredCustomNodeIds: [missingNode.id], missingCustomNodeIds: [missingNode.id], missingCustomNodeNames: [missingNode.name], customNodeCompatibility: "warning", runtimeVerified: false, runtimeReady: false, components: [{ label: "Text encoder", found: false, expected: "fixture-text-encoder.safetensors", matches: [], installGuide }] };
   const imageProfile = { id: "qwen-image-edit-2511", name: "Qwen Image Edit", category: "image", managedBy: "comfyui", badge: "Image", description: "图片编辑 fixture", vram: "约 12 GB", available: true, integrated: true, components: [{ label: "Diffusion model", found: true, expected: "fixture-image.safetensors", matches: [modelDirectory + "/diffusion_models/fixture-image.safetensors"], installGuide }] };
@@ -1419,7 +1446,7 @@ const settingsScan = (settings) => {
     comfyCompatibility: { version: errorFixture ? "0.29.0" : "0.33.1", revision: errorFixture ? "fixture-broken" : "fixture-main", h3MinimumVersion: "0.31.0", h3MinimumRevision: "fixture-min", h3RecommendedVersion: "0.33.1", h3RecommendedRevision: "fixture-rec", h3CoreSupported: !errorFixture, coreNodes: [{ id: "LoadDiffusionModel", label: "LoadDiffusionModel", available: !errorFixture }], promptCoreSupported: false, promptCoreNodes: [{ id: "TextGenerate", label: "TextGenerate", available: false }], checkedFrom: "source", updateMode: "git", updateHint: errorFixture ? "Fixture 兼容性检查失败，请修复或更新后重新扫描。" : "Fixture 可演示更新入口和版本证据。", compatibilityState: errorFixture ? "error" : "supported", compatibilityNotice: errorFixture ? "Fixture compatibility check failed." : "" },
     attentionAcceleration: { pythonPath: root + "/venv/Scripts/python.exe", pythonVersion: "3.12.4", torchVersion: "2.7.0+cu128", cudaVersion: "12.8", gpuName: "RTX 4090", gpuArchitecture: "sm_89", sageAttentionVersion: "2.2.0", tritonVersion: "3.3.0", kjNodesInstalled: true, kjNodesCompatible: true, recommendedSageVersion: "2.2.0", recommendedWheel: "fixture-wheel", supported: true, ready: true, detail: "Fixture acceleration ready" },
     modelProfiles: [videoProfile, promptProfile, imageProfile, upscaleProfile],
-    customNodes: [missingNode],
+    customNodes: [installedNode, missingNode],
     workflowDependencies: [{ id: "minimax_h3_i2v", name: "H3 Image-to-Video Workflow", purpose: "H3 图生视频工作流", installed: false, path: "", sourceUrl: "https://github.com/fixture/h3-workflow" }],
     issues: [{ id: "comfy-database", label: errorFixture ? "ComfyUI compatibility check failed" : "ComfyUI database needs attention", detail: errorFixture ? "Fixture error: selected core is below the supported range; update or choose another installation." : "Fixture warning: database migration can be repaired from Settings.", severity: errorFixture ? "error" : "warning", repairable: true, repairLabel: errorFixture ? "Repair compatibility" : "Repair fixture" }]
   });
@@ -1435,7 +1462,7 @@ const api = {
   saveDraft: async (draft) => { currentState.draft = clone(draft); emitState(); return clone(currentState); }, saveImageDraft: async (draft) => { currentState.imageDraft = clone(draft); emitState(); return clone(currentState); }, saveSettings: async (settings) => { currentState.settings = clone(settings); emitState(); return clone(currentState); }, setQueueH3LivePreview: async (enabled) => { currentState.settings.h3LivePreview = enabled; emitState(); return clone(currentState); },
   pickImage: async () => fixturePickerEnabled ? fixtureImagePath : null, pickVideo: async () => fixturePickerEnabled ? fixtureVideoPath : null, setFixturePickerEnabled: (enabled) => { fixturePickerEnabled = Boolean(enabled); return fixturePickerEnabled; }, getFixtureStats: () => clone(fixtureStats), getDroppedFilePath: (file) => file?.path || (file?.name === "fixture-image.png" ? fixtureImagePath : file?.name === "fixture-video.mp4" ? fixtureVideoPath : ""), saveClipboardImage: async () => "", readImageMarkup: async () => null, saveImageMarkup: async () => ({}), saveImageMask: async () => ({}), saveImageCrop: async () => null, pickWorkflow: async () => null, pickPython: async () => null, inspectWorkflow: async () => ({ supportsEndImage: false, supportsVideoExtension: false }), getBundledWorkflow: async () => null,
   getPerformanceMetrics: async () => metrics(), readAppLogs: async () => ({ directory: "", retentionDays: 7, records: [], text: "" }), openAppLogDirectory: async () => true, reportRendererError: async () => {}, reportUserAction: async () => {}, reportNotification: async () => {}, pickDirectory: async () => null, readImage: async () => imageDataUrl, readHistoryCover: async () => imageDataUrl, saveHistoryCover: async () => true, showItemInFolder: async () => true, openDirectory: async () => true, copyFile: async () => result(), openExternal: async () => true,
-  enhancePrompt: async () => "", cancelPrompt: async () => result(), startPromptModel: async () => result(), releasePromptModel: async () => result(), testConnection: async () => result(), scanEnvironment: async (settings) => currentSettingsFixture === "scanning" ? new Promise(() => {}) : settingsScan(settings), startLocalService: async () => result(), restartLocalService: async () => result(), forceStopComfyProcesses: async () => result(), updateComfyUi: async () => result(), repairEnvironmentIssue: async () => result(), installCustomNode: async () => currentSettingsFixture === "installing" ? new Promise(() => {}) : result(), installWorkflowDependency: async () => result(), installLlamaCppPython: async () => result(), installAttentionAcceleration: async () => result(),
+  enhancePrompt: async () => "", cancelPrompt: async () => result(), startPromptModel: async () => result(), releasePromptModel: async () => result(), testConnection: async () => result(), scanEnvironment: async (settings) => currentSettingsFixture === "scanning" ? new Promise(() => {}) : settingsScan(settings), startLocalService: async () => result(), restartLocalService: async () => result(), forceStopComfyProcesses: async () => result(), updateComfyUi: async () => result(), repairEnvironmentIssue: async () => result(), installCustomNode: async () => currentSettingsFixture === "installing" ? new Promise(() => {}) : result(), uninstallCustomNode: async () => result(), installWorkflowDependency: async () => result(), installLlamaCppPython: async () => result(), installAttentionAcceleration: async () => result(),
   enqueue: async () => { fixtureStats.enqueue += 1; await delay(80); return clone(currentState); }, enqueueExtension: async () => { fixtureStats.enqueueExtension += 1; await delay(80); return clone(currentState); }, enqueueImageEdit: async () => { fixtureStats.imageEdit += 1; await delay(80); return clone(currentState); }, enqueueUpscale: async () => clone(currentState), updateUpscaleTask: async () => clone(currentState), removeTask: async () => clone(currentState), startQueue: async () => clone(currentState), pauseQueue: async () => clone(currentState), cancelTask: async () => clone(currentState), moveTask: async () => clone(currentState), duplicateTask: async () => clone(currentState), resetTask: async () => clone(currentState), deleteHistoryAsset: async () => clone(currentState), updateHistoryMetadata: async () => clone(currentState), setImageHistoryCover: async () => clone(currentState), deleteImageHistoryVersion: async () => clone(currentState),
   onStateChanged: (listener) => { stateListeners.add(listener); return () => stateListeners.delete(listener); }, onComfyRuntimeStateChanged: (listener) => { runtimeListeners.add(listener); return () => runtimeListeners.delete(listener); }, onTaskPreview: (listener) => { taskPreviewListeners.add(listener); return () => taskPreviewListeners.delete(listener); }, onPromptRuntimeStateChanged: () => () => {}, onPromptProgress: () => () => {}, onWindowCloseRequest: () => () => {}, onAttentionInstallLog: () => () => {}, onDependencyInstallLog: () => () => {}, onHistoryMigrationProgress: () => () => {}, scanImageAssetLibrary: async () => clone(emptyLibraryScan), organizeImageAssetLibrary: async () => ({ scan: clone(emptyLibraryScan), archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles: 0, cleanedDirectories: 0, cleanedBytes: 0 }), cleanupImageAssetLibrary: async () => ({ scan: clone(emptyLibraryScan), archivedFiles: 0, reorganizedFiles: 0, updatedReferences: 0, cleanedFiles: 0, cleanedDirectories: 0, cleanedBytes: 0 }), onImageAssetLibraryProgress: () => () => {}
 };
@@ -1482,7 +1509,11 @@ async function captureAll(options, preloadPath) {
           window.webContents.focus();
         }
         await setupFixture(window, fixture, options);
-        if (options.diagnose) console.log(`[renderer-diagnose] ${fixture.id} ${viewport.id} ${JSON.stringify(await diagnoseLayout(window))}`);
+        if (options.diagnose) {
+          console.log(`[renderer-diagnose] ${fixture.id} ${viewport.id} ${JSON.stringify(await diagnoseLayout(window))}`);
+          const nodeAction = await diagnoseNodeActionMenu(window);
+          if (nodeAction) console.log(`[renderer-node-action] ${fixture.id} ${viewport.id} ${JSON.stringify(nodeAction)}`);
+        }
         if (options.smoke) await runInteractionSmoke(window, fixture, viewport);
         const screenshot = await window.webContents.capturePage();
         const target = outputPath(root, fixture, viewport);

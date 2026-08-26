@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   h3PromptWriterPatchFiles,
   installCustomNodePackage,
+  uninstallCustomNodePackage,
   withWindowsGitLongPaths,
   type DependencyInstallerRuntime
 } from "../electron/services/dependency-installer";
@@ -65,6 +66,33 @@ async function exists(filename: string): Promise<boolean> {
 }
 
 describe("dependency installer", () => {
+  it("uninstalls a catalog node into a recoverable backup", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-node-uninstall-"));
+    temporaryDirectories.push(comfyRoot);
+    const nodeDirectory = path.join(
+      comfyRoot,
+      "custom_nodes",
+      "ComfyUI-MiniMaxH3-Prompt-Writer"
+    );
+    await fs.mkdir(nodeDirectory, { recursive: true });
+    await fs.writeFile(path.join(nodeDirectory, "marker.txt"), "installed", "utf8");
+
+    const result = await uninstallCustomNodePackage(
+      "minimax-h3-prompt-writer",
+      createDefaultState().settings,
+      {
+        findComfyRoot: async () => comfyRoot,
+        renameWithRetry: async (source, target) => fs.rename(source, target)
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(await exists(nodeDirectory)).toBe(false);
+    expect(result.log).toContain("node-backups");
+    const backups = await fs.readdir(path.join(comfyRoot, "node-backups", "uninstalled"));
+    expect(backups).toHaveLength(1);
+  });
+
   it("recognizes every app-owned H3 Prompt Writer patch file", () => {
     expect(h3PromptWriterPatchFiles).toContain("backend/catalog.py");
   });
@@ -128,6 +156,8 @@ describe("dependency installer", () => {
     expect(patched).toContain("self.chat_handler = Gemma4ChatHandler(");
     expect(patched).toContain("self.chat_handler = MTMDChatHandler(");
     expect(patched).toContain("self.chat_handler.enable_thinking = (");
+    expect(patched).toContain(")\n                        with _quiet_mtmd_info():");
+    expect(patched).not.toContain(")                        with _quiet_mtmd_info():");
     expect(patchH3PromptWriterGemmaChatHandler(patched)).toBe(patched);
   });
 
@@ -821,6 +851,140 @@ describe("dependency installer", () => {
     expect(processCalls.some((args) => args[0] === "clone")).toBe(false);
     expect(processCalls.some((args) => args.includes("pull"))).toBe(false);
     expect(result.log).toContain("上游没有新提交；保留当前目录，不重复克隆");
+    expect(await exists(path.join(comfyRoot, "node-backups"))).toBe(false);
+  });
+
+  it("backs up and cleanly replaces a diverged H3 Prompt Writer checkout", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-diverged-update-"));
+    temporaryDirectories.push(comfyRoot);
+    const targetDirectory = path.join(
+      comfyRoot,
+      "custom_nodes",
+      "ComfyUI-MiniMaxH3-Prompt-Writer"
+    );
+    await fs.mkdir(path.join(targetDirectory, ".git"), { recursive: true });
+    await fs.writeFile(path.join(targetDirectory, "local-commit.txt"), "preserve this checkout");
+    const processCalls: string[][] = [];
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async () => "git.exe",
+      findComfyPython: async () => "python.exe",
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args) => {
+        processCalls.push(args);
+        if (args.includes("remote")) {
+          return "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git";
+        }
+        if (args.includes("status")) return "";
+        if (args.includes("pull")) {
+          throw Object.assign(new Error("命令退出，代码 128"), {
+            stdout: "fatal: Not possible to fast-forward, aborting."
+          });
+        }
+        if (args[0] === "clone") {
+          const cloneDirectory = args.at(-1)!;
+          await fs.mkdir(path.join(cloneDirectory, "backend", "models"), { recursive: true });
+          await fs.writeFile(
+            path.join(cloneDirectory, "backend", "models", "gguf_backend.py"),
+            "from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0, Llama\n"
+          );
+          return "clone complete";
+        }
+        if (args[0] === "-c") {
+          return JSON.stringify({
+            pythonVersion: "3.12.11",
+            packageVersion: "0.3.46+cu128",
+            importable: true,
+            gpuOffload: true,
+            dynamicBackend: true,
+            torchVersion: "2.8.0+cu129",
+            cudaVersion: "12.9"
+          });
+        }
+        return "";
+      }
+    };
+
+    const result = await installCustomNodePackage(
+      "minimax-h3-prompt-writer",
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok).toBe(true);
+    expect(processCalls.some((args) => args.includes("pull"))).toBe(true);
+    expect(processCalls.some((args) => args[0] === "clone")).toBe(true);
+    expect(result.log).toContain("本地分支与上游已分叉");
+    expect(result.log).toContain("正在校验 H3 Prompt Writer 的 Python 源码语法");
+    const backupRoot = path.join(comfyRoot, "node-backups");
+    const backupName = (await fs.readdir(backupRoot)).find((name) =>
+      name.startsWith("ComfyUI-MiniMaxH3-Prompt-Writer-")
+    );
+    expect(backupName).toBeTruthy();
+    expect(await fs.readFile(path.join(backupRoot, backupName!, "local-commit.txt"), "utf8"))
+      .toBe("preserve this checkout");
+    expect(await exists(path.join(targetDirectory, "local-commit.txt"))).toBe(false);
+  });
+
+  it("keeps the existing H3 checkout when the replacement fails Python syntax validation", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-invalid-replacement-"));
+    temporaryDirectories.push(comfyRoot);
+    const targetDirectory = path.join(
+      comfyRoot,
+      "custom_nodes",
+      "ComfyUI-MiniMaxH3-Prompt-Writer"
+    );
+    await fs.mkdir(path.join(targetDirectory, ".git"), { recursive: true });
+    await fs.writeFile(path.join(targetDirectory, "working-copy.txt"), "keep the working node");
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async () => "git.exe",
+      findComfyPython: async () => "python.exe",
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args) => {
+        if (args.includes("remote")) {
+          return "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git";
+        }
+        if (args.includes("status")) return "";
+        if (args.includes("pull")) {
+          throw Object.assign(new Error("命令退出，代码 128"), {
+            stdout: "fatal: Not possible to fast-forward, aborting."
+          });
+        }
+        if (args[0] === "clone") {
+          const cloneDirectory = args.at(-1)!;
+          await fs.mkdir(path.join(cloneDirectory, "backend", "models"), { recursive: true });
+          await fs.writeFile(
+            path.join(cloneDirectory, "backend", "models", "gguf_backend.py"),
+            "from llama_cpp import GGML_TYPE_F16, GGML_TYPE_Q8_0, Llama\n"
+          );
+          return "clone complete";
+        }
+        if (args[0] === "-c" && args[1]?.includes("ast.parse")) {
+          throw new Error("SyntaxError: invalid syntax");
+        }
+        return "";
+      }
+    };
+
+    const result = await installCustomNodePackage(
+      "minimax-h3-prompt-writer",
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("SyntaxError: invalid syntax");
+    expect(await fs.readFile(path.join(targetDirectory, "working-copy.txt"), "utf8"))
+      .toBe("keep the working node");
     expect(await exists(path.join(comfyRoot, "node-backups"))).toBe(false);
   });
 

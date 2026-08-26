@@ -868,6 +868,8 @@ export interface CustomNodeStatus {
   bulkInstall?: boolean;
 }
 
+export type CustomNodeInstallMode = "install" | "update" | "repair" | "reinstall";
+
 export interface EnvironmentIssue {
   id: "fantasytalking-unicodeescape" | "comfy-database" | "comfy-core-pyav";
   label: string;
@@ -1235,6 +1237,11 @@ export interface AppApi {
     settings: Settings
   ): Promise<ConnectionResult>;
   installCustomNode(
+    nodeId: string,
+    settings: Settings,
+    mode?: CustomNodeInstallMode
+  ): Promise<ConnectionResult>;
+  uninstallCustomNode(
     nodeId: string,
     settings: Settings
   ): Promise<ConnectionResult>;
