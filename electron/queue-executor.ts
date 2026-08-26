@@ -47,7 +47,7 @@ export interface QueueExecutorDependencies {
   requireExistingImageOutput(result: unknown, outputRoot: string, alternateRoots?: string[]): Promise<HistoryFile[]>;
   requireExistingVideoOutput(result: unknown, alternateRoots?: string[]): Promise<HistoryFile[]>;
   releasePromptRuntime(settings: Settings): Promise<number>;
-  stabilizeH3RuntimeBetweenTasks(taskId: string, modelId: string, settings: Settings): Promise<boolean>;
+  stabilizeH3RuntimeBetweenTasks(taskId: string, modelId: string, settings: Settings, hasVideoLoras: boolean): Promise<boolean>;
   settingsForTask(task: QueueTask | undefined, settings: Settings): Settings;
   errorMeta(error: unknown): Record<string, unknown>;
   taskStageStartedAt: Map<string, { stage: string; startedAt: number }>;
@@ -688,7 +688,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           const stable = await stabilizeH3RuntimeBetweenTasks(
             completedTask.id,
             completedTask.modelId,
-            comfyUiSettingsForQueueTask(completedTask, next.settings)
+            comfyUiSettingsForQueueTask(completedTask, next.settings),
+            Boolean(completedTask.videoLoras?.length)
           );
           if (!stable) {
             const stopped = await store.update((state) => {

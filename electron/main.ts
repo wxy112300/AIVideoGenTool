@@ -1909,68 +1909,98 @@ async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: st
 async function stabilizeH3RuntimeBetweenTasks(
   taskId: string,
   modelId: string,
-  settings: Settings
+  settings: Settings,
+  hasVideoLoras: boolean
 ): Promise<boolean> {
   const gib = 1024 ** 3;
   const before = await getPerformanceMetrics(settings).catch(() => null);
   appLogger.info("comfy", "h3-release-started", "Releasing H3 runtime before the next queue task", {
     taskId,
     modelId,
+    hasVideoLoras,
     vramUsedBytes: before?.vramUsedBytes ?? null,
     vramTotalBytes: before?.vramTotalBytes ?? null
   });
-  try {
-    await freeMemory(settings);
-  } catch (error) {
-    appLogger.warn("comfy", "h3-release-request-failed", "H3 runtime release request failed; restarting ComfyUI", {
-      taskId,
-      modelId,
-      error: safeLogErrorMessage(error)
-    });
-    const recovery = await restartLocalService("comfy", settings);
-    appLogger.info("comfy", recovery.ok ? "h3-release-restart-succeeded" : "h3-release-restart-failed", recovery.message, {
-      taskId,
-      modelId,
-      recoveryOk: recovery.ok
-    });
-    return recovery.ok;
-  }
 
-  const deadline = Date.now() + 20_000;
-  let stableSamples = 0;
-  let lastSample = before;
-  while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
-    const sample = await getPerformanceMetrics(settings).catch(() => null);
-    if (!sample?.vramUsedBytes || !sample.vramTotalBytes) continue;
-    lastSample = sample;
-    const belowSafeLevel = sample.vramUsedBytes <= sample.vramTotalBytes * 0.45;
-    const releasedSubstantially = before?.vramUsedBytes != null &&
-      before.vramUsedBytes - sample.vramUsedBytes >= 4 * gib;
-    const gpuIdle = sample.gpuPercent == null || sample.gpuPercent < 10;
-    stableSamples = gpuIdle && (belowSafeLevel || releasedSubstantially)
-      ? stableSamples + 1
-      : 0;
-    if (stableSamples >= 2) {
-      appLogger.info("comfy", "h3-release-verified", "H3 runtime release was verified before continuing the queue", {
+  const waitForIdleRelease = async (requiredSamples: number) => {
+    const deadline = Date.now() + 20_000;
+    let stableSamples = 0;
+    let lastSample = before;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      const sample = await getPerformanceMetrics(settings).catch(() => null);
+      if (!sample?.vramUsedBytes || !sample.vramTotalBytes) continue;
+      lastSample = sample;
+      const idleVramLimit = Math.min(5 * gib, sample.vramTotalBytes * 0.2);
+      const gpuIdle = sample.gpuPercent == null || sample.gpuPercent < 10;
+      stableSamples = gpuIdle && sample.vramUsedBytes <= idleVramLimit
+        ? stableSamples + 1
+        : 0;
+      if (stableSamples >= requiredSamples) {
+        return { verified: true, lastSample, idleVramLimit };
+      }
+    }
+    const idleVramLimit = lastSample?.vramTotalBytes
+      ? Math.min(5 * gib, lastSample.vramTotalBytes * 0.2)
+      : null;
+    return { verified: false, lastSample, idleVramLimit };
+  };
+
+  const requestRelease = async (phase: "initial" | "lora-final") => {
+    try {
+      await freeMemory(settings);
+      return true;
+    } catch (error) {
+      appLogger.warn("comfy", "h3-release-request-failed", "H3 runtime release request failed; restarting ComfyUI", {
         taskId,
         modelId,
-        vramBeforeBytes: before?.vramUsedBytes ?? null,
-        vramAfterBytes: sample.vramUsedBytes,
-        vramTotalBytes: sample.vramTotalBytes,
-        gpuPercent: sample.gpuPercent
+        phase,
+        error: safeLogErrorMessage(error)
       });
-      return true;
+      return false;
     }
+  };
+
+  let release = await requestRelease("initial");
+  let result = release
+    ? await waitForIdleRelease(2)
+    : { verified: false, lastSample: before, idleVramLimit: null };
+  if (result.verified && hasVideoLoras) {
+    appLogger.info("comfy", "h3-lora-final-release-started", "Running a second H3 release after LoRA patchers became unreachable", {
+      taskId,
+      modelId,
+      vramUsedBytes: result.lastSample?.vramUsedBytes ?? null
+    });
+    release = await requestRelease("lora-final");
+    result = release
+      ? await waitForIdleRelease(3)
+      : { verified: false, lastSample: result.lastSample, idleVramLimit: result.idleVramLimit };
+  }
+
+  if (result.verified) {
+    appLogger.info("comfy", "h3-release-verified", "H3 runtime release was verified before continuing the queue", {
+      taskId,
+      modelId,
+      hasVideoLoras,
+      releasePhases: hasVideoLoras ? 2 : 1,
+      vramBeforeBytes: before?.vramUsedBytes ?? null,
+      vramAfterBytes: result.lastSample?.vramUsedBytes ?? null,
+      vramTotalBytes: result.lastSample?.vramTotalBytes ?? null,
+      idleVramLimitBytes: result.idleVramLimit,
+      gpuPercent: result.lastSample?.gpuPercent ?? null
+    });
+    return true;
   }
 
   appLogger.warn("comfy", "h3-release-unverified", "H3 VRAM did not reach a safe idle level; restarting ComfyUI", {
     taskId,
     modelId,
+    hasVideoLoras,
     vramBeforeBytes: before?.vramUsedBytes ?? null,
-    vramAfterBytes: lastSample?.vramUsedBytes ?? null,
-    vramTotalBytes: lastSample?.vramTotalBytes ?? null,
-    gpuPercent: lastSample?.gpuPercent ?? null
+    vramAfterBytes: result.lastSample?.vramUsedBytes ?? null,
+    vramTotalBytes: result.lastSample?.vramTotalBytes ?? null,
+    idleVramLimitBytes: result.idleVramLimit,
+    gpuPercent: result.lastSample?.gpuPercent ?? null
   });
   const recovery = await restartLocalService("comfy", settings);
   appLogger.info("comfy", recovery.ok ? "h3-release-restart-succeeded" : "h3-release-restart-failed", recovery.message, {
