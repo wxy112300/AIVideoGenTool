@@ -10,6 +10,7 @@ import {
   H3_TURBO_LORA_FILENAME,
   H3_TURBO_LORA_ID,
   isH3Ref2vTurboEnabled,
+  isH3SlaTurboLoraId,
   isH3TurboFourStepV11LoraId,
   isH3TurboV4LoraId,
   isH3TurboLoraId,
@@ -238,14 +239,15 @@ function applyVideoLoraStack(
   const selected = task.videoLoras ?? [];
   if (!isMiniMaxH3Model(task.modelId) || selected.length === 0) return;
 
-  const sageNodes = Object.values(workflow).filter((node) =>
-    node.class_type === "PathchSageAttentionKJ" && Array.isArray(node.inputs?.model)
+  const attentionNodes = Object.values(workflow).filter((node) =>
+    (node.class_type === "PathchSageAttentionKJ" || node.class_type === "H3SLAAttention") &&
+    Array.isArray(node.inputs?.model)
   );
   const directConsumers = Object.values(workflow).filter((node) =>
     (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
     Array.isArray(node.inputs?.model)
   );
-  const targets = sageNodes.length ? sageNodes : directConsumers;
+  const targets = attentionNodes.length ? attentionNodes : directConsumers;
   const targetInput = targets[0]?.inputs?.model;
   if (!Array.isArray(targetInput) || typeof targetInput[0] !== "string") {
     throw new Error(workflowMessage("loraChainUnknown", {}, locale));
@@ -301,6 +303,113 @@ function applyVideoLoraStack(
   for (const target of targets) target.inputs!.model = output;
 }
 
+const h3SlaAttentionInputs = (model: unknown[]): Record<string, unknown> => ({
+  model,
+  sparsity_ratio: 0.85,
+  block_size: "64",
+  min_seq_len: 4096,
+  dense_last_steps: 1,
+  protect_audio: true,
+  enabled: true,
+  dense_steps: "0",
+  dense_backend: "comfy_kitchen",
+  disable_fp16_accum: true,
+  stabilize_motion: true
+});
+
+function applyMiniMaxH3SlaAttention(
+  workflow: Record<string, { class_type?: string; inputs?: Record<string, unknown> }>,
+  task: GenerationQueueTask | ExtensionQueueTask,
+  locale: UiLocale = "zh-CN"
+): void {
+  const enabled = isMiniMaxH3Model(task.modelId) &&
+    !isMiniMaxH3R2vModel(task.modelId) &&
+    task.videoLoras?.some((lora) =>
+      isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
+    ) === true;
+  if (!enabled) return;
+
+  const consumers = Object.entries(workflow).filter(([, node]) =>
+    (node.class_type === "BasicScheduler" || node.class_type === "BasicGuider") &&
+    Array.isArray(node.inputs?.model)
+  );
+  if (!consumers.length) {
+    throw new Error(workflowMessage("slaConsumersMissing", {}, locale));
+  }
+
+  const existing = Object.entries(workflow).find(([, node]) =>
+    node.class_type === "H3SLAAttention" && Array.isArray(node.inputs?.model)
+  );
+  if (existing) {
+    const [nodeId, node] = existing;
+    const upstream = node.inputs?.model;
+    if (!Array.isArray(upstream) || typeof upstream[0] !== "string" || upstream[0] === nodeId) {
+      throw new Error(workflowMessage("slaOutputUnknown", {}, locale));
+    }
+    node.inputs = h3SlaAttentionInputs(upstream);
+    return;
+  }
+
+  const sageNodes = Object.entries(workflow).filter(([, node]) =>
+    node.class_type === "PathchSageAttentionKJ" && Array.isArray(node.inputs?.model)
+  );
+  const sigmaNodes = Object.entries(workflow).filter(([, node]) =>
+    (node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3") &&
+    Array.isArray(node.inputs?.model)
+  );
+  const targets = sageNodes.length ? sageNodes : sigmaNodes.length ? sigmaNodes : consumers;
+  const upstream = targets[0]?.[1].inputs?.model;
+  if (!Array.isArray(upstream) || typeof upstream[0] !== "string") {
+    throw new Error(workflowMessage("slaOutputUnknown", {}, locale));
+  }
+  if (targets.some(([, node]) => JSON.stringify(node.inputs?.model) !== JSON.stringify(upstream))) {
+    throw new Error(workflowMessage("slaOutputsDiffer", {}, locale));
+  }
+
+  if (sageNodes.length) {
+    const [nodeId, node] = sageNodes[0]!;
+    node.class_type = "H3SLAAttention";
+    node.inputs = h3SlaAttentionInputs(upstream);
+    for (const [obsoleteId] of sageNodes.slice(1)) {
+      for (const candidate of Object.values(workflow)) {
+        if (!candidate.inputs) continue;
+        for (const [name, input] of Object.entries(candidate.inputs)) {
+          if (Array.isArray(input) && input[0] === obsoleteId) {
+            candidate.inputs[name] = [nodeId, 0];
+          }
+        }
+      }
+      delete workflow[obsoleteId];
+    }
+    return;
+  }
+
+  if (sigmaNodes.length) {
+    const numericIds = Object.keys(workflow)
+      .map(Number)
+      .filter(Number.isFinite);
+    let nodeId = String((numericIds.length ? Math.max(...numericIds) : 0) + 1);
+    while (workflow[nodeId]) nodeId = String(Number(nodeId) + 1);
+    workflow[nodeId] = {
+      class_type: "H3SLAAttention",
+      inputs: h3SlaAttentionInputs(upstream)
+    };
+    for (const [, sigma] of sigmaNodes) sigma.inputs!.model = [nodeId, 0];
+    return;
+  }
+
+  const numericIds = Object.keys(workflow)
+    .map(Number)
+    .filter(Number.isFinite);
+  let nodeId = String((numericIds.length ? Math.max(...numericIds) : 0) + 1);
+  while (workflow[nodeId]) nodeId = String(Number(nodeId) + 1);
+  workflow[nodeId] = {
+    class_type: "H3SLAAttention",
+    inputs: h3SlaAttentionInputs(upstream)
+  };
+  for (const [, consumer] of consumers) consumer.inputs!.model = [nodeId, 0];
+}
+
 /**
  * The bundled H3 graphs are kept as conservative baselines and receive the
  * model-specific Turbo sampler patch at render time. Ref2VA Turbo uses the
@@ -322,10 +431,15 @@ function applyMiniMaxH3Ref2vTurboSampling(
     Boolean(task.videoLoras?.some((lora) =>
       isH3TurboV4LoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
     ));
+  const fl2vaSlaTurbo = isMiniMaxH3Model(task.modelId) &&
+    !isMiniMaxH3R2vModel(task.modelId) &&
+    Boolean(task.videoLoras?.some((lora) =>
+      isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
+    ));
   const afterMidnight = Boolean(task.videoLoras?.some((lora) =>
     lora.id === H3_AFTER_MIDNIGHT_LORA_ID && videoLoraCompatibleWithModel(lora, task.modelId)
   ));
-  if (!ref2vTurbo && !fl2vaV11Turbo && !fl2vaV4Turbo && !afterMidnight) return;
+  if (!ref2vTurbo && !fl2vaV11Turbo && !fl2vaV4Turbo && !fl2vaSlaTurbo && !afterMidnight) return;
   const sampler = Object.values(workflow).find((node) => node.class_type === "KSamplerSelect");
   const schedulers = Object.values(workflow).filter((node) => node.class_type === "BasicScheduler");
   const consumers = Object.values(workflow).filter((node) =>
@@ -335,13 +449,19 @@ function applyMiniMaxH3Ref2vTurboSampling(
   if (!sampler?.inputs || !schedulers.length || !consumers.length) return;
   sampler.inputs.sampler_name = "euler";
   for (const scheduler of schedulers) scheduler.inputs!.scheduler = "beta";
-  if (!ref2vTurbo && !fl2vaV11Turbo && !fl2vaV4Turbo) return;
-  const currentModel = consumers[0]?.inputs?.model;
-  if (!Array.isArray(currentModel) || typeof currentModel[0] !== "string") return;
-  if (consumers.some((node) => JSON.stringify(node.inputs?.model) !== JSON.stringify(currentModel))) return;
+  if (!ref2vTurbo && !fl2vaV11Turbo && !fl2vaV4Turbo && !fl2vaSlaTurbo) return;
   const existing = Object.entries(workflow).find(([, node]) =>
     node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3"
   );
+  const currentModel = existing?.[1].inputs?.model ?? consumers[0]?.inputs?.model;
+  if (!Array.isArray(currentModel) || typeof currentModel[0] !== "string") return;
+  if (existing && Object.values(workflow).some((node) =>
+    (node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3") &&
+    JSON.stringify(node.inputs?.model) !== JSON.stringify(currentModel)
+  )) return;
+  if (!existing && consumers.some((node) =>
+    JSON.stringify(node.inputs?.model) !== JSON.stringify(currentModel)
+  )) return;
   const nodeId = existing?.[0] ?? String(
     Math.max(0, ...Object.keys(workflow).map((id) => Number.parseInt(id, 10) || 0)) + 1
   );
@@ -349,8 +469,8 @@ function applyMiniMaxH3Ref2vTurboSampling(
     class_type: existing?.[1].class_type ?? "MiniMaxH3SigmaShift",
     inputs: {
       model: currentModel,
-      shift_video: fl2vaV11Turbo ? 6 : 12,
-      shift_audio: fl2vaV11Turbo ? 3 : fl2vaV4Turbo ? 6 : 3
+      shift_video: fl2vaV11Turbo || fl2vaSlaTurbo ? 6 : 12,
+      shift_audio: fl2vaV11Turbo || fl2vaSlaTurbo ? 3 : fl2vaV4Turbo ? 6 : 3
     }
   };
   for (const node of consumers) node.inputs!.model = [nodeId, 0];
@@ -455,6 +575,18 @@ export function workflowSupportsH3TurboSampling(
     isH3TurboFourStepV11LoraId(lora.id) && videoLoraCompatibleWithModel(lora, options.modelId ?? "")
   ) === true;
   if (fl2vaV11Turbo &&
+    hasNode("KSamplerSelect", (inputs) => inputs.sampler_name === "euler") &&
+    hasNode("BasicScheduler", (inputs) => inputs.scheduler === "beta") &&
+    nodes.some((node) =>
+      (node.class_type === "MiniMaxH3SigmaShift" || node.class_type === "ModelSamplingMiniMaxH3") &&
+      Boolean(node.inputs) && typeof node.inputs === "object" && !Array.isArray(node.inputs) &&
+      (node.inputs as Record<string, unknown>).shift_video === 6 &&
+       (node.inputs as Record<string, unknown>).shift_audio === 3
+     )) return true;
+  const fl2vaSlaTurbo = options.videoLoras?.some((lora) =>
+    isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, options.modelId ?? "")
+  ) === true;
+  if (fl2vaSlaTurbo &&
     hasNode("KSamplerSelect", (inputs) => inputs.sampler_name === "euler") &&
     hasNode("BasicScheduler", (inputs) => inputs.scheduler === "beta") &&
     nodes.some((node) =>
@@ -1364,6 +1496,7 @@ export function renderWorkflow(
       delete workflow[sageNodeId];
     }
   }
+  applyMiniMaxH3SlaAttention(workflow, task, context.locale);
   applyMiniMaxH3Ref2vTurboSampling(workflow, task);
   if (shouldApplySpectrum({
     modelId: task.modelId,

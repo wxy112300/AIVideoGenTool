@@ -3,14 +3,16 @@
  * duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer request contract. These rules
  * complement the official H3 schema; they do not depend on that extension.
  */
-export function h3CommunityPromptWriterContract(mode) {
+export function h3CommunityPromptWriterContract(mode, preset = "official-storyboard") {
     const referenceRules = mode === "R2V"
         ? [
             "Reference-role isolation: an explicitly assigned role is exclusive unless the user asks for additional traits. A motion-only Video contributes choreography, temporal order, pacing, and rhythm, but not performer identity, clothing, location, lighting, background, or soundtrack.",
             "Video-observation boundary: sampled frames or contact sheets are internal observations of one source video, never target shots or keyframes. Never mention contact sheets, cells, sampled frames, sampling timestamps, or internal media analysis in the final prompt, and never create one target shot per observed frame.",
             "Reference provenance: keep <Video N> as the source video or temporal source. When a concrete person, object, scene, pose, action, or effect is reused, define the reusable visible content as an appropriate <Subject N> while retaining its source provenance.",
             "Reference task classification: ordinary reference images do not imply keyframe completion. Uploaded video or audio does not by itself imply editing, continuation, audio reuse, or audio reference; infer the task only from the user's stated intent.",
-            "R2V detail budget: for a simple reference-generation task, 350-500 grounded English words in detailed_description is a useful starting range, not a hard maximum. Expand when dialogue, multiple shots, complex reference roles, or duration requires it, but never invent or pad unsupported detail merely to meet a word count."
+            preset === "detailed-cinematic"
+                ? "R2V detail budget: for a simple reference-generation task, 350-500 grounded English words in detailed_description is only a starting point. In this detailed preset, go beyond it when each added sentence grounds a causal action, camera, visible change, continuity relation, or sound event; never pad to reach a target."
+                : "R2V detail budget: for a simple reference-generation task, 350-500 grounded English words in detailed_description is a useful starting range, not a hard maximum. Expand when dialogue, multiple shots, complex reference roles, or duration requires it, but never invent or pad unsupported detail merely to meet a word count."
         ]
         : [
             mode === "I2VA"
@@ -23,14 +25,16 @@ export function h3CommunityPromptWriterContract(mode) {
         ];
     return [
         "Community prompt-writer guardrails. Priority is explicit user instruction, then assigned reference roles, then optional presets and defaults.",
-        "Factual boundary: the user's brief and supplied references define the available facts. Do not invent unsupported actions, expressions, events, transitions, visible text, props, locations, camera movement, dialogue, or music.",
+        preset === "detailed-cinematic"
+            ? "Detailed-expansion factual boundary: preserve every fact from the user's brief and supplied references. You may add reasonable, scene-grounded operational details that make the requested result executable, including ordinary micro-actions, anticipation, gaze or expression, body mechanics, contact, weight or momentum, motivated camera behavior, focus or light changes, ambience, and synchronized sound. Do not introduce new characters, locations, important props, plot events, visible text, dialogue, music, or major appearance changes, and never override an explicit constraint."
+            : "Factual boundary: the user's brief and supplied references define the available facts. Do not invent unsupported actions, expressions, events, transitions, visible text, props, locations, camera movement, dialogue, or music.",
         "Continuous-shot default: use multiple shots only when the user's intent or a referenced temporal/camera structure requires them; otherwise keep one continuous shot.",
         "Music boundary: preserve explicitly requested music in non_diegetic_music; otherwise output N/A. Never infer background music from mood, genre words, cinematic language, or visual style.",
         "Audio-reference boundary: a local visual model cannot hear an audio file unless the runtime explicitly supports audio. Derive Audio copy/reference semantics only from the user's declared role and never invent unheard audio content.",
         ...referenceRules
     ].join("\n");
 }
-export function h3SmallModelPromptContract(mode) {
+export function h3SmallModelPromptContract(mode, preset = "official-storyboard") {
     const modeRule = mode === "R2V"
         ? "R2V task rule: use the six R2V sections and keep supplied Picture, Video, and Audio labels exact; define reusable Subjects only when needed."
         : mode === "FL2VA"
@@ -46,9 +50,15 @@ export function h3SmallModelPromptContract(mode) {
     const formatRule = mode === "R2V"
         ? "R2V format rule: keep the six sections distinct and use only supplied media labels."
         : "Non-R2V format exclusion: never output subject_definitions, summary, retention_analysis, detailed_description, <Subject N>, <Video N>, or <Audio N> as prompt structure.";
+    const detailedExpansionRules = preset === "detailed-cinematic"
+        ? [
+            "Detailed cinematic expansion rule: after extracting the user's intent and inspecting the supplied media, expand the timeline through opening state, intention or preparation, primary action, physical response, reaction or secondary motion, camera response, and final state. Keep each beat causal and identify its visible change, camera behavior, synchronized audio event, and ending state.",
+            "Detailed expansion budget rule: there is no fixed 350-500 or 500-word target for this preset. Use extra length only for actionable visual, temporal, continuity, or audible information; remove repeated inventories, generic adjectives, and decorative filler before removing a necessary action or reaction."
+        ]
+        : [];
     return [
         "H3 small-model contract. User-intent priority: follow this order: user request, H3 mode/keyframes, action and camera timeline, synchronized sound, then continuity anchors that are actually needed.",
-        h3CommunityPromptWriterContract(mode),
+        h3CommunityPromptWriterContract(mode, preset),
         "Use a silent four-pass workflow: extract the user's concrete requirements; plan sequential action beats across the supplied duration; render the required H3 fields; audit before answering.",
         "User-word lock / User-intent preservation rule: preserve every concrete user requirement in meaning, including subject details, clothing or exposure level, objects, unusual nouns, scale, materials, body parts, actions, poses, behavior, camera terms, dialogue, and visible text. Never omit, euphemize, sanitize, or replace an explicit user term; do not reinterpret it. Translate ordinary prose only when needed for English output; keep every spoken line and visible text exact whether or not the user wrapped it in quotation marks.",
         "Dual-language rule: the target output language controls explanatory H3 prose and field descriptions only. It never translates, transliterates, paraphrases, censors, or normalizes dialogue, lyrics, voiceover words, or visible text; each keeps the language and punctuation supplied by the user.",
@@ -57,6 +67,7 @@ export function h3SmallModelPromptContract(mode) {
         "Single-shot rule: when the user says one shot, one take, continuous shot, no cuts, 一镜到底, 单镜头, or 不剪辑, output exactly one [Shot 1]. Do not add later shot markers, montage, scene changes, or hidden cuts; keep all camera and action changes inside that shot.",
         "Reference grounding: the H3 encoder sees the media directly, so do not transcribe a static inventory. Still include every user-requested and action-critical detail, including identity, composition, materials, lighting, continuity, and reference roles when they affect the result.",
         "Addition rule: add a detail only if it preserves a user requirement, makes an action executable, connects cause and effect, controls the camera, synchronizes sound, or protects continuity. Otherwise omit it. Do not add generic quality slogans such as masterpiece, ultra HD, 4K, cinematic, or photorealistic unless the user asks for that style.",
+        ...detailedExpansionRules,
         "Motion-first priority: spend most of the description on what changes over time: preparation, force, body mechanics, gaze, weight, contact, reaction, secondary motion, camera path, environmental response, sound, and the final state. Replace vague adjectives with observable behavior.",
         "Timeline and tag rules: start [Shot 1] without a timestamp; later shots use increasing times inside the clip. Use stable speaker IDs and exact <d>[Language] ...</d> for dialogue, preserve visible text in double quotes, and keep overall_soundscape separate from non_diegetic_music.",
         "Physical-timing rule: do not divide action into arbitrary equal intervals. Estimate time from visible distance, body scale, walking or running pace, acceleration, contact, reaction, and settling; reserve enough time for a subject to travel from A to B and for the final state to hold. Remove assistant-added details before forcing a physically impossible speed.",

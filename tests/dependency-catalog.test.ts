@@ -56,6 +56,12 @@ describe("dependency catalog", () => {
     expect(customNodeDefinition("h3-motion-context")?.nodeTypes).toContain(
       "MiniMaxH3MotionContextSaveLatent"
     );
+    expect(customNodeDefinition("plaguekind-h3-sla")).toMatchObject({
+      nodeTypes: ["H3SLAAttention"],
+      minimumVersion: "1.3.8",
+      recommendedVersion: "1.3.8",
+      required: false
+    });
     expect(customNodeDefinition("inpaint-cropandstitch")).toMatchObject({
       directoryName: "ComfyUI-Inpaint-CropAndStitch",
       nodeTypes: ["InpaintCropImproved", "InpaintStitchImproved"],

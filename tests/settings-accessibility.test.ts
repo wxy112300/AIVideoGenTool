@@ -113,6 +113,36 @@ describe("Settings accessibility markup", () => {
     expect(markup).not.toContain('id="settings-environment-section"');
   });
 
+  it("exposes descriptions for no-prompt drafting directions", () => {
+    const instruction = "Animate a grounded interaction with the visible subject.";
+    const description = "利用画面中已经出现且可操作的物体设计自然动作，例如打开、旋转、触碰、拿起或展开；不要凭空添加物体。";
+    const markup = renderSettingsPage(viewModel({
+      settingsTab: "prompt",
+      settings: {
+        ...state.settings,
+        h3AutoPromptSeedId: "visible-affordance",
+        h3AutoPromptSeedInstructions: {
+          ...state.settings.h3AutoPromptSeedInstructions,
+          "visible-affordance": instruction
+        }
+      }
+    }), {
+      ...renderOptions,
+      h3AutoPromptSeeds: [{
+        id: "visible-affordance",
+        label: "Visible affordance",
+        tags: ["object"],
+        instruction
+      }]
+    });
+
+    expect(markup).toContain('id="h3-auto-prompt-seed-setting"');
+    expect(markup).toContain(`data-description="${description}"`);
+    expect(markup).toContain(`title="${description}"`);
+    expect(markup).toContain('class="field-info"');
+    expect(markup).toContain(instruction);
+  });
+
   it("marks the local save state without changing the save selector", () => {
     const markup = renderSettingsPage(viewModel({ settingsDirty: true, settingsSaving: true }), renderOptions);
 
@@ -181,7 +211,7 @@ describe("Settings accessibility markup", () => {
     expect(installingMarkup).toContain('id="settings-tab-acceleration"');
     expect(installingMarkup).toContain('class="settings-tab-label">settings.tab.acceleration<span class="settings-update-dot" role="img" aria-label="待安装/修复" title="待安装/修复"></span>');
     expect(installingMarkup).toContain("检测到 ComfyUI Desktop");
-    expect(installingMarkup).toContain("建议先在 Desktop 中将 PyTorch 切换为 2.9.1+cu130");
+    expect(installingMarkup).toContain("建议先在 Desktop 中将 PyTorch 切换为 2.10.0+cu130");
     expect(idleMarkup).not.toContain("检测到 ComfyUI Desktop");
   });
 });

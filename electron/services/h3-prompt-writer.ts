@@ -15,6 +15,7 @@ import {
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
+import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import {
   extractH3DialogueLocks,
   extractH3VisibleTextLocks,
@@ -230,6 +231,12 @@ export async function enhancePromptWithH3PromptWriter(
   const imageEdit = request.mode === "image-edit";
   const root = baseUrl(settings);
   const mode = writerMode(request.h3PromptMode, imageEdit);
+  const h3Mode = request.h3PromptMode ?? inferH3PromptMode(
+    Boolean(request.imagePath || request.imagePaths?.length),
+    (request.imagePaths?.length ?? 0) > 1
+  );
+  const h3Preset = h3PromptPresetForMode(h3Mode, request.h3PromptPreset);
+  const h3PresetText = settings.h3PromptPresets[h3Preset]?.trim() || defaultH3PromptPresets[h3Preset];
   const sessionId = crypto.randomUUID();
   const mediaPaths = (request.referenceMediaPaths || request.imagePaths || (request.imagePath ? [request.imagePath] : []))
     .filter(Boolean)
@@ -246,12 +253,19 @@ export async function enhancePromptWithH3PromptWriter(
     onProgress?.("uploading", 18);
     onProgress?.("loading-model", 24);
     const contentLocks = h3ContentLockInstruction(request.prompt);
+    const presetBrief = imageEdit
+      ? ""
+      : [
+          `Selected H3 expansion preset: ${h3Preset}. Preserve explicit user content first, then apply this expansion policy:`,
+          h3PresetText
+        ].join("\n");
     const creativeBrief = [
       isH3ReferenceAutoPrompt(request)
         ? h3AutoPromptInstruction(request)
         : [request.prompt.trim(), request.referenceContext?.trim()]
             .filter(Boolean)
             .join("\n\n参考素材角色：\n"),
+      presetBrief,
       contentLocks
     ].filter(Boolean).join("\n\n");
     onProgress?.("generating", null);

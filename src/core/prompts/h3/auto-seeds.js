@@ -72,10 +72,34 @@ export const h3AutoPromptSeeds = [
         instruction: "If two or more visible subjects are present, design a readable exchange of attention, spacing, gesture, or object use between them. If only one subject is present, create an interaction between that subject and the visible environment instead. Never introduce a new participant."
     },
     {
+        id: "character-interaction",
+        label: "Character interaction",
+        tags: ["character", "relationship", "interaction", "dialogue"],
+        instruction: "Treat visible characters as distinct agents and design a readable exchange of attention, response, spacing, gesture, and turn-taking. Base the relationship on what the image supports, add no character, and preserve each person's identity, position, and agency."
+    },
+    {
         id: "mini-narrative",
         label: "Mini narrative",
         tags: ["story", "intention", "ending"],
         instruction: "Turn the reference into the beginning, middle, and end of one tiny visual story without inventing a new setting: establish the visible state, introduce a grounded intention or trigger, show the resulting action and reaction, and finish on a changed but coherent state."
+    },
+    {
+        id: "contextual-action-dialogue",
+        label: "Contextual action and dialogue",
+        tags: ["character", "scene", "dialogue", "story"],
+        instruction: "Use the visible characters, their apparent roles, and the setting to choose a plausible short action beat. When the situation supports speech, add brief dialogue in each character's natural language, which may differ from the descriptive prompt language. Keep speaker identity and turn-taking clear, preserve user-supplied lines exactly, follow the required H3 dialogue conventions, and never invent unsupported people or facts."
+    },
+    {
+        id: "mild-adult-atmosphere",
+        label: "Mild adult atmosphere",
+        tags: ["adult", "sensual", "character", "mood"],
+        instruction: "For clearly adult subjects only, add a restrained sensual or suggestive tone grounded in the reference: flirtatious eye contact, intimate but consensual proximity, a teasing gesture, confident posing, or suggestive wardrobe or movement. Keep it tasteful and non-explicit; do not introduce nudity, explicit sexual acts, coercion, or minors. If age or consent is unclear, keep the direction non-sexual and follow visible evidence."
+    },
+    {
+        id: "hollywood-cinematic",
+        label: "Hollywood cinematic",
+        tags: ["cinematic", "camera", "lighting", "production"],
+        instruction: "Develop the reference as a polished, Hollywood-grade feature-film beat: find a strong visual hook, then use intentional lighting, lensing, blocking, production design, and motivated camera language to build one coherent action. Escalate with purposeful push, pull, orbit, tracking, or reveal moves and land on a composed final frame. Preserve what is visible; do not invent expensive locations, props, spectacle, or plot facts, and avoid generic trailer prose."
     },
     {
         id: "stillness-break",
@@ -89,8 +113,10 @@ export function h3AutoPromptSeedFor(mode, requestedId, excludedIds = [], random 
     const requested = requestedId ? modeSeeds.find((seed) => seed.id === requestedId) : undefined;
     if (requested)
         return requested;
-    const availableSeeds = modeSeeds.filter((seed) => !excludedIds.includes(seed.id));
-    const candidates = availableSeeds.length ? availableSeeds : modeSeeds;
+    const automaticSeeds = modeSeeds.filter((seed) => !seed.tags.includes("adult"));
+    const randomPool = automaticSeeds.length ? automaticSeeds : modeSeeds;
+    const availableSeeds = randomPool.filter((seed) => !excludedIds.includes(seed.id));
+    const candidates = availableSeeds.length ? availableSeeds : randomPool;
     const index = Math.min(candidates.length - 1, Math.floor(Math.max(0, random()) * candidates.length));
     return candidates[index] ?? h3AutoPromptSeeds[0];
 }

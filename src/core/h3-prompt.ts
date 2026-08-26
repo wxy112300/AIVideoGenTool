@@ -1,4 +1,4 @@
-import type { H3PromptMode } from "../types.js";
+import type { H3PromptMode, H3PromptPreset } from "../types.js";
 import type { H3DialogueLock, H3VisibleTextLock } from "./h3-dialogue.js";
 import { restoreH3DialogueLocks, restoreH3VisibleTextLocks } from "./h3-dialogue.js";
 
@@ -31,14 +31,20 @@ export function h3EffectiveDurationSeconds(durationSeconds: number): number {
  */
 export function h3PromptExpansionTokenBudget(
   mode: H3PromptMode,
-  durationSeconds = 5
+  durationSeconds = 5,
+  preset: H3PromptPreset = "official-storyboard"
 ): number {
   const durationSlices = Math.max(
     1,
     Math.ceil(h3EffectiveDurationSeconds(durationSeconds) / 5.17)
   );
-  const minimum = mode === "R2V" ? 1792 : 1280;
-  return Math.min(2048, Math.max(minimum, durationSlices * 640));
+  const detailed = preset === "detailed-cinematic";
+  const minimum = detailed
+    ? mode === "R2V" ? 2304 : 1792
+    : mode === "R2V" ? 1792 : 1280;
+  const perSlice = detailed ? 960 : 640;
+  const maximum = detailed ? 3072 : 2048;
+  return Math.min(maximum, Math.max(minimum, durationSlices * perSlice));
 }
 
 export function h3ExplicitConstraintSummary(promptText: string): string {

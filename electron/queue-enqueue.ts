@@ -29,8 +29,10 @@ import {
   workflowSupportsH3TurboSampling
 } from "../src/core/workflow.js";
 import {
+  isH3SlaTurboLoraId,
   isH3TurboEnabled,
   normalizeVideoLoras,
+  videoLoraCompatibleWithModel,
   videoLoraConfigurationIssues
 } from "../src/core/video-loras.js";
 import {
@@ -214,7 +216,11 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     const workflow = await readWorkflow(resolvedWorkflowPath, "工作流");
     const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
+    const h3UsesSlaAttention = isMiniMaxH3Model(draft.modelId) && draft.videoLoras.some((lora) =>
+      isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
+    );
     const h3UsesSageAttention = isMiniMaxH3Model(draft.modelId) &&
+      !h3UsesSlaAttention &&
       store.get().settings.h3AttentionMode !== "pytorch";
     const dependencyScan = draft.videoLoras.length || draft.spectrumMode === "balanced" || h3UsesSageAttention
       ? await scanEnvironment(store.get().settings)
@@ -240,6 +246,14 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         }));
       });
       if (missing) throw new Error(`${missing.name} 当前记录的文件 ${missing.filename} 未找到，请先在设置 → LoRA 中重新扫描或安装。`);
+    }
+    if (h3UsesSlaAttention) {
+      const slaNode = dependencyScan?.customNodes.find((node) => node.id === "plaguekind-h3-sla");
+      if (!slaNode?.loaded) {
+        throw new Error(slaNode?.installed
+          ? "Turbo-SLA 节点已安装但尚未被当前 ComfyUI 加载，请重启 ComfyUI 后重新扫描。"
+          : "Turbo-SLA 需要 H3 SLA Attention 节点，请先在设置 → 节点与工作流中安装并重启 ComfyUI。");
+      }
     }
     if (draft.spectrumMode === "balanced") {
       const spectrum = dependencyScan?.customNodes.find(
@@ -271,7 +285,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       modelId: draft.modelId,
       videoLoras: draft.videoLoras
     })) {
-      throw new Error("LightX2V Turbo 需要匹配所选版本的采样契约：v1.1 4-step 使用 Euler、Beta、video shift 6、audio shift 3；8-step/旧版路径使用 ER-SDE、Beta 和 Sigma Shift。R2V Turbo 还需要标准 MiniMaxH3ReferenceToVideo 工作流。");
+      throw new Error("LightX2V Turbo 需要匹配所选版本的采样契约：v1.1/Turbo-SLA 4-step 使用 Euler、Beta、video shift 6、audio shift 3；ckpt850、8-step/旧版路径使用 ER-SDE、Beta 和 Sigma Shift。R2V Turbo 还需要标准 MiniMaxH3ReferenceToVideo 工作流。");
     }
     if (draft.endImagePath && !workflowSupportsEndImage(workflow)) {
       throw new Error("当前工作流不支持尾帧。请选择包含 {{END_IMAGE}} 占位符的自定义 API 工作流，或移除尾帧。");

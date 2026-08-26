@@ -16,6 +16,40 @@ export interface CatalogLoraLocale {
 }
 
 const zhCN: Record<string, CatalogLoraLocale> = {
+  "minimax-h3-turbo-ckpt850-ema": {
+    guide: {
+      summary: "MiniMax H3 Turbo ckpt850 EMA 旧 Turbo 训练线；模型卡支持 4 步以上，主要作为 4 步大动作备选。",
+      recommendedStrength: "默认 1.0；4 步大动作可优先测试，普通质量优先请使用 v4 的 6–8 步路径。",
+      effects: "用较少采样步骤缩短 H3 FL2VA 生成时间；4 步通常更利于大动作响应，但可能出现过锐、塑料感或颗粒，运动和音频需对照。",
+      stacking: "性能 LoRA 放在人物、质量或内容 LoRA 前面；一次只保留一个 Turbo 变体。",
+      compatibility: "仅当前已接入的 MiniMax H3 FL2VA 图生视频路径；使用现有原生 ER-SDE、Beta、Sigma Shift 采样链。",
+      source: "amirjan122222 / MiniMax-H3-Turbo-Lora · ckpt850 EMA"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      turboVariant: "ckpt850 与其他 Turbo 变体不可同时使用；请保留单独对照。",
+      turboSpectrum: "ckpt850 可与 Spectrum 共存，但请先保留关闭 Spectrum 的同 Seed 基准。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
+    }
+  },
+  "minimax-h3-turbo-sla-4step": {
+    guide: {
+      summary: "官方 MiniMax H3 Turbo-SLA 4 步 768p 稀疏注意力 LoRA；需要配合 H3 SLA Attention 节点。",
+      recommendedStrength: "固定 1.0；创建页会自动切换 4 步、Euler + Beta、video shift 6 和 audio shift 3。",
+      effects: "通过约 85% 块稀疏注意力减少注意力计算，目标是降低 4 步 Turbo 的采样时间；未启用 SLA 节点时不会获得稀疏加速。",
+      stacking: "性能 LoRA 放在人物、质量或内容 LoRA 前面；Turbo-SLA 与其他 Turbo 变体互斥，不能单独叠加 SLA 节点或 LoRA。",
+      compatibility: "仅当前已接入的 MiniMax H3 FL2VA 图生视频 768p 路径；需要设置 → 节点与工作流中的 H3 SLA Attention 节点。",
+      source: "LightX2V / Minimax-h3-Turbo-SLA · ComfyUI BF16 conversion"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      turboVariant: "Turbo-SLA 与其他 Turbo 变体不可同时使用；请保留单独对照。",
+      slaNodeMissing: "Turbo-SLA 需要 H3 SLA Attention 节点；请先在设置 → 节点与工作流中安装。",
+      slaNodeRestart: "H3 SLA Attention 已安装但尚未被当前 ComfyUI 加载；请重启 ComfyUI 后重新扫描。",
+      turboSpectrum: "Turbo-SLA 技术上可与 Spectrum 共存，但请先保留关闭 Spectrum 的同 Seed 基准。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
+    }
+  },
   "minimax-h3-lightx2v-turbo-4step-768p-v1.1": {
     guide: {
       summary: "官方 LightX2V v1.1 FL2VA Turbo LoRA，针对 768p 四步路径更新。",
@@ -62,9 +96,9 @@ const zhCN: Record<string, CatalogLoraLocale> = {
   },
   "minimax-h3-lightx2v-turbo-8step-v1": {
     guide: {
-      summary: "官方 LightX2V v1.0 FL2VA Turbo LoRA，把标准 H3 路径压缩到 8 步。",
-      recommendedStrength: "默认 0.75；建议 0.65–0.85。优先用于稳定的 480p/576p 测试。",
-      effects: "明显缩短采样时间，但极低步数或过高强度可能减少运动、细节和音频稳定性。",
+      summary: "官方 LightX2V v1.0 FL2VA 8 步 Turbo 路线；当前没有对应的 8-step v1.1，保留作质量与音频稳定性备选。",
+      recommendedStrength: "默认 0.75；建议 8 步、0.65–0.85。综合首选优先尝试 v4。",
+      effects: "相比 4 步路线更保守地保留运动、细节和音频稳定性，但版本较旧、速度较慢。",
       stacking: "性能 LoRA 放在内容或人物 LoRA 前面；不要与其他 Turbo LoRA 同时叠加。",
       compatibility: "仅 MiniMax H3 FL2VA 图生视频；需要 ER-SDE、Beta 和 Sigma Shift Turbo 工作流。",
       source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 权重"
@@ -171,6 +205,40 @@ const zhCN: Record<string, CatalogLoraLocale> = {
 };
 
 const enUS: Record<string, CatalogLoraLocale> = {
+  "minimax-h3-turbo-ckpt850-ema": {
+    guide: {
+      summary: "An older MiniMax H3 Turbo ckpt850 EMA training line; the model card supports four or more steps, and it is mainly a four-step heavy-motion fallback.",
+      recommendedStrength: "Default 1.0; try it first for heavy motion at four steps, while v4 at six to eight steps is preferred for general quality.",
+      effects: "Shortens MiniMax H3 FL2VA sampling with fewer steps; four steps can respond better to heavy motion but may look oversharpened, plastic, or grainy, so compare motion and audio.",
+      stacking: "Load performance LoRAs before people, quality, or content LoRAs; keep only one Turbo variant at a time.",
+      compatibility: "Only the currently integrated MiniMax H3 FL2VA image-to-video path, using the existing native ER-SDE, Beta, and Sigma Shift sampling chain.",
+      source: "amirjan122222 / MiniMax-H3-Turbo-Lora · ckpt850 EMA"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      turboVariant: "ckpt850 cannot be combined with another Turbo variant; keep a separate comparison.",
+      turboSpectrum: "ckpt850 can coexist with Spectrum, but keep a same-Seed Spectrum-off baseline first.",
+      orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
+    }
+  },
+  "minimax-h3-turbo-sla-4step": {
+    guide: {
+      summary: "The official MiniMax H3 Turbo-SLA four-step 768p sparse-attention LoRA; it requires the H3 SLA Attention node.",
+      recommendedStrength: "Keep strength at 1.0; the Create page automatically switches to four steps, Euler + Beta, video shift 6, and audio shift 3.",
+      effects: "Uses roughly 85% block-sparse attention to reduce attention compute for four-step Turbo; without the SLA node there is no sparse acceleration.",
+      stacking: "Load performance LoRAs before people, quality, or content LoRAs; Turbo-SLA is exclusive with other Turbo variants, and neither the node nor LoRA is useful alone.",
+      compatibility: "Only the currently integrated MiniMax H3 FL2VA 768p image-to-video path; install H3 SLA Attention in Settings → Nodes & Workflows.",
+      source: "LightX2V / Minimax-h3-Turbo-SLA · ComfyUI BF16 conversion"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      turboVariant: "Turbo-SLA cannot be combined with another Turbo variant; keep a separate comparison.",
+      slaNodeMissing: "Turbo-SLA requires the H3 SLA Attention node; install it in Settings → Nodes & Workflows first.",
+      slaNodeRestart: "H3 SLA Attention is installed but not loaded by the current ComfyUI; restart ComfyUI and rescan.",
+      turboSpectrum: "Turbo-SLA can technically coexist with Spectrum, but keep a same-Seed Spectrum-off baseline first.",
+      orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."
+    }
+  },
   "minimax-h3-lightx2v-turbo-4step-768p-v1.1": {
     guide: {
       summary: "The latest official LightX2V v1.1 FL2VA Turbo LoRA for the dedicated 768p four-step path.",
@@ -217,9 +285,9 @@ const enUS: Record<string, CatalogLoraLocale> = {
   },
   "minimax-h3-lightx2v-turbo-8step-v1": {
     guide: {
-      summary: "Official LightX2V v1.0 FL2VA Turbo LoRA that compresses the standard H3 path to eight steps.",
-      recommendedStrength: "Default 0.75; start around 0.65–0.85. Prefer it for stable 480p/576p tests.",
-      effects: "Shortens sampling substantially, while very low steps or excessive strength can reduce motion, detail, and audio stability.",
+      summary: "The official LightX2V v1.0 FL2VA eight-step Turbo path; no matching eight-step v1.1 is currently published, so it remains a quality and audio-stability fallback.",
+      recommendedStrength: "Default 0.75; use eight steps at 0.65–0.85. Prefer v4 as the overall starting point.",
+      effects: "More conservatively preserves motion, detail, and audio stability than the four-step paths, but it is older and slower.",
       stacking: "Load performance LoRAs before content or people LoRAs; never stack multiple Turbo variants together.",
       compatibility: "MiniMax H3 FL2VA image-to-video only; requires the ER-SDE, Beta, and Sigma Shift Turbo workflow.",
       source: "Official LightX2V / Minimax-h3-Turbo ComfyUI weight"
@@ -329,16 +397,19 @@ const genericRules: Record<UiLocale, Record<string, string>> = {
   "zh-CN": {
     incompatible: "{name} 不兼容当前基础模型或输入模式。",
     retired: "{name} 已停止用于新任务；请改用当前受支持的替代 LoRA。",
+    turboVariant: "不同 Turbo 变体不可同时使用；请只保留一个 Turbo LoRA。",
     orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载，内容、人物和风格 LoRA 后加载。"
   },
   "zh-TW": {
     incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
     retired: "{name} 已停止用於新任務；請改用目前受支援的替代 LoRA。",
+    turboVariant: "不同 Turbo 變體不可同時使用；請只保留一個 Turbo LoRA。",
     orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入，內容、人物和風格 LoRA 後載入。"
   },
   "en-US": {
     incompatible: "{name} is incompatible with the current base model or input mode.",
     retired: "{name} is retired for new tasks; choose a currently supported replacement LoRA.",
+    turboVariant: "Different Turbo variants cannot be used together; keep only one Turbo LoRA.",
     orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load before content, character, and style LoRAs."
   }
 };

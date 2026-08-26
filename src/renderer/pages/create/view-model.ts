@@ -50,11 +50,16 @@ import {
 } from "../../../core/workflow";
 import {
   BUILTIN_VIDEO_LORAS,
+  H3_SLA_TURBO_LORA_ID,
   H3_TURBO_LORA_ID,
+  isH3SlaTurboLoraId,
+  isH3TurboLoraId,
   profileProvidesVideoLora,
+  videoLoraCompatibleWithModel,
   videoLoraCompatibleWithDraft
 } from "../../../core/video-loras";
 import { normalizeVideoSteps, resolveVideoGenerationPolicy } from "../../../core/video-policy";
+import { loraRuleText } from "../../../core/catalog/loras/locales";
 import { escapeHtml } from "../../shared/dom";
 import { fieldLabelWithTip } from "../../shared/markup";
 import { imageWorkflowStatus, isImageModelSelectable, promptModelStatus } from "../../shared/status";
@@ -401,8 +406,11 @@ export function buildVideoCreatePageViewModel(
   });
   const turboEnabled = videoPolicy.turboEnabled;
   const h3Steps = normalizeVideoSteps(draft.steps, videoPolicy);
+  const selectedTurboLora = draft.videoLoras.find((lora) =>
+    isH3TurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
+  );
   const turboLoraProfile = environmentScan?.modelProfiles.find(
-    (profile) => profile.id === H3_TURBO_LORA_ID
+    (profile) => profile.id === (selectedTurboLora?.id ?? H3_TURBO_LORA_ID)
   );
   const compatibleLoraDefinitions = BUILTIN_VIDEO_LORAS.filter((lora) =>
     videoLoraCompatibleWithDraft(lora, draft.modelId, draft.inputMode)
@@ -448,6 +456,10 @@ export function buildVideoCreatePageViewModel(
   const h3MotionContextReady = !extending || !isR2V || Boolean(
     h3MotionContextNode?.installed || h3MotionContextNode?.loaded
   );
+  const slaTurboSelected = draft.videoLoras.some((lora) =>
+    isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
+  );
+  const slaNode = environmentScan?.customNodes.find((node) => node.id === "plaguekind-h3-sla");
   const prompt = activePrompt(draft, state.settings.uiLocale);
   const promptVersionIndex = activePromptIndexForDraft(draft);
   const promptVersionCount = promptVersionsForDraft(draft).length;
@@ -482,10 +494,17 @@ export function buildVideoCreatePageViewModel(
   const turboLoraBlockReason = turboEnabled && turboLoraProfile && !turboLoraProfile.available
     ? t(uiKeys.create.validation.turboLoraMissing)
     : "";
+  const slaNodeBlockReason = slaTurboSelected && environmentScan && !slaNode?.loaded
+    ? loraRuleText(
+        H3_SLA_TURBO_LORA_ID,
+        slaNode?.installed ? "slaNodeRestart" : "slaNodeMissing",
+        state.settings.uiLocale
+      )
+    : "";
   const selectedLoraBlockReason = loraBlockingIssue?.message ??
     (missingSelectedLora
       ? t(uiKeys.create.validation.selectedLoraMissing, { name: missingSelectedLora.name })
-      : "");
+      : slaNodeBlockReason);
   const enqueueBlockReason = videoEnqueueBlockReason({
     t,
     promptText: prompt.text,

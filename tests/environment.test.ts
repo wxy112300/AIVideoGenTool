@@ -18,6 +18,7 @@ import {
   evaluateModelProfiles,
   evaluateMiniMaxH3CoreSupport,
   evaluatePromptCoreSupport,
+  h3TorchRuntimeReady,
   ltxAudioVaeCompatible,
   normalizeProxyUrl,
   parseComfyProcessInfo,
@@ -157,9 +158,58 @@ describe("SageAttention environment selection", () => {
     expect(tritonRequirementForTorch("2.9.1+cu130")).toBe(
       "triton-windows>=3.5,<3.6"
     );
+    expect(attentionWheelForProbe({
+      pythonVersion: "3.12.11",
+      torchVersion: "2.10.0+cu130",
+      cudaVersion: "13.0"
+    })).toMatchObject({
+      version: "2.2.0+cu130torch2.10",
+      filename: "sageattention-2.2.0+cu130torch2.10-cp312-cp312-win_amd64.whl"
+    });
+    expect(tritonRequirementForTorch("2.10.0+cu130")).toBe(
+      "triton-windows>=3.6,<3.7"
+    );
+    expect(attentionWheelForProbe({
+      pythonVersion: "3.12.11",
+      torchVersion: "2.11.0+cu130",
+      cudaVersion: "13.0"
+    })).toMatchObject({
+      version: "2.2.0+cu130torch2.11",
+      filename: "sageattention-2.2.0+cu130torch2.11-cp312-cp312-win_amd64.whl"
+    });
+    expect(tritonRequirementForTorch("2.11.0+cu130")).toBe(
+      "triton-windows>=3.7,<3.8"
+    );
     expect(tritonRequirementForTorch("2.4.1+cu124")).toBe(
       "triton-windows>=3.0,<3.1"
     );
+  });
+
+  it("requires a coherent cu130 H3 runtime trio at Torch 2.10 or newer", () => {
+    expect(h3TorchRuntimeReady({
+      torchVersion: "2.10.0+cu130",
+      torchvisionVersion: "0.25.0+cu130",
+      torchaudioVersion: "2.10.0+cu130",
+      cudaVersion: "13.0"
+    })).toBe(true);
+    expect(h3TorchRuntimeReady({
+      torchVersion: "2.13.0+cu130",
+      torchvisionVersion: "0.28.0+cu130",
+      torchaudioVersion: "2.13.0+cu130",
+      cudaVersion: "13.0"
+    })).toBe(true);
+    expect(h3TorchRuntimeReady({
+      torchVersion: "2.13.0+cu130",
+      torchvisionVersion: "0.27.0+cu130",
+      torchaudioVersion: "2.13.0+cu130",
+      cudaVersion: "13.0"
+    })).toBe(false);
+    expect(h3TorchRuntimeReady({
+      torchVersion: "2.9.1+cu130",
+      torchvisionVersion: "0.24.1+cu130",
+      torchaudioVersion: "2.9.1+cu130",
+      cudaVersion: "13.0"
+    })).toBe(false);
   });
 
   it("reports the CUDA requirement for optimized INT8 ConvRot kernels", () => {
@@ -173,6 +223,11 @@ describe("SageAttention environment selection", () => {
       pythonVersion: "3.12.11",
       torchVersion: "2.7.0+cu129",
       cudaVersion: "12.9"
+    })).toBeNull();
+    expect(attentionWheelForProbe({
+      pythonVersion: "3.12.11",
+      torchVersion: "2.12.0+cu130",
+      cudaVersion: "13.0"
     })).toBeNull();
     expect(attentionWheelForProbe({
       pythonVersion: "3.14.0",
@@ -941,7 +996,7 @@ describe("ComfyUI environment candidates", () => {
     expect(turbo).toMatchObject({
       available: true,
       integrated: true,
-      badge: "H3 专属 · 最新 768p",
+      badge: "H3 专属 · 4 步快速",
       category: "lora"
     });
     expect(turbo?.components.at(-1)?.installGuide).toMatchObject({
@@ -957,6 +1012,30 @@ describe("ComfyUI environment candidates", () => {
       "loras\\minimax_h3_turbo_4step_ckpt500_pruned_comfyui.safetensors"
     ]).find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step-768p-v1.1");
     expect(legacyOnly?.available).toBe(false);
+  });
+
+  it("detects the ckpt850 and Turbo-SLA LoRA profiles with concrete install guides", () => {
+    const profiles = evaluateModelProfiles([
+      "loras\\minimax_h3_turbo_4step_ema_ckpt850.safetensors",
+      "loras\\minimax_h3_fl2v_turbo_4step_v0.1_768p_sla_comfyui_bf16.safetensors"
+    ]);
+    const ckpt850 = profiles.find((profile) => profile.id === "minimax-h3-turbo-ckpt850-ema");
+    const sla = profiles.find((profile) => profile.id === "minimax-h3-turbo-sla-4step");
+
+    expect(ckpt850).toMatchObject({ available: true, category: "lora" });
+    expect(ckpt850?.components[0]?.installGuide).toMatchObject({
+      targetSubdirectory: "loras",
+      recommendedFilename: "minimax_h3_turbo_4step_ema_ckpt850.safetensors"
+    });
+    expect(sla).toMatchObject({
+      available: true,
+      category: "lora",
+      requiredCustomNodeIds: ["plaguekind-h3-sla"]
+    });
+    expect(sla?.components[0]?.installGuide).toMatchObject({
+      targetSubdirectory: "loras",
+      recommendedFilename: "minimax_h3_fl2v_turbo_4step_v0.1_768p_sla_comfyui_bf16.safetensors"
+    });
   });
 
   it("detects the AfterMidnight Ref2VA NSFW LoRA independently from the H3 base model", () => {

@@ -914,10 +914,14 @@ export interface AttentionAccelerationStatus {
   pythonPath: string;
   pythonVersion: string;
   torchVersion: string;
+  torchvisionVersion?: string;
+  torchaudioVersion?: string;
   cudaVersion: string;
   gpuName: string;
   gpuArchitecture: string;
   sageAttentionVersion: string;
+  sageNativeReady?: boolean;
+  sageNativeError?: string;
   tritonVersion: string;
   comfyKitchenVersion?: string;
   comfyKitchenBackends?: string[];
@@ -937,6 +941,7 @@ export type ImagePromptPreset = "faithful" | "detail-enhance";
 
 export type H3PromptPreset =
   | "official-storyboard"
+  | "detailed-cinematic"
   | "reference-faithful"
   | "continuous-motion"
   | "dialogue-sound"

@@ -156,7 +156,7 @@ export function h3PromptInstruction(
   const presetText = promptPresets[preset]?.trim() || defaultH3PromptPresets[preset];
   return [
     "You are the prompt director for MiniMax H3 video generation.",
-    h3SmallModelPromptContract(mode),
+    h3SmallModelPromptContract(mode, preset),
     h3AutoPrompterContract(mode, duration, referenceContext),
     `This is an H3 ${mode} request for approximately ${duration.toFixed(2)} seconds.`,
     h3DurationPlan(mode, duration),
@@ -194,6 +194,7 @@ export function buildNativePromptWorkflow(
     Boolean(request.imagePath || imageCount > 0),
     imageCount > 1
   );
+  const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const workflow: Record<string, { class_type: string; inputs: Record<string, unknown> }> = {
     clip: {
       class_type: "CLIPLoader",
@@ -215,7 +216,7 @@ export function buildNativePromptWorkflow(
           ? 8
           : request.mode === "image-edit"
             ? 896
-            : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5),
+            : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5, preset),
         sampling_mode: "on",
         "sampling_mode.temperature": warmup ? 0.1 : 0.35,
         "sampling_mode.top_k": 40,

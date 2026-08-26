@@ -1,7 +1,13 @@
-import { H3_FL2VA_MODEL_ID, H3_CAMERA_MOTION_LORA_FILENAME, H3_CAMERA_MOTION_LORA_ID, H3_AFTER_MIDNIGHT_LORA_FILENAME, H3_AFTER_MIDNIGHT_LORA_ID, H3_PINK_FLUFFY_BUNNY_LORA_FILENAME, H3_PINK_FLUFFY_BUNNY_LORA_ID, H3_REALISM_PEOPLE_LORA_FILENAME, H3_REALISM_PEOPLE_LORA_ID, H3_REF2V_TURBO_LORA_ID, H3_REF2V_TURBO_LORA_FILENAME, H3_TURBO_V4_LORA_FILENAME, H3_TURBO_V4_LORA_ID, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, H3_TURBO_LORA_IDS, H3_TURBO_768P_V1_LORA_ID, H3_TURBO_8STEP_V1_LORA_ID, LEGACY_H3_TURBO_LORA_ID, LEGACY_H3_TURBO_MODEL_ID, LEGACY_H3_REF2V_TURBO_MODEL_ID, VIDEO_LORA_DEFINITIONS } from "./catalog/loras/definitions.js";
+import { H3_CKPT850_LORA_FILENAME, H3_CKPT850_LORA_ID, H3_FL2VA_MODEL_ID, H3_SLA_TURBO_LORA_FILENAME, H3_SLA_TURBO_LORA_ID, H3_CAMERA_MOTION_LORA_FILENAME, H3_CAMERA_MOTION_LORA_ID, H3_AFTER_MIDNIGHT_LORA_FILENAME, H3_AFTER_MIDNIGHT_LORA_ID, H3_PINK_FLUFFY_BUNNY_LORA_FILENAME, H3_PINK_FLUFFY_BUNNY_LORA_ID, H3_REALISM_PEOPLE_LORA_FILENAME, H3_REALISM_PEOPLE_LORA_ID, H3_REF2V_TURBO_LORA_ID, H3_REF2V_TURBO_LORA_FILENAME, H3_TURBO_V4_LORA_FILENAME, H3_TURBO_V4_LORA_ID, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, H3_TURBO_LORA_IDS, H3_TURBO_768P_V1_LORA_ID, H3_TURBO_8STEP_V1_LORA_ID, LEGACY_H3_TURBO_LORA_ID, LEGACY_H3_TURBO_MODEL_ID, LEGACY_H3_REF2V_TURBO_MODEL_ID, VIDEO_LORA_DEFINITIONS } from "./catalog/loras/definitions.js";
 import { loraLocaleFor, loraRuleText } from "./catalog/loras/locales.js";
-export { H3_FL2VA_MODEL_ID, H3_CAMERA_MOTION_LORA_FILENAME, H3_CAMERA_MOTION_LORA_ID, H3_AFTER_MIDNIGHT_LORA_FILENAME, H3_AFTER_MIDNIGHT_LORA_ID, H3_PINK_FLUFFY_BUNNY_LORA_FILENAME, H3_PINK_FLUFFY_BUNNY_LORA_ID, H3_REALISM_PEOPLE_LORA_FILENAME, H3_REALISM_PEOPLE_LORA_ID, H3_REF2V_TURBO_LORA_FILENAME, H3_REF2V_TURBO_LORA_ID, H3_TURBO_V4_LORA_FILENAME, H3_TURBO_V4_LORA_ID, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, H3_TURBO_LORA_IDS, H3_TURBO_768P_V1_LORA_ID, H3_TURBO_8STEP_V1_LORA_ID, LEGACY_H3_TURBO_LORA_ID, LEGACY_H3_REF2V_TURBO_MODEL_ID, LEGACY_H3_TURBO_MODEL_ID };
-const allBuiltinVideoLoras = VIDEO_LORA_DEFINITIONS.map((definition) => ({
+export { H3_CKPT850_LORA_FILENAME, H3_CKPT850_LORA_ID, H3_FL2VA_MODEL_ID, H3_SLA_TURBO_LORA_FILENAME, H3_SLA_TURBO_LORA_ID, H3_CAMERA_MOTION_LORA_FILENAME, H3_CAMERA_MOTION_LORA_ID, H3_AFTER_MIDNIGHT_LORA_FILENAME, H3_AFTER_MIDNIGHT_LORA_ID, H3_PINK_FLUFFY_BUNNY_LORA_FILENAME, H3_PINK_FLUFFY_BUNNY_LORA_ID, H3_REALISM_PEOPLE_LORA_FILENAME, H3_REALISM_PEOPLE_LORA_ID, H3_REF2V_TURBO_LORA_FILENAME, H3_REF2V_TURBO_LORA_ID, H3_TURBO_V4_LORA_FILENAME, H3_TURBO_V4_LORA_ID, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, H3_TURBO_LORA_IDS, H3_TURBO_768P_V1_LORA_ID, H3_TURBO_8STEP_V1_LORA_ID, LEGACY_H3_TURBO_LORA_ID, LEGACY_H3_REF2V_TURBO_MODEL_ID, LEGACY_H3_TURBO_MODEL_ID };
+const allBuiltinVideoLoras = [...VIDEO_LORA_DEFINITIONS]
+    .sort((left, right) => {
+    const leftGroup = left.purpose === "performance" ? 0 : 1;
+    const rightGroup = right.purpose === "performance" ? 0 : 1;
+    return leftGroup - rightGroup || right.catalogOrder - left.catalogOrder;
+})
+    .map((definition) => ({
     ...videoLoraSelection(definition),
     ...(definition.retired ? { retired: true } : {}),
     guide: { ...loraLocaleFor(definition.id)?.guide },
@@ -16,6 +22,8 @@ function requiredBuiltinVideoLora(id) {
     return lora;
 }
 export const H3_TURBO_LORA = requiredBuiltinVideoLora(H3_TURBO_LORA_ID);
+export const H3_CKPT850_LORA = requiredBuiltinVideoLora(H3_CKPT850_LORA_ID);
+export const H3_SLA_TURBO_LORA = requiredBuiltinVideoLora(H3_SLA_TURBO_LORA_ID);
 export const H3_CAMERA_MOTION_LORA = requiredBuiltinVideoLora(H3_CAMERA_MOTION_LORA_ID);
 export const H3_TURBO_V4_LORA = requiredBuiltinVideoLora(H3_TURBO_V4_LORA_ID);
 export const H3_TURBO_8STEP_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_8STEP_V1_LORA_ID);
@@ -31,6 +39,9 @@ const legacyTurboLoraIdSet = new Set([
 ]);
 export function isH3TurboLoraId(id) {
     return legacyTurboLoraIdSet.has(id);
+}
+export function isH3SlaTurboLoraId(id) {
+    return id === H3_SLA_TURBO_LORA_ID;
 }
 export function isH3TurboFourStepV11LoraId(id) {
     return id === H3_TURBO_LORA_ID;
@@ -139,6 +150,18 @@ export function videoLoraConfigurationIssues(context) {
             });
         });
     });
+    const selectedTurboLoras = context.videoLoras.filter((lora) => isH3TurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, context.modelId));
+    for (let index = 1; index < selectedTurboLoras.length; index += 1) {
+        const previous = selectedTurboLoras[index - 1];
+        const current = selectedTurboLoras[index];
+        const pair = [previous.id, current.id].sort();
+        push({
+            code: `combination:${pair.join(":")}`,
+            severity: "error",
+            loraIds: pair,
+            message: loraRuleText(current.id, "turboVariant", context.locale)
+        });
+    }
     for (let index = 1; index < context.videoLoras.length; index += 1) {
         const previous = videoLoraDefinition(context.videoLoras[index - 1].id);
         const current = videoLoraDefinition(context.videoLoras[index].id);
@@ -167,6 +190,26 @@ export function reorderVideoLoras(loras, id, direction) {
     reordered[currentIndex] = target;
     reordered[targetIndex] = current;
     return reordered;
+}
+/** Keep the draft from holding more than one Turbo variant at a time. */
+export function videoLorasAfterAdding(loras, addition) {
+    const turboIndex = loras.findIndex((lora) => isH3TurboLoraId(lora.id));
+    const retained = isH3TurboLoraId(addition.id)
+        ? loras.filter((lora) => !isH3TurboLoraId(lora.id))
+        : [...loras];
+    const next = [...retained];
+    if (isH3TurboLoraId(addition.id) && turboIndex >= 0) {
+        next.splice(Math.min(turboIndex, next.length), 0, addition);
+    }
+    else {
+        next.push(addition);
+    }
+    return next.map((lora) => ({
+        ...lora,
+        compatibleModelIds: [...lora.compatibleModelIds],
+        compatibleInputModes: [...lora.compatibleInputModes],
+        ...(lora.promptPrefixes ? { promptPrefixes: [...lora.promptPrefixes] } : {})
+    }));
 }
 export function baseVideoModelId(modelId) {
     return modelId === LEGACY_H3_TURBO_MODEL_ID ? H3_FL2VA_MODEL_ID : modelId;

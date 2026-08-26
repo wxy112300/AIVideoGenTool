@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_VIDEO_LORAS,
+  H3_CKPT850_LORA,
   H3_CAMERA_MOTION_LORA,
   H3_AFTER_MIDNIGHT_LORA,
   H3_REALISM_PEOPLE_LORA,
   H3_REF2V_TURBO_LORA,
+  H3_SLA_TURBO_LORA,
   H3_TURBO_LORA,
   H3_TURBO_V4_LORA,
   normalizeVideoLoras,
   reorderVideoLoras,
+  videoLorasAfterAdding,
   videoLoraSelection,
   videoLoraCompatibleWithDraft,
   videoLoraConfigurationIssues,
@@ -16,16 +19,30 @@ import {
 } from "../src/core/video-loras";
 
 describe("video LoRA catalog", () => {
-  it("offers the current Turbo, Camera Motion, quality Turbo, Ref2VA NSFW, and Realism People H3 LoRAs", () => {
+  it("groups performance LoRAs before functional LoRAs in the H3 catalog", () => {
     expect(BUILTIN_VIDEO_LORAS.map((lora) => lora.id)).toEqual([
-      H3_TURBO_LORA.id,
       H3_TURBO_V4_LORA.id,
-      H3_CAMERA_MOTION_LORA.id,
+      H3_SLA_TURBO_LORA.id,
+      H3_TURBO_LORA.id,
       "minimax-h3-lightx2v-turbo-8step-v1",
+      H3_CKPT850_LORA.id,
       "minimax-h3-ref2v-turbo-4step-v01",
+      H3_CAMERA_MOTION_LORA.id,
       H3_AFTER_MIDNIGHT_LORA.id,
       H3_REALISM_PEOPLE_LORA.id
     ]);
+    expect(H3_CKPT850_LORA).toMatchObject({
+      strength: 1,
+      purpose: "performance",
+      compatibleModelIds: ["minimax_h3_fl2va"],
+      compatibleInputModes: ["image"]
+    });
+    expect(H3_SLA_TURBO_LORA).toMatchObject({
+      strength: 1,
+      purpose: "performance",
+      compatibleModelIds: ["minimax_h3_fl2va"],
+      compatibleInputModes: ["image"]
+    });
     expect(H3_REALISM_PEOPLE_LORA).toMatchObject({
       strength: 0.8,
       purpose: "quality",
@@ -164,6 +181,37 @@ describe("video LoRA catalog", () => {
         severity: "error"
       })
     ]));
+  });
+
+  it("rejects any persisted stack containing two compatible Turbo variants", () => {
+    const issues = videoLoraConfigurationIssues({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      spectrumMode: "balanced",
+      attentionMode: "sage",
+      videoLoras: [H3_CKPT850_LORA, H3_SLA_TURBO_LORA]
+    });
+
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: `combination:${[H3_CKPT850_LORA.id, H3_SLA_TURBO_LORA.id].sort().join(":")}`,
+        severity: "error"
+      })
+    ]));
+  });
+
+  it("replaces an existing Turbo variant when adding another Turbo variant", () => {
+    const original = [H3_TURBO_LORA, H3_REALISM_PEOPLE_LORA];
+    const next = videoLorasAfterAdding(original, H3_SLA_TURBO_LORA);
+
+    expect(next.map((lora) => lora.id)).toEqual([
+      H3_SLA_TURBO_LORA.id,
+      H3_REALISM_PEOPLE_LORA.id
+    ]);
+    expect(original.map((lora) => lora.id)).toEqual([
+      H3_TURBO_LORA.id,
+      H3_REALISM_PEOPLE_LORA.id
+    ]);
   });
 
   it("adds the Camera Motion trigger without changing the user's Prompt", () => {

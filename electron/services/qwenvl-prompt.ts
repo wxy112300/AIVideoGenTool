@@ -7,6 +7,7 @@ import {
   h3PromptExpansionTokenBudget,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
+import { h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import {
   extractH3DialogueLocks,
   extractH3VisibleTextLocks
@@ -214,6 +215,7 @@ export function buildQwenVlPeftPromptWorkflow(
     Boolean(request.imagePath || request.imagePaths?.length),
     (request.imagePaths?.length ?? 0) > 1
   );
+  const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const prompt = promptForRequest(request, settings, warmup);
   const workflow: Record<string, PromptNode> = {
     "qwenvl-model": {
@@ -241,7 +243,7 @@ export function buildQwenVlPeftPromptWorkflow(
         prompt,
         max_new_tokens: warmup
           ? 64
-          : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5)
+          : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5, preset)
       }
     }
   };

@@ -5,6 +5,7 @@ import {
   H3_CAMERA_MOTION_LORA,
   H3_AFTER_MIDNIGHT_LORA,
   H3_REALISM_PEOPLE_LORA,
+  H3_SLA_TURBO_LORA,
   H3_TURBO_LORA,
   H3_TURBO_V4_LORA
 } from "../src/core/video-loras";
@@ -315,6 +316,89 @@ describe("renderWorkflow", () => {
       scheduler: "beta",
       steps: 4
     });
+  });
+
+  it("renders Turbo-SLA as sparse attention before Sigma and can coexist with Spectrum", () => {
+    const source = JSON.parse(
+      readFileSync(
+        new URL("../workflows/minimax_h3_fl2va_turbo_api.json", import.meta.url),
+        "utf8"
+      )
+    ) as unknown;
+    const slaTask: QueueTask = {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      videoLoras: [H3_SLA_TURBO_LORA],
+      spectrumMode: "balanced",
+      spectrumModelAwareMode: "full",
+      steps: 20,
+      duration: 5,
+      fps: 24,
+      frameInterpolation: "off"
+    };
+    const rendered = renderWorkflow(source, slaTask, {
+      inputImage: "first.png",
+      endImage: "last.png",
+      vramTotalBytes: 24 * 1024 ** 3
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(workflowSupportsH3TurboSampling(rendered, {
+      modelId: slaTask.modelId,
+      videoLoras: [H3_SLA_TURBO_LORA]
+    })).toBe(true);
+    expect(rendered["19"]).toMatchObject({
+      class_type: "H3SLAAttention",
+      inputs: {
+        model: ["20", 0],
+        sparsity_ratio: 0.85,
+        block_size: "64",
+        min_seq_len: 4096,
+        dense_last_steps: 1,
+        protect_audio: true,
+        enabled: true,
+        dense_steps: "0",
+        dense_backend: "comfy_kitchen",
+        disable_fp16_accum: true,
+        stabilize_motion: true
+      }
+    });
+    expect(rendered["21"]).toMatchObject({
+      class_type: "MiniMaxH3SigmaShift",
+      inputs: {
+        model: ["19", 0],
+        shift_video: 6,
+        shift_audio: 3
+      }
+    });
+    expect(rendered["7"]?.inputs.sampler_name).toBe("euler");
+    expect(rendered["8"]?.inputs).toMatchObject({
+      model: ["22", 0],
+      scheduler: "beta",
+      steps: 4
+    });
+    expect(rendered["10"]?.inputs.model).toEqual(["22", 0]);
+    const spectrumNode = Object.entries(rendered).find(([, node]) =>
+      node.class_type === "SpectrumApplyMiniMaxH3"
+    );
+    expect(spectrumNode?.[1].inputs.model).toEqual(["21", 0]);
+    expect(spectrumNode?.[0]).toBe("22");
+
+    const pytorch = renderWorkflow(source, {
+      ...slaTask,
+      attentionMode: "pytorch",
+      spectrumMode: "off"
+    }, {
+      inputImage: "first.png",
+      endImage: "last.png",
+      vramTotalBytes: 24 * 1024 ** 3
+    }) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    expect(pytorch["19"]).toBeUndefined();
+    expect(pytorch["22"]).toMatchObject({
+      class_type: "H3SLAAttention",
+      inputs: { model: ["20", 0] }
+    });
+    expect(pytorch["21"]?.inputs.model).toEqual(["22", 0]);
+    expect(pytorch["8"]?.inputs.model).toEqual(["21", 0]);
   });
 
   it("renders the optional v4 step600 quality Turbo sampler contract", () => {

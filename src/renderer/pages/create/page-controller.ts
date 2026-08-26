@@ -10,7 +10,7 @@ import type {
   WorkflowCapabilities
 } from "../../../types";
 import type { CreationMode, RendererCleanup, RendererContext } from "../../contracts";
-import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, videoLoraCompatibleWithDraft, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
+import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, videoLoraCompatibleWithDraft, videoLorasAfterAdding, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
 import { generationSafetyForTask, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
 import { ensureMotionContextSourceSlot, h3ReferenceSlotCounts } from "../../../core/h3-reference";
 import { extensionSafetyForDraft, modelSupportsCreateInputMode, newH3ReferenceSlot } from "./helpers";
@@ -352,7 +352,10 @@ export function mountCreatePageController(
       options.context.notify(t(uiKeys.create.interaction.loraFileMissing, { name: lora.name }), { renderPage: false });
       return;
     }
-    await applyVideoLoraStack([...state.draft.videoLoras, videoLoraSelection(lora, lora.strength, detectedFilename)]);
+    await applyVideoLoraStack(videoLorasAfterAdding(
+      state.draft.videoLoras,
+      videoLoraSelection(lora, lora.strength, detectedFilename)
+    ));
   }, { signal });
 
   root.querySelectorAll<HTMLButtonElement>("[data-remove-video-lora]").forEach((button) => {

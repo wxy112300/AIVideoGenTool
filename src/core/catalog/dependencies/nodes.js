@@ -7,6 +7,8 @@ export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.1";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
 export const H3_MOTION_CONTEXT_MINIMUM_VERSION = "0.3.1";
 export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.3.1";
+export const H3_SLA_ATTENTION_MINIMUM_VERSION = "1.3.8";
+export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.3.8";
 export const customNodeCatalog = [{
         id: "inpaint-nodes",
         name: "ComfyUI Inpaint Nodes",
@@ -207,6 +209,32 @@ export const customNodeCatalog = [{
                 workflowIds: ["minimax_h3_r2v"],
                 checks: ["static", "object-info"]
             }],
+        required: false
+    }, {
+        id: "plaguekind-h3-sla",
+        name: "ComfyUI-PlagueKind H3 SLA Attention",
+        purpose: "为 MiniMax H3 Turbo-SLA LoRA 提供块稀疏注意力；选择 Turbo-SLA 后由应用自动插入。",
+        repositoryUrl: "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes.git",
+        directoryName: "ComfyUI-PlagueKind-Nodes",
+        aliases: ["comfyui-plaguekind-nodes", "ComfyUI-PlagueKind-Nodes"],
+        releaseSource: "github-release",
+        nodeTypes: ["H3SLAAttention"],
+        minimumVersion: H3_SLA_ATTENTION_MINIMUM_VERSION,
+        recommendedVersion: H3_SLA_ATTENTION_RECOMMENDED_VERSION,
+        latestVersion: H3_SLA_ATTENTION_RECOMMENDED_VERSION,
+        features: [{
+                id: "h3-sla-attention",
+                name: "H3 SLA Attention",
+                nodeTypes: ["H3SLAAttention"],
+                description: "仅在创建页选择 MiniMax H3 Turbo-SLA 时使用；应用会自动插入，不提供独立开关。"
+            }],
+        compatibilityEvidence: [{
+                verifiedAt: "2026-08-26",
+                sourceUrl: "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes",
+                note: "H3SLAAttention 来自 ComfyUI-H3-SLA-Attention；节点通过 comfy_api.latest 注册，导入或运行环境不兼容时会安全回退到 dense。",
+                checks: ["static"]
+            }],
+        runtimeRequirement: "需要支持 comfy_api.latest 的 ComfyUI。当前应用为 H3 Turbo-SLA 固定 block_size 64、sparsity 0.85、保护音频，并在 Triton、显卡或接口不兼容时允许 dense 回退；回退时不会获得稀疏加速。",
         required: false
     }, {
         id: "spectrum-minimax-h3",

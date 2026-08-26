@@ -16,13 +16,15 @@ export function countPromptWords(text) {
  * count, and reference complexity. Keep this deliberately separate from the
  * model output-token budget.
  */
-export function h3PromptWordRange(mode, durationSeconds = 5) {
+export function h3PromptWordRange(mode, durationSeconds = 5, preset = "official-storyboard") {
     const safeDuration = Number.isFinite(durationSeconds) && durationSeconds > 0
         ? durationSeconds
         : 5;
     const minimum = mode === "R2V"
         ? Math.max(350, Math.round(170 + safeDuration * 36))
         : Math.max(250, Math.round(100 + safeDuration * 30));
-    const maximum = Math.max(500, Math.round(300 + safeDuration * 40));
+    const maximum = preset === "detailed-cinematic"
+        ? Math.max(900, Math.round(560 + safeDuration * 68))
+        : Math.max(500, Math.round(300 + safeDuration * 40));
     return { min: minimum, max: maximum };
 }

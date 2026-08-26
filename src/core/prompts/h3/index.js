@@ -5,6 +5,7 @@ import { presetLocale as zhPresetLocale, referenceRoleLocale as zhReferenceRoleL
 import { presetLocale as twPresetLocale, referenceRoleLocale as twReferenceRoleLocale, snippetLocale as twSnippetLocale, uiLocale as twUiLocale } from "./locale.zh-TW.js";
 export const h3PromptPresetOrder = [
     "official-storyboard",
+    "detailed-cinematic",
     "reference-faithful",
     "continuous-motion",
     "dialogue-sound",

@@ -50,6 +50,17 @@ export function queueTaskInput(task) {
     if (task.taskType === "image-generation" && task.pictures[0]?.absolutePath) {
         return { kind: "image", path: task.pictures[0].absolutePath };
     }
+    if (task.taskType === "generation" && isMiniMaxH3R2vModel(task.modelId)) {
+        const referenceIndex = task.h3ReferenceSlots?.findIndex((slot) => Boolean(slot.mediaPath.trim())) ?? -1;
+        const reference = referenceIndex >= 0 ? task.h3ReferenceSlots?.[referenceIndex] : undefined;
+        if (reference?.mediaPath) {
+            return {
+                kind: reference.mediaType,
+                path: reference.mediaPath,
+                referenceIndex
+            };
+        }
+    }
     if (task.taskType === "generation" && task.startImagePath) {
         return { kind: "image", path: task.startImagePath };
     }
@@ -69,9 +80,13 @@ export function queueTaskInput(task) {
     return null;
 }
 export function queueTaskInputUrl(task) {
-    return queueTaskInput(task)?.kind === "video"
-        ? `studio-media://queue/${encodeURIComponent(task.id)}`
-        : "";
+    const input = queueTaskInput(task);
+    if (input?.kind !== "video")
+        return "";
+    const referenceQuery = input.referenceIndex === undefined
+        ? ""
+        : `?reference=${input.referenceIndex}`;
+    return `studio-media://queue/${encodeURIComponent(task.id)}${referenceQuery}`;
 }
 function statusLabel(status, t) {
     const keys = {

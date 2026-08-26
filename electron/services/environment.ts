@@ -162,9 +162,9 @@ const sageAttentionVersion = "2.2.0";
 const comfyWheelsIndex = "https://comfy-org.github.io/wheels/";
 const pytorchCu130Index = "https://download.pytorch.org/whl/cu130";
 const h3TorchRuntime = {
-  torch: "2.9.1",
-  torchvision: "0.24.1",
-  torchaudio: "2.9.1"
+  torch: "2.10.0",
+  torchvision: "0.25.0",
+  torchaudio: "2.10.0"
 } as const;
 const llamaServerReleaseApiUrl =
   "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest";
@@ -2264,13 +2264,52 @@ async function findComfyPython(
 interface AttentionPythonProbe {
   pythonVersion?: string;
   torchVersion?: string;
+  torchvisionVersion?: string;
+  torchaudioVersion?: string;
   cudaVersion?: string;
   gpuName?: string;
   gpuArchitecture?: string;
   sageAttentionVersion?: string;
+  sageNativeReady?: boolean;
+  sageNativeError?: string;
   tritonVersion?: string;
   comfyKitchenVersion?: string;
   comfyKitchenBackends?: string[];
+}
+
+export function h3TorchRuntimeReady(probe: Pick<
+  AttentionPythonProbe,
+  "torchVersion" | "torchvisionVersion" | "torchaudioVersion" | "cudaVersion"
+>): boolean {
+  const parsePackageVersion = (value: string | undefined) => {
+    const match = value?.match(/^(\d+)\.(\d+)(?:\.\d+)?\+cu(\d+)$/i);
+    return match ? {
+      major: Number(match[1]),
+      minor: Number(match[2]),
+      cuda: Number(match[3])
+    } : null;
+  };
+  const torch = parsePackageVersion(probe.torchVersion);
+  const torchvision = parsePackageVersion(probe.torchvisionVersion);
+  const torchaudio = parsePackageVersion(probe.torchaudioVersion);
+  const cuda = probe.cudaVersion?.match(/^(\d+)\.(\d+)/);
+  if (!torch || !torchvision || !torchaudio || !cuda) return false;
+  const minimumTorchMinor = 10;
+  return torch.major === 2 && torch.minor >= minimumTorchMinor &&
+    torchaudio.major === torch.major && torchaudio.minor === torch.minor &&
+    torchvision.major === 0 && torchvision.minor === torch.minor + 15 &&
+    torch.cuda === 130 && torchvision.cuda === torch.cuda && torchaudio.cuda === torch.cuda &&
+    (Number(cuda[1]) > 13 || (Number(cuda[1]) === 13 && Number(cuda[2]) >= 0));
+}
+
+function h3TargetAttentionWheelForProbe(
+  probe: Pick<AttentionPythonProbe, "pythonVersion">
+): ReturnType<typeof attentionWheelForProbe> {
+  return attentionWheelForProbe({
+    pythonVersion: probe.pythonVersion,
+    torchVersion: `${h3TorchRuntime.torch}+cu130`,
+    cudaVersion: "13.0"
+  });
 }
 
 export function attentionWheelForProbe(
@@ -2340,7 +2379,7 @@ async function inspectAttentionPython(python: string): Promise<AttentionPythonPr
     "def version(name):",
     "    try: return md.version(name)",
     "    except md.PackageNotFoundError: return ''",
-    "result={'pythonVersion':platform.python_version(),'sageAttentionVersion':version('sageattention'),'tritonVersion':version('triton-windows') or version('triton'),'comfyKitchenVersion':version('comfy-kitchen'),'comfyKitchenBackends':[]}",
+    "result={'pythonVersion':platform.python_version(),'torchvisionVersion':version('torchvision'),'torchaudioVersion':version('torchaudio'),'sageAttentionVersion':version('sageattention'),'sageNativeReady':False,'tritonVersion':version('triton-windows') or version('triton'),'comfyKitchenVersion':version('comfy-kitchen'),'comfyKitchenBackends':[]}",
     "try:",
     "    import torch",
     "    result['torchVersion']=torch.__version__",
@@ -2350,6 +2389,10 @@ async function inspectAttentionPython(python: string): Promise<AttentionPythonPr
     "        cap=torch.cuda.get_device_capability(0)",
     "        result['gpuArchitecture']=f'{cap[0]}.{cap[1]}'",
     "except Exception as error: result['probeError']=str(error)",
+    "try:",
+    "    from sageattention import _fused",
+    "    result['sageNativeReady']=True",
+    "except Exception as error: result['sageNativeError']=str(error)",
     "try:",
     "    import comfy_kitchen as ck",
     "    result['comfyKitchenBackends']=[str(name) for name in ck.list_backends()]",
@@ -2405,6 +2448,7 @@ async function inspectAttentionAcceleration(
   const pythonPath = pythonPathOverride || await findComfyPython(settings, comfyRoot, installation);
   const probe = await inspectAttentionPython(pythonPath);
   const wheel = attentionWheelForProbe(probe);
+  const targetWheel = h3TargetAttentionWheelForProbe(probe);
   const kjNodesInstalled = Boolean(comfyRoot) && (
     await exists(path.join(comfyRoot, "custom_nodes", "ComfyUI-KJNodes")) ||
     await exists(path.join(comfyRoot, "custom_nodes", "comfyui-kjnodes"))
@@ -2413,20 +2457,28 @@ async function inspectAttentionAcceleration(
   const sageReady = Boolean(
     wheel && probe.sageAttentionVersion?.toLowerCase() === wheel.version.toLowerCase()
   );
+  const sageNativeReady = probe.sageNativeReady === true;
   const tritonReady = Boolean(probe.tritonVersion);
   const gpuArchitecture = Number.parseFloat(probe.gpuArchitecture ?? "");
   const gpuSupported = Number.isFinite(gpuArchitecture) && gpuArchitecture >= 8;
   const convRotCudaOptimized = comfyKitchenConvRotCudaOptimized(probe.cudaVersion ?? "") &&
     (probe.comfyKitchenBackends ?? []).some((backend) => backend.toLowerCase() === "cuda");
+  const torchRuntimeReady = h3TorchRuntimeReady(probe);
   const ready = Boolean(
-    pythonPath && wheel && gpuSupported && sageReady && tritonReady && kjNodesCompatible &&
-    convRotCudaOptimized
+    pythonPath && wheel && gpuSupported && torchRuntimeReady && sageReady && sageNativeReady &&
+    tritonReady && kjNodesCompatible && convRotCudaOptimized
   );
   const missing = [
     !pythonPath ? "ComfyUI Python" : "",
     !gpuSupported ? "SM 8.0+ NVIDIA GPU" : "",
+    !torchRuntimeReady
+      ? `PyTorch 2.10+ coherent cu130 trio (stable: ${h3TorchRuntime.torch} / ${h3TorchRuntime.torchvision} / ${h3TorchRuntime.torchaudio})`
+      : "",
     !wheel ? "匹配的 Windows wheel" : "",
     !sageReady ? `SageAttention ${sageAttentionVersion}` : "",
+    !sageNativeReady
+      ? `SageAttention 原生扩展${probe.sageNativeError ? `（${probe.sageNativeError}）` : ""}`
+      : "",
     !tritonReady ? "Triton" : "",
     !kjNodesCompatible ? "含大 stride 地址保护的新版 KJNodes" : "",
     !convRotCudaOptimized
@@ -2438,10 +2490,14 @@ async function inspectAttentionAcceleration(
     pythonPath,
     pythonVersion: probe.pythonVersion ?? "",
     torchVersion: probe.torchVersion ?? "",
+    torchvisionVersion: probe.torchvisionVersion ?? "",
+    torchaudioVersion: probe.torchaudioVersion ?? "",
     cudaVersion: probe.cudaVersion ?? "",
     gpuName: probe.gpuName ?? "",
     gpuArchitecture: probe.gpuArchitecture ?? "",
     sageAttentionVersion: probe.sageAttentionVersion ?? "",
+    sageNativeReady,
+    sageNativeError: probe.sageNativeError ?? "",
     tritonVersion: probe.tritonVersion ?? "",
     comfyKitchenVersion: probe.comfyKitchenVersion ?? "",
     comfyKitchenBackends: probe.comfyKitchenBackends ?? [],
@@ -2450,7 +2506,9 @@ async function inspectAttentionAcceleration(
     kjNodesCompatible,
     recommendedSageVersion: wheel?.version ?? "",
     recommendedWheel: wheel?.filename ?? "",
-    supported: Boolean(pythonPath && wheel && gpuSupported),
+    supported: Boolean(
+      pythonPath && gpuSupported && (torchRuntimeReady ? wheel : targetWheel)
+    ),
     ready,
     detail: ready ? "H3 模型级 SageAttention CUDA FP16 与 INT8 ConvRot CUDA 优化已就绪" :
       missing.length ? `待补齐：${missing.join("、")}` : "无法识别 Attention 运行环境"
@@ -4041,21 +4099,33 @@ export async function installAttentionAcceleration(
         `SageAttention 2.2 需要 SM 8.0+ NVIDIA GPU；当前检测结果为 ${before.gpuName || "未知 GPU"} / SM ${before.gpuArchitecture || "未知"}。`
       );
     }
-    const needsCudaRuntimeUpgrade = !comfyKitchenConvRotCudaOptimized(before.cudaVersion ?? "");
+    const torchRuntimeReady = h3TorchRuntimeReady(before);
+    const needsCudaRuntimeUpgrade = !torchRuntimeReady;
     const needsComfyKitchenRepair = !(before.comfyKitchenBackends ?? [])
       .some((backend) => backend.toLowerCase() === "cuda") || before.comfyKitchenVersion !== "0.2.31";
     const initialWheel = attentionWheelForProbe(before);
-    if (!initialWheel && !needsCudaRuntimeUpgrade) {
+    const targetWheel = needsCudaRuntimeUpgrade
+      ? h3TargetAttentionWheelForProbe(before)
+      : initialWheel;
+    if (!targetWheel) {
+      if (torchRuntimeReady) {
+        throw new Error(
+          `当前 PyTorch ${before.torchVersion || "未知"} 满足 H3 最低运行时要求，` +
+          `但 ComfyUI 尚未发布匹配的 SageAttention Windows wheel。` +
+          `应用不会自动降级该环境；请使用 PyTorch Attention，或在需要 SageAttention 时切换到稳定的 ` +
+          `PyTorch ${h3TorchRuntime.torch}+cu130。`
+        );
+      }
       throw new Error(
         `没有找到适用于 Python ${before.pythonVersion || "未知"} / ` +
-        `PyTorch ${before.torchVersion || "未知"} / CUDA ${before.cudaVersion || "未知"} 的官方 Windows wheel。`
+        `PyTorch ${h3TorchRuntime.torch}+cu130 / CUDA 13.0 的官方 Windows wheel。`
       );
     }
     report(`ComfyUI Python：${python}`);
     report(`运行时：Python ${before.pythonVersion} · PyTorch ${before.torchVersion} · CUDA ${before.cudaVersion}`);
     if (needsCudaRuntimeUpgrade) {
       report(
-        `检测到 H3 INT8 ConvRot 正在使用 eager fallback；目标运行时：` +
+        `检测到 H3 PyTorch 运行时低于最低版本或三件套不一致；目标稳定运行时：` +
         `PyTorch ${h3TorchRuntime.torch} / CUDA 13.0。`
       );
     } else if (initialWheel) {

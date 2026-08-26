@@ -17,5 +17,6 @@ describe("prompt word counter", () => {
     expect(h3PromptWordRange("R2V")).toEqual({ min: 350, max: 500 });
     expect(h3PromptWordRange("FL2VA", 15)).toEqual({ min: 550, max: 900 });
     expect(h3PromptWordRange("R2V", 15)).toEqual({ min: 710, max: 900 });
+    expect(h3PromptWordRange("I2VA", 5, "detailed-cinematic")).toEqual({ min: 250, max: 900 });
   });
 });

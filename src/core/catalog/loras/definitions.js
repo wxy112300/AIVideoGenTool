@@ -4,6 +4,10 @@ export const LEGACY_H3_TURBO_MODEL_ID = "minimax_h3_fl2va_turbo";
 export const LEGACY_H3_REF2V_TURBO_MODEL_ID = "minimax_h3_ref2va_turbo";
 export const H3_FL2VA_MODEL_ID = "minimax_h3_fl2va";
 export const H3_TURBO_LORA_FILENAME = "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors";
+export const H3_CKPT850_LORA_ID = "minimax-h3-turbo-ckpt850-ema";
+export const H3_CKPT850_LORA_FILENAME = "minimax_h3_turbo_4step_ema_ckpt850.safetensors";
+export const H3_SLA_TURBO_LORA_ID = "minimax-h3-turbo-sla-4step";
+export const H3_SLA_TURBO_LORA_FILENAME = "minimax_h3_fl2v_turbo_4step_v0.1_768p_sla_comfyui_bf16.safetensors";
 export const H3_CAMERA_MOTION_LORA_ID = "minimax-h3-camera-motion-v1";
 export const H3_CAMERA_MOTION_LORA_FILENAME = "camera_motion_h3_lora_v1_3000_pruned.safetensors";
 export const H3_TURBO_V4_LORA_ID = "minimax-h3-turbo-v4-step600-ema-pruned";
@@ -19,9 +23,11 @@ export const H3_REF2V_TURBO_LORA_FILENAME = "minimax_h3_ref2v_turbo_4step_v0.1_c
 export const H3_AFTER_MIDNIGHT_LORA_ID = "minimax-h3-after-midnight-ref2va-nsfw";
 export const H3_AFTER_MIDNIGHT_LORA_FILENAME = "AfterMidnight_ref2va_h3_sexytime_rank64-v1.2.safetensors";
 export const H3_TURBO_LORA_IDS = [
-    H3_TURBO_LORA_ID,
     H3_TURBO_V4_LORA_ID,
+    H3_SLA_TURBO_LORA_ID,
+    H3_TURBO_LORA_ID,
     H3_TURBO_8STEP_V1_LORA_ID,
+    H3_CKPT850_LORA_ID,
     H3_REF2V_TURBO_LORA_ID
 ];
 export const H3_PINK_FLUFFY_BUNNY_LORA_ID = "minimax-h3-pink-fluffy-bunny-nsfw";
@@ -29,6 +35,75 @@ export const H3_PINK_FLUFFY_BUNNY_LORA_FILENAME = "PinkFluffyBunny-pruned-v1-ran
 export const H3_REALISM_PEOPLE_LORA_ID = "minimax-h3-realism-people";
 export const H3_REALISM_PEOPLE_LORA_FILENAME = "h3-realism-people-t2v-i2v-r2v.safetensors";
 export const VIDEO_LORA_DEFINITIONS = [{
+        id: H3_CKPT850_LORA_ID,
+        name: "MiniMax H3 Turbo ckpt850 EMA · 4-step motion fallback",
+        filename: H3_CKPT850_LORA_FILENAME,
+        strength: 1,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: [H3_FL2VA_MODEL_ID],
+        compatibleInputModes: ["image"],
+        purpose: "performance",
+        promptPrefixes: [],
+        catalogOrder: 116,
+        variant: "turbo",
+        rules: {
+            orderPriority: 10,
+            settingConflicts: [],
+            combinations: [],
+            workflowRequirement: "h3-turbo-sampling"
+        },
+        scan: {
+            vram: "LoRA · ckpt850 EMA · 4+ steps · strength 1.0",
+            integrated: true,
+            components: [{
+                    label: "MiniMax H3 Turbo ckpt850 EMA LoRA",
+                    expected: `loras/${H3_CKPT850_LORA_FILENAME}`,
+                    patterns: [/loras\/minimax_h3_turbo_4step_ema_ckpt850\.safetensors$/i],
+                    installGuide: {
+                        sourceLabel: "amirjan122222 / MiniMax-H3-Turbo-Lora",
+                        downloadUrl: `https://huggingface.co/amirjan122222/MiniMax-H3-Turbo-Lora/resolve/main/${H3_CKPT850_LORA_FILENAME}?download=true`,
+                        targetSubdirectory: "loras",
+                        recommendedFilename: H3_CKPT850_LORA_FILENAME,
+                        notes: "ckpt850 EMA 旧 Turbo 训练线。模型卡说明 4 步起可用，尤其适合作为 4 步大动作备选；普通质量优先任务建议使用 v4。请先与其他 Turbo 变体做同 Seed 对照。"
+                    }
+                }]
+        }
+    }, {
+        id: H3_SLA_TURBO_LORA_ID,
+        name: "MiniMax H3 Turbo-SLA · 4-step",
+        filename: H3_SLA_TURBO_LORA_FILENAME,
+        strength: 1,
+        modelFamily: "minimax-h3",
+        compatibleModelIds: [H3_FL2VA_MODEL_ID],
+        compatibleInputModes: ["image"],
+        purpose: "performance",
+        promptPrefixes: [],
+        catalogOrder: 119,
+        variant: "turbo",
+        rules: {
+            orderPriority: 10,
+            settingConflicts: [],
+            combinations: [],
+            workflowRequirement: "h3-turbo-sampling"
+        },
+        scan: {
+            vram: "LoRA · Turbo-SLA · 4 steps · 768p · 85% sparse attention · strength 1.0",
+            integrated: true,
+            requiredCustomNodeIds: ["plaguekind-h3-sla"],
+            components: [{
+                    label: "MiniMax H3 Turbo-SLA 4-step 768p LoRA",
+                    expected: `loras/${H3_SLA_TURBO_LORA_FILENAME}`,
+                    patterns: [/loras\/minimax_h3_fl2v_turbo_4step_v0\.1_768p_sla_comfyui_bf16\.safetensors$/i],
+                    installGuide: {
+                        sourceLabel: "LightX2V / Minimax-h3-Turbo-SLA",
+                        downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo-SLA/resolve/main/${H3_SLA_TURBO_LORA_FILENAME}?download=true`,
+                        targetSubdirectory: "loras",
+                        recommendedFilename: H3_SLA_TURBO_LORA_FILENAME,
+                        notes: "官方 ComfyUI BF16 Turbo-SLA LoRA；必须配合 H3 SLA Attention 节点。应用会自动插入节点并固定 4 步、Euler + Beta、video shift 6、audio shift 3 和 85% sparsity，不需要单独打开 SLA 开关。不要与其他 Turbo LoRA 同时叠加。"
+                    }
+                }]
+        }
+    }, {
         id: H3_TURBO_LORA_ID,
         name: "LightX2V Turbo 4-Step v1.1 · 768p",
         filename: H3_TURBO_LORA_FILENAME,
@@ -38,7 +113,7 @@ export const VIDEO_LORA_DEFINITIONS = [{
         compatibleInputModes: ["image"],
         purpose: "performance",
         promptPrefixes: [],
-        catalogOrder: 112,
+        catalogOrder: 118,
         variant: "turbo",
         rules: {
             orderPriority: 10,
@@ -72,7 +147,7 @@ export const VIDEO_LORA_DEFINITIONS = [{
         compatibleInputModes: ["image"],
         purpose: "performance",
         promptPrefixes: [],
-        catalogOrder: 110,
+        catalogOrder: 120,
         variant: "turbo",
         rules: {
             orderPriority: 10,
@@ -118,7 +193,7 @@ export const VIDEO_LORA_DEFINITIONS = [{
         compatibleInputModes: ["image"],
         purpose: "motion",
         promptPrefixes: ["camera motion"],
-        catalogOrder: 111,
+        catalogOrder: 99,
         variant: "fl2va",
         rules: {
             orderPriority: 20,
@@ -186,7 +261,7 @@ export const VIDEO_LORA_DEFINITIONS = [{
         compatibleInputModes: ["image"],
         purpose: "performance",
         promptPrefixes: [],
-        catalogOrder: 110,
+        catalogOrder: 117,
         variant: "turbo",
         rules: {
             orderPriority: 10,
@@ -206,7 +281,7 @@ export const VIDEO_LORA_DEFINITIONS = [{
                         downloadUrl: `https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/${H3_TURBO_8STEP_V1_LORA_FILENAME}`,
                         targetSubdirectory: "loras",
                         recommendedFilename: H3_TURBO_8STEP_V1_LORA_FILENAME,
-                        notes: "官方 v1.0 FL2VA Turbo。默认 8 步；与 4-step 768p 版本分别测试，不要同时叠加。"
+                        notes: "官方 v1.0 FL2VA 8 步权重。目前没有对应的 8-step v1.1；保留作为 8 步质量与音频稳定性备选。综合首选使用 v4，极速 4 步使用 v1.1 或 Turbo-SLA。不要与其他 Turbo 变体叠加。"
                     }
                 }]
         }
@@ -255,7 +330,7 @@ export const VIDEO_LORA_DEFINITIONS = [{
         compatibleInputModes: ["image"],
         purpose: "performance",
         promptPrefixes: [],
-        catalogOrder: 108,
+        catalogOrder: 115,
         variant: "turbo",
         rules: {
             orderPriority: 10,

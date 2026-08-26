@@ -4,8 +4,7 @@ import path from "node:path";
 import { customNodeDefinition } from "../../src/core/catalog/index.js";
 import type { Settings } from "../../src/types.js";
 import {
-  patchH3PromptWriterLlamaCppCompatibility,
-  patchH3PromptWriterOutputBudget,
+  patchH3PromptWriterSource,
   patchMultimodalPromptContextSize,
   patchMultimodalPromptProjectorDiscovery,
   patchMultimodalPromptQwen38Recognition,
@@ -79,9 +78,11 @@ function sharedLlamaRequirementPackages(source: string): {
   return { packages, skippedLlama, skippedOptions };
 }
 
-const h3PromptWriterPatchFiles = [
+export const h3PromptWriterPatchFiles = [
   "backend/models/gguf_backend.py",
   "backend/models/gguf/_backend.py",
+  "backend/assembly.py",
+  "backend/catalog.py",
   "backend/context.py",
   "backend/h3_pipeline.py",
   "backend/runtime_diagnostics.py"
@@ -143,9 +144,7 @@ async function nodeHasOnlyAppPatch(
       return false;
     }
     const expected = nodeId === "minimax-h3-prompt-writer"
-      ? patchH3PromptWriterOutputBudget(
-          patchH3PromptWriterLlamaCppCompatibility(baseline)
-        )
+      ? patchH3PromptWriterSource(baseline)
       : nodeId === "comfyui-multimodal-prompt-nodes"
         ? filename === "local_gguf_utils.py"
           ? patchMultimodalPromptProjectorDiscovery(baseline)

@@ -1,4 +1,4 @@
-import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
+import { bundledWorkflowModelId, isH3TurboEnabled, reorderVideoLoras, videoLoraSelection, videoLorasAfterAdding, BUILTIN_VIDEO_LORAS, detectedVideoLoraFilename } from "../../../core/video-loras";
 import { generationSafetyForTask, isMiniMaxH3Fl2vaModel, isMiniMaxH3Model, isMiniMaxH3Q3GgufModel, isMiniMaxH3R2vModel, motionContextMaxDurationSeconds, normalizeH3Steps } from "../../../core/workflow";
 import { ensureMotionContextSourceSlot } from "../../../core/h3-reference";
 import { extensionSafetyForDraft, modelSupportsCreateInputMode, newH3ReferenceSlot } from "./helpers";
@@ -8,6 +8,7 @@ import { mountImageToVideoController } from "./image-to-video-controller";
 import { mountVideoExtensionController } from "./video-extension-controller";
 import { uiKeys } from "../../../core/i18n-keys";
 import { creationDraftForMode } from "../../../core/creation-drafts";
+let creationModeTransitionRevision = 0;
 export function mountCreatePageController(options) {
     const events = new AbortController();
     const signal = events.signal;
@@ -16,6 +17,7 @@ export function mountCreatePageController(options) {
     const t = options.context.t;
     root.querySelectorAll("[data-input-mode]").forEach((button) => {
         button.addEventListener("click", async () => {
+            const transitionRevision = ++creationModeTransitionRevision;
             const requestedMode = button.dataset.inputMode;
             if (requestedMode === "image-edit") {
                 options.setCreationMode("image-edit");
@@ -28,6 +30,23 @@ export function mountCreatePageController(options) {
             const inputMode = requestedMode === "video" ? "video" : "image";
             const storedDraft = creationDraftForMode(state, inputMode);
             if (storedDraft) {
+                const workflowModelId = bundledWorkflowModelId(storedDraft);
+                const key = options.bundledWorkflowKey(workflowModelId, inputMode);
+                const bundled = options.bundledWorkflows[key] ??
+                    await options.context.studio.getBundledWorkflow(workflowModelId, inputMode);
+                if (bundled) {
+                    options.bundledWorkflows[key] = bundled;
+                    options.workflowCapabilities[bundled.path] = {
+                        supportsEndImage: bundled.supportsEndImage,
+                        supportsVideoExtension: bundled.supportsVideoExtension
+                    };
+                }
+                if (storedDraft.workflowPath && storedDraft.workflowPath !== bundled?.path) {
+                    options.workflowCapabilities[storedDraft.workflowPath] =
+                        await options.context.studio.inspectWorkflow(storedDraft.workflowPath, storedDraft.modelId);
+                }
+                if (transitionRevision !== creationModeTransitionRevision)
+                    return;
                 options.setCreationMode(inputMode === "video" ? "video-extension" : "image-to-video");
                 options.patchDraft(storedDraft);
                 options.context.requestRender();
@@ -79,6 +98,8 @@ export function mountCreatePageController(options) {
                     supportsVideoExtension: bundled.supportsVideoExtension
                 };
             }
+            if (transitionRevision !== creationModeTransitionRevision)
+                return;
             const nextMotionSlots = inputMode === "video" && isMiniMaxH3R2vModel(modelId)
                 ? ensureMotionContextSourceSlot(restoringVideoDraft || wasVideoExtension ? videoSourceDraft.h3ReferenceSlots : [], restoringVideoDraft || wasVideoExtension ? videoSourceDraft.sourceVideoPath : "")
                 : inputMode === "image" && !wasVideoExtension
@@ -244,7 +265,7 @@ export function mountCreatePageController(options) {
             options.context.notify(t(uiKeys.create.interaction.loraFileMissing, { name: lora.name }), { renderPage: false });
             return;
         }
-        await applyVideoLoraStack([...state.draft.videoLoras, videoLoraSelection(lora, lora.strength, detectedFilename)]);
+        await applyVideoLoraStack(videoLorasAfterAdding(state.draft.videoLoras, videoLoraSelection(lora, lora.strength, detectedFilename)));
     }, { signal });
     root.querySelectorAll("[data-remove-video-lora]").forEach((button) => {
         button.addEventListener("click", async () => {

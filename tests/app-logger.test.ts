@@ -75,6 +75,40 @@ describe("application logger", () => {
     expect(JSON.stringify(snapshot)).not.toContain("private\\video.mp4");
   });
 
+  it("keeps preset routing metadata while redacting prompt content", async () => {
+    const directory = await temporaryDirectory();
+    const logger = new AppLogger({
+      directory,
+      now: () => new Date("2026-08-08T12:00:00.000Z")
+    });
+
+    logger.info("prompt", "enhance-started", "Prompt enhancement submitted", {
+      inputKind: "reference-auto",
+      presetFamily: "h3",
+      selectedPreset: "detailed-cinematic",
+      effectivePreset: "detailed-cinematic",
+      presetSource: "selected",
+      autoSeedId: "cause-and-effect",
+      autoVariationId: "variation-7",
+      creativeBrief: "private prompt content"
+    });
+
+    const snapshot = logger.recent();
+    expect(snapshot.records[0]?.meta).toMatchObject({
+      inputKind: "reference-auto",
+      presetFamily: "h3",
+      selectedPreset: "detailed-cinematic",
+      effectivePreset: "detailed-cinematic",
+      presetSource: "selected",
+      autoSeedId: "cause-and-effect",
+      autoVariationId: "variation-7",
+      creativeBrief: "[redacted]"
+    });
+    expect(snapshot.text).toContain("InputKind=reference-auto");
+    expect(snapshot.text).toContain("EffectivePreset=detailed-cinematic");
+    expect(JSON.stringify(snapshot)).not.toContain("private prompt content");
+  });
+
   it("removes expired log files without deleting the active log", async () => {
     const directory = await temporaryDirectory();
     await fs.writeFile(

@@ -66,11 +66,13 @@ describe("model catalog", () => {
     ]);
     expect(modelCatalog.list("interpolation").map((entry) => entry.definition.id)).toEqual(["rife"]);
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).toEqual([
-      "minimax-h3-lightx2v-turbo-4step-768p-v1.1",
-      "minimax-h3-camera-motion-v1",
       "minimax-h3-turbo-v4-step600-ema-pruned",
+      "minimax-h3-turbo-sla-4step",
+      "minimax-h3-lightx2v-turbo-4step-768p-v1.1",
       "minimax-h3-lightx2v-turbo-8step-v1",
+      "minimax-h3-turbo-ckpt850-ema",
       "minimax-h3-ref2v-turbo-4step-v01",
+      "minimax-h3-camera-motion-v1",
       "minimax-h3-after-midnight-ref2va-nsfw",
       "minimax-h3-realism-people"
     ]);
@@ -158,14 +160,14 @@ describe("model catalog", () => {
       filename: lora.filename,
       strength: lora.strength,
       promptPrefixes: lora.promptPrefixes
-    }))).toEqual(VIDEO_LORA_DEFINITIONS
+    })).sort((left, right) => left.id.localeCompare(right.id))).toEqual([...VIDEO_LORA_DEFINITIONS]
       .filter((lora) => lora.retired !== true)
       .map((lora) => ({
       id: lora.id,
       filename: lora.filename,
       strength: lora.strength,
       promptPrefixes: lora.promptPrefixes
-      })));
+      })).sort((left, right) => left.id.localeCompare(right.id)));
     for (const lora of VIDEO_LORA_DEFINITIONS) {
       expect(lora.scan.components.some((component) =>
         component.expected.replaceAll("\\", "/").endsWith(`loras/${lora.filename}`)

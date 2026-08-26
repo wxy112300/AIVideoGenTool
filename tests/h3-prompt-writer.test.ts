@@ -284,12 +284,15 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
         autoPromptSeedId: "cause-and-effect",
         autoPromptVariationId: "variation-13",
         h3PromptMode: "I2VA",
+        h3PromptPreset: "detailed-cinematic",
         h3DurationSeconds: 5,
         referenceMediaPaths: [image]
       }, settings, new AbortController().signal)).resolves.toContain("integrated_multimodal_description");
 
       expect(String(generateBody.creative_brief)).toContain("Reference-driven H3 auto-creation mode");
       expect(String(generateBody.creative_brief)).toContain("Variation token: variation-13");
+      expect(String(generateBody.creative_brief)).toContain("Selected H3 expansion preset: detailed-cinematic");
+      expect(String(generateBody.creative_brief)).toContain("high-detail, production-ready H3 prompt");
       expect(generateBody.mode).toBe("I2VA");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });

@@ -31,6 +31,7 @@ export const uiLocale: PromptUiLocale = {
 
 export const presetLocale: Record<H3PromptPreset, PromptPresetLocale> = {
   "official-storyboard": { label: "通用影視時間線", description: "按 H3 官方欄位組織完整的視聽時間線，適合一般影片請求。" },
+  "detailed-cinematic": { label: "影視細節擴寫", description: "在保留原意和參考素材的基礎上，補全動作、鏡頭、畫面、材質、光線、音效與時間線細節。" },
   "reference-faithful": { label: "參考畫面保真", description: "減少無依據的畫面補寫，優先保護參考圖中的身份、構圖和連續性。" },
   "continuous-motion": { label: "單鏡頭連續動作", description: "把動作寫成一個無剪輯的連續鏡頭，強調因果、身體力學和收束狀態。" },
   "dialogue-sound": { label: "對白與原生聲音", description: "優先處理對白、演唱、環境聲、動作聲和原生音樂的同步關係。" },

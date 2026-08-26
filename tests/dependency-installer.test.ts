@@ -3,11 +3,15 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  h3PromptWriterPatchFiles,
   installCustomNodePackage,
   withWindowsGitLongPaths,
   type DependencyInstallerRuntime
 } from "../electron/services/dependency-installer";
 import {
+  patchH3PromptWriterGemmaChatHandler,
+  patchH3PromptWriterAutomaticContextLadder,
+  patchH3PromptWriterBriefLimit,
   patchH3PromptWriterLlamaCppCompatibility,
   patchH3PromptWriterOutputBudget,
   patchMultimodalPromptContextSize,
@@ -61,6 +65,22 @@ async function exists(filename: string): Promise<boolean> {
 }
 
 describe("dependency installer", () => {
+  it("recognizes every app-owned H3 Prompt Writer patch file", () => {
+    expect(h3PromptWriterPatchFiles).toContain("backend/catalog.py");
+  });
+
+  it("falls back to llama-cpp-python 0.3.46's ggml log callback name", () => {
+    const source = "            from llama_cpp import llama_log_callback\r\n";
+
+    const patched = patchH3PromptWriterLlamaCppCompatibility(source);
+
+    expect(patched).toContain("            try:\n");
+    expect(patched).toContain("                from llama_cpp import llama_log_callback\n");
+    expect(patched).toContain("            except ImportError:\n");
+    expect(patched).toContain("                from llama_cpp import ggml_log_callback as llama_log_callback");
+    expect(patchH3PromptWriterLlamaCppCompatibility(patched)).toBe(patched);
+  });
+
   it("makes H3 Prompt Writer cleanup compatible with llama-cpp-python 0.3.46", () => {
     const source = [
       "    def unload(self) -> None:",
@@ -81,6 +101,61 @@ describe("dependency installer", () => {
     expect(patched).toContain("getattr(chat_handler, \"_exit_stack\", None)");
     expect(patched).not.toContain("self.chat_handler._exit_stack.close()");
     expect(patchH3PromptWriterLlamaCppCompatibility(patched)).toBe(patched);
+  });
+
+  it("uses Gemma 4's native multimodal handler without changing the Qwen path", () => {
+    const source = [
+      "                from llama_cpp.llama_chat_format import MTMDChatHandler",
+      "",
+      "                self.chat_handler = MTMDChatHandler(",
+      "                    clip_model_path=model_info[\"projector\"],",
+      "                    verbose=False,",
+      "                    use_gpu=True,",
+      "                )",
+      "                self.model = Llama(**llama_options)",
+      "                        self.chat_handler.verbose = False",
+      "                        with _quiet_mtmd_info():"
+    ].join("\n");
+
+    const patched = patchH3PromptWriterGemmaChatHandler(source);
+
+    expect(patched).toContain(
+      "from llama_cpp.llama_chat_format import Gemma4ChatHandler, MTMDChatHandler"
+    );
+    expect(patched).toContain(
+      'if model_info.get("architecture_adapter") == "gemma":'
+    );
+    expect(patched).toContain("self.chat_handler = Gemma4ChatHandler(");
+    expect(patched).toContain("self.chat_handler = MTMDChatHandler(");
+    expect(patched).toContain("self.chat_handler.enable_thinking = (");
+    expect(patchH3PromptWriterGemmaChatHandler(patched)).toBe(patched);
+  });
+
+  it("allows long H3 briefs without changing the Music3 limit", () => {
+    const source = [
+      "def _validated_generation_context(source):",
+      "    brief = source.get(\"creative_brief\")",
+      "    if len(brief) > 2000:",
+      "        raise AssemblyError(\"BRIEF_TOO_LONG\", \"Creative brief cannot exceed 2,000 characters.\")",
+      "",
+      "def assemble_request(body):",
+      "    brief = _required_text(body, \"creative_brief\", \"Creative brief\")",
+      "    if len(brief) > 2000:",
+      "        raise AssemblyError(\"BRIEF_TOO_LONG\", \"Creative brief cannot exceed 2,000 characters.\")",
+      "",
+      "def _validated_music_caption_context(source):",
+      "    brief = source.get(\"creative_brief\")",
+      "    if len(brief) > 2000:",
+      "        raise AssemblyError(\"BRIEF_TOO_LONG\", \"Music brief cannot exceed 2,000 characters.\")"
+    ].join("\n");
+
+    const patched = patchH3PromptWriterBriefLimit(source);
+
+    expect(patched).toContain("if len(brief) > 20_000:");
+    expect(patched).toContain("Creative brief cannot exceed 20,000 characters.");
+    expect(patched).not.toContain("Creative brief cannot exceed 2,000 characters.");
+    expect(patched).toContain("Music brief cannot exceed 2,000 characters.");
+    expect(patchH3PromptWriterBriefLimit(patched)).toBe(patched);
   });
 
   it("accepts the newer upstream GGMLType value fallback", async () => {
@@ -111,6 +186,7 @@ describe("dependency installer", () => {
         "    def unload(self):",
         "        self.model.close()",
         "        self.chat_handler._exit_stack.close()",
+        '        "n_batch": 512,',
         "        self.model = None",
         "        self.chat_handler = None"
       ].join("\n")
@@ -120,8 +196,31 @@ describe("dependency installer", () => {
       "STANDARD_OUTPUT_TOKENS = 1_536\nMUSIC_OUTPUT_TOKENS = 1_536\n"
     );
     await fs.writeFile(
+      path.join(directory, "backend", "assembly.py"),
+      [
+        "def _validated_generation_context(source):",
+        "    brief = source.get(\"creative_brief\")",
+        "    if len(brief) > 2000:",
+        "        raise AssemblyError(\"BRIEF_TOO_LONG\", \"Creative brief cannot exceed 2,000 characters.\")",
+        "",
+        "def assemble_request(body):",
+        "    brief = _required_text(body, \"creative_brief\", \"Creative brief\")",
+        "    if len(brief) > 2000:",
+        "        raise AssemblyError(\"BRIEF_TOO_LONG\", \"Creative brief cannot exceed 2,000 characters.\")",
+        "",
+        "def _validated_music_caption_context(source):",
+        "    brief = source.get(\"creative_brief\")",
+        "    if len(brief) > 2000:",
+        "        raise AssemblyError(\"BRIEF_TOO_LONG\", \"Music brief cannot exceed 2,000 characters.\")"
+      ].join("\n")
+    );
+    await fs.writeFile(
       path.join(directory, "backend", "h3_pipeline.py"),
       "        max_tokens=1_536,\n"
+    );
+    await fs.writeFile(
+      path.join(directory, "backend", "catalog.py"),
+      '    "auto_context_ladder": True,\n'
     );
 
     await prepareH3PromptWriter(directory, vi.fn());
@@ -134,12 +233,31 @@ describe("dependency installer", () => {
     expect(backend).not.toContain("self.chat_handler._exit_stack.close()");
     expect(await fs.readFile(path.join(directory, "backend", "context.py"), "utf8"))
       .toContain("STANDARD_OUTPUT_TOKENS = 2_048");
+    expect(await fs.readFile(path.join(directory, "backend", "assembly.py"), "utf8"))
+      .toContain("Creative brief cannot exceed 20,000 characters.");
+    expect(await fs.readFile(path.join(directory, "backend", "assembly.py"), "utf8"))
+      .not.toContain("Creative brief cannot exceed 2,000 characters.");
     expect(await fs.readFile(path.join(directory, "backend", "context.py"), "utf8"))
       .toContain("MUSIC_OUTPUT_TOKENS = 1_536");
     expect(await fs.readFile(path.join(directory, "backend", "h3_pipeline.py"), "utf8"))
       .toContain("max_tokens=2_048");
-    expect(patchH3PromptWriterOutputBudget("STANDARD_OUTPUT_TOKENS = 2_048\n"))
+    expect(await fs.readFile(path.join(directory, "backend", "catalog.py"), "utf8"))
+      .toContain('"auto_context_ladder": True');
+    expect(backend).toContain('"n_batch": 256');
+    expect(patchH3PromptWriterOutputBudget("STANDARD_OUTPUT_TOKENS = 4_096\n"))
       .toBe("STANDARD_OUTPUT_TOKENS = 2_048\n");
+    expect(patchH3PromptWriterOutputBudget("STANDARD_OUTPUT_TOKENS = 3_584\n"))
+      .toBe("STANDARD_OUTPUT_TOKENS = 2_048\n");
+  });
+
+  it("restores automatic context promotion for previously patched Gemma catalogs", () => {
+    expect(patchH3PromptWriterAutomaticContextLadder([
+      '    "auto_context_ladder": qwen_context,',
+      '    "auto_context_ladder": False,'
+    ].join("\n"))).toBe([
+      '    "auto_context_ladder": True,',
+      '    "auto_context_ladder": True,'
+    ].join("\n"));
   });
 
   it("raises the MultiModal GGUF context from 4K to 8K", async () => {

@@ -50,6 +50,10 @@ export function mountSettingsFieldsController(context, options) {
         options.setH3PromptPreset(event.currentTarget.value);
         context.requestRender();
     }, { signal });
+    root.querySelector("#h3-auto-prompt-seed-setting")?.addEventListener("change", () => {
+        options.setSettingsDraft(options.formSettings());
+        context.requestRender();
+    }, { signal });
     root.querySelector("#image-prompt-preset-setting")?.addEventListener("change", (event) => {
         options.setSettingsDraft(options.formSettings());
         options.setImagePromptPreset(event.currentTarget.value);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultDraft } from "../src/core/defaults";
-import { H3_TURBO_LORA, H3_TURBO_V4_LORA } from "../src/core/video-loras";
+import { H3_SLA_TURBO_LORA, H3_TURBO_LORA, H3_TURBO_V4_LORA } from "../src/core/video-loras";
 import {
   normalizeVideoSteps,
   resolveVideoGenerationPolicy,
@@ -77,6 +77,28 @@ describe("video generation policy", () => {
     expect(normalizeVideoSteps(4, policy)).toBe(8);
     expect(normalizeVideoSteps(6, policy)).toBe(6);
     expect(policy.spectrum.allowed).toBe(true);
+  });
+
+  it("locks Turbo-SLA to four steps while keeping Spectrum available", () => {
+    const policy = resolveVideoGenerationPolicy({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      spectrumMode: "balanced",
+      videoLoras: [H3_SLA_TURBO_LORA]
+    });
+
+    expect(policy.turboEnabled).toBe(true);
+    expect(policy.steps.options).toEqual([4]);
+    expect(policy.steps.defaultValue).toBe(4);
+    expect(policy.steps.maxValue).toBe(4);
+    expect(normalizeVideoSteps(20, policy)).toBe(4);
+    expect(policy.spectrum.allowed).toBe(true);
+    expect(shouldApplySpectrum({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      spectrumMode: "balanced",
+      videoLoras: [H3_SLA_TURBO_LORA]
+    })).toBe(true);
   });
 
   it("keeps Spectrum available for standard H3 image generation", () => {

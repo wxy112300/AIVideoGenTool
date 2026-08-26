@@ -119,7 +119,10 @@ export function mountCreatePromptController(
       promptInput.value,
       isMiniMaxH3Model(draft.modelId) ? h3PromptModeForDraft(draft) : undefined,
       draft.duration,
-      promptUi()
+      promptUi(),
+      isMiniMaxH3Model(draft.modelId)
+        ? h3PromptPresetForMode(h3PromptModeForDraft(draft), options.getH3PromptPreset())
+        : undefined
     );
   }, { signal });
   if (promptInput) {
@@ -156,7 +159,10 @@ export function mountCreatePromptController(
     promptInput?.value ?? "",
     initialDraft && isMiniMaxH3Model(initialDraft.modelId) ? h3PromptModeForDraft(initialDraft) : undefined,
     initialDraft?.duration ?? 0,
-    promptUi()
+    promptUi(),
+    initialDraft && isMiniMaxH3Model(initialDraft.modelId)
+      ? h3PromptPresetForMode(h3PromptModeForDraft(initialDraft), options.getH3PromptPreset())
+      : undefined
   );
 
   root.querySelector("#clear-prompt")?.addEventListener("click", (event) => {

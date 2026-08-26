@@ -22,7 +22,7 @@ import {
   renderSettingsModelScanCard,
   type SettingsInstallGuideSelection
 } from "./fragments";
-import { settingsText } from "./copy";
+import { settingsH3AutoPromptSeedDescription, settingsText } from "./copy";
 import { fieldLabelWithTip } from "../../shared/markup";
 import {
   customNodeBulkActionMode,
@@ -229,6 +229,9 @@ export function renderSettingsPage(
   const selectedAutoPromptSeedText = selectedAutoPromptSeed
     ? settings.h3AutoPromptSeedInstructions[selectedAutoPromptSeed.id] ?? selectedAutoPromptSeed.instruction
     : "";
+  const selectedAutoPromptSeedDescription = selectedAutoPromptSeed
+    ? settingsH3AutoPromptSeedDescription(settings.uiLocale, selectedAutoPromptSeed.id, selectedAutoPromptSeed.instruction)
+    : s("prompt.autoVideoPresetRandomHint");
   const videoAvailable = videoProfiles.filter(
     (profile) => profile.available && profile.integrated
   ).length;
@@ -556,8 +559,8 @@ export function renderSettingsPage(
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${s("prompt.autoVideoPresetTitle")}</h2><span class="muted">${s("prompt.autoVideoPresetDescription")}</span></div><button class="secondary button-with-icon" id="restore-h3-auto-prompt-seeds">${icon("rotate-ccw")}${s("prompt.restore")}</button></div>
-        <label>${s("prompt.autoVideoPresetSelection")}<select id="h3-auto-prompt-seed-setting"><option value="" ${!selectedAutoPromptSeed ? "selected" : ""}>${s("prompt.autoVideoPresetRandom")}</option>${options.h3AutoPromptSeeds.map((seed) => `<option value="${escape(seed.id)}" ${selectedAutoPromptSeed?.id === seed.id ? "selected" : ""}>${escape(seed.label)}</option>`).join("")}</select></label>
-        <p class="muted proxy-hint">${escape(selectedAutoPromptSeed?.instruction ?? s("prompt.autoVideoPresetRandomHint"))}</p>
+        <label>${fieldLabelWithTip(s("prompt.autoVideoPresetSelection"), selectedAutoPromptSeedDescription)}<select id="h3-auto-prompt-seed-setting" title="${escape(selectedAutoPromptSeedDescription)}"><option value="" title="${escape(s("prompt.autoVideoPresetRandomHint"))}" ${!selectedAutoPromptSeed ? "selected" : ""}>${s("prompt.autoVideoPresetRandom")}</option>${options.h3AutoPromptSeeds.map((seed) => { const description = settingsH3AutoPromptSeedDescription(settings.uiLocale, seed.id, seed.instruction); return `<option value="${escape(seed.id)}" data-description="${escape(description)}" title="${escape(description)}" ${selectedAutoPromptSeed?.id === seed.id ? "selected" : ""}>${escape(seed.label)}</option>`; }).join("")}</select></label>
+        <p class="muted proxy-hint">${escape(selectedAutoPromptSeedDescription)}</p>
         ${selectedAutoPromptSeed ? `<label>${s("prompt.autoVideoPresetRule")}<textarea id="h3-auto-prompt-seed-text" rows="7">${escape(selectedAutoPromptSeedText)}</textarea></label>` : ""}
         <p class="muted proxy-hint">${s("prompt.autoVideoPresetNote")}</p>
       </section>

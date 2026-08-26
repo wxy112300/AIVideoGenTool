@@ -58,6 +58,7 @@ export interface DependencyBadRange {
 
 export type CatalogCustomNodeFeatureId =
   | "h3-sage-attention"
+  | "h3-sla-attention"
   | "h3-live-preview"
   | "vram-debug";
 

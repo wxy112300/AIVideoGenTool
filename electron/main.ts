@@ -77,6 +77,7 @@ import {
 } from "../src/core/queue.js";
 import { normalizeImageEditDraft } from "../src/core/image-project.js";
 import { promptModelBackend } from "../src/core/prompt-models.js";
+import { promptEnhanceLogContext } from "../src/core/prompt-enhance-log.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
 import {
   extensionWorkflowSafetyErrors,
@@ -528,11 +529,22 @@ function registerMediaProtocol(): void {
       } else if (url.hostname === "queue") {
         const taskId = decodeURIComponent(url.pathname.split("/").filter(Boolean)[0] ?? "");
         const task = store.get().queue.find((item) => item.id === taskId);
-        filename = task?.taskType === "extension"
-          ? task.sourceVideoPath
-          : task?.taskType === "upscale"
-            ? task.sourceFilePath
+        const referenceIndexText = url.searchParams.get("reference");
+        if (referenceIndexText !== null) {
+          const referenceIndex = Number(referenceIndexText);
+          const referenceSlots = task?.taskType === "generation" || task?.taskType === "extension"
+            ? task.h3ReferenceSlots
             : undefined;
+          filename = Number.isInteger(referenceIndex) && referenceIndex >= 0
+            ? referenceSlots?.[referenceIndex]?.mediaPath
+            : undefined;
+        } else {
+          filename = task?.taskType === "extension"
+            ? task.sourceVideoPath
+            : task?.taskType === "upscale"
+              ? task.sourceFilePath
+              : undefined;
+        }
       } else {
         return new Response("Not found", { status: 404 });
       }
@@ -2932,7 +2944,8 @@ function registerIpc(): void {
       promptProvided: Boolean(request.prompt.trim()),
       promptLength: request.prompt.length,
       referenceImageCount: request.imagePaths?.length ?? (request.imagePath ? 1 : 0),
-      durationSeconds: request.h3DurationSeconds ?? null
+      durationSeconds: request.h3DurationSeconds ?? null,
+      ...promptEnhanceLogContext(request)
     };
     appLogger.info("prompt", "enhance-started", "Prompt enhancement started", {
       ...promptLogContext

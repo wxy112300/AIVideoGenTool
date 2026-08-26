@@ -3,9 +3,10 @@
 ## 0. 计划状态、目标和首发边界
 
 - 修订日期：2026-08-24。
-- 当前状态：已按当前仓库实现重新规划；Native Masked AV 尚未实现，也没有本机 `/object_info` 或真实生成证据。
+- 当前状态：已按当前仓库实现重新规划；Native Masked AV 尚未实现，也没有真实生成证据。2026-08-24 的离线基线曾记录本机 `/object_info` 未响应，最新状态以 P0 evidence 为准。
 - 当前应用：`0.43.3`，`AppState.schemaVersion = 13`。
-- 当前开发机：RTX 4090 24 GB、NVIDIA Driver 610.88、Node 24.16.0、npm 10.2.4；本次检查 `127.0.0.1:8188` 时 ComfyUI 未响应。
+- 当前开发机：RTX 4090 24 GB、NVIDIA Driver 610.88、Node 24.16.0、npm 10.2.4。
+- 最新 P0 复核：见 [`H3_LONG_VIDEO_P0_EVIDENCE.md`](H3_LONG_VIDEO_P0_EVIDENCE.md)；2026-08-26 当前 ComfyUI `0.33.0` 已运行，core revision 同时包含 PR #15375 和 #15439，但 Native workflow 尚未完成真实 smoke。
 - 目标读者：可以执行明确、小范围任务的 Luna 级实现代理。每个工作包必须重新读取目标文件，不得用旧补丁覆盖当前 dirty worktree。
 
 ### 0.1 用户目标
@@ -303,7 +304,7 @@ load + validate joint artifact
 - decoded suffix frame/sample trim；
 - 最终 duration/PTS。
 
-默认先验证 39 frames；失败时根据证据修改 Native profile，不能改 Motion Context 22/24。
+完整 Native target 首次先验证 124 frames 左右（仍需按官方 workflow 和显存证据最终冻结）；39 frames 只保留为 AddGuide/overlap clip 候选，不能作为完整 target 的默认 smoke。失败时根据证据修改 Native profile，不能改 Motion Context 22/24。
 
 ### 5.3 最终媒体
 

@@ -307,10 +307,20 @@ describe("native Qwen prompt workflow", () => {
       h3PromptMode: "FL2VA",
       h3PromptPreset: "continuous-motion"
     });
+    const detailed = h3PromptInstruction({
+      prompt: "人物向镜头走来。",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "FL2VA",
+      h3PromptPreset: "detailed-cinematic"
+    });
 
     expect(faithful).toContain("Prioritize the user's explicit content first");
     expect(continuous).toContain("one continuous shot with no cuts");
+    expect(detailed).toContain("Detailed cinematic expansion rule");
+    expect(detailed).toContain("reasonable, scene-grounded operational details");
+    expect(detailed).toContain("There is no fixed 350-500 or 500-word target");
     expect(faithful).not.toBe(continuous);
+    expect(detailed).not.toBe(continuous);
   });
 
   it("does not leak the R2V preset into FL2VA expansion", () => {

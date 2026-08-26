@@ -7,6 +7,7 @@ import {
   h3PromptExpansionTokenBudget,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
+import { h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import {
   extractH3DialogueLocks,
   extractH3VisibleTextLocks,
@@ -39,6 +40,7 @@ export interface MultimodalRuntimeSelection {
 }
 
 const gib = 1024 ** 3;
+const visionLlmMaxOutputTokens = 2048;
 const minimumFreeVramForMultimodalModel: Record<string, number> = {
   "qwen/qwen3.6-27b-uncensored-q4": 20 * gib,
   "qwen/qwen3.8-27b-uncensored-q4": 20 * gib
@@ -206,6 +208,7 @@ export function buildMultimodalPromptWorkflow(
     Boolean(request.imagePath || imageCount > 0),
     imageCount > 1
   );
+  const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const targetLanguage = warmup
     ? "en"
     : multimodalPromptTargetLanguage(request, settings);
@@ -231,7 +234,10 @@ export function buildMultimodalPromptWorkflow(
     ? 64
     : request.mode === "image-edit"
       ? 768
-      : h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5);
+      : Math.min(
+          visionLlmMaxOutputTokens,
+          h3PromptExpansionTokenBudget(mode, request.h3DurationSeconds ?? 5, preset)
+        );
   const workflow: Record<string, PromptNode> = {
     "vision-llm": {
       class_type: "VisionLLMNode",

@@ -117,11 +117,15 @@ export function buildEnvironmentScanDiagnostics(
       selectedPythonVersion: versionLabel(selectedPython?.version ?? ""),
       selectedPythonSource: selectedPython?.source ?? "unknown",
       torchVersion: versionLabel(scan.attentionAcceleration.torchVersion),
+      torchvisionVersion: versionLabel(scan.attentionAcceleration.torchvisionVersion ?? ""),
+      torchaudioVersion: versionLabel(scan.attentionAcceleration.torchaudioVersion ?? ""),
       cudaVersion: versionLabel(scan.attentionAcceleration.cudaVersion),
       sageAttentionVersion: versionLabel(
         scan.attentionAcceleration.sageAttentionVersion,
         "not-installed"
       ),
+      sageNativeReady: scan.attentionAcceleration.sageNativeReady ?? false,
+      sageNativeError: scan.attentionAcceleration.sageNativeError ?? "",
       tritonVersion: versionLabel(scan.attentionAcceleration.tritonVersion, "not-installed"),
       comfyKitchenVersion: versionLabel(
         scan.attentionAcceleration.comfyKitchenVersion ?? "",

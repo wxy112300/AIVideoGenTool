@@ -59,7 +59,7 @@ export function mountCreatePromptController(options) {
         options.patchDraft(promptPatchForDraft(draft, versions, nextActivePromptVersion));
         options.syncPromptEnqueueUi(promptInput.value);
         options.updateH3PromptCheck(promptInput.value, Boolean(draft.endImagePath), h3PromptModeForDraft(draft), draft.h3ReferenceSlots.some((slot) => slot.mediaType === "video"));
-        updatePromptWordCounter(promptInput.value, isMiniMaxH3Model(draft.modelId) ? h3PromptModeForDraft(draft) : undefined, draft.duration, promptUi());
+        updatePromptWordCounter(promptInput.value, isMiniMaxH3Model(draft.modelId) ? h3PromptModeForDraft(draft) : undefined, draft.duration, promptUi(), isMiniMaxH3Model(draft.modelId) ? h3PromptPresetForMode(h3PromptModeForDraft(draft), options.getH3PromptPreset()) : undefined);
     }, { signal });
     if (promptInput) {
         resizePromptInput(promptInput);
@@ -94,7 +94,7 @@ export function mountCreatePromptController(options) {
         focusPromptInput();
     }, { signal });
     const initialDraft = getDraft();
-    updatePromptWordCounter(promptInput?.value ?? "", initialDraft && isMiniMaxH3Model(initialDraft.modelId) ? h3PromptModeForDraft(initialDraft) : undefined, initialDraft?.duration ?? 0, promptUi());
+    updatePromptWordCounter(promptInput?.value ?? "", initialDraft && isMiniMaxH3Model(initialDraft.modelId) ? h3PromptModeForDraft(initialDraft) : undefined, initialDraft?.duration ?? 0, promptUi(), initialDraft && isMiniMaxH3Model(initialDraft.modelId) ? h3PromptPresetForMode(h3PromptModeForDraft(initialDraft), options.getH3PromptPreset()) : undefined);
     root.querySelector("#clear-prompt")?.addEventListener("click", (event) => {
         event.stopImmediatePropagation();
         const draft = getDraft();

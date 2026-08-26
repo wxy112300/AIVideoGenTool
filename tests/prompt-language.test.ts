@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultPrompt } from "../src/core/defaults";
 import { defaultH3PromptPresets } from "../src/core/h3-prompt-presets";
+import { h3PromptPackFor } from "../src/core/prompts/h3";
 import { createDefaultQwenImagePromptPresets } from "../src/core/qwen-image-prompt";
 import { promptSnippets } from "../src/core/prompt-suggestions";
 import { renderImageEditPromptInstructionOptions } from "../src/renderer/pages/create/fragments";
@@ -30,5 +31,12 @@ describe("model-facing prompt language", () => {
     const values = [...markup.matchAll(/<option value="([^"]*)"/gu)].map((match) => match[1] ?? "");
     expect(values.length).toBeGreaterThan(1);
     expect(values.every((value) => !cjkPattern.test(value))).toBe(true);
+  });
+
+  it("localizes the detailed cinematic preset without changing its model-facing text", () => {
+    expect(h3PromptPackFor("zh-CN").presetLabels["detailed-cinematic"]).toBe("影视细节扩写");
+    expect(h3PromptPackFor("zh-TW").presetLabels["detailed-cinematic"]).toBe("影視細節擴寫");
+    expect(h3PromptPackFor("en-US").presetLabels["detailed-cinematic"]).toBe("Detailed cinematic expansion");
+    expect(h3PromptPackFor("zh-CN").defaultPresets["detailed-cinematic"]).not.toMatch(cjkPattern);
   });
 });

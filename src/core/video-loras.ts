@@ -1,6 +1,10 @@
 import type { ModelScanProfile, UiLocale, VideoLoraSelection } from "../types.js";
 import {
+  H3_CKPT850_LORA_FILENAME,
+  H3_CKPT850_LORA_ID,
   H3_FL2VA_MODEL_ID,
+  H3_SLA_TURBO_LORA_FILENAME,
+  H3_SLA_TURBO_LORA_ID,
   H3_CAMERA_MOTION_LORA_FILENAME,
   H3_CAMERA_MOTION_LORA_ID,
   H3_AFTER_MIDNIGHT_LORA_FILENAME,
@@ -30,7 +34,11 @@ import type {
 import { loraLocaleFor, loraRuleText } from "./catalog/loras/locales.js";
 
 export {
+  H3_CKPT850_LORA_FILENAME,
+  H3_CKPT850_LORA_ID,
   H3_FL2VA_MODEL_ID,
+  H3_SLA_TURBO_LORA_FILENAME,
+  H3_SLA_TURBO_LORA_ID,
   H3_CAMERA_MOTION_LORA_FILENAME,
   H3_CAMERA_MOTION_LORA_ID,
   H3_AFTER_MIDNIGHT_LORA_FILENAME,
@@ -81,12 +89,18 @@ export interface BuiltinVideoLora extends VideoLoraSelection {
   rules: VideoLoraRules;
 }
 
-const allBuiltinVideoLoras: readonly BuiltinVideoLora[] = VIDEO_LORA_DEFINITIONS.map((definition) => ({
+const allBuiltinVideoLoras: readonly BuiltinVideoLora[] = [...VIDEO_LORA_DEFINITIONS]
+  .sort((left, right) => {
+    const leftGroup = left.purpose === "performance" ? 0 : 1;
+    const rightGroup = right.purpose === "performance" ? 0 : 1;
+    return leftGroup - rightGroup || right.catalogOrder - left.catalogOrder;
+  })
+  .map((definition) => ({
   ...videoLoraSelection(definition),
   ...(definition.retired ? { retired: true } : {}),
   guide: { ...loraLocaleFor(definition.id)?.guide! },
   rules: definition.rules
-}));
+  }));
 
 export const BUILTIN_VIDEO_LORAS: readonly BuiltinVideoLora[] = allBuiltinVideoLoras
   .filter((lora) => lora.retired !== true);
@@ -98,6 +112,8 @@ function requiredBuiltinVideoLora(id: string): BuiltinVideoLora {
 }
 
 export const H3_TURBO_LORA = requiredBuiltinVideoLora(H3_TURBO_LORA_ID);
+export const H3_CKPT850_LORA = requiredBuiltinVideoLora(H3_CKPT850_LORA_ID);
+export const H3_SLA_TURBO_LORA = requiredBuiltinVideoLora(H3_SLA_TURBO_LORA_ID);
 export const H3_CAMERA_MOTION_LORA = requiredBuiltinVideoLora(H3_CAMERA_MOTION_LORA_ID);
 export const H3_TURBO_V4_LORA = requiredBuiltinVideoLora(H3_TURBO_V4_LORA_ID);
 export const H3_TURBO_8STEP_V1_LORA = requiredBuiltinVideoLora(H3_TURBO_8STEP_V1_LORA_ID);
@@ -115,6 +131,10 @@ const legacyTurboLoraIdSet = new Set<string>([
 
 export function isH3TurboLoraId(id: string): boolean {
   return legacyTurboLoraIdSet.has(id);
+}
+
+export function isH3SlaTurboLoraId(id: string): boolean {
+  return id === H3_SLA_TURBO_LORA_ID;
 }
 
 export function isH3TurboFourStepV11LoraId(id: string): boolean {
@@ -249,6 +269,21 @@ export function videoLoraConfigurationIssues(context: {
     });
   });
 
+  const selectedTurboLoras = context.videoLoras.filter((lora) =>
+    isH3TurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, context.modelId)
+  );
+  for (let index = 1; index < selectedTurboLoras.length; index += 1) {
+    const previous = selectedTurboLoras[index - 1]!;
+    const current = selectedTurboLoras[index]!;
+    const pair = [previous.id, current.id].sort();
+    push({
+      code: `combination:${pair.join(":")}`,
+      severity: "error",
+      loraIds: pair,
+      message: loraRuleText(current.id, "turboVariant", context.locale)
+    });
+  }
+
   for (let index = 1; index < context.videoLoras.length; index += 1) {
     const previous = videoLoraDefinition(context.videoLoras[index - 1]!.id);
     const current = videoLoraDefinition(context.videoLoras[index]!.id);
@@ -281,6 +316,29 @@ export function reorderVideoLoras(
   reordered[currentIndex] = target;
   reordered[targetIndex] = current;
   return reordered;
+}
+
+/** Keep the draft from holding more than one Turbo variant at a time. */
+export function videoLorasAfterAdding(
+  loras: readonly VideoLoraSelection[],
+  addition: VideoLoraSelection
+): VideoLoraSelection[] {
+  const turboIndex = loras.findIndex((lora) => isH3TurboLoraId(lora.id));
+  const retained = isH3TurboLoraId(addition.id)
+    ? loras.filter((lora) => !isH3TurboLoraId(lora.id))
+    : [...loras];
+  const next = [...retained];
+  if (isH3TurboLoraId(addition.id) && turboIndex >= 0) {
+    next.splice(Math.min(turboIndex, next.length), 0, addition);
+  } else {
+    next.push(addition);
+  }
+  return next.map((lora) => ({
+    ...lora,
+    compatibleModelIds: [...lora.compatibleModelIds],
+    compatibleInputModes: [...lora.compatibleInputModes],
+    ...(lora.promptPrefixes ? { promptPrefixes: [...lora.promptPrefixes] } : {})
+  }));
 }
 
 export function baseVideoModelId(modelId: string): string {

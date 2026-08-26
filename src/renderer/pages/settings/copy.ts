@@ -496,9 +496,9 @@ const zhCN: SettingsCopyCatalog = {
   "accel.repair": "一键升级/修复 H3 环境",
   "accel.install": "一键升级/安装 H3 环境",
   "accel.stopComfy": "升级会临时停止 ComfyUI，并保留升级前包快照",
-  "accel.restartComfy": "程序会升级匹配的 PyTorch cu130、comfy-kitchen、Triton 与 SageAttention，自检后恢复此前运行的服务。",
+  "accel.restartComfy": "程序会把低于最低要求的运行时修复到稳定的 PyTorch 2.10/cu130；满足要求的更高版本会保留，并只补齐有精确 wheel 的组件。自检后恢复此前运行的服务。",
   "accel.desktopTorchTitle": "检测到 ComfyUI Desktop",
-  "accel.desktopTorchHint": "建议先在 Desktop 中将 PyTorch 切换为 2.9.1+cu130，再返回重新扫描。本修复器会直接修改同一个 .venv，Desktop 可能将其标记为外部安装。",
+  "accel.desktopTorchHint": "最低支持 PyTorch 2.10/cu130，2.10.0 是稳定回退。更高版本不会被静默降级，但 SageAttention 仍要求 Comfy 官方发布精确匹配的 wheel；没有 wheel 时请使用 PyTorch Attention。",
   "accel.preparing": "正在准备 H3 环境升级…",
   "accel.progress": "H3 环境升级进度",
   "accel.log": "环境安装日志",
@@ -732,9 +732,9 @@ const zhTW: SettingsCopyCatalog = {
   "accel.repair": "一鍵升級/修復 H3 環境",
   "accel.install": "一鍵升級/安裝 H3 環境",
   "accel.stopComfy": "升級會暫時停止 ComfyUI，並保留升級前套件快照",
-  "accel.restartComfy": "程式會升級相符的 PyTorch cu130、comfy-kitchen、Triton 與 SageAttention，自我檢查後恢復先前執行的服務。",
+  "accel.restartComfy": "程式會將低於最低要求的執行環境修復到穩定的 PyTorch 2.10/cu130；符合要求的較新版本會保留，並只補齊有精確 wheel 的元件。自我檢查後恢復先前執行的服務。",
   "accel.desktopTorchTitle": "偵測到 ComfyUI Desktop",
-  "accel.desktopTorchHint": "建議先在 Desktop 中將 PyTorch 切換為 2.9.1+cu130，再返回重新掃描。本修復器會直接修改同一個 .venv，Desktop 可能將其標記為外部安裝。",
+  "accel.desktopTorchHint": "最低支援 PyTorch 2.10/cu130，2.10.0 是穩定回退。較新版本不會被靜默降級，但 SageAttention 仍要求 Comfy 官方發布精確相符的 wheel；沒有 wheel 時請使用 PyTorch Attention。",
   "accel.preparing": "正在準備 H3 環境升級…",
   "accel.progress": "H3 環境升級進度",
   "accel.log": "環境安裝記錄",
@@ -989,9 +989,9 @@ const enUS: SettingsCopyCatalog = {
   "accel.repair": "Upgrade / repair H3 environment",
   "accel.install": "Upgrade / install H3 environment",
   "accel.stopComfy": "The upgrade temporarily stops ComfyUI and keeps a pre-upgrade package snapshot",
-  "accel.restartComfy": "The app upgrades matching PyTorch cu130, comfy-kitchen, Triton, and SageAttention, self-checks them, then restores the previously running service.",
+  "accel.restartComfy": "The app repairs runtimes below the minimum to stable PyTorch 2.10/cu130. Newer valid runtimes are preserved, and only components with exact wheels are completed before self-checking and restoring the service.",
   "accel.desktopTorchTitle": "ComfyUI Desktop detected",
-  "accel.desktopTorchHint": "First switch PyTorch to 2.9.1+cu130 in Desktop, then return and scan again. This repair tool modifies the same .venv directly, so Desktop may label it as an external installation.",
+  "accel.desktopTorchHint": "PyTorch 2.10/cu130 is the minimum and 2.10.0 is the stable fallback. Newer versions are not silently downgraded, but SageAttention still requires an exact Comfy wheel; use PyTorch Attention when none is published.",
   "accel.preparing": "Preparing the H3 environment upgrade…",
   "accel.progress": "H3 environment upgrade progress",
   "accel.log": "Environment installation log",
@@ -1009,6 +1009,78 @@ const enUS: SettingsCopyCatalog = {
   "shared.listSeparator": ", ",
   "shared.labelSeparator": ": "
 };
+
+const h3AutoPromptSeedDescriptions: Record<UiLocale, Record<string, string>> = {
+  "zh-CN": {
+    "visible-affordance": "利用画面中已经出现且可操作的物体设计自然动作，例如打开、旋转、触碰、拿起或展开；不要凭空添加物体。",
+    "gaze-and-intent": "围绕注意力变化设计动作：可见人物先注意到画面中的目标，再转移视线、调整姿态并做出小幅反应；没有人物时改用主体或环境特征表达。",
+    "camera-discovery": "用有动机的推、拉、摇、移或跟拍，让镜头逐步发现画面中已有的关系或细节，最后停在更清晰的构图上。",
+    "environmental-cascade": "从画面支持的小环境变化开始，引发衣物、头发、树叶、倒影、尘雾、蒸汽、水、光线或阴影等有依据的连锁运动；不要凭空添加天气或特效。",
+    "cause-and-effect": "设计一个完整的因果动作：准备、发力或接触、可见反应，再自然收尾；保持主体形体、身份和运动方向连续。",
+    "playful-surprise": "基于画面中已有元素加入一个意外但合理、无害的瞬间，例如好奇回望、小插曲、擦肩或由动作触发的揭示；不要编造完整故事。",
+    "documentary-moment": "把画面当作真实片段的开头，用克制的呼吸、眨眼、重心、微动作和轻微手持或静止镜头，呈现被自然捕捉的瞬间。",
+    "material-response": "突出可见材质对运动的反应，例如褶皱、涟漪、反光、金属震动、纸张、皮肤或头发变化；保持材质和光线方向符合参考图。",
+    "spatial-journey": "让可见主体在现有空间中完成一段短移动，如靠近、经过、转身、倾斜或换位；尊重深度、障碍、尺度和原有几何，最后稳定收尾。",
+    "rhythmic-beats": "用期待、动作、反应和停顿组织整段时长；重复动作时每次要有变化，结尾要自然解决而不是戛然而止。",
+    "contrast-and-settle": "利用静到动、暗到亮、闭到开、远到近或紧张到释放等可见对比推动变化，只使用参考图能支持的内容，并让结尾稳定下来。",
+    "subject-pair": "当画面有多个主体时，设计注意力、距离、手势或物体使用上的交流；只有一个主体时，让它与可见环境互动，不能新增参与者。",
+    "character-interaction": "把可见角色当作彼此独立的行动者，设计清晰的注意、回应、距离、手势和轮流动作；根据画面中能确认的关系互动，不新增角色，并保持每个人的身份、位置和主动性。",
+    "mini-narrative": "在不改变场景的前提下组织一个极短的起承转合：先呈现状态，再出现动机或触发，展示动作与反应，最后落在连贯的新状态。",
+    "contextual-action-dialogue": "根据可见角色的身份线索和所处场景，自动组织一段合理动作；当情境支持说话时加入简短对白，并让台词使用角色自然的语言（可以不同于提示词的描述语言）。标明说话者、保持台词简短连贯，不改变用户已有台词，也不凭空添加角色或事实。",
+    "mild-adult-atmosphere": "仅对画面中明确为成年人的角色加入轻度性感或暧昧氛围，例如暧昧眼神、亲密但自愿的距离、撩拨手势、自信姿态或符合参考图的服装与动作；保持含蓄、非露骨，不添加裸露、明确性行为、胁迫或未成年人。如果年龄或同意关系不明确，改为非性化表达。",
+    "hollywood-cinematic": "把参考画面按好莱坞商业电影的高制作水准发展：先找出强视觉钩子，再用有意的布光、镜头语言、调度和场面设计组织一段连贯动作；运镜要有叙事动机，并最终落在构图明确的画面。保留可见主体和场景，不凭空添加昂贵场景、道具、奇观或剧情事实，也避免空泛的预告片套话。",
+    "stillness-break": "先保持参考图般的静止，再用眨眼、呼吸、转头、轻颤、阴影变化、物体反应或镜头漂移打破静止，随后回到可控的停顿。"
+  },
+  "zh-TW": {
+    "visible-affordance": "利用畫面中已經出現且可操作的物體設計自然動作，例如開啟、旋轉、觸碰、拿起或展開；不要憑空新增物體。",
+    "gaze-and-intent": "圍繞注意力變化設計動作：可見人物先注意到畫面中的目標，再轉移視線、調整姿勢並做出小幅反應；沒有人物時改用主體或環境特徵表達。",
+    "camera-discovery": "用有動機的推、拉、搖、移或跟拍，讓鏡頭逐步發現畫面中已有的關係或細節，最後停在更清晰的構圖上。",
+    "environmental-cascade": "從畫面支持的小環境變化開始，引發衣物、頭髮、樹葉、倒影、塵霧、蒸氣、水、光線或陰影等有依據的連鎖運動；不要憑空新增天氣或特效。",
+    "cause-and-effect": "設計一個完整的因果動作：準備、發力或接觸、可見反應，再自然收尾；保持主體形體、身分和運動方向連續。",
+    "playful-surprise": "根據畫面中已有元素加入一個意外但合理、無害的瞬間，例如好奇回望、小插曲、擦身而過或由動作觸發的揭示；不要編造完整故事。",
+    "documentary-moment": "把畫面當作真實片段的開頭，用克制的呼吸、眨眼、重心、微動作和輕微手持或固定鏡頭，呈現被自然捕捉的瞬間。",
+    "material-response": "突出可見材質對運動的反應，例如褶皺、漣漪、反光、金屬震動、紙張、皮膚或頭髮變化；保持材質和光線方向符合參考圖。",
+    "spatial-journey": "讓可見主體在現有空間中完成一段短移動，如靠近、經過、轉身、傾斜或換位；尊重深度、障礙、尺度和原有幾何，最後穩定收尾。",
+    "rhythmic-beats": "用期待、動作、反應和停頓組織整段時長；重複動作時每次都要有變化，結尾要自然解決而不是戛然而止。",
+    "contrast-and-settle": "利用靜到動、暗到亮、閉到開、遠到近或緊張到釋放等可見對比推動變化，只使用參考圖能支持的內容，並讓結尾穩定下來。",
+    "subject-pair": "當畫面有多個主體時，設計注意力、距離、手勢或物體使用上的交流；只有一個主體時，讓它與可見環境互動，不能新增參與者。",
+    "character-interaction": "把可見角色視為彼此獨立的行動者，設計清楚的注意、回應、距離、手勢和輪流動作；根據畫面中能確認的關係互動，不新增角色，並保持每個人的身分、位置和主動性。",
+    "mini-narrative": "在不改變場景的前提下組織一個極短的起承轉合：先呈現狀態，再出現動機或觸發，展示動作與反應，最後落在連貫的新狀態。",
+    "contextual-action-dialogue": "根據可見角色的身分線索和所在場景，自動組織一段合理動作；當情境支持說話時加入簡短對白，並讓台詞使用角色自然的語言（可以不同於提示詞的描述語言）。標明說話者、保持台詞簡短連貫，不改變使用者已有台詞，也不憑空新增角色或事實。",
+    "mild-adult-atmosphere": "僅對畫面中明確為成年人的角色加入輕度性感或曖昧氛圍，例如曖昧眼神、親密但自願的距離、撩撥手勢、自信姿態或符合參考圖的服裝與動作；保持含蓄、非露骨，不加入裸露、明確性行為、脅迫或未成年人。如果年齡或同意關係不明確，改為非性化表達。",
+    "hollywood-cinematic": "把參考畫面按好萊塢商業電影的高製作水準發展：先找出強烈的視覺鉤子，再用有意的布光、鏡頭語言、調度和場面設計組織一段連貫動作；運鏡要有敘事動機，並最終落在構圖明確的畫面。保留可見主體和場景，不憑空新增昂貴場景、道具、奇觀或劇情事實，也避免空泛的預告片套話。",
+    "stillness-break": "先保持參考圖般的靜止，再用眨眼、呼吸、轉頭、輕顫、陰影變化、物體反應或鏡頭漂移打破靜止，接著回到可控制的停頓。"
+  },
+  "en-US": {
+    "visible-affordance": "Use a visible, actionable object already in the frame to motivate a natural action—opening, turning, touching, lifting, catching, or unfolding—without inventing a prop.",
+    "gaze-and-intent": "Build the motion around a readable shift of attention: a visible person notices something already in frame, adjusts gaze or posture, and responds; without a person, apply the idea to the dominant object or environmental feature.",
+    "camera-discovery": "Use a motivated push, pull, pan, tilt, arc, or track to reveal a relationship or detail already latent in the composition, then settle in a clearer final frame.",
+    "environmental-cascade": "Start with a small change supported by the image and carry it into grounded secondary motion—fabric, hair, leaves, reflections, dust, steam, water, light, or shadows—without adding unsupported weather or effects.",
+    "cause-and-effect": "Design one complete causal action: preparation, effort or contact, visible reaction, and a natural settle, while preserving the subject’s identity, geometry, and screen direction.",
+    "playful-surprise": "Add one plausible, harmless surprise grounded in what is visible—a curious glance, small interruption, near miss, or movement-triggered reveal—without turning it into an invented story.",
+    "documentary-moment": "Treat the image as the start of an observed real moment, using restrained breathing, blinking, weight shifts, micro-actions, and a quiet handheld or static camera so the scene feels caught rather than staged.",
+    "material-response": "Make a visible material’s response to motion the focus—folds, ripples, reflections, vibration, paper, skin, or hair—while keeping the material and lighting faithful to the reference.",
+    "spatial-journey": "Give a visible subject a short journey through the existing space—approach, pass, turn, lean, or shift position—respecting depth, obstacles, scale, and geometry, then end in a stable readable pose.",
+    "rhythmic-beats": "Shape the duration as anticipation, action, reaction, and hold; if motion repeats, each beat should change something, and the ending should resolve instead of stopping mid-action.",
+    "contrast-and-settle": "Use a restrained visible contrast—stillness to motion, shadow to light, closed to open, distant to near, or tension to release—only where the reference supports it, with a physically settled ending.",
+    "subject-pair": "If multiple subjects are visible, design a readable exchange of attention, spacing, gesture, or object use; with one subject, make it interact with the visible environment without adding a participant.",
+    "character-interaction": "Treat visible characters as distinct agents and design a readable exchange of attention, response, spacing, gesture, and turn-taking. Base the relationship on what the image supports, add no character, and preserve each person’s identity, position, and agency.",
+    "mini-narrative": "Create one tiny visual story without changing the setting: establish the state, introduce a grounded trigger or intention, show action and reaction, and finish on a coherent changed state.",
+    "contextual-action-dialogue": "Use the visible characters, their apparent roles, and the setting to choose a plausible short action beat. When the situation supports speech, add brief dialogue in each character’s natural language, which may differ from the descriptive prompt language. Keep speaker identity and turn-taking clear, preserve user-supplied lines exactly, follow the required H3 dialogue conventions, and never invent unsupported people or facts.",
+    "mild-adult-atmosphere": "For clearly adult subjects only, add a restrained sensual or suggestive tone grounded in the reference: flirtatious eye contact, intimate but consensual proximity, a teasing gesture, confident posing, or suggestive wardrobe or movement. Keep it tasteful and non-explicit; do not introduce nudity, explicit sexual acts, coercion, or minors. If age or consent is unclear, keep the direction non-sexual and follow visible evidence.",
+    "hollywood-cinematic": "Develop the reference as a polished, Hollywood-grade feature-film beat: find a strong visual hook, then use intentional lighting, lensing, blocking, production design, and motivated camera language to build one coherent action. Escalate with purposeful push, pull, orbit, tracking, or reveal moves and land on a composed final frame. Preserve what is visible; do not invent expensive locations, props, spectacle, or plot facts, and avoid generic trailer prose.",
+    "stillness-break": "Begin with a convincing hold on the reference, then break stillness with one precise cue—blink, breath, turn, tremor, shadow shift, object response, or camera drift—before returning to a controlled hold."
+  }
+};
+
+export function settingsH3AutoPromptSeedDescription(
+  locale: UiLocale | undefined,
+  seedId: string,
+  fallback: string
+): string {
+  const activeLocale = locale ?? "zh-CN";
+  return h3AutoPromptSeedDescriptions[activeLocale]?.[seedId] ?? fallback;
+}
 
 const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
   "zh-CN": {

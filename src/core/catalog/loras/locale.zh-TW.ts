@@ -2,6 +2,42 @@ import type { CatalogLoraLocale } from "./locales.js";
 
 export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
 
+  "minimax-h3-turbo-ckpt850-ema": {
+    guide: {
+      summary: "MiniMax H3 Turbo ckpt850 EMA 舊 Turbo 訓練線；模型卡支援 4 步以上，主要作為 4 步大動作備選。",
+      recommendedStrength: "預設 1.0；4 步大動作可優先測試，普通品質優先請使用 v4 的 6–8 步路徑。",
+      effects: "用較少取樣步驟縮短 H3 FL2VA 生成時間；4 步通常更利於大動作響應，但可能出現過銳、塑膠感或顆粒，運動與音訊需對照。",
+      stacking: "效能 LoRA 放在人物、質量或內容 LoRA 前面；一次只保留一個 Turbo 變體。",
+      compatibility: "僅目前已接入的 MiniMax H3 FL2VA 圖生影片路徑；使用現有原生 ER-SDE、Beta、Sigma Shift 取樣鏈。",
+      source: "amirjan122222 / MiniMax-H3-Turbo-Lora · ckpt850 EMA"
+    },
+    rules: {
+      incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+      turboVariant: "ckpt850 不可與其他 Turbo 變體同時使用；請保留單獨對照。",
+      turboSpectrum: "ckpt850 可與 Spectrum 共存，但請先保留關閉 Spectrum 的同 Seed 基準。",
+      orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
+    }
+  },
+
+  "minimax-h3-turbo-sla-4step": {
+    guide: {
+      summary: "官方 MiniMax H3 Turbo-SLA 4 步 768p 稀疏注意力 LoRA；需要搭配 H3 SLA Attention 節點。",
+      recommendedStrength: "固定 1.0；建立頁會自動切換 4 步、Euler + Beta、video shift 6 與 audio shift 3。",
+      effects: "透過約 85% 區塊稀疏注意力減少注意力計算，目標是降低 4 步 Turbo 的取樣時間；未啟用 SLA 節點時不會獲得稀疏加速。",
+      stacking: "效能 LoRA 放在人物、質量或內容 LoRA 前面；Turbo-SLA 與其他 Turbo 變體互斥，不能單獨疊加 SLA 節點或 LoRA。",
+      compatibility: "僅目前已接入的 MiniMax H3 FL2VA 圖生影片 768p 路徑；需要在設定 → 節點與工作流程安裝 H3 SLA Attention 節點。",
+      source: "LightX2V / Minimax-h3-Turbo-SLA · ComfyUI BF16 conversion"
+    },
+    rules: {
+      incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+      turboVariant: "Turbo-SLA 不可與其他 Turbo 變體同時使用；請保留單獨對照。",
+      slaNodeMissing: "Turbo-SLA 需要 H3 SLA Attention 節點；請先在設定 → 節點與工作流程安裝。",
+      slaNodeRestart: "H3 SLA Attention 已安裝但尚未被目前 ComfyUI 載入；請重啟 ComfyUI 後重新掃描。",
+      turboSpectrum: "Turbo-SLA 技術上可與 Spectrum 共存，但請先保留關閉 Spectrum 的同 Seed 基準。",
+      orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"
+    }
+  },
+
   "minimax-h3-lightx2v-turbo-4step-768p-v1.1": {
     guide: {
       summary: "官方 LightX2V v1.1 FL2VA Turbo LoRA，針對 768p 四步路徑更新。",
@@ -51,9 +87,9 @@ export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
 
   "minimax-h3-lightx2v-turbo-8step-v1": {
     guide: {
-      summary: "官方 LightX2V v1.0 FL2VA Turbo LoRA，把標準 H3 路徑壓縮到 8 步。",
-      recommendedStrength: "預設 0.75；建議 0.65–0.85。優先用於穩定的 480p/576p 測試。",
-      effects: "明顯縮短取樣時間，但極低步數或過高強度可能減少運動、細節與音訊穩定性。",
+      summary: "官方 LightX2V v1.0 FL2VA 8 步 Turbo 路線；目前沒有對應的 8-step v1.1，保留作品質與音訊穩定性備選。",
+      recommendedStrength: "預設 0.75；建議 8 步、0.65–0.85。綜合首選優先嘗試 v4。",
+      effects: "相比 4 步路線更保守地保留運動、細節與音訊穩定性，但版本較舊、速度較慢。",
       stacking: "效能 LoRA 放在內容或人物 LoRA 前面；不要與其他 Turbo LoRA 同時疊加。",
       compatibility: "僅 MiniMax H3 FL2VA 圖生影片；需要 ER-SDE、Beta 與 Sigma Shift Turbo 工作流。",
       source: "LightX2V / Minimax-h3-Turbo 官方 ComfyUI 權重"

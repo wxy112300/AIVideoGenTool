@@ -163,6 +163,29 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     expect(workflow.preview.inputs.source).toEqual(["vision-llm", 0]);
   });
 
+  it("caps detailed cinematic output at the VisionLLM schema maximum", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "qwen/qwen3.6-27b-uncensored-q4";
+    const workflow = buildMultimodalPromptWorkflow(
+      {
+        prompt: "",
+        modelId: "minimax_h3_fl2va",
+        mode: "h3-vision",
+        promptStrategy: "reference-auto",
+        autoPromptSeedId: "contextual-action-dialogue",
+        autoPromptVariationId: "variation-7",
+        h3PromptMode: "I2VA",
+        h3PromptPreset: "detailed-cinematic",
+        h3DurationSeconds: 15,
+        imagePaths: ["reference.png"]
+      },
+      ["studio-input-reference.png"],
+      settings
+    );
+
+    expect(workflow["vision-llm"]?.inputs.max_tokens).toBe(2048);
+  });
+
   it("passes a concrete Chinese target language for automatic Chinese input", () => {
     const settings = createDefaultState().settings;
     settings.promptModelId = "qwen/qwen3.8-27b-uncensored-q4";

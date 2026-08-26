@@ -1,4 +1,4 @@
-import type { H3PromptMode } from "../types.js";
+import type { H3PromptMode, H3PromptPreset } from "../types.js";
 
 export function countPromptWords(text: string): number {
   const normalized = text.trim();
@@ -24,7 +24,8 @@ export interface H3PromptWordRange {
  */
 export function h3PromptWordRange(
   mode: H3PromptMode,
-  durationSeconds = 5
+  durationSeconds = 5,
+  preset: H3PromptPreset = "official-storyboard"
 ): H3PromptWordRange {
   const safeDuration = Number.isFinite(durationSeconds) && durationSeconds > 0
     ? durationSeconds
@@ -32,6 +33,8 @@ export function h3PromptWordRange(
   const minimum = mode === "R2V"
     ? Math.max(350, Math.round(170 + safeDuration * 36))
     : Math.max(250, Math.round(100 + safeDuration * 30));
-  const maximum = Math.max(500, Math.round(300 + safeDuration * 40));
+  const maximum = preset === "detailed-cinematic"
+    ? Math.max(900, Math.round(560 + safeDuration * 68))
+    : Math.max(500, Math.round(300 + safeDuration * 40));
   return { min: minimum, max: maximum };
 }

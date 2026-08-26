@@ -3,7 +3,7 @@ import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { persistVideoHistoryResult } from "../electron/queue-history";
 import { QueueWorkerController } from "../electron/queue-worker";
-import { queueTaskInput, renderQueueTaskCard } from "../src/renderer/pages/queue/card";
+import { queueTaskInput, queueTaskInputUrl, renderQueueTaskCard } from "../src/renderer/pages/queue/card";
 import { queueLayoutSignature } from "../src/renderer/pages/queue/helpers";
 import { queueComfyUiStatus, queueOperationStatus } from "../src/renderer/pages/queue/live-status";
 import { revealQueueInputVideo } from "../src/renderer/pages/queue/input-previews";
@@ -238,6 +238,77 @@ describe("H3 T2VA queue presentation", () => {
 
     expect(task.workflowPath).toBe("C:/ComfyUI/workflows/minimax_h3_t2va_api.json");
     expect(queueTaskInput(task)).toEqual({ kind: "placeholder" });
+  });
+});
+
+describe("H3 R2V queue presentation", () => {
+  it("uses the first populated reference slot as the queue input preview", () => {
+    const state = createDefaultState();
+    const task = queueTaskFromDraft({
+      ...createDefaultDraft(),
+      modelId: "minimax_h3_ref2va",
+      startImagePath: "",
+      endImagePath: "",
+      h3ReferenceSlots: [{
+        id: "picture-ref",
+        mediaType: "image" as const,
+        mediaPath: "C:/input/reference.png",
+        role: "subject" as const,
+        note: ""
+      }]
+    }, state, {
+      now: () => new Date("2026-08-12T12:00:00.000Z"),
+      id: () => "r2v-image-task",
+      random: () => 0.5
+    });
+
+    expect(queueTaskInput(task)).toEqual({
+      kind: "image",
+      path: "C:/input/reference.png",
+      referenceIndex: 0
+    });
+
+    const markup = renderQueueTaskCard(task, 1, {
+      t: (key) => key,
+      taskPreviews: {},
+      queueRunning: false,
+      queueActionBusy: null,
+      icon: () => "",
+      escapeHtml: (value) => String(value),
+      modelName: (id) => id,
+      frameRateSummary: () => "24 FPS",
+      queueStageElapsedText: () => "—",
+      queueTaskRemainingSeconds: () => null,
+      queueEstimateText: () => "—",
+      elapsedText: () => "—"
+    });
+
+    expect(markup).toContain('class="task-input-preview task-input-preview-image"');
+    expect(markup).toContain('data-queue-input-image="r2v-image-task"');
+  });
+
+  it("routes a video reference preview through the queue media protocol", () => {
+    const state = createDefaultState();
+    const task = queueTaskFromDraft({
+      ...createDefaultDraft(),
+      modelId: "minimax_h3_ref2va",
+      startImagePath: "",
+      endImagePath: "",
+      h3ReferenceSlots: [{
+        id: "video-ref",
+        mediaType: "video" as const,
+        mediaPath: "C:/input/reference.mp4",
+        role: "motion" as const,
+        note: ""
+      }]
+    }, state, {
+      now: () => new Date("2026-08-12T12:00:00.000Z"),
+      id: () => "r2v-video-task",
+      random: () => 0.5
+    });
+
+    expect(queueTaskInput(task)).toMatchObject({ kind: "video", path: "C:/input/reference.mp4", referenceIndex: 0 });
+    expect(queueTaskInputUrl(task)).toBe("studio-media://queue/r2v-video-task?reference=0");
   });
 });
 

@@ -175,7 +175,7 @@ export function insertPromptSnippet(promptInput, snippet) {
 export function imageFileIsSupported(file) {
     return file.type.startsWith("image/") || /\.(png|jpe?g|webp|bmp)$/i.test(file.name);
 }
-export function updatePromptWordCounter(promptText, mode, durationSeconds, ui = h3PromptPackFor("zh-CN").ui) {
+export function updatePromptWordCounter(promptText, mode, durationSeconds, ui = h3PromptPackFor("zh-CN").ui, preset = "official-storyboard") {
     const counter = document.querySelector("#prompt-word-counter");
     if (!counter)
         return;
@@ -185,7 +185,7 @@ export function updatePromptWordCounter(promptText, mode, durationSeconds, ui = 
         counter.textContent = ui.t("wordCount", { count });
         return;
     }
-    const range = h3PromptWordRange(mode, durationSeconds);
+    const range = h3PromptWordRange(mode, durationSeconds, preset);
     counter.className = "prompt-word-counter";
     counter.textContent = ui.t("wordCountGuidance", {
         count,

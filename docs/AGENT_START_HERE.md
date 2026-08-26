@@ -10,6 +10,7 @@ This guide is the shortest reliable route into Local Video Studio. Read the cont
 | History 大数据量性能、媒体延迟加载、滚动恢复 | `UX_CONTRACT.md`, `HISTORY_PERFORMANCE_OPTIMIZATION_PLAN.md` | `src/renderer/pages/history/`, `src/renderer/render-coordinator.ts` |
 | Layout, interaction, focus, media states | `UX_CONTRACT.md` | `src/renderer/`, `src/styles/`, current renderer evidence; prototypes are historical |
 | Model, LoRA, workflow, GPU/memory policy | `WORKFLOW_CONTRACT.md` | `src/core/catalog/`, workflow adapters, `workflows/` |
+| Long video, video Extend, Native AV continuation | `WORKFLOW_CONTRACT.md`, [`LONG_VIDEO_CAPABILITY_ENHANCEMENT_PLAN.md`](LONG_VIDEO_CAPABILITY_ENHANCEMENT_PLAN.md) | `src/core/`, `electron/queue-*`, `electron/services/extension-media.ts`, `workflows/` |
 | ComfyUI discovery, nodes, Python, installation | `DEPENDENCIES_AND_SETUP.md` | `electron/services/environment.ts`, Settings environment controller |
 | Image workspace | `IMAGE_WORKSPACE_IMPLEMENTATION_PLAN.md` | image draft/workflow/history modules |
 

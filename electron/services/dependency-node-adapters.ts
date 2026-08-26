@@ -122,8 +122,22 @@ const llamaCppKvTypeFallback = (indent: string) => [
   `${indent}    GGML_TYPE_Q8_0 = GGMLType.GGML_TYPE_Q8_0`
 ].join("\n");
 
+const llamaCppLogCallbackFallback = (indent: string) => [
+  `${indent}try:`,
+  `${indent}    from llama_cpp import llama_log_callback`,
+  `${indent}except ImportError:`,
+  `${indent}    from llama_cpp import ggml_log_callback as llama_log_callback`
+].join("\n");
+
 export function patchH3PromptWriterLlamaCppCompatibility(source: string): string {
-  return source
+  let patched = source;
+  if (!source.includes("from llama_cpp import ggml_log_callback as llama_log_callback")) {
+    patched = patched.replace(
+      /^(\s*)from llama_cpp import llama_log_callback\r?$/gmu,
+      (_match, indent: string) => llamaCppLogCallbackFallback(indent)
+    );
+  }
+  return patched
     .replace(
       /^(\s*)from llama_cpp\._ggml import GGML_TYPE_F16, GGML_TYPE_Q8_0$/gmu,
       (_match, indent: string) => [
@@ -180,24 +194,125 @@ export function patchH3PromptWriterLlamaCppCompatibility(source: string): string
     );
 }
 
-/**
- * Backport the upstream 0.3.4 non-Thinking H3 output budget increase.
- * Music mode intentionally keeps its separate 1536-token budget.
+export function patchH3PromptWriterGemmaChatHandler(source: string): string {
+  let patched = source;
+  if (!patched.includes("Gemma4ChatHandler")) {
+    patched = patched.replace(
+      /(^[ \t]*)from llama_cpp\.llama_chat_format import MTMDChatHandler\r?\n\r?\n\1self\.chat_handler = MTMDChatHandler\(\r?\n\1    clip_model_path=model_info\["projector"\],\r?\n\1    verbose=False,\r?\n\1    use_gpu=True,\r?\n\1\)/mu,
+      (_match, indent: string) => [
+        `${indent}from llama_cpp.llama_chat_format import Gemma4ChatHandler, MTMDChatHandler`,
+        "",
+        `${indent}if model_info.get("architecture_adapter") == "gemma":`,
+        `${indent}    self.chat_handler = Gemma4ChatHandler(`,
+        `${indent}        clip_model_path=model_info["projector"],`,
+        `${indent}        verbose=False,`,
+        `${indent}        use_gpu=True,`,
+        `${indent}        enable_thinking=False,`,
+        `${indent}    )`,
+        `${indent}else:`,
+        `${indent}    self.chat_handler = MTMDChatHandler(`,
+        `${indent}        clip_model_path=model_info["projector"],`,
+        `${indent}        verbose=False,`,
+        `${indent}        use_gpu=True,`,
+        `${indent}    )`
+      ].join("\n")
+    );
+  }
+  if (!patched.includes("self.chat_handler.enable_thinking =")) {
+    patched = patched.replace(
+      /^(\s*)self\.chat_handler\.verbose = False\r?\n/mu,
+      (_match, indent: string) => [
+        `${indent}self.chat_handler.verbose = False`,
+        `${indent}if model_info.get("architecture_adapter") == "gemma":`,
+        `${indent}    self.chat_handler.enable_thinking = (`,
+        `${indent}        thinking and model_info.get("template_controls", {}).get("enable_thinking") is True`,
+        `${indent}    )`
+      ].join("\n")
+    );
+  }
+  return patched;
+}
+
+export function patchH3PromptWriterBriefLimit(source: string): string {
+  let patched = source.replace(
+    /(^def _validated_generation_context\([\s\S]*?^\s*)if len\(brief\) > 2000:\r?\n(\s*)raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed 2,000 characters\."\)/mu,
+    (_match, prefix: string, indent: string) =>
+      `${prefix}if len(brief) > 20_000:\n${indent}raise AssemblyError("BRIEF_TOO_LONG", "Creative brief cannot exceed 20,000 characters.")`
+  );
+  patched = patched.replace(
+    /(^[ \t]*brief = _required_text\(body, "creative_brief", "Creative brief"\)\r?\n)([ \t]*)if len\(brief\) > 2000:\r?\n([ \t]*)raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed 2,000 characters\."\)/mu,
+    (_match, briefLine: string, checkIndent: string, raiseIndent: string) =>
+      `${briefLine}${checkIndent}if len(brief) > 20_000:\n${raiseIndent}raise AssemblyError("BRIEF_TOO_LONG", "Creative brief cannot exceed 20,000 characters.")`
+  );
+  if (
+    source.includes("def _validated_generation_context") &&
+    /(^def _validated_generation_context[\s\S]*?^\s*)if len\(brief\) > 2000:\r?\n\s*raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed 2,000 characters\."\)/mu.test(patched)
+  ) {
+    throw new Error(
+      "MiniMax H3 Prompt Writer 的 creative brief 校验结构不兼容，已停止修改以避免绕过错误的长度限制。"
+    );
+  }
+  if (
+    source.includes('brief = _required_text(body, "creative_brief", "Creative brief")') &&
+    /brief = _required_text\(body, "creative_brief", "Creative brief"\)[\s\S]*?if len\(brief\) > 2000:\r?\n\s*raise AssemblyError\("BRIEF_TOO_LONG", "Creative brief cannot exceed 2,000 characters\."\)/u.test(patched)
+  ) {
+    throw new Error(
+      "MiniMax H3 Prompt Writer 的 assemble_request creative brief 校验结构不兼容，已停止修改以避免绕过错误的长度限制。"
+    );
+  }
+  return patched;
+}
+
+/** Normalize older Writer releases and earlier app patches to the upstream
+ * 0.4.1 non-Thinking budget. Gemma completion is owned by its native chat
+ * handler; increasing this limit only consumes context when stop tokens fail.
  */
 export function patchH3PromptWriterOutputBudget(source: string): string {
   return source
     .replace(
-      /^(\s*STANDARD_OUTPUT_TOKENS\s*=\s*)1_?536\b/gmu,
+      /^(\s*STANDARD_OUTPUT_TOKENS\s*=\s*)(?:1_?536|2_?048|3_?584|4_?096)\b/gmu,
       (_match, prefix: string) => `${prefix}2_048`
     )
     .replace(
-      /^(\s*(?:MAX_OUTPUT_TOKENS|max_output_tokens)\s*[:=]\s*)1_?536\b/gmu,
+      /^(\s*(?:MAX_OUTPUT_TOKENS|max_output_tokens)\s*[:=]\s*)(?:1_?536|2_?048|3_?584|4_?096)\b/gmu,
       (_match, prefix: string) => `${prefix}2_048`
     )
     .replace(
-      /(\bmax_tokens\s*=\s*)1_?536\b/gu,
+      /(\bmax_tokens\s*=\s*)(?:1_?536|2_?048|3_?584|4_?096)\b/gu,
       (_match, prefix: string) => `${prefix}2_048`
     );
+}
+
+/** Let the writer promote Auto from Standard to Extended when the complete
+ * input/output budget does not fit 16K. Its runtime memory preflight still
+ * rejects profiles that do not fit the currently available VRAM.
+ */
+export function patchH3PromptWriterAutomaticContextLadder(source: string): string {
+  return source.replace(
+    /^(\s*"auto_context_ladder"\s*:\s*)(?:True|False|qwen_context)\s*,/gmu,
+    (_match, prefix: string) => `${prefix}True,`
+  );
+}
+
+export function patchH3PromptWriterBatchSize(source: string): string {
+  return source.replace(
+    /^(\s*"n_batch"\s*:\s*)512\b/gmu,
+    (_match, prefix: string) => `${prefix}256`
+  );
+}
+
+export function patchH3PromptWriterSource(source: string): string {
+  return patchH3PromptWriterAutomaticContextLadder(
+    patchH3PromptWriterOutputBudget(
+      patchH3PromptWriterBatchSize(
+        patchH3PromptWriterBriefLimit(
+          patchH3PromptWriterGemmaChatHandler(
+            patchH3PromptWriterLlamaCppCompatibility(source)
+          )
+        )
+      )
+    )
+  );
 }
 
 export function patchMultimodalPromptContextSize(source: string): string {
@@ -557,6 +672,8 @@ export async function prepareH3PromptWriter(
   }
   const files: Array<{ filename: string; required: boolean; reportMissing?: boolean }> = [
     { filename: backendFilename, required: true },
+    { filename: path.join(targetDirectory, "backend", "assembly.py"), required: false },
+    { filename: path.join(targetDirectory, "backend", "catalog.py"), required: false },
     { filename: path.join(targetDirectory, "backend", "context.py"), required: false },
     { filename: path.join(targetDirectory, "backend", "h3_pipeline.py"), required: false },
     {
@@ -576,9 +693,7 @@ export async function prepareH3PromptWriter(
       return null;
     });
     if (source === null) continue;
-    const patched = patchH3PromptWriterOutputBudget(
-      patchH3PromptWriterLlamaCppCompatibility(source)
-    );
+    const patched = patchH3PromptWriterSource(source);
     if (hasLegacyLlamaKvImport(patched) && !hasLlamaKvCompatibilityShim(patched)) {
       throw new Error(
         "MiniMax H3 Prompt Writer 源码结构与 llama-cpp-python 兼容适配不匹配，已停止修改。"
@@ -602,7 +717,7 @@ export async function prepareH3PromptWriter(
   }
   report(
     changed
-      ? `已为 ${patchedFiles} 个 H3 Prompt Writer 文件应用 llama-cpp-python 兼容层与 0.3.4 输出预算修复`
+      ? `已为 ${patchedFiles} 个 H3 Prompt Writer 文件应用 llama-cpp-python、Gemma 模板、上下文与批处理兼容层`
       : "H3 Prompt Writer 已兼容当前 llama-cpp-python API（无需修改上游源码）"
   );
 }

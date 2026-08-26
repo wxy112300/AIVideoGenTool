@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.48.0**。本版本为历史视频详情页播放器增加无标题右键菜单，支持复制文件、打开目录、使用系统播放器、查看视频信息和全屏切换，并完善全屏信息 Overlay 与系统播放器联动；同时更新 H3 Prompt Writer 兼容补丁和推荐版本。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.49.0**。本版本将 Windows/NVIDIA H3 最低运行基线提升到 Torch 2.10/cu130，支持保留兼容的更高版本，并加强 SageAttention 原生扩展检测、一键修复、提示词增强日志和长提示词预算约束。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -54,17 +54,20 @@ MiniMax H3 原生音视频节点要求 ComfyUI `0.31.0` 或更高版本，当前
 
 ### H3 运行时兼容性
 
-H3 的 CUDA 扩展要求 PyTorch、CUDA runtime 和扩展 wheel 的 ABI 相互匹配。当前 Windows/NVIDIA 验证基线如下：
+H3 的 CUDA 扩展要求 PyTorch、CUDA runtime 和扩展 wheel 的 ABI 相互匹配。最低支持 PyTorch 2.10；当前 Windows/NVIDIA 稳定回退与实测基线如下：
+- 启用 SageAttention 时，使用与当前 Torch minor/cu130 精确匹配的 Triton 和 SageAttention wheel，并通过原生 `_fused` 扩展导入检查
+已知 `torch 2.8.0+cu129` 不满足当前 comfy-kitchen H3 INT8 ConvRot CUDA 内核的 CUDA 13.0 要求；`torch 2.9.1+cu130` 虽可加载 CUDA backend，但本项目的 4090 H3 768p/15s 实测出现更高显存峰值，因此低于最低基线。更高的 Torch 2.x 版本只有在 torch/torchvision/torchaudio minor 与 cu130 标签一致时才满足基础运行时要求；SageAttention 仍需 Comfy 官方发布该 Torch minor 的精确 wheel，并通过 `_fused` 导入和 CUDA 自检。当前官方 Windows cu130 SageAttention 索引发布到 Torch 2.11，Torch 2.12/2.13 可使用 PyTorch Attention，但不能仅凭版本更高判定 SageAttention 可用。
+使用 ComfyUI Desktop 时，建议优先通过实例更新页选择稳定回退 `2.10.0+cu130`，再返回本应用重新扫描并补齐 comfy-kitchen、Triton 及 SageAttention。H3 修复器会将低于 2.10 或三件套不一致的环境修复到该组合；满足最低要求的更高版本不会被静默降级。若新版尚无匹配的 SageAttention wheel，修复器会保留当前环境并明确提示使用 PyTorch Attention。
 
-- `torch 2.9.1+cu130`
-- `torchvision 0.24.1+cu130`
-- `torchaudio 2.9.1+cu130`
+- `torch 2.10.0+cu130`
+- `torchvision 0.25.0+cu130`
+- `torchaudio 2.10.0+cu130`
 - `comfy-kitchen 0.2.31`，运行时探针能够识别 `cuda` backend
-- 启用 SageAttention 时，使用与 Torch 2.9/cu130 匹配的 Triton 和 SageAttention wheel
+- 启用 SageAttention 时，使用与 Torch 2.10/cu130 匹配的 Triton 和 SageAttention wheel，并通过原生 `_fused` 扩展导入检查
 
-已知 `torch 2.8.0+cu129` 不满足当前 comfy-kitchen H3 INT8 ConvRot CUDA 内核的 CUDA 13.0 要求。ComfyUI 本身仍可启动，但该内核会使用 `eager` fallback；这类环境不属于上述验证基线，且在 768p 任务中可能产生更高的显存占用。设置页同时检查软件包版本和实际 backend，不以软件包可导入作为 CUDA 内核就绪的依据。
+已知 `torch 2.8.0+cu129` 不满足当前 comfy-kitchen H3 INT8 ConvRot CUDA 内核的 CUDA 13.0 要求；`torch 2.9.1+cu130` 虽可加载 CUDA backend，但本项目的 4090 H3 768p/15s 实测出现更高显存峰值，因此不再作为当前 H3 ready 基线。设置页同时检查 Torch 三件套、comfy-kitchen backend、Triton、SageAttention wheel 和 `_fused` 原生扩展，不以包名或版本号存在作为 CUDA 内核就绪的依据。
 
-使用 ComfyUI Desktop 时，建议优先通过实例更新页选择 `2.9.1+cu130`，再返回本应用重新扫描并补齐 comfy-kitchen 及所选 Attention 后端的依赖。H3 修复器使用该实例的同一个 `.venv` 和 PyTorch 官方 cu130 wheel；由修复器直接更改 PyTorch 后，Desktop 可能将当前组合标记为外部安装。
+使用 ComfyUI Desktop 时，建议优先通过实例更新页选择 `2.10.0+cu130`，再返回本应用重新扫描并补齐 comfy-kitchen、Triton 及 SageAttention。H3 修复器使用该实例的同一个 `.venv` 和 PyTorch 官方 cu130 wheel；由修复器直接更改 Python 包后，Desktop 可能将当前组合标记为外部安装。
 
 Qwen3.6/Qwen3.8 MultiModal 与 MiniMax H3 Prompt Writer 共用同一个 JamePeng `llama-cpp-python` GPU 构建。安装器会按所选 ComfyUI 的 Python/CUDA 版本选择预编译 wheel；不支持的组合会在下载前明确提示，不会偷偷源码编译或安装第二个 llama 服务。节点更新不会覆盖已经通过 CUDA 自检的共享后端，具体日志和前置条件会显示在设置 → 节点与工作流。
 
@@ -133,7 +136,7 @@ start-ui-proxy.bat http://127.0.0.1:7890
 以下流程以 24GB 级 NVIDIA GPU 和 **MiniMax H3 FL2VA · INT8** 为推荐起点：
 
 1. 在 **设置 → 系统与路径** 选择 ComfyUI `0.31.0+` 实例并完成扫描；建议使用当前推荐基线 `0.33.1`。
-2. 在 **设置 → 性能与加速** 检查 H3 运行时。Desktop 用户优先在 Desktop 中选择 `PyTorch 2.9.1+cu130`，再返回应用重新扫描；随后按需执行 H3 环境修复。
+2. 在 **设置 → 性能与加速** 检查 H3 运行时。Desktop 用户优先在 Desktop 中选择 `PyTorch 2.10.0+cu130`，再返回应用重新扫描；随后执行 H3 环境修复以补齐匹配的 Triton、SageAttention 和 H3 CUDA 内核。
 3. 打开 **设置 → 视频模型**，找到 **MiniMax H3 FL2VA · INT8**。对每个缺失的必需组件点击 **i**：
 	- 下载 FL2VA INT8 扩散模型并放入卡片显示的 `models/diffusion_models` 目录；
 	- 下载 H3 文本编码器并放入 `models/text_encoders`；

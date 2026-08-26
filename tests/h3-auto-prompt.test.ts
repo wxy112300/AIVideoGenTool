@@ -32,6 +32,13 @@ describe("H3 reference-driven auto prompting", () => {
     expect(new Set(h3AutoPromptSeeds.map((seed) => seed.id)).size).toBe(h3AutoPromptSeeds.length);
   });
 
+  it("keeps the mild adult direction opt-in during automatic rotation", () => {
+    for (const randomValue of [0, 0.5, 0.999]) {
+      expect(h3AutoPromptSeedFor("I2VA", undefined, [], () => randomValue).id).not.toBe("mild-adult-atmosphere");
+    }
+    expect(h3AutoPromptSeedFor("I2VA", "mild-adult-atmosphere", [], () => 0).id).toBe("mild-adult-atmosphere");
+  });
+
   it("builds a blank-idea instruction around media, duration, and variation", () => {
     const instruction = h3AutoPromptInstruction({
       prompt: "",
@@ -50,6 +57,37 @@ describe("H3 reference-driven auto prompting", () => {
     expect(instruction).toContain("Variation token: variation-42");
     expect(instruction).toContain("visible affordance");
     expect(instruction).toContain("Return only the complete final H3 prompt");
+  });
+
+  it("supports character interaction, contextual dialogue, mild adult, and Hollywood directions", () => {
+    const seedIds = new Set(h3AutoPromptSeeds.map((seed) => seed.id));
+    expect([...seedIds]).toEqual(expect.arrayContaining([
+      "character-interaction",
+      "contextual-action-dialogue",
+      "mild-adult-atmosphere",
+      "hollywood-cinematic"
+    ]));
+
+    const dialogueInstruction = h3AutoPromptInstruction({
+      prompt: "",
+      modelId: "minimax_h3_fl2va",
+      mode: "h3-vision",
+      promptStrategy: "reference-auto",
+      autoPromptSeedId: "contextual-action-dialogue",
+      imagePaths: ["reference.png"],
+      h3PromptMode: "I2VA",
+      h3DurationSeconds: 5
+    });
+    expect(dialogueInstruction).toContain("natural language");
+    expect(dialogueInstruction).toContain("required H3 dialogue conventions");
+
+    const adultSeed = h3AutoPromptSeeds.find((seed) => seed.id === "mild-adult-atmosphere");
+    expect(adultSeed?.instruction).toContain("clearly adult subjects only");
+    expect(adultSeed?.instruction).toContain("non-explicit");
+
+    const hollywoodSeed = h3AutoPromptSeeds.find((seed) => seed.id === "hollywood-cinematic");
+    expect(hollywoodSeed?.instruction).toContain("Hollywood-grade");
+    expect(hollywoodSeed?.instruction).toContain("motivated camera language");
   });
 
   it("requires reference media for the auto strategy", () => {

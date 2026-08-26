@@ -31,6 +31,7 @@ export const uiLocale: PromptUiLocale = {
 
 export const presetLocale: Record<H3PromptPreset, PromptPresetLocale> = {
   "official-storyboard": { label: "General cinematic timeline", description: "Organize a complete audiovisual timeline using the official H3 fields." },
+  "detailed-cinematic": { label: "Detailed cinematic expansion", description: "Expand the original intent with grounded action, camera, visual, material, lighting, sound, and timeline detail." },
   "reference-faithful": { label: "Reference faithful", description: "Minimize unsupported invention and protect identity, composition, and continuity." },
   "continuous-motion": { label: "Continuous single shot", description: "Write one causal continuous shot with physical motion and a settled ending." },
   "dialogue-sound": { label: "Dialogue and native sound", description: "Prioritize dialogue, performance, ambience, action sounds, and native music timing." },

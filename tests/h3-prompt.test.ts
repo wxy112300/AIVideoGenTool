@@ -24,6 +24,12 @@ describe("MiniMax H3 prompt templates", () => {
     expect(h3PromptExpansionTokenBudget("FL2VA", 15)).toBe(1920);
   });
 
+  it("gives the detailed cinematic preset extra local output headroom", () => {
+    expect(h3PromptExpansionTokenBudget("T2VA", 5, "detailed-cinematic")).toBe(1792);
+    expect(h3PromptExpansionTokenBudget("R2V", 5, "detailed-cinematic")).toBe(2304);
+    expect(h3PromptExpansionTokenBudget("FL2VA", 15, "detailed-cinematic")).toBe(2880);
+  });
+
   it("extracts explicit audio and single-shot constraints from the user request", () => {
     const constraints = h3ExplicitConstraintSummary(
       "One shot, no cuts. A runner goes from A to B. No BGM, but keep footsteps."

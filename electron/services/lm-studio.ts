@@ -274,7 +274,7 @@ function h3VisionSystemPrompt(
   return [
     "You are a MiniMax H3 visual prompt editor, not a generic creative copywriter.",
     "The user may provide a short idea in any language. Expand it into the required H3 fields without asking the user to draft the sections.",
-    h3SmallModelPromptContract(mode),
+    h3SmallModelPromptContract(mode, effectivePreset),
     `Selected H3 preset (low-priority style hint only): ${effectivePreset}.\n${effectivePresetText.trim() || defaultH3PromptPresets[effectivePreset]}`
   ].join("\n");
 }
@@ -350,7 +350,8 @@ export async function buildLmStudioChatRequest(
       temperature: 0.35,
       max_tokens: h3PromptExpansionTokenBudget(
         h3Mode,
-        request.h3DurationSeconds ?? 5
+        request.h3DurationSeconds ?? 5,
+        h3Preset
       ),
       messages: [
         { role: "system", content: h3VisionSystemPrompt(h3Mode, h3Preset, settings.h3PromptPresets[h3Preset]) },

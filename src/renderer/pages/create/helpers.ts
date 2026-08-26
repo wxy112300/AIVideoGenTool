@@ -269,7 +269,8 @@ export function updatePromptWordCounter(
   promptText: string,
   mode: H3PromptMode | undefined,
   durationSeconds: number,
-  ui: PromptUi = h3PromptPackFor("zh-CN").ui
+  ui: PromptUi = h3PromptPackFor("zh-CN").ui,
+  preset: H3PromptPreset = "official-storyboard"
 ): void {
   const counter = document.querySelector<HTMLElement>("#prompt-word-counter");
   if (!counter) return;
@@ -279,7 +280,7 @@ export function updatePromptWordCounter(
     counter.textContent = ui.t("wordCount", { count });
     return;
   }
-  const range = h3PromptWordRange(mode, durationSeconds);
+  const range = h3PromptWordRange(mode, durationSeconds, preset);
   counter.className = "prompt-word-counter";
   counter.textContent = ui.t("wordCountGuidance", {
     count,

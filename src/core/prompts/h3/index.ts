@@ -8,6 +8,7 @@ import type { H3PromptPack, H3PromptUiKey, PromptUi, PromptUiLocale } from "../t
 
 export const h3PromptPresetOrder: readonly H3PromptPreset[] = [
   "official-storyboard",
+  "detailed-cinematic",
   "reference-faithful",
   "continuous-motion",
   "dialogue-sound",
