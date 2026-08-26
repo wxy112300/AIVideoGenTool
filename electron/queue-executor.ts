@@ -47,7 +47,8 @@ export interface QueueExecutorDependencies {
   requireExistingImageOutput(result: unknown, outputRoot: string, alternateRoots?: string[]): Promise<HistoryFile[]>;
   requireExistingVideoOutput(result: unknown, alternateRoots?: string[]): Promise<HistoryFile[]>;
   releasePromptRuntime(settings: Settings): Promise<number>;
-  stabilizeH3RuntimeBetweenTasks(taskId: string, modelId: string, settings: Settings, hasVideoLoras: boolean): Promise<boolean>;
+  prepareH3RuntimeForTask(taskId: string, modelId: string, settings: Settings, hasVideoLoras: boolean): Promise<boolean>;
+  stabilizeH3RuntimeBetweenTasks(taskId: string, modelId: string, settings: Settings, hasVideoLoras: boolean, nextTaskHasH3VideoLoras: boolean): Promise<boolean>;
   settingsForTask(task: QueueTask | undefined, settings: Settings): Settings;
   errorMeta(error: unknown): Record<string, unknown>;
   taskStageStartedAt: Map<string, { stage: string; startedAt: number }>;
@@ -67,6 +68,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     requireExistingImageOutput,
     requireExistingVideoOutput,
     releasePromptRuntime,
+    prepareH3RuntimeForTask,
     stabilizeH3RuntimeBetweenTasks,
     settingsForTask: comfyUiSettingsForQueueTask,
     errorMeta: errorLogMeta,
@@ -447,6 +449,27 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             });
           }
         }
+        const hasVideoLoras = Boolean(task.videoLoras?.length);
+        if (isMiniMaxH3Model(task.modelId) && hasVideoLoras) {
+          await updateTask(task.id, {
+            progress: 1,
+            stage: "重启 ComfyUI 以隔离 LoRA 运行环境"
+          });
+          const prepared = await prepareH3RuntimeForTask(
+            task.id,
+            task.modelId,
+            comfyUiSettingsForQueueTask(task, store.get().settings),
+            hasVideoLoras
+          );
+          if (!prepared) {
+            throw new Error("ComfyUI 无法为 H3 LoRA 任务建立干净的运行环境");
+          }
+          if (activeController.signal.aborted) {
+            throw activeController.signal.reason instanceof Error
+              ? activeController.signal.reason
+              : new Error("队列任务已取消");
+          }
+        }
         await ensureComfyUiReady(task.id, activeController.signal);
         await updateTask(task.id, {
           progress: 1,
@@ -685,11 +708,19 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         });
         sendState(next);
         if (isMiniMaxH3Model(completedTask.modelId)) {
+          const nextTask = next.queue.find((item) => item.status === "waiting");
+          const nextTaskHasH3VideoLoras = Boolean(
+            nextTask &&
+            !isImageGenerationQueueTask(nextTask) &&
+            isMiniMaxH3Model(nextTask.modelId) &&
+            nextTask.videoLoras?.length
+          );
           const stable = await stabilizeH3RuntimeBetweenTasks(
             completedTask.id,
             completedTask.modelId,
             comfyUiSettingsForQueueTask(completedTask, next.settings),
-            Boolean(completedTask.videoLoras?.length)
+            Boolean(completedTask.videoLoras?.length),
+            nextTaskHasH3VideoLoras
           );
           if (!stable) {
             const stopped = await store.update((state) => {

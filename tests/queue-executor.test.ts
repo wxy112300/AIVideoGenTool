@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppState, HistoryFile, QueueTask, TaskPerformanceStats, TaskPreview } from "../src/types";
 import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
+import { H3_TURBO_V4_LORA } from "../src/core/video-loras";
 import { createQueueExecutor, type QueueExecutorDependencies } from "../electron/queue-executor";
 import { QueueWorkerController } from "../electron/queue-worker";
 
@@ -159,6 +160,8 @@ function createHarness(
   options: {
     beforeUpdate?: (state: AppState, updateNumber: number) => void;
     ensureComfyUiReady?: (taskId: string, signal?: AbortSignal) => Promise<void>;
+    prepareH3RuntimeForTask?: QueueExecutorDependencies["prepareH3RuntimeForTask"];
+    stabilizeH3RuntimeBetweenTasks?: QueueExecutorDependencies["stabilizeH3RuntimeBetweenTasks"];
   } = {}
 ): {
   deps: QueueExecutorDependencies;
@@ -212,7 +215,8 @@ function createHarness(
     requireExistingImageOutput: async () => [],
     requireExistingVideoOutput: async () => [outputFile],
     releasePromptRuntime: async () => 0,
-    stabilizeH3RuntimeBetweenTasks: async () => true,
+    prepareH3RuntimeForTask: options.prepareH3RuntimeForTask ?? (async () => true),
+    stabilizeH3RuntimeBetweenTasks: options.stabilizeH3RuntimeBetweenTasks ?? (async () => true),
     settingsForTask: (_task, settings) => settings,
     errorMeta: () => ({}),
     taskStageStartedAt: new Map()
@@ -252,6 +256,106 @@ describe("queue executor runtime gate", () => {
     expect(harness.snapshots.some((snapshot) =>
       snapshot.queue.some((queued) => queued.id === task.id && queued.status === "running")
     )).toBe(true);
+  });
+
+  it("keeps an H3 task without LoRAs on the normal release path", async () => {
+    const state = createDefaultState();
+    const task = fixtureTask(state);
+    state.queue = [task];
+    state.queueRunning = true;
+    const prepare = vi.fn(async () => true);
+    const stabilize = vi.fn(async () => true);
+    const harness = createHarness(state, {
+      prepareH3RuntimeForTask: prepare,
+      stabilizeH3RuntimeBetweenTasks: stabilize
+    });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(prepare).not.toHaveBeenCalled();
+    expect(stabilize).toHaveBeenCalledWith(
+      task.id,
+      task.modelId,
+      expect.any(Object),
+      false,
+      false
+    );
+  });
+
+  it("isolates an H3 LoRA task before submission and after completion", async () => {
+    const state = createDefaultState();
+    const task = fixtureTask(state);
+    if (task.taskType !== "generation") throw new Error("Expected a generation fixture");
+    task.videoLoras = [H3_TURBO_V4_LORA];
+    state.queue = [task];
+    state.queueRunning = true;
+    const prepare = vi.fn(async () => true);
+    const ensureReady = vi.fn(async () => undefined);
+    const stabilize = vi.fn(async () => true);
+    const harness = createHarness(state, {
+      ensureComfyUiReady: ensureReady,
+      prepareH3RuntimeForTask: prepare,
+      stabilizeH3RuntimeBetweenTasks: stabilize
+    });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(prepare).toHaveBeenCalledWith(
+      task.id,
+      task.modelId,
+      expect.any(Object),
+      true
+    );
+    expect(prepare.mock.invocationCallOrder[0]).toBeLessThan(ensureReady.mock.invocationCallOrder[0]!);
+    expect(ensureReady.mock.invocationCallOrder[0]).toBeLessThan(mocks.submitTask.mock.invocationCallOrder[0]!);
+    expect(stabilize).toHaveBeenCalledWith(
+      task.id,
+      task.modelId,
+      expect.any(Object),
+      true,
+      false
+    );
+    expect(mocks.submitTask.mock.invocationCallOrder[0]).toBeLessThan(stabilize.mock.invocationCallOrder[0]!);
+  });
+
+  it("defers the postflight restart to the next consecutive H3 LoRA preflight", async () => {
+    const state = createDefaultState();
+    const first = fixtureTask(state);
+    const second = fixtureTask(state);
+    if (first.taskType !== "generation" || second.taskType !== "generation") {
+      throw new Error("Expected generation fixtures");
+    }
+    first.videoLoras = [H3_TURBO_V4_LORA];
+    second.id = "queue-runtime-task-2";
+    second.videoLoras = [H3_TURBO_V4_LORA];
+    state.queue = [first, second];
+    state.queueRunning = true;
+    const prepare = vi.fn(async () => true);
+    const stabilize = vi.fn(async () => true);
+    const harness = createHarness(state, {
+      prepareH3RuntimeForTask: prepare,
+      stabilizeH3RuntimeBetweenTasks: stabilize
+    });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(stabilize).toHaveBeenNthCalledWith(
+      1,
+      first.id,
+      first.modelId,
+      expect.any(Object),
+      true,
+      true
+    );
+    expect(stabilize).toHaveBeenNthCalledWith(
+      2,
+      second.id,
+      second.modelId,
+      expect.any(Object),
+      true,
+      false
+    );
   });
 
   it("does not claim a task cancelled between selection and the conditional claim", async () => {

@@ -1910,8 +1910,40 @@ async function stabilizeH3RuntimeBetweenTasks(
   taskId: string,
   modelId: string,
   settings: Settings,
-  hasVideoLoras: boolean
+  hasVideoLoras: boolean,
+  nextTaskHasH3VideoLoras: boolean
 ): Promise<boolean> {
+  if (hasVideoLoras && isLocalComfyUrl(settings.comfyUrl)) {
+    if (nextTaskHasH3VideoLoras) {
+      appLogger.info("comfy", "h3-lora-postflight-restart-deferred", "The next H3 LoRA task will establish the clean runtime boundary", {
+        taskId,
+        modelId
+      });
+      return true;
+    }
+    appLogger.info("comfy", "h3-lora-postflight-restart-started", "Restarting ComfyUI after an H3 LoRA task", {
+      taskId,
+      modelId
+    });
+    const recovery = await restartLocalService("comfy", settings).catch((error) => ({
+      ok: false,
+      message: safeLogErrorMessage(error)
+    }));
+    appLogger.info(
+      "comfy",
+      recovery.ok ? "h3-lora-postflight-restart-succeeded" : "h3-lora-postflight-restart-failed",
+      recovery.message,
+      { taskId, modelId, recoveryOk: recovery.ok }
+    );
+    return recovery.ok;
+  }
+  if (hasVideoLoras) {
+    appLogger.info("comfy", "h3-lora-remote-release-started", "Remote ComfyUI remains connection-only and will use API memory release", {
+      taskId,
+      modelId
+    });
+  }
+
   const gib = 1024 ** 3;
   const before = await getPerformanceMetrics(settings).catch(() => null);
   appLogger.info("comfy", "h3-release-started", "Releasing H3 runtime before the next queue task", {
@@ -1966,11 +1998,6 @@ async function stabilizeH3RuntimeBetweenTasks(
     ? await waitForIdleRelease(2)
     : { verified: false, lastSample: before, idleVramLimit: null };
   if (result.verified && hasVideoLoras) {
-    appLogger.info("comfy", "h3-lora-final-release-started", "Running a second H3 release after LoRA patchers became unreachable", {
-      taskId,
-      modelId,
-      vramUsedBytes: result.lastSample?.vramUsedBytes ?? null
-    });
     release = await requestRelease("lora-final");
     result = release
       ? await waitForIdleRelease(3)
@@ -2002,12 +2029,43 @@ async function stabilizeH3RuntimeBetweenTasks(
     idleVramLimitBytes: result.idleVramLimit,
     gpuPercent: result.lastSample?.gpuPercent ?? null
   });
-  const recovery = await restartLocalService("comfy", settings);
+  const recovery = await restartLocalService("comfy", settings).catch((error) => ({
+    ok: false,
+    message: safeLogErrorMessage(error)
+  }));
   appLogger.info("comfy", recovery.ok ? "h3-release-restart-succeeded" : "h3-release-restart-failed", recovery.message, {
     taskId,
     modelId,
     recoveryOk: recovery.ok
   });
+  return recovery.ok;
+}
+
+async function prepareH3RuntimeForTask(
+  taskId: string,
+  modelId: string,
+  settings: Settings,
+  hasVideoLoras: boolean
+): Promise<boolean> {
+  if (!hasVideoLoras) return true;
+  if (!isLocalComfyUrl(settings.comfyUrl)) {
+    appLogger.warn("comfy", "h3-lora-preflight-restart-skipped", "Remote ComfyUI remains connection-only before an H3 LoRA task", {
+      taskId,
+      modelId
+    });
+    return true;
+  }
+  appLogger.info("comfy", "h3-lora-preflight-restart-started", "Restarting ComfyUI before an H3 LoRA task", {
+    taskId,
+    modelId
+  });
+  const recovery = await restartLocalService("comfy", settings);
+  appLogger.info(
+    "comfy",
+    recovery.ok ? "h3-lora-preflight-restart-succeeded" : "h3-lora-preflight-restart-failed",
+    recovery.message,
+    { taskId, modelId, recoveryOk: recovery.ok }
+  );
   return recovery.ok;
 }
 
@@ -2026,6 +2084,7 @@ async function executeQueue(): Promise<void> {
     requireExistingImageOutput,
     requireExistingVideoOutput,
     releasePromptRuntime,
+    prepareH3RuntimeForTask,
     stabilizeH3RuntimeBetweenTasks,
     settingsForTask: comfyUiSettingsForQueueTask,
     errorMeta: errorLogMeta,
