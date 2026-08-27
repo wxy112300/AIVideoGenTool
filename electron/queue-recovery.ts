@@ -25,7 +25,7 @@ export async function cleanupCancelledQueueTask(
     "logger" | "updateTask" | "getComfyRuntimeState" |
     "waitForComfyRuntimeSettled" | "hasSubmittedPrompt" | "getSubmittedPromptId" |
     "waitForSubmittedPromptToStop" | "interruptComfyUi" | "freeComfyMemory" |
-    "restartComfyUi" | "isCancellationCurrent"
+    "restartComfyUi" | "stopComfyRuntime" | "isCancellationCurrent"
   >,
   taskId: string,
   settings: Settings,
@@ -39,6 +39,16 @@ export async function cleanupCancelledQueueTask(
     return true;
   };
   try {
+    const runtimeStopped = await deps.stopComfyRuntime?.(settings) ?? false;
+    if (runtimeStopped) {
+      await waitWithTimeout(worker, 15_000);
+      await updateCancelledTask({
+        status: "cancelled",
+        stage: "任务已取消，ComfyUI 进程已停止",
+        error: "任务已取消"
+      });
+      return;
+    }
     let runtime = deps.getComfyRuntimeState?.();
     if (runtime && ["starting", "restarting", "stopping"].includes(runtime.phase)) {
       runtime = await deps.waitForComfyRuntimeSettled?.(125_000) ?? runtime;
@@ -130,6 +140,8 @@ export interface QueueRecoveryDependencies {
   interruptComfyUi?(settings: Settings): Promise<void>;
   freeComfyMemory?(settings: Settings): Promise<void>;
   restartComfyUi?(kind: "comfy", settings: Settings): Promise<{ ok: boolean; message: string }>;
+  stopComfyRuntime?(settings: Settings): Promise<boolean>;
+  onRuntimeRestarted?(): void;
   isCancellationCurrent?(taskId: string): boolean;
   settingsForTask(task: QueueTask, settings: AppState["settings"]): AppState["settings"];
   errorMeta(error: unknown): Record<string, unknown>;
@@ -207,7 +219,7 @@ export async function recoverQueueFailure(
     taskId: task.id, stalled, memoryFailure, cudaContextFailure,
     recoveryKind: recoveryDecision.kind
   });
-  const recovery = await restartLocalService(
+  const recovery = await (deps.restartComfyUi ?? restartLocalService)(
     "comfy",
     deps.settingsForTask(task, failedState.settings)
   );
@@ -230,6 +242,7 @@ export async function recoverQueueFailure(
     });
     return;
   }
+  deps.onRuntimeRestarted?.();
 
   const attentionFallback = recoveryDecision.kind === "cuda-context" &&
     task.taskType !== "upscale" && task.taskType !== "image-generation" &&
@@ -284,7 +297,6 @@ export async function recoverQueueFailure(
         error: `${originalError} ComfyUI 已恢复，准备自动重试 ${nextAttempt}/${retryLimit}。${attentionFallback ? ` H3 Attention 已切换为 ${attentionFallback}。` : ""}`,
         automaticRetryAttempt: nextAttempt
       });
-      state.queueRunning = true;
     });
     sendState(retryState);
     logger.warn("queue", "automatic-retry-scheduled", "Recoverable task was returned to the queue after ComfyUI recovery", {

@@ -308,6 +308,7 @@ export interface Settings {
   safeCancel: boolean;
   autoRetryFailedTasks: boolean;
   autoRetryCount: 1 | 2 | 3 | 4 | 5;
+  queueIsolationMode: "never" | "lora" | "model-change" | "always";
   uiLocale?: UiLocale;
   promptLanguage: "auto" | "zh" | "en";
   promptCreativity: number;

@@ -1039,6 +1039,18 @@ function cleanupCancelledQueueTask(
       ),
       getSubmittedPromptId: (currentTaskId) =>
         store.get().queue.find((item) => item.id === currentTaskId)?.comfyPromptId,
+      stopComfyRuntime: async (currentSettings) => {
+        if (!isLocalComfyUrl(currentSettings.comfyUrl)) return false;
+        const stopped = await forceStopComfyProcesses(currentSettings);
+        if (!stopped.ok) throw new Error(stopped.message);
+        return true;
+      },
+      restartComfyUi: async (kind, currentSettings) => {
+        if (!isLocalComfyUrl(currentSettings.comfyUrl)) {
+          return { ok: false, message: "远程 ComfyUI 为 connection-only，未执行进程重启。" };
+        }
+        return restartLocalService(kind, currentSettings);
+      },
       isCancellationCurrent: (currentTaskId) => {
         const current = store.get();
         const task = current.queue.find((item) => item.id === currentTaskId);
@@ -1911,34 +1923,18 @@ async function stabilizeH3RuntimeBetweenTasks(
   modelId: string,
   settings: Settings,
   hasVideoLoras: boolean,
-  nextTaskHasH3VideoLoras: boolean
+  queueWillContinue: boolean
 ): Promise<boolean> {
-  if (hasVideoLoras && isLocalComfyUrl(settings.comfyUrl)) {
-    if (nextTaskHasH3VideoLoras) {
-      appLogger.info("comfy", "h3-lora-postflight-restart-deferred", "The next H3 LoRA task will establish the clean runtime boundary", {
-        taskId,
-        modelId
-      });
-      return true;
-    }
-    appLogger.info("comfy", "h3-lora-postflight-restart-started", "Restarting ComfyUI after an H3 LoRA task", {
+  if (!queueWillContinue && isLocalComfyUrl(settings.comfyUrl)) {
+    appLogger.info("comfy", "h3-release-deferred-to-queue-stop", "The queue will not continue; runtime cleanup is deferred to queue shutdown", {
       taskId,
-      modelId
+      modelId,
+      hasVideoLoras
     });
-    const recovery = await restartLocalService("comfy", settings).catch((error) => ({
-      ok: false,
-      message: safeLogErrorMessage(error)
-    }));
-    appLogger.info(
-      "comfy",
-      recovery.ok ? "h3-lora-postflight-restart-succeeded" : "h3-lora-postflight-restart-failed",
-      recovery.message,
-      { taskId, modelId, recoveryOk: recovery.ok }
-    );
-    return recovery.ok;
+    return true;
   }
   if (hasVideoLoras) {
-    appLogger.info("comfy", "h3-lora-remote-release-started", "Remote ComfyUI remains connection-only and will use API memory release", {
+    appLogger.info("comfy", "h3-lora-release-started", "H3 LoRA task will use API memory release independently from queue process isolation", {
       taskId,
       modelId
     });
@@ -2019,7 +2015,7 @@ async function stabilizeH3RuntimeBetweenTasks(
     return true;
   }
 
-  appLogger.warn("comfy", "h3-release-unverified", "H3 VRAM did not reach a safe idle level; restarting ComfyUI", {
+  appLogger.warn("comfy", "h3-release-unverified", "H3 VRAM did not reach a safe idle level; applying endpoint-appropriate recovery", {
     taskId,
     modelId,
     hasVideoLoras,
@@ -2029,6 +2025,13 @@ async function stabilizeH3RuntimeBetweenTasks(
     idleVramLimitBytes: result.idleVramLimit,
     gpuPercent: result.lastSample?.gpuPercent ?? null
   });
+  if (!isLocalComfyUrl(settings.comfyUrl)) {
+    appLogger.error("comfy", "h3-remote-release-failed", "Remote ComfyUI memory release could not be verified; stopping the application queue without process management", {
+      taskId,
+      modelId
+    });
+    return false;
+  }
   const recovery = await restartLocalService("comfy", settings).catch((error) => ({
     ok: false,
     message: safeLogErrorMessage(error)
@@ -2041,30 +2044,56 @@ async function stabilizeH3RuntimeBetweenTasks(
   return recovery.ok;
 }
 
-async function prepareH3RuntimeForTask(
+async function stopQueueRuntime(settings: Settings): Promise<boolean> {
+  if (!isLocalComfyUrl(settings.comfyUrl)) {
+    appLogger.info("comfy", "queue-runtime-stop-skipped", "Remote ComfyUI remains connection-only when the queue stops");
+    return true;
+  }
+  const stopped = await forceStopComfyProcesses(settings).catch((error) => ({
+    ok: false,
+    message: safeLogErrorMessage(error)
+  }));
+  appLogger.info(
+    "comfy",
+    stopped.ok ? "queue-runtime-stop-succeeded" : "queue-runtime-stop-failed",
+    stopped.message,
+    { ok: stopped.ok }
+  );
+  return stopped.ok;
+}
+
+async function restartQueueRuntime(settings: Settings): Promise<{ ok: boolean; message: string }> {
+  if (!isLocalComfyUrl(settings.comfyUrl)) {
+    return { ok: false, message: "远程 ComfyUI 为 connection-only，未执行进程重启。" };
+  }
+  return restartLocalService("comfy", settings);
+}
+
+async function prepareQueueRuntimeForTask(
   taskId: string,
   modelId: string,
   settings: Settings,
-  hasVideoLoras: boolean
+  reason: "lora" | "model-change" | "always"
 ): Promise<boolean> {
-  if (!hasVideoLoras) return true;
   if (!isLocalComfyUrl(settings.comfyUrl)) {
-    appLogger.warn("comfy", "h3-lora-preflight-restart-skipped", "Remote ComfyUI remains connection-only before an H3 LoRA task", {
+    appLogger.warn("comfy", "queue-isolation-restart-skipped", "Remote ComfyUI remains connection-only at the requested queue isolation boundary", {
       taskId,
-      modelId
+      modelId,
+      reason
     });
     return true;
   }
-  appLogger.info("comfy", "h3-lora-preflight-restart-started", "Restarting ComfyUI before an H3 LoRA task", {
+  appLogger.info("comfy", "queue-isolation-restart-started", "Restarting ComfyUI at a queue isolation boundary", {
     taskId,
-    modelId
+    modelId,
+    reason
   });
   const recovery = await restartLocalService("comfy", settings);
   appLogger.info(
     "comfy",
-    recovery.ok ? "h3-lora-preflight-restart-succeeded" : "h3-lora-preflight-restart-failed",
+    recovery.ok ? "queue-isolation-restart-succeeded" : "queue-isolation-restart-failed",
     recovery.message,
-    { taskId, modelId, recoveryOk: recovery.ok }
+    { taskId, modelId, reason, recoveryOk: recovery.ok }
   );
   return recovery.ok;
 }
@@ -2084,8 +2113,10 @@ async function executeQueue(): Promise<void> {
     requireExistingImageOutput,
     requireExistingVideoOutput,
     releasePromptRuntime,
-    prepareH3RuntimeForTask,
+    prepareQueueRuntimeForTask,
     stabilizeH3RuntimeBetweenTasks,
+    stopQueueRuntime,
+    restartQueueRuntime,
     settingsForTask: comfyUiSettingsForQueueTask,
     errorMeta: errorLogMeta,
     taskStageStartedAt

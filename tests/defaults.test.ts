@@ -25,6 +25,7 @@ describe("draft defaults", () => {
     expect(createDefaultSettings().vramReserveGb).toBe(1);
     expect(createDefaultSettings().autoRetryFailedTasks).toBe(true);
     expect(createDefaultSettings().autoRetryCount).toBe(2);
+    expect(createDefaultSettings().queueIsolationMode).toBe("lora");
     expect(createDefaultSettings().uiLocale).toBe("zh-CN");
     expect(createDefaultSettings().defaultVideoModel).toBe("minimax_h3_fl2va");
     expect(createDefaultSettings().defaultExtensionModel).toBe("minimax_h3_ref2va");

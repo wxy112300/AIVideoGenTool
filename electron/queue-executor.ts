@@ -33,6 +33,7 @@ import { recoverQueueFailure } from "./queue-recovery.js";
 import type { QueueWorkerController } from "./queue-worker.js";
 
 const performanceLogIntervalMs = 30_000;
+type QueueIsolationReason = "lora" | "model-change" | "always";
 
 export interface QueueExecutorDependencies {
   store: JsonStore;
@@ -47,8 +48,10 @@ export interface QueueExecutorDependencies {
   requireExistingImageOutput(result: unknown, outputRoot: string, alternateRoots?: string[]): Promise<HistoryFile[]>;
   requireExistingVideoOutput(result: unknown, alternateRoots?: string[]): Promise<HistoryFile[]>;
   releasePromptRuntime(settings: Settings): Promise<number>;
-  prepareH3RuntimeForTask(taskId: string, modelId: string, settings: Settings, hasVideoLoras: boolean): Promise<boolean>;
-  stabilizeH3RuntimeBetweenTasks(taskId: string, modelId: string, settings: Settings, hasVideoLoras: boolean, nextTaskHasH3VideoLoras: boolean): Promise<boolean>;
+  prepareQueueRuntimeForTask(taskId: string, modelId: string, settings: Settings, reason: QueueIsolationReason): Promise<boolean>;
+  stabilizeH3RuntimeBetweenTasks(taskId: string, modelId: string, settings: Settings, hasVideoLoras: boolean, queueWillContinue: boolean): Promise<boolean>;
+  stopQueueRuntime(settings: Settings): Promise<boolean>;
+  restartQueueRuntime(settings: Settings): Promise<{ ok: boolean; message: string }>;
   settingsForTask(task: QueueTask | undefined, settings: Settings): Settings;
   errorMeta(error: unknown): Record<string, unknown>;
   taskStageStartedAt: Map<string, { stage: string; startedAt: number }>;
@@ -68,12 +71,55 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     requireExistingImageOutput,
     requireExistingVideoOutput,
     releasePromptRuntime,
-    prepareH3RuntimeForTask,
+    prepareQueueRuntimeForTask: prepareQueueRuntime,
     stabilizeH3RuntimeBetweenTasks,
+    stopQueueRuntime,
+    restartQueueRuntime,
     settingsForTask: comfyUiSettingsForQueueTask,
     errorMeta: errorLogMeta,
     taskStageStartedAt
   } = deps;
+  let runtimeModelId: string | undefined;
+  let runtimeHadH3VideoLoras = false;
+
+  async function prepareQueueTaskRuntime(
+    task: QueueTask,
+    signal: AbortSignal,
+    hasH3VideoLoras: boolean
+  ): Promise<void> {
+    const isolationMode = store.get().settings.queueIsolationMode;
+    const reason: QueueIsolationReason | undefined = isolationMode === "always"
+      ? "always"
+      : isolationMode === "lora" && (hasH3VideoLoras || runtimeHadH3VideoLoras)
+        ? "lora"
+        : isolationMode === "model-change" && runtimeModelId !== undefined && runtimeModelId !== task.modelId
+          ? "model-change"
+          : undefined;
+    if (!reason) return;
+    await updateTask(task.id, {
+      progress: 1,
+      stage: "准备队列运行时隔离"
+    });
+    const prepared = await prepareQueueRuntime(
+      task.id,
+      task.modelId,
+      comfyUiSettingsForQueueTask(task, store.get().settings),
+      reason
+    );
+    if (!prepared) {
+      throw new Error("ComfyUI 无法建立请求的队列运行时隔离边界");
+    }
+    runtimeModelId = undefined;
+    runtimeHadH3VideoLoras = false;
+    if (signal.aborted) {
+      throw signal.reason instanceof Error ? signal.reason : new Error("队列任务已取消");
+    }
+  }
+
+  function markQueueTaskSubmitted(task: QueueTask, hasH3VideoLoras: boolean): void {
+    runtimeModelId = task.modelId;
+    runtimeHadH3VideoLoras = hasH3VideoLoras;
+  }
 
   async function executeImageGenerationQueueTask(
     task: ImageGenerationQueueTask
@@ -97,6 +143,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         startedAt: new Date().toISOString(),
         error: undefined
       });
+      await prepareQueueTaskRuntime(task, controller.signal, false);
       await ensureComfyUiReady(task.id, controller.signal);
       const totalRuns = Math.max(1, task.runs.length);
       for (const plannedRun of task.runs) {
@@ -124,6 +171,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             store.get().settings,
             controller.signal
           );
+          markQueueTaskSubmitted(task, false);
           let lastProgress = -1;
           const result = await waitForTask(
             submitted.promptId,
@@ -450,26 +498,11 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           }
         }
         const hasVideoLoras = Boolean(task.videoLoras?.length);
-        if (isMiniMaxH3Model(task.modelId) && hasVideoLoras) {
-          await updateTask(task.id, {
-            progress: 1,
-            stage: "重启 ComfyUI 以隔离 LoRA 运行环境"
-          });
-          const prepared = await prepareH3RuntimeForTask(
-            task.id,
-            task.modelId,
-            comfyUiSettingsForQueueTask(task, store.get().settings),
-            hasVideoLoras
-          );
-          if (!prepared) {
-            throw new Error("ComfyUI 无法为 H3 LoRA 任务建立干净的运行环境");
-          }
-          if (activeController.signal.aborted) {
-            throw activeController.signal.reason instanceof Error
-              ? activeController.signal.reason
-              : new Error("队列任务已取消");
-          }
-        }
+        await prepareQueueTaskRuntime(
+          task,
+          activeController.signal,
+          isMiniMaxH3Model(task.modelId) && hasVideoLoras
+        );
         await ensureComfyUiReady(task.id, activeController.signal);
         await updateTask(task.id, {
           progress: 1,
@@ -535,12 +568,14 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           result = segmentedSeedVr2.comfyOutputs;
           files = segmentedSeedVr2.files;
           seedVr2IntermediatePaths = segmentedSeedVr2.intermediatePaths;
+          markQueueTaskSubmitted(task, false);
         } else {
           const submitted = await submitTask(
             task,
             store.get().settings,
             activeController.signal
           );
+          markQueueTaskSubmitted(task, hasVideoLoras);
           ({ promptId } = submitted);
           const { clientId, nodeTypes } = submitted;
           h3LivePreviewActive = submitted.h3LivePreviewActive;
@@ -709,18 +744,13 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         sendState(next);
         if (isMiniMaxH3Model(completedTask.modelId)) {
           const nextTask = next.queue.find((item) => item.status === "waiting");
-          const nextTaskHasH3VideoLoras = Boolean(
-            nextTask &&
-            !isImageGenerationQueueTask(nextTask) &&
-            isMiniMaxH3Model(nextTask.modelId) &&
-            nextTask.videoLoras?.length
-          );
+          const queueWillContinue = next.queueRunning && Boolean(nextTask);
           const stable = await stabilizeH3RuntimeBetweenTasks(
             completedTask.id,
             completedTask.modelId,
             comfyUiSettingsForQueueTask(completedTask, next.settings),
             Boolean(completedTask.videoLoras?.length),
-            nextTaskHasH3VideoLoras
+            queueWillContinue
           );
           if (!stable) {
             const stopped = await store.update((state) => {
@@ -765,6 +795,11 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           sendState,
           updateTask,
           settingsForTask: comfyUiSettingsForQueueTask,
+          restartComfyUi: (_kind, settings) => restartQueueRuntime(settings),
+          onRuntimeRestarted: () => {
+            runtimeModelId = undefined;
+            runtimeHadH3VideoLoras = false;
+          },
           errorMeta: errorLogMeta
         }, {
           task,
@@ -793,6 +828,16 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         vramWatchdog?.stop();
         taskPerformanceMonitor?.stop();
         queueWorkerController.endTask(activeController);
+      }
+    }
+    const queueBeforeStop = store.get();
+    const cancellationOwnsRuntime = queueBeforeStop.queueLifecycle === "cancelling" ||
+      queueBeforeStop.queueLifecycle === "cleaning";
+    if (!cancellationOwnsRuntime) {
+      const runtimeStopped = await stopQueueRuntime(queueBeforeStop.settings);
+      if (runtimeStopped) {
+        runtimeModelId = undefined;
+        runtimeHadH3VideoLoras = false;
       }
     }
     const next = await store.update((state) => {

@@ -160,8 +160,10 @@ function createHarness(
   options: {
     beforeUpdate?: (state: AppState, updateNumber: number) => void;
     ensureComfyUiReady?: (taskId: string, signal?: AbortSignal) => Promise<void>;
-    prepareH3RuntimeForTask?: QueueExecutorDependencies["prepareH3RuntimeForTask"];
+    prepareQueueRuntimeForTask?: QueueExecutorDependencies["prepareQueueRuntimeForTask"];
     stabilizeH3RuntimeBetweenTasks?: QueueExecutorDependencies["stabilizeH3RuntimeBetweenTasks"];
+    stopQueueRuntime?: QueueExecutorDependencies["stopQueueRuntime"];
+    restartQueueRuntime?: QueueExecutorDependencies["restartQueueRuntime"];
   } = {}
 ): {
   deps: QueueExecutorDependencies;
@@ -215,8 +217,10 @@ function createHarness(
     requireExistingImageOutput: async () => [],
     requireExistingVideoOutput: async () => [outputFile],
     releasePromptRuntime: async () => 0,
-    prepareH3RuntimeForTask: options.prepareH3RuntimeForTask ?? (async () => true),
+    prepareQueueRuntimeForTask: options.prepareQueueRuntimeForTask ?? (async () => true),
     stabilizeH3RuntimeBetweenTasks: options.stabilizeH3RuntimeBetweenTasks ?? (async () => true),
+    stopQueueRuntime: options.stopQueueRuntime ?? (async () => true),
+    restartQueueRuntime: options.restartQueueRuntime ?? (async () => ({ ok: true, message: "restarted" })),
     settingsForTask: (_task, settings) => settings,
     errorMeta: () => ({}),
     taskStageStartedAt: new Map()
@@ -235,7 +239,8 @@ describe("queue executor runtime gate", () => {
     state.queue = [task];
     state.queueRunning = true;
     state.queueLifecycle = "starting";
-    const harness = createHarness(state);
+    const stopQueueRuntime = vi.fn(async () => true);
+    const harness = createHarness(state, { stopQueueRuntime });
 
     await createQueueExecutor(harness.deps)();
 
@@ -250,6 +255,7 @@ describe("queue executor runtime gate", () => {
     expect(final.queueLifecycle).toBe("idle");
     expect(mocks.submitTask).toHaveBeenCalledOnce();
     expect(mocks.waitForTask).toHaveBeenCalledOnce();
+    expect(stopQueueRuntime).toHaveBeenCalledOnce();
     expect(harness.previews).toEqual([
       expect.objectContaining({ taskId: task.id, source: "comfy", sequence: 1 })
     ]);
@@ -266,7 +272,7 @@ describe("queue executor runtime gate", () => {
     const prepare = vi.fn(async () => true);
     const stabilize = vi.fn(async () => true);
     const harness = createHarness(state, {
-      prepareH3RuntimeForTask: prepare,
+      prepareQueueRuntimeForTask: prepare,
       stabilizeH3RuntimeBetweenTasks: stabilize
     });
 
@@ -282,7 +288,7 @@ describe("queue executor runtime gate", () => {
     );
   });
 
-  it("isolates an H3 LoRA task before submission and after completion", async () => {
+  it("isolates an H3 LoRA task before submission", async () => {
     const state = createDefaultState();
     const task = fixtureTask(state);
     if (task.taskType !== "generation") throw new Error("Expected a generation fixture");
@@ -294,7 +300,7 @@ describe("queue executor runtime gate", () => {
     const stabilize = vi.fn(async () => true);
     const harness = createHarness(state, {
       ensureComfyUiReady: ensureReady,
-      prepareH3RuntimeForTask: prepare,
+      prepareQueueRuntimeForTask: prepare,
       stabilizeH3RuntimeBetweenTasks: stabilize
     });
 
@@ -304,7 +310,7 @@ describe("queue executor runtime gate", () => {
       task.id,
       task.modelId,
       expect.any(Object),
-      true
+      "lora"
     );
     expect(prepare.mock.invocationCallOrder[0]).toBeLessThan(ensureReady.mock.invocationCallOrder[0]!);
     expect(ensureReady.mock.invocationCallOrder[0]).toBeLessThan(mocks.submitTask.mock.invocationCallOrder[0]!);
@@ -318,7 +324,7 @@ describe("queue executor runtime gate", () => {
     expect(mocks.submitTask.mock.invocationCallOrder[0]).toBeLessThan(stabilize.mock.invocationCallOrder[0]!);
   });
 
-  it("defers the postflight restart to the next consecutive H3 LoRA preflight", async () => {
+  it("carries the dirty LoRA runtime state into the next consecutive preflight", async () => {
     const state = createDefaultState();
     const first = fixtureTask(state);
     const second = fixtureTask(state);
@@ -333,13 +339,27 @@ describe("queue executor runtime gate", () => {
     const prepare = vi.fn(async () => true);
     const stabilize = vi.fn(async () => true);
     const harness = createHarness(state, {
-      prepareH3RuntimeForTask: prepare,
+      prepareQueueRuntimeForTask: prepare,
       stabilizeH3RuntimeBetweenTasks: stabilize
     });
 
     await createQueueExecutor(harness.deps)();
 
     expect(prepare).toHaveBeenCalledTimes(2);
+    expect(prepare).toHaveBeenNthCalledWith(
+      1,
+      first.id,
+      first.modelId,
+      expect.any(Object),
+      "lora"
+    );
+    expect(prepare).toHaveBeenNthCalledWith(
+      2,
+      second.id,
+      second.modelId,
+      expect.any(Object),
+      "lora"
+    );
     expect(stabilize).toHaveBeenNthCalledWith(
       1,
       first.id,
@@ -356,6 +376,207 @@ describe("queue executor runtime gate", () => {
       true,
       false
     );
+  });
+
+  it("isolates the first non-LoRA task after an H3 LoRA task", async () => {
+    const state = createDefaultState();
+    const first = fixtureTask(state);
+    const second = fixtureTask(state);
+    if (first.taskType !== "generation" || second.taskType !== "generation") {
+      throw new Error("Expected generation fixtures");
+    }
+    first.videoLoras = [H3_TURBO_V4_LORA];
+    second.id = "queue-runtime-task-2";
+    state.queue = [first, second];
+    state.queueRunning = true;
+    const prepare = vi.fn(async () => true);
+    const harness = createHarness(state, { prepareQueueRuntimeForTask: prepare });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(prepare).toHaveBeenNthCalledWith(
+      1,
+      first.id,
+      first.modelId,
+      expect.any(Object),
+      "lora"
+    );
+    expect(prepare).toHaveBeenNthCalledWith(
+      2,
+      second.id,
+      second.modelId,
+      expect.any(Object),
+      "lora"
+    );
+  });
+
+  it("does not restart between tasks when queue isolation is disabled", async () => {
+    const state = createDefaultState();
+    state.settings.queueIsolationMode = "never";
+    const first = fixtureTask(state);
+    const second = fixtureTask(state);
+    if (first.taskType !== "generation") throw new Error("Expected a generation fixture");
+    first.videoLoras = [H3_TURBO_V4_LORA];
+    second.id = "queue-runtime-task-2";
+    second.modelId = "z-image-turbo";
+    state.queue = [first, second];
+    state.queueRunning = true;
+    const prepare = vi.fn(async () => true);
+    const harness = createHarness(state, { prepareQueueRuntimeForTask: prepare });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(prepare).not.toHaveBeenCalled();
+    expect(mocks.submitTask).toHaveBeenCalledTimes(2);
+  });
+
+  it("restarts only when the submitted task model changes", async () => {
+    const state = createDefaultState();
+    state.settings.queueIsolationMode = "model-change";
+    const first = fixtureTask(state);
+    const second = fixtureTask(state);
+    const third = fixtureTask(state);
+    second.id = "queue-runtime-task-2";
+    third.id = "queue-runtime-task-3";
+    third.modelId = "z-image-turbo";
+    state.queue = [first, second, third];
+    state.queueRunning = true;
+    const prepare = vi.fn(async () => true);
+    const harness = createHarness(state, { prepareQueueRuntimeForTask: prepare });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(prepare).toHaveBeenCalledWith(
+      third.id,
+      third.modelId,
+      expect.any(Object),
+      "model-change"
+    );
+  });
+
+  it("restarts before every claimed task in always mode, including the first", async () => {
+    const state = createDefaultState();
+    state.settings.queueIsolationMode = "always";
+    const first = fixtureTask(state);
+    const second = fixtureTask(state);
+    second.id = "queue-runtime-task-2";
+    state.queue = [first, second];
+    state.queueRunning = true;
+    const prepare = vi.fn(async () => true);
+    const harness = createHarness(state, { prepareQueueRuntimeForTask: prepare });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(prepare).toHaveBeenNthCalledWith(
+      1,
+      first.id,
+      first.modelId,
+      expect.any(Object),
+      "always"
+    );
+    expect(prepare).toHaveBeenNthCalledWith(
+      2,
+      second.id,
+      second.modelId,
+      expect.any(Object),
+      "always"
+    );
+  });
+
+  it("stops after the current task when a paused queue has a waiting H3 LoRA task", async () => {
+    const state = createDefaultState();
+    const current = fixtureTask(state);
+    const waiting = fixtureTask(state);
+    if (waiting.taskType !== "generation") throw new Error("Expected a generation fixture");
+    waiting.id = "waiting-lora-task";
+    waiting.videoLoras = [H3_TURBO_V4_LORA];
+    state.queue = [current, waiting];
+    state.queueRunning = true;
+    state.queueLifecycle = "running";
+    mocks.waitForTask.mockImplementationOnce(async () => {
+      state.queueRunning = false;
+      state.queueLifecycle = "pausing";
+      state.queueLifecycleTaskId = current.id;
+      return { outputs: { fixture: true } };
+    });
+    const prepare = vi.fn(async () => true);
+    const stabilize = vi.fn(async () => true);
+    const stopQueueRuntime = vi.fn(async () => true);
+    const harness = createHarness(state, {
+      prepareQueueRuntimeForTask: prepare,
+      stabilizeH3RuntimeBetweenTasks: stabilize,
+      stopQueueRuntime
+    });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(mocks.submitTask).toHaveBeenCalledOnce();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(stabilize).toHaveBeenCalledWith(
+      current.id,
+      current.modelId,
+      expect.any(Object),
+      false,
+      false
+    );
+    expect(stopQueueRuntime).toHaveBeenCalledOnce();
+    expect(harness.store.get().queue).toEqual([
+      expect.objectContaining({ id: waiting.id, status: "waiting" })
+    ]);
+    expect(harness.store.get().queueLifecycle).toBe("idle");
+  });
+
+  it("retains dirty LoRA state across pause when runtime shutdown fails", async () => {
+    const state = createDefaultState();
+    const current = fixtureTask(state);
+    const waiting = fixtureTask(state);
+    if (current.taskType !== "generation" || waiting.taskType !== "generation") {
+      throw new Error("Expected generation fixtures");
+    }
+    current.videoLoras = [H3_TURBO_V4_LORA];
+    waiting.id = "waiting-non-lora-task";
+    state.queue = [current, waiting];
+    state.queueRunning = true;
+    state.queueLifecycle = "running";
+    mocks.waitForTask.mockImplementationOnce(async () => {
+      state.queueRunning = false;
+      state.queueLifecycle = "pausing";
+      state.queueLifecycleTaskId = current.id;
+      return { outputs: { fixture: true } };
+    });
+    const prepare = vi.fn(async () => true);
+    const stopQueueRuntime = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    const harness = createHarness(state, {
+      prepareQueueRuntimeForTask: prepare,
+      stopQueueRuntime
+    });
+    const execute = createQueueExecutor(harness.deps);
+
+    await execute();
+    state.queueRunning = true;
+    state.queueLifecycle = "starting";
+    state.queueLifecycleTaskId = undefined;
+    await execute();
+
+    expect(prepare).toHaveBeenNthCalledWith(
+      1,
+      current.id,
+      current.modelId,
+      expect.any(Object),
+      "lora"
+    );
+    expect(prepare).toHaveBeenNthCalledWith(
+      2,
+      waiting.id,
+      waiting.modelId,
+      expect.any(Object),
+      "lora"
+    );
+    expect(stopQueueRuntime).toHaveBeenCalledTimes(2);
   });
 
   it("does not claim a task cancelled between selection and the conditional claim", async () => {
@@ -390,6 +611,7 @@ describe("queue executor runtime gate", () => {
     const task = fixtureTask(state);
     state.queue = [task];
     state.queueRunning = true;
+    const stopQueueRuntime = vi.fn(async () => true);
     const harness = createHarness(state, {
       ensureComfyUiReady: (_taskId, signal) => new Promise<void>((_resolve, reject) => {
         if (signal?.aborted) {
@@ -397,7 +619,8 @@ describe("queue executor runtime gate", () => {
           return;
         }
         signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
-      })
+      }),
+      stopQueueRuntime
     });
     const run = createQueueExecutor(harness.deps)();
 
@@ -415,6 +638,7 @@ describe("queue executor runtime gate", () => {
     expect(final.queueRunning).toBe(false);
     expect(final.queueLifecycle).toBe("cancelling");
     expect(mocks.submitTask).not.toHaveBeenCalled();
+    expect(stopQueueRuntime).not.toHaveBeenCalled();
     expect(harness.worker.activeController).toBeNull();
   });
 });

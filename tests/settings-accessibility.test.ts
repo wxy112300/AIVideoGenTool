@@ -103,6 +103,8 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('id="connection-result" class="connection-result muted" role="status" aria-live="polite"');
     expect(markup).toContain('id="force-stop-comfy"');
     expect(markup).toContain('class="secondary destructive button-with-icon" id="force-stop-comfy"');
+    expect(markup).toContain('id="queue-isolation-mode"');
+    expect(markup).toContain('<option value="lora" selected>');
   });
 
   it("keeps the manual scan action available on non-system Settings tabs", () => {

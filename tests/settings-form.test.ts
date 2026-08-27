@@ -69,4 +69,26 @@ describe("settings form", () => {
       globalThis.document = previousDocument;
     }
   });
+
+  it("reads the selected queue isolation mode", () => {
+    const previousDocument = globalThis.document;
+    globalThis.document = {
+      querySelector: vi.fn((selector: string) =>
+        selector === "#queue-isolation-mode"
+          ? { value: "model-change" }
+          : null
+      )
+    } as unknown as Document;
+
+    try {
+      const settings = readSettingsFromForm(
+        createDefaultSettings(),
+        "official-storyboard",
+        "faithful"
+      );
+      expect(settings.queueIsolationMode).toBe("model-change");
+    } finally {
+      globalThis.document = previousDocument;
+    }
+  });
 });

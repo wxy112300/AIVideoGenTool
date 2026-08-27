@@ -106,6 +106,7 @@ export function createDefaultSettings(): Settings {
     safeCancel: true,
     autoRetryFailedTasks: true,
     autoRetryCount: 2,
+    queueIsolationMode: "lora",
     uiLocale: "zh-CN",
     promptLanguage: "auto",
     promptCreativity: 0.7,

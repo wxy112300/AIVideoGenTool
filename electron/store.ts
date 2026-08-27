@@ -659,6 +659,15 @@ export class JsonStore {
         this.state.settings.autoRetryCount = 2;
         needsPersist = true;
       }
+      if (![
+        "never",
+        "lora",
+        "model-change",
+        "always"
+      ].includes(this.state.settings.queueIsolationMode)) {
+        this.state.settings.queueIsolationMode = "lora";
+        needsPersist = true;
+      }
       if (!this.state.settings.autoOffload) {
         this.state.settings.autoOffload = true;
         needsPersist = true;

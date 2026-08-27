@@ -51,7 +51,6 @@ describe("queue rapid-operation guards", () => {
       Object.assign(task, patch);
       return state;
     });
-
     await cleanupCancelledQueueTask(
       {
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
@@ -100,19 +99,16 @@ describe("queue rapid-operation guards", () => {
     expect(updateTask).not.toHaveBeenCalled();
   });
 
-  it("waits for an in-flight ComfyUI startup instead of reporting that it exited", async () => {
+  it("immediately stops an app-managed ComfyUI startup when cancellation is requested", async () => {
     const state = createDefaultState();
     const task = queuedTask(state);
     task.status = "cancelled";
     state.queue = [task];
-    let finishStartup!: (runtime: ReturnType<NonNullable<Parameters<typeof cleanupCancelledQueueTask>[0]["getComfyRuntimeState"]>>) => void;
-    const startupSettled = new Promise<ReturnType<NonNullable<Parameters<typeof cleanupCancelledQueueTask>[0]["getComfyRuntimeState"]>>>((resolve) => {
-      finishStartup = resolve;
-    });
     const updateTask = vi.fn(async (_taskId: string, patch: Partial<QueueTask>) => {
       Object.assign(task, patch);
       return state;
     });
+    const stopComfyRuntime = vi.fn(async () => true);
 
     const cleanup = cleanupCancelledQueueTask(
       {
@@ -122,22 +118,18 @@ describe("queue rapid-operation guards", () => {
           phase: "starting", ownership: "app", endpoint: "http://127.0.0.1:8188",
           message: "启动中", updatedAt: new Date().toISOString(), operationId: 2
         }),
-        waitForComfyRuntimeSettled: async () => startupSettled,
-        hasSubmittedPrompt: () => false
+        hasSubmittedPrompt: () => false,
+        stopComfyRuntime
       },
       task.id,
       { ...state.settings, safeCancel: false },
       Promise.resolve()
     );
 
-    await Promise.resolve();
-    expect(updateTask).not.toHaveBeenCalled();
-    finishStartup({
-      phase: "ready", ownership: "app", endpoint: "http://127.0.0.1:8188",
-      message: "已就绪", updatedAt: new Date().toISOString(), operationId: 2
-    });
     await cleanup;
-    expect(task.stage).not.toContain("已退出");
+    expect(stopComfyRuntime).toHaveBeenCalledOnce();
+    expect(task.stage).toBe("任务已取消，ComfyUI 进程已停止");
+    expect(updateTask).toHaveBeenCalledOnce();
   });
 
   it("restarts ComfyUI when the submitted prompt remains active after interruption", async () => {
