@@ -1,8 +1,7 @@
 import type {
   EnvironmentScanResult,
   CustomNodeInstallMode,
-  Settings,
-  WorkflowDependencyStatus
+  Settings
 } from "../../../types";
 import { uiKeys } from "../../../core/i18n-keys";
 import type { RendererCleanup, RendererContext } from "../../contracts";
@@ -23,9 +22,10 @@ export interface SettingsNodeDependencyControllerOptions {
     mode?: CustomNodeInstallMode
   ): { accepted: boolean; position: number };
   requestCustomNodeUninstall(nodeId: string, name: string): void;
-  setWorkflowDependencyInstalling(workflowId: string): void;
-  getWorkflowDependencyLog(workflowId: string): string;
-  setWorkflowDependencyLog(workflowId: string, log: string): void;
+  setLlamaCppPythonInstalling(value: boolean): void;
+  getLlamaCppPythonLog(): string;
+  setLlamaCppPythonLog(log: string): void;
+  requestLlamaCppPythonUninstall(): void;
 }
 
 export function mountSettingsNodeDependencyController(
@@ -99,6 +99,48 @@ export function mountSettingsNodeDependencyController(
     }, { signal });
   });
 
+  root.querySelector<HTMLButtonElement>("#install-llama-cpp-python")?.addEventListener("click", async (event) => {
+    event.stopImmediatePropagation();
+    closeNodeActionMenus();
+    const state = context.getState();
+    if (state?.queue.some((task) => task.status === "running")) {
+      context.notify(context.t(uiKeys.settings.actions.runningTaskBlocked), { kind: "warning" });
+      return;
+    }
+    const settings = options.formSettings();
+    options.setSettingsDraft(settings);
+    options.setLlamaCppPythonInstalling(true);
+    options.setLlamaCppPythonLog("");
+    context.requestRender();
+    try {
+      const result = await context.studio.installLlamaCppPython(settings);
+      options.setLlamaCppPythonLog(result.log || result.message);
+      const scan = await options.refreshEnvironment(settings, "dependency-change");
+      if (scan) context.notify(result.message, { kind: result.ok ? "info" : "error" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      options.setLlamaCppPythonLog(
+        [options.getLlamaCppPythonLog(), message].filter(Boolean).join("\n")
+      );
+      context.notify(message, { kind: "error" });
+    } finally {
+      options.setLlamaCppPythonInstalling(false);
+      requestSettingsRender();
+    }
+  }, { signal });
+
+  root.querySelector<HTMLButtonElement>("[data-uninstall-llama-cpp-python]")?.addEventListener("click", (event) => {
+    event.stopImmediatePropagation();
+    closeNodeActionMenus();
+    const state = context.getState();
+    if (state?.queue.some((task) => task.status === "running")) {
+      context.notify(context.t(uiKeys.settings.actions.runningTaskBlocked), { kind: "warning" });
+      return;
+    }
+    if (!options.getEnvironmentScan()?.llamaCppPython?.installed) return;
+    options.requestLlamaCppPythonUninstall();
+  }, { signal });
+
   root.querySelectorAll<HTMLButtonElement>("[data-rescan-node]").forEach((button) => {
     button.addEventListener("click", async (event) => {
       event.stopImmediatePropagation();
@@ -136,37 +178,6 @@ export function mountSettingsNodeDependencyController(
       });
     }
   }, { signal });
-
-  root.querySelectorAll<HTMLButtonElement>("[data-install-workflow]").forEach((button) => {
-    button.addEventListener("click", async (event) => {
-      event.stopImmediatePropagation();
-      closeNodeActionMenus();
-      const workflowId = button.dataset.installWorkflow as WorkflowDependencyStatus["id"] | undefined;
-      if (!workflowId) return;
-      const settings = options.formSettings();
-      options.setSettingsDraft(settings);
-      options.setWorkflowDependencyInstalling(workflowId);
-      options.setWorkflowDependencyLog(workflowId, context.t("settings.nodes.installing"));
-      context.requestRender();
-      try {
-        const result = await context.studio.installWorkflowDependency(workflowId, settings);
-        options.setWorkflowDependencyLog(workflowId, result.log || result.message);
-        if (!result.ok) throw new Error(result.message);
-        const scan = await options.refreshEnvironment(settings, "dependency-change");
-        if (scan) context.notify(result.message);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        options.setWorkflowDependencyLog(
-          workflowId,
-          options.getWorkflowDependencyLog(workflowId) || message
-        );
-        context.notify(context.t(uiKeys.settings.actions.workflowInstallFailed, { message }), { kind: "error" });
-      } finally {
-        options.setWorkflowDependencyInstalling("");
-        requestSettingsRender();
-      }
-    }, { signal });
-  });
 
   return () => events.abort();
 }

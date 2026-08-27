@@ -11,7 +11,8 @@ export type ConfirmationRequest =
   | { kind: "cancel-queue-task"; taskId: string; title: string }
   | { kind: "discard-settings"; nextPage: Page }
   | { kind: "force-stop-comfy" }
-  | { kind: "uninstall-custom-node"; nodeId: string; name: string };
+  | { kind: "uninstall-custom-node"; nodeId: string; name: string }
+  | { kind: "uninstall-llama-cpp-python" };
 
 export interface ConfirmationServiceOptions {
   getRequest(): ConfirmationRequest | null;
@@ -24,6 +25,9 @@ export interface ConfirmationServiceOptions {
   clearCreationDraft(mode: CreationMode): void;
   setServiceForceStopping(value: boolean): void;
   setServiceStatusMessage(message: string): void;
+  setLlamaCppPythonInstalling(value: boolean): void;
+  getLlamaCppPythonLog(): string;
+  setLlamaCppPythonLog(log: string): void;
   scanEnvironment(settings: Settings): Promise<void>;
   setSettingsDraft(settings: Settings | null): void;
   setPage(page: Page): void;
@@ -74,6 +78,21 @@ export async function acceptConfirmation(
       options.setServiceStatusMessage(result.message);
       await options.scanEnvironment(settings);
       if (!result.ok) throw new Error(result.message);
+      options.setRequest(null);
+      options.setBusy(false);
+      options.notify(result.message);
+      options.render();
+      options.restoreModalFocus();
+      return;
+    } else if (request.kind === "uninstall-llama-cpp-python") {
+      const settings = options.getFormSettings();
+      options.setLlamaCppPythonInstalling(true);
+      options.setLlamaCppPythonLog("");
+      const result = await context.studio.uninstallLlamaCppPython(settings);
+      options.setLlamaCppPythonLog(result.log || result.message);
+      if (!result.ok) throw new Error(result.message);
+      await options.scanEnvironment(settings);
+      options.setLlamaCppPythonInstalling(false);
       options.setRequest(null);
       options.setBusy(false);
       options.notify(result.message);
@@ -152,9 +171,19 @@ export async function acceptConfirmation(
   } catch (error) {
     options.setQueueActionBusy(null);
     if (request.kind === "force-stop-comfy") options.setServiceForceStopping(false);
+    if (request.kind === "uninstall-llama-cpp-python") {
+      options.setLlamaCppPythonInstalling(false);
+      if (!options.getLlamaCppPythonLog()) {
+        options.setLlamaCppPythonLog(error instanceof Error ? error.message : String(error));
+      }
+    }
     if (preserveHistoryScrollOnReturn) options.setHistoryScrollRestorePending(false);
     options.setBusy(false);
     options.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
-    options.renderOverlay();
+    if (request.kind === "uninstall-llama-cpp-python") {
+      options.render();
+    } else {
+      options.renderOverlay();
+    }
   }
 }

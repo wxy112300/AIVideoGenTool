@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import {
   deriveAccelerationState,
-  deriveCoreNodeState,
   deriveCustomNodeCardState,
   derivePromptRuntimeState,
   deriveSettingsDependencyActionState,
@@ -143,7 +142,6 @@ describe("settings selectors", () => {
     expect(deriveSettingsDependencyActionState({
       environmentScan: null,
       customNodeInstallPhase: "scanning",
-      workflowDependencyInstalling: "",
       queueRunning: false,
       hasRunningQueueTask: false
     })).toMatchObject({
@@ -187,14 +185,6 @@ describe("settings selectors", () => {
       status: "runtime-missing",
       installActionable: true,
       runtimeRepairable: true
-    });
-  });
-
-  it("keeps unknown core nodes neutral until compatibility is checked", () => {
-    expect(deriveCoreNodeState(null)).toMatchObject({
-      known: false,
-      h3Tone: "warning",
-      promptTone: "warning"
     });
   });
 

@@ -152,7 +152,7 @@ async function requireImageModelAssets(
   if (profile.missingCustomNodeNames?.length) {
     throw new Error(
       `${adapter.name} 缺少必需节点：${profile.missingCustomNodeNames.join("、")}。` +
-      "请先在设置 → 节点与工作流中安装；节点目录存在即可入队，无需启动 ComfyUI。"
+      "请先在设置 → 节点与依赖中安装；节点目录存在即可入队，无需启动 ComfyUI。"
     );
   }
   if (imageQualityProfileRequiresLightning(qualityProfile) && !imageLightningComponentFound(profile.components)) {
@@ -252,7 +252,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       if (!slaNode?.loaded) {
         throw new Error(slaNode?.installed
           ? "Turbo-SLA 节点已安装但尚未被当前 ComfyUI 加载，请重启 ComfyUI 后重新扫描。"
-          : "Turbo-SLA 需要 H3 SLA Attention 节点，请先在设置 → 节点与工作流中安装并重启 ComfyUI。");
+          : "Turbo-SLA 需要 H3 SLA Attention 节点，请先在设置 → 节点与依赖中安装并重启 ComfyUI。");
       }
     }
     if (draft.spectrumMode === "balanced") {
@@ -260,7 +260,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         (node) => node.id === "spectrum-minimax-h3"
       );
       if (!spectrum?.loaded) {
-        throw new Error("Spectrum 节点不可用；请先在设置 → 节点与工作流中安装、更新并复检。");
+        throw new Error("Spectrum 节点不可用；请先在设置 → 节点与依赖中安装、更新并复检。");
       }
       if (isH3TurboEnabled(draft) && !releaseVersionAtLeast(
         spectrum.version,

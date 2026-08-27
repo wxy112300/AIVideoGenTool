@@ -119,7 +119,7 @@ import {
   installCustomNode,
   uninstallCustomNode,
   installLlamaCppPython,
-  installWorkflowDependency,
+  uninstallLlamaCppPython,
   alignLocalComfyUiRuntimeProfile,
   forceStopComfyProcesses,
   reconcileConfiguredComfyListenerOwnership,
@@ -1683,13 +1683,13 @@ async function validateNativePromptRuntime(settings: Settings): Promise<void> {
     const runtime = scan.llamaCppPython;
     const detail = runtime.detail || runtime.error || "未通过 CUDA/导入自检";
     throw new Error(
-      `Gemma H3 Prompt Writer 的共享 llama-cpp-python 尚未就绪：${detail}。请在设置 → 提示词扩写中对当前选中的 ComfyUI Python 执行“重新安装/修复”，然后重启 ComfyUI。`
+      `Gemma H3 Prompt Writer 的 llama-cpp-python 尚未就绪：${detail}。请在设置 → 节点与依赖中对当前选中的 ComfyUI Python 执行“重新安装/修复”，然后重启 ComfyUI。`
     );
   }
   if (isComfyMultimodalPromptModel(settings.promptModelId)) {
     if (profile.missingCustomNodeIds?.length) {
       throw new Error(
-        `多模态提示词模型缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与工作流中安装。`
+        `多模态提示词模型缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与依赖中安装。`
       );
     }
     if (profile.runtimeVerified && profile.runtimeReady === false) {
@@ -1702,7 +1702,7 @@ async function validateNativePromptRuntime(settings: Settings): Promise<void> {
   if (isQwenVlPeftPromptModel(settings.promptModelId)) {
     if (profile.missingCustomNodeIds?.length) {
       throw new Error(
-        `Qwen3-VL Prompt LoRA 缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与工作流中安装。`
+        `Qwen3-VL Prompt LoRA 缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与依赖中安装。`
       );
     }
     if (profile.runtimeVerified && profile.runtimeReady === false) {
@@ -3573,25 +3573,6 @@ function registerIpc(): void {
     )
   );
   ipcMain.handle(
-    "workflow-dependency:install",
-    (event, workflowId, settings: Settings) => loggedOperation(
-      "environment",
-      "workflow-dependency-install",
-      "Workflow dependency installation started",
-      () => installWorkflowDependency(workflowId, settings, (message) => {
-        appLogger.info("environment", "workflow-dependency-install-progress", message, { workflowId });
-        if (!event.sender.isDestroyed()) {
-          event.sender.send("dependency-install:log", {
-            kind: "workflow",
-            id: workflowId,
-            message
-          });
-        }
-      }),
-      { workflowId }
-    )
-  );
-  ipcMain.handle(
     "llama-cpp-python:install",
     (event, settings: Settings) => loggedOperation(
       "environment",
@@ -3599,6 +3580,24 @@ function registerIpc(): void {
       "llama-cpp-python installation started",
       () => installLlamaCppPython(settings, (message) => {
         appLogger.info("environment", "llama-cpp-python-install-progress", message);
+        if (!event.sender.isDestroyed()) {
+          event.sender.send("dependency-install:log", {
+            kind: "python-runtime",
+            id: "llama-cpp-python",
+            message
+          });
+        }
+      })
+    )
+  );
+  ipcMain.handle(
+    "llama-cpp-python:uninstall",
+    (event, settings: Settings) => loggedOperation(
+      "environment",
+      "llama-cpp-python-uninstall",
+      "llama-cpp-python uninstallation started",
+      () => uninstallLlamaCppPython(settings, (message) => {
+        appLogger.info("environment", "llama-cpp-python-uninstall-progress", message);
         if (!event.sender.isDestroyed()) {
           event.sender.send("dependency-install:log", {
             kind: "python-runtime",

@@ -1066,6 +1066,20 @@ body.image-markup-open {
   flex: 0 0 16px;
 }
 
+.asset-library-file-preview {
+  width: 48px;
+  height: 40px;
+  flex: 0 0 48px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  object-fit: cover;
+  background: var(--surface-raised, #11161d);
+}
+
+.asset-library-file-preview.is-unavailable {
+  opacity: .38;
+}
+
 .asset-library-file > span {
   min-width: 0;
   display: flex;

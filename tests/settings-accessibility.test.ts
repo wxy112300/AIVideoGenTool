@@ -61,14 +61,11 @@ function viewModel(overrides: Partial<SettingsPageViewModel> = {}): SettingsPage
     comfyUpdateLog: "",
     environmentRepairing: "",
     environmentRepairLogs: {},
-    workflowDependencyInstalling: "",
-    workflowDependencyLogs: {},
     customNodeInstalling: "",
     customNodeInstallQueue: [],
     customNodeInstallBatch: [],
     customNodeInstallPhase: "idle",
     customNodeLogs: {},
-    coreDependencyRepairing: false,
     attentionAccelerationInstalling: false,
     attentionAccelerationLog: "",
     llamaCppPythonInstalling: false,
@@ -85,11 +82,15 @@ function viewModel(overrides: Partial<SettingsPageViewModel> = {}): SettingsPage
 describe("Settings accessibility markup", () => {
   it("exposes a roving tablist and keeps the scan action reachable from the page header", () => {
     const markup = renderSettingsPage(viewModel(), renderOptions);
+    const nodesMarkup = renderSettingsPage(viewModel({ settingsTab: "nodes" }), renderOptions);
 
     expect(markup).toContain('id="settings-category-tabs"');
     expect(markup).toContain('class="settings-sidebar" role="tablist"');
     expect(markup.match(/role="tab"[^>]*tabindex="0"/g)).toHaveLength(1);
     expect(markup).toContain('id="settings-tab-system"');
+    expect(markup.indexOf('id="settings-tab-system"')).toBeLessThan(markup.indexOf('id="settings-tab-nodes"'));
+    expect(markup.indexOf('id="settings-tab-nodes"')).toBeLessThan(markup.indexOf('id="settings-tab-acceleration"'));
+    expect(nodesMarkup).toContain("节点与依赖");
     expect(markup).toContain('aria-controls="settings-panel-system"');
     expect(markup).toContain('id="settings-panel-system" class="settings-content" role="tabpanel"');
     expect(markup).toContain('aria-labelledby="settings-tab-system"');
@@ -107,12 +108,141 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('<option value="lora" selected>');
   });
 
+  it("keeps system settings concise while preserving environment evidence", () => {
+    const desktopDirectory = "C:\\ComfyUI Desktop";
+    const environmentScan = {
+      scannedAt: "2026-08-27T00:00:00.000Z",
+      userHome: "C:\\Users\\Test",
+      comfyRoot: "C:\\ComfyUI",
+      comfyUrl: "http://127.0.0.1:8188",
+      comfyInstallDirectory: desktopDirectory,
+      comfySourceDirectory: "C:\\ComfyUI\\core",
+      comfyInstallType: "desktop",
+      comfyInstallations: [{
+        type: "desktop",
+        directory: desktopDirectory,
+        sourceDirectory: "C:\\ComfyUI\\core",
+        executable: `${desktopDirectory}\\ComfyUI.exe`,
+        desktopVersion: "1.0.39",
+        version: "0.33.0",
+        revision: "e0fd752e",
+        selected: true
+      }, {
+        type: "manual",
+        directory: "C:\\ComfyUI Legacy",
+        sourceDirectory: "C:\\ComfyUI Legacy",
+        executable: "",
+        desktopVersion: "",
+        version: "0.32.0",
+        revision: "legacy-revision",
+        selected: false
+      }],
+      pythonRuntimes: [],
+      gpus: [],
+      modelDirectory: "",
+      outputDirectory: "",
+      attentionAcceleration: {
+        torchVersion: "2.10.0+cu130",
+        cudaVersion: "13.0"
+      },
+      items: [],
+      modelProfiles: [],
+      customNodes: [],
+      issues: []
+    } as unknown as EnvironmentScanResult;
+    const markup = renderSettingsPage(viewModel({
+      settings: { ...state.settings, comfyInstallDirectory: desktopDirectory },
+      environmentScan
+    }), renderOptions);
+
+    expect(markup).toContain('id="ui-locale" aria-label="settings.locale.title"');
+    expect(markup).not.toContain("settings.locale.label");
+    expect(markup).not.toContain("settings.locale.pending");
+    expect(markup).not.toContain("settings.system.gpuDetectionDescription");
+    expect(markup).toContain("settings.system.queueIsolationDescription");
+    expect(markup).toContain("PyTorch 2.10.0+cu130");
+    expect(markup).toContain("CUDA 13.0");
+    expect(markup).toContain('class="muted comfy-installation-runtime" title="settings.system.revision · PyTorch 2.10.0+cu130 · CUDA 13.0"');
+    expect(markup).toContain('<span class="model-badge">settings.system.installationCount</span>');
+    expect(markup).not.toContain('<span class="model-availability warning">settings.system.installationCount</span>');
+  });
+
   it("keeps the manual scan action available on non-system Settings tabs", () => {
     const markup = renderSettingsPage(viewModel({ settingsTab: "lora" }), renderOptions);
 
     expect(markup).toContain('id="settings-panel-lora" class="settings-content" role="tabpanel"');
     expect(markup).toContain('id="scan-environment"');
     expect(markup).not.toContain('id="settings-environment-section"');
+  });
+
+  it("removes model-page scan summaries and keeps image/upscale controls in their intended places", () => {
+    const videoMarkup = renderSettingsPage(viewModel({ settingsTab: "video" }), renderOptions);
+    const imageMarkup = renderSettingsPage(viewModel({ settingsTab: "image" }), renderOptions);
+    const promptMarkup = renderSettingsPage(viewModel({ settingsTab: "prompt" }), renderOptions);
+    const upscaleMarkup = renderSettingsPage(viewModel({ settingsTab: "upscale" }), renderOptions);
+    const nodesMarkup = renderSettingsPage(viewModel({ settingsTab: "nodes" }), renderOptions);
+
+    expect(videoMarkup).not.toContain("video.summary");
+    expect(videoMarkup).not.toContain("video.waitingScan");
+    expect(imageMarkup).not.toContain('id="image-output-count"');
+    expect(imageMarkup).not.toContain('id="image-output-count-number"');
+    expect(promptMarkup).not.toContain("prompt.summary");
+    expect(promptMarkup).not.toContain("prompt.waitingScan");
+    expect(promptMarkup).not.toContain("install-llama-cpp-python");
+    expect(promptMarkup).not.toContain("prompt.note");
+    expect(upscaleMarkup).not.toContain("upscale.summary");
+    expect(upscaleMarkup).not.toContain("upscale.waitingScan");
+    expect(upscaleMarkup).not.toContain('id="seedvr2-model"');
+    expect(upscaleMarkup).not.toContain('id="realesrgan-model"');
+    expect(upscaleMarkup).toContain('id="default-upscale-model"');
+    expect(upscaleMarkup.indexOf('id="default-upscale-model"')).toBeGreaterThan(upscaleMarkup.indexOf('id="settings-panel-upscale"'));
+    expect(nodesMarkup).toContain("llama-cpp-python");
+    expect(nodesMarkup).toContain('id="install-llama-cpp-python"');
+    expect(nodesMarkup).not.toContain("nodes.h3Title");
+    expect(nodesMarkup).not.toContain("nodes.qwenTitle");
+    expect(nodesMarkup).not.toContain('id="repair-h3-core"');
+    expect(nodesMarkup).not.toContain("data-install-workflow");
+    expect(nodesMarkup).not.toContain("nodes.placeholderTitle");
+    expect(nodesMarkup).not.toContain("{{PROMPT}}");
+    expect(nodesMarkup).not.toContain('data-uninstall-llama-cpp-python');
+  });
+
+  it("puts the installed llama-cpp-python actions on the Nodes & dependencies card", () => {
+    const environmentScan = {
+      scannedAt: "2026-08-27T00:00:00.000Z",
+      userHome: "C:\\Users\\Test",
+      comfyRoot: "C:\\ComfyUI",
+      llamaCppPython: {
+        packageName: "llama-cpp-python",
+        pythonPath: "C:\\ComfyUI\\.venv\\Scripts\\python.exe",
+        pythonVersion: "3.12.11",
+        packageVersion: "0.3.46+cu128",
+        torchVersion: "2.8.0+cu129",
+        cudaVersion: "12.9",
+        installed: true,
+        importable: true,
+        gpuOffload: true,
+        ready: true,
+        detail: "CUDA 后端已就绪",
+        error: ""
+      },
+      items: [],
+      modelProfiles: [],
+      customNodes: [],
+      issues: []
+    } as unknown as EnvironmentScanResult;
+    const markup = renderSettingsPage(viewModel({
+      settingsTab: "nodes",
+      environmentScan,
+      llamaCppPythonLog: "安装日志"
+    }), renderOptions);
+
+    expect(markup).toContain("llama-cpp-python");
+    expect(markup).toContain('id="install-llama-cpp-python"');
+    expect(markup).toContain("重新安装");
+    expect(markup).toContain("data-uninstall-llama-cpp-python");
+    expect(markup).toContain('data-dependency-install-log="python-runtime:llama-cpp-python"');
+    expect(markup).toContain("目标环境：");
   });
 
   it("exposes descriptions for no-prompt drafting directions", () => {
@@ -162,7 +292,6 @@ describe("Settings accessibility markup", () => {
       items: [],
       modelProfiles: [],
       customNodes: [],
-      workflowDependencies: [],
       issues: []
     } as unknown as EnvironmentScanResult;
     const markup = renderSettingsPage(viewModel({
@@ -223,7 +352,6 @@ describe("Settings accessibility markup", () => {
       userHome: "C:\\Users\\Test",
       items: [],
       modelProfiles: [],
-      workflowDependencies: [],
       issues: [],
       customNodes: [{
         id: "minimax-h3-prompt-writer",

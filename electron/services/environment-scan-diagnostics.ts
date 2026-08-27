@@ -97,9 +97,6 @@ export function buildEnvironmentScanDiagnostics(
     }
   }
 
-  for (const workflow of scan.workflowDependencies.filter((workflow) => !workflow.installed)) {
-    warnings.push(`workflow:${workflow.id} (${workflow.name}): not installed`);
-  }
   for (const issue of scan.issues) {
     const finding = `issue:${issue.id} (${issue.label}): ${issue.detail}`;
     if (issue.severity === "error") errors.push(finding);
@@ -152,8 +149,6 @@ export function buildEnvironmentScanDiagnostics(
       customNodeVersions: scan.customNodes
         .filter((node) => node.installed)
         .map((node) => `${node.id}:${versionLabel(node.version)}`),
-      workflows: scan.workflowDependencies.length,
-      installedWorkflows: scan.workflowDependencies.filter((workflow) => workflow.installed).length
     },
     errors: unique(errors),
     warnings: unique(warnings)

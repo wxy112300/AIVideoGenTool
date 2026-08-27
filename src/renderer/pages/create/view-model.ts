@@ -128,7 +128,7 @@ export function imageEditEnqueueBlockReason(
   return referenceBlockReason || imageCapability.requiresPrompt !== false && !prompt.text.trim()
     ? referenceBlockReason || t(uiKeys.create.validation.imagePromptMissing)
     : imageProfile?.missingCustomNodeNames?.length
-      ? `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与工作流中安装。`
+      ? `缺少必需节点：${imageProfile.missingCustomNodeNames.join("、")}。请先在设置 → 节点与依赖中安装。`
       : !cachedImageProfileAllowsEnqueue(imageProfile)
         ? !imageProfile?.available
           ? `${imageCapability.name} 模型文件不完整，请先在设置 → 图片模型中安装并重新扫描。`

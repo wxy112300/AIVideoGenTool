@@ -19,7 +19,7 @@ export function createDefaultImageEditDraft(): ImageEditDraft {
     qualityProfile: "balanced-20",
     aspectRatio: "source",
     targetResolution: "source",
-    outputCount: 6,
+    outputCount: 1,
     outputFormat: "png",
     seed: null
   };

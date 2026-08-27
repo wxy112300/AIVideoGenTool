@@ -98,10 +98,10 @@ const api: AppApi = {
     ipcRenderer.invoke("custom-node:install", nodeId, settings, mode),
   uninstallCustomNode: (nodeId, settings) =>
     ipcRenderer.invoke("custom-node:uninstall", nodeId, settings),
-  installWorkflowDependency: (workflowId, settings) =>
-    ipcRenderer.invoke("workflow-dependency:install", workflowId, settings),
   installLlamaCppPython: (settings) =>
     ipcRenderer.invoke("llama-cpp-python:install", settings),
+  uninstallLlamaCppPython: (settings) =>
+    ipcRenderer.invoke("llama-cpp-python:uninstall", settings),
   installAttentionAcceleration: (settings) =>
     ipcRenderer.invoke("attention-acceleration:install", settings),
   enqueue: (draft: Draft) => ipcRenderer.invoke("queue:enqueue", draft),

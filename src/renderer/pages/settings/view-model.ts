@@ -35,14 +35,11 @@ export interface SettingsViewModelDependencies {
   comfyUpdateLog: string;
   environmentRepairing: string;
   environmentRepairLogs: Record<string, string>;
-  workflowDependencyInstalling: string;
-  workflowDependencyLogs: Record<string, string>;
   customNodeInstalling: string;
   customNodeInstallQueue: string[];
   customNodeInstallBatch: string[];
   customNodeInstallPhase: CustomNodeInstallPhase;
   customNodeLogs: Record<string, string>;
-  coreDependencyRepairing: boolean;
   attentionAccelerationInstalling: boolean;
   attentionAccelerationLog: string;
   llamaCppPythonInstalling: boolean;
@@ -90,14 +87,11 @@ export function buildSettingsPageViewModel(
     comfyUpdateLog: options.comfyUpdateLog,
     environmentRepairing: options.environmentRepairing,
     environmentRepairLogs: options.environmentRepairLogs,
-    workflowDependencyInstalling: options.workflowDependencyInstalling,
-    workflowDependencyLogs: options.workflowDependencyLogs,
     customNodeInstalling: options.customNodeInstalling,
     customNodeInstallQueue: options.customNodeInstallQueue,
     customNodeInstallBatch: options.customNodeInstallBatch,
     customNodeInstallPhase: options.customNodeInstallPhase,
     customNodeLogs: options.customNodeLogs,
-    coreDependencyRepairing: options.coreDependencyRepairing,
     attentionAccelerationInstalling: options.attentionAccelerationInstalling,
     attentionAccelerationLog: options.attentionAccelerationLog,
     llamaCppPythonInstalling: options.llamaCppPythonInstalling,

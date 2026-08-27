@@ -335,16 +335,36 @@ type LlamaCppInstallResult = { ok: boolean; message: string; log?: string };
 
 /**
  * Both H3 Prompt Writer and MultiModal Prompt Nodes load this package from the
- * same ComfyUI Python environment. Keep one in-process install transaction so
- * two cards cannot pip-replace the shared native DLLs at the same time.
+ * same ComfyUI Python environment. Keep one in-process package transaction so
+ * install, repair, and uninstall cannot modify the native DLLs at the same time.
  */
-const sharedLlamaInstallLocks = new Map<string, Promise<LlamaCppInstallResult>>();
+const sharedLlamaOperationLocks = new Map<string, Promise<LlamaCppInstallResult>>();
 
-function sharedLlamaInstallKey(settings: Settings): string {
+function sharedLlamaOperationKey(settings: Settings): string {
   return [
     settings.comfyInstallDirectory.trim().toLowerCase(),
     settings.comfyPythonPath.trim().toLowerCase()
   ].join("\u0000");
+}
+
+function sharedLlamaOperationLock(
+  settings: Settings,
+  onLog: ((message: string) => void) | undefined,
+  operation: () => Promise<LlamaCppInstallResult>
+): Promise<LlamaCppInstallResult> {
+  const key = sharedLlamaOperationKey(settings);
+  const running = sharedLlamaOperationLocks.get(key);
+  if (running) {
+    onLog?.("检测到同一 ComfyUI 的 llama-cpp-python 正在安装、修复或卸载，等待现有事务完成，不会并行修改运行库……");
+    return running;
+  }
+  const pending = operation();
+  sharedLlamaOperationLocks.set(key, pending);
+  return pending.finally(() => {
+    if (sharedLlamaOperationLocks.get(key) === pending) {
+      sharedLlamaOperationLocks.delete(key);
+    }
+  });
 }
 
 async function installLlamaCppPythonPackageUnlocked(
@@ -484,24 +504,83 @@ export async function installLlamaCppPythonPackage(
   onLog?: (message: string) => void,
   options: { forceReinstall?: boolean } = {}
 ): Promise<LlamaCppInstallResult> {
-  const key = sharedLlamaInstallKey(settings);
-  const running = sharedLlamaInstallLocks.get(key);
-  if (running) {
-    onLog?.("检测到同一 ComfyUI 的共享 llama-cpp-python 正在安装/修复，等待现有事务完成，不会重复替换 DLL……");
-    return running;
-  }
-  const operation = installLlamaCppPythonPackageUnlocked(
-    settings,
-    runtime,
-    onLog,
-    options
+  return sharedLlamaOperationLock(settings, onLog, () =>
+    installLlamaCppPythonPackageUnlocked(settings, runtime, onLog, options)
   );
-  sharedLlamaInstallLocks.set(key, operation);
+}
+
+async function uninstallLlamaCppPythonPackageUnlocked(
+  settings: Settings,
+  runtime: LlamaCppPythonRuntime,
+  onLog?: (message: string) => void
+): Promise<LlamaCppInstallResult> {
+  const log: string[] = [];
+  const report = (message: string) => {
+    const normalized = message.trim();
+    if (!normalized) return;
+    log.push(normalized);
+    onLog?.(normalized);
+  };
   try {
-    return await operation;
-  } finally {
-    if (sharedLlamaInstallLocks.get(key) === operation) {
-      sharedLlamaInstallLocks.delete(key);
+    const environment = runtime.downloadEnvironment(settings);
+    report(runtime.proxyLogLabel(settings));
+    report("正在定位所选 ComfyUI Python，并检查 llama-cpp-python……");
+    const comfyRoot = await runtime.findComfyRoot(settings);
+    if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
+    const python = await runtime.findComfyPython(settings, comfyRoot);
+    if (!python) throw new Error("没有找到所选 ComfyUI 的 Python 环境。");
+    const before = await inspectLlamaCppPython(python, runtime.runLoggedProcess);
+    if (!before.installed) {
+      report("当前环境没有安装 llama-cpp-python，无需卸载。");
+      return {
+        ok: true,
+        message: "llama-cpp-python 未安装，无需卸载。",
+        log: log.join("\n\n")
+      };
     }
+    report("正在卸载 llama-cpp-python……");
+    await runtime.runLoggedProcess(
+      python,
+      [
+        "-m", "pip", "uninstall", "--yes",
+        "--disable-pip-version-check", "--no-input",
+        "llama-cpp-python"
+      ],
+      {
+        timeoutMs: 600_000,
+        env: environment,
+        onLog: report
+      }
+    );
+    report("pip 卸载完成，正在确认运行库已移除……");
+    const after = await inspectLlamaCppPython(python, runtime.runLoggedProcess);
+    if (after.installed) {
+      throw new Error("卸载后仍检测到 llama-cpp-python，请查看安装日志。");
+    }
+    report("已确认 llama-cpp-python 已移除。");
+    return {
+      ok: true,
+      message: "llama-cpp-python 已卸载。",
+      log: log.join("\n\n")
+    };
+  } catch (error) {
+    const processError = error as LlamaCppProcessError;
+    const details = [processError.message, processError.stdout].filter(Boolean).join("\n");
+    report(details);
+    return {
+      ok: false,
+      message: processError.message || "llama-cpp-python 卸载失败",
+      log: log.join("\n\n")
+    };
   }
+}
+
+export async function uninstallLlamaCppPythonPackage(
+  settings: Settings,
+  runtime: LlamaCppPythonRuntime,
+  onLog?: (message: string) => void
+): Promise<LlamaCppInstallResult> {
+  return sharedLlamaOperationLock(settings, onLog, () =>
+    uninstallLlamaCppPythonPackageUnlocked(settings, runtime, onLog)
+  );
 }

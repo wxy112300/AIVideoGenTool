@@ -785,15 +785,6 @@ export interface ComfyUiInstallationSummary {
   selected: boolean;
 }
 
-export interface WorkflowDependencyStatus {
-  id: "minimax_h3_i2v" | "qwen36_h3_prompt_enhancer";
-  name: string;
-  purpose: string;
-  installed: boolean;
-  path: string;
-  sourceUrl: string;
-}
-
 export interface ModelComponentStatus {
   label: string;
   found: boolean;
@@ -900,7 +891,6 @@ export interface EnvironmentScanResult {
   items: EnvironmentItem[];
   modelProfiles: ModelScanProfile[];
   customNodes: CustomNodeStatus[];
-  workflowDependencies: WorkflowDependencyStatus[];
   issues: EnvironmentIssue[];
 }
 
@@ -1246,11 +1236,8 @@ export interface AppApi {
     nodeId: string,
     settings: Settings
   ): Promise<ConnectionResult>;
-  installWorkflowDependency(
-    workflowId: WorkflowDependencyStatus["id"],
-    settings: Settings
-  ): Promise<ConnectionResult>;
   installLlamaCppPython(settings: Settings): Promise<ConnectionResult>;
+  uninstallLlamaCppPython(settings: Settings): Promise<ConnectionResult>;
   installAttentionAcceleration(settings: Settings): Promise<ConnectionResult>;
   enqueue(draft: Draft): Promise<AppState>;
   enqueueExtension(draft: Draft): Promise<AppState>;
@@ -1295,7 +1282,7 @@ export type NotificationKind =
   | "queue-complete";
 
 export interface DependencyInstallProgress {
-  kind: "custom-node" | "workflow" | "python-runtime";
+  kind: "custom-node" | "python-runtime";
   id: string;
   message: string;
 }

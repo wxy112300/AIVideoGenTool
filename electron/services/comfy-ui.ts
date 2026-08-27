@@ -730,7 +730,7 @@ export function assertImageWorkflowRuntimeCompatible(
       throw new Error(
         `必需节点未加载：${requiredPackages.map((item) => item!.name).join("、")}；` +
         `ComfyUI 未注册 ${missingNodes.join("、")}。节点目录存在但当前运行时不可用，` +
-        "请检查导入错误、重启 ComfyUI，或在设置 → 节点与工作流中更新节点版本。"
+        "请检查导入错误、重启 ComfyUI，或在设置 → 节点与依赖中更新节点版本。"
       );
     }
     throw new Error(
@@ -749,7 +749,7 @@ export function assertImageWorkflowRuntimeCompatible(
   if (incompatibleInputs.length) {
     throw new Error(
       `节点版本不兼容：${[...new Set(incompatibleInputs)].join("；")}。` +
-      "请在设置 → 节点与工作流中更新对应节点后重启 ComfyUI。"
+      "请在设置 → 节点与依赖中更新对应节点后重启 ComfyUI。"
     );
   }
 }
@@ -1117,7 +1117,7 @@ export function historyFailure(value: unknown): string {
         .join(": ");
       if (text) {
         if (/bad file descriptor|errno\s*9|0x?9\b/iu.test(text)) {
-          return `${text}；ComfyUI Desktop 的日志句柄已失效，请重启 ComfyUI；若使用 Qwen-VL LoRA，请在设置 → 节点与工作流中执行一键修复`;
+          return `${text}；ComfyUI Desktop 的日志句柄已失效，请重启 ComfyUI；若使用 Qwen-VL LoRA，请在设置 → 节点与依赖中执行一键修复`;
         }
         return text;
       }

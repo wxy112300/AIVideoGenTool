@@ -210,7 +210,6 @@ export interface SettingsDependencyActionState {
 export function deriveSettingsDependencyActionState(options: {
   environmentScan: EnvironmentScanResult | null;
   customNodeInstallPhase: CustomNodeInstallPhase;
-  workflowDependencyInstalling: string;
   queueRunning: boolean;
   hasRunningQueueTask: boolean;
 }): SettingsDependencyActionState {
@@ -225,7 +224,6 @@ export function deriveSettingsDependencyActionState(options: {
     customNodeInstallFinalizing,
     customNodeInstallGloballyBlocked: Boolean(
       customNodeInstallFinalizing ||
-      options.workflowDependencyInstalling ||
       options.queueRunning ||
       options.hasRunningQueueTask
     )
@@ -248,36 +246,6 @@ export function deriveSettingsGpuState(
     item: environmentScan?.items?.find((item) => item.id === "nvidia"),
     reserveVramBytes: deriveVramReserveBytes(settings.vramReserveGb)
   };
-}
-
-export function deriveCoreNodeState(environmentScan: EnvironmentScanResult | null) {
-  const known = Boolean(environmentScan?.comfyCompatibility?.checkedFrom);
-  const h3Nodes = environmentScan?.comfyCompatibility?.coreNodes ?? [];
-  const h3Ready = environmentScan?.comfyCompatibility?.h3CoreSupported ?? false;
-  const promptNodes = environmentScan?.comfyCompatibility?.promptCoreNodes ?? [];
-  const promptReady = promptNodes.length > 0 && promptNodes.every((node) => node.available);
-  const workflowDependencies = environmentScan?.workflowDependencies ?? [];
-  const customNodes = environmentScan?.customNodes ?? [];
-  return {
-    known,
-    h3Nodes,
-    h3Ready,
-    h3Tone: h3Ready ? "available" as const : known ? "missing" as const : "warning" as const,
-    promptNodes,
-    promptReady,
-    promptTone: promptReady ? "available" as const : known ? "missing" as const : "warning" as const,
-    workflowDependencies,
-    customNodes,
-    availableCount: customNodes.filter((node) => node.installed).length +
-      (h3Ready ? 1 : 0) +
-      (promptReady ? 1 : 0) +
-      workflowDependencies.filter((workflow) => workflow.installed).length,
-    totalCount: customNodes.length + 2 + workflowDependencies.length
-  };
-}
-
-export function coreNodeRowTone(available: boolean, known: boolean): "found" | "warning" | "missing" {
-  return available ? "found" : known ? "missing" : "warning";
 }
 
 export type CustomNodeDisplayStatus =

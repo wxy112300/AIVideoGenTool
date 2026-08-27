@@ -31,6 +31,8 @@ describe("UI locale foundation", () => {
     expect(translator.t("queue.remaining", { count: 3 }, "剩余 {count} 项")).toBe("剩余 3 项");
     expect(translator.t(uiKeys.queue.summary, { activeCount: 2, attentionCount: 1, status: "队列为空" }))
       .toBe("2 项执行任务 · 1 项需处理 · 队列为空");
+    expect(createTranslator("zh-CN").t(uiKeys.settings.system.queueIsolationDescription))
+      .toBe("控制任务之间何时重启 ComfyUI 以清理运行时；重启越多越稳定，但队列启动会更慢。");
   });
 
   it("accepts an incremental catalog without requiring the full UI to move at once", () => {
@@ -46,10 +48,14 @@ describe("UI locale foundation", () => {
     const translator = createTranslator("en-US");
     expect(translator.t(uiKeys.nav.create)).toBe("Create");
     expect(translator.t(uiKeys.settings.localeEnglish)).toBe("English");
+    expect(translator.t(uiKeys.settings.system.queueIsolationDescription))
+      .toBe("Controls when ComfyUI restarts between tasks to clear runtime state; more restarts improve isolation but slow the queue.");
     expect(translator.t("untranslated.example")).toBe("untranslated.example");
     expect(await loadUiLocale("zh-TW")).toBe("zh-TW");
     expect(createTranslator("zh-TW").t(uiKeys.nav.settings)).toBe("設定");
     expect(createTranslator("zh-TW").t(uiKeys.settings.localeTraditionalChinese)).toBe("繁體中文（台灣）");
+    expect(createTranslator("zh-TW").t(uiKeys.settings.system.queueIsolationDescription))
+      .toBe("控制任務之間何時重新啟動 ComfyUI 以清理執行階段；重新啟動越多越穩定，但佇列啟動會更慢。");
   });
 
   it("keeps the English catalog key-complete with the default catalog", () => {

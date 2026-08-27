@@ -48,12 +48,8 @@ export {
   SPECTRUM_MINIMUM_VERSION,
   SPECTRUM_TURBO_MINIMUM_VERSION,
   SPECTRUM_MODEL_AWARE_MINIMUM_VERSION,
-  SPECTRUM_RECOMMENDED_VERSION,
-  workflowDependencyCatalog,
-  workflowDependencyDefinition
+  SPECTRUM_RECOMMENDED_VERSION
 } from "./dependencies/index.js";
 export type {
-  CatalogCustomNodeDefinition,
-  CatalogWorkflowDependencyDefinition,
-  CatalogWorkflowDependencyId
+  CatalogCustomNodeDefinition
 } from "./dependencies/index.js";

@@ -7,6 +7,7 @@ import {
   llamaCppWheelSelectionForCuda,
   LLAMA_CPP_PYTHON_PROBE_SCRIPT,
   statusFromLlamaCppProbe,
+  uninstallLlamaCppPythonPackage,
   type LlamaCppPythonRuntime
 } from "../electron/services/llama-cpp-python";
 
@@ -67,6 +68,57 @@ describe("llama-cpp-python runtime", () => {
       ready: false,
       detail: expect.stringContaining("旧版或不可用")
     });
+  });
+
+  it("uninstalls only the llama-cpp-python package and verifies it is gone", async () => {
+    const processCalls: string[][] = [];
+    let probeCount = 0;
+    const runtime: LlamaCppPythonRuntime = {
+      downloadEnvironment: () => ({ TEST_RUNTIME: "1" }),
+      proxyLogLabel: () => "代理：关闭",
+      findComfyRoot: async () => "C:\\ComfyUI",
+      findComfyPython: async () => "C:\\ComfyUI\\.venv\\Scripts\\python.exe",
+      runLoggedProcess: async (_executable, args) => {
+        processCalls.push(args);
+        if (args[0] === "-c") {
+          probeCount += 1;
+          return JSON.stringify(probeCount === 1
+            ? {
+                pythonVersion: "3.12.11",
+                packageVersion: "0.3.46+cu128",
+                importable: true,
+                gpuOffload: true,
+                dynamicBackend: true,
+                torchVersion: "2.8.0+cu129",
+                cudaVersion: "12.9"
+              }
+            : {
+                pythonVersion: "3.12.11",
+                packageVersion: "",
+                importable: false,
+                gpuOffload: null,
+                torchVersion: "2.8.0+cu129",
+                cudaVersion: "12.9"
+              });
+        }
+        return "Successfully uninstalled llama-cpp-python";
+      }
+    };
+
+    const result = await uninstallLlamaCppPythonPackage(
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok).toBe(true);
+    expect(processCalls).toContainEqual(expect.arrayContaining([
+      "-m",
+      "pip",
+      "uninstall",
+      "--yes",
+      "llama-cpp-python"
+    ]));
+    expect(result.log).toContain("已确认 llama-cpp-python 已移除");
   });
 
   it("builds a pinned JamePeng dynamic-backend repair wheel for Python 3.12 / CUDA 12.9", () => {

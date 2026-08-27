@@ -38,13 +38,13 @@ const zhCN: Record<string, CatalogLoraLocale> = {
       recommendedStrength: "固定 1.0；创建页会自动切换 4 步、Euler + Beta、video shift 6 和 audio shift 3。",
       effects: "通过约 85% 块稀疏注意力减少注意力计算，目标是降低 4 步 Turbo 的采样时间；未启用 SLA 节点时不会获得稀疏加速。",
       stacking: "性能 LoRA 放在人物、质量或内容 LoRA 前面；Turbo-SLA 与其他 Turbo 变体互斥，不能单独叠加 SLA 节点或 LoRA。",
-      compatibility: "仅当前已接入的 MiniMax H3 FL2VA 图生视频 768p 路径；需要设置 → 节点与工作流中的 H3 SLA Attention 节点。",
+      compatibility: "仅当前已接入的 MiniMax H3 FL2VA 图生视频 768p 路径；需要设置 → 节点与依赖中的 H3 SLA Attention 节点。",
       source: "LightX2V / Minimax-h3-Turbo-SLA · ComfyUI BF16 conversion"
     },
     rules: {
       incompatible: "{name} 不兼容当前基础模型或输入模式。",
       turboVariant: "Turbo-SLA 与其他 Turbo 变体不可同时使用；请保留单独对照。",
-      slaNodeMissing: "Turbo-SLA 需要 H3 SLA Attention 节点；请先在设置 → 节点与工作流中安装。",
+      slaNodeMissing: "Turbo-SLA 需要 H3 SLA Attention 节点；请先在设置 → 节点与依赖中安装。",
       slaNodeRestart: "H3 SLA Attention 已安装但尚未被当前 ComfyUI 加载；请重启 ComfyUI 后重新扫描。",
       turboSpectrum: "Turbo-SLA 技术上可与 Spectrum 共存，但请先保留关闭 Spectrum 的同 Seed 基准。",
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
@@ -227,13 +227,13 @@ const enUS: Record<string, CatalogLoraLocale> = {
       recommendedStrength: "Keep strength at 1.0; the Create page automatically switches to four steps, Euler + Beta, video shift 6, and audio shift 3.",
       effects: "Uses roughly 85% block-sparse attention to reduce attention compute for four-step Turbo; without the SLA node there is no sparse acceleration.",
       stacking: "Load performance LoRAs before people, quality, or content LoRAs; Turbo-SLA is exclusive with other Turbo variants, and neither the node nor LoRA is useful alone.",
-      compatibility: "Only the currently integrated MiniMax H3 FL2VA 768p image-to-video path; install H3 SLA Attention in Settings → Nodes & Workflows.",
+      compatibility: "Only the currently integrated MiniMax H3 FL2VA 768p image-to-video path; install H3 SLA Attention in Settings → Nodes & dependencies.",
       source: "LightX2V / Minimax-h3-Turbo-SLA · ComfyUI BF16 conversion"
     },
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
       turboVariant: "Turbo-SLA cannot be combined with another Turbo variant; keep a separate comparison.",
-      slaNodeMissing: "Turbo-SLA requires the H3 SLA Attention node; install it in Settings → Nodes & Workflows first.",
+      slaNodeMissing: "Turbo-SLA requires the H3 SLA Attention node; install it in Settings → Nodes & dependencies first.",
       slaNodeRestart: "H3 SLA Attention is installed but not loaded by the current ComfyUI; restart ComfyUI and rescan.",
       turboSpectrum: "Turbo-SLA can technically coexist with Spectrum, but keep a same-Seed Spectrum-off baseline first.",
       orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."

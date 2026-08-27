@@ -126,14 +126,6 @@ function scanFixture(): EnvironmentScanResult {
       updateAvailable: false,
       compatibilityState: "error"
     }],
-    workflowDependencies: [{
-      id: "minimax_h3_i2v",
-      name: "MiniMax H3 workflow",
-      purpose: "",
-      installed: false,
-      path: "C:\\ComfyUI\\workflows\\h3.json",
-      sourceUrl: "https://example.test/workflow"
-    }],
     issues: [{
       id: "comfy-database",
       label: "ComfyUI database",
@@ -182,8 +174,7 @@ describe("environment scan diagnostics", () => {
       expect.stringContaining("comfy-core: Core commit is unknown"),
       expect.stringContaining("llama-cpp-python: CUDA backend was not loaded"),
       expect.stringContaining("attention-runtime: SageAttention is unavailable"),
-      expect.stringContaining("model:minimax-h3"),
-      expect.stringContaining("workflow:minimax_h3_i2v")
+      expect.stringContaining("model:minimax-h3")
     ]));
     expect(JSON.stringify(diagnostics)).not.toContain("C:\\\\Users\\\\Example");
     expect(JSON.stringify(diagnostics)).not.toContain("C:\\\\ComfyUI\\\\models");

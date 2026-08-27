@@ -21,7 +21,6 @@ export interface SettingsServiceControllerOptions {
   setComfyUpdating(value: boolean): void;
   getComfyUpdateLog(): string;
   setComfyUpdateLog(log: string): void;
-  setCoreDependencyRepairing(value: boolean): void;
   requestForceStopConfirmation(): void;
   rememberModalFocus(): void;
 }
@@ -119,51 +118,6 @@ export function mountSettingsServiceController(
       context.notify(context.t(uiKeys.settings.actions.comfyUpdateFailed, { error: message }), { kind: "error" });
     } finally {
       options.setComfyUpdating(false);
-      requestSettingsRender();
-    }
-  }, { signal });
-
-  root.querySelector("#repair-h3-core")?.addEventListener("click", async () => {
-    const settings = options.formSettings();
-    options.setSettingsDraft(settings);
-    options.setCoreDependencyRepairing(true);
-    options.setComfyUpdateLog("");
-    context.requestRender();
-    try {
-      const scan = options.getEnvironmentScan();
-      if (!scan?.comfyCompatibility.checkedFrom) {
-        const started = await context.studio.startLocalService("comfy", settings);
-        options.setComfyUpdateLog(started.message);
-        const nextScan = await options.refreshEnvironment(settings, "service-change");
-        if (!nextScan) return;
-        if (nextScan.comfyCompatibility.h3CoreSupported) {
-          context.notify(context.t(uiKeys.settings.actions.h3CoreLoaded));
-          return;
-        }
-      }
-      const updateMode = options.getEnvironmentScan()?.comfyCompatibility.updateMode;
-      const result = await context.studio.updateComfyUi(settings);
-      options.setComfyUpdateLog(
-        [options.getComfyUpdateLog(), result.log || result.message]
-          .filter(Boolean)
-          .join("\n\n")
-      );
-      if (!result.ok) throw new Error(result.message);
-      if (updateMode === "git") {
-        const restarted = await context.studio.restartLocalService("comfy", settings);
-        options.setComfyUpdateLog(`${options.getComfyUpdateLog()}\n\n${restarted.message}`);
-      }
-      const refreshedScan = await options.refreshEnvironment(settings, "service-change");
-      if (!refreshedScan) return;
-      context.notify(result.message, { kind: result.ok ? "info" : "error" });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      options.setComfyUpdateLog(
-        [options.getComfyUpdateLog(), message].filter(Boolean).join("\n\n")
-      );
-      context.notify(context.t(uiKeys.settings.actions.coreNodeProcessFailed, { error: message }), { kind: "error" });
-    } finally {
-      options.setCoreDependencyRepairing(false);
       requestSettingsRender();
     }
   }, { signal });

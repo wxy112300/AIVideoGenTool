@@ -120,9 +120,9 @@ export class QwenVlRuntimeValidationError extends Error {
 export function explainQwenVlRuntimeError(error: unknown): unknown {
   const message = error instanceof Error ? error.message : String(error);
   if (!/bad file descriptor|errno\s*9|0x?9\b/iu.test(message)) return error;
-  if (/节点与工作流中执行一键修复/iu.test(message)) return error;
+  if (/节点与依赖中执行一键修复/iu.test(message)) return error;
   return new Error(
-    `${message}；ComfyUI Desktop 的日志句柄已失效，请在设置 → 节点与工作流中对 ComfyUI Qwen-VL LoRA 执行一键修复，然后重启 ComfyUI`
+    `${message}；ComfyUI Desktop 的日志句柄已失效，请在设置 → 节点与依赖中对 ComfyUI Qwen-VL LoRA 执行一键修复，然后重启 ComfyUI`
   );
 }
 
@@ -312,7 +312,7 @@ export async function enhancePromptWithQwenVlPeft(
     const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
     if (missingNodes.length) {
       throw new Error(
-        `当前 ComfyUI 未加载 Qwen3-VL Prompt LoRA 节点：${missingNodes.join("、")}。请在设置 → 节点与工作流中安装/更新 ComfyUI Qwen-VL LoRA，然后重启服务。`
+        `当前 ComfyUI 未加载 Qwen3-VL Prompt LoRA 节点：${missingNodes.join("、")}。请在设置 → 节点与依赖中安装/更新 ComfyUI Qwen-VL LoRA，然后重启服务。`
       );
     }
     const clientId = `local-video-studio-qwenvl-prompt-${operationId}`;

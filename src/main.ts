@@ -272,9 +272,6 @@ let customNodeInstallQueue: string[] = [];
 let customNodeInstallBatch: string[] = [];
 let customNodeInstallPhase: CustomNodeInstallPhase = "idle";
 let customNodeLogs: Record<string, string> = {};
-let workflowDependencyInstalling = "";
-let workflowDependencyLogs: Record<string, string> = {};
-let coreDependencyRepairing = false;
 let attentionAccelerationInstalling = false;
 let attentionAccelerationLog = "";
 let llamaCppPythonInstalling = false;
@@ -620,9 +617,24 @@ async function scanImageAssets(): Promise<void> {
   renderOverlay();
 }
 
+function loadImageAssetLibraryPreviews(): void {
+  modalRoot.querySelectorAll<HTMLImageElement>("[data-asset-preview-source]").forEach((preview) => {
+    const sourcePath = preview.dataset.assetPreviewSource;
+    if (!sourcePath) return;
+    void window.studio.readImage(sourcePath).then((dataUrl) => {
+      if (!dataUrl || !preview.isConnected) return;
+      preview.src = dataUrl;
+      preview.classList.add("is-loaded");
+    }).catch(() => {
+      if (preview.isConnected) preview.classList.add("is-unavailable");
+    });
+  });
+}
+
 function bindImageAssetLibraryDialog(): void {
   const dialog = ui.imageAssetLibraryDialog;
   if (!dialog) return;
+  loadImageAssetLibraryPreviews();
   const close = () => {
     if (ui.imageAssetLibraryDialog?.busy) return;
     ui.imageAssetLibraryDialog = null;
@@ -978,14 +990,11 @@ function settingsPage(): string {
       comfyUpdateLog,
       environmentRepairing,
       environmentRepairLogs,
-      workflowDependencyInstalling,
-      workflowDependencyLogs,
       customNodeInstalling,
       customNodeInstallQueue,
       customNodeInstallBatch,
       customNodeInstallPhase,
       customNodeLogs,
-      coreDependencyRepairing,
       attentionAccelerationInstalling,
       attentionAccelerationLog,
       llamaCppPythonInstalling,
@@ -1788,6 +1797,13 @@ async function acceptConfirmation(): Promise<void> {
     },
     setServiceStatusMessage: (message) => {
       serviceStatusMessage = message;
+    },
+    setLlamaCppPythonInstalling: (value) => {
+      llamaCppPythonInstalling = value;
+    },
+    getLlamaCppPythonLog: () => llamaCppPythonLog,
+    setLlamaCppPythonLog: (log) => {
+      llamaCppPythonLog = log;
     },
     scanEnvironment: async (settings) => {
       await runEnvironmentScan(settings);
@@ -2803,9 +2819,6 @@ function bindSettings(): void {
       setLlamaCppPythonLog: (log) => {
         llamaCppPythonLog = log;
       },
-      setCoreDependencyRepairing: (value) => {
-        coreDependencyRepairing = value;
-      },
       setEnvironmentRepairing: (issueId) => {
         environmentRepairing = issueId;
       },
@@ -2820,12 +2833,11 @@ function bindSettings(): void {
         ui.confirmationBusy = false;
         renderOverlay();
       },
-      setWorkflowDependencyInstalling: (workflowId) => {
-        workflowDependencyInstalling = workflowId;
-      },
-      getWorkflowDependencyLog: (workflowId) => workflowDependencyLogs[workflowId] ?? "",
-      setWorkflowDependencyLog: (workflowId, log) => {
-        workflowDependencyLogs = { ...workflowDependencyLogs, [workflowId]: log };
+      requestLlamaCppPythonUninstall: () => {
+        rememberModalFocus();
+        ui.pendingConfirmation = { kind: "uninstall-llama-cpp-python" };
+        ui.confirmationBusy = false;
+        renderOverlay();
       },
       requestForceStopConfirmation: () => {
         ui.pendingConfirmation = { kind: "force-stop-comfy" };
@@ -2935,17 +2947,13 @@ registerRendererEvents({
   appendDependencyInstallLog: (progress) => {
     const current = progress.kind === "custom-node"
       ? customNodeLogs[progress.id] ?? ""
-      : progress.kind === "workflow"
-        ? workflowDependencyLogs[progress.id] ?? ""
-        : llamaCppPythonLog;
+      : llamaCppPythonLog;
     const next = [current, progress.message]
       .filter(Boolean)
       .join("\n")
       .slice(-60_000);
     if (progress.kind === "custom-node") {
       customNodeLogs = { ...customNodeLogs, [progress.id]: next };
-    } else if (progress.kind === "workflow") {
-      workflowDependencyLogs = { ...workflowDependencyLogs, [progress.id]: next };
     } else {
       llamaCppPythonLog = next;
     }

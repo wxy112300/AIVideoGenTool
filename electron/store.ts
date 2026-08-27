@@ -585,7 +585,7 @@ export class JsonStore {
         this.state.settings.imageOutputCount < 1 ||
         this.state.settings.imageOutputCount > 10
       ) {
-        this.state.settings.imageOutputCount = 6;
+        this.state.settings.imageOutputCount = 1;
         needsPersist = true;
       }
       if (this.state.settings.imageOutputFormat !== "png") {

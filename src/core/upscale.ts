@@ -601,7 +601,7 @@ export function renderUpscaleWorkflow(
       `${nodeLabel}版本过旧或尚未加载，缺少：${missingSeedVr2Nodes.join(", ")}。` +
       (task.modelId === "seedvr2-native-int8"
         ? "请升级到支持原生 SeedVR2 工作流的 ComfyUI 核心后重启并复检。"
-        : "请在设置 → 节点与工作流中更新 SeedVR2，并重启 ComfyUI。")
+        : "请在设置 → 节点与依赖中更新 SeedVR2，并重启 ComfyUI。")
     );
   }
   if (task.modelId === "seedvr2-native-int8") {

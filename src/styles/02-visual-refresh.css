@@ -527,6 +527,13 @@ pre { border: 1px solid #292f39; background: #0c0f14; font-size: 11px; line-heig
   gap: 5px;
 }
 
+.comfy-installation-runtime {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .comfy-installation code {
   overflow: hidden;
   text-overflow: ellipsis;

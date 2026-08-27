@@ -79,7 +79,7 @@ export function createDefaultSettings() {
         defaultExtensionModel: "minimax_h3_ref2va",
         defaultImageModel: "qwen-image-edit-2511",
         defaultImageQualityProfile: "balanced-20",
-        imageOutputCount: 6,
+        imageOutputCount: 1,
         imageOutputFormat: "png",
         vramReserveGb: 1,
         h3AttentionMode: "sage",

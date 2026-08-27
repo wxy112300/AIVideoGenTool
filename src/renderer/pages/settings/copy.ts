@@ -7,6 +7,12 @@ type SettingsCopyKey =
   | "model.meta.qwenReady"
   | "model.meta.gemmaReady"
   | "model.meta.nativeReady"
+  | "model.meta.llamaDependency"
+  | "model.meta.multimodalDependency"
+  | "model.meta.qwenDependency"
+  | "model.meta.gemmaDependency"
+  | "model.meta.nativeDependency"
+  | "model.meta.nodesMissing"
   | "model.meta.runtimeMissing"
   | "model.meta.runtimeMissingHint"
   | "model.meta.fileReady"
@@ -130,25 +136,15 @@ type SettingsCopyKey =
   | "nodes.installMissing"
   | "nodes.updateAvailable"
   | "nodes.updateAll"
-  | "nodes.h3Title"
-  | "nodes.h3Badge"
-  | "nodes.h3Description"
-  | "nodes.waitingCore"
-  | "nodes.minimumVersion"
-  | "nodes.coreLog"
   | "nodes.loaded"
-  | "nodes.coreMissing"
   | "nodes.notChecked"
   | "nodes.processing"
   | "nodes.waitingPosition"
   | "nodes.finalizing"
-  | "nodes.repairUpdate"
-  | "nodes.startCheck"
-  | "nodes.qwenTitle"
-  | "nodes.qwenBadge"
-  | "nodes.qwenDescription"
-  | "nodes.waitingQwen"
-  | "nodes.officialWorkflow"
+  | "nodes.llamaTitle"
+  | "nodes.llamaBadge"
+  | "nodes.llamaDescription"
+  | "nodes.pythonEnvironment"
   | "nodes.installLog"
   | "nodes.installed"
   | "nodes.notInstalled"
@@ -176,7 +172,6 @@ type SettingsCopyKey =
   | "nodes.installedRepair"
   | "nodes.updateRestart"
   | "nodes.updateRecheck"
-  | "nodes.checkUpdate"
   | "nodes.installRestart"
   | "nodes.repair"
   | "nodes.update"
@@ -184,8 +179,6 @@ type SettingsCopyKey =
   | "nodes.moreActions"
   | "nodes.duplicateCopies"
   | "nodes.empty"
-  | "nodes.placeholderTitle"
-  | "nodes.placeholderDescription"
   | "accel.title"
   | "accel.description"
   | "accel.strategyTitle"
@@ -271,6 +264,12 @@ const zhCN: SettingsCopyCatalog = {
   "model.meta.qwenReady": "Qwen3-VL 8B + PEFT LoRA 文件完整；通过 ComfyUI Qwen-VL LoRA 处理 H3 提示词",
   "model.meta.gemmaReady": "LLM GGUF + mmproj 文件已就绪；通过 ComfyUI Prompt Writer 处理视频和图片提示词",
   "model.meta.nativeReady": "ComfyUI text_encoders 文件已就绪；可通过原生 TextGenerate 进行本地扩写",
+  "model.meta.llamaDependency": "由应用自管理 llama-server",
+  "model.meta.multimodalDependency": "通过 ComfyUI MultiModal Prompt Nodes 处理 H3 提示词",
+  "model.meta.qwenDependency": "通过 ComfyUI Qwen-VL LoRA 处理 H3 提示词",
+  "model.meta.gemmaDependency": "通过 ComfyUI Prompt Writer 处理视频和图片提示词",
+  "model.meta.nativeDependency": "通过原生 TextGenerate 进行本地扩写",
+  "model.meta.nodesMissing": "缺少节点：{nodes}",
   "model.meta.runtimeMissing": "缺少运行节点：{nodes}",
   "model.meta.runtimeMissingHint": "请启动 ComfyUI 后重新扫描",
   "model.meta.fileReady": "文件扫描通过，可用于配置",
@@ -350,7 +349,7 @@ const zhCN: SettingsCopyCatalog = {
   "prompt.runtimeLog": "运行依赖安装日志",
   "prompt.runtimeNodeMissing": "Prompt Writer 节点尚未加载；安装依赖后请重启 ComfyUI 并重新扫描。",
   "prompt.runtimeQwenNodeReady": "Qwen-VL LoRA 节点已加载；显式启动后基座和适配器会在连续增强期间保持驻留。",
-  "prompt.runtimeQwenNodeMissing": "Qwen-VL LoRA 节点尚未加载；请在“节点与工作流”中安装后重启 ComfyUI 并重新扫描。",
+  "prompt.runtimeQwenNodeMissing": "Qwen-VL LoRA 节点尚未加载；请在“节点与依赖”中安装后重启 ComfyUI 并重新扫描。",
   "prompt.runtimeQwenHint": "该模型使用 Qwen3-VL 8B + PEFT LoRA，不需要 llama-cpp-python、llama-server 或 mmproj；节点安装和 Python 依赖由 ComfyUI 管理。",
   "prompt.runtimeQwenTitle": "H3 Prompt Rewriter 运行状态",
   "prompt.runtimeQwenBase": "Qwen3-VL 8B 基座 + H3 Rewriter LoRA",
@@ -359,7 +358,7 @@ const zhCN: SettingsCopyCatalog = {
   "prompt.runtimeQwenNode": "ComfyUI Qwen-VL LoRA 节点",
   "prompt.runtimeQwenNodeLoaded": "QwenVLModelLoader · QwenVLLoRALoader · QwenVLCaption",
   "prompt.runtimeQwenNodeInstalled": "节点已安装，等待 ComfyUI 启动并验证",
-  "prompt.runtimeQwenNodeMissingAction": "请在“节点与工作流”中安装",
+  "prompt.runtimeQwenNodeMissingAction": "请在“节点与依赖”中安装",
   "prompt.videoPresetTitle": "视频提示词预设",
   "prompt.videoPresetDescription": "预设会把原始文字和参考图整理成完整的 H3 视频提示词，覆盖主体、场景、动作、镜头、声音、对白和连续性。",
   "prompt.restore": "恢复默认",
@@ -387,32 +386,22 @@ const zhCN: SettingsCopyCatalog = {
   "upscale.summary": "文件就绪 {available} 个，待补齐 {pending} 个；运行验证要求见各模型的验证依据",
   "upscale.waitingScan": "等待首次扫描",
   "upscale.empty": "尚无模型扫描结果",
-  "nodes.title": "节点与工作流依赖",
-  "nodes.description": "换电脑后按项目清单复现 ComfyUI 节点环境",
+  "nodes.title": "节点与依赖",
+  "nodes.description": "管理可安装的第三方 ComfyUI 节点及其运行依赖",
   "nodes.installNote": "只安装缺失、低于项目推荐版本或需要兼容修复的节点；批次完成后自动重启 ComfyUI 一次并复检。运行时未注册不会触发重复安装。",
   "nodes.installAll": "一键安装与更新",
   "nodes.installMissing": "一键安装缺失节点",
   "nodes.updateAvailable": "一键更新节点",
   "nodes.updateAll": "已达到推荐状态",
-  "nodes.h3Title": "MiniMax H3 原生音视频核心",
-  "nodes.h3Badge": "ComfyUI v0.31.0+ · 推荐 v0.33.1",
-  "nodes.h3Description": "LightX2V Turbo 直接使用 ComfyUI 原生 LoRA 与音视频采样，不需要额外的 Turbo custom node；版本过低时请更新所选 ComfyUI 并重启复检。",
-  "nodes.waitingCore": "等待扫描核心节点",
-  "nodes.minimumVersion": "最低版本",
-  "nodes.coreLog": "核心处理日志",
   "nodes.loaded": "已加载",
-  "nodes.coreMissing": "核心缺失",
   "nodes.notChecked": "尚未启动检测",
   "nodes.processing": "处理中…",
   "nodes.waitingPosition": "排队中 · 第 {position} 个",
   "nodes.finalizing": "正在重启并复检…",
-  "nodes.repairUpdate": "一键补齐/更新",
-  "nodes.startCheck": "启动并检测",
-  "nodes.qwenTitle": "Qwen 提示词核心节点",
-  "nodes.qwenBadge": "ComfyUI 核心",
-  "nodes.qwenDescription": "Qwen3.5 2B/4B 使用 ComfyUI 自带的文本生成链路，不需要安装第三方节点；更新 ComfyUI 核心后重新扫描即可。",
-  "nodes.waitingQwen": "等待扫描 Qwen 核心节点",
-  "nodes.officialWorkflow": "官方工作流",
+  "nodes.llamaTitle": "llama-cpp-python",
+  "nodes.llamaBadge": "提示词节点依赖",
+  "nodes.llamaDescription": "提供在 ComfyUI 内运行本地 GGUF 提示词模型的 Python 接口，Gemma Prompt Writer 与 MultiModal 节点都依赖它。",
+  "nodes.pythonEnvironment": "目标环境：",
   "nodes.installLog": "安装日志",
   "nodes.installed": "已安装",
   "nodes.notInstalled": "未安装",
@@ -440,7 +429,6 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.installedRepair": "已安装，需修复",
   "nodes.updateRestart": "更新并重启",
   "nodes.updateRecheck": "更新/重启复检",
-  "nodes.checkUpdate": "检查更新",
   "nodes.installRestart": "安装并重启",
   "nodes.repair": "修复",
   "nodes.update": "更新",
@@ -448,8 +436,6 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.moreActions": "更多节点操作",
   "nodes.duplicateCopies": "发现多个 H3 Motion Context 副本：{paths}。请只保留一个目录，再重启 ComfyUI。",
   "nodes.empty": "等待环境扫描结果",
-  "nodes.placeholderTitle": "工作流占位符",
-  "nodes.placeholderDescription": "提交自定义视频 ComfyUI API JSON 前会递归替换；图片工作流不使用这些占位符。",
   "accel.title": "性能与加速",
   "accel.description": "查看 GPU 运行时状态并配置 H3 加速后端",
   "accel.strategyTitle": "H3 加速策略",
@@ -533,6 +519,12 @@ const zhTW: SettingsCopyCatalog = {
   "model.meta.qwenReady": "Qwen3-VL 8B + PEFT LoRA 檔案完整；透過 ComfyUI Qwen-VL LoRA 處理 H3 提示詞",
   "model.meta.gemmaReady": "LLM GGUF + mmproj 檔案已就緒；透過 ComfyUI Prompt Writer 處理影片和圖片提示詞",
   "model.meta.nativeReady": "ComfyUI text_encoders 檔案已就緒；可透過原生 TextGenerate 進行本機擴寫",
+  "model.meta.llamaDependency": "由應用程式自主管理 llama-server",
+  "model.meta.multimodalDependency": "透過 ComfyUI MultiModal Prompt Nodes 處理 H3 提示詞",
+  "model.meta.qwenDependency": "透過 ComfyUI Qwen-VL LoRA 處理 H3 提示詞",
+  "model.meta.gemmaDependency": "透過 ComfyUI Prompt Writer 處理影片和圖片提示詞",
+  "model.meta.nativeDependency": "透過原生 TextGenerate 進行本機擴寫",
+  "model.meta.nodesMissing": "缺少節點：{nodes}",
   "model.meta.runtimeMissing": "缺少執行節點：{nodes}",
   "model.meta.runtimeMissingHint": "請啟動 ComfyUI 後重新掃描",
   "model.meta.fileReady": "檔案掃描通過，可用於設定",
@@ -627,32 +619,22 @@ const zhTW: SettingsCopyCatalog = {
   "upscale.summary": "檔案就緒 {available} 個，待補齊 {pending} 個；執行驗證要求見各模型的驗證依據",
   "upscale.waitingScan": "等待首次掃描",
   "upscale.empty": "尚無模型掃描結果",
-  "nodes.title": "節點與工作流程依賴",
-  "nodes.description": "換電腦後依照專案清單重現 ComfyUI 節點環境",
+  "nodes.title": "節點與依賴",
+  "nodes.description": "管理可安裝的第三方 ComfyUI 節點及其執行依賴",
   "nodes.installNote": "只安裝缺少、低於專案建議版本或需要相容性修復的節點；批次完成後自動重新啟動 ComfyUI 一次並複檢。執行階段未註冊不會觸發重複安裝。",
   "nodes.installAll": "一鍵安裝與更新",
   "nodes.installMissing": "一鍵安裝缺少節點",
   "nodes.updateAvailable": "一鍵更新節點",
   "nodes.updateAll": "已達到建議狀態",
-  "nodes.h3Title": "MiniMax H3 原生影音核心",
-  "nodes.h3Badge": "ComfyUI v0.31.0+ · 推薦 v0.33.1",
-  "nodes.h3Description": "LightX2V Turbo 直接使用 ComfyUI 原生 LoRA 與影音採樣，不需要額外的 Turbo custom node；版本過低時請更新所選 ComfyUI 並重新啟動複檢。",
-  "nodes.waitingCore": "等待掃描核心節點",
-  "nodes.minimumVersion": "最低版本",
-  "nodes.coreLog": "核心處理記錄",
   "nodes.loaded": "已載入",
-  "nodes.coreMissing": "核心缺失",
   "nodes.notChecked": "尚未啟動檢測",
   "nodes.processing": "處理中…",
   "nodes.waitingPosition": "排隊中 · 第 {position} 個",
   "nodes.finalizing": "正在重新啟動並複檢…",
-  "nodes.repairUpdate": "一鍵補齊/更新",
-  "nodes.startCheck": "啟動並檢測",
-  "nodes.qwenTitle": "Qwen 提示詞核心節點",
-  "nodes.qwenBadge": "ComfyUI 核心",
-  "nodes.qwenDescription": "Qwen3.5 2B/4B 使用 ComfyUI 內建的文字生成流程，不需要安裝第三方節點；更新 ComfyUI 核心後重新掃描即可。",
-  "nodes.waitingQwen": "等待掃描 Qwen 核心節點",
-  "nodes.officialWorkflow": "官方工作流程",
+  "nodes.llamaTitle": "llama-cpp-python",
+  "nodes.llamaBadge": "提示詞節點依賴",
+  "nodes.llamaDescription": "提供在 ComfyUI 內執行本機 GGUF 提示詞模型的 Python 介面，Gemma Prompt Writer 與 MultiModal 節點都依賴它。",
+  "nodes.pythonEnvironment": "目標環境：",
   "nodes.installLog": "安裝記錄",
   "nodes.installed": "已安裝",
   "nodes.notInstalled": "未安裝",
@@ -680,7 +662,6 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.installedRepair": "已安裝，需要修復",
   "nodes.updateRestart": "更新並重新啟動",
   "nodes.updateRecheck": "更新/重新啟動複檢",
-  "nodes.checkUpdate": "檢查更新",
   "nodes.installRestart": "安裝並重新啟動",
   "nodes.repair": "修復",
   "nodes.update": "更新",
@@ -688,8 +669,6 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.moreActions": "更多節點操作",
   "nodes.duplicateCopies": "發現多個 H3 Motion Context 副本：{paths}。請只保留一個資料夾，再重新啟動 ComfyUI。",
   "nodes.empty": "等待環境掃描結果",
-  "nodes.placeholderTitle": "工作流程佔位符",
-  "nodes.placeholderDescription": "提交自訂影片 ComfyUI API JSON 前會遞迴替換；圖片工作流程不使用這些佔位符。",
   "accel.title": "效能與加速",
   "accel.description": "查看 GPU 執行時狀態並設定 H3 加速後端",
   "accel.strategyTitle": "H3 加速策略",
@@ -772,6 +751,12 @@ const enUS: SettingsCopyCatalog = {
   "model.meta.qwenReady": "Qwen3-VL 8B + PEFT LoRA files complete; H3 prompts use ComfyUI Qwen-VL LoRA",
   "model.meta.gemmaReady": "LLM GGUF + mmproj files ready; video and image prompts use ComfyUI Prompt Writer",
   "model.meta.nativeReady": "ComfyUI text_encoders files are ready; native TextGenerate can expand prompts locally",
+  "model.meta.llamaDependency": "llama-server is managed by the app",
+  "model.meta.multimodalDependency": "H3 prompts use ComfyUI MultiModal Prompt Nodes",
+  "model.meta.qwenDependency": "H3 prompts use ComfyUI Qwen-VL LoRA",
+  "model.meta.gemmaDependency": "Video and image prompts use ComfyUI Prompt Writer",
+  "model.meta.nativeDependency": "Native TextGenerate expands prompts locally",
+  "model.meta.nodesMissing": "Missing nodes: {nodes}",
   "model.meta.runtimeMissing": "Runtime nodes missing: {nodes}",
   "model.meta.runtimeMissingHint": "Start ComfyUI and scan again",
   "model.meta.fileReady": "File scan passed; ready for configuration",
@@ -851,7 +836,7 @@ const enUS: SettingsCopyCatalog = {
   "prompt.runtimeLog": "Runtime installation log",
   "prompt.runtimeNodeMissing": "The Prompt Writer node is not loaded; restart ComfyUI and rescan after installing the runtime.",
   "prompt.runtimeQwenNodeReady": "The Qwen-VL LoRA nodes are loaded; after explicit startup, the base and adapter remain resident across enhancements.",
-  "prompt.runtimeQwenNodeMissing": "The Qwen-VL LoRA nodes are not loaded; install them in Nodes & Workflows, restart ComfyUI, and rescan.",
+  "prompt.runtimeQwenNodeMissing": "The Qwen-VL LoRA nodes are not loaded; install them in Nodes & dependencies, restart ComfyUI, and rescan.",
   "prompt.runtimeQwenHint": "This model uses Qwen3-VL 8B + a PEFT LoRA. It does not need llama-cpp-python, llama-server, or an mmproj; ComfyUI manages the nodes and Python dependencies.",
   "prompt.runtimeQwenTitle": "H3 Prompt Rewriter runtime status",
   "prompt.runtimeQwenBase": "Qwen3-VL 8B base + H3 Rewriter LoRA",
@@ -860,7 +845,7 @@ const enUS: SettingsCopyCatalog = {
   "prompt.runtimeQwenNode": "ComfyUI Qwen-VL LoRA nodes",
   "prompt.runtimeQwenNodeLoaded": "QwenVLModelLoader · QwenVLLoRALoader · QwenVLCaption",
   "prompt.runtimeQwenNodeInstalled": "Nodes installed; waiting for ComfyUI runtime validation",
-  "prompt.runtimeQwenNodeMissingAction": "Install it in Nodes & Workflows",
+  "prompt.runtimeQwenNodeMissingAction": "Install it in Nodes & dependencies",
   "prompt.videoPresetTitle": "Video prompt presets",
   "prompt.videoPresetDescription": "Presets organize original text and reference images into a complete H3 video prompt covering subject, scene, action, camera, sound, dialogue, and continuity.",
   "prompt.restore": "Restore defaults",
@@ -888,32 +873,22 @@ const enUS: SettingsCopyCatalog = {
   "upscale.summary": "{available} models have complete files, {pending} need files; see each model's validation evidence for runtime requirements",
   "upscale.waitingScan": "Waiting for first scan",
   "upscale.empty": "No model scan results",
-  "nodes.title": "Nodes and workflow dependencies",
-  "nodes.description": "Recreate the ComfyUI node environment from the project checklist on another computer",
+  "nodes.title": "Nodes & dependencies",
+  "nodes.description": "Manage installable third-party ComfyUI nodes and their runtime dependencies",
   "nodes.installNote": "Only missing nodes, nodes below the project recommendation, and compatibility repairs are installed. The batch restarts ComfyUI once and rescans; missing runtime registration does not trigger reinstallation.",
   "nodes.installAll": "Install and update",
   "nodes.installMissing": "Install missing nodes",
   "nodes.updateAvailable": "Update nodes",
   "nodes.updateAll": "Recommended state reached",
-  "nodes.h3Title": "MiniMax H3 native audio/video core",
-  "nodes.h3Badge": "ComfyUI v0.31.0+ · recommended v0.33.1",
-  "nodes.h3Description": "LightX2V Turbo uses ComfyUI native LoRA and audio/video sampling without an extra Turbo custom node; update the selected ComfyUI and restart to recheck when the version is too old.",
-  "nodes.waitingCore": "Waiting to scan core nodes",
-  "nodes.minimumVersion": "Minimum version",
-  "nodes.coreLog": "Core operation log",
   "nodes.loaded": "Loaded",
-  "nodes.coreMissing": "Core missing",
   "nodes.notChecked": "Detection not started",
   "nodes.processing": "Processing…",
   "nodes.waitingPosition": "Queued · #{position}",
   "nodes.finalizing": "Restarting and verifying…",
-  "nodes.repairUpdate": "Repair/update",
-  "nodes.startCheck": "Start and check",
-  "nodes.qwenTitle": "Qwen prompt core nodes",
-  "nodes.qwenBadge": "ComfyUI core",
-  "nodes.qwenDescription": "Qwen3.5 2B/4B uses ComfyUI's built-in text-generation path and needs no third-party node; update the ComfyUI core and rescan.",
-  "nodes.waitingQwen": "Waiting to scan Qwen core nodes",
-  "nodes.officialWorkflow": "Official workflow",
+  "nodes.llamaTitle": "llama-cpp-python",
+  "nodes.llamaBadge": "Prompt node dependency",
+  "nodes.llamaDescription": "Python bindings for running local GGUF prompt models inside ComfyUI; required by the Gemma Prompt Writer and MultiModal nodes.",
+  "nodes.pythonEnvironment": "Target environment: ",
   "nodes.installLog": "Installation log",
   "nodes.installed": "Installed",
   "nodes.notInstalled": "Not installed",
@@ -941,7 +916,6 @@ const enUS: SettingsCopyCatalog = {
   "nodes.installedRepair": "Installed; repair needed",
   "nodes.updateRestart": "Update and restart",
   "nodes.updateRecheck": "Update/restart and recheck",
-  "nodes.checkUpdate": "Check for updates",
   "nodes.installRestart": "Install and restart",
   "nodes.repair": "Repair",
   "nodes.update": "Update",
@@ -949,8 +923,6 @@ const enUS: SettingsCopyCatalog = {
   "nodes.moreActions": "More node actions",
   "nodes.duplicateCopies": "Multiple H3 Motion Context copies detected: {paths}. Keep only one directory, then restart ComfyUI.",
   "nodes.empty": "Waiting for environment scan",
-  "nodes.placeholderTitle": "Workflow placeholders",
-  "nodes.placeholderDescription": "Custom video ComfyUI API JSON is recursively replaced before submission; image workflows do not use these placeholders.",
   "accel.title": "Performance & acceleration",
   "accel.description": "Inspect GPU runtime status and configure H3 acceleration backends",
   "accel.strategyTitle": "H3 acceleration strategy",

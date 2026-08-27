@@ -67,13 +67,13 @@ async function writerRequest<T>(url: string, init?: RequestInit): Promise<T> {
       // Older Writer versions can return an HTML/plain-text 500 page.
     }
     if (response.status === 404 && url.includes("/h3studio/")) {
-      throw new Error("当前 ComfyUI 未加载 MiniMax H3 Prompt Writer。请在设置 → 节点与工作流中一键安装/更新，然后重启 ComfyUI。");
+      throw new Error("当前 ComfyUI 未加载 MiniMax H3 Prompt Writer。请在设置 → 节点与依赖中一键安装/更新，然后重启 ComfyUI。");
     }
     const message = body.error?.message || rawBody.trim() || `HTTP ${response.status}`;
     const details = body.error?.details ? `（${JSON.stringify(body.error.details)}）` : "";
     if (/(?:0xC000001D|-1073741795|illegal instruction|非法指令)/iu.test(`${message}${details}`)) {
       throw new Error(
-        `H3 Prompt Writer 的 GGUF 原生运行库因 Windows 0xC000001D 非法指令崩溃。当前 llama-cpp-python wheel 与 CPU 指令集不兼容；请到设置 → 提示词扩写点击“重新安装/修复”，应用会切换兼容的动态 CPU 后端。${details}`
+        `H3 Prompt Writer 的 GGUF 原生运行库因 Windows 0xC000001D 非法指令崩溃。当前 llama-cpp-python wheel 与 CPU 指令集不兼容；请到设置 → 节点与依赖点击“重新安装/修复”，应用会切换兼容的动态 CPU 后端。${details}`
       );
     }
     throw new Error(`H3 Prompt Writer：${message}${details}`);
@@ -114,11 +114,11 @@ export function validateH3PromptWriterRuntime(
   const detail = [diagnostics.message, diagnostics.error].filter(Boolean).join("：");
   if (status === "crashed" && (code === "0XC000001D" || /illegal instruction|非法指令/iu.test(detail))) {
     throw new Error(
-      `H3 Prompt Writer 的 GGUF 原生运行库因 Windows ${code || "0xC000001D"} 非法指令崩溃。当前 llama-cpp-python wheel 与 CPU 指令集不兼容；请到设置 → 提示词扩写点击“重新安装/修复”，应用会切换兼容的动态 CPU 后端。${detail ? `（${detail}）` : ""}`
+      `H3 Prompt Writer 的 GGUF 原生运行库因 Windows ${code || "0xC000001D"} 非法指令崩溃。当前 llama-cpp-python wheel 与 CPU 指令集不兼容；请到设置 → 节点与依赖点击“重新安装/修复”，应用会切换兼容的动态 CPU 后端。${detail ? `（${detail}）` : ""}`
     );
   }
   if (["crashed", "timeout", "invalid_response"].includes(status)) {
-    throw new Error(`H3 Prompt Writer 的 GGUF 运行时自检失败：${detail || status}。请到设置 → 提示词扩写查看运行依赖日志并修复。`);
+    throw new Error(`H3 Prompt Writer 的 GGUF 运行时自检失败：${detail || status}。请到设置 → 节点与依赖查看运行依赖日志并修复。`);
   }
 }
 

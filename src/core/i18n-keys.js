@@ -540,6 +540,7 @@ export const uiKeys = {
             retryCount: "settings.system.retryCount",
             retryCountValue: "settings.system.retryCountValue",
             queueIsolationMode: "settings.system.queueIsolationMode",
+            queueIsolationDescription: "settings.system.queueIsolationDescription",
             queueIsolationNever: "settings.system.queueIsolationNever",
             queueIsolationLora: "settings.system.queueIsolationLora",
             queueIsolationModelChange: "settings.system.queueIsolationModelChange",

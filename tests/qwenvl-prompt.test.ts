@@ -106,7 +106,7 @@ describe("MiniMax H3 Prompt Rewriter LoRA 8B", () => {
   it("turns the Desktop stdout failure into a portable repair instruction", () => {
     const error = explainQwenVlRuntimeError(new Error("[Errno 9] Bad file descriptor"));
     expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain("设置 → 节点与工作流");
+    expect((error as Error).message).toContain("设置 → 节点与依赖");
     expect((error as Error).message).toContain("Qwen-VL LoRA");
   });
 

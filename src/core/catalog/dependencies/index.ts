@@ -6,16 +6,10 @@ export {
   SPECTRUM_MODEL_AWARE_MINIMUM_VERSION,
   SPECTRUM_RECOMMENDED_VERSION
 } from "./nodes.js";
-export {
-  workflowDependencyCatalog,
-  workflowDependencyDefinition
-} from "./workflows.js";
 export type {
   CatalogCustomNodeDefinition,
   CatalogCustomNodeFeature,
   CatalogCustomNodeFeatureId,
-  CatalogWorkflowDependencyDefinition,
-  CatalogWorkflowDependencyId,
   DependencyBadRange,
   DependencyCompatibilityCheck,
   DependencyCompatibilityEvidence

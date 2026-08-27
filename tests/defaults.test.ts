@@ -32,7 +32,9 @@ describe("draft defaults", () => {
     expect(createDefaultImageEditDraft().qualityProfile).toBe("balanced-20");
     expect(createDefaultImageEditDraft().aspectRatio).toBe("source");
     expect(createDefaultImageEditDraft().targetResolution).toBe("source");
+    expect(createDefaultImageEditDraft().outputCount).toBe(1);
     expect(createDefaultSettings().defaultImageQualityProfile).toBe("balanced-20");
+    expect(createDefaultSettings().imageOutputCount).toBe(1);
     expect(createDefaultSettings().ltxExtensionModelProfile).toBe("q3_k_m");
     expect(createDefaultSettings().ltxExtensionResolution).toBe(360);
     expect(createDefaultSettings().ltxExtensionFrames).toBe(49);

@@ -236,7 +236,6 @@ export function renderSettingsComfyCompatibilityPanel(
       </div>
       ${versionMismatch ? renderSettingsStatusNotice(options, t(uiKeys.settings.compatibility.mismatchWarning, { serviceVersion: versionLabel, localVersion: `v${selectedInstallation?.version ?? t(uiKeys.settings.compatibility.versionUnknown)}` }), "warning", "circle-alert") : ""}
       ${compatibility.compatibilityNotice && compatibilityState !== "supported" ? renderSettingsStatusNotice(options, compatibility.compatibilityNotice, compatibilityState === "error" ? "error" : "warning", compatibilityState === "error" ? "circle-alert" : "circle-help", compatibilityState === "error" ? "alert" : "status") : ""}
-      <p class="muted">${escape(compatibility.updateHint)}</p>
       ${viewModel.comfyUpdateLog ? `<details class="node-log" open><summary>${t(uiKeys.settings.compatibility.updateLog)}</summary><pre>${escape(viewModel.comfyUpdateLog)}</pre></details>` : ""}
     </section>`;
 }
@@ -273,58 +272,41 @@ export function renderSettingsModelScanCard(
           : evidence.nodePackage === "ready"
             ? options.t(uiKeys.settings.system.scanCardStaticReady)
           : options.t(uiKeys.settings.system.scanCardFileComplete);
-  const nodeEvidence = evidence.nodePackage === "ready"
-    ? options.t(uiKeys.settings.system.scanCardNodeReady)
-    : evidence.nodePackage === "missing"
-      ? options.t(uiKeys.settings.system.scanCardNodeMissing)
-      : evidence.nodePackage === "incompatible"
-        ? options.t(uiKeys.settings.system.scanCardNodeIncompatible)
-        : evidence.nodePackage === "warning"
-          ? options.t(uiKeys.settings.system.scanCardNodeAttention)
-          : options.t(uiKeys.settings.system.scanCardNodeNotRequired);
-  const runtimeEvidence = evidence.runtime === "ready"
-    ? options.t(uiKeys.settings.system.scanCardRuntimeReady)
-    : evidence.runtime === "pending"
-      ? options.t(uiKeys.settings.system.scanCardRuntimePending)
-      : evidence.runtime === "missing"
-        ? options.t(uiKeys.settings.system.scanCardRuntimeUnavailable)
-        : options.t(uiKeys.settings.system.scanCardRuntimeNotRequired);
-  const evidenceLabel = options.t(uiKeys.settings.system.scanCardEvidence, {
-    files: evidence.files === "ready"
-      ? options.t(uiKeys.settings.system.scanCardFileReady)
-      : options.t(uiKeys.settings.system.scanCardFileMissing),
-    nodes: nodeEvidence,
-    runtime: runtimeEvidence
-  });
-  const metaLabel = profile.available
-    ? isPromptProfile
-        ? isLlamaProfile
-          ? settingsText(options.locale, "model.meta.llamaReady")
-          : isMultimodalProfile
-            ? settingsText(options.locale, "model.meta.multimodalReady")
-            : isQwenVlPeftProfile
-              ? settingsText(options.locale, "model.meta.qwenReady")
-              : isGemmaProfile
-                ? settingsText(options.locale, "model.meta.gemmaReady")
-                : settingsText(options.locale, "model.meta.nativeReady")
-        : profile.category === "image"
-          ? options.imageWorkflowStatus(profile)
-          : evidence.runtime === "missing"
-            ? settingsText(options.locale, "model.meta.runtimeMissing", {
-                nodes: profile.runtimeMissingNodes?.join(settingsText(options.locale, "shared.listSeparator")) || settingsText(options.locale, "model.meta.runtimeMissingHint")
-              })
-            : profile.integrated
-              ? settingsText(options.locale, "model.meta.fileReady")
-              : settingsText(options.locale, "model.meta.workflowPending")
-    : isPromptProfile
-        ? isLlamaProfile
-          ? settingsText(options.locale, "model.meta.llamaMissing")
-          : isMultimodalProfile
-            ? settingsText(options.locale, "model.meta.multimodalMissing")
-            : isQwenVlPeftProfile
-              ? settingsText(options.locale, "model.meta.qwenMissing")
-              : settingsText(options.locale, "model.meta.nativeMissing")
-    : settingsText(options.locale, "model.meta.genericMissing");
+  const descriptionIncludes = (text: string) => profile.description.toLocaleLowerCase().includes(text.toLocaleLowerCase());
+  const promptDependencyDescription = isPromptProfile
+    ? isLlamaProfile && !descriptionIncludes("llama-server")
+      ? settingsText(options.locale, "model.meta.llamaDependency")
+      : isMultimodalProfile && !descriptionIncludes("MultiModal Prompt Nodes")
+        ? settingsText(options.locale, "model.meta.multimodalDependency")
+        : isQwenVlPeftProfile && !descriptionIncludes("Qwen-VL")
+          ? settingsText(options.locale, "model.meta.qwenDependency")
+          : isGemmaProfile && !descriptionIncludes("Prompt Writer")
+            ? settingsText(options.locale, "model.meta.gemmaDependency")
+            : !descriptionIncludes("TextGenerate")
+              ? settingsText(options.locale, "model.meta.nativeDependency")
+              : ""
+    : "";
+  const missingCustomNodeNames = profile.missingCustomNodeNames?.length
+    ? profile.missingCustomNodeNames
+    : profile.missingCustomNodeIds?.length
+      ? profile.missingCustomNodeIds
+      : [];
+  const missingNodeDescription = missingCustomNodeNames.length
+    ? settingsText(options.locale, "model.meta.nodesMissing", {
+        nodes: missingCustomNodeNames.join(settingsText(options.locale, "shared.listSeparator"))
+      })
+    : "";
+  const runtimeNodeDescription = evidence.runtime === "missing" && profile.runtimeMissingNodes?.length
+    ? settingsText(options.locale, "model.meta.runtimeMissing", {
+        nodes: profile.runtimeMissingNodes.join(settingsText(options.locale, "shared.listSeparator"))
+      })
+    : "";
+  const modelDescription = [
+    profile.description,
+    promptDependencyDescription,
+    missingNodeDescription,
+    runtimeNodeDescription
+  ].filter((value, index, values) => Boolean(value) && values.indexOf(value) === index).join(" · ");
   const escape = (value: string | number | null | undefined) => escapeValue(options, value);
   const icon = (name: string, className?: string) => options.icon(name, className);
   const loraStatusLabel = missingCount > 0
@@ -333,7 +315,7 @@ export function renderSettingsModelScanCard(
   const loraStatus = isLoraProfile && !profile.available ? `
         <span class="model-availability missing">${icon("circle-alert")} ${escape(loraStatusLabel)}</span>` : "";
   const modelOverview = isLoraProfile ? "" : `
-      <div class="model-meta-line"><span>${options.t(uiKeys.settings.system.scanCardResourcePolicy)} · ${escape(profile.vram)}</span><span class="model-hardware-recommendation">${options.t(uiKeys.settings.system.scanCardRecommendedHardware)} · ${escape(hardwareRecommendation)}</span><span>${escape(evidenceLabel)}</span><span>${metaLabel}</span></div>`;
+      <div class="model-meta-line"><span>${options.t(uiKeys.settings.system.scanCardResourcePolicy)} · ${escape(profile.vram)}</span><span class="model-hardware-recommendation">${options.t(uiKeys.settings.system.scanCardRecommendedHardware)} · ${escape(hardwareRecommendation)}</span></div>`;
   const loraGuideDetails = isLoraProfile && loraGuide ? `
       <details class="lora-profile-guide">
         <summary>${escape(settingsText(options.locale, "lora.details"))}</summary>
@@ -361,7 +343,7 @@ export function renderSettingsModelScanCard(
       <div class="model-profile-head">
         <div>
           <div class="model-title"><h3>${escape(profile.name)}</h3><span class="model-badge">${escape(profile.badge)}</span></div>
-          ${isLoraProfile ? "" : `<p class="muted">${escape(profile.description)}</p>`}
+          ${isLoraProfile ? "" : `<p class="muted">${escape(modelDescription)}</p>`}
         </div>
         ${isLoraProfile ? loraStatus : `<span class="model-availability ${statusTone}">${profile.available ? `${icon(statusTone === "available" ? "circle-check" : statusTone === "warning" ? "circle-help" : "circle-alert")} ${escape(readyLabel)}` : `${icon("circle-alert")} ${options.t(uiKeys.settings.system.scanCardMissingCount, { count: missingCount })}`}</span>`}
       </div>

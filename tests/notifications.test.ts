@@ -314,7 +314,6 @@ describe("renderer notifications", () => {
       setComfyUpdating: noop,
       getComfyUpdateLog: () => "",
       setComfyUpdateLog: noop,
-      setCoreDependencyRepairing: noop,
       requestForceStopConfirmation: noop,
       rememberModalFocus: noop
     });

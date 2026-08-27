@@ -181,7 +181,7 @@ export const customNodeCatalog = [{
                 commit: "0.4.1",
                 checks: ["static", "object-info"]
             }],
-        runtimeRequirement: "上游 0.4.1+ 的 Direct GGUF 依赖由本应用统一安装；Gemma GGUF 需要当前 ComfyUI Python 中的共享 llama-cpp-python CUDA 后端。旧版 0.3.x 可通过应用修复流程回补输出预算与卸载兼容层。更新节点不会覆盖已通过自检的后端；请在设置 → 提示词扩展的运行依赖卡片中一键安装和自检，不要重复安装第二个版本。",
+        runtimeRequirement: "上游 0.4.1+ 的 Direct GGUF 依赖由本应用统一安装；Gemma GGUF 需要当前 ComfyUI Python 中的 llama-cpp-python CUDA 后端。旧版 0.3.x 可通过应用修复流程回补输出预算与卸载兼容层。更新节点不会覆盖已通过自检的后端；请在设置 → 节点与工作流中安装或重装/修复，不要重复安装第二个版本。",
         required: false
     }, {
         id: "h3-motion-context",

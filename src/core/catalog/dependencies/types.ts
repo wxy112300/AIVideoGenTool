@@ -68,13 +68,3 @@ export interface CatalogCustomNodeFeature {
   nodeTypes: readonly string[];
   description: string;
 }
-
-export type CatalogWorkflowDependencyId = "minimax_h3_i2v" | "qwen36_h3_prompt_enhancer";
-
-export interface CatalogWorkflowDependencyDefinition {
-  id: CatalogWorkflowDependencyId;
-  name: string;
-  purpose: string;
-  sourceUrl: string;
-  targetSegments: readonly string[];
-}

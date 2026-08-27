@@ -53,7 +53,7 @@ There are four distinct operations:
 
 - **Application dependencies:** `npm.cmd ci` installs Electron/TypeScript/Vite packages for this repository.
 - **ComfyUI core:** installed separately as Desktop, Portable or source. Settings selects the actual core and data directories.
-- **Custom nodes:** Settings → Nodes & Workflows may clone/update registered repositories and run `requirements.txt` with the selected ComfyUI Python. The operation must stream progress, time out, retain logs and restart/recheck when safe.
+- **Custom nodes:** Settings → Nodes & dependencies may clone/update registered repositories and run `requirements.txt` with the selected ComfyUI Python. The operation must stream progress, time out, retain logs and restart/recheck when safe.
 - **Weights:** large diffusion models, encoders, VAEs and LoRAs are not stored in Git and are not generally downloaded by the app. Settings component info provides the source, filename and exact catalog target directory.
 
 Always inspect the selected instance. Installing a node into one ComfyUI data directory while connecting to another service is a common false-success condition.

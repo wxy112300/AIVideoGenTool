@@ -21,8 +21,7 @@ import type {
   ModelComponentStatus,
   ModelScanProfile,
   PythonRuntimeCandidate,
-  Settings,
-  WorkflowDependencyStatus
+  Settings
 } from "../../src/types.js";
 import {
   managedPromptModelDefinitions
@@ -53,6 +52,7 @@ import { prepareH3PromptWriter } from "./dependency-node-adapters.js";
 import {
   inspectLlamaCppPython,
   installLlamaCppPythonPackage,
+  uninstallLlamaCppPythonPackage,
   type LlamaCppPythonRuntime
 } from "./llama-cpp-python.js";
 import { comfyRuntimeState } from "./comfy-runtime-state.js";
@@ -66,10 +66,6 @@ import {
   restoreSqliteDatabaseBackups,
   type ComfyDatabaseDiagnosis
 } from "./comfy-database-repair.js";
-import {
-  installWorkflowDependencyPackage,
-  scanWorkflowDependencies
-} from "./dependency-workflows.js";
 import {
   evaluateMiniMaxH3CoreSupport,
   evaluateMiniMaxH3CompatibilityState,
@@ -3972,6 +3968,67 @@ export async function installLlamaCppPython(
   }
 }
 
+export async function uninstallLlamaCppPython(
+  settings: Settings,
+  onLog?: (message: string) => void
+): Promise<{ ok: boolean; message: string; log?: string }> {
+  const runtime: LlamaCppPythonRuntime = {
+    downloadEnvironment,
+    proxyLogLabel,
+    findComfyRoot,
+    findComfyPython,
+    runLoggedProcess
+  };
+  const restartLog: string[] = [];
+  const reportRestart = (message: string) => {
+    const normalized = message.trim();
+    if (!normalized) return;
+    restartLog.push(normalized);
+    onLog?.(normalized);
+  };
+  let wasRunning = false;
+  try {
+    const comfyRoot = await findComfyRoot(settings);
+    const python = await findComfyPython(settings, comfyRoot);
+    const healthUrl = `${settings.comfyUrl.replace(/\/+$/u, "")}/system_stats`;
+    wasRunning = await fetch(healthUrl, {
+      signal: AbortSignal.timeout(2000)
+    }).then((response) => response.ok).catch(() => false);
+    if (wasRunning) {
+      reportRestart("正在停止 ComfyUI，避免卸载 Python 扩展时文件被占用……");
+      await stopComfyUi(settings);
+      reportRestart("ComfyUI 已停止");
+    }
+    const result = await uninstallLlamaCppPythonPackage(settings, runtime, onLog);
+    if (wasRunning) {
+      reportRestart("正在重启 ComfyUI，并重新检查提示词节点……");
+      const restartedHealthUrl = await startComfyUi(settings);
+      if (!(await waitForService(restartedHealthUrl))) {
+        throw new Error("llama-cpp-python 卸载完成，但 ComfyUI 重启后未在等待时间内就绪。");
+      }
+      reportRestart("ComfyUI 已重启并恢复连接");
+    }
+    return {
+      ...result,
+      log: [result.log, ...restartLog].filter(Boolean).join("\n\n")
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    reportRestart(message);
+    if (wasRunning) {
+      try {
+        reportRestart("卸载过程异常，正在尝试恢复 ComfyUI……");
+        const restartedHealthUrl = await startComfyUi(settings);
+        await waitForService(restartedHealthUrl);
+        reportRestart("ComfyUI 已恢复");
+      } catch (recoveryError) {
+        reportRestart(`ComfyUI 恢复失败：${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
+      }
+    }
+    return { ok: false, message, log: restartLog.join("\n\n") };
+  }
+}
+
 export function tritonRequirementForTorch(torchVersion: string): string {
   const match = torchVersion.match(/^(\d+)\.(\d+)/);
   if (!match) throw new Error(`无法识别 PyTorch 版本：${torchVersion || "未知"}`);
@@ -4326,21 +4383,6 @@ export async function installAttentionAcceleration(
   }
 }
 
-export async function installWorkflowDependency(
-  workflowId: WorkflowDependencyStatus["id"],
-  settings: Settings,
-  onLog?: (message: string) => void
-): Promise<{ ok: boolean; message: string; log?: string }> {
-  return installWorkflowDependencyPackage(workflowId, settings, {
-    findComfyRoot,
-    findExecutable,
-    normalizeProxyUrl,
-    downloadEnvironment,
-    proxyLogLabel,
-    runLoggedProcess
-  }, onLog);
-}
-
 function validateCustomNodeRuntime(
   customNodes: CustomNodeStatus[],
   llamaCppPython: LlamaCppPythonStatus,
@@ -4361,7 +4403,7 @@ function validateCustomNodeRuntime(
       loaded: false,
       loadError: `H3 Prompt Writer 共享 llama-cpp-python 未通过运行时自检：${detail}`,
       compatibilityState: "error" as const,
-      compatibilityNotice: "节点接口已响应，但共享 llama-cpp-python 未就绪；请在设置 → 提示词扩写中修复运行依赖。"
+      compatibilityNotice: "节点接口已响应，但 llama-cpp-python 未就绪；请在设置 → 节点与依赖中修复运行依赖。"
     };
   });
 }
@@ -4509,7 +4551,7 @@ async function scanFullEnvironment(
   const selectedPython = pythonRuntimes.find((runtime) => runtime.selected) ??
     pythonRuntimes[0];
   const latestNodeVersionsPromise = latestCatalogNodeReleaseVersions(settings);
-  const [customNodes, workflowDependencies, attentionAcceleration, llamaCppPython] = await Promise.all([
+  const [customNodes, attentionAcceleration, llamaCppPython] = await Promise.all([
     latestNodeVersionsPromise.then((latestNodeVersions) =>
       scanCustomNodes(
         comfyRoot,
@@ -4520,7 +4562,6 @@ async function scanFullEnvironment(
         latestNodeVersions
       )
     ),
-    scanWorkflowDependencies(comfyRoot),
     inspectAttentionAcceleration(
       settings,
       comfyRoot,
@@ -4639,7 +4680,6 @@ async function scanFullEnvironment(
     items,
     modelProfiles,
     customNodes: runtimeValidatedCustomNodes,
-    workflowDependencies,
     issues
   };
 }
@@ -4720,7 +4760,7 @@ async function scanEnvironmentDependencies(
           .map((node) => [node.id, node.latestVersion])
       ))
     : latestCatalogNodeReleaseVersions(settings);
-  const [customNodes, workflowDependencies, attentionAcceleration, llamaCppPython] = await Promise.all([
+  const [customNodes, attentionAcceleration, llamaCppPython] = await Promise.all([
     latestNodeVersionsPromise.then((latestNodeVersions) =>
       scanCustomNodes(
         comfyRoot,
@@ -4731,9 +4771,6 @@ async function scanEnvironmentDependencies(
         latestNodeVersions
       )
     ),
-    runtimeOnly
-      ? Promise.resolve(previous.workflowDependencies)
-      : scanWorkflowDependencies(comfyRoot),
     runtimeOnly
       ? Promise.resolve(previous.attentionAcceleration)
       : inspectAttentionAcceleration(
@@ -4802,7 +4839,6 @@ async function scanEnvironmentDependencies(
     items,
     modelProfiles,
     customNodes: runtimeValidatedCustomNodes,
-    workflowDependencies,
     issues
   };
 }

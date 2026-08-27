@@ -183,6 +183,10 @@ export const uiKeys = {
     uninstallNodeDescription: "dialog.uninstallNode.description",
     uninstallNodeWarning: "dialog.uninstallNode.warning",
     uninstallNode: "dialog.uninstallNode",
+    uninstallLlamaTitle: "dialog.uninstallLlama.title",
+    uninstallLlamaDescription: "dialog.uninstallLlama.description",
+    uninstallLlamaWarning: "dialog.uninstallLlama.warning",
+    uninstallLlama: "dialog.uninstallLlama",
     deleteVersionTitle: "dialog.deleteVersion.title",
     deleteVersionDescription: "dialog.deleteVersion.description",
     deleteVersionWarning: "dialog.deleteVersion.warning",
@@ -545,6 +549,7 @@ export const uiKeys = {
       retryCount: "settings.system.retryCount",
       retryCountValue: "settings.system.retryCountValue",
       queueIsolationMode: "settings.system.queueIsolationMode",
+      queueIsolationDescription: "settings.system.queueIsolationDescription",
       queueIsolationNever: "settings.system.queueIsolationNever",
       queueIsolationLora: "settings.system.queueIsolationLora",
       queueIsolationModelChange: "settings.system.queueIsolationModelChange",
@@ -663,8 +668,6 @@ export const uiKeys = {
       imagePresetRestored: "settings.actions.imagePresetRestored",
       updateCompleted: "settings.actions.updateCompleted",
       attentionInstallFailed: "settings.actions.attentionInstallFailed",
-      h3CoreLoaded: "settings.actions.h3CoreLoaded",
-      coreNodeProcessFailed: "settings.actions.coreNodeProcessFailed",
       runningTaskBlocked: "settings.actions.runningTaskBlocked",
       comfyRestartLog: "settings.actions.comfyRestartLog",
       comfyRestarted: "settings.actions.comfyRestarted",
@@ -677,8 +680,7 @@ export const uiKeys = {
       nodeProcessing: "settings.actions.nodeProcessing",
       nodeBatchCompleted: "settings.actions.nodeBatchCompleted",
       nodeBatchReadyCheckFailed: "settings.actions.nodeBatchReadyCheckFailed",
-      nodeInstallFailed: "settings.actions.nodeInstallFailed",
-      workflowInstallFailed: "settings.actions.workflowInstallFailed"
+      nodeInstallFailed: "settings.actions.nodeInstallFailed"
     },
     logMenu: {
       ariaLabel: "settings.logMenu.ariaLabel",

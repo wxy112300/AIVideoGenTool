@@ -25,13 +25,13 @@ export const zhTWLoraLocales: Record<string, CatalogLoraLocale> = {
       recommendedStrength: "固定 1.0；建立頁會自動切換 4 步、Euler + Beta、video shift 6 與 audio shift 3。",
       effects: "透過約 85% 區塊稀疏注意力減少注意力計算，目標是降低 4 步 Turbo 的取樣時間；未啟用 SLA 節點時不會獲得稀疏加速。",
       stacking: "效能 LoRA 放在人物、質量或內容 LoRA 前面；Turbo-SLA 與其他 Turbo 變體互斥，不能單獨疊加 SLA 節點或 LoRA。",
-      compatibility: "僅目前已接入的 MiniMax H3 FL2VA 圖生影片 768p 路徑；需要在設定 → 節點與工作流程安裝 H3 SLA Attention 節點。",
+      compatibility: "僅目前已接入的 MiniMax H3 FL2VA 圖生影片 768p 路徑；需要在設定 → 節點與依賴安裝 H3 SLA Attention 節點。",
       source: "LightX2V / Minimax-h3-Turbo-SLA · ComfyUI BF16 conversion"
     },
     rules: {
       incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
       turboVariant: "Turbo-SLA 不可與其他 Turbo 變體同時使用；請保留單獨對照。",
-      slaNodeMissing: "Turbo-SLA 需要 H3 SLA Attention 節點；請先在設定 → 節點與工作流程安裝。",
+      slaNodeMissing: "Turbo-SLA 需要 H3 SLA Attention 節點；請先在設定 → 節點與依賴安裝。",
       slaNodeRestart: "H3 SLA Attention 已安裝但尚未被目前 ComfyUI 載入；請重啟 ComfyUI 後重新掃描。",
       turboSpectrum: "Turbo-SLA 技術上可與 Spectrum 共存，但請先保留關閉 Spectrum 的同 Seed 基準。",
       orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"

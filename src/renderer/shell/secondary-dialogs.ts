@@ -233,6 +233,7 @@ export function renderImageAssetLibraryDialog(
   const orphanPreview = scan?.orphanFiles.slice(0, 12).map((file) => `
     <label class="asset-library-file">
       <input type="checkbox" data-orphan-path="${options.escapeHtml(file.absolutePath)}" ${dialog.selectedPaths.includes(file.absolutePath) ? "checked" : ""}>
+      <img class="asset-library-file-preview" data-asset-preview-source="${options.escapeHtml(file.absolutePath)}" alt="" aria-hidden="true" loading="lazy" decoding="async">
       <span><strong title="${options.escapeHtml(file.relativePath)}">${options.escapeHtml(file.relativePath)}</strong><small>${options.formatAssetBytes(file.size)}</small></span>
     </label>`).join("") ?? "";
   return `

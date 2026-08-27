@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   customNodeCatalog,
-  customNodeDefinition,
-  workflowDependencyCatalog,
-  workflowDependencyDefinition
+  customNodeDefinition
 } from "../src/core/catalog";
 
 describe("dependency catalog", () => {
@@ -83,25 +81,4 @@ describe("dependency catalog", () => {
     });
   });
 
-  it("defines portable workflow destinations without machine paths", () => {
-    expect(workflowDependencyCatalog).toHaveLength(2);
-    expect(workflowDependencyDefinition("minimax_h3_i2v")).toMatchObject({
-      sourceUrl: expect.stringContaining("Comfy-Org/workflow_templates"),
-      targetSegments: [
-        "user",
-        "default",
-        "workflows",
-        "video_minimax_h3_i2v.json"
-      ]
-    });
-    expect(workflowDependencyDefinition("qwen36_h3_prompt_enhancer")).toMatchObject({
-      sourceUrl: expect.stringContaining("qwen36_h3_prompt_enhancer_api.json"),
-      targetSegments: ["user", "default", "workflows", "qwen36_h3_prompt_enhancer_api.json"]
-    });
-    for (const definition of workflowDependencyCatalog) {
-      expect(definition.targetSegments.every((segment) =>
-        segment !== ".." && !/[\\/]/.test(segment)
-      )).toBe(true);
-    }
-  });
 });
