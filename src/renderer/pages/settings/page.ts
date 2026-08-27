@@ -11,7 +11,12 @@ import type { H3AutoPromptSeed } from "../../../core/prompts/h3/auto-seeds";
 import type { SettingsTab } from "../../contracts";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
-import { modelCatalog, sortProfilesByCatalogOrder } from "../../../core/catalog";
+import {
+  compareDependencyIds,
+  LLAMA_CPP_PYTHON_DEPENDENCY_ID,
+  modelCatalog,
+  sortProfilesByCatalogOrder
+} from "../../../core/catalog";
 import { promptModelCapabilityOrderValue } from "../../../core/prompt-models";
 import { compareReleaseVersions } from "../../../core/release-version";
 import {
@@ -556,7 +561,9 @@ export function renderSettingsPage(
   const llamaPythonActionBlocked = customNodeInstallGloballyBlocked ||
     viewModel.llamaCppPythonInstalling ||
     !environmentScan?.comfyRoot;
-  const customNodes = environmentScan?.customNodes ?? [];
+  const customNodes = [...(environmentScan?.customNodes ?? [])].sort((left, right) =>
+    compareDependencyIds(left.id, right.id)
+  );
   const nodeDependencyAvailable = customNodes.filter((node) => node.installed).length +
     (llamaCppPython?.ready ? 1 : 0);
   const nodeDependencyTotal = customNodes.length + 1;
@@ -569,6 +576,103 @@ export function renderSettingsPage(
       : bulkActionMode === "mixed"
         ? s("nodes.installAll")
         : s("nodes.updateAll");
+  const llamaPythonCard = `
+    <article class="panel custom-node-card ${llamaPythonTone}">
+      <div class="custom-node-copy">
+        <div class="model-title"><h3>${s("nodes.llamaTitle")}</h3><span class="model-badge">${s("nodes.llamaBadge")}</span></div>
+        <p>${s("nodes.llamaDescription")}</p>
+        <div class="component-list">
+          <div class="component-row ${llamaPythonRowTone}"><span class="component-state">${icon(llamaPythonStatusIcon)}</span><div><strong>llama-cpp-python</strong><code>${escape(llamaPythonDetail)}</code></div></div>
+        </div>
+        ${llamaPythonEnvironment ? `<p class="muted">${escape(llamaPythonEnvironment)}</p>` : ""}
+        ${(viewModel.llamaCppPythonLog || viewModel.llamaCppPythonInstalling) ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="python-runtime:llama-cpp-python">${escape(viewModel.llamaCppPythonLog || s("nodes.installing"))}</pre></details>` : ""}
+      </div>
+      <div class="custom-node-actions">
+        <span class="model-availability ${llamaPythonTone}" role="status" aria-live="polite">${icon(llamaPythonStatusIcon)} ${llamaPythonStatus}</span>
+        <div class="node-action-split">
+          <button class="primary button-with-icon node-action-main" id="install-llama-cpp-python" aria-busy="${viewModel.llamaCppPythonInstalling}" ${llamaPythonActionBlocked ? "disabled" : ""}>${icon(viewModel.llamaCppPythonInstalling ? "refresh-cw" : llamaCppPython?.installed ? "refresh-cw" : "download")}${viewModel.llamaCppPythonInstalling ? s("nodes.installing") : llamaCppPython?.installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>
+          ${llamaCppPython?.installed ? `<details class="node-action-menu"><summary aria-label="${s("nodes.moreActions")}" title="${s("nodes.moreActions")}">${icon("chevron-down")}</summary><div class="node-action-menu-popover"><button class="destructive-menu-action button-with-icon" data-uninstall-llama-cpp-python ${llamaPythonActionBlocked ? "disabled" : ""}>${icon("trash-2")}${s("nodes.uninstall")}</button></div></details>` : ""}
+        </div>
+      </div>
+    </article>`;
+  const customNodeCards = customNodes.map((node) => {
+    const queuedIndex = viewModel.customNodeInstallQueue.indexOf(node.id);
+    const active = viewModel.customNodeInstalling === node.id;
+    const cardState = deriveCustomNodeCardState({
+      node,
+      queuedIndex,
+      active,
+      finalizing: customNodeInstallFinalizing,
+      inFinalizingBatch: viewModel.customNodeInstallBatch.includes(node.id),
+      globallyBlocked: customNodeInstallGloballyBlocked
+    });
+    const queued = cardState.queued;
+    const installBlocked = cardState.installBlocked;
+    const primaryOperation = cardState.primaryOperation;
+    const localVersion = node.version
+      ? `v${escape(node.version)}`
+      : node.detectedRevision
+        ? `commit ${escape(node.detectedRevision)}`
+        : node.installed
+          ? s("nodes.versionUnread")
+          : s("nodes.notInstalled");
+    const installStatus = cardState.phase === "processing"
+      ? s("nodes.processing")
+      : cardState.phase === "queued"
+        ? s("nodes.waitingPosition", { position: queuedIndex + 1 })
+        : cardState.phase === "finalizing"
+          ? s("nodes.finalizing")
+          : "";
+    const statusMarkup = cardState.status === "processing" || cardState.status === "queued" || cardState.status === "finalizing"
+      ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}`
+      : cardState.status === "compatibility-error"
+        ? `${icon("circle-alert")} ${s("nodes.compatibilityError")}`
+        : cardState.status === "update"
+          ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}`
+          : cardState.status === "runtime-missing"
+            ? `${icon("circle-alert")} ${s("nodes.runtimeMissing")}`
+            : cardState.status === "file-ready"
+              ? `${icon("circle-check")} ${s("nodes.fileCheckPassed")}`
+              : cardState.status === "compatibility-warning"
+                ? `${icon("circle-help")} ${s("nodes.compatibilityWarning")}`
+                : cardState.status === "runtime-ready"
+                  ? `${icon("circle-check")} ${s("nodes.runtimeVerified")}`
+                  : cardState.status === "repair"
+                    ? `${icon("circle-alert")} ${s("nodes.installedRepair")}`
+                    : `${icon("circle-alert")} ${s("nodes.notInstalled")}`;
+    return {
+      id: node.id,
+      markup: `
+        <article class="panel custom-node-card ${cardState.tone}">
+          <div class="custom-node-copy">
+            <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.bulkInstall === false ? ` · ${s("nodes.manualInstall")}` : ""}</span></div>
+            <p>${escape(node.purpose)}</p>
+            <code>${escape(node.directory || node.repositoryUrl)}</code>
+            ${node.runtimeRequirement ? `<p class="muted"><strong>${s("nodes.prerequisite")}</strong> ${escape(node.runtimeRequirement)}</p>` : ""}
+            <p class="muted">${s("nodes.localVersion")}${localVersion} · ${s("nodes.versionSource")}<code>${escape(node.versionSource || "—")}</code>${node.recommendedVersion ? ` · ${s("nodes.recommendedVersion")}v${escape(node.recommendedVersion)}` : ""}${node.latestVersion ? ` · ${s("nodes.latestRelease")}v${escape(node.latestVersion)}` : ""}${node.id === "spectrum-minimax-h3" ? ` · ${s("nodes.runtimeMemory")}` : ""}</p>
+            ${node.loadError ? `<span class="${node.compatibilityState === "warning" ? "node-update-notice" : "node-error"}">${escape(node.loadError)}</span>` : ""}
+            ${node.updateNotice ? `<span class="node-update-notice">${escape(node.updateNotice)}</span>` : ""}
+            ${node.runtimeNotice ? `<span class="node-runtime-notice">${escape(node.runtimeNotice)}</span>` : ""}
+            ${node.duplicateDirectories?.length ? `<span class="node-update-notice">${escape(s("nodes.duplicateCopies", { paths: node.duplicateDirectories.join(s("shared.listSeparator")) }))}</span>` : ""}
+            ${node.compatibilityNotice && node.compatibilityState !== "supported" && node.compatibilityNotice !== node.updateNotice ? `<span class="node-update-notice">${escape(node.compatibilityNotice)}</span>` : ""}
+            ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`custom-node:${node.id}`)}">${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
+          </div>
+          <div class="custom-node-actions">
+            <span class="model-availability ${cardState.tone}" role="status" aria-live="polite">${statusMarkup}</span>
+            <div class="node-action-split">
+              <button class="primary button-with-icon node-action-main" aria-busy="${active || queued || cardState.phase === "finalizing"}" data-install-node="${escape(node.id)}" data-node-operation="${primaryOperation}" ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : primaryOperation === "install" ? "download" : primaryOperation === "repair" ? "wrench" : "refresh-cw")}${installStatus || (primaryOperation === "install" ? s("nodes.oneClickInstall") : primaryOperation === "repair" ? s("nodes.repair") : primaryOperation === "update" ? s("nodes.update") : s("nodes.reinstall"))}</button>
+              ${node.installed ? `<details class="node-action-menu"><summary aria-label="${s("nodes.moreActions")}" title="${s("nodes.moreActions")}">${icon("chevron-down")}</summary><div class="node-action-menu-popover"><button class="destructive-menu-action button-with-icon" data-uninstall-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon("trash-2")}${s("nodes.uninstall")}</button></div></details>` : ""}
+            </div>
+          </div>
+        </article>`
+    };
+  });
+  const nodeDependencyCards = [
+    { id: LLAMA_CPP_PYTHON_DEPENDENCY_ID, markup: llamaPythonCard },
+    ...customNodeCards
+  ].sort((left, right) => compareDependencyIds(left.id, right.id))
+    .map((card) => card.markup)
+    .join("");
   const nodePanel = `
     <section class="settings-panel">
       <section class="panel settings-section">
@@ -576,93 +680,7 @@ export function renderSettingsPage(
         <div class="scan-result" role="status" aria-live="polite">${s("nodes.installNote")}</div>
       </section>
       <div class="model-profile-list">
-        <article class="panel custom-node-card ${llamaPythonTone}">
-          <div class="custom-node-copy">
-            <div class="model-title"><h3>${s("nodes.llamaTitle")}</h3><span class="model-badge">${s("nodes.llamaBadge")}</span></div>
-            <p>${s("nodes.llamaDescription")}</p>
-            <div class="component-list">
-              <div class="component-row ${llamaPythonRowTone}"><span class="component-state">${icon(llamaPythonStatusIcon)}</span><div><strong>llama-cpp-python</strong><code>${escape(llamaPythonDetail)}</code></div></div>
-            </div>
-            ${llamaPythonEnvironment ? `<p class="muted">${escape(llamaPythonEnvironment)}</p>` : ""}
-            ${(viewModel.llamaCppPythonLog || viewModel.llamaCppPythonInstalling) ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="python-runtime:llama-cpp-python">${escape(viewModel.llamaCppPythonLog || s("nodes.installing"))}</pre></details>` : ""}
-          </div>
-          <div class="custom-node-actions">
-            <span class="model-availability ${llamaPythonTone}" role="status" aria-live="polite">${icon(llamaPythonStatusIcon)} ${llamaPythonStatus}</span>
-            <div class="node-action-split">
-              <button class="primary button-with-icon node-action-main" id="install-llama-cpp-python" aria-busy="${viewModel.llamaCppPythonInstalling}" ${llamaPythonActionBlocked ? "disabled" : ""}>${icon(viewModel.llamaCppPythonInstalling ? "refresh-cw" : llamaCppPython?.installed ? "refresh-cw" : "download")}${viewModel.llamaCppPythonInstalling ? s("nodes.installing") : llamaCppPython?.installed ? s("nodes.reinstall") : s("nodes.oneClickInstall")}</button>
-              ${llamaCppPython?.installed ? `<details class="node-action-menu"><summary aria-label="${s("nodes.moreActions")}" title="${s("nodes.moreActions")}">${icon("chevron-down")}</summary><div class="node-action-menu-popover"><button class="destructive-menu-action button-with-icon" data-uninstall-llama-cpp-python ${llamaPythonActionBlocked ? "disabled" : ""}>${icon("trash-2")}${s("nodes.uninstall")}</button></div></details>` : ""}
-            </div>
-          </div>
-        </article>
-        ${customNodes.map((node) => {
-          const queuedIndex = viewModel.customNodeInstallQueue.indexOf(node.id);
-          const active = viewModel.customNodeInstalling === node.id;
-          const cardState = deriveCustomNodeCardState({
-            node,
-            queuedIndex,
-            active,
-            finalizing: customNodeInstallFinalizing,
-            inFinalizingBatch: viewModel.customNodeInstallBatch.includes(node.id),
-            globallyBlocked: customNodeInstallGloballyBlocked
-          });
-          const queued = cardState.queued;
-          const installBlocked = cardState.installBlocked;
-          const primaryOperation = cardState.primaryOperation;
-          const localVersion = node.version
-            ? `v${escape(node.version)}`
-            : node.detectedRevision
-              ? `commit ${escape(node.detectedRevision)}`
-              : node.installed
-                ? s("nodes.versionUnread")
-                : s("nodes.notInstalled");
-          const installStatus = cardState.phase === "processing"
-            ? s("nodes.processing")
-            : cardState.phase === "queued"
-              ? s("nodes.waitingPosition", { position: queuedIndex + 1 })
-              : cardState.phase === "finalizing"
-                ? s("nodes.finalizing")
-                : "";
-          const statusMarkup = cardState.status === "processing" || cardState.status === "queued" || cardState.status === "finalizing"
-            ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}`
-            : cardState.status === "compatibility-error"
-              ? `${icon("circle-alert")} ${s("nodes.compatibilityError")}`
-              : cardState.status === "update"
-                ? `${icon("circle-alert")} ${s("nodes.needsUpdate")}`
-                : cardState.status === "runtime-missing"
-                  ? `${icon("circle-alert")} ${s("nodes.runtimeMissing")}`
-                  : cardState.status === "file-ready"
-                    ? `${icon("circle-check")} ${s("nodes.fileCheckPassed")}`
-                    : cardState.status === "compatibility-warning"
-                      ? `${icon("circle-help")} ${s("nodes.compatibilityWarning")}`
-                      : cardState.status === "runtime-ready"
-                        ? `${icon("circle-check")} ${s("nodes.runtimeVerified")}`
-                        : cardState.status === "repair"
-                          ? `${icon("circle-alert")} ${s("nodes.installedRepair")}`
-                          : `${icon("circle-alert")} ${s("nodes.notInstalled")}`;
-          return `
-          <article class="panel custom-node-card ${cardState.tone}">
-            <div class="custom-node-copy">
-              <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.bulkInstall === false ? ` · ${s("nodes.manualInstall")}` : ""}</span></div>
-              <p>${escape(node.purpose)}</p>
-              <code>${escape(node.directory || node.repositoryUrl)}</code>
-              ${node.runtimeRequirement ? `<p class="muted"><strong>${s("nodes.prerequisite")}</strong> ${escape(node.runtimeRequirement)}</p>` : ""}
-              <p class="muted">${s("nodes.localVersion")}${localVersion} · ${s("nodes.versionSource")}<code>${escape(node.versionSource || "—")}</code>${node.recommendedVersion ? ` · ${s("nodes.recommendedVersion")}v${escape(node.recommendedVersion)}` : ""}${node.latestVersion ? ` · ${s("nodes.latestRelease")}v${escape(node.latestVersion)}` : ""}${node.id === "spectrum-minimax-h3" ? ` · ${s("nodes.runtimeMemory")}` : ""}</p>
-              ${node.loadError ? `<span class="${node.compatibilityState === "warning" ? "node-update-notice" : "node-error"}">${escape(node.loadError)}</span>` : ""}
-              ${node.updateNotice ? `<span class="node-update-notice">${escape(node.updateNotice)}</span>` : ""}
-              ${node.runtimeNotice ? `<span class="node-runtime-notice">${escape(node.runtimeNotice)}</span>` : ""}
-              ${node.duplicateDirectories?.length ? `<span class="node-update-notice">${escape(s("nodes.duplicateCopies", { paths: node.duplicateDirectories.join(s("shared.listSeparator")) }))}</span>` : ""}
-              ${node.compatibilityNotice && node.compatibilityState !== "supported" && node.compatibilityNotice !== node.updateNotice ? `<span class="node-update-notice">${escape(node.compatibilityNotice)}</span>` : ""}
-              ${viewModel.customNodeLogs[node.id] ? `<details class="node-log" open><summary>${s("nodes.installLog")}</summary><pre data-dependency-install-log="${escape(`custom-node:${node.id}`)}">${escape(viewModel.customNodeLogs[node.id])}</pre></details>` : ""}
-            </div>
-            <div class="custom-node-actions">
-              <span class="model-availability ${cardState.tone}" role="status" aria-live="polite">${statusMarkup}</span>
-              <div class="node-action-split">
-                <button class="primary button-with-icon node-action-main" aria-busy="${active || queued || cardState.phase === "finalizing"}" data-install-node="${escape(node.id)}" data-node-operation="${primaryOperation}" ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : primaryOperation === "install" ? "download" : primaryOperation === "repair" ? "wrench" : "refresh-cw")}${installStatus || (primaryOperation === "install" ? s("nodes.oneClickInstall") : primaryOperation === "repair" ? s("nodes.repair") : primaryOperation === "update" ? s("nodes.update") : s("nodes.reinstall"))}</button>
-                ${node.installed ? `<details class="node-action-menu"><summary aria-label="${s("nodes.moreActions")}" title="${s("nodes.moreActions")}">${icon("chevron-down")}</summary><div class="node-action-menu-popover"><button class="destructive-menu-action button-with-icon" data-uninstall-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon("trash-2")}${s("nodes.uninstall")}</button></div></details>` : ""}
-              </div>
-            </div>
-          </article>`;
-        }).join("") || `<div class="panel environment-empty">${s("nodes.empty")}</div>`}
+        ${nodeDependencyCards || `<div class="panel environment-empty">${s("nodes.empty")}</div>`}
       </div>
     </section>`;
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  compareDependencyIds,
   customNodeCatalog,
   customNodeDefinition
 } from "../src/core/catalog";
@@ -14,6 +15,30 @@ describe("dependency catalog", () => {
       expect(definition.repositoryUrl).toMatch(/^https:\/\/github\.com\//);
       expect(definition.aliases.length).toBeGreaterThan(0);
     }
+  });
+
+  it("orders dependencies by stable product priority and keeps unknown entries last", () => {
+    expect(customNodeCatalog.map((item) => item.id)).toEqual([
+      "video-helper-suite",
+      "comfyui-gguf",
+      "kjnodes",
+      "ltx-video",
+      "minimax-h3-prompt-writer",
+      "comfyui-multimodal-prompt-nodes",
+      "comfyui-qwenvl-lora",
+      "inpaint-nodes",
+      "inpaint-cropandstitch",
+      "seedvr2",
+      "flashvsr",
+      "frame-interpolation",
+      "h3-motion-context",
+      "spectrum-minimax-h3",
+      "plaguekind-h3-sla",
+      "comfyui-gguf-h3"
+    ]);
+    expect(customNodeCatalog.every((item) => Number.isFinite(item.priority))).toBe(true);
+    expect(compareDependencyIds("llama-cpp-python", "comfyui-multimodal-prompt-nodes")).toBeLessThan(0);
+    expect(compareDependencyIds("unknown-dependency", "video-helper-suite")).toBeGreaterThan(0);
   });
 
   it("retains runtime and compatibility metadata needed by scanners", () => {

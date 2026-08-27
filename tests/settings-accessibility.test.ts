@@ -380,4 +380,77 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('data-uninstall-node="minimax-h3-prompt-writer"');
     expect(markup).not.toContain('data-rescan-node="minimax-h3-prompt-writer"');
   });
+
+  it("orders node and runtime dependency cards by product priority", () => {
+    const environmentScan = {
+      scannedAt: "2026-08-26T00:00:00.000Z",
+      userHome: "C:\\Users\\Test",
+      items: [],
+      modelProfiles: [],
+      issues: [],
+      customNodes: [
+        {
+          id: "inpaint-nodes",
+          name: "ComfyUI Inpaint Nodes",
+          purpose: "LaMa",
+          repositoryUrl: "https://example.invalid/inpaint.git",
+          installed: false,
+          loaded: false,
+          runtimeVerified: false,
+          loadError: "",
+          directory: "",
+          required: false,
+          version: "",
+          minimumVersion: "",
+          recommendedVersion: "",
+          latestVersion: "",
+          updateAvailable: false
+        },
+        {
+          id: "video-helper-suite",
+          name: "VideoHelperSuite",
+          purpose: "Video I/O",
+          repositoryUrl: "https://example.invalid/video.git",
+          installed: false,
+          loaded: false,
+          runtimeVerified: false,
+          loadError: "",
+          directory: "",
+          required: true,
+          version: "",
+          minimumVersion: "",
+          recommendedVersion: "",
+          latestVersion: "",
+          updateAvailable: false
+        },
+        {
+          id: "comfyui-gguf",
+          name: "ComfyUI-GGUF",
+          purpose: "GGUF",
+          repositoryUrl: "https://example.invalid/gguf.git",
+          installed: false,
+          loaded: false,
+          runtimeVerified: false,
+          loadError: "",
+          directory: "",
+          required: true,
+          version: "",
+          minimumVersion: "",
+          recommendedVersion: "",
+          latestVersion: "",
+          updateAvailable: false
+        }
+      ]
+    } as unknown as EnvironmentScanResult;
+    const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
+    const videoIndex = markup.indexOf(">VideoHelperSuite</h3>");
+    const ggufIndex = markup.indexOf(">ComfyUI-GGUF</h3>");
+    const llamaIndex = markup.indexOf(">llama-cpp-python</strong>");
+    const inpaintIndex = markup.indexOf(">ComfyUI Inpaint Nodes</h3>");
+
+    expect(videoIndex).toBeGreaterThan(-1);
+    expect(videoIndex).toBeLessThan(ggufIndex);
+    expect(ggufIndex).toBeLessThan(llamaIndex);
+    expect(llamaIndex).toBeLessThan(inpaintIndex);
+  });
 });

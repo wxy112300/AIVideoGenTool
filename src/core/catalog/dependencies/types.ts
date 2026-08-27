@@ -1,5 +1,7 @@
 export interface CatalogCustomNodeDefinition {
   id: string;
+  /** Stable Settings display/install order; lower values are more important and practical. */
+  priority: number;
   name: string;
   purpose: string;
   repositoryUrl: string;

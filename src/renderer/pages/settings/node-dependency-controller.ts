@@ -3,6 +3,7 @@ import type {
   CustomNodeInstallMode,
   Settings
 } from "../../../types";
+import { compareDependencyIds } from "../../../core/catalog";
 import { uiKeys } from "../../../core/i18n-keys";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import type { EnvironmentRefreshReason } from "../../environment-refresh-coordinator";
@@ -159,7 +160,9 @@ export function mountSettingsNodeDependencyController(
       context.notify(context.t(uiKeys.settings.actions.runningTaskBlocked), { kind: "warning" });
       return;
     }
-    const nodes = options.getEnvironmentScan()?.customNodes ?? [];
+    const nodes = [...(options.getEnvironmentScan()?.customNodes ?? [])].sort((left, right) =>
+      compareDependencyIds(left.id, right.id)
+    );
     const settings = options.formSettings();
     options.setSettingsDraft(settings);
     let accepted = 0;

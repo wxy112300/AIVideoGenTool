@@ -12,8 +12,9 @@ export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.3.1";
 export const H3_SLA_ATTENTION_MINIMUM_VERSION = "1.3.8";
 export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.3.8";
 
-export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
+const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "inpaint-nodes",
+  priority: 90,
   name: "ComfyUI Inpaint Nodes",
   purpose: "加载 LaMa 局部修补模型、扩张 Mask 并移除目标",
   repositoryUrl: "https://github.com/Acly/comfyui-inpaint-nodes.git",
@@ -24,6 +25,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "inpaint-cropandstitch",
+  priority: 100,
   name: "ComfyUI Inpaint Crop & Stitch",
   purpose: "按 Mask 裁剪局部上下文，供 Qwen 重绘后无缝拼回原图",
   repositoryUrl: "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git",
@@ -34,6 +36,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "comfyui-gguf",
+  priority: 20,
   name: "ComfyUI-GGUF",
   purpose: "加载 Remix、SmoothMix、Wan 和 Sulphur 等历史 GGUF 视频模型",
   repositoryUrl: "https://github.com/city96/ComfyUI-GGUF.git",
@@ -44,6 +47,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: true
 }, {
   id: "comfyui-gguf-h3",
+  priority: 170,
   name: "ComfyUI-GGUF H3",
   purpose: "为 MiniMax H3 Q3 3080 实验档加载 H3 GGUF 扩散模型和文本编码器",
   repositoryUrl: "https://github.com/molbal/ComfyUI-GGUF.git",
@@ -55,6 +59,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "video-helper-suite",
+  priority: 10,
   name: "VideoHelperSuite",
   purpose: "视频读取、合成、编码和音频封装",
   repositoryUrl: "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
@@ -71,6 +76,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: true
 }, {
   id: "ltx-video",
+  priority: 40,
   name: "ComfyUI-LTXVideo",
   purpose: "Sulphur 2 原生视频续写、低显存加载与分阶段卸载",
   repositoryUrl: "https://github.com/Lightricks/ComfyUI-LTXVideo.git",
@@ -81,6 +87,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "seedvr2",
+  priority: 110,
   name: "SeedVR2 Video Upscaler",
   purpose: "SeedVR2 视频超分工作流",
   repositoryUrl: "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git",
@@ -93,6 +100,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: true
 }, {
   id: "flashvsr",
+  priority: 120,
   name: "ComfyUI-FlashVSR",
   purpose: "FlashVSR 视频超分工作流",
   repositoryUrl: "https://github.com/1038lab/ComfyUI-FlashVSR.git",
@@ -103,6 +111,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: true
 }, {
   id: "kjnodes",
+  priority: 30,
   name: "ComfyUI-KJNodes",
   purpose: "模型补丁、显存调试与 MiniMax H3 TAE 实时预览",
   repositoryUrl: "https://github.com/kijai/ComfyUI-KJNodes.git",
@@ -129,6 +138,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "frame-interpolation",
+  priority: 130,
   name: "ComfyUI Frame Interpolation",
   purpose: "使用 RIFE/FILM 将快速模式生成帧插值到 24 或 30 FPS",
   repositoryUrl: "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",
@@ -139,6 +149,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "comfyui-multimodal-prompt-nodes",
+  priority: 70,
   name: "ComfyUI MultiModal Prompt Nodes",
   purpose: "在 ComfyUI 内运行 Qwen3.6/Qwen3.8 GGUF 与 vision 投影文件，按参考图片和文字生成提示词",
   repositoryUrl: "https://github.com/kantan-kanto/ComfyUI-MultiModal-Prompt-Nodes.git",
@@ -151,6 +162,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "comfyui-qwenvl-lora",
+  priority: 80,
   name: "ComfyUI Qwen-VL LoRA",
   purpose: "在 ComfyUI 内加载 Qwen3-VL 基座与 PEFT Prompt LoRA，输出 H3 提示词文本",
   repositoryUrl: "https://github.com/Dangocan/comfyui_qwenvl_lora.git",
@@ -168,6 +180,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "minimax-h3-prompt-writer",
+  priority: 50,
   name: "MiniMax H3 Prompt Writer",
   purpose: "在 ComfyUI 内运行 Gemma 4，多模态理解素材并生成 H3 官方格式提示词",
   repositoryUrl: "https://github.com/duckyshell/ComfyUI-MiniMaxH3-Prompt-Writer.git",
@@ -188,6 +201,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "h3-motion-context",
+  priority: 140,
   name: "H3 Motion Context",
   purpose: "让 H3 R2V 续写继承上一段的运动方向、速度和 32 kHz 音频，并保存 latent 供下一次无损接续",
   repositoryUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context.git",
@@ -215,6 +229,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "plaguekind-h3-sla",
+  priority: 160,
   name: "ComfyUI-PlagueKind H3 SLA Attention",
   purpose: "为 MiniMax H3 Turbo-SLA LoRA 提供块稀疏注意力；选择 Turbo-SLA 后由应用自动插入。",
   repositoryUrl: "https://github.com/PlagueKind/ComfyUI-PlagueKind-Nodes.git",
@@ -241,6 +256,7 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   required: false
 }, {
   id: "spectrum-minimax-h3",
+  priority: 150,
   name: "Spectrum MiniMax H3",
   purpose: "预测部分 H3 采样步骤；支持标准 FL2VA / R2V、LightX2V Turbo，并可选互操作 H3 Continuum、Diff-Aid 与 Untwisting RoPE",
   repositoryUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
@@ -261,6 +277,31 @@ export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] = [{
   }],
   required: false
 }];
+
+export const LLAMA_CPP_PYTHON_DEPENDENCY_ID = "llama-cpp-python";
+export const LLAMA_CPP_PYTHON_DEPENDENCY_PRIORITY = 60;
+
+export function compareCustomNodeDefinitions(
+  left: Pick<CatalogCustomNodeDefinition, "id" | "name" | "priority">,
+  right: Pick<CatalogCustomNodeDefinition, "id" | "name" | "priority">
+): number {
+  return left.priority - right.priority ||
+    left.name.localeCompare(right.name, "zh-CN") ||
+    left.id.localeCompare(right.id);
+}
+
+export function customNodePriority(id: string): number {
+  if (id === LLAMA_CPP_PYTHON_DEPENDENCY_ID) return LLAMA_CPP_PYTHON_DEPENDENCY_PRIORITY;
+  return customNodeDefinitions.find((definition) => definition.id === id)?.priority ?? Number.MAX_SAFE_INTEGER;
+}
+
+export function compareDependencyIds(leftId: string, rightId: string): number {
+  return customNodePriority(leftId) - customNodePriority(rightId) ||
+    leftId.localeCompare(rightId);
+}
+
+export const customNodeCatalog: readonly CatalogCustomNodeDefinition[] =
+  [...customNodeDefinitions].sort(compareCustomNodeDefinitions);
 
 export function customNodeDefinition(id: string): CatalogCustomNodeDefinition | undefined {
   return customNodeCatalog.find((definition) => definition.id === id);
