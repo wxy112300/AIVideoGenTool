@@ -83,6 +83,20 @@ describe("Qwen Image Edit prompt contract", () => {
     );
   });
 
+  it("separates inline editorial notes before sending an image-edit request", () => {
+    const content = imageEditPromptUserContentForTarget({
+      prompt: "Move the person closer（Note: preserve identity and natural proportions】.",
+      modelId: "qwen2.5-vl",
+      imageTargetModelId: "z-image-turbo",
+      mode: "image-edit"
+    });
+
+    expect(content).toContain("Editorial annotation contract");
+    expect(content).toContain("preserve identity and natural proportions");
+    expect(content).toContain("Move the person closer");
+    expect(content).not.toContain("Move the person closer（Note");
+  });
+
   it("selects the HiDream-O1 contract for layout, viewpoint, and local edits", () => {
     const request = {
       prompt: "把 Picture 1 改成低机位，并给招牌增加清晰的白色文字。",

@@ -17,6 +17,7 @@ import {
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
+import { stripPromptAnnotations } from "../../src/core/prompt-annotations.js";
 import { missingWorkflowNodeTypes } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 import {
@@ -358,6 +359,7 @@ export async function enhancePromptWithQwenVlPeft(
     const output = extractStringNodeOutput(history, ["qwenvl-caption"]);
     if (warmup) return output;
     if (request.mode === "image-edit") return normalizeQwenImageEditPromptOutput(output);
+    const sourcePrompt = stripPromptAnnotations(request.prompt);
     const imageCount = request.imagePaths?.length ?? 0;
     const mode = request.h3PromptMode ?? inferH3PromptMode(
       Boolean(request.imagePath || imageCount > 0),
@@ -367,8 +369,9 @@ export async function enhancePromptWithQwenVlPeft(
       output,
       mode,
       request.h3DurationSeconds ?? 5,
-      extractH3DialogueLocks(request.prompt),
-      extractH3VisibleTextLocks(request.prompt),
+      extractH3DialogueLocks(sourcePrompt),
+      extractH3VisibleTextLocks(sourcePrompt),
+      sourcePrompt,
       request.prompt
     );
   } catch (error) {

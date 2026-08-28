@@ -1,4 +1,5 @@
 import type { EnhanceRequest, ImagePromptPreset } from "../../../types.js";
+import { stripPromptAnnotations } from "../../prompt-annotations.js";
 
 const qwenImagePromptPresetDefaults: Record<ImagePromptPreset, string> = {
   faithful: "Rewrite the user's image-edit instruction as one concise, direct English paragraph. Preserve the exact requested operation, subject identity, attributes, quantities, positions, reference-image roles, proper nouns, visible text, and explicit constraints. Clarify grammar and relationships only. Do not infer or add unsupported people, objects, backgrounds, styles, materials, lighting, composition changes, or story. Keep every quoted or visible text string in its original language and capitalization inside English double quotes. When multiple images are supplied, identify which Picture N contributes each requested element.",
@@ -71,5 +72,5 @@ export function normalizeQwenImageEditPromptOutput(value: string): string {
     /(?:^|\n)\s*(?:[*#\s]*)(?:detailed_description|integrated_multimodal_description)\s*:\s*([\s\S]*?)(?=\n\s*(?:[*#\s]*)(?:subject_definitions|summary|retention_analysis|overall_soundscape|non_diegetic_music)\s*:|$)/iu
   );
   const prompt = field?.[1]?.trim() || fenced;
-  return prompt.replace(/\s+/gu, " ").trim();
+  return stripPromptAnnotations(prompt.replace(/\s+/gu, " ").trim());
 }

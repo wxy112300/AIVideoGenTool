@@ -1,3 +1,4 @@
+import { stripPromptAnnotations } from "../../prompt-annotations.js";
 const qwenImagePromptPresetDefaults = {
     faithful: "Rewrite the user's image-edit instruction as one concise, direct English paragraph. Preserve the exact requested operation, subject identity, attributes, quantities, positions, reference-image roles, proper nouns, visible text, and explicit constraints. Clarify grammar and relationships only. Do not infer or add unsupported people, objects, backgrounds, styles, materials, lighting, composition changes, or story. Keep every quoted or visible text string in its original language and capitalization inside English double quotes. When multiple images are supplied, identify which Picture N contributes each requested element.",
     "detail-enhance": "Rewrite the user's image-edit instruction as one concise, direct English paragraph. Preserve the requested subject, identity, composition, edit scope, reference roles, proper nouns, visible text, and explicit constraints. Add only minimal details needed for visual feasibility: the affected region, spatial relationship, scale, orientation, material, lighting, perspective, contact shadow, edge blending, and unchanged areas. For add, delete, or replace operations, name the target and the requested result clearly. For people, preserve identity and important appearance unless changed. For style transfer, describe only the requested style features. When multiple images are supplied, identify each Picture N's contribution. Do not add unrelated content, generic quality slogans, H3 video structure, audio, or a timeline."
@@ -58,5 +59,5 @@ export function normalizeQwenImageEditPromptOutput(value) {
         .trim();
     const field = fenced.match(/(?:^|\n)\s*(?:[*#\s]*)(?:detailed_description|integrated_multimodal_description)\s*:\s*([\s\S]*?)(?=\n\s*(?:[*#\s]*)(?:subject_definitions|summary|retention_analysis|overall_soundscape|non_diegetic_music)\s*:|$)/iu);
     const prompt = field?.[1]?.trim() || fenced;
-    return prompt.replace(/\s+/gu, " ").trim();
+    return stripPromptAnnotations(prompt.replace(/\s+/gu, " ").trim());
 }

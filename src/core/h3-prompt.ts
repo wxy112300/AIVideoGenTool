@@ -2,6 +2,8 @@ import type { H3PromptMode, H3PromptPreset } from "../types.js";
 import type { H3DialogueLock, H3VisibleTextLock } from "./h3-dialogue.js";
 import { restoreH3DialogueLocks, restoreH3VisibleTextLocks } from "./h3-dialogue.js";
 import { preserveH3CameraIntentInOutput } from "./h3-camera-intent.js";
+import { ensureH3ScalePreservationInOutput } from "./h3-scale-preservation.js";
+import { stripPromptAnnotations } from "./prompt-annotations.js";
 
 export function inferH3PromptMode(
   hasStartImage: boolean,
@@ -180,18 +182,20 @@ export function normalizeH3PromptOutput(
   durationSeconds: number,
   dialogueLocks: readonly H3DialogueLock[] = [],
   visibleTextLocks: readonly H3VisibleTextLock[] = [],
-  sourcePrompt = ""
+  sourcePrompt = "",
+  scaleContext = ""
 ): string {
-  const cleanedBody = stripH3OutputPreamble(
+  const cleanedBody = stripPromptAnnotations(stripH3OutputPreamble(
     stripLeadingH3AlignmentInstructions(promptText),
     mode
-  );
+  ));
   const body = restoreH3VisibleTextLocks(
     restoreH3DialogueLocks(cleanedBody, dialogueLocks),
     visibleTextLocks
   );
   const cameraSafeBody = preserveH3CameraIntentInOutput(body, sourcePrompt, mode);
+  const scaleSafeBody = ensureH3ScalePreservationInOutput(cameraSafeBody, mode, sourcePrompt, scaleContext);
   const alignment = h3AlignmentInstruction(mode, durationSeconds);
-  if (!alignment) return cameraSafeBody;
-  return `${alignment}\n\n${cameraSafeBody}`.trim();
+  if (!alignment) return scaleSafeBody;
+  return `${alignment}\n\n${scaleSafeBody}`.trim();
 }

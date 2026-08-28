@@ -202,6 +202,33 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("Final user-intent lock");
   });
 
+  it("separates labeled inline annotations from the H3 draft", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "The camera rotates around the girl（注：camera means the viewpoint, not a physical prop】, then she turns【Note: preserve this action）.",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "T2VA"
+    });
+
+    expect(instruction).toContain("Editorial annotation contract");
+    expect(instruction).toContain("camera means the viewpoint, not a physical prop");
+    expect(instruction).toContain("preserve this action");
+    expect(instruction).toContain("The camera rotates around the girl, then she turns.");
+    expect(instruction).not.toContain("The camera rotates around the girl（注");
+  });
+
+  it("turns a scale annotation into a shared human-proportion lock", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "A woman walks beside a full-size coffee cup（注：她是等比例缩小的真人，不是玩具或小孩）.",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "T2VA"
+    });
+
+    expect(instruction).toContain("Scale semantics lock");
+    expect(instruction).toContain("same source/reference identity and age");
+    expect(instruction).toContain("For T2VA");
+    expect(instruction).toContain("等比例缩小的真人");
+  });
+
   it("adds a camera lock only for viewpoint-camera language", () => {
     const viewpoint = h3PromptInstruction({
       prompt: "The camera rotates around the girl, showing the view from inside the room looking outside.",

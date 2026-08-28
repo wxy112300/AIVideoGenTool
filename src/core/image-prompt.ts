@@ -15,6 +15,10 @@ import {
   omnigen2PromptContract,
   omnigen2PromptUserContent
 } from "./omnigen2-prompt.js";
+import {
+  parsePromptAnnotations,
+  promptAnnotationInstruction
+} from "./prompt-annotations.js";
 
 export {
   qwenImageEditPromptContract as qwenImageEditEnhancerContract
@@ -50,13 +54,17 @@ export function imageEditPromptContractForTarget(
 }
 
 export function imageEditPromptUserContentForTarget(request: EnhanceRequest): string {
-  if (isOmniGen2TargetModel(request.imageTargetModelId)) {
-    return omnigen2PromptUserContent(request);
-  }
-  if (isHiDreamO1TargetModel(request.imageTargetModelId)) {
-    return hidreamO1PromptUserContent(request);
-  }
-  return isZImageTargetModel(request.imageTargetModelId)
-    ? zImagePromptUserContent(request)
-    : qwenImageEditPromptUserContent(request);
+  const parsedPrompt = parsePromptAnnotations(request.prompt);
+  const sourceRequest = parsedPrompt.annotations.length
+    ? { ...request, prompt: parsedPrompt.prompt }
+    : request;
+  const content = isOmniGen2TargetModel(request.imageTargetModelId)
+    ? omnigen2PromptUserContent(sourceRequest)
+    : isHiDreamO1TargetModel(request.imageTargetModelId)
+      ? hidreamO1PromptUserContent(sourceRequest)
+      : isZImageTargetModel(request.imageTargetModelId)
+        ? zImagePromptUserContent(sourceRequest)
+        : qwenImageEditPromptUserContent(sourceRequest);
+  const annotationInstruction = promptAnnotationInstruction(parsedPrompt);
+  return [annotationInstruction, content].filter(Boolean).join("\n\n");
 }

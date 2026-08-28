@@ -148,6 +148,22 @@ describe("LM Studio prompt enhancement requests", () => {
     readFile.mockRestore();
   });
 
+  it("passes the scale semantics lock to the direct H3 vision backend", async () => {
+    const body = await buildLmStudioChatRequest(
+      {
+        prompt: "A tiny person walks through a full-size room.",
+        modelId: "minimax_h3_fl2va",
+        mode: "h3-vision",
+        h3PromptMode: "I2VA"
+      },
+      createDefaultSettings(),
+      "qwen/qwen3.6-27b"
+    );
+
+    expect(body.messages[1]?.content).toContain("Scale semantics lock");
+    expect(body.messages[1]?.content).toContain("For I2VA");
+  });
+
   it("sends an empty reference-auto request as a varied H3 visual instruction", async () => {
     const readFile = vi.spyOn(fs, "readFile").mockResolvedValue(Buffer.from("image"));
     const body = await buildLmStudioChatRequest(

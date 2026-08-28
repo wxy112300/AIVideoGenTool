@@ -9,6 +9,7 @@ import type {
 } from "../../src/types.js";
 import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
 import { h3SmallModelPromptContract } from "../../src/core/h3-official-spec.js";
+import { h3ScalePreservationInstruction } from "../../src/core/h3-scale-preservation.js";
 import {
   h3AutoPromptInstruction,
   isH3ReferenceAutoPrompt,
@@ -35,6 +36,11 @@ import {
   extractH3VisibleTextLocks,
   h3ContentLockInstruction
 } from "../../src/core/h3-dialogue.js";
+import {
+  parsePromptAnnotations,
+  promptAnnotationInstruction,
+  stripPromptAnnotations
+} from "../../src/core/prompt-annotations.js";
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
@@ -201,9 +207,12 @@ function faithfulSystemPrompt(settings: Settings): string {
 }
 
 function faithfulUserPrompt(prompt: string, settings: Settings): string {
+  const parsedPrompt = parsePromptAnnotations(prompt);
+  const sourcePrompt = parsedPrompt.prompt.trim();
+  const annotationInstruction = promptAnnotationInstruction(parsedPrompt);
   const language =
     settings.promptLanguage === "zh" ||
-    (settings.promptLanguage === "auto" && /[\u3400-\u9fff]/u.test(prompt))
+    (settings.promptLanguage === "auto" && /[\u3400-\u9fff]/u.test(sourcePrompt))
       ? "请使用中文输出。"
       : settings.promptLanguage === "en"
         ? "Output in English."
@@ -211,8 +220,9 @@ function faithfulUserPrompt(prompt: string, settings: Settings): string {
   return [
     language,
     "不得加入原文没有出现的视觉、人物或剧情信息。",
+    ...(annotationInstruction ? [annotationInstruction] : []),
     "原始提示词：",
-    prompt
+    sourcePrompt
   ].join("\n");
 }
 
@@ -285,23 +295,33 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds);
   const referenceContext = request.referenceContext?.trim();
-  const hardConstraints = h3ExplicitConstraintSummary(request.prompt);
-  const contentLocks = h3ContentLockInstruction(request.prompt);
-  const cameraIntent = h3CameraIntentInstruction(request.prompt);
+  const parsedPrompt = parsePromptAnnotations(request.prompt);
+  const sourcePrompt = parsedPrompt.prompt.trim();
+  const hardConstraints = h3ExplicitConstraintSummary(sourcePrompt);
+  const contentLocks = h3ContentLockInstruction(sourcePrompt);
+  const cameraIntent = h3CameraIntentInstruction(sourcePrompt);
+  const annotationInstruction = promptAnnotationInstruction(parsedPrompt);
+  const scaleContext = [
+    ...parsedPrompt.annotations.map((annotation) => annotation.text),
+    referenceContext ?? ""
+  ].filter(Boolean).join("\n");
+  const scaleInstruction = h3ScalePreservationInstruction(sourcePrompt, mode, scaleContext);
   return [
     `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
     h3DurationPlan(mode, Number(duration)),
     `H3 output preset: ${preset}.`,
+    ...(scaleInstruction ? [scaleInstruction] : []),
     mode === "T2VA"
       ? "No image reference is attached; the following user intent is the source material for the T2VA timeline."
       : "The attached image(s) are the reference material in the order described below.",
     ...(referenceContext ? [`Reference map:\n${referenceContext}`] : []),
     ...(isH3ReferenceAutoPrompt(request)
-      ? [h3AutoPromptInstruction(request)]
-      : [
-          "User request (preserve its concrete words and meaning):",
-          request.prompt.trim()
-        ]),
+        ? [h3AutoPromptInstruction(request)]
+        : [
+           "User request (preserve its concrete words and meaning):",
+           sourcePrompt
+         ]),
+    ...(annotationInstruction ? [annotationInstruction] : []),
     ...(cameraIntent ? [cameraIntent] : []),
     ...(hardConstraints ? [hardConstraints] : []),
     ...(contentLocks ? [contentLocks] : [])
@@ -366,6 +386,12 @@ export async function buildLmStudioChatRequest(
     };
   }
   if (mode === "sulphur-native") {
+    const parsedPrompt = parsePromptAnnotations(request.prompt);
+    const sourcePrompt = parsedPrompt.prompt.trim();
+    const annotationInstruction = promptAnnotationInstruction(parsedPrompt);
+    const userPrompt = annotationInstruction
+      ? [annotationInstruction, "Draft prompt:", sourcePrompt].filter(Boolean).join("\n\n")
+      : sourcePrompt;
     return {
       model,
       temperature: settings.promptCreativity,
@@ -374,7 +400,7 @@ export async function buildLmStudioChatRequest(
         {
           role: "user",
           content: await nativeUserContent(
-            request.prompt,
+            userPrompt,
             request.imagePaths?.length
               ? request.imagePaths
               : request.imagePath ? [request.imagePath] : []
@@ -482,15 +508,17 @@ export async function enhancePrompt(
     .replace(/^```(?:text|markdown)?\s*/iu, "")
     .replace(/\s*```$/u, "")
     .trim();
-  if (mode === "image-edit") return normalizeQwenImageEditPromptOutput(normalized);
-  if (mode !== "h3-vision") return normalized;
+  if (mode === "image-edit") return normalizeQwenImageEditPromptOutput(stripPromptAnnotations(normalized));
+  if (mode !== "h3-vision") return stripPromptAnnotations(normalized);
   const h3Mode = h3PromptModeForRequest(request);
+  const sourcePrompt = stripPromptAnnotations(request.prompt);
   return normalizeH3PromptOutput(
     normalized,
     h3Mode,
     request.h3DurationSeconds ?? 5,
-    extractH3DialogueLocks(request.prompt),
-    extractH3VisibleTextLocks(request.prompt),
+    extractH3DialogueLocks(sourcePrompt),
+    extractH3VisibleTextLocks(sourcePrompt),
+    sourcePrompt,
     request.prompt
   );
 }

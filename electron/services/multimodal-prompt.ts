@@ -24,6 +24,7 @@ import {
   validateH3ReferenceAutoPrompt
 } from "../../src/core/h3-auto-prompter.js";
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
+import { stripPromptAnnotations } from "../../src/core/prompt-annotations.js";
 import { missingWorkflowNodeTypes } from "../../src/core/workflow.js";
 import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
 import { getPerformanceMetrics } from "./performance.js";
@@ -264,7 +265,7 @@ export function buildMultimodalPromptWorkflow(
         targetLanguage === "zh"
           ? "Output language override: write explanatory H3 prose and field descriptions in Chinese. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface."
           : "Output language override: write explanatory H3 prose and field descriptions in English. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface.",
-        ...(request.mode === "image-edit" ? [] : [h3ContentLockInstruction(request.prompt)])
+        ...(request.mode === "image-edit" ? [] : [h3ContentLockInstruction(stripPromptAnnotations(request.prompt))])
       ].join("\n\n");
   const maxTokens = warmup
     // VisionLLMNode validates this input against its runtime schema.  Recent
@@ -450,6 +451,7 @@ export async function enhancePromptWithMultimodalComfyUi(
     if (request.mode === "image-edit") {
       return normalizeQwenImageEditPromptOutput(output);
     }
+    const sourcePrompt = stripPromptAnnotations(request.prompt);
     const imageCount = request.imagePaths?.length ?? 0;
     const mode = request.h3PromptMode ?? inferH3PromptMode(
       Boolean(request.imagePath || imageCount > 0),
@@ -459,8 +461,9 @@ export async function enhancePromptWithMultimodalComfyUi(
       output,
       mode,
       request.h3DurationSeconds ?? 5,
-      extractH3DialogueLocks(request.prompt),
-      extractH3VisibleTextLocks(request.prompt),
+      extractH3DialogueLocks(sourcePrompt),
+      extractH3VisibleTextLocks(sourcePrompt),
+      sourcePrompt,
       request.prompt
     );
   } finally {

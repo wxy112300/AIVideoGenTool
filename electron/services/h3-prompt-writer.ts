@@ -16,12 +16,18 @@ import {
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
+import { h3ScalePreservationInstruction } from "../../src/core/h3-scale-preservation.js";
 import {
   extractH3DialogueLocks,
   extractH3VisibleTextLocks,
   h3ContentLockInstruction
 } from "../../src/core/h3-dialogue.js";
 import { h3CameraIntentInstruction } from "../../src/core/h3-camera-intent.js";
+import {
+  parsePromptAnnotations,
+  promptAnnotationInstruction,
+  stripPromptAnnotations
+} from "../../src/core/prompt-annotations.js";
 
 interface WriterModel {
   id: string;
@@ -238,6 +244,13 @@ export async function enhancePromptWithH3PromptWriter(
   );
   const h3Preset = h3PromptPresetForMode(h3Mode, request.h3PromptPreset);
   const h3PresetText = settings.h3PromptPresets[h3Preset]?.trim() || defaultH3PromptPresets[h3Preset];
+  const parsedPrompt = parsePromptAnnotations(request.prompt);
+  const sourcePrompt = parsedPrompt.prompt.trim();
+  const annotationInstruction = promptAnnotationInstruction(parsedPrompt);
+  const scaleContext = [
+    ...parsedPrompt.annotations.map((annotation) => annotation.text),
+    request.referenceContext?.trim() ?? ""
+  ].filter(Boolean).join("\n");
   const sessionId = crypto.randomUUID();
   const mediaPaths = (request.referenceMediaPaths || request.imagePaths || (request.imagePath ? [request.imagePath] : []))
     .filter(Boolean)
@@ -253,8 +266,11 @@ export async function enhancePromptWithH3PromptWriter(
     await uploadMedia(root, sessionId, mode, mediaPaths, signal);
     onProgress?.("uploading", 18);
     onProgress?.("loading-model", 24);
-    const contentLocks = h3ContentLockInstruction(request.prompt);
-    const cameraIntent = imageEdit ? "" : h3CameraIntentInstruction(request.prompt);
+    const contentLocks = h3ContentLockInstruction(sourcePrompt);
+    const cameraIntent = imageEdit ? "" : h3CameraIntentInstruction(sourcePrompt);
+    const scaleInstruction = imageEdit
+      ? ""
+      : h3ScalePreservationInstruction(sourcePrompt, h3Mode, scaleContext);
     const presetBrief = imageEdit
       ? ""
       : [
@@ -262,11 +278,13 @@ export async function enhancePromptWithH3PromptWriter(
           h3PresetText
         ].join("\n");
     const creativeBrief = [
+      scaleInstruction,
       isH3ReferenceAutoPrompt(request)
         ? h3AutoPromptInstruction(request)
-        : [request.prompt.trim(), request.referenceContext?.trim()]
+        : [sourcePrompt, request.referenceContext?.trim()]
             .filter(Boolean)
             .join("\n\n参考素材角色：\n"),
+      annotationInstruction,
       presetBrief,
       cameraIntent,
       contentLocks
@@ -292,7 +310,7 @@ export async function enhancePromptWithH3PromptWriter(
     });
     onProgress?.("validating", 94);
     if (!result.prompt?.trim()) throw new Error("H3 Prompt Writer 没有返回可用的提示词。");
-    if (imageEdit) return extractImageEditPromptFromWriter(result.prompt);
+    if (imageEdit) return stripPromptAnnotations(extractImageEditPromptFromWriter(result.prompt));
     const imageCount = request.imagePaths?.length ?? 0;
     const modeForOutput = request.h3PromptMode ?? inferH3PromptMode(
       Boolean(request.imagePath || imageCount > 0),
@@ -302,8 +320,9 @@ export async function enhancePromptWithH3PromptWriter(
       result.prompt.trim(),
       modeForOutput,
       request.h3DurationSeconds ?? 5,
-      extractH3DialogueLocks(request.prompt),
-      extractH3VisibleTextLocks(request.prompt),
+      extractH3DialogueLocks(sourcePrompt),
+      extractH3VisibleTextLocks(sourcePrompt),
+      sourcePrompt,
       request.prompt
     );
   } finally {

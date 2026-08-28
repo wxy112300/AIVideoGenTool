@@ -78,4 +78,17 @@ describe("MiniMax H3 prompt templates", () => {
     )).toBe(body);
   });
 
+  it("removes labeled annotation echoes from the generated H3 output", () => {
+    const output = [
+      "integrated_multimodal_description: [Shot 1] The subject moves（Note: this must not appear in the final prompt）.",
+      "overall_soundscape: N/A",
+      "non_diegetic_music: N/A"
+    ].join("\n\n");
+
+    expect(normalizeH3PromptOutput(output, "T2VA", 5)).toContain(
+      "The subject moves."
+    );
+    expect(normalizeH3PromptOutput(output, "T2VA", 5)).not.toContain("Note:");
+  });
+
 });

@@ -2,6 +2,7 @@ import { qwenImageEditPromptContract, qwenImageEditPromptUserContent } from "./p
 import { zImagePromptContract, zImagePromptUserContent } from "./z-image-prompt.js";
 import { hidreamO1PromptContract, hidreamO1PromptUserContent } from "./hidream-o1-prompt.js";
 import { omnigen2PromptContract, omnigen2PromptUserContent } from "./omnigen2-prompt.js";
+import { parsePromptAnnotations, promptAnnotationInstruction } from "./prompt-annotations.js";
 export { qwenImageEditPromptContract as qwenImageEditEnhancerContract } from "./prompts/qwen-image-edit/index.js";
 export function isZImageTargetModel(modelId) {
     return modelId === "z-image" || modelId === "z-image-turbo";
@@ -24,13 +25,17 @@ export function imageEditPromptContractForTarget(modelId, preset, presetText = "
         : qwenImageEditPromptContract(preset, presetText, outputMode);
 }
 export function imageEditPromptUserContentForTarget(request) {
-    if (isOmniGen2TargetModel(request.imageTargetModelId)) {
-        return omnigen2PromptUserContent(request);
-    }
-    if (isHiDreamO1TargetModel(request.imageTargetModelId)) {
-        return hidreamO1PromptUserContent(request);
-    }
-    return isZImageTargetModel(request.imageTargetModelId)
-        ? zImagePromptUserContent(request)
-        : qwenImageEditPromptUserContent(request);
+    const parsedPrompt = parsePromptAnnotations(request.prompt);
+    const sourceRequest = parsedPrompt.annotations.length
+        ? { ...request, prompt: parsedPrompt.prompt }
+        : request;
+    const content = isOmniGen2TargetModel(request.imageTargetModelId)
+        ? omnigen2PromptUserContent(sourceRequest)
+        : isHiDreamO1TargetModel(request.imageTargetModelId)
+            ? hidreamO1PromptUserContent(sourceRequest)
+            : isZImageTargetModel(request.imageTargetModelId)
+                ? zImagePromptUserContent(sourceRequest)
+                : qwenImageEditPromptUserContent(sourceRequest);
+    const annotationInstruction = promptAnnotationInstruction(parsedPrompt);
+    return [annotationInstruction, content].filter(Boolean).join("\n\n");
 }
