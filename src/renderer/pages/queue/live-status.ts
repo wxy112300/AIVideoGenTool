@@ -14,6 +14,7 @@ import {
 } from "./helpers";
 import type { Page } from "../../contracts";
 import { seedVr2ProgressView } from "./card";
+import { patchResourceMonitor } from "../../shell/resource-monitor";
 
 export interface QueueLiveStatusOptions {
   studio: AppApi;
@@ -332,6 +333,7 @@ export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
     try {
       const metrics = await options.studio.getPerformanceMetrics(state.settings);
       options.setPerformanceMetrics(metrics);
+      patchResourceMonitor(metrics);
       if (options.getPage() !== "queue") return;
       patchQueueLiveDom(
         options.getState() ?? state,

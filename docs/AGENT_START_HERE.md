@@ -11,7 +11,7 @@ This guide is the shortest reliable route into Local Video Studio. Read the cont
 | Layout, interaction, focus, media states | `UX_CONTRACT.md` | `src/renderer/`, `src/styles/`, current renderer evidence; prototypes are historical |
 | Model, LoRA, workflow, GPU/memory policy | `WORKFLOW_CONTRACT.md` | `src/core/catalog/`, workflow adapters, `workflows/` |
 | Long video, video Extend, Native AV continuation | `WORKFLOW_CONTRACT.md`, [`LONG_VIDEO_CAPABILITY_ENHANCEMENT_PLAN.md`](LONG_VIDEO_CAPABILITY_ENHANCEMENT_PLAN.md) | `src/core/`, `electron/queue-*`, `electron/services/extension-media.ts`, `workflows/` |
-| ComfyUI discovery, nodes, Python, installation | `DEPENDENCIES_AND_SETUP.md` | `electron/services/environment.ts`, Settings environment controller |
+| ComfyUI discovery, core/runtime repair, nodes, Python, installation | `DEPENDENCIES_AND_SETUP.md` | `electron/services/environment.ts`, Settings environment/dependency controllers |
 | Image workspace | `IMAGE_WORKSPACE_IMPLEMENTATION_PLAN.md` | image draft/workflow/history modules |
 
 Inspect `git status` before reading or editing hotspot files. This repository is often edited by multiple agents; current disk content wins over an old conversation snapshot.
@@ -52,8 +52,9 @@ When replacing a model or workflow, preserve old history labels and persisted id
 There are four distinct operations:
 
 - **Application dependencies:** `npm.cmd ci` installs Electron/TypeScript/Vite packages for this repository.
-- **ComfyUI core:** installed separately as Desktop, Portable or source. Settings selects the actual core and data directories.
-- **Custom nodes:** Settings → Nodes & dependencies may clone/update registered repositories and run `requirements.txt` with the selected ComfyUI Python. The operation must stream progress, time out, retain logs and restart/recheck when safe.
+- **ComfyUI core:** installed separately as Desktop, Portable or source. Settings → ComfyUI environment selects the actual core and data directories, binds the Python runtime, and exposes service/version/compatibility and safe core-repair actions.
+- **Custom nodes:** Settings → Nodes & dependencies may clone/update registered repositories and run `requirements.txt` with the selected ComfyUI Python. The operation must stream progress, time out, retain logs and restart/recheck when safe. App-managed node uninstall permanently removes the catalog directory; reinstall restores the supported package by downloading it again, while manually installed nodes remain outside the app's uninstall scope. `llama-cpp-python` and installable H3 acceleration packages belong to this dependency surface; they are not a generic ComfyUI core repair.
+- **Temporary H3 Attention UI:** Until H3 Memory Optimization is complete and gated, the existing H3 Attention selector remains in Settings → Performance & acceleration. Environment extraction must not duplicate, delete, or migrate that selector.
 - **Weights:** large diffusion models, encoders, VAEs and LoRAs are not stored in Git and are not generally downloaded by the app. Settings component info provides the source, filename and exact catalog target directory.
 
 Always inspect the selected instance. Installing a node into one ComfyUI data directory while connecting to another service is a common false-success condition.

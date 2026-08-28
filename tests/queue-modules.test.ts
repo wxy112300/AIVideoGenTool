@@ -107,6 +107,38 @@ describe("queue renderer task priority", () => {
     expect(markup).not.toContain("data-move=");
   });
 
+  it("hides legacy H3 memory metadata on generation cards", () => {
+    const state = createDefaultState();
+    const task = queueTaskFromDraft({
+      ...createDefaultDraft(),
+      startImagePath: "C:/input/start.png",
+      workflowPath: "workflow.json",
+      spectrumMode: "balanced",
+      h3MemoryOptimizationMode: "preserve-native"
+    }, state, {
+      now: () => new Date("2026-08-12T12:00:00.000Z"),
+      id: () => "h3-memory-card",
+      random: () => 0.5
+    });
+    const markup = renderQueueTaskCard(task, 1, {
+      t: (key, params) => `${key}${params ? JSON.stringify(params) : ""}`,
+      taskPreviews: {},
+      queueRunning: false,
+      queueActionBusy: null,
+      icon: () => "",
+      escapeHtml: (value) => String(value),
+      modelName: (id) => id,
+      frameRateSummary: () => "24 FPS",
+      queueStageElapsedText: () => "—",
+      queueTaskRemainingSeconds: () => null,
+      queueEstimateText: () => "—",
+      elapsedText: () => "—"
+    });
+
+    expect(markup).not.toContain("queue.card.h3MemoryMode");
+    expect(markup).not.toContain("create.options.h3MemoryPreserveNative");
+  });
+
   it("shows native SeedVR2 total progress and current segment progress separately", () => {
     const task = {
       ...queueFixtureTask(createDefaultState(), "seedvr2-progress"),

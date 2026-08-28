@@ -5,6 +5,11 @@ export function nextH3AttentionModeAfterCudaFailure(current) {
         return "pytorch";
     return null;
 }
+export function normalizeH3AttentionMode(value) {
+    if (value === "sage-triton" || value === "pytorch")
+        return value;
+    return "sage";
+}
 const cudaContextPattern = /illegal memory access|cudaErrorIllegalAddress|device-side assertion|unspecified launch failure|misaligned address|hostbuf_file_reader_read failed|cuda context.*(?:invalid|destroyed)|cublas_status_execution_failed/i;
 const gpuMemoryPattern = /out of memory|cuda.*alloc|allocation.*failed|cublas_status_alloc_failed|显存不足/i;
 const transientServicePattern = /ECONNREFUSED|ECONNRESET|EPIPE|socket hang up|fetch failed|network error|无法连接\s*ComfyUI|ComfyUI.*(?:timed? out|timeout)|HTTP\s*(?:500|502|503|504)/i;

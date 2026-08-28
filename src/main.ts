@@ -158,6 +158,7 @@ import type {
   ComfyRuntimeState,
   Draft,
   EnvironmentScanResult,
+  EnhanceRequest,
   H3PromptPreset,
   H3PromptMode,
   H3ReferenceSlot,
@@ -277,7 +278,7 @@ let attentionAccelerationLog = "";
 let llamaCppPythonInstalling = false;
 let llamaCppPythonLog = "";
 let settingsDraft: Settings | null = null;
-let settingsTab: "system" | "acceleration" | "video" | "lora" | "image" | "nodes" | "prompt" | "upscale" | "logs" = "system";
+let settingsTab: "comfyui" | "system" | "acceleration" | "video" | "lora" | "image" | "nodes" | "prompt" | "upscale" | "logs" = "comfyui";
 let appLogs: AppLogSnapshot | null = null;
 let appLogsLoading = false;
 let appLogsError = "";
@@ -1040,12 +1041,52 @@ function render(): void {
   rendererApp.render();
 }
 
+let resolvePromptCpuConfirmation: ((confirmed: boolean) => void) | null = null;
+
+function promptVramLabel(bytes: number | null): string {
+  return bytes == null ? "--" : `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+}
+
+async function promptExecutionDecision(): Promise<"gpu" | "cpu" | null> {
+  const preflight = await window.studio.preflightPromptModel();
+  if (!preflight.requiresCpuConfirmation) return "gpu";
+  resolvePromptCpuConfirmation?.(false);
+  rememberModalFocus();
+  ui.pendingConfirmation = {
+    kind: "prompt-cpu-fallback",
+    usedVram: promptVramLabel(preflight.vramUsedBytes),
+    totalVram: promptVramLabel(preflight.vramTotalBytes),
+    freeVram: promptVramLabel(preflight.vramFreeBytes),
+    requiredVram: promptVramLabel(preflight.requiredFreeVramBytes)
+  };
+  ui.confirmationBusy = false;
+  renderOverlay();
+  return new Promise<"cpu" | null>((resolve) => {
+    resolvePromptCpuConfirmation = (confirmed) => resolve(confirmed ? "cpu" : null);
+  });
+}
+
+async function enhancePromptWithConfirmation(request: EnhanceRequest): Promise<string> {
+  const decision = await promptExecutionDecision();
+  if (!decision) {
+    throw new DOMException(rendererApp.context.t(uiKeys.dialog.promptCpuCancelled), "AbortError");
+  }
+  return window.studio.enhancePrompt({
+    ...request,
+    allowCpuFallback: decision === "cpu" ? true : undefined
+  });
+}
+
 let overlayCleanup: (() => void) | null = null;
 
 function confirmationDialogHtml(): string {
+  const request = ui.pendingConfirmation;
   return renderConfirmationDialog({
-    request: ui.pendingConfirmation,
+    request,
     confirmationBusy: ui.confirmationBusy,
+    customNodeLog: request?.kind === "uninstall-custom-node"
+      ? customNodeLogs[request.nodeId] ?? ""
+      : "",
     imageHistoryIds: new Set(state.imageHistory.map((item) => item.id)),
     t: rendererApp.context.t,
     icon,
@@ -1090,6 +1131,7 @@ let activeHistoryCleanup: RendererCleanup | null = null;
 const rendererApp = createRendererApp({
   root: appElement,
   studio: window.studio,
+  enhancePrompt: enhancePromptWithConfirmation,
   getState: () => state,
   getRoute: () => ({ page, creationMode, historyKind }),
   requestRender: () => render(),
@@ -1109,6 +1151,7 @@ function initializeRenderCoordinator(): void {
   getPage: () => page,
   getState: () => state,
   getUiState: () => ui,
+  getPerformanceMetrics: () => performanceMetrics,
   t: rendererApp.context.t,
   renderPages: {
     create: createPage,
@@ -1503,7 +1546,9 @@ async function startPromptModelFromUi(): Promise<void> {
   promptStarting = true;
   render();
   try {
-    const result = await window.studio.startPromptModel();
+    const decision = await promptExecutionDecision();
+    if (!decision) return;
+    const result = await window.studio.startPromptModel(decision === "cpu");
     if (!result.ok) throw new Error(result.message);
     promptRuntimeLoaded = true;
     showMessage(result.message);
@@ -1773,6 +1818,15 @@ function releaseHistoryVideo(assetId: string): void {
 }
 
 async function acceptConfirmation(): Promise<void> {
+  if (ui.pendingConfirmation?.kind === "prompt-cpu-fallback") {
+    const resolve = resolvePromptCpuConfirmation;
+    resolvePromptCpuConfirmation = null;
+    ui.pendingConfirmation = null;
+    renderOverlay();
+    restoreModalFocus();
+    resolve?.(true);
+    return;
+  }
   await runConfirmation(rendererApp.context, {
     getRequest: () => ui.pendingConfirmation,
     setRequest: (request) => {
@@ -1804,6 +1858,9 @@ async function acceptConfirmation(): Promise<void> {
     getLlamaCppPythonLog: () => llamaCppPythonLog,
     setLlamaCppPythonLog: (log) => {
       llamaCppPythonLog = log;
+    },
+    setCustomNodeLog: (nodeId, log) => {
+      customNodeLogs = { ...customNodeLogs, [nodeId]: log };
     },
     scanEnvironment: async (settings) => {
       await runEnvironmentScan(settings);
@@ -1841,6 +1898,11 @@ function bindConfirmationDialog(): void {
   if (!ui.pendingConfirmation) return;
   const close = () => {
     if (ui.confirmationBusy) return;
+    if (ui.pendingConfirmation?.kind === "prompt-cpu-fallback") {
+      const resolve = resolvePromptCpuConfirmation;
+      resolvePromptCpuConfirmation = null;
+      resolve?.(false);
+    }
     ui.pendingConfirmation = null;
     renderOverlay();
     restoreModalFocus();

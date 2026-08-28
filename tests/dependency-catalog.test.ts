@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   compareDependencyIds,
   customNodeCatalog,
-  customNodeDefinition
+  customNodeDefinition,
+  H3_ACCELERATION_DEPENDENCY_ID
 } from "../src/core/catalog";
 
 describe("dependency catalog", () => {
@@ -33,11 +34,14 @@ describe("dependency catalog", () => {
       "frame-interpolation",
       "h3-motion-context",
       "spectrum-minimax-h3",
+      "h3-optimizations",
       "plaguekind-h3-sla",
       "comfyui-gguf-h3"
     ]);
     expect(customNodeCatalog.every((item) => Number.isFinite(item.priority))).toBe(true);
     expect(compareDependencyIds("llama-cpp-python", "comfyui-multimodal-prompt-nodes")).toBeLessThan(0);
+    expect(compareDependencyIds("kjnodes", H3_ACCELERATION_DEPENDENCY_ID)).toBeLessThan(0);
+    expect(compareDependencyIds(H3_ACCELERATION_DEPENDENCY_ID, "ltx-video")).toBeLessThan(0);
     expect(compareDependencyIds("unknown-dependency", "video-helper-suite")).toBeGreaterThan(0);
   });
 
@@ -97,12 +101,26 @@ describe("dependency catalog", () => {
     ]));
     expect(customNodeDefinition("spectrum-minimax-h3")).toMatchObject({
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.17"
+      recommendedVersion: "0.2.20"
     });
     expect(customNodeDefinition("spectrum-minimax-h3")?.compatibilityEvidence?.[0]).toMatchObject({
       comfyUi: "0.33.1",
-      commit: "9dc51b7",
+      commit: "ce9d35e",
       checks: ["static"]
+    });
+    expect(customNodeDefinition("h3-optimizations")).toMatchObject({
+      repositoryUrl: "https://github.com/Zironic/H3-Optimizations.git",
+      nodeTypes: ["H3MemoryOptimization"],
+      minimumVersion: "0.2.16",
+      recommendedVersion: "0.2.20",
+      latestVersion: "0.2.20",
+      bulkInstall: false,
+      appInstallable: true,
+      compatibilityEvidence: [{
+        commit: "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746",
+        checks: ["static"]
+      }],
+      required: false
     });
   });
 

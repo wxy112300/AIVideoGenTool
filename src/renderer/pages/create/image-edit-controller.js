@@ -257,7 +257,7 @@ export function mountImageEditController(context, options) {
         try {
             const pictures = draft.pictures.filter((picture) => picture.absolutePath);
             const enhanceMode = options.getPromptEnhanceMode();
-            const text = await context.studio.enhancePrompt({
+            const text = await context.enhancePrompt({
                 prompt: requestPrompt,
                 modelId: context.getState()?.settings.promptModelId ?? "",
                 imageTargetModelId: draft.modelId,

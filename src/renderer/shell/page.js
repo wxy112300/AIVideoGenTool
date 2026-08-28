@@ -1,4 +1,5 @@
 import { uiKeys } from "../../core/i18n-keys";
+import { renderResourceMonitor } from "./resource-monitor";
 export function renderShell(options) {
     const historyShell = options.page === "history" ||
         options.page === "history-detail" ||
@@ -10,7 +11,9 @@ export function renderShell(options) {
         <button class="brand" data-page="create" aria-label="${options.escapeHtml(options.t(uiKeys.app.backToCreate))}">
           <span class="brand-mark">${options.icon("play")}</span><span>${options.escapeHtml(options.t(uiKeys.app.brand))}</span><span class="brand-version">${options.appVersion ? `v${options.escapeHtml(options.appVersion)}` : ""}</span>
         </button>
-        <nav aria-label="${options.escapeHtml(options.t(uiKeys.nav.ariaLabel))}">
+        <div class="topbar-tools">
+          ${renderResourceMonitor(options.performanceMetrics, options.escapeHtml(options.t(uiKeys.queue.performance)))}
+          <nav aria-label="${options.escapeHtml(options.t(uiKeys.nav.ariaLabel))}">
           ${["create", "queue", "history", "settings"]
         .map((item) => {
         const labels = {
@@ -28,7 +31,8 @@ export function renderShell(options) {
         return `<button class="nav-button ${active ? "active" : ""}" data-page="${item}"${current}>${options.escapeHtml(options.t(labels[item]))}${badge}</button>`;
     })
         .join("")}
-        </nav>
+          </nav>
+        </div>
       </header>
       <div class="flash flash-${options.flashKind} ${options.flashMessage ? "visible" : ""}" id="app-flash" data-kind="${options.flashKind}" role="${options.flashKind === "error" ? "alert" : "status"}" aria-live="${options.flashKind === "error" ? "assertive" : "polite"}"><span class="flash-message" data-flash-message>${options.escapeHtml(options.flashMessage)}</span><span class="flash-actions" data-flash-actions>${flashActions}</span><button class="icon-button flash-dismiss" id="dismiss-app-flash" type="button" aria-label="${options.escapeHtml(options.t(uiKeys.app.dismissNotification))}" title="${options.escapeHtml(options.t(uiKeys.app.dismissNotification))}">${options.icon("x")}</button></div>
       <main>${options.content}</main>

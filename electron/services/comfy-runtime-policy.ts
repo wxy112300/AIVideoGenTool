@@ -1,10 +1,14 @@
 import path from "node:path";
-import type { QueueTask, Settings } from "../../src/types.js";
+import type {
+  QueueTask,
+  Settings
+} from "../../src/types.js";
 
 export type ComfyUiRuntimeProfile =
   | "standard"
   | "prompt-resident"
   | "qwen-image"
+  | "h3-memory"
   | "h3-q3-3080";
 
 type RuntimeProfileSettings = Partial<
@@ -21,7 +25,9 @@ export function comfyUiSettingsForPromptRuntime(settings: Settings): Settings {
 }
 
 export function comfyUiSettingsForQueueTask(
-  task: Pick<QueueTask, "taskType" | "modelId"> | undefined,
+  task: (Pick<QueueTask, "taskType" | "modelId"> & {
+    attentionMode?: Settings["h3AttentionMode"];
+  }) | undefined,
   settings: Settings
 ): Settings {
   const isImageTask = task?.taskType === "image-generation";
@@ -68,6 +74,8 @@ export function comfyUiMemoryArgs(
     );
   } else if (runtimeProfile === "standard") {
     args.push("--disable-pinned-memory", "--disable-async-offload");
+  } else if (runtimeProfile === "h3-memory") {
+    args.push("--enable-dynamic-vram", "--async-offload", "2");
   }
   return args;
 }
@@ -99,6 +107,13 @@ export function comfyUiRuntimeProfileFromCommandLine(
     normalized.includes("--disable-smart-memory")
   ) {
     return "qwen-image";
+  }
+  if (
+    normalized.includes("--enable-dynamic-vram") &&
+    normalized.includes("--async-offload") &&
+    !normalized.includes("--disable-pinned-memory")
+  ) {
+    return "h3-memory";
   }
   if (
     normalized.includes("--disable-pinned-memory") &&

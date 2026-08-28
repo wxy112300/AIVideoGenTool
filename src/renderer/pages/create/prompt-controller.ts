@@ -276,7 +276,7 @@ export function mountCreatePromptController(
             : h3Mode === "L2VA"
               ? "<Picture 1> = last frame"
               : "";
-      const text = await options.context.studio.enhancePrompt({
+      const text = await options.context.enhancePrompt({
         prompt: currentPrompt,
         modelId: draft.modelId,
         origin: requestOrigin,

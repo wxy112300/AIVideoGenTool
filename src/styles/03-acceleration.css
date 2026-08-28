@@ -87,6 +87,9 @@
 .acceleration-actions > div { min-width: 0; display: grid; gap: 2px; }
 .acceleration-actions strong { color: #cbd4e0; font-size: 12px; }
 .acceleration-actions span { color: var(--muted); font-size: 11px; }
+.h3-acceleration-operation-note { display: grid; gap: 3px; }
+.h3-acceleration-operation-note strong { color: #cbd4e0; font-size: 12px; }
+.h3-acceleration-operation-note > span { color: var(--muted); font-size: 11px; line-height: 1.45; }
 
 /* The runtime picker is a section in the acceleration page, not a nested card. */
 .acceleration-runtime-panel .python-runtime-picker {

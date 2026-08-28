@@ -85,6 +85,7 @@ export const H3_REALISM_PEOPLE_LORA_FILENAME =
 export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
   id: H3_CKPT850_LORA_ID,
   name: "MiniMax H3 Turbo ckpt850 EMA · 4-step motion fallback",
+  retired: true,
   filename: H3_CKPT850_LORA_FILENAME,
   strength: 1,
   modelFamily: "minimax-h3",
@@ -112,7 +113,7 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
         downloadUrl: `https://huggingface.co/amirjan122222/MiniMax-H3-Turbo-Lora/resolve/main/${H3_CKPT850_LORA_FILENAME}?download=true`,
         targetSubdirectory: "loras",
         recommendedFilename: H3_CKPT850_LORA_FILENAME,
-        notes: "ckpt850 EMA 旧 Turbo 训练线。模型卡说明 4 步起可用，尤其适合作为 4 步大动作备选；普通质量优先任务建议使用 v4。请先与其他 Turbo 变体做同 Seed 对照。"
+        notes: "ckpt850 EMA 旧 Turbo 训练线已因画面质量不稳定而退役；仅保留旧队列与历史记录兼容，新任务请使用当前受支持的 Turbo LoRA。"
       }
     }]
   }

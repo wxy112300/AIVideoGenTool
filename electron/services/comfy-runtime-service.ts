@@ -73,6 +73,11 @@ export interface ComfyRuntimeServiceDependencies {
   ): Promise<{ ok: boolean; message: string }>;
 }
 
+export interface ComfyRuntimeStartOptions {
+  /** Use the normal visible console when omitted; automatic maintenance restarts can opt out. */
+  visibleConsole?: boolean;
+}
+
 let pendingComfyUiStart: Promise<string> | null = null;
 let ownedProcessExitListener: ((event: {
   processId: number;
@@ -122,7 +127,8 @@ export function comfyUiPythonEntryArgs(
 
 async function startComfyUiServiceImpl(
   settings: Settings,
-  dependencies: ComfyRuntimeServiceDependencies
+  dependencies: ComfyRuntimeServiceDependencies,
+  options: ComfyRuntimeStartOptions
 ): Promise<string> {
   const endpoint = localEndpoint(settings.comfyUrl, 8188);
   if (!endpoint) {
@@ -225,7 +231,9 @@ async function startComfyUiServiceImpl(
     databaseFilename
   });
   const environment = dependencies.downloadEnvironment(settings);
-  const launchComfyUi = dependencies.launchComfyUiVisible ?? dependencies.launchDetached;
+  const launchComfyUi = options.visibleConsole === false
+    ? dependencies.launchDetached
+    : dependencies.launchComfyUiVisible ?? dependencies.launchDetached;
   const processId = await launchComfyUi(
     python,
     args,
@@ -257,10 +265,11 @@ function handleOwnedProcessExit(
 
 export async function startComfyUiService(
   settings: Settings,
-  dependencies: ComfyRuntimeServiceDependencies
+  dependencies: ComfyRuntimeServiceDependencies,
+  options: ComfyRuntimeStartOptions = {}
 ): Promise<string> {
   if (pendingComfyUiStart) return pendingComfyUiStart;
-  const start = startComfyUiServiceImpl(settings, dependencies);
+  const start = startComfyUiServiceImpl(settings, dependencies, options);
   pendingComfyUiStart = start;
   try {
     return await start;

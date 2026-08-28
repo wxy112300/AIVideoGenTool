@@ -1,6 +1,7 @@
 import type {
   AppState,
   AssetVersion,
+  H3MemoryRuntimeEvidence,
   HistoryAsset,
   HistoryFile,
   ImageAssetVersion,
@@ -126,6 +127,7 @@ export interface VideoHistoryResult {
   comfyOutputs: unknown;
   files: HistoryFile[];
   performanceStats?: TaskPerformanceStats;
+  h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   id(): string;
 }
 
@@ -144,6 +146,11 @@ export function persistVideoHistoryResult(
       duration: task.duration, promptVersion: task.promptVersion, steps: task.steps,
       attentionMode: task.attentionMode, spectrumMode: task.spectrumMode,
       spectrumModelAwareMode: task.spectrumModelAwareMode, fps: task.fps,
+      h3MemoryOptimizationMode: task.h3MemoryOptimizationMode,
+      h3MemoryOptimizationUserSet: task.h3MemoryOptimizationUserSet,
+      h3MemoryChunkRows: task.h3MemoryChunkRows,
+      h3MemoryExecutionPlan: task.h3MemoryExecutionPlan,
+      h3MemoryRuntimeEvidence: result.h3MemoryRuntimeEvidence,
       frameInterpolation: task.frameInterpolation, ratio: task.ratio, motion: task.motion,
       seed: task.seed, performanceStats: result.performanceStats,
       workflowPath: task.workflowPath, comfyPromptId: result.promptId,
@@ -161,6 +168,11 @@ export function persistVideoHistoryResult(
       frameInterpolation: task.frameInterpolation, ratio: task.ratio,
       promptVersion: task.promptVersion, attentionMode: task.attentionMode,
       spectrumMode: task.spectrumMode, spectrumModelAwareMode: task.spectrumModelAwareMode,
+      h3MemoryOptimizationMode: task.h3MemoryOptimizationMode,
+      h3MemoryOptimizationUserSet: task.h3MemoryOptimizationUserSet,
+      h3MemoryChunkRows: task.h3MemoryChunkRows,
+      h3MemoryExecutionPlan: task.h3MemoryExecutionPlan,
+      h3MemoryRuntimeEvidence: result.h3MemoryRuntimeEvidence,
       motion: task.motion, prompt: task.prompt, seed: task.seed, inputMode: "image",
       h3ReferenceSlots: task.h3ReferenceSlots?.map((slot) => ({ ...slot })),
       sourceWidth: task.sourceWidth, sourceHeight: task.sourceHeight,
@@ -182,6 +194,11 @@ export function persistVideoHistoryResult(
       duration: totalDuration, promptVersion: task.promptVersion, steps: task.steps,
       attentionMode: task.attentionMode, spectrumMode: task.spectrumMode,
       spectrumModelAwareMode: task.spectrumModelAwareMode, fps: task.fps,
+      h3MemoryOptimizationMode: task.h3MemoryOptimizationMode,
+      h3MemoryOptimizationUserSet: task.h3MemoryOptimizationUserSet,
+      h3MemoryChunkRows: task.h3MemoryChunkRows,
+      h3MemoryExecutionPlan: task.h3MemoryExecutionPlan,
+      h3MemoryRuntimeEvidence: result.h3MemoryRuntimeEvidence,
       frameInterpolation: task.frameInterpolation, ratio: "source", motion: task.motion,
       seed: task.seed, performanceStats: result.performanceStats,
       workflowPath: task.workflowPath, comfyPromptId: result.promptId,
@@ -200,6 +217,11 @@ export function persistVideoHistoryResult(
       frameInterpolation: task.frameInterpolation, ratio: "source",
       promptVersion: task.promptVersion, attentionMode: task.attentionMode,
       spectrumMode: task.spectrumMode, spectrumModelAwareMode: task.spectrumModelAwareMode,
+      h3MemoryOptimizationMode: task.h3MemoryOptimizationMode,
+      h3MemoryOptimizationUserSet: task.h3MemoryOptimizationUserSet,
+      h3MemoryChunkRows: task.h3MemoryChunkRows,
+      h3MemoryExecutionPlan: task.h3MemoryExecutionPlan,
+      h3MemoryRuntimeEvidence: result.h3MemoryRuntimeEvidence,
       motion: task.motion, prompt: task.prompt, seed: task.seed, inputMode: "video",
       sourceWidth: task.sourceWidth, sourceHeight: task.sourceHeight,
       sourceAssetId: task.sourceAssetId, sourceVersionId: task.sourceVersionId,

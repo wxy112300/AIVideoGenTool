@@ -1,4 +1,4 @@
-import type { AppState } from "../types";
+import type { AppState, PerformanceMetrics } from "../types";
 import type { Translate } from "../core/i18n";
 import type { Page, RendererCleanup } from "./contracts";
 import type { RendererUiState } from "./ui-state";
@@ -12,6 +12,7 @@ export interface RenderCoordinatorOptions {
   getPage(): Page;
   getState(): AppState;
   getUiState(): RendererUiState;
+  getPerformanceMetrics(): PerformanceMetrics | null;
   t: Translate;
   renderPages: {
     create(): string;
@@ -250,6 +251,7 @@ export function createRenderCoordinator(
           page,
           appVersion: ui.appVersion,
           queueCount: state.queue.length,
+          performanceMetrics: options.getPerformanceMetrics(),
           flashMessage: ui.flashMessage,
           flashKind: ui.flashNotification?.kind ?? "info",
           flashActions: ui.flashNotification?.actions ?? [],

@@ -683,6 +683,29 @@ describe("renderWorkflow", () => {
       }
     });
 
+    const memory = renderWorkflow(
+      source,
+      {
+        ...h3Task,
+        h3MemoryOptimizationMode: "preserve-native",
+        h3MemoryChunkRows: 4096
+      },
+      { inputImage: "input.png", vramTotalBytes: 24 * 1024 ** 3 }
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+    const memoryEntry = Object.entries(memory).find(([, node]) =>
+      node.class_type === "H3MemoryOptimization"
+    );
+    const residencyLimiterEntry = Object.entries(memory).find(([, node]) =>
+      node.class_type === "H3AIMDOResidencyLimiter"
+    );
+    expect(Object.values(memory).some((node) =>
+      node.class_type === "PathchSageAttentionKJ"
+    )).toBe(true);
+    expect(memoryEntry).toBeUndefined();
+    expect(residencyLimiterEntry).toBeUndefined();
+    expect(memory["8"]?.inputs.model).toEqual(["19", 0]);
+    expect(memory["10"]?.inputs.model).toEqual(["19", 0]);
+
     const spectrum = renderWorkflow(
       source,
       { ...h3Task, spectrumMode: "balanced" },

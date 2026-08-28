@@ -408,9 +408,16 @@ export function registerRendererEvents(
       const logElement = document.querySelector<HTMLElement>(
         `[data-dependency-install-log="${CSS.escape(`${progress.kind}:${progress.id}`)}"]`
       );
+      const confirmationLogElement = document.querySelector<HTMLElement>(
+        `[data-confirmation-dependency-log="${CSS.escape(`${progress.kind}:${progress.id}`)}"]`
+      );
       if (logElement) {
         logElement.textContent = log;
         logElement.scrollTop = logElement.scrollHeight;
+      }
+      if (confirmationLogElement) {
+        confirmationLogElement.textContent = log;
+        confirmationLogElement.scrollTop = confirmationLogElement.scrollHeight;
       }
     })
   ];

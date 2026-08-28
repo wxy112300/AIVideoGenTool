@@ -1,6 +1,7 @@
 import { H3_AFTER_MIDNIGHT_LORA_ID, H3_TURBO_LORA_FILENAME, H3_TURBO_LORA_ID, isH3Ref2vTurboEnabled, isH3SlaTurboLoraId, isH3TurboFourStepV11LoraId, isH3TurboV4LoraId, isH3TurboLoraId, videoLoraCompatibleWithModel, videoLoraFilename, videoPromptForLoras } from "./video-loras.js";
 import { modelCatalog } from "./catalog/index.js";
 import { normalizeVideoSteps, resolveVideoGenerationPolicy, shouldApplySpectrum } from "./video-policy.js";
+import { normalizeMiniMaxH3ModelPatchChain } from "./h3-memory-workflow.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
 export function isMiniMaxH3Fl2vaModel(modelId) {
     return modelCatalog.get(modelId)?.definition.variant === "fl2va";
@@ -1145,16 +1146,29 @@ export function renderWorkflow(source, task, context = {}) {
     }
     applyMiniMaxH3SlaAttention(workflow, task, context.locale);
     applyMiniMaxH3Ref2vTurboSampling(workflow, task);
-    if (shouldApplySpectrum({
-        modelId: task.modelId,
-        inputMode: task.taskType === "extension" ? "video" : "image",
-        spectrumMode: task.spectrumMode,
-        videoLoras: task.videoLoras
-    })) {
-        applyMiniMaxH3Spectrum(workflow, context.locale, task.spectrumModelAwareMode ?? "off");
-    }
     if (isMiniMaxH3Model(task.modelId)) {
-        applyMiniMaxH3LivePreview(workflow, context.h3PreviewTinyVae ?? "");
+        const inputMode = task.taskType === "extension" ? "video" : "image";
+        normalizeMiniMaxH3ModelPatchChain(workflow, {
+            modelId: task.modelId,
+            inputMode,
+            attentionMode: task.attentionMode,
+            videoLoras: task.videoLoras,
+            memoryMode: task.h3MemoryOptimizationMode,
+            chunkRows: task.h3MemoryChunkRows,
+            spectrumEnabled: shouldApplySpectrum({
+                modelId: task.modelId,
+                inputMode,
+                spectrumMode: task.spectrumMode,
+                videoLoras: task.videoLoras
+            }),
+            spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
+        previewEnabled: Boolean(context.h3PreviewTinyVae),
+        tinyVae: context.h3PreviewTinyVae ?? "",
+        memoryInputNames: context.h3MemoryInputNames
+            ? new Set(context.h3MemoryInputNames)
+            : undefined,
+        locale: context.locale
+        });
     }
     const emptyReferenceNodeIds = new Set(Object.entries(workflow)
         .filter(([, node]) => (node.class_type === "LoadImage" && node.inputs?.image === "") ||

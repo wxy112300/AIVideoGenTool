@@ -72,9 +72,20 @@ export class ComfyRuntimeStateController {
   observeReachability(
     reachable: boolean,
     endpoint: string,
-    ownership: ComfyRuntimeOwnership = this.state.ownership
+    ownership: ComfyRuntimeOwnership = this.state.ownership,
+    taskActive = false
   ): ComfyRuntimeState {
     if (["starting", "restarting", "stopping"].includes(this.state.phase)) {
+      return this.snapshot();
+    }
+    if (!reachable && taskActive && ownership === "app") {
+      this.consecutiveUnreachableChecks = 0;
+      this.replace({
+        phase: "ready",
+        endpoint,
+        ownership,
+        message: "ComfyUI 正在执行任务；接口可能暂时无法响应。"
+      });
       return this.snapshot();
     }
     if (reachable) {

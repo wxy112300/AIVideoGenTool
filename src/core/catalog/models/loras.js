@@ -1,9 +1,9 @@
 import { VIDEO_LORA_DEFINITIONS } from "../loras/definitions.js";
 const catalogLocales = {
     "minimax-h3-turbo-ckpt850-ema": {
-        "zh-CN": { name: "MiniMax H3 Turbo ckpt850 EMA · 4 步动作备选", badge: "H3 专属 · 动作备选", description: "旧 Turbo 训练线；4 步大动作时可作为清晰度与运动响应备选，普通质量优先请用 v4。" },
-        "zh-TW": { name: "MiniMax H3 Turbo ckpt850 EMA · 4 步動作備選", badge: "H3 專屬 · 動作備選", description: "舊 Turbo 訓練線；4 步大動作時可作為清晰度與運動響應備選，普通品質優先請用 v4。" },
-        "en-US": { name: "MiniMax H3 Turbo ckpt850 EMA · four-step motion fallback", badge: "H3 only · motion fallback", description: "An older Turbo training line and a sharp four-step fallback for heavy motion, while v4 is preferred for general quality." }
+        "zh-CN": { name: "MiniMax H3 Turbo ckpt850 EMA · 已退役", badge: "H3 · 已退役", description: "旧 Turbo 训练线画面质量不稳定；仅保留旧记录兼容，不再用于新任务。" },
+        "zh-TW": { name: "MiniMax H3 Turbo ckpt850 EMA · 已退役", badge: "H3 · 已退役", description: "舊 Turbo 訓練線畫面品質不穩定；僅保留舊記錄相容，不再用於新任務。" },
+        "en-US": { name: "MiniMax H3 Turbo ckpt850 EMA · retired", badge: "H3 · retired", description: "This older Turbo training line is visually unstable; it remains only for legacy record compatibility and is no longer available for new tasks." }
     },
     "minimax-h3-turbo-sla-4step": {
         "zh-CN": { name: "MiniMax H3 Turbo-SLA · 4 步", badge: "H3 专属 · 极速", description: "官方 768p 四步稀疏注意力 Turbo LoRA，需要 H3 SLA Attention 节点；追求最快速度时优先考虑。" },

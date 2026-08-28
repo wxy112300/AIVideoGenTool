@@ -13,6 +13,7 @@ import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import {
   compareDependencyIds,
+  H3_ACCELERATION_DEPENDENCY_ID,
   LLAMA_CPP_PYTHON_DEPENDENCY_ID,
   modelCatalog,
   sortProfilesByCatalogOrder
@@ -292,12 +293,43 @@ export function renderSettingsPage(
   const imageOutputDirectoryPlaceholder = autoImageOutputDirectory ||
     t(uiKeys.settings.system.autoDirectoryPlaceholder, { folder: "Images" });
 
-  const systemPanel = `
+  const accelerationState = deriveAccelerationState(settings, environmentScan);
+  const attention = accelerationState.attention;
+  const attentionTone = accelerationState.tone;
+  const attentionStatus = accelerationState.status;
+  const attentionInstallLines = viewModel.attentionAccelerationLog.split(/\r?\n/).filter(Boolean);
+  const attentionInstallStage = attentionInstallLines.at(-1) ?? s("accel.preparing");
+  const attentionStatusIcon = attentionStatus === "ready"
+    ? "circle-check"
+    : attentionStatus === "unsupported"
+      ? "circle-alert"
+      : "circle-help";
+  const pythonSourceLabels: Record<string, string> = {
+    selected: s("accel.sourceSelected"),
+    "comfy-venv": s("accel.sourceComfyVenv"),
+    embedded: s("accel.sourceEmbedded"),
+    path: s("accel.sourcePath"),
+    "py-launcher": s("accel.sourceLauncher"),
+    other: s("accel.sourceOther")
+  };
+  const pythonRuntimes = accelerationState.pythonRuntimes;
+  const effectivePythonPath = accelerationState.effectivePythonPath;
+  const pythonSelectionLabel = accelerationState.pythonSelection === "comfy-venv"
+    ? s("accel.sourceComfyVenv")
+    : accelerationState.pythonSelection === "selected"
+      ? s("accel.sourceSelected")
+      : s("accel.autoDetect");
+  const scannedComfyUiPath = environmentScan?.comfyInstallDirectory || environmentScan?.comfyRoot || "";
+  const scannedComfyUiTypeLabel = environmentScan?.comfyInstallType === "desktop"
+    ? t(uiKeys.settings.system.desktopInstall)
+    : environmentScan?.comfyInstallType === "portable"
+      ? t(uiKeys.settings.system.portableInstall)
+      : environmentScan?.comfyInstallType === "manual"
+        ? t(uiKeys.settings.system.manualInstall)
+        : t(uiKeys.settings.system.dataDirectory);
+
+  const comfyUiPanel = `
     <section class="settings-panel">
-      <section class="panel settings-section">
-        <div class="section-heading"><div><h2>${t(uiKeys.settings.localeTitle)}</h2><span class="muted">${t(uiKeys.settings.localeDescription)}</span></div></div>
-        <select id="ui-locale" aria-label="${t(uiKeys.settings.localeTitle)}"><option value="zh-CN" ${settings.uiLocale === "zh-CN" ? "selected" : ""}>${t(uiKeys.settings.localeChinese)}</option><option value="zh-TW" ${settings.uiLocale === "zh-TW" ? "selected" : ""}>${t(uiKeys.settings.localeTraditionalChinese)}</option><option value="en-US" ${settings.uiLocale === "en-US" ? "selected" : ""}>${t(uiKeys.settings.localeEnglish)}</option></select>
-      </section>
       <section id="settings-environment-section" class="panel settings-section" aria-busy="${viewModel.environmentScanning}">
         <div class="section-heading">
           <div><h2>${t(uiKeys.settings.system.environmentTitle)}</h2><span class="muted">${t(uiKeys.settings.system.environmentDescription)}</span></div>
@@ -315,6 +347,11 @@ export function renderSettingsPage(
         <label>${t(uiKeys.settings.system.currentInstallEntry)}
           <div class="input-action"><input id="comfy-install-directory" value="${escape(effectiveComfyInstallDirectory)}" placeholder="${t(uiKeys.settings.system.directoryPlaceholder)}"><button class="secondary button-with-icon" id="pick-comfy-install-directory">${icon("folder-open")}${t(uiKeys.settings.system.chooseDirectory)}</button></div>
         </label>
+        ${scannedComfyUiPath ? `
+        <div class="settings-environment-actions">
+          <div><span class="eyebrow">${t(uiKeys.settings.system.detectedComfyUi, { type: scannedComfyUiTypeLabel })}</span><code title="${escape(scannedComfyUiPath)}">${escape(scannedComfyUiPath)}</code></div>
+          <button class="secondary button-with-icon" id="use-scanned-comfy">${icon("check")}${t(uiKeys.settings.system.useScannedPaths)}</button>
+        </div>` : ""}
         <div class="comfy-directory-map" aria-label="${t(uiKeys.settings.system.directoryStructureLabel)}">
           <div class="comfy-directory-row">
             <span class="comfy-directory-label">${t(uiKeys.settings.system.coreDirectory)}</span>
@@ -366,6 +403,29 @@ export function renderSettingsPage(
           <button class="secondary destructive button-with-icon" id="force-stop-comfy" ${viewModel.serviceForceStopping || viewModel.serviceBusy ? "disabled" : ""}>${icon(viewModel.serviceForceStopping ? "refresh-cw" : "ban")}${t(viewModel.serviceForceStopping ? uiKeys.settings.system.forceStopping : uiKeys.settings.system.forceStop)}</button>
         </div>
         <div id="connection-result" class="connection-result muted" role="status" aria-live="polite" aria-atomic="true">${t(uiKeys.settings.system.connectionNotTested)}</div>
+      </section>
+      <section class="panel settings-section acceleration-section acceleration-runtime-panel">
+        <div class="section-heading">
+          <div><h2>${s("accel.runtimeTitle")}</h2><span class="muted">${s("accel.runtimeDescription")}</span></div>
+          <span class="python-selection-badge">${pythonSelectionLabel}</span>
+        </div>
+        <div class="python-runtime-picker">
+          <div class="python-runtime-picker-head">
+            <div><div class="runtime-label">${fieldLabelWithTip(s("accel.python"), s("accel.pythonUseTip"))}</div><strong>${s("accel.pythonUse")}</strong></div>
+          </div>
+          <div class="python-runtime-picker-controls">
+            <label class="python-path-field"><span class="runtime-label">${s("accel.currentPath")}</span><div class="input-action"><input id="comfy-python-path" value="${escape(effectivePythonPath)}" placeholder="${s("accel.scanFill")}"><button class="secondary button-with-icon" id="pick-comfy-python">${icon("folder-open")}${s("accel.chooseFile")}</button></div></label>
+            <label class="python-candidate-field"><span class="runtime-label">${s("accel.candidates")}</span><select id="comfy-python-candidate"><option value="">${viewModel.environmentScanning ? s("accel.scanning") : pythonRuntimes.length ? s("accel.chooseInterpreter") : s("accel.noPython")}</option>${pythonRuntimes.map((runtime) => `<option value="${escape(runtime.path)}" ${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? "selected" : ""}>Python ${escape(runtime.version)} · ${escape(pythonSourceLabels[runtime.source] ?? runtime.source)}${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? ` · ${s("accel.current")}` : ""}</option>`).join("")}</select></label>
+          </div>
+        </div>
+      </section>
+    </section>`;
+
+  const applicationPathsPanel = `
+    <section class="settings-panel">
+      <section class="panel settings-section">
+        <div class="section-heading"><div><h2>${t(uiKeys.settings.localeTitle)}</h2><span class="muted">${t(uiKeys.settings.localeDescription)}</span></div></div>
+        <select id="ui-locale" aria-label="${t(uiKeys.settings.localeTitle)}"><option value="zh-CN" ${settings.uiLocale === "zh-CN" ? "selected" : ""}>${t(uiKeys.settings.localeChinese)}</option><option value="zh-TW" ${settings.uiLocale === "zh-TW" ? "selected" : ""}>${t(uiKeys.settings.localeTraditionalChinese)}</option><option value="en-US" ${settings.uiLocale === "en-US" ? "selected" : ""}>${t(uiKeys.settings.localeEnglish)}</option></select>
       </section>
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${t(uiKeys.settings.system.filePathsTitle)}</h2><span class="muted">${t(uiKeys.settings.system.filePathsDescription)}</span></div></div>
@@ -565,8 +625,9 @@ export function renderSettingsPage(
     compareDependencyIds(left.id, right.id)
   );
   const nodeDependencyAvailable = customNodes.filter((node) => node.installed).length +
-    (llamaCppPython?.ready ? 1 : 0);
-  const nodeDependencyTotal = customNodes.length + 1;
+    (llamaCppPython?.ready ? 1 : 0) +
+    (attention?.ready ? 1 : 0);
+  const nodeDependencyTotal = customNodes.length + 2;
   const bulkNodeIds = customNodeIdsForBulkAction(customNodes);
   const bulkActionMode = customNodeBulkActionMode(customNodes);
   const bulkActionLabel = bulkActionMode === "update"
@@ -595,6 +656,33 @@ export function renderSettingsPage(
         </div>
       </div>
     </article>`;
+  const h3AccelerationCard = `
+    <article class="panel custom-node-card ${attentionTone} h3-acceleration-card">
+      <div class="custom-node-copy">
+        <div class="model-title"><h3>${s("nodes.h3AccelerationTitle")}</h3><span class="model-badge">${s("nodes.h3AccelerationBadge")}</span></div>
+        <p>${s("nodes.h3AccelerationDescription")}</p>
+        <p class="muted">${s("nodes.h3AccelerationTarget")}${escape(attention?.pythonPath || s("accel.scanFill"))}</p>
+        <div class="attention-runtime-grid">
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimePython"), s("accel.runtimePythonTip"))}</div><strong class="runtime-value">${escape(attention?.pythonVersion || s("accel.notFound"))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeTorch"), s("accel.runtimeTorchTip"))}</div><strong class="runtime-value">${escape(attention?.torchVersion || s("accel.unknown"))}</strong><code class="runtime-detail">${s("accel.cuda")} ${escape(attention?.cudaVersion || s("accel.unknown"))} · ${s("accel.sm")} ${escape(attention?.gpuArchitecture || s("accel.unknown"))}</code><code class="runtime-detail">comfy-kitchen ${escape(attention?.comfyKitchenVersion || s("accel.notInstalled"))} · ${(attention?.comfyKitchenBackends ?? []).map((backend) => escape(backend)).join(s("shared.listSeparator")) || s("accel.eagerFallback")}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeSage"), s("accel.runtimeSageTip"))}</div><strong class="runtime-value">${escape(attention?.sageAttentionVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail" title="${escape(attention?.recommendedWheel || "")}">${escape(attention?.recommendedWheel || s("accel.noWheel"))}</code></article>
+          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeKj"), s("accel.runtimeKjTip"))}</div><strong class="runtime-value">${escape(attention?.tritonVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? s("accel.kjAvailable") : attention?.kjNodesInstalled ? s("accel.kjUpdate") : s("accel.kjMissing")}</code></article>
+        </div>
+        <p class="muted h3-acceleration-operation-note">${environmentScan?.comfyInstallType === "desktop" ? `<strong>${s("accel.desktopTorchTitle")}</strong><span>${s("accel.desktopTorchHint")}</span>` : ""}${fieldLabelWithTip(s("accel.stopComfy"), s("accel.restartComfy"))}</p>
+        <div class="attention-install-progress" id="attention-install-progress" aria-live="polite" ${viewModel.attentionAccelerationInstalling ? "" : "hidden"}>
+          <div class="progress indeterminate" role="progressbar" aria-label="${s("accel.progress")}" aria-valuemin="0" aria-valuemax="100"><span></span></div>
+          <strong id="attention-install-stage">${escape(attentionInstallStage)}</strong>
+        </div>
+        <details class="node-log" id="attention-install-log-details" ${viewModel.attentionAccelerationInstalling || viewModel.attentionAccelerationLog ? "open" : ""} ${viewModel.attentionAccelerationInstalling || viewModel.attentionAccelerationLog ? "" : "hidden"}>
+          <summary>${s("accel.log")}</summary>
+          <pre id="attention-install-log">${escape(viewModel.attentionAccelerationLog)}</pre>
+        </details>
+      </div>
+      <div class="custom-node-actions">
+        <span class="model-availability ${attentionTone}" role="status" aria-live="polite">${icon(attentionStatusIcon)} ${attentionStatus === "ready" ? s("accel.ready") : attentionStatus === "unsupported" ? s("accel.unsupported") : s("accel.pending")}</span>
+        <button class="primary button-with-icon" id="install-attention-acceleration" aria-busy="${viewModel.attentionAccelerationInstalling}" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall || !environmentScan?.comfyRoot ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : attentionStatus === "ready" ? s("accel.repair") : s("accel.install")}</button>
+      </div>
+    </article>`;
   const customNodeCards = customNodes.map((node) => {
     const queuedIndex = viewModel.customNodeInstallQueue.indexOf(node.id);
     const active = viewModel.customNodeInstalling === node.id;
@@ -609,6 +697,7 @@ export function renderSettingsPage(
     const queued = cardState.queued;
     const installBlocked = cardState.installBlocked;
     const primaryOperation = cardState.primaryOperation;
+    const manualOnly = node.appInstallable === false;
     const localVersion = node.version
       ? `v${escape(node.version)}`
       : node.detectedRevision
@@ -648,6 +737,7 @@ export function renderSettingsPage(
             <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.bulkInstall === false ? ` · ${s("nodes.manualInstall")}` : ""}</span></div>
             <p>${escape(node.purpose)}</p>
             <code>${escape(node.directory || node.repositoryUrl)}</code>
+            ${manualOnly ? `<p class="muted">${s("nodes.manualInstallHint")}</p>` : ""}
             ${node.runtimeRequirement ? `<p class="muted"><strong>${s("nodes.prerequisite")}</strong> ${escape(node.runtimeRequirement)}</p>` : ""}
             <p class="muted">${s("nodes.localVersion")}${localVersion} · ${s("nodes.versionSource")}<code>${escape(node.versionSource || "—")}</code>${node.recommendedVersion ? ` · ${s("nodes.recommendedVersion")}v${escape(node.recommendedVersion)}` : ""}${node.latestVersion ? ` · ${s("nodes.latestRelease")}v${escape(node.latestVersion)}` : ""}${node.id === "spectrum-minimax-h3" ? ` · ${s("nodes.runtimeMemory")}` : ""}</p>
             ${node.loadError ? `<span class="${node.compatibilityState === "warning" ? "node-update-notice" : "node-error"}">${escape(node.loadError)}</span>` : ""}
@@ -659,15 +749,19 @@ export function renderSettingsPage(
           </div>
           <div class="custom-node-actions">
             <span class="model-availability ${cardState.tone}" role="status" aria-live="polite">${statusMarkup}</span>
-            <div class="node-action-split">
+            ${manualOnly ? `<div class="node-manual-actions">
+              <button class="secondary button-with-icon" data-open-node-source="${escape(node.repositoryUrl)}">${icon("external-link")}${s("nodes.openSource")}</button>
+              <button class="secondary button-with-icon" data-rescan-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon("scan-search")}${t(uiKeys.settings.rescan)}</button>
+            </div>` : `<div class="node-action-split">
               <button class="primary button-with-icon node-action-main" aria-busy="${active || queued || cardState.phase === "finalizing"}" data-install-node="${escape(node.id)}" data-node-operation="${primaryOperation}" ${installBlocked ? "disabled" : ""}>${icon(active ? "refresh-cw" : queued ? "clock-3" : primaryOperation === "install" ? "download" : primaryOperation === "repair" ? "wrench" : "refresh-cw")}${installStatus || (primaryOperation === "install" ? s("nodes.oneClickInstall") : primaryOperation === "repair" ? s("nodes.repair") : primaryOperation === "update" ? s("nodes.update") : s("nodes.reinstall"))}</button>
               ${node.installed ? `<details class="node-action-menu"><summary aria-label="${s("nodes.moreActions")}" title="${s("nodes.moreActions")}">${icon("chevron-down")}</summary><div class="node-action-menu-popover"><button class="destructive-menu-action button-with-icon" data-uninstall-node="${escape(node.id)}" ${installBlocked ? "disabled" : ""}>${icon("trash-2")}${s("nodes.uninstall")}</button></div></details>` : ""}
-            </div>
+            </div>`}
           </div>
         </article>`
     };
   });
   const nodeDependencyCards = [
+    { id: H3_ACCELERATION_DEPENDENCY_ID, markup: h3AccelerationCard },
     { id: LLAMA_CPP_PYTHON_DEPENDENCY_ID, markup: llamaPythonCard },
     ...customNodeCards
   ].sort((left, right) => compareDependencyIds(left.id, right.id))
@@ -684,27 +778,12 @@ export function renderSettingsPage(
       </div>
     </section>`;
 
-  const accelerationState = deriveAccelerationState(settings, environmentScan);
-  const attention = accelerationState.attention;
-  const attentionTone = accelerationState.tone;
-  const attentionStatus = accelerationState.status;
-  const attentionInstallLines = viewModel.attentionAccelerationLog.split(/\r?\n/).filter(Boolean);
-  const attentionInstallStage = attentionInstallLines.at(-1) ?? s("accel.preparing");
-  const pythonSourceLabels: Record<string, string> = {
-    selected: s("accel.sourceSelected"),
-    "comfy-venv": s("accel.sourceComfyVenv"),
-    embedded: s("accel.sourceEmbedded"),
-    path: s("accel.sourcePath"),
-    "py-launcher": s("accel.sourceLauncher"),
-    other: s("accel.sourceOther")
+  const attentionModeTips: Record<Settings["h3AttentionMode"], string> = {
+    sage: s("accel.modeSageTip"),
+    "sage-triton": s("accel.modeSageTritonTip"),
+    pytorch: s("accel.modePytorchTip")
   };
-  const pythonRuntimes = accelerationState.pythonRuntimes;
-  const effectivePythonPath = accelerationState.effectivePythonPath;
-  const pythonSelectionLabel = accelerationState.pythonSelection === "comfy-venv"
-    ? s("accel.sourceComfyVenv")
-    : accelerationState.pythonSelection === "selected"
-      ? s("accel.sourceSelected")
-      : s("accel.autoDetect");
+  const selectedAttentionModeTip = attentionModeTips[settings.h3AttentionMode] ?? attentionModeTips.sage;
   const accelerationPanel = `
     <section class="settings-panel acceleration-panel">
       <section class="panel settings-section acceleration-section acceleration-strategy-panel ${attentionTone}">
@@ -714,10 +793,10 @@ export function renderSettingsPage(
         </div>
         <div class="acceleration-strategy-grid">
           <label class="acceleration-mode-field">${fieldLabelWithTip(s("accel.mode"), s("accel.modeTip"))}
-            <select id="h3-attention-mode">
-              <option value="sage" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>${s("accel.modeSage")}</option>
-              <option value="sage-triton" ${settings.h3AttentionMode === "sage-triton" ? "selected" : ""}>${s("accel.modeSageTriton")}</option>
-              <option value="pytorch" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>${s("accel.modePytorch")}</option>
+            <select id="h3-attention-mode" title="${escape(selectedAttentionModeTip)}">
+              <option value="sage" data-description="${escape(attentionModeTips.sage)}" title="${escape(attentionModeTips.sage)}" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>${s("accel.modeSage")}</option>
+              <option value="sage-triton" data-description="${escape(attentionModeTips["sage-triton"])}" title="${escape(attentionModeTips["sage-triton"])}" ${settings.h3AttentionMode === "sage-triton" ? "selected" : ""}>${s("accel.modeSageTriton")}</option>
+              <option value="pytorch" data-description="${escape(attentionModeTips.pytorch)}" title="${escape(attentionModeTips.pytorch)}" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>${s("accel.modePytorch")}</option>
             </select>
           </label>
           <div class="acceleration-summary">
@@ -725,45 +804,6 @@ export function renderSettingsPage(
             <div><strong>${escape(attention?.detail ?? s("accel.waitingScan"))}</strong><span class="acceleration-fallback-tip">${fieldLabelWithTip(s("accel.fallbackLabel"), s("accel.fallback"))}</span></div>
           </div>
         </div>
-      </section>
-      <section class="panel settings-section acceleration-section acceleration-runtime-panel">
-        <div class="section-heading">
-          <div><h2>${s("accel.runtimeTitle")}</h2><span class="muted">${s("accel.runtimeDescription")}</span></div>
-          <span class="python-selection-badge">${pythonSelectionLabel}</span>
-        </div>
-        <div class="python-runtime-picker">
-          <div class="python-runtime-picker-head">
-            <div><div class="runtime-label">${fieldLabelWithTip(s("accel.python"), s("accel.pythonUseTip"))}</div><strong>${s("accel.pythonUse")}</strong></div>
-          </div>
-          <div class="python-runtime-picker-controls">
-            <label class="python-path-field"><span class="runtime-label">${s("accel.currentPath")}</span><div class="input-action"><input id="comfy-python-path" value="${escape(effectivePythonPath)}" placeholder="${s("accel.scanFill")}"><button class="secondary button-with-icon" id="pick-comfy-python">${icon("folder-open")}${s("accel.chooseFile")}</button></div></label>
-            <label class="python-candidate-field"><span class="runtime-label">${s("accel.candidates")}</span><select id="comfy-python-candidate"><option value="">${viewModel.environmentScanning ? s("accel.scanning") : pythonRuntimes.length ? s("accel.chooseInterpreter") : s("accel.noPython")}</option>${pythonRuntimes.map((runtime) => `<option value="${escape(runtime.path)}" ${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? "selected" : ""}>Python ${escape(runtime.version)} · ${escape(pythonSourceLabels[runtime.source] ?? runtime.source)}${runtime.path.toLowerCase() === effectivePythonPath.toLowerCase() ? ` · ${s("accel.current")}` : ""}</option>`).join("")}</select></label>
-          </div>
-        </div>
-      </section>
-      <section class="panel settings-section acceleration-section acceleration-components-panel ${attentionTone}">
-        <div class="section-heading">
-          <div><h2>${s("accel.componentsTitle")}</h2><span class="muted">${s("accel.componentsDescription")}</span></div>
-          <span class="model-availability ${attentionTone}">${attentionStatus === "ready" ? `${icon("circle-check")} ${s("accel.ready")}` : attentionStatus === "unsupported" ? `${icon("circle-alert")} ${s("accel.unsupported")}` : `${icon("circle-help")} ${s("accel.pending")}`}</span>
-        </div>
-        <div class="attention-runtime-grid">
-          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimePython"), s("accel.runtimePythonTip"))}</div><strong class="runtime-value">${escape(attention?.pythonVersion || s("accel.notFound"))}</strong><code class="runtime-detail" title="${escape(attention?.pythonPath || "")}">${escape(attention?.pythonPath || s("accel.scanFill"))}</code></article>
-          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeTorch"), s("accel.runtimeTorchTip"))}</div><strong class="runtime-value">${escape(attention?.torchVersion || s("accel.unknown"))}</strong><code class="runtime-detail">${s("accel.cuda")} ${escape(attention?.cudaVersion || s("accel.unknown"))} · ${s("accel.sm")} ${escape(attention?.gpuArchitecture || s("accel.unknown"))}</code><code class="runtime-detail">comfy-kitchen ${escape(attention?.comfyKitchenVersion || s("accel.notInstalled"))} · ${(attention?.comfyKitchenBackends ?? []).map(escape).join(", ") || "eager fallback"}</code></article>
-          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeSage"), s("accel.runtimeSageTip"))}</div><strong class="runtime-value">${escape(attention?.sageAttentionVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail" title="${escape(attention?.recommendedWheel || "")}">${escape(attention?.recommendedWheel || s("accel.noWheel"))}</code></article>
-          <article class="attention-runtime-card"><div class="runtime-label">${fieldLabelWithTip(s("accel.runtimeKj"), s("accel.runtimeKjTip"))}</div><strong class="runtime-value">${escape(attention?.tritonVersion || s("accel.notInstalled"))}</strong><code class="runtime-detail">${attention?.kjNodesCompatible ? s("accel.kjAvailable") : attention?.kjNodesInstalled ? s("accel.kjUpdate") : s("accel.kjMissing")}</code></article>
-        </div>
-        <div class="acceleration-actions">
-          <button class="primary button-with-icon" id="install-attention-acceleration" aria-busy="${viewModel.attentionAccelerationInstalling}" ${viewModel.attentionAccelerationInstalling || !accelerationState.canInstall ? "disabled" : ""}>${icon(viewModel.attentionAccelerationInstalling ? "refresh-cw" : "wand-sparkles")}${viewModel.attentionAccelerationInstalling ? s("accel.installing") : accelerationState.installAction === "repair" ? s("accel.repair") : s("accel.install")}</button>
-          <div>${environmentScan?.comfyInstallType === "desktop" ? `<strong>${s("accel.desktopTorchTitle")}</strong><span>${s("accel.desktopTorchHint")}</span>` : ""}${fieldLabelWithTip(s("accel.stopComfy"), s("accel.restartComfy"))}</div>
-        </div>
-        <div class="attention-install-progress" id="attention-install-progress" aria-live="polite" ${viewModel.attentionAccelerationInstalling ? "" : "hidden"}>
-          <div class="progress indeterminate" role="progressbar" aria-label="${s("accel.progress")}" aria-valuemin="0" aria-valuemax="100"><span></span></div>
-          <strong id="attention-install-stage">${escape(attentionInstallStage)}</strong>
-        </div>
-        <details class="node-log" id="attention-install-log-details" ${viewModel.attentionAccelerationInstalling || viewModel.attentionAccelerationLog ? "open" : ""} ${viewModel.attentionAccelerationInstalling || viewModel.attentionAccelerationLog ? "" : "hidden"}>
-          <summary>${s("accel.log")}</summary>
-          <pre id="attention-install-log">${escape(viewModel.attentionAccelerationLog)}</pre>
-        </details>
       </section>
     </section>`;
 
@@ -786,7 +826,8 @@ export function renderSettingsPage(
     </section>`;
 
   const activePanel =
-    viewModel.settingsTab === "system" ? systemPanel :
+    viewModel.settingsTab === "comfyui" ? comfyUiPanel :
+    viewModel.settingsTab === "system" ? applicationPathsPanel :
     viewModel.settingsTab === "acceleration" ? accelerationPanel :
     viewModel.settingsTab === "video" ? videoPanel :
     viewModel.settingsTab === "lora" ? loraPanel :
@@ -813,8 +854,9 @@ export function renderSettingsPage(
     <div class="settings-layout">
       <nav id="settings-category-tabs" class="settings-sidebar" role="tablist" aria-label="${t(uiKeys.settings.categories)}">
         ${([
-          ["system", "settings", uiKeys.settings.tabSystem],
+          ["comfyui", "server", uiKeys.settings.tabComfyUi],
           ["nodes", "package-open", uiKeys.settings.tabNodes],
+          ["system", "settings", uiKeys.settings.tabSystem],
           ["acceleration", "zap", uiKeys.settings.tabAcceleration],
           ["video", "images", uiKeys.settings.tabVideo],
           ["lora", "zap", uiKeys.settings.tabLora],

@@ -146,6 +146,7 @@ export function createRenderCoordinator(options) {
                     page,
                     appVersion: ui.appVersion,
                     queueCount: state.queue.length,
+                    performanceMetrics: options.getPerformanceMetrics(),
                     flashMessage: ui.flashMessage,
                     flashKind: ui.flashNotification?.kind ?? "info",
                     flashActions: ui.flashNotification?.actions ?? [],

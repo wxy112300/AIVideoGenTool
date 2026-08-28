@@ -2,6 +2,7 @@ import { uiKeys } from "../../../core/i18n-keys";
 import { elapsedText, formatBytes, formatElapsedDuration, queueEstimateText, queueStageElapsedText } from "../../shared/formatters";
 import { queueRemainingSeconds, queueTaskRemainingSeconds } from "./helpers";
 import { seedVr2ProgressView } from "./card";
+import { patchResourceMonitor } from "../../shell/resource-monitor";
 function setMetric(id, value, detail = "") {
     const available = value != null && Number.isFinite(value);
     const label = document.querySelector(`#${id}`);
@@ -266,6 +267,7 @@ export function createQueueLiveStatus(options) {
         try {
             const metrics = await options.studio.getPerformanceMetrics(state.settings);
             options.setPerformanceMetrics(metrics);
+            patchResourceMonitor(metrics);
             if (options.getPage() !== "queue")
                 return;
             patchQueueLiveDom(options.getState() ?? state, options.t, options.getComfyRuntimeState(), options.getEnvironmentScanning?.() ?? false);

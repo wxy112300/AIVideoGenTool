@@ -1,6 +1,8 @@
 import { createDefaultH3PromptPresets, createDefaultQwenImagePromptPresets, createDefaultH3AutoPromptSeedInstructions } from "./prompts/index.js";
 import { createDefaultImageEditDraft } from "./draft-defaults.js";
+import { H3_MEMORY_DEFAULT_CHUNK_ROWS, H3_MEMORY_DEFAULT_MODE } from "./h3-memory-policy.js";
 export const defaultPrompt = "The subject naturally looks toward the camera as a light breeze moves their hair; the camera slowly pushes in with realistic, fluid motion.";
+export const APP_SCHEMA_VERSION = 14;
 export { createDefaultImageEditDraft } from "./draft-defaults.js";
 export function createDefaultImagePromptPresets() {
     return createDefaultQwenImagePromptPresets();
@@ -49,7 +51,10 @@ export function createDefaultDraft() {
         keepSeedOnCopy: false,
         spectrumMode: "off",
         spectrumModelAwareMode: "off",
-        spectrumModeUserSet: false
+        spectrumModeUserSet: false,
+        h3MemoryOptimizationMode: H3_MEMORY_DEFAULT_MODE,
+        h3MemoryOptimizationUserSet: false,
+        h3MemoryChunkRows: H3_MEMORY_DEFAULT_CHUNK_ROWS
     };
 }
 export { createClearedDraft } from "./draft-defaults.js";
@@ -110,7 +115,7 @@ export function createDefaultSettings() {
 export function createDefaultState() {
     const draft = createDefaultDraft();
     return {
-        schemaVersion: 13,
+        schemaVersion: APP_SCHEMA_VERSION,
         draft,
         imageToVideoDraft: structuredClone(draft),
         imageDraft: createDefaultImageEditDraft(),

@@ -38,10 +38,12 @@ describe("model catalog", () => {
     expect(modelCatalog.get("minimax-h3-lightx2v-turbo-4step")?.definition.retired).toBe(true);
     expect(modelCatalog.get("minimax-h3-lightx2v-turbo-4step-768p-v1")?.definition.retired).toBe(true);
     expect(modelCatalog.get("minimax-h3-pink-fluffy-bunny-nsfw")?.definition.retired).toBe(true);
+    expect(modelCatalog.get("minimax-h3-turbo-ckpt850-ema")?.definition.retired).toBe(true);
     expect(modelCatalog.list("lora").map((entry) => entry.definition.id)).not.toEqual(expect.arrayContaining([
       "minimax-h3-lightx2v-turbo-4step",
       "minimax-h3-lightx2v-turbo-4step-768p-v1",
-      "minimax-h3-pink-fluffy-bunny-nsfw"
+      "minimax-h3-pink-fluffy-bunny-nsfw",
+      "minimax-h3-turbo-ckpt850-ema"
     ]));
   });
 
@@ -70,7 +72,6 @@ describe("model catalog", () => {
       "minimax-h3-turbo-sla-4step",
       "minimax-h3-lightx2v-turbo-4step-768p-v1.1",
       "minimax-h3-lightx2v-turbo-8step-v1",
-      "minimax-h3-turbo-ckpt850-ema",
       "minimax-h3-ref2v-turbo-4step-v01",
       "minimax-h3-camera-motion-v1",
       "minimax-h3-after-midnight-ref2va-nsfw",

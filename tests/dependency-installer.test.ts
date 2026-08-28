@@ -66,7 +66,7 @@ async function exists(filename: string): Promise<boolean> {
 }
 
 describe("dependency installer", () => {
-  it("uninstalls a catalog node into a recoverable backup", async () => {
+  it("permanently uninstalls a catalog node so it can be downloaded again", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-node-uninstall-"));
     temporaryDirectories.push(comfyRoot);
     const nodeDirectory = path.join(
@@ -76,21 +76,26 @@ describe("dependency installer", () => {
     );
     await fs.mkdir(nodeDirectory, { recursive: true });
     await fs.writeFile(path.join(nodeDirectory, "marker.txt"), "installed", "utf8");
+    const logs: string[] = [];
 
     const result = await uninstallCustomNodePackage(
       "minimax-h3-prompt-writer",
       createDefaultState().settings,
       {
-        findComfyRoot: async () => comfyRoot,
-        renameWithRetry: async (source, target) => fs.rename(source, target)
-      }
+        findComfyRoot: async () => comfyRoot
+      },
+      (message) => logs.push(message)
     );
 
     expect(result.ok).toBe(true);
     expect(await exists(nodeDirectory)).toBe(false);
-    expect(result.log).toContain("node-backups");
-    const backups = await fs.readdir(path.join(comfyRoot, "node-backups", "uninstalled"));
-    expect(backups).toHaveLength(1);
+    expect(result.message).toContain("一键安装重新下载");
+    expect(await exists(path.join(comfyRoot, "node-backups"))).toBe(false);
+    expect(logs).toEqual(expect.arrayContaining([
+      expect.stringContaining("正在查找"),
+      expect.stringContaining("正在删除节点目录"),
+      expect.stringContaining("节点目录已删除")
+    ]));
   });
 
   it("recognizes every app-owned H3 Prompt Writer patch file", () => {
@@ -564,6 +569,58 @@ describe("dependency installer", () => {
       runtime
     )).resolves.toMatchObject({ ok: false, message: expect.stringContaining("未知") });
     expect(findComfyRoot).not.toHaveBeenCalled();
+  });
+
+  it("installs H3 Optimizations through the shared clone path and streams progress", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-memory-install-"));
+    temporaryDirectories.push(comfyRoot);
+    const processCalls: string[][] = [];
+    const logs: string[] = [];
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async (command) => command === "git.exe" ? "git.exe" : "",
+      findComfyPython: async () => "python.exe",
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args, options) => {
+        processCalls.push(args);
+        options.onLog?.(`git ${args[0]}`);
+        if (args[0] === "clone") {
+          const targetDirectory = args.at(-1);
+          if (!targetDirectory) throw new Error("missing clone target");
+          await fs.mkdir(path.join(targetDirectory, "h3_optimizations"), { recursive: true });
+          await fs.writeFile(
+            path.join(targetDirectory, "h3_optimizations", "public_nodes.py"),
+            "NODE_CLASS_MAPPINGS = {}",
+            "utf8"
+          );
+        }
+        return "";
+      }
+    };
+    const settings = createDefaultState().settings;
+    const result = await installCustomNodePackage(
+      "h3-optimizations",
+      settings,
+      runtime,
+      (message) => logs.push(message)
+    );
+
+    expect(result.ok, `${result.message}\n${result.log ?? ""}`).toBe(true);
+    expect(processCalls).toEqual([
+      expect.arrayContaining([
+        "clone",
+        "--depth",
+        "1",
+        "https://github.com/Zironic/H3-Optimizations.git"
+      ])
+    ]);
+    expect(await exists(path.join(comfyRoot, "custom_nodes", "H3-Optimizations"))).toBe(true);
+    expect(logs).toContain("git clone");
+    expect(result.log).toContain("未发现 requirements.txt，无需安装额外 Python 依赖");
   });
 
   it("installs the optional Qwen3.6 node with the shared prebuilt backend and no CUDA Toolkit", async () => {

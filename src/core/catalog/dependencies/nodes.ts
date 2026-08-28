@@ -3,7 +3,7 @@ import type { CatalogCustomNodeDefinition } from "./types.js";
 export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
-export const SPECTRUM_RECOMMENDED_VERSION = "0.2.17";
+export const SPECTRUM_RECOMMENDED_VERSION = "0.2.20";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
 export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.1";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
@@ -11,6 +11,10 @@ export const H3_MOTION_CONTEXT_MINIMUM_VERSION = "0.3.1";
 export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.3.1";
 export const H3_SLA_ATTENTION_MINIMUM_VERSION = "1.3.8";
 export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.3.8";
+export const H3_MEMORY_MINIMUM_VERSION = "0.2.16";
+export const H3_MEMORY_RECOMMENDED_VERSION = "0.2.20";
+export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
+export const H3_MEMORY_UPSTREAM_COMMIT = "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746";
 
 const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "inpaint-nodes",
@@ -255,6 +259,37 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   runtimeRequirement: "需要支持 comfy_api.latest 的 ComfyUI。当前应用为 H3 Turbo-SLA 固定 block_size 64、sparsity 0.85、保护音频，并在 Triton、显卡或接口不兼容时允许 dense 回退；回退时不会获得稀疏加速。",
   required: false
 }, {
+  id: "h3-optimizations",
+  priority: 155,
+  name: "H3 Optimizations",
+  purpose: "为 MiniMax H3 提供可选的 QKV streaming、MLP chunking 和精度策略节点",
+  repositoryUrl: "https://github.com/Zironic/H3-Optimizations.git",
+  directoryName: "H3-Optimizations",
+  aliases: ["h3-optimizations", "H3-Optimizations", "h3_optimizations"],
+  nodeTypes: ["H3MemoryOptimization"],
+  minimumVersion: H3_MEMORY_MINIMUM_VERSION,
+  recommendedVersion: H3_MEMORY_RECOMMENDED_VERSION,
+  latestVersion: H3_MEMORY_LATEST_VERSION,
+  bulkInstall: false,
+  appInstallable: true,
+  runtimeRequirement: "可选观察项，当前不参与应用工作流或批量安装；可手动安装以跟踪上游更新。上游声明 ComfyUI >=0.33.0、Python >=3.10。",
+  features: [{
+    id: "h3-memory-optimization",
+    name: "H3 Memory Optimization",
+    nodeTypes: ["H3MemoryOptimization"],
+    description: "当前产品功能已隐藏并强制关闭；保留安装入口仅用于观察上游兼容性更新。"
+  }],
+  compatibilityEvidence: [{
+    verifiedAt: "2026-08-27",
+    sourceUrl: "https://github.com/Zironic/H3-Optimizations",
+    note: "静态复核上游 main 的 pyproject.toml（version 0.2.20）与当前发布提交：H3MemoryOptimization 输出 MODEL，提供 precision_mode、qkv_streaming_mode、mlp_memory、chunk_rows 及 legacy hidden inputs。GitHub Releases 当前没有独立条目，因此 Settings 的 latestVersion 跟随上游发布版本；commit 仅作证据。应用按用户显式安装请求直接获取上游节点代码，不内置源码或二进制。",
+    comfyUi: ">=0.33.0",
+    python: ">=3.10",
+    commit: H3_MEMORY_UPSTREAM_COMMIT,
+    checks: ["static"]
+  }],
+  required: false
+}, {
   id: "spectrum-minimax-h3",
   priority: 150,
   name: "Spectrum MiniMax H3",
@@ -267,11 +302,11 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   minimumVersion: SPECTRUM_MINIMUM_VERSION,
   recommendedVersion: SPECTRUM_RECOMMENDED_VERSION,
   compatibilityEvidence: [{
-    verifiedAt: "2026-08-23",
-    sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.17",
-    note: "v0.2.17 补完 H3 Continuum 互操作：混合 VIDEO/AUDIO mask 可继续使用原生 H3 forecast，learned-latent sampler-2 refinement 不继承 sampler-1 的 Continuum actual-prefix；旧核心缺少 mask_row_values 时安全降级。保留 v0.2.16 的 Untwisting RoPE 外部补丁契约与隔离研究进程；最低版本、Turbo 共存和 model_aware_mode 门槛不变。",
+    verifiedAt: "2026-08-28",
+    sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.20",
+    note: "v0.2.18–v0.2.20 增加并修复可选 MiniMax H3 RefDelta Solver v0.2.0+ API-v1 互操作：保留 actual/forecast/replay provenance，传递经过风险门控的随机增量，修复嵌套 custom-node 命名空间发现和首次 ER-SDE step provenance 错位；现有原生 H3、Turbo、Continuum、Diff-Aid、Untwisting RoPE 与工作流参数不变。",
     comfyUi: "0.33.1",
-    commit: "9dc51b7",
+    commit: "ce9d35e",
     workflowIds: ["minimax_h3_i2v", "minimax_h3_r2v"],
     checks: ["static"]
   }],
@@ -280,6 +315,9 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
 
 export const LLAMA_CPP_PYTHON_DEPENDENCY_ID = "llama-cpp-python";
 export const LLAMA_CPP_PYTHON_DEPENDENCY_PRIORITY = 60;
+/** Synthetic capability card for the H3 runtime package set managed together. */
+export const H3_ACCELERATION_DEPENDENCY_ID = "h3-acceleration-runtime";
+export const H3_ACCELERATION_DEPENDENCY_PRIORITY = 35;
 
 export function compareCustomNodeDefinitions(
   left: Pick<CatalogCustomNodeDefinition, "id" | "name" | "priority">,
@@ -291,6 +329,7 @@ export function compareCustomNodeDefinitions(
 }
 
 export function customNodePriority(id: string): number {
+  if (id === H3_ACCELERATION_DEPENDENCY_ID) return H3_ACCELERATION_DEPENDENCY_PRIORITY;
   if (id === LLAMA_CPP_PYTHON_DEPENDENCY_ID) return LLAMA_CPP_PYTHON_DEPENDENCY_PRIORITY;
   return customNodeDefinitions.find((definition) => definition.id === id)?.priority ?? Number.MAX_SAFE_INTEGER;
 }

@@ -123,6 +123,7 @@ import {
   alignLocalComfyUiRuntimeProfile,
   forceStopComfyProcesses,
   reconcileConfiguredComfyListenerOwnership,
+  repairOperationForIssue,
   repairEnvironmentIssue,
   resolveComfyOutputDirectory,
   restartLocalService,
@@ -140,6 +141,8 @@ import {
 } from "./services/comfy-ui.js";
 import {
   enhancePromptWithMultimodalComfyUi,
+  multimodalExecutionPreflight,
+  retainedMultimodalDeviceFor,
   releaseMultimodalPromptModel,
   warmMultimodalPromptModel
 } from "./services/multimodal-prompt.js";
@@ -1583,7 +1586,7 @@ async function ensureComfyUiReady(taskId: string, signal?: AbortSignal): Promise
   appLogger.info("service", "auto-start-requested", "Queue requested automatic ComfyUI startup", {
     taskId
   });
-  const started = await startLocalService("comfy", serviceSettings);
+  const started = await startLocalService("comfy", serviceSettings, signal);
   appLogger.info(
     "service",
     started.ok ? "auto-start-succeeded" : "auto-start-failed",
@@ -1666,7 +1669,7 @@ async function validateQwenVlPromptNodeRuntime(settings: Settings): Promise<void
 }
 
 async function validateNativePromptRuntime(settings: Settings): Promise<void> {
-  const scan = await scanEnvironment(settings);
+  const scan = await scanEnvironment(settings, "runtime");
   const profile = scan.modelProfiles.find(
     (item) => item.id === settings.promptModelId && item.category === "prompt"
   );
@@ -1760,7 +1763,8 @@ async function releasePromptRuntime(settings: Settings): Promise<number> {
 async function warmSelectedPromptRuntime(
   settings: Settings,
   promptBackend: ReturnType<typeof promptModelBackend>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  allowCpuFallback = false
 ): Promise<void> {
   const prepareRuntime = async (): Promise<void> => {
     await ensureComfyUiReadyForPrompt(settings, signal);
@@ -1779,7 +1783,7 @@ async function warmSelectedPromptRuntime(
   }
   if (promptBackend === "comfyui-multimodal") {
     await prepareRuntime();
-    await warmMultimodalPromptModel(settings, signal);
+    await warmMultimodalPromptModel(settings, signal, allowCpuFallback);
     return;
   }
   if (promptBackend === "comfyui-qwenvl-lora") {
@@ -2438,7 +2442,8 @@ function registerIpc(): void {
     comfyRuntimeState.observeReachability(
       metrics.comfyConnected,
       settings.comfyUrl.replace(/\/+$/, ""),
-      ownership
+      ownership,
+      store.get().queue.some((task) => task.status === "running")
     );
     return metrics;
   });
@@ -2948,7 +2953,30 @@ function registerIpc(): void {
       return false;
     }
   });
-  ipcMain.handle("prompt:start", async () => {
+  ipcMain.handle("prompt:preflight", async () => {
+    const settings = store.get().settings;
+    if (!isComfyMultimodalPromptModel(settings.promptModelId)) {
+      return multimodalExecutionPreflight(settings.promptModelId, null, null);
+    }
+    const retainedDevice = retainedMultimodalDeviceFor(settings.promptModelId);
+    if (retainedDevice === "GPU") {
+      return {
+        ...multimodalExecutionPreflight(settings.promptModelId, null, null),
+        requiresCpuConfirmation: false
+      };
+    }
+    if (!retainedDevice) await freeMemory(settings).catch(() => undefined);
+    const metrics = await getPerformanceMetrics(settings).catch(() => null);
+    const preflight = multimodalExecutionPreflight(
+      settings.promptModelId,
+      metrics?.vramUsedBytes ?? null,
+      metrics?.vramTotalBytes ?? null
+    );
+    return retainedDevice === "CPU"
+      ? { ...preflight, requiresCpuConfirmation: true }
+      : preflight;
+  });
+  ipcMain.handle("prompt:start", async (_event, allowCpuFallback = false) => {
     const settings = store.get().settings;
     const runtime = promptRuntimeForSettings(settings);
     const promptBackend = promptModelBackend(settings.promptModelId);
@@ -2970,7 +2998,12 @@ function registerIpc(): void {
     const controller = new AbortController();
     nativePromptController = controller;
     promptRuntimeManager.setModel("warming", settings.promptModelId);
-    const worker = warmSelectedPromptRuntime(settings, promptBackend, controller.signal);
+    const worker = warmSelectedPromptRuntime(
+      settings,
+      promptBackend,
+      controller.signal,
+      allowCpuFallback === true
+    );
     nativePromptWorker = worker;
     try {
       await worker;
@@ -3540,7 +3573,7 @@ function registerIpc(): void {
         }
         return repairEnvironmentIssue(issueId, settings);
       },
-      { issueId }
+      { issueId, operation: repairOperationForIssue(issueId) }
     )
   );
   ipcMain.handle(
@@ -3564,11 +3597,20 @@ function registerIpc(): void {
   );
   ipcMain.handle(
     "custom-node:uninstall",
-    (_event, nodeId: string, settings: Settings) => loggedOperation(
+    (event, nodeId: string, settings: Settings) => loggedOperation(
       "environment",
       "custom-node-uninstall",
       "Custom node uninstallation started",
-      () => uninstallCustomNode(nodeId, settings),
+      () => uninstallCustomNode(nodeId, settings, (message) => {
+        appLogger.info("environment", "custom-node-uninstall-progress", message, { nodeId });
+        if (!event.sender.isDestroyed()) {
+          event.sender.send("dependency-install:log", {
+            kind: "custom-node",
+            id: nodeId,
+            message
+          });
+        }
+      }),
       { nodeId }
     )
   );

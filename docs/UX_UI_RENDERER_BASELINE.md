@@ -55,7 +55,7 @@ npm.cmd run verify:ux-ui-contrast
 - Queue：合成 waiting + failed；live running 仍需独立运行态 smoke；
 - History：视频/图片 × masonry/album；
 - Details：视频详情、图片详情；
-- Settings：system、acceleration、video、image、nodes、prompt、upscale、logs。
+- Settings：ComfyUI 环境、应用与路径、性能与加速、video、image、nodes、prompt、upscale、logs；其中当前 manifest 的 `settings-system` 是保留的历史 fixture id，实际捕获 ComfyUI 环境页，应用与路径由 Settings smoke 单独切换检查。
 
 P16 另有独立的 `settingsStateFixtures`，不计入上述 136 张 baseline：运行 `npx.cmd electron scripts/capture-ux-ui-renderer-baseline.cjs --settings-states --diagnose` 可捕获 offline、scanning、installing、partial、confirmed error 五种 Settings 状态在标准四视口下的 20 张隔离证据。它们用于 Settings review，不替代真实 ComfyUI、安装 subprocess 或 runtime smoke。
 

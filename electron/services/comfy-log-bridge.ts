@@ -2,13 +2,14 @@ import { promises as fs } from "node:fs";
 import type { AppLogger } from "./app-logger.js";
 import { latestComfyLogFile } from "./dependency-scanner.js";
 import type { Settings } from "../../src/types.js";
+import { findComfyRoot } from "./comfy-discovery.js";
 
 const maxIncrementalReadBytes = 512 * 1024;
 const maxFailureReadBytes = 1024 * 1024;
 const maxIncrementalLines = 200;
 const maxFailureLines = 600;
 
-const relevantLinePattern = /(?:traceback|exception|error|failed|fatal|critical|warning|warn|out of memory|cuda|oom|llama|execution|executing|node|queue|loading|unload|model|cache|vision.?llm|prompt.?writer)/iu;
+const relevantLinePattern = /(?:traceback|exception|error|failed|fatal|critical|warning|warn|out of memory|cuda|oom|llama|execution|executing|node|queue|loading|unload|model|cache|vision.?llm|prompt.?writer|h3 optimizations)/iu;
 const errorLinePattern = /(?:traceback|exception|\berror\b|failed|fatal|critical|out of memory|cuda error|cuda out of memory|\boom\b|illegal instruction|invalid response|http 5\d\d)/iu;
 const warningLinePattern = /(?:\bwarning\b|\bwarn\b|deprecated|retry|fallback|slow)/iu;
 const ansiEscapePattern = /\u001B\[[0-?]*[ -/]*[@-~]/gu;
@@ -17,6 +18,13 @@ const urlPattern = /https?:\/\/[^\s"'<>]+/giu;
 const sensitiveValuePattern = /(["']?(?:prompt|negative_prompt|creative_brief|text|content|messages|image|video|filename|file_path)["']?\s*[:=]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^,\s}\]]+)/giu;
 
 const lastFailureSnapshots = new Map<string, string>();
+
+export async function resolveComfyLogRoot(
+  settings: Settings,
+  discoverRoot: (settings: Settings) => Promise<string> = findComfyRoot
+): Promise<string> {
+  return await discoverRoot(settings).catch(() => "") || settings.comfyInstallDirectory;
+}
 
 function sanitizeLogPath(value: string): string {
   const leadingWhitespace = value.match(/^\s/u)?.[0] ?? "";
@@ -37,6 +45,31 @@ export interface ComfyLogSyncResult {
   errors: number;
   available: boolean;
   truncated: boolean;
+}
+
+export interface H3MemoryAppliedPlanEvidence {
+  execution: "optimized" | "fallback";
+  qkvProvider: string;
+  memoryProvider: string;
+  note: string;
+}
+
+export function parseH3MemoryAppliedPlan(
+  line: string
+): H3MemoryAppliedPlanEvidence | null {
+  if (!line.includes("[H3 Optimizations] applied plan:")) return null;
+  const qkvProvider = line.match(/\bqkv_provider=([^\s]+)/u)?.[1]?.replace(/^"|"$/gu, "");
+  const memoryProvider = line.match(/\bmemory=([^\s]+)/u)?.[1]?.replace(/^"|"$/gu, "");
+  if (!qkvProvider || !memoryProvider) return null;
+  const fallback = qkvProvider === "standard_h3_qkv" || memoryProvider === "baseline";
+  return {
+    execution: fallback ? "fallback" : "optimized",
+    qkvProvider,
+    memoryProvider,
+    note: fallback
+      ? `H3 Memory 运行时回退：qkv_provider=${qkvProvider}，memory=${memoryProvider}。`
+      : `H3 Memory 优化已启用：qkv_provider=${qkvProvider}，memory=${memoryProvider}。`
+  };
 }
 
 function logLevelForLine(line: string): "info" | "warn" | "error" {
@@ -143,7 +176,8 @@ export class ComfyLogBridge {
   constructor(
     private readonly logger: AppLogger,
     private readonly comfyRoot: string,
-    private readonly context: ComfyLogBridgeContext = {}
+    private readonly context: ComfyLogBridgeContext = {},
+    private readonly onIncrementalLine?: (line: string) => void
   ) {}
 
   async prime(): Promise<void> {
@@ -183,7 +217,7 @@ export class ComfyLogBridge {
     const errors = this.logLines(lines, reason, {
       ...contextMeta(this.context, reason),
       ...(relevant.length > lines.length ? { omittedLines: relevant.length - lines.length } : {})
-    });
+    }, this.onIncrementalLine);
     return {
       lines: lines.length,
       errors,
@@ -233,12 +267,14 @@ export class ComfyLogBridge {
   private logLines(
     lines: string[],
     reason: string,
-    meta: Record<string, unknown>
+    meta: Record<string, unknown>,
+    onLine?: (line: string) => void
   ): number {
     let errors = 0;
     for (const rawLine of lines) {
       const line = sanitizeComfyLogLine(rawLine);
       if (!line) continue;
+      onLine?.(line);
       const level = logLevelForLine(line);
       if (level === "error") errors += 1;
       const lineMeta = { ...meta, sourceLine: true };
@@ -256,10 +292,11 @@ export class ComfyLogBridge {
 
 export async function captureComfyUiLogFailure(
   logger: AppLogger,
-  settings: Pick<Settings, "comfyInstallDirectory">,
+  settings: Settings,
   reason: string,
   context: ComfyLogBridgeContext = {}
 ): Promise<ComfyLogSyncResult> {
-  return new ComfyLogBridge(logger, settings.comfyInstallDirectory, context)
+  const comfyRoot = await resolveComfyLogRoot(settings);
+  return new ComfyLogBridge(logger, comfyRoot, context)
     .captureFailure(reason);
 }

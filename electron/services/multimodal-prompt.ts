@@ -1,4 +1,9 @@
-import type { EnhanceRequest, PromptProgressReporter, Settings } from "../../src/types.js";
+import type {
+  EnhanceRequest,
+  PromptExecutionPreflight,
+  PromptProgressReporter,
+  Settings
+} from "../../src/types.js";
 import {
   comfyMultimodalPromptModel
 } from "../../src/core/prompt-models.js";
@@ -46,19 +51,54 @@ const minimumFreeVramForMultimodalModel: Record<string, number> = {
   "qwen/qwen3.8-27b-uncensored-q4": 20 * gib
 };
 let retainedMultimodalDevice: { modelId: string; device: MultimodalDevice } | null = null;
+
+export function retainedMultimodalDeviceFor(modelId: string): MultimodalDevice | null {
+  return retainedMultimodalDevice?.modelId === modelId
+    ? retainedMultimodalDevice.device
+    : null;
+}
 const appLogger = getApplicationLogger();
 
 export function multimodalDeviceFor(
   modelId: string,
   vramUsedBytes: number | null,
-  vramTotalBytes: number | null
+  vramTotalBytes: number | null,
+  allowCpuFallback = false
 ): MultimodalDevice {
-  const minimumFreeVram = minimumFreeVramForMultimodalModel[modelId];
-  if (!minimumFreeVram) return "GPU";
-  if (vramUsedBytes == null || vramTotalBytes == null) {
-    return "CPU";
+  const preflight = multimodalExecutionPreflight(modelId, vramUsedBytes, vramTotalBytes);
+  if (!preflight.requiresCpuConfirmation) return "GPU";
+  if (allowCpuFallback) return "CPU";
+  if (preflight.vramFreeBytes == null) {
+    throw new Error(
+      "无法确认 GPU 显存余量，已停止提示词增强；不会自动切换到 CPU。请关闭占用显存的程序后重试。"
+    );
   }
-  return vramTotalBytes - vramUsedBytes >= minimumFreeVram ? "GPU" : "CPU";
+  const freeVramGiB = (preflight.vramFreeBytes / gib).toFixed(1);
+  const requiredVramGiB = ((preflight.requiredFreeVramBytes ?? 0) / gib).toFixed(0);
+  throw new Error(
+    `Qwen 27B GPU 推理需要至少 ${requiredVramGiB} GiB 空闲显存，当前约 ${freeVramGiB} GiB。` +
+    "请关闭 Epic Games Launcher 等占用显存的程序后重试；应用不会自动切换到 CPU。"
+  );
+}
+
+export function multimodalExecutionPreflight(
+  modelId: string,
+  vramUsedBytes: number | null,
+  vramTotalBytes: number | null
+): PromptExecutionPreflight {
+  const requiredFreeVramBytes = minimumFreeVramForMultimodalModel[modelId] ?? null;
+  const vramFreeBytes = vramUsedBytes == null || vramTotalBytes == null
+    ? null
+    : Math.max(0, vramTotalBytes - vramUsedBytes);
+  return {
+    requiresCpuConfirmation: requiredFreeVramBytes != null &&
+      (vramFreeBytes == null || vramFreeBytes < requiredFreeVramBytes),
+    modelId,
+    vramUsedBytes,
+    vramTotalBytes,
+    vramFreeBytes,
+    requiredFreeVramBytes
+  };
 }
 
 export function multimodalActivityTimeoutMinutes(
@@ -296,13 +336,17 @@ export async function enhancePromptWithMultimodalComfyUi(
       retainedMultimodalDevice?.modelId === settings.promptModelId
       ? retainedMultimodalDevice.device
       : null;
+    if (residentDevice === "CPU" && request.allowCpuFallback !== true) {
+      throw new Error("当前提示词模型驻留在 CPU；本次运行尚未获得继续使用 CPU 的确认。");
+    }
     const metrics = residentDevice
       ? null
       : await getPerformanceMetrics(settings).catch(() => null);
     const device = residentDevice ?? multimodalDeviceFor(
       settings.promptModelId,
       metrics?.vramUsedBytes ?? null,
-      metrics?.vramTotalBytes ?? null
+      metrics?.vramTotalBytes ?? null,
+      request.allowCpuFallback === true
     );
     appLogger.info("prompt", "multimodal-device-selected", "Selected multimodal prompt device", {
       modelId: settings.promptModelId,
@@ -317,8 +361,7 @@ export async function enhancePromptWithMultimodalComfyUi(
     );
     onProgress?.(
       "checking",
-      10,
-      device === "CPU" ? "GPU 显存余量不足，使用 CPU 推理以避免爆显存" : undefined
+      10
     );
     const objectInfo = await jsonRequest<Record<string, unknown>>(
       `${baseUrl}/object_info`,
@@ -417,7 +460,8 @@ export async function enhancePromptWithMultimodalComfyUi(
       mode,
       request.h3DurationSeconds ?? 5,
       extractH3DialogueLocks(request.prompt),
-      extractH3VisibleTextLocks(request.prompt)
+      extractH3VisibleTextLocks(request.prompt),
+      request.prompt
     );
   } finally {
     if (!retainModel) {
@@ -442,14 +486,16 @@ export async function enhancePromptWithMultimodalComfyUi(
 
 export async function warmMultimodalPromptModel(
   settings: Settings,
-  signal: AbortSignal
+  signal: AbortSignal,
+  allowCpuFallback = false
 ): Promise<void> {
   await enhancePromptWithMultimodalComfyUi(
     {
       prompt: "加载提示词模型并返回 READY。",
       modelId: "prompt-runtime-warmup",
       mode: "faithful",
-      h3PromptMode: "I2VA"
+      h3PromptMode: "I2VA",
+      allowCpuFallback
     },
     settings,
     signal,

@@ -1,4 +1,4 @@
-import type { AppState, HistoryFile, ImageGenerationQueueTask, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview } from "../src/types.js";
+import type { AppState, H3MemoryRuntimeEvidence, HistoryFile, ImageGenerationQueueTask, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview } from "../src/types.js";
 import { isImageGenerationQueueTask } from "../src/core/queue.js";
 import { isVideoOutputFilename } from "../src/core/comfy-output.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
@@ -27,6 +27,7 @@ import {
 import { startTaskPerformanceMonitor, type TaskPerformanceMonitor } from "./services/performance.js";
 import { startAdaptiveVramWatchdog, type VramWatchdogMonitor } from "./services/vram-watchdog.js";
 import { safeLogErrorMessage, type AppLogger } from "./services/app-logger.js";
+import { parseH3MemoryAppliedPlan } from "./services/comfy-log-bridge.js";
 import type { JsonStore } from "./store.js";
 import { persistImageHistoryResult, persistVideoHistoryResult } from "./queue-history.js";
 import { recoverQueueFailure } from "./queue-recovery.js";
@@ -559,9 +560,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               onPreview: previewHandler
             })
           : null;
-        let promptId: string;
-        let result: unknown;
-        let files: HistoryFile[];
+      let promptId: string;
+      let result: unknown;
+      let files: HistoryFile[];
+      let h3MemoryRuntimeEvidence: H3MemoryRuntimeEvidence | undefined;
         let seedVr2IntermediatePaths: string[] = [];
         if (segmentedSeedVr2) {
           promptId = segmentedSeedVr2.promptId;
@@ -578,6 +580,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           markQueueTaskSubmitted(task, hasVideoLoras);
           ({ promptId } = submitted);
           const { clientId, nodeTypes } = submitted;
+          h3MemoryRuntimeEvidence = submitted.h3MemoryRuntimeEvidence;
           h3LivePreviewActive = submitted.h3LivePreviewActive;
           if (h3LivePreviewActive) h3PreviewStartedAt = Date.now();
           if (submitted.h3LivePreviewRequested && !submitted.h3LivePreviewActive) {
@@ -609,6 +612,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           });
           let lastLoggedProgress = -5;
           let lastLoggedStage = "";
+          let lastH3MemoryPlanSignature = "";
           result = await waitForTask(
             promptId,
             clientId,
@@ -640,7 +644,36 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             },
             previewHandler,
             isComputeActive,
-            { taskId: task.id, modelId: task.modelId }
+            { taskId: task.id, modelId: task.modelId },
+            h3MemoryRuntimeEvidence
+              ? (line) => {
+                  const evidence = parseH3MemoryAppliedPlan(line);
+                  if (!evidence) return;
+                  const signature = `${evidence.execution}:${evidence.qkvProvider}:${evidence.memoryProvider}`;
+                  if (signature === lastH3MemoryPlanSignature) return;
+                  lastH3MemoryPlanSignature = signature;
+                  h3MemoryRuntimeEvidence = {
+                    ...h3MemoryRuntimeEvidence!,
+                    execution: evidence.execution,
+                    note: evidence.note
+                  };
+                  void updateTask(task.id, {
+                    h3MemoryRuntimeEvidence: h3MemoryRuntimeEvidence
+                  });
+                  logger.info("comfy", "h3-memory-runtime-evidence", evidence.note, {
+                    taskId: task.id,
+                    promptId,
+                    execution: evidence.execution,
+                    qkvProvider: evidence.qkvProvider,
+                    memoryProvider: evidence.memoryProvider
+                  });
+                  if (evidence.execution === "fallback") {
+                    throw new Error(
+                      `H3 Memory Optimization 未启用 bounded QKV：qkv_provider=${evidence.qkvProvider}，memory=${evidence.memoryProvider}。任务已停止以避免继续占满显存。`
+                    );
+                  }
+                }
+              : undefined
           );
           files = await requireExistingVideoOutput(
             result,
@@ -738,6 +771,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             comfyOutputs: result,
             files,
             performanceStats: taskPerformanceStats,
+            h3MemoryRuntimeEvidence,
             id: () => crypto.randomUUID()
           });
         });

@@ -393,7 +393,7 @@ export function mountCreatePageController(
     input.addEventListener("change", () => updateLoraStrength(input.dataset.videoLoraStrengthNumber ?? "", input.value), { signal });
   });
 
-  for (const id of ["model", "ratio", "resolution", "steps", "spectrum-mode", "spectrum-model-aware-mode", "fps", "frame-interpolation", "motion", "seed"]) {
+  for (const id of ["model", "ratio", "resolution", "steps", "spectrum-mode", "fps", "frame-interpolation", "motion", "seed"]) {
     root.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
       const state = getState();
       if (!state) return;
@@ -460,7 +460,6 @@ export function mountCreatePageController(
         id === "resolution" ? { resolution: Number(value) as Draft["resolution"] } :
         id === "steps" ? { steps: normalizeH3Steps(Number(value), state.draft.modelId, state.draft.videoLoras) } :
         id === "spectrum-mode" ? { spectrumMode: value as Draft["spectrumMode"], spectrumModeUserSet: true } :
-        id === "spectrum-model-aware-mode" ? { spectrumModelAwareMode: value as Draft["spectrumModelAwareMode"] } :
         id === "fps" ? { fps: Number(value) as Draft["fps"] } :
         id === "frame-interpolation" ? { frameInterpolation: value as Draft["frameInterpolation"] } :
         id === "motion" ? { motion: value as Draft["motion"] } :

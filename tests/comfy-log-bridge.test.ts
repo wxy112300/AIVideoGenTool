@@ -3,7 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AppLogger } from "../electron/services/app-logger.js";
-import { ComfyLogBridge } from "../electron/services/comfy-log-bridge.js";
+import {
+  ComfyLogBridge,
+  parseH3MemoryAppliedPlan,
+  resolveComfyLogRoot
+} from "../electron/services/comfy-log-bridge.js";
+import { createDefaultSettings } from "../src/core/defaults.js";
 
 const temporaryDirectories: string[] = [];
 const originalAppData = process.env.APPDATA;
@@ -19,6 +24,37 @@ afterEach(async () => {
 });
 
 describe("ComfyUI log bridge", () => {
+  it("classifies H3 Memory applied plans by actual providers", () => {
+    expect(parseH3MemoryAppliedPlan(
+      "[H3 Optimizations] applied plan: phase=node qkv_provider=standard_h3_qkv memory=baseline"
+    )).toMatchObject({
+      execution: "fallback",
+      qkvProvider: "standard_h3_qkv",
+      memoryProvider: "baseline"
+    });
+    expect(parseH3MemoryAppliedPlan(
+      "[H3 Optimizations] applied plan: phase=node qkv_provider=convrot_int8_dense_sage memory=streamed_q+streamed_out"
+    )).toMatchObject({
+      execution: "optimized",
+      qkvProvider: "convrot_int8_dense_sage",
+      memoryProvider: "streamed_q+streamed_out"
+    });
+    expect(parseH3MemoryAppliedPlan("ordinary ComfyUI line")).toBeNull();
+  });
+
+  it("uses the discovered data root instead of the selected install directory", async () => {
+    const settings = {
+      ...createDefaultSettings(),
+      comfyInstallDirectory: "D:\\ComfyUI-Install",
+      modelDirectory: "C:\\Users\\tester\\Documents\\ComfyUI\\models"
+    };
+    const discoverRoot = async () => "C:\\Users\\tester\\Documents\\ComfyUI";
+
+    await expect(resolveComfyLogRoot(settings, discoverRoot)).resolves.toBe(
+      "C:\\Users\\tester\\Documents\\ComfyUI"
+    );
+  });
+
   it("tails new ComfyUI lines into the application log without copying prompt content", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-comfy-log-"));
     temporaryDirectories.push(root);

@@ -19,6 +19,8 @@ export interface CatalogCustomNodeDefinition {
   runtimeRequirement?: string;
   /** Optional nodes with external toolchains can opt out of the bulk installer. */
   bulkInstall?: boolean;
+  /** False when the package may be recognized by the app but must be installed manually. */
+  appInstallable?: boolean;
   /** Feature-scoped nodes used by optional workflow paths. */
   features?: readonly CatalogCustomNodeFeature[];
   /** Evidence collected for this definition; informational and never an install prerequisite by itself. */
@@ -62,6 +64,7 @@ export type CatalogCustomNodeFeatureId =
   | "h3-sage-attention"
   | "h3-sla-attention"
   | "h3-live-preview"
+  | "h3-memory-optimization"
   | "vram-debug";
 
 export interface CatalogCustomNodeFeature {

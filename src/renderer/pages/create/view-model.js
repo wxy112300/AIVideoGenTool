@@ -2,7 +2,7 @@ import { createTranslator } from "../../../core/i18n";
 import { activePromptIndexForDraft, promptVersionsForDraft } from "../../../core/draft-prompts";
 import { uiKeys } from "../../../core/i18n-keys";
 import { modelCatalog, sortProfilesByCatalogOrder } from "../../../core/catalog";
-import { SPECTRUM_MODEL_AWARE_MINIMUM_VERSION, SPECTRUM_TURBO_MINIMUM_VERSION } from "../../../core/catalog";
+import { SPECTRUM_TURBO_MINIMUM_VERSION } from "../../../core/catalog";
 import { releaseVersionAtLeast } from "../../../core/release-version";
 import { h3PromptPackFor, h3PromptPresetForMode, qwenImagePromptPackFor } from "../../prompt-packs";
 import { imageModelCapabilityFor, imageLightningComponentFound, imageQualityProfileRequiresLightning, imageAspectRatioOptionsFor, imageResolutionOptionsFor, imageOutputCountMax, normalizeImageAspectRatio, normalizeImageTargetResolution, cachedImageProfileAllowsEnqueue } from "../../../core/image-workflow";
@@ -255,10 +255,8 @@ export function buildVideoCreatePageViewModel(options) {
     const spectrumNode = environmentScan?.customNodes.find((node) => node.id === "spectrum-minimax-h3");
     const spectrumLoaded = Boolean(spectrumNode?.loaded);
     const spectrumTurboCompatible = !turboEnabled || releaseVersionAtLeast(spectrumNode?.version ?? "", SPECTRUM_TURBO_MINIMUM_VERSION);
-    const spectrumModelAwareSupported = releaseVersionAtLeast(spectrumNode?.version ?? "", SPECTRUM_MODEL_AWARE_MINIMUM_VERSION);
     const spectrumEligible = videoPolicy.spectrum.allowed && spectrumTurboCompatible;
-    const spectrumReady = draft.spectrumMode !== "balanced" || (spectrumEligible && spectrumLoaded &&
-        (draft.spectrumModelAwareMode === "off" || spectrumModelAwareSupported));
+    const spectrumReady = draft.spectrumMode !== "balanced" || (spectrumEligible && spectrumLoaded);
     const resolutionOptions = isMiniMaxH3
         ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? [360, 480, 540, 720, 768]
         : [480, 540, 720];
@@ -411,18 +409,6 @@ export function buildVideoCreatePageViewModel(options) {
                     ? t(uiKeys.create.validation.spectrumInstall)
                     : t(uiKeys.create.validation.spectrumNative),
         spectrumModeDisabled: draft.spectrumMode !== "balanced" && !(spectrumEligible && spectrumLoaded),
-        spectrumModelAwareMarkup: draft.spectrumMode === "balanced"
-            ? `<label class="settings-field settings-spectrum-model-aware">${fieldLabelWithTip(t(uiKeys.create.validation.spectrumModelAwareLabel), spectrumModelAwareSupported
-                ? t(uiKeys.create.validation.spectrumModelAwareDescription)
-                : t(uiKeys.create.validation.spectrumModelAwareUpdate, { version: SPECTRUM_MODEL_AWARE_MINIMUM_VERSION }))}
-          <select id="spectrum-model-aware-mode">
-            <option value="off" ${draft.spectrumModelAwareMode === "off" ? "selected" : ""}>${t(uiKeys.create.options.spectrumModelAwareOff)}</option>
-            <option value="schedule" ${draft.spectrumModelAwareMode === "schedule" ? "selected" : ""} ${spectrumModelAwareSupported ? "" : "disabled"}>${t(uiKeys.create.options.spectrumModelAwareSchedule)}</option>
-            <option value="schedule_confidence" ${draft.spectrumModelAwareMode === "schedule_confidence" ? "selected" : ""} ${spectrumModelAwareSupported ? "" : "disabled"}>${t(uiKeys.create.options.spectrumModelAwareConfidence)}</option>
-            <option value="full" ${draft.spectrumModelAwareMode === "full" ? "selected" : ""} ${spectrumModelAwareSupported ? "" : "disabled"}>${t(uiKeys.create.options.spectrumModelAwareFull)}</option>
-          </select>
-        </label>`
-            : "",
         loraLabelMarkup: fieldLabelWithTip(t(uiKeys.create.validation.loraLabel), t(uiKeys.create.validation.loraDescription)),
         installReadyLoraDefinitions,
         installReadyLoraEmptyLabel: !environmentScan

@@ -106,19 +106,36 @@ export async function launchComfyUiVisible(
 
 export async function waitForService(
   url: string,
-  timeoutMs = 120_000
+  timeoutMs = 120_000,
+  signal?: AbortSignal
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (signal?.aborted) throw signal.reason;
     try {
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(1500)
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(1500)])
+          : AbortSignal.timeout(1500)
       });
       if (response.ok) return true;
-    } catch {
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
       // The process may still be importing models and custom nodes.
     }
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise<void>((resolve, reject) => {
+      const finish = (): void => {
+        signal?.removeEventListener("abort", cancel);
+        resolve();
+      };
+      const cancel = (): void => {
+        clearTimeout(timer);
+        reject(signal?.reason ?? new Error("服务启动已取消"));
+      };
+      const timer = setTimeout(finish, 1500);
+      signal?.addEventListener("abort", cancel, { once: true });
+      if (signal?.aborted) cancel();
+    });
   }
   return false;
 }

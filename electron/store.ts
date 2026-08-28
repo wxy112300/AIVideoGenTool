@@ -9,10 +9,11 @@ import type {
   ImageEditDraft,
   ImageGenerationQueueTask,
   ImageGenerationRun,
+  H3AttentionMode,
   QueueLifecycle,
   QueueTask
 } from "../src/types.js";
-import { createDefaultState } from "../src/core/defaults.js";
+import { APP_SCHEMA_VERSION, createDefaultState } from "../src/core/defaults.js";
 import { normalizeUiLocale } from "../src/core/i18n.js";
 import { normalizeQwenImagePromptPresets } from "../src/core/qwen-image-prompt.js";
 import { ensureMotionContextSourceSlot, normalizeH3ReferenceSlots } from "../src/core/h3-reference.js";
@@ -23,12 +24,17 @@ import { normalizeImageEditDraft, normalizeImageHistory } from "../src/core/imag
 import { isHistoryRating, normalizeHistoryTags } from "../src/core/history-filter.js";
 import { copyPromptVersions, ensureDraftPromptState } from "../src/core/draft-prompts.js";
 import {
+  normalizeDraftH3MemoryOptions,
+  normalizeH3MemoryOptions
+} from "../src/core/h3-memory-policy.js";
+import {
   generationSafetyForTask,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3R2vModel,
   isRetiredVideoModel,
   normalizeH3Steps
 } from "../src/core/workflow.js";
+import { normalizeH3AttentionMode } from "../src/core/recovery.js";
 import {
   LEGACY_H3_TURBO_MODEL_ID,
   baseVideoModelId,
@@ -161,6 +167,10 @@ function normalizedTaskStatus(value: unknown): ImageGenerationRun["status"] {
     : "waiting";
 }
 
+function migrateOptionalH3AttentionMode(value: unknown): H3AttentionMode | undefined {
+  return value === undefined ? undefined : normalizeH3AttentionMode(value);
+}
+
 function migrateImageGenerationTask(task: ImageGenerationQueueTask): ImageGenerationQueueTask {
   const runs = Array.isArray(task.runs)
     ? task.runs.map((run, index) => {
@@ -226,6 +236,14 @@ function migrateQueueTask(
     legacyModelId
   );
   if (task.taskType === "extension") {
+    const memoryOptions = normalizeH3MemoryOptions(
+      task as QueueTask & {
+        h3MemoryOptimizationMode?: unknown;
+        h3MemoryOptimizationUserSet?: unknown;
+        h3MemoryChunkRows?: unknown;
+      },
+      "off"
+    );
     const normalizedSlots = isMiniMaxH3R2vModel(modelId)
       ? ensureMotionContextSourceSlot(
           normalizeH3ReferenceSlots((task as QueueTask & { h3ReferenceSlots?: unknown }).h3ReferenceSlots),
@@ -237,16 +255,25 @@ function migrateQueueTask(
       modelId,
       videoLoras,
       modelProfile: task.modelProfile ?? "q3_k_m",
-      attentionMode: task.attentionMode ?? "sage",
+      attentionMode: normalizeH3AttentionMode(task.attentionMode),
       h3LivePreview: typeof task.h3LivePreview === "boolean"
         ? task.h3LivePreview
         : defaultH3LivePreview,
       spectrumMode: task.spectrumMode ?? "off",
       spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
+      ...memoryOptions,
       ...(normalizedSlots ? { h3ReferenceSlots: normalizedSlots } : {}),
       automaticRetryAttempt
     };
   }
+  const memoryOptions = normalizeH3MemoryOptions(
+    task as QueueTask & {
+      h3MemoryOptimizationMode?: unknown;
+      h3MemoryOptimizationUserSet?: unknown;
+      h3MemoryChunkRows?: unknown;
+    },
+    "off"
+  );
   return {
     ...task,
     modelId,
@@ -257,12 +284,13 @@ function migrateQueueTask(
     h3ReferenceSlots: normalizeH3ReferenceSlots(task.h3ReferenceSlots),
     fps: (task.fps ?? 24) as Draft["fps"],
     frameInterpolation: task.frameInterpolation ?? "off",
-    attentionMode: task.attentionMode ?? "sage",
+    attentionMode: normalizeH3AttentionMode(task.attentionMode),
     h3LivePreview: typeof task.h3LivePreview === "boolean"
       ? task.h3LivePreview
       : defaultH3LivePreview,
     spectrumMode: task.spectrumMode ?? "off",
     spectrumModelAwareMode: task.spectrumModelAwareMode ?? "off",
+    ...memoryOptions,
     keepSeedOnCopy: task.keepSeedOnCopy ?? false,
     automaticRetryAttempt,
     ...(task.status === "running"
@@ -282,6 +310,14 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
     (asset as HistoryAsset & { videoLoras?: unknown }).videoLoras,
     legacyModelId
   );
+  const assetMemoryOptions = normalizeH3MemoryOptions(
+    asset as HistoryAsset & {
+      h3MemoryOptimizationMode?: unknown;
+      h3MemoryOptimizationUserSet?: unknown;
+      h3MemoryChunkRows?: unknown;
+    },
+    "off"
+  );
   if (asset.versions?.length) {
     return {
       ...asset,
@@ -295,10 +331,21 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
       tags: normalizeHistoryTags((asset as HistoryAsset & { tags?: unknown }).tags),
       files,
       updatedAt: asset.updatedAt ?? asset.createdAt,
+      attentionMode: migrateOptionalH3AttentionMode(asset.attentionMode),
+      ...assetMemoryOptions,
       versions: asset.versions.map((version) => ({
         ...version,
         modelId: baseVideoModelId(version.modelId),
-        videoLoras: normalizeVideoLoras(version.videoLoras, version.modelId)
+        videoLoras: normalizeVideoLoras(version.videoLoras, version.modelId),
+        attentionMode: migrateOptionalH3AttentionMode(version.attentionMode),
+        ...normalizeH3MemoryOptions(
+          version as AssetVersion & {
+            h3MemoryOptimizationMode?: unknown;
+            h3MemoryOptimizationUserSet?: unknown;
+            h3MemoryChunkRows?: unknown;
+          },
+          "off"
+        )
       }))
     };
   }
@@ -319,7 +366,9 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
     comfyPromptId: asset.comfyPromptId,
     comfyOutputs: asset.comfyOutputs,
     files,
-    startedAt: asset.startedAt
+    startedAt: asset.startedAt,
+    attentionMode: migrateOptionalH3AttentionMode(asset.attentionMode),
+    ...assetMemoryOptions
   };
   return {
     ...asset,
@@ -334,6 +383,7 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
     files,
     updatedAt: asset.updatedAt ?? asset.createdAt,
     defaultVersionId: version.id,
+    ...assetMemoryOptions,
     versions: [version]
   };
 }
@@ -358,6 +408,13 @@ export class JsonStore {
       const { promptSystemTemplate: _legacyPromptSystemTemplate, ...savedSettings } = (saved.settings ?? {}) as Partial<AppState["settings"]> & {
         promptSystemTemplate?: unknown;
       };
+        const savedH3AttentionMode = (saved.settings as { h3AttentionMode?: unknown } | undefined)?.h3AttentionMode;
+        const retiredH3AttentionModePersisted = savedH3AttentionMode === "sage-2-plus-plus" ||
+          (saved.queue ?? []).some((task) => (task as { attentionMode?: unknown }).attentionMode === "sage-2-plus-plus") ||
+          (saved.history ?? []).some((asset) =>
+            (asset as { attentionMode?: unknown }).attentionMode === "sage-2-plus-plus" ||
+            asset.versions?.some((version) => (version as { attentionMode?: unknown }).attentionMode === "sage-2-plus-plus")
+          );
       const savedPresetText = saved.settings?.h3PromptPresets;
       const h3PromptPresets = Object.fromEntries(
         Object.entries(defaultState.settings.h3PromptPresets).map(([id, fallback]) => {
@@ -384,7 +441,7 @@ export class JsonStore {
         savedDraft.extensionPromptVersions.length > 0 &&
         Number.isInteger(savedDraft.extensionActivePromptVersion);
       const legacyExtensionDraft = !hasIndependentExtensionPromptState && savedDraft?.inputMode === "video";
-      const mergedDraft = ensureDraftPromptState({
+      const mergedDraft = normalizeDraftH3MemoryOptions(ensureDraftPromptState({
         ...defaultState.draft,
         ...savedDraft,
         ...(legacyExtensionDraft
@@ -399,26 +456,26 @@ export class JsonStore {
               extensionActivePromptVersion: savedDraft.activePromptVersion ?? 0
             }
           : {})
-      });
+      }));
       const savedVideoExtensionDraft = saved.videoExtensionDraft;
       const savedImageToVideoDraft = saved.imageToVideoDraft;
       const mergedImageToVideoDraft = savedImageToVideoDraft?.inputMode === "image"
-        ? ensureDraftPromptState({
+        ? normalizeDraftH3MemoryOptions(ensureDraftPromptState({
             ...defaultState.draft,
             ...savedImageToVideoDraft,
             inputMode: "image",
             h3ReferenceSlots: normalizeH3ReferenceSlots(savedImageToVideoDraft.h3ReferenceSlots)
-          })
+          }))
         : mergedDraft.inputMode === "image"
           ? structuredClone(mergedDraft)
           : structuredClone(defaultState.imageToVideoDraft ?? defaultState.draft);
       const mergedVideoExtensionDraft = savedVideoExtensionDraft?.inputMode === "video"
-        ? ensureDraftPromptState({
+        ? normalizeDraftH3MemoryOptions(ensureDraftPromptState({
             ...defaultState.draft,
             ...savedVideoExtensionDraft,
             inputMode: "video",
             h3ReferenceSlots: normalizeH3ReferenceSlots(savedVideoExtensionDraft.h3ReferenceSlots)
-          })
+          }))
         : mergedDraft.inputMode === "video"
           ? structuredClone(mergedDraft)
           : undefined;
@@ -435,13 +492,14 @@ export class JsonStore {
         settings: {
           ...defaultState.settings,
           ...savedSettings,
+          h3AttentionMode: normalizeH3AttentionMode(savedH3AttentionMode),
           h3PromptPresets,
           imagePromptPresets,
           h3AutoPromptSeedId: savedAutoPromptSeedId,
           h3AutoPromptSeedInstructions
         },
         queueRunning: false,
-        schemaVersion: 13,
+        schemaVersion: APP_SCHEMA_VERSION,
         queue: (saved.queue ?? []).map((task) => migrateQueueTask(
           task,
           typeof savedSettings.h3LivePreview === "boolean"
@@ -468,7 +526,8 @@ export class JsonStore {
         typeof saved.queueStartedAt === "string" ||
         typeof (saved as { queueLifecycleStartedAt?: unknown }).queueLifecycleStartedAt === "string" ||
         typeof (saved as { queueLifecycle?: unknown }).queueLifecycle !== "string" ||
-        savedSchemaVersion < 12 ||
+        savedSchemaVersion < APP_SCHEMA_VERSION ||
+        retiredH3AttentionModePersisted ||
         !hasIndependentExtensionPromptState ||
         savedUiLocale !== normalizedUiLocale ||
         saved.settings?.h3AutoPromptSeedId !== savedAutoPromptSeedId ||

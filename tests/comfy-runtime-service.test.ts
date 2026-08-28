@@ -111,6 +111,37 @@ describe("ComfyUI runtime service", () => {
     setOwnedComfyProcessExitListener(null);
   });
 
+  it("uses the hidden launcher for maintenance starts when requested", async () => {
+    const launchDetached = vi.fn(async () => 1234);
+    const launchComfyUiVisible = vi.fn(async () => 5678);
+    const settings = {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:8288"
+    };
+    const dependencies: ComfyRuntimeServiceDependencies = {
+      findComfyRoot: async () => "D:\\ComfyData",
+      findComfyInstallation: async () => ({
+        type: "manual",
+        directory: "D:\\ComfyCore",
+        sourceDirectory: "D:\\ComfyCore",
+        executable: ""
+      }),
+      applyComfyDesktopSettings: async () => undefined,
+      launchDetached,
+      launchComfyUiVisible,
+      isPortInUse: async () => false,
+      downloadEnvironment: () => ({}),
+      exists: async (filename) => filename.endsWith("main.py"),
+      findComfyPython: async () => "D:\\ComfyData\\.venv\\Scripts\\python.exe",
+      comfyDataDirectories: () => ({ modelDirectory: "", outputDirectory: "" })
+    };
+
+    await startComfyUiService(settings, dependencies, { visibleConsole: false });
+
+    expect(launchDetached).toHaveBeenCalledOnce();
+    expect(launchComfyUiVisible).not.toHaveBeenCalled();
+  });
+
   it("delegates shell-only Desktop installations to the official executable", async () => {
     const launchDetached = vi.fn(async () => 1234);
     const applyComfyDesktopSettings = vi.fn(async () => undefined);

@@ -57,6 +57,11 @@ import {
 } from "./llama-cpp-python.js";
 import { comfyRuntimeState } from "./comfy-runtime-state.js";
 import {
+  attachComfyUiRepairPlans,
+  buildComfyUiEnvironmentSummary,
+  serviceReachableFromEnvironmentItems
+} from "./comfy-environment-summary.js";
+import {
   backupSqliteDatabaseFamily,
   buildComfyDatabaseMigrationScript,
   diagnoseComfyDatabaseFailure,
@@ -106,7 +111,8 @@ import {
   clearOwnedComfyProcessIds,
   ownedComfyProcessIdSnapshot,
   rememberOwnedComfyProcessId,
-  startComfyUiService
+  startComfyUiService,
+  type ComfyRuntimeStartOptions
 } from "./comfy-runtime-service.js";
 import {
   inspectComfyCorePythonDependency,
@@ -154,6 +160,7 @@ export {
   parseComfyProcessIds,
   parseComfyProcessInfo
 } from "./comfy-shutdown-service.js";
+export { repairOperationForIssue } from "./comfy-environment-summary.js";
 
 const execFileAsync = promisify(execFile);
 const appLogger = getApplicationLogger();
@@ -3023,7 +3030,10 @@ async function applyComfyDesktopSettings(settings: Settings): Promise<void> {
 }
 
 
-async function startComfyUi(settings: Settings): Promise<string> {
+async function startComfyUi(
+  settings: Settings,
+  options: ComfyRuntimeStartOptions = {}
+): Promise<string> {
   const useHeadlessHarness = process.env.LOCAL_VIDEO_STUDIO_RUNTIME_HARNESS === "1";
   return startComfyUiService(settings, {
     findComfyRoot,
@@ -3046,7 +3056,7 @@ async function startComfyUi(settings: Settings): Promise<string> {
       );
       return { ok: result.ok, message: result.message };
     }
-  });
+  }, options);
 }
 
 export async function forceStopComfyProcesses(
@@ -3193,10 +3203,12 @@ async function startLmStudio(settings: Settings): Promise<string> {
 
 export async function startLocalService(
   kind: LocalServiceKind,
-  settings: Settings
+  settings: Settings,
+  signal?: AbortSignal,
+  options: LocalServiceOperationOptions = {}
 ): Promise<ConnectionResult> {
   if (pendingLocalComfyStart) return pendingLocalComfyStart;
-  const operation = startLocalServiceOperation(kind, settings);
+  const operation = startLocalServiceOperation(kind, settings, signal, options);
   pendingLocalComfyStart = operation;
   try {
     return await operation;
@@ -3207,9 +3219,15 @@ export async function startLocalService(
 
 let pendingLocalComfyStart: Promise<ConnectionResult> | null = null;
 
+interface LocalServiceOperationOptions extends ComfyRuntimeStartOptions {
+  onProgress?: (message: string) => void;
+}
+
 async function startLocalServiceOperation(
   kind: LocalServiceKind,
-  settings: Settings
+  settings: Settings,
+  signal?: AbortSignal,
+  options: LocalServiceOperationOptions = {}
 ): Promise<ConnectionResult> {
   const endpoint = settings.comfyUrl.replace(/\/+$/, "");
   const local = localEndpoint(settings.comfyUrl, 8188);
@@ -3239,8 +3257,8 @@ async function startLocalServiceOperation(
     ownership
   );
   try {
-    const healthUrl = await startComfyUi(settings);
-    const ready = await waitForService(healthUrl);
+    const healthUrl = await startComfyUi(settings, options);
+    const ready = await waitForService(healthUrl, 120_000, signal);
     const result = ready
       ? {
           ok: true,
@@ -3275,6 +3293,10 @@ async function startLocalServiceOperation(
     );
     return result;
   } catch (error) {
+    if (signal?.aborted) {
+      comfyRuntimeState.finish(operationId, "stopped", "ComfyUI 启动已取消。", "none");
+      throw signal.reason ?? error;
+    }
     const result = {
       ok: false,
       message: error instanceof Error ? error.message : String(error)
@@ -3354,12 +3376,14 @@ async function rememberOwnedComfyListener(settings: Settings): Promise<void> {
 
 export async function restartLocalService(
   kind: LocalServiceKind,
-  settings: Settings
+  settings: Settings,
+  options: LocalServiceOperationOptions = {}
 ): Promise<ConnectionResult> {
+  const report = (message: string): void => options.onProgress?.(message);
   const endpoint = localEndpoint(settings.comfyUrl, 8188);
   const listenerExists = endpoint ? await isLocalPortInUse(endpoint.port) : true;
   if (!listenerExists && !ownedComfyProcessIdSnapshot().length) {
-    return startLocalService(kind, settings);
+    return startLocalService(kind, settings, undefined, options);
   }
   const operationId = comfyRuntimeState.begin(
     "restarting",
@@ -3367,8 +3391,13 @@ export async function restartLocalService(
     "正在重启 ComfyUI。"
   );
   try {
+    report("正在停止 ComfyUI……");
     await stopComfyUi(settings);
-    const healthUrl = await startComfyUi(settings);
+    report(options.visibleConsole === false
+      ? "正在后台启动 ComfyUI……"
+      : "正在启动 ComfyUI……");
+    const healthUrl = await startComfyUi(settings, options);
+    report("正在等待 ComfyUI 接口就绪……");
     const ready = await waitForService(healthUrl);
     const result = ready
       ? { ok: true, message: "ComfyUI 服务已重启并连接成功。" }
@@ -3377,6 +3406,7 @@ export async function restartLocalService(
           message: "ComfyUI 已重新启动，但等待 2 分钟后接口仍未就绪。"
         };
     if (ready) await rememberOwnedComfyListener(settings);
+    report(result.message);
     comfyRuntimeState.finish(operationId, ready ? "ready" : "error", result.message, "app");
     return result;
   } catch (error) {
@@ -3384,14 +3414,44 @@ export async function restartLocalService(
       ok: false,
       message: error instanceof Error ? error.message : String(error)
     };
+    report(`ComfyUI 重启失败：${result.message}`);
     comfyRuntimeState.finish(operationId, "error", result.message);
     return result;
   }
 }
 
+async function restartComfyUiIfRunning(
+  settings: Settings,
+  onProgress?: (message: string) => void
+): Promise<ConnectionResult | null> {
+  onProgress?.("正在检查 ComfyUI 运行状态……");
+  const endpoint = localEndpoint(settings.comfyUrl, 8188);
+  if (!endpoint) return null;
+
+  const listenerExists = await isLocalPortInUse(endpoint.port);
+  const ownedRuntimeExists = ownedComfyProcessIdSnapshot().length > 0;
+  if (!listenerExists && !ownedRuntimeExists) {
+    onProgress?.("ComfyUI 当前未运行，保持停止状态。");
+    return {
+      ok: true,
+      message: "ComfyUI 当前未运行，已保持停止状态。"
+    };
+  }
+  return restartLocalService("comfy", settings, {
+    visibleConsole: false,
+    onProgress
+  });
+}
+
 export async function updateComfyUi(
   settings: Settings
 ): Promise<{ ok: boolean; message: string; log?: string }> {
+  if (!localEndpoint(settings.comfyUrl, 8188)) {
+    return {
+      ok: false,
+      message: "远程 ComfyUI 仅支持连接，应用不会更新远程核心。"
+    };
+  }
   const installation = await findComfyInstallation(settings);
   if (!installation) {
     return { ok: false, message: "没有找到可更新的 ComfyUI 安装。" };
@@ -3635,6 +3695,12 @@ export async function repairEnvironmentIssue(
 ): Promise<{ ok: boolean; message: string; log?: string }> {
   const repairLog: string[] = [];
   try {
+    if (!localEndpoint(settings.comfyUrl, 8188)) {
+      return {
+        ok: false,
+        message: "远程 ComfyUI 仅支持连接，环境修复必须在本地所选实例上执行。"
+      };
+    }
     const comfyRoot = await findComfyRoot(settings);
     if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
 
@@ -3654,16 +3720,30 @@ export async function repairEnvironmentIssue(
         marker,
         '\nr"""\n!!! Exception during processing !!!'
       );
-      await fs.writeFile(nodesFile, repaired, "utf8");
-      repairLog.push(`已将误粘贴的报错块改为 Python 原始字符串：${nodesFile}`);
-      const python = path.join(comfyRoot, ".venv", "Scripts", "python.exe");
-      if (await exists(python)) {
-        await execFileAsync(python, ["-m", "py_compile", nodesFile], {
-          encoding: "utf8",
-          timeout: 30_000,
-          windowsHide: true
-        });
-        repairLog.push("Python 语法检查通过");
+      const backupPath = `${nodesFile}.backup-${databaseRepairTimestamp()}`;
+      await fs.copyFile(nodesFile, backupPath);
+      repairLog.push(`已备份节点源码：${nodesFile} -> ${backupPath}`);
+      try {
+        await fs.writeFile(nodesFile, repaired, "utf8");
+        repairLog.push(`已将误粘贴的报错块改为 Python 原始字符串：${nodesFile}`);
+        const installation = await findComfyInstallation(settings);
+        const python = await findComfyPython(
+          settings,
+          comfyRoot,
+          installation
+        );
+        if (await exists(python)) {
+          await execFileAsync(python, ["-m", "py_compile", nodesFile], {
+            encoding: "utf8",
+            timeout: 30_000,
+            windowsHide: true
+          });
+          repairLog.push("Python 语法检查通过");
+        }
+      } catch (error) {
+        await fs.copyFile(backupPath, nodesFile).catch(() => undefined);
+        repairLog.push("源码校验失败，已恢复修复前的节点文件");
+        throw error;
       }
       return {
         ok: true,
@@ -3877,12 +3957,34 @@ export async function installCustomNode(
 
 export async function uninstallCustomNode(
   nodeId: string,
-  settings: Settings
-): Promise<{ ok: boolean; message: string; log?: string }> {
-  return uninstallCustomNodePackage(nodeId, settings, {
-    findComfyRoot,
-    renameWithRetry
-  });
+  settings: Settings,
+  onProgress?: (message: string) => void
+): Promise<ConnectionResult> {
+  const result = await uninstallCustomNodePackage(nodeId, settings, {
+    findComfyRoot
+  }, onProgress);
+  if (!result.ok) return result;
+
+  const restart = await restartComfyUiIfRunning(settings, onProgress);
+  if (!restart) return result;
+
+  const log = [result.log, `ComfyUI：${restart.message}`]
+    .filter(Boolean)
+    .join("\n");
+  if (!restart.ok) {
+    return {
+      ...result,
+      ok: true,
+      manualRestartRequired: true,
+      message: `${result.message} 但 ComfyUI 未能自动重启，请手动重启后重新扫描：${restart.message}`,
+      log
+    };
+  }
+  return {
+    ...result,
+    message: `${result.message} ${restart.message}`,
+    log
+  };
 }
 
 export async function inspectLlamaCppPythonRuntime(
@@ -4659,6 +4761,25 @@ async function scanFullEnvironment(
     comfyEnvironmentItem,
     comfyApiItem
   ];
+  const scopedIssues = attachComfyUiRepairPlans(issues, {
+    endpoint: detectedComfyBaseUrl,
+    runtimeState: comfyRuntimeState.snapshot(),
+    selectedInstallation: comfyInstallationSummary ?? null,
+    comfyRoot,
+    sourceDirectory: comfyInstallation?.sourceDirectory ?? "",
+    pythonPath: selectedPython?.path ?? ""
+  });
+  const environmentSummary = buildComfyUiEnvironmentSummary({
+    endpoint: detectedComfyBaseUrl,
+    serviceReachable: serviceReachableFromEnvironmentItems(items),
+    runtimeState: comfyRuntimeState.snapshot(),
+    selectedInstallation: comfyInstallationSummary ?? null,
+    comfyRoot,
+    sourceDirectory: comfyInstallation?.sourceDirectory ?? "",
+    python: selectedPython,
+    compatibility: comfyCompatibility,
+    issues: scopedIssues
+  });
 
   return {
     scannedAt: new Date().toISOString(),
@@ -4680,7 +4801,8 @@ async function scanFullEnvironment(
     items,
     modelProfiles,
     customNodes: runtimeValidatedCustomNodes,
-    issues
+    issues: scopedIssues,
+    environmentSummary
   };
 }
 
@@ -4824,6 +4946,25 @@ async function scanEnvironmentDependencies(
   const items = previous.items.some((item) => item.id === "comfyui-api")
     ? previous.items.map((item) => item.id === "comfyui-api" ? comfyApiItem : item)
     : [...previous.items, comfyApiItem];
+  const scopedIssues = attachComfyUiRepairPlans(issues, {
+    endpoint: detectedComfyBaseUrl,
+    runtimeState: comfyRuntimeState.snapshot(),
+    selectedInstallation: installationSummary ?? null,
+    comfyRoot,
+    sourceDirectory: comfyInstallation?.sourceDirectory ?? "",
+    pythonPath: selectedPython?.path ?? ""
+  });
+  const environmentSummary = buildComfyUiEnvironmentSummary({
+    endpoint: detectedComfyBaseUrl,
+    serviceReachable: serviceReachableFromEnvironmentItems(items),
+    runtimeState: comfyRuntimeState.snapshot(),
+    selectedInstallation: installationSummary ?? null,
+    comfyRoot,
+    sourceDirectory: comfyInstallation?.sourceDirectory ?? "",
+    python: selectedPython,
+    compatibility: comfyCompatibility,
+    issues: scopedIssues
+  });
   return {
     ...previous,
     scannedAt: new Date().toISOString(),
@@ -4839,7 +4980,8 @@ async function scanEnvironmentDependencies(
     items,
     modelProfiles,
     customNodes: runtimeValidatedCustomNodes,
-    issues
+    issues: scopedIssues,
+    environmentSummary
   };
 }
 

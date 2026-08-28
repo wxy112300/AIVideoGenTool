@@ -75,10 +75,12 @@ const api: AppApi = {
   copyFile: (path: string) => ipcRenderer.invoke("file:copy", path),
   openSystemPlayer: (path: string) => ipcRenderer.invoke("file:open-system-player", path),
   openExternal: (url: string) => ipcRenderer.invoke("shell:open-external", url),
+  preflightPromptModel: () => ipcRenderer.invoke("prompt:preflight"),
   enhancePrompt: (request: EnhanceRequest) =>
     ipcRenderer.invoke("prompt:enhance", request),
   cancelPrompt: () => ipcRenderer.invoke("prompt:cancel"),
-  startPromptModel: () => ipcRenderer.invoke("prompt:start"),
+  startPromptModel: (allowCpuFallback?: boolean) =>
+    ipcRenderer.invoke("prompt:start", allowCpuFallback),
   releasePromptModel: () => ipcRenderer.invoke("prompt:release"),
   testConnection: (kind, settings) =>
     ipcRenderer.invoke("connection:test", kind, settings),

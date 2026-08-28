@@ -76,6 +76,30 @@ export type H3StepCount = 4 | 6 | 8 | 10 | 12 | 16 | 20;
 export type H3AttentionMode = "sage" | "sage-triton" | "pytorch";
 export type H3SpectrumMode = "off" | "balanced";
 export type H3SpectrumModelAwareMode = "off" | "schedule" | "schedule_confidence" | "full";
+export type H3MemoryOptimizationMode = "off" | "preserve-native" | "auto" | "force-quant";
+
+/** Serializable policy result captured with an immutable video queue task. */
+export interface H3MemoryExecutionPlanSnapshot {
+  attention: "pytorch" | "sage" | "h3-sparse" | "sla";
+  memory: H3MemoryOptimizationMode;
+  spectrumEnabled: boolean;
+  turboProfile?: string;
+  previewEnabled: boolean;
+  allowed: boolean;
+  reasons: string[];
+  chunkRows: number;
+}
+
+/** Runtime evidence deliberately keeps execution provider unknown until logs are stable. */
+export interface H3MemoryRuntimeEvidence {
+  requestedMode: H3MemoryOptimizationMode;
+  chunkRows: number;
+  contract: "valid" | "invalid";
+  execution: "unknown" | "optimized" | "fallback" | "failed";
+  nodeVersion?: string;
+  nodeRevision?: string;
+  note?: string;
+}
 
 export interface H3ReferenceSlot {
   id: string;
@@ -246,6 +270,12 @@ export interface Draft {
   spectrumMode: H3SpectrumMode;
   spectrumModelAwareMode: H3SpectrumModelAwareMode;
   spectrumModeUserSet?: boolean;
+  /** Requested H3 Memory Optimization mode for this creation workspace. */
+  h3MemoryOptimizationMode: H3MemoryOptimizationMode;
+  /** True when the user explicitly chose the memory mode. */
+  h3MemoryOptimizationUserSet?: boolean;
+  /** H3 Memory Optimization row chunk size; upstream defaults to 4096. */
+  h3MemoryChunkRows: number;
 }
 
 export type VideoLoraPurpose = "performance" | "style" | "content" | "character" | "motion" | "quality";
@@ -351,6 +381,12 @@ interface VideoQueueTaskBase extends QueueTaskBase {
   attentionMode?: Settings["h3AttentionMode"];
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
+  /** Queue-time H3 Memory Optimization request; absent only in legacy records. */
+  h3MemoryOptimizationMode?: H3MemoryOptimizationMode;
+  h3MemoryOptimizationUserSet?: boolean;
+  h3MemoryChunkRows?: number;
+  h3MemoryExecutionPlan?: H3MemoryExecutionPlanSnapshot;
+  h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   videoLoras?: VideoLoraSelection[];
   /**
    * Queue-time snapshot of the optional H3 preview observer.
@@ -525,6 +561,11 @@ export interface AssetVersion {
   attentionMode?: Settings["h3AttentionMode"];
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
+  h3MemoryOptimizationMode?: H3MemoryOptimizationMode;
+  h3MemoryOptimizationUserSet?: boolean;
+  h3MemoryChunkRows?: number;
+  h3MemoryExecutionPlan?: H3MemoryExecutionPlanSnapshot;
+  h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   fps: number;
   frameInterpolation?: Draft["frameInterpolation"];
   ratio?: Draft["ratio"];
@@ -617,6 +658,11 @@ export interface HistoryAsset {
   attentionMode?: Settings["h3AttentionMode"];
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
+  h3MemoryOptimizationMode?: H3MemoryOptimizationMode;
+  h3MemoryOptimizationUserSet?: boolean;
+  h3MemoryChunkRows?: number;
+  h3MemoryExecutionPlan?: H3MemoryExecutionPlanSnapshot;
+  h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   motion?: Draft["motion"];
   prompt: string;
   seed: number;
@@ -858,9 +904,110 @@ export interface CustomNodeStatus {
   runtimeRequirement?: string;
   /** Optional external-toolchain nodes can be excluded from bulk installation. */
   bulkInstall?: boolean;
+  /** False when the package is recognized but the app must not install or uninstall it. */
+  appInstallable?: boolean;
+  /** Git origin captured during offline scan, when available. */
+  sourceRemote?: string;
+  /** Git worktree state; unknown is expected when Git is unavailable. */
+  revisionDirtyState?: "clean" | "dirty" | "unknown";
 }
 
 export type CustomNodeInstallMode = "install" | "update" | "repair" | "reinstall";
+
+export type EnvironmentScanScope = "full" | "runtime" | "dependencies";
+export type ComfyUiEndpointScope = "local" | "remote" | "unconfigured";
+export type ComfyUiEnvironmentStatus =
+  | "ready"
+  | "needs-attention"
+  | "offline"
+  | "not-found"
+  | "unknown";
+export type ComfyUiRepairOperation =
+  | "repair-node-source"
+  | "repair-core-python"
+  | "repair-database";
+export type ComfyUiRepairBackupStrategy =
+  | "none"
+  | "source-file-copy"
+  | "sqlite-family-copy-and-quarantine";
+export type ComfyUiRepairServiceAction =
+  | "none"
+  | "restart-if-app-owned"
+  | "start-and-verify"
+  | "use-isolated-database";
+
+/**
+ * Explicit scope for an environment repair. The renderer can show this plan
+ * before invoking the legacy issue-repair IPC without guessing which files,
+ * service, or recovery action are involved.
+ */
+export interface ComfyUiRepairPlan {
+  operation: ComfyUiRepairOperation;
+  target: {
+    endpoint: string;
+    endpointScope: ComfyUiEndpointScope;
+    installType: ComfyUiInstallationSummary["type"] | "";
+    installDirectory: string;
+    sourceDirectory: string;
+    dataDirectory: string;
+    pythonPath: string;
+  };
+  backup: {
+    required: boolean;
+    strategy: ComfyUiRepairBackupStrategy;
+    directory: string;
+  };
+  service: {
+    ownership: ComfyRuntimeOwnership;
+    action: ComfyUiRepairServiceAction;
+    remoteMutationAllowed: false;
+  };
+  rescan: {
+    required: boolean;
+    scope: EnvironmentScanScope;
+    waitForService: boolean;
+  };
+  logging: {
+    scope: "environment";
+    retainOutputOnFailure: true;
+  };
+}
+
+/** Additive, renderer-ready summary of the selected ComfyUI environment. */
+export interface ComfyUiEnvironmentSummary {
+  status: ComfyUiEnvironmentStatus;
+  endpoint: string;
+  endpointScope: ComfyUiEndpointScope;
+  serviceReachable: boolean;
+  runtimePhase: ComfyRuntimePhase;
+  runtimeOwnership: ComfyRuntimeOwnership;
+  selectedInstallation: ComfyUiInstallationSummary | null;
+  core: {
+    version: string;
+    revision: string;
+    checkedFrom: ComfyUiCompatibility["checkedFrom"];
+    compatibilityState: "supported" | "warning" | "error" | "unknown";
+  };
+  python: {
+    path: string;
+    version: string;
+    source: PythonRuntimeCandidate["source"] | "";
+    available: boolean;
+  };
+  issues: {
+    total: number;
+    errors: number;
+    warnings: number;
+    repairable: number;
+  };
+  operations: {
+    canStart: boolean;
+    canRestart: boolean;
+    canStop: boolean;
+    canUpdate: boolean;
+    canRepair: boolean;
+  };
+}
 
 export interface EnvironmentIssue {
   id: "fantasytalking-unicodeescape" | "comfy-database" | "comfy-core-pyav";
@@ -869,6 +1016,8 @@ export interface EnvironmentIssue {
   severity: "error" | "warning";
   repairable: boolean;
   repairLabel: string;
+  /** Additive repair scope; legacy scan payloads may omit it. */
+  repairPlan?: ComfyUiRepairPlan;
 }
 
 export interface EnvironmentScanResult {
@@ -892,9 +1041,9 @@ export interface EnvironmentScanResult {
   modelProfiles: ModelScanProfile[];
   customNodes: CustomNodeStatus[];
   issues: EnvironmentIssue[];
+  /** Additive summary for the ComfyUI environment page. */
+  environmentSummary?: ComfyUiEnvironmentSummary;
 }
-
-export type EnvironmentScanScope = "full" | "runtime" | "dependencies";
 
 export interface PythonRuntimeCandidate {
   path: string;
@@ -974,6 +1123,17 @@ export interface EnhanceRequest {
   referenceMediaPaths?: string[];
   referenceContext?: string;
   extensionSource?: PromptExtensionSource;
+  /** One-shot user consent for CPU inference after a visible VRAM warning. */
+  allowCpuFallback?: boolean;
+}
+
+export interface PromptExecutionPreflight {
+  requiresCpuConfirmation: boolean;
+  modelId: string;
+  vramUsedBytes: number | null;
+  vramTotalBytes: number | null;
+  vramFreeBytes: number | null;
+  requiredFreeVramBytes: number | null;
 }
 
 export type PromptProgressStage =
@@ -1204,9 +1364,10 @@ export interface AppApi {
   copyFile(path: string): Promise<ConnectionResult>;
   openSystemPlayer(path: string): Promise<ConnectionResult>;
   openExternal(url: string): Promise<boolean>;
+  preflightPromptModel(): Promise<PromptExecutionPreflight>;
   enhancePrompt(request: EnhanceRequest): Promise<string>;
   cancelPrompt(): Promise<ConnectionResult>;
-  startPromptModel(): Promise<ConnectionResult>;
+  startPromptModel(allowCpuFallback?: boolean): Promise<ConnectionResult>;
   releasePromptModel(): Promise<ConnectionResult>;
   testConnection(kind: ConnectionKind, settings: Settings): Promise<ConnectionResult>;
   scanEnvironment(

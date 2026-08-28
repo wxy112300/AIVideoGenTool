@@ -38,6 +38,36 @@ export async function acceptConfirmation(context, options) {
             options.restoreModalFocus();
             return;
         }
+        else if (request.kind === "uninstall-llama-cpp-python") {
+            const settings = options.getFormSettings();
+            options.setLlamaCppPythonInstalling(true);
+            options.setLlamaCppPythonLog("");
+            const result = await context.studio.uninstallLlamaCppPython(settings);
+            options.setLlamaCppPythonLog(result.log || result.message);
+            if (!result.ok)
+                throw new Error(result.message);
+            await options.scanEnvironment(settings);
+            options.setLlamaCppPythonInstalling(false);
+            options.setRequest(null);
+            options.setBusy(false);
+            options.notify(result.message);
+            options.render();
+            options.restoreModalFocus();
+            return;
+        }
+        else if (request.kind === "uninstall-custom-node") {
+            const settings = options.getFormSettings();
+            const result = await context.studio.uninstallCustomNode(request.nodeId, settings);
+            if (!result.ok)
+                throw new Error(result.message);
+            await options.scanEnvironment(settings);
+            options.setRequest(null);
+            options.setBusy(false);
+            options.notify(result.message);
+            options.render();
+            options.restoreModalFocus();
+            return;
+        }
         else if (request.kind === "remove-queue-task") {
             options.setQueueActionBusy({ taskId: request.taskId, action: "remove" });
             options.setState(await context.studio.removeTask(request.taskId));

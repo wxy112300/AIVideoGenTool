@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyFailureForRecovery,
+  normalizeH3AttentionMode,
   nextH3AttentionModeAfterCudaFailure,
   nextAutomaticRetryAttempt
 } from "../src/core/recovery.js";
@@ -75,5 +76,12 @@ describe("queue failure recovery classification", () => {
     expect(nextH3AttentionModeAfterCudaFailure("sage-triton")).toBe("pytorch");
     expect(nextH3AttentionModeAfterCudaFailure("pytorch")).toBeNull();
     expect(nextH3AttentionModeAfterCudaFailure(undefined)).toBe("sage-triton");
+  });
+
+  it("normalizes retired or unknown attention modes to Sage CUDA FP16", () => {
+    expect(normalizeH3AttentionMode("sage-2-plus-plus")).toBe("sage");
+    expect(normalizeH3AttentionMode("sage-triton")).toBe("sage-triton");
+    expect(normalizeH3AttentionMode("pytorch")).toBe("pytorch");
+    expect(normalizeH3AttentionMode(undefined)).toBe("sage");
   });
 });

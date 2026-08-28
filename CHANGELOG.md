@@ -8,6 +8,27 @@
 
 ## Unreleased
 
+## 0.51.3 — 2026-08-28
+
+- 完成设置页职责重构：新增 `ComfyUI 环境`，将核心版本、Python、服务、实例和修复入口集中管理；`节点与依赖`统一管理可安装节点、llama-cpp-python 和 H3 加速依赖；`应用与路径`保留应用级路径和运行参数。
+- `性能与加速`收敛为 H3 Attention 后端选择；移除“临时入口”显示，并为 SageAttention CUDA FP16、SageAttention Triton FP16 和 PyTorch Attention 增加三语言悬停说明。既有设置、队列快照和工作流语义保持不变。
+- 归档 ComfyUI 设置与环境管理重构计划；H3 Memory 与 Attention 最终统一另立后续 Plan。
+
+- 在全局顶部栏右上导航的正上方窄缝加入类似 Unreal 编辑器的单行资源监控，并与导航右边缘对齐、仅留极小垂直间距：常驻显示 CPU、RAM、GPU、显存利用率，并在空间允许时同时显示 GPU 温度及 RAM/显存实际占用（如 `3.2/24.0G`）；居中的全局通知出现时监控仍保持可见。该摘要复用 Queue 已有的单一 2 秒性能轮询并原位更新，不触发页面重绘；窄窗口逐级移动或隐藏次要详情，Queue 的完整四卡监控保持不变。
+- 修复 Qwen3.6/Qwen3.8 多模态提示词增强在其他程序占用过多显存时静默退到 `n_gpu_layers=0` CPU 推理、用户只能感知到异常缓慢的问题：27B 模型在启动或提交前检查实时显存；空闲不足 20 GiB 或无法读取时，应用内弹窗会列出已用、总量、空闲和所需显存，并警告 CPU 的速度与系统内存代价。默认取消不会加载模型，只有本次明确确认才允许 CPU 推理，不保存为全局或会话默认；运行前校验同时复用已有依赖证据，仅刷新 ComfyUI 服务与节点注册状态。
+- 移除 ckpt850 EMA Turbo LoRA 的新任务入口和环境扫描；因画面质量不稳定，旧队列与历史记录仍保留读取兼容，但新任务不再允许使用。
+- 撤回 H3 Attention 的实验性 SageAttention 2++ FP8 选项：当前 Windows RTX 4090/SM89 环境的真实最小任务会使 ComfyUI 进程退出，且上游未提供 Windows 支持保证。设置、旧队列与历史重试中已保存的 2++ 值会迁移到 SageAttention CUDA FP16；稳定的 CUDA FP16 → Triton FP16 → PyTorch 降级链保持不变。
+- Spectrum MiniMax H3 推荐版本从 `v0.2.17` 更新为 `v0.2.20`：`v0.2.18–v0.2.20` 增加并修复可选 RefDelta Solver v0.2.0+ API-v1 互操作、嵌套 custom-node 发现和首次 ER-SDE step provenance；现有 H3 工作流、参数和既有互操作不变，RefDelta 仍不属于本应用硬依赖。
+
+## 0.51.2 — 2026-08-27
+
+- 暂时撤回 H3 Memory Optimization 产品入口：创建页与队列卡片不再显示该选项，现有 draft、旧队列和历史重试中的 Memory 值统一归一为关闭，工作流会移除已管理的 Memory/AIMDO 节点，任务不再选择 DynamicVRAM 专用运行 profile。设置页仍保留 H3 Optimizations 手动安装/更新入口作为可选观察项，但不再参与批量安装或生成就绪判断。
+- 修复 H3 Memory 错误放行 KJ Triton Sage 的问题：KJNodes 当前未实现 H3 Optimizations 的 streamed-Q consumer contract，实际会回退到 `qkv_provider=standard_h3_qkv`、`memory=baseline`。Memory-on 的 `sage` 与 `sage-triton` 请求现在都移除 KJ override 并使用已验证的 PyTorch/Comfy bounded-Q 路径；Memory-off 任务仍保留 Triton Sage。真实 5 帧 smoke 已确认 `qkv_provider=chunked_bf16_qkv`、`memory=streamed_q` 并完成输出。
+- 修复队列任务在 ComfyUI 启动完成前取消后，服务就绪轮询仍等待两分钟并持续占用旧 worker，导致新任务无法启动的问题；队列取消信号现在会立即终止启动等待并释放 worker，ComfyUI 进程仍由既有安全清理流程回收。
+- 修复 H3 Memory 在 Windows RTX 4090 上强制进程级 SageAttention 后，SM89 FP8 PV native kernel 可在 H3 text-embedding preprocessing 中直接终止 Python 的问题，并明确 360 帧任务进入 WDDM shared-memory paging 后长期无 sampler step 仍属于未支持边界；Memory-on 的 Sage 请求现在记录为 `sage->pytorch` normalization，专用 `h3-memory` profile 显式保留 DynamicVRAM、两条 async weight-offload stream、pinned staging 与 `H3AIMDOResidencyLimiter(2 blocks)`，不再加入全局 `--use-sage-attention`。直接 ComfyUI smoke 已通过 5 帧和 124 帧完整 MP4 输出；360 帧单段仍不声明支持。
+- 修复 H3 Memory 长时间加载模型时 ComfyUI HTTP 接口暂时无响应，被任务等待器在 3 分钟后误判断连、强制重启并自动重试的问题；任务 WebSocket 仍连接时沿用有界的长任务服务静默期限，WebSocket 未连接或已断开时继续使用严格故障检测。
+- 修复应用管理的 ComfyUI 正在执行队列任务时，性能探针超时导致全局状态误报“接口不可用”及“当前未连接”的问题；真实子进程退出仍由进程生命周期监听立即报告。
+
 ## 0.51.1 — 2026-08-27
 
 - “节点与依赖”按产品优先级统一排列：视频主链路和通用节点优先，提示词/图片/后处理节点居中，特定模式和实验性节点靠后；新增节点必须声明稳定优先级。

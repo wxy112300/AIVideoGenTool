@@ -97,11 +97,11 @@ npm.cmd run harness:comfy -- repair-prompt-writer
 
 ### 6.1 选择并扫描实例
 
-在“设置 → 系统与路径”选择 ComfyUI，确认核心/数据目录和模型根目录，然后执行离线扫描。此步骤不要求启动服务。
+在“设置 → ComfyUI 环境”选择 ComfyUI，确认核心/数据目录、Python 和模型根目录，然后执行离线扫描。此步骤不要求启动服务。ComfyUI 环境页还负责服务状态、核心版本/兼容性和安全修复；应用目录、代理和队列策略仍属于“设置 → 应用与路径”。
 
 ### 6.2 安装节点
 
-“设置 → 节点与依赖”中的可管理第三方节点可一键安装或更新。安装器会：
+“设置 → 节点与依赖”中的可管理第三方节点和 Python 运行依赖可一键安装或更新。`llama-cpp-python`、SageAttention、Triton、KJNodes 等可安装依赖也属于此页；它们的修复不能被描述成 ComfyUI 核心修复。安装器会：
 
 1. 定位所选 ComfyUI 的 `custom_nodes` 和 Python。
 2. 使用 Git clone/pull；需要安全替换时先备份原目录。
@@ -111,6 +111,8 @@ npm.cmd run harness:comfy -- repair-prompt-writer
 6. 当前批次安装完成后只重启一次 ComfyUI，并统一通过运行时节点重新检查。
 
 可以连续点击多个节点加入等待队列。应用会锁定该批次开始时所选的 ComfyUI 实例和 Python，串行执行每个节点的 Git/pip 操作；单项失败会写入对应卡片日志并继续下一项，不会让后续节点永远等待。批次末尾统一重启和复扫，卡片会区分“排队中”“处理中”和“正在重启并复检”。重启/复检阶段不再接受新的节点，避免节点被安装到另一套环境。
+
+应用可管理的节点卸载时会永久删除匹配的 `custom_nodes` 目录，不创建或依赖本地备份；需要恢复时重新执行一键安装，由 catalog 声明的仓库、版本规则和兼容补丁重新下载构建。确认对话框会提示本地修改不会保留。手动安装的节点不由应用卸载；如果 ComfyUI 原本没有运行，卸载也不会为了刷新节点而启动它。
 
 面板顶端的一键操作会加入未安装、低于 catalog 推荐版本、需要应用兼容修复，或已安装但 catalog 基础节点类型全部未在 `/object_info` 注册的 Custom Nodes。最后一种状态表示整个节点包很可能在启动时导入失败；修复会安全更新节点、使用所选 ComfyUI Python 重装 requirements，并在批次末尾重启复检。仅缺少部分或可选节点类型时仍只显示运行时告警，不会反复重装。所有实际安装项复用同一串行队列，并在批次末尾最多重启一次，不会把 ComfyUI 核心升级或内置工作流文件混入节点批次。
 
@@ -148,7 +150,7 @@ H3 Prompt Writer 与可选 MultiModal Prompt Nodes 共用同一个 Python 包名
 
 ComfyUI Desktop 某些版本在嵌入式控制台关闭后会让节点的普通 `print()` 抛出 `[Errno 9] Bad file descriptor`，这发生在模型加载前，并不代表权重损坏。重新扫描时如果发现 Qwen-VL 节点仍使用该输出方式，设置页会把它标为“需修复”并提供“一键补齐/更新”；安装器会针对当前选择的 ComfyUI **数据目录**应用可重复的兼容层，保留节点更新策略，不写入机器固定路径。应用后必须重启 ComfyUI，再进行运行时复检。
 
-Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.17`，在 `v0.2.16` 的基础上补完 H3 Continuum 互操作：混合 VIDEO/AUDIO mask 可继续使用原生 H3 forecast，learned-latent sampler-2 refinement 不继承 sampler-1 的 Continuum actual-prefix，旧版 ComfyUI 核心缺少 `mask_row_values` 时安全降级为一次原生 H3 transformer 评估。它保留原生 ER-SDE、KJNodes 预览回放、Untwisting RoPE 外部补丁契约和隔离的生成后研究进程。设置页会展示上游最新发布，但不会仅因它高于 catalog 推荐线就触发更新。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。Spectrum 不要求额外模型权重，也不把 Continuum、Diff-Aid 或 Untwisting RoPE 变成硬依赖。
+Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前推荐 `v0.2.20`。`v0.2.17` 补完 H3 Continuum 互操作：混合 VIDEO/AUDIO mask 可继续使用原生 H3 forecast，learned-latent sampler-2 refinement 不继承 sampler-1 的 Continuum actual-prefix，旧版 ComfyUI 核心缺少 `mask_row_values` 时安全降级为一次原生 H3 transformer 评估；`v0.2.18–v0.2.20` 增加并修复可选 MiniMax H3 RefDelta Solver v0.2.0+ API-v1 互操作、嵌套 custom-node 命名空间发现和首次 ER-SDE step provenance。现有 H3 工作流、参数和既有互操作不变，RefDelta 仍不是本应用硬依赖。它保留原生 ER-SDE、KJNodes 预览回放、Untwisting RoPE 外部补丁契约和隔离的生成后研究进程。设置页会展示上游最新发布，但不会仅因它高于 catalog 推荐线就触发更新。LightX2V Turbo 与 Spectrum 同开至少需要 `v0.2.6`；`model_aware_mode` 至少需要 `v0.2.7`，默认关闭。Spectrum 不要求额外模型权重，也不把 Continuum、Diff-Aid 或 Untwisting RoPE 变成硬依赖。
 
 注意：MiniMax H3 基础生成节点属于 ComfyUI 核心，不应伪装成第三方节点。如果核心节点缺失，应更新/切换正确的 ComfyUI 核心并重新扫描。
 
@@ -223,7 +225,7 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 
 ### ComfyUI 数据库自动修复
 
-环境扫描发现近期数据库初始化错误时，会根据日志中的实际 SQLite 路径区分进程锁占用、Python 依赖缺失、目录不可写、Alembic 迁移不兼容和文件损坏。自动修复必须在队列和提示词任务停止后执行，并使用当前所选 ComfyUI 的核心目录、数据目录和 Python。
+环境扫描发现近期数据库初始化错误时，设置 → ComfyUI 环境会根据日志中的实际 SQLite 路径区分进程锁占用、Python 依赖缺失、目录不可写、Alembic 迁移不兼容和文件损坏。自动修复必须在队列和提示词任务停止后执行，并使用当前所选 ComfyUI 的核心目录、数据目录和 Python。数据库/PyAV 等核心问题修复与节点或加速依赖重装是两类独立操作。
 
 修复先复制备份数据库及 `-wal`、`-shm`、`-journal`、`.lock` 辅助文件，再运行当前核心的 Alembic 迁移和 SQLite `quick_check`。只有明确的迁移不兼容或数据库损坏才会隔离旧文件并创建新库；任何新建失败都会恢复备份。锁占用不等于数据库损坏，应用不会删除原库或终止外部启动的 ComfyUI，而是验证应用自己的隔离数据库能否启动。目录或数据库不属于当前所选实例时，自动修复会拒绝修改并保留诊断日志。
 

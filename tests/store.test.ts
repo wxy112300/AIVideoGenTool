@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { JsonStore, replaceStateFile } from "../electron/store.js";
 import { createDefaultState } from "../src/core/defaults.js";
-import type { ImageGenerationQueueTask } from "../src/types.js";
+import { queueTaskFromDraft } from "../src/core/queue-task-factory.js";
+import type { HistoryAsset, ImageGenerationQueueTask } from "../src/types.js";
 
 function fileError(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(code), { code });
@@ -66,6 +67,74 @@ describe("Windows state file replacement", () => {
 });
 
 describe("queue lock recovery", () => {
+  it("migrates retired SageAttention 2++ values without inventing missing history metadata", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    const task = queueTaskFromDraft(state.draft, state);
+    state.settings.h3AttentionMode = "sage-2-plus-plus" as never;
+    task.attentionMode = "sage-2-plus-plus" as never;
+    state.queue = [task];
+    state.history = [{
+      taskId: task.id,
+      title: "Migration test",
+      outputFilename: task.outputFilename,
+      createdAt: task.createdAt,
+      updatedAt: task.createdAt,
+      modelId: task.modelId,
+      favorite: false,
+      rating: null,
+      tags: [],
+      duration: task.duration,
+      resolution: 768,
+      seed: task.seed,
+      prompt: task.prompt,
+      attentionMode: "sage-2-plus-plus" as never,
+      files: [],
+      mediaKind: "video",
+      versions: [{
+        id: "version-with-retired-mode",
+        kind: "original",
+        createdAt: task.createdAt,
+        outputFilename: task.outputFilename,
+        modelId: task.modelId,
+        width: task.width,
+        height: task.height,
+        duration: task.duration,
+        fps: task.fps,
+        seed: task.seed,
+        workflowPath: task.workflowPath,
+        files: [],
+        attentionMode: "sage-2-plus-plus" as never
+      }, {
+        id: "version-without-mode",
+        kind: "original",
+        createdAt: task.createdAt,
+        outputFilename: task.outputFilename,
+        modelId: task.modelId,
+        width: task.width,
+        height: task.height,
+        duration: task.duration,
+        fps: task.fps,
+        seed: task.seed,
+        workflowPath: task.workflowPath,
+        files: []
+      }]
+    }];
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.settings.h3AttentionMode).toBe("sage");
+      expect(loaded.queue[0]?.attentionMode).toBe("sage");
+      expect(loaded.history[0]?.attentionMode).toBe("sage");
+      expect(loaded.history[0]?.versions[0]?.attentionMode).toBe("sage");
+      expect(loaded.history[0]?.versions[1]?.attentionMode).toBeUndefined();
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("defaults legacy state without a queue isolation mode to LoRA boundaries", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
@@ -119,6 +188,96 @@ describe("queue lock recovery", () => {
     }
   });
 
+  it("migrates legacy H3 Memory fields to the safe off/4096 snapshot", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    const task = queueTaskFromDraft({
+      ...state.draft,
+      workflowPath: "workflow.json"
+    }, state, {
+      now: () => new Date("2026-08-20T12:00:00.000Z"),
+      id: () => "memory-task-1",
+      random: () => 0.5
+    });
+    const legacyDraft = { ...state.draft } as Record<string, unknown>;
+    delete legacyDraft.h3MemoryOptimizationMode;
+    delete legacyDraft.h3MemoryOptimizationUserSet;
+    delete legacyDraft.h3MemoryChunkRows;
+    const legacyTask = { ...task } as Record<string, unknown>;
+    delete legacyTask.h3MemoryOptimizationMode;
+    delete legacyTask.h3MemoryOptimizationUserSet;
+    delete legacyTask.h3MemoryChunkRows;
+    const legacyHistory = {
+      mediaKind: "video",
+      id: "memory-asset-1",
+      taskId: "memory-task-1",
+      title: "legacy",
+      outputFilename: "legacy.mp4",
+      createdAt: "2026-08-20T12:00:00.000Z",
+      updatedAt: "2026-08-20T12:00:00.000Z",
+      modelId: "minimax_h3_fl2va",
+      favorite: false,
+      rating: null,
+      tags: [],
+      duration: 1,
+      resolution: 480,
+      prompt: "legacy",
+      seed: 1,
+      comfyPromptId: "memory-prompt-1",
+      comfyOutputs: {},
+      files: [],
+      versions: [{
+        id: "memory-version-1",
+        kind: "original",
+        createdAt: "2026-08-20T12:00:00.000Z",
+        outputFilename: "legacy.mp4",
+        modelId: "minimax_h3_fl2va",
+        width: 16,
+        height: 16,
+        duration: 1,
+        fps: 24,
+        workflowPath: "workflow.json",
+        comfyPromptId: "memory-prompt-1",
+        comfyOutputs: {},
+        files: []
+      }]
+    } as unknown as HistoryAsset;
+    await fs.writeFile(filename, JSON.stringify({
+      ...state,
+      schemaVersion: 13,
+      draft: legacyDraft,
+      queue: [legacyTask],
+      history: [legacyHistory]
+    }), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.schemaVersion).toBe(14);
+      expect(loaded.draft).toMatchObject({
+        h3MemoryOptimizationMode: "off",
+        h3MemoryOptimizationUserSet: false,
+        h3MemoryChunkRows: 4096
+      });
+      expect(loaded.queue[0]).toMatchObject({
+        h3MemoryOptimizationMode: "off",
+        h3MemoryOptimizationUserSet: false,
+        h3MemoryChunkRows: 4096
+      });
+      expect(loaded.history[0]).toMatchObject({
+        h3MemoryOptimizationMode: "off",
+        h3MemoryOptimizationUserSet: false,
+        h3MemoryChunkRows: 4096,
+        versions: [{
+          h3MemoryOptimizationMode: "off",
+          h3MemoryChunkRows: 4096
+        }]
+      });
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("migrates separate creation parameter snapshots", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");
@@ -136,7 +295,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(13);
+      expect(loaded.schemaVersion).toBe(14);
       expect(loaded.draft.modelId).toBe("sulphur2");
       expect(loaded.videoExtensionDraft?.modelId).toBe("sulphur2");
       expect(loaded.imageToVideoDraft).toMatchObject({
@@ -330,7 +489,7 @@ describe("queue lock recovery", () => {
     try {
       const loaded = await new JsonStore(filename).load();
       expect(loaded.settings.promptModelId).toBe("community/gemma-4-12b-uncensored-q4");
-      expect(loaded.schemaVersion).toBe(13);
+      expect(loaded.schemaVersion).toBe(14);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
@@ -440,7 +599,7 @@ describe("queue lock recovery", () => {
     try {
       const store = new JsonStore(filename);
       const loaded = await store.load();
-      expect(loaded.schemaVersion).toBe(13);
+      expect(loaded.schemaVersion).toBe(14);
       expect(loaded.imageDraft.mode).toBe("image-edit");
       expect(loaded.imageDraft.modelId).toBe("qwen-image-edit-2511");
       expect(loaded.draft.extensionPromptVersions).toHaveLength(1);
@@ -454,13 +613,13 @@ describe("queue lock recovery", () => {
         settings: { imageOutputDirectory: string };
         imageHistory: unknown[];
       };
-      expect(persisted.schemaVersion).toBe(13);
+      expect(persisted.schemaVersion).toBe(14);
       expect(persisted.imageDraft.mode).toBe("image-edit");
       expect(persisted.settings.imageOutputDirectory).toBe("");
       expect(persisted.imageHistory).toEqual([]);
 
       const reloaded = await new JsonStore(filename).load();
-      expect(reloaded.schemaVersion).toBe(13);
+      expect(reloaded.schemaVersion).toBe(14);
       expect(reloaded.imageDraft.mode).toBe("image-edit");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
@@ -520,7 +679,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(13);
+      expect(loaded.schemaVersion).toBe(14);
       expect(loaded.settings.defaultImageQualityProfile).toBe("balanced-20");
       expect(loaded.imageDraft.qualityProfile).toBe("balanced-20");
     } finally {
@@ -566,7 +725,7 @@ describe("queue lock recovery", () => {
 
     try {
       const loaded = await new JsonStore(filename).load();
-      expect(loaded.schemaVersion).toBe(13);
+      expect(loaded.schemaVersion).toBe(14);
       expect(loaded.draft.modelId).toBe("minimax_h3_fl2va");
       expect(loaded.draft.videoLoras).toEqual([
         expect.objectContaining({

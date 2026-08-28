@@ -368,7 +368,8 @@ export async function enhancePromptWithQwenVlPeft(
       mode,
       request.h3DurationSeconds ?? 5,
       extractH3DialogueLocks(request.prompt),
-      extractH3VisibleTextLocks(request.prompt)
+      extractH3VisibleTextLocks(request.prompt),
+      request.prompt
     );
   } catch (error) {
     const reportedError = explainQwenVlRuntimeError(error);

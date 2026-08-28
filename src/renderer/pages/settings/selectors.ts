@@ -282,7 +282,7 @@ export function deriveCustomNodeCardState(options: {
       ? "compatibility-error"
       : options.node.updateAvailable && options.node.loaded
         ? "update"
-        : options.node.runtimeVerified && Boolean(options.node.runtimeMissingNodeTypes?.length)
+        : options.node.installed && options.node.runtimeVerified && Boolean(options.node.runtimeMissingNodeTypes?.length)
           ? "runtime-missing"
           : options.node.loaded && !options.node.runtimeVerified && !options.node.compatibilityNotice
             ? "file-ready"

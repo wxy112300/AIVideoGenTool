@@ -1120,7 +1120,19 @@ async function runSettingsInteractionSmoke(window, fixture, viewport) {
     active.dispatchEvent(event);
     return { found: true, defaultPrevented: event.defaultPrevented };
   })()`);
-  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-acceleration[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-acceleration'", `${fixture.id} settings arrow`);
+  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-nodes[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-nodes'", `${fixture.id} settings arrow`);
+  await clickAndWait(
+    window,
+    '[data-settings-tab="system"]',
+    "Boolean(document.querySelector('#settings-panel-system') && document.querySelector('#ui-locale') && !document.querySelector('#settings-environment-section'))",
+    `${fixture.id} application paths`
+  );
+  await clickAndWait(
+    window,
+    '[data-settings-tab="comfyui"]',
+    "Boolean(document.querySelector('#settings-panel-comfyui') && document.querySelector('#settings-environment-section'))",
+    `${fixture.id} ComfyUI environment restore`
+  );
   const home = await executeJavaScript(window, `(() => {
     const active = document.querySelector('[role="tab"][aria-selected="true"]');
     if (!active) return false;
@@ -1128,7 +1140,7 @@ async function runSettingsInteractionSmoke(window, fixture, viewport) {
     active.dispatchEvent(event);
     return event.defaultPrevented;
   })()`);
-  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-system[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-system'", `${fixture.id} settings home`);
+  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-comfyui[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-comfyui'", `${fixture.id} settings home`);
   const end = await executeJavaScript(window, `(() => {
     const active = document.querySelector('[role="tab"][aria-selected="true"]');
     if (!active) return false;
@@ -1143,7 +1155,7 @@ async function runSettingsInteractionSmoke(window, fixture, viewport) {
     active.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
     return true;
   })()`);
-  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-system[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-system'", `${fixture.id} settings restore`);
+  await waitForDom(window, "Boolean(document.querySelector('#settings-tab-comfyui[aria-selected=\"true\"]')) && document.activeElement?.id === 'settings-tab-comfyui'", `${fixture.id} settings restore`);
   await wait(160);
   const final = await executeJavaScript(window, `({
     activeId: document.querySelector('[role="tab"][aria-selected="true"]')?.id ?? '',
@@ -1156,13 +1168,13 @@ async function runSettingsInteractionSmoke(window, fixture, viewport) {
   })`);
   const compact = viewport.width <= 900;
   const checks = {
-    semantics: initial.tabCount === 9 && initial.tabStops === 1 && initial.selectedCount === 1 && initial.panelLabel === initial.activeId,
+    semantics: initial.tabCount === 10 && initial.tabStops === 1 && initial.selectedCount === 1 && initial.panelLabel === initial.activeId,
     compactSingleRow: !compact || (initial.sidebarDisplay === 'flex' && initial.sidebarWrap !== 'wrap' && initial.rows.length === 1),
-    actionContext: initial.scanInEnvironment && !initial.scanInHeading,
+    actionContext: !initial.scanInEnvironment && initial.scanInHeading,
     arrow: arrow.found && arrow.defaultPrevented,
     home: home === true,
     end: end === true,
-    focusRestored: final.activeId === 'settings-tab-system' && final.panelLabel === 'settings-tab-system' && final.tabStops === 1,
+    focusRestored: final.activeId === 'settings-tab-comfyui' && final.panelLabel === 'settings-tab-comfyui' && final.tabStops === 1,
     evidenceAndActions: initial.environmentEvidenceList && initial.connectionStatus === 'status' && initial.forceStopSecondary,
     noHorizontalOverflow: final.documentScrollWidth <= final.documentClientWidth + 1
   };

@@ -53,6 +53,8 @@ describe("queue recovery lifecycle", () => {
       return structuredClone(state);
     };
     const onRuntimeRestarted = vi.fn();
+    const interruptComfyUi = vi.fn(async () => undefined);
+    const freeComfyMemory = vi.fn(async () => undefined);
 
     await recoverQueueFailure({
       store: store as never,
@@ -61,6 +63,8 @@ describe("queue recovery lifecycle", () => {
       updateTask,
       settingsForTask: (_task, settings) => settings,
       onRuntimeRestarted,
+      interruptComfyUi,
+      freeComfyMemory,
       errorMeta: () => ({})
     }, {
       task,
@@ -70,6 +74,8 @@ describe("queue recovery lifecycle", () => {
     });
 
     expect(mocks.restartLocalService).toHaveBeenCalledOnce();
+  expect(interruptComfyUi).toHaveBeenCalledOnce();
+  expect(freeComfyMemory).toHaveBeenCalledOnce();
     expect(onRuntimeRestarted).toHaveBeenCalledOnce();
     expect(state.queueRunning).toBe(false);
     expect(state.queue[0]).toMatchObject({
@@ -80,4 +86,5 @@ describe("queue recovery lifecycle", () => {
     });
     expect(snapshots.at(-1)?.queueRunning).toBe(false);
   });
+
 });

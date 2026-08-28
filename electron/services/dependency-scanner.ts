@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { customNodeCatalog } from "../../src/core/catalog/index.js";
 import {
   compareReleaseVersions,
@@ -21,6 +23,8 @@ import {
   qwenVlNeedsComfyDesktopLoggingShim,
   qwenVlNeedsCooperativeInterrupt
 } from "./dependency-node-adapters.js";
+
+const execFileAsync = promisify(execFile);
 
 export interface LocalNodeVersion {
   version: string;
@@ -83,6 +87,24 @@ async function gitRemoteUrl(directory: string): Promise<string> {
   return source.match(/\[remote\s+"origin"\][\s\S]*?\n\s*url\s*=\s*([^\r\n]+)/i)?.[1]?.trim() ?? "";
 }
 
+type GitDirtyState = "clean" | "dirty" | "unknown";
+
+async function gitDirtyState(directory: string): Promise<GitDirtyState> {
+  if (!directory || !(await fs.stat(path.join(directory, ".git")).catch(() => null))) {
+    return "unknown";
+  }
+  try {
+    const { stdout } = await execFileAsync(
+      process.platform === "win32" ? "git.exe" : "git",
+      ["-C", directory, "status", "--porcelain", "--untracked-files=all"],
+      { encoding: "utf8", timeout: 5_000, windowsHide: true }
+    );
+    return stdout.trim() ? "dirty" : "clean";
+  } catch {
+    return "unknown";
+  }
+}
+
 async function directoryContainsMotionContextNodes(directory: string): Promise<boolean> {
   const candidates = [
     "nodes.py",
@@ -100,6 +122,47 @@ async function directoryContainsMotionContextNodes(directory: string): Promise<b
     "MiniMaxH3MotionContextSaveLatent",
     "MiniMaxH3MotionContextLoadLatent"
   ].some((nodeType) => combined.includes(nodeType));
+}
+
+async function directoryContainsNodeTypes(
+  directory: string,
+  nodeTypes: readonly string[]
+): Promise<boolean> {
+  const candidates = [
+    "__init__.py",
+    "nodes.py",
+    "public_nodes.py",
+    "memory_migration_node.py",
+    path.join("h3_optimizations", "__init__.py"),
+    path.join("h3_optimizations", "public_nodes.py"),
+    path.join("h3_optimizations", "memory_migration_node.py")
+  ];
+  const sources = await Promise.all(candidates.map((filename) =>
+    fs.readFile(path.join(directory, filename), "utf8").catch(() => "")
+  ));
+  return nodeTypes.some((nodeType) => sources.some((source) => source.includes(nodeType)));
+}
+
+async function findH3MemoryDirectories(
+  entries: readonly import("node:fs").Dirent[],
+  customNodesDirectory: string
+): Promise<string[]> {
+  if (!customNodesDirectory) return [];
+  const definition = customNodeCatalog.find((item) => item.id === "h3-optimizations");
+  if (!definition) return [];
+  const repository = normalizedRepositoryUrl(definition.repositoryUrl);
+  const aliases = new Set(definition.aliases.map((alias) => alias.toLowerCase()));
+  const directories = entries.filter((entry) => entry.isDirectory());
+  const matches = await Promise.all(directories.map(async (entry) => {
+    const directory = path.join(customNodesDirectory, entry.name);
+    if (aliases.has(entry.name.toLowerCase())) return directory;
+    const remote = await gitRemoteUrl(directory);
+    if (remote && normalizedRepositoryUrl(remote) === repository) return directory;
+    return await directoryContainsNodeTypes(directory, definition.nodeTypes ?? [])
+      ? directory
+      : "";
+  }));
+  return matches.filter(Boolean);
 }
 
 async function findMotionContextDirectories(
@@ -414,6 +477,7 @@ export async function scanCustomNodes(
       .map((entry) => [entry.name.toLowerCase(), path.join(customNodesDirectory, entry.name)])
   );
   const motionContextDirectories = await findMotionContextDirectories(entries, customNodesDirectory);
+  const h3MemoryDirectories = await findH3MemoryDirectories(entries, customNodesDirectory);
   const serviceRoot = (runtimeBaseUrl || settings.comfyUrl).replace(/\/+$/, "");
   const serviceNodeIds = await fetch(
     `${serviceRoot}/object_info`,
@@ -440,6 +504,15 @@ export async function scanCustomNodes(
     revisionCache.set(directory, pending);
     return pending;
   };
+  const dirtyStateCache = new Map<string, Promise<GitDirtyState>>();
+  const readDirtyState = (directory: string): Promise<GitDirtyState> => {
+    if (!directory) return Promise.resolve("unknown");
+    const cached = dirtyStateCache.get(directory);
+    if (cached) return cached;
+    const pending = gitDirtyState(directory);
+    dirtyStateCache.set(directory, pending);
+    return pending;
+  };
 
   return Promise.all(customNodeCatalog.map(async (definition) => {
     const matchedName = definition.aliases.find((alias) =>
@@ -450,9 +523,13 @@ export async function scanCustomNodes(
       : "";
     const directory = definition.id === "h3-motion-context"
       ? exactDirectory || motionContextDirectories[0] || ""
+      : definition.id === "h3-optimizations"
+        ? exactDirectory || h3MemoryDirectories[0] || ""
       : exactDirectory;
     const duplicateDirectories = definition.id === "h3-motion-context"
       ? motionContextDirectories.filter((candidate) => candidate !== directory)
+      : definition.id === "h3-optimizations"
+        ? h3MemoryDirectories.filter((candidate) => candidate !== directory)
       : [];
     let compatibilityError = "";
     let compatibilityNotice = "";
@@ -569,6 +646,12 @@ export async function scanCustomNodes(
       ? normalizeReleaseVersion(remoteVersion)
       : "";
     const detectedRevision = await readRevision(directory);
+    const sourceRemote = definition.id === "h3-optimizations"
+      ? await gitRemoteUrl(directory)
+      : "";
+    const revisionDirtyState = definition.id === "h3-optimizations"
+      ? await readDirtyState(directory)
+      : undefined;
     const requiredNodeTypes = definition.nodeTypes;
     // Prompt Writer exposes a more specific runtime contract than
     // /object_info. If its status/models endpoints respond, use that as
@@ -598,7 +681,11 @@ export async function scanCustomNodes(
         : `节点文件已安装，但当前服务未注册：${runtimeMissingNodeTypes.join("、")}。重复安装通常无效，请查看本次 ComfyUI 启动日志中的节点导入错误`
       : "";
     const duplicateNotice = duplicateDirectories.length
-      ? `检测到 ${duplicateDirectories.length + 1} 个 H3 Motion Context 副本；只保留一个副本，否则运行时 patch 可能冲突。`
+      ? definition.id === "h3-motion-context"
+        ? `检测到 ${duplicateDirectories.length + 1} 个 H3 Motion Context 副本；只保留一个副本，否则运行时 patch 可能冲突。`
+        : definition.id === "h3-optimizations"
+          ? `检测到 ${duplicateDirectories.length + 1} 个 H3 Optimizations 副本；只保留一个副本，否则 H3 Memory 节点来源可能不明确。`
+          : ""
       : "";
     const loadError = compatibilityError ||
       (definition.id === "minimax-h3-prompt-writer" && directory ? h3PromptWriterRuntime.error : "") ||
@@ -645,6 +732,8 @@ export async function scanCustomNodes(
       recommendedVersion: definition.recommendedVersion ?? "",
       latestVersion,
       detectedRevision,
+      sourceRemote,
+      revisionDirtyState,
       compatibilityState: compatibility.compatibilityState,
       compatibilityNotice: compatibility.compatibilityNotice,
       compatibilityEvidence: definition.compatibilityEvidence
@@ -654,6 +743,7 @@ export async function scanCustomNodes(
       duplicateDirectories,
       runtimeRequirement: definition.runtimeRequirement ?? "",
       bulkInstall: definition.bulkInstall !== false,
+      appInstallable: definition.appInstallable !== false,
       updateAvailable
     };
   }));

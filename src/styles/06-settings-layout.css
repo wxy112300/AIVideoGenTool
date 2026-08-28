@@ -22,8 +22,39 @@
 
 .settings-environment-actions {
   min-width: 0;
+  display: flex;
   justify-self: end;
+  justify-content: space-between;
+  gap: 12px;
   align-items: center;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ux-surface-object) 78%, transparent);
+}
+
+.settings-environment-actions > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.settings-environment-actions code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-title-with-badge {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-title-with-badge h2 {
+  margin: 0;
 }
 
 .settings-heading-actions {
@@ -309,8 +340,9 @@
 .custom-node-copy code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .custom-node-copy > .muted code { display: inline; overflow: visible; text-overflow: clip; white-space: nowrap; }
 .custom-node-actions { flex: 0 0 auto; display: grid; justify-items: end; gap: 9px; }
-.node-action-split { position: relative; display: flex; height: 38px; align-items: stretch; }
+.node-action-split { position: relative; display: flex; min-width: 134px; height: 38px; align-items: stretch; }
 .node-action-split .node-action-main { height: 38px; min-height: 38px; padding-block: 8px; border-radius: 8px 0 0 8px; white-space: nowrap; }
+.node-action-split .node-action-main:only-child { flex: 1; border-radius: 8px; }
 .node-action-menu { position: relative; height: 38px; margin-top: 0; padding-top: 0; border-top: 0; }
 .node-action-menu > summary { display: grid; width: 32px; height: 38px; min-height: 38px; place-items: center; list-style: none; cursor: pointer; border: 1px solid #353e4c; border-left: 0; border-radius: 0 8px 8px 0; color: #e3e8ef; background: #202631; }
 .node-action-menu > summary::-webkit-details-marker { display: none; }
@@ -668,6 +700,12 @@
 
   .settings-environment-actions {
     justify-self: start;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-environment-actions button {
+    align-self: flex-start;
   }
 
   .environment-item.environment-evidence {

@@ -16,6 +16,7 @@ function createCoordinator(root: HTMLElement, currentPage: "settings" | "history
     getPage: () => currentPage,
     getState: () => state,
     getUiState: () => ui,
+    getPerformanceMetrics: () => null,
     t: ((key: string) => key) as RenderCoordinatorOptions["t"],
     renderPages: {
       create: () => "",

@@ -36,6 +36,21 @@ describe("ComfyUI runtime state controller", () => {
     expect(controller.snapshot()).toMatchObject({ phase: "stopped", ownership: "external" });
   });
 
+  it("keeps an app-owned runtime ready while an active task blocks HTTP probes", () => {
+    const controller = new ComfyRuntimeStateController();
+    const operation = controller.begin("starting", "http://127.0.0.1:8188", "starting", "app");
+    controller.finish(operation, "ready", "ready", "app");
+
+    controller.observeReachability(false, "http://127.0.0.1:8188", "app", true);
+    controller.observeReachability(false, "http://127.0.0.1:8188", "app", true);
+
+    expect(controller.snapshot()).toMatchObject({
+      phase: "ready",
+      ownership: "app",
+      message: "ComfyUI 正在执行任务；接口可能暂时无法响应。"
+    });
+  });
+
   it("publishes transitions and resolves startup waiters only after settling", async () => {
     vi.useFakeTimers();
     const controller = new ComfyRuntimeStateController();

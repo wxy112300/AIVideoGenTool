@@ -803,6 +803,38 @@ function settingsPage() {
 function render() {
     rendererApp.render();
 }
+let resolvePromptCpuConfirmation = null;
+function promptVramLabel(bytes) {
+    return bytes == null ? "--" : `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+}
+async function promptExecutionDecision() {
+    const preflight = await window.studio.preflightPromptModel();
+    if (!preflight.requiresCpuConfirmation)
+        return "gpu";
+    resolvePromptCpuConfirmation?.(false);
+    rememberModalFocus();
+    ui.pendingConfirmation = {
+        kind: "prompt-cpu-fallback",
+        usedVram: promptVramLabel(preflight.vramUsedBytes),
+        totalVram: promptVramLabel(preflight.vramTotalBytes),
+        freeVram: promptVramLabel(preflight.vramFreeBytes),
+        requiredVram: promptVramLabel(preflight.requiredFreeVramBytes)
+    };
+    ui.confirmationBusy = false;
+    renderOverlay();
+    return new Promise((resolve) => {
+        resolvePromptCpuConfirmation = (confirmed) => resolve(confirmed ? "cpu" : null);
+    });
+}
+async function enhancePromptWithConfirmation(request) {
+    const decision = await promptExecutionDecision();
+    if (!decision)
+        throw new DOMException(rendererApp.context.t(uiKeys.dialog.promptCpuCancelled), "AbortError");
+    return window.studio.enhancePrompt({
+        ...request,
+        allowCpuFallback: decision === "cpu" ? true : undefined
+    });
+}
 let overlayCleanup = null;
 function confirmationDialogHtml() {
     return renderConfirmationDialog({
@@ -849,6 +881,7 @@ let renderCoordinator;
 const rendererApp = createRendererApp({
     root: appElement,
     studio: window.studio,
+    enhancePrompt: enhancePromptWithConfirmation,
     getState: () => state,
     getRoute: () => ({ page, creationMode, historyKind }),
     requestRender: () => render(),
@@ -867,6 +900,7 @@ function initializeRenderCoordinator() {
         getPage: () => page,
         getState: () => state,
         getUiState: () => ui,
+        getPerformanceMetrics: () => performanceMetrics,
         t: rendererApp.context.t,
         renderPages: {
             create: createPage,
@@ -1246,7 +1280,10 @@ async function startPromptModelFromUi() {
     promptStarting = true;
     render();
     try {
-        const result = await window.studio.startPromptModel();
+        const decision = await promptExecutionDecision();
+        if (!decision)
+            return;
+        const result = await window.studio.startPromptModel(decision === "cpu");
         if (!result.ok)
             throw new Error(result.message);
         promptRuntimeLoaded = true;
@@ -1538,6 +1575,15 @@ function releaseHistoryVideo(assetId) {
     });
 }
 async function acceptConfirmation() {
+    if (ui.pendingConfirmation?.kind === "prompt-cpu-fallback") {
+        const resolve = resolvePromptCpuConfirmation;
+        resolvePromptCpuConfirmation = null;
+        ui.pendingConfirmation = null;
+        renderOverlay();
+        restoreModalFocus();
+        resolve?.(true);
+        return;
+    }
     await runConfirmation(rendererApp.context, {
         getRequest: () => ui.pendingConfirmation,
         setRequest: (request) => {
@@ -1601,6 +1647,11 @@ function bindConfirmationDialog() {
     const close = () => {
         if (ui.confirmationBusy)
             return;
+        if (ui.pendingConfirmation?.kind === "prompt-cpu-fallback") {
+            const resolve = resolvePromptCpuConfirmation;
+            resolvePromptCpuConfirmation = null;
+            resolve?.(false);
+        }
         ui.pendingConfirmation = null;
         renderOverlay();
         restoreModalFocus();

@@ -18,6 +18,7 @@ The application is a focused local creative workstation: calm, dense enough for 
 ## Layout Grammar
 
 - Use one compact application header and one page title. Do not create a second hero-sized title area without user value.
+- The application header keeps a single-line global resource monitor in the thin gap directly above the top-right navigation, aligned to the navigation's right edge with only a minimal vertical separation. Desktop shows CPU/GPU utilization, GPU temperature, and RAM/VRAM percentage plus used/total capacity. The right-aligned monitor remains visible alongside centered global notices. Narrower layouts progressively move or hide lower-priority detail without increasing the desktop header height. Queue may retain its larger diagnostic cards, but both surfaces share one polling source.
 - Keep primary content within a consistent page gutter and readable maximum width. Media viewers may use available width when that materially improves inspection.
 - Use the existing spacing scale before adding values. Prefer the sequence `4, 8, 12, 16, 24, 32` pixels and derive exceptional spacing from an explicit layout need.
 - Align labels, controls, card edges, and baselines across a row. A control should not float merely because adjacent copy has a different length.
@@ -107,7 +108,11 @@ Hover preview failure must not destroy a valid static cover. Detail playback/vie
 ### Settings
 
 - Show only information that supports a decision or recovery action.
-- Separate system/path, acceleration, video models, image models, nodes/workflows, prompt assistance, and upscaling by user goal.
+- Separate ComfyUI environment, nodes/dependencies, application paths, temporary H3 acceleration settings, video models, image models, prompt assistance, and upscaling by user goal.
+- `ComfyUI environment` owns the selected installation, core/data directory relationship, service state, Python binding, core compatibility, version/update evidence, and safe core repair actions.
+- `Nodes & dependencies` owns installable custom nodes and Python/runtime packages, including `llama-cpp-python` and H3 acceleration dependencies. Dependency repair must not be labeled as a generic ComfyUI core repair.
+- Until H3 Memory Optimization is complete and has passed its runtime gates, the existing H3 Attention selector remains in Settings under the temporary `Performance & acceleration` surface. The ComfyUI environment page may show its evidence but must not create a second Attention selector.
+- The final placement and task-level semantics of Attention, Memory, Spectrum, and Turbo/SLA are a separate post-Memory decision; a page reorganization must not silently migrate or delete the existing Attention setting.
 - Offline file detection is useful and must not be presented as failure merely because ComfyUI is stopped.
 - Model cards report file presence, custom-node installation, and runtime validation as separate evidence. Complete weights remain ready while ComfyUI is offline; only a confirmed missing file/node or failed online check is an error.
 - Prompt-assistance cards use the same evidence rules as video, image, and upscale cards. An installed node with runtime validation pending remains statically ready; implemented native `CLIPLoader + TextGenerate` profiles must not be labeled as pending integration.

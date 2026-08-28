@@ -5,7 +5,11 @@ import {
   normalizeH3Steps
 } from "../../../core/workflow";
 import { upscaleDimensions } from "../../../core/upscale";
-import type { Draft, QueueLifecycle, QueueTask } from "../../../types";
+import type {
+  Draft,
+  QueueLifecycle,
+  QueueTask
+} from "../../../types";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import { videoPromptForLoras } from "../../../core/video-loras";

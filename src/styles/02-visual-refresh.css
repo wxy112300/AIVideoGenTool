@@ -48,6 +48,7 @@ code { color: var(--ux-content-technical); font-size: var(--ux-type-technical); 
 
 .app-shell { max-width: 1440px; padding: 0 34px 72px; }
 .topbar {
+  position: sticky;
   min-height: var(--ux-topbar-height);
   margin: 0 -34px;
   padding: 12px 34px;
@@ -65,12 +66,64 @@ code { color: var(--ux-content-technical); font-size: var(--ux-type-technical); 
   background: var(--ux-brand-mark-surface);
   box-shadow: none;
 }
+.topbar-resource-monitor {
+  position: absolute;
+  top: 3px;
+  right: 34px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  justify-self: end;
+  color: var(--ux-content-secondary);
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+.topbar-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+  min-width: 0;
+  margin-left: auto;
+}
+.topbar-resource-item { display: inline-flex; align-items: baseline; gap: 3px; }
+.topbar-resource-item b { color: var(--muted); font-size: 8px; font-weight: 650; }
+.topbar-resource-item small { color: var(--muted); font: inherit; }
+.topbar-resource-monitor > i { width: 1px; height: 10px; background: var(--border); }
+.topbar-resource-item[data-resource-pressure="warning"] { color: var(--ux-status-warning); }
+.topbar-resource-item[data-resource-pressure="critical"] { color: var(--ux-status-danger); }
 nav {
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--ux-nav-shell-border);
   border-radius: 13px;
   background: var(--ux-nav-shell-surface);
+}
+
+@media (max-width: 900px) {
+  .topbar-resource-monitor {
+    position: static;
+  }
+  .topbar-resource-monitor > .topbar-resource-item:first-child,
+  .topbar-resource-memory,
+  .resource-separator-after-cpu,
+  .resource-separator-after-memory { display: none; }
+}
+
+@media (max-width: 760px) {
+  .topbar { display: grid; grid-template-columns: auto minmax(0, 1fr); }
+  .topbar-tools { display: contents; }
+  .topbar-resource-monitor { justify-self: end; margin-inline: 0; }
+  .topbar nav { grid-column: 1 / -1; }
+}
+
+@media (max-width: 560px) {
+  .topbar-resource-item small { display: none; }
 }
 .nav-button {
   position: relative;

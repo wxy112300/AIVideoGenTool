@@ -3,6 +3,7 @@ import {
   buildMultimodalPromptWorkflow,
   multimodalActivityTimeoutMinutes,
   multimodalDeviceFor,
+  multimodalExecutionPreflight,
   multimodalPromptTargetLanguage,
   multimodalRuntimeSelection
 } from "../electron/services/multimodal-prompt.js";
@@ -82,11 +83,17 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
       .toThrow("旧节点只识别 mmproj 前缀");
   });
 
-  it("uses measured free VRAM instead of forcing Qwen3.6/Qwen3.8 onto CPU", () => {
-    expect(multimodalDeviceFor(
+  it("requires enough measured VRAM instead of silently falling back to CPU", () => {
+    expect(() => multimodalDeviceFor(
       "qwen/qwen3.6-27b-uncensored-q4",
       4.5 * 1024 ** 3,
       22.9 * 1024 ** 3
+    )).toThrow("当前约 18.4 GiB");
+    expect(multimodalDeviceFor(
+      "qwen/qwen3.6-27b-uncensored-q4",
+      4.5 * 1024 ** 3,
+      22.9 * 1024 ** 3,
+      true
     )).toBe("CPU");
     expect(multimodalDeviceFor(
       "qwen/qwen3.6-27b-uncensored-q4",
@@ -98,15 +105,24 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
       1.8 * 1024 ** 3,
       24 * 1024 ** 3
     )).toBe("GPU");
-    expect(multimodalDeviceFor(
+    expect(() => multimodalDeviceFor(
       "qwen/qwen3.8-27b-uncensored-q4",
       null,
       null
-    )).toBe("CPU");
+    )).toThrow("不会自动切换到 CPU");
     expect(multimodalActivityTimeoutMinutes(
       "qwen/qwen3.6-27b-uncensored-q4",
       "CPU"
     )).toBe(20);
+    expect(multimodalExecutionPreflight(
+      "qwen/qwen3.6-27b-uncensored-q4",
+      4.5 * 1024 ** 3,
+      22.9 * 1024 ** 3
+    )).toMatchObject({
+      requiresCpuConfirmation: true,
+      vramFreeBytes: 18.4 * 1024 ** 3,
+      requiredFreeVramBytes: 20 * 1024 ** 3
+    });
   });
 
   it("can render the VisionLLM workflow with an explicit CPU device", () => {
@@ -155,6 +171,7 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
       }
     });
     expect(workflow["vision-llm"]?.inputs.prompt).toContain("do not include analysis");
+    expect(workflow["vision-llm"]?.inputs.prompt).toContain("Camera disambiguation and preservation lock");
     expect(workflow["image-budget-0"]).toMatchObject({
       class_type: "ImageScaleToTotalPixels",
       inputs: { image: ["load-image-0", 0], megapixels: 1, resolution_steps: 32 }

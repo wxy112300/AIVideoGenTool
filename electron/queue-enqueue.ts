@@ -41,6 +41,10 @@ import {
 } from "../src/core/catalog/index.js";
 import { resolveVideoGenerationPolicy } from "../src/core/video-policy.js";
 import {
+  normalizeH3MemoryOptions,
+  resolveMiniMaxH3ExecutionPlan
+} from "../src/core/h3-memory-policy.js";
+import {
   ensureMotionContextSourceSlot,
   h3ReferenceSlotCounts
 } from "../src/core/h3-reference.js";
@@ -179,6 +183,7 @@ async function requireImageModelAssets(
 export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
   const { ipc, store, logger, sendState } = deps;
   ipc.handle("queue:enqueue", async (_event, draft: Draft) => {
+    Object.assign(draft, normalizeH3MemoryOptions(draft));
     draft.videoLoras = normalizeVideoLoras(draft.videoLoras, draft.modelId);
     draft.steps = normalizeH3Steps(draft.steps, draft.modelId, draft.videoLoras);
     if (draft.inputMode !== "image") throw new Error("视频续写必须使用独立的 extension 队列任务");
@@ -208,6 +213,19 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       videoLoras: draft.videoLoras,
       locale: store.get().settings.uiLocale
     });
+    const initialH3ExecutionPlan = resolveMiniMaxH3ExecutionPlan({
+      modelId: draft.modelId,
+      inputMode: draft.inputMode,
+      attentionMode: store.get().settings.h3AttentionMode,
+      h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
+      h3MemoryChunkRows: draft.h3MemoryChunkRows,
+      spectrumMode: draft.spectrumMode,
+      videoLoras: draft.videoLoras,
+      h3LivePreview: store.get().settings.h3LivePreview
+    });
+    if (draft.h3MemoryOptimizationMode !== "off" && !initialH3ExecutionPlan.allowed) {
+      throw new Error(`H3 Memory Optimization 组合不支持：${initialH3ExecutionPlan.reasons.join("、")}`);
+    }
     if (draft.spectrumMode === "balanced" && !videoPolicy.spectrum.allowed) {
       throw new Error(isMiniMaxH3Q3GgufModel(draft.modelId)
         ? "H3 Q3 GGUF 3080 实验档不支持 Spectrum，请关闭后再提交。"
@@ -222,9 +240,27 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     const h3UsesSageAttention = isMiniMaxH3Model(draft.modelId) &&
       !h3UsesSlaAttention &&
       store.get().settings.h3AttentionMode !== "pytorch";
-    const dependencyScan = draft.videoLoras.length || draft.spectrumMode === "balanced" || h3UsesSageAttention
+    const dependencyScan = draft.videoLoras.length || draft.spectrumMode === "balanced" ||
+      h3UsesSageAttention || draft.h3MemoryOptimizationMode !== "off"
       ? await scanEnvironment(store.get().settings)
       : undefined;
+    if (draft.h3MemoryOptimizationMode !== "off") {
+      const memoryNode = dependencyScan?.customNodes.find((node) => node.id === "h3-optimizations");
+      const executionPlan = resolveMiniMaxH3ExecutionPlan({
+        modelId: draft.modelId,
+        inputMode: draft.inputMode,
+        attentionMode: store.get().settings.h3AttentionMode,
+        h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
+        h3MemoryChunkRows: draft.h3MemoryChunkRows,
+        spectrumMode: draft.spectrumMode,
+        videoLoras: draft.videoLoras,
+        h3LivePreview: store.get().settings.h3LivePreview,
+        memoryNode: memoryNode ?? null
+      });
+      if (!executionPlan.allowed) {
+        throw new Error(`H3 Memory Optimization 不可用：${executionPlan.reasons.join("、")}`);
+      }
+    }
     if (draft.videoLoras.length) {
       const issues = videoLoraConfigurationIssues({
         modelId: draft.modelId, inputMode: draft.inputMode,
@@ -285,7 +321,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       modelId: draft.modelId,
       videoLoras: draft.videoLoras
     })) {
-      throw new Error("LightX2V Turbo 需要匹配所选版本的采样契约：v1.1/Turbo-SLA 4-step 使用 Euler、Beta、video shift 6、audio shift 3；ckpt850、8-step/旧版路径使用 ER-SDE、Beta 和 Sigma Shift。R2V Turbo 还需要标准 MiniMaxH3ReferenceToVideo 工作流。");
+      throw new Error("LightX2V Turbo 需要匹配所选版本的采样契约：v1.1/Turbo-SLA 4-step 使用 Euler、Beta、video shift 6、audio shift 3；v4 使用 Euler、Beta、video shift 12、audio shift 6；8-step/旧版路径使用 ER-SDE、Beta 和 Sigma Shift。R2V Turbo 还需要标准 MiniMaxH3ReferenceToVideo 工作流。");
     }
     if (draft.endImagePath && !workflowSupportsEndImage(workflow)) {
       throw new Error("当前工作流不支持尾帧。请选择包含 {{END_IMAGE}} 占位符的自定义 API 工作流，或移除尾帧。");
@@ -437,6 +473,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
   });
 
   ipc.handle("queue:enqueue-extension", async (_event, draft: Draft) => {
+    Object.assign(draft, normalizeH3MemoryOptions(draft));
     draft.videoLoras = normalizeVideoLoras(draft.videoLoras, draft.modelId);
     const loraIssue = videoLoraConfigurationIssues({
       modelId: draft.modelId, inputMode: draft.inputMode, spectrumMode: draft.spectrumMode,
@@ -444,6 +481,19 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     }).find((issue) => issue.severity === "error");
     if (loraIssue) throw new Error(loraIssue.message);
     if (draft.inputMode !== "video") throw new Error("只有视频输入模式可以创建 extension 队列任务");
+    const initialH3ExecutionPlan = resolveMiniMaxH3ExecutionPlan({
+      modelId: draft.modelId,
+      inputMode: draft.inputMode,
+      attentionMode: store.get().settings.h3AttentionMode,
+      h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
+      h3MemoryChunkRows: draft.h3MemoryChunkRows,
+      spectrumMode: draft.spectrumMode,
+      videoLoras: draft.videoLoras,
+      h3LivePreview: store.get().settings.h3LivePreview
+    });
+    if (draft.h3MemoryOptimizationMode !== "off" && !initialH3ExecutionPlan.allowed) {
+      throw new Error(`H3 Memory Optimization 组合不支持：${initialH3ExecutionPlan.reasons.join("、")}`);
+    }
     if (!promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择视频续写 API 工作流");
     if (!(await fs.stat(draft.sourceVideoPath).catch(() => null))) throw new Error("源视频文件不存在，无法加入续写队列");
@@ -460,6 +510,24 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       }
       if (!preparedDraft.h3ReferenceSlots.every((slot) => slot.mediaPath.trim())) {
         throw new Error("Motion Context 的每个参考 Slot 都必须先添加图片或视频。");
+      }
+    }
+    if (draft.h3MemoryOptimizationMode !== "off") {
+      const dependencyScan = await scanEnvironment(store.get().settings);
+      const memoryNode = dependencyScan.customNodes.find((node) => node.id === "h3-optimizations");
+      const executionPlan = resolveMiniMaxH3ExecutionPlan({
+        modelId: draft.modelId,
+        inputMode: draft.inputMode,
+        attentionMode: store.get().settings.h3AttentionMode,
+        h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
+        h3MemoryChunkRows: draft.h3MemoryChunkRows,
+        spectrumMode: draft.spectrumMode,
+        videoLoras: draft.videoLoras,
+        h3LivePreview: store.get().settings.h3LivePreview,
+        memoryNode: memoryNode ?? null
+      });
+      if (!executionPlan.allowed) {
+        throw new Error(`H3 Memory Optimization 不可用：${executionPlan.reasons.join("、")}`);
       }
     }
     const workflow = await readWorkflow(draft.workflowPath, "续写工作流");

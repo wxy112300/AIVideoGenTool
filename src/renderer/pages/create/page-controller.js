@@ -303,7 +303,7 @@ export function mountCreatePageController(options) {
     root.querySelectorAll("[data-video-lora-strength-number]").forEach((input) => {
         input.addEventListener("change", () => updateLoraStrength(input.dataset.videoLoraStrengthNumber ?? "", input.value), { signal });
     });
-    for (const id of ["model", "ratio", "resolution", "steps", "spectrum-mode", "spectrum-model-aware-mode", "fps", "frame-interpolation", "motion", "seed"]) {
+    for (const id of ["model", "ratio", "resolution", "steps", "spectrum-mode", "fps", "frame-interpolation", "motion", "seed"]) {
         root.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
             const state = getState();
             if (!state)
@@ -370,7 +370,6 @@ export function mountCreatePageController(options) {
                 id === "resolution" ? { resolution: Number(value) } :
                     id === "steps" ? { steps: normalizeH3Steps(Number(value), state.draft.modelId, state.draft.videoLoras) } :
                         id === "spectrum-mode" ? { spectrumMode: value, spectrumModeUserSet: true } :
-                            id === "spectrum-model-aware-mode" ? { spectrumModelAwareMode: value } :
                                 id === "fps" ? { fps: Number(value) } :
                                     id === "frame-interpolation" ? { frameInterpolation: value } :
                                         id === "motion" ? { motion: value } :

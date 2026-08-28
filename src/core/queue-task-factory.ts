@@ -20,10 +20,15 @@ import {
 } from "./image-workflow.js";
 import { uniqueUpscaleFilename, upscaleDimensions } from "./upscale.js";
 import { videoLoraSelection } from "./video-loras.js";
+import {
+  normalizeH3MemoryOptions,
+  resolveMiniMaxH3ExecutionPlan
+} from "./h3-memory-policy.js";
 import { ensureMotionContextSourceSlot } from "./h3-reference.js";
 import {
   h3WorkflowPathForInput,
   isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3Model,
   isMiniMaxH3R2vModel
 } from "./workflow.js";
 
@@ -70,6 +75,18 @@ export function queueTaskFromDraft(
   clock: QueueTaskFactoryClock = defaultClock
 ): GenerationQueueTask {
   const now = clock.now().toISOString();
+  const h3MemoryOptions = normalizeH3MemoryOptions(draft);
+  const h3MemoryExecutionPlan = isMiniMaxH3Model(draft.modelId)
+    ? resolveMiniMaxH3ExecutionPlan({
+        modelId: draft.modelId,
+        inputMode: "image",
+        attentionMode: state.settings.h3AttentionMode,
+        ...h3MemoryOptions,
+        spectrumMode: draft.spectrumMode,
+        videoLoras: draft.videoLoras,
+        h3LivePreview: state.settings.h3LivePreview
+      })
+    : undefined;
   // Preserve the legacy generation naming contract: HistoryAsset.outputFilename
   // is the stable compatibility name even when the asset contains versions.
   const names = [
@@ -117,9 +134,9 @@ export function queueTaskFromDraft(
     attentionMode: state.settings.h3AttentionMode,
     h3LivePreview: state.settings.h3LivePreview,
     spectrumMode: draft.spectrumMode,
-    spectrumModelAwareMode: draft.spectrumMode === "balanced"
-      ? draft.spectrumModelAwareMode
-      : "off",
+    spectrumModelAwareMode: "off",
+    ...h3MemoryOptions,
+    ...(h3MemoryExecutionPlan ? { h3MemoryExecutionPlan } : {}),
     progress: 0
   };
 }
@@ -203,9 +220,22 @@ export function extensionTaskFromDraft(
 ): ExtensionQueueTask {
   const now = clock.now().toISOString();
   const isH3 = isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId);
+  const h3MemoryOptions = normalizeH3MemoryOptions(draft);
   const resolution = isH3 ? draft.resolution : state.settings.ltxExtensionResolution;
   const h3ReferenceSlots = isMiniMaxH3R2vModel(draft.modelId)
     ? ensureMotionContextSourceSlot(draft.h3ReferenceSlots, draft.sourceVideoPath)
+    : undefined;
+  const spectrumMode = isMiniMaxH3R2vModel(draft.modelId) ? "off" : draft.spectrumMode;
+  const h3MemoryExecutionPlan = isMiniMaxH3Model(draft.modelId)
+    ? resolveMiniMaxH3ExecutionPlan({
+        modelId: draft.modelId,
+        inputMode: "video",
+        attentionMode: state.settings.h3AttentionMode,
+        ...h3MemoryOptions,
+        spectrumMode,
+        videoLoras: draft.videoLoras,
+        h3LivePreview: state.settings.h3LivePreview
+      })
     : undefined;
   return {
     id: clock.id(),
@@ -245,10 +275,10 @@ export function extensionTaskFromDraft(
     keepSeedOnCopy: draft.keepSeedOnCopy,
     attentionMode: state.settings.h3AttentionMode,
     h3LivePreview: state.settings.h3LivePreview,
-    spectrumMode: isMiniMaxH3R2vModel(draft.modelId) ? "off" : draft.spectrumMode,
-    spectrumModelAwareMode: isMiniMaxH3R2vModel(draft.modelId) || draft.spectrumMode !== "balanced"
-      ? "off"
-      : draft.spectrumModelAwareMode,
+    spectrumMode,
+    spectrumModelAwareMode: "off",
+    ...h3MemoryOptions,
+    ...(h3MemoryExecutionPlan ? { h3MemoryExecutionPlan } : {}),
     maxGeneratedFrames: isH3 ? 362 : state.settings.ltxExtensionFrames,
     overlapFrames: state.settings.ltxExtensionOverlapFrames,
     unloadBetweenStages: state.settings.ltxExtensionUnloadBetweenStages,

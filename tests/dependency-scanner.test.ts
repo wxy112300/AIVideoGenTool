@@ -220,6 +220,70 @@ describe("dependency scanner", () => {
     });
   });
 
+  it("recognizes H3 Optimizations by package markers and keeps it app-installable", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-memory-scan-"));
+    temporaryDirectories.push(comfyRoot);
+    const directory = path.join(comfyRoot, "custom_nodes", "H3-Optimizations");
+    await fs.mkdir(path.join(directory, "h3_optimizations"), { recursive: true });
+    await fs.writeFile(
+      path.join(directory, "pyproject.toml"),
+      "[project]\nname = 'h3-optimizations'\nversion = '0.2.20'\n",
+      "utf8"
+    );
+    await fs.writeFile(
+      path.join(directory, "h3_optimizations", "public_nodes.py"),
+      "NODE_CLASS_MAPPINGS = {'H3MemoryOptimization': H3MemoryOptimization}\n",
+      "utf8"
+    );
+
+    const statuses = await scanCustomNodes(comfyRoot, {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:1"
+    });
+    const h3Memory = statuses.find((status) => status.id === "h3-optimizations");
+
+    expect(h3Memory).toMatchObject({
+      installed: true,
+      loaded: true,
+      runtimeVerified: false,
+      directory,
+      version: "0.2.20",
+      minimumVersion: "0.2.16",
+      recommendedVersion: "0.2.20",
+      latestVersion: "0.2.20",
+      appInstallable: true,
+      bulkInstall: false,
+      updateAvailable: false,
+      revisionDirtyState: "unknown"
+    });
+  });
+
+  it("reports duplicate H3 Optimizations directories without selecting them as one install", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-memory-duplicates-"));
+    temporaryDirectories.push(comfyRoot);
+    const first = path.join(comfyRoot, "custom_nodes", "manual-h3-memory");
+    const second = path.join(comfyRoot, "custom_nodes", "H3-Optimizations");
+    for (const directory of [first, second]) {
+      await fs.mkdir(path.join(directory, "h3_optimizations"), { recursive: true });
+      await fs.writeFile(
+        path.join(directory, "h3_optimizations", "memory_migration_node.py"),
+        "class H3MemoryOptimization: pass\n",
+        "utf8"
+      );
+    }
+
+    const statuses = await scanCustomNodes(comfyRoot, {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:1"
+    });
+    const h3Memory = statuses.find((status) => status.id === "h3-optimizations");
+
+    expect(h3Memory?.directory).toBe(second);
+    expect(h3Memory?.duplicateDirectories).toEqual([first]);
+    expect(h3Memory?.compatibilityState).toBe("warning");
+    expect(h3Memory?.compatibilityNotice).toContain("H3 Optimizations");
+  });
+
   it("marks an offline KJNodes installation without the H3 preview node for update", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-kjnodes-scan-"));
     temporaryDirectories.push(comfyRoot);
@@ -406,12 +470,12 @@ describe("dependency scanner", () => {
       loaded: true,
       version: "0.2.6",
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.17",
+      recommendedVersion: "0.2.20",
       latestVersion: "0.2.7",
       updateAvailable: true,
       loadError: ""
     });
-    expect(spectrum?.updateNotice).toContain("当前 v0.2.6，推荐 v0.2.17");
+    expect(spectrum?.updateNotice).toContain("当前 v0.2.6，推荐 v0.2.20");
   });
 
   it("shows generic cached releases without making them actionable updates", async () => {

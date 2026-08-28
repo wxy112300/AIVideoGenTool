@@ -42,7 +42,7 @@ function viewModel(overrides: Partial<SettingsPageViewModel> = {}): SettingsPage
     comfyConnected: false,
     environmentScanning: false,
     environmentScanError: "",
-    settingsTab: "system",
+    settingsTab: "comfyui",
     settingsH3PromptPreset: "official-storyboard",
     settingsImagePromptPreset: "faithful",
     promptStatus: { ready: false, detail: "" },
@@ -83,17 +83,19 @@ describe("Settings accessibility markup", () => {
   it("exposes a roving tablist and keeps the scan action reachable from the page header", () => {
     const markup = renderSettingsPage(viewModel(), renderOptions);
     const nodesMarkup = renderSettingsPage(viewModel({ settingsTab: "nodes" }), renderOptions);
+    const pathsMarkup = renderSettingsPage(viewModel({ settingsTab: "system" }), renderOptions);
 
     expect(markup).toContain('id="settings-category-tabs"');
     expect(markup).toContain('class="settings-sidebar" role="tablist"');
     expect(markup.match(/role="tab"[^>]*tabindex="0"/g)).toHaveLength(1);
-    expect(markup).toContain('id="settings-tab-system"');
-    expect(markup.indexOf('id="settings-tab-system"')).toBeLessThan(markup.indexOf('id="settings-tab-nodes"'));
-    expect(markup.indexOf('id="settings-tab-nodes"')).toBeLessThan(markup.indexOf('id="settings-tab-acceleration"'));
+    expect(markup).toContain('id="settings-tab-comfyui"');
+    expect(markup.indexOf('id="settings-tab-comfyui"')).toBeLessThan(markup.indexOf('id="settings-tab-nodes"'));
+    expect(markup.indexOf('id="settings-tab-nodes"')).toBeLessThan(markup.indexOf('id="settings-tab-system"'));
+    expect(markup.indexOf('id="settings-tab-system"')).toBeLessThan(markup.indexOf('id="settings-tab-acceleration"'));
     expect(nodesMarkup).toContain("节点与依赖");
-    expect(markup).toContain('aria-controls="settings-panel-system"');
-    expect(markup).toContain('id="settings-panel-system" class="settings-content" role="tabpanel"');
-    expect(markup).toContain('aria-labelledby="settings-tab-system"');
+    expect(markup).toContain('aria-controls="settings-panel-comfyui"');
+    expect(markup).toContain('id="settings-panel-comfyui" class="settings-content" role="tabpanel"');
+    expect(markup).toContain('aria-labelledby="settings-tab-comfyui"');
     expect(markup.match(/id="scan-environment"/g)).toHaveLength(1);
     expect(markup.indexOf('id="scan-environment"')).toBeLessThan(markup.indexOf('id="settings-environment-section"'));
     expect(markup).toContain('class="button-row settings-heading-actions is-clean"');
@@ -104,11 +106,13 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('id="connection-result" class="connection-result muted" role="status" aria-live="polite"');
     expect(markup).toContain('id="force-stop-comfy"');
     expect(markup).toContain('class="secondary destructive button-with-icon" id="force-stop-comfy"');
-    expect(markup).toContain('id="queue-isolation-mode"');
-    expect(markup).toContain('<option value="lora" selected>');
+    expect(pathsMarkup).toContain('id="settings-panel-system" class="settings-content" role="tabpanel"');
+    expect(pathsMarkup).toContain('id="ui-locale" aria-label="settings.locale.title"');
+    expect(pathsMarkup).toContain('id="queue-isolation-mode"');
+    expect(pathsMarkup).toContain('<option value="lora" selected>');
   });
 
-  it("keeps system settings concise while preserving environment evidence", () => {
+  it("keeps the ComfyUI environment page concise while preserving environment evidence", () => {
     const desktopDirectory = "C:\\ComfyUI Desktop";
     const environmentScan = {
       scannedAt: "2026-08-27T00:00:00.000Z",
@@ -151,20 +155,27 @@ describe("Settings accessibility markup", () => {
       issues: []
     } as unknown as EnvironmentScanResult;
     const markup = renderSettingsPage(viewModel({
+      settingsTab: "comfyui",
       settings: { ...state.settings, comfyInstallDirectory: desktopDirectory },
       environmentScan
     }), renderOptions);
 
-    expect(markup).toContain('id="ui-locale" aria-label="settings.locale.title"');
-    expect(markup).not.toContain("settings.locale.label");
-    expect(markup).not.toContain("settings.locale.pending");
+    expect(markup).not.toContain('id="ui-locale"');
     expect(markup).not.toContain("settings.system.gpuDetectionDescription");
-    expect(markup).toContain("settings.system.queueIsolationDescription");
     expect(markup).toContain("PyTorch 2.10.0+cu130");
     expect(markup).toContain("CUDA 13.0");
     expect(markup).toContain('class="muted comfy-installation-runtime" title="settings.system.revision · PyTorch 2.10.0+cu130 · CUDA 13.0"');
     expect(markup).toContain('<span class="model-badge">settings.system.installationCount</span>');
     expect(markup).not.toContain('<span class="model-availability warning">settings.system.installationCount</span>');
+    expect(markup).toContain('id="use-scanned-comfy"');
+    expect(markup).not.toContain('class="detected-path"');
+
+    const pathsMarkup = renderSettingsPage(viewModel({ settingsTab: "system", environmentScan }), renderOptions);
+    expect(pathsMarkup).toContain('id="ui-locale" aria-label="settings.locale.title"');
+    expect(pathsMarkup).not.toContain("settings.locale.label");
+    expect(pathsMarkup).not.toContain("settings.locale.pending");
+    expect(pathsMarkup).toContain("settings.system.queueIsolationDescription");
+    expect(pathsMarkup).not.toContain('id="settings-environment-section"');
   });
 
   it("keeps the manual scan action available on non-system Settings tabs", () => {
@@ -173,6 +184,23 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('id="settings-panel-lora" class="settings-content" role="tabpanel"');
     expect(markup).toContain('id="scan-environment"');
     expect(markup).not.toContain('id="settings-environment-section"');
+  });
+
+  it("keeps the Python binding on ComfyUI environment while Attention remains in acceleration", () => {
+    const comfyMarkup = renderSettingsPage(viewModel({ settingsTab: "comfyui" }), renderOptions);
+    const accelerationMarkup = renderSettingsPage(viewModel({ settingsTab: "acceleration" }), renderOptions);
+
+    expect(comfyMarkup).toContain('id="comfy-python-path"');
+    expect(comfyMarkup).toContain('id="comfy-python-candidate"');
+    expect(comfyMarkup).not.toContain('id="h3-attention-mode"');
+    expect(accelerationMarkup).toContain('id="h3-attention-mode"');
+    expect(accelerationMarkup).not.toContain('id="comfy-python-path"');
+    expect(accelerationMarkup).not.toContain('id="comfy-python-candidate"');
+    expect(accelerationMarkup).toContain("H3 加速策略");
+    expect(accelerationMarkup).not.toContain("临时入口");
+    expect(accelerationMarkup).toContain('title="使用 CUDA FP16 SageAttention 内核；环境匹配时通常速度最快，但需要精确匹配的 CUDA、PyTorch 与 wheel。"');
+    expect(accelerationMarkup).toContain('title="使用 Triton FP16 SageAttention 内核；相比 CUDA FP16 更适合作为稳定回退，仍需要 SageAttention 与 Triton 环境。"');
+    expect(accelerationMarkup).toContain('title="使用 PyTorch 原生 Attention；不依赖 SageAttention 或 Triton，兼容性最高，但通常速度较慢。"');
   });
 
   it("removes model-page scan summaries and keeps image/upscale controls in their intended places", () => {
@@ -281,7 +309,7 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('class="button-row settings-heading-actions is-dirty"');
     expect(markup).toContain('class="save-state dirty" role="status" aria-live="polite" aria-atomic="true">settings.saving</span>');
     expect(markup).toContain('id="save-settings" aria-busy="true"');
-    expect(markup).toContain('id="settings-panel-system" class="settings-content" role="tabpanel"');
+    expect(markup).toContain('id="settings-panel-comfyui" class="settings-content" role="tabpanel"');
     expect(markup).toContain('aria-busy="true"');
   });
 
@@ -325,9 +353,10 @@ describe("Settings accessibility markup", () => {
       },
       pythonRuntimes: []
     } as unknown as EnvironmentScanResult;
-    const idleMarkup = renderSettingsPage(viewModel({ settingsTab: "acceleration" }), renderOptions);
+    const idleMarkup = renderSettingsPage(viewModel({ settingsTab: "nodes" }), renderOptions);
+    const accelerationMarkup = renderSettingsPage(viewModel({ settingsTab: "acceleration" }), renderOptions);
     const installingMarkup = renderSettingsPage(viewModel({
-      settingsTab: "acceleration",
+      settingsTab: "nodes",
       environmentScan,
       attentionAccelerationInstalling: true,
       attentionAccelerationLog: "正在升级 PyTorch"
@@ -339,6 +368,9 @@ describe("Settings accessibility markup", () => {
     expect(installingMarkup).toContain('role="progressbar" aria-label="H3 环境升级进度"');
     expect(installingMarkup).toContain('id="attention-install-stage">正在升级 PyTorch</strong>');
     expect(installingMarkup).toContain('id="attention-install-log-details" open');
+    expect(installingMarkup).toContain('id="install-attention-acceleration"');
+    expect(accelerationMarkup).toContain('id="h3-attention-mode"');
+    expect(accelerationMarkup).not.toContain('id="install-attention-acceleration"');
     expect(installingMarkup).toContain('id="settings-tab-acceleration"');
     expect(installingMarkup).toContain('class="settings-tab-label">settings.tab.acceleration<span class="settings-update-dot" role="img" aria-label="待安装/修复" title="待安装/修复"></span>');
     expect(installingMarkup).toContain("检测到 ComfyUI Desktop");
@@ -379,6 +411,45 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('class="node-action-menu"');
     expect(markup).toContain('data-uninstall-node="minimax-h3-prompt-writer"');
     expect(markup).not.toContain('data-rescan-node="minimax-h3-prompt-writer"');
+  });
+
+  it("renders one install action for an uninstalled H3 Optimizations node", () => {
+    const environmentScan = {
+      scannedAt: "2026-08-27T00:00:00.000Z",
+      userHome: "C:\\Users\\Test",
+      items: [],
+      modelProfiles: [],
+      issues: [],
+      customNodes: [{
+        id: "h3-optimizations",
+        name: "H3 Optimizations",
+        purpose: "H3 memory optimization",
+        repositoryUrl: "https://github.com/Zironic/H3-Optimizations.git",
+        installed: false,
+        loaded: false,
+        runtimeVerified: false,
+        loadError: "",
+        directory: "",
+        required: false,
+        version: "",
+        minimumVersion: "0.2.16",
+        recommendedVersion: "0.2.20",
+        latestVersion: "0.2.20",
+        updateAvailable: false,
+        appInstallable: true,
+        bulkInstall: true
+      }]
+    } as unknown as EnvironmentScanResult;
+
+    const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
+
+    expect(markup.match(/data-install-node="h3-optimizations"/g)).toHaveLength(1);
+    expect(markup).toContain('data-install-node="h3-optimizations" data-node-operation="install"');
+    expect(markup).toContain("推荐版本：v0.2.20");
+    expect(markup).toContain("最新发布：v0.2.20");
+    expect(markup).toContain('<span class="button-count">1</span>');
+    expect(markup).not.toContain('data-rescan-node="h3-optimizations"');
+    expect(markup).not.toContain("data-open-node-source");
   });
 
   it("orders node and runtime dependency cards by product priority", () => {
@@ -445,12 +516,15 @@ describe("Settings accessibility markup", () => {
     const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
     const videoIndex = markup.indexOf(">VideoHelperSuite</h3>");
     const ggufIndex = markup.indexOf(">ComfyUI-GGUF</h3>");
+    const h3AccelerationIndex = markup.indexOf(">H3 加速运行时</h3>");
     const llamaIndex = markup.indexOf(">llama-cpp-python</strong>");
     const inpaintIndex = markup.indexOf(">ComfyUI Inpaint Nodes</h3>");
 
     expect(videoIndex).toBeGreaterThan(-1);
     expect(videoIndex).toBeLessThan(ggufIndex);
     expect(ggufIndex).toBeLessThan(llamaIndex);
+    expect(ggufIndex).toBeLessThan(h3AccelerationIndex);
+    expect(h3AccelerationIndex).toBeLessThan(llamaIndex);
     expect(llamaIndex).toBeLessThan(inpaintIndex);
   });
 });

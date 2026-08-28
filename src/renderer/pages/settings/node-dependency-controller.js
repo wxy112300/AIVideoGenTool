@@ -40,6 +40,18 @@ export function mountSettingsNodeDependencyController(context, options) {
             requestSettingsRender();
         }, { signal });
     });
+    root.querySelectorAll("[data-open-node-source]").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+            event.stopImmediatePropagation();
+            const sourceUrl = button.dataset.openNodeSource?.trim();
+            if (!sourceUrl)
+                return;
+            const opened = await context.studio.openExternal(sourceUrl);
+            if (!opened) {
+                context.notify(context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
+            }
+        }, { signal });
+    });
     root.querySelector("#install-all-custom-nodes")?.addEventListener("click", () => {
         const state = context.getState();
         if (state?.queue.some((task) => task.status === "running")) {

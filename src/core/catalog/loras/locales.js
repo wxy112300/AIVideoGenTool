@@ -2,15 +2,16 @@ import { zhTWLoraLocales } from "./locale.zh-TW.js";
 const zhCN = {
     "minimax-h3-turbo-ckpt850-ema": {
         guide: {
-            summary: "MiniMax H3 Turbo ckpt850 EMA 旧 Turbo 训练线；模型卡支持 4 步以上，主要作为 4 步大动作备选。",
-            recommendedStrength: "默认 1.0；4 步大动作可优先测试，普通质量优先请使用 v4 的 6–8 步路径。",
-            effects: "用较少采样步骤缩短 H3 FL2VA 生成时间；4 步通常更利于大动作响应，但可能出现过锐、塑料感或颗粒，运动和音频需对照。",
-            stacking: "性能 LoRA 放在人物、质量或内容 LoRA 前面；一次只保留一个 Turbo 变体。",
-            compatibility: "仅当前已接入的 MiniMax H3 FL2VA 图生视频路径；使用现有原生 ER-SDE、Beta、Sigma Shift 采样链。",
+            summary: "MiniMax H3 Turbo ckpt850 EMA 旧 Turbo 训练线已退役，仅为旧队列与历史记录保留兼容。",
+            recommendedStrength: "不再推荐新任务使用；请改用当前受支持的 Turbo LoRA。",
+            effects: "旧版 4 步路径可能出现过锐、塑料感、颗粒和运动稳定性问题，因此停止作为新任务选项。",
+            stacking: "仅供旧记录读取；不要重新组合或作为新的 Turbo 对照。",
+            compatibility: "仅保留旧 MiniMax H3 FL2VA 图生视频记录的读取兼容，不再作为新任务路径。",
             source: "amirjan122222 / MiniMax-H3-Turbo-Lora · ckpt850 EMA"
         },
         rules: {
             incompatible: "{name} 不兼容当前基础模型或输入模式。",
+            retired: "{name} 已因画面质量不稳定而停止用于新任务；请改用当前受支持的 Turbo LoRA。",
             turboVariant: "ckpt850 与其他 Turbo 变体不可同时使用；请保留单独对照。",
             turboSpectrum: "ckpt850 可与 Spectrum 共存，但请先保留关闭 Spectrum 的同 Seed 基准。",
             orderSuggestion: "建议将 {current} 放在 {previous} 前面；性能 LoRA 通常先加载。"
@@ -190,15 +191,16 @@ const zhCN = {
 const enUS = {
     "minimax-h3-turbo-ckpt850-ema": {
         guide: {
-            summary: "An older MiniMax H3 Turbo ckpt850 EMA training line; the model card supports four or more steps, and it is mainly a four-step heavy-motion fallback.",
-            recommendedStrength: "Default 1.0; try it first for heavy motion at four steps, while v4 at six to eight steps is preferred for general quality.",
-            effects: "Shortens MiniMax H3 FL2VA sampling with fewer steps; four steps can respond better to heavy motion but may look oversharpened, plastic, or grainy, so compare motion and audio.",
-            stacking: "Load performance LoRAs before people, quality, or content LoRAs; keep only one Turbo variant at a time.",
-            compatibility: "Only the currently integrated MiniMax H3 FL2VA image-to-video path, using the existing native ER-SDE, Beta, and Sigma Shift sampling chain.",
+            summary: "The older MiniMax H3 Turbo ckpt850 EMA training line is retired and retained only for legacy queue and history compatibility.",
+            recommendedStrength: "Do not use it for new tasks; choose a currently supported Turbo LoRA.",
+            effects: "The old four-step path can produce oversharpening, plastic or grainy frames, and unstable motion, so it is no longer a new-task option.",
+            stacking: "For legacy record reading only; do not create a new stack or Turbo comparison with it.",
+            compatibility: "Retained only to read old MiniMax H3 FL2VA image-to-video records; it is no longer a new-task path.",
             source: "amirjan122222 / MiniMax-H3-Turbo-Lora · ckpt850 EMA"
         },
         rules: {
             incompatible: "{name} is incompatible with the current base model or input mode.",
+            retired: "{name} is retired for new tasks because of unstable visual quality; choose a currently supported Turbo LoRA.",
             turboVariant: "ckpt850 cannot be combined with another Turbo variant; keep a separate comparison.",
             turboSpectrum: "ckpt850 can coexist with Spectrum, but keep a same-Seed Spectrum-off baseline first.",
             orderSuggestion: "Place {current} before {previous}; performance LoRAs usually load first."

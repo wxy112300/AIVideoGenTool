@@ -35,6 +35,28 @@ describe("UI locale foundation", () => {
       .toBe("控制任务之间何时重启 ComfyUI 以清理运行时；重启越多越稳定，但队列启动会更慢。");
   });
 
+  it("keeps the node uninstall dialog localized in runtime catalogs", async () => {
+    const zhCN = createTranslator("zh-CN");
+    expect(zhCN.t(uiKeys.dialog.recoverable)).toBe("此操作可从备份恢复");
+    expect(zhCN.t(uiKeys.dialog.uninstallNodeTitle, { name: "示例节点" })).toBe("卸载“示例节点”？");
+    expect(zhCN.t(uiKeys.dialog.uninstallNodeDescription)).toContain("永久删除");
+    expect(zhCN.t(uiKeys.dialog.uninstallNode)).toBe("卸载节点");
+
+    await loadUiLocale("zh-TW");
+    const zhTW = createTranslator("zh-TW");
+    expect(zhTW.t(uiKeys.dialog.recoverable)).toBe("此操作可從備份還原");
+    expect(zhTW.t(uiKeys.dialog.uninstallNodeTitle, { name: "示例節點" })).toBe("解除安裝「示例節點」？");
+    expect(zhTW.t(uiKeys.dialog.uninstallNodeDescription)).toContain("永久刪除");
+    expect(zhTW.t(uiKeys.dialog.uninstallNode)).toBe("解除安裝節點");
+
+    await loadUiLocale("en-US");
+    const enUS = createTranslator("en-US");
+    expect(enUS.t(uiKeys.dialog.recoverable)).toBe("This action can be restored from backup");
+    expect(enUS.t(uiKeys.dialog.uninstallNodeTitle, { name: "Example node" })).toBe("Uninstall “Example node”?");
+    expect(enUS.t(uiKeys.dialog.uninstallNodeDescription)).toContain("permanently deleted");
+    expect(enUS.t(uiKeys.dialog.uninstallNode)).toBe("Uninstall node");
+  });
+
   it("accepts an incremental catalog without requiring the full UI to move at once", () => {
     const translator = createTranslator("zh-CN", {
       "zh-CN": { "queue.remaining": "剩余 {count} 个任务" }

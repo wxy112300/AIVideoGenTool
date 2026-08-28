@@ -34,7 +34,7 @@
     { "id": "history-image-album", "route": "history", "setup": { "kind": "history", "historyKind": "image", "layout": "album" }, "viewportGroups": ["standard", "breakpoints"] },
     { "id": "video-detail", "route": "history-detail", "setup": { "kind": "history-detail", "historyKind": "video" }, "viewportGroups": ["standard"] },
     { "id": "image-detail", "route": "image-history-detail", "setup": { "kind": "history-detail", "historyKind": "image" }, "viewportGroups": ["standard"] },
-    { "id": "settings-system", "route": "settings", "setup": { "kind": "settings-tab", "value": "system" }, "viewportGroups": ["standard", "breakpoints"] },
+    { "id": "settings-system", "route": "settings", "setup": { "kind": "settings-tab", "value": "comfyui" }, "viewportGroups": ["standard", "breakpoints"], "notes": "Historical fixture id; now captures the ComfyUI environment page." },
     { "id": "settings-acceleration", "route": "settings", "setup": { "kind": "settings-tab", "value": "acceleration" }, "viewportGroups": ["standard", "breakpoints"] },
     { "id": "settings-video", "route": "settings", "setup": { "kind": "settings-tab", "value": "video" }, "viewportGroups": ["standard", "breakpoints"] },
     { "id": "settings-image", "route": "settings", "setup": { "kind": "settings-tab", "value": "image" }, "viewportGroups": ["standard", "breakpoints"] },
@@ -44,10 +44,10 @@
     { "id": "settings-logs", "route": "settings", "setup": { "kind": "settings-tab", "value": "logs" }, "viewportGroups": ["standard", "breakpoints"] }
   ],
   "settingsStateFixtures": [
-    { "id": "settings-state-offline", "route": "settings", "settingsState": "offline", "setup": { "kind": "settings-tab", "value": "system" }, "viewportGroups": ["standard"], "notes": "Offline scan complete: ComfyUI stopped; file/service evidence remains neutral." },
-    { "id": "settings-state-scanning", "route": "settings", "settingsState": "scanning", "setup": { "kind": "settings-tab", "value": "system" }, "viewportGroups": ["standard"], "notes": "Environment scan remains pending to expose the loading state." },
+    { "id": "settings-state-offline", "route": "settings", "settingsState": "offline", "setup": { "kind": "settings-tab", "value": "comfyui" }, "viewportGroups": ["standard"], "notes": "Offline scan complete: ComfyUI stopped; file/service evidence remains neutral." },
+    { "id": "settings-state-scanning", "route": "settings", "settingsState": "scanning", "setup": { "kind": "settings-tab", "value": "comfyui" }, "viewportGroups": ["standard"], "notes": "Environment scan remains pending to expose the loading state." },
     { "id": "settings-state-installing", "route": "settings", "settingsState": "installing", "setup": { "kind": "settings-tab", "value": "nodes" }, "viewportGroups": ["standard"], "notes": "A missing custom node is held in the real install queue's installing phase." },
-    { "id": "settings-state-partial", "route": "settings", "settingsState": "partial", "setup": { "kind": "settings-tab", "value": "system" }, "viewportGroups": ["standard"], "notes": "Partial scan: multiple installations, ready/missing model evidence, optional warning and repairable issue." },
-    { "id": "settings-state-error", "route": "settings", "settingsState": "error", "setup": { "kind": "settings-tab", "value": "system" }, "viewportGroups": ["standard"], "notes": "Confirmed environment/compatibility error with repair and update recovery; synthetic evidence, not a ComfyUI runtime claim." }
+    { "id": "settings-state-partial", "route": "settings", "settingsState": "partial", "setup": { "kind": "settings-tab", "value": "comfyui" }, "viewportGroups": ["standard"], "notes": "Partial scan: multiple installations, ready/missing model evidence, optional warning and repairable issue." },
+    { "id": "settings-state-error", "route": "settings", "settingsState": "error", "setup": { "kind": "settings-tab", "value": "comfyui" }, "viewportGroups": ["standard"], "notes": "Confirmed environment/compatibility error with repair and update recovery; synthetic evidence, not a ComfyUI runtime claim." }
   ]
 }

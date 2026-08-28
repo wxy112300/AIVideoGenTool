@@ -26,4 +26,4 @@ export const modelCatalog = createModelCatalog([
     ...loraModelEntries
 ]);
 export { sortProfilesByCatalogOrder } from "./model-catalog.js";
-export { customNodeCatalog, customNodeDefinition, compareCustomNodeDefinitions, compareDependencyIds, customNodePriority, LLAMA_CPP_PYTHON_DEPENDENCY_ID, LLAMA_CPP_PYTHON_DEPENDENCY_PRIORITY, SPECTRUM_MINIMUM_VERSION, SPECTRUM_TURBO_MINIMUM_VERSION, SPECTRUM_MODEL_AWARE_MINIMUM_VERSION, SPECTRUM_RECOMMENDED_VERSION } from "./dependencies/index.js";
+export { customNodeCatalog, customNodeDefinition, compareCustomNodeDefinitions, compareDependencyIds, customNodePriority, H3_ACCELERATION_DEPENDENCY_ID, H3_ACCELERATION_DEPENDENCY_PRIORITY, LLAMA_CPP_PYTHON_DEPENDENCY_ID, LLAMA_CPP_PYTHON_DEPENDENCY_PRIORITY, SPECTRUM_MINIMUM_VERSION, SPECTRUM_TURBO_MINIMUM_VERSION, SPECTRUM_MODEL_AWARE_MINIMUM_VERSION, SPECTRUM_RECOMMENDED_VERSION } from "./dependencies/index.js";

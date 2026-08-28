@@ -242,6 +242,12 @@ export async function installCustomNodePackage(
 ): Promise<{ ok: boolean; message: string; log?: string }> {
   const definition = customNodeDefinition(nodeId);
   if (!definition) return { ok: false, message: "未知的节点包，已拒绝安装。" };
+  if (definition.appInstallable === false) {
+    return {
+      ok: false,
+      message: `${definition.name} 仅支持手动安装；应用不会下载、更新或修改该节点。请打开项目源码页后安装并重启 ComfyUI。`
+    };
+  }
 
   const installLog: string[] = [];
   const report = (message: string) => {
@@ -651,14 +657,23 @@ export async function installCustomNodePackage(
 export async function uninstallCustomNodePackage(
   nodeId: string,
   settings: Settings,
-  runtime: Pick<DependencyInstallerRuntime, "findComfyRoot" | "renameWithRetry">
+  runtime: Pick<DependencyInstallerRuntime, "findComfyRoot">,
+  onLog?: (message: string) => void
 ): Promise<{ ok: boolean; message: string; log?: string }> {
   const definition = customNodeDefinition(nodeId);
   if (!definition) return { ok: false, message: "未知的节点包，已拒绝卸载。" };
+  if (definition.appInstallable === false) {
+    return {
+      ok: false,
+      message: `${definition.name} 仅支持手动安装；应用不会卸载或移动该节点目录。`
+    };
+  }
   try {
+    onLog?.(`正在查找 ${definition.name} 的安装目录……`);
     const comfyRoot = await runtime.findComfyRoot(settings);
     if (!comfyRoot) throw new Error("没有找到 ComfyUI 数据目录。");
     const customNodesDirectory = path.join(comfyRoot, "custom_nodes");
+    onLog?.("正在检查节点是否存在……");
     const entries = await fs.readdir(customNodesDirectory, { withFileTypes: true }).catch(() => []);
     const knownNames = new Set([
       definition.directoryName,
@@ -670,22 +685,20 @@ export async function uninstallCustomNodePackage(
     if (!installedDirectories.length) {
       return { ok: false, message: `${definition.name} 未安装，无需卸载。` };
     }
-    const backupRoot = path.join(comfyRoot, "node-backups", "uninstalled");
-    await fs.mkdir(backupRoot, { recursive: true });
-    const moved: string[] = [];
-    for (const [index, directory] of installedDirectories.entries()) {
-      const suffix = installedDirectories.length > 1 ? `-${index + 1}` : "";
-      const backupDirectory = path.join(
-        backupRoot,
-        `${path.basename(directory)}-${Date.now()}${suffix}`
-      );
-      await runtime.renameWithRetry(directory, backupDirectory);
-      moved.push(backupDirectory);
+    for (const directory of installedDirectories) {
+      onLog?.(`正在删除节点目录：${directory}`);
+      await fs.rm(directory, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 200
+      });
+      onLog?.(`节点目录已删除：${directory}`);
     }
     return {
       ok: true,
-      message: `${definition.name} 已卸载并移入可恢复备份。`,
-      log: moved.map((directory) => `备份：${directory}`).join("\n")
+      message: `${definition.name} 已卸载。需要时可通过一键安装重新下载。`,
+      log: installedDirectories.map((directory) => `已删除：${directory}`).join("\n")
     };
   } catch (error) {
     return {

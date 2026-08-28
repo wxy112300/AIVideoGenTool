@@ -22,6 +22,11 @@ export function nextH3AttentionModeAfterCudaFailure(
   return null;
 }
 
+export function normalizeH3AttentionMode(value: unknown): H3AttentionMode {
+  if (value === "sage-triton" || value === "pytorch") return value;
+  return "sage";
+}
+
 const cudaContextPattern =
   /illegal memory access|cudaErrorIllegalAddress|device-side assertion|unspecified launch failure|misaligned address|hostbuf_file_reader_read failed|cuda context.*(?:invalid|destroyed)|cublas_status_execution_failed/i;
 const gpuMemoryPattern =

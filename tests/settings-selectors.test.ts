@@ -188,6 +188,25 @@ describe("settings selectors", () => {
     });
   });
 
+  it("shows an uninstalled node as missing even when the running service is stale", () => {
+    const state = deriveCustomNodeCardState({
+      node: qwenNode({
+        installed: false,
+        loaded: false,
+        runtimeVerified: true,
+        runtimeMissingNodeTypes: ["NodeA", "NodeB"],
+        runtimeRepairable: true
+      }),
+      queuedIndex: -1,
+      active: false,
+      finalizing: false,
+      inFinalizingBatch: false,
+      globallyBlocked: false
+    });
+    expect(state.status).toBe("missing");
+    expect(state.primaryOperation).toBe("install");
+  });
+
   it("derives the selected acceleration Python independently from markup", () => {
     const settings = {
       ...createDefaultState().settings,

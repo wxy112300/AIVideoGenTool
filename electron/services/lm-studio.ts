@@ -29,6 +29,7 @@ import {
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
+import { h3CameraIntentInstruction } from "../../src/core/h3-camera-intent.js";
 import {
   extractH3DialogueLocks,
   extractH3VisibleTextLocks,
@@ -286,6 +287,7 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
   const referenceContext = request.referenceContext?.trim();
   const hardConstraints = h3ExplicitConstraintSummary(request.prompt);
   const contentLocks = h3ContentLockInstruction(request.prompt);
+  const cameraIntent = h3CameraIntentInstruction(request.prompt);
   return [
     `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
     h3DurationPlan(mode, Number(duration)),
@@ -300,6 +302,7 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
           "User request (preserve its concrete words and meaning):",
           request.prompt.trim()
         ]),
+    ...(cameraIntent ? [cameraIntent] : []),
     ...(hardConstraints ? [hardConstraints] : []),
     ...(contentLocks ? [contentLocks] : [])
   ].filter(Boolean).join("\n\n");
@@ -487,6 +490,7 @@ export async function enhancePrompt(
     h3Mode,
     request.h3DurationSeconds ?? 5,
     extractH3DialogueLocks(request.prompt),
-    extractH3VisibleTextLocks(request.prompt)
+    extractH3VisibleTextLocks(request.prompt),
+    request.prompt
   );
 }

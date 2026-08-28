@@ -21,6 +21,7 @@ import {
   extractH3VisibleTextLocks,
   h3ContentLockInstruction
 } from "../../src/core/h3-dialogue.js";
+import { h3CameraIntentInstruction } from "../../src/core/h3-camera-intent.js";
 
 interface WriterModel {
   id: string;
@@ -253,6 +254,7 @@ export async function enhancePromptWithH3PromptWriter(
     onProgress?.("uploading", 18);
     onProgress?.("loading-model", 24);
     const contentLocks = h3ContentLockInstruction(request.prompt);
+    const cameraIntent = imageEdit ? "" : h3CameraIntentInstruction(request.prompt);
     const presetBrief = imageEdit
       ? ""
       : [
@@ -266,6 +268,7 @@ export async function enhancePromptWithH3PromptWriter(
             .filter(Boolean)
             .join("\n\n参考素材角色：\n"),
       presetBrief,
+      cameraIntent,
       contentLocks
     ].filter(Boolean).join("\n\n");
     onProgress?.("generating", null);
@@ -300,7 +303,8 @@ export async function enhancePromptWithH3PromptWriter(
       modeForOutput,
       request.h3DurationSeconds ?? 5,
       extractH3DialogueLocks(request.prompt),
-      extractH3VisibleTextLocks(request.prompt)
+      extractH3VisibleTextLocks(request.prompt),
+      request.prompt
     );
   } finally {
     onProgress?.(unloadAfter ? "unloading" : "validating", 98);

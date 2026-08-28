@@ -594,6 +594,12 @@ export function renderSettingsPage(viewModel, options) {
         : accelerationState.pythonSelection === "selected"
             ? s("accel.sourceSelected")
             : s("accel.autoDetect");
+    const attentionModeTips = {
+        sage: s("accel.modeSageTip"),
+        "sage-triton": s("accel.modeSageTritonTip"),
+        pytorch: s("accel.modePytorchTip")
+    };
+    const selectedAttentionModeTip = attentionModeTips[settings.h3AttentionMode] ?? attentionModeTips.sage;
     const accelerationPanel = `
     <section class="settings-panel acceleration-panel">
       <section class="panel settings-section acceleration-section acceleration-strategy-panel ${attentionTone}">
@@ -603,10 +609,10 @@ export function renderSettingsPage(viewModel, options) {
         </div>
         <div class="acceleration-strategy-grid">
           <label class="acceleration-mode-field">${fieldLabelWithTip(s("accel.mode"), s("accel.modeTip"))}
-            <select id="h3-attention-mode">
-              <option value="sage" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>${s("accel.modeSage")}</option>
-              <option value="sage-triton" ${settings.h3AttentionMode === "sage-triton" ? "selected" : ""}>${s("accel.modeSageTriton")}</option>
-              <option value="pytorch" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>${s("accel.modePytorch")}</option>
+            <select id="h3-attention-mode" title="${escape(selectedAttentionModeTip)}">
+              <option value="sage" data-description="${escape(attentionModeTips.sage)}" title="${escape(attentionModeTips.sage)}" ${settings.h3AttentionMode === "sage" ? "selected" : ""}>${s("accel.modeSage")}</option>
+              <option value="sage-triton" data-description="${escape(attentionModeTips["sage-triton"])}" title="${escape(attentionModeTips["sage-triton"])}" ${settings.h3AttentionMode === "sage-triton" ? "selected" : ""}>${s("accel.modeSageTriton")}</option>
+              <option value="pytorch" data-description="${escape(attentionModeTips.pytorch)}" title="${escape(attentionModeTips.pytorch)}" ${settings.h3AttentionMode === "pytorch" ? "selected" : ""}>${s("accel.modePytorch")}</option>
             </select>
           </label>
           <div class="acceleration-summary">

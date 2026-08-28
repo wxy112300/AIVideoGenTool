@@ -130,6 +130,9 @@ describe("queue execution snapshots", () => {
       workflowPath: "workflow.json",
       spectrumMode: "balanced" as const,
       spectrumModelAwareMode: "full" as const,
+      h3MemoryOptimizationMode: "preserve-native" as const,
+      h3MemoryOptimizationUserSet: true,
+      h3MemoryChunkRows: 4096,
       seed: null,
       h3ReferenceSlots: [{ id: "slot-1", kind: "image" as const, mediaPath: "ref.png" }]
     };
@@ -144,7 +147,15 @@ describe("queue execution snapshots", () => {
       promptVersion: 1,
       h3LivePreview: false,
       spectrumMode: "balanced",
-      spectrumModelAwareMode: "full",
+      spectrumModelAwareMode: "off",
+      h3MemoryOptimizationMode: "off",
+      h3MemoryOptimizationUserSet: false,
+      h3MemoryChunkRows: 4096,
+      h3MemoryExecutionPlan: expect.objectContaining({
+        memory: "off",
+        spectrumEnabled: true,
+        allowed: true
+      }),
       createdAt: "2026-08-12T12:00:00.000Z"
     });
     expect(queued.h3ReferenceSlots[0]?.mediaPath).toBe("ref.png");
@@ -359,6 +370,36 @@ describe("queue execution snapshots", () => {
       ["video", "source.mp4"],
       ["image", "subject.png"]
     ]);
+  });
+
+  it("uses standard Spectrum for new H3 extension snapshots", () => {
+    const state = createDefaultState();
+    const draft = {
+      ...createDefaultDraft(),
+      inputMode: "video" as const,
+      sourceVideoPath: "source.mp4",
+      sourceVideoDuration: 12,
+      trimEndSeconds: 12,
+      workflowPath: "extend.json",
+      spectrumMode: "balanced" as const,
+      spectrumModelAwareMode: "full" as const,
+      h3MemoryOptimizationMode: "preserve-native" as const,
+      h3MemoryOptimizationUserSet: true,
+      h3MemoryChunkRows: 4096
+    };
+
+    const queued = extensionTaskFromDraft(draft, state, clock());
+
+    expect(queued.spectrumMode).toBe("balanced");
+    expect(queued.spectrumModelAwareMode).toBe("off");
+    expect(queued.h3MemoryOptimizationMode).toBe("off");
+    expect(queued.h3MemoryOptimizationUserSet).toBe(false);
+    expect(queued.h3MemoryChunkRows).toBe(4096);
+    expect(queued.h3MemoryExecutionPlan).toMatchObject({
+      memory: "off",
+      spectrumEnabled: true,
+      allowed: true
+    });
   });
 });
 

@@ -192,12 +192,12 @@ export async function recoverQueueFailure(
       taskId: task.id, modelId: task.modelId, forceStopOk: forced.ok
     });
   } else if (!aborted && recoveryDecision.kind === "gpu-memory") {
-    await interrupt(store.get().settings).catch((interruptError) => {
+    await (deps.interruptComfyUi ?? interrupt)(store.get().settings).catch((interruptError) => {
       logger.warn("comfy", "interrupt-failed", "ComfyUI interrupt request failed", {
         taskId: task.id, error: safeLogErrorMessage(interruptError)
       });
     });
-    await freeMemory(store.get().settings).catch((freeMemoryError) => {
+    await (deps.freeComfyMemory ?? freeMemory)(store.get().settings).catch((freeMemoryError) => {
       logger.warn("comfy", "free-memory-failed", "ComfyUI memory release request failed", {
         taskId: task.id, error: safeLogErrorMessage(freeMemoryError)
       });
@@ -244,7 +244,8 @@ export async function recoverQueueFailure(
   }
   deps.onRuntimeRestarted?.();
 
-  const attentionFallback = recoveryDecision.kind === "cuda-context" &&
+  const shouldFallbackAttention = recoveryDecision.kind === "cuda-context";
+  const attentionFallback = shouldFallbackAttention &&
     task.taskType !== "upscale" && task.taskType !== "image-generation" &&
     isMiniMaxH3Model(task.modelId)
     ? nextH3AttentionModeAfterCudaFailure(task.attentionMode)
@@ -261,7 +262,7 @@ export async function recoverQueueFailure(
         const currentMode = queuedTask.attentionMode ?? "sage";
         const shouldFallback = attentionFallback === "pytorch"
           ? currentMode !== "pytorch"
-          : currentMode === "sage";
+          : currentMode === attentionFrom;
         if (!shouldFallback) continue;
         queuedTask.attentionMode = attentionFallback;
         queuedTask.updatedAt = new Date().toISOString();

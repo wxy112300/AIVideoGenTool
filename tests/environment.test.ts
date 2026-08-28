@@ -33,13 +33,18 @@ import {
   patchVideoHelperBatchCompatibility,
   renameWithRetry,
   refreshModelProfileRuntimeEvidence,
+  repairEnvironmentIssue,
   runLoggedProcess,
   selectLlamaServerReleaseAssets,
   shouldReportComfyDatabaseIssue,
   tritonRequirementForTorch,
+  updateComfyUi,
   videoHelperBatchCompatible
 } from "../electron/services/environment.js";
-import { comfyUiSettingsForPromptRuntime } from "../electron/services/comfy-runtime-policy.js";
+import {
+  comfyUiSettingsForPromptRuntime,
+  comfyUiSettingsForQueueTask
+} from "../electron/services/comfy-runtime-policy.js";
 import {
   birefnetRequiredNodeTypes,
   hidreamO1RequiredNodeTypes,
@@ -48,6 +53,24 @@ import {
 } from "../src/core/image-workflow.js";
 import { createDefaultSettings } from "../src/core/defaults.js";
 import type { ModelScanProfile } from "../src/types.js";
+
+describe("ComfyUI remote operation boundary", () => {
+  it("keeps core updates and environment repairs connection-only for remote endpoints", async () => {
+    const settings = {
+      ...createDefaultSettings(),
+      comfyUrl: "https://comfy.example.test"
+    };
+
+    await expect(updateComfyUi(settings)).resolves.toMatchObject({
+      ok: false,
+      message: "远程 ComfyUI 仅支持连接，应用不会更新远程核心。"
+    });
+    await expect(repairEnvironmentIssue("comfy-database", settings)).resolves.toMatchObject({
+      ok: false,
+      message: "远程 ComfyUI 仅支持连接，环境修复必须在本地所选实例上执行。"
+    });
+  });
+});
 
 describe("scoped environment runtime evidence", () => {
   it("preserves file evidence while refreshing runtime nodes", () => {
@@ -507,6 +530,32 @@ describe("ComfyUI environment candidates", () => {
     expect(args).not.toContain("--lowvram");
   });
 
+  it("ignores legacy H3 Memory flags when selecting a queue runtime", () => {
+    const settings = createDefaultSettings();
+    const memorySettings = comfyUiSettingsForQueueTask({
+      taskType: "generation",
+      modelId: "minimax_h3_fl2va",
+      attentionMode: "sage",
+      h3MemoryOptimizationMode: "preserve-native"
+    }, settings);
+    const ordinarySettings = comfyUiSettingsForQueueTask({
+      taskType: "generation",
+      modelId: "minimax_h3_fl2va",
+      attentionMode: "sage",
+      h3MemoryOptimizationMode: "off"
+    }, settings);
+
+    expect(comfyUiRuntimeProfileForSettings(memorySettings)).toBe("standard");
+    expect(comfyUiMemoryArgs(memorySettings)).not.toContain("--enable-dynamic-vram");
+    expect(comfyUiMemoryArgs(memorySettings)).not.toContain("--use-sage-attention");
+    expect(comfyUiMemoryArgs(memorySettings)).toContain("--disable-pinned-memory");
+    expect(comfyUiMemoryArgs(memorySettings)).toContain("--disable-async-offload");
+    expect(comfyUiMemoryArgs(memorySettings)).not.toContain("--disable-dynamic-vram");
+    expect(comfyUiRuntimeProfileForSettings(ordinarySettings)).toBe("standard");
+    expect(comfyUiMemoryArgs(ordinarySettings)).not.toContain("--use-sage-attention");
+    expect(comfyUiMemoryArgs(ordinarySettings)).not.toContain("--disable-dynamic-vram");
+  });
+
   it("adds the aggressive CPU/offload profile for Qwen image editing", () => {
     const args = comfyUiMemoryArgs({
       vramReserveGb: 1,
@@ -556,6 +605,9 @@ describe("ComfyUI environment candidates", () => {
     expect(comfyUiRuntimeProfileFromCommandLine(
       "python main.py --disable-pinned-memory --disable-async-offload"
     )).toBe("standard");
+    expect(comfyUiRuntimeProfileFromCommandLine(
+      "python main.py --enable-dynamic-vram --async-offload 2"
+    )).toBe("h3-memory");
     expect(comfyUiRuntimeProfileFromCommandLine(
       "python main.py --lowvram --cpu-vae --disable-smart-memory"
     )).toBe("h3-q3-3080");
@@ -1014,7 +1066,7 @@ describe("ComfyUI environment candidates", () => {
     expect(legacyOnly?.available).toBe(false);
   });
 
-  it("detects the ckpt850 and Turbo-SLA LoRA profiles with concrete install guides", () => {
+  it("does not scan retired ckpt850 while keeping current Turbo-SLA scanning", () => {
     const profiles = evaluateModelProfiles([
       "loras\\minimax_h3_turbo_4step_ema_ckpt850.safetensors",
       "loras\\minimax_h3_fl2v_turbo_4step_v0.1_768p_sla_comfyui_bf16.safetensors"
@@ -1022,11 +1074,7 @@ describe("ComfyUI environment candidates", () => {
     const ckpt850 = profiles.find((profile) => profile.id === "minimax-h3-turbo-ckpt850-ema");
     const sla = profiles.find((profile) => profile.id === "minimax-h3-turbo-sla-4step");
 
-    expect(ckpt850).toMatchObject({ available: true, category: "lora" });
-    expect(ckpt850?.components[0]?.installGuide).toMatchObject({
-      targetSubdirectory: "loras",
-      recommendedFilename: "minimax_h3_turbo_4step_ema_ckpt850.safetensors"
-    });
+    expect(ckpt850).toBeUndefined();
     expect(sla).toMatchObject({
       available: true,
       category: "lora",

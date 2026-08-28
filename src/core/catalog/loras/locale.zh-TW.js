@@ -1,15 +1,16 @@
 export const zhTWLoraLocales = {
     "minimax-h3-turbo-ckpt850-ema": {
         guide: {
-            summary: "MiniMax H3 Turbo ckpt850 EMA 舊 Turbo 訓練線；模型卡支援 4 步以上，主要作為 4 步大動作備選。",
-            recommendedStrength: "預設 1.0；4 步大動作可優先測試，普通品質優先請使用 v4 的 6–8 步路徑。",
-            effects: "用較少取樣步驟縮短 H3 FL2VA 生成時間；4 步通常更利於大動作響應，但可能出現過銳、塑膠感或顆粒，運動與音訊需對照。",
-            stacking: "效能 LoRA 放在人物、質量或內容 LoRA 前面；一次只保留一個 Turbo 變體。",
-            compatibility: "僅目前已接入的 MiniMax H3 FL2VA 圖生影片路徑；使用現有原生 ER-SDE、Beta、Sigma Shift 取樣鏈。",
+            summary: "MiniMax H3 Turbo ckpt850 EMA 舊 Turbo 訓練線已退役，僅為舊佇列與歷史記錄保留相容。",
+            recommendedStrength: "不再推薦新任務使用；請改用目前受支援的 Turbo LoRA。",
+            effects: "舊版 4 步路徑可能出現過銳、塑膠感、顆粒和運動穩定性問題，因此停止作為新任務選項。",
+            stacking: "僅供舊記錄讀取；不要重新組合或作為新的 Turbo 對照。",
+            compatibility: "僅保留舊 MiniMax H3 FL2VA 圖生影片記錄的讀取相容，不再作為新任務路徑。",
             source: "amirjan122222 / MiniMax-H3-Turbo-Lora · ckpt850 EMA"
         },
         rules: {
             incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+            retired: "{name} 因畫面品質不穩定，已停止用於新任務；請改用目前受支援的 Turbo LoRA。",
             turboVariant: "ckpt850 不可與其他 Turbo 變體同時使用；請保留單獨對照。",
             turboSpectrum: "ckpt850 可與 Spectrum 共存，但請先保留關閉 Spectrum 的同 Seed 基準。",
             orderSuggestion: "建議將 {current} 放在 {previous} 前面；效能 LoRA 通常先載入。"

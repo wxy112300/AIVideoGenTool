@@ -19,6 +19,9 @@ describe("draft defaults", () => {
     expect(draft.modelId).toBe("minimax_h3_fl2va");
     expect(draft.spectrumMode).toBe("off");
     expect(draft.spectrumModelAwareMode).toBe("off");
+    expect(draft.h3MemoryOptimizationMode).toBe("off");
+    expect(draft.h3MemoryOptimizationUserSet).toBe(false);
+    expect(draft.h3MemoryChunkRows).toBe(4096);
     expect(draft.sourceVideoPath).toBe("");
     expect(draft.trimStartSeconds).toBe(0);
     expect(draft.trimEndSeconds).toBe(0);

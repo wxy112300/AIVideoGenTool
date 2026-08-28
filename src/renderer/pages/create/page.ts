@@ -105,7 +105,6 @@ export interface VideoCreatePageViewModel {
   spectrumOptionsMarkup: string;
   spectrumTitle: string;
   spectrumModeDisabled: boolean;
-  spectrumModelAwareMarkup: string;
   loraLabelMarkup: string;
   installReadyLoraDefinitions: ReadonlyArray<InstallReadyLoraDefinition>;
   installReadyLoraEmptyLabel: string;
@@ -420,8 +419,7 @@ export function renderCreatePage(
           <select id="spectrum-mode" ${viewModel.spectrumModeDisabled ? "disabled" : ""} title="${escapeHtml(viewModel.spectrumTitle)}">
             ${viewModel.spectrumOptionsMarkup}
           </select>
-        </label>
-        ${viewModel.spectrumModelAwareMarkup}` : ""}
+        </label>` : ""}
           </div>
           <div class="video-lora-stack">
             <div class="video-lora-stack-heading">

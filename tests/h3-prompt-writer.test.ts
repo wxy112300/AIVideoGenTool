@@ -201,7 +201,8 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
         referenceMediaPaths: [image]
       }, settings, new AbortController().signal, undefined, false);
 
-      expect(result).toBe("[0-5s] A continuous shot.");
+      expect(result).toContain("[0-5s] A continuous shot.");
+      expect(result).toContain("让人物走向镜头");
       expect(generateBody).toMatchObject({
         mode: "Reference",
         unload_after: false,
@@ -209,6 +210,7 @@ describe("ComfyUI H3 Prompt Writer adapter", () => {
         duration_seconds: 5,
         aspect_ratio: "16:9"
       });
+      expect(String(generateBody.creative_brief)).toContain("Camera disambiguation and preservation lock");
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

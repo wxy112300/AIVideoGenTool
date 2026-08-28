@@ -25,18 +25,11 @@ describe("video LoRA catalog", () => {
       H3_SLA_TURBO_LORA.id,
       H3_TURBO_LORA.id,
       "minimax-h3-lightx2v-turbo-8step-v1",
-      H3_CKPT850_LORA.id,
       "minimax-h3-ref2v-turbo-4step-v01",
       H3_CAMERA_MOTION_LORA.id,
       H3_AFTER_MIDNIGHT_LORA.id,
       H3_REALISM_PEOPLE_LORA.id
     ]);
-    expect(H3_CKPT850_LORA).toMatchObject({
-      strength: 1,
-      purpose: "performance",
-      compatibleModelIds: ["minimax_h3_fl2va"],
-      compatibleInputModes: ["image"]
-    });
     expect(H3_SLA_TURBO_LORA).toMatchObject({
       strength: 1,
       purpose: "performance",
@@ -163,6 +156,26 @@ describe("video LoRA catalog", () => {
         code: `combination:${[H3_REALISM_PEOPLE_LORA.id, H3_TURBO_LORA.id].sort().join(":")}`,
         severity: "warning"
       }),
+    ]));
+  });
+
+  it("retires ckpt850 from active choices without breaking legacy record parsing", () => {
+    expect(BUILTIN_VIDEO_LORAS.some((lora) => lora.id === H3_CKPT850_LORA.id)).toBe(false);
+    expect(H3_CKPT850_LORA.retired).toBe(true);
+    const parsed = normalizeVideoLoras([H3_CKPT850_LORA]);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.id).toBe(H3_CKPT850_LORA.id);
+    expect(videoLoraConfigurationIssues({
+      modelId: "minimax_h3_fl2va",
+      inputMode: "image",
+      spectrumMode: "off",
+      attentionMode: "sage",
+      videoLoras: parsed
+    })).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: `retired:${H3_CKPT850_LORA.id}`,
+        severity: "error"
+      })
     ]));
   });
 

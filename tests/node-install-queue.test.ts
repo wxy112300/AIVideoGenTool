@@ -111,12 +111,14 @@ describe("CustomNodeInstallQueue", () => {
     const nodes = [
       nodeStatus("required-missing", { installed: false, loaded: false, required: true }),
       nodeStatus("optional-toolchain", { installed: false, loaded: false, bulkInstall: false }),
-      nodeStatus("optional-normal", { installed: false, loaded: false })
+      nodeStatus("optional-normal", { installed: false, loaded: false }),
+      nodeStatus("h3-optimizations", { installed: false, loaded: false, bulkInstall: true })
     ];
 
     expect(customNodeIdsForBulkAction(nodes)).toEqual([
       "required-missing",
-      "optional-normal"
+      "optional-normal",
+      "h3-optimizations"
     ]);
   });
 

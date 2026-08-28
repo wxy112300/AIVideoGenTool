@@ -4,6 +4,7 @@ export function createRendererContext(options) {
     return {
         root: options.root,
         studio: options.studio,
+        enhancePrompt: options.enhancePrompt,
         getState: options.getState,
         getRoute: options.getRoute,
         getTranslator,

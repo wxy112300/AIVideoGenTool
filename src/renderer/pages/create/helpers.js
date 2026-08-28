@@ -27,6 +27,8 @@ export const imageReferenceRolePromptLabels = {
     auto: "automatic reference"
 };
 export function isPromptCancellationError(error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+        return true;
     const message = error instanceof Error ? error.message : String(error);
     return /提示词任务已取消|prompt task (?:was )?cancelled|operation was aborted/iu.test(message);
 }

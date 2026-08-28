@@ -1,4 +1,5 @@
 import { restoreH3DialogueLocks, restoreH3VisibleTextLocks } from "./h3-dialogue.js";
+import { preserveH3CameraIntentInOutput } from "./h3-camera-intent.js";
 export function inferH3PromptMode(hasStartImage, hasEndImage, isR2V = false) {
     if (isR2V)
         return "R2V";
@@ -147,11 +148,12 @@ function stripH3OutputPreamble(promptText, mode) {
         ? promptText.trim()
         : promptText.slice(section.index).trim();
 }
-export function normalizeH3PromptOutput(promptText, mode, durationSeconds, dialogueLocks = [], visibleTextLocks = []) {
+export function normalizeH3PromptOutput(promptText, mode, durationSeconds, dialogueLocks = [], visibleTextLocks = [], sourcePrompt = "") {
     const cleanedBody = stripH3OutputPreamble(stripLeadingH3AlignmentInstructions(promptText), mode);
     const body = restoreH3VisibleTextLocks(restoreH3DialogueLocks(cleanedBody, dialogueLocks), visibleTextLocks);
+    const cameraSafeBody = preserveH3CameraIntentInOutput(body, sourcePrompt, mode);
     const alignment = h3AlignmentInstruction(mode, durationSeconds);
     if (!alignment)
-        return body;
-    return `${alignment}\n\n${body}`.trim();
+        return cameraSafeBody;
+    return `${alignment}\n\n${cameraSafeBody}`.trim();
 }

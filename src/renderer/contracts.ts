@@ -1,5 +1,5 @@
 import type { Translator, TranslationParams } from "../core/i18n";
-import type { AppApi, AppState, NotificationKind } from "../types";
+import type { AppApi, AppState, EnhanceRequest, NotificationKind } from "../types";
 import type { NotificationAction } from "./notifications";
 
 export type Page =
@@ -13,6 +13,7 @@ export type Page =
 export type HistoryKind = "video" | "image";
 export type CreationMode = "image-to-video" | "video-extension" | "image-edit";
 export type SettingsTab =
+  | "comfyui"
   | "system"
   | "acceleration"
   | "video"
@@ -41,6 +42,7 @@ export type RendererCleanup = () => void;
 export interface RendererContext {
   readonly root: HTMLElement;
   readonly studio: AppApi;
+  enhancePrompt(request: EnhanceRequest): Promise<string>;
   getState(): AppState | undefined;
   getRoute(): Readonly<RendererRouteState>;
   getTranslator(): Translator;

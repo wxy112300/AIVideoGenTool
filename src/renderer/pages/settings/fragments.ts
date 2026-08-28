@@ -144,17 +144,7 @@ export function renderSettingsEnvironmentOverview(
       }).join("")}
     </div>
     ${viewModel.serviceStatusMessage ? renderSettingsStatusNotice(options, viewModel.serviceStatusMessage, serviceStatusBusy ? "working" : "", serviceStatusBusy ? "refresh-cw" : "circle-help") : ""}
-    ${environmentScan.comfyRoot || environmentScan.comfyInstallDirectory ? `
-      <div class="detected-path">
-        <div><span class="eyebrow">${t(uiKeys.settings.system.detectedComfyUi, { type:
-          environmentScan.comfyInstallType === "desktop" ? t(uiKeys.settings.system.desktopInstall) :
-          environmentScan.comfyInstallType === "portable" ? t(uiKeys.settings.system.portableInstall) :
-          environmentScan.comfyInstallType === "manual" ? t(uiKeys.settings.system.manualInstall) : t(uiKeys.settings.system.dataDirectory)
-        })}</span>
-        <strong>${escape(environmentScan.comfyInstallDirectory || environmentScan.comfyRoot)}</strong>
-        <p class="muted">${t(uiKeys.settings.system.coreSource)}${settingsText(options.locale, "shared.labelSeparator")}${escape(environmentScan.comfySourceDirectory || t(uiKeys.settings.system.notFoundPath))}<br>${t(uiKeys.settings.system.dataDirectory)}${settingsText(options.locale, "shared.labelSeparator")}${escape(environmentScan.comfyRoot || t(uiKeys.settings.system.initializationWaiting))}<br>${t(uiKeys.settings.system.service)}${settingsText(options.locale, "shared.labelSeparator")}${escape(environmentScan.comfyUrl)}<br>${t(uiKeys.settings.system.modelPath)}${settingsText(options.locale, "shared.labelSeparator")}${escape(environmentScan.modelDirectory || t(uiKeys.settings.system.initializationWaiting))}<br>${t(uiKeys.settings.system.outputPath)}${settingsText(options.locale, "shared.labelSeparator")}${escape(environmentScan.outputDirectory || t(uiKeys.settings.system.initializationWaiting))}</p></div>
-        <button class="secondary button-with-icon" id="use-scanned-comfy">${icon("check")}${t(uiKeys.settings.system.useScannedPaths)}</button>
-      </div>` : ""}`;
+    `;
 }
 
 export function renderSettingsEnvironmentIssuesPanel(

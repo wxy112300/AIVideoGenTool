@@ -133,6 +133,12 @@ describe("LM Studio prompt enhancement requests", () => {
     expect(body.messages[0]?.content).toContain("Final user-intent lock");
     expect(body.messages[0]?.content).toContain("Factual boundary");
     expect(body.messages[0]?.content).toContain("Endpoint grounding");
+    expect(body.messages[1]?.content).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("Camera disambiguation and preservation lock")
+      })
+    ]));
     expect(body.messages[1]?.content).toEqual([
       expect.objectContaining({ type: "text" }),
       expect.objectContaining({ type: "image_url" }),

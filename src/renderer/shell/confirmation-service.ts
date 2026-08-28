@@ -11,6 +11,13 @@ export type ConfirmationRequest =
   | { kind: "cancel-queue-task"; taskId: string; title: string }
   | { kind: "discard-settings"; nextPage: Page }
   | { kind: "force-stop-comfy" }
+  | {
+      kind: "prompt-cpu-fallback";
+      usedVram: string;
+      totalVram: string;
+      freeVram: string;
+      requiredVram: string;
+    }
   | { kind: "uninstall-custom-node"; nodeId: string; name: string }
   | { kind: "uninstall-llama-cpp-python" };
 
@@ -28,6 +35,7 @@ export interface ConfirmationServiceOptions {
   setLlamaCppPythonInstalling(value: boolean): void;
   getLlamaCppPythonLog(): string;
   setLlamaCppPythonLog(log: string): void;
+  setCustomNodeLog(nodeId: string, log: string): void;
   scanEnvironment(settings: Settings): Promise<void>;
   setSettingsDraft(settings: Settings | null): void;
   setPage(page: Page): void;
@@ -66,6 +74,10 @@ export async function acceptConfirmation(
     acceptButton.textContent = t(uiKeys.dialog.processing);
   }
   if (cancelButton) cancelButton.disabled = true;
+  if (request.kind === "uninstall-custom-node") {
+    options.setCustomNodeLog(request.nodeId, "");
+    options.renderOverlay();
+  }
   try {
     if (request.kind === "clear-draft") {
       options.clearCreationDraft(request.mode);
@@ -103,8 +115,6 @@ export async function acceptConfirmation(
       const settings = options.getFormSettings();
       const result = await context.studio.uninstallCustomNode(request.nodeId, settings);
       if (!result.ok) throw new Error(result.message);
-      const restarted = await context.studio.restartLocalService("comfy", settings);
-      if (!restarted.ok) throw new Error(restarted.message);
       await options.scanEnvironment(settings);
       options.setRequest(null);
       options.setBusy(false);

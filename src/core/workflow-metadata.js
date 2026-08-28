@@ -37,7 +37,7 @@ export const bundledWorkflowMetadata = {
     minimax_h3_fl2va_turbo_api: metadata("minimax_h3_fl2va_turbo_api.json", ["kjnodes"], {
         comfyUi: h3Core
     }),
-    minimax_h3_i2v_api: metadata("minimax_h3_i2v_api.json", ["kjnodes"], {
+    minimax_h3_i2v_api: metadata("minimax_h3_i2v_api.json", ["kjnodes", "h3-optimizations"], {
         comfyUi: h3Core,
         upstreamUrl: "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/video_minimax_h3_i2v.json"
     }),
@@ -50,7 +50,7 @@ export const bundledWorkflowMetadata = {
     minimax_h3_r2v_extend_api: metadata("minimax_h3_r2v_extend_api.json", ["video-helper-suite", "h3-motion-context", "kjnodes"], {
         comfyUi: h3Core
     }),
-    minimax_h3_t2va_api: metadata("minimax_h3_t2va_api.json", ["kjnodes"], {
+    minimax_h3_t2va_api: metadata("minimax_h3_t2va_api.json", ["kjnodes", "h3-optimizations"], {
         comfyUi: h3Core
     }),
     minimax_h3_t2va_gguf_q3_api: metadata("minimax_h3_t2va_gguf_q3_api.json", ["comfyui-gguf-h3", "kjnodes"], {

@@ -14,10 +14,23 @@ import {
   h3PreviewTinyVaeFromObjectInfo,
   nodeStage,
   progressForNode,
-  safeComfyUploadFilename
+  safeComfyUploadFilename,
+  serviceSilenceLimitMs
 } from "../electron/services/comfy-ui.js";
 import { h3OfficialPromptBaseline } from "../src/core/h3-official-spec.js";
 import { promptSnippetFor } from "../src/core/prompt-suggestions.js";
+
+describe("ComfyUI task liveness", () => {
+  it("extends HTTP silence tolerance while the task WebSocket remains connected", () => {
+    expect(serviceSilenceLimitMs(90 * 60_000, false, true, false)).toBe(20 * 60_000);
+    expect(serviceSilenceLimitMs(10 * 60_000, false, true, false)).toBe(10 * 60_000);
+  });
+
+  it("keeps the strict limit before connection or after WebSocket disconnect", () => {
+    expect(serviceSilenceLimitMs(90 * 60_000, false, false, false)).toBe(3 * 60_000);
+    expect(serviceSilenceLimitMs(90 * 60_000, false, true, true)).toBe(3 * 60_000);
+  });
+});
 
 describe("H3 live preview runtime discovery", () => {
   it("selects the TAE only when KJNodes exposes it through vae_approx", () => {
@@ -187,6 +200,24 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("Reference grounding");
     expect(instruction).toContain("User-intent preservation rule");
     expect(instruction).toContain("Final user-intent lock");
+  });
+
+  it("adds a camera lock only for viewpoint-camera language", () => {
+    const viewpoint = h3PromptInstruction({
+      prompt: "The camera rotates around the girl, showing the view from inside the room looking outside.",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "T2VA"
+    });
+    const physical = h3PromptInstruction({
+      prompt: "A woman holds a handheld camera on the desk.",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "T2VA"
+    });
+
+    expect(viewpoint).toContain("Camera disambiguation and preservation lock");
+    expect(viewpoint).toContain("Use the official term Arc Shot");
+    expect(viewpoint).toContain("inside the room");
+    expect(physical).toContain("Physical camera-device wording");
   });
 
   it("adds a compiler-owned dialogue ledger for foreign-language speech", () => {
