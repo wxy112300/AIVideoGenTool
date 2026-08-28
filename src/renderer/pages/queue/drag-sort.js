@@ -1,15 +1,46 @@
 import { uiKeys } from "../../../core/i18n-keys";
+import { activeQueueTaskIds, activeQueueTasks } from "../../../core/queue";
 const dragThreshold = 5;
 const dragAnimationMs = 170;
 const cardAnimationTokens = new WeakMap();
+function pendingTaskIds(context) {
+    const state = context.getState();
+    if (!state)
+        return [];
+    return activeQueueTaskIds(state.queue).filter((taskId) => state.queue.some((task) => task.id === taskId && task.status === "waiting"));
+}
 function reorderableTaskIds(context) {
     const state = context.getState();
     if (!state)
         return [];
-    const runningIndex = state.queue.findIndex((task) => task.status === "running");
-    return state.queue
+    const tasks = activeQueueTasks(state.queue);
+    const runningIndex = tasks.findIndex((task) => task.status === "running");
+    return tasks
         .filter((task, index) => task.status === "waiting" && (runningIndex < 0 || index > runningIndex))
         .map((task) => task.id);
+}
+function resolvePauseBoundaryDrop(context, drag) {
+    const state = context.getState();
+    const rawBoundary = state?.queuePauseBoundary;
+    if (!state || !Number.isInteger(rawBoundary))
+        return undefined;
+    const marker = drag.list.querySelector("[data-queue-boundary-marker]");
+    if (!marker)
+        return undefined;
+    const activeIds = activeQueueTaskIds(state.queue);
+    const sourceIndex = activeIds.indexOf(drag.taskId);
+    if (sourceIndex < 0 || activeIds.length < 2)
+        return undefined;
+    const boundary = Math.max(1, Math.min(activeIds.length, rawBoundary));
+    const markerRect = marker.getBoundingClientRect();
+    const markerMiddle = markerRect.top + markerRect.height / 2;
+    if (sourceIndex >= boundary && drag.pointerY <= markerMiddle && boundary < activeIds.length) {
+        return { target: boundary + 1, side: "before" };
+    }
+    if (sourceIndex < boundary && drag.pointerY >= markerMiddle && boundary > 1) {
+        return { target: boundary - 1, side: "after" };
+    }
+    return undefined;
 }
 function restoreInlineStyle(element, style) {
     if (style == null)
@@ -74,28 +105,88 @@ function resolveDropPosition(context, drag) {
     const cards = listCards(drag.list, ids, drag.sourceCard);
     if (!cards.length)
         return null;
+    const boundaryDrop = resolvePauseBoundaryDrop(context, drag);
     const targetIndex = cards.findIndex((card) => {
         const rect = card.getBoundingClientRect();
         return drag.pointerY < rect.top + rect.height / 2;
     });
     if (targetIndex >= 0) {
-        return { card: cards[targetIndex], side: "before", targetIndex };
+        return {
+            card: cards[targetIndex],
+            side: "before",
+            targetIndex,
+            pauseBoundaryTarget: boundaryDrop?.target,
+            pauseBoundarySide: boundaryDrop?.side
+        };
     }
     const last = cards[cards.length - 1];
-    return { card: last, side: "after", targetIndex: cards.length };
+    return {
+        card: last,
+        side: "after",
+        targetIndex: cards.length,
+        pauseBoundaryTarget: boundaryDrop?.target,
+        pauseBoundarySide: boundaryDrop?.side
+    };
+}
+function resolveBoundaryDropIndex(context, drag) {
+    if (!pointerIsNearList(drag.list, drag.pointerX, drag.pointerY))
+        return null;
+    const cards = listCards(drag.list, pendingTaskIds(context), drag.sourceMarker);
+    const targetIndex = cards.findIndex((card) => {
+        const rect = card.getBoundingClientRect();
+        return drag.pointerY < rect.top + rect.height / 2;
+    });
+    const running = context.getState()?.queue.some((task) => task.status === "running") ?? false;
+    const minimumInsertionIndex = running ? 0 : 1;
+    return Math.max(minimumInsertionIndex, targetIndex >= 0 ? targetIndex : cards.length);
+}
+function moveBoundaryPlaceholder(context, drag, targetIndex) {
+    const placeholder = drag.placeholder;
+    if (!placeholder)
+        return;
+    const cards = listCards(drag.list, pendingTaskIds(context), drag.sourceMarker);
+    const targetCard = cards[targetIndex];
+    const isAlreadyPlaced = targetCard
+        ? placeholder.nextElementSibling === targetCard
+        : placeholder.parentElement === drag.list && placeholder === drag.list.lastElementChild;
+    drag.targetIndex = targetIndex;
+    if (isAlreadyPlaced)
+        return;
+    const beforeTops = captureCardTops(drag.list, drag.sourceMarker, placeholder);
+    if (targetCard)
+        drag.list.insertBefore(placeholder, targetCard);
+    else
+        drag.list.append(placeholder);
+    animateCardsIntoPlace(drag.list, drag.sourceMarker, placeholder, beforeTops);
 }
 function movePlaceholder(drag, position) {
     const placeholder = drag.placeholder;
     if (!placeholder)
         return;
-    const isAlreadyPlaced = position.side === "before"
-        ? placeholder.nextElementSibling === position.card
-        : placeholder.previousElementSibling === position.card;
+    const marker = position.pauseBoundarySide
+        ? drag.list.querySelector("[data-queue-boundary-marker]")
+        : null;
+    const cardIsAfterMarker = marker && position.card !== marker
+        ? Boolean(marker.compareDocumentPosition(position.card) & Node.DOCUMENT_POSITION_FOLLOWING)
+        : false;
+    const placeBeforeMarker = position.pauseBoundarySide === "before" && Boolean(marker) && cardIsAfterMarker;
+    const placeAfterMarker = position.pauseBoundarySide === "after" && Boolean(marker) && !cardIsAfterMarker;
+    const isAlreadyPlaced = placeBeforeMarker
+        ? placeholder.nextElementSibling === marker
+        : placeAfterMarker
+            ? placeholder.previousElementSibling === marker
+            : position.side === "before"
+                ? placeholder.nextElementSibling === position.card
+                : placeholder.previousElementSibling === position.card;
     drag.target = position;
     if (isAlreadyPlaced)
         return;
     const beforeTops = captureCardTops(drag.list, drag.sourceCard, placeholder);
-    if (position.side === "before")
+    if (placeBeforeMarker)
+        drag.list.insertBefore(placeholder, marker);
+    else if (placeAfterMarker)
+        marker.after(placeholder);
+    else if (position.side === "before")
         drag.list.insertBefore(placeholder, position.card);
     else
         position.card.after(placeholder);
@@ -115,12 +206,10 @@ function projectedQueuePosition(context, drag) {
     projectedReorderableIds.splice(insertionIndex, 0, drag.taskId);
     const reorderableIdSet = new Set(reorderableIds);
     let projectedReorderableIndex = 0;
-    const projectedActiveIds = state.queue
-        .filter((task) => task.status === "waiting" || task.status === "running")
-        .map((task) => {
-        if (!reorderableIdSet.has(task.id))
-            return task.id;
-        return projectedReorderableIds[projectedReorderableIndex++] ?? task.id;
+    const projectedActiveIds = activeQueueTaskIds(state.queue).map((taskId) => {
+        if (!reorderableIdSet.has(taskId))
+            return taskId;
+        return projectedReorderableIds[projectedReorderableIndex++] ?? taskId;
     });
     const projectedIndex = projectedActiveIds.indexOf(drag.taskId);
     return projectedIndex >= 0 ? projectedIndex + 1 : null;
@@ -156,11 +245,22 @@ function updateDragVisuals(context, drag) {
     movePlaceholder(drag, position);
     updateDraggedRank(context, drag, projectedQueuePosition(context, drag));
 }
+function updateBoundaryDragVisuals(context, drag) {
+    drag.sourceMarker.style.left = `${drag.pointerX - drag.offsetX}px`;
+    drag.sourceMarker.style.top = `${drag.pointerY - drag.offsetY}px`;
+    const targetIndex = resolveBoundaryDropIndex(context, drag);
+    if (targetIndex == null) {
+        drag.targetIndex = null;
+        return;
+    }
+    moveBoundaryPlaceholder(context, drag, targetIndex);
+}
 export function mountQueueDragSort(context, setState) {
     const events = new AbortController();
     const signal = events.signal;
     const root = context.root;
     let drag = null;
+    let boundaryDrag = null;
     const autoScrollFrame = { current: null };
     let autoScrollClientY = null;
     const stopAutoScrollLoop = () => {
@@ -172,7 +272,8 @@ export function mountQueueDragSort(context, setState) {
     };
     const tickAutoScroll = () => {
         autoScrollFrame.current = null;
-        if (!drag || autoScrollClientY == null || drag.phase !== "dragging")
+        const activeDrag = drag ?? boundaryDrag;
+        if (!activeDrag || autoScrollClientY == null || activeDrag.phase !== "dragging")
             return;
         const edge = 72;
         const distance = autoScrollClientY < edge
@@ -184,7 +285,10 @@ export function mountQueueDragSort(context, setState) {
             return;
         const speed = Math.max(4, Math.min(24, Math.ceil(Math.abs(distance) / edge * 18)));
         window.scrollBy({ top: distance < 0 ? -speed : speed, behavior: "auto" });
-        updateDragVisuals(context, drag);
+        if (drag)
+            updateDragVisuals(context, drag);
+        else if (boundaryDrag)
+            updateBoundaryDragVisuals(context, boundaryDrag);
         autoScrollFrame.current = window.requestAnimationFrame(tickAutoScroll);
     };
     const startAutoScrollLoop = (clientY) => {
@@ -192,34 +296,89 @@ export function mountQueueDragSort(context, setState) {
         if (autoScrollFrame.current == null)
             autoScrollFrame.current = window.requestAnimationFrame(tickAutoScroll);
     };
+    const clearQueueDragState = () => {
+        document.body.classList.remove("queue-drag-active");
+    };
     const restoreDragDom = (current) => {
         updateDraggedRank(context, current, null);
         current.placeholder?.remove();
         restoreInlineStyle(current.sourceCard, current.sourceStyle);
         current.sourceCard.classList.remove("queue-dragging");
-        document.body.classList.remove("queue-drag-active");
+        clearQueueDragState();
+    };
+    const restoreBoundaryDragDom = (current) => {
+        current.placeholder?.remove();
+        restoreInlineStyle(current.sourceMarker, current.sourceStyle);
+        current.sourceMarker.classList.remove("queue-pause-boundary-dragging");
+        clearQueueDragState();
     };
     const cancelDrag = () => {
-        if (!drag)
+        if (!drag) {
+            clearQueueDragState();
             return;
+        }
         const current = drag;
         drag = null;
         stopAutoScrollLoop();
         restoreDragDom(current);
     };
-    const commitDrag = async (current, targetIndex) => {
+    const cancelBoundaryDrag = () => {
+        if (!boundaryDrag) {
+            clearQueueDragState();
+            return;
+        }
+        const current = boundaryDrag;
+        boundaryDrag = null;
+        stopAutoScrollLoop();
+        restoreBoundaryDragDom(current);
+    };
+    const cancelActiveDrag = () => {
+        if (drag)
+            cancelDrag();
+        else if (boundaryDrag)
+            cancelBoundaryDrag();
+        else
+            clearQueueDragState();
+    };
+    const cancelDragOnWindowExit = () => {
+        if (drag?.phase === "dropping" || boundaryDrag?.phase === "dropping")
+            return;
+        cancelActiveDrag();
+    };
+    const commitDrag = async (current, targetIndex, pauseBoundaryTarget) => {
         if (current.placeholder?.isConnected)
             current.placeholder.replaceWith(current.sourceCard);
-        restoreInlineStyle(current.sourceCard, current.sourceStyle);
-        current.sourceCard.classList.remove("queue-dragging");
+        restoreDragDom(current);
         drag = null;
         try {
-            context.reportUserAction("queue-reorder", { taskId: current.taskId, targetIndex });
-            setState(await context.studio.reorderTask(current.taskId, targetIndex));
+            context.reportUserAction("queue-reorder", {
+                taskId: current.taskId,
+                targetIndex,
+                ...(pauseBoundaryTarget === undefined ? {} : { pauseBoundaryTarget })
+            });
+            const nextState = pauseBoundaryTarget === undefined
+                ? await context.studio.reorderTask(current.taskId, targetIndex)
+                : await context.studio.reorderTask(current.taskId, targetIndex, pauseBoundaryTarget);
+            setState(nextState);
             context.requestRender();
         }
         catch (error) {
             updateDraggedRank(context, current, null);
+            context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+            context.requestRender();
+        }
+    };
+    const commitBoundaryDrag = async (current, targetIndex) => {
+        if (current.placeholder?.isConnected)
+            current.placeholder.replaceWith(current.sourceMarker);
+        restoreBoundaryDragDom(current);
+        boundaryDrag = null;
+        try {
+            context.reportUserAction("queue-boundary-drag", { targetIndex });
+            setState(await context.studio.setQueuePauseBoundary(targetIndex));
+            context.requestRender();
+        }
+        catch (error) {
             context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
             context.requestRender();
         }
@@ -229,6 +388,7 @@ export function mountQueueDragSort(context, setState) {
             return;
         const current = drag;
         const targetIndex = current.target?.targetIndex;
+        const pauseBoundaryTarget = current.target?.pauseBoundaryTarget;
         stopAutoScrollLoop();
         if (targetIndex == null || !current.placeholder) {
             cancelDrag();
@@ -244,7 +404,30 @@ export function mountQueueDragSort(context, setState) {
         window.setTimeout(() => {
             if (drag !== current)
                 return;
-            void commitDrag(current, targetIndex);
+            void commitDrag(current, targetIndex, pauseBoundaryTarget);
+        }, dragAnimationMs + 20);
+    };
+    const dropBoundaryDrag = () => {
+        if (!boundaryDrag || boundaryDrag.phase !== "dragging")
+            return;
+        const current = boundaryDrag;
+        const targetIndex = current.targetIndex;
+        stopAutoScrollLoop();
+        if (targetIndex == null || !current.placeholder) {
+            cancelBoundaryDrag();
+            return;
+        }
+        current.phase = "dropping";
+        const placeholderRect = current.placeholder.getBoundingClientRect();
+        current.sourceMarker.style.transition = `left ${dragAnimationMs}ms cubic-bezier(.2,.8,.2,1), top ${dragAnimationMs}ms cubic-bezier(.2,.8,.2,1), box-shadow ${dragAnimationMs}ms ease`;
+        window.requestAnimationFrame(() => {
+            current.sourceMarker.style.left = `${placeholderRect.left}px`;
+            current.sourceMarker.style.top = `${placeholderRect.top}px`;
+        });
+        window.setTimeout(() => {
+            if (boundaryDrag !== current)
+                return;
+            void commitBoundaryDrag(current, targetIndex);
         }, dragAnimationMs + 20);
     };
     const activateDrag = (current) => {
@@ -270,32 +453,84 @@ export function mountQueueDragSort(context, setState) {
         current.phase = "dragging";
         context.reportUserAction("queue-drag-start", { taskId: current.taskId });
     };
+    const activateBoundaryDrag = (current) => {
+        const rect = current.sourceMarker.getBoundingClientRect();
+        const placeholder = document.createElement("div");
+        placeholder.className = "queue-boundary-drag-placeholder";
+        placeholder.setAttribute("aria-hidden", "true");
+        placeholder.style.height = `${Math.max(56, rect.height)}px`;
+        current.placeholder = placeholder;
+        current.list.insertBefore(placeholder, current.sourceMarker);
+        current.sourceMarker.style.position = "fixed";
+        current.sourceMarker.style.left = `${rect.left}px`;
+        current.sourceMarker.style.top = `${rect.top}px`;
+        current.sourceMarker.style.width = `${rect.width}px`;
+        current.sourceMarker.style.margin = "0";
+        current.sourceMarker.style.zIndex = "60";
+        current.sourceMarker.style.willChange = "left, top, box-shadow";
+        current.sourceMarker.style.transition = "none";
+        current.sourceMarker.classList.add("queue-pause-boundary-dragging");
+        document.body.classList.add("queue-drag-active");
+        current.offsetX = current.startX - rect.left;
+        current.offsetY = current.startY - rect.top;
+        current.phase = "dragging";
+        context.reportUserAction("queue-boundary-drag-start");
+    };
     const onPointerMove = (event) => {
-        if (!drag || event.pointerId !== drag.pointerId || drag.phase === "dropping")
-            return;
-        drag.pointerX = event.clientX;
-        drag.pointerY = event.clientY;
-        if (drag.phase === "pressing") {
-            if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < dragThreshold)
+        if (drag) {
+            if (event.pointerId !== drag.pointerId || drag.phase === "dropping")
                 return;
-            activateDrag(drag);
+            drag.pointerX = event.clientX;
+            drag.pointerY = event.clientY;
+            if (drag.phase === "pressing") {
+                if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < dragThreshold)
+                    return;
+                activateDrag(drag);
+            }
+            event.preventDefault();
+            updateDragVisuals(context, drag);
+            if (pointerIsNearList(drag.list, event.clientX, event.clientY))
+                startAutoScrollLoop(event.clientY);
+            else
+                stopAutoScrollLoop();
+            return;
+        }
+        if (!boundaryDrag || event.pointerId !== boundaryDrag.pointerId || boundaryDrag.phase === "dropping")
+            return;
+        boundaryDrag.pointerX = event.clientX;
+        boundaryDrag.pointerY = event.clientY;
+        if (boundaryDrag.phase === "pressing") {
+            if (Math.hypot(event.clientX - boundaryDrag.startX, event.clientY - boundaryDrag.startY) < dragThreshold)
+                return;
+            activateBoundaryDrag(boundaryDrag);
         }
         event.preventDefault();
-        updateDragVisuals(context, drag);
-        if (pointerIsNearList(drag.list, event.clientX, event.clientY))
+        updateBoundaryDragVisuals(context, boundaryDrag);
+        if (pointerIsNearList(boundaryDrag.list, event.clientX, event.clientY))
             startAutoScrollLoop(event.clientY);
         else
             stopAutoScrollLoop();
     };
     const onPointerUp = (event) => {
-        if (!drag || event.pointerId !== drag.pointerId)
+        if (drag) {
+            if (event.pointerId !== drag.pointerId)
+                return;
+            if (drag.phase === "pressing") {
+                cancelDrag();
+                return;
+            }
+            event.preventDefault();
+            dropDrag();
             return;
-        if (drag.phase === "pressing") {
-            cancelDrag();
+        }
+        if (!boundaryDrag || event.pointerId !== boundaryDrag.pointerId)
+            return;
+        if (boundaryDrag.phase === "pressing") {
+            cancelBoundaryDrag();
             return;
         }
         event.preventDefault();
-        dropDrag();
+        dropBoundaryDrag();
     };
     const focusHandleAfterRender = (taskId) => {
         window.requestAnimationFrame(() => {
@@ -303,6 +538,13 @@ export function mountQueueDragSort(context, setState) {
                 const nextHandle = [...root.querySelectorAll("[data-queue-drag-handle]")]
                     .find((candidate) => candidate.dataset.queueDragHandle === taskId);
                 nextHandle?.focus({ preventScroll: true });
+            });
+        });
+    };
+    const focusBoundaryAfterRender = () => {
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+                root.querySelector("[data-queue-boundary-drag]")?.focus({ preventScroll: true });
             });
         });
     };
@@ -338,12 +580,45 @@ export function mountQueueDragSort(context, setState) {
             context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
         }
     };
+    const keyboardMoveBoundary = async (handle, event) => {
+        if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+            return;
+        const state = context.getState();
+        const boundary = state?.queuePauseBoundary;
+        if (!state || !Number.isInteger(boundary))
+            return;
+        const ids = pendingTaskIds(context);
+        const running = state.queue.some((task) => task.status === "running");
+        const minimumIndex = running ? 0 : 1;
+        const currentIndex = Math.max(minimumIndex, Math.min(ids.length, boundary - (running ? 1 : 0)));
+        const targetIndex = event.key === "ArrowUp"
+            ? currentIndex - 1
+            : event.key === "ArrowDown"
+                ? currentIndex + 1
+                : event.key === "Home"
+                ? minimumIndex
+                    : event.key === "End"
+                        ? ids.length
+                        : null;
+        if (targetIndex == null || targetIndex < minimumIndex || targetIndex > ids.length || targetIndex === currentIndex)
+            return;
+        event.preventDefault();
+        context.reportUserAction("queue-keyboard-boundary", { targetIndex });
+        try {
+            setState(await context.studio.setQueuePauseBoundary(targetIndex));
+            context.requestRender();
+            focusBoundaryAfterRender();
+        }
+        catch (error) {
+            context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+        }
+    };
     root.querySelectorAll("[data-queue-drag-handle]").forEach((handle) => {
         handle.addEventListener("keydown", (event) => {
             void keyboardReorder(handle, event);
         }, { signal });
         handle.addEventListener("pointerdown", (event) => {
-            if (event.button !== 0)
+            if (event.button !== 0 || drag || boundaryDrag)
                 return;
             const taskId = handle.dataset.queueDragHandle;
             const sourceCard = handle.closest("[data-queue-task-id]");
@@ -379,21 +654,72 @@ export function mountQueueDragSort(context, setState) {
                 // Window-level listeners keep the drag usable without capture.
             }
         }, { signal });
+        handle.addEventListener("lostpointercapture", (event) => {
+            if (drag?.pointerId === event.pointerId && drag.phase !== "dropping")
+                cancelDrag();
+        }, { signal });
+    });
+    root.querySelectorAll("[data-queue-boundary-drag]").forEach((handle) => {
+        handle.addEventListener("keydown", (event) => {
+            void keyboardMoveBoundary(handle, event);
+        }, { signal });
+        handle.addEventListener("pointerdown", (event) => {
+            if (event.button !== 0 || drag || boundaryDrag)
+                return;
+            const sourceMarker = handle.closest("[data-queue-boundary-marker]");
+            const list = handle.closest("[data-queue-drop-list]");
+            if (!sourceMarker || !list || context.getState()?.queuePauseBoundary === undefined)
+                return;
+            event.preventDefault();
+            boundaryDrag = {
+                handle,
+                sourceMarker,
+                list,
+                pointerId: event.pointerId,
+                startX: event.clientX,
+                startY: event.clientY,
+                pointerX: event.clientX,
+                pointerY: event.clientY,
+                offsetX: 0,
+                offsetY: 0,
+                sourceStyle: sourceMarker.getAttribute("style"),
+                placeholder: null,
+                targetIndex: null,
+                phase: "pressing"
+            };
+            try {
+                handle.setPointerCapture(event.pointerId);
+            }
+            catch {
+                // Window-level listeners keep the drag usable without capture.
+            }
+        }, { signal });
+        handle.addEventListener("lostpointercapture", (event) => {
+            if (boundaryDrag?.pointerId === event.pointerId && boundaryDrag.phase !== "dropping")
+                cancelBoundaryDrag();
+        }, { signal });
     });
     window.addEventListener("pointermove", onPointerMove, { signal, passive: false });
     window.addEventListener("pointerup", onPointerUp, { signal });
     window.addEventListener("pointercancel", (event) => {
         if (drag?.pointerId === event.pointerId && drag.phase !== "dropping")
             cancelDrag();
+        else if (boundaryDrag?.pointerId === event.pointerId && boundaryDrag.phase !== "dropping")
+            cancelBoundaryDrag();
+    }, { signal });
+    window.addEventListener("blur", cancelDragOnWindowExit, { signal });
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible")
+            cancelDragOnWindowExit();
     }, { signal });
     root.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && drag) {
+        if (event.key === "Escape" && (drag || boundaryDrag)) {
             event.preventDefault();
-            cancelDrag();
+            cancelActiveDrag();
         }
     }, { signal });
     return () => {
-        cancelDrag();
+        cancelActiveDrag();
         events.abort();
     };
 }

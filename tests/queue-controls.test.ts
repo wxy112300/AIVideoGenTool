@@ -21,7 +21,7 @@ function fakeIpc(): { ipc: IpcMain; handlers: Map<string, Handler> } {
 
 function fakeStore(state: AppState) {
   return {
-    get: () => state,
+    get: () => structuredClone(state),
     update: async (mutator: (next: AppState) => void) => {
       mutator(state);
       return state;
@@ -384,24 +384,83 @@ describe("queue rapid-operation guards", () => {
     expect(started.queueStartedAt).toBe("2026-08-20T12:00:00.000Z");
     expect(executeQueue).toHaveBeenCalledOnce();
 
+    task.status = "running";
     const paused = await handlers.get("queue:pause")!({}) as AppState;
     expect(paused.queueRunning).toBe(false);
-    expect(paused.queueLifecycle).toBe("idle");
+    expect(paused.queueLifecycle).toBe("pausing");
+    expect(paused.queuePauseBoundary).toBe(1);
     expect(paused.queueStartedAt).toBe("2026-08-20T12:00:00.000Z");
 
-    const blockedResume = await handlers.get("queue:start")!({}) as AppState;
-    expect(blockedResume.queueRunning).toBe(false);
+    const resumed = await handlers.get("queue:continue")!({}) as AppState;
+    expect(resumed.queueRunning).toBe(true);
+    expect(resumed.queueLifecycle).toBe("running");
+    expect(resumed.queuePauseBoundary).toBeUndefined();
     expect(executeQueue).toHaveBeenCalledOnce();
     expect(worker.runningWorker).not.toBeNull();
 
     releaseFirst();
     await vi.waitFor(() => expect(worker.runningWorker).toBeNull());
+  });
 
-    const resumed = await handlers.get("queue:start")!({}) as AppState;
-    expect(resumed.queueRunning).toBe(true);
-    expect(resumed.queueStartedAt).toBe("2026-08-20T12:00:00.000Z");
-    expect(executeQueue).toHaveBeenCalledTimes(2);
+  it("starts the selected batch without clearing a manually placed divider", async () => {
+    const state = createDefaultState();
+    const first = queuedTask(state);
+    const second = queuedTask(state);
+    first.id = "first";
+    second.id = "second";
+    state.queue = [first, second];
+    state.queuePauseBoundary = 1;
+    const executeQueue = vi.fn(async () => undefined);
+    const worker = new QueueWorkerController();
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueControlIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn(), error: vi.fn() } as never,
+      worker,
+      sendState: vi.fn(),
+      executeQueue,
+      nativePromptBusy: () => false,
+      settingsForTask: (_task, settings) => settings,
+      cleanupCancelledTask: async () => undefined,
+      updateTask: async () => state
+    });
+
+    const started = await handlers.get("queue:start")!({}) as AppState;
+
+    expect(started.queueRunning).toBe(true);
+    expect(started.queuePauseBoundary).toBe(1);
+    expect(executeQueue).toHaveBeenCalledOnce();
     await vi.waitFor(() => expect(worker.runningWorker).toBeNull());
+  });
+
+  it("records the first queued task when ending during startup", async () => {
+    const state = createDefaultState();
+    const task = queuedTask(state);
+    state.queue = [task];
+    state.queueRunning = true;
+    state.queueLifecycle = "starting";
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueControlIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+      worker: new QueueWorkerController(),
+      sendState: vi.fn(),
+      executeQueue: async () => undefined,
+      nativePromptBusy: () => false,
+      settingsForTask: (_task, settings) => settings,
+      cleanupCancelledTask: async () => undefined,
+      updateTask: async () => state
+    });
+
+    const paused = await handlers.get("queue:pause")!({}) as AppState;
+
+    expect(paused.queueRunning).toBe(false);
+    expect(paused.queuePauseBoundary).toBe(1);
+    expect(paused.queueLifecycle).toBe("idle");
   });
 });
 
@@ -432,5 +491,245 @@ describe("queue drag reorder IPC", () => {
     expect(result.queue.map((task) => task.id)).toEqual([
       "running", "third", "first", "second"
     ]);
+  });
+
+  it("resumes a paused queue when a task crosses the horizontal divider", async () => {
+    const state = createDefaultState();
+    const first = queuedTask(state);
+    const second = queuedTask(state);
+    const third = queuedTask(state);
+    first.id = "first";
+    second.id = "second";
+    third.id = "third";
+    state.queue = [first, second, third];
+    state.queuePauseBoundary = 1;
+    state.queueLifecycle = "idle";
+    const resumeQueue = vi.fn(async (clearPauseBoundary?: boolean) => {
+      state.queueRunning = true;
+      return state;
+    });
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueMutationIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn() } as never,
+      sendState: vi.fn(),
+      resumeQueue
+    });
+
+    const result = await handlers.get("queue:reorder")!({}, "third", 0) as AppState;
+
+    expect(result.queue.map((task) => task.id)).toEqual(["third", "first", "second"]);
+    expect(result.queuePauseBoundary).toBe(2);
+    expect(resumeQueue).toHaveBeenCalledWith(false);
+    expect(state.queueRunning).toBe(true);
+  });
+
+  it("applies a divider target when a task crosses without changing task order", async () => {
+    const state = createDefaultState();
+    const first = queuedTask(state);
+    const second = queuedTask(state);
+    first.id = "first";
+    second.id = "second";
+    state.queue = [first, second];
+    state.queuePauseBoundary = 1;
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueMutationIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn() } as never,
+      sendState: vi.fn()
+    });
+
+    const result = await handlers.get("queue:reorder")!({}, "second", 1, 2) as AppState;
+
+    expect(result.queue.map((task) => task.id)).toEqual(["first", "second"]);
+    expect(result.queuePauseBoundary).toBe(2);
+  });
+
+  it("clears the divider without starting a paused queue", async () => {
+    const state = createDefaultState();
+    const task = queuedTask(state);
+    state.queue = [task];
+    state.queuePauseBoundary = 1;
+    const resumeQueue = vi.fn(async (clearPauseBoundary?: boolean) => {
+      state.queueRunning = true;
+      return state;
+    });
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueMutationIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn() } as never,
+      sendState: vi.fn(),
+      resumeQueue
+    });
+
+    const result = await handlers.get("queue:clear-pause-boundary")!({}) as AppState;
+
+    expect(result.queuePauseBoundary).toBeUndefined();
+    expect(resumeQueue).not.toHaveBeenCalled();
+    expect(state.queueRunning).toBe(false);
+  });
+
+  it("stops and clears the divider when removing its last preceding task", async () => {
+    const state = createDefaultState();
+    const first = queuedTask(state);
+    const second = queuedTask(state);
+    first.id = "first";
+    second.id = "second";
+    state.queue = [first, second];
+    state.queuePauseBoundary = 1;
+    state.queueRunning = true;
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueMutationIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn() } as never,
+      sendState: vi.fn()
+    });
+
+    const result = await handlers.get("queue:remove")!({}, first.id) as AppState;
+
+    expect(result.queue.map((task) => task.id)).toEqual(["second"]);
+    expect(result.queuePauseBoundary).toBeUndefined();
+    expect(result.queueRunning).toBe(false);
+  });
+
+  it("clamps a dragged divider to after the first task", async () => {
+    const state = createDefaultState();
+    const first = queuedTask(state);
+    const second = queuedTask(state);
+    first.id = "first";
+    second.id = "second";
+    state.queue = [first, second];
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueMutationIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn() } as never,
+      sendState: vi.fn()
+    });
+
+    const result = await handlers.get("queue:set-pause-boundary")!({}, 0) as AppState;
+
+    expect(result.queuePauseBoundary).toBe(1);
+  });
+
+  it("pauses after the running task when the divider is placed immediately after it", async () => {
+    const state = createDefaultState();
+    const running = queuedTask(state);
+    const second = queuedTask(state);
+    running.id = "running";
+    running.status = "running";
+    second.id = "second";
+    state.queue = [running, second];
+    state.queueRunning = true;
+    state.queueLifecycle = "running";
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueMutationIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn() } as never,
+      sendState: vi.fn()
+    });
+
+    const result = await handlers.get("queue:set-pause-boundary")!({}, 0) as AppState;
+
+    expect(result.queuePauseBoundary).toBe(1);
+    expect(result.queueRunning).toBe(false);
+    expect(result.queueLifecycle).toBe("pausing");
+    expect(result.queueLifecycleTaskId).toBe("running");
+  });
+
+  it("places the divider after the selected waiting task without starting the queue", async () => {
+    const state = createDefaultState();
+    const first = queuedTask(state);
+    const second = queuedTask(state);
+    first.id = "first";
+    second.id = "second";
+    state.queue = [first, second];
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueMutationIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn() } as never,
+      sendState: vi.fn(),
+      resumeQueue: vi.fn()
+    });
+
+    const result = await handlers.get("queue:set-pause-boundary-after-task")!({}, "first") as AppState;
+
+    expect(result.queuePauseBoundary).toBe(1);
+    expect(state.queueRunning).toBe(false);
+  });
+
+  it("does not resume when a paused task is moved from above the divider below it", async () => {
+    const state = createDefaultState();
+    const first = queuedTask(state);
+    const second = queuedTask(state);
+    const third = queuedTask(state);
+    first.id = "first";
+    second.id = "second";
+    third.id = "third";
+    state.queue = [first, second, third];
+    state.queuePauseBoundary = 1;
+    state.queueLifecycle = "idle";
+    const resumeQueue = vi.fn(async () => state);
+    const { ipc, handlers } = fakeIpc();
+
+    registerQueueMutationIpc({
+      ipc,
+      store: fakeStore(state),
+      logger: { info: vi.fn() } as never,
+      sendState: vi.fn(),
+      resumeQueue
+    });
+
+    await handlers.get("queue:reorder")!({}, "first", 2);
+
+    expect(state.queue.map((task) => task.id)).toEqual(["second", "third", "first"]);
+    expect(state.queuePauseBoundary).toBe(1);
+    expect(resumeQueue).not.toHaveBeenCalled();
+  });
+});
+
+describe("queue seed IPC", () => {
+  it("randomizes a waiting task seed without touching its other queue state", async () => {
+    const state = createDefaultState();
+    const task = queuedTask(state);
+    task.id = "seed-task";
+    task.seed = 7;
+    state.queue = [task];
+    const { ipc, handlers } = fakeIpc();
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.25);
+
+    try {
+      registerQueueMutationIpc({
+        ipc,
+        store: fakeStore(state),
+        logger: { info: vi.fn() } as never,
+        sendState: vi.fn()
+      });
+
+      const result = await handlers.get("queue:randomize-seed")!({}, task.id) as AppState;
+
+      expect(result.queue[0]).toMatchObject({
+        id: "seed-task",
+        status: "waiting",
+        seed: Math.floor(0.25 * Number.MAX_SAFE_INTEGER)
+      });
+      expect(result.queue[0]?.prompt).toBe(task.prompt);
+      expect(result.queue[0]?.workflowPath).toBe(task.workflowPath);
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 });

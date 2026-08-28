@@ -47,6 +47,7 @@ export function queueLayoutSignature(state) {
         queueRunning: state.queueRunning,
         queueLifecycle: state.queueLifecycle,
         queueLifecycleTaskId: state.queueLifecycleTaskId,
+        queuePauseBoundary: state.queuePauseBoundary,
         h3LivePreview: state.settings.h3LivePreview,
         uiLocale: state.settings.uiLocale,
         queue: state.queue.map(queueTaskLayoutSnapshot)

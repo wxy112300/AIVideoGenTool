@@ -1,6 +1,7 @@
 import type { AppState, ComfyRuntimeState, PerformanceMetrics, QueueTask } from "../../../types";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
+import { activeQueueTasks } from "../../../core/queue";
 import { elapsedText } from "../../shared/formatters";
 import {
   queueOperationStatus,
@@ -23,7 +24,7 @@ export interface QueuePageOptions {
     suffix: string,
     detail?: string
   ): string;
-  renderTaskCard(task: QueueTask, queuePosition: number, moveAvailability?: QueueMoveAvailability): string;
+  renderTaskCard(task: QueueTask, queuePosition: number, moveAvailability?: QueueMoveAvailability, deferred?: boolean): string;
   icon(name: string, className?: string): string;
 }
 
@@ -33,10 +34,14 @@ export interface QueueMoveAvailability {
 
 function queueMoveAvailability(
   tasks: ReadonlyArray<QueueTask>,
-  index: number
+  index: number,
+  reorderableTaskIds?: ReadonlyArray<string>
 ): QueueMoveAvailability {
   const task = tasks[index];
   if (!task || task.status !== "waiting") {
+    return { canDrag: false };
+  }
+  if (reorderableTaskIds && !reorderableTaskIds.includes(task.id)) {
     return { canDrag: false };
   }
   const runningIndex = tasks.findIndex((candidate) => candidate.status === "running");
@@ -48,9 +53,9 @@ function queueMoveAvailability(
   const waitingIndexes = tasks
     .map((candidate, candidateIndex) => candidate.status === "waiting" ? candidateIndex : -1)
     .filter((candidateIndex) => candidateIndex >= 0);
-  const reorderableWaitingIndexes = waitingIndexes.filter((candidateIndex) =>
-    runningIndex < 0 || candidateIndex > runningIndex
-  );
+  const reorderableWaitingIndexes = reorderableTaskIds
+    ? reorderableTaskIds
+    : waitingIndexes.filter((candidateIndex) => runningIndex < 0 || candidateIndex > runningIndex);
   return {
     canDrag: reorderableWaitingIndexes.length > 1 && (runningIndex < 0 || index > runningIndex)
   };
@@ -80,12 +85,20 @@ function renderWaitingEmpty(options: QueuePageOptions): string {
   return `<div class="empty panel queue-section-empty"><h2>${options.t(uiKeys.queue.waitingEmptyTitle)}</h2><p>${options.t(uiKeys.queue.waitingEmptyDescription)}</p></div>`;
 }
 
+function renderQueuePauseBoundary(options: QueuePageOptions): string {
+  return `<div class="queue-pause-boundary" data-queue-boundary-marker role="group" aria-label="${options.t(uiKeys.queue.pauseBoundary.title)}">
+    <button type="button" class="queue-pause-boundary-handle" data-queue-boundary-drag aria-label="${options.t(uiKeys.queue.pauseBoundary.drag)}" title="${options.t(uiKeys.queue.pauseBoundary.drag)}" aria-keyshortcuts="ArrowUp ArrowDown Home End">${options.icon("grip-horizontal")}</button>
+    <div class="queue-pause-boundary-copy"><strong>${options.t(uiKeys.queue.pauseBoundary.title)}</strong><span>${options.t(uiKeys.queue.pauseBoundary.description)}</span></div>
+    <button type="button" class="ghost icon-button queue-pause-boundary-clear" data-queue-boundary-clear aria-label="${options.t(uiKeys.queue.pauseBoundary.clear)}" title="${options.t(uiKeys.queue.pauseBoundary.clearTitle)}">${options.icon("x")}</button>
+  </div>`;
+}
+
 export function renderQueuePage(
   state: AppState,
   options: QueuePageOptions
 ): string {
-  const running = state.queue.find((task) => task.status === "running");
-  const activeTasks = state.queue.filter((task) => task.status === "waiting" || task.status === "running");
+  const activeTasks = activeQueueTasks(state.queue);
+  const running = activeTasks.find((task) => task.status === "running");
   const attentionTasks = state.queue.filter((task) => task.status === "failed" || task.status === "cancelled");
   const remainingSeconds = options.queueRemainingSeconds(activeTasks);
   const lifecycle = state.queueLifecycle ?? "idle";
@@ -106,7 +119,20 @@ export function renderQueuePage(
   );
   const hasWaitingTasks = state.queue.some((task) => task.status === "waiting");
   const runningIndex = running ? activeTasks.indexOf(running) : -1;
+  const reorderableWaitingTaskIds = activeTasks
+    .filter((task, index) =>
+      task.status === "waiting" && (runningIndex < 0 || index > runningIndex)
+    )
+    .map((task) => task.id);
   const waitingTasks = activeTasks.filter((task) => task.status === "waiting");
+  const rawPauseBoundary = state.queuePauseBoundary;
+  const hasPauseBoundary = Number.isInteger(rawPauseBoundary) && activeTasks.length > 0;
+  const pauseBoundary = hasPauseBoundary
+    ? Math.max(1, Math.min(activeTasks.length, rawPauseBoundary!))
+    : undefined;
+  const waitingBoundaryIndex = pauseBoundary === undefined
+    ? -1
+    : Math.max(0, pauseBoundary - (running ? 1 : 0));
   const primaryMode = state.queueRunning ? "end" : running ? "continue" : "start";
   const primaryLabel = state.queueRunning
     ? options.t(uiKeys.queue.end)
@@ -122,19 +148,25 @@ export function renderQueuePage(
         : options.t(uiKeys.queue.start);
   const primaryDisabled = ["pausing", "cancelling", "cleaning", "error"].includes(lifecycle)
     || ["starting", "restarting", "stopping"].includes(options.comfyRuntime.phase)
-    || (!state.queueRunning && !running && !hasWaitingTasks);
+    || (!state.queueRunning && !running && !hasPauseBoundary && !hasWaitingTasks);
   const executionHeading = renderQueueSectionHeading(options, activeTasks.length);
-  const waitingMarkup = waitingTasks.length
-    ? waitingTasks.map((task) => {
+  let waitingMarkup = waitingTasks.length || hasPauseBoundary ? waitingTasks.map((task, waitingIndex) => {
+        const boundaryMarkup = waitingIndex === waitingBoundaryIndex
+          ? renderQueuePauseBoundary(options)
+          : "";
         const queuePosition = activeTasks.indexOf(task) + 1;
-        return options.renderTaskCard(task, queuePosition, queueMoveAvailability(activeTasks, queuePosition - 1));
+        const deferred = pauseBoundary !== undefined && queuePosition - 1 >= pauseBoundary;
+        return `${boundaryMarkup}${options.renderTaskCard(task, queuePosition, queueMoveAvailability(activeTasks, queuePosition - 1, reorderableWaitingTaskIds), deferred)}`;
       }).join("")
     : renderWaitingEmpty(options);
+  if (hasPauseBoundary && waitingBoundaryIndex >= waitingTasks.length) {
+    waitingMarkup += renderQueuePauseBoundary(options);
+  }
   const queueBody = running
     ? `<section class="queue-section queue-execution-section queue-has-active">
         ${executionHeading}
         <div class="queue-active-task">
-          ${options.renderTaskCard(running, runningIndex + 1, queueMoveAvailability(activeTasks, runningIndex))}
+          ${options.renderTaskCard(running, runningIndex + 1, queueMoveAvailability(activeTasks, runningIndex, reorderableWaitingTaskIds))}
         </div>
         <div class="task-list queue-pending-list" data-queue-drop-list="pending">${waitingMarkup}</div>
       </section>`

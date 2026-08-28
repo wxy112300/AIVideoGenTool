@@ -12,7 +12,7 @@ export function createQueueAssembly(options) {
     return {
         render(context) {
             const state = options.getState();
-            const renderTaskCard = (task, queuePosition, moveAvailability) => renderQueueTaskCard(task, queuePosition, {
+            const renderTaskCard = (task, queuePosition, moveAvailability, deferred) => renderQueueTaskCard(task, queuePosition, {
                 t: context.t,
                 taskPreviews: options.getTaskPreviews(),
                 queueRunning: state.queueRunning,
@@ -27,7 +27,8 @@ export function createQueueAssembly(options) {
                 queueTaskRemainingSeconds: (queueTask) => queueTaskRemainingSeconds(queueTask, state.history, state.imageHistory),
                 queueEstimateText: (seconds) => queueEstimateText(seconds, context.t),
                 elapsedText: (startedAt) => elapsedText(startedAt, context.t),
-                canDrag: moveAvailability?.canDrag
+                canDrag: moveAvailability?.canDrag,
+                deferred
             });
             return renderQueuePage(state, {
                 t: context.t,

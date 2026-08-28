@@ -43,6 +43,7 @@ export interface QueueCardRenderOptions {
   queueEstimateText(seconds: number | null): string;
   elapsedText(startedAt?: string): string;
   canDrag?: boolean;
+  deferred?: boolean;
 }
 
 export interface SeedVr2ProgressView {
@@ -198,6 +199,7 @@ export function renderQueueTaskCard(
       ? `<span>${t(uiKeys.queue.card.extension)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${task.resolution}p</span><span>${t(uiKeys.queue.card.maxModelFrames, { count: task.maxGeneratedFrames })}</span><span>${t(uiKeys.queue.card.contextFrames, { count: task.overlapFrames })}</span>${extensionRetainSummary}${h3ComputeSummary}`
       : `<span>${t(uiKeys.queue.card.upscale)}</span><span>${options.escapeHtml(options.modelName(task.modelId))}</span><span>${upscaleOutput![0]} × ${upscaleOutput![1]}</span><span>${t(uiKeys.queue.card.batchUnload)}</span>`;
   const attentionTask = task.status === "failed" || task.status === "cancelled";
+  const deferredTask = task.status === "waiting" && options.deferred === true;
   const queueCleanupActive =
     options.queueLifecycleTaskId === task.id &&
     (options.queueLifecycle === "cancelling" || options.queueLifecycle === "cleaning");
@@ -266,10 +268,10 @@ export function renderQueueTaskCard(
       : `<div class="queue-reorder-controls" aria-label="${t(uiKeys.queue.card.dragToReorder)}"><button type="button" class="queue-drag-handle" data-queue-drag-handle="${options.escapeHtml(task.id)}" aria-label="${t(uiKeys.queue.card.dragToReorder)}" aria-keyshortcuts="ArrowUp ArrowDown Home End" title="${t(uiKeys.queue.card.dragToReorder)}">${options.icon("grip-vertical")}</button></div>`
     : "";
   return `
-    <article class="task-card panel ${task.status}${inputPreview ? " task-card-with-preview" : ""}" data-queue-task-id="${options.escapeHtml(task.id)}">
+    <article class="task-card panel ${task.status}${deferredTask ? " queue-task-deferred" : ""}${inputPreview ? " task-card-with-preview" : ""}" data-queue-task-id="${options.escapeHtml(task.id)}"${deferredTask ? ` data-queue-task-deferred="true"` : ""}>
       ${inputPreview}
       <div class="task-main">
-        <div class="queue-task-heading"><div class="queue-rank ${attentionTask ? "attention" : task.status}"${rankLabelAttributes} aria-label="${attentionTask ? t(uiKeys.queue.card.needsAttention) : t(uiKeys.queue.card.queuePosition, { count: queuePosition })}">${rankMarkup}</div><div><span class="status ${task.status}">${statusLabel(task.status, t)}</span><h3>${options.escapeHtml(task.outputFilename)}</h3></div></div>
+        <div class="queue-task-heading"><div class="queue-rank ${attentionTask ? "attention" : task.status}"${rankLabelAttributes} aria-label="${attentionTask ? t(uiKeys.queue.card.needsAttention) : t(uiKeys.queue.card.queuePosition, { count: queuePosition })}">${rankMarkup}</div><div><span class="status ${deferredTask ? "deferred" : task.status}">${deferredTask ? t(uiKeys.task.deferred) : statusLabel(task.status, t)}</span><h3>${options.escapeHtml(task.outputFilename)}</h3></div></div>
         <p class="task-description">${options.escapeHtml(description)}</p>
         <div class="task-meta">${metadata}${retrySummary}</div>
         ${task.error ? `<p class="error">${options.escapeHtml(task.error)}</p>` : ""}
@@ -282,7 +284,7 @@ export function renderQueueTaskCard(
             : `<button class="secondary button-with-icon queue-action-primary" data-edit-task="${task.id}" ${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? "disabled" : ""} title="${t(uiKeys.queue.card.editTitle)}">${options.icon("sliders-horizontal")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "edit" ? t(uiKeys.queue.card.opening) : t(uiKeys.queue.card.edit)}</span></button>`
           : ""}
         ${task.status === "failed" || task.status === "cancelled" ? `<button class="secondary button-with-icon queue-action-primary queue-action-reset" data-reset-task="${task.id}" ${queueCleanupActive ? "disabled" : ""} title="${t(uiKeys.queue.card.resetTitle)}">${options.icon("rotate-ccw")}<span class="queue-action-label">${t(uiKeys.queue.card.reset)}</span></button>` : ""}
-        <button class="secondary button-with-icon queue-action-quiet" data-duplicate="${task.id}" aria-label="${t(uiKeys.queue.card.duplicate)}" title="${t(uiKeys.queue.card.duplicate)}">${options.icon("copy")}<span class="queue-action-label">${t(uiKeys.queue.card.duplicate)}</span></button>
+        <button type="button" class="ghost icon-button queue-action-quiet queue-action-more" data-queue-menu-trigger="${options.escapeHtml(task.id)}" aria-haspopup="menu" aria-expanded="false" aria-label="${t(uiKeys.queue.card.moreActions)}" title="${t(uiKeys.queue.card.moreActions)}">${options.icon("ellipsis")}</button>
         <button class="ghost danger button-with-icon queue-action-quiet" data-remove="${task.id}" aria-label="${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}" title="${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}" ${options.queueActionBusy?.taskId === task.id ? "disabled" : ""}>${options.icon("trash-2")}<span class="queue-action-label">${options.queueActionBusy?.taskId === task.id && options.queueActionBusy.action === "remove" ? t(uiKeys.queue.card.removing) : t(uiKeys.queue.card.remove)}</span></button>
       </div>
     </article>`;

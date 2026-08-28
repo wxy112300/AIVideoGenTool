@@ -58,7 +58,8 @@ export function createQueueAssembly(options: QueueAssemblyOptions): QueueAssembl
       const renderTaskCard = (
         task: QueueTask,
         queuePosition: number,
-        moveAvailability?: QueueMoveAvailability
+        moveAvailability?: QueueMoveAvailability,
+        deferred?: boolean
       ): string => renderQueueTaskCard(task, queuePosition, {
         t: context.t,
         taskPreviews: options.getTaskPreviews(),
@@ -74,7 +75,8 @@ export function createQueueAssembly(options: QueueAssemblyOptions): QueueAssembl
         queueTaskRemainingSeconds: (queueTask) => queueTaskRemainingSeconds(queueTask, state.history, state.imageHistory),
         queueEstimateText: (seconds) => queueEstimateText(seconds, context.t),
         elapsedText: (startedAt) => elapsedText(startedAt, context.t),
-        canDrag: moveAvailability?.canDrag
+        canDrag: moveAvailability?.canDrag,
+        deferred
       });
 
       return renderQueuePage(state, {

@@ -115,13 +115,21 @@ const api: AppApi = {
     ipcRenderer.invoke("queue:update-upscale", taskId, patch),
   removeTask: (taskId: string) => ipcRenderer.invoke("queue:remove", taskId),
   startQueue: () => ipcRenderer.invoke("queue:start"),
+  continueQueue: () => ipcRenderer.invoke("queue:continue"),
   pauseQueue: () => ipcRenderer.invoke("queue:pause"),
+  setQueuePauseBoundaryAfterTask: (taskId: string) =>
+    ipcRenderer.invoke("queue:set-pause-boundary-after-task", taskId),
+  setQueuePauseBoundary: (waitingTaskCount: number) =>
+    ipcRenderer.invoke("queue:set-pause-boundary", waitingTaskCount),
+  clearQueuePauseBoundary: () => ipcRenderer.invoke("queue:clear-pause-boundary"),
   cancelTask: (taskId: string) => ipcRenderer.invoke("queue:cancel", taskId),
   moveTask: (taskId: string, direction: -1 | 1) =>
     ipcRenderer.invoke("queue:move", taskId, direction),
-  reorderTask: (taskId: string, targetWaitingIndex: number) =>
-    ipcRenderer.invoke("queue:reorder", taskId, targetWaitingIndex),
+  reorderTask: (taskId: string, targetWaitingIndex: number, pauseBoundaryTarget?: number) =>
+    ipcRenderer.invoke("queue:reorder", taskId, targetWaitingIndex, pauseBoundaryTarget),
   duplicateTask: (taskId: string) => ipcRenderer.invoke("queue:duplicate", taskId),
+  randomizeTaskSeed: (taskId: string) =>
+    ipcRenderer.invoke("queue:randomize-seed", taskId),
   resetTask: (taskId: string) => ipcRenderer.invoke("queue:reset", taskId),
   deleteHistoryAsset: (assetId: string) =>
     ipcRenderer.invoke("history:delete", assetId),

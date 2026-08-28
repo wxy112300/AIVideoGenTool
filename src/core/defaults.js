@@ -125,6 +125,7 @@ export function createDefaultState() {
         imageHistory: [],
         queueRunning: false,
         queueStartedAt: undefined,
+        queuePauseBoundary: undefined,
         queueLifecycle: "idle",
         queueLifecycleStartedAt: undefined
     };

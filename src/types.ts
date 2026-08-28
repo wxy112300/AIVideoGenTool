@@ -718,6 +718,11 @@ export interface AppState {
   queueRunning: boolean;
   /** ISO timestamp for the current queue run, not an individual task. */
   queueStartedAt?: string;
+  /**
+   * Number of active queue tasks above the optional horizontal pause divider.
+   * The divider is a queue-level projection; task status remains waiting.
+   */
+  queuePauseBoundary?: number;
   queueLifecycle: QueueLifecycle;
   queueLifecycleTaskId?: string;
   /** Process-local timestamp for the current queue lifecycle operation. */
@@ -1407,11 +1412,16 @@ export interface AppApi {
   updateUpscaleTask(taskId: string, patch: Pick<UpscaleQueueTask, "targetWidth" | "targetHeight" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">): Promise<AppState>;
   removeTask(taskId: string): Promise<AppState>;
   startQueue(): Promise<AppState>;
+  continueQueue(): Promise<AppState>;
   pauseQueue(): Promise<AppState>;
+  setQueuePauseBoundaryAfterTask(taskId: string): Promise<AppState>;
+  setQueuePauseBoundary(waitingTaskCount: number): Promise<AppState>;
+  clearQueuePauseBoundary(): Promise<AppState>;
   cancelTask(taskId: string): Promise<AppState>;
   moveTask(taskId: string, direction: -1 | 1): Promise<AppState>;
-  reorderTask(taskId: string, targetWaitingIndex: number): Promise<AppState>;
+  reorderTask(taskId: string, targetWaitingIndex: number, pauseBoundaryTarget?: number): Promise<AppState>;
   duplicateTask(taskId: string): Promise<AppState>;
+  randomizeTaskSeed(taskId: string): Promise<AppState>;
   resetTask(taskId: string): Promise<AppState>;
   deleteHistoryAsset(assetId: string): Promise<AppState>;
   deleteHistoryVersion(assetId: string, versionId: string): Promise<AppState>;

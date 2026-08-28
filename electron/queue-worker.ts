@@ -1,5 +1,11 @@
 import type { IpcMain } from "electron";
 import type { AppState, QueueLifecycle, QueueTask, Settings } from "../src/types.js";
+import {
+  adjustQueuePauseBoundary,
+  nextQueueWaitingTask,
+  queuePauseBoundaryReached,
+  queuePauseBoundaryAfterCurrent
+} from "../src/core/queue.js";
 import type { JsonStore } from "./store.js";
 import type { AppLogger } from "./services/app-logger.js";
 
@@ -7,6 +13,10 @@ export class QueueWorkerController {
   private worker: Promise<void> | null = null;
   private controller: AbortController | null = null;
   private cleanup: Promise<void> | null = null;
+  private pendingResume: {
+    execute: () => Promise<void>;
+    shouldRestart: () => boolean;
+  } | null = null;
 
   get runningWorker(): Promise<void> | null {
     return this.worker;
@@ -41,11 +51,32 @@ export class QueueWorkerController {
     this.controller?.abort(reason);
   }
 
+  cancelPendingResume(): void {
+    this.pendingResume = null;
+  }
+
+  resume(
+    execute: () => Promise<void>,
+    shouldRestart: () => boolean = () => true
+  ): void {
+    if (this.worker) {
+      this.pendingResume = { execute, shouldRestart };
+      return;
+    }
+    this.start(execute);
+  }
+
   start(execute: () => Promise<void>): void {
     if (this.worker) return;
+    this.pendingResume = null;
     this.worker = execute().finally(() => {
       this.worker = null;
       this.controller = null;
+      const pendingResume = this.pendingResume;
+      this.pendingResume = null;
+      if (pendingResume?.shouldRestart()) {
+        this.start(pendingResume.execute);
+      }
     });
   }
 }
@@ -67,7 +98,9 @@ export interface QueueControlIpcDependencies {
   updateTask(taskId: string, patch: Partial<QueueTask>): Promise<AppState>;
 }
 
-export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void {
+export function registerQueueControlIpc(deps: QueueControlIpcDependencies): {
+  resumeQueue(clearPauseBoundary?: boolean): Promise<AppState>;
+} {
   const { ipc, store, logger, worker, sendState } = deps;
   const setQueueLifecycle = async (
     lifecycle: QueueLifecycle,
@@ -87,12 +120,12 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
     return next;
   };
 
-  ipc.handle("queue:start", async () => {
+  const resumeQueue = async (clearPauseBoundary = true): Promise<AppState> => {
     if (deps.nativePromptBusy()) {
       throw new Error("当前正在生成提示词，请等待扩写完成后再开始视频任务。 ");
     }
     const current = store.get();
-    if (worker.runningWorker || ["starting", "running", "pausing", "cancelling", "cleaning", "error"].includes(current.queueLifecycle)) {
+    if (["cancelling", "cleaning", "error"].includes(current.queueLifecycle)) {
       logger.info("queue", "start-blocked", "Queue start was ignored while a previous queue operation is active", {
         queueLifecycle: current.queueLifecycle,
         queueLifecycleTaskId: current.queueLifecycleTaskId,
@@ -102,18 +135,54 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
       sendState(current);
       return current;
     }
-    const waitingTasks = store.get().queue.filter((task) => task.status === "waiting");
-    if (!waitingTasks.length) {
+
+    const hasRunningTask = current.queue.some((task) => task.status === "running");
+    const hasExistingWorkerSession = Boolean(worker.runningWorker) ||
+      current.queueLifecycle === "pausing" ||
+      hasRunningTask;
+    if (hasExistingWorkerSession) {
+      const next = await store.update((state) => {
+        if (clearPauseBoundary) state.queuePauseBoundary = undefined;
+        state.queueRunning = true;
+        state.queueStartedAt ??= new Date().toISOString();
+        const running = state.queue.find((task) => task.status === "running");
+        state.queueLifecycle = running ? "running" : "starting";
+        state.queueLifecycleTaskId = running?.id;
+        state.queueLifecycleStartedAt = new Date().toISOString();
+      });
+      logger.info("queue", "resumed", "Queue processing resumed without starting a second worker", {
+        clearPauseBoundary,
+        workerActive: Boolean(worker.runningWorker),
+        runningTaskId: next.queue.find((task) => task.status === "running")?.id ?? ""
+      });
+      sendState(next);
+      worker.resume(deps.executeQueue, () => {
+        const latest = store.get();
+        return latest.queueRunning && Boolean(
+          nextQueueWaitingTask(latest.queue, latest.queuePauseBoundary)
+        );
+      });
+      return next;
+    }
+
+    const waitingTask = nextQueueWaitingTask(
+      current.queue,
+      clearPauseBoundary ? undefined : current.queuePauseBoundary
+    );
+    if (!waitingTask) {
       const next = await store.update((state) => {
         state.queueRunning = false;
         state.queueStartedAt = undefined;
+        if (clearPauseBoundary) state.queuePauseBoundary = undefined;
         state.queueLifecycle = "idle";
         state.queueLifecycleTaskId = undefined;
+        state.queueLifecycleStartedAt = undefined;
       });
       sendState(next);
       return next;
     }
     const next = await store.update((state) => {
+      if (clearPauseBoundary) state.queuePauseBoundary = undefined;
       state.queueRunning = true;
       // Keep the timestamp while resuming a paused queue; a new timestamp is
       // created only after the previous queue session has fully ended.
@@ -128,14 +197,26 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
     sendState(next);
     worker.start(deps.executeQueue);
     return next;
-  });
+  };
+
+  // Starting the queue honors a divider that the user placed before starting
+  // or while paused. Only the explicit continue action clears that batch
+  // boundary and releases the deferred tasks below it.
+  ipc.handle("queue:start", async () => resumeQueue(false));
+
+  ipc.handle("queue:continue", async () => resumeQueue(true));
 
   ipc.handle("queue:pause", async () => {
     const current = store.get();
     if (["cancelling", "cleaning"].includes(current.queueLifecycle)) return current;
+    worker.cancelPendingResume();
     const next = await store.update((state) => {
+      const wasRunning = state.queueRunning;
       state.queueRunning = false;
       const running = state.queue.find((task) => task.status === "running");
+      if (running || wasRunning) {
+        state.queuePauseBoundary = queuePauseBoundaryAfterCurrent(state.queue);
+      }
       state.queueLifecycle = running ? "pausing" : "idle";
       state.queueLifecycleTaskId = running?.id;
       state.queueLifecycleStartedAt = running ? new Date().toISOString() : undefined;
@@ -156,9 +237,11 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
       return current;
     }
     if (task.status === "running") {
+      worker.cancelPendingResume();
       const settings = deps.settingsForTask(task, store.get().settings);
       const runningWorker = worker.runningWorker;
       const next = await store.update((state) => {
+        const previousQueue = state.queue.map((item) => ({ ...item }));
         state.queueRunning = false;
         state.queueLifecycle = "cancelling";
         state.queueLifecycleTaskId = taskId;
@@ -170,6 +253,15 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
           current.error = "正在取消任务，等待 ComfyUI 清理。";
           current.updatedAt = new Date().toISOString();
         }
+        state.queuePauseBoundary = queuePauseBoundaryReached(
+          previousQueue,
+          state.queuePauseBoundary,
+          state.queue
+        ) ? undefined : adjustQueuePauseBoundary(
+          previousQueue,
+          state.queuePauseBoundary,
+          state.queue
+        );
       });
       sendState(next);
       worker.abort(new Error("用户取消任务"));
@@ -201,4 +293,6 @@ export function registerQueueControlIpc(deps: QueueControlIpcDependencies): void
       error: "任务在开始前被取消"
     });
   });
+
+  return { resumeQueue };
 }

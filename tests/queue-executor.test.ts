@@ -528,6 +528,31 @@ describe("queue executor runtime gate", () => {
     expect(harness.store.get().queueLifecycle).toBe("idle");
   });
 
+  it("clears the divider and stops before the first task below it", async () => {
+    const state = createDefaultState();
+    const current = fixtureTask(state);
+    const waiting = fixtureTask(state);
+    waiting.id = "waiting-below-divider";
+    state.queue = [current, waiting];
+    state.queuePauseBoundary = 1;
+    state.queueRunning = true;
+    state.queueLifecycle = "running";
+    const stopQueueRuntime = vi.fn(async () => true);
+    const harness = createHarness(state, { stopQueueRuntime });
+
+    await createQueueExecutor(harness.deps)();
+
+    const final = harness.store.get();
+    expect(mocks.submitTask).toHaveBeenCalledOnce();
+    expect(final.queue).toEqual([
+      expect.objectContaining({ id: waiting.id, status: "waiting" })
+    ]);
+    expect(final.queuePauseBoundary).toBeUndefined();
+    expect(final.queueRunning).toBe(false);
+    expect(final.queueLifecycle).toBe("idle");
+    expect(stopQueueRuntime).toHaveBeenCalledOnce();
+  });
+
   it("retains dirty LoRA state across pause when runtime shutdown fails", async () => {
     const state = createDefaultState();
     const current = fixtureTask(state);

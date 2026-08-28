@@ -1,5 +1,10 @@
 import type { AppState, H3MemoryRuntimeEvidence, HistoryFile, ImageGenerationQueueTask, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview } from "../src/types.js";
-import { isImageGenerationQueueTask } from "../src/core/queue.js";
+import {
+  adjustQueuePauseBoundary,
+  isImageGenerationQueueTask,
+  nextQueueWaitingTask,
+  queuePauseBoundaryReached
+} from "../src/core/queue.js";
 import { isVideoOutputFilename } from "../src/core/comfy-output.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
 import {
@@ -245,7 +250,26 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         }
       }
       const completed = await store.update((state) => {
+        const previousQueue = state.queue.map((item) => ({ ...item }));
         state.queue = state.queue.filter((item) => item.id !== task.id);
+        const boundaryReached = queuePauseBoundaryReached(
+          previousQueue,
+          state.queuePauseBoundary,
+          state.queue
+        );
+        state.queuePauseBoundary = boundaryReached
+          ? undefined
+          : adjustQueuePauseBoundary(
+            previousQueue,
+            state.queuePauseBoundary,
+            state.queue
+          );
+        if (boundaryReached) {
+          // The divider is a stop line. Once the last task above it is gone,
+          // do not let the next task be claimed before the UI can observe the
+          // stopped, divider-free state.
+          state.queueRunning = false;
+        }
       });
       logger.info("queue", "task-finished", "Image batch task finished successfully", {
         taskId: task.id,
@@ -288,7 +312,11 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
   async function executeQueue(): Promise<void> {
     let promptModelReleased = false;
     while (store.get().queueRunning) {
-      const task = store.get().queue.find((item) => item.status === "waiting");
+      const current = store.get();
+      const task = nextQueueWaitingTask(
+        current.queue,
+        current.queuePauseBoundary
+      );
       if (!task) break;
       await setQueueLifecycle("running", task.id);
       // Claim the task conditionally in the same store mutation. A cancel can
@@ -297,7 +325,11 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       let claimed = false;
       const claimedState = await store.update((state) => {
         const candidate = state.queue.find((item) => item.id === task.id);
-        if (!state.queueRunning || candidate?.status !== "waiting") return;
+        if (
+          !state.queueRunning ||
+          candidate?.status !== "waiting" ||
+          nextQueueWaitingTask(state.queue, state.queuePauseBoundary)?.id !== task.id
+        ) return;
         candidate.status = "running";
         candidate.progress = 1;
         candidate.stage = "准备任务";
@@ -764,6 +796,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           performanceCaptured: Boolean(taskPerformanceStats)
         });
         const next = await store.update((state) => {
+          const previousQueue = state.queue.map((item) => ({ ...item }));
           persistVideoHistoryResult(state, {
             task: completedTask,
             completedAt,
@@ -774,10 +807,29 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             h3MemoryRuntimeEvidence,
             id: () => crypto.randomUUID()
           });
+          const boundaryReached = queuePauseBoundaryReached(
+            previousQueue,
+            state.queuePauseBoundary,
+            state.queue
+          );
+          state.queuePauseBoundary = boundaryReached
+            ? undefined
+            : adjustQueuePauseBoundary(
+              previousQueue,
+              state.queuePauseBoundary,
+              state.queue
+            );
+          if (boundaryReached) {
+            // The divider is a stop line. Do not claim the first task below it.
+            state.queueRunning = false;
+          }
         });
         sendState(next);
         if (isMiniMaxH3Model(completedTask.modelId)) {
-          const nextTask = next.queue.find((item) => item.status === "waiting");
+          const nextTask = nextQueueWaitingTask(
+            next.queue,
+            next.queuePauseBoundary
+          );
           const queueWillContinue = next.queueRunning && Boolean(nextTask);
           const stable = await stabilizeH3RuntimeBetweenTasks(
             completedTask.id,
@@ -875,8 +927,20 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       }
     }
     const next = await store.update((state) => {
+      // A continue action may arrive after the loop observes queueRunning=false
+      // but before this final cleanup write. Preserve that resumed session; the
+      // worker controller will re-enter the executor after this invocation
+      // settles if the old worker was already in its exit path.
+      if (state.queueRunning && nextQueueWaitingTask(state.queue, state.queuePauseBoundary)) {
+        return;
+      }
       state.queueRunning = false;
       state.queueStartedAt = undefined;
+      if (!state.queue.some((task) =>
+        task.status === "waiting" || task.status === "running"
+      )) {
+        state.queuePauseBoundary = undefined;
+      }
       if (
         state.queueLifecycle !== "cancelling" &&
         state.queueLifecycle !== "cleaning" &&

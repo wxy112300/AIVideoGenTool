@@ -87,6 +87,11 @@ Hover preview failure must not destroy a valid static cover. Detail playback/vie
 - One logical task is one queue card. The active task expands in place to show stage, progress, preview, elapsed time, telemetry, pause/cancel actions, and recovery state.
 - Pending and completed tasks stay compact. Do not duplicate the running task in a separate section.
 - Progress must distinguish total pipeline progress from local node/step progress.
+- The queue is a vertical sequence. It may contain one horizontal batch divider between task cards; the divider is an in-flow queue item, not a right-side column or a second queue.
+- The divider marks the end of the current batch. Tasks below it keep their queue cards but expose a derived deferred state; completed tasks are removed and must not be shown as queue items.
+- The divider is a compact, centered, single-line in-flow control: its widened drag bar and explanation stay centered, while the remove action remains at the far right. The divider must stay after at least the first active task; its text background masks the center rule without adding a text box border. Task cards and the divider can be moved across one another using the same vertical ordering model. Removing the divider only clears the marker; it must not auto-start a paused queue. An ordinary “start queue” action honors an existing divider, while explicit “continue later tasks” clears it and resumes the remaining queue.
+- Waiting-task overflow actions include “render through here”, which places the divider after that task without changing the task's persisted status.
+- Ending the queue or choosing “finish this task, then pause” places or moves the divider immediately after the running task. When the current batch reaches the divider, it acts as a stop line: the queue stops before the first task below it and the divider is cleared in the same update. Explicitly continuing later must resume the existing queue session when possible, clear the divider, and restore normal waiting/running state without starting a duplicate worker; starting a manually divided queue must leave the divider in place until that stop-line transition.
 
 ### History
 

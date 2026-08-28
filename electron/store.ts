@@ -21,6 +21,7 @@ import {
   managedPromptModelDefinitions
 } from "../src/core/prompt-models.js";
 import { normalizeImageEditDraft, normalizeImageHistory } from "../src/core/image-project.js";
+import { normalizeQueuePauseBoundary } from "../src/core/queue.js";
 import { isHistoryRating, normalizeHistoryTags } from "../src/core/history-filter.js";
 import { copyPromptVersions, ensureDraftPromptState } from "../src/core/draft-prompts.js";
 import {
@@ -482,6 +483,17 @@ export class JsonStore {
       const savedQueueLifecycle = normalizedQueueLifecycle(
         (saved as { queueLifecycle?: unknown }).queueLifecycle
       );
+      const migratedQueue = (saved.queue ?? []).map((task) => migrateQueueTask(
+        task,
+        typeof savedSettings.h3LivePreview === "boolean"
+          ? savedSettings.h3LivePreview
+          : defaultState.settings.h3LivePreview
+      ));
+      const savedQueuePauseBoundary = (saved as { queuePauseBoundary?: unknown }).queuePauseBoundary;
+      const queuePauseBoundary = normalizeQueuePauseBoundary(
+        migratedQueue,
+        savedQueuePauseBoundary
+      );
       this.state = {
         ...defaultState,
         ...saved,
@@ -500,12 +512,8 @@ export class JsonStore {
         },
         queueRunning: false,
         schemaVersion: APP_SCHEMA_VERSION,
-        queue: (saved.queue ?? []).map((task) => migrateQueueTask(
-          task,
-          typeof savedSettings.h3LivePreview === "boolean"
-            ? savedSettings.h3LivePreview
-            : defaultState.settings.h3LivePreview
-        )),
+        queue: migratedQueue,
+        queuePauseBoundary,
         history,
         imageHistory,
         // A queue lifecycle is process-local. Never restore a stale running or
@@ -526,6 +534,7 @@ export class JsonStore {
         typeof saved.queueStartedAt === "string" ||
         typeof (saved as { queueLifecycleStartedAt?: unknown }).queueLifecycleStartedAt === "string" ||
         typeof (saved as { queueLifecycle?: unknown }).queueLifecycle !== "string" ||
+        savedQueuePauseBoundary !== queuePauseBoundary ||
         savedSchemaVersion < APP_SCHEMA_VERSION ||
         retiredH3AttentionModePersisted ||
         !hasIndependentExtensionPromptState ||

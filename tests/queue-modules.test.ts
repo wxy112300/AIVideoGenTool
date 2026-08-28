@@ -82,6 +82,85 @@ describe("queue renderer task priority", () => {
     expect(emptyMarkup).not.toContain("queue-idle-performance-grid");
   });
 
+  it("keeps the running task at position 1 when persisted order is stale", () => {
+    const state = createDefaultState();
+    const running = queueFixtureTask(state, "running-task");
+    const first = queueFixtureTask(state, "first-task");
+    const later = queueFixtureTask(state, "later-task");
+    running.status = "running";
+    state.queue = [first, running, later];
+    state.queueRunning = true;
+    state.queuePauseBoundary = 1;
+    state.queueLifecycle = "running";
+
+    const taskPositions: string[] = [];
+    const markup = renderQueuePage(state, {
+      ...queuePageOptions(),
+      renderTaskCard: (task, position) => {
+        taskPositions.push(`${task.id}:${position}`);
+        return `<article data-test-task="${task.id}" data-test-position="${position}"></article>`;
+      }
+    });
+
+    expect(taskPositions).toEqual([
+      "first-task:2",
+      "later-task:3",
+      "running-task:1"
+    ]);
+    expect(markup.indexOf('data-test-task="running-task"')).toBeLessThan(markup.indexOf('data-test-task="first-task"'));
+    expect(markup.indexOf("data-queue-boundary-marker")).toBeLessThan(markup.indexOf('data-test-task="first-task"'));
+  });
+
+  it("renders a horizontal pause divider below the current batch", () => {
+    const state = createDefaultState();
+    const running = queueFixtureTask(state, "running-task");
+    const first = queueFixtureTask(state, "first-task");
+    const later = queueFixtureTask(state, "later-task");
+    running.status = "running";
+    state.queue = [running, first, later];
+    state.queuePauseBoundary = 2;
+    state.queueLifecycle = "pausing";
+
+    const taskMarkup: string[] = [];
+    const markup = renderQueuePage(state, {
+      ...queuePageOptions(),
+      renderTaskCard: (task, _position, _availability, deferred) => {
+        taskMarkup.push(`${task.id}:${deferred ? "deferred" : "current"}`);
+        return `<article data-test-task="${task.id}" data-test-deferred="${deferred ? "true" : "false"}"></article>`;
+      }
+    });
+
+    expect(markup).toContain("data-queue-boundary-marker");
+    expect(markup.indexOf('data-test-task="first-task"')).toBeLessThan(markup.indexOf("data-queue-boundary-marker"));
+    expect(markup.indexOf("data-queue-boundary-marker")).toBeLessThan(markup.indexOf('data-test-task="later-task"'));
+    expect(markup).toContain('data-test-deferred="true"');
+    expect(markup).toContain("queue.pauseBoundary.title");
+    expect(taskMarkup).toContain("first-task:current");
+    expect(taskMarkup).toContain("later-task:deferred");
+  });
+
+  it("keeps tasks on both sides of the divider draggable", () => {
+    const state = createDefaultState();
+    const first = queueFixtureTask(state, "first-task");
+    const later = queueFixtureTask(state, "later-task");
+    state.queue = [first, later];
+    state.queuePauseBoundary = 1;
+
+    const availability: string[] = [];
+    renderQueuePage(state, {
+      ...queuePageOptions(),
+      renderTaskCard: (task, _position, moveAvailability, deferred) => {
+        availability.push(`${task.id}:${moveAvailability?.canDrag === true ? "draggable" : "locked"}:${deferred ? "deferred" : "current"}`);
+        return `<article data-test-task="${task.id}"></article>`;
+      }
+    });
+
+    expect(availability).toEqual([
+      "first-task:draggable:current",
+      "later-task:draggable:deferred"
+    ]);
+  });
+
   it("marks non-running image inputs for the square preview layout", () => {
     const state = createDefaultState();
     const task = queueFixtureTask(state, "image-preview-task");
@@ -364,6 +443,27 @@ describe("queue worker lifecycle", () => {
     expect(controller.runningWorker).toBeNull();
     expect(controller.activeController).toBeNull();
   });
+
+  it("restarts once when resuming races with the current worker exit", async () => {
+    const controller = new QueueWorkerController();
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    const firstRun = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const secondRun = new Promise<void>((resolve) => { releaseSecond = resolve; });
+    const execute = vi.fn()
+      .mockImplementationOnce(async () => firstRun)
+      .mockImplementationOnce(async () => secondRun);
+
+    controller.start(execute);
+    controller.resume(execute, () => true);
+    releaseFirst();
+
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(2));
+    expect(controller.runningWorker).not.toBeNull();
+
+    releaseSecond();
+    await vi.waitFor(() => expect(controller.runningWorker).toBeNull());
+  });
 });
 
 describe("queue renderer layout signature", () => {
@@ -394,6 +494,10 @@ describe("queue renderer layout signature", () => {
 
     task.status = "running";
     expect(queueLayoutSignature(state)).not.toBe(baseline);
+
+    const beforeBoundary = queueLayoutSignature(state);
+    state.queuePauseBoundary = 1;
+    expect(queueLayoutSignature(state)).not.toBe(beforeBoundary);
   });
 });
 

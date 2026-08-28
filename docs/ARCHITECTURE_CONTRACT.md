@@ -45,6 +45,9 @@ Large entry files are an existing risk, not a pattern to expand. When work intro
 - Later draft changes cannot alter queued or running work.
 - A multi-output image batch can be one logical queue task while retaining individual output/version identity.
 - Pausing, cancelling, retrying, and restoring must use explicit task states; UI labels are projections of state, not the state itself.
+- The queue may persist one optional `queuePauseBoundary`, expressed as the number of active queue tasks above a horizontal divider. It is always between the first and last active task, never before the first task; it is a batch boundary, not a new persisted task status. `deferred`/“待后续执行” is derived only for waiting tasks below that boundary.
+- Queue mutations, task completion/removal, and reordering must adjust the boundary with the same active-task ordering. Completed tasks are removed without losing the divider's relative position among the remaining active tasks.
+- Pausing after the current task places the boundary immediately after the running task (or after the first pending task during the startup race). An ordinary queue start honors an existing boundary, while an explicit continue action clears it and reuses an existing worker/session when one is still finishing. When completion removes every active task above the boundary, the divider is treated as a stop line: clear it and stop the queue in the same state transition so the first task below it is never claimed. Neither path may start a duplicate worker or leave `queueRunning`/lifecycle state stale.
 
 ### History and media
 

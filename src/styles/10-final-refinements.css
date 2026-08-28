@@ -1571,11 +1571,154 @@ body.image-markup-open {
   pointer-events: none;
 }
 
+.queue-pause-boundary {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 54px 4px 10px;
+  border-block: 1px solid color-mix(in srgb, var(--ux-action-primary) 58%, var(--ux-separator-strong));
+  background: color-mix(in srgb, var(--ux-action-primary) 7%, var(--ux-surface-base));
+}
+
+.queue-pause-boundary::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset-inline: 0;
+  top: 50%;
+  border-top: 1px solid color-mix(in srgb, var(--ux-action-primary) 48%, transparent);
+  pointer-events: none;
+}
+
+.queue-pause-boundary > * { position: relative; z-index: 1; }
+
+.queue-pause-boundary-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 132px;
+  width: 132px;
+  min-height: 30px;
+  padding: 4px 14px;
+  border: 1px solid color-mix(in srgb, var(--ux-action-primary) 38%, var(--ux-separator-strong));
+  border-radius: var(--ux-radius-control);
+  color: var(--ux-action-primary);
+  background: color-mix(in srgb, var(--ux-action-primary) 12%, var(--ux-surface-raised));
+  cursor: grab;
+  touch-action: none;
+}
+
+.queue-pause-boundary-handle:hover,
+.queue-pause-boundary-handle:focus-visible {
+  border-color: var(--ux-action-primary);
+  background: color-mix(in srgb, var(--ux-action-primary) 20%, var(--ux-surface-raised));
+}
+
+.queue-pause-boundary-handle:active { cursor: grabbing; }
+.queue-pause-boundary-handle .ui-icon { width: 18px; height: 18px; }
+
+.queue-pause-boundary-copy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: min(620px, calc(100% - 160px));
+  flex-direction: row;
+  gap: 8px;
+  padding: 2px 8px;
+  border-radius: var(--ux-radius-control);
+  background: color-mix(in srgb, var(--ux-action-primary) 7%, var(--ux-surface-base));
+}
+
+.queue-pause-boundary-copy strong {
+  flex: 0 0 auto;
+  color: var(--ux-content-primary);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.queue-pause-boundary-copy span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ux-content-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-pause-boundary-clear {
+  position: absolute;
+  inset-inline-end: 10px;
+  top: 50%;
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 6px;
+  color: var(--ux-content-secondary);
+  transform: translateY(-50%);
+}
+
+.queue-pause-boundary-clear:hover,
+.queue-pause-boundary-clear:focus-visible {
+  color: var(--ux-content-primary);
+}
+
+.task-card.queue-task-deferred {
+  border-color: color-mix(in srgb, var(--ux-action-primary) 30%, var(--ux-separator-subtle));
+}
+
+.task-card.queue-task-deferred .status.deferred {
+  color: var(--ux-content-secondary);
+  background: color-mix(in srgb, var(--ux-action-primary) 10%, var(--ux-surface-raised));
+}
+
+.queue-pause-boundary.queue-pause-boundary-dragging {
+  opacity: .96;
+  border-color: color-mix(in srgb, var(--ux-action-primary) 72%, var(--ux-separator-strong));
+  box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--ux-action-primary) 20%, transparent);
+  pointer-events: none;
+  cursor: grabbing;
+  transition: none !important;
+}
+
+.task-list[data-queue-drop-list] > .queue-boundary-drag-placeholder {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border-block: 1px dashed color-mix(in srgb, var(--ux-action-primary) 72%, var(--ux-separator-strong));
+  background: color-mix(in srgb, var(--ux-action-primary) 8%, var(--ux-surface-base));
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .queue-drag-handle,
-  .task-list[data-queue-drop-list] > .queue-drag-placeholder {
+  .queue-pause-boundary-handle,
+  .task-list[data-queue-drop-list] > .queue-drag-placeholder,
+  .task-list[data-queue-drop-list] > .queue-boundary-drag-placeholder {
     transition-duration: 0ms;
   }
+}
+
+@media (max-width: 600px) {
+  .queue-pause-boundary {
+    gap: 8px;
+    padding-inline: 8px 46px;
+  }
+  .queue-pause-boundary-handle {
+    flex-basis: 96px;
+    width: 96px;
+  }
+  .queue-pause-boundary-copy {
+    max-width: calc(100% - 104px);
+    gap: 6px;
+  }
+  .queue-pause-boundary-copy span { white-space: nowrap; }
 }
 
 .queue-reorder-controls .icon-button {
@@ -1618,6 +1761,36 @@ body.image-markup-open {
 
 .queue-task-actions .queue-action-quiet .queue-action-label {
   display: none;
+}
+
+.queue-task-actions .queue-action-more {
+  color: var(--ux-content-tertiary);
+}
+
+.queue-task-actions .queue-action-more:hover,
+.queue-task-actions .queue-action-more:focus-visible {
+  color: var(--ux-content-primary);
+}
+
+.queue-action-menu {
+  width: min(220px, calc(100vw - 16px));
+  padding: 5px;
+}
+
+.queue-action-menu button {
+  min-height: 36px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px 8px;
+}
+
+.queue-action-menu button > span:nth-child(2) {
+  display: block;
+}
+
+.queue-action-menu button strong {
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .queue-task-actions .queue-action-reset {

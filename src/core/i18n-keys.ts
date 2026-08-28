@@ -85,6 +85,13 @@ export const uiKeys = {
     end: "queue.end",
     continueQueue: "queue.continue",
     endHint: "queue.endHint",
+    pauseBoundary: {
+      title: "queue.pauseBoundary.title",
+      description: "queue.pauseBoundary.description",
+      drag: "queue.pauseBoundary.drag",
+      clear: "queue.pauseBoundary.clear",
+      clearTitle: "queue.pauseBoundary.clearTitle"
+    },
     performance: "queue.performance",
     cpu: "queue.metric.cpu",
     systemMemory: "queue.metric.systemMemory",
@@ -164,6 +171,10 @@ export const uiKeys = {
       edit: "queue.card.edit",
       editAgain: "queue.card.editAgain",
       duplicate: "queue.card.duplicate",
+      moreActions: "queue.card.moreActions",
+      promote: "queue.card.promote",
+      renderThroughHere: "queue.card.renderThroughHere",
+      randomizeSeed: "queue.card.randomizeSeed",
       resetTitle: "queue.card.resetTitle",
       reset: "queue.card.reset",
       remove: "queue.card.remove",
@@ -175,7 +186,8 @@ export const uiKeys = {
     running: "task.status.running",
     completed: "task.status.completed",
     failed: "task.status.failed",
-    cancelled: "task.status.cancelled"
+    cancelled: "task.status.cancelled",
+    deferred: "task.status.deferred"
   },
   dialog: {
     irreversible: "dialog.irreversible",

@@ -74,6 +74,8 @@ import {
   restoreSegmentedSeedVr2OutputPaths
 } from "../src/core/comfy-output-paths.js";
 import {
+  adjustQueuePauseBoundary,
+  queuePauseBoundaryReached,
   syncQueueVideoInputPaths
 } from "../src/core/queue.js";
 import { normalizeImageEditDraft } from "../src/core/image-project.js";
@@ -1461,6 +1463,8 @@ async function updateTask(
   const next = await store.update((state) => {
     const task = state.queue.find((item) => item.id === taskId);
     if (!task) return;
+    const previousQueue = state.queue.map((item) => ({ ...item }));
+    const previousBoundary = state.queuePauseBoundary;
     if (patch.status && patch.status !== task.status) {
       appLogger.info("queue", "task-status", "Queue task status changed", {
         taskId,
@@ -1491,6 +1495,19 @@ async function updateTask(
       });
     }
     Object.assign(task, patch, { updatedAt: new Date().toISOString() });
+    const boundaryReached = queuePauseBoundaryReached(
+      previousQueue,
+      previousBoundary,
+      state.queue
+    );
+    state.queuePauseBoundary = boundaryReached
+      ? undefined
+      : adjustQueuePauseBoundary(
+        previousQueue,
+        previousBoundary,
+        state.queue
+      );
+    if (boundaryReached) state.queueRunning = false;
   });
   sendState(next);
   return next;
@@ -3726,18 +3743,7 @@ function registerIpc(): void {
       updatedAt: new Date().toISOString()
     };
   });
-  registerQueueMutationIpc({
-    ipc: ipcMain,
-    store,
-    logger: appLogger,
-    sendState,
-    isQueueCleanupActive: () => Boolean(
-      queueWorkerController.cleanupWorker ||
-      queueWorkerController.runningWorker ||
-      queueWorkerController.activeController
-    )
-  });
-  registerQueueControlIpc({
+  const queueControl = registerQueueControlIpc({
     ipc: ipcMain,
     store,
     logger: appLogger,
@@ -3748,6 +3754,18 @@ function registerIpc(): void {
     settingsForTask: comfyUiSettingsForQueueTask,
     cleanupCancelledTask: cleanupCancelledQueueTask,
     updateTask
+  });
+  registerQueueMutationIpc({
+    ipc: ipcMain,
+    store,
+    logger: appLogger,
+    sendState,
+    isQueueCleanupActive: () => Boolean(
+      queueWorkerController.cleanupWorker ||
+      queueWorkerController.runningWorker ||
+      queueWorkerController.activeController
+    ),
+    resumeQueue: queueControl.resumeQueue
   });
   ipcMain.handle("history:delete", async (_event, assetId: string) => {
     const startedAt = Date.now();

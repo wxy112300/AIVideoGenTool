@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { HistoryAsset, QueueTask } from "../src/types";
 import {
+  activeQueueTaskIds,
   duplicateQueueTask,
+  moveWaitingTaskWithPauseBoundary,
   moveWaitingTask,
+  nextQueueWaitingTask,
+  normalizeQueuePauseBoundary,
+  queuePauseBoundaryAfterCurrent,
+  queuePauseBoundaryReached,
+  queueTaskIsDeferred,
+  randomizeQueuedTaskSeed,
   removeQueueTask,
+  removeQueueTaskWithPauseBoundary,
+  reorderWaitingTaskWithPauseBoundary,
   resetQueueTask,
   syncQueueVideoInputPaths,
   updateQueuedUpscaleTask
@@ -118,6 +128,103 @@ describe("queue ordering", () => {
     expect(synced[0]?.taskType === "upscale" ? synced[0].sourceFilePath : "").toBe(
       "C:\\ComfyUI\\output\\Videos\\clip.mp4"
     );
+  });
+
+  it("randomizes only the seed of a waiting video task", () => {
+    const queued = task("queued", "wan");
+    queued.seed = 7;
+    const untouched = task("untouched", "wan");
+    const next = randomizeQueuedTaskSeed(
+      [queued, untouched],
+      "queued",
+      {
+        now: () => new Date("2026-08-29T12:00:00.000Z"),
+        id: () => "unused",
+        random: () => 0.25
+      }
+    );
+
+    expect(next[0]).toMatchObject({
+      id: "queued",
+      seed: Math.floor(0.25 * Number.MAX_SAFE_INTEGER),
+      updatedAt: "2026-08-29T12:00:00.000Z"
+    });
+    expect(next[0]).not.toBe(queued);
+    expect(next[1]).toBe(untouched);
+
+    queued.status = "running";
+    expect(randomizeQueuedTaskSeed([queued], "queued", {
+      now: () => new Date("2026-08-29T12:00:00.000Z"),
+      id: () => "unused",
+      random: () => 0.75
+    })[0]).toBe(queued);
+  });
+
+  it("treats the horizontal pause point as an active-task boundary", () => {
+    const queue = [
+      task("running", "wan", "running"),
+      task("first", "wan"),
+      task("second", "wan")
+    ];
+
+    expect(nextQueueWaitingTask(queue, 2)?.id).toBe("first");
+    expect(nextQueueWaitingTask(queue, 1)).toBeUndefined();
+    expect(queueTaskIsDeferred(queue, 2, "second")).toBe(true);
+    expect(queueTaskIsDeferred(queue, 2, "first")).toBe(false);
+    expect(queuePauseBoundaryAfterCurrent(queue)).toBe(1);
+    expect(normalizeQueuePauseBoundary(queue, 0)).toBe(1);
+
+    const staleOrder = [
+      task("before-running", "wan"),
+      task("running", "wan", "running"),
+      task("after-running", "wan")
+    ];
+    expect(activeQueueTaskIds(staleOrder)).toEqual([
+      "running",
+      "before-running",
+      "after-running"
+    ]);
+    expect(nextQueueWaitingTask(staleOrder, 1)).toBeUndefined();
+    expect(nextQueueWaitingTask(staleOrder, 2)?.id).toBe("before-running");
+  });
+
+  it("keeps the divider in place when a task crosses it", () => {
+    const queue = [task("first", "wan"), task("second", "wan"), task("third", "wan"), task("fourth", "wan")];
+
+    const movedDown = moveWaitingTaskWithPauseBoundary(queue, 2, "first", 1);
+    expect(movedDown.queue.map((item) => item.id)).toEqual(["second", "first", "third", "fourth"]);
+    expect(movedDown.boundary).toBe(2);
+
+    const movedUp = reorderWaitingTaskWithPauseBoundary(queue, 2, "third", 0);
+    expect(movedUp.queue.map((item) => item.id)).toEqual(["third", "first", "second", "fourth"]);
+    expect(movedUp.boundary).toBe(3);
+  });
+
+  it("moves the divider with removals and restores", () => {
+    const queue = [task("first", "wan"), task("second", "wan"), task("third", "wan")];
+    const removedAbove = removeQueueTaskWithPauseBoundary(queue, 2, "first");
+    expect(removedAbove.queue.map((item) => item.id)).toEqual(["second", "third"]);
+    expect(removedAbove.boundary).toBe(1);
+
+    const restored = reorderWaitingTaskWithPauseBoundary(
+      removedAbove.queue,
+      removedAbove.boundary,
+      "third",
+      0
+    );
+    expect(restored.boundary).toBe(2);
+  });
+
+  it("detects when completed tasks reach the divider stop line", () => {
+    const beforeQueue = [
+      task("current", "wan"),
+      task("next", "wan"),
+      task("later", "wan")
+    ];
+
+    expect(queuePauseBoundaryReached(beforeQueue, 1, beforeQueue.slice(1))).toBe(true);
+    expect(queuePauseBoundaryReached(beforeQueue, 2, beforeQueue.slice(1))).toBe(false);
+    expect(queuePauseBoundaryReached(beforeQueue, 1, [])).toBe(false);
   });
 });
 

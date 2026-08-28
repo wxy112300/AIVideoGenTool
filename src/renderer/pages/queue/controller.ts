@@ -1,6 +1,8 @@
 import type { AppState, UpscaleQueueTask } from "../../../types";
 import type { RendererCleanup, RendererContext } from "../../contracts";
 import { uiKeys } from "../../../core/i18n-keys";
+import { icon } from "../../shared/icons";
+import { mountQueueActionMenu, type QueueMenuAction } from "./action-menu";
 import { mountQueueDragSort } from "./drag-sort";
 
 export type QueueConfirmationAction = "remove" | "cancel";
@@ -39,6 +41,17 @@ export function mountQueueController(
     }
   };
 
+  const continueQueue = async (): Promise<void> => {
+    context.reportUserAction("queue-continue");
+    try {
+      options.setState(await context.studio.continueQueue());
+      options.setPromptRuntimeLoaded(false);
+      context.requestRender();
+    } catch (error) {
+      context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+    }
+  };
+
   const endQueue = async (action: "queue-end" | "queue-pause" = "queue-end"): Promise<void> => {
     context.reportUserAction(action);
     try {
@@ -50,6 +63,52 @@ export function mountQueueController(
       context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
     }
   };
+
+  const canPromote = (taskId: string): boolean => {
+    const state = currentState(context);
+    if (!state) return false;
+    const runningIndex = state.queue.findIndex((task) => task.status === "running");
+    const reorderable = state.queue.filter((task, index) =>
+      task.status === "waiting" && (runningIndex < 0 || index > runningIndex)
+    );
+    return reorderable.findIndex((task) => task.id === taskId) > 0;
+  };
+
+  const handleQueueMenuAction = async (
+    action: QueueMenuAction,
+    taskId: string
+  ): Promise<void> => {
+    const task = currentState(context)?.queue.find((item) => item.id === taskId);
+    if (!task) return;
+    try {
+      if (action === "duplicate") {
+        context.reportUserAction("queue-duplicate", { taskId });
+        options.setState(await context.studio.duplicateTask(taskId));
+      } else if (action === "promote") {
+        if (!canPromote(taskId)) return;
+        context.reportUserAction("queue-promote", { taskId, targetIndex: 0 });
+        options.setState(await context.studio.reorderTask(taskId, 0));
+      } else if (action === "render-through-here") {
+        if (task.status !== "waiting") return;
+        context.reportUserAction("queue-set-pause-boundary", { taskId });
+        options.setState(await context.studio.setQueuePauseBoundaryAfterTask(taskId));
+      } else {
+        if (task.status !== "waiting" || task.taskType === "image-generation") return;
+        context.reportUserAction("queue-randomize-seed", { taskId });
+        options.setState(await context.studio.randomizeTaskSeed(taskId));
+      }
+      context.requestRender();
+    } catch (error) {
+      context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+    }
+  };
+
+  const queueActionMenuCleanup = mountQueueActionMenu(context, {
+    icon,
+    getTask: (taskId) => currentState(context)?.queue.find((task) => task.id === taskId),
+    canPromote,
+    onAction: handleQueueMenuAction
+  });
 
   root.querySelector<HTMLInputElement>("#h3-live-preview")?.addEventListener("change", async (event) => {
     const input = event.currentTarget as HTMLInputElement;
@@ -75,6 +134,10 @@ export function mountQueueController(
       await endQueue();
       return;
     }
+    if (state?.queue.some((task) => task.status === "running")) {
+      await continueQueue();
+      return;
+    }
     await startQueue();
   }, { signal });
 
@@ -83,7 +146,17 @@ export function mountQueueController(
   }, { signal });
 
   root.querySelector("#continue-queue")?.addEventListener("click", async () => {
-    await startQueue();
+    await continueQueue();
+  }, { signal });
+
+  root.querySelector<HTMLElement>("[data-queue-boundary-clear]")?.addEventListener("click", async () => {
+    context.reportUserAction("queue-boundary-clear");
+    try {
+      options.setState(await context.studio.clearQueuePauseBoundary());
+      context.requestRender();
+    } catch (error) {
+      context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
+    }
   }, { signal });
 
   root.querySelectorAll<HTMLElement>("[data-remove]").forEach((button) => {
@@ -101,16 +174,6 @@ export function mountQueueController(
       if (!taskId) return;
       context.reportUserAction("queue-cancel", { taskId });
       options.requestConfirmation(taskId, "cancel");
-    }, { signal });
-  });
-
-  root.querySelectorAll<HTMLElement>("[data-duplicate]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const taskId = button.dataset.duplicate;
-      if (!taskId) return;
-      context.reportUserAction("queue-duplicate", { taskId });
-      options.setState(await context.studio.duplicateTask(taskId));
-      context.requestRender();
     }, { signal });
   });
 
@@ -153,6 +216,7 @@ export function mountQueueController(
 
   return () => {
     events.abort();
+    queueActionMenuCleanup();
     dragSortCleanup();
   };
 }
