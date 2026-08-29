@@ -32,6 +32,8 @@ export function createClearedDraft(current: Draft): Draft {
     sourceWidth: 0,
     sourceHeight: 0,
     endImagePath: "",
+    endImageWidth: 0,
+    endImageHeight: 0,
     sourceVideoPath: "",
     sourceVideoDuration: 0,
     trimStartSeconds: 0,

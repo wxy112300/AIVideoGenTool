@@ -49,7 +49,16 @@ export function mountH3ReferencesController(
     )) return;
     options.patchDraft({
       h3ReferenceSlots: draft.h3ReferenceSlots.map((slot) =>
-        slot.id === slotId ? { ...slot, ...patch } : slot
+        slot.id === slotId
+          ? {
+              ...slot,
+              ...patch,
+              ...((patch.mediaType !== undefined && patch.mediaType !== slot.mediaType) ||
+                (patch.mediaPath !== undefined && patch.mediaPath !== slot.mediaPath)
+                ? { width: undefined, height: undefined }
+                : {})
+            }
+          : slot
       )
     });
   };

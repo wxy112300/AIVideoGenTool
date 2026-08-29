@@ -102,7 +102,9 @@ export function mountCreateClipboardController(
       );
       options.patchDraft({
         [field]: filename,
-        ...(field === "startImagePath" ? { sourceWidth: 0, sourceHeight: 0 } : {})
+        ...(field === "startImagePath"
+          ? { sourceWidth: 0, sourceHeight: 0 }
+          : { endImageWidth: 0, endImageHeight: 0 })
       });
       context.requestRender();
       context.notify(t(field === "startImagePath" ? uiKeys.create.interaction.pastedStartFrame : uiKeys.create.interaction.pastedEndFrame));

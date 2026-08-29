@@ -129,6 +129,7 @@ export interface VideoCreatePageViewModel {
   enqueueBlockReason: string;
   enqueueDisabled: boolean;
   enqueueBusy: boolean;
+  h3TokenEstimate?: number;
 }
 
 function promptElapsedText(milliseconds: number): string {
@@ -262,6 +263,13 @@ export function renderCreatePage(
   const escapeHtml = options.escapeHtml;
   const t = options.t;
   const promptUi = viewModel.promptUi;
+  const showH3InputResolution = viewModel.isMiniMaxH3 && !viewModel.isR2V;
+  const formatInputDimensions = (width: number | undefined, height: number | undefined): string =>
+    showH3InputResolution && Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0
+      ? `${Math.trunc(width!)} × ${Math.trunc(height!)}`
+      : "";
+  const startInputResolution = formatInputDimensions(viewModel.draft.sourceWidth, viewModel.draft.sourceHeight);
+  const endInputResolution = formatInputDimensions(viewModel.draft.endImageWidth, viewModel.draft.endImageHeight);
   return `
     <section class="page-heading create-page-heading">
       <div class="page-heading-copy"><h1>${t(uiKeys.create.videoTitle)}</h1><p>${t(viewModel.extending ? uiKeys.create.extensionDescription : uiKeys.create.videoDescription)}</p></div>
@@ -324,7 +332,7 @@ export function renderCreatePage(
         <div class="media-slot">
           ${viewModel.draft.startImagePath
             ? `<div class="drop-zone has-image" id="pick-start" data-drop-frame="start" data-paste-frame="start" data-drop-label="${t(uiKeys.create.videoMedia.replaceStartFrame)}">
-                <img id="start-preview" alt="${t(uiKeys.create.videoMedia.startPreview)}"><span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span>
+                <img id="start-preview" alt="${t(uiKeys.create.videoMedia.startPreview)}">${startInputResolution ? `<span class="image-resolution-badge" aria-label="${escapeHtml(`${t(uiKeys.history.page.resolution)} ${startInputResolution}`)}">${escapeHtml(startInputResolution)}</span>` : ""}<span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span>
               </div>`
             : `<button class="drop-zone" id="pick-start" data-drop-frame="start" data-paste-frame="start" data-drop-label="${t(uiKeys.create.videoMedia.addStartFrame)}">
                 <span class="drop-icon">${icon("image")}</span><strong>${t(uiKeys.create.videoMedia.chooseOrDropStart)}</strong><span>${t(uiKeys.create.videoMedia.imageFormats)}</span>
@@ -333,7 +341,7 @@ export function renderCreatePage(
         </div>
         ${viewModel.draft.endImagePath
           ? `<div class="media-slot">
-              <div class="drop-zone has-image" id="pick-end" data-drop-frame="end" data-paste-frame="end" data-drop-label="${t(uiKeys.create.videoMedia.replaceEndFrame)}"><img id="end-preview" alt="${t(uiKeys.create.videoMedia.endPreview)}"><span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span></div>
+              <div class="drop-zone has-image" id="pick-end" data-drop-frame="end" data-paste-frame="end" data-drop-label="${t(uiKeys.create.videoMedia.replaceEndFrame)}"><img id="end-preview" alt="${t(uiKeys.create.videoMedia.endPreview)}">${endInputResolution ? `<span class="image-resolution-badge" aria-label="${escapeHtml(`${t(uiKeys.history.page.resolution)} ${endInputResolution}`)}">${escapeHtml(endInputResolution)}</span>` : ""}<span class="image-label">${t(uiKeys.create.videoMedia.clickOrDropReplace)}</span></div>
               <button class="image-remove button-with-icon" data-clear-frame="end" aria-label="${t(uiKeys.create.videoMedia.deleteEndFrame)}" title="${t(uiKeys.create.videoMedia.deleteEndFrame)}">${icon("x")}<span>${t(uiKeys.create.imageEdit.clear)}</span></button>
             </div>`
           : ""}
@@ -497,6 +505,7 @@ export function renderCreatePage(
       <div class="submit-row composer-submit-row">
         <p class="composer-submit-status error" data-enqueue-feedback role="status" aria-live="polite" ${viewModel.enqueueBlockReason ? "" : "hidden"}>${icon("circle-alert")}<span>${escapeHtml(viewModel.enqueueBlockReason)}</span></p>
         <div class="composer-submit-actions"><button class="ghost danger button-with-icon" id="clear-draft">${icon("trash-2")}${t(uiKeys.create.videoSettings.clearDraft)}</button>
+        ${viewModel.h3TokenEstimate == null ? "" : `<span class="composer-token-estimate" data-h3-token-estimate>${Math.trunc(viewModel.h3TokenEstimate)} tokens</span>`}
         <button class="primary button-with-icon enqueue-button ${viewModel.enqueueBusy ? "busy" : ""}" id="enqueue" data-enqueue-block-reason="${escapeHtml(viewModel.enqueueBlockReason)}" data-enqueue-ready-title="${escapeHtml(viewModel.isR2V ? t(uiKeys.create.videoSettings.enqueueR2v) : viewModel.extending ? t(uiKeys.create.videoSettings.enqueueExtension) : t(uiKeys.create.videoSettings.enqueueGeneration))}" ${viewModel.enqueueDisabled || viewModel.enqueueBusy ? "disabled" : ""} aria-busy="${viewModel.enqueueBusy}" title="${escapeHtml(viewModel.enqueueBlockReason || (viewModel.isR2V ? t(uiKeys.create.videoSettings.enqueueR2v) : viewModel.extending ? t(uiKeys.create.videoSettings.enqueueExtension) : t(uiKeys.create.videoSettings.enqueueGeneration)))}">${icon(viewModel.enqueueBusy ? "refresh-cw" : "plus", "enqueue-spinner")}<span data-enqueue-label>${viewModel.enqueueBusy ? t(uiKeys.create.videoSettings.enqueueBusy) : t(uiKeys.create.videoSettings.enqueue)}</span></button></div>
       </div>
       </section>

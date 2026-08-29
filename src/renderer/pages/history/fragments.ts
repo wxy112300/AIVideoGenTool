@@ -93,6 +93,18 @@ function formatPerformanceBytes(
   return value == null ? t(uiKeys.history.detail.unavailable) : formatBytes(value);
 }
 
+export function renderH3TokenCountMarkup(
+  stats: TaskPerformanceStats | undefined,
+  options: Pick<HistoryFragmentRenderOptions, "t">
+): string {
+  const h3TokenCount = Number.isFinite(stats?.h3TokenCount)
+    ? Math.trunc(stats!.h3TokenCount!)
+    : undefined;
+  return h3TokenCount == null
+    ? ""
+    : `<dt>${options.t(uiKeys.history.page.tokenCount)}</dt><dd>${h3TokenCount} tokens</dd>`;
+}
+
 export function renderPerformanceStatsMarkup(
   stats: TaskPerformanceStats | undefined,
   options: Pick<HistoryFragmentRenderOptions, "formatBytes" | "t">
@@ -131,21 +143,35 @@ export function renderVideoInputSnapshotMarkup(
   asset: HistoryAsset,
   options: Pick<HistoryFragmentRenderOptions, "escapeHtml" | "h3ReferenceRoleLabel" | "t">
 ): string {
+  const formatInputDimensions = (width?: number, height?: number): string =>
+    Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0
+      ? `${Math.trunc(width!)} × ${Math.trunc(height!)}`
+      : "? × ?";
+  const resolutionLabel = (width?: number, height?: number): string =>
+    `${options.t(uiKeys.history.page.resolution)} ${formatInputDimensions(width, height)}`;
+  const renderReferenceSlot = (slot: NonNullable<HistoryAsset["h3ReferenceSlots"]>[number], index: number): string => {
+    const dimensions = slot.mediaType === "image"
+      ? ` · ${resolutionLabel(slot.width, slot.height)}`
+      : "";
+    return `<dt>${options.t(uiKeys.history.detail.slot, { index: index + 1 })}</dt><dd><strong>${slot.mediaType === "video" ? options.t(uiKeys.history.detail.video) : options.t(uiKeys.history.detail.image)} · ${options.escapeHtml(options.h3ReferenceRoleLabel(slot.role))}${dimensions}</strong><br><code>${options.escapeHtml(slot.mediaPath || options.t(uiKeys.history.detail.legacyNotSaved))}</code>${slot.note ? `<br><span>${options.escapeHtml(slot.note)}</span>` : ""}</dd>`;
+  };
   const items: string[] = [];
   if (asset.inputMode === "video" || asset.sourceVideoPath) {
     items.push(`<dt>${options.t(uiKeys.history.detail.inputMode)}</dt><dd>${options.t(uiKeys.history.detail.videoExtension)}</dd>`);
-    items.push(`<dt>${options.t(uiKeys.history.detail.sourceVideo)}</dt><dd><code>${options.escapeHtml(asset.sourceVideoPath || options.t(uiKeys.history.detail.legacyNotSaved))}</code></dd>`);
+    items.push(`<dt>${options.t(uiKeys.history.detail.sourceVideo)}</dt><dd><code>${options.escapeHtml(asset.sourceVideoPath || options.t(uiKeys.history.detail.legacyNotSaved))}</code><br><span>${resolutionLabel(asset.sourceWidth, asset.sourceHeight)}</span></dd>`);
     items.push(`<dt>${options.t(uiKeys.history.detail.sourceVideoDuration)}</dt><dd>${options.t(uiKeys.history.detail.duration, { value: asset.sourceVideoDuration ?? options.t(uiKeys.history.detail.legacyNotSaved) })}</dd>`);
     items.push(`<dt>${options.t(uiKeys.history.detail.keepRange)}</dt><dd>${asset.trimStartSeconds ?? 0}–${asset.trimEndSeconds ?? asset.sourceVideoDuration ?? "?"} ${options.t(uiKeys.history.detail.seconds)}</dd>`);
     if (asset.sourceAssetId) items.push(`<dt>${options.t(uiKeys.history.detail.sourceProject)}</dt><dd><code>${options.escapeHtml(asset.sourceAssetId)}</code></dd>`);
     if (asset.sourceVersionId) items.push(`<dt>${options.t(uiKeys.history.detail.sourceVersion)}</dt><dd><code>${options.escapeHtml(asset.sourceVersionId)}</code></dd>`);
+    (asset.h3ReferenceSlots ?? []).forEach((slot, index) => {
+      if (slot.mediaType === "video" && Boolean(asset.sourceVideoPath) && slot.mediaPath === asset.sourceVideoPath) return;
+      items.push(renderReferenceSlot(slot, index));
+    });
   } else {
     items.push(`<dt>${options.t(uiKeys.history.detail.inputMode)}</dt><dd>${asset.h3ReferenceSlots?.length ? options.t(uiKeys.history.detail.r2v) : options.t(uiKeys.history.detail.imageToVideo)}</dd>`);
-    if (asset.startImagePath) items.push(`<dt>${options.t(uiKeys.history.detail.firstFrame)}</dt><dd><code>${options.escapeHtml(asset.startImagePath)}</code></dd>`);
-    if (asset.endImagePath) items.push(`<dt>${options.t(uiKeys.history.detail.lastFrame)}</dt><dd><code>${options.escapeHtml(asset.endImagePath)}</code></dd>`);
-    for (const [index, slot] of (asset.h3ReferenceSlots ?? []).entries()) {
-      items.push(`<dt>${options.t(uiKeys.history.detail.slot, { index: index + 1 })}</dt><dd><strong>${slot.mediaType === "video" ? options.t(uiKeys.history.detail.video) : options.t(uiKeys.history.detail.image)} · ${options.escapeHtml(options.h3ReferenceRoleLabel(slot.role))}</strong><br><code>${options.escapeHtml(slot.mediaPath || options.t(uiKeys.history.detail.legacyNotSaved))}</code>${slot.note ? `<br><span>${options.escapeHtml(slot.note)}</span>` : ""}</dd>`);
-    }
+    if (asset.startImagePath) items.push(`<dt>${options.t(uiKeys.history.detail.firstFrame)}</dt><dd><code>${options.escapeHtml(asset.startImagePath)}</code><br><span>${resolutionLabel(asset.sourceWidth, asset.sourceHeight)}</span></dd>`);
+    if (asset.endImagePath) items.push(`<dt>${options.t(uiKeys.history.detail.lastFrame)}</dt><dd><code>${options.escapeHtml(asset.endImagePath)}</code><br><span>${resolutionLabel(asset.endImageWidth, asset.endImageHeight)}</span></dd>`);
+    (asset.h3ReferenceSlots ?? []).forEach((slot, index) => items.push(renderReferenceSlot(slot, index)));
   }
   return `<dl>${items.join("")}</dl>`;
 }

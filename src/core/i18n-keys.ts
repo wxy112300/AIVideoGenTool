@@ -931,6 +931,7 @@ export const uiKeys = {
       generationParams: "history.page.generationParams",
       model: "history.page.model",
       promptVersion: "history.page.promptVersion",
+      tokenCount: "history.page.tokenCount",
       tileMode: "history.page.tileMode",
       faceRestore: "history.page.faceRestore",
       enabled: "history.page.enabled",

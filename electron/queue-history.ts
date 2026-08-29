@@ -177,6 +177,7 @@ export function persistVideoHistoryResult(
       h3ReferenceSlots: task.h3ReferenceSlots?.map((slot) => ({ ...slot })),
       sourceWidth: task.sourceWidth, sourceHeight: task.sourceHeight,
       startImagePath: task.startImagePath, endImagePath: task.endImagePath,
+      endImageWidth: task.endImageWidth, endImageHeight: task.endImageHeight,
       workflowPath: task.workflowPath, startedAt: task.startedAt,
       comfyPromptId: result.promptId, comfyOutputs: result.comfyOutputs,
       files: result.files, defaultVersionId: version.id, versions: [version]

@@ -22,6 +22,7 @@ import {
   workflowSupportsH3MotionContextReferences,
   workflowSupportsEndImage
 } from "../../src/core/workflow.js";
+import { h3TokenCountForTask } from "../../src/core/h3-token-count.js";
 import { nativePromptModelFiles } from "../../src/core/prompt-models.js";
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
 import {
@@ -90,6 +91,19 @@ import {
 
 function cleanBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+function h3ReferenceImageSizeFromPrompt(value: unknown): "match" | "max" {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "match";
+  for (const node of Object.values(value as Record<string, unknown>)) {
+    if (!node || typeof node !== "object" || Array.isArray(node)) continue;
+    const record = node as Record<string, unknown>;
+    if (record.class_type !== "MiniMaxH3ReferenceToVideo") continue;
+    const inputs = record.inputs;
+    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) return "match";
+    return (inputs as Record<string, unknown>).ref_image_size === "max" ? "max" : "match";
+  }
+  return "match";
 }
 
 export async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
@@ -468,6 +482,7 @@ export async function submitTask(
   nodeTypes: Record<string, string>;
   h3LivePreviewRequested: boolean;
   h3LivePreviewActive: boolean;
+  h3TokenCount?: number;
   h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   uploadedUpscaleSource?: string;
 }> {
@@ -662,6 +677,10 @@ export async function submitTask(
   } else {
     throw new Error("图片任务必须通过 submitImageTask 提交。");
   }
+  const h3TokenCount = (task.taskType === "generation" || task.taskType === "extension") &&
+    isMiniMaxH3Model(task.modelId)
+    ? h3TokenCountForTask(task, h3ReferenceImageSizeFromPrompt(prompt))
+    : undefined;
   if (h3MemoryRequested) {
     const requestedMode = normalizeH3MemoryOptimizationMode(task.h3MemoryOptimizationMode, "off");
     const runtimeIssues = h3MemoryOptimizationRuntimeIssues(objectInfo, {
@@ -727,6 +746,7 @@ export async function submitTask(
     nodeTypes,
     h3LivePreviewRequested,
     h3LivePreviewActive: Boolean(h3PreviewTinyVae),
+    ...(h3TokenCount == null ? {} : { h3TokenCount }),
     ...(h3MemoryRuntimeEvidence ? { h3MemoryRuntimeEvidence } : {}),
     ...(uploadedUpscaleSource ? { uploadedUpscaleSource } : {})
   };

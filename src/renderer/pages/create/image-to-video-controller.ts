@@ -48,7 +48,9 @@ function bindFrameDrop(
     }
     options.patchDraft({
       [field]: filename,
-      ...(field === "startImagePath" ? { sourceWidth: 0, sourceHeight: 0 } : {})
+      ...(field === "startImagePath"
+        ? { sourceWidth: 0, sourceHeight: 0 }
+        : { endImageWidth: 0, endImageHeight: 0 })
     });
     context.requestRender();
   }, { signal });
@@ -70,7 +72,9 @@ function bindFramePicker(
     if (!filename) return;
     options.patchDraft({
       [field]: filename,
-      ...(field === "startImagePath" ? { sourceWidth: 0, sourceHeight: 0 } : {})
+      ...(field === "startImagePath"
+        ? { sourceWidth: 0, sourceHeight: 0 }
+        : { endImageWidth: 0, endImageHeight: 0 })
     });
     context.requestRender();
   }, { signal });
@@ -92,13 +96,13 @@ export function mountImageToVideoController(
     const draft = context.getState()?.draft;
     if (!draft) return;
     if (draft.endImagePath) {
-      options.patchDraft({ endImagePath: "" });
+      options.patchDraft({ endImagePath: "", endImageWidth: 0, endImageHeight: 0 });
       context.requestRender();
       return;
     }
     const filename = await context.studio.pickImage();
     if (!filename) return;
-    options.patchDraft({ endImagePath: filename });
+    options.patchDraft({ endImagePath: filename, endImageWidth: 0, endImageHeight: 0 });
     context.requestRender();
   }, { signal });
 
@@ -111,7 +115,9 @@ export function mountImageToVideoController(
         : "startImagePath";
       options.patchDraft({
         [field]: "",
-        ...(field === "startImagePath" ? { sourceWidth: 0, sourceHeight: 0 } : {})
+        ...(field === "startImagePath"
+          ? { sourceWidth: 0, sourceHeight: 0 }
+          : { endImageWidth: 0, endImageHeight: 0 })
       });
       context.requestRender();
     }, { signal });

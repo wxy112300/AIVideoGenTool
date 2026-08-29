@@ -19,6 +19,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function normalizedDimension(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
+  return Math.trunc(value);
+}
+
 export function normalizeH3ReferenceSlots(value: unknown): H3ReferenceSlot[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
@@ -35,12 +40,15 @@ export function normalizeH3ReferenceSlots(value: unknown): H3ReferenceSlot[] {
     const role = referenceRoles.has(entry.role as H3ReferenceRole)
       ? entry.role as H3ReferenceRole
       : "subject";
+    const width = mediaType === "image" ? normalizedDimension(entry.width) : undefined;
+    const height = mediaType === "image" ? normalizedDimension(entry.height) : undefined;
     return [{
       id: typeof entry.id === "string" && entry.id ? entry.id : crypto.randomUUID(),
       mediaType,
       mediaPath,
       role,
-      note: typeof entry.note === "string" ? entry.note : ""
+      note: typeof entry.note === "string" ? entry.note : "",
+      ...(width && height ? { width, height } : {})
     }];
   });
 }

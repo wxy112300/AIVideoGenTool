@@ -870,6 +870,7 @@ export const enUSCatalog: Record<string, string> = {
 	[uiKeys.history.page.generationParams]: "Version and generation parameters",
 	[uiKeys.history.page.model]: "Model",
 	[uiKeys.history.page.promptVersion]: "Prompt version",
+	[uiKeys.history.page.tokenCount]: "Token count",
 	[uiKeys.history.page.tileMode]: "Tile mode",
 	[uiKeys.history.page.faceRestore]: "Face restoration",
 	[uiKeys.history.page.enabled]: "Enabled",

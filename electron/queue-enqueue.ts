@@ -63,7 +63,11 @@ import {
 import type { JsonStore } from "./store.js";
 import type { AppLogger } from "./services/app-logger.js";
 import { safeLogErrorMessage } from "./services/app-logger.js";
-import { resolveComfyOutputDirectory, scanEnvironment } from "./services/environment.js";
+import {
+  getCachedEnvironmentScan,
+  resolveComfyOutputDirectory,
+  scanEnvironment
+} from "./services/environment.js";
 import { archiveImagePaths, archiveImageReferences, hashImageFile } from "./services/image-asset-library.js";
 import { isPathWithinDirectory } from "./services/video-history-migration.js";
 
@@ -140,6 +144,40 @@ function readImageDimensions(filename: string): { width: number; height: number 
   return size;
 }
 
+function hydrateVideoInputImageDimensions(draft: Draft): void {
+  const tryRead = (filename: string): { width: number; height: number } | undefined => {
+    try {
+      return readImageDimensions(filename);
+    } catch {
+      return undefined;
+    }
+  };
+
+  if (isMiniMaxH3R2vModel(draft.modelId)) {
+    draft.h3ReferenceSlots = draft.h3ReferenceSlots.map((slot) => {
+      if (slot.mediaType !== "image" || !slot.mediaPath) return slot;
+      const dimensions = tryRead(slot.mediaPath);
+      return dimensions ? { ...slot, ...dimensions } : slot;
+    });
+    return;
+  }
+  if (!isMiniMaxH3Model(draft.modelId)) return;
+  if (draft.startImagePath) {
+    const dimensions = tryRead(draft.startImagePath);
+    if (dimensions) {
+      draft.sourceWidth = dimensions.width;
+      draft.sourceHeight = dimensions.height;
+    }
+  }
+  if (draft.endImagePath) {
+    const dimensions = tryRead(draft.endImagePath);
+    if (dimensions) {
+      draft.endImageWidth = dimensions.width;
+      draft.endImageHeight = dimensions.height;
+    }
+  }
+}
+
 async function requireImageModelAssets(
   settings: Settings,
   modelId = settings.defaultImageModel,
@@ -187,6 +225,7 @@ async function requireImageModelAssets(
 export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
   const { ipc, store, logger, sendState } = deps;
   ipc.handle("queue:enqueue", async (_event, draft: Draft) => {
+    const enqueueSettings = store.getSettings();
     Object.assign(draft, normalizeH3MemoryOptions(draft));
     draft.videoLoras = normalizeVideoLoras(draft.videoLoras, draft.modelId);
     draft.steps = normalizeH3Steps(draft.steps, draft.modelId, draft.videoLoras);
@@ -205,7 +244,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       draft.modelId,
       hasReference
     );
-    const safety = generationSafetyForTask(draft, store.get().settings.uiLocale);
+    const safety = generationSafetyForTask(draft, enqueueSettings.uiLocale);
     if (!safety.safe) throw new Error(safety.message);
     if (isMiniMaxH3Q3GgufModel(draft.modelId) && draft.videoLoras.length) {
       throw new Error("H3 Q3 GGUF 3080 实验档不支持 LoRA，请先移除 LoRA。");
@@ -215,17 +254,17 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       inputMode: draft.inputMode,
       spectrumMode: draft.spectrumMode,
       videoLoras: draft.videoLoras,
-      locale: store.get().settings.uiLocale
+      locale: enqueueSettings.uiLocale
     });
     const initialH3ExecutionPlan = resolveMiniMaxH3ExecutionPlan({
       modelId: draft.modelId,
       inputMode: draft.inputMode,
-      attentionMode: store.get().settings.h3AttentionMode,
+      attentionMode: enqueueSettings.h3AttentionMode,
       h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
       h3MemoryChunkRows: draft.h3MemoryChunkRows,
       spectrumMode: draft.spectrumMode,
       videoLoras: draft.videoLoras,
-      h3LivePreview: store.get().settings.h3LivePreview
+      h3LivePreview: enqueueSettings.h3LivePreview
     });
     if (draft.h3MemoryOptimizationMode !== "off" && !initialH3ExecutionPlan.allowed) {
       throw new Error(`H3 Memory Optimization 组合不支持：${initialH3ExecutionPlan.reasons.join("、")}`);
@@ -236,38 +275,45 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         : "当前模型不支持 Spectrum，请关闭后再提交。");
     }
     const workflow = await readWorkflow(resolvedWorkflowPath, "工作流");
-    const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
+    const validation = validateApiWorkflow(workflow, enqueueSettings.uiLocale);
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
     const h3UsesSlaAttention = isMiniMaxH3Model(draft.modelId) && draft.videoLoras.some((lora) =>
       isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId)
     );
     const h3UsesSageAttention = isMiniMaxH3Model(draft.modelId) &&
       !h3UsesSlaAttention &&
-      store.get().settings.h3AttentionMode !== "pytorch";
-    const dependencyScan = isMiniMaxH3Model(draft.modelId) || draft.videoLoras.length || draft.spectrumMode === "balanced" ||
-      h3UsesSageAttention || draft.h3MemoryOptimizationMode !== "off"
-      ? await scanEnvironment(store.get().settings)
+      enqueueSettings.h3AttentionMode !== "pytorch";
+    const dependencyScanRequired = isMiniMaxH3Model(draft.modelId) || draft.videoLoras.length > 0 || draft.spectrumMode === "balanced" ||
+      h3UsesSageAttention || draft.h3MemoryOptimizationMode !== "off";
+    const dependencyScan = dependencyScanRequired
+      ? getCachedEnvironmentScan(enqueueSettings)
       : undefined;
-    const h3VideoVaeMode = (isMiniMaxH3Model(draft.modelId)
+    if (dependencyScanRequired && !dependencyScan) {
+      logger.info("queue", "enqueue-environment-preflight-deferred", "未阻塞入队：环境依赖检查将在任务准备阶段执行", {
+        taskType: "generation",
+        modelId: draft.modelId
+      });
+    }
+    const h3VideoVaeMode = (isMiniMaxH3Model(draft.modelId) && dependencyScan
       ? resolveH3VideoVaeMode(
-          store.get().settings.h3VideoVaeMode,
+          enqueueSettings.h3VideoVaeMode,
           h3VideoVaeAvailabilityFromModelProfiles(dependencyScan?.modelProfiles ?? [])
         )
       : undefined) ?? undefined;
-    if (isMiniMaxH3Model(draft.modelId) && !h3VideoVaeMode) {
+    if (isMiniMaxH3Model(draft.modelId) && dependencyScan && !h3VideoVaeMode) {
       throw new Error("H3 视频 VAE 未找到：请安装 FP16 或 INT8 ConvRot 视频 VAE 后重新扫描。您也可以在设置 → 性能与加速中查看状态。");
     }
-    if (draft.h3MemoryOptimizationMode !== "off") {
+    if (draft.h3MemoryOptimizationMode !== "off" && dependencyScan) {
       const memoryNode = dependencyScan?.customNodes.find((node) => node.id === "h3-optimizations");
       const executionPlan = resolveMiniMaxH3ExecutionPlan({
         modelId: draft.modelId,
         inputMode: draft.inputMode,
-        attentionMode: store.get().settings.h3AttentionMode,
+        attentionMode: enqueueSettings.h3AttentionMode,
         h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
         h3MemoryChunkRows: draft.h3MemoryChunkRows,
         spectrumMode: draft.spectrumMode,
         videoLoras: draft.videoLoras,
-        h3LivePreview: store.get().settings.h3LivePreview,
+        h3LivePreview: enqueueSettings.h3LivePreview,
         memoryNode: memoryNode ?? null
       });
       if (!executionPlan.allowed) {
@@ -277,7 +323,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     if (draft.videoLoras.length) {
       const issues = videoLoraConfigurationIssues({
         modelId: draft.modelId, inputMode: draft.inputMode,
-        spectrumMode: draft.spectrumMode, attentionMode: store.get().settings.h3AttentionMode,
+        spectrumMode: draft.spectrumMode, attentionMode: enqueueSettings.h3AttentionMode,
         videoLoras: draft.videoLoras
       });
       const blocking = issues.find((issue) => issue.severity === "error");
@@ -285,18 +331,20 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       issues.filter((issue) => issue.severity === "warning").forEach((issue) => {
         logger.warn("queue", "video-lora-compatibility-warning", issue.message, { loraIds: issue.loraIds });
       });
-      const missing = draft.videoLoras.find((lora) => {
-        const profile = dependencyScan?.modelProfiles.find((candidate) => candidate.id === lora.id);
-        if (!profile?.available) return true;
-        const expected = `loras/${lora.filename}`.replaceAll("\\", "/").toLowerCase();
-        return !profile.components.some((component) => component.matches.some((match) => {
-          const normalized = match.replaceAll("\\", "/").toLowerCase();
-          return normalized === expected || normalized.endsWith(`/${expected}`);
-        }));
-      });
-      if (missing) throw new Error(`${missing.name} 当前记录的文件 ${missing.filename} 未找到，请先在设置 → LoRA 中重新扫描或安装。`);
+      if (dependencyScan) {
+        const missing = draft.videoLoras.find((lora) => {
+          const profile = dependencyScan.modelProfiles.find((candidate) => candidate.id === lora.id);
+          if (!profile?.available) return true;
+          const expected = `loras/${lora.filename}`.replaceAll("\\", "/").toLowerCase();
+          return !profile.components.some((component) => component.matches.some((match) => {
+            const normalized = match.replaceAll("\\", "/").toLowerCase();
+            return normalized === expected || normalized.endsWith(`/${expected}`);
+          }));
+        });
+        if (missing) throw new Error(`${missing.name} 当前记录的文件 ${missing.filename} 未找到，请先在设置 → LoRA 中重新扫描或安装。`);
+      }
     }
-    if (h3UsesSlaAttention) {
+    if (h3UsesSlaAttention && dependencyScan) {
       const slaNode = dependencyScan?.customNodes.find((node) => node.id === "plaguekind-h3-sla");
       if (!slaNode?.loaded) {
         throw new Error(slaNode?.installed
@@ -304,7 +352,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
           : "Turbo-SLA 需要 H3 SLA Attention 节点，请先在设置 → 节点与依赖中安装并重启 ComfyUI。");
       }
     }
-    if (draft.spectrumMode === "balanced") {
+    if (draft.spectrumMode === "balanced" && dependencyScan) {
       const spectrum = dependencyScan?.customNodes.find(
         (node) => node.id === "spectrum-minimax-h3"
       );
@@ -324,7 +372,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         throw new Error(`模型感知预测需要 Spectrum v${SPECTRUM_MODEL_AWARE_MINIMUM_VERSION}+；当前 ${spectrum.version ? `v${spectrum.version}` : "版本未知"}。`);
       }
     }
-    if (h3UsesSageAttention) {
+    if (h3UsesSageAttention && dependencyScan) {
       const kjNodes = dependencyScan?.customNodes.find((node) => node.id === "kjnodes");
       if (!kjNodes?.installed) {
         throw new Error("当前 H3 Attention 模式需要 ComfyUI-KJNodes 的 SageAttention 节点；请先安装节点，或切换到 PyTorch 模式。");
@@ -345,7 +393,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     ).filter((candidate): candidate is string => Boolean(candidate.trim()));
     const preparedDraft = structuredClone(draft);
     if (sourcePaths.length) {
-      const library = await deps.effectiveImageInputLibraryDirectory(store.get().settings);
+      const library = await deps.effectiveImageInputLibraryDirectory(enqueueSettings);
       const operationId = randomUUID().slice(0, 8);
       logger.info("assets", "video-input-image-archive-started", "开始归档视频任务输入图片", { operationId, referenceCount: sourcePaths.length });
       try {
@@ -365,6 +413,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         throw error;
       }
     }
+    hydrateVideoInputImageDimensions(preparedDraft);
     const next = await store.update((state) => {
       const taskDraft = structuredClone(preparedDraft);
       taskDraft.workflowPath = resolvedWorkflowPath;
@@ -380,6 +429,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
   });
 
   ipc.handle("queue:enqueue-image", async (_event, draft: ImageEditDraft) => {
+    const enqueueSettings = store.getSettings();
     const requested = normalizeImageEditDraft(draft);
     const adapter = imageModelAdapterFor(requested.modelId);
     const normalized = normalizeImageEditDraft({
@@ -404,12 +454,12 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       throw new Error("请先在原图上绘制并保存 Mask。");
     }
     const diffusionModelFilename = await requireImageModelAssets(
-      store.get().settings,
+      enqueueSettings,
       normalized.modelId,
       normalized.qualityProfile,
       hasReference
     );
-    const outputTarget = await resolveImageOutputTarget(store.get().settings);
+    const outputTarget = await resolveImageOutputTarget(enqueueSettings);
     const operationId = randomUUID().slice(0, 8);
     logger.info("assets", "image-input-archive-started", "开始归档图片任务输入素材", { operationId, referenceCount: normalized.pictures.length });
     let archivedPictures: typeof normalized.pictures;
@@ -417,7 +467,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       archivedPictures = normalized.pictures.length
         ? await archiveImageReferences(
             normalized.pictures,
-            await deps.effectiveImageInputLibraryDirectory(store.get().settings)
+            await deps.effectiveImageInputLibraryDirectory(enqueueSettings)
           )
         : [];
       logger.info("assets", "image-input-archive-completed", "图片任务输入素材已归档并校验", {
@@ -486,23 +536,24 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
   });
 
   ipc.handle("queue:enqueue-extension", async (_event, draft: Draft) => {
+    const enqueueSettings = store.getSettings();
     Object.assign(draft, normalizeH3MemoryOptions(draft));
     draft.videoLoras = normalizeVideoLoras(draft.videoLoras, draft.modelId);
     const loraIssue = videoLoraConfigurationIssues({
       modelId: draft.modelId, inputMode: draft.inputMode, spectrumMode: draft.spectrumMode,
-      attentionMode: store.get().settings.h3AttentionMode, videoLoras: draft.videoLoras
+      attentionMode: enqueueSettings.h3AttentionMode, videoLoras: draft.videoLoras
     }).find((issue) => issue.severity === "error");
     if (loraIssue) throw new Error(loraIssue.message);
     if (draft.inputMode !== "video") throw new Error("只有视频输入模式可以创建 extension 队列任务");
     const initialH3ExecutionPlan = resolveMiniMaxH3ExecutionPlan({
       modelId: draft.modelId,
       inputMode: draft.inputMode,
-      attentionMode: store.get().settings.h3AttentionMode,
+      attentionMode: enqueueSettings.h3AttentionMode,
       h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
       h3MemoryChunkRows: draft.h3MemoryChunkRows,
       spectrumMode: draft.spectrumMode,
       videoLoras: draft.videoLoras,
-      h3LivePreview: store.get().settings.h3LivePreview
+      h3LivePreview: enqueueSettings.h3LivePreview
     });
     if (draft.h3MemoryOptimizationMode !== "off" && !initialH3ExecutionPlan.allowed) {
       throw new Error(`H3 Memory Optimization 组合不支持：${initialH3ExecutionPlan.reasons.join("、")}`);
@@ -510,16 +561,23 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     if (!promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择视频续写 API 工作流");
     if (!(await fs.stat(draft.sourceVideoPath).catch(() => null))) throw new Error("源视频文件不存在，无法加入续写队列");
-    let dependencyScan = isMiniMaxH3Model(draft.modelId)
-      ? await scanEnvironment(store.get().settings)
+    const dependencyScanRequired = isMiniMaxH3Model(draft.modelId) || draft.h3MemoryOptimizationMode !== "off";
+    const dependencyScan = dependencyScanRequired
+      ? getCachedEnvironmentScan(enqueueSettings)
       : undefined;
-    const h3VideoVaeMode = (isMiniMaxH3Model(draft.modelId)
+    if (dependencyScanRequired && !dependencyScan) {
+      logger.info("queue", "enqueue-environment-preflight-deferred", "未阻塞入队：环境依赖检查将在任务准备阶段执行", {
+        taskType: "extension",
+        modelId: draft.modelId
+      });
+    }
+    const h3VideoVaeMode = (isMiniMaxH3Model(draft.modelId) && dependencyScan
       ? resolveH3VideoVaeMode(
-          store.get().settings.h3VideoVaeMode,
+          enqueueSettings.h3VideoVaeMode,
           h3VideoVaeAvailabilityFromModelProfiles(dependencyScan?.modelProfiles ?? [])
         )
       : undefined) ?? undefined;
-    if (isMiniMaxH3Model(draft.modelId) && !h3VideoVaeMode) {
+    if (isMiniMaxH3Model(draft.modelId) && dependencyScan && !h3VideoVaeMode) {
       throw new Error("H3 视频 VAE 未找到：请安装 FP16 或 INT8 ConvRot 视频 VAE 后重新扫描。您也可以在设置 → 性能与加速中查看状态。");
     }
     const motionContext = isMiniMaxH3R2vModel(draft.modelId);
@@ -537,18 +595,17 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         throw new Error("Motion Context 的每个参考 Slot 都必须先添加图片或视频。");
       }
     }
-    if (draft.h3MemoryOptimizationMode !== "off") {
-      dependencyScan ??= await scanEnvironment(store.get().settings);
+    if (draft.h3MemoryOptimizationMode !== "off" && dependencyScan) {
       const memoryNode = dependencyScan.customNodes.find((node) => node.id === "h3-optimizations");
       const executionPlan = resolveMiniMaxH3ExecutionPlan({
         modelId: draft.modelId,
         inputMode: draft.inputMode,
-        attentionMode: store.get().settings.h3AttentionMode,
+        attentionMode: enqueueSettings.h3AttentionMode,
         h3MemoryOptimizationMode: draft.h3MemoryOptimizationMode,
         h3MemoryChunkRows: draft.h3MemoryChunkRows,
         spectrumMode: draft.spectrumMode,
         videoLoras: draft.videoLoras,
-        h3LivePreview: store.get().settings.h3LivePreview,
+        h3LivePreview: enqueueSettings.h3LivePreview,
         memoryNode: memoryNode ?? null
       });
       if (!executionPlan.allowed) {
@@ -556,13 +613,13 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       }
     }
     const workflow = await readWorkflow(draft.workflowPath, "续写工作流");
-    const validation = validateApiWorkflow(workflow, store.get().settings.uiLocale);
+    const validation = validateApiWorkflow(workflow, enqueueSettings.uiLocale);
     if (!validation.valid) throw new Error(`工作流校验失败：${validation.errors.join("；")}`);
     const safetyErrors = isMiniMaxH3Fl2vaModel(draft.modelId)
       ? workflowSupportsH3BoundaryExtension(workflow) ? [] : ["H3 接续工作流缺少 INPUT_IMAGE、MiniMaxH3ImageToVideo 或视频输出节点"]
       : isMiniMaxH3R2vModel(draft.modelId)
         ? workflowSupportsH3MotionContextExtension(workflow) ? [] : ["H3 Motion Context 工作流缺少 R2V、运动上下文、同步裁剪、latent 保存或视频输出节点"]
-        : extensionWorkflowSafetyErrors(workflow, store.get().settings.uiLocale);
+        : extensionWorkflowSafetyErrors(workflow, enqueueSettings.uiLocale);
     if (safetyErrors.length) throw new Error(`续写工作流不符合原生续写低显存契约：${safetyErrors.join("；")}`);
     if (motionContext) {
       const imageCount = preparedDraft.h3ReferenceSlots.filter((slot) => slot.mediaType === "image").length;
@@ -577,7 +634,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         .map((slot) => slot.mediaPath)
         .filter(Boolean);
       if (imagePaths.length) {
-        const library = await deps.effectiveImageInputLibraryDirectory(store.get().settings);
+        const library = await deps.effectiveImageInputLibraryDirectory(enqueueSettings);
         const operationId = randomUUID().slice(0, 8);
         logger.info("assets", "extension-input-image-archive-started", "开始归档续写任务参考图片", {
           operationId,
@@ -605,6 +662,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         }
       }
     }
+    hydrateVideoInputImageDimensions(preparedDraft);
     const current = store.get();
     const task = extensionTaskFromDraft(preparedDraft, current, undefined, { h3VideoVaeMode });
     if (isMiniMaxH3R2vModel(task.modelId)) {

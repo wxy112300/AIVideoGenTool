@@ -199,6 +199,8 @@ export function mountCreatePageController(
           ? {
               startImagePath: "",
               endImagePath: "",
+              endImageWidth: 0,
+              endImageHeight: 0,
               ...(wasVideoExtension || restoringVideoDraft
                 ? {}
                 : {
@@ -210,7 +212,9 @@ export function mountCreatePageController(
                     sourceVersionId: undefined,
                     h3ContextLatentPath: undefined,
                     sourceWidth: 0,
-                    sourceHeight: 0
+                    sourceHeight: 0,
+                    endImageWidth: 0,
+                    endImageHeight: 0
                   }),
               ratio: "source" as const,
               duration: isMiniMaxH3R2vModel(modelId)
@@ -233,7 +237,9 @@ export function mountCreatePageController(
                 sourceVersionId: undefined,
                 h3ContextLatentPath: undefined,
                 sourceWidth: 0,
-                sourceHeight: 0
+                sourceHeight: 0,
+                endImageWidth: 0,
+                endImageHeight: 0
               }
             : {})
       });
@@ -408,17 +414,24 @@ export function mountCreatePageController(
         const nextIsR2V = isMiniMaxH3R2vModel(value);
         const oldWasR2V = isMiniMaxH3R2vModel(state.draft.modelId);
         const existingSlots = state.draft.h3ReferenceSlots;
+        const imageInputSlots = [
+          { path: state.draft.startImagePath, width: state.draft.sourceWidth, height: state.draft.sourceHeight },
+          { path: state.draft.endImagePath, width: state.draft.endImageWidth, height: state.draft.endImageHeight }
+        ].filter((item) => Boolean(item.path));
         const slotsForR2V = nextIsR2V && state.draft.inputMode === "video"
           ? ensureMotionContextSourceSlot(existingSlots, state.draft.sourceVideoPath)
           : nextIsR2V && state.draft.inputMode !== "video" && !existingSlots.length
-            ? [state.draft.startImagePath, state.draft.endImagePath].filter(Boolean).map((imagePath) => newH3ReferenceSlot(imagePath))
+            ? imageInputSlots.map((item) => newH3ReferenceSlot(item.path, "image", item))
             : existingSlots;
-        const restoredStartImage = oldWasR2V
-          ? existingSlots.find((slot) => slot.mediaType === "image")?.mediaPath ?? ""
-          : state.draft.startImagePath;
-        const restoredEndImage = oldWasR2V
-          ? existingSlots.filter((slot) => slot.mediaType === "image")[1]?.mediaPath ?? ""
-          : state.draft.endImagePath;
+        const existingImageSlots = existingSlots.filter((slot) => slot.mediaType === "image");
+        const restoredStartSlot = oldWasR2V ? existingImageSlots[0] : undefined;
+        const restoredEndSlot = oldWasR2V ? existingImageSlots[1] : undefined;
+        const restoredStartImage = restoredStartSlot?.mediaPath ?? state.draft.startImagePath;
+        const restoredStartImageWidth = restoredStartSlot?.width ?? state.draft.sourceWidth;
+        const restoredStartImageHeight = restoredStartSlot?.height ?? state.draft.sourceHeight;
+        const restoredEndImage = restoredEndSlot?.mediaPath ?? state.draft.endImagePath;
+        const restoredEndImageWidth = restoredEndSlot?.width ?? state.draft.endImageWidth ?? 0;
+        const restoredEndImageHeight = restoredEndSlot?.height ?? state.draft.endImageHeight ?? 0;
         const bundled = options.bundledWorkflows[nextKey] ??
           await options.context.studio.getBundledWorkflow(value, state.draft.inputMode);
         if (bundled) {
@@ -433,7 +446,11 @@ export function mountCreatePageController(
           videoLoras: [],
           h3ReferenceSlots: slotsForR2V,
           startImagePath: nextIsR2V && state.draft.inputMode !== "video" ? "" : restoredStartImage,
+          sourceWidth: nextIsR2V && state.draft.inputMode !== "video" ? 0 : restoredStartImageWidth,
+          sourceHeight: nextIsR2V && state.draft.inputMode !== "video" ? 0 : restoredStartImageHeight,
           endImagePath: nextIsR2V && state.draft.inputMode !== "video" ? "" : restoredEndImage,
+          endImageWidth: nextIsR2V && state.draft.inputMode !== "video" ? 0 : restoredEndImageWidth,
+          endImageHeight: nextIsR2V && state.draft.inputMode !== "video" ? 0 : restoredEndImageHeight,
           ...(isMiniMaxH3Model(value)
             ? {
                 ratio: "source" as const,
@@ -448,7 +465,9 @@ export function mountCreatePageController(
                   : state.draft.spectrumMode
               }
             : {}),
-          ...(!bundled?.supportsEndImage && !nextIsR2V ? { endImagePath: "" } : {}),
+          ...(!bundled?.supportsEndImage && !nextIsR2V
+            ? { endImagePath: "", endImageWidth: 0, endImageHeight: 0 }
+            : {}),
           workflowPath: bundled?.path ?? (state.draft.workflowPath === oldBundledPath ? "" : state.draft.workflowPath)
         }));
         options.enableSpectrumByDefaultIfAvailable(requestMode);

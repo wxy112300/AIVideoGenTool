@@ -266,6 +266,28 @@ describe("queue executor runtime gate", () => {
     )).toBe(true);
   });
 
+  it("persists the H3 token count resolved during submission", async () => {
+    const state = createDefaultState();
+    const task = fixtureTask(state);
+    state.queue = [task];
+    state.queueRunning = true;
+    state.queueLifecycle = "starting";
+    mocks.submitTask.mockResolvedValueOnce({
+      promptId: "prompt-fixture",
+      clientId: "client-fixture",
+      nodeTypes: { "1": "FixtureNode" },
+      h3LivePreviewRequested: false,
+      h3LivePreviewActive: false,
+      h3TokenCount: 1234
+    });
+    const harness = createHarness(state);
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(harness.store.get().history[0]?.versions[0]?.performanceStats?.h3TokenCount)
+      .toBe(1234);
+  });
+
   it("resolves the current H3 VAE setting when each task is claimed", async () => {
     const state = createDefaultState();
     const first = fixtureTask(state);

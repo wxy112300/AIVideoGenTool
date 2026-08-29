@@ -109,6 +109,9 @@ export interface H3ReferenceSlot {
   id: string;
   mediaType: H3ReferenceMediaType;
   mediaPath: string;
+  /** Decoded image dimensions; absent for video references and legacy records. */
+  width?: number;
+  height?: number;
   role: H3ReferenceRole;
   note: string;
 }
@@ -247,6 +250,9 @@ export interface Draft {
   sourceWidth: number;
   sourceHeight: number;
   endImagePath: string;
+  /** Decoded dimensions for the optional end-frame image. */
+  endImageWidth?: number;
+  endImageHeight?: number;
   sourceVideoPath: string;
   sourceVideoDuration: number;
   trimStartSeconds: number;
@@ -434,6 +440,8 @@ export interface GenerationQueueTask extends VideoQueueTaskBase {
   sourceWidth: number;
   sourceHeight: number;
   endImagePath: string;
+  endImageWidth?: number;
+  endImageHeight?: number;
   ratio: Draft["ratio"];
   resolution: Draft["resolution"];
   fps: Draft["fps"];
@@ -682,6 +690,8 @@ export interface HistoryAsset {
   sourceHeight?: number;
   startImagePath?: string;
   endImagePath?: string;
+  endImageWidth?: number;
+  endImageHeight?: number;
   sourceAssetId?: string;
   sourceVersionId?: string;
   h3ContextLatentPath?: string;
@@ -1226,6 +1236,8 @@ export interface TaskPerformanceStats {
   vramPeakBytes: number | null;
   vramTotalBytes: number | null;
   sharedGpuMemoryPeakBytes?: number | null;
+  /** H3 text + visual conditioning token count resolved for this task. */
+  h3TokenCount?: number;
 }
 
 export type AppLogLevel = "debug" | "info" | "warn" | "error" | "fatal";

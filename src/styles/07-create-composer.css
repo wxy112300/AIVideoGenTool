@@ -251,6 +251,13 @@
 .composer-submit-status .ui-icon { flex: 0 0 auto; width: 15px; height: 15px; }
 .composer-submit-status span { min-width: 0; overflow-wrap: anywhere; }
 .composer-submit-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; margin-left: auto; }
+.composer-token-estimate {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 @media (max-width: 760px) {
   .composer-control-grid {
@@ -323,6 +330,22 @@
 
 .create-workspace:not(.r2v-workspace) .media-grid > .media-slot > .drop-zone.has-image img {
   max-height: 640px;
+}
+
+.image-resolution-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 7px;
+  color: rgba(255, 255, 255, .86);
+  background: rgba(9, 12, 17, .62);
+  font-size: 11px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 .h3-reference-media-shell {

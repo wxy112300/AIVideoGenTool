@@ -870,6 +870,7 @@ export const zhTWCatalog = {
     [uiKeys.history.page.generationParams]: "版本與生成引數",
     [uiKeys.history.page.model]: "模型",
     [uiKeys.history.page.promptVersion]: "Prompt 版本",
+    [uiKeys.history.page.tokenCount]: "Token 數量",
     [uiKeys.history.page.tileMode]: "分塊模式",
     [uiKeys.history.page.faceRestore]: "人臉修復",
     [uiKeys.history.page.enabled]: "開啟",

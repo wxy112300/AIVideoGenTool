@@ -12,7 +12,8 @@ import type {
   H3AttentionMode,
   H3VideoVaeBackend,
   QueueLifecycle,
-  QueueTask
+  QueueTask,
+  Settings
 } from "../src/types.js";
 import { APP_SCHEMA_VERSION, createDefaultState } from "../src/core/defaults.js";
 import { normalizeUiLocale } from "../src/core/i18n.js";
@@ -810,6 +811,14 @@ export class JsonStore {
 
   get(): AppState {
     return this.snapshot();
+  }
+
+  /**
+   * Queue validation commonly needs settings but not the potentially large
+   * history collections. Keep that read on the narrow snapshot path.
+   */
+  getSettings(): Settings {
+    return structuredClone(this.state.settings);
   }
 
   async update(mutator: (state: AppState) => void): Promise<AppState> {

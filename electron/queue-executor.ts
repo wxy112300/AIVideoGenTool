@@ -375,6 +375,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       let vramWatchdog: VramWatchdogMonitor | undefined;
       let taskPerformanceMonitor: TaskPerformanceMonitor | undefined;
       let taskPerformanceStats: TaskPerformanceStats | undefined;
+      let h3TokenCount: number | undefined;
       let performanceLogTimer: ReturnType<typeof setInterval> | undefined;
       let performanceLogInFlight = false;
       const performanceWarnings = new Set<string>();
@@ -631,6 +632,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           markQueueTaskSubmitted(task, hasVideoLoras);
           ({ promptId } = submitted);
           const { clientId, nodeTypes } = submitted;
+          h3TokenCount = submitted.h3TokenCount;
           h3MemoryRuntimeEvidence = submitted.h3MemoryRuntimeEvidence;
           h3LivePreviewActive = submitted.h3LivePreviewActive;
           if (h3LivePreviewActive) h3PreviewStartedAt = Date.now();
@@ -793,7 +795,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           }
         }
         if (taskPerformanceMonitor) {
-          taskPerformanceStats = taskPerformanceMonitor.stop();
+          const measuredStats = taskPerformanceMonitor.stop();
+          taskPerformanceStats = h3TokenCount == null
+            ? measuredStats
+            : { ...measuredStats, h3TokenCount };
           taskPerformanceMonitor = undefined;
           logger.info("performance", "task-summary", "Task performance summary", {
             taskId: task.id,
@@ -868,7 +873,10 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         const stalled = error instanceof TaskStalledError;
         logH3PreviewOutcome(aborted ? "cancelled" : "failed");
         if (!taskPerformanceStats && taskPerformanceMonitor) {
-          taskPerformanceStats = taskPerformanceMonitor.stop();
+          const measuredStats = taskPerformanceMonitor.stop();
+          taskPerformanceStats = h3TokenCount == null
+            ? measuredStats
+            : { ...measuredStats, h3TokenCount };
           taskPerformanceMonitor = undefined;
           logger.info("performance", "task-summary", "Failed task performance summary", {
             taskId: task.id,

@@ -4850,6 +4850,17 @@ function environmentScanCacheKey(settings: Settings): string {
   });
 }
 
+/**
+ * Read the last completed scan without starting another environment probe.
+ * Queue insertion uses this opportunistically; task execution still performs
+ * its dependency-scoped validation when no completed scan is available.
+ */
+export function getCachedEnvironmentScan(
+  settings: Settings
+): EnvironmentScanResult | undefined {
+  return environmentScanCache.get(environmentScanCacheKey(settings));
+}
+
 async function scanEnvironmentDependencies(
   settings: Settings,
   previous: EnvironmentScanResult,

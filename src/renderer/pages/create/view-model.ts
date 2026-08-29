@@ -37,6 +37,7 @@ import {
   h3ReferenceSlotCounts,
   motionContextReferenceSlotsReady
 } from "../../../core/h3-reference";
+import { h3TokenCountForDraft } from "../../../core/h3-token-count";
 import {
   generationSafetyForTask,
   isMiniMaxH3Fl2vaModel,
@@ -451,6 +452,9 @@ export function buildVideoCreatePageViewModel(
   );
   const slaNode = environmentScan?.customNodes.find((node) => node.id === "plaguekind-h3-sla");
   const prompt = activePrompt(draft, state.settings.uiLocale);
+  const h3TokenEstimate = isMiniMaxH3
+    ? h3TokenCountForDraft(draft, prompt.text)
+    : undefined;
   const promptVersionIndex = activePromptIndexForDraft(draft);
   const promptVersionCount = promptVersionsForDraft(draft).length;
   const interpolation = interpolationEstimate(draft);
@@ -526,6 +530,7 @@ export function buildVideoCreatePageViewModel(
     extending,
     isR2V,
     isMiniMaxH3,
+    h3TokenEstimate,
     h3Mode,
     enhanceMode,
     h3PromptEnhanceTitle: isMiniMaxH3

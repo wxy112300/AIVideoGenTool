@@ -352,12 +352,18 @@ export function h3PromptPresetOptions(
 
 export function newH3ReferenceSlot(
   mediaPath = "",
-  mediaType: H3ReferenceMediaType = "image"
+  mediaType: H3ReferenceMediaType = "image",
+  dimensions?: Pick<H3ReferenceSlot, "width" | "height">
 ): H3ReferenceSlot {
+  const width = dimensions?.width;
+  const height = dimensions?.height;
   return {
     id: crypto.randomUUID(),
     mediaType,
     mediaPath,
+    ...(mediaType === "image" && Number.isFinite(width) && Number.isFinite(height) && width! > 0 && height! > 0
+      ? { width: Math.trunc(width!), height: Math.trunc(height!) }
+      : {}),
     role: "subject",
     note: ""
   };
@@ -379,7 +385,8 @@ export async function loadImagePreview(
   context: RendererContext,
   filename: string,
   targetId: string,
-  patchDraft: (patch: Partial<Draft>) => void
+  patchDraft: (patch: Partial<Draft>) => void,
+  onDimensions?: (dimensions: { width: number; height: number }) => Partial<Draft> | undefined
 ): Promise<void> {
   if (!filename) return;
   const dataUrl = await context.studio.readImage(filename);
@@ -392,16 +399,22 @@ export async function loadImagePreview(
       `${image.naturalWidth} / ${image.naturalHeight}`
     );
     const state = context.getState();
-    if (
+    const sourcePatch =
       targetId === "start-preview" &&
       state &&
       (state.draft.sourceWidth !== image.naturalWidth ||
         state.draft.sourceHeight !== image.naturalHeight)
-    ) {
-      patchDraft({
+      ? {
         sourceWidth: image.naturalWidth,
         sourceHeight: image.naturalHeight
-      });
+      }
+      : undefined;
+    const dimensionsPatch = onDimensions?.({
+      width: image.naturalWidth,
+      height: image.naturalHeight
+    });
+    if (sourcePatch || dimensionsPatch) {
+      patchDraft({ ...sourcePatch, ...dimensionsPatch });
       context.requestRender();
     }
   }, { once: true });

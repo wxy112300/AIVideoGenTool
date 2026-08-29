@@ -122,6 +122,8 @@ export function queueTaskFromDraft(
     sourceWidth: draft.sourceWidth,
     sourceHeight: draft.sourceHeight,
     endImagePath: draft.endImagePath,
+    endImageWidth: draft.endImageWidth,
+    endImageHeight: draft.endImageHeight,
     modelId: draft.modelId,
     videoLoras: draft.videoLoras.map((lora) => videoLoraSelection(lora)),
     workflowPath: h3WorkflowPathForInput(

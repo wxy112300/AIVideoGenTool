@@ -870,6 +870,7 @@ export const zhCNCatalog = {
     [uiKeys.history.page.generationParams]: "版本与生成参数",
     [uiKeys.history.page.model]: "模型",
     [uiKeys.history.page.promptVersion]: "Prompt 版本",
+    [uiKeys.history.page.tokenCount]: "Token 数量",
     [uiKeys.history.page.tileMode]: "分块模式",
     [uiKeys.history.page.faceRestore]: "人脸修复",
     [uiKeys.history.page.enabled]: "开启",

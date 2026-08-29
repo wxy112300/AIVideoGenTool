@@ -851,6 +851,8 @@ function draftFromQueueTask(task: QueueTask): Draft | null {
     sourceWidth: task.sourceWidth,
     sourceHeight: task.sourceHeight,
     endImagePath: extension ? "" : task.endImagePath,
+    endImageWidth: task.taskType === "generation" ? task.endImageWidth ?? 0 : 0,
+    endImageHeight: task.taskType === "generation" ? task.endImageHeight ?? 0 : 0,
     sourceVideoPath: extension ? task.sourceVideoPath : "",
     sourceVideoDuration: extension ? task.sourceVideoDuration : 0,
     trimStartSeconds: extension ? task.trimStartSeconds : 0,
@@ -2337,7 +2339,16 @@ function updateH3ReferenceSlot(
 ): void {
   patchDraft({
     h3ReferenceSlots: state.draft.h3ReferenceSlots.map((slot) =>
-      slot.id === slotId ? { ...slot, ...patch } : slot
+      slot.id === slotId
+        ? {
+            ...slot,
+            ...patch,
+            ...((patch.mediaType !== undefined && patch.mediaType !== slot.mediaType) ||
+              (patch.mediaPath !== undefined && patch.mediaPath !== slot.mediaPath)
+              ? { width: undefined, height: undefined }
+              : {})
+          }
+        : slot
     )
   });
 }
@@ -2373,6 +2384,8 @@ async function selectDraftVideo(
     inputMode: "video",
     startImagePath: "",
     endImagePath: "",
+    endImageWidth: 0,
+    endImageHeight: 0,
     sourceVideoPath: filename,
     sourceVideoDuration: source?.duration ?? 0,
     trimStartSeconds: 0,
@@ -2426,10 +2439,17 @@ function setEnqueueBusyUi(busy: boolean): void {
 function syncVideoEnqueueUi(): void {
   const button = document.querySelector<HTMLButtonElement>("#enqueue");
   if (!button) return;
-  const reason = buildVideoCreatePageViewModel(createViewModelDependencies()).enqueueBlockReason;
+  const viewModel = buildVideoCreatePageViewModel(createViewModelDependencies());
+  const reason = viewModel.enqueueBlockReason;
   button.dataset.enqueueBlockReason = reason;
   button.disabled = Boolean(reason) || ui.enqueueBusy;
   button.title = reason || button.dataset.enqueueReadyTitle || uiText(uiKeys.runtime.enqueue);
+  const tokenEstimate = document.querySelector<HTMLElement>("[data-h3-token-estimate]");
+  if (tokenEstimate) {
+    tokenEstimate.textContent = viewModel.h3TokenEstimate == null
+      ? ""
+      : `${Math.trunc(viewModel.h3TokenEstimate)} tokens`;
+  }
   const feedback = document.querySelector<HTMLElement>("[data-enqueue-feedback]");
   if (feedback) {
     feedback.hidden = !reason;
@@ -2582,12 +2602,48 @@ function bindCreate(): void {
     void loadImageEditPreviews();
   } else {
     void loadImagePreview(rendererApp.context, state.draft.startImagePath, "start-preview", patchDraft);
-    void loadImagePreview(rendererApp.context, state.draft.endImagePath, "end-preview", patchDraft);
+    const endImagePath = state.draft.endImagePath;
+    void loadImagePreview(
+      rendererApp.context,
+      endImagePath,
+      "end-preview",
+      patchDraft,
+      ({ width, height }) => {
+        const currentState = rendererApp.context.getState();
+        const currentDraft = currentState?.draft;
+        if (!currentDraft || currentDraft.endImagePath !== endImagePath ||
+          (currentDraft.endImageWidth === width && currentDraft.endImageHeight === height)) {
+          return undefined;
+        }
+        return { endImageWidth: width, endImageHeight: height };
+      }
+    );
     if (isMiniMaxH3R2vModel(state.draft.modelId)) {
       bindH3ReferenceSlots();
       for (const slot of state.draft.h3ReferenceSlots) {
         if (slot.mediaType === "image") {
-          void loadImagePreview(rendererApp.context, slot.mediaPath, `h3-slot-preview-${slot.id}`, patchDraft);
+          const slotId = slot.id;
+          const slotPath = slot.mediaPath;
+          void loadImagePreview(
+            rendererApp.context,
+            slotPath,
+            `h3-slot-preview-${slotId}`,
+            patchDraft,
+            ({ width, height }) => {
+              const currentDraft = rendererApp.context.getState()?.draft;
+              const currentSlot = currentDraft?.h3ReferenceSlots.find((item) => item.id === slotId);
+              if (!currentDraft || !currentSlot || currentSlot.mediaType !== "image" ||
+                currentSlot.mediaPath !== slotPath ||
+                (currentSlot.width === width && currentSlot.height === height)) {
+                return undefined;
+              }
+              return {
+                h3ReferenceSlots: currentDraft.h3ReferenceSlots.map((item) =>
+                  item.id === slotId ? { ...item, width, height } : item
+                )
+              };
+            }
+          );
         }
       }
     }
