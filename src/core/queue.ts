@@ -168,6 +168,55 @@ export function queuePauseBoundaryReached(
   return idsAboveBoundary.length > 0 && idsAboveBoundary.every((id) => !afterSet.has(id));
 }
 
+export interface QueuePauseBoundaryCompletion {
+  boundary: QueuePauseBoundary;
+  reached: boolean;
+}
+
+/**
+ * Advances the divider after one specific task has completed. The divider is
+ * an in-order terminal item: it may stop the queue only when the completed
+ * task was the last active task before it. This task-aware transition avoids
+ * treating an unrelated queue mutation as if the stop line had been read.
+ */
+export function queuePauseBoundaryAfterTaskCompletion(
+  beforeQueue: ReadonlyArray<QueueTask>,
+  boundary: QueuePauseBoundary,
+  completedTaskId: string,
+  afterQueue: ReadonlyArray<QueueTask>
+): QueuePauseBoundaryCompletion {
+  const normalized = normalizeQueuePauseBoundary(beforeQueue, boundary);
+  if (normalized === undefined) {
+    return { boundary: undefined, reached: false };
+  }
+
+  const beforeIds = activeQueueTaskIds(beforeQueue);
+  const afterIds = activeQueueTaskIds(afterQueue);
+  const completedIndex = beforeIds.indexOf(completedTaskId);
+  const afterSet = new Set(afterIds);
+  const completedWasRemoved = completedIndex >= 0 && !afterSet.has(completedTaskId);
+  const activeTasksAboveLineRemain = beforeIds
+    .slice(0, normalized)
+    .some((id) => id !== completedTaskId && afterSet.has(id));
+
+  if (
+    completedWasRemoved &&
+    completedIndex < normalized &&
+    !activeTasksAboveLineRemain
+  ) {
+    return { boundary: undefined, reached: true };
+  }
+
+  return {
+    boundary: adjustQueuePauseBoundary(
+      beforeQueue,
+      boundary,
+      afterQueue
+    ),
+    reached: false
+  };
+}
+
 export function moveWaitingTaskWithPauseBoundary(
   queue: QueueTask[],
   boundary: QueuePauseBoundary,

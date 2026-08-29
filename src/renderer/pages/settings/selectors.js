@@ -1,4 +1,5 @@
 import { customNodeStatusTone, environmentItemStatusTone, modelProfileEvidence, modelProfileStatusTone } from "../../shared/status";
+import { h3VideoVaeAvailabilityFromModelProfiles, normalizeH3VideoVaeMode, resolveH3VideoVaeMode } from "../../../core/h3-video-vae";
 export function deriveEnvironmentOverviewItems(environmentScan, comfyConnected) {
     return (environmentScan?.items ?? []).map((item) => {
         const hasLiveStatus = item.id === "comfyui-api" && comfyConnected != null;
@@ -236,5 +237,30 @@ export function deriveAccelerationState(settings, environmentScan) {
         pythonSelection: settings.comfyPythonPath
             ? selectedPythonRuntime?.source === "comfy-venv" ? "comfy-venv" : "selected"
             : "auto"
+    };
+}
+export function deriveH3VideoVaeState(settings, environmentScan) {
+    const availability = h3VideoVaeAvailabilityFromModelProfiles(environmentScan?.modelProfiles ?? []);
+    const requestedMode = normalizeH3VideoVaeMode(settings.h3VideoVaeMode);
+    const resolvedMode = resolveH3VideoVaeMode(settings.h3VideoVaeMode, availability);
+    // Keep Auto selected in the form even though the concrete backend is
+    // resolved only when the next H3 task is claimed.
+    const selectedMode = requestedMode === "auto" ? requestedMode : resolvedMode ?? requestedMode;
+    const status = !environmentScan
+        ? "waiting"
+        : !availability.fp16 && !availability.int8Convrot
+            ? "missing"
+            : availability.fp16 && availability.int8Convrot
+                ? "ready"
+                : availability.fp16
+                    ? "fp16-only"
+                    : "int8-only";
+    return {
+        fp16Available: availability.fp16,
+        int8ConvrotAvailable: availability.int8Convrot,
+        available: availability.fp16 || availability.int8Convrot,
+        selectedMode,
+        status,
+        tone: status === "missing" ? "missing" : status === "waiting" ? "warning" : "available"
     };
 }

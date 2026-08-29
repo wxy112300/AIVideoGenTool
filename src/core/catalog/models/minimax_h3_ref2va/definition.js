@@ -1,4 +1,4 @@
-import { h3Fl2vaAudioVae, h3Fl2vaVideoVae, h3LivePreviewTae, h3Nvfp4TextEncoder, h3Ref2vaInt8Model } from "../minimax_h3_shared.js";
+import { h3Fl2vaAudioVae, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3LivePreviewTae, h3Nvfp4TextEncoder, h3Ref2vaInt8Model } from "../minimax_h3_shared.js";
 import { localeEnUS } from "./locale.en-US.js";
 import { localeZhCN } from "./locale.zh-CN.js";
 import { localeZhTW } from "./locale.zh-TW.js";
@@ -24,7 +24,7 @@ export const minimaxH3Ref2va = {
         scan: {
             vram: "pruned INT8 · DynamicVRAM · 多参考",
             integrated: true,
-            components: [h3Ref2vaInt8Model, h3Nvfp4TextEncoder, h3Fl2vaVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
+            components: [h3Ref2vaInt8Model, h3Nvfp4TextEncoder, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
         }
     },
     locales: {

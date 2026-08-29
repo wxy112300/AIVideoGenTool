@@ -8,6 +8,7 @@ import {
   nextQueueWaitingTask,
   normalizeQueuePauseBoundary,
   queuePauseBoundaryAfterCurrent,
+  queuePauseBoundaryAfterTaskCompletion,
   queuePauseBoundaryReached,
   queueTaskIsDeferred,
   randomizeQueuedTaskSeed,
@@ -225,6 +226,26 @@ describe("queue ordering", () => {
     expect(queuePauseBoundaryReached(beforeQueue, 1, beforeQueue.slice(1))).toBe(true);
     expect(queuePauseBoundaryReached(beforeQueue, 2, beforeQueue.slice(1))).toBe(false);
     expect(queuePauseBoundaryReached(beforeQueue, 1, [])).toBe(false);
+  });
+
+  it("ties the stop-line transition to the task immediately consumed before it", () => {
+    const beforeQueue = [
+      task("first", "wan"),
+      task("second", "wan"),
+      task("third", "wan"),
+      task("below", "wan")
+    ];
+    const afterQueue = [beforeQueue[3]!];
+
+    const transition = queuePauseBoundaryAfterTaskCompletion(
+      beforeQueue,
+      2,
+      "below",
+      afterQueue
+    );
+
+    expect(transition.reached).toBe(false);
+    expect(transition.boundary).toBe(1);
   });
 });
 

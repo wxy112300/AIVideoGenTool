@@ -18,6 +18,8 @@ export interface CatalogModelComponent {
   expected: string;
   patterns: readonly RegExp[];
   optional?: boolean;
+  /** Components in the same group are interchangeable for availability checks. */
+  alternativeGroup?: string;
   installGuide?: CatalogInstallGuide;
 }
 

@@ -23,6 +23,7 @@ type SettingsCopyKey =
   | "model.meta.nativeMissing"
   | "model.meta.genericMissing"
   | "model.component.optional"
+  | "model.component.alternativeAvailable"
   | "model.component.viewInfo"
   | "video.description"
   | "video.defaultModel"
@@ -190,6 +191,18 @@ type SettingsCopyKey =
   | "accel.eagerFallback"
   | "accel.strategyTitle"
   | "accel.strategyDescription"
+  | "accel.videoVaeTitle"
+  | "accel.videoVaeDescription"
+  | "accel.videoVaeMode"
+  | "accel.videoVaeModeTip"
+  | "accel.videoVaeAuto"
+  | "accel.videoVaeFp16"
+  | "accel.videoVaeInt8"
+  | "accel.videoVaeMissing"
+  | "accel.videoVaeWaiting"
+  | "accel.videoVaeFp16Only"
+  | "accel.videoVaeInt8Only"
+  | "accel.videoVaeBoth"
   | "accel.runtimeTitle"
   | "accel.runtimeDescription"
   | "accel.componentsTitle"
@@ -290,6 +303,7 @@ const zhCN: SettingsCopyCatalog = {
   "model.meta.nativeMissing": "补齐对应的 ComfyUI text_encoders 文件后才能接入本地扩写",
   "model.meta.genericMissing": "补齐所有必需组件后才能启用",
   "model.component.optional": "可选，4 步 Lightning 档需要：",
+  "model.component.alternativeAvailable": "备选未安装（当前使用其他组件）：",
   "model.component.viewInfo": "查看 {label} 的{info}",
   "video.description": "根据真实文件组件判断是否可用，不仅检查单个 checkpoint 名称。",
   "video.defaultModel": "默认模型",
@@ -453,10 +467,22 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.duplicateCopies": "发现多个 H3 Motion Context 副本：{paths}。请只保留一个目录，再重启 ComfyUI。",
   "nodes.empty": "等待环境扫描结果",
   "accel.title": "性能与加速",
-  "accel.description": "仅配置 H3 Attention；依赖安装与修复在“节点与依赖”中完成。",
+  "accel.description": "配置 H3 Attention 与最终视频 VAE；依赖安装与修复在“节点与依赖”中完成。",
   "accel.eagerFallback": "未发现已安装后端",
   "accel.strategyTitle": "H3 加速策略",
   "accel.strategyDescription": "选择 H3 的 Attention 后端；仅影响 MiniMax H3 工作流。",
+  "accel.videoVaeTitle": "H3 视频 VAE 解码",
+  "accel.videoVaeDescription": "仅影响 MiniMax H3 的最终视频解码；保存后对下一个尚未开始的 H3 任务生效，正在计算的任务不变。音频 VAE、编码和其他模型不受影响。",
+  "accel.videoVaeMode": "视频 VAE 后端",
+  "accel.videoVaeModeTip": "FP16 是基线；INT8 ConvRot 是实验性加速解码后端，可能存在细微画质差异，需要 ComfyUI 0.31.0+。",
+  "accel.videoVaeAuto": "自动 · 优先 INT8 ConvRot",
+  "accel.videoVaeFp16": "兼容模式 · FP16 基线",
+  "accel.videoVaeInt8": "加速模式 · INT8 ConvRot（实验性）",
+  "accel.videoVaeMissing": "未检测到 FP16 或 INT8 ConvRot 视频 VAE；设置已禁用，请先安装至少一个并重新扫描。",
+  "accel.videoVaeWaiting": "等待环境扫描后读取已安装的视频 VAE。",
+  "accel.videoVaeFp16Only": "当前只找到 FP16，INT8 ConvRot 选项已禁用。",
+  "accel.videoVaeInt8Only": "当前只找到 INT8 ConvRot，工作流将使用实验性解码后端。",
+  "accel.videoVaeBoth": "已找到两种视频 VAE；可按需切换。",
   "accel.runtimeTitle": "运行时解释器",
   "accel.runtimeDescription": "选择用于启动 ComfyUI、安装依赖和读取加速状态的 Python 环境。",
   "accel.componentsTitle": "运行时组件",
@@ -555,6 +581,7 @@ const zhTW: SettingsCopyCatalog = {
   "model.meta.nativeMissing": "補齊對應的 ComfyUI text_encoders 檔案後才能接入本機擴寫",
   "model.meta.genericMissing": "補齊所有必要元件後才能啟用",
   "model.component.optional": "可選，4 步 Lightning 檔需要：",
+  "model.component.alternativeAvailable": "替代元件未安裝（目前使用其他元件）：",
   "model.component.viewInfo": "檢視 {label} 的{info}",
   "video.description": "依據實際檔案元件判斷是否可用，不只檢查單一 checkpoint 名稱。",
   "video.defaultModel": "預設模型",
@@ -696,10 +723,22 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.duplicateCopies": "發現多個 H3 Motion Context 副本：{paths}。請只保留一個資料夾，再重新啟動 ComfyUI。",
   "nodes.empty": "等待環境掃描結果",
   "accel.title": "效能與加速",
-  "accel.description": "僅設定 H3 Attention；依賴安裝與修復在「節點與依賴」中完成。",
+  "accel.description": "設定 H3 Attention 與最終影片 VAE；依賴安裝與修復在「節點與依賴」中完成。",
   "accel.eagerFallback": "未發現已安裝後端",
   "accel.strategyTitle": "H3 加速策略",
   "accel.strategyDescription": "選擇 H3 的 Attention 後端；只影響 MiniMax H3 工作流程。",
+  "accel.videoVaeTitle": "H3 影片 VAE 解碼",
+  "accel.videoVaeDescription": "只影響 MiniMax H3 的最終影片解碼；儲存後對下一個尚未開始的 H3 工作生效，正在計算的工作不變。音訊 VAE、編碼與其他模型不受影響。",
+  "accel.videoVaeMode": "影片 VAE 後端",
+  "accel.videoVaeModeTip": "FP16 是基線；INT8 ConvRot 是實驗性加速解碼後端，可能存在細微畫質差異，需要 ComfyUI 0.31.0+。",
+  "accel.videoVaeAuto": "自動 · 優先 INT8 ConvRot",
+  "accel.videoVaeFp16": "相容模式 · FP16 基線",
+  "accel.videoVaeInt8": "加速模式 · INT8 ConvRot（實驗性）",
+  "accel.videoVaeMissing": "未偵測到 FP16 或 INT8 ConvRot 影片 VAE；設定已停用，請先安裝至少一個並重新掃描。",
+  "accel.videoVaeWaiting": "等待環境掃描後讀取已安裝的影片 VAE。",
+  "accel.videoVaeFp16Only": "目前只找到 FP16，INT8 ConvRot 選項已停用。",
+  "accel.videoVaeInt8Only": "目前只找到 INT8 ConvRot，工作流程將使用實驗性解碼後端。",
+  "accel.videoVaeBoth": "已找到兩種影片 VAE；可依需求切換。",
   "accel.runtimeTitle": "執行時解譯器",
   "accel.runtimeDescription": "選擇用於啟動 ComfyUI、安裝依賴與讀取加速狀態的 Python 環境。",
   "accel.componentsTitle": "執行時元件",
@@ -797,6 +836,7 @@ const enUS: SettingsCopyCatalog = {
   "model.meta.nativeMissing": "Add the required ComfyUI text_encoders files before local expansion can be used",
   "model.meta.genericMissing": "Add all required components before enabling this model",
   "model.component.optional": "Optional; required for the 4-step Lightning preset:",
+  "model.component.alternativeAvailable": "Alternative not installed (another component is currently used):",
   "model.component.viewInfo": "View download and installation instructions for {label}",
   "video.description": "Availability is based on real file components, not only a checkpoint name.",
   "video.defaultModel": "Default model",
@@ -960,10 +1000,22 @@ const enUS: SettingsCopyCatalog = {
   "nodes.duplicateCopies": "Multiple H3 Motion Context copies detected: {paths}. Keep only one directory, then restart ComfyUI.",
   "nodes.empty": "Waiting for environment scan",
   "accel.title": "Performance & acceleration",
-  "accel.description": "Configure H3 Attention only; install and repair dependencies in Nodes & dependencies.",
+  "accel.description": "Configure H3 Attention and the final video VAE; install and repair dependencies in Nodes & dependencies.",
   "accel.eagerFallback": "No installed backend found",
   "accel.strategyTitle": "H3 acceleration strategy",
   "accel.strategyDescription": "Choose the H3 Attention backend; this only affects MiniMax H3 workflows.",
+  "accel.videoVaeTitle": "H3 video VAE decoding",
+  "accel.videoVaeDescription": "Only affects final video decoding for MiniMax H3; after saving, it applies to the next H3 task that has not started. A task already computing is unchanged. The audio VAE, encoding, and other models are unaffected.",
+  "accel.videoVaeMode": "Video VAE backend",
+  "accel.videoVaeModeTip": "FP16 is the baseline. INT8 ConvRot is an experimental accelerated decode backend and may introduce subtle quality differences; it needs ComfyUI 0.31.0+.",
+  "accel.videoVaeAuto": "Automatic · prefer INT8 ConvRot",
+  "accel.videoVaeFp16": "Compatibility mode · FP16 baseline",
+  "accel.videoVaeInt8": "Acceleration mode · INT8 ConvRot (experimental)",
+  "accel.videoVaeMissing": "No FP16 or INT8 ConvRot video VAE was detected; this setting is disabled. Install at least one and scan again.",
+  "accel.videoVaeWaiting": "Waiting for an environment scan to read installed video VAEs.",
+  "accel.videoVaeFp16Only": "Only FP16 was found; INT8 ConvRot is disabled.",
+  "accel.videoVaeInt8Only": "Only INT8 ConvRot was found; workflows will use the experimental decode backend.",
+  "accel.videoVaeBoth": "Both video VAEs were found; choose the backend as needed.",
   "accel.runtimeTitle": "Runtime interpreter",
   "accel.runtimeDescription": "Choose the Python environment used to start ComfyUI, install dependencies, and inspect acceleration status.",
   "accel.componentsTitle": "Runtime components",

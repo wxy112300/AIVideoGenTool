@@ -164,6 +164,7 @@ function createHarness(
     stabilizeH3RuntimeBetweenTasks?: QueueExecutorDependencies["stabilizeH3RuntimeBetweenTasks"];
     stopQueueRuntime?: QueueExecutorDependencies["stopQueueRuntime"];
     restartQueueRuntime?: QueueExecutorDependencies["restartQueueRuntime"];
+    resolveH3VideoVaeModeForTask?: QueueExecutorDependencies["resolveH3VideoVaeModeForTask"];
   } = {}
 ): {
   deps: QueueExecutorDependencies;
@@ -221,6 +222,7 @@ function createHarness(
     stabilizeH3RuntimeBetweenTasks: options.stabilizeH3RuntimeBetweenTasks ?? (async () => true),
     stopQueueRuntime: options.stopQueueRuntime ?? (async () => true),
     restartQueueRuntime: options.restartQueueRuntime ?? (async () => ({ ok: true, message: "restarted" })),
+    resolveH3VideoVaeModeForTask: options.resolveH3VideoVaeModeForTask ?? (async (task) => task.h3VideoVaeMode ?? "fp16"),
     settingsForTask: (_task, settings) => settings,
     errorMeta: () => ({}),
     taskStageStartedAt: new Map()
@@ -262,6 +264,39 @@ describe("queue executor runtime gate", () => {
     expect(harness.snapshots.some((snapshot) =>
       snapshot.queue.some((queued) => queued.id === task.id && queued.status === "running")
     )).toBe(true);
+  });
+
+  it("resolves the current H3 VAE setting when each task is claimed", async () => {
+    const state = createDefaultState();
+    const first = fixtureTask(state);
+    const second = fixtureTask(state);
+    second.id = "queue-runtime-task-2";
+    state.queue = [first, second];
+    state.queueRunning = true;
+    const resolveH3VideoVaeModeForTask = vi.fn(async (
+      _task: QueueTask,
+      settings: AppState["settings"]
+    ) => settings.h3VideoVaeMode === "int8-convrot" ? "int8-convrot" as const : "fp16" as const);
+    mocks.waitForTask
+      .mockImplementationOnce(async () => {
+        // Change the setting while the first task is still computing. The
+        // second claim must see it; the first submitted task must not change.
+        state.settings.h3VideoVaeMode = "int8-convrot";
+        return { outputs: { fixture: true } };
+      })
+      .mockImplementationOnce(async () => ({ outputs: { fixture: true } }));
+    const harness = createHarness(state, { resolveH3VideoVaeModeForTask });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(resolveH3VideoVaeModeForTask).toHaveBeenCalledTimes(2);
+    expect(mocks.submitTask.mock.calls.map(([task]) => (task as QueueTask).h3VideoVaeMode))
+      .toEqual(["fp16", "int8-convrot"]);
+    const historyModes = new Map(
+      harness.store.get().history.map((asset) => [asset.taskId, asset.h3VideoVaeMode])
+    );
+    expect(historyModes.get(first.id)).toBe("fp16");
+    expect(historyModes.get(second.id)).toBe("int8-convrot");
   });
 
   it("keeps an H3 task without LoRAs on the normal release path", async () => {
@@ -551,6 +586,45 @@ describe("queue executor runtime gate", () => {
     expect(final.queueRunning).toBe(false);
     expect(final.queueLifecycle).toBe("idle");
     expect(stopQueueRuntime).toHaveBeenCalledOnce();
+  });
+
+  it("executes every task above a divider before treating it as the stop line", async () => {
+    const state = createDefaultState();
+    const first = fixtureTask(state);
+    const second = fixtureTask(state);
+    const third = fixtureTask(state);
+    const deferred = fixtureTask(state);
+    first.id = "divider-first";
+    second.id = "divider-second";
+    third.id = "divider-third";
+    deferred.id = "divider-deferred";
+    state.queue = [first, second, third, deferred];
+    state.queuePauseBoundary = 3;
+    state.queueRunning = true;
+    state.queueLifecycle = "running";
+    const submittedIds: string[] = [];
+    mocks.submitTask.mockImplementation(async (task: QueueTask) => {
+      submittedIds.push(task.id);
+      return {
+        promptId: `prompt-${task.id}`,
+        clientId: "client-fixture",
+        nodeTypes: { "1": "FixtureNode" },
+        h3LivePreviewRequested: false,
+        h3LivePreviewActive: false
+      };
+    });
+    const harness = createHarness(state);
+
+    await createQueueExecutor(harness.deps)();
+
+    const final = harness.store.get();
+    expect(submittedIds).toEqual([first.id, second.id, third.id]);
+    expect(final.queue).toEqual([
+      expect.objectContaining({ id: deferred.id, status: "waiting" })
+    ]);
+    expect(final.queuePauseBoundary).toBeUndefined();
+    expect(final.queueRunning).toBe(false);
+    expect(final.queueLifecycle).toBe("idle");
   });
 
   it("retains dirty LoRA state across pause when runtime shutdown fails", async () => {

@@ -7,6 +7,11 @@ import type {
   Settings
 } from "../../../types";
 import {
+  h3VideoVaeAvailabilityFromModelProfiles,
+  normalizeH3VideoVaeMode,
+  resolveH3VideoVaeMode
+} from "../../../core/h3-video-vae";
+import {
   customNodeStatusTone,
   environmentItemStatusTone,
   modelProfileEvidence,
@@ -340,5 +345,52 @@ export function deriveAccelerationState(
     pythonSelection: settings.comfyPythonPath
       ? selectedPythonRuntime?.source === "comfy-venv" ? "comfy-venv" as const : "selected" as const
       : "auto" as const
+  };
+}
+
+export type H3VideoVaeStatus = "waiting" | "ready" | "fp16-only" | "int8-only" | "missing";
+
+export interface H3VideoVaeSettingsState {
+  fp16Available: boolean;
+  int8ConvrotAvailable: boolean;
+  available: boolean;
+  selectedMode: Settings["h3VideoVaeMode"];
+  status: H3VideoVaeStatus;
+  tone: SettingsStatusTone;
+}
+
+export function deriveH3VideoVaeState(
+  settings: Settings,
+  environmentScan: EnvironmentScanResult | null
+): H3VideoVaeSettingsState {
+  const availability = h3VideoVaeAvailabilityFromModelProfiles(
+    environmentScan?.modelProfiles ?? []
+  );
+  const requestedMode = normalizeH3VideoVaeMode(settings.h3VideoVaeMode);
+  const resolvedMode = resolveH3VideoVaeMode(
+    settings.h3VideoVaeMode,
+    availability
+  );
+  // Keep Auto selected in the form even though the concrete backend is
+  // resolved only when the next H3 task is claimed.
+  const selectedMode = requestedMode === "auto"
+    ? requestedMode
+    : resolvedMode ?? requestedMode;
+  const status: H3VideoVaeStatus = !environmentScan
+    ? "waiting"
+    : !availability.fp16 && !availability.int8Convrot
+      ? "missing"
+      : availability.fp16 && availability.int8Convrot
+        ? "ready"
+        : availability.fp16
+          ? "fp16-only"
+          : "int8-only";
+  return {
+    fp16Available: availability.fp16,
+    int8ConvrotAvailable: availability.int8Convrot,
+    available: availability.fp16 || availability.int8Convrot,
+    selectedMode,
+    status,
+    tone: status === "missing" ? "missing" : status === "waiting" ? "warning" : "available"
   };
 }

@@ -27,6 +27,7 @@ import type {
   HistoryFile,
   HistoryMetadataPatch,
   HistoryMigrationProgress,
+  H3VideoVaeBackend,
   ImageAssetLibraryProgress,
   ImageCropSaveRequest,
   ImageEditDraft,
@@ -93,6 +94,10 @@ import {
   workflowSupportsH3MotionContextExtension
 } from "../src/core/workflow.js";
 import { workflowMetadataForFilename } from "../src/core/workflow-metadata.js";
+import {
+  h3VideoVaeAvailabilityFromModelProfiles,
+  resolveH3VideoVaeMode
+} from "../src/core/h3-video-vae.js";
 import { JsonStore } from "./store.js";
 import { registerQueueMutationIpc } from "./queue-ipc.js";
 import { registerQueueEnqueueIpc } from "./queue-enqueue.js";
@@ -2119,6 +2124,20 @@ async function prepareQueueRuntimeForTask(
   return recovery.ok;
 }
 
+async function resolveH3VideoVaeModeForQueueTask(
+  _task: QueueTask,
+  settings: Settings
+): Promise<H3VideoVaeBackend | null> {
+  // The dependency-scoped scan reuses the latest file inventory when one is
+  // available, while still falling back to a full scan on a cold start or
+  // after the selected ComfyUI/model paths change.
+  const scan = await scanEnvironment(settings, "dependencies");
+  return resolveH3VideoVaeMode(
+    settings.h3VideoVaeMode,
+    h3VideoVaeAvailabilityFromModelProfiles(scan.modelProfiles)
+  );
+}
+
 let queueExecutor: (() => Promise<void>) | null = null;
 async function executeQueue(): Promise<void> {
   queueExecutor ??= createQueueExecutor({
@@ -2138,6 +2157,7 @@ async function executeQueue(): Promise<void> {
     stabilizeH3RuntimeBetweenTasks,
     stopQueueRuntime,
     restartQueueRuntime,
+    resolveH3VideoVaeModeForTask: resolveH3VideoVaeModeForQueueTask,
     settingsForTask: comfyUiSettingsForQueueTask,
     errorMeta: errorLogMeta,
     taskStageStartedAt

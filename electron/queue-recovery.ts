@@ -4,6 +4,7 @@ import {
   nextAutomaticRetryAttempt,
   nextH3AttentionModeAfterCudaFailure
 } from "../src/core/recovery.js";
+import { adjustQueuePauseBoundary } from "../src/core/queue.js";
 import { isMiniMaxH3Model } from "../src/core/workflow.js";
 import type { JsonStore } from "./store.js";
 import { forceStopComfyProcesses, restartLocalService } from "./services/environment.js";
@@ -287,6 +288,8 @@ export async function recoverQueueFailure(
   });
   if (nextAttempt !== null) {
     const retryState = await store.update((state) => {
+      const previousQueue = state.queue.map((item) => ({ ...item }));
+      const previousBoundary = state.queuePauseBoundary;
       const failedTask = state.queue.find((item) => item.id === task.id);
       if (!failedTask) return;
       Object.assign(failedTask, {
@@ -298,6 +301,11 @@ export async function recoverQueueFailure(
         error: `${originalError} ComfyUI 已恢复，准备自动重试 ${nextAttempt}/${retryLimit}。${attentionFallback ? ` H3 Attention 已切换为 ${attentionFallback}。` : ""}`,
         automaticRetryAttempt: nextAttempt
       });
+      state.queuePauseBoundary = adjustQueuePauseBoundary(
+        previousQueue,
+        previousBoundary,
+        state.queue
+      );
     });
     sendState(retryState);
     logger.warn("queue", "automatic-retry-scheduled", "Recoverable task was returned to the queue after ComfyUI recovery", {

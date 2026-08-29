@@ -139,6 +139,24 @@ describe("renderWorkflow", () => {
     expect(rendered["7"]?.inputs.sampler_name).toBe("res_multistep");
   });
 
+  it("selects the H3 video VAE backend without changing the audio VAE", () => {
+    const source = JSON.parse(
+      readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")
+    ) as unknown;
+    const rendered = renderWorkflow(source, {
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      h3VideoVaeMode: "int8-convrot"
+    }, { inputImage: "first.png" }) as Record<string, { inputs: Record<string, unknown> }>;
+
+    expect(rendered["3"]?.inputs.vae_name).toBe(
+      "minimax_h3_video_vae_int8_convrot.safetensors"
+    );
+    expect(rendered["4"]?.inputs.vae_name).toBe(
+      "minimax_h3_audio_vae_fp32.safetensors"
+    );
+  });
+
   it("adds a conservative KJNodes H3 TAE preview wrapper when runtime support is available", () => {
     const source = JSON.parse(
       readFileSync(new URL("../workflows/minimax_h3_i2v_api.json", import.meta.url), "utf8")

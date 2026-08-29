@@ -5,7 +5,8 @@ import {
   deriveCustomNodeCardState,
   derivePromptRuntimeState,
   deriveSettingsDependencyActionState,
-  deriveSettingsDirectories
+  deriveSettingsDirectories,
+  deriveH3VideoVaeState
 } from "../src/renderer/pages/settings/selectors";
 import type {
   CustomNodeStatus,
@@ -224,6 +225,94 @@ describe("settings selectors", () => {
       effectivePythonPath: settings.comfyPythonPath,
       pythonSelection: "comfy-venv",
       tone: "warning"
+    });
+  });
+
+  it("limits the H3 video VAE selector to scanned files and falls back safely", () => {
+    const profile = (fp16: boolean, int8Convrot: boolean): ModelScanProfile => ({
+      id: "minimax_h3_fl2va",
+      name: "MiniMax H3",
+      category: "video",
+      managedBy: "comfyui",
+      badge: "test",
+      description: "",
+      vram: "",
+      available: true,
+      integrated: true,
+      components: [
+        {
+          label: "FP16 VAE",
+          found: fp16,
+          alternativeGroup: "minimax-h3-video-vae",
+          expected: "vae/minimax_h3_video_vae_fp16.safetensors",
+          matches: fp16 ? ["vae/minimax_h3_video_vae_fp16.safetensors"] : [],
+          installGuide: {
+            sourceLabel: "test",
+            downloadUrl: "https://example.test/fp16",
+            targetSubdirectory: "vae",
+            recommendedFilename: "minimax_h3_video_vae_fp16.safetensors"
+          }
+        },
+        {
+          label: "INT8 ConvRot VAE",
+          found: int8Convrot,
+          alternativeGroup: "minimax-h3-video-vae",
+          expected: "vae/minimax_h3_video_vae_int8_convrot.safetensors",
+          matches: int8Convrot ? ["vae/minimax_h3_video_vae_int8_convrot.safetensors"] : [],
+          installGuide: {
+            sourceLabel: "test",
+            downloadUrl: "https://example.test/int8",
+            targetSubdirectory: "vae",
+            recommendedFilename: "minimax_h3_video_vae_int8_convrot.safetensors"
+          }
+        }
+      ]
+    });
+    const scan = (modelProfiles: ModelScanProfile[]): EnvironmentScanResult => ({
+      modelProfiles
+    } as EnvironmentScanResult);
+
+    const fp16Only = deriveH3VideoVaeState({
+      ...createDefaultState().settings,
+      h3VideoVaeMode: "int8-convrot"
+    }, scan([profile(true, false)]));
+    expect(fp16Only).toMatchObject({
+      available: true,
+      status: "fp16-only",
+      fp16Available: true,
+      int8ConvrotAvailable: false,
+      selectedMode: "fp16"
+    });
+    const int8Only = deriveH3VideoVaeState({
+      ...createDefaultState().settings,
+      h3VideoVaeMode: "fp16"
+    }, scan([profile(false, true)]));
+    expect(int8Only).toMatchObject({
+      available: true,
+      status: "int8-only",
+      selectedMode: "int8-convrot"
+    });
+    const both = deriveH3VideoVaeState({
+      ...createDefaultState().settings,
+      h3VideoVaeMode: "auto"
+    }, scan([profile(true, true)]));
+    expect(both).toMatchObject({
+      available: true,
+      status: "ready",
+      selectedMode: "auto"
+    });
+    const missing = deriveH3VideoVaeState(
+      createDefaultState().settings,
+      scan([profile(false, false)])
+    );
+    expect(missing).toMatchObject({
+      available: false,
+      status: "missing"
+    });
+    const waiting = deriveH3VideoVaeState(createDefaultState().settings, null);
+    expect(waiting).toMatchObject({
+      available: false,
+      status: "waiting"
     });
   });
 });

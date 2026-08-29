@@ -67,6 +67,31 @@ describe("Windows state file replacement", () => {
 });
 
 describe("queue lock recovery", () => {
+  it("persists and normalizes the H3 video VAE setting", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.settings.h3VideoVaeMode = "int8-convrot";
+    await fs.writeFile(filename, JSON.stringify({ ...state, schemaVersion: 13 }), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.settings.h3VideoVaeMode).toBe("int8-convrot");
+
+      loaded.settings.h3VideoVaeMode = "invalid" as never;
+      await fs.writeFile(filename, JSON.stringify(loaded), "utf8");
+      const normalized = await new JsonStore(filename).load();
+      expect(normalized.settings.h3VideoVaeMode).toBe("fp16");
+
+      normalized.settings.h3VideoVaeMode = "auto";
+      await fs.writeFile(filename, JSON.stringify(normalized), "utf8");
+      const automatic = await new JsonStore(filename).load();
+      expect(automatic.settings.h3VideoVaeMode).toBe("auto");
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("migrates retired SageAttention 2++ values without inventing missing history metadata", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
     const filename = path.join(directory, "studio-state.json");

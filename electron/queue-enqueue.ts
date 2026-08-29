@@ -45,6 +45,10 @@ import {
   resolveMiniMaxH3ExecutionPlan
 } from "../src/core/h3-memory-policy.js";
 import {
+  h3VideoVaeAvailabilityFromModelProfiles,
+  resolveH3VideoVaeMode
+} from "../src/core/h3-video-vae.js";
+import {
   ensureMotionContextSourceSlot,
   h3ReferenceSlotCounts
 } from "../src/core/h3-reference.js";
@@ -240,10 +244,19 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     const h3UsesSageAttention = isMiniMaxH3Model(draft.modelId) &&
       !h3UsesSlaAttention &&
       store.get().settings.h3AttentionMode !== "pytorch";
-    const dependencyScan = draft.videoLoras.length || draft.spectrumMode === "balanced" ||
+    const dependencyScan = isMiniMaxH3Model(draft.modelId) || draft.videoLoras.length || draft.spectrumMode === "balanced" ||
       h3UsesSageAttention || draft.h3MemoryOptimizationMode !== "off"
       ? await scanEnvironment(store.get().settings)
       : undefined;
+    const h3VideoVaeMode = (isMiniMaxH3Model(draft.modelId)
+      ? resolveH3VideoVaeMode(
+          store.get().settings.h3VideoVaeMode,
+          h3VideoVaeAvailabilityFromModelProfiles(dependencyScan?.modelProfiles ?? [])
+        )
+      : undefined) ?? undefined;
+    if (isMiniMaxH3Model(draft.modelId) && !h3VideoVaeMode) {
+      throw new Error("H3 视频 VAE 未找到：请安装 FP16 或 INT8 ConvRot 视频 VAE 后重新扫描。您也可以在设置 → 性能与加速中查看状态。");
+    }
     if (draft.h3MemoryOptimizationMode !== "off") {
       const memoryNode = dependencyScan?.customNodes.find((node) => node.id === "h3-optimizations");
       const executionPlan = resolveMiniMaxH3ExecutionPlan({
@@ -355,7 +368,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     const next = await store.update((state) => {
       const taskDraft = structuredClone(preparedDraft);
       taskDraft.workflowPath = resolvedWorkflowPath;
-      state.queue.push(queueTaskFromDraft(taskDraft, state));
+      state.queue.push(queueTaskFromDraft(taskDraft, state, undefined, { h3VideoVaeMode }));
       activateCreationDraft(state, preparedDraft);
     });
     const task = next.queue.at(-1);
@@ -497,6 +510,18 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     if (!promptOf(draft)) throw new Error("提示词不能为空");
     if (!draft.workflowPath) throw new Error("请先选择视频续写 API 工作流");
     if (!(await fs.stat(draft.sourceVideoPath).catch(() => null))) throw new Error("源视频文件不存在，无法加入续写队列");
+    let dependencyScan = isMiniMaxH3Model(draft.modelId)
+      ? await scanEnvironment(store.get().settings)
+      : undefined;
+    const h3VideoVaeMode = (isMiniMaxH3Model(draft.modelId)
+      ? resolveH3VideoVaeMode(
+          store.get().settings.h3VideoVaeMode,
+          h3VideoVaeAvailabilityFromModelProfiles(dependencyScan?.modelProfiles ?? [])
+        )
+      : undefined) ?? undefined;
+    if (isMiniMaxH3Model(draft.modelId) && !h3VideoVaeMode) {
+      throw new Error("H3 视频 VAE 未找到：请安装 FP16 或 INT8 ConvRot 视频 VAE 后重新扫描。您也可以在设置 → 性能与加速中查看状态。");
+    }
     const motionContext = isMiniMaxH3R2vModel(draft.modelId);
     const preparedDraft = structuredClone(draft);
     if (motionContext) {
@@ -513,7 +538,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       }
     }
     if (draft.h3MemoryOptimizationMode !== "off") {
-      const dependencyScan = await scanEnvironment(store.get().settings);
+      dependencyScan ??= await scanEnvironment(store.get().settings);
       const memoryNode = dependencyScan.customNodes.find((node) => node.id === "h3-optimizations");
       const executionPlan = resolveMiniMaxH3ExecutionPlan({
         modelId: draft.modelId,
@@ -581,7 +606,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
       }
     }
     const current = store.get();
-    const task = extensionTaskFromDraft(preparedDraft, current);
+    const task = extensionTaskFromDraft(preparedDraft, current, undefined, { h3VideoVaeMode });
     if (isMiniMaxH3R2vModel(task.modelId)) {
       const outputDirectory = await deps.resolveTaskOutputDirectory();
       task.h3ContextSavePrefix = `h3_context/${task.id}/clip`;

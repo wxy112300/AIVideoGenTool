@@ -9,6 +9,8 @@ const h3Int4Source = "Merserk / MiniMax-H3-INT4-ConvRot";
 const h3Int4BaseUrl = "https://huggingface.co/Merserk/MiniMax-H3-INT4-ConvRot/resolve/main";
 const h3Q3Source = "Unsloth / MiniMax-H3-GGUF";
 const h3Q3BaseUrl = "https://huggingface.co/unsloth/MiniMax-H3-GGUF/resolve/main";
+const h3ExperimentalVaeSource = "Kijai / MiniMax-H3-experimental";
+const h3ExperimentalVaeBaseUrl = "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main";
 
 function guide(
   sourceLabel: string,
@@ -32,13 +34,15 @@ export function h3Component(options: {
   pattern: RegExp;
   installGuide?: CatalogInstallGuide;
   optional?: boolean;
+  alternativeGroup?: string;
 }): CatalogModelComponent {
   return {
     label: options.label,
     expected: options.expected,
     patterns: [options.pattern],
     ...(options.installGuide ? { installGuide: options.installGuide } : {}),
-    ...(options.optional ? { optional: true } : {})
+    ...(options.optional ? { optional: true } : {}),
+    ...(options.alternativeGroup ? { alternativeGroup: options.alternativeGroup } : {})
   };
 }
 
@@ -60,11 +64,26 @@ export const h3Fl2vaVideoVae = h3Component({
   label: "MiniMax H3 视频 VAE",
   expected: "vae/minimax_h3_video_vae_fp16.safetensors",
   pattern: /vae\/minimax_h3_video_vae_fp16\.safetensors$/i,
+  alternativeGroup: "minimax-h3-video-vae",
   installGuide: guide(
     h3OfficialSource,
     `${h3OfficialBaseUrl}/vae/minimax_h3_video_vae_fp16.safetensors`,
     "vae",
     "minimax_h3_video_vae_fp16.safetensors"
+  )
+});
+
+export const h3Int8ConvRotVideoVae = h3Component({
+  label: "MiniMax H3 视频 VAE · INT8 ConvRot",
+  expected: "vae/minimax_h3_video_vae_int8_convrot.safetensors",
+  pattern: /vae\/minimax_h3_video_vae_int8_convrot\.safetensors$/i,
+  alternativeGroup: "minimax-h3-video-vae",
+  installGuide: guide(
+    h3ExperimentalVaeSource,
+    `${h3ExperimentalVaeBaseUrl}/minimax_h3_video_vae_int8_convrot.safetensors`,
+    "vae",
+    "minimax_h3_video_vae_int8_convrot.safetensors",
+    "实验性 H3 视频 VAE 解码后端；需要 ComfyUI 0.31.0 或更高版本。未安装时工作流自动使用 FP16。"
   )
 });
 

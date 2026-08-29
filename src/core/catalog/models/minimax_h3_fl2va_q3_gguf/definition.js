@@ -1,4 +1,4 @@
-import { h3Fl2vaAudioVae, h3Fl2vaVideoVae, h3LivePreviewTae, h3Q2GgufTextEncoder, h3Q3GgufModel } from "../minimax_h3_shared.js";
+import { h3Fl2vaAudioVae, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3LivePreviewTae, h3Q2GgufTextEncoder, h3Q3GgufModel } from "../minimax_h3_shared.js";
 import { localeEnUS } from "./locale.en-US.js";
 import { localeZhCN } from "./locale.zh-CN.js";
 import { localeZhTW } from "./locale.zh-TW.js";
@@ -30,7 +30,7 @@ export const minimaxH3Fl2vaQ3Gguf = {
             integrated: true,
             requiredCustomNodeIds: ["comfyui-gguf-h3"],
             runtimeNodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF", "MiniMaxH3ImageToVideo"],
-            components: [h3Q3GgufModel, h3Q2GgufTextEncoder, h3Fl2vaVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
+            components: [h3Q3GgufModel, h3Q2GgufTextEncoder, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
         }
     },
     locales: {

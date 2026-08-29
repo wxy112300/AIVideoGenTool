@@ -10,6 +10,7 @@ import type {
   ImageGenerationQueueTask,
   ImageGenerationRun,
   H3AttentionMode,
+  H3VideoVaeBackend,
   QueueLifecycle,
   QueueTask
 } from "../src/types.js";
@@ -25,12 +26,17 @@ import { normalizeQueuePauseBoundary } from "../src/core/queue.js";
 import { isHistoryRating, normalizeHistoryTags } from "../src/core/history-filter.js";
 import { copyPromptVersions, ensureDraftPromptState } from "../src/core/draft-prompts.js";
 import {
+  normalizeH3VideoVaeBackend,
+  normalizeH3VideoVaeMode
+} from "../src/core/h3-video-vae.js";
+import {
   normalizeDraftH3MemoryOptions,
   normalizeH3MemoryOptions
 } from "../src/core/h3-memory-policy.js";
 import {
   generationSafetyForTask,
   isMiniMaxH3Fl2vaModel,
+  isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
   isRetiredVideoModel,
   normalizeH3Steps
@@ -172,6 +178,10 @@ function migrateOptionalH3AttentionMode(value: unknown): H3AttentionMode | undef
   return value === undefined ? undefined : normalizeH3AttentionMode(value);
 }
 
+function migrateH3VideoVaeMode(value: unknown, modelId: string): H3VideoVaeBackend | undefined {
+  return isMiniMaxH3Model(modelId) ? normalizeH3VideoVaeBackend(value) : undefined;
+}
+
 function migrateImageGenerationTask(task: ImageGenerationQueueTask): ImageGenerationQueueTask {
   const runs = Array.isArray(task.runs)
     ? task.runs.map((run, index) => {
@@ -232,6 +242,10 @@ function migrateQueueTask(
   if (task.taskType === "upscale") return { ...task, automaticRetryAttempt };
   const legacyModelId = task.modelId;
   const modelId = baseVideoModelId(legacyModelId);
+  const h3VideoVaeMode = migrateH3VideoVaeMode(
+    (task as QueueTask & { h3VideoVaeMode?: unknown }).h3VideoVaeMode,
+    modelId
+  );
   const videoLoras = normalizeVideoLoras(
     (task as QueueTask & { videoLoras?: unknown }).videoLoras,
     legacyModelId
@@ -257,6 +271,7 @@ function migrateQueueTask(
       videoLoras,
       modelProfile: task.modelProfile ?? "q3_k_m",
       attentionMode: normalizeH3AttentionMode(task.attentionMode),
+      h3VideoVaeMode,
       h3LivePreview: typeof task.h3LivePreview === "boolean"
         ? task.h3LivePreview
         : defaultH3LivePreview,
@@ -286,6 +301,7 @@ function migrateQueueTask(
     fps: (task.fps ?? 24) as Draft["fps"],
     frameInterpolation: task.frameInterpolation ?? "off",
     attentionMode: normalizeH3AttentionMode(task.attentionMode),
+    h3VideoVaeMode,
     h3LivePreview: typeof task.h3LivePreview === "boolean"
       ? task.h3LivePreview
       : defaultH3LivePreview,
@@ -307,6 +323,10 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
   const files = asset.files ?? [];
   const legacyModelId = asset.modelId;
   const modelId = baseVideoModelId(legacyModelId);
+  const h3VideoVaeMode = migrateH3VideoVaeMode(
+    (asset as HistoryAsset & { h3VideoVaeMode?: unknown }).h3VideoVaeMode,
+    modelId
+  );
   const videoLoras = normalizeVideoLoras(
     (asset as HistoryAsset & { videoLoras?: unknown }).videoLoras,
     legacyModelId
@@ -333,12 +353,17 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
       files,
       updatedAt: asset.updatedAt ?? asset.createdAt,
       attentionMode: migrateOptionalH3AttentionMode(asset.attentionMode),
+      h3VideoVaeMode,
       ...assetMemoryOptions,
       versions: asset.versions.map((version) => ({
         ...version,
         modelId: baseVideoModelId(version.modelId),
         videoLoras: normalizeVideoLoras(version.videoLoras, version.modelId),
         attentionMode: migrateOptionalH3AttentionMode(version.attentionMode),
+        h3VideoVaeMode: migrateH3VideoVaeMode(
+          (version as AssetVersion & { h3VideoVaeMode?: unknown }).h3VideoVaeMode,
+          baseVideoModelId(version.modelId)
+        ),
         ...normalizeH3MemoryOptions(
           version as AssetVersion & {
             h3MemoryOptimizationMode?: unknown;
@@ -369,6 +394,7 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
     files,
     startedAt: asset.startedAt,
     attentionMode: migrateOptionalH3AttentionMode(asset.attentionMode),
+    h3VideoVaeMode,
     ...assetMemoryOptions
   };
   return {
@@ -384,6 +410,7 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
     files,
     updatedAt: asset.updatedAt ?? asset.createdAt,
     defaultVersionId: version.id,
+    h3VideoVaeMode,
     ...assetMemoryOptions,
     versions: [version]
   };
@@ -505,6 +532,7 @@ export class JsonStore {
           ...defaultState.settings,
           ...savedSettings,
           h3AttentionMode: normalizeH3AttentionMode(savedH3AttentionMode),
+          h3VideoVaeMode: normalizeH3VideoVaeMode(savedSettings.h3VideoVaeMode),
           h3PromptPresets,
           imagePromptPresets,
           h3AutoPromptSeedId: savedAutoPromptSeedId,
@@ -540,6 +568,7 @@ export class JsonStore {
         !hasIndependentExtensionPromptState ||
         savedUiLocale !== normalizedUiLocale ||
         saved.settings?.h3AutoPromptSeedId !== savedAutoPromptSeedId ||
+        saved.settings?.h3VideoVaeMode !== this.state.settings.h3VideoVaeMode ||
         JSON.stringify(saved.settings?.h3AutoPromptSeedInstructions) !== JSON.stringify(h3AutoPromptSeedInstructions);
       if (typeof saved.settings?.imageOutputDirectory !== "string") {
         this.state.settings.imageOutputDirectory = "";

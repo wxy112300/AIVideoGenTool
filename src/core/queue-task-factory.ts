@@ -3,6 +3,7 @@ import type {
   Draft,
   ExtensionQueueTask,
   GenerationQueueTask,
+  H3VideoVaeBackend,
   ImageEditDraft,
   ImageGenerationQueueTask,
   ImageGenerationRun,
@@ -24,6 +25,7 @@ import {
   normalizeH3MemoryOptions,
   resolveMiniMaxH3ExecutionPlan
 } from "./h3-memory-policy.js";
+import { normalizeH3VideoVaeBackend } from "./h3-video-vae.js";
 import { ensureMotionContextSourceSlot } from "./h3-reference.js";
 import {
   h3WorkflowPathForInput,
@@ -43,6 +45,10 @@ const defaultClock: QueueTaskFactoryClock = {
   id: () => crypto.randomUUID(),
   random: () => Math.random()
 };
+
+export interface QueueTaskFactoryOptions {
+  h3VideoVaeMode?: H3VideoVaeBackend;
+}
 
 export interface ImageOutputTarget {
   root: string;
@@ -72,9 +78,13 @@ export function outputNames(state: AppState): string[] {
 export function queueTaskFromDraft(
   draft: Draft,
   state: AppState,
-  clock: QueueTaskFactoryClock = defaultClock
+  clock: QueueTaskFactoryClock = defaultClock,
+  options: QueueTaskFactoryOptions = {}
 ): GenerationQueueTask {
   const now = clock.now().toISOString();
+  const h3VideoVaeMode = isMiniMaxH3Model(draft.modelId)
+    ? normalizeH3VideoVaeBackend(options.h3VideoVaeMode ?? state.settings.h3VideoVaeMode)
+    : undefined;
   const h3MemoryOptions = normalizeH3MemoryOptions(draft);
   const h3MemoryExecutionPlan = isMiniMaxH3Model(draft.modelId)
     ? resolveMiniMaxH3ExecutionPlan({
@@ -132,6 +142,7 @@ export function queueTaskFromDraft(
     seed: draft.seed ?? Math.floor(clock.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
     attentionMode: state.settings.h3AttentionMode,
+    h3VideoVaeMode,
     h3LivePreview: state.settings.h3LivePreview,
     spectrumMode: draft.spectrumMode,
     spectrumModelAwareMode: "off",
@@ -216,10 +227,14 @@ export function imageTaskFromDraft(
 export function extensionTaskFromDraft(
   draft: Draft,
   state: AppState,
-  clock: QueueTaskFactoryClock = defaultClock
+  clock: QueueTaskFactoryClock = defaultClock,
+  options: QueueTaskFactoryOptions = {}
 ): ExtensionQueueTask {
   const now = clock.now().toISOString();
   const isH3 = isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId);
+  const h3VideoVaeMode = isH3
+    ? normalizeH3VideoVaeBackend(options.h3VideoVaeMode ?? state.settings.h3VideoVaeMode)
+    : undefined;
   const h3MemoryOptions = normalizeH3MemoryOptions(draft);
   const resolution = isH3 ? draft.resolution : state.settings.ltxExtensionResolution;
   const h3ReferenceSlots = isMiniMaxH3R2vModel(draft.modelId)
@@ -274,6 +289,7 @@ export function extensionTaskFromDraft(
     seed: draft.seed ?? Math.floor(clock.random() * Number.MAX_SAFE_INTEGER),
     keepSeedOnCopy: draft.keepSeedOnCopy,
     attentionMode: state.settings.h3AttentionMode,
+    h3VideoVaeMode,
     h3LivePreview: state.settings.h3LivePreview,
     spectrumMode,
     spectrumModelAwareMode: "off",

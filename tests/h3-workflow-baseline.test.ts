@@ -113,6 +113,27 @@ function hasLivePreview(graph: ApiWorkflow): boolean {
 }
 
 describe("H3 rendered workflow baseline", () => {
+  it("keeps the selectable final video VAE placeholder in every bundled H3 workflow", () => {
+    const workflows = [
+      "minimax_h3_fl2va_turbo_api.json",
+      "minimax_h3_i2v_api.json",
+      "minimax_h3_i2v_gguf_q3_api.json",
+      "minimax_h3_r2v_api.json",
+      "minimax_h3_r2v_extend_api.json",
+      "minimax_h3_t2va_api.json",
+      "minimax_h3_t2va_gguf_q3_api.json",
+      "minimax_h3_t2va_turbo_api.json"
+    ];
+
+    for (const filename of workflows) {
+      const source = workflow(filename) as ApiWorkflow;
+      const videoVaeNode = Object.values(source).find((node) =>
+        node.class_type === "VAELoader" && node.inputs.vae_name === "{{H3_VIDEO_VAE}}"
+      );
+      expect(videoVaeNode, filename).toBeDefined();
+    }
+  });
+
   it("captures the standard, accelerated, preview, and Motion Context node graphs", () => {
     const turboTask: GenerationQueueTask = {
       ...baseGenerationTask,

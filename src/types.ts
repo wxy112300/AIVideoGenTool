@@ -74,6 +74,10 @@ export type H3ReferenceMediaType = "image" | "video";
 
 export type H3StepCount = 4 | 6 | 8 | 10 | 12 | 16 | 20;
 export type H3AttentionMode = "sage" | "sage-triton" | "pytorch";
+/** User-facing selection for the final MiniMax H3 video VAE. */
+export type H3VideoVaeMode = "auto" | "fp16" | "int8-convrot";
+/** Resolved backend persisted with a task or history record. */
+export type H3VideoVaeBackend = Exclude<H3VideoVaeMode, "auto">;
 export type H3SpectrumMode = "off" | "balanced";
 export type H3SpectrumModelAwareMode = "off" | "schedule" | "schedule_confidence" | "full";
 export type H3MemoryOptimizationMode = "off" | "preserve-native" | "auto" | "force-quant";
@@ -327,6 +331,8 @@ export interface Settings {
   imageOutputFormat: ImageOutputFormat;
   vramReserveGb: number;
   h3AttentionMode: H3AttentionMode;
+  /** Default final video VAE selection for MiniMax H3 workflows. */
+  h3VideoVaeMode: H3VideoVaeMode;
   h3LivePreview: boolean;
   autoOffload: boolean;
   ltxExtensionModelProfile: LtxExtensionModelProfile;
@@ -379,6 +385,8 @@ interface VideoQueueTaskBase extends QueueTaskBase {
   seed: number;
   keepSeedOnCopy: boolean;
   attentionMode?: Settings["h3AttentionMode"];
+  /** Resolved final MiniMax H3 video VAE backend for this execution. */
+  h3VideoVaeMode?: H3VideoVaeBackend;
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
   /** Queue-time H3 Memory Optimization request; absent only in legacy records. */
@@ -559,6 +567,7 @@ export interface AssetVersion {
   promptVersion?: number;
   steps?: H3StepCount;
   attentionMode?: Settings["h3AttentionMode"];
+  h3VideoVaeMode?: H3VideoVaeBackend;
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
   h3MemoryOptimizationMode?: H3MemoryOptimizationMode;
@@ -656,6 +665,7 @@ export interface HistoryAsset {
   ratio?: Draft["ratio"];
   promptVersion?: number;
   attentionMode?: Settings["h3AttentionMode"];
+  h3VideoVaeMode?: H3VideoVaeBackend;
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
   h3MemoryOptimizationMode?: H3MemoryOptimizationMode;
@@ -840,6 +850,7 @@ export interface ModelComponentStatus {
   label: string;
   found: boolean;
   optional?: boolean;
+  alternativeGroup?: string;
   expected: string;
   matches: string[];
   installGuide: {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
+import { adjustQueuePauseBoundary } from "../src/core/queue";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { recoverQueueFailure } from "../electron/queue-recovery";
 import type { AppState, QueueTask } from "../src/types";
@@ -85,6 +86,68 @@ describe("queue recovery lifecycle", () => {
       comfyPromptId: undefined
     });
     expect(snapshots.at(-1)?.queueRunning).toBe(false);
+  });
+
+  it("restores a retried task without moving the divider past the next batch task", async () => {
+    const state = createDefaultState();
+    const failed = queuedTask(state);
+    const second = queuedTask(state);
+    const third = queuedTask(state);
+    const deferred = queuedTask(state);
+    failed.id = "failed-above-divider";
+    second.id = "second-above-divider";
+    third.id = "third-above-divider";
+    deferred.id = "deferred-below-divider";
+    failed.status = "running";
+    state.queue = [failed, second, third, deferred];
+    state.queueRunning = true;
+    state.queuePauseBoundary = 3;
+    state.settings.autoRetryFailedTasks = true;
+    state.settings.autoRetryCount = 2;
+    const snapshots: AppState[] = [];
+    const store = {
+      get: () => structuredClone(state),
+      update: async (mutator: (current: AppState) => void) => {
+        mutator(state);
+        return structuredClone(state);
+      }
+    };
+    const updateTask = async (taskId: string, patch: Partial<QueueTask>): Promise<AppState> => {
+      const previousQueue = state.queue.map((item) => ({ ...item }));
+      const previousBoundary = state.queuePauseBoundary;
+      const queued = state.queue.find((item) => item.id === taskId);
+      if (queued) Object.assign(queued, patch);
+      state.queuePauseBoundary = adjustQueuePauseBoundary(
+        previousQueue,
+        previousBoundary,
+        state.queue
+      );
+      return structuredClone(state);
+    };
+
+    await recoverQueueFailure({
+      store: store as never,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+      sendState: (snapshot) => snapshots.push(snapshot),
+      updateTask,
+      settingsForTask: (_task, settings) => settings,
+      errorMeta: () => ({})
+    }, {
+      task: failed,
+      error: new Error("CUDA out of memory"),
+      aborted: false,
+      stalled: false
+    });
+
+    expect(state.queuePauseBoundary).toBe(3);
+    expect(state.queue.map((item) => item.id)).toEqual([
+      failed.id,
+      second.id,
+      third.id,
+      deferred.id
+    ]);
+    expect(state.queue[0]).toMatchObject({ status: "waiting" });
+    expect(snapshots.at(-1)?.queuePauseBoundary).toBe(3);
   });
 
 });

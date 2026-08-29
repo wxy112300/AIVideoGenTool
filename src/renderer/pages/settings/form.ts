@@ -68,6 +68,7 @@ export function readSettingsFromForm(
     imageOutputFormat: "png",
     vramReserveGb: Number(value("vram-reserve", String(base.vramReserveGb))),
     h3AttentionMode: value("h3-attention-mode", base.h3AttentionMode) as Settings["h3AttentionMode"],
+    h3VideoVaeMode: value("h3-video-vae-mode", base.h3VideoVaeMode) as Settings["h3VideoVaeMode"],
     h3LivePreview: base.h3LivePreview,
     autoOffload: checked("auto-offload", base.autoOffload),
     ltxExtensionModelProfile: value("ltx-extension-model-profile", base.ltxExtensionModelProfile) as Settings["ltxExtensionModelProfile"],

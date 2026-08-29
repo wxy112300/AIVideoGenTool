@@ -363,6 +363,7 @@ interface ModelProfileDefinition {
     expected: string;
     patterns: RegExp[];
     optional?: boolean;
+    alternativeGroup?: string;
     installGuide?: ModelComponentStatus["installGuide"];
   }>;
 }
@@ -1667,10 +1668,26 @@ function catalogModelProfileDefinitionsFor(
       expected: component.expected,
       patterns: [...component.patterns],
       ...(component.optional ? { optional: true } : {}),
+      ...(component.alternativeGroup ? { alternativeGroup: component.alternativeGroup } : {}),
       installGuide: component.installGuide
     }))
   } satisfies ModelProfileDefinition];
     });
+}
+
+function modelComponentsAvailable(
+  components: Array<{ found: boolean; optional?: boolean; alternativeGroup?: string }>
+): boolean {
+  const satisfiedAlternativeGroups = new Set(
+    components
+      .filter((component) => component.found && component.alternativeGroup)
+      .map((component) => component.alternativeGroup as string)
+  );
+  return components.every((component) =>
+    component.found ||
+    component.optional === true ||
+    Boolean(component.alternativeGroup && satisfiedAlternativeGroups.has(component.alternativeGroup))
+  );
 }
 
 export function evaluateModelProfiles(
@@ -1700,6 +1717,7 @@ export function evaluateModelProfiles(
         label: component.label,
         found: matches.length > 0,
         ...(component.optional ? { optional: true } : {}),
+        ...(component.alternativeGroup ? { alternativeGroup: component.alternativeGroup } : {}),
         expected: component.expected,
         matches,
         installGuide: component.installGuide ??
@@ -1719,7 +1737,7 @@ export function evaluateModelProfiles(
       badge: profile.badge,
       description: profile.description,
       vram: profile.vram,
-      available: components.every((component) => component.found || component.optional === true),
+      available: modelComponentsAvailable(components),
       integrated: profile.integrated !== false,
       ...(profile.requiredCustomNodeIds?.length
         ? { requiredCustomNodeIds: [...profile.requiredCustomNodeIds] }

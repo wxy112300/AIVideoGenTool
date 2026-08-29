@@ -1035,6 +1035,38 @@ describe("ComfyUI environment candidates", () => {
     expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va")?.available).toBe(false);
   });
 
+  it("accepts the INT8 ConvRot video VAE as an alternative to FP16", () => {
+    const files = [
+      "diffusion_models\\minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "text_encoders\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "vae\\minimax_h3_video_vae_int8_convrot.safetensors",
+      "vae\\minimax_h3_audio_vae_fp32.safetensors"
+    ];
+    const profiles = evaluateModelProfiles(files);
+    const fl2va = profiles.find((profile) => profile.id === "minimax_h3_fl2va");
+    const fp16 = fl2va?.components.find((component) => component.expected.includes("video_vae_fp16"));
+    const int8 = fl2va?.components.find((component) => component.expected.includes("video_vae_int8"));
+
+    expect(fl2va?.available).toBe(true);
+    expect(fp16).toMatchObject({
+      found: false,
+      alternativeGroup: "minimax-h3-video-vae"
+    });
+    expect(int8).toMatchObject({
+      found: true,
+      alternativeGroup: "minimax-h3-video-vae",
+      installGuide: {
+        targetSubdirectory: "vae",
+        recommendedFilename: "minimax_h3_video_vae_int8_convrot.safetensors",
+        downloadUrl: "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/minimax_h3_video_vae_int8_convrot.safetensors"
+      }
+    });
+
+    const missing = evaluateModelProfiles(files.filter((file) => !file.includes("video_vae_int8")))
+      .find((profile) => profile.id === "minimax_h3_fl2va");
+    expect(missing?.available).toBe(false);
+  });
+
   it("detects the current MiniMax H3 LightX2V v1.1 Turbo profile only with its recommended LoRA", () => {
     const profiles = evaluateModelProfiles([
       "diffusion_models\\minimax_h3_fl2va_pruned_int8_convrot.safetensors",

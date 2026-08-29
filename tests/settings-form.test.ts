@@ -91,4 +91,26 @@ describe("settings form", () => {
       globalThis.document = previousDocument;
     }
   });
+
+  it("reads the selected H3 video VAE backend", () => {
+    const previousDocument = globalThis.document;
+    globalThis.document = {
+      querySelector: vi.fn((selector: string) =>
+        selector === "#h3-video-vae-mode"
+          ? { value: "int8-convrot" }
+          : null
+      )
+    } as unknown as Document;
+
+    try {
+      const settings = readSettingsFromForm(
+        createDefaultSettings(),
+        "official-storyboard",
+        "faithful"
+      );
+      expect(settings.h3VideoVaeMode).toBe("int8-convrot");
+    } finally {
+      globalThis.document = previousDocument;
+    }
+  });
 });

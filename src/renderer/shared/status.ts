@@ -71,6 +71,33 @@ export function modelProfileStatusTone(
   return "available";
 }
 
+export function modelComponentSatisfied(
+  profile: ModelScanProfile,
+  component: ModelScanProfile["components"][number]
+): boolean {
+  if (component.found || component.optional === true) return true;
+  return Boolean(
+    component.alternativeGroup &&
+    profile.components.some((candidate) =>
+      candidate.alternativeGroup === component.alternativeGroup && candidate.found
+    )
+  );
+}
+
+export function modelProfileMissingComponentCount(profile: ModelScanProfile): number {
+  const countedAlternativeGroups = new Set<string>();
+  let count = 0;
+  for (const component of profile.components) {
+    if (modelComponentSatisfied(profile, component)) continue;
+    if (component.alternativeGroup) {
+      if (countedAlternativeGroups.has(component.alternativeGroup)) continue;
+      countedAlternativeGroups.add(component.alternativeGroup);
+    }
+    count += 1;
+  }
+  return count;
+}
+
 export function customNodeStatusTone(
   node: CustomNodeStatus,
   installPending = false
@@ -106,7 +133,7 @@ export function promptModelStatus(
   }
   if (!profile.available) {
     const missing = profile.components
-      .filter((component) => !component.found)
+      .filter((component) => !modelComponentSatisfied(profile, component))
       .map((component) => component.expected)
       .join("、");
     return {

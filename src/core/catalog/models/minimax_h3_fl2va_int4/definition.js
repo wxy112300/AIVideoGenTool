@@ -1,4 +1,4 @@
-import { h3Fl2vaAudioVae, h3Fl2vaInt4Model, h3Fl2vaVideoVae, h3LivePreviewTae, h3Int4TextEncoder } from "../minimax_h3_shared.js";
+import { h3Fl2vaAudioVae, h3Fl2vaInt4Model, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3LivePreviewTae, h3Int4TextEncoder } from "../minimax_h3_shared.js";
 import { localeEnUS } from "./locale.en-US.js";
 import { localeZhCN } from "./locale.zh-CN.js";
 import { localeZhTW } from "./locale.zh-TW.js";
@@ -23,7 +23,7 @@ export const minimaxH3Fl2vaInt4 = {
         scan: {
             vram: "pruned INT4 · RAM offload",
             integrated: true,
-            components: [h3Fl2vaInt4Model, h3Int4TextEncoder, h3Fl2vaVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
+            components: [h3Fl2vaInt4Model, h3Int4TextEncoder, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
         }
     },
     locales: {

@@ -1,9 +1,8 @@
-import type { AppState, H3MemoryRuntimeEvidence, HistoryFile, ImageGenerationQueueTask, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview } from "../src/types.js";
+import type { AppState, H3MemoryRuntimeEvidence, H3VideoVaeBackend, HistoryFile, ImageGenerationQueueTask, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview } from "../src/types.js";
 import {
-  adjustQueuePauseBoundary,
   isImageGenerationQueueTask,
   nextQueueWaitingTask,
-  queuePauseBoundaryReached
+  queuePauseBoundaryAfterTaskCompletion
 } from "../src/core/queue.js";
 import { isVideoOutputFilename } from "../src/core/comfy-output.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
@@ -58,6 +57,7 @@ export interface QueueExecutorDependencies {
   stabilizeH3RuntimeBetweenTasks(taskId: string, modelId: string, settings: Settings, hasVideoLoras: boolean, queueWillContinue: boolean): Promise<boolean>;
   stopQueueRuntime(settings: Settings): Promise<boolean>;
   restartQueueRuntime(settings: Settings): Promise<{ ok: boolean; message: string }>;
+  resolveH3VideoVaeModeForTask(task: QueueTask, settings: Settings): Promise<H3VideoVaeBackend | null>;
   settingsForTask(task: QueueTask | undefined, settings: Settings): Settings;
   errorMeta(error: unknown): Record<string, unknown>;
   taskStageStartedAt: Map<string, { stage: string; startedAt: number }>;
@@ -81,6 +81,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     stabilizeH3RuntimeBetweenTasks,
     stopQueueRuntime,
     restartQueueRuntime,
+    resolveH3VideoVaeModeForTask,
     settingsForTask: comfyUiSettingsForQueueTask,
     errorMeta: errorLogMeta,
     taskStageStartedAt
@@ -252,19 +253,14 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       const completed = await store.update((state) => {
         const previousQueue = state.queue.map((item) => ({ ...item }));
         state.queue = state.queue.filter((item) => item.id !== task.id);
-        const boundaryReached = queuePauseBoundaryReached(
+        const boundaryTransition = queuePauseBoundaryAfterTaskCompletion(
           previousQueue,
           state.queuePauseBoundary,
+          task.id,
           state.queue
         );
-        state.queuePauseBoundary = boundaryReached
-          ? undefined
-          : adjustQueuePauseBoundary(
-            previousQueue,
-            state.queuePauseBoundary,
-            state.queue
-          );
-        if (boundaryReached) {
+        state.queuePauseBoundary = boundaryTransition.boundary;
+        if (boundaryTransition.reached) {
           // The divider is a stop line. Once the last task above it is gone,
           // do not let the next task be claimed before the UI can observe the
           // stopped, divider-free state.
@@ -313,22 +309,23 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     let promptModelReleased = false;
     while (store.get().queueRunning) {
       const current = store.get();
-      const task = nextQueueWaitingTask(
+      const nextTask = nextQueueWaitingTask(
         current.queue,
         current.queuePauseBoundary
       );
-      if (!task) break;
-      await setQueueLifecycle("running", task.id);
+      if (!nextTask) break;
+      await setQueueLifecycle("running", nextTask.id);
       // Claim the task conditionally in the same store mutation. A cancel can
       // arrive after selection; an unconditional later update would otherwise
       // resurrect the cancelled task as running.
       let claimed = false;
+      let settingsAtClaim: Settings | undefined;
       const claimedState = await store.update((state) => {
-        const candidate = state.queue.find((item) => item.id === task.id);
+        const candidate = state.queue.find((item) => item.id === nextTask.id);
         if (
           !state.queueRunning ||
           candidate?.status !== "waiting" ||
-          nextQueueWaitingTask(state.queue, state.queuePauseBoundary)?.id !== task.id
+          nextQueueWaitingTask(state.queue, state.queuePauseBoundary)?.id !== nextTask.id
         ) return;
         candidate.status = "running";
         candidate.progress = 1;
@@ -336,6 +333,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         candidate.startedAt = new Date().toISOString();
         candidate.error = undefined;
         candidate.updatedAt = new Date().toISOString();
+        settingsAtClaim = structuredClone(state.settings);
         claimed = true;
       });
       sendState(claimedState);
@@ -345,12 +343,13 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       }
       // The store write is asynchronous. Re-check after it settles so a cancel
       // handled in that gap cannot be overwritten by the execution branch.
-      const claimedTask = store.get().queue.find((item) => item.id === task.id);
+      const claimedTask = store.get().queue.find((item) => item.id === nextTask.id);
       if (!store.get().queueRunning || claimedTask?.status !== "running") continue;
-      if (isImageGenerationQueueTask(task)) {
-        await executeImageGenerationQueueTask(task);
+      if (isImageGenerationQueueTask(claimedTask)) {
+        await executeImageGenerationQueueTask(claimedTask);
         continue;
       }
+      let task: Exclude<QueueTask, ImageGenerationQueueTask> = claimedTask;
       const executionStartedAt = Date.now();
       logger.info("queue", "task-started", "Queue task execution started", {
         taskId: task.id,
@@ -406,6 +405,26 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         }
       };
       try {
+        if (isMiniMaxH3Model(task.modelId)) {
+          const h3VideoVaeMode = await resolveH3VideoVaeModeForTask(
+            task,
+            settingsAtClaim ?? store.get().settings
+          );
+          if (!h3VideoVaeMode) {
+            throw new Error("H3 视频 VAE 未找到：请安装 FP16 或 INT8 ConvRot 视频 VAE 后重新扫描。您也可以在设置 → 性能与加速中查看状态。");
+          }
+          const resolvedState = await updateTask(task.id, {
+            h3VideoVaeMode
+          });
+          const resolvedTask = resolvedState.queue.find((item) => item.id === task.id);
+          if (!resolvedTask || resolvedTask.status !== "running" || isImageGenerationQueueTask(resolvedTask)) continue;
+          task = resolvedTask;
+          logger.info("queue", "h3-video-vae-selected", "Resolved H3 video VAE for the claimed task", {
+            taskId: task.id,
+            modelId: task.modelId,
+            h3VideoVaeMode
+          });
+        }
         if (task.taskType === "generation") {
           const safety = generationSafetyForTask(task, store.get().settings.uiLocale);
           if (!safety.safe) throw new Error(safety.message);
@@ -807,19 +826,14 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             h3MemoryRuntimeEvidence,
             id: () => crypto.randomUUID()
           });
-          const boundaryReached = queuePauseBoundaryReached(
+          const boundaryTransition = queuePauseBoundaryAfterTaskCompletion(
             previousQueue,
             state.queuePauseBoundary,
+            completedTask.id,
             state.queue
           );
-          state.queuePauseBoundary = boundaryReached
-            ? undefined
-            : adjustQueuePauseBoundary(
-              previousQueue,
-              state.queuePauseBoundary,
-              state.queue
-            );
-          if (boundaryReached) {
+          state.queuePauseBoundary = boundaryTransition.boundary;
+          if (boundaryTransition.reached) {
             // The divider is a stop line. Do not claim the first task below it.
             state.queueRunning = false;
           }

@@ -2,6 +2,7 @@ import type { CatalogModelEntry } from "../../types.js";
 import {
   h3Fl2vaAudioVae,
   h3Fl2vaInt4Model,
+  h3Int8ConvRotVideoVae,
   h3Fl2vaVideoVae,
   h3LivePreviewTae,
   h3Int4TextEncoder
@@ -31,7 +32,7 @@ export const minimaxH3Fl2vaInt4: CatalogModelEntry = {
     scan: {
       vram: "pruned INT4 · RAM offload",
       integrated: true,
-      components: [h3Fl2vaInt4Model, h3Int4TextEncoder, h3Fl2vaVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
+      components: [h3Fl2vaInt4Model, h3Int4TextEncoder, h3Fl2vaVideoVae, h3Int8ConvRotVideoVae, h3Fl2vaAudioVae, h3LivePreviewTae]
     }
   },
   locales: {

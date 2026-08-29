@@ -40,6 +40,27 @@ export function modelProfileStatusTone(profile) {
         return "warning";
     return "available";
 }
+export function modelComponentSatisfied(profile, component) {
+    if (component.found || component.optional === true)
+        return true;
+    return Boolean(component.alternativeGroup &&
+        profile.components.some((candidate) => candidate.alternativeGroup === component.alternativeGroup && candidate.found));
+}
+export function modelProfileMissingComponentCount(profile) {
+    const countedAlternativeGroups = new Set();
+    let count = 0;
+    for (const component of profile.components) {
+        if (modelComponentSatisfied(profile, component))
+            continue;
+        if (component.alternativeGroup) {
+            if (countedAlternativeGroups.has(component.alternativeGroup))
+                continue;
+            countedAlternativeGroups.add(component.alternativeGroup);
+        }
+        count += 1;
+    }
+    return count;
+}
 export function customNodeStatusTone(node, installPending = false) {
     if (installPending)
         return "warning";
@@ -72,7 +93,7 @@ export function promptModelStatus(settings, environmentScan, t = createTranslato
     }
     if (!profile.available) {
         const missing = profile.components
-            .filter((component) => !component.found)
+            .filter((component) => !modelComponentSatisfied(profile, component))
             .map((component) => component.expected)
             .join("、");
         return {

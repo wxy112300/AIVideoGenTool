@@ -40,7 +40,8 @@ import {
   deriveEnvironmentOverviewItems,
   deriveSettingsDependencyActionState,
   deriveSettingsDirectories,
-  deriveSettingsGpuState
+  deriveSettingsGpuState,
+  deriveH3VideoVaeState
 } from "./selectors";
 
 interface ImageQualityProfileOption {
@@ -297,6 +298,27 @@ export function renderSettingsPage(
   const attention = accelerationState.attention;
   const attentionTone = accelerationState.tone;
   const attentionStatus = accelerationState.status;
+  const h3VideoVaeState = deriveH3VideoVaeState(settings, environmentScan);
+  const h3VideoVaeTone = h3VideoVaeState.tone;
+  const h3VideoVaeStatusIcon = h3VideoVaeState.status === "missing"
+    ? "circle-alert"
+    : h3VideoVaeState.status === "waiting"
+      ? "circle-help"
+      : "circle-check";
+  const h3VideoVaeStatusLabel = h3VideoVaeState.status === "missing"
+    ? s("accel.unsupported")
+    : h3VideoVaeState.status === "waiting"
+      ? s("accel.pending")
+      : s("accel.ready");
+  const h3VideoVaeDetail = h3VideoVaeState.status === "missing"
+    ? s("accel.videoVaeMissing")
+    : h3VideoVaeState.status === "waiting"
+      ? s("accel.videoVaeWaiting")
+      : h3VideoVaeState.status === "fp16-only"
+        ? s("accel.videoVaeFp16Only")
+        : h3VideoVaeState.status === "int8-only"
+          ? s("accel.videoVaeInt8Only")
+          : s("accel.videoVaeBoth");
   const attentionInstallLines = viewModel.attentionAccelerationLog.split(/\r?\n/).filter(Boolean);
   const attentionInstallStage = attentionInstallLines.at(-1) ?? s("accel.preparing");
   const attentionStatusIcon = attentionStatus === "ready"
@@ -784,6 +806,26 @@ export function renderSettingsPage(
     pytorch: s("accel.modePytorchTip")
   };
   const selectedAttentionModeTip = attentionModeTips[settings.h3AttentionMode] ?? attentionModeTips.sage;
+  const h3VideoVaePanel = `
+      <section class="panel settings-section acceleration-section h3-video-vae-panel ${h3VideoVaeTone}">
+        <div class="section-heading">
+          <div><h2>${s("accel.videoVaeTitle")}</h2><span class="muted">${s("accel.videoVaeDescription")}</span></div>
+          <span class="model-availability ${h3VideoVaeTone}" role="status" aria-live="polite">${icon(h3VideoVaeStatusIcon)} ${h3VideoVaeStatusLabel}</span>
+        </div>
+        <div class="acceleration-strategy-grid">
+          <label class="acceleration-mode-field">${fieldLabelWithTip(s("accel.videoVaeMode"), s("accel.videoVaeModeTip"))}
+            <select id="h3-video-vae-mode" title="${escape(s("accel.videoVaeModeTip"))}" ${h3VideoVaeState.available ? "" : "disabled"}>
+              <option value="auto" ${h3VideoVaeState.selectedMode === "auto" ? "selected" : ""}>${s("accel.videoVaeAuto")}</option>
+              <option value="fp16" ${h3VideoVaeState.selectedMode === "fp16" ? "selected" : ""} ${h3VideoVaeState.fp16Available ? "" : "disabled"}>${s("accel.videoVaeFp16")}</option>
+              <option value="int8-convrot" ${h3VideoVaeState.selectedMode === "int8-convrot" ? "selected" : ""} ${h3VideoVaeState.int8ConvrotAvailable ? "" : "disabled"}>${s("accel.videoVaeInt8")}</option>
+            </select>
+          </label>
+          <div class="acceleration-summary">
+            <span class="acceleration-summary-icon">${icon(h3VideoVaeStatusIcon)}</span>
+            <div><strong>${escape(h3VideoVaeDetail)}</strong><span class="acceleration-fallback-tip">${escape(s("accel.videoVaeModeTip"))}</span></div>
+          </div>
+        </div>
+      </section>`;
   const accelerationPanel = `
     <section class="settings-panel acceleration-panel">
       <section class="panel settings-section acceleration-section acceleration-strategy-panel ${attentionTone}">
@@ -805,8 +847,8 @@ export function renderSettingsPage(
           </div>
         </div>
       </section>
+      ${h3VideoVaePanel}
     </section>`;
-
   const logsPanel = `
     <section class="settings-panel app-logs-panel">
       <section class="panel settings-section">

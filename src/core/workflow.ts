@@ -25,6 +25,7 @@ import {
   shouldApplySpectrum
 } from "./video-policy.js";
 import { normalizeMiniMaxH3ModelPatchChain } from "./h3-memory-workflow.js";
+import { h3VideoVaeFilename } from "./h3-video-vae.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
 
 export interface WorkflowContext {
@@ -1406,6 +1407,9 @@ export function renderWorkflow(
     OUTPUT_FILENAME: task.outputFilename.replace(/\.mp4$/i, ""),
     H3_DIFFUSION_MODEL: h3Assets?.diffusionModel ?? "",
     H3_TEXT_ENCODER: h3Assets?.textEncoder ?? "",
+    H3_VIDEO_VAE: isMiniMaxH3Model(task.modelId)
+      ? h3VideoVaeFilename(task.h3VideoVaeMode ?? "fp16")
+      : "",
     H3_TURBO_LORA: task.videoLoras?.find((lora) =>
       isH3TurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, task.modelId)
     )?.filename || videoLoraFilename(task.videoLoras, H3_TURBO_LORA_ID) ||

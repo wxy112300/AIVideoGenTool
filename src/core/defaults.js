@@ -88,6 +88,7 @@ export function createDefaultSettings() {
         imageOutputFormat: "png",
         vramReserveGb: 1,
         h3AttentionMode: "sage",
+        h3VideoVaeMode: "fp16",
         h3LivePreview: false,
         autoOffload: true,
         ltxExtensionModelProfile: "q3_k_m",
