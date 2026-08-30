@@ -52,6 +52,7 @@
 - 修复 Qwen3.6/Qwen3.8 多模态提示词增强在其他程序占用过多显存时静默退到 `n_gpu_layers=0` CPU 推理、用户只能感知到异常缓慢的问题：27B 模型在启动或提交前检查实时显存；空闲不足 20 GiB 或无法读取时，应用内弹窗会列出已用、总量、空闲和所需显存，并警告 CPU 的速度与系统内存代价。默认取消不会加载模型，只有本次明确确认才允许 CPU 推理，不保存为全局或会话默认；运行前校验同时复用已有依赖证据，仅刷新 ComfyUI 服务与节点注册状态。
 - 移除 ckpt850 EMA Turbo LoRA 的新任务入口和环境扫描；因画面质量不稳定，旧队列与历史记录仍保留读取兼容，但新任务不再允许使用。
 - 撤回 H3 Attention 的实验性 SageAttention 2++ FP8 选项：当前 Windows RTX 4090/SM89 环境的真实最小任务会使 ComfyUI 进程退出，且上游未提供 Windows 支持保证。设置、旧队列与历史重试中已保存的 2++ 值会迁移到 SageAttention CUDA FP16；稳定的 CUDA FP16 → Triton FP16 → PyTorch 降级链保持不变。
+- Spectrum MiniMax H3 推荐版本从 `v0.2.20` 更新为 `v0.2.22`：`v0.2.21` 兼容 ComfyUI 0.34+ PDD H3 FinalLayer，`v0.2.22` 新增原生 SEEDS-2/SEEDS-3 与 SA-Solver 支持；现有 H3 工作流、参数和既有互操作不变。
 - Spectrum MiniMax H3 推荐版本从 `v0.2.17` 更新为 `v0.2.20`：`v0.2.18–v0.2.20` 增加并修复可选 RefDelta Solver v0.2.0+ API-v1 互操作、嵌套 custom-node 发现和首次 ER-SDE step provenance；现有 H3 工作流、参数和既有互操作不变，RefDelta 仍不属于本应用硬依赖。
 
 ## 0.51.2 — 2026-08-27

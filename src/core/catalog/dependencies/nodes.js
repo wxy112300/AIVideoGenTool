@@ -1,7 +1,7 @@
 export const SPECTRUM_MINIMUM_VERSION = "0.2.1";
 export const SPECTRUM_TURBO_MINIMUM_VERSION = "0.2.6";
 export const SPECTRUM_MODEL_AWARE_MINIMUM_VERSION = "0.2.7";
-export const SPECTRUM_RECOMMENDED_VERSION = "0.2.20";
+export const SPECTRUM_RECOMMENDED_VERSION = "0.2.22";
 export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
 export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.1";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
@@ -299,11 +299,11 @@ const customNodeDefinitions = [{
         minimumVersion: SPECTRUM_MINIMUM_VERSION,
         recommendedVersion: SPECTRUM_RECOMMENDED_VERSION,
         compatibilityEvidence: [{
-                verifiedAt: "2026-08-28",
-                sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.20",
-                note: "v0.2.18–v0.2.20 增加并修复可选 MiniMax H3 RefDelta Solver v0.2.0+ API-v1 互操作：保留 actual/forecast/replay provenance，传递经过风险门控的随机增量，修复嵌套 custom-node 命名空间发现和首次 ER-SDE step provenance 错位；现有原生 H3、Turbo、Continuum、Diff-Aid、Untwisting RoPE 与工作流参数不变。",
+                verifiedAt: "2026-08-30",
+                sourceUrl: "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3/releases/tag/v0.2.22",
+                note: "v0.2.18–v0.2.20 增加并修复可选 MiniMax H3 RefDelta Solver v0.2.0+ API-v1 互操作；v0.2.21 兼容 ComfyUI 0.34+ PDD H3 FinalLayer 新接口；v0.2.22 新增原生 SEEDS-2/SEEDS-3 与 SA-Solver 的状态感知 forecast，并对不支持的随机校正配置安全回退。现有 Euler、RES、ER-SDE、RefDelta、Continuum、Diff-Aid、Untwisting RoPE 与工作流参数不变。",
                 comfyUi: "0.33.1",
-                commit: "ce9d35e",
+                commit: "c7942d1",
                 workflowIds: ["minimax_h3_i2v", "minimax_h3_r2v"],
                 checks: ["static"]
         }],

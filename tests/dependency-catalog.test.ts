@@ -101,11 +101,11 @@ describe("dependency catalog", () => {
     ]));
     expect(customNodeDefinition("spectrum-minimax-h3")).toMatchObject({
       minimumVersion: "0.2.1",
-      recommendedVersion: "0.2.20"
+      recommendedVersion: "0.2.22"
     });
     expect(customNodeDefinition("spectrum-minimax-h3")?.compatibilityEvidence?.[0]).toMatchObject({
       comfyUi: "0.33.1",
-      commit: "ce9d35e",
+      commit: "c7942d1",
       checks: ["static"]
     });
     expect(customNodeDefinition("h3-optimizations")).toMatchObject({
