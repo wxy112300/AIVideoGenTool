@@ -55,6 +55,7 @@ export const promptModelCapabilityOrder = [
   "qwen/qwen3.6-27b-uncensored-q4",
   "qwen/qwen3.8-27b-uncensored-q4",
   "community/gemma-4-26b-a4b-uncensored-q4",
+  "community/gemma-4-26b-a4b-unseen-nsfw-q4",
   "lightx2v/minimax-h3-prompt-rewriter-8b",
   "community/gemma-4-12b-uncensored-q4",
   "google/gemma-4-12b-q5",
@@ -165,6 +166,20 @@ export const managedPromptModelDefinitions: readonly ManagedPromptModelDefinitio
     description: "Uncensored 质量上限档；MoE 每次只激活约 4B 参数，加载前仍需释放其它模型。",
     vram: "Q4_K_M · MoE",
     licenseNote: "社区衍生模型；使用前请阅读模型卡与 Gemma 使用条款。建议仅在 24GB 显卡上使用标准上下文。"
+  },
+  {
+    id: "community/gemma-4-26b-a4b-unseen-nsfw-q4",
+    name: "Gemma 4 26B-A4B UNSEEN NSFW Q4 · Uncensored",
+    source: "Jommarn/UNSEEN_Gemma_4_26B_NSFW-GGUF",
+    revision: "d41037a37a07118ab14e575c592b4ee0f08ebd3c",
+    modelFilename: "UNSEEN_Gemma_4_26B_NSFW_Q4_K_M.gguf",
+    mmprojFilename: "mmproj-gemma4-vision-q4_0.gguf",
+    targetDirectory: "LLM/gemma-4-26b-a4b-unseen-nsfw-q4",
+    contextSize: 16384,
+    badge: "NSFW · Uncensored · MoE Q4 · 4090",
+    description: "面向成人与敏感图像分析的 Gemma 4 26B-A4B 视觉档位；4090 24GB 使用 Q4_K_M 主模型、Q4 vision projector 和标准 16K 上下文。",
+    vram: "Q4_K_M 约 16.8 GB + Q4 vision projector 约 0.6 GB；RTX 4090 24GB 标准 16K",
+    licenseNote: "社区 NSFW 衍生模型；使用前请阅读模型卡、Apache-2.0 声明与 Gemma 使用条款。该档位更偏向显式内容描述，加载前请释放其它 GPU 模型并审核输出。"
   },
   {
     id: "google/gemma-4-12b-q5",

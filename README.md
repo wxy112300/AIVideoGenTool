@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.54.1**。创建页与历史详情会显示 H3 输入素材分辨率，并在创建提交区显示预估 Token、历史生成参数中显示实际 Token。H3 入队会复用已有环境扫描缓存，在冷启动时将依赖检查延后到任务准备阶段，同时保留输入图片归档和校验；设置页已完成 ComfyUI 环境、节点与依赖、应用与路径的职责拆分；提示词增强新增 H3 角色尺度语义保护，可在保留参考角色身份、年龄、比例、姿态和行为的同时描述巨大化/缩小化场景；“影视细节扩写”按动作因果自由分配时间，不再强制固定数量和等距时间段，并把篇幅优先用于动作、反应、镜头路径和连续性。队列支持折叠操作菜单、提升到队首、随机 Seed，以及可拖动且支持任务跨线移动的批次停止线。性能页支持 H3 Attention 后端选择及 MiniMax H3 视频 VAE 的自动、FP16/实验性 INT8 ConvRot 选择；VAE 设置会在下一条尚未开始的 H3 任务领取时生效，并按实际扫描结果禁用不可用选项。H3 Memory Optimization 暂时从创建与队列执行中隐藏并强制关闭，设置页仍保留可选的上游节点安装入口；内置核心和工作流 JSON 仍由应用内部管理。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.55.0**。创建页与历史详情会显示 H3 输入素材分辨率，并在创建提交区显示预估 Token、历史生成参数中显示实际 Token。H3 入队会复用已有环境扫描缓存，在冷启动时将依赖检查延后到任务准备阶段，同时保留输入图片归档和校验；设置页已完成 ComfyUI 环境、节点与依赖、应用与路径的职责拆分；提示词增强新增 H3 角色尺度语义保护，可在保留参考角色身份、年龄、比例、姿态和行为的同时描述巨大化/缩小化场景；“影视细节扩写”按动作因果自由分配时间，不再强制固定数量和等距时间段，并把篇幅优先用于动作、反应、镜头路径和连续性。提示词模型新增 Gemma 4 26B-A4B UNSEEN NSFW Q4 档位，使用匹配的 Q4 vision projector 和 16K 标准上下文，面向 RTX 4090 24GB 的成人/敏感图像描述。队列支持折叠操作菜单、提升到队首、随机 Seed，以及可拖动且支持任务跨线移动的批次停止线。性能页支持 H3 Attention 后端选择及 MiniMax H3 视频 VAE 的自动、FP16/实验性 INT8 ConvRot 选择；VAE 设置会在下一条尚未开始的 H3 任务领取时生效，并按实际扫描结果禁用不可用选项。H3 Memory Optimization 暂时从创建与队列执行中隐藏并强制关闭，设置页仍保留可选的上游节点安装入口；内置核心和工作流 JSON 仍由应用内部管理。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -14,7 +14,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 - 本地队列：单重型 GPU 阶段执行，支持暂停/取消、阶段进度、实时预览和性能摘要。
 - 作品历史：图片和视频分区、版本管理、完整提交参数、文件操作和继续创作。
 - 环境管理：离线扫描多个 ComfyUI 安装、核心/数据目录、模型、节点、工作流和 Python 环境。
-- 本地提示词辅助：通过所选 ComfyUI 运行 Qwen3.5、Qwen3.6/Qwen3.8 MultiModal、Qwen3-VL 8B + H3 Prompt Rewriter LoRA 和 MiniMax H3 Prompt Writer/Gemma。
+- 本地提示词辅助：通过所选 ComfyUI 运行 Qwen3.5、Qwen3.6/Qwen3.8 MultiModal、Qwen3-VL 8B + H3 Prompt Rewriter LoRA，以及 MiniMax H3 Prompt Writer 的 Gemma 4 通用/UNSEEN NSFW GGUF。
 
 ## 支持范围
 
@@ -26,7 +26,7 @@ Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创
 | 图片处理 | HiDream-O1-Image、Z-Image / Z-Image-Turbo、Qwen-Image-Edit-2511、FLUX.2 Klein 4B |
 | 视频增强 | SeedVR2、FlashVSR、Real-ESRGAN、RIFE 插帧 |
 | H3 LoRA | LightX2V Turbo v1.1（768p 4-step）/ v1.0（8-step）、可选 v4 step600（6–8-step 质量 Turbo）、Camera Motion、Ref2V Turbo、Realism People、AfterMidnight Ref2VA NSFW |
-| Prompt | Qwen3.5 2B/4B、Qwen3.6/Qwen3.8 27B Q4 MultiModal、Qwen3-VL 8B + MiniMax H3 Prompt Rewriter LoRA、MiniMax H3 Prompt Writer 的 Gemma 4 GGUF |
+| Prompt | Qwen3.5 2B/4B、Qwen3.6/Qwen3.8 27B Q4 MultiModal、Qwen3-VL 8B + MiniMax H3 Prompt Rewriter LoRA、MiniMax H3 Prompt Writer 的 Gemma 4 通用/UNSEEN NSFW GGUF |
 
 表中的“支持”表示相关 UI、队列快照和 ComfyUI 工作流已经纳入当前集成范围。实际可用性仍取决于模型文件、节点版本、Python 依赖、PyTorch/CUDA 运行时和硬件资源；各组合应以设置页检查结果及真实最小任务为准。H3 768p 对运行时兼容性较为敏感，不匹配的 CUDA 扩展可能回退到通用实现，从而增加显存占用或降低执行性能。
 

@@ -37,6 +37,12 @@ const managedPromptEnglish = {
         description: "The high-quality uncensored profile; only about 4B MoE parameters activate per step, but other models should still be released before loading.",
         licenseNote: "Community derivative. Read the model card and Gemma terms before use; use standard context on 24 GB GPUs."
     },
+    "community/gemma-4-26b-a4b-unseen-nsfw-q4": {
+        name: "Gemma 4 26B-A4B UNSEEN NSFW Q4 · Uncensored",
+        badge: "NSFW · MoE Q4 · 4090",
+        description: "An NSFW-oriented Gemma 4 26B-A4B multimodal profile for detailed adult-image analysis and explicit-scene captioning. The 24 GB RTX 4090 path uses a Q4_K_M model, quantized vision projector, and standard 16K context.",
+        licenseNote: "Community NSFW derivative; read its model card, Apache-2.0 notice, and Gemma terms. Release other GPU models before loading and review outputs."
+    },
     "google/gemma-4-12b-q5": {
         name: "Gemma 4 12B Q5 · Community standard",
         badge: "Community standard · Q5",
@@ -80,6 +86,12 @@ const managedPromptTraditional = {
         badge: "Uncensored · MoE Q4",
         description: "Uncensored 品質上限設定；MoE 每次只啟用約 4B 參數，載入前仍需釋放其他模型。",
         licenseNote: "社群衍生模型；使用前請閱讀模型卡與 Gemma 使用條款。建議僅在 24GB 顯示卡上使用標準上下文。"
+    },
+    "community/gemma-4-26b-a4b-unseen-nsfw-q4": {
+        name: "Gemma 4 26B-A4B UNSEEN NSFW Q4 · Uncensored",
+        badge: "NSFW · MoE Q4 · 4090",
+        description: "面向成人與敏感圖像分析的 Gemma 4 26B-A4B 多模態設定；24GB RTX 4090 路徑使用 Q4_K_M 主模型、量化視覺投影檔與標準 16K 上下文。",
+        licenseNote: "社群 NSFW 衍生模型；請閱讀模型卡、Apache-2.0 聲明與 Gemma 使用條款。載入前請釋放其他 GPU 模型並審核輸出。"
     },
     "google/gemma-4-12b-q5": {
         name: "Gemma 4 12B Q5 · 社群標準設定",

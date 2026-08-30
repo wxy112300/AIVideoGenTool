@@ -8,6 +8,12 @@
 
 ## Unreleased
 
+## 0.55.0 — 2026-08-30
+
+- 新增 `Gemma 4 26B-A4B UNSEEN NSFW Q4 · Uncensored` 提示词模型档位：登记 Jommarn 的固定 GGUF revision，使用匹配的 `mmproj-gemma4-vision-q4_0.gguf`，复用 H3 Prompt Writer 的模型生命周期、图片/视频参考输入、队列释放和历史兼容路径。
+- 将 UNSEEN NSFW 档位放在 26B Gemma 通用档之后、8B 专用重写器之前；设置页显示 RTX 4090 24GB、Q4 projector 和标准 16K 的硬件建议，避免把 NSFW 专项模型误标为通用能力更高。
+- 修正 H3 Prompt Writer 缺失模型提示，使其显示登记档位实际匹配的 projector 文件名，而不是固定提示 `mmproj-BF16.gguf`。
+
 ## 0.54.1 — 2026-08-30
 
 - 重构 H3「影视细节扩写」：以动作信息密度和因果链为优先，参考素材只作为一次性锚点，额外篇幅优先用于动作、角色反应、镜头路径、连续性和有效声音，减少静态复述与装饰性氛围填充。

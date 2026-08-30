@@ -7,13 +7,14 @@ import {
   isComfyMultimodalPromptModel,
   isQwenVlPeftPromptModel,
   promptModelBackend,
+  promptModelCapabilityOrderValue,
   promptModelSupportsImageEdit,
   promptRuntimeForSettings
 } from "../src/core/prompt-models.js";
 
 describe("prompt model runtime selection", () => {
   it("routes all selectable prompt models to a real backend", () => {
-    expect(managedPromptModelDefinitions).toHaveLength(7);
+    expect(managedPromptModelDefinitions).toHaveLength(8);
     for (const model of managedPromptModelDefinitions) {
       expect(promptModelBackend(model.id)).toBe(
         model.id === "lightx2v/minimax-h3-prompt-rewriter-8b"
@@ -75,8 +76,20 @@ describe("prompt model runtime selection", () => {
       modelFilename: "gemma-4-26B-A4B-it-ultra-uncensored-heretic-Q4_K_M.gguf",
       mmprojFilename: "gemma-4-26B-A4B-it-mmproj-BF16.gguf"
     });
+    expect(managedPromptModel("community/gemma-4-26b-a4b-unseen-nsfw-q4")).toMatchObject({
+      revision: "d41037a37a07118ab14e575c592b4ee0f08ebd3c",
+      modelFilename: "UNSEEN_Gemma_4_26B_NSFW_Q4_K_M.gguf",
+      mmprojFilename: "mmproj-gemma4-vision-q4_0.gguf",
+      targetDirectory: "LLM/gemma-4-26b-a4b-unseen-nsfw-q4",
+      contextSize: 16384
+    });
     expect(isGemmaPromptModel("community/gemma-4-12b-uncensored-q4")).toBe(true);
     expect(isGemmaPromptModel("community/gemma-4-26b-a4b-uncensored-q4")).toBe(true);
+    expect(isGemmaPromptModel("community/gemma-4-26b-a4b-unseen-nsfw-q4")).toBe(true);
+    expect(promptModelCapabilityOrderValue("community/gemma-4-26b-a4b-uncensored-q4"))
+      .toBeGreaterThan(promptModelCapabilityOrderValue("community/gemma-4-26b-a4b-unseen-nsfw-q4"));
+    expect(promptModelCapabilityOrderValue("community/gemma-4-26b-a4b-unseen-nsfw-q4"))
+      .toBeGreaterThan(promptModelCapabilityOrderValue("lightx2v/minimax-h3-prompt-rewriter-8b"));
   });
 
   it("routes Qwen3.6 through the ComfyUI multimodal node without treating it as Gemma", () => {

@@ -1193,6 +1193,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "community/gemma-4-e4b-unconcerned-q5": "RTX 3060 12GB 以上 · 系统 RAM 16GB 以上",
     "community/gemma-4-12b-uncensored-q4": "RTX 3060/4070 12GB 以上 · 系统 RAM 24GB 以上",
     "community/gemma-4-26b-a4b-uncensored-q4": "RTX 3090/4090 24GB 以上",
+    "community/gemma-4-26b-a4b-unseen-nsfw-q4": "RTX 4090 24GB 推荐 · Q4 projector · 标准 16K",
     "google/gemma-4-12b-q5": "RTX 4080/4090 16GB 以上 · 系统 RAM 24GB 以上",
     "qwen/qwen3.8-27b-uncensored-q4": "RTX 4090 24GB 以上 · 系统 RAM 32GB 以上",
     "lightx2v/minimax-h3-prompt-rewriter-8b": "RTX 4090 24GB 推荐 · 4-bit 约 8–10GB 显存 · 系统 RAM 32GB 以上"
@@ -1227,6 +1228,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "community/gemma-4-e4b-unconcerned-q5": "RTX 3060 12GB 以上 · 系統 RAM 16GB 以上",
     "community/gemma-4-12b-uncensored-q4": "RTX 3060/4070 12GB 以上 · 系統 RAM 24GB 以上",
     "community/gemma-4-26b-a4b-uncensored-q4": "RTX 3090/4090 24GB 以上",
+    "community/gemma-4-26b-a4b-unseen-nsfw-q4": "RTX 4090 24GB 推薦 · Q4 projector · 標準 16K",
     "google/gemma-4-12b-q5": "RTX 4080/4090 16GB 以上 · 系統 RAM 24GB 以上",
     "qwen/qwen3.8-27b-uncensored-q4": "RTX 4090 24GB 以上 · 系統 RAM 32GB 以上",
     "lightx2v/minimax-h3-prompt-rewriter-8b": "RTX 4090 24GB 推薦 · 4-bit 約 8–10GB 顯存 · 系統 RAM 32GB 以上"
@@ -1261,6 +1263,7 @@ const modelHardwareRecommendations: Record<UiLocale, Record<string, string>> = {
     "community/gemma-4-e4b-unconcerned-q5": "RTX 3060 12GB or higher · System RAM 16GB or higher",
     "community/gemma-4-12b-uncensored-q4": "RTX 3060/4070 12GB or higher · System RAM 24GB or higher",
     "community/gemma-4-26b-a4b-uncensored-q4": "RTX 3090/4090 24GB or higher",
+    "community/gemma-4-26b-a4b-unseen-nsfw-q4": "RTX 4090 24GB recommended · Q4 projector · standard 16K",
     "google/gemma-4-12b-q5": "RTX 4080/4090 16GB or higher · System RAM 24GB or higher",
     "qwen/qwen3.8-27b-uncensored-q4": "RTX 4090 24GB or higher · System RAM 32GB or higher",
     "lightx2v/minimax-h3-prompt-rewriter-8b": "RTX 4090 24GB recommended · 4-bit uses about 8–10GB VRAM · System RAM 32GB or higher"

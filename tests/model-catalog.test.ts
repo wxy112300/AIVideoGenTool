@@ -48,7 +48,7 @@ describe("model catalog", () => {
   });
 
   it("covers every model category used by environment scanning", () => {
-    expect(modelCatalog.list("prompt")).toHaveLength(9);
+    expect(modelCatalog.list("prompt")).toHaveLength(10);
     expect(modelCatalog.list("image").map((entry) => entry.definition.id)).toEqual([
       "omnigen2",
       "hidream-o1-image",

@@ -187,7 +187,7 @@ export function promptWriterModelForSelection(
   );
   if (!model) {
     throw new Error(
-      `ComfyUI 尚未在 models/LLM 中找到 ${definition.modelFilename}。请将 GGUF 与匹配的 mmproj-BF16.gguf 放在同一个独立子目录。`
+      `ComfyUI 尚未在 models/LLM 中找到 ${definition.modelFilename}。请将 GGUF 与匹配的 ${definition.mmprojFilename} 放在同一个独立子目录。`
     );
   }
   if (model.runtime_ready === false) {
