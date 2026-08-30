@@ -19,6 +19,25 @@ describe("H3 camera intent guard", () => {
     expect(intent.sourceClauses[0]).toContain("inside the room");
   });
 
+  it("locks a persistent low-angle tracking shot to the viewpoint camera", () => {
+    const source = "Low Angle tracking shot follows the girl continuously from below.";
+    const intent = extractH3CameraIntent(source);
+
+    expect(intent.motionKinds).toContain("track");
+    expect(intent.angleKinds).toEqual(["low-angle"]);
+    expect(intent.targetAnchors).toContain("girl");
+    expect(h3CameraIntentInstruction(source)).toContain("Viewpoint-angle lock");
+    expect(h3CameraIntentInstruction(source)).toContain("Tracking lock");
+    expect(auditH3CameraIntent(
+      source,
+      "integrated_multimodal_description: [Shot 1] The viewpoint camera uses a low-angle tracking shot following the girl from below."
+    ).passed).toBe(true);
+    expect(auditH3CameraIntent(
+      source,
+      "integrated_multimodal_description: [Shot 1] The viewpoint camera uses an eye-level tracking shot following the girl."
+    ).missing).toContain("camera-angle");
+  });
+
   it("does not mistake a physical camera prop for a viewpoint instruction", () => {
     const intent = extractH3CameraIntent(
       "A woman holds a handheld camera while a security camera is visible on the wall."

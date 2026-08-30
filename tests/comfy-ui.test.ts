@@ -420,6 +420,20 @@ describe("native Qwen prompt workflow", () => {
     expect(instruction).toContain("I2VA task rule");
   });
 
+  it("passes the detailed cinematic preset into the free-timing contract", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "A runner crosses the street and turns back toward the camera.",
+      modelId: "minimax_h3_i2va",
+      h3PromptMode: "I2VA",
+      h3PromptPreset: "detailed-cinematic",
+      h3DurationSeconds: 15
+    });
+
+    expect(instruction).toContain("flexible causal timeline");
+    expect(instruction).toContain("a fixed beat count or equal-time grid");
+    expect(instruction).not.toContain("Plan 6 sequential development beats");
+  });
+
   it("keeps the official reference rules separate from editable presets", () => {
     const baseline = h3OfficialPromptBaseline("R2V");
 

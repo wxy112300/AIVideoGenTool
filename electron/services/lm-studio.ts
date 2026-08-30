@@ -26,7 +26,9 @@ import {
   h3DurationPlan,
   h3EffectiveDurationSeconds as h3EffectiveDurationNumber,
   h3ExplicitConstraintSummary,
+  h3PromptPriorityInstruction,
   h3PromptExpansionTokenBudget,
+  h3ShotPolicyForPrompt,
   inferH3PromptMode,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
@@ -273,30 +275,23 @@ async function nativeUserContent(
   }
 }
 
-function h3VisionSystemPrompt(
-  mode: H3PromptMode,
-  preset: H3PromptPreset = "official-storyboard",
-  presetText = defaultH3PromptPresets[preset]
-): string {
-  const effectivePreset = h3PromptPresetForMode(mode, preset);
-  const effectivePresetText = effectivePreset === preset
-    ? presetText
-    : defaultH3PromptPresets[effectivePreset];
+function h3VisionSystemPrompt(mode: H3PromptMode, preset: H3PromptPreset): string {
   return [
     "You are a MiniMax H3 visual prompt editor, not a generic creative copywriter.",
     "The user may provide a short idea in any language. Expand it into the required H3 fields without asking the user to draft the sections.",
-    h3SmallModelPromptContract(mode, effectivePreset),
-    `Selected H3 preset (low-priority style hint only): ${effectivePreset}.\n${effectivePresetText.trim() || defaultH3PromptPresets[effectivePreset]}`
+    h3SmallModelPromptContract(mode, preset)
   ].join("\n");
 }
 
-function h3VisionUserPrompt(request: EnhanceRequest): string {
+function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string {
   const mode = h3PromptModeForRequest(request);
   const preset = h3PromptPresetForMode(mode, request.h3PromptPreset);
   const duration = h3EffectiveDurationSeconds(request.h3DurationSeconds);
   const referenceContext = request.referenceContext?.trim();
   const parsedPrompt = parsePromptAnnotations(request.prompt);
   const sourcePrompt = parsedPrompt.prompt.trim();
+  const shotPolicy = h3ShotPolicyForPrompt(request.prompt);
+  const priorityInstruction = h3PromptPriorityInstruction(shotPolicy);
   const hardConstraints = h3ExplicitConstraintSummary(sourcePrompt);
   const contentLocks = h3ContentLockInstruction(sourcePrompt);
   const cameraIntent = h3CameraIntentInstruction(sourcePrompt);
@@ -307,24 +302,25 @@ function h3VisionUserPrompt(request: EnhanceRequest): string {
   ].filter(Boolean).join("\n");
   const scaleInstruction = h3ScalePreservationInstruction(sourcePrompt, mode, scaleContext);
   return [
-    `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
-    h3DurationPlan(mode, Number(duration)),
-    `H3 output preset: ${preset}.`,
-    ...(scaleInstruction ? [scaleInstruction] : []),
-    mode === "T2VA"
-      ? "No image reference is attached; the following user intent is the source material for the T2VA timeline."
-      : "The attached image(s) are the reference material in the order described below.",
-    ...(referenceContext ? [`Reference map:\n${referenceContext}`] : []),
+    priorityInstruction,
+    ...(annotationInstruction ? [annotationInstruction] : []),
     ...(isH3ReferenceAutoPrompt(request)
         ? [h3AutoPromptInstruction(request)]
         : [
            "User request (preserve its concrete words and meaning):",
            sourcePrompt
          ]),
-    ...(annotationInstruction ? [annotationInstruction] : []),
     ...(cameraIntent ? [cameraIntent] : []),
     ...(hardConstraints ? [hardConstraints] : []),
-    ...(contentLocks ? [contentLocks] : [])
+    ...(contentLocks ? [contentLocks] : []),
+    ...(scaleInstruction ? [scaleInstruction] : []),
+    `H3 mode: ${mode}. Effective duration: ${duration} seconds.`,
+    mode === "T2VA"
+      ? "No image reference is attached; the user intent above is the source material for the T2VA timeline."
+      : "The attached image(s) are the reference material in the order described below.",
+    ...(referenceContext ? [`Reference map:\n${referenceContext}`] : []),
+    h3DurationPlan(mode, Number(duration), preset),
+    `Selected H3 preset (low-priority style hint only): ${preset}.\n${presetText.trim()}`
   ].filter(Boolean).join("\n\n");
 }
 
@@ -377,10 +373,16 @@ export async function buildLmStudioChatRequest(
         h3Preset
       ),
       messages: [
-        { role: "system", content: h3VisionSystemPrompt(h3Mode, h3Preset, settings.h3PromptPresets[h3Preset]) },
+        { role: "system", content: h3VisionSystemPrompt(h3Mode, h3Preset) },
         {
           role: "user",
-          content: await nativeUserContent(h3VisionUserPrompt(request), imagePaths)
+          content: await nativeUserContent(
+            h3VisionUserPrompt(
+              request,
+              settings.h3PromptPresets[h3Preset] || defaultH3PromptPresets[h3Preset]
+            ),
+            imagePaths
+          )
         }
       ]
     };

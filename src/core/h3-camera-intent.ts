@@ -12,26 +12,37 @@ export type H3CameraMotionKind =
   | "static"
   | "generic";
 
+export type H3CameraAngleKind =
+  | "low-angle"
+  | "high-angle"
+  | "eye-level"
+  | "overhead"
+  | "worm's-eye"
+  | "bird's-eye";
+
 export interface H3CameraIntent {
   hasViewpointCamera: boolean;
   hasPhysicalCamera: boolean;
   sourceClauses: string[];
   physicalCameraClauses: string[];
   motionKinds: H3CameraMotionKind[];
+  angleKinds: H3CameraAngleKind[];
+  angleClauses: string[];
   targetAnchors: string[];
   requiresViewpoint: boolean;
   requiresSpatial: boolean;
   requiresTarget: boolean;
+  requiresAngle: boolean;
 }
 
 export interface H3CameraIntentAudit {
   required: boolean;
   passed: boolean;
-  missing: Array<"camera-movement" | "viewpoint" | "spatial" | "camera-target">;
+  missing: Array<"camera-movement" | "viewpoint" | "spatial" | "camera-target" | "camera-angle">;
   sourceClauses: string[];
 }
 
-const cameraMentionPattern = /(?:\bcameras?\b|\bcamcorder\b|\blens\b|\bPOV\b|\bpoint[- ]of[- ]view\b|\bviewpoint\b|镜头|相机|摄像机|摄影机|机位|视角)/iu;
+const cameraMentionPattern = /(?:\bcameras?\b|\bcamcorder\b|\blens\b|\bPOV\b|\bpoint[- ]of[- ]view\b|\bviewpoint\b|\b(?:shot|framing|composition|perspective)\b|\b(?:low|high|eye[- ]level|overhead|worm'?s[- ]eye|bird'?s[- ]eye)\s*[- ]?(?:angle|shot|framing)\b|镜头|相机|摄像机|摄影机|机位|视角|低机位|高机位|低角度镜头|高角度镜头|仰视镜头|俯视镜头)/iu;
 
 const physicalCameraPattern = /(?:\b(?:handheld|digital|film|video|phone|smartphone|security|surveillance|web|webcam|visible|physical)\s+camera\b|\b(?:camera\s+device|camera\s+operator|camera\s+rig|camera\s+lens)\b|\b(?:CCTV)\b|\b(?:a|an)\s+(?:handheld\s+|digital\s+|film\s+|video\s+|phone\s+|security\s+|surveillance\s+)?camera\b[^.!?;\n]{0,45}\b(?:in|on|near|beside|behind|inside|outside|visible|background|shot|frame)\b|(?:相机|摄像机|摄影机)(?:设备|机身|镜头|支架)|镜头盖)/iu;
 
@@ -50,6 +61,33 @@ const cameraOperatorPattern = /(?:\bcamera\s+operator\b|\b(?:cameraman|camerawom
 const nonOperatorCameraMotionPattern = /(?:^|[\s,])(?:the\s+)?(?:camera|lens|viewpoint)\b(?!\s+operator\b)[^.!?;\n]{0,90}\b(?:move|moves|moving|rotate|rotates|rotating|pan|pans|panning|tilt|tilts|tilting|track|tracks|tracking|follow|follows|following|push|pull|zoom|zooms|arc|arcs|orbit|orbits|roll|rolls|captures?|records?|films?|shoots?)\b/iu;
 
 const spatialSignalPattern = /(?:\b(?:inside|indoors|interior|within|outside|outdoors|exterior|outward|through|behind|in\s+front\s+of|above|below|under|over|left|right|front|back|from\s+inside|from\s+outside|clockwise|counterclockwise|anticlockwise)\b|(?:内部|里面|内侧|室内|外部|外面|外侧|向外|穿过|透过|后方|前方|上方|下方|左侧|右侧|顺时针|逆时针|从[^。！？;\n]{0,30}(?:里面|内部|外面|外部)))/iu;
+
+const cameraAnglePatterns: Array<{ kind: H3CameraAngleKind; pattern: RegExp }> = [
+  {
+    kind: "low-angle",
+    pattern: /(?:\b(?:low[- ]angle|low[- ]view|from\s+(?:a\s+)?low\s+angle|from\s+below|below[- ]eye[- ]level|(?:low|below)[- ]camera)\b|低机位|低角度(?:镜头|视角|机位)?|仰视(?:镜头|视角)?|从下方|从下往上)/iu
+  },
+  {
+    kind: "high-angle",
+    pattern: /(?:\b(?:high[- ]angle|high[- ]view|from\s+(?:a\s+)?high\s+angle|from\s+above|above[- ]eye[- ]level|high[- ]camera)\b|高机位|高角度(?:镜头|视角|机位)?|俯视(?:镜头|视角)?|从上方|从上往下)/iu
+  },
+  {
+    kind: "eye-level",
+    pattern: /(?:\b(?:eye[- ]level|eye[- ]height|at\s+eye\s+(?:level|height)|straight[- ]on)\b|平视|视线高度|与眼睛同高)/iu
+  },
+  {
+    kind: "overhead",
+    pattern: /(?:\b(?:overhead|top[- ]down|directly\s+above|bird'?s[- ]eye\s+overhead)\b|俯拍|正上方|垂直俯视)/iu
+  },
+  {
+    kind: "worm's-eye",
+    pattern: /(?:\bworm'?s[- ]eye\b|虫视|极低机位)/iu
+  },
+  {
+    kind: "bird's-eye",
+    pattern: /(?:\bbird'?s[- ]eye\b|鸟瞰|鸟眼视角)/iu
+  }
+];
 
 const motionPatterns: Array<{ kind: H3CameraMotionKind; pattern: RegExp }> = [
   { kind: "arc", pattern: /(?:\barc(?:s|ing)?\b|\borbit(?:s|ing|al)?\b|\bcircl(?:e|es|ing)\b|\brotate(?:s|d|ing)?\b[^.!?;\n]{0,50}\baround\b|\brevolve(?:s|d|ing)?\b[^.!?;\n]{0,50}\baround\b|环绕|围绕|绕着|弧线运动)/iu },
@@ -84,10 +122,21 @@ function motionKindsFor(clause: string): H3CameraMotionKind[] {
   return kinds;
 }
 
+function cameraAngleKindsFor(clause: string): H3CameraAngleKind[] {
+  return cameraAnglePatterns
+    .filter(({ pattern }) => pattern.test(clause))
+    .map(({ kind }) => kind);
+}
+
 function cameraTargetsFor(clause: string): string[] {
   const targets: string[] = [];
   const englishTarget = /\b(?:around|orbit(?:s|ing)?\s+around|circle(?:s|ing)?\s+around|revolve(?:s|ing)?\s+around)\s+(?:(?:the|a|an)\s+)?([^,.;!?]+?)(?=\s+(?:showing|revealing|while|as|from|looking|and)\b|[,.;!?]|$)/iu.exec(clause)?.[1]?.trim();
   if (englishTarget) targets.push(englishTarget);
+  const followMatch = /\b(?:follow(?:s|ing)?|track(?:s|ing)?)\s+(?:(?:the|a|an)\s+)?([^,.;!?]+?)(?=\s+(?:while|as|from|toward|towards|and|at|with|continuously|steadily|smoothly)\b|[,.;!?]|$)/iu.exec(clause)?.[1]?.trim();
+  const followTarget = followMatch && !/^(?:shot|movement|path)\b/iu.test(followMatch)
+    ? followMatch
+    : /\bfollow(?:s|ing)?\s+(?:(?:the|a|an)\s+)?([^,.;!?]+?)(?=\s+(?:while|as|from|toward|towards|and|at|with|continuously|steadily|smoothly)\b|[,.;!?]|$)/iu.exec(clause)?.[1]?.trim();
+  if (followTarget && !/^(?:shot|movement|path)\b/iu.test(followTarget)) targets.push(followTarget);
   const chineseTarget = /(?:环绕|围绕|绕着)\s*([^，。！？；;,\s]{1,20})/u.exec(clause)?.[1]?.trim();
   if (chineseTarget) targets.push(chineseTarget);
   return [...new Set(targets)].slice(0, 4);
@@ -97,10 +146,12 @@ function isViewpointCameraClause(clause: string): boolean {
   const hasMotion = cameraMotionPattern.test(clause);
   const hasViewpoint = viewpointPattern.test(clause);
   const looksAtViewCamera = lookAtViewCameraPattern.test(clause);
-  const hasShotVocabulary = /(?:\b(?:shot|framing|frame|composition|lens|view|perspective)\b|构图|画面|镜头)/iu.test(clause);
+  const hasShotVocabulary = /(?:\b(?:shot|framing|frame|composition|lens|view|perspective|angle)\b|构图|画面|镜头)/iu.test(clause);
   const hasPhysicalOnlyContext = physicalCameraPattern.test(clause) || physicalCameraActionPattern.test(clause);
+  const shotMarkerOnly = /^\s*\[?shot\s+\d+\s*\]?(?:\s+(?:only|solely|单独|仅此))?[\s.:,-]*$/iu.test(clause);
 
   if (cameraOperatorPattern.test(clause) && !nonOperatorCameraMotionPattern.test(clause)) return false;
+  if (shotMarkerOnly) return false;
   if (looksAtViewCamera || hasViewpoint || (approachesViewCameraPattern.test(clause) && !hasPhysicalOnlyContext)) return true;
   if (!hasMotion && !hasShotVocabulary) return false;
   if (hasPhysicalOnlyContext && !hasMotion) return false;
@@ -112,6 +163,8 @@ export function extractH3CameraIntent(promptText: string): H3CameraIntent {
   const sourceClauses: string[] = [];
   const physicalCameraClauses: string[] = [];
   const motionKinds = new Set<H3CameraMotionKind>();
+  const angleKinds = new Set<H3CameraAngleKind>();
+  const angleClauses: string[] = [];
   const targetAnchors = new Set<string>();
   let hasPhysicalCamera = false;
 
@@ -126,6 +179,9 @@ export function extractH3CameraIntent(promptText: string): H3CameraIntent {
     if (!viewpoint) continue;
     sourceClauses.push(clause);
     for (const kind of motionKindsFor(clause)) motionKinds.add(kind);
+    const clauseAngles = cameraAngleKindsFor(clause);
+    for (const kind of clauseAngles) angleKinds.add(kind);
+    if (clauseAngles.length) angleClauses.push(clause);
     for (const target of cameraTargetsFor(clause)) targetAnchors.add(target);
   }
 
@@ -135,7 +191,8 @@ export function extractH3CameraIntent(promptText: string): H3CameraIntent {
     viewpointPattern.test(clause) ||
     lookAtViewCameraPattern.test(clause) ||
     approachesViewCameraPattern.test(clause) ||
-    spatialSignalPattern.test(clause)
+    spatialSignalPattern.test(clause) ||
+    cameraAngleKindsFor(clause).length > 0
   );
   const requiresSpatial = hasViewpointCamera && sourceClauses.some((clause) => spatialSignalPattern.test(clause));
   return {
@@ -144,10 +201,13 @@ export function extractH3CameraIntent(promptText: string): H3CameraIntent {
     sourceClauses: [...new Set(sourceClauses)].slice(0, 6),
     physicalCameraClauses: [...new Set(physicalCameraClauses)].slice(0, 6),
     motionKinds: normalizedMotionKinds,
+    angleKinds: [...angleKinds],
+    angleClauses: [...new Set(angleClauses)].slice(0, 6),
     targetAnchors: [...targetAnchors],
     requiresViewpoint,
     requiresSpatial,
-    requiresTarget: targetAnchors.size > 0
+    requiresTarget: targetAnchors.size > 0,
+    requiresAngle: angleKinds.size > 0
   };
 }
 
@@ -159,6 +219,12 @@ function cameraIntentInstructionLines(intent: H3CameraIntent): string[] {
   ];
   if (intent.motionKinds.length) {
     lines.push(`Camera motion signals detected in the viewpoint clauses: ${intent.motionKinds.join(", ")}. Keep every explicit signal; do not replace an orbit/arc with a subject rotation or a generic cinematic move.`);
+  }
+  if (intent.angleKinds.length) {
+    lines.push(`Viewpoint-angle lock: keep the requested ${intent.angleKinds.join(" and ")} angle for the entire shot. This describes the image-forming camera, not the subject's gaze; do not switch to eye-level, high-angle, or overhead framing unless the user explicitly asks for that change.`);
+  }
+  if (intent.motionKinds.includes("track")) {
+    lines.push("Tracking lock: when tracking or following is explicit, the same viewpoint camera follows the named subject while preserving the requested angle and primary trajectory; do not replace camera tracking with subject rotation or a new shot.");
   }
   if (intent.sourceClauses.length) {
     lines.push(`Explicit viewpoint-camera wording to preserve in meaning:\n${intent.sourceClauses.map((clause) => `- ${clause}`).join("\n")}`);
@@ -179,10 +245,29 @@ export function h3CameraIntentInstruction(promptText: string): string {
 }
 
 function outputHasCameraMotion(output: string, kind: H3CameraMotionKind): boolean {
-  const actor = /(?:\b(?:camera|lens|viewpoint|POV|point[- ]of[- ]view)\b|镜头|相机|摄像机|摄影机|机位|视角)/iu;
+  const actor = /(?:\b(?:camera|lens|viewpoint|POV|point[- ]of[- ]view|shot|framing)\b|镜头|相机|摄像机|摄影机|机位|视角)/iu;
   if (!actor.test(output)) return false;
   const pattern = motionPatterns.find((candidate) => candidate.kind === kind)?.pattern;
   return Boolean(pattern?.test(output));
+}
+
+function outputHasPositiveCameraAngle(output: string, kind: H3CameraAngleKind): boolean {
+  const cameraContext = /(?:\b(?:camera|lens|viewpoint|POV|shot|framing|composition|perspective|angle)\b|镜头|相机|机位|视角)/iu;
+  if (!cameraContext.test(output)) return false;
+  const candidate = cameraAnglePatterns.find(({ kind: candidateKind }) => candidateKind === kind);
+  if (!candidate) return false;
+  const pattern = new RegExp(candidate.pattern.source, `${candidate.pattern.flags.replace("g", "")}g`);
+  for (const match of output.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    const context = output.slice(Math.max(0, index - 45), index);
+    if (/(?:\b(?:not|never|without|avoid|do\s+not|no)\b|不得|不要|避免|禁止)[^.!?;\n]{0,35}$/iu.test(context)) continue;
+    return true;
+  }
+  return false;
+}
+
+function outputHasCameraAngle(output: string, kind: H3CameraAngleKind): boolean {
+  return outputHasPositiveCameraAngle(output, kind);
 }
 
 function outputHasViewpoint(output: string): boolean {
@@ -209,7 +294,7 @@ function outputHasSpatialEvidence(source: string, output: string): boolean {
     },
     {
       source: /(?:above|below|under|over|上方|下方)/iu,
-      output: /(?:above|below|under|overhead|上方|下方)/iu
+      output: /(?:above|below|under|overhead|low[- ]angle|high[- ]angle|worm'?s[- ]eye|bird'?s[- ]eye|上方|下方|低机位|高机位|仰视|俯视)/iu
     },
     {
       source: /(?:\bleft\b|\bright\b|左侧|右侧)/iu,
@@ -258,7 +343,7 @@ export function auditH3CameraIntent(
       sourceClauses: intent.sourceClauses
     };
   }
-  const missing: Array<"camera-movement" | "viewpoint" | "spatial" | "camera-target"> = [];
+  const missing: Array<"camera-movement" | "viewpoint" | "spatial" | "camera-target" | "camera-angle"> = [];
   if (intent.motionKinds.some((kind) => !outputHasCameraMotion(generatedPrompt, kind))) {
     missing.push("camera-movement");
   }
@@ -271,6 +356,15 @@ export function auditH3CameraIntent(
   if (intent.requiresTarget && intent.targetAnchors.some((target) => !outputHasCameraTarget(generatedPrompt, target))) {
     missing.push("camera-target");
   }
+  const outputAngleKinds = cameraAnglePatterns
+    .filter(({ kind }) => outputHasCameraAngle(generatedPrompt, kind))
+    .map(({ kind }) => kind);
+  if (intent.requiresAngle && (
+    intent.angleKinds.some((kind) => !outputAngleKinds.includes(kind)) ||
+    outputAngleKinds.some((kind) => !intent.angleKinds.includes(kind))
+  )) {
+    missing.push("camera-angle");
+  }
   return {
     required: true,
     passed: missing.length === 0,
@@ -280,7 +374,7 @@ export function auditH3CameraIntent(
 }
 
 function cameraFallbackSentence(intent: H3CameraIntent): string {
-  return `The viewpoint camera must preserve this explicit user direction in the shot: ${intent.sourceClauses.join(" ")}`;
+  return `The viewpoint camera must preserve this explicit user direction in the shot, keeping its camera angle and primary trajectory for the entire shot without switching to another viewpoint: ${intent.sourceClauses.join(" ")}`;
 }
 
 export function preserveH3CameraIntentInOutput(

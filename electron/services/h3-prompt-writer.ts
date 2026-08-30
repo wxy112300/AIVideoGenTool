@@ -12,7 +12,11 @@ import {
 } from "../../src/core/qwen-image-prompt.js";
 import { imageEditPromptContractForTarget } from "../../src/core/image-prompt.js";
 import {
+  h3ExplicitConstraintSummary,
+  h3DurationPlan,
   inferH3PromptMode,
+  h3PromptPriorityInstruction,
+  h3ShotPolicyForPrompt,
   normalizeH3PromptOutput
 } from "../../src/core/h3-prompt.js";
 import { defaultH3PromptPresets, h3PromptPresetForMode } from "../../src/core/h3-prompt-presets.js";
@@ -246,6 +250,8 @@ export async function enhancePromptWithH3PromptWriter(
   const h3PresetText = settings.h3PromptPresets[h3Preset]?.trim() || defaultH3PromptPresets[h3Preset];
   const parsedPrompt = parsePromptAnnotations(request.prompt);
   const sourcePrompt = parsedPrompt.prompt.trim();
+  const shotPolicy = h3ShotPolicyForPrompt(request.prompt);
+  const priorityInstruction = imageEdit ? "" : h3PromptPriorityInstruction(shotPolicy);
   const annotationInstruction = promptAnnotationInstruction(parsedPrompt);
   const scaleContext = [
     ...parsedPrompt.annotations.map((annotation) => annotation.text),
@@ -268,6 +274,7 @@ export async function enhancePromptWithH3PromptWriter(
     onProgress?.("loading-model", 24);
     const contentLocks = h3ContentLockInstruction(sourcePrompt);
     const cameraIntent = imageEdit ? "" : h3CameraIntentInstruction(sourcePrompt);
+    const hardConstraints = imageEdit ? "" : h3ExplicitConstraintSummary(sourcePrompt);
     const scaleInstruction = imageEdit
       ? ""
       : h3ScalePreservationInstruction(sourcePrompt, h3Mode, scaleContext);
@@ -278,16 +285,19 @@ export async function enhancePromptWithH3PromptWriter(
           h3PresetText
         ].join("\n");
     const creativeBrief = [
-      scaleInstruction,
+      priorityInstruction,
+      annotationInstruction,
       isH3ReferenceAutoPrompt(request)
         ? h3AutoPromptInstruction(request)
         : [sourcePrompt, request.referenceContext?.trim()]
             .filter(Boolean)
             .join("\n\n参考素材角色：\n"),
-      annotationInstruction,
-      presetBrief,
       cameraIntent,
-      contentLocks
+      hardConstraints,
+      contentLocks,
+      scaleInstruction,
+      h3DurationPlan(h3Mode, request.h3DurationSeconds ?? 5, h3Preset),
+      presetBrief
     ].filter(Boolean).join("\n\n");
     onProgress?.("generating", null);
     const result = await writerRequest<{ prompt?: string }>(`${root}/h3studio/generate`, {

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   h3DurationPlan,
   h3ExplicitConstraintSummary,
+  h3PromptPriorityInstruction,
   h3PromptExpansionTokenBudget,
+  h3ShotPolicyForPrompt,
   normalizeH3PromptOutput
 } from "../src/core/h3-prompt.js";
 
@@ -16,6 +18,17 @@ describe("MiniMax H3 prompt templates", () => {
     expect(plan).toContain("Connect the first-frame state to the last-frame state");
     expect(plan).toContain("distance, scale, pace, acceleration");
     expect(plan).toContain("A walk or run from A to B must have enough continuous time");
+  });
+
+  it("uses action-led free timing for the detailed cinematic preset", () => {
+    const plan = h3DurationPlan("FL2VA", 15, "detailed-cinematic");
+
+    expect(plan).toContain("flexible causal timeline");
+    expect(plan).toContain("a fixed beat count or equal-time grid");
+    expect(plan).toContain("do not force events to standard fractions or fixed timestamps");
+    expect(plan).toContain("Picture 1 at the required first-frame anchor");
+    expect(plan).not.toContain("Plan 6 sequential development beats");
+    expect(plan).not.toContain("0.00-2.51s");
   });
 
   it("keeps extra output headroom for long and reference-led prompts", () => {
@@ -39,6 +52,14 @@ describe("MiniMax H3 prompt templates", () => {
     expect(constraints).toContain("non_diegetic_music to N/A");
     expect(constraints).toContain("exactly one [Shot 1]");
     expect(constraints).not.toContain("completely silent");
+  });
+
+  it("keeps the compact priority rule and distinguishes shot policies", () => {
+    expect(h3ShotPolicyForPrompt("Low Angle tracking shot follows the girl.")).toBe("default-single");
+    expect(h3ShotPolicyForPrompt("[Shot 1] only: the camera follows the girl.")).toBe("hard-single");
+    expect(h3ShotPolicyForPrompt("Two shots: the camera cuts to a close-up.")).toBe("allow-multiple");
+    expect(h3PromptPriorityInstruction("default-single")).toContain("explicit request and labeled notes first");
+    expect(h3PromptPriorityInstruction("default-single")).toContain("exactly one continuous [Shot 1]");
   });
 
   it("treats complete silence separately from no background music", () => {
@@ -89,6 +110,29 @@ describe("MiniMax H3 prompt templates", () => {
       "The subject moves."
     );
     expect(normalizeH3PromptOutput(output, "T2VA", 5)).not.toContain("Note:");
+  });
+
+  it("folds an invented second shot back into the continuous H3 shot", () => {
+    const source = "Low Angle tracking shot follows the girl. [Shot 1] only.";
+    const output = [
+      "integrated_multimodal_description: [Shot 1] The low-angle tracking camera follows the girl.",
+      "[Shot 2] At 00:03.000, the camera cuts to a close-up of her face.",
+      "overall_soundscape: N/A",
+      "non_diegetic_music: N/A"
+    ].join("\n");
+
+    const normalized = normalizeH3PromptOutput(output, "T2VA", 5, [], [], source, source);
+    expect(normalized).not.toContain("[Shot 2]");
+    expect(normalized).toContain("within the same continuous shot");
+    expect(normalized).not.toContain("camera cuts to");
+    expect(normalized).toContain("overall_soundscape: N/A");
+  });
+
+  it("preserves multiple shots when the source explicitly asks for them", () => {
+    const source = "Two shots: the camera cuts from the room to a close-up.";
+    const output = "integrated_multimodal_description: [Shot 1] The room is quiet. [Shot 2] At 00:03.000, cut to a close-up.\noverall_soundscape: N/A\nnon_diegetic_music: N/A";
+
+    expect(normalizeH3PromptOutput(output, "T2VA", 5, [], [], source, source)).toContain("[Shot 2]");
   });
 
 });
