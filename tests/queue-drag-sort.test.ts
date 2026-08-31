@@ -69,7 +69,7 @@ function createQueueFixture() {
   const reorderTask = vi.fn(async () => state);
   const context: RendererContext = {
     root,
-    studio: { reorderTask } as unknown as RendererContext["studio"],
+    application: { reorderTask } as unknown as RendererContext["application"],
     enhancePrompt: async () => "",
     getState: () => state,
     getRoute: () => ({ page: "queue", creationMode: "image-to-video", historyKind: "video" }),
@@ -128,7 +128,7 @@ function createBoundaryFixture() {
   });
   const context: RendererContext = {
     root,
-    studio: { reorderTask, setQueuePauseBoundary } as unknown as RendererContext["studio"],
+    application: { reorderTask, setQueuePauseBoundary } as unknown as RendererContext["application"],
     enhancePrompt: async () => "",
     getState: () => state,
     getRoute: () => ({ page: "queue", creationMode: "image-to-video", historyKind: "video" }),
@@ -193,7 +193,7 @@ function createRunningBoundaryFixture() {
   });
   const context: RendererContext = {
     root,
-    studio: { setQueuePauseBoundary } as unknown as RendererContext["studio"],
+    application: { setQueuePauseBoundary } as unknown as RendererContext["application"],
     enhancePrompt: async () => "",
     getState: () => state,
     getRoute: () => ({ page: "queue", creationMode: "image-to-video", historyKind: "video" }),

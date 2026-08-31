@@ -9,7 +9,7 @@ export function mountSettingsLogsController(context, options) {
     }, { signal });
     const openLogDirectory = async (kind, action, failureMessage) => {
         context.reportUserAction(action);
-        const opened = await context.studio.openAppLogDirectory(kind);
+        const opened = await context.hostCapabilities.openAppLogDirectory(kind);
         if (!opened)
             context.notify(failureMessage, { kind: "error" });
     };

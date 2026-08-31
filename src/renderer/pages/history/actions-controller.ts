@@ -241,7 +241,7 @@ export function mountHistoryActionsController(
     const projectId = button.dataset.imageSetCover;
     if (!projectId) return;
     try {
-      options.setState(await context.studio.setImageHistoryCover(
+      options.setState(await context.application.setImageHistoryCover(
         projectId,
         button.dataset.imageCoverVersion || undefined
       ));
@@ -278,7 +278,7 @@ export function mountHistoryActionsController(
       const filename = button.dataset.showFile;
       if (!filename) return;
       context.reportUserAction("history-show-file");
-      const shown = await context.studio.showItemInFolder(filename);
+      const shown = await context.hostCapabilities.showItemInFolder(filename);
       if (!shown) context.notify(t(uiKeys.history.actions.fileMissing), { renderPage: false });
     }, { signal });
   });

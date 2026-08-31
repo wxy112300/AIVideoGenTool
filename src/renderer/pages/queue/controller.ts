@@ -33,7 +33,7 @@ export function mountQueueController(
   const startQueue = async (): Promise<void> => {
     context.reportUserAction("queue-start");
     try {
-      options.setState(await context.studio.startQueue());
+      options.setState(await context.application.startQueue());
       options.setPromptRuntimeLoaded(false);
       context.requestRender();
     } catch (error) {
@@ -44,7 +44,7 @@ export function mountQueueController(
   const continueQueue = async (): Promise<void> => {
     context.reportUserAction("queue-continue");
     try {
-      options.setState(await context.studio.continueQueue());
+      options.setState(await context.application.continueQueue());
       options.setPromptRuntimeLoaded(false);
       context.requestRender();
     } catch (error) {
@@ -57,7 +57,7 @@ export function mountQueueController(
     try {
       // Ending the queue is graceful: the current task is allowed to finish,
       // while later waiting tasks remain available for a future restart.
-      options.setState(await context.studio.pauseQueue());
+      options.setState(await context.application.pauseQueue());
       context.requestRender();
     } catch (error) {
       context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
@@ -83,19 +83,19 @@ export function mountQueueController(
     try {
       if (action === "duplicate") {
         context.reportUserAction("queue-duplicate", { taskId });
-        options.setState(await context.studio.duplicateTask(taskId));
+        options.setState(await context.application.duplicateTask(taskId));
       } else if (action === "promote") {
         if (!canPromote(taskId)) return;
         context.reportUserAction("queue-promote", { taskId, targetIndex: 0 });
-        options.setState(await context.studio.reorderTask(taskId, 0));
+        options.setState(await context.application.reorderTask(taskId, 0));
       } else if (action === "render-through-here") {
         if (task.status !== "waiting") return;
         context.reportUserAction("queue-set-pause-boundary", { taskId });
-        options.setState(await context.studio.setQueuePauseBoundaryAfterTask(taskId));
+        options.setState(await context.application.setQueuePauseBoundaryAfterTask(taskId));
       } else {
         if (task.status !== "waiting" || task.taskType === "image-generation") return;
         context.reportUserAction("queue-randomize-seed", { taskId });
-        options.setState(await context.studio.randomizeTaskSeed(taskId));
+        options.setState(await context.application.randomizeTaskSeed(taskId));
       }
       context.requestRender();
     } catch (error) {
@@ -119,7 +119,7 @@ export function mountQueueController(
       // This is a queue preference, not a general settings form submission.
       // Keep it on a narrow IPC path so toggling it never performs environment
       // validation, starts ComfyUI, or marks the settings page dirty.
-      options.setState(await context.studio.setQueueH3LivePreview(input.checked));
+      options.setState(await context.application.setQueueH3LivePreview(input.checked));
       context.requestRender();
     } catch (error) {
       input.checked = !input.checked;
@@ -152,7 +152,7 @@ export function mountQueueController(
   root.querySelector<HTMLElement>("[data-queue-boundary-clear]")?.addEventListener("click", async () => {
     context.reportUserAction("queue-boundary-clear");
     try {
-      options.setState(await context.studio.clearQueuePauseBoundary());
+      options.setState(await context.application.clearQueuePauseBoundary());
       context.requestRender();
     } catch (error) {
       context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
@@ -183,7 +183,7 @@ export function mountQueueController(
       if (!taskId) return;
       context.reportUserAction("queue-reset-status", { taskId });
       try {
-        options.setState(await context.studio.resetTask(taskId));
+        options.setState(await context.application.resetTask(taskId));
         context.requestRender();
       } catch (error) {
         context.notify(error instanceof Error ? error.message : t(uiKeys.runtime.queueResetFailed), { kind: "error" });

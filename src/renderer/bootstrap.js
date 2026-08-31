@@ -1,12 +1,12 @@
 import { loadUiLocale } from "../core/i18n";
 export function bootstrapRenderer(options) {
-    void options.studio.getState().then(async (initialState) => {
+    void options.application.getState().then(async (initialState) => {
         await loadUiLocale(initialState.settings.uiLocale).catch(() => undefined);
         options.setState(initialState);
         const [appVersion, runtime, promptRuntime] = await Promise.all([
-            options.studio.getAppVersion(),
-            options.studio.getComfyRuntimeState(),
-            options.studio.getPromptRuntimeState()
+            options.application.getAppVersion(),
+            options.application.getComfyRuntimeState(),
+            options.application.getPromptRuntimeState()
         ]);
         options.setComfyRuntimeState(runtime);
         options.setPromptRuntimeState(promptRuntime);
@@ -15,7 +15,7 @@ export function bootstrapRenderer(options) {
         options.render();
         void options.refreshPerformanceMetrics();
         void options.refreshEnvironment(initialState.settings);
-        void options.studio.getBundledWorkflow(options.bundledWorkflowModelId(initialState.draft), initialState.draft.inputMode).then((bundled) => {
+        void options.application.getBundledWorkflow(options.bundledWorkflowModelId(initialState.draft), initialState.draft.inputMode).then((bundled) => {
             if (bundled) {
                 options.bundledWorkflows[options.bundledWorkflowKey(bundled.modelId, initialState.draft.inputMode)] = bundled;
                 options.workflowCapabilities[bundled.path] = {
@@ -27,7 +27,7 @@ export function bootstrapRenderer(options) {
                 }
             }
         }).catch((error) => {
-            void options.studio.reportRendererError(error instanceof Error ? error.message : String(error), { source: "bundled-workflow-load" }).catch(() => undefined);
+            void options.application.reportRendererError(error instanceof Error ? error.message : String(error), { source: "bundled-workflow-load" }).catch(() => undefined);
         }).finally(() => options.render());
     });
 }

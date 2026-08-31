@@ -139,7 +139,7 @@ export function mountImageHistoryMediaController(context, options) {
                 return;
             let shown = false;
             try {
-                shown = await context.studio.showItemInFolder(sourcePath);
+                shown = await context.hostCapabilities.showItemInFolder(sourcePath);
             }
             catch {
                 shown = false;

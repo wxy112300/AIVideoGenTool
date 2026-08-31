@@ -32,7 +32,7 @@ function bindFrameDrop(context, selector, field, options, signal) {
             context.notify(t(uiKeys.create.interaction.invalidImageDrop));
             return;
         }
-        const filename = context.studio.getDroppedFilePath(file);
+        const filename = context.hostCapabilities.getDroppedFilePath(file);
         if (!filename) {
             context.notify(t(uiKeys.create.interaction.imagePathFailed));
             return;
@@ -50,7 +50,7 @@ function bindFramePicker(context, root, selector, field, options, signal) {
         return;
     zone.addEventListener("click", async (event) => {
         event.stopImmediatePropagation();
-        const filename = await context.studio.pickImage();
+        const filename = await context.hostCapabilities.pickImage();
         if (!filename)
             return;
         options.patchDraft({
@@ -76,7 +76,7 @@ export function mountImageToVideoController(context, options) {
             context.requestRender();
             return;
         }
-        const filename = await context.studio.pickImage();
+        const filename = await context.hostCapabilities.pickImage();
         if (!filename)
             return;
         options.patchDraft({ endImagePath: filename });

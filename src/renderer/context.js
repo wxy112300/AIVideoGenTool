@@ -3,7 +3,7 @@ export function createRendererContext(options) {
     const getTranslator = () => createTranslator(options.getState()?.settings.uiLocale);
     return {
         root: options.root,
-        studio: options.studio,
+        ...options.dependencies,
         enhancePrompt: options.enhancePrompt,
         getState: options.getState,
         getRoute: options.getRoute,

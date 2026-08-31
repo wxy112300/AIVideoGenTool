@@ -114,7 +114,7 @@ export function mountSettingsNodeDependencyController(
     options.setLlamaCppPythonLog("");
     context.requestRender();
     try {
-      const result = await context.studio.installLlamaCppPython(settings);
+      const result = await context.application.installLlamaCppPython(settings);
       options.setLlamaCppPythonLog(result.log || result.message);
       const scan = await options.refreshEnvironment(settings, "dependency-change");
       if (scan) context.notify(result.message, { kind: result.ok ? "info" : "error" });
@@ -159,7 +159,7 @@ export function mountSettingsNodeDependencyController(
       event.stopImmediatePropagation();
       const sourceUrl = button.dataset.openNodeSource?.trim();
       if (!sourceUrl) return;
-      const opened = await context.studio.openExternal(sourceUrl);
+      const opened = await context.hostCapabilities.openExternal(sourceUrl);
       if (!opened) {
         context.notify(context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
       }

@@ -39,7 +39,7 @@ export async function loadQueueInputPreviews(context: RendererContext): Promise<
     // that arrived after the card was rendered.
     if (image.dataset.livePreviewActive === "true") return;
     try {
-      const dataUrl = await context.studio.readImage(input.path);
+      const dataUrl = await context.assets.readImage(input.path);
       if (!dataUrl) return;
       if (image.dataset.livePreviewActive === "true") return;
       image.src = dataUrl;

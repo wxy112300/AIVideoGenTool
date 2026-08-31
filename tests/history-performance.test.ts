@@ -145,7 +145,10 @@ const renderOptions: HistoryPageOptions = {
 function createContext(root: HTMLElement, kind: HistoryBenchmarkKind): RendererContext {
   return {
     root,
-    studio: {} as RendererContext["studio"],
+    application: {} as RendererContext["application"],
+    events: {} as RendererContext["events"],
+    assets: {} as RendererContext["assets"],
+    hostCapabilities: {} as RendererContext["hostCapabilities"],
     getState: () => undefined,
     getRoute: () => ({ page: "history", creationMode: "image-to-video", historyKind: kind }),
     getTranslator: () => {

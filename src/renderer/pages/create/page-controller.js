@@ -33,7 +33,7 @@ export function mountCreatePageController(options) {
                 const workflowModelId = bundledWorkflowModelId(storedDraft);
                 const key = options.bundledWorkflowKey(workflowModelId, inputMode);
                 const bundled = options.bundledWorkflows[key] ??
-                    await options.context.studio.getBundledWorkflow(workflowModelId, inputMode);
+                    await options.context.application.getBundledWorkflow(workflowModelId, inputMode);
                 if (bundled) {
                     options.bundledWorkflows[key] = bundled;
                     options.workflowCapabilities[bundled.path] = {
@@ -42,8 +42,8 @@ export function mountCreatePageController(options) {
                     };
                 }
                 if (storedDraft.workflowPath && storedDraft.workflowPath !== bundled?.path) {
-                    options.workflowCapabilities[storedDraft.workflowPath] =
-                        await options.context.studio.inspectWorkflow(storedDraft.workflowPath, storedDraft.modelId);
+                        options.workflowCapabilities[storedDraft.workflowPath] =
+                            await options.context.application.inspectWorkflow(storedDraft.workflowPath, storedDraft.modelId);
                 }
                 if (transitionRevision !== creationModeTransitionRevision)
                     return;
@@ -90,7 +90,7 @@ export function mountCreatePageController(options) {
             const workflowModelId = bundledWorkflowModelId({ modelId, videoLoras });
             const key = options.bundledWorkflowKey(workflowModelId, inputMode);
             const bundled = options.bundledWorkflows[key] ??
-                await options.context.studio.getBundledWorkflow(workflowModelId, inputMode);
+                    await options.context.application.getBundledWorkflow(workflowModelId, inputMode);
             if (bundled) {
                 options.bundledWorkflows[key] = bundled;
                 options.workflowCapabilities[bundled.path] = {
@@ -220,7 +220,7 @@ export function mountCreatePageController(options) {
         const workflowModelId = bundledWorkflowModelId({ modelId: state.draft.modelId, videoLoras });
         const key = options.bundledWorkflowKey(workflowModelId, state.draft.inputMode);
         const bundled = options.bundledWorkflows[key] ??
-            await options.context.studio.getBundledWorkflow(workflowModelId, state.draft.inputMode);
+                    await options.context.application.getBundledWorkflow(workflowModelId, state.draft.inputMode);
         if (bundled) {
             options.bundledWorkflows[key] = bundled;
             options.workflowCapabilities[bundled.path] = {
@@ -331,7 +331,7 @@ export function mountCreatePageController(options) {
                     ? existingSlots.filter((slot) => slot.mediaType === "image")[1]?.mediaPath ?? ""
                     : state.draft.endImagePath;
                 const bundled = options.bundledWorkflows[nextKey] ??
-                    await options.context.studio.getBundledWorkflow(value, state.draft.inputMode);
+                    await options.context.application.getBundledWorkflow(value, state.draft.inputMode);
                 if (bundled) {
                     options.bundledWorkflows[nextKey] = bundled;
                     options.workflowCapabilities[bundled.path] = {
@@ -434,8 +434,8 @@ export function mountCreatePageController(options) {
                 fps: state.draft.fps
             });
             const nextState = state.draft.inputMode === "video"
-                ? await options.context.studio.enqueueExtension(state.draft)
-                : await options.context.studio.enqueue(state.draft);
+                ? await options.context.application.enqueueExtension(state.draft)
+                : await options.context.application.enqueue(state.draft);
             options.setRendererState(nextState);
             options.context.notify(state.draft.inputMode === "video"
                 ? t(uiKeys.create.interaction.extensionQueueAdded, { filename: nextState.queue.at(-1)?.outputFilename ?? "" })

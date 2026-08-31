@@ -265,7 +265,7 @@ export function createQueueLiveStatus(options) {
             return;
         performancePolling = true;
         try {
-            const metrics = await options.studio.getPerformanceMetrics(state.settings);
+            const metrics = await options.application.getPerformanceMetrics(state.settings);
             options.setPerformanceMetrics(metrics);
             patchResourceMonitor(metrics);
             if (options.getPage() !== "queue")

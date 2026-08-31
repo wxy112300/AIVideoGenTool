@@ -5,10 +5,7 @@ import "media-chrome/lang/zh-TW.js";
 import "./style.css";
 import { createRendererApp } from "./renderer/app";
 import { bootstrapRenderer } from "./renderer/bootstrap";
-import {
-  createElectronRendererClient,
-  createRendererDependencies
-} from "./renderer/studio-client";
+import { createWindowRendererEntry } from "./renderer/entry";
 import {
   createPromptRuntimeState,
   promptModelStartupIsActive,
@@ -252,8 +249,8 @@ import {
 
 const appElement = document.querySelector<HTMLDivElement>("#app")!;
 const modalRoot = document.querySelector<HTMLDivElement>("#modal-root")!;
-const rendererClient = createElectronRendererClient(window.studio);
-const rendererDependencies = createRendererDependencies(rendererClient);
+const rendererEntry = createWindowRendererEntry();
+const rendererDependencies = rendererEntry.dependencies;
 const rendererApplication = rendererDependencies.application;
 const rendererEvents = rendererDependencies.events;
 const rendererAssets = rendererDependencies.assets;
@@ -1143,7 +1140,7 @@ let renderCoordinator: RenderCoordinator;
 let activeHistoryCleanup: RendererCleanup | null = null;
 const rendererApp = createRendererApp({
   root: appElement,
-  studio: rendererClient,
+  dependencies: rendererDependencies,
   enhancePrompt: enhancePromptWithConfirmation,
   getState: () => state,
   getRoute: () => ({ page, creationMode, historyKind }),
@@ -1349,7 +1346,7 @@ const customNodeInstallManager = new CustomNodeInstallQueue({
 });
 initializeRenderCoordinator();
 const queueLiveStatus = createQueueLiveStatus({
-  studio: rendererApplication,
+  application: rendererApplication,
   t: rendererApp.context.t,
   getState: () => state,
   getPage: () => page,
@@ -3095,7 +3092,7 @@ registerRendererEvents({
 });
 
 bootstrapRenderer({
-  studio: rendererApplication,
+  application: rendererApplication,
   setState: setRendererState,
   setComfyRuntimeState: (runtime) => {
     comfyRuntime = runtime;

@@ -289,10 +289,12 @@ describe("renderer notifications", () => {
     const state = createDefaultState();
     const context = {
       root,
-      studio: {
+      application: {
         startLocalService: () => startResult,
-        scanEnvironment: async () => ({})
-      },
+      } as unknown as RendererContext["application"],
+      events: {} as RendererContext["events"],
+      assets: {} as RendererContext["assets"],
+      hostCapabilities: {} as RendererContext["hostCapabilities"],
       getState: () => state,
       getRoute: () => ({
         page: routePage,

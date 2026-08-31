@@ -153,8 +153,8 @@ export function mountH3ReferencesController(
       if (isLockedFirstSlot(options.getDraft(), slotId)) return;
       const mediaType = button.dataset.h3SlotMediaType === "video" ? "video" : "image";
       const filename = mediaType === "video"
-        ? await context.studio.pickVideo()
-        : await context.studio.pickImage();
+        ? await context.hostCapabilities.pickVideo()
+        : await context.hostCapabilities.pickImage();
       if (!filename) return;
       updateSlot(slotId, { mediaType, mediaPath: filename });
       options.requestRender();
@@ -205,7 +205,7 @@ export function mountH3ReferencesController(
           options.notify(t(isVideo ? uiKeys.create.interaction.videoSlotFormats : uiKeys.create.interaction.imageSlotFormats));
         return;
       }
-      const filename = context.studio.getDroppedFilePath(file);
+      const filename = context.hostCapabilities.getDroppedFilePath(file);
       if (!filename) {
           options.notify(t(uiKeys.create.interaction.mediaPathFailed, { type: isVideo ? t(uiKeys.create.fragments.video) : t(uiKeys.create.fragments.image) }));
         return;

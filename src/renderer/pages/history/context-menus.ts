@@ -246,7 +246,7 @@ export function createHistoryContextMenus(
       else if (action === "copy-file") await options.copyHistoryFile(absolutePath);
       else if (action === "copy-path") await options.copyHistoryText(absolutePath, t(uiKeys.history.menu.videoPathCopied));
       else if (action === "show-file") {
-        const shown = await context.studio.showItemInFolder(absolutePath);
+        const shown = await context.hostCapabilities.showItemInFolder(absolutePath);
         if (!shown) context.notify(t(uiKeys.history.menu.videoMissing), { renderPage: false });
       } else if (action === "copy-prompt") {
         await options.copyHistoryText(
@@ -289,7 +289,7 @@ export function createHistoryContextMenus(
       else if (action === "copy-file") await options.copyHistoryFile(absolutePath, t(uiKeys.history.menu.imageFileCopied));
       else if (action === "copy-path") await options.copyHistoryText(absolutePath, t(uiKeys.history.menu.imagePathCopied));
       else if (action === "show-file") {
-        const shown = await context.studio.showItemInFolder(absolutePath);
+        const shown = await context.hostCapabilities.showItemInFolder(absolutePath);
         if (!shown) context.notify(t(uiKeys.history.menu.imageMissing), { renderPage: false });
       } else if (action === "copy-prompt") {
         await options.copyHistoryText(version.prompt, t(uiKeys.history.menu.promptCopied));
@@ -332,12 +332,12 @@ export function createHistoryContextMenus(
       if (action === "copy-file") {
         await options.copyHistoryFile(absolutePath, t(uiKeys.history.menu.videoFileCopied));
       } else if (action === "show-file") {
-        const shown = await context.studio.showItemInFolder(absolutePath);
+        const shown = await context.hostCapabilities.showItemInFolder(absolutePath);
         if (!shown) context.notify(t(uiKeys.history.menu.videoMissing), { renderPage: false });
       } else if (action === "open-system-player") {
         pauseHistoryPlayer(player);
         try {
-          const result = await context.studio.openSystemPlayer(absolutePath);
+          const result = await context.hostCapabilities.openSystemPlayer(absolutePath);
           if (!result.ok) context.notify(result.message || t(uiKeys.history.menu.videoMissing), { renderPage: false });
         } catch {
           context.notify(t(uiKeys.history.menu.videoMissing), { renderPage: false });

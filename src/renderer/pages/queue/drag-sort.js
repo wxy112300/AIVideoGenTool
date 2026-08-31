@@ -357,8 +357,8 @@ export function mountQueueDragSort(context, setState) {
                 ...(pauseBoundaryTarget === undefined ? {} : { pauseBoundaryTarget })
             });
             const nextState = pauseBoundaryTarget === undefined
-                ? await context.studio.reorderTask(current.taskId, targetIndex)
-                : await context.studio.reorderTask(current.taskId, targetIndex, pauseBoundaryTarget);
+                ? await context.application.reorderTask(current.taskId, targetIndex)
+                : await context.application.reorderTask(current.taskId, targetIndex, pauseBoundaryTarget);
             setState(nextState);
             context.requestRender();
         }
@@ -375,7 +375,7 @@ export function mountQueueDragSort(context, setState) {
         boundaryDrag = null;
         try {
             context.reportUserAction("queue-boundary-drag", { targetIndex });
-            setState(await context.studio.setQueuePauseBoundary(targetIndex));
+                setState(await context.application.setQueuePauseBoundary(targetIndex));
             context.requestRender();
         }
         catch (error) {
@@ -572,7 +572,7 @@ export function mountQueueDragSort(context, setState) {
         event.preventDefault();
         context.reportUserAction("queue-keyboard-reorder", { taskId, targetIndex });
         try {
-            setState(await context.studio.reorderTask(taskId, targetIndex));
+            setState(await context.application.reorderTask(taskId, targetIndex));
             context.requestRender();
             focusHandleAfterRender(taskId);
         }
@@ -605,7 +605,7 @@ export function mountQueueDragSort(context, setState) {
         event.preventDefault();
         context.reportUserAction("queue-keyboard-boundary", { targetIndex });
         try {
-            setState(await context.studio.setQueuePauseBoundary(targetIndex));
+            setState(await context.application.setQueuePauseBoundary(targetIndex));
             context.requestRender();
             focusBoundaryAfterRender();
         }

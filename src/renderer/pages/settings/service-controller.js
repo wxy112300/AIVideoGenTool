@@ -18,7 +18,7 @@ export function mountSettingsServiceController(context, options) {
                 : context.t(uiKeys.settings.actions.serviceStartingLmStudio));
             context.requestRender();
             try {
-                const result = await context.studio.startLocalService(kind, settings);
+                const result = await context.application.startLocalService(kind, settings);
                 options.setServiceStarting(null);
                 options.setServiceStatusMessage(result.message);
                 const scan = await options.refreshEnvironment(settings, "service-change");
@@ -43,7 +43,7 @@ export function mountSettingsServiceController(context, options) {
             options.setServiceStatusMessage(context.t(uiKeys.settings.actions.serviceRestartingComfy));
             context.requestRender();
             try {
-                const result = await context.studio.restartLocalService(kind, settings);
+                const result = await context.application.restartLocalService(kind, settings);
                 options.setServiceRestarting(null);
                 options.setServiceStatusMessage(result.message);
                 const scan = await options.refreshEnvironment(settings, "service-change");
@@ -72,7 +72,7 @@ export function mountSettingsServiceController(context, options) {
         options.setComfyUpdateLog("");
         context.requestRender();
         try {
-            const result = await context.studio.updateComfyUi(settings);
+            const result = await context.application.updateComfyUi(settings);
             options.setComfyUpdateLog(result.log || result.message);
             if (!result.ok) {
                 context.notify(result.message, { kind: "error" });
@@ -103,7 +103,7 @@ export function mountSettingsServiceController(context, options) {
         try {
             const scan = options.getEnvironmentScan();
             if (!scan?.comfyCompatibility.checkedFrom) {
-                const started = await context.studio.startLocalService("comfy", settings);
+                const started = await context.application.startLocalService("comfy", settings);
                 options.setComfyUpdateLog(started.message);
                 const nextScan = await options.refreshEnvironment(settings, "service-change");
                 if (!nextScan)
@@ -114,14 +114,14 @@ export function mountSettingsServiceController(context, options) {
                 }
             }
             const updateMode = options.getEnvironmentScan()?.comfyCompatibility.updateMode;
-            const result = await context.studio.updateComfyUi(settings);
+            const result = await context.application.updateComfyUi(settings);
             options.setComfyUpdateLog([options.getComfyUpdateLog(), result.log || result.message]
                 .filter(Boolean)
                 .join("\n\n"));
             if (!result.ok)
                 throw new Error(result.message);
             if (updateMode === "git") {
-                const restarted = await context.studio.restartLocalService("comfy", settings);
+                const restarted = await context.application.restartLocalService("comfy", settings);
                 options.setComfyUpdateLog(`${options.getComfyUpdateLog()}\n\n${restarted.message}`);
             }
             const refreshedScan = await options.refreshEnvironment(settings, "service-change");

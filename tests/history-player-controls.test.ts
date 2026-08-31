@@ -23,7 +23,10 @@ const translator = createTranslator("zh-CN");
 function createContext(root: HTMLElement, getState: () => ReturnType<typeof createDefaultState>): RendererContext {
   return {
     root,
-    studio: {} as RendererContext["studio"],
+    application: {} as RendererContext["application"],
+    events: {} as RendererContext["events"],
+    assets: {} as RendererContext["assets"],
+    hostCapabilities: {} as RendererContext["hostCapabilities"],
     getState,
     getRoute: () => ({ page: "history-detail", creationMode: "image-to-video", historyKind: "video" }),
     getTranslator: () => translator,

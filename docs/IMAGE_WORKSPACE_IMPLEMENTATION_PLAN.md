@@ -404,6 +404,23 @@ ComfyUI 的视频/图片保存节点只能稳定写入自身 output 根下的相
 - `sourceFile` 保存 Comfy staging 元数据，便于目标目录写入失败时恢复或清理；历史详情和用户操作只使用 `file`。
 - 只有最终文件验证成功且历史状态原子持久化成功后，才清理 staging；清理失败只记录警告。视频也遵守同样的“先写新目录、再更新历史、最后清理旧文件”顺序。
 
+#### H3 Native AV 原始数据的归属边界
+
+H3 Native Masked AV 的原始 joint AV 数据固定放在视频输出目录下，不再为每个任务建立持久目录：
+
+```
+<videoOutputDirectory>/
+  h3-native-av/
+    h3av_<artifactId>.safetensors
+    h3av_<artifactId>.json
+```
+
+- 这是 `video-output-auxiliary`，不是图片输入素材库 `sources/` 中的 `image-source`。现有图片素材库的扫描、引用保护、organizer 和未引用清理必须跳过 `h3-native-av`，不能把它当成图片孤儿。
+- 迁移 `imageInputLibraryDirectory` 时，H3 AV 留在视频输出目录；若未来有统一资产迁移，必须按媒体类型分派，不能把 H3 pair 复制到图片素材库。
+- 视频输出目录迁移的文件清单必须额外包含 History/AssetVersion 关联的 manifest+payload、LongVideoPlan/committed segment checkpoint 和等待队列的 artifact 引用。只迁移明确持久化的引用，不递归搬运整个 ComfyUI output。
+- 预检需要显示最终视频和 H3 AV pair 的数量、总大小、缺失、冲突及共享引用。执行时按 copy→大小/hash/manifest linkage 校验→一次性更新 settings/history/queue/plan/segment 引用→清理旧源；失败时保留旧引用，迁移清单可重入。
+- “应用更改”只改变未来输出位置；“应用并迁移”才移动已有视频及 H3 AV pair。删除视频版本时，只有 manifest/payload 没有其他 History、队列或长视频 segment 引用才允许清理。
+
 #### 修改目录时的统一迁移事务
 
 用户修改 `videoOutputDirectory` 或 `imageOutputDirectory` 且历史中存在对应媒体时，保存设置前显示迁移确认和预检结果。两个迁移可以分别执行，也可以在一次确认中同时执行；视频和图片使用不同的文件清单。
@@ -426,12 +443,12 @@ ComfyUI 的视频/图片保存节点只能稳定写入自身 output 根下的相
 迁移流程固定为：
 
 1. 解析旧目录和新目录，验证新目录位于当前 ComfyUI output 根内，列出可找到、缺失、冲突和总字节数。
-2. 视频只枚举 `HistoryAsset` 及其 `AssetVersion.files` 中明确记录的视频文件，并额外纳入等待队列中通过 `sourceAssetId/sourceVersionId` 或明确源路径引用的 `extension.sourceVideoPath`、`upscale.sourceFilePath`；图片只枚举 `ImageHistoryProject` 中 `edit` / `upscale` 版本的最终文件。不能递归搬运整个旧 output 目录。
+2. 视频枚举 `HistoryAsset` 及其 `AssetVersion.files` 中明确记录的视频文件，并额外纳入等待队列中通过 `sourceAssetId/sourceVersionId` 或明确源路径引用的 `extension.sourceVideoPath`、`upscale.sourceFilePath`；同时枚举这些视频版本、`LongVideoPlan` 和 committed segment 引用的 H3 Native AV manifest+payload pair。图片只枚举 `ImageHistoryProject` 中 `edit` / `upscale` 版本的最终文件。不能递归搬运整个旧 output 目录，也不能把图片素材库 `sources/` 当作 H3 AV 的迁移源。
 3. 优先使用历史文件记录的 `absolutePath` 定位源文件；只有在旧记录缺少绝对路径时，才使用迁移前保存的旧目录和 `subfolder + filename` 候选。无法唯一定位的文件进入缺失/歧义报告，不得猜路径。
-4. 按规范化源路径去重。同一个物理文件被多个历史版本引用时只移动一次，但提交阶段更新所有引用它的历史记录。
-5. 目标路径保留历史文件的相对 `subfolder + filename` 结构；目标已存在且大小/哈希匹配时视为已完成，目标已存在但内容不同则是冲突，不能覆盖。
+4. 按规范化源路径去重。同一个物理文件被多个历史版本引用时只移动一次，但提交阶段更新所有引用它的历史记录；manifest 与 payload 作为一个 pair 处理，并校验 manifest 中的 payload filename、size、hash 和新路径一致。
+5. 目标路径保留历史文件的相对 `subfolder + filename` 结构；H3 pair 固定落在视频目录的 `h3-native-av` 子目录并使用平铺 `artifactId` 文件名。目标已存在且大小/哈希匹配时视为已完成，目标已存在但内容不同则是冲突，不能覆盖。
 6. 对每个已找到且无冲突的媒体，在新目录写入临时副本并校验；禁止先删除旧文件。用户源图 `source` 版本只保留原路径，不移动原始用户文件。
-7. 所有目标文件成功写入并通过存在性、非零大小、大小/哈希和可读取性复核后，在一次状态写入中更新对应目录设置、历史版本绝对路径和队列视频输入路径；视频历史、队列和图片历史分别更新，互不影响。应用启动时也按 `sourceAssetId/sourceVersionId` 修复等待队列中的旧路径。
+7. 所有目标文件成功写入并通过存在性、非零大小、大小/哈希、manifest linkage 和可读取性复核后，在一次状态写入中更新对应目录设置、历史版本绝对路径、H3 artifact 引用和队列视频输入路径；视频历史、队列、长视频 plan/segment 和图片历史分别更新，互不影响。应用启动时也按 `sourceAssetId/sourceVersionId` 修复等待队列中的旧路径。
 8. 状态写入成功后，再删除旧的已迁移文件；删除失败保留新副本和新历史路径，迁移结果显示“完成但旧文件清理有警告”，不回滚可用历史。
 9. 任意复制、校验或目标冲突失败时，不更新对应目录设置和历史引用；清理本次迁移创建的临时文件，旧目录和旧历史继续有效。另一种媒体的迁移可以独立成功。
 

@@ -8,14 +8,11 @@ import type {
   RendererNotifyOptions,
   RendererRouteState
 } from "./contracts";
-import {
-  createRendererDependencies,
-  type RendererClient
-} from "./studio-client";
+import type { RendererDependencies } from "./studio-client";
 
 export interface RendererContextOptions {
   root: HTMLElement;
-  studio: RendererClient;
+  dependencies: RendererDependencies;
   enhancePrompt(request: EnhanceRequest): Promise<string>;
   getState: () => AppState | undefined;
   getRoute: () => RendererRouteState;
@@ -28,12 +25,9 @@ export interface RendererContextOptions {
 export function createRendererContext(options: RendererContextOptions): RendererContext {
   const getTranslator = (): Translator =>
     createTranslator(options.getState()?.settings.uiLocale);
-  const dependencies = createRendererDependencies(options.studio);
-
   return {
     root: options.root,
-    studio: options.studio,
-    ...dependencies,
+    ...options.dependencies,
     enhancePrompt: options.enhancePrompt,
     getState: options.getState,
     getRoute: options.getRoute,

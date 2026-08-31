@@ -45,7 +45,7 @@ export function mountCreateClipboardController(
         ? activeElement.closest<HTMLElement>("[data-image-picture-pick]")
         : null;
       try {
-        const filename = await context.studio.saveClipboardImage(
+        const filename = await context.hostCapabilities.saveClipboardImage(
           await file.arrayBuffer(),
           file.type || "image/png"
         );
@@ -80,7 +80,7 @@ export function mountCreateClipboardController(
         return;
       }
       try {
-        const filename = await context.studio.saveClipboardImage(
+        const filename = await context.hostCapabilities.saveClipboardImage(
           await file.arrayBuffer(),
           file.type
         );
@@ -96,7 +96,7 @@ export function mountCreateClipboardController(
       ? "endImagePath"
       : "startImagePath";
     try {
-      const filename = await context.studio.saveClipboardImage(
+      const filename = await context.hostCapabilities.saveClipboardImage(
         await file.arrayBuffer(),
         file.type
       );

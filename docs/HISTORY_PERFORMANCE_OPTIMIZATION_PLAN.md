@@ -1,9 +1,30 @@
 # History 大数据量性能优化实施计划
 
-状态：待实施  
+状态：已实施（Phase 0–5；Phase 6 未启用）
 目标执行 Agent：Luna  
 范围：当前生产 Renderer 的 History 列表页（视频与图片、瀑布流与相册模式）  
 不在范围：History 持久化结构、IPC 数据分页、详情页信息架构、历史原型页面
+
+## 0. 实施状态与本轮核验（2026-08-31）
+
+本轮审计确认，Phase 0–5 的实现已经存在于当前生产 Renderer：确定性 500 条 fixture 与合成基准、图片视口调度（并发上限 3）、视频近视口封面调度（并发上限 1）、批量 masonry 分列、标题分批测量，以及统一的 History 滚动快照/锚点恢复均已落地。Phase 6 的 `content-visibility` 实验未启用，也没有引入虚拟列表；当前合成证据没有触发虚拟化升级门。
+
+本次使用 jsdom、无真实媒体文件的 500 条基准得到以下结果。`renderMs`、`domParseMs` 和 `controllerMountMs` 是测试 harness 指标，不是 Electron 首屏时长，也不能单独证明 50 ms Long Task 预算或 70% 基线下降：
+
+| 类型 | 布局 | 记录/卡片 | render ms | DOM parse ms | controller mount ms | 媒体调用（挂载 → 视口） | 峰值并发 |
+| --- | --- | ---: | ---: | ---: | ---: | --- | ---: |
+| video | masonry | 500 / 500 | 8.62 | 483.97 | 98.68 | cache 0 → 12；warmup 0 → 12 | 1 |
+| video | album | 500 / 500 | 7.25 | 412.49 | 75.66 | cache 0 → 12；warmup 0 → 12 | 1 |
+| image | masonry | 500 / 500 | 19.71 | 398.95 | 158.56 | thumbnail 0 → 6 | 3 |
+| image | album | 500 / 500 | 7.45 | 393.32 | 134.84 | thumbnail 0 → 6 | 3 |
+
+自动化核验：
+
+- History focused suite：13 个文件、54 个测试通过。
+- `npm.cmd run verify`：140 个文件、1115 个测试通过；TypeScript typecheck、Vite 生产构建（2278 modules）和对比度检查（20/20）通过。
+- 500 条基准断言：四种类型/布局均保留 500 张语义卡片；挂载阶段没有全量图片 loader、视频 cache read 或 warmup；图片/视频峰值并发分别不超过 3/1。
+
+仍未验证的项目：真实媒体文件上的 Electron DevTools before/after Long Task 对比、`1280×800`/`1440×900`/约 `760px` 的手工 History → Detail → History smoke，以及真实 GPU/解码压力。因此本计划只将 P02 标记为“实现与自动化验收完成”，不把合成数值写成运行时性能承诺。
 
 ## 1. 目标与成功标准
 

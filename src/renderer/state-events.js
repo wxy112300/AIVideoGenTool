@@ -178,13 +178,13 @@ export function registerRendererEvents(options) {
         }, 1000);
     };
     const unsubscribers = [
-        options.studio.onWindowCloseRequest((request) => {
+        options.events.onWindowCloseRequest((request) => {
             options.rememberModalFocus();
             options.setPendingWindowCloseRequest(request);
             options.setWindowCloseResponseBusy(false);
             (options.requestOverlayRender ?? options.requestRender)();
         }),
-        options.studio.onStateChanged((nextState) => {
+        options.events.onStateChanged((nextState) => {
             const previousState = options.getState();
             const queueStructureStable = options.getPage() === "queue" &&
                 previousState !== undefined &&
@@ -232,7 +232,7 @@ export function registerRendererEvents(options) {
                 return;
             options.requestRender();
         }),
-        options.studio.onComfyRuntimeStateChanged((runtime) => {
+        options.events.onComfyRuntimeStateChanged((runtime) => {
             const previous = options.getComfyRuntimeState();
             options.setComfyRuntimeState(runtime);
             const meaningfulTransition = previous.phase !== runtime.phase && (previous.phase !== "unknown" || ["starting", "restarting", "degraded", "error"].includes(runtime.phase));
@@ -249,7 +249,7 @@ export function registerRendererEvents(options) {
                 options.requestRender();
             }
         }),
-        options.studio.onPromptRuntimeStateChanged((runtime) => {
+        options.events.onPromptRuntimeStateChanged((runtime) => {
             options.setPromptRuntimeState(runtime);
             if (!promptOperationIsActive(runtime)) {
                 stopPromptProgressTimer();
@@ -258,7 +258,7 @@ export function registerRendererEvents(options) {
             if (["create", "settings"].includes(options.getPage()))
                 options.requestRender();
         }),
-        options.studio.onPromptProgress((progress) => {
+        options.events.onPromptProgress((progress) => {
             const origin = options.getCreationMode();
             const runtime = options.getPromptRuntimeState();
             const ownsPrompt = promptOperationBelongsTo(runtime, origin) &&
@@ -279,18 +279,18 @@ export function registerRendererEvents(options) {
                     updatePromptProgressDom(progress, options.t);
             }
         }),
-        options.studio.onHistoryMigrationProgress((progress) => {
+        options.events.onHistoryMigrationProgress((progress) => {
             options.setHistoryMigrationProgress(progress);
             if (options.hasPendingDirectoryMigration()) {
                 (options.requestOverlayRender ?? options.requestRender)();
             }
         }),
-        options.studio.onImageAssetLibraryProgress((progress) => {
+        options.events.onImageAssetLibraryProgress((progress) => {
             options.setImageAssetLibraryProgress(progress);
             updateImageAssetLibraryProgress(progress, options.t);
         }),
-        options.studio.onTaskPreview((preview) => updateTaskPreview(preview, options)),
-        options.studio.onAttentionInstallLog((message) => {
+        options.events.onTaskPreview((preview) => updateTaskPreview(preview, options)),
+        options.events.onAttentionInstallLog((message) => {
             const log = options.appendAttentionAccelerationLog(message);
             const logElement = document.querySelector("#attention-install-log");
             const logDetails = document.querySelector("#attention-install-log-details");
@@ -325,7 +325,7 @@ export function registerRendererEvents(options) {
                 logElement.scrollTop = logElement.scrollHeight;
             }
         }),
-        options.studio.onDependencyInstallLog((progress) => {
+        options.events.onDependencyInstallLog((progress) => {
             const log = options.appendDependencyInstallLog(progress);
             const logElement = document.querySelector(`[data-dependency-install-log="${CSS.escape(`${progress.kind}:${progress.id}`)}"]`);
             if (logElement) {
@@ -335,7 +335,7 @@ export function registerRendererEvents(options) {
         })
     ];
     const reportError = (message, meta) => {
-        void options.studio.reportRendererError(message, meta).catch(() => undefined);
+        void options.application.reportRendererError(message, meta).catch(() => undefined);
     };
     const onError = (event) => {
         reportError(event.message || "Renderer error", {

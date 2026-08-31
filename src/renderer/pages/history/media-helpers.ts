@@ -34,14 +34,14 @@ export function createHistoryMediaRuntime(
     if (!key || !sourcePath || !isActive()) return false;
     try {
       const cached = imageHistoryThumbnailDataUrls.get(key) ??
-        await context.studio.readHistoryCover(key, sourcePath);
+        await context.assets.readHistoryCover(key, sourcePath);
       if (cached && isActive()) {
         imageHistoryThumbnailDataUrls.set(key, cached);
         image.src = cached;
         return true;
       }
       if (!isActive()) return false;
-      const sourceData = await context.studio.readImage(sourcePath);
+      const sourceData = await context.assets.readImage(sourcePath);
       if (!sourceData || !isActive()) return false;
       const source = document.createElement("img");
       source.src = sourceData;
@@ -64,9 +64,9 @@ export function createHistoryMediaRuntime(
       if (!blob || blob.size > 2 * 1024 * 1024 || !isActive()) return false;
       const data = await blob.arrayBuffer();
       if (!isActive()) return false;
-      const saved = await context.studio.saveHistoryCover(key, sourcePath, data);
+      const saved = await context.assets.saveHistoryCover(key, sourcePath, data);
       if (!saved || !isActive()) return false;
-      const savedUrl = await context.studio.readHistoryCover(key, sourcePath);
+      const savedUrl = await context.assets.readHistoryCover(key, sourcePath);
       if (!savedUrl || !isActive()) return false;
       imageHistoryThumbnailDataUrls.set(key, savedUrl);
       image.src = savedUrl;
@@ -138,10 +138,10 @@ export function createHistoryMediaRuntime(
     if (historyCoverCacheMisses.has(key)) return false;
     let read = historyCoverReads.get(key);
     if (!read) {
-      read = context.studio.readHistoryCover(key, sourcePath)
+      read = context.assets.readHistoryCover(key, sourcePath)
         .then((value) => ({ value: value || null, failed: false }))
         .catch((error) => {
-          void context.studio.reportRendererError(context.t(uiKeys.history.media.coverReadFailed), {
+          void context.application.reportRendererError(context.t(uiKeys.history.media.coverReadFailed), {
             error: error instanceof Error ? error.message : String(error)
           });
           return { value: null, failed: true };
@@ -261,14 +261,14 @@ export function createHistoryMediaRuntime(
     const data = await blob.arrayBuffer();
     if (!isActive()) return;
     try {
-      if (!await context.studio.saveHistoryCover(key, sourcePath, data) || !isActive()) return;
+      if (!await context.assets.saveHistoryCover(key, sourcePath, data) || !isActive()) return;
       const dataUrl = await historyBlobDataUrl(blob);
       if (!isActive()) return;
       historyCoverDataUrls.set(key, dataUrl);
       historyCoverCacheMisses.delete(key);
       setHistoryCoverImage(media, dataUrl);
     } catch (error) {
-      void context.studio.reportRendererError(context.t(uiKeys.history.media.coverSaveFailed), {
+      void context.application.reportRendererError(context.t(uiKeys.history.media.coverSaveFailed), {
         error: error instanceof Error ? error.message : String(error)
       });
     }

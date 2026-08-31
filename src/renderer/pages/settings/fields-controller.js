@@ -96,7 +96,7 @@ export function mountSettingsFieldsController(context, options) {
         if (!options.hasUnsavedChanges())
             return;
         options.setSettingsDraft(null);
-        void context.studio.setSettingsDirty(false).catch(() => undefined);
+        void context.application.setSettingsDirty(false).catch(() => undefined);
         context.requestRender();
     }, { signal });
     const restoreSettingsTabView = (nextTab, scrollLeft, scrollTop) => {

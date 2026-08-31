@@ -18,7 +18,7 @@ import { patchResourceMonitor } from "../../shell/resource-monitor";
 import type { RendererApplicationApi } from "../../studio-client";
 
 export interface QueueLiveStatusOptions {
-  studio: Pick<RendererApplicationApi, "getPerformanceMetrics">;
+  application: Pick<RendererApplicationApi, "getPerformanceMetrics">;
   t: Translate;
   getState(): AppState | undefined;
   getPage(): Page;
@@ -332,7 +332,7 @@ export function createQueueLiveStatus(options: QueueLiveStatusOptions) {
     if (!state) return;
     performancePolling = true;
     try {
-      const metrics = await options.studio.getPerformanceMetrics(state.settings);
+      const metrics = await options.application.getPerformanceMetrics(state.settings);
       options.setPerformanceMetrics(metrics);
       patchResourceMonitor(metrics);
       if (options.getPage() !== "queue") return;

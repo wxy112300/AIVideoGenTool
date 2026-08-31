@@ -1,7 +1,7 @@
 import type { Translator, TranslationParams } from "../core/i18n";
 import type { AppState, EnhanceRequest, NotificationKind } from "../types";
 import type { NotificationAction } from "./notifications";
-import type { RendererClient, RendererDependencies } from "./studio-client";
+import type { RendererDependencies } from "./studio-client";
 
 export type Page =
   | "create"
@@ -42,8 +42,6 @@ export type RendererCleanup = () => void;
 
 export interface RendererContext {
   readonly root: HTMLElement;
-  /** Compatibility entry retained until WP-R03 completes page migration. */
-  readonly studio: RendererClient;
   readonly application: RendererDependencies["application"];
   readonly events: RendererDependencies["events"];
   readonly assets: RendererDependencies["assets"];

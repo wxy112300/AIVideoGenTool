@@ -46,7 +46,7 @@ export function mountImageEditController(
   const t = context.t;
 
   const choosePicture = async (pictureId?: string) => {
-    const filename = await context.studio.pickImage();
+    const filename = await context.hostCapabilities.pickImage();
     if (filename) options.addImagePicture(filename, pictureId);
   };
   root.querySelector("#add-image-slot")?.addEventListener("click", (event) => {
@@ -83,7 +83,7 @@ export function mountImageEditController(
         context.notify(t(uiKeys.create.interaction.invalidImageDrop));
         return;
       }
-      const filename = context.studio.getDroppedFilePath(file);
+      const filename = context.hostCapabilities.getDroppedFilePath(file);
       if (!filename) {
         context.notify(t(uiKeys.create.interaction.imagePathFailed));
         return;
@@ -268,7 +268,7 @@ export function mountImageEditController(
     event.stopImmediatePropagation();
     if (options.isPromptEnhancing()) {
       try {
-        const result = await context.studio.cancelPrompt();
+        const result = await context.application.cancelPrompt();
         if (!result.ok) throw new Error(result.message);
       } catch (error) {
         context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });
@@ -416,7 +416,7 @@ export function mountImageEditController(
         outputCount: draft.outputCount,
         pictureCount: draft.pictures.length
       });
-      const nextState = await context.studio.enqueueImageEdit(draft);
+      const nextState = await context.application.enqueueImageEdit(draft);
       const outputFilename = nextState.queue.at(-1)?.outputFilename ?? "";
       context.notify(t(uiKeys.create.interaction.imageQueueAdded, { filename: outputFilename }));
       options.setState(nextState);

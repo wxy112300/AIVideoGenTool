@@ -259,7 +259,7 @@ export function h3ReferenceTag(slots, slotId) {
 export async function loadImagePreview(context, filename, targetId, patchDraft) {
     if (!filename)
         return;
-    const dataUrl = await context.studio.readImage(filename);
+    const dataUrl = await context.assets.readImage(filename);
     const image = context.root.querySelector(`#${targetId}`);
     if (!image || !dataUrl)
         return;

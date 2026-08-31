@@ -39,12 +39,12 @@ function comfyRuntime(): ComfyRuntimeState {
 }
 
 function optionsFor(
-  studio: AppApi,
+  application: AppApi,
   overrides: Partial<RendererBootstrapOptions> = {}
 ): RendererBootstrapOptions {
   const state = createDefaultState();
   return {
-    studio,
+    application,
     setState: vi.fn(),
     setComfyRuntimeState: vi.fn(),
     setPromptRuntimeState: vi.fn(),
@@ -69,7 +69,7 @@ describe("renderer bootstrap startup sequencing", () => {
     const promptRuntime = deferred<ReturnType<typeof createPromptRuntimeState>>();
     const bundledWorkflow = deferred<null>();
     const state = createDefaultState();
-    const studio = {
+    const application = {
       getState: vi.fn(async () => state),
       getAppVersion: vi.fn(() => appVersion.promise),
       getComfyRuntimeState: vi.fn(() => runtime.promise),
@@ -78,14 +78,14 @@ describe("renderer bootstrap startup sequencing", () => {
       reportRendererError: vi.fn(async () => undefined)
     } as unknown as AppApi;
     const render = vi.fn();
-    const bootstrapOptions = optionsFor(studio, { render });
+    const bootstrapOptions = optionsFor(application, { render });
 
     bootstrapRenderer(bootstrapOptions);
     await vi.waitFor(() => expect(render).toHaveBeenCalledTimes(1));
     expect(bootstrapOptions.setState).toHaveBeenCalledWith(state);
-    expect(studio.getAppVersion).toHaveBeenCalledOnce();
-    expect(studio.getComfyRuntimeState).toHaveBeenCalledOnce();
-    expect(studio.getPromptRuntimeState).toHaveBeenCalledOnce();
+    expect(application.getAppVersion).toHaveBeenCalledOnce();
+    expect(application.getComfyRuntimeState).toHaveBeenCalledOnce();
+    expect(application.getPromptRuntimeState).toHaveBeenCalledOnce();
     expect(render).toHaveBeenCalledTimes(1);
 
     appVersion.resolve("0.55.0");
@@ -93,13 +93,13 @@ describe("renderer bootstrap startup sequencing", () => {
     promptRuntime.resolve(createPromptRuntimeState());
     bundledWorkflow.resolve(null);
     await vi.waitFor(() => expect(render.mock.calls.length).toBeGreaterThan(1));
-    expect(studio.reportRendererError).not.toHaveBeenCalled();
+    expect(application.reportRendererError).not.toHaveBeenCalled();
   });
 
   it("keeps initial-state failures visible and reported", async () => {
     const failure = new Error("state barrier failed");
     const reportRendererError = vi.fn(async () => undefined);
-    const studio = {
+    const application = {
       getState: vi.fn(async () => {
         throw failure;
       }),
@@ -107,7 +107,7 @@ describe("renderer bootstrap startup sequencing", () => {
     } as unknown as AppApi;
     const showStartupFailure = vi.fn();
 
-    bootstrapRenderer(optionsFor(studio, { showStartupFailure }));
+    bootstrapRenderer(optionsFor(application, { showStartupFailure }));
 
     await vi.waitFor(() => expect(showStartupFailure).toHaveBeenCalledOnce());
     expect(showStartupFailure).toHaveBeenCalledWith(

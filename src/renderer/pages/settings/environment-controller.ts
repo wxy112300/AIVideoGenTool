@@ -40,7 +40,7 @@ export function mountSettingsEnvironmentController(
     options.setAttentionAccelerationLog("");
     context.requestRender();
     try {
-      const result = await context.studio.installAttentionAcceleration(settings);
+      const result = await context.application.installAttentionAcceleration(settings);
       options.setAttentionAccelerationLog(
         result.log || options.getAttentionAccelerationLog() || result.message
       );
@@ -66,7 +66,7 @@ export function mountSettingsEnvironmentController(
       options.setEnvironmentRepairing(issueId);
       context.requestRender();
       try {
-        const result = await context.studio.repairEnvironmentIssue(issueId, settings);
+        const result = await context.application.repairEnvironmentIssue(issueId, settings);
         options.setEnvironmentRepairLog(issueId, result.log || result.message);
         options.setEnvironmentRepairing("");
         const scan = await options.refreshEnvironment(settings, "dependency-change");

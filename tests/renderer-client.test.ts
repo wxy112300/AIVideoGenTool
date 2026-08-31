@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
 import type { AppApi, AppState, EnhanceRequest } from "../src/types";
+import { createRendererEntry } from "../src/renderer/entry";
 import {
   createElectronRendererClient,
   createRendererDependencies,
@@ -84,12 +85,26 @@ describe("renderer studio client seam", () => {
     expect(dependencies.hostCapabilities.openExternal).toBe(openExternal);
   });
 
-  it("constructs the Electron client exactly once in src/main.ts", () => {
-    const mainSource = readFileSync(resolve(process.cwd(), "src/main.ts"), "utf8");
+  it("composes the explicit renderer entry from a supplied preload API", () => {
+    const getState = vi.fn(async () => createDefaultState());
+    const onStateChanged = vi.fn(() => vi.fn());
+    const preloadApi = { getState, onStateChanged } as unknown as AppApi;
 
-    expect(mainSource.match(/window\.studio/g)).toHaveLength(1);
-    expect(mainSource).toContain(
-      "const rendererClient = createElectronRendererClient(window.studio);"
-    );
+    const entry = createRendererEntry(preloadApi);
+
+    expect(entry.dependencies.application.getState).toBe(entry.client.getState);
+    expect(entry.dependencies.events.onStateChanged).toBe(entry.client.onStateChanged);
+    expect(entry.dependencies.assets).toBe(entry.dependencies.application);
+    expect(entry.dependencies.hostCapabilities).toBe(entry.dependencies.application);
+  });
+
+  it("isolates the Electron preload global in the renderer entry", () => {
+    const mainSource = readFileSync(resolve(process.cwd(), "src/main.ts"), "utf8");
+    const entrySource = readFileSync(resolve(process.cwd(), "src/renderer/entry.ts"), "utf8");
+
+    expect(mainSource).not.toContain("window.studio");
+    expect(mainSource).not.toContain("createElectronRendererClient");
+    expect(entrySource.match(/window\.studio/g)).toHaveLength(1);
+    expect(entrySource).toContain("return createRendererEntry(window.studio);");
   });
 });

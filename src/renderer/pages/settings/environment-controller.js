@@ -14,7 +14,7 @@ export function mountSettingsEnvironmentController(context, options) {
         options.setAttentionAccelerationLog("");
         context.requestRender();
         try {
-            const result = await context.studio.installAttentionAcceleration(settings);
+            const result = await context.application.installAttentionAcceleration(settings);
             options.setAttentionAccelerationLog(result.log || options.getAttentionAccelerationLog() || result.message);
             const scan = await options.refreshEnvironment(settings, "dependency-change");
             if (scan)
@@ -37,7 +37,7 @@ export function mountSettingsEnvironmentController(context, options) {
         options.setLlamaCppPythonLog("");
         context.requestRender();
         try {
-            const result = await context.studio.installLlamaCppPython(settings);
+            const result = await context.application.installLlamaCppPython(settings);
             options.setLlamaCppPythonLog(result.log || result.message);
             const scan = await options.refreshEnvironment(settings, "dependency-change");
             if (scan)
@@ -61,7 +61,7 @@ export function mountSettingsEnvironmentController(context, options) {
             options.setEnvironmentRepairing(issueId);
             context.requestRender();
             try {
-                const result = await context.studio.repairEnvironmentIssue(issueId, settings);
+                const result = await context.application.repairEnvironmentIssue(issueId, settings);
                 options.setEnvironmentRepairLog(issueId, result.log || result.message);
                 options.setEnvironmentRepairing("");
                 const scan = await options.refreshEnvironment(settings, "dependency-change");

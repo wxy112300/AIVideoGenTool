@@ -30,7 +30,10 @@ function createFixture() {
   const onAction = vi.fn(async () => undefined);
   const context: RendererContext = {
     root,
-    studio: {} as RendererContext["studio"],
+    application: {} as RendererContext["application"],
+    events: {} as RendererContext["events"],
+    assets: {} as RendererContext["assets"],
+    hostCapabilities: {} as RendererContext["hostCapabilities"],
     enhancePrompt: async () => "",
     getState: () => state,
     getRoute: () => ({ page: "queue", creationMode: "image-to-video", historyKind: "video" }),

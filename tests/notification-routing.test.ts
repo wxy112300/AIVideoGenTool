@@ -22,11 +22,18 @@ function button(dataset: Record<string, string> = {}) {
   return { value, handlers };
 }
 
-function baseContext(root: unknown, notify: RendererContext["notify"], studio: Partial<RendererContext["studio"]>): RendererContext {
+function baseContext(
+  root: unknown,
+  notify: RendererContext["notify"],
+  hostCapabilities: Partial<RendererContext["hostCapabilities"]>
+): RendererContext {
   const state = createDefaultState();
   return {
     root: root as HTMLElement,
-    studio: studio as RendererContext["studio"],
+    application: {} as RendererContext["application"],
+    events: {} as RendererContext["events"],
+    assets: {} as RendererContext["assets"],
+    hostCapabilities: hostCapabilities as RendererContext["hostCapabilities"],
     getState: () => state,
     getRoute: () => ({ page: "settings", creationMode: "image-to-video", historyKind: "video" }),
     getTranslator: () => ({ locale: "zh-CN", t: (key: string) => key }),

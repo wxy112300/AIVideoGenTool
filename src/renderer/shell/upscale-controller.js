@@ -85,14 +85,14 @@ export function mountUpscaleController(context, options) {
                 outputFilename: createUpscaleFilename(sourceFile.filename, dialog.targetHeight)
             };
             if (dialog.taskId || dialog.replaceTaskId) {
-                const nextState = await context.studio.updateUpscaleTask(dialog.taskId ?? dialog.replaceTaskId, upscalePatch);
+                const nextState = await context.application.updateUpscaleTask(dialog.taskId ?? dialog.replaceTaskId, upscalePatch);
                 options.setRendererState(nextState);
                 context.notify(dialog.taskId ? t(uiKeys.runtime.upscaleUpdated) : t(uiKeys.runtime.upscaleRecovered), { renderPage: false });
                 options.setDialog(null);
                 context.requestRender();
             }
             else {
-                const nextState = await context.studio.enqueueUpscale({
+                const nextState = await context.application.enqueueUpscale({
                     sourceAssetId: asset.id,
                     sourceVersionId: version.id,
                     sourceFilePath: sourceFile.absolutePath,

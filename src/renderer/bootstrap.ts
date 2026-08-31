@@ -11,7 +11,7 @@ import type { PromptRuntimeState } from "../core/prompt-runtime-state";
 import type { RendererApplicationApi } from "./studio-client";
 
 export interface RendererBootstrapOptions {
-  studio: RendererApplicationApi;
+  application: RendererApplicationApi;
   setState(nextState: AppState): void;
   setComfyRuntimeState(state: ComfyRuntimeState): void;
   setPromptRuntimeState(state: PromptRuntimeState): void;
@@ -37,7 +37,7 @@ function reportBootstrapError(
   source: string,
   error: unknown
 ): void {
-  void options.studio.reportRendererError(
+  void options.application.reportRendererError(
     startupErrorMessage(error),
     { source }
   ).catch(() => undefined);
@@ -62,7 +62,7 @@ function hydrateStartupRuntime(options: RendererBootstrapOptions): void {
   hydrateStartupCall(
     options,
     "startup-app-version",
-    () => options.studio.getAppVersion(),
+    () => options.application.getAppVersion(),
     (appVersion) => {
       options.setAppVersion(appVersion);
       document.title = `Local Video Studio v${appVersion}`;
@@ -71,20 +71,20 @@ function hydrateStartupRuntime(options: RendererBootstrapOptions): void {
   hydrateStartupCall(
     options,
     "startup-comfy-runtime",
-    () => options.studio.getComfyRuntimeState(),
+    () => options.application.getComfyRuntimeState(),
     (runtime) => options.setComfyRuntimeState(runtime)
   );
   hydrateStartupCall(
     options,
     "startup-prompt-runtime",
-    () => options.studio.getPromptRuntimeState(),
+    () => options.application.getPromptRuntimeState(),
     (promptRuntime) => options.setPromptRuntimeState(promptRuntime)
   );
 }
 
 export function bootstrapRenderer(options: RendererBootstrapOptions): void {
   void Promise.resolve()
-    .then(() => options.studio.getState())
+    .then(() => options.application.getState())
     .then(async (initialState) => {
       await loadUiLocale(initialState.settings.uiLocale).catch(() => undefined);
       options.setState(initialState);
@@ -102,7 +102,7 @@ export function bootstrapRenderer(options: RendererBootstrapOptions): void {
         .catch((error) => reportBootstrapError(options, "startup-environment", error));
 
       void Promise.resolve()
-        .then(() => options.studio.getBundledWorkflow(
+        .then(() => options.application.getBundledWorkflow(
           options.bundledWorkflowModelId(initialState.draft),
           initialState.draft.inputMode
         ))
@@ -126,7 +126,7 @@ export function bootstrapRenderer(options: RendererBootstrapOptions): void {
           }
           const workflowPath = initialState.draft.workflowPath;
           if (workflowPath && workflowPath !== bundled?.path) {
-            const capability = await options.studio.inspectWorkflow(
+            const capability = await options.application.inspectWorkflow(
               workflowPath,
               initialState.draft.modelId
             );

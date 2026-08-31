@@ -117,7 +117,7 @@ export function createHistoryContextMenus(context, options) {
             else if (action === "copy-path")
                 await options.copyHistoryText(absolutePath, t(uiKeys.history.menu.videoPathCopied));
             else if (action === "show-file") {
-                const shown = await context.studio.showItemInFolder(absolutePath);
+                const shown = await context.hostCapabilities.showItemInFolder(absolutePath);
                 if (!shown)
                     context.notify(t(uiKeys.history.menu.videoMissing), { renderPage: false });
             }
@@ -165,7 +165,7 @@ export function createHistoryContextMenus(context, options) {
             else if (action === "copy-path")
                 await options.copyHistoryText(absolutePath, t(uiKeys.history.menu.imagePathCopied));
             else if (action === "show-file") {
-                const shown = await context.studio.showItemInFolder(absolutePath);
+                const shown = await context.hostCapabilities.showItemInFolder(absolutePath);
                 if (!shown)
                     context.notify(t(uiKeys.history.menu.imageMissing), { renderPage: false });
             }

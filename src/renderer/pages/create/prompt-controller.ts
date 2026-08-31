@@ -62,11 +62,11 @@ export function mountCreatePromptController(
   const promptUi = () => h3PromptPackFor(options.context.getState()?.settings.uiLocale).ui;
 
   root.querySelector("#pick-workflow")?.addEventListener("click", async () => {
-    const filename = await options.context.studio.pickWorkflow();
+    const filename = await options.context.hostCapabilities.pickWorkflow();
     if (!filename) return;
     options.setWorkflowCapability(
       filename,
-      await options.context.studio.inspectWorkflow(filename, getDraft()?.modelId)
+      await options.context.application.inspectWorkflow(filename, getDraft()?.modelId)
     );
     options.patchDraft({ workflowPath: filename });
     options.context.requestRender();
@@ -215,7 +215,7 @@ export function mountCreatePromptController(
     event.stopImmediatePropagation();
     if (options.isPromptEnhancing()) {
       try {
-        const result = await options.context.studio.cancelPrompt();
+        const result = await options.context.application.cancelPrompt();
         if (!result.ok) throw new Error(result.message);
       } catch (error) {
         options.context.notify(error instanceof Error ? error.message : String(error), { kind: "error" });

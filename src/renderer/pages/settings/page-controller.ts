@@ -52,7 +52,7 @@ export function mountSettingsPageController(
   }, { signal });
 
   root.querySelector<HTMLButtonElement>("#pick-comfy-python")?.addEventListener("click", async () => {
-    const selectedPath = await options.context.studio.pickPython();
+    const selectedPath = await options.context.hostCapabilities.pickPython();
     const input = root.querySelector<HTMLInputElement>("#comfy-python-path");
     if (!selectedPath || !input) return;
     input.value = selectedPath;
@@ -100,13 +100,13 @@ export function mountSettingsPageController(
       guide.downloadUrl,
       options.formSettings().hfMirrorEnabled
     );
-    const opened = await options.context.studio.openExternal(url);
+    const opened = await options.context.hostCapabilities.openExternal(url);
     if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
   }, { signal });
   root.querySelector("#open-install-directory")?.addEventListener("click", async (event) => {
     const directory = (event.currentTarget as HTMLButtonElement).dataset.installDirectory?.trim();
     if (!directory) return;
-    const opened = await options.context.studio.openDirectory(directory);
+    const opened = await options.context.hostCapabilities.openDirectory(directory);
     if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" });
   }, { signal });
 
@@ -115,7 +115,7 @@ export function mountSettingsPageController(
       const sourceUrl = button.dataset.openEnvironmentDownload?.trim();
       if (!sourceUrl) return;
       const url = rewriteHuggingFaceDownloadUrl(sourceUrl, options.formSettings().hfMirrorEnabled);
-      const opened = await options.context.studio.openExternal(url);
+      const opened = await options.context.hostCapabilities.openExternal(url);
       if (!opened) options.context.notify(options.context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
     }, { signal });
   });
@@ -144,7 +144,7 @@ export function mountSettingsPageController(
       if (!resultElement) return;
       resultElement.textContent = options.context.t(uiKeys.settings.actions.connectionPending);
       try {
-        const result = await options.context.studio.testConnection("comfy", options.formSettings());
+        const result = await options.context.application.testConnection("comfy", options.formSettings());
         resultElement.className = `connection-result ${result.ok ? "success" : "error"}`;
         resultElement.textContent = result.message;
         options.context.notify(result.message, { kind: result.ok ? "info" : "error" });
@@ -174,7 +174,7 @@ export function mountSettingsPageController(
 
   root.querySelector("#pick-comfy-install-directory")?.addEventListener("click", async () => {
     const input = root.querySelector<HTMLInputElement>("#comfy-install-directory");
-    const directory = await options.context.studio.pickDirectory();
+    const directory = await options.context.hostCapabilities.pickDirectory();
     if (!directory || !input) return;
     input.value = directory;
     const settings = options.formSettings();
@@ -195,7 +195,7 @@ export function mountSettingsPageController(
   });
 
   root.querySelector("#pick-model-directory")?.addEventListener("click", async () => {
-    const directory = await options.context.studio.pickDirectory();
+    const directory = await options.context.hostCapabilities.pickDirectory();
     const input = root.querySelector<HTMLInputElement>("#model-directory");
     if (!directory || !input) return;
     input.value = directory;
@@ -206,7 +206,7 @@ export function mountSettingsPageController(
 
   root.querySelector("#pick-output-directory")?.addEventListener("click", async () => {
     const input = root.querySelector<HTMLInputElement>("#output-directory");
-    const directory = await options.context.studio.pickDirectory(input?.value, true);
+    const directory = await options.context.hostCapabilities.pickDirectory(input?.value, true);
     if (!directory || !input) return;
     input.value = directory;
     const settings = options.formSettings();
@@ -216,7 +216,7 @@ export function mountSettingsPageController(
 
   root.querySelector("#pick-image-output-directory")?.addEventListener("click", async () => {
     const input = root.querySelector<HTMLInputElement>("#image-output-directory");
-    const directory = await options.context.studio.pickDirectory(input?.value, true);
+    const directory = await options.context.hostCapabilities.pickDirectory(input?.value, true);
     if (!directory || !input) return;
     input.value = directory;
     options.setSettingsDraft(options.formSettings());
@@ -225,7 +225,7 @@ export function mountSettingsPageController(
 
   root.querySelector("#pick-image-input-library-directory")?.addEventListener("click", async () => {
     const input = root.querySelector<HTMLInputElement>("#image-input-library-directory");
-    const directory = await options.context.studio.pickDirectory(input?.value, true);
+    const directory = await options.context.hostCapabilities.pickDirectory(input?.value, true);
     if (!directory || !input) return;
     input.value = directory;
     options.setSettingsDraft(options.formSettings());
@@ -241,7 +241,7 @@ export function mountSettingsPageController(
   }, { signal });
 
   root.querySelector("[data-pick-prompt-model-directory]")?.addEventListener("click", async () => {
-    const directory = await options.context.studio.pickDirectory();
+    const directory = await options.context.hostCapabilities.pickDirectory();
     const input = root.querySelector<HTMLInputElement>("#prompt-model-directory");
     if (!directory || !input) return;
     input.value = directory;
@@ -252,7 +252,7 @@ export function mountSettingsPageController(
 
   root.querySelectorAll<HTMLElement>("[data-pick-lm-install]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const directory = await options.context.studio.pickDirectory();
+      const directory = await options.context.hostCapabilities.pickDirectory();
       if (!directory) return;
       const input = root.querySelector<HTMLInputElement>("#lm-install-directory");
       if (input) input.value = directory;

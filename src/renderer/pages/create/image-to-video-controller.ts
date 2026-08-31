@@ -41,7 +41,7 @@ function bindFrameDrop(
       context.notify(t(uiKeys.create.interaction.invalidImageDrop));
       return;
     }
-    const filename = context.studio.getDroppedFilePath(file);
+    const filename = context.hostCapabilities.getDroppedFilePath(file);
     if (!filename) {
       context.notify(t(uiKeys.create.interaction.imagePathFailed));
       return;
@@ -68,7 +68,7 @@ function bindFramePicker(
   if (!zone || zone.classList.contains("has-image")) return;
   zone.addEventListener("click", async (event) => {
     event.stopImmediatePropagation();
-    const filename = await context.studio.pickImage();
+    const filename = await context.hostCapabilities.pickImage();
     if (!filename) return;
     options.patchDraft({
       [field]: filename,
@@ -100,7 +100,7 @@ export function mountImageToVideoController(
       context.requestRender();
       return;
     }
-    const filename = await context.studio.pickImage();
+    const filename = await context.hostCapabilities.pickImage();
     if (!filename) return;
     options.patchDraft({ endImagePath: filename, endImageWidth: 0, endImageHeight: 0 });
     context.requestRender();

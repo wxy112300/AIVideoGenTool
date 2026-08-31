@@ -9,7 +9,7 @@ export function mountVideoExtensionController(context, options) {
     const t = context.t;
     root.querySelector("#pick-video")?.addEventListener("click", async (event) => {
         event.stopImmediatePropagation();
-        const filename = await context.studio.pickVideo();
+        const filename = await context.hostCapabilities.pickVideo();
         if (filename)
             await options.selectDraftVideo(filename);
     }, { signal });
@@ -57,7 +57,7 @@ export function mountVideoExtensionController(context, options) {
                 context.notify(t(uiKeys.create.interaction.invalidVideoDrop));
                 return;
             }
-            const filename = context.studio.getDroppedFilePath(file);
+            const filename = context.hostCapabilities.getDroppedFilePath(file);
             if (!filename) {
                 context.notify(t(uiKeys.create.interaction.videoPathFailed));
                 return;

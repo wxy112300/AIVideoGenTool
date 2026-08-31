@@ -389,7 +389,7 @@ export async function loadImagePreview(
   onDimensions?: (dimensions: { width: number; height: number }) => Partial<Draft> | undefined
 ): Promise<void> {
   if (!filename) return;
-  const dataUrl = await context.studio.readImage(filename);
+  const dataUrl = await context.assets.readImage(filename);
   const image = context.root.querySelector<HTMLImageElement>(`#${targetId}`);
   if (!image || !dataUrl) return;
   image.addEventListener("load", () => {

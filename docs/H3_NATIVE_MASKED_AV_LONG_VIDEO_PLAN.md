@@ -112,7 +112,7 @@ h3ContextSavedPath?: string
 
 ### 2.3 当前文件生命周期没有 sidecar 概念
 
-- `electron/services/video-history-migration.ts` 只迁移视频 `HistoryFile`。
+- `src/infrastructure/video-history-migration.ts` 只迁移视频 `HistoryFile`。
 - History 删除/版本删除不知道 latent/manifest。
 - History path fallback、输出目录迁移、复制/重试没有 Native artifact 所有权。
 - `duplicateQueueTask` 机械复制保存路径会导致 task-id 路径碰撞。
@@ -182,7 +182,7 @@ export type NativeAvInputKind = "encoded-media" | "continuation-artifact";
 
 H3 输出是 video/audio `NestedTensor`。当前 ComfyUI stock `SaveLatent/LoadLatent` 只 round-trip 单个 `samples["samples"]` tensor，不能作为 H3 AV 契约。必须提供经过测试的 joint serializer；否则只开放 `encoded-media`，artifact fast path 保持 disabled。
 
-### 4.2 State 只保存引用，二进制放 task-owned 目录
+### 4.2 State 只保存引用，二进制放视频输出目录下的固定 H3 AV 目录
 
 ```ts
 export type H3ContinuationDataStatus =
@@ -200,6 +200,7 @@ export interface NativeAvContinuationData {
 
 export interface NativeAvContinuationArtifact {
   schemaVersion: 1;
+  artifactId: string;
   manifest: HistoryFile;
   payload: HistoryFile;
   payloadSha256: string;
@@ -230,32 +231,51 @@ export interface NativeAvContinuationArtifact {
 ```
 
 - payload 建议为 safetensors，固定 keys `video` / `audio`，CPU contiguous，禁止 pickle。
-- 放在 `<output>/continuation/minimax-h3/<task-id>/`；manifest 内使用相对 artifact 路径。
+- artifact 统一写入入队时冻结的 `videoOutputDirectory` 下的固定子目录，不为每个 task 创建持久目录：
+
+  ```
+  <videoOutputDirectory>/
+    h3-native-av/
+      h3av_<artifactId>.safetensors
+      h3av_<artifactId>.json
+  ```
+
+- `artifactId` 是稳定、不可变、文件名安全的唯一 ID；payload 和 manifest 使用平铺命名，`sourceTaskId` 只作为 manifest 元数据，不能参与目录结构，也不能让重试覆盖旧文件。
+- `manifest` 和 `payload` 的 `HistoryFile.subfolder` 相对于视频输出目录固定为 `h3-native-av`；`absolutePath` 只是可修复的缓存路径，路径恢复必须能从当前/旧 `videoOutputDirectory` 和 `subfolder + filename` 重新解析。
+- `.partial` / `.tmp` 只允许作为固定目录内带随机后缀的临时文件存在；它们可以隔离并清理，但不构成永久的 task 目录。
+- 早期实现或旧计划留下的 `<output>/continuation/minimax-h3/<task-id>/` 等 task-owned 路径，只能通过已持久化的 artifact 引用或 manifest 识别；迁移时 copy→校验→更新引用，不能靠递归扫描猜测，也不能直接删除旧源。
 - v1 先保存完整 sampler output。只有“精确 tail 提取 + A→B→C”真实测试通过后，才改为较小的 tail capsule。
 - noise mask 按 manifest 策略确定性重建，不保存为权威 tensor。
 - 对能输出标准 H3 joint AV latent 的新 H3 generation，默认尝试保存 artifact；具体模型是否能被未来 Native Extend 直接消费，由 manifest compatibility gate 决定。
 - artifact 是未来直接续写的原始素材，但文件存在不等于当前 runtime 已支持 Native Extend。History 必须分别显示“续写数据状态”和“当前直接续写能力”。
 - MP4 仍是 durable media；artifact 保存失败或损坏不能让 generation 失败，也不能让 History 无法播放。
 
+#### 4.2.1 Artifact 所有权与素材库边界
+
+- H3 原始 AV 是视频输出的派生恢复资产，归类为 `video-output-auxiliary`，不是用户导入图片，也不是现有图片素材库 `sources/` 下的 `image-source`。
+- 现有图片素材库的扫描、归档、引用保护和未引用清理必须识别并跳过 `h3-native-av`；不能把 H3 payload 当作图片孤儿，也不能因图片素材库目录变更而搬运或删除它。
+- 用户迁移 `imageInputLibraryDirectory` 时，H3 原始 AV 留在视频输出目录；如果未来提供统一“资产迁移”，必须按媒体类型分派：图片走图片素材库迁移，视频最终文件和 H3 AV manifest/payload 走视频输出迁移。
+- 资产引用图必须保护 History/AssetVersion、等待队列、`LongVideoPlan` 和 committed segment 对 manifest/payload 的引用；只有确认没有任何引用时，删除视频版本或清理恢复资产才可以删除对应 pair。
+
 ### 4.3 原子提交
 
-1. helper 写 task-owned `.partial` payload。
+1. helper 确认固定 `h3-native-av` 目录存在，在其中写带 `artifactId` 和随机后缀的 `.partial` payload。
 2. Electron 校验 safetensors keys、size、shape、dtype、几何、时间网格。
 3. 计算 SHA-256，写临时 manifest。
-4. payload rename 到最终名；manifest 最后 rename，manifest 存在代表 committed。
+4. payload rename 到 `h3av_<artifactId>.safetensors`；manifest 最后 rename 到 `h3av_<artifactId>.json`，manifest 中的 payload filename、size 和 hash 必须互相匹配；manifest 存在代表 pair committed。
 5. `persistVideoHistoryResult` 在同一次 store update 中写引用。
 6. 失败保留 MP4、删除 partial、记录 artifact unavailable，不伪造 committed。
 
-恢复只接受 manifest + payload + hash 全匹配。孤立 partial 可清；孤立 committed payload 先记录日志，不自动删除。
+恢复只接受 manifest + payload + hash 全匹配。固定目录内的孤立 partial 可清；孤立 committed pair 或 payload 先记录日志和诊断信息，不因目录扫描自动删除。
 
 ### 4.4 生命周期规则
 
-- Duplicate：可保留只读输入 artifact；清空输出 artifact、prompt/save target，分配新 task目录。
-- Reset/retry：只复用 committed 输入；输出用新 temporary，不能覆盖上次成功数据。
+- Duplicate：可保留只读输入 artifact；清空输出 artifact、prompt/save target，后续输出分配新的 `artifactId`，不创建 task 子目录。
+- Reset/retry：只复用 committed 输入；输出在固定目录生成新的 `artifactId` 和 temporary，不能覆盖上次成功数据。
 - Cancel：不删上游输入；清当前 partial；artifact 失败不删除已完成媒体。
 - Delete：媒体、manifest、payload 纳入一个删除计划；先解析受管目录，共享引用不误删，再更新 store。
-- Output migration：扩展迁移 reference union，copy→size/hash verify→state commit→cleanup old source；同步 queue input refs。
-- Path fallback：absolutePath 后尝试 current/old output root + subfolder；解析结果必须位于已知 root。
+- Output migration：视频目录迁移同时处理最终视频和 `h3-native-av` 下的 manifest/payload pair，执行 copy→size/hash/linkage verify→state commit→cleanup old source；同步 queue、History、AssetVersion、LongVideoPlan 和 segment input refs。
+- Path fallback：absolutePath 后只尝试当前/旧 `videoOutputDirectory` + `subfolder` 的已知候选；解析结果必须位于已知受管 root，不能通过递归搜索整个 output。
 - History→Extend：以明确 `AssetVersion` 为真源；只有使用版本末尾且 artifact 校验通过才 direct。
 
 ## 5. 工作流和媒体策略
@@ -352,7 +372,7 @@ P0 不依赖 Native mask core `ff6c8a8`。它只要求当前已能正常生成 H
 #### P0-B joint AV serializer 与真实 round-trip
 
 - 从现有 H3 generation graph 的 decode 前取得 `NestedTensor((video,audio))`。
-- 优先实现应用维护的薄 serializer/helper：只接受两个 tensor，只写 task-owned目录，safetensors keys固定为 `video` / `audio`，禁止 pickle和任意路径。
+- 优先实现应用维护的薄 serializer/helper：只接受两个 tensor，只写固定视频输出目录下的 `h3-native-av`，safetensors keys固定为 `video` / `audio`，禁止 pickle和任意路径。
 - 新 `electron/services/native-av-artifact.ts` 完成 safe path、shape/dtype/header校验、SHA-256、atomic commit、partial cleanup。
 - 用现有普通 H3 最小生成保存一次，再 load 后分别 decode video/audio；输出应和保存前 decode 在允许误差内一致。此 gate 不要求 mask extension。
 - Tests：新增 `native-av-artifact.test.ts`，覆盖截断、错误key/shape/hash、路径越界、partial、重复commit。
@@ -370,11 +390,13 @@ P0 不依赖 Native mask core `ff6c8a8`。它只要求当前已能正常生成 H
 
 #### P0-D History 详情、删除、迁移、恢复
 
-- Owner：History detail page/actions、History path/delete helpers、`electron/services/video-history-migration.ts`、`src/core/queue.ts`、recovery。
+- Owner：History detail page/actions、History path/delete helpers、`src/infrastructure/video-history-migration.ts`、`src/core/queue.ts`、recovery。
 - 视频详情页新增“原生 AV 续写数据”区，显示：状态、格式版本、video/audio shape、大小、创建时间、producer model/workflow、完整性，以及“当前运行时能否直接续写”。
 - artifact available 与 Native runtime ready 使用两枚独立状态；前者不能冒充后者。
 - 删除/版本删除把 manifest+payload纳入计划；共享引用不误删。输出目录迁移采用 copy→size/hash verify→commit→cleanup，并同步queue/history引用。
-- duplicate 清 task-owned输出引用；restart只认 committed manifest；老 MC latent不纳入新artifact清理。
+- 视频输出目录迁移的预检必须同时报告最终视频与 H3 AV pair 的文件数、字节数、缺失、冲突和共享引用；只迁移明确受管引用，不递归搬运整个 ComfyUI output。
+- `imageInputLibraryDirectory` 迁移不得触碰 H3 AV；图片素材库 organizer/cleanup 必须把固定目录视为视频侧保留目录。
+- duplicate 清固定目录中的输出 artifact 引用；restart 只认 committed manifest+payload pair；老 MC latent 不纳入新 artifact 清理。
 - Tests：History page/action、`history-delete.test.ts`、`video-history-migration.test.ts`、`queue.test.ts`、recovery tests；按 UX contract 检查两个 viewport。
 - Done：详情页可验证看到新数据；播放不依赖artifact；delete/migrate/restart后媒体和artifact状态一致。
 
@@ -385,7 +407,7 @@ P0 不依赖 Native mask core `ff6c8a8`。它只要求当前已能正常生成 H
 - Owner：`src/core/catalog/types.ts`、H3 shared/new definition/index、`src/core/workflow.ts`、`src/core/queue.ts`。
 - 加 strategy、Native profile ID、execution asset resolver；FL2VA predicate不得再等价于 boundary strategy。
 - 旧记录集中推断：R2V→motion-context、FL2VA video→boundary-frame、Sulphur→ltx-native-overlap；绝不由 `h3ContextLatentPath` 推断 Native。
-- running Extension明确恢复为 waiting/resumable；duplicate清新的task-owned输出。
+- running Extension明确恢复为 waiting/resumable；duplicate 清新的固定目录 artifact 引用。
 - Tests：`model-catalog.test.ts`、`create-model-options.test.ts`、`workflow.test.ts`、`queue.test.ts`、`creation-drafts.test.ts`。
 - Done：四种 Extend策略可表达，组件事实不重复，旧默认不改变。
 
@@ -465,6 +487,7 @@ P0 不依赖 Native mask core `ff6c8a8`。它只要求当前已能正常生成 H
 7. trim非末尾不direct；
 8. app/ComfyUI restart、cancel、retry、duplicate、delete、output migration；
 9. Motion Context回归；只验证功能，不宣称质量优胜。
+10. 图片素材库目录迁移、视频输出目录迁移与 H3 AV 引用保护互不串线；迁移中断后可恢复，不能把 artifact 误报为图片孤儿。
 
 记录core commit、torch/torchaudio、资产、workflow revision、分辨率、frames、steps、seed、VRAM/RAM、阶段耗时、artifact大小、video frames、audio samples、PTS、fallback。运行 `npm.cmd run verify`。只有真实输出和恢复路径通过，Native profile才`runtime-ready`。
 
@@ -474,6 +497,7 @@ P0 不依赖 Native mask core `ff6c8a8`。它只要求当前已能正常生成 H
 
 - parent：目标总时长、revision、lastCommittedSegment、最终输出；
 - segment：输入前一committed artifact，输出新artifact + append clip；
+- 所有 committed segment artifact 继续使用视频输出目录下的固定 `h3-native-av`，以唯一 `artifactId` 平铺保存；segment index 和 task id 只存在于 manifest/plan，不创建持久 task 子目录；
 - restart从最后成功段继续，不重采样已完成段；
 - 一个父任务/一个最终History；segment只用于诊断和恢复；
 - 逐段decode/append，禁止累计完整RGB tensor；

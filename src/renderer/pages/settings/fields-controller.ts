@@ -130,7 +130,7 @@ export function mountSettingsFieldsController(
   root.querySelector<HTMLButtonElement>("#discard-settings")?.addEventListener("click", () => {
     if (!options.hasUnsavedChanges()) return;
     options.setSettingsDraft(null);
-    void context.studio.setSettingsDirty(false).catch(() => undefined);
+    void context.application.setSettingsDirty(false).catch(() => undefined);
     context.requestRender();
   }, { signal });
 

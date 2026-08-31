@@ -49,7 +49,7 @@ export function mountSettingsServiceController(
       );
       context.requestRender();
       try {
-        const result = await context.studio.startLocalService(kind, settings);
+        const result = await context.application.startLocalService(kind, settings);
         options.setServiceStarting(null);
         options.setServiceStatusMessage(result.message);
         const scan = await options.refreshEnvironment(settings, "service-change");
@@ -73,7 +73,7 @@ export function mountSettingsServiceController(
       options.setServiceStatusMessage(context.t(uiKeys.settings.actions.serviceRestartingComfy));
       context.requestRender();
       try {
-        const result = await context.studio.restartLocalService(kind, settings);
+        const result = await context.application.restartLocalService(kind, settings);
         options.setServiceRestarting(null);
         options.setServiceStatusMessage(result.message);
         const scan = await options.refreshEnvironment(settings, "service-change");
@@ -102,7 +102,7 @@ export function mountSettingsServiceController(
     options.setComfyUpdateLog("");
     context.requestRender();
     try {
-      const result = await context.studio.updateComfyUi(settings);
+      const result = await context.application.updateComfyUi(settings);
       options.setComfyUpdateLog(result.log || result.message);
       if (!result.ok) {
         context.notify(result.message, { kind: "error" });

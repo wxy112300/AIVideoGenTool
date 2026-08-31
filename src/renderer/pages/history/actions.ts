@@ -71,7 +71,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       return;
     }
     try {
-      const result = await context.studio.copyFile(filename);
+      const result = await context.hostCapabilities.copyFile(filename);
       context.notify(result.ok ? successMessage : result.message, { renderPage: false });
     } catch {
       context.notify(t(uiKeys.history.actions.copyMediaFailed), { renderPage: false });
@@ -83,7 +83,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       return;
     }
     try {
-      const dataUrl = await context.studio.readImage(filename);
+      const dataUrl = await context.assets.readImage(filename);
       if (!dataUrl || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
         context.notify(t(uiKeys.history.actions.imageClipboardUnsupported), { renderPage: false });
         return;
@@ -206,7 +206,7 @@ export function createHistoryActions(options: HistoryActionsOptions) {
       seed: version.seed ?? null,
       outputFormat: "png"
     });
-    options.setState(await context.studio.saveImageDraft(draft));
+    options.setState(await context.application.saveImageDraft(draft));
     options.reportUserAction("image-history-continue-edit", { projectId: project.id, versionId: version.id });
     options.navigateToCreationMode("image-edit");
   };

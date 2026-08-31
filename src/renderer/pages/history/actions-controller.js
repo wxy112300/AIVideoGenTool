@@ -196,7 +196,7 @@ export function mountHistoryActionsController(context, options) {
         if (!projectId)
             return;
         try {
-            options.setState(await context.studio.setImageHistoryCover(projectId, button.dataset.imageCoverVersion || undefined));
+            options.setState(await context.application.setImageHistoryCover(projectId, button.dataset.imageCoverVersion || undefined));
             context.notify(button.dataset.imageCoverVersion ? t(uiKeys.history.actions.coverSet) : t(uiKeys.history.actions.autoCoverRestored), { renderPage: false });
             context.requestRender();
         }
@@ -228,7 +228,7 @@ export function mountHistoryActionsController(context, options) {
             if (!filename)
                 return;
             context.reportUserAction("history-show-file");
-            const shown = await context.studio.showItemInFolder(filename);
+            const shown = await context.hostCapabilities.showItemInFolder(filename);
             if (!shown)
                 context.notify(t(uiKeys.history.actions.fileMissing), { renderPage: false });
         }, { signal });

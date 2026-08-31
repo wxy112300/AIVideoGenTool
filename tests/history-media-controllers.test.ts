@@ -47,7 +47,10 @@ class FakeIntersectionObserver {
 function createContext(root: HTMLElement): RendererContext {
   return {
     root,
-    studio: {} as RendererContext["studio"],
+    application: {} as RendererContext["application"],
+    events: {} as RendererContext["events"],
+    assets: {} as RendererContext["assets"],
+    hostCapabilities: {} as RendererContext["hostCapabilities"],
     getState: () => undefined,
     getRoute: () => ({ page: "history", creationMode: "image-to-video", historyKind: "image" }),
     getTranslator: () => {
@@ -221,14 +224,17 @@ describe("history media controller scheduling", () => {
       this.dispatchEvent(new Event("loadeddata"));
     });
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-    const studio = {
+    const assets = {
       readHistoryCover: vi.fn(async () => null),
-      reportRendererError: vi.fn(async () => undefined),
       saveHistoryCover: vi.fn(async () => false)
-    } as unknown as RendererContext["studio"];
+    } as unknown as RendererContext["assets"];
+    const application = {
+      reportRendererError: vi.fn(async () => undefined)
+    } as unknown as RendererContext["application"];
     const context = {
       ...createContext(root),
-      studio,
+      assets,
+      application,
       getRoute: () => ({ page: "history", creationMode: "image-to-video", historyKind: "video" as const })
     } as RendererContext;
     const runtime = createHistoryMediaRuntime(context, () => true);

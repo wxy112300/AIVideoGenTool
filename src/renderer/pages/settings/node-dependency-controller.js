@@ -46,7 +46,7 @@ export function mountSettingsNodeDependencyController(context, options) {
             const sourceUrl = button.dataset.openNodeSource?.trim();
             if (!sourceUrl)
                 return;
-            const opened = await context.studio.openExternal(sourceUrl);
+            const opened = await context.hostCapabilities.openExternal(sourceUrl);
             if (!opened) {
                 context.notify(context.t(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
             }
@@ -91,7 +91,7 @@ export function mountSettingsNodeDependencyController(context, options) {
             options.setWorkflowDependencyLog(workflowId, context.t("settings.nodes.installing"));
             context.requestRender();
             try {
-                const result = await context.studio.installWorkflowDependency(workflowId, settings);
+                const result = await context.application.installWorkflowDependency(workflowId, settings);
                 options.setWorkflowDependencyLog(workflowId, result.log || result.message);
                 if (!result.ok)
                     throw new Error(result.message);

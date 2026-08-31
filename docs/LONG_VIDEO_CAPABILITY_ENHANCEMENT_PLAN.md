@@ -156,8 +156,8 @@ interface LongVideoPlan {
 interface LongVideoSegment {
   planId: string;
   index: number;
-  inputArtifactPath?: string;
-  outputArtifactPath?: string;
+  inputArtifactPath?: string;  // managed HistoryFile/reference, not a task directory
+  outputArtifactPath?: string; // managed HistoryFile/reference, not a task directory
   outputMediaPath?: string;
   generatedFrames: number;
   trimmedFrames: number;
@@ -178,13 +178,31 @@ interface LongVideoSegment {
 沿用 [`H3_NATIVE_MASKED_AV_LONG_VIDEO_PLAN.md`](H3_NATIVE_MASKED_AV_LONG_VIDEO_PLAN.md) 中的 `NativeAvContinuationArtifact` 设计：
 
 - joint video/audio tensor 使用明确的版本化格式；
-- 只允许固定 keys、固定 shape/dtype 和安全的 task-owned 相对路径；
+- 只允许固定 keys、固定 shape/dtype 和相对于视频输出目录固定 `h3-native-av` 子目录的安全相对路径；
 - 保存 manifest、producer model、VAE、workflow、core revision、geometry、hash 和生成时间；
 - 写入采用临时文件 → fsync/校验 → 原子提交；
 - artifact 缺失、损坏、hash 不一致或 producer 不兼容时不可直接使用；
 - artifact 可用和 Native runtime ready 是两个独立状态。
 
 普通 H3 历史没有 artifact 是正常状态；不能为老数据生成假引用，也不能把现有 Motion Context latent 当作新格式迁移。
+
+#### 3.3.1 Artifact 存储、素材库和视频目录迁移边界
+
+固定布局冻结为：
+
+```
+<videoOutputDirectory>/
+  h3-native-av/
+    h3av_<artifactId>.safetensors
+    h3av_<artifactId>.json
+```
+
+- committed artifact 不按 task 或 segment 建立持久子目录；唯一性由 `artifactId` 保证，临时 `.partial` / `.tmp` 可以在同一固定目录中使用随机后缀。
+- H3 AV pair 是视频输出的派生恢复资产，不进入图片输入素材库 `sources/`。图片素材库扫描、归档、未引用清理和 `imageInputLibraryDirectory` 迁移都必须跳过该目录。
+- 如果产品有统一资产引用图，必须把 History/AssetVersion、等待队列、`LongVideoPlan`、committed segment 对 manifest/payload 的引用纳入保护；视频版本删除只有在 pair 无共享引用时才能清理。
+- `videoOutputDirectory` 迁移只枚举明确记录的最终视频、manifest/payload pair、segment checkpoint 和队列输入引用；不递归搬运整个 ComfyUI output，也不把 H3 AV 隐式搬到图片素材库。
+- 迁移采用 copy→size/hash/manifest-linkage verify→一次性提交设置和全部引用→再清理旧源；目标已存在且校验匹配时幂等跳过，内容冲突或缺失保持旧引用有效。迁移清单需要可恢复，不能以“只改 path candidate”代替实际迁移。
+- “应用更改”只影响未来输出；“应用并迁移”才移动现有视频及 H3 AV pair。两者都必须在 UI 和设置/队列语义中清楚区分。
 
 ## 4. ComfyUI 和依赖策略
 
@@ -252,6 +270,7 @@ type LongVideoCapabilityState =
 - 在 H3 sampler 输出到 VAE decode 之间旁路保存，不重复跑 diffusion；
 - 添加保存失败的 fail-soft 状态，不影响普通 H3 视频生成；
 - 将 artifact 纳入 History version、复制、迁移、删除、重启恢复；
+- 把 artifact 纳入视频输出目录迁移的预检、copy-first journal、引用提交和旧源清理；明确它不属于图片素材库迁移；
 - 完成 save → load → decode round-trip smoke；
 - 不修改 `h3ContextLatentPath` 的 Motion Context 语义。
 
@@ -295,6 +314,7 @@ type LongVideoCapabilityState =
 4. 应用退出、ComfyUI 重启、取消或显存错误后，从最后一个 committed segment 恢复。
 5. 已提交片段不重复采样；重复提交要通过 idempotency key 和 manifest hash 防止产生两份事实源。
 6. 只有所有 segment 完成后才进入 final merge；merge 失败可从已提交 segment 重新执行，不重新跑 diffusion。
+7. segment checkpoint 使用固定 `h3-native-av` 目录的平铺 artifact；重启、删除和迁移按 manifest/reference graph 处理，不按 task 目录猜测。
 
 主要边界：`src/types.ts`、`src/core/queue.ts`、`src/core/queue-task-factory.ts`、`electron/queue-enqueue.ts`、`electron/queue-executor.ts`、`electron/store.ts`。
 
@@ -309,7 +329,7 @@ type LongVideoCapabilityState =
 - 以整数 video frame、audio latent frame、PCM sample 和 PTS 计算边界；
 - 校验重复帧、缺帧、黑帧、音频 click/gap、音画漂移和 duration；
 - 分离记录 diffusion、VAE/audio decode、merge、mux、cleanup 耗时；
-- 不累计完整 RGB 长视频；片段和临时文件放在 task-owned 目录；
+- 不累计完整 RGB 长视频；committed artifact 放在固定 `h3-native-av` 目录，片段合并的临时文件才使用带唯一后缀的临时位置；
 - 失败时保留最后有效 checkpoint 和日志；成功后按保留策略清理临时片段；
 - 合并使用 replacement + backup + rollback，禁止破坏源媒体。
 
@@ -349,7 +369,8 @@ type LongVideoCapabilityState =
 6. 30 秒级自动长视频；
 7. 60 秒级任务的资源、磁盘和恢复检查；
 8. 中途取消、ComfyUI 重启、应用重启、OOM、重复恢复和最终 merge 失败；
-9. Motion Context、普通 H3、FL2VA 和现有历史回归。
+9. 视频输出目录迁移（含 H3 AV pair）和图片素材库迁移隔离；
+10. Motion Context、普通 H3、FL2VA 和现有历史回归。
 
 必须记录：core commit、Python/torch/torchaudio、模型/VAE、workflow revision、尺寸、FPS、音频采样率、frames、steps、seed、VRAM/RAM、每段耗时、merge/mux 耗时、artifact/hash、PTS 和失败阶段。
 

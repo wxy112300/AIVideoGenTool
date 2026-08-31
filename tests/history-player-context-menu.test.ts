@@ -50,7 +50,10 @@ function createHistoryContext() {
   const openSystemPlayer = vi.fn(async () => ({ ok: true, message: "" }));
   const context: RendererContext = {
     root: document.createElement("main"),
-    studio: { showItemInFolder, openSystemPlayer } as unknown as RendererContext["studio"],
+    application: {} as RendererContext["application"],
+    events: {} as RendererContext["events"],
+    assets: {} as RendererContext["assets"],
+    hostCapabilities: { showItemInFolder, openSystemPlayer } as unknown as RendererContext["hostCapabilities"],
     getState: () => state,
     getRoute: () => ({ page: "history-detail", creationMode: "image-to-video", historyKind: "video" }),
     getTranslator: () => translator,
