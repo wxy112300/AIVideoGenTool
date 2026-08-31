@@ -1137,6 +1137,9 @@ function renderOverlay(): void {
 }
 
 let renderCoordinator: RenderCoordinator;
+function requestRendererRefresh(): void {
+  renderCoordinator.requestRender();
+}
 let activeHistoryCleanup: RendererCleanup | null = null;
 const rendererApp = createRendererApp({
   root: appElement,
@@ -1353,15 +1356,7 @@ const queueLiveStatus = createQueueLiveStatus({
   getComfyRuntimeState: () => comfyRuntime,
   getEnvironmentScanning: () => environmentScanning,
   setPerformanceMetrics: (metrics) => {
-    const connectionChanged = performanceMetrics?.comfyConnected !== metrics.comfyConnected;
     performanceMetrics = metrics;
-    if (connectionChanged && page === "settings") {
-      const activeElement = document.activeElement;
-      const editing = activeElement instanceof HTMLInputElement ||
-        activeElement instanceof HTMLTextAreaElement ||
-        activeElement instanceof HTMLSelectElement;
-      if (!editing) render();
-    }
   }
 });
 queueLiveStatus.start();
@@ -3087,7 +3082,7 @@ registerRendererEvents({
     return next;
   },
   notify: showMessage,
-  requestRender: render,
+  requestRender: requestRendererRefresh,
   requestOverlayRender: renderOverlay
 });
 

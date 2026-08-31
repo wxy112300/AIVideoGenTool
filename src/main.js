@@ -878,6 +878,9 @@ function renderOverlay() {
     overlayCleanup = bindUpscaleDialog();
 }
 let renderCoordinator;
+function requestRendererRefresh() {
+    renderCoordinator.requestRender();
+}
 const rendererApp = createRendererApp({
     root: appElement,
     studio: window.studio,
@@ -1073,16 +1076,7 @@ const queueLiveStatus = createQueueLiveStatus({
     getComfyRuntimeState: () => comfyRuntime,
     getEnvironmentScanning: () => environmentScanning,
     setPerformanceMetrics: (metrics) => {
-        const connectionChanged = performanceMetrics?.comfyConnected !== metrics.comfyConnected;
         performanceMetrics = metrics;
-        if (connectionChanged && page === "settings") {
-            const activeElement = document.activeElement;
-            const editing = activeElement instanceof HTMLInputElement ||
-                activeElement instanceof HTMLTextAreaElement ||
-                activeElement instanceof HTMLSelectElement;
-            if (!editing)
-                render();
-        }
     }
 });
 queueLiveStatus.start();
@@ -2663,7 +2657,7 @@ registerRendererEvents({
         return next;
     },
     notify: showMessage,
-    requestRender: render,
+    requestRender: requestRendererRefresh,
     requestOverlayRender: renderOverlay
 });
 bootstrapRenderer({

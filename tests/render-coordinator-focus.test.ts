@@ -10,6 +10,7 @@ function createCoordinator(root: HTMLElement, currentPage: "settings" | "history
   const ui = createRendererUiState();
   const noop = () => undefined;
   const renderOverlay = vi.fn();
+  const renderSettings = vi.fn(() => `<input id="settings-test-input" name="settings-test-input" value="hello">`);
   const options: RenderCoordinatorOptions = {
     root,
     addPageCleanup: noop,
@@ -24,7 +25,7 @@ function createCoordinator(root: HTMLElement, currentPage: "settings" | "history
       history: () => "",
       historyDetail: () => `<div class="history-player"><video data-history-asset="asset-1" data-history-version="version-1" src="next.mp4"></video></div>`,
       imageHistoryDetail: () => "",
-      settings: () => `<input id="settings-test-input" name="settings-test-input" value="hello">`
+      settings: renderSettings
     },
     beforeRenderHistory: noop,
     closeAppLogContextMenu: noop,
@@ -43,10 +44,41 @@ function createCoordinator(root: HTMLElement, currentPage: "settings" | "history
     icon: () => "",
     escapeHtml: (value: unknown) => String(value)
   };
-  return { coordinator: createRenderCoordinator(options), renderOverlay };
+  return { coordinator: createRenderCoordinator(options), renderOverlay, renderSettings };
 }
 
 describe("render coordinator focus preservation", () => {
+  it("coalesces event refreshes in one frame while keeping explicit renders immediate", async () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const callbacks: FrameRequestCallback[] = [];
+    const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callbacks.push(callback);
+        return callbacks.length;
+      });
+    const cancelAnimationFrame = vi.spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => undefined);
+    const { coordinator, renderSettings } = createCoordinator(root);
+
+    coordinator.requestRender();
+    coordinator.requestRender();
+
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(renderSettings).not.toHaveBeenCalled();
+    callbacks.shift()?.(0);
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    expect(renderSettings).toHaveBeenCalledTimes(1);
+
+    coordinator.requestRender();
+    coordinator.render();
+    callbacks.shift()?.(0);
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+    expect(cancelAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(renderSettings).toHaveBeenCalledTimes(2);
+  });
+
   it("restores an edited input and its selection after a full page render", async () => {
     const root = document.createElement("div");
     document.body.append(root);

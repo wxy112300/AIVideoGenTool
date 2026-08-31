@@ -115,69 +115,93 @@ function stopRenderedVideoPlayback(root) {
 }
 export function createRenderCoordinator(options) {
     let renderRequest = 0;
+    let scheduledFrame = null;
+    let scheduledToken = 0;
+    const cancelScheduledRender = () => {
+        scheduledToken += 1;
+        if (scheduledFrame === null)
+            return;
+        window.cancelAnimationFrame(scheduledFrame);
+        scheduledFrame = null;
+    };
+    const renderNow = () => {
+        // An explicit command render supersedes an event refresh that has not
+        // reached the frame boundary yet. This keeps command ordering immediate.
+        cancelScheduledRender();
+        const request = ++renderRequest;
+        void (async () => {
+            const requestedPage = options.getPage();
+            if (requestedPage === "create" || requestedPage === "settings") {
+                await options.ensurePromptPacks();
+            }
+            if (request !== renderRequest)
+                return;
+            const previousPage = options.getPage();
+            options.beforeRenderHistory();
+            if (previousPage === "queue")
+                options.beforeRenderQueue();
+            const playback = captureHistoryPlayback(options.root, previousPage);
+            stopRenderedVideoPlayback(options.root);
+            options.closeAppLogContextMenu();
+            const content = previousPage === "create" ? options.renderPages.create() :
+                previousPage === "queue" ? options.renderPages.queue() :
+                    previousPage === "history" ? options.renderPages.history() :
+                        previousPage === "history-detail" ? options.renderPages.historyDetail() :
+                            previousPage === "image-history-detail" ? options.renderPages.imageHistoryDetail() :
+                                options.renderPages.settings();
+            const page = options.getPage();
+            const state = options.getState();
+            const ui = options.getUiState();
+            const focus = captureFocus(options.root);
+            options.root.innerHTML = renderShell({
+                page,
+                appVersion: ui.appVersion,
+                queueCount: state.queue.length,
+                performanceMetrics: options.getPerformanceMetrics(),
+                flashMessage: ui.flashMessage,
+                flashKind: ui.flashNotification?.kind ?? "info",
+                flashActions: ui.flashNotification?.actions ?? [],
+                content,
+                t: options.t,
+                icon: options.icon,
+                escapeHtml: options.escapeHtml
+            });
+            renderIcons(options.root);
+            options.bindShell();
+            options.addPageCleanup(options.bindHistoryViewportControls());
+            if (page === "create")
+                options.bindCreate();
+            else if (page === "queue")
+                options.bindQueue();
+            else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
+                options.bindHistory(playback);
+            }
+            else if (page === "settings") {
+                options.bindSettings();
+            }
+            options.renderOverlay();
+            options.syncAppLogPolling();
+            if (page === "queue" && previousPage === "queue")
+                options.restoreQueueScrollPosition();
+            if (page === "history")
+                options.restoreHistoryScrollPosition();
+            restoreHistoryPlayback(options.root, playback);
+            restoreFocus(options.root, focus);
+        })().catch((error) => {
+            console.error("Failed to render page dependencies", error);
+        });
+    };
     return {
-        render() {
-            const request = ++renderRequest;
-            void (async () => {
-                const requestedPage = options.getPage();
-                if (requestedPage === "create" || requestedPage === "settings") {
-                    await options.ensurePromptPacks();
-                }
-                if (request !== renderRequest)
+        render: renderNow,
+        requestRender() {
+            if (scheduledFrame !== null)
+                return;
+            const token = ++scheduledToken;
+            scheduledFrame = window.requestAnimationFrame(() => {
+                if (token !== scheduledToken)
                     return;
-                const previousPage = options.getPage();
-                options.beforeRenderHistory();
-                if (previousPage === "queue")
-                    options.beforeRenderQueue();
-                const playback = captureHistoryPlayback(options.root, previousPage);
-                stopRenderedVideoPlayback(options.root);
-                options.closeAppLogContextMenu();
-                const content = previousPage === "create" ? options.renderPages.create() :
-                    previousPage === "queue" ? options.renderPages.queue() :
-                        previousPage === "history" ? options.renderPages.history() :
-                            previousPage === "history-detail" ? options.renderPages.historyDetail() :
-                                previousPage === "image-history-detail" ? options.renderPages.imageHistoryDetail() :
-                                    options.renderPages.settings();
-                const page = options.getPage();
-                const state = options.getState();
-                const ui = options.getUiState();
-                const focus = captureFocus(options.root);
-                options.root.innerHTML = renderShell({
-                    page,
-                    appVersion: ui.appVersion,
-                    queueCount: state.queue.length,
-                    performanceMetrics: options.getPerformanceMetrics(),
-                    flashMessage: ui.flashMessage,
-                    flashKind: ui.flashNotification?.kind ?? "info",
-                    flashActions: ui.flashNotification?.actions ?? [],
-                    content,
-                    t: options.t,
-                    icon: options.icon,
-                    escapeHtml: options.escapeHtml
-                });
-                renderIcons(options.root);
-                options.bindShell();
-                options.addPageCleanup(options.bindHistoryViewportControls());
-                if (page === "create")
-                    options.bindCreate();
-                else if (page === "queue")
-                    options.bindQueue();
-                else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
-                    options.bindHistory(playback);
-                }
-                else if (page === "settings") {
-                    options.bindSettings();
-                }
-                options.renderOverlay();
-                options.syncAppLogPolling();
-                if (page === "queue" && previousPage === "queue")
-                    options.restoreQueueScrollPosition();
-                if (page === "history")
-                    options.restoreHistoryScrollPosition();
-                restoreHistoryPlayback(options.root, playback);
-                restoreFocus(options.root, focus);
-            })().catch((error) => {
-                console.error("Failed to render page dependencies", error);
+                scheduledFrame = null;
+                renderNow();
             });
         }
     };
