@@ -9,6 +9,7 @@ This guide is the shortest reliable route into Local Video Studio. Read the cont
 | Queue, history, paths, IPC, persistence, process exit | `ARCHITECTURE_CONTRACT.md` | `electron/main.ts`, `electron/store.ts`, `electron/services/`, `src/core/` |
 | Application boundary, lifecycle, composition | `ARCHITECTURE_CONTRACT.md` | `electron/application-runtime.ts`, `electron/services/`, `electron/ports/`, `electron/*-ipc.ts`, `src/renderer/entry.ts` |
 | History 大数据量性能、媒体延迟加载、滚动恢复 | `UX_CONTRACT.md`, `HISTORY_PERFORMANCE_OPTIMIZATION_PLAN.md` | `src/renderer/pages/history/`, `src/renderer/render-coordinator.ts` |
+| 真实 Electron 启动、冷/热状态与 Chromium 性能证据 | `ARCHITECTURE_CONTRACT.md`, `HISTORY_PERFORMANCE_OPTIMIZATION_PLAN.md`, active Closure Plan C04 | `scripts/capture-c04-electron-evidence.mjs`, `scripts/dev.mjs`, `electron/main.ts` 的默认关闭 C04 seam |
 | Layout, interaction, focus, media states | `UX_CONTRACT.md` | `src/renderer/`, `src/styles/`, current renderer evidence; prototypes are historical |
 | Model, LoRA, workflow, GPU/memory policy | `WORKFLOW_CONTRACT.md` | `src/core/catalog/`, workflow adapters, `workflows/` |
 | Long video, video Extend, Native AV continuation | `WORKFLOW_CONTRACT.md`, [`LONG_VIDEO_CAPABILITY_ENHANCEMENT_PLAN.md`](LONG_VIDEO_CAPABILITY_ENHANCEMENT_PLAN.md) | `src/core/`, `electron/queue-*`, `electron/services/extension-media.ts`, `workflows/` |
@@ -33,7 +34,7 @@ Inspect `git status` before reading or editing hotspot files. This repository is
 - Persisted defaults and migrations: `src/core/defaults.ts`, `electron/store.ts`, and `src/types.ts`.
 - Settings installation UX: `src/renderer/pages/settings/` plus preload/IPC handlers.
 
-Current validation boundaries are explicit: the renderer source has one `window.studio` read in `src/renderer/entry.ts`, page modules do not read the preload global, and the application runtime has no Electron import. P02/P03 automated and synthetic renderer checks pass, but they do not replace real Electron DevTools cold/warm measurements, Long Task data, or ComfyUI execution.
+Current validation boundaries are explicit: the renderer source has one `window.studio` read in `src/renderer/entry.ts`, page modules do not read the preload global, and the application runtime has no Electron import. P02/P03 automated and synthetic renderer checks pass. `scripts/capture-c04-electron-evidence.mjs` is the rerunnable real Electron evidence path for isolated cold/warm startup, migration, DOM/Long Task, CDP trace, screenshot, and bounded close checks; its output still does not replace a real ComfyUI generation or a development run when the local Vite listener is unavailable.
 
 Do not copy the complete catalog into README or another hand-maintained list. User-facing summaries may name model families, but component filenames and download targets belong to the catalog.
 

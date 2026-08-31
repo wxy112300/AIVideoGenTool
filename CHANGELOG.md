@@ -10,6 +10,12 @@
 
 （暂无已归档条目。）
 
+## 0.56.4 — 2026-09-01
+
+- 新增可重跑的 C04 Electron 证据采集器：使用隔离 userData/state/media fixture，记录 empty、500 条 History 与 legacy/migration 的 cold/warm 启动里程碑，并输出真实 renderer DOM、Long Task、CDP trace、截图和正常退出结果。
+- 开发 launcher 支持默认关闭的 C04 远程调试参数；生产入口增加仅在明确测试环境变量下启用的软件渲染开关，不改变正常启动路径。
+- 当前机器的 packaged renderer 证据已取得；500 条 History 的若干切换/详情操作出现超过 50ms 的 Long Task，未将其误报为性能优化通过。开发 Vite 监听与 ComfyUI 进程生命周期仍按环境限制标记为未完成/未测试。
+
 ## 0.56.3 — 2026-08-31
 
 - 对齐 History video/image detail 的 renderer capture smoke 与当前 `.history-detail-quick-actions` 动作面，移除旧 compact/disclosure harness 假设，并同步可访问性 selector coverage。

@@ -70,6 +70,16 @@ const appliedChromiumWorkarounds = process.platform === "win32"
   ? windowsChromiumWorkarounds
   : [];
 
+// C04's isolated Electron evidence runner can opt into software rendering on
+// hosts where the system GPU process cannot start. The normal product path is
+// unchanged unless this test-only environment switch is explicitly set.
+if (process.env.C04_DISABLE_HARDWARE_ACCELERATION === "1") {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch("disable-gpu");
+  app.commandLine.appendSwitch("disable-gpu-compositing");
+  app.commandLine.appendSwitch("in-process-gpu");
+}
+
 if (appliedChromiumWorkarounds.length) {
   app.commandLine.appendSwitch(
     "disable-features",

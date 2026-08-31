@@ -140,9 +140,23 @@ try {
   fail(error instanceof Error ? error.message : String(error));
 }
 
+const electronTestSwitches = [];
+if (process.env.C04_REMOTE_DEBUGGING_PORT) {
+  electronTestSwitches.push(
+    "--no-sandbox",
+    "--disable-gpu",
+    "--disable-gpu-compositing",
+    "--in-process-gpu",
+    `--remote-debugging-port=${process.env.C04_REMOTE_DEBUGGING_PORT}`
+  );
+}
+if (process.env.C04_USER_DATA_DIR) {
+  electronTestSwitches.push(`--user-data-dir=${process.env.C04_USER_DATA_DIR}`);
+}
+
 electronChild = start(
   electronExecutable,
-  ["."],
+  [...electronTestSwitches, "."],
   {
     ...process.env,
     VITE_DEV_SERVER_URL: "http://127.0.0.1:5173"
