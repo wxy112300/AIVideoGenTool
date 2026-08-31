@@ -5,6 +5,12 @@ import "media-chrome/lang/zh-TW.js";
 import "./style.css";
 import { createRendererApp } from "./renderer/app";
 import { bootstrapRenderer } from "./renderer/bootstrap";
+import {
+  createQueueWorkspaceCoordinator,
+  createRendererNavigation,
+  type QueueWorkspaceCoordinator,
+  type RendererNavigation
+} from "./renderer/composition";
 import { createWindowRendererEntry } from "./renderer/entry";
 import { registerRendererEvents } from "./renderer/state-events";
 import {
@@ -48,47 +54,27 @@ import {
   performanceCard,
 } from "./renderer/shared/formatters";
 import { icon } from "./renderer/shared/icons";
-import { modelName } from "./renderer/shared/labels";
 import { mountShellController } from "./renderer/shell/controller";
 import { mountUpscaleController } from "./renderer/shell/upscale-controller";
 import { renderUpscaleDialog } from "./renderer/shell/secondary-dialogs";
 import { createRendererShellCoordinator, type RendererShellCoordinator } from "./renderer/shell/coordinator";
 import type {
   AppState,
-  AssetVersion,
   BundledWorkflow,
   ComfyRuntimeState,
   Draft,
   EnvironmentScanResult,
-  HistoryAsset,
-  ImageAssetLibraryScan,
-  ImageAssetVersion,
-  ImageGenerationQueueTask,
   ImageEditDraft,
   ImageHistoryProject,
   PerformanceMetrics,
-  QueueTask,
   Settings,
-  TaskPerformanceStats,
   WorkflowCapabilities
 } from "./types";
-import {
-  imageEditDraftFromQueueTask,
-  imageEditPicturesForVersion
-} from "./core/image-project";
-import {
-  isMiniMaxH3R2vModel,
-  motionContextMaxDurationSeconds,
-  normalizeH3Steps
-} from "./core/workflow";
-import { ensureMotionContextSourceSlot } from "./core/h3-reference";
 import {
   createUpscaleFilename,
   estimateUpscaleResources,
   upscaleDimensions
 } from "./core/upscale";
-import { createTranslator, type TranslationParams } from "./core/i18n";
-import { uiKeys } from "./core/i18n-keys";
 import {
   BUILTIN_VIDEO_LORAS,
   H3_TURBO_LORA_ID,
@@ -114,7 +100,8 @@ let shellCoordinator: RendererShellCoordinator;
 let createWorkspaceCoordinator: CreateWorkspaceCoordinator;
 let historyWorkspaceCoordinator: HistoryWorkspaceCoordinator;
 let settingsWorkspaceCoordinator: SettingsWorkspaceCoordinator;
-let queueActionBusy: { taskId: string; action: "remove" | "cancel" | "edit" } | null = null;
+let queueWorkspaceCoordinator: QueueWorkspaceCoordinator;
+let rendererNavigation: RendererNavigation;
 const bundledWorkflows: Record<string, BundledWorkflow> = {};
 const bundledWorkflowKey = (modelId: string, inputMode: Draft["inputMode"]) =>
   `${modelId}:${inputMode}`;
@@ -129,14 +116,6 @@ let comfyRuntime: ComfyRuntimeState = {
   updatedAt: new Date(0).toISOString(),
   operationId: 0
 };
-
-function uiText(
-  key: string,
-  params?: TranslationParams,
-  fallback?: string
-): string {
-  return createTranslator(state.settings.uiLocale).t(key, params, fallback);
-}
 
 window.addEventListener("dragover", (event) => {
   if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
@@ -304,95 +283,6 @@ function navigateImageHistoryDetail(direction: -1 | 1): void {
   historyWorkspaceCoordinator.navigateImageHistoryDetail(direction);
 }
 
-function draftFromQueueTask(task: QueueTask): Draft | null {
-  if (task.taskType === "upscale" || task.taskType === "image-generation" || task.status === "running") return null;
-  const now = new Date().toISOString();
-  const resolution = [360, 480, 540, 720, 768].includes(task.resolution)
-    ? task.resolution as Draft["resolution"]
-    : 480;
-  const extension = task.taskType === "extension";
-  return {
-    ...state.draft,
-    inputMode: extension ? "video" : "image",
-    startImagePath: extension ? "" : task.startImagePath,
-    sourceWidth: task.sourceWidth,
-    sourceHeight: task.sourceHeight,
-    endImagePath: extension ? "" : task.endImagePath,
-    endImageWidth: task.taskType === "generation" ? task.endImageWidth ?? 0 : 0,
-    endImageHeight: task.taskType === "generation" ? task.endImageHeight ?? 0 : 0,
-    sourceVideoPath: extension ? task.sourceVideoPath : "",
-    sourceVideoDuration: extension ? task.sourceVideoDuration : 0,
-    trimStartSeconds: extension ? task.trimStartSeconds : 0,
-    trimEndSeconds: extension ? task.trimEndSeconds : 0,
-    sourceAssetId: extension ? task.sourceAssetId : undefined,
-    sourceVersionId: extension ? task.sourceVersionId : undefined,
-    ...(extension
-      ? {
-          extensionPromptVersions: [{
-            id: crypto.randomUUID(),
-            label: uiText(uiKeys.runtime.fromQueue),
-            text: task.prompt,
-            createdAt: now
-          }],
-          extensionActivePromptVersion: 0
-        }
-      : {
-          promptVersions: [{
-            id: crypto.randomUUID(),
-            label: uiText(uiKeys.runtime.fromQueue),
-            text: task.prompt,
-            createdAt: now
-          }],
-          activePromptVersion: 0
-        }),
-    h3ReferenceSlots: extension
-      ? task.taskType === "extension" && isMiniMaxH3R2vModel(task.modelId)
-        ? ensureMotionContextSourceSlot(task.h3ReferenceSlots ?? [], task.sourceVideoPath)
-        : []
-      : (task.h3ReferenceSlots ?? []).map((slot) => ({ ...slot })),
-    modelId: task.modelId,
-    videoLoras: task.videoLoras?.map((lora) => ({ ...lora })) ?? [],
-    workflowPath: task.workflowPath,
-    ratio: task.ratio,
-    resolution,
-    duration: task.duration,
-    steps: normalizeH3Steps(task.steps, task.modelId, task.videoLoras),
-    fps: task.fps,
-    frameInterpolation: task.frameInterpolation,
-    motion: task.motion,
-    seed: task.seed,
-    keepSeedOnCopy: task.keepSeedOnCopy
-  };
-}
-
-async function editQueueTask(taskId: string): Promise<void> {
-  const task = state.queue.find((item) => item.id === taskId);
-  if (!task || task.status === "running") return;
-  queueActionBusy = { taskId, action: "edit" };
-  render();
-  try {
-    if (task.taskType === "image-generation") {
-      const imageDraft = imageEditDraftFromQueueTask(task, state.imageDraft);
-      setRendererState(await rendererApplication.saveImageDraft(imageDraft));
-      setRendererState(await rendererApplication.removeTask(taskId));
-      queueActionBusy = null;
-      navigateToCreationMode("image-edit");
-      showMessage(uiText(uiKeys.runtime.queueImageReturned));
-      return;
-    }
-    const draft = draftFromQueueTask(task);
-    if (!draft) return;
-    await saveDraftImmediately(draft);
-    setRendererState(await rendererApplication.removeTask(taskId));
-    queueActionBusy = null;
-    navigateToCreationMode(draft.inputMode === "video" ? "video-extension" : "image-to-video");
-    showMessage(uiText(uiKeys.runtime.queueReturned));
-  } catch (error) {
-    queueActionBusy = null;
-    showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.cannotEditQueue), { kind: "error" });
-  }
-}
-
 function settingsHaveUnsavedChanges(): boolean {
   return settingsWorkspaceCoordinator.settingsHaveUnsavedChanges();
 }
@@ -465,6 +355,14 @@ function initializeRenderCoordinator(): void {
 }
 
 const queueScrollController = createQueueScrollController(() => page);
+rendererNavigation = createRendererNavigation({
+  getState: () => state,
+  ui,
+  setCreationMode,
+  setPage,
+  patchDraft: (patch) => createWorkspaceCoordinator.patchDraft(patch),
+  render
+});
 historyWorkspaceCoordinator = createHistoryWorkspaceCoordinator({
   context: rendererApp.context,
   ui,
@@ -483,7 +381,19 @@ historyWorkspaceCoordinator = createHistoryWorkspaceCoordinator({
   renderOverlay,
   saveDraftImmediately,
   selectDraftVideo,
-  navigateToCreationMode
+  navigateToCreationMode: rendererNavigation.navigateToCreationMode
+});
+queueWorkspaceCoordinator = createQueueWorkspaceCoordinator({
+  context: rendererApp.context,
+  application: rendererApplication,
+  ui,
+  getState: () => state,
+  setState: setRendererState,
+  render,
+  renderOverlay,
+  rememberModalFocus,
+  saveDraftImmediately: (draft) => createWorkspaceCoordinator.saveDraftImmediately(draft),
+  navigateToCreationMode: rendererNavigation.navigateToCreationMode
 });
 const queueAssembly = createQueueAssembly({
   getState: () => state,
@@ -491,25 +401,12 @@ const queueAssembly = createQueueAssembly({
   getComfyRuntime: () => comfyRuntime,
   isEnvironmentScanning: () => settingsWorkspaceCoordinator.isEnvironmentScanning(),
   getTaskPreviews: () => taskPreviews,
-  getQueueActionBusy: () => queueActionBusy,
+  getQueueActionBusy: queueWorkspaceCoordinator.getActionBusy,
   setState: setRendererState,
   setPromptRuntimeLoaded: (loaded) => shellCoordinator.setPromptRuntimeLoaded(loaded),
-  requestConfirmation: requestQueueTaskConfirmation,
-  editTask: (taskId) => {
-    void editQueueTask(taskId);
-  },
-  editUpscaleTask: (task) => {
-    const editingWaitingTask = task.status === "waiting";
-    ui.upscaleDialog = {
-      ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
-      assetId: task.sourceAssetId,
-      versionId: task.sourceVersionId,
-      targetHeight: task.targetHeight,
-      modelId: task.modelId as typeof ui.upscaleDialog extends { modelId: infer Model } ? Model : never,
-      tileMode: task.tileMode
-    };
-    renderOverlay();
-  },
+  requestConfirmation: queueWorkspaceCoordinator.requestConfirmation,
+  editTask: queueWorkspaceCoordinator.editTask,
+  editUpscaleTask: queueWorkspaceCoordinator.editUpscaleTask,
   rememberModalFocus
 });
 const queueLiveStatus = createQueueLiveStatus({
@@ -528,38 +425,6 @@ queueLiveStatus.start();
 function reportUserAction(action: string, meta?: Record<string, unknown>): void {
   void action;
   void meta;
-}
-
-function requestQueueTaskConfirmation(
-  taskId: string,
-  action: "remove" | "cancel"
-): void {
-  const task = state.queue.find((item) => item.id === taskId);
-  if (!task) return;
-  rememberModalFocus();
-  ui.pendingConfirmation = {
-    kind: action === "remove" ? "remove-queue-task" : "cancel-queue-task",
-    taskId,
-    title: task.outputFilename
-  };
-  ui.confirmationBusy = false;
-  renderOverlay();
-}
-
-function navigateToCreationMode(mode: CreationMode): void {
-  if (mode === "video-extension" && isMiniMaxH3R2vModel(state.draft.modelId)) {
-    const maxDuration = motionContextMaxDurationSeconds();
-    if (state.draft.duration > maxDuration) {
-      patchDraft({ duration: maxDuration });
-    }
-  }
-  setCreationMode(mode);
-  setPage("create");
-  ui.historyForwardTarget = null;
-  render();
-  window.requestAnimationFrame(() => {
-    window.scrollTo({ top: 0, behavior: "auto" });
-  });
 }
 
 function bindShell(): void {
@@ -691,9 +556,7 @@ shellCoordinator = createRendererShellCoordinator({
     ui.selectedHistoryVersionId = versionId;
   },
   clearImageHistoryThumbnailCache,
-  setQueueActionBusy: (value) => {
-    queueActionBusy = value;
-  },
+  setQueueActionBusy: queueWorkspaceCoordinator.setActionBusy,
   releaseHistoryVideo,
   saveSettings: settingsWorkspaceCoordinator.saveSettings,
   render,
