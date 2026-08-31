@@ -20,7 +20,8 @@ import { SettingsService, type SettingsServiceDependencies } from "./services/se
 import { EnvironmentQueryService } from "./services/environment-query-service.js";
 import { PromptApplicationService } from "./services/prompt-application-service.js";
 import { RuntimeAdminService } from "./services/runtime-admin-service.js";
-import { QueueService, type QueueServiceDependencies } from "./services/queue-service.js";
+import { QueueService } from "./services/queue-service.js";
+import { ComfyOutputService } from "./services/comfy-output-service.js";
 import { ImageAssetLibraryService } from "./services/image-asset-library-service.js";
 import { PromptRuntimeManager } from "./services/prompt-runtime-manager.js";
 import type { QueueRuntimeCapability } from "./ports/queue-runtime.js";
@@ -49,12 +50,7 @@ export interface ApplicationServices {
   history: HistoryApplicationServices;
 }
 
-export type ApplicationRuntimeQueueDependencies = Pick<
-  QueueServiceDependencies,
-  | "resolveTaskOutputDirectory"
-  | "requireExistingImageOutput"
-  | "requireExistingVideoOutput"
-> & {
+export type ApplicationRuntimeQueueDependencies = {
   runtime: QueueRuntimeCapability;
 };
 
@@ -236,12 +232,17 @@ export class ApplicationRuntime {
       logger: this.deps.logger,
       errorMeta: this.deps.errorMeta
     });
+    const comfyOutputService = new ComfyOutputService({
+      store: this.deps.store,
+      fileSystem: this.deps.historyFileSystem,
+      resolveComfyOutputDirectory: this.deps.settings.resolveComfyOutputDirectory
+    });
     const historyQuery = new HistoryQueryService({
       store: this.deps.store,
       logger: this.deps.logger,
       paths: this.deps.paths,
       fileSystem: this.deps.historyFileSystem,
-      resolveTaskOutputDirectory: this.deps.queue.resolveTaskOutputDirectory
+      resolveTaskOutputDirectory: () => comfyOutputService.resolveTaskOutputDirectory()
     });
     const mediaReadService = new MediaReadService({
       store: this.deps.store,
@@ -257,9 +258,11 @@ export class ApplicationRuntime {
       sendState: this.deps.sendState,
       sendPreview: (payload) => this.deps.events.publish("task:preview", payload),
       queueRuntime: this.deps.queue.runtime,
-      resolveTaskOutputDirectory: this.deps.queue.resolveTaskOutputDirectory,
-      requireExistingImageOutput: this.deps.queue.requireExistingImageOutput,
-      requireExistingVideoOutput: this.deps.queue.requireExistingVideoOutput,
+      resolveTaskOutputDirectory: () => comfyOutputService.resolveTaskOutputDirectory(),
+      requireExistingImageOutput: (result, outputRoot, alternateRoots) =>
+        comfyOutputService.requireExistingImageOutput(result, outputRoot, alternateRoots),
+      requireExistingVideoOutput: (result, alternateRoots) =>
+        comfyOutputService.requireExistingVideoOutput(result, alternateRoots),
       releasePromptRuntime: (settings) => promptService.releaseRuntime(settings),
       nativePromptBusy: () => promptService.isWorkerBusy(),
       effectiveImageInputLibraryDirectory: (settings) =>

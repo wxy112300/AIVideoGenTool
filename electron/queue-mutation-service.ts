@@ -27,6 +27,19 @@ export interface QueueMutationServiceDependencies {
 export class QueueMutationService {
   constructor(private readonly deps: QueueMutationServiceDependencies) {}
 
+  async setH3LivePreview(enabled: boolean): Promise<AppState> {
+    const value = enabled === true;
+    const { store, logger, sendState } = this.deps;
+    const next = await store.update((state) => {
+      state.settings.h3LivePreview = value;
+    });
+    logger.info("queue", "h3-live-preview-setting-changed", "H3 live preview queue preference changed", {
+      enabled: value
+    });
+    sendState(next);
+    return next;
+  }
+
   async updateUpscale(
     taskId: string,
     patch: Pick<

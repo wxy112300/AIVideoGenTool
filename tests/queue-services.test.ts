@@ -64,6 +64,19 @@ function baseQueueServiceDependencies(state: AppState): QueueServiceDependencies
 }
 
 describe("queue command services", () => {
+  it("persists the H3 live-preview preference through the queue mutation service", async () => {
+    const state = createDefaultState();
+    const service = new QueueMutationService({
+      store: repository(state),
+      logger: logger(),
+      sendState: vi.fn()
+    });
+
+    const next = await service.setH3LivePreview(true);
+
+    expect(next.settings.h3LivePreview).toBe(true);
+  });
+
   it("starts a queue through the control service without an IPC transport", async () => {
     const state = createDefaultState();
     state.queue = [task(state)];

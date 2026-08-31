@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
-import type { AppState, HistoryFile, Settings } from "../src/types";
+import type { AppState, Settings } from "../src/types";
 import { createStudioEventBus } from "../electron/services/studio-event-bus";
 import {
   ApplicationRuntime,
@@ -118,10 +118,7 @@ function runtimeFixture() {
         resolveH3VideoVaeModeForTask: async () => null,
         settingsForTask: (_task, currentSettings) => currentSettings,
         cleanupCancelledTask: async () => undefined
-      },
-      resolveTaskOutputDirectory: async () => "C:/Studio/output",
-      requireExistingImageOutput: async () => [] as HistoryFile[],
-      requireExistingVideoOutput: async () => [] as HistoryFile[]
+      }
     },
     lifecycle: {
       interruptComfy: async () => undefined,
@@ -181,7 +178,7 @@ describe("ApplicationRuntime", () => {
     const restoreGate = new Promise<string>((resolve) => {
       releaseRestore = () => resolve("C:/Studio/output");
     });
-    current.dependencies.queue.resolveTaskOutputDirectory = async () => {
+    current.dependencies.settings.resolveComfyOutputDirectory = async () => {
       beginRestore();
       return restoreGate;
     };
@@ -211,7 +208,7 @@ describe("ApplicationRuntime", () => {
   it("retains cleanup services when startup fails after adapters are ready", async () => {
     const current = runtimeFixture();
     const failure = new Error("history repair failed");
-    current.dependencies.queue.resolveTaskOutputDirectory = async () => {
+    current.dependencies.settings.resolveComfyOutputDirectory = async () => {
       throw failure;
     };
     const runtime = new ApplicationRuntime(current.dependencies);

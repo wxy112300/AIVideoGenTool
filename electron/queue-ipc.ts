@@ -15,6 +15,10 @@ export function registerQueueMutationIpc(deps: QueueMutationIpcDependencies): vo
     : new QueueMutationService(deps);
   const { ipc } = deps;
   ipc.handle(
+    "queue:set-h3-live-preview",
+    async (_event, enabled: boolean) => service.setH3LivePreview(enabled)
+  );
+  ipc.handle(
     "queue:update-upscale",
     async (
       _event,

@@ -50,6 +50,9 @@ const workflowSources = new Map([
 const imageAssetSources = new Map([
   ["image-asset-ipc", source("electron/image-asset-ipc.ts")]
 ]);
+const windowShellSources = new Map([
+  ["window-shell-ipc", source("electron/window-shell-ipc.ts")]
+]);
 const queueRuntimeSource = source("electron/services/queue-runtime-service.ts");
 const registrationSources = new Map([
   ["main", mainSource],
@@ -64,7 +67,8 @@ const registrationSources = new Map([
   ...appQuerySources,
   ...nativeHostSources,
   ...workflowSources,
-  ...imageAssetSources
+  ...imageAssetSources,
+  ...windowShellSources
 ]);
 
 function collectChannels(text: string, pattern: RegExp): string[] {
@@ -125,7 +129,8 @@ describe("main/preload boundary characterization", () => {
         "queue:set-pause-boundary-after-task",
         "queue:set-pause-boundary",
         "queue:clear-pause-boundary",
-        "queue:reset"
+        "queue:reset",
+        "queue:set-h3-live-preview"
       ],
       "queue-control-ipc": [
         "queue:start",
@@ -212,6 +217,10 @@ describe("main/preload boundary characterization", () => {
         "image-assets:scan",
         "image-assets:organize",
         "image-assets:cleanup"
+      ],
+      "window-shell-ipc": [
+        "renderer:set-settings-dirty",
+        "window:close-response"
       ]
     };
     const specializedChannels = new Set(Object.values(specializedOwners).flat());
@@ -255,6 +264,8 @@ describe("main/preload boundary characterization", () => {
     expect(mainSource).not.toContain('ipcMain.handle("settings:save"');
     expect(mainSource).toContain("registerImageAssetIpc");
     expect(mainSource).not.toContain("imageAssetLibraryRunning");
+    expect(mainSource).not.toContain("ipcMain.handle(");
+    expect(mainSource).not.toContain("store.update(");
     expect(imageAssetSources.get("image-asset-ipc")).not.toContain("store.update");
     for (const channel of specializedOwners["prompt-ipc"] ?? []) {
       expect(mainSource).not.toContain(`ipcMain.handle("${channel}"`);
@@ -369,6 +380,19 @@ describe("main/preload boundary characterization", () => {
     expect(source("electron/services/queue-service.ts")).toContain("queueRuntime: QueueRuntimeCapability");
   });
 
+  it("keeps output resolution and window IPC behind named adapters", () => {
+    const outputSource = source("electron/services/comfy-output-service.ts");
+    const windowSource = windowShellSources.get("window-shell-ipc") ?? "";
+    expect(outputSource).not.toContain('from "electron"');
+    expect(outputSource).toContain("class ComfyOutputService");
+    expect(windowSource).toContain('deps.ipc.handle(');
+    expect(windowSource).toContain('"window:close-response"');
+    expect(windowSource).toContain('"renderer:set-settings-dirty"');
+    expect(mainSource).not.toContain("requireExistingVideoOutput");
+    expect(mainSource).not.toContain("requireExistingImageOutput");
+    expect(mainSource).not.toContain("resolveTaskOutputDirectory");
+  });
+
   it("keeps History application services independent from Electron transport", () => {
     const querySource = source("electron/services/history-query-service.ts");
     const metadataSource = source("electron/services/history-metadata-service.ts");
@@ -466,7 +490,7 @@ describe("main/preload boundary characterization", () => {
     const activatePosition = startup.indexOf('app.on("activate"');
     expect(activatePosition).toBeGreaterThan(runtimeStartPosition);
     const createWindowStart = mainSource.indexOf("function createWindow(): void");
-    const createWindowEnd = mainSource.indexOf("async function updateTask(", createWindowStart);
+    const createWindowEnd = mainSource.indexOf("function registerIpc(", createWindowStart);
     expect(createWindowStart).toBeGreaterThanOrEqual(0);
     expect(createWindowEnd).toBeGreaterThan(createWindowStart);
     const createWindow = mainSource.slice(createWindowStart, createWindowEnd);

@@ -10,26 +10,10 @@ import {
   type MenuItemConstructorOptions
 } from "electron";
 import { promises as fs } from "node:fs";
-import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type {
-  AppState,
-  HistoryFile,
-  QueueLifecycle,
-  QueueTask,
-  WindowCloseRequest,
-  WindowCloseResponse
-} from "../src/types.js";
+import type { WindowCloseRequest } from "../src/types.js";
 import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
-import {
-  extractComfyOutputFiles,
-  isVideoOutputFilename
-} from "../src/core/comfy-output.js";
-import {
-  attachAbsoluteOutputPaths
-} from "../src/core/comfy-output-paths.js";
-import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
 import { JsonStore } from "./store.js";
 import type { StateRepository } from "./ports/state-repository.js";
 import { registerDraftIpc } from "./draft-ipc.js";
@@ -45,10 +29,10 @@ import { registerAppQueryIpc } from "./app-query-ipc.js";
 import { registerNativeHostIpc } from "./native-host-ipc.js";
 import { registerWorkflowIpc } from "./workflow-ipc.js";
 import { nativeImageInspection } from "./services/native-image-inspection.js";
-import { resolveExistingHistoryFile } from "./services/windows-clipboard.js";
 import { nativeHistoryFileSystem } from "./services/native-history-file-system.js";
 import { ApplicationRuntime, type ApplicationServices } from "./application-runtime.js";
 import { QueueRuntimeService } from "./services/queue-runtime-service.js";
+import { isLocalComfyUrl } from "./services/comfy-endpoint.js";
 import {
   comfyUiSettingsForQueueTask
 } from "../src/infrastructure/comfy-runtime-policy.js";
@@ -73,7 +57,8 @@ import { PromptRuntimeManager } from "./services/prompt-runtime-manager.js";
 import { setOwnedComfyProcessExitListener } from "./services/comfy-runtime-service.js";
 import { createStudioPaths, type StudioPaths } from "./services/studio-paths.js";
 import { createStudioEventBus } from "./services/studio-event-bus.js";
-import { createStudioEventBridge } from "./services/studio-event-bridge.js";
+import { createWindowStudioEventBridge } from "./window-event-bridge.js";
+import { registerWindowShellIpc } from "./window-shell-ipc.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const studioProductName = "Local Video Studio";
@@ -127,13 +112,10 @@ const studioEventBus = createStudioEventBus({
     );
   }
 });
-const removeStudioEventBridge = createStudioEventBridge(studioEventBus, () => {
-  const window = mainWindow;
-  if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return null;
-  return {
-    send: (channel: string, payload: unknown) => window.webContents.send(channel, payload)
-  };
-});
+const removeStudioEventBridge = createWindowStudioEventBridge(
+  studioEventBus,
+  () => mainWindow
+);
 let fatalProcessErrorHandled = false;
 
 function activeQueueService() {
@@ -293,86 +275,6 @@ comfyRuntimeState.subscribe((runtime) => {
   promptRuntimeManager.observeService(runtime);
   studioEventBus.publish("comfy-runtime:changed", runtime);
 });
-
-async function resolveTaskOutputDirectory(): Promise<string> {
-  const configured = store.get().settings.outputDirectory.trim();
-  const detected = await resolveComfyOutputDirectory(store.get().settings);
-  return detected || configured;
-}
-
-async function requireExistingVideoOutput(
-  result: unknown,
-  alternateRoots: string[] = []
-): Promise<ReturnType<typeof extractComfyOutputFiles>> {
-  const outputDirectory = await resolveTaskOutputDirectory();
-  if (!outputDirectory) {
-    throw new Error(
-      "ComfyUI 已返回完成状态，但无法确定输出目录。请在设置中确认 ComfyUI 目录后重试。"
-    );
-  }
-
-  const reportedFiles = extractComfyOutputFiles(result);
-  const roots = [...new Set([outputDirectory, ...alternateRoots].filter(Boolean))];
-  let lastFiles = attachAbsoluteOutputPaths(reportedFiles, outputDirectory);
-  for (const root of roots) {
-    const files = attachAbsoluteOutputPaths(reportedFiles, root);
-    lastFiles = files;
-    const videoFiles = files.filter(
-      (file) => file.absolutePath && isVideoOutputFilename(file.filename)
-    );
-    for (const file of videoFiles) {
-      const resolved = await resolveExistingHistoryFile(file.absolutePath!);
-      if (!resolved) continue;
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat?.isFile() && stat.size > 0) return files;
-    }
-  }
-
-  const returnedNames = lastFiles.map((file) => file.filename).join("、");
-  throw new Error(
-    returnedNames
-      ? `ComfyUI 已返回完成状态，但输出视频不存在或为空：${returnedNames}`
-      : "ComfyUI 已返回完成状态，但工作流没有返回任何视频文件。任务不会写入历史。"
-  );
-}
-
-async function requireExistingImageOutput(
-  result: unknown,
-  outputRoot: string,
-  alternateRoots: string[] = []
-): Promise<ReturnType<typeof extractComfyOutputFiles>> {
-  if (!outputRoot) {
-    throw new Error(
-      "ComfyUI 已返回图片完成状态，但无法确定输出目录。请在设置中确认 ComfyUI 目录后重试。"
-    );
-  }
-  const reportedFiles = extractComfyOutputFiles(result);
-  const configuredRoots = [outputRoot, ...alternateRoots].filter(Boolean);
-  const parentRoots = configuredRoots
-    .filter((root) => ["images", "videos"].includes(path.basename(path.resolve(root)).toLowerCase()))
-    .map((root) => path.dirname(path.resolve(root)));
-  const roots = [...new Set([...configuredRoots, ...parentRoots])];
-  let lastFiles = attachAbsoluteOutputPaths(reportedFiles, outputRoot);
-  for (const root of roots) {
-    const files = attachAbsoluteOutputPaths(reportedFiles, root);
-    lastFiles = files;
-    const imageFiles = files.filter(
-      (file) => file.absolutePath && imageOutputFormatFromFilename(file.filename) === "png"
-    );
-    for (const file of imageFiles) {
-      const resolved = await resolveExistingHistoryFile(file.absolutePath!);
-      if (!resolved) continue;
-      const stat = await fs.stat(resolved).catch(() => null);
-      if (stat?.isFile() && stat.size > 0) return files;
-    }
-  }
-  const returnedNames = lastFiles.map((file) => file.filename).join("、");
-  throw new Error(
-    returnedNames
-      ? `ComfyUI 已返回完成状态，但图片输出不存在或为空：${returnedNames}`
-      : "ComfyUI 已返回完成状态，但图片工作流没有返回任何图片文件。"
-  );
-}
 
 async function waitWithTimeout(
   promise: Promise<unknown> | null,
@@ -619,34 +521,6 @@ function createWindow(): void {
   }
 }
 
-async function updateTask(
-  taskId: string,
-  patch: Partial<QueueTask>
-): Promise<AppState> {
-  return activeQueueService().updateTask(taskId, patch);
-}
-
-async function setQueueLifecycle(
-  lifecycle: QueueLifecycle,
-  taskId?: string
-): Promise<AppState> {
-  return activeQueueService().setQueueLifecycle(lifecycle, taskId);
-}
-
-function isLocalComfyUrl(value: string): boolean {
-  try {
-    const hostname = new URL(value).hostname.toLowerCase();
-    return (
-      hostname === "127.0.0.1" ||
-      hostname === "localhost" ||
-      hostname === "::1" ||
-      hostname === "[::1]"
-    );
-  } catch {
-    return false;
-  }
-}
-
 function registerIpc(
   studioPaths: StudioPaths,
   applicationServices: ApplicationServices,
@@ -686,42 +560,23 @@ function registerIpc(
     ],
     getLtxExtensionModelProfile: () => store.get().settings.ltxExtensionModelProfile
   });
-  ipcMain.handle("renderer:set-settings-dirty", (_event, dirty: boolean) => {
-    rendererHasUnsavedSettings = dirty === true;
-  });
-  ipcMain.handle(
-    "window:close-response",
-    async (event, response: WindowCloseResponse) => {
-      if (event.sender !== mainWindow?.webContents || !pendingWindowCloseRequest) return;
-      const request = pendingWindowCloseRequest;
+  registerWindowShellIpc({
+    ipc: ipcMain,
+    getWindowWebContents: () => mainWindow?.webContents ?? null,
+    setRendererSettingsDirty: (dirty) => {
+      rendererHasUnsavedSettings = dirty;
+    },
+    getPendingWindowCloseRequest: () => pendingWindowCloseRequest,
+    clearPendingWindowCloseRequest: () => {
       pendingWindowCloseRequest = null;
-      if (response === "cancel") {
-        closeFlowRunning = false;
-        return;
-      }
-      if (request.kind === "unsaved-settings" && response === "discard-settings") {
-        await finishWindowClose();
-        return;
-      }
-      if (request.kind === "running-work" && (response === "finish-tasks" || response === "force-exit")) {
-        await finishRunningWorkClose(response, request.queueCleanupOnly === true);
-        return;
-      }
-      closeFlowRunning = false;
-    }
-  );
-  registerDraftIpc({ ipc: ipcMain, service: applicationServices.draft });
-  ipcMain.handle("queue:set-h3-live-preview", async (_event, enabled: boolean) => {
-    const value = enabled === true;
-    const next = await store.update((state) => {
-      state.settings.h3LivePreview = value;
-    });
-    appLogger.info("queue", "h3-live-preview-setting-changed", "H3 live preview queue preference changed", {
-      enabled: value
-    });
-    sendState(next);
-    return next;
+    },
+    setCloseFlowRunning: (running) => {
+      closeFlowRunning = running;
+    },
+    finishWindowClose,
+    finishRunningWorkClose
   });
+  registerDraftIpc({ ipc: ipcMain, service: applicationServices.draft });
   registerSettingsIpc({ ipc: ipcMain, service: applicationServices.settings });
   registerImageAssetIpc({
     ipc: ipcMain,
@@ -778,7 +633,7 @@ app.whenReady().then(async () => {
     store: stateRepository,
     logger: appLogger,
     runtimeState: comfyRuntimeState,
-    updateTask,
+    updateTask: (taskId, patch) => activeApplicationRuntime().queue.updateTask(taskId, patch),
     isLocalComfyUrl,
     alignRuntimeProfile: (settings) => alignLocalComfyUiRuntimeProfile(settings),
     testComfyUi,
@@ -810,10 +665,7 @@ app.whenReady().then(async () => {
       }
     },
     queue: {
-      runtime: queueRuntime,
-      resolveTaskOutputDirectory,
-      requireExistingImageOutput,
-      requireExistingVideoOutput,
+      runtime: queueRuntime
     },
     lifecycle: {
       interruptComfy: (settings) => interrupt(settings),
