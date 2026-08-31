@@ -7,6 +7,7 @@ This guide is the shortest reliable route into Local Video Studio. Read the cont
 | Request | Read first | Primary implementation |
 | --- | --- | --- |
 | Queue, history, paths, IPC, persistence, process exit | `ARCHITECTURE_CONTRACT.md` | `electron/main.ts`, `electron/store.ts`, `electron/services/`, `src/core/` |
+| Application boundary, lifecycle, composition | `ARCHITECTURE_CONTRACT.md` | `electron/application-runtime.ts`, `electron/services/`, `electron/ports/`, `electron/*-ipc.ts`, `src/renderer/entry.ts` |
 | History 大数据量性能、媒体延迟加载、滚动恢复 | `UX_CONTRACT.md`, `HISTORY_PERFORMANCE_OPTIMIZATION_PLAN.md` | `src/renderer/pages/history/`, `src/renderer/render-coordinator.ts` |
 | Layout, interaction, focus, media states | `UX_CONTRACT.md` | `src/renderer/`, `src/styles/`, current renderer evidence; prototypes are historical |
 | Model, LoRA, workflow, GPU/memory policy | `WORKFLOW_CONTRACT.md` | `src/core/catalog/`, workflow adapters, `workflows/` |
@@ -26,9 +27,13 @@ Inspect `git status` before reading or editing hotspot files. This repository is
 - Video workflow selection and placeholder policy: `src/core/workflow.ts`, `src/core/video-policy.ts`, and `workflows/*.json`.
 - Image workflow construction and required runtime nodes: `src/core/image-workflow.ts`.
 - Queue task snapshots and pure mutations: `src/core/queue-task-factory.ts` and `src/core/queue.ts`.
-- Queue mutation IPC: `electron/queue-ipc.ts`; execution worker, ComfyUI submission and runtime validation currently remain in `electron/main.ts` and `electron/services/comfy-ui.ts`.
+- Embedded application graph: `electron/application-runtime.ts` constructs the application services and injected ports without importing Electron; `electron/services/` owns application operations and `electron/ports/` owns platform seams.
+- Queue mutation IPC: `electron/queue-registration.ts` and `electron/queue-control-ipc.ts`; queue commands live in `electron/queue-control-service.ts` and `electron/queue-mutation-service.ts`; execution orchestration is split across `electron/queue-executor.ts`, `electron/queue-execution-side-effects.ts`, `electron/queue-worker.ts`, and `electron/services/comfy-ui.ts`. `electron/main.ts` remains the Electron composition root and supplies ComfyUI/runtime callbacks; it is still a Gate review hotspot.
+- Renderer composition: `src/renderer/entry.ts` is the single preload boundary, `src/renderer/studio-client.ts` projects application/events/assets/host capabilities, `src/renderer/context.ts` carries them into page modules, and `src/renderer/render-coordinator.ts` governs immediate command renders versus frame-coalesced event refreshes. `src/main.ts` remains the renderer composition layer.
 - Persisted defaults and migrations: `src/core/defaults.ts`, `electron/store.ts`, and `src/types.ts`.
 - Settings installation UX: `src/renderer/pages/settings/` plus preload/IPC handlers.
+
+Current validation boundaries are explicit: the renderer source has one `window.studio` read in `src/renderer/entry.ts`, page modules do not read the preload global, and the application runtime has no Electron import. P02/P03 automated and synthetic renderer checks pass, but they do not replace real Electron DevTools cold/warm measurements, Long Task data, or ComfyUI execution.
 
 Do not copy the complete catalog into README or another hand-maintained list. User-facing summaries may name model families, but component filenames and download targets belong to the catalog.
 
