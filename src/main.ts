@@ -39,29 +39,11 @@ import {
   type CustomNodeInstallPhase
 } from "./renderer/pages/settings/node-install-queue";
 import {
-  toggleHistoryPlayerFullscreen,
+  createHistoryWorkspaceCoordinator,
+  type HistoryWorkspaceCoordinator,
   type HistoryPlaybackSnapshot
-} from "./renderer/pages/history/page-controller";
-import {
-  createHistoryAssembly,
-  mountHistoryAssembly
-} from "./renderer/pages/history/assembly";
-import { createHistoryContextMenus } from "./renderer/pages/history/context-menus";
-import { createHistoryLayoutController } from "./renderer/pages/history/layout-controller";
-import { createHistoryActions } from "./renderer/pages/history/actions";
-import {
-  historyAssetsByNewest,
-  imageProjectsByNewest,
-  preferredImageVersion,
-  preferredVersion,
-  versionShortEdge
-} from "./renderer/pages/history/helpers";
-import {
-  historyFilterSignature,
-  normalizeHistoryFilter
-} from "./core/history-filter";
-import { swapHistoryDetailFragments } from "./renderer/pages/history/detail-transition";
-import { createHistoryMediaRuntime } from "./renderer/pages/history/media-helpers";
+} from "./renderer/pages/history/coordinator";
+import { versionShortEdge } from "./renderer/pages/history/helpers";
 import {
   createCreateWorkspaceCoordinator,
   type CreateWorkspaceCoordinator
@@ -80,11 +62,8 @@ import { escapeHtml } from "./renderer/shared/dom";
 import {
   formatAssetBytes,
   formatBytes,
-  formatFullHistoryTime,
-  formatTrimTime,
   formatUpscaleEstimateRange,
   formatVideoDuration,
-  historyRenderDuration,
   performanceCard,
 } from "./renderer/shared/formatters";
 import { icon, renderIcons } from "./renderer/shared/icons";
@@ -176,6 +155,7 @@ const rendererAssets = rendererDependencies.assets;
 const rendererHostCapabilities = rendererDependencies.hostCapabilities;
 let shellCoordinator: RendererShellCoordinator;
 let createWorkspaceCoordinator: CreateWorkspaceCoordinator;
+let historyWorkspaceCoordinator: HistoryWorkspaceCoordinator;
 let settingsSaveCoordinator: SettingsSaveCoordinator;
 let environmentScan: EnvironmentScanResult | null = null;
 let environmentScanning = false;
@@ -338,6 +318,62 @@ function getImageDraftDirty(): boolean {
 
 function getImageDraftSaveInFlight(): number {
   return createWorkspaceCoordinator.getImageDraftSaveInFlight();
+}
+
+function renderHistoryList(): string {
+  return historyWorkspaceCoordinator.renderList(rendererApp.context);
+}
+
+function renderHistoryDetail(kind: "video" | "image"): string {
+  return historyWorkspaceCoordinator.renderDetail(rendererApp.context, kind);
+}
+
+function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
+  historyWorkspaceCoordinator.bind(playback);
+}
+
+function historyBeforeRender(): void {
+  historyWorkspaceCoordinator.beforeRender();
+}
+
+function bindHistoryViewportControls(): RendererCleanup {
+  return historyWorkspaceCoordinator.bindViewportControls();
+}
+
+function restoreHistoryScrollPosition(): void {
+  historyWorkspaceCoordinator.restoreScrollPosition();
+}
+
+function captureHistoryScrollPosition(): void {
+  historyWorkspaceCoordinator.captureHistoryScrollPosition();
+}
+
+function setHistoryScrollRestorePending(value: boolean): void {
+  historyWorkspaceCoordinator.setScrollRestorePending(value);
+}
+
+function clearImageHistoryThumbnailCache(): void {
+  historyWorkspaceCoordinator.clearImageHistoryThumbnailCache();
+}
+
+function releaseHistoryVideo(assetId: string): void {
+  historyWorkspaceCoordinator.releaseHistoryVideo(assetId);
+}
+
+function returnToHistory(): void {
+  historyWorkspaceCoordinator.returnToHistory();
+}
+
+function returnToLastHistoryDetail(): void {
+  historyWorkspaceCoordinator.returnToLastHistoryDetail();
+}
+
+function navigateHistoryDetail(direction: -1 | 1): void {
+  historyWorkspaceCoordinator.navigateHistoryDetail(direction);
+}
+
+function navigateImageHistoryDetail(direction: -1 | 1): void {
+  historyWorkspaceCoordinator.navigateImageHistoryDetail(direction);
 }
 
 function installGuideDialogHtml(): string {
@@ -588,7 +624,6 @@ let renderCoordinator: RenderCoordinator;
 function requestRendererRefresh(): void {
   renderCoordinator.requestRender();
 }
-let activeHistoryCleanup: RendererCleanup | null = null;
 const rendererApp = createRendererApp({
   root: appElement,
   dependencies: rendererDependencies,
@@ -617,12 +652,12 @@ function initializeRenderCoordinator(): void {
   renderPages: {
     create: createPage,
     queue: () => queueAssembly.render(rendererApp.context),
-    history: () => historyAssembly.renderList(rendererApp.context),
-    historyDetail: () => historyAssembly.renderDetail(rendererApp.context, "video"),
-    imageHistoryDetail: () => historyAssembly.renderDetail(rendererApp.context, "image"),
+    history: renderHistoryList,
+    historyDetail: () => renderHistoryDetail("video"),
+    imageHistoryDetail: () => renderHistoryDetail("image"),
     settings: settingsPage
   },
-  beforeRenderHistory: historyLayoutController.beforeRender,
+  beforeRenderHistory: historyBeforeRender,
   closeAppLogContextMenu: appLogContextMenu.close,
   ensurePromptPacks: loadPromptPacks,
   bindShell,
@@ -634,25 +669,36 @@ function initializeRenderCoordinator(): void {
   },
   bindHistory,
   bindSettings,
-  bindHistoryViewportControls: historyLayoutController.bindViewportControls,
+  bindHistoryViewportControls,
   restoreQueueScrollPosition: queueScrollController.restoreScrollPosition,
-  restoreHistoryScrollPosition: historyLayoutController.restoreScrollPosition,
+  restoreHistoryScrollPosition,
   syncAppLogPolling,
   icon,
   escapeHtml
   });
 }
 
-const historyMediaRuntime = createHistoryMediaRuntime(
-  rendererApp.context,
-  () => page === "history"
-);
-const historyLayoutController = createHistoryLayoutController(
-  rendererApp.context,
-  reportUserAction,
-  () => historyFilterSignature(ui.historyFilter)
-);
 const queueScrollController = createQueueScrollController(() => page);
+historyWorkspaceCoordinator = createHistoryWorkspaceCoordinator({
+  context: rendererApp.context,
+  ui,
+  getState: () => state,
+  getPage: () => page,
+  setPage,
+  getHistoryKind: () => historyKind,
+  setHistoryKind,
+  setState: setRendererState,
+  addPageCleanup: rendererApp.addPageCleanup,
+  render,
+  reportUserAction,
+  rememberModalFocus,
+  restoreModalFocus,
+  bindModalFocus,
+  renderOverlay,
+  saveDraftImmediately,
+  selectDraftVideo,
+  navigateToCreationMode
+});
 const queueAssembly = createQueueAssembly({
   getState: () => state,
   getPerformanceMetrics: () => performanceMetrics,
@@ -679,50 +725,6 @@ const queueAssembly = createQueueAssembly({
     renderOverlay();
   },
   rememberModalFocus
-});
-const historyAssembly = createHistoryAssembly({
-  getState: () => state,
-  getHistoryKind: () => historyKind,
-  getHistoryLayout: () => historyLayoutController.getLayout(),
-  getHistoryFilter: () => ui.historyFilter,
-  isHistoryFilterPanelOpen: () => ui.historyFilterPanelOpen,
-  getSelectedHistoryAssetId: () => ui.selectedHistoryAssetId,
-  getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
-  setSelectedHistoryVersionId: (versionId) => {
-    ui.selectedHistoryVersionId = versionId;
-  },
-  setHistoryKind,
-  navigateToHistory: () => setPage("history")
-});
-const historyActions = createHistoryActions({
-  context: rendererApp.context,
-  setState: setRendererState,
-  getSelectedHistoryAssetId: () => ui.selectedHistoryAssetId,
-  getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
-  setSelectedHistoryAssetId: (assetId) => {
-    ui.selectedHistoryAssetId = assetId;
-  },
-  setDialog: (dialog) => {
-    ui.upscaleDialog = dialog;
-  },
-  rememberModalFocus,
-  saveDraftImmediately,
-  selectDraftVideo,
-  navigateToCreationMode,
-  requestHistoryDeletion,
-  reportUserAction
-});
-const historyContextMenus = createHistoryContextMenus(rendererApp.context, {
-  getState: () => state,
-  openHistoryDetail,
-  editHistoryAsset: historyActions.editHistoryAsset,
-  openImageHistoryDetail,
-  continueImageEdit: historyActions.continueImageEdit,
-  continueImageToVideo: historyActions.continueImageToVideo,
-  copyHistoryFile: historyActions.copyHistoryFile,
-  copyHistoryText: historyActions.copyHistoryText,
-  requestHistoryDeletion,
-  toggleHistoryPlayerFullscreen
 });
 const appLogContextMenu = createAppLogContextMenu(rendererApp.context, clearAppLogScreen);
 const environmentRefreshCoordinator = new EnvironmentRefreshCoordinator({
@@ -811,57 +813,6 @@ function reportUserAction(action: string, meta?: Record<string, unknown>): void 
   void meta;
 }
 
-function requestHistoryDeletion(assetId: string): void {
-  const asset = state.history.find((item) => item.id === assetId);
-  const project = state.imageHistory.find((item) => item.id === assetId);
-  const title = asset?.title ?? project?.title;
-  if (!title) return;
-  if (page === "history") historyLayoutController.captureHistoryScrollPosition();
-  rememberModalFocus();
-  ui.pendingConfirmation = {
-    kind: "delete-history",
-    assetId,
-    title
-  };
-  ui.confirmationBusy = false;
-  renderOverlay();
-}
-
-function requestHistoryVersionDeletion(assetId: string, versionId: string): void {
-  const asset = state.history.find((item) => item.id === assetId);
-  const version = asset?.versions.find((item) => item.id === versionId);
-  if (!asset || !version || asset.versions.length <= 1) return;
-  if (page === "history") historyLayoutController.captureHistoryScrollPosition();
-  rememberModalFocus();
-  ui.pendingConfirmation = {
-    kind: "delete-video-version",
-    assetId,
-    versionId,
-    title: uiText(uiKeys.runtime.historyVersionTitle, {
-      title: asset.title,
-      version: `${version.width} × ${version.height}`
-    })
-  };
-  ui.confirmationBusy = false;
-  renderOverlay();
-}
-
-function requestImageVersionDeletion(projectId: string, versionId: string): void {
-  const project = state.imageHistory.find((item) => item.id === projectId);
-  const version = project?.versions.find((item) => item.id === versionId);
-  if (!project || !version || version.kind === "source") return;
-  if (page === "history") historyLayoutController.captureHistoryScrollPosition();
-  rememberModalFocus();
-  ui.pendingConfirmation = {
-    kind: "delete-image-version",
-    projectId,
-    versionId,
-    title: uiText(uiKeys.runtime.historyVersionTitle, { title: project.title, version: version.versionNumber })
-  };
-  ui.confirmationBusy = false;
-  renderOverlay();
-}
-
 function requestQueueTaskConfirmation(
   taskId: string,
   action: "remove" | "cancel"
@@ -876,93 +827,6 @@ function requestQueueTaskConfirmation(
   };
   ui.confirmationBusy = false;
   renderOverlay();
-}
-
-function historyPlayerIsFullscreen(): boolean {
-  return Boolean(document.fullscreenElement?.closest(".history-player"));
-}
-
-function restoreHistoryPlayerFullscreen(): void {
-  const target = document.querySelector<HTMLElement>(".history-player") ??
-    document.querySelector<HTMLVideoElement>(".history-player video");
-  if (!target?.requestFullscreen) return;
-  void target.requestFullscreen().catch(() => undefined);
-}
-
-function updateHistoryDetailInPlace(): boolean {
-  const currentPlayer = document.querySelector<HTMLElement>(".history-player");
-  if (!currentPlayer) return false;
-
-  const nextMarkup = document.createElement("div");
-  nextMarkup.innerHTML = historyAssembly.renderDetail(rendererApp.context, "video");
-  const nextPlayer = nextMarkup.querySelector<HTMLElement>(".history-player");
-  if (!nextPlayer || !swapHistoryDetailFragments({
-    currentRoot: document,
-    nextRoot: nextMarkup,
-    currentPlayer,
-    nextPlayer
-  })) {
-    return false;
-  }
-
-  const nextBack = document.querySelector<HTMLElement>(".history-detail-back");
-  if (!nextBack) return false;
-  // The shell controller owns the global Page Up/Page Down listeners.  The
-  // fullscreen fast path only replaces detail fragments, so keep that shell
-  // binding untouched and let bindHistory rotate the detail-controller
-  // cleanup before attaching listeners to the newly-created fragments.
-  nextBack.querySelector<HTMLButtonElement>("[data-page=history]")?.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    returnToHistory();
-  });
-  renderIcons(appElement);
-  bindHistory();
-  return true;
-}
-
-function openHistoryDetail(assetId: string, versionId?: string): void {
-  const preserveFullscreen = page === "history-detail" && historyPlayerIsFullscreen();
-  if (page === "history") historyLayoutController.captureHistoryScrollPosition();
-  reportUserAction("history-open-detail", { assetId, versionId });
-  setHistoryKind("video");
-  ui.selectedHistoryAssetId = assetId;
-  const asset = state.history.find((item) => item.id === assetId);
-  ui.selectedHistoryVersionId = asset?.versions.find((item) => item.id === versionId)?.id ??
-    (asset ? preferredVersion(asset).id : "");
-  ui.historyForwardTarget = asset
-    ? { assetId, versionId: ui.selectedHistoryVersionId }
-    : null;
-  setPage("history-detail");
-  if (preserveFullscreen && updateHistoryDetailInPlace()) {
-    window.scrollTo({ top: 0, behavior: "auto" });
-    return;
-  }
-  render();
-  if (preserveFullscreen) restoreHistoryPlayerFullscreen();
-  window.scrollTo({ top: 0, behavior: "auto" });
-}
-
-function openImageHistoryDetail(projectId: string, versionId?: string): void {
-  const project = state.imageHistory.find((item) => item.id === projectId);
-  if (!project) return;
-  if (page === "history") historyLayoutController.captureHistoryScrollPosition();
-  reportUserAction("image-history-open-detail", { projectId, versionId });
-  setHistoryKind("image");
-  ui.selectedHistoryAssetId = projectId;
-  ui.selectedHistoryVersionId = project.versions.find((item) => item.id === versionId)?.id ??
-    preferredImageVersion(project).id;
-  ui.historyForwardTarget = { assetId: projectId, versionId: ui.selectedHistoryVersionId };
-  setPage("image-history-detail");
-  render();
-  window.scrollTo({ top: 0, behavior: "auto" });
-}
-
-function returnToHistory(): void {
-  if (page !== "history-detail" && page !== "image-history-detail") return;
-  historyLayoutController.setScrollRestorePending(true);
-  setPage("history");
-  render();
 }
 
 function navigateToCreationMode(mode: CreationMode): void {
@@ -981,84 +845,6 @@ function navigateToCreationMode(mode: CreationMode): void {
   });
 }
 
-function returnToLastHistoryDetail(): void {
-  if (page !== "history" || !ui.historyForwardTarget) return;
-  const target = ui.historyForwardTarget;
-  if (historyKind === "image") {
-    const project = state.imageHistory.find((item) => item.id === target.assetId);
-    if (!project) {
-      ui.historyForwardTarget = null;
-      return;
-    }
-    openImageHistoryDetail(target.assetId, target.versionId);
-    return;
-  }
-  const asset = state.history.find((item) => item.id === target.assetId);
-  if (!asset) {
-    ui.historyForwardTarget = null;
-    return;
-  }
-  openHistoryDetail(target.assetId, target.versionId);
-}
-
-function navigateHistoryDetail(direction: -1 | 1): void {
-  if (page !== "history-detail") return;
-  const orderedHistory = historyAssetsByNewest(state.history, ui.historyFilter);
-  const currentIndex = orderedHistory.findIndex(
-    (item) => item.id === ui.selectedHistoryAssetId
-  );
-  const nextAsset = orderedHistory[currentIndex + direction];
-  if (!nextAsset) return;
-  openHistoryDetail(nextAsset.id);
-}
-
-function navigateImageHistoryDetail(direction: -1 | 1): void {
-  if (page !== "image-history-detail") return;
-  const orderedProjects = imageProjectsByNewest(state.imageHistory, ui.historyFilter);
-  const currentIndex = orderedProjects.findIndex((item) => item.id === ui.selectedHistoryAssetId);
-  const nextProject = orderedProjects[currentIndex + direction];
-  if (!nextProject) return;
-  openImageHistoryDetail(nextProject.id);
-}
-
-function navigateImageHistoryVersion(direction: -1 | 1): void {
-  if (page !== "image-history-detail") return;
-  const project = state.imageHistory.find((item) => item.id === ui.selectedHistoryAssetId);
-  if (!project) return;
-  const currentIndex = project.versions.findIndex((item) => item.id === ui.selectedHistoryVersionId);
-  if (currentIndex < 0) return;
-  const nextVersion = project.versions[currentIndex - direction];
-  if (!nextVersion) return;
-  ui.selectedHistoryVersionId = nextVersion.id;
-  ui.historyForwardTarget = { assetId: project.id, versionId: nextVersion.id };
-  reportUserAction("image-history-version-navigation", {
-    projectId: project.id,
-    versionId: nextVersion.id,
-    direction
-  });
-  render();
-  window.requestAnimationFrame(() => {
-    document.querySelector<HTMLElement>(`[data-image-version-id="${CSS.escape(nextVersion.id)}"]`)?.scrollIntoView({
-      block: "nearest",
-      inline: "nearest"
-    });
-  });
-}
-
-function releaseHistoryVideo(assetId: string): void {
-  const cards = [...document.querySelectorAll<HTMLElement>("[data-history]")];
-  const card = cards.find((item) => item.dataset.history === assetId);
-  const videos =
-    page === "history-detail" && ui.selectedHistoryAssetId === assetId
-      ? document.querySelectorAll<HTMLVideoElement>(".history-player video")
-      : card?.querySelectorAll<HTMLVideoElement>("video") ?? [];
-  videos.forEach((video) => {
-    video.pause();
-    video.removeAttribute("src");
-    video.load();
-  });
-}
-
 function bindShell(): void {
   rendererApp.addPageCleanup(mountShellController({
     getPage: () => page,
@@ -1069,8 +855,8 @@ function bindShell(): void {
     returnToLastHistoryDetail,
     navigateHistoryDetail,
     navigateImageHistoryDetail,
-    captureHistoryScrollPosition: historyLayoutController.captureHistoryScrollPosition,
-    setHistoryScrollRestorePending: historyLayoutController.setScrollRestorePending,
+    captureHistoryScrollPosition,
+    setHistoryScrollRestorePending,
     clearHistoryForwardTarget: () => {
       ui.historyForwardTarget = null;
     },
@@ -1097,126 +883,6 @@ function bindUpscaleDialog(): (() => void) {
     bindModalFocus,
     reportUserAction
   });
-}
-
-function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
-  activeHistoryCleanup?.();
-  const cleanup = mountHistoryAssembly({
-    context: rendererApp.context,
-    playback,
-    navigation: {
-      setHistoryKind: (kind) => {
-        setHistoryKind(kind);
-        if (kind === "image" && ui.historyFilter.minDuration !== null) {
-          ui.historyFilter = normalizeHistoryFilter({ ...ui.historyFilter, minDuration: null });
-        }
-      },
-      resetHistoryScroll: () => {
-        historyLayoutController.resetScroll();
-      },
-      switchHistoryLayout: historyLayoutController.switchLayout,
-      openHistoryDetail,
-      openImageHistoryDetail,
-      navigateHistoryDetail,
-      navigateImageHistoryDetail,
-      navigateImageHistoryVersion,
-      selectVideoHistoryVersion: (versionId) => {
-        reportUserAction("history-version-select", { versionId });
-        ui.selectedHistoryVersionId = versionId;
-        if (ui.selectedHistoryAssetId) {
-          ui.historyForwardTarget = { assetId: ui.selectedHistoryAssetId, versionId };
-        }
-        render();
-      },
-      selectImageHistoryVersion: (versionId) => {
-        if (!ui.selectedHistoryAssetId) return;
-        ui.selectedHistoryVersionId = versionId;
-        ui.historyForwardTarget = { assetId: ui.selectedHistoryAssetId, versionId };
-        reportUserAction("image-history-version-select", {
-          projectId: ui.selectedHistoryAssetId,
-          versionId
-        });
-        render();
-      }
-    },
-    media: { ...historyMediaRuntime, formatVideoDuration },
-    actions: {
-      setState: setRendererState,
-      getSelectedHistoryAssetId: () => ui.selectedHistoryAssetId,
-      getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
-      openUpscaleDialog: historyActions.openUpscaleDialog,
-      requestHistoryDeletion,
-      requestHistoryVersionDeletion,
-      requestImageVersionDeletion,
-      copyHistoryText: historyActions.copyHistoryText,
-      copyHistoryFile: historyActions.copyHistoryFile,
-      copyHistoryImage: historyActions.copyHistoryImage,
-      editHistoryAsset: historyActions.editHistoryAsset,
-      continueVideoHistory: historyActions.continueVideoHistory,
-      continueImageEdit: async (projectId, versionId) => {
-        const project = state.imageHistory.find((item) => item.id === projectId);
-        const version = project?.versions.find((item) => item.id === versionId);
-        if (project && version) await historyActions.continueImageEdit(project, version);
-      },
-      continueImageToVideo: async (projectId, versionId) => {
-        const project = state.imageHistory.find((item) => item.id === projectId);
-        const version = project?.versions.find((item) => item.id === versionId);
-        if (project && version) await historyActions.continueImageToVideo(project, version);
-      },
-      updateHistoryMetadata: (assetId, patch) => rendererApplication.updateHistoryMetadata(assetId, patch)
-    },
-    filter: {
-      getFilter: () => ui.historyFilter,
-      setFilter: (filter) => {
-        ui.historyFilter = normalizeHistoryFilter(filter);
-      },
-      getPanelOpen: () => ui.historyFilterPanelOpen,
-      setPanelOpen: (open) => {
-        ui.historyFilterPanelOpen = open;
-      }
-    },
-    tags: {
-      setState: (nextState) => {
-        setRendererState(nextState);
-      },
-      escapeHtml,
-      icon,
-      updateHistoryMetadata: (assetId, patch) => rendererApplication.updateHistoryMetadata(assetId, patch)
-    },
-    historyLayout: historyLayoutController.getLayout(),
-    isImageHistoryDetail: page === "image-history-detail",
-    bindHistoryMasonry: historyLayoutController.bindMasonry,
-    bindHistoryAlbum: historyLayoutController.bindAlbum,
-    bindImageHistoryViewer: historyLayoutController.bindImageHistoryViewer,
-    bindHistoryTitleMarquees: historyLayoutController.bindTitleMarquees,
-    restoreHistoryLayoutAnchor: historyLayoutController.restoreLayoutAnchor,
-    imageLightbox: {
-      getSelectedHistoryAssetId: () => ui.selectedHistoryAssetId,
-      getSelectedHistoryVersionId: () => ui.selectedHistoryVersionId,
-      rememberModalFocus,
-      restoreModalFocus,
-      bindModalFocus,
-      setSelectedHistoryVersionId: (versionId) => {
-        ui.selectedHistoryVersionId = versionId;
-      },
-      setHistoryForwardTarget: (target) => {
-        ui.historyForwardTarget = target;
-      }
-    },
-    openHistoryContextMenu: historyContextMenus.openHistory,
-    openImageHistoryContextMenu: historyContextMenus.openImageHistory,
-    openHistoryPlayerContextMenu: historyContextMenus.openHistoryPlayer,
-    closeHistoryContextMenu: historyContextMenus.close
-  });
-  let disposed = false;
-  const managedCleanup: RendererCleanup = () => {
-    if (disposed) return;
-    disposed = true;
-    cleanup();
-    if (activeHistoryCleanup === managedCleanup) activeHistoryCleanup = null;
-  };
-  activeHistoryCleanup = managedCleanup;
-  rendererApp.addPageCleanup(managedCleanup);
 }
 
 function formSettings(): Settings {
@@ -1322,14 +988,14 @@ shellCoordinator = createRendererShellCoordinator({
   },
   clearCreationDraft,
   setHistoryKind,
-  setHistoryScrollRestorePending: historyLayoutController.setScrollRestorePending,
+  setHistoryScrollRestorePending,
   setSelectedHistoryAssetId: (assetId) => {
     ui.selectedHistoryAssetId = assetId;
   },
   setSelectedHistoryVersionId: (versionId) => {
     ui.selectedHistoryVersionId = versionId;
   },
-  clearImageHistoryThumbnailCache: () => historyMediaRuntime.clearImageHistoryThumbnailCache(),
+  clearImageHistoryThumbnailCache,
   setQueueActionBusy: (value) => {
     queueActionBusy = value;
   },
