@@ -9,85 +9,38 @@ import {
   shell,
   type MenuItemConstructorOptions
 } from "electron";
-import { createReadStream, promises as fs } from "node:fs";
-import { createHash, randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type {
   AppState,
   BundledWorkflow,
-  ConnectionKind,
-  CreationDraftSnapshots,
   Draft,
-  EnhanceRequest,
-  EnvironmentIssue,
-  EnvironmentScanScope,
-  HistoryAsset,
   HistoryFile,
-  HistoryMetadataPatch,
-  HistoryMigrationProgress,
   H3VideoVaeBackend,
   ImageAssetLibraryProgress,
-  ImageCropSaveRequest,
   ImageEditDraft,
-  ImageMaskSaveRequest,
-  ImageMarkupSaveRequest,
-  LocalServiceKind,
-  CustomNodeInstallMode,
   NotificationKind,
-  PromptProgress,
-  PromptProgressReporter,
-  PromptProgressStage,
   QueueLifecycle,
   QueueTask,
   Settings,
-  SettingsSaveMode,
   WindowCloseRequest,
   WindowCloseResponse
 } from "../src/types.js";
-import { normalizeUiLocale } from "../src/core/i18n.js";
-import { activateCreationDraft } from "../src/core/creation-drafts.js";
-import { isHistoryRating, normalizeHistoryTags } from "../src/core/history-filter.js";
-import {
-  isH3ReferenceAutoPrompt,
-  validateH3ReferenceAutoPrompt
-} from "../src/core/h3-auto-prompter.js";
-import {
-  historyVideoPaths,
-  historyVideoVersionPaths,
-  removeHistoryVideoVersion
-} from "../src/core/history-delete.js";
-import { createHistoryCoverCacheKey } from "../src/core/history-cover.js";
-import { historyFileCandidates } from "../src/core/history-media.js";
 import { mergeChromiumFeatureList } from "../src/core/chromium-features.js";
-import {
-  comfyPromptQueueLocation,
-  comfyQueueContainsAnyPromptId
-} from "../src/core/comfy-queue.js";
 import {
   extractComfyOutputFiles,
   isVideoOutputFilename
 } from "../src/core/comfy-output.js";
 import {
-  attachAbsoluteOutputPaths,
-  isSegmentedSeedVr2Output,
-  restoreSegmentedSeedVr2OutputPaths
+  attachAbsoluteOutputPaths
 } from "../src/core/comfy-output-paths.js";
-import {
-  adjustQueuePauseBoundary,
-  queuePauseBoundaryReached,
-  syncQueueVideoInputPaths
-} from "../src/core/queue.js";
-import { normalizeImageEditDraft } from "../src/core/image-project.js";
-import { promptModelBackend } from "../src/core/prompt-models.js";
-import { promptEnhanceLogContext } from "../src/core/prompt-enhance-log.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
 import {
   extensionWorkflowSafetyErrors,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3R2vModel,
-  isMiniMaxH3Model,
   workflowSupportsEndImage,
   workflowSupportsExtensionForModel,
   workflowSupportsH3BoundaryExtension,
@@ -99,94 +52,50 @@ import {
   resolveH3VideoVaeMode
 } from "../src/core/h3-video-vae.js";
 import { JsonStore } from "./store.js";
-import { registerQueueMutationIpc } from "./queue-ipc.js";
-import { registerQueueEnqueueIpc } from "./queue-enqueue.js";
-import { createQueueExecutor } from "./queue-executor.js";
+import type { StateRepository } from "./ports/state-repository.js";
 import { cleanupCancelledQueueTask as cleanupCancelledQueueTaskInRecovery } from "./queue-recovery.js";
+import { registerDraftIpc } from "./draft-ipc.js";
+import { registerEnvironmentIpc } from "./environment-ipc.js";
+import { registerHistoryIpc } from "./history-ipc.js";
+import { registerImageDocumentIpc, registerImageMaskIpc } from "./image-document-ipc.js";
+import { registerMediaIpc, registerMediaProtocol } from "./media-ipc.js";
+import { registerPromptIpc } from "./prompt-ipc.js";
+import { registerSettingsIpc } from "./settings-ipc.js";
+import { registerQueueIpc } from "./queue-registration.js";
+import { nativeImageInspection } from "./services/native-image-inspection.js";
+import { resolveExistingHistoryFile } from "./services/windows-clipboard.js";
+import { nativeHistoryFileSystem } from "./services/native-history-file-system.js";
+import { ApplicationRuntime, type ApplicationServices } from "./application-runtime.js";
 import {
-  QueueWorkerController,
-  registerQueueControlIpc
-} from "./queue-worker.js";
-import {
-  copyFileToWindowsClipboard,
-  resolveExistingHistoryFile
-} from "./services/windows-clipboard.js";
-import {
-  isComfyMultimodalPromptModel,
-  isGemmaPromptModel,
-  isQwenVlPeftPromptModel,
-  promptRuntimeForSettings
-} from "../src/core/prompt-models.js";
-import {
-  comfyUiSettingsForPromptRuntime,
   comfyUiSettingsForQueueTask
-} from "./services/comfy-runtime-policy.js";
+} from "../src/infrastructure/comfy-runtime-policy.js";
 import {
-  installAttentionAcceleration,
-  installCustomNode,
-  uninstallCustomNode,
-  installLlamaCppPython,
-  uninstallLlamaCppPython,
   alignLocalComfyUiRuntimeProfile,
   forceStopComfyProcesses,
   reconcileConfiguredComfyListenerOwnership,
-  repairOperationForIssue,
-  repairEnvironmentIssue,
   resolveComfyOutputDirectory,
   restartLocalService,
   scanEnvironment,
   startLocalService,
-  updateComfyUi
 } from "./services/environment.js";
 import {
   freeMemory,
-  enhancePromptWithComfyUi,
   testComfyUi,
-  jsonRequest,
-  interrupt,
-  warmNativePromptModel
+  interrupt
 } from "./services/comfy-ui.js";
-import {
-  enhancePromptWithMultimodalComfyUi,
-  multimodalExecutionPreflight,
-  retainedMultimodalDeviceFor,
-  releaseMultimodalPromptModel,
-  warmMultimodalPromptModel
-} from "./services/multimodal-prompt.js";
-import {
-  enhancePromptWithQwenVlPeft,
-  warmQwenVlPeftPromptModel,
-  validateQwenVlRuntimeChoices,
-  QwenVlRuntimeValidationError
-} from "./services/qwenvl-prompt.js";
-import { ensureQwenVlManagedMetadata } from "./services/qwenvl-model-assets.js";
-import {
-  enhancePromptWithH3PromptWriter,
-  releaseH3PromptWriter,
-  warmH3PromptWriter
-} from "./services/h3-prompt-writer.js";
-import { withPromptExtensionMedia } from "./services/prompt-extension-media.js";
 import { getPerformanceMetrics } from "./services/performance.js";
-import { getApplicationLogger, safeLogErrorMessage } from "./services/app-logger.js";
-import { captureComfyUiLogFailure } from "./services/comfy-log-bridge.js";
-import { comfyRuntimeState } from "./services/comfy-runtime-state.js";
+import { getApplicationLogger, safeLogErrorMessage } from "../src/infrastructure/app-logger.js";
+import { comfyRuntimeState } from "../src/infrastructure/comfy-runtime-state.js";
 import { PromptRuntimeManager } from "./services/prompt-runtime-manager.js";
-import type { PromptOperationOrigin } from "../src/core/prompt-runtime-state.js";
 import { setOwnedComfyProcessExitListener } from "./services/comfy-runtime-service.js";
-import {
-  cleanupVideoHistoryMigration,
-  isPathWithinDirectory,
-  markVideoHistoryMigrationCommitted,
-  planVideoHistoryMigration,
-  prepareVideoHistoryMigration,
-  rollbackVideoHistoryMigration,
-  type PreparedVideoHistoryMigration
-} from "./services/video-history-migration.js";
 import {
   cleanupImageAssetLibrary,
   organizeImageAssetLibrary,
   scanImageAssetLibrary
-} from "./services/image-asset-library.js";
+} from "../src/infrastructure/image-asset-library.js";
+import { createStudioPaths, type StudioPaths } from "./services/studio-paths.js";
+import { createStudioEventBus } from "./services/studio-event-bus.js";
+import { createStudioEventBridge } from "./services/studio-event-bridge.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const studioProductName = "Local Video Studio";
@@ -208,159 +117,50 @@ if (appliedChromiumWorkarounds.length) {
   );
 }
 
-const historyCoverDirectory = () => path.join(app.getPath("userData"), "history-covers", "v3");
-const historyCoverDigest = (key: string) => createHash("sha256").update(key).digest("hex");
-const historyCoverExtension = (key: string) => key.startsWith("image-history:") ? ".png" : ".jpg";
-const historyCoverPathFromDigest = (digest: string, extension = ".jpg") =>
-  path.join(historyCoverDirectory(), `${digest}${extension}`);
-const historyCoverPath = (key: string) =>
-  historyCoverPathFromDigest(historyCoverDigest(key), historyCoverExtension(key));
-const historyCoverMetadataPath = (key: string) =>
-  path.join(historyCoverDirectory(), `${historyCoverDigest(key)}.json`);
-
-function historyCoverKeys(asset: HistoryAsset): string[] {
-  const videoPattern = /\.(mp4|webm|mov|m4v|mkv)$/i;
-  return asset.versions.map((version) => {
-    const file = version.files.find((item) => videoPattern.test(item.filename));
-    return createHistoryCoverCacheKey({
-      assetId: asset.id,
-      versionId: version.id,
-      createdAt: version.createdAt,
-      filename: file?.filename ?? version.outputFilename,
-      absolutePath: file?.absolutePath ?? ""
-    });
-  });
-}
-
-async function removeHistoryCoverCache(asset: HistoryAsset): Promise<void> {
-  await Promise.all(historyCoverKeys(asset).flatMap((key) => [
-    fs.rm(historyCoverPath(key), { force: true }).catch(() => undefined),
-    fs.rm(historyCoverMetadataPath(key), { force: true }).catch(() => undefined)
-  ]));
-}
-
-interface HistoryCoverMetadata {
-  sourceSize: number;
-  sourceMtimeMs: number;
-  generatedAt: string;
-}
-
-async function resolveHistorySourcePath(sourcePath: string): Promise<string | null> {
-  const direct = await resolveExistingHistoryFile(sourcePath);
-  if (direct) return direct;
-  const state = store.get();
-  const normalizedSource = path.resolve(sourcePath).toLowerCase();
-  const file = state.history
-    .flatMap((asset) => asset.versions.flatMap((version) => version.files))
-    .find((candidate) =>
-      candidate.absolutePath &&
-      path.resolve(candidate.absolutePath).toLowerCase() === normalizedSource
-    );
-  return file
-    ? resolveExistingHistoryFile(
-        sourcePath,
-        historyFileCandidates(file, state.settings)
-      )
-    : null;
-}
 let mainWindow: BrowserWindow | null = null;
-let store: JsonStore;
+let store: StateRepository;
 let rendererHasUnsavedSettings = false;
-let historyMigrationRunning = false;
 let imageAssetLibraryRunning = false;
 let pendingWindowCloseRequest: WindowCloseRequest | null = null;
-const queueWorkerController = new QueueWorkerController();
-let nativePromptController: AbortController | null = null;
-let nativePromptWorker: Promise<unknown> | null = null;
-let promptCancellationWorker: Promise<{ recovered: boolean; settled: boolean }> | null = null;
-let retainedPromptRuntime: {
-  backend: ReturnType<typeof promptModelBackend>;
-  modelId: string;
-} | null = null;
+let applicationRuntime: ApplicationRuntime | null = null;
 
-function promptRuntimeLeaseMatches(
-  backend: ReturnType<typeof promptModelBackend>,
-  modelId: string
-): boolean {
-  return retainedPromptRuntime?.backend === backend && retainedPromptRuntime.modelId === modelId;
+function activeApplicationRuntime(): ApplicationRuntime {
+  if (!applicationRuntime) throw new Error("Application runtime is not initialized");
+  return applicationRuntime;
 }
 
-async function beginPromptRuntimeLease(
-  settings: Settings,
-  backend: ReturnType<typeof promptModelBackend>,
-  modelId: string
-): Promise<boolean> {
-  if (promptRuntimeLeaseMatches(backend, modelId)) return true;
-  if (retainedPromptRuntime !== null) await releasePromptRuntime(settings);
-  retainedPromptRuntime = { backend, modelId };
-  return false;
+function activeSettingsService() {
+  return activeApplicationRuntime().services.settings;
+}
+
+function activePromptService() {
+  return activeApplicationRuntime().services.prompt;
 }
 let allowWindowClose = false;
 let closeFlowRunning = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const appLogger = getApplicationLogger();
-let fatalProcessErrorHandled = false;
-const taskStageStartedAt = new Map<string, { stage: string; startedAt: number }>();
-
-function createPromptProgressController(
-  modelId: string,
-  startedAt: number,
-  operationId: string,
-  origin: PromptOperationOrigin
-): {
-  update: PromptProgressReporter;
-  finish(status: PromptProgress["status"], stage: PromptProgressStage, error?: string): void;
-} {
-  let lastProgress = 0;
-  let lastSentAt = 0;
-  let lastStage: PromptProgressStage = "preparing";
-  const send = (
-    status: PromptProgress["status"],
-    stage: PromptProgressStage,
-    progress: number | null,
-    detail?: string,
-    error?: string
-  ) => {
-    const elapsedMs = Date.now() - startedAt;
-    const payload: PromptProgress = {
-      operationId,
-      origin,
-      status,
-      stage,
-      progress,
-      startedAt,
-      elapsedMs,
-      modelId,
-      ...(detail ? { detail } : {}),
-      ...(error ? { error } : {})
-    };
-    mainWindow?.webContents.send("prompt:progress", payload);
-    appLogger.info("prompt", "progress", "Prompt enhancement progress", {
-      operationId,
-      modelId,
-      stage,
-      status,
-      progress,
-      elapsedMs
-    });
-  };
-  const update: PromptProgressReporter = (stage, progress = null, detail) => {
-    const now = Date.now();
-    if (now - lastSentAt < 250 && stage === lastStage) return;
-    lastSentAt = now;
-    lastStage = stage;
-    const normalized = progress == null
-      ? null
-      : Math.min(99, Math.max(lastProgress, Math.max(0, progress)));
-    if (normalized != null) lastProgress = normalized;
-    send("running", stage, normalized, detail);
-  };
+const studioEventBus = createStudioEventBus({
+  onSubscriberError: (name, error) => {
+    appLogger.error(
+      "events",
+      "subscriber-failed",
+      `Studio event subscriber failed for ${name}`,
+      { eventName: name, ...errorLogMeta(error) }
+    );
+  }
+});
+const removeStudioEventBridge = createStudioEventBridge(studioEventBus, () => {
+  const window = mainWindow;
+  if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return null;
   return {
-    update,
-    finish(status, stage, error) {
-      send(status, stage, status === "completed" ? 100 : lastProgress, undefined, error);
-    }
+    send: (channel: string, payload: unknown) => window.webContents.send(channel, payload)
   };
+});
+let fatalProcessErrorHandled = false;
+
+function activeQueueService() {
+  return activeApplicationRuntime().queue;
 }
 
 if (appliedChromiumWorkarounds.length) {
@@ -487,156 +287,6 @@ app.on("child-process-gone", (_event, details) => {
     serviceName: details.serviceName ?? ""
   });
 });
-
-function registerMediaProtocol(): void {
-  protocol.handle("studio-media", async (request) => {
-    try {
-      const url = new URL(request.url);
-      let filename: string | undefined;
-      let trustedCacheFile = false;
-      if (url.hostname === "cover") {
-        const match = url.pathname.match(/^\/([a-f0-9]{64})\.(jpg|png)$/i);
-        if (!match?.[1]) return new Response("Invalid cover", { status: 400 });
-        filename = historyCoverPathFromDigest(match[1].toLowerCase(), `.${match[2]!.toLowerCase()}`);
-        trustedCacheFile = true;
-      } else if (url.hostname === "draft" && url.pathname === "/video") {
-        filename = store.get().draft.sourceVideoPath;
-      } else if (url.hostname === "draft" && url.pathname === "/reference-video") {
-        filename = url.searchParams.get("source") ?? undefined;
-      } else if (url.hostname === "history") {
-        const [assetId, versionId, fileIndexText] = url.pathname.split("/").filter(Boolean);
-        const fileIndex = Number(fileIndexText);
-        const decodedAssetId = decodeURIComponent(assetId ?? "");
-        const decodedVersionId = decodeURIComponent(versionId ?? "");
-        const currentState = store.get();
-        const asset = currentState.history.find((item) => item.id === decodedAssetId);
-        if (asset) {
-          const version = asset.versions.find((item) => item.id === decodedVersionId);
-          const historyFile = Number.isInteger(fileIndex) && fileIndex >= 0
-            ? version?.files[fileIndex]
-            : undefined;
-          filename = historyFile?.absolutePath;
-          if (historyFile) {
-            filename = await resolveExistingHistoryFile(
-              filename ?? "",
-              historyFileCandidates(historyFile, currentState.settings)
-            ) ?? undefined;
-            trustedCacheFile = Boolean(filename);
-          }
-        } else {
-          const project = currentState.imageHistory.find((item) => item.id === decodedAssetId);
-          const version = project?.versions.find((item) => item.id === decodedVersionId);
-          const historyFile = Number.isInteger(fileIndex) && fileIndex === 0
-            ? version?.file
-            : undefined;
-          filename = historyFile?.absolutePath;
-          if (historyFile) {
-            filename = await resolveExistingHistoryFile(
-              filename ?? "",
-              historyFileCandidates(historyFile, currentState.settings)
-            ) ?? undefined;
-            trustedCacheFile = Boolean(filename);
-          }
-        }
-      } else if (url.hostname === "queue") {
-        const taskId = decodeURIComponent(url.pathname.split("/").filter(Boolean)[0] ?? "");
-        const task = store.get().queue.find((item) => item.id === taskId);
-        const referenceIndexText = url.searchParams.get("reference");
-        if (referenceIndexText !== null) {
-          const referenceIndex = Number(referenceIndexText);
-          const referenceSlots = task?.taskType === "generation" || task?.taskType === "extension"
-            ? task.h3ReferenceSlots
-            : undefined;
-          filename = Number.isInteger(referenceIndex) && referenceIndex >= 0
-            ? referenceSlots?.[referenceIndex]?.mediaPath
-            : undefined;
-        } else {
-          filename = task?.taskType === "extension"
-            ? task.sourceVideoPath
-            : task?.taskType === "upscale"
-              ? task.sourceFilePath
-              : undefined;
-        }
-      } else {
-        return new Response("Not found", { status: 404 });
-      }
-      const resolvedFilename = filename
-        ? trustedCacheFile
-          ? filename
-          : await resolveExistingHistoryFile(filename)
-        : null;
-      const stat = resolvedFilename
-        ? await fs.stat(resolvedFilename).catch(() => null)
-        : null;
-      if (!resolvedFilename || !stat?.isFile()) {
-        return new Response("Media file not found", { status: 404 });
-      }
-      filename = resolvedFilename;
-      const contentType = new Map([
-        [".mp4", "video/mp4"],
-        [".m4v", "video/mp4"],
-        [".webm", "video/webm"],
-        [".mov", "video/quicktime"],
-        [".mkv", "video/x-matroska"],
-        [".gif", "image/gif"],
-        [".png", "image/png"],
-        [".jpg", "image/jpeg"],
-        [".jpeg", "image/jpeg"],
-        [".webp", "image/webp"],
-        [".bmp", "image/bmp"]
-      ]).get(path.extname(filename).toLowerCase()) ?? "application/octet-stream";
-      const range = request.headers.get("range");
-      const match = range?.match(/^bytes=(\d*)-(\d*)$/);
-      if (range && (!match || (!match[1] && !match[2]))) {
-        return new Response("Invalid range", {
-          status: 416,
-          headers: { "Content-Range": `bytes */${stat.size}` }
-        });
-      }
-      let start = 0;
-      let end = stat.size - 1;
-      if (match?.[1]) {
-        start = Number(match[1]);
-        end = match[2] ? Number(match[2]) : stat.size - 1;
-      } else if (match?.[2]) {
-        const suffixLength = Number(match[2]);
-        start = Math.max(0, stat.size - suffixLength);
-      }
-      if (
-        !Number.isSafeInteger(start) ||
-        !Number.isSafeInteger(end) ||
-        start < 0 ||
-        end < start ||
-        start >= stat.size
-      ) {
-        return new Response("Range not satisfiable", {
-          status: 416,
-          headers: { "Content-Range": `bytes */${stat.size}` }
-        });
-      }
-      end = Math.min(end, stat.size - 1);
-      const partial = Boolean(match);
-      const headers = new Headers({
-        "Accept-Ranges": "bytes",
-        "Access-Control-Allow-Headers": "Range",
-        "Access-Control-Allow-Origin": "*",
-        "Content-Type": contentType,
-        "Content-Length": String(end - start + 1)
-      });
-      if (partial) headers.set("Content-Range", `bytes ${start}-${end}/${stat.size}`);
-      if (request.method === "HEAD") {
-        return new Response(null, { status: partial ? 206 : 200, headers });
-      }
-      const stream = Readable.toWeb(createReadStream(filename, { start, end }));
-      return new Response(stream as BodyInit, {
-        status: partial ? 206 : 200,
-        headers
-      });
-    } catch {
-      return new Response("Unable to open media", { status: 500 });
-    }
-  });
-}
 
 async function bundledWorkflowFor(
   modelId: string,
@@ -834,32 +484,13 @@ function sendState(state = store.get()): void {
       taskOrder: state.queue.map((task) => task.id)
     });
   }
-  mainWindow?.webContents.send("state:changed", state);
+  studioEventBus.publish("state:changed", state);
 }
 
 const promptRuntimeManager = new PromptRuntimeManager(comfyRuntimeState.snapshot());
 
 promptRuntimeManager.subscribe((runtime) => {
-  mainWindow?.webContents.send("prompt-runtime:changed", runtime);
-});
-
-setOwnedComfyProcessExitListener(({ processId, code, signal }) => {
-  const runtime = comfyRuntimeState.snapshot();
-  if (runtime.phase === "restarting" || runtime.phase === "stopping") {
-    appLogger.info("comfy", "owned-process-exit-expected", "Ignored the expected exit of a ComfyUI process during an explicit lifecycle operation", {
-      childProcessId: processId,
-      phase: runtime.phase,
-      operationId: runtime.operationId
-    });
-    return;
-  }
-  retainedPromptRuntime = null;
-  nativePromptController?.abort(new Error("ComfyUI 已退出。"));
-  comfyRuntimeState.markStopped(
-    runtime.endpoint,
-    `ComfyUI 进程已退出（PID ${processId}${code === null ? "" : `，退出码 ${code}`}${signal ? `，信号 ${signal}` : ""}）。`,
-    "none"
-  );
+  studioEventBus.publish("prompt-runtime:changed", runtime);
 });
 
 comfyRuntimeState.subscribe((runtime) => {
@@ -870,11 +501,10 @@ comfyRuntimeState.subscribe((runtime) => {
     operationId: runtime.operationId
   });
   if (runtime.phase === "stopped" || runtime.phase === "error") {
-    retainedPromptRuntime = null;
-    nativePromptController?.abort(new Error(runtime.message));
+    applicationRuntime?.servicesOrNull?.prompt.handleComfyRuntimeFailure(runtime.message);
   }
   promptRuntimeManager.observeService(runtime);
-  mainWindow?.webContents.send("comfy-runtime:changed", runtime);
+  studioEventBus.publish("comfy-runtime:changed", runtime);
 });
 
 async function resolveTaskOutputDirectory(): Promise<string> {
@@ -957,69 +587,6 @@ async function requireExistingImageOutput(
   );
 }
 
-function restoreRecordedHistoryFiles(
-  reportedFiles: HistoryFile[],
-  recordedFiles: HistoryFile[],
-  outputDirectory: string
-): HistoryFile[] {
-  const recordedPaths = new Map(
-    recordedFiles
-      .filter((file) => file.absolutePath)
-      .map((file) => [`${file.subfolder}\u0000${file.filename}\u0000${file.type}`, file.absolutePath!])
-  );
-  const files = reportedFiles.length ? reportedFiles : recordedFiles;
-  return files.map((file) => {
-    const recordedPath = recordedPaths.get(`${file.subfolder}\u0000${file.filename}\u0000${file.type}`);
-    if (recordedPath) return { ...file, absolutePath: recordedPath };
-    return attachAbsoluteOutputPaths([file], outputDirectory)[0] ?? file;
-  });
-}
-
-async function restoreHistoryOutputPaths(): Promise<void> {
-  const outputDirectory = await resolveTaskOutputDirectory();
-  if (!outputDirectory) return;
-
-  let repairedSegmentedSeedVr2Versions = 0;
-  await store.update((state) => {
-    for (const asset of state.history) {
-      const originalAssetFiles = extractComfyOutputFiles(asset.comfyOutputs);
-      asset.files = restoreRecordedHistoryFiles(
-        originalAssetFiles.length ? originalAssetFiles : asset.files,
-        asset.files,
-        outputDirectory
-      );
-      for (const version of asset.versions) {
-        const originalVersionFiles = extractComfyOutputFiles(version.comfyOutputs);
-        if (isSegmentedSeedVr2Output(version.comfyOutputs)) {
-          const before = version.files.map((file) => `${file.filename}\0${file.absolutePath ?? ""}`);
-          version.files = restoreSegmentedSeedVr2OutputPaths(
-            version.files,
-            originalVersionFiles,
-            outputDirectory
-          );
-          const after = version.files.map((file) => `${file.filename}\0${file.absolutePath ?? ""}`);
-          if (before.join("\n") !== after.join("\n")) repairedSegmentedSeedVr2Versions += 1;
-        } else {
-          version.files = restoreRecordedHistoryFiles(
-            originalVersionFiles.length ? originalVersionFiles : version.files,
-            version.files,
-            outputDirectory
-          );
-        }
-      }
-    }
-    state.queue = syncQueueVideoInputPaths(state.queue, state.history);
-  });
-  if (repairedSegmentedSeedVr2Versions > 0) {
-    appLogger.info(
-      "history",
-      "seedvr2-merged-paths-restored",
-      "已恢复被旧启动逻辑覆写的 SeedVR2 合并视频路径",
-      { repairedVersionCount: repairedSegmentedSeedVr2Versions }
-    );
-  }
-}
-
 async function waitWithTimeout(
   promise: Promise<unknown> | null,
   timeoutMs: number
@@ -1074,180 +641,23 @@ function cleanupCancelledQueueTask(
     worker
   );
 }
-async function interruptForExit(
+function interruptForExit(
   waitForWorker: boolean,
   queueCleanupOnly = false
 ): Promise<{
   interrupted: boolean;
   workerSettled: boolean;
 }> {
-  const settings = store.get().settings;
-  if (queueCleanupOnly) {
-    const cleanupWorker = queueWorkerController.cleanupWorker;
-    if (!waitForWorker) {
-      const forced = await forceStopComfyProcesses(settings);
-      appLogger.info(
-        "service",
-        forced.ok ? "cleanup-force-stop-succeeded" : "cleanup-force-stop-failed",
-        forced.message,
-        { ok: forced.ok }
-      );
-      return { interrupted: forced.ok, workerSettled: false };
-    }
-    const cleanupSettled = await waitWithTimeout(cleanupWorker, 15_000);
-    return {
-      interrupted: true,
-      workerSettled: cleanupSettled && await waitWithTimeout(queueWorkerController.runningWorker, 15_000)
-    };
-  }
-  const hadNativePrompt = Boolean(nativePromptWorker);
-  const next = await store.update((state) => {
-    state.queueRunning = false;
-  });
-  sendState(next);
-  queueWorkerController.abort(new Error("应用退出，任务已中止"));
-  nativePromptController?.abort(new Error("应用退出，提示词扩写已中止"));
-  const interruptPromise = interrupt(settings).then(
-    async () => {
-      appLogger.info("comfy", "shutdown-interrupt-succeeded", "ComfyUI interruption requested during shutdown");
-      await freeMemory(settings).catch(() => undefined);
-      return true;
-    },
-    (error) => {
-      appLogger.warn("comfy", "shutdown-interrupt-failed", "ComfyUI interruption failed during shutdown", {
-        error: safeLogErrorMessage(error)
-      });
-      return false;
-    }
-  );
-  const interrupted = waitForWorker
-    ? await interruptPromise
-    : await Promise.race([
-        interruptPromise,
-        new Promise<boolean>((resolve) =>
-          setTimeout(() => resolve(false), 2_500)
-        )
-      ]);
-  const workerSettled = waitForWorker
-    ? await waitWithTimeout(queueWorkerController.runningWorker, 15_000)
-    : false;
-  const promptSettled = waitForWorker
-    ? await waitWithTimeout(nativePromptWorker, 15_000)
-    : false;
-  return {
-    interrupted: interrupted || (hadNativePrompt && promptSettled),
-    workerSettled: workerSettled && promptSettled
-  };
-}
-
-function sendHistoryMigrationProgress(progress: HistoryMigrationProgress): void {
-  mainWindow?.webContents.send("history-migration:progress", progress);
+  return activeApplicationRuntime().interruptForExit(waitForWorker, queueCleanupOnly);
 }
 
 function sendImageAssetLibraryProgress(progress: ImageAssetLibraryProgress): void {
-  mainWindow?.webContents.send("image-assets:progress", progress);
-}
-
-async function effectiveImageInputLibraryDirectory(settings: Settings): Promise<string> {
-  const configured = settings.imageInputLibraryDirectory.trim();
-  if (configured) return path.resolve(configured);
-  const outputRoot = await resolveComfyOutputDirectory(settings);
-  if (!outputRoot) {
-    throw new Error("无法确定 ComfyUI input 目录，请先选择 ComfyUI 实例或手动设置图片素材库目录。");
-  }
-  return path.join(path.dirname(path.resolve(outputRoot)), "input", "LocalVideoStudio");
-}
-
-async function materializeDefaultImageInputLibraryDirectory(): Promise<void> {
-  if (store.get().settings.imageInputLibraryDirectory.trim()) return;
-  const directory = await effectiveImageInputLibraryDirectory(store.get().settings).catch(() => "");
-  if (!directory) return;
-  await store.update((state) => {
-    if (!state.settings.imageInputLibraryDirectory.trim()) {
-      state.settings.imageInputLibraryDirectory = directory;
-    }
-  });
-  appLogger.info("settings", "image-input-library-defaulted", "Default image input library was saved", {
-    directory
-  });
-}
-
-async function effectiveVideoOutputDirectory(settings: Settings): Promise<string> {
-  const configured = settings.outputDirectory.trim();
-  if (configured) return path.resolve(configured);
-  const detected = await resolveComfyOutputDirectory({
-    ...settings,
-    outputDirectory: ""
-  });
-  return detected ? path.resolve(detected) : "";
-}
-
-async function validateVideoOutputDirectoryChange(
-  previous: Settings,
-  next: Settings
-): Promise<{ oldDirectory: string; newDirectory: string }> {
-  const oldDirectory = await effectiveVideoOutputDirectory(previous);
-  const newDirectory = await effectiveVideoOutputDirectory(next);
-  if (!newDirectory) {
-    throw new Error("无法确定新的视频输出目录，请先启动或选择 ComfyUI 实例。");
-  }
-  if (!oldDirectory || oldDirectory.toLowerCase() === newDirectory.toLowerCase()) {
-    return { oldDirectory, newDirectory };
-  }
-  const outputRoot = await resolveComfyOutputDirectory({
-    ...previous,
-    outputDirectory: ""
-  }) || oldDirectory;
-  if (!isPathWithinDirectory(outputRoot, newDirectory)) {
-    throw new Error("视频输出目录必须位于当前 ComfyUI output 目录内。");
-  }
-  return { oldDirectory, newDirectory };
-}
-
-function applyVideoMigrationPaths(
-  state: AppState,
-  plan: PreparedVideoHistoryMigration["plan"]
-): void {
-  for (const entry of plan.entries) {
-    for (const reference of entry.references) {
-      if (reference.kind === "queue") {
-        const task = state.queue.find((item) => item.id === reference.taskId);
-        if (task?.taskType === "extension" && reference.field === "sourceVideoPath") {
-          task.sourceVideoPath = entry.targetPath;
-          task.updatedAt = new Date().toISOString();
-        } else if (task?.taskType === "upscale" && reference.field === "sourceFilePath") {
-          task.sourceFilePath = entry.targetPath;
-          task.updatedAt = new Date().toISOString();
-        }
-        continue;
-      }
-      const asset = state.history.find((item) => item.id === reference.assetId);
-      if (!asset) continue;
-      if (reference.versionId) {
-        const version = asset.versions.find((item) => item.id === reference.versionId);
-        const file = version?.files[reference.fileIndex];
-        if (file) file.absolutePath = entry.targetPath;
-      } else {
-        const file = asset.files[reference.fileIndex];
-        if (file) file.absolutePath = entry.targetPath;
-      }
-    }
-  }
+  studioEventBus.publish("image-assets:progress", progress);
 }
 
 async function finishWindowClose(): Promise<void> {
   appLogger.info("app", "shutdown", "Application shutdown started");
-  const settings = store.get().settings;
-  await releasePromptRuntime(settings);
-  const stopped = await forceStopComfyProcesses(settings).catch((error) => ({
-    ok: false,
-    message: error instanceof Error ? error.message : String(error)
-  }));
-  appLogger.info(
-    "app",
-    stopped.ok ? "owned-comfy-stopped" : "owned-comfy-stop-skipped",
-    stopped.message
-  );
+  await activeApplicationRuntime().stop();
   rendererHasUnsavedSettings = false;
   pendingWindowCloseRequest = null;
   allowWindowClose = true;
@@ -1257,7 +667,7 @@ async function finishWindowClose(): Promise<void> {
 
 async function handleWindowClose(): Promise<void> {
   if (!mainWindow || closeFlowRunning) return;
-  if (historyMigrationRunning) {
+  if (activeSettingsService().isHistoryMigrationRunning()) {
     await dialog.showMessageBox(mainWindow, {
       type: "info",
       title: "目录迁移正在进行",
@@ -1272,18 +682,18 @@ async function handleWindowClose(): Promise<void> {
   const cleanupTask = currentState.queueLifecycleTaskId
     ? currentState.queue.find((task) => task.id === currentState.queueLifecycleTaskId)
     : undefined;
-  const queueCleanupOnly = !runningTask && !nativePromptWorker && (
+  const queueCleanupOnly = !runningTask && !activePromptService().runningWorker && (
     currentState.queueLifecycle === "cancelling" ||
     currentState.queueLifecycle === "cleaning" ||
-    Boolean(queueWorkerController.cleanupWorker) ||
+    Boolean(activeQueueService().cleanupWorker) ||
     (currentState.queueLifecycle === "error" &&
       cleanupTask?.status === "cancelled" &&
-      Boolean(queueWorkerController.runningWorker || queueWorkerController.activeController))
+      Boolean(activeQueueService().runningWorker || activeQueueService().activeController))
   );
   const hasRunningWork = Boolean(
-    runningTask || nativePromptWorker || (
+    runningTask || activePromptService().runningWorker || (
       !queueCleanupOnly &&
-      (queueWorkerController.activeController || queueWorkerController.runningWorker)
+      (activeQueueService().activeController || activeQueueService().runningWorker)
     )
   );
   if (!hasRunningWork && queueCleanupOnly) {
@@ -1363,7 +773,6 @@ async function finishRunningWorkClose(
 
 function createWindow(): void {
   allowWindowClose = false;
-  appLogger.info("window", "created", "Main window created");
   mainWindow = new BrowserWindow({
     title: studioWindowTitle(),
     width: 1280,
@@ -1379,6 +788,13 @@ function createWindow(): void {
       sandbox: true,
       spellcheck: true
     }
+  });
+  appLogger.info("window", "created", "Main window created");
+  mainWindow.webContents.once("dom-ready", () => {
+    appLogger.info("renderer", "dom-ready", "Renderer DOM is ready");
+  });
+  mainWindow.webContents.once("did-finish-load", () => {
+    appLogger.info("renderer", "did-finish-load", "Renderer document finished loading");
   });
   mainWindow.setMenuBarVisibility(false);
   try {
@@ -1465,75 +881,14 @@ async function updateTask(
   taskId: string,
   patch: Partial<QueueTask>
 ): Promise<AppState> {
-  const next = await store.update((state) => {
-    const task = state.queue.find((item) => item.id === taskId);
-    if (!task) return;
-    const previousQueue = state.queue.map((item) => ({ ...item }));
-    const previousBoundary = state.queuePauseBoundary;
-    if (patch.status && patch.status !== task.status) {
-      appLogger.info("queue", "task-status", "Queue task status changed", {
-        taskId,
-        taskType: task.taskType,
-        modelId: task.modelId,
-        status: patch.status
-      });
-    }
-    if (patch.stage && patch.stage !== task.stage) {
-      const previousStage = taskStageStartedAt.get(taskId);
-      if (previousStage) {
-        appLogger.info("queue", "stage-duration", "Queue task stage finished", {
-          taskId,
-          taskType: task.taskType,
-          modelId: task.modelId,
-          stage: previousStage.stage,
-          durationSeconds: Math.round((Date.now() - previousStage.startedAt) / 1000)
-        });
-      }
-      taskStageStartedAt.set(taskId, { stage: patch.stage, startedAt: Date.now() });
-      patch.stageStartedAt = new Date().toISOString();
-      appLogger.info("queue", "task-stage", "Queue task stage changed", {
-        taskId,
-        taskType: task.taskType,
-        modelId: task.modelId,
-        progress: patch.progress ?? task.progress ?? 0,
-        stage: patch.stage
-      });
-    }
-    Object.assign(task, patch, { updatedAt: new Date().toISOString() });
-    const boundaryReached = queuePauseBoundaryReached(
-      previousQueue,
-      previousBoundary,
-      state.queue
-    );
-    state.queuePauseBoundary = boundaryReached
-      ? undefined
-      : adjustQueuePauseBoundary(
-        previousQueue,
-        previousBoundary,
-        state.queue
-      );
-    if (boundaryReached) state.queueRunning = false;
-  });
-  sendState(next);
-  return next;
+  return activeQueueService().updateTask(taskId, patch);
 }
 
 async function setQueueLifecycle(
   lifecycle: QueueLifecycle,
   taskId?: string
 ): Promise<AppState> {
-  const next = await store.update((state) => {
-    const changed = state.queueLifecycle !== lifecycle || state.queueLifecycleTaskId !== taskId;
-    state.queueLifecycle = lifecycle;
-    state.queueLifecycleTaskId = taskId;
-    if (lifecycle === "idle") {
-      state.queueLifecycleStartedAt = undefined;
-    } else if (changed || !state.queueLifecycleStartedAt) {
-      state.queueLifecycleStartedAt = new Date().toISOString();
-    }
-  });
-  sendState(next);
-  return next;
+  return activeQueueService().setQueueLifecycle(lifecycle, taskId);
 }
 
 function isLocalComfyUrl(value: string): boolean {
@@ -1620,328 +975,6 @@ async function ensureComfyUiReady(taskId: string, signal?: AbortSignal): Promise
   }
   throwIfCancelled();
   await testComfyUi(serviceSettings);
-}
-
-async function ensureComfyUiReadyForPrompt(
-  settings: Settings,
-  signal?: AbortSignal
-): Promise<void> {
-  const throwIfCancelled = (): void => {
-    if (signal?.aborted) throw signal.reason;
-  };
-  throwIfCancelled();
-  const serviceSettings = comfyUiSettingsForPromptRuntime(settings);
-  const profile = await alignLocalComfyUiRuntimeProfile(serviceSettings);
-  throwIfCancelled();
-  if (!profile.ok) {
-    throw new Error(`ComfyUI 提示词运行配置切换失败：${profile.message}`);
-  }
-  if (profile.restarted) {
-    appLogger.info("service", "prompt-runtime-profile-aligned", "ComfyUI runtime profile was aligned for prompt model residency", {
-      previousProfile: profile.previousProfile,
-      desiredProfile: profile.desiredProfile
-    });
-  }
-  try {
-    await testComfyUi(serviceSettings);
-    throwIfCancelled();
-    return;
-  } catch (connectionError) {
-    appLogger.warn("service", "prompt-connection-unavailable", "ComfyUI was not ready for prompt runtime", {
-      local: isLocalComfyUrl(settings.comfyUrl),
-      error: safeLogErrorMessage(connectionError)
-    });
-    if (!isLocalComfyUrl(settings.comfyUrl)) {
-      throw new Error(
-        `无法连接 ComfyUI（${settings.comfyUrl}）：${
-          connectionError instanceof Error ? connectionError.message : String(connectionError)
-        }`
-      );
-    }
-  }
-  throwIfCancelled();
-  const started = await startLocalService("comfy", serviceSettings);
-  throwIfCancelled();
-  if (!started.ok) throw new Error(`ComfyUI 自动启动失败：${started.message}`);
-  await testComfyUi(serviceSettings);
-  throwIfCancelled();
-}
-
-async function validateQwenVlPromptNodeRuntime(settings: Settings): Promise<void> {
-  const baseUrl = settings.comfyUrl.replace(/\/+$/u, "");
-  const objectInfo = await jsonRequest<Record<string, unknown>>(
-    `${baseUrl}/object_info`,
-    { signal: AbortSignal.timeout(15_000) }
-  );
-  try {
-    validateQwenVlRuntimeChoices(objectInfo, settings);
-    return;
-  } catch (error) {
-    if (!(error instanceof QwenVlRuntimeValidationError) || !error.needsRuntimeRefresh) {
-      throw error;
-    }
-    appLogger.warn("prompt", "qwenvl-runtime-enum-stale", error.message, {
-      nodeType: error.nodeType,
-      inputName: error.inputName,
-      expected: error.expected,
-      choices: error.choices
-    });
-    throw new Error(`${error.message} 节点或模型刚更新后，请在设置中显式重启 ComfyUI；提示词任务不会自动重启服务。`);
-  }
-}
-
-async function validateNativePromptRuntime(settings: Settings): Promise<void> {
-  const scan = await scanEnvironment(settings, "runtime");
-  const profile = scan.modelProfiles.find(
-    (item) => item.id === settings.promptModelId && item.category === "prompt"
-  );
-  if (!profile?.available) {
-    const missing = profile?.components
-      .filter((component) => !component.found)
-      .map((component) => component.expected)
-      .join("、");
-    throw new Error(
-      `提示词模型尚未就绪${missing ? `，缺少：${missing}` : ""}。请把模型放入 ${isQwenVlPeftPromptModel(settings.promptModelId) ? "ComfyUI/models/LLM/Qwen-VL/qwen3-vl-8b-instruct 与 ComfyUI/models/LLM/Qwen-VL-LoRA/minimax-h3-prompt-rewriter-8b" : isComfyMultimodalPromptModel(settings.promptModelId) ? "ComfyUI/models/LLM 的对应子目录" : "ComfyUI/models/text_encoders"} 后重新扫描。`
-    );
-  }
-  if (isGemmaPromptModel(settings.promptModelId) && !scan.llamaCppPython.ready) {
-    const runtime = scan.llamaCppPython;
-    const detail = runtime.detail || runtime.error || "未通过 CUDA/导入自检";
-    throw new Error(
-      `Gemma H3 Prompt Writer 的 llama-cpp-python 尚未就绪：${detail}。请在设置 → 节点与依赖中对当前选中的 ComfyUI Python 执行“重新安装/修复”，然后重启 ComfyUI。`
-    );
-  }
-  if (isComfyMultimodalPromptModel(settings.promptModelId)) {
-    if (profile.missingCustomNodeIds?.length) {
-      throw new Error(
-        `多模态提示词模型缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与依赖中安装。`
-      );
-    }
-    if (profile.runtimeVerified && profile.runtimeReady === false) {
-      throw new Error(
-        `多模态提示词节点尚未被当前 ComfyUI 加载：${profile.runtimeMissingNodes?.join("、") || "VisionLLMNode"}。请重启 ComfyUI 后重新扫描。`
-      );
-    }
-    return;
-  }
-  if (isQwenVlPeftPromptModel(settings.promptModelId)) {
-    if (profile.missingCustomNodeIds?.length) {
-      throw new Error(
-        `Qwen3-VL Prompt LoRA 缺少 ComfyUI 节点：${profile.missingCustomNodeNames?.join("、") || profile.missingCustomNodeIds.join("、")}。请先在设置 → 节点与依赖中安装。`
-      );
-    }
-    if (profile.runtimeVerified && profile.runtimeReady === false) {
-      throw new Error(
-        `Qwen3-VL Prompt LoRA 节点尚未被当前 ComfyUI 加载：${profile.runtimeMissingNodes?.join("、") || "QwenVLModelLoader / QwenVLLoRALoader / QwenVLCaption"}。请重启 ComfyUI 后重新扫描。`
-      );
-    }
-    await validateQwenVlPromptNodeRuntime(settings);
-    return;
-  }
-  if (!scan.comfyCompatibility.promptCoreSupported) {
-    const missing = scan.comfyCompatibility.promptCoreNodes
-      .filter((node) => !node.available)
-      .map((node) => node.id)
-      .join("、");
-    throw new Error(
-      `当前 ComfyUI 核心缺少提示词节点：${missing || "TextGenerate"}。请更新 ComfyUI、重启服务后重试。`
-    );
-  }
-}
-
-async function releasePromptRuntime(settings: Settings): Promise<number> {
-  const retained = retainedPromptRuntime;
-  const backend = retained?.backend ?? promptModelBackend(settings.promptModelId);
-  const modelId = retained?.modelId ?? settings.promptModelId;
-  retainedPromptRuntime = null;
-  return promptRuntimeManager.releaseModel(modelId, async () => {
-    if (backend === "h3-prompt-writer") {
-      try {
-        return await releaseH3PromptWriter(settings) ? 1 : 0;
-      } catch {
-        return 0;
-      }
-    }
-    if (backend === "comfyui-multimodal") {
-      let released = 0;
-      try {
-        released = await releaseMultimodalPromptModel(settings) ? 1 : 0;
-      } catch {
-        // Older node installs do not expose the app-owned cleanup route yet.
-      }
-      await freeMemory(settings).catch(() => undefined);
-      return released;
-    }
-    try {
-      await freeMemory(settings);
-      return 1;
-    } catch {
-      // An offline ComfyUI instance cannot be holding the native prompt model.
-      return 0;
-    }
-  });
-}
-
-async function warmSelectedPromptRuntime(
-  settings: Settings,
-  promptBackend: ReturnType<typeof promptModelBackend>,
-  signal: AbortSignal,
-  allowCpuFallback = false
-): Promise<void> {
-  const prepareRuntime = async (): Promise<void> => {
-    await ensureComfyUiReadyForPrompt(settings, signal);
-    // `prompt:start` may begin while the service is stopped. The prompt state
-    // machine intentionally rejects a warming model on a stopped service, so
-    // publish the model transition again after ComfyUI is actually ready.
-    // This keeps both the Settings control and Create enhancement action
-    // blocked until the warmup workflow has really completed.
-    promptRuntimeManager.setModel("warming", settings.promptModelId);
-    await validateNativePromptRuntime(settings);
-  };
-  if (promptBackend === "h3-prompt-writer") {
-    await prepareRuntime();
-    await warmH3PromptWriter(settings, signal);
-    return;
-  }
-  if (promptBackend === "comfyui-multimodal") {
-    await prepareRuntime();
-    await warmMultimodalPromptModel(settings, signal, allowCpuFallback);
-    return;
-  }
-  if (promptBackend === "comfyui-qwenvl-lora") {
-    await ensureQwenVlManagedMetadata(settings, signal);
-    await prepareRuntime();
-    await warmQwenVlPeftPromptModel(settings, signal);
-    return;
-  }
-  if (promptBackend !== "native-text-generate") {
-    throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
-  }
-  await prepareRuntime();
-  await warmNativePromptModel(settings, signal);
-}
-
-async function appPromptQueueSnapshot(settings: Settings): Promise<unknown> {
-  return jsonRequest(`${settings.comfyUrl.replace(/\/+$/, "")}/queue`, {
-    signal: AbortSignal.timeout(5_000)
-  });
-}
-
-async function waitForPromptIdsToStop(
-  settings: Settings,
-  promptIds: ReadonlySet<string>,
-  timeoutMs: number
-): Promise<boolean> {
-  if (!promptIds.size) return false;
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const snapshot = await appPromptQueueSnapshot(settings).catch(() => null);
-    if (snapshot && !comfyQueueContainsAnyPromptId(snapshot, promptIds)) return true;
-    await new Promise<void>((resolve) => setTimeout(resolve, 250));
-  }
-  return false;
-}
-
-async function waitForWorkerToStop(worker: Promise<unknown>, timeoutMs: number): Promise<boolean> {
-  return Promise.race([
-    worker.then(() => true, () => true),
-    new Promise<false>((resolve) => setTimeout(() => resolve(false), timeoutMs))
-  ]);
-}
-
-async function waitForPromptCancellation(): Promise<boolean> {
-  const cancellation = promptCancellationWorker;
-  if (!cancellation) return true;
-  return cancellation.then((result) => result.settled, () => false);
-}
-
-async function deleteQueuedPrompt(settings: Settings, promptId: string): Promise<void> {
-  await jsonRequest(`${settings.comfyUrl.replace(/\/+$/, "")}/queue`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ delete: [promptId] }),
-    signal: AbortSignal.timeout(10_000)
-  });
-}
-
-async function cancelActivePromptRuntime(
-  settings: Settings,
-  _retainModel: boolean
-): Promise<{ recovered: boolean; settled: boolean }> {
-  if (promptCancellationWorker) return promptCancellationWorker;
-  const worker = nativePromptWorker;
-  if (!worker) throw new Error("当前没有正在运行的提示词任务。");
-  const promptBackend = promptModelBackend(settings.promptModelId);
-  const cancellation = promptRuntimeManager.requestCancellation();
-  promptCancellationWorker = (async () => {
-    if (promptBackend === "h3-prompt-writer" || !cancellation.promptId) {
-      const settled = await waitForWorkerToStop(worker, 10_000);
-      return { recovered: false, settled };
-    }
-    const snapshot = await appPromptQueueSnapshot(settings).catch(() => null);
-    const location = comfyPromptQueueLocation(snapshot, cancellation.promptId);
-    if (location === "pending") {
-      await deleteQueuedPrompt(settings, cancellation.promptId);
-    } else if (location === "running") {
-      await interrupt(settings);
-    }
-    const stopped = location === "absent" || await waitForPromptIdsToStop(
-      settings,
-      new Set([cancellation.promptId]),
-      15_000
-    );
-    if (!stopped) {
-      appLogger.warn("prompt", "cancel-pending", "Prompt cancellation is still pending; ComfyUI was left running", {
-        operationId: cancellation.operationId,
-        promptId: cancellation.promptId,
-        promptBackend
-      });
-      void waitForPromptIdsToStop(
-        settings,
-        new Set([cancellation.promptId]),
-        120_000
-      ).then((eventuallyStopped) => {
-        if (eventuallyStopped) {
-          promptRuntimeManager.finishOperation(
-            cancellation.operationId,
-            "cancelled",
-            "user-requested"
-          );
-        }
-      });
-    }
-    return { recovered: false, settled: stopped };
-  })();
-  try {
-    return await promptCancellationWorker;
-  } finally {
-    promptCancellationWorker = null;
-  }
-}
-
-async function releasePromptRuntimeForUser(): Promise<{ ok: boolean; message: string }> {
-  const settings = store.get().settings;
-  if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
-    return { ok: false, message: "当前有视频任务正在运行，暂不能释放提示词模型。" };
-  }
-  if (nativePromptWorker || promptCancellationWorker) {
-    const cancellation = await cancelActivePromptRuntime(settings, false);
-    if (!cancellation.settled) {
-      return { ok: false, message: "提示词任务仍在中止中；确认停止后才能卸载模型。" };
-    }
-  }
-  try {
-    const released = await releasePromptRuntime(settings);
-    return {
-      ok: true,
-      message: released
-        ? "已停止提示词模型并释放显存。"
-        : "当前没有已加载的提示词模型。"
-    };
-  } catch {
-    promptRuntimeManager.setModel("unloaded");
-    return { ok: true, message: "ComfyUI 当前未运行，无需释放提示词模型。" };
-  }
 }
 
 async function stabilizeH3RuntimeBetweenTasks(
@@ -2138,62 +1171,15 @@ async function resolveH3VideoVaeModeForQueueTask(
   );
 }
 
-let queueExecutor: (() => Promise<void>) | null = null;
-async function executeQueue(): Promise<void> {
-  queueExecutor ??= createQueueExecutor({
-    store,
-    logger: appLogger,
-    worker: queueWorkerController,
-    sendState,
-    sendPreview: (payload) => mainWindow?.webContents.send("task:preview", payload),
-    setQueueLifecycle,
-    updateTask,
-    ensureComfyUiReady,
-    resolveTaskOutputDirectory,
-    requireExistingImageOutput,
-    requireExistingVideoOutput,
-    releasePromptRuntime,
-    prepareQueueRuntimeForTask,
-    stabilizeH3RuntimeBetweenTasks,
-    stopQueueRuntime,
-    restartQueueRuntime,
-    resolveH3VideoVaeModeForTask: resolveH3VideoVaeModeForQueueTask,
-    settingsForTask: comfyUiSettingsForQueueTask,
-    errorMeta: errorLogMeta,
-    taskStageStartedAt
+function registerIpc(
+  studioPaths: StudioPaths,
+  applicationServices: ApplicationServices,
+  waitForInitialState: () => Promise<void>
+): void {
+  ipcMain.handle("state:get", async () => {
+    await waitForInitialState();
+    return store.get();
   });
-  return queueExecutor();
-}
-async function loggedOperation<T extends { ok: boolean; message: string }>(
-  scope: string,
-  event: string,
-  startedMessage: string,
-  operation: () => Promise<T>,
-  meta: Record<string, unknown> = {}
-): Promise<T> {
-  const startedAt = Date.now();
-  appLogger.info(scope, `${event}-started`, startedMessage, meta);
-  try {
-    const result = await operation();
-    appLogger.info(
-      scope,
-      result.ok ? `${event}-succeeded` : `${event}-failed`,
-      result.message,
-      { ...meta, ok: result.ok, durationMs: Date.now() - startedAt }
-    );
-    return result;
-  } catch (error) {
-    appLogger.error(scope, `${event}-failed`, safeLogErrorMessage(error), {
-      ...meta,
-      durationMs: Date.now() - startedAt,
-      ...errorLogMeta(error)
-    });
-    throw error;
-  }
-}
-
-function registerIpc(): void {
-  ipcMain.handle("state:get", () => store.get());
   ipcMain.handle("comfy-runtime:get", () => comfyRuntimeState.snapshot());
   ipcMain.handle("prompt-runtime:get", () => promptRuntimeManager.snapshot());
   ipcMain.handle("app:version", () => app.getVersion());
@@ -2258,27 +1244,7 @@ function registerIpc(): void {
       }
     }
   );
-  ipcMain.handle("draft:save", async (_event, draft: Draft, snapshots?: CreationDraftSnapshots) => {
-    const next = await store.update((state) => {
-      activateCreationDraft(state, draft);
-      if (snapshots?.imageToVideoDraft?.inputMode === "image") {
-        state.imageToVideoDraft = structuredClone(snapshots.imageToVideoDraft);
-      }
-      if (snapshots?.videoExtensionDraft?.inputMode === "video") {
-        state.videoExtensionDraft = structuredClone(snapshots.videoExtensionDraft);
-      }
-    });
-    sendState(next);
-    return next;
-  });
-  ipcMain.handle("image-draft:save", async (_event, draft: ImageEditDraft) => {
-    const normalized = normalizeImageEditDraft(draft);
-    const next = await store.update((state) => {
-      state.imageDraft = normalized;
-    });
-    sendState(next);
-    return next;
-  });
+  registerDraftIpc({ ipc: ipcMain, service: applicationServices.draft });
   ipcMain.handle("queue:set-h3-live-preview", async (_event, enabled: boolean) => {
     const value = enabled === true;
     const next = await store.update((state) => {
@@ -2290,137 +1256,7 @@ function registerIpc(): void {
     sendState(next);
     return next;
   });
-  ipcMain.handle("settings:save", async (_event, settings: Settings, mode: SettingsSaveMode = "apply") => {
-    if (mode !== "apply" && mode !== "migrate-video-history") {
-      throw new Error("未知的设置保存模式。");
-    }
-    if (historyMigrationRunning) {
-      throw new Error("当前正在迁移历史视频，请等待本次操作完成。");
-    }
-    if (!settings.imageInputLibraryDirectory.trim()) {
-      settings = {
-        ...settings,
-        imageInputLibraryDirectory: await effectiveImageInputLibraryDirectory(settings)
-      };
-    }
-    settings = {
-      ...settings,
-      uiLocale: normalizeUiLocale(settings.uiLocale)
-    };
-    const previous = store.get().settings;
-    const outputDirectoryChanged = previous.outputDirectory.trim() !== settings.outputDirectory.trim();
-    const directories = outputDirectoryChanged || mode === "migrate-video-history"
-      ? await validateVideoOutputDirectoryChange(previous, settings)
-      : { oldDirectory: "", newDirectory: "" };
-    const shouldMigrate = mode === "migrate-video-history" &&
-      directories.oldDirectory &&
-      directories.newDirectory.toLowerCase() !== directories.oldDirectory.toLowerCase();
-    const changedKeys = Object.keys(settings).filter((key) =>
-      JSON.stringify(previous[key as keyof Settings]) !==
-      JSON.stringify(settings[key as keyof Settings])
-    );
-    let updatedH3TaskCount = 0;
-    const commitSettings = (state: AppState): void => {
-      state.settings = settings;
-      if (previous.h3AttentionMode !== settings.h3AttentionMode) {
-        for (const task of state.queue) {
-          if (task.status === "running" || task.taskType === "upscale" || task.taskType === "image-generation" || !isMiniMaxH3Model(task.modelId)) continue;
-          task.attentionMode = settings.h3AttentionMode;
-          task.updatedAt = new Date().toISOString();
-          updatedH3TaskCount += 1;
-        }
-      }
-    };
-    if (shouldMigrate) {
-      historyMigrationRunning = true;
-      let preparation: PreparedVideoHistoryMigration | null = null;
-      let stateCommitted = false;
-      try {
-        sendHistoryMigrationProgress({
-          phase: "scanning",
-          current: 0,
-          total: 0,
-          message: "正在扫描历史视频文件",
-          migratedFiles: 0,
-          warningCount: 0
-        });
-        const plan = await planVideoHistoryMigration(
-          store.get().history,
-          directories.oldDirectory,
-          directories.newDirectory,
-          store.get().queue
-        );
-        sendHistoryMigrationProgress({
-          phase: "scanning",
-          current: 0,
-          total: plan.entries.length,
-          message: `已找到 ${plan.entries.length} 个历史视频文件，准备迁移`,
-          migratedFiles: 0,
-          warningCount: plan.missing.length + plan.conflicts.length
-        });
-        preparation = await prepareVideoHistoryMigration(
-          plan,
-          path.join(app.getPath("userData"), "video-history-migration.json"),
-          sendHistoryMigrationProgress
-        );
-        sendHistoryMigrationProgress({
-          phase: "committing",
-          current: plan.entries.length,
-          total: plan.entries.length,
-          message: "目标文件已复核，正在更新历史记录",
-          migratedFiles: plan.entries.length,
-          warningCount: 0
-        });
-        const next = await store.update((state) => {
-          commitSettings(state);
-          applyVideoMigrationPaths(state, plan);
-        });
-        stateCommitted = true;
-        await markVideoHistoryMigrationCommitted(preparation);
-        const warnings = await cleanupVideoHistoryMigration(
-          preparation,
-          sendHistoryMigrationProgress
-        );
-        sendHistoryMigrationProgress({
-          phase: "completed",
-          current: plan.entries.length,
-          total: plan.entries.length,
-          message: warnings.length
-            ? "历史视频已迁移，部分旧文件清理失败"
-            : "历史视频迁移完成",
-          migratedFiles: plan.entries.length,
-          warningCount: warnings.length
-        });
-        appLogger.info("settings", "video-history-migrated", "Video history was migrated to the new output directory", {
-          oldDirectory: directories.oldDirectory,
-          newDirectory: directories.newDirectory,
-          migratedFiles: plan.entries.length,
-          warningCount: warnings.length
-        });
-        rendererHasUnsavedSettings = false;
-        sendState(next);
-        return next;
-      } catch (error) {
-        if (preparation && !stateCommitted) {
-          await rollbackVideoHistoryMigration(preparation);
-        }
-        throw error;
-      } finally {
-        historyMigrationRunning = false;
-      }
-    }
-    const next = await store.update((state) => {
-      commitSettings(state);
-    });
-    appLogger.info("settings", "saved", "Application settings saved", {
-      changedKeys,
-      changedCount: changedKeys.length,
-      updatedH3TaskCount
-    });
-    rendererHasUnsavedSettings = false;
-    sendState(next);
-    return next;
-  });
+  registerSettingsIpc({ ipc: ipcMain, service: applicationServices.settings });
   ipcMain.handle("file:pick-image", async () => {
     const result = await dialog.showOpenDialog({
       properties: ["openFile"],
@@ -2531,7 +1367,9 @@ function registerIpc(): void {
     const operationId = randomUUID().slice(0, 8);
     try {
       const snapshot = store.get();
-      const library = await effectiveImageInputLibraryDirectory(snapshot.settings);
+      const library = await applicationServices.settings.effectiveImageInputLibraryDirectory(
+        snapshot.settings
+      );
       appLogger.info("assets", "image-library-scan-started", "开始扫描图片素材库", {
         operationId,
         imageProjectCount: snapshot.imageHistory.length,
@@ -2567,7 +1405,9 @@ function registerIpc(): void {
     const operationId = randomUUID().slice(0, 8);
     try {
       const snapshot = store.get();
-      const library = await effectiveImageInputLibraryDirectory(snapshot.settings);
+      const library = await applicationServices.settings.effectiveImageInputLibraryDirectory(
+        snapshot.settings
+      );
       appLogger.info("assets", "image-library-organize-started", "开始归档并修复图片素材库", {
         operationId,
         imageProjectCount: snapshot.imageHistory.length,
@@ -2636,7 +1476,9 @@ function registerIpc(): void {
     const operationId = randomUUID().slice(0, 8);
     try {
       const snapshot = store.get();
-      const library = await effectiveImageInputLibraryDirectory(snapshot.settings);
+      const library = await applicationServices.settings.effectiveImageInputLibraryDirectory(
+        snapshot.settings
+      );
       appLogger.info("assets", "image-library-cleanup-started", "开始清理未被引用的图片素材", {
         operationId,
         requestedCount: Array.isArray(paths) ? paths.length : 0
@@ -2666,192 +1508,10 @@ function registerIpc(): void {
       imageAssetLibraryRunning = false;
     }
   });
-  ipcMain.handle("file:read-image", async (_event, filename: string) => {
-    if (!filename) return null;
-    const extension = path.extname(filename).slice(1).toLowerCase();
-    const mime = extension === "jpg" || extension === "jpeg" ? "image/jpeg" : `image/${extension}`;
-    const content = await fs.readFile(filename);
-    return `data:${mime};base64,${content.toString("base64")}`;
+  registerImageDocumentIpc({
+    ipc: ipcMain,
+    service: applicationServices.imageDocument
   });
-  ipcMain.handle("image-markup:read", async (_event, documentPath: string) => {
-    const roots = [
-      path.join(app.getPath("userData"), "image-guides"),
-      path.join(app.getPath("userData"), "image-masks")
-    ];
-    const filename = typeof documentPath === "string" ? path.resolve(documentPath) : "";
-    if (!filename || !roots.some((root) => isPathWithinDirectory(root, filename))) return null;
-    return fs.readFile(filename, "utf8").catch(() => null);
-  });
-  ipcMain.handle("image-markup:save", async (_event, request: ImageMarkupSaveRequest) => {
-    if (!request || typeof request !== "object") throw new Error("标记数据无效");
-    const sourceStat = await fs.stat(request.sourcePath).catch(() => null);
-    if (!sourceStat?.isFile()) throw new Error("原始 Picture 文件不存在");
-    if (typeof request.document !== "string" || !request.document.trim()) {
-      throw new Error("标记工程为空");
-    }
-    const bytes = request.renderedPng instanceof ArrayBuffer
-      ? new Uint8Array(request.renderedPng)
-      : null;
-    if (!bytes?.byteLength) throw new Error("标注图片为空");
-    if (bytes.byteLength > 100 * 1024 * 1024) throw new Error("标注图片不能超过 100 MB");
-    const pictureKey = createHash("sha256")
-      .update(`${request.pictureId}\0${path.resolve(request.sourcePath)}`)
-      .digest("hex")
-      .slice(0, 24);
-    const revision = Math.max(1, Math.trunc(request.previousRevision ?? 0) + 1);
-    const directory = path.join(app.getPath("userData"), "image-guides", pictureKey);
-    await fs.mkdir(directory, { recursive: true });
-    const basename = `revision-${String(revision).padStart(4, "0")}`;
-    const documentPath = path.join(directory, `${basename}.fabric.json`);
-    const renderedPath = path.join(directory, `${basename}-guide.png`);
-    const documentTemporary = `${documentPath}.${crypto.randomUUID()}.tmp`;
-    const renderedTemporary = `${renderedPath}.${crypto.randomUUID()}.tmp`;
-    try {
-      await fs.writeFile(documentTemporary, request.document, "utf8");
-      await fs.writeFile(renderedTemporary, bytes);
-      await fs.rename(documentTemporary, documentPath);
-      await fs.rename(renderedTemporary, renderedPath);
-    } finally {
-      await fs.rm(documentTemporary, { force: true }).catch(() => undefined);
-      await fs.rm(renderedTemporary, { force: true }).catch(() => undefined);
-    }
-    return {
-      documentPath,
-      renderedPath,
-      summary: typeof request.summary === "string" ? request.summary.trim() : "",
-      revision,
-      objectCount: Math.max(0, Math.trunc(request.objectCount || 0)),
-      updatedAt: new Date().toISOString()
-    };
-  });
-  ipcMain.handle("image-crop:save", async (_event, request: ImageCropSaveRequest) => {
-    if (!request || typeof request !== "object") throw new Error("裁剪数据无效");
-    const sourceStat = await fs.stat(request.sourcePath).catch(() => null);
-    if (!sourceStat?.isFile()) throw new Error("原始 Picture 文件不存在");
-    if (request.crop === null) return null;
-    const crop = request.crop;
-    const values = [crop.x, crop.y, crop.width, crop.height, crop.sourceWidth, crop.sourceHeight];
-    if (!values.every((value) => typeof value === "number" && Number.isFinite(value))) {
-      throw new Error("裁剪区域无效");
-    }
-    const sourceWidth = Math.max(1, Math.trunc(crop.sourceWidth));
-    const sourceHeight = Math.max(1, Math.trunc(crop.sourceHeight));
-    const x = Math.max(0, Math.trunc(crop.x));
-    const y = Math.max(0, Math.trunc(crop.y));
-    const width = Math.max(1, Math.trunc(crop.width));
-    const height = Math.max(1, Math.trunc(crop.height));
-    if (x + width > sourceWidth || y + height > sourceHeight) {
-      throw new Error("裁剪区域超出原图范围");
-    }
-    const bytes = request.croppedPng instanceof ArrayBuffer
-      ? new Uint8Array(request.croppedPng)
-      : null;
-    if (!bytes?.byteLength) throw new Error("裁剪结果为空");
-    if (bytes.byteLength > 100 * 1024 * 1024) throw new Error("裁剪结果不能超过 100 MB");
-    const pictureKey = createHash("sha256")
-      .update(`${request.pictureId}\0${path.resolve(request.sourcePath)}`)
-      .digest("hex")
-      .slice(0, 24);
-    const revision = Math.max(1, Math.trunc(request.previousRevision ?? 0) + 1);
-    const directory = path.join(app.getPath("userData"), "image-crops", pictureKey);
-    await fs.mkdir(directory, { recursive: true });
-    const basename = `revision-${String(revision).padStart(4, "0")}`;
-    const documentPath = path.join(directory, `${basename}.crop.json`);
-    const croppedPath = path.join(directory, `${basename}-crop.png`);
-    const documentTemporary = `${documentPath}.${crypto.randomUUID()}.tmp`;
-    const croppedTemporary = `${croppedPath}.${crypto.randomUUID()}.tmp`;
-    const document = JSON.stringify({
-      version: 1,
-      sourceWidth,
-      sourceHeight,
-      x,
-      y,
-      width,
-      height
-    }, null, 2);
-    try {
-      await fs.writeFile(documentTemporary, document, "utf8");
-      await fs.writeFile(croppedTemporary, bytes);
-      await fs.rename(documentTemporary, documentPath);
-      await fs.rename(croppedTemporary, croppedPath);
-    } finally {
-      await fs.rm(documentTemporary, { force: true }).catch(() => undefined);
-      await fs.rm(croppedTemporary, { force: true }).catch(() => undefined);
-    }
-    return {
-      documentPath,
-      croppedPath,
-      x,
-      y,
-      width,
-      height,
-      sourceWidth,
-      sourceHeight,
-      revision,
-      updatedAt: new Date().toISOString()
-    };
-  });
-  ipcMain.handle("history-cover:read", async (_event, key: string, sourcePath: string) => {
-    if (!key || !sourcePath) return null;
-    const resolvedSource = await resolveHistorySourcePath(sourcePath);
-    const sourceStat = resolvedSource ? await fs.stat(resolvedSource).catch(() => null) : null;
-    if (!sourceStat?.isFile()) return null;
-    const [coverStat, metadataText] = await Promise.all([
-      fs.stat(historyCoverPath(key)).catch(() => null),
-      fs.readFile(historyCoverMetadataPath(key), "utf8").catch(() => "")
-    ]);
-    if (!coverStat?.isFile() || coverStat.size <= 0 || !metadataText) return null;
-    let metadata: HistoryCoverMetadata;
-    try {
-      metadata = JSON.parse(metadataText) as HistoryCoverMetadata;
-    } catch {
-      return null;
-    }
-    if (
-      metadata.sourceSize !== sourceStat.size ||
-      Math.abs(metadata.sourceMtimeMs - sourceStat.mtimeMs) > 1
-    ) return null;
-    const digest = historyCoverDigest(key);
-    return `studio-media://cover/${digest}${historyCoverExtension(key)}?v=${Math.round(coverStat.mtimeMs)}`;
-  });
-  ipcMain.handle(
-    "history-cover:save",
-    async (_event, key: string, sourcePath: string, data: ArrayBuffer | Uint8Array) => {
-      const bytes = data instanceof ArrayBuffer
-        ? new Uint8Array(data)
-        : ArrayBuffer.isView(data)
-          ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-          : null;
-      if (!key || !sourcePath || !bytes?.byteLength) return false;
-      if (bytes.byteLength > 2 * 1024 * 1024) throw new Error("历史封面缓存不能超过 2 MB");
-      const resolvedSource = await resolveHistorySourcePath(sourcePath);
-      const sourceStat = resolvedSource ? await fs.stat(resolvedSource).catch(() => null) : null;
-      if (!sourceStat?.isFile()) return false;
-      const directory = historyCoverDirectory();
-      await fs.mkdir(directory, { recursive: true });
-      const filename = historyCoverPath(key);
-      const metadataFilename = historyCoverMetadataPath(key);
-      const temporary = `${filename}.${crypto.randomUUID()}.tmp`;
-      const metadataTemporary = `${metadataFilename}.${crypto.randomUUID()}.tmp`;
-      const metadata: HistoryCoverMetadata = {
-        sourceSize: sourceStat.size,
-        sourceMtimeMs: sourceStat.mtimeMs,
-        generatedAt: new Date().toISOString()
-      };
-      try {
-        await fs.writeFile(temporary, bytes);
-        await fs.writeFile(metadataTemporary, JSON.stringify(metadata), "utf8");
-        await fs.rm(filename, { force: true });
-        await fs.rm(metadataFilename, { force: true });
-        await fs.rename(temporary, filename);
-        await fs.rename(metadataTemporary, metadataFilename);
-      } finally {
-        await fs.rm(temporary, { force: true }).catch(() => undefined);
-        await fs.rm(metadataTemporary, { force: true }).catch(() => undefined);
-      }
-      return true;
-    }
-  );
   ipcMain.handle(
     "file:save-clipboard-image",
     async (_event, data: ArrayBuffer, mimeType: string) => {
@@ -2869,7 +1529,7 @@ function registerIpc(): void {
       if (data.byteLength > 50 * 1024 * 1024) {
         throw new Error("剪贴板图片不能超过 50 MB");
       }
-      const directory = path.join(app.getPath("userData"), "clipboard-inputs");
+      const directory = studioPaths.clipboardInputsDirectory;
       await fs.mkdir(directory, { recursive: true });
       const filename = path.join(
         directory,
@@ -2879,106 +1539,12 @@ function registerIpc(): void {
       return filename;
     }
   );
-  ipcMain.handle("file:show-in-folder", async (_event, filename: string) => {
-    const requestedFilename = typeof filename === "string" ? filename : "";
-    const resolved = await resolveExistingHistoryFile(requestedFilename);
-    if (!resolved) {
-      appLogger.warn("history", "show-file-missing", "History file could not be found in its recorded location", {
-        filename: requestedFilename
-      });
-      return false;
-    }
-    shell.showItemInFolder(resolved);
-    appLogger.info("history", "show-file-succeeded", "History file revealed in Explorer", {
-      filename: resolved,
-      repairedPath: !requestedFilename || path.resolve(requestedFilename) !== resolved
-    });
-    return true;
-  });
-  ipcMain.handle("file:open-system-player", async (_event, filename: string) => {
-    const requestedFilename = typeof filename === "string" ? filename : "";
-    const resolved = await resolveExistingHistoryFile(requestedFilename);
-    if (!resolved) {
-      appLogger.warn("history", "open-system-player-missing", "History file could not be found for system player", {
-        filename: requestedFilename
-      });
-      return {
-        ok: false,
-        message: "视频文件不存在，可能已被移动、重命名或删除。"
-      };
-    }
-    let errorMessage = "";
-    try {
-      errorMessage = await shell.openPath(resolved);
-    } catch (error) {
-      appLogger.warn("history", "open-system-player-failed", "System player could not open history file", {
-        filename: resolved,
-        error: safeLogErrorMessage(error)
-      });
-      return {
-        ok: false,
-        message: "系统播放器无法打开该视频文件。"
-      };
-    }
-    if (errorMessage) {
-      appLogger.warn("history", "open-system-player-failed", "System player could not open history file", {
-        filename: resolved,
-        error: errorMessage
-      });
-      return {
-        ok: false,
-        message: "系统播放器无法打开该视频文件。"
-      };
-    }
-    appLogger.info("history", "open-system-player-succeeded", "History file opened with the system player", {
-      filename: resolved,
-      repairedPath: !requestedFilename || path.resolve(requestedFilename) !== resolved
-    });
-    return {
-      ok: true,
-      message: "已使用系统播放器打开视频。"
-    };
-  });
-  ipcMain.handle("file:copy", async (_event, filename: string) => {
-    if (process.platform !== "win32") {
-      return { ok: false, message: "复制文件目前仅支持 Windows。" };
-    }
-    const requestedFilename = typeof filename === "string" ? filename : "";
-    const resolved = await resolveExistingHistoryFile(requestedFilename);
-    if (!resolved) {
-      appLogger.warn("history", "copy-file-missing", "History file could not be found for clipboard copy", {
-        filename: requestedFilename
-      });
-      return {
-        ok: false,
-        message: "视频文件不存在，可能已被移动、重命名或删除。"
-      };
-    }
-    try {
-      await copyFileToWindowsClipboard(
-        resolved,
-        path.join(app.getPath("userData"), "clipboard-files")
-      );
-      appLogger.info("history", "copy-file-succeeded", "History file copied to the Windows clipboard", {
-        filename: resolved,
-        repairedPath: !requestedFilename || path.resolve(requestedFilename) !== resolved
-      });
-      return {
-        ok: true,
-        message: requestedFilename && path.resolve(requestedFilename) === resolved
-          ? "视频文件已复制，可在资源管理器中粘贴。"
-          : "已自动找到视频的实际文件并复制，可在资源管理器中粘贴。"
-      };
-    } catch (error) {
-      appLogger.warn("history", "copy-file-failed", "Windows clipboard file copy failed", {
-        filename: resolved,
-        error: safeLogErrorMessage(error)
-      });
-      return {
-        ok: false,
-        message: "剪贴板暂时被其他程序占用，请稍后再试。"
-      };
-    }
+  registerMediaIpc({
+    ipc: ipcMain,
+    protocol,
+    service: applicationServices.media,
+    logger: appLogger,
+    paths: studioPaths
   });
   ipcMain.handle("shell:open-external", async (_event, value: string) => {
     try {
@@ -2990,1015 +1556,28 @@ function registerIpc(): void {
       return false;
     }
   });
-  ipcMain.handle("prompt:preflight", async () => {
-    const settings = store.get().settings;
-    if (!isComfyMultimodalPromptModel(settings.promptModelId)) {
-      return multimodalExecutionPreflight(settings.promptModelId, null, null);
-    }
-    const retainedDevice = retainedMultimodalDeviceFor(settings.promptModelId);
-    if (retainedDevice === "GPU") {
-      return {
-        ...multimodalExecutionPreflight(settings.promptModelId, null, null),
-        requiresCpuConfirmation: false
-      };
-    }
-    if (!retainedDevice) await freeMemory(settings).catch(() => undefined);
-    const metrics = await getPerformanceMetrics(settings).catch(() => null);
-    const preflight = multimodalExecutionPreflight(
-      settings.promptModelId,
-      metrics?.vramUsedBytes ?? null,
-      metrics?.vramTotalBytes ?? null
-    );
-    return retainedDevice === "CPU"
-      ? { ...preflight, requiresCpuConfirmation: true }
-      : preflight;
-  });
-  ipcMain.handle("prompt:start", async (_event, allowCpuFallback = false) => {
-    const settings = store.get().settings;
-    const runtime = promptRuntimeForSettings(settings);
-    const promptBackend = promptModelBackend(settings.promptModelId);
-    const startedAt = Date.now();
-    appLogger.info("prompt", "service-start-requested", "Prompt service start requested", {
-      runtime,
-      promptModelId: settings.promptModelId,
-      promptBackend
-    });
-    if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
-      return { ok: false, message: "当前有视频任务正在运行，暂不能启动提示词模型。" };
-    }
-    if (nativePromptWorker || promptCancellationWorker) {
-      return { ok: false, message: "提示词模型正在启动或使用中。" };
-    }
-    if (retainedPromptRuntime !== null) {
-      await releasePromptRuntime(settings);
-    }
-    const controller = new AbortController();
-    nativePromptController = controller;
-    promptRuntimeManager.setModel("warming", settings.promptModelId);
-    const worker = warmSelectedPromptRuntime(
-      settings,
-      promptBackend,
-      controller.signal,
-      allowCpuFallback === true
-    );
-    nativePromptWorker = worker;
-    try {
-      await worker;
-      retainedPromptRuntime = {
-        backend: promptBackend,
-        modelId: settings.promptModelId
-      };
-      promptRuntimeManager.setModel("resident", settings.promptModelId);
-      appLogger.info("prompt", "service-ready", "Prompt service ready", {
-        runtime,
-        durationMs: Date.now() - startedAt
-      });
-      return {
-        ok: true,
-        message: promptBackend === "h3-prompt-writer"
-          ? "ComfyUI H3 Prompt Writer 已加载并保持驻留；手动退出或开始队列时释放。"
-          : promptBackend === "comfyui-multimodal"
-            ? "ComfyUI 多模态提示词模型已加载并保持驻留；手动退出或开始队列时释放。"
-          : promptBackend === "comfyui-qwenvl-lora"
-            ? "Qwen3-VL 8B + H3 Prompt Rewriter LoRA 已加载并保持驻留；手动退出或开始队列时释放。"
-          : "Qwen 提示词模型已启动并加载到 ComfyUI。"
-      };
-    } catch (error) {
-      retainedPromptRuntime = null;
-      promptRuntimeManager.setModel("unloaded");
-      if (promptBackend === "h3-prompt-writer") {
-        await releaseH3PromptWriter(settings).catch(() => undefined);
-      } else if (promptBackend === "comfyui-multimodal") {
-        await releaseMultimodalPromptModel(settings).catch(() => undefined);
-        await freeMemory(settings).catch(() => undefined);
-      } else {
-        await freeMemory(settings).catch(() => undefined);
-      }
-      await captureComfyUiLogFailure(
-        appLogger,
-        settings,
-        "prompt_service_start_failed",
-        { modelId: settings.promptModelId }
-      ).catch(() => undefined);
-      appLogger.error("prompt", "service-start-failed", safeLogErrorMessage(error), {
-        runtime,
-        promptModelId: settings.promptModelId,
-        promptBackend,
-        durationMs: Date.now() - startedAt,
-        ...errorLogMeta(error)
-      });
-      return { ok: false, message: error instanceof Error ? error.message : String(error) };
-    } finally {
-      if (nativePromptWorker === worker) nativePromptWorker = null;
-      if (nativePromptController === controller) nativePromptController = null;
-    }
-  });
-  ipcMain.handle("prompt:enhance", async (_event, request: EnhanceRequest) => {
-    const settings = store.get().settings;
-    const runtime = promptRuntimeForSettings(settings);
-    const promptBackend = promptModelBackend(settings.promptModelId);
-    const startedAt = Date.now();
-    const promptOrigin: PromptOperationOrigin = request.origin ?? (
-      request.mode === "image-edit"
-        ? "image-edit"
-        : request.extensionSource
-          ? "video-extension"
-          : "image-to-video"
-    );
-    validateH3ReferenceAutoPrompt(request);
-    if (!request.prompt.trim() && !isH3ReferenceAutoPrompt(request)) {
-      throw new Error("请先输入需要扩写的提示词");
-    }
-    if (store.get().queueRunning || queueWorkerController.activeController || queueWorkerController.runningWorker) {
-      throw new Error("当前有视频任务正在运行，暂不能启动提示词模型。请等待任务结束或先暂停队列。");
-    }
-    if (nativePromptWorker || promptCancellationWorker) {
-      throw new Error("当前提示词任务正在运行或取消中，请稍候。");
-    }
-    if (!promptBackend) {
-      throw new Error("当前选择的提示词模型没有可用的本地运行适配器，请重新扫描设置中的模型列表。");
-    }
-    const operation = promptRuntimeManager.beginOperation(
-      promptOrigin,
-      true
-    );
-    const operationId = operation.operationId;
-    const controller = operation.controller;
-    nativePromptController = controller;
-    const promptLogContext = {
-      operationId,
-      runtime,
-      promptModelId: settings.promptModelId,
-      promptBackend,
-      modelId: request.modelId,
-      mode: request.mode ?? "video",
-      h3PromptMode: request.h3PromptMode ?? "auto",
-      promptProvided: Boolean(request.prompt.trim()),
-      promptLength: request.prompt.length,
-      referenceImageCount: request.imagePaths?.length ?? (request.imagePath ? 1 : 0),
-      durationSeconds: request.h3DurationSeconds ?? null,
-      ...promptEnhanceLogContext(request)
-    };
-    appLogger.info("prompt", "enhance-started", "Prompt enhancement started", {
-      ...promptLogContext
-    });
-    const promptProgress = createPromptProgressController(
-      settings.promptModelId,
-      startedAt,
-      operationId,
-      promptOrigin
-    );
-    promptProgress.update("preparing", 0);
-    if (promptBackend === "h3-prompt-writer") {
-      let leaseAlreadyRetained = false;
-      const worker = (async () => {
-        leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
-        promptProgress.update("checking", 5);
-        await ensureComfyUiReadyForPrompt(settings, controller.signal);
-        promptRuntimeManager.setOperationPhase(operationId, "warming-model");
-        await validateNativePromptRuntime(settings);
-        promptRuntimeManager.setOperationPhase(operationId, "submitting");
-        return withPromptExtensionMedia(
-          request,
-          operationId,
-          controller.signal,
-          (preparedRequest) => enhancePromptWithH3PromptWriter(
-            preparedRequest,
-            settings,
-            controller.signal,
-            promptProgress.update,
-            !promptRuntimeLeaseMatches(promptBackend, settings.promptModelId)
-          )
-        );
-      })();
-      nativePromptWorker = worker;
-      try {
-        const result = await worker;
-        promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
-        promptRuntimeManager.finishOperation(operationId, "completed");
-        promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
-        appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
-          ...promptLogContext,
-          durationMs: Date.now() - startedAt,
-          outputLength: result.length
-        });
-        return result;
-      } catch (error) {
-        if (controller.signal.aborted) {
-          promptProgress.update("validating", null, "正在取消提示词任务");
-          if (await waitForPromptCancellation()) {
-            promptRuntimeManager.finishOperation(operationId, "cancelled", "user-requested");
-            promptProgress.finish("cancelled", "validating", "提示词任务已取消");
-          }
-          appLogger.info("prompt", "enhance-cancelled", "Prompt enhancement cancelled", {
-            ...promptLogContext,
-            durationMs: Date.now() - startedAt
-          });
-          throw error;
-        }
-        promptProgress.finish("failed", "validating", error instanceof Error ? error.message : String(error));
-        promptRuntimeManager.finishOperation(operationId, "failed", error instanceof Error ? error.message : String(error));
-        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
-        await captureComfyUiLogFailure(
-          appLogger,
-          settings,
-          "prompt_enhance_failed",
-          { modelId: settings.promptModelId, operationId }
-        ).catch(() => undefined);
-        appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
-          ...promptLogContext,
-          durationMs: Date.now() - startedAt,
-          ...errorLogMeta(error)
-        });
-        throw error;
-      } finally {
-        if (nativePromptWorker === worker) nativePromptWorker = null;
-        if (nativePromptController === controller) nativePromptController = null;
-      }
-    }
-    if (promptBackend === "comfyui-multimodal") {
-      let leaseAlreadyRetained = false;
-      const worker = (async () => {
-        leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
-        promptProgress.update("checking", 5);
-        await ensureComfyUiReadyForPrompt(settings, controller.signal);
-        promptRuntimeManager.setOperationPhase(operationId, "warming-model");
-        await validateNativePromptRuntime(settings);
-        promptRuntimeManager.setOperationPhase(operationId, "submitting");
-        return withPromptExtensionMedia(
-          request,
-          operationId,
-          controller.signal,
-          (preparedRequest) => enhancePromptWithMultimodalComfyUi(
-            preparedRequest,
-            settings,
-            controller.signal,
-            false,
-            promptProgress.update,
-            operationId,
-            promptRuntimeLeaseMatches(promptBackend, settings.promptModelId),
-            (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
-          )
-        );
-      })();
-      nativePromptWorker = worker;
-      try {
-        const result = await worker;
-        promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
-        promptRuntimeManager.finishOperation(operationId, "completed");
-        promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
-        appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
-          ...promptLogContext,
-          durationMs: Date.now() - startedAt,
-          outputLength: result.length
-        });
-        return result;
-      } catch (error) {
-        if (controller.signal.aborted) {
-          promptProgress.update("validating", null, "正在取消提示词任务");
-          if (await waitForPromptCancellation()) {
-            promptRuntimeManager.finishOperation(operationId, "cancelled", "user-requested");
-            promptProgress.finish("cancelled", "validating", "提示词任务已取消");
-          }
-          appLogger.info("prompt", "enhance-cancelled", "Prompt enhancement cancelled", {
-            ...promptLogContext,
-            durationMs: Date.now() - startedAt
-          });
-          throw error;
-        }
-        promptProgress.finish("failed", "validating", error instanceof Error ? error.message : String(error));
-        promptRuntimeManager.finishOperation(operationId, "failed", error instanceof Error ? error.message : String(error));
-        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
-        await captureComfyUiLogFailure(
-          appLogger,
-          settings,
-          "prompt_enhance_failed",
-          { modelId: settings.promptModelId, operationId }
-        ).catch(() => undefined);
-        appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
-          ...promptLogContext,
-          durationMs: Date.now() - startedAt,
-          ...errorLogMeta(error)
-        });
-        throw error;
-      } finally {
-        if (nativePromptWorker === worker) nativePromptWorker = null;
-        if (nativePromptController === controller) nativePromptController = null;
-      }
-    }
-    if (promptBackend === "comfyui-qwenvl-lora") {
-      let leaseAlreadyRetained = false;
-      const worker = (async () => {
-        leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
-        promptProgress.update("checking", 5);
-        await ensureQwenVlManagedMetadata(settings, controller.signal, promptProgress.update);
-        await ensureComfyUiReadyForPrompt(settings, controller.signal);
-        promptRuntimeManager.setOperationPhase(operationId, "warming-model");
-        await validateNativePromptRuntime(settings);
-        promptRuntimeManager.setOperationPhase(operationId, "submitting");
-        return withPromptExtensionMedia(
-          request,
-          operationId,
-          controller.signal,
-          (preparedRequest) => enhancePromptWithQwenVlPeft(
-            preparedRequest,
-            settings,
-            controller.signal,
-            false,
-            promptProgress.update,
-            operationId,
-            promptRuntimeLeaseMatches(promptBackend, settings.promptModelId),
-            (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
-          )
-        );
-      })();
-      nativePromptWorker = worker;
-      try {
-        const result = await worker;
-        promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
-        promptRuntimeManager.finishOperation(operationId, "completed");
-        promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
-        appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
-          ...promptLogContext,
-          durationMs: Date.now() - startedAt,
-          outputLength: result.length
-        });
-        return result;
-      } catch (error) {
-        if (controller.signal.aborted) {
-          promptProgress.update("validating", null, "正在取消提示词任务");
-          if (await waitForPromptCancellation()) {
-            promptRuntimeManager.finishOperation(operationId, "cancelled", "user-requested");
-            promptProgress.finish("cancelled", "validating", "提示词任务已取消");
-          }
-          appLogger.info("prompt", "enhance-cancelled", "Prompt enhancement cancelled", {
-            ...promptLogContext,
-            durationMs: Date.now() - startedAt
-          });
-          throw error;
-        }
-        promptProgress.finish("failed", "validating", error instanceof Error ? error.message : String(error));
-        promptRuntimeManager.finishOperation(operationId, "failed", error instanceof Error ? error.message : String(error));
-        if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
-        await captureComfyUiLogFailure(
-          appLogger,
-          settings,
-          "prompt_enhance_failed",
-          { modelId: settings.promptModelId, operationId }
-        ).catch(() => undefined);
-        appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
-          ...promptLogContext,
-          durationMs: Date.now() - startedAt,
-          ...errorLogMeta(error)
-        });
-        throw error;
-      } finally {
-        if (nativePromptWorker === worker) nativePromptWorker = null;
-        if (nativePromptController === controller) nativePromptController = null;
-      }
-    }
-    let leaseAlreadyRetained = false;
-    const worker = (async () => {
-      leaseAlreadyRetained = await beginPromptRuntimeLease(settings, promptBackend, settings.promptModelId);
-      promptProgress.update("checking", 5);
-      await ensureComfyUiReadyForPrompt(settings, controller.signal);
-      promptRuntimeManager.setOperationPhase(operationId, "warming-model");
-      await validateNativePromptRuntime(settings);
-      promptRuntimeManager.setOperationPhase(operationId, "submitting");
-      return withPromptExtensionMedia(
-        request,
-        operationId,
-        controller.signal,
-        (preparedRequest) => enhancePromptWithComfyUi(
-          preparedRequest,
-          settings,
-          controller.signal,
-          false,
-          promptProgress.update,
-          (promptId) => promptRuntimeManager.markSubmitted(operationId, promptId)
-        )
-      );
-    })();
-    nativePromptWorker = worker;
-    try {
-      const result = await worker;
-      promptRuntimeManager.setModel("resident", settings.promptModelId, operationId);
-      promptRuntimeManager.finishOperation(operationId, "completed");
-      promptProgress.finish("completed", promptRuntimeLeaseMatches(promptBackend, settings.promptModelId) ? "validating" : "unloading");
-      appLogger.info("prompt", "enhance-finished", "Prompt enhancement finished", {
-        ...promptLogContext,
-        durationMs: Date.now() - startedAt,
-        outputLength: result.length
-      });
-      return result;
-    } catch (error) {
-      if (controller.signal.aborted) {
-        promptProgress.update("validating", null, "正在取消提示词任务");
-        if (await waitForPromptCancellation()) {
-          promptRuntimeManager.finishOperation(operationId, "cancelled", "user-requested");
-          promptProgress.finish("cancelled", "validating", "提示词任务已取消");
-        }
-        appLogger.info("prompt", "enhance-cancelled", "Prompt enhancement cancelled", {
-          ...promptLogContext,
-          durationMs: Date.now() - startedAt
-        });
-        throw error;
-      }
-      promptProgress.finish("failed", "validating", error instanceof Error ? error.message : String(error));
-      promptRuntimeManager.finishOperation(operationId, "failed", error instanceof Error ? error.message : String(error));
-      if (!leaseAlreadyRetained) await releasePromptRuntime(settings);
-      await captureComfyUiLogFailure(
-        appLogger,
-        settings,
-        "prompt_enhance_failed",
-        { modelId: settings.promptModelId, operationId }
-      ).catch(() => undefined);
-      appLogger.error("prompt", "enhance-failed", safeLogErrorMessage(error), {
-        ...promptLogContext,
-        durationMs: Date.now() - startedAt,
-        ...errorLogMeta(error)
-      });
-      throw error;
-    } finally {
-      if (nativePromptWorker === worker) nativePromptWorker = null;
-      if (nativePromptController === controller) nativePromptController = null;
-    }
-  });
-  ipcMain.handle("prompt:cancel", async () => {
-    const settings = store.get().settings;
-    try {
-      const result = await cancelActivePromptRuntime(settings, true);
-      return {
-        ok: true,
-        message: result.settled
-          ? "提示词任务已取消，模型保持运行。"
-          : "已请求取消提示词任务；模型会在任务确认中止后保持运行。"
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        message: error instanceof Error ? error.message : String(error)
-      };
-    }
-  });
-  ipcMain.handle("prompt:release", async () => {
-    const startedAt = Date.now();
-    appLogger.info("prompt", "service-release-requested", "Prompt service release requested");
-    const result = await releasePromptRuntimeForUser();
-    appLogger.info(
-      "prompt",
-      result.ok ? "service-released" : "service-release-failed",
-      result.message,
-      { durationMs: Date.now() - startedAt, ok: result.ok }
-    );
-    return result;
-  });
-  ipcMain.handle(
-    "connection:test",
-    async (_event, kind: ConnectionKind, settings: Settings) => {
-      const startedAt = Date.now();
-      appLogger.info("service", "connection-test-started", "Service connection test started", { kind });
-      try {
-        const message = await testComfyUi(settings);
-        appLogger.info("service", "connection-test-succeeded", "Service connection test succeeded", {
-          kind,
-          durationMs: Date.now() - startedAt
-        });
-        return { ok: true, message };
-      } catch (error) {
-        appLogger.warn("service", "connection-test-failed", "Service connection test failed", {
-          kind,
-          durationMs: Date.now() - startedAt,
-          error: safeLogErrorMessage(error)
-        });
-        return {
-          ok: false,
-          message: error instanceof Error ? error.message : String(error)
-        };
-      }
-    }
-  );
-  ipcMain.handle(
-    "environment:scan",
-    async (_event, settings: Settings, requestedScope: unknown) => {
-      const scope: EnvironmentScanScope = requestedScope === "runtime" ||
-        requestedScope === "dependencies"
-        ? requestedScope
-        : "full";
-      const startedAt = Date.now();
-      appLogger.info("environment", "scan-started", "Environment scan started", {
-        requestedScope: scope
-      });
-      try {
-        const result = await scanEnvironment(settings, scope);
-        appLogger.info("environment", "scan-finished", "Environment scan finished", {
-          durationMs: Date.now() - startedAt,
-          requestedScope: scope,
-          checkedFrom: result.comfyCompatibility.checkedFrom,
-          gpuCount: result.gpus.length,
-          modelProfiles: result.modelProfiles.length,
-          availableModels: result.modelProfiles.filter((profile) => profile.available).length,
-          customNodes: result.customNodes.length,
-          installedCustomNodes: result.customNodes.filter((node) => node.installed && !node.loadError).length,
-          issueCount: result.issues.length
-        });
-        return result;
-      } catch (error) {
-        appLogger.error("environment", "scan-failed", safeLogErrorMessage(error), {
-          durationMs: Date.now() - startedAt,
-          ...errorLogMeta(error)
-        });
-        throw error;
-      }
-    }
-  );
-  ipcMain.handle(
-    "service:start",
-    async (_event, kind: LocalServiceKind, settings: Settings) => {
-      appLogger.info("service", "start-requested", "Local service start requested", { kind });
-      const result = await startLocalService(kind, settings);
-      appLogger.info(
-        "service",
-        result.ok ? "start-succeeded" : "start-failed",
-        result.message,
-        { kind, ok: result.ok }
-      );
-      return result;
-    }
-  );
-  ipcMain.handle(
-    "service:force-stop-comfy",
-    async (_event, settings: Settings) => {
-      const runtimeOperationId = comfyRuntimeState.begin(
-        "stopping",
-        settings.comfyUrl.replace(/\/+$/, ""),
-        "正在终止本地 ComfyUI。"
-      );
-      appLogger.warn("service", "force-stop-requested", "ComfyUI force-stop requested");
-      nativePromptController?.abort(new Error("ComfyUI 已被强制终止，提示词扩写已中止"));
-      const worker = queueWorkerController.runningWorker;
-      if (worker) {
-        const stopped = await store.update((state) => {
-          state.queueRunning = false;
-        });
-        sendState(stopped);
-        queueWorkerController.abort(new Error("用户强制终止 ComfyUI"));
-        await interrupt(settings).catch(() => undefined);
-      }
-      const result = await forceStopComfyProcesses(settings);
-      comfyRuntimeState.finish(
-        runtimeOperationId,
-        result.ok ? "stopped" : "error",
-        result.message,
-        result.ok ? "none" : comfyRuntimeState.snapshot().ownership
-      );
-      appLogger.info(
-        "service",
-        result.ok ? "force-stop-succeeded" : "force-stop-failed",
-        result.message,
-        { ok: result.ok }
-      );
-      await waitWithTimeout(worker, 15_000);
-      return result;
-    }
-  );
-  ipcMain.handle(
-    "service:restart",
-    async (_event, kind: LocalServiceKind, settings: Settings) => {
-      if (queueWorkerController.runningWorker || nativePromptController) {
-        return {
-          ok: false,
-          message: "当前仍有队列或提示词任务占用 ComfyUI，请先完成或取消任务。"
-        };
-      }
-      appLogger.info("service", "restart-requested", "Local service restart requested", { kind });
-      const result = await restartLocalService(kind, settings);
-      appLogger.info(
-        "service",
-        result.ok ? "restart-succeeded" : "restart-failed",
-        result.message,
-        { kind, ok: result.ok }
-      );
-      return result;
-    }
-  );
-  ipcMain.handle(
-    "comfyui:update",
-    (_event, settings: Settings) => loggedOperation(
-      "service",
-      "comfy-update",
-      "ComfyUI update started",
-      () => updateComfyUi(settings)
-    )
-  );
-  ipcMain.handle(
-    "environment:repair",
-    (_event, issueId: EnvironmentIssue["id"], settings: Settings) => loggedOperation(
-      "environment",
-      "repair",
-      "Environment repair started",
-      () => {
-        if (issueId === "comfy-database" && (
-          store.get().queueRunning ||
-          queueWorkerController.runningWorker ||
-          nativePromptController
-        )) {
-          return Promise.resolve<{ ok: boolean; message: string }>({
-            ok: false,
-            message: "当前仍有队列或提示词任务占用 ComfyUI，请先完成或取消任务后再修复数据库。"
-          });
-        }
-        return repairEnvironmentIssue(issueId, settings);
-      },
-      { issueId, operation: repairOperationForIssue(issueId) }
-    )
-  );
-  ipcMain.handle(
-    "custom-node:install",
-    (event, nodeId: string, settings: Settings, mode?: CustomNodeInstallMode) => loggedOperation(
-      "environment",
-      "custom-node-install",
-      "Custom node installation started",
-      () => installCustomNode(nodeId, settings, (message) => {
-        appLogger.info("environment", "custom-node-install-progress", message, { nodeId });
-        if (!event.sender.isDestroyed()) {
-          event.sender.send("dependency-install:log", {
-            kind: "custom-node",
-            id: nodeId,
-            message
-          });
-        }
-      }, mode),
-      { nodeId, mode: mode ?? "install" }
-    )
-  );
-  ipcMain.handle(
-    "custom-node:uninstall",
-    (event, nodeId: string, settings: Settings) => loggedOperation(
-      "environment",
-      "custom-node-uninstall",
-      "Custom node uninstallation started",
-      () => uninstallCustomNode(nodeId, settings, (message) => {
-        appLogger.info("environment", "custom-node-uninstall-progress", message, { nodeId });
-        if (!event.sender.isDestroyed()) {
-          event.sender.send("dependency-install:log", {
-            kind: "custom-node",
-            id: nodeId,
-            message
-          });
-        }
-      }),
-      { nodeId }
-    )
-  );
-  ipcMain.handle(
-    "llama-cpp-python:install",
-    (event, settings: Settings) => loggedOperation(
-      "environment",
-      "llama-cpp-python-install",
-      "llama-cpp-python installation started",
-      () => installLlamaCppPython(settings, (message) => {
-        appLogger.info("environment", "llama-cpp-python-install-progress", message);
-        if (!event.sender.isDestroyed()) {
-          event.sender.send("dependency-install:log", {
-            kind: "python-runtime",
-            id: "llama-cpp-python",
-            message
-          });
-        }
-      })
-    )
-  );
-  ipcMain.handle(
-    "llama-cpp-python:uninstall",
-    (event, settings: Settings) => loggedOperation(
-      "environment",
-      "llama-cpp-python-uninstall",
-      "llama-cpp-python uninstallation started",
-      () => uninstallLlamaCppPython(settings, (message) => {
-        appLogger.info("environment", "llama-cpp-python-uninstall-progress", message);
-        if (!event.sender.isDestroyed()) {
-          event.sender.send("dependency-install:log", {
-            kind: "python-runtime",
-            id: "llama-cpp-python",
-            message
-          });
-        }
-      })
-    )
-  );
-  ipcMain.handle(
-    "attention-acceleration:install",
-    (event, settings: Settings) => {
-      if (
-        store.get().queueRunning ||
-        queueWorkerController.activeController ||
-        queueWorkerController.runningWorker ||
-        nativePromptWorker ||
-        promptCancellationWorker
-      ) {
-        return {
-          ok: false,
-          message: "当前有生成或提示词任务正在运行，停止任务后才能升级 H3 运行环境。"
-        };
-      }
-      return loggedOperation(
-        "environment",
-        "attention-install",
-        "Attention acceleration installation started",
-        () => installAttentionAcceleration(settings, (message) => {
-          if (!event.sender.isDestroyed()) {
-            event.sender.send("attention-acceleration:log", message);
-          }
-        })
-      );
-    }
-  );
-  registerQueueEnqueueIpc({
+  registerPromptIpc({
     ipc: ipcMain,
-    store,
-    logger: appLogger,
-    sendState,
-    effectiveImageInputLibraryDirectory,
-    resolveTaskOutputDirectory
+    service: applicationServices.prompt
   });
-  ipcMain.handle("image-mask:save", async (_event, request: ImageMaskSaveRequest) => {
-    if (!request || typeof request !== "object") throw new Error("Mask 数据无效");
-    const sourceStat = await fs.stat(request.sourcePath).catch(() => null);
-    if (!sourceStat?.isFile()) throw new Error("原始 Picture 文件不存在");
-    if (typeof request.document !== "string" || !request.document.trim()) {
-      throw new Error("Mask 工程为空");
-    }
-    const bytes = request.maskPng instanceof ArrayBuffer
-      ? new Uint8Array(request.maskPng)
-      : null;
-    if (!bytes?.byteLength) throw new Error("Mask 图片为空");
-    if (bytes.byteLength > 100 * 1024 * 1024) throw new Error("Mask 图片不能超过 100 MB");
-    const pictureKey = createHash("sha256")
-      .update(`${request.pictureId}\0${path.resolve(request.sourcePath)}`)
-      .digest("hex")
-      .slice(0, 24);
-    const revision = Math.max(1, Math.trunc(request.previousRevision ?? 0) + 1);
-    const directory = path.join(app.getPath("userData"), "image-masks", pictureKey);
-    await fs.mkdir(directory, { recursive: true });
-    const basename = `revision-${String(revision).padStart(4, "0")}`;
-    const documentPath = path.join(directory, `${basename}.fabric.json`);
-    const maskPath = path.join(directory, `${basename}-mask.png`);
-    const documentTemporary = `${documentPath}.${crypto.randomUUID()}.tmp`;
-    const maskTemporary = `${maskPath}.${crypto.randomUUID()}.tmp`;
-    try {
-      await fs.writeFile(documentTemporary, request.document, "utf8");
-      await fs.writeFile(maskTemporary, bytes);
-      await fs.rename(documentTemporary, documentPath);
-      await fs.rename(maskTemporary, maskPath);
-    } finally {
-      await fs.rm(documentTemporary, { force: true }).catch(() => undefined);
-      await fs.rm(maskTemporary, { force: true }).catch(() => undefined);
-    }
-    return {
-      documentPath,
-      maskPath,
-      revision,
-      regionCount: Math.max(0, Math.trunc(request.regionCount || 0)),
-      updatedAt: new Date().toISOString()
-    };
-  });
-  const queueControl = registerQueueControlIpc({
+  registerEnvironmentIpc({
     ipc: ipcMain,
-    store,
-    logger: appLogger,
-    worker: queueWorkerController,
-    sendState,
-    executeQueue,
-    nativePromptBusy: () => Boolean(nativePromptWorker),
-    settingsForTask: comfyUiSettingsForQueueTask,
-    cleanupCancelledTask: cleanupCancelledQueueTask,
-    updateTask
+    query: applicationServices.environment.query,
+    admin: applicationServices.environment.admin
   });
-  registerQueueMutationIpc({
+  registerQueueIpc({
     ipc: ipcMain,
-    store,
-    logger: appLogger,
-    sendState,
-    isQueueCleanupActive: () => Boolean(
-      queueWorkerController.cleanupWorker ||
-      queueWorkerController.runningWorker ||
-      queueWorkerController.activeController
-    ),
-    resumeQueue: queueControl.resumeQueue
+    service: activeQueueService(),
+    registerBetweenEnqueueAndControl: () => registerImageMaskIpc({
+      ipc: ipcMain,
+      service: applicationServices.imageDocument
+    })
   });
-  ipcMain.handle("history:delete", async (_event, assetId: string) => {
-    const startedAt = Date.now();
-    appLogger.info("history", "delete-started", "History asset deletion started", { assetId });
-    const current = store.get();
-    const asset = current.history.find((item) => item.id === assetId);
-    const imageProject = current.imageHistory.find((item) => item.id === assetId);
-    if (!asset && !imageProject) return current;
-    try {
-      const filesToDelete = asset
-        ? historyVideoPaths(asset, current.settings.outputDirectory)
-        : [...new Set(
-            imageProject!.versions
-              .filter((version) => version.kind !== "source")
-              .map((version) => version.file.absolutePath)
-              .filter((filename): filename is string => Boolean(filename))
-          )];
-      for (const filename of filesToDelete) {
-        try {
-          await fs.unlink(filename);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-          throw new Error(
-            `无法删除视频文件 ${path.basename(filename)}：${
-              error instanceof Error ? error.message : String(error)
-            }`
-          );
-        }
-      }
-      const next = await store.update((state) => {
-        if (asset) state.history = state.history.filter((item) => item.id !== assetId);
-        if (imageProject) state.imageHistory = state.imageHistory.filter((item) => item.id !== assetId);
-      });
-      if (asset) await removeHistoryCoverCache(asset);
-      appLogger.info("history", "delete-succeeded", "History asset deleted", {
-        assetId,
-        durationMs: Date.now() - startedAt,
-        versionCount: asset?.versions.length ?? imageProject?.versions.length ?? 0
-      });
-      sendState(next);
-      return next;
-    } catch (error) {
-      appLogger.error("history", "delete-failed", safeLogErrorMessage(error), {
-        assetId,
-        durationMs: Date.now() - startedAt,
-        ...errorLogMeta(error)
-      });
-      throw error;
-    }
-  });
-  ipcMain.handle("history:update-metadata", async (_event, assetId: string, patch: HistoryMetadataPatch) => {
-    if (typeof assetId !== "string" || !assetId.trim() || !patch || typeof patch !== "object") {
-      throw new Error("历史记录参数无效。");
-    }
-    const favorite = patch.favorite;
-    const rating = patch.rating;
-    const tags = patch.tags;
-    if (favorite !== undefined && typeof favorite !== "boolean") {
-      throw new Error("收藏状态无效。");
-    }
-    if (rating !== undefined && rating !== null && !isHistoryRating(rating)) {
-      throw new Error("评分必须是 0.5 到 5 分，支持半星。");
-    }
-    if (tags !== undefined && !Array.isArray(tags)) {
-      throw new Error("历史标签格式无效。");
-    }
-    const normalizedTags = tags === undefined ? undefined : normalizeHistoryTags(tags);
-    const next = await store.update((state) => {
-      const video = state.history.find((item) => item.id === assetId);
-      const image = state.imageHistory.find((item) => item.id === assetId);
-      const target = video ?? image;
-      if (!target) throw new Error("历史记录不存在。");
-      if (favorite !== undefined) target.favorite = favorite;
-      if (rating !== undefined) target.rating = rating;
-      if (normalizedTags !== undefined) target.tags = normalizedTags;
-    });
-    appLogger.info("history", "metadata-updated", "History curation metadata updated", {
-      assetId,
-      ...(favorite !== undefined ? { favorite } : {}),
-      ...(rating !== undefined ? { rating } : {}),
-      ...(normalizedTags !== undefined ? { tags: normalizedTags } : {})
-    });
-    sendState(next);
-    return next;
-  });
-  ipcMain.handle("history:delete-version", async (_event, assetId: string, versionId: string) => {
-    const startedAt = Date.now();
-    const current = store.get();
-    const asset = current.history.find((item) => item.id === assetId);
-    const version = asset?.versions.find((item) => item.id === versionId);
-    if (!asset || !version) throw new Error("视频记录或版本不存在。");
-    if (asset.versions.length <= 1) {
-      throw new Error("视频记录至少需要保留一个版本；如需全部删除，请删除整条记录。");
-    }
-    const versionPaths = historyVideoVersionPaths(version, current.settings.outputDirectory);
-    const otherVersionPaths = new Set(
-      asset.versions
-        .filter((item) => item.id !== versionId)
-        .flatMap((item) => historyVideoVersionPaths(item, current.settings.outputDirectory))
-    );
-    const filesToDelete = versionPaths.filter((filename) => !otherVersionPaths.has(filename));
-    appLogger.info("history", "video-version-delete-started", "开始删除视频版本和生成文件", {
-      assetId,
-      versionId,
-      filename: version.outputFilename
-    });
-    try {
-      for (const filename of filesToDelete) {
-        await fs.unlink(filename).catch((error) => {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-            throw new Error(`无法删除视频文件 ${path.basename(filename)}：${error instanceof Error ? error.message : String(error)}`);
-          }
-        });
-      }
-      const next = await store.update((state) => {
-        const target = state.history.find((item) => item.id === assetId);
-        if (!target) throw new Error("视频记录不存在。");
-        Object.assign(target, removeHistoryVideoVersion(target, versionId));
-      });
-      appLogger.info("history", "video-version-delete-succeeded", "视频版本和生成文件已删除", {
-        assetId,
-        versionId,
-        durationMs: Date.now() - startedAt
-      });
-      sendState(next);
-      return next;
-    } catch (error) {
-      appLogger.error("history", "video-version-delete-failed", safeLogErrorMessage(error), {
-        assetId,
-        versionId,
-        durationMs: Date.now() - startedAt,
-        ...errorLogMeta(error)
-      });
-      throw error;
-    }
-  });
-  ipcMain.handle("image-history:set-cover", async (_event, projectId: string, versionId?: string) => {
-    const next = await store.update((state) => {
-      const project = state.imageHistory.find((item) => item.id === projectId);
-      if (!project) throw new Error("图片项目不存在。");
-      if (versionId) {
-        if (!project.versions.some((version) => version.id === versionId)) {
-          throw new Error("图片版本不存在。");
-        }
-        project.coverMode = "pinned";
-        project.coverVersionId = versionId;
-      } else {
-        project.coverMode = "auto";
-        project.coverVersionId = undefined;
-      }
-    });
-    sendState(next);
-    return next;
-  });
-  ipcMain.handle("image-history:delete-version", async (_event, projectId: string, versionId: string) => {
-    const startedAt = Date.now();
-    const current = store.get();
-    const project = current.imageHistory.find((item) => item.id === projectId);
-    const version = project?.versions.find((item) => item.id === versionId);
-    if (!project || !version) throw new Error("图片项目或版本不存在。");
-    if (version.kind === "source") throw new Error("原始导入图片不能从项目中删除。");
-    const sharedByAnotherVersion = project.versions.some((item) =>
-      item.id !== versionId && (
-        Boolean(version.file.absolutePath && item.file.absolutePath === version.file.absolutePath) ||
-        (item.file.filename === version.file.filename && item.file.subfolder === version.file.subfolder)
-      )
-    );
-    appLogger.info("history", "image-version-delete-started", "开始删除图片版本和生成文件", {
-      projectId,
-      versionId,
-      filename: version.file.filename
-    });
-    try {
-      const resolvedFile = sharedByAnotherVersion
-        ? null
-        : await resolveExistingHistoryFile(
-            version.file.absolutePath ?? "",
-            historyFileCandidates(version.file, current.settings)
-          );
-      if (resolvedFile) {
-        await fs.unlink(resolvedFile).catch((error) => {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-            throw new Error(`无法删除图片文件 ${path.basename(resolvedFile)}：${error instanceof Error ? error.message : String(error)}`);
-          }
-        });
-      }
-      const next = await store.update((state) => {
-        const target = state.imageHistory.find((item) => item.id === projectId);
-        if (!target) return;
-        target.versions = target.versions.filter((item) => item.id !== versionId);
-        if (target.coverVersionId === versionId) {
-          target.coverMode = "auto";
-          target.coverVersionId = undefined;
-        }
-        target.updatedAt = [...target.versions]
-          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]?.createdAt ?? target.createdAt;
-      });
-      appLogger.info("history", "image-version-delete-succeeded", "图片版本和生成文件已删除", {
-        projectId,
-        versionId,
-        durationMs: Date.now() - startedAt
-      });
-      sendState(next);
-      return next;
-    } catch (error) {
-      appLogger.error("history", "image-version-delete-failed", safeLogErrorMessage(error), {
-        projectId,
-        versionId,
-        durationMs: Date.now() - startedAt,
-        ...errorLogMeta(error)
-      });
-      throw error;
-    }
+  registerHistoryIpc({
+    ipc: ipcMain,
+    query: applicationServices.history.query,
+    metadata: applicationServices.history.metadata,
+    destructive: applicationServices.history.destructive
   });
 }
 
@@ -4010,36 +1589,82 @@ app.whenReady().then(async () => {
     arch: process.arch
   });
   Menu.setApplicationMenu(null);
-  store = new JsonStore(path.join(app.getPath("userData"), "studio-state.json"));
-  await store.load();
-  await materializeDefaultImageInputLibraryDirectory();
-  appLogger.info("app", "state-loaded", "Application state loaded", {
-    queueCount: store.get().queue.length,
-    historyCount: store.get().history.length,
-    queueRunning: store.get().queueRunning
-  });
-  await restoreHistoryOutputPaths();
-  registerMediaProtocol();
-  registerIpc();
-  createWindow();
-  void alignLocalComfyUiRuntimeProfile(store.get().settings).then((result) => {
-    appLogger.info(
-      "comfy",
-      result.ok ? "startup-runtime-takeover-succeeded" : "startup-runtime-takeover-failed",
-      result.message,
-      {
-        ok: result.ok,
-        restarted: result.restarted,
-        previousProfile: result.previousProfile,
-        desiredProfile: result.desiredProfile
+  const studioPaths = createStudioPaths(app.getPath("userData"));
+  const stateRepository = new JsonStore(studioPaths.stateFile);
+  store = stateRepository;
+  const runtime = new ApplicationRuntime({
+    paths: studioPaths,
+    store: stateRepository,
+    events: studioEventBus,
+    logger: appLogger,
+    runtimeState: comfyRuntimeState,
+    promptRuntimeManager,
+    historyFileSystem: nativeHistoryFileSystem,
+    imageInspection: nativeImageInspection,
+    sendState,
+    errorMeta: errorLogMeta,
+    waitForWorker: waitWithTimeout,
+    settings: {
+      videoHistoryMigrationJournal: studioPaths.videoHistoryMigrationJournal,
+      resolveComfyOutputDirectory,
+      clearRendererDirty: () => {
+        rendererHasUnsavedSettings = false;
       }
-    );
-  }).catch((error) => {
-    appLogger.error("comfy", "startup-runtime-takeover-failed", safeLogErrorMessage(error));
+    },
+    queue: {
+      ensureComfyUiReady,
+      resolveTaskOutputDirectory,
+      requireExistingImageOutput,
+      requireExistingVideoOutput,
+      prepareQueueRuntimeForTask,
+      stabilizeH3RuntimeBetweenTasks,
+      stopQueueRuntime,
+      restartQueueRuntime,
+      resolveH3VideoVaeModeForTask: resolveH3VideoVaeModeForQueueTask,
+      settingsForTask: comfyUiSettingsForQueueTask,
+      cleanupCancelledTask: cleanupCancelledQueueTask
+    },
+    lifecycle: {
+      interruptComfy: (settings) => interrupt(settings),
+      freeMemory: (settings) => freeMemory(settings),
+      forceStopComfyProcesses: (settings) => forceStopComfyProcesses(settings),
+      alignRuntimeProfile: (settings) => alignLocalComfyUiRuntimeProfile(settings),
+      isLocalComfyUrl
+    }
   });
+  applicationRuntime = runtime;
+  try {
+    await runtime.start({
+      onServicesReady: (context) => {
+        setOwnedComfyProcessExitListener((event) => {
+          context.services.lifecycle.handleOwnedComfyProcessExit(event);
+        });
+        registerMediaProtocol({
+          protocol,
+          service: context.services.media
+        });
+        registerIpc(
+          studioPaths,
+          context.services,
+          () => runtime.waitForInitialState()
+        );
+        createWindow();
+      }
+    });
+  } catch (error) {
+    appLogger.error(
+      "app",
+      "startup-failed",
+      error instanceof Error ? error.message : String(error)
+    );
+  }
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.once("will-quit", () => {
+  removeStudioEventBridge();
 });
 
 app.on("window-all-closed", () => {

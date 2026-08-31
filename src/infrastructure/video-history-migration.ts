@@ -6,7 +6,7 @@ import type {
   HistoryFile,
   HistoryMigrationProgress,
   QueueTask
-} from "../../src/types.js";
+} from "../types.js";
 
 const videoExtensions = new Set([".mp4", ".webm", ".mov", ".m4v", ".mkv"]);
 

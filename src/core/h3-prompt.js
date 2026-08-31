@@ -1,7 +1,7 @@
-import { restoreH3DialogueLocks, restoreH3VisibleTextLocks } from "./h3-dialogue.js";
-import { preserveH3CameraIntentInOutput } from "./h3-camera-intent.js";
-import { ensureH3ScalePreservationInOutput } from "./h3-scale-preservation.js";
-import { stripPromptAnnotations } from "./prompt-annotations.js";
+import { extractH3DialogueLocks, extractH3VisibleTextLocks, restoreH3DialogueLocks, restoreH3VisibleTextLocks, validateH3DialogueOutput } from "./h3-dialogue.js";
+import { auditH3CameraIntent, extractH3CameraIntent, preserveH3CameraIntentInOutput } from "./h3-camera-intent.js";
+import { ensureH3ScalePreservationInOutput, extractH3MicroFpvIntent, extractH3ScaleIntent } from "./h3-scale-preservation.js";
+import { parsePromptAnnotations, stripPromptAnnotations } from "./prompt-annotations.js";
 const explicitSingleShotPattern = /(?:\b(?:one|single)\s+(?:continuous\s+)?(?:shot|take)\b|\bcontinuous\s+shot\b|\bno\s+(?:cuts?|scene\s+changes?)\b|\bwithout\s+(?:cuts?|scene\s+changes?)\b|\bshot\s*1\b|一镜到底|单镜头|一个镜头|连续镜头|不切镜|不要剪辑|无剪辑|不换镜头|不要切换镜头)/iu;
 const explicitMultipleShotPattern = /(?:\b(?:multiple|two|three|four|several|different)\s+(?:shots?|takes?|scenes?)\b|\bshots?\s*[2-9]\b|\b(?:cut|cuts|cutting)\s+to\b|\b(?:scene|shot)\s+(?:changes?|transitions?)\b|\bmontage\b|多镜头|多个镜头|多场景|多个场景|分镜|镜头切换|切换镜头|转场|蒙太奇|场景切换)/iu;
 export function h3ShotPolicyForPrompt(promptText) {
@@ -25,6 +25,158 @@ export function h3PromptPriorityInstruction(shotPolicy = "allow-multiple") {
         lines.push("Shot default: unless the user explicitly asks for multiple shots, cuts, montage, or scene changes, keep the clip as exactly one continuous [Shot 1]; use camera movement, reframing, or focus changes inside it rather than inventing [Shot 2].");
     }
     return lines.join("\n");
+}
+const h3ActionPattern = /(?:\b(?:walk|run|move|turn|look|reach|grab|hold|open|close|push|pull|lift|drop|fall|jump|climb|crawl|enter|exit|dance|fight|kiss|touch|follow|approach|step|sit|stand|rise|dive|throw|catch|strike|speak|say|sing|smile|blink|breathe|react|respond|rotate|orbit|track|pan|tilt|zoom|crane|sweep)\w*\b|走|跑|移动|转身|看|抬|伸|抓|握|打开|关闭|推|拉|举|放下|跌倒|跳|爬|进入|离开|跳舞|战斗|亲吻|触碰|跟随|靠近|坐|站|起身|俯冲|投掷|接住|击打|说|唱|微笑|眨眼|呼吸|反应|回应|旋转|环绕|跟拍|摇摄|推进|拉远|升降|扫过)/iu;
+const h3InteractionPattern = /(?:\b(?:between|together|interact(?:s|ed|ing|ion|ions)?|react(?:s|ed|ing|ion|ions)?|respond(?:s|ed|ing|er|ers)?|response|affect(?:s|ed|ing)?|confront|embrace|kiss|speaks?\s+to|talks?\s+to|hand(?:s)?\s+to|passes?\s+to|hands?\s+over)\b|与[^。！？.!?\n]{0,30}(?:互动|交流|对话|回应|反应|接触|一起)|互动|交流|对话|回应|反应|相互|彼此|之间|影响|面对|拥抱|亲吻|递给|交给)/iu;
+const h3ExpressionPattern = /(?:\b(?:expression|emotion|emotional|smile|smiling|frown|frowning|cry|crying|laugh|laughing|surprise|surprised|fear|angry|anger|sad|happy|joy|relief|grimace|blink|eyes?|brows?|eyelids?|mouth|lips?|cheeks?)\b|表情|情绪|微笑|笑|哭|悲伤|开心|高兴|惊讶|害怕|恐惧|愤怒|皱眉|眨眼|眼睛|眉毛|眼睑|嘴角|脸颊)/iu;
+const h3SoundPattern = /(?:\b(?:sound|audio|music|score|soundtrack|voice|dialogue|speech|speak|sing|singing|lyrics|ambience|ambient|footsteps?|breathing|whisper|scream|impact|echo|silence|silent)\w*\b|声音|音频|音乐|配乐|音轨|人声|对白|对话|说话|演唱|歌词|环境声|脚步|呼吸|耳语|尖叫|撞击声|回声|静音|无声)/iu;
+function h3PromptControlPlanFor(input) {
+    const parsed = parsePromptAnnotations(input.rawPrompt);
+    const sourcePrompt = parsed.prompt.trim();
+    const supplementalContext = [...parsed.annotations.map((annotation) => annotation.text), input.referenceContext?.trim() ?? ""].filter(Boolean).join("\n");
+    const cameraIntent = extractH3CameraIntent(sourcePrompt, supplementalContext);
+    const scaleIntent = extractH3ScaleIntent(sourcePrompt, supplementalContext);
+    const microFpvIntent = extractH3MicroFpvIntent(sourcePrompt, supplementalContext);
+    const dialogueLocks = extractH3DialogueLocks(sourcePrompt);
+    const visibleTextLocks = extractH3VisibleTextLocks(sourcePrompt);
+    const hasReference = Boolean(input.hasReferenceMedia || input.referenceContext?.trim() || input.mode !== "T2VA");
+    const hasAction = Boolean(sourcePrompt && h3ActionPattern.test(sourcePrompt));
+    const hasInteraction = h3InteractionPattern.test(sourcePrompt);
+    const hasExpression = h3ExpressionPattern.test(sourcePrompt);
+    const hasSound = dialogueLocks.length > 0 || h3SoundPattern.test(sourcePrompt);
+    const modules = ["intent-lock"];
+    if (hasReference)
+        modules.push("reference-delta");
+    if (cameraIntent.hasViewpointCamera)
+        modules.push("camera-route");
+    if (cameraIntent.hasPhysicalCamera)
+        modules.push("camera-disambiguation");
+    if (cameraIntent.rotationDegrees.length)
+        modules.push("exact-rotation");
+    if (scaleIntent.detected && scaleIntent.humanSubject)
+        modules.push("micro-scale");
+    if (microFpvIntent.detected)
+        modules.push("metaphor-disambiguation");
+    if (hasAction || hasReference)
+        modules.push("action-mechanics");
+    if (hasInteraction)
+        modules.push("subject-reaction");
+    if (hasExpression)
+        modules.push("expression-detail");
+    if (dialogueLocks.length)
+        modules.push("speech-gate");
+    if (hasSound)
+        modules.push("sound-causality");
+    if (input.mode !== "R2V" && h3ShotPolicyForPrompt(input.rawPrompt) !== "allow-multiple") {
+        modules.push("shot-continuity");
+    }
+    if (input.mode === "FL2VA" || input.mode === "L2VA")
+        modules.push("endpoint-transition");
+    return {
+        mode: input.mode,
+        preset: input.preset ?? "official-storyboard",
+        sourcePrompt,
+        supplementalContext,
+        annotationCount: parsed.annotations.length,
+        shotPolicy: h3ShotPolicyForPrompt(input.rawPrompt),
+        hasReference,
+        hasCamera: cameraIntent.hasViewpointCamera,
+        hasPhysicalCamera: cameraIntent.hasPhysicalCamera,
+        hasExactRotation: cameraIntent.rotationDegrees.length > 0,
+        hasScale: scaleIntent.detected && scaleIntent.humanSubject,
+        hasMicroScale: microFpvIntent.detected,
+        hasAction,
+        hasInteraction,
+        hasExpression,
+        hasDialogue: dialogueLocks.length > 0,
+        hasVisibleText: visibleTextLocks.length > 0,
+        hasSound,
+        dialogueLocks,
+        visibleTextLocks,
+        modules
+    };
+}
+export function buildH3PromptControlPlan(input) {
+    return h3PromptControlPlanFor(input);
+}
+export function h3PromptControlInstruction(input) {
+    const plan = h3PromptControlPlanFor(input);
+    const lines = [
+        "H3 execution control header (silent; never echo): priority = LOCKED user request/notes > exact dialogue/visible text > H3 mode/keyframes/reference roles > grounded execution > preset.",
+        "Classify facts as PRESERVE, CHANGE, or INFER. Preserve locked facts, execute requested changes, infer only grounded details, and add prose only when it controls visible action, camera, sound, continuity, or the endpoint."
+    ];
+    if (plan.annotationCount) {
+        lines.push("Editorial-note module: apply each extracted note to its nearest clause, then remove note markers/text; never render or speak a note.");
+    }
+    if (plan.modules.includes("reference-delta")) {
+        lines.push("Reference-delta module: use media as evidence; state identity/opening/composition once, then spend space on requested CHANGE, causal action/reaction, camera, sound, and endpoint; omit repeated inventory and unsupported inference.");
+    }
+    if (plan.modules.includes("camera-route")) {
+        lines.push("Camera-route module: encode viewpoint as start → target → route/landmarks → angle/height → speed/amplitude → brake → final composition; keep locked angle/height/target/path stable; ‘camera’ means viewpoint unless a physical device is explicit.");
+    }
+    if (plan.modules.includes("camera-disambiguation")) {
+        lines.push("Camera-device module: a visible, handheld, mounted, or security camera is a scene object; keep it separate from the image-forming viewpoint.");
+    }
+    if (plan.modules.includes("exact-rotation")) {
+        lines.push("Exact-rotation module: preserve orbit vs subject rotation and every degree/fraction exactly; stop there—180° is one semicircle, never 360° or an extra lap.");
+    }
+    if (plan.modules.includes("micro-scale")) {
+        lines.push("Micro-scale module: infer relative scale from reference/geometry, not fixed cm; scale the same real person uniformly—age, proportions, limbs, face, posture, gait, behavior/materials unchanged; never toy/doll/figure/plastic/child/baby.");
+    }
+    if (plan.modules.includes("metaphor-disambiguation")) {
+        lines.push("Metaphor module: convert ant-size/ant’s-view/insect-eye/Micro-FPV into an invisible low, close, passable viewpoint and route; do not render a literal ant/insect/drone/camera unless requested.");
+    }
+    if (plan.modules.includes("action-mechanics")) {
+        lines.push("Action-mechanics module: expand required motion as preparation → mechanics/gaze/weight → travel/contact/impact → object/environment response → affected-subject reaction → secondary motion → settle; preserve order and remove added detail before impossible speed.");
+    }
+    if (plan.modules.includes("subject-reaction")) {
+        lines.push("Interaction module: when subjects affect, approach, touch, or speak to each other, show the affected subject’s observable perception/reaction and next-beat consequence; do not invent plot.");
+    }
+    if (plan.modules.includes("expression-detail")) {
+        lines.push("Observable-performance module: turn emotion labels into visible gaze/eyes/brows/cheeks/mouth/breath/posture/timing; use only grounded cues.");
+    }
+    if (plan.modules.includes("speech-gate")) {
+        lines.push("Speech-gate module: only exact user dialogue may be spoken; preserve speaker/language/punctuation, use <d>[Language] ...</d>, and never speak scene text, camera, notes, metadata, or invented lines.");
+    }
+    if (plan.modules.includes("sound-causality")) {
+        lines.push("Sound-causality module: tie physical/non-verbal sound to visible causes/beats; dialogue/diegetic sound in the timeline, ambience in overall_soundscape, audience-only score in non_diegetic_music; no cinematic filler music.");
+    }
+    if (plan.modules.includes("shot-continuity")) {
+        lines.push("Shot-continuity module: default to one continuous [Shot 1]; keep camera/focus/action phases inside it; add [Shot 2+] only for explicit cuts, multiple shots, montage, or scene changes.");
+    }
+    if (plan.modules.includes("endpoint-transition")) {
+        lines.push(`${input.mode} endpoint module: keep exact reference endpoint geometry and bridge states causally; no morph, teleport, unexplained cut, or premature pose.`);
+    }
+    if (plan.preset === "detailed-cinematic") {
+        lines.push("Detailed-expansion budget: spend extra words on requested CHANGE, causal motion/reaction, camera route, dialogue, sound, continuity, and endpoint; state static reference/atmosphere once, remove filler before actionable beats.");
+    }
+    return lines.join("\n");
+}
+const h3ScaleOutputLockPattern = /(?:scale continuity|uniform(?:ly)?\s+(?:world[- ]scale|scaled|reduced|enlarged)|world[- ]space\s+scale|head[- ]to[- ]body\s+ratio|body proportions?|source[- ]age|尺度连续性|头身比|四肢长度比例|等比例)/iu;
+export function auditH3PromptControlOutput(plan, generatedPrompt) {
+    const missing = [];
+    if (plan.hasCamera) {
+        const cameraSource = [plan.sourcePrompt, plan.supplementalContext]
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .join("\n");
+        const cameraAudit = auditH3CameraIntent(cameraSource, generatedPrompt);
+        if (!cameraAudit.passed)
+            missing.push("camera-control");
+    }
+    if (plan.hasScale && !h3ScaleOutputLockPattern.test(generatedPrompt)) {
+        missing.push("scale-control");
+    }
+    if (plan.hasDialogue && !validateH3DialogueOutput(generatedPrompt, plan.dialogueLocks).ok) {
+        missing.push("dialogue-lock");
+    }
+    if (plan.hasVisibleText && plan.visibleTextLocks.some((lock) => !generatedPrompt.includes(lock.text))) {
+        missing.push("visible-text-lock");
+    }
+    if (plan.shotPolicy !== "allow-multiple" && /\[Shot\s+[2-9]\]/iu.test(generatedPrompt)) {
+        missing.push("single-shot");
+    }
+    return { passed: missing.length === 0, modules: plan.modules, missing };
 }
 export function inferH3PromptMode(hasStartImage, hasEndImage, isR2V = false) {
     if (isR2V)
@@ -224,14 +376,53 @@ function collapseUnexpectedH3Shots(promptText, mode, sourcePrompt, policyContext
         .replace(/\b(?:the\s+)?(?:next|following)\s+shot\b/giu, "the next moment");
     return `${promptText.slice(0, contentStart)}${cameraCutReplacements}${promptText.slice(contentEnd)}`.trim();
 }
+function repairH3PromptControlViolations(promptText, mode, sourcePrompt, scaleContext, dialogueLocks, visibleTextLocks) {
+    const plan = h3PromptControlPlanFor({
+        rawPrompt: sourcePrompt,
+        mode,
+        referenceContext: scaleContext,
+        hasReferenceMedia: mode !== "T2VA"
+    });
+    let repaired = promptText;
+    // The repair pass is intentionally bounded and conservative. It only
+    // re-applies compiler-owned locks that already have deterministic helpers;
+    // it never invents missing story content after generation.
+    for (let pass = 0; pass < 2; pass += 1) {
+        const audit = auditH3PromptControlOutput(plan, repaired);
+        if (audit.passed)
+            return repaired;
+        let next = repaired;
+        if (audit.missing.includes("dialogue-lock")) {
+            next = restoreH3DialogueLocks(next, dialogueLocks);
+        }
+        if (audit.missing.includes("visible-text-lock")) {
+            next = restoreH3VisibleTextLocks(next, visibleTextLocks);
+        }
+        if (audit.missing.includes("camera-control")) {
+            next = preserveH3CameraIntentInOutput(next, plan.supplementalContext ? `${sourcePrompt}\n${plan.supplementalContext}` : sourcePrompt, mode);
+        }
+        if (audit.missing.includes("scale-control")) {
+            next = ensureH3ScalePreservationInOutput(next, mode, sourcePrompt, scaleContext);
+        }
+        if (audit.missing.includes("single-shot")) {
+            next = collapseUnexpectedH3Shots(next, mode, sourcePrompt, scaleContext);
+        }
+        if (next === repaired)
+            return repaired;
+        repaired = next;
+    }
+    return repaired;
+}
 export function normalizeH3PromptOutput(promptText, mode, durationSeconds, dialogueLocks = [], visibleTextLocks = [], sourcePrompt = "", scaleContext = "") {
     const cleanedBody = stripPromptAnnotations(stripH3OutputPreamble(stripLeadingH3AlignmentInstructions(promptText), mode));
     const body = restoreH3VisibleTextLocks(restoreH3DialogueLocks(cleanedBody, dialogueLocks), visibleTextLocks);
-    const cameraSafeBody = preserveH3CameraIntentInOutput(body, sourcePrompt, mode);
+    const cameraSource = [sourcePrompt, scaleContext].map((value) => value.trim()).filter(Boolean).join("\n");
+    const cameraSafeBody = preserveH3CameraIntentInOutput(body, cameraSource, mode);
     const scaleSafeBody = ensureH3ScalePreservationInOutput(cameraSafeBody, mode, sourcePrompt, scaleContext);
     const shotSafeBody = collapseUnexpectedH3Shots(scaleSafeBody, mode, sourcePrompt, scaleContext);
+    const auditedBody = repairH3PromptControlViolations(shotSafeBody, mode, sourcePrompt, scaleContext, dialogueLocks, visibleTextLocks);
     const alignment = h3AlignmentInstruction(mode, durationSeconds);
     if (!alignment)
-        return shotSafeBody;
-    return `${alignment}\n\n${shotSafeBody}`.trim();
+        return auditedBody;
+    return `${alignment}\n\n${auditedBody}`.trim();
 }

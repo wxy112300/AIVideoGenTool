@@ -17,7 +17,7 @@ import {
 } from "../../src/core/upscale.js";
 import { isVideoOutputFilename } from "../../src/core/comfy-output.js";
 import { submitTask, waitForTask, type PreviewFrameMetadata } from "./comfy-ui.js";
-import type { AppLogger } from "./app-logger.js";
+import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { getComputeResourceSnapshot } from "./performance.js";
 
 const execFileAsync = promisify(execFile);

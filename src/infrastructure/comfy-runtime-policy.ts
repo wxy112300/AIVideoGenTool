@@ -2,7 +2,7 @@ import path from "node:path";
 import type {
   QueueTask,
   Settings
-} from "../../src/types.js";
+} from "../types.js";
 
 export type ComfyUiRuntimeProfile =
   | "standard"

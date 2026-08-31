@@ -25,7 +25,7 @@ vi.mock("../electron/services/comfy-ui.js", () => ({
   waitForTask: mocks.waitForTask,
   TaskStalledError: class TaskStalledError extends Error {}
 }));
-vi.mock("../electron/services/image-asset-library.js", () => ({
+vi.mock("../src/infrastructure/image-asset-library.js", () => ({
   hashImageFile: mocks.hashImageFile
 }));
 vi.mock("../electron/services/extension-media.js", () => ({

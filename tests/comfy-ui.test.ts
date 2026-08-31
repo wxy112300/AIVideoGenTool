@@ -247,6 +247,20 @@ describe("native Qwen prompt workflow", () => {
     expect(physical).toContain("Physical camera-device wording");
   });
 
+  it("compiles Micro-FPV metaphors and exact orbit angles into the H3 prompt contract", () => {
+    const instruction = h3PromptInstruction({
+      prompt: "An ant-size tiny human walks from the cup to the plate; ant's view, the camera stays close to the surface and rotates around the tiny human 180 degrees.",
+      modelId: "minimax_h3_fl2va",
+      h3PromptMode: "T2VA"
+    });
+
+    expect(instruction).toContain("Reference-derived scale lock");
+    expect(instruction).toContain("Micro-FPV camera relation");
+    expect(instruction).toContain("Exact rotation-angle lock");
+    expect(instruction).toContain("180 degrees");
+    expect(instruction).toContain("not a request to render an ant");
+  });
+
   it("adds a compiler-owned dialogue ledger for foreign-language speech", () => {
     const instruction = h3PromptInstruction({
       prompt: "A woman looks at the camera and says in Japanese: \"大丈夫？\"",

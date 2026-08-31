@@ -310,7 +310,7 @@ export function renderImageHistoryPage(
     const title = project.title.trim() || options.t(uiKeys.history.card.untitledImage);
     const iterationCount = Math.max(0, project.versions.filter((item) => item.kind !== "source").length);
     return `
-      <article class="history-gallery-item panel image-history-gallery-item" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}" title="${options.escapeHtml(title)}">
+      <article class="history-gallery-item panel image-history-gallery-item" data-history="${options.escapeHtml(project.id)}" data-open-image-history="${options.escapeHtml(project.id)}" data-history-kind="image" data-history-order="${historyOrder}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(title)}，${options.t(uiKeys.history.card.openDetailsContext)}">
         <div class="history-media image-history-media ${mediaUrl ? "image-media-loading" : "image-media-unavailable"}" data-image-media data-image-media-surface="gallery" data-image-media-source="${options.escapeHtml(sourcePath)}" style="--media-ratio:${version.width || 1} / ${version.height || 1}">
           ${mediaUrl
             ? `<img src="${options.escapeHtml(mediaUrl)}" data-image-media-url="${options.escapeHtml(mediaUrl)}" loading="lazy" alt="${options.escapeHtml(title)}" data-image-history-preview data-image-media-image data-image-history-cache-key="${options.escapeHtml(options.imageHistoryThumbnailCacheKey(project, version))}" data-image-history-source="${options.escapeHtml(sourcePath)}">`
@@ -363,7 +363,7 @@ export function renderHistoryPage(
     const coverSeed = options.historyCoverSeed(asset.id, version.id);
     const coverTime = options.historyInitialCoverTime(asset.duration, coverSeed);
     return `
-      <article class="history-gallery-item panel" data-history="${asset.id}" data-open-history="${asset.id}" data-history-kind="video" data-history-order="${historyOrder}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(historyTitle)}，${options.t(uiKeys.history.card.openDetailsContext)}" title="${options.escapeHtml(historyTitle)}">
+      <article class="history-gallery-item panel" data-history="${asset.id}" data-open-history="${asset.id}" data-history-kind="video" data-history-order="${historyOrder}" role="button" tabindex="0" aria-keyshortcuts="Enter Space" aria-label="${options.escapeHtml(historyTitle)}，${options.t(uiKeys.history.card.openDetailsContext)}">
         <div class="history-media${mediaUrl ? " media-loading" : ""}" style="--media-ratio:${version.width} / ${version.height}" data-history-media data-cover-key="${options.escapeHtml(coverKey)}" data-cover-source="${options.escapeHtml(version.files[videoIndex]?.absolutePath ?? "")}" data-cover-time="${coverTime}" data-cover-seed="${coverSeed}" data-preview-duration="${asset.duration}">
           ${mediaUrl
             ? `<video muted loop playsinline preload="none" data-history-src="${options.escapeHtml(mediaUrl)}"></video>`

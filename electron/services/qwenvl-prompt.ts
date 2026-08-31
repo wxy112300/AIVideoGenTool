@@ -19,7 +19,7 @@ import {
 import { normalizeQwenImageEditPromptOutput } from "../../src/core/qwen-image-prompt.js";
 import { stripPromptAnnotations } from "../../src/core/prompt-annotations.js";
 import { missingWorkflowNodeTypes } from "../../src/core/workflow.js";
-import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
+import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import {
   extractStringNodeOutput,
   freeMemory,

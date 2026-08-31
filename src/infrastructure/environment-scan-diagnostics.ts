@@ -1,4 +1,4 @@
-import type { EnvironmentScanResult } from "../../src/types.js";
+import type { EnvironmentScanResult } from "../types.js";
 
 export interface EnvironmentScanDiagnostics {
   inventory: Record<string, unknown>;

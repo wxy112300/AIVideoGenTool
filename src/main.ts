@@ -6,6 +6,10 @@ import "./style.css";
 import { createRendererApp } from "./renderer/app";
 import { bootstrapRenderer } from "./renderer/bootstrap";
 import {
+  createElectronRendererClient,
+  createRendererDependencies
+} from "./renderer/studio-client";
+import {
   createPromptRuntimeState,
   promptModelStartupIsActive,
   promptOperationBelongsTo,
@@ -248,6 +252,12 @@ import {
 
 const appElement = document.querySelector<HTMLDivElement>("#app")!;
 const modalRoot = document.querySelector<HTMLDivElement>("#modal-root")!;
+const rendererClient = createElectronRendererClient(window.studio);
+const rendererDependencies = createRendererDependencies(rendererClient);
+const rendererApplication = rendererDependencies.application;
+const rendererEvents = rendererDependencies.events;
+const rendererAssets = rendererDependencies.assets;
+const rendererHostCapabilities = rendererDependencies.hostCapabilities;
 let draftSaveTimer: number | undefined;
 let draftRevision = 0;
 let draftSaveInFlight = 0;
@@ -608,7 +618,7 @@ async function scanImageAssets(): Promise<void> {
   ui.imageAssetLibraryProgress = null;
   renderOverlay();
   try {
-    const scan = await window.studio.scanImageAssetLibrary();
+    const scan = await rendererAssets.scanImageAssetLibrary();
     ui.imageAssetLibraryDialog = { scan, busy: false, error: "", confirmCleanup: false, selectedPaths: scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -622,7 +632,7 @@ function loadImageAssetLibraryPreviews(): void {
   modalRoot.querySelectorAll<HTMLImageElement>("[data-asset-preview-source]").forEach((preview) => {
     const sourcePath = preview.dataset.assetPreviewSource;
     if (!sourcePath) return;
-    void window.studio.readImage(sourcePath).then((dataUrl) => {
+    void rendererAssets.readImage(sourcePath).then((dataUrl) => {
       if (!dataUrl || !preview.isConnected) return;
       preview.src = dataUrl;
       preview.classList.add("is-loaded");
@@ -654,7 +664,7 @@ function bindImageAssetLibraryDialog(): void {
     ui.imageAssetLibraryProgress = null;
     renderOverlay();
     try {
-      const result = await window.studio.organizeImageAssetLibrary();
+      const result = await rendererAssets.organizeImageAssetLibrary();
       ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "organize", formatAssetBytes, rendererApp.context.t) };
       showMessage(uiText(uiKeys.runtime.assetOrganized, { archived: result.archivedFiles, reorganized: result.reorganizedFiles, references: result.updatedReferences }));
     } catch (error) {
@@ -677,7 +687,7 @@ function bindImageAssetLibraryDialog(): void {
     ui.imageAssetLibraryProgress = null;
     renderOverlay();
     try {
-      const result = await window.studio.cleanupImageAssetLibrary(paths);
+      const result = await rendererAssets.cleanupImageAssetLibrary(paths);
       ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "cleanup", formatAssetBytes, rendererApp.context.t) };
       showMessage(uiText(uiKeys.runtime.assetCleaned, { files: result.cleanedFiles, bytes: formatAssetBytes(result.cleanedBytes) }));
     } catch (error) {
@@ -824,13 +834,13 @@ function bindInstallGuideDialog(): void {
       guide.downloadUrl,
       (settingsDraft ?? state.settings).hfMirrorEnabled
     );
-    const opened = await window.studio.openExternal(url);
+    const opened = await rendererHostCapabilities.openExternal(url);
     if (!opened) showMessage(uiText(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
   });
   modalRoot.querySelector("#open-install-directory")?.addEventListener("click", async (event) => {
     const directory = (event.currentTarget as HTMLButtonElement).dataset.installDirectory?.trim();
     if (!directory) return;
-    const opened = await window.studio.openDirectory(directory);
+    const opened = await rendererHostCapabilities.openDirectory(directory);
     if (!opened) showMessage(uiText(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" });
   });
   const dialog = modalRoot.querySelector<HTMLElement>(".install-guide-dialog");
@@ -906,8 +916,8 @@ async function editQueueTask(taskId: string): Promise<void> {
   try {
     if (task.taskType === "image-generation") {
       const imageDraft = imageEditDraftFromQueueTask(task, state.imageDraft);
-      setRendererState(await window.studio.saveImageDraft(imageDraft));
-      setRendererState(await window.studio.removeTask(taskId));
+      setRendererState(await rendererApplication.saveImageDraft(imageDraft));
+      setRendererState(await rendererApplication.removeTask(taskId));
       queueActionBusy = null;
       navigateToCreationMode("image-edit");
       showMessage(uiText(uiKeys.runtime.queueImageReturned));
@@ -916,7 +926,7 @@ async function editQueueTask(taskId: string): Promise<void> {
     const draft = draftFromQueueTask(task);
     if (!draft) return;
     await saveDraftImmediately(draft);
-    setRendererState(await window.studio.removeTask(taskId));
+    setRendererState(await rendererApplication.removeTask(taskId));
     queueActionBusy = null;
     navigateToCreationMode(draft.inputMode === "video" ? "video-extension" : "image-to-video");
     showMessage(uiText(uiKeys.runtime.queueReturned));
@@ -948,7 +958,7 @@ function settingsHaveUnsavedChanges(): boolean {
 
 function syncSettingsDirtyUi(): void {
   const dirty = settingsHaveUnsavedChanges();
-  const setSettingsDirty = window.studio.setSettingsDirty;
+  const setSettingsDirty = rendererApplication.setSettingsDirty;
   if (setSettingsDirty) void setSettingsDirty(dirty).catch(() => undefined);
   const actionBar = document.querySelector<HTMLElement>(".settings-heading-actions");
   actionBar?.classList.toggle("is-dirty", dirty || settingsSaving);
@@ -1040,6 +1050,7 @@ function settingsPage(): string {
 }
 
 function render(): void {
+  appElement.removeAttribute("aria-busy");
   rendererApp.render();
 }
 
@@ -1050,7 +1061,7 @@ function promptVramLabel(bytes: number | null): string {
 }
 
 async function promptExecutionDecision(): Promise<"gpu" | "cpu" | null> {
-  const preflight = await window.studio.preflightPromptModel();
+  const preflight = await rendererApplication.preflightPromptModel();
   if (!preflight.requiresCpuConfirmation) return "gpu";
   resolvePromptCpuConfirmation?.(false);
   rememberModalFocus();
@@ -1073,7 +1084,7 @@ async function enhancePromptWithConfirmation(request: EnhanceRequest): Promise<s
   if (!decision) {
     throw new DOMException(rendererApp.context.t(uiKeys.dialog.promptCpuCancelled), "AbortError");
   }
-  return window.studio.enhancePrompt({
+  return rendererApplication.enhancePrompt({
     ...request,
     allowCpuFallback: decision === "cpu" ? true : undefined
   });
@@ -1132,7 +1143,7 @@ let renderCoordinator: RenderCoordinator;
 let activeHistoryCleanup: RendererCleanup | null = null;
 const rendererApp = createRendererApp({
   root: appElement,
-  studio: window.studio,
+  studio: rendererClient,
   enhancePrompt: enhancePromptWithConfirmation,
   getState: () => state,
   getRoute: () => ({ page, creationMode, historyKind }),
@@ -1269,7 +1280,7 @@ const historyContextMenus = createHistoryContextMenus(rendererApp.context, {
 });
 const appLogContextMenu = createAppLogContextMenu(rendererApp.context, clearAppLogScreen);
 const environmentRefreshCoordinator = new EnvironmentRefreshCoordinator({
-  scan: (settings, scope) => window.studio.scanEnvironment(settings, scope),
+  scan: (settings, scope) => rendererApplication.scanEnvironment(settings, scope),
   setScanning: (value) => {
     environmentScanning = value;
   },
@@ -1291,8 +1302,8 @@ const environmentRefreshCoordinator = new EnvironmentRefreshCoordinator({
   reportScan: (reason) => reportUserAction("scan-environment", { reason })
 });
 const customNodeInstallManager = new CustomNodeInstallQueue({
-  install: (nodeId, settings, mode) => window.studio.installCustomNode(nodeId, settings, mode),
-  restart: (settings) => window.studio.restartLocalService("comfy", settings),
+  install: (nodeId, settings, mode) => rendererApplication.installCustomNode(nodeId, settings, mode),
+  restart: (settings) => rendererApplication.restartLocalService("comfy", settings),
   scan: (settings) => environmentRefreshCoordinator.refresh(settings, "dependency-change"),
   nodeName: (nodeId) => environmentScan?.customNodes.find((node) => node.id === nodeId)?.name ?? nodeId,
   getLog: (nodeId) => customNodeLogs[nodeId] ?? "",
@@ -1338,7 +1349,7 @@ const customNodeInstallManager = new CustomNodeInstallQueue({
 });
 initializeRenderCoordinator();
 const queueLiveStatus = createQueueLiveStatus({
-  studio: window.studio,
+  studio: rendererApplication,
   t: rendererApp.context.t,
   getState: () => state,
   getPage: () => page,
@@ -1438,10 +1449,10 @@ function showMessage(
   if (notificationShouldPreserveError(ui.flashNotification, kind)) {
     if (kind === "info") return;
     ui.flashNotificationQueue.push(notification);
-    void window.studio.reportNotification(kind, message).catch(() => undefined);
+    void rendererApplication.reportNotification(kind, message).catch(() => undefined);
     return;
   }
-  void window.studio.reportNotification(kind, message).catch(() => undefined);
+  void rendererApplication.reportNotification(kind, message).catch(() => undefined);
   if (kind === "task-complete" || kind === "queue-complete") {
     ui.flashNotificationQueue.push(notification);
     if (!ui.flashNotification) displayNextNotification();
@@ -1500,7 +1511,7 @@ async function pollAppLogs(): Promise<void> {
   ) return;
   appLogPollingInFlight = true;
   try {
-    const snapshot = await window.studio.readAppLogs(2000);
+    const snapshot = await rendererApplication.readAppLogs(2000);
     if (snapshot.text !== appLogs?.text) applyAppLogSnapshot(snapshot);
   } catch {
     // The panel keeps the last readable log while the main process is busy.
@@ -1529,7 +1540,7 @@ async function releasePromptModelFromUi(): Promise<void> {
   promptReleasing = true;
   render();
   try {
-    const result = await window.studio.releasePromptModel();
+    const result = await rendererApplication.releasePromptModel();
     if (!result.ok) throw new Error(result.message);
     promptRuntimeLoaded = false;
     showMessage(result.message);
@@ -1550,7 +1561,7 @@ async function startPromptModelFromUi(): Promise<void> {
   try {
     const decision = await promptExecutionDecision();
     if (!decision) return;
-    const result = await window.studio.startPromptModel(decision === "cpu");
+    const result = await rendererApplication.startPromptModel(decision === "cpu");
     if (!result.ok) throw new Error(result.message);
     promptRuntimeLoaded = true;
     showMessage(result.message);
@@ -1930,7 +1941,7 @@ function bindWindowCloseDialog(): void {
     ui.windowCloseResponseBusy = true;
     renderOverlay();
     try {
-      await window.studio.respondWindowClose(response);
+      await rendererHostCapabilities.respondWindowClose(response);
       if (response === "cancel") {
         ui.pendingWindowCloseRequest = null;
         ui.windowCloseResponseBusy = false;
@@ -1995,7 +2006,7 @@ function scheduleDraftSave(): void {
     const draftToSave = state.draft;
     draftSaveInFlight += 1;
     try {
-      const savedState = await window.studio.saveDraft(draftToSave, {
+      const savedState = await rendererApplication.saveDraft(draftToSave, {
         imageToVideoDraft: state.imageToVideoDraft,
         videoExtensionDraft: state.videoExtensionDraft
       });
@@ -2022,7 +2033,7 @@ function scheduleImageDraftSave(): void {
     const draftToSave = state.imageDraft;
     imageDraftSaveInFlight += 1;
     try {
-      const savedState = await window.studio.saveImageDraft(draftToSave);
+      const savedState = await rendererApplication.saveImageDraft(draftToSave);
       if (revision === imageDraftRevision) {
         setRendererState({
           ...preserveLocalCreationDrafts(savedState, state),
@@ -2043,7 +2054,7 @@ async function ensureDraftWorkflowCapability(draft: Draft): Promise<void> {
     const workflowModelId = bundledWorkflowModelId(draft);
     const key = bundledWorkflowKey(workflowModelId, draft.inputMode);
     const bundled = bundledWorkflows[key] ??
-      await window.studio.getBundledWorkflow(workflowModelId, draft.inputMode);
+      await rendererApplication.getBundledWorkflow(workflowModelId, draft.inputMode);
     if (bundled) {
       bundledWorkflows[key] = bundled;
       workflowCapabilities[bundled.path] = {
@@ -2052,7 +2063,7 @@ async function ensureDraftWorkflowCapability(draft: Draft): Promise<void> {
       };
     }
     if (draft.workflowPath && draft.workflowPath !== bundled?.path) {
-      const capability = await window.studio.inspectWorkflow(
+      const capability = await rendererApplication.inspectWorkflow(
         draft.workflowPath,
         draft.modelId
       );
@@ -2064,7 +2075,7 @@ async function ensureDraftWorkflowCapability(draft: Draft): Promise<void> {
       }
     }
   } catch (error) {
-    await window.studio.reportRendererError(
+    await rendererApplication.reportRendererError(
       error instanceof Error ? error.message : String(error),
       { source: "draft-workflow-capability" }
     ).catch(() => undefined);
@@ -2081,7 +2092,7 @@ async function saveDraftImmediately(draft: Draft): Promise<void> {
   draftSaveInFlight += 1;
   try {
     const [savedState] = await Promise.all([
-      window.studio.saveDraft(state.draft, {
+      rendererApplication.saveDraft(state.draft, {
         imageToVideoDraft: state.imageToVideoDraft,
         videoExtensionDraft: state.videoExtensionDraft
       }),
@@ -2134,7 +2145,7 @@ async function loadImageEditPreviews(): Promise<void> {
     );
     if (!image || !picture.absolutePath) return;
     const previewPath = picture.markup?.renderedPath || imageReferenceInputPath(picture);
-    const dataUrl = await window.studio.readImage(previewPath).catch(() => null);
+    const dataUrl = await rendererAssets.readImage(previewPath).catch(() => null);
     if (!dataUrl || !image.isConnected) return;
     await new Promise<void>((resolve) => {
       image.addEventListener("load", () => {
@@ -2197,9 +2208,9 @@ async function editImagePictureMarkup(
   try {
     const { openImageMarkupEditor } = await import("./image-markup-editor");
     const [sourceDataUrl, existingDocument] = await Promise.all([
-      window.studio.readImage(picture.absolutePath),
+      rendererAssets.readImage(picture.absolutePath),
       (maskMode ? picture.mask?.documentPath : picture.markup?.documentPath)
-        ? window.studio.readImageMarkup((maskMode ? picture.mask?.documentPath : picture.markup?.documentPath)!)
+        ? rendererAssets.readImageMarkup((maskMode ? picture.mask?.documentPath : picture.markup?.documentPath)!)
         : Promise.resolve(null)
     ]);
     if (!sourceDataUrl) throw new Error(uiText(uiKeys.runtime.readOriginalImageFailed));
@@ -2216,7 +2227,7 @@ async function editImagePictureMarkup(
     let crop = picture.crop;
     if (cropChanged) {
       crop = result.crop
-        ? (await window.studio.saveImageCrop({
+        ? (await rendererAssets.saveImageCrop({
             pictureId: picture.id,
             sourcePath: picture.absolutePath,
             crop: result.crop,
@@ -2229,7 +2240,7 @@ async function editImagePictureMarkup(
     const height = result.crop?.height ?? picture.crop?.sourceHeight ?? picture.height;
     if (maskMode) {
       const mask = result.objectCount > 0
-        ? await window.studio.saveImageMask({
+        ? await rendererAssets.saveImageMask({
             pictureId: picture.id,
             sourcePath: picture.absolutePath,
             document: result.document,
@@ -2249,7 +2260,7 @@ async function editImagePictureMarkup(
       return;
     }
     const markup = result.objectCount > 0
-      ? await window.studio.saveImageMarkup({
+      ? await rendererAssets.saveImageMarkup({
           pictureId: picture.id,
           sourcePath: picture.absolutePath,
           document: result.document,
@@ -2731,7 +2742,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
         const version = project?.versions.find((item) => item.id === versionId);
         if (project && version) await historyActions.continueImageToVideo(project, version);
       },
-      updateHistoryMetadata: (assetId, patch) => window.studio.updateHistoryMetadata(assetId, patch)
+      updateHistoryMetadata: (assetId, patch) => rendererApplication.updateHistoryMetadata(assetId, patch)
     },
     filter: {
       getFilter: () => ui.historyFilter,
@@ -2749,7 +2760,7 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
       },
       escapeHtml,
       icon,
-      updateHistoryMetadata: (assetId, patch) => window.studio.updateHistoryMetadata(assetId, patch)
+      updateHistoryMetadata: (assetId, patch) => rendererApplication.updateHistoryMetadata(assetId, patch)
     },
     historyLayout: historyLayoutController.getLayout(),
     isImageHistoryDetail: page === "image-history-detail",
@@ -2819,10 +2830,10 @@ const settingsSaveCoordinator = new SettingsSaveCoordinator({
   loadLocale: async (locale) => {
     await loadUiLocale(locale);
   },
-  saveSettings: (settings, mode) => window.studio.saveSettings(settings, mode),
-  saveImageDraft: (draft) => window.studio.saveImageDraft(draft),
-  saveDraft: (draft) => window.studio.saveDraft(draft),
-  getBundledWorkflow: (modelId, inputMode) => window.studio.getBundledWorkflow(modelId, inputMode),
+  saveSettings: (settings, mode) => rendererApplication.saveSettings(settings, mode),
+  saveImageDraft: (draft) => rendererApplication.saveImageDraft(draft),
+  saveDraft: (draft) => rendererApplication.saveDraft(draft),
+  getBundledWorkflow: (modelId, inputMode) => rendererApplication.getBundledWorkflow(modelId, inputMode),
   setState: setRendererState,
   clearSettingsDraft: () => {
     settingsDraft = null;
@@ -2865,7 +2876,7 @@ async function loadAppLogs(): Promise<void> {
   appLogsError = "";
   render();
   try {
-    applyAppLogSnapshot(await window.studio.readAppLogs(2000));
+    applyAppLogSnapshot(await rendererApplication.readAppLogs(2000));
   } catch (error) {
     appLogsError = error instanceof Error ? error.message : String(error);
   } finally {
@@ -3010,7 +3021,8 @@ function bindSettings(): void {
 }
 
 registerRendererEvents({
-  studio: window.studio,
+  events: rendererEvents,
+  application: rendererApplication,
   t: rendererApp.context.t,
   getState: () => state,
   getComfyRuntimeState: () => comfyRuntime,
@@ -3083,7 +3095,7 @@ registerRendererEvents({
 });
 
 bootstrapRenderer({
-  studio: window.studio,
+  studio: rendererApplication,
   setState: setRendererState,
   setComfyRuntimeState: (runtime) => {
     comfyRuntime = runtime;
@@ -3098,6 +3110,11 @@ bootstrapRenderer({
   getState: () => state,
   setAppVersion: (version) => {
     ui.appVersion = version;
+  },
+  showStartupFailure: (message) => {
+    const status = appElement.querySelector<HTMLElement>("[data-startup-message]");
+    if (status) status.textContent = message;
+    appElement.setAttribute("aria-busy", "false");
   },
   refreshEnvironment: (settings) => runEnvironmentScan(settings, "startup"),
   bundledWorkflows,

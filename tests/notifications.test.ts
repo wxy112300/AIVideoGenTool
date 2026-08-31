@@ -176,8 +176,10 @@ describe("renderer notifications", () => {
     } as unknown as AppApi;
     const notify = vi.fn();
     const requestRender = vi.fn();
+    const eventClient = studio;
     const cleanup = registerRendererEvents({
-      studio,
+      events: eventClient,
+      application: eventClient,
       t: (key, params) => params?.title ? `${key}:${params.title}` : key,
       getState: () => state,
       getComfyRuntimeState: () => ({

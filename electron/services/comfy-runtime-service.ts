@@ -5,9 +5,9 @@ import {
   comfyUiBundledFrontendArgs,
   comfyUiMemoryArgs,
   comfyUiRuntimeProfileForSettings
-} from "./comfy-runtime-policy.js";
+} from "../../src/infrastructure/comfy-runtime-policy.js";
 import { localEndpoint } from "./local-service-process.js";
-import { getApplicationLogger } from "./app-logger.js";
+import { getApplicationLogger } from "../../src/infrastructure/app-logger.js";
 
 const appLogger = getApplicationLogger();
 const ownedComfyProcessIds = new Set<number>();

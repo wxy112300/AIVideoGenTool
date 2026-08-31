@@ -1,3 +1,4 @@
+import { extractH3MicroFpvIntent } from "./h3-scale-preservation.js";
 const cameraMentionPattern = /(?:\bcameras?\b|\bcamcorder\b|\blens\b|\bPOV\b|\bpoint[- ]of[- ]view\b|\bviewpoint\b|\b(?:shot|framing|composition|perspective)\b|\b(?:low|high|eye[- ]level|overhead|worm'?s[- ]eye|bird'?s[- ]eye)\s*[- ]?(?:angle|shot|framing)\b|镜头|相机|摄像机|摄影机|机位|视角|低机位|高机位|低角度镜头|高角度镜头|仰视镜头|俯视镜头)/iu;
 const physicalCameraPattern = /(?:\b(?:handheld|digital|film|video|phone|smartphone|security|surveillance|web|webcam|visible|physical)\s+camera\b|\b(?:camera\s+device|camera\s+operator|camera\s+rig|camera\s+lens)\b|\b(?:CCTV)\b|\b(?:a|an)\s+(?:handheld\s+|digital\s+|film\s+|video\s+|phone\s+|security\s+|surveillance\s+)?camera\b[^.!?;\n]{0,45}\b(?:in|on|near|beside|behind|inside|outside|visible|background|shot|frame)\b|(?:相机|摄像机|摄影机)(?:设备|机身|镜头|支架)|镜头盖)/iu;
 const physicalCameraActionPattern = /(?:\b(?:hold|holds|held|holding|carry|carries|carried|carrying|use|uses|using|pick(?:s|ed)?\s+up|place|places|placed|mount|mounts|mounted|set|sets|setting|point|points|pointing|aim|aims|aiming|film|films|filming|record|records|recording)\b[^.!?;\n]{0,45}\b(?:a|an|the|this|that|her|his|their|my|your)?\s*camera\b|\bcamera\b[^.!?;\n]{0,45}\b(?:sits?|lies?|rests?|hangs?|is\s+(?:visible|mounted|placed)|appears?|on\s+a\s+tripod)\b|(?:手持|拿着|拿起|携带|使用|放置|架设|安装|可见于画面)(?:[^。！？;\n]{0,35})(?:相机|摄像机|摄影机|camera))/iu;
@@ -46,6 +47,14 @@ const motionPatterns = [
     { kind: "static", pattern: /(?:\bstatic\b|\blocked[- ]off\b|\bstationary\b|\bdoes not move\b|固定机位|固定镜头|静止机位|锁定机位)/iu },
     { kind: "generic", pattern: /(?:\b(?:camera|lens|viewpoint)\b[^.!?;\n]{0,80}\b(?:move|moves|moving|rotate|rotates|rotating|shift|shifts|sweep|sweeps|sweeping)\b|(?:镜头|相机|摄像机|摄影机)[^。！？;\n]{0,50}(?:移动|运动|旋转|转动|扫过))/iu }
 ];
+const rotationVerbPattern = /(?:\b(?:rotate|rotates|rotating|revolve|revolves|revolving|orbit|orbits|orbiting|circle|circles|circling|arc|arcs|arcing|rotation|revolution)\b[^.!?;\n]{0,90}\baround\b|\b(?:orbit|orbiting|orbital|revolution|revolve|revolving|circle|circling|rotation)\b|环绕|围绕|绕着|旋转|转动|弧线)/iu;
+const implicitViewpointRotationPattern = /(?:^\s*(?:rotate|rotates|rotating|revolve|revolves|revolving|orbit|orbits|orbiting|circle|circles|circling)\b[^.!?;\n]{0,100}\baround\s+(?:(?:the|a|an)\s+)?(?:tiny\s+|small\s+|little\s+)?(?:human|person|people|girl|boy|woman|man|subject|character)(?![A-Za-z])|^\s*(?:旋转|环绕|围绕|绕着)[^。！？;\n]{0,70}(?:人类|人物|角色|主体|女孩|男孩|女人|男人))/iu;
+const explicitRotationDegreesPattern = /(\d{1,3}(?:\.\d+)?)[-\s]*(?:degrees?|degree|deg|°|度)/iu;
+const namedRotationPatterns = [
+    { degrees: 180, pattern: /(?:\bhalf[- ]?(?:orbit|circle|turn|rotation)\b|\bsemicircle\b|\bhalfway\s+around\b|半圈|半圆)/iu },
+    { degrees: 90, pattern: /(?:\bquarter[- ]?(?:orbit|circle|turn|rotation)\b|\bquarter[- ]circle\b|四分之一圈|四分之一圆)/iu },
+    { degrees: 360, pattern: /(?:\b(?:full|complete|entire)[- ]?(?:orbit|circle|turn|rotation)\b|\bfull[- ]circle\b|整圈|一整圈|完整环绕)/iu }
+];
 const allMotionKinds = new Set(motionPatterns.map(({ kind }) => kind));
 function splitPromptClauses(promptText) {
     return promptText
@@ -53,6 +62,9 @@ function splitPromptClauses(promptText) {
         .split(/(?<=[.!?。！？；;])\s+|\n+/u)
         .map((clause) => clause.trim())
         .filter(Boolean);
+}
+function combinedCameraText(promptText, supplementalText) {
+    return [promptText, supplementalText].map((value) => value.trim()).filter(Boolean).join("\n");
 }
 function motionKindsFor(clause) {
     const kinds = motionPatterns
@@ -68,11 +80,29 @@ function cameraAngleKindsFor(clause) {
         .filter(({ pattern }) => pattern.test(clause))
         .map(({ kind }) => kind);
 }
+function rotationDegreesFor(clause) {
+    if (!rotationVerbPattern.test(clause))
+        return [];
+    const degrees = [];
+    const numericPattern = new RegExp(explicitRotationDegreesPattern.source, "giu");
+    for (const match of clause.matchAll(numericPattern)) {
+        const value = Number(match[1]);
+        if (Number.isFinite(value) && value > 0 && value <= 720)
+            degrees.push(value);
+    }
+    if (!degrees.length) {
+        for (const candidate of namedRotationPatterns) {
+            if (candidate.pattern.test(clause))
+                degrees.push(candidate.degrees);
+        }
+    }
+    return [...new Set(degrees)];
+}
 function cameraTargetsFor(clause) {
     const targets = [];
     const englishTarget = /\b(?:around|orbit(?:s|ing)?\s+around|circle(?:s|ing)?\s+around|revolve(?:s|ing)?\s+around)\s+(?:(?:the|a|an)\s+)?([^,.;!?]+?)(?=\s+(?:showing|revealing|while|as|from|looking|and)\b|[,.;!?]|$)/iu.exec(clause)?.[1]?.trim();
     if (englishTarget)
-        targets.push(englishTarget);
+        targets.push(englishTarget.replace(/\s*\d{1,3}(?:\.\d+)?\s*(?:degrees?|degree|deg|°|度)\s*$/iu, "").trim());
     const followMatch = /\b(?:follow(?:s|ing)?|track(?:s|ing)?)\s+(?:(?:the|a|an)\s+)?([^,.;!?]+?)(?=\s+(?:while|as|from|toward|towards|and|at|with|continuously|steadily|smoothly)\b|[,.;!?]|$)/iu.exec(clause)?.[1]?.trim();
     const followTarget = followMatch && !/^(?:shot|movement|path)\b/iu.test(followMatch)
         ? followMatch
@@ -84,7 +114,7 @@ function cameraTargetsFor(clause) {
         targets.push(chineseTarget);
     return [...new Set(targets)].slice(0, 4);
 }
-function isViewpointCameraClause(clause) {
+function isViewpointCameraClause(clause, hasMicroFpv = false) {
     const hasMotion = cameraMotionPattern.test(clause);
     const hasViewpoint = viewpointPattern.test(clause);
     const looksAtViewCamera = lookAtViewCameraPattern.test(clause);
@@ -95,6 +125,8 @@ function isViewpointCameraClause(clause) {
         return false;
     if (shotMarkerOnly)
         return false;
+    if (hasMicroFpv && !hasPhysicalOnlyContext)
+        return true;
     if (looksAtViewCamera || hasViewpoint || (approachesViewCameraPattern.test(clause) && !hasPhysicalOnlyContext))
         return true;
     if (!hasMotion && !hasShotVocabulary)
@@ -103,26 +135,36 @@ function isViewpointCameraClause(clause) {
         return false;
     return true;
 }
-export function extractH3CameraIntent(promptText) {
-    const clauses = splitPromptClauses(promptText);
+export function extractH3CameraIntent(promptText, supplementalText = "") {
+    const text = combinedCameraText(promptText, supplementalText);
+    const clauses = splitPromptClauses(text);
+    const documentMicroFpv = extractH3MicroFpvIntent(text);
     const sourceClauses = [];
     const physicalCameraClauses = [];
     const motionKinds = new Set();
     const angleKinds = new Set();
     const angleClauses = [];
     const targetAnchors = new Set();
+    const rotationDegrees = new Set();
+    const rotationClauses = [];
     let hasPhysicalCamera = false;
+    let microFpvMetaphor = false;
     for (const clause of clauses) {
-        if (!cameraMentionPattern.test(clause))
+        const clauseMicroFpv = extractH3MicroFpvIntent(clause).viewpoint;
+        const implicitCameraRotation = implicitViewpointRotationPattern.test(clause);
+        const microFpv = clauseMicroFpv || (documentMicroFpv.detected && implicitViewpointRotationPattern.test(clause));
+        if (!cameraMentionPattern.test(clause) && !microFpv && !implicitCameraRotation)
             continue;
         const physical = physicalCameraPattern.test(clause) || physicalCameraActionPattern.test(clause);
-        const viewpoint = isViewpointCameraClause(clause);
+        const viewpoint = isViewpointCameraClause(clause, microFpv || implicitCameraRotation);
         if (physical) {
             hasPhysicalCamera = true;
             physicalCameraClauses.push(clause);
         }
         if (!viewpoint)
             continue;
+        if (microFpv)
+            microFpvMetaphor = true;
         sourceClauses.push(clause);
         for (const kind of motionKindsFor(clause))
             motionKinds.add(kind);
@@ -133,10 +175,15 @@ export function extractH3CameraIntent(promptText) {
             angleClauses.push(clause);
         for (const target of cameraTargetsFor(clause))
             targetAnchors.add(target);
+        const clauseRotations = rotationDegreesFor(clause);
+        for (const degree of clauseRotations)
+            rotationDegrees.add(degree);
+        if (clauseRotations.length)
+            rotationClauses.push(clause);
     }
     const normalizedMotionKinds = [...motionKinds].filter((kind) => allMotionKinds.has(kind));
     const hasViewpointCamera = sourceClauses.length > 0;
-    const requiresViewpoint = hasViewpointCamera && sourceClauses.some((clause) => viewpointPattern.test(clause) || lookAtViewCameraPattern.test(clause) || approachesViewCameraPattern.test(clause) || spatialSignalPattern.test(clause) || cameraAngleKindsFor(clause).length > 0);
+    const requiresViewpoint = hasViewpointCamera && sourceClauses.some((clause) => viewpointPattern.test(clause) || lookAtViewCameraPattern.test(clause) || approachesViewCameraPattern.test(clause) || extractH3MicroFpvIntent(clause).viewpoint || implicitViewpointRotationPattern.test(clause) || spatialSignalPattern.test(clause) || cameraAngleKindsFor(clause).length > 0);
     const requiresSpatial = hasViewpointCamera && sourceClauses.some((clause) => spatialSignalPattern.test(clause));
     return {
         hasViewpointCamera,
@@ -147,6 +194,9 @@ export function extractH3CameraIntent(promptText) {
         angleKinds: [...angleKinds],
         angleClauses: [...new Set(angleClauses)].slice(0, 6),
         targetAnchors: [...targetAnchors],
+        rotationDegrees: [...rotationDegrees],
+        rotationClauses: [...new Set(rotationClauses)].slice(0, 6),
+        microFpvMetaphor,
         requiresViewpoint,
         requiresSpatial,
         requiresTarget: targetAnchors.size > 0,
@@ -168,6 +218,13 @@ function cameraIntentInstructionLines(intent) {
     if (intent.motionKinds.includes("track")) {
         lines.push("Tracking lock: when tracking or following is explicit, the same viewpoint camera follows the named subject while preserving the requested angle and primary trajectory; do not replace camera tracking with subject rotation or a new shot.");
     }
+    if (intent.microFpvMetaphor) {
+        lines.push("Micro-FPV metaphor lock: ant-size, ant's view, insect-eye, and similar wording describes an invisible image-forming viewpoint at tiny world scale, not a literal ant, insect, drone, or on-screen camera. Infer height and clearance from the supplied reference and nearby surface geometry, keep the viewpoint close to that support surface and roughly at the tiny subject's own height, and do not raise it to normal human eye level.");
+        lines.push("Micro-FPV route lock: make the camera travel continuously from its start through visible surface landmarks, passable gaps, obstacles, turns, and motivated course corrections to the destination. Keep the tiny subject's own route from A to B spatially linked to the camera; do not teleport, pass through solid geometry, or turn every route phase into a new shot.");
+    }
+    if (intent.rotationDegrees.length) {
+        lines.push(`Exact rotation-angle lock: preserve the user's requested sweep exactly (${intent.rotationDegrees.map((degrees) => `${degrees} degrees`).join(" and ")}). A 180-degree request is one half orbit/semicircle and must stop at that endpoint; never expand a partial orbit into a full 360-degree revolution or add an extra lap.`);
+    }
     if (intent.sourceClauses.length) {
         lines.push(`Explicit viewpoint-camera wording to preserve in meaning:\n${intent.sourceClauses.map((clause) => `- ${clause}`).join("\n")}`);
     }
@@ -179,8 +236,8 @@ function cameraIntentInstructionLines(intent) {
     }
     return lines;
 }
-export function h3CameraIntentInstruction(promptText) {
-    const intent = extractH3CameraIntent(promptText);
+export function h3CameraIntentInstruction(promptText, supplementalText = "") {
+    const intent = extractH3CameraIntent(promptText, supplementalText);
     if (!intent.hasViewpointCamera && !intent.hasPhysicalCamera)
         return "";
     return cameraIntentInstructionLines(intent).join("\n");
@@ -211,6 +268,58 @@ function outputHasPositiveCameraAngle(output, kind) {
 }
 function outputHasCameraAngle(output, kind) {
     return outputHasPositiveCameraAngle(output, kind);
+}
+function isNegatedRotation(output, index) {
+    const context = output.slice(Math.max(0, index - 55), index);
+    return /(?:\b(?:not|never|without|avoid|do\s+not|no|rather\s+than|instead\s+of)\b|不得|不要|避免|禁止)[^.!?;\n]{0,40}$/iu.test(context);
+}
+function outputRotationDegrees(output) {
+    const degrees = [];
+    const numericPattern = new RegExp(explicitRotationDegreesPattern.source, "giu");
+    for (const match of output.matchAll(numericPattern)) {
+        const value = Number(match[1]);
+        const index = match.index ?? 0;
+        const context = output.slice(Math.max(0, index - 110), Math.min(output.length, index + 120));
+        if (!Number.isFinite(value) || !rotationVerbPattern.test(context) || isNegatedRotation(output, index))
+            continue;
+        degrees.push(value);
+    }
+    return [...new Set(degrees)];
+}
+function outputHasNamedRotation(output, degrees) {
+    const candidate = namedRotationPatterns.find(({ degrees: candidateDegrees }) => candidateDegrees === degrees);
+    if (!candidate)
+        return false;
+    const pattern = new RegExp(candidate.pattern.source, `${candidate.pattern.flags.replace("g", "")}g`);
+    for (const match of output.matchAll(pattern)) {
+        const index = match.index ?? 0;
+        const context = output.slice(Math.max(0, index - 110), Math.min(output.length, index + 120));
+        if (!rotationVerbPattern.test(context) || isNegatedRotation(output, index))
+            continue;
+        return true;
+    }
+    return false;
+}
+function outputHasRequestedRotation(output, degrees) {
+    if (outputRotationDegrees(output).some((value) => Math.abs(value - degrees) < 0.01))
+        return true;
+    return outputHasNamedRotation(output, degrees);
+}
+function replaceConflictingRotationDegrees(output, expectedDegrees) {
+    if (expectedDegrees.length !== 1)
+        return output;
+    const expected = expectedDegrees[0];
+    if (expected === undefined)
+        return output;
+    const pattern = new RegExp(explicitRotationDegreesPattern.source, "giu");
+    return output.replace(pattern, (full, raw, offset, whole) => {
+        const value = Number(raw);
+        const context = whole.slice(Math.max(0, offset - 110), Math.min(whole.length, offset + 120));
+        if (!Number.isFinite(value) || Math.abs(value - expected) < 0.01 || !rotationVerbPattern.test(context) || isNegatedRotation(whole, offset)) {
+            return full;
+        }
+        return `${expected} degrees`;
+    });
 }
 function outputHasViewpoint(output) {
     return viewpointPattern.test(output) || /(?:\b(?:camera|lens|viewpoint|POV)\b[^.!?;\n]{0,90}\b(?:position|starts?|begins?|looks?|faces?|shows?|views?|captures?|records?|films?|shoots?)\b|\b(?:low|high|eye[- ]level|overhead|worm's[- ]eye)\s*[- ]?(?:angle|shot|framing)\b|\b(?:framing|composition|perspective|toward|towards)\s+(?:the\s+)?(?:viewer|lens|camera)\b|(?:镜头|机位|视角)[^。！？;\n]{0,70}(?:位于|从|看向|朝向|呈现|构图|画面))/iu.test(output);
@@ -301,6 +410,10 @@ export function auditH3CameraIntent(sourcePrompt, generatedPrompt) {
     if (intent.requiresAngle && (intent.angleKinds.some((kind) => !outputAngleKinds.includes(kind)) || outputAngleKinds.some((kind) => !intent.angleKinds.includes(kind)))) {
         missing.push("camera-angle");
     }
+    const outputDegrees = outputRotationDegrees(generatedPrompt);
+    if (intent.rotationDegrees.length && (intent.rotationDegrees.some((degrees) => !outputHasRequestedRotation(generatedPrompt, degrees)) || outputDegrees.some((degrees) => !intent.rotationDegrees.some((expected) => Math.abs(expected - degrees) < 0.01)))) {
+        missing.push("rotation-angle");
+    }
     return {
         required: true,
         passed: missing.length === 0,
@@ -309,24 +422,31 @@ export function auditH3CameraIntent(sourcePrompt, generatedPrompt) {
     };
 }
 function cameraFallbackSentence(intent) {
-    return `The viewpoint camera must preserve this explicit user direction in the shot, keeping its camera angle and primary trajectory for the entire shot without switching to another viewpoint: ${intent.sourceClauses.join(" ")}`;
+    const rotationLock = intent.rotationDegrees.length
+        ? ` The camera's orbit sweep is exact: ${intent.rotationDegrees.map((degrees) => `${degrees} degrees`).join(" and ")} only, then it stops at the requested endpoint; do not continue around the subject.`
+        : "";
+    const microLock = intent.microFpvMetaphor
+        ? " The micro-scale wording is a viewpoint metaphor: keep the invisible camera close to the support surface at the tiny subject's height and do not render an ant, insect, drone, or physical camera."
+        : "";
+    return `The viewpoint camera must preserve this explicit user direction in the shot, keeping its camera angle and primary trajectory for the entire shot without switching to another viewpoint: ${intent.sourceClauses.join(" ")}${rotationLock}${microLock}`;
 }
 export function preserveH3CameraIntentInOutput(generatedPrompt, sourcePrompt, mode) {
     const intent = extractH3CameraIntent(sourcePrompt);
     if (!intent.hasViewpointCamera)
         return generatedPrompt;
-    if (auditH3CameraIntent(sourcePrompt, generatedPrompt).passed)
-        return generatedPrompt;
+    const correctedPrompt = replaceConflictingRotationDegrees(generatedPrompt, intent.rotationDegrees);
+    if (auditH3CameraIntent(sourcePrompt, correctedPrompt).passed)
+        return correctedPrompt;
     const section = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
     const fallback = cameraFallbackSentence(intent);
     const sectionPattern = new RegExp(`^[*# \\t]*${section}[ \\t]*:`, "imu");
-    const sectionMatch = sectionPattern.exec(generatedPrompt);
+    const sectionMatch = sectionPattern.exec(correctedPrompt);
     if (!sectionMatch)
-        return `${generatedPrompt.trim()}\n\n${section}: [Shot 1] ${fallback}`.trim();
+        return `${correctedPrompt.trim()}\n\n${section}: [Shot 1] ${fallback}`.trim();
     const shotPattern = new RegExp(`(^[*# \\t]*${section}[ \\t]*:\\s*)(\\[Shot\\s+1\\])`, "imu");
-    if (shotPattern.test(generatedPrompt)) {
-        return generatedPrompt.replace(shotPattern, `$1$2 ${fallback} `);
+    if (shotPattern.test(correctedPrompt)) {
+        return correctedPrompt.replace(shotPattern, `$1$2 ${fallback} `);
     }
     const insertAt = sectionMatch.index + sectionMatch[0].length;
-    return `${generatedPrompt.slice(0, insertAt)} ${fallback}${generatedPrompt.slice(insertAt)}`.trim();
+    return `${correctedPrompt.slice(0, insertAt)} ${fallback}${correctedPrompt.slice(insertAt)}`.trim();
 }

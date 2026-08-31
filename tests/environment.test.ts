@@ -44,7 +44,7 @@ import {
 import {
   comfyUiSettingsForPromptRuntime,
   comfyUiSettingsForQueueTask
-} from "../electron/services/comfy-runtime-policy.js";
+} from "../src/infrastructure/comfy-runtime-policy.js";
 import {
   birefnetRequiredNodeTypes,
   hidreamO1RequiredNodeTypes,

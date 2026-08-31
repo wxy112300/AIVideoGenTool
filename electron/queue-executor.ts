@@ -1,8 +1,7 @@
 import type { AppState, H3MemoryRuntimeEvidence, H3VideoVaeBackend, HistoryFile, ImageGenerationQueueTask, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview } from "../src/types.js";
 import {
   isImageGenerationQueueTask,
-  nextQueueWaitingTask,
-  queuePauseBoundaryAfterTaskCompletion
+  nextQueueWaitingTask
 } from "../src/core/queue.js";
 import { isVideoOutputFilename } from "../src/core/comfy-output.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
@@ -14,34 +13,30 @@ import {
   isMiniMaxH3Model,
   isMiniMaxH3R2vModel
 } from "../src/core/workflow.js";
-import { hashImageFile } from "./services/image-asset-library.js";
 import {
-  freeMemory,
   type PreviewFrameMetadata,
   submitImageTask,
   submitTask,
   TaskStalledError,
   waitForTask
 } from "./services/comfy-ui.js";
-import { finalizeExtensionOutput } from "./services/extension-media.js";
-import {
-  cleanupNativeSeedVr2Intermediates,
-  executeNativeSeedVr2Upscale
-} from "./services/seedvr2-upscale.js";
+import { executeNativeSeedVr2Upscale } from "./services/seedvr2-upscale.js";
 import { startTaskPerformanceMonitor, type TaskPerformanceMonitor } from "./services/performance.js";
 import { startAdaptiveVramWatchdog, type VramWatchdogMonitor } from "./services/vram-watchdog.js";
-import { safeLogErrorMessage, type AppLogger } from "./services/app-logger.js";
+import { safeLogErrorMessage, type AppLogger } from "../src/infrastructure/app-logger.js";
 import { parseH3MemoryAppliedPlan } from "./services/comfy-log-bridge.js";
-import type { JsonStore } from "./store.js";
-import { persistImageHistoryResult, persistVideoHistoryResult } from "./queue-history.js";
-import { recoverQueueFailure } from "./queue-recovery.js";
+import type { StateRepository } from "./ports/state-repository.js";
 import type { QueueWorkerController } from "./queue-worker.js";
+import {
+  QueueExecutionSideEffects,
+  type QueueExecutionSideEffectsDependencies,
+  type QueueIsolationReason
+} from "./services/queue-execution-side-effects.js";
 
 const performanceLogIntervalMs = 30_000;
-type QueueIsolationReason = "lora" | "model-change" | "always";
 
 export interface QueueExecutorDependencies {
-  store: JsonStore;
+  store: StateRepository;
   logger: AppLogger;
   worker: QueueWorkerController;
   sendState(state: AppState): void;
@@ -61,6 +56,7 @@ export interface QueueExecutorDependencies {
   settingsForTask(task: QueueTask | undefined, settings: Settings): Settings;
   errorMeta(error: unknown): Record<string, unknown>;
   taskStageStartedAt: Map<string, { stage: string; startedAt: number }>;
+  sideEffects?: QueueExecutionSideEffects;
 }
 
 export function createQueueExecutor(deps: QueueExecutorDependencies): () => Promise<void> {
@@ -86,47 +82,22 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     errorMeta: errorLogMeta,
     taskStageStartedAt
   } = deps;
-  let runtimeModelId: string | undefined;
-  let runtimeHadH3VideoLoras = false;
-
-  async function prepareQueueTaskRuntime(
-    task: QueueTask,
-    signal: AbortSignal,
-    hasH3VideoLoras: boolean
-  ): Promise<void> {
-    const isolationMode = store.get().settings.queueIsolationMode;
-    const reason: QueueIsolationReason | undefined = isolationMode === "always"
-      ? "always"
-      : isolationMode === "lora" && (hasH3VideoLoras || runtimeHadH3VideoLoras)
-        ? "lora"
-        : isolationMode === "model-change" && runtimeModelId !== undefined && runtimeModelId !== task.modelId
-          ? "model-change"
-          : undefined;
-    if (!reason) return;
-    await updateTask(task.id, {
-      progress: 1,
-      stage: "准备队列运行时隔离"
-    });
-    const prepared = await prepareQueueRuntime(
-      task.id,
-      task.modelId,
-      comfyUiSettingsForQueueTask(task, store.get().settings),
-      reason
-    );
-    if (!prepared) {
-      throw new Error("ComfyUI 无法建立请求的队列运行时隔离边界");
-    }
-    runtimeModelId = undefined;
-    runtimeHadH3VideoLoras = false;
-    if (signal.aborted) {
-      throw signal.reason instanceof Error ? signal.reason : new Error("队列任务已取消");
-    }
-  }
-
-  function markQueueTaskSubmitted(task: QueueTask, hasH3VideoLoras: boolean): void {
-    runtimeModelId = task.modelId;
-    runtimeHadH3VideoLoras = hasH3VideoLoras;
-  }
+  const sideEffectsDependencies: QueueExecutionSideEffectsDependencies = {
+    store,
+    logger,
+    sendState,
+    updateTask,
+    resolveTaskOutputDirectory,
+    requireExistingImageOutput,
+    requireExistingVideoOutput,
+    prepareQueueRuntimeForTask: prepareQueueRuntime,
+    stabilizeH3RuntimeBetweenTasks,
+    stopQueueRuntime,
+    restartQueueRuntime,
+    settingsForTask: comfyUiSettingsForQueueTask,
+    errorMeta: errorLogMeta
+  };
+  const sideEffects = deps.sideEffects ?? new QueueExecutionSideEffects(sideEffectsDependencies);
 
   async function executeImageGenerationQueueTask(
     task: ImageGenerationQueueTask
@@ -150,7 +121,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         startedAt: new Date().toISOString(),
         error: undefined
       });
-      await prepareQueueTaskRuntime(task, controller.signal, false);
+      await sideEffects.prepareTaskRuntime(task, controller.signal, false);
       await ensureComfyUiReady(task.id, controller.signal);
       const totalRuns = Math.max(1, task.runs.length);
       for (const plannedRun of task.runs) {
@@ -159,17 +130,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         const run = current.runs.find((item) => item.id === plannedRun.id);
         if (!run || run.status === "completed") continue;
         const runStartedAt = new Date().toISOString();
-        await store.update((state) => {
-          const queued = state.queue.find((item) => item.id === task.id);
-          if (!queued || !isImageGenerationQueueTask(queued)) return;
-          const queuedRun = queued.runs.find((item) => item.id === run.id);
-          if (!queuedRun) return;
-          queuedRun.status = "running";
-          queuedRun.startedAt = runStartedAt;
-          queuedRun.progress = 1;
-          queued.stage = `生成第 ${run.index + 1} / ${totalRuns} 张`;
-        });
-        sendState(store.get());
+        await sideEffects.beginImageRun(task.id, run.id, runStartedAt, totalRuns);
         const monitor = startTaskPerformanceMonitor();
         try {
           const submitted = await submitImageTask(
@@ -178,7 +139,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             store.get().settings,
             controller.signal
           );
-          markQueueTaskSubmitted(task, false);
+          sideEffects.markTaskSubmitted(task, false);
           let lastProgress = -1;
           const result = await waitForTask(
             submitted.promptId,
@@ -207,74 +168,36 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             () => true,
             { taskId: task.id, modelId: task.modelId }
           );
-          const files = await requireExistingImageOutput(
-            result,
-            task.imageOutputRoot ?? await resolveTaskOutputDirectory(),
-            [store.get().settings.outputDirectory]
-          );
+          const files = await sideEffects.trackImageOutput(result, task);
           const file = files.find((candidate) => imageOutputFormatFromFilename(candidate.filename) === "png");
           if (!file) throw new Error("图片工作流没有返回可用图片文件。");
           const performanceStats = monitor.stop();
-          const outputContentHash = file.absolutePath
-            ? await hashImageFile(file.absolutePath).catch(() => undefined)
-            : undefined;
           const completedAt = new Date().toISOString();
           const versionId = crypto.randomUUID();
-          const next = await store.update((state) => {
-            persistImageHistoryResult(state, {
-              taskId: task.id,
-              run,
-              startedAt: runStartedAt,
-              completedAt,
-              versionId,
-              file,
-              outputContentHash,
-              promptId: submitted.promptId,
-              comfyOutputs: result,
-              performanceStats
-            });
+          await sideEffects.recordImageRun({
+            taskId: task.id,
+            run,
+            startedAt: runStartedAt,
+            completedAt,
+            versionId,
+            file,
+            promptId: submitted.promptId,
+            comfyOutputs: result,
+            performanceStats
           });
-          sendState(next);
         } catch (error) {
           const performanceStats = monitor.stop();
-          await store.update((state) => {
-            const queued = state.queue.find((item) => item.id === task.id);
-            if (!queued || !isImageGenerationQueueTask(queued)) return;
-            const queuedRun = queued.runs.find((item) => item.id === run.id);
-            if (!queuedRun) return;
-            queuedRun.status = controller.signal.aborted ? "cancelled" : "failed";
-            queuedRun.error = error instanceof Error ? error.message : String(error);
-            queuedRun.performanceStats = performanceStats;
-            queued.error = queuedRun.error;
-          });
+          await sideEffects.failImageRun(
+            task.id,
+            run.id,
+            controller.signal.aborted,
+            error,
+            performanceStats
+          );
           throw error;
         }
       }
-      const completed = await store.update((state) => {
-        const previousQueue = state.queue.map((item) => ({ ...item }));
-        state.queue = state.queue.filter((item) => item.id !== task.id);
-        const boundaryTransition = queuePauseBoundaryAfterTaskCompletion(
-          previousQueue,
-          state.queuePauseBoundary,
-          task.id,
-          state.queue
-        );
-        state.queuePauseBoundary = boundaryTransition.boundary;
-        if (boundaryTransition.reached) {
-          // The divider is a stop line. Once the last task above it is gone,
-          // do not let the next task be claimed before the UI can observe the
-          // stopped, divider-free state.
-          state.queueRunning = false;
-        }
-      });
-      logger.info("queue", "task-finished", "Image batch task finished successfully", {
-        taskId: task.id,
-        taskType: task.taskType,
-        modelId: task.modelId,
-        runCount: task.runs.length,
-        durationSeconds: Math.round((Date.now() - taskStartedAt) / 1000)
-      });
-      sendState(completed);
+      await sideEffects.completeImageTask(task, taskStartedAt);
     } catch (error) {
       const message = controller.signal.aborted
         ? "图片批次已取消，已保留完成的图片版本。"
@@ -295,7 +218,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         error: message
       });
     } finally {
-      await freeMemory(store.get().settings).catch((error) => {
+      await sideEffects.releaseImageRuntime(store.get().settings).catch((error) => {
         logger.warn("comfy", "image-release-failed", "Failed to release image model memory after batch", {
           taskId: task.id,
           error: safeLogErrorMessage(error)
@@ -318,25 +241,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       // Claim the task conditionally in the same store mutation. A cancel can
       // arrive after selection; an unconditional later update would otherwise
       // resurrect the cancelled task as running.
-      let claimed = false;
-      let settingsAtClaim: Settings | undefined;
-      const claimedState = await store.update((state) => {
-        const candidate = state.queue.find((item) => item.id === nextTask.id);
-        if (
-          !state.queueRunning ||
-          candidate?.status !== "waiting" ||
-          nextQueueWaitingTask(state.queue, state.queuePauseBoundary)?.id !== nextTask.id
-        ) return;
-        candidate.status = "running";
-        candidate.progress = 1;
-        candidate.stage = "准备任务";
-        candidate.startedAt = new Date().toISOString();
-        candidate.error = undefined;
-        candidate.updatedAt = new Date().toISOString();
-        settingsAtClaim = structuredClone(state.settings);
-        claimed = true;
-      });
-      sendState(claimedState);
+      const claim = await sideEffects.claimTask(nextTask.id);
+      const { claimed, settingsAtClaim } = claim;
       if (!claimed) {
         if (!store.get().queueRunning) break;
         continue;
@@ -551,7 +457,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           }
         }
         const hasVideoLoras = Boolean(task.videoLoras?.length);
-        await prepareQueueTaskRuntime(
+        await sideEffects.prepareTaskRuntime(
           task,
           activeController.signal,
           isMiniMaxH3Model(task.modelId) && hasVideoLoras
@@ -622,14 +528,14 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           result = segmentedSeedVr2.comfyOutputs;
           files = segmentedSeedVr2.files;
           seedVr2IntermediatePaths = segmentedSeedVr2.intermediatePaths;
-          markQueueTaskSubmitted(task, false);
+          sideEffects.markTaskSubmitted(task, false);
         } else {
           const submitted = await submitTask(
             task,
             store.get().settings,
             activeController.signal
           );
-          markQueueTaskSubmitted(task, hasVideoLoras);
+          sideEffects.markTaskSubmitted(task, hasVideoLoras);
           ({ promptId } = submitted);
           const { clientId, nodeTypes } = submitted;
           h3TokenCount = submitted.h3TokenCount;
@@ -728,10 +634,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
                 }
               : undefined
           );
-          files = await requireExistingVideoOutput(
-            result,
-            [store.get().settings.outputDirectory]
-          );
+          files = await sideEffects.trackVideoOutput(result);
         }
         logH3PreviewOutcome("completed");
         logger.info("queue", "task-output-ready", "ComfyUI task completed", {
@@ -761,7 +664,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
                 ? "裁掉重复边界帧并合并原生音轨"
                 : "去除重叠帧并拼接成片"
           });
-          await finalizeExtensionOutput(
+          await sideEffects.finalizeExtension(
             completedTask,
             outputVideo.absolutePath,
             activeController.signal
@@ -780,7 +683,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             progress: 99,
             stage: `合并完成 · 清理 ${seedVr2IntermediatePaths.length} 个临时切片文件`
           });
-          const cleanup = await cleanupNativeSeedVr2Intermediates(seedVr2IntermediatePaths);
+          const cleanup = await sideEffects.cleanupSeedVr2Intermediates(seedVr2IntermediatePaths);
           logger.info("queue", "seedvr2-intermediates-cleaned", "Native SeedVR2 temporary segment cleanup finished", {
             taskId: task.id,
             temporaryFileCount: seedVr2IntermediatePaths.length,
@@ -819,38 +722,22 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           durationSeconds: Math.round(taskPerformanceStats?.durationSeconds ?? (Date.now() - executionStartedAt) / 1000),
           performanceCaptured: Boolean(taskPerformanceStats)
         });
-        const next = await store.update((state) => {
-          const previousQueue = state.queue.map((item) => ({ ...item }));
-          persistVideoHistoryResult(state, {
-            task: completedTask,
-            completedAt,
-            promptId,
-            comfyOutputs: result,
-            files,
-            performanceStats: taskPerformanceStats,
-            h3MemoryRuntimeEvidence,
-            id: () => crypto.randomUUID()
-          });
-          const boundaryTransition = queuePauseBoundaryAfterTaskCompletion(
-            previousQueue,
-            state.queuePauseBoundary,
-            completedTask.id,
-            state.queue
-          );
-          state.queuePauseBoundary = boundaryTransition.boundary;
-          if (boundaryTransition.reached) {
-            // The divider is a stop line. Do not claim the first task below it.
-            state.queueRunning = false;
-          }
+        const next = await sideEffects.completeVideoTask({
+          task: completedTask,
+          completedAt,
+          promptId,
+          comfyOutputs: result,
+          files,
+          performanceStats: taskPerformanceStats,
+          h3MemoryRuntimeEvidence
         });
-        sendState(next);
         if (isMiniMaxH3Model(completedTask.modelId)) {
           const nextTask = nextQueueWaitingTask(
             next.queue,
             next.queuePauseBoundary
           );
           const queueWillContinue = next.queueRunning && Boolean(nextTask);
-          const stable = await stabilizeH3RuntimeBetweenTasks(
+          const stable = await sideEffects.stabilizeRuntime(
             completedTask.id,
             completedTask.modelId,
             comfyUiSettingsForQueueTask(completedTask, next.settings),
@@ -897,25 +784,13 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           stalled,
           ...errorLogMeta(error)
         });
-        await recoverQueueFailure({
-          store,
-          logger: logger,
-          sendState,
-          updateTask,
-          settingsForTask: comfyUiSettingsForQueueTask,
-          restartComfyUi: (_kind, settings) => restartQueueRuntime(settings),
-          onRuntimeRestarted: () => {
-            runtimeModelId = undefined;
-            runtimeHadH3VideoLoras = false;
-          },
-          errorMeta: errorLogMeta
-        }, {
+        await sideEffects.recoverFailure(
           task,
           error,
           aborted,
           stalled,
-          performanceStats: taskPerformanceStats
-        });
+          taskPerformanceStats
+        );
         const recovered = store.get();
         if (!recovered.queueRunning && recovered.queueLifecycle === "running") {
           await setQueueLifecycle("error", task.id);
@@ -942,11 +817,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     const cancellationOwnsRuntime = queueBeforeStop.queueLifecycle === "cancelling" ||
       queueBeforeStop.queueLifecycle === "cleaning";
     if (!cancellationOwnsRuntime) {
-      const runtimeStopped = await stopQueueRuntime(queueBeforeStop.settings);
-      if (runtimeStopped) {
-        runtimeModelId = undefined;
-        runtimeHadH3VideoLoras = false;
-      }
+      await sideEffects.stopRuntime(queueBeforeStop.settings);
     }
     const next = await store.update((state) => {
       // A continue action may arrive after the loop observes queueRunning=false

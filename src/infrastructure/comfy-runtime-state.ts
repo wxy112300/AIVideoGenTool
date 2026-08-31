@@ -2,7 +2,7 @@ import type {
   ComfyRuntimeOwnership,
   ComfyRuntimePhase,
   ComfyRuntimeState
-} from "../../src/types.js";
+} from "../types.js";
 
 type RuntimeListener = (state: ComfyRuntimeState) => void;
 

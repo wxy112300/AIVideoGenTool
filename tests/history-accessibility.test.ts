@@ -4,6 +4,7 @@ import { defaultHistoryFilter } from "../src/core/history-filter";
 import { renderHistoryHeading, renderImageLightboxMarkup } from "../src/renderer/pages/history/fragments";
 import {
   renderHistoryDetailPage,
+  renderHistoryPage,
   renderImageHistoryDetailPage,
   renderImageHistoryPage,
   type HistoryPageOptions,
@@ -284,6 +285,14 @@ describe("History accessibility markup", () => {
     } as HistoryPageViewModel;
     const videoPage = renderHistoryDetailPage(videoViewModel, detailOptions);
     const imagePage = renderImageHistoryDetailPage(imageViewModel, detailOptions);
+    const videoGalleryPage = renderHistoryPage(videoViewModel, detailOptions);
+    const imageGalleryPage = renderImageHistoryPage(imageViewModel, detailOptions);
+    const videoCardStart = videoGalleryPage.match(
+      /<article\b[^>]*data-open-history="video-asset-detail"[^>]*>/
+    )?.[0];
+    const imageCardStart = imageGalleryPage.match(
+      /<article\b[^>]*data-open-image-history="image-project-detail"[^>]*>/
+    )?.[0];
 
     expect(videoPage).toContain('class="history-detail-action-primary"');
     expect(videoPage).not.toContain('class="history-detail-more"');
@@ -326,6 +335,12 @@ describe("History accessibility markup", () => {
     expect(videoPage.indexOf('data-history-player-utility')).toBeLessThan(videoPage.indexOf('media-fullscreen-button'));
     expect(videoPage.indexOf('media-fullscreen-button')).toBeLessThan(videoPage.indexOf('media-settings-menu-button'));
     expect(videoPage).not.toContain('<video controls');
+    expect(videoCardStart).toBeDefined();
+    expect(videoCardStart).not.toContain("title=");
+    expect(videoCardStart).toContain('aria-label="Detail fixture，history.card.openDetailsContext"');
+    expect(imageCardStart).toBeDefined();
+    expect(imageCardStart).not.toContain("title=");
+    expect(imageCardStart).toContain('aria-label="Image detail fixture，history.card.openDetailsContext"');
     expect(imagePage).toContain('class="history-detail-action-primary"');
     expect(imagePage).not.toContain('class="history-detail-more"');
     expect(imagePage.match(/data-image-continue-video-project=/g)).toHaveLength(1);

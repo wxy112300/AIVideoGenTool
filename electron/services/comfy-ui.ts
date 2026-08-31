@@ -47,13 +47,14 @@ import {
   prepareH3MotionContext
 } from "./extension-media.js";
 import { comfyOutputSubfolder } from "./environment.js";
-import { availableVramBytesForReserve } from "./comfy-runtime-policy.js";
+import { availableVramBytesForReserve } from "../../src/infrastructure/comfy-runtime-policy.js";
 import {
   inferH3PromptMode,
   h3DurationPlan,
   h3EffectiveDurationSeconds,
   h3ExplicitConstraintSummary,
   h3PromptPriorityInstruction,
+  h3PromptControlInstruction,
   h3PromptExpansionTokenBudget,
   h3PromptSectionSkeleton,
   h3ShotPolicyForPrompt,
@@ -84,7 +85,7 @@ import {
   renderImageWorkflow,
 } from "../../src/core/image-workflow.js";
 import { customNodeDefinition, modelCatalog } from "../../src/core/catalog/index.js";
-import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
+import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import {
   ComfyLogBridge,
   resolveComfyLogRoot,
@@ -193,14 +194,21 @@ export function h3PromptInstruction(
   const sourcePrompt = parsedPrompt.prompt.trim();
   const shotPolicy = h3ShotPolicyForPrompt(request.prompt);
   const priorityInstruction = h3PromptPriorityInstruction(shotPolicy);
+  const controlInstruction = h3PromptControlInstruction({
+    rawPrompt: request.prompt,
+    mode,
+    preset,
+    referenceContext,
+    hasReferenceMedia: Boolean(request.imagePath || imageCount > 0)
+  });
   const hardConstraints = h3ExplicitConstraintSummary(sourcePrompt);
   const contentLocks = h3ContentLockInstruction(sourcePrompt);
-  const cameraIntent = h3CameraIntentInstruction(sourcePrompt);
   const annotationInstruction = promptAnnotationInstruction(parsedPrompt);
   const scaleContext = [
     ...parsedPrompt.annotations.map((annotation) => annotation.text),
     referenceContext ?? ""
   ].filter(Boolean).join("\n");
+  const cameraIntent = h3CameraIntentInstruction(sourcePrompt, scaleContext);
   const scaleInstruction = h3ScalePreservationInstruction(sourcePrompt, mode, scaleContext);
   const presetText = promptPresets[preset]?.trim() || defaultH3PromptPresets[preset];
   const userIntent = isH3ReferenceAutoPrompt(request)
@@ -209,6 +217,7 @@ export function h3PromptInstruction(
   return [
     "You are the prompt director for MiniMax H3 video generation.",
     priorityInstruction,
+    controlInstruction,
     ...(annotationInstruction ? [annotationInstruction] : []),
     userIntent,
     ...(referenceContext ? [`Reference roles:\n${referenceContext}`] : []),

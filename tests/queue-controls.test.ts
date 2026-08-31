@@ -4,7 +4,8 @@ import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { registerQueueMutationIpc } from "../electron/queue-ipc";
 import { cleanupCancelledQueueTask } from "../electron/queue-recovery";
-import { QueueWorkerController, registerQueueControlIpc } from "../electron/queue-worker";
+import { registerQueueControlIpc } from "../electron/queue-control-ipc";
+import { QueueWorkerController } from "../electron/queue-worker";
 import type { AppState, QueueTask } from "../src/types";
 
 type Handler = (...args: unknown[]) => Promise<unknown>;

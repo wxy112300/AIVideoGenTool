@@ -1,5 +1,5 @@
 import { promises as fs } from "node:fs";
-import type { AppLogger } from "./app-logger.js";
+import type { AppLogger } from "../../src/infrastructure/app-logger.js";
 import { latestComfyLogFile } from "./dependency-scanner.js";
 import type { Settings } from "../../src/types.js";
 import { findComfyRoot } from "./comfy-discovery.js";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildEnvironmentScanDiagnostics } from "../electron/services/environment-scan-diagnostics.js";
+import { buildEnvironmentScanDiagnostics } from "../src/infrastructure/environment-scan-diagnostics.js";
 import type { EnvironmentScanResult } from "../src/types.js";
 
 function scanFixture(): EnvironmentScanResult {

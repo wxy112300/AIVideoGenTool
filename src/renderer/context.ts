@@ -1,5 +1,5 @@
 import { createTranslator, type TranslationParams, type Translator } from "../core/i18n";
-import type { AppApi, AppState, EnhanceRequest } from "../types";
+import type { AppState, EnhanceRequest } from "../types";
 import type {
   CreationMode,
   HistoryKind,
@@ -8,10 +8,14 @@ import type {
   RendererNotifyOptions,
   RendererRouteState
 } from "./contracts";
+import {
+  createRendererDependencies,
+  type RendererClient
+} from "./studio-client";
 
 export interface RendererContextOptions {
   root: HTMLElement;
-  studio: AppApi;
+  studio: RendererClient;
   enhancePrompt(request: EnhanceRequest): Promise<string>;
   getState: () => AppState | undefined;
   getRoute: () => RendererRouteState;
@@ -24,10 +28,12 @@ export interface RendererContextOptions {
 export function createRendererContext(options: RendererContextOptions): RendererContext {
   const getTranslator = (): Translator =>
     createTranslator(options.getState()?.settings.uiLocale);
+  const dependencies = createRendererDependencies(options.studio);
 
   return {
     root: options.root,
     studio: options.studio,
+    ...dependencies,
     enhancePrompt: options.enhancePrompt,
     getState: options.getState,
     getRoute: options.getRoute,

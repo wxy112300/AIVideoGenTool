@@ -23,7 +23,7 @@ import {
   patchQwenVlCooperativeInterrupt,
   prepareH3PromptWriter,
   prepareMultimodalPromptNodes
-} from "../electron/services/dependency-node-adapters";
+} from "../src/infrastructure/dependency-node-adapters";
 import { createDefaultState } from "../src/core/defaults";
 
 describe("Qwen-VL cooperative interrupt adapter", () => {

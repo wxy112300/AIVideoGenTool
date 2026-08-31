@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ComfyRuntimeStateController } from "../electron/services/comfy-runtime-state";
+import { ComfyRuntimeStateController } from "../src/infrastructure/comfy-runtime-state";
 
 describe("ComfyUI runtime state controller", () => {
   it("does not let an old operation overwrite a newer transition", () => {

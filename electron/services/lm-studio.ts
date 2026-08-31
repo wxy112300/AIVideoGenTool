@@ -26,6 +26,7 @@ import {
   h3DurationPlan,
   h3EffectiveDurationSeconds as h3EffectiveDurationNumber,
   h3ExplicitConstraintSummary,
+  h3PromptControlInstruction,
   h3PromptPriorityInstruction,
   h3PromptExpansionTokenBudget,
   h3ShotPolicyForPrompt,
@@ -292,17 +293,25 @@ function h3VisionUserPrompt(request: EnhanceRequest, presetText: string): string
   const sourcePrompt = parsedPrompt.prompt.trim();
   const shotPolicy = h3ShotPolicyForPrompt(request.prompt);
   const priorityInstruction = h3PromptPriorityInstruction(shotPolicy);
+  const controlInstruction = h3PromptControlInstruction({
+    rawPrompt: request.prompt,
+    mode,
+    preset,
+    referenceContext,
+    hasReferenceMedia: Boolean(request.imagePath || (request.imagePaths?.length ?? 0) > 0)
+  });
   const hardConstraints = h3ExplicitConstraintSummary(sourcePrompt);
   const contentLocks = h3ContentLockInstruction(sourcePrompt);
-  const cameraIntent = h3CameraIntentInstruction(sourcePrompt);
   const annotationInstruction = promptAnnotationInstruction(parsedPrompt);
   const scaleContext = [
     ...parsedPrompt.annotations.map((annotation) => annotation.text),
     referenceContext ?? ""
   ].filter(Boolean).join("\n");
+  const cameraIntent = h3CameraIntentInstruction(sourcePrompt, scaleContext);
   const scaleInstruction = h3ScalePreservationInstruction(sourcePrompt, mode, scaleContext);
   return [
     priorityInstruction,
+    controlInstruction,
     ...(annotationInstruction ? [annotationInstruction] : []),
     ...(isH3ReferenceAutoPrompt(request)
         ? [h3AutoPromptInstruction(request)]

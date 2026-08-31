@@ -2,7 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSyn
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import type { AppLogLevel, AppLogRecord, AppLogSnapshot } from "../../src/types.js";
+import type { AppLogLevel, AppLogRecord, AppLogSnapshot } from "../types.js";
 
 export interface AppLoggerOptions {
   directory?: string;

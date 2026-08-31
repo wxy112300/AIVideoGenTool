@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { AppLogger } from "../electron/services/app-logger.js";
+import { AppLogger } from "../src/infrastructure/app-logger.js";
 import {
   ComfyLogBridge,
   parseH3MemoryAppliedPlan,

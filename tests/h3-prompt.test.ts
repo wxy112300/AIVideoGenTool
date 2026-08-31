@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  auditH3PromptControlOutput,
+  buildH3PromptControlPlan,
   h3DurationPlan,
   h3ExplicitConstraintSummary,
+  h3PromptControlInstruction,
   h3PromptPriorityInstruction,
   h3PromptExpansionTokenBudget,
   h3ShotPolicyForPrompt,
@@ -9,6 +12,87 @@ import {
 } from "../src/core/h3-prompt.js";
 
 describe("MiniMax H3 prompt templates", () => {
+  it("selects only the control modules required by the request", () => {
+    const plan = buildH3PromptControlPlan({
+      rawPrompt: "A tiny woman walks from the cup to the plate while a second person responds. The low-angle camera rotates around her exactly 180 degrees. She says in Japanese: \"大丈夫？\". The sign reads \"EXIT\".（注：保留原始动作）",
+      mode: "FL2VA",
+      preset: "detailed-cinematic",
+      referenceContext: "Picture 1 = the opening reference image",
+      hasReferenceMedia: true
+    });
+
+    expect(plan.modules).toEqual(expect.arrayContaining([
+      "intent-lock",
+      "reference-delta",
+      "camera-route",
+      "exact-rotation",
+      "micro-scale",
+      "action-mechanics",
+      "subject-reaction",
+      "speech-gate",
+      "sound-causality",
+      "shot-continuity",
+      "endpoint-transition"
+    ]));
+    expect(plan.annotationCount).toBe(1);
+    expect(plan.sourcePrompt).not.toContain("注：");
+
+    const instruction = h3PromptControlInstruction({
+      rawPrompt: "A woman walks toward the camera and says in Japanese: \"大丈夫？\".",
+      mode: "I2VA",
+      preset: "detailed-cinematic",
+      hasReferenceMedia: true
+    });
+    expect(instruction).toContain("LOCKED user request");
+    expect(instruction).toContain("PRESERVE, CHANGE, or INFER");
+    expect(instruction).toContain("Camera-route module");
+    expect(instruction).toContain("Speech-gate module");
+    expect(instruction).toContain("Detailed-expansion budget");
+    expect(instruction.length).toBeLessThan(2600);
+  });
+
+  it("does not classify ordinary appearance wording as subject interaction", () => {
+    const plan = buildH3PromptControlPlan({
+      rawPrompt: "A woman with red hair walks through a bright room.",
+      mode: "T2VA"
+    });
+
+    expect(plan.hasInteraction).toBe(false);
+    expect(plan.modules).not.toContain("subject-reaction");
+  });
+
+  it("audits the generated prompt against the same locks used for repair", () => {
+    const plan = buildH3PromptControlPlan({
+      rawPrompt: "One continuous low-angle camera rotates around the tiny human 180 degrees.",
+      mode: "T2VA"
+    });
+    const audit = auditH3PromptControlOutput(
+      plan,
+      "integrated_multimodal_description: [Shot 1] The camera completes a 360-degree orbit. [Shot 2] It cuts closer."
+    );
+
+    expect(audit.passed).toBe(false);
+    expect(audit.missing).toEqual(expect.arrayContaining(["camera-control", "single-shot"]));
+  });
+
+  it("repairs compiler-owned camera and scale locks without inventing a new beat", () => {
+    const source = "One continuous low-angle camera rotates around the tiny human 180 degrees.";
+    const normalized = normalizeH3PromptOutput(
+      "integrated_multimodal_description: [Shot 1] The camera completes a 360-degree orbit around the tiny human.",
+      "T2VA",
+      5,
+      [],
+      [],
+      source,
+      source
+    );
+
+    expect(normalized).toContain("180 degrees");
+    expect(normalized).not.toContain("360-degree");
+    expect(normalized).toContain("Scale continuity:");
+    expect(normalized).not.toContain("[Shot 2]");
+  });
+
   it("plans a long H3 clip across the full effective duration", () => {
     const plan = h3DurationPlan("FL2VA", 15);
 

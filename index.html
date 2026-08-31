@@ -7,7 +7,17 @@
     <title>Local Video Studio</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app" aria-busy="true">
+      <main class="startup-shell" role="status" aria-live="polite">
+        <div class="startup-shell-card">
+          <div class="startup-shell-mark" aria-hidden="true">▶</div>
+          <div>
+            <strong>Local Video Studio</strong>
+            <p data-startup-message>正在准备本地工作区…</p>
+          </div>
+        </div>
+      </main>
+    </div>
     <div id="modal-root"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

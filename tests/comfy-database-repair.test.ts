@@ -10,7 +10,7 @@ import {
   isPathInsideDirectory,
   quarantineSqliteDatabaseFamily,
   restoreSqliteDatabaseBackups
-} from "../electron/services/comfy-database-repair";
+} from "../src/infrastructure/comfy-database-repair";
 
 const temporaryDirectories: string[] = [];
 

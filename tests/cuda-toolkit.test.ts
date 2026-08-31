@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   discoverCudaToolkit,
   withCudaToolkitEnvironment
-} from "../electron/services/cuda-toolkit";
+} from "../src/infrastructure/cuda-toolkit";
 
 describe("CUDA Toolkit discovery", () => {
   it("uses nvcc from PATH when the app process can see it", async () => {

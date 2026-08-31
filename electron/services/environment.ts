@@ -35,27 +35,27 @@ import {
   modelCatalog
 } from "../../src/core/catalog/index.js";
 import { isRetiredVideoModel } from "../../src/core/workflow.js";
-import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
-import { buildEnvironmentScanDiagnostics } from "./environment-scan-diagnostics.js";
+import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
+import { buildEnvironmentScanDiagnostics } from "../../src/infrastructure/environment-scan-diagnostics.js";
 import { captureComfyUiLogFailure } from "./comfy-log-bridge.js";
 import {
   availableComfyNodeIds,
   readLatestComfyLog,
   scanCustomNodes
 } from "./dependency-scanner.js";
-import { discoverCudaToolkit } from "./cuda-toolkit.js";
+import { discoverCudaToolkit } from "../../src/infrastructure/cuda-toolkit.js";
 import {
   installCustomNodePackage,
   uninstallCustomNodePackage
 } from "./dependency-installer.js";
-import { prepareH3PromptWriter } from "./dependency-node-adapters.js";
+import { prepareH3PromptWriter } from "../../src/infrastructure/dependency-node-adapters.js";
 import {
   inspectLlamaCppPython,
   installLlamaCppPythonPackage,
   uninstallLlamaCppPythonPackage,
   type LlamaCppPythonRuntime
 } from "./llama-cpp-python.js";
-import { comfyRuntimeState } from "./comfy-runtime-state.js";
+import { comfyRuntimeState } from "../../src/infrastructure/comfy-runtime-state.js";
 import {
   attachComfyUiRepairPlans,
   buildComfyUiEnvironmentSummary,
@@ -70,7 +70,7 @@ import {
   quarantineSqliteDatabaseFamily,
   restoreSqliteDatabaseBackups,
   type ComfyDatabaseDiagnosis
-} from "./comfy-database-repair.js";
+} from "../../src/infrastructure/comfy-database-repair.js";
 import {
   evaluateMiniMaxH3CoreSupport,
   evaluateMiniMaxH3CompatibilityState,
@@ -98,7 +98,7 @@ import {
   comfyUiRuntimeProfileForSettings,
   comfyUiRuntimeProfileFromCommandLine,
   type ComfyUiRuntimeProfile
-} from "./comfy-runtime-policy.js";
+} from "../../src/infrastructure/comfy-runtime-policy.js";
 import {
   isLocalPortInUse,
   launchComfyUiVisible,
@@ -128,12 +128,12 @@ import {
 export {
   ltxAudioVaeCompatible,
   videoHelperBatchCompatible
-} from "./dependency-compatibility.js";
+} from "../../src/infrastructure/dependency-compatibility.js";
 export {
   patchH3PromptWriterLlamaCppCompatibility,
   patchLtxAudioVaeCompatibility,
   patchVideoHelperBatchCompatibility
-} from "./dependency-node-adapters.js";
+} from "../../src/infrastructure/dependency-node-adapters.js";
 export {
   evaluateMiniMaxH3CoreSupport,
   evaluateMiniMaxH3CompatibilityState,
@@ -155,7 +155,7 @@ export {
   comfyUiMemoryArgs,
   comfyUiRuntimeProfileForSettings,
   comfyUiRuntimeProfileFromCommandLine
-} from "./comfy-runtime-policy.js";
+} from "../../src/infrastructure/comfy-runtime-policy.js";
 export {
   parseComfyProcessIds,
   parseComfyProcessInfo

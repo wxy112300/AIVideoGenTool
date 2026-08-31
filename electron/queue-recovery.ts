@@ -6,11 +6,11 @@ import {
 } from "../src/core/recovery.js";
 import { adjustQueuePauseBoundary } from "../src/core/queue.js";
 import { isMiniMaxH3Model } from "../src/core/workflow.js";
-import type { JsonStore } from "./store.js";
+import type { StateRepository } from "./ports/state-repository.js";
 import { forceStopComfyProcesses, restartLocalService } from "./services/environment.js";
 import { freeMemory, interrupt, waitForPromptToLeaveQueue } from "./services/comfy-ui.js";
-import type { AppLogger } from "./services/app-logger.js";
-import { safeLogErrorMessage } from "./services/app-logger.js";
+import type { AppLogger } from "../src/infrastructure/app-logger.js";
+import { safeLogErrorMessage } from "../src/infrastructure/app-logger.js";
 
 async function waitWithTimeout(promise: Promise<unknown> | null, timeoutMs: number): Promise<boolean> {
   if (!promise) return true;
@@ -129,7 +129,7 @@ export async function cleanupCancelledQueueTask(
 }
 
 export interface QueueRecoveryDependencies {
-  store: JsonStore;
+  store: StateRepository;
   logger: AppLogger;
   sendState(state: AppState): void;
   updateTask(taskId: string, patch: Partial<QueueTask>): Promise<AppState>;

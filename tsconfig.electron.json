@@ -9,5 +9,5 @@
     "rootDir": ".",
     "types": ["node", "electron"]
   },
-  "include": ["electron/**/*", "src/types.ts", "src/core/**/*.ts"]
+  "include": ["electron/**/*", "src/types.ts", "src/core/**/*.ts", "src/infrastructure/**/*.ts"]
 }

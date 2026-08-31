@@ -102,6 +102,10 @@ function vocalModeFromContext(context) {
         return "singing";
     return "spoken";
 }
+function immediateDialogueClause(context, fromEnd) {
+    const clauses = context.split(/[\r\n.!?。！？；;]/u);
+    return (fromEnd ? clauses.at(-1) : clauses.at(0))?.trim() ?? context.trim();
+}
 function speakerIdFromContext(context) {
     const matches = [...context.matchAll(/\((S\d+(?:\s*,\s*S\d+)*)\)/giu)];
     return matches.at(-1)?.[1]?.replace(/\s+/gu, "")?.toUpperCase();
@@ -118,13 +122,16 @@ function speakerHintFromContext(context) {
     return labelMatch?.[1]?.trim() ?? "";
 }
 function isLikelyDialogue(before, after) {
-    const context = `${before}\n${after}`;
-    const hasVisualCue = visualTextCuePattern.test(before) || visualTextCuePattern.test(after);
-    if (visualTextCuePattern.test(before) && !speechCuePattern.test(before))
+    const beforeClause = immediateDialogueClause(before, true);
+    const afterClause = immediateDialogueClause(after, false);
+    const context = `${beforeClause}\n${afterClause}`;
+    const hasVisualCue = visualTextCuePattern.test(beforeClause) || visualTextCuePattern.test(afterClause);
+    const hasSpeechCue = speechCuePattern.test(beforeClause) || speechCuePattern.test(afterClause);
+    if (visualTextCuePattern.test(beforeClause) && !speechCuePattern.test(beforeClause))
         return false;
-    if (hasVisualCue && !humanSpeakerCuePattern.test(context))
+    if (hasVisualCue && !humanSpeakerCuePattern.test(context) && !hasSpeechCue)
         return false;
-    if (speechCuePattern.test(context))
+    if (hasSpeechCue)
         return true;
     if (hasVisualCue)
         return false;
@@ -195,7 +202,16 @@ export function extractH3DialogueLocks(sourcePrompt) {
         const relativeEnd = end - contextStart;
         const vocalDistance = nearestCueDistance(context, relativeStart, relativeEnd, speechCuePattern);
         const visibleDistance = nearestCueDistance(context, relativeStart, relativeEnd, visualTextCuePattern);
-        if (visibleDistance !== undefined && (vocalDistance === undefined || visibleDistance < vocalDistance))
+        const directBefore = immediateDialogueClause(before, true);
+        const directAfter = immediateDialogueClause(after, false);
+        const directSpeechCue = speechCuePattern.test(directBefore) || speechCuePattern.test(directAfter);
+        const directVisualCue = visualTextCuePattern.test(directBefore) || visualTextCuePattern.test(directAfter);
+        // A later sign/label in the same sentence must not steal a dialogue quote.
+        // Conversely, a quote immediately following "sign reads" remains visible text
+        // even though the word "reads" can appear near a speech cue elsewhere.
+        if (!directSpeechCue && directVisualCue)
+            continue;
+        if (!directSpeechCue && visibleDistance !== undefined && (vocalDistance === undefined || visibleDistance < vocalDistance))
             continue;
         if (!isLikelyDialogue(before, after))
             continue;

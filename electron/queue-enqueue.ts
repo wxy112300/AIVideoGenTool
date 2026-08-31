@@ -1,4 +1,4 @@
-import { nativeImage, type IpcMain } from "electron";
+import type { IpcMain } from "electron";
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -60,25 +60,31 @@ import {
   queueTaskFromDraft,
   upscaleTaskFromRequest
 } from "../src/core/queue-task-factory.js";
-import type { JsonStore } from "./store.js";
-import type { AppLogger } from "./services/app-logger.js";
-import { safeLogErrorMessage } from "./services/app-logger.js";
+import type { StateRepository } from "./ports/state-repository.js";
+import type { ImageInspectionPort } from "./ports/image-inspection.js";
+import type { AppLogger } from "../src/infrastructure/app-logger.js";
+import { safeLogErrorMessage } from "../src/infrastructure/app-logger.js";
 import {
   getCachedEnvironmentScan,
   resolveComfyOutputDirectory,
   scanEnvironment
 } from "./services/environment.js";
-import { archiveImagePaths, archiveImageReferences, hashImageFile } from "./services/image-asset-library.js";
-import { isPathWithinDirectory } from "./services/video-history-migration.js";
+import { archiveImagePaths, archiveImageReferences, hashImageFile } from "../src/infrastructure/image-asset-library.js";
+import { isPathWithinDirectory } from "../src/infrastructure/video-history-migration.js";
 
-export interface QueueEnqueueDependencies {
-  ipc: IpcMain;
-  store: JsonStore;
+export interface QueueEnqueueServiceDependencies {
+  store: StateRepository;
   logger: AppLogger;
   sendState(state: AppState): void;
   effectiveImageInputLibraryDirectory(settings: Settings): Promise<string>;
   resolveTaskOutputDirectory(): Promise<string>;
+  imageInspection: ImageInspectionPort;
 }
+
+export type QueueEnqueueDependencies = QueueEnqueueServiceDependencies & { ipc: IpcMain };
+export type QueueEnqueueIpcDependencies =
+  | QueueEnqueueDependencies
+  | { ipc: IpcMain; service: QueueEnqueueService };
 
 async function readWorkflow(filename: string, label: string): Promise<unknown> {
   try {
@@ -138,16 +144,22 @@ async function resolveImageOutputTarget(settings: Settings): Promise<{
   return { root, directory, subfolder: path.relative(root, directory).replaceAll(path.sep, "/") };
 }
 
-function readImageDimensions(filename: string): { width: number; height: number } {
-  const size = nativeImage.createFromPath(filename).getSize();
+function readImageDimensions(
+  filename: string,
+  imageInspection: ImageInspectionPort
+): { width: number; height: number } {
+  const size = imageInspection.readDimensions(filename);
   if (!size.width || !size.height) throw new Error(`无法读取 Picture 图片尺寸：${filename}`);
   return size;
 }
 
-function hydrateVideoInputImageDimensions(draft: Draft): void {
+function hydrateVideoInputImageDimensions(
+  draft: Draft,
+  imageInspection: ImageInspectionPort
+): void {
   const tryRead = (filename: string): { width: number; height: number } | undefined => {
     try {
-      return readImageDimensions(filename);
+      return readImageDimensions(filename, imageInspection);
     } catch {
       return undefined;
     }
@@ -222,9 +234,12 @@ async function requireImageModelAssets(
   return diffusionModel;
 }
 
-export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
-  const { ipc, store, logger, sendState } = deps;
-  ipc.handle("queue:enqueue", async (_event, draft: Draft) => {
+export class QueueEnqueueService {
+  constructor(private readonly deps: QueueEnqueueServiceDependencies) {}
+
+  async enqueue(draft: Draft): Promise<AppState> {
+    const deps = this.deps;
+    const { store, logger, sendState } = deps;
     const enqueueSettings = store.getSettings();
     Object.assign(draft, normalizeH3MemoryOptions(draft));
     draft.videoLoras = normalizeVideoLoras(draft.videoLoras, draft.modelId);
@@ -413,7 +428,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         throw error;
       }
     }
-    hydrateVideoInputImageDimensions(preparedDraft);
+    hydrateVideoInputImageDimensions(preparedDraft, deps.imageInspection);
     const next = await store.update((state) => {
       const taskDraft = structuredClone(preparedDraft);
       taskDraft.workflowPath = resolvedWorkflowPath;
@@ -426,9 +441,11 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     });
     sendState(next);
     return next;
-  });
+  }
 
-  ipc.handle("queue:enqueue-image", async (_event, draft: ImageEditDraft) => {
+  async enqueueImage(draft: ImageEditDraft): Promise<AppState> {
+    const deps = this.deps;
+    const { store, logger, sendState } = deps;
     const enqueueSettings = store.getSettings();
     const requested = normalizeImageEditDraft(draft);
     const adapter = imageModelAdapterFor(requested.modelId);
@@ -497,7 +514,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         ...picture,
         ...(picture.crop
           ? { width: picture.crop.width, height: picture.crop.height }
-          : readImageDimensions(picture.absolutePath))
+          : readImageDimensions(picture.absolutePath, deps.imageInspection))
       })),
       outputFormat: "png"
     });
@@ -533,9 +550,11 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     });
     sendState(next);
     return next;
-  });
+  }
 
-  ipc.handle("queue:enqueue-extension", async (_event, draft: Draft) => {
+  async enqueueExtension(draft: Draft): Promise<AppState> {
+    const deps = this.deps;
+    const { store, logger, sendState } = deps;
     const enqueueSettings = store.getSettings();
     Object.assign(draft, normalizeH3MemoryOptions(draft));
     draft.videoLoras = normalizeVideoLoras(draft.videoLoras, draft.modelId);
@@ -662,7 +681,7 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
         }
       }
     }
-    hydrateVideoInputImageDimensions(preparedDraft);
+    hydrateVideoInputImageDimensions(preparedDraft, deps.imageInspection);
     const current = store.get();
     const task = extensionTaskFromDraft(preparedDraft, current, undefined, { h3VideoVaeMode });
     if (isMiniMaxH3R2vModel(task.modelId)) {
@@ -685,9 +704,11 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     });
     sendState(next);
     return next;
-  });
+  }
 
-  ipc.handle("queue:enqueue-upscale", async (_event, request: UpscaleRequest) => {
+  async enqueueUpscale(request: UpscaleRequest): Promise<AppState> {
+    const deps = this.deps;
+    const { store, logger, sendState } = deps;
     const current = store.get();
     const asset = current.history.find((item) => item.id === request.sourceAssetId);
     const version = asset?.versions.find((item) => item.id === request.sourceVersionId);
@@ -705,5 +726,16 @@ export function registerQueueEnqueueIpc(deps: QueueEnqueueDependencies): void {
     });
     sendState(next);
     return next;
-  });
+  }
+}
+
+export function registerQueueEnqueueIpc(deps: QueueEnqueueIpcDependencies): void {
+  const service = "service" in deps
+    ? deps.service
+    : new QueueEnqueueService(deps);
+  const { ipc } = deps;
+  ipc.handle("queue:enqueue", async (_event, draft: Draft) => service.enqueue(draft));
+  ipc.handle("queue:enqueue-image", async (_event, draft: ImageEditDraft) => service.enqueueImage(draft));
+  ipc.handle("queue:enqueue-extension", async (_event, draft: Draft) => service.enqueueExtension(draft));
+  ipc.handle("queue:enqueue-upscale", async (_event, request: UpscaleRequest) => service.enqueueUpscale(request));
 }

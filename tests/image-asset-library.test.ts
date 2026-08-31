@@ -10,7 +10,7 @@ import {
   isPathInsideImageLibrary,
   organizeImageAssetLibrary,
   scanImageAssetLibrary
-} from "../electron/services/image-asset-library.js";
+} from "../src/infrastructure/image-asset-library.js";
 
 const temporaryRoots: string[] = [];
 

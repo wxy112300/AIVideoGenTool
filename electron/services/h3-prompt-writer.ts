@@ -15,6 +15,7 @@ import {
   h3ExplicitConstraintSummary,
   h3DurationPlan,
   inferH3PromptMode,
+  h3PromptControlInstruction,
   h3PromptPriorityInstruction,
   h3ShotPolicyForPrompt,
   normalizeH3PromptOutput
@@ -261,6 +262,15 @@ export async function enhancePromptWithH3PromptWriter(
   const mediaPaths = (request.referenceMediaPaths || request.imagePaths || (request.imagePath ? [request.imagePath] : []))
     .filter(Boolean)
     .slice(0, 12);
+  const controlInstruction = imageEdit
+    ? ""
+    : h3PromptControlInstruction({
+        rawPrompt: request.prompt,
+        mode: h3Mode,
+        preset: h3Preset,
+        referenceContext: request.referenceContext,
+        hasReferenceMedia: mediaPaths.length > 0
+      });
   const cancel = () => {
     void fetch(`${root}/h3studio/cancel`, { method: "POST" }).catch(() => undefined);
   };
@@ -273,7 +283,7 @@ export async function enhancePromptWithH3PromptWriter(
     onProgress?.("uploading", 18);
     onProgress?.("loading-model", 24);
     const contentLocks = h3ContentLockInstruction(sourcePrompt);
-    const cameraIntent = imageEdit ? "" : h3CameraIntentInstruction(sourcePrompt);
+    const cameraIntent = imageEdit ? "" : h3CameraIntentInstruction(sourcePrompt, scaleContext);
     const hardConstraints = imageEdit ? "" : h3ExplicitConstraintSummary(sourcePrompt);
     const scaleInstruction = imageEdit
       ? ""
@@ -286,6 +296,7 @@ export async function enhancePromptWithH3PromptWriter(
         ].join("\n");
     const creativeBrief = [
       priorityInstruction,
+      controlInstruction,
       annotationInstruction,
       isH3ReferenceAutoPrompt(request)
         ? h3AutoPromptInstruction(request)

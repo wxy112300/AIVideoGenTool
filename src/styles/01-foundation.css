@@ -52,6 +52,12 @@ h3 { margin-bottom: 6px; }
 p { line-height: 1.55; }
 code { font-family: "Cascadia Code", Consolas, monospace; color: #c8d8ee; }
 
+.startup-shell { min-height: 100vh; display: grid; place-items: center; padding: 32px; color: #f7f7f8; }
+.startup-shell-card { width: min(420px, 100%); display: flex; align-items: center; gap: 14px; padding: 20px 22px; border: 1px solid var(--border); border-radius: var(--ux-radius-panel); background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--ux-elevation-panel); }
+.startup-shell-mark { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 10px; color: var(--primary); background: color-mix(in srgb, var(--primary) 13%, var(--panel-2)); font-size: 13px; }
+.startup-shell-card strong { display: block; font-size: 15px; }
+.startup-shell-card p { margin: 4px 0 0; color: var(--muted); font-size: var(--ux-type-meta); }
+
 .app-shell { width: 100%; max-width: 1360px; min-height: 100vh; margin: 0 auto; padding: 0 28px 48px; }
 .app-shell.history-shell { max-width: 1440px; padding-inline: 34px; }
 .topbar { position: sticky; top: 0; z-index: 10; min-height: var(--ux-topbar-height); display: flex; align-items: center; justify-content: space-between; margin: 0 -28px; padding: 10px 28px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(18px); }

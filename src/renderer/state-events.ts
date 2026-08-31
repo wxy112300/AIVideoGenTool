@@ -1,5 +1,4 @@
 import type {
-  AppApi,
   AppState,
   ComfyRuntimeState,
   DependencyInstallProgress,
@@ -31,9 +30,14 @@ import {
   promptOperationIsActive
 } from "../core/prompt-runtime-state";
 import { preserveLocalCreationDrafts } from "../core/creation-drafts";
+import type {
+  RendererApplicationApi,
+  RendererEventsApi
+} from "./studio-client";
 
 export interface RendererEventOptions {
-  studio: AppApi;
+  events: RendererEventsApi;
+  application: Pick<RendererApplicationApi, "reportRendererError">;
   t: Translate;
   getState(): AppState | undefined;
   getComfyRuntimeState(): ComfyRuntimeState;
@@ -248,13 +252,13 @@ export function registerRendererEvents(
     }, 1000);
   };
   const unsubscribers = [
-    options.studio.onWindowCloseRequest((request) => {
+    options.events.onWindowCloseRequest((request) => {
       options.rememberModalFocus();
       options.setPendingWindowCloseRequest(request);
       options.setWindowCloseResponseBusy(false);
       (options.requestOverlayRender ?? options.requestRender)();
     }),
-    options.studio.onStateChanged((nextState) => {
+    options.events.onStateChanged((nextState) => {
       const previousState = options.getState();
       const queueStructureStable = options.getPage() === "queue" &&
         previousState !== undefined &&
@@ -312,7 +316,7 @@ export function registerRendererEvents(
       ) return;
       options.requestRender();
     }),
-    options.studio.onComfyRuntimeStateChanged((runtime) => {
+    options.events.onComfyRuntimeStateChanged((runtime) => {
       const previous = options.getComfyRuntimeState();
       options.setComfyRuntimeState(runtime);
       const meaningfulTransition = previous.phase !== runtime.phase && (
@@ -335,7 +339,7 @@ export function registerRendererEvents(
         options.requestRender();
       }
     }),
-    options.studio.onPromptRuntimeStateChanged((runtime) => {
+    options.events.onPromptRuntimeStateChanged((runtime) => {
       options.setPromptRuntimeState(runtime);
       if (!promptOperationIsActive(runtime)) {
         stopPromptProgressTimer();
@@ -343,7 +347,7 @@ export function registerRendererEvents(
       }
       if (["create", "settings"].includes(options.getPage())) options.requestRender();
     }),
-    options.studio.onPromptProgress((progress) => {
+    options.events.onPromptProgress((progress) => {
       const origin = options.getCreationMode();
       const runtime = options.getPromptRuntimeState();
       const ownsPrompt = promptOperationBelongsTo(runtime, origin) &&
@@ -360,18 +364,18 @@ export function registerRendererEvents(
         if (ownsPrompt) updatePromptProgressDom(progress, options.t);
       }
     }),
-    options.studio.onHistoryMigrationProgress((progress) => {
+    options.events.onHistoryMigrationProgress((progress) => {
       options.setHistoryMigrationProgress(progress);
       if (options.hasPendingDirectoryMigration()) {
         (options.requestOverlayRender ?? options.requestRender)();
       }
     }),
-    options.studio.onImageAssetLibraryProgress((progress) => {
+    options.events.onImageAssetLibraryProgress((progress) => {
       options.setImageAssetLibraryProgress(progress);
       updateImageAssetLibraryProgress(progress, options.t);
     }),
-    options.studio.onTaskPreview((preview) => updateTaskPreview(preview, options)),
-    options.studio.onAttentionInstallLog((message) => {
+    options.events.onTaskPreview((preview) => updateTaskPreview(preview, options)),
+    options.events.onAttentionInstallLog((message) => {
       const log = options.appendAttentionAccelerationLog(message);
       const logElement = document.querySelector<HTMLElement>("#attention-install-log");
       const logDetails = document.querySelector<HTMLDetailsElement>("#attention-install-log-details");
@@ -403,7 +407,7 @@ export function registerRendererEvents(
         logElement.scrollTop = logElement.scrollHeight;
       }
     }),
-    options.studio.onDependencyInstallLog((progress) => {
+    options.events.onDependencyInstallLog((progress) => {
       const log = options.appendDependencyInstallLog(progress);
       const logElement = document.querySelector<HTMLElement>(
         `[data-dependency-install-log="${CSS.escape(`${progress.kind}:${progress.id}`)}"]`
@@ -423,7 +427,7 @@ export function registerRendererEvents(
   ];
 
   const reportError = (message: string, meta?: Record<string, unknown>) => {
-    void options.studio.reportRendererError(message, meta).catch(() => undefined);
+    void options.application.reportRendererError(message, meta).catch(() => undefined);
   };
   const onError = (event: ErrorEvent) => {
     reportError(event.message || "Renderer error", {

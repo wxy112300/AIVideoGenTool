@@ -16,7 +16,7 @@ import {
   prepareMultimodalPromptNodes,
   prepareQwenVlComfyDesktopLogging,
   prepareVideoHelperSuite
-} from "./dependency-node-adapters.js";
+} from "../../src/infrastructure/dependency-node-adapters.js";
 import { installLlamaCppPythonPackage } from "./llama-cpp-python.js";
 
 function normalizedRepositoryUrl(value: string): string {

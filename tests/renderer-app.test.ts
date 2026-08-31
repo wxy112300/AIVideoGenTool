@@ -36,5 +36,9 @@ describe("renderer app foundation", () => {
 
     expect(app.context.t("task.status.waiting")).toBe("等待");
     expect(app.context.getRoute().page).toBe("create");
+    expect(app.context.application).toBe(app.context.studio);
+    expect(app.context.events).toBe(app.context.studio);
+    expect(app.context.assets).toBe(app.context.studio);
+    expect(app.context.hostCapabilities).toBe(app.context.studio);
   });
 });

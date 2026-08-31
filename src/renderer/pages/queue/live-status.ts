@@ -1,4 +1,4 @@
-import type { AppApi, AppState, ComfyRuntimeState, PerformanceMetrics, QueueLifecycle } from "../../../types";
+import type { AppState, ComfyRuntimeState, PerformanceMetrics, QueueLifecycle } from "../../../types";
 import type { Translate } from "../../../core/i18n";
 import { uiKeys } from "../../../core/i18n-keys";
 import {
@@ -15,9 +15,10 @@ import {
 import type { Page } from "../../contracts";
 import { seedVr2ProgressView } from "./card";
 import { patchResourceMonitor } from "../../shell/resource-monitor";
+import type { RendererApplicationApi } from "../../studio-client";
 
 export interface QueueLiveStatusOptions {
-  studio: AppApi;
+  studio: Pick<RendererApplicationApi, "getPerformanceMetrics">;
   t: Translate;
   getState(): AppState | undefined;
   getPage(): Page;

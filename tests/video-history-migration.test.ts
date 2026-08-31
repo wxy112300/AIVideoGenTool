@@ -8,7 +8,7 @@ import {
   isPathWithinDirectory,
   planVideoHistoryMigration,
   prepareVideoHistoryMigration
-} from "../electron/services/video-history-migration.js";
+} from "../src/infrastructure/video-history-migration.js";
 
 function historyAsset(sourcePath: string): HistoryAsset {
   const file = {

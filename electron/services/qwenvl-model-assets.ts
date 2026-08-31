@@ -3,7 +3,7 @@ import path from "node:path";
 import type { PromptProgressReporter, Settings } from "../../src/types.js";
 import { findComfyRoot } from "./comfy-discovery.js";
 import { downloadFileWithCurl } from "./environment.js";
-import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
+import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 
 const QWEN_BASE_REPO = "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct/resolve/main";
 const QWEN_ADAPTER_REPO = "https://huggingface.co/lightx2v/MiniMax-H3-Prompt-Rewriter-LoRA-8B/resolve/main";

@@ -16,13 +16,13 @@ import type {
 import {
   ltxAudioVaeCompatible,
   videoHelperBatchCompatible
-} from "./dependency-compatibility.js";
+} from "../../src/infrastructure/dependency-compatibility.js";
 import { readComfyGitRevision } from "./comfy-discovery.js";
 import {
   multimodalPromptRecognizesQwen38,
   qwenVlNeedsComfyDesktopLoggingShim,
   qwenVlNeedsCooperativeInterrupt
-} from "./dependency-node-adapters.js";
+} from "../../src/infrastructure/dependency-node-adapters.js";
 
 const execFileAsync = promisify(execFile);
 

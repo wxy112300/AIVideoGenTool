@@ -26,6 +26,7 @@ import { normalizeImageEditDraft, normalizeImageHistory } from "../src/core/imag
 import { normalizeQueuePauseBoundary } from "../src/core/queue.js";
 import { isHistoryRating, normalizeHistoryTags } from "../src/core/history-filter.js";
 import { copyPromptVersions, ensureDraftPromptState } from "../src/core/draft-prompts.js";
+import type { StateRepository } from "./ports/state-repository.js";
 import {
   normalizeH3VideoVaeBackend,
   normalizeH3VideoVaeMode
@@ -417,7 +418,7 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
   };
 }
 
-export class JsonStore {
+export class JsonStore implements StateRepository {
   private state: AppState = createDefaultState();
   private writeChain: Promise<void> = Promise.resolve();
 

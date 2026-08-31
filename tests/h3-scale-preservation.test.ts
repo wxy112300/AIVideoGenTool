@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ensureH3ScalePreservationInOutput,
+  extractH3MicroFpvIntent,
   extractH3ScaleIntent,
   h3ScalePreservationInstruction
 } from "../src/core/h3-scale-preservation.js";
@@ -29,6 +30,32 @@ describe("H3 scale semantics", () => {
 
     expect(intent.detected).toBe(true);
     expect(intent.direction).toBe("smaller");
+  });
+
+  it("translates ant-scale metaphors into reference-derived micro-scale behavior", () => {
+    const source = "An ant-size tiny human walks from A to B; use ant's view with a low camera close to the surface.";
+    const metaphor = extractH3MicroFpvIntent(source);
+    const intent = extractH3ScaleIntent(source);
+    const instruction = h3ScalePreservationInstruction(source, "I2VA", "Picture 1 shows the person beside a coffee cup.");
+
+    expect(metaphor).toMatchObject({ detected: true, literalAnimalSubject: false });
+    expect(metaphor.terms).toEqual(expect.arrayContaining(["ant-size", "ant's view"]));
+    expect(intent).toMatchObject({ detected: true, microFpvMetaphor: true, direction: "smaller" });
+    expect(instruction).toContain("Reference-derived scale lock");
+    expect(instruction).toContain("never assume a fixed centimeter range");
+    expect(instruction).toContain("same support surface");
+    expect(instruction).toContain("Subject-route continuity");
+    expect(instruction).toContain("not a request to render an ant");
+    expect(instruction).not.toContain("2-4 cm");
+  });
+
+  it("does not reinterpret a literal ant as a tiny human metaphor", () => {
+    const intent = extractH3MicroFpvIntent("An ant crawls across a leaf from A to B, seen from its own view.");
+
+    expect(intent.detected).toBe(false);
+    expect(intent.literalAnimalSubject).toBe(true);
+    expect(extractH3ScaleIntent("A normal-size girl is seen from an ant's view.").detected).toBe(false);
+    expect(extractH3MicroFpvIntent("蚂蚁在叶子上爬行，使用蚂蚁视角。").detected).toBe(false);
   });
 
   it("keeps the mode-specific scale instruction for every H3 request mode", () => {
@@ -112,5 +139,17 @@ describe("H3 scale semantics", () => {
 
     expect(repaired).toContain("Scale continuity:");
     expect(repaired).toContain("source-age human");
+  });
+
+  it("adds the micro-scale lock even when a normal scale lock is already present", () => {
+    const output = "integrated_multimodal_description: Scale continuity: the same source-age human remains physically smaller than the environment. [Shot 1] The tiny person walks.";
+    const repaired = ensureH3ScalePreservationInOutput(
+      output,
+      "T2VA",
+      "An ant-size tiny person walks from A to B using ant's view."
+    );
+
+    expect(repaired).toContain("Metaphor-to-execution lock");
+    expect(repaired.match(/Metaphor-to-execution lock:/gu)).toHaveLength(1);
   });
 });

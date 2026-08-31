@@ -8,6 +8,15 @@
 
 ## Unreleased
 
+（暂无已归档条目。）
+
+## 0.56.0 — 2026-08-31
+
+- 完成应用服务、基础设施端口、Electron 组合层和 renderer client seam 的模块化收口；保留现有 IPC、持久化、队列和桌面工作流兼容，新增 renderer 的 application、events、assets/media 与 host capabilities 窄依赖入口。
+- 提示词增强新增按请求触发的 H3 执行控制层：按 `PRESERVE / CHANGE / INFER` 锁定用户意图，针对参考图差异、镜头路径与角度、精确环绕、微小真人比例、动作因果、角色反应、对白语言、声音因果、单镜头连续性和首尾帧衔接按需补强；同步覆盖原生 Qwen、多模态、LM Studio/llama-server 与 H3 Prompt Writer 路径。
+- 影视细节扩写进一步把篇幅优先用于用户要求的变化、动作/反应、镜头、声音、连续性和终态，减少重复参考图清单与装饰性填充；生成结果增加有限的镜头、尺度、对白、可见文字和单镜头确定性修复。
+- 修复相邻对白与招牌/标签文字被误判的问题，保留原始多语言台词并避免将后续可见文字当作对白。
+
 ## 0.55.0 — 2026-08-30
 
 - 新增 `Gemma 4 26B-A4B UNSEEN NSFW Q4 · Uncensored` 提示词模型档位：登记 Jommarn 的固定 GGUF revision，使用匹配的 `mmproj-gemma4-vision-q4_0.gguf`，复用 H3 Prompt Writer 的模型生命周期、图片/视频参考输入、队列释放和历史兼容路径。

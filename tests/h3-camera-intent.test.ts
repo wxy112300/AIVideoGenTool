@@ -38,6 +38,41 @@ describe("H3 camera intent guard", () => {
     ).missing).toContain("camera-angle");
   });
 
+  it("keeps Micro-FPV as an invisible viewpoint and preserves an exact orbit angle", () => {
+    const source = "An ant-size tiny human walks from A to B while the Micro-FPV camera rotates around the tiny human180 degree.";
+    const intent = extractH3CameraIntent(source);
+    const instruction = h3CameraIntentInstruction(source);
+
+    expect(intent.hasViewpointCamera).toBe(true);
+    expect(intent.microFpvMetaphor).toBe(true);
+    expect(intent.rotationDegrees).toEqual([180]);
+    expect(intent.targetAnchors).toContain("tiny human");
+    expect(instruction).toContain("Micro-FPV metaphor lock");
+    expect(instruction).toContain("Exact rotation-angle lock");
+    expect(instruction).toContain("half orbit/semicircle");
+
+    const splitClauses = extractH3CameraIntent("ant-size tiny human starts on the table. rotate around the tiny human180 degree.");
+    expect(splitClauses.rotationDegrees).toEqual([180]);
+    expect(splitClauses.microFpvMetaphor).toBe(true);
+
+    const shorthand = extractH3CameraIntent("A tiny human stands on the table. rotate around the tiny human180 degree.");
+    expect(shorthand.rotationDegrees).toEqual([180]);
+
+    expect(extractH3CameraIntent("镜头环绕这个微小真人180度后停在终点。").rotationDegrees).toEqual([180]);
+  });
+
+  it("audits a 360-degree expansion as a violation of a requested 180-degree orbit", () => {
+    const source = "The camera rotates around the tiny human 180 degrees.";
+    const halfOrbit = "integrated_multimodal_description: [Shot 1] The viewpoint camera completes an exact 180-degree orbit around the tiny human and stops.";
+    const fullOrbit = "integrated_multimodal_description: [Shot 1] The viewpoint camera completes a 360-degree orbit around the tiny human.";
+
+    expect(auditH3CameraIntent(source, halfOrbit).passed).toBe(true);
+    expect(auditH3CameraIntent(source, fullOrbit).missing).toContain("rotation-angle");
+    const repaired = preserveH3CameraIntentInOutput(fullOrbit, source, "T2VA");
+    expect(repaired).toContain("180 degrees");
+    expect(repaired).not.toContain("360-degree");
+  });
+
   it("does not mistake a physical camera prop for a viewpoint instruction", () => {
     const intent = extractH3CameraIntent(
       "A woman holds a handheld camera while a security camera is visible on the wall."

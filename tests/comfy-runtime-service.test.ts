@@ -9,7 +9,7 @@ import {
   clearOwnedComfyProcessIds,
   type ComfyRuntimeServiceDependencies
 } from "../electron/services/comfy-runtime-service";
-import { comfyUiSettingsForQueueTask } from "../electron/services/comfy-runtime-policy";
+import { comfyUiSettingsForQueueTask } from "../src/infrastructure/comfy-runtime-policy";
 import { createDefaultState } from "../src/core/defaults";
 
 describe("ComfyUI runtime service", () => {

@@ -2,18 +2,30 @@ import type { H3PromptMode } from "../types.js";
 
 export type H3ScaleDirection = "smaller" | "larger" | "relative";
 
+export interface H3MicroFpvIntent {
+  detected: boolean;
+  viewpoint: boolean;
+  terms: string[];
+  literalAnimalSubject: boolean;
+}
+
 export interface H3ScaleIntent {
   detected: boolean;
   direction: H3ScaleDirection;
   humanSubject: boolean;
   humanIdentity: boolean;
   morphologyChangeRequested: boolean;
+  microFpvMetaphor: boolean;
+  microFpvViewpoint: boolean;
   terms: string[];
 }
 
-const smallerScalePattern = /(?:\b(?:tiny|miniature|miniaturized|miniaturised|diminutive|shrunken|shrunk|shrink(?:s|ing)?|small[- ]scale|small[- ]sized|micro[- ]scale|pocket[- ]sized|scale(?:d)?\s+down|reduced\s+in\s+size|downsized)\b|缩小化?|变小|微小|微型|迷你|小人|等比例缩小|缩至|缩成)/iu;
+const microFpvMetaphorPattern = /(?:\b(?:ant[- ]?size|ant[- ]?scale|ant['’]s\s+(?:view|eye(?:[- ]level)?|perspective|POV)|(?:insect|bug)[- ]?(?:size|scale|eye|view|perspective|POV)|insect[- ]?eye|micro[- ]FPV|micro[- ]first[- ]person|like\s+an?\s+ant(?:['’]s)?\s+(?:view|eye|perspective))\b|蚂蚁(?:大小|尺寸|视角|视线)|昆虫(?:大小|尺寸|视角|视线)|虫眼(?:视角)?|微型FPV|微型第一人称)/iu;
+const literalAnimalSubjectPattern = /(?:\b(?:an?|the)\s+(?:ant|insect|bug)\b(?![- ]?(?:size|scale|eye|view|perspective|POV)|['’]s\s+(?:view|eye|perspective|POV))[^.!?;\n]{0,55}\b(?:crawl|crawls|crawling|walk|walks|walking|move|moves|moving|run|runs|running|climb|climbs|climbing|fly|flies|flying|carry|carries)\b|\b(?:ant|insect|bug)\s+(?:crawls?|walks?|moves?|runs?|climbs?)\b|(?:一只)?(?:蚂蚁|昆虫)\s*(?:在|正在|会)[^。！？;\n]{0,35}(?:爬|走|移动|跑|飞))/iu;
+const smallerScalePattern = /(?:\b(?:tiny|miniature|miniaturized|miniaturised|diminutive|shrunken|shrunk|shrink(?:s|ing)?|small[- ]scale|small[- ]sized|micro[- ]scale|pocket[- ]sized|ant[- ]?size|ant[- ]?scale|scale(?:d)?\s+down|reduced\s+in\s+size|downsized)\b|缩小化?|变小|微小|微型|迷你|小人|等比例缩小|缩至|缩成)/iu;
+const microFpvScaleCuePattern = /(?:\b(?:ant|insect|bug)[- ]?(?:size|scale)\b|\b(?:micro[- ]FPV|micro[- ]first[- ]person)\b[^.!?\n]{0,40}\b(?:size|scale)\b|蚂蚁(?:大小|尺寸)|昆虫(?:大小|尺寸))/iu;
 const smallerSubjectPattern = /\b(?:small|little)\s+(?:person|people|human|girl|boy|woman|man|adult|child|character|subject)\b/iu;
-const smallerSubjectScalePattern = /(?:\b(?:tiny|miniature|miniaturized|miniaturised|diminutive|shrunken|shrunk|shrink(?:s|ing)?|small[- ]scale|small[- ]sized|micro[- ]scale|pocket[- ]sized|scale(?:d)?\s+down|reduced\s+in\s+size|downsized)\b(?:[\t ,;:]+(?:a|an|the|real|living|full[- ]grown|adult|young|female|male)){0,5}[\t ,;:]+\b(?:person|people|human|girl|boy|woman|man|lady|gentleman|female|male|adult|child|teen(?:ager)?|character|subject)\b|\b(?:person|people|human|girl|boy|woman|man|lady|gentleman|female|male|adult|child|teen(?:ager)?|character|subject)\b[^.!?\n]{0,18}\b(?:shrink(?:s|ing)?|shrunken|shrunk|scale(?:d)?\s+down|reduced\s+in\s+size|downsized|缩小|变小|微小)\b|(?:缩小化?|变小|微小|微型|迷你|小人|等比例缩小|缩至|缩成)(?:的|的一个)?(?:真人|人类|人物|角色|女孩|女孩子|姑娘|男孩|男孩子|女人|男人|女士|男士|成人|少女|女性|男性|人))/iu;
+const smallerSubjectScalePattern = /(?:\b(?:tiny|miniature|miniaturized|miniaturised|diminutive|shrunken|shrunk|shrink(?:s|ing)?|small[- ]scale|small[- ]sized|micro[- ]scale|pocket[- ]sized|ant[- ]?size|ant[- ]?scale|scale(?:d)?\s+down|reduced\s+in\s+size|downsized)\b(?:[\t ,;:]+(?:a|an|the|real|living|full[- ]grown|adult|young|female|male)){0,5}[\t ,;:]+\b(?:person|people|human|girl|boy|woman|man|lady|gentleman|female|male|adult|child|teen(?:ager)?|character|subject)\b|\b(?:person|people|human|girl|boy|woman|man|lady|gentleman|female|male|adult|child|teen(?:ager)?|character|subject)\b[^.!?\n]{0,18}\b(?:shrink(?:s|ing)?|shrunken|shrunk|scale(?:d)?\s+down|reduced\s+in\s+size|downsized|缩小|变小|微小)\b|(?:缩小化?|变小|微小|微型|迷你|小人|等比例缩小|缩至|缩成)(?:的|的一个)?(?:真人|人类|人物|角色|女孩|女孩子|姑娘|男孩|男孩子|女人|男人|女士|男士|成人|少女|女性|男性|人))/iu;
 const largerScalePattern = /(?:\b(?:giant|gigantic|huge|massive|colossal|oversized|enlarged|enlarge|grown|grow(?:s|ing)?|scale(?:d)?\s+up)\b|巨大化?|巨型|巨大|放大|变大|巨人|等比例放大|增大)/iu;
 const largerSubjectScalePattern = /(?:\b(?:giant|gigantic|huge|massive|colossal|oversized|enlarged|enlarge|grown|grow(?:s|ing)?|scale(?:d)?\s+up)\b(?:[\t ,;:]+(?:a|an|the|real|living|full[- ]grown|adult|young|female|male)){0,5}[\t ,;:]+\b(?:person|people|human|girl|boy|woman|man|lady|gentleman|female|male|adult|child|teen(?:ager)?|character|subject)\b|\b(?:person|people|human|girl|boy|woman|man|lady|gentleman|female|male|adult|child|teen(?:ager)?|character|subject)\b[^.!?\n]{0,18}\b(?:giant|gigantic|huge|massive|colossal|oversized|enlarged|enlarge|grown|grow(?:s|ing)?|scale(?:d)?\s+up|巨大化?|巨型|巨大|放大|变大|巨人|等比例放大|增大)\b|(?:巨大化?|巨型|巨大|放大|变大|巨人|等比例放大|增大)(?:的|的一个)?(?:真人|人类|人物|角色|女孩|女孩子|姑娘|男孩|男孩子|女人|男人|女士|男士|成人|少女|女性|男性|人))/iu;
 const scaleRelationPattern = /(?:\b(?:scale|scaling|relative\s+(?:size|scale)|physical\s+size|world[- ]scale|same\s+proportions?|proportional(?:ly)?|height\s+ratio)\b|比例|尺度|大小关系|相对于|等比例|世界尺度|物理尺寸)/iu;
@@ -40,6 +52,24 @@ function combinedScaleText(sourcePrompt: string, supplementalText: string): stri
   return [sourcePrompt, supplementalText].map((value) => value.trim()).filter(Boolean).join("\n");
 }
 
+export function extractH3MicroFpvIntent(
+  sourcePrompt: string,
+  supplementalText = ""
+): H3MicroFpvIntent {
+  const text = combinedScaleText(sourcePrompt, supplementalText);
+  const terms = matchedTerms(microFpvMetaphorPattern, text);
+  const literalAnimalSubject = hasMatch(literalAnimalSubjectPattern, text);
+  const hasHumanContext = hasMatch(humanSubjectPattern, text) || hasMatch(smallerScalePattern, text);
+  const hasCameraContext = /(?:\bcamera\b|\blens\b|\bviewpoint\b|\bPOV\b|\bfirst[- ]person\b|\bshot\b|\bframing\b|镜头|相机|机位|视角)/iu.test(text);
+  const viewpoint = terms.some((term) => /(?:view|eye|perspective|POV|FPV|视角|视线|虫眼)/iu.test(term)) || (hasCameraContext && terms.length > 0);
+  return {
+    detected: terms.length > 0 && (hasHumanContext || hasCameraContext) && !literalAnimalSubject,
+    viewpoint,
+    terms,
+    literalAnimalSubject
+  };
+}
+
 export function extractH3ScaleIntent(
   sourcePrompt: string,
   supplementalText = ""
@@ -51,7 +81,11 @@ export function extractH3ScaleIntent(
   const humanSubject = hasMatch(humanSubjectPattern, text);
   const humanIdentity = hasMatch(humanIdentityPattern, text);
   const antiToy = hasMatch(antiToyPattern, text);
-  const detected = humanSubject && (hasSmallerScale || hasLargerScale || hasRelation);
+  const microFpvIntent = extractH3MicroFpvIntent(text);
+  const microFpvMetaphor = microFpvIntent.detected;
+  const microFpvViewpoint = microFpvIntent.viewpoint;
+  const microFpvScaleCue = microFpvMetaphor && (hasSmallerScale || hasMatch(microFpvScaleCuePattern, text));
+  const detected = humanSubject && (hasSmallerScale || hasLargerScale || hasRelation || microFpvScaleCue);
   const morphologyChangeRequested = hasMatch(explicitMorphologyPattern, text) && !hasMatch(explicitAntiToyPattern, text);
   const direction: H3ScaleDirection = hasSmallerScale && hasLargerScale
     ? "relative"
@@ -66,14 +100,15 @@ export function extractH3ScaleIntent(
     ...matchedTerms(largerScalePattern, text),
     ...matchedTerms(scaleRelationPattern, text),
     ...matchedTerms(numericScalePattern, text),
+    ...(microFpvMetaphor ? matchedTerms(microFpvMetaphorPattern, text) : []),
     ...(antiToy ? matchedTerms(antiToyPattern, text) : [])
   ].filter((term, index, all) => all.indexOf(term) === index);
 
-  return { detected, direction, humanSubject, humanIdentity, morphologyChangeRequested, terms };
+  return { detected, direction, humanSubject, humanIdentity, morphologyChangeRequested, microFpvMetaphor, microFpvViewpoint, terms };
 }
 
 export function h3ScalePreservationContract(): string {
-  return "Scale-semantics rule: when a size adjective or shrink/grow request refers to a subject, interpret it as one uniform change in physical world scale unless the user explicitly requests a body-shape transformation. Never infer a toy, doll, figure, child, baby, or local anatomy change from smallness; preserve the source identity, age, facial and body proportions, joints, posture, gait, behavior, and natural materials.";
+  return "Scale-semantics rule: when a size adjective or shrink/grow request refers to a subject, interpret it as one uniform change in physical world scale unless the user explicitly requests a body-shape transformation. Never infer a toy, doll, figure, child, baby, or local anatomy change from smallness; preserve the source identity, age, facial and body proportions, joints, posture, gait, behavior, and natural materials. Treat ant/insect/micro-FPV wording as a viewpoint or scale metaphor unless the user explicitly requests an actual animal or device, and translate the metaphor into observable camera height, clearance, route, and motion.";
 }
 
 function modeScaleRule(mode: H3PromptMode): string {
@@ -110,18 +145,38 @@ export function h3ScalePreservationInstruction(
   const mechanicsRule = intent.humanIdentity
     ? "Keep the identified human living and flesh-and-blood with natural skin, hair, clothing, contact, weight, and motion, not manufactured or plastic."
     : "Keep the subject's original material, anatomy, contact, weight, and motion natural rather than turning it into a manufactured or stylized object.";
-  return [
+  const lines = [
     "Scale semantics lock (high priority):",
     `When size words describe a human/character, rewrite them as the same source/reference identity and age made ${direction} by one uniform world-space factor relative to the full-size environment. Preserve facial maturity, face shape, head-to-body and limb-length ratios, joints, hands, feet, posture, gait, expressions, voice, clothing, materials, and age-appropriate behavior; never infer a child, baby, toy, doll, figure, plastic model, local body deformation, or scale drift.`,
-    `${mechanicsRule} Shorter or longer travel distance is not shorter or longer limbs; move the camera or lens closer instead of enlarging the head. Preserve supplied height/ratio anchors; otherwise use visible environmental anchors without inventing numbers.`,
+    `${mechanicsRule} Shorter or longer travel distance is not shorter or longer limbs; move the camera or lens closer instead of enlarging the head.`,
+    "Reference-derived scale lock: first estimate the subject's relative world scale from the supplied reference image(s), the support surface, and visible environmental anchors such as fingers, fabric weave, floor seams, leaves, cups, furniture, or doors. Use relational scale language when a ruler is not visible; preserve an explicitly supplied measurement, but never assume a fixed centimeter range or invent false precision.",
     modeScaleRule(mode),
     explicitChangeRule,
-    "Encode the lock as natural H3 timeline prose, not a detached negative list."
-  ].join("\n");
+    "Subject-route continuity: whenever the scaled subject travels from A to B, describe a continuous path through meaningful surfaces, landmarks, obstacles, turns, contact points, and the arrival state. The character's route is not optional camera decoration; do not teleport the subject or let a camera-only path replace the subject's movement."
+  ];
+  if (intent.microFpvMetaphor) {
+    lines.push(
+      "Metaphor-to-execution lock: phrases such as ant-size, ant's view, insect-eye, or Micro-FPV are authoring shorthand here, not a request to render an ant, insect, drone, or physical camera. Translate them into an invisible image-forming viewpoint operating at the smallest scale supported by the reference and scene."
+    );
+  }
+  if (intent.microFpvViewpoint) {
+    lines.push(
+      "Micro-FPV camera relation: keep the viewpoint close to the same support surface as the tiny human and approximately at the tiny subject's own world height or clearance, with a plausible gap above the surface. Do not raise the camera to normal human eye level, detach it from the terrain, or make the camera itself an on-screen object unless explicitly requested."
+    );
+    lines.push(
+      "Micro-FPV path lock: design the camera route as start state → intermediate surface landmarks or passable gaps → turns, obstacles, and motivated course corrections → destination, while keeping the tiny human's own A-to-B route spatially linked to it. Respect actual openings and solid surfaces; do not teleport, pass through closed geometry, or turn every route phase into a new shot."
+    );
+  }
+  lines.push("Encode the lock as natural H3 timeline prose, not a detached negative list.");
+  return lines.join("\n");
 }
 
 function scaleOutputAlreadyLocked(promptText: string): boolean {
   return /(?:scale continuity|uniform(?:ly)?\s+(?:world[- ]scale|scaled|reduced|enlarged)|world[- ]space\s+scale|(?:preserve|maintain|keep|unchanged|consistent|same)[^.!?\n]{0,100}(?:head[- ]to[- ]body\s+ratio|limb[- ]length|body proportions?|source age|age-appropriate))/iu.test(promptText);
+}
+
+function microScaleOutputAlreadyLocked(promptText: string): boolean {
+  return /(?:(?:ant[- ]?(?:size|scale)|ant['’]s\s+(?:view|eye)|insect[- ]?(?:eye|view|scale)|micro[- ]FPV)[^.!?\n]{0,180}(?:metaphor|viewpoint|support surface|same[^.!?\n]{0,35}(?:height|clearance))|(?:not|never|do not|without|rather than|instead of)[^.!?\n]{0,90}(?:literal ant|ant or insect|physical camera|drone))/iu.test(promptText);
 }
 
 function scaleOutputLock(intent: H3ScaleIntent, promptText: string): string {
@@ -143,6 +198,17 @@ function scaleOutputLock(intent: H3ScaleIntent, promptText: string): string {
   return `Scale continuity: ${subjectDescription} remains ${direction} through one uniform world-space change only. Preserve identity, source age and age-appropriate behavior, facial maturity, head-to-body ratio, limb-length ratios, joint placement, hands, feet, posture, gait, gestures and expressions; do not locally resize body parts, regress the age, or let the scale drift. ${materialRule}`;
 }
 
+function microScaleOutputLock(intent: H3ScaleIntent, promptText: string): string {
+  if (/[\p{Script=Han}]/u.test(promptText)) {
+    return intent.microFpvViewpoint
+      ? "隐喻尺度与镜头：ant-size、ant's view、insect-eye、Micro-FPV 等词在此仅表示贴近支撑表面的微型视角，不要生成真实蚂蚁、昆虫、无人机或画面内的实体相机；根据参考图和环境参照估算微小真人的相对尺度，不假定固定厘米数，让不可见镜头保持在与微小角色同一数量级的高度并贴近表面，沿真实可通行路径连续跟随。"
+      : "隐喻尺度：ant-size、insect-size 等词在此仅表示微小真人与环境的相对尺度，不要生成真实蚂蚁或昆虫；根据参考图和环境参照估算尺度，保持真人身份、年龄和等比例身体结构，不假定固定厘米数。";
+  }
+  return intent.microFpvViewpoint
+    ? "Metaphor-to-execution lock: ant-size, ant's view, insect-eye, and Micro-FPV are viewpoint/scale metaphors here, not literal ants, insects, drones, or an on-screen camera. Infer the tiny human's relative world scale from the supplied reference and environmental anchors rather than a fixed centimeter value; keep the invisible viewpoint close to the same support surface and roughly at the tiny subject's own height, following a continuous passable route."
+    : "Metaphor-to-execution lock: ant-size and insect-size are scale metaphors here, not literal ants or insects. Infer the tiny human's relative world scale from the supplied reference and environmental anchors, preserve the same real human identity and proportions, and do not assume a fixed centimeter value.";
+}
+
 export function ensureH3ScalePreservationInOutput(
   promptText: string,
   mode: H3PromptMode,
@@ -151,14 +217,20 @@ export function ensureH3ScalePreservationInOutput(
 ): string {
   if (!promptText.trim()) return promptText;
   const intent = extractH3ScaleIntent(sourcePrompt, supplementalText);
-  if (!intent.detected || !intent.humanSubject || intent.morphologyChangeRequested || scaleOutputAlreadyLocked(promptText)) {
+  if (!intent.detected || !intent.humanSubject) {
     return promptText;
   }
-  const lock = scaleOutputLock(intent, promptText);
+  const shouldAddScaleLock = !intent.morphologyChangeRequested && !scaleOutputAlreadyLocked(promptText);
+  const shouldAddMicroLock = intent.microFpvMetaphor && !microScaleOutputAlreadyLocked(promptText);
+  if (!shouldAddScaleLock && !shouldAddMicroLock) return promptText;
+  const locks = [
+    ...(shouldAddScaleLock ? [scaleOutputLock(intent, promptText)] : []),
+    ...(shouldAddMicroLock ? [microScaleOutputLock(intent, promptText)] : [])
+  ].join("\n");
   const sectionName = mode === "R2V" ? "detailed_description" : "integrated_multimodal_description";
   const sectionPattern = new RegExp(`^[*# \\t]*${sectionName}[ \\t]*:`, "imu");
   if (sectionPattern.test(promptText)) {
-    return promptText.replace(sectionPattern, (header) => `${header}\n${lock}`);
+    return promptText.replace(sectionPattern, (header) => `${header}\n${locks}`);
   }
-  return `${lock}\n${promptText}`;
+  return `${locks}\n${promptText}`;
 }

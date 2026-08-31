@@ -7,7 +7,7 @@ import type {
   ImageAssetLibraryResult,
   ImageAssetLibraryScan,
   ImageReference
-} from "../../src/types.js";
+} from "../types.js";
 
 const imageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"]);
 

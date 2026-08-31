@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { promisify } from "node:util";
 import type { Settings } from "../../src/types.js";
-import { getApplicationLogger, safeLogErrorMessage } from "./app-logger.js";
+import { getApplicationLogger, safeLogErrorMessage } from "../../src/infrastructure/app-logger.js";
 import { localEndpoint } from "./local-service-process.js";
 
 const execFileAsync = promisify(execFile);
