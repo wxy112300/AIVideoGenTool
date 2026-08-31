@@ -63,29 +63,12 @@ import {
 import { swapHistoryDetailFragments } from "./renderer/pages/history/detail-transition";
 import { createHistoryMediaRuntime } from "./renderer/pages/history/media-helpers";
 import {
-  renderCreatePage,
-  renderImageEditPage,
-  type CreatePageOptions,
-} from "./renderer/pages/create/page";
-import { mountCreateAssembly } from "./renderer/pages/create/assembly";
-import { mountH3ReferencesController } from "./renderer/pages/create/references-controller";
-import {
-  buildImageEditPageViewModel,
-  buildVideoCreatePageViewModel,
-  imageEditEnqueueBlockReason,
-  type CreateViewModelDependencies
-} from "./renderer/pages/create/view-model";
+  createCreateWorkspaceCoordinator,
+  type CreateWorkspaceCoordinator
+} from "./renderer/pages/create/coordinator";
 import {
   h3PromptPresetOptions,
-  h3PromptModeForDraft,
-  imageFileIsSupported,
-  h3ReferenceRolePromptLabels,
-  imageReferenceRolePromptLabels,
-  loadImagePreview,
-  orderVideoProfiles,
-  resizePromptInput,
-  updateImagePromptWordCounter,
-  updatePromptWordCounter
+  orderVideoProfiles
 } from "./renderer/pages/create/helpers";
 import {
   h3PromptPackFor,
@@ -93,17 +76,6 @@ import {
   qwenImagePromptPackFor
 } from "./renderer/prompt-packs";
 import { h3AutoPromptSeeds } from "./core/prompts/h3/auto-seeds";
-import {
-  activePromptIndexForDraft,
-  clearPromptVersion,
-  promptPatchForDraft,
-  promptVersionsForDraft
-} from "./core/draft-prompts";
-import {
-  PromptEditHistory,
-  type PromptHistoryScope,
-  type PromptHistorySnapshot
-} from "./core/prompt-edit-history";
 import { escapeHtml } from "./renderer/shared/dom";
 import {
   formatAssetBytes,
@@ -116,7 +88,7 @@ import {
   performanceCard,
 } from "./renderer/shared/formatters";
 import { icon, renderIcons } from "./renderer/shared/icons";
-import { modelName, videoLoraPurposeLabel } from "./renderer/shared/labels";
+import { modelName } from "./renderer/shared/labels";
 import { videoLoraInfoButton } from "./renderer/shared/markup";
 import {
   imageWorkflowStatus,
@@ -135,8 +107,6 @@ import type {
   Draft,
   EnvironmentScanResult,
   H3PromptPreset,
-  H3PromptMode,
-  H3ReferenceSlot,
   HistoryAsset,
   ImageAssetLibraryScan,
   ImageAssetVersion,
@@ -144,37 +114,23 @@ import type {
   ImageEditDraft,
   ImageHistoryProject,
   ImagePromptPreset,
-  ImageReference,
   LocalServiceKind,
   ModelComponentStatus,
   ModelScanProfile,
   PerformanceMetrics,
-  PromptEnhanceMode,
   QueueTask,
   Settings,
   SettingsSaveMode,
   TaskPerformanceStats,
   WorkflowCapabilities
 } from "./types";
-import { createClearedDraft, createDefaultImageEditDraft } from "./core/draft-defaults";
-import {
-  activateCreationDraft,
-  creationDraftForMode,
-  patchCreationDraftForMode,
-  preserveLocalCreationDrafts
-} from "./core/creation-drafts";
 import {
   imageEditDraftFromQueueTask,
-  imageEditPicturesForVersion,
-  nextImagePictureNumber,
-  normalizeImageEditDraft
+  imageEditPicturesForVersion
 } from "./core/image-project";
 import {
   firstSupportedImageModelId,
-  imageModelCapabilityFor,
-  imageOutputCountMax,
-  imageReferenceInputPath,
-  normalizeImageTargetResolution
+  imageModelCapabilityFor
 } from "./core/image-workflow";
 import {
   isComfyMultimodalPromptModel,
@@ -182,25 +138,18 @@ import {
   isQwenVlPeftPromptModel
 } from "./core/prompt-models";
 import {
-  generationSafetyForTask,
-  isMiniMaxH3BoundaryExtensionModel,
-  isMiniMaxH3Fl2vaModel,
-  isMiniMaxH3Model,
   isMiniMaxH3R2vModel,
   motionContextMaxDurationSeconds,
   normalizeH3Steps
 } from "./core/workflow";
-import { resolveVideoGenerationPolicy, shouldEnableSpectrumByDefault } from "./core/video-policy";
 import { modelCatalog } from "./core/catalog";
 import { rewriteHuggingFaceDownloadUrl } from "./core/download-url";
-import { nearestSupportedVideoResolution } from "./core/video-resolution";
 import { ensureMotionContextSourceSlot } from "./core/h3-reference";
 import {
   createUpscaleFilename,
   estimateUpscaleResources,
   upscaleDimensions
 } from "./core/upscale";
-import { checkH3Prompt } from "./core/h3-prompt-check";
 import { structurallyEqual } from "./core/structural-equal";
 import { createTranslator, loadUiLocale, type TranslationParams } from "./core/i18n";
 import { uiKeys } from "./core/i18n-keys";
@@ -226,15 +175,8 @@ const rendererEvents = rendererDependencies.events;
 const rendererAssets = rendererDependencies.assets;
 const rendererHostCapabilities = rendererDependencies.hostCapabilities;
 let shellCoordinator: RendererShellCoordinator;
+let createWorkspaceCoordinator: CreateWorkspaceCoordinator;
 let settingsSaveCoordinator: SettingsSaveCoordinator;
-let draftSaveTimer: number | undefined;
-let draftRevision = 0;
-let draftSaveInFlight = 0;
-let draftDirty = false;
-let imageDraftSaveTimer: number | undefined;
-let imageDraftRevision = 0;
-let imageDraftSaveInFlight = 0;
-let imageDraftDirty = false;
 let environmentScan: EnvironmentScanResult | null = null;
 let environmentScanning = false;
 let settingsSaving = false;
@@ -277,28 +219,8 @@ let comfyRuntime: ComfyRuntimeState = {
   updatedAt: new Date(0).toISOString(),
   operationId: 0
 };
-interface CreationModeUiState {
-  promptEnhanceMode: PromptEnhanceMode;
-  h3PromptPreset: H3PromptPreset;
-}
-const creationModeUiState: Record<CreationMode, CreationModeUiState> = {
-  "image-to-video": {
-    promptEnhanceMode: "sulphur-native",
-    h3PromptPreset: "official-storyboard"
-  },
-  "video-extension": {
-    promptEnhanceMode: "sulphur-native",
-    h3PromptPreset: "official-storyboard"
-  },
-  "image-edit": {
-    promptEnhanceMode: "sulphur-native",
-    h3PromptPreset: "official-storyboard"
-  }
-};
-const activeCreationModeUiState = (): CreationModeUiState => creationModeUiState[creationMode];
 let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
 let settingsImagePromptPreset: ImagePromptPreset = "faithful";
-const promptEditHistory = new PromptEditHistory();
 
 function uiText(
   key: string,
@@ -308,98 +230,12 @@ function uiText(
   return createTranslator(state.settings.uiLocale).t(key, params, fallback);
 }
 
-function videoPromptSnapshot(): PromptHistorySnapshot {
-  return {
-    promptVersions: promptVersionsForDraft(state.draft).map((version) => ({ ...version })),
-    activePromptVersion: activePromptIndexForDraft(state.draft)
-  };
-}
-
-function imagePromptSnapshot(): PromptHistorySnapshot {
-  return {
-    promptVersions: state.imageDraft.promptVersions.map((version) => ({ ...version })),
-    activePromptVersion: state.imageDraft.activePromptVersion
-  };
-}
-
-function clearPromptVersionForScope(scope: PromptHistoryScope): void {
-  const before = scope === "video" ? videoPromptSnapshot() : imagePromptSnapshot();
-  if (before.promptVersions.length === 1 && !before.promptVersions[0]?.text) return;
-  const cleared = clearPromptVersion(before.promptVersions, before.activePromptVersion);
-  const after = {
-    promptVersions: cleared.promptVersions,
-    activePromptVersion: cleared.activePromptVersion
-  };
-  promptEditHistory.record(scope, before, after);
-  if (scope === "video") {
-    patchDraft(promptPatchForDraft(state.draft, after.promptVersions, after.activePromptVersion));
-  } else {
-    patchImageDraft(after);
-  }
-}
-
-function applyPromptHistorySnapshot(
-  scope: PromptHistoryScope,
-  snapshot: PromptHistorySnapshot
-): void {
-  if (scope === "video") {
-    patchDraft(promptPatchForDraft(
-      state.draft,
-      snapshot.promptVersions.map((version) => ({ ...version })),
-      snapshot.activePromptVersion
-    ));
-  } else {
-    patchImageDraft({
-      promptVersions: snapshot.promptVersions.map((version) => ({ ...version })),
-      activePromptVersion: snapshot.activePromptVersion
-    });
-  }
-}
-
-function undoPromptEdit(scope: PromptHistoryScope): boolean {
-  const snapshot = promptEditHistory.undo(scope);
-  if (!snapshot) return false;
-  applyPromptHistorySnapshot(scope, snapshot);
-  return true;
-}
-
-function redoPromptEdit(scope: PromptHistoryScope): boolean {
-  const snapshot = promptEditHistory.redo(scope);
-  if (!snapshot) return false;
-  applyPromptHistorySnapshot(scope, snapshot);
-  return true;
-}
-
-function invalidatePromptEditHistory(scope: PromptHistoryScope): void {
-  promptEditHistory.invalidate(scope);
-}
-
 window.addEventListener("dragover", (event) => {
   if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
 });
 window.addEventListener("drop", (event) => {
   if (event.dataTransfer?.files.length) event.preventDefault();
 });
-function updateH3PromptCheck(
-  promptText: string,
-  hasEndImage: boolean,
-  mode?: H3PromptMode,
-  hasVideoReference = false
-): void {
-  const element = document.querySelector<HTMLElement>("#h3-prompt-check");
-  if (!element) return;
-  const result = checkH3Prompt(promptText, {
-    hasEndImage,
-    mode,
-    hasImageReference: state.draft.h3ReferenceSlots.some((slot) => slot.mediaType === "image"),
-    hasVideoReference,
-    durationSeconds: state.draft.duration
-  });
-  element.className = `h3-prompt-check ${result.valid ? "valid" : "warning"}`;
-  element.innerHTML = `<div class="h3-prompt-check-heading"><strong>${uiText(uiKeys.runtime.h3PromptCheck)}</strong><span>${escapeHtml(result.summary)}</span></div>
-    ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}`;
-}
-
 const rememberModalFocus = (): void => shellCoordinator.rememberModalFocus();
 const rememberModalControlFocus = (element: HTMLElement): void => shellCoordinator.rememberModalControlFocus(element);
 const restoreModalFocus = (): void => shellCoordinator.restoreModalFocus();
@@ -443,59 +279,65 @@ function upscaleDialogHtml(): string {
   });
 }
 
-const createPageOptions: CreatePageOptions = {
-  t: (key, params, fallback) => createTranslator(state.settings.uiLocale).t(key, params, fallback),
-  icon,
-  escapeHtml,
-  get h3ReferenceRoleLabels() {
-    return h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels;
-  },
-  get imageReferenceRoleLabels() {
-    return qwenImagePromptPackFor(state.settings.uiLocale).referenceRoleLabels;
-  },
-  videoLoraInfoButton: (lora) => videoLoraInfoButton(lora, uiText, state.settings.uiLocale),
-  videoLoraPurposeLabel: (purpose) => videoLoraPurposeLabel(purpose, uiText)
-};
-
-function createViewModelDependencies(): CreateViewModelDependencies {
-  const origin = creationMode;
-  const modeUiState = activeCreationModeUiState();
-  const promptRuntimeView = shellCoordinator.promptRuntimeView(origin);
-  const ownsActivePrompt = shellCoordinator.promptOperationBelongsTo(origin);
-  return {
-    t: uiText,
-    state,
-    environmentScan,
-    performanceMetrics,
-    workflowCapabilities,
-    bundledWorkflows,
-    promptEnhanceMode: modeUiState.promptEnhanceMode,
-    h3PromptPreset: modeUiState.h3PromptPreset,
-    promptEnhancing: promptRuntimeView.right.action === "cancel",
-    promptStarting: shellCoordinator.getPromptStarting(),
-    promptReleasing: shellCoordinator.getPromptReleasing(),
-    promptRuntimeLoaded: shellCoordinator.getPromptRuntimeLoaded(),
-    promptProgress: ownsActivePrompt ? shellCoordinator.getPromptProgress() : null,
-    enqueueBusy: ui.enqueueBusy,
-    promptRuntimeControlTitle,
-    promptRuntimeControlIcon,
-    promptRuntimeView
-  };
-}
-
-function imageEditPage(): string {
-  return renderImageEditPage(
-    buildImageEditPageViewModel(createViewModelDependencies()),
-    createPageOptions
-  );
-}
-
 function createPage(): string {
-  if (creationMode === "image-edit") return imageEditPage();
-  return renderCreatePage(
-    buildVideoCreatePageViewModel(createViewModelDependencies()),
-    createPageOptions
-  );
+  return createWorkspaceCoordinator.renderPage();
+}
+
+function patchDraft(patch: Partial<Draft>): void {
+  createWorkspaceCoordinator.patchDraft(patch);
+}
+
+function patchDraftForMode(
+  mode: Exclude<CreationMode, "image-edit">,
+  update: (draft: Draft) => Partial<Draft>
+): void {
+  createWorkspaceCoordinator.patchDraftForMode(mode, update);
+}
+
+function patchImageDraft(patch: Partial<ImageEditDraft>): void {
+  createWorkspaceCoordinator.patchImageDraft(patch);
+}
+
+function clearCreationDraft(mode: CreationMode): void {
+  createWorkspaceCoordinator.clearDraft(mode);
+}
+
+function saveDraftImmediately(draft: Draft): Promise<void> {
+  return createWorkspaceCoordinator.saveDraftImmediately(draft);
+}
+
+function selectDraftVideo(
+  filename: string,
+  source?: Parameters<CreateWorkspaceCoordinator["selectDraftVideo"]>[1],
+  renderAfterSave?: boolean
+): Promise<void> {
+  return createWorkspaceCoordinator.selectDraftVideo(filename, source, renderAfterSave);
+}
+
+function enableSpectrumByDefaultIfAvailable(
+  mode?: Exclude<CreationMode, "image-edit">
+): void {
+  createWorkspaceCoordinator.enableSpectrumByDefaultIfAvailable(mode);
+}
+
+function bindCreate(): void {
+  createWorkspaceCoordinator.bind();
+}
+
+function getDraftDirty(): boolean {
+  return createWorkspaceCoordinator.getDraftDirty();
+}
+
+function getDraftSaveInFlight(): number {
+  return createWorkspaceCoordinator.getDraftSaveInFlight();
+}
+
+function getImageDraftDirty(): boolean {
+  return createWorkspaceCoordinator.getImageDraftDirty();
+}
+
+function getImageDraftSaveInFlight(): number {
+  return createWorkspaceCoordinator.getImageDraftSaveInFlight();
 }
 
 function installGuideDialogHtml(): string {
@@ -638,21 +480,6 @@ async function editQueueTask(taskId: string): Promise<void> {
     showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.cannotEditQueue), { kind: "error" });
   }
 }
-
-function enableSpectrumByDefaultIfAvailable(
-  mode?: Exclude<CreationMode, "image-edit">
-): void {
-  const spectrumNode = environmentScan?.customNodes.find(
-    (node) => node.id === "spectrum-minimax-h3"
-  );
-  const draft = mode
-    ? creationDraftForMode(state, mode === "video-extension" ? "video" : "image")
-    : state?.draft;
-  if (!draft || !shouldEnableSpectrumByDefault(draft, spectrumNode)) return;
-  if (mode) patchDraftForMode(mode, () => ({ spectrumMode: "balanced" }));
-  else patchDraft({ spectrumMode: "balanced" });
-}
-
 
 function settingsHaveUnsavedChanges(): boolean {
   return settingsDraft !== null &&
@@ -1255,647 +1082,6 @@ function bindShell(): void {
   }));
 }
 
-function scheduleDraftSave(): void {
-  window.clearTimeout(draftSaveTimer);
-  draftSaveTimer = window.setTimeout(async () => {
-    const revision = draftRevision;
-    const draftToSave = state.draft;
-    draftSaveInFlight += 1;
-    try {
-      const savedState = await rendererApplication.saveDraft(draftToSave, {
-        imageToVideoDraft: state.imageToVideoDraft,
-        videoExtensionDraft: state.videoExtensionDraft
-      });
-      const localDraft = state.draft;
-      const localImageToVideoDraft = state.imageToVideoDraft;
-      const localVideoExtensionDraft = state.videoExtensionDraft;
-      setRendererState({
-        ...savedState,
-        draft: localDraft,
-        imageToVideoDraft: localImageToVideoDraft,
-        videoExtensionDraft: localVideoExtensionDraft
-      });
-      if (revision === draftRevision) draftDirty = false;
-    } finally {
-      draftSaveInFlight -= 1;
-    }
-  }, 350);
-}
-
-function scheduleImageDraftSave(): void {
-  window.clearTimeout(imageDraftSaveTimer);
-  imageDraftSaveTimer = window.setTimeout(async () => {
-    const revision = imageDraftRevision;
-    const draftToSave = state.imageDraft;
-    imageDraftSaveInFlight += 1;
-    try {
-      const savedState = await rendererApplication.saveImageDraft(draftToSave);
-      if (revision === imageDraftRevision) {
-        setRendererState({
-          ...preserveLocalCreationDrafts(savedState, state),
-          imageDraft: draftToSave
-        });
-        imageDraftDirty = false;
-      }
-    } catch (error) {
-      showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.imageDraftSaveFailed), { kind: "error" });
-    } finally {
-      imageDraftSaveInFlight -= 1;
-    }
-  }, 350);
-}
-
-async function ensureDraftWorkflowCapability(draft: Draft): Promise<void> {
-  try {
-    const workflowModelId = bundledWorkflowModelId(draft);
-    const key = bundledWorkflowKey(workflowModelId, draft.inputMode);
-    const bundled = bundledWorkflows[key] ??
-      await rendererApplication.getBundledWorkflow(workflowModelId, draft.inputMode);
-    if (bundled) {
-      bundledWorkflows[key] = bundled;
-      workflowCapabilities[bundled.path] = {
-        supportsEndImage: bundled.supportsEndImage,
-        supportsVideoExtension: bundled.supportsVideoExtension
-      };
-    }
-    if (draft.workflowPath && draft.workflowPath !== bundled?.path) {
-      const capability = await rendererApplication.inspectWorkflow(
-        draft.workflowPath,
-        draft.modelId
-      );
-      if (
-        state.draft.workflowPath === draft.workflowPath &&
-        state.draft.modelId === draft.modelId
-      ) {
-        workflowCapabilities[draft.workflowPath] = capability;
-      }
-    }
-  } catch (error) {
-    await rendererApplication.reportRendererError(
-      error instanceof Error ? error.message : String(error),
-      { source: "draft-workflow-capability" }
-    ).catch(() => undefined);
-  }
-}
-
-async function saveDraftImmediately(draft: Draft): Promise<void> {
-  window.clearTimeout(draftSaveTimer);
-  draftRevision += 1;
-  const revision = draftRevision;
-  draftDirty = false;
-  activateCreationDraft(state, draft);
-  const workflowCapabilityPromise = ensureDraftWorkflowCapability(draft);
-  draftSaveInFlight += 1;
-  try {
-    const [savedState] = await Promise.all([
-      rendererApplication.saveDraft(state.draft, {
-        imageToVideoDraft: state.imageToVideoDraft,
-        videoExtensionDraft: state.videoExtensionDraft
-      }),
-      workflowCapabilityPromise
-    ]);
-    setRendererState(preserveLocalCreationDrafts(savedState, state));
-    if (revision === draftRevision) draftDirty = false;
-  } finally {
-    draftSaveInFlight -= 1;
-  }
-}
-
-function patchDraft(patch: Partial<Draft>): void {
-  activateCreationDraft(state, { ...state.draft, ...patch });
-  draftRevision += 1;
-  draftDirty = true;
-  scheduleDraftSave();
-}
-
-function patchDraftForMode(
-  mode: Exclude<CreationMode, "image-edit">,
-  update: (draft: Draft) => Partial<Draft>
-): void {
-  const inputMode = mode === "video-extension" ? "video" : "image";
-  const nextDraft = patchCreationDraftForMode(
-    state,
-    inputMode,
-    update,
-    creationMode === mode
-  );
-  if (!nextDraft) return;
-  draftRevision += 1;
-  draftDirty = true;
-  scheduleDraftSave();
-}
-
-function patchImageDraft(patch: Partial<ImageEditDraft>): void {
-  state.imageDraft = normalizeImageEditDraft({ ...state.imageDraft, ...patch });
-  imageDraftRevision += 1;
-  imageDraftDirty = true;
-  scheduleImageDraftSave();
-}
-
-async function loadImageEditPreviews(): Promise<void> {
-  const pictures = state.imageDraft.pictures;
-  let dimensionsChanged = false;
-  await Promise.all(pictures.map(async (picture) => {
-    const image = document.querySelector<HTMLImageElement>(
-      `[data-image-picture-preview="${CSS.escape(picture.id)}"]`
-    );
-    if (!image || !picture.absolutePath) return;
-    const previewPath = picture.markup?.renderedPath || imageReferenceInputPath(picture);
-    const dataUrl = await rendererAssets.readImage(previewPath).catch(() => null);
-    if (!dataUrl || !image.isConnected) return;
-    await new Promise<void>((resolve) => {
-      image.addEventListener("load", () => {
-        if (image.naturalWidth && image.naturalHeight) {
-    const preview = image.closest<HTMLButtonElement>(".image-picture-preview");
-    preview?.style.setProperty("--picture-ratio", `${image.naturalWidth} / ${image.naturalHeight}`);
-          const current = state.imageDraft.pictures.find((item) => item.id === picture.id);
-          if (current && (current.width !== image.naturalWidth || current.height !== image.naturalHeight)) {
-            const nextPictures = state.imageDraft.pictures.map((item) =>
-              item.id === picture.id
-                ? { ...item, width: image.naturalWidth, height: image.naturalHeight }
-                : item
-            );
-            const basePicture = nextPictures[0];
-            patchImageDraft({
-              pictures: nextPictures,
-              targetResolution: normalizeImageTargetResolution(
-                state.imageDraft.targetResolution,
-                basePicture?.width ?? 0,
-                basePicture?.height ?? 0
-              )
-            });
-            dimensionsChanged = true;
-          }
-        }
-        resolve();
-      }, { once: true });
-      image.addEventListener("error", () => resolve(), { once: true });
-      image.src = dataUrl;
-    });
-  }));
-  if (dimensionsChanged && page === "create" && creationMode === "image-edit") render();
-}
-
-function randomSeedValue(): number {
-  const values = new Uint32Array(2);
-  crypto.getRandomValues(values);
-  const high = (values[0] ?? 0) & 0x001fffff;
-  return high * 0x100000000 + (values[1] ?? 0);
-}
-
-function sameImageCrop(
-  left: ImageReference["crop"] | null | undefined,
-  right: { x: number; y: number; width: number; height: number; sourceWidth: number; sourceHeight: number } | null
-): boolean {
-  if (!left || !right) return !left && !right;
-  return left.x === right.x && left.y === right.y &&
-    left.width === right.width && left.height === right.height &&
-    left.sourceWidth === right.sourceWidth && left.sourceHeight === right.sourceHeight;
-}
-
-async function editImagePictureMarkup(
-  pictureId: string,
-  requestedMode: "annotation" | "mask" = "annotation"
-): Promise<void> {
-  const picture = state.imageDraft.pictures.find((item) => item.id === pictureId);
-  if (!picture?.absolutePath) return;
-  const maskMode = requestedMode === "mask" ||
-    (requestedMode === "annotation" && imageModelCapabilityFor(state.imageDraft.modelId).requiresMask === true);
-  try {
-    const { openImageMarkupEditor } = await import("./image-markup-editor");
-    const [sourceDataUrl, existingDocument] = await Promise.all([
-      rendererAssets.readImage(picture.absolutePath),
-      (maskMode ? picture.mask?.documentPath : picture.markup?.documentPath)
-        ? rendererAssets.readImageMarkup((maskMode ? picture.mask?.documentPath : picture.markup?.documentPath)!)
-        : Promise.resolve(null)
-    ]);
-    if (!sourceDataUrl) throw new Error(uiText(uiKeys.runtime.readOriginalImageFailed));
-    const result = await openImageMarkupEditor({
-      pictureNumber: picture.pictureNumber,
-      filename: picture.absolutePath,
-      sourceDataUrl,
-      existingDocument,
-      existingCrop: picture.crop,
-      mode: maskMode ? "mask" : "annotation"
-    });
-    if (!result) return;
-    const cropChanged = !sameImageCrop(picture.crop, result.crop);
-    let crop = picture.crop;
-    if (cropChanged) {
-      crop = result.crop
-        ? (await rendererAssets.saveImageCrop({
-            pictureId: picture.id,
-            sourcePath: picture.absolutePath,
-            crop: result.crop,
-            croppedPng: result.croppedPng,
-            previousRevision: picture.crop?.revision
-          })) ?? undefined
-        : undefined;
-    }
-    const width = result.crop?.width ?? picture.crop?.sourceWidth ?? picture.width;
-    const height = result.crop?.height ?? picture.crop?.sourceHeight ?? picture.height;
-    if (maskMode) {
-      const mask = result.objectCount > 0
-        ? await rendererAssets.saveImageMask({
-            pictureId: picture.id,
-            sourcePath: picture.absolutePath,
-            document: result.document,
-            maskPng: result.renderedPng,
-            regionCount: result.objectCount,
-            previousRevision: picture.mask?.revision
-          })
-        : undefined;
-      patchImageDraft({
-        pictures: state.imageDraft.pictures.map((item) =>
-          item.id === pictureId ? { ...item, crop, width, height, mask } : item
-        )
-      });
-      render();
-      void loadImageEditPreviews();
-      showMessage(mask ? `Mask 已保存 · ${mask.regionCount} 个区域` : "Mask 已清除", true);
-      return;
-    }
-    const markup = result.objectCount > 0
-      ? await rendererAssets.saveImageMarkup({
-          pictureId: picture.id,
-          sourcePath: picture.absolutePath,
-          document: result.document,
-          renderedPng: result.renderedPng,
-          summary: result.summary,
-          objectCount: result.objectCount,
-          previousRevision: picture.markup?.revision
-        })
-      : undefined;
-    patchImageDraft({
-      pictures: state.imageDraft.pictures.map((item) =>
-        item.id === pictureId ? { ...item, crop, width, height, markup } : item
-      )
-    });
-    render();
-    void loadImageEditPreviews();
-    showMessage(markup ? uiText(uiKeys.runtime.markupSaved, { count: markup.objectCount }) : uiText(uiKeys.runtime.markupCleared), true);
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.markupSaveFailed), { kind: "error" });
-  }
-}
-
-function addImageSlot(): void {
-  const pictures = state.imageDraft.pictures;
-  const capability = imageModelCapabilityFor(state.imageDraft.modelId);
-  if (pictures.length >= capability.maxPictures) {
-    showMessage(uiText(uiKeys.runtime.maxPictureSlots, { name: capability.name, count: capability.maxPictures }), { kind: "warning" });
-    return;
-  }
-  const pictureNumber = nextImagePictureNumber(state.imageDraft);
-  const slot: ImageReference = {
-    id: crypto.randomUUID(),
-    pictureNumber,
-    absolutePath: "",
-    width: 0,
-    height: 0,
-    role: pictureNumber === 1 ? "base" : "auto"
-  };
-  patchImageDraft({
-    pictures: [...pictures, slot].sort((left, right) => left.pictureNumber - right.pictureNumber),
-    nextPictureNumber: pictureNumber + 1
-  });
-  render();
-}
-
-function addImagePicture(path: string, replacePictureId?: string): void {
-  if (!path) return;
-  const pictures = state.imageDraft.pictures;
-  const targetPicture = replacePictureId
-    ? pictures.find((picture) => picture.id === replacePictureId)
-    : pictures.find((picture) => !picture.absolutePath);
-  if (targetPicture) {
-    patchImageDraft({
-      pictures: pictures.map((picture) =>
-        picture.id === targetPicture.id
-          ? { ...picture, absolutePath: path, width: 0, height: 0, crop: undefined, markup: undefined, mask: undefined }
-          : picture
-      )
-    });
-    render();
-    return;
-  }
-  const capability = imageModelCapabilityFor(state.imageDraft.modelId);
-  if (pictures.length >= capability.maxPictures) {
-    showMessage(uiText(uiKeys.runtime.maxPictureReferences, { name: capability.name, count: capability.maxPictures }), { kind: "warning" });
-    return;
-  }
-  const pictureNumber = nextImagePictureNumber(state.imageDraft);
-  const picture: ImageReference = {
-    id: crypto.randomUUID(),
-    pictureNumber,
-    absolutePath: path,
-    width: 0,
-    height: 0,
-    role: pictureNumber === 1 ? "base" : "auto"
-  };
-  patchImageDraft({
-    pictures: [...pictures, picture].sort((left, right) => left.pictureNumber - right.pictureNumber),
-    nextPictureNumber: pictureNumber + 1
-  });
-  render();
-}
-
-function updateH3ReferenceSlot(
-  slotId: string,
-  patch: Partial<H3ReferenceSlot>
-): void {
-  patchDraft({
-    h3ReferenceSlots: state.draft.h3ReferenceSlots.map((slot) =>
-      slot.id === slotId
-        ? {
-            ...slot,
-            ...patch,
-            ...((patch.mediaType !== undefined && patch.mediaType !== slot.mediaType) ||
-              (patch.mediaPath !== undefined && patch.mediaPath !== slot.mediaPath)
-              ? { width: undefined, height: undefined }
-              : {})
-          }
-        : slot
-    )
-  });
-}
-
-function bindH3ReferenceSlots(): void {
-  rendererApp.addPageCleanup(mountH3ReferencesController(rendererApp.context, {
-    getDraft: () => state?.draft,
-    patchDraft,
-    requestRender: render,
-    notify: (message) => showMessage(message, false),
-    lockedFirstVideo: Boolean(state?.draft.inputMode === "video" && isMiniMaxH3R2vModel(state.draft.modelId))
-  }));
-}
-
-async function selectDraftVideo(
-  filename: string,
-  source?: {
-    assetId: string;
-    versionId: string;
-    duration: number;
-    width: number;
-    height: number;
-    h3ContextLatentPath?: string;
-    resolution?: number;
-    resetSeed?: boolean;
-  },
-  renderAfterSave = true
-): Promise<void> {
-  const preserveMotionContextDraft = state.draft.inputMode === "video" &&
-    isMiniMaxH3R2vModel(state.draft.modelId);
-  const draft: Draft = {
-    ...state.draft,
-    inputMode: "video",
-    startImagePath: "",
-    endImagePath: "",
-    endImageWidth: 0,
-    endImageHeight: 0,
-    sourceVideoPath: filename,
-    sourceVideoDuration: source?.duration ?? 0,
-    trimStartSeconds: 0,
-    trimEndSeconds: source?.duration ?? 0,
-    sourceAssetId: source?.assetId,
-    sourceVersionId: source?.versionId,
-    h3ContextLatentPath: source?.h3ContextLatentPath,
-    sourceWidth: source?.width ?? 0,
-    sourceHeight: source?.height ?? 0,
-    ratio: "source",
-    h3ReferenceSlots: isMiniMaxH3R2vModel(state.draft.modelId)
-      ? ensureMotionContextSourceSlot(
-          preserveMotionContextDraft ? state.draft.h3ReferenceSlots : [],
-          filename
-        )
-      : [],
-    ...(source?.resolution != null
-      ? {
-          resolution: nearestSupportedVideoResolution(
-            source.resolution,
-            modelCatalog.get(state.draft.modelId)?.definition.capabilities?.resolutions ??
-              modelCatalog.get(state.settings.defaultExtensionModel)?.definition.capabilities?.resolutions ??
-              [360, 480, 540, 720, 768],
-            state.draft.resolution
-          ) as Draft["resolution"]
-        }
-      : {}),
-    ...(source?.resetSeed ? { seed: null } : {})
-  };
-  await saveDraftImmediately(draft);
-  if (renderAfterSave) render();
-}
-
-function setEnqueueBusyUi(busy: boolean): void {
-  const button = document.querySelector<HTMLButtonElement>(
-    creationMode === "image-edit" ? "#enqueue-image-edit" : "#enqueue"
-  );
-  if (!button) return;
-  button.disabled = busy;
-  button.classList.toggle("busy", busy);
-  button.setAttribute("aria-busy", String(busy));
-  const buttonIcon = button.querySelector<HTMLElement>(".enqueue-spinner");
-  if (buttonIcon) {
-    buttonIcon.outerHTML = icon(busy ? "refresh-cw" : "plus", "enqueue-spinner");
-    renderIcons(button);
-  }
-  const label = button.querySelector<HTMLElement>("[data-enqueue-label]");
-  if (label) label.textContent = busy ? uiText(uiKeys.runtime.enqueueing) : uiText(uiKeys.runtime.enqueue);
-}
-
-function syncVideoEnqueueUi(): void {
-  const button = document.querySelector<HTMLButtonElement>("#enqueue");
-  if (!button) return;
-  const viewModel = buildVideoCreatePageViewModel(createViewModelDependencies());
-  const reason = viewModel.enqueueBlockReason;
-  button.dataset.enqueueBlockReason = reason;
-  button.disabled = Boolean(reason) || ui.enqueueBusy;
-  button.title = reason || button.dataset.enqueueReadyTitle || uiText(uiKeys.runtime.enqueue);
-  const tokenEstimate = document.querySelector<HTMLElement>("[data-h3-token-estimate]");
-  if (tokenEstimate) {
-    tokenEstimate.textContent = viewModel.h3TokenEstimate == null
-      ? ""
-      : `${Math.trunc(viewModel.h3TokenEstimate)} tokens`;
-  }
-  const feedback = document.querySelector<HTMLElement>("[data-enqueue-feedback]");
-  if (feedback) {
-    feedback.hidden = !reason;
-    const message = feedback.querySelector<HTMLElement>("span");
-    if (message) message.textContent = reason;
-  }
-}
-
-function syncPromptEnqueueUi(_promptText: string): void {
-  syncVideoEnqueueUi();
-}
-
-function syncImageEditEnqueueUi(): void {
-  const draft = state.imageDraft;
-  const imageProfile = environmentScan?.modelProfiles.find(
-    (profile) => profile.id === draft.modelId
-  );
-  const reason = imageEditEnqueueBlockReason(draft, imageProfile, uiText);
-  const imageCapability = imageModelCapabilityFor(draft.modelId);
-  const button = document.querySelector<HTMLButtonElement>("#enqueue-image-edit");
-  if (button) {
-    button.disabled = Boolean(reason) || ui.enqueueBusy;
-    button.title = reason || uiText(uiKeys.runtime.imageEnqueue);
-    button.dataset.enqueueBlockReason = reason;
-  }
-  const feedback = document.querySelector<HTMLElement>("[data-enqueue-feedback]");
-  if (feedback) {
-    feedback.hidden = !reason;
-    const message = feedback.querySelector<HTMLElement>("span");
-    if (message) message.textContent = reason;
-  }
-  const summaryTitle = document.querySelector<HTMLElement>(
-    ".image-edit-composer .interpolation-summary strong"
-  );
-  if (summaryTitle) {
-    const count = imageCapability.deterministic ? 1 : Math.min(imageOutputCountMax, Math.max(1, draft.outputCount));
-    summaryTitle.textContent = imageCapability.requiresPrompt === false
-      ? uiText(imageCapability.operation === "background-removal"
-        ? uiKeys.create.imageEdit.promptlessBackgroundRemovalSummary
-        : uiKeys.create.imageEdit.promptlessLocalRemovalSummary, { count })
-      : uiText(uiKeys.create.imageEdit.summary, {
-        count,
-        seedMode: draft.seed == null ? uiText(uiKeys.runtime.random) : uiText(uiKeys.runtime.same)
-      });
-  }
-}
-
-function bindCreate(): void {
-  rendererApp.addPageCleanup(mountCreateAssembly(rendererApp.context, {
-    clipboard: {
-      addImagePicture,
-      updateH3ReferenceSlot,
-      patchDraft
-    },
-    context: rendererApp.context,
-    setCreationMode,
-    getEnvironmentScan: () => environmentScan,
-    bundledWorkflows,
-    workflowCapabilities,
-    bundledWorkflowKey,
-    setRendererState,
-    patchDraft,
-    patchDraftForMode,
-    patchImageDraft,
-    syncEnqueueUi: syncVideoEnqueueUi,
-    enableSpectrumByDefaultIfAvailable,
-    selectDraftVideo,
-    formatTrimTime,
-    imageEdit: {
-      addImageSlot,
-      addImagePicture,
-      editImagePictureMarkup,
-      imageFileIsSupported,
-      imageReferenceRoleLabel: (role) => qwenImagePromptPackFor(state.settings.uiLocale).referenceRoleLabels[role],
-      imageReferenceRolePromptLabel: (role) => imageReferenceRolePromptLabels[role],
-      resizePromptInput,
-      updateImagePromptWordCounter,
-      syncEnqueueUi: syncImageEditEnqueueUi,
-      getPromptEnhanceMode: () => activeCreationModeUiState().promptEnhanceMode === "faithful" ? "faithful" : "detail-enhance",
-      setPromptEnhanceMode: (mode) => {
-        activeCreationModeUiState().promptEnhanceMode = mode === "faithful" ? "faithful" : "sulphur-native";
-      },
-      isPromptEnhancing: () => shellCoordinator.promptOperationBelongsTo("image-edit"),
-      setPromptEnhancing: (value) => shellCoordinator.setPromptEnhancing(value),
-      setPromptRuntimeLoaded: (value) => shellCoordinator.setPromptRuntimeLoaded(value),
-      clearPromptVersion: () => clearPromptVersionForScope("image"),
-      undoPromptEdit: () => undoPromptEdit("image"),
-      redoPromptEdit: () => redoPromptEdit("image"),
-      invalidatePromptEditHistory: () => invalidatePromptEditHistory("image"),
-      togglePromptModel: togglePromptModelFromUi,
-      randomSeedValue,
-      isEnqueueBusy: () => ui.enqueueBusy,
-      setEnqueueBusy: (value) => {
-        ui.enqueueBusy = value;
-      },
-      setEnqueueBusyUi,
-      requestClearDraftConfirmation: () => shellCoordinator.requestConfirmation({ kind: "clear-draft", mode: "image-edit" })
-    },
-    createPrompt: {
-      h3ReferenceRoleLabels: h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels,
-      h3ReferenceRolePromptLabels,
-      getPromptEnhanceMode: () => activeCreationModeUiState().promptEnhanceMode,
-      setPromptEnhanceMode: (mode) => {
-        activeCreationModeUiState().promptEnhanceMode = mode;
-      },
-      getH3PromptPreset: () => activeCreationModeUiState().h3PromptPreset,
-      setH3PromptPreset: (preset) => {
-        activeCreationModeUiState().h3PromptPreset = preset;
-      },
-      isPromptEnhancing: () => shellCoordinator.promptOperationBelongsTo(creationMode),
-      setPromptEnhancing: (value) => shellCoordinator.setPromptEnhancing(value),
-      setPromptRuntimeLoaded: (value) => shellCoordinator.setPromptRuntimeLoaded(value),
-      clearPromptVersion: () => clearPromptVersionForScope("video"),
-      undoPromptEdit: () => undoPromptEdit("video"),
-      redoPromptEdit: () => redoPromptEdit("video"),
-      invalidatePromptEditHistory: () => invalidatePromptEditHistory("video"),
-      togglePromptModel: togglePromptModelFromUi,
-      syncPromptEnqueueUi,
-      updateH3PromptCheck
-    },
-    isEnqueueBusy: () => ui.enqueueBusy,
-    setEnqueueBusy: (value) => {
-      ui.enqueueBusy = value;
-    },
-    setEnqueueBusyUi,
-    requestClearDraftConfirmation: () => shellCoordinator.requestConfirmation({ kind: "clear-draft", mode: creationMode })
-  }));
-  if (creationMode === "image-edit") {
-    void loadImageEditPreviews();
-  } else {
-    void loadImagePreview(rendererApp.context, state.draft.startImagePath, "start-preview", patchDraft);
-    const endImagePath = state.draft.endImagePath;
-    void loadImagePreview(
-      rendererApp.context,
-      endImagePath,
-      "end-preview",
-      patchDraft,
-      ({ width, height }) => {
-        const currentState = rendererApp.context.getState();
-        const currentDraft = currentState?.draft;
-        if (!currentDraft || currentDraft.endImagePath !== endImagePath ||
-          (currentDraft.endImageWidth === width && currentDraft.endImageHeight === height)) {
-          return undefined;
-        }
-        return { endImageWidth: width, endImageHeight: height };
-      }
-    );
-    if (isMiniMaxH3R2vModel(state.draft.modelId)) {
-      bindH3ReferenceSlots();
-      for (const slot of state.draft.h3ReferenceSlots) {
-        if (slot.mediaType === "image") {
-          const slotId = slot.id;
-          const slotPath = slot.mediaPath;
-          void loadImagePreview(
-            rendererApp.context,
-            slotPath,
-            `h3-slot-preview-${slotId}`,
-            patchDraft,
-            ({ width, height }) => {
-              const currentDraft = rendererApp.context.getState()?.draft;
-              const currentSlot = currentDraft?.h3ReferenceSlots.find((item) => item.id === slotId);
-              if (!currentDraft || !currentSlot || currentSlot.mediaType !== "image" ||
-                currentSlot.mediaPath !== slotPath ||
-                (currentSlot.width === width && currentSlot.height === height)) {
-                return undefined;
-              }
-              return {
-                h3ReferenceSlots: currentDraft.h3ReferenceSlots.map((item) =>
-                  item.id === slotId ? { ...item, width, height } : item
-                )
-              };
-            }
-          );
-        }
-      }
-    }
-  }
-}
-
 function bindUpscaleDialog(): (() => void) {
   return mountUpscaleController(rendererApp.context, {
     root: modalRoot,
@@ -2134,13 +1320,7 @@ shellCoordinator = createRendererShellCoordinator({
   scanEnvironment: async (settings) => {
     await runEnvironmentScan(settings);
   },
-  clearCreationDraft: (mode) => {
-    if (mode === "image-edit") {
-      patchImageDraft(createDefaultImageEditDraft());
-    } else {
-      patchDraftForMode(mode, (draft) => createClearedDraft(draft));
-    }
-  },
+  clearCreationDraft,
   setHistoryKind,
   setHistoryScrollRestorePending: historyLayoutController.setScrollRestorePending,
   setSelectedHistoryAssetId: (assetId) => {
@@ -2168,6 +1348,39 @@ shellCoordinator = createRendererShellCoordinator({
     return cleanup;
   }
 }, comfyRuntime);
+
+createWorkspaceCoordinator = createCreateWorkspaceCoordinator({
+  context: rendererApp.context,
+  getState: () => state,
+  getPage: () => page,
+  getCreationMode: () => creationMode,
+  setCreationMode,
+  getEnvironmentScan: () => environmentScan,
+  getPerformanceMetrics: () => performanceMetrics,
+  bundledWorkflows,
+  workflowCapabilities,
+  bundledWorkflowKey,
+  setRendererState,
+  addPageCleanup: rendererApp.addPageCleanup,
+  render,
+  getEnqueueBusy: () => ui.enqueueBusy,
+  setEnqueueBusy: (value) => {
+    ui.enqueueBusy = value;
+  },
+  requestClearDraftConfirmation: (mode) =>
+    shellCoordinator.requestConfirmation({ kind: "clear-draft", mode }),
+  promptRuntimeControlIcon: () => shellCoordinator.promptRuntimeControlIcon(),
+  promptRuntimeControlTitle: (settings) => shellCoordinator.promptRuntimeControlTitle(settings),
+  promptRuntimeView: (origin) => shellCoordinator.promptRuntimeView(origin),
+  promptOperationBelongsTo: (origin) => shellCoordinator.promptOperationBelongsTo(origin),
+  getPromptStarting: () => shellCoordinator.getPromptStarting(),
+  getPromptReleasing: () => shellCoordinator.getPromptReleasing(),
+  getPromptRuntimeLoaded: () => shellCoordinator.getPromptRuntimeLoaded(),
+  getPromptProgress: () => shellCoordinator.getPromptProgress(),
+  setPromptEnhancing: (value) => shellCoordinator.setPromptEnhancing(value),
+  setPromptRuntimeLoaded: (value) => shellCoordinator.setPromptRuntimeLoaded(value),
+  togglePromptModel: () => shellCoordinator.togglePromptModel()
+});
 
 initializeRenderCoordinator();
 
@@ -2297,10 +1510,10 @@ registerRendererEvents({
   setState: setRendererState,
   getPage: () => page,
   getHistoryKind: () => historyKind,
-  getDraftDirty: () => draftDirty,
-  getDraftSaveInFlight: () => draftSaveInFlight,
-  getImageDraftDirty: () => imageDraftDirty,
-  getImageDraftSaveInFlight: () => imageDraftSaveInFlight,
+  getDraftDirty,
+  getDraftSaveInFlight,
+  getImageDraftDirty,
+  getImageDraftSaveInFlight,
   setPromptRuntimeLoaded: (value) => shellCoordinator.setPromptRuntimeLoaded(value),
   setPromptProgress: (progress) => shellCoordinator.setPromptProgress(progress),
   rememberModalFocus,
