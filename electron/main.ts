@@ -17,7 +17,6 @@ import type {
   AppState,
   HistoryFile,
   H3VideoVaeBackend,
-  ImageAssetLibraryProgress,
   QueueLifecycle,
   QueueTask,
   Settings,
@@ -48,6 +47,7 @@ import { registerMediaIpc, registerMediaProtocol } from "./media-ipc.js";
 import { registerPromptIpc } from "./prompt-ipc.js";
 import { registerSettingsIpc } from "./settings-ipc.js";
 import { registerQueueIpc } from "./queue-registration.js";
+import { registerImageAssetIpc } from "./image-asset-ipc.js";
 import { registerAppQueryIpc } from "./app-query-ipc.js";
 import { registerNativeHostIpc } from "./native-host-ipc.js";
 import { registerWorkflowIpc } from "./workflow-ipc.js";
@@ -77,11 +77,6 @@ import { getApplicationLogger, safeLogErrorMessage } from "../src/infrastructure
 import { comfyRuntimeState } from "../src/infrastructure/comfy-runtime-state.js";
 import { PromptRuntimeManager } from "./services/prompt-runtime-manager.js";
 import { setOwnedComfyProcessExitListener } from "./services/comfy-runtime-service.js";
-import {
-  cleanupImageAssetLibrary,
-  organizeImageAssetLibrary,
-  scanImageAssetLibrary
-} from "../src/infrastructure/image-asset-library.js";
 import { createStudioPaths, type StudioPaths } from "./services/studio-paths.js";
 import { createStudioEventBus } from "./services/studio-event-bus.js";
 import { createStudioEventBridge } from "./services/studio-event-bridge.js";
@@ -109,7 +104,6 @@ if (appliedChromiumWorkarounds.length) {
 let mainWindow: BrowserWindow | null = null;
 let store: StateRepository;
 let rendererHasUnsavedSettings = false;
-let imageAssetLibraryRunning = false;
 let pendingWindowCloseRequest: WindowCloseRequest | null = null;
 let applicationRuntime: ApplicationRuntime | null = null;
 
@@ -448,10 +442,6 @@ function interruptForExit(
   workerSettled: boolean;
 }> {
   return activeApplicationRuntime().interruptForExit(waitForWorker, queueCleanupOnly);
-}
-
-function sendImageAssetLibraryProgress(progress: ImageAssetLibraryProgress): void {
-  studioEventBus.publish("image-assets:progress", progress);
 }
 
 async function finishWindowClose(): Promise<void> {
@@ -1046,152 +1036,9 @@ function registerIpc(
     return next;
   });
   registerSettingsIpc({ ipc: ipcMain, service: applicationServices.settings });
-  ipcMain.handle("image-assets:scan", async () => {
-    if (imageAssetLibraryRunning) throw new Error("图片素材库正在处理中，请稍候。");
-    imageAssetLibraryRunning = true;
-    const operationId = randomUUID().slice(0, 8);
-    try {
-      const snapshot = store.get();
-      const library = await applicationServices.settings.effectiveImageInputLibraryDirectory(
-        snapshot.settings
-      );
-      appLogger.info("assets", "image-library-scan-started", "开始扫描图片素材库", {
-        operationId,
-        imageProjectCount: snapshot.imageHistory.length,
-        videoHistoryCount: snapshot.history.length,
-        queueCount: snapshot.queue.filter((task) =>
-          task.taskType === "image-generation" || task.taskType === "generation"
-        ).length
-      });
-      const result = await scanImageAssetLibrary(snapshot, library, sendImageAssetLibraryProgress);
-      appLogger.info("assets", "image-library-scan-completed", "图片素材库扫描完成", {
-        operationId,
-        totalReferences: result.totalReferences,
-        managedReferences: result.managedReferences,
-        archiveCandidates: result.archiveCandidates,
-        missingReferences: result.missingReferences.length,
-        orphanCount: result.orphanFiles.length
-      });
-      return result;
-    } catch (error) {
-      appLogger.error("assets", "image-library-scan-failed", "图片素材库扫描失败", {
-        operationId,
-        error: safeLogErrorMessage(error)
-      });
-      throw error;
-    } finally {
-      imageAssetLibraryRunning = false;
-    }
-  });
-  ipcMain.handle("image-assets:organize", async () => {
-    if (imageAssetLibraryRunning) throw new Error("图片素材库正在处理中，请稍候。");
-    if (store.get().queueRunning) throw new Error("队列运行期间不能整理图片素材库，请先暂停或等待任务完成。");
-    imageAssetLibraryRunning = true;
-    const operationId = randomUUID().slice(0, 8);
-    try {
-      const snapshot = store.get();
-      const library = await applicationServices.settings.effectiveImageInputLibraryDirectory(
-        snapshot.settings
-      );
-      appLogger.info("assets", "image-library-organize-started", "开始归档并修复图片素材库", {
-        operationId,
-        imageProjectCount: snapshot.imageHistory.length,
-        videoHistoryCount: snapshot.history.length,
-        queueCount: snapshot.queue.filter((task) =>
-          task.taskType === "image-generation" || task.taskType === "generation"
-        ).length
-      });
-      const prepared = await organizeImageAssetLibrary(snapshot, library, sendImageAssetLibraryProgress);
-      const next = await store.update((state) => {
-        state.imageDraft = prepared.state.imageDraft;
-        state.imageHistory = prepared.state.imageHistory;
-        state.draft.startImagePath = prepared.state.draft.startImagePath;
-        state.draft.endImagePath = prepared.state.draft.endImagePath;
-        state.draft.h3ReferenceSlots = prepared.state.draft.h3ReferenceSlots.map((slot) => ({ ...slot }));
-        const preparedTasks = new Map(
-          prepared.state.queue.map((task) => [task.id, task])
-        );
-        for (const task of state.queue) {
-          const preparedTask = preparedTasks.get(task.id);
-          if (task.taskType === "image-generation" && preparedTask?.taskType === "image-generation") {
-            task.pictures = preparedTask.pictures;
-          } else if (task.taskType === "generation" && preparedTask?.taskType === "generation") {
-            task.startImagePath = preparedTask.startImagePath;
-            task.endImagePath = preparedTask.endImagePath;
-            task.h3ReferenceSlots = preparedTask.h3ReferenceSlots?.map((slot) => ({ ...slot }));
-          } else if (task.taskType === "extension" && preparedTask?.taskType === "extension") {
-            task.h3ReferenceSlots = preparedTask.h3ReferenceSlots?.map((slot) => ({ ...slot }));
-          }
-        }
-        const preparedHistory = new Map(prepared.state.history.map((asset) => [asset.id, asset]));
-        for (const asset of state.history) {
-          const preparedAsset = preparedHistory.get(asset.id);
-          if (!preparedAsset) continue;
-          asset.startImagePath = preparedAsset.startImagePath;
-          asset.endImagePath = preparedAsset.endImagePath;
-          asset.h3ReferenceSlots = preparedAsset.h3ReferenceSlots?.map((slot) => ({ ...slot }));
-        }
-      });
-      sendState(next);
-      sendImageAssetLibraryProgress({ phase: "completed", current: 1, total: 1, message: "图片素材库整理完成" });
-      appLogger.info("assets", "image-library-organize-completed", "图片素材库整理完成，历史引用已保存，原文件和旧分片副本未删除", {
-        operationId,
-        archivedCount: prepared.result.archivedFiles,
-        reorganizedCount: prepared.result.reorganizedFiles,
-        updatedReferences: prepared.result.updatedReferences,
-        remainingArchiveCandidates: prepared.result.scan.archiveCandidates,
-        missingReferences: prepared.result.scan.missingReferences.length,
-        orphanCount: prepared.result.scan.orphanFiles.length
-      });
-      return { ...prepared.result, operationId };
-    } catch (error) {
-      appLogger.error("assets", "image-library-organize-failed", "图片素材库归档修复失败，历史引用未提交", {
-        operationId,
-        error: safeLogErrorMessage(error)
-      });
-      throw error;
-    } finally {
-      imageAssetLibraryRunning = false;
-    }
-  });
-  ipcMain.handle("image-assets:cleanup", async (_event, paths: string[]) => {
-    if (imageAssetLibraryRunning) throw new Error("图片素材库正在处理中，请稍候。");
-    if (store.get().queueRunning) throw new Error("队列运行期间不能清理图片素材库，请先暂停或等待任务完成。");
-    imageAssetLibraryRunning = true;
-    const operationId = randomUUID().slice(0, 8);
-    try {
-      const snapshot = store.get();
-      const library = await applicationServices.settings.effectiveImageInputLibraryDirectory(
-        snapshot.settings
-      );
-      appLogger.info("assets", "image-library-cleanup-started", "开始清理未被引用的图片素材", {
-        operationId,
-        requestedCount: Array.isArray(paths) ? paths.length : 0
-      });
-      const result = await cleanupImageAssetLibrary(
-        snapshot,
-        library,
-        Array.isArray(paths) ? paths : [],
-        sendImageAssetLibraryProgress
-      );
-      sendImageAssetLibraryProgress({ phase: "completed", current: 1, total: 1, message: "素材库清理完成" });
-      appLogger.info("assets", "image-library-cleanup-completed", "图片素材库清理完成", {
-        operationId,
-        cleanedCount: result.cleanedFiles,
-        cleanedDirectoryCount: result.cleanedDirectories,
-        cleanedBytes: result.cleanedBytes,
-        remainingOrphanCount: result.scan.orphanFiles.length
-      });
-      return { ...result, operationId };
-    } catch (error) {
-      appLogger.error("assets", "image-library-cleanup-failed", "图片素材库清理失败", {
-        operationId,
-        error: safeLogErrorMessage(error)
-      });
-      throw error;
-    } finally {
-      imageAssetLibraryRunning = false;
-    }
+  registerImageAssetIpc({
+    ipc: ipcMain,
+    service: applicationServices.imageAssets
   });
   registerImageDocumentIpc({
     ipc: ipcMain,

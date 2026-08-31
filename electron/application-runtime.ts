@@ -21,6 +21,7 @@ import { EnvironmentQueryService } from "./services/environment-query-service.js
 import { PromptApplicationService } from "./services/prompt-application-service.js";
 import { RuntimeAdminService } from "./services/runtime-admin-service.js";
 import { QueueService, type QueueServiceDependencies } from "./services/queue-service.js";
+import { ImageAssetLibraryService } from "./services/image-asset-library-service.js";
 import { PromptRuntimeManager } from "./services/prompt-runtime-manager.js";
 import type { ComfyRuntimeStateController } from "../src/infrastructure/comfy-runtime-state.js";
 import type { StudioEventBus } from "./services/studio-event-bus.js";
@@ -37,6 +38,7 @@ export interface ApplicationServices {
   settings: SettingsService;
   media: MediaReadService;
   imageDocument: ImageDocumentService;
+  imageAssets: ImageAssetLibraryService;
   prompt: PromptApplicationService;
   lifecycle: LifecycleCoordinator;
   environment: {
@@ -202,6 +204,14 @@ export class ApplicationRuntime {
       clearRendererDirty: this.deps.settings.clearRendererDirty
     });
     await settingsService.materializeDefaultImageInputLibraryDirectory();
+    const imageAssetLibraryService = new ImageAssetLibraryService({
+      store: this.deps.store,
+      logger: this.deps.logger,
+      events: this.deps.events,
+      resolveLibraryDirectory: (settings) =>
+        settingsService.effectiveImageInputLibraryDirectory(settings),
+      sendState: this.deps.sendState
+    });
     const loadedState = this.deps.store.get();
     this.deps.logger.info("app", "state-loaded", "Application state loaded", {
       queueCount: loadedState.queue.length,
@@ -313,6 +323,7 @@ export class ApplicationRuntime {
       settings: settingsService,
       media: mediaReadService,
       imageDocument: imageDocumentService,
+      imageAssets: imageAssetLibraryService,
       prompt: promptService,
       lifecycle: lifecycleService,
       environment: {

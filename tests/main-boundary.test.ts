@@ -47,6 +47,9 @@ const nativeHostSources = new Map([
 const workflowSources = new Map([
   ["workflow-ipc", source("electron/workflow-ipc.ts")]
 ]);
+const imageAssetSources = new Map([
+  ["image-asset-ipc", source("electron/image-asset-ipc.ts")]
+]);
 const registrationSources = new Map([
   ["main", mainSource],
   ...queueSources,
@@ -59,7 +62,8 @@ const registrationSources = new Map([
   ...environmentSources,
   ...appQuerySources,
   ...nativeHostSources,
-  ...workflowSources
+  ...workflowSources,
+  ...imageAssetSources
 ]);
 
 function collectChannels(text: string, pattern: RegExp): string[] {
@@ -202,6 +206,11 @@ describe("main/preload boundary characterization", () => {
       "workflow-ipc": [
         "workflow:inspect",
         "workflow:get-bundled"
+      ],
+      "image-asset-ipc": [
+        "image-assets:scan",
+        "image-assets:organize",
+        "image-assets:cleanup"
       ]
     };
     const specializedChannels = new Set(Object.values(specializedOwners).flat());
@@ -243,6 +252,9 @@ describe("main/preload boundary characterization", () => {
     expect(mainSource).not.toContain('ipcMain.handle("draft:save"');
     expect(mainSource).not.toContain('ipcMain.handle("image-draft:save"');
     expect(mainSource).not.toContain('ipcMain.handle("settings:save"');
+    expect(mainSource).toContain("registerImageAssetIpc");
+    expect(mainSource).not.toContain("imageAssetLibraryRunning");
+    expect(imageAssetSources.get("image-asset-ipc")).not.toContain("store.update");
     for (const channel of specializedOwners["prompt-ipc"] ?? []) {
       expect(mainSource).not.toContain(`ipcMain.handle("${channel}"`);
     }
@@ -259,6 +271,9 @@ describe("main/preload boundary characterization", () => {
       for (const channel of specializedOwners[owner] ?? []) {
         expect(mainSource).not.toContain(`ipcMain.handle("${channel}"`);
       }
+    }
+    for (const channel of specializedOwners["image-asset-ipc"] ?? []) {
+      expect(mainSource).not.toContain(`ipcMain.handle("${channel}"`);
     }
 
     const droppedFilePath = /getDroppedFilePath:\s*\(file\)\s*=>\s*webUtils\.getPathForFile\(file\)/.exec(
