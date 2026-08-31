@@ -38,6 +38,15 @@ const promptSources = new Map([
 const environmentSources = new Map([
   ["environment-ipc", source("electron/environment-ipc.ts")]
 ]);
+const appQuerySources = new Map([
+  ["app-query-ipc", source("electron/app-query-ipc.ts")]
+]);
+const nativeHostSources = new Map([
+  ["native-host-ipc", source("electron/native-host-ipc.ts")]
+]);
+const workflowSources = new Map([
+  ["workflow-ipc", source("electron/workflow-ipc.ts")]
+]);
 const registrationSources = new Map([
   ["main", mainSource],
   ...queueSources,
@@ -47,7 +56,10 @@ const registrationSources = new Map([
   ...draftSources,
   ...settingsSources,
   ...promptSources,
-  ...environmentSources
+  ...environmentSources,
+  ...appQuerySources,
+  ...nativeHostSources,
+  ...workflowSources
 ]);
 
 function collectChannels(text: string, pattern: RegExp): string[] {
@@ -164,6 +176,32 @@ describe("main/preload boundary characterization", () => {
         "llama-cpp-python:install",
         "llama-cpp-python:uninstall",
         "attention-acceleration:install"
+      ],
+      "app-query-ipc": [
+        "state:get",
+        "comfy-runtime:get",
+        "prompt-runtime:get",
+        "app:version",
+        "logs:read",
+        "logs:renderer-error",
+        "logs:user-action",
+        "logs:notification",
+        "performance:get"
+      ],
+      "native-host-ipc": [
+        "file:pick-image",
+        "file:pick-video",
+        "file:pick-workflow",
+        "file:pick-python",
+        "file:pick-directory",
+        "file:open-directory",
+        "file:save-clipboard-image",
+        "shell:open-external",
+        "logs:open-directory"
+      ],
+      "workflow-ipc": [
+        "workflow:inspect",
+        "workflow:get-bundled"
       ]
     };
     const specializedChannels = new Set(Object.values(specializedOwners).flat());
@@ -183,8 +221,8 @@ describe("main/preload boundary characterization", () => {
     // These cross-domain assertions make a missing or accidentally relocated
     // registration fail with a useful channel/owner diff, rather than only a
     // total-count failure.
-    expect(registrations.get("state:get")).toEqual(["main"]);
-    expect(registrations.get("file:pick-image")).toEqual(["main"]);
+    expect(registrations.get("state:get")).toEqual(["app-query-ipc"]);
+    expect(registrations.get("file:pick-image")).toEqual(["native-host-ipc"]);
     expect(registrations.get("history:delete")).toEqual(["history-ipc"]);
     expect(registrations.get("history-cover:read")).toEqual(["history-ipc"]);
     expect(registrations.get("draft:save")).toEqual(["draft-ipc"]);
@@ -216,6 +254,11 @@ describe("main/preload boundary characterization", () => {
     }
     for (const channel of specializedOwners["image-document-ipc"] ?? []) {
       expect(mainSource).not.toContain(`ipcMain.handle("${channel}"`);
+    }
+    for (const owner of ["app-query-ipc", "native-host-ipc", "workflow-ipc"] as const) {
+      for (const channel of specializedOwners[owner] ?? []) {
+        expect(mainSource).not.toContain(`ipcMain.handle("${channel}"`);
+      }
     }
 
     const droppedFilePath = /getDroppedFilePath:\s*\(file\)\s*=>\s*webUtils\.getPathForFile\(file\)/.exec(
@@ -355,7 +398,7 @@ describe("main/preload boundary characterization", () => {
     expect(mainSource).not.toContain("new PromptApplicationService");
     expect(mainSource).not.toContain("new RuntimeAdminService");
     expect(mainSource).not.toContain("new QueueService");
-    expect(mainSource).toContain("await waitForInitialState()");
+    expect(appQuerySources.get("app-query-ipc")).toContain("await deps.waitForInitialState()");
     expect(mainSource).toContain("runtime.waitForInitialState()");
     expect(mainSource).toContain('"startup-failed"');
   });

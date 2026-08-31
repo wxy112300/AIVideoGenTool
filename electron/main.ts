@@ -15,13 +15,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   AppState,
-  BundledWorkflow,
-  Draft,
   HistoryFile,
   H3VideoVaeBackend,
   ImageAssetLibraryProgress,
-  ImageEditDraft,
-  NotificationKind,
   QueueLifecycle,
   QueueTask,
   Settings,
@@ -38,16 +34,6 @@ import {
 } from "../src/core/comfy-output-paths.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
 import {
-  extensionWorkflowSafetyErrors,
-  isMiniMaxH3Fl2vaModel,
-  isMiniMaxH3R2vModel,
-  workflowSupportsEndImage,
-  workflowSupportsExtensionForModel,
-  workflowSupportsH3BoundaryExtension,
-  workflowSupportsH3MotionContextExtension
-} from "../src/core/workflow.js";
-import { workflowMetadataForFilename } from "../src/core/workflow-metadata.js";
-import {
   h3VideoVaeAvailabilityFromModelProfiles,
   resolveH3VideoVaeMode
 } from "../src/core/h3-video-vae.js";
@@ -62,6 +48,9 @@ import { registerMediaIpc, registerMediaProtocol } from "./media-ipc.js";
 import { registerPromptIpc } from "./prompt-ipc.js";
 import { registerSettingsIpc } from "./settings-ipc.js";
 import { registerQueueIpc } from "./queue-registration.js";
+import { registerAppQueryIpc } from "./app-query-ipc.js";
+import { registerNativeHostIpc } from "./native-host-ipc.js";
+import { registerWorkflowIpc } from "./workflow-ipc.js";
 import { nativeImageInspection } from "./services/native-image-inspection.js";
 import { resolveExistingHistoryFile } from "./services/windows-clipboard.js";
 import { nativeHistoryFileSystem } from "./services/native-history-file-system.js";
@@ -211,19 +200,6 @@ function errorLogMeta(error: unknown): Record<string, unknown> {
   return { errorType: typeof error };
 }
 
-function appLogSnapshot(limit?: number) {
-  let crashDirectory = "";
-  try {
-    crashDirectory = app.getPath("crashDumps");
-  } catch {
-    // CrashReporter is initialized after Electron is ready.
-  }
-  return {
-    ...appLogger.recent(limit),
-    ...(crashDirectory ? { crashDirectory } : {})
-  };
-}
-
 process.on("uncaughtException", (error) => {
   appLogger.fatal(
     "process",
@@ -287,183 +263,6 @@ app.on("child-process-gone", (_event, details) => {
     serviceName: details.serviceName ?? ""
   });
 });
-
-async function bundledWorkflowFor(
-  modelId: string,
-  inputMode: Draft["inputMode"] = "image"
-): Promise<BundledWorkflow | null> {
-  const ltxProfile = store.get().settings.ltxExtensionModelProfile;
-  const ltxVariant = ltxProfile === "q2_distilled" ? "q2" : "dev";
-  const ltxProfileLabel = {
-    q2_distilled: "Q2_K distilled · 8GB 兼容",
-    q3_k_m: "Q3_K_M dev · 均衡",
-    q4_k_m: "Q4_K_M dev · 质量"
-  }[ltxProfile];
-  const attachWorkflowMetadata = (workflow: BundledWorkflow): BundledWorkflow => {
-    const metadata = workflowMetadataForFilename(workflow.path);
-    return metadata ? { ...workflow, metadata } : workflow;
-  };
-  if (inputMode === "video") {
-    if (modelId === "minimax_h3_fl2va_q3_gguf") {
-      const filename = "minimax_h3_i2v_gguf_q3_api.json";
-      const candidates = [
-        path.join(app.getAppPath(), "workflows", filename),
-        path.join(process.resourcesPath, "workflows", filename),
-        path.resolve(currentDirectory, "..", "..", "..", "workflows", filename)
-      ];
-      for (const candidate of candidates) {
-        if (!(await fs.stat(candidate).catch(() => null))) continue;
-        const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
-        return attachWorkflowMetadata({
-          modelId,
-          label: "内置 · MiniMax H3 Q3 GGUF · 3080 低显存实验（不支持续写）",
-          path: candidate,
-          supportsEndImage: workflowSupportsEndImage(source),
-          supportsVideoExtension: false
-        });
-      }
-      return null;
-    }
-    if (isMiniMaxH3R2vModel(modelId)) {
-      const filename = "minimax_h3_r2v_extend_api.json";
-      const candidates = [
-        path.join(app.getAppPath(), "workflows", filename),
-        path.join(process.resourcesPath, "workflows", filename),
-        path.resolve(currentDirectory, "..", "..", "..", "workflows", filename)
-      ];
-      for (const candidate of candidates) {
-        if (!(await fs.stat(candidate).catch(() => null))) continue;
-        const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
-        return attachWorkflowMetadata({
-          modelId,
-          label: "内置 · MiniMax H3 R2V Motion Context · 运动与音频连续",
-          path: candidate,
-          supportsEndImage: false,
-          supportsVideoExtension: workflowSupportsH3MotionContextExtension(source)
-        });
-      }
-      return null;
-    }
-    if (isMiniMaxH3Fl2vaModel(modelId)) {
-      const filename = "minimax_h3_i2v_api.json";
-      const candidates = [
-        path.join(app.getAppPath(), "workflows", filename),
-        path.join(process.resourcesPath, "workflows", filename),
-        path.resolve(currentDirectory, "..", "..", "..", "workflows", filename)
-      ];
-      for (const candidate of candidates) {
-        if (!(await fs.stat(candidate).catch(() => null))) continue;
-        const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
-        return attachWorkflowMetadata({
-          modelId,
-          label: "内置 · MiniMax H3 结尾帧接续 · 原生音视频",
-          path: candidate,
-          supportsEndImage: workflowSupportsEndImage(source),
-          supportsVideoExtension: workflowSupportsH3BoundaryExtension(source)
-        });
-      }
-      return null;
-    }
-    if (modelId !== "sulphur2") return null;
-    const filename = `sulphur2_ltx23_extend_gguf_${ltxVariant}_api.json`;
-    const candidates = [
-      path.join(app.getAppPath(), "workflows", filename),
-      path.join(process.resourcesPath, "workflows", filename),
-      path.resolve(currentDirectory, "..", "..", "..", "workflows", filename)
-    ];
-    for (const candidate of candidates) {
-      if (!(await fs.stat(candidate).catch(() => null))) continue;
-      const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
-      return attachWorkflowMetadata({
-        modelId,
-        label: `内置 · Sulphur 2 原生续写 · ${ltxProfileLabel}`,
-        path: candidate,
-        supportsEndImage: false,
-        supportsVideoExtension: extensionWorkflowSafetyErrors(source).length === 0
-      });
-    }
-    return null;
-  }
-  const definitions: Record<string, { filename: string; label: string }> = {
-    minimax_h3_fl2va: {
-      filename: "minimax_h3_i2v_api.json",
-      label: "内置 · MiniMax H3 FL2VA · 原生 24 FPS 音视频"
-    },
-    minimax_h3_fl2va_int4: {
-      filename: "minimax_h3_i2v_api.json",
-      label: "内置 · MiniMax H3 FL2VA INT4 · 原生 24 FPS 音视频"
-    },
-    minimax_h3_fl2va_q3_gguf: {
-      filename: "minimax_h3_i2v_gguf_q3_api.json",
-      label: "内置 · MiniMax H3 Q3 GGUF · 低显存实验"
-    },
-    minimax_h3_fl2va_turbo: {
-      filename: "minimax_h3_fl2va_turbo_api.json",
-      label: "内置 · MiniMax H3 LightX2V Turbo FL2VA · 首尾帧音视频"
-    },
-    minimax_h3_ref2va: {
-      filename: "minimax_h3_r2v_api.json",
-      label: "内置 · MiniMax H3 R2V · 多参考音视频"
-    },
-    minimax_h3_ref2va_int4: {
-      filename: "minimax_h3_r2v_api.json",
-      label: "内置 · MiniMax H3 R2V INT4 · 多参考音视频"
-    },
-    sulphur2: {
-      filename: `sulphur2_ltx23_i2v_gguf_${ltxVariant}_api.json`,
-      label: `内置 · Sulphur 2 图生视频 · ${ltxProfileLabel}`
-    },
-    wan22_5b: {
-      filename: "wan22_5b_i2v_api.json",
-      label: "内置 · Wan 2.2 5B 图生视频"
-    },
-    hunyuan15: {
-      filename: "hunyuan15_i2v_api.json",
-      label: "内置 · HunyuanVideo 1.5 图生视频"
-    },
-    hunyuan15_sr: {
-      filename: "hunyuan15_sr_i2v_api.json",
-      label: "内置 · HunyuanVideo 1.5 双阶段 1080p 图生视频"
-    },
-    wan22_14b_nsfw: {
-      filename: "wan22_14b_i2v_api.json",
-      label: "内置 · Wan 2.2 I2V 14B + NSFW"
-    },
-    wan22_remix: {
-      filename: "wan22_14b_gguf_i2v_api.json",
-      label: "内置 · Wan 2.2 Remix v3"
-    },
-    wan22_smoothmix: {
-      filename: "wan22_14b_gguf_i2v_api.json",
-      label: "内置 · Wan 2.2 SmoothMix I2V"
-    },
-    wan22_dasiwa: {
-      filename: "wan22_14b_gguf_i2v_api.json",
-      label: "内置 · DaSiWa SynthSeduction v9"
-    }
-  };
-  const definition = definitions[modelId];
-  if (!definition) return null;
-  const { filename, label } = definition;
-  const candidates = [
-    path.join(app.getAppPath(), "workflows", filename),
-    path.join(process.resourcesPath, "workflows", filename),
-    path.resolve(currentDirectory, "..", "..", "..", "workflows", filename)
-  ];
-  for (const candidate of candidates) {
-    if (await fs.stat(candidate).catch(() => null)) {
-      const source = JSON.parse(await fs.readFile(candidate, "utf8")) as unknown;
-      return attachWorkflowMetadata({
-        modelId,
-        label,
-        path: candidate,
-        supportsEndImage: workflowSupportsEndImage(source),
-        supportsVideoExtension: extensionWorkflowSafetyErrors(source).length === 0
-      });
-    }
-  }
-  return null;
-}
 
 let lastQueueLogSignature = "";
 
@@ -1176,13 +975,40 @@ function registerIpc(
   applicationServices: ApplicationServices,
   waitForInitialState: () => Promise<void>
 ): void {
-  ipcMain.handle("state:get", async () => {
-    await waitForInitialState();
-    return store.get();
+  registerAppQueryIpc({
+    ipc: ipcMain,
+    store,
+    waitForInitialState,
+    getComfyRuntimeState: () => comfyRuntimeState.snapshot(),
+    getPromptRuntimeState: () => promptRuntimeManager.snapshot(),
+    getAppVersion: () => app.getVersion(),
+    logger: appLogger,
+    getCrashDumpsDirectory: () => app.getPath("crashDumps"),
+    performance: getPerformanceMetrics,
+    reconcileConfiguredComfyListenerOwnership,
+    runtimeState: comfyRuntimeState,
+    hasRunningTask: () => store.get().queue.some((task) => task.status === "running")
   });
-  ipcMain.handle("comfy-runtime:get", () => comfyRuntimeState.snapshot());
-  ipcMain.handle("prompt-runtime:get", () => promptRuntimeManager.snapshot());
-  ipcMain.handle("app:version", () => app.getVersion());
+  registerNativeHostIpc({
+    ipc: ipcMain,
+    dialog,
+    shell,
+    fileSystem: fs,
+    logger: appLogger,
+    paths: studioPaths,
+    getCrashDumpsDirectory: () => app.getPath("crashDumps")
+  });
+  registerWorkflowIpc({
+    ipc: ipcMain,
+    fileSystem: fs,
+    logger: appLogger,
+    workflowRoots: [
+      path.join(app.getAppPath(), "workflows"),
+      path.join(process.resourcesPath, "workflows"),
+      path.resolve(currentDirectory, "..", "..", "..", "workflows")
+    ],
+    getLtxExtensionModelProfile: () => store.get().settings.ltxExtensionModelProfile
+  });
   ipcMain.handle("renderer:set-settings-dirty", (_event, dirty: boolean) => {
     rendererHasUnsavedSettings = dirty === true;
   });
@@ -1207,43 +1033,6 @@ function registerIpc(
       closeFlowRunning = false;
     }
   );
-  ipcMain.handle("logs:read", (_event, limit?: number) =>
-    appLogSnapshot(typeof limit === "number" ? limit : undefined)
-  );
-  ipcMain.handle(
-    "logs:open-directory",
-    async (_event, kind: "logs" | "crashDumps") => {
-      const directory = kind === "logs"
-        ? appLogger.directory
-        : app.getPath("crashDumps");
-      const error = await shell.openPath(directory);
-      return !error;
-    }
-  );
-  ipcMain.handle(
-    "logs:renderer-error",
-    (_event, message: string, meta?: Record<string, unknown>) => {
-      appLogger.error("renderer", "client-error", message, meta);
-    }
-  );
-  ipcMain.handle(
-    "logs:user-action",
-    () => undefined
-  );
-  ipcMain.handle(
-    "logs:notification",
-    (_event, kind: NotificationKind, message: string) => {
-      const event = kind.replaceAll("-", "_");
-      const meta = { notificationKind: kind };
-      if (kind === "error") {
-        appLogger.error("ui", event, message, meta);
-      } else if (kind === "warning") {
-        appLogger.warn("ui", event, message, meta);
-      } else {
-        appLogger.info("ui", event, message, meta);
-      }
-    }
-  );
   registerDraftIpc({ ipc: ipcMain, service: applicationServices.draft });
   ipcMain.handle("queue:set-h3-live-preview", async (_event, enabled: boolean) => {
     const value = enabled === true;
@@ -1257,110 +1046,6 @@ function registerIpc(
     return next;
   });
   registerSettingsIpc({ ipc: ipcMain, service: applicationServices.settings });
-  ipcMain.handle("file:pick-image", async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ["openFile"],
-      filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "webp", "bmp"] }]
-    });
-    return result.canceled ? null : (result.filePaths[0] ?? null);
-  });
-  ipcMain.handle("file:pick-video", async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ["openFile"],
-      filters: [{ name: "视频", extensions: ["mp4", "webm", "mov", "m4v", "mkv"] }]
-    });
-    return result.canceled ? null : (result.filePaths[0] ?? null);
-  });
-  ipcMain.handle("file:pick-workflow", async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ["openFile"],
-      filters: [{ name: "ComfyUI API 工作流", extensions: ["json"] }]
-    });
-    return result.canceled ? null : (result.filePaths[0] ?? null);
-  });
-  ipcMain.handle("file:pick-python", async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ["openFile"],
-      filters: [{ name: "Python 解释器", extensions: ["exe"] }]
-    });
-    return result.canceled ? null : (result.filePaths[0] ?? null);
-  });
-  ipcMain.handle("workflow:inspect", async (_event, workflowPath: string, modelId?: string) => {
-    const startedAt = Date.now();
-    const source = JSON.parse(await fs.readFile(workflowPath, "utf8")) as unknown;
-    const result = {
-      supportsEndImage: workflowSupportsEndImage(source),
-      supportsVideoExtension: modelId
-        ? workflowSupportsExtensionForModel(source, modelId)
-        : extensionWorkflowSafetyErrors(source).length === 0
-    };
-    appLogger.info("workflow", "inspected", "Workflow inspected", {
-      durationMs: Date.now() - startedAt,
-      modelId,
-      supportsEndImage: result.supportsEndImage,
-      supportsVideoExtension: result.supportsVideoExtension
-    });
-    return result;
-  });
-  ipcMain.handle("workflow:get-bundled", (_event, modelId: string, inputMode?: Draft["inputMode"]) =>
-    bundledWorkflowFor(modelId, inputMode)
-  );
-  ipcMain.handle("performance:get", async (_event, settings: Settings) => {
-    const metrics = await getPerformanceMetrics(settings);
-    const currentOwnership = comfyRuntimeState.snapshot().ownership;
-    const ownership = metrics.comfyConnected && currentOwnership === "unknown" &&
-      await reconcileConfiguredComfyListenerOwnership(settings)
-      ? "app"
-      : currentOwnership;
-    comfyRuntimeState.observeReachability(
-      metrics.comfyConnected,
-      settings.comfyUrl.replace(/\/+$/, ""),
-      ownership,
-      store.get().queue.some((task) => task.status === "running")
-    );
-    return metrics;
-  });
-  ipcMain.handle("file:pick-directory", async (_event, defaultPath?: string, createIfMissing = false) => {
-    const candidate = typeof defaultPath === "string" ? defaultPath.trim() : "";
-    const candidatePath = candidate ? path.resolve(candidate) : "";
-    if (createIfMissing && candidatePath) {
-      await fs.mkdir(candidatePath, { recursive: true }).catch(() => undefined);
-    }
-    const candidateStat = candidatePath ? await fs.stat(candidatePath).catch(() => null) : null;
-    const result = await dialog.showOpenDialog({
-      defaultPath: candidateStat?.isDirectory() ? candidatePath : undefined,
-      properties: ["openDirectory"]
-    });
-    return result.canceled ? null : (result.filePaths[0] ?? null);
-  });
-  ipcMain.handle("file:open-directory", async (_event, directory: string) => {
-    const requestedDirectory = typeof directory === "string" ? directory.trim() : "";
-    if (!requestedDirectory) return false;
-    const directoryPath = path.resolve(requestedDirectory);
-    try {
-      await fs.mkdir(directoryPath, { recursive: true });
-      const directoryStat = await fs.stat(directoryPath);
-      if (!directoryStat.isDirectory()) return false;
-      const errorMessage = await shell.openPath(directoryPath);
-      if (errorMessage) {
-        appLogger.warn("settings", "open-model-directory-failed", "Model directory could not be opened", {
-          directory: directoryPath,
-          error: errorMessage
-        });
-        return false;
-      }
-      appLogger.info("settings", "open-model-directory-succeeded", "Model directory opened", {
-        directory: directoryPath
-      });
-      return true;
-    } catch (error) {
-      appLogger.warn("settings", "open-model-directory-failed", "Model directory could not be opened", {
-        directory: directoryPath,
-        error: safeLogErrorMessage(error)
-      });
-      return false;
-    }
-  });
   ipcMain.handle("image-assets:scan", async () => {
     if (imageAssetLibraryRunning) throw new Error("图片素材库正在处理中，请稍候。");
     imageAssetLibraryRunning = true;
@@ -1512,49 +1197,12 @@ function registerIpc(
     ipc: ipcMain,
     service: applicationServices.imageDocument
   });
-  ipcMain.handle(
-    "file:save-clipboard-image",
-    async (_event, data: ArrayBuffer, mimeType: string) => {
-      const extensions: Record<string, string> = {
-        "image/png": ".png",
-        "image/jpeg": ".jpg",
-        "image/webp": ".webp",
-        "image/bmp": ".bmp"
-      };
-      const extension = extensions[mimeType.toLowerCase()];
-      if (!extension) throw new Error("剪贴板内容不是支持的图片格式");
-      if (!(data instanceof ArrayBuffer) || data.byteLength === 0) {
-        throw new Error("剪贴板图片为空");
-      }
-      if (data.byteLength > 50 * 1024 * 1024) {
-        throw new Error("剪贴板图片不能超过 50 MB");
-      }
-      const directory = studioPaths.clipboardInputsDirectory;
-      await fs.mkdir(directory, { recursive: true });
-      const filename = path.join(
-        directory,
-        `clipboard-${Date.now()}-${crypto.randomUUID()}${extension}`
-      );
-      await fs.writeFile(filename, new Uint8Array(data));
-      return filename;
-    }
-  );
   registerMediaIpc({
     ipc: ipcMain,
     protocol,
     service: applicationServices.media,
     logger: appLogger,
     paths: studioPaths
-  });
-  ipcMain.handle("shell:open-external", async (_event, value: string) => {
-    try {
-      const url = new URL(value);
-      if (url.protocol !== "https:") return false;
-      await shell.openExternal(url.toString());
-      return true;
-    } catch {
-      return false;
-    }
   });
   registerPromptIpc({
     ipc: ipcMain,
