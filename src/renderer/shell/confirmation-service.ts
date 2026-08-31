@@ -1,6 +1,8 @@
 import type { AppState, Settings } from "../../types";
-import type { CreationMode, Page, RendererContext, RendererNotifyOptions } from "../contracts";
+import type { CreationMode, Page, RendererNotifyOptions } from "../contracts";
 import { uiKeys } from "../../core/i18n-keys";
+import type { Translate } from "../../core/i18n";
+import type { RendererApplicationApi } from "../studio-client";
 
 export type ConfirmationRequest =
   | { kind: "clear-draft"; mode: CreationMode }
@@ -20,6 +22,23 @@ export type ConfirmationRequest =
     }
   | { kind: "uninstall-custom-node"; nodeId: string; name: string }
   | { kind: "uninstall-llama-cpp-python" };
+
+export type ConfirmationApplicationApi = Pick<RendererApplicationApi,
+  | "forceStopComfyProcesses"
+  | "uninstallLlamaCppPython"
+  | "uninstallCustomNode"
+  | "removeTask"
+  | "cancelTask"
+  | "setSettingsDirty"
+  | "deleteHistoryAsset"
+  | "deleteImageHistoryVersion"
+  | "deleteHistoryVersion"
+>;
+
+export interface ConfirmationRuntimeContext {
+  application: ConfirmationApplicationApi;
+  t: Translate;
+}
 
 export interface ConfirmationServiceOptions {
   getRequest(): ConfirmationRequest | null;
@@ -56,7 +75,7 @@ export interface ConfirmationServiceOptions {
 }
 
 export async function acceptConfirmation(
-  context: RendererContext,
+  context: ConfirmationRuntimeContext,
   options: ConfirmationServiceOptions
 ): Promise<void> {
   const request = options.getRequest();

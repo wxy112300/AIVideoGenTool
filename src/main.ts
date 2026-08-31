@@ -6,14 +6,6 @@ import "./style.css";
 import { createRendererApp } from "./renderer/app";
 import { bootstrapRenderer } from "./renderer/bootstrap";
 import { createWindowRendererEntry } from "./renderer/entry";
-import {
-  createPromptRuntimeState,
-  promptModelStartupIsActive,
-  promptOperationBelongsTo,
-  promptOperationIsActive,
-  type PromptRuntimeState
-} from "./core/prompt-runtime-state";
-import { projectPromptRuntimeView } from "./core/prompt-runtime-view";
 import { registerRendererEvents } from "./renderer/state-events";
 import {
   creationMode,
@@ -27,11 +19,6 @@ import {
 } from "./renderer/renderer-state";
 import { rendererUiState as ui } from "./renderer/ui-state";
 import type { CreationMode, HistoryKind, Page, RendererCleanup, RendererNotifyOptions } from "./renderer/contracts";
-import {
-  createNotification,
-  notificationAlreadyPending,
-  notificationShouldPreserveError
-} from "./renderer/notifications";
 import { createQueueLiveStatus } from "./renderer/pages/queue/live-status";
 import { createQueueAssembly } from "./renderer/pages/queue/assembly";
 import { createQueueScrollController } from "./renderer/pages/queue/scroll-controller";
@@ -121,7 +108,6 @@ import { escapeHtml } from "./renderer/shared/dom";
 import {
   formatAssetBytes,
   formatBytes,
-  formatElapsedDuration,
   formatFullHistoryTime,
   formatTrimTime,
   formatUpscaleEstimateRange,
@@ -134,38 +120,24 @@ import { modelName, videoLoraPurposeLabel } from "./renderer/shared/labels";
 import { videoLoraInfoButton } from "./renderer/shared/markup";
 import {
   imageWorkflowStatus,
-  isImageModelSelectable,
-  promptModelStatus
+  isImageModelSelectable
 } from "./renderer/shared/status";
 import { appLogTerminalHtml, visibleAppLogText } from "./renderer/shared/logs";
 import { mountShellController } from "./renderer/shell/controller";
 import { mountUpscaleController } from "./renderer/shell/upscale-controller";
-import { acceptConfirmation as runConfirmation } from "./renderer/shell/confirmation-service";
-import {
-  renderConfirmationDialog,
-  renderWindowCloseDialog
-} from "./renderer/shell/dialogs";
-import {
-  imageAssetResultSummary,
-  renderDirectoryMigrationDialog,
-  renderImageAssetLibraryDialog,
-  renderUpscaleDialog
-} from "./renderer/shell/secondary-dialogs";
+import { renderUpscaleDialog } from "./renderer/shell/secondary-dialogs";
+import { createRendererShellCoordinator, type RendererShellCoordinator } from "./renderer/shell/coordinator";
 import type {
-  AppLogSnapshot,
   AppState,
   AssetVersion,
   BundledWorkflow,
   ComfyRuntimeState,
   Draft,
   EnvironmentScanResult,
-  EnhanceRequest,
   H3PromptPreset,
   H3PromptMode,
   H3ReferenceSlot,
   HistoryAsset,
-  HistoryMigrationProgress,
-  ImageAssetLibraryProgress,
   ImageAssetLibraryScan,
   ImageAssetVersion,
   ImageGenerationQueueTask,
@@ -178,12 +150,10 @@ import type {
   ModelScanProfile,
   PerformanceMetrics,
   PromptEnhanceMode,
-  PromptProgress,
   QueueTask,
   Settings,
   SettingsSaveMode,
   TaskPerformanceStats,
-  WindowCloseRequest,
   WorkflowCapabilities
 } from "./types";
 import { createClearedDraft, createDefaultImageEditDraft } from "./core/draft-defaults";
@@ -255,6 +225,8 @@ const rendererApplication = rendererDependencies.application;
 const rendererEvents = rendererDependencies.events;
 const rendererAssets = rendererDependencies.assets;
 const rendererHostCapabilities = rendererDependencies.hostCapabilities;
+let shellCoordinator: RendererShellCoordinator;
+let settingsSaveCoordinator: SettingsSaveCoordinator;
 let draftSaveTimer: number | undefined;
 let draftRevision = 0;
 let draftSaveInFlight = 0;
@@ -286,13 +258,6 @@ let llamaCppPythonInstalling = false;
 let llamaCppPythonLog = "";
 let settingsDraft: Settings | null = null;
 let settingsTab: "comfyui" | "system" | "acceleration" | "video" | "lora" | "image" | "nodes" | "prompt" | "upscale" | "logs" = "comfyui";
-let appLogs: AppLogSnapshot | null = null;
-let appLogsLoading = false;
-let appLogsError = "";
-let appLogPollingTimer: number | undefined;
-let appLogPollingInFlight = false;
-let appLogFollowTail = true;
-let appLogScreenClearedAt: number | null = null;
 let selectedInstallGuide: {
   profileName: string;
   component: ModelComponentStatus;
@@ -312,7 +277,6 @@ let comfyRuntime: ComfyRuntimeState = {
   updatedAt: new Date(0).toISOString(),
   operationId: 0
 };
-let promptRuntime: PromptRuntimeState = createPromptRuntimeState(comfyRuntime);
 interface CreationModeUiState {
   promptEnhanceMode: PromptEnhanceMode;
   h3PromptPreset: H3PromptPreset;
@@ -334,12 +298,6 @@ const creationModeUiState: Record<CreationMode, CreationModeUiState> = {
 const activeCreationModeUiState = (): CreationModeUiState => creationModeUiState[creationMode];
 let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
 let settingsImagePromptPreset: ImagePromptPreset = "faithful";
-let promptEnhancing = false;
-let promptStarting = false;
-let promptStartRequestPending = false;
-let promptReleasing = false;
-let promptRuntimeLoaded = false;
-let promptProgress: PromptProgress | null = null;
 const promptEditHistory = new PromptEditHistory();
 
 function uiText(
@@ -442,261 +400,29 @@ function updateH3PromptCheck(
     ${result.items.length ? `<ul>${result.items.map((item) => `<li>${escapeHtml(item.message)}</li>`).join("")}</ul>` : ""}`;
 }
 
-function rememberModalFocus(): void {
-  const active = document.activeElement;
-  ui.modalReturnFocus = active instanceof HTMLElement && active !== document.body
-    ? active
-    : null;
-  ui.modalInitialFocusPending = true;
-  ui.modalControlFocusSelector = "";
-}
-
-function rememberModalControlFocus(element: HTMLElement): void {
-  if (element.id) {
-    ui.modalControlFocusSelector = `#${element.id}`;
-    return;
-  }
-  const upscaleHeight = element.dataset.upscaleHeight;
-  if (upscaleHeight) {
-    ui.modalControlFocusSelector = `[data-upscale-height="${CSS.escape(upscaleHeight)}"]`;
-  }
-}
-
-function preserveModalControlFocus(): void {
-  const active = document.activeElement;
-  if (active instanceof HTMLElement && modalRoot.contains(active)) {
-    rememberModalControlFocus(active);
-  }
-}
-
-function restoreModalFocus(): void {
-  const target = ui.modalReturnFocus;
-  ui.modalReturnFocus = null;
-  window.requestAnimationFrame(() => {
-    if (target?.isConnected && !target.hasAttribute("disabled")) {
-      target.focus();
-      return;
-    }
-    document.querySelector<HTMLElement>(`.nav-button[data-page="${page === "history-detail" || page === "image-history-detail" ? "history" : page}"]`)?.focus();
-  });
-}
-
-function bindModalFocus(
+const rememberModalFocus = (): void => shellCoordinator.rememberModalFocus();
+const rememberModalControlFocus = (element: HTMLElement): void => shellCoordinator.rememberModalControlFocus(element);
+const restoreModalFocus = (): void => shellCoordinator.restoreModalFocus();
+const bindModalFocus = (
   dialog: HTMLElement,
   close: () => void,
   initialSelector?: string,
   focusOnBind = true
-): void {
-  const focusableSelector = "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex=\"-1\"])";
-  const focusInitial = () => {
-    const storedControl = !ui.modalInitialFocusPending && ui.modalControlFocusSelector
-      ? dialog.querySelector<HTMLElement>(ui.modalControlFocusSelector)
-      : null;
-    const initial = storedControl ?? (initialSelector
-      ? dialog.querySelector<HTMLElement>(initialSelector)
-      : null);
-    const first = initial ?? dialog.querySelector<HTMLElement>(focusableSelector);
-    (first ?? dialog).focus();
-    ui.modalControlFocusSelector = "";
-  };
-  dialog.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusables = [...dialog.querySelectorAll<HTMLElement>(focusableSelector)]
-      .filter((element) => element.getClientRects().length > 0);
-    if (!focusables.length) {
-      event.preventDefault();
-      dialog.focus();
-      return;
-    }
-    const first = focusables[0]!;
-    const last = focusables.at(-1)!;
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  });
-  if (focusOnBind && (ui.modalInitialFocusPending || ui.modalControlFocusSelector)) {
-    ui.modalInitialFocusPending = false;
-    focusInitial();
-  }
-}
-
-function directoryMigrationDialog(): string {
-  return renderDirectoryMigrationDialog({
-    request: ui.pendingDirectoryMigration,
-    progress: ui.historyMigrationProgress,
-    busy: ui.directoryMigrationBusy,
-    t: rendererApp.context.t,
-    icon,
-    escapeHtml
-  });
-}
-
-async function chooseDirectoryMigration(mode: SettingsSaveMode | "cancel"): Promise<void> {
-  const request = ui.pendingDirectoryMigration;
-  if (!request || ui.directoryMigrationBusy) return;
-  if (mode === "cancel") {
-    settingsDraft = {
-      ...request.nextSettings,
-      outputDirectory: request.previousSettings.outputDirectory
-    };
-    ui.pendingDirectoryMigration = null;
-    ui.historyMigrationProgress = null;
-    renderOverlay();
-    restoreModalFocus();
-    showMessage(uiText(uiKeys.runtime.directoryCancelled));
-    return;
-  }
-  ui.directoryMigrationBusy = true;
-  ui.historyMigrationProgress = null;
-  renderOverlay();
-  try {
-    await settingsSaveCoordinator.save(request.nextSettings, mode);
-    const warningCount = (ui.historyMigrationProgress as HistoryMigrationProgress | null)?.warningCount ?? 0;
-    ui.pendingDirectoryMigration = null;
-    ui.directoryMigrationBusy = false;
-    ui.historyMigrationProgress = null;
-    render();
-    restoreModalFocus();
-    if (mode === "migrate-video-history") {
-      showMessage(warningCount
-        ? uiText(uiKeys.runtime.migrationCompletedWarnings, { count: warningCount })
-        : uiText(uiKeys.runtime.migrationCompleted), warningCount ? { kind: "warning" } : undefined);
-    }
-  } catch (error) {
-    ui.directoryMigrationBusy = false;
-    showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
-    renderOverlay();
-  }
-}
-
-function bindDirectoryMigrationDialog(): void {
-  if (!ui.pendingDirectoryMigration) return;
-  modalRoot.querySelector("#directory-apply")?.addEventListener("click", () => {
-    void chooseDirectoryMigration("apply");
-  });
-  modalRoot.querySelector("#directory-apply-migrate")?.addEventListener("click", () => {
-    void chooseDirectoryMigration("migrate-video-history");
-  });
-  modalRoot.querySelector("#directory-cancel")?.addEventListener("click", () => {
-    void chooseDirectoryMigration("cancel");
-  });
-  modalRoot.querySelector("#directory-migration-backdrop")?.addEventListener("click", (event) => {
-    if (event.target === event.currentTarget && !ui.directoryMigrationBusy) {
-      void chooseDirectoryMigration("cancel");
-    }
-  });
-  const dialog = modalRoot.querySelector<HTMLElement>(".directory-migration-dialog");
-  if (dialog) bindModalFocus(dialog, () => void chooseDirectoryMigration("cancel"), "#directory-cancel");
-}
-
-function imageAssetLibraryDialogHtml(): string {
-  return renderImageAssetLibraryDialog({
-    dialog: ui.imageAssetLibraryDialog,
-    progress: ui.imageAssetLibraryProgress,
-    icon,
-    escapeHtml,
-    formatAssetBytes,
-    t: rendererApp.context.t
-  });
-}
-
-async function scanImageAssets(): Promise<void> {
-  if (!ui.imageAssetLibraryDialog || ui.imageAssetLibraryDialog.busy) return;
-  ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: true, error: "", confirmCleanup: false, lastResult: null };
-  ui.imageAssetLibraryProgress = null;
-  renderOverlay();
-  try {
-    const scan = await rendererAssets.scanImageAssetLibrary();
-    ui.imageAssetLibraryDialog = { scan, busy: false, error: "", confirmCleanup: false, selectedPaths: scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: null };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: message };
-    showMessage(message, { kind: "error" });
-  }
-  renderOverlay();
-}
-
-function loadImageAssetLibraryPreviews(): void {
-  modalRoot.querySelectorAll<HTMLImageElement>("[data-asset-preview-source]").forEach((preview) => {
-    const sourcePath = preview.dataset.assetPreviewSource;
-    if (!sourcePath) return;
-    void rendererAssets.readImage(sourcePath).then((dataUrl) => {
-      if (!dataUrl || !preview.isConnected) return;
-      preview.src = dataUrl;
-      preview.classList.add("is-loaded");
-    }).catch(() => {
-      if (preview.isConnected) preview.classList.add("is-unavailable");
-    });
-  });
-}
-
-function bindImageAssetLibraryDialog(): void {
-  const dialog = ui.imageAssetLibraryDialog;
-  if (!dialog) return;
-  loadImageAssetLibraryPreviews();
-  const close = () => {
-    if (ui.imageAssetLibraryDialog?.busy) return;
-    ui.imageAssetLibraryDialog = null;
-    ui.imageAssetLibraryProgress = null;
-    renderOverlay();
-    restoreModalFocus();
-  };
-  modalRoot.querySelector("#image-assets-close")?.addEventListener("click", close);
-  modalRoot.querySelector("#image-asset-library-backdrop")?.addEventListener("click", (event) => {
-    if (event.target === event.currentTarget) close();
-  });
-  modalRoot.querySelector("#image-assets-rescan")?.addEventListener("click", () => void scanImageAssets());
-  modalRoot.querySelector("#image-assets-organize")?.addEventListener("click", async () => {
-    if (!ui.imageAssetLibraryDialog || ui.imageAssetLibraryDialog.busy) return;
-    ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: true, error: "", lastResult: null };
-    ui.imageAssetLibraryProgress = null;
-    renderOverlay();
-    try {
-      const result = await rendererAssets.organizeImageAssetLibrary();
-      ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "organize", formatAssetBytes, rendererApp.context.t) };
-      showMessage(uiText(uiKeys.runtime.assetOrganized, { archived: result.archivedFiles, reorganized: result.reorganizedFiles, references: result.updatedReferences }));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: message };
-      showMessage(message, { kind: "error" });
-    }
-    renderOverlay();
-  });
-  modalRoot.querySelector("#image-assets-cleanup")?.addEventListener("click", async () => {
-    if (!ui.imageAssetLibraryDialog || ui.imageAssetLibraryDialog.busy) return;
-    if (!ui.imageAssetLibraryDialog.confirmCleanup) {
-      const selectedPaths = [...modalRoot.querySelectorAll<HTMLInputElement>("[data-orphan-path]:checked")].map((item) => item.dataset.orphanPath || "").filter(Boolean);
-      ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, confirmCleanup: true, selectedPaths };
-      renderOverlay();
-      return;
-    }
-    const paths = [...ui.imageAssetLibraryDialog.selectedPaths];
-    ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: true, error: "", confirmCleanup: false, lastResult: null };
-    ui.imageAssetLibraryProgress = null;
-    renderOverlay();
-    try {
-      const result = await rendererAssets.cleanupImageAssetLibrary(paths);
-      ui.imageAssetLibraryDialog = { scan: result.scan, busy: false, error: "", confirmCleanup: false, selectedPaths: result.scan.orphanFiles.slice(0, 12).map((file) => file.absolutePath), lastResult: imageAssetResultSummary(result, "cleanup", formatAssetBytes, rendererApp.context.t) };
-      showMessage(uiText(uiKeys.runtime.assetCleaned, { files: result.cleanedFiles, bytes: formatAssetBytes(result.cleanedBytes) }));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      ui.imageAssetLibraryDialog = { ...ui.imageAssetLibraryDialog, busy: false, error: message, confirmCleanup: false };
-      showMessage(message, { kind: "error" });
-    }
-    renderOverlay();
-  });
-  const element = modalRoot.querySelector<HTMLElement>(".image-asset-library-dialog");
-  if (element) bindModalFocus(element, close, "#image-assets-close");
-}
+): void => shellCoordinator.bindModalFocus(dialog, close, initialSelector, focusOnBind);
+const renderOverlay = (): void => shellCoordinator.renderOverlay();
+const dismissNotification = (id?: number): void => shellCoordinator.dismissNotification(id);
+const runNotificationAction = (actionId: string): void => shellCoordinator.runNotificationAction(actionId);
+const showMessage = (
+  message: string,
+  legacyOrOptions?: boolean | RendererNotifyOptions
+): void => shellCoordinator.showMessage(message, legacyOrOptions);
+const clearAppLogScreen = (): void => shellCoordinator.clearAppLogScreen();
+const loadAppLogs = (): Promise<void> => shellCoordinator.loadAppLogs();
+const syncAppLogPolling = (): void => shellCoordinator.syncAppLogPolling();
+const togglePromptModelFromUi = (): Promise<void> => shellCoordinator.togglePromptModel();
+const promptRuntimeControlIcon = (): string => shellCoordinator.promptRuntimeControlIcon();
+const promptRuntimeControlTitle = (settings = state.settings): string =>
+  shellCoordinator.promptRuntimeControlTitle(settings);
 
 function upscaleDialogHtml(): string {
   return renderUpscaleDialog({
@@ -717,26 +443,6 @@ function upscaleDialogHtml(): string {
   });
 }
 
-function promptRuntimeControlIcon(): string {
-  return promptStarting || promptReleasing
-    ? "refresh-cw"
-    : promptRuntimeLoaded || promptEnhancing
-      ? "square"
-      : "play";
-}
-
-function promptRuntimeControlTitle(settings = state.settings): string {
-  return promptStarting
-    ? uiText(uiKeys.runtime.promptStarting)
-    : promptEnhancing
-    ? uiText(uiKeys.runtime.releasePrompt)
-    : promptReleasing
-      ? uiText(uiKeys.runtime.promptReleasing)
-      : promptRuntimeLoaded
-      ? uiText(uiKeys.runtime.releasePrompt)
-      : promptModelStatus(settings, environmentScan, uiText).detail;
-}
-
 const createPageOptions: CreatePageOptions = {
   t: (key, params, fallback) => createTranslator(state.settings.uiLocale).t(key, params, fallback),
   icon,
@@ -754,8 +460,8 @@ const createPageOptions: CreatePageOptions = {
 function createViewModelDependencies(): CreateViewModelDependencies {
   const origin = creationMode;
   const modeUiState = activeCreationModeUiState();
-  const promptRuntimeView = projectPromptRuntimeView(promptRuntime, origin);
-  const ownsActivePrompt = promptOperationBelongsTo(promptRuntime, origin);
+  const promptRuntimeView = shellCoordinator.promptRuntimeView(origin);
+  const ownsActivePrompt = shellCoordinator.promptOperationBelongsTo(origin);
   return {
     t: uiText,
     state,
@@ -766,10 +472,10 @@ function createViewModelDependencies(): CreateViewModelDependencies {
     promptEnhanceMode: modeUiState.promptEnhanceMode,
     h3PromptPreset: modeUiState.h3PromptPreset,
     promptEnhancing: promptRuntimeView.right.action === "cancel",
-    promptStarting,
-    promptReleasing: promptRuntime.model.phase === "unloading",
-    promptRuntimeLoaded: promptRuntime.model.phase === "resident",
-    promptProgress: ownsActivePrompt ? promptProgress : null,
+    promptStarting: shellCoordinator.getPromptStarting(),
+    promptReleasing: shellCoordinator.getPromptReleasing(),
+    promptRuntimeLoaded: shellCoordinator.getPromptRuntimeLoaded(),
+    promptProgress: ownsActivePrompt ? shellCoordinator.getPromptProgress() : null,
     enqueueBusy: ui.enqueueBusy,
     promptRuntimeControlTitle,
     promptRuntimeControlIcon,
@@ -988,10 +694,10 @@ function settingsPage(): string {
       settingsTab,
       settingsH3PromptPreset,
       settingsImagePromptPreset,
-      promptRuntimeLoaded,
-      promptStarting,
-      promptEnhancing,
-      promptReleasing,
+      promptRuntimeLoaded: shellCoordinator.getPromptRuntimeLoaded(),
+      promptStarting: shellCoordinator.getPromptStarting(),
+      promptEnhancing: shellCoordinator.getPromptEnhancing(),
+      promptReleasing: shellCoordinator.getPromptReleasing(),
       serviceStarting: serviceStarting ?? (comfyRuntime.phase === "starting" ? "comfy" : null),
       serviceRestarting: serviceRestarting ?? (comfyRuntime.phase === "restarting" ? "comfy" : null),
       serviceForceStopping,
@@ -1010,9 +716,9 @@ function settingsPage(): string {
       llamaCppPythonInstalling,
       llamaCppPythonLog,
       selectedInstallGuide,
-      appLogs,
-      appLogsLoading,
-      appLogsError,
+      appLogs: shellCoordinator.getAppLogs(),
+      appLogsLoading: shellCoordinator.getAppLogsLoading(),
+      appLogsError: shellCoordinator.getAppLogsError(),
       settingsHaveUnsavedChanges,
       promptRuntimeControlIcon,
       promptRuntimeControlTitle
@@ -1041,7 +747,7 @@ function settingsPage(): string {
       isImageModelSelectable,
       imageWorkflowStatus,
       h3PromptPresetOptions: (selected, includeMultiReference) => h3PromptPresetOptions(selected, includeMultiReference, state.settings.uiLocale),
-      renderAppLogTerminal: (text) => appLogTerminalHtml(visibleAppLogText(text, appLogScreenClearedAt), uiText(uiKeys.settings.logsEmpty))
+      renderAppLogTerminal: (text) => appLogTerminalHtml(visibleAppLogText(text, shellCoordinator.getAppLogScreenClearedAt()), uiText(uiKeys.settings.logsEmpty))
     }
   );
 }
@@ -1049,91 +755,6 @@ function settingsPage(): string {
 function render(): void {
   appElement.removeAttribute("aria-busy");
   rendererApp.render();
-}
-
-let resolvePromptCpuConfirmation: ((confirmed: boolean) => void) | null = null;
-
-function promptVramLabel(bytes: number | null): string {
-  return bytes == null ? "--" : `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
-}
-
-async function promptExecutionDecision(): Promise<"gpu" | "cpu" | null> {
-  const preflight = await rendererApplication.preflightPromptModel();
-  if (!preflight.requiresCpuConfirmation) return "gpu";
-  resolvePromptCpuConfirmation?.(false);
-  rememberModalFocus();
-  ui.pendingConfirmation = {
-    kind: "prompt-cpu-fallback",
-    usedVram: promptVramLabel(preflight.vramUsedBytes),
-    totalVram: promptVramLabel(preflight.vramTotalBytes),
-    freeVram: promptVramLabel(preflight.vramFreeBytes),
-    requiredVram: promptVramLabel(preflight.requiredFreeVramBytes)
-  };
-  ui.confirmationBusy = false;
-  renderOverlay();
-  return new Promise<"cpu" | null>((resolve) => {
-    resolvePromptCpuConfirmation = (confirmed) => resolve(confirmed ? "cpu" : null);
-  });
-}
-
-async function enhancePromptWithConfirmation(request: EnhanceRequest): Promise<string> {
-  const decision = await promptExecutionDecision();
-  if (!decision) {
-    throw new DOMException(rendererApp.context.t(uiKeys.dialog.promptCpuCancelled), "AbortError");
-  }
-  return rendererApplication.enhancePrompt({
-    ...request,
-    allowCpuFallback: decision === "cpu" ? true : undefined
-  });
-}
-
-let overlayCleanup: (() => void) | null = null;
-
-function confirmationDialogHtml(): string {
-  const request = ui.pendingConfirmation;
-  return renderConfirmationDialog({
-    request,
-    confirmationBusy: ui.confirmationBusy,
-    customNodeLog: request?.kind === "uninstall-custom-node"
-      ? customNodeLogs[request.nodeId] ?? ""
-      : "",
-    imageHistoryIds: new Set(state.imageHistory.map((item) => item.id)),
-    t: rendererApp.context.t,
-    icon,
-    escapeHtml
-  });
-}
-
-function windowCloseDialogHtml(): string {
-  return renderWindowCloseDialog({
-    request: ui.pendingWindowCloseRequest,
-    responseBusy: ui.windowCloseResponseBusy,
-    t: rendererApp.context.t,
-    icon,
-    escapeHtml
-  });
-}
-
-function renderOverlay(): void {
-  if (page !== "settings" && selectedInstallGuide) selectedInstallGuide = null;
-  preserveModalControlFocus();
-  overlayCleanup?.();
-  overlayCleanup = null;
-  modalRoot.innerHTML = [
-    confirmationDialogHtml(),
-    directoryMigrationDialog(),
-    imageAssetLibraryDialogHtml(),
-    windowCloseDialogHtml(),
-    upscaleDialogHtml(),
-    installGuideDialogHtml()
-  ].join("");
-  renderIcons(modalRoot);
-  bindConfirmationDialog();
-  bindDirectoryMigrationDialog();
-  bindImageAssetLibraryDialog();
-  bindWindowCloseDialog();
-  bindInstallGuideDialog();
-  overlayCleanup = bindUpscaleDialog();
 }
 
 let renderCoordinator: RenderCoordinator;
@@ -1144,7 +765,7 @@ let activeHistoryCleanup: RendererCleanup | null = null;
 const rendererApp = createRendererApp({
   root: appElement,
   dependencies: rendererDependencies,
-  enhancePrompt: enhancePromptWithConfirmation,
+  enhancePrompt: (request) => shellCoordinator.enhancePrompt(request),
   getState: () => state,
   getRoute: () => ({ page, creationMode, historyKind }),
   requestRender: () => render(),
@@ -1213,9 +834,7 @@ const queueAssembly = createQueueAssembly({
   getTaskPreviews: () => taskPreviews,
   getQueueActionBusy: () => queueActionBusy,
   setState: setRendererState,
-  setPromptRuntimeLoaded: (loaded) => {
-    promptRuntimeLoaded = loaded;
-  },
+  setPromptRuntimeLoaded: (loaded) => shellCoordinator.setPromptRuntimeLoaded(loaded),
   requestConfirmation: requestQueueTaskConfirmation,
   editTask: (taskId) => {
     void editQueueTask(taskId);
@@ -1347,7 +966,6 @@ const customNodeInstallManager = new CustomNodeInstallQueue({
     )
   }
 });
-initializeRenderCoordinator();
 const queueLiveStatus = createQueueLiveStatus({
   application: rendererApplication,
   t: rendererApp.context.t,
@@ -1361,217 +979,9 @@ const queueLiveStatus = createQueueLiveStatus({
 });
 queueLiveStatus.start();
 
-function syncFlashMessage(): void {
-  const flash = document.querySelector<HTMLElement>("#app-flash");
-  if (!flash) return;
-  const message = flash.querySelector<HTMLElement>("[data-flash-message]");
-  if (message) message.textContent = ui.flashMessage;
-  else flash.textContent = ui.flashMessage;
-  const actionContainer = flash.querySelector<HTMLElement>("[data-flash-actions]");
-  if (actionContainer) {
-    actionContainer.replaceChildren(...(ui.flashNotification?.actions ?? []).map((action) => {
-      const button = document.createElement("button");
-      button.className = `${action.tone ?? "secondary"} flash-action`;
-      button.type = "button";
-      button.dataset.notificationAction = action.id;
-      button.textContent = action.label;
-      return button;
-    }));
-  }
-  const kind = ui.flashNotification?.kind ?? "info";
-  flash.dataset.kind = kind;
-  flash.className = `flash flash-${kind}${ui.flashMessage ? " visible" : ""}`;
-  flash.setAttribute("role", kind === "error" ? "alert" : "status");
-  flash.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
-  flash.classList.toggle("visible", Boolean(ui.flashMessage));
-}
-
-function displayNextNotification(): void {
-  const next = ui.flashNotificationQueue.shift() ?? null;
-  ui.flashNotification = next;
-  ui.flashMessage = next?.message ?? "";
-  window.clearTimeout(ui.flashMessageTimer);
-  ui.flashMessageTimer = undefined;
-  syncFlashMessage();
-  if (!next || next.persistent) return;
-  ui.flashMessageTimer = window.setTimeout(() => {
-    if (ui.flashNotification?.id !== next.id) return;
-    displayNextNotification();
-  }, next.durationMs);
-}
-
-function dismissNotification(id?: number): void {
-  if (id !== undefined && ui.flashNotification?.id !== id) return;
-  window.clearTimeout(ui.flashMessageTimer);
-  ui.flashMessageTimer = undefined;
-  ui.flashNotification = null;
-  ui.flashMessage = "";
-  syncFlashMessage();
-  displayNextNotification();
-}
-
-function runNotificationAction(actionId: string): void {
-  const notification = ui.flashNotification;
-  const action = notification?.actions.find((candidate) => candidate.id === actionId);
-  if (!notification || !action) return;
-  if (action.dismissOnInvoke !== false) dismissNotification(notification.id);
-  try {
-    void Promise.resolve(action.run()).catch((error) => {
-      showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
-    });
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
-  }
-}
-
-function showMessage(
-  message: string,
-  legacyOrOptions?: boolean | RendererNotifyOptions
-): void {
-  const options = typeof legacyOrOptions === "object" ? legacyOrOptions : undefined;
-  const kind = options?.kind ?? "info";
-  const notification = createNotification(
-    ui.nextFlashNotificationId++,
-    message,
-    kind,
-    options?.durationMs,
-    options?.actions
-  );
-  if (notificationAlreadyPending(notification, ui.flashNotification, ui.flashNotificationQueue)) return;
-  if (notificationShouldPreserveError(ui.flashNotification, kind)) {
-    if (kind === "info") return;
-    ui.flashNotificationQueue.push(notification);
-    void rendererApplication.reportNotification(kind, message).catch(() => undefined);
-    return;
-  }
-  void rendererApplication.reportNotification(kind, message).catch(() => undefined);
-  if (kind === "task-complete" || kind === "queue-complete") {
-    ui.flashNotificationQueue.push(notification);
-    if (!ui.flashNotification) displayNextNotification();
-    return;
-  }
-  ui.flashNotificationQueue = [];
-  ui.flashNotification = notification;
-  ui.flashMessage = message;
-  window.clearTimeout(ui.flashMessageTimer);
-  syncFlashMessage();
-  if (notification.persistent) return;
-  ui.flashMessageTimer = window.setTimeout(() => {
-    if (ui.flashNotification?.id !== notification.id) return;
-    displayNextNotification();
-  }, notification.durationMs);
-}
-
 function reportUserAction(action: string, meta?: Record<string, unknown>): void {
   void action;
   void meta;
-}
-
-function clearAppLogScreen(): void {
-  if (appLogsLoading) return;
-  appLogScreenClearedAt = Date.now();
-  appLogFollowTail = true;
-  reportUserAction("clear-log-screen");
-  const terminal = document.querySelector<HTMLPreElement>("#app-log-terminal");
-  if (terminal) {
-    terminal.innerHTML = "";
-    terminal.scrollTop = 0;
-  }
-}
-
-function applyAppLogSnapshot(snapshot: AppLogSnapshot): void {
-  appLogs = snapshot;
-  const terminal = document.querySelector<HTMLPreElement>("#app-log-terminal");
-  if (!terminal) {
-    render();
-    return;
-  }
-  const shouldFollowTail = appLogFollowTail ||
-    terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 48;
-  terminal.innerHTML = appLogTerminalHtml(visibleAppLogText(snapshot.text, appLogScreenClearedAt), uiText(uiKeys.settings.logsEmpty));
-  if (shouldFollowTail) terminal.scrollTop = terminal.scrollHeight;
-  const count = document.querySelector<HTMLElement>("#app-log-count");
-  if (count) count.textContent = String(snapshot.records.length);
-}
-
-async function pollAppLogs(): Promise<void> {
-  if (
-    appLogPollingInFlight ||
-    appLogsLoading ||
-    page !== "settings" ||
-    settingsTab !== "logs"
-  ) return;
-  appLogPollingInFlight = true;
-  try {
-    const snapshot = await rendererApplication.readAppLogs(2000);
-    if (snapshot.text !== appLogs?.text) applyAppLogSnapshot(snapshot);
-  } catch {
-    // The panel keeps the last readable log while the main process is busy.
-  } finally {
-    appLogPollingInFlight = false;
-  }
-}
-
-function syncAppLogPolling(): void {
-  const shouldPoll = page === "settings" && settingsTab === "logs";
-  if (!shouldPoll) {
-    if (appLogPollingTimer !== undefined) {
-      window.clearInterval(appLogPollingTimer);
-      appLogPollingTimer = undefined;
-    }
-    return;
-  }
-  if (appLogPollingTimer === undefined) {
-    appLogPollingTimer = window.setInterval(() => void pollAppLogs(), 2_000);
-  }
-}
-
-async function releasePromptModelFromUi(): Promise<void> {
-  if (promptRuntime.model.phase === "unloading") return;
-  reportUserAction("release-prompt-service");
-  promptReleasing = true;
-  render();
-  try {
-    const result = await rendererApplication.releasePromptModel();
-    if (!result.ok) throw new Error(result.message);
-    promptRuntimeLoaded = false;
-    showMessage(result.message);
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
-  } finally {
-    promptReleasing = false;
-    render();
-  }
-}
-
-async function startPromptModelFromUi(): Promise<void> {
-  if (promptRuntime.model.phase === "warming" || promptRuntime.service.phase === "starting") return;
-  reportUserAction("start-prompt-service");
-  promptStartRequestPending = true;
-  promptStarting = true;
-  render();
-  try {
-    const decision = await promptExecutionDecision();
-    if (!decision) return;
-    const result = await rendererApplication.startPromptModel(decision === "cpu");
-    if (!result.ok) throw new Error(result.message);
-    promptRuntimeLoaded = true;
-    showMessage(result.message);
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : String(error), { kind: "error" });
-  } finally {
-    promptStartRequestPending = false;
-    promptStarting = promptModelStartupIsActive(promptRuntime);
-    render();
-  }
-}
-
-async function togglePromptModelFromUi(): Promise<void> {
-  if (promptRuntime.model.phase === "resident" || promptOperationIsActive(promptRuntime)) {
-    await releasePromptModelFromUi();
-  } else {
-    await startPromptModelFromUi();
-  }
 }
 
 function requestHistoryDeletion(assetId: string): void {
@@ -1822,158 +1232,12 @@ function releaseHistoryVideo(assetId: string): void {
   });
 }
 
-async function acceptConfirmation(): Promise<void> {
-  if (ui.pendingConfirmation?.kind === "prompt-cpu-fallback") {
-    const resolve = resolvePromptCpuConfirmation;
-    resolvePromptCpuConfirmation = null;
-    ui.pendingConfirmation = null;
-    renderOverlay();
-    restoreModalFocus();
-    resolve?.(true);
-    return;
-  }
-  await runConfirmation(rendererApp.context, {
-    getRequest: () => ui.pendingConfirmation,
-    setRequest: (request) => {
-      ui.pendingConfirmation = request;
-    },
-    setBusy: (value) => {
-      ui.confirmationBusy = value;
-    },
-    isBusy: () => ui.confirmationBusy,
-    getState: () => state,
-    setState: setRendererState,
-    getFormSettings: formSettings,
-    clearCreationDraft: (mode) => {
-      if (mode === "image-edit") {
-        patchImageDraft(createDefaultImageEditDraft());
-      } else {
-        patchDraftForMode(mode, (draft) => createClearedDraft(draft));
-      }
-    },
-    setServiceForceStopping: (value) => {
-      serviceForceStopping = value;
-    },
-    setServiceStatusMessage: (message) => {
-      serviceStatusMessage = message;
-    },
-    setLlamaCppPythonInstalling: (value) => {
-      llamaCppPythonInstalling = value;
-    },
-    getLlamaCppPythonLog: () => llamaCppPythonLog,
-    setLlamaCppPythonLog: (log) => {
-      llamaCppPythonLog = log;
-    },
-    setCustomNodeLog: (nodeId, log) => {
-      customNodeLogs = { ...customNodeLogs, [nodeId]: log };
-    },
-    scanEnvironment: async (settings) => {
-      await runEnvironmentScan(settings);
-    },
-    setSettingsDraft: (settings) => {
-      settingsDraft = settings;
-    },
-    setPage,
-    setHistoryKind,
-    setHistoryScrollRestorePending: historyLayoutController.setScrollRestorePending,
-    setSelectedHistoryAssetId: (assetId) => {
-      ui.selectedHistoryAssetId = assetId;
-    },
-    setSelectedHistoryVersionId: (versionId) => {
-      ui.selectedHistoryVersionId = versionId;
-    },
-    clearImageHistoryThumbnailCache: () => {
-      historyMediaRuntime.clearImageHistoryThumbnailCache();
-    },
-    setQueueActionBusy: (value) => {
-      queueActionBusy = value;
-    },
-    releaseHistoryVideo,
-    rememberModalFocus,
-    restoreModalFocus,
-    render,
-    overlayRoot: modalRoot,
-    renderOverlay,
-    notify: (message) => showMessage(message),
-    getPage: () => page
-  });
-}
-
-function bindConfirmationDialog(): void {
-  if (!ui.pendingConfirmation) return;
-  const close = () => {
-    if (ui.confirmationBusy) return;
-    if (ui.pendingConfirmation?.kind === "prompt-cpu-fallback") {
-      const resolve = resolvePromptCpuConfirmation;
-      resolvePromptCpuConfirmation = null;
-      resolve?.(false);
-    }
-    ui.pendingConfirmation = null;
-    renderOverlay();
-    restoreModalFocus();
-  };
-  modalRoot.querySelector("#cancel-confirmation")?.addEventListener("click", close);
-  modalRoot.querySelector("#accept-confirmation")?.addEventListener("click", () => {
-    void acceptConfirmation();
-  });
-  modalRoot.querySelector("#confirm-backdrop")?.addEventListener("click", (event) => {
-    if (event.target === event.currentTarget) close();
-  });
-  const dialog = modalRoot.querySelector<HTMLElement>(".confirm-dialog");
-  if (dialog) bindModalFocus(dialog, close, "#cancel-confirmation");
-}
-
-function bindWindowCloseDialog(): void {
-  if (!ui.pendingWindowCloseRequest) return;
-  const respond = async (response: "cancel" | "discard-settings" | "finish-tasks" | "force-exit") => {
-    if (ui.windowCloseResponseBusy) return;
-    if (document.activeElement instanceof HTMLElement) {
-      rememberModalControlFocus(document.activeElement);
-    }
-    ui.windowCloseResponseBusy = true;
-    renderOverlay();
-    try {
-      await rendererHostCapabilities.respondWindowClose(response);
-      if (response === "cancel") {
-        ui.pendingWindowCloseRequest = null;
-        ui.windowCloseResponseBusy = false;
-        renderOverlay();
-        restoreModalFocus();
-      }
-    } catch (error) {
-      ui.windowCloseResponseBusy = false;
-      showMessage(error instanceof Error ? error.message : uiText(uiKeys.runtime.exitRequestFailed), { kind: "error" });
-      renderOverlay();
-    }
-  };
-  const cancel = () => void respond("cancel");
-  modalRoot.querySelector("#cancel-window-close")?.addEventListener("click", cancel);
-  modalRoot.querySelector("#window-close-backdrop")?.addEventListener("click", (event) => {
-    if (event.target === event.currentTarget) cancel();
-  });
-  modalRoot.querySelector("#discard-window-close")?.addEventListener("click", () => {
-    void respond("discard-settings");
-  });
-  modalRoot.querySelector("#finish-window-close")?.addEventListener("click", () => {
-    void respond("finish-tasks");
-  });
-  modalRoot.querySelector("#force-window-close")?.addEventListener("click", () => {
-    void respond("force-exit");
-  });
-  const dialog = modalRoot.querySelector<HTMLElement>(".close-dialog");
-  if (dialog) bindModalFocus(dialog, cancel, "#cancel-window-close");
-}
-
 function bindShell(): void {
   rendererApp.addPageCleanup(mountShellController({
     getPage: () => page,
     settingsHaveUnsavedChanges,
     rememberModalFocus,
-    requestDiscardSettings: (nextPage) => {
-      ui.pendingConfirmation = { kind: "discard-settings", nextPage };
-      ui.confirmationBusy = false;
-      renderOverlay();
-    },
+    requestDiscardSettings: (nextPage) => shellCoordinator.requestConfirmation({ kind: "discard-settings", nextPage }),
     returnToHistory,
     returnToLastHistoryDetail,
     navigateHistoryDetail,
@@ -2535,13 +1799,9 @@ function bindCreate(): void {
       setPromptEnhanceMode: (mode) => {
         activeCreationModeUiState().promptEnhanceMode = mode === "faithful" ? "faithful" : "sulphur-native";
       },
-      isPromptEnhancing: () => promptOperationBelongsTo(promptRuntime, "image-edit"),
-      setPromptEnhancing: (value) => {
-        promptEnhancing = value;
-      },
-      setPromptRuntimeLoaded: (value) => {
-        promptRuntimeLoaded = value;
-      },
+      isPromptEnhancing: () => shellCoordinator.promptOperationBelongsTo("image-edit"),
+      setPromptEnhancing: (value) => shellCoordinator.setPromptEnhancing(value),
+      setPromptRuntimeLoaded: (value) => shellCoordinator.setPromptRuntimeLoaded(value),
       clearPromptVersion: () => clearPromptVersionForScope("image"),
       undoPromptEdit: () => undoPromptEdit("image"),
       redoPromptEdit: () => redoPromptEdit("image"),
@@ -2553,12 +1813,7 @@ function bindCreate(): void {
         ui.enqueueBusy = value;
       },
       setEnqueueBusyUi,
-      requestClearDraftConfirmation: () => {
-        rememberModalFocus();
-        ui.pendingConfirmation = { kind: "clear-draft", mode: "image-edit" };
-        ui.confirmationBusy = false;
-        renderOverlay();
-      }
+      requestClearDraftConfirmation: () => shellCoordinator.requestConfirmation({ kind: "clear-draft", mode: "image-edit" })
     },
     createPrompt: {
       h3ReferenceRoleLabels: h3PromptPackFor(state.settings.uiLocale).referenceRoleLabels,
@@ -2571,13 +1826,9 @@ function bindCreate(): void {
       setH3PromptPreset: (preset) => {
         activeCreationModeUiState().h3PromptPreset = preset;
       },
-      isPromptEnhancing: () => promptOperationBelongsTo(promptRuntime, creationMode),
-      setPromptEnhancing: (value) => {
-        promptEnhancing = value;
-      },
-      setPromptRuntimeLoaded: (value) => {
-        promptRuntimeLoaded = value;
-      },
+      isPromptEnhancing: () => shellCoordinator.promptOperationBelongsTo(creationMode),
+      setPromptEnhancing: (value) => shellCoordinator.setPromptEnhancing(value),
+      setPromptRuntimeLoaded: (value) => shellCoordinator.setPromptRuntimeLoaded(value),
       clearPromptVersion: () => clearPromptVersionForScope("video"),
       undoPromptEdit: () => undoPromptEdit("video"),
       redoPromptEdit: () => redoPromptEdit("video"),
@@ -2591,15 +1842,7 @@ function bindCreate(): void {
       ui.enqueueBusy = value;
     },
     setEnqueueBusyUi,
-    requestClearDraftConfirmation: () => {
-      rememberModalFocus();
-      ui.pendingConfirmation = {
-        kind: "clear-draft",
-        mode: creationMode
-      };
-      ui.confirmationBusy = false;
-      renderOverlay();
-    }
+    requestClearDraftConfirmation: () => shellCoordinator.requestConfirmation({ kind: "clear-draft", mode: creationMode })
   }));
   if (creationMode === "image-edit") {
     void loadImageEditPreviews();
@@ -2816,7 +2059,7 @@ async function requestSaveSettings(settings: Settings): Promise<"saved" | "migra
   }
 }
 
-const settingsSaveCoordinator = new SettingsSaveCoordinator({
+settingsSaveCoordinator = new SettingsSaveCoordinator({
   getState: () => state,
   getEnvironmentScan: () => environmentScan,
   loadLocale: async (locale) => {
@@ -2838,19 +2081,8 @@ const settingsSaveCoordinator = new SettingsSaveCoordinator({
     bundledWorkflows[bundledWorkflowKey(workflow.modelId, inputMode)] = workflow;
   },
   refreshEnvironment: (settings) => runEnvironmentScan(settings, "settings-change"),
-  requestDirectoryMigration: (previousSettings, nextSettings, oldDirectory, newDirectory) => {
-    rememberModalFocus();
-    ui.pendingDirectoryMigration = {
-      target: "video",
-      previousSettings,
-      nextSettings,
-      oldDirectory,
-      newDirectory
-    };
-    ui.directoryMigrationBusy = false;
-    ui.historyMigrationProgress = null;
-    renderOverlay();
-  },
+  requestDirectoryMigration: (previousSettings, nextSettings, oldDirectory, newDirectory) =>
+    shellCoordinator.requestDirectoryMigration(previousSettings, nextSettings, oldDirectory, newDirectory),
   notifySaved: (proxyChanged, mode) => {
     showMessage(proxyChanged
       ? uiText(uiKeys.runtime.settingsProxySaved)
@@ -2861,24 +2093,86 @@ const settingsSaveCoordinator = new SettingsSaveCoordinator({
   requestRender: render
 });
 
-async function loadAppLogs(): Promise<void> {
-  if (appLogsLoading) return;
-  appLogScreenClearedAt = null;
-  appLogsLoading = true;
-  appLogsError = "";
-  render();
-  try {
-    applyAppLogSnapshot(await rendererApplication.readAppLogs(2000));
-  } catch (error) {
-    appLogsError = error instanceof Error ? error.message : String(error);
-  } finally {
-    appLogsLoading = false;
-    render();
+shellCoordinator = createRendererShellCoordinator({
+  modalRoot,
+  ui,
+  application: rendererApplication,
+  assets: rendererAssets,
+  hostCapabilities: rendererHostCapabilities,
+  t: rendererApp.context.t,
+  icon,
+  escapeHtml,
+  formatAssetBytes,
+  getState: () => state,
+  setState: setRendererState,
+  getPage: () => page,
+  setPage,
+  getSettings: () => state.settings,
+  getEnvironmentScan: () => environmentScan,
+  getSettingsTab: () => settingsTab,
+  getFormSettings: formSettings,
+  setSettingsDraft: (settings) => {
+    settingsDraft = settings;
+  },
+  setServiceForceStopping: (value) => {
+    serviceForceStopping = value;
+  },
+  setServiceStatusMessage: (message) => {
+    serviceStatusMessage = message;
+  },
+  setLlamaCppPythonInstalling: (value) => {
+    llamaCppPythonInstalling = value;
+  },
+  getLlamaCppPythonLog: () => llamaCppPythonLog,
+  setLlamaCppPythonLog: (log) => {
+    llamaCppPythonLog = log;
+  },
+  getCustomNodeLog: (nodeId) => customNodeLogs[nodeId] ?? "",
+  setCustomNodeLog: (nodeId, log) => {
+    customNodeLogs = { ...customNodeLogs, [nodeId]: log };
+  },
+  scanEnvironment: async (settings) => {
+    await runEnvironmentScan(settings);
+  },
+  clearCreationDraft: (mode) => {
+    if (mode === "image-edit") {
+      patchImageDraft(createDefaultImageEditDraft());
+    } else {
+      patchDraftForMode(mode, (draft) => createClearedDraft(draft));
+    }
+  },
+  setHistoryKind,
+  setHistoryScrollRestorePending: historyLayoutController.setScrollRestorePending,
+  setSelectedHistoryAssetId: (assetId) => {
+    ui.selectedHistoryAssetId = assetId;
+  },
+  setSelectedHistoryVersionId: (versionId) => {
+    ui.selectedHistoryVersionId = versionId;
+  },
+  clearImageHistoryThumbnailCache: () => historyMediaRuntime.clearImageHistoryThumbnailCache(),
+  setQueueActionBusy: (value) => {
+    queueActionBusy = value;
+  },
+  releaseHistoryVideo,
+  saveSettings: (settings, mode) => settingsSaveCoordinator.save(settings, mode),
+  render,
+  requestRender: () => renderCoordinator.requestRender(),
+  reportUserAction,
+  beforeRenderOverlay: () => {
+    if (page !== "settings" && selectedInstallGuide) selectedInstallGuide = null;
+  },
+  renderAdditionalOverlays: () => [upscaleDialogHtml(), installGuideDialogHtml()].join(""),
+  bindAdditionalOverlays: () => {
+    const cleanup = bindUpscaleDialog();
+    bindInstallGuideDialog();
+    return cleanup;
   }
-}
+}, comfyRuntime);
+
+initializeRenderCoordinator();
 
 function bindSettings(): void {
-  if (settingsTab === "logs" && !appLogs && !appLogsLoading) {
+  if (settingsTab === "logs" && !shellCoordinator.getAppLogs() && !shellCoordinator.getAppLogsLoading()) {
     void loadAppLogs();
   }
   if (settingsTab !== "logs" && !environmentScan && !environmentScanning) {
@@ -2948,23 +2242,12 @@ function bindSettings(): void {
       },
       enqueueCustomNodeInstall: (nodeId, settings, mode) =>
         customNodeInstallManager.enqueue(nodeId, settings, mode),
-      requestCustomNodeUninstall: (nodeId, name) => {
-        rememberModalFocus();
-        ui.pendingConfirmation = { kind: "uninstall-custom-node", nodeId, name };
-        ui.confirmationBusy = false;
-        renderOverlay();
-      },
-      requestLlamaCppPythonUninstall: () => {
-        rememberModalFocus();
-        ui.pendingConfirmation = { kind: "uninstall-llama-cpp-python" };
-        ui.confirmationBusy = false;
-        renderOverlay();
-      },
-      requestForceStopConfirmation: () => {
-        ui.pendingConfirmation = { kind: "force-stop-comfy" };
-        ui.confirmationBusy = false;
-        renderOverlay();
-      },
+      requestCustomNodeUninstall: (nodeId, name) =>
+        shellCoordinator.requestConfirmation({ kind: "uninstall-custom-node", nodeId, name }),
+      requestLlamaCppPythonUninstall: () =>
+        shellCoordinator.requestConfirmation({ kind: "uninstall-llama-cpp-python" }),
+      requestForceStopConfirmation: () =>
+        shellCoordinator.requestConfirmation({ kind: "force-stop-comfy" }),
       rememberModalFocus
     },
     logs: {
@@ -2972,9 +2255,7 @@ function bindSettings(): void {
         void loadAppLogs();
       },
       openAppLogContextMenu: appLogContextMenu.open,
-      setAppLogFollowTail: (followTail) => {
-        appLogFollowTail = followTail;
-      }
+      setAppLogFollowTail: (followTail) => shellCoordinator.setAppLogFollowTail(followTail)
     },
     page: {
       context: rendererApp.context,
@@ -2990,22 +2271,10 @@ function bindSettings(): void {
       settingsHaveUnsavedChanges,
       syncSettingsDirtyUi,
       runEnvironmentScan,
-      loadAppLogs: () => void loadAppLogs(),
+      loadAppLogs: () => loadAppLogs(),
       togglePromptModel: togglePromptModelFromUi,
       requestSaveSettings,
-      openImageAssetLibrary: () => {
-        rememberModalFocus();
-        ui.imageAssetLibraryDialog = {
-          scan: null,
-          busy: false,
-          error: "",
-          confirmCleanup: false,
-          selectedPaths: [],
-          lastResult: null
-        };
-        renderOverlay();
-        void scanImageAssets();
-      },
+      openImageAssetLibrary: () => shellCoordinator.openImageAssetLibrary(),
       rememberModalFocus,
       requestOverlayRender: renderOverlay
     }
@@ -3022,14 +2291,8 @@ registerRendererEvents({
   setComfyRuntimeState: (runtime) => {
     comfyRuntime = runtime;
   },
-  setPromptRuntimeState: (runtime) => {
-    promptRuntime = runtime;
-    promptRuntimeLoaded = runtime.model.phase === "resident";
-    promptStarting = promptModelStartupIsActive(runtime, promptStartRequestPending);
-    promptReleasing = runtime.model.phase === "unloading";
-    promptEnhancing = promptOperationIsActive(runtime);
-  },
-  getPromptRuntimeState: () => promptRuntime,
+  setPromptRuntimeState: (runtime) => shellCoordinator.setPromptRuntimeState(runtime),
+  getPromptRuntimeState: () => shellCoordinator.getPromptRuntimeState(),
   getCreationMode: () => creationMode,
   setState: setRendererState,
   getPage: () => page,
@@ -3038,26 +2301,14 @@ registerRendererEvents({
   getDraftSaveInFlight: () => draftSaveInFlight,
   getImageDraftDirty: () => imageDraftDirty,
   getImageDraftSaveInFlight: () => imageDraftSaveInFlight,
-  setPromptRuntimeLoaded: (value) => {
-    promptRuntimeLoaded = value;
-  },
-  setPromptProgress: (progress) => {
-    promptProgress = progress;
-  },
+  setPromptRuntimeLoaded: (value) => shellCoordinator.setPromptRuntimeLoaded(value),
+  setPromptProgress: (progress) => shellCoordinator.setPromptProgress(progress),
   rememberModalFocus,
-  setPendingWindowCloseRequest: (request) => {
-    ui.pendingWindowCloseRequest = request;
-  },
-  setWindowCloseResponseBusy: (value) => {
-    ui.windowCloseResponseBusy = value;
-  },
-  setHistoryMigrationProgress: (progress) => {
-    ui.historyMigrationProgress = progress;
-  },
-  hasPendingDirectoryMigration: () => Boolean(ui.pendingDirectoryMigration),
-  setImageAssetLibraryProgress: (progress) => {
-    ui.imageAssetLibraryProgress = progress;
-  },
+  setPendingWindowCloseRequest: (request) => shellCoordinator.setPendingWindowCloseRequest(request),
+  setWindowCloseResponseBusy: (value) => shellCoordinator.setWindowCloseResponseBusy(value),
+  setHistoryMigrationProgress: (progress) => shellCoordinator.setHistoryMigrationProgress(progress),
+  hasPendingDirectoryMigration: () => shellCoordinator.hasPendingDirectoryMigration(),
+  setImageAssetLibraryProgress: (progress) => shellCoordinator.setImageAssetLibraryProgress(progress),
   taskPreviews,
   appendAttentionAccelerationLog: (message) => {
     attentionAccelerationLog = [attentionAccelerationLog, message]
@@ -3092,13 +2343,7 @@ bootstrapRenderer({
   setComfyRuntimeState: (runtime) => {
     comfyRuntime = runtime;
   },
-  setPromptRuntimeState: (runtime) => {
-    promptRuntime = runtime;
-    promptRuntimeLoaded = runtime.model.phase === "resident";
-    promptStarting = promptModelStartupIsActive(runtime, promptStartRequestPending);
-    promptReleasing = runtime.model.phase === "unloading";
-    promptEnhancing = promptOperationIsActive(runtime);
-  },
+  setPromptRuntimeState: (runtime) => shellCoordinator.setPromptRuntimeState(runtime),
   getState: () => state,
   setAppVersion: (version) => {
     ui.appVersion = version;
