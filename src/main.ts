@@ -22,22 +22,12 @@ import type { CreationMode, HistoryKind, Page, RendererCleanup, RendererNotifyOp
 import { createQueueLiveStatus } from "./renderer/pages/queue/live-status";
 import { createQueueAssembly } from "./renderer/pages/queue/assembly";
 import { createQueueScrollController } from "./renderer/pages/queue/scroll-controller";
-import { renderSettingsPage } from "./renderer/pages/settings/page";
-import { renderSettingsInstallGuideDialog } from "./renderer/pages/settings/fragments";
-import { mountSettingsAssembly } from "./renderer/pages/settings/assembly";
 import { createRenderCoordinator, type RenderCoordinator } from "./renderer/render-coordinator";
-import { EnvironmentRefreshCoordinator, type EnvironmentRefreshReason } from "./renderer/environment-refresh-coordinator";
-import { readSettingsFromForm } from "./renderer/pages/settings/form";
+import type { EnvironmentRefreshReason } from "./renderer/environment-refresh-coordinator";
 import {
-  buildSettingsPageViewModel,
-  type SettingsViewModelDependencies
-} from "./renderer/pages/settings/view-model";
-import { createAppLogContextMenu } from "./renderer/pages/settings/log-context-menu";
-import { SettingsSaveCoordinator } from "./renderer/pages/settings/settings-save-coordinator";
-import {
-  CustomNodeInstallQueue,
-  type CustomNodeInstallPhase
-} from "./renderer/pages/settings/node-install-queue";
+  createSettingsWorkspaceCoordinator,
+  type SettingsWorkspaceCoordinator
+} from "./renderer/pages/settings/coordinator";
 import {
   createHistoryWorkspaceCoordinator,
   type HistoryWorkspaceCoordinator,
@@ -48,16 +38,7 @@ import {
   createCreateWorkspaceCoordinator,
   type CreateWorkspaceCoordinator
 } from "./renderer/pages/create/coordinator";
-import {
-  h3PromptPresetOptions,
-  orderVideoProfiles
-} from "./renderer/pages/create/helpers";
-import {
-  h3PromptPackFor,
-  loadPromptPacks,
-  qwenImagePromptPackFor
-} from "./renderer/prompt-packs";
-import { h3AutoPromptSeeds } from "./core/prompts/h3/auto-seeds";
+import { loadPromptPacks } from "./renderer/prompt-packs";
 import { escapeHtml } from "./renderer/shared/dom";
 import {
   formatAssetBytes,
@@ -66,14 +47,8 @@ import {
   formatVideoDuration,
   performanceCard,
 } from "./renderer/shared/formatters";
-import { icon, renderIcons } from "./renderer/shared/icons";
+import { icon } from "./renderer/shared/icons";
 import { modelName } from "./renderer/shared/labels";
-import { videoLoraInfoButton } from "./renderer/shared/markup";
-import {
-  imageWorkflowStatus,
-  isImageModelSelectable
-} from "./renderer/shared/status";
-import { appLogTerminalHtml, visibleAppLogText } from "./renderer/shared/logs";
 import { mountShellController } from "./renderer/shell/controller";
 import { mountUpscaleController } from "./renderer/shell/upscale-controller";
 import { renderUpscaleDialog } from "./renderer/shell/secondary-dialogs";
@@ -85,21 +60,15 @@ import type {
   ComfyRuntimeState,
   Draft,
   EnvironmentScanResult,
-  H3PromptPreset,
   HistoryAsset,
   ImageAssetLibraryScan,
   ImageAssetVersion,
   ImageGenerationQueueTask,
   ImageEditDraft,
   ImageHistoryProject,
-  ImagePromptPreset,
-  LocalServiceKind,
-  ModelComponentStatus,
-  ModelScanProfile,
   PerformanceMetrics,
   QueueTask,
   Settings,
-  SettingsSaveMode,
   TaskPerformanceStats,
   WorkflowCapabilities
 } from "./types";
@@ -108,29 +77,17 @@ import {
   imageEditPicturesForVersion
 } from "./core/image-project";
 import {
-  firstSupportedImageModelId,
-  imageModelCapabilityFor
-} from "./core/image-workflow";
-import {
-  isComfyMultimodalPromptModel,
-  isGemmaPromptModel,
-  isQwenVlPeftPromptModel
-} from "./core/prompt-models";
-import {
   isMiniMaxH3R2vModel,
   motionContextMaxDurationSeconds,
   normalizeH3Steps
 } from "./core/workflow";
-import { modelCatalog } from "./core/catalog";
-import { rewriteHuggingFaceDownloadUrl } from "./core/download-url";
 import { ensureMotionContextSourceSlot } from "./core/h3-reference";
 import {
   createUpscaleFilename,
   estimateUpscaleResources,
   upscaleDimensions
 } from "./core/upscale";
-import { structurallyEqual } from "./core/structural-equal";
-import { createTranslator, loadUiLocale, type TranslationParams } from "./core/i18n";
+import { createTranslator, type TranslationParams } from "./core/i18n";
 import { uiKeys } from "./core/i18n-keys";
 import {
   BUILTIN_VIDEO_LORAS,
@@ -156,34 +113,7 @@ const rendererHostCapabilities = rendererDependencies.hostCapabilities;
 let shellCoordinator: RendererShellCoordinator;
 let createWorkspaceCoordinator: CreateWorkspaceCoordinator;
 let historyWorkspaceCoordinator: HistoryWorkspaceCoordinator;
-let settingsSaveCoordinator: SettingsSaveCoordinator;
-let environmentScan: EnvironmentScanResult | null = null;
-let environmentScanning = false;
-let settingsSaving = false;
-let environmentScanError = "";
-let serviceStarting: LocalServiceKind | null = null;
-let serviceRestarting: LocalServiceKind | null = null;
-let serviceForceStopping = false;
-let serviceStatusMessage = "";
-let comfyUpdating = false;
-let comfyUpdateLog = "";
-let environmentRepairing = "";
-let environmentRepairLogs: Record<string, string> = {};
-let customNodeInstalling = "";
-let customNodeInstallQueue: string[] = [];
-let customNodeInstallBatch: string[] = [];
-let customNodeInstallPhase: CustomNodeInstallPhase = "idle";
-let customNodeLogs: Record<string, string> = {};
-let attentionAccelerationInstalling = false;
-let attentionAccelerationLog = "";
-let llamaCppPythonInstalling = false;
-let llamaCppPythonLog = "";
-let settingsDraft: Settings | null = null;
-let settingsTab: "comfyui" | "system" | "acceleration" | "video" | "lora" | "image" | "nodes" | "prompt" | "upscale" | "logs" = "comfyui";
-let selectedInstallGuide: {
-  profileName: string;
-  component: ModelComponentStatus;
-} | null = null;
+let settingsWorkspaceCoordinator: SettingsWorkspaceCoordinator;
 let queueActionBusy: { taskId: string; action: "remove" | "cancel" | "edit" } | null = null;
 const bundledWorkflows: Record<string, BundledWorkflow> = {};
 const bundledWorkflowKey = (modelId: string, inputMode: Draft["inputMode"]) =>
@@ -199,8 +129,6 @@ let comfyRuntime: ComfyRuntimeState = {
   updatedAt: new Date(0).toISOString(),
   operationId: 0
 };
-let settingsH3PromptPreset: H3PromptPreset = "official-storyboard";
-let settingsImagePromptPreset: ImagePromptPreset = "faithful";
 
 function uiText(
   key: string,
@@ -244,7 +172,7 @@ function upscaleDialogHtml(): string {
   return renderUpscaleDialog({
     dialog: ui.upscaleDialog,
     history: state.history,
-    environment: environmentScan,
+    environment: settingsWorkspaceCoordinator.getEnvironmentScan(),
     performance: performanceMetrics,
     icon,
     escapeHtml,
@@ -376,58 +304,6 @@ function navigateImageHistoryDetail(direction: -1 | 1): void {
   historyWorkspaceCoordinator.navigateImageHistoryDetail(direction);
 }
 
-function installGuideDialogHtml(): string {
-  if (page !== "settings") return "";
-  return renderSettingsInstallGuideDialog(
-    {
-      selectedInstallGuide,
-      configuredModelDirectory:
-        environmentScan?.modelDirectory ||
-        settingsDraft?.modelDirectory ||
-        state.settings.modelDirectory ||
-        "ComfyUI\\models"
-    },
-    {
-      icon,
-      escapeHtml,
-      t: rendererApp.context.t,
-      locale: state.settings.uiLocale
-    }
-  );
-}
-
-function bindInstallGuideDialog(): void {
-  if (page !== "settings" || !selectedInstallGuide) return;
-  const close = () => {
-    selectedInstallGuide = null;
-    renderOverlay();
-    restoreModalFocus();
-  };
-  modalRoot.querySelector("#close-install-guide")?.addEventListener("click", close);
-  modalRoot.querySelector("#dismiss-install-guide")?.addEventListener("click", close);
-  modalRoot.querySelector("#install-guide-backdrop")?.addEventListener("click", (event) => {
-    if (event.target === event.currentTarget) close();
-  });
-  modalRoot.querySelector("#open-install-download")?.addEventListener("click", async () => {
-    const guide = selectedInstallGuide?.component.installGuide;
-    if (!guide) return;
-    const url = rewriteHuggingFaceDownloadUrl(
-      guide.downloadUrl,
-      (settingsDraft ?? state.settings).hfMirrorEnabled
-    );
-    const opened = await rendererHostCapabilities.openExternal(url);
-    if (!opened) showMessage(uiText(uiKeys.settings.actions.downloadPageFailed), { kind: "error" });
-  });
-  modalRoot.querySelector("#open-install-directory")?.addEventListener("click", async (event) => {
-    const directory = (event.currentTarget as HTMLButtonElement).dataset.installDirectory?.trim();
-    if (!directory) return;
-    const opened = await rendererHostCapabilities.openDirectory(directory);
-    if (!opened) showMessage(uiText(uiKeys.settings.actions.openDirectoryFailed), { kind: "error" });
-  });
-  const dialog = modalRoot.querySelector<HTMLElement>(".install-guide-dialog");
-  if (dialog) bindModalFocus(dialog, close, "#dismiss-install-guide");
-}
-
 function draftFromQueueTask(task: QueueTask): Draft | null {
   if (task.taskType === "upscale" || task.taskType === "image-generation" || task.status === "running") return null;
   const now = new Date().toISOString();
@@ -518,101 +394,11 @@ async function editQueueTask(taskId: string): Promise<void> {
 }
 
 function settingsHaveUnsavedChanges(): boolean {
-  return settingsDraft !== null &&
-    !structurallyEqual(settingsDraft, state.settings);
-}
-
-function syncSettingsDirtyUi(): void {
-  const dirty = settingsHaveUnsavedChanges();
-  const setSettingsDirty = rendererApplication.setSettingsDirty;
-  if (setSettingsDirty) void setSettingsDirty(dirty).catch(() => undefined);
-  const actionBar = document.querySelector<HTMLElement>(".settings-heading-actions");
-  actionBar?.classList.toggle("is-dirty", dirty || settingsSaving);
-  actionBar?.classList.toggle("is-clean", !dirty && !settingsSaving);
-  const status = document.querySelector<HTMLElement>(".settings-heading-actions .save-state");
-  status?.classList.toggle("dirty", dirty);
-  if (status) status.textContent = settingsSaving
-    ? uiText(uiKeys.settings.saving)
-    : dirty
-      ? uiText(uiKeys.runtime.unsavedChanges)
-      : "";
-  document.querySelector<HTMLButtonElement>("#discard-settings")?.toggleAttribute("disabled", !dirty || settingsSaving);
-  const saveButton = document.querySelector<HTMLButtonElement>("#save-settings");
-  saveButton?.toggleAttribute("disabled", !dirty || settingsSaving);
-  saveButton?.setAttribute("aria-busy", String(settingsSaving));
+  return settingsWorkspaceCoordinator.settingsHaveUnsavedChanges();
 }
 
 function settingsPage(): string {
-  return renderSettingsPage(
-    buildSettingsPageViewModel({
-      state,
-      settingsDraft,
-      settingsSaving,
-      environmentScan,
-      comfyConnected: comfyRuntime.phase === "unknown"
-        ? undefined
-        : comfyRuntime.phase === "ready",
-      environmentScanning,
-      environmentScanError,
-      settingsTab,
-      settingsH3PromptPreset,
-      settingsImagePromptPreset,
-      promptRuntimeLoaded: shellCoordinator.getPromptRuntimeLoaded(),
-      promptStarting: shellCoordinator.getPromptStarting(),
-      promptEnhancing: shellCoordinator.getPromptEnhancing(),
-      promptReleasing: shellCoordinator.getPromptReleasing(),
-      serviceStarting: serviceStarting ?? (comfyRuntime.phase === "starting" ? "comfy" : null),
-      serviceRestarting: serviceRestarting ?? (comfyRuntime.phase === "restarting" ? "comfy" : null),
-      serviceForceStopping,
-      serviceStatusMessage: serviceStatusMessage || comfyRuntime.message,
-      comfyUpdating,
-      comfyUpdateLog,
-      environmentRepairing,
-      environmentRepairLogs,
-      customNodeInstalling,
-      customNodeInstallQueue,
-      customNodeInstallBatch,
-      customNodeInstallPhase,
-      customNodeLogs,
-      attentionAccelerationInstalling,
-      attentionAccelerationLog,
-      llamaCppPythonInstalling,
-      llamaCppPythonLog,
-      selectedInstallGuide,
-      appLogs: shellCoordinator.getAppLogs(),
-      appLogsLoading: shellCoordinator.getAppLogsLoading(),
-      appLogsError: shellCoordinator.getAppLogsError(),
-      settingsHaveUnsavedChanges,
-      promptRuntimeControlIcon,
-      promptRuntimeControlTitle
-    } satisfies SettingsViewModelDependencies),
-    {
-      t: rendererApp.context.t,
-      defaultH3PromptPresets: h3PromptPackFor(state.settings.uiLocale).defaultPresets,
-      h3AutoPromptSeeds,
-      defaultImagePromptPresets: qwenImagePromptPackFor(state.settings.uiLocale).defaultPresets,
-      h3PromptPresetDescriptions: h3PromptPackFor(state.settings.uiLocale).presetDescriptions,
-      imagePromptPresetLabels: qwenImagePromptPackFor(state.settings.uiLocale).presetLabels,
-      imagePromptPresetDescriptions: qwenImagePromptPackFor(state.settings.uiLocale).presetDescriptions,
-      icon,
-      escapeHtml,
-      formatBytes,
-      formatScanTime: (scannedAt) => new Date(scannedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
-      orderVideoProfiles,
-      getImageQualityProfiles: (modelId) => imageModelCapabilityFor(modelId).qualityProfiles,
-      isGemmaPromptModel,
-      isComfyMultimodalPromptModel,
-      isQwenVlPeftPromptModel,
-      videoLoraInfoButton: (profileId) => {
-        const lora = BUILTIN_VIDEO_LORAS.find((item) => item.id === profileId);
-        return lora ? videoLoraInfoButton(lora, uiText, state.settings.uiLocale) : "";
-      },
-      isImageModelSelectable,
-      imageWorkflowStatus,
-      h3PromptPresetOptions: (selected, includeMultiReference) => h3PromptPresetOptions(selected, includeMultiReference, state.settings.uiLocale),
-      renderAppLogTerminal: (text) => appLogTerminalHtml(visibleAppLogText(text, shellCoordinator.getAppLogScreenClearedAt()), uiText(uiKeys.settings.logsEmpty))
-    }
-  );
+  return settingsWorkspaceCoordinator.renderPage();
 }
 
 function render(): void {
@@ -658,7 +444,7 @@ function initializeRenderCoordinator(): void {
     settings: settingsPage
   },
   beforeRenderHistory: historyBeforeRender,
-  closeAppLogContextMenu: appLogContextMenu.close,
+  closeAppLogContextMenu: () => settingsWorkspaceCoordinator.closeAppLogContextMenu(),
   ensurePromptPacks: loadPromptPacks,
   bindShell,
   renderOverlay,
@@ -703,7 +489,7 @@ const queueAssembly = createQueueAssembly({
   getState: () => state,
   getPerformanceMetrics: () => performanceMetrics,
   getComfyRuntime: () => comfyRuntime,
-  isEnvironmentScanning: () => environmentScanning,
+  isEnvironmentScanning: () => settingsWorkspaceCoordinator.isEnvironmentScanning(),
   getTaskPreviews: () => taskPreviews,
   getQueueActionBusy: () => queueActionBusy,
   setState: setRendererState,
@@ -726,82 +512,13 @@ const queueAssembly = createQueueAssembly({
   },
   rememberModalFocus
 });
-const appLogContextMenu = createAppLogContextMenu(rendererApp.context, clearAppLogScreen);
-const environmentRefreshCoordinator = new EnvironmentRefreshCoordinator({
-  scan: (settings, scope) => rendererApplication.scanEnvironment(settings, scope),
-  setScanning: (value) => {
-    environmentScanning = value;
-  },
-  setError: (message) => {
-    environmentScanError = message;
-  },
-  commit: (scan) => {
-    environmentScan = scan;
-  },
-  afterCommit: () => enableSpectrumByDefaultIfAvailable(),
-  notify: showMessage,
-  scanningMessage: () => uiText(uiKeys.runtime.environmentScanning),
-  completedMessage: () => uiText(uiKeys.runtime.environmentScanCompleted),
-  failedMessage: (error, reason) => uiText(
-    reason === "startup" ? uiKeys.runtime.startupScanFailed : uiKeys.runtime.environmentScanFailed,
-    { error: error instanceof Error ? error.message : String(error) }
-  ),
-  requestRender: render,
-  reportScan: (reason) => reportUserAction("scan-environment", { reason })
-});
-const customNodeInstallManager = new CustomNodeInstallQueue({
-  install: (nodeId, settings, mode) => rendererApplication.installCustomNode(nodeId, settings, mode),
-  restart: (settings) => rendererApplication.restartLocalService("comfy", settings),
-  scan: (settings) => environmentRefreshCoordinator.refresh(settings, "dependency-change"),
-  nodeName: (nodeId) => environmentScan?.customNodes.find((node) => node.id === nodeId)?.name ?? nodeId,
-  getLog: (nodeId) => customNodeLogs[nodeId] ?? "",
-  setLog: (nodeId, log) => {
-    customNodeLogs = { ...customNodeLogs, [nodeId]: log };
-  },
-  notify: (message, kind) => showMessage(message, { kind }),
-  onSnapshot: (snapshot) => {
-    customNodeInstalling = snapshot.activeNodeId;
-    customNodeInstallQueue = snapshot.queuedNodeIds;
-    customNodeInstallBatch = snapshot.batchNodeIds;
-    customNodeInstallPhase = snapshot.phase;
-    if (page !== "settings") return;
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLInputElement ||
-      activeElement instanceof HTMLTextAreaElement ||
-      activeElement instanceof HTMLSelectElement) return;
-    render();
-  },
-  messages: {
-    queued: (name, position) => uiText(uiKeys.settings.actions.nodeQueued, { name, position }),
-    get processing() {
-      return uiText(uiKeys.settings.actions.nodeProcessing);
-    },
-    restartLog: (message) => uiText(uiKeys.settings.actions.comfyRestartLog, { message }),
-    installFailed: (name, message) => uiText(uiKeys.settings.actions.nodeInstallFailed, {
-      message: `${name}: ${message}`
-    }),
-    restartFailed: (message) => uiText(uiKeys.settings.actions.nodeRestartFailed, { message }),
-    manualRestartRequired: (message) => uiText(
-      uiKeys.settings.actions.nodeManualRestartRequired,
-      { message }
-    ),
-    readyCheckFailed: (name, detail) => uiText(
-      uiKeys.settings.actions.nodeBatchReadyCheckFailed,
-      { name, detail: detail || "节点未注册或运行时未返回详情" }
-    ),
-    completed: (success, failed) => uiText(
-      uiKeys.settings.actions.nodeBatchCompleted,
-      { success, failed }
-    )
-  }
-});
 const queueLiveStatus = createQueueLiveStatus({
   application: rendererApplication,
   t: rendererApp.context.t,
   getState: () => state,
   getPage: () => page,
   getComfyRuntimeState: () => comfyRuntime,
-  getEnvironmentScanning: () => environmentScanning,
+  getEnvironmentScanning: () => settingsWorkspaceCoordinator.isEnvironmentScanning(),
   setPerformanceMetrics: (metrics) => {
     performanceMetrics = metrics;
   }
@@ -885,65 +602,55 @@ function bindUpscaleDialog(): (() => void) {
   });
 }
 
+settingsWorkspaceCoordinator = createSettingsWorkspaceCoordinator({
+  modalRoot,
+  context: rendererApp.context,
+  getState: () => state,
+  getPage: () => page,
+  getComfyRuntimeState: () => comfyRuntime,
+  setState: setRendererState,
+  addPageCleanup: rendererApp.addPageCleanup,
+  render,
+  renderOverlay,
+  showMessage,
+  reportUserAction,
+  enableSpectrumByDefaultIfAvailable,
+  bundledWorkflows,
+  workflowCapabilities,
+  bundledWorkflowKey,
+  requestConfirmation: (request) => shellCoordinator.requestConfirmation(request),
+  requestDirectoryMigration: (previousSettings, nextSettings, oldDirectory, newDirectory) =>
+    shellCoordinator.requestDirectoryMigration(previousSettings, nextSettings, oldDirectory, newDirectory),
+  openImageAssetLibrary: () => shellCoordinator.openImageAssetLibrary(),
+  rememberModalFocus,
+  restoreModalFocus,
+  bindModalFocus,
+  getPromptRuntimeLoaded: () => shellCoordinator.getPromptRuntimeLoaded(),
+  getPromptStarting: () => shellCoordinator.getPromptStarting(),
+  getPromptEnhancing: () => shellCoordinator.getPromptEnhancing(),
+  getPromptReleasing: () => shellCoordinator.getPromptReleasing(),
+  promptRuntimeControlIcon,
+  promptRuntimeControlTitle,
+  togglePromptModel: togglePromptModelFromUi,
+  getAppLogs: () => shellCoordinator.getAppLogs(),
+  getAppLogsLoading: () => shellCoordinator.getAppLogsLoading(),
+  getAppLogsError: () => shellCoordinator.getAppLogsError(),
+  getAppLogScreenClearedAt: () => shellCoordinator.getAppLogScreenClearedAt(),
+  loadAppLogs,
+  clearAppLogScreen,
+  setAppLogFollowTail: (value) => shellCoordinator.setAppLogFollowTail(value)
+});
+
 function formSettings(): Settings {
-  return readSettingsFromForm(
-    settingsDraft ?? state.settings,
-    settingsH3PromptPreset,
-    settingsImagePromptPreset
-  );
+  return settingsWorkspaceCoordinator.formSettings();
 }
 
-async function runEnvironmentScan(
+function runEnvironmentScan(
   settings: Settings,
   reason: EnvironmentRefreshReason = "manual"
 ): Promise<EnvironmentScanResult | null> {
-  return environmentRefreshCoordinator.refresh(settings, reason);
+  return settingsWorkspaceCoordinator.runEnvironmentScan(settings, reason);
 }
-
-async function requestSaveSettings(settings: Settings): Promise<"saved" | "migration-required"> {
-  settingsSaving = true;
-  render();
-  try {
-    return await settingsSaveCoordinator.requestSave(settings);
-  } finally {
-    settingsSaving = false;
-    render();
-  }
-}
-
-settingsSaveCoordinator = new SettingsSaveCoordinator({
-  getState: () => state,
-  getEnvironmentScan: () => environmentScan,
-  loadLocale: async (locale) => {
-    await loadUiLocale(locale);
-  },
-  saveSettings: (settings, mode) => rendererApplication.saveSettings(settings, mode),
-  saveImageDraft: (draft) => rendererApplication.saveImageDraft(draft),
-  saveDraft: (draft) => rendererApplication.saveDraft(draft),
-  getBundledWorkflow: (modelId, inputMode) => rendererApplication.getBundledWorkflow(modelId, inputMode),
-  setState: setRendererState,
-  clearSettingsDraft: () => {
-    settingsDraft = null;
-  },
-  syncSettingsDirtyUi,
-  deleteBundledWorkflow: (modelId, inputMode) => {
-    delete bundledWorkflows[bundledWorkflowKey(modelId, inputMode)];
-  },
-  cacheBundledWorkflow: (workflow, inputMode) => {
-    bundledWorkflows[bundledWorkflowKey(workflow.modelId, inputMode)] = workflow;
-  },
-  refreshEnvironment: (settings) => runEnvironmentScan(settings, "settings-change"),
-  requestDirectoryMigration: (previousSettings, nextSettings, oldDirectory, newDirectory) =>
-    shellCoordinator.requestDirectoryMigration(previousSettings, nextSettings, oldDirectory, newDirectory),
-  notifySaved: (proxyChanged, mode) => {
-    showMessage(proxyChanged
-      ? uiText(uiKeys.runtime.settingsProxySaved)
-      : mode === "migrate-video-history"
-        ? uiText(uiKeys.runtime.settingsMigrationSaved)
-        : uiText(uiKeys.runtime.settingsNextTaskSaved));
-  },
-  requestRender: render
-});
 
 shellCoordinator = createRendererShellCoordinator({
   modalRoot,
@@ -960,29 +667,17 @@ shellCoordinator = createRendererShellCoordinator({
   getPage: () => page,
   setPage,
   getSettings: () => state.settings,
-  getEnvironmentScan: () => environmentScan,
-  getSettingsTab: () => settingsTab,
+  getEnvironmentScan: () => settingsWorkspaceCoordinator.getEnvironmentScan(),
+  getSettingsTab: () => settingsWorkspaceCoordinator.getSettingsTab(),
   getFormSettings: formSettings,
-  setSettingsDraft: (settings) => {
-    settingsDraft = settings;
-  },
-  setServiceForceStopping: (value) => {
-    serviceForceStopping = value;
-  },
-  setServiceStatusMessage: (message) => {
-    serviceStatusMessage = message;
-  },
-  setLlamaCppPythonInstalling: (value) => {
-    llamaCppPythonInstalling = value;
-  },
-  getLlamaCppPythonLog: () => llamaCppPythonLog,
-  setLlamaCppPythonLog: (log) => {
-    llamaCppPythonLog = log;
-  },
-  getCustomNodeLog: (nodeId) => customNodeLogs[nodeId] ?? "",
-  setCustomNodeLog: (nodeId, log) => {
-    customNodeLogs = { ...customNodeLogs, [nodeId]: log };
-  },
+  setSettingsDraft: settingsWorkspaceCoordinator.setSettingsDraft,
+  setServiceForceStopping: settingsWorkspaceCoordinator.setServiceForceStopping,
+  setServiceStatusMessage: settingsWorkspaceCoordinator.setServiceStatusMessage,
+  setLlamaCppPythonInstalling: settingsWorkspaceCoordinator.setLlamaCppPythonInstalling,
+  getLlamaCppPythonLog: settingsWorkspaceCoordinator.getLlamaCppPythonLog,
+  setLlamaCppPythonLog: settingsWorkspaceCoordinator.setLlamaCppPythonLog,
+  getCustomNodeLog: settingsWorkspaceCoordinator.getCustomNodeLog,
+  setCustomNodeLog: settingsWorkspaceCoordinator.setCustomNodeLog,
   scanEnvironment: async (settings) => {
     await runEnvironmentScan(settings);
   },
@@ -1000,17 +695,15 @@ shellCoordinator = createRendererShellCoordinator({
     queueActionBusy = value;
   },
   releaseHistoryVideo,
-  saveSettings: (settings, mode) => settingsSaveCoordinator.save(settings, mode),
+  saveSettings: settingsWorkspaceCoordinator.saveSettings,
   render,
   requestRender: () => renderCoordinator.requestRender(),
   reportUserAction,
-  beforeRenderOverlay: () => {
-    if (page !== "settings" && selectedInstallGuide) selectedInstallGuide = null;
-  },
-  renderAdditionalOverlays: () => [upscaleDialogHtml(), installGuideDialogHtml()].join(""),
+  beforeRenderOverlay: settingsWorkspaceCoordinator.beforeRenderOverlay,
+  renderAdditionalOverlays: () => [upscaleDialogHtml(), settingsWorkspaceCoordinator.installGuideDialogHtml()].join(""),
   bindAdditionalOverlays: () => {
     const cleanup = bindUpscaleDialog();
-    bindInstallGuideDialog();
+    settingsWorkspaceCoordinator.bindInstallGuideDialog();
     return cleanup;
   }
 }, comfyRuntime);
@@ -1021,7 +714,7 @@ createWorkspaceCoordinator = createCreateWorkspaceCoordinator({
   getPage: () => page,
   getCreationMode: () => creationMode,
   setCreationMode,
-  getEnvironmentScan: () => environmentScan,
+  getEnvironmentScan: () => settingsWorkspaceCoordinator.getEnvironmentScan(),
   getPerformanceMetrics: () => performanceMetrics,
   bundledWorkflows,
   workflowCapabilities,
@@ -1051,113 +744,7 @@ createWorkspaceCoordinator = createCreateWorkspaceCoordinator({
 initializeRenderCoordinator();
 
 function bindSettings(): void {
-  if (settingsTab === "logs" && !shellCoordinator.getAppLogs() && !shellCoordinator.getAppLogsLoading()) {
-    void loadAppLogs();
-  }
-  if (settingsTab !== "logs" && !environmentScan && !environmentScanning) {
-    void runEnvironmentScan(settingsDraft ?? state.settings);
-    return;
-  }
-  rendererApp.addPageCleanup(mountSettingsAssembly(rendererApp.context, {
-    fields: {
-      formSettings,
-      setH3PromptPreset: (preset) => {
-        settingsH3PromptPreset = preset;
-      },
-      setImagePromptPreset: (preset) => {
-        settingsImagePromptPreset = preset;
-      },
-      setSettingsDraft: (draft) => {
-        settingsDraft = draft;
-      },
-      setSettingsTab: (tab) => {
-        settingsTab = tab;
-      },
-      hasUnsavedChanges: settingsHaveUnsavedChanges,
-      syncSettingsDirtyUi
-    },
-    environment: {
-      formSettings,
-      getEnvironmentScan: () => environmentScan,
-      refreshEnvironment: runEnvironmentScan,
-      setSettingsDraft: (draft) => {
-        settingsDraft = draft;
-      },
-      setServiceStarting: (kind) => {
-        serviceStarting = kind;
-      },
-      setServiceRestarting: (kind) => {
-        serviceRestarting = kind;
-      },
-      setServiceStatusMessage: (message) => {
-        serviceStatusMessage = message;
-      },
-      setComfyUpdating: (value) => {
-        comfyUpdating = value;
-      },
-      getComfyUpdateLog: () => comfyUpdateLog,
-      setComfyUpdateLog: (log) => {
-        comfyUpdateLog = log;
-      },
-      setAttentionAccelerationInstalling: (value) => {
-        attentionAccelerationInstalling = value;
-      },
-      getAttentionAccelerationLog: () => attentionAccelerationLog,
-      setAttentionAccelerationLog: (log) => {
-        attentionAccelerationLog = log;
-      },
-      setLlamaCppPythonInstalling: (value) => {
-        llamaCppPythonInstalling = value;
-      },
-      getLlamaCppPythonLog: () => llamaCppPythonLog,
-      setLlamaCppPythonLog: (log) => {
-        llamaCppPythonLog = log;
-      },
-      setEnvironmentRepairing: (issueId) => {
-        environmentRepairing = issueId;
-      },
-      setEnvironmentRepairLog: (issueId, log) => {
-        environmentRepairLogs = { ...environmentRepairLogs, [issueId]: log };
-      },
-      enqueueCustomNodeInstall: (nodeId, settings, mode) =>
-        customNodeInstallManager.enqueue(nodeId, settings, mode),
-      requestCustomNodeUninstall: (nodeId, name) =>
-        shellCoordinator.requestConfirmation({ kind: "uninstall-custom-node", nodeId, name }),
-      requestLlamaCppPythonUninstall: () =>
-        shellCoordinator.requestConfirmation({ kind: "uninstall-llama-cpp-python" }),
-      requestForceStopConfirmation: () =>
-        shellCoordinator.requestConfirmation({ kind: "force-stop-comfy" }),
-      rememberModalFocus
-    },
-    logs: {
-      loadAppLogs: () => {
-        void loadAppLogs();
-      },
-      openAppLogContextMenu: appLogContextMenu.open,
-      setAppLogFollowTail: (followTail) => shellCoordinator.setAppLogFollowTail(followTail)
-    },
-    page: {
-      context: rendererApp.context,
-      formSettings,
-      getEnvironmentScan: () => environmentScan,
-      setSettingsDraft: (draft) => {
-        settingsDraft = draft;
-      },
-      setInstallGuide: (selection) => {
-        selectedInstallGuide = selection;
-      },
-      getInstallGuide: () => selectedInstallGuide,
-      settingsHaveUnsavedChanges,
-      syncSettingsDirtyUi,
-      runEnvironmentScan,
-      loadAppLogs: () => loadAppLogs(),
-      togglePromptModel: togglePromptModelFromUi,
-      requestSaveSettings,
-      openImageAssetLibrary: () => shellCoordinator.openImageAssetLibrary(),
-      rememberModalFocus,
-      requestOverlayRender: renderOverlay
-    }
-  }));
+  settingsWorkspaceCoordinator.bind();
 }
 
 registerRendererEvents({
@@ -1166,7 +753,7 @@ registerRendererEvents({
   t: rendererApp.context.t,
   getState: () => state,
   getComfyRuntimeState: () => comfyRuntime,
-  getEnvironmentScanning: () => environmentScanning,
+  getEnvironmentScanning: () => settingsWorkspaceCoordinator.isEnvironmentScanning(),
   setComfyRuntimeState: (runtime) => {
     comfyRuntime = runtime;
   },
@@ -1189,28 +776,8 @@ registerRendererEvents({
   hasPendingDirectoryMigration: () => shellCoordinator.hasPendingDirectoryMigration(),
   setImageAssetLibraryProgress: (progress) => shellCoordinator.setImageAssetLibraryProgress(progress),
   taskPreviews,
-  appendAttentionAccelerationLog: (message) => {
-    attentionAccelerationLog = [attentionAccelerationLog, message]
-      .filter(Boolean)
-      .join("\n")
-      .slice(-40_000);
-    return attentionAccelerationLog;
-  },
-  appendDependencyInstallLog: (progress) => {
-    const current = progress.kind === "custom-node"
-      ? customNodeLogs[progress.id] ?? ""
-      : llamaCppPythonLog;
-    const next = [current, progress.message]
-      .filter(Boolean)
-      .join("\n")
-      .slice(-60_000);
-    if (progress.kind === "custom-node") {
-      customNodeLogs = { ...customNodeLogs, [progress.id]: next };
-    } else {
-      llamaCppPythonLog = next;
-    }
-    return next;
-  },
+  appendAttentionAccelerationLog: settingsWorkspaceCoordinator.appendAttentionAccelerationLog,
+  appendDependencyInstallLog: settingsWorkspaceCoordinator.appendDependencyInstallLog,
   notify: showMessage,
   requestRender: requestRendererRefresh,
   requestOverlayRender: renderOverlay
