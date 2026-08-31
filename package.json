@@ -1,6 +1,6 @@
 {
   "name": "ai-video-gen-tool",
-  "version": "0.56.4",
+  "version": "0.56.5",
   "private": true,
   "description": "Local image and video creation studio powered by ComfyUI",
   "main": "dist/electron/electron/main.js",

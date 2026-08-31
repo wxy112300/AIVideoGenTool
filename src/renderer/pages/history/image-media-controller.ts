@@ -8,6 +8,7 @@ import {
 } from "./image-media-state";
 import {
   createHistoryMediaScheduler,
+  scheduleHistoryBatches,
   type HistoryMediaTaskPriority
 } from "./media-scheduler";
 
@@ -31,8 +32,64 @@ export function mountImageHistoryMediaController(
     schedule(priority: HistoryMediaTaskPriority): void;
     cancel(): void;
   }>();
+  const galleryStateHandlers = new Map<HTMLElement, {
+    handleLoad(): void;
+    handleError(): void;
+  }>();
+  const initializedSurfaces = new WeakSet<HTMLElement>();
 
-  root.querySelectorAll<HTMLElement>("[data-image-media]").forEach((surface) => {
+  const enqueueThumbnail = (
+    surface: HTMLElement,
+    image: HTMLImageElement,
+    priority: HistoryMediaTaskPriority,
+    request?: number
+  ): void => {
+    const key = image.dataset.imageHistoryCacheKey?.trim() ||
+      image.dataset.imageHistorySource?.trim() ||
+      image.dataset.imageMediaUrl?.trim() || "";
+    if (!key) return;
+    if (request !== undefined) thumbnailScheduler.cancel(key);
+    thumbnailScheduler.enqueue(key, async (taskSignal) => {
+      let loaded = false;
+      try {
+        loaded = await options.loadImageHistoryThumbnail(image, taskSignal);
+      } catch {
+        loaded = false;
+      }
+      if (taskSignal.aborted || !surface.isConnected) return false;
+      const handlers = galleryStateHandlers.get(surface);
+      if (loaded && image.complete) {
+        if (handlers) handlers.handleLoad();
+        else surface.dataset.imageMediaPendingState = "ready";
+      }
+      if (!loaded && image.dataset.imageHistorySource?.trim()) {
+        if (handlers) handlers.handleError();
+        else surface.dataset.imageMediaPendingState = "error";
+      }
+      return loaded;
+    }, priority);
+  };
+
+  const imageSurfaces = [...root.querySelectorAll<HTMLElement>("[data-image-media]")];
+  const gallerySurfaces = imageSurfaces.filter((surface) => surface.dataset.imageMediaSurface === "gallery");
+  gallerySurfaces.forEach((surface) => {
+    const image = surface.querySelector<HTMLImageElement>("[data-image-media-image]");
+    if (!image) return;
+    const thumbnailKey = () => image.dataset.imageHistoryCacheKey?.trim() ||
+      image.dataset.imageHistorySource?.trim() ||
+      image.dataset.imageMediaUrl?.trim() || "";
+    gallerySchedules.set(surface, {
+      schedule: (priority) => enqueueThumbnail(surface, image, priority),
+      cancel: () => {
+        const key = thumbnailKey();
+        if (key) thumbnailScheduler.cancel(key);
+      }
+    });
+  });
+
+  const setupSurface = (surface: HTMLElement) => {
+    if (initializedSurfaces.has(surface)) return;
+    initializedSurfaces.add(surface);
     const image = surface.querySelector<HTMLImageElement>("[data-image-media-image]");
     const status = surface.querySelector<HTMLElement>("[data-image-media-status]");
     const label = status?.querySelector<HTMLElement>("[data-image-media-status-label]");
@@ -91,35 +148,9 @@ export function mountImageHistoryMediaController(
       retryRequest += 1;
       setState(initialImageMediaState(imageMediaSource(image)));
     };
-
-    const enqueueThumbnail = (
-      priority: HistoryMediaTaskPriority,
-      request?: number
-    ): void => {
-      if (!image) return;
-      const key = image.dataset.imageHistoryCacheKey?.trim() ||
-        image.dataset.imageHistorySource?.trim() ||
-        image.dataset.imageMediaUrl?.trim() || "";
-      if (!key) return;
-      if (request !== undefined) thumbnailScheduler.cancel(key);
-      thumbnailScheduler.enqueue(key, async (taskSignal) => {
-        let loaded = false;
-        try {
-          loaded = await options.loadImageHistoryThumbnail(image, taskSignal);
-        } catch {
-          loaded = false;
-        }
-        if (taskSignal.aborted || !surface.isConnected) return false;
-        if (loaded && image.complete) handleLoad();
-        if (
-          !loaded &&
-          image.dataset.imageHistorySource?.trim()
-        ) {
-          setState("error");
-        }
-        return loaded;
-      }, priority);
-    };
+    if (surfaceKind === "gallery") {
+      galleryStateHandlers.set(surface, { handleLoad, handleError });
+    }
 
     const retry = () => {
       const sourceUrl = imageMediaSource(image);
@@ -130,7 +161,7 @@ export function mountImageHistoryMediaController(
       const request = ++retryRequest;
       setState("loading");
       if (surfaceKind === "gallery") {
-        enqueueThumbnail("interactive", request);
+        if (image) enqueueThumbnail(surface, image, "interactive", request);
         return;
       }
       const probe = new Image();
@@ -173,23 +204,24 @@ export function mountImageHistoryMediaController(
       setState("unavailable");
     } else {
       setState(state);
-      if (image.complete) handleLoad();
-      if (surfaceKind === "gallery") {
-        const thumbnailKey = () => image.dataset.imageHistoryCacheKey?.trim() ||
-          image.dataset.imageHistorySource?.trim() ||
-          image.dataset.imageMediaUrl?.trim() || "";
-        gallerySchedules.set(surface, {
-          schedule: (priority) => enqueueThumbnail(priority),
-          cancel: () => {
-            const key = thumbnailKey();
-            if (key) thumbnailScheduler.cancel(key);
-          }
-        });
-      }
+      const pendingState = surface.dataset.imageMediaPendingState;
+      delete surface.dataset.imageMediaPendingState;
+      if (pendingState === "error") setState("error");
+      else if (image.complete || pendingState === "ready") handleLoad();
     }
-  });
+  };
 
-  const gallerySurfaces = [...gallerySchedules.keys()];
+  const setupSurfaceFromEvent = (event: Event): void => {
+    const target = event.target instanceof Element ? event.target : null;
+    const surface = target?.closest<HTMLElement>("[data-image-media]");
+    if (surface && root.contains(surface)) setupSurface(surface);
+  };
+  root.addEventListener("mouseover", setupSurfaceFromEvent, { signal });
+  root.addEventListener("focusin", setupSurfaceFromEvent, { signal });
+  root.addEventListener("pointerdown", setupSurfaceFromEvent, { capture: true, signal });
+
+  const cancelSetup = scheduleHistoryBatches(imageSurfaces, setupSurface);
+
   let galleryObserver: IntersectionObserver | null = null;
   if (typeof IntersectionObserver === "undefined") {
     gallerySurfaces.forEach((surface) => gallerySchedules.get(surface)?.schedule("prefetch"));
@@ -213,6 +245,7 @@ export function mountImageHistoryMediaController(
   }
 
   return () => {
+    cancelSetup();
     events.abort();
     galleryObserver?.disconnect();
     thumbnailScheduler.dispose();

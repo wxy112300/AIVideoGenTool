@@ -10,6 +10,12 @@
 
 （暂无已归档条目。）
 
+## 0.56.5 — 2026-09-01
+
+- 优化 500 条级 History 列表的标记缓存、媒体分帧初始化和标题视口测量；瀑布流按媒体比例估算固有高度，离屏卡片使用浏览器内容可见性控制，自动化与合成基准通过，未宣称真实 Electron 性能收益。
+- History 卡片打开、右键和更多菜单改用根节点事件委托；深层图片/视频卡片在首次 hover、focus 或 pointer 操作时即时完成媒体绑定，图片 Retry/定位操作不会误打开详情。
+- 修复队列服务组合 `QueueRuntimeService` 时展开原型方法并丢失 `this` 的问题，恢复 H3 视频 VAE 解析、本地 ComfyUI 生命周期与取消清理调用；新增生产形态回归测试。
+
 ## 0.56.4 — 2026-09-01
 
 - 新增可重跑的 C04 Electron 证据采集器：使用隔离 userData/state/media fixture，记录 empty、500 条 History 与 legacy/migration 的 cold/warm 启动里程碑，并输出真实 renderer DOM、Long Task、CDP trace、截图和正常退出结果。

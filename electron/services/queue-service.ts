@@ -38,6 +38,27 @@ export class QueueService {
 
   constructor(deps: QueueServiceDependencies) {
     const runtime = deps.queueRuntime;
+    const runtimeCapability: QueueRuntimeCapability = {
+      ensureComfyUiReady: (taskId, signal) =>
+        runtime.ensureComfyUiReady(taskId, signal),
+      prepareQueueRuntimeForTask: (taskId, modelId, settings, reason) =>
+        runtime.prepareQueueRuntimeForTask(taskId, modelId, settings, reason),
+      stabilizeH3RuntimeBetweenTasks: (taskId, modelId, settings, hasVideoLoras, queueWillContinue) =>
+        runtime.stabilizeH3RuntimeBetweenTasks(
+          taskId,
+          modelId,
+          settings,
+          hasVideoLoras,
+          queueWillContinue
+        ),
+      stopQueueRuntime: (settings) => runtime.stopQueueRuntime(settings),
+      restartQueueRuntime: (settings) => runtime.restartQueueRuntime(settings),
+      resolveH3VideoVaeModeForTask: (task, settings) =>
+        runtime.resolveH3VideoVaeModeForTask(task, settings),
+      settingsForTask: (task, settings) => runtime.settingsForTask(task, settings),
+      cleanupCancelledTask: (taskId, settings, worker) =>
+        runtime.cleanupCancelledTask(taskId, settings, worker)
+    };
     this.state = new QueueTaskStateService({
       store: deps.store,
       logger: deps.logger,
@@ -59,16 +80,16 @@ export class QueueService {
       resolveTaskOutputDirectory: deps.resolveTaskOutputDirectory,
       requireExistingImageOutput: deps.requireExistingImageOutput,
       requireExistingVideoOutput: deps.requireExistingVideoOutput,
-      prepareQueueRuntimeForTask: runtime.prepareQueueRuntimeForTask,
-      stabilizeH3RuntimeBetweenTasks: runtime.stabilizeH3RuntimeBetweenTasks,
-      stopQueueRuntime: runtime.stopQueueRuntime,
-      restartQueueRuntime: runtime.restartQueueRuntime,
-      settingsForTask: runtime.settingsForTask,
+      prepareQueueRuntimeForTask: runtimeCapability.prepareQueueRuntimeForTask,
+      stabilizeH3RuntimeBetweenTasks: runtimeCapability.stabilizeH3RuntimeBetweenTasks,
+      stopQueueRuntime: runtimeCapability.stopQueueRuntime,
+      restartQueueRuntime: runtimeCapability.restartQueueRuntime,
+      settingsForTask: runtimeCapability.settingsForTask,
       errorMeta: deps.errorMeta
     });
     this.executor = createQueueExecutor({
       ...deps,
-      ...runtime,
+      ...runtimeCapability,
       worker: this.worker,
       setQueueLifecycle,
       updateTask,
@@ -81,8 +102,8 @@ export class QueueService {
       sendState: deps.sendState,
       executeQueue: () => this.execute(),
       nativePromptBusy: deps.nativePromptBusy,
-      settingsForTask: runtime.settingsForTask,
-      cleanupCancelledTask: runtime.cleanupCancelledTask,
+      settingsForTask: runtimeCapability.settingsForTask,
+      cleanupCancelledTask: runtimeCapability.cleanupCancelledTask,
       updateTask
     });
     this.mutation = new QueueMutationService({

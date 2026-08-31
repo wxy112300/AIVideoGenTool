@@ -11,6 +11,37 @@ export interface HistoryMediaScheduler {
   dispose(): void;
 }
 
+export function scheduleHistoryBatches<T>(
+  items: ReadonlyArray<T>,
+  process: (item: T) => void,
+  batchSize = 16
+): () => void {
+  const limit = Math.max(1, Math.floor(batchSize));
+  let index = 0;
+  let frame: number | null = null;
+  let disposed = false;
+
+  const pump = () => {
+    frame = null;
+    if (disposed) return;
+    const end = Math.min(items.length, index + limit);
+    for (; index < end; index += 1) {
+      const item = items[index];
+      if (item !== undefined) process(item);
+    }
+    if (index < items.length) frame = window.requestAnimationFrame(pump);
+  };
+
+  frame = window.requestAnimationFrame(pump);
+  return () => {
+    disposed = true;
+    if (frame !== null) {
+      window.cancelAnimationFrame(frame);
+      frame = null;
+    }
+  };
+}
+
 interface ScheduledTask {
   key: string;
   task: HistoryMediaTask;

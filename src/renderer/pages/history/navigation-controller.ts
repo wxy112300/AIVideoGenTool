@@ -128,30 +128,40 @@ export function mountHistoryNavigationController(
     }, { signal });
   });
 
-  root.querySelectorAll<HTMLElement>("[data-open-history]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      stopNavigation(event);
-      const assetId = button.dataset.openHistory;
-      if (assetId) options.openHistoryDetail(assetId);
-    }, { signal });
-    button.addEventListener("keydown", (event) => {
-      if (event.target !== button) return;
-      if (event.key === "Enter") {
-        event.preventDefault();
-        event.stopPropagation();
-        button.click();
-      } else if (isCardSpaceKey(event)) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    }, { signal });
-    button.addEventListener("keyup", (event) => {
-      if (event.target !== button || !isCardSpaceKey(event)) return;
+  const cardFromEvent = (event: Event): HTMLElement | null => {
+    const target = event.target instanceof Element ? event.target : null;
+    return target?.closest<HTMLElement>("[data-open-history], [data-open-image-history]") ?? null;
+  };
+  root.addEventListener("click", (event) => {
+    const card = cardFromEvent(event);
+    if (!card || event.target instanceof Element && event.target.closest(
+      ".history-media-badges, [data-history-curation], .history-detail-curation, .history-card-more, .history-preview-progress, [data-image-media-retry], [data-image-media-locate]"
+    )) return;
+    stopNavigation(event);
+    const assetId = card.dataset.openHistory;
+    const projectId = card.dataset.openImageHistory;
+    if (assetId) options.openHistoryDetail(assetId);
+    else if (projectId) options.openImageHistoryDetail(projectId);
+  }, { signal });
+  root.addEventListener("keydown", (event) => {
+    const card = cardFromEvent(event);
+    if (!card || event.target !== card) return;
+    if (event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
-      button.click();
-    }, { signal });
-  });
+      card.click();
+    } else if (isCardSpaceKey(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, { signal });
+  root.addEventListener("keyup", (event) => {
+    const card = cardFromEvent(event);
+    if (!card || event.target !== card || !isCardSpaceKey(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    card.click();
+  }, { signal });
 
   root.querySelectorAll<HTMLElement>("[data-version-id]").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -161,30 +171,6 @@ export function mountHistoryNavigationController(
     }, { signal });
   });
 
-  root.querySelectorAll<HTMLElement>("[data-open-image-history]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      stopNavigation(event);
-      const projectId = button.dataset.openImageHistory;
-      if (projectId) options.openImageHistoryDetail(projectId);
-    }, { signal });
-    button.addEventListener("keydown", (event) => {
-      if (event.target !== button) return;
-      if (event.key === "Enter") {
-        event.preventDefault();
-        event.stopPropagation();
-        button.click();
-      } else if (isCardSpaceKey(event)) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    }, { signal });
-    button.addEventListener("keyup", (event) => {
-      if (event.target !== button || !isCardSpaceKey(event)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      button.click();
-    }, { signal });
-  });
 
   return () => events.abort();
 }

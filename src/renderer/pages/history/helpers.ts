@@ -195,6 +195,29 @@ export function historyCardsByOrder(gallery: HTMLElement): HTMLElement[] {
   );
 }
 
+export function historyMediaAspectRatio(value: string, fallback = 16 / 9): number {
+  const parts = value.split("/");
+  const widthText = Number(parts[0]?.trim() ?? "");
+  const heightText = Number(parts[1]?.trim() ?? "");
+  if (!Number.isFinite(widthText) || !Number.isFinite(heightText) || widthText <= 0 || heightText <= 0) {
+    return fallback;
+  }
+  return widthText / heightText;
+}
+
+export function estimateHistoryCardHeight(
+  cardWidth: number,
+  mediaRatio: number,
+  copyHeight: number,
+  layout: "masonry" | "album"
+): number {
+  const safeWidth = Number.isFinite(cardWidth) ? Math.max(1, cardWidth) : 1;
+  const safeRatio = Number.isFinite(mediaRatio) && mediaRatio > 0 ? mediaRatio : 16 / 9;
+  const safeCopyHeight = Number.isFinite(copyHeight) ? Math.max(0, copyHeight) : 0;
+  const mediaHeight = layout === "album" ? safeWidth : safeWidth / safeRatio;
+  return Math.max(1, mediaHeight + safeCopyHeight);
+}
+
 export function assignHistoryMasonryColumns(
   cardHeights: ReadonlyArray<number>,
   columnCount: number,

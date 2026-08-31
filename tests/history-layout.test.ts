@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   assignHistoryMasonryColumns,
+  estimateHistoryCardHeight,
   historyAlbumColumnCount,
+  historyMediaAspectRatio,
   historyMasonryColumnCount
 } from "../src/renderer/pages/history/helpers.ts";
 
@@ -65,5 +67,12 @@ describe("history gallery layout calculations", () => {
     expect(historyMasonryColumnCount(448)).toBe(1);
     expect(historyMasonryColumnCount(712)).toBe(2);
     expect(historyMasonryColumnCount(852)).toBe(2);
+  });
+
+  it("estimates ratio-aware intrinsic card heights without DOM measurement", () => {
+    expect(historyMediaAspectRatio("16 / 9")).toBeCloseTo(16 / 9);
+    expect(historyMediaAspectRatio("invalid")).toBeCloseTo(16 / 9);
+    expect(estimateHistoryCardHeight(400, 16 / 9, 70, "masonry")).toBeCloseTo(295);
+    expect(estimateHistoryCardHeight(200, 4 / 3, 70, "album")).toBe(270);
   });
 });

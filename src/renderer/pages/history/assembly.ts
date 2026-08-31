@@ -137,13 +137,45 @@ function createHistoryPageOptions(
 export function createHistoryAssembly(
   options: HistoryAssemblyOptions
 ): HistoryAssembly {
+  let cachedList: {
+    state: AppState;
+    historyKind: HistoryKind;
+    historyLayout: HistoryPageLayout;
+    historyFilterKey: string;
+    historyFilterPanelOpen: boolean;
+    uiLocale: string | undefined;
+    markup: string;
+  } | null = null;
+
   return {
     renderList(context): string {
       const viewModel = createHistoryPageViewModel(options);
+      const historyFilterKey = JSON.stringify(viewModel.historyFilter);
+      const uiLocale = viewModel.state.settings.uiLocale;
+      if (
+        cachedList?.state === viewModel.state &&
+        cachedList.historyKind === viewModel.historyKind &&
+        cachedList.historyLayout === viewModel.historyLayout &&
+        cachedList.historyFilterKey === historyFilterKey &&
+        cachedList.historyFilterPanelOpen === viewModel.historyFilterPanelOpen &&
+        cachedList.uiLocale === uiLocale
+      ) {
+        return cachedList.markup;
+      }
       const pageOptions = createHistoryPageOptions(context);
-      return viewModel.historyKind === "image"
+      const markup = viewModel.historyKind === "image"
         ? renderImageHistoryPage(viewModel, pageOptions)
         : renderHistoryPage(viewModel, pageOptions);
+      cachedList = {
+        state: viewModel.state,
+        historyKind: viewModel.historyKind,
+        historyLayout: viewModel.historyLayout,
+        historyFilterKey,
+        historyFilterPanelOpen: viewModel.historyFilterPanelOpen,
+        uiLocale,
+        markup
+      };
+      return markup;
     },
 
     renderDetail(context, kind): string {

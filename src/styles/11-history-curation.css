@@ -239,6 +239,13 @@
 .history-masonry-column { min-width: 0; display: grid; align-content: start; gap: 10px; }
 .history-gallery.masonry .history-gallery-item { width: 100%; margin: 0; }
 .history-gallery.masonry .history-gallery-copy code { display: block; }
+.history-gallery-item {
+  /* C04: let Chromium skip layout/paint for cards outside the viewport. The
+     controller supplies a ratio-aware intrinsic height before reparenting
+     cards, so skipped cards retain stable masonry/album geometry. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--history-card-intrinsic-height, 320px);
+}
 .history-gallery.album {
   display: grid;
   align-items: start;

@@ -10,6 +10,7 @@ import {
   mountHistoryMediaController,
   type HistoryMediaControllerOptions
 } from "../src/renderer/pages/history/media-controller.ts";
+import { mountHistoryNavigationController } from "../src/renderer/pages/history/navigation-controller.ts";
 
 type FakeObserverEntry = {
   target: Element;
@@ -59,6 +60,7 @@ function createContext(root: HTMLElement): RendererContext {
     t: (key) => key,
     requestRender: () => undefined,
     navigate: () => undefined,
+    enhancePrompt: async () => "",
     notify: () => undefined,
     reportUserAction: () => undefined
   };
@@ -212,13 +214,86 @@ describe("history media controller scheduling", () => {
     cleanup();
   });
 
+  it("initializes a deep video card when it is hovered before its batch", () => {
+    vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const root = document.createElement("main");
+    document.body.append(root);
+    const cards = Array.from({ length: 500 }, (_, index) => createVideoCard(root, index));
+    const deepCard = cards[499]!;
+    vi.spyOn(deepCard, "matches").mockImplementation((selector) => selector === ":hover");
+    const loadHistoryCardVideo = vi.fn((media: HTMLElement) => media.querySelector("video"));
+    const options: HistoryMediaControllerOptions = {
+      loadImageHistoryThumbnail: async () => true,
+      loadHistoryCoverFromCache: async () => false,
+      loadHistoryCardVideo,
+      releaseHistoryCardVideo: () => undefined,
+      scheduleHistoryCoverWarmup: () => undefined,
+      cancelHistoryCoverWarmup: () => undefined,
+      stopHistoryCoverWarmup: () => undefined,
+      chooseHistoryCoverTime: async (_video, fallbackTime) => fallbackTime,
+      saveHistoryCover: async () => undefined,
+      formatVideoDuration: () => "0s"
+    };
+
+    const cleanup = mountHistoryMediaController(createContext(root), options);
+    deepCard.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+
+    expect(loadHistoryCardVideo).toHaveBeenCalledOnce();
+    expect(loadHistoryCardVideo).toHaveBeenCalledWith(deepCard);
+    cleanup();
+  });
+
+  it("keeps image recovery controls out of delegated card navigation", async () => {
+    vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+    const root = document.createElement("main");
+    document.body.append(root);
+    const card = document.createElement("article");
+    card.dataset.openImageHistory = "project-500";
+    const surface = createImageSurface(card, 500);
+    const status = document.createElement("div");
+    status.dataset.imageMediaStatus = "true";
+    const retry = document.createElement("button");
+    retry.dataset.imageMediaRetry = "true";
+    status.append(retry);
+    surface.append(status);
+    root.append(card);
+    const loadImageHistoryThumbnail = vi.fn(async () => true);
+    const openImageHistoryDetail = vi.fn();
+    const context = createContext(root);
+    const cleanupMedia = mountImageHistoryMediaController(context, { loadImageHistoryThumbnail });
+    const cleanupNavigation = mountHistoryNavigationController(context, {
+      setHistoryKind: vi.fn(),
+      resetHistoryScroll: vi.fn(),
+      switchHistoryLayout: vi.fn(),
+      openHistoryDetail: vi.fn(),
+      openImageHistoryDetail,
+      navigateHistoryDetail: vi.fn(),
+      navigateImageHistoryDetail: vi.fn(),
+      navigateImageHistoryVersion: vi.fn(),
+      selectVideoHistoryVersion: vi.fn(),
+      selectImageHistoryVersion: vi.fn()
+    });
+
+    retry.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    retry.click();
+    await flushPromises();
+
+    expect(loadImageHistoryThumbnail).toHaveBeenCalledOnce();
+    expect(openImageHistoryDetail).not.toHaveBeenCalled();
+    cleanupNavigation();
+    cleanupMedia();
+  });
+
   it("does not report a warmup error when hover interrupts the temporary video", async () => {
     const root = document.createElement("main");
     document.body.append(root);
     const media = createVideoCard(root, 0);
     let hovered = false;
     vi.spyOn(media, "matches").mockImplementation((selector) => selector === ":hover" && hovered);
-    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(function () {
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(function (this: HTMLMediaElement) {
       if (hovered) return;
       hovered = true;
       this.dispatchEvent(new Event("loadeddata"));

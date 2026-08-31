@@ -1,5 +1,8 @@
 import type { RendererCleanup, RendererContext } from "../../contracts";
-import type { HistoryMediaTaskPriority } from "./media-scheduler";
+import {
+  scheduleHistoryBatches,
+  type HistoryMediaTaskPriority
+} from "./media-scheduler";
 
 export interface HistoryMediaControllerOptions {
   loadImageHistoryThumbnail(image: HTMLImageElement, signal?: AbortSignal): Promise<boolean>;
@@ -33,7 +36,10 @@ export function mountHistoryMediaController(
   const root = context.root;
 
   const historyMediaCards = [...root.querySelectorAll<HTMLElement>("[data-history-media]")];
-  historyMediaCards.forEach((media) => {
+  const initializedMediaCards = new WeakSet<HTMLElement>();
+  const setupMediaCard = (media: HTMLElement) => {
+    if (initializedMediaCards.has(media)) return;
+    initializedMediaCards.add(media);
     const video = media.querySelector<HTMLVideoElement>("video");
     if (!video) return;
     video.addEventListener("error", () => {
@@ -162,13 +168,14 @@ export function mountHistoryMediaController(
         : 0);
       seekToRatio(current + (event.key === "ArrowRight" ? 0.05 : -0.05));
     }, { signal });
-    media.addEventListener("mouseenter", () => {
+    const startPreview = () => {
       options.cancelHistoryCoverWarmup(media);
       options.loadHistoryCardVideo(media);
       seekToRatio(0);
       media.classList.add("playing");
       void video.play().catch(() => undefined);
-    }, { signal });
+    };
+    media.addEventListener("mouseenter", startPreview, { signal });
     media.addEventListener("mouseleave", () => {
       if (seeking) return;
       media.classList.remove("playing");
@@ -179,7 +186,17 @@ export function mountHistoryMediaController(
         options.scheduleHistoryCoverWarmup([media], "viewport");
       }
     }, { signal });
-  });
+    if (media.matches(":hover")) startPreview();
+  };
+  const setupMediaCardFromEvent = (event: Event): void => {
+    const target = event.target instanceof Element ? event.target : null;
+    const media = target?.closest<HTMLElement>("[data-history-media]");
+    if (media && root.contains(media)) setupMediaCard(media);
+  };
+  root.addEventListener("mouseover", setupMediaCardFromEvent, { signal });
+  root.addEventListener("focusin", setupMediaCardFromEvent, { signal });
+  root.addEventListener("pointerdown", setupMediaCardFromEvent, { capture: true, signal });
+  const cancelSetup = scheduleHistoryBatches(historyMediaCards, setupMediaCard);
 
   const loadHistoryCardCover = (media: HTMLElement) => {
     void options.loadHistoryCoverFromCache(media, signal);
@@ -242,6 +259,7 @@ export function mountHistoryMediaController(
   }
 
   return () => {
+    cancelSetup();
     events.abort();
     if (fallbackWarmupFrame !== null) {
       window.cancelAnimationFrame(fallbackWarmupFrame);

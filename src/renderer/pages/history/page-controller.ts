@@ -214,6 +214,7 @@ export function mountHistoryPageController(
   ];
   const events = new AbortController();
   const signal = events.signal;
+  const root = options.context.root;
 
   if (options.historyLayout === "album") options.bindHistoryAlbum();
   else options.bindHistoryMasonry();
@@ -311,57 +312,52 @@ export function mountHistoryPageController(
     else detailVideo.addEventListener("canplay", startPlayback, { once: true, signal });
   }
 
-  document.querySelectorAll<HTMLElement>(".history-media-badges").forEach((badges) => {
-    badges.addEventListener("click", (event) => {
-      event.stopPropagation();
-    }, { signal });
-  });
-  document.querySelectorAll<HTMLElement>("[data-history-curation], .history-detail-curation").forEach((curation) => {
-    curation.addEventListener("click", (event) => {
-      event.stopPropagation();
-    }, { signal });
-  });
-  document.querySelectorAll<HTMLElement>("[data-history]").forEach((card) => {
-    card.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      const assetId = card.dataset.history;
-      if (!assetId) return;
-      if (card.dataset.historyKind === "image") {
-        options.openImageHistoryContextMenu(assetId, event.clientX, event.clientY, card);
-      } else {
-        options.openHistoryContextMenu(assetId, event.clientX, event.clientY, card);
-      }
-    }, { signal });
-    card.addEventListener("keydown", (event) => {
-      if (event.target !== card || !isHistoryMenuKey(event)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const point = contextMenuPoint(card);
-      const assetId = card.dataset.history;
-      if (!assetId) return;
-      if (card.dataset.historyKind === "image") {
-        options.openImageHistoryContextMenu(assetId, point.clientX, point.clientY, card);
-      } else {
-        options.openHistoryContextMenu(assetId, point.clientX, point.clientY, card);
-      }
-    }, { signal });
-  });
-
-  document.querySelectorAll<HTMLButtonElement>("[data-history-more]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const card = button.closest<HTMLElement>("[data-history]");
-      const assetId = card?.dataset.history;
-      if (!card || !assetId) return;
-      const point = contextMenuPoint(button);
-      if (card.dataset.historyKind === "image") {
-        options.openImageHistoryContextMenu(assetId, point.clientX, point.clientY, button);
-      } else {
-        options.openHistoryContextMenu(assetId, point.clientX, point.clientY, button);
-      }
-    }, { signal });
-  });
+  const historyCardFromEvent = (event: Event): HTMLElement | null => {
+    const target = event.target instanceof Element ? event.target : null;
+    return target?.closest<HTMLElement>("[data-history]") ?? null;
+  };
+  root.addEventListener("contextmenu", (event) => {
+    const card = historyCardFromEvent(event);
+    if (!card) return;
+    event.preventDefault();
+    const assetId = card.dataset.history;
+    if (!assetId) return;
+    if (card.dataset.historyKind === "image") {
+      options.openImageHistoryContextMenu(assetId, event.clientX, event.clientY, card);
+    } else {
+      options.openHistoryContextMenu(assetId, event.clientX, event.clientY, card);
+    }
+  }, { signal });
+  root.addEventListener("keydown", (event) => {
+    const card = historyCardFromEvent(event);
+    if (!card || event.target !== card || !isHistoryMenuKey(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = contextMenuPoint(card);
+    const assetId = card.dataset.history;
+    if (!assetId) return;
+    if (card.dataset.historyKind === "image") {
+      options.openImageHistoryContextMenu(assetId, point.clientX, point.clientY, card);
+    } else {
+      options.openHistoryContextMenu(assetId, point.clientX, point.clientY, card);
+    }
+  }, { signal });
+  root.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const button = target?.closest<HTMLButtonElement>("[data-history-more]");
+    if (!button) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const card = button.closest<HTMLElement>("[data-history]");
+    const assetId = card?.dataset.history;
+    if (!card || !assetId) return;
+    const point = contextMenuPoint(button);
+    if (card.dataset.historyKind === "image") {
+      options.openImageHistoryContextMenu(assetId, point.clientX, point.clientY, button);
+    } else {
+      options.openHistoryContextMenu(assetId, point.clientX, point.clientY, button);
+    }
+  }, { signal });
 
   return () => {
     options.closeHistoryContextMenu?.();

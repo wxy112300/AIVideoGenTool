@@ -274,6 +274,13 @@ export function createRenderCoordinator(
         icon: options.icon,
         escapeHtml: options.escapeHtml
       });
+      if (page === "history") {
+        // History can contain hundreds of cards. Let the browser commit the
+        // shell/list DOM before mounting controllers and media observers so a
+        // return click does not keep all work in one input task.
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        if (request !== renderRequest || options.getPage() !== page) return;
+      }
       renderIcons(options.root);
       options.bindShell();
       options.addPageCleanup(options.bindHistoryViewportControls());

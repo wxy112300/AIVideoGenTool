@@ -9,6 +9,7 @@ import { QueueWorkerController } from "../electron/queue-worker";
 import { QueueEnqueueService } from "../electron/queue-enqueue";
 import { QueueService, type QueueServiceDependencies } from "../electron/services/queue-service";
 import { QueueExecutionSideEffects } from "../electron/services/queue-execution-side-effects";
+import type { QueueRuntimeCapability } from "../electron/ports/queue-runtime";
 
 function repository(initial: AppState): StateRepository {
   let state = structuredClone(initial);
@@ -51,7 +52,8 @@ function baseQueueServiceDependencies(state: AppState): QueueServiceDependencies
       stabilizeH3RuntimeBetweenTasks: async () => true,
       stopQueueRuntime: async () => true,
       restartQueueRuntime: async () => ({ ok: true, message: "restarted" }),
-      resolveH3VideoVaeModeForTask: async (queuedTask) => queuedTask.h3VideoVaeMode ?? "fp16",
+      resolveH3VideoVaeModeForTask: async (queuedTask) =>
+        "h3VideoVaeMode" in queuedTask ? queuedTask.h3VideoVaeMode ?? "fp16" : "fp16",
       settingsForTask: (_task, settings) => settings,
       cleanupCancelledTask: async () => undefined
     },
@@ -144,6 +146,64 @@ describe("queue service facade", () => {
     expect(service.runningWorker).toBeNull();
     expect(service.activeController).toBeNull();
     expect(service.cleanupWorker).toBeNull();
+  });
+
+  it("preserves prototype runtime method receivers during H3 execution", async () => {
+    const state = createDefaultState();
+    state.queue = [{ ...task(state), modelId: "minimax_h3_fl2va" }];
+    state.queueRunning = true;
+    const dependencies = baseQueueServiceDependencies(state);
+    const receiver = { marker: "production-runtime", resolveCalls: 0 };
+    const runtimePrototype = {
+      assertReceiver(this: typeof receiver): void {
+        expect(this.marker).toBe("production-runtime");
+      },
+      ensureComfyUiReady(this: typeof receiver): Promise<void> {
+        this.marker = "production-runtime";
+        return Promise.resolve();
+      },
+      prepareQueueRuntimeForTask(this: typeof receiver): Promise<boolean> {
+        runtimePrototype.assertReceiver.call(this);
+        return Promise.resolve(true);
+      },
+      stabilizeH3RuntimeBetweenTasks(this: typeof receiver): Promise<boolean> {
+        runtimePrototype.assertReceiver.call(this);
+        return Promise.resolve(true);
+      },
+      stopQueueRuntime(this: typeof receiver): Promise<boolean> {
+        runtimePrototype.assertReceiver.call(this);
+        return Promise.resolve(true);
+      },
+      restartQueueRuntime(this: typeof receiver): Promise<{ ok: boolean; message: string }> {
+        runtimePrototype.assertReceiver.call(this);
+        return Promise.resolve({ ok: true, message: "restarted" });
+      },
+      resolveH3VideoVaeModeForTask(this: typeof receiver): Promise<null> {
+        runtimePrototype.assertReceiver.call(this);
+        this.resolveCalls += 1;
+        return Promise.resolve(null);
+      },
+      settingsForTask(this: typeof receiver, _task: unknown, settings: AppState["settings"]): AppState["settings"] {
+        runtimePrototype.assertReceiver.call(this);
+        return settings;
+      },
+      cleanupCancelledTask(this: typeof receiver): Promise<void> {
+        runtimePrototype.assertReceiver.call(this);
+        return Promise.resolve();
+      }
+    };
+    const runtime = Object.assign(
+      Object.create(runtimePrototype) as object,
+      receiver
+    ) as QueueRuntimeCapability & typeof receiver;
+    dependencies.queueRuntime = runtime;
+    const service = new QueueService(dependencies);
+
+    await service.execute();
+
+    expect(runtime.resolveCalls).toBe(1);
+    expect(dependencies.store.get().queue[0]?.error).toContain("H3 视频 VAE 未找到");
+    expect(dependencies.store.get().queueRunning).toBe(false);
   });
 
   it("records a completed task and history output in one state update", async () => {

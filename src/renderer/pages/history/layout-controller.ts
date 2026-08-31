@@ -1,8 +1,10 @@
 import type { HistoryKind, RendererCleanup, RendererContext } from "../../contracts";
 import {
   assignHistoryMasonryColumns,
+  estimateHistoryCardHeight,
   historyCardsByOrder,
   historyAlbumColumnCount,
+  historyMediaAspectRatio,
   historyMasonryColumnCount
 } from "./helpers";
 
@@ -78,6 +80,7 @@ export function createHistoryLayoutController(
   let albumResizeObserver: ResizeObserver | null = null;
   let imageViewerResizeObserver: ResizeObserver | null = null;
   let titleResizeObserver: ResizeObserver | null = null;
+  let titleViewportObserver: IntersectionObserver | null = null;
   let titleMeasureFrame: number | null = null;
   let titleEvents: AbortController | null = null;
 
@@ -222,7 +225,16 @@ export function createHistoryLayoutController(
     if (!cards.length) return 0;
     const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 10;
     const columnCount = historyMasonryColumnCount(gallery.clientWidth, gap);
-    const cardHeights = cards.map((card) => card.getBoundingClientRect().height);
+    const cardWidth = Math.max(1, (gallery.clientWidth - gap * Math.max(0, columnCount - 1)) / columnCount);
+    const copyHeight = cards[0]?.querySelector<HTMLElement>(".history-gallery-copy")?.getBoundingClientRect().height ?? 70;
+    const cardHeights = cards.map((card) => {
+      const mediaRatio = historyMediaAspectRatio(
+        card.querySelector<HTMLElement>(".history-media")?.style.getPropertyValue("--media-ratio") ?? ""
+      );
+      const height = estimateHistoryCardHeight(cardWidth, mediaRatio, copyHeight, "masonry");
+      card.style.setProperty("--history-card-intrinsic-height", `${Math.ceil(height)}px`);
+      return height;
+    });
     const assignments = assignHistoryMasonryColumns(cardHeights, columnCount, gap);
     const columns = Array.from({ length: columnCount }, () => {
       const column = document.createElement("div");
@@ -248,6 +260,13 @@ export function createHistoryLayoutController(
     const availableWidth = gallery.clientWidth;
     const columnCount = historyAlbumColumnCount(availableWidth, gap);
     if (!columnCount) return;
+    const cards = historyCardsByOrder(gallery);
+    const cardWidth = Math.max(1, (availableWidth - gap * Math.max(0, columnCount - 1)) / columnCount);
+    const copyHeight = cards[0]?.querySelector<HTMLElement>(".history-gallery-copy")?.getBoundingClientRect().height ?? 70;
+    cards.forEach((card) => {
+      const height = estimateHistoryCardHeight(cardWidth, 1, copyHeight, "album");
+      card.style.setProperty("--history-card-intrinsic-height", `${Math.ceil(height)}px`);
+    });
     gallery.style.gridTemplateColumns = `repeat(${columnCount}, minmax(0, 1fr))`;
     gallery.style.justifyContent = "stretch";
   };
@@ -304,9 +323,8 @@ export function createHistoryLayoutController(
     if (!titles.length) return;
     const events = new AbortController();
     titleEvents = events;
-    const titleSet = new Set(titles);
-    let initialMeasurementComplete = false;
-    let initialResizeNotification = true;
+    const measuredTitles = new Set<HTMLElement>();
+    const pendingTitles = new Set<HTMLElement>();
     const measureTitle = (title: HTMLElement) => {
       if (events.signal.aborted || !title.isConnected) return;
       const text = title.querySelector<HTMLElement>(".history-card-title-track > span");
@@ -315,40 +333,52 @@ export function createHistoryLayoutController(
       if (!overflowing) {
         title.classList.remove("is-overflowing");
         title.style.removeProperty("--marquee-distance");
-        return;
+      } else {
+        title.style.setProperty("--marquee-distance", `${textWidth + 36}px`);
+        title.classList.add("is-overflowing");
       }
-      title.style.setProperty("--marquee-distance", `${textWidth + 36}px`);
-      title.classList.add("is-overflowing");
+      measuredTitles.add(title);
+      titleResizeObserver?.observe(title);
     };
-    let initialIndex = 0;
     const measureBatch = () => {
       titleMeasureFrame = null;
       if (events.signal.aborted) return;
-      const nextIndex = Math.min(titles.length, initialIndex + 32);
-      for (; initialIndex < nextIndex; initialIndex += 1) {
-        const title = titles[initialIndex];
-        if (title) measureTitle(title);
+      let measuredThisFrame = 0;
+      for (const title of pendingTitles) {
+        pendingTitles.delete(title);
+        measureTitle(title);
+        measuredThisFrame += 1;
+        if (measuredThisFrame >= 12) break;
       }
-      if (initialIndex >= titles.length) initialMeasurementComplete = true;
-      if (initialIndex < titles.length) titleMeasureFrame = window.requestAnimationFrame(measureBatch);
+      if (pendingTitles.size) titleMeasureFrame = window.requestAnimationFrame(measureBatch);
     };
-    titleMeasureFrame = window.requestAnimationFrame(measureBatch);
+    const enqueueTitle = (title: HTMLElement, force = false) => {
+      if (events.signal.aborted || !title.isConnected || (!force && measuredTitles.has(title))) return;
+      pendingTitles.add(title);
+      if (titleMeasureFrame === null) titleMeasureFrame = window.requestAnimationFrame(measureBatch);
+    };
     titles.forEach((title) => {
       title.addEventListener("mouseenter", () => measureTitle(title), { signal: events.signal });
     });
     if (typeof ResizeObserver !== "undefined") {
       titleResizeObserver = new ResizeObserver((entries) => {
-        if (initialResizeNotification) {
-          initialResizeNotification = false;
-          return;
-        }
-        if (!initialMeasurementComplete) return;
         entries.forEach((entry) => {
           const title = entry.target as HTMLElement;
-          if (titleSet.has(title)) measureTitle(title);
+          if (measuredTitles.has(title)) enqueueTitle(title, true);
         });
       });
-      titles.forEach((title) => titleResizeObserver?.observe(title));
+    }
+    if (typeof IntersectionObserver !== "undefined") {
+      titleViewportObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) enqueueTitle(entry.target as HTMLElement);
+        });
+      }, { rootMargin: "200px 0px", threshold: 0 });
+      titles.forEach((title) => titleViewportObserver?.observe(title));
+    } else {
+      // Electron supports IntersectionObserver; this bounded fallback keeps
+      // older environments from restoring the old full-table measurement.
+      titles.slice(0, 12).forEach((title) => enqueueTitle(title));
     }
   };
 
@@ -405,6 +435,8 @@ export function createHistoryLayoutController(
       imageViewerResizeObserver = null;
       titleResizeObserver?.disconnect();
       titleResizeObserver = null;
+      titleViewportObserver?.disconnect();
+      titleViewportObserver = null;
       if (titleMeasureFrame !== null) {
         window.cancelAnimationFrame(titleMeasureFrame);
         titleMeasureFrame = null;
