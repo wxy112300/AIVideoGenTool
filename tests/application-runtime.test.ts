@@ -109,17 +109,19 @@ function runtimeFixture() {
       clearRendererDirty: vi.fn()
     },
     queue: {
-      ensureComfyUiReady: async () => undefined,
+      runtime: {
+        ensureComfyUiReady: async () => undefined,
+        prepareQueueRuntimeForTask: async () => true,
+        stabilizeH3RuntimeBetweenTasks: async () => true,
+        stopQueueRuntime: async () => true,
+        restartQueueRuntime: async () => ({ ok: true, message: "restarted" }),
+        resolveH3VideoVaeModeForTask: async () => null,
+        settingsForTask: (_task, currentSettings) => currentSettings,
+        cleanupCancelledTask: async () => undefined
+      },
       resolveTaskOutputDirectory: async () => "C:/Studio/output",
       requireExistingImageOutput: async () => [] as HistoryFile[],
-      requireExistingVideoOutput: async () => [] as HistoryFile[],
-      prepareQueueRuntimeForTask: async () => true,
-      stabilizeH3RuntimeBetweenTasks: async () => true,
-      stopQueueRuntime: async () => true,
-      restartQueueRuntime: async () => ({ ok: true, message: "restarted" }),
-      resolveH3VideoVaeModeForTask: async () => null,
-      settingsForTask: (_task, currentSettings) => currentSettings,
-      cleanupCancelledTask: async () => undefined
+      requireExistingVideoOutput: async () => [] as HistoryFile[]
     },
     lifecycle: {
       interruptComfy: async () => undefined,

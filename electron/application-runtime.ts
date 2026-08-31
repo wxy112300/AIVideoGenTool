@@ -23,6 +23,7 @@ import { RuntimeAdminService } from "./services/runtime-admin-service.js";
 import { QueueService, type QueueServiceDependencies } from "./services/queue-service.js";
 import { ImageAssetLibraryService } from "./services/image-asset-library-service.js";
 import { PromptRuntimeManager } from "./services/prompt-runtime-manager.js";
+import type { QueueRuntimeCapability } from "./ports/queue-runtime.js";
 import type { ComfyRuntimeStateController } from "../src/infrastructure/comfy-runtime-state.js";
 import type { StudioEventBus } from "./services/studio-event-bus.js";
 import type { StudioPaths } from "./services/studio-paths.js";
@@ -50,18 +51,12 @@ export interface ApplicationServices {
 
 export type ApplicationRuntimeQueueDependencies = Pick<
   QueueServiceDependencies,
-  | "ensureComfyUiReady"
   | "resolveTaskOutputDirectory"
   | "requireExistingImageOutput"
   | "requireExistingVideoOutput"
-  | "prepareQueueRuntimeForTask"
-  | "stabilizeH3RuntimeBetweenTasks"
-  | "stopQueueRuntime"
-  | "restartQueueRuntime"
-  | "resolveH3VideoVaeModeForTask"
-  | "settingsForTask"
-  | "cleanupCancelledTask"
->
+> & {
+  runtime: QueueRuntimeCapability;
+};
 
 export type ApplicationRuntimeSettingsDependencies = Pick<
   SettingsServiceDependencies,
@@ -261,7 +256,10 @@ export class ApplicationRuntime {
       logger: this.deps.logger,
       sendState: this.deps.sendState,
       sendPreview: (payload) => this.deps.events.publish("task:preview", payload),
-      ...this.deps.queue,
+      queueRuntime: this.deps.queue.runtime,
+      resolveTaskOutputDirectory: this.deps.queue.resolveTaskOutputDirectory,
+      requireExistingImageOutput: this.deps.queue.requireExistingImageOutput,
+      requireExistingVideoOutput: this.deps.queue.requireExistingVideoOutput,
       releasePromptRuntime: (settings) => promptService.releaseRuntime(settings),
       nativePromptBusy: () => promptService.isWorkerBusy(),
       effectiveImageInputLibraryDirectory: (settings) =>

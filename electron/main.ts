@@ -16,10 +16,8 @@ import { fileURLToPath } from "node:url";
 import type {
   AppState,
   HistoryFile,
-  H3VideoVaeBackend,
   QueueLifecycle,
   QueueTask,
-  Settings,
   WindowCloseRequest,
   WindowCloseResponse
 } from "../src/types.js";
@@ -32,13 +30,8 @@ import {
   attachAbsoluteOutputPaths
 } from "../src/core/comfy-output-paths.js";
 import { imageOutputFormatFromFilename } from "../src/core/image-workflow.js";
-import {
-  h3VideoVaeAvailabilityFromModelProfiles,
-  resolveH3VideoVaeMode
-} from "../src/core/h3-video-vae.js";
 import { JsonStore } from "./store.js";
 import type { StateRepository } from "./ports/state-repository.js";
-import { cleanupCancelledQueueTask as cleanupCancelledQueueTaskInRecovery } from "./queue-recovery.js";
 import { registerDraftIpc } from "./draft-ipc.js";
 import { registerEnvironmentIpc } from "./environment-ipc.js";
 import { registerHistoryIpc } from "./history-ipc.js";
@@ -55,6 +48,7 @@ import { nativeImageInspection } from "./services/native-image-inspection.js";
 import { resolveExistingHistoryFile } from "./services/windows-clipboard.js";
 import { nativeHistoryFileSystem } from "./services/native-history-file-system.js";
 import { ApplicationRuntime, type ApplicationServices } from "./application-runtime.js";
+import { QueueRuntimeService } from "./services/queue-runtime-service.js";
 import {
   comfyUiSettingsForQueueTask
 } from "../src/infrastructure/comfy-runtime-policy.js";
@@ -393,47 +387,6 @@ async function waitWithTimeout(
   ]);
 }
 
-function cleanupCancelledQueueTask(
-  taskId: string,
-  settings: Settings,
-  worker: Promise<void> | null
-): Promise<void> {
-  return cleanupCancelledQueueTaskInRecovery(
-    {
-      logger: appLogger,
-      updateTask,
-      getComfyRuntimeState: () => comfyRuntimeState.snapshot(),
-      waitForComfyRuntimeSettled: (timeoutMs) => comfyRuntimeState.waitForSettled(timeoutMs),
-      hasSubmittedPrompt: (currentTaskId) => Boolean(
-        store.get().queue.find((item) => item.id === currentTaskId)?.comfyPromptId
-      ),
-      getSubmittedPromptId: (currentTaskId) =>
-        store.get().queue.find((item) => item.id === currentTaskId)?.comfyPromptId,
-      stopComfyRuntime: async (currentSettings) => {
-        if (!isLocalComfyUrl(currentSettings.comfyUrl)) return false;
-        const stopped = await forceStopComfyProcesses(currentSettings);
-        if (!stopped.ok) throw new Error(stopped.message);
-        return true;
-      },
-      restartComfyUi: async (kind, currentSettings) => {
-        if (!isLocalComfyUrl(currentSettings.comfyUrl)) {
-          return { ok: false, message: "远程 ComfyUI 为 connection-only，未执行进程重启。" };
-        }
-        return restartLocalService(kind, currentSettings);
-      },
-      isCancellationCurrent: (currentTaskId) => {
-        const current = store.get();
-        const task = current.queue.find((item) => item.id === currentTaskId);
-        return current.queueLifecycleTaskId === currentTaskId &&
-          (current.queueLifecycle === "cancelling" || current.queueLifecycle === "cleaning") &&
-          task?.status === "cancelled";
-      }
-    },
-    taskId,
-    settings,
-    worker
-  );
-}
 function interruptForExit(
   waitForWorker: boolean,
   queueCleanupOnly = false
@@ -694,272 +647,6 @@ function isLocalComfyUrl(value: string): boolean {
   }
 }
 
-async function ensureComfyUiReady(taskId: string, signal?: AbortSignal): Promise<void> {
-  const throwIfCancelled = (): void => {
-    if (!signal?.aborted) return;
-    throw signal.reason instanceof Error ? signal.reason : new Error("队列任务已取消");
-  };
-  throwIfCancelled();
-  const settings = store.get().settings;
-  const queuedTask = store.get().queue.find((item) => item.id === taskId);
-  const serviceSettings = comfyUiSettingsForQueueTask(queuedTask, settings);
-  let profile;
-  try {
-    profile = await alignLocalComfyUiRuntimeProfile(serviceSettings);
-  } catch (error) {
-    throwIfCancelled();
-    throw error;
-  }
-  throwIfCancelled();
-  if (!profile.ok) {
-    throw new Error(`ComfyUI 运行配置切换失败：${profile.message}`);
-  }
-  if (profile.restarted) {
-    appLogger.info("service", "runtime-profile-aligned", "ComfyUI runtime profile was aligned for the queue task", {
-      taskId,
-      taskType: queuedTask?.taskType ?? "unknown",
-      modelId: queuedTask?.modelId ?? "unknown",
-      previousProfile: profile.previousProfile,
-      desiredProfile: profile.desiredProfile
-    });
-  }
-  try {
-    await testComfyUi(serviceSettings);
-    throwIfCancelled();
-    return;
-  } catch (connectionError) {
-    appLogger.warn("service", "connection-unavailable", "ComfyUI was not ready", {
-      taskId,
-      local: isLocalComfyUrl(settings.comfyUrl),
-      error: safeLogErrorMessage(connectionError)
-    });
-    if (!isLocalComfyUrl(settings.comfyUrl)) {
-      throw new Error(
-        `无法连接 ComfyUI（${settings.comfyUrl}）：${
-          connectionError instanceof Error
-            ? connectionError.message
-            : String(connectionError)
-        }`
-      );
-    }
-  }
-
-  throwIfCancelled();
-  await updateTask(taskId, {
-    progress: 1,
-    stage: "正在启动 ComfyUI，等待服务就绪"
-  });
-  appLogger.info("service", "auto-start-requested", "Queue requested automatic ComfyUI startup", {
-    taskId
-  });
-  const started = await startLocalService("comfy", serviceSettings, signal);
-  appLogger.info(
-    "service",
-    started.ok ? "auto-start-succeeded" : "auto-start-failed",
-    started.message,
-    { taskId, ok: started.ok }
-  );
-  if (!started.ok) {
-    throw new Error(`ComfyUI 自动启动失败：${started.message}`);
-  }
-  throwIfCancelled();
-  await testComfyUi(serviceSettings);
-}
-
-async function stabilizeH3RuntimeBetweenTasks(
-  taskId: string,
-  modelId: string,
-  settings: Settings,
-  hasVideoLoras: boolean,
-  queueWillContinue: boolean
-): Promise<boolean> {
-  if (!queueWillContinue && isLocalComfyUrl(settings.comfyUrl)) {
-    appLogger.info("comfy", "h3-release-deferred-to-queue-stop", "The queue will not continue; runtime cleanup is deferred to queue shutdown", {
-      taskId,
-      modelId,
-      hasVideoLoras
-    });
-    return true;
-  }
-  if (hasVideoLoras) {
-    appLogger.info("comfy", "h3-lora-release-started", "H3 LoRA task will use API memory release independently from queue process isolation", {
-      taskId,
-      modelId
-    });
-  }
-
-  const gib = 1024 ** 3;
-  const before = await getPerformanceMetrics(settings).catch(() => null);
-  appLogger.info("comfy", "h3-release-started", "Releasing H3 runtime before the next queue task", {
-    taskId,
-    modelId,
-    hasVideoLoras,
-    vramUsedBytes: before?.vramUsedBytes ?? null,
-    vramTotalBytes: before?.vramTotalBytes ?? null
-  });
-
-  const waitForIdleRelease = async (requiredSamples: number) => {
-    const deadline = Date.now() + 20_000;
-    let stableSamples = 0;
-    let lastSample = before;
-    while (Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 1_000));
-      const sample = await getPerformanceMetrics(settings).catch(() => null);
-      if (!sample?.vramUsedBytes || !sample.vramTotalBytes) continue;
-      lastSample = sample;
-      const idleVramLimit = Math.min(5 * gib, sample.vramTotalBytes * 0.2);
-      const gpuIdle = sample.gpuPercent == null || sample.gpuPercent < 10;
-      stableSamples = gpuIdle && sample.vramUsedBytes <= idleVramLimit
-        ? stableSamples + 1
-        : 0;
-      if (stableSamples >= requiredSamples) {
-        return { verified: true, lastSample, idleVramLimit };
-      }
-    }
-    const idleVramLimit = lastSample?.vramTotalBytes
-      ? Math.min(5 * gib, lastSample.vramTotalBytes * 0.2)
-      : null;
-    return { verified: false, lastSample, idleVramLimit };
-  };
-
-  const requestRelease = async (phase: "initial" | "lora-final") => {
-    try {
-      await freeMemory(settings);
-      return true;
-    } catch (error) {
-      appLogger.warn("comfy", "h3-release-request-failed", "H3 runtime release request failed; restarting ComfyUI", {
-        taskId,
-        modelId,
-        phase,
-        error: safeLogErrorMessage(error)
-      });
-      return false;
-    }
-  };
-
-  let release = await requestRelease("initial");
-  let result = release
-    ? await waitForIdleRelease(2)
-    : { verified: false, lastSample: before, idleVramLimit: null };
-  if (result.verified && hasVideoLoras) {
-    release = await requestRelease("lora-final");
-    result = release
-      ? await waitForIdleRelease(3)
-      : { verified: false, lastSample: result.lastSample, idleVramLimit: result.idleVramLimit };
-  }
-
-  if (result.verified) {
-    appLogger.info("comfy", "h3-release-verified", "H3 runtime release was verified before continuing the queue", {
-      taskId,
-      modelId,
-      hasVideoLoras,
-      releasePhases: hasVideoLoras ? 2 : 1,
-      vramBeforeBytes: before?.vramUsedBytes ?? null,
-      vramAfterBytes: result.lastSample?.vramUsedBytes ?? null,
-      vramTotalBytes: result.lastSample?.vramTotalBytes ?? null,
-      idleVramLimitBytes: result.idleVramLimit,
-      gpuPercent: result.lastSample?.gpuPercent ?? null
-    });
-    return true;
-  }
-
-  appLogger.warn("comfy", "h3-release-unverified", "H3 VRAM did not reach a safe idle level; applying endpoint-appropriate recovery", {
-    taskId,
-    modelId,
-    hasVideoLoras,
-    vramBeforeBytes: before?.vramUsedBytes ?? null,
-    vramAfterBytes: result.lastSample?.vramUsedBytes ?? null,
-    vramTotalBytes: result.lastSample?.vramTotalBytes ?? null,
-    idleVramLimitBytes: result.idleVramLimit,
-    gpuPercent: result.lastSample?.gpuPercent ?? null
-  });
-  if (!isLocalComfyUrl(settings.comfyUrl)) {
-    appLogger.error("comfy", "h3-remote-release-failed", "Remote ComfyUI memory release could not be verified; stopping the application queue without process management", {
-      taskId,
-      modelId
-    });
-    return false;
-  }
-  const recovery = await restartLocalService("comfy", settings).catch((error) => ({
-    ok: false,
-    message: safeLogErrorMessage(error)
-  }));
-  appLogger.info("comfy", recovery.ok ? "h3-release-restart-succeeded" : "h3-release-restart-failed", recovery.message, {
-    taskId,
-    modelId,
-    recoveryOk: recovery.ok
-  });
-  return recovery.ok;
-}
-
-async function stopQueueRuntime(settings: Settings): Promise<boolean> {
-  if (!isLocalComfyUrl(settings.comfyUrl)) {
-    appLogger.info("comfy", "queue-runtime-stop-skipped", "Remote ComfyUI remains connection-only when the queue stops");
-    return true;
-  }
-  const stopped = await forceStopComfyProcesses(settings).catch((error) => ({
-    ok: false,
-    message: safeLogErrorMessage(error)
-  }));
-  appLogger.info(
-    "comfy",
-    stopped.ok ? "queue-runtime-stop-succeeded" : "queue-runtime-stop-failed",
-    stopped.message,
-    { ok: stopped.ok }
-  );
-  return stopped.ok;
-}
-
-async function restartQueueRuntime(settings: Settings): Promise<{ ok: boolean; message: string }> {
-  if (!isLocalComfyUrl(settings.comfyUrl)) {
-    return { ok: false, message: "远程 ComfyUI 为 connection-only，未执行进程重启。" };
-  }
-  return restartLocalService("comfy", settings);
-}
-
-async function prepareQueueRuntimeForTask(
-  taskId: string,
-  modelId: string,
-  settings: Settings,
-  reason: "lora" | "model-change" | "always"
-): Promise<boolean> {
-  if (!isLocalComfyUrl(settings.comfyUrl)) {
-    appLogger.warn("comfy", "queue-isolation-restart-skipped", "Remote ComfyUI remains connection-only at the requested queue isolation boundary", {
-      taskId,
-      modelId,
-      reason
-    });
-    return true;
-  }
-  appLogger.info("comfy", "queue-isolation-restart-started", "Restarting ComfyUI at a queue isolation boundary", {
-    taskId,
-    modelId,
-    reason
-  });
-  const recovery = await restartLocalService("comfy", settings);
-  appLogger.info(
-    "comfy",
-    recovery.ok ? "queue-isolation-restart-succeeded" : "queue-isolation-restart-failed",
-    recovery.message,
-    { taskId, modelId, reason, recoveryOk: recovery.ok }
-  );
-  return recovery.ok;
-}
-
-async function resolveH3VideoVaeModeForQueueTask(
-  _task: QueueTask,
-  settings: Settings
-): Promise<H3VideoVaeBackend | null> {
-  // The dependency-scoped scan reuses the latest file inventory when one is
-  // available, while still falling back to a full scan on a cold start or
-  // after the selected ComfyUI/model paths change.
-  const scan = await scanEnvironment(settings, "dependencies");
-  return resolveH3VideoVaeMode(
-    settings.h3VideoVaeMode,
-    h3VideoVaeAvailabilityFromModelProfiles(scan.modelProfiles)
-  );
-}
-
 function registerIpc(
   studioPaths: StudioPaths,
   applicationServices: ApplicationServices,
@@ -1087,6 +774,22 @@ app.whenReady().then(async () => {
   const studioPaths = createStudioPaths(app.getPath("userData"));
   const stateRepository = new JsonStore(studioPaths.stateFile);
   store = stateRepository;
+  const queueRuntime = new QueueRuntimeService({
+    store: stateRepository,
+    logger: appLogger,
+    runtimeState: comfyRuntimeState,
+    updateTask,
+    isLocalComfyUrl,
+    alignRuntimeProfile: (settings) => alignLocalComfyUiRuntimeProfile(settings),
+    testComfyUi,
+    startLocalService: (kind, settings, signal) => startLocalService(kind, settings, signal),
+    forceStopComfyProcesses,
+    restartLocalService,
+    freeMemory,
+    getPerformanceMetrics,
+    scanEnvironment,
+    settingsForTask: comfyUiSettingsForQueueTask
+  });
   const runtime = new ApplicationRuntime({
     paths: studioPaths,
     store: stateRepository,
@@ -1107,17 +810,10 @@ app.whenReady().then(async () => {
       }
     },
     queue: {
-      ensureComfyUiReady,
+      runtime: queueRuntime,
       resolveTaskOutputDirectory,
       requireExistingImageOutput,
       requireExistingVideoOutput,
-      prepareQueueRuntimeForTask,
-      stabilizeH3RuntimeBetweenTasks,
-      stopQueueRuntime,
-      restartQueueRuntime,
-      resolveH3VideoVaeModeForTask: resolveH3VideoVaeModeForQueueTask,
-      settingsForTask: comfyUiSettingsForQueueTask,
-      cleanupCancelledTask: cleanupCancelledQueueTask
     },
     lifecycle: {
       interruptComfy: (settings) => interrupt(settings),

@@ -41,21 +41,23 @@ function baseQueueServiceDependencies(state: AppState): QueueServiceDependencies
     logger: logger(),
     sendState: vi.fn(),
     sendPreview: vi.fn(),
-    ensureComfyUiReady: async () => undefined,
     resolveTaskOutputDirectory: async () => "C:/ComfyUI/output",
     requireExistingImageOutput: async () => [],
     requireExistingVideoOutput: async () => [],
     releasePromptRuntime: async () => 0,
-    prepareQueueRuntimeForTask: async () => true,
-    stabilizeH3RuntimeBetweenTasks: async () => true,
-    stopQueueRuntime: async () => true,
-    restartQueueRuntime: async () => ({ ok: true, message: "restarted" }),
-    resolveH3VideoVaeModeForTask: async (queuedTask) => queuedTask.h3VideoVaeMode ?? "fp16",
-    settingsForTask: (_task, settings) => settings,
+    queueRuntime: {
+      ensureComfyUiReady: async () => undefined,
+      prepareQueueRuntimeForTask: async () => true,
+      stabilizeH3RuntimeBetweenTasks: async () => true,
+      stopQueueRuntime: async () => true,
+      restartQueueRuntime: async () => ({ ok: true, message: "restarted" }),
+      resolveH3VideoVaeModeForTask: async (queuedTask) => queuedTask.h3VideoVaeMode ?? "fp16",
+      settingsForTask: (_task, settings) => settings,
+      cleanupCancelledTask: async () => undefined
+    },
     errorMeta: () => ({}),
     taskStageStartedAt: new Map(),
     nativePromptBusy: () => false,
-    cleanupCancelledTask: async () => undefined,
     effectiveImageInputLibraryDirectory: async () => "C:/ComfyUI/input/library",
     imageInspection: { readDimensions: () => ({ width: 640, height: 360 }) }
   };
@@ -144,11 +146,11 @@ describe("queue service facade", () => {
       resolveTaskOutputDirectory: deps.resolveTaskOutputDirectory,
       requireExistingImageOutput: deps.requireExistingImageOutput,
       requireExistingVideoOutput: deps.requireExistingVideoOutput,
-      prepareQueueRuntimeForTask: deps.prepareQueueRuntimeForTask,
-      stabilizeH3RuntimeBetweenTasks: deps.stabilizeH3RuntimeBetweenTasks,
-      stopQueueRuntime: deps.stopQueueRuntime,
-      restartQueueRuntime: deps.restartQueueRuntime,
-      settingsForTask: deps.settingsForTask,
+      prepareQueueRuntimeForTask: deps.queueRuntime.prepareQueueRuntimeForTask,
+      stabilizeH3RuntimeBetweenTasks: deps.queueRuntime.stabilizeH3RuntimeBetweenTasks,
+      stopQueueRuntime: deps.queueRuntime.stopQueueRuntime,
+      restartQueueRuntime: deps.queueRuntime.restartQueueRuntime,
+      settingsForTask: deps.queueRuntime.settingsForTask,
       errorMeta: deps.errorMeta
     });
 

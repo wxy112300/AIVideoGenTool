@@ -50,6 +50,7 @@ const workflowSources = new Map([
 const imageAssetSources = new Map([
   ["image-asset-ipc", source("electron/image-asset-ipc.ts")]
 ]);
+const queueRuntimeSource = source("electron/services/queue-runtime-service.ts");
 const registrationSources = new Map([
   ["main", mainSource],
   ...queueSources,
@@ -353,6 +354,19 @@ describe("main/preload boundary characterization", () => {
     expect(enqueueSource).not.toContain("nativeImage");
     expect(enqueueSource).toContain("ImageInspectionPort");
     expect(enqueueSource).toContain("service.enqueue");
+  });
+
+  it("keeps queue runtime orchestration out of main and behind one capability", () => {
+    expect(queueRuntimeSource).not.toContain('from "electron"');
+    expect(queueRuntimeSource).toContain("class QueueRuntimeService");
+    expect(mainSource).toContain("new QueueRuntimeService");
+    expect(mainSource).not.toContain("async function ensureComfyUiReady");
+    expect(mainSource).not.toContain("async function stabilizeH3RuntimeBetweenTasks");
+    expect(mainSource).not.toContain("async function prepareQueueRuntimeForTask");
+    expect(mainSource).not.toContain("async function cleanupCancelledQueueTask");
+    expect(mainSource).not.toContain("resolveH3VideoVaeModeForQueueTask");
+    expect(source("electron/application-runtime.ts")).toContain("runtime: QueueRuntimeCapability");
+    expect(source("electron/services/queue-service.ts")).toContain("queueRuntime: QueueRuntimeCapability");
   });
 
   it("keeps History application services independent from Electron transport", () => {
