@@ -1026,38 +1026,25 @@ async function runHistoryDetailInteractionSmoke(window, fixture, viewport) {
     const isImage = ${JSON.stringify(isImage)};
     const visible = (element) => element instanceof HTMLElement && element.getClientRects().length > 0;
     const root = document.querySelector(${JSON.stringify(isImage ? ".image-history-detail-layout" : ".history-detail-hero")});
-    const compact = root?.querySelector(".history-detail-compact-actions");
-    const more = root?.querySelector(".history-detail-more");
-    const summary = more?.querySelector("summary");
+    const actionSurface = root?.querySelector(".history-detail-quick-actions");
     const recordSection = document.querySelector(".history-record-section");
     const main = document.querySelector("main");
+    const documentElement = document.documentElement;
+    const body = document.body;
     const actionSelectors = ${JSON.stringify(isImage
       ? ["[data-image-continue-video-project]", "[data-image-continue-edit-project]", "[data-copy-image]", "[data-copy-file]", "[data-show-file]", "[data-image-set-cover]", "[data-delete-image-version]", "[data-delete-history]", "[data-image-version-id]"]
       : ["[data-continue-history]", "[data-edit-history]", "[data-copy-file]", "[data-show-file]", "[data-open-upscale]", "[data-delete-history]", ".history-summary-version-switcher [data-version-id]"])};
     const selectorsPresent = Object.fromEntries(actionSelectors.map((selector) => [selector, Boolean(document.querySelector(selector))]));
-    const compactBefore = {
-      present: Boolean(compact),
-      visible: visible(compact),
-      actionCount: compact?.querySelectorAll("button").length ?? 0,
-      primary: visible(compact?.querySelector("button.primary"))
-    };
-    const summaryFocusable = summary instanceof HTMLElement && summary.tabIndex >= 0;
-    if (more instanceof HTMLDetailsElement) more.open = false;
-    if (summary instanceof HTMLElement) {
-      summary.focus();
-      summary.click();
-    }
-    const moreAfterOpen = {
-      present: more instanceof HTMLDetailsElement,
-      open: more instanceof HTMLDetailsElement && more.open,
-      actionVisible: visible(more?.querySelector(".history-detail-more-actions button")),
-      focusOnSummary: document.activeElement === summary
+    const actionSurfaceEvidence = {
+      present: Boolean(actionSurface),
+      visible: visible(actionSurface),
+      actionCount: [...(actionSurface?.querySelectorAll("button") ?? [])].filter(visible).length,
+      primary: visible(actionSurface?.querySelector(".history-detail-action-primary button")),
+      secondary: visible(actionSurface?.querySelector(".history-detail-action-secondary button"))
     };
     const stage = isImage ? document.querySelector(".image-history-stage[data-image-media]") : null;
     return {
-      compact: compactBefore,
-      summaryFocusable,
-      more: moreAfterOpen,
+      actions: actionSurfaceEvidence,
       records: {
         present: Boolean(recordSection),
         grid: Boolean(recordSection?.querySelector(".history-record-grid")),
@@ -1066,16 +1053,16 @@ async function runHistoryDetailInteractionSmoke(window, fixture, viewport) {
       selectorsPresent,
       versionCount: document.querySelectorAll(isImage ? "[data-image-version-id]" : ".history-summary-version-switcher [data-version-id]").length,
       mediaState: stage?.dataset.imageMediaState ?? "not-applicable",
-      noHorizontalOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1 && (!main || main.scrollWidth <= main.clientWidth + 1)
+      noHorizontalOverflow: documentElement.scrollWidth <= documentElement.clientWidth + 1
+        && body.scrollWidth <= body.clientWidth + 1
+        && (!main || main.scrollWidth <= main.clientWidth + 1)
     };
   })()`);
   const selectorValues = Object.values(evidence.selectorsPresent);
   const checks = {
-    compactPresent: evidence.compact.present,
-    compactVisible: evidence.compact.visible,
-    compactActions: evidence.compact.actionCount >= 2 && evidence.compact.primary,
-    summaryFocusable: evidence.summaryFocusable,
-    moreDisclosure: evidence.more.present && evidence.more.open && evidence.more.actionVisible && evidence.more.focusOnSummary,
+    actionSurfacePresent: evidence.actions.present,
+    actionSurfaceVisible: evidence.actions.visible,
+    actionSurfaceActions: evidence.actions.actionCount >= 2 && evidence.actions.primary,
     generationRecord: evidence.records.present && evidence.records.grid && evidence.records.articleCount >= (isImage ? 4 : 6),
     actionSelectors: selectorValues.length > 0 && selectorValues.every(Boolean),
     multipleVersions: evidence.versionCount >= (isImage ? 2 : 1),
@@ -1192,7 +1179,7 @@ async function runInteractionSmoke(window, fixture, viewport) {
     await runHistoryInteractionSmoke(window, fixture, viewport);
     return;
   }
-  if ((fixture.id === "video-detail" || fixture.id === "image-detail") && (viewport.id === "900x800" || viewport.id === "760x800")) {
+  if (fixture.id === "video-detail" || fixture.id === "image-detail") {
     await runHistoryDetailInteractionSmoke(window, fixture, viewport);
     return;
   }

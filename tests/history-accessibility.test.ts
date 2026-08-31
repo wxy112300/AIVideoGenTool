@@ -294,6 +294,7 @@ describe("History accessibility markup", () => {
       /<article\b[^>]*data-open-image-history="image-project-detail"[^>]*>/
     )?.[0];
 
+    expect(videoPage).toContain('class="history-detail-quick-actions"');
     expect(videoPage).toContain('class="history-detail-action-primary"');
     expect(videoPage).not.toContain('class="history-detail-more"');
     expect(videoPage).toContain('data-open-upscale');
@@ -341,6 +342,7 @@ describe("History accessibility markup", () => {
     expect(imageCardStart).toBeDefined();
     expect(imageCardStart).not.toContain("title=");
     expect(imageCardStart).toContain('aria-label="Image detail fixture，history.card.openDetailsContext"');
+    expect(imagePage).toContain('class="history-detail-quick-actions"');
     expect(imagePage).toContain('class="history-detail-action-primary"');
     expect(imagePage).not.toContain('class="history-detail-more"');
     expect(imagePage.match(/data-image-continue-video-project=/g)).toHaveLength(1);

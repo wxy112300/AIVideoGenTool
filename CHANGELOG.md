@@ -10,6 +10,12 @@
 
 （暂无已归档条目。）
 
+## 0.56.3 — 2026-08-31
+
+- 对齐 History video/image detail 的 renderer capture smoke 与当前 `.history-detail-quick-actions` 动作面，移除旧 compact/disclosure harness 假设，并同步可访问性 selector coverage。
+- detail overflow smoke 现在同时检查 document、body 与 main；使用真实 Electron current-renderer fixture 在 `1440x900`、`1280x800`、`900x800`、`760x800` 完成 video/image 捕获与 detail interaction smoke，未发现可见页面横向溢出。
+- 记录 Media Chrome 菜单和裁剪文本的隐藏测量噪声；未修改 History 数据、IPC、媒体身份、播放器业务或生产详情 DOM。
+
 ## 0.56.2 — 2026-08-31
 
 - 收口事件型 renderer 刷新：同一帧内的重复刷新请求合并处理，显式命令渲染仍保持立即语义；性能轮询在连接状态未变化时不再触发 Settings 无效全量重绘。
