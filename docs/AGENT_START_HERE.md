@@ -8,6 +8,7 @@ This guide is the shortest reliable route into Local Video Studio. Read the cont
 | --- | --- | --- |
 | Queue, history, paths, IPC, persistence, process exit | `ARCHITECTURE_CONTRACT.md` | `electron/main.ts`, `electron/store.ts`, `electron/services/`, `src/core/` |
 | Application boundary, lifecycle, composition | `ARCHITECTURE_CONTRACT.md` | `electron/application-runtime.ts`, `electron/services/`, `electron/ports/`, `electron/*-ipc.ts`, `src/renderer/entry.ts` |
+| Agent-controlled real UI/application smoke | [`AGENT_ELECTRON_API_RUNBOOK.md`](AGENT_ELECTRON_API_RUNBOOK.md), `ARCHITECTURE_CONTRACT.md` | packaged/development Electron, preload `window.studio`, CDP `Runtime.evaluate`, `AppApi` queue/runtime methods |
 | History 大数据量性能、媒体延迟加载、滚动恢复 | `UX_CONTRACT.md`, `HISTORY_PERFORMANCE_OPTIMIZATION_PLAN.md` | `src/renderer/pages/history/`, `src/renderer/render-coordinator.ts` |
 | 真实 Electron 启动、冷/热状态与 Chromium 性能证据 | `ARCHITECTURE_CONTRACT.md`, `HISTORY_PERFORMANCE_OPTIMIZATION_PLAN.md`, active Closure Plan C04 | `scripts/capture-c04-electron-evidence.mjs`, `scripts/dev.mjs`, `electron/main.ts` 的默认关闭 C04 seam |
 | Layout, interaction, focus, media states | `UX_CONTRACT.md` | `src/renderer/`, `src/styles/`, current renderer evidence; prototypes are historical |
@@ -35,6 +36,8 @@ Inspect `git status` before reading or editing hotspot files. This repository is
 - Settings installation UX: `src/renderer/pages/settings/` plus preload/IPC handlers.
 
 Current validation boundaries are explicit: the renderer source has one `window.studio` read in `src/renderer/entry.ts`, page modules do not read the preload global, and the application runtime has no Electron import. P02/P03 automated and synthetic renderer checks pass. `scripts/capture-c04-electron-evidence.mjs` is the rerunnable real Electron evidence path for isolated cold/warm startup, migration, DOM/Long Task, CDP trace, screenshot, and bounded close checks; its output still does not replace a real ComfyUI generation or a development run when the local Vite listener is unavailable.
+
+When an Agent must exercise a real UI-backed application path, use [`AGENT_ELECTRON_API_RUNBOOK.md`](AGENT_ELECTRON_API_RUNBOOK.md): connect to an explicitly launched local Electron renderer through loopback CDP and call the existing typed `window.studio`/`AppApi` methods. This is a local test/operator bridge over preload and IPC, not evidence of a public HTTP, Headless, Browser, or LAN API. Record actual renderer/API invocation, ComfyUI execution, task-ID-based history/output verification, and app-owned process cleanup separately from static or synthetic checks.
 
 Do not copy the complete catalog into README or another hand-maintained list. User-facing summaries may name model families, but component filenames and download targets belong to the catalog.
 
@@ -71,5 +74,6 @@ Always inspect the selected instance. Installing a node into one ComfyUI data di
 - Node installer or environment scan: offline scan, selected multi-install instance, streamed success/failure output, timeout behavior, restart/recheck and full `npm.cmd run verify`.
 - Workflow logic: focused workflow tests, all bundled users of shared fields, static JSON construction, full verify and a real minimal ComfyUI run when available.
 - Renderer interaction: focused controller tests, typing/focus preservation, loading/error/success states, both required viewport sizes and full verify.
+- Agent-controlled real application smoke: follow [`AGENT_ELECTRON_API_RUNBOOK.md`](AGENT_ELECTRON_API_RUNBOOK.md); report renderer/API invocation, actual ComfyUI execution, history/output verification, and cleanup separately from static or synthetic validation.
 
 Report “static validation passed” when no real ComfyUI generation was run. Never convert absence of an error into a performance or quality claim.

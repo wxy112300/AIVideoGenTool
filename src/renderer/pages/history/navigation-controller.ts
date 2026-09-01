@@ -5,6 +5,7 @@ export type HistoryLayout = "masonry" | "album";
 export interface HistoryNavigationControllerOptions {
   setHistoryKind(kind: HistoryKind): void;
   resetHistoryScroll(): void;
+  captureHistoryScrollPosition?(preferredAssetId?: string, preserveForActivation?: boolean): void;
   switchHistoryLayout(layout: HistoryLayout): void;
   openHistoryDetail(assetId: string): void;
   openImageHistoryDetail(projectId: string): void;
@@ -55,6 +56,7 @@ export function mountHistoryNavigationController(
     options.resetHistoryScroll();
     context.requestRender();
     window.requestAnimationFrame(() => {
+      if (context.getRoute().page !== "history" || context.getRoute().historyKind !== nextKind) return;
       window.scrollTo({ top: 0, behavior: "auto" });
       if (restoreFocus) {
         window.requestAnimationFrame(() => {
@@ -170,6 +172,23 @@ export function mountHistoryNavigationController(
       if (versionId) options.selectVideoHistoryVersion(versionId);
     }, { signal });
   });
+
+  const captureCardActivation = (event: Event): void => {
+    if (context.getRoute().page !== "history") return;
+    const card = cardFromEvent(event);
+    if (!card) return;
+    const assetId = card.dataset.openHistory ?? card.dataset.openImageHistory;
+    if (assetId) options.captureHistoryScrollPosition?.(assetId, true);
+  };
+  // Pointer focus can scroll a card before the bubbling click handler runs.
+  // Capture the anchor at the earliest activation boundary so opening a detail
+  // page cannot overwrite it with the browser-adjusted scroll position.
+  root.addEventListener("pointerdown", captureCardActivation, { capture: true, signal });
+  root.addEventListener("mousedown", captureCardActivation, { capture: true, signal });
+  root.addEventListener("click", captureCardActivation, { capture: true, signal });
+  root.addEventListener("focusin", (event) => {
+    captureCardActivation(event);
+  }, { capture: true, signal });
 
 
   return () => events.abort();

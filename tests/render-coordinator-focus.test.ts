@@ -35,6 +35,7 @@ function createCoordinator(root: HTMLElement, currentPage: "settings" | "history
     bindCreate: noop,
     bindQueue: noop,
     bindHistory: noop,
+    bindHistoryNavigation: () => noop,
     bindSettings: noop,
     bindHistoryViewportControls: () => noop,
     restoreQueueScrollPosition: noop,

@@ -1,13 +1,19 @@
 # History 大数据量性能优化实施计划
 
-状态：已实施（Phase 0–5；Phase 6 未启用）
+状态：已实施并收口（Phase 0–5；Phase 6 `content-visibility` 已启用；接受实测剩余偏差）
 目标执行 Agent：Luna  
 范围：当前生产 Renderer 的 History 列表页（视频与图片、瀑布流与相册模式）  
 不在范围：History 持久化结构、IPC 数据分页、详情页信息架构、历史原型页面
 
+## 2026-09-01 收口决策
+
+用户已接受当前 500 条 History 的剩余性能偏差，停止继续为严格 `<=50ms` Long Task 指标引入 connected DOM cache、分帧 materialization 或虚拟化。当前稳定 packaged 实测中，video/image 的 masonry/album 四种布局在 6 次运行、共 24 个操作窗口均无 Long Task；detail return 为 video `52–58ms`、image `64–75ms`，12 次返回滚动误差均为 `0px`。剩余任务由 500-card subtree 重新接入文档后的 Chromium rendering state 重建主导，不是 controller、observer 或媒体调度热点。
+
+这是经过测量后的产品取舍，不是宣称严格性能预算已经通过。后续 Agent 应保留现有优化和证据，不再继续尝试 observer batch、RAF 延迟、controller 生命周期特判或虚拟化；只有用户明确重新提出性能目标，或真实数据稳定达到上千条并出现不可接受体验时，才重开第 8 节架构评审。
+
 ## 0. 实施状态与本轮核验（2026-08-31）
 
-本轮审计确认，Phase 0–5 的实现已经存在于当前生产 Renderer：确定性 500 条 fixture 与合成基准、图片视口调度（并发上限 3）、视频近视口封面调度（并发上限 1）、批量 masonry 分列、标题分批测量，以及统一的 History 滚动快照/锚点恢复均已落地。Phase 6 的 `content-visibility` 实验未启用，也没有引入虚拟列表；当前合成证据没有触发虚拟化升级门。
+本轮审计确认，Phase 0–5 的实现已经存在于当前生产 Renderer：确定性 500 条 fixture 与合成基准、图片视口调度（并发上限 3）、视频近视口封面调度（并发上限 1）、批量 masonry 分列、标题分批测量，以及统一的 History 滚动快照/锚点恢复均已落地。后续 packaged 实测启用了 Phase 6 的 `content-visibility` 与 intrinsic size 占位；没有引入虚拟列表，用户已接受其剩余偏差。
 
 本次使用 jsdom、无真实媒体文件的 500 条基准得到以下结果。`renderMs`、`domParseMs` 和 `controllerMountMs` 是测试 harness 指标，不是 Electron 首屏时长，也不能单独证明 50 ms Long Task 预算或 70% 基线下降：
 
@@ -24,7 +30,7 @@
 - `npm.cmd run verify`：140 个文件、1115 个测试通过；TypeScript typecheck、Vite 生产构建（2278 modules）和对比度检查（20/20）通过。
 - 500 条基准断言：四种类型/布局均保留 500 张语义卡片；挂载阶段没有全量图片 loader、视频 cache read 或 warmup；图片/视频峰值并发分别不超过 3/1。
 
-仍未验证的项目：真实媒体文件上的 Electron DevTools before/after Long Task 对比、`1280×800`/`1440×900`/约 `760px` 的手工 History → Detail → History smoke，以及真实 GPU/解码压力。因此本计划只将 P02 标记为“实现与自动化验收完成”，不把合成数值写成运行时性能承诺。
+仍未完成或不构成严格性能通过的项目：同机同参数的 before/after 基线（仓库没有可比的 0.56.2 Electron 基线）、development renderer、完整 production viewport 矩阵、真实 GPU/解码压力，以及 `<=50ms` Long Task 技术预算。最新 packaged actual evidence 已单独记录在 [`docs/Plan/investigation/2026.9.1-wp-c04-electron-performance-evidence.md`](Plan/investigation/2026.9.1-wp-c04-electron-performance-evidence.md)；因此本计划只将 P02 标记为“实现与自动化验收完成”，不把合成数值或 accepted residual 写成严格运行时性能通过。
 
 ## 1. 目标与成功标准
 
@@ -456,6 +462,8 @@ Luna 开始前必须重新读取当前文件并检查 `git status`。本仓库�
 每个阶段的第一处实质编辑后立即运行最窄验证。若修复开始需要状态猜测、阈值补丁或多套滚动恢复路径，停止并回到 `HistoryLayoutController` 这个唯一 owner 合并逻辑。
 
 ## 8. 虚拟化升级门（仅在第一阶段未达标时）
+
+当前决策：不进入虚拟化。现有 500 条实测未出现本节定义的 `>100ms` 同步 mount 升级条件，且用户确认当前体验可以接受。以下内容仅保留为将来重新开启性能架构评审时的约束，不属于当前收尾范围。
 
 完成 Phase 1–5 后重新测量。只有同时满足以下任一条件，才提议第二份虚拟化设计：
 

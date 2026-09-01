@@ -45,6 +45,22 @@ Large entry files are an existing risk, not a pattern to expand. When work intro
 - P03 only establishes same-frame event-refresh coalescing and removes an invalid Settings full render from the performance polling path. Synthetic tests and current-renderer fixture smoke are evidence for those boundaries; they are not Chromium Long Task or cold/warm startup measurements.
 - C04's `scripts/capture-c04-electron-evidence.mjs` measures the production entry in an explicitly isolated userData/state/media directory and records startup milestones, renderer DOM/Long Task data, CDP traces, screenshots, migration and bounded close results. Its default-off `C04_DISABLE_HARDWARE_ACCELERATION` seam and the corresponding no-sandbox/software-rendering launch switches exist only for hosts where the test renderer cannot start with the host GPU/sandbox; they are not a normal product policy or evidence of equivalent production GPU/security behavior.
 
+### Agent-controlled renderer Application API
+
+Agents and local test harnesses may operate the real application through an explicitly launched Electron renderer and a loopback CDP connection. The supported path is:
+
+```text
+loopback CDP -> renderer window.studio -> preload IPC
+  -> Electron adapters -> ApplicationRuntime/services
+  -> ComfyUI, queue, history and persisted media
+```
+
+`AppApi` in `src/types.ts` is the type contract, `electron/preload.cts` exposes the controlled methods, and `src/renderer/entry.ts` reads the preload global once before projecting it through `src/renderer/studio-client.ts`. This path is useful for real application/API smoke tests such as environment scanning, app-managed ComfyUI startup, enqueueing, queue control, state observation and history/media verification. The reusable procedure and evidence vocabulary live in [`AGENT_ELECTRON_API_RUNBOOK.md`](AGENT_ELECTRON_API_RUNBOOK.md).
+
+This loopback bridge is a test/operator seam, not a public HTTP, Headless, Browser or LAN API. It must be enabled explicitly, kept on `127.0.0.1`, and excluded from normal product startup defaults. A raw ComfyUI `/prompt` or `/system_stats` call proves only a lower-level service behavior; it does not prove that the renderer, preload, IPC, queue snapshot, history metadata or media path worked. Likewise, a successful one-model image smoke must not be generalized to every workflow or to the future Headless/API plan.
+
+Application methods must retain their receiver across the composition boundary. Do not spread or destructure class-owned service methods into a capability object unless they are explicitly bound; prefer a bound adapter or closure. A method-level smoke test should call the exposed capability and exercise the relevant state transition, because a typecheck can miss an unbound method that becomes `undefined` or loses `this` only at runtime.
+
 ## State Contracts
 
 ### Draft and queue

@@ -547,8 +547,7 @@ function registerIpc(
     getCrashDumpsDirectory: () => app.getPath("crashDumps"),
     performance: getPerformanceMetrics,
     reconcileConfiguredComfyListenerOwnership,
-    runtimeState: comfyRuntimeState,
-    hasRunningTask: () => store.get().queue.some((task) => task.status === "running")
+    runtimeState: comfyRuntimeState
   });
   registerNativeHostIpc({
     ipc: ipcMain,

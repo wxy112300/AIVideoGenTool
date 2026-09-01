@@ -566,6 +566,7 @@ describe("renderer boundary characterization", () => {
       bindCreate: vi.fn(),
       bindQueue: vi.fn(),
       bindHistory,
+      bindHistoryNavigation: () => () => undefined,
       bindSettings: vi.fn(),
       bindHistoryViewportControls: () => viewportCleanup,
       restoreQueueScrollPosition: vi.fn(),

@@ -55,7 +55,12 @@ export function mountShellController(
       options.setPage(nextPage);
       options.render();
       if (nextPage !== "history") {
-        window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+        window.requestAnimationFrame(() => {
+          // A render can be superseded before this frame runs. Do not let a
+          // stale navigation callback reset a newly entered History page.
+          if (options.getPage() !== nextPage) return;
+          window.scrollTo({ top: 0, behavior: "auto" });
+        });
       }
     }, { signal });
   });

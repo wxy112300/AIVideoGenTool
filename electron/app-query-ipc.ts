@@ -8,7 +8,10 @@ import type {
   PerformanceMetrics,
   Settings
 } from "../src/types.js";
-import type { PromptRuntimeState } from "../src/core/prompt-runtime-state.js";
+import {
+  promptOperationIsActive,
+  type PromptRuntimeState
+} from "../src/core/prompt-runtime-state.js";
 import type { AppLogger } from "../src/infrastructure/app-logger.js";
 import type { StateRepository } from "./ports/state-repository.js";
 
@@ -34,7 +37,6 @@ export interface AppQueryIpcDependencies {
   performance: (settings: Settings) => Promise<PerformanceMetrics>;
   reconcileConfiguredComfyListenerOwnership: (settings: Settings) => Promise<boolean>;
   runtimeState: RuntimeStatePort;
-  hasRunningTask: () => boolean;
 }
 
 function appLogSnapshot(
@@ -96,7 +98,8 @@ export function registerAppQueryIpc(deps: AppQueryIpcDependencies): void {
       metrics.comfyConnected,
       settings.comfyUrl.replace(/\/+$/, ""),
       ownership,
-      deps.hasRunningTask()
+      deps.store.get().queue.some((task) => task.status === "running") ||
+        promptOperationIsActive(deps.getPromptRuntimeState())
     );
     return metrics;
   });

@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+
+import { describe, expect, it, vi } from "vitest";
 
 import { createTranslator } from "../src/core/i18n";
+import type { Page } from "../src/renderer/contracts";
+import { mountShellController } from "../src/renderer/shell/controller";
 import { renderShell } from "../src/renderer/shell/page";
 
 function render(page: "create" | "history-detail" | "settings") {
@@ -58,5 +62,43 @@ describe("renderer shell navigation semantics", () => {
     expect(html).toContain('data-flash-message>扫描失败</span>');
     expect(html).toContain('data-notification-action="open-settings"');
     expect(html).toContain(">打开设置</button>");
+  });
+
+  it("does not let a stale navigation frame reset a newly entered History page", () => {
+    document.body.innerHTML = '<button data-page="queue">Queue</button>';
+    let page: Page = "create";
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    const cleanup = mountShellController({
+      getPage: () => page,
+      settingsHaveUnsavedChanges: () => false,
+      rememberModalFocus: () => undefined,
+      requestDiscardSettings: () => undefined,
+      returnToHistory: () => undefined,
+      returnToLastHistoryDetail: () => undefined,
+      navigateHistoryDetail: () => undefined,
+      navigateImageHistoryDetail: () => undefined,
+      captureHistoryScrollPosition: () => undefined,
+      setHistoryScrollRestorePending: () => undefined,
+      clearHistoryForwardTarget: () => undefined,
+      setPage: (nextPage) => {
+        page = nextPage;
+      },
+      dismissNotification: () => undefined,
+      runNotificationAction: () => undefined,
+      reportUserAction: () => undefined,
+      render: () => undefined
+    });
+
+    document.querySelector<HTMLButtonElement>("[data-page=queue]")?.click();
+    page = "history";
+    frames.shift()?.(0);
+
+    expect(scrollTo).not.toHaveBeenCalled();
+    cleanup();
   });
 });

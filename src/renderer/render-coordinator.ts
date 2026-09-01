@@ -30,6 +30,7 @@ export interface RenderCoordinatorOptions {
   bindCreate(): void;
   bindQueue(): void;
   bindHistory(playback: HistoryPlaybackSnapshot | null): void;
+  bindHistoryNavigation(): RendererCleanup;
   bindSettings(): void;
   bindHistoryViewportControls(): RendererCleanup;
   restoreQueueScrollPosition(): void;
@@ -61,6 +62,119 @@ interface FocusSnapshot {
   selectionDirection: "forward" | "backward" | "none" | null;
   scrollLeft: number;
   scrollTop: number;
+}
+
+interface PreservedHistoryList {
+  state: AppState;
+  mainContent: DocumentFragment;
+}
+
+interface DeferredHistoryDetailPlayer {
+  content: string;
+  playerMarkup: string;
+}
+
+function isHistoryDetailPage(page: Page): boolean {
+  return page === "history-detail" || page === "image-history-detail";
+}
+
+function hasHistoryList(root: HTMLElement): boolean {
+  return Boolean(root.querySelector(".app-shell.history-shell .history-gallery"));
+}
+
+function hasHistoryDetail(root: HTMLElement): boolean {
+  return Boolean(root.querySelector(".history-detail-hero, .image-history-detail-layout"));
+}
+
+function takeHistoryMainContent(root: HTMLElement): DocumentFragment | null {
+  const main = root.querySelector<HTMLElement>(".app-shell.history-shell > main");
+  if (!main || !main.querySelector(".history-gallery")) return null;
+  const content = document.createDocumentFragment();
+  while (main.firstChild) content.append(main.firstChild);
+  return content;
+}
+
+function deferHistoryDetailPlayer(content: string): DeferredHistoryDetailPlayer | null {
+  const playerStart = content.indexOf("<media-controller");
+  if (playerStart < 0) return null;
+  const openingEnd = content.indexOf(">", playerStart);
+  const closingStart = content.indexOf("</media-controller>", openingEnd + 1);
+  if (openingEnd < 0 || closingStart < 0) return null;
+  const opening = content.slice(playerStart, openingEnd + 1);
+  const playerMarkup = content.slice(playerStart, closingStart + "</media-controller>".length);
+  const placeholderOpening = opening
+    .replace(/^<media-controller\b/, '<div data-history-player-placeholder="true"')
+    .replace(/>$/, ' aria-busy="true">');
+  const placeholder = `${placeholderOpening}</div>`;
+  return {
+    content: `${content.slice(0, playerStart)}${placeholder}${content.slice(closingStart + "</media-controller>".length)}`,
+    playerMarkup
+  };
+}
+
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
+async function mountDeferredHistoryPlayer(
+  root: HTMLElement,
+  playerMarkup: string,
+  isCurrent: () => boolean
+): Promise<boolean> {
+  const placeholder = root.querySelector<HTMLElement>("[data-history-player-placeholder]");
+  if (!placeholder) return true;
+  await nextAnimationFrame();
+  if (!isCurrent()) return false;
+
+  const detachedPlayer = document.createElement("div");
+  detachedPlayer.innerHTML = playerMarkup;
+  const player = detachedPlayer.firstElementChild;
+  if (!(player instanceof HTMLElement)) return false;
+
+  const playerChildren = [...player.children];
+  const controlBar = playerChildren.find((child) => child.localName === "media-control-bar") as HTMLElement | undefined;
+  const controlChildren = controlBar ? [...controlBar.children] : [];
+  const volume = controlChildren.find((child) => child.classList.contains("history-player-volume"));
+  const volumeChildren = volume ? [...volume.children] : [];
+  const volumeRange = volumeChildren.find((child) => child.localName === "media-volume-range");
+  const utilityGroup = controlChildren.find((child) => child.classList.contains("history-player-utility-group"));
+  const utilityChildren = utilityGroup ? [...utilityGroup.children] : [];
+  controlBar?.replaceChildren();
+  volume?.replaceChildren();
+  utilityGroup?.replaceChildren();
+  player.replaceChildren();
+
+  await nextAnimationFrame();
+  if (!isCurrent()) return false;
+
+  placeholder.replaceWith(player);
+  await nextAnimationFrame();
+  if (!isCurrent()) return false;
+  player.append(...playerChildren.filter((child) => child !== controlBar));
+
+  const continueMount = async (): Promise<void> => {
+    if (!controlBar) return;
+    await nextAnimationFrame();
+    if (!isCurrent()) return;
+    player.append(controlBar);
+
+    await nextAnimationFrame();
+    if (!isCurrent()) return;
+    controlBar.append(...controlChildren);
+
+    await nextAnimationFrame();
+    if (!isCurrent()) return;
+    if (volume) volume.append(...volumeChildren.filter((child) => child !== volumeRange));
+    if (utilityGroup) utilityGroup.append(...utilityChildren);
+    renderIcons(controlBar);
+
+    await nextAnimationFrame();
+    if (!isCurrent()) return;
+    if (volumeRange && volume) volume.append(volumeRange);
+    renderIcons(controlBar);
+  };
+  void continueMount().catch(() => undefined);
+  return true;
 }
 
 function isRestorableFocusElement(
@@ -207,6 +321,19 @@ function restoreHistoryPlayback(
 
 function stopRenderedVideoPlayback(root: HTMLElement): void {
   root.querySelectorAll<HTMLVideoElement>("video").forEach((video) => {
+    // History cards keep an inert <video> shell until their scheduler brings
+    // a preview into the viewport. Calling load() on every inert shell while
+    // leaving the list would force Chromium to touch hundreds of media
+    // elements in the click task. Only tear down elements that have actually
+    // acquired a source or entered a media state.
+    const hasActiveMedia = Boolean(
+      video.getAttribute("src") ||
+      video.currentSrc ||
+      video.querySelector("source") ||
+      video.dataset.historyLoaded === "true" ||
+      !video.paused
+    );
+    if (!hasActiveMedia) return;
     video.pause();
     // Pausing alone is not sufficient for a media element that is about to be
     // detached. Clear its source and abort pending decode/play promises so a
@@ -223,6 +350,7 @@ export function createRenderCoordinator(
   let renderRequest = 0;
   let scheduledFrame: number | null = null;
   let scheduledToken = 0;
+  let preservedHistoryList: PreservedHistoryList | null = null;
 
   const cancelScheduledRender = (): void => {
     scheduledToken += 1;
@@ -244,22 +372,58 @@ export function createRenderCoordinator(
       if (request !== renderRequest) return;
 
       const previousPage = options.getPage();
+      const enteringHistoryDetail = isHistoryDetailPage(previousPage) && hasHistoryList(options.root);
+      const returningFromHistoryDetail = previousPage === "history" && hasHistoryDetail(options.root);
       options.beforeRenderHistory();
       if (previousPage === "queue") options.beforeRenderQueue();
       const playback = captureHistoryPlayback(options.root, previousPage);
       stopRenderedVideoPlayback(options.root);
+      if (enteringHistoryDetail) {
+        const mainContent = takeHistoryMainContent(options.root);
+        if (mainContent) {
+          preservedHistoryList = {
+            state: options.getState(),
+            mainContent
+          };
+        }
+      } else if (!isHistoryDetailPage(previousPage) && !returningFromHistoryDetail) {
+        preservedHistoryList = null;
+      }
       options.closeAppLogContextMenu();
 
-      const content = previousPage === "create" ? options.renderPages.create() :
+      const page = options.getPage();
+      const state = options.getState();
+      const preservedList = preservedHistoryList;
+      const restorePreservedHistory = page === "history" &&
+        returningFromHistoryDetail &&
+        preservedList?.state === state;
+      if (page === "history" && returningFromHistoryDetail && !restorePreservedHistory) {
+        preservedHistoryList = null;
+      }
+      let content = restorePreservedHistory ? "" : previousPage === "create" ? options.renderPages.create() :
         previousPage === "queue" ? options.renderPages.queue() :
         previousPage === "history" ? options.renderPages.history() :
         previousPage === "history-detail" ? options.renderPages.historyDetail() :
         previousPage === "image-history-detail" ? options.renderPages.imageHistoryDetail() :
         options.renderPages.settings();
-      const page = options.getPage();
-      const state = options.getState();
+      let deferredHistoryPlayerMarkup: string | null = null;
+      if (isHistoryDetailPage(page)) {
+        const deferredPlayer = deferHistoryDetailPlayer(content);
+        if (deferredPlayer) {
+          content = deferredPlayer.content;
+          deferredHistoryPlayerMarkup = deferredPlayer.playerMarkup;
+        }
+      }
       const ui = options.getUiState();
       const focus = captureFocus(options.root);
+      let shellBound = false;
+      const historyNavigationCleanup: { current: RendererCleanup | null } = { current: null };
+      const bindShellController = (): void => {
+        if (shellBound) return;
+        options.bindShell();
+        options.addPageCleanup(options.bindHistoryViewportControls());
+        shellBound = true;
+      };
 
       options.root.innerHTML = renderShell({
         page,
@@ -274,16 +438,40 @@ export function createRenderCoordinator(
         icon: options.icon,
         escapeHtml: options.escapeHtml
       });
+      if (page === "history" || isHistoryDetailPage(page)) bindShellController();
+      if (restorePreservedHistory && preservedList) {
+        const renderedMain = options.root.querySelector<HTMLElement>(".app-shell.history-shell > main");
+        renderedMain?.append(preservedList.mainContent);
+        preservedHistoryList = null;
+        historyNavigationCleanup.current = options.bindHistoryNavigation();
+        options.addPageCleanup(historyNavigationCleanup.current);
+        options.restoreHistoryScrollPosition();
+      } else if (page === "history") {
+        historyNavigationCleanup.current = options.bindHistoryNavigation();
+        options.addPageCleanup(historyNavigationCleanup.current);
+      }
+      if (deferredHistoryPlayerMarkup) {
+        const mounted = await mountDeferredHistoryPlayer(
+          options.root,
+          deferredHistoryPlayerMarkup,
+          () => request === renderRequest && options.getPage() === page
+        );
+        if (!mounted) return;
+      }
       if (page === "history") {
         // History can contain hundreds of cards. Let the browser commit the
         // shell/list DOM before mounting controllers and media observers so a
         // return click does not keep all work in one input task.
         await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-        if (request !== renderRequest || options.getPage() !== page) return;
+        if (request !== renderRequest || options.getPage() !== page) {
+          return;
+        }
       }
+      const earlyHistoryNavigationCleanup = historyNavigationCleanup.current;
+      historyNavigationCleanup.current = null;
+      earlyHistoryNavigationCleanup?.();
       renderIcons(options.root);
-      options.bindShell();
-      options.addPageCleanup(options.bindHistoryViewportControls());
+      bindShellController();
       if (page === "create") options.bindCreate();
       else if (page === "queue") options.bindQueue();
       else if (page === "history" || page === "history-detail" || page === "image-history-detail") {
@@ -294,7 +482,7 @@ export function createRenderCoordinator(
       options.renderOverlay();
       options.syncAppLogPolling();
       if (page === "queue" && previousPage === "queue") options.restoreQueueScrollPosition();
-      if (page === "history") options.restoreHistoryScrollPosition();
+      if (page === "history" && !restorePreservedHistory) options.restoreHistoryScrollPosition();
       if (playback) restoreHistoryPlayerFullscreen(options.root, playback);
       restoreHistoryPlayback(options.root, playback);
       restoreFocus(options.root, focus);

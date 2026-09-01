@@ -203,6 +203,7 @@ export function mountHistoryMediaController(
   };
   let historyCoverCacheObserver: IntersectionObserver | null = null;
   let historyCoverWarmupObserver: IntersectionObserver | null = null;
+  let cancelObserverSetup: (() => void) | null = null;
   let fallbackWarmupFrame: number | null = null;
   if (typeof IntersectionObserver === "undefined") {
     const scheduleNearViewport = () => {
@@ -252,10 +253,10 @@ export function mountHistoryMediaController(
         }
       });
     }, { rootMargin: "320px 0px" });
-    historyMediaCards.forEach((media) => {
+    cancelObserverSetup = scheduleHistoryBatches(historyMediaCards, (media) => {
       historyCoverCacheObserver?.observe(media);
       historyCoverWarmupObserver?.observe(media);
-    });
+    }, 32);
   }
 
   return () => {
@@ -265,6 +266,8 @@ export function mountHistoryMediaController(
       window.cancelAnimationFrame(fallbackWarmupFrame);
       fallbackWarmupFrame = null;
     }
+    cancelObserverSetup?.();
+    cancelObserverSetup = null;
     historyCoverCacheObserver?.disconnect();
     historyCoverWarmupObserver?.disconnect();
     options.stopHistoryCoverWarmup();

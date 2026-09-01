@@ -25,6 +25,10 @@ import { escapeHtml } from "../../shared/dom";
 import { icon, renderIcons } from "../../shared/icons";
 import { formatVideoDuration } from "../../shared/formatters";
 import {
+  mountHistoryNavigationController,
+  type HistoryNavigationControllerOptions
+} from "./navigation-controller";
+import {
   toggleHistoryPlayerFullscreen,
   type HistoryPlaybackSnapshot
 } from "./page-controller";
@@ -66,10 +70,11 @@ export interface HistoryWorkspaceCoordinator {
   renderList(context?: RendererContext): string;
   renderDetail(context: RendererContext, kind: "video" | "image"): string;
   bind(playback?: HistoryPlaybackSnapshot | null): void;
+  bindNavigation(): RendererCleanup;
   beforeRender(): void;
   bindViewportControls(): RendererCleanup;
   restoreScrollPosition(): void;
-  captureHistoryScrollPosition(): void;
+  captureHistoryScrollPosition(preferredAssetId?: string): void;
   setScrollRestorePending(value: boolean): void;
   getLayout(): HistoryLayout;
   resetScroll(): void;
@@ -110,7 +115,7 @@ export function createHistoryWorkspaceCoordinator(
     const project = state.imageHistory.find((item) => item.id === assetId);
     const title = asset?.title ?? project?.title;
     if (!title) return;
-    if (deps.getPage() === "history") historyLayoutController.captureHistoryScrollPosition();
+    if (deps.getPage() === "history") historyLayoutController.captureHistoryScrollPosition(assetId);
     deps.rememberModalFocus();
     deps.ui.pendingConfirmation = { kind: "delete-history", assetId, title };
     deps.ui.confirmationBusy = false;
@@ -122,7 +127,7 @@ export function createHistoryWorkspaceCoordinator(
     const asset = state.history.find((item) => item.id === assetId);
     const version = asset?.versions.find((item) => item.id === versionId);
     if (!asset || !version || asset.versions.length <= 1) return;
-    if (deps.getPage() === "history") historyLayoutController.captureHistoryScrollPosition();
+    if (deps.getPage() === "history") historyLayoutController.captureHistoryScrollPosition(assetId);
     deps.rememberModalFocus();
     deps.ui.pendingConfirmation = {
       kind: "delete-video-version",
@@ -142,7 +147,7 @@ export function createHistoryWorkspaceCoordinator(
     const project = state.imageHistory.find((item) => item.id === projectId);
     const version = project?.versions.find((item) => item.id === versionId);
     if (!project || !version || version.kind === "source") return;
-    if (deps.getPage() === "history") historyLayoutController.captureHistoryScrollPosition();
+    if (deps.getPage() === "history") historyLayoutController.captureHistoryScrollPosition(projectId);
     deps.rememberModalFocus();
     deps.ui.pendingConfirmation = {
       kind: "delete-image-version",
@@ -215,44 +220,52 @@ export function createHistoryWorkspaceCoordinator(
     void target.requestFullscreen().catch(() => undefined);
   }
 
+  const historyNavigationOptions = (): HistoryNavigationControllerOptions => ({
+    setHistoryKind: (kind) => {
+      deps.setHistoryKind(kind);
+      if (kind === "image" && deps.ui.historyFilter.minDuration !== null) {
+        deps.ui.historyFilter = normalizeHistoryFilter({ ...deps.ui.historyFilter, minDuration: null });
+      }
+    },
+    resetHistoryScroll: () => historyLayoutController.resetScroll(),
+    captureHistoryScrollPosition: (preferredAssetId, preserveForActivation) =>
+      historyLayoutController.captureHistoryScrollPosition(preferredAssetId, preserveForActivation),
+    switchHistoryLayout: historyLayoutController.switchLayout,
+    openHistoryDetail: (assetId) => openHistoryDetail(assetId),
+    openImageHistoryDetail: (projectId) => openImageHistoryDetail(projectId),
+    navigateHistoryDetail,
+    navigateImageHistoryDetail,
+    navigateImageHistoryVersion,
+    selectVideoHistoryVersion: (versionId) => {
+      deps.reportUserAction("history-version-select", { versionId });
+      deps.ui.selectedHistoryVersionId = versionId;
+      if (deps.ui.selectedHistoryAssetId) {
+        deps.ui.historyForwardTarget = { assetId: deps.ui.selectedHistoryAssetId, versionId };
+      }
+      deps.render();
+    },
+    selectImageHistoryVersion: (versionId) => {
+      if (!deps.ui.selectedHistoryAssetId) return;
+      deps.ui.selectedHistoryVersionId = versionId;
+      deps.ui.historyForwardTarget = { assetId: deps.ui.selectedHistoryAssetId, versionId };
+      deps.reportUserAction("image-history-version-select", {
+        projectId: deps.ui.selectedHistoryAssetId,
+        versionId
+      });
+      deps.render();
+    }
+  });
+
+  function bindNavigation(): RendererCleanup {
+    return mountHistoryNavigationController(deps.context, historyNavigationOptions());
+  }
+
   function bind(playback: HistoryPlaybackSnapshot | null = null): void {
     activeHistoryCleanup?.();
     const cleanup = mountHistoryAssembly({
       context: deps.context,
       playback,
-      navigation: {
-        setHistoryKind: (kind) => {
-          deps.setHistoryKind(kind);
-          if (kind === "image" && deps.ui.historyFilter.minDuration !== null) {
-            deps.ui.historyFilter = normalizeHistoryFilter({ ...deps.ui.historyFilter, minDuration: null });
-          }
-        },
-        resetHistoryScroll: () => historyLayoutController.resetScroll(),
-        switchHistoryLayout: historyLayoutController.switchLayout,
-        openHistoryDetail: (assetId) => openHistoryDetail(assetId),
-        openImageHistoryDetail: (projectId) => openImageHistoryDetail(projectId),
-        navigateHistoryDetail,
-        navigateImageHistoryDetail,
-        navigateImageHistoryVersion,
-        selectVideoHistoryVersion: (versionId) => {
-          deps.reportUserAction("history-version-select", { versionId });
-          deps.ui.selectedHistoryVersionId = versionId;
-          if (deps.ui.selectedHistoryAssetId) {
-            deps.ui.historyForwardTarget = { assetId: deps.ui.selectedHistoryAssetId, versionId };
-          }
-          deps.render();
-        },
-        selectImageHistoryVersion: (versionId) => {
-          if (!deps.ui.selectedHistoryAssetId) return;
-          deps.ui.selectedHistoryVersionId = versionId;
-          deps.ui.historyForwardTarget = { assetId: deps.ui.selectedHistoryAssetId, versionId };
-          deps.reportUserAction("image-history-version-select", {
-            projectId: deps.ui.selectedHistoryAssetId,
-            versionId
-          });
-          deps.render();
-        }
-      },
+      navigation: historyNavigationOptions(),
       media: { ...historyMediaRuntime, formatVideoDuration },
       actions: {
         setState: deps.setState,
@@ -333,6 +346,24 @@ export function createHistoryWorkspaceCoordinator(
     deps.addPageCleanup(managedCleanup);
   }
 
+  function resetHistoryDetailScroll(
+    expectedPage: "history-detail" | "image-history-detail"
+  ): void {
+    const reset = () => {
+      if (deps.getPage() !== expectedPage) return;
+      window.scrollTo({ top: 0, behavior: "auto" });
+    };
+    // The detail shell is committed synchronously for the image path, while
+    // the video player can finish mounting over later frames. Reset once now
+    // and again across the first two frame boundaries so browser scroll
+    // anchoring cannot leave a detail page at the list's old offset.
+    reset();
+    window.requestAnimationFrame(() => {
+      reset();
+      window.requestAnimationFrame(reset);
+    });
+  }
+
   function updateHistoryDetailInPlace(): boolean {
     const currentPlayer = document.querySelector<HTMLElement>(".history-player");
     if (!currentPlayer) return false;
@@ -359,7 +390,7 @@ export function createHistoryWorkspaceCoordinator(
 
   function openHistoryDetail(assetId: string, versionId?: string): void {
     const preserveFullscreen = deps.getPage() === "history-detail" && historyPlayerIsFullscreen();
-    if (deps.getPage() === "history") historyLayoutController.captureHistoryScrollPosition();
+    if (deps.getPage() === "history") historyLayoutController.captureHistoryScrollPosition(assetId);
     deps.reportUserAction("history-open-detail", { assetId, versionId });
     deps.setHistoryKind("video");
     deps.ui.selectedHistoryAssetId = assetId;
@@ -371,18 +402,18 @@ export function createHistoryWorkspaceCoordinator(
       : null;
     deps.setPage("history-detail");
     if (preserveFullscreen && updateHistoryDetailInPlace()) {
-      window.scrollTo({ top: 0, behavior: "auto" });
+      resetHistoryDetailScroll("history-detail");
       return;
     }
     deps.render();
     if (preserveFullscreen) restoreHistoryPlayerFullscreen();
-    window.scrollTo({ top: 0, behavior: "auto" });
+    resetHistoryDetailScroll("history-detail");
   }
 
   function openImageHistoryDetail(projectId: string, versionId?: string): void {
     const project = deps.getState().imageHistory.find((item) => item.id === projectId);
     if (!project) return;
-    if (deps.getPage() === "history") historyLayoutController.captureHistoryScrollPosition();
+    if (deps.getPage() === "history") historyLayoutController.captureHistoryScrollPosition(projectId);
     deps.reportUserAction("image-history-open-detail", { projectId, versionId });
     deps.setHistoryKind("image");
     deps.ui.selectedHistoryAssetId = projectId;
@@ -391,7 +422,7 @@ export function createHistoryWorkspaceCoordinator(
     deps.ui.historyForwardTarget = { assetId: projectId, versionId: deps.ui.selectedHistoryVersionId };
     deps.setPage("image-history-detail");
     deps.render();
-    window.scrollTo({ top: 0, behavior: "auto" });
+    resetHistoryDetailScroll("image-history-detail");
   }
 
   function returnToHistory(): void {
@@ -476,6 +507,7 @@ export function createHistoryWorkspaceCoordinator(
     renderList: (context = deps.context) => historyAssembly.renderList(context),
     renderDetail: (context, kind) => historyAssembly.renderDetail(context, kind),
     bind,
+    bindNavigation,
     beforeRender: historyLayoutController.beforeRender,
     bindViewportControls: historyLayoutController.bindViewportControls,
     restoreScrollPosition: historyLayoutController.restoreScrollPosition,

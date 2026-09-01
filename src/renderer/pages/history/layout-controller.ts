@@ -7,6 +7,7 @@ import {
   historyMediaAspectRatio,
   historyMasonryColumnCount
 } from "./helpers";
+import { scheduleHistoryBatches } from "./media-scheduler";
 
 export type HistoryLayout = "masonry" | "album";
 type HistoryAnchor = { assetId: string; offsetFromCenter: number };
@@ -49,7 +50,7 @@ export interface HistoryLayoutController {
   getLayout(): HistoryLayout;
   setScrollRestorePending(value: boolean): void;
   resetScroll(): void;
-  captureHistoryScrollPosition(): void;
+  captureHistoryScrollPosition(preferredAssetId?: string, preserveForActivation?: boolean): void;
   beforeRender(): void;
   bindViewportControls(): RendererCleanup;
   bindMasonry(): void;
@@ -69,6 +70,7 @@ export function createHistoryLayoutController(
   let layout: HistoryLayout = "masonry";
   let scrollPosition = 0;
   let historyScrollSnapshot: HistoryScrollSnapshot | null = null;
+  let activationScrollSnapshot: HistoryScrollSnapshot | null = null;
   let renderedHistoryFilterSignature = getHistoryFilterSignature();
   let scrollRestorePending = false;
   let layoutAnchor: HistoryAnchor | null = null;
@@ -81,31 +83,77 @@ export function createHistoryLayoutController(
   let imageViewerResizeObserver: ResizeObserver | null = null;
   let titleResizeObserver: ResizeObserver | null = null;
   let titleViewportObserver: IntersectionObserver | null = null;
+  let cancelTitleObserverSetup: (() => void) | null = null;
   let titleMeasureFrame: number | null = null;
   let titleEvents: AbortController | null = null;
 
-  const captureLayoutAnchor = (): HistoryAnchor | null => {
-    if (window.scrollY <= 1) return null;
+  const captureLayoutAnchor = (preferredAssetId?: string, scrollYOverride?: number): HistoryAnchor | null => {
+    const currentScrollY = window.scrollY;
+    const effectiveScrollY = scrollYOverride ?? currentScrollY;
+    if (effectiveScrollY <= 1) return null;
     const heading = document.querySelector<HTMLElement>(".history-heading");
-    if (heading) {
+    if (heading && scrollYOverride === undefined) {
       const stickyTop = Number.parseFloat(getComputedStyle(heading).top) || 0;
       if (heading.getBoundingClientRect().top > stickyTop + 1) return null;
     }
     const cards = [...document.querySelectorAll<HTMLElement>(".history-gallery-item")];
     if (!cards.length) return null;
     const viewportCenter = window.innerHeight / 2;
-    const card = cards.reduce((closest, candidate) => {
-      const closestRect = closest.getBoundingClientRect();
-      const candidateRect = candidate.getBoundingClientRect();
-      return Math.abs(candidateRect.top + candidateRect.height / 2 - viewportCenter) <
-        Math.abs(closestRect.top + closestRect.height / 2 - viewportCenter)
+    const scrollDelta = effectiveScrollY - currentScrollY;
+    const cardCenter = (candidate: HTMLElement): number => {
+      const rect = candidate.getBoundingClientRect();
+      return rect.top - scrollDelta + rect.height / 2;
+    };
+    const preferredCard = preferredAssetId
+      ? cards.find((candidate) => candidate.dataset.history === preferredAssetId)
+      : undefined;
+    let card = preferredCard;
+    if (!card) {
+      // A layout switch only needs an anchor from the visible viewport. Reading
+      // every card rectangle here turns a 500-card click into a synchronous
+      // layout scan; probe a few columns around the viewport center instead.
+      const probeX = [
+        window.innerWidth * 0.2,
+        window.innerWidth * 0.5,
+        window.innerWidth * 0.8
+      ];
+      const probeY = [
+        Math.max(1, viewportCenter - window.innerHeight * 0.25),
+        viewportCenter,
+        Math.min(window.innerHeight - 1, viewportCenter + window.innerHeight * 0.25)
+      ];
+      const candidates = new Set<HTMLElement>();
+      probeX.forEach((x) => probeY.forEach((y) => {
+        const elements = typeof document.elementsFromPoint === "function"
+          ? document.elementsFromPoint(x, y)
+          : typeof document.elementFromPoint === "function"
+            ? [document.elementFromPoint(x, y)].filter((element): element is Element => Boolean(element))
+            : [];
+        elements.forEach((element) => {
+          const candidate = element.closest<HTMLElement>(".history-gallery-item[data-history]");
+          if (candidate) candidates.add(candidate);
+        });
+      }));
+      card = [...candidates].reduce<HTMLElement | undefined>((closest, candidate) => {
+        if (!closest) return candidate;
+        return Math.abs(cardCenter(candidate) - viewportCenter) <
+          Math.abs(cardCenter(closest) - viewportCenter)
+          ? candidate
+          : closest;
+      }, undefined);
+    }
+    // Non-browser test environments may not implement elementsFromPoint. Keep
+    // the previous exhaustive behavior as a correctness fallback there.
+    card ??= cards.reduce((closest, candidate) => {
+      return Math.abs(cardCenter(candidate) - viewportCenter) <
+        Math.abs(cardCenter(closest) - viewportCenter)
         ? candidate
         : closest;
     });
     const rect = card.getBoundingClientRect();
     return {
       assetId: card.dataset.history ?? "",
-      offsetFromCenter: rect.top + rect.height / 2 - viewportCenter
+      offsetFromCenter: rect.top - scrollDelta + rect.height / 2 - viewportCenter
     };
   };
 
@@ -141,6 +189,34 @@ export function createHistoryLayoutController(
   const restoreScrollPosition = () => {
     cancelPendingScrollRestore();
     const snapshot = historyScrollSnapshot;
+    if (!snapshot) {
+      // Initial history entry and kind switches have no anchor to correct.
+      // Complete this reset synchronously so a scroll immediately after the
+      // render is not held behind a second animation frame.
+      window.scrollTo({ top: 0, behavior: "auto" });
+      renderedHistoryFilterSignature = getHistoryFilterSignature();
+      scrollRestorePending = false;
+      return;
+    }
+    // Apply the saved offset as soon as the restored list is in the document.
+    // The list is preserved for the detail-return path, so waiting for the
+    // first animation frame can let a subsequent render cancel the restore
+    // before the user ever sees the saved position.
+    const restorePosition = () => {
+      if (context.getRoute().page !== "history") return;
+      const documentHeight = Math.max(
+        document.documentElement?.scrollHeight ?? 0,
+        document.body?.scrollHeight ?? 0
+      );
+      const position = clampHistoryScrollPosition(
+        snapshot.scrollY,
+        documentHeight,
+        window.innerHeight
+      );
+      window.scrollTo({ top: position, behavior: "auto" });
+      return position;
+    };
+    restorePosition();
     scrollRestoreFrame = window.requestAnimationFrame(() => {
       scrollRestoreFrame = null;
       if (context.getRoute().page !== "history") {
@@ -251,35 +327,54 @@ export function createHistoryLayoutController(
     });
     gallery.style.setProperty("--masonry-columns", String(columnCount));
     gallery.replaceChildren(...columns);
+    gallery.dataset.historyLayoutReady = "masonry";
+    gallery.dataset.historyLayoutWidth = String(gallery.clientWidth);
     return columnCount;
   };
 
   const layoutAlbum = (gallery: HTMLElement): void => {
     if (gallery.clientWidth <= 0) return;
+    const currentWidth = gallery.clientWidth;
+    if (
+      gallery.dataset.historyLayoutReady === "album" &&
+      gallery.dataset.historyLayoutWidth === String(currentWidth)
+    ) return;
     const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 8;
-    const availableWidth = gallery.clientWidth;
+    const availableWidth = currentWidth;
     const columnCount = historyAlbumColumnCount(availableWidth, gap);
     if (!columnCount) return;
-    const cards = historyCardsByOrder(gallery);
     const cardWidth = Math.max(1, (availableWidth - gap * Math.max(0, columnCount - 1)) / columnCount);
-    const copyHeight = cards[0]?.querySelector<HTMLElement>(".history-gallery-copy")?.getBoundingClientRect().height ?? 70;
-    cards.forEach((card) => {
-      const height = estimateHistoryCardHeight(cardWidth, 1, copyHeight, "album");
-      card.style.setProperty("--history-card-intrinsic-height", `${Math.ceil(height)}px`);
-    });
+    const firstCard = gallery.querySelector<HTMLElement>(".history-gallery-item");
+    const copyHeight = firstCard?.querySelector<HTMLElement>(".history-gallery-copy")?.getBoundingClientRect().height ?? 70;
+    const cardHeight = estimateHistoryCardHeight(cardWidth, 1, copyHeight, "album");
+    // Album cards share one aspect ratio and fixed copy height. Keep the
+    // content-visibility fallback on the gallery instead of writing the same
+    // value to all 500 cards during a layout switch.
+    gallery.style.setProperty("--history-album-card-height", `${Math.ceil(cardHeight)}px`);
     gallery.style.gridTemplateColumns = `repeat(${columnCount}, minmax(0, 1fr))`;
     gallery.style.justifyContent = "stretch";
+    gallery.dataset.historyLayoutReady = "album";
+    gallery.dataset.historyLayoutWidth = String(currentWidth);
   };
 
   const bindMasonry = () => {
     const gallery = document.querySelector<HTMLElement>(".history-gallery.masonry");
     if (!gallery) return;
-    let columnCount = layoutMasonry(gallery);
+    const currentWidth = gallery.clientWidth;
+    const reusesLayout = gallery.dataset.historyLayoutReady === "masonry" &&
+      gallery.dataset.historyLayoutWidth === String(currentWidth);
+    let columnCount = reusesLayout
+      ? Number(gallery.style.getPropertyValue("--masonry-columns")) || historyMasonryColumnCount(currentWidth)
+      : layoutMasonry(gallery);
+    let layoutWidth = currentWidth;
     if (typeof ResizeObserver === "undefined") return;
     masonryResizeObserver = new ResizeObserver(() => {
       const gap = Number.parseFloat(getComputedStyle(gallery).columnGap) || 10;
       const nextColumnCount = historyMasonryColumnCount(gallery.clientWidth, gap);
-      if (nextColumnCount !== columnCount) columnCount = layoutMasonry(gallery);
+      if (nextColumnCount !== columnCount || gallery.clientWidth !== layoutWidth) {
+        columnCount = layoutMasonry(gallery);
+        layoutWidth = gallery.clientWidth;
+      }
     });
     masonryResizeObserver.observe(gallery);
   };
@@ -374,7 +469,9 @@ export function createHistoryLayoutController(
           if (entry.isIntersecting) enqueueTitle(entry.target as HTMLElement);
         });
       }, { rootMargin: "200px 0px", threshold: 0 });
-      titles.forEach((title) => titleViewportObserver?.observe(title));
+      cancelTitleObserverSetup = scheduleHistoryBatches(titles, (title) => {
+        titleViewportObserver?.observe(title);
+      }, 32);
     } else {
       // Electron supports IntersectionObserver; this bounded fallback keeps
       // older environments from restoring the old full-table measurement.
@@ -391,20 +488,52 @@ export function createHistoryLayoutController(
       cancelPendingScrollRestore();
       scrollPosition = 0;
       historyScrollSnapshot = null;
+      activationScrollSnapshot = null;
       scrollRestorePending = true;
     },
-    captureHistoryScrollPosition: () => {
-      if (context.getRoute().page !== "history" || scrollRestorePending) return;
-      const anchor = captureLayoutAnchor();
-      scrollPosition = window.scrollY;
-      historyScrollSnapshot = {
-        scrollY: window.scrollY,
+    captureHistoryScrollPosition: (preferredAssetId?: string, preserveForActivation = false) => {
+      if (context.getRoute().page !== "history") return;
+      const currentScrollY = window.scrollY;
+      const activationSnapshot = activationScrollSnapshot;
+      if (!preserveForActivation && activationSnapshot &&
+        activationSnapshot.assetId === preferredAssetId &&
+        activationSnapshot.historyKind === context.getRoute().historyKind &&
+        activationSnapshot.layout === layout &&
+        activationSnapshot.filterSignature === renderedHistoryFilterSignature &&
+        activationSnapshot.scrollY > 1 && currentScrollY <= 1
+      ) {
+        historyScrollSnapshot = activationSnapshot;
+        scrollPosition = activationSnapshot.scrollY;
+        activationScrollSnapshot = null;
+        return;
+      }
+      // Chromium may synchronously move a programmatically activated card to
+      // the top of the viewport before dispatching click, while the preceding
+      // scroll event has already recorded the real list position. Use that
+      // last observed position only for an activation capture; ordinary
+      // captures must always reflect the current scroll.
+      const activationScrollY = preserveForActivation && currentScrollY <= 1 && scrollPosition > 1
+        ? scrollPosition
+        : currentScrollY;
+      const anchor = captureLayoutAnchor(preferredAssetId, activationScrollY);
+      const snapshot: HistoryScrollSnapshot = {
+        scrollY: activationScrollY,
         assetId: anchor?.assetId ?? null,
         offsetFromViewportCenter: anchor?.offsetFromCenter ?? 0,
         historyKind: context.getRoute().historyKind,
         layout,
         filterSignature: renderedHistoryFilterSignature
       };
+      scrollPosition = activationScrollY;
+      historyScrollSnapshot = snapshot;
+      if (preserveForActivation) {
+        activationScrollSnapshot = snapshot;
+        queueMicrotask(() => {
+          if (activationScrollSnapshot === snapshot) activationScrollSnapshot = null;
+        });
+      } else {
+        activationScrollSnapshot = null;
+      }
     },
     beforeRender: () => {
       cancelPendingScrollRestore();
@@ -437,6 +566,8 @@ export function createHistoryLayoutController(
       titleResizeObserver = null;
       titleViewportObserver?.disconnect();
       titleViewportObserver = null;
+      cancelTitleObserverSetup?.();
+      cancelTitleObserverSetup = null;
       if (titleMeasureFrame !== null) {
         window.cancelAnimationFrame(titleMeasureFrame);
         titleMeasureFrame = null;
@@ -449,7 +580,7 @@ export function createHistoryLayoutController(
       viewportEvents = events;
       const backTop = document.querySelector<HTMLButtonElement>("#history-back-top");
       const update = (capturePosition = true) => {
-        if (capturePosition && context.getRoute().page === "history" && !scrollRestorePending) scrollPosition = window.scrollY;
+        if (capturePosition && context.getRoute().page === "history") scrollPosition = window.scrollY;
         backTop?.classList.toggle("visible", window.scrollY > 260);
       };
       window.addEventListener("scroll", () => update(), { passive: true, signal: events.signal });
@@ -488,6 +619,9 @@ export function createHistoryLayoutController(
       gallery.classList.toggle("album", nextLayout === "album");
       gallery.style.removeProperty("grid-template-columns");
       gallery.style.removeProperty("justify-content");
+      gallery.style.removeProperty("--history-album-card-height");
+      delete gallery.dataset.historyLayoutReady;
+      delete gallery.dataset.historyLayoutWidth;
       if (nextLayout === "album") {
         const cards = historyCardsByOrder(gallery);
         if (cards.length) {

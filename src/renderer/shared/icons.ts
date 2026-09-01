@@ -142,7 +142,7 @@ export function renderIcons(root: Element): void {
     icons: lucideIconSet,
     root,
     attrs: {
-      "stroke-width": "1.8"
+      "stroke-width": "1.8",
     }
   });
 }

@@ -247,6 +247,12 @@
   contain-intrinsic-size: auto var(--history-card-intrinsic-height, 320px);
 }
 .history-gallery.album {
+  --history-album-card-height: 320px;
+}
+.history-gallery.album .history-gallery-item {
+  contain-intrinsic-size: auto var(--history-album-card-height, 320px);
+}
+.history-gallery.album {
   display: grid;
   align-items: start;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

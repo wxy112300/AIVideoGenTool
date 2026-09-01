@@ -239,6 +239,10 @@ function bindHistory(playback: HistoryPlaybackSnapshot | null = null): void {
   historyWorkspaceCoordinator.bind(playback);
 }
 
+function bindHistoryNavigation(): RendererCleanup {
+  return historyWorkspaceCoordinator.bindNavigation();
+}
+
 function historyBeforeRender(): void {
   historyWorkspaceCoordinator.beforeRender();
 }
@@ -251,8 +255,8 @@ function restoreHistoryScrollPosition(): void {
   historyWorkspaceCoordinator.restoreScrollPosition();
 }
 
-function captureHistoryScrollPosition(): void {
-  historyWorkspaceCoordinator.captureHistoryScrollPosition();
+function captureHistoryScrollPosition(preferredAssetId?: string): void {
+  historyWorkspaceCoordinator.captureHistoryScrollPosition(preferredAssetId);
 }
 
 function setHistoryScrollRestorePending(value: boolean): void {
@@ -344,6 +348,7 @@ function initializeRenderCoordinator(): void {
     rendererApp.addPageCleanup(queueAssembly.mount(rendererApp.context));
   },
   bindHistory,
+  bindHistoryNavigation,
   bindSettings,
   bindHistoryViewportControls,
   restoreQueueScrollPosition: queueScrollController.restoreScrollPosition,

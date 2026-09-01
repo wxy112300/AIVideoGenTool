@@ -2,6 +2,11 @@ import type { IpcMain } from "electron";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultSettings, createDefaultState } from "../src/core/defaults";
+import {
+  createPromptRuntimeState,
+  reducePromptRuntime
+} from "../src/core/prompt-runtime-state";
+import { ComfyRuntimeStateController } from "../src/infrastructure/comfy-runtime-state";
 import { registerAppQueryIpc } from "../electron/app-query-ipc";
 import { registerNativeHostIpc } from "../electron/native-host-ipc";
 import { registerWorkflowIpc } from "../electron/workflow-ipc";
@@ -68,13 +73,26 @@ describe("extracted Electron IPC adapters", () => {
     };
     const waitForInitialState = vi.fn(async () => undefined);
     const reconcileConfiguredComfyListenerOwnership = vi.fn(async () => true);
+    let promptRuntime = reducePromptRuntime(createPromptRuntimeState(runtime), {
+      type: "begin-operation",
+      operationId: "prompt-operation",
+      origin: "image-to-video",
+      startedAt: 100,
+      retainModel: false,
+      phase: "submitting"
+    });
+    promptRuntime = reducePromptRuntime(promptRuntime, {
+      type: "prompt-submitted",
+      operationId: "prompt-operation",
+      promptId: "comfy-prompt"
+    });
 
     registerAppQueryIpc({
       ipc,
       store: { get: () => state },
       waitForInitialState,
       getComfyRuntimeState: () => runtime,
-      getPromptRuntimeState: () => ({ phase: "idle" } as never),
+      getPromptRuntimeState: () => promptRuntime,
       getAppVersion: () => "0.56.2",
       logger,
       getCrashDumpsDirectory: () => "C:\\crashes",
@@ -83,8 +101,7 @@ describe("extracted Electron IPC adapters", () => {
       runtimeState: {
         snapshot: () => runtime,
         observeReachability
-      },
-      hasRunningTask: () => true
+      }
     });
 
     expect(handlers.size).toBe(9);
@@ -114,6 +131,76 @@ describe("extracted Electron IPC adapters", () => {
       "app",
       true
     );
+
+    promptRuntime = createPromptRuntimeState(runtime);
+    await call("performance:get", settings);
+    expect(observeReachability).toHaveBeenLastCalledWith(
+      true,
+      settings.comfyUrl,
+      "app",
+      false
+    );
+  });
+
+  it("does not report an active prompt operation offline when health probes time out", async () => {
+    const { ipc, handlers } = fakeIpc();
+    const settings = createDefaultSettings();
+    const state = createDefaultState();
+    const runtimeState = new ComfyRuntimeStateController();
+    const startup = runtimeState.begin("starting", settings.comfyUrl, "starting", "app");
+    runtimeState.finish(startup, "ready", "ready", "app");
+    let promptRuntime = reducePromptRuntime(createPromptRuntimeState(runtimeState.snapshot()), {
+      type: "begin-operation",
+      operationId: "active-prompt",
+      origin: "image-to-video",
+      startedAt: 100,
+      retainModel: false,
+      phase: "submitting"
+    });
+    promptRuntime = reducePromptRuntime(promptRuntime, {
+      type: "prompt-submitted",
+      operationId: "active-prompt",
+      promptId: "comfy-prompt"
+    });
+    const metrics = {
+      sampledAt: "2026-09-01T00:00:00.000Z",
+      cpuPercent: 1,
+      memoryUsedBytes: 2,
+      memoryTotalBytes: 3,
+      gpuPercent: null,
+      vramUsedBytes: null,
+      vramTotalBytes: null,
+      gpuTemperature: null,
+      comfyConnected: false
+    };
+
+    registerAppQueryIpc({
+      ipc,
+      store: { get: () => state },
+      waitForInitialState: async () => undefined,
+      getComfyRuntimeState: () => runtimeState.snapshot(),
+      getPromptRuntimeState: () => promptRuntime,
+      getAppVersion: () => "0.56.5",
+      logger: {
+        recent: () => ({ directory: "", retentionDays: 7, records: [], text: "" }),
+        error: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn()
+      },
+      getCrashDumpsDirectory: () => "",
+      performance: async () => metrics,
+      reconcileConfiguredComfyListenerOwnership: async () => true,
+      runtimeState
+    });
+
+    await invoke(handlers, "performance:get", settings);
+    await invoke(handlers, "performance:get", settings);
+    expect(runtimeState.snapshot()).toMatchObject({ phase: "ready", ownership: "app" });
+
+    promptRuntime = createPromptRuntimeState(runtimeState.snapshot());
+    await invoke(handlers, "performance:get", settings);
+    await invoke(handlers, "performance:get", settings);
+    expect(runtimeState.snapshot()).toMatchObject({ phase: "stopped", ownership: "app" });
   });
 
   it("keeps native file, directory, URL, clipboard, and log actions injectable", async () => {

@@ -223,6 +223,7 @@ export function mountImageHistoryMediaController(
   const cancelSetup = scheduleHistoryBatches(imageSurfaces, setupSurface);
 
   let galleryObserver: IntersectionObserver | null = null;
+  let cancelGalleryObserverSetup: (() => void) | null = null;
   if (typeof IntersectionObserver === "undefined") {
     gallerySurfaces.forEach((surface) => gallerySchedules.get(surface)?.schedule("prefetch"));
   } else {
@@ -241,12 +242,16 @@ export function mountImageHistoryMediaController(
         schedule?.schedule(priority);
       });
     }, { rootMargin: "600px 0px", threshold: 0 });
-    gallerySurfaces.forEach((surface) => galleryObserver?.observe(surface));
+    cancelGalleryObserverSetup = scheduleHistoryBatches(gallerySurfaces, (surface) => {
+      galleryObserver?.observe(surface);
+    }, 32);
   }
 
   return () => {
     cancelSetup();
     events.abort();
+    cancelGalleryObserverSetup?.();
+    cancelGalleryObserverSetup = null;
     galleryObserver?.disconnect();
     thumbnailScheduler.dispose();
   };

@@ -8,13 +8,14 @@
 
 ## Unreleased
 
-（暂无已归档条目。）
+- 修复提示词增强运行期间 `/system_stats` 短时无响应被误判为 ComfyUI 掉线的问题：连接健康检查现在把权威 Prompt operation 与队列任务共同视为活跃计算，避免中止仍在正常生成的提示词任务；空闲状态下连续探针失败仍会报告真实断线。
 
 ## 0.56.5 — 2026-09-01
 
 - 优化 500 条级 History 列表的标记缓存、媒体分帧初始化和标题视口测量；瀑布流按媒体比例估算固有高度，离屏卡片使用浏览器内容可见性控制，自动化与合成基准通过，未宣称真实 Electron 性能收益。
 - History 卡片打开、右键和更多菜单改用根节点事件委托；深层图片/视频卡片在首次 hover、focus 或 pointer 操作时即时完成媒体绑定，图片 Retry/定位操作不会误打开详情。
 - 修复队列服务组合 `QueueRuntimeService` 时展开原型方法并丢失 `this` 的问题，恢复 H3 视频 VAE 解析、本地 ComfyUI 生命周期与取消清理调用；新增生产形态回归测试。
+- 收口 C04/CGATE 的最新文档与真实 Electron `window.studio` smoke；记录用户确认的 active-task close 与 Prompt Writer 测试结果，以及 History 已接受但未宣称技术通过的性能残差；当前仍不提供公共 HTTP/Headless/LAN API。
 
 ## 0.56.4 — 2026-09-01
 

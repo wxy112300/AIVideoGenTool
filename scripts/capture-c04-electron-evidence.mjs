@@ -19,6 +19,7 @@ const DEFAULT_STARTUP_TIMEOUT_MS = 45_000;
 const DEFAULT_OPERATION_TIMEOUT_MS = 8_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 8_000;
 const TRACE_CATEGORIES = [
+  "toplevel",
   "devtools.timeline",
   "blink.user_timing",
   "loading"
@@ -290,6 +291,23 @@ async function clickAndWait(client, selector, readyExpression, timeoutMs = DEFAU
   return { clicked: true, ready };
 }
 
+async function pointerClickAndWait(client, selector, readyExpression, timeoutMs = DEFAULT_OPERATION_TIMEOUT_MS) {
+  const clicked = await evaluate(client, `(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    if (!(element instanceof HTMLElement)) return false;
+    const init = { bubbles: true, cancelable: true, button: 0, buttons: 1, pointerType: "mouse" };
+    if (typeof PointerEvent === "function") element.dispatchEvent(new PointerEvent("pointerdown", init));
+    element.dispatchEvent(new MouseEvent("mousedown", init));
+    element.click();
+    return true;
+  })()`);
+  if (!clicked) return { clicked: false, ready: false };
+  if (!readyExpression) return { clicked: true, ready: true };
+  const ready = await waitForDom(client, readyExpression, timeoutMs);
+  await sleep(120);
+  return { clicked: true, ready };
+}
+
 async function installLongTaskObserver(client) {
   try {
     return await evaluate(client, `(() => {
@@ -475,20 +493,37 @@ async function collectOperation(client, label, action, readyExpression) {
   const started = await evaluate(client, `(() => {
     const start = performance.now();
     window.__c04OperationStart = start;
+    window.__c04OperationLongTaskIndex = Array.isArray(window.__c04LongTasks)
+      ? window.__c04LongTasks.length
+      : 0;
     performance.mark(${JSON.stringify(`c04-${label}-start`)});
     return start;
   })()`);
   const actionResult = await action();
   if (readyExpression) await waitForDom(client, readyExpression);
-  await sleep(160);
-  const snapshot = await evaluate(client, `(() => {
+  const snapshot = await evaluate(client, `(async () => {
+    await new Promise((resolve) => {
+      let remainingFrames = 40;
+      const advance = () => {
+        remainingFrames -= 1;
+        if (remainingFrames <= 0) resolve();
+        else window.requestAnimationFrame(advance);
+      };
+      window.requestAnimationFrame(advance);
+    });
+    await new Promise((resolve) => {
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(() => resolve(), { timeout: 250 });
+      } else {
+        window.setTimeout(resolve, 0);
+      }
+    });
     const end = performance.now();
     performance.mark(${JSON.stringify(`c04-${label}-end`)});
-    const entries = performance.getEntriesByType("longtask").map((entry) => ({ name: entry.name, startTime: entry.startTime, duration: entry.duration }));
     const observed = Array.isArray(window.__c04LongTasks) ? window.__c04LongTasks : [];
-    const operationLongTasks = [...entries, ...observed]
-      .filter((entry) => entry.startTime >= Number(window.__c04OperationStart) - 1 && entry.startTime <= end + 1)
-      .filter((entry, index, list) => list.findIndex((candidate) => candidate.startTime === entry.startTime && candidate.duration === entry.duration) === index);
+    const operationLongTasks = observed
+      .slice(Number(window.__c04OperationLongTaskIndex) || 0)
+      .filter((entry) => entry.startTime + entry.duration >= Number(window.__c04OperationStart) - 1 && entry.startTime <= end + 1);
     return { end, duration: end - Number(window.__c04OperationStart), longTasks: operationLongTasks };
   })()`);
   return {
@@ -523,7 +558,6 @@ async function runHistoryPerformance(client, runDirectory, stateCounts) {
     evidence.limitations.push("History route did not settle in the real Electron renderer.");
     return evidence;
   }
-
   for (const kind of ["video", "image"]) {
     const tab = await clickAndWait(
       client,
@@ -554,29 +588,46 @@ async function runHistoryPerformance(client, runDirectory, stateCounts) {
     }
     const detailSelector = kind === "image" ? ".image-history-detail-layout" : ".history-detail-hero";
     const cardSelector = kind === "image" ? "[data-open-image-history]" : "[data-open-history]";
-    const detail = await collectOperation(
+    const beforeScroll = await evaluate(client, `(() => {
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const target = Math.min(420, maxScroll);
+      window.scrollTo(0, target);
+      return { target, before: window.scrollY };
+    })()`);
+    await sleep(250);
+    const opened = await collectOperation(
+      client,
+      `history-${kind}-detail-open`,
+      () => pointerClickAndWait(client, cardSelector, `Boolean(document.querySelector(${JSON.stringify(detailSelector)}))`),
+      `Boolean(document.querySelector(${JSON.stringify(detailSelector)}))`
+    );
+    const detailState = await evaluate(client, `({ opened: Boolean(document.querySelector(${JSON.stringify(detailSelector)})), scrollY: window.scrollY })`);
+    const returned = await collectOperation(
       client,
       `history-${kind}-detail-return`,
-      async () => {
-        const beforeScroll = await evaluate(client, `(() => {
-          const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-          const target = Math.min(420, maxScroll);
-          window.scrollTo(0, target);
-          return { target, before: window.scrollY };
-        })()`);
-        const opened = await clickAndWait(client, cardSelector, `Boolean(document.querySelector(${JSON.stringify(detailSelector)}))`);
-        const detailState = await evaluate(client, `({ opened: Boolean(document.querySelector(${JSON.stringify(detailSelector)})), scrollY: window.scrollY })`);
-        const back = await clickAndWait(client, ".history-detail-back-button", "Boolean(document.querySelector('.history-heading'))");
-        const after = await evaluate(client, `({
-          returned: Boolean(document.querySelector('.history-heading')),
-          scrollY: window.scrollY,
-          target: ${JSON.stringify(beforeScroll.target)},
-          horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
-        })`);
-        return { clicked: opened.clicked && back.clicked, beforeScroll, detailState, back, after };
-      },
+      () => clickAndWait(client, ".history-detail-back-button", "Boolean(document.querySelector('.history-heading'))"),
       "Boolean(document.querySelector('.history-heading'))"
     );
+    const after = await evaluate(client, `({
+      returned: Boolean(document.querySelector('.history-heading')),
+      scrollY: window.scrollY,
+      target: ${JSON.stringify(beforeScroll.target)},
+      horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+    })`);
+    const detail = {
+      label: `history-${kind}-detail-round-trip`,
+      status: opened.status === "actual" && returned.status === "actual" ? "actual" : "blocked",
+      kind,
+      beforeScroll,
+      detailState,
+      after,
+      phases: { open: opened, return: returned },
+      maxLongTaskMs: Math.max(opened.maxLongTaskMs ?? 0, returned.maxLongTaskMs ?? 0) || null,
+      budget: {
+        thresholdMs: 50,
+        passed: [opened, returned].every((phase) => phase.maxLongTaskMs === null || phase.maxLongTaskMs <= 50)
+      }
+    };
     detail.kind = kind;
     evidence.details.push(detail);
   }
@@ -1041,7 +1092,8 @@ async function runDevelopmentAttempt(outputRoot, options) {
   const runDirectory = await ensureDirectory(path.join(outputRoot, "development-attempt"));
   const rootDirectory = await ensureDirectory(path.join(runDirectory, "isolated"));
   const tempRoot = await ensureDirectory(path.join(rootDirectory, "temp"));
-  const port = await findFreePort();
+  const vitePort = await findFreePort();
+  const cdpPort = await findFreePort();
   const startedAt = Date.now();
   const output = { stdout: [], stderr: [] };
   const child = require("node:child_process").spawn(process.execPath, [path.join(workspaceDirectory, "scripts", "dev.mjs")], {
@@ -1052,7 +1104,8 @@ async function runDevelopmentAttempt(outputRoot, options) {
       LOCALAPPDATA: path.join(rootDirectory, "localappdata"),
       TEMP: tempRoot,
       TMP: tempRoot,
-      C04_REMOTE_DEBUGGING_PORT: String(port),
+      VITE_DEV_SERVER_PORT: String(vitePort),
+      C04_REMOTE_DEBUGGING_PORT: String(cdpPort),
       C04_USER_DATA_DIR: path.join(rootDirectory, "electron-user-data"),
       C04_DISABLE_HARDWARE_ACCELERATION: "1",
       ELECTRON_ENABLE_LOGGING: "1"
@@ -1068,6 +1121,7 @@ async function runDevelopmentAttempt(outputRoot, options) {
     startedAt: new Date(startedAt).toISOString(),
     timeoutMs: Math.min(options.startupTimeoutMs, 35_000),
     cdp: "not-tested",
+    ports: { vite: vitePort, cdp: cdpPort },
     files: {
       stdout: path.join(runDirectory, "stdout.log"),
       stderr: path.join(runDirectory, "stderr.log")
@@ -1075,7 +1129,7 @@ async function runDevelopmentAttempt(outputRoot, options) {
     limitations: []
   };
   try {
-    const target = await waitForPageTarget(port, result.timeoutMs);
+    const target = await waitForPageTarget(cdpPort, result.timeoutMs);
     result.cdp = { status: "actual", url: target.url };
     result.status = "actual";
   } catch (error) {

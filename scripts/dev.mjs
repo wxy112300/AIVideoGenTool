@@ -100,6 +100,11 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
 }
 process.once("exit", cleanup);
 
+const viteServerPort = Number(process.env.VITE_DEV_SERVER_PORT ?? "5173");
+if (!Number.isInteger(viteServerPort) || viteServerPort < 1 || viteServerPort > 65_535) {
+  fail("VITE_DEV_SERVER_PORT must be an integer between 1 and 65535.");
+}
+
 const startedAt = Date.now();
 const vite = start(process.execPath, [
   path.join(projectDirectory, "node_modules", "vite", "bin", "vite.js"),
@@ -108,7 +113,7 @@ const vite = start(process.execPath, [
   "--host",
   "127.0.0.1",
   "--port",
-  "5173",
+  String(viteServerPort),
   "--strictPort"
 ]);
 const typescript = start(process.execPath, [
@@ -129,7 +134,7 @@ for (const [name, child] of [["Vite", vite], ["TypeScript", typescript]]) {
 
 try {
   await Promise.all([
-    waitForPort(5173, 30_000),
+    waitForPort(viteServerPort, 30_000),
     waitForFreshFile(
       path.join(projectDirectory, "dist", "electron", "electron", "main.js"),
       startedAt,
@@ -159,7 +164,7 @@ electronChild = start(
   [...electronTestSwitches, "."],
   {
     ...process.env,
-    VITE_DEV_SERVER_URL: "http://127.0.0.1:5173"
+    VITE_DEV_SERVER_URL: `http://127.0.0.1:${viteServerPort}`
   }
 );
 electronChild.once("exit", (code) => {
