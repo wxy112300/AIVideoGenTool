@@ -555,7 +555,7 @@ describe("dependency scanner", () => {
     });
   });
 
-  it("requires Motion Context 0.3.1 and reports renamed duplicate copies", async () => {
+  it("keeps Motion Context 0.3.1 as the minimum, recommends 0.5.1, and reports renamed duplicate copies", async () => {
     const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-motion-context-scan-"));
     temporaryDirectories.push(comfyRoot);
     const customNodesRoot = path.join(comfyRoot, "custom_nodes");
@@ -580,7 +580,7 @@ describe("dependency scanner", () => {
     const statuses = await scanCustomNodes(comfyRoot, {
       ...createDefaultState().settings,
       comfyUrl: "http://127.0.0.1:1"
-    }, "0.2.16", "", "0.3.1");
+    }, "0.2.16", "", "");
     const motionContext = statuses.find((status) => status.id === "h3-motion-context");
 
     expect(motionContext).toMatchObject({
@@ -588,13 +588,42 @@ describe("dependency scanner", () => {
       directory: primaryDirectory,
       version: "0.3.0",
       minimumVersion: "0.3.1",
-      recommendedVersion: "0.3.1",
-      latestVersion: "0.3.1",
+      recommendedVersion: "0.5.1",
+      latestVersion: "0.5.1",
       updateAvailable: true,
       compatibilityState: "error",
       duplicateDirectories: [duplicateDirectory]
     });
     expect(motionContext?.compatibilityNotice).toContain("2 个 H3 Motion Context 副本");
+  });
+
+  it("surfaces the v0.5.1 recommendation without rejecting the v0.3.1 fallback", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-motion-context-recommendation-"));
+    temporaryDirectories.push(comfyRoot);
+    const directory = path.join(comfyRoot, "custom_nodes", "ComfyUI-H3-Motion-Context");
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(
+      path.join(directory, "pyproject.toml"),
+      '[project]\nversion = "0.3.1"\n',
+      "utf8"
+    );
+
+    const statuses = await scanCustomNodes(comfyRoot, {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:1"
+    });
+    const motionContext = statuses.find((status) => status.id === "h3-motion-context");
+
+    expect(motionContext).toMatchObject({
+      installed: true,
+      version: "0.3.1",
+      minimumVersion: "0.3.1",
+      recommendedVersion: "0.5.1",
+      latestVersion: "0.5.1",
+      updateAvailable: true,
+      compatibilityState: "warning",
+      updateNotice: expect.stringContaining("当前 v0.3.1，推荐 v0.5.1")
+    });
   });
 
   it("reports immutable H3 package revisions during offline scans", async () => {

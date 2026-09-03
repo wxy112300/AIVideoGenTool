@@ -8,6 +8,10 @@
 
 ## Unreleased
 
+## 0.58.1 — 2026-09-03
+
+- 将 H3 Motion Context 推荐/最新版本更新为 `v0.5.1`（核心升级始于 `v0.5.0`），并记录其 ComfyUI `0.34.0+` 原生 H3 layout 兼容证据；`v0.3.1` 仍保留为 ComfyUI `0.32/0.33` 的最低兼容回退线。应用 API workflow 不引入 `Chain`，后续仍需在本机完成 v0.5.x 的 `/object_info` 与最小真实续写 smoke。
+
 ## 0.58.0 — 2026-09-03
 
 - 视频草稿的模型相关约束收口到统一纯函数，并在 Store 加载、Create 编辑、Queue 回填和入队快照边界复用：H3 固定原生 24 FPS/关闭 RIFE，跨模型 LoRA、Spectrum、steps 与已撤回的 H3 Memory 选项会按现有策略清理；动态的 1080/JointAV、workflow 与环境能力仍由原有门禁决定。已有 Queue/History、H3 首遍 checkpoint 与已测试的 H3 1080 两阶段执行记录不会被草稿规范化改写。

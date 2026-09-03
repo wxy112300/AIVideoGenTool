@@ -2,7 +2,7 @@
 
 Local Video Studio 是一个面向 Windows 与本地 ComfyUI 的图片/视频创作工作台。它把参考素材、提示词、模型参数、LoRA、持久化队列、运行监测和作品历史组织到一个 Electron GUI 中，不要求用户反复编辑 ComfyUI 节点图。
 
-当前开发版本：**0.58.0**。本 minor 在既有 H3 JointAV 与 History latent upscale 基础上开放 Create 原生 1080p：FL2VA Base 在 JointAV 开启且未使用视频 LoRA 时，以一个可恢复队列任务顺序完成 720p 首遍和 learned 3D latent 二次采样，History 只接收最终 1080p 结果；Create 1440p 仍不开放。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
+当前开发版本：**0.58.1**。本 patch 将 H3 Motion Context 推荐/最新版本提升到 `v0.5.1`（需要 ComfyUI `0.34.0+`），并保留 `v0.3.1` 作为旧核心回退线；上一个 minor 在既有 H3 JointAV 与 History latent upscale 基础上开放了 Create 原生 1080p。版本变化见 [CHANGELOG.md](CHANGELOG.md)。项目仍在 `0.x` 阶段，优先支持 Windows、NVIDIA GPU 和本地 ComfyUI。
 
 > 模型权重、ComfyUI 和第三方节点不包含在本仓库中。仅下载模型文件并不等于工作流可用；对应的 ComfyUI 核心节点、第三方节点和 Python 依赖也必须完整。
 
@@ -149,6 +149,8 @@ start-ui-proxy.bat http://127.0.0.1:7890
 8. 加入队列，在队列页查看 ComfyUI 阶段、采样进度、显存和安装/运行日志。首次任务成功输出后，再逐步增加时长或启用 Turbo、Spectrum 和实时预览。
 
 FL2VA 与 R2V 使用不同的扩散模型。需要多参考图片或视频时，应改选 **MiniMax H3 R2V**，并按其模型卡片下载 Ref2VA 权重；不要复用 FL2VA 扩散模型。LightX2V Turbo v1.1 768p/8-step 和 Ref2V 文件是 LoRA，应放入 `models/loras`，不能替代基础扩散模型；AfterMidnight 只适用于 Ref2VA。
+
+Motion Context 推荐当前最新的 `v0.5.1`（核心升级始于 `v0.5.0`），需要 ComfyUI `0.34.0+`；ComfyUI `0.32/0.33` 继续使用 `v0.3.1` 回退线。应用 API 工作流不依赖新增的 `Chain` 画布节点。
 
 ### 6. 理解就绪状态
 

@@ -7,6 +7,7 @@
  * Electron boundary instead.  `nodePackages` contains ids from the custom
  * node catalog; the catalog remains the single source of repository URLs.
  */
+import { H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION } from "./catalog/dependencies/nodes.js";
 const apiSchema = {
     id: "comfyui-api",
     version: 1,
@@ -18,6 +19,10 @@ const h3Core = {
     recommendedVersion: recommendedCore,
     minimumVersion: "0.31.0"
 };
+const h3MotionContextCore = {
+    recommendedVersion: H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,
+    minimumVersion: "0.32.0"
+};
 function metadata(filename, nodePackages, options = {}) {
     return {
         schema: apiSchema,
@@ -28,7 +33,7 @@ function metadata(filename, nodePackages, options = {}) {
             relativePath: `workflows/${filename}`,
             ...(options.upstreamUrl ? { upstreamUrl: options.upstreamUrl } : {})
         },
-        verifiedAt: "2026-08-18"
+        verifiedAt: options.verifiedAt ?? "2026-08-18"
     };
 }
 export const bundledWorkflowMetadata = {
@@ -52,7 +57,8 @@ export const bundledWorkflowMetadata = {
         comfyUi: h3Core
     }),
     minimax_h3_r2v_extend_api: metadata("minimax_h3_r2v_extend_api.json", ["video-helper-suite", "h3-motion-context", "kjnodes"], {
-        comfyUi: h3Core
+        comfyUi: h3MotionContextCore,
+        verifiedAt: "2026-09-03"
     }),
     minimax_h3_t2va_api: metadata("minimax_h3_t2va_api.json", ["kjnodes", "h3-optimizations"], {
         comfyUi: h3Core

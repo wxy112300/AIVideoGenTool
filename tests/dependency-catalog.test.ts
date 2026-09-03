@@ -93,8 +93,25 @@ describe("dependency catalog", () => {
       nodeTypes: ["H3UnetLoaderGGUFAdvanced", "H3CLIPLoaderGGUF"],
       required: false
     });
-    expect(customNodeDefinition("h3-motion-context")?.nodeTypes).toContain(
-      "MiniMaxH3MotionContextSaveLatent"
+    expect(customNodeDefinition("h3-motion-context")).toMatchObject({
+      minimumVersion: "0.3.1",
+      recommendedVersion: "0.5.1",
+      latestVersion: "0.5.1",
+      runtimeRequirement: expect.stringContaining("ComfyUI 0.34.0+"),
+      compatibilityEvidence: expect.arrayContaining([expect.objectContaining({
+        comfyUi: "0.34.0",
+        commit: "429e952",
+        checks: ["static"]
+      })])
+    });
+    expect(customNodeDefinition("h3-motion-context")?.nodeTypes).toEqual(expect.arrayContaining([
+      "MiniMaxH3MotionContext",
+      "MiniMaxH3MotionContextTrim",
+      "MiniMaxH3MotionContextSaveLatent",
+      "MiniMaxH3MotionContextLoadLatent"
+    ]));
+    expect(customNodeDefinition("h3-motion-context")?.nodeTypes).not.toContain(
+      "MiniMaxH3MotionContextChain"
     );
     expect(customNodeDefinition("plaguekind-h3-sla")).toMatchObject({
       nodeTypes: ["H3SLAAttention"],

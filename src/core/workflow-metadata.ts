@@ -8,6 +8,8 @@
  * node catalog; the catalog remains the single source of repository URLs.
  */
 
+import { H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION } from "./catalog/dependencies/nodes.js";
+
 export interface WorkflowSourceMetadata {
   schema: {
     id: "comfyui-api";
@@ -40,6 +42,10 @@ const h3Core = {
   recommendedVersion: recommendedCore,
   minimumVersion: "0.31.0"
 } as const;
+const h3MotionContextCore = {
+  recommendedVersion: H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,
+  minimumVersion: "0.32.0"
+} as const;
 
 function metadata(
   filename: string,
@@ -47,6 +53,7 @@ function metadata(
   options: {
     comfyUi?: WorkflowSourceMetadata["comfyUi"];
     upstreamUrl?: string;
+    verifiedAt?: string;
   } = {}
 ): WorkflowSourceMetadata {
   return {
@@ -58,7 +65,7 @@ function metadata(
       relativePath: `workflows/${filename}`,
       ...(options.upstreamUrl ? { upstreamUrl: options.upstreamUrl } : {})
     },
-    verifiedAt: "2026-08-18"
+    verifiedAt: options.verifiedAt ?? "2026-08-18"
   };
 }
 
@@ -92,7 +99,8 @@ export const bundledWorkflowMetadata: Readonly<Record<string, WorkflowSourceMeta
     comfyUi: h3Core
   }),
   minimax_h3_r2v_extend_api: metadata("minimax_h3_r2v_extend_api.json", ["video-helper-suite", "h3-motion-context", "kjnodes"], {
-    comfyUi: h3Core
+    comfyUi: h3MotionContextCore,
+    verifiedAt: "2026-09-03"
   }),
   minimax_h3_t2va_api: metadata("minimax_h3_t2va_api.json", ["kjnodes", "h3-optimizations"], {
     comfyUi: h3Core

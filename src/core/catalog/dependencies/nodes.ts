@@ -8,7 +8,8 @@ export const MINIMAX_H3_PROMPT_WRITER_MINIMUM_VERSION = "0.3.1";
 export const MINIMAX_H3_PROMPT_WRITER_RECOMMENDED_VERSION = "0.4.1";
 export const MULTIMODAL_PROMPT_NODES_MINIMUM_VERSION = "1.0.15";
 export const H3_MOTION_CONTEXT_MINIMUM_VERSION = "0.3.1";
-export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.3.1";
+export const H3_MOTION_CONTEXT_RECOMMENDED_VERSION = "0.5.1";
+export const H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION = "0.34.0";
 export const H3_SLA_ATTENTION_MINIMUM_VERSION = "1.3.8";
 export const H3_SLA_ATTENTION_RECOMMENDED_VERSION = "1.3.8";
 export const H3_MEMORY_MINIMUM_VERSION = "0.2.16";
@@ -227,10 +228,27 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   minimumVersion: H3_MOTION_CONTEXT_MINIMUM_VERSION,
   recommendedVersion: H3_MOTION_CONTEXT_RECOMMENDED_VERSION,
   latestVersion: H3_MOTION_CONTEXT_RECOMMENDED_VERSION,
+  runtimeRequirement: "推荐 v0.5.1（包含 v0.5.0 的核心升级）需要 ComfyUI 0.34.0+；ComfyUI 0.32/0.33 继续保留 v0.3.1 回退线。v0.5 的 Chain 仅用于手工画布串联，本应用 API workflow 不依赖它；安装或更新后必须重启所选 ComfyUI，并通过 /object_info 与最小真实 H3 续写复检。",
   compatibilityEvidence: [{
+    verifiedAt: "2026-09-03",
+    sourceUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/releases/tag/v0.5.1",
+    note: "v0.5.1 是 v0.5.0 核心升级后的补充发布，更新官方 example workflow；仍要求 ComfyUI 0.34.0+。本应用 API workflow 不依赖上游示例图，因此不改变现有四个基础节点、显式正数 slot 或 Chain 不参与应用执行的判断。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
+    comfyUi: H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,
+    commit: "429e952",
+    workflowIds: ["minimax_h3_r2v_extend_api"],
+    checks: ["static"]
+  }, {
+    verifiedAt: "2026-09-03",
+    sourceUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/releases/tag/v0.5.0",
+    note: "v0.5.0 要求 ComfyUI 0.34.0+，改用原生 H3 keyframe layout contract，不再修改 ComfyUI 的 layout/payload；Load 0 表示首个 clip 的无 context，新增 Chain 用于画布中的 Load/Save 槽位顺序。本应用 API workflow 仍使用四个基础节点和显式正数 slot，不依赖 Chain。本条是上游发布与静态证据，不代表本机 object-info 或真实 smoke 已通过。",
+    comfyUi: H3_MOTION_CONTEXT_RECOMMENDED_COMFYUI_VERSION,
+    commit: "6a8267e",
+    workflowIds: ["minimax_h3_r2v_extend_api"],
+    checks: ["static"]
+  }, {
     verifiedAt: "2026-08-18",
     sourceUrl: "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context",
-    note: "v0.3.1 同时兼容 ComfyUI 0.32/0.33 的 H3 layout；修复 ComfyUI 0.33 的 PackedLayout frame_count 变化，并保留 Ref2VA 音频 latent。",
+    note: "v0.3.1 作为 ComfyUI 0.32/0.33 的回退线，兼容旧 H3 layout；修复 ComfyUI 0.33 的 PackedLayout frame_count 变化，并保留 Ref2VA 音频 latent。",
     comfyUi: "0.33.1",
     commit: "725a731",
     workflowIds: ["minimax_h3_r2v"],

@@ -25,7 +25,9 @@ describe("bundled workflow provenance", () => {
         endpoint: "/prompt"
       });
       expect(metadata?.source.relativePath).toBe(`workflows/${filename}`);
-      expect(metadata?.comfyUi.recommendedVersion).toBe("0.33.1");
+      expect(metadata?.comfyUi.recommendedVersion).toBe(
+        filename === "minimax_h3_r2v_extend_api.json" ? "0.34.0" : "0.33.1"
+      );
     }
   });
 
@@ -40,7 +42,8 @@ describe("bundled workflow provenance", () => {
 
   it("records the higher-risk H3 and LTX provenance separately", () => {
     expect(workflowMetadataForFilename("minimax_h3_r2v_extend_api.json")).toMatchObject({
-      comfyUi: { minimumVersion: "0.31.0", recommendedVersion: "0.33.1" },
+      comfyUi: { minimumVersion: "0.32.0", recommendedVersion: "0.34.0" },
+      verifiedAt: "2026-09-03",
       nodePackages: ["video-helper-suite", "h3-motion-context", "kjnodes"]
     });
     expect(workflowMetadataForFilename("sulphur2_ltx23_extend_gguf_q2_api.json")).toMatchObject({

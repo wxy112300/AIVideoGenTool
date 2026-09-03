@@ -187,8 +187,8 @@ Spectrum 版本分为三层：`v0.2.1` 是普通 H3 的最低可用线；当前�
 
 - FL2VA 与 R2V 使用不同扩散权重，不能互换。
 - 共同依赖 H3 文本编码器、视频 VAE、音频 VAE 和足够新的 ComfyUI 核心节点。
-- R2V 支持多参考图片；Motion Context 是可选的 R2V 续写增强节点，不是基础 FL2VA 的必需项。当前推荐并作为最低兼容线的节点版本是 `v0.3.1`，兼容 ComfyUI `0.32/0.33`；它修复了 ComfyUI 0.33 的 H3 layout 变化，并保留 Ref2VA、latent 和音频连续能力。
-- Motion Context 工作流使用 `context_length=22`、`audio_context_length=24`、latent Save/Load 和 Trim `match_tail`。本应用构造的 API 工作流不需要删除并重新添加节点；上游迁移说明只适用于手工保存且 widget 位置来自旧节点 schema 的 ComfyUI 画布。同一 `custom_nodes` 目录只能保留一个 Motion Context 副本，重命名 fork 也可能产生 patch 冲突。
+- R2V 支持多参考图片；Motion Context 是可选的 R2V 续写增强节点，不是基础 FL2VA 的必需项。当前推荐节点版本为 `v0.5.1`（核心升级始于 `v0.5.0`），要求 ComfyUI `0.34.0+`；`v0.3.1` 继续作为 ComfyUI `0.32/0.33` 的最低兼容回退线，修复旧 H3 layout 变化并保留 Ref2VA、latent 和音频连续能力。
+- Motion Context 工作流使用 `context_length=22`、`audio_context_length=24`、latent Save/Load 和 Trim `match_tail`。v0.5 的 Load 0 是首个 clip 的无 latent context，正数 index 读取精确 slot，Chain 只用于手工画布串联；本应用构造的 API 工作流固定使用四个基础节点和显式正数 Slot 1，不依赖 Chain，也不需要删除并重新添加节点。上游迁移说明只适用于手工保存且 widget 位置来自旧节点 schema 的 ComfyUI 画布。同一 `custom_nodes` 目录只能保留一个 Motion Context 副本，重命名 fork 也可能产生 patch 冲突。
 - LightX2V Turbo、Realism People 和 AfterMidnight 是 LoRA，不是独立视频模型；兼容模式、顺序、强度和冲突由 LoRA catalog 管理。当前 FL2VA 默认使用官方 LightX2V v1.1 768p 4-step（strength 1.0、video shift 6、audio shift 3、Euler），Spectrum `v0.2.6+` 仍需按任务做同 Seed 对照。
 - H3 原生音视频采样的最低 ComfyUI 版本为 `v0.31.0`，当前推荐 `v0.33.1`；推荐版本是更新提示，不是离线入队的硬性阻挡。当前支持的 Turbo 权重包括官方 v1.1 768p 4-step、v1.0 8-step 和 Ref2V 4-step，均放入所选 ComfyUI 的 `models/loras`，不要把它们当成独立基础模型。旧 v0.1 FL2VA、旧 v1.0 768p 和 PinkFluffyBunny 只保留历史兼容记录；AfterMidnight v1.2 仅用于 Ref2VA，不可移植到 FL2VA。
 - H3 最终视频解码支持 `minimax_h3_video_vae_fp16.safetensors` 基线和实验性的 `minimax_h3_video_vae_int8_convrot.safetensors`。设置中的 `自动` 在下一条尚未开始的 H3 任务领取时优先选择已安装的 INT8 ConvRot；缺少该文件时回退到 FP16，明确选择的后端缺失时也回退到另一份已安装 VAE。两者都缺失时设置禁用，H3 不能入队；正在计算的任务不会因设置变化而改用另一后端。
