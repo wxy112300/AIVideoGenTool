@@ -68,6 +68,19 @@ export const bundledWorkflowMetadata: Readonly<Record<string, WorkflowSourceMeta
   minimax_h3_fl2va_turbo_api: metadata("minimax_h3_fl2va_turbo_api.json", ["kjnodes"], {
     comfyUi: h3Core
   }),
+  minimax_h3_fl2va_first_pass_av_api: metadata("minimax_h3_fl2va_first_pass_av_api.json", ["local-video-studio-h3-av"], {
+    comfyUi: h3Core
+  }),
+  minimax_h3_fl2va_second_sample_av_api: metadata("minimax_h3_fl2va_second_sample_av_api.json", ["h3-latent-upscaler", "local-video-studio-h3-av"], {
+    comfyUi: h3Core
+  }),
+  minimax_h3_fl2va_learned_3d_second_sample_av_api: metadata("minimax_h3_fl2va_learned_3d_second_sample_av_api.json", ["h3-latent-upscaler", "minimax-h3-learned-upscaler", "local-video-studio-h3-av"], {
+    comfyUi: h3Core
+  }),
+  minimax_h3_fl2va_ultimate_tiled_second_sample_av_api: metadata("minimax_h3_fl2va_ultimate_tiled_second_sample_av_api.json", ["mmh3-ultimate-upscale", "h3-latent-upscaler", "kjnodes", "local-video-studio-h3-av"], {
+    comfyUi: h3Core,
+    upstreamUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale/tree/d91be5ac41797a3789b4765cdb6eb6d9129a4a4d"
+  }),
   minimax_h3_i2v_api: metadata("minimax_h3_i2v_api.json", ["kjnodes", "h3-optimizations"], {
     comfyUi: h3Core,
     upstreamUrl: "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/video_minimax_h3_i2v.json"

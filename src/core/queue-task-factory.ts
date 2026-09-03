@@ -19,7 +19,11 @@ import {
   normalizeImageAspectRatio,
   normalizeImageTargetResolution
 } from "./image-workflow.js";
-import { uniqueUpscaleFilename, upscaleDimensions } from "./upscale.js";
+import {
+  h3NativeUpscaleDimensions,
+  uniqueUpscaleFilename,
+  upscaleDimensions
+} from "./upscale.js";
 import { videoLoraSelection } from "./video-loras.js";
 import {
   normalizeH3MemoryOptions,
@@ -27,6 +31,7 @@ import {
 } from "./h3-memory-policy.js";
 import { normalizeH3VideoVaeBackend } from "./h3-video-vae.js";
 import { ensureMotionContextSourceSlot } from "./h3-reference.js";
+import { normalizeVideoDraft, videoModelSupportsDraftInput } from "./video-draft-normalization.js";
 import {
   h3WorkflowPathForInput,
   isMiniMaxH3Fl2vaModel,
@@ -45,6 +50,10 @@ const defaultClock: QueueTaskFactoryClock = {
   id: () => crypto.randomUUID(),
   random: () => Math.random()
 };
+
+function firstPassResolutionFor(draft: Draft): GenerationQueueTask["resolution"] {
+  return draft.resolution === 1080 || draft.resolution === 1440 ? 720 : draft.resolution;
+}
 
 export interface QueueTaskFactoryOptions {
   h3VideoVaeMode?: H3VideoVaeBackend;
@@ -81,6 +90,10 @@ export function queueTaskFromDraft(
   clock: QueueTaskFactoryClock = defaultClock,
   options: QueueTaskFactoryOptions = {}
 ): GenerationQueueTask {
+  draft = normalizeVideoDraft(draft);
+  if (!videoModelSupportsDraftInput(draft.modelId, "image")) {
+    throw new Error("当前模型不支持图像输入生成。");
+  }
   const now = clock.now().toISOString();
   const h3VideoVaeMode = isMiniMaxH3Model(draft.modelId)
     ? normalizeH3VideoVaeBackend(options.h3VideoVaeMode ?? state.settings.h3VideoVaeMode)
@@ -103,6 +116,11 @@ export function queueTaskFromDraft(
     ...state.queue.map((item) => item.outputFilename),
     ...state.history.map((item) => item.outputFilename)
   ];
+  const h3DeliveryResolution = draft.modelId === "minimax_h3_fl2va" &&
+    draft.videoLoras.length === 0 && draft.h3SaveJointAv && draft.resolution === 1080
+    ? 1080
+    : undefined;
+  const firstPassResolution = firstPassResolutionFor(draft);
   return {
     id: clock.id(),
     taskType: "generation",
@@ -132,7 +150,8 @@ export function queueTaskFromDraft(
       Boolean(draft.startImagePath || draft.endImagePath)
     ),
     ratio: draft.ratio,
-    resolution: draft.resolution,
+    resolution: firstPassResolution,
+    ...(h3DeliveryResolution ? { h3DeliveryResolution } : {}),
     duration: draft.duration,
     steps: draft.steps,
     fps: draft.fps,
@@ -146,6 +165,7 @@ export function queueTaskFromDraft(
     attentionMode: state.settings.h3AttentionMode,
     h3VideoVaeMode,
     h3LivePreview: state.settings.h3LivePreview,
+    h3SaveJointAv: draft.h3SaveJointAv,
     spectrumMode: draft.spectrumMode,
     spectrumModelAwareMode: "off",
     ...h3MemoryOptions,
@@ -232,13 +252,17 @@ export function extensionTaskFromDraft(
   clock: QueueTaskFactoryClock = defaultClock,
   options: QueueTaskFactoryOptions = {}
 ): ExtensionQueueTask {
+  draft = normalizeVideoDraft(draft);
+  if (!videoModelSupportsDraftInput(draft.modelId, "video")) {
+    throw new Error("当前模型不支持视频续写。");
+  }
   const now = clock.now().toISOString();
   const isH3 = isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId);
   const h3VideoVaeMode = isH3
     ? normalizeH3VideoVaeBackend(options.h3VideoVaeMode ?? state.settings.h3VideoVaeMode)
     : undefined;
   const h3MemoryOptions = normalizeH3MemoryOptions(draft);
-  const resolution = isH3 ? draft.resolution : state.settings.ltxExtensionResolution;
+  const resolution = isH3 ? firstPassResolutionFor(draft) : state.settings.ltxExtensionResolution;
   const h3ReferenceSlots = isMiniMaxH3R2vModel(draft.modelId)
     ? ensureMotionContextSourceSlot(draft.h3ReferenceSlots, draft.sourceVideoPath)
     : undefined;
@@ -293,6 +317,7 @@ export function extensionTaskFromDraft(
     attentionMode: state.settings.h3AttentionMode,
     h3VideoVaeMode,
     h3LivePreview: state.settings.h3LivePreview,
+    h3SaveJointAv: draft.h3SaveJointAv,
     spectrumMode,
     spectrumModelAwareMode: "off",
     ...h3MemoryOptions,
@@ -310,11 +335,29 @@ export function upscaleTaskFromRequest(
   clock: QueueTaskFactoryClock = defaultClock
 ): UpscaleQueueTask {
   const now = clock.now().toISOString();
-  const [targetWidth] = upscaleDimensions(
-    request.sourceWidth,
-    request.sourceHeight,
-    request.targetHeight
-  );
+  const h3Native = request.upscaleMode === "h3-native";
+  if (h3Native && !request.h3NativeInput) {
+    throw new Error("H3 原生二次采样缺少已提交的 JointAV 输入快照。");
+  }
+  if (
+    h3Native &&
+    request.targetHeight !== 720 &&
+    request.targetHeight !== 768 &&
+    request.targetHeight !== 1080 &&
+    request.targetHeight !== 1440
+  ) {
+    throw new Error("H3 原生二次采样仅支持 720p/768p/1080p/1440p 目标档位。");
+  }
+  if (h3Native && request.targetHeight >= 1080 && request.h3NativeInput?.provider !== "learned-3d") {
+    throw new Error("H3 1080p/1440p 必须冻结 learned 3D upscaler provider。");
+  }
+  const [targetWidth, targetOutputHeight] = h3Native
+    ? h3NativeUpscaleDimensions(
+        request.sourceWidth,
+        request.sourceHeight,
+        request.targetHeight as 720 | 768 | 1080 | 1440
+      )
+    : upscaleDimensions(request.sourceWidth, request.sourceHeight, request.targetHeight);
   return {
     id: clock.id(),
     taskType: "upscale",
@@ -327,9 +370,19 @@ export function upscaleTaskFromRequest(
       outputNames(state)
     ),
     modelId: request.modelId,
-    workflowPath: `builtin:upscale/${request.modelId}`,
+    workflowPath: h3Native
+      ? request.h3NativeInput!.workflowPath
+      : `builtin:upscale/${request.modelId}`,
     duration: request.duration,
     fps: request.fps,
+    ...(request.h3NativeInput
+      ? {
+          steps: request.h3NativeInput.steps,
+          attentionMode: request.h3NativeInput.attentionMode,
+          h3VideoVaeMode: request.h3NativeInput.h3VideoVaeMode,
+          videoLoras: request.h3NativeInput.videoLoras.map((lora) => ({ ...lora }))
+        }
+      : {}),
     seed: Math.floor(clock.random() * 0xffffffff),
     keepSeedOnCopy: true,
     sourceAssetId: request.sourceAssetId,
@@ -340,10 +393,20 @@ export function upscaleTaskFromRequest(
     sourceHeight: request.sourceHeight,
     targetWidth,
     targetHeight: request.targetHeight,
+    targetOutputHeight,
+    upscaleMode: h3Native ? "h3-native" : "pixel",
     tileMode: request.tileMode === "fast" || request.tileMode === "auto"
       ? request.tileMode
       : "safe",
     faceRestore: request.faceRestore,
+    ...(request.h3NativeInput
+      ? {
+          h3NativeInput: {
+            ...request.h3NativeInput,
+            artifact: structuredClone(request.h3NativeInput.artifact)
+          }
+        }
+      : {}),
     progress: 0
   };
 }

@@ -4,13 +4,48 @@ import type {
 } from "../types.js";
 
 const h3OfficialSource = "Comfy-Org / MiniMax-H3";
-const h3OfficialBaseUrl = "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main";
+const h3OfficialRevision = "014cd40f7e177756c6b2473c0d93b1c89a790dd2";
+const h3OfficialBaseUrl = `https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/${h3OfficialRevision}`;
 const h3Int4Source = "Merserk / MiniMax-H3-INT4-ConvRot";
 const h3Int4BaseUrl = "https://huggingface.co/Merserk/MiniMax-H3-INT4-ConvRot/resolve/main";
 const h3Q3Source = "Unsloth / MiniMax-H3-GGUF";
 const h3Q3BaseUrl = "https://huggingface.co/unsloth/MiniMax-H3-GGUF/resolve/main";
 const h3ExperimentalVaeSource = "Kijai / MiniMax-H3-experimental";
 const h3ExperimentalVaeBaseUrl = "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main";
+export const H3_LEARNED_UPSCALER_MODEL_REVISION = "09592c6221ec95cc8e0fae67842e34926c4e668b";
+
+const h3ArtifactEvidence: Record<string, Pick<CatalogInstallGuide, "revision" | "bytes" | "sha256">> = {
+  "minimax_h3_fl2va_pruned_int8_convrot.safetensors": {
+    revision: h3OfficialRevision,
+    bytes: 20_970_379_616,
+    sha256: "e889202c41dafb67b10d67b97f0d8541508036a6090af23425a5c2615d03c47a"
+  },
+  "minimax_h3_ref2va_pruned_int8_convrot.safetensors": {
+    revision: h3OfficialRevision,
+    bytes: 20_970_379_616,
+    sha256: "9255f52b6677845ad238f20dfaafa94727053694127ab7f255c048f0f9365779"
+  },
+  "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": {
+    revision: h3OfficialRevision,
+    bytes: 15_687_142_551,
+    sha256: "35a88d51044231fe332301d7a62aa81e3f2cba62febeb446e2c1e3e0ef76f2c6"
+  },
+  "minimax_h3_video_vae_fp16.safetensors": {
+    revision: h3OfficialRevision,
+    bytes: 5_207_808_496,
+    sha256: "7c1f131492e7eddacaac9069a61b81bdd39de5cc96561e677c5eab1cdce5e522"
+  },
+  "minimax_h3_audio_vae_fp32.safetensors": {
+    revision: h3OfficialRevision,
+    bytes: 605_254_808,
+    sha256: "8e505d95dd1561d47abd43d4238fd40d9bb1ae9e147ed0a4cba778d76ae4db48"
+  },
+  "minimax_h3_latent_upscaler_3d_bf16.safetensors": {
+    revision: H3_LEARNED_UPSCALER_MODEL_REVISION,
+    bytes: 690_592_992,
+    sha256: "4f57821f5837f32f7142b67d815606dbd7550f194e5c769f7d6c3f83b146a5e6"
+  }
+};
 
 function guide(
   sourceLabel: string,
@@ -24,7 +59,8 @@ function guide(
     downloadUrl,
     targetSubdirectory,
     recommendedFilename,
-    ...(notes ? { notes } : {})
+    ...(notes ? { notes } : {}),
+    ...(h3ArtifactEvidence[recommendedFilename] ?? {})
   };
 }
 
@@ -97,6 +133,19 @@ export const h3Fl2vaAudioVae = h3Component({
     "vae",
     "minimax_h3_audio_vae_fp32.safetensors",
     "H3 原生立体声音频必须使用此 VAE；与视频 VAE 一起放在 models/vae。"
+  )
+});
+
+export const h3LearnedLatentUpscaler = h3Component({
+  label: "MiniMax H3 Learned 3D latent upscaler",
+  expected: "latent_upscale_models/minimax_h3_latent_upscaler_3d_bf16.safetensors",
+  pattern: /latent_upscale_models\/minimax_h3_latent_upscaler_3d_bf16\.safetensors$/i,
+  installGuide: guide(
+    "LBH-123-AI / Minimax_h3_latent_Upscaler",
+    "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/09592c6221ec95cc8e0fae67842e34926c4e668b/minimax_h3_latent_upscaler_3d_bf16.safetensors",
+    "latent_upscale_models",
+    "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+    "学习型 3D latent upscaler；仅供 H3 原生二次采样，不是普通 MP4 像素超分。下载前请按 pinned revision 核对仓库许可证。"
   )
 });
 

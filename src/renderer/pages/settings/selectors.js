@@ -181,6 +181,12 @@ export function coreNodeRowTone(available, known) {
 }
 export function deriveCustomNodeCardState(options) {
     const queued = options.queuedIndex >= 0;
+    const revisionUpdateAvailable = Boolean(options.node.installed &&
+        options.node.appInstallable !== false &&
+        options.node.updateAvailable &&
+        options.node.detectedRevision &&
+        options.node.installRevision &&
+        options.node.detectedRevision.toLowerCase() !== options.node.installRevision.toLowerCase());
     const phase = options.active
         ? "processing"
         : queued
@@ -188,7 +194,9 @@ export function deriveCustomNodeCardState(options) {
             : options.finalizing && options.inFinalizingBatch
                 ? "finalizing"
                 : null;
-    const status = phase ?? (options.node.compatibilityState === "error"
+    const status = phase ?? (revisionUpdateAvailable
+        ? "update"
+        : options.node.compatibilityState === "error"
         ? "compatibility-error"
         : options.node.updateAvailable && options.node.loaded
             ? "update"
@@ -206,10 +214,18 @@ export function deriveCustomNodeCardState(options) {
         phase,
         status,
         tone: customNodeStatusTone(options.node, phase !== null),
-        installActionable: !options.node.installed ||
-            options.node.updateAvailable ||
-            options.node.runtimeRepairable,
+        primaryOperation: !options.node.installed
+            ? "install"
+            : revisionUpdateAvailable
+                ? "update"
+                : options.node.runtimeRepairable || Boolean(options.node.loadError) || options.node.compatibilityState === "error"
+                    ? "repair"
+                    : options.node.updateAvailable
+                        ? "update"
+                        : "reinstall",
+        installActionable: true,
         runtimeRepairable: options.node.runtimeRepairable === true,
+        revisionUpdateAvailable,
         installBlocked: options.globallyBlocked || options.active || queued
     };
 }

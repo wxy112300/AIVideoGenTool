@@ -9,10 +9,13 @@ import type {
   ImageGenerationRun,
   H3MemoryRuntimeEvidence,
   QueueTask,
+  QueueWorkProgress,
+  UpscaleQueueTask,
   PromptProgressReporter,
   Settings
 } from "../../src/types.js";
 import {
+  attachH3JointAvSerializer,
   missingWorkflowNodeTypes,
   renderWorkflow,
   isMiniMaxH3Fl2vaModel,
@@ -35,6 +38,10 @@ import {
   h3MemoryOptimizationInputNames,
   h3MemoryOptimizationRuntimeIssues
 } from "../../src/core/h3-memory-contract.js";
+import {
+  h3ComfyWorkflowRuntimeIssues,
+  validateH3ComfyWorkflow
+} from "../../src/core/h3-workflow-contract.js";
 import {
   H3_MEMORY_PRODUCT_ENABLED,
   h3MemoryPrecisionModeFor,
@@ -483,6 +490,34 @@ function workflowTaskForComfyOutput<T extends GenerationQueueTask | ExtensionQue
     : task;
 }
 
+function h3NativeUpscaleWorkflowTask(task: UpscaleQueueTask): GenerationQueueTask {
+  const input = task.h3NativeInput;
+  if (!input) throw new Error("H3 原生二次采样任务缺少 JointAV 输入快照。");
+  return {
+    ...task,
+    taskType: "generation",
+    prompt: input.prompt,
+    promptVersion: 1,
+    startImagePath: input.startImagePath,
+    endImagePath: input.endImagePath,
+    sourceWidth: input.artifact.width,
+    sourceHeight: input.artifact.height,
+    ratio: "source",
+    resolution: task.targetHeight === 768 ? 768 : 720,
+    fps: 24,
+    frameInterpolation: "off",
+    motion: "natural"
+  };
+}
+
+export function shouldAttachH3JointAvSerializer(
+  modelId: string,
+  preference: boolean | undefined,
+  serializerAvailable: boolean
+): boolean {
+  return isMiniMaxH3Model(modelId) && preference !== false && serializerAvailable;
+}
+
 export async function submitTask(
   task: QueueTask,
   settings: Settings,
@@ -500,6 +535,7 @@ export async function submitTask(
   h3TokenCount?: number;
   h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   uploadedUpscaleSource?: string;
+  h3AvSerializerNodeId?: string;
 }> {
   if (!task.workflowPath) {
     throw new Error("任务没有配置 ComfyUI API 工作流 JSON");
@@ -545,12 +581,17 @@ export async function submitTask(
   let prompt: unknown;
   let uploadedUpscaleSource: string | undefined;
   let h3MemoryRuntimeEvidence: H3MemoryRuntimeEvidence | undefined;
+  let h3AvSerializerNodeId: string | undefined;
   if (task.taskType === "generation" || task.taskType === "extension") {
     const sourceText = await fs.readFile(task.workflowPath, {
       encoding: "utf8",
       signal
     });
     const source = JSON.parse(sourceText) as unknown;
+    const h3WorkflowValidation = validateH3ComfyWorkflow(source);
+    if (!h3WorkflowValidation.valid) {
+      throw new Error(`H3 AV workflow 静态校验失败：${h3WorkflowValidation.errors.join("；")}`);
+    }
     if (task.taskType === "extension") {
       const h3Boundary = isMiniMaxH3Fl2vaModel(task.modelId);
       const h3MotionContext = isMiniMaxH3R2vModel(task.modelId);
@@ -677,6 +718,53 @@ export async function submitTask(
           : {})
       });
     }
+  } else if (task.taskType === "upscale" && task.upscaleMode === "h3-native") {
+      const input = task.h3NativeInput;
+      if (!input) throw new Error("H3 原生二次采样任务缺少 JointAV 输入快照。");
+      const sourceText = await fs.readFile(task.workflowPath, {
+        encoding: "utf8",
+        signal
+      });
+      const source = JSON.parse(sourceText) as unknown;
+      const validation = validateH3ComfyWorkflow(source);
+      if (!validation.valid || validation.kind !== "second-sampling-av") {
+        throw new Error(`H3 二次采样工作流静态校验失败：${validation.errors.join("；")}`);
+      }
+      const [inputImage, endImage] = await Promise.all([
+        input.startImagePath
+          ? uploadInput(baseUrl, input.startImagePath, signal, "H3 二采首帧")
+          : Promise.resolve(""),
+        input.endImagePath
+          ? uploadInput(baseUrl, input.endImagePath, signal, "H3 二采尾帧")
+          : Promise.resolve("")
+      ]);
+      const workflowTask = workflowTaskForComfyOutput(
+        h3NativeUpscaleWorkflowTask(task),
+        settings
+      );
+      prompt = renderWorkflow(source, workflowTask, {
+        inputImage,
+        endImage,
+        width: task.targetWidth,
+        height: task.targetOutputHeight ?? task.targetHeight,
+        frames: input.artifact.frameCount,
+        fps: input.artifact.fps,
+        h3AvInputArtifact: `${input.artifact.payload.subfolder}/${input.artifact.payload.filename}`,
+        h3AvArtifactFilename: `h3-native-av/h3av_${task.id}_${crypto.randomUUID()}`,
+        h3AvSourceWidth: input.artifact.width,
+        h3AvSourceHeight: input.artifact.height,
+        h3AvScaleBy: input.scaleBy,
+        h3LearnedUpscalerModel: input.learnedModelFilename,
+        vramTotalBytes,
+        vramAvailableBytes,
+        locale: settings.uiLocale
+      });
+      h3AvSerializerNodeId = Object.entries(prompt as Record<string, unknown>)
+        .find(([, value]) => value && typeof value === "object" &&
+          (value as Record<string, unknown>).class_type === "LocalVideoStudioH3SaveJointAV")?.[0];
+      if (!h3AvSerializerNodeId) {
+        throw new Error("H3 二次采样工作流缺少 JointAV serializer 输出节点。");
+      }
   } else if (task.taskType === "upscale") {
       const sourceVideo = options.uploadedUpscaleSource ?? await uploadInput(
         baseUrl,
@@ -691,6 +779,28 @@ export async function submitTask(
       }, objectInfo, options.nativeSeedVr2Segment);
   } else {
     throw new Error("图片任务必须通过 submitImageTask 提交。");
+  }
+  if (
+    (task.taskType === "generation" || task.taskType === "extension") &&
+    shouldAttachH3JointAvSerializer(
+      task.modelId,
+      task.h3SaveJointAv,
+      Boolean(objectInfo.LocalVideoStudioH3SaveJointAV)
+    )
+  ) {
+    const existingSerializerIds = prompt && typeof prompt === "object" && !Array.isArray(prompt)
+      ? Object.entries(prompt as Record<string, unknown>)
+          .filter(([, value]) => value && typeof value === "object" &&
+            (value as Record<string, unknown>).class_type === "LocalVideoStudioH3SaveJointAV")
+          .map(([id]) => id)
+      : [];
+    if (existingSerializerIds.length > 1) {
+      throw new Error("H3 工作流包含多个 JointAV serializer，无法确定唯一输出节点。");
+    }
+    h3AvSerializerNodeId = existingSerializerIds[0] ?? attachH3JointAvSerializer(
+      prompt,
+      `h3-native-av/h3av_${task.id}_${crypto.randomUUID()}`
+    );
   }
   const h3TokenCount = (task.taskType === "generation" || task.taskType === "extension") &&
     isMiniMaxH3Model(task.modelId)
@@ -734,6 +844,12 @@ export async function submitTask(
       `当前 ComfyUI 服务尚未加载工作流节点：${missingNodes.join("、")}。请在设置页确认节点状态；如果文件已经安装，请重启 ComfyUI 后复检。`
     );
   }
+  const h3RuntimeSchemaIssues = h3ComfyWorkflowRuntimeIssues(prompt, objectInfo);
+  if (h3RuntimeSchemaIssues.length) {
+    throw new Error(
+      `H3 AV workflow 运行时 schema 不兼容：${h3RuntimeSchemaIssues.join("；")}。请在设置 → 节点与依赖中安装/更新对应节点并重启 ComfyUI。`
+    );
+  }
   const clientId = `local-video-studio-${crypto.randomUUID()}`;
   const result = await jsonRequest<{ prompt_id?: string }>(`${baseUrl}/prompt`, {
     method: "POST",
@@ -763,6 +879,7 @@ export async function submitTask(
     h3LivePreviewActive: Boolean(h3PreviewTinyVae),
     ...(h3TokenCount == null ? {} : { h3TokenCount }),
     ...(h3MemoryRuntimeEvidence ? { h3MemoryRuntimeEvidence } : {}),
+    ...(h3AvSerializerNodeId ? { h3AvSerializerNodeId } : {}),
     ...(uploadedUpscaleSource ? { uploadedUpscaleSource } : {})
   };
 }
@@ -1129,8 +1246,14 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
   ) {
     return { start: 14, end: 80, label: "扩散采样", tracksSteps: true };
   }
+  if (classType === "MMH3UltimateUpscale") {
+    return { start: 14, end: 80, label: "H3 分块重采样", tracksSteps: true };
+  }
   if (classType === "VRAM_Debug") {
     return { start: 80, end: 82, label: "卸载扩散模型并释放显存", tracksSteps: false };
+  }
+  if (classType === "LocalVideoStudioH3RequireGpuVAE") {
+    return { start: 10, end: 12, label: "校验 GPU VAE（禁止 CPU 回退）", tracksSteps: false };
   }
   if (classType === "VHS_VideoCombine") {
     return { start: 82, end: 99, label: "封装输出视频", tracksSteps: false };
@@ -1167,14 +1290,49 @@ export function progressForNode(
     typeof max === "number" &&
     max > 0;
   if (hasProgressValues && value >= max) {
-    return { progress: stage.end, label: stage.label };
+    return {
+      progress: stage.end,
+      label: classType === "MMH3UltimateUpscale"
+        ? `${stage.label} ${Math.ceil(max)}/${Math.ceil(max)} 块`
+        : stage.label
+    };
   }
   const hasSteps = stage.tracksSteps && hasProgressValues;
   if (!hasSteps) return { progress: stage.start, label: stage.label };
   const ratio = Math.min(1, Math.max(0, value / max));
+  if (classType === "MMH3UltimateUpscale") {
+    const completedPieces = Math.floor(value + Number.EPSILON);
+    const pieceProgress = value - completedPieces;
+    const currentPiece = Math.min(Math.ceil(max), completedPieces + 1);
+    return {
+      progress: Number((stage.start + (stage.end - stage.start) * ratio).toFixed(1)),
+      label: `${stage.label} ${currentPiece}/${Math.ceil(max)} 块 · 当前块 ${Math.round(pieceProgress * 100)}%`
+    };
+  }
   return {
     progress: Number((stage.start + (stage.end - stage.start) * ratio).toFixed(1)),
     label: `${stage.label} ${value}/${max}`
+  };
+}
+
+export function workProgressForNode(
+  classType: string | undefined,
+  value: number,
+  max: number,
+  startedAt: number,
+  sampledAt = Date.now()
+): QueueWorkProgress | undefined {
+  if (!nodeStage(classType).tracksSteps || max <= 0) return undefined;
+  return {
+    value,
+    max,
+    unit: classType === "MMH3UltimateUpscale"
+      ? "piece"
+      : classType?.includes("Sampler")
+        ? "step"
+        : "item",
+    startedAt: new Date(startedAt).toISOString(),
+    sampledAt: new Date(sampledAt).toISOString()
   };
 }
 
@@ -1269,7 +1427,18 @@ export async function waitForTask(
   settings: Settings,
   activityTimeoutMinutes: number,
   signal: AbortSignal,
-  onProgress: (value: number, stage: string, determinate: boolean) => void,
+  onProgress: (
+    value: number,
+    stage: string,
+    determinate: boolean,
+    workProgress?: {
+      value: number;
+      max: number;
+      unit: "step" | "piece" | "item";
+      startedAt: string;
+      sampledAt: string;
+    }
+  ) => void,
   onPreview: (
     dataUrl: string,
     source?: "h3-tae" | "comfy",
@@ -1307,6 +1476,7 @@ export async function waitForTask(
   let h3PreviewFrameCount = 0;
   let previewSequence = 0;
   let activeNodeId = "";
+  let activeNodeStartedAt = Date.now();
   let taskCompleted = false;
   let lastComfyLogSyncAt = 0;
   let lastReportedProgress = 2;
@@ -1315,7 +1485,14 @@ export async function waitForTask(
     value: number,
     stage: string,
     complete = false,
-    determinate = false
+    determinate = false,
+    workProgress?: {
+      value: number;
+      max: number;
+      unit: "step" | "piece" | "item";
+      startedAt: string;
+      sampledAt: string;
+    }
   ): void => {
     const bounded = complete
       ? 100
@@ -1326,7 +1503,7 @@ export async function waitForTask(
       ? bounded
       : Math.max(lastReportedProgress, bounded);
     lastReportedStage = stage;
-    onProgress(lastReportedProgress, stage, determinate);
+    onProgress(lastReportedProgress, stage, determinate, workProgress);
   };
   const activityTimeoutMs = activityTimeoutMinutes * 60_000;
   const serviceSilenceLimit = () => serviceSilenceLimitMs(
@@ -1414,6 +1591,7 @@ export async function waitForTask(
         }
         if (message.type === "executing" && typeof message.data?.node === "string") {
           activeNodeId = message.data.node;
+          activeNodeStartedAt = Date.now();
           const stage = progressForNode(nodeTypes[activeNodeId]);
           logger.info("comfy", "node-started", "ComfyUI started node", {
             promptId,
@@ -1452,7 +1630,13 @@ export async function waitForTask(
               stage.progress,
               stage.label,
               false,
-              nodeStage(nodeTypes[nodeId]).tracksSteps
+              nodeStage(nodeTypes[nodeId]).tracksSteps,
+              workProgressForNode(
+                nodeTypes[nodeId],
+                message.data.value,
+                message.data.max,
+                activeNodeStartedAt
+              )
             );
           }
         }

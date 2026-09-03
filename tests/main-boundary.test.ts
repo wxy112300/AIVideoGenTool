@@ -103,7 +103,7 @@ describe("main/preload boundary characterization", () => {
     const invokeChannels = new Set(preloadInvokes);
     const registrations = collectInvokeRegistrations();
 
-    expect(invokeChannels.size).toBe(79);
+    expect(invokeChannels.size).toBe(81);
     expect(preloadInvokes.length).toBe(invokeChannels.size);
     expect(sorted(invokeChannels)).toEqual(sorted(registrations.keys()));
 
@@ -141,9 +141,11 @@ describe("main/preload boundary characterization", () => {
       "history-ipc": [
         "history-cover:read",
         "history-cover:save",
+        "history:inspect-h3-artifact",
         "history:delete",
         "history:update-metadata",
         "history:delete-version",
+        "history:delete-joint-av",
         "image-history:set-cover",
         "image-history:delete-version"
       ],

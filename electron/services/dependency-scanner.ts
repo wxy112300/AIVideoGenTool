@@ -59,10 +59,10 @@ export async function readLocalNodeVersion(directory: string): Promise<LocalNode
     if (version) return { version, source: filename };
   }
 
-  for (const filename of ["__init__.py", "nodes.py"]) {
+  for (const filename of ["__init__.py", "nodes.py", "version.py"]) {
     const source = await readText(filename);
     const version = normalizeReleaseVersion(
-      source.match(/^(?:__version__|VERSION)\s*=\s*["']([^"']+)["']/m)?.[1] ?? ""
+      source.match(/^(?:__version__|VERSION|PACKAGE_VERSION)\s*=\s*["']([^"']+)["']/m)?.[1] ?? ""
     );
     if (version) return { version, source: filename };
   }
@@ -500,7 +500,7 @@ export async function scanCustomNodes(
     if (!directory) return Promise.resolve("");
     const cached = revisionCache.get(directory);
     if (cached) return cached;
-    const pending = readComfyGitRevision(directory);
+    const pending = readComfyGitRevision(directory, true);
     revisionCache.set(directory, pending);
     return pending;
   };
@@ -645,7 +645,18 @@ export async function scanCustomNodes(
     const latestVersion = /^v?\d+(?:[.-]\d+)+(?:[-+][0-9A-Za-z.-]+)?$/u.test(remoteVersion)
       ? normalizeReleaseVersion(remoteVersion)
       : "";
-    const detectedRevision = await readRevision(directory);
+    // Git-backed packages report their exact commit. Bundled app-owned nodes
+    // have no .git directory, so their VERSION is the immutable package
+    // revision used by the same compatibility gate.
+    const detectedRevision = definition.source === "bundled"
+      ? version
+      : await readRevision(directory);
+    if (directory && definition.installRevision &&
+        detectedRevision.toLowerCase() !== definition.installRevision.toLowerCase()) {
+      const detectedLabel = detectedRevision || "未读取到";
+      compatibilityError = compatibilityError ||
+        `节点 revision 不匹配：当前 ${detectedLabel}，要求 ${definition.installRevision}`;
+    }
     const sourceRemote = definition.id === "h3-optimizations"
       ? await gitRemoteUrl(directory)
       : "";
@@ -732,6 +743,7 @@ export async function scanCustomNodes(
       recommendedVersion: definition.recommendedVersion ?? "",
       latestVersion,
       detectedRevision,
+      installRevision: definition.installRevision ?? "",
       sourceRemote,
       revisionDirtyState,
       compatibilityState: compatibility.compatibilityState,

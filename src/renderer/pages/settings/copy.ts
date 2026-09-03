@@ -25,6 +25,11 @@ type SettingsCopyKey =
   | "model.component.optional"
   | "model.component.alternativeAvailable"
   | "model.component.viewInfo"
+  | "model.component.downloadInstall"
+  | "model.component.viewSource"
+  | "model.component.sourceRevision"
+  | "model.component.sha256"
+  | "model.component.fileSize"
   | "video.description"
   | "video.defaultModel"
   | "video.defaultExtensionModel"
@@ -162,6 +167,8 @@ type SettingsCopyKey =
   | "nodes.manualInstallHint"
   | "nodes.openSource"
   | "nodes.prerequisite"
+  | "nodes.validationEvidence"
+  | "nodes.validationChecks"
   | "nodes.localVersion"
   | "nodes.versionSource"
   | "nodes.revision"
@@ -305,6 +312,11 @@ const zhCN: SettingsCopyCatalog = {
   "model.component.optional": "可选，4 步 Lightning 档需要：",
   "model.component.alternativeAvailable": "备选未安装（当前使用其他组件）：",
   "model.component.viewInfo": "查看 {label} 的{info}",
+  "model.component.downloadInstall": "下载与安装",
+  "model.component.viewSource": "查看来源",
+  "model.component.sourceRevision": "来源 revision",
+  "model.component.sha256": "SHA-256",
+  "model.component.fileSize": "文件大小",
   "video.description": "根据真实文件组件判断是否可用，不仅检查单个 checkpoint 名称。",
   "video.defaultModel": "默认模型",
   "video.defaultExtensionModel": "默认续写模型",
@@ -442,6 +454,8 @@ const zhCN: SettingsCopyCatalog = {
   "nodes.manualInstallHint": "此节点由用户手动安装；应用不会自动下载、更新或卸载它。",
   "nodes.openSource": "打开上游仓库",
   "nodes.prerequisite": "运行/安装说明：",
+  "nodes.validationEvidence": "验证依据",
+  "nodes.validationChecks": "检查级别：{checks}",
   "nodes.localVersion": "本机版本：",
   "nodes.versionSource": "扫描来源：",
   "nodes.revision": "提交：",
@@ -583,6 +597,11 @@ const zhTW: SettingsCopyCatalog = {
   "model.component.optional": "可選，4 步 Lightning 檔需要：",
   "model.component.alternativeAvailable": "替代元件未安裝（目前使用其他元件）：",
   "model.component.viewInfo": "檢視 {label} 的{info}",
+  "model.component.downloadInstall": "下載與安裝",
+  "model.component.viewSource": "檢視來源",
+  "model.component.sourceRevision": "來源 revision",
+  "model.component.sha256": "SHA-256",
+  "model.component.fileSize": "檔案大小",
   "video.description": "依據實際檔案元件判斷是否可用，不只檢查單一 checkpoint 名稱。",
   "video.defaultModel": "預設模型",
   "video.defaultExtensionModel": "預設續寫模型",
@@ -698,6 +717,8 @@ const zhTW: SettingsCopyCatalog = {
   "nodes.manualInstallHint": "此節點由使用者手動安裝；應用程式不會自動下載、更新或解除安裝。",
   "nodes.openSource": "開啟上游儲存庫",
   "nodes.prerequisite": "執行/安裝說明：",
+  "nodes.validationEvidence": "驗證依據",
+  "nodes.validationChecks": "檢查層級：{checks}",
   "nodes.localVersion": "本機版本：",
   "nodes.versionSource": "掃描來源：",
   "nodes.revision": "提交：",
@@ -838,6 +859,11 @@ const enUS: SettingsCopyCatalog = {
   "model.component.optional": "Optional; required for the 4-step Lightning preset:",
   "model.component.alternativeAvailable": "Alternative not installed (another component is currently used):",
   "model.component.viewInfo": "View download and installation instructions for {label}",
+  "model.component.downloadInstall": "Download & install",
+  "model.component.viewSource": "View source",
+  "model.component.sourceRevision": "Source revision",
+  "model.component.sha256": "SHA-256",
+  "model.component.fileSize": "File size",
   "video.description": "Availability is based on real file components, not only a checkpoint name.",
   "video.defaultModel": "Default model",
   "video.defaultExtensionModel": "Default extension model",
@@ -975,6 +1001,8 @@ const enUS: SettingsCopyCatalog = {
   "nodes.manualInstallHint": "Install this node manually; the app does not download, update, or uninstall it.",
   "nodes.openSource": "Open upstream repository",
   "nodes.prerequisite": "Runtime/install note: ",
+  "nodes.validationEvidence": "Validation evidence",
+  "nodes.validationChecks": "Checks: {checks}",
   "nodes.localVersion": "Local version: ",
   "nodes.versionSource": "Scan source: ",
   "nodes.revision": "Commit: ",

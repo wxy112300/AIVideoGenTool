@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AppState, HistoryFile, QueueTask, TaskPerformanceStats, TaskPreview } from "../src/types";
+import type { AppState, HistoryFile, NativeAvContinuationArtifact, QueueTask, TaskPerformanceStats, TaskPreview } from "../src/types";
 import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { H3_TURBO_V4_LORA } from "../src/core/video-loras";
@@ -15,7 +15,12 @@ const mocks = vi.hoisted(() => ({
   finalizeExtensionOutput: vi.fn(async () => undefined),
   startTaskPerformanceMonitor: vi.fn(),
   startAdaptiveVramWatchdog: vi.fn(),
-  recoverQueueFailure: vi.fn()
+  recoverQueueFailure: vi.fn(),
+  unlink: vi.fn(async () => undefined)
+}));
+
+vi.mock("node:fs", () => ({
+  promises: { unlink: mocks.unlink }
 }));
 
 vi.mock("../electron/services/comfy-ui.js", () => ({
@@ -66,6 +71,28 @@ const outputFile: HistoryFile = {
   type: "output",
   absolutePath: "C:/ComfyUI/output/fixture.mp4"
 };
+
+function h3Artifact(role: NativeAvContinuationArtifact["role"]): NativeAvContinuationArtifact {
+  return {
+    schemaVersion: 1,
+    artifactId: `${role}-artifact`,
+    role,
+    lineageId: "queue-runtime-task",
+    manifest: { filename: `${role}.json`, subfolder: "h3-native-av", type: "output", absolutePath: `C:/ComfyUI/output/h3-native-av/${role}.json` },
+    payload: { filename: `${role}.safetensors`, subfolder: "h3-native-av", type: "output", absolutePath: `C:/ComfyUI/output/h3-native-av/${role}.safetensors` },
+    payloadSha256: "fixture-sha256", payloadBytes: 1024, modelFamily: "minimax-h3",
+    executionModelId: "minimax_h3_fl2va", providerId: "comfyui", providerRevision: "fixture",
+    diffusionModelFilename: "diffusion.safetensors", textEncoderFilename: "encoder.safetensors",
+    videoVaeFilename: "vae.safetensors", audioVaeFilename: "audio-vae.safetensors",
+    width: role === "final-clean-av" ? 1920 : 1280,
+    height: role === "final-clean-av" ? 1088 : 720,
+    fps: 24, frameCount: 25, videoShape: [1], videoDtype: "bf16",
+    audioSampleRate: 32000, audioChannels: 2, audioLatentRate: 40,
+    audioShape: [1], audioDtype: "float32", contextFrames: 0,
+    workflowRevision: "fixture", sourceTaskId: "queue-runtime-task",
+    createdAt: "2026-09-03T00:00:00.000Z"
+  };
+}
 
 type LiveStore = {
   get(): AppState;
@@ -138,9 +165,20 @@ function configureMocks(): void {
     h3LivePreviewActive: false
   });
   mocks.waitForTask.mockImplementation(async (...args: unknown[]) => {
-    const onProgress = args[6] as ((progress: number, stage: string, determinate: boolean) => void);
+    const onProgress = args[6] as ((
+      progress: number,
+      stage: string,
+      determinate: boolean,
+      workProgress?: QueueTask["workProgress"]
+    ) => void);
     const onPreview = args[7] as ((dataUrl: string, source: "h3-tae" | "comfy", metadata?: { sequence?: number }) => void);
-    onProgress(42, "生成中", true);
+    onProgress(42, "生成中", true, {
+      value: 4,
+      max: 20,
+      unit: "step",
+      startedAt: "2026-09-03T00:00:00.000Z",
+      sampledAt: "2026-09-03T00:04:20.000Z"
+    });
     onPreview("data:image/png;base64,fixture", "comfy", { sequence: 1 });
     return { outputs: { fixture: true } };
   });
@@ -165,6 +203,7 @@ function createHarness(
     stopQueueRuntime?: QueueExecutorDependencies["stopQueueRuntime"];
     restartQueueRuntime?: QueueExecutorDependencies["restartQueueRuntime"];
     resolveH3VideoVaeModeForTask?: QueueExecutorDependencies["resolveH3VideoVaeModeForTask"];
+    commitH3NativeAvOutput?: QueueExecutorDependencies["commitH3NativeAvOutput"];
   } = {}
 ): {
   deps: QueueExecutorDependencies;
@@ -223,6 +262,10 @@ function createHarness(
     stopQueueRuntime: options.stopQueueRuntime ?? (async () => true),
     restartQueueRuntime: options.restartQueueRuntime ?? (async () => ({ ok: true, message: "restarted" })),
     resolveH3VideoVaeModeForTask: options.resolveH3VideoVaeModeForTask ?? (async (task) => task.h3VideoVaeMode ?? "fp16"),
+    commitH3NativeAvOutput: options.commitH3NativeAvOutput ?? (async () => ({
+      status: "missing",
+      reason: "serializer was not attached"
+    })),
     settingsForTask: (_task, settings) => settings,
     errorMeta: () => ({}),
     taskStageStartedAt: new Map()
@@ -263,6 +306,9 @@ describe("queue executor runtime gate", () => {
     ]);
     expect(harness.snapshots.some((snapshot) =>
       snapshot.queue.some((queued) => queued.id === task.id && queued.status === "running")
+    )).toBe(true);
+    expect(harness.snapshots.some((snapshot) =>
+      snapshot.queue.some((queued) => queued.id === task.id && queued.workProgress?.value === 4)
     )).toBe(true);
   });
 
@@ -608,6 +654,159 @@ describe("queue executor runtime gate", () => {
     expect(final.queueRunning).toBe(false);
     expect(final.queueLifecycle).toBe("idle");
     expect(stopQueueRuntime).toHaveBeenCalledOnce();
+  });
+
+  it("commits JointAV only when the submitted H3 graph includes the serializer", async () => {
+    const state = createDefaultState();
+    const task = fixtureTask(state);
+    task.modelId = "minimax_h3_fl2va";
+    state.queue = [task];
+    state.queueRunning = true;
+    const commitH3NativeAvOutput = vi.fn(async () => ({
+      status: "missing" as const,
+      reason: "fixture serializer output missing"
+    }));
+    mocks.submitTask.mockResolvedValueOnce({
+      promptId: "prompt-fixture",
+      clientId: "client-fixture",
+      nodeTypes: { "1": "FixtureNode", "23": "LocalVideoStudioH3SaveJointAV" },
+      h3LivePreviewRequested: false,
+      h3LivePreviewActive: false,
+      h3AvSerializerNodeId: "23"
+    });
+    const harness = createHarness(state, { commitH3NativeAvOutput });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(commitH3NativeAvOutput).toHaveBeenCalledWith(
+      { outputs: { fixture: true } },
+      "23",
+      expect.objectContaining({ id: task.id, h3VideoVaeMode: "fp16" }),
+      expect.any(String)
+    );
+    expect(harness.store.get().history[0]?.versions?.[0]?.h3ContinuationData).toEqual({
+      status: "missing",
+      reason: "fixture serializer output missing"
+    });
+  });
+
+  it("runs Create H3 1080 as one recoverable two-pass queue task", async () => {
+    const state = createDefaultState();
+    const task = queueTaskFromDraft({
+      ...createDefaultDraft(),
+      startImagePath: "C:/input/start.png",
+      workflowPath: "C:/ComfyUI/workflows/fixture.json",
+      duration: 1,
+      resolution: 1080,
+      h3SaveJointAv: true
+    }, state, {
+      now: () => new Date("2026-09-03T00:00:00.000Z"),
+      id: () => "queue-runtime-task",
+      random: () => 0.5
+    });
+    state.queue = [task];
+    state.queueRunning = true;
+    mocks.submitTask
+      .mockResolvedValueOnce({
+        promptId: "first-pass-prompt", clientId: "client-first",
+        nodeTypes: { "20": "LocalVideoStudioH3SaveJointAV" },
+        h3LivePreviewRequested: false, h3LivePreviewActive: false,
+        h3AvSerializerNodeId: "20"
+      })
+      .mockResolvedValueOnce({
+        promptId: "second-pass-prompt", clientId: "client-second",
+        nodeTypes: { "31": "LocalVideoStudioH3SaveJointAV" },
+        h3LivePreviewRequested: false, h3LivePreviewActive: false,
+        h3AvSerializerNodeId: "31"
+      });
+    const commitH3NativeAvOutput = vi.fn()
+      .mockResolvedValueOnce({ status: "available", artifact: h3Artifact("first-pass-clean-av") })
+      .mockResolvedValueOnce({ status: "available", artifact: h3Artifact("final-clean-av") });
+    const harness = createHarness(state, { commitH3NativeAvOutput });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(mocks.submitTask).toHaveBeenCalledTimes(2);
+    expect(mocks.submitTask.mock.calls[0]?.[0]).toMatchObject({
+      taskType: "generation", resolution: 720,
+      workflowPath: expect.stringContaining("minimax_h3_fl2va_first_pass_av_api.json")
+    });
+    expect(mocks.submitTask.mock.calls[1]?.[0]).toMatchObject({
+      taskType: "upscale", upscaleMode: "h3-native", targetHeight: 1080,
+      h3NativeInput: { provider: "learned-3d" }
+    });
+    expect(harness.snapshots.some((snapshot) => snapshot.queue.some((queued) =>
+      queued.id === task.id && queued.taskType === "generation" &&
+      queued.h3FirstPassCheckpoint?.artifact.artifactId === "first-pass-clean-av-artifact"
+    ))).toBe(true);
+    expect(harness.store.get().history).toHaveLength(1);
+    expect(harness.store.get().history[0]).toMatchObject({
+      taskId: task.id, resolution: 1080,
+      versions: [expect.objectContaining({ width: 1920, height: 1088, comfyPromptId: "second-pass-prompt" })]
+    });
+  });
+
+  it("resumes Create H3 1080 from its first-pass checkpoint and cleans temporary files", async () => {
+    const state = createDefaultState();
+    const artifact = h3Artifact("first-pass-clean-av");
+    const checkpointOutput: HistoryFile = {
+      filename: "first-pass.mp4",
+      subfolder: "h3-native-av",
+      type: "output",
+      absolutePath: "C:/ComfyUI/output/h3-native-av/first-pass.mp4"
+    };
+    const task = queueTaskFromDraft({
+      ...createDefaultDraft(),
+      startImagePath: "C:/input/start.png",
+      workflowPath: "C:/ComfyUI/workflows/fixture.json",
+      duration: 1,
+      resolution: 1080,
+      h3SaveJointAv: true
+    }, state, {
+      now: () => new Date("2026-09-03T00:00:00.000Z"),
+      id: () => "queue-runtime-task",
+      random: () => 0.5
+    });
+    task.h3FirstPassCheckpoint = {
+      promptId: "persisted-first-pass-prompt",
+      outputFile: checkpointOutput,
+      artifact
+    };
+    state.queue = [task];
+    state.queueRunning = true;
+    mocks.submitTask.mockResolvedValueOnce({
+      promptId: "resumed-second-pass-prompt", clientId: "client-second",
+      nodeTypes: { "31": "LocalVideoStudioH3SaveJointAV" },
+      h3LivePreviewRequested: false, h3LivePreviewActive: false,
+      h3AvSerializerNodeId: "31"
+    });
+    const commitH3NativeAvOutput = vi.fn(async () => ({
+      status: "available" as const,
+      artifact: h3Artifact("final-clean-av")
+    }));
+    const harness = createHarness(state, { commitH3NativeAvOutput });
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(mocks.submitTask).toHaveBeenCalledTimes(1);
+    expect(mocks.submitTask.mock.calls[0]?.[0]).toMatchObject({
+      taskType: "upscale", upscaleMode: "h3-native", targetHeight: 1080,
+      sourceFilePath: checkpointOutput.absolutePath,
+      h3NativeInput: { artifact: { artifactId: artifact.artifactId } }
+    });
+    expect(commitH3NativeAvOutput).toHaveBeenCalledTimes(1);
+    expect(mocks.unlink).toHaveBeenCalledTimes(3);
+    expect(mocks.unlink).toHaveBeenCalledWith(checkpointOutput.absolutePath);
+    expect(mocks.unlink).toHaveBeenCalledWith(artifact.payload.absolutePath);
+    expect(mocks.unlink).toHaveBeenCalledWith(artifact.manifest.absolutePath);
+    expect(harness.store.get().queue).toHaveLength(0);
+    expect(harness.store.get().history).toEqual([
+      expect.objectContaining({
+        taskId: task.id,
+        resolution: 1080,
+        versions: [expect.objectContaining({ comfyPromptId: "resumed-second-pass-prompt" })]
+      })
+    ]);
   });
 
   it("executes every task above a divider before treating it as the stop line", async () => {

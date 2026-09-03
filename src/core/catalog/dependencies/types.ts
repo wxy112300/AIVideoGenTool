@@ -7,6 +7,12 @@ export interface CatalogCustomNodeDefinition {
   repositoryUrl: string;
   directoryName: string;
   aliases: readonly string[];
+  /** How the package source is acquired. GitHub is the default for legacy entries. */
+  source?: "github" | "bundled";
+  /** Full immutable commit or app-owned package revision used for installation. */
+  installRevision?: string;
+  /** Code license recorded separately from any model/checkpoint license. */
+  license?: string;
   /** Optional remote source used for a cached, non-blocking update check. */
   releaseSource?: "github-release";
   nodeTypes?: readonly string[];

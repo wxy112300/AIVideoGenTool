@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { AssetVersion, HistoryAsset } from "../types.js";
+import { H3_CONTINUATION_ARTIFACT_SUBFOLDER } from "./h3-continuation-artifact.js";
 
 const videoExtensions = new Set([".mp4", ".webm", ".mov", ".m4v", ".mkv"]);
 
@@ -20,6 +21,32 @@ export function historyVideoVersionPaths(
   return [...results];
 }
 
+export function historyVideoVersionAuxiliaryPaths(
+  version: { files?: AssetVersion["files"]; h3ContinuationData?: AssetVersion["h3ContinuationData"] },
+  outputDirectory: string
+): string[] {
+  const artifact = version.h3ContinuationData?.artifact;
+  if (!artifact || !outputDirectory.trim()) return [];
+  const root = path.resolve(outputDirectory);
+  const results = new Set<string>();
+  for (const file of [artifact.manifest, artifact.payload]) {
+    if (
+      file.subfolder !== H3_CONTINUATION_ARTIFACT_SUBFOLDER ||
+      !file.filename.trim() ||
+      path.basename(file.filename) !== file.filename
+    ) continue;
+    const candidate = path.resolve(root, file.subfolder, file.filename);
+    const relative = path.relative(root, candidate);
+    if (
+      relative === ".." ||
+      relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative)
+    ) continue;
+    results.add(candidate);
+  }
+  return [...results];
+}
+
 export function historyVideoPaths(
   asset: HistoryAsset,
   outputDirectory: string
@@ -28,7 +55,10 @@ export function historyVideoPaths(
     ? asset.versions
     : [{ files: asset.files }];
   return [...new Set(
-    versions.flatMap((version) => historyVideoVersionPaths(version, outputDirectory))
+    versions.flatMap((version) => [
+      ...historyVideoVersionPaths(version, outputDirectory),
+      ...historyVideoVersionAuxiliaryPaths(version, outputDirectory)
+    ])
   )];
 }
 

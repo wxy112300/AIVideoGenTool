@@ -1,7 +1,7 @@
 import { uiKeys } from "../../../core/i18n-keys";
 import { elapsedText, formatBytes, formatElapsedDuration, queueEstimateText, queueStageElapsedText } from "../../shared/formatters";
 import { queueRemainingSeconds, queueTaskRemainingSeconds } from "./helpers";
-import { seedVr2ProgressView } from "./card";
+import { queueWorkProgressText, seedVr2ProgressView } from "./card";
 import { patchResourceMonitor } from "../../shell/resource-monitor";
 function setMetric(id, value, detail = "") {
     const available = value != null && Number.isFinite(value);
@@ -217,12 +217,13 @@ export function patchQueueLiveDom(state, t, runtime, environmentScanning = false
     const elapsed = document.querySelector("#running-elapsed");
     const stageElapsed = document.querySelector("#running-stage-elapsed");
     const runningEta = document.querySelector("#running-eta");
+    const workProgress = document.querySelector("#running-work-progress");
     const progressLabel = document.querySelector("#running-progress-label");
     const progressBar = document.querySelector("#running-progress-bar");
     if (!running) {
-        return !elapsed && !stageElapsed && !runningEta && !progressLabel && !progressBar;
+        return !elapsed && !stageElapsed && !runningEta && !workProgress && !progressLabel && !progressBar;
     }
-    if (!elapsed || !stageElapsed || !runningEta || !progressLabel || !progressBar)
+    if (!elapsed || !stageElapsed || !runningEta || !workProgress || !progressLabel || !progressBar)
         return false;
     const progress = Math.max(0, Math.min(100, running.progress ?? 0));
     elapsed.textContent = elapsedText(running.startedAt, t);
@@ -230,6 +231,9 @@ export function patchQueueLiveDom(state, t, runtime, environmentScanning = false
     runningEta.textContent = t(uiKeys.queue.card.eta, {
         time: queueEstimateText(queueTaskRemainingSeconds(running, state.history, state.imageHistory), t)
     });
+    const workProgressText = queueWorkProgressText(running, t);
+    workProgress.textContent = workProgressText;
+    workProgress.hidden = !workProgressText;
     progressLabel.textContent = `${Math.round(progress)}%`;
     progressBar.style.width = `${progress}%`;
     const progressContainer = progressBar.closest("[role=progressbar]");

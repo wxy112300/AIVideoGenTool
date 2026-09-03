@@ -7,6 +7,7 @@ import type {
   ImageAssetVersion,
   ImageGenerationQueueTask,
   ImageGenerationRun,
+  NativeAvContinuationData,
   QueueTask,
   TaskPerformanceStats
 } from "../src/types.js";
@@ -14,7 +15,9 @@ import { createImageSourceVersion, nextImageVersionNumber } from "../src/core/im
 import { imageModelAdapterFor } from "../src/core/image-workflow.js";
 import { extensionOutputDimensions, outputDimensions } from "../src/core/workflow.js";
 import { videoLoraSelection } from "../src/core/video-loras.js";
-import { upscaleDimensions } from "../src/core/upscale.js";
+import { upscaleOutputDimensions } from "../src/core/upscale.js";
+import { isMiniMaxH3Model } from "../src/core/workflow.js";
+import { normalizeNativeAvContinuationData } from "../src/core/h3-continuation-artifact.js";
 
 export interface ImageHistoryResult {
   taskId: string;
@@ -128,7 +131,35 @@ export interface VideoHistoryResult {
   files: HistoryFile[];
   performanceStats?: TaskPerformanceStats;
   h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
+  h3ContinuationData?: NativeAvContinuationData;
   id(): string;
+}
+
+function h3ContinuationDataFor(
+  task: VideoQueueTask,
+  value: NativeAvContinuationData | undefined
+): NativeAvContinuationData | undefined {
+  if (!isMiniMaxH3Model(task.modelId)) return undefined;
+  if (task.h3SaveJointAv === false) {
+    return {
+      status: "disabled",
+      reason: "创建此任务时已关闭 JointAV 输出。"
+    };
+  }
+  if (value) {
+    const normalized = normalizeNativeAvContinuationData(value);
+    if (normalized?.status === "available" && !normalized.artifact) {
+      return {
+        status: "invalid",
+        reason: "H3 AV 标记为 available，但没有已提交的 artifact。"
+      };
+    }
+    return normalized;
+  }
+  return {
+    status: "not-supported",
+    reason: "当前 ComfyUI 完成链路只返回解码视频，尚未暴露 joint AV sampler output；未把 MP4 或 Motion Context latent 当作 Native AV artifact。"
+  };
 }
 
 export function persistVideoHistoryResult(
@@ -138,13 +169,17 @@ export function persistVideoHistoryResult(
   const task = result.task;
   state.queue = state.queue.filter((item) => item.id !== task.id);
   if (task.taskType === "generation") {
-    const [width, height] = outputDimensions(task);
+    const [width, height] = outputDimensions({
+      ...task,
+      resolution: task.h3DeliveryResolution ?? task.resolution
+    });
     const version: AssetVersion = {
       id: result.id(), kind: "original", createdAt: result.completedAt,
       outputFilename: task.outputFilename, modelId: task.modelId,
       videoLoras: task.videoLoras?.map((lora) => videoLoraSelection(lora)), width, height,
       duration: task.duration, promptVersion: task.promptVersion, steps: task.steps,
       attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode, spectrumMode: task.spectrumMode,
+      h3SaveJointAv: task.h3SaveJointAv !== false,
       spectrumModelAwareMode: task.spectrumModelAwareMode, fps: task.fps,
       h3MemoryOptimizationMode: task.h3MemoryOptimizationMode,
       h3MemoryOptimizationUserSet: task.h3MemoryOptimizationUserSet,
@@ -154,7 +189,8 @@ export function persistVideoHistoryResult(
       frameInterpolation: task.frameInterpolation, ratio: task.ratio, motion: task.motion,
       seed: task.seed, performanceStats: result.performanceStats,
       workflowPath: task.workflowPath, comfyPromptId: result.promptId,
-      comfyOutputs: result.comfyOutputs, files: result.files, startedAt: task.startedAt
+      comfyOutputs: result.comfyOutputs, files: result.files, startedAt: task.startedAt,
+      h3ContinuationData: h3ContinuationDataFor(task, result.h3ContinuationData)
     };
     const asset: HistoryAsset = {
       mediaKind: "video", id: result.id(), taskId: task.id,
@@ -164,7 +200,7 @@ export function persistVideoHistoryResult(
       favorite: false, rating: null,
       tags: [],
       videoLoras: task.videoLoras?.map((lora) => videoLoraSelection(lora)), duration: task.duration,
-      resolution: task.resolution, steps: task.steps, fps: task.fps,
+      resolution: task.h3DeliveryResolution ?? task.resolution, steps: task.steps, fps: task.fps,
       frameInterpolation: task.frameInterpolation, ratio: task.ratio,
       promptVersion: task.promptVersion, attentionMode: task.attentionMode, h3VideoVaeMode: task.h3VideoVaeMode,
       spectrumMode: task.spectrumMode, spectrumModelAwareMode: task.spectrumModelAwareMode,
@@ -204,7 +240,8 @@ export function persistVideoHistoryResult(
       seed: task.seed, performanceStats: result.performanceStats,
       workflowPath: task.workflowPath, comfyPromptId: result.promptId,
       comfyOutputs: result.comfyOutputs, files: result.files, startedAt: task.startedAt,
-      h3ContextLatentPath: task.h3ContextSavedPath
+      h3ContextLatentPath: task.h3ContextSavedPath,
+      h3ContinuationData: h3ContinuationDataFor(task, result.h3ContinuationData)
     };
     const asset: HistoryAsset = {
       mediaKind: "video", id: result.id(), taskId: task.id,
@@ -240,9 +277,7 @@ export function persistVideoHistoryResult(
   const assetIndex = state.history.findIndex((asset) => asset.id === task.sourceAssetId);
   if (assetIndex < 0) throw new Error("源作品已不存在，无法保存提升版本");
   const asset = state.history[assetIndex]!;
-  const [targetWidth, targetHeight] = upscaleDimensions(
-    task.sourceWidth, task.sourceHeight, task.targetHeight
-  );
+  const [targetWidth, targetHeight] = upscaleOutputDimensions(task);
   const version: AssetVersion = {
     id: result.id(), taskId: task.id, kind: "upscale", createdAt: result.completedAt,
     outputFilename: task.outputFilename, modelId: task.modelId,
@@ -250,7 +285,8 @@ export function persistVideoHistoryResult(
     fps: task.fps, seed: task.seed, performanceStats: result.performanceStats,
     workflowPath: task.workflowPath, comfyPromptId: result.promptId,
     comfyOutputs: result.comfyOutputs, files: result.files,
-    tileMode: task.tileMode, faceRestore: task.faceRestore, startedAt: task.startedAt
+    tileMode: task.tileMode, faceRestore: task.faceRestore, startedAt: task.startedAt,
+    h3ContinuationData: h3ContinuationDataFor(task, result.h3ContinuationData)
   };
   asset.versions.push(version);
   asset.updatedAt = result.completedAt;

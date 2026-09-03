@@ -191,6 +191,27 @@ export function multimodalPromptTargetLanguage(
   return settings.uiLocale?.startsWith("zh") ? "zh" : "en";
 }
 
+function multimodalLanguageValidatorCompatibilityInstruction(
+  sourcePrompt: string
+): string {
+  const dialogueLocks = extractH3DialogueLocks(sourcePrompt);
+  const visibleTextLocks = extractH3VisibleTextLocks(sourcePrompt);
+  const literals = [...dialogueLocks, ...visibleTextLocks]
+    .map((lock) => lock.text)
+    .filter((text, index, all) => all.indexOf(text) === index);
+  if (!literals.length) return "";
+  const intermediateForms = [
+    ...dialogueLocks.map((lock) => `<d>[${lock.language}] ${JSON.stringify(lock.text)}</d>`),
+    ...visibleTextLocks.map((lock) => JSON.stringify(lock.text))
+  ];
+  return [
+    "VisionLLM language-check compatibility (intermediate output only; do not include this note in the final prompt): the external language validator runs before the application's H3 cleanup and accepts a locked non-target-language literal only when it remains inside quote marks.",
+    "Hard intermediate-format override for this VisionLLM call: supersede the unquoted <d> examples above. For every locked dialogue or visible-text literal below, preserve the exact original characters and keep them inside ASCII double quotes in the intermediate response. For dialogue, use <d>[Language] \"exact words\"</d>. Do not translate, paraphrase, or alter the quoted content; the application removes this temporary wrapper after validation.",
+    `Intermediate forms: ${intermediateForms.join(", ")}`,
+    `Locked literals: ${literals.map((literal) => JSON.stringify(literal)).join(", ")}`
+  ].join("\n");
+}
+
 function appendImageNodes(
   workflow: Record<string, PromptNode>,
   uploadedImages: readonly string[],
@@ -258,6 +279,13 @@ export function buildMultimodalPromptWorkflow(
     : request.mode === "image-edit"
       ? imageEditPromptInstruction(request)
       : h3PromptInstruction(request, settings.h3PromptPresets);
+  const sourcePrompt = stripPromptAnnotations(request.prompt);
+  const contentLockInstruction = request.mode === "image-edit"
+    ? ""
+    : h3ContentLockInstruction(sourcePrompt);
+  const languageValidatorInstruction = request.mode === "image-edit"
+    ? ""
+    : multimodalLanguageValidatorCompatibilityInstruction(sourcePrompt);
   const prompt = warmup
     ? basePrompt
     : [
@@ -265,7 +293,8 @@ export function buildMultimodalPromptWorkflow(
         targetLanguage === "zh"
           ? "Output language override: write explanatory H3 prose and field descriptions in Chinese. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface."
           : "Output language override: write explanatory H3 prose and field descriptions in English. This does not apply to dialogue, lyrics, voiceover words, or visible text: preserve each user's original language, characters, and punctuation exactly, including every dialogue lock. Return only the final prompt; do not include analysis, reasoning, planning notes, or a preface.",
-        ...(request.mode === "image-edit" ? [] : [h3ContentLockInstruction(stripPromptAnnotations(request.prompt))])
+        contentLockInstruction,
+        languageValidatorInstruction
       ].join("\n\n");
   const maxTokens = warmup
     // VisionLLMNode validates this input against its runtime schema.  Recent

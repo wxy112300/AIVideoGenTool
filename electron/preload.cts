@@ -68,6 +68,8 @@ const api: AppApi = {
   readImage: (path: string) => ipcRenderer.invoke("file:read-image", path),
   readHistoryCover: (key: string, sourcePath: string) =>
     ipcRenderer.invoke("history-cover:read", key, sourcePath),
+  inspectH3NativeAvArtifact: (assetId: string, versionId: string) =>
+    ipcRenderer.invoke("history:inspect-h3-artifact", assetId, versionId),
   saveHistoryCover: (key: string, sourcePath: string, data: ArrayBuffer) =>
     ipcRenderer.invoke("history-cover:save", key, sourcePath, data),
   showItemInFolder: (path: string) => ipcRenderer.invoke("file:show-in-folder", path),
@@ -135,6 +137,8 @@ const api: AppApi = {
     ipcRenderer.invoke("history:delete", assetId),
   deleteHistoryVersion: (assetId: string, versionId: string) =>
     ipcRenderer.invoke("history:delete-version", assetId, versionId),
+  deleteHistoryJointAv: (assetId: string, versionId: string) =>
+    ipcRenderer.invoke("history:delete-joint-av", assetId, versionId),
   updateHistoryMetadata: (assetId: string, patch: HistoryMetadataPatch) =>
     ipcRenderer.invoke("history:update-metadata", assetId, patch),
   setImageHistoryCover: (projectId: string, versionId?: string) =>

@@ -98,11 +98,13 @@ describe("ComfyUI runtime service", () => {
     expect(env).toEqual({ TEST_ENV: "1" });
     expect(args).toEqual(expect.arrayContaining([
       "--port", "8288",
-      "--cpu-vae",
+      "--disable-smart-memory",
+      "--vram-headroom", "0.5",
       "--models-directory", "D:\\ComfyData\\models",
       "--base-directory", "D:\\ComfyData",
       "--output-directory", "D:\\ComfyData\\output"
     ]));
+    expect(args).not.toContain("--cpu-vae");
     expect(args).toContain(
       `sqlite:///${path.join("D:\\ComfyData", "user", `comfyui.local-video-studio-${process.pid}-8288.db`).replaceAll("\\", "/")}`
     );

@@ -11,6 +11,12 @@ export interface CatalogInstallGuide {
   targetSubdirectory: string;
   recommendedFilename: string;
   notes?: string;
+  /** Exact upstream release/tag/commit used by this dependency record. */
+  version?: string;
+  revision?: string;
+  bytes?: number;
+  sha256?: string;
+  license?: string;
 }
 
 export interface CatalogModelComponent {

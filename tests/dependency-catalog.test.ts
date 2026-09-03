@@ -3,7 +3,11 @@ import {
   compareDependencyIds,
   customNodeCatalog,
   customNodeDefinition,
-  H3_ACCELERATION_DEPENDENCY_ID
+  H3_ACCELERATION_DEPENDENCY_ID,
+  H3_AV_SERIALIZER_REVISION,
+  H3_CONTINUUM_REVISION,
+  H3_LATENT_UPSCALER_REVISION,
+  H3_ULTIMATE_UPSCALE_REVISION
 } from "../src/core/catalog";
 
 describe("dependency catalog", () => {
@@ -13,7 +17,11 @@ describe("dependency catalog", () => {
     expect(new Set(customNodeCatalog.map((item) => item.directoryName.toLowerCase())).size)
       .toBe(customNodeCatalog.length);
     for (const definition of customNodeCatalog) {
-      expect(definition.repositoryUrl).toMatch(/^https:\/\/github\.com\//);
+      expect(definition.repositoryUrl).toMatch(
+        definition.source === "bundled"
+          ? /^builtin:\/\//
+          : /^https:\/\/github\.com\//
+      );
       expect(definition.aliases.length).toBeGreaterThan(0);
     }
   });
@@ -33,6 +41,11 @@ describe("dependency catalog", () => {
       "flashvsr",
       "frame-interpolation",
       "h3-motion-context",
+      "h3-continuum",
+      "h3-latent-upscaler",
+      "minimax-h3-learned-upscaler",
+      "local-video-studio-h3-av",
+      "mmh3-ultimate-upscale",
       "spectrum-minimax-h3",
       "h3-optimizations",
       "plaguekind-h3-sla",
@@ -120,6 +133,88 @@ describe("dependency catalog", () => {
         commit: "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746",
         checks: ["static"]
       }],
+      required: false
+    });
+    expect(customNodeDefinition("h3-continuum")).toMatchObject({
+      repositoryUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum.git",
+      directoryName: "ComfyUI-H3-Continuum",
+      installRevision: H3_CONTINUUM_REVISION,
+      license: "MIT",
+      nodeTypes: [
+        "H3ContinuumSamplerV3",
+        "H3ContinuumAdvancedV3",
+        "H3ContinuumAssembleV3",
+        "H3ContinuumJoin",
+        "H3ContinuumFinish",
+        "H3ContinuumSaveState",
+        "H3ContinuumLoadState"
+      ],
+      minimumVersion: "3.6.0",
+      recommendedVersion: "3.7.0",
+      latestVersion: "3.7.0",
+      bulkInstall: false,
+      appInstallable: true,
+      compatibilityEvidence: [{
+        commit: H3_CONTINUUM_REVISION,
+        checks: ["static"]
+      }],
+      required: false
+    });
+    expect(customNodeDefinition("h3-latent-upscaler")).toMatchObject({
+      repositoryUrl: "https://github.com/rockerBOO/h3-latent-upscaler.git",
+      directoryName: "h3-latent-upscaler",
+      installRevision: H3_LATENT_UPSCALER_REVISION,
+      license: "GPL-3.0",
+      nodeTypes: [
+        "MiniMaxH3LatentUpscale",
+        "MiniMaxH3ConditioningUpscale",
+        "MiniMaxH3AddNoise",
+        "MiniMaxH3ShiftSigmas"
+      ],
+      required: false
+    });
+    expect(customNodeDefinition("minimax-h3-learned-upscaler")).toMatchObject({
+      repositoryUrl: "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler",
+      directoryName: "Comfyui_Minimax_h3_latent_Upscaler",
+      installRevision: "d7c01b9011f2e8439493f6c02c29995a27df276f",
+      nodeTypes: ["MinimaxH3LatentUpscaler3D"],
+      bulkInstall: false,
+      appInstallable: true,
+      runtimeRequirement: expect.stringContaining("用户可从设置页主动"),
+      required: false
+    });
+    expect(customNodeDefinition("mmh3-ultimate-upscale")).toMatchObject({
+      repositoryUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale.git",
+      directoryName: "Comfyui-MMH3-UltimateUpscale",
+      installRevision: H3_ULTIMATE_UPSCALE_REVISION,
+      license: "MIT",
+      nodeTypes: [
+        "MMH3UltimateUpscale",
+        "MMH3LatentUpscaleWithModelParams",
+        "MMH3TemporalSplitParams",
+        "MMH3SpatialSplitParams"
+      ],
+      bulkInstall: false,
+      appInstallable: true,
+      compatibilityEvidence: [{
+        commit: H3_ULTIMATE_UPSCALE_REVISION,
+        checks: ["static", "object-info", "minimal-run"]
+      }],
+      required: false
+    });
+    expect(customNodeDefinition("local-video-studio-h3-av")).toMatchObject({
+      repositoryUrl: "builtin://LocalVideoStudio-H3",
+      source: "bundled",
+      directoryName: "LocalVideoStudio-H3",
+      installRevision: H3_AV_SERIALIZER_REVISION,
+      license: "MIT",
+      nodeTypes: [
+        "LocalVideoStudioH3SaveJointAV",
+        "LocalVideoStudioH3LoadJointAV",
+        "LocalVideoStudioRequireGpuVAE",
+        "LocalVideoStudioH3RequireGpuVAE",
+        "LocalVideoStudioH3AnchorConditioning"
+      ],
       required: false
     });
   });

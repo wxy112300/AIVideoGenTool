@@ -246,6 +246,10 @@ export function renderSettingsModelScanCard(profile, options) {
         ${profile.components.map((component, componentIndex) => {
             const satisfied = modelComponentSatisfied(profile, component);
             const alternativeAvailable = satisfied && !component.found && Boolean(component.alternativeGroup);
+          const guide = component.installGuide;
+          const guideActionLabel = component.found
+            ? settingsText(options.locale, "model.component.viewSource")
+            : settingsText(options.locale, "model.component.downloadInstall");
             return `
           <div class="component-row ${component.found ? "found" : satisfied || component.optional ? "warning" : "missing"}">
             <span class="component-state">${icon(component.found ? "circle-check" : satisfied || component.optional ? "circle-help" : "circle-alert")}</span>
@@ -254,7 +258,7 @@ export function renderSettingsModelScanCard(profile, options) {
                 ? `<code title="${escape(component.matches.join("\n"))}">${escape(component.matches.join(" · "))}</code>`
                 : `<span>${alternativeAvailable ? settingsText(options.locale, "model.component.alternativeAvailable") : component.optional ? settingsText(options.locale, "model.component.optional") : options.t(uiKeys.settings.system.scanCardMissing)}${escape(component.expected)}</span>`}
               </div>
-              ${component.found ? "" : `<button class="component-info" data-install-profile="${escape(profile.id)}" data-install-component="${componentIndex}" aria-label="${escape(settingsText(options.locale, "model.component.viewInfo", { label: component.label, info: options.t(uiKeys.settings.system.scanCardInstallInfo) }))}" title="${options.t(uiKeys.settings.system.scanCardInstallInfo)}">${icon("info")}</button>`}
+              ${guide ? `<button class="component-info" data-install-profile="${escape(profile.id)}" data-install-component="${componentIndex}" aria-label="${escape(settingsText(options.locale, "model.component.viewInfo", { label: component.label, info: guideActionLabel }))}" title="${escape(guideActionLabel)}">${icon(component.found ? "external-link" : "download")}</button>` : ""}
           </div>`;
         }).join("")}
       </div>`;

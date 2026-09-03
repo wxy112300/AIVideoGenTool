@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import type {
   AttentionAccelerationStatus,
   ConnectionResult,
@@ -3966,6 +3967,26 @@ export async function installCustomNode(
     findComfyRoot,
     findExecutable,
     findComfyPython,
+    resolveBundledNodeDirectory: async (_nodeId, directoryName) => {
+      const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+      const candidates = [
+        ...(resourcesPath
+          ? [path.resolve(resourcesPath, "comfy_nodes", directoryName)]
+          : []),
+        path.resolve(process.cwd(), "comfy_nodes", directoryName),
+        path.resolve(
+          path.dirname(fileURLToPath(import.meta.url)),
+          "../../comfy_nodes",
+          directoryName
+        )
+      ];
+      for (const candidate of candidates) {
+        if (await fs.stat(path.join(candidate, "__init__.py")).catch(() => null)) {
+          return candidate;
+        }
+      }
+      return candidates[0]!;
+    },
     exists,
     retryableRenameError,
     renameWithRetry,
@@ -4798,7 +4819,6 @@ async function scanFullEnvironment(
     compatibility: comfyCompatibility,
     issues: scopedIssues
   });
-
   return {
     scannedAt: new Date().toISOString(),
     userHome,

@@ -5,6 +5,7 @@ import type {
 } from "../../src/types.js";
 import {
   extractComfyOutputFiles,
+  extractComfyNativeAvOutputFiles,
   isVideoOutputFilename
 } from "../../src/core/comfy-output.js";
 import { attachAbsoluteOutputPaths } from "../../src/core/comfy-output-paths.js";
@@ -56,7 +57,7 @@ export class ComfyOutputService {
         const resolved = await this.resolveExistingHistoryFile(file.absolutePath!);
         if (!resolved) continue;
         const stat = await this.safeStat(resolved);
-        if (stat?.isFile() && stat.size > 0) return files;
+        if (stat?.isFile() && stat.size > 0) return this.attachExistingSizes(files);
       }
     }
 
@@ -65,6 +66,48 @@ export class ComfyOutputService {
       returnedNames
         ? `ComfyUI 已返回完成状态，但输出视频不存在或为空：${returnedNames}`
         : "ComfyUI 已返回完成状态，但工作流没有返回任何视频文件。任务不会写入历史。"
+    );
+  }
+
+  async requireExistingNativeAvOutput(
+    result: unknown,
+    expectedNodeId: string,
+    alternateRoots: string[] = []
+  ): Promise<HistoryFile[]> {
+    const outputDirectory = await this.resolveTaskOutputDirectory();
+    if (!outputDirectory) {
+      throw new Error(
+        "ComfyUI 已返回完成状态，但无法确定 H3 AV 输出目录。请在设置中确认 ComfyUI 目录后重试。"
+      );
+    }
+    if (!expectedNodeId.trim()) {
+      throw new Error("H3 AV serializer 输出校验缺少预期节点 ID，任务不会写入历史。");
+    }
+
+    const reportedFiles = extractComfyNativeAvOutputFiles(result, expectedNodeId);
+    const roots = [...new Set([outputDirectory, ...alternateRoots].filter(Boolean))];
+    let lastFiles = attachAbsoluteOutputPaths(reportedFiles, outputDirectory);
+    for (const root of roots) {
+      const files = attachAbsoluteOutputPaths(reportedFiles, root);
+      lastFiles = files;
+      const validFiles: HistoryFile[] = [];
+      for (const file of files) {
+        if (!file.absolutePath) continue;
+        const resolved = await this.resolveExistingHistoryFile(file.absolutePath);
+        if (!resolved) continue;
+        const stat = await this.safeStat(resolved);
+        if (stat?.isFile() && stat.size > 0) {
+          validFiles.push({ ...file, absolutePath: resolved, sizeBytes: stat.size });
+        }
+      }
+      if (validFiles.length) return validFiles;
+    }
+
+    const returnedNames = lastFiles.map((file) => file.filename).join("、");
+    throw new Error(
+      returnedNames
+        ? `ComfyUI 已返回完成状态，但 H3 AV serializer 输出不存在或为空：${returnedNames}`
+        : "ComfyUI 已返回完成状态，但预期 serializer 节点没有返回 H3 AV 文件。任务不会写入历史。"
     );
   }
 
@@ -95,7 +138,7 @@ export class ComfyOutputService {
         const resolved = await this.resolveExistingHistoryFile(file.absolutePath!);
         if (!resolved) continue;
         const stat = await this.safeStat(resolved);
-        if (stat?.isFile() && stat.size > 0) return files;
+        if (stat?.isFile() && stat.size > 0) return this.attachExistingSizes(files);
       }
     }
     const returnedNames = lastFiles.map((file) => file.filename).join("、");
@@ -108,6 +151,18 @@ export class ComfyOutputService {
 
   private async safeStat(filename: string) {
     return this.deps.fileSystem.stat(filename).catch(() => null);
+  }
+
+  private async attachExistingSizes(files: HistoryFile[]): Promise<HistoryFile[]> {
+    return Promise.all(files.map(async (file) => {
+      if (!file.absolutePath) return file;
+      const resolved = await this.resolveExistingHistoryFile(file.absolutePath);
+      if (!resolved) return file;
+      const stat = await this.safeStat(resolved);
+      return stat?.isFile()
+        ? { ...file, absolutePath: resolved, sizeBytes: stat.size }
+        : file;
+    }));
   }
 
   private async resolveExistingHistoryFile(filename: string): Promise<string | null> {

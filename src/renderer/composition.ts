@@ -3,6 +3,7 @@ import {
 } from "../core/image-project";
 import { ensureMotionContextSourceSlot } from "../core/h3-reference";
 import { uiKeys } from "../core/i18n-keys";
+import { normalizeVideoDraft } from "../core/video-draft-normalization";
 import {
   isMiniMaxH3R2vModel,
   motionContextMaxDurationSeconds,
@@ -94,7 +95,7 @@ function draftFromQueueTask(
     ? task.resolution as Draft["resolution"]
     : 480;
   const extension = task.taskType === "extension";
-  return {
+  return normalizeVideoDraft({
     ...currentDraft,
     inputMode: extension ? "video" : "image",
     startImagePath: extension ? "" : task.startImagePath,
@@ -145,7 +146,7 @@ function draftFromQueueTask(
     motion: task.motion,
     seed: task.seed,
     keepSeedOnCopy: task.keepSeedOnCopy
-  };
+  });
 }
 
 export function createQueueWorkspaceCoordinator(
@@ -179,8 +180,13 @@ export function createQueueWorkspaceCoordinator(
       ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
       assetId: task.sourceAssetId,
       versionId: task.sourceVersionId,
+      ...(task.upscaleMode === "h3-native"
+        ? { h3Provider: task.h3NativeInput?.provider ?? "bilinear" }
+        : {}),
       targetHeight: task.targetHeight,
-      modelId: task.modelId as NonNullable<RendererUiState["upscaleDialog"]>["modelId"],
+      modelId: task.upscaleMode === "h3-native"
+        ? "minimax_h3_latent_upscaler"
+        : task.modelId as NonNullable<RendererUiState["upscaleDialog"]>["modelId"],
       tileMode: task.tileMode
     };
     deps.renderOverlay();

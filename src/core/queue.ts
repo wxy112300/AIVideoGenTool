@@ -369,9 +369,10 @@ export function reorderWaitingTask(
 
 export type UpscaleTaskPatch = Pick<
   UpscaleQueueTask,
-  "targetWidth" | "targetHeight" | "modelId" | "workflowPath" |
+  "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" |
+  "modelId" | "workflowPath" |
   "tileMode" | "faceRestore" | "outputFilename"
->;
+> & Partial<Pick<UpscaleQueueTask, "h3NativeInput">>;
 
 export function updateQueuedUpscaleTask(
   queue: QueueTask[],

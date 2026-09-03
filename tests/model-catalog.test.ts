@@ -62,6 +62,7 @@ describe("model catalog", () => {
     ]);
     expect(modelCatalog.list("upscale").map((entry) => entry.definition.id)).toEqual([
       "seedvr2-native-int8",
+      "minimax_h3_latent_upscaler",
       "seedvr2",
       "flashvsr",
       "realesrgan"
@@ -80,7 +81,9 @@ describe("model catalog", () => {
     expect(modelCatalog.get("lama-inpaint")?.definition.scan?.requiredCustomNodeIds)
       .toEqual(["inpaint-nodes"]);
     expect(modelCatalog.get("qwen-image-edit-2511-crop-stitch")?.definition.scan?.requiredCustomNodeIds)
-      .toEqual(["inpaint-cropandstitch"]);
+      .toEqual(["local-video-studio-h3-av", "inpaint-cropandstitch"]);
+    expect(modelCatalog.get("qwen-image-edit-2511")?.definition.scan?.requiredCustomNodeIds)
+      .toEqual(["local-video-studio-h3-av"]);
     expect(modelCatalog.get("birefnet-background-removal")?.definition.scan?.requiredCustomNodeIds)
       .toBeUndefined();
     expect(modelCatalog.get("z-image")?.definition.scan?.components.map((component) => component.expected))

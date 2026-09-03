@@ -2,10 +2,12 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ExtensionQueueTask, GenerationQueueTask } from "../src/types";
 import {
+  attachH3JointAvSerializer,
   isMiniMaxH3LivePreviewSupported,
   renderWorkflow,
   validateApiWorkflow
 } from "../src/core/workflow";
+import { validateH3ComfyWorkflow } from "../src/core/h3-workflow-contract";
 
 type ApiWorkflow = Record<string, {
   class_type: string;
@@ -66,6 +68,7 @@ const baseExtensionTask: ExtensionQueueTask = {
   fps: 24,
   frameInterpolation: "off",
   motion: "natural",
+  modelProfile: "q3_k_m",
   seed: 4242,
   keepSeedOnCopy: false,
   maxGeneratedFrames: 362,
@@ -111,6 +114,38 @@ function hasLivePreview(graph: ApiWorkflow): boolean {
     node.class_type === "ModelPreviewOverrideKJ"
   );
 }
+
+describe("H3 optional JointAV output", () => {
+  it.each([
+    "minimax_h3_fl2va_turbo_api.json",
+    "minimax_h3_i2v_api.json",
+    "minimax_h3_i2v_gguf_q3_api.json",
+    "minimax_h3_r2v_api.json",
+    "minimax_h3_r2v_extend_api.json",
+    "minimax_h3_t2va_api.json",
+    "minimax_h3_t2va_gguf_q3_api.json",
+    "minimax_h3_t2va_turbo_api.json"
+  ])("attaches the serializer to %s final decoded joint latent", (filename) => {
+    const source = workflow(filename) as ApiWorkflow;
+    const decode = Object.values(source).find((node) => node.class_type === "VAEDecode");
+
+    const serializerId = attachH3JointAvSerializer(
+      source,
+      "h3-native-av/h3av_test.safetensors"
+    );
+
+    expect(source[serializerId]).toEqual({
+      class_type: "LocalVideoStudioH3SaveJointAV",
+      inputs: {
+        joint_av: decode?.inputs.samples,
+        filename: "h3-native-av/h3av_test.safetensors"
+      }
+    });
+    expect(Object.values(source).filter((node) =>
+      node.class_type === "LocalVideoStudioH3SaveJointAV"
+    )).toHaveLength(1);
+  });
+});
 
 describe("H3 rendered workflow baseline", () => {
   it("keeps the selectable final video VAE placeholder in every bundled H3 workflow", () => {
@@ -200,6 +235,7 @@ describe("H3 T2VA workflow asset", () => {
     const classTypes = Object.values(source).map((node) => node.class_type);
 
     expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(validateH3ComfyWorkflow(source).valid).toBe(true);
     expect(classTypes).not.toContain("LoadImage");
     expect(classTypes).toEqual(expect.arrayContaining([
       "MiniMaxH3ImageToVideo",
@@ -227,6 +263,124 @@ describe("H3 T2VA workflow asset", () => {
       expect(classTypes).not.toContain("LoadImage");
       expect(classTypes).toEqual(expect.arrayContaining(requiredClasses));
     }
+  });
+});
+
+describe("H3 clean AV workflow assets", () => {
+  it("keeps the first-pass serializer on the clean joint latent", () => {
+    const source = workflow("minimax_h3_fl2va_first_pass_av_api.json") as ApiWorkflow;
+    const classTypes = Object.values(source).map((node) => node.class_type);
+    const serializer = Object.values(source).find((node) =>
+      node.class_type === "LocalVideoStudioH3SaveJointAV"
+    );
+
+    expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(validateH3ComfyWorkflow(source).valid).toBe(true);
+    expect(classTypes).toEqual(expect.arrayContaining([
+      "MiniMaxH3ImageToVideo",
+      "SamplerCustomAdvanced",
+      "VAEDecode",
+      "VAEDecodeAudio",
+      "SaveVideo",
+      "LocalVideoStudioH3SaveJointAV"
+    ]));
+    expect(serializer?.inputs.joint_av).toEqual(["12", 0]);
+    expect(serializer?.inputs.filename).toBe("{{H3_AV_ARTIFACT_FILENAME}}");
+    expect(JSON.stringify(source)).not.toContain("H3_AV_INPUT_ARTIFACT");
+  });
+
+  it("keeps second sampling split, per-branch noise, conditioning resize, and no-noise sampling explicit", () => {
+    const source = workflow("minimax_h3_fl2va_second_sample_av_api.json") as ApiWorkflow;
+    const classTypes = Object.values(source).map((node) => node.class_type);
+    const load = Object.values(source).find((node) =>
+      node.class_type === "LocalVideoStudioH3LoadJointAV"
+    );
+    const split = Object.values(source).find((node) =>
+      node.class_type === "LTXVSeparateAVLatent"
+    );
+    const videoUpscale = Object.values(source).find((node) =>
+      node.class_type === "MiniMaxH3LatentUpscale"
+    );
+    const conditioningUpscale = Object.values(source).find((node) =>
+      node.class_type === "MiniMaxH3ConditioningUpscale"
+    );
+    const addNoiseNodes = Object.values(source).filter((node) =>
+      node.class_type === "MiniMaxH3AddNoise"
+    );
+    const shift = Object.values(source).find((node) =>
+      node.class_type === "MiniMaxH3ShiftSigmas"
+    );
+    const sampler = Object.values(source).find((node) =>
+      node.class_type === "SamplerCustomAdvanced"
+    );
+    const serializer = Object.values(source).find((node) =>
+      node.class_type === "LocalVideoStudioH3SaveJointAV"
+    );
+
+    expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(validateH3ComfyWorkflow(source).valid).toBe(true);
+    expect(classTypes).toEqual(expect.arrayContaining([
+      "LocalVideoStudioH3LoadJointAV",
+      "LTXVSeparateAVLatent",
+      "MiniMaxH3LatentUpscale",
+      "LTXVConcatAVLatent",
+      "MiniMaxH3AddNoise",
+      "MiniMaxH3ShiftSigmas",
+      "MiniMaxH3ConditioningUpscale",
+      "DisableNoise",
+      "LocalVideoStudioH3SaveJointAV"
+    ]));
+    expect(load?.inputs.artifact).toBe("{{H3_AV_INPUT_ARTIFACT}}");
+    expect(split?.inputs.av_latent).toEqual(["8", 0]);
+    expect(videoUpscale?.inputs.samples).toEqual(["9", 0]);
+    expect(addNoiseNodes).toHaveLength(2);
+    expect(addNoiseNodes[0]?.inputs.latent_image).toEqual(["10", 0]);
+    expect(addNoiseNodes[0]?.inputs.sigmas).toEqual(["13", 0]);
+    expect(addNoiseNodes[1]?.inputs.latent_image).toEqual(["9", 1]);
+    expect(addNoiseNodes[1]?.inputs.sigmas).toEqual(["14", 0]);
+    expect(shift?.inputs.sigmas).toEqual(["13", 0]);
+    expect(conditioningUpscale?.inputs.conditioning).toEqual(["7", 0]);
+    expect(sampler?.inputs.noise).toEqual(["25", 0]);
+    expect(sampler?.inputs.latent_image).toEqual(["20", 0]);
+    expect(serializer?.inputs.joint_av).toEqual(["24", 0]);
+  });
+
+  it("renders learned 3D upscale with the frozen checkpoint and aligned target pixels", () => {
+    const source = workflow("minimax_h3_fl2va_learned_3d_second_sample_av_api.json");
+    const rendered = renderWorkflow(source, baseGenerationTask, {
+      width: 1952,
+      height: 1088,
+      h3AvInputArtifact: "h3-native-av/source.safetensors",
+      h3AvSourceWidth: 1312,
+      h3AvSourceHeight: 736,
+      h3AvScaleBy: 1080 / 736,
+      h3LearnedUpscalerModel: "minimax_h3_latent_upscaler_3d_bf16.safetensors"
+    }) as ApiWorkflow;
+    const learned = Object.values(rendered).find((node) =>
+      node.class_type === "MinimaxH3LatentUpscaler3D"
+    );
+    const anchor = Object.values(rendered).find((node) =>
+      node.class_type === "LocalVideoStudioH3AnchorConditioning"
+    );
+    const guider = Object.values(rendered).find((node) =>
+      node.class_type === "BasicGuider"
+    );
+
+    expect(validateApiWorkflow(source).valid).toBe(true);
+    expect(validateH3ComfyWorkflow(source).valid).toBe(true);
+    expect(learned?.inputs).toMatchObject({
+      latent: ["9", 0],
+      model_name: "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+      mode: "target dimensions",
+      "mode.width": 1952,
+      "mode.height": 1088
+    });
+    expect(anchor?.inputs).toEqual({
+      conditioning: ["21", 0],
+      video_latent: ["10", 0],
+      strength: 0.999
+    });
+    expect(guider?.inputs.conditioning).toEqual(["32", 0]);
   });
 });
 

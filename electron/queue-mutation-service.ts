@@ -15,6 +15,7 @@ import {
 } from "../src/core/queue.js";
 import type { StateRepository } from "./ports/state-repository.js";
 import type { AppLogger } from "../src/infrastructure/app-logger.js";
+import { fileURLToPath } from "node:url";
 
 export interface QueueMutationServiceDependencies {
   store: StateRepository;
@@ -44,14 +45,49 @@ export class QueueMutationService {
     taskId: string,
     patch: Pick<
       UpscaleQueueTask,
-      "targetWidth" | "targetHeight" | "modelId" | "workflowPath" |
+      "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" |
+      "modelId" | "workflowPath" |
       "tileMode" | "faceRestore" | "outputFilename"
     >
   ): Promise<AppState> {
     const { store, sendState } = this.deps;
+    const current = store.get().queue.find((task) => task.id === taskId);
+    if (!current || current.taskType !== "upscale") {
+      throw new Error("待编辑的 Upscale 任务不存在。");
+    }
+    const currentMode = current.upscaleMode ?? "pixel";
+    if (patch.upscaleMode !== currentMode) {
+      throw new Error("已排队的 Upscale 任务不能切换提升方案，请新建任务。");
+    }
+    if (currentMode === "h3-native") {
+      const currentProvider = current.h3NativeInput?.provider ?? "bilinear";
+      const requestedProvider = patch.targetHeight >= 1080 ? "learned-3d" : "bilinear";
+      if (requestedProvider !== currentProvider) {
+        throw new Error("已排队的 H3 Upscale 任务不能跨 bilinear/learned provider 修改分辨率，请新建任务。");
+      }
+    }
+    const safePatch = currentMode === "h3-native"
+      ? (() => {
+          const input = current.h3NativeInput!;
+          const workflowFilename = patch.targetHeight === 1440
+            ? "minimax_h3_fl2va_ultimate_tiled_second_sample_av_api.json"
+            : "minimax_h3_fl2va_learned_3d_second_sample_av_api.json";
+          const workflowPath = fileURLToPath(new URL(`../workflows/${workflowFilename}`, import.meta.url));
+          return {
+            ...patch,
+            modelId: current.modelId,
+            workflowPath,
+            h3NativeInput: {
+              ...input,
+              workflowPath,
+              scaleBy: patch.targetHeight / Math.min(input.artifact.width, input.artifact.height)
+            }
+          };
+        })()
+      : patch;
     const next = await store.update((state) => {
       const previousQueue = state.queue.map((item) => ({ ...item }));
-      state.queue = updateQueuedUpscaleTask(state.queue, taskId, patch);
+      state.queue = updateQueuedUpscaleTask(state.queue, taskId, safePatch);
       state.queuePauseBoundary = adjustQueuePauseBoundary(
         previousQueue,
         state.queuePauseBoundary,

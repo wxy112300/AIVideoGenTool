@@ -8,6 +8,35 @@
 
 ## Unreleased
 
+## 0.58.0 — 2026-09-03
+
+- 视频草稿的模型相关约束收口到统一纯函数，并在 Store 加载、Create 编辑、Queue 回填和入队快照边界复用：H3 固定原生 24 FPS/关闭 RIFE，跨模型 LoRA、Spectrum、steps 与已撤回的 H3 Memory 选项会按现有策略清理；动态的 1080/JointAV、workflow 与环境能力仍由原有门禁决定。已有 Queue/History、H3 首遍 checkpoint 与已测试的 H3 1080 两阶段执行记录不会被草稿规范化改写。
+- 补齐视频草稿排列组合防线：旧 `minimax_h3_ref2va_turbo` 现在等价迁移为 Ref2VA + 专用 4-step Turbo LoRA；Q3 GGUF 无论自定义 LoRA 如何声明兼容性都保持零 LoRA；catalog 明确不支持对应输入模式的模型会在主进程入队与任务快照工厂双重拒绝。Spectrum 因模型策略被自动关闭时不再伪装成用户手动关闭，因此回到兼容 H3 模型后仍可按已安装节点恢复默认开启；用户明确手动关闭仍会保留。
+- 修复 H3 Create 隐藏插帧控件后仍可能从旧草稿继承 `RIFE 2×/4×` 的问题：主进程入队校验与不可变任务快照统一强制 H3 使用原生 24 FPS、关闭插帧，workflow adapter 对旧任务也不再插入 `RIFE VFI`；Queue 按有效执行参数显示 `24 FPS`。Wan 等支持 RIFE 的模型保持原行为。
+- Queue 对失败或取消任务的操作文案现在反映实际恢复能力：H3 1080p 已持久化首遍 checkpoint，或 SeedVR2 已完成至少一个切片时显示“恢复”；没有可复用阶段成果、空 checkpoint 或起步即失败的任务继续显示“重置状态”。两者保持原有安全行为，先返回等待队列，用户开始队列后再执行。
+- Create 的 1080p 选项现在同时要求环境扫描确认已安装 Local Video Studio H3 AV Serializer 且当前任务开启“保存 JointAV 数据”；依赖未安装或保存关闭时不显示，重新开启保存后会立即恢复。若已选择 1080p 后关闭保存，草稿与清晰度控件会在该次操作中立即回退到列表上一档 768p；重绘时若当前值已不可用也显式选择最高可用档，不再由浏览器默认跳到 360p。
+- 修复 Create 已显示并允许选择 1080p 后，renderer 仍把交付分辨率传给基础 H3 显存安全表，错误提示“只允许 360/480/540/720/768”并禁用加入队列的问题；复合 1080p 现在与主进程一致，按实际 720p 首遍执行安全校验，1440p 仍不开放。
+- Create 为 MiniMax H3 FL2VA Base 新增原生 1080p 交付档，仅在 JointAV 开启、未使用视频 LoRA且不是 Extend 时显示；1440p、INT4、Q3 GGUF 与 LoRA 组合继续 fail closed。一次入队会冻结 720p 首遍与 1080p 交付目标，Electron 顺序执行首遍 JointAV 和 learned 3D latent 二次采样；首遍 artifact 作为可恢复 checkpoint，最终成功后清理首遍 MP4/manifest/payload，History 只写入最终 1080p 版本，队列估时按完整复合任务历史匹配。
+- RTX 4090 真实 Create smoke 通过：一个 1 秒、20-step、Spectrum balanced、Sage、INT8 ConvRot VAE 任务依次提交两个 ComfyUI prompt，产出 1920×1088、39 帧、24 FPS 的 H.264/AAC MP4 与 9,417,320-byte final JointAV；总任务耗时 326.13 秒，GPU 峰值 100%，VRAM 峰值 24,227,348,480 bytes。最终 artifact 保留正确 lineage，三个首遍临时文件均已删除，队列回到 idle 且仅新增一个 History 记录；本次验证执行与媒体完整性，不声明主观画质验收。
+- MiniMax H3 创建页新增按任务保存的“保存 JointAV 数据”开关，默认开启以兼容既有任务；关闭后队列快照不再附加 serializer，History 明确记录为 disabled，原生续写与 latent 超分保持 fail closed。队列估时现在区分开启/关闭的历史样本。History 详情输出文件列表显示文件大小，并可在应用内确认后单独删除当前版本的 JointAV manifest 与 payload；主视频保留，artifact 状态同步改为 missing。
+- Queue 运行卡片现在读取 ComfyUI WebSocket 的原始 `value/max` 进度与节点起始时间，在现有总进度、阶段耗时和预计剩余之外显示当前工作量及平均速度；标准采样器使用“步/秒”或“秒/步”，MMH3 使用块速率，其他未上报明确迭代量的阶段不显示猜测数据。该遥测同时覆盖视频、图片和超分任务，并继续通过原地 DOM patch 更新，不因每一步替换整张任务卡。
+- Qwen Image 的 RTX 4090 profile 移除 `--cpu-vae`，保留模型显存管理与 headroom；VAE 固定走 CUDA，分配失败会显示任务错误，不会自动回退 CPU。旧的 CPU-VAE Qwen 进程不再被识别为兼容 profile，队列提交前会重启对齐。MMH3 Ultimate tiled 1440p 二采同时对视频与音频 VAE 执行 fail-closed CUDA 设备校验：工作流在采样前检查 ComfyUI VAE 配置、wrapper 与 patcher load device，任一落到 CPU 都直接停止并显示原因；app-owned H3 节点升至 `0.2.1`。此前绕过队列 runtime-profile 对齐的诊断继承了旧 Qwen Image profile，其采样证据保留，但 CPU 解码不计为完整 smoke passed。
+- 固定 commit 的 MMH3 Ultimate Upscale 已完成两次 RTX 4090、2592×1440、124 帧全流程。应用安装器在 pinned source 上幂等应用首块 learned-source anchor 与聚合进度补丁；第二次运行按 `1/12` 至 `12/12` 显示实际空间 tile，耗时 1274.815 秒，GPU 平均 94.62%、峰值 100%，VRAM 峰值约 22.67 GiB，GPU 视频/音频 VAE、MP4、JointAV 与同一 History 资产写入通过。弹窗使用 H3 实测基线而非 SeedVR2 估算；运行链路已验证，输出画面异常按用户要求留待后续排查，不计为画质验证通过。
+- 修复在 Queue 中把已排队的 H3 learned upscale 从 1440p 编辑为 1080p 时只更新外层目标、却保留内部 `scaleBy=3` 与 MMH3 workflow 的问题；编辑现在原子同步目标尺寸、conditioning scale 和 1080p whole-frame / 1440p tiled workflow，避免采样阶段出现 1440 conditioning token 与 1080 latent token 的 shape mismatch。
+- H3 1080p whole-frame learned 二采不再把 bilinear-resized 首帧 keyframe 直接交给 learned-upscaled 主 latent；应用内置 H3 节点从 `0.2.2` 升至 `0.2.3`，保留 `LocalVideoStudioH3AnchorConditioning` 在 guider 前用 learned video latent 的首 token 重建 frame-0 anchor。Settings 检测到本机旧 revision 后通过应用更新成功；更新后的真实任务产出 1952×1088、124 帧、24 FPS、5.167 秒 H.264/AAC 视频和 SHA-256 匹配的 29.5 MB JointAV，解码检查第 0–7 帧未再出现此前首 3 帧的规则网格、拼块错位或恢复跳变，opening-frame anchor 画质验证通过。
+- “节点与依赖”现在允许用户单独安装 MiniMax H3 Learned Latent Upscaler：应用把已验证的固定 commit 克隆到当前所选 ComfyUI，不在安装包中分发节点源码或模型权重，也不把该可选节点加入批量补齐；安装后继续通过 `/object_info` schema 与权重文件检查。
+- 修复 H3 Upscale 弹窗使用可能过期的环境扫描禁用已验证的 1080p、ComfyUI 离线时入队误判 Learned 3D 未就绪，以及 Electron 构建未复制二次采样 workflow 导致执行时报 `ENOENT`：入队检查 learned 权重与节点源码，执行前启动 ComfyUI 后再通过 `/object_info` 校验节点和 schema；编辑已排队任务时仍保持 provider 快照边界。
+- H3 History Upscale 的 1440p 档已从不可用的全帧 refinement 切换到固定 MMH3 Ultimate 时空分块 workflow，并在 RTX 4090 24GB 上完成两次 2592×1440、124 帧全流程；弹窗不再硬编码禁用 1440p，提交时按目标高度选择 MMH3 workflow，GPU-VAE 与运行时 schema 继续 fail closed。
+- Upscale 的“加入队列”现在会立即进入不可重复点击的“加入中…”状态，失败后恢复操作、成功后继续显示入队反馈；H3 Learned 3D 入队只读取最近完成的环境缓存，冷缓存时把依赖校验延迟到任务准备阶段，避免在按钮点击路径同步等待磁盘扫描。
+- 修复 History 视频详情直接显示浮点时长（例如 `5.166666666666667 秒`）：摘要与输出详情现在统一显示为 `mm:ss`，精确时长仍用于帧数计算和播放。
+
+## 0.57.0 — 2026-09-02
+
+- MiniMax H3 generation and extension workflows now attach the bundled JointAV serializer whenever its runtime node is loaded; successful outputs are validated, committed with a manifest, stored on the History version for future Extend/upscale use, shown with the video output, deleted with their owning video/version, and included in copy-first output-directory migration. Environments without the optional node keep the existing video-only path.
+- History 的“提升分辨率”把 `H3 Latent Upscale` 整合为普通模型选项，不再显示独立方法栏；只对文件完整的 committed JointAV 开放，720p/768p 自动走 bilinear latent 二采，1080p/1440p 在 learned 权重与手工节点通过运行时检查后自动走 learned 3D，队列冻结 provider、源 artifact、conditioning 与实际对齐尺寸。原有 SeedVR2/FlashVSR/Real-ESRGAN 路径保持不变。
+- 864×480、124 帧、24 FPS 的真实 H3 二采 smoke 已完成，产出 1312×736 H.264/AAC 视频和包含 video `[1,24,37,46,82]`、audio `[1,32,2,207]` 的 JointAV；目标档与 32 像素网格对齐后的实际尺寸在弹窗、队列和 History 中分别保存和展示。
+- 接入 `minimax_h3_latent_upscaler_3d_bf16.safetensors` 与 `MinimaxH3LatentUpscaler3D` API workflow；运行时使用 ComfyUI DynamicCombo 的扁平 `mode` / `mode.width` / `mode.height` wire format，并分别校验权重、节点注册和输入 schema。
+- learned 3D 最小真实 smoke 已把 864×480 JointAV video latent 放大到 896×512，保持 audio latent 不变，输出 video `[1,24,37,32,56]`、audio `[1,32,2,207]`。完整 1080 档 smoke 使用 20-step RES multistep 与 INT8 ConvRot VAE，在 21 分 25 秒内产出 1952×1088、124 帧、24 FPS 的 H.264/AAC 视频及 video `[1,24,37,68,122]`、audio `[1,32,2,207]` JointAV；Create 1080 direct 与 Create 1440 的 720→1440 composite 仍属于独立能力，不随 History learned 二采一同开放。
 - 修复提示词增强运行期间 `/system_stats` 短时无响应被误判为 ComfyUI 掉线的问题：连接健康检查现在把权威 Prompt operation 与队列任务共同视为活跃计算，避免中止仍在正常生成的提示词任务；空闲状态下连续探针失败仍会报告真实断线。
 
 ## 0.56.5 — 2026-09-01

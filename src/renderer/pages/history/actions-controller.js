@@ -54,6 +54,15 @@ export function mountHistoryActionsController(context, options) {
                 options.requestHistoryVersionDeletion(assetId, versionId);
         }, { signal });
     });
+    root.querySelectorAll("[data-delete-joint-av]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            stopAction(event);
+            const assetId = button.dataset.deleteJointAv;
+            const versionId = button.dataset.jointAvVersionId;
+            if (assetId && versionId)
+                options.requestJointAvDeletion(assetId, versionId);
+        }, { signal });
+    });
     const patchFavoriteButtons = (assetId, favorite) => {
         root.querySelectorAll("[data-history-favorite]").forEach((button) => {
             if (button.dataset.historyFavorite !== assetId)

@@ -3,7 +3,7 @@ import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import { persistVideoHistoryResult } from "../electron/queue-history";
 import { QueueWorkerController } from "../electron/queue-worker";
-import { queueTaskInput, queueTaskInputUrl, renderQueueTaskCard } from "../src/renderer/pages/queue/card";
+import { queueTaskHasRecoveryCheckpoint, queueTaskInput, queueTaskInputUrl, queueWorkProgressText, renderQueueTaskCard } from "../src/renderer/pages/queue/card";
 import { queueLayoutSignature } from "../src/renderer/pages/queue/helpers";
 import { queueComfyUiStatus, queueOperationStatus } from "../src/renderer/pages/queue/live-status";
 import { revealQueueInputVideo } from "../src/renderer/pages/queue/input-previews";
@@ -41,6 +41,131 @@ function queueFixtureTask(state: ReturnType<typeof createDefaultState>, id: stri
     random: () => 0.5
   });
 }
+
+describe("queue work progress", () => {
+  it("formats determinate ComfyUI progress and average throughput", () => {
+    const task = {
+      ...queueFixtureTask(createDefaultState(), "work-progress"),
+      workProgress: {
+        value: 19,
+        max: 20,
+        unit: "step" as const,
+        startedAt: "2026-09-03T00:00:00.000Z",
+        sampledAt: "2026-09-03T00:20:35.000Z"
+      }
+    };
+    const text = queueWorkProgressText(
+      task,
+      (key, params) => `${key}${params ? JSON.stringify(params) : ""}`
+    );
+
+    expect(text).toContain('\"value\":\"19\"');
+    expect(text).toContain('\"max\":\"20\"');
+    expect(text).toContain("65.0");
+    expect(queueWorkProgressText({ ...task, workProgress: undefined }, (key) => key)).toBe("");
+  });
+
+  it("groups live work, stage elapsed, and ETA above the progress bar", () => {
+    const task = queueFixtureTask(createDefaultState(), "running-metrics");
+    task.status = "running";
+    task.workProgress = {
+      value: 6,
+      max: 20,
+      unit: "step",
+      startedAt: "2026-09-03T00:00:00.000Z",
+      sampledAt: "2026-09-03T00:05:24.000Z"
+    };
+    const markup = renderQueueTaskCard(task, 1, {
+      t: (key, params) => `${key}${params ? JSON.stringify(params) : ""}`,
+      taskPreviews: {},
+      queueRunning: true,
+      queueActionBusy: null,
+      icon: () => "",
+      escapeHtml: (value) => String(value),
+      modelName: (id) => id,
+      frameRateSummary: () => "24 FPS",
+      queueStageElapsedText: () => "stage elapsed",
+      queueTaskRemainingSeconds: () => 120,
+      queueEstimateText: () => "2m",
+      elapsedText: () => "5m"
+    });
+    const progressBarIndex = markup.indexOf('<div class="progress"');
+    const taskMetaIndex = markup.indexOf('<div class="task-meta"');
+
+    expect(markup).toContain('class="running-stage-metrics"');
+    expect(markup.indexOf('id="running-work-progress"')).toBeLessThan(progressBarIndex);
+    expect(markup.indexOf('id="running-stage-elapsed"')).toBeLessThan(progressBarIndex);
+    expect(markup.indexOf('id="running-eta"')).toBeLessThan(progressBarIndex);
+    expect(markup.slice(taskMetaIndex, markup.indexOf('<div class="running-controls"'))).not.toContain("id=\"running-");
+  });
+});
+
+describe("queue recovery action", () => {
+  it("shows resume only when the failed task has reusable checkpoint work", () => {
+    const task = queueFixtureTask(createDefaultState(), "recoverable-task");
+    task.status = "failed";
+    const options = {
+      t: (key: string) => key,
+      taskPreviews: {},
+      queueRunning: false,
+      queueActionBusy: null,
+      icon: () => "",
+      escapeHtml: (value: unknown) => String(value),
+      modelName: (id: string) => id,
+      frameRateSummary: () => "24 FPS",
+      queueStageElapsedText: () => "—",
+      queueTaskRemainingSeconds: () => null,
+      queueEstimateText: () => "—",
+      elapsedText: () => "—"
+    };
+
+    expect(queueTaskHasRecoveryCheckpoint(task)).toBe(false);
+    expect(renderQueueTaskCard(task, 1, options)).toContain(">queue.card.reset</span>");
+
+    task.h3FirstPassCheckpoint = {} as NonNullable<typeof task.h3FirstPassCheckpoint>;
+    expect(queueTaskHasRecoveryCheckpoint(task)).toBe(true);
+    expect(renderQueueTaskCard(task, 1, options)).toContain(">queue.card.resume</span>");
+  });
+
+  it("requires completed SeedVR2 segments before offering resume", () => {
+    const taskWithoutCompletedSegments = {
+      taskType: "upscale",
+      seedVr2Checkpoint: { completed: [] }
+    } as unknown as Parameters<typeof queueTaskHasRecoveryCheckpoint>[0];
+    const taskWithCompletedSegments = {
+      taskType: "upscale",
+      seedVr2Checkpoint: { completed: [{}] }
+    } as unknown as Parameters<typeof queueTaskHasRecoveryCheckpoint>[0];
+    expect(queueTaskHasRecoveryCheckpoint(taskWithoutCompletedSegments)).toBe(false);
+    expect(queueTaskHasRecoveryCheckpoint(taskWithCompletedSegments)).toBe(true);
+  });
+});
+
+describe("queue H3 frame metadata", () => {
+  it("shows native 24 FPS instead of stale RIFE settings", () => {
+    const task = queueFixtureTask(createDefaultState(), "stale-h3-rife");
+    task.fps = 12;
+    task.frameInterpolation = "rife2x";
+    const frameRateSummary = vi.fn(() => "24 FPS");
+
+    renderQueueTaskCard(task, 1, {
+      t: (key) => key,
+      taskPreviews: {},
+      queueRunning: false,
+      queueActionBusy: null,
+      icon: () => "",
+      escapeHtml: (value) => String(value),
+      modelName: (id) => id,
+      frameRateSummary,
+      queueStageElapsedText: () => "—",
+      queueTaskRemainingSeconds: () => null,
+      queueEstimateText: () => "—",
+      elapsedText: () => "—"
+    });
+
+    expect(frameRateSummary).toHaveBeenCalledWith(24, "off");
+  });
+});
 
 describe("queue renderer task priority", () => {
   it("keeps the environment telemetry at the top and the active task before pending work", () => {
@@ -218,6 +343,54 @@ describe("queue renderer task priority", () => {
     expect(markup).not.toContain("create.options.h3MemoryPreserveNative");
   });
 
+  it("shows the effective JointAV save preference on H3 queue cards", () => {
+    const state = createDefaultState();
+    const task = queueTaskFromDraft({
+      ...createDefaultDraft(),
+      startImagePath: "C:/input/start.png",
+      workflowPath: "workflow.json",
+      h3SaveJointAv: false
+    }, state, {
+      now: () => new Date("2026-09-03T12:00:00.000Z"),
+      id: () => "h3-joint-av-card",
+      random: () => 0.5
+    });
+    const render = (queueTask: typeof task) => renderQueueTaskCard(queueTask, 1, {
+      t: (key) => key,
+      taskPreviews: {},
+      queueRunning: false,
+      queueActionBusy: null,
+      icon: () => "",
+      escapeHtml: (value) => String(value),
+      modelName: (id) => id,
+      frameRateSummary: () => "24 FPS",
+      queueStageElapsedText: () => "—",
+      queueTaskRemainingSeconds: () => null,
+      queueEstimateText: () => "—",
+      elapsedText: () => "—"
+    });
+
+    expect(render(task)).toContain("queue.card.jointAvDisabled");
+    expect(render({ ...task, h3SaveJointAv: undefined })).toContain("queue.card.jointAvEnabled");
+  });
+
+  it("shows the final H3 delivery resolution instead of the first-pass resolution", () => {
+    const task = {
+      ...queueFixtureTask(createDefaultState(), "h3-1080-card"),
+      resolution: 720 as const,
+      h3DeliveryResolution: 1080 as const
+    };
+    const markup = renderQueueTaskCard(task, 1, {
+      t: (key) => key,
+      taskPreviews: {}, queueRunning: false, queueActionBusy: null,
+      icon: () => "", escapeHtml: (value) => String(value), modelName: (id) => id,
+      frameRateSummary: () => "24 FPS", queueStageElapsedText: () => "—",
+      queueTaskRemainingSeconds: () => null, queueEstimateText: () => "—", elapsedText: () => "—"
+    });
+
+    expect(markup).toContain("<span>1080p</span>");
+  });
+
   it("shows native SeedVR2 total progress and current segment progress separately", () => {
     const task = {
       ...queueFixtureTask(createDefaultState(), "seedvr2-progress"),
@@ -310,6 +483,7 @@ describe("queue history persistence", () => {
         type: "output",
         absolutePath: `C:/output/Videos/${task.outputFilename}`
       }],
+      h3ContinuationData: { status: "available" },
       id: (() => {
         const ids = ["version-1", "asset-1"];
         return () => ids.shift()!;
@@ -328,6 +502,10 @@ describe("queue history persistence", () => {
       id: "version-1",
       seed: 42,
       comfyPromptId: "prompt-1"
+    });
+    expect(state.history[0]?.versions[0]?.h3ContinuationData).toEqual({
+      status: "invalid",
+      reason: "H3 AV 标记为 available，但没有已提交的 artifact。"
     });
   });
 });

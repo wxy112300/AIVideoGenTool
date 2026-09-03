@@ -622,6 +622,7 @@ function registerIpc(
   registerHistoryIpc({
     ipc: ipcMain,
     query: applicationServices.history.query,
+    artifacts: applicationServices.history.artifacts,
     metadata: applicationServices.history.metadata,
     destructive: applicationServices.history.destructive
   });

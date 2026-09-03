@@ -15,6 +15,12 @@ export const H3_MEMORY_MINIMUM_VERSION = "0.2.16";
 export const H3_MEMORY_RECOMMENDED_VERSION = "0.2.20";
 export const H3_MEMORY_LATEST_VERSION = H3_MEMORY_RECOMMENDED_VERSION;
 export const H3_MEMORY_UPSTREAM_COMMIT = "e15f6534bb5841ff4e6a92ea5f9b42fca0e32746";
+export const H3_LATENT_UPSCALER_REVISION = "a5ed6e9586f0b14250a0018f78568e0076e4bd9d";
+export const H3_ULTIMATE_UPSCALE_REVISION = "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d";
+export const H3_AV_SERIALIZER_REVISION = "0.2.3";
+export const H3_CONTINUUM_MINIMUM_VERSION = "3.6.0";
+export const H3_CONTINUUM_RECOMMENDED_VERSION = "3.7.0";
+export const H3_CONTINUUM_REVISION = "fe4ff9c20c2cc8bb375625d1534f5673a737d1be";
 
 const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   id: "inpaint-nodes",
@@ -232,6 +238,41 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
   }],
   required: false
 }, {
+  id: "h3-continuum",
+  priority: 142,
+  name: "ComfyUI H3 Continuum",
+  purpose: "使用 H3 原生 AV latent 连续采样、分块长视频和可恢复续写；后续用于 History JointAV Extend",
+  repositoryUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum.git",
+  directoryName: "ComfyUI-H3-Continuum",
+  aliases: ["ComfyUI-H3-Continuum", "comfyui-h3-continuum"],
+  releaseSource: "github-release",
+  installRevision: H3_CONTINUUM_REVISION,
+  license: "MIT",
+  nodeTypes: [
+    "H3ContinuumSamplerV3",
+    "H3ContinuumAdvancedV3",
+    "H3ContinuumAssembleV3",
+    "H3ContinuumJoin",
+    "H3ContinuumFinish",
+    "H3ContinuumSaveState",
+    "H3ContinuumLoadState"
+  ],
+  minimumVersion: H3_CONTINUUM_MINIMUM_VERSION,
+  recommendedVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
+  latestVersion: H3_CONTINUUM_RECOMMENDED_VERSION,
+  bulkInstall: false,
+  appInstallable: true,
+  runtimeRequirement: "要求 ComfyUI >=0.32.0；当前固定 v3.7.0。节点包无额外 Python 依赖，但安装后必须重启所选 ComfyUI，并通过 /object_info 和真实 H3 smoke 验证；文件安装成功不等于 Native Masked AV 可运行。",
+  compatibilityEvidence: [{
+    verifiedAt: "2026-09-03",
+    sourceUrl: "https://github.com/ukr8b3g-cmyk/ComfyUI-H3-Continuum/releases/tag/v3.7.0",
+    note: "v3.7.0 发布包包含 V3 sampler、Advanced、Assemble 以及可恢复 state 节点；上游发布页声明 ComfyUI 0.34.2 runtime verification。本条只记录上游静态发布证据，不代表本机运行已通过。",
+    comfyUi: "0.34.2",
+    commit: H3_CONTINUUM_REVISION,
+    checks: ["static"]
+  }],
+  required: false
+}, {
   id: "plaguekind-h3-sla",
   priority: 160,
   name: "ComfyUI-PlagueKind H3 SLA Attention",
@@ -288,6 +329,104 @@ const customNodeDefinitions: CatalogCustomNodeDefinition[] = [{
     commit: H3_MEMORY_UPSTREAM_COMMIT,
     checks: ["static"]
   }],
+  required: false
+}, {
+  id: "h3-latent-upscaler",
+  priority: 145,
+  name: "ComfyUI H3 Latent Upscaler",
+  purpose: "拆分/拼接 H3 joint AV latent，并分别处理二次采样的 video/audio noise 与 sigma",
+  repositoryUrl: "https://github.com/rockerBOO/h3-latent-upscaler.git",
+  directoryName: "h3-latent-upscaler",
+  aliases: ["h3-latent-upscaler", "ComfyUI-H3-Latent-Upscaler"],
+  installRevision: H3_LATENT_UPSCALER_REVISION,
+  license: "GPL-3.0",
+  nodeTypes: [
+    "MiniMaxH3LatentUpscale",
+    "MiniMaxH3ConditioningUpscale",
+    "MiniMaxH3AddNoise",
+    "MiniMaxH3ShiftSigmas"
+  ],
+  runtimeRequirement: "仅作为 H3 二次采样的受管外部节点安装；必须固定到登记 commit，并在 ComfyUI /object_info 与真实 workflow smoke 中分别验证。",
+  compatibilityEvidence: [{
+    verifiedAt: "2026-09-03",
+    sourceUrl: "https://github.com/rockerBOO/h3-latent-upscaler/tree/a5ed6e9586f0b14250a0018f78568e0076e4bd9d",
+    note: "已核对 pinned commit 的四个节点 class mapping；本项目不复制第三方源码。当前只完成 catalog/static 证据，object-info、workflow 和真实 smoke 仍是后续 Gate。",
+    commit: H3_LATENT_UPSCALER_REVISION,
+    checks: ["static"]
+  }],
+  required: false
+}, {
+  id: "minimax-h3-learned-upscaler",
+  priority: 146,
+  name: "MiniMax H3 Learned Latent Upscaler",
+  purpose: "加载 H3 learned 3D latent upscaler 权重并放大分离后的 24 通道 video latent",
+  repositoryUrl: "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler",
+  directoryName: "Comfyui_Minimax_h3_latent_Upscaler",
+  aliases: ["Comfyui_Minimax_h3_latent_Upscaler", "ComfyUI-Minimax-H3-Latent-Upscaler"],
+  installRevision: "d7c01b9011f2e8439493f6c02c29995a27df276f",
+  nodeTypes: ["MinimaxH3LatentUpscaler3D"],
+  bulkInstall: false,
+  appInstallable: true,
+  runtimeRequirement: "用户可从设置页主动将固定 commit 克隆到所选 ComfyUI；节点源码和权重不随应用分发，权重仍由用户按来源链接下载。运行前必须通过 /object_info schema 校验。",
+  compatibilityEvidence: [{
+    verifiedAt: "2026-09-02",
+    sourceUrl: "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler/tree/d7c01b9011f2e8439493f6c02c29995a27df276f",
+    note: "在 ComfyUI 0.33.0、Python 3.12.11、Torch 2.10.0+cu130 和 RTX 4090 上通过 /object_info、24-channel Conv3D minimal run 及应用完整 1952x1088 二次采样 smoke；DynamicCombo API 使用扁平 mode/mode.width/mode.height。设置页只在用户主动操作时克隆该固定 commit，不随应用分发节点源码或权重。",
+    comfyUi: "0.33.0",
+    python: "3.12.11",
+    pytorch: "2.10.0+cu130",
+    cuda: "13.0",
+    commit: "d7c01b9011f2e8439493f6c02c29995a27df276f",
+    workflowIds: ["minimax_h3_fl2va_learned_3d_second_sample_av_api.json"],
+    checks: ["static", "object-info", "minimal-run"]
+  }],
+  required: false
+}, {
+  id: "mmh3-ultimate-upscale",
+  priority: 148,
+  name: "MMH3 Ultimate Upscale",
+  purpose: "通过时间分块和空间 tile 逐块二次采样 H3 joint AV latent，降低 1440p 峰值显存",
+  repositoryUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale.git",
+  directoryName: "Comfyui-MMH3-UltimateUpscale",
+  aliases: ["comfyui-mmh3-ultimateupscale", "Comfyui-MMH3-UltimateUpscale"],
+  installRevision: H3_ULTIMATE_UPSCALE_REVISION,
+  license: "MIT",
+  nodeTypes: [
+    "MMH3UltimateUpscale",
+    "MMH3LatentUpscaleWithModelParams",
+    "MMH3TemporalSplitParams",
+    "MMH3SpatialSplitParams"
+  ],
+  bulkInstall: false,
+  appInstallable: true,
+  runtimeRequirement: "1440p 路径固定使用 d91be5a 并应用程序管理的首块 source-anchor 与聚合进度补丁。安装后必须重启 ComfyUI 并通过 /object_info schema；模型权重许可证独立于节点源码。",
+  compatibilityEvidence: [{
+    verifiedAt: "2026-09-02",
+    sourceUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale/tree/d91be5ac41797a3789b4765cdb6eb6d9129a4a4d",
+    note: "固定 commit 加应用补丁后完成第二次 RTX 4090 2592x1440、124 帧、20 steps 全流程：12 个空间 tile 的聚合进度单调可见，耗时 1274.815 秒，GPU 平均 94.62%、峰值 100%，VRAM 峰值约 22.67 GiB；GPU 视频/音频 VAE、MP4、JointAV 与同一 History 资产持久化通过。输出画面仍有异常，质量根因按用户要求留待后续排查，不影响本条运行与设置证据。",
+    commit: H3_ULTIMATE_UPSCALE_REVISION,
+    checks: ["static", "object-info", "minimal-run"]
+  }],
+  required: false
+}, {
+  id: "local-video-studio-h3-av",
+  priority: 147,
+  name: "Local Video Studio H3 AV Serializer",
+  purpose: "在 output root 下安全保存/加载 H3 joint AV safetensors artifact",
+  repositoryUrl: "builtin://LocalVideoStudio-H3",
+  directoryName: "LocalVideoStudio-H3",
+  aliases: ["local-video-studio-h3-av", "LocalVideoStudio-H3"],
+  source: "bundled",
+  installRevision: H3_AV_SERIALIZER_REVISION,
+  license: "MIT",
+  nodeTypes: [
+    "LocalVideoStudioH3SaveJointAV",
+    "LocalVideoStudioH3LoadJointAV",
+    "LocalVideoStudioRequireGpuVAE",
+    "LocalVideoStudioH3RequireGpuVAE",
+    "LocalVideoStudioH3AnchorConditioning"
+  ],
+  runtimeRequirement: "应用原创节点；安装后必须用所选 ComfyUI Python 检查 safetensors 依赖，并通过 /object_info 与 load/save round-trip 验证。",
   required: false
 }, {
   id: "spectrum-minimax-h3",

@@ -19,12 +19,52 @@ import {
   patchMultimodalPromptProjectorDiscovery,
   patchMultimodalPromptQwen38Recognition,
   patchMultimodalPromptResidency,
+  patchMmh3UltimateUpscaleSource,
   patchQwenVlComfyDesktopLogging,
   patchQwenVlCooperativeInterrupt,
   prepareH3PromptWriter,
   prepareMultimodalPromptNodes
 } from "../src/infrastructure/dependency-node-adapters";
 import { createDefaultState } from "../src/core/defaults";
+
+describe("MMH3 Ultimate Upscale adapter", () => {
+  const pinnedSource = `def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg):
+    callback = latent_preview.prepare_callback(guider.model_patcher, sigmas.shape[-1] - 1, x0_output)
+    samples = guider.sample(
+        noise.generate_noise(latent), latent_image, sampler, sigmas,
+    )
+    samples = samples.to(comfy.model_management.intermediate_device())
+
+def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, negative, cfg,
+                    fun_control=None, inpaint=None):
+                out = sample_piece(piece, cond_tile, model, noise, sampler, sigmas, negative, cfg)
+
+        segments_debug = []
+        tiles_debug = []
+
+                    fun_control=fun_control, inpaint=inpaint_param,
+                )
+                out = sample_piece(piece, cond_i, model, noise, sampler, sigmas, negative, cfg)
+
+            # 3. pin frame-0 keyframe to the previous chunk's re-sampled frame
+            if i > 0 and acc_v is not None:
+                cond_i = anchor_conditioning(cond_i, acc_v, f0, anchor_strength)`;
+
+  it("pins the first source token and aggregates repeated tile progress", () => {
+    const patched = patchMmh3UltimateUpscaleSource(pinnedSource.replace(/\n/gu, "\r\n"));
+
+    expect(patched).toContain("else chunk_v");
+    expect(patched).toContain('comfy.utils.ProgressBar(len(bounds) * pieces_per_chunk)');
+    expect(patched).toContain('progress_state["piece"] + piece_progress');
+    expect(patched).toContain("progress_state=progress_state");
+    expect(patchMmh3UltimateUpscaleSource(patched)).toBe(patched);
+  });
+
+  it("fails closed when the pinned source layout changes", () => {
+    expect(() => patchMmh3UltimateUpscaleSource("def sample_piece(): pass\n"))
+      .toThrow("MMH3 Ultimate Upscale 源码缺少");
+  });
+});
 
 describe("Qwen-VL cooperative interrupt adapter", () => {
   const source = [
@@ -547,6 +587,87 @@ describe("dependency installer", () => {
       });
     }
     expect(result.log).toContain("无需安装额外 Python 依赖");
+  });
+
+  it("pins the H3 latent upscaler checkout to the catalog revision", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-upscaler-pin-"));
+    temporaryDirectories.push(comfyRoot);
+    const processCalls: string[][] = [];
+    const pinnedRevision = "a5ed6e9586f0b14250a0018f78568e0076e4bd9d";
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async () => "git.exe",
+      findComfyPython: async () => "python.exe",
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args) => {
+        processCalls.push(args);
+        if (args[0] === "clone") await fs.mkdir(args.at(-1)!, { recursive: true });
+        if (args.includes("rev-parse") && args.includes("HEAD")) return pinnedRevision;
+        return "";
+      }
+    };
+
+    const result = await installCustomNodePackage(
+      "h3-latent-upscaler",
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok, `${result.message}\n${result.log ?? ""}`).toBe(true);
+    expect(processCalls).toEqual(expect.arrayContaining([
+      expect.arrayContaining(["clone", "--depth", "1", "--no-checkout"]),
+      expect.arrayContaining(["fetch", "--depth", "1", "origin", pinnedRevision]),
+      expect.arrayContaining(["checkout", "--detach", pinnedRevision]),
+      expect.arrayContaining(["rev-parse", "HEAD"])
+    ]));
+    expect(result.log).toContain(`节点 revision 已校验：${pinnedRevision}`);
+  });
+
+  it("installs the app-owned serializer from a bundled package with a recoverable backup", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-serializer-install-"));
+    const bundledRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-serializer-source-"));
+    temporaryDirectories.push(comfyRoot, bundledRoot);
+    const sourceDirectory = path.join(bundledRoot, "LocalVideoStudio-H3");
+    const targetDirectory = path.join(comfyRoot, "custom_nodes", "LocalVideoStudio-H3");
+    await fs.mkdir(sourceDirectory, { recursive: true });
+    await fs.writeFile(path.join(sourceDirectory, "__init__.py"), "NODE_CLASS_MAPPINGS = {}", "utf8");
+    await fs.writeFile(path.join(sourceDirectory, "VERSION"), "0.2.3\n", "utf8");
+    await fs.writeFile(path.join(sourceDirectory, "requirements.txt"), "\n", "utf8");
+    await fs.mkdir(targetDirectory, { recursive: true });
+    await fs.writeFile(path.join(targetDirectory, "old.txt"), "old", "utf8");
+    const runtime: DependencyInstallerRuntime = {
+      downloadEnvironment: () => ({ ...process.env }),
+      proxyLogLabel: () => "",
+      findComfyRoot: async () => comfyRoot,
+      findExecutable: async () => { throw new Error("bundled nodes must not invoke Git"); },
+      findComfyPython: async () => "python.exe",
+      resolveBundledNodeDirectory: async () => sourceDirectory,
+      exists,
+      retryableRenameError: () => false,
+      renameWithRetry: async (source, target) => fs.rename(source, target),
+      runLoggedProcess: async (_executable, args) => {
+        expect(args).toEqual(["-m", "pip", "install", "-r", path.join(targetDirectory, "requirements.txt")]);
+        return "";
+      }
+    };
+
+    const result = await installCustomNodePackage(
+      "local-video-studio-h3-av",
+      createDefaultState().settings,
+      runtime
+    );
+
+    expect(result.ok, `${result.message}\n${result.log ?? ""}`).toBe(true);
+    expect(await fs.readFile(path.join(targetDirectory, "__init__.py"), "utf8"))
+      .toContain("NODE_CLASS_MAPPINGS");
+    expect(await exists(path.join(targetDirectory, "old.txt"))).toBe(false);
+    expect((await fs.readdir(path.join(comfyRoot, "node-backups"))).some((name) =>
+      name.startsWith("LocalVideoStudio-H3-"
+      ))).toBe(true);
   });
 
   it("rejects unknown packages before touching the runtime", async () => {

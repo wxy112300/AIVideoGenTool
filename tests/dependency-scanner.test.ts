@@ -27,7 +27,8 @@ describe("dependency scanner", () => {
       ["pyproject", "pyproject.toml", '[project]\nversion = "1.2.3"\n', "1.2.3"],
       ["package", "package.json", '{"version":"2.3.4"}', "2.3.4"],
       ["version-file", "VERSION", "v3.4.5\n", "3.4.5"],
-      ["python", "__init__.py", '__version__ = "4.5.6"\n', "4.5.6"]
+      ["python", "__init__.py", '__version__ = "4.5.6"\n', "4.5.6"],
+      ["python-version", "version.py", 'PACKAGE_VERSION = "5.6.7"\n', "5.6.7"]
     ] as const;
     for (const [name, filename, content, expected] of fixtures) {
       const directory = path.join(root, name);
@@ -594,5 +595,40 @@ describe("dependency scanner", () => {
       duplicateDirectories: [duplicateDirectory]
     });
     expect(motionContext?.compatibilityNotice).toContain("2 个 H3 Motion Context 副本");
+  });
+
+  it("reports immutable H3 package revisions during offline scans", async () => {
+    const comfyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-h3-revision-scan-"));
+    temporaryDirectories.push(comfyRoot);
+    const customNodesRoot = path.join(comfyRoot, "custom_nodes");
+    const serializerDirectory = path.join(customNodesRoot, "LocalVideoStudio-H3");
+    const upscalerDirectory = path.join(customNodesRoot, "h3-latent-upscaler");
+    await fs.mkdir(serializerDirectory, { recursive: true });
+    await fs.mkdir(upscalerDirectory, { recursive: true });
+    await fs.writeFile(path.join(serializerDirectory, "__init__.py"), "NODE_CLASS_MAPPINGS = {}", "utf8");
+    await fs.writeFile(path.join(serializerDirectory, "VERSION"), "0.2.2\n", "utf8");
+    await fs.writeFile(path.join(upscalerDirectory, "nodes.py"), "NODE_CLASS_MAPPINGS = {}", "utf8");
+
+    const statuses = await scanCustomNodes(comfyRoot, {
+      ...createDefaultState().settings,
+      comfyUrl: "http://127.0.0.1:1"
+    });
+    const serializer = statuses.find((status) => status.id === "local-video-studio-h3-av");
+    const upscaler = statuses.find((status) => status.id === "h3-latent-upscaler");
+
+    expect(serializer).toMatchObject({
+      installed: true,
+      detectedRevision: "0.2.2",
+      installRevision: "0.2.3",
+      versionSource: "VERSION",
+      compatibilityState: "error",
+      updateAvailable: true
+    });
+    expect(upscaler).toMatchObject({
+      installed: true,
+      installRevision: "a5ed6e9586f0b14250a0018f78568e0076e4bd9d",
+      compatibilityState: "error",
+      loadError: expect.stringContaining("revision 不匹配")
+    });
   });
 });

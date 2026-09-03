@@ -51,6 +51,26 @@ export function imageEditEnqueueBlockReason(draft, imageProfile, t = createTrans
                     : t(uiKeys.create.validation.imageWorkflowMissing, { name: imageCapability.name })
                 : "";
 }
+export function videoResolutionOptionsForDraft(draft, extending, jointAvSerializerInstalled) {
+    const base = isMiniMaxH3Model(draft.modelId)
+        ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? [360, 480, 540, 720, 768]
+        : [480, 540, 720];
+    const h3Create1080 = !extending && draft.modelId === "minimax_h3_fl2va" &&
+        draft.videoLoras.length === 0 && draft.h3SaveJointAv && jointAvSerializerInstalled;
+    return h3Create1080 ? [...base, 1080] : base;
+}
+export function resolutionAfterJointAvPreference(resolution, saveJointAv) {
+    return !saveJointAv && resolution === 1080 ? 768 : resolution;
+}
+export function selectedVideoResolution(resolution, options) {
+    return options.includes(resolution) ? resolution : options.at(-1) ?? resolution;
+}
+export function generationSafetyForCreateDraft(draft, locale) {
+    return generationSafetyForTask({
+        ...draft,
+        resolution: draft.resolution === 1080 ? 720 : draft.resolution
+    }, locale ?? "zh-CN");
+}
 export function videoEnqueueBlockReason(input) {
     const t = input.t ?? createTranslator("zh-CN").t;
     if (input.extending) {
@@ -257,9 +277,9 @@ export function buildVideoCreatePageViewModel(options) {
     const spectrumTurboCompatible = !turboEnabled || releaseVersionAtLeast(spectrumNode?.version ?? "", SPECTRUM_TURBO_MINIMUM_VERSION);
     const spectrumEligible = videoPolicy.spectrum.allowed && spectrumTurboCompatible;
     const spectrumReady = draft.spectrumMode !== "balanced" || (spectrumEligible && spectrumLoaded);
-    const resolutionOptions = isMiniMaxH3
-        ? modelCatalog.get(draft.modelId)?.definition.capabilities?.resolutions ?? [360, 480, 540, 720, 768]
-        : [480, 540, 720];
+    const jointAvSerializerInstalled = environmentScan?.customNodes.some((node) => node.id === "local-video-studio-h3-av" && node.installed) === true;
+    const resolutionOptions = videoResolutionOptionsForDraft(draft, extending, jointAvSerializerInstalled);
+    const selectedResolution = selectedVideoResolution(draft.resolution, resolutionOptions);
     const h3MotionContextNode = environmentScan?.customNodes.find((node) => node.id === "h3-motion-context");
     const h3MotionContextReady = !extending || !isR2V || Boolean(h3MotionContextNode?.installed || h3MotionContextNode?.loaded);
     const slaTurboSelected = draft.videoLoras.some((lora) => isH3SlaTurboLoraId(lora.id) && videoLoraCompatibleWithModel(lora, draft.modelId));
@@ -270,7 +290,7 @@ export function buildVideoCreatePageViewModel(options) {
     const interpolation = interpolationEstimate(draft);
     const safety = extending
         ? extensionSafetyForDraft(draft, state.settings)
-        : generationSafetyForTask(draft, state.settings.uiLocale);
+        : generationSafetyForCreateDraft(draft, state.settings.uiLocale);
     const supportsEndImage = workflowCapabilities[draft.workflowPath]?.supportsEndImage === true;
     const supportsVideoExtension = workflowCapabilities[draft.workflowPath]?.supportsVideoExtension === true;
     const selectedModelProfile = environmentScan?.modelProfiles.find((profile) => profile.id === draft.modelId);
@@ -369,7 +389,7 @@ export function buildVideoCreatePageViewModel(options) {
                     ...draft,
                     resolution: value
                 });
-                return `<option value="${value}" ${draft.resolution === value ? "selected" : ""}>${value}p · ${width}×${height}</option>`;
+                return `<option value="${value}" ${selectedResolution === value ? "selected" : ""}>${value}p · ${width}×${height}</option>`;
             }).join(""),
         stepsOptionsMarkup: videoPolicy.steps.options.map((value) => {
             const label = turboEnabled
@@ -409,6 +429,7 @@ export function buildVideoCreatePageViewModel(options) {
                     ? t(uiKeys.create.validation.spectrumInstall)
                     : t(uiKeys.create.validation.spectrumNative),
         spectrumModeDisabled: draft.spectrumMode !== "balanced" && !(spectrumEligible && spectrumLoaded),
+        jointAvLabelMarkup: fieldLabelWithTip(t(uiKeys.create.videoSettings.saveJointAv), t(uiKeys.create.videoSettings.saveJointAvDescription)),
         loraLabelMarkup: fieldLabelWithTip(t(uiKeys.create.validation.loraLabel), t(uiKeys.create.validation.loraDescription)),
         installReadyLoraDefinitions,
         installReadyLoraEmptyLabel: !environmentScan

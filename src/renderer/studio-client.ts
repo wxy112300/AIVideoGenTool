@@ -58,6 +58,8 @@ const applicationMethodNames = [
   "resetTask",
   "deleteHistoryAsset",
   "deleteHistoryVersion",
+  "deleteHistoryJointAv",
+  "inspectH3NativeAvArtifact",
   "updateHistoryMetadata",
   "setImageHistoryCover",
   "deleteImageHistoryVersion"

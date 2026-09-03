@@ -12,6 +12,7 @@ import type {
 import {
   historyVideoPaths,
   historyVideoVersionPaths,
+  historyVideoVersionAuxiliaryPaths,
   removeHistoryVideoVersion
 } from "../../src/core/history-delete.js";
 import type { HistoryFileSystemPort } from "../ports/history-file-system.js";
@@ -81,11 +82,17 @@ export class HistoryDestructiveService {
     if (asset.versions.length <= 1) {
       throw new Error("视频记录至少需要保留一个版本；如需全部删除，请删除整条记录。");
     }
-    const versionPaths = historyVideoVersionPaths(version, current.settings.outputDirectory);
+    const versionPaths = [
+      ...historyVideoVersionPaths(version, current.settings.outputDirectory),
+      ...historyVideoVersionAuxiliaryPaths(version, current.settings.outputDirectory)
+    ];
     const otherVersionPaths = new Set(
       asset.versions
         .filter((item) => item.id !== versionId)
-        .flatMap((item) => historyVideoVersionPaths(item, current.settings.outputDirectory))
+        .flatMap((item) => [
+          ...historyVideoVersionPaths(item, current.settings.outputDirectory),
+          ...historyVideoVersionAuxiliaryPaths(item, current.settings.outputDirectory)
+        ])
     );
     const filesToDelete = versionPaths.filter((filename) => !otherVersionPaths.has(filename));
     this.deps.logger.info("history", "video-version-delete-started", "开始删除视频版本和生成文件", {
@@ -119,6 +126,50 @@ export class HistoryDestructiveService {
         error,
         { versionId }
       );
+      throw error;
+    }
+  }
+
+  async deleteJointAv(assetId: string, versionId: string): Promise<AppState> {
+    const startedAt = Date.now();
+    const current = this.deps.store.get();
+    const asset = current.history.find((item) => item.id === assetId);
+    const version = asset?.versions.find((item) => item.id === versionId);
+    const artifact = version?.h3ContinuationData?.status === "available"
+      ? version.h3ContinuationData.artifact
+      : undefined;
+    if (!asset || !version || !artifact) throw new Error("当前版本没有可删除的 JointAV 文件。");
+    const resolved = await Promise.all([
+      this.deps.resolveHistoryFile(artifact.manifest, current.settings),
+      this.deps.resolveHistoryFile(artifact.payload, current.settings)
+    ]);
+    try {
+      await this.unlinkFiles(resolved.filter((filename): filename is string => Boolean(filename)), "JointAV 文件");
+      const next = await this.deps.store.update((state) => {
+        const target = state.history.find((item) => item.id === assetId)
+          ?.versions.find((item) => item.id === versionId);
+        if (!target) throw new Error("视频记录或版本不存在。");
+        target.files = target.files.filter((file) =>
+          ![artifact.manifest, artifact.payload].some((candidate) =>
+            file.absolutePath && candidate.absolutePath
+              ? path.resolve(file.absolutePath) === path.resolve(candidate.absolutePath)
+              : file.filename === candidate.filename && file.subfolder === candidate.subfolder
+          )
+        );
+        target.h3ContinuationData = {
+          status: "missing",
+          reason: "JointAV 文件已由用户从详情页删除。"
+        };
+      });
+      this.deps.logger.info("history", "joint-av-delete-succeeded", "JointAV files deleted", {
+        assetId,
+        versionId,
+        durationMs: Date.now() - startedAt
+      });
+      this.deps.sendState(next);
+      return next;
+    } catch (error) {
+      this.logFailure("joint-av-delete-failed", "JointAV deletion failed", assetId, startedAt, error, { versionId });
       throw error;
     }
   }

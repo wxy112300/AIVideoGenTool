@@ -7,6 +7,7 @@ export function renderConfirmationDialog(options) {
     const deleting = request.kind === "delete-history";
     const deletingImageVersion = request.kind === "delete-image-version";
     const deletingVideoVersion = request.kind === "delete-video-version";
+    const deletingJointAv = request.kind === "delete-joint-av";
     const deletingVersion = deletingImageVersion || deletingVideoVersion;
     const deletingImage = deleting && options.imageHistoryIds.has(request.assetId);
     const removingQueueTask = request.kind === "remove-queue-task";
@@ -19,6 +20,8 @@ export function renderConfirmationDialog(options) {
     const t = options.t;
     const title = confirmingPromptCpu
         ? t(uiKeys.dialog.promptCpuTitle)
+        : deletingJointAv
+            ? t(uiKeys.dialog.deleteJointAvTitle, { title: request.title })
         : deletingVersion
         ? t(uiKeys.dialog.deleteVersionTitle, { title: request.title })
         : deleting
@@ -43,6 +46,8 @@ export function renderConfirmationDialog(options) {
             free: request.freeVram,
             required: request.requiredVram
         })
+        : deletingJointAv
+        ? t(uiKeys.dialog.deleteJointAvDescription)
         : deletingVersion
         ? t(deletingVideoVersion ? uiKeys.dialog.deleteVideoVersionDescription : uiKeys.dialog.deleteVersionDescription)
         : deleting
@@ -72,6 +77,8 @@ export function renderConfirmationDialog(options) {
           <p id="confirm-description">${options.escapeHtml(description)}</p>
                     ${confirmingPromptCpu
                 ? `<div class="confirm-warning">${t(uiKeys.dialog.promptCpuWarning)}</div>`
+                : deletingJointAv
+                ? `<div class="confirm-warning">${t(uiKeys.dialog.deleteJointAvWarning)}</div>`
                 : deletingVersion
         ? `<div class="confirm-warning">${t(deletingVideoVersion ? uiKeys.dialog.deleteVideoVersionWarning : uiKeys.dialog.deleteVersionWarning)}</div>`
         : deleting
@@ -90,7 +97,7 @@ export function renderConfirmationDialog(options) {
         </div>
         <div class="dialog-actions">
           <button class="secondary button-with-icon" id="cancel-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.dialog.cancel)}</button>
-          <button class="primary${confirmingPromptCpu ? "" : " destructive"} button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(confirmingPromptCpu ? "cpu" : forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : confirmingPromptCpu ? t(uiKeys.dialog.continueOnCpu) : uninstallingLlama ? t(uiKeys.dialog.uninstallLlama) : uninstallingCustomNode ? t(uiKeys.dialog.uninstallNode) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
+          <button class="primary${confirmingPromptCpu ? "" : " destructive"} button-with-icon" id="accept-confirmation" ${options.confirmationBusy ? "disabled" : ""}>${options.icon(confirmingPromptCpu ? "cpu" : forceStoppingComfy || cancellingQueueTask ? "ban" : discardingSettings ? "rotate-ccw" : "trash-2")}${options.confirmationBusy ? t(uiKeys.dialog.processing) : confirmingPromptCpu ? t(uiKeys.dialog.continueOnCpu) : uninstallingLlama ? t(uiKeys.dialog.uninstallLlama) : uninstallingCustomNode ? t(uiKeys.dialog.uninstallNode) : forceStoppingComfy ? t(uiKeys.dialog.forceStop) : deletingJointAv ? t(uiKeys.history.page.deleteJointAv) : deletingVersion ? t(uiKeys.dialog.deleteCurrentVersion) : deleting ? deletingImage ? t(uiKeys.dialog.deleteImageProject) : t(uiKeys.dialog.deleteVideoRecord) : removingQueueTask ? t(uiKeys.dialog.removeTask) : cancellingQueueTask ? t(uiKeys.dialog.cancelTask) : discardingSettings ? t(uiKeys.dialog.discardChanges) : t(uiKeys.dialog.clearDraft)}</button>
         </div>
       </section>
     </div>`;

@@ -1,4 +1,4 @@
-import { createUpscaleFilename, upscaleDimensions } from "../../core/upscale";
+import { createUpscaleFilename, h3NativeUpscaleDimensions, upscaleDimensions } from "../../core/upscale";
 import { versionVideoIndex } from "../pages/history/helpers";
 import { uiKeys } from "../../core/i18n-keys";
 export function mountUpscaleController(context, options) {
@@ -7,6 +7,8 @@ export function mountUpscaleController(context, options) {
     const root = options.root;
     const t = context.t;
     const closeUpscale = () => {
+        if (options.getDialog()?.busy)
+            return;
         options.setDialog(null);
         options.renderOverlay();
         options.restoreModalFocus();
@@ -37,10 +39,15 @@ export function mountUpscaleController(context, options) {
         const dialog = options.getDialog();
         if (!dialog)
             return;
+        const modelId = event.currentTarget.value;
+        const h3Selected = modelId === "minimax_h3_latent_upscaler";
         options.rememberModalControlFocus(event.currentTarget);
         options.setDialog({
             ...dialog,
-            modelId: event.currentTarget.value
+            modelId,
+            targetHeight: h3Selected
+                ? (dialog.targetHeight === 768 ? 768 : 720)
+                : (dialog.targetHeight === 768 ? 1080 : dialog.targetHeight)
         });
         options.renderOverlay();
     }, { signal });
@@ -58,7 +65,7 @@ export function mountUpscaleController(context, options) {
     root.querySelector("#enqueue-upscale")?.addEventListener("click", async () => {
         const dialog = options.getDialog();
         const state = context.getState();
-        if (!dialog || !state)
+        if (!dialog || dialog.busy || !state)
             return;
         options.reportUserAction(dialog.taskId ? "upscale-task-update" : "upscale-task-enqueue", {
             taskId: dialog.taskId ?? dialog.replaceTaskId,
@@ -73,13 +80,28 @@ export function mountUpscaleController(context, options) {
             context.notify(t(uiKeys.runtime.upscaleSourceMissing), { renderPage: false });
             return;
         }
+        options.setDialog({ ...dialog, busy: true });
+        options.renderOverlay();
         try {
-            const [targetWidth, targetHeight] = upscaleDimensions(version.width, version.height, dialog.targetHeight);
+            const h3Native = dialog.modelId === "minimax_h3_latent_upscaler";
+            const [targetWidth, targetOutputHeight] = h3Native
+                ? h3NativeUpscaleDimensions(version.width, version.height, dialog.targetHeight === 2160 ? 1440 : dialog.targetHeight)
+                : upscaleDimensions(version.width, version.height, dialog.targetHeight);
+            const h3Artifact = version.h3ContinuationData?.status === "available"
+                ? version.h3ContinuationData.artifact
+                : undefined;
+            if (h3Native && !h3Artifact) {
+                throw new Error(t(uiKeys.h3Native.reasonArtifactMissing));
+            }
             const upscalePatch = {
                 targetWidth,
                 targetHeight: dialog.targetHeight,
-                modelId: dialog.modelId,
-                workflowPath: `builtin:upscale/${dialog.modelId}`,
+                targetOutputHeight,
+                upscaleMode: h3Native ? "h3-native" : "pixel",
+                modelId: h3Native ? h3Artifact.executionModelId : dialog.modelId,
+                workflowPath: h3Native
+                    ? "builtin:upscale/h3-native-second-sample"
+                    : `builtin:upscale/${dialog.modelId}`,
                 tileMode: dialog.tileMode,
                 faceRestore: false,
                 outputFilename: createUpscaleFilename(sourceFile.filename, dialog.targetHeight)
@@ -102,7 +124,8 @@ export function mountUpscaleController(context, options) {
                     duration: version.duration,
                     fps: version.fps,
                     targetHeight: dialog.targetHeight,
-                    modelId: dialog.modelId,
+                    upscaleMode: h3Native ? "h3-native" : "pixel",
+                    modelId: h3Native ? h3Artifact.executionModelId : dialog.modelId,
                     tileMode: dialog.tileMode,
                     faceRestore: false
                 });
@@ -114,6 +137,11 @@ export function mountUpscaleController(context, options) {
             options.restoreModalFocus();
         }
         catch (error) {
+            const currentDialog = options.getDialog();
+            if (currentDialog) {
+                options.setDialog({ ...currentDialog, busy: false });
+                options.renderOverlay();
+            }
             context.notify(error instanceof Error ? error.message : String(error), { renderPage: false, kind: "error" });
         }
     }, { signal });

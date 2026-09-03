@@ -103,6 +103,28 @@ describe("queue duration estimator", () => {
     expect(estimateQueueTaskSeconds(task(), history)).toBe(110);
   });
 
+  it("matches JointAV-enabled and video-only history separately", () => {
+    const history = {
+      video: [
+        videoHistory(200, { h3SaveJointAv: true }),
+        videoHistory(100, { h3SaveJointAv: false })
+      ]
+    };
+    expect(estimateQueueTaskSeconds(task({ h3SaveJointAv: true }), history)).toBe(200);
+    expect(estimateQueueTaskSeconds(task({ h3SaveJointAv: false }), history)).toBe(100);
+  });
+
+  it("uses the complete recorded duration for a matching composite H3 1080 task", () => {
+    const history = {
+      video: [videoHistory(420, { resolution: 1080, h3SaveJointAv: true })]
+    };
+    expect(estimateQueueTaskSeconds(task({
+      resolution: 720,
+      h3DeliveryResolution: 1080,
+      h3SaveJointAv: true
+    }), history)).toBe(420);
+  });
+
   it("scales a matching history sample by the newly generated duration", () => {
     const sample = videoHistory(100, {
       inputMode: "video",

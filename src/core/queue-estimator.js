@@ -96,7 +96,9 @@ function taskWorkload(task) {
         });
     }
     return videoWorkload({
-        resolution: task.resolution,
+        resolution: task.taskType === "generation"
+            ? task.h3DeliveryResolution ?? task.resolution
+            : task.resolution,
         duration: task.duration,
         steps: task.steps,
         fps: task.fps,
@@ -150,6 +152,7 @@ function videoSample(asset, version, seconds) {
             frameInterpolation: version.frameInterpolation ?? asset.frameInterpolation,
             spectrumMode: version.spectrumMode ?? asset.spectrumMode,
             spectrumModelAwareMode: version.spectrumModelAwareMode ?? asset.spectrumModelAwareMode,
+            saveJointAv: version.h3SaveJointAv ?? (model.family === "minimax-h3" ? true : undefined),
             loras: loraSignature(version.videoLoras ?? asset.videoLoras),
             sourceMode: asset.inputMode,
             referenceCount,
@@ -267,13 +270,14 @@ function featureDistance(task, sample) {
         compareBoolean("faceRestore", task.faceRestore);
     }
     else {
-        compareNumber("resolution", task.resolution);
+        compareNumber("resolution", task.taskType === "generation" ? task.h3DeliveryResolution ?? task.resolution : task.resolution);
         compareNumber("duration", task.duration);
         compareNumber("steps", task.steps);
         compareNumber("fps", task.fps);
         compareText("frameInterpolation", task.frameInterpolation);
         compareText("spectrumMode", task.spectrumMode);
         compareText("spectrumModelAwareMode", task.spectrumModelAwareMode);
+        compareBoolean("saveJointAv", task.h3SaveJointAv !== false);
         compareText("loras", loraSignature(task.videoLoras));
         compareText("sourceMode", task.taskType === "extension" ? "video" : "image");
         compareNumber("referenceCount", task.taskType === "generation"

@@ -10,6 +10,7 @@ import {
   type HistoryPageOptions,
   type HistoryPageViewModel
 } from "../src/renderer/pages/history/page";
+import { formatVideoDuration } from "../src/renderer/shared/formatters";
 
 const translate: HistoryPageOptions["t"] = (key) => key;
 const renderOptions = {
@@ -158,7 +159,7 @@ describe("History accessibility markup", () => {
       modelId: "minimax_h3_fl2va",
       width: 848,
       height: 480,
-      duration: 5,
+      duration: 124 / 24,
       fps: 24,
       workflowPath: "fixture-workflow.json",
       comfyPromptId: "video-prompt-detail",
@@ -246,7 +247,7 @@ describe("History accessibility markup", () => {
       videoLoraPurposeLabel: () => "style",
       h3ReferenceRoleLabel: () => "reference",
       imageReferenceRoleLabel: () => "base",
-      formatVideoDuration: () => "5s",
+      formatVideoDuration,
       formatElapsedDuration: () => "1s",
       historyAssetsByNewest: (history) => history,
       imageProjectsByNewest: (projects) => projects,
@@ -285,6 +286,64 @@ describe("History accessibility markup", () => {
     } as HistoryPageViewModel;
     const videoPage = renderHistoryDetailPage(videoViewModel, detailOptions);
     const imagePage = renderImageHistoryDetailPage(imageViewModel, detailOptions);
+
+    const artifactVersion = {
+      ...videoVersion,
+      id: "video-version-with-av",
+      h3ContinuationData: {
+        status: "available",
+        artifact: {
+          schemaVersion: 1,
+          artifactId: "artifact-001",
+          role: "final-clean-av",
+          lineageId: "lineage-001",
+          manifest: { filename: "h3av_artifact-001.json", subfolder: "h3-native-av", type: "output", absolutePath: "C:\\fixtures\\h3-native-av\\h3av_artifact-001.json" },
+          payload: { filename: "h3av_artifact-001.safetensors", subfolder: "h3-native-av", type: "output", absolutePath: "C:\\fixtures\\h3-native-av\\h3av_artifact-001.safetensors" },
+          payloadSha256: "a".repeat(64),
+          payloadBytes: 128,
+          modelFamily: "minimax-h3",
+          executionModelId: "minimax_h3_fl2va",
+          providerId: "h3-native-sidecar",
+          providerRevision: "provider-1",
+          diffusionModelFilename: "diffusion.safetensors",
+          textEncoderFilename: "text-encoder.safetensors",
+          videoVaeFilename: "video-vae.safetensors",
+          audioVaeFilename: "audio-vae.safetensors",
+          width: 848,
+          height: 480,
+          fps: 24,
+          frameCount: 124,
+          videoShape: [1, 24, 37, 30, 53],
+          videoDtype: "BF16",
+          audioSampleRate: 32000,
+          audioChannels: 2,
+          audioLatentRate: 40,
+          audioShape: [1, 32, 2, 207],
+          audioDtype: "F32",
+          contextFrames: 22,
+          workflowRevision: "workflow-1",
+          sourceTaskId: "video-task-detail",
+          sourceVersionId: "video-version-detail",
+          createdAt: "2026-08-21T00:00:00.000Z"
+        }
+      }
+    } as unknown as AssetVersion;
+    const artifactAsset = {
+      ...videoAsset,
+      versions: [artifactVersion],
+      defaultVersionId: artifactVersion.id
+    } as unknown as HistoryAsset;
+    const artifactViewModel = {
+      ...videoViewModel,
+      state: { ...state, history: [artifactAsset] },
+      selectedHistoryAssetId: artifactAsset.id,
+      selectedHistoryVersionId: artifactVersion.id
+    } as HistoryPageViewModel;
+    const artifactPage = renderHistoryDetailPage(artifactViewModel, {
+      ...detailOptions,
+      preferredVersion: () => artifactVersion,
+      currentHistoryVersion: () => artifactVersion
+    });
     const videoGalleryPage = renderHistoryPage(videoViewModel, detailOptions);
     const imageGalleryPage = renderImageHistoryPage(imageViewModel, detailOptions);
     const videoCardStart = videoGalleryPage.match(
@@ -295,6 +354,8 @@ describe("History accessibility markup", () => {
     )?.[0];
 
     expect(videoPage).toContain('class="history-detail-quick-actions"');
+    expect(videoPage.match(/00:05/g)).toHaveLength(2);
+    expect(videoPage).not.toContain("5.166666666666667");
     expect(videoPage).toContain('class="history-detail-action-primary"');
     expect(videoPage).not.toContain('class="history-detail-more"');
     expect(videoPage).toContain('data-open-upscale');
@@ -303,6 +364,13 @@ describe("History accessibility markup", () => {
     expect(videoPage).toContain('data-delete-history="video-asset-detail"');
     expect(videoPage).not.toContain('class="history-detail-compact-actions"');
     expect(videoPage).toContain('class="history-record-section"');
+    expect(artifactPage).not.toContain('data-h3-av-artifact');
+    expect(artifactPage).not.toContain('history.page.nativeAvTitle');
+    expect(artifactPage).toContain("h3av_artifact-001.safetensors");
+    expect(artifactPage).toContain("h3av_artifact-001.json");
+    expect(artifactPage).toContain('data-show-file="C:\\fixtures\\h3-native-av\\h3av_artifact-001.safetensors"');
+    expect(artifactPage).toContain('data-show-file="C:\\fixtures\\h3-native-av\\h3av_artifact-001.json"');
+    expect(artifactPage.match(/class="output-file"/g)).toHaveLength(3);
     expect(videoPage).toContain('<media-controller id="history-player"');
     expect(videoPage).toContain('autohide="1"');
     expect(videoPage).toContain('fullscreenelement="history-player"');

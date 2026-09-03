@@ -2,6 +2,7 @@ import type {
   AppState,
   AssetVersion,
   HistoryAsset,
+  HistoryFile,
   HistoryRating,
   ImageAssetVersion,
   ImageHistoryProject
@@ -414,6 +415,20 @@ export function renderHistoryDetailPage(
   const videoIndex = options.versionVideoIndex(version);
   const mediaUrl = options.historyMediaUrl(asset, version);
   const videoFile = videoIndex >= 0 ? version.files[videoIndex] : undefined;
+  const jointAvArtifact = version.h3ContinuationData?.status === "available"
+    ? version.h3ContinuationData.artifact
+    : undefined;
+  const fileIdentity = (file: HistoryFile): string => file.absolutePath || `${file.subfolder}/${file.filename}`;
+  const jointAvPayloadIdentity = jointAvArtifact ? fileIdentity(jointAvArtifact.payload) : "";
+  const outputFiles = [...version.files];
+  for (const file of jointAvArtifact ? [jointAvArtifact.payload, jointAvArtifact.manifest] : []) {
+    const identity = fileIdentity(file);
+    if (!outputFiles.some((candidate) =>
+      fileIdentity(candidate) === identity
+    )) {
+      outputFiles.push(file);
+    }
+  }
   const orderedHistory = options.historyAssetsByNewest(viewModel.state.history, viewModel.historyFilter);
   const historyIndex = orderedHistory.findIndex((item) => item.id === asset.id);
   const previousAsset = historyIndex > 0 ? orderedHistory[historyIndex - 1] : undefined;
@@ -477,7 +492,7 @@ export function renderHistoryDetailPage(
           <div><span>${options.t(uiKeys.history.page.completedAt)}</span><strong>${completedAt}</strong></div>
           <div><span>${options.t(uiKeys.history.page.generationTime)}</span><strong>${elapsedSeconds == null ? options.t(uiKeys.history.detail.legacyNotSaved) : options.formatElapsedDuration(elapsedSeconds)}</strong></div>
           <div><span>${options.t(uiKeys.history.page.resolution)}</span><strong>${version.width} × ${version.height}</strong></div>
-          <div><span>${options.t(uiKeys.history.page.videoDuration)}</span><strong>${version.duration} ${options.t(uiKeys.history.detail.seconds)}</strong></div>
+          <div><span>${options.t(uiKeys.history.page.videoDuration)}</span><strong>${options.formatVideoDuration(version.duration)}</strong></div>
           <div><span>${options.t(uiKeys.history.page.finalFps)}</span><strong>${fps} FPS</strong></div>
           <div><span>${options.t(uiKeys.history.page.finalFrames)}</span><strong>${Math.round(version.duration * fps)} ${options.t(uiKeys.history.detail.frames)}</strong></div>
           </div>
@@ -507,7 +522,7 @@ export function renderHistoryDetailPage(
       </article>
       <article class="panel history-record">
         <h2>${options.t(uiKeys.history.page.videoOutput)}</h2>
-        <dl><dt>${options.t(uiKeys.history.page.resolution)}</dt><dd>${options.historyResolutionLabel(asset, version)} · ${version.width} × ${version.height}</dd><dt>${options.t(uiKeys.history.page.aspectRatio)}</dt><dd>${options.escapeHtml(version.ratio ?? asset.ratio ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.versionType)}</dt><dd>${version.kind === "original" ? options.t(uiKeys.history.page.originalGeneration) : options.t(uiKeys.history.page.upscaleVersion)}</dd><dt>${options.t(uiKeys.history.page.videoDuration)}</dt><dd>${version.duration} ${options.t(uiKeys.history.detail.seconds)}</dd><dt>${options.t(uiKeys.history.page.finalFps)}</dt><dd>${fps} FPS</dd><dt>${options.t(uiKeys.history.page.frameProcessing)}</dt><dd>${options.escapeHtml(version.frameInterpolation ?? asset.frameInterpolation ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.finalFrames)}</dt><dd>${Math.round(version.duration * fps)}</dd><dt>${options.t(uiKeys.history.page.outputDirectory)}</dt><dd><code>${options.escapeHtml(videoFile?.absolutePath ?? viewModel.state.settings.outputDirectory)}</code></dd></dl>
+        <dl><dt>${options.t(uiKeys.history.page.resolution)}</dt><dd>${options.historyResolutionLabel(asset, version)} · ${version.width} × ${version.height}</dd><dt>${options.t(uiKeys.history.page.aspectRatio)}</dt><dd>${options.escapeHtml(version.ratio ?? asset.ratio ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.versionType)}</dt><dd>${version.kind === "original" ? options.t(uiKeys.history.page.originalGeneration) : options.t(uiKeys.history.page.upscaleVersion)}</dd><dt>${options.t(uiKeys.history.page.videoDuration)}</dt><dd>${options.formatVideoDuration(version.duration)}</dd><dt>${options.t(uiKeys.history.page.finalFps)}</dt><dd>${fps} FPS</dd><dt>${options.t(uiKeys.history.page.frameProcessing)}</dt><dd>${options.escapeHtml(version.frameInterpolation ?? asset.frameInterpolation ?? options.t(uiKeys.history.detail.legacyNotSaved))}</dd><dt>${options.t(uiKeys.history.page.finalFrames)}</dt><dd>${Math.round(version.duration * fps)}</dd><dt>${options.t(uiKeys.history.page.outputDirectory)}</dt><dd><code>${options.escapeHtml(videoFile?.absolutePath ?? viewModel.state.settings.outputDirectory)}</code></dd></dl>
       </article>
       <article class="panel history-record">
         <div class="history-record-heading"><h2>${options.t(uiKeys.history.page.loraStack)}</h2><span>${options.t(uiKeys.history.card.count, { count: version.videoLoras?.length ?? asset.videoLoras?.length ?? 0 })}</span></div>
@@ -522,11 +537,25 @@ export function renderHistoryDetailPage(
         ${renderPerformanceStatsMarkup(performanceStats, options)}
       </article>
       <article class="panel history-record full">
-        <div class="history-record-heading"><h2>${options.t(uiKeys.history.page.outputFiles)}</h2><span>${options.t(uiKeys.history.card.count, { count: version.files.length })}</span></div>
+        <div class="history-record-heading"><h2>${options.t(uiKeys.history.page.outputFiles)}</h2><span>${options.t(uiKeys.history.card.count, { count: outputFiles.length })}</span></div>
       <div class="output-files">
-        ${version.files.length === 0
+        ${outputFiles.length === 0
           ? `<p class="muted">${options.t(uiKeys.history.page.noRecognizedFiles)}</p>`
-          : version.files.map((file) => `<div class="output-file"><div><strong>${options.escapeHtml(file.filename)}</strong><p class="muted">${options.escapeHtml(file.subfolder || ".")} · ${options.escapeHtml(file.type)}</p></div>${file.absolutePath ? `<button class="secondary button-with-icon" data-show-file="${options.escapeHtml(file.absolutePath)}">${options.icon("folder-open")}${options.t(uiKeys.history.page.showInExplorer)}</button>` : `<span class="muted">${options.t(uiKeys.history.page.fillOutputDirectory)}</span>`}</div>`).join("")}
+          : outputFiles.map((file) => {
+              const identity = fileIdentity(file);
+              const isJointAvPayload = identity === jointAvPayloadIdentity;
+              const sizeBytes = file.sizeBytes ?? (isJointAvPayload ? jointAvArtifact?.payloadBytes : undefined);
+              const sizeText = sizeBytes == null
+                ? options.t(uiKeys.history.page.fileSizeUnknown)
+                : options.formatBytes(sizeBytes);
+              const locateAction = file.absolutePath
+                ? `<button class="secondary button-with-icon" data-show-file="${options.escapeHtml(file.absolutePath)}">${options.icon("folder-open")}${options.t(uiKeys.history.page.showInExplorer)}</button>`
+                : `<span class="muted">${options.t(uiKeys.history.page.fillOutputDirectory)}</span>`;
+              const deleteAction = isJointAvPayload
+                ? `<button class="secondary danger button-with-icon" data-delete-joint-av="${options.escapeHtml(asset.id)}" data-joint-av-version-id="${options.escapeHtml(version.id)}">${options.icon("trash-2")}${options.t(uiKeys.history.page.deleteJointAv)}</button>`
+                : "";
+              return `<div class="output-file"><div><strong>${options.escapeHtml(file.filename)}</strong><p class="muted">${options.escapeHtml(file.subfolder || ".")} · ${options.escapeHtml(file.type)} · ${options.escapeHtml(sizeText)}</p></div><div class="output-file-actions">${locateAction}${deleteAction}</div></div>`;
+            }).join("")}
       </div>
         <details><summary>${options.t(uiKeys.history.page.rawSnapshot)}</summary><pre>${options.escapeHtml(JSON.stringify(version.comfyOutputs, null, 2))}</pre></details>
       </article>

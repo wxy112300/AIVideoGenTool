@@ -1,12 +1,43 @@
 import { component, entry, guide } from "./catalog-helpers.js";
 import type { CatalogModelEntry } from "../types.js";
 import {
+  h3LearnedLatentUpscaler,
+} from "./minimax_h3_shared.js";
+import {
   seedVr2NativeModelFilename,
   seedVr2NativeRequiredNodes,
   seedVr2NativeVaeFilename
 } from "../../seedvr2-native.js";
 
 export const postProcessModelEntries: CatalogModelEntry[] = [
+  entry({
+    id: "minimax_h3_latent_upscaler",
+    family: "minimax-h3",
+    category: "upscale",
+    adapterId: "h3-comfyui-second-sampling",
+    order: 105,
+    inputModes: ["video"],
+    capabilities: { resolutions: [720, 768, 1080, 1440] },
+    scan: {
+      vram: "RTX 4090 · GPU VAE · 1440p tiled 峰值实测约 22.7 GiB",
+      integrated: true,
+      requiredCustomNodeIds: ["minimax-h3-learned-upscaler"],
+      runtimeNodeTypes: ["MinimaxH3LatentUpscaler3D"],
+      components: [h3LearnedLatentUpscaler]
+    }
+  }, {
+    name: "MiniMax H3 Learned 3D Latent Upscaler",
+    badge: "H3 Native · 3D",
+    description: "H3 原生二次采样：720p/768p 使用 bilinear latent，1080p 使用 learned 3D whole-frame，1440p 使用 MMH3 12-tile learned 3D；1440p 还需要 MMH3 Ultimate Upscale 固定提交与应用补丁。"
+  }, {
+    name: "MiniMax H3 Learned 3D Latent Upscaler",
+    badge: "H3 Native · 3D",
+    description: "H3 native second sampling: 720p/768p use bilinear latent, 1080p uses whole-frame learned 3D, and 1440p uses MMH3 12-tile learned 3D with the pinned app patch."
+  }, {
+    name: "MiniMax H3 Learned 3D Latent Upscaler",
+    badge: "H3 Native · 3D",
+    description: "H3 原生二次採樣：720p/768p 使用 bilinear latent，1080p 使用 learned 3D whole-frame，1440p 使用 MMH3 12-tile learned 3D；1440p 另需 MMH3 Ultimate Upscale 固定提交與應用程式補丁。"
+  }),
   entry({ id: "seedvr2-native-int8", family: "seedvr2", category: "upscale", adapterId: "seedvr2-native-int8", order: 110, inputModes: ["video"], scan: {
     vram: "INT8 · 1 step · 512 tile · 长视频需时间分段",
     runtimeNodeTypes: seedVr2NativeRequiredNodes,

@@ -1,4 +1,6 @@
-import type { AppState, H3MemoryRuntimeEvidence, H3VideoVaeBackend, HistoryFile, ImageGenerationQueueTask, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview } from "../src/types.js";
+import type { AppState, GenerationQueueTask, H3MemoryRuntimeEvidence, H3VideoVaeBackend, HistoryFile, ImageGenerationQueueTask, NativeAvContinuationData, QueueLifecycle, QueueTask, Settings, TaskPerformanceStats, TaskPreview, UpscaleQueueTask } from "../src/types.js";
+import { promises as fs } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   isImageGenerationQueueTask,
   nextQueueWaitingTask
@@ -11,7 +13,9 @@ import {
   generationSafetyForTask,
   isMiniMaxH3Fl2vaModel,
   isMiniMaxH3Model,
-  isMiniMaxH3R2vModel
+  isMiniMaxH3R2vModel,
+  normalizeH3Steps,
+  outputDimensions
 } from "../src/core/workflow.js";
 import {
   type PreviewFrameMetadata,
@@ -25,6 +29,7 @@ import { startTaskPerformanceMonitor, type TaskPerformanceMonitor } from "./serv
 import { startAdaptiveVramWatchdog, type VramWatchdogMonitor } from "./services/vram-watchdog.js";
 import { safeLogErrorMessage, type AppLogger } from "../src/infrastructure/app-logger.js";
 import { parseH3MemoryAppliedPlan } from "./services/comfy-log-bridge.js";
+import { upscaleTaskFromRequest } from "../src/core/queue-task-factory.js";
 import type { StateRepository } from "./ports/state-repository.js";
 import type { QueueWorkerController } from "./queue-worker.js";
 import {
@@ -34,6 +39,83 @@ import {
 } from "./services/queue-execution-side-effects.js";
 
 const performanceLogIntervalMs = 30_000;
+
+function h3CreateFirstPassTask(task: GenerationQueueTask): GenerationQueueTask {
+  return {
+    ...task,
+    workflowPath: fileURLToPath(new URL(
+      "../workflows/minimax_h3_fl2va_first_pass_av_api.json",
+      import.meta.url
+    )),
+    outputFilename: `h3-native-av/first-pass-${task.id}`,
+    h3DeliveryResolution: undefined,
+    h3FirstPassCheckpoint: undefined
+  };
+}
+
+function h3CreateSecondPassTask(
+  task: GenerationQueueTask,
+  checkpoint: NonNullable<GenerationQueueTask["h3FirstPassCheckpoint"]>,
+  state: AppState
+): UpscaleQueueTask {
+  const [targetWidth, targetOutputHeight] = outputDimensions({
+    ...task,
+    resolution: 1080
+  });
+  const upscale = upscaleTaskFromRequest({
+    upscaleMode: "h3-native",
+    sourceAssetId: task.id,
+    sourceVersionId: checkpoint.artifact.artifactId,
+    sourceFilePath: checkpoint.outputFile.absolutePath ?? "",
+    sourceFilename: checkpoint.outputFile.filename,
+    sourceWidth: checkpoint.artifact.width,
+    sourceHeight: checkpoint.artifact.height,
+    duration: task.duration,
+    fps: checkpoint.artifact.fps,
+    targetHeight: 1080,
+    modelId: task.modelId,
+    tileMode: "auto",
+    faceRestore: false,
+    h3NativeInput: {
+      provider: "learned-3d",
+      artifact: structuredClone(checkpoint.artifact),
+      workflowPath: fileURLToPath(new URL(
+        "../workflows/minimax_h3_fl2va_learned_3d_second_sample_av_api.json",
+        import.meta.url
+      )),
+      learnedModelFilename: "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+      prompt: task.prompt,
+      startImagePath: task.startImagePath,
+      endImagePath: task.endImagePath,
+      scaleBy: 1080 / Math.min(checkpoint.artifact.width, checkpoint.artifact.height),
+      h3VideoVaeMode: task.h3VideoVaeMode!,
+      attentionMode: task.attentionMode!,
+      steps: normalizeH3Steps(task.steps, task.modelId, task.videoLoras),
+      videoLoras: task.videoLoras?.map((lora) => ({ ...lora })) ?? []
+    }
+  }, state, {
+    now: () => new Date(task.createdAt),
+    id: () => task.id,
+    random: () => 0
+  });
+  return {
+    ...upscale,
+    outputFilename: task.outputFilename,
+    targetWidth,
+    targetOutputHeight
+  };
+}
+
+async function cleanupH3CreateFirstPass(
+  checkpoint: NonNullable<GenerationQueueTask["h3FirstPassCheckpoint"]>
+): Promise<void> {
+  const paths = [
+    checkpoint.outputFile.absolutePath,
+    checkpoint.artifact.payload.absolutePath,
+    checkpoint.artifact.manifest.absolutePath
+  ].filter((value): value is string => Boolean(value));
+  await Promise.all(paths.map((filename) => fs.unlink(filename).catch(() => undefined)));
+}
 
 export interface QueueExecutorDependencies {
   store: StateRepository;
@@ -53,6 +135,12 @@ export interface QueueExecutorDependencies {
   stopQueueRuntime(settings: Settings): Promise<boolean>;
   restartQueueRuntime(settings: Settings): Promise<{ ok: boolean; message: string }>;
   resolveH3VideoVaeModeForTask(task: QueueTask, settings: Settings): Promise<H3VideoVaeBackend | null>;
+  commitH3NativeAvOutput(
+    result: unknown,
+    serializerNodeId: string,
+    task: Exclude<QueueTask, ImageGenerationQueueTask>,
+    completedAt: string
+  ): Promise<NativeAvContinuationData>;
   settingsForTask(task: QueueTask | undefined, settings: Settings): Settings;
   errorMeta(error: unknown): Record<string, unknown>;
   taskStageStartedAt: Map<string, { stage: string; startedAt: number }>;
@@ -78,6 +166,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
     stopQueueRuntime,
     restartQueueRuntime,
     resolveH3VideoVaeModeForTask,
+    commitH3NativeAvOutput,
     settingsForTask: comfyUiSettingsForQueueTask,
     errorMeta: errorLogMeta,
     taskStageStartedAt
@@ -148,13 +237,14 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
             store.get().settings,
             20,
             controller.signal,
-            (progress, stage) => {
+            (progress, stage, _determinate, workProgress) => {
               const batchProgress = ((run.index + Math.max(0, progress) / 100) / totalRuns) * 100;
               if (Math.round(batchProgress) < lastProgress + 2 && progress < 100) return;
               lastProgress = Math.round(batchProgress);
               void updateTask(task.id, {
                 progress: Math.min(99, batchProgress),
-                stage: `第 ${run.index + 1} / ${totalRuns} 张 · ${stage}`
+                stage: `第 ${run.index + 1} / ${totalRuns} 张 · ${stage}`,
+                workProgress
               });
             },
             (dataUrl, source, metadata) => {
@@ -503,6 +593,16 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           sendPreview({ taskId: task.id, dataUrl, source, ...metadata });
         };
         const isComputeActive = (): boolean => Date.now() - lastGpuComputeAt < 10_000;
+        const h3CompositeTask = task.taskType === "generation" && task.h3DeliveryResolution === 1080
+          ? task
+          : undefined;
+        let h3FirstPassCheckpoint = h3CompositeTask?.h3FirstPassCheckpoint;
+        let executionTask: Exclude<QueueTask, ImageGenerationQueueTask> = h3CompositeTask
+          ? h3FirstPassCheckpoint
+            ? h3CreateSecondPassTask(h3CompositeTask, h3FirstPassCheckpoint, store.get())
+            : h3CreateFirstPassTask(h3CompositeTask)
+          : task as Exclude<QueueTask, ImageGenerationQueueTask>;
+        let artifactCommitTask = executionTask;
         const segmentedSeedVr2 = task.taskType === "upscale"
           ? await executeNativeSeedVr2Upscale(task, {
               settings: store.get().settings,
@@ -522,6 +622,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
       let result: unknown;
       let files: HistoryFile[];
       let h3MemoryRuntimeEvidence: H3MemoryRuntimeEvidence | undefined;
+      let h3AvSerializerNodeId: string | undefined;
         let seedVr2IntermediatePaths: string[] = [];
         if (segmentedSeedVr2) {
           promptId = segmentedSeedVr2.promptId;
@@ -531,7 +632,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           sideEffects.markTaskSubmitted(task, false);
         } else {
           const submitted = await submitTask(
-            task,
+            executionTask,
             store.get().settings,
             activeController.signal
           );
@@ -540,6 +641,7 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           const { clientId, nodeTypes } = submitted;
           h3TokenCount = submitted.h3TokenCount;
           h3MemoryRuntimeEvidence = submitted.h3MemoryRuntimeEvidence;
+          h3AvSerializerNodeId = submitted.h3AvSerializerNodeId;
           h3LivePreviewActive = submitted.h3LivePreviewActive;
           if (h3LivePreviewActive) h3PreviewStartedAt = Date.now();
           if (submitted.h3LivePreviewRequested && !submitted.h3LivePreviewActive) {
@@ -572,6 +674,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           let lastLoggedProgress = -5;
           let lastLoggedStage = "";
           let lastH3MemoryPlanSignature = "";
+          const initialProgressOffset = h3CompositeTask && executionTask.taskType === "upscale" ? 50 : 0;
+          const initialProgressScale = h3CompositeTask ? 0.5 : 1;
           result = await waitForTask(
             promptId,
             clientId,
@@ -582,22 +686,26 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               store.get().settings.ltxExtensionTimeoutMinutes
             ),
             activeController.signal,
-            (progress, stage) => {
-              void updateTask(task.id, { progress, stage });
-              const roundedProgress = Math.round(progress);
+            (progress, stage, _determinate, workProgress) => {
+              const aggregateProgress = initialProgressOffset + progress * initialProgressScale;
+              const aggregateStage = h3CompositeTask
+                ? `${executionTask.taskType === "upscale" ? "1080p 二次采样" : "720p 首遍"} · ${stage}`
+                : stage;
+              void updateTask(task.id, { progress: aggregateProgress, stage: aggregateStage, workProgress });
+              const roundedProgress = Math.round(aggregateProgress);
               if (
-                stage !== lastLoggedStage ||
+                aggregateStage !== lastLoggedStage ||
                 roundedProgress >= lastLoggedProgress + 5 ||
-                progress >= 100
+                aggregateProgress >= 100
               ) {
                 lastLoggedProgress = roundedProgress;
-                lastLoggedStage = stage;
+                lastLoggedStage = aggregateStage;
                 logger.info("queue", "task-progress", "Queue task progress", {
                   taskId: task.id,
                   taskType: task.taskType,
                   modelId: task.modelId,
                   progress: roundedProgress,
-                  stage
+                  stage: aggregateStage
                 });
               }
             },
@@ -635,6 +743,76 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               : undefined
           );
           files = await sideEffects.trackVideoOutput(result);
+          if (h3CompositeTask && executionTask.taskType === "generation") {
+            if (!h3AvSerializerNodeId) {
+              throw new Error("H3 1080p 首遍工作流没有返回 JointAV serializer 节点。");
+            }
+            const firstPassData = await commitH3NativeAvOutput(
+              result,
+              h3AvSerializerNodeId,
+              executionTask,
+              new Date().toISOString()
+            );
+            const firstPassArtifact = firstPassData.status === "available"
+              ? firstPassData.artifact
+              : undefined;
+            const firstPassOutput = files.find((file) =>
+              file.absolutePath && isVideoOutputFilename(file.filename)
+            );
+            if (!firstPassArtifact || !firstPassOutput) {
+              throw new Error("H3 1080p 首遍没有提交可恢复的 JointAV artifact 或临时视频。");
+            }
+            h3FirstPassCheckpoint = {
+              promptId,
+              outputFile: firstPassOutput,
+              artifact: firstPassArtifact
+            };
+            await updateTask(task.id, {
+              h3FirstPassCheckpoint,
+              progress: 50,
+              stage: "720p 首遍完成 · 准备 1080p learned 二次采样"
+            });
+            executionTask = h3CreateSecondPassTask(
+              h3CompositeTask,
+              h3FirstPassCheckpoint,
+              store.get()
+            );
+            artifactCommitTask = executionTask;
+            const secondSubmitted = await submitTask(
+              executionTask,
+              store.get().settings,
+              activeController.signal
+            );
+            promptId = secondSubmitted.promptId;
+            h3AvSerializerNodeId = secondSubmitted.h3AvSerializerNodeId;
+            await updateTask(task.id, {
+              comfyPromptId: promptId,
+              progress: 50,
+              stage: "1080p learned 二次采样 · 等待 ComfyUI"
+            });
+            result = await waitForTask(
+              promptId,
+              secondSubmitted.clientId,
+              secondSubmitted.nodeTypes,
+              store.get().settings,
+              activityTimeoutMinutesForTask(
+                executionTask,
+                store.get().settings.ltxExtensionTimeoutMinutes
+              ),
+              activeController.signal,
+              (progress, stage, _determinate, workProgress) => {
+                void updateTask(task.id, {
+                  progress: 50 + progress * 0.5,
+                  stage: `1080p 二次采样 · ${stage}`,
+                  workProgress
+                });
+              },
+              previewHandler,
+              isComputeActive,
+              { taskId: task.id, modelId: task.modelId }
+            );
+            files = await sideEffects.trackVideoOutput(result);
+          }
         }
         logH3PreviewOutcome("completed");
         logger.info("queue", "task-output-ready", "ComfyUI task completed", {
@@ -645,6 +823,12 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
         const completedTask = store.get().queue.find((item) => item.id === task.id);
         if (!completedTask || isImageGenerationQueueTask(completedTask)) continue;
         const completedAt = new Date().toISOString();
+        const h3ContinuationData = h3AvSerializerNodeId
+          ? await commitH3NativeAvOutput(result, h3AvSerializerNodeId, artifactCommitTask, completedAt)
+          : undefined;
+        if (h3CompositeTask && h3FirstPassCheckpoint) {
+          await cleanupH3CreateFirstPass(h3FirstPassCheckpoint);
+        }
         logger.info("queue", "output-validated", "Task output validated", {
           taskId: task.id,
           outputCount: files.length
@@ -729,7 +913,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
           comfyOutputs: result,
           files,
           performanceStats: taskPerformanceStats,
-          h3MemoryRuntimeEvidence
+          h3MemoryRuntimeEvidence,
+          h3ContinuationData
         });
         if (isMiniMaxH3Model(completedTask.modelId)) {
           const nextTask = nextQueueWaitingTask(

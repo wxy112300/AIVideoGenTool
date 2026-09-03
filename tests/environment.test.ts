@@ -556,13 +556,13 @@ describe("ComfyUI environment candidates", () => {
     expect(comfyUiMemoryArgs(ordinarySettings)).not.toContain("--disable-dynamic-vram");
   });
 
-  it("adds the aggressive CPU/offload profile for Qwen image editing", () => {
+  it("keeps Qwen image VAE on GPU while retaining model memory controls", () => {
     const args = comfyUiMemoryArgs({
       vramReserveGb: 1,
       defaultImageModel: "qwen-image-edit-2511"
     });
 
-    expect(args).toContain("--cpu-vae");
+    expect(args).not.toContain("--cpu-vae");
     expect(args).toContain("--disable-smart-memory");
     expect(args).toEqual(expect.arrayContaining(["--vram-headroom", "0.5"]));
     expect(args).not.toContain("--disable-pinned-memory");
@@ -600,8 +600,11 @@ describe("ComfyUI environment candidates", () => {
     })).toBe("h3-q3-3080");
 
     expect(comfyUiRuntimeProfileFromCommandLine(
-      "python main.py --cpu-vae --disable-smart-memory"
+      "python main.py --disable-smart-memory --vram-headroom 0.5"
     )).toBe("qwen-image");
+    expect(comfyUiRuntimeProfileFromCommandLine(
+      "python main.py --cpu-vae --disable-smart-memory --vram-headroom 0.5"
+    )).toBe("unknown");
     expect(comfyUiRuntimeProfileFromCommandLine(
       "python main.py --disable-pinned-memory --disable-async-offload"
     )).toBe("standard");
@@ -1034,6 +1037,31 @@ describe("ComfyUI environment candidates", () => {
     expect(profiles.find((profile) => profile.id === "minimax-h3-lightx2v-turbo-4step-768p-v1.1")?.available).toBe(false);
     expect(profiles.some((profile) => profile.id === "minimax_h3_ref2va")).toBe(true);
     expect(profiles.find((profile) => profile.id === "minimax_h3_ref2va")?.available).toBe(false);
+  });
+
+  it("keeps H3 native asset evidence pinned and exposes the learned upscaler with its manual loader dependency", () => {
+    const profiles = evaluateModelProfiles([]);
+    const fl2va = profiles.find((profile) => profile.id === "minimax_h3_fl2va");
+    const baseModel = fl2va?.components.find((component) => component.label.includes("FL2VA INT8 模型"));
+    const upscaler = profiles.find((profile) => profile.id === "minimax_h3_latent_upscaler");
+
+    expect(baseModel?.installGuide).toMatchObject({
+      revision: "014cd40f7e177756c6b2473c0d93b1c89a790dd2",
+      bytes: 20_970_379_616,
+      sha256: "e889202c41dafb67b10d67b97f0d8541508036a6090af23425a5c2615d03c47a",
+      downloadUrl: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/014cd40f7e177756c6b2473c0d93b1c89a790dd2/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+    });
+    expect(upscaler).toMatchObject({
+      category: "upscale",
+      integrated: true,
+      requiredCustomNodeIds: ["minimax-h3-learned-upscaler"],
+      available: false
+    });
+    expect(upscaler?.components[0]?.installGuide).toMatchObject({
+      revision: "09592c6221ec95cc8e0fae67842e34926c4e668b",
+      bytes: 690_592_992,
+      sha256: "4f57821f5837f32f7142b67d815606dbd7550f194e5c769f7d6c3f83b146a5e6"
+    });
   });
 
   it("accepts the INT8 ConvRot video VAE as an alternative to FP16", () => {

@@ -5,6 +5,150 @@ import {
   videoHelperBatchCompatible
 } from "./dependency-compatibility.js";
 
+function replaceRequired(source: string, before: string, after: string, label: string): string {
+  if (source.includes(after)) return source;
+  if (!source.includes(before)) {
+    throw new Error(`MMH3 Ultimate Upscale 源码缺少 ${label}，已停止修改。`);
+  }
+  return source.replace(before, after);
+}
+
+export function patchMmh3UltimateUpscaleSource(source: string): string {
+  let patched = source.replace(/\r\n?/gu, "\n");
+  patched = replaceRequired(
+    patched,
+    "def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg):",
+    "def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg, progress_state=None):",
+    "sample_piece 函数"
+  );
+  patched = replaceRequired(
+    patched,
+    "    callback = latent_preview.prepare_callback(guider.model_patcher, sigmas.shape[-1] - 1, x0_output)",
+    `    if progress_state is None:
+        callback = latent_preview.prepare_callback(guider.model_patcher, sigmas.shape[-1] - 1, x0_output)
+    else:
+        previewer = latent_preview.get_previewer(
+            guider.model_patcher.load_device,
+            guider.model_patcher.model.latent_format,
+        )
+
+        def callback(step, x0, _sample, total_steps):
+            x0_output["x0"] = x0
+            preview_bytes = None
+            if previewer:
+                preview_latent = x0.tensors[0] if x0.is_nested else x0
+                preview_bytes = previewer.decode_latent_to_preview_image("JPEG", preview_latent)
+            piece_progress = (step + 1) / max(1, total_steps)
+            progress_state["bar"].update_absolute(
+                progress_state["piece"] + piece_progress,
+                progress_state["total_pieces"],
+                preview_bytes,
+            )`,
+    "sampler progress callback"
+  );
+  patched = replaceRequired(
+    patched,
+    "    samples = samples.to(comfy.model_management.intermediate_device())",
+    `    if progress_state is not None:
+        progress_state["piece"] += 1
+    samples = samples.to(comfy.model_management.intermediate_device())`,
+    "sample_piece 完成点"
+  );
+  patched = replaceRequired(
+    patched,
+    `def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, negative, cfg,
+                    fun_control=None, inpaint=None):`,
+    `def spatial_process(chunk_v, chunk_a, cond, sp, model, noise, sampler, sigmas, negative, cfg,
+                    fun_control=None, inpaint=None, progress_state=None):`,
+    "spatial_process 函数"
+  );
+  patched = replaceRequired(
+    patched,
+    "                out = sample_piece(piece, cond_tile, model, noise, sampler, sigmas, negative, cfg)",
+    `                out = sample_piece(
+                    piece, cond_tile, model, noise, sampler, sigmas, negative, cfg,
+                    progress_state=progress_state,
+                )`,
+    "tile sampler 调用"
+  );
+  patched = replaceRequired(
+    patched,
+    `        segments_debug = []
+        tiles_debug = []`,
+    `        segments_debug = []
+        tiles_debug = []
+
+        target_h, target_w = video.shape[3], video.shape[4]
+        if latent_upscale_param is not None:
+            target_h, target_w, _ = _compute_upscale_target(
+                latent_upscale_param["width"], latent_upscale_param["height"],
+                target_h, target_w,
+            )
+        pieces_per_chunk = 1
+        if spatial_split_param is not None:
+            sp = spatial_split_param
+            rows, cols, _, _, _, _ = compute_spatial_grid(
+                target_h, target_w,
+                int(sp["tile_height"]) // 16, int(sp["tile_width"]) // 16,
+                int(sp["spatial_h_overlap"]) // 16, int(sp["spatial_w_overlap"]) // 16,
+                int(sp["min_tile_size"]) // 16, int(sp["min_tile_size"]) // 16,
+            )
+            pieces_per_chunk = len(rows) * len(cols)
+        progress_state = {
+            "bar": comfy.utils.ProgressBar(len(bounds) * pieces_per_chunk),
+            "piece": 0,
+            "total_pieces": len(bounds) * pieces_per_chunk,
+        }`,
+    "aggregate progress 初始化点"
+  );
+  patched = replaceRequired(
+    patched,
+    `                    fun_control=fun_control, inpaint=inpaint_param,
+                )`,
+    `                    fun_control=fun_control, inpaint=inpaint_param,
+                    progress_state=progress_state,
+                )`,
+    "spatial progress 传递点"
+  );
+  patched = replaceRequired(
+    patched,
+    "                out = sample_piece(piece, cond_i, model, noise, sampler, sigmas, negative, cfg)",
+    `                out = sample_piece(
+                    piece, cond_i, model, noise, sampler, sigmas, negative, cfg,
+                    progress_state=progress_state,
+                )`,
+    "whole-chunk sampler 调用"
+  );
+  patched = replaceRequired(
+    patched,
+    `            # 3. pin frame-0 keyframe to the previous chunk's re-sampled frame
+            if i > 0 and acc_v is not None:
+                cond_i = anchor_conditioning(cond_i, acc_v, f0, anchor_strength)`,
+    `            # 3. pin frame-0 keyframe to the latent that owns this boundary.
+            # The first chunk uses its learned-upscaled source token; later chunks
+            # use the previous chunk's re-sampled boundary token.
+            anchor_video = acc_v if i > 0 and acc_v is not None else chunk_v
+            cond_i = anchor_conditioning(cond_i, anchor_video, f0, anchor_strength)`,
+    "首块 frame-0 anchor"
+  );
+  return patched;
+}
+
+export async function prepareMmh3UltimateUpscale(
+  targetDirectory: string,
+  report: (message: string) => void
+): Promise<void> {
+  const filename = path.join(targetDirectory, "nodes", "nodes.py");
+  const source = await fs.readFile(filename, "utf8");
+  const patched = patchMmh3UltimateUpscaleSource(source);
+  if (patched !== source) {
+    await fs.writeFile(filename, patched, "utf8");
+    report("已应用 MMH3 首块 source anchor 与分块聚合进度补丁");
+  } else {
+    report("MMH3 首块 source anchor 与分块聚合进度补丁已就绪");
+  }
+}
+
 export function patchVideoHelperBatchCompatibility(
   utilsSource: string,
   nodesSource: string,

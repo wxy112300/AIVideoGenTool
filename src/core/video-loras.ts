@@ -342,7 +342,9 @@ export function videoLorasAfterAdding(
 }
 
 export function baseVideoModelId(modelId: string): string {
-  return modelId === LEGACY_H3_TURBO_MODEL_ID ? H3_FL2VA_MODEL_ID : modelId;
+  if (modelId === LEGACY_H3_TURBO_MODEL_ID) return H3_FL2VA_MODEL_ID;
+  if (modelId === LEGACY_H3_REF2V_TURBO_MODEL_ID) return "minimax_h3_ref2va";
+  return modelId;
 }
 
 export function normalizeVideoLoras(
@@ -388,6 +390,12 @@ export function normalizeVideoLoras(
     !normalized.some((item) => item.id === H3_TURBO_LORA_ID)
   ) {
     normalized.push(videoLoraSelection(H3_TURBO_LORA));
+  }
+  if (
+    legacyModelId === LEGACY_H3_REF2V_TURBO_MODEL_ID &&
+    !normalized.some((item) => item.id === H3_REF2V_TURBO_LORA_ID)
+  ) {
+    normalized.push(videoLoraSelection(H3_REF2V_TURBO_LORA));
   }
   return normalized.filter((lora, index) =>
     normalized.findIndex((candidate) => candidate.id === lora.id) === index

@@ -67,6 +67,7 @@ export function createDefaultDraft(): Draft {
     spectrumMode: "off",
     spectrumModelAwareMode: "off",
     spectrumModeUserSet: false,
+    h3SaveJointAv: true,
     h3MemoryOptimizationMode: H3_MEMORY_DEFAULT_MODE,
     h3MemoryOptimizationUserSet: false,
     h3MemoryChunkRows: H3_MEMORY_DEFAULT_CHUNK_ROWS

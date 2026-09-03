@@ -100,4 +100,43 @@ describe("ComfyOutputService", () => {
       videos: [{ filename: "clip-audio.mp4", subfolder: "", type: "output" }]
     })).resolves.toHaveLength(1);
   });
+
+  it("requires a native AV descriptor from the expected serializer node", async () => {
+    const state = createDefaultState();
+    state.settings.outputDirectory = "C:/ComfyUI/output";
+    const current = service(
+      state,
+      (filename) => filename.toLowerCase().endsWith("h3av_first.safetensors")
+    );
+    const result = {
+      outputs: {
+        "31": {
+          h3_native_av: [{
+            filename: "h3av_first.safetensors",
+            subfolder: "h3-native-av",
+            type: "output",
+            format: "safetensors"
+          }]
+        },
+        "99": {
+          ui: {
+            h3_native_av: [{
+              filename: "wrong-node.safetensors",
+              subfolder: "h3-native-av",
+              type: "output",
+              format: "safetensors"
+            }]
+          }
+        }
+      }
+    };
+
+    await expect(current.requireExistingNativeAvOutput(result, "31"))
+      .resolves.toEqual([expect.objectContaining({
+        filename: "h3av_first.safetensors",
+        absolutePath: path.resolve("C:/ComfyUI/output/h3-native-av/h3av_first.safetensors")
+      })]);
+    await expect(current.requireExistingNativeAvOutput(result, "99"))
+      .rejects.toThrow("H3 AV serializer 输出不存在或为空");
+  });
 });

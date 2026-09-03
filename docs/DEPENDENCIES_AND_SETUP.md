@@ -121,7 +121,7 @@ npm.cmd run harness:comfy -- repair-prompt-writer
 
 Git clone/update 有 5–10 分钟上限；普通 Python requirements 为 15 分钟，共用的 `llama-cpp-python` Windows wheel 下载与自检为 45 分钟。安装日志显示下载百分比；超时会终止对应子进程树并保留已收到的日志，避免无限显示“处理中”。
 
-当前注册的节点族包括 GGUF、Video Helper Suite、LTXVideo、SeedVR2、FlashVSR、KJNodes、Frame Interpolation、ComfyUI MultiModal Prompt Nodes、ComfyUI Qwen-VL LoRA、MiniMax H3 Prompt Writer、H3 Motion Context 和 Spectrum。准确仓库、目录名、用途和 required/optional 状态以 `customNodeCatalog` 为准；其中 `priority` 是设置页的稳定显示/批量安装顺序，数值越小越优先。新增节点必须根据通用程度、主链路影响和实际使用频率填写优先级：视频主链路与通用节点在前，提示词/图片/后处理功能居中，特定模式和实验性节点在后；未知旧条目自动排到末尾。
+当前注册的节点族包括 GGUF、Video Helper Suite、LTXVideo、SeedVR2、FlashVSR、KJNodes、Frame Interpolation、ComfyUI MultiModal Prompt Nodes、ComfyUI Qwen-VL LoRA、MiniMax H3 Prompt Writer、H3 Motion Context、H3 Learned Latent Upscaler、MMH3 Ultimate Upscale 和 Spectrum。Learned Latent Upscaler 与 MMH3 Ultimate Upscale 只在用户点击对应卡片时把 catalog 固定的 commit 克隆到当前所选 ComfyUI，不随应用分发，也不进入批量补齐；模型权重仍由用户通过模型卡片来源链接自行下载。MMH3 当前只是 1440p 的实验性时空分块候选，catalog 静态登记不解除 UI/队列安全门；必须继续通过 `/object_info`、RTX 4090 真实 smoke、显存与接缝检查。准确仓库、目录名、用途和 required/optional 状态以 `customNodeCatalog` 为准；其中 `priority` 是设置页的稳定显示/批量安装顺序，数值越小越优先。新增节点必须根据通用程度、主链路影响和实际使用频率填写优先级：视频主链路与通用节点在前，提示词/图片/后处理功能居中，特定模式和实验性节点在后；未知旧条目自动排到末尾。
 
 节点目录中的 `releaseSource: "github-release"` 表示设置页会查询对应 GitHub Releases。查询结果按仓库缓存 6 小时；网络失败或仓库没有 Release 时只缓存 1 分钟，不会让离线扫描变成失败。远端 Release 只作为“最新发布”信息展示，不参与 `updateAvailable`、兼容性颜色或批量安装选择；非版本标签会被忽略。可执行更新只由应用 catalog 中随版本发布的推荐版本、最低兼容线和兼容修复规则决定。
 

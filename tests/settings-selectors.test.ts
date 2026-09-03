@@ -167,6 +167,32 @@ describe("settings selectors", () => {
     });
   });
 
+  it("offers an update for an older app-owned bundled node revision", () => {
+    const state = deriveCustomNodeCardState({
+      node: qwenNode({
+        id: "local-video-studio-h3-av",
+        compatibilityState: "error",
+        loadError: "节点 revision 不匹配：当前 0.2.2，要求 0.2.3",
+        detectedRevision: "0.2.2",
+        installRevision: "0.2.3",
+        appInstallable: true,
+        updateAvailable: true
+      }),
+      queuedIndex: -1,
+      active: false,
+      finalizing: false,
+      inFinalizingBatch: false,
+      globallyBlocked: false
+    });
+
+    expect(state).toMatchObject({
+      status: "update",
+      primaryOperation: "update",
+      installActionable: true,
+      revisionUpdateAvailable: true
+    });
+  });
+
   it("makes a fully unregistered installed node package repairable", () => {
     const state = deriveCustomNodeCardState({
       node: qwenNode({

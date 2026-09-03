@@ -10,6 +10,7 @@ export interface HistoryActionsControllerOptions {
   openUpscaleDialog(): void;
   requestHistoryDeletion(assetId: string): void;
   requestHistoryVersionDeletion(assetId: string, versionId: string): void;
+  requestJointAvDeletion(assetId: string, versionId: string): void;
   requestImageVersionDeletion(projectId: string, versionId: string): void;
   copyHistoryText(value: string, successMessage: string): Promise<void>;
   copyHistoryFile(filename: string): Promise<void>;
@@ -76,6 +77,15 @@ export function mountHistoryActionsController(
       const assetId = button.dataset.deleteHistoryVersion;
       const versionId = button.dataset.historyVersionDeleteId;
       if (assetId && versionId) options.requestHistoryVersionDeletion(assetId, versionId);
+    }, { signal });
+  });
+
+  root.querySelectorAll<HTMLElement>("[data-delete-joint-av]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      stopAction(event);
+      const assetId = button.dataset.deleteJointAv;
+      const versionId = button.dataset.jointAvVersionId;
+      if (assetId && versionId) options.requestJointAvDeletion(assetId, versionId);
     }, { signal });
   });
 

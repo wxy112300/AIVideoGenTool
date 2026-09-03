@@ -142,6 +142,21 @@ export function createHistoryWorkspaceCoordinator(
     deps.renderOverlay();
   };
 
+  const requestJointAvDeletion = (assetId: string, versionId: string): void => {
+    const asset = deps.getState().history.find((item) => item.id === assetId);
+    const version = asset?.versions.find((item) => item.id === versionId);
+    if (!asset || version?.h3ContinuationData?.status !== "available") return;
+    deps.rememberModalFocus();
+    deps.ui.pendingConfirmation = {
+      kind: "delete-joint-av",
+      assetId,
+      versionId,
+      title: asset.title
+    };
+    deps.ui.confirmationBusy = false;
+    deps.renderOverlay();
+  };
+
   const requestImageVersionDeletion = (projectId: string, versionId: string): void => {
     const state = deps.getState();
     const project = state.imageHistory.find((item) => item.id === projectId);
@@ -274,6 +289,7 @@ export function createHistoryWorkspaceCoordinator(
         openUpscaleDialog: historyActions.openUpscaleDialog,
         requestHistoryDeletion,
         requestHistoryVersionDeletion,
+        requestJointAvDeletion,
         requestImageVersionDeletion,
         copyHistoryText: historyActions.copyHistoryText,
         copyHistoryFile: historyActions.copyHistoryFile,

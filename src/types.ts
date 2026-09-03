@@ -72,6 +72,52 @@ export type H3ReferenceRole =
 
 export type H3ReferenceMediaType = "image" | "video";
 
+/** Base H3 short-edge presets that are currently executed by ComfyUI. */
+export type H3BaseResolution = 360 | 480 | 540 | 720 | 768;
+/** Final short-edge targets for the separate H3 native second-sampling path. */
+export type H3HighResolution = 1080 | 1440;
+/** Resolutions accepted by the H3 creation draft; high resolutions are gated. */
+export type H3Resolution = H3BaseResolution | H3HighResolution;
+
+/** Machine-readable reasons for a gated H3 native high-resolution capability. */
+export type H3HighResolutionReasonCode =
+  | "provider-not-installed"
+  | "provider-not-started"
+  | "profile-unsupported"
+  | "weights-missing"
+  | "hash-mismatch"
+  | "gpu-unsupported"
+  | "os-unsupported"
+  | "runtime-unverified"
+  | "model-incompatible"
+  | "lora-incompatible"
+  | "artifact-missing"
+  | "artifact-incompatible"
+  | "target-not-supported"
+  | "target-not-higher"
+  | "conditioning-unavailable";
+
+/** Optional environment evidence for the isolated H3 high-resolution provider. */
+export interface H3HighResolutionEnvironment {
+  providerId: "h3-native-sidecar";
+  state: "unknown" | "stopped" | "starting" | "ready" | "error";
+  verified: boolean;
+  profileId?: string;
+  modelIds?: string[];
+  firstPassResolutions?: H3BaseResolution[];
+  supportedResolutions?: H3HighResolution[];
+  reasonCode?: H3HighResolutionReasonCode;
+  detail?: string;
+  /** Version/revision reported by the provider, never inferred from a model filename. */
+  providerVersion?: string;
+  providerRevision?: string;
+  providerSource?: string;
+  providerDownloadUrl?: string;
+  providerInstallGuideUrl?: string;
+  providerInstallable?: boolean;
+  providerInstallNote?: string;
+}
+
 export type H3StepCount = 4 | 6 | 8 | 10 | 12 | 16 | 20;
 export type H3AttentionMode = "sage" | "sage-triton" | "pytorch";
 /** User-facing selection for the final MiniMax H3 video VAE. */
@@ -269,7 +315,7 @@ export interface Draft {
   videoLoras: VideoLoraSelection[];
   workflowPath: string;
   ratio: "source" | "16:9" | "9:16" | "1:1" | "4:3" | "3:4";
-  resolution: 360 | 480 | 540 | 720 | 768;
+  resolution: H3Resolution;
   duration: number;
   steps: H3StepCount;
   fps: 8 | 12 | 16 | 24 | 25 | 30;
@@ -280,6 +326,8 @@ export interface Draft {
   spectrumMode: H3SpectrumMode;
   spectrumModelAwareMode: H3SpectrumModelAwareMode;
   spectrumModeUserSet?: boolean;
+  /** Save reusable H3 joint video/audio latents alongside the rendered video. */
+  h3SaveJointAv: boolean;
   /** Requested H3 Memory Optimization mode for this creation workspace. */
   h3MemoryOptimizationMode: H3MemoryOptimizationMode;
   /** True when the user explicitly chose the memory mode. */
@@ -377,10 +425,19 @@ interface QueueTaskBase {
   progress?: number;
   stage?: string;
   stageStartedAt?: string;
+  workProgress?: QueueWorkProgress;
   startedAt?: string;
   error?: string;
   performanceStats?: TaskPerformanceStats;
   automaticRetryAttempt?: number;
+}
+
+export interface QueueWorkProgress {
+  value: number;
+  max: number;
+  unit: "step" | "piece" | "item";
+  startedAt: string;
+  sampledAt: string;
 }
 
 interface VideoQueueTaskBase extends QueueTaskBase {
@@ -407,6 +464,8 @@ interface VideoQueueTaskBase extends QueueTaskBase {
    * Older persisted tasks may omit this and fall back to the current setting.
    */
   h3LivePreview?: boolean;
+  /** Queue-time H3 JointAV output preference; legacy tasks default to enabled. */
+  h3SaveJointAv?: boolean;
 }
 
 export interface ImageGenerationQueueTask extends QueueTaskBase {
@@ -443,7 +502,16 @@ export interface GenerationQueueTask extends VideoQueueTaskBase {
   endImageWidth?: number;
   endImageHeight?: number;
   ratio: Draft["ratio"];
-  resolution: Draft["resolution"];
+  /** Base first-pass resolution; high-resolution delivery remains a separate stage. */
+  resolution: H3BaseResolution;
+  /** Optional final delivery target for inline H3 learned-latent second sampling. */
+  h3DeliveryResolution?: 1080;
+  /** Mutable recovery checkpoint committed after the first pass and before learned second sampling. */
+  h3FirstPassCheckpoint?: {
+    promptId: string;
+    outputFile: HistoryFile;
+    artifact: NativeAvContinuationArtifact;
+  };
   fps: Draft["fps"];
   frameInterpolation: Draft["frameInterpolation"];
   motion: Draft["motion"];
@@ -452,6 +520,8 @@ export interface GenerationQueueTask extends VideoQueueTaskBase {
 
 export interface UpscaleQueueTask extends VideoQueueTaskBase {
   taskType: "upscale";
+  /** Absent on legacy persisted tasks and treated as pixel-video upscale. */
+  upscaleMode?: "pixel" | "h3-native";
   sourceAssetId: string;
   sourceVersionId: string;
   sourceFilePath: string;
@@ -459,9 +529,12 @@ export interface UpscaleQueueTask extends VideoQueueTaskBase {
   sourceWidth: number;
   sourceHeight: number;
   targetWidth: number;
-  targetHeight: 720 | 1080 | 1440 | 2160;
+  targetHeight: 720 | 768 | 1080 | 1440 | 2160;
+  /** Actual aligned output height; legacy pixel tasks use targetHeight. */
+  targetOutputHeight?: number;
   tileMode: "auto" | "safe" | "fast";
   faceRestore: boolean;
+  h3NativeInput?: H3NativeUpscaleInputSnapshot;
   /**
    * Runtime checkpoint for the native SeedVR2 long-video adapter. It is
    * deliberately separate from the immutable upscale parameters so a failed
@@ -469,6 +542,22 @@ export interface UpscaleQueueTask extends VideoQueueTaskBase {
    */
   seedVr2Checkpoint?: SeedVr2UpscaleCheckpoint;
   seedVr2Progress?: SeedVr2UpscaleProgress;
+}
+
+export interface H3NativeUpscaleInputSnapshot {
+  /** Absent on legacy records and interpreted as the bilinear provider. */
+  provider?: "bilinear" | "learned-3d";
+  artifact: NativeAvContinuationArtifact;
+  workflowPath: string;
+  learnedModelFilename?: string;
+  prompt: string;
+  startImagePath: string;
+  endImagePath: string;
+  scaleBy: number;
+  h3VideoVaeMode: H3VideoVaeBackend;
+  attentionMode: Settings["h3AttentionMode"];
+  steps: H3StepCount;
+  videoLoras: VideoLoraSelection[];
 }
 
 export interface SeedVr2UpscaleProgress {
@@ -522,13 +611,13 @@ export interface ExtensionQueueTask extends VideoQueueTaskBase {
   sourceWidth: number;
   sourceHeight: number;
   ratio: Draft["ratio"];
-  resolution: 360 | 480 | 540 | 720 | 768;
+  resolution: H3BaseResolution;
   fps: Draft["fps"];
   frameInterpolation: Draft["frameInterpolation"];
   motion: Draft["motion"];
   modelProfile: LtxExtensionModelProfile;
   maxGeneratedFrames: 49 | 65 | 362;
-  overlapFrames: 16;
+  overlapFrames: 16 | 22;
   unloadBetweenStages: true;
 }
 
@@ -539,6 +628,7 @@ export type QueueTask =
   | ImageGenerationQueueTask;
 
 export interface UpscaleRequest {
+  upscaleMode?: "pixel" | "h3-native";
   sourceAssetId: string;
   sourceVersionId: string;
   sourceFilePath: string;
@@ -548,9 +638,10 @@ export interface UpscaleRequest {
   duration: number;
   fps: number;
   targetHeight: UpscaleQueueTask["targetHeight"];
-  modelId: "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan";
+  modelId: string;
   tileMode: UpscaleQueueTask["tileMode"];
   faceRestore: boolean;
+  h3NativeInput?: H3NativeUpscaleInputSnapshot;
 }
 
 export interface HistoryFile {
@@ -559,6 +650,92 @@ export interface HistoryFile {
   type: string;
   format?: string;
   absolutePath?: string;
+  sizeBytes?: number;
+}
+
+/**
+ * A clean joint H3 video/audio latent is an auxiliary video-output asset.
+ * It is deliberately separate from Motion Context's h3ContextLatentPath:
+ * the latter is a model-specific continuation cache and is not a Native AV
+ * serializer contract.
+ */
+export type H3ContinuationDataStatus =
+  | "available"
+  | "disabled"
+  | "not-supported"
+  | "save-failed"
+  | "missing"
+  | "invalid";
+
+export type NativeAvArtifactRole =
+  | "first-pass-clean-av"
+  | "final-clean-av"
+  | "extend-segment-clean-av";
+
+export interface NativeAvContinuationArtifact {
+  schemaVersion: 1;
+  artifactId: string;
+  role: NativeAvArtifactRole;
+  /** Stable lineage for a generation/extend chain, not a filesystem path. */
+  lineageId: string;
+  /** Optional parent artifact used to produce this artifact. */
+  derivedFromArtifactId?: string;
+  manifest: HistoryFile;
+  payload: HistoryFile;
+  payloadSha256: string;
+  payloadBytes: number;
+  modelFamily: "minimax-h3";
+  /** The execution model identity is intentionally not inferred from a file. */
+  executionModelId: string;
+  providerId: string;
+  providerRevision: string;
+  /** Optional only for legacy persisted artifacts; new commits include producer identity. */
+  producerNodeId?: string;
+  producerNodeVersion?: string;
+  workflowId?: string;
+  diffusionModelFilename: string;
+  diffusionModelSha256?: string;
+  textEncoderFilename: string;
+  textEncoderSha256?: string;
+  videoVaeFilename: string;
+  videoVaeSha256?: string;
+  audioVaeFilename: string;
+  audioVaeSha256?: string;
+  upscalerId?: string;
+  upscalerRevision?: string;
+  width: number;
+  height: number;
+  fps: 24;
+  frameCount: number;
+  videoShape: number[];
+  videoDtype: string;
+  audioSampleRate: 32000;
+  audioChannels: 2;
+  audioLatentRate: 40;
+  audioShape: number[];
+  audioDtype: string;
+  contextFrames: number;
+  workflowRevision: string;
+  sourceTaskId: string;
+  sourceAssetId?: string;
+  sourceVersionId?: string;
+  createdAt: string;
+}
+
+export interface NativeAvContinuationData {
+  status: H3ContinuationDataStatus;
+  reason?: string;
+  artifact?: NativeAvContinuationArtifact;
+}
+
+/** Result of re-checking a persisted artifact pair against the active output root. */
+export interface NativeAvArtifactInspection {
+  status: H3ContinuationDataStatus;
+  reason?: string;
+  artifact?: NativeAvContinuationArtifact;
+  payloadPath?: string;
+  manifestPath?: string;
+  payloadBytes?: number;
 }
 
 export interface AssetVersion {
@@ -576,6 +753,7 @@ export interface AssetVersion {
   steps?: H3StepCount;
   attentionMode?: Settings["h3AttentionMode"];
   h3VideoVaeMode?: H3VideoVaeBackend;
+  h3SaveJointAv?: boolean;
   spectrumMode?: H3SpectrumMode;
   spectrumModelAwareMode?: H3SpectrumModelAwareMode;
   h3MemoryOptimizationMode?: H3MemoryOptimizationMode;
@@ -597,6 +775,7 @@ export interface AssetVersion {
   faceRestore?: boolean;
   startedAt?: string;
   h3ContextLatentPath?: string;
+  h3ContinuationData?: NativeAvContinuationData;
 }
 
 export interface ImageHistoryProject {
@@ -869,6 +1048,11 @@ export interface ModelComponentStatus {
     targetSubdirectory: string;
     recommendedFilename: string;
     notes?: string;
+    version?: string;
+    revision?: string;
+    bytes?: number;
+    sha256?: string;
+    license?: string;
   };
 }
 
@@ -921,6 +1105,8 @@ export interface CustomNodeStatus {
   duplicateDirectories?: string[];
   /** Git revision detected independently from the package version, when available. */
   detectedRevision?: string;
+  /** Immutable catalog revision required for an installable package, when pinned. */
+  installRevision?: string;
   /** Additive machine-readable state used by Settings; legacy scans omit it. */
   compatibilityState?: "supported" | "warning" | "error" | "unknown";
   compatibilityNotice?: string;
@@ -1386,6 +1572,7 @@ export interface AppApi {
   pickDirectory(defaultPath?: string, createIfMissing?: boolean): Promise<string | null>;
   readImage(path: string): Promise<string | null>;
   readHistoryCover(key: string, sourcePath: string): Promise<string | null>;
+  inspectH3NativeAvArtifact(assetId: string, versionId: string): Promise<NativeAvArtifactInspection>;
   saveHistoryCover(key: string, sourcePath: string, data: ArrayBuffer): Promise<boolean>;
   showItemInFolder(path: string): Promise<boolean>;
   openDirectory(path: string): Promise<boolean>;
@@ -1432,7 +1619,7 @@ export interface AppApi {
   enqueueExtension(draft: Draft): Promise<AppState>;
   enqueueImageEdit(draft: ImageEditDraft): Promise<AppState>;
   enqueueUpscale(request: UpscaleRequest): Promise<AppState>;
-  updateUpscaleTask(taskId: string, patch: Pick<UpscaleQueueTask, "targetWidth" | "targetHeight" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">): Promise<AppState>;
+  updateUpscaleTask(taskId: string, patch: Pick<UpscaleQueueTask, "upscaleMode" | "targetWidth" | "targetHeight" | "targetOutputHeight" | "modelId" | "workflowPath" | "tileMode" | "faceRestore" | "outputFilename">): Promise<AppState>;
   removeTask(taskId: string): Promise<AppState>;
   startQueue(): Promise<AppState>;
   continueQueue(): Promise<AppState>;
@@ -1448,6 +1635,7 @@ export interface AppApi {
   resetTask(taskId: string): Promise<AppState>;
   deleteHistoryAsset(assetId: string): Promise<AppState>;
   deleteHistoryVersion(assetId: string, versionId: string): Promise<AppState>;
+  deleteHistoryJointAv(assetId: string, versionId: string): Promise<AppState>;
   updateHistoryMetadata(assetId: string, patch: HistoryMetadataPatch): Promise<AppState>;
   setImageHistoryCover(projectId: string, versionId?: string): Promise<AppState>;
   deleteImageHistoryVersion(projectId: string, versionId: string): Promise<AppState>;

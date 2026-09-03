@@ -529,6 +529,13 @@ export function renderSettingsPage(viewModel, options) {
                 : cardState.phase === "finalizing"
                     ? s("nodes.finalizing")
                     : "";
+        const validationEvidence = node.compatibilityEvidence?.[0];
+        const validationEvidenceMarkup = validationEvidence ? `
+            <details class="node-validation-evidence">
+              <summary>${s("nodes.validationEvidence")} · ${escape(validationEvidence.verifiedAt)}</summary>
+              <p>${escape(validationEvidence.note)}</p>
+              ${validationEvidence.checks?.length ? `<small>${escape(s("nodes.validationChecks", { checks: validationEvidence.checks.join(" · ") }))}</small>` : ""}
+            </details>` : "";
         const statusMarkup = cardState.status === "processing" || cardState.status === "queued" || cardState.status === "finalizing"
             ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}`
             : cardState.status === "compatibility-error"
@@ -549,10 +556,11 @@ export function renderSettingsPage(viewModel, options) {
         return `
           <article class="panel custom-node-card ${cardState.tone}">
             <div class="custom-node-copy">
-              <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.bulkInstall === false ? ` · ${s("nodes.manualInstall")}` : ""}</span></div>
+              <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${manualOnly ? ` · ${s("nodes.manualInstall")}` : ""}</span></div>
               <p>${escape(node.purpose)}</p>
               <code>${escape(node.directory || node.repositoryUrl)}</code>
               ${node.runtimeRequirement ? `<p class="muted"><strong>${s("nodes.prerequisite")}</strong> ${escape(node.runtimeRequirement)}</p>` : ""}
+              ${validationEvidenceMarkup}
               <p class="muted">${s("nodes.localVersion")}${localVersion} · ${s("nodes.versionSource")}<code>${escape(node.versionSource || "—")}</code>${node.recommendedVersion ? ` · ${s("nodes.recommendedVersion")}v${escape(node.recommendedVersion)}` : ""}${node.latestVersion ? ` · ${s("nodes.latestRelease")}v${escape(node.latestVersion)}` : ""}${node.id === "spectrum-minimax-h3" ? ` · ${s("nodes.runtimeMemory")}` : ""}</p>
               ${node.loadError ? `<span class="${node.compatibilityState === "warning" ? "node-update-notice" : "node-error"}">${escape(node.loadError)}</span>` : ""}
               ${node.updateNotice ? `<span class="node-update-notice">${escape(node.updateNotice)}</span>` : ""}

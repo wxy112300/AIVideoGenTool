@@ -321,6 +321,21 @@ export class SettingsService {
         if (!asset) continue;
         if (reference.versionId) {
           const version = asset.versions.find((item) => item.id === reference.versionId);
+          if (reference.artifactKind) {
+            const file = version?.h3ContinuationData?.artifact?.[reference.artifactKind];
+            if (file) file.absolutePath = entry.targetPath;
+            for (const task of state.queue) {
+              if (
+                task.taskType !== "upscale" ||
+                task.upscaleMode !== "h3-native" ||
+                task.sourceAssetId !== reference.assetId ||
+                task.sourceVersionId !== reference.versionId
+              ) continue;
+              const snapshotFile = task.h3NativeInput?.artifact[reference.artifactKind];
+              if (snapshotFile) snapshotFile.absolutePath = entry.targetPath;
+            }
+            continue;
+          }
           const file = version?.files[reference.fileIndex];
           if (file) file.absolutePath = entry.targetPath;
         } else {

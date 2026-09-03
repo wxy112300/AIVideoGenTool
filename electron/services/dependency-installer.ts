@@ -5,12 +5,14 @@ import { customNodeDefinition } from "../../src/core/catalog/index.js";
 import type { CustomNodeInstallMode, Settings } from "../../src/types.js";
 import {
   patchH3PromptWriterSource,
+  patchMmh3UltimateUpscaleSource,
   patchMultimodalPromptContextSize,
   patchMultimodalPromptProjectorDiscovery,
   patchMultimodalPromptQwen38Recognition,
   patchMultimodalPromptResidency,
   patchQwenVlComfyDesktopLogging,
   prepareH3PromptWriter,
+  prepareMmh3UltimateUpscale,
   prepareH3Gguf,
   prepareLtxVideo,
   prepareMultimodalPromptNodes,
@@ -21,6 +23,10 @@ import { installLlamaCppPythonPackage } from "./llama-cpp-python.js";
 
 function normalizedRepositoryUrl(value: string): string {
   return value.trim().replace(/\/+$/u, "").replace(/\.git$/iu, "").toLowerCase();
+}
+
+function normalizedGitRevision(value: string): string {
+  return value.trim().split(/\r?\n/u)[0]?.trim().toLowerCase() ?? "";
 }
 
 /**
@@ -89,6 +95,7 @@ export const h3PromptWriterPatchFiles = [
 ] as const;
 const multimodalPromptPatchFiles = ["vision_llm_node.py", "local_gguf_utils.py"] as const;
 const qwenVlPatchFiles = ["nodes.py"] as const;
+const mmh3PatchFiles = ["nodes/nodes.py"] as const;
 
 function normalizeGitSource(source: string): string {
   return source.replace(/\r\n?/gu, "\n").replace(/\s+$/u, "");
@@ -121,6 +128,8 @@ async function nodeHasOnlyAppPatch(
       ? multimodalPromptPatchFiles
       : nodeId === "comfyui-qwenvl-lora"
         ? qwenVlPatchFiles
+        : nodeId === "mmh3-ultimate-upscale"
+          ? mmh3PatchFiles
       : [];
   const paths = statusOutput
     .split(/\r?\n/u)
@@ -153,7 +162,9 @@ async function nodeHasOnlyAppPatch(
                 patchMultimodalPromptContextSize(baseline)
               )
             )
-        : patchQwenVlComfyDesktopLogging(baseline);
+        : nodeId === "comfyui-qwenvl-lora"
+          ? patchQwenVlComfyDesktopLogging(baseline)
+          : patchMmh3UltimateUpscaleSource(baseline);
     if (normalizeGitSource(current) !== normalizeGitSource(expected)) return false;
   }
   return true;
@@ -215,6 +226,8 @@ export interface DependencyInstallerRuntime {
   findComfyRoot(settings: Settings): Promise<string>;
   findExecutable(command: string): Promise<string>;
   findComfyPython(settings: Settings, comfyRoot: string): Promise<string>;
+  /** Resolve an app-owned node package without treating it as a Git checkout. */
+  resolveBundledNodeDirectory?(nodeId: string, directoryName: string): Promise<string>;
   exists(filename: string): Promise<boolean>;
   retryableRenameError(error: unknown): boolean;
   renameWithRetry(
@@ -231,6 +244,118 @@ export interface DependencyInstallerRuntime {
       onLog?: (message: string) => void;
     }
   ): Promise<string>;
+}
+
+async function ensurePinnedGitRevision(
+  git: string,
+  targetDirectory: string,
+  revision: string,
+  runtime: DependencyInstallerRuntime,
+  commandEnvironment: NodeJS.ProcessEnv,
+  report: (message: string) => void
+): Promise<void> {
+  const expectedRevision = normalizedGitRevision(revision);
+  if (!expectedRevision) throw new Error("节点 catalog 缺少有效的 installRevision。");
+  report(`正在固定节点 revision：${expectedRevision}`);
+  await runtime.runLoggedProcess(
+    git,
+    ["-C", targetDirectory, "fetch", "--depth", "1", "origin", expectedRevision],
+    { timeoutMs: 300_000, env: commandEnvironment, onLog: report }
+  );
+  await runtime.runLoggedProcess(
+    git,
+    ["-C", targetDirectory, "checkout", "--detach", expectedRevision],
+    { timeoutMs: 120_000, env: commandEnvironment, onLog: report }
+  );
+  const actualRevision = normalizedGitRevision(await runtime.runLoggedProcess(
+    git,
+    ["-C", targetDirectory, "rev-parse", "HEAD"],
+    { timeoutMs: 30_000, env: commandEnvironment }
+  ));
+  if (actualRevision !== expectedRevision) {
+    throw new Error(
+      `节点 revision 校验失败：实际 ${actualRevision || "未读取到"}，要求 ${expectedRevision}`
+    );
+  }
+  report(`节点 revision 已校验：${actualRevision}`);
+}
+
+async function installBundledNodePackage(
+  nodeId: string,
+  definition: NonNullable<ReturnType<typeof customNodeDefinition>>,
+  targetDirectory: string,
+  comfyRoot: string,
+  runtime: DependencyInstallerRuntime,
+  report: (message: string) => void
+): Promise<void> {
+  const sourceDirectory = await runtime.resolveBundledNodeDirectory?.(
+    nodeId,
+    definition.directoryName
+  ) ?? path.resolve(process.cwd(), "comfy_nodes", definition.directoryName);
+  const packageMarker = path.join(sourceDirectory, "__init__.py");
+  if (!await runtime.exists(packageMarker)) {
+    throw new Error(`应用内置节点包不存在：${sourceDirectory}`);
+  }
+  const packageRevision = (await fs.readFile(path.join(sourceDirectory, "VERSION"), "utf8"))
+    .trim();
+  if (definition.installRevision && packageRevision !== definition.installRevision) {
+    throw new Error(
+      `应用内置节点包 revision 不匹配：当前 ${packageRevision || "未读取到"}，要求 ${definition.installRevision}`
+    );
+  }
+
+  const replacementDirectory = `${targetDirectory}.update-${crypto.randomUUID()}`;
+  const backupRoot = path.join(comfyRoot, "node-backups");
+  const backupDirectory = path.join(
+    backupRoot,
+    `${definition.directoryName}-${Date.now()}`
+  );
+  report(`复制应用内置节点包：${sourceDirectory}`);
+  let targetExists = false;
+  let targetMovedToBackup = false;
+  try {
+    await fs.cp(sourceDirectory, replacementDirectory, {
+      recursive: true,
+      force: false,
+      errorOnExist: true
+    });
+    await fs.mkdir(backupRoot, { recursive: true });
+    targetExists = await runtime.exists(targetDirectory);
+    if (targetExists) {
+      await runtime.renameWithRetry(targetDirectory, backupDirectory);
+      targetMovedToBackup = true;
+    }
+    try {
+      await runtime.renameWithRetry(replacementDirectory, targetDirectory);
+    } catch (error) {
+      if (!runtime.retryableRenameError(error)) throw error;
+      report("Windows 持续占用内置节点目录，自动改用文件复制完成替换");
+      await fs.cp(replacementDirectory, targetDirectory, {
+        recursive: true,
+        force: false,
+        errorOnExist: true
+      });
+    }
+    if (targetExists) report(`旧目录已备份：${backupDirectory}`);
+    report(`应用内置节点包已安装：${definition.name}`);
+  } catch (error) {
+    if (targetMovedToBackup) {
+      await fs
+        .rm(targetDirectory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+        .catch(() => undefined);
+      if (await runtime.exists(backupDirectory)) {
+        await runtime.renameWithRetry(backupDirectory, targetDirectory).catch(() => undefined);
+      }
+    }
+    throw error;
+  } finally {
+    await fs.rm(replacementDirectory, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 200
+    });
+  }
 }
 
 export async function installCustomNodePackage(
@@ -273,19 +398,30 @@ export async function installCustomNodePackage(
       definition.id === "minimax-h3-prompt-writer";
     const customNodesDirectory = path.join(comfyRoot, "custom_nodes");
     const targetDirectory = path.join(customNodesDirectory, definition.directoryName);
-    const git = await runtime.findExecutable("git.exe");
-    if (!git) throw new Error("缺少 Git，无法下载节点包。");
     await fs.mkdir(customNodesDirectory, { recursive: true });
     let videoHelperPrepared = false;
     let h3GgufPrepared = false;
     let h3PromptWriterPrepared = false;
 
-    if (await runtime.exists(targetDirectory)) {
+    if (definition.source === "bundled") {
+      await installBundledNodePackage(
+        nodeId,
+        definition,
+        targetDirectory,
+        comfyRoot,
+        runtime,
+        report
+      );
+    } else {
+      const git = await runtime.findExecutable("git.exe");
+      if (!git) throw new Error("缺少 Git，无法下载节点包。");
+      if (await runtime.exists(targetDirectory)) {
       const isGitDirectory = await runtime.exists(path.join(targetDirectory, ".git"));
       let repositoryMatches = false;
       let repositoryStatusChecked = false;
       let repositoryDirty = false;
       let reuseAppPatchedRepository = false;
+      let pinnedRevisionMatches = !definition.installRevision;
       if (isGitDirectory && definition.id !== "seedvr2") {
         const origin = await runtime.runLoggedProcess(
           git,
@@ -294,6 +430,20 @@ export async function installCustomNodePackage(
         ).catch(() => "");
         repositoryMatches = normalizedRepositoryUrl(origin) ===
           normalizedRepositoryUrl(definition.repositoryUrl);
+        if (repositoryMatches && definition.installRevision) {
+          const currentRevision = await runtime.runLoggedProcess(
+            git,
+            ["-C", targetDirectory, "rev-parse", "HEAD"],
+            { timeoutMs: 30_000, env: commandEnvironment }
+          ).catch(() => "");
+          pinnedRevisionMatches = normalizedGitRevision(currentRevision) ===
+            normalizedGitRevision(definition.installRevision);
+          if (!pinnedRevisionMatches) {
+            report(
+              `当前节点 revision 与 catalog pin 不符，将安全替换为 ${definition.installRevision}`
+            );
+          }
+        }
       }
       if (isGitDirectory && repositoryMatches && definition.id !== "seedvr2") {
         try {
@@ -308,7 +458,8 @@ export async function installCustomNodePackage(
             const appPatchOnly = [
               "minimax-h3-prompt-writer",
               "comfyui-multimodal-prompt-nodes",
-              "comfyui-qwenvl-lora"
+              "comfyui-qwenvl-lora",
+              "mmh3-ultimate-upscale"
             ].includes(definition.id) &&
               await nodeHasOnlyAppPatch(
                 definition.id,
@@ -360,7 +511,14 @@ export async function installCustomNodePackage(
         try {
           const gitOutput = await runtime.runLoggedProcess(
             git,
-            ["clone", "--depth", "1", definition.repositoryUrl, replacementDirectory],
+            [
+              "clone",
+              "--depth",
+              "1",
+              ...(definition.installRevision ? ["--no-checkout"] : []),
+              definition.repositoryUrl,
+              replacementDirectory
+            ],
             {
               timeoutMs: 600_000,
               env: commandEnvironment,
@@ -368,6 +526,16 @@ export async function installCustomNodePackage(
             }
           );
           if (!gitOutput) report("Git：克隆完成");
+          if (definition.installRevision) {
+            await ensurePinnedGitRevision(
+              git,
+              replacementDirectory,
+              definition.installRevision,
+              runtime,
+              commandEnvironment,
+              report
+            );
+          }
           if (definition.id === "comfyui-gguf-h3") {
             report("正在应用 H3 GGUF 独立节点适配层……");
             await prepareH3Gguf(replacementDirectory, report);
@@ -389,6 +557,9 @@ export async function installCustomNodePackage(
               commandEnvironment
             );
             h3PromptWriterPrepared = true;
+          } else if (definition.id === "mmh3-ultimate-upscale") {
+            report("正在应用 MMH3 1440p 兼容补丁……");
+            await prepareMmh3UltimateUpscale(replacementDirectory, report);
           }
           await fs.mkdir(backupRoot, { recursive: true });
           await runtime.renameWithRetry(targetDirectory, backupDirectory);
@@ -439,11 +610,21 @@ export async function installCustomNodePackage(
         // patch and the remote HEAD is unchanged. Continue with the normal
         // dependency/runtime checks below without creating another backup.
       } else if (
+        definition.installRevision &&
+        isGitDirectory &&
+        repositoryMatches &&
+        pinnedRevisionMatches &&
+        repositoryStatusChecked &&
+        !repositoryDirty
+      ) {
+        report(`节点已固定在 catalog revision ${definition.installRevision}，跳过更新`);
+      } else if (
         isGitDirectory &&
         repositoryMatches &&
         repositoryStatusChecked &&
         !repositoryDirty &&
-        definition.id !== "seedvr2"
+        definition.id !== "seedvr2" &&
+        (!definition.installRevision || pinnedRevisionMatches)
       ) {
         report(`更新 ${definition.repositoryUrl}`);
         try {
@@ -471,6 +652,8 @@ export async function installCustomNodePackage(
             ? "检测到节点仓库有本地修改，先备份旧目录并安装干净副本（不会丢失原目录）"
             : isGitDirectory && repositoryMatches && !repositoryStatusChecked
             ? "无法确认节点仓库状态，先备份旧目录并安装干净副本（不会覆盖本地修改）"
+            : definition.installRevision && isGitDirectory && repositoryMatches && !pinnedRevisionMatches
+            ? `当前节点 revision 不符合 catalog pin，备份旧目录并安装 ${definition.installRevision}`
             : !repositoryMatches && isGitDirectory
             ? `检测到节点仓库已切换，备份旧目录并安装 ${definition.repositoryUrl}`
             : definition.id === "seedvr2"
@@ -482,7 +665,14 @@ export async function installCustomNodePackage(
       report(`克隆 ${definition.repositoryUrl}`);
       const gitOutput = await runtime.runLoggedProcess(
         git,
-        ["clone", "--depth", "1", definition.repositoryUrl, targetDirectory],
+        [
+          "clone",
+          "--depth",
+          "1",
+          ...(definition.installRevision ? ["--no-checkout"] : []),
+          definition.repositoryUrl,
+          targetDirectory
+        ],
         {
           timeoutMs: 600_000,
           env: commandEnvironment,
@@ -490,6 +680,17 @@ export async function installCustomNodePackage(
         }
       );
       if (!gitOutput) report("Git：克隆完成");
+      if (definition.installRevision) {
+        await ensurePinnedGitRevision(
+          git,
+          targetDirectory,
+          definition.installRevision,
+          runtime,
+          commandEnvironment,
+          report
+        );
+      }
+      }
     }
 
     if (definition.id === "comfyui-gguf-h3" && !h3GgufPrepared) {
@@ -503,6 +704,10 @@ export async function installCustomNodePackage(
     if (definition.id === "ltx-video") {
       report("正在检查 LTX Video 兼容层……");
       await prepareLtxVideo(targetDirectory, report);
+    }
+    if (definition.id === "mmh3-ultimate-upscale") {
+      report("正在检查 MMH3 1440p 兼容补丁……");
+      await prepareMmh3UltimateUpscale(targetDirectory, report);
     }
     if (definition.id === "minimax-h3-prompt-writer" && !h3PromptWriterPrepared) {
       report("正在检查 H3 Prompt Writer 的 llama-cpp-python API 兼容层……");

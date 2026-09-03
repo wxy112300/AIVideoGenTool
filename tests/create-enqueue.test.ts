@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createDefaultImageEditDraft } from "../src/core/defaults";
 import type { ImageReference, ModelScanProfile } from "../src/types";
 import {
+  generationSafetyForCreateDraft,
   imageEditEnqueueBlockReason,
-  videoEnqueueBlockReason
+  resolutionAfterJointAvPreference,
+  selectedVideoResolution,
+  videoEnqueueBlockReason,
+  videoResolutionOptionsForDraft
 } from "../src/renderer/pages/create/view-model";
+import { createDefaultDraft } from "../src/core/defaults";
 import { isImageModelSelectable } from "../src/renderer/shared/status";
 
 function videoCheck(overrides: Partial<Parameters<typeof videoEnqueueBlockReason>[0]> = {}) {
@@ -122,6 +127,33 @@ describe("create enqueue preflight checks", () => {
   it("allows an H3 T2VA task without a start image", () => {
     expect(videoCheck({ startImagePath: "", allowTextOnly: true })).toBe("");
     expect(videoCheck({ startImagePath: "", allowTextOnly: false })).toBe("请先选择首帧图片");
+  });
+
+  it("offers Create 1080 only for base FL2VA with JointAV and no LoRA", () => {
+    const draft = createDefaultDraft();
+    expect(videoResolutionOptionsForDraft(draft, false, true)).toContain(1080);
+    expect(videoResolutionOptionsForDraft(draft, false, false)).not.toContain(1080);
+    expect(videoResolutionOptionsForDraft({ ...draft, h3SaveJointAv: false }, false, true)).not.toContain(1080);
+    expect(videoResolutionOptionsForDraft({ ...draft, modelId: "minimax_h3_fl2va_q3_gguf" }, false, true)).not.toContain(1080);
+    expect(videoResolutionOptionsForDraft({ ...draft, videoLoras: [{
+      id: "fixture", name: "Fixture", filename: "fixture.safetensors", strength: 1
+    }] }, false, true)).not.toContain(1080);
+    expect(videoResolutionOptionsForDraft(draft, true, true)).not.toContain(1080);
+    expect(videoResolutionOptionsForDraft(draft, false, true)).not.toContain(1440);
+  });
+
+  it("falls back from 1080 to the preceding tier when JointAV saving is disabled", () => {
+    expect(resolutionAfterJointAvPreference(1080, false)).toBe(768);
+    expect(resolutionAfterJointAvPreference(1080, true)).toBe(1080);
+    expect(resolutionAfterJointAvPreference(720, false)).toBe(720);
+    expect(selectedVideoResolution(1080, [360, 480, 540, 720, 768])).toBe(768);
+  });
+
+  it("validates Create 1080 against its 720p first pass", () => {
+    const draft = { ...createDefaultDraft(), resolution: 1080 as const };
+    const safety = generationSafetyForCreateDraft(draft, "zh-CN");
+    expect(safety.safe).toBe(true);
+    expect(safety.message).not.toContain("只允许 360/480/540/720/768");
   });
 
   it("checks video-extension trim and prompt conditions in order", () => {

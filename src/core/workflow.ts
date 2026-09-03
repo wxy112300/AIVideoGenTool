@@ -1,4 +1,5 @@
 import type {
+  Draft,
   ExtensionQueueTask,
   GenerationQueueTask,
   H3StepCount,
@@ -42,6 +43,12 @@ export interface WorkflowContext {
   vramAvailableBytes: number;
   h3ContextLatentPath: string;
   h3ContextSavePrefix: string;
+  h3AvArtifactFilename?: string;
+  h3AvInputArtifact?: string;
+  h3AvSourceWidth?: number;
+  h3AvSourceHeight?: number;
+  h3AvScaleBy?: number;
+  h3LearnedUpscalerModel?: string;
   h3PreviewTinyVae: string;
   h3MemoryInputNames: readonly string[];
   locale?: UiLocale;
@@ -53,6 +60,46 @@ export interface WorkflowValidation {
   warnings: string[];
   placeholders: string[];
   nodeCount: number;
+}
+
+interface ApiWorkflowNode {
+  class_type?: string;
+  inputs?: Record<string, unknown>;
+}
+
+export function attachH3JointAvSerializer(
+  workflow: unknown,
+  filename: string
+): string {
+  if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
+    throw new Error("H3 AV serializer 只能附加到 API-format workflow。" );
+  }
+  const graph = workflow as Record<string, ApiWorkflowNode>;
+  const latentReferences = Object.values(graph)
+    .filter((node) => node.class_type === "VAEDecode")
+    .map((node) => node.inputs?.samples)
+    .filter((value): value is [string, number] =>
+      Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number"
+    );
+  const uniqueReferences = new Map(
+    latentReferences.map((reference) => [`${reference[0]}:${reference[1]}`, reference] as const)
+  );
+  if (uniqueReferences.size !== 1) {
+    throw new Error(`H3 AV serializer 无法确定唯一最终 joint latent（找到 ${uniqueReferences.size} 个）。`);
+  }
+  const numericIds = Object.keys(graph)
+    .map((id) => Number(id))
+    .filter(Number.isSafeInteger);
+  let nodeId = String((numericIds.length ? Math.max(...numericIds) : 0) + 1);
+  while (graph[nodeId]) nodeId = String(Number(nodeId) + 1);
+  graph[nodeId] = {
+    class_type: "LocalVideoStudioH3SaveJointAV",
+    inputs: {
+      joint_av: [...uniqueReferences.values()][0],
+      filename
+    }
+  };
+  return nodeId;
 }
 
 export interface GenerationSafety {
@@ -1195,6 +1242,12 @@ const miniMaxH3ModelAssets: Record<string, { diffusionModel: string; textEncoder
   }
 };
 
+export function miniMaxH3ModelAssetNames(
+  modelId: string
+): { diffusionModel: string; textEncoder: string } | undefined {
+  return miniMaxH3ModelAssets[modelId];
+}
+
 const sulphurModelAssets = {
   q2_distilled: {
     transformer: "sulphur-2-distilled-Q2_K.gguf",
@@ -1244,8 +1297,8 @@ const ratios: Record<string, [number, number]> = {
 
 type DimensionTask = Pick<
   GenerationQueueTask | ExtensionQueueTask,
-  "ratio" | "resolution" | "sourceWidth" | "sourceHeight"
->;
+  "ratio" | "sourceWidth" | "sourceHeight"
+> & { resolution: Draft["resolution"] };
 
 function baseGenerationDimensions(task: DimensionTask): [number, number] {
   const [rw, rh] =
@@ -1360,7 +1413,9 @@ export function renderWorkflow(
   const sulphurAssets = sulphurModelAssets[
     task.modelProfile ?? "q3_k_m"
   ];
-  const interpolationMultiplier = frameInterpolationMultiplier(task);
+  const interpolationMultiplier = isMiniMaxH3Model(task.modelId)
+    ? 1
+    : frameInterpolationMultiplier(task);
   const tokens: Record<string, string | number | boolean> = {
     PROMPT: videoPromptForLoras(task.prompt, task.videoLoras),
     NEGATIVE_PROMPT: "",
@@ -1370,6 +1425,12 @@ export function renderWorkflow(
     SOURCE_VIDEO: context.sourceVideo ?? "",
     H3_CONTEXT_LATENT_PATH: context.h3ContextLatentPath ?? "",
     H3_CONTEXT_SAVE_PREFIX: context.h3ContextSavePrefix ?? `h3_context/${task.id}/clip`,
+    H3_AV_ARTIFACT_FILENAME: context.h3AvArtifactFilename ?? `h3-native-av/h3av_${task.id}`,
+    H3_AV_INPUT_ARTIFACT: context.h3AvInputArtifact ?? "",
+    H3_AV_SOURCE_WIDTH: context.h3AvSourceWidth ?? outputWidth,
+    H3_AV_SOURCE_HEIGHT: context.h3AvSourceHeight ?? outputHeight,
+    H3_AV_SCALE_BY: context.h3AvScaleBy ?? 2,
+    H3_LEARNED_UPSCALER_MODEL: context.h3LearnedUpscalerModel ?? "",
     H3_REF_IMAGE_0: context.h3ReferenceImages?.[0] ?? "",
     H3_REF_IMAGE_1: context.h3ReferenceImages?.[1] ?? "",
     H3_REF_IMAGE_2: context.h3ReferenceImages?.[2] ?? "",
@@ -1736,6 +1797,7 @@ export function validateApiWorkflow(
   const hasH3ReferenceVideo = [...placeholders].some((token) =>
     /^H3_REF_VIDEO_\d+$/u.test(token)
   );
+  const hasH3ArtifactInput = placeholders.has("H3_AV_INPUT_ARTIFACT");
   const hasTextOnlyH3Conditioning = entries.some(([, value]) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     const node = value as Record<string, unknown>;
@@ -1744,7 +1806,7 @@ export function validateApiWorkflow(
     return inputs !== null && typeof inputs === "object" && !Array.isArray(inputs) &&
       !("first_frame" in inputs) && !("last_frame" in inputs);
   });
-  if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage && !hasH3ReferenceVideo && !hasTextOnlyH3Conditioning) {
+  if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage && !hasH3ReferenceVideo && !hasTextOnlyH3Conditioning && !hasH3ArtifactInput) {
     errors.push(message("mediaPlaceholderMissing"));
   }
   if (!placeholders.has("SEED")) warnings.push(message("seedPlaceholderMissing"));

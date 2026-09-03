@@ -235,6 +235,23 @@ describe("Qwen3.6 ComfyUI prompt workflow", () => {
     expect(prompt).toContain("preserve each user's original language, characters, and punctuation exactly");
   });
 
+  it("keeps multilingual locks quoted for the VisionLLM language validator before H3 cleanup", () => {
+    const settings = createDefaultState().settings;
+    settings.promptModelId = "qwen/qwen3.8-27b-uncensored-q4";
+    settings.promptLanguage = "en";
+    const workflow = buildMultimodalPromptWorkflow({
+      prompt: "A woman looks at the camera and says in Chinese: \"你好。\"",
+      modelId: "minimax_h3_fl2va",
+      mode: "h3-vision",
+      h3PromptMode: "T2VA"
+    }, [], settings);
+    const prompt = String(workflow["vision-llm"]?.inputs.prompt);
+
+    expect(prompt).toContain("VisionLLM language-check compatibility");
+    expect(prompt).toContain('<d>[Chinese] "你好。"</d>');
+    expect(prompt).toContain("the application removes this temporary wrapper after validation");
+  });
+
   it("passes a blank reference-auto request as a visual generation instruction", () => {
     const settings = createDefaultState().settings;
     settings.promptModelId = "qwen/qwen3.6-27b-uncensored-q4";

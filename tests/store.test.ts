@@ -5,6 +5,7 @@ import path from "node:path";
 import { JsonStore, replaceStateFile } from "../electron/store.js";
 import { createDefaultState } from "../src/core/defaults.js";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory.js";
+import { H3_REF2V_TURBO_LORA_ID } from "../src/core/video-loras.js";
 import type { HistoryAsset, ImageGenerationQueueTask } from "../src/types.js";
 
 function fileError(code: string): NodeJS.ErrnoException {
@@ -208,6 +209,53 @@ describe("queue lock recovery", () => {
       expect(loaded.videoExtensionDraft?.h3ReferenceSlots[0]?.mediaPath).toBe(
         "C:\\ComfyUI\\input\\continuation.mp4"
       );
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("normalizes and persists mutable video drafts without rewriting queued snapshots", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    const staleH3Draft = {
+      ...state.draft,
+      fps: 12 as const,
+      frameInterpolation: "rife2x" as const
+    };
+    state.draft = staleH3Draft;
+    state.imageToVideoDraft = structuredClone(staleH3Draft);
+    state.videoExtensionDraft = {
+      ...structuredClone(staleH3Draft),
+      inputMode: "video"
+    };
+    const queued = queueTaskFromDraft(createDefaultState().draft, state);
+    queued.fps = 12;
+    queued.frameInterpolation = "rife2x";
+    queued.h3FirstPassCheckpoint = {} as NonNullable<typeof queued.h3FirstPassCheckpoint>;
+    state.queue = [queued];
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.draft).toMatchObject({ fps: 24, frameInterpolation: "off" });
+      expect(loaded.imageToVideoDraft).toMatchObject({ fps: 24, frameInterpolation: "off" });
+      expect(loaded.videoExtensionDraft).toMatchObject({ fps: 24, frameInterpolation: "off" });
+      expect(loaded.queue[0]).toMatchObject({
+        fps: 12,
+        frameInterpolation: "rife2x",
+        h3FirstPassCheckpoint: {}
+      });
+
+      const persisted = JSON.parse(await fs.readFile(filename, "utf8")) as typeof state;
+      expect(persisted.draft).toMatchObject({ fps: 24, frameInterpolation: "off" });
+      expect(persisted.imageToVideoDraft).toMatchObject({ fps: 24, frameInterpolation: "off" });
+      expect(persisted.videoExtensionDraft).toMatchObject({ fps: 24, frameInterpolation: "off" });
+      expect(persisted.queue[0]).toMatchObject({
+        fps: 12,
+        frameInterpolation: "rife2x",
+        h3FirstPassCheckpoint: {}
+      });
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }
@@ -761,6 +809,39 @@ describe("queue lock recovery", () => {
       ]);
       expect(loaded.settings.defaultVideoModel).toBe("minimax_h3_fl2va");
       expect(loaded.draft.steps).toBe(4);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates and persists the legacy Ref2V Turbo draft as the canonical LoRA profile", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aivideo-store-"));
+    const filename = path.join(directory, "studio-state.json");
+    const state = createDefaultState();
+    state.draft.modelId = "minimax_h3_ref2va_turbo";
+    state.draft.videoLoras = [];
+    state.draft.steps = 20;
+    state.draft.fps = 12;
+    state.draft.frameInterpolation = "rife2x";
+    await fs.writeFile(filename, JSON.stringify(state), "utf8");
+
+    try {
+      const loaded = await new JsonStore(filename).load();
+      expect(loaded.draft).toMatchObject({
+        modelId: "minimax_h3_ref2va",
+        steps: 4,
+        fps: 24,
+        frameInterpolation: "off"
+      });
+      expect(loaded.draft.videoLoras.map((lora) => lora.id)).toEqual([
+        H3_REF2V_TURBO_LORA_ID
+      ]);
+
+      const persisted = JSON.parse(await fs.readFile(filename, "utf8")) as typeof state;
+      expect(persisted.draft.modelId).toBe("minimax_h3_ref2va");
+      expect(persisted.draft.videoLoras.map((lora) => lora.id)).toEqual([
+        H3_REF2V_TURBO_LORA_ID
+      ]);
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
     }

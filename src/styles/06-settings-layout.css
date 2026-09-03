@@ -188,10 +188,11 @@
 .component-row.missing .component-state { color: var(--ux-status-danger); background: color-mix(in srgb, var(--ux-status-danger) 12%, var(--panel-2)); }
 .component-row strong { display: block; font-size: 12px; }
 .component-row code, .component-row span:not(.component-state) { display: block; margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.component-info { width: 23px; height: 23px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 0; color: var(--primary); background: transparent; line-height: 1; }
-.component-info > .ui-icon { width: 16px; height: 16px; stroke-width: 1.8; }
-.component-info:hover { color: #afd0ff; background: transparent; transform: translateY(-1px); }
+.component-info { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border)); border-radius: 6px; color: var(--primary); background: color-mix(in srgb, var(--primary) 7%, transparent); line-height: 1; }
+.component-info > .ui-icon { width: 14px; height: 14px; stroke-width: 1.8; }
+.component-info:hover { color: #afd0ff; background: color-mix(in srgb, var(--primary) 14%, transparent); transform: translateY(-1px); }
 .component-info:focus-visible { outline: 1px solid rgba(124, 184, 255, .52); outline-offset: 1px; border-radius: 3px; }
+.component-evidence { display: block; margin-top: 4px; overflow: hidden; color: var(--muted); font-size: 10px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 
 .settings-content .model-profile,
 .settings-content .custom-node-card,

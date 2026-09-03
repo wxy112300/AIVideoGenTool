@@ -27,11 +27,14 @@ export function comfyUiSettingsForPromptRuntime(settings: Settings): Settings {
 export function comfyUiSettingsForQueueTask(
   task: (Pick<QueueTask, "taskType" | "modelId"> & {
     attentionMode?: Settings["h3AttentionMode"];
+    upscaleMode?: "pixel" | "h3-native";
   }) | undefined,
   settings: Settings
 ): Settings {
   const isImageTask = task?.taskType === "image-generation";
-  const isVideoTask = task?.taskType === "generation" || task?.taskType === "extension";
+  const isVideoTask = task?.taskType === "generation" ||
+    task?.taskType === "extension" ||
+    (task?.taskType === "upscale" && task.upscaleMode === "h3-native");
   return {
     ...settings,
     defaultImageModel: isImageTask ? task.modelId : "",
@@ -59,7 +62,6 @@ export function comfyUiMemoryArgs(
   ];
   if (runtimeProfile === "qwen-image") {
     args.push(
-      "--cpu-vae",
       "--disable-smart-memory",
       "--vram-headroom",
       "0.5"
@@ -103,8 +105,9 @@ export function comfyUiRuntimeProfileFromCommandLine(
     return "h3-q3-3080";
   }
   if (
-    normalized.includes("--cpu-vae") ||
-    normalized.includes("--disable-smart-memory")
+    !normalized.includes("--cpu-vae") &&
+    normalized.includes("--disable-smart-memory") &&
+    normalized.includes("--vram-headroom")
   ) {
     return "qwen-image";
   }

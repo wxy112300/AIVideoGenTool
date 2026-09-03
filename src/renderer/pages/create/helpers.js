@@ -66,7 +66,7 @@ export function extensionSafetyForDraft(draft, settings) {
     return extensionSafetyForTask({
         ...draft,
         resolution: isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
-            ? draft.resolution
+            ? draft.resolution >= 1080 ? 720 : draft.resolution
             : settings.ltxExtensionResolution,
         maxGeneratedFrames: isMiniMaxH3Fl2vaModel(draft.modelId) || isMiniMaxH3R2vModel(draft.modelId)
             ? 362

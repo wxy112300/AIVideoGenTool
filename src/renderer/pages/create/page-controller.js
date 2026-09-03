@@ -8,6 +8,7 @@ import { mountImageToVideoController } from "./image-to-video-controller";
 import { mountVideoExtensionController } from "./video-extension-controller";
 import { uiKeys } from "../../../core/i18n-keys";
 import { creationDraftForMode } from "../../../core/creation-drafts";
+import { resolutionAfterJointAvPreference } from "./view-model";
 let creationModeTransitionRevision = 0;
 export function mountCreatePageController(options) {
     const events = new AbortController();
@@ -303,6 +304,16 @@ export function mountCreatePageController(options) {
     root.querySelectorAll("[data-video-lora-strength-number]").forEach((input) => {
         input.addEventListener("change", () => updateLoraStrength(input.dataset.videoLoraStrengthNumber ?? "", input.value), { signal });
     });
+    root.querySelector("#h3-save-joint-av")?.addEventListener("change", (event) => {
+        const h3SaveJointAv = event.currentTarget.value === "save";
+        options.patchDraft({
+            h3SaveJointAv,
+            ...(getState()?.draft.resolution === 1080
+                ? { resolution: resolutionAfterJointAvPreference(1080, h3SaveJointAv) }
+                : {})
+        });
+        options.context.requestRender();
+    }, { signal });
     for (const id of ["model", "ratio", "resolution", "steps", "spectrum-mode", "fps", "frame-interpolation", "motion", "seed"]) {
         root.querySelector(`#${id}`)?.addEventListener("change", async (event) => {
             const state = getState();

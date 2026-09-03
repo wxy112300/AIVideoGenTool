@@ -13,7 +13,7 @@ import {
   queueTaskRemainingSeconds
 } from "./helpers";
 import type { Page } from "../../contracts";
-import { seedVr2ProgressView } from "./card";
+import { queueWorkProgressText, seedVr2ProgressView } from "./card";
 import { patchResourceMonitor } from "../../shell/resource-monitor";
 import type { RendererApplicationApi } from "../../studio-client";
 
@@ -287,18 +287,22 @@ export function patchQueueLiveDom(
   const elapsed = document.querySelector<HTMLElement>("#running-elapsed");
   const stageElapsed = document.querySelector<HTMLElement>("#running-stage-elapsed");
   const runningEta = document.querySelector<HTMLElement>("#running-eta");
+  const workProgress = document.querySelector<HTMLElement>("#running-work-progress");
   const progressLabel = document.querySelector<HTMLElement>("#running-progress-label");
   const progressBar = document.querySelector<HTMLElement>("#running-progress-bar");
   if (!running) {
-    return !elapsed && !stageElapsed && !runningEta && !progressLabel && !progressBar;
+    return !elapsed && !stageElapsed && !runningEta && !workProgress && !progressLabel && !progressBar;
   }
-  if (!elapsed || !stageElapsed || !runningEta || !progressLabel || !progressBar) return false;
+  if (!elapsed || !stageElapsed || !runningEta || !workProgress || !progressLabel || !progressBar) return false;
   const progress = Math.max(0, Math.min(100, running.progress ?? 0));
   elapsed.textContent = elapsedText(running.startedAt, t);
   stageElapsed.textContent = queueStageElapsedText(running, t);
   runningEta.textContent = t(uiKeys.queue.card.eta, {
     time: queueEstimateText(queueTaskRemainingSeconds(running, state.history, state.imageHistory), t)
   });
+  const workProgressText = queueWorkProgressText(running, t);
+  workProgress.textContent = workProgressText;
+  workProgress.hidden = !workProgressText;
   progressLabel.textContent = `${Math.round(progress)}%`;
   progressBar.style.width = `${progress}%`;
   const progressContainer = progressBar.closest<HTMLElement>("[role=progressbar]");

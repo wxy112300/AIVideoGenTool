@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { UpscaleQueueTask } from "../src/types";
+import { createDefaultState } from "../src/core/defaults";
+import { upscaleTaskFromRequest } from "../src/core/queue-task-factory";
 import {
   createUpscaleFilename,
   estimateUpscaleResources,
+  h3NativeUpscaleDimensions,
   nativeSeedVr2SegmentPlan,
   renderUpscaleWorkflow,
   uniqueUpscaleFilename,
-  upscaleDimensions
+  upscaleDimensions,
+  upscaleOutputDimensions
 } from "../src/core/upscale";
 
 function task(modelId: UpscaleQueueTask["modelId"]): UpscaleQueueTask {
@@ -41,10 +45,46 @@ describe("upscale dimensions and filenames", () => {
     expect(upscaleDimensions(832, 480, 1080)).toEqual([1872, 1080]);
   });
 
+  it("uses the measured RTX 4090 baseline for H3 tiled 1440p", () => {
+    const estimate = estimateUpscaleResources({
+      modelId: "minimax_h3_latent_upscaler",
+      sourceWidth: 848,
+      sourceHeight: 480,
+      targetWidth: 2592,
+      targetHeight: 1440,
+      duration: 124 / 24,
+      fps: 24
+    });
+
+    expect(estimate.frameCount).toBe(124);
+    expect(estimate.secondsMin).toBe(1178);
+    expect(estimate.secondsMax).toBe(1488);
+    expect(1339).toBeGreaterThanOrEqual(estimate.secondsMin);
+    expect(1339).toBeLessThanOrEqual(estimate.secondsMax);
+    expect(estimate.vramMinGb).toBe(21.5);
+    expect(estimate.vramMaxGb).toBe(23);
+  });
+
   it("uses the short edge for portrait and square sources", () => {
     expect(upscaleDimensions(480, 704, 720)).toEqual([720, 1056]);
     expect(upscaleDimensions(480, 704, 1080)).toEqual([1080, 1584]);
     expect(upscaleDimensions(512, 512, 1080)).toEqual([1080, 1080]);
+  });
+
+  it("reports the actual H3 output after even latent-grid alignment", () => {
+    expect(h3NativeUpscaleDimensions(864, 480, 720)).toEqual([1312, 736]);
+    expect(h3NativeUpscaleDimensions(864, 480, 768)).toEqual([1376, 768]);
+  });
+
+  it("prefers the snapshotted actual output geometry", () => {
+    expect(upscaleOutputDimensions({
+      upscaleMode: "h3-native",
+      sourceWidth: 864,
+      sourceHeight: 480,
+      targetWidth: 1312,
+      targetHeight: 720,
+      targetOutputHeight: 736
+    })).toEqual([1312, 736]);
   });
 
   it("replaces an existing quality suffix and avoids collisions", () => {
@@ -57,6 +97,90 @@ describe("upscale dimensions and filenames", () => {
     expect(
       createUpscaleFilename("SUL2-480p-5s-20260724-143205-v01.mp4", 1080)
     ).toBe("SUL2-1080p-5s-20260724-143205-v01.mp4");
+  });
+});
+
+describe("H3 native upscale queue snapshots", () => {
+  const artifact = {
+    artifactId: "source-artifact",
+    lineageId: "lineage-1",
+    executionModelId: "minimax_h3_fl2va",
+    width: 864,
+    height: 480,
+    frameCount: 124,
+    fps: 24,
+    payload: { filename: "source.safetensors", subfolder: "h3-native-av", type: "output" },
+    manifest: { filename: "source.json", subfolder: "h3-native-av", type: "output" }
+  } as import("../src/types").NativeAvContinuationArtifact;
+  const request = {
+    upscaleMode: "h3-native" as const,
+    sourceAssetId: "asset-1",
+    sourceVersionId: "version-1",
+    sourceFilePath: "C:/output/source.mp4",
+    sourceFilename: "source.mp4",
+    sourceWidth: 864,
+    sourceHeight: 480,
+    duration: 124 / 24,
+    fps: 24,
+    targetHeight: 720 as const,
+    modelId: "minimax_h3_fl2va",
+    tileMode: "auto" as const,
+    faceRestore: false,
+    h3NativeInput: {
+      artifact,
+      workflowPath: "C:/app/workflows/minimax_h3_fl2va_second_sample_av_api.json",
+      prompt: "prompt",
+      startImagePath: "C:/input/start.png",
+      endImagePath: "",
+      scaleBy: 1.5,
+      h3VideoVaeMode: "int8-convrot" as const,
+      attentionMode: "pytorch" as const,
+      steps: 20 as const,
+      videoLoras: []
+    }
+  };
+
+  it("freezes JointAV inputs and actual aligned geometry", () => {
+    const task = upscaleTaskFromRequest(request, createDefaultState());
+    artifact.payload.filename = "mutated.safetensors";
+    expect(task).toMatchObject({
+      upscaleMode: "h3-native",
+      targetWidth: 1312,
+      targetHeight: 720,
+      targetOutputHeight: 736,
+      modelId: "minimax_h3_fl2va"
+    });
+    expect(task.h3NativeInput?.artifact.payload.filename).toBe("source.safetensors");
+  });
+
+  it("rejects missing JointAV and unvalidated high-resolution targets", () => {
+    expect(() => upscaleTaskFromRequest({ ...request, h3NativeInput: undefined }, createDefaultState()))
+      .toThrow("缺少已提交的 JointAV");
+    expect(() => upscaleTaskFromRequest({ ...request, targetHeight: 1080 }, createDefaultState()))
+      .toThrow("必须冻结 learned 3D");
+  });
+
+  it("freezes learned 3D provider for a high-resolution H3 task", () => {
+    const task = upscaleTaskFromRequest({
+      ...request,
+      targetHeight: 1080,
+      h3NativeInput: {
+        ...request.h3NativeInput,
+        provider: "learned-3d",
+        learnedModelFilename: "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+        workflowPath: "C:/app/workflows/minimax_h3_fl2va_learned_3d_second_sample_av_api.json"
+      }
+    }, createDefaultState());
+
+    expect(task).toMatchObject({
+      targetHeight: 1080,
+      targetWidth: 1952,
+      targetOutputHeight: 1088,
+      h3NativeInput: {
+        provider: "learned-3d",
+        learnedModelFilename: "minimax_h3_latent_upscaler_3d_bf16.safetensors"
+      }
+    });
   });
 });
 

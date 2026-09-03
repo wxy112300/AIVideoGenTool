@@ -2,6 +2,7 @@ import type { IpcMain } from "electron";
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AppState, Draft, ImageEditDraft, Settings, UpscaleRequest } from "../src/types.js";
 import { isImageGenerationQueueTask } from "../src/core/queue.js";
 import { activateCreationDraft } from "../src/core/creation-drafts.js";
@@ -28,6 +29,7 @@ import {
   workflowSupportsH3MotionContextReferences,
   workflowSupportsH3TurboSampling
 } from "../src/core/workflow.js";
+import { normalizeVideoDraft, videoModelSupportsDraftInput } from "../src/core/video-draft-normalization.js";
 import {
   isH3SlaTurboLoraId,
   isH3TurboEnabled,
@@ -52,7 +54,9 @@ import {
   ensureMotionContextSourceSlot,
   h3ReferenceSlotCounts
 } from "../src/core/h3-reference.js";
+import { validateH3ComfyWorkflow } from "../src/core/h3-workflow-contract.js";
 import { releaseVersionAtLeast } from "../src/core/release-version.js";
+import { isH3NativeHighResolution } from "../src/core/h3-capabilities.js";
 import {
   extensionTaskFromDraft,
   imageTaskFromDraft,
@@ -76,6 +80,7 @@ export interface QueueEnqueueServiceDependencies {
   store: StateRepository;
   logger: AppLogger;
   sendState(state: AppState): void;
+  getCachedEnvironmentScanForQueue?: typeof getCachedEnvironmentScan;
   effectiveImageInputLibraryDirectory(settings: Settings): Promise<string>;
   resolveTaskOutputDirectory(): Promise<string>;
   imageInspection: ImageInspectionPort;
@@ -237,14 +242,74 @@ async function requireImageModelAssets(
 export class QueueEnqueueService {
   constructor(private readonly deps: QueueEnqueueServiceDependencies) {}
 
+  private rejectUnavailableH3NativeResolution(draft: Draft): void {
+    if (!isH3NativeHighResolution(draft.resolution)) return;
+    if (draft.resolution === 1440) {
+      throw new Error("Create 暂未开放 H3 原生 1440p；请选择 1080p 或普通分辨率。");
+    }
+    if (draft.modelId !== "minimax_h3_fl2va") {
+      throw new Error("Create 原生 1080p 当前仅支持 MiniMax H3 FL2VA Base。");
+    }
+    if (!draft.h3SaveJointAv) {
+      throw new Error("Create 原生 1080p 需要开启 JointAV 输出。");
+    }
+    if (draft.videoLoras.length) {
+      throw new Error("Create 原生 1080p 首发档暂不支持视频 LoRA，请先移除 LoRA。");
+    }
+  }
+
+  private async validateH3Create1080(draft: Draft, settings: Settings): Promise<void> {
+    if (draft.resolution !== 1080) return;
+    const [firstPass, secondPass] = await Promise.all([
+      readWorkflow(fileURLToPath(new URL(
+        "../workflows/minimax_h3_fl2va_first_pass_av_api.json",
+        import.meta.url
+      )), "H3 1080p 首遍工作流"),
+      readWorkflow(fileURLToPath(new URL(
+        "../workflows/minimax_h3_fl2va_learned_3d_second_sample_av_api.json",
+        import.meta.url
+      )), "H3 1080p learned 二采工作流")
+    ]);
+    const firstValidation = validateH3ComfyWorkflow(firstPass);
+    const secondValidation = validateH3ComfyWorkflow(secondPass);
+    if (!firstValidation.valid || firstValidation.kind !== "first-pass-av") {
+      throw new Error(`H3 1080p 首遍工作流静态校验失败：${firstValidation.errors.join("；")}`);
+    }
+    if (!secondValidation.valid || secondValidation.kind !== "second-sampling-av") {
+      throw new Error(`H3 1080p learned 二采工作流静态校验失败：${secondValidation.errors.join("；")}`);
+    }
+    const environment = (this.deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(settings);
+    if (!environment) return;
+    const learnedProfile = environment.modelProfiles.find(
+      (profile) => profile.id === "minimax_h3_latent_upscaler"
+    );
+    if (!learnedProfile?.integrated) throw new Error("当前应用版本没有接入 H3 Learned 3D 工作流。");
+    if (!learnedProfile.available) {
+      const missing = learnedProfile.components
+        .filter((component) => !component.found)
+        .map((component) => component.expected)
+        .join("、");
+      throw new Error(`H3 Learned 3D 权重尚未完整${missing ? `，缺少：${missing}` : ""}。`);
+    }
+    if (learnedProfile.missingCustomNodeNames?.length) {
+      throw new Error(`H3 Learned 3D 缺少必需节点：${learnedProfile.missingCustomNodeNames.join("、")}。`);
+    }
+    if (learnedProfile.customNodeCompatibility === "error") {
+      throw new Error("H3 Learned 3D 节点版本不兼容，请在设置 → 节点与依赖中更新后重试。");
+    }
+  }
+
   async enqueue(draft: Draft): Promise<AppState> {
     const deps = this.deps;
     const { store, logger, sendState } = deps;
     const enqueueSettings = store.getSettings();
-    Object.assign(draft, normalizeH3MemoryOptions(draft));
-    draft.videoLoras = normalizeVideoLoras(draft.videoLoras, draft.modelId);
-    draft.steps = normalizeH3Steps(draft.steps, draft.modelId, draft.videoLoras);
+    Object.assign(draft, normalizeVideoDraft(draft));
     if (draft.inputMode !== "image") throw new Error("视频续写必须使用独立的 extension 队列任务");
+    if (!videoModelSupportsDraftInput(draft.modelId, "image")) {
+      throw new Error("当前模型不支持图像输入生成。");
+    }
+    this.rejectUnavailableH3NativeResolution(draft);
+    await this.validateH3Create1080(draft, enqueueSettings);
     const isR2V = isMiniMaxH3R2vModel(draft.modelId);
     const hasReference = Boolean(draft.startImagePath || draft.endImagePath);
     const isH3TextToVideo = isMiniMaxH3Model(draft.modelId) && !isR2V && !hasReference;
@@ -259,7 +324,10 @@ export class QueueEnqueueService {
       draft.modelId,
       hasReference
     );
-    const safety = generationSafetyForTask(draft, enqueueSettings.uiLocale);
+    const safety = generationSafetyForTask({
+      ...draft,
+      resolution: isH3NativeHighResolution(draft.resolution) ? 720 : draft.resolution
+    }, enqueueSettings.uiLocale);
     if (!safety.safe) throw new Error(safety.message);
     if (isMiniMaxH3Q3GgufModel(draft.modelId) && draft.videoLoras.length) {
       throw new Error("H3 Q3 GGUF 3080 实验档不支持 LoRA，请先移除 LoRA。");
@@ -556,14 +624,17 @@ export class QueueEnqueueService {
     const deps = this.deps;
     const { store, logger, sendState } = deps;
     const enqueueSettings = store.getSettings();
-    Object.assign(draft, normalizeH3MemoryOptions(draft));
-    draft.videoLoras = normalizeVideoLoras(draft.videoLoras, draft.modelId);
+    Object.assign(draft, normalizeVideoDraft(draft));
+    if (draft.inputMode !== "video") throw new Error("只有视频输入模式可以创建 extension 队列任务");
+    if (!videoModelSupportsDraftInput(draft.modelId, "video")) {
+      throw new Error("当前模型不支持视频续写。");
+    }
     const loraIssue = videoLoraConfigurationIssues({
       modelId: draft.modelId, inputMode: draft.inputMode, spectrumMode: draft.spectrumMode,
       attentionMode: enqueueSettings.h3AttentionMode, videoLoras: draft.videoLoras
     }).find((issue) => issue.severity === "error");
     if (loraIssue) throw new Error(loraIssue.message);
-    if (draft.inputMode !== "video") throw new Error("只有视频输入模式可以创建 extension 队列任务");
+    this.rejectUnavailableH3NativeResolution(draft);
     const initialH3ExecutionPlan = resolveMiniMaxH3ExecutionPlan({
       modelId: draft.modelId,
       inputMode: draft.inputMode,
@@ -716,7 +787,132 @@ export class QueueEnqueueService {
     if (!request.sourceFilePath || !(await fs.stat(request.sourceFilePath).catch(() => null))) {
       throw new Error("源视频文件不存在，无法加入提升队列");
     }
-    const next = await store.update((state) => { state.queue.push(upscaleTaskFromRequest(request, state)); });
+    let preparedRequest = request;
+    if (request.upscaleMode === "h3-native") {
+      if (
+        request.targetHeight !== 720 &&
+        request.targetHeight !== 768 &&
+        request.targetHeight !== 1080 &&
+        request.targetHeight !== 1440
+      ) {
+        throw new Error("H3 原生二次采样仅支持 720p/768p/1080p/1440p 目标档位。");
+      }
+      const artifact = version.h3ContinuationData?.status === "available"
+        ? version.h3ContinuationData.artifact
+        : undefined;
+      if (!artifact) throw new Error("当前版本没有可用的 JointAV artifact。");
+      if (!isMiniMaxH3Fl2vaModel(artifact.executionModelId) || artifact.contextFrames !== 0) {
+        throw new Error("当前 JointAV artifact 不是可重建 conditioning 的 H3 FL2VA clean AV。");
+      }
+      if (artifact.width !== version.width || artifact.height !== version.height) {
+        throw new Error("JointAV artifact 的实际分辨率与当前 History 版本不一致。");
+      }
+      const [payloadStat, manifestStat] = await Promise.all([
+        artifact.payload.absolutePath
+          ? fs.stat(artifact.payload.absolutePath).catch(() => null)
+          : Promise.resolve(null),
+        artifact.manifest.absolutePath
+          ? fs.stat(artifact.manifest.absolutePath).catch(() => null)
+          : Promise.resolve(null)
+      ]);
+      if (!payloadStat?.isFile() || !manifestStat?.isFile()) {
+        throw new Error("JointAV payload 或 manifest 已不存在，无法加入 H3 提升队列。");
+      }
+      for (const [label, filename] of [
+        ["首帧", asset.startImagePath],
+        ["尾帧", asset.endImagePath]
+      ] as const) {
+        if (filename && !(await fs.stat(filename).catch(() => null))?.isFile()) {
+          throw new Error(`H3 二次采样的${label} conditioning 文件已不存在。`);
+        }
+      }
+      const h3VideoVaeMode = version.h3VideoVaeMode ?? asset.h3VideoVaeMode ??
+        (artifact.videoVaeFilename.toLowerCase().includes("int8") ? "int8-convrot" : "fp16");
+      const videoLoras = version.videoLoras ?? asset.videoLoras ?? [];
+      const provider = request.targetHeight >= 1080 ? "learned-3d" : "bilinear";
+      if (provider === "learned-3d") {
+        const environment = (deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(
+          current.settings
+        );
+        const learnedProfile = environment?.modelProfiles.find(
+          (profile) => profile.id === "minimax_h3_latent_upscaler"
+        );
+        if (!environment) {
+          logger.info(
+            "queue",
+            "upscale-enqueue-environment-preflight-deferred",
+            "未阻塞入队：H3 Learned 3D 依赖检查将在任务准备阶段执行",
+            { taskType: "upscale", provider, targetHeight: request.targetHeight }
+          );
+        } else if (!learnedProfile?.integrated) {
+          throw new Error("当前应用版本没有接入 H3 Learned 3D 工作流。");
+        } else if (!learnedProfile.available) {
+          const missing = learnedProfile.components
+            .filter((component) => !component.found)
+            .map((component) => component.expected)
+            .join("、");
+          throw new Error(`H3 Learned 3D 权重尚未完整${missing ? `，缺少：${missing}` : ""}。`);
+        } else if (learnedProfile.missingCustomNodeNames?.length) {
+          throw new Error(
+            `H3 Learned 3D 缺少必需节点：${learnedProfile.missingCustomNodeNames.join("、")}。` +
+            "请先在设置 → 节点与依赖中安装；节点目录存在即可入队，无需启动 ComfyUI。"
+          );
+        } else if (learnedProfile.customNodeCompatibility === "error") {
+          throw new Error("H3 Learned 3D 节点版本不兼容，请在设置 → 节点与依赖中更新后重试。");
+        }
+        if (environment && request.targetHeight === 1440) {
+          const mmh3Node = environment.customNodes.find(
+            (node) => node.id === "mmh3-ultimate-upscale"
+          );
+          if (!mmh3Node?.installed) {
+            throw new Error(
+              "1440p H3 分块二次采样需要 MMH3 Ultimate Upscale。" +
+              "请先在设置 → 节点与依赖中安装固定版本。"
+            );
+          }
+          if (mmh3Node.compatibilityState === "error") {
+            throw new Error(
+              "MMH3 Ultimate Upscale 版本或应用补丁不兼容，" +
+              "请在设置 → 节点与依赖中修复后重试。"
+            );
+          }
+        }
+      }
+      preparedRequest = {
+        ...request,
+        modelId: artifact.executionModelId,
+        sourceWidth: artifact.width,
+        sourceHeight: artifact.height,
+        duration: artifact.frameCount / artifact.fps,
+        fps: artifact.fps,
+        h3NativeInput: {
+          provider,
+          artifact: structuredClone(artifact),
+          workflowPath: fileURLToPath(new URL(
+            request.targetHeight === 1440
+              ? "../workflows/minimax_h3_fl2va_ultimate_tiled_second_sample_av_api.json"
+              : provider === "learned-3d"
+              ? "../workflows/minimax_h3_fl2va_learned_3d_second_sample_av_api.json"
+              : "../workflows/minimax_h3_fl2va_second_sample_av_api.json",
+            import.meta.url
+          )),
+          ...(provider === "learned-3d"
+            ? { learnedModelFilename: "minimax_h3_latent_upscaler_3d_bf16.safetensors" }
+            : {}),
+          prompt: asset.prompt,
+          startImagePath: asset.startImagePath ?? "",
+          endImagePath: asset.endImagePath ?? "",
+          scaleBy: request.targetHeight / Math.min(artifact.width, artifact.height),
+          h3VideoVaeMode,
+          attentionMode: version.attentionMode ?? asset.attentionMode ?? current.settings.h3AttentionMode,
+          steps: normalizeH3Steps(version.steps ?? asset.steps, artifact.executionModelId, videoLoras),
+          videoLoras: videoLoras.map((lora) => ({ ...lora }))
+        }
+      };
+    }
+    const next = await store.update((state) => {
+      state.queue.push(upscaleTaskFromRequest(preparedRequest, state));
+    });
     const task = next.queue.at(-1);
     if (task?.taskType === "upscale") logger.info("queue", "task-enqueued", "Upscale task added to queue", {
       taskId: task.id, taskType: task.taskType, modelId: task.modelId,

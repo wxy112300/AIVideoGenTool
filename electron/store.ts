@@ -26,6 +26,7 @@ import { normalizeImageEditDraft, normalizeImageHistory } from "../src/core/imag
 import { normalizeQueuePauseBoundary } from "../src/core/queue.js";
 import { isHistoryRating, normalizeHistoryTags } from "../src/core/history-filter.js";
 import { copyPromptVersions, ensureDraftPromptState } from "../src/core/draft-prompts.js";
+import { normalizeNativeAvContinuationData } from "../src/core/h3-continuation-artifact.js";
 import type { StateRepository } from "./ports/state-repository.js";
 import {
   normalizeH3VideoVaeBackend,
@@ -49,6 +50,7 @@ import {
   baseVideoModelId,
   normalizeVideoLoras
 } from "../src/core/video-loras.js";
+import { normalizeVideoDraft } from "../src/core/video-draft-normalization.js";
 
 interface ReplaceStateFileOptions {
   attempts?: number;
@@ -373,7 +375,14 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
             h3MemoryChunkRows?: unknown;
           },
           "off"
-        )
+        ),
+        ...(normalizeNativeAvContinuationData(
+          (version as AssetVersion & { h3ContinuationData?: unknown }).h3ContinuationData
+        ) ? {
+          h3ContinuationData: normalizeNativeAvContinuationData(
+            (version as AssetVersion & { h3ContinuationData?: unknown }).h3ContinuationData
+          )
+        } : {})
       }))
     };
   }
@@ -397,7 +406,14 @@ function migrateHistoryAsset(asset: HistoryAsset | LegacyHistoryAsset): HistoryA
     startedAt: asset.startedAt,
     attentionMode: migrateOptionalH3AttentionMode(asset.attentionMode),
     h3VideoVaeMode,
-    ...assetMemoryOptions
+    ...assetMemoryOptions,
+    ...(normalizeNativeAvContinuationData(
+      (asset as LegacyHistoryAsset & { h3ContinuationData?: unknown }).h3ContinuationData
+    ) ? {
+      h3ContinuationData: normalizeNativeAvContinuationData(
+        (asset as LegacyHistoryAsset & { h3ContinuationData?: unknown }).h3ContinuationData
+      )
+    } : {})
   };
   return {
     ...asset,
@@ -526,9 +542,11 @@ export class JsonStore implements StateRepository {
       this.state = {
         ...defaultState,
         ...saved,
-        draft: mergedDraft,
-        imageToVideoDraft: mergedImageToVideoDraft,
-        videoExtensionDraft: mergedVideoExtensionDraft,
+        draft: normalizeVideoDraft(mergedDraft),
+        imageToVideoDraft: normalizeVideoDraft(mergedImageToVideoDraft),
+        videoExtensionDraft: mergedVideoExtensionDraft
+          ? normalizeVideoDraft(mergedVideoExtensionDraft)
+          : undefined,
         imageDraft: normalizeImageEditDraft(saved.imageDraft),
         settings: {
           ...defaultState.settings,
@@ -571,6 +589,9 @@ export class JsonStore implements StateRepository {
         savedUiLocale !== normalizedUiLocale ||
         saved.settings?.h3AutoPromptSeedId !== savedAutoPromptSeedId ||
         saved.settings?.h3VideoVaeMode !== this.state.settings.h3VideoVaeMode ||
+        JSON.stringify(mergedDraft) !== JSON.stringify(this.state.draft) ||
+        JSON.stringify(mergedImageToVideoDraft) !== JSON.stringify(this.state.imageToVideoDraft) ||
+        JSON.stringify(mergedVideoExtensionDraft) !== JSON.stringify(this.state.videoExtensionDraft) ||
         JSON.stringify(saved.settings?.h3AutoPromptSeedInstructions) !== JSON.stringify(h3AutoPromptSeedInstructions);
       if (typeof saved.settings?.imageOutputDirectory !== "string") {
         this.state.settings.imageOutputDirectory = "";

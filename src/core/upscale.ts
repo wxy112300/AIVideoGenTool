@@ -46,7 +46,7 @@ export interface NativeSeedVr2WorkflowSegment {
 }
 
 export interface UpscaleResourceEstimateInput {
-  modelId: "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan";
+  modelId: "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | "minimax_h3_latent_upscaler";
   sourceWidth: number;
   sourceHeight: number;
   targetWidth: number;
@@ -65,6 +65,14 @@ export interface UpscaleResourceEstimate {
 }
 
 const upscaleEstimateProfiles = {
+    minimax_h3_latent_upscaler: {
+      baseVramMinGb: 21.5,
+      baseVramMaxGb: 22.75,
+      vramPerAreaMinGb: 0,
+      vramPerAreaMaxGb: 0,
+      secondsPerFrameMin: 9.5,
+      secondsPerFrameMax: 12
+    },
   realesrgan: {
     baseVramMinGb: 2.5,
     baseVramMaxGb: 4,
@@ -145,13 +153,18 @@ export function estimateUpscaleResources(
       areaFactor * profile.vramPerAreaMaxGb +
       internalScaleVram * 1.5
   );
+  const h3Tiled1440 = input.modelId === "minimax_h3_latent_upscaler" &&
+    targetShortEdge >= 1400;
+  const timeResolutionFactor = input.modelId === "minimax_h3_latent_upscaler"
+    ? h3Tiled1440 ? 1 : Math.max(0.35, targetShortEdge / 1440)
+    : resolutionFactor;
   const secondsMin = Math.max(
     1,
-    Math.ceil(frameCount * profile.secondsPerFrameMin * resolutionFactor * internalScaleTime)
+    Math.ceil(frameCount * profile.secondsPerFrameMin * timeResolutionFactor * internalScaleTime)
   );
   const secondsMax = Math.max(
     secondsMin,
-    Math.ceil(frameCount * profile.secondsPerFrameMax * resolutionFactor * internalScaleTime)
+    Math.ceil(frameCount * profile.secondsPerFrameMax * timeResolutionFactor * internalScaleTime)
   );
   return {
     frameCount,
@@ -182,6 +195,35 @@ export function upscaleDimensions(
   return safeWidth >= safeHeight
     ? [targetLongEdge, targetShortEdge]
     : [targetShortEdge, targetLongEdge];
+}
+
+function snapUpToEven(value: number): number {
+  return Math.ceil(value / 2) * 2;
+}
+
+export function h3NativeUpscaleDimensions(
+  sourceWidth: number,
+  sourceHeight: number,
+  targetShortEdge: 720 | 768 | 1080 | 1440
+): [number, number] {
+  const safeWidth = Math.max(32, Math.round(sourceWidth / 16) * 16);
+  const safeHeight = Math.max(32, Math.round(sourceHeight / 16) * 16);
+  const scaleBy = targetShortEdge / Math.min(safeWidth, safeHeight);
+  const latentWidth = snapUpToEven(Math.round((safeWidth / 16) * scaleBy));
+  const latentHeight = snapUpToEven(Math.round((safeHeight / 16) * scaleBy));
+  return [latentWidth * 16, latentHeight * 16];
+}
+
+export function upscaleOutputDimensions(
+  task: Pick<
+    UpscaleQueueTask,
+    "upscaleMode" | "sourceWidth" | "sourceHeight" | "targetWidth" | "targetHeight" | "targetOutputHeight"
+  >
+): [number, number] {
+  if (task.targetOutputHeight && task.targetWidth) {
+    return [task.targetWidth, task.targetOutputHeight];
+  }
+  return upscaleDimensions(task.sourceWidth, task.sourceHeight, task.targetHeight);
 }
 
 function seedVr2SegmentMemoryBudgetBytes(tileMode: UpscaleQueueTask["tileMode"]): number {

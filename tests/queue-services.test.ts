@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import type { AppState, QueueTask } from "../src/types";
@@ -129,6 +132,285 @@ describe("queue command services", () => {
 
     await expect(service.enqueue({ ...createDefaultDraft(), inputMode: "video" }))
       .rejects.toThrow("视频续写必须使用独立的 extension 队列任务");
+    await expect(service.enqueue({
+      ...createDefaultDraft(),
+      modelId: "minimax_h3_fl2va",
+      resolution: 1080,
+      h3SaveJointAv: false,
+      workflowPath: "workflow.json"
+    }))
+      .rejects.toThrow("需要开启 JointAV 输出");
+  });
+
+  it("enqueues H3 native upscale from authoritative History JointAV files", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-h3-upscale-enqueue-"));
+    const videoPath = path.join(root, "source.mp4");
+    const startImagePath = path.join(root, "start.png");
+    const payloadPath = path.join(root, "source.safetensors");
+    const manifestPath = path.join(root, "source.json");
+    await Promise.all([
+      fs.writeFile(videoPath, "video"),
+      fs.writeFile(startImagePath, "image"),
+      fs.writeFile(payloadPath, "payload"),
+      fs.writeFile(manifestPath, "manifest")
+    ]);
+    const state = createDefaultState();
+    state.history = [{
+      id: "asset-h3",
+      outputFilename: "source.mp4",
+      prompt: "source prompt",
+      startImagePath,
+      versions: [{
+        id: "version-h3",
+        outputFilename: "source.mp4",
+        width: 864,
+        height: 480,
+        steps: 20,
+        attentionMode: "pytorch",
+        h3VideoVaeMode: "int8-convrot",
+        h3ContinuationData: {
+          status: "available",
+          artifact: {
+            artifactId: "artifact-h3",
+            lineageId: "lineage-h3",
+            executionModelId: "minimax_h3_fl2va",
+            contextFrames: 0,
+            width: 864,
+            height: 480,
+            frameCount: 124,
+            fps: 24,
+            videoVaeFilename: "minimax_h3_video_vae_int8_convrot.safetensors",
+            payload: { filename: "source.safetensors", subfolder: "h3-native-av", type: "output", absolutePath: payloadPath },
+            manifest: { filename: "source.json", subfolder: "h3-native-av", type: "output", absolutePath: manifestPath }
+          }
+        }
+      }]
+    } as unknown as AppState["history"][number]];
+    const learnedProfile = {
+      id: "minimax_h3_latent_upscaler",
+      integrated: true,
+      available: true,
+      components: [],
+      missingCustomNodeIds: [] as string[],
+      missingCustomNodeNames: [] as string[],
+      customNodeCompatibility: "unknown",
+      runtimeVerified: false,
+      runtimeReady: false
+    };
+    let cachedEnvironment = ({
+      modelProfiles: [learnedProfile],
+      customNodes: [{
+        id: "mmh3-ultimate-upscale",
+        installed: true,
+        compatibilityState: "supported"
+      }]
+    }) as unknown as ReturnType<typeof import("../electron/services/environment").getCachedEnvironmentScan>;
+    const enqueueInfo = vi.fn();
+    const enqueueLogger = {
+      debug: vi.fn(), info: enqueueInfo, warn: vi.fn(), error: vi.fn()
+    } as never;
+    const enqueueStore = repository(state);
+    const service = new QueueEnqueueService({
+      store: enqueueStore, logger: enqueueLogger, sendState: vi.fn(),
+      getCachedEnvironmentScanForQueue: () => cachedEnvironment,
+      effectiveImageInputLibraryDirectory: async () => "C:/ComfyUI/input/library",
+      resolveTaskOutputDirectory: async () => root,
+      imageInspection: { readDimensions: () => ({ width: 640, height: 360 }) }
+    });
+
+    const next = await service.enqueueUpscale({
+      upscaleMode: "h3-native",
+      sourceAssetId: "asset-h3",
+      sourceVersionId: "version-h3",
+      sourceFilePath: videoPath,
+      sourceFilename: "source.mp4",
+      sourceWidth: 1,
+      sourceHeight: 1,
+      duration: 1,
+      fps: 1,
+      targetHeight: 720,
+      modelId: "untrusted-renderer-value",
+      tileMode: "auto",
+      faceRestore: false
+    });
+
+    expect(next.queue[0]).toMatchObject({
+      taskType: "upscale",
+      upscaleMode: "h3-native",
+      modelId: "minimax_h3_fl2va",
+      sourceWidth: 864,
+      sourceHeight: 480,
+      targetWidth: 1312,
+      targetOutputHeight: 736,
+      fps: 24,
+      h3NativeInput: {
+        prompt: "source prompt",
+        scaleBy: 1.5,
+        artifact: { artifactId: "artifact-h3" }
+      }
+    });
+
+    const learned = await service.enqueueUpscale({
+      upscaleMode: "h3-native",
+      sourceAssetId: "asset-h3",
+      sourceVersionId: "version-h3",
+      sourceFilePath: videoPath,
+      sourceFilename: "source.mp4",
+      sourceWidth: 1,
+      sourceHeight: 1,
+      duration: 1,
+      fps: 1,
+      targetHeight: 1080,
+      modelId: "untrusted-renderer-value",
+      tileMode: "auto",
+      faceRestore: false
+    });
+
+    expect(learned.queue[1]).toMatchObject({
+      taskType: "upscale",
+      upscaleMode: "h3-native",
+      modelId: "minimax_h3_fl2va",
+      targetWidth: 1952,
+      targetOutputHeight: 1088,
+      h3NativeInput: {
+        provider: "learned-3d",
+        learnedModelFilename: "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+        scaleBy: 2.25
+      }
+    });
+
+    const tiled = await service.enqueueUpscale({
+      upscaleMode: "h3-native",
+      sourceAssetId: "asset-h3",
+      sourceVersionId: "version-h3",
+      sourceFilePath: videoPath,
+      sourceFilename: "source.mp4",
+      sourceWidth: 864,
+      sourceHeight: 480,
+      duration: 5,
+      fps: 24,
+      targetHeight: 1440,
+      modelId: "minimax_h3_fl2va",
+      tileMode: "auto",
+      faceRestore: false
+    });
+    expect(tiled.queue[2]).toMatchObject({
+      taskType: "upscale",
+      upscaleMode: "h3-native",
+      modelId: "minimax_h3_fl2va",
+      targetWidth: 2592,
+      targetOutputHeight: 1440,
+      h3NativeInput: {
+        provider: "learned-3d",
+        learnedModelFilename: "minimax_h3_latent_upscaler_3d_bf16.safetensors",
+        scaleBy: 3
+      }
+    });
+    expect(tiled.queue[2]?.workflowPath).toContain(
+      "minimax_h3_fl2va_ultimate_tiled_second_sample_av_api.json"
+    );
+
+    const mutationService = new QueueMutationService({
+      store: enqueueStore,
+      logger: logger(),
+      sendState: vi.fn()
+    });
+    const edited = await mutationService.updateUpscale(tiled.queue[2]!.id, {
+      upscaleMode: "h3-native",
+      targetWidth: 1952,
+      targetHeight: 1080,
+      targetOutputHeight: 1088,
+      modelId: "minimax_h3_fl2va",
+      workflowPath: "builtin:upscale/h3-native-second-sample",
+      tileMode: "safe",
+      faceRestore: false,
+      outputFilename: "source-1080p-v01.mp4"
+    });
+    expect(edited.queue[2]).toMatchObject({
+      targetWidth: 1952,
+      targetHeight: 1080,
+      targetOutputHeight: 1088,
+      workflowPath: expect.stringContaining("minimax_h3_fl2va_learned_3d_second_sample_av_api.json"),
+      h3NativeInput: {
+        provider: "learned-3d",
+        scaleBy: 2.25,
+        workflowPath: expect.stringContaining("minimax_h3_fl2va_learned_3d_second_sample_av_api.json")
+      }
+    });
+    const editedBack = await mutationService.updateUpscale(edited.queue[2]!.id, {
+      upscaleMode: "h3-native",
+      targetWidth: 2592,
+      targetHeight: 1440,
+      targetOutputHeight: 1440,
+      modelId: "minimax_h3_fl2va",
+      workflowPath: "builtin:upscale/h3-native-second-sample",
+      tileMode: "safe",
+      faceRestore: false,
+      outputFilename: "source-1440p-v01.mp4"
+    });
+    expect(editedBack.queue[2]).toMatchObject({
+      targetWidth: 2592,
+      targetHeight: 1440,
+      targetOutputHeight: 1440,
+      workflowPath: expect.stringContaining("minimax_h3_fl2va_ultimate_tiled_second_sample_av_api.json"),
+      h3NativeInput: {
+        provider: "learned-3d",
+        scaleBy: 3,
+        workflowPath: expect.stringContaining("minimax_h3_fl2va_ultimate_tiled_second_sample_av_api.json")
+      }
+    });
+
+    cachedEnvironment = ({
+      modelProfiles: [learnedProfile],
+      customNodes: [{
+        id: "mmh3-ultimate-upscale",
+        installed: false,
+        compatibilityState: "unknown"
+      }]
+    }) as unknown as ReturnType<typeof import("../electron/services/environment").getCachedEnvironmentScan>;
+    await expect(service.enqueueUpscale({
+      upscaleMode: "h3-native",
+      sourceAssetId: "asset-h3",
+      sourceVersionId: "version-h3",
+      sourceFilePath: videoPath,
+      sourceFilename: "source.mp4",
+      sourceWidth: 864,
+      sourceHeight: 480,
+      duration: 5,
+      fps: 24,
+      targetHeight: 1440,
+      modelId: "minimax_h3_fl2va",
+      tileMode: "auto",
+      faceRestore: false
+    })).rejects.toThrow("需要 MMH3 Ultimate Upscale");
+
+    cachedEnvironment = undefined;
+    const deferred = await service.enqueueUpscale({
+      upscaleMode: "h3-native",
+      sourceAssetId: "asset-h3",
+      sourceVersionId: "version-h3",
+      sourceFilePath: videoPath,
+      sourceFilename: "source.mp4",
+      sourceWidth: 864,
+      sourceHeight: 480,
+      duration: 5,
+      fps: 24,
+      targetHeight: 1080,
+      modelId: "minimax_h3_fl2va",
+      tileMode: "auto",
+      faceRestore: false
+    });
+    expect(deferred.queue[3]).toMatchObject({
+      targetOutputHeight: 1088,
+      h3NativeInput: { provider: "learned-3d", scaleBy: 2.25 }
+    });
+    expect(enqueueInfo).toHaveBeenCalledWith(
+      "queue",
+      "upscale-enqueue-environment-preflight-deferred",
+      expect.any(String),
+      expect.objectContaining({ taskType: "upscale", targetHeight: 1080 })
+    );
+    await fs.rm(root, { recursive: true, force: true });
   });
 });
 

@@ -93,6 +93,8 @@ describe("Settings accessibility markup", () => {
     expect(markup.indexOf('id="settings-tab-nodes"')).toBeLessThan(markup.indexOf('id="settings-tab-system"'));
     expect(markup.indexOf('id="settings-tab-system"')).toBeLessThan(markup.indexOf('id="settings-tab-acceleration"'));
     expect(nodesMarkup).toContain("节点与依赖");
+    expect(nodesMarkup).not.toContain('data-settings-h3-native-dependencies');
+    expect(nodesMarkup).not.toContain("H3 原生高分辨率环境");
     expect(markup).toContain('aria-controls="settings-panel-comfyui"');
     expect(markup).toContain('id="settings-panel-comfyui" class="settings-content" role="tabpanel"');
     expect(markup).toContain('aria-labelledby="settings-tab-comfyui"');
@@ -450,6 +452,78 @@ describe("Settings accessibility markup", () => {
     expect(markup).toContain('<span class="button-count">1</span>');
     expect(markup).not.toContain('data-rescan-node="h3-optimizations"');
     expect(markup).not.toContain("data-open-node-source");
+  });
+
+  it("renders a user-triggered install action for the learned H3 upscaler", () => {
+    const environmentScan = {
+      scannedAt: "2026-09-02T00:00:00.000Z",
+      userHome: "C:\\Users\\Test",
+      items: [],
+      modelProfiles: [],
+      issues: [],
+      customNodes: [{
+        id: "minimax-h3-learned-upscaler",
+        name: "MiniMax H3 Learned Latent Upscaler",
+        purpose: "Learned 3D latent upscale",
+        repositoryUrl: "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler",
+        installed: false,
+        loaded: false,
+        runtimeVerified: false,
+        loadError: "",
+        directory: "",
+        required: false,
+        version: "",
+        updateAvailable: false,
+        appInstallable: true,
+        bulkInstall: false
+      }]
+    } as unknown as EnvironmentScanResult;
+
+    const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
+
+    expect(markup).toContain('data-install-node="minimax-h3-learned-upscaler" data-node-operation="install"');
+    expect(markup).not.toContain('data-rescan-node="minimax-h3-learned-upscaler"');
+    expect(markup).not.toContain("手动安装");
+    expect(markup).not.toContain('<span class="button-count">1</span>');
+  });
+
+  it("renders MMH3 runtime validation evidence in node settings", () => {
+    const environmentScan = {
+      scannedAt: "2026-09-03T00:00:00.000Z",
+      userHome: "C:\\Users\\Test",
+      items: [],
+      modelProfiles: [],
+      issues: [],
+      customNodes: [{
+        id: "mmh3-ultimate-upscale",
+        name: "MMH3 Ultimate Upscale",
+        purpose: "H3 tiled 1440p",
+        repositoryUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale.git",
+        installed: true,
+        loaded: true,
+        runtimeVerified: true,
+        loadError: "",
+        directory: "C:\\ComfyUI\\custom_nodes\\Comfyui-MMH3-UltimateUpscale",
+        required: false,
+        version: "",
+        detectedRevision: "d91be5ac41797a3789b4765cdb6eb6d9129a4a4d",
+        updateAvailable: false,
+        appInstallable: true,
+        bulkInstall: false,
+        compatibilityEvidence: [{
+          verifiedAt: "2026-09-03",
+          sourceUrl: "https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale",
+          note: "RTX 4090 2592x1440 completed in 1274.815 seconds.",
+          checks: ["static", "object-info", "minimal-run"]
+        }]
+      }]
+    } as unknown as EnvironmentScanResult;
+
+    const markup = renderSettingsPage(viewModel({ settingsTab: "nodes", environmentScan }), renderOptions);
+
+    expect(markup).toContain("验证依据 · 2026-09-03");
+    expect(markup).toContain("1274.815 seconds");
+    expect(markup).toContain("检查级别：static · object-info · minimal-run");
   });
 
   it("orders node and runtime dependency cards by product priority", () => {

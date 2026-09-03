@@ -2,11 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import type {
+  AssetVersion,
   HistoryAsset,
   HistoryFile,
   HistoryMigrationProgress,
   QueueTask
 } from "../types.js";
+import { H3_CONTINUATION_ARTIFACT_SUBFOLDER } from "../core/h3-continuation-artifact.js";
 
 const videoExtensions = new Set([".mp4", ".webm", ".mov", ".m4v", ".mkv"]);
 
@@ -16,6 +18,7 @@ export type MigrationReference =
       assetId: string;
       versionId?: string;
       fileIndex: number;
+      artifactKind?: "manifest" | "payload";
     }
   | {
       kind: "queue";
@@ -81,6 +84,27 @@ function fileIsVideo(file: HistoryFile): boolean {
   return videoExtensions.has(path.extname(file.filename).toLowerCase());
 }
 
+function fileIsH3Artifact(file: HistoryFile): boolean {
+  return file.type === "output" &&
+    file.subfolder === H3_CONTINUATION_ARTIFACT_SUBFOLDER &&
+    [".json", ".safetensors"].includes(path.extname(file.filename).toLowerCase());
+}
+
+function fileIsManagedVideoOutput(file: HistoryFile): boolean {
+  return fileIsVideo(file) || fileIsH3Artifact(file);
+}
+
+function h3ArtifactFiles(version: AssetVersion): HistoryFile[] {
+  const artifact = version.h3ContinuationData?.artifact;
+  if (!artifact) return [];
+  // Artifact files are always rooted at the configured video output. Do not
+  // let a stale cached absolutePath escape that managed migration root.
+  return [
+    { ...artifact.manifest, absolutePath: undefined },
+    { ...artifact.payload, absolutePath: undefined }
+  ];
+}
+
 function normalizedPath(filename: string): string {
   return path.resolve(filename).toLowerCase();
 }
@@ -127,12 +151,13 @@ function addFileReference(
   file: HistoryFile,
   fileIndex: number,
   versionId: string | undefined,
+  artifactKind: "manifest" | "payload" | undefined,
   oldDirectory: string,
   newDirectory: string,
   missing: string[],
   conflicts: string[]
 ): void {
-  if (!fileIsVideo(file)) return;
+  if (!fileIsManagedVideoOutput(file)) return;
   const sourcePath = file.absolutePath?.trim()
     ? path.resolve(file.absolutePath)
     : safeOutputPath(oldDirectory, file.subfolder, file.filename);
@@ -150,7 +175,8 @@ function addFileReference(
     kind: "history",
     assetId: asset.id,
     ...(versionId ? { versionId } : {}),
-    fileIndex
+    fileIndex,
+    ...(artifactKind ? { artifactKind } : {})
   };
   const existing = entries.get(key);
   if (existing) {
@@ -266,6 +292,7 @@ export async function planVideoHistoryMigration(
         file,
         fileIndex,
         undefined,
+        undefined,
         oldDirectory,
         newDirectory,
         missing,
@@ -281,6 +308,22 @@ export async function planVideoHistoryMigration(
           file,
           fileIndex,
           version.id,
+          undefined,
+          oldDirectory,
+          newDirectory,
+          missing,
+          conflicts
+        );
+      }
+      for (const [artifactIndex, file] of h3ArtifactFiles(version).entries()) {
+        addFileReference(
+          entries,
+          history,
+          asset,
+          file,
+          version.files.length + artifactIndex,
+          version.id,
+          artifactIndex === 0 ? "manifest" : "payload",
           oldDirectory,
           newDirectory,
           missing,

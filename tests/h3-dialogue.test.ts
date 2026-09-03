@@ -47,6 +47,18 @@ describe("MiniMax H3 dialogue locks", () => {
     expect(validateH3DialogueOutput(repaired, locks).ok).toBe(true);
   });
 
+  it("removes the temporary language-validator quote wrapper", () => {
+    const source = "A woman says in Chinese: \"你好。\"";
+    const locks = extractH3DialogueLocks(source);
+    const repaired = restoreH3DialogueLocks(
+      'integrated_multimodal_description: [Shot 1] <d>[Chinese] "你好。"</d>.',
+      locks
+    );
+
+    expect(repaired).toContain("<d>[Chinese] 你好。</d>");
+    expect(repaired).not.toContain('<d>[Chinese] "你好。"</d>');
+  });
+
   it("reports omissions, duplicates, and invented dialogue before repair", () => {
     const locks = extractH3DialogueLocks("女孩说：“你好。”");
     const result = validateH3DialogueOutput(

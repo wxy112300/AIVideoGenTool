@@ -3,10 +3,12 @@ import type { HistoryMetadataPatch } from "../src/types.js";
 import type { HistoryDestructiveService } from "./services/history-destructive-service.js";
 import type { HistoryMetadataService } from "./services/history-metadata-service.js";
 import type { HistoryQueryService } from "./services/history-query-service.js";
+import type { HistoryArtifactService } from "./services/history-artifact-service.js";
 
 export interface HistoryIpcDependencies {
   ipc: IpcMain;
   query: HistoryQueryService;
+  artifacts: HistoryArtifactService;
   metadata: HistoryMetadataService;
   destructive: HistoryDestructiveService;
 }
@@ -14,6 +16,11 @@ export interface HistoryIpcDependencies {
 export function registerHistoryIpc(deps: HistoryIpcDependencies): void {
   deps.ipc.handle("history-cover:read", async (_event, key: string, sourcePath: string) =>
     deps.query.readHistoryCover(key, sourcePath)
+  );
+  deps.ipc.handle(
+    "history:inspect-h3-artifact",
+    async (_event, assetId: string, versionId: string) =>
+      deps.artifacts.inspect(assetId, versionId)
   );
   deps.ipc.handle(
     "history-cover:save",
@@ -34,6 +41,9 @@ export function registerHistoryIpc(deps: HistoryIpcDependencies): void {
   );
   deps.ipc.handle("history:delete-version", async (_event, assetId: string, versionId: string) =>
     deps.destructive.deleteVideoVersion(assetId, versionId)
+  );
+  deps.ipc.handle("history:delete-joint-av", async (_event, assetId: string, versionId: string) =>
+    deps.destructive.deleteJointAv(assetId, versionId)
   );
   deps.ipc.handle("image-history:set-cover", async (_event, projectId: string, versionId?: string) =>
     deps.metadata.setImageCover(projectId, versionId)

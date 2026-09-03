@@ -127,6 +127,10 @@ export async function acceptConfirmation(context, options) {
             options.setSelectedHistoryVersionId("");
             options.notify(t(uiKeys.runtime.historyVersionDeleted));
         }
+        else if (request.kind === "delete-joint-av") {
+            options.setState(await context.application.deleteHistoryJointAv(request.assetId, request.versionId));
+            options.notify(t(uiKeys.runtime.jointAvDeleted));
+        }
         options.setRequest(null);
         options.setBusy(false);
         options.render();

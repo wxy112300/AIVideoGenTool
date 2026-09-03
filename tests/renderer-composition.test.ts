@@ -168,7 +168,10 @@ describe("renderer composition", () => {
 
   it("returns a queued generation to Create and clears the edit action", async () => {
     const harness = createQueueHarness();
-    harness.currentState().queue = [queueGenerationTask()];
+    const queued = queueGenerationTask();
+    queued.fps = 12;
+    queued.frameInterpolation = "rife2x";
+    harness.currentState().queue = [queued];
 
     await harness.coordinator.editTask("queue-task-1");
 
@@ -179,6 +182,8 @@ describe("renderer composition", () => {
       sourceWidth: 1280,
       sourceHeight: 720,
       duration: 7,
+      fps: 24,
+      frameInterpolation: "off",
       seed: 42
     });
     expect(harness.application.removeTask).toHaveBeenCalledWith("queue-task-1");

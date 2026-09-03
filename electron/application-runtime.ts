@@ -24,7 +24,16 @@ import { QueueService } from "./services/queue-service.js";
 import { ComfyOutputService } from "./services/comfy-output-service.js";
 import { ImageAssetLibraryService } from "./services/image-asset-library-service.js";
 import { PromptRuntimeManager } from "./services/prompt-runtime-manager.js";
+import { HistoryArtifactService } from "./services/history-artifact-service.js";
+import { NativeAvArtifactService } from "./services/native-av-artifact.js";
+import {
+  H3NativeAvArtifactCollector,
+  nativeAvArtifactMetadataForTask
+} from "./services/h3-native-av-collector.js";
+import { nativeAvArtifactFileSystem } from "./services/native-av-artifact-file-system.js";
+import { scanEnvironment } from "./services/environment.js";
 import type { QueueRuntimeCapability } from "./ports/queue-runtime.js";
+import type { NativeAvArtifactFileSystemPort } from "./ports/native-av-artifact-file-system.js";
 import type { ComfyRuntimeStateController } from "../src/infrastructure/comfy-runtime-state.js";
 import type { StudioEventBus } from "./services/studio-event-bus.js";
 import type { StudioPaths } from "./services/studio-paths.js";
@@ -33,6 +42,7 @@ export interface HistoryApplicationServices {
   query: HistoryQueryService;
   metadata: HistoryMetadataService;
   destructive: HistoryDestructiveService;
+  artifacts: HistoryArtifactService;
 }
 
 export interface ApplicationServices {
@@ -78,6 +88,7 @@ export interface ApplicationRuntimeDependencies {
   runtimeState: ComfyRuntimeStateController;
   promptRuntimeManager: PromptRuntimeManager;
   historyFileSystem: HistoryFileSystemPort;
+  nativeAvArtifactFileSystem?: NativeAvArtifactFileSystemPort;
   imageInspection: ImageInspectionPort;
   sendState(state: AppState): void;
   errorMeta(error: unknown): Record<string, unknown>;
@@ -228,10 +239,6 @@ export class ApplicationRuntime {
       errorMeta: this.deps.errorMeta
     });
 
-    const environmentQuery = new EnvironmentQueryService({
-      logger: this.deps.logger,
-      errorMeta: this.deps.errorMeta
-    });
     const comfyOutputService = new ComfyOutputService({
       store: this.deps.store,
       fileSystem: this.deps.historyFileSystem,
@@ -243,6 +250,20 @@ export class ApplicationRuntime {
       paths: this.deps.paths,
       fileSystem: this.deps.historyFileSystem,
       resolveTaskOutputDirectory: () => comfyOutputService.resolveTaskOutputDirectory()
+    });
+    const nativeAvArtifactService = new NativeAvArtifactService({
+      fileSystem: this.deps.nativeAvArtifactFileSystem ?? nativeAvArtifactFileSystem
+    });
+    const nativeAvArtifactCollector = new H3NativeAvArtifactCollector(nativeAvArtifactService);
+    const historyArtifactService = new HistoryArtifactService({
+      store: this.deps.store,
+      artifactService: nativeAvArtifactService,
+      resolveVideoOutputDirectory: () => comfyOutputService.resolveTaskOutputDirectory()
+    });
+    const environmentQuery = new EnvironmentQueryService({
+      logger: this.deps.logger,
+      errorMeta: this.deps.errorMeta,
+      scanEnvironment: (settings, scope) => scanEnvironment(settings, scope)
     });
     const mediaReadService = new MediaReadService({
       store: this.deps.store,
@@ -263,6 +284,18 @@ export class ApplicationRuntime {
         comfyOutputService.requireExistingImageOutput(result, outputRoot, alternateRoots),
       requireExistingVideoOutput: (result, alternateRoots) =>
         comfyOutputService.requireExistingVideoOutput(result, alternateRoots),
+      commitH3NativeAvOutput: async (result, serializerNodeId, task, completedAt) => {
+        const outputDirectory = await comfyOutputService.resolveTaskOutputDirectory();
+        return nativeAvArtifactCollector.commitCompletion(
+          result,
+          serializerNodeId,
+          nativeAvArtifactMetadataForTask(
+            task,
+            outputDirectory,
+            completedAt
+          )
+        );
+      },
       releasePromptRuntime: (settings) => promptService.releaseRuntime(settings),
       nativePromptBusy: () => promptService.isWorkerBusy(),
       effectiveImageInputLibraryDirectory: (settings) =>
@@ -334,7 +367,8 @@ export class ApplicationRuntime {
       history: {
         query: historyQuery,
         metadata: historyMetadataService,
-        destructive: historyDestructiveService
+        destructive: historyDestructiveService,
+        artifacts: historyArtifactService
       }
     };
     const context: ApplicationRuntimeContext = {
@@ -367,6 +401,7 @@ export class ApplicationRuntime {
         "History output path restoration started"
       );
       await historyQuery.restoreHistoryOutputPaths();
+      await historyQuery.restoreHistoryFileSizes();
       this.deps.logger.info(
         "app",
         "history-restore-settled",

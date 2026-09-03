@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ModelScanProfile } from "../src/types";
 import {
+  renderSettingsInstallGuideDialog,
   renderSettingsModelScanCard,
   type SettingsModelScanCardOptions
 } from "../src/renderer/pages/settings/fragments";
@@ -105,4 +106,57 @@ describe("Settings model card layout", () => {
     expect(markup).not.toContain("settings.system.scanCardEvidence");
     expect(markup).not.toContain("settings.system.scanCardRuntimeNotRequired");
   });
+
+  it("exposes an accessible icon-only download action for missing model components", () => {
+    const profile: ModelScanProfile = {
+      id: "minimax_h3_fl2va",
+      name: "MiniMax H3 FL2VA",
+      category: "video",
+      badge: "FL2VA",
+      description: "H3 model",
+      vram: "20 GB",
+      available: false,
+      integrated: true,
+      components: [component("H3 base model", false)]
+    };
+
+    const markup = renderSettingsModelScanCard(profile, options);
+    const action = markup.match(/<button class="component-info"[^>]*>.*?<\/button>/s)?.[0];
+
+    expect(action).toContain('data-install-profile="minimax_h3_fl2va"');
+    expect(action).toContain('data-install-component="0"');
+    expect(action).toContain('title="下载与安装"');
+    expect(action).toContain('data-lucide="download"');
+    expect(action).not.toContain("<span");
+    expect(action).not.toContain(">下载与安装<");
+  });
+
+  it("shows pinned revision, size, and hash in the install guide", () => {
+    const baseComponent = component("H3 base model", false);
+    const markup = renderSettingsInstallGuideDialog({
+      configuredModelDirectory: "C:\\ComfyUI\\models",
+      selectedInstallGuide: {
+        profileName: "MiniMax H3 FL2VA",
+        component: {
+          ...baseComponent,
+          installGuide: {
+            ...baseComponent.installGuide,
+            revision: "revision-1234567890",
+            bytes: 2048,
+            sha256: "hash-123"
+          }
+        }
+      }
+    }, {
+      icon: options.icon,
+      escapeHtml: options.escapeHtml,
+      t: options.t,
+      locale: options.locale
+    });
+
+    expect(markup).toContain("revision-1234567890");
+    expect(markup).toContain("2.00 KB");
+    expect(markup).toContain("hash-123");
+  });
+
 });

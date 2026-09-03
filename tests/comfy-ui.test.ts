@@ -14,7 +14,9 @@ import {
   h3PreviewTinyVaeFromObjectInfo,
   nodeStage,
   progressForNode,
+  workProgressForNode,
   safeComfyUploadFilename,
+  shouldAttachH3JointAvSerializer,
   serviceSilenceLimitMs
 } from "../electron/services/comfy-ui.js";
 import { h3OfficialPromptBaseline } from "../src/core/h3-official-spec.js";
@@ -29,6 +31,16 @@ describe("ComfyUI task liveness", () => {
   it("keeps the strict limit before connection or after WebSocket disconnect", () => {
     expect(serviceSilenceLimitMs(90 * 60_000, false, false, false)).toBe(3 * 60_000);
     expect(serviceSilenceLimitMs(90 * 60_000, false, true, true)).toBe(3 * 60_000);
+  });
+});
+
+describe("H3 JointAV output gate", () => {
+  it("preserves legacy output but skips the serializer when the task disables it", () => {
+    expect(shouldAttachH3JointAvSerializer("minimax_h3_fl2va", undefined, true)).toBe(true);
+    expect(shouldAttachH3JointAvSerializer("minimax_h3_fl2va", true, true)).toBe(true);
+    expect(shouldAttachH3JointAvSerializer("minimax_h3_fl2va", false, true)).toBe(false);
+    expect(shouldAttachH3JointAvSerializer("minimax_h3_fl2va", true, false)).toBe(false);
+    expect(shouldAttachH3JointAvSerializer("sulphur2", true, true)).toBe(false);
   });
 });
 
@@ -538,6 +550,35 @@ describe("ComfyUI task progress", () => {
     expect(progressForNode("SamplerCustomAdvanced", 4, 20)).toEqual({
       progress: 27.2,
       label: "扩散采样 4/20"
+    });
+  });
+
+  it("preserves raw work units and node timing for Queue throughput", () => {
+    expect(workProgressForNode(
+      "SamplerCustomAdvanced",
+      19,
+      20,
+      Date.parse("2026-09-03T00:00:00.000Z"),
+      Date.parse("2026-09-03T00:20:35.000Z")
+    )).toEqual({
+      value: 19,
+      max: 20,
+      unit: "step",
+      startedAt: "2026-09-03T00:00:00.000Z",
+      sampledAt: "2026-09-03T00:20:35.000Z"
+    });
+    expect(workProgressForNode("MMH3UltimateUpscale", 3.5, 12, 0, 1_000)?.unit).toBe("piece");
+    expect(workProgressForNode("LoadImage", 1, 1, 0, 1_000)).toBeUndefined();
+  });
+
+  it("maps MMH3 aggregate progress to the current spatial piece", () => {
+    expect(progressForNode("MMH3UltimateUpscale", 3.35, 12)).toEqual({
+      progress: 32.4,
+      label: "H3 分块重采样 4/12 块 · 当前块 35%"
+    });
+    expect(progressForNode("MMH3UltimateUpscale", 12, 12)).toEqual({
+      progress: 80,
+      label: "H3 分块重采样 12/12 块"
     });
   });
 

@@ -14,6 +14,8 @@
 `docs/IMAGE_WORKSPACE_IMPLEMENTATION_PLAN.md`。该模块目前完成的是交互原型，不能按
 原型画面推断正式 Electron 功能已经实现。
 
+> H3 V3 恢复任务的最新交接请先阅读 [`docs/Plan/active/2026.9.2-h3-comfyui-two-pass-av-upscale-recovery-v3-handoff.md`](Plan/active/2026.9.2-h3-comfyui-two-pass-av-upscale-recovery-v3-handoff.md)。该文件记录当前未提交工作区、蓝屏后的安全边界和下一 session 的准确起点；下方内容是较早的全局基线。
+
 ## 1. 对产品需求的当前理解
 
 这是一个面向本地 ComfyUI 的 Windows Image-to-Video 工作台，而不是 ComfyUI

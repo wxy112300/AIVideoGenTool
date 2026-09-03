@@ -81,6 +81,88 @@ describe("video history migration", () => {
     }
   });
 
+  it("migrates a committed H3 artifact pair with explicit manifest/payload references", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "video-migration-"));
+    const oldDirectory = path.join(root, "output");
+    const newDirectory = path.join(oldDirectory, "new");
+    const source = path.join(oldDirectory, "clip.mp4");
+    const artifactDirectory = path.join(oldDirectory, "h3-native-av");
+    const manifestPath = path.join(artifactDirectory, "h3av_artifact-001.json");
+    const payloadPath = path.join(artifactDirectory, "h3av_artifact-001.safetensors");
+    await fs.mkdir(artifactDirectory, { recursive: true });
+    await fs.writeFile(source, "video-content");
+    await fs.writeFile(manifestPath, "manifest-content");
+    await fs.writeFile(payloadPath, "payload-content");
+    const history = [historyAsset(source)];
+    history[0]!.versions[0]!.h3ContinuationData = {
+      status: "available",
+      artifact: {
+        schemaVersion: 1,
+        artifactId: "artifact-001",
+        role: "first-pass-clean-av",
+        lineageId: "lineage-001",
+        manifest: {
+          filename: "h3av_artifact-001.json",
+          subfolder: "h3-native-av",
+          type: "output",
+          absolutePath: manifestPath
+        },
+        payload: {
+          filename: "h3av_artifact-001.safetensors",
+          subfolder: "h3-native-av",
+          type: "output",
+          absolutePath: payloadPath
+        },
+        payloadSha256: "a".repeat(64),
+        payloadBytes: 1,
+        modelFamily: "minimax-h3",
+        executionModelId: "minimax_h3_fl2va",
+        providerId: "test-provider",
+        providerRevision: "test-revision",
+        diffusionModelFilename: "diffusion.safetensors",
+        textEncoderFilename: "text-encoder.safetensors",
+        videoVaeFilename: "video-vae.safetensors",
+        audioVaeFilename: "audio-vae.safetensors",
+        width: 32,
+        height: 32,
+        fps: 24,
+        frameCount: 5,
+        videoShape: [1, 24, 1, 2, 2],
+        videoDtype: "BF16",
+        audioSampleRate: 32000,
+        audioChannels: 2,
+        audioLatentRate: 40,
+        audioShape: [1, 32, 2, 1],
+        audioDtype: "F32",
+        contextFrames: 0,
+        workflowRevision: "workflow-1",
+        sourceTaskId: "task-1",
+        createdAt: "2026-08-10T00:00:00.000Z"
+      }
+    };
+
+    try {
+      const plan = await planVideoHistoryMigration(history, oldDirectory, newDirectory);
+      expect(plan.entries).toHaveLength(3);
+      const artifactReferences = plan.entries
+        .filter((entry) => entry.sourcePath.includes("h3-native-av"))
+        .flatMap((entry) => entry.references);
+      expect(artifactReferences).toEqual(expect.arrayContaining([
+        expect.objectContaining({ versionId: "version-1", artifactKind: "manifest" }),
+        expect.objectContaining({ versionId: "version-1", artifactKind: "payload" })
+      ]));
+
+      const preparation = await prepareVideoHistoryMigration(plan, path.join(root, "migration.json"), () => undefined);
+      expect((await fs.stat(path.join(newDirectory, "h3-native-av", "h3av_artifact-001.json"))).isFile()).toBe(true);
+      expect((await fs.stat(path.join(newDirectory, "h3-native-av", "h3av_artifact-001.safetensors"))).isFile()).toBe(true);
+      await cleanupVideoHistoryMigration(preparation, () => undefined);
+      await expect(fs.stat(manifestPath)).rejects.toThrow();
+      await expect(fs.stat(payloadPath)).rejects.toThrow();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("includes queued upscale inputs linked to a history version", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "video-migration-"));
     const oldDirectory = path.join(root, "output");

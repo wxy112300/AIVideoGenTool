@@ -14,12 +14,13 @@ import type {
   UpscaleResourceEstimate,
   UpscaleResourceEstimateInput
 } from "../../core/upscale";
+import { h3NativeUpscaleDimensions } from "../../core/upscale";
 
 type IconRenderer = (name: string, className?: string) => string;
 type HtmlEscaper = (value: unknown) => string;
 
-type UpscaleModelId = "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan";
-type UpscaleTargetHeight = 720 | 1080 | 1440 | 2160;
+type UpscaleModelId = "seedvr2" | "seedvr2-native-int8" | "flashvsr" | "realesrgan" | "minimax_h3_latent_upscaler";
+type UpscaleTargetHeight = 720 | 768 | 1080 | 1440 | 2160;
 type UpscaleTileMode = "auto" | "safe" | "fast";
 
 export interface DirectoryMigrationDialogRequest {
@@ -64,6 +65,8 @@ export interface ImageAssetLibraryDialogOptions {
 export interface UpscaleDialogState {
   taskId?: string;
   replaceTaskId?: string;
+  h3Provider?: "bilinear" | "learned-3d";
+  busy?: boolean;
   assetId: string;
   versionId: string;
   targetHeight: UpscaleTargetHeight;
@@ -274,11 +277,15 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
   const resolved = findUpscaleAssetVersion(options.history, dialog);
   if (!resolved) return "";
   const { asset, version } = resolved;
-  const [targetWidth, outputHeight] = options.upscaleDimensions(
-    version.width,
-    version.height,
-    dialog.targetHeight
-  );
+  const busy = Boolean(dialog.busy);
+  const h3Selected = dialog.modelId === "minimax_h3_latent_upscaler";
+  const h3Artifact = version.h3ContinuationData?.status === "available"
+    ? version.h3ContinuationData.artifact
+    : undefined;
+  const h3Available = Boolean(h3Artifact);
+  const [targetWidth, outputHeight] = h3Selected
+    ? h3NativeUpscaleDimensions(version.width, version.height, dialog.targetHeight === 2160 ? 1440 : dialog.targetHeight)
+    : options.upscaleDimensions(version.width, version.height, dialog.targetHeight);
   const sourceShortEdge = options.versionShortEdge(version);
   const selectedTargetHeight = dialog.targetHeight;
   const estimate = options.estimateUpscaleResources({
@@ -309,39 +316,47 @@ export function renderUpscaleDialog(options: UpscaleDialogOptions): string {
     { id: "flashvsr", name: "FlashVSR", available: true },
     { id: "realesrgan", name: "Real-ESRGAN x4plus", available: true }
   ];
-  const profiles: UpscaleModelProfileOption[] = options.environment?.modelProfiles
+  const pixelProfiles: UpscaleModelProfileOption[] = options.environment?.modelProfiles
     .filter((profile) => profile.category === "upscale" && supportedIds.has(profile.id))
     .map((profile) => ({
       id: profile.id,
       name: profile.name,
       available: profile.available
     })) ?? fallbackProfiles;
+  const profiles: UpscaleModelProfileOption[] = [
+    ...pixelProfiles,
+    { id: "minimax_h3_latent_upscaler", name: "H3 Latent Upscale", available: h3Available }
+  ];
   const outputFilename = options.createUpscaleFilename(
     version.outputFilename,
     dialog.targetHeight
   );
   const supportsTileMode = dialog.modelId === "seedvr2";
+  const targetOptions = h3Selected
+    ? [720, 768, 1080, 1440] as const
+    : [720, 1080, 1440, 2160] as const;
   const t = options.t;
   return `
     <div class="dialog-backdrop upscale-backdrop" id="upscale-backdrop">
-      <section class="upscale-dialog" role="dialog" aria-modal="true" aria-labelledby="upscale-title" tabindex="-1">
+      <section class="upscale-dialog" role="dialog" aria-modal="true" aria-labelledby="upscale-title" aria-busy="${busy}" tabindex="-1">
         <div class="upscale-dialog-head">
           <div><span class="eyebrow">${t(uiKeys.upscale.eyebrow)}</span><h2 id="upscale-title">${t(uiKeys.upscale.title)}</h2></div>
-          <button class="dialog-close" id="close-upscale" aria-label="${t(uiKeys.upscale.close)}">${options.icon("x")}</button>
+          <button class="dialog-close" id="close-upscale" aria-label="${t(uiKeys.upscale.close)}" ${busy ? "disabled" : ""}>${options.icon("x")}</button>
         </div>
         <div class="upscale-dialog-body">
           <div class="upscale-source"><div><strong>${options.escapeHtml(asset.title)}</strong><code>${options.escapeHtml(version.outputFilename)}</code></div><span>${version.width} × ${version.height} · ${options.formatVideoDuration(version.duration)}</span></div>
           <div><label>${t(uiKeys.upscale.targetResolution)}</label><div class="upscale-resolution">
-            ${([720, 1080, 1440, 2160] as const).map((height) => `<button class="${height === selectedTargetHeight ? "primary" : "secondary"}" data-upscale-height="${height}" ${height <= sourceShortEdge ? "disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
+            ${targetOptions.map((height) => `<button class="${height === selectedTargetHeight ? "primary" : "secondary"}" data-upscale-height="${height}"${busy || height <= sourceShortEdge || (dialog.h3Provider === "bilinear" && height >= 1080) || (dialog.h3Provider === "learned-3d" && height < 1080) ? " disabled" : ""}>${height === 2160 ? "4K" : `${height}p`}</button>`).join("")}
           </div></div>
           <div class="settings-grid two">
-            <label>${t(uiKeys.upscale.model)}<select id="upscale-model">${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === dialog.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${options.escapeHtml(profile.name)}${profile.available ? "" : t(uiKeys.upscale.missingComponent)}</option>`).join("")}</select></label>
-            <label>${t(uiKeys.upscale.memoryPolicy)}${supportsTileMode ? `<select id="upscale-tile"><option value="auto" ${dialog.tileMode === "auto" ? "selected" : ""}>${t(uiKeys.upscale.autoPolicy)}</option><option value="safe" ${dialog.tileMode === "safe" ? "selected" : ""}>${t(uiKeys.upscale.safePolicy)}</option><option value="fast" ${dialog.tileMode === "fast" ? "selected" : ""}>${t(uiKeys.upscale.fastPolicy)}</option></select>` : `<span class="upscale-policy-readonly">${t(uiKeys.upscale.nodeFixed)}</span>`}</label>
+            <label>${t(uiKeys.upscale.model)}<select id="upscale-model" ${busy ? "disabled" : ""}>${profiles.map((profile) => `<option value="${profile.id}" ${profile.id === dialog.modelId ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${options.escapeHtml(profile.name)}${profile.available ? "" : t(uiKeys.upscale.missingComponent)}</option>`).join("")}</select></label>
+            <label>${t(uiKeys.upscale.memoryPolicy)}${supportsTileMode ? `<select id="upscale-tile" ${busy ? "disabled" : ""}><option value="auto" ${dialog.tileMode === "auto" ? "selected" : ""}>${t(uiKeys.upscale.autoPolicy)}</option><option value="safe" ${dialog.tileMode === "safe" ? "selected" : ""}>${t(uiKeys.upscale.safePolicy)}</option><option value="fast" ${dialog.tileMode === "fast" ? "selected" : ""}>${t(uiKeys.upscale.fastPolicy)}</option></select>` : `<span class="upscale-policy-readonly">${t(uiKeys.upscale.nodeFixed)}</span>`}</label>
           </div>
+          <p class="muted">${h3Selected ? t(uiKeys.upscale.h3NativeDescription) : t(uiKeys.upscale.pixelVideoDescription)}</p>${h3Selected && !h3Available ? `<p class="upscale-estimate-note warning">${t(uiKeys.h3Native.reasonArtifactMissing)}</p>` : ""}
           <div class="upscale-output"><div><span>${t(uiKeys.upscale.estimatedOutput)}</span><strong>${targetWidth} × ${outputHeight}</strong><code>${options.escapeHtml(outputFilename)}</code></div><div class="upscale-estimates"><span>${t(uiKeys.upscale.estimatedPeak, { value: estimatedVram })}</span><span>${t(uiKeys.upscale.estimatedTime, { value: estimatedTime })}</span></div></div>
           <p class="upscale-estimate-note ${vramWarning ? "warning" : ""}">${t(uiKeys.upscale.estimateNote, { frames: estimate.frameCount })} ${vramWarning ? t(uiKeys.upscale.vramWarning, { vram: options.formatBytes(detectedVramBytes) }) : t(uiKeys.upscale.actualImpact)}</p>
         </div>
-        <div class="dialog-actions"><button class="secondary button-with-icon" id="cancel-upscale">${options.icon("x")}${t(uiKeys.upscale.cancel)}</button><button class="primary button-with-icon" id="enqueue-upscale">${options.icon(dialog.taskId ? "save" : "plus")}${dialog.taskId ? t(uiKeys.upscale.saveChanges) : dialog.replaceTaskId ? t(uiKeys.upscale.requeue) : t(uiKeys.upscale.enqueue)}</button></div>
+        <div class="dialog-actions" aria-live="polite"><button class="secondary button-with-icon" id="cancel-upscale" ${busy ? "disabled" : ""}>${options.icon("x")}${t(uiKeys.upscale.cancel)}</button><button class="primary button-with-icon" id="enqueue-upscale" ${busy || (h3Selected && !h3Available) ? "disabled" : ""}>${options.icon(busy ? "refresh-cw" : dialog.taskId ? "save" : "plus")}${busy ? t(uiKeys.runtime.enqueueing) : dialog.taskId ? t(uiKeys.upscale.saveChanges) : dialog.replaceTaskId ? t(uiKeys.upscale.requeue) : t(uiKeys.upscale.enqueue)}</button></div>
       </section>
     </div>`;
 }

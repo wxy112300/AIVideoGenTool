@@ -237,7 +237,9 @@ export function renderSettingsPage(
   ).length;
   const loraAvailable = loraProfiles.filter((profile) => profile.available).length;
   const imageComponentsReady = imageProfiles.filter((profile) => profile.available).length;
-  const upscaleAvailable = upscaleProfiles.filter((profile) => profile.available).length;
+  const upscaleAvailable = upscaleProfiles.filter(
+    (profile) => profile.available && profile.integrated
+  ).length;
   const promptAvailable = promptProfiles.filter((profile) => profile.available).length;
   const dependencyActionState = deriveSettingsDependencyActionState({
     environmentScan,
@@ -599,7 +601,7 @@ export function renderSettingsPage(
     <section class="settings-panel">
       <section class="panel settings-section">
         <div class="section-heading"><div><h2>${s("upscale.title")}</h2><span class="muted">${s("upscale.description")}</span></div></div>
-        <label>${s("upscale.defaultModel")}<select id="default-upscale-model">${upscaleProfiles.map((profile) => `<option value="${profile.id}" ${settings.defaultUpscaleModel === profile.id ? "selected" : ""} ${!profile.available ? "disabled" : ""}>${escape(profile.name)}${profile.available ? "" : s("upscale.missingComponent")}</option>`).join("")}</select></label>
+        <label>${s("upscale.defaultModel")}<select id="default-upscale-model">${upscaleProfiles.map((profile) => `<option value="${profile.id}" ${settings.defaultUpscaleModel === profile.id ? "selected" : ""} ${!profile.available || profile.integrated === false ? "disabled" : ""}>${escape(profile.name)}${!profile.available ? s("upscale.missingComponent") : profile.integrated === false ? s("video.workflowPending") : ""}</option>`).join("")}</select></label>
       </section>
       <div class="model-profile-list">${upscaleProfiles.length ? upscaleProfiles.map((profile) => renderProfileCard(profile)).join("") : `<div class="panel environment-empty">${s("upscale.empty")}</div>`}</div>
     </section>`;
@@ -734,6 +736,13 @@ export function renderSettingsPage(
         : cardState.phase === "finalizing"
           ? s("nodes.finalizing")
           : "";
+        const validationEvidence = node.compatibilityEvidence?.[0];
+        const validationEvidenceMarkup = validationEvidence ? `
+                <details class="node-validation-evidence">
+                  <summary>${s("nodes.validationEvidence")} · ${escape(validationEvidence.verifiedAt)}</summary>
+                  <p>${escape(validationEvidence.note)}</p>
+                  ${validationEvidence.checks?.length ? `<small>${escape(s("nodes.validationChecks", { checks: validationEvidence.checks.join(" · ") }))}</small>` : ""}
+                </details>` : "";
     const statusMarkup = cardState.status === "processing" || cardState.status === "queued" || cardState.status === "finalizing"
       ? `${icon(active ? "refresh-cw" : "clock-3")} ${installStatus}`
       : cardState.status === "compatibility-error"
@@ -756,11 +765,12 @@ export function renderSettingsPage(
       markup: `
         <article class="panel custom-node-card ${cardState.tone}">
           <div class="custom-node-copy">
-            <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${node.bulkInstall === false ? ` · ${s("nodes.manualInstall")}` : ""}</span></div>
+            <div class="model-title"><h3>${escape(node.name)}</h3><span class="model-badge">${node.required ? s("nodes.projectRequired") : s("nodes.optional")}${manualOnly ? ` · ${s("nodes.manualInstall")}` : ""}</span></div>
             <p>${escape(node.purpose)}</p>
             <code>${escape(node.directory || node.repositoryUrl)}</code>
             ${manualOnly ? `<p class="muted">${s("nodes.manualInstallHint")}</p>` : ""}
             ${node.runtimeRequirement ? `<p class="muted"><strong>${s("nodes.prerequisite")}</strong> ${escape(node.runtimeRequirement)}</p>` : ""}
+            ${validationEvidenceMarkup}
             <p class="muted">${s("nodes.localVersion")}${localVersion} · ${s("nodes.versionSource")}<code>${escape(node.versionSource || "—")}</code>${node.recommendedVersion ? ` · ${s("nodes.recommendedVersion")}v${escape(node.recommendedVersion)}` : ""}${node.latestVersion ? ` · ${s("nodes.latestRelease")}v${escape(node.latestVersion)}` : ""}${node.id === "spectrum-minimax-h3" ? ` · ${s("nodes.runtimeMemory")}` : ""}</p>
             ${node.loadError ? `<span class="${node.compatibilityState === "warning" ? "node-update-notice" : "node-error"}">${escape(node.loadError)}</span>` : ""}
             ${node.updateNotice ? `<span class="node-update-notice">${escape(node.updateNotice)}</span>` : ""}

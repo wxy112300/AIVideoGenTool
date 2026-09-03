@@ -112,16 +112,28 @@ async function findExecutable(command: string): Promise<string> {
   }
 }
 
-export async function readComfyGitRevision(sourceDirectory: string): Promise<string> {
+export async function readComfyGitRevision(
+  sourceDirectory: string,
+  full = false
+): Promise<string> {
   if (!sourceDirectory || !(await exists(path.join(sourceDirectory, ".git")))) {
     return "";
   }
   try {
     const git = await findExecutable("git.exe");
     if (!git) return "";
+    const safeDirectory = path.resolve(sourceDirectory).replaceAll("\\", "/");
     const { stdout } = await execFileAsync(
       git,
-      ["-C", sourceDirectory, "rev-parse", "--short=8", "HEAD"],
+      [
+        "-c",
+        `safe.directory=${safeDirectory}`,
+        "-C",
+        sourceDirectory,
+        "rev-parse",
+        ...(full ? [] : ["--short=8"]),
+        "HEAD"
+      ],
       { encoding: "utf8", timeout: 5000, windowsHide: true }
     );
     return stdout.trim();

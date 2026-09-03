@@ -153,13 +153,13 @@ export function buildQwenImageEdit2511Workflow(
   const positiveInputs = {
     clip: ["clip", 0],
     prompt: compiled.prompt,
-    vae: ["vae", 0],
+    vae: ["gpuVae", 0],
     ...imageReferenceInputs(compiled.pictures, "image")
   };
   const negativeInputs = {
     clip: ["clip", 0],
     prompt: "",
-    vae: ["vae", 0],
+    vae: ["gpuVae", 0],
     ...imageReferenceInputs(compiled.pictures, "image")
   };
   const outputWidth = exactImageDimension(task.outputWidth, compiled.pictures[0]?.width ?? 0);
@@ -181,6 +181,10 @@ export function buildQwenImageEdit2511Workflow(
     vae: {
       class_type: "VAELoader",
       inputs: { vae_name: qwenImageVae }
+    },
+    gpuVae: {
+      class_type: "LocalVideoStudioRequireGpuVAE",
+      inputs: { vae: ["vae", 0] }
     },
     model: {
       class_type: "UNETLoader",
@@ -235,7 +239,7 @@ export function buildQwenImageEdit2511Workflow(
       class_type: "VAEEncode",
       inputs: {
         pixels: ["sourceImage", 0],
-        vae: ["vae", 0]
+        vae: ["gpuVae", 0]
       }
     },
     sampler: {
@@ -259,7 +263,7 @@ export function buildQwenImageEdit2511Workflow(
       class_type: "VAEDecode",
       inputs: {
         samples: ["sampler", 0],
-        vae: ["vae", 0]
+        vae: ["gpuVae", 0]
       }
     },
     exactSize: {
@@ -366,6 +370,10 @@ export function buildQwenImageEdit2511CropStitchWorkflow(
       class_type: "VAELoader",
       inputs: { vae_name: qwenImageVae }
     },
+    gpuVae: {
+      class_type: "LocalVideoStudioRequireGpuVAE",
+      inputs: { vae: ["vae", 0] }
+    },
     model: {
       class_type: "UNETLoader",
       inputs: {
@@ -378,7 +386,7 @@ export function buildQwenImageEdit2511CropStitchWorkflow(
       inputs: {
         clip: ["clip", 0],
         prompt: compiled.prompt,
-        vae: ["vae", 0],
+        vae: ["gpuVae", 0],
         image1: ["crop", 1]
       }
     },
@@ -387,7 +395,7 @@ export function buildQwenImageEdit2511CropStitchWorkflow(
       inputs: {
         clip: ["clip", 0],
         prompt: "",
-        vae: ["vae", 0],
+        vae: ["gpuVae", 0],
         image1: ["crop", 1]
       }
     },
@@ -419,7 +427,7 @@ export function buildQwenImageEdit2511CropStitchWorkflow(
     },
     sourceLatent: {
       class_type: "VAEEncode",
-      inputs: { pixels: ["sourceImage", 0], vae: ["vae", 0] }
+      inputs: { pixels: ["sourceImage", 0], vae: ["gpuVae", 0] }
     },
     sampler: {
       class_type: "KSampler",
@@ -438,7 +446,7 @@ export function buildQwenImageEdit2511CropStitchWorkflow(
     },
     decoded: {
       class_type: "VAEDecode",
-      inputs: { samples: ["sampler", 0], vae: ["vae", 0] }
+      inputs: { samples: ["sampler", 0], vae: ["gpuVae", 0] }
     },
     cropOutput: {
       class_type: "ImageScale",

@@ -4,6 +4,33 @@ import { normalizeVideoSteps, resolveVideoGenerationPolicy, shouldApplySpectrum 
 import { normalizeMiniMaxH3ModelPatchChain } from "./h3-memory-workflow.js";
 import { h3VideoVaeFilename } from "./h3-video-vae.js";
 import { workflowMessage } from "./runtime/workflow-messages.js";
+export function attachH3JointAvSerializer(workflow, filename) {
+    if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) {
+        throw new Error("H3 AV serializer 只能附加到 API-format workflow。");
+    }
+    const latentReferences = Object.values(workflow)
+        .filter((node) => node.class_type === "VAEDecode")
+        .map((node) => node.inputs?.samples)
+        .filter((value) => Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number");
+    const uniqueReferences = new Map(latentReferences.map((reference) => [`${reference[0]}:${reference[1]}`, reference]));
+    if (uniqueReferences.size !== 1) {
+        throw new Error(`H3 AV serializer 无法确定唯一最终 joint latent（找到 ${uniqueReferences.size} 个）。`);
+    }
+    const numericIds = Object.keys(workflow)
+        .map((id) => Number(id))
+        .filter(Number.isSafeInteger);
+    let nodeId = String((numericIds.length ? Math.max(...numericIds) : 0) + 1);
+    while (workflow[nodeId])
+        nodeId = String(Number(nodeId) + 1);
+    workflow[nodeId] = {
+        class_type: "LocalVideoStudioH3SaveJointAV",
+        inputs: {
+            joint_av: [...uniqueReferences.values()][0],
+            filename
+        }
+    };
+    return nodeId;
+}
 export function isMiniMaxH3Fl2vaModel(modelId) {
     return modelCatalog.get(modelId)?.definition.variant === "fl2va";
 }
@@ -898,6 +925,9 @@ const miniMaxH3ModelAssets = {
         textEncoder: "qwen3vl_32b_minimax_h3_int4_convrot.safetensors"
     }
 };
+export function miniMaxH3ModelAssetNames(modelId) {
+    return miniMaxH3ModelAssets[modelId];
+}
 const sulphurModelAssets = {
     q2_distilled: {
         transformer: "sulphur-2-distilled-Q2_K.gguf",
@@ -1022,7 +1052,9 @@ export function renderWorkflow(source, task, context = {}) {
     const modelAssets = wan14ModelAssets[task.modelId];
     const h3Assets = miniMaxH3ModelAssets[task.modelId];
     const sulphurAssets = sulphurModelAssets[task.modelProfile ?? "q3_k_m"];
-    const interpolationMultiplier = frameInterpolationMultiplier(task);
+    const interpolationMultiplier = isMiniMaxH3Model(task.modelId)
+        ? 1
+        : frameInterpolationMultiplier(task);
     const tokens = {
         PROMPT: videoPromptForLoras(task.prompt, task.videoLoras),
         NEGATIVE_PROMPT: "",
@@ -1032,6 +1064,12 @@ export function renderWorkflow(source, task, context = {}) {
         SOURCE_VIDEO: context.sourceVideo ?? "",
         H3_CONTEXT_LATENT_PATH: context.h3ContextLatentPath ?? "",
         H3_CONTEXT_SAVE_PREFIX: context.h3ContextSavePrefix ?? `h3_context/${task.id}/clip`,
+        H3_AV_ARTIFACT_FILENAME: context.h3AvArtifactFilename ?? `h3-native-av/h3av_${task.id}`,
+        H3_AV_INPUT_ARTIFACT: context.h3AvInputArtifact ?? "",
+        H3_AV_SOURCE_WIDTH: context.h3AvSourceWidth ?? outputWidth,
+        H3_AV_SOURCE_HEIGHT: context.h3AvSourceHeight ?? outputHeight,
+        H3_AV_SCALE_BY: context.h3AvScaleBy ?? 2,
+        H3_LEARNED_UPSCALER_MODEL: context.h3LearnedUpscalerModel ?? "",
         H3_REF_IMAGE_0: context.h3ReferenceImages?.[0] ?? "",
         H3_REF_IMAGE_1: context.h3ReferenceImages?.[1] ?? "",
         H3_REF_IMAGE_2: context.h3ReferenceImages?.[2] ?? "",
@@ -1371,7 +1409,8 @@ export function validateApiWorkflow(source, locale = "zh-CN") {
         return inputs !== null && typeof inputs === "object" && !Array.isArray(inputs) &&
             !("first_frame" in inputs) && !("last_frame" in inputs);
     });
-    if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage && !hasH3ReferenceVideo && !hasTextOnlyH3Conditioning) {
+    const hasH3ArtifactInput = placeholders.has("H3_AV_INPUT_ARTIFACT");
+    if (!placeholders.has("INPUT_IMAGE") && !placeholders.has("SOURCE_VIDEO") && !hasH3ReferenceImage && !hasH3ReferenceVideo && !hasTextOnlyH3Conditioning && !hasH3ArtifactInput) {
         errors.push(message("mediaPlaceholderMissing"));
     }
     if (!placeholders.has("SEED"))

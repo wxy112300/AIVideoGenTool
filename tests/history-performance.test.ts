@@ -26,6 +26,7 @@ import {
   versionVideoIndex
 } from "../src/renderer/pages/history/helpers.ts";
 import {
+  formatBytes,
   formatElapsedDuration,
   formatFullHistoryTime,
   formatVideoDuration,
@@ -315,6 +316,14 @@ afterEach(() => {
 });
 
 describe("synthetic History performance benchmark", () => {
+  it("selects readable units for output file sizes", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(1536)).toBe("1.5 KB");
+    expect(formatBytes(3_746_055)).toBe("3.6 MB");
+    expect(formatBytes(29_520_752)).toBe("28.2 MB");
+    expect(formatBytes(2 * 1024 ** 3)).toBe("2.0 GB");
+  });
+
   it("renders and mounts 500 video/image records without full-table media work", async () => {
     vi.stubGlobal("IntersectionObserver", BenchmarkIntersectionObserver);
     const fixture = createHistoryPerformanceFixture(500);

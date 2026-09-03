@@ -8,6 +8,7 @@ const volatileTaskFields = new Set([
     "progress",
     "stage",
     "stageStartedAt",
+    "workProgress",
     "updatedAt",
     "comfyPromptId",
     "performanceStats",

@@ -1430,6 +1430,25 @@ describe("Wan 2.2 workflow compatibility", () => {
     expect(rendered["1"]?.inputs.images).toEqual(["4", 0]);
   });
 
+  it("does not insert RIFE for stale H3 snapshots", () => {
+    const rendered = renderWorkflow(
+      {
+        "1": {
+          class_type: "CreateVideo",
+          inputs: { images: ["9", 0], fps: "{{FPS}}" }
+        }
+      },
+      {
+        ...task,
+        modelId: "minimax_h3_fl2va",
+        frameInterpolation: "rife2x"
+      }
+    ) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+
+    expect(Object.values(rendered).some((node) => node.class_type === "RIFE VFI")).toBe(false);
+    expect(rendered["1"]?.inputs.images).toEqual(["2", 1]);
+  });
+
   it("uses the minimum Wan-compatible source frame count for RIFE 4x", () => {
     expect(
       generationFrameCountForTask({

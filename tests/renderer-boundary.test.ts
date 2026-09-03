@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/core/defaults";
+import { uiKeys } from "../src/core/i18n-keys";
 import {
   createPromptRuntimeState,
   reducePromptRuntime
@@ -262,6 +263,7 @@ function mountQueueLiveShell(root: HTMLElement): void {
     <span id="running-elapsed"></span>
     <span id="running-stage-elapsed"></span>
     <span id="running-eta"></span>
+    <span id="running-work-progress" hidden></span>
     <span id="running-progress-label"></span>
     <div id="running-progress-bar" role="progressbar"><span></span></div>
     <span id="running-stage"></span>
@@ -336,6 +338,13 @@ describe("renderer boundary characterization", () => {
     const nextTask = next.queue[0]!;
     nextTask.progress = 67;
     nextTask.stage = "渲染关键帧";
+    nextTask.workProgress = {
+      value: 4,
+      max: 20,
+      unit: "step",
+      startedAt: "2026-08-31T00:00:00.000Z",
+      sampledAt: "2026-08-31T00:04:20.000Z"
+    };
     nextTask.updatedAt = "2026-08-31T00:00:02.000Z";
 
     queue.emit("state:changed", next);
@@ -344,6 +353,8 @@ describe("renderer boundary characterization", () => {
     expect(queue.requestRender).not.toHaveBeenCalled();
     expect(queue.root.querySelector("#running-progress-label")?.textContent).toBe("67%");
     expect(queue.root.querySelector("#running-stage")?.textContent).toBe("渲染关键帧");
+    expect(queue.root.querySelector("#running-work-progress")?.textContent).toBe(uiKeys.queue.card.workProgress);
+    expect(queue.root.querySelector<HTMLElement>("#running-work-progress")?.hidden).toBe(false);
     expect(queue.root.querySelector("#running-progress-bar")?.style.width).toBe("67%");
     expect(queue.state.queue[0]?.id).toBe(task.id);
 

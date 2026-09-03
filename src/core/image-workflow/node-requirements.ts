@@ -2,6 +2,7 @@ export const qwenImageEdit2511RequiredNodeTypes = [
   "CLIPLoader",
   "UNETLoader",
   "VAELoader",
+  "LocalVideoStudioRequireGpuVAE",
   "LoadImage",
   "TextEncodeQwenImageEditPlus",
   "FluxKontextImageScale",

@@ -78,6 +78,18 @@ export interface SettingsInstallGuideDialogViewModel {
   configuredModelDirectory: string;
 }
 
+function formatGuideBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
+}
+
 function escapeValue(
   options: SettingsFragmentRenderOptions,
   value: string | number | null | undefined
@@ -322,6 +334,18 @@ export function renderSettingsModelScanCard(
         ${profile.components.map((component, componentIndex) => {
           const satisfied = modelComponentSatisfied(profile, component);
           const alternativeAvailable = satisfied && !component.found && Boolean(component.alternativeGroup);
+          const guide = component.installGuide;
+          const guideEvidence = guide
+            ? [
+                guide.sourceLabel,
+                guide.version ? `v${guide.version}` : "",
+                guide.revision ? `rev ${guide.revision.slice(0, 12)}` : "",
+                guide.bytes ? formatGuideBytes(guide.bytes) : ""
+              ].filter(Boolean).join(" · ")
+            : "";
+          const guideActionLabel = component.found
+            ? settingsText(options.locale, "model.component.viewSource")
+            : settingsText(options.locale, "model.component.downloadInstall");
           return `
           <div class="component-row ${component.found ? "found" : satisfied || component.optional ? "warning" : "missing"}">
             <span class="component-state">${icon(component.found ? "circle-check" : satisfied || component.optional ? "circle-help" : "circle-alert")}</span>
@@ -329,8 +353,9 @@ export function renderSettingsModelScanCard(
               ${component.found
                 ? `<code title="${escape(component.matches.join("\n"))}">${escape(component.matches.join(" · "))}</code>`
                 : `<span>${alternativeAvailable ? settingsText(options.locale, "model.component.alternativeAvailable") : component.optional ? settingsText(options.locale, "model.component.optional") : options.t(uiKeys.settings.system.scanCardMissing)}${escape(component.expected)}</span>`}
+              ${guideEvidence ? `<small class="component-evidence">${escape(guideEvidence)}</small>` : ""}
               </div>
-              ${component.found ? "" : `<button class="component-info" data-install-profile="${escape(profile.id)}" data-install-component="${componentIndex}" aria-label="${escape(settingsText(options.locale, "model.component.viewInfo", { label: component.label, info: options.t(uiKeys.settings.system.scanCardInstallInfo) }))}" title="${options.t(uiKeys.settings.system.scanCardInstallInfo)}">${icon("info")}</button>`}
+              ${guide ? `<button class="component-info" data-install-profile="${escape(profile.id)}" data-install-component="${componentIndex}" aria-label="${escape(settingsText(options.locale, "model.component.viewInfo", { label: component.label, info: guideActionLabel }))}" title="${escape(guideActionLabel)}">${icon(component.found ? "external-link" : "download")}</button>` : ""}
           </div>`;
         }).join("")}
       </div>`;
@@ -379,6 +404,9 @@ export function renderSettingsInstallGuideDialog(
       </div>`;
   }
   const targetDirectory = `${viewModel.configuredModelDirectory.replace(/[\\/]+$/, "")}\\${guide.targetSubdirectory.replaceAll("/", "\\")}`;
+  const sourceRevision = guide.version
+    ? `v${guide.version}`
+    : guide.revision || "—";
   return `
     <div class="dialog-backdrop" id="install-guide-backdrop">
       <section class="install-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="install-guide-title" tabindex="-1">
@@ -389,6 +417,9 @@ export function renderSettingsInstallGuideDialog(
         <p class="muted">${t(uiKeys.settings.system.installGuideDownloadInstruction)}</p>
         <div class="install-guide-fields">
           <div><span>${t(uiKeys.settings.system.installGuideSource)}</span><strong>${escape(guide.sourceLabel)}</strong></div>
+          <div><span>${escape(settingsText(options.locale, "model.component.sourceRevision"))}</span><code>${escape(sourceRevision)}</code></div>
+          ${guide.bytes ? `<div><span>${escape(settingsText(options.locale, "model.component.fileSize"))}</span><code>${escape(formatGuideBytes(guide.bytes))}</code></div>` : ""}
+          ${guide.sha256 ? `<div><span>${escape(settingsText(options.locale, "model.component.sha256"))}</span><code>${escape(guide.sha256)}</code></div>` : ""}
           <div><span>${t(uiKeys.settings.system.installGuideRecommendedFile)}</span><code>${escape(guide.recommendedFilename)}</code></div>
           <div class="install-target"><span>${t(uiKeys.settings.system.installGuideTargetDirectory)}</span><code>${escape(targetDirectory)}</code></div>
         </div>

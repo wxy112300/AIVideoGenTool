@@ -307,7 +307,6 @@
   white-space: nowrap;
 }
 .history-record-section .history-record-grid { margin-top: 0; }
-
 @media (max-width: 900px) {
   .history-detail-hero {
     grid-template-areas: "media" "inspector";

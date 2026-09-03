@@ -32,6 +32,7 @@ import {
   normalizeImageTargetResolution
 } from "../../../core/image-workflow";
 import { nextImagePictureNumber, normalizeImageEditDraft } from "../../../core/image-project";
+import { normalizeVideoDraft } from "../../../core/video-draft-normalization";
 import { PromptEditHistory, type PromptHistoryScope, type PromptHistorySnapshot } from "../../../core/prompt-edit-history";
 import {
   isMiniMaxH3R2vModel,
@@ -389,7 +390,7 @@ export function createCreateWorkspaceCoordinator(
 
   function patchDraft(patch: Partial<Draft>): void {
     const state = getState();
-    activateCreationDraft(state, { ...state.draft, ...patch });
+    activateCreationDraft(state, normalizeVideoDraft({ ...state.draft, ...patch }));
     draftRevision += 1;
     draftDirty = true;
     scheduleDraftSave();
@@ -403,7 +404,7 @@ export function createCreateWorkspaceCoordinator(
     const nextDraft = patchCreationDraftForMode(
       getState(),
       inputMode,
-      update,
+      (draft) => normalizeVideoDraft({ ...draft, ...update(draft) }),
       deps.getCreationMode() === mode
     );
     if (!nextDraft) return;

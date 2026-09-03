@@ -957,8 +957,13 @@ const queueAssembly = createQueueAssembly({
             ...(editingWaitingTask ? { taskId: task.id } : { replaceTaskId: task.id }),
             assetId: task.sourceAssetId,
             versionId: task.sourceVersionId,
+            ...(task.upscaleMode === "h3-native"
+                ? { h3Provider: task.h3NativeInput?.provider ?? "bilinear" }
+                : {}),
             targetHeight: task.targetHeight,
-            modelId: task.modelId,
+            modelId: task.upscaleMode === "h3-native"
+                ? "minimax_h3_latent_upscaler"
+                : task.modelId,
             tileMode: task.tileMode
         };
         renderOverlay();

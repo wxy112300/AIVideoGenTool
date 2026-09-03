@@ -105,6 +105,7 @@ export interface VideoCreatePageViewModel {
   spectrumOptionsMarkup: string;
   spectrumTitle: string;
   spectrumModeDisabled: boolean;
+  jointAvLabelMarkup: string;
   loraLabelMarkup: string;
   installReadyLoraDefinitions: ReadonlyArray<InstallReadyLoraDefinition>;
   installReadyLoraEmptyLabel: string;
@@ -426,6 +427,12 @@ export function renderCreatePage(
         <label class="settings-field settings-spectrum">${viewModel.spectrumLabelMarkup}
           <select id="spectrum-mode" ${viewModel.spectrumModeDisabled ? "disabled" : ""} title="${escapeHtml(viewModel.spectrumTitle)}">
             ${viewModel.spectrumOptionsMarkup}
+          </select>
+        </label>
+        <label class="settings-field settings-joint-av">${viewModel.jointAvLabelMarkup}
+          <select id="h3-save-joint-av">
+            <option value="save" ${viewModel.draft.h3SaveJointAv ? "selected" : ""}>${t(uiKeys.create.videoSettings.saveJointAvEnabled)}</option>
+            <option value="skip" ${viewModel.draft.h3SaveJointAv ? "" : "selected"}>${t(uiKeys.create.videoSettings.saveJointAvDisabled)}</option>
           </select>
         </label>` : ""}
           </div>

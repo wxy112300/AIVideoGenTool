@@ -6,6 +6,7 @@ import type {
   HistoryFile,
   ImageGenerationQueueTask,
   ImageGenerationRun,
+  NativeAvContinuationData,
   QueueTask,
   Settings,
   TaskPerformanceStats
@@ -79,6 +80,7 @@ export interface VideoTaskCompletion {
   files: HistoryFile[];
   performanceStats?: TaskPerformanceStats;
   h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
+  h3ContinuationData?: NativeAvContinuationData;
 }
 
 export interface QueueTaskClaim {
@@ -323,6 +325,7 @@ export class QueueExecutionSideEffects {
         files: completion.files,
         performanceStats: completion.performanceStats,
         h3MemoryRuntimeEvidence: completion.h3MemoryRuntimeEvidence,
+        h3ContinuationData: completion.h3ContinuationData,
         id: () => crypto.randomUUID()
       });
       const boundaryTransition = queuePauseBoundaryAfterTaskCompletion(

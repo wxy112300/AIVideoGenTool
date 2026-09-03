@@ -127,6 +127,29 @@ describe("create workspace coordinator", () => {
     expect(coordinator.getDraftSaveInFlight()).toBe(0);
   });
 
+  it("normalizes active and mode-specific video drafts as they are patched", () => {
+    const { coordinator, getState } = createCoordinatorHarness();
+    getState().videoExtensionDraft = {
+      ...structuredClone(getState().draft),
+      inputMode: "video"
+    };
+
+    coordinator.patchDraft({ fps: 12, frameInterpolation: "rife2x" });
+    coordinator.patchDraftForMode("video-extension", () => ({
+      modelId: "minimax_h3_ref2va",
+      fps: 12,
+      frameInterpolation: "rife4x"
+    }));
+
+    expect(getState().draft).toMatchObject({ fps: 24, frameInterpolation: "off" });
+    expect(getState().imageToVideoDraft).toMatchObject({ fps: 24, frameInterpolation: "off" });
+    expect(getState().videoExtensionDraft).toMatchObject({
+      modelId: "minimax_h3_ref2va",
+      fps: 24,
+      frameInterpolation: "off"
+    });
+  });
+
   it("keeps image draft persistence and clearing separate from video snapshots", async () => {
     const { coordinator, application, getState } = createCoordinatorHarness();
     const originalVideoPrompt = getState().draft.promptVersions[0]?.text;

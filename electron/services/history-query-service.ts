@@ -8,6 +8,7 @@ import type {
   HistoryItem,
   ImageAssetVersion,
   ImageHistoryProject,
+  NativeAvContinuationArtifact,
   Settings
 } from "../../src/types.js";
 import {
@@ -21,6 +22,10 @@ import {
 import { syncQueueVideoInputPaths } from "../../src/core/queue.js";
 import { createHistoryCoverCacheKey } from "../../src/core/history-cover.js";
 import { historyFileCandidates } from "../../src/core/history-media.js";
+import {
+  H3_CONTINUATION_ARTIFACT_SUBFOLDER,
+  validateNativeAvContinuationArtifact
+} from "../../src/core/h3-continuation-artifact.js";
 import type { HistoryFileSystemPort } from "../ports/history-file-system.js";
 import type { StateRepository } from "../ports/state-repository.js";
 import type { AppLogger } from "../../src/infrastructure/app-logger.js";
@@ -93,6 +98,40 @@ function historyFilesEqual(left: HistoryFile[], right: HistoryFile[]): boolean {
   });
 }
 
+function restoredNativeAvArtifact(
+  artifact: NativeAvContinuationArtifact | undefined,
+  outputDirectory: string
+): NativeAvContinuationArtifact | undefined {
+  if (!artifact || !outputDirectory.trim() || validateNativeAvContinuationArtifact(artifact)) return artifact;
+  const root = path.resolve(outputDirectory);
+  const resolve = (file: HistoryFile): string | undefined => {
+    if (file.subfolder !== H3_CONTINUATION_ARTIFACT_SUBFOLDER || path.basename(file.filename) !== file.filename) {
+      return undefined;
+    }
+    const candidate = path.resolve(root, file.subfolder, file.filename);
+    const relative = path.relative(root, candidate);
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return undefined;
+    return candidate;
+  };
+  const manifestPath = resolve(artifact.manifest);
+  const payloadPath = resolve(artifact.payload);
+  if (!manifestPath || !payloadPath) return artifact;
+  return {
+    ...artifact,
+    manifest: { ...artifact.manifest, absolutePath: manifestPath },
+    payload: { ...artifact.payload, absolutePath: payloadPath }
+  };
+}
+
+function nativeAvArtifactPathsEqual(
+  left: NativeAvContinuationArtifact | undefined,
+  right: NativeAvContinuationArtifact | undefined
+): boolean {
+  if (!left || !right) return left === right;
+  return left.manifest.absolutePath === right.manifest.absolutePath &&
+    left.payload.absolutePath === right.payload.absolutePath;
+}
+
 function restoredHistoryVersionFiles(
   version: AssetVersion,
   outputDirectory: string
@@ -133,6 +172,10 @@ function historyPathRepairNeeded(
       !historyFilesEqual(
         version.files,
         restoredHistoryVersionFiles(version, outputDirectory)
+      ) ||
+      !nativeAvArtifactPathsEqual(
+        version.h3ContinuationData?.artifact,
+        restoredNativeAvArtifact(version.h3ContinuationData?.artifact, outputDirectory)
       )
     )
   )) return true;
@@ -238,6 +281,12 @@ export class HistoryQueryService {
             `${file.filename}\0${file.absolutePath ?? ""}`
           );
           version.files = restoredHistoryVersionFiles(version, outputDirectory);
+          if (version.h3ContinuationData?.artifact) {
+            version.h3ContinuationData.artifact = restoredNativeAvArtifact(
+              version.h3ContinuationData.artifact,
+              outputDirectory
+            );
+          }
           if (isSegmentedSeedVr2Output(version.comfyOutputs)) {
             const after = version.files.map((file) =>
               `${file.filename}\0${file.absolutePath ?? ""}`
@@ -258,6 +307,37 @@ export class HistoryQueryService {
         { repairedVersionCount: repairedSegmentedSeedVr2Versions }
       );
     }
+  }
+
+  async restoreHistoryFileSizes(): Promise<void> {
+    const current = this.deps.store.get();
+    const files = current.history.flatMap((asset) => asset.versions.flatMap((version) => [
+      ...version.files,
+      ...(version.h3ContinuationData?.artifact
+        ? [version.h3ContinuationData.artifact.manifest, version.h3ContinuationData.artifact.payload]
+        : [])
+    ]));
+    const paths = [...new Set(files.map((file) => file.absolutePath).filter((value): value is string => Boolean(value)))];
+    const sizes = new Map<string, number>();
+    await Promise.all(paths.map(async (filename) => {
+      const stat = await this.safeStat(filename);
+      if (stat?.isFile()) sizes.set(filename, stat.size);
+    }));
+    if (!sizes.size) return;
+    await this.deps.store.update((state) => {
+      for (const asset of state.history) {
+        for (const version of asset.versions) {
+          for (const file of version.files) {
+            if (file.absolutePath && sizes.has(file.absolutePath)) file.sizeBytes = sizes.get(file.absolutePath);
+          }
+          const artifact = version.h3ContinuationData?.artifact;
+          if (!artifact) continue;
+          for (const file of [artifact.manifest, artifact.payload]) {
+            if (file.absolutePath && sizes.has(file.absolutePath)) file.sizeBytes = sizes.get(file.absolutePath);
+          }
+        }
+      }
+    });
   }
 
   async readHistoryCover(key: string, sourcePath: string): Promise<string | null> {

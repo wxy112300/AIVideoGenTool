@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractComfyOutputFiles,
+  extractComfyNativeAvOutputFiles,
   isVideoOutputFilename
 } from "../src/core/comfy-output";
 import {
@@ -62,6 +63,55 @@ describe("ComfyUI output parsing", () => {
     expect(files).toHaveLength(1);
     expect(isVideoOutputFilename(files[0]!.filename)).toBe(true);
     expect(isVideoOutputFilename("cover.png")).toBe(false);
+  });
+
+  it("collects only serializer descriptors from the private native AV collection", () => {
+    const response = {
+      outputs: {
+        "31": {
+          h3_native_av: [{
+            filename: "h3av_first.safetensors",
+            subfolder: "h3-native-av",
+            type: "output",
+            format: "safetensors"
+          }],
+          ui: {
+            h3_native_av: [{
+              filename: "h3av_first.safetensors",
+              subfolder: "h3-native-av",
+              type: "output",
+              format: "safetensors"
+            }]
+          },
+          files: [{
+            filename: "h3av_first.safetensors",
+            subfolder: "h3-native-av",
+            type: "output"
+          }]
+        }
+      },
+      h3_native_av: [
+        {
+          filename: "outside-collection.safetensors",
+          subfolder: "h3-native-av",
+          type: "output",
+          format: "safetensors"
+        },
+        {
+          filename: "wrong-format.safetensors",
+          subfolder: "h3-native-av",
+          type: "output",
+          format: "application/octet-stream"
+        }
+      ]
+    };
+
+    expect(extractComfyNativeAvOutputFiles(response, "31")).toEqual([{
+      filename: "h3av_first.safetensors",
+      subfolder: "h3-native-av",
+      type: "output",
+      format: "safetensors"
+    }]);
   });
 
   it("attaches paths relative to the configured ComfyUI output directory", () => {

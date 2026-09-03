@@ -257,6 +257,7 @@ describe("queue execution snapshots", () => {
       startImagePath: "start.png",
       workflowPath: "workflow.json",
       spectrumMode: "balanced" as const,
+      h3SaveJointAv: false,
       spectrumModelAwareMode: "full" as const,
       h3MemoryOptimizationMode: "preserve-native" as const,
       h3MemoryOptimizationUserSet: true,
@@ -274,6 +275,7 @@ describe("queue execution snapshots", () => {
       seed: Math.floor(0.25 * Number.MAX_SAFE_INTEGER),
       promptVersion: 1,
       h3LivePreview: false,
+      h3SaveJointAv: false,
       spectrumMode: "balanced",
       spectrumModelAwareMode: "off",
       h3MemoryOptimizationMode: "off",
@@ -291,6 +293,51 @@ describe("queue execution snapshots", () => {
     state.settings.h3LivePreview = true;
     const previewQueued = queueTaskFromDraft(draft, state, clock(["preview-task"]));
     expect(previewQueued.h3LivePreview).toBe(true);
+  });
+
+  it("keeps H3 1080 delivery separate from its 720p first-pass snapshot", () => {
+    const state = createDefaultState();
+    const draft = {
+      ...createDefaultDraft(),
+      startImagePath: "start.png",
+      workflowPath: "workflow.json",
+      resolution: 1080 as const,
+      h3SaveJointAv: true,
+      fps: 12 as const,
+      frameInterpolation: "rife2x" as const
+    };
+
+    const queued = queueTaskFromDraft(draft, state, clock());
+
+    expect(queued.resolution).toBe(720);
+    expect(queued.h3DeliveryResolution).toBe(1080);
+    expect(queued.outputFilename).toContain("1080p");
+    expect(queued.fps).toBe(24);
+    expect(queued.frameInterpolation).toBe("off");
+  });
+
+  it("preserves interpolation settings for non-H3 generation snapshots", () => {
+    const state = createDefaultState();
+    const queued = queueTaskFromDraft({
+      ...createDefaultDraft(),
+      modelId: "sulphur2",
+      startImagePath: "start.png",
+      workflowPath: "workflow.json",
+      fps: 24,
+      frameInterpolation: "rife2x"
+    }, state, clock());
+
+    expect(queued.fps).toBe(24);
+    expect(queued.frameInterpolation).toBe("rife2x");
+  });
+
+  it("rejects catalog models from unsupported immutable task modes", () => {
+    const state = createDefaultState();
+    expect(() => extensionTaskFromDraft({
+      ...createDefaultDraft(),
+      modelId: "minimax_h3_fl2va_q3_gguf",
+      inputMode: "video"
+    }, state, clock())).toThrow("当前模型不支持视频续写");
   });
 
   it("builds all image runs and clones markup into the queue snapshot", () => {
@@ -481,6 +528,9 @@ describe("queue execution snapshots", () => {
       trimEndSeconds: 12,
       workflowPath: "extend.json",
       spectrumMode: "balanced" as const,
+      fps: 12 as const,
+      frameInterpolation: "rife2x" as const,
+      h3SaveJointAv: false,
       h3ReferenceSlots: [{
         id: "picture-ref",
         mediaType: "image" as const,
@@ -492,7 +542,10 @@ describe("queue execution snapshots", () => {
     const queued = extensionTaskFromDraft(draft, state, clock());
 
     expect(queued.spectrumMode).toBe("off");
+    expect(queued.h3SaveJointAv).toBe(false);
     expect(queued.maxGeneratedFrames).toBe(362);
+    expect(queued.fps).toBe(24);
+    expect(queued.frameInterpolation).toBe("off");
     expect(queued.sourceVideoPath).toBe("source.mp4");
     expect(queued.h3ReferenceSlots?.map((slot) => [slot.mediaType, slot.mediaPath])).toEqual([
       ["video", "source.mp4"],

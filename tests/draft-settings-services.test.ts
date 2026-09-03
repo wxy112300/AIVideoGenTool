@@ -291,6 +291,110 @@ describe("SettingsService", () => {
     expect(service.isHistoryMigrationRunning()).toBe(false);
   });
 
+  it("commits migrated JointAV manifest and payload paths to history", async () => {
+    const outputRoot = path.join(process.cwd(), "comfy-output");
+    const oldDirectory = path.join(outputRoot, "old");
+    const newDirectory = path.join(outputRoot, "new");
+    const initial = createDefaultState();
+    initial.settings.outputDirectory = oldDirectory;
+    initial.settings.imageInputLibraryDirectory = path.join(process.cwd(), "input-library");
+    initial.history = [{
+      id: "asset-1",
+      files: [],
+      versions: [{
+        id: "version-1",
+        files: [],
+        h3ContinuationData: {
+          status: "available",
+          artifact: {
+            manifest: {
+              filename: "h3av_artifact-001.json",
+              subfolder: "h3-native-av",
+              type: "output",
+              absolutePath: path.join(oldDirectory, "h3-native-av", "h3av_artifact-001.json")
+            },
+            payload: {
+              filename: "h3av_artifact-001.safetensors",
+              subfolder: "h3-native-av",
+              type: "output",
+              absolutePath: path.join(oldDirectory, "h3-native-av", "h3av_artifact-001.safetensors")
+            }
+          }
+        }
+      }]
+    } as unknown as HistoryAsset];
+    const queuedArtifact = structuredClone(
+      initial.history[0]!.versions[0]!.h3ContinuationData!.artifact!
+    );
+    initial.queue = [{
+      id: "upscale-1",
+      taskType: "upscale",
+      upscaleMode: "h3-native",
+      sourceAssetId: "asset-1",
+      sourceVersionId: "version-1",
+      h3NativeInput: { artifact: queuedArtifact }
+    } as unknown as AppState["queue"][number]];
+    const plan: VideoHistoryMigrationPlan = {
+      oldDirectory,
+      newDirectory,
+      entries: [
+        {
+          sourcePath: path.join(oldDirectory, "h3-native-av", "h3av_artifact-001.json"),
+          targetPath: path.join(newDirectory, "h3-native-av", "h3av_artifact-001.json"),
+          size: 1,
+          hash: "manifest-hash",
+          references: [{
+            kind: "history",
+            assetId: "asset-1",
+            versionId: "version-1",
+            fileIndex: 0,
+            artifactKind: "manifest"
+          }],
+          targetReady: true,
+          createdTarget: true
+        },
+        {
+          sourcePath: path.join(oldDirectory, "h3-native-av", "h3av_artifact-001.safetensors"),
+          targetPath: path.join(newDirectory, "h3-native-av", "h3av_artifact-001.safetensors"),
+          size: 1,
+          hash: "payload-hash",
+          references: [{
+            kind: "history",
+            assetId: "asset-1",
+            versionId: "version-1",
+            fileIndex: 1,
+            artifactKind: "payload"
+          }],
+          targetReady: true,
+          createdTarget: true
+        }
+      ],
+      missing: [],
+      conflicts: [],
+      totalBytes: 2
+    };
+    const repository = createRepository(initial);
+    const { migration } = createMigrationPort(plan);
+    const service = createSettingsService(repository, {
+      migration,
+      resolveComfyOutputDirectory: vi.fn(async () => outputRoot)
+    });
+
+    await service.save({
+      ...initial.settings,
+      outputDirectory: newDirectory
+    }, "migrate-video-history");
+
+    const artifact = repository.snapshot().history[0]?.versions[0]?.h3ContinuationData?.artifact;
+    expect(artifact?.manifest.absolutePath).toBe(plan.entries[0]?.targetPath);
+    expect(artifact?.payload.absolutePath).toBe(plan.entries[1]?.targetPath);
+    const queued = repository.snapshot().queue[0];
+    expect(queued?.taskType === "upscale" ? queued.h3NativeInput?.artifact.manifest.absolutePath : "")
+      .toBe(plan.entries[0]?.targetPath);
+    expect(queued?.taskType === "upscale" ? queued.h3NativeInput?.artifact.payload.absolutePath : "")
+      .toBe(plan.entries[1]?.targetPath);
+  });
+
   it("rejects an output directory outside the selected ComfyUI output root", async () => {
     const outputRoot = path.join(process.cwd(), "comfy-output");
     const initial = createDefaultState();

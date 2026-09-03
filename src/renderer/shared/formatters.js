@@ -92,7 +92,14 @@ export function formatTrimTime(seconds) {
     return `${String(minutes).padStart(2, "0")}:${remainder}`;
 }
 export function formatBytes(bytes) {
-    return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+    const value = Math.max(0, Number.isFinite(bytes) ? bytes : 0);
+    if (value < 1024)
+        return `${Math.round(value)} B`;
+    if (value < 1024 ** 2)
+        return `${(value / 1024).toFixed(1)} KB`;
+    if (value < 1024 ** 3)
+        return `${(value / 1024 ** 2).toFixed(1)} MB`;
+    return `${(value / 1024 ** 3).toFixed(1)} GB`;
 }
 export function formatAssetBytes(bytes) {
     if (bytes < 1024)

@@ -832,6 +832,13 @@ describe("Qwen image edit workflow contract", () => {
     expect(workflow.positive?.inputs.image2).toEqual(["image-picture-3", 0]);
     expect(workflow.model?.inputs.unet_name).toBe("qwen_image_edit_2511_bf16.safetensors");
     expect(workflow.negative?.class_type).toBe("TextEncodeQwenImageEditPlus");
+    expect(workflow.gpuVae).toMatchObject({
+      class_type: "LocalVideoStudioRequireGpuVAE",
+      inputs: { vae: ["vae", 0] }
+    });
+    for (const nodeId of ["positive", "negative", "source", "decoded"]) {
+      expect(workflow[nodeId]?.inputs.vae).toEqual(["gpuVae", 0]);
+    }
     expect(workflow.sourceImage?.class_type).toBe("FluxKontextImageScale");
     expect(workflow.source?.class_type).toBe("VAEEncode");
     expect(workflow.cfgNorm?.class_type).toBe("CFGNorm");
@@ -855,6 +862,7 @@ describe("Qwen image edit workflow contract", () => {
     expect(qwenImageEdit2511RequiredNodeTypes).toContain("TextEncodeQwenImageEditPlus");
     expect(qwenImageEdit2511RequiredNodeTypes).toContain("FluxKontextImageScale");
     expect(qwenImageEdit2511RequiredNodeTypes).toContain("FluxKontextMultiReferenceLatentMethod");
+    expect(qwenImageEdit2511RequiredNodeTypes).toContain("LocalVideoStudioRequireGpuVAE");
   });
 
   it("rejects a workflow fixture with an unresolved image placeholder", () => {

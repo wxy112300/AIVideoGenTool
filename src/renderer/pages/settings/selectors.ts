@@ -275,6 +275,14 @@ export function deriveCustomNodeCardState(options: {
   globallyBlocked: boolean;
 }) {
   const queued = options.queuedIndex >= 0;
+  const revisionUpdateAvailable = Boolean(
+    options.node.installed &&
+    options.node.appInstallable !== false &&
+    options.node.updateAvailable &&
+    options.node.detectedRevision &&
+    options.node.installRevision &&
+    options.node.detectedRevision.toLowerCase() !== options.node.installRevision.toLowerCase()
+  );
   const phase: CustomNodeDisplayStatus | null = options.active
     ? "processing"
     : queued
@@ -283,7 +291,9 @@ export function deriveCustomNodeCardState(options: {
         ? "finalizing"
         : null;
   const status: CustomNodeDisplayStatus = phase ?? (
-    options.node.compatibilityState === "error"
+    revisionUpdateAvailable
+      ? "update"
+      : options.node.compatibilityState === "error"
       ? "compatibility-error"
       : options.node.updateAvailable && options.node.loaded
         ? "update"
@@ -304,7 +314,9 @@ export function deriveCustomNodeCardState(options: {
     tone: customNodeStatusTone(options.node, phase !== null),
     primaryOperation: !options.node.installed
       ? "install" as const
-      : options.node.runtimeRepairable || Boolean(options.node.loadError) ||
+      : revisionUpdateAvailable
+        ? "update" as const
+        : options.node.runtimeRepairable || Boolean(options.node.loadError) ||
         options.node.compatibilityState === "error"
         ? "repair" as const
         : options.node.updateAvailable
@@ -312,6 +324,7 @@ export function deriveCustomNodeCardState(options: {
           : "reinstall" as const,
     installActionable: true,
     runtimeRepairable: options.node.runtimeRepairable === true,
+    revisionUpdateAvailable,
     installBlocked: options.globallyBlocked || options.active || queued
   };
 }
