@@ -1338,6 +1338,12 @@ describe("generation VRAM safety", () => {
       resolution: 768,
       ratio: "16:9"
     })).toEqual([1376, 768]);
+    expect(outputDimensions({
+      ...task,
+      modelId: "minimax_h3_fl2va",
+      resolution: 768,
+      ratio: "21:9"
+    })).toEqual([1792, 768]);
   });
 
   it("preserves arbitrary source image ratios on the H3 32-pixel grid", () => {

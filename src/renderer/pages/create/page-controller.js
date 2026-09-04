@@ -388,6 +388,9 @@ export function mountCreatePageController(options) {
                                 : {})
                         }
                         : {}),
+                    ...(isMiniMaxH3Model(state.draft.modelId) && !isMiniMaxH3Model(value) && state.draft.ratio === "21:9"
+                        ? { ratio: "source" }
+                        : {}),
                     ...(!bundled?.supportsEndImage && !nextIsR2V ? { endImagePath: "" } : {}),
                     workflowPath: bundled?.path ?? (state.draft.workflowPath === oldBundledPath ? "" : state.draft.workflowPath)
                 }));

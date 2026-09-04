@@ -317,7 +317,7 @@ export interface Draft {
   modelId: string;
   videoLoras: VideoLoraSelection[];
   workflowPath: string;
-  ratio: "source" | "16:9" | "9:16" | "1:1" | "4:3" | "3:4";
+  ratio: "source" | "16:9" | "21:9" | "9:16" | "1:1" | "4:3" | "3:4";
   resolution: H3Resolution;
   duration: number;
   steps: H3StepCount;

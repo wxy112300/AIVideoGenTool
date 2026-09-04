@@ -287,6 +287,39 @@ describe("history media controller scheduling", () => {
     cleanupMedia();
   });
 
+  it("handles navigation controls inserted after the controller mounts", () => {
+    const root = document.createElement("main");
+    document.body.append(root);
+    const navigateHistoryDetail = vi.fn();
+    const context = {
+      ...createContext(root),
+      getRoute: () => ({ page: "history-detail", creationMode: "image-to-video", historyKind: "video" as const })
+    } as RendererContext;
+    const cleanup = mountHistoryNavigationController(context, {
+      setHistoryKind: vi.fn(),
+      resetHistoryScroll: vi.fn(),
+      switchHistoryLayout: vi.fn(),
+      openHistoryDetail: vi.fn(),
+      openImageHistoryDetail: vi.fn(),
+      navigateHistoryDetail,
+      navigateImageHistoryDetail: vi.fn(),
+      navigateImageHistoryVersion: vi.fn(),
+      selectVideoHistoryVersion: vi.fn(),
+      selectImageHistoryVersion: vi.fn()
+    });
+
+    const controlBar = document.createElement("media-control-bar");
+    const button = document.createElement("button");
+    button.dataset.historyNavigation = "1";
+    controlBar.append(button);
+    root.append(controlBar);
+
+    button.click();
+
+    expect(navigateHistoryDetail).toHaveBeenCalledWith(1);
+    cleanup();
+  });
+
   it("does not report a warmup error when hover interrupts the temporary video", async () => {
     const root = document.createElement("main");
     document.body.append(root);

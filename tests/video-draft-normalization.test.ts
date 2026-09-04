@@ -48,6 +48,21 @@ describe("video draft normalization", () => {
     expect(normalized.spectrumMode).toBe("off");
   });
 
+  it("keeps 21:9 available for H3 while clearing it for non-H3 models", () => {
+    const h3 = normalizeVideoDraft({
+      ...createDefaultDraft(),
+      ratio: "21:9"
+    });
+    const nonH3 = normalizeVideoDraft({
+      ...createDefaultDraft(),
+      modelId: "sulphur2",
+      ratio: "21:9"
+    });
+
+    expect(h3.ratio).toBe("21:9");
+    expect(nonH3.ratio).toBe("source");
+  });
+
   it("clears every LoRA from the Q3 profile regardless of self-declared compatibility", () => {
     const normalized = normalizeVideoDraft({
       ...createDefaultDraft(),

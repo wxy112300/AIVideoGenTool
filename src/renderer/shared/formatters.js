@@ -4,6 +4,7 @@ import { uiKeys } from "../../core/i18n-keys";
 export function historyAspectRatio(ratio) {
     return ({
         "16:9": "16 / 9",
+        "21:9": "21 / 9",
         "9:16": "9 / 16",
         "1:1": "1 / 1",
         "4:3": "4 / 3",

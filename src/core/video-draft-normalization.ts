@@ -30,6 +30,9 @@ export function videoModelSupportsDraftInput(
 export function normalizeVideoDraft(draft: Draft): Draft {
   const legacyModelId = draft.modelId;
   const modelId = baseVideoModelId(legacyModelId);
+  const ratio = !modelCatalog.isFamily(modelId, "minimax-h3") && draft.ratio === "21:9"
+    ? "source"
+    : draft.ratio;
   const compatibleVideoLoras = normalizeVideoLoras(draft.videoLoras, legacyModelId)
     .filter((lora) => videoLoraCompatibleWithDraft(lora, modelId, draft.inputMode));
   const videoLoras = modelCatalog.get(modelId)?.definition.runtimeProfile === "h3-q3-3080"
@@ -47,6 +50,7 @@ export function normalizeVideoDraft(draft: Draft): Draft {
   return {
     ...draft,
     modelId,
+    ratio,
     videoLoras,
     steps: policy.isH3 ? normalizeVideoSteps(draft.steps, policy) : draft.steps,
     ...normalizeH3FrameSettings({ ...draft, modelId }),

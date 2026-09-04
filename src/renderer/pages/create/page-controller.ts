@@ -499,6 +499,9 @@ export function mountCreatePageController(
                   : {})
               }
             : {}),
+          ...(isMiniMaxH3Model(state.draft.modelId) && !isMiniMaxH3Model(value) && state.draft.ratio === "21:9"
+            ? { ratio: "source" as const }
+            : {}),
           ...(!bundled?.supportsEndImage && !nextIsR2V
             ? { endImagePath: "", endImageWidth: 0, endImageHeight: 0 }
             : {}),

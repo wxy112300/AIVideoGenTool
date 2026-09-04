@@ -260,6 +260,19 @@ export function renderImageEditPage(
     </div>`;
 }
 
+const STANDARD_VIDEO_RATIO_OPTIONS: ReadonlyArray<Draft["ratio"]> = [
+  "source", "16:9", "9:16", "1:1", "4:3", "3:4"
+];
+const H3_VIDEO_RATIO_OPTIONS: ReadonlyArray<Draft["ratio"]> = [
+  "source", "16:9", "21:9", "9:16", "1:1", "4:3", "3:4"
+];
+
+export function videoRatioOptionsFor(
+  isMiniMaxH3: boolean
+): ReadonlyArray<Draft["ratio"]> {
+  return isMiniMaxH3 ? H3_VIDEO_RATIO_OPTIONS : STANDARD_VIDEO_RATIO_OPTIONS;
+}
+
 export function renderCreatePage(
   viewModel: VideoCreatePageViewModel,
   options: CreatePageOptions
@@ -431,7 +444,7 @@ export function renderCreatePage(
         </label>
         <label class="settings-field settings-ratio">${t(uiKeys.create.videoSettings.ratio)}
           <select id="ratio" ${viewModel.extending ? "disabled" : ""}>
-            ${["source", "16:9", "9:16", "1:1", "4:3", "3:4"].map((ratio) =>
+            ${videoRatioOptionsFor(viewModel.isMiniMaxH3).map((ratio) =>
               `<option value="${ratio}" ${viewModel.draft.ratio === ratio ? "selected" : ""}>${ratio === "source" ? viewModel.extending ? t(uiKeys.create.videoSettings.followInputVideo) : t(uiKeys.create.videoSettings.originalImageRatio) : ratio}</option>`
             ).join("")}
           </select>

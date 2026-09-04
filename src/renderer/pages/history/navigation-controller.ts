@@ -26,6 +26,14 @@ function stopNavigation(event: Event): void {
   event.stopImmediatePropagation();
 }
 
+function navigationButtonFromEvent(root: HTMLElement, event: Event): HTMLElement | null {
+  const path = event.composedPath();
+  if (!path.includes(root)) return null;
+  return path.find((target): target is HTMLElement =>
+    target instanceof HTMLElement && target.matches("[data-history-navigation]")
+  ) ?? null;
+}
+
 function isCardSpaceKey(event: KeyboardEvent): boolean {
   return event.key === " " || event.key === "Spacebar";
 }
@@ -99,19 +107,19 @@ export function mountHistoryNavigationController(
     }, { signal });
   });
 
-  root.querySelectorAll<HTMLElement>("[data-history-navigation]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      stopNavigation(event);
-      const direction = directionFrom(button.dataset.historyNavigation);
-      if (direction == null) return;
-      const page = context.getRoute().page as Page;
-      if (page === "image-history-detail") {
-        options.navigateImageHistoryDetail(direction);
-      } else {
-        options.navigateHistoryDetail(direction);
-      }
-    }, { signal });
-  });
+  root.addEventListener("click", (event) => {
+    const button = navigationButtonFromEvent(root, event);
+    if (!button) return;
+    stopNavigation(event);
+    const direction = directionFrom(button.dataset.historyNavigation);
+    if (direction == null) return;
+    const page = context.getRoute().page as Page;
+    if (page === "image-history-detail") {
+      options.navigateImageHistoryDetail(direction);
+    } else {
+      options.navigateHistoryDetail(direction);
+    }
+  }, { capture: true, signal });
 
   root.querySelectorAll<HTMLElement>("[data-image-version-navigation]").forEach((button) => {
     button.addEventListener("click", (event) => {

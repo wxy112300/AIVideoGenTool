@@ -1091,6 +1091,7 @@ export function missingWorkflowNodeTypes(source, objectInfo) {
 }
 const ratios = {
     "16:9": [16, 9],
+    "21:9": [21, 9],
     "9:16": [9, 16],
     "1:1": [1, 1],
     "4:3": [4, 3],
