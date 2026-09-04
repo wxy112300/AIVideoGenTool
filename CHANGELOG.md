@@ -8,7 +8,11 @@
 
 ## Unreleased
 
+## 0.59.1 — 2026-09-05
+
 - 新增可选 MiniMax H3 Equirectangular 360° LoRA：固定使用 `equirect360` 触发词、默认强度 1.0，接入 H3 FL2VA 原生 T2VA 的 21:9/768p 路径；模型文件按 Hugging Face 提交和 SHA-256 校验，I2V、Ref2VA、8-step Turbo 与视频续写仍标记为未验证。
+
+- 修复 H3 Spectrum 的内部回放进度被当作外层采样步数显示的问题：按渲染后的 `BasicScheduler` 步数归一化采样进度，避免 `2/40`、`21/20` 和错误的预计剩余时间；采样节点切换到 VAE 等后续阶段时会清除旧的步进进度。
 
 ## 0.59.0 — 2026-09-04
 
