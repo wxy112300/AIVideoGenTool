@@ -77,6 +77,7 @@ describe("model catalog", () => {
       "minimax-h3-lightx2v-turbo-8step-v1",
       "minimax-h3-ref2v-turbo-4step-v01",
       "minimax-h3-camera-motion-v1",
+      "minimax-h3-equi360",
       "minimax-h3-after-midnight-ref2va-nsfw",
       "minimax-h3-facial-realism-closeup",
       "minimax-h3-realism-people"

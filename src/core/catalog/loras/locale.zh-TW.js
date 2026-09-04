@@ -63,6 +63,20 @@ export const zhTWLoraLocales = {
             orderSuggestion: "建議將 {current} 放在 {previous} 前面；運鏡 LoRA 建議先單獨驗證，再與效能或人物 LoRA 組合。"
         }
     },
+    "minimax-h3-equi360": {
+        guide: {
+            summary: "MiniMax H3 360° 等距柱狀全景 LoRA，專門把畫面組織成可封裝為球面影片的全景投影。",
+            recommendedStrength: "固定 1.0；先使用 H3 原生 T2VA、21:9、768p 做基準。",
+            effects: "增強完整球面投影、中央水平線與環繞環境感；應用會自動把觸發詞 equirect360 放到執行 Prompt 開頭。",
+            stacking: "建議先單獨使用；不要一開始與 Camera Motion、人物寫實或 Turbo 疊加，先做同 Seed 對照。",
+            compatibility: "目前接入為 MiniMax H3 FL2VA 非續寫生成模式；模型卡只驗證原生 T2VA 21:9/768p，I2V、Ref2VA、8-step Turbo 與影片續寫未驗證。",
+            source: "shamanic / minimax-h3-equi360-lora · step2500"
+        },
+        rules: {
+            incompatible: "{name} 不相容目前的基礎模型或輸入模式。",
+            orderSuggestion: "建議將 {current} 放在 {previous} 前面；360° 幾何 LoRA 建議先單獨驗證，再與運鏡、人物或效能 LoRA 組合。"
+        }
+    },
     "minimax-h3-turbo-v4-step600-ema-pruned": {
         guide: {
             summary: "社群 MiniMax H3 Turbo v4 step600 EMA pruned 轉換，面向 6–8 步品質優先路徑。",

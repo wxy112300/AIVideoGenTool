@@ -616,6 +616,32 @@ export async function assertAetherScaleExecutionReady(
   }
 }
 
+export interface ComfyProgressContext {
+  spectrumOuterSteps?: number;
+}
+
+export function progressContextForPrompt(prompt: unknown): ComfyProgressContext {
+  if (!prompt || typeof prompt !== "object" || Array.isArray(prompt)) return {};
+  const schedulerSteps = new Set<number>();
+  let hasSpectrum = false;
+  for (const value of Object.values(prompt as Record<string, unknown>)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const node = value as Record<string, unknown>;
+    if (node.class_type === "SpectrumApplyMiniMaxH3") {
+      hasSpectrum = true;
+    }
+    if (node.class_type !== "BasicScheduler") continue;
+    const inputs = node.inputs;
+    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) continue;
+    const steps = (inputs as Record<string, unknown>).steps;
+    if (typeof steps === "number" && Number.isSafeInteger(steps) && steps > 0) {
+      schedulerSteps.add(steps);
+    }
+  }
+  if (!hasSpectrum || schedulerSteps.size !== 1) return {};
+  return { spectrumOuterSteps: [...schedulerSteps][0] };
+}
+
 export async function submitTask(
   task: QueueTask,
   settings: Settings,
@@ -634,6 +660,7 @@ export async function submitTask(
   h3MemoryRuntimeEvidence?: H3MemoryRuntimeEvidence;
   uploadedUpscaleSource?: string;
   h3AvSerializerNodeId?: string;
+  progressContext?: ComfyProgressContext;
 }> {
   if (!task.workflowPath) {
     throw new Error("任务没有配置 ComfyUI API 工作流 JSON");
@@ -961,6 +988,7 @@ export async function submitTask(
       note: "提交前 /object_info contract 已通过；当前未从 ComfyUI 日志稳定解析实际 provider 或 fallback。"
     };
   }
+  const progressContext = progressContextForPrompt(prompt);
   const missingNodes = missingWorkflowNodeTypes(prompt, objectInfo);
   if (missingNodes.length) {
     throw new Error(
@@ -1003,6 +1031,7 @@ export async function submitTask(
     ...(h3TokenCount == null ? {} : { h3TokenCount }),
     ...(h3MemoryRuntimeEvidence ? { h3MemoryRuntimeEvidence } : {}),
     ...(h3AvSerializerNodeId ? { h3AvSerializerNodeId } : {}),
+    ...(progressContext.spectrumOuterSteps == null ? {} : { progressContext }),
     ...(uploadedUpscaleSource ? { uploadedUpscaleSource } : {})
   };
 }
@@ -1417,39 +1446,66 @@ export function nodeStage(classType: string | undefined): NodeProgressStage {
   return { start: 12, end: 14, label: classType, tracksSteps: false };
 }
 
+function normalizedProgressValues(
+  classType: string | undefined,
+  value: number | undefined,
+  max: number | undefined,
+  progressContext?: ComfyProgressContext
+): { value: number; max: number } | undefined {
+  if (typeof value !== "number" || typeof max !== "number") return undefined;
+  const spectrumOuterSteps = progressContext?.spectrumOuterSteps;
+  if (
+    classType?.includes("Sampler") &&
+    typeof spectrumOuterSteps === "number" &&
+    spectrumOuterSteps > 0 &&
+    max > spectrumOuterSteps
+  ) {
+    return {
+      value: Math.min(spectrumOuterSteps, Math.max(0, value)),
+      max: spectrumOuterSteps
+    };
+  }
+  return { value, max };
+}
+
 export function progressForNode(
   classType: string | undefined,
   value?: number,
-  max?: number
+  max?: number,
+  progressContext?: ComfyProgressContext
 ): { progress: number; label: string } {
   const stage = nodeStage(classType);
+  const normalized = normalizedProgressValues(classType, value, max, progressContext);
+  const progressValue = normalized?.value ?? value;
+  const progressMax = normalized?.max ?? max;
   const hasProgressValues =
-    typeof value === "number" &&
-    typeof max === "number" &&
-    max > 0;
-  if (hasProgressValues && value >= max) {
+    typeof progressValue === "number" &&
+    typeof progressMax === "number" &&
+    progressMax > 0;
+  if (hasProgressValues && progressValue >= progressMax) {
     return {
       progress: stage.end,
       label: classType === "MMH3UltimateUpscale"
-        ? `${stage.label} ${Math.ceil(max)}/${Math.ceil(max)} 块`
+        ? `${stage.label} ${Math.ceil(progressMax)}/${Math.ceil(progressMax)} 块`
         : stage.label
     };
   }
-  const hasSteps = stage.tracksSteps && hasProgressValues;
-  if (!hasSteps) return { progress: stage.start, label: stage.label };
-  const ratio = Math.min(1, Math.max(0, value / max));
+  if (!stage.tracksSteps || !hasProgressValues) {
+    return { progress: stage.start, label: stage.label };
+  }
+  const ratio = Math.min(1, Math.max(0, progressValue / progressMax));
   if (classType === "MMH3UltimateUpscale") {
-    const completedPieces = Math.floor(value + Number.EPSILON);
-    const pieceProgress = value - completedPieces;
-    const currentPiece = Math.min(Math.ceil(max), completedPieces + 1);
+    const completedPieces = Math.floor(progressValue + Number.EPSILON);
+    const pieceProgress = progressValue - completedPieces;
+    const currentPiece = Math.min(Math.ceil(progressMax), completedPieces + 1);
     return {
       progress: Number((stage.start + (stage.end - stage.start) * ratio).toFixed(1)),
-      label: `${stage.label} ${currentPiece}/${Math.ceil(max)} 块 · 当前块 ${Math.round(pieceProgress * 100)}%`
+      label: `${stage.label} ${currentPiece}/${Math.ceil(progressMax)} 块 · 当前块 ${Math.round(pieceProgress * 100)}%`
     };
   }
   return {
     progress: Number((stage.start + (stage.end - stage.start) * ratio).toFixed(1)),
-    label: `${stage.label} ${value}/${max}`
+    label: `${stage.label} ${progressValue}/${progressMax}`
   };
 }
 
@@ -1458,12 +1514,16 @@ export function workProgressForNode(
   value: number,
   max: number,
   startedAt: number,
-  sampledAt = Date.now()
+  sampledAt = Date.now(),
+  progressContext?: ComfyProgressContext
 ): QueueWorkProgress | undefined {
-  if (!nodeStage(classType).tracksSteps || max <= 0) return undefined;
+  const normalized = normalizedProgressValues(classType, value, max, progressContext);
+  const progressValue = normalized?.value ?? value;
+  const progressMax = normalized?.max ?? max;
+  if (!nodeStage(classType).tracksSteps || progressMax <= 0) return undefined;
   return {
-    value,
-    max,
+    value: progressValue,
+    max: progressMax,
     unit: classType === "MMH3UltimateUpscale"
       ? "piece"
       : classType?.includes("Sampler")
@@ -1584,7 +1644,8 @@ export async function waitForTask(
   ) => void,
   isComputeActive: () => boolean = () => false,
   logContext: ComfyLogBridgeContext = {},
-  onComfyLogLine?: (line: string) => void
+  onComfyLogLine?: (line: string) => void,
+  progressContext: ComfyProgressContext = {}
 ): Promise<unknown> {
   const baseUrl = cleanBaseUrl(settings.comfyUrl);
   const logger = getApplicationLogger();
@@ -1630,13 +1691,14 @@ export async function waitForTask(
       unit: "step" | "piece" | "item";
       startedAt: string;
       sampledAt: string;
-    }
+    },
+    force = false
   ): void => {
     const bounded = complete
       ? 100
       : Math.min(99, Math.max(0, value));
-    if (!complete && bounded < lastReportedProgress) return;
-    if (bounded === lastReportedProgress && stage === lastReportedStage) return;
+    if (!force && !complete && bounded < lastReportedProgress) return;
+    if (!force && bounded === lastReportedProgress && stage === lastReportedStage) return;
     lastReportedProgress = complete
       ? bounded
       : Math.max(lastReportedProgress, bounded);
@@ -1736,7 +1798,7 @@ export async function waitForTask(
             nodeId: activeNodeId,
             classType: nodeTypes[activeNodeId] ?? "unknown"
           });
-          reportProgress(stage.progress, stage.label);
+          reportProgress(stage.progress, stage.label, false, false, undefined, true);
         }
         if (
           message.type === "progress" &&
@@ -1762,7 +1824,8 @@ export async function waitForTask(
             const stage = progressForNode(
               nodeTypes[nodeId],
               message.data.value,
-              message.data.max
+              message.data.max,
+              progressContext
             );
             reportProgress(
               stage.progress,
@@ -1773,7 +1836,9 @@ export async function waitForTask(
                 nodeTypes[nodeId],
                 message.data.value,
                 message.data.max,
-                activeNodeStartedAt
+                activeNodeStartedAt,
+                Date.now(),
+                progressContext
               )
             );
           }
@@ -1808,7 +1873,7 @@ export async function waitForTask(
               1,
               1
             );
-            reportProgress(stage.progress, `${stage.label} 完成`);
+            reportProgress(stage.progress, `${stage.label} 完成`, false, false, undefined, true);
           }
           const preview = await executedPreviewDataUrl(
             baseUrl,

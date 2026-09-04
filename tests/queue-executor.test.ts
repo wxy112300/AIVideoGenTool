@@ -312,6 +312,53 @@ describe("queue executor runtime gate", () => {
     )).toBe(true);
   });
 
+  it("forwards progress context and clears stale work progress", async () => {
+    const state = createDefaultState();
+    const task = fixtureTask(state);
+    state.queue = [task];
+    state.queueRunning = true;
+    state.queueLifecycle = "starting";
+    const progressContext = { spectrumOuterSteps: 20 };
+    mocks.submitTask.mockResolvedValueOnce({
+      promptId: "prompt-fixture",
+      clientId: "client-fixture",
+      nodeTypes: { "1": "FixtureNode" },
+      h3LivePreviewRequested: false,
+      h3LivePreviewActive: false,
+      progressContext
+    });
+    mocks.waitForTask.mockImplementationOnce(async (...args: unknown[]) => {
+      const onProgress = args[6] as (
+        progress: number,
+        stage: string,
+        determinate: boolean,
+        workProgress?: QueueTask["workProgress"]
+      ) => void;
+      const workProgress = {
+        value: 4,
+        max: 20,
+        unit: "step" as const,
+        startedAt: "2026-09-03T00:00:00.000Z",
+        sampledAt: "2026-09-03T00:04:20.000Z"
+      };
+      onProgress(42, "扩散采样 4/20", true, workProgress);
+      onProgress(42, "扩散采样 4/20", true, undefined);
+      return { outputs: { fixture: true } };
+    });
+    const harness = createHarness(state);
+
+    await createQueueExecutor(harness.deps)();
+
+    expect(mocks.waitForTask.mock.calls[0]?.[11]).toEqual(progressContext);
+    const progressSnapshots = harness.snapshots
+      .map((snapshot) => snapshot.queue.find((queued) => queued.id === task.id))
+      .filter((queued): queued is QueueTask =>
+        Boolean(queued) && Object.prototype.hasOwnProperty.call(queued, "workProgress")
+      );
+    expect(progressSnapshots.some((queued) => queued.workProgress?.value === 4)).toBe(true);
+    expect(progressSnapshots.some((queued) => queued.workProgress === undefined)).toBe(true);
+  });
+
   it("persists the H3 token count resolved during submission", async () => {
     const state = createDefaultState();
     const task = fixtureTask(state);

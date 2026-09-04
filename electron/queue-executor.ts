@@ -740,7 +740,8 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
                     );
                   }
                 }
-              : undefined
+              : undefined,
+              submitted.progressContext
           );
           files = await sideEffects.trackVideoOutput(result);
           if (h3CompositeTask && executionTask.taskType === "generation") {
@@ -809,7 +810,9 @@ export function createQueueExecutor(deps: QueueExecutorDependencies): () => Prom
               },
               previewHandler,
               isComputeActive,
-              { taskId: task.id, modelId: task.modelId }
+              { taskId: task.id, modelId: task.modelId },
+              undefined,
+              secondSubmitted.progressContext
             );
             files = await sideEffects.trackVideoOutput(result);
           }

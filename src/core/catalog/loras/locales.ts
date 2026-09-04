@@ -80,6 +80,20 @@ const zhCN: Record<string, CatalogLoraLocale> = {
       orderSuggestion: "建议将 {current} 放在 {previous} 前面；运镜 LoRA 建议先单独验证，再与性能或人物 LoRA 组合。"
     }
   },
+  "minimax-h3-equi360": {
+    guide: {
+      summary: "MiniMax H3 360° 等距柱状全景 LoRA，专门把画面组织成可封装为球面视频的全景投影。",
+      recommendedStrength: "固定 1.0；先使用 H3 原生 T2VA、21:9、768p 做基准。",
+      effects: "增强完整球面投影、中央水平线和环境环绕感；应用会自动把触发词 equirect360 放到执行 Prompt 开头。",
+      stacking: "建议先单独使用；不要一开始与 Camera Motion、人物写实或 Turbo 叠加，先做同 Seed 对照。",
+      compatibility: "当前接入为 MiniMax H3 FL2VA 非续写生成模式；模型卡只验证原生 T2VA 21:9/768p，I2V、Ref2VA、8-step Turbo 和视频续写未验证。",
+      source: "shamanic / minimax-h3-equi360-lora · step2500"
+    },
+    rules: {
+      incompatible: "{name} 不兼容当前基础模型或输入模式。",
+      orderSuggestion: "建议将 {current} 放在 {previous} 前面；360° 几何 LoRA 建议先单独验证，再与运镜、人物或性能 LoRA 组合。"
+    }
+  },
   "minimax-h3-turbo-v4-step600-ema-pruned": {
     guide: {
       summary: "社区 MiniMax H3 Turbo v4 step600 EMA pruned 转换，面向 6–8 步质量优先路径。",
@@ -284,6 +298,20 @@ const enUS: Record<string, CatalogLoraLocale> = {
     rules: {
       incompatible: "{name} is incompatible with the current base model or input mode.",
       orderSuggestion: "Place {current} before {previous}; validate the camera-motion LoRA alone before combining it with performance or people LoRAs."
+    }
+  },
+  "minimax-h3-equi360": {
+    guide: {
+      summary: "A MiniMax H3 equirectangular 360° LoRA that organizes the frame as a spherical panorama ready for packaging.",
+      recommendedStrength: "Keep 1.0; start with native H3 T2VA at 21:9 and 768p.",
+      effects: "Strengthens full-sphere projection, the centered horizon, and wraparound environment cues. The app automatically prefixes the execution Prompt with equirect360.",
+      stacking: "Use it alone first; do not initially combine it with Camera Motion, people-realism, or Turbo adapters. Keep a same-Seed comparison.",
+      compatibility: "The app exposes it for the MiniMax H3 FL2VA non-extension generation path. The model card only evaluates native T2VA at 21:9/768p; I2V, Ref2VA, eight-step Turbo, and video extension remain unvalidated.",
+      source: "shamanic / minimax-h3-equi360-lora · step2500"
+    },
+    rules: {
+      incompatible: "{name} is incompatible with the current base model or input mode.",
+      orderSuggestion: "Place {current} before {previous}; validate the 360° geometry adapter alone before combining it with camera-motion, people, or performance adapters."
     }
   },
   "minimax-h3-turbo-v4-step600-ema-pruned": {

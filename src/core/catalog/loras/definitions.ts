@@ -49,6 +49,10 @@ export const H3_SLA_TURBO_LORA_FILENAME =
 export const H3_CAMERA_MOTION_LORA_ID = "minimax-h3-camera-motion-v1";
 export const H3_CAMERA_MOTION_LORA_FILENAME =
   "camera_motion_h3_lora_v1_3000_pruned.safetensors";
+export const H3_EQUI360_LORA_ID = "minimax-h3-equi360";
+export const H3_EQUI360_LORA_FILENAME = "h3-equi360-lora-step2500.safetensors";
+export const H3_EQUI360_LORA_REVISION =
+  "edfbcd3292b714f9f24a1864903c7fb6f7afd991";
 export const H3_TURBO_V4_LORA_ID = "minimax-h3-turbo-v4-step600-ema-pruned";
 export const H3_TURBO_V4_LORA_FILENAME =
   "minimax_h3_turbo_v4_step600_ema_pruned_comfyui.safetensors";
@@ -265,6 +269,42 @@ export const VIDEO_LORA_DEFINITIONS: readonly CatalogVideoLoraDefinition[] = [{
         targetSubdirectory: "loras",
         recommendedFilename: H3_CAMERA_MOTION_LORA_FILENAME,
         notes: "社区 Camera Motion v1 3000 权重。执行 Prompt 会自动加入触发词 camera motion；建议强度 0.8–1.0。当前仅开放 H3 FL2VA pruned INT8 ConvRot 图生视频。"
+      }
+    }]
+  }
+}, {
+  id: H3_EQUI360_LORA_ID,
+  name: "MiniMax H3 Equirectangular 360°",
+  filename: H3_EQUI360_LORA_FILENAME,
+  strength: 1,
+  modelFamily: "minimax-h3",
+  compatibleModelIds: [H3_FL2VA_MODEL_ID],
+  compatibleInputModes: ["image"],
+  purpose: "style",
+  promptPrefixes: ["equirect360"],
+  catalogOrder: 98,
+  variant: "fl2va",
+  rules: {
+    orderPriority: 30,
+    settingConflicts: [],
+    combinations: []
+  },
+  scan: {
+    vram: "LoRA · 360° 等距柱状 · step2500 · strength 1.0 · 131 MB",
+    integrated: true,
+    components: [{
+      label: "MiniMax H3 Equirectangular 360° LoRA · step2500",
+      expected: `loras/${H3_EQUI360_LORA_FILENAME}`,
+      patterns: [/loras\/h3-equi360-lora-step2500\.safetensors$/i],
+      installGuide: {
+        sourceLabel: "shamanic / minimax-h3-equi360-lora",
+        downloadUrl: `https://huggingface.co/shamanic/minimax-h3-equi360-lora/resolve/${H3_EQUI360_LORA_REVISION}/${H3_EQUI360_LORA_FILENAME}?download=true`,
+        targetSubdirectory: "loras",
+        recommendedFilename: H3_EQUI360_LORA_FILENAME,
+        revision: H3_EQUI360_LORA_REVISION,
+        sha256: "472e317679287ecfe2b45476b8715efb9c5c66f92fa487471114d204b155e16a",
+        license: "MiniMax Community License",
+        notes: "360° 等距柱状全景 LoRA；执行 Prompt 会自动加入触发词 equirect360。推荐 H3 原生 T2VA、21:9、768p、强度 1.0；生成后需要把 21:9 输出拉伸为 2:1 并写入 equirectangular 球面元数据。8-step Turbo、I2V/Ref2VA 和视频续写未验证；模型卡提示接缝与镜头运动先验可能带来失真。"
       }
     }]
   }

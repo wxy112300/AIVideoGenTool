@@ -13,6 +13,12 @@ export interface H3LoraPromptProfile {
  * adapter's useful visual intent without asking it to construct ComfyUI nodes.
  */
 export const h3LoraPromptLibrary: Readonly<Record<string, H3LoraPromptProfile>> = {
+  "minimax-h3-equi360": {
+    id: "minimax-h3-equi360",
+    triggerWord: "equirect360",
+    instruction: "When the user requests a 360-degree or immersive environment, describe a full equirectangular spherical projection with the horizon near the vertical middle and a complete environment wrapping around the viewer. Preserve the user's subject, action, camera intent, and soundscape; do not invent a headset or stereoscopic view.",
+    usage: "This adapter is for mono 360° equirectangular T2VA output. Keep the layout sentence concise and place it after the trigger; prefer static-camera or locked-tripod wording when it fits the user's request. Do not claim stereo, VR180, reference-image control, or 8-step Turbo support."
+  },
   "minimax-h3-facial-realism-closeup": {
     id: "minimax-h3-facial-realism-closeup",
     triggerWord: "Facial Realism",

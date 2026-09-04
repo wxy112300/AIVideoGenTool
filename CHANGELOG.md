@@ -8,6 +8,8 @@
 
 ## Unreleased
 
+- 新增可选 MiniMax H3 Equirectangular 360° LoRA：固定使用 `equirect360` 触发词、默认强度 1.0，接入 H3 FL2VA 原生 T2VA 的 21:9/768p 路径；模型文件按 Hugging Face 提交和 SHA-256 校验，I2V、Ref2VA、8-step Turbo 与视频续写仍标记为未验证。
+
 ## 0.59.0 — 2026-09-04
 
 - 历史视频详情页在摘要的“原始生成/分辨率提升版本”后，仅在当前版本存在已验证的 JointAV artifact 时显示 `JointAV` 标记，便于直接判断是否可用于 H3 续写或原生超分。

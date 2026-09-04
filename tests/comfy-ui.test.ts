@@ -13,6 +13,7 @@ import {
   h3PreviewEventMetadata,
   h3PreviewTinyVaeFromObjectInfo,
   nodeStage,
+  progressContextForPrompt,
   progressForNode,
   workProgressForNode,
   safeComfyUploadFilename,
@@ -605,6 +606,57 @@ describe("ComfyUI task progress", () => {
       progress: 27.2,
       label: "扩散采样 4/20"
     });
+  });
+
+  it("normalizes Spectrum replay progress to the rendered scheduler steps", () => {
+    const progressContext = progressContextForPrompt({
+      scheduler: {
+        class_type: "BasicScheduler",
+        inputs: { steps: 20 }
+      },
+      spectrum: {
+        class_type: "SpectrumApplyMiniMaxH3",
+        inputs: {}
+      }
+    });
+
+    expect(progressContext).toEqual({ spectrumOuterSteps: 20 });
+    expect(progressForNode("SamplerCustomAdvanced", 2, 40, progressContext)).toEqual({
+      progress: 20.6,
+      label: "扩散采样 2/20"
+    });
+    expect(workProgressForNode(
+      "SamplerCustomAdvanced",
+      2,
+      40,
+      0,
+      1_000,
+      progressContext
+    )).toMatchObject({ value: 2, max: 20, unit: "step" });
+    expect(workProgressForNode(
+      "SamplerCustomAdvanced",
+      21,
+      40,
+      0,
+      1_000,
+      progressContext
+    )).toMatchObject({ value: 20, max: 20, unit: "step" });
+  });
+
+  it("does not apply Spectrum normalization to other tracked nodes", () => {
+    const progressContext = { spectrumOuterSteps: 20 };
+    expect(progressForNode("SeedVR2VideoUpscaler", 50, 100, progressContext)).toEqual({
+      progress: 44,
+      label: "SeedVR2 超分辨率 50/100"
+    });
+    expect(workProgressForNode(
+      "VAEDecode",
+      2,
+      40,
+      0,
+      1_000,
+      progressContext
+    )).toMatchObject({ value: 2, max: 40, unit: "item" });
   });
 
   it("preserves raw work units and node timing for Queue throughput", () => {

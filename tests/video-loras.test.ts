@@ -3,6 +3,7 @@ import {
   BUILTIN_VIDEO_LORAS,
   H3_CKPT850_LORA,
   H3_CAMERA_MOTION_LORA,
+  H3_EQUI360_LORA,
   H3_AFTER_MIDNIGHT_LORA,
   H3_FACIAL_REALISM_CLOSEUP_LORA,
   H3_REALISM_PEOPLE_LORA,
@@ -18,6 +19,7 @@ import {
   videoLoraConfigurationIssues,
   videoPromptForLoras
 } from "../src/core/video-loras";
+import { h3LoraPromptInstruction } from "../src/core/prompts/h3/loras";
 
 describe("video LoRA catalog", () => {
   it("groups performance LoRAs before functional LoRAs in the H3 catalog", () => {
@@ -28,6 +30,7 @@ describe("video LoRA catalog", () => {
       "minimax-h3-lightx2v-turbo-8step-v1",
       "minimax-h3-ref2v-turbo-4step-v01",
       H3_CAMERA_MOTION_LORA.id,
+      H3_EQUI360_LORA.id,
       H3_AFTER_MIDNIGHT_LORA.id,
       H3_FACIAL_REALISM_CLOSEUP_LORA.id,
       H3_REALISM_PEOPLE_LORA.id
@@ -55,6 +58,13 @@ describe("video LoRA catalog", () => {
       strength: 0.8,
       purpose: "motion",
       promptPrefixes: ["camera motion"],
+      compatibleModelIds: ["minimax_h3_fl2va"],
+      compatibleInputModes: ["image"]
+    });
+    expect(H3_EQUI360_LORA).toMatchObject({
+      strength: 1,
+      purpose: "style",
+      promptPrefixes: ["equirect360"],
       compatibleModelIds: ["minimax_h3_fl2va"],
       compatibleInputModes: ["image"]
     });
@@ -267,6 +277,39 @@ describe("video LoRA catalog", () => {
       "minimax_h3_fl2va",
       "video"
     )).toBe(false);
+  });
+
+  it("adds the Equirectangular 360 trigger and keeps it on the H3 generation path", () => {
+    expect(videoPromptForLoras(
+      "a quiet forest at sunset",
+      [H3_EQUI360_LORA]
+    )).toBe("equirect360, a quiet forest at sunset");
+    expect(videoPromptForLoras(
+      "equirect360, a quiet forest at sunset",
+      [H3_EQUI360_LORA]
+    )).toBe("equirect360, a quiet forest at sunset");
+    expect(videoLoraCompatibleWithDraft(
+      H3_EQUI360_LORA,
+      "minimax_h3_fl2va",
+      "image"
+    )).toBe(true);
+    expect(videoLoraCompatibleWithDraft(
+      H3_EQUI360_LORA,
+      "minimax_h3_fl2va",
+      "video"
+    )).toBe(false);
+    expect(videoLoraCompatibleWithDraft(
+      H3_EQUI360_LORA,
+      "minimax_h3_ref2va",
+      "image"
+    )).toBe(false);
+  });
+
+  it("passes Equirectangular 360 guidance to the H3 prompt enhancer", () => {
+    const instruction = h3LoraPromptInstruction([H3_EQUI360_LORA]);
+    expect(instruction).toContain("equirect360");
+    expect(instruction).toContain("equirectangular spherical projection");
+    expect(instruction).toContain("mono 360");
   });
 
   it("reports the retired PinkFluffyBunny selection as unavailable for new tasks", () => {

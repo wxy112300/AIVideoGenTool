@@ -22,6 +22,11 @@ const catalogLocales: Record<string, CatalogModelEntry["locales"]> = {
     "zh-TW": { name: "MiniMax H3 Camera Motion v1", badge: "H3 專屬 · 運鏡", description: "社群運鏡 LoRA，增強推近、拉遠、環繞、跟拍與航拍等鏡頭運動。" },
     "en-US": { name: "MiniMax H3 Camera Motion v1", badge: "H3 only · camera motion", description: "A community camera-motion LoRA for stronger push-ins, pull-outs, orbits, tracking shots, and aerial movement." }
   },
+  "minimax-h3-equi360": {
+    "zh-CN": { name: "MiniMax H3 Equirectangular 360°", badge: "H3 专属 · 360° 全景", description: "生成 360° 等距柱状全景视频；触发词：equirect360。推荐 21:9、768p T2VA，输出需再封装为 2:1 球面视频。" },
+    "zh-TW": { name: "MiniMax H3 Equirectangular 360°", badge: "H3 專屬 · 360° 全景", description: "生成 360° 等距柱狀全景影片；觸發詞：equirect360。建議 21:9、768p T2VA，輸出需再封裝為 2:1 球面影片。" },
+    "en-US": { name: "MiniMax H3 Equirectangular 360°", badge: "H3 only · 360° panorama", description: "Generates 360° equirectangular video; trigger: equirect360. Use the 21:9 768p T2VA path, then package the output as 2:1 spherical video." }
+  },
   "minimax-h3-turbo-v4-step600-ema-pruned": {
     "zh-CN": { name: "MiniMax H3 Turbo v4 · step600 EMA", badge: "H3 专属 · 综合首选", description: "社区 v4 step600 EMA pruned Turbo，建议 8 步，当前作为综合质量、稳定性和速度的首选。" },
     "zh-TW": { name: "MiniMax H3 Turbo v4 · step600 EMA", badge: "H3 專屬 · 綜合首選", description: "社群 v4 step600 EMA pruned Turbo，建議 8 步，目前作為綜合品質、穩定性與速度的首選。" },
