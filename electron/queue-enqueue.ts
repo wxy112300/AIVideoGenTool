@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import type {
   AppState,
   Draft,
+  EnvironmentScanResult,
   ImageEditDraft,
   NativeAvArtifactInspection,
   Settings,
@@ -88,8 +89,7 @@ import type { AppLogger } from "../src/infrastructure/app-logger.js";
 import { safeLogErrorMessage } from "../src/infrastructure/app-logger.js";
 import {
   getCachedEnvironmentScan,
-  resolveComfyOutputDirectory,
-  scanEnvironment
+  resolveComfyOutputDirectory
 } from "./services/environment.js";
 import { isLocalComfyUrl } from "./services/comfy-endpoint.js";
 import { archiveImagePaths, archiveImageReferences, hashImageFile } from "../src/infrastructure/image-asset-library.js";
@@ -222,11 +222,13 @@ async function requireImageModelAssets(
   settings: Settings,
   modelId = settings.defaultImageModel,
   qualityProfile = "native",
-  hasReference = false
+  hasReference = false,
+  cachedScan?: EnvironmentScanResult
 ): Promise<string | undefined> {
-  const scan = await scanEnvironment(settings);
-  const profile = scan.modelProfiles.find((item) => item.id === modelId);
   const adapter = imageModelAdapterFor(modelId);
+  const scan = cachedScan;
+  if (!scan) return undefined;
+  const profile = scan.modelProfiles.find((item) => item.id === modelId);
   if (!adapter || profile?.category !== "image" || !profile.integrated) {
     throw new Error(`当前没有 ${modelId} 的可用图片工作流适配器。`);
   }
@@ -708,11 +710,23 @@ export class QueueEnqueueService {
     if (adapter.requiresMask && !normalized.pictures[0]?.mask?.regionCount) {
       throw new Error("请先在原图上绘制并保存 Mask。");
     }
+    const cachedEnvironment = (deps.getCachedEnvironmentScanForQueue ?? getCachedEnvironmentScan)(
+      enqueueSettings
+    );
+    if (!cachedEnvironment) {
+      logger.info(
+        "queue",
+        "image-enqueue-environment-preflight-deferred",
+        "未阻塞入队：图片模型与节点检查将在任务执行阶段通过工作流和 /object_info 完成",
+        { taskType: "image-generation", modelId: normalized.modelId }
+      );
+    }
     const diffusionModelFilename = await requireImageModelAssets(
       enqueueSettings,
       normalized.modelId,
       normalized.qualityProfile,
-      hasReference
+      hasReference,
+      cachedEnvironment
     );
     const outputTarget = await resolveImageOutputTarget(enqueueSettings);
     const operationId = randomUUID().slice(0, 8);

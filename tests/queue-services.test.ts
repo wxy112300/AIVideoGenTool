@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createDefaultDraft, createDefaultState } from "../src/core/defaults";
+import { createDefaultDraft, createDefaultImageEditDraft, createDefaultState } from "../src/core/defaults";
 import { queueTaskFromDraft } from "../src/core/queue-task-factory";
 import type { AppState, QueueTask } from "../src/types";
 import type { StateRepository } from "../electron/ports/state-repository";
@@ -141,6 +141,88 @@ describe("queue command services", () => {
       workflowPath: "workflow.json"
     }))
       .rejects.toThrow("需要开启 JointAV 输出");
+  });
+
+  it("enqueues an image task without starting a fresh environment scan", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "lvs-lama-enqueue-"));
+    const outputRoot = path.join(root, "output");
+    const sourcePath = path.join(root, "source.png");
+    const maskPath = path.join(root, "mask.png");
+    await Promise.all([
+      fs.mkdir(outputRoot, { recursive: true }),
+      fs.writeFile(sourcePath, "source"),
+      fs.writeFile(maskPath, "mask")
+    ]);
+    const state = createDefaultState();
+    state.settings.outputDirectory = path.join(outputRoot, "Videos");
+    state.settings.imageOutputDirectory = path.join(outputRoot, "Images");
+    const enqueueInfo = vi.fn();
+    const enqueueLogger = {
+      debug: vi.fn(), info: enqueueInfo, warn: vi.fn(), error: vi.fn()
+    } as never;
+    const getCachedEnvironmentScanForQueue = vi.fn(() => undefined);
+    const service = new QueueEnqueueService({
+      store: repository(state),
+      logger: enqueueLogger,
+      sendState: vi.fn(),
+      getCachedEnvironmentScanForQueue,
+      effectiveImageInputLibraryDirectory: async () => path.join(root, "library"),
+      resolveTaskOutputDirectory: async () => outputRoot,
+      imageInspection: { readDimensions: () => ({ width: 640, height: 360 }) }
+    });
+    const draft = {
+      ...createDefaultImageEditDraft(),
+      modelId: "lama-inpaint",
+      qualityProfile: "native",
+      pictures: [{
+        id: "picture-1",
+        pictureNumber: 1,
+        absolutePath: sourcePath,
+        width: 640,
+        height: 360,
+        mask: {
+          documentPath: path.join(root, "mask.json"),
+          maskPath,
+          revision: 1,
+          regionCount: 1,
+          updatedAt: "2026-09-05T00:00:00.000Z"
+        }
+      }],
+      nextPictureNumber: 2
+    };
+
+    const lamaState = await service.enqueueImage(draft);
+    const qwenDraft = {
+      ...createDefaultImageEditDraft(),
+      pictures: [{
+        id: "picture-1",
+        pictureNumber: 1,
+        absolutePath: sourcePath,
+        width: 640,
+        height: 360
+      }],
+      nextPictureNumber: 2
+    };
+    qwenDraft.promptVersions[0]!.text = "Remove the object.";
+    const next = await service.enqueueImage(qwenDraft);
+
+    expect(getCachedEnvironmentScanForQueue).toHaveBeenCalledTimes(2);
+    expect(lamaState.queue[0]).toMatchObject({
+      taskType: "image-generation",
+      modelId: "lama-inpaint",
+      outputCount: 1
+    });
+    expect(next.queue[1]).toMatchObject({
+      taskType: "image-generation",
+      modelId: "qwen-image-edit-2511"
+    });
+    expect(next.queue[1]).not.toHaveProperty("diffusionModelFilename");
+    expect(enqueueInfo).toHaveBeenCalledWith(
+      "queue",
+      "image-enqueue-environment-preflight-deferred",
+      expect.any(String),
+      { taskType: "image-generation", modelId: "lama-inpaint" }
+    );
   });
 
   it("enqueues a DLSS task from a successful History version with a frozen snapshot", async () => {
